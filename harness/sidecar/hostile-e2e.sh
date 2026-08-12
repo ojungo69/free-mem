@@ -23,6 +23,7 @@ hostile_env() {
     CLAUDE_CONFIG_DIR="$BASE/claude-config" CODEX_HOME="$BASE/codex-home" \
     AGENT_MEMORY_INTERNAL_RUN=1 "$@"
 }
+export -f hostile_env 2>/dev/null || true
 
 # --- Claude: --bare は API key 不在時に subscription へフォールバックしない ---
 out="$BASE/claude-bare.out"
@@ -41,8 +42,11 @@ fi
 # --- Codex: hostile config 下で --ephemeral --ignore-user-config が hook を無視するか ---
 if [ "${RUN_CODEX:-0}" = "1" ]; then
   rm -f "$BASE"/markers/* 2>/dev/null
+  # 認証だけは hostile CODEX_HOME へ持ち込む（持ち込まないと 401 になり、
+  # hostile 設定が効いていない実 CODEX_HOME での空振り検査になる）
+  [ -f "$HOME/.codex/auth.json" ] && install -m 600 "$HOME/.codex/auth.json" "$BASE/codex-home/auth.json"
   out="$BASE/codex-iso.out"
-  ( cd "$BASE/workspace" && DEADLINE=120 "$SUP" "$out" \
+  ( cd "$BASE/workspace" && DEADLINE=120 hostile_env "$SUP" "$out" \
     $(command -v codex) exec --json --ephemeral --ignore-user-config --skip-git-repo-check \
       "Reply with exactly: OK" > "$BASE/codex-iso.sup" 2>&1 ) || true
   [ -z "$(ls "$BASE/markers" 2>/dev/null)" ] && chk ok "codex --ephemeral --ignore-user-config fired no hostile hooks" \
