@@ -11,7 +11,10 @@
  * Import existing store/entity types where shapes match.
  */
 
-import type { SyncCapability, SyncFeature } from "./sync-capability.js";
+/** Kept after sync-capability carve-out for remaining API type fields. */
+type SyncCapability = "unsupported" | "aware" | "enforcing" | "scoped";
+type SyncFeature = "reassign_scope";
+
 import type {
 	Actor,
 	MemoryItemResponse,

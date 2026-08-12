@@ -8,7 +8,7 @@
  * hatch becomes the bypass that makes scanning theater.
  *
  * Scope of this foundation: the local-write chokepoint inside `MemoryStore.remember`.
- * Other writers into `memory_items` (sync-replication apply, sync-bootstrap
+ * Other writers into `memory_items` (sync replication apply, sync bootstrap
  * snapshot apply, AI/maintenance backfills of narrative/facts/concepts/tags)
  * are NOT scanned by this module yet — they are addressed by dependent bd
  * issues (codemem-hflk for sync-receive, codemem-tzrn for compaction/AI output,
@@ -396,7 +396,7 @@ export function mergeDetections(...lists: ScanDetection[][]): ScanDetection[] {
 }
 
 /**
- * Shape of a parsed inbound memory payload (sync-replication or sync-bootstrap).
+ * Shape of a parsed inbound memory payload (sync replication or sync bootstrap).
  * Any field that is `undefined` is left untouched. The struct is mutated in
  * place by `redactMemoryFields` so callers can redact-then-insert without
  * cloning.
@@ -425,8 +425,8 @@ export interface MemoryFieldRedactionTarget {
 
 /**
  * Redact secrets from a parsed inbound memory payload before persistence.
- * Used by sync-receive (sync-replication.ts) and bootstrap-snapshot apply
- * (sync-bootstrap.ts) so peer-shipped content goes through the same scanner
+ * Used by sync-receive (former sync replication path) and bootstrap-snapshot apply
+ * (sync bootstrap.ts) so peer-shipped content goes through the same scanner
  * as locally-authored writes. Mutates the target in place; returns the merged
  * detection summary across all scanned fields.
  */

@@ -5,7 +5,8 @@
  * data structures in codemem/store/types.py.
  */
 
-import type { SyncCapability } from "./sync-capability.js";
+/** Kept as string union after sync-capability module carve-out (schema/API rows still carry the field). */
+type SyncCapability = "unsupported" | "aware" | "enforcing" | "scoped";
 
 // ---------------------------------------------------------------------------
 // Core entities

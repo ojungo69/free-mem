@@ -70,7 +70,6 @@ import { resolveProject } from "./project.js";
 import * as schema from "./schema.js";
 import { classifySessionForInjection, shouldSuppressSummaryOnlyOutput } from "./session-policy.js";
 import type { MemoryStore } from "./store.js";
-import { recordReplicationOp } from "./sync-replication.js";
 import { deriveTags } from "./tags.js";
 import { storeVectors } from "./vectors.js";
 
@@ -174,15 +173,6 @@ export function supersedePriorObserverSummaries(
 			})
 			.where(eq(schema.memoryItems.id, row.id))
 			.run();
-		try {
-			recordReplicationOp(store.db, {
-				memoryId: row.id,
-				opType: "delete",
-				deviceId: store.deviceId,
-			});
-		} catch {
-			// Replication-op recording is best-effort; continue with supersede.
-		}
 		superseded.push(row.id);
 	}
 	return superseded;

@@ -14,7 +14,6 @@ import { claudeHookInjectCommand } from "./commands/claude-hook-inject.js";
 import { codexHookIngestCommand } from "./commands/codex-hook-ingest.js";
 import { codexHookInjectCommand } from "./commands/codex-hook-inject.js";
 import { configCommand } from "./commands/config.js";
-import { coordinatorCommand } from "./commands/coordinator.js";
 import { dbCommand } from "./commands/db.js";
 import { distillCommand } from "./commands/distill.js";
 import { embedCommand } from "./commands/embed.js";
@@ -36,7 +35,6 @@ import { serveCommand } from "./commands/serve.js";
 import { setupCommand } from "./commands/setup.js";
 import { statsCommand } from "./commands/stats.js";
 import { statusCommand } from "./commands/status.js";
-import { syncCommand } from "./commands/sync.js";
 import { versionCommand } from "./commands/version.js";
 import { helpStyle } from "./help-style.js";
 
@@ -47,7 +45,6 @@ export const ROOT_COMPLETION_COMMANDS = [
 	"codex-hook-inject",
 	"codex-hook-ingest",
 	"config",
-	"coordinator",
 	"db",
 	"distill",
 	"embed",
@@ -64,7 +61,6 @@ export const ROOT_COMPLETION_COMMANDS = [
 	"setup",
 	"stats",
 	"status",
-	"sync",
 	"version",
 	"help",
 	"--help",
@@ -163,7 +159,6 @@ export function registerRootCommands(program: Command): Command {
 
 	program.addCommand(serveCommand);
 	program.addCommand(configCommand);
-	program.addCommand(coordinatorCommand);
 	program.addCommand(mcpCommand);
 	program.addCommand(claudeHookInjectCommand);
 	program.addCommand(claudeHookIngestCommand);
@@ -191,7 +186,6 @@ export function registerRootCommands(program: Command): Command {
 	program.addCommand(forgetMemoryCommand, { hidden: true });
 	program.addCommand(rememberMemoryCommand, { hidden: true });
 	program.addCommand(memoryCommand);
-	program.addCommand(syncCommand);
 	program.addCommand(setupCommand);
 	program.addCommand(enqueueRawEventCommand);
 	program.addCommand(versionCommand);

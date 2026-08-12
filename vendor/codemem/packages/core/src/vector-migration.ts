@@ -8,7 +8,7 @@ import {
 	startMaintenanceJob,
 	updateMaintenanceJob,
 } from "./maintenance-jobs.js";
-import type { ReplicationVectorWork } from "./sync-replication.js";
+import type { ReplicationVectorWork } from "./vectors.js";
 import { backfillVectors, pruneStaleCurrentModelVectors } from "./vectors.js";
 
 export const VECTOR_MODEL_MIGRATION_JOB = "vector_model_migration";

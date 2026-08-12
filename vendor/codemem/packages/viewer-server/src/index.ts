@@ -1,9 +1,5 @@
 /**
- * @codemem/server — HTTP server (viewer, sync, API).
- *
- * Single HTTP server handling viewer routes and sync daemon.
- * Shares one better-sqlite3 connection between viewer and sync.
- * Embedding inference runs in a worker_thread (lazy-started).
+ * @codemem/server — HTTP server (viewer API + SPA host).
  *
  * Entry: `codemem serve`
  */
@@ -15,10 +11,6 @@ import { MemoryStore, type RawEventSweeper, resolveDbPath, VERSION } from "@code
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { originGuard, preflightHandler } from "./middleware.js";
-import {
-	createInMemoryRequestRateLimiter,
-	type InMemoryRequestRateLimiter,
-} from "./request-rate-limit.js";
 import { configRoutes } from "./routes/config.js";
 import { healthRoutes } from "./routes/health.js";
 import { memoryRoutes } from "./routes/memory.js";
@@ -26,25 +18,6 @@ import { observerStatusRoutes } from "./routes/observer-status.js";
 import { packTransportRoutes } from "./routes/pack.js";
 import { rawEventsRoutes } from "./routes/raw-events.js";
 import { statsRoutes } from "./routes/stats.js";
-import { syncProtocolRoutes, syncRoutes } from "./routes/sync.js";
-
-export type {
-	AdvancePendingProjectSharesResult,
-	AdvanceProjectShareOperationResult,
-	RecipientPolicyReconciliationReadModel,
-	RecipientPolicyReconciliationReadState,
-	ReconcileConfiguredCoordinatorEnrollmentResult,
-	ReconcileRecipientPolicyProjectsResult,
-} from "./routes/sync.js";
-export {
-	advancePendingProjectShares,
-	advanceProjectShareOperation,
-	createRecipientPolicyReconcilerEffects,
-	listRecipientPolicyReconciliationStatus,
-	recipientPolicyCapabilityFromStatus,
-	reconcileConfiguredCoordinatorEnrollment,
-	reconcileRecipientPolicyProjects,
-} from "./routes/sync.js";
 
 export { VERSION };
 
@@ -73,32 +46,12 @@ export interface AppOptions {
 	storeFactory?: () => MemoryStore;
 	sweeper?: RawEventSweeper | null;
 	observer?: ObserverClient | null;
-	syncRequestRateLimit?: {
-		limiter?: InMemoryRequestRateLimiter;
-		readLimit?: number;
-		mutationLimit?: number;
-		unauthenticatedReadLimit?: number;
-		unauthenticatedMutationLimit?: number;
-	};
-	getSyncRuntimeStatus?: () => {
-		phase:
-			| "starting"
-			| "running"
-			| "stopping"
-			| "error"
-			| "disabled"
-			| "rebootstrapping"
-			| "needs_attention"
-			| null;
-		detail?: string | null;
-	} | null;
 }
 
 export function createApp(opts?: AppOptions) {
 	const storeFactory = opts?.storeFactory ?? getStore;
 	const sweeper = opts?.sweeper ?? null;
 	const observer = opts?.observer ?? null;
-	const getSyncRuntimeStatus = opts?.getSyncRuntimeStatus ?? (() => null);
 	const app = new Hono();
 
 	// CORS / origin guard
@@ -120,7 +73,6 @@ export function createApp(opts?: AppOptions) {
 	);
 	app.route("/", configRoutes({ getSweeper: () => sweeper }));
 	app.route("/", rawEventsRoutes(storeFactory, sweeper));
-	app.route("/", syncRoutes(storeFactory, getSyncRuntimeStatus));
 
 	// Static assets — serve under /assets/*
 	// Resolves to packages/viewer-server/static/ both in dev and when installed from npm.
@@ -156,48 +108,6 @@ export function createApp(opts?: AppOptions) {
 		c.header("Cache-Control", "no-store");
 		return c.html(indexHtml);
 	});
-
-	return app;
-}
-
-/**
- * Create the Hono app for peer-to-peer sync protocol routes only.
- *
- * This app is bound to a separate network-accessible listener
- * (default 0.0.0.0:7337) so remote peers can reach the sync
- * endpoints without exposing the viewer UI or local API routes.
- *
- * No CORS/origin guard is applied — sync requests are authenticated
- * via cryptographic signature verification instead.
- */
-export function createSyncApp(opts?: AppOptions) {
-	const storeFactory = opts?.storeFactory ?? getStore;
-	const requestRateLimit = opts?.syncRequestRateLimit ?? {};
-	const rateLimiter = requestRateLimit.limiter ?? createInMemoryRequestRateLimiter();
-	const readLimit = Math.max(1, Math.trunc(requestRateLimit.readLimit ?? 120));
-	const mutationLimit = Math.max(1, Math.trunc(requestRateLimit.mutationLimit ?? 30));
-	const app = new Hono();
-	app.route(
-		"/",
-		syncProtocolRoutes(storeFactory, {
-			routeRateLimit: {
-				limiter: rateLimiter,
-				readLimit,
-				mutationLimit,
-				unauthenticatedReadLimit: Math.max(
-					1,
-					Math.trunc(requestRateLimit.unauthenticatedReadLimit ?? Math.min(20, readLimit)),
-				),
-				unauthenticatedMutationLimit: Math.max(
-					1,
-					Math.trunc(requestRateLimit.unauthenticatedMutationLimit ?? Math.min(10, mutationLimit)),
-				),
-			},
-		}),
-	);
-
-	// Catch-all — return generic 404 to avoid fingerprinting the server.
-	app.all("*", (c) => c.json({ error: "not found" }, 404));
 
 	return app;
 }

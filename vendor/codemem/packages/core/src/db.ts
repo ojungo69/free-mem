@@ -987,7 +987,7 @@ export function ensureAdditiveSchemaCompatibility(db: DatabaseType): void {
 			);
 		`);
 		} catch {
-			// Keep compatibility shim fail-open for additive share-operation state.
+			// Keep compatibility shim fail-open for additive share operation state.
 		}
 		const shareOperationColumns = [
 			["state", "TEXT NOT NULL DEFAULT 'waiting_for_acceptance'"],
@@ -1065,7 +1065,7 @@ export function ensureAdditiveSchemaCompatibility(db: DatabaseType): void {
 					WHERE pending_person_operation_id IS NOT NULL;
 			`);
 		} catch {
-			// Keep compatibility shim fail-open for additive share-operation indexes.
+			// Keep compatibility shim fail-open for additive share operation indexes.
 		}
 		try {
 			db.exec(`

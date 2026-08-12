@@ -104,27 +104,6 @@ describe("summary-dedup backfill", () => {
 		}
 	});
 
-	it("emits replication delete ops for superseded rows", async () => {
-		const db = new Database(":memory:");
-		try {
-			initTestSchema(db);
-			const sessionId = insertTestSession(db);
-			const id1 = seedSummary(db, sessionId, "2026-04-10T10:00:00Z");
-			seedSummary(db, sessionId, "2026-04-10T12:00:00Z");
-
-			await runSummaryDedupBackfillPass(db, { deviceId: "test-device" });
-
-			const ops = db
-				.prepare(
-					"SELECT op_type, entity_id FROM replication_ops WHERE entity_type = 'memory_item' ORDER BY created_at",
-				)
-				.all() as Array<{ op_type: string; entity_id: string }>;
-			expect(ops.some((op) => op.op_type === "delete" && op.entity_id === String(id1))).toBe(true);
-		} finally {
-			db.close();
-		}
-	});
-
 	it("restarts from session_id 0 after a prior run completed so late-arriving duplicates are caught", async () => {
 		const db = new Database(":memory:");
 		try {

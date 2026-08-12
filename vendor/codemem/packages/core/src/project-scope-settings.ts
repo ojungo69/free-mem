@@ -9,8 +9,9 @@ import {
 	type ScopeResolutionReason,
 	type WorkspaceIdentitySource,
 } from "./scope-resolution.js";
-import { SYNC_BOOTSTRAP_CWD_PREFIX } from "./sync-bootstrap-constants.js";
-import { recordAccessCleanupOp, recordReplicationOp } from "./sync-replication.js";
+
+/** Synthetic placeholder cwd for bootstrap sessions (historical sync path). */
+const SYNC_BOOTSTRAP_CWD_PREFIX = "__sync_bootstrap__";
 
 export interface SharingDomainSettingsScope {
 	scope_id: string;
@@ -765,7 +766,7 @@ function propagateProjectScopeMappingToSourceOwnedMemories(
 		const newScopeId = resolution.scopeId;
 		if (oldScopeId === newScopeId) continue;
 		const oldRev = Number(row.rev ?? 0);
-		const tombstoneRev = oldRev + 1;
+		// rev advances by 2 to preserve the historical tombstone+upsert rev spacing.
 		const upsertRev = oldRev + 2;
 		const metadata = fromJson(row.metadata_json);
 		metadata.clock_device_id = deviceId;
@@ -780,38 +781,6 @@ function propagateProjectScopeMappingToSourceOwnedMemories(
 			 SET scope_id = ?, updated_at = ?, metadata_json = ?, rev = ?
 			 WHERE id = ?`,
 		).run(newScopeId, now, toJson(metadata), upsertRev, row.id);
-		recordReplicationOp(db, {
-			memoryId: row.id,
-			opType: "delete",
-			deviceId,
-			scopeId: oldScopeId,
-			clockRev: tombstoneRev,
-			clockUpdatedAt: now,
-			clockDeviceId: deviceId,
-			createdAt: now,
-		});
-		if (row.import_key) {
-			recordAccessCleanupOp(db, {
-				importKey: row.import_key,
-				deviceId,
-				cleanupScopeId: oldScopeId,
-				clockRev: tombstoneRev,
-				clockUpdatedAt: now,
-				clockDeviceId: deviceId,
-				createdAt: now,
-				reason: "project_scope_reassignment",
-			});
-		}
-		recordReplicationOp(db, {
-			memoryId: row.id,
-			opType: "upsert",
-			deviceId,
-			scopeId: newScopeId,
-			clockRev: upsertRev,
-			clockUpdatedAt: now,
-			clockDeviceId: deviceId,
-			createdAt: now,
-		});
 		moved += 1;
 	}
 	return moved;
@@ -1236,16 +1205,6 @@ export function reassignProjectScopeInventoryProject(
 				 SET project = ?, updated_at = ?, rev = COALESCE(rev, 0) + 1
 				 WHERE id IN (${memoryIds.map(() => "?").join(", ")})`,
 			).run(project, now, ...memoryIds);
-			for (const memoryId of memoryIds) {
-				recordReplicationOp(db, {
-					memoryId,
-					opType: "upsert",
-					deviceId,
-					clockDeviceId: deviceId,
-					clockUpdatedAt: now,
-					createdAt: now,
-				});
-			}
 		}
 	})();
 	return {

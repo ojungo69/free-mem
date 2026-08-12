@@ -1202,7 +1202,7 @@ describe("ensureAdditiveSchemaCompatibility schema-compat gate", () => {
 		db = connect(join(tmpDir, "replacement.sqlite"));
 	});
 
-	it("repairs partially-created share-operation tables before marking compatibility", () => {
+	it("repairs partially-created share operation tables before marking compatibility", () => {
 		db.close();
 		const partial = new BetterSqlite3(join(tmpDir, "partial.sqlite"));
 		partial.exec(`

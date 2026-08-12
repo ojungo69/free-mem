@@ -58,7 +58,6 @@ import {
 	type ScanDetection,
 	SecretScanner,
 } from "./secret-scanner.js";
-import { recordReplicationOp } from "./sync-replication.js";
 import type {
 	ExplainResponse,
 	MemoryFilters,
@@ -510,26 +509,6 @@ export class MemoryStore {
 		);
 	}
 
-	/**
-	 * Throw if sync is in a blocking phase and the memory has shared visibility.
-	 * Private memories are always safe to write regardless of sync state.
-	 *
-	 * Uses the store's existing Drizzle instance to avoid re-instantiation on
-	 * every mutation. The underlying query is a PK lookup on a 0-or-1-row table,
-	 * so the cost is negligible.
-	 */
-	private assertSharedMutationAllowed(visibility: string | null | undefined): void {
-		if (!visibility || visibility === "private") return;
-		const row = this.d
-			.select({ phase: schema.syncDaemonState.phase })
-			.from(schema.syncDaemonState)
-			.where(eq(schema.syncDaemonState.id, 1))
-			.get();
-		if (row?.phase === "needs_attention") {
-			throw new Error("sync_rebootstrap_in_progress");
-		}
-	}
-
 	private enqueueVectorWrite(memoryId: number, title: string, bodyText: string): void {
 		if (this.db.inTransaction) return;
 		let op: Promise<void> | null = null;
@@ -820,9 +799,6 @@ export class MemoryStore {
 			return existingHit.id;
 		}
 
-		// Block shared-memory writes while sync requires attention.
-		this.assertSharedMutationAllowed(provenance.visibility);
-
 		let memoryId: number;
 		try {
 			memoryId = this.db.transaction(() => {
@@ -869,13 +845,6 @@ export class MemoryStore {
 				if (id == null) throw new Error("memory insert returned no id");
 
 				populateMemoryRefs(this.db, id, filesRead, filesModified, concepts);
-
-				// Record replication op for sync propagation (non-fatal)
-				try {
-					recordReplicationOp(this.db, { memoryId: id, opType: "upsert", deviceId: this.deviceId });
-				} catch {
-					// Non-fatal — don't block memory creation
-				}
 
 				return id;
 			})();
@@ -1071,9 +1040,6 @@ export class MemoryStore {
 					.get();
 				if (!row) return;
 
-				// Block shared-memory deletes while sync requires attention.
-				this.assertSharedMutationAllowed(row.visibility);
-
 				const meta = fromJson(row.metadata_json);
 				meta.clock_device_id = this.deviceId;
 
@@ -1091,12 +1057,6 @@ export class MemoryStore {
 					})
 					.where(eq(schema.memoryItems.id, memoryId))
 					.run();
-
-				try {
-					recordReplicationOp(this.db, { memoryId, opType: "delete", deviceId: this.deviceId });
-				} catch {
-					// Non-fatal
-				}
 			})
 			.immediate();
 	}
@@ -1344,9 +1304,6 @@ export class MemoryStore {
 			throw new Error("visibility must be private or shared");
 		}
 
-		// Block promoting to shared while sync requires attention.
-		this.assertSharedMutationAllowed(cleaned);
-
 		return this.db
 			.transaction(() => {
 				const row = this.d
@@ -1392,22 +1349,6 @@ export class MemoryStore {
 					})
 					.where(eq(schema.memoryItems.id, memoryId))
 					.run();
-
-				try {
-					recordReplicationOp(this.db, {
-						memoryId,
-						opType: "upsert",
-						deviceId: this.deviceId,
-					});
-				} catch (err) {
-					// Non-fatal for the visibility write itself, but surface
-					// the failure: peers won't learn about this change until
-					// the next reconciliation pass, and a silent swallow
-					// hides whatever broke the replication path.
-					console.warn(
-						`[codemem] updateMemoryVisibility: replication-op emit failed for memory ${memoryId}: ${err instanceof Error ? err.message : String(err)}`,
-					);
-				}
 
 				const updated = this.get(memoryId);
 				if (!updated) {
@@ -1463,13 +1404,9 @@ export class MemoryStore {
 					return current;
 				}
 
-				// Block shared-memory scope moves while sync requires attention.
-				this.assertSharedMutationAllowed(row.visibility);
-
 				const now = nowIso();
-				const reassignmentOpPrefix = `~scope-reassign:${randomUUID()}`;
 				const oldRev = row.rev ?? 0;
-				const tombstoneRev = oldRev + 1;
+				// rev advances by 2 to preserve the historical tombstone+upsert rev spacing.
 				const upsertRev = oldRev + 2;
 				const meta = fromJson(row.metadata_json);
 				meta.clock_device_id = this.deviceId;
@@ -1491,29 +1428,6 @@ export class MemoryStore {
 					})
 					.where(eq(schema.memoryItems.id, memoryId))
 					.run();
-
-				recordReplicationOp(this.db, {
-					memoryId,
-					opType: "delete",
-					deviceId: this.deviceId,
-					scopeId: oldScopeId,
-					clockRev: tombstoneRev,
-					clockUpdatedAt: now,
-					clockDeviceId: this.deviceId,
-					createdAt: now,
-					opId: `${reassignmentOpPrefix}:0-delete`,
-				});
-				recordReplicationOp(this.db, {
-					memoryId,
-					opType: "upsert",
-					deviceId: this.deviceId,
-					scopeId: cleanedScopeId,
-					clockRev: upsertRev,
-					clockUpdatedAt: now,
-					clockDeviceId: this.deviceId,
-					createdAt: now,
-					opId: `${reassignmentOpPrefix}:1-upsert`,
-				});
 
 				const updated = this.get(memoryId);
 				if (!updated) throw new Error("memory not found after scope reassignment");

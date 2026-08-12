@@ -6,10 +6,6 @@ export default defineConfig({
 		lib: {
 			entry: {
 				index: resolve(import.meta.dirname, "src/index.ts"),
-				"internal/cloudflare-coordinator": resolve(
-					import.meta.dirname,
-					"src/internal/cloudflare-coordinator.ts",
-				),
 			},
 			formats: ["es"],
 			fileName: (_format, entryName) => `${entryName}.js`,

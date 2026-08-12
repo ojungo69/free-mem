@@ -7,7 +7,6 @@ import {
 	registerRootCommands,
 } from "./command-tree.js";
 import { memoryCommand } from "./commands/memory.js";
-import { syncCommand } from "./commands/sync.js";
 import { helpStyle } from "./help-style.js";
 
 const completionOnly = new Set<string>(["help", ...COMPLETION_ONLY_TOKENS]);
@@ -69,13 +68,6 @@ describe("root command tree", () => {
 			.map((command) => command.name())
 			.filter((name) => name === "export" || name === "import");
 		expect(wrapperNames.sort()).toEqual(["export", "import"]);
-	});
-
-	it("hides sync coordinator from help without unregistering it", () => {
-		const coordinator = syncCommand.commands.find((command) => command.name() === "coordinator");
-
-		expect(coordinator).toBeDefined();
-		expect(syncCommand.helpInformation()).not.toMatch(/^\s+coordinator(?:\s|$)/m);
 	});
 });
 

@@ -5,8 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connect, tableExists } from "./db.js";
 import { buildFilterClauses, buildFilterClausesWithContext } from "./filters.js";
 import { MemoryStore } from "./store.js";
-import { setSyncDaemonPhase } from "./sync-daemon.js";
-import { loadReplicationOpsSince } from "./sync-replication.js";
 import { initTestSchema, insertTestSession } from "./test-utils.js";
 import * as vectors from "./vectors.js";
 
@@ -487,34 +485,7 @@ describe("MemoryStore", () => {
 			expect(row?.body_text).not.toContain("AKIAIOSFODNN7EXAMPLE");
 		});
 
-		it("never persists original secrets to the replication_ops payload", () => {
-			const sessionId = insertTestSession(store.db);
-			const pat = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
-			const awsId = "AKIAIOSFODNN7EXAMPLE";
-			const memId = store.remember(
-				sessionId,
-				"discovery",
-				`title with ${pat}`,
-				`body with ${awsId}`,
-				0.5,
-				[pat],
-				{ password: "supersecretvalue123" },
-			);
-			expect(memId).toBeGreaterThan(0);
-
-			const ops = store.db
-				.prepare("SELECT payload_json FROM replication_ops WHERE entity_type = 'memory_item'")
-				.all() as Array<{ payload_json: string | null }>;
-			expect(ops.length).toBeGreaterThan(0);
-			for (const op of ops) {
-				const payload = op.payload_json ?? "";
-				expect(payload).not.toContain(pat);
-				expect(payload).not.toContain(awsId);
-				expect(payload).not.toContain("supersecretvalue123");
-			}
-		});
-
-		it("stamps local-default scope on new memory and replication op by default", () => {
+		it("stamps local-default scope on new memory by default", () => {
 			const sessionId = insertTestSession(store.db);
 			const memId = store.remember(sessionId, "feature", "Scoped default", "Feature body");
 
@@ -522,15 +493,9 @@ describe("MemoryStore", () => {
 				.prepare("SELECT import_key, scope_id FROM memory_items WHERE id = ?")
 				.get(memId) as { import_key: string; scope_id: string | null };
 			expect(memory.scope_id).toBe("local-default");
-
-			const op = store.db
-				.prepare("SELECT scope_id, payload_json FROM replication_ops WHERE entity_id = ?")
-				.get(memory.import_key) as { scope_id: string | null; payload_json: string };
-			expect(op.scope_id).toBe("local-default");
-			expect(JSON.parse(op.payload_json).scope_id).toBe("local-default");
 		});
 
-		it("stamps mapped scope on new memory and replication op", () => {
+		it("stamps mapped scope on new memory", () => {
 			const sessionId = insertTestSession(store.db);
 			store.db
 				.prepare("UPDATE sessions SET cwd = ?, project = ? WHERE id = ?")
@@ -556,15 +521,9 @@ describe("MemoryStore", () => {
 				.prepare("SELECT import_key, scope_id FROM memory_items WHERE id = ?")
 				.get(memId) as { import_key: string; scope_id: string | null };
 			expect(memory.scope_id).toBe("acme-work");
-
-			const op = store.db
-				.prepare("SELECT scope_id, payload_json FROM replication_ops WHERE entity_id = ?")
-				.get(memory.import_key) as { scope_id: string | null; payload_json: string };
-			expect(op.scope_id).toBe("acme-work");
-			expect(JSON.parse(op.payload_json).scope_id).toBe("acme-work");
 		});
 
-		it("reassigns memory scope with an old-scope tombstone and new-scope upsert", () => {
+		it("reassigns memory scope and records the reassignment in metadata", () => {
 			const sessionId = insertTestSession(store.db);
 			store.db
 				.prepare(
@@ -590,48 +549,6 @@ describe("MemoryStore", () => {
 					new_scope_id: "acme-work",
 				},
 			});
-			const ops = store.db
-				.prepare(`SELECT op_id, op_type, clock_rev, scope_id, payload_json, created_at
-					 FROM replication_ops
-					 WHERE entity_id = ?
-					 ORDER BY clock_rev ASC, op_type ASC`)
-				.all(before.import_key) as Array<{
-				op_id: string;
-				op_type: string;
-				clock_rev: number;
-				scope_id: string | null;
-				payload_json: string | null;
-				created_at: string;
-			}>;
-
-			expect(ops).toHaveLength(3);
-			expect(ops[0]).toEqual(
-				expect.objectContaining({ op_type: "upsert", clock_rev: 1, scope_id: "local-default" }),
-			);
-			expect(ops[1]).toEqual(
-				expect.objectContaining({ op_type: "delete", clock_rev: 2, scope_id: "local-default" }),
-			);
-			expect(ops[1]?.payload_json).toBeNull();
-			expect(ops[2]).toEqual(
-				expect.objectContaining({ op_type: "upsert", clock_rev: 3, scope_id: "acme-work" }),
-			);
-			expect(JSON.parse(ops[2]?.payload_json ?? "{}").scope_id).toBe("acme-work");
-
-			const reassignmentStreamOps = ops
-				.filter((op) => op.clock_rev > before.rev)
-				.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.op_id.localeCompare(b.op_id));
-			expect(reassignmentStreamOps).toHaveLength(2);
-			expect(reassignmentStreamOps.map((op) => op.op_type)).toEqual(["delete", "upsert"]);
-			const [deleteStreamOp, upsertStreamOp] = reassignmentStreamOps;
-			if (!deleteStreamOp || !upsertStreamOp) throw new Error("expected reassignment pair");
-			expect(deleteStreamOp.created_at).toBe(upsertStreamOp.created_at);
-			expect(deleteStreamOp.op_id < upsertStreamOp.op_id).toBe(true);
-			const [sameTimestampOps] = loadReplicationOpsSince(
-				store.db,
-				`${deleteStreamOp.created_at}|zzzzzzzz`,
-				10,
-			);
-			expect(sameTimestampOps.map((op) => op.op_type)).toEqual(["delete", "upsert"]);
 		});
 
 		it("generates an import_key when not provided", () => {
@@ -1042,21 +959,6 @@ describe("MemoryStore", () => {
 			expect(count.count).toBe(2);
 		});
 
-		it("returns the existing id before shared-write blocking when a duplicate already exists", () => {
-			const sessionId = insertTestSession(store.db);
-			const firstId = store.remember(sessionId, "discovery", "Shared duplicate", "Body", 0.5, [], {
-				visibility: "shared",
-			});
-
-			setSyncDaemonPhase(store.db, "needs_attention");
-
-			expect(
-				store.remember(sessionId, "discovery", "Shared duplicate", "Body changed", 0.5, [], {
-					visibility: "shared",
-				}),
-			).toBe(firstId);
-		});
-
 		it("intentionally prefers the first row when normalized titles match but bodies differ", () => {
 			const sessionA = insertTestSession(store.db);
 			const sessionB = insertTestSession(store.db);
@@ -1351,117 +1253,6 @@ describe("MemoryStore", () => {
 		it("is a no-op for non-existent memory", () => {
 			// Should not throw
 			store.forget(99999);
-		});
-	});
-
-	// -- rebootstrap mutation guard ------------------------------------------
-
-	describe("rebootstrap mutation guard", () => {
-		it("blocks remember() for shared-visibility memories when phase is needs_attention", () => {
-			setSyncDaemonPhase(store.db, "needs_attention");
-			const sessionId = insertTestSession(store.db);
-			expect(() =>
-				store.remember(sessionId, "discovery", "Shared", "Body", 0.5, [], {
-					visibility: "shared",
-				}),
-			).toThrow("sync_rebootstrap_in_progress");
-		});
-
-		it("allows remember() for private memories when phase is needs_attention", () => {
-			setSyncDaemonPhase(store.db, "needs_attention");
-			const sessionId = insertTestSession(store.db);
-			const id = store.remember(sessionId, "discovery", "Private", "Body", 0.5, [], {
-				visibility: "private",
-			});
-			expect(id).toBeGreaterThan(0);
-		});
-
-		it("allows remember() for shared memories when phase is null (normal)", () => {
-			const sessionId = insertTestSession(store.db);
-			const id = store.remember(sessionId, "discovery", "Shared", "Body", 0.5, [], {
-				visibility: "shared",
-			});
-			expect(id).toBeGreaterThan(0);
-		});
-
-		it("blocks forget() for shared-visibility memories when phase is needs_attention", () => {
-			const sessionId = insertTestSession(store.db);
-			const memId = store.remember(sessionId, "discovery", "Shared", "Body", 0.5, [], {
-				visibility: "shared",
-			});
-			setSyncDaemonPhase(store.db, "needs_attention");
-			expect(() => store.forget(memId)).toThrow("sync_rebootstrap_in_progress");
-		});
-
-		it("allows forget() for private memories when phase is needs_attention", () => {
-			const sessionId = insertTestSession(store.db);
-			const memId = store.remember(sessionId, "discovery", "Private", "Body", 0.5, [], {
-				visibility: "private",
-			});
-			setSyncDaemonPhase(store.db, "needs_attention");
-			store.forget(memId);
-			expect(store.get(memId)?.active).toBe(0);
-		});
-
-		it("blocks remember() with default visibility (shared) when phase is needs_attention", () => {
-			setSyncDaemonPhase(store.db, "needs_attention");
-			const sessionId = insertTestSession(store.db);
-			// No explicit visibility — defaults to "shared" via resolveProvenance
-			expect(() => store.remember(sessionId, "discovery", "Default", "Body")).toThrow(
-				"sync_rebootstrap_in_progress",
-			);
-		});
-
-		it("allows shared memory writes when only sync identity is impaired", () => {
-			setSyncDaemonPhase(store.db, "identity_error");
-			const sessionId = insertTestSession(store.db);
-
-			expect(() =>
-				store.remember(
-					sessionId,
-					"discovery",
-					"Local work continues",
-					"Identity recovery must not block local memory capture.",
-				),
-			).not.toThrow();
-		});
-
-		it("blocks updateMemoryVisibility() to shared when phase is needs_attention", () => {
-			const sessionId = insertTestSession(store.db);
-			const memId = store.remember(sessionId, "discovery", "Private", "Body", 0.5, [], {
-				visibility: "private",
-			});
-			setSyncDaemonPhase(store.db, "needs_attention");
-			expect(() => store.updateMemoryVisibility(memId, "shared")).toThrow(
-				"sync_rebootstrap_in_progress",
-			);
-		});
-
-		it("allows updateMemoryVisibility() to private when phase is needs_attention", () => {
-			const sessionId = insertTestSession(store.db);
-			const memId = store.remember(sessionId, "discovery", "Shared", "Body", 0.5, [], {
-				visibility: "shared",
-			});
-			setSyncDaemonPhase(store.db, "needs_attention");
-			// Demoting to private should always work
-			const updated = store.updateMemoryVisibility(memId, "private");
-			expect(updated.visibility).toBe("private");
-		});
-
-		it("unblocks mutations after phase is cleared", () => {
-			setSyncDaemonPhase(store.db, "needs_attention");
-			const sessionId = insertTestSession(store.db);
-			expect(() =>
-				store.remember(sessionId, "discovery", "Shared", "Body", 0.5, [], {
-					visibility: "shared",
-				}),
-			).toThrow("sync_rebootstrap_in_progress");
-
-			setSyncDaemonPhase(store.db, null);
-			const id = store.remember(sessionId, "discovery", "Shared", "Body", 0.5, [], {
-				visibility: "shared",
-			});
-			expect(id).toBeGreaterThan(0);
 		});
 	});
 

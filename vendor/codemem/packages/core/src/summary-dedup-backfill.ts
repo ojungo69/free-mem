@@ -22,7 +22,6 @@ import {
 	startMaintenanceJob,
 	updateMaintenanceJob,
 } from "./maintenance-jobs.js";
-import { recordReplicationOp } from "./sync-replication.js";
 
 export const SUMMARY_DEDUP_BACKFILL_JOB = "session_summary_dedup_backfill";
 
@@ -143,15 +142,6 @@ function applySessionPlan(db: SqliteDatabase, plan: SessionPlan, deviceId: strin
 		meta.superseded_by = plan.winner_id;
 		meta.clock_device_id = deviceId;
 		updateStmt.run(now, now, toJson(meta), (row.rev ?? 0) + 1, row.id);
-		try {
-			recordReplicationOp(db, {
-				memoryId: row.id,
-				opType: "delete",
-				deviceId,
-			});
-		} catch {
-			// Replication-op recording is best-effort; continue with supersede.
-		}
 		superseded += 1;
 	}
 	return superseded;

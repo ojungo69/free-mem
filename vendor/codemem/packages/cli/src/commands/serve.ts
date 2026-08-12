@@ -9,13 +9,8 @@ import {
 	type MemoryStore,
 	ObserverClient,
 	RawEventSweeper,
-	readCodememConfigFile,
-	readCodememConfigFileAtPath,
-	readCoordinatorSyncConfig,
 	resolveDbPath,
-	runSyncDaemon,
 } from "@codemem/core";
-import type { ReconcileConfiguredCoordinatorEnrollmentResult } from "@codemem/server";
 import { Command, Option } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -494,75 +489,6 @@ export function sqliteVecFailureDiagnostics(error: unknown, dbPath: string): str
 	];
 }
 
-export interface ServeCoordinatorMaintenanceResult {
-	projectShares: { processed: number; failed: number };
-	coordinatorEnrollment: {
-		groupsProcessed: number;
-		failedGroups: number;
-		issues?: number;
-		failures?: ReconcileConfiguredCoordinatorEnrollmentResult["failures"];
-	};
-	recipientPolicies: { processed: number; failed: number };
-}
-
-export async function runServeCoordinatorMaintenance(
-	store: MemoryStore,
-	dependencies: {
-		advancePendingProjectShares: (
-			store: MemoryStore,
-			options: { limit: number },
-		) => Promise<{ processed: number; failed: number }>;
-		reconcileRecipientPolicyProjects: (
-			store: MemoryStore,
-			options: { limit: number },
-		) => Promise<{ processed: number; failed: number }>;
-		reconcileConfiguredCoordinatorEnrollment: (store: MemoryStore) => Promise<{
-			groupsProcessed: number;
-			failedGroups: number;
-			issues?: number;
-			failures?: ReconcileConfiguredCoordinatorEnrollmentResult["failures"];
-		}>;
-	},
-): Promise<ServeCoordinatorMaintenanceResult> {
-	const projectShares = await dependencies.advancePendingProjectShares(store, { limit: 3 });
-	const coordinatorEnrollment = await dependencies.reconcileConfiguredCoordinatorEnrollment(store);
-	const enrollmentIssues = coordinatorEnrollment.issues ?? 0;
-	const recipientPolicies = await dependencies.reconcileRecipientPolicyProjects(store, {
-		limit: 3,
-	});
-	if (projectShares.failed > 0) {
-		throw new Error(
-			`share operation maintenance failed for ${projectShares.failed} of ${projectShares.processed} operations`,
-		);
-	}
-	if (coordinatorEnrollment.failedGroups > 0) {
-		const groupLabel = coordinatorEnrollment.failedGroups === 1 ? "group" : "groups";
-		const issueLabel = enrollmentIssues === 1 ? "issue" : "issues";
-		const failures = coordinatorEnrollment.failures ?? [];
-		const failureDetail = failures.length
-			? ` [${failures
-					.slice(0, 3)
-					.map((failure) => `${failure.groupId}:${failure.stage}:${failure.code}`)
-					.join(", ")}${failures.length > 3 ? `, +${failures.length - 3} more` : ""}]`
-			: "";
-		throw new Error(
-			`coordinator enrollment maintenance failed for ${coordinatorEnrollment.failedGroups} ${groupLabel} with ${enrollmentIssues} reconciliation ${issueLabel}${failureDetail}`,
-		);
-	}
-	if (enrollmentIssues > 0) {
-		const issueLabel = enrollmentIssues === 1 ? "issue" : "issues";
-		throw new Error(
-			`coordinator enrollment reconciliation found ${enrollmentIssues} ${issueLabel}`,
-		);
-	}
-	if (recipientPolicies.failed > 0) {
-		throw new Error(
-			`recipient policy maintenance failed for ${recipientPolicies.failed} of ${recipientPolicies.processed} projects`,
-		);
-	}
-	return { projectShares, coordinatorEnrollment, recipientPolicies };
-}
-
 async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promise<void> {
 	warnIfViewerExposed(invocation.host, invocation.port);
 	if (await isPortOpen(invocation.host, invocation.port)) {
@@ -600,15 +526,7 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 }
 
 async function startForegroundViewer(invocation: ResolvedServeInvocation): Promise<void> {
-	const {
-		advancePendingProjectShares,
-		createApp,
-		createSyncApp,
-		closeStore,
-		getStore,
-		reconcileConfiguredCoordinatorEnrollment,
-		reconcileRecipientPolicyProjects,
-	} = await import("@codemem/server");
+	const { createApp, closeStore, getStore } = await import("@codemem/server");
 	const { serve } = await import("@hono/node-server");
 
 	if (invocation.dbPath) process.env.CODEMEM_DB = invocation.dbPath;
@@ -646,60 +564,20 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 	const sweeper = new RawEventSweeper(store, { observer });
 	sweeper.start();
 
-	const syncAbort = new AbortController();
-	const config = invocation.configPath
-		? readCodememConfigFileAtPath(invocation.configPath)
-		: readCodememConfigFile();
-	const syncConfig = readCoordinatorSyncConfig(config);
-	const syncEnabled = syncConfig.syncEnabled;
 	const dbPath = resolveDbPath(invocation.dbPath ?? undefined);
 	if (!(await terminateTrustedMaintenanceWorker(dbPath, { gracefulMs: 1000, forceMs: 5000 }))) {
 		p.log.warn(
 			"Existing maintenance worker is not trusted or did not stop; starting viewer anyway",
 		);
 	}
-	const syncRuntimeStatus: {
-		phase: "starting" | "running" | "stopping" | "error" | "disabled" | null;
-		detail: string | null;
-	} = {
-		phase: syncEnabled ? "starting" : "disabled",
-		detail: syncEnabled ? "Waiting for viewer startup to finish" : "Sync is disabled",
-	};
 
-	const appOpts = {
+	const app = createApp({
 		storeFactory: () => store,
 		sweeper,
 		observer,
-		getSyncRuntimeStatus: () => syncRuntimeStatus,
-	};
-	const app = createApp(appOpts);
+	});
 	const pidPath = pidFilePath(dbPath);
 	let maintenanceWorker: ChildProcess | null = null;
-
-	// Sync protocol listener — separate port, network-accessible for peers.
-	// syncServerRef is never nulled after creation so shutdown always drains it.
-	let syncServer: ReturnType<typeof serve> | null = null;
-	let syncListenerReady = false;
-	if (syncEnabled) {
-		const syncApp = createSyncApp(appOpts);
-		syncServer = serve(
-			{ fetch: syncApp.fetch, hostname: syncConfig.syncHost, port: syncConfig.syncPort },
-			(info) => {
-				syncListenerReady = true;
-				p.log.step(`Sync protocol listening on http://${info.address}:${info.port}`);
-			},
-		);
-		syncServer.on("error", (err: NodeJS.ErrnoException) => {
-			if (!syncListenerReady && err.code === "EADDRINUSE") {
-				p.log.warn(
-					`Sync port ${syncConfig.syncPort} already in use; peer sync protocol unavailable`,
-				);
-			} else {
-				p.log.warn(`Sync listener error: ${err.message}`);
-			}
-			// Non-fatal — viewer continues. syncServer ref is kept for shutdown drain.
-		});
-	}
 
 	const server = serve(
 		{ fetch: app.fetch, hostname: invocation.host, port: invocation.port },
@@ -714,57 +592,6 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 			p.log.info(`Database: ${preparedDb}`);
 			p.log.step("Raw event sweeper started");
 			maintenanceWorker = startMaintenanceWorkerProcess(invocation);
-			if (syncEnabled) {
-				const syncStartDelayMs = 3000;
-				p.log.step(`Sync daemon will start in background (${syncStartDelayMs / 1000}s delay)`);
-				setTimeout(() => {
-					syncRuntimeStatus.phase = "starting";
-					syncRuntimeStatus.detail = "Starting sync in background";
-					void runSyncDaemon({
-						dbPath: resolveDbPath(invocation.dbPath ?? undefined),
-						intervalS: syncConfig.syncIntervalS,
-						host: syncConfig.syncHost,
-						port: syncConfig.syncPort,
-						signal: syncAbort.signal,
-						// Foreground mode: hand the daemon the same workspace-aware
-						// scanner the local writes use, so workspace `secret_scanner`
-						// rules apply to inbound peer payloads instead of the daemon
-						// silently falling back to the built-in default ruleset.
-						scanner: store.scanner,
-						onAfterCoordinatorRefresh: async () => {
-							await runServeCoordinatorMaintenance(store, {
-								advancePendingProjectShares,
-								reconcileConfiguredCoordinatorEnrollment,
-								reconcileRecipientPolicyProjects,
-							});
-						},
-						onPhaseChange: (phase) => {
-							if (phase === "running") {
-								syncRuntimeStatus.phase = null;
-								syncRuntimeStatus.detail = null;
-							} else {
-								syncRuntimeStatus.phase = phase;
-								syncRuntimeStatus.detail =
-									phase === "starting"
-										? "Running initial sync in background"
-										: "Stopping sync daemon";
-							}
-						},
-					})
-						.catch((err: unknown) => {
-							const msg = err instanceof Error ? err.message : String(err);
-							syncRuntimeStatus.phase = "error";
-							syncRuntimeStatus.detail = msg;
-							p.log.error(`Sync daemon failed: ${msg}`);
-						})
-						.finally(() => {
-							if (syncRuntimeStatus.phase !== "error") {
-								syncRuntimeStatus.phase = syncAbort.signal.aborted ? "stopping" : null;
-								syncRuntimeStatus.detail = syncAbort.signal.aborted ? "Sync stopped" : null;
-							}
-						});
-				}, syncStartDelayMs).unref();
-			}
 		},
 	);
 
@@ -779,18 +606,11 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 
 	const shutdown = async () => {
 		p.outro("shutting down");
-		syncAbort.abort();
 		await stopMaintenanceWorkerProcess(maintenanceWorker, dbPath);
 		await sweeper.stop();
 
-		// Drain both listeners before closing the shared store.
 		await new Promise<void>((resolve) => {
-			let remaining = syncServer ? 2 : 1;
-			const done = () => {
-				if (--remaining === 0) resolve();
-			};
-			syncServer?.close(done);
-			server.close(done);
+			server.close(() => resolve());
 		}).catch(() => {
 			// Best-effort drain — proceed to cleanup.
 		});

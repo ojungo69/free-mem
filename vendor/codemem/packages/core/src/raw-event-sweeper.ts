@@ -16,10 +16,9 @@
  * 7. Handle auth errors by setting backoff
  */
 
-import { readCoordinatorSyncConfig } from "./coordinator-runtime.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
 import { ObserverAuthError } from "./observer-client.js";
-import { readCodememConfigFile } from "./observer-config.js";
+import { getCodememEnvOverrides, readCodememConfigFile } from "./observer-config.js";
 import { flushRawEvents } from "./raw-event-flush.js";
 import type { MemoryStore } from "./store.js";
 
@@ -38,6 +37,23 @@ function envInt(name: string, fallback: number): number {
 	if (value == null) return fallback;
 	const parsed = Number.parseInt(value, 10);
 	return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseIntOr(value: unknown, fallback: number): number {
+	if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+	if (typeof value === "string" && /^-?\d+$/.test(value.trim()))
+		return Number.parseInt(value.trim(), 10);
+	return fallback;
+}
+
+function parseBoolOr(value: unknown, fallback: boolean): boolean {
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (["1", "true", "yes", "on"].includes(normalized)) return true;
+		if (["0", "false", "no", "off"].includes(normalized)) return false;
+	}
+	return fallback;
 }
 
 function envBoolDisabled(name: string): boolean {
@@ -110,16 +126,21 @@ export class RawEventSweeper {
 	}
 
 	private retentionMs(): number {
-		// The new config key (raw_events_retention_enabled / _max_age_days) is the
-		// authoritative control. An EXPLICIT value wins — enabled=true purges by
-		// age in days, and an explicit enabled=false disables retention even if a
-		// stale legacy CODEMEM_RAW_EVENTS_RETENTION_MS is still set. Only when the
-		// new key is absent do we fall back to that legacy env var for back-compat.
-		const config = readCoordinatorSyncConfig();
-		if (config.rawEventsRetentionConfigured) {
-			return config.rawEventsRetentionEnabled
-				? Math.max(1, config.rawEventsRetentionMaxAgeDays) * MS_PER_DAY
-				: 0;
+		// The raw_events_retention_enabled / _max_age_days keys (config file with
+		// env overrides applied) are the authoritative control. An EXPLICIT value
+		// wins — enabled=true purges by age in days, and an explicit
+		// enabled=false disables retention even if a stale legacy
+		// CODEMEM_RAW_EVENTS_RETENTION_MS is still set. Only when the key is
+		// absent do we fall back to that legacy env var for back-compat.
+		const raw: Record<string, unknown> = { ...readCodememConfigFile() };
+		const envOverrides = getCodememEnvOverrides();
+		for (const key of Object.keys(envOverrides)) {
+			const value = process.env[envOverrides[key] as string];
+			if (value != null) raw[key] = value;
+		}
+		if (raw.raw_events_retention_enabled !== undefined) {
+			if (!parseBoolOr(raw.raw_events_retention_enabled, false)) return 0;
+			return Math.max(1, parseIntOr(raw.raw_events_retention_max_age_days, 90)) * MS_PER_DAY;
 		}
 		return envInt("CODEMEM_RAW_EVENTS_RETENTION_MS", 0);
 	}

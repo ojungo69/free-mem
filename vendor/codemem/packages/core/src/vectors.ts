@@ -22,7 +22,12 @@ import {
 import { buildFilterClausesWithContext, type OwnershipFilterContext } from "./filters.js";
 import { getMaintenanceJob } from "./maintenance-jobs.js";
 import { projectClause } from "./project.js";
-import type { ReplicationVectorWork } from "./sync-replication.js";
+/** Local-only shape retained after sync carve-out for vector maintenance helpers. */
+export interface ReplicationVectorWork {
+	upsertMemoryIds: number[];
+	deleteMemoryIds: number[];
+}
+
 import type { MemoryFilters } from "./types.js";
 
 const VECTOR_MODEL_MIGRATION_JOB = "vector_model_migration";

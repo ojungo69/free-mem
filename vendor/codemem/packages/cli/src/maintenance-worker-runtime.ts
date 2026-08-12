@@ -12,9 +12,6 @@ import {
 	MemoryStore as MemoryStoreCtor,
 	REF_BACKFILL_JOB,
 	RefBackfillRunner,
-	readCodememConfigFile,
-	readCodememConfigFileAtPath,
-	readCoordinatorSyncConfig,
 	resolveDbPath,
 	SCOPE_BACKFILL_JOB,
 	ScopeBackfillRunner,
@@ -22,7 +19,6 @@ import {
 	SessionContextBackfillRunner,
 	SUMMARY_DEDUP_BACKFILL_JOB,
 	SummaryDedupBackfillRunner,
-	SyncRetentionRunner,
 	VectorModelMigrationRunner,
 } from "@codemem/core";
 
@@ -56,11 +52,6 @@ const defaultLogger: MaintenanceWorkerLogger = {
 	warn: (message) => console.error(`Warning: ${message}`),
 	error: (message) => console.error(`Error: ${message}`),
 };
-
-function readWorkerSyncConfig(configPath?: string | null) {
-	const config = configPath ? readCodememConfigFileAtPath(configPath) : readCodememConfigFile();
-	return readCoordinatorSyncConfig(config);
-}
 
 export function createSequentialBackfillCoordinator(
 	store: MemoryStore,
@@ -164,7 +155,6 @@ export function startMaintenanceWorkerRuntime(
 	const logger = options.logger ?? defaultLogger;
 	const dbPath = resolveDbPath(options.dbPath ?? undefined);
 	const store = new MemoryStoreCtor(dbPath);
-	const syncConfig = readWorkerSyncConfig(options.configPath);
 	const runners: ManagedMaintenanceRunner[] = [];
 	const walCheckpointTimer = setInterval(
 		() => {
@@ -236,10 +226,6 @@ export function startMaintenanceWorkerRuntime(
 			{ signal: options.signal, logger },
 		),
 	);
-
-	if (syncConfig.syncRetentionEnabled) {
-		runners.push(new SyncRetentionRunner({ dbPath, signal: options.signal }));
-	}
 
 	for (const runner of runners) runner.start();
 	logger.step("Maintenance worker started");

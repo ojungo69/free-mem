@@ -13,11 +13,6 @@
 			"types": "./dist/stdio.d.ts",
 			"source": "./src/stdio.ts",
 			"import": "./dist/stdio.js"
-		},
-		"./http": {
-			"types": "./dist/http.d.ts",
-			"source": "./src/http.ts",
-			"import": "./dist/http.js"
 		}
 	},
 	"bin": {
@@ -34,12 +29,9 @@
 	"dependencies": {
 		"@codemem/core": "workspace:^",
 		"@modelcontextprotocol/sdk": "^1.29.0",
-		"express": "^5.2.1",
-		"express-rate-limit": "^8.5.2",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@types/express": "^5.0.6",
 		"@types/node": "^24.12.4",
 		"typescript": "catalog:",
 		"vite": "catalog:",
