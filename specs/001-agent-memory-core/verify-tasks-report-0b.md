@@ -30,8 +30,16 @@
 | T021 | ✅ VERIFIED | `fixtures/codex/` 3 fixture + raw JSONL。version pin `codex-cli 0.147.0` |
 | T022 | ✅ VERIFIED | `matrix/claude.json` / `matrix/codex.json` を assembler が生成（version 不一致なら exit 1 する設計）。unknown cell を残したまま出力していることを実データで確認（claude 3 / codex 4） |
 | T023 | ✅ VERIFIED | `certification-decision.md` の ToS 節に一次ソース 3 系統の逐語引用 + 規約 4 文書の掃引結果 + 実装制約 5 項目 |
-| T024 | ✅ VERIFIED | `sidecar/` 5 ファイル。`run-tests.sh` = ALL PASS（5 項目）、`hostile-e2e.sh` 実行で Codex 不合格を実検出。harness 自体の空振りバグ（hostile_env 未適用）も検出・修正済み |
+| T024 | ✅ VERIFIED | `sidecar/` 5 ファイル。`run-tests.sh` = ALL PASS（7 項目。当初 5 項目 → setsid 脱走 / CAP 到達を追加）、`hostile-e2e.sh` 実行で Codex 不合格を実検出。**注意: 本レポート初版の「hostile_env 未適用バグは検出・修正済み」は codex 分岐のみで、claude 分岐は未修正のままユーザーの実 `~/.claude` を汚染していた**（後続の `/code-review` が検出。汚染ディレクトリ削除 + 両分岐修正 + supervisor の setsid 取りこぼし修正を commit 4871b1b で実施） |
 | T025 | ✅ VERIFIED | `certification-decision.md` 12,187B。Claude / Codex 各 verdict（両者 未認定 = default disabled）+ 理由の性質差 + 再認定条件 |
+
+## 本レポートの限界（後続レビューで判明）
+
+この verify-tasks は「成果物が存在し、内容が stub でないか」を機械的に確認するもので、**成果物の主張が
+正しいか**は検証していない。実際、本レポートが全 VERIFIED を出した後の `/code-review` が 15 件の欠陥を
+検出した — 実環境汚染、supervisor の封じ込め穴（setsid 脱走の取りこぼし）、matrix の provenance 捏造、
+fixture の事実誤り、実在しないテストの PASS 記載など。**verify-tasks の VERIFIED は「やった」の確認で
+あって「正しい」の確認ではない**。正しさは 2 本立てレビュー側の責務。
 
 Layer 4（dead-code）: `assemble.ts` の export は self-test と CLI 経路から到達。rig / sidecar のスクリプトは互いに呼び合う構成で孤立なし。
 Layer 5（意味）: ⚠️ Interpretive — 各成果物は stub でなく実測値・実 CLI 出力・逐語引用を含むことを通読で確認。特に certification は「未認定」という**否の判定**を根拠付きで出しており、形だけの合格ではない。
