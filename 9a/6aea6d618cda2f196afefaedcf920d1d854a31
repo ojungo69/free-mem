@@ -1,0 +1,27 @@
+agent-memory-codex-preimplementation-review-v5.md
+  s_001266e69504e4::t_ca0e1f360502ea 1-256
+agent-memory-final-spec-v5.md
+  s_001266e69504e4::t_3a769a39d21b93 1-3203
+agent-memory-final-spec-v6.md
+  s_001266e69504e4::t_219d66a4bf4852 1-3658
+agent-memory-implementation-spec.md
+  s_001266e69504e4::t_c5dd975cb026c9 1-3331
+spec-review-2026-08-12.md
+  s_001266e69504e4::t_9c800b700c379d 1-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9a6aea6d618cda2f196afefaedcf920d1d854a31",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
