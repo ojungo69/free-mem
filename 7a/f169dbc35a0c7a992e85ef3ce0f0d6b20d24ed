@@ -1,0 +1,24 @@
+specs/001-agent-memory-core/tasks.md
+  s_65c23cd4cf8703::t_b95c4ca0e5272b 102
+  s_65c23cd4cf8703::t_0b33c136538425 103
+vendor/codemem/packages/cli/src/commands/memory.ts
+  s_65c23cd4cf8703::t_494c34f3a8106f 11,706-723,892-896,900-909,1229-1245,1249-1276,1278-1295,1297-1298,1303,1307-1388,1390-1391
+vendor/codemem/packages/core/src/writer-actor.ts
+  s_65c23cd4cf8703::t_2e52872f11f066 1-298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7af169dbc35a0c7a992e85ef3ce0f0d6b20d24ed",
+  "prompts": {},
+  "sessions": {
+    "s_65c23cd4cf8703": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a7-228e-7240-b3cb-f4df7e1a66d9",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
