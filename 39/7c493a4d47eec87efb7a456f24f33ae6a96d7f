@@ -1,0 +1,19 @@
+harness/sidecar/certification-decision.md
+  s_001266e69504e4::t_92767c023870a7 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "397c493a4d47eec87efb7a456f24f33ae6a96d7f",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
