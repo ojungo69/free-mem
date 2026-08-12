@@ -1,0 +1,19 @@
+evidence/phase1-test-baseline-pre.txt
+  s_53b49580148924::t_c3c41c411ea8d5 1-4042
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9deb8e2fc87f468e1f2c598bd30399f03f3c4d35",
+  "prompts": {},
+  "sessions": {
+    "s_53b49580148924": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab3fafbd-d92f-4844-ab5e-b61c2e7f3d86",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
