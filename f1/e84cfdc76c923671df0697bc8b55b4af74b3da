@@ -1,0 +1,49 @@
+specs/001-agent-memory-core/tasks.md
+  s_65c23cd4cf8703::t_3535093487cad7 91
+vendor/codemem/packages/cli/src/commands/config.ts
+  s_65c23cd4cf8703::t_e2a3076ce255af 1-2
+vendor/codemem/packages/core/src/api-types.ts
+  s_a546c8dc2f182a::t_6de1dc245bead6 14
+vendor/codemem/packages/core/src/observer-config.test.ts
+  s_a546c8dc2f182a::t_dc324698aa81d6 104,122-123,129-130,136,144-145
+vendor/codemem/packages/core/src/operational-status.test.ts
+  s_65c23cd4cf8703::t_91c75a40e6eb1a 72
+vendor/codemem/packages/mcp-server/src/memory-access.test.ts
+  s_65c23cd4cf8703::t_02f7376f1e5130 454,467,471
+vendor/codemem/packages/mcp-server/src/project-scope.test.ts
+  s_a546c8dc2f182a::t_68d8af7c77b4d6 34
+vendor/codemem/packages/mcp-server/src/project-scope.ts
+  s_a546c8dc2f182a::t_0db7c7f96d7cc8 33-35
+vendor/codemem/packages/ui/src/lib/api/internal.ts
+  s_65c23cd4cf8703::t_b0c8ad583fe57b 30
+vendor/codemem/packages/ui/src/tabs/settings/components/SettingsDialogShell.tsx
+  s_a546c8dc2f182a::t_ccffca974b88a3 19,40
+vendor/codemem/packages/ui/src/tabs/settings/components/SettingsModalContent.tsx
+  s_a546c8dc2f182a::t_32143e89c4abfb 1,51-53
+vendor/codemem/packages/viewer-server/src/routes/config.ts
+  s_65c23cd4cf8703::t_c986084883ebde 96-97,289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f1e84cfdc76c923671df0697bc8b55b4af74b3da",
+  "prompts": {},
+  "sessions": {
+    "s_65c23cd4cf8703": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a7-228e-7240-b3cb-f4df7e1a66d9",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    },
+    "s_a546c8dc2f182a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a4-bf1e-7901-9075-16ec75330b26",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
