@@ -1,0 +1,19 @@
+evidence/codemem/write-handle-classification.md
+  s_53b49580148924::t_9b5d1ec031370a 73-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c09821d613d9f1f2a34581dfb77bbf4d54aa0769",
+  "prompts": {},
+  "sessions": {
+    "s_53b49580148924": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab3fafbd-d92f-4844-ab5e-b61c2e7f3d86",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
