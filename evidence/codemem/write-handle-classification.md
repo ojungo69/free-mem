@@ -70,3 +70,20 @@
 **集計の正本**: 見出しの「F1–F8」は発見時の番号付け。Phase 1 の除去対象・完了判定は **計 10 経路（auth 5 + sole-writer 5）** を基準にする（action plan A1–A6 と対応。A5 は hook 4 経路 = F5/F6/F5'/F6' すべてを含む）。
 
 **所見**: 10 経路はすべて特定ファイル・特定関数に局在し（observer-auth.ts / observer-client.ts の dispatch 部 / 4 つの hook 内 open / 1 テンプレート）、削除により周辺機能が崩壊する構造ではない。dispatch 順序（`observer-client.ts:1886-1922`）から F1–F3 を外しても direct Anthropic/OpenAI HTTP（BYOK・API key）経路は独立に残る。**§4.3 gate の「unsafe path が除去可能であること」は成立見込み**。最終判定は T011 delta 比較と合わせて T013 base ADR で行う。
+
+---
+
+## 補遺（2026-08-13 追記 — Phase 1 計画時の実地再検証で判明した未計上 3 経路）
+
+上記凍結本文（2026-08-12 確定）は非改変。Phase 1 の削除対象は本補遺を加えた **計 13 経路** とする（T029 disposition 表が正本）。
+
+### F9. Codex CLI sidecar 一式（F3 と同クラスの sidecar 経路・Codex 側）
+`packages/core/src/observer-client.ts:2256-2590` = `_buildCodexSidecarCommand`(2256-2272) + `_invokeCodexSidecar`(2273-2449) + `_callCodexSidecar`(2450-2590)。dispatch 呼出し 1894、runtime 分岐 `codex_sidecar` は 1381 / 1558-1559 / 1590 / 1638（ソース照合済み 2026-08-13）。Codex CLI をサブプロセス起動し ChatGPT サブスク資格情報を継承しうる。0B certification で Codex sidecar = 未認定（default disabled）。F3 と同じ扱いで物理削除（再実装は Phase 6 の §13.6 準拠 optional PR）。
+
+### F10. codex-hook-inject の local write-capable store open（F5' と同クラス・Codex 側）
+`packages/cli/src/commands/codex-hook-inject.ts:120-190` = `buildLocalPack`（store 構築 :125 `new MemoryStore(dbPath)`）。claude 側 F5' と同様、inject 有効時に hook が write handle を開く常時経路。Phase 1 で daemon RPC read + event 投入に置換（A5 に統合）。
+
+### F11. claude-hook-ingest の boundary flush direct store（F5 の未計上部分）
+`packages/cli/src/commands/claude-hook-ingest.ts:218-265` = `flushBoundaryRawEvents`（store 構築 :237 `new MemoryStore(dbPath)`、既定 flush 実装として :280 で配線）。F5 の `directEnqueue`(:128 `connect(dbPath)`) とは別の write 経路。同じく spool/RPC 置換（A5 に統合）。
+
+集計改訂: fatal 10 → **13**（auth 系 5 + sidecar 系 +1 = 6 相当（F3/F9 は sidecar クラス）、sole-writer 系 5 + 2 = 7）。完了判定は 13 経路 → 0。
