@@ -14,7 +14,6 @@
 #   rig.sh setup                     # RIG_BASE を作る (env RIG_BASE で場所指定可)
 #   rig.sh claude-run <label> <prompt> [claude 追加引数...]
 #   rig.sh codex-run  <label> <prompt> [codex exec 追加引数...]
-#   rig.sh events                    # 捕捉済み JSONL を表示
 #   rig.sh teardown                  # RIG_BASE を完全削除 (資格情報コピー含む)
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,7 +101,6 @@ case "${1:-}" in
   setup) setup ;;
   claude-run) shift; claude_run "$@" ;;
   codex-run) shift; codex_run "$@" ;;
-  events) cat "$RIG_BASE"/capture/*.jsonl 2>/dev/null ;;
   teardown) rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
-  *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|events|teardown" >&2; exit 2 ;;
+  *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|teardown" >&2; exit 2 ;;
 esac

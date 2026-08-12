@@ -1,7 +1,7 @@
 {
   "cli": "claude",
   "nativeVersion": "2.1.228 (Claude Code)",
-  "generatedAt": "2026-08-12T12:00:23.683Z",
+  "generatedAt": "2026-08-12T12:02:10.158Z",
   "fixtureCount": 5,
   "fixtureIds": [
     "claude/injection-and-subagent",

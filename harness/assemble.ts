@@ -227,7 +227,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
         const v = hl[key];
         if (!v) continue;
         capabilities[key] = {
-          value: v === "unsupported" ? "unsupported" : v,
+          value: v,
           sourceEvents: [],
           nativeVersion,
           evidenceKind: "real-cli-e2e",

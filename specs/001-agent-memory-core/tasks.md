@@ -65,7 +65,7 @@ delta 比較記録）、clean install、unsafe path action plan。
 - [X] T023 [P] Codex sidecar の provider ToS / documented-permission 一次ソース確認（§13.6 manifest 必須欄。OpenAI ToS + Codex CLI docs。researcher 委譲）。結果不明瞭 = 未認定でよい
 - [X] T024 sidecar hostile harness: 不活性 hostile fixture（marker file を書くだけの偽 hook/plugin/AGENTS）+ process-group kill / pipe close / FD・descendant 残存検査を stub subprocess に対して実証 → `harness/sidecar/`（Claude Code 自ら）。Claude sidecar は `ANTHROPIC_API_KEY` 不在のため hostile E2E 不能 = **未認定（default disabled）が正当な判定**
 - [X] T025 certification 可否判定を §13.6 manifest 形式で `harness/sidecar/certification-decision.md` に記録（Claude / Codex 各 verdict。否も正当な Exit）
-- [ ] T026 Exit gate 照合（SC-0B）→ speckit-verify-tasks → 2 本立てレビュー → main へマージ
+- [X] T026 Exit gate 照合（SC-0B）→ speckit-verify-tasks → 2 本立てレビュー → main へマージ
 
 ## Phase 1 — Safety Boundary / Sole Writer（着手時に詳細化・全体セキュリティ関連 = Claude Code 自ら）
 
