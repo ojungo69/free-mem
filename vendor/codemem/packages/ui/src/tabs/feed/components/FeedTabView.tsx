@@ -83,6 +83,6 @@ export function FeedTabView({
 			),
 		),
 		h(ContextInspectorPanel, { open: inspectorOpen }),
-		h("div", { className: "feed-list", id: "feedList" }, h(FeedList, { items, loadingText, ops })),
+		h("div", { className: "feed-list", id: "feedList" }, h(FeedList, { items, loadingText })),
 	);
 }

@@ -38,10 +38,6 @@ describe("FeedItemCard", () => {
 						title: "BTHA diagnostic memory",
 						visibility: "shared",
 					},
-					onReload: async () => {},
-					onRemove: () => {},
-					onReplace: () => {},
-					onViewRefresh: () => {},
 				}),
 				mount,
 			);

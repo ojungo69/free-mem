@@ -162,14 +162,5 @@ export function collectSettingsPayload(
 		pack_observation_limit: Number(values.packObservationLimit || 0) || "",
 		pack_session_limit: Number(values.packSessionLimit || 0) || "",
 		raw_events_sweeper_interval_s: sweeperInterval,
-		sync_enabled: values.syncEnabled,
-		sync_host: normalizeTextValue(values.syncHost),
-		sync_port: Number(values.syncPort || 0) || "",
-		sync_interval_s: Number(values.syncInterval || 0) || "",
-		sync_mdns: values.syncMdns,
-		sync_coordinator_url: normalizeTextValue(values.syncCoordinatorUrl),
-		sync_coordinator_group: normalizeTextValue(values.syncCoordinatorGroup),
-		sync_coordinator_timeout_s: Number(values.syncCoordinatorTimeout || 0) || "",
-		sync_coordinator_presence_ttl_s: Number(values.syncCoordinatorPresenceTtl || 0) || "",
 	};
 }

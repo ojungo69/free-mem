@@ -99,22 +99,5 @@ export function formStateFromPayload(payload: ConfigPayload): SettingsFormState 
 		rawEventsSweeperIntervalS: asInputString(
 			effectiveOrConfigured(config, effective, "raw_events_sweeper_interval_s"),
 		),
-		syncEnabled: asBooleanValue(effectiveOrConfigured(config, effective, "sync_enabled")),
-		syncHost: asInputString(effectiveOrConfigured(config, effective, "sync_host")),
-		syncPort: asInputString(effectiveOrConfigured(config, effective, "sync_port")),
-		syncInterval: asInputString(effectiveOrConfigured(config, effective, "sync_interval_s")),
-		syncMdns: asBooleanValue(effectiveOrConfigured(config, effective, "sync_mdns")),
-		syncCoordinatorUrl: asInputString(
-			effectiveOrConfigured(config, effective, "sync_coordinator_url"),
-		),
-		syncCoordinatorGroup: asInputString(
-			effectiveOrConfigured(config, effective, "sync_coordinator_group"),
-		),
-		syncCoordinatorTimeout: asInputString(
-			effectiveOrConfigured(config, effective, "sync_coordinator_timeout_s"),
-		),
-		syncCoordinatorPresenceTtl: asInputString(
-			effectiveOrConfigured(config, effective, "sync_coordinator_presence_ttl_s"),
-		),
 	};
 }

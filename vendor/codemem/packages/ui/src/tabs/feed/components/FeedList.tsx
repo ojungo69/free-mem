@@ -1,19 +1,11 @@
 import { Fragment, h } from "preact";
 import { state } from "../../../lib/state";
 import { itemKey } from "../data/helpers";
-import type { FeedItem, FeedViewOps } from "../types";
+import type { FeedItem } from "../types";
 import { FeedItemCard } from "./FeedItemCard";
 import { FeedSkeletonItem } from "./FeedSkeletonItem";
 
-export function FeedList({
-	items,
-	loadingText,
-	ops,
-}: {
-	items: FeedItem[];
-	loadingText?: string;
-	ops: FeedViewOps;
-}) {
+export function FeedList({ items, loadingText }: { items: FeedItem[]; loadingText?: string }) {
 	if (loadingText) {
 		return h(
 			"div",
@@ -46,15 +38,6 @@ export function FeedList({
 	return h(
 		Fragment,
 		null,
-		items.map((item) =>
-			h(FeedItemCard, {
-				item,
-				key: itemKey(item),
-				onReplace: ops.replaceFeedItem,
-				onRemove: ops.removeFeedItem,
-				onViewRefresh: () => ops.updateFeedView(true),
-				onReload: ops.loadFeedData,
-			}),
-		),
+		items.map((item) => h(FeedItemCard, { item, key: itemKey(item) })),
 	);
 }

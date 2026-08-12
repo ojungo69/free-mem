@@ -2,7 +2,7 @@
 
 import type { ComponentChildren, JSX } from "preact";
 
-export type SettingsTabId = "observer" | "queue" | "sync";
+export type SettingsTabId = "observer" | "queue";
 
 export type SettingsFormState = {
 	claudeCommand: string;
@@ -30,15 +30,6 @@ export type SettingsFormState = {
 	packObservationLimit: string;
 	packSessionLimit: string;
 	rawEventsSweeperIntervalS: string;
-	syncEnabled: boolean;
-	syncHost: string;
-	syncPort: string;
-	syncInterval: string;
-	syncMdns: boolean;
-	syncCoordinatorUrl: string;
-	syncCoordinatorGroup: string;
-	syncCoordinatorTimeout: string;
-	syncCoordinatorPresenceTtl: string;
 };
 
 export type SettingsRenderState = {

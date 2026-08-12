@@ -11,46 +11,6 @@ export interface PaginatedResponse<T = unknown> {
 	};
 }
 
-export interface CoordinatorInviteResult {
-	encoded?: string;
-	warnings?: string[];
-	[key: string]: unknown;
-}
-
-export interface ImportInviteResult {
-	status?: string;
-	[key: string]: unknown;
-}
-
-export interface AcceptDiscoveredPeerResult {
-	name?: string;
-	[key: string]: unknown;
-}
-
-export interface SyncRunItem {
-	peer_device_id: string;
-	ok: boolean;
-	error?: string;
-	address?: string;
-	opsIn: number;
-	opsOut: number;
-	opsSkipped?: number;
-	skipped_out?: SyncSkippedOutDetail | null;
-	addressErrors: Array<{ address: string; error: string }>;
-}
-
-export interface SyncSkippedOutDetail {
-	reason?: "scope_filter" | "visibility_filter" | "project_filter" | string;
-	skipped_count?: number;
-	project?: string | null;
-	scope_id?: string | null;
-	visibility?: string | null;
-}
-
-export interface SyncRunResponse {
-	items: SyncRunItem[];
-}
-
 export interface RuntimeInfo {
 	version: string;
 }

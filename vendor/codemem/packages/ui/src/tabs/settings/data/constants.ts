@@ -12,7 +12,6 @@ export const DEFAULT_ANTHROPIC_MODEL = "claude-4.5-haiku";
 export const SETTINGS_TABS: RadixTabOption[] = [
 	{ value: "observer", label: "Connection" },
 	{ value: "queue", label: "Processing" },
-	{ value: "sync", label: "Device Sync" },
 ];
 
 export const INPUT_TO_CONFIG_KEY: Record<keyof SettingsFormState, string> = {
@@ -41,15 +40,6 @@ export const INPUT_TO_CONFIG_KEY: Record<keyof SettingsFormState, string> = {
 	packObservationLimit: "pack_observation_limit",
 	packSessionLimit: "pack_session_limit",
 	rawEventsSweeperIntervalS: "raw_events_sweeper_interval_s",
-	syncEnabled: "sync_enabled",
-	syncHost: "sync_host",
-	syncPort: "sync_port",
-	syncInterval: "sync_interval_s",
-	syncMdns: "sync_mdns",
-	syncCoordinatorUrl: "sync_coordinator_url",
-	syncCoordinatorGroup: "sync_coordinator_group",
-	syncCoordinatorTimeout: "sync_coordinator_timeout_s",
-	syncCoordinatorPresenceTtl: "sync_coordinator_presence_ttl_s",
 };
 
 export const PROTECTED_VIEWER_CONFIG_KEYS = new Set([
@@ -59,7 +49,6 @@ export const PROTECTED_VIEWER_CONFIG_KEYS = new Set([
 	"observer_auth_file",
 	"observer_auth_command",
 	"observer_headers",
-	"sync_coordinator_url",
 ]);
 
 export const EMPTY_FORM_STATE: SettingsFormState = {
@@ -88,13 +77,4 @@ export const EMPTY_FORM_STATE: SettingsFormState = {
 	packObservationLimit: "",
 	packSessionLimit: "",
 	rawEventsSweeperIntervalS: "",
-	syncEnabled: false,
-	syncHost: "",
-	syncPort: "",
-	syncInterval: "",
-	syncMdns: false,
-	syncCoordinatorUrl: "",
-	syncCoordinatorGroup: "",
-	syncCoordinatorTimeout: "",
-	syncCoordinatorPresenceTtl: "",
 };

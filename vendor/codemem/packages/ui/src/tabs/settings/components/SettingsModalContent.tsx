@@ -8,7 +8,6 @@ import { ObserverPanel } from "./ObserverPanel";
 import { ProcessingPanel } from "./ProcessingPanel";
 import { SettingsHint } from "./SettingsHint";
 import { SettingsSwitchRow } from "./SettingsSwitchRow";
-import { SyncPanel } from "./SyncPanel";
 
 export interface SettingsModalContentProps {
 	panelProps: SettingsPanelProps;
@@ -57,7 +56,7 @@ export function SettingsModalContent({
 			</div>
 			<div className="modal-body">
 				<div className="small" id="settingsDescription">
-					Tune how codemem connects, processes work, and syncs with other devices.
+					Tune how codemem connects and processes work.
 				</div>
 				<div className="settings-advanced-toolbar">
 					<SettingsSwitchRow
@@ -94,10 +93,6 @@ export function SettingsModalContent({
 
 					<RadixTabsContent className="settings-panel" forceMount value="queue">
 						<ProcessingPanel {...panelProps} />
-					</RadixTabsContent>
-
-					<RadixTabsContent className="settings-panel" forceMount value="sync">
-						<SyncPanel {...panelProps} />
 					</RadixTabsContent>
 				</RadixTabs>
 

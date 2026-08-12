@@ -33,7 +33,7 @@ export function updateFormState(patch: Partial<SettingsFormState>) {
 }
 
 export function setSettingsTab(tab: string) {
-	const nextTab: SettingsTabId = ["observer", "queue", "sync"].includes(tab)
+	const nextTab: SettingsTabId = ["observer", "queue"].includes(tab)
 		? (tab as SettingsTabId)
 		: "observer";
 	settingsState.activeTab = nextTab;
