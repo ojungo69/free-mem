@@ -1,0 +1,69 @@
+vendor/codemem/packages/cli/src/commands/mcp.test.ts
+  s_43bdf75f1323c1::t_c7ac88f0384a6e 22,24
+vendor/codemem/packages/cli/src/commands/serve.ts
+  s_53b49580148924::t_a16555f3f92b96 529,573-574,578,613
+vendor/codemem/packages/core/src/api-types.ts
+  s_53b49580148924::t_4d42a4ef6b730a 14-17
+vendor/codemem/packages/core/src/db.test.ts
+  s_43bdf75f1323c1::t_632190c1a13db2 1205
+vendor/codemem/packages/core/src/db.ts
+  s_43bdf75f1323c1::t_cf1ac99b41690a 990,1068
+vendor/codemem/packages/core/src/raw-event-sweeper.ts
+  s_7c8b13bff90366::t_f19ac23177ba3c 21,42-58,129-143
+vendor/codemem/packages/core/src/secret-scanner.ts
+  s_43bdf75f1323c1::t_df8ac9619b36fb 11,399,428-429
+vendor/codemem/packages/core/src/store.test.ts
+  s_53b49580148924::t_fd74183b133d45 488,498,526
+vendor/codemem/packages/core/src/types.ts
+  s_43bdf75f1323c1::t_7ed020b965f2ba 8-9
+vendor/codemem/packages/core/src/vector-migration.ts
+  s_43bdf75f1323c1::t_a394de137a4a2a 11
+vendor/codemem/packages/core/src/vectors.ts
+  s_53b49580148924::t_e7c8b43782552e 25-30
+vendor/codemem/packages/viewer-server/src/index.ts
+  s_43bdf75f1323c1::t_aa31311e7c9ead 2
+vendor/codemem/pnpm-lock.yaml
+  s_43bdf75f1323c1::t_b95719c8a5248b 3314,3317-3319,3577
+vendor/codemem/tsconfig.json
+  s_43bdf75f1323c1::t_d7e8c31d079b78 2-19
+vendor/codemem/vitest.config.ts
+  s_43bdf75f1323c1::t_787c80bcb84c2f 6
+vendor/codemem/packages/core/src/project-scope-settings.ts
+  s_7c8b13bff90366::t_110fd925a01678 12-14,769
+vendor/codemem/packages/core/src/store.ts
+  s_7c8b13bff90366::t_6164b7063884bd 1409
+vendor/codemem/packages/viewer-server/src/index.test.ts
+  s_7c8b13bff90366::t_b2937c62dc183a 25,104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3be7684ee3d3e6a358fcd529993b3ef4b41c6266",
+  "prompts": {},
+  "sessions": {
+    "s_43bdf75f1323c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff645-bc7d-7450-b32e-58555303b405",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    },
+    "s_53b49580148924": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab3fafbd-d92f-4844-ab5e-b61c2e7f3d86",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    },
+    "s_7c8b13bff90366": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84a1e10a-e8f0-4ddf-9e11-e3f239e3f5ff",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
