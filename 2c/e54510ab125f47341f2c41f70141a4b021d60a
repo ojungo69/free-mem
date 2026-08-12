@@ -1,0 +1,21 @@
+specs/001-agent-memory-core/verify-tasks-report.md
+  s_001266e69504e4::t_5dafdcbbb8f48a 1-51
+evidence/codemem/upstream-test.log
+  s_001266e69504e4::t_6e40f45fdb1bf7 7038-12240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2ce54510ab125f47341f2c41f70141a4b021d60a",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
