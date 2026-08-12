@@ -1,0 +1,25 @@
+harness/sidecar/certification-decision.md
+  s_001266e69504e4::t_a74f6664571838 1-59
+harness/sidecar/hostile-fixture.sh
+  s_001266e69504e4::t_d3b281725e1ad7 1-69
+harness/sidecar/hostile-e2e.sh
+  s_001266e69504e4::t_ed8ff1e792d543 1-57
+specs/001-agent-memory-core/tasks.md
+  s_001266e69504e4::t_ee2e7b53826c39 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "224a3384c4bbaaf320d29a52b8779d83e2e115eb",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
