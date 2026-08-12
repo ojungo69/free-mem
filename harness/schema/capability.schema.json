@@ -47,8 +47,19 @@
             ]
           },
           "raw": true,
-          "at": { "type": "string" }
-        }
+          "at": { "type": "string" },
+          "capability": { "type": "string", "enum": ["native", "synthesized"] },
+          "sourceEvents": { "type": "array", "items": { "type": "string" } },
+          "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+          "limitations": { "type": "array", "items": { "type": "string" } }
+        },
+        "allOf": [
+          {
+            "comment": "§7.2: synthesized は根拠 native event の明示が必須",
+            "if": { "properties": { "capability": { "const": "synthesized" } }, "required": ["capability"] },
+            "then": { "required": ["sourceEvents"], "properties": { "sourceEvents": { "minItems": 1 } } }
+          }
+        ]
       }
     },
     "toolFailurePhasesObserved": {
