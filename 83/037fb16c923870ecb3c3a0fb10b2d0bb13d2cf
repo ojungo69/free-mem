@@ -1,0 +1,21 @@
+harness/schema/capability.schema.json
+  s_001266e69504e4::t_57802223296a80 50-62
+specs/001-agent-memory-core/verify-tasks-report-0b.md
+  s_001266e69504e4::t_59b004e486f74c 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "83037fb16c923870ecb3c3a0fb10b2d0bb13d2cf",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
