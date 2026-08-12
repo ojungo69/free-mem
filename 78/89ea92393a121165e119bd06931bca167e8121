@@ -1,0 +1,26 @@
+specs/001-agent-memory-core/tasks.md
+  s_65c23cd4cf8703::t_994d689f7f79dd 96
+evidence/phase1-test-retire-list.md
+  s_65c23cd4cf8703::t_c1914a80772d74 6
+  s_65c23cd4cf8703::t_24217e4be1583c 14-17,19,34-35,47,169-185
+  s_65c23cd4cf8703::t_a4bd326ef9d2f1 94
+  s_65c23cd4cf8703::t_877dfdf253a453 186
+vendor/codemem/packages/viewer-server/src/routes/config.ts
+  s_65c23cd4cf8703::t_e1b6bb44e49fbf 25,34-35,37-39,251,256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7889ea92393a121165e119bd06931bca167e8121",
+  "prompts": {},
+  "sessions": {
+    "s_65c23cd4cf8703": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a7-228e-7240-b3cb-f4df7e1a66d9",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
