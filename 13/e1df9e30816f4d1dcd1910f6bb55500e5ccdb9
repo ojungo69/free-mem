@@ -1,0 +1,22 @@
+specs/001-agent-memory-core/plan.md
+  s_001266e69504e4::t_b7d7e5b6fc2300 77-82
+evidence/delta-comparison.md
+  s_001266e69504e4::t_c932824b24934d 32-47
+  s_001266e69504e4::t_4eec58f2536adf 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "13e1df9e30816f4d1dcd1910f6bb55500e5ccdb9",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
