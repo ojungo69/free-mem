@@ -1,0 +1,82 @@
+harness/rig/rig.sh
+  s_001266e69504e4::t_c0fb1c1804681d 57-58
+harness/fixtures/claude/injection-and-subagent.json
+  s_001266e69504e4::t_c48f96911b9ed4 1-22
+harness/rig/codex-config-template.toml
+  s_001266e69504e4::t_86e13c8a9ad1d6 2-7
+harness/fixtures/codex/lifecycle-basic.json
+  s_001266e69504e4::t_75f8b401e60820 1-20
+harness/sidecar/stub-misbehaver.sh
+  s_001266e69504e4::t_c9fdda86dc5d77 1-22
+harness/fixtures/claude/lifecycle-basic.json
+  s_001266e69504e4::t_6843b15f83d065 1-17
+harness/sidecar/supervisor.sh
+  s_001266e69504e4::t_04251cb6e8e513 1-39
+harness/fixtures/claude/tool-lifecycle.json
+  s_001266e69504e4::t_d169b1778ce164 1-18
+harness/fixtures/claude/tool-failed-executed.json
+  s_001266e69504e4::t_377446917a624f 1-29
+harness/schema/capability.ts
+  s_001266e69504e4::t_e8189ec9c89a4c 60-69
+harness/assemble.ts
+  s_001266e69504e4::t_590ab4cc5191aa 156-158,160-161,165-166
+  s_001266e69504e4::t_16ce8e316d33a5 81-86
+harness/sidecar/run-tests.sh
+  s_001266e69504e4::t_edbc0dd40af437 1-32
+harness/fixtures/claude/interrupt-and-hook-timeout.json
+  s_001266e69504e4::t_f77d918c23b059 1-28
+harness/fixtures/codex/tool-lifecycle-and-failure.json
+  s_001266e69504e4::t_2f0b96bf42b714 1-29
+harness/fixtures/codex/injection.json
+  s_001266e69504e4::t_8e86b27eec984b 1-18
+harness/fixtures/claude/raw/claude-hook-timeout.jsonl
+  s_001266e69504e4::t_018568261505e6 1-4
+harness/fixtures/claude/raw/claude-inject.jsonl
+  s_001266e69504e4::t_0146589f61abd8 1-4
+harness/fixtures/claude/raw/claude-interrupt.jsonl
+  s_001266e69504e4::t_f0abf958c55a38 1-4
+harness/fixtures/claude/raw/claude-interrupt2.jsonl
+  s_001266e69504e4::t_ce8712b7c0f5fe 1-3
+harness/fixtures/claude/raw/claude-lifecycle-basic.jsonl
+  s_001266e69504e4::t_8d59f9518c210c 1-4
+harness/fixtures/claude/raw/claude-subagent.jsonl
+  s_001266e69504e4::t_f4b35d6f0469b2 1-9
+harness/fixtures/claude/raw/claude-tool-denied.jsonl
+  s_001266e69504e4::t_925ad26def2774 1-6
+harness/fixtures/claude/raw/claude-tool-fail.jsonl
+  s_001266e69504e4::t_7e7bdc7743f867 1-5
+harness/fixtures/claude/raw/claude-tool-fail2.jsonl
+  s_001266e69504e4::t_e72de8e78a612a 1-5
+harness/fixtures/claude/raw/claude-tool-ok.jsonl
+  s_001266e69504e4::t_cc7f3865f4950f 1-6
+harness/fixtures/codex/raw/codex-inject.jsonl
+  s_001266e69504e4::t_b6f26a57842d60 1-4
+harness/fixtures/codex/raw/codex-lifecycle-basic.jsonl
+  s_001266e69504e4::t_7acc0648557c94 1-4
+harness/fixtures/codex/raw/codex-tool-fail.jsonl
+  s_001266e69504e4::t_73d634e73a19f5 1-6
+harness/fixtures/codex/raw/codex-tool-ok.jsonl
+  s_001266e69504e4::t_5292b4922a3c6c 1-6
+harness/matrix/claude.json
+  s_001266e69504e4::t_69faf574004652 1-202
+harness/matrix/codex.json
+  s_001266e69504e4::t_a2f53280144111 1-198
+specs/001-agent-memory-core/tasks.md
+  s_001266e69504e4::t_e9fcbdd7f3540a 62-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "edae5344d24238ffff8010f422b0af558a9fae1a",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
