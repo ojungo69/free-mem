@@ -1,0 +1,1668 @@
+
+
+######## EVIDENCE IDENTITY ########
+
+===== COMMAND: date -u +%Y-%m-%dT%H:%M:%SZ =====
+2026-08-12T08:51:36Z
+===== EXIT: 0 =====
+
+===== COMMAND: git rev-parse HEAD =====
+a9e9a24d50f59e970fc01ae48efe647abf20702e
+===== EXIT: 0 =====
+
+===== COMMAND: git show -s --format=commit=%H%ncommit_date=%cI%nsubject=%s HEAD =====
+commit=a9e9a24d50f59e970fc01ae48efe647abf20702e
+commit_date=2026-08-12T01:28:51-03:00
+subject=release: v1.26.0
+===== EXIT: 0 =====
+
+===== COMMAND: git status --short --branch =====
+## HEAD (no branch)
+===== EXIT: 0 =====
+
+===== COMMAND: git remote -v =====
+origin	https://github.com/akitaonrails/ai-memory.git (fetch)
+origin	https://github.com/akitaonrails/ai-memory.git (push)
+===== EXIT: 0 =====
+
+===== COMMAND: sed -n 1\,20p rust-toolchain.toml =====
+[toolchain]
+channel = "1.95"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
+===== EXIT: 0 =====
+
+
+######## HOST AND TOOLCHAIN VERSIONS ########
+
+===== COMMAND: uname -a =====
+Linux DESKTOP-PNCJSEO 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+===== EXIT: 0 =====
+
+===== COMMAND: sh -c cat\ /etc/os-release =====
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+===== EXIT: 0 =====
+
+===== COMMAND: getconf GNU_LIBC_VERSION =====
+glibc 2.39
+===== EXIT: 0 =====
+
+===== COMMAND: bash --version =====
+GNU bash, version 5.2.21(1)-release (x86_64-pc-linux-gnu)
+Copyright (C) 2022 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+
+This is free software; you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+===== EXIT: 0 =====
+
+===== COMMAND: git --version =====
+git version 2.43.0
+===== EXIT: 0 =====
+
+===== COMMAND: rustup --version =====
+rustup 1.29.0 (28d1352db 2026-03-05)
+info: This is the version for the rustup toolchain manager, not the rustc compiler.
+info: syncing channel updates for 1.95-x86_64-unknown-linux-gnu
+error: failed to display the current `rustc` version: could not download file from 'https://static.rust-lang.org/dist/channel-rust-1.95.toml.sha256' to '/tmp/ai-memory-phase0a-a9e9a24d.M8WA54/rustup-home/tmp/s9yv816_20t6exvx_file'
+===== EXIT: 0 =====
+
+===== COMMAND: rustc --version --verbose =====
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+binary: rustc
+commit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452
+commit-date: 2026-07-14
+host: x86_64-unknown-linux-gnu
+release: 1.97.1
+LLVM version: 22.1.6
+===== EXIT: 0 =====
+
+===== COMMAND: cargo --version --verbose =====
+cargo 1.97.1 (c980f4866 2026-06-30)
+release: 1.97.1
+commit-hash: c980f4866141969fab6254a680546a277789d6f0
+commit-date: 2026-06-30
+host: x86_64-unknown-linux-gnu
+libgit2: 1.9.2 (sys:0.20.4 vendored)
+libcurl: 8.20.0-DEV (sys:0.4.88+curl-8.20.0 vendored ssl:OpenSSL/3.6.2)
+ssl: OpenSSL 3.6.2 7 Apr 2026
+os: Ubuntu 24.4.0 (noble) [64-bit]
+===== EXIT: 0 =====
+
+===== COMMAND: rustfmt --version =====
+rustfmt 1.9.0-stable (8bab26f4f6 2026-07-14)
+===== EXIT: 0 =====
+
+===== COMMAND: clippy-driver --version =====
+clippy 0.1.97 (8bab26f4f6 2026-07-14)
+===== EXIT: 0 =====
+
+===== COMMAND: cc --version =====
+cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+Copyright (C) 2023 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+===== EXIT: 0 =====
+
+===== COMMAND: cmake --version =====
+cmake version 4.4.2
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+===== EXIT: 0 =====
+
+===== COMMAND: pkg-config --version =====
+1.8.1
+===== EXIT: 0 =====
+
+===== COMMAND: node --version =====
+v24.16.0
+===== EXIT: 0 =====
+
+===== COMMAND: npm --version =====
+12.0.2
+===== EXIT: 0 =====
+
+===== COMMAND: python3 --version =====
+Python 3.12.3
+===== EXIT: 0 =====
+
+===== COMMAND: curl --version =====
+curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10
+Release-Date: 2023-12-06, security patched: 8.5.0-2ubuntu10.11
+Protocols: dict file ftp ftps gopher gophers http https imap imaps ldap ldaps mqtt pop3 pop3s rtmp rtsp scp sftp smb smbs smtp smtps telnet tftp
+Features: alt-svc AsynchDNS brotli GSS-API HSTS HTTP2 HTTPS-proxy IDN IPv6 Kerberos Largefile libz NTLM PSL SPNEGO SSL threadsafe TLS-SRP UnixSockets zstd
+===== EXIT: 0 =====
+
+===== COMMAND: jq --version =====
+jq-1.7
+===== EXIT: 0 =====
+
+===== COMMAND: docker --version =====
+Docker version 29.7.2, build a7dcaa6
+===== EXIT: 0 =====
+
+===== COMMAND: systemd-analyze --version =====
+systemd 255 (255.4-1ubuntu8.17)
++PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified
+===== EXIT: 0 =====
+
+
+######## REQUIRED TOOL AVAILABILITY BEFORE INSTALL ########
+cargo-deny: MISSING
+cargo-audit: MISSING
+cargo-license: MISSING
+makepkg: MISSING
+gitleaks: MISSING
+
+
+######## PINNED RUST 1.95 INSTALL ATTEMPT ########
+
+===== COMMAND: /home/jura/.cargo/bin/rustup toolchain install 1.95 --profile minimal --component rustfmt --component clippy =====
+info: syncing channel updates for 1.95-x86_64-unknown-linux-gnu
+error: could not download file from 'https://static.rust-lang.org/dist/channel-rust-1.95.toml.sha256' to '/tmp/ai-memory-phase0a-a9e9a24d.M8WA54/rustup-home/tmp/cq2begitxb89nh51_file': error downloading file: error sending request for url (https://static.rust-lang.org/dist/channel-rust-1.95.toml.sha256): client error (Connect): dns error: failed to lookup address information: Temporary failure in name resolution
+===== EXIT: 1 =====
+PINNED_TOOLCHAIN_AVAILABLE=no
+Pinned Rust 1.95 suites cannot run exactly because the preceding rustup install failed and no cached 1.95 toolchain exists.
+
+
+######## DEPENDENCY INSTALL / FETCH ########
+Exact-toolchain dependency fetch: SKIPPED (Rust 1.95 unavailable).
+
+Fallback diagnostic toolchain follows. It does NOT satisfy the exact Rust 1.95 gate.
+
+===== COMMAND: cargo fetch --locked =====
+    Updating crates.io index
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (3 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (2 tries remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+warning: spurious network error (1 try remaining): [6] Could not resolve hostname (Could not resolve host: index.crates.io)
+
+
+######## ONLINE FETCH INTERRUPTION AND METHOD SWITCH ########
+The first fallback cargo fetch was manually interrupted after repeated identical crates.io DNS failures. The complete emitted output up to interruption is preserved above; the process exit was 130. Per project guidance, subsequent Cargo commands use CARGO_NET_OFFLINE=true rather than repeating the known-failing network condition.
+
+
+######## DEPENDENCY INSTALL / FETCH (OFFLINE CONFIRMATION) ########
+
+===== COMMAND: cargo fetch --locked =====
+error: no matching package named `jiff` found
+location searched: crates.io index
+required by package `ai-memory-core v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-core)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+help: if this error is too confusing you may wish to retry without `--offline`
+===== EXIT: 101 =====
+
+===== COMMAND: cargo fetch --locked --manifest-path companions/ai-memory-importer/Cargo.toml =====
+error: no matching package named `anyhow` found
+location searched: crates.io index
+required by package `ai-memory-importer v0.1.0 (/home/jura/projects/free-mem-vendor/ai-memory/companions/ai-memory-importer)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+help: if this error is too confusing you may wish to retry without `--offline`
+===== EXIT: 101 =====
+
+
+######## OPTIONAL GATE TOOL INSTALL ATTEMPTS (OFFLINE AFTER DNS FAILURE) ########
+
+===== COMMAND: cargo install cargo-deny --locked --root /tmp/ai-memory-phase0a-a9e9a24d.M8WA54/tools =====
+error: could not find `cargo-deny` in registry `crates-io` with version `*`
+===== EXIT: 101 =====
+
+===== COMMAND: cargo install cargo-audit --locked --root /tmp/ai-memory-phase0a-a9e9a24d.M8WA54/tools =====
+error: could not find `cargo-audit` in registry `crates-io` with version `*`
+===== EXIT: 101 =====
+
+
+######## PINNED-TOOLCHAIN UPSTREAM LOCAL GATE ########
+cargo build --workspace: CANNOT RUN EXACTLY (Rust 1.95 unavailable; rustup DNS error recorded above).
+cargo fmt --all -- --check: CANNOT RUN EXACTLY (Rust 1.95 unavailable; rustup DNS error recorded above).
+git diff --check is toolchain-independent and is run below.
+TAILWIND_SKIP=1 cargo test --workspace: CANNOT RUN EXACTLY (Rust 1.95 unavailable; rustup DNS error recorded above).
+TAILWIND_SKIP=1 cargo clippy --workspace --all-targets -- -D warnings: CANNOT RUN EXACTLY (Rust 1.95 unavailable; rustup DNS error recorded above).
+cargo deny check: CANNOT RUN EXACTLY (Rust 1.95 and cargo-deny unavailable; errors recorded above).
+
+
+######## FALLBACK DIAGNOSTIC LOCAL GATE (RUST 1.97.1; CARGO_NET_OFFLINE=true; NON-GATING) ########
+
+===== COMMAND: cargo build --workspace =====
+error: no matching package named `jiff` found
+location searched: crates.io index
+required by package `ai-memory-core v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-core)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+help: if this error is too confusing you may wish to retry without `--offline`
+===== EXIT: 101 =====
+
+===== COMMAND: cargo fmt --all -- --check =====
+===== EXIT: 0 =====
+
+===== COMMAND: git diff --check =====
+===== EXIT: 0 =====
+
+===== COMMAND: env TAILWIND_SKIP=1 cargo test --workspace =====
+error: no matching package named `jiff` found
+location searched: crates.io index
+required by package `ai-memory-core v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-core)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+help: if this error is too confusing you may wish to retry without `--offline`
+===== EXIT: 101 =====
+
+===== COMMAND: env TAILWIND_SKIP=1 cargo clippy --workspace --all-targets -- -D warnings =====
+error: no matching package named `jiff` found
+location searched: crates.io index
+required by package `ai-memory-core v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-core)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+help: if this error is too confusing you may wish to retry without `--offline`
+===== EXIT: 101 =====
+cargo deny check: CANNOT RUN (cargo-deny unavailable; install error recorded above).
+
+
+######## COMPANION IMPORTER GATES (RUST 1.97.1 FALLBACK; OFFLINE; NON-GATING) ########
+
+===== COMMAND: cargo fmt --check --manifest-path companions/ai-memory-importer/Cargo.toml =====
+===== EXIT: 0 =====
+
+===== COMMAND: cargo test --manifest-path companions/ai-memory-importer/Cargo.toml =====
+error: no matching package named `anyhow` found
+location searched: crates.io index
+required by package `ai-memory-importer v0.1.0 (/home/jura/projects/free-mem-vendor/ai-memory/companions/ai-memory-importer)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+help: if this error is too confusing you may wish to retry without `--offline`
+===== EXIT: 101 =====
+
+===== COMMAND: cargo clippy --manifest-path companions/ai-memory-importer/Cargo.toml --all-targets -- -D warnings =====
+error: no matching package named `anyhow` found
+location searched: crates.io index
+required by package `ai-memory-importer v0.1.0 (/home/jura/projects/free-mem-vendor/ai-memory/companions/ai-memory-importer)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+help: if this error is too confusing you may wish to retry without `--offline`
+===== EXIT: 101 =====
+
+
+######## DOCUMENTED SHELL-LEVEL CHECKS ########
+
+===== COMMAND: sh tests/hooks/test_lib.sh =====
+  ok  parse workspace
+  ok  parse project
+  ok  parse project_strategy
+  ok  absent key returns empty
+  ok  absent file returns empty
+  ok  walks up to find marker
+  ok  no marker returns empty
+  ok  outside HOME finds marker within checkout
+  ok  outside HOME stops at checkout root
+  FAIL outside HOME plain dir rejects parent marker
+    want=
+    got =/tmp/tmp.qnCg4uPQJS/outside/.ai-memory.toml
+  ok  extract cwd from payload
+  ok  extract cwd from empty json
+  ok  extract cwd prefers first match
+  ok  extract cwd from antigravity workspacePaths
+  ok  extract cwd unescapes Windows JSON path
+  ok  antigravity invocation zero is initial
+  ok  antigravity later invocation is not initial
+  ok  antigravity missing invocation fails closed
+  ok  antigravity quoted invocation fails closed
+  ok  antigravity fractional invocation fails closed
+  ok  extract antigravity conversation id
+  ok  antigravity later invocation returns empty hook output
+  ok  antigravity later invocation makes no HTTP request
+  ok  antigravity initial invocation injects handoff
+  ok  antigravity initial invocation posts then fetches
+  ok  antigravity handoff fetch carries conversation id
+  ok  powershell antigravity hook has invocation guard
+  ok  json_string escapes text
+  ok  marker_qs single key
+  ok  closer marker wins
+  ok  no marker -> cwd only
+  ok  repo_root_project on non-git path is empty
+  ok  repo-root: subdir resolves to repo basename
+  ok  repo-root env: no marker resolves to repo basename
+  ok  marker project strategy overrides env default
+  ok  repo-root: out-of-tree worktree collapses to main repo
+  ok  explicit project pin beats repo-root
+  ok  powershell repo-root helper has static parity
+  ok  url_encode passes safe slug
+  ok  url_encode escapes ampersand
+  ok  url_encode escapes equals
+  ok  url_encode escapes plus
+  ok  url_encode escapes Windows cwd
+  ok  url_encode encodes UTF-8 per byte
+
+43 passed, 1 failed
+===== EXIT: 1 =====
+
+===== COMMAND: scripts/check-native-packaging.sh =====
+==> Checking shell packaging syntax
+==> Skipping makepkg .SRCINFO check (makepkg unavailable or running as root)
+==> Checking host-launch wrapper routing
+==> Creating temporary alternate root
+==> Checking sysusers in alternate root
+Creating group 'ai-memory' with GID 999.
+Creating user 'ai-memory' (ai-memory service user) with UID 999 and GID 999.
+==> Checking tmpfiles in alternate root
+==> Checking systemd units in alternate root
+==> Checking expected native paths and modes
+==> Native packaging checks passed without touching host service paths
+===== EXIT: 0 =====
+
+===== COMMAND: env -u GEMINI_API_KEY tests/e2e/handoff_smoke.sh =====
+FATAL: GEMINI_API_KEY not set.
+       Get one (free) at https://aistudio.google.com/app/apikey
+
+==== TEST FAILED (rc=64) ====
+Preserved for inspection: /tmp/ai-memory-e2e-ehUyxS
+Log:                      /tmp/ai-memory-e2e-ehUyxS/test.log
+===== EXIT: 64 =====
+
+
+######## CI-ADDITIONAL SECURITY CHECK (FALLBACK; NON-GATING) ########
+cargo audit: CANNOT RUN (cargo-audit unavailable; install error recorded above).
+
+
+######## FINAL REPOSITORY STATE ########
+
+===== COMMAND: git status --short --branch =====
+## HEAD (no branch)
+===== EXIT: 0 =====
+
+NOTE: All Cargo/Rustup/HOME/XDG outputs were redirected to /tmp/ai-memory-phase0a-a9e9a24d.M8WA54 outside the repository. Only files under EVIDENCE-OUT/ are created in the repository.
+
+
+######## HOOK SHELL TEST REPRODUCTION (DEFAULT ENVIRONMENT) ########
+Purpose: distinguish a stable repository test failure from the temporary Cargo/HOME isolation used above.
+
+===== COMMAND: sh tests/hooks/test_lib.sh =====
+  ok  parse workspace
+  ok  parse project
+  ok  parse project_strategy
+  ok  absent key returns empty
+  ok  absent file returns empty
+  ok  walks up to find marker
+  ok  no marker returns empty
+  ok  outside HOME finds marker within checkout
+  ok  outside HOME stops at checkout root
+  FAIL outside HOME plain dir rejects parent marker
+    want=
+    got =/tmp/tmp.xyDqY2QSoW/outside/.ai-memory.toml
+  ok  extract cwd from payload
+  ok  extract cwd from empty json
+  ok  extract cwd prefers first match
+  ok  extract cwd from antigravity workspacePaths
+  ok  extract cwd unescapes Windows JSON path
+  ok  antigravity invocation zero is initial
+  ok  antigravity later invocation is not initial
+  ok  antigravity missing invocation fails closed
+  ok  antigravity quoted invocation fails closed
+  ok  antigravity fractional invocation fails closed
+  ok  extract antigravity conversation id
+  ok  antigravity later invocation returns empty hook output
+  ok  antigravity later invocation makes no HTTP request
+  ok  antigravity initial invocation injects handoff
+  ok  antigravity initial invocation posts then fetches
+  ok  antigravity handoff fetch carries conversation id
+  ok  powershell antigravity hook has invocation guard
+  ok  json_string escapes text
+  ok  marker_qs single key
+  ok  closer marker wins
+  ok  no marker -> cwd only
+  ok  repo_root_project on non-git path is empty
+  ok  repo-root: subdir resolves to repo basename
+  ok  repo-root env: no marker resolves to repo basename
+  ok  marker project strategy overrides env default
+  ok  repo-root: out-of-tree worktree collapses to main repo
+  ok  explicit project pin beats repo-root
+  ok  powershell repo-root helper has static parity
+  ok  url_encode passes safe slug
+  ok  url_encode escapes ampersand
+  ok  url_encode escapes equals
+  ok  url_encode escapes plus
+  ok  url_encode escapes Windows cwd
+  ok  url_encode encodes UTF-8 per byte
+
+43 passed, 1 failed
+===== EXIT: 1 =====
+
+
+######## PHASE 0A RESULT SUMMARY AND FINAL SCOPE CHECK ########
+Pinned upstream gate verdict: NOT GREEN / NOT EXECUTABLE in this environment. Rust 1.95 installation failed on static.rust-lang.org DNS, crates.io dependency fetch failed on DNS, and required crates were absent from the isolated offline cache.
+Fallback Rust 1.97.1 diagnostics: fmt PASS; git diff --check PASS; build/test/clippy BLOCKED during dependency resolution (missing jiff); cargo-deny/cargo-audit BLOCKED because unavailable.
+Companion fallback diagnostics: fmt PASS; test/clippy BLOCKED during dependency resolution (missing anyhow).
+Shell checks: native packaging PASS; hook library 43 PASS / 1 FAIL and reproduced under default environment; handoff E2E NOT RUN because GEMINI_API_KEY is absent.
+No claim of upstream green is made.
+
+===== COMMAND: git rev-parse HEAD =====
+a9e9a24d50f59e970fc01ae48efe647abf20702e
+===== EXIT: 0 =====
+
+===== COMMAND: git diff --check =====
+===== EXIT: 0 =====
+
+===== COMMAND: git diff --name-only =====
+===== EXIT: 0 =====
+
+===== COMMAND: git diff --cached --name-only =====
+===== EXIT: 0 =====
+
+===== COMMAND: git status --short --untracked-files=all =====
+?? EVIDENCE-OUT/inventory-summary.md
+?? EVIDENCE-OUT/sbom.md
+===== EXIT: 0 =====
+
+===== COMMAND: git check-ignore -v EVIDENCE-OUT/upstream-test.log =====
+.gitignore:27:*.log	EVIDENCE-OUT/upstream-test.log
+===== EXIT: 0 =====
+
+===== COMMAND: find EVIDENCE-OUT -maxdepth 1 -type f -printf %f\n | sort =====
+inventory-summary.md
+sbom.md
+upstream-test.log
+===== EXIT: 0 =====
+
+Scope result: tracked worktree/index diffs are empty; all three created repository files are under EVIDENCE-OUT/. upstream-test.log is absent from git status only because the repository ignores *.log.
+===== HOST RETRY 2026-08-12T09:28:51Z rustc=rustc 1.95.0 (59807616e 2026-04-14) =====
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded futures-io v0.3.32
+  Downloaded file-id v0.2.3
+  Downloaded futures-sink v0.3.32
+  Downloaded same-file v1.0.6
+  Downloaded rustc_version v0.4.1
+  Downloaded crossbeam-deque v0.8.6
+  Downloaded sha1_smol v1.0.1
+  Downloaded shlex v1.3.0
+  Downloaded refinery-core v0.8.16
+  Downloaded uncased v0.9.10
+  Downloaded quinn v0.11.9
+  Downloaded xattr v1.6.1
+  Downloaded rand v0.10.1
+  Downloaded siphasher v1.0.3
+  Downloaded time-core v0.1.8
+  Downloaded tokio-macros v2.7.0
+  Downloaded futures-util v0.3.32
+  Downloaded zmij v1.0.21
+  Downloaded unicase v2.9.0
+  Downloaded yansi v1.0.1
+  Downloaded tar v0.4.46
+  Downloaded socket2 v0.6.3
+  Downloaded typenum v1.20.0
+  Downloaded rmcp v1.7.0
+  Downloaded tokio-util v0.7.18
+  Downloaded serde_json v1.0.150
+  Downloaded sysinfo v0.32.1
+  Downloaded rustls v0.23.40
+  Downloaded zerocopy v0.8.48
+  Downloaded webpki-roots v1.0.7
+  Downloaded time v0.3.47
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded regex-syntax v0.8.10
+  Downloaded quinn-proto v0.11.15
+  Downloaded syn v2.0.117
+  Downloaded wiremock v0.6.5
+  Downloaded uuid v1.23.1
+  Downloaded unsafe-libyaml v0.2.11
+  Downloaded tinyvec v1.11.0
+  Downloaded regex-automata v0.4.14
+  Downloaded signal-hook v0.3.18
+  Downloaded sharded-slab v0.1.7
+  Downloaded serde_yaml v0.9.34+deprecated
+  Downloaded serde_core v1.0.228
+  Downloaded toml v0.8.23
+  Downloaded tokio-stream v0.1.18
+  Downloaded thiserror-impl v1.0.69
+  Downloaded jiff v0.2.24
+  Downloaded thiserror v2.0.18
+  Downloaded thiserror v1.0.69
+  Downloaded smallvec v1.15.1
+  Downloaded libc v0.2.186
+  Downloaded libz-sys v1.1.28
+  Downloaded serde_derive v1.0.228
+  Downloaded semver v1.0.28
+  Downloaded git2 v0.21.0
+  Downloaded chrono v0.4.44
+  Downloaded zeroize v1.8.2
+  Downloaded yoke v0.8.2
+  Downloaded walkdir v2.5.0
+  Downloaded tracing-log v0.2.0
+  Downloaded tracing-appender v0.2.5
+  Downloaded time-macros v0.2.27
+  Downloaded thread_local v1.1.9
+  Downloaded thiserror-impl v2.0.18
+  Downloaded sse-stream v0.2.3
+  Downloaded simd-adler32 v0.3.9
+  Downloaded clap_builder v4.6.0
+  Downloaded tokio v1.52.3
+  Downloaded libm v0.2.16
+  Downloaded h2 v0.4.14
+  Downloaded regex v1.12.3
+  Downloaded pulldown-cmark v0.12.2
+  Downloaded hyper v1.9.0
+  Downloaded crossterm v0.29.0
+  Downloaded reqwest v0.13.4
+  Downloaded derive_more v2.1.1
+  Downloaded tracing-serde v0.2.0
+  Downloaded symlink v0.1.0
+  Downloaded signal-hook-mio v0.2.5
+  Downloaded rand v0.9.4
+  Downloaded mio v1.2.0
+  Downloaded memchr v2.8.0
+  Downloaded http v1.4.0
+  Downloaded derive_more-impl v2.1.1
+  Downloaded crossbeam-channel v0.5.15
+  Downloaded cc v1.2.62
+  Downloaded jsonc-parser v0.33.1
+  Downloaded jiff-static v0.2.24
+  Downloaded figment v0.10.19
+  Downloaded clap v4.6.1
+  Downloaded bytes v1.11.1
+  Downloaded log v0.4.29
+  Downloaded clap_complete v4.6.7
+  Downloaded basic-toml v0.1.10
+  Downloaded quote v1.0.45
+  Downloaded quinn-udp v0.5.14
+  Downloaded proc-macro2 v1.0.106
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded notify v8.2.0
+  Downloaded jobserver v0.1.34
+  Downloaded getrandom v0.4.2
+  Downloaded futures-channel v0.3.32
+  Downloaded deadpool v0.12.3
+  Downloaded crossbeam-utils v0.8.21
+  Downloaded clap_derive v4.6.1
+  Downloaded bitflags v2.11.1
+  Downloaded serde v1.0.228
+  Downloaded secrecy v0.10.3
+  Downloaded rustls-pki-types v1.14.1
+  Downloaded libgit2-sys v0.18.4+1.9.3
+  Downloaded rmcp-macros v1.7.0
+  Downloaded refinery v0.8.16
+  Downloaded pear v0.2.9
+  Downloaded notify-types v2.1.0
+  Downloaded notify-debouncer-full v0.6.0
+  Downloaded mime_guess v2.0.5
+  Downloaded inotify v0.11.1
+  Downloaded fastrand v2.4.1
+  Downloaded autocfg v1.5.0
+  Downloaded askama v0.12.1
+  Downloaded serde_spanned v0.6.9
+  Downloaded inlinable_string v0.1.15
+  Downloaded http-body-util v0.1.3
+  Downloaded displaydoc v0.2.5
+  Downloaded convert_case v0.10.0
+  Downloaded chacha20 v0.10.0
+  Downloaded async-trait v0.1.89
+  Downloaded askama_parser v0.2.1
+  Downloaded anyhow v1.0.103
+  Downloaded rustc-hash v2.1.2
+  Downloaded refinery-macros v0.8.16
+  Downloaded ref-cast-impl v1.0.25
+  Downloaded num_cpus v1.17.0
+  Downloaded lazy_static v1.5.0
+  Downloaded humansize v2.1.3
+  Downloaded futures-task v0.3.32
+  Downloaded filetime v0.2.29
+  Downloaded ref-cast v1.0.25
+  Downloaded pulldown-cmark-escape v0.11.0
+  Downloaded proc-macro2-diagnostics v0.10.1
+  Downloaded pear_codegen v0.2.9
+  Downloaded matchers v0.2.0
+  Downloaded inotify-sys v0.1.5
+  Downloaded http-range-header v0.4.2
+  Downloaded http-body v1.0.1
+  Downloaded askama_derive v0.12.5
+  Downloaded futures-macro v0.3.32
+  Downloaded futures-core v0.3.32
+  Downloaded dirs v5.0.1
+  Downloaded assert-json-diff v2.0.2
+  Downloaded askama_escape v0.10.3
+  Downloaded dirs-sys v0.4.1
+  Downloaded deadpool-runtime v0.1.4
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling libc v0.2.186
+   Compiling cfg-if v1.0.4
+   Compiling itoa v1.0.18
+   Compiling memchr v2.8.0
+   Compiling log v0.4.29
+   Compiling serde_core v1.0.228
+   Compiling once_cell v1.21.4
+   Compiling pin-project-lite v0.2.17
+   Compiling smallvec v1.15.1
+   Compiling serde v1.0.228
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.17.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling version_check v0.9.5
+   Compiling shlex v1.3.0
+   Compiling stable_deref_trait v1.2.1
+   Compiling bytes v1.11.1
+   Compiling parking_lot_core v0.9.12
+   Compiling scopeguard v1.2.0
+   Compiling bitflags v2.11.1
+   Compiling zmij v1.0.21
+   Compiling litemap v0.8.2
+   Compiling writeable v0.6.3
+   Compiling utf8_iter v1.0.4
+   Compiling icu_normalizer_data v2.2.0
+   Compiling serde_json v1.0.150
+   Compiling regex-syntax v0.8.10
+   Compiling icu_properties_data v2.2.0
+   Compiling percent-encoding v2.3.2
+   Compiling autocfg v1.5.0
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.2
+   Compiling pkg-config v0.3.33
+   Compiling vcpkg v0.2.15
+   Compiling futures-core v0.3.32
+   Compiling thiserror v2.0.18
+   Compiling tracing-core v0.1.36
+   Compiling ref-cast v1.0.25
+   Compiling form_urlencoded v1.2.2
+   Compiling dyn-clone v1.0.20
+   Compiling lock_api v0.4.14
+   Compiling sha1_smol v1.0.1
+   Compiling anyhow v1.0.103
+   Compiling base64 v0.22.1
+   Compiling generic-array v0.14.7
+   Compiling zerocopy v0.8.48
+   Compiling rustix v1.1.4
+   Compiling futures-sink v0.3.32
+   Compiling aho-corasick v1.1.4
+   Compiling num-traits v0.2.19
+   Compiling ahash v0.8.12
+   Compiling indexmap v2.14.0
+   Compiling futures-task v0.3.32
+   Compiling futures-channel v0.3.32
+   Compiling slab v0.4.12
+   Compiling linux-raw-sys v0.12.1
+   Compiling futures-io v0.3.32
+   Compiling typenum v1.20.0
+   Compiling subtle v2.6.1
+   Compiling http v1.4.0
+   Compiling unicase v2.9.0
+   Compiling same-file v1.0.6
+   Compiling powerfmt v0.2.0
+   Compiling fastrand v2.4.1
+   Compiling fallible-iterator v0.3.0
+   Compiling cpufeatures v0.2.17
+   Compiling num-conv v0.2.2
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling thiserror v1.0.69
+   Compiling time-core v0.1.8
+   Compiling heck v0.5.0
+   Compiling deranged v0.5.8
+   Compiling toml_write v0.1.2
+   Compiling winnow v0.7.15
+   Compiling walkdir v2.5.0
+   Compiling mime v0.3.17
+   Compiling httparse v1.10.1
+   Compiling tower-service v0.3.3
+   Compiling siphasher v1.0.3
+   Compiling httpdate v1.0.3
+   Compiling atomic-waker v1.1.2
+   Compiling fnv v1.0.7
+   Compiling try-lock v0.2.5
+   Compiling zeroize v1.8.2
+   Compiling getrandom v0.3.4
+   Compiling want v0.3.1
+   Compiling sync_wrapper v1.0.2
+   Compiling ipnet v2.12.0
+   Compiling tower-layer v0.3.3
+   Compiling mime_guess v2.0.5
+   Compiling untrusted v0.9.0
+   Compiling ryu v1.0.23
+   Compiling rustls v0.23.40
+   Compiling http-range-header v0.4.2
+   Compiling unsafe-libyaml v0.2.11
+   Compiling notify-types v2.1.0
+   Compiling file-id v0.2.3
+   Compiling rustls-pki-types v1.14.1
+   Compiling matchit v0.8.4
+   Compiling lazy_static v1.5.0
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling crc32fast v1.5.0
+   Compiling cpufeatures v0.3.0
+   Compiling sharded-slab v0.1.7
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.9
+   Compiling syn v2.0.117
+   Compiling chacha20 v0.10.0
+   Compiling nu-ansi-term v0.50.3
+   Compiling simd-adler32 v0.3.9
+   Compiling rmcp v1.7.0
+   Compiling adler2 v2.0.1
+   Compiling http-body v1.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling regex-automata v0.4.14
+   Compiling http-body-util v0.1.3
+   Compiling pastey v0.2.3
+   Compiling crossbeam-utils v0.8.21
+   Compiling webpki-roots v1.0.7
+   Compiling minimal-lexical v0.2.1
+   Compiling libm v0.2.16
+   Compiling utf8parse v0.2.2
+   Compiling jobserver v0.1.34
+   Compiling mio v1.2.0
+   Compiling errno v0.3.14
+   Compiling socket2 v0.6.3
+   Compiling getrandom v0.2.17
+   Compiling inotify-sys v0.1.5
+   Compiling filetime v0.2.29
+   Compiling signal-hook-registry v1.4.8
+   Compiling rand v0.10.1
+   Compiling crossbeam-epoch v0.9.20
+   Compiling time v0.3.47
+   Compiling cc v1.2.62
+   Compiling parking_lot v0.12.5
+   Compiling inotify v0.11.1
+   Compiling flate2 v1.1.9
+   Compiling nom v7.1.3
+   Compiling pulldown-cmark v0.12.2
+   Compiling anstyle-parse v1.0.0
+   Compiling proc-macro2-diagnostics v0.10.1
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling colorchoice v1.0.5
+   Compiling pulldown-cmark-escape v0.11.0
+   Compiling anstyle v1.0.14
+   Compiling anstyle-query v1.1.5
+   Compiling digest v0.10.7
+   Compiling askama_escape v0.10.3
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling signal-hook v0.3.18
+   Compiling unicode-segmentation v1.13.3
+   Compiling clap_lex v1.1.0
+   Compiling yansi v1.0.1
+   Compiling notify v8.2.0
+   Compiling rayon-core v1.13.0
+   Compiling uncased v0.9.10
+   Compiling sha2 v0.10.9
+   Compiling anstream v1.0.0
+   Compiling figment v0.10.19
+   Compiling inlinable_string v0.1.15
+   Compiling litrs v1.0.0
+   Compiling option-ext v0.2.0
+   Compiling either v1.16.0
+   Compiling uuid v1.23.1
+   Compiling jiff v0.2.24
+   Compiling serde_path_to_error v0.1.20
+   Compiling convert_case v0.10.0
+   Compiling clap_builder v4.6.0
+   Compiling tempfile v3.27.0
+   Compiling notify-debouncer-full v0.6.0
+   Compiling xattr v1.6.1
+   Compiling crossbeam-channel v0.5.15
+   Compiling ai-memory-web v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-web)
+   Compiling dirs-sys v0.4.1
+   Compiling tar v0.4.46
+   Compiling signal-hook-mio v0.2.5
+   Compiling symlink v0.1.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling dirs v5.0.1
+   Compiling fs2 v0.4.3
+   Compiling document-features v0.2.12
+   Compiling humansize v2.1.3
+   Compiling num_cpus v1.17.0
+   Compiling deadpool-runtime v0.1.4
+   Compiling libsqlite3-sys v0.30.1
+   Compiling ring v0.17.14
+   Compiling libz-sys v1.1.28
+   Compiling libgit2-sys v0.18.4+1.9.3
+   Compiling regex v1.12.3
+   Compiling askama_parser v0.2.1
+   Compiling jsonc-parser v0.33.1
+   Compiling rayon v1.12.0
+   Compiling matchers v0.2.0
+   Compiling synstructure v0.13.2
+   Compiling serde_derive_internals v0.29.1
+   Compiling darling_core v0.23.0
+   Compiling hashbrown v0.14.5
+   Compiling hashlink v0.9.1
+   Compiling serde_derive v1.0.228
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerovec-derive v0.11.3
+   Compiling displaydoc v0.2.5
+   Compiling tracing-attributes v0.1.31
+   Compiling tokio-macros v2.7.0
+   Compiling thiserror-impl v2.0.18
+   Compiling ref-cast-impl v1.0.25
+   Compiling async-trait v0.1.89
+   Compiling futures-macro v0.3.32
+   Compiling thiserror-impl v1.0.69
+   Compiling clap_derive v4.6.1
+   Compiling pear_codegen v0.2.9
+   Compiling derive_more-impl v2.1.1
+   Compiling schemars_derive v1.2.1
+   Compiling tokio v1.52.3
+   Compiling sysinfo v0.32.1
+   Compiling pear v0.2.9
+   Compiling futures-util v0.3.32
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.2
+   Compiling rustls-webpki v0.103.13
+   Compiling tracing v0.1.44
+   Compiling derive_more v2.1.1
+   Compiling crossterm v0.29.0
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling axum-core v0.5.6
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling clap v4.6.1
+   Compiling icu_collections v2.2.0
+   Compiling clap_complete v4.6.7
+   Compiling icu_locale_core v2.2.0
+   Compiling darling_macro v0.23.0
+   Compiling darling v0.23.0
+   Compiling rmcp-macros v1.7.0
+   Compiling icu_provider v2.2.0
+   Compiling chrono v0.4.44
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling serde_urlencoded v0.7.1
+   Compiling secrecy v0.10.3
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling tracing-serde v0.2.0
+   Compiling assert-json-diff v2.0.2
+   Compiling basic-toml v0.1.10
+   Compiling icu_properties v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling toml_edit v0.22.27
+   Compiling askama_derive v0.12.5
+   Compiling git2 v0.21.0
+   Compiling schemars v1.2.1
+   Compiling rusqlite v0.32.1
+   Compiling futures-executor v0.3.32
+   Compiling sse-stream v0.2.3
+   Compiling idna_adapter v1.2.2
+   Compiling futures v0.3.32
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling tracing-appender v0.2.5
+   Compiling ai-memory-core v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-core)
+   Compiling refinery-core v0.8.16
+   Compiling askama v0.12.1
+   Compiling toml v0.8.23
+   Compiling refinery-macros v0.8.16
+   Compiling refinery v0.8.16
+   Compiling tokio-util v0.7.18
+   Compiling tower v0.5.3
+   Compiling ai-memory-store v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-store)
+   Compiling tokio-rustls v0.26.4
+   Compiling tokio-stream v0.1.18
+   Compiling ai-memory-workstream v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-workstream)
+   Compiling deadpool v0.12.3
+   Compiling h2 v0.4.14
+   Compiling tower-http v0.6.11
+   Compiling hyper v1.9.0
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.8.9
+   Compiling reqwest v0.13.4
+   Compiling wiremock v0.6.5
+   Compiling reqwest v0.12.28
+   Compiling ai-memory-llm v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-llm)
+   Compiling ai-memory-wiki v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-wiki)
+   Compiling ai-memory-consolidate v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-consolidate)
+   Compiling ai-memory-hooks v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-hooks)
+   Compiling ai-memory-mcp v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-mcp)
+   Compiling ai-memory-eval v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/evals)
+   Compiling ai-memory-cli v1.26.0 (/home/jura/projects/free-mem-vendor/ai-memory/crates/ai-memory-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 27s
+     Running unittests src/main.rs (target/debug/deps/ai_memory-f7541dc56076dc12)
+
+running 669 tests
+test cli::tests::completions_requires_a_shell ... ok
+test cli::tests::claude_session_aware_mcp_flag_parses ... ok
+test cli::tests::auto_improve_report_parses_scope_window_limit_and_json ... ok
+test cli::tests::completions_rejects_an_unknown_shell ... ok
+test cli::tests::grok_mcp_client_parses ... ok
+test cli::tests::auth_login_copilot_parses_token_and_client_override ... ok
+test cli::tests::auth_login_openai_oauth_parses ... ok
+test cli::tests::hook_project_strategy_rejects_invalid_value ... ok
+test cli::tests::auto_improve_parses_required_session ... ok
+test cli::tests::completions_parses_every_supported_shell ... ok
+test cli::tests::architecture_lists_every_visible_cli_subcommand ... ok
+test cli::tests::install_hooks_project_strategy_defaults_to_unset ... ok
+test cli::tests::devin_hook_agent_parses ... ok
+test cli::tests::grok_hook_agent_parses ... ok
+test cli::tests::install_hooks_project_strategy_rejects_invalid_value ... ok
+test cli::tests::antigravity_aliases_parse_to_same_variant ... ok
+test cli::tests::llm_test_anthropic_oauth_parses ... ok
+test cli::tests::install_hooks_explicit_basename_still_parses ... ok
+test cli::tests::swival_mcp_client_parses ... ok
+test cli::tests::curator_parses_default_dry_run_and_mode_flags ... ok
+test commands::apply_shared::tests::json_mutator_preserves_user_keys ... ok
+test cli::tests::install_hooks_project_strategy_repo_root_parses ... ok
+test cli::tests::command_code_mcp_and_hook_aliases_parse ... ok
+test commands::apply_shared::tests::json_mutator_rejects_non_object_root ... ok
+test cli::tests::pi_and_omp_mcp_clients_parse_to_distinct_variants ... ok
+test cli::tests::kiro_mcp_aliases_parse ... ok
+test commands::audit_contamination::tests::scope_query_accepts_global_or_complete_scope ... ok
+test cli::tests::continue_takes_wrapper_flags_only ... ok
+test commands::audit_contamination::tests::scope_query_rejects_partial_scope ... ok
+test commands::auth::tests::expiry_status_does_not_print_exact_token_time ... ok
+test commands::apply_shared::tests::toml_mutator_preserves_comments_and_other_tables ... ok
+test cli::tests::vscode_copilot_aliases_parse_to_same_variant ... ok
+test commands::auto_improve::tests::a_clean_run_prints_no_skipped_section ... ok
+test commands::apply_shared::tests::json_mutator_rejects_invalid_json ... ok
+test cli::tests::kiro_hook_engine_aliases_parse_explicitly ... ok
+test commands::auto_improve::tests::a_server_without_the_field_still_parses ... ok
+test cli::tests::show_parses_listing_and_launch_flags_without_consuming_native_args ... ok
+test commands::auto_improve_report::tests::a_server_without_the_field_still_parses ... ok
+test cli::tests::pending_writes_subcommands_parse ... ok
+test commands::auto_improve_report::tests::a_collision_explains_the_empty_proposals_line ... ok
+test commands::bootstrap::tests::ensure_sources_for_dry_run_accepts_non_empty ... ok
+test commands::auto_improve::tests::skipped_reaches_human_output_too ... ok
+test commands::bootstrap::tests::ensure_sources_for_dry_run_rejects_empty ... ok
+test commands::auto_improve_report::tests::skipped_survives_the_response_round_trip_into_json_output ... ok
+test commands::bootstrap::tests::local_dry_run_drops_to_fit_tight_budget ... ok
+test commands::auto_improve::tests::skipped_survives_the_response_round_trip_into_json_output ... ok
+test commands::auto_improve_report::tests::a_clean_run_prints_no_skipped_section ... ok
+test commands::bootstrap::tests::local_dry_run_marks_outcome_as_dry_run ... ok
+test commands::bootstrap::tests::local_dry_run_tallies_kinds ... ok
+test commands::bootstrap::tests::local_dry_run_preserves_pre_prune_collected_count ... ok
+test commands::completions::tests::closed_output_pipe_is_a_clean_exit ... ok
+test cli::tests::pi_and_omp_hook_agents_parse_to_distinct_variants ... ok
+test commands::continue_session::tests::newest_linked_checkout_wins ... ok
+test commands::continue_session::tests::equal_timestamps_break_ties_deterministically ... ok
+test commands::continue_session::tests::ordering_compares_instants_not_raw_strings ... ok
+test commands::continue_session::tests::unparsable_timestamps_are_rejected_without_stranding_valid_links ... ok
+test commands::continue_session::tests::workspace_filter_keeps_only_the_requested_scope ... ok
+test commands::curator::tests::staged_collision_reaches_human_and_json_output ... ok
+test cli::tests::finalize_session_parses_typed_id_and_rejects_ambiguous_selection ... ok
+test commands::curator::tests::older_server_response_without_skipped_still_parses ... ok
+test commands::continue_session::tests::empty_registry_orders_to_nothing ... ok
+test cli::tests::zed_mcp_client_parses ... ok
+test commands::finalize_session::tests::synthetic_end_url_uses_requested_antigravity_agent ... ok
+test commands::embed::tests::force_with_explicit_project_stays_scoped ... ok
+test commands::embed::tests::force_without_project_enables_all_projects ... ok
+test commands::hook::tests::antigravity_preinvocation_only_maps_invocation_zero_to_session_start ... ok
+test commands::hook::tests::background_drain_budget_defaults_and_clamps ... ok
+test commands::hook::tests::boundary_events_trigger_background_drainer ... ok
+test cli::tests::write_page_project_is_optional_for_shared_resolution ... ok
+test auth_bearer::tests::empty_when_static_and_oidc_are_absent ... ok
+test commands::apply_shared::tests::apply_to_unchanged_file_is_noop_and_no_backup ... ok
+test commands::continue_session::tests::skip_reasons_are_stripped_before_reaching_the_terminal ... ok
+test commands::apply_shared::tests::apply_through_dangling_relative_symlink_creates_target_and_keeps_link ... ok
+test auth_bearer::tests::static_token_wins_over_stored_oidc ... ok
+test commands::hook::tests::antigravity_native_pre_tool_use_fails_open_on_malformed_input ... ok
+test commands::hook::tests::devin_missing_cwd_uses_devin_project_dir_before_process_cwd ... ok
+test commands::hook::tests::devin_missing_cwd_uses_env_or_process_cwd ... ok
+test commands::hook::tests::devin_missing_cwd_uses_process_cwd_when_env_is_missing ... ok
+test commands::hook::tests::devin_payload_cwd_wins_over_fallbacks ... ok
+test commands::apply_shared::tests::apply_rejects_a_symlink_loop_without_replacing_it ... ok
+test commands::continue_session::tests::a_checkout_replaced_by_a_symlink_is_rejected ... ok
+test commands::continue_session::tests::a_missing_checkout_is_rejected ... ok
+test commands::data_purge::tests::purge_data_dirs_skips_absent ... ok
+test commands::data_purge::tests::purge_data_dirs_wipes_set_keeps_logs ... ok
+test commands::data_purge::tests::purge_missing_data_dir_is_noop ... ok
+test commands::data_purge::tests::purge_preview_lists_only_existing ... ok
+test commands::hook::tests::hook_success_response_is_specific_to_antigravity_pre_tool_use ... ok
+test commands::hook::tests::antigravity_pre_tool_capture_drop_still_allows_the_tool ... ok
+test commands::hook::tests::incremental_threshold_parses_and_falls_back ... ok
+test commands::hook::tests::background_drain_event_policy_spawns_without_inline_drain ... ok
+test commands::hook::tests::capture_drop_prevents_spool_and_drainer ... ok
+test commands::apply_shared::tests::idempotent_double_apply_second_is_noop ... ok
+test commands::hook::tests::capture_drop_handles_symlinked_cwd ... ok
+test commands::continue_session::tests::a_checkout_whose_scope_still_matches_resolves ... ok
+test commands::hook::tests::check_capture_has_no_spool_side_effects ... ok
+test auth_bearer::tests::refresh_save_failure_falls_back_to_existing_token ... ok
+test commands::hook::tests::devin_query_session_id_is_stable_across_payloads_without_native_id ... ok
+test commands::hook::tests::hermes_file_exclusion_drops_before_spool_or_drain ... ok
+test commands::hook::tests::kiro_v3_live_lifecycle_fixtures_share_native_context ... ok
+test commands::continue_session::tests::a_checkout_that_changed_scope_is_rejected ... ok
+test commands::hook::tests::missing_cwd_process_fallback_is_devin_only ... ok
+test commands::hook::tests::parse_minutes_clamps_large_values ... ok
+test commands::hook::tests::parse_minutes_falls_back_on_invalid ... ok
+test commands::hook::tests::parse_minutes_honours_valid_override ... ok
+test commands::hook::tests::resolve_data_dir_leaves_plain_path_untouched ... ok
+test commands::hook::tests::resolve_data_dir_strips_verbatim_prefix_from_baked_arg ... ok
+test commands::hook::tests::devin_query_session_id_does_not_override_native_payload_id ... ok
+test commands::apply_shared::tests::apply_to_missing_file_creates ... ok
+test commands::apply_shared::tests::apply_through_symlink_updates_target_and_keeps_link ... ok
+test auth_bearer::tests::stored_oidc_is_used_when_static_token_is_absent ... ok
+test commands::hook::tests::antigravity_native_pre_tool_use_allows_and_spools_valid_input ... ok
+test auth_bearer::tests::refresh_failure_falls_back_to_existing_token ... ok
+test commands::hook::tests::should_incremental_drain_only_post_tool_use_over_threshold ... ok
+test commands::hook::tests::timing_accessors_read_the_expected_env_vars ... ok
+test commands::hook_capture::tests::canonical_context_matches_supported_routing_shapes ... ok
+test commands::hook_capture::tests::extracts_top_level_cwd ... ok
+test commands::hook::tests::session_id_query_suffix_is_devin_only ... ok
+test commands::hook::tests::session_end_spawn_failure_is_returned_for_warning_only ... ok
+test commands::hook_capture::tests::marker_query_suffix_appends_briefing_opt_in ... ok
+test commands::hook_capture::tests::marker_query_suffix_appends_default_global ... ok
+test commands::hook_capture::tests::marker_query_suffix_appends_marker_fields ... ok
+test commands::hook::tests::devin_post_tool_use_real_fixture_without_session_id_or_cwd_is_accepted ... ok
+test commands::hook::tests::session_end_run_spawn_failure_keeps_event_queued_and_stdout_clean ... ok
+test commands::hook::tests::devin_session_end_spools_stored_session_id_then_clears_state ... ok
+test commands::hook_capture::tests::marker_query_suffix_default_repo_root_non_git_keeps_project_implicit ... ok
+test commands::hook::tests::invalid_capture_marker_spools_only_metadata ... ok
+test commands::hook_capture::tests::marker_query_suffix_marker_project_overrides_default_repo_root ... ok
+git version 2.43.0
+git version 2.43.0
+test commands::hook_capture::tests::marker_query_suffix_marker_strategy_overrides_default ... ok
+test commands::hook_capture::tests::marker_query_suffix_omits_briefing_when_unset ... ok
+test commands::hook_capture::tests::marker_query_suffix_omits_default_global_when_unset ... ok
+test commands::hook_capture::tests::marker_query_suffix_windows_cwd_yields_parseable_url ... ok
+test commands::hook_capture::tests::missing_cwd_is_none ... ok
+test commands::hook_capture::tests::marker_query_suffix_omits_drop_subagent_when_unset ... ok
+test commands::hook_capture::tests::marker_query_suffix_repo_root_non_git_keeps_project_implicit ... ok
+test commands::hook_capture::tests::get_handoff_ignores_non_success_status ... ok
+test commands::hook_capture::tests::query_suffix_without_marker_has_only_cwd ... ok
+test commands::hook_capture::tests::resolve_cwd_prefers_payload_over_env_and_process_cwd ... ok
+test commands::hook_capture::tests::resolve_cwd_uses_devin_project_dir_when_payload_omits_cwd ... ok
+test commands::hook_capture::tests::resolve_cwd_uses_process_cwd_when_payload_and_env_omit_cwd ... ok
+test commands::hook_capture::tests::url_encode_escapes_reserved ... ok
+test commands::hook_capture::tests::url_encode_is_an_unreserved_allow_list ... ok
+test commands::hook_drain_process::tests::command_spec_uses_data_dir_then_hidden_subcommand ... ok
+test commands::hook_capture::tests::marker_requests_briefing_only_for_truthy_opt_in ... ok
+test commands::hook_drain_process::tests::rotate_oversized_log_rotates_once_over_cap_and_keeps_small_logs ... ok
+test commands::hook_capture::tests::post_hook_delivered_on_2xx ... ok
+test commands::hook_spool::tests::batch_endpoint_derives_from_event_url ... ok
+test commands::hook_drain_process::tests::spawn_config_redirects_stdio_and_logs_under_data_dir_logs ... ok
+test commands::hook_drain_process::tests::unix_spawn_config_prefers_true_session_detach_when_available ... ok
+test auth_bearer::tests::refresh_success_persists_and_uses_refreshed_token ... ok
+test commands::hook::tests::session_end_run_enqueues_outputs_empty_json_and_spawns_after_enqueue ... ok
+test commands::hook::tests::kimi_user_prompt_prints_the_handoff_body_verbatim ... ok
+test commands::hook::tests::kimi_user_prompt_without_briefing_creates_no_marker ... ok
+test commands::hook_capture::tests::post_hook_saturated_on_429 ... ok
+test commands::hook_spool::tests::drain_empty_spool_is_noop ... ok
+test commands::hook_spool::tests::drain_exclusive_skips_when_lock_busy ... ok
+test commands::hook_spool::tests::drain_drops_stale_event ... ok
+test commands::hook_spool::tests::drain_exclusive_within_budget_zero_budget_leaves_entries ... ok
+test commands::apply_shared::tests::apply_to_changed_file_backs_up_then_writes ... ok
+test commands::hook_spool::tests::drain_lock_is_exclusive_and_released_on_drop ... ok
+test commands::hook::tests::inactive_preserves_bytes_and_active_keep_adds_protocol ... ok
+test commands::hook::tests::kimi_user_prompt_briefing_only_on_first_prompt_of_session ... ok
+test commands::hook_spool::tests::drain_until_quiescent_reports_lock_io_errors ... ok
+test commands::hook_spool::tests::bearer_change_splits_batches_without_burning_attempts ... ok
+test commands::hook_spool::tests::drain_delivers_all_events_in_one_batch ... ok
+test commands::hook::tests::stop_and_pre_compact_spawn_background_drainer_after_enqueue ... ok
+test commands::hook::tests::kimi_user_prompt_briefing_fallback_key_hashes_agent_and_cwd ... ok
+test commands::hook_spool::tests::entry_for_picks_auth_mode ... ok
+test commands::hook_spool::tests::drain_falls_back_to_per_event_when_batch_unsupported ... ok
+test commands::hook_spool::tests::drain_until_quiescent_catches_new_entries ... ok
+test commands::hook_spool::tests::endpoint_change_splits_batches_without_losing_rewound_entry ... ok
+test commands::hook_spool::tests::drain_preserves_capture_flag_and_protocol_round_trip ... ok
+test commands::hook_spool::tests::enqueue_creates_spool_dir_private ... ok
+test commands::hook_spool::tests::drain_429_keeps_event_queued_without_bumping_attempts ... ok
+test commands::hook_spool::tests::note_retry_persist_reports_failure ... ok
+test commands::hook_spool::tests::note_retry_persist_reports_success ... ok
+test commands::hook_spool::tests::non_contiguous_batch_ack_deletes_only_accepted_indices ... ok
+test commands::hook_spool::tests::partial_429_deletes_prefix_without_bumping_saturated_item ... ok
+test commands::hook_spool::tests::resolve_bearer_delegates_static_and_absent_oidc_semantics ... ok
+test commands::finalize_session::tests::selects_latest_scoped_session_for_requested_agent_by_default ... ok
+test commands::hook_spool::tests::spool_len_counts_entries ... ok
+test commands::hook_spool::tests::unrelated_lock_error_is_not_lock_busy ... ok
+test commands::hook_spool::tests::would_block_lock_error_is_lock_busy ... ok
+test commands::hook_spool::tests::zero_budget_does_not_deserialize_or_drop_entries ... ok
+test commands::init::tests::init_creates_subdirs_and_config ... ok
+test commands::init::tests::init_generates_a_unique_pepper_per_run ... ok
+test commands::init::tests::init_honors_explicit_config_path_outside_data_dir ... ok
+test commands::hook_spool::tests::load_live_entry_strips_legacy_assistant_message ... ok
+test commands::hook_spool::tests::load_live_entry_keeps_clean_body_byte_exact ... ok
+test commands::hook_spool::tests::drain_stays_robust_when_retry_count_cannot_persist ... ok
+test commands::hook_spool::tests::enqueue_then_list_round_trips ... ok
+test commands::install_hooks::tests::antigravity_manual_render_explains_explicit_finalization ... ok
+test commands::hook_capture::tests::marker_query_suffix_default_repo_root_collapses_git_subdir ... ok
+test commands::install_hooks::tests::baked_project_strategy_ignores_unowned_json_entry ... ok
+test commands::init::tests::init_writes_token_pepper_into_auth_block ... ok
+test commands::install_hooks::tests::baked_project_strategy_reads_every_owned_generated_integration ... ok
+test commands::install_hooks::tests::baked_project_strategy_reads_owned_json_for_every_json_agent ... ok
+test commands::install_hooks::tests::baked_project_strategy_reads_owned_kimi_toml_only ... ok
+test commands::install_hooks::tests::capture_assistant_allowed_only_for_claude_native ... ok
+test commands::init::tests::init_renders_config_that_parses_back_into_auth_settings ... ok
+test commands::init::tests::init_is_idempotent ... ok
+test commands::install_hooks::tests::claude_settings_path_honours_claude_config_dir ... ok
+test commands::install_hooks::tests::codex_mcp_inference_accepts_block_form_config ... ok
+test commands::install_hooks::tests::codex_mcp_inference_returns_none_for_bare_ai_memory_entry ... ok
+test commands::install_hooks::tests::codex_mcp_inference_returns_none_for_empty_doc ... ok
+test commands::install_hooks::tests::codex_mcp_inference_returns_none_when_ai_memory_entry_missing ... ok
+test commands::install_hooks::tests::codex_mcp_inference_returns_none_when_no_mcp_servers_table ... ok
+test commands::hook_spool::tests::partial_batch_ack_deletes_prefix_and_charges_only_failed_item ... ok
+test commands::hook_spool::tests::failed_batch_charges_only_first_item ... ok
+test commands::hook_spool::tests::non_contiguous_batch_ack_charges_reported_failed_index ... ok
+test commands::hook::tests::metadata_only_canonicalizes_supported_session_aliases ... ok
+test commands::hook_spool::tests::malformed_body_is_charged_locally_not_sent_as_null ... ok
+test commands::hook::tests::antigravity_later_invocation_has_no_capture_or_handoff_side_effects ... ok
+test commands::hook_capture::tests::marker_query_suffix_repo_root_collapses_out_of_tree_worktree ... ok
+test commands::install_hooks::tests::curl_installer_accepts_generated_integration_agents ... ok
+test commands::hook::tests::briefed_markers_are_bounded_and_keep_current ... ok
+test commands::install_hooks::tests::devin_bundle_has_no_subagent_scripts ... ok
+test commands::install_hooks::tests::devin_bundle_has_post_compaction_not_pre_compact ... ok
+test commands::finalize_session::tests::exact_session_id_targets_that_session_even_with_a_newer_one_open ... ok
+test commands::install_hooks::tests::devin_session_start_injects_handoff_additional_context ... ok
+test commands::hook_spool::tests::enqueue_names_are_unique_in_tight_loop ... ok
+test commands::install_hooks::tests::grok_mcp_inference_accepts_headers_key ... ok
+test commands::install_hooks::tests::grok_placeholder_expansion_rejects_missing_variable ... ok
+test commands::install_hooks::tests::grok_placeholder_expansion_resolves_values_and_defaults ... ok
+test commands::hook_spool::tests::slow_batch_success_uses_chunk_scaled_timeout_and_deletes_once ... ok
+test commands::install_hooks::tests::grok_project_overlay_outside_repo_checks_only_cwd ... ok
+test commands::install_hooks::tests::hook_server_url_defaults_to_configured_server_url ... ok
+test commands::install_hooks::tests::hook_server_url_does_not_double_base_path_when_already_in_url ... ok
+test commands::install_hooks::tests::hook_server_url_explicit_flag_matching_compiled_default_still_wins ... ok
+test commands::install_hooks::tests::hook_server_url_explicit_flag_wins_over_config ... ok
+test commands::install_hooks::tests::hook_server_url_falls_back_to_existing_mcp_entry ... ok
+test commands::install_hooks::tests::hook_server_url_from_mcp_url_strips_query_and_suffix ... ok
+test commands::install_hooks::tests::grok_project_overlays_cover_repo_root_through_cwd ... ok
+test commands::install_hooks::tests::hook_server_url_threads_base_path_when_url_has_no_path ... ok
+test commands::install_hooks::tests::hook_source_candidates_include_binary_sibling_for_flat_tarball ... ok
+test commands::install_hooks::tests::hook_source_candidates_include_native_package_dir ... ok
+test commands::install_hooks::tests::install_project_strategy_explicit_basename_overrides_existing ... ok
+test commands::install_hooks::tests::install_project_strategy_none_when_target_absent ... ok
+test commands::install_hooks::tests::install_project_strategy_preserves_baked_when_flag_absent ... ok
+test commands::install_hooks::tests::install_project_strategy_reads_openclaw_entrypoint_below_config_dir ... ok
+test commands::install_hooks::tests::is_ai_memory_hook_entry_detects_nested_flat_and_skips_third_party ... ok
+test commands::install_hooks::tests::antigravity_preserves_existing_hooks_and_adds_ours ... ok
+test commands::install_hooks::tests::antigravity_apply_is_idempotent ... ok
+test commands::install_hooks::tests::codex_preserves_unrelated_keys_and_adds_hooks ... ok
+test commands::install_hooks::tests::codex_apply_stages_into_injected_dir ... ok
+test commands::install_hooks::tests::kimi_code_config_path_honours_kimi_code_home ... ok
+test commands::install_hooks::tests::kimi_code_mcp_inference_strips_flavor_query_and_mcp_path ... ok
+test commands::install_hooks::tests::claude_code_apply_stages_into_injected_dir ... ok
+test commands::install_hooks::tests::kiro_cli_paths_honour_kiro_home ... ok
+test commands::install_hooks::tests::kiro_cli_agent_config_listing_is_sorted_json_only ... ok
+test commands::install_hooks::tests::kiro_cli_v2_preflight_is_all_or_nothing_and_preserves_per_agent_strategy ... ok
+test commands::hook::tests::claude_user_prompt_does_not_fetch_the_handoff ... ok
+test commands::install_hooks::tests::kiro_cli_v3_apply_rejects_incompatible_schema_and_reserved_collision ... ok
+test commands::install_hooks::tests::kiro_hooks_infer_the_managed_mcp_client ... ok
+test commands::install_hooks::tests::manual_agent_render_mentions_repo_root_project_strategy ... ok
+test commands::install_hooks::tests::manual_agent_render_omits_project_strategy_by_default ... ok
+test commands::install_hooks::tests::manual_agent_render_uses_agent_profile_not_physical_bundle_listing ... ok
+test commands::install_hooks::tests::omp_extension_bakes_repo_root_default ... ok
+test commands::install_hooks::tests::omp_extension_default_omits_baked_strategy ... ok
+test commands::install_hooks::tests::omp_extension_is_directly_discoverable_by_omp ... ok
+test commands::install_hooks::tests::omp_extension_uses_bounded_hook_queue ... ok
+test commands::install_hooks::tests::omp_extension_uses_native_lifecycle_events ... ok
+test commands::install_hooks::tests::opencode_mcp_inference_supplies_hook_origin_and_token ... ok
+test commands::install_hooks::tests::opencode_plugin_bakes_repo_root_default ... ok
+test commands::install_hooks::tests::opencode_plugin_default_omits_baked_strategy ... ok
+test commands::install_hooks::tests::opencode_plugin_normalizes_payloads_without_legacy_wrapper ... ok
+test commands::install_hooks::tests::opencode_plugin_uses_bounded_hook_queue ... ok
+test commands::install_hooks::tests::opencode_plugin_uses_real_plugin_hooks ... ok
+test commands::install_hooks::tests::overlay_event_hooks_inserts_when_event_absent ... ok
+test commands::install_hooks::tests::overlay_event_hooks_is_idempotent_on_reapply ... ok
+test commands::install_hooks::tests::overlay_event_hooks_preserves_third_party_and_replaces_own ... ok
+test commands::install_hooks::tests::pi_extension_contains_lifecycle_capture_and_mcp_bridge ... ok
+test commands::install_hooks::tests::cursor_preserves_existing_user_hooks_and_adds_ours ... ok
+test commands::install_hooks::tests::codex_removes_stale_session_end_key ... ok
+test commands::install_hooks::tests::project_strategy_from_text_reads_every_form ... ok
+test commands::install_hooks::tests::pi_extension_is_directly_discoverable_by_pi ... ok
+test commands::install_hooks::tests::command_code_apply_uses_only_stable_events_and_preserves_user_settings ... ok
+test commands::install_hooks::tests::resolve_hooks_dir_uses_devin_bundle_for_devin ... ok
+test commands::install_hooks::tests::resolve_hooks_dir_uses_grok_bundle_for_grok ... ok
+test commands::install_hooks::tests::stage_hook_scripts_bails_when_source_equals_empty_dest ... ok
+test commands::install_hooks::tests::stage_hook_scripts_bails_when_source_dir_is_empty ... ok
+test commands::install_hooks::tests::stage_hook_scripts_preserves_in_place_scripts_when_source_equals_dest ... ok
+test commands::install_hooks::tests::stage_hook_scripts_copies_shared_lib_sh ... ok
+test commands::install_hooks::tests::validate_as_user_bails_without_auth_token ... ok
+test commands::install_hooks::tests::validate_as_user_passes_when_not_set ... ok
+test commands::install_hooks::tests::validate_as_user_passes_with_both_flags ... ok
+test commands::install_hooks::tests::validate_as_user_treats_blank_as_unset ... ok
+test commands::install_hooks::tests::zero_hooks_config_covers_all_events_in_exec_form ... ok
+test commands::install_instructions::tests::merge_appends_to_empty_file ... ok
+test commands::install_instructions::tests::merge_appends_when_no_markers_present ... ok
+test commands::install_instructions::tests::merge_consumes_crlf_after_end_marker ... ok
+test commands::install_instructions::tests::merge_idempotent_double_run ... ok
+test commands::install_instructions::tests::merge_idempotent_with_real_block ... ok
+test commands::install_instructions::tests::merge_ignores_inline_marker_mention_in_block ... ok
+test commands::install_instructions::tests::merge_repairs_exact_legacy_orphan_tail ... ok
+test commands::install_instructions::tests::merge_repairs_exact_legacy_orphan_tail_crlf_variant ... ok
+test commands::install_instructions::tests::merge_repairs_repeated_legacy_orphan_tails ... ok
+test commands::install_hooks::tests::stage_hook_scripts_tolerates_missing_lib_sh ... ok
+test commands::install_instructions::tests::merge_replaces_existing_block ... ok
+test commands::install_instructions::tests::merge_tolerates_missing_trailing_newline ... ok
+test commands::install_mcp::tests::bedrock_flavored_mcp_url_appends_marker_idempotently ... ok
+test commands::install_mcp::tests::claude_code_config_path_honours_claude_config_dir ... ok
+test commands::install_mcp::tests::auth_token_threaded_into_every_client ... ok
+test commands::install_mcp::tests::claude_code_render_shows_resolved_config_path ... ok
+test commands::install_mcp::tests::claude_code_session_aware_entry_uses_owned_stdio_bridge ... ok
+test commands::install_mcp::tests::claude_desktop_path_uses_resolved_app_data_roots ... ok
+test commands::install_mcp::tests::claude_desktop_render_lists_packaged_and_unpacked_windows_paths ... ok
+test commands::install_mcp::tests::client_specific_shape_keys ... ok
+test commands::install_mcp::tests::codex_apply_migrates_inline_form_and_is_idempotent ... ok
+test commands::install_mcp::tests::codex_apply_preserves_sibling_mcp_servers ... ok
+test commands::install_mcp::tests::codex_apply_writes_block_form_tables ... ok
+test commands::install_mcp::tests::command_code_renderer_uses_documented_user_scope_http_schema ... ok
+test commands::hook_capture::tests::post_hook_failed_when_server_unreachable ... ok
+test commands::install_hooks::tests::startup_handoff_scripts_forward_native_session_ids ... ok
+test commands::hook::tests::antigravity_initial_invocation_fetches_with_native_output_contract ... ok
+test commands::install_mcp::tests::devin_mcp_client_parses ... ok
+test commands::install_mcp::tests::devin_apply_writes_mcp_servers ... ok
+test commands::install_hooks::tests::devin_preserves_existing_hooks_and_adds_ours ... ok
+test commands::install_hooks::tests::devin_apply_config_json_hooks_key_via_flag ... ok
+test commands::install_hooks::tests::devin_apply_writes_hooks_v1_json_by_default ... ok
+test commands::install_mcp::tests::every_client_renders ... ok
+test commands::install_mcp::tests::grok_apply_preserves_sibling_mcp_servers_and_is_idempotent ... ok
+test commands::install_mcp::tests::grok_apply_writes_block_form_with_headers_not_http_headers ... ok
+test commands::install_mcp::tests::kimi_code_home_honours_env_override ... ok
+test commands::install_mcp::tests::grok_print_uses_apply_toml_builder_for_dotted_names_and_quotes ... ok
+test commands::install_mcp::tests::kiro_home_honours_env_override ... ok
+test commands::install_mcp::tests::mcp_server_url_defaults_to_configured_server_url ... ok
+test commands::install_mcp::tests::kiro_rejects_plain_http_for_non_loopback_servers ... ok
+test commands::install_mcp::tests::mcp_server_url_does_not_duplicate_mcp_suffix ... ok
+test commands::install_mcp::tests::mcp_server_url_explicit_base_url_gains_mcp_suffix ... ok
+test commands::install_mcp::tests::mcp_server_url_explicit_flag_matching_compiled_default_still_wins ... ok
+test commands::install_mcp::tests::mcp_server_url_explicit_flag_wins_over_config ... ok
+test commands::install_mcp::tests::moonshot_flavored_mcp_url_appends_marker_idempotently ... ok
+test commands::install_mcp::tests::grok_mcp_client_parses ... ok
+test commands::install_mcp::tests::packaged_claude_desktop_path_ignores_unrelated_and_non_dir_entries ... ok
+test commands::install_mcp::tests::packaged_claude_desktop_path_none_when_packages_dir_absent_or_empty ... ok
+test commands::install_mcp::tests::packaged_claude_desktop_path_prefers_localcache_when_package_dir_exists ... ok
+test commands::install_mcp::tests::pi_guidance_derives_hook_url_from_mcp_url ... ok
+test commands::install_mcp::tests::session_aware_rejects_non_claude_clients ... ok
+test commands::install_mcp::tests::pi_apply_fails_closed_without_writing_even_with_config_override ... ok
+test commands::install_mcp::tests::packaged_claude_desktop_path_prefers_existing_config_among_packages ... ok
+test commands::install_mcp::tests::packaged_claude_desktop_path_rejects_ambiguous_packages ... ok
+test commands::install_mcp::tests::swival_project_root_matches_git_toml_and_fallback_rules ... FAILED
+test commands::install_mcp::tests::zed_apply_rejects_non_object_context_servers_without_writing ... ok
+test commands::install_mcp::tests::zed_config_path_uses_platform_conventions ... ok
+test commands::install_mcp::tests::zed_renderer_uses_context_servers_and_native_remote_http ... ok
+test commands::install_skills::tests::devin_global_skill_root_matches_confirmed_windows_path ... ok
+test commands::install_skills::tests::devin_global_skill_root_requires_appdata_on_windows ... ok
+test commands::install_skills::tests::explicit_target_dir_overrides_scope_and_agent_roots ... ok
+test commands::install_skills::tests::global_claude_skill_root_uses_injected_claude_config_dir ... ok
+test commands::install_skills::tests::global_grok_skill_root_uses_injected_grok_home_override ... ok
+test commands::hook::tests::kimi_session_start_never_fetches_the_handoff ... ok
+test commands::hook::tests::devin_generated_session_id_reaches_startup_handoff_claim ... ok
+test commands::install_skills::tests::project_claude_skill_root_ignores_claude_config_dir ... ok
+test commands::install_skills::tests::refuses_to_overwrite_unmanaged_same_name_skill ... ok
+test commands::install_skills::tests::resolves_project_and_global_skill_roots_for_each_agent_selection ... ok
+test commands::llm_test::tests::anthropic_oauth_choice_maps_to_runtime_provider ... ok
+test commands::llm_test::tests::llm_test_exercises_pipeline_sampling_compatibility ... ok
+test commands::mcp_bridge::tests::bridge_fails_closed_without_a_claude_session_id ... ok
+test commands::mcp_bridge::tests::stdio_bridge_forwards_tools_and_session_header_in_both_http_modes ... ok
+test commands::mcp_bridge::tests::upstream_config_injects_session_id_and_raw_bearer_token ... ok
+test commands::mcp_bridge::tests::upstream_config_rejects_an_invalid_header_value ... ok
+test commands::openclaw_plugin::tests::openclaw_plugin_bakes_repo_root_default ... ok
+test commands::openclaw_plugin::tests::openclaw_plugin_default_omits_baked_strategy ... ok
+test commands::openclaw_plugin::tests::package_has_manifest_and_hook_entrypoint ... ok
+test commands::install_hooks::tests::gemini_preserves_mcp_servers_and_adds_hooks ... ok
+test commands::path_util::tests::claude_config_dir_honours_non_empty_value ... ok
+test commands::hook_spool::tests::enqueue_prunes_oldest_files_when_spool_exceeds_limit ... ok
+test commands::install_hooks::tests::kimi_code_apply_is_idempotent ... ok
+test commands::install_hooks::tests::kimi_code_apply_preserves_providers_and_third_party_hooks ... ok
+test commands::hook::tests::kiro_session_start_prints_handoff_verbatim ... ok
+test commands::path_util::tests::claude_config_dir_treats_unset_empty_and_whitespace_as_unset ... ok
+test commands::path_util::tests::claude_config_paths_put_relocated_first_and_deduplicate ... ok
+test commands::path_util::tests::strip_windows_verbatim_prefix_handles_drive_paths ... ok
+test commands::path_util::tests::strip_windows_verbatim_prefix_handles_unc_case_insensitively ... ok
+test commands::path_util::tests::strip_windows_verbatim_prefix_leaves_non_verbatim_paths_untouched ... ok
+test commands::path_util::tests::strip_windows_verbatim_prefix_leaves_unknown_forms_untouched ... ok
+test commands::project_registry::tests::duplicate_scope_keys_are_rejected_without_overwriting ... ok
+test commands::project_registry::tests::malformed_registry_is_not_overwritten ... ok
+test commands::install_hooks::tests::kiro_cli_apply_writes_all_v2_events_into_agent_config ... ok
+test commands::install_hooks::tests::kiro_cli_v3_apply_preserves_third_party_hooks_and_replaces_only_ours ... ok
+test commands::install_hooks::tests::kiro_cli_apply_preserves_third_party_hooks_and_is_idempotent ... ok
+test commands::install_hooks::tests::kiro_cli_v3_apply_writes_documented_schema_and_is_idempotent ... ok
+test commands::render_shared::tests::antigravity_payload_uses_named_groups_with_mixed_shape ... ok
+test commands::install_hooks::tests::kimi_code_apply_writes_all_events_into_fresh_config ... ok
+test commands::render_shared::tests::bearer_header_is_none_when_no_token ... ok
+test commands::render_shared::tests::bearer_header_prefixes_with_bearer ... ok
+test commands::render_shared::tests::capture_assistant_exec_flag_only_on_stop_and_only_when_opted_in ... ok
+test commands::render_shared::tests::capture_assistant_string_form_only_on_stop ... ok
+test commands::render_shared::tests::antigravity_windows_commands_survive_an_outer_powershell_runner ... ok
+test commands::render_shared::tests::claude_code_payload_embeds_auth_token_when_provided ... ok
+test commands::render_shared::tests::claude_code_payload_emits_absolute_paths ... ok
+test commands::render_shared::tests::claude_code_payload_has_all_events ... ok
+test commands::render_shared::tests::claude_code_payload_omits_auth_token_when_absent ... ok
+test commands::render_shared::tests::claude_code_payload_uses_matcher_plus_inner_hooks_shape ... ok
+test commands::render_shared::tests::command_code_profile_omits_matchers_and_uses_native_agent_identity ... ok
+test commands::render_shared::tests::cursor_payload_uses_flat_shape ... ok
+test commands::render_shared::tests::devin_payload_has_all_events ... ok
+test commands::render_shared::tests::generated_capture_policy_v1_node_runtime_evidence ... ignored, manual Node-required generated TypeScript runtime evidence
+test commands::render_shared::tests::devin_native_payload_uses_devin_agent ... ok
+test commands::render_shared::tests::devin_script_payload_uses_devin_bundle ... ok
+test commands::render_shared::tests::gemini_payload_uses_nested_shape_with_gemini_event_names ... ok
+test commands::render_shared::tests::grok_native_payload_uses_grok_agent ... ok
+test commands::render_shared::tests::grok_script_payload_uses_grok_bundle ... ok
+test commands::render_shared::tests::hook_command_omits_project_strategy_when_none ... ok
+test commands::render_shared::tests::kimi_code_commands_cover_all_events_with_script_paths ... ok
+test commands::render_shared::tests::posix_hook_command_bakes_project_strategy_env ... ok
+test commands::render_shared::tests::posix_hook_command_quotes_script_path_and_shell_metachars ... ok
+test commands::render_shared::tests::kimi_code_commands_windows_use_ps1_scripts ... ok
+test commands::render_shared::tests::posix_native_hook_command_invokes_binary_directly ... ok
+test commands::render_shared::tests::posix_native_hook_command_omits_token_when_absent ... ok
+test commands::render_shared::tests::posix_native_hook_command_passes_project_strategy_flag ... ok
+test commands::render_shared::tests::to_git_bash_path_converts_drive_letter_and_backslashes ... ok
+test commands::render_shared::tests::to_git_bash_path_handles_forward_slash_windows_paths ... ok
+test commands::render_shared::tests::to_git_bash_path_preserves_posix_paths ... ok
+test commands::render_shared::tests::windows_bash_hook_command_bakes_project_strategy_env ... ok
+test commands::render_shared::tests::windows_bash_hook_command_omits_token_when_absent ... ok
+test commands::render_shared::tests::windows_bash_hook_command_wraps_in_bash_c_with_git_bash_paths ... ok
+test commands::render_shared::tests::windows_bash_script_for_platform_keeps_sh_extension ... ok
+test commands::render_shared::tests::windows_native_claude_code_nested_payload_uses_exec_form ... ok
+test commands::render_shared::tests::windows_bash_payload_uses_bash_c_and_sh_hooks ... ok
+test commands::render_shared::tests::windows_native_command_strips_verbatim_data_dir ... ok
+test commands::render_shared::tests::windows_native_exec_spec_strips_verbatim_exe_and_data_dir ... ok
+test commands::render_shared::tests::windows_native_hook_command_passes_project_strategy_flag ... ok
+test commands::render_shared::tests::windows_native_emits_binary_command_with_event_token ... ok
+test commands::render_shared::tests::windows_ps_hook_command_bakes_project_strategy_env ... ok
+test commands::render_shared::tests::windows_native_exec_form_is_claude_only_and_guarded ... ok
+test commands::render_shared::tests::windows_payload_uses_powershell_and_ps1_hooks ... ok
+test commands::reset::tests::reset_apply_skips_absent_subdir ... ok
+test commands::reset::tests::reset_apply_wipes_data_keeps_logs ... ok
+test commands::restore::tests::restore_rejects_unexpected_or_unsafe_paths ... ok
+test commands::restore::tests::restore_rejects_link_entries ... ok
+test commands::reset::tests::reset_dry_run_leaves_files ... ok
+test commands::run::tests::adoption_prompt_can_start_fresh_or_select_an_older_session ... ok
+test commands::run::tests::adoption_prompt_defaults_to_newest_checkout_session ... ok
+test commands::run::tests::automatic_kiro_flavors_share_one_server_agent_identity ... ok
+test commands::run::tests::automatic_selection_skips_newer_sessions_for_unavailable_harnesses ... ok
+test commands::run::tests::executable_available_accepts_an_existing_absolute_path ... ok
+test commands::restore::tests::restore_accepts_expected_backup_paths ... ok
+test commands::run::tests::bare_run_and_wrapper_yolo_parse_without_a_harness ... ok
+test commands::run::tests::crush_context_config_preserves_user_settings_and_adds_packet ... ok
+test commands::run::tests::heartbeat_health_reports_each_outage_and_recovery_once ... ok
+test commands::run::tests::force_fresh_bypasses_an_existing_link_and_rejects_native_selectors ... ok
+test commands::run::tests::incompatible_link_starts_fresh_in_the_explicit_kiro_engine ... ok
+test commands::run::tests::kimi_cli_alias_selects_the_kimi_adapter ... ok
+test commands::run::tests::lease_owner_uses_the_resolved_host_and_process ... ok
+test commands::run::tests::kiro_engine_resolution_prefers_explicit_args_then_persisted_flavor ... ok
+test commands::run::tests::command_code_aliases_select_the_managed_adapter ... ok
+test commands::run::tests::kiro_cli_alias_selects_the_kiro_adapter ... ok
+test commands::run::tests::native_grok_rules_flags_suppress_context_injection ... ok
+test commands::run::tests::native_arguments_do_not_require_separator_and_wrapper_yolo_is_consumed ... ok
+test commands::run::tests::opencode_name_and_native_flags_parse_without_separator ... ok
+test commands::run::tests::missing_linked_session_starts_fresh_but_explicit_selectors_win ... ok
+test commands::run::tests::trailing_wrapper_yolo_is_removed_before_native_resume_detection ... ok
+test commands::run::tests::unix_resolution_returns_the_file_itself ... ok
+test commands::run::tests::wrapper_fresh_parses_before_or_after_the_harness ... ok
+test commands::run::tests::utility_launch_does_not_adopt_a_recent_unrelated_session ... ok
+test commands::run::tests::managed_heartbeat_times_out_and_recovers ... ok
+test commands::serve::tests::existing_users_require_nonempty_pepper_and_root_bearer ... ok
+test commands::serve::tests::host_allowed_accepts_host_with_port ... ok
+test commands::serve::tests::host_allowed_rejects_unknown_host ... ok
+test commands::serve::tests::host_without_port_handles_ipv6_loopback ... ok
+test commands::serve::tests::maintenance_start_delay_handles_never_overdue_and_remaining_cadence ... ok
+test commands::run::tests::prepare_waits_for_a_previous_launcher_to_finish ... ok
+test commands::serve::tests::merge_cors_origins_deduplicates_preserving_order ... ok
+test commands::install_mcp::tests::claude_code_session_aware_apply_is_idempotent ... ok
+test commands::install_mcp::tests::devin_apply_preserves_sibling_mcp_servers ... ok
+test commands::install_mcp::tests::devin_apply_mcp_is_idempotent ... ok
+test commands::install_hooks::tests::zero_apply_merges_around_third_party_hooks_and_preserves_disabled_flag ... ok
+test commands::hook_capture::tests::capture_section_is_strict_and_marker_read_is_bounded ... ok
+test commands::install_mcp::tests::zed_apply_preserves_settings_and_siblings_and_is_idempotent ... ok
+test commands::install_mcp::tests::swival_entry_and_apply_match_upstream_json_schema ... ok
+test commands::install_mcp::tests::kiro_apply_preserves_siblings_and_is_idempotent ... ok
+test commands::hook::tests::kimi_user_prompt_submit_stem_also_delivers_the_handoff ... ok
+test commands::serve::tests::root_oidc_identity_requires_issuer_and_subject_together ... ok
+test commands::install_hooks::tests::devin_apply_both_targets_are_idempotent ... ok
+test commands::hook::tests::kimi_user_prompt_prints_nothing_when_no_handoff_is_pending ... ok
+test commands::serve::tests::trusted_proxy_configuration_requires_distinct_credentials ... ok
+test commands::serve::tests::validate_cors_origins_accepts_empty_list ... ok
+test commands::serve::tests::validate_cors_origins_accepts_well_formed ... ok
+test commands::serve::tests::validate_cors_origins_rejects_missing_scheme ... ok
+test commands::serve::tests::validate_cors_origins_rejects_trailing_slash ... ok
+test commands::serve::tests::validate_cors_origins_rejects_wildcard ... ok
+test commands::serve::tests::valid_web_ui_dir_passes_validation ... ok
+test commands::project_registry::tests::links_are_isolated_by_server_and_scope ... ok
+test commands::hook_spool::tests::drain_unreachable_leaves_events_queued ... ok
+test commands::serve::tests::web_ui_dir_must_be_directory ... ok
+test commands::serve::tests::web_ui_dir_requires_enable_web ... ok
+test commands::serve::tests::web_ui_dir_must_include_index_html ... ok
+test commands::setup_agent::tests::devin_setup_emits_script_hook_config ... ok
+test commands::setup_agent::tests::kimi_code_manual_script_paths_cover_kimi_event_set ... ok
+test commands::setup_agent::tests::kiro_cli_manual_script_paths_cover_v2_event_set ... ok
+test commands::install_hooks::tests::cursor_apply_is_idempotent ... ok
+test commands::setup_agent::tests::kiro_cli_manual_script_paths_cover_v3_event_set ... ok
+test commands::setup_agent::tests::manual_script_paths_use_agent_specific_events ... ok
+test commands::setup_agent::tests::source_candidates_honour_explicit_override ... ok
+test commands::setup_agent::tests::source_candidates_include_binary_sibling_for_flat_tarball ... ok
+test commands::setup_agent::tests::pi_setup_prints_extension_hint_without_copying ... ok
+test commands::setup_agent::tests::source_candidates_preserve_cargo_run_repo_root ... ok
+test commands::setup_agent::tests::devin_setup_copies_event_scripts_and_shared_lib ... ok
+test commands::show::tests::candidate_is_rejected_when_its_scope_changes_after_listing ... ok
+test commands::show::tests::harness_names_cover_every_parser_variant ... ok
+test commands::show::tests::invalid_server_timestamp_is_not_echoed_to_the_terminal ... ok
+test commands::show::tests::failed_project_initialization_rolls_back_the_staging_directory ... ok
+test commands::show::tests::created_project_is_published_only_after_initialization ... ok
+test commands::show::tests::portable_project_components_reject_injection_and_traversal ... ok
+test commands::show::tests::registry_activity_orders_projects_when_server_metadata_is_unavailable ... ok
+test commands::install_hooks::tests::bundled_posix_and_powershell_hooks_stay_in_parity ... ok
+test commands::show::tests::scroll_and_truncation_stay_inside_the_viewport ... ok
+test commands::show::tests::registered_path_rejects_a_checkout_replaced_by_a_symlink ... ok
+test commands::show::tests::terminal_text_removes_control_sequences ... ok
+test commands::status::tests::provider_health_line_renders_error_details ... ok
+test commands::status::tests::provider_health_line_renders_unknown_and_disabled ... ok
+test commands::tests::resolve_project_name_prefers_explicit_value ... ok
+test commands::tests::resolve_project_name_uses_host_cwd_basename ... ok
+test commands::show::tests::marker_encoding_preserves_an_existing_nonportable_workspace_name ... ok
+test commands::tests::resolve_scope_ignores_a_marker_without_scope_keys ... ok
+test commands::show::tests::scan_is_depth_one_and_skips_build_directories ... ok
+test commands::tests::resolve_scope_prefers_explicit_flags_over_the_marker ... ok
+test commands::tests::resolve_scope_takes_a_pinned_project_from_the_marker ... ok
+test commands::tests::skipped_proposal_lines_are_empty_on_a_clean_run ... ok
+test commands::tests::skipped_proposal_lines_name_the_path_and_the_reason ... ok
+test commands::tests::explicit_path_scope_matches_marker_and_non_repo_fallback_policy ... ok
+test commands::tests::resolve_scope_takes_the_workspace_from_the_marker ... ok
+test commands::tests::resolve_scope_without_a_marker_keeps_the_old_fallbacks ... ok
+test commands::tests::workspace_only_marker_uses_linked_worktree_directory_name ... ok
+test commands::project_registry::tests::rekey_preserves_the_source_link_timestamp ... ok
+test commands::tests::workspace_only_marker_uses_hook_basename_from_a_subdirectory ... ok
+test commands::project_registry::tests::recording_the_same_key_replaces_only_that_link ... ok
+test commands::project_registry::tests::rekey_preserves_an_existing_destination_link ... ok
+test commands::openclaw_plugin::tests::package_writes_all_required_files ... ok
+test commands::uninstall::tests::hook_signature_matches_native_posix_command ... ok
+test commands::uninstall::tests::hook_signature_matches_native_windows_command ... ok
+test commands::uninstall::tests::hook_signature_matches_no_auth_default ... ok
+test commands::uninstall::tests::hook_signature_matches_with_auth_and_custom_prefix ... ok
+test commands::uninstall::tests::hook_signature_rejects_third_party_with_generic_name ... ok
+test commands::uninstall::tests::mcp_url_candidates_adds_client_schema_flavors ... ok
+test commands::uninstall::tests::skill_roots_include_windows_appdata_devin_root ... ok
+test commands::uninstall::tests::skill_roots_sweep_claude_config_dir_root_alongside_home ... ok
+test commands::uninstall::tests::skill_roots_use_injected_grok_home_override ... ok
+test commands::uninstall::tests::strip_ai_memory_hooks_flat_removes_only_ours_and_preserves_third_party ... ok
+test commands::uninstall::tests::strip_antigravity_hooks_preserves_mixed_nested_user_hook ... ok
+test commands::uninstall::tests::strip_antigravity_hooks_removes_only_signed_entries ... ok
+test commands::uninstall::tests::strip_consumes_crlf_after_end_marker ... ok
+test commands::uninstall::tests::strip_hooks_flat_cursor_shape ... ok
+test commands::uninstall::tests::strip_hooks_nested_mixed_inner_commands_preserves_user_hook ... ok
+test commands::uninstall::tests::strip_hooks_nested_removes_ours_keeps_third_party ... ok
+test commands::uninstall::tests::strip_hooks_no_hooks_key_is_noop ... ok
+test commands::uninstall::tests::generated_file_detection_rejects_user_files_at_ours_path ... ok
+test commands::uninstall::tests::strip_hooks_preserves_third_party_with_generic_basename ... ok
+test commands::uninstall::tests::strip_hooks_prunes_emptied_hooks_object ... ok
+test commands::uninstall::tests::kiro_v3_uninstall_ownership_requires_exact_name_trigger_and_command ... ok
+test commands::uninstall::tests::generated_openclaw_manifest_detection_requires_our_shape ... ok
+test commands::uninstall::tests::strip_ignores_inline_marker_mention ... ok
+test commands::uninstall::tests::strip_instructions_no_block_is_noop ... ok
+test commands::uninstall::tests::strip_instructions_preserves_surrounding_content ... ok
+test commands::uninstall::tests::strip_hooks_removes_exec_form_ours_preserves_exec_third_party_and_sibling ... ok
+test commands::uninstall::tests::strip_instructions_round_trips_with_install_append ... ok
+test commands::uninstall::tests::strip_kimi_code_hooks_no_hooks_key_is_noop ... ok
+test commands::uninstall::tests::generated_openclaw_package_detection_requires_our_shape ... ok
+test commands::uninstall::tests::strip_kimi_code_hooks_all_ours_leaves_no_hooks_section ... ok
+test commands::uninstall::tests::strip_mcp_by_endpoint_under_custom_name ... ok
+test commands::uninstall::tests::strip_mcp_antigravity_server_url ... ok
+test commands::uninstall::tests::strip_mcp_claude_by_name_keeps_others ... ok
+test commands::uninstall::tests::strip_kimi_code_hooks_removes_only_ours_preserving_config ... ok
+test commands::uninstall::tests::strip_mcp_claude_code_session_aware_bridge ... ok
+test commands::uninstall::tests::strip_mcp_kimi_code_matches_flavored_url_with_default_mcp_url ... ok
+test commands::uninstall::tests::strip_mcp_claude_desktop_mcp_remote_args ... ok
+test commands::uninstall::tests::strip_mcp_kiro_matches_bedrock_flavored_url ... ok
+test commands::uninstall::tests::strip_mcp_name_only_does_not_remove_user_entry ... ok
+test commands::uninstall::tests::strip_mcp_kimi_code_root_servers ... ok
+test commands::uninstall::tests::strip_mcp_no_match_is_noop ... ok
+test commands::uninstall::tests::strip_mcp_omp_root_servers ... ok
+test commands::uninstall::tests::strip_mcp_openclaw_nested_servers ... ok
+test commands::uninstall::tests::strip_mcp_swival_root_servers_preserves_siblings ... ok
+test commands::uninstall::tests::strip_mcp_toml_by_url_under_custom_name ... ok
+test commands::uninstall::tests::strip_mcp_toml_inline_table_prunes_when_empty ... ok
+test commands::uninstall::tests::strip_mcp_toml_inline_table_by_url_under_custom_name ... ok
+test commands::uninstall::tests::strip_mcp_toml_by_name_keeps_comments_and_tables ... ok
+test commands::uninstall::tests::strip_mcp_toml_no_match_is_noop ... ok
+test commands::uninstall::tests::strip_removes_exact_legacy_orphan_tail ... ok
+test commands::uninstall::tests::strip_mcp_vscode_copilot_root_servers ... ok
+test commands::uninstall::tests::strip_removes_repeated_legacy_orphan_tails ... ok
+test commands::uninstall::tests::strip_mcp_zed_context_servers_preserves_other_settings ... ok
+test commands::uninstall::tests::strip_zero_hooks_removes_only_prefixed_ids ... ok
+test commands::user::tests::url_encode_passes_safe_chars_through ... ok
+test commands::user::tests::url_encode_percent_encodes_at_and_other_specials ... ok
+test commands::user::tests::user_row_active_status_reflects_token_expired_at ... ok
+test config::tests::anthropic_oauth_provider_resolves_choice_default_model_and_credential ... ok
+test config::tests::anthropic_oauth_provider_underscore_alias_also_resolves ... ok
+test config::tests::anthropic_provider_uses_documented_default_model ... ok
+test config::tests::defaults_have_canonical_endings ... ok
+test config::tests::gemini_embedding_provider_uses_google_defaults ... ok
+test config::tests::llm_provider_config_uses_typed_provider_auth ... ok
+test config::tests::llm_test_api_key_override_wins_over_env_auth ... ok
+test config::tests::defaults_bound_consolidation_prompts_for_a_large_context_provider ... ok
+test config::tests::load_accepts_a_small_context_consolidation_budget ... ok
+test config::tests::cli_override_wins ... ok
+test config::tests::normalize_home_dir_trims_trailing_separators ... ok
+test config::tests::openai_compat_auth_remains_optional ... ok
+test config::tests::openai_compat_embedding_is_keyless_and_requires_explicit_settings ... ok
+test config::tests::openai_compat_provider_defaults_strict_and_allows_opt_out ... ok
+test config::tests::copilot_provider_uses_data_dir_token_file_and_env_token ... ok
+test config::tests::openai_embedding_does_not_use_llm_api_key_without_custom_base_url ... ok
+test config::tests::openai_embedding_falls_back_to_llm_api_key_for_openrouter ... ok
+test config::tests::opencode_provider_resolves_choice_default_model_and_api_key ... ok
+test config::tests::reranker_choice_is_explicit_case_insensitive_and_fail_closed ... ok
+test http_client::tests::authenticate_no_token_leaves_request_unchanged ... ok
+test config::tests::config_file_overrides_defaults ... ok
+test http_client::tests::bare_env_base_gets_leading_slash ... ok
+test http_client::tests::authenticate_with_token_sets_bearer_header ... ok
+test http_client::tests::build_url_with_query_url_encodes_values ... ok
+test http_client::tests::build_url_without_base_is_byte_identical ... ok
+test config::tests::openai_oauth_provider_uses_data_dir_token_file ... ok
+test http_client::tests::env_base_path_used_when_url_has_no_path ... ok
+test http_client::tests::client_state_identity_normalizes_mounts_and_never_contains_credentials ... ok
+test http_client::tests::from_pair_defaults_to_loopback_when_empty ... ok
+test http_client::tests::from_pair_defaults_to_loopback_when_none ... ok
+test http_client::tests::from_pair_empty_token_treated_as_none ... ok
+test http_client::tests::from_pair_non_empty_token_preserved ... ok
+test http_client::tests::from_pair_strips_multiple_trailing_slashes ... ok
+test http_client::tests::from_pair_strips_trailing_slash ... ok
+test http_client::tests::multi_segment_base_path_is_preserved ... ok
+test commands::uninstall::tests::apply_change_removes_kimi_code_flavored_mcp_entry ... ok
+test http_client::tests::root_like_base_values_mean_no_prefix ... ok
+test config::tests::load_rejects_a_consolidation_budget_below_the_prompt_reserve ... ok
+test http_client::tests::server_url_path_becomes_base_path ... ok
+test http_client::tests::traversal_base_path_is_neutralised_to_root ... ok
+test config::tests::load_populates_home_dir_from_env ... ok
+test http_client::tests::url_path_wins_over_env_base ... ok
+test http_client::tests::split_origin_and_path_cases ... ok
+test config::tests::load_rejects_a_consolidation_output_limit_too_small_for_json ... ok
+test marker::tests::is_truthy_matches_shell_parity_tokens ... ok
+test marker::tests::find_marker_walks_up_from_cwd ... ok
+test logging::tests::readonly_log_dir_falls_back_to_temp_dir ... ok
+test commands::install_skills::tests::install_writes_managed_skills_to_devin_root ... ok
+test commands::install_skills::tests::force_overwrites_unmanaged_same_name_skill ... ok
+test commands::install_skills::tests::install_is_idempotent_after_creating_managed_skills ... ok
+test logging::tests::fully_readonly_environment_degrades_to_stderr_only ... ok
+test marker::tests::find_marker_returns_none_without_one ... ok
+test marker::tests::scope_declares_repo_root_for_both_spellings ... ok
+test marker::tests::parse_toml_flag_accepts_bare_and_quoted_tokens ... ok
+test marker::tests::marker_walk_outside_home_checks_only_cwd_without_a_checkout ... FAILED
+test marker::tests::parse_toml_key_extracts_root_level_strings ... ok
+test logging::tests::writable_log_dir_is_used_directly ... ok
+test marker::tests::parse_toml_key_skips_unsupported_shapes ... ok
+test marker::tests::marker_walk_outside_home_stops_at_checkout_root ... ok
+test http_client::tests::from_config_resolving_auth_uses_stored_oidc_for_authorization_header ... ok
+test config::tests::load_rejects_destructive_invalid_breadth_weights ... ok
+test commands::run::tests::executable_available_rejects_a_program_that_is_not_installed ... ok
+test commands::hook_spool::tests::drain_drops_event_after_max_attempts ... ok
+test commands::reindex::tests::reindex_refuses_dirty_store ... ok
+test commands::serve::tests::persisted_loop_waits_exact_remaining_interval_when_not_due ... ok
+test commands::serve::tests::maintenance_state_read_failure_retries_before_running_work ... ok
+test commands::serve::tests::persisted_loop_runs_one_bounded_startup_catchup_for_never_and_overdue ... ok
+test commands::serve::tests::persisted_loop_restart_waits_remaining_interval_from_real_state ... ok
+test commands::serve::tests::persisted_loop_waits_after_long_tick_without_overlap ... ok
+test commands::serve::tests::persisted_maintenance_retries_failures_and_waits_after_success ... ok
+test commands::serve::tests::disabled_maintenance_creates_no_persisted_job_state ... ok
+test commands::serve::tests::web_routes_are_inside_auth_layer ... ok
+test commands::serve::tests::scheduled_maintenance_sweep_tick_covers_all_projects ... ok
+test commands::serve::tests::embedder_mismatch_warns_but_keeps_server_startable ... ok
+test commands::serve::tests::reranker_without_llm_provider_fails_server_setup ... ok
+test commands::serve::tests::scheduled_maintenance_embedding_backfill_tick_covers_all_projects ... ok
+test commands::serve::tests::scheduled_maintenance_lint_tick_covers_all_projects ... ok
+test commands::serve::tests::session_consolidation_worker_consumes_and_completes_durable_job ... ok
+test commands::serve::tests::zero_interval_omits_only_that_maintenance_job ... ok
+test commands::hook::tests::devin_events_share_session_id_when_payload_omits_it ... ok
+test commands::hook::tests::devin_session_start_real_fixture_without_session_id_or_cwd_is_accepted ... ok
+test commands::hook::tests::devin_post_compaction_summary_without_payload_cwd_uses_same_session ... ok
+
+failures:
+
+---- commands::install_mcp::tests::swival_project_root_matches_git_toml_and_fallback_rules stdout ----
+
+thread 'commands::install_mcp::tests::swival_project_root_matches_git_toml_and_fallback_rules' (757152) panicked at crates/ai-memory-cli/src/commands/install_mcp.rs:2410:9:
+assertion `left == right` failed
+  left: "/tmp"
+ right: "/tmp/.tmpJuv6vA/plain"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- marker::tests::marker_walk_outside_home_checks_only_cwd_without_a_checkout stdout ----
+
+thread 'marker::tests::marker_walk_outside_home_checks_only_cwd_without_a_checkout' (757444) panicked at crates/ai-memory-cli/src/marker.rs:298:9:
+assertion `left == right` failed
+  left: Some("/tmp/.tmpIsTE79/outside/.ai-memory.toml")
+ right: None
+
+
+failures:
+    commands::install_mcp::tests::swival_project_root_matches_git_toml_and_fallback_rules
+    marker::tests::marker_walk_outside_home_checks_only_cwd_without_a_checkout
+
+test result: FAILED. 666 passed; 2 failed; 1 ignored; 0 measured; 0 filtered out; finished in 6.36s
+
+error: test failed, to rerun pass `-p ai-memory-cli --bin ai-memory`
+===== EXIT: 101 =====

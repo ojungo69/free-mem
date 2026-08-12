@@ -20,30 +20,30 @@ delta 比較記録）、clean install、unsafe path action plan。
 
 ### Setup
 
-- [ ] T001 ブランチ `phase-0a-evidence` を作成し worktree を `~/projects/free-mem-wt/phase-0a-evidence` に隔離（`git worktree add`）
-- [ ] T002 [P] 候補 3 リポを sibling dir へローカル clone し pin commit を checkout（`~/projects/free-mem-vendor/codemem` @ `26438e75` / `~/projects/free-mem-vendor/ai-memory` @ `a9e9a24d` / `~/projects/free-mem-vendor/remem` @ `cde8bc05`。公開 fork 禁止・clone のみ）
-- [ ] T003 worktree に `evidence/` ディレクトリと `evidence/README.md`（成果物一覧の索引）を作成
+- [X] T001 ブランチ `phase-0a-evidence` を作成し worktree を `~/projects/free-mem-wt/phase-0a-evidence` に隔離（`git worktree add`）
+- [X] T002 [P] 候補 3 リポを sibling dir へローカル clone し pin commit を checkout（`~/projects/free-mem-vendor/codemem` @ `26438e75` / `~/projects/free-mem-vendor/ai-memory` @ `a9e9a24d` / `~/projects/free-mem-vendor/remem` @ `cde8bc05`。公開 fork 禁止・clone のみ）
+- [X] T003 worktree に `evidence/` ディレクトリと `evidence/README.md`（成果物一覧の索引）を作成
 
 ### Evidence Freeze（各候補独立 → 並列可・Codex 委譲）
 
-- [ ] T004 [P] codemem: exact toolchain（node/npm/OS）記録 + upstream check/test 実行、ログを `evidence/codemem/upstream-test.log` へ保存。license / SBOM / native asset 一覧を `evidence/codemem/sbom.md` へ
-- [ ] T005 [P] ai-memory: 同上を `evidence/ai-memory/` へ
-- [ ] T006 [P] remem: 同上を `evidence/remem/` へ
-- [ ] T007 codemem: 静的 inventory — 全 DB open 箇所 / write-capable handle / provider auth・backend / sync・sharing import を file:line 付きで `evidence/codemem/write-handle-inventory.md` へ（v6.1 §4.3 の必須成果物）
-- [ ] T008 [P] ai-memory・remem: 同観点の簡易 inventory（delta 比較に必要な粒度）を各 `evidence/<repo>/inventory-summary.md` へ
-- [ ] T009 codemem: observer runtime audit と現行 benchmark runner の有無・実行可否を確認し `evidence/codemem/runtime-audit.md` へ
+- [X] T004 [P] codemem: exact toolchain（node/npm/OS）記録 + upstream check/test 実行、ログを `evidence/codemem/upstream-test.log` へ保存。license / SBOM / native asset 一覧を `evidence/codemem/sbom.md` へ
+- [X] T005 [P] ai-memory: 同上を `evidence/ai-memory/` へ
+- [X] T006 [P] remem: 同上を `evidence/remem/` へ
+- [X] T007 codemem: 静的 inventory — 全 DB open 箇所 / write-capable handle / provider auth・backend / sync・sharing import を file:line 付きで `evidence/codemem/write-handle-inventory.md` へ（v6.1 §4.3 の必須成果物）
+- [X] T008 [P] ai-memory・remem: 同観点の簡易 inventory（delta 比較に必要な粒度）を各 `evidence/<repo>/inventory-summary.md` へ
+- [X] T009 codemem: observer runtime audit と現行 benchmark runner の有無・実行可否を確認し `evidence/codemem/runtime-audit.md` へ
 
 ### 判定（セキュリティ関連 = Claude Code 自ら）
 
-- [ ] T010 T007 の inventory を fatal / non-fatal に分類（v6.1 §4.3 基準: unsafe auth path・undocumented provider loader・direct DB fallback 等）。結果を `evidence/codemem/write-handle-classification.md` へ
-- [ ] T011 fork/vendor/greenfield delta を「残る write handle 数・壊す test 数・移植資産数・unsafe auth path 数」で比較し `evidence/delta-comparison.md` へ
-- [ ] T012 unsafe path action plan（実 remove は Phase 1）を `evidence/unsafe-path-action-plan.md` へ
-- [ ] T013 base ADR を `evidence/adr-001-base.md` に確定（§4.3 gate 判定。不合格時: MIT 資産選択移植の比較検討を同 ADR 内に記録し plan.md を改訂）
+- [X] T010 T007 の inventory を fatal / non-fatal に分類（v6.1 §4.3 基準: unsafe auth path・undocumented provider loader・direct DB fallback 等）。結果を `evidence/codemem/write-handle-classification.md` へ
+- [X] T011 fork/vendor/greenfield delta を「残る write handle 数・壊す test 数・移植資産数・unsafe auth path 数」で比較し `evidence/delta-comparison.md` へ
+- [X] T012 unsafe path action plan（実 remove は Phase 1）を `evidence/unsafe-path-action-plan.md` へ
+- [X] T013 base ADR を `evidence/adr-001-base.md` に確定（§4.3 gate 判定。不合格時: MIT 資産選択移植の比較検討を同 ADR 内に記録し plan.md を改訂）
 
 ### 取り込み（ADR = codemem 継続の場合のみ）
 
-- [ ] T014 pinned snapshot を `vendor/codemem/` へ取り込み（ローカル clone から。`.git` を含めない snapshot コピー + 出所記録 `vendor/codemem/VENDOR.md`）
-- [ ] T015 clean install 検証（vendor snapshot からの素の install 手順が通ること）。手順と結果を `evidence/clean-install.md` へ
+- [X] T014 pinned snapshot を `vendor/codemem/` へ取り込み（ローカル clone から。`.git` を含めない snapshot コピー + 出所記録 `vendor/codemem/VENDOR.md`）
+- [X] T015 clean install 検証（vendor snapshot からの素の install 手順が通ること）。手順と結果を `evidence/clean-install.md` へ
 - [ ] T016 Exit gate 照合（SC-0A 全項目）→ speckit-verify-tasks → 2 本立てレビュー（/code-review → ponytail-review）→ main へマージ
 
 **Checkpoint**: SC-0A 達成 = Phase 0B へ。ここまで product コード差分ゼロ。
