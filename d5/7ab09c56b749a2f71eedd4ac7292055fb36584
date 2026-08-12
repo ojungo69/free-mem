@@ -1,0 +1,29 @@
+harness/sidecar/certification-decision.md
+  s_001266e69504e4::t_65fc444ff7e16f 50
+  s_001266e69504e4::t_dc0add0af99563 52
+  s_001266e69504e4::t_9d3d27e629ff2e 9-16
+  s_001266e69504e4::t_64df76d20925fa 67-83,85,87-91
+  s_001266e69504e4::t_ef0c8242b4bad2 57-65
+  s_001266e69504e4::t_93b5df5196785e 66
+harness/sidecar/hostile-e2e.sh
+  s_001266e69504e4::t_05a3d2bf10964a 45-47,49
+  s_001266e69504e4::t_3a4a6bdab2cece 26
+specs/001-agent-memory-core/tasks.md
+  s_001266e69504e4::t_e76757345f02aa 65,67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d57ab09c56b749a2f71eedd4ac7292055fb36584",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
