@@ -50,9 +50,22 @@ delta 比較記録）、clean install、unsafe path action plan。
 
 ---
 
-## Phase 0B — Adapter / Sidecar Contract Harness（着手時に詳細化）
+## Phase 0B — Adapter / Sidecar Contract Harness（v6.1 §29 Phase 0B / §30 PR 2。2026-08-12 着手時詳細化）
 
-Exit: SC-0B（capability golden matrix version-pinned / sidecar certification 可否）。v6.1 §29 Phase 0B + §7.2 + §13.6。
+**Goal**: Claude Code / Codex の exact stable binary で hook lifecycle を fixture 化し、§7.2 capability schema による version-pinned golden matrix と sidecar certification 可否判定を得る。product DB 変更なし。Tier A 宣言なし（未観測 cell は `unknown` — HI-23。全 cell 充足は Exit 要件ではない）。
+
+**実行体制**: ブランチ `phase-0b-harness` + worktree。schema/組立コード = Grok 委譲（範囲宣言可: `harness/`）。capture 実行・隔離 rig・sidecar hostile harness・certification 判定 = Claude Code 自ら（セキュリティ関連: credential/config 隔離・process 隔離）。ToS 確認 = researcher。
+
+- [X] T017 ブランチ `phase-0b-harness` + worktree 作成
+- [ ] T018 [P] harness scaffold: §7.2 の capability schema（TS 型 + JSON Schema）、fixture 記録形式、matrix assembler CLI を `harness/` に実装（委譲可。product コード・vendor/ に触れない独立 package）
+- [ ] T019 隔離 capture rig: scratch `CLAUDE_CONFIG_DIR`/HOME + 使い捨て repo + capture 専用 hooks のみ + `AGENT_MEMORY_INTERNAL_RUN=1` marker。ユーザー実環境の plugin/hook/メモリ DB を汚染しない構成を `harness/rig/` に作る（Claude Code 自ら）
+- [ ] T020 Claude Code capture: exact version 記録（capture 時点で毎 fixture に pin）+ hook lifecycle / timeout / first injection / compact / tool failure phase / interrupt / subagent を fixture 化 → `harness/fixtures/claude/`（実 CLI 実行 = Claude Code 自ら。子セッションは最小 prompt・拡張思考なし）
+- [ ] T021 Codex capture: 同上 → `harness/fixtures/codex/`
+- [ ] T022 golden matrix 組立: fixtures → §7.2 AdapterCapabilities（unknown 既定・coverage/limitations 明記・evidenceKind=real-cli-e2e）を version-pin 付きで `harness/matrix/` へ（組立コード委譲可、データ確定は Claude Code）
+- [ ] T023 [P] Codex sidecar の provider ToS / documented-permission 一次ソース確認（§13.6 manifest 必須欄。OpenAI ToS + Codex CLI docs。researcher 委譲）。結果不明瞭 = 未認定でよい
+- [ ] T024 sidecar hostile harness: 不活性 hostile fixture（marker file を書くだけの偽 hook/plugin/AGENTS）+ process-group kill / pipe close / FD・descendant 残存検査を stub subprocess に対して実証 → `harness/sidecar/`（Claude Code 自ら）。Claude sidecar は `ANTHROPIC_API_KEY` 不在のため hostile E2E 不能 = **未認定（default disabled）が正当な判定**
+- [ ] T025 certification 可否判定を §13.6 manifest 形式で `harness/sidecar/certification-decision.md` に記録（Claude / Codex 各 verdict。否も正当な Exit）
+- [ ] T026 Exit gate 照合（SC-0B）→ speckit-verify-tasks → 2 本立てレビュー → main へマージ
 
 ## Phase 1 — Safety Boundary / Sole Writer（着手時に詳細化・全体セキュリティ関連 = Claude Code 自ら）
 
