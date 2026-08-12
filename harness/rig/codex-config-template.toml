@@ -1,0 +1,38 @@
+# Phase 0B capture rig 用の最小 Codex 設定（CODEX_HOME に配置される）
+hooks = true
+
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "__HOOK__ SessionStart"
+timeout = 10
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "__HOOK__ UserPromptSubmit"
+timeout = 10
+
+[[hooks.PreToolUse]]
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "__HOOK__ PreToolUse"
+timeout = 10
+
+[[hooks.PostToolUse]]
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "__HOOK__ PostToolUse"
+timeout = 10
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "__HOOK__ Stop"
+timeout = 10
+
+[[hooks.SessionEnd]]
+[[hooks.SessionEnd.hooks]]
+type = "command"
+command = "__HOOK__ SessionEnd"
+timeout = 10

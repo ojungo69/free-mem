@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-memory.local/harness/schema/capability.schema.json",
+  "title": "CaptureFixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fixtureId",
+    "cli",
+    "nativeVersion",
+    "capturedAt",
+    "scenario",
+    "observedEvents",
+    "toolFailurePhasesObserved",
+    "limitations",
+    "rig"
+  ],
+  "properties": {
+    "fixtureId": { "type": "string", "minLength": 1 },
+    "cli": { "type": "string", "enum": ["claude", "codex"] },
+    "nativeVersion": { "type": "string", "minLength": 1 },
+    "capturedAt": { "type": "string", "minLength": 1 },
+    "scenario": { "type": "string", "minLength": 1 },
+    "observedEvents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "session_started",
+              "user_prompted",
+              "assistant_completed",
+              "tool_started",
+              "tool_completed",
+              "tool_failed",
+              "turn_completed",
+              "pre_compact",
+              "post_compact",
+              "session_idle",
+              "session_interrupted",
+              "session_ended",
+              "raw"
+            ]
+          },
+          "raw": true,
+          "at": { "type": "string" }
+        }
+      }
+    },
+    "toolFailurePhasesObserved": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "executed",
+          "permission_denied",
+          "schema_invalid",
+          "unknown_tool",
+          "interrupt",
+          "unknown"
+        ]
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "rig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isolated", "internalRunMarker"],
+      "properties": {
+        "isolated": { "type": "boolean" },
+        "internalRunMarker": { "type": "boolean" }
+      }
+    }
+  }
+}

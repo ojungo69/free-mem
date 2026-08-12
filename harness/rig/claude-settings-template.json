@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "__HOOK__ SessionStart", "timeout": 10 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "__HOOK__ UserPromptSubmit", "timeout": 10 }] }],
+    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "__HOOK__ PreToolUse", "timeout": 10 }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "__HOOK__ PostToolUse", "timeout": 10 }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "__HOOK__ Notification", "timeout": 10 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "__HOOK__ Stop", "timeout": 10 }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "__HOOK__ SubagentStop", "timeout": 10 }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "__HOOK__ PreCompact", "timeout": 10 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "__HOOK__ SessionEnd", "timeout": 10 }] }]
+  }
+}
