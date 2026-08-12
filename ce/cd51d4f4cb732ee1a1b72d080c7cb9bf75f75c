@@ -1,0 +1,21 @@
+harness/README.md
+  s_001266e69504e4::t_c37d430c2f57f4 3,6-11,14-18,20
+harness/matrix/README.md
+  s_001266e69504e4::t_2a1496f0e5c8e1 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "cecd51d4f4cb732ee1a1b72d080c7cb9bf75f75c",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
