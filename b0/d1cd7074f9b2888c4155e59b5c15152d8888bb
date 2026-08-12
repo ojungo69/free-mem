@@ -1,0 +1,19 @@
+specs/001-agent-memory-core/tasks.md
+  s_65c23cd4cf8703::t_52c204202c0161 98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b0d1cd7074f9b2888c4155e59b5c15152d8888bb",
+  "prompts": {},
+  "sessions": {
+    "s_65c23cd4cf8703": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a7-228e-7240-b3cb-f4df7e1a66d9",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
