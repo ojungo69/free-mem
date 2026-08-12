@@ -3,6 +3,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { buildRawEventEnvelopeFromHook } from "./claude-hooks.js";
+import { connectReadOnly } from "./db.js";
 import { buildTierRoutedReplayObserverConfig, replayBatchExtraction } from "./extraction-replay.js";
 import {
 	type ObserverClient,
@@ -16,6 +17,19 @@ function createDbPath(name: string): string {
 		tmpdir(),
 		`codemem-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`,
 	);
+}
+
+async function replayBatchExtractionFromPath(
+	dbPath: string,
+	observer: ObserverClient,
+	options: Parameters<typeof replayBatchExtraction>[2],
+) {
+	const db = connectReadOnly(dbPath);
+	try {
+		return await replayBatchExtraction(db, observer, options);
+	} finally {
+		db.close();
+	}
 }
 
 function replayObserverConfig(overrides: Partial<ObserverConfig> = {}): ObserverConfig {
@@ -244,7 +258,7 @@ describe("extraction replay", () => {
 		} as unknown as ObserverClient;
 		let callCount = 0;
 
-		const result = await replayBatchExtraction(dbPath, observer, {
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
 			batchId: 18503,
 			scenarioId: "rich-session-under-extraction",
 		});
@@ -332,7 +346,7 @@ describe("extraction replay", () => {
 			}),
 		} as unknown as ObserverClient;
 
-		const result = await replayBatchExtraction(dbPath, observer, {
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
 			batchId: 18504,
 			scenarioId: "rich-session-under-extraction",
 		});
@@ -407,7 +421,7 @@ describe("extraction replay", () => {
 			getStatus: () => observerStatus,
 		} as unknown as ObserverClient;
 
-		const result = await replayBatchExtraction(dbPath, observer, {
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
 			batchId: 18506,
 			scenarioId: "rich-session-under-extraction",
 		});
@@ -468,7 +482,7 @@ describe("extraction replay", () => {
 		} as unknown as ObserverClient;
 
 		// Act
-		const result = await replayBatchExtraction(dbPath, observer, {
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
 			batchId: 18505,
 			scenarioId: "rich-batch-shape",
 		});
@@ -532,7 +546,7 @@ describe("extraction replay", () => {
 			}),
 		} as unknown as ObserverClient;
 
-		const result = await replayBatchExtraction(dbPath, observer, {
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
 			batchId: 18504,
 			scenarioId: "routine-batch-shape",
 		});
@@ -596,7 +610,7 @@ describe("extraction replay", () => {
 			}),
 		} as unknown as ObserverClient;
 
-		const result = await replayBatchExtraction(dbPath, observer, {
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
 			batchId: 19001,
 			scenarioId: "rich-batch-shape",
 		});
@@ -710,7 +724,7 @@ describe("extraction replay", () => {
 			}),
 		} as unknown as ObserverClient;
 
-		const result = await replayBatchExtraction(dbPath, observer, {
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
 			batchId: 30001,
 			scenarioId: "simple-batch-shape",
 		});

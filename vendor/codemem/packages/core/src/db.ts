@@ -1,11 +1,10 @@
 /**
  * Database connection and schema primitives for the codemem store.
  *
- * Owns the `connect()` helper (pragmas, WAL mode, sqlite-vec loading, legacy
- * path migration) and the schema-version introspection helpers
+ * Owns the audited `connect()` helper (pragmas and WAL mode)
+ * and the schema-version introspection helpers
  * (`getSchemaVersion`, `assertSchemaReady`, `ensureAdditiveSchemaCompatibility`,
- * `ensurePlannerStats`). Schema bootstrap DDL lives in `schema-bootstrap.ts`;
- * `connect()` now enforces the fresh-database bootstrap invariant.
+ * `ensurePlannerStats`). Schema changes run only through `migration-runner.ts`.
  */
 
 import {
@@ -15,25 +14,20 @@ import {
 	mkdirSync,
 	openSync,
 	readdirSync,
-	renameSync,
 	statSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import type { Database as DatabaseType } from "better-sqlite3";
-import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { expandUserPath } from "./observer-config.js";
-import {
-	canAutoBootstrapSchema,
-	ensureRetrievalLedgerSchema,
-	ensureSchemaBootstrapped,
-} from "./schema-bootstrap.js";
+import { canAutoBootstrapSchema, ensureRetrievalLedgerSchema } from "./schema-bootstrap.js";
+import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
-// Re-export the Database type for consumers
-export type { DatabaseType as Database };
+type DatabaseType = import("better-sqlite3").Database;
+
+export type Database = DatabaseType;
 
 /** Current schema version this TS runtime was built against. */
 export const SCHEMA_VERSION = 17;
@@ -145,76 +139,20 @@ const LEGACY_DB_PATHS = [
 	join(homedir(), ".opencode-mem.sqlite"),
 ];
 
-/** WAL sidecar extensions for a SQLite database file. */
-const SIDECAR_EXTENSIONS = ["-wal", "-shm"];
-
 /**
- * Move a file and its WAL sidecars to a new location.
- * Falls back to copy+delete if rename fails (cross-device).
- */
-function moveWithSidecars(src: string, dst: string): void {
-	mkdirSync(dirname(dst), { recursive: true });
-	const pairs: [string, string][] = [
-		[src, dst],
-		...SIDECAR_EXTENSIONS.map((ext): [string, string] => [src + ext, dst + ext]),
-	];
-	for (const [srcPath, dstPath] of pairs) {
-		if (!existsSync(srcPath)) continue;
-		try {
-			renameSync(srcPath, dstPath);
-		} catch {
-			try {
-				copyFileSync(srcPath, dstPath);
-				try {
-					unlinkSync(srcPath);
-				} catch {
-					// Best effort — original left in place
-				}
-			} catch (copyErr) {
-				// TOCTOU: source vanished between existsSync and copy (concurrent migration).
-				// If target now exists, another process already migrated — that's fine.
-				if (existsSync(dstPath)) continue;
-				throw copyErr;
-			}
-		}
-	}
-}
-
-/**
- * Migrate legacy database paths to the current default location.
+ * Open the writer actor with the standard codemem pragmas.
  *
- * Only runs when dbPath is the DEFAULT_DB_PATH and doesn't already exist.
- * Matches Python's migrate_legacy_default_db in db.py.
+ * This does not bootstrap or migrate schema. Call the explicit migration
+ * runner before constructing a store that requires schema changes.
  */
-export function migrateLegacyDbPath(dbPath: string): void {
-	if (dbPath !== DEFAULT_DB_PATH) return;
-	if (existsSync(dbPath)) return;
-
-	for (const legacyPath of LEGACY_DB_PATHS) {
-		if (!existsSync(legacyPath)) continue;
-		moveWithSidecars(legacyPath, dbPath);
-		return;
-	}
-}
-
-/**
- * Open a better-sqlite3 connection with the standard codemem pragmas.
- *
- * Migrates legacy DB paths if needed, creates parent directories,
- * sets WAL mode, busy timeout, foreign keys, and bootstraps the schema when
- * opening a brand-new or otherwise uninitialized writable database.
- */
-export function connect(dbPath: string = DEFAULT_DB_PATH): DatabaseType {
-	migrateLegacyDbPath(dbPath);
-	mkdirSync(dirname(dbPath), { recursive: true });
-	const db = new Database(dbPath);
+export function connect(dbPath: string = DEFAULT_DB_PATH): WriterActor {
+	const db = WriterActor.open(dbPath);
 	try {
 		// Match Python's connect() pragmas exactly
 		db.pragma("foreign_keys = ON");
 		db.pragma("busy_timeout = 5000");
 		const configureWal = canAutoBootstrapSchema(db) || hasBootstrappedCodememSchema(db);
 
-		ensureSchemaBootstrapped(db);
 		if (!configureWal) return db;
 
 		const journalMode = db.pragma("journal_mode = WAL", { simple: true }) as string;
@@ -258,8 +196,8 @@ export interface ReadOnlyConnectionOptions {
 export function connectReadOnly(
 	dbPath: string = DEFAULT_DB_PATH,
 	options: ReadOnlyConnectionOptions = {},
-): DatabaseType {
-	const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+): ReadOnlyActor {
+	const db = ReadOnlyActor.open(dbPath);
 	try {
 		db.pragma("foreign_keys = ON");
 		db.pragma("busy_timeout = 5000");
@@ -389,15 +327,17 @@ export function backupOnFirstAccess(dbPath: string): void {
 	if (existsSync(markerPath)) return;
 
 	// Find the actual DB file to back up. It may be at the target path already,
-	// or at a legacy location that migrateLegacyDbPath() will move later.
+	// or at a legacy location that the explicit T051 cutover will consume later.
 	// Back up whichever exists BEFORE migration runs.
 	let sourceDbPath = dbPath;
 	if (!existsSync(dbPath)) {
-		// Check legacy locations — same order as migrateLegacyDbPath()
-		const legacyPaths = [
-			join(dirname(dbPath), "..", ".codemem.sqlite"),
-			join(dirname(dbPath), "..", ".opencode-mem.sqlite"),
-		];
+		const legacyPaths =
+			dbPath === DEFAULT_DB_PATH
+				? LEGACY_DB_PATHS
+				: [
+						join(dirname(dbPath), "..", ".codemem.sqlite"),
+						join(dirname(dbPath), "..", ".opencode-mem.sqlite"),
+					];
 		const legacyPath = legacyPaths.find((p) => existsSync(p));
 		if (legacyPath) {
 			sourceDbPath = legacyPath;
@@ -496,11 +436,8 @@ export function backupOnFirstAccess(dbPath: string): void {
 /**
  * Verify the database schema is initialized and compatible.
  *
- * Empty writable first-run handles are bootstrapped here as a final safety net,
- * even though `connect()` already does the same. A few lower-level maintenance
- * and integration paths call this assertion after receiving an existing database
- * handle, so keeping the bootstrap invariant here prevents one entry point from
- * requiring a manual `codemem db init` while another works automatically.
+ * This assertion is read-only. Bootstrap and compatibility DDL must run through
+ * the migration runner after its backup-verification gate.
  *
  * Per the coexistence contract: TS tolerates additive newer schemas (Python may
  * have run migrations that add tables/columns the TS runtime doesn't know about).
@@ -514,7 +451,6 @@ export function backupOnFirstAccess(dbPath: string): void {
  * changes are assumed safe per the coexistence contract.
  */
 export function assertSchemaReady(db: DatabaseType): void {
-	ensureSchemaBootstrapped(db);
 	const version = getSchemaVersion(db);
 	if (version === 0) {
 		throw new Error(
@@ -597,7 +533,7 @@ function addColumnIfMissing(
  * a higher SCHEMA_VERSION (and new additive DDL) sees the older marker and
  * re-applies.
  */
-function schemaCompatAlreadyApplied(db: DatabaseType): boolean {
+export function isSchemaCompatibilityCurrent(db: DatabaseType): boolean {
 	try {
 		const row = db
 			.prepare("SELECT applied_schema_version AS v FROM schema_compat_state WHERE id = 1 LIMIT 1")
@@ -743,7 +679,7 @@ export function ensureAdditiveSchemaCompatibility(db: DatabaseType): void {
 			);
 		}
 	}
-	const compatAlreadyApplied = schemaCompatAlreadyApplied(db);
+	const compatAlreadyApplied = isSchemaCompatibilityCurrent(db);
 	if (!compatAlreadyApplied) {
 		// IMPORTANT: any NEW DDL added to this gated block REQUIRES bumping
 		// SCHEMA_VERSION. The "already applied" marker keys on SCHEMA_VERSION, so

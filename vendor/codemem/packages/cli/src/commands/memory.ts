@@ -8,6 +8,7 @@
 import * as p from "@clack/prompts";
 import {
 	compareMemoryRoleReports,
+	connectReadOnly,
 	type ExtractionBenchmarkScore,
 	type ExtractionModelCostEstimate,
 	type ExtractionStructuralDiagnostics,
@@ -702,18 +703,24 @@ function createMemoryExtractionReportCommand(): Command {
 				if (!scenario) {
 					throw new Error(`Unknown extraction eval scenario: ${scenarioId || opts.scenario}`);
 				}
-				const result =
-					batchId != null
-						? getSessionExtractionEval(resolveDbOpt(opts), {
-								batchId,
-								scenarioId: scenario.id,
-								includeInactive: opts.inactive === true,
-							})
-						: getSessionExtractionEval(resolveDbOpt(opts), {
-								sessionId: sessionId as number,
-								scenarioId: scenario.id,
-								includeInactive: opts.inactive === true,
-							});
+				const result = (() => {
+					const db = connectReadOnly(resolveDbPath(resolveDbOpt(opts)));
+					try {
+						return batchId != null
+							? getSessionExtractionEval(db, {
+									batchId,
+									scenarioId: scenario.id,
+									includeInactive: opts.inactive === true,
+								})
+							: getSessionExtractionEval(db, {
+									sessionId: sessionId as number,
+									scenarioId: scenario.id,
+									includeInactive: opts.inactive === true,
+								});
+					} finally {
+						db.close();
+					}
+				})();
 
 				if (opts.json) {
 					console.log(JSON.stringify(result, null, 2));
@@ -882,22 +889,24 @@ function createMemoryExtractionReplayCommand(): Command {
 								],
 				};
 				const observer = new ObserverClient(observerConfigWithOverrides);
-				const result =
-					opts.observerTierRouting === true
-						? await replayBatchExtractionWithTierRouting(
-								resolveDbOpt(opts),
-								observerConfigWithOverrides,
-								{
+				const replayDb = connectReadOnly(resolveDbPath(resolveDbOpt(opts)));
+				const result = await (async () => {
+					try {
+						return opts.observerTierRouting === true
+							? await replayBatchExtractionWithTierRouting(replayDb, observerConfigWithOverrides, {
 									batchId,
 									scenarioId: scenario.id,
 									transcriptBudget: transcriptBudget ?? undefined,
-								},
-							)
-						: await replayBatchExtraction(resolveDbOpt(opts), observer, {
-								batchId,
-								scenarioId: scenario.id,
-								transcriptBudget: transcriptBudget ?? undefined,
-							});
+								})
+							: await replayBatchExtraction(replayDb, observer, {
+									batchId,
+									scenarioId: scenario.id,
+									transcriptBudget: transcriptBudget ?? undefined,
+								});
+					} finally {
+						replayDb.close();
+					}
+				})();
 
 				if (opts.json) {
 					console.log(JSON.stringify(result, null, 2));
@@ -1217,164 +1226,169 @@ function createMemoryExtractionBenchmarkCommand(): Command {
 					};
 					quality: ExtractionBenchmarkScore | null;
 				}>;
-				for (let iteration = 1; iteration <= repetitions; iteration += 1) {
-					for (const batch of benchmark.batches) {
-						const scenarioId = batch.scenarioId ?? benchmark.scenarioId;
-						const result =
-							opts.observerTierRouting === true
-								? await replayBatchExtractionWithTierRouting(
-										resolveDbOpt(opts),
-										observerConfigWithOverrides,
-										{
+				const replayDb = connectReadOnly(resolveDbPath(resolveDbOpt(opts)));
+				try {
+					for (let iteration = 1; iteration <= repetitions; iteration += 1) {
+						for (const batch of benchmark.batches) {
+							const scenarioId = batch.scenarioId ?? benchmark.scenarioId;
+							const result =
+								opts.observerTierRouting === true
+									? await replayBatchExtractionWithTierRouting(
+											replayDb,
+											observerConfigWithOverrides,
+											{
+												batchId: batch.batchId,
+												scenarioId,
+												transcriptBudget: transcriptBudget ?? undefined,
+											},
+										)
+									: await replayBatchExtraction(replayDb, observer, {
 											batchId: batch.batchId,
 											scenarioId,
 											transcriptBudget: transcriptBudget ?? undefined,
-										},
-									)
-								: await replayBatchExtraction(resolveDbOpt(opts), observer, {
-										batchId: batch.batchId,
-										scenarioId,
-										transcriptBudget: transcriptBudget ?? undefined,
-									});
-						const costModel = result.observer.modelFallbackApplied
-							? result.observer.resolvedModel
-							: (result.observer.resolvedModel ?? result.observer.model);
-						const initialCost = costModel
-							? estimateExtractionModelCost(costModel, result.observer.initialUsage)
-							: null;
-						const repairCost = costModel
-							? estimateExtractionModelCost(costModel, result.observer.repairedUsage)
-							: null;
-						const totalCost = costModel
-							? estimateExtractionModelCost(costModel, result.observer.totalUsage)
-							: null;
-						const pricing = costModel ? getExtractionModelPricing(costModel) : null;
-						const costUnavailableReason = totalCost
-							? null
-							: result.observer.modelFallbackApplied && !result.observer.resolvedModel
-								? "model_fallback_unresolved"
-								: result.observer.totalUsage == null
-									? "missing_usage"
-									: "unknown_model_pricing";
-						const initialQuality = result.observer.initialDiagnostics
-							? scoreExtractionBenchmarkOutput({
-									parsed: result.observer.initialParsed,
-									diagnostics: result.observer.initialDiagnostics,
-									review: batch.review ?? {
-										status: "unreviewed",
-										reviewerNotes: "No durable-fact review has been recorded for this batch.",
-									},
-									estimatedCostUsd: initialCost?.totalCostUsd ?? null,
-									expectedSummaryDisposition: batch.expectedSummaryDisposition,
-								})
-							: null;
-						const repairQuality =
-							result.observer.repairedParsed && result.observer.repairedDiagnostics
+										});
+							const costModel = result.observer.modelFallbackApplied
+								? result.observer.resolvedModel
+								: (result.observer.resolvedModel ?? result.observer.model);
+							const initialCost = costModel
+								? estimateExtractionModelCost(costModel, result.observer.initialUsage)
+								: null;
+							const repairCost = costModel
+								? estimateExtractionModelCost(costModel, result.observer.repairedUsage)
+								: null;
+							const totalCost = costModel
+								? estimateExtractionModelCost(costModel, result.observer.totalUsage)
+								: null;
+							const pricing = costModel ? getExtractionModelPricing(costModel) : null;
+							const costUnavailableReason = totalCost
+								? null
+								: result.observer.modelFallbackApplied && !result.observer.resolvedModel
+									? "model_fallback_unresolved"
+									: result.observer.totalUsage == null
+										? "missing_usage"
+										: "unknown_model_pricing";
+							const initialQuality = result.observer.initialDiagnostics
 								? scoreExtractionBenchmarkOutput({
-										parsed: result.observer.repairedParsed,
-										diagnostics: result.observer.repairedDiagnostics,
+										parsed: result.observer.initialParsed,
+										diagnostics: result.observer.initialDiagnostics,
 										review: batch.review ?? {
 											status: "unreviewed",
 											reviewerNotes: "No durable-fact review has been recorded for this batch.",
 										},
-										estimatedCostUsd: repairCost?.totalCostUsd ?? null,
+										estimatedCostUsd: initialCost?.totalCostUsd ?? null,
 										expectedSummaryDisposition: batch.expectedSummaryDisposition,
 									})
 								: null;
-						const finalQuality = result.observer.diagnostics
-							? scoreExtractionBenchmarkOutput({
-									parsed: result.observer.parsed,
-									diagnostics: result.observer.diagnostics,
-									review: batch.review ?? {
-										status: "unreviewed",
-										reviewerNotes: "No durable-fact review has been recorded for this batch.",
-									},
-									estimatedCostUsd: totalCost?.totalCostUsd ?? null,
-									expectedSummaryDisposition: batch.expectedSummaryDisposition,
-								})
-							: null;
-						const reconciled = reconcileExtractionBenchmarkStatus({
-							purpose: batch.purpose,
-							classification: result.classification,
-							finalFailureReasons: result.evaluation.failureReasons,
-							initialQuality,
-							finalQuality,
-						});
-						runs.push({
-							iteration,
-							batchId: batch.batchId,
-							sessionId: batch.sessionId,
-							label: batch.label,
-							purpose: batch.purpose,
-							complexity: batch.complexity,
-							scenarioId,
-							expectedTier: batch.expectedTier ?? null,
-							expectedSummaryDisposition: batch.expectedSummaryDisposition,
-							analysis: {
-								eventSpan: result.analysis.eventSpan,
-								promptCount: result.analysis.promptCount,
-								toolCount: result.analysis.toolCount,
-								transcriptLength: result.analysis.transcriptLength,
-							},
-							status: reconciled.status,
-							reason: reconciled.reason,
-							tier: result.observer.tier ?? "manual",
-							provider: result.observer.provider,
-							model: result.observer.model,
-							transport: result.observer.transport,
-							requestedModel: result.observer.requestedModel,
-							resolvedModel: result.observer.resolvedModel,
-							modelFallbackApplied: result.observer.modelFallbackApplied,
-							modelFallbackReason: result.observer.modelFallbackReason,
-							openaiUseResponses: result.observer.openaiUseResponses,
-							reasoningEffort: result.observer.reasoningEffort,
-							reasoningSummary: result.observer.reasoningSummary,
-							maxOutputTokens: result.observer.maxOutputTokens,
-							temperature: result.observer.temperature,
-							summaries: result.evaluation.counts.summaries,
-							observations: result.evaluation.counts.observations,
-							repairApplied: result.observer.repairApplied,
-							initial: {
-								raw: result.observer.initialRaw,
-								status: result.initialClassification.status,
-								reason: result.initialClassification.reason,
-								pass: result.initialEvaluation.pass,
-								failureReasons: result.initialEvaluation.failureReasons,
-								summaries: result.initialEvaluation.counts.summaries,
-								observations: result.initialEvaluation.counts.observations,
-								diagnostics: result.observer.initialDiagnostics,
-								elapsedMs: result.observer.initialElapsedMs,
-								usage: result.observer.initialUsage,
-								quality: reconciled.initialQuality,
-							},
-							repair: {
-								applied: result.observer.repairApplied,
-								raw: result.observer.repairedRaw,
-								status: result.repairedClassification?.status ?? null,
-								reason: result.repairedClassification?.reason ?? null,
-								pass: result.repairedEvaluation?.pass ?? null,
-								failureReasons: result.repairedEvaluation?.failureReasons ?? [],
-								summaries: result.repairedEvaluation?.counts.summaries ?? null,
-								observations: result.repairedEvaluation?.counts.observations ?? null,
-								diagnostics: result.observer.repairedDiagnostics,
-								elapsedMs: result.observer.repairedElapsedMs,
-								usage: result.observer.repairedUsage,
-								quality: repairQuality,
-							},
-							telemetry: {
-								totalElapsedMs: result.observer.totalElapsedMs,
-								totalUsage: result.observer.totalUsage,
-							},
-							pricing,
-							cost: {
-								initial: initialCost,
-								repair: repairCost,
-								total: totalCost,
-								unavailableReason: costUnavailableReason,
-							},
-							quality: reconciled.quality,
-						});
+							const repairQuality =
+								result.observer.repairedParsed && result.observer.repairedDiagnostics
+									? scoreExtractionBenchmarkOutput({
+											parsed: result.observer.repairedParsed,
+											diagnostics: result.observer.repairedDiagnostics,
+											review: batch.review ?? {
+												status: "unreviewed",
+												reviewerNotes: "No durable-fact review has been recorded for this batch.",
+											},
+											estimatedCostUsd: repairCost?.totalCostUsd ?? null,
+											expectedSummaryDisposition: batch.expectedSummaryDisposition,
+										})
+									: null;
+							const finalQuality = result.observer.diagnostics
+								? scoreExtractionBenchmarkOutput({
+										parsed: result.observer.parsed,
+										diagnostics: result.observer.diagnostics,
+										review: batch.review ?? {
+											status: "unreviewed",
+											reviewerNotes: "No durable-fact review has been recorded for this batch.",
+										},
+										estimatedCostUsd: totalCost?.totalCostUsd ?? null,
+										expectedSummaryDisposition: batch.expectedSummaryDisposition,
+									})
+								: null;
+							const reconciled = reconcileExtractionBenchmarkStatus({
+								purpose: batch.purpose,
+								classification: result.classification,
+								finalFailureReasons: result.evaluation.failureReasons,
+								initialQuality,
+								finalQuality,
+							});
+							runs.push({
+								iteration,
+								batchId: batch.batchId,
+								sessionId: batch.sessionId,
+								label: batch.label,
+								purpose: batch.purpose,
+								complexity: batch.complexity,
+								scenarioId,
+								expectedTier: batch.expectedTier ?? null,
+								expectedSummaryDisposition: batch.expectedSummaryDisposition,
+								analysis: {
+									eventSpan: result.analysis.eventSpan,
+									promptCount: result.analysis.promptCount,
+									toolCount: result.analysis.toolCount,
+									transcriptLength: result.analysis.transcriptLength,
+								},
+								status: reconciled.status,
+								reason: reconciled.reason,
+								tier: result.observer.tier ?? "manual",
+								provider: result.observer.provider,
+								model: result.observer.model,
+								transport: result.observer.transport,
+								requestedModel: result.observer.requestedModel,
+								resolvedModel: result.observer.resolvedModel,
+								modelFallbackApplied: result.observer.modelFallbackApplied,
+								modelFallbackReason: result.observer.modelFallbackReason,
+								openaiUseResponses: result.observer.openaiUseResponses,
+								reasoningEffort: result.observer.reasoningEffort,
+								reasoningSummary: result.observer.reasoningSummary,
+								maxOutputTokens: result.observer.maxOutputTokens,
+								temperature: result.observer.temperature,
+								summaries: result.evaluation.counts.summaries,
+								observations: result.evaluation.counts.observations,
+								repairApplied: result.observer.repairApplied,
+								initial: {
+									raw: result.observer.initialRaw,
+									status: result.initialClassification.status,
+									reason: result.initialClassification.reason,
+									pass: result.initialEvaluation.pass,
+									failureReasons: result.initialEvaluation.failureReasons,
+									summaries: result.initialEvaluation.counts.summaries,
+									observations: result.initialEvaluation.counts.observations,
+									diagnostics: result.observer.initialDiagnostics,
+									elapsedMs: result.observer.initialElapsedMs,
+									usage: result.observer.initialUsage,
+									quality: reconciled.initialQuality,
+								},
+								repair: {
+									applied: result.observer.repairApplied,
+									raw: result.observer.repairedRaw,
+									status: result.repairedClassification?.status ?? null,
+									reason: result.repairedClassification?.reason ?? null,
+									pass: result.repairedEvaluation?.pass ?? null,
+									failureReasons: result.repairedEvaluation?.failureReasons ?? [],
+									summaries: result.repairedEvaluation?.counts.summaries ?? null,
+									observations: result.repairedEvaluation?.counts.observations ?? null,
+									diagnostics: result.observer.repairedDiagnostics,
+									elapsedMs: result.observer.repairedElapsedMs,
+									usage: result.observer.repairedUsage,
+									quality: repairQuality,
+								},
+								telemetry: {
+									totalElapsedMs: result.observer.totalElapsedMs,
+									totalUsage: result.observer.totalUsage,
+								},
+								pricing,
+								cost: {
+									initial: initialCost,
+									repair: repairCost,
+									total: totalCost,
+									unavailableReason: costUnavailableReason,
+								},
+								quality: reconciled.quality,
+							});
+						}
 					}
+				} finally {
+					replayDb.close();
 				}
 				const reviewedQualityRuns = runs.filter((run) => run.quality?.weightedQualityScore != null);
 				const knownCostRuns = runs.filter((run) => run.cost.total != null);

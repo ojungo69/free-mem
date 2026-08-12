@@ -2,7 +2,7 @@
  * Test utilities for the codemem TS backend.
  */
 
-import type { Database } from "./db.js";
+import { type Database, ensureAdditiveSchemaCompatibility } from "./db.js";
 import { bootstrapSchema } from "./schema-bootstrap.js";
 import { LOCAL_DEFAULT_SCOPE_ID } from "./scope-resolution.js";
 
@@ -11,6 +11,7 @@ import { LOCAL_DEFAULT_SCOPE_ID } from "./scope-resolution.js";
  */
 export function initTestSchema(db: Database): void {
 	bootstrapSchema(db);
+	ensureAdditiveSchemaCompatibility(db);
 }
 
 /**

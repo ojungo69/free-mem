@@ -27,7 +27,6 @@ export {
 	MAPPABLE_CODEX_HOOK_EVENTS,
 	mapCodexHookPayload,
 } from "./codex-hooks.js";
-export type { Database } from "./db.js";
 export {
 	assertSchemaReady,
 	connect,
@@ -39,7 +38,6 @@ export {
 	isEmbeddingDisabled,
 	loadSqliteVec,
 	MIN_COMPATIBLE_SCHEMA,
-	migrateLegacyDbPath,
 	resolveDbPath,
 	SCHEMA_VERSION,
 	tableExists,
@@ -335,6 +333,17 @@ export {
 	isDerivedFactRow,
 	readArtifactClass,
 } from "./memory-quality.js";
+export type {
+	MigrationBackupContext,
+	MigrationBackupVerification,
+	MigrationBackupVerifier,
+	RunDatabaseMigrationsOptions,
+} from "./migration-runner.js";
+export {
+	openMigratedWriter,
+	runDatabaseMigrations,
+	verifyFreshDatabase,
+} from "./migration-runner.js";
 export type { ObserverAuthMaterial } from "./observer-auth.js";
 export {
 	ObserverAuthAdapter,
@@ -422,7 +431,6 @@ export { findByConcept, findByFile } from "./ref-queries.js";
 export * from "./retrieval-ledger.js";
 export * from "./retrieval-surface-ledger.js";
 export * as schema from "./schema.js";
-export { bootstrapSchema, ensureSchemaBootstrapped } from "./schema-bootstrap.js";
 export type {
 	LegacyMemoryScopeClassification,
 	LegacyMemoryScopeInput,
@@ -472,6 +480,17 @@ export {
 	SESSION_CONTEXT_BACKFILL_JOB,
 	SessionContextBackfillRunner,
 } from "./session-context-backfill.js";
+export type { StorageJournal, StorageJournalState, StorageLayout } from "./storage.js";
+export {
+	DEFAULT_DATA_DIR,
+	ensureStorageLayout,
+	readCurrentDatabasePointer,
+	recoverStorageJournal,
+	resolveStorageLayout,
+	runLegacyMigration,
+	sha256File,
+	writeStorageJournal,
+} from "./storage.js";
 export { MemoryStore } from "./store.js";
 export {
 	hasPendingSummaryDedupBackfill,
@@ -543,3 +562,4 @@ export {
 	VIEWER_SERVICE_DISCRIMINATOR,
 	viewerUrl,
 } from "./viewer-probe.js";
+export { ReadOnlyActor, WriterActor } from "./writer-actor.js";

@@ -1,9 +1,9 @@
 import {
 	connect,
-	type Database,
 	startMaintenanceJob,
 	updateMaintenanceJob,
 	VectorModelMigrationRunner,
+	type WriterActor,
 } from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -13,7 +13,7 @@ import {
 } from "./maintenance-worker-runtime.js";
 
 describe("maintenance worker runtime", () => {
-	let db: Database;
+	let db: WriterActor;
 
 	beforeEach(() => {
 		vi.useFakeTimers();

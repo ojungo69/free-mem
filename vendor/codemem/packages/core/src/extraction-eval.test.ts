@@ -2,6 +2,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
+import { connectReadOnly } from "./db.js";
 import {
 	evaluateSessionExtractionItems,
 	getSessionExtractionEval,
@@ -279,19 +280,25 @@ describe("session extraction eval", () => {
 				  (2, 166405, 'decision', 'Track 3 reframed around injection-first quality', 'Track 3 now focuses on reducing rediscovery and scouting effort.', 1, '2026-04-07T06:13:46.000Z', '2026-04-07T06:13:46.000Z', '{}', 'k2'),
 				  (3, 166405, 'exploration', 'Graph relationship layer kept as future direction', 'Graph and progressive disclosure ideas were recorded as future work.', 1, '2026-04-07T06:13:47.000Z', '2026-04-07T06:13:47.000Z', '{}', 'k3');
 			`);
+			const reader = connectReadOnly(dbPath);
+			const result = (() => {
+				try {
+					return getSessionExtractionEval(reader, {
+						sessionId: 166405,
+						scenarioId: "rich-session-under-extraction",
+					});
+				} finally {
+					reader.close();
+				}
+			})();
+
+			expect(result.session.sessionClass).toBe("durable");
+			expect(result.counts.summaries).toBe(1);
+			expect(result.counts.observations).toBe(2);
+			expect(result.pass).toBe(true);
 		} finally {
 			db.close();
 		}
-
-		const result = getSessionExtractionEval(dbPath, {
-			sessionId: 166405,
-			scenarioId: "rich-session-under-extraction",
-		});
-
-		expect(result.session.sessionClass).toBe("durable");
-		expect(result.counts.summaries).toBe(1);
-		expect(result.counts.observations).toBe(2);
-		expect(result.pass).toBe(true);
 	});
 
 	it("evaluates a flush batch using explicit batch metadata on extracted memories", () => {
@@ -313,18 +320,24 @@ describe("session extraction eval", () => {
 				  (2, 166405, 'decision', 'Track 3 reframed around injection-first quality', 'Track 3 now focuses on reducing rediscovery and scouting effort.', 1, '2026-04-07T06:13:45.651Z', '2026-04-07T06:13:45.651Z', '{"source":"observer","flush_batch":{"batch_id":18503}}', 'k2'),
 				  (3, 166405, 'exploration', 'Graph relationship layer kept as future direction', 'Graph and progressive disclosure ideas were recorded as future work.', 1, '2026-04-07T06:13:45.652Z', '2026-04-07T06:13:45.652Z', '{"source":"observer","flush_batch":{"batch_id":18503}}', 'k3');
 			`);
+			const reader = connectReadOnly(dbPath);
+			const result = (() => {
+				try {
+					return getSessionExtractionEval(reader, {
+						batchId: 18503,
+						scenarioId: "rich-session-under-extraction",
+					});
+				} finally {
+					reader.close();
+				}
+			})();
+
+			expect(result.target).toEqual({ type: "batch", sessionId: 166405, batchId: 18503 });
+			expect(result.counts.summaries).toBe(1);
+			expect(result.counts.observations).toBe(2);
+			expect(result.pass).toBe(true);
 		} finally {
 			db.close();
 		}
-
-		const result = getSessionExtractionEval(dbPath, {
-			batchId: 18503,
-			scenarioId: "rich-session-under-extraction",
-		});
-
-		expect(result.target).toEqual({ type: "batch", sessionId: 166405, batchId: 18503 });
-		expect(result.counts.summaries).toBe(1);
-		expect(result.counts.observations).toBe(2);
-		expect(result.pass).toBe(true);
 	});
 });

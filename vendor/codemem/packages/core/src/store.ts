@@ -1,24 +1,18 @@
 /**
  * MemoryStore — the main read/write surface for the codemem memory store.
  *
- * Manages a better-sqlite3 connection to the on-disk database and exposes
- * CRUD, search, pack, and maintenance helpers. Fresh databases are auto-bootstrapped
- * on first construction: if the connected file has no schema (user_version 0),
- * `bootstrapSchema` runs before `assertSchemaReady` so every CLI/MCP entry
- * point gets a ready-to-use store without requiring an explicit
- * `codemem db init` invocation first.
+ * Uses the writer actor that owns the audited SQLite connection and exposes
+ * CRUD, search, pack, and maintenance helpers. Schema setup is delegated to
+ * the explicit migration runner before the store begins normal work.
  */
 
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { and, desc, eq, gt, inArray, isNotNull, lt, lte, or, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import type { Database } from "./db.js";
 import {
 	assertSchemaReady,
-	connect,
 	DEFAULT_DB_PATH,
-	ensureAdditiveSchemaCompatibility,
 	ensurePlannerStats,
 	fromJson,
 	isEmbeddingDisabled,
@@ -30,6 +24,7 @@ import {
 } from "./db.js";
 import { buildFilterClausesWithContext, type OwnershipFilterContext } from "./filters.js";
 import { buildMemoryDedupKey, normalizeMemoryDedupTitle } from "./memory-dedup.js";
+import { type MigrationBackupVerifier, openMigratedWriter } from "./migration-runner.js";
 import { readCodememConfigFile } from "./observer-config.js";
 import type { PackArtifacts } from "./pack.js";
 import {
@@ -71,6 +66,7 @@ import type {
 	TimelineItemResponse,
 } from "./types.js";
 import { storeVectors } from "./vectors.js";
+import type { WriterActor } from "./writer-actor.js";
 
 // Memory kind validation (mirrors codemem/memory_kinds.py)
 
@@ -184,7 +180,7 @@ function parseMetadata(row: MemoryItem): MemoryItemResponse {
 // MemoryStore
 
 export class MemoryStore {
-	readonly db: Database;
+	readonly db: WriterActor;
 	readonly dbPath: string;
 	deviceId: string;
 	actorId: string;
@@ -207,13 +203,15 @@ export class MemoryStore {
 		return this._drizzle;
 	}
 
-	constructor(dbPath: string = DEFAULT_DB_PATH) {
+	constructor(
+		dbPath: string = DEFAULT_DB_PATH,
+		options: { backupAndVerify?: MigrationBackupVerifier } = {},
+	) {
 		this.dbPath = resolveDbPath(dbPath);
-		this.db = connect(this.dbPath);
+		this.db = openMigratedWriter(this.dbPath, options.backupAndVerify);
 		try {
 			loadSqliteVec(this.db);
 			assertSchemaReady(this.db);
-			ensureAdditiveSchemaCompatibility(this.db);
 			ensurePlannerStats(this.db);
 		} catch (err) {
 			this.db.close();

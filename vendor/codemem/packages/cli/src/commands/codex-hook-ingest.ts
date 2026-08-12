@@ -8,10 +8,11 @@ import { readFileSync } from "node:fs";
 import {
 	buildRawEventEnvelopeFromCodexHook,
 	connect,
-	ensureSchemaBootstrapped,
 	loadSqliteVec,
 	resolveDbPath,
+	runDatabaseMigrations,
 	stripPrivateObj,
+	verifyFreshDatabase,
 } from "@codemem/core";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
@@ -132,7 +133,7 @@ export function directEnqueueCodexHook(
 		} catch {
 			// sqlite-vec is not required for raw-event enqueue.
 		}
-		ensureSchemaBootstrapped(db);
+		runDatabaseMigrations(db, { dbPath, backupAndVerify: verifyFreshDatabase });
 		const strippedPayload = stripPrivateObj(envelope.payload) as Record<string, unknown>;
 		const existing = db
 			.prepare(

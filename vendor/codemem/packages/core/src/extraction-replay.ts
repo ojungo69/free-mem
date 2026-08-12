@@ -1,4 +1,3 @@
-import { connect, resolveDbPath } from "./db.js";
 import {
 	evaluateExtractionStructure,
 	evaluateSessionExtractionItems,
@@ -54,6 +53,7 @@ import {
 } from "./observer-client.js";
 import { resolveProject } from "./project.js";
 import { buildSessionContext } from "./raw-event-flush.js";
+import type { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 function normalizePath(path: string, repoRoot: string | null): string {
 	if (!path) return "";
@@ -416,7 +416,7 @@ function buildReplayItems(
 }
 
 async function prepareReplayBatch(
-	dbPath: string | undefined,
+	db: ReadOnlyActor | WriterActor,
 	opts: {
 		batchId: number;
 		scenarioId: string;
@@ -428,11 +428,9 @@ async function prepareReplayBatch(
 	const scenario = getSessionExtractionEvalScenario(opts.scenarioId);
 	if (!scenario) throw new Error(`Unknown extraction eval scenario: ${opts.scenarioId}`);
 
-	const db = connect(resolveDbPath(dbPath));
-	try {
-		const batch = db
-			.prepare(
-				`SELECT
+	const batch = db
+		.prepare(
+			`SELECT
 					b.id,
 					b.source,
 					b.stream_id,
@@ -451,184 +449,181 @@ async function prepareReplayBatch(
 				   ON os.source = b.source AND os.stream_id = b.stream_id
 				 LEFT JOIN sessions s ON s.id = os.session_id
 				 WHERE b.id = ?`,
-			)
-			.get(opts.batchId) as
-			| {
-					id: number;
-					source: string;
-					stream_id: string;
-					opencode_session_id: string;
-					start_event_seq: number;
-					end_event_seq: number;
-					updated_at: string;
-					session_id: number | null;
-					cwd: string | null;
-					project: string | null;
-					started_at: string | null;
-					ended_at: string | null;
-					metadata_json: string | null;
-			  }
-			| undefined;
-		if (!batch) throw new Error(`Flush batch ${opts.batchId} not found`);
-		if (batch.session_id == null) {
-			throw new Error(`Flush batch ${opts.batchId} is not linked to a local session`);
-		}
+		)
+		.get(opts.batchId) as
+		| {
+				id: number;
+				source: string;
+				stream_id: string;
+				opencode_session_id: string;
+				start_event_seq: number;
+				end_event_seq: number;
+				updated_at: string;
+				session_id: number | null;
+				cwd: string | null;
+				project: string | null;
+				started_at: string | null;
+				ended_at: string | null;
+				metadata_json: string | null;
+		  }
+		| undefined;
+	if (!batch) throw new Error(`Flush batch ${opts.batchId} not found`);
+	if (batch.session_id == null) {
+		throw new Error(`Flush batch ${opts.batchId} is not linked to a local session`);
+	}
 
-		const rawRows = db
-			.prepare(
-				`SELECT event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, event_id
+	const rawRows = db
+		.prepare(
+			`SELECT event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, event_id
 				 FROM raw_events
 				 WHERE source = ?
 				   AND stream_id = ?
 				   AND event_seq >= ?
 				   AND event_seq <= ?
 				 ORDER BY event_seq ASC`,
-			)
-			.all(batch.source, batch.stream_id, batch.start_event_seq, batch.end_event_seq) as Array<{
-			event_seq: number;
-			event_type: string;
-			ts_wall_ms: number | null;
-			ts_mono_ms: number | null;
-			payload_json: string;
-			event_id: string | null;
-		}>;
-		const events = rawRows.map<Record<string, unknown>>((row) => {
-			const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
-			payload.type = payload.type || row.event_type;
-			payload.timestamp_wall_ms = row.ts_wall_ms;
-			payload.timestamp_mono_ms = row.ts_mono_ms;
-			payload.event_seq = row.event_seq;
-			payload.event_id = row.event_id;
-			return payload;
-		});
-		if (events.length === 0) {
-			throw new Error(`Flush batch ${opts.batchId} has no raw events in range`);
-		}
-
-		// Claude Code raw events arrive as `claude.hook` with an adapter envelope;
-		// normalize them to the flat user_prompt / tool.execute.after shapes before
-		// scanning so promptCount, toolCount, firstPrompt, filesRead, and
-		// filesModified are populated correctly during replay.
-		const normalizedForContext = normalizeEventsForSessionContext(events);
-		const sessionContext: SessionContext = buildSessionContext(normalizedForContext);
-		sessionContext.opencodeSessionId = batch.opencode_session_id;
-		sessionContext.source = batch.source;
-		sessionContext.streamId = batch.stream_id;
-		sessionContext.flusher = "raw_events";
-		sessionContext.flushBatch = {
-			batch_id: batch.id,
-			start_event_seq: batch.start_event_seq,
-			end_event_seq: batch.end_event_seq,
-		};
-
-		const maxChars = opts.maxChars ?? 12_000;
-		const observerMaxChars = opts.observerMaxChars ?? 12_000;
-		const normalizedEvents = normalizeAdapterEvents(events);
-		const prompts = extractPrompts(normalizedEvents);
-		const promptNumber =
-			prompts.length > 0 ? (prompts[prompts.length - 1]?.promptNumber ?? prompts.length) : null;
-		let toolEvents = normalizeEventsForToolExtraction(events, maxChars);
-		const toolBudget = Math.max(2000, Math.min(8000, observerMaxChars - 5000));
-		toolEvents = budgetToolEvents(toolEvents, toolBudget, 30);
-		const assistantMessages = extractAssistantMessages(normalizedEvents);
-		const lastAssistantMessage = assistantMessages.at(-1) ?? null;
-		const latestPrompt =
-			sessionContext.firstPrompt ??
-			(prompts.length > 0 ? prompts[prompts.length - 1]?.promptText : null) ??
-			null;
-
-		let shouldProcess =
-			toolEvents.length > 0 || Boolean(latestPrompt) || Boolean(lastAssistantMessage);
-		if (
-			latestPrompt &&
-			isTrivialRequest(latestPrompt) &&
-			toolEvents.length === 0 &&
-			!lastAssistantMessage
-		) {
-			shouldProcess = false;
-		}
-		if (!shouldProcess) {
-			throw new Error(`Flush batch ${opts.batchId} has no meaningful observer input to replay`);
-		}
-
-		const transcript = buildTranscript(normalizedEvents);
-		const sessionSummaryParts: string[] = [];
-		if ((sessionContext.promptCount ?? 0) > 1) {
-			sessionSummaryParts.push(`Session had ${sessionContext.promptCount} prompts`);
-		}
-		if ((sessionContext.toolCount ?? 0) > 0) {
-			sessionSummaryParts.push(`${sessionContext.toolCount} tool executions`);
-		}
-		if ((sessionContext.durationMs ?? 0) > 0) {
-			const durationMin = (sessionContext.durationMs ?? 0) / 60000;
-			sessionSummaryParts.push(`~${durationMin.toFixed(1)} minutes of work`);
-		}
-		if (sessionContext.filesModified?.length) {
-			sessionSummaryParts.push(`Modified: ${sessionContext.filesModified.slice(0, 5).join(", ")}`);
-		}
-		if (sessionContext.filesRead?.length) {
-			sessionSummaryParts.push(`Read: ${sessionContext.filesRead.slice(0, 5).join(", ")}`);
-		}
-		const sessionInfoText = sessionSummaryParts.join("; ");
-		let observerPrompt = latestPrompt ?? "";
-		if (sessionInfoText) {
-			observerPrompt = observerPrompt
-				? `${observerPrompt}\n\n[Session context: ${sessionInfoText}]`
-				: `[Session context: ${sessionInfoText}]`;
-		}
-		const transcriptBudget =
-			opts.transcriptBudget ?? Math.max(1500, Math.min(5000, Math.floor(observerMaxChars * 0.4)));
-		const observerContext: ObserverContext = {
-			project: batch.project ?? resolveProject(batch.cwd ?? process.cwd()) ?? null,
-			userPrompt: observerPrompt,
-			promptNumber,
-			transcript: truncateObserverTranscript(transcript, transcriptBudget),
-			toolEvents,
-			lastAssistantMessage,
-			includeSummary: true,
-			diffSummary: "",
-			recentFiles: "",
-		};
-		const { system, user } = buildObserverPrompt(observerContext);
-		const sessionMeta = (() => {
-			try {
-				return batch.metadata_json
-					? (JSON.parse(batch.metadata_json) as Record<string, unknown>)
-					: {};
-			} catch {
-				return {};
-			}
-		})();
-		const post =
-			sessionMeta.post && typeof sessionMeta.post === "object" && !Array.isArray(sessionMeta.post)
-				? (sessionMeta.post as Record<string, unknown>)
-				: {};
-		return {
-			scenario,
-			batch: {
-				...batch,
-				session_id: batch.session_id,
-			},
-			sessionContext,
-			observerContext,
-			system,
-			user,
-			sessionPost: post,
-			analysis: {
-				batchId: batch.id,
-				sessionId: batch.session_id,
-				eventSpan: batch.end_event_seq - batch.start_event_seq + 1,
-				promptCount: sessionContext.promptCount ?? 0,
-				toolCount: sessionContext.toolCount ?? 0,
-				transcriptLength: transcript.length,
-				firstPrompt: sessionContext.firstPrompt,
-				filesRead: sessionContext.filesRead ?? [],
-				filesModified: sessionContext.filesModified ?? [],
-			},
-		};
-	} finally {
-		db.close();
+		)
+		.all(batch.source, batch.stream_id, batch.start_event_seq, batch.end_event_seq) as Array<{
+		event_seq: number;
+		event_type: string;
+		ts_wall_ms: number | null;
+		ts_mono_ms: number | null;
+		payload_json: string;
+		event_id: string | null;
+	}>;
+	const events = rawRows.map<Record<string, unknown>>((row) => {
+		const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+		payload.type = payload.type || row.event_type;
+		payload.timestamp_wall_ms = row.ts_wall_ms;
+		payload.timestamp_mono_ms = row.ts_mono_ms;
+		payload.event_seq = row.event_seq;
+		payload.event_id = row.event_id;
+		return payload;
+	});
+	if (events.length === 0) {
+		throw new Error(`Flush batch ${opts.batchId} has no raw events in range`);
 	}
+
+	// Claude Code raw events arrive as `claude.hook` with an adapter envelope;
+	// normalize them to the flat user_prompt / tool.execute.after shapes before
+	// scanning so promptCount, toolCount, firstPrompt, filesRead, and
+	// filesModified are populated correctly during replay.
+	const normalizedForContext = normalizeEventsForSessionContext(events);
+	const sessionContext: SessionContext = buildSessionContext(normalizedForContext);
+	sessionContext.opencodeSessionId = batch.opencode_session_id;
+	sessionContext.source = batch.source;
+	sessionContext.streamId = batch.stream_id;
+	sessionContext.flusher = "raw_events";
+	sessionContext.flushBatch = {
+		batch_id: batch.id,
+		start_event_seq: batch.start_event_seq,
+		end_event_seq: batch.end_event_seq,
+	};
+
+	const maxChars = opts.maxChars ?? 12_000;
+	const observerMaxChars = opts.observerMaxChars ?? 12_000;
+	const normalizedEvents = normalizeAdapterEvents(events);
+	const prompts = extractPrompts(normalizedEvents);
+	const promptNumber =
+		prompts.length > 0 ? (prompts[prompts.length - 1]?.promptNumber ?? prompts.length) : null;
+	let toolEvents = normalizeEventsForToolExtraction(events, maxChars);
+	const toolBudget = Math.max(2000, Math.min(8000, observerMaxChars - 5000));
+	toolEvents = budgetToolEvents(toolEvents, toolBudget, 30);
+	const assistantMessages = extractAssistantMessages(normalizedEvents);
+	const lastAssistantMessage = assistantMessages.at(-1) ?? null;
+	const latestPrompt =
+		sessionContext.firstPrompt ??
+		(prompts.length > 0 ? prompts[prompts.length - 1]?.promptText : null) ??
+		null;
+
+	let shouldProcess =
+		toolEvents.length > 0 || Boolean(latestPrompt) || Boolean(lastAssistantMessage);
+	if (
+		latestPrompt &&
+		isTrivialRequest(latestPrompt) &&
+		toolEvents.length === 0 &&
+		!lastAssistantMessage
+	) {
+		shouldProcess = false;
+	}
+	if (!shouldProcess) {
+		throw new Error(`Flush batch ${opts.batchId} has no meaningful observer input to replay`);
+	}
+
+	const transcript = buildTranscript(normalizedEvents);
+	const sessionSummaryParts: string[] = [];
+	if ((sessionContext.promptCount ?? 0) > 1) {
+		sessionSummaryParts.push(`Session had ${sessionContext.promptCount} prompts`);
+	}
+	if ((sessionContext.toolCount ?? 0) > 0) {
+		sessionSummaryParts.push(`${sessionContext.toolCount} tool executions`);
+	}
+	if ((sessionContext.durationMs ?? 0) > 0) {
+		const durationMin = (sessionContext.durationMs ?? 0) / 60000;
+		sessionSummaryParts.push(`~${durationMin.toFixed(1)} minutes of work`);
+	}
+	if (sessionContext.filesModified?.length) {
+		sessionSummaryParts.push(`Modified: ${sessionContext.filesModified.slice(0, 5).join(", ")}`);
+	}
+	if (sessionContext.filesRead?.length) {
+		sessionSummaryParts.push(`Read: ${sessionContext.filesRead.slice(0, 5).join(", ")}`);
+	}
+	const sessionInfoText = sessionSummaryParts.join("; ");
+	let observerPrompt = latestPrompt ?? "";
+	if (sessionInfoText) {
+		observerPrompt = observerPrompt
+			? `${observerPrompt}\n\n[Session context: ${sessionInfoText}]`
+			: `[Session context: ${sessionInfoText}]`;
+	}
+	const transcriptBudget =
+		opts.transcriptBudget ?? Math.max(1500, Math.min(5000, Math.floor(observerMaxChars * 0.4)));
+	const observerContext: ObserverContext = {
+		project: batch.project ?? resolveProject(batch.cwd ?? process.cwd()) ?? null,
+		userPrompt: observerPrompt,
+		promptNumber,
+		transcript: truncateObserverTranscript(transcript, transcriptBudget),
+		toolEvents,
+		lastAssistantMessage,
+		includeSummary: true,
+		diffSummary: "",
+		recentFiles: "",
+	};
+	const { system, user } = buildObserverPrompt(observerContext);
+	const sessionMeta = (() => {
+		try {
+			return batch.metadata_json
+				? (JSON.parse(batch.metadata_json) as Record<string, unknown>)
+				: {};
+		} catch {
+			return {};
+		}
+	})();
+	const post =
+		sessionMeta.post && typeof sessionMeta.post === "object" && !Array.isArray(sessionMeta.post)
+			? (sessionMeta.post as Record<string, unknown>)
+			: {};
+	return {
+		scenario,
+		batch: {
+			...batch,
+			session_id: batch.session_id,
+		},
+		sessionContext,
+		observerContext,
+		system,
+		user,
+		sessionPost: post,
+		analysis: {
+			batchId: batch.id,
+			sessionId: batch.session_id,
+			eventSpan: batch.end_event_seq - batch.start_event_seq + 1,
+			promptCount: sessionContext.promptCount ?? 0,
+			toolCount: sessionContext.toolCount ?? 0,
+			transcriptLength: transcript.length,
+			firstPrompt: sessionContext.firstPrompt,
+			filesRead: sessionContext.filesRead ?? [],
+			filesModified: sessionContext.filesModified ?? [],
+		},
+	};
 }
 
 async function replayPreparedBatch(
@@ -775,7 +770,7 @@ async function replayPreparedBatch(
 }
 
 export async function replayBatchExtraction(
-	dbPath: string | undefined,
+	db: ReadOnlyActor | WriterActor,
 	observer: ObserverClient,
 	opts: {
 		batchId: number;
@@ -785,7 +780,7 @@ export async function replayBatchExtraction(
 		transcriptBudget?: number;
 	},
 ): Promise<ExtractionReplayResult> {
-	const prepared = await prepareReplayBatch(dbPath, {
+	const prepared = await prepareReplayBatch(db, {
 		...opts,
 		observerMaxChars: opts.observerMaxChars ?? observer.maxChars,
 	});
@@ -810,7 +805,7 @@ export function buildTierRoutedReplayObserverConfig(
 }
 
 export async function replayBatchExtractionWithTierRouting(
-	dbPath: string | undefined,
+	db: ReadOnlyActor | WriterActor,
 	baseConfig: ObserverConfig,
 	opts: {
 		batchId: number;
@@ -821,7 +816,7 @@ export async function replayBatchExtractionWithTierRouting(
 	},
 ): Promise<ExtractionReplayResult> {
 	const baseObserver = new ObserverClientImpl(baseConfig);
-	const prepared = await prepareReplayBatch(dbPath, {
+	const prepared = await prepareReplayBatch(db, {
 		...opts,
 		observerMaxChars: opts.observerMaxChars ?? baseObserver.maxChars,
 	});

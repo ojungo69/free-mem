@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readlinkSync,
+	rmSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
@@ -16,12 +24,26 @@ import {
 	getSchemaVersion,
 	isEmbeddingDisabled,
 	loadSqliteVec,
-	migrateLegacyDbPath,
 	resolveDbPath,
 	SCHEMA_VERSION,
 	tableExists,
 	toJson,
 } from "./db.js";
+import { openMigratedWriter, runDatabaseMigrations } from "./migration-runner.js";
+import { bootstrapSchema } from "./schema-bootstrap.js";
+import { resolveStorageLayout, runLegacyMigration, sha256File } from "./storage.js";
+
+const verifyTestBackup = () => ({ verified: true, evidence: "db-test-backup" });
+
+function connectMigrated(path: string): Database {
+	return openMigratedWriter(path, verifyTestBackup);
+}
+
+function connectBootstrapped(path: string): Database {
+	const db = connect(path);
+	bootstrapSchema(db);
+	return db;
+}
 
 function hasIndex(db: Database, name: string): boolean {
 	const row = db
@@ -54,32 +76,32 @@ describe("connect", () => {
 	});
 
 	it("opens a database with WAL mode", () => {
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 		const mode = db.pragma("journal_mode", { simple: true }) as string;
 		expect(mode.toLowerCase()).toBe("wal");
 	});
 
 	it("sets busy_timeout to 5000ms", () => {
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 		const timeout = db.pragma("busy_timeout", { simple: true });
 		expect(timeout).toBe(5000);
 	});
 
 	it("enables foreign keys", () => {
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 		const fk = db.pragma("foreign_keys", { simple: true });
 		expect(fk).toBe(1);
 	});
 
 	it("sets synchronous to NORMAL", () => {
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 		const sync = db.pragma("synchronous", { simple: true });
 		// NORMAL = 1
 		expect(sync).toBe(1);
 	});
 
 	it("applies read-tuning pragmas (cache_size, mmap_size, temp_store)", () => {
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 		expect(db.pragma("cache_size", { simple: true })).toBe(-65536);
 		// mmap_size readback is clamped to the build's SQLITE_MAX_MMAP_SIZE, so
 		// assert it's enabled (>0) rather than an exact, build-dependent value.
@@ -89,7 +111,7 @@ describe("connect", () => {
 	});
 
 	it("drops legacy memory_items indexes via additive compatibility", () => {
-		db = connect(join(tmpDir, "legacy-idx.sqlite"));
+		db = connectBootstrapped(join(tmpDir, "legacy-idx.sqlite"));
 		// Simulate a database created by an older schema that carried the
 		// now-obsolete indexes the current schema never creates.
 		db.exec(
@@ -114,7 +136,7 @@ describe("connect", () => {
 
 	it("creates parent directories if they don't exist", () => {
 		const nested = join(tmpDir, "deep", "nested", "dir", "test.sqlite");
-		db = connect(nested);
+		db = connectMigrated(nested);
 		expect(db.pragma("journal_mode", { simple: true })).toBe("wal");
 	});
 
@@ -123,7 +145,7 @@ describe("connect", () => {
 	});
 
 	it("bootstraps the schema on a fresh database path", () => {
-		db = connect(join(tmpDir, "fresh.sqlite"));
+		db = connectMigrated(join(tmpDir, "fresh.sqlite"));
 
 		expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
 		expect(tableExists(db, "memory_items")).toBe(true);
@@ -158,7 +180,7 @@ describe("connect", () => {
 		const dbPath = join(tmpDir, "empty.sqlite");
 		writeFileSync(dbPath, "");
 
-		db = connect(dbPath);
+		db = connectMigrated(dbPath);
 
 		expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
 		expect(tableExists(db, "memory_items")).toBe(true);
@@ -167,12 +189,12 @@ describe("connect", () => {
 
 	it("reopens an initialized database without clobbering existing data", () => {
 		const dbPath = join(tmpDir, "reopen.sqlite");
-		db = connect(dbPath);
+		db = connectMigrated(dbPath);
 		db.exec("CREATE TABLE connect_reopen_guard (id INTEGER PRIMARY KEY, label TEXT NOT NULL)");
 		db.prepare("INSERT INTO connect_reopen_guard(label) VALUES (?)").run("still here");
 		db.close();
 
-		db = connect(dbPath);
+		db = connectMigrated(dbPath);
 
 		expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
 		expect(
@@ -184,8 +206,8 @@ describe("connect", () => {
 
 	it("supports multiple handles racing the first-run bootstrap result", () => {
 		const dbPath = join(tmpDir, "multi-handle.sqlite");
-		const first = connect(dbPath);
-		const second = connect(dbPath);
+		const first = connectMigrated(dbPath);
+		const second = connectMigrated(dbPath);
 		try {
 			expect(getSchemaVersion(first)).toBe(SCHEMA_VERSION);
 			expect(getSchemaVersion(second)).toBe(SCHEMA_VERSION);
@@ -348,7 +370,7 @@ describe("getSchemaVersion", () => {
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "codemem-test-"));
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 	});
 
 	afterEach(() => {
@@ -372,7 +394,7 @@ describe("assertSchemaReady", () => {
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "codemem-test-"));
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 	});
 
 	afterEach(() => {
@@ -381,9 +403,14 @@ describe("assertSchemaReady", () => {
 	});
 
 	it("bootstraps uninitialized writable schemas before asserting readiness", () => {
-		const uninitialized = new BetterSqlite3(join(tmpDir, "uninitialized.sqlite"));
+		const uninitialized = connect(join(tmpDir, "uninitialized.sqlite"));
 		try {
 			expect(getSchemaVersion(uninitialized)).toBe(0);
+			expect(() => assertSchemaReady(uninitialized)).toThrow(/not initialized/);
+			runDatabaseMigrations(uninitialized, {
+				dbPath: uninitialized.name,
+				backupAndVerify: verifyTestBackup,
+			});
 			expect(() => assertSchemaReady(uninitialized)).not.toThrow();
 			expect(getSchemaVersion(uninitialized)).toBe(SCHEMA_VERSION);
 			expect(tableExists(uninitialized, "memory_items")).toBe(true);
@@ -460,7 +487,7 @@ describe("tableExists", () => {
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "codemem-test-"));
-		db = connect(join(tmpDir, "test.sqlite"));
+		db = connectMigrated(join(tmpDir, "test.sqlite"));
 	});
 
 	afterEach(() => {
@@ -1042,8 +1069,8 @@ describe("ensureAdditiveSchemaCompatibility schema-compat gate", () => {
 
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "codemem-test-"));
-		// connect() bootstraps a full schema at user_version=SCHEMA_VERSION.
-		db = connect(join(tmpDir, "test.sqlite"));
+		// Start with a bootstrapped schema before the compatibility marker exists.
+		db = connectBootstrapped(join(tmpDir, "test.sqlite"));
 	});
 
 	afterEach(() => {
@@ -1175,7 +1202,7 @@ describe("ensureAdditiveSchemaCompatibility schema-compat gate", () => {
 		).toBe(1);
 		expect(appliedSchemaVersion(reopened)).toBe(SCHEMA_VERSION);
 		reopened.close();
-		db = connect(join(tmpDir, "replacement.sqlite"));
+		db = connectMigrated(join(tmpDir, "replacement.sqlite"));
 	});
 
 	it("upgrades a schema-v14 marker before using managed Project projections", () => {
@@ -1199,7 +1226,7 @@ describe("ensureAdditiveSchemaCompatibility schema-compat gate", () => {
 		expect(getSchemaVersion(previous)).toBe(SCHEMA_VERSION);
 		expect(appliedSchemaVersion(previous)).toBe(SCHEMA_VERSION);
 		previous.close();
-		db = connect(join(tmpDir, "replacement.sqlite"));
+		db = connectMigrated(join(tmpDir, "replacement.sqlite"));
 	});
 
 	it("repairs partially-created share operation tables before marking compatibility", () => {
@@ -1255,7 +1282,7 @@ describe("ensureAdditiveSchemaCompatibility schema-compat gate", () => {
 		).toBe(2);
 		expect(appliedSchemaVersion(partial)).toBe(SCHEMA_VERSION);
 		partial.close();
-		db = connect(join(tmpDir, "replacement.sqlite"));
+		db = connectMigrated(join(tmpDir, "replacement.sqlite"));
 	});
 
 	it("repairs a previously applied unique effect-id constraint", () => {
@@ -1527,21 +1554,39 @@ describe("migrateLegacyDbPath", () => {
 
 	it("moves a legacy file to the target path", () => {
 		const legacyPath = join(tmpDir, "legacy.sqlite");
-		const targetPath = join(tmpDir, "target", "mem.sqlite");
-		writeFileSync(legacyPath, "test-db-content");
+		const legacy = new BetterSqlite3(legacyPath);
+		legacy.exec("CREATE TABLE legacy_guard (value TEXT NOT NULL)");
+		legacy.close();
+		const layout = resolveStorageLayout(join(tmpDir, "target"));
 
-		// Monkey-patch the function to test with custom paths
-		// (migrateLegacyDbPath only runs for DEFAULT_DB_PATH, so we test moveWithSidecars logic directly)
-		// Instead, test that connect() picks up an existing file
-		expect(existsSync(legacyPath)).toBe(true);
-		expect(existsSync(targetPath)).toBe(false);
+		runLegacyMigration({
+			layout,
+			operationId: "legacy-test",
+			verifiedBackupPath: legacyPath,
+			verifiedBackupSha256: sha256File(legacyPath),
+		});
+
+		expect(readlinkSync(layout.currentPointerPath)).toBe("versions/legacy-test.sqlite");
+		expect(existsSync(join(layout.versionsDir, "legacy-test.sqlite"))).toBe(true);
 	});
 
 	it("skips migration when target already exists", () => {
-		// migrateLegacyDbPath returns early if target exists — no-op
-		const target = join(tmpDir, "existing.sqlite");
-		writeFileSync(target, "existing");
-		migrateLegacyDbPath(target);
-		expect(existsSync(target)).toBe(true);
+		const legacyPath = join(tmpDir, "legacy.sqlite");
+		const legacy = new BetterSqlite3(legacyPath);
+		legacy.exec("CREATE TABLE legacy_guard (value TEXT NOT NULL)");
+		legacy.close();
+		const layout = resolveStorageLayout(join(tmpDir, "target"));
+		const input = {
+			layout,
+			operationId: "legacy-first",
+			verifiedBackupPath: legacyPath,
+			verifiedBackupSha256: sha256File(legacyPath),
+		};
+		runLegacyMigration(input);
+
+		expect(() => runLegacyMigration({ ...input, operationId: "legacy-second" })).toThrow(
+			/existing current database pointer/,
+		);
+		expect(readlinkSync(layout.currentPointerPath)).toBe("versions/legacy-first.sqlite");
 	});
 });

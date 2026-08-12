@@ -1,12 +1,12 @@
 import { posix, win32 } from "node:path";
 import * as p from "@clack/prompts";
 import type {
-	Database,
 	MemoryFilters,
 	PackArtifacts,
 	PackTrace,
 	PromptPackAttemptMetadata,
 	RetrievalLedgerWriteOutcome,
+	WriterActor,
 } from "@codemem/core";
 import {
 	clonePromptPackAttempt,
@@ -210,7 +210,7 @@ function attemptMetadata(payload: InternalLedgerPayload): PromptPackAttemptMetad
 }
 
 export function handleInstrumentedPackLedger(
-	db: Database,
+	db: WriterActor,
 	payload: InternalLedgerPayload,
 	context: string,
 	filters: MemoryFilters | undefined,
@@ -456,7 +456,7 @@ packCmd.addCommand(traceCmd);
 
 export const packCommand = packCmd;
 
-export function handlePromptPackLedger(db: Database, payload: InternalLedgerPayload) {
+export function handlePromptPackLedger(db: WriterActor, payload: InternalLedgerPayload) {
 	const metadata = attemptMetadata(payload);
 	if (payload.action === "delivery") {
 		const status = payload.delivery_status;

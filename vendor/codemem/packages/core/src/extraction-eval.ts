@@ -1,10 +1,10 @@
-import { connect, resolveDbPath } from "./db.js";
 import type { ParsedOutput } from "./ingest-types.js";
 import {
 	inspectObserverResponseStructure,
 	type ObserverResponseStructuralDiagnostics,
 } from "./ingest-xml-parser.js";
 import { getSummaryMetadata, isSummaryLikeMemory } from "./summary-memory.js";
+import type { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 export type ExtractionStructuralDiagnostics = ObserverResponseStructuralDiagnostics;
 
@@ -323,7 +323,7 @@ export function evaluateSessionExtractionItems(
 }
 
 export function getSessionExtractionEval(
-	dbPath: string | undefined,
+	db: ReadOnlyActor | WriterActor,
 	opts:
 		| { sessionId: number; scenarioId: string; includeInactive?: boolean; batchId?: never }
 		| { sessionId?: never; scenarioId: string; includeInactive?: boolean; batchId: number },
@@ -332,13 +332,11 @@ export function getSessionExtractionEval(
 	if (!scenario) {
 		throw new Error(`Unknown session extraction eval scenario: ${opts.scenarioId}`);
 	}
-	const db = connect(resolveDbPath(dbPath));
-	try {
-		const batchRow =
-			"batchId" in opts
-				? (db
-						.prepare(
-							`SELECT
+	const batchRow =
+		"batchId" in opts
+			? (db
+					.prepare(
+						`SELECT
 								b.id,
 								b.opencode_session_id,
 								b.created_at,
@@ -349,50 +347,50 @@ export function getSessionExtractionEval(
 							   ON os.source = b.source
 							  AND os.stream_id = b.stream_id
 							 WHERE b.id = ?`,
-						)
-						.get(opts.batchId) as
-						| {
-								id: number;
-								opencode_session_id: string;
-								created_at: string;
-								updated_at: string;
-								session_id: number | null;
-						  }
-						| undefined)
-				: undefined;
-		if ("batchId" in opts && !batchRow) {
-			throw new Error(`Flush batch ${opts.batchId} not found`);
-		}
-		const sessionId = "batchId" in opts ? batchRow?.session_id : opts.sessionId;
-		if (sessionId == null) {
-			throw new Error(
-				`Flush batch ${opts.batchId} is not linked to a local session and cannot be evaluated yet`,
-			);
-		}
-		const sessionRow = db
-			.prepare(
-				`SELECT id, project, cwd, started_at, ended_at, metadata_json
+					)
+					.get(opts.batchId) as
+					| {
+							id: number;
+							opencode_session_id: string;
+							created_at: string;
+							updated_at: string;
+							session_id: number | null;
+					  }
+					| undefined)
+			: undefined;
+	if ("batchId" in opts && !batchRow) {
+		throw new Error(`Flush batch ${opts.batchId} not found`);
+	}
+	const sessionId = "batchId" in opts ? batchRow?.session_id : opts.sessionId;
+	if (sessionId == null) {
+		throw new Error(
+			`Flush batch ${opts.batchId} is not linked to a local session and cannot be evaluated yet`,
+		);
+	}
+	const sessionRow = db
+		.prepare(
+			`SELECT id, project, cwd, started_at, ended_at, metadata_json
 				 FROM sessions
 				 WHERE id = ?`,
-			)
-			.get(sessionId) as
-			| {
-					id: number;
-					project: string | null;
-					cwd: string;
-					started_at: string;
-					ended_at: string | null;
-					metadata_json: string | null;
-			  }
-			| undefined;
-		if (!sessionRow) {
-			throw new Error(`Session ${sessionId} not found`);
-		}
-		const rows = (
-			"batchId" in opts
-				? db
-						.prepare(
-							`SELECT id, kind, title, body_text, active, created_at, metadata_json
+		)
+		.get(sessionId) as
+		| {
+				id: number;
+				project: string | null;
+				cwd: string;
+				started_at: string;
+				ended_at: string | null;
+				metadata_json: string | null;
+		  }
+		| undefined;
+	if (!sessionRow) {
+		throw new Error(`Session ${sessionId} not found`);
+	}
+	const rows = (
+		"batchId" in opts
+			? db
+					.prepare(
+						`SELECT id, kind, title, body_text, active, created_at, metadata_json
 							 FROM memory_items
 							 WHERE session_id = ?
 							   AND (? = 1 OR active = 1)
@@ -401,62 +399,59 @@ export function getSessionExtractionEval(
 							     OR created_at BETWEEN ? AND ?
 							   )
 							 ORDER BY created_at ASC, id ASC`,
-						)
-						.all(
-							sessionId,
-							opts.includeInactive === true ? 1 : 0,
-							opts.batchId,
-							batchRow?.created_at,
-							batchRow?.updated_at,
-						)
-				: db
-						.prepare(
-							`SELECT id, kind, title, body_text, active, created_at, metadata_json
+					)
+					.all(
+						sessionId,
+						opts.includeInactive === true ? 1 : 0,
+						opts.batchId,
+						batchRow?.created_at,
+						batchRow?.updated_at,
+					)
+			: db
+					.prepare(
+						`SELECT id, kind, title, body_text, active, created_at, metadata_json
 							 FROM memory_items
 							 WHERE session_id = ? AND (? = 1 OR active = 1)
 							 ORDER BY created_at ASC, id ASC`,
-						)
-						.all(sessionId, opts.includeInactive === true ? 1 : 0)
-		) as Array<{
-			id: number;
-			kind: string;
-			title: string;
-			body_text: string;
-			active: number;
-			created_at: string;
-			metadata_json: string | null;
-		}>;
-		const sessionMetadata = getSummaryMetadata(sessionRow.metadata_json);
-		const post =
-			sessionMetadata.post &&
-			typeof sessionMetadata.post === "object" &&
-			!Array.isArray(sessionMetadata.post)
-				? (sessionMetadata.post as Record<string, unknown>)
-				: {};
-		const session = {
-			id: sessionRow.id,
-			project: sessionRow.project,
-			cwd: sessionRow.cwd,
-			startedAt: sessionRow.started_at,
-			endedAt: sessionRow.ended_at,
-			sessionClass: String(post.session_class ?? "unknown"),
-			summaryDisposition: String(post.summary_disposition ?? "unknown"),
-		};
-		const items = rows.map<SessionExtractionEvalItem>((row) => ({
-			id: row.id,
-			kind: row.kind,
-			title: row.title,
-			bodyText: row.body_text,
-			active: row.active === 1,
-			createdAt: row.created_at,
-			metadata: row.metadata_json,
-		}));
-		const target: SessionExtractionEvalTarget =
-			"batchId" in opts && typeof opts.batchId === "number"
-				? { type: "batch", sessionId, batchId: opts.batchId }
-				: { type: "session", sessionId };
-		return evaluateSessionExtractionItems(target, session, items, scenario);
-	} finally {
-		db.close();
-	}
+					)
+					.all(sessionId, opts.includeInactive === true ? 1 : 0)
+	) as Array<{
+		id: number;
+		kind: string;
+		title: string;
+		body_text: string;
+		active: number;
+		created_at: string;
+		metadata_json: string | null;
+	}>;
+	const sessionMetadata = getSummaryMetadata(sessionRow.metadata_json);
+	const post =
+		sessionMetadata.post &&
+		typeof sessionMetadata.post === "object" &&
+		!Array.isArray(sessionMetadata.post)
+			? (sessionMetadata.post as Record<string, unknown>)
+			: {};
+	const session = {
+		id: sessionRow.id,
+		project: sessionRow.project,
+		cwd: sessionRow.cwd,
+		startedAt: sessionRow.started_at,
+		endedAt: sessionRow.ended_at,
+		sessionClass: String(post.session_class ?? "unknown"),
+		summaryDisposition: String(post.summary_disposition ?? "unknown"),
+	};
+	const items = rows.map<SessionExtractionEvalItem>((row) => ({
+		id: row.id,
+		kind: row.kind,
+		title: row.title,
+		bodyText: row.body_text,
+		active: row.active === 1,
+		createdAt: row.created_at,
+		metadata: row.metadata_json,
+	}));
+	const target: SessionExtractionEvalTarget =
+		"batchId" in opts && typeof opts.batchId === "number"
+			? { type: "batch", sessionId, batchId: opts.batchId }
+			: { type: "session", sessionId };
+	return evaluateSessionExtractionItems(target, session, items, scenario);
 }

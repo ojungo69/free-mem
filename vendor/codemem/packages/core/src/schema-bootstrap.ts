@@ -798,10 +798,8 @@ function columnExists(db: Database, table: string, column: string): boolean {
 }
 
 /**
- * Run `bootstrapSchema` on a database only if it's still at the unbootstrapped
- * state (`user_version === 0`). `connect()` now calls this by default for
- * writable handles, but explicit callers may still use it directly. Idempotent:
- * already-initialized databases are left untouched.
+ * Test/internal compatibility helper. Production bootstrap is owned by the
+ * explicit migration runner and never runs from `connect()` or an assertion.
  */
 export function ensureSchemaBootstrapped(db: Database): void {
 	if (!isReadonlyDatabase(db) && canAutoBootstrapSchema(db)) {

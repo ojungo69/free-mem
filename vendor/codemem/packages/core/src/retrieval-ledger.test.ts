@@ -3159,13 +3159,16 @@ describe("retrieval ledger data boundaries", () => {
 		try {
 			seed(legacy);
 			removeDeletedAtForLegacyLedgerSchema(legacy);
+			legacy.exec("DELETE FROM schema_compat_state");
 		} finally {
 			legacy.close();
 		}
 
 		let store: MemoryStore | undefined;
 		try {
-			store = new MemoryStore(dbPath);
+			store = new MemoryStore(dbPath, {
+				backupAndVerify: () => ({ verified: true, evidence: "legacy-ledger-test-backup" }),
+			});
 			expect(
 				store.db
 					.prepare("SELECT name FROM pragma_table_info('memory_items') WHERE name = 'deleted_at'")
@@ -3204,6 +3207,7 @@ describe("retrieval ledger data boundaries", () => {
 		const db = new Database(dbPath);
 		try {
 			seed(db);
+			db.exec("DELETE FROM schema_compat_state");
 			db.pragma("user_version = 16");
 			db.exec(`
 				DROP TABLE attribution_assessment_evidence;

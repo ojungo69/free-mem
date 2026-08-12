@@ -99,7 +99,8 @@ T053–T057 の harness runner 骨格（assert 内容と判定条件は Claude C
 
 ### daemon 本体
 
-- [ ] T033 writer actor + migration 分離（判断 #15）+ audited wrapper 一本化 + trace 内蔵 + storage layout（判断 #16、platform interface module 含む）+ legacy migration runner 実装（実行は T051）。raw Database 非 export。前提: T029
+- [X] T033 writer actor + migration 分離（判断 #15）+ audited wrapper 一本化 + trace 内蔵 + storage layout（判断 #16、platform interface module 含む）+ legacy migration runner 実装（実行は T051）。raw Database 非 export。前提: T029
+  - 実装証拠: `vendor/codemem/packages/core/src/writer-actor.ts` (`WriterActor` / `ReadOnlyActor`)、`vendor/codemem/packages/core/src/migration-runner.ts` (`runDatabaseMigrations`)、`vendor/codemem/packages/core/src/storage.ts` (`runLegacyMigration` / `recoverStorageJournal`)、`vendor/codemem/packages/core/src/storage-platform.ts`、`vendor/codemem/packages/core/src/daemon-foundation.test.ts` (P1-T033-01..04)
 - [ ] T034 daemon lifecycle: entrypoint + lock.db BEGIN EXCLUSIVE lock + force-kill identity 契約（判断 #14）+ clean shutdown/force-kill fallback + data_dir 単位 + Unix socket（0700/0600）+ health + data_dir preflight（network fs / WSL⇔Windows 共有 path 拒否）
 - [ ] T035 RPC 基盤: socket server + §7.5 handshake + schema allowlist + §8.7 size bound + typed error + §19.6 version 管理 + RPC hard deadline + health/doctor/backup endpoint（T050 が使う最小面）。viewer createApp seam 再利用
 - [ ] T036 mutation dispatcher 有効化: receipt schema migration（backup verify 後に 1 回）→ 共有 dispatcher（class A、判断 #11）+ 残り全 endpoint（events, events/batch, context/pack, search, memories/:id, memories/record, checkpoints + export/import + maintenance trigger + viewer read 系）。前提: T050

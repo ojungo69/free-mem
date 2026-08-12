@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Database, type OperationalStatusSnapshot, VERSION } from "@codemem/core";
+import { type OperationalStatusSnapshot, type ReadOnlyActor, VERSION } from "@codemem/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	boundAttention,
@@ -36,7 +36,7 @@ function harness(
 			},
 		),
 	);
-	const fakeDb = { close: vi.fn() } as unknown as Database;
+	const fakeDb = { close: vi.fn() } as unknown as ReadOnlyActor;
 	const { snapshot = healthySnapshot, ...deps } = overrides;
 	const command = createStatusCommand({
 		now: () => new Date("2026-08-11T12:00:00.000Z"),
@@ -122,7 +122,7 @@ describe("status command", () => {
 		const { command, stdout, stderr } = harness({
 			connectReadOnly: (_path, options) => {
 				options?.warn?.("newer schema compatibility warning");
-				return { close } as unknown as Database;
+				return { close } as unknown as ReadOnlyActor;
 			},
 		});
 
@@ -232,7 +232,7 @@ describe("status command", () => {
 	it("emits one structured error and exits one on collection failure", async () => {
 		const close = vi.fn();
 		const { command, stdout, stderr, exitCodes } = harness({
-			connectReadOnly: () => ({ close }) as unknown as Database,
+			connectReadOnly: () => ({ close }) as unknown as ReadOnlyActor,
 			collectDatabase: () => {
 				throw new Error("sensitive database failure");
 			},
