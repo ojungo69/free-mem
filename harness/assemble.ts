@@ -1,4 +1,5 @@
 import { readdir, readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -10,6 +11,11 @@ import {
   type EventKind,
   type ToolFailurePhase,
 } from "./schema/capability.ts";
+
+// JSON Schema は「置いてあるだけ」にせず、キー集合の正本として実際に読む
+const SCHEMA = JSON.parse(
+  readFileSync(new URL("./schema/capability.schema.json", import.meta.url), "utf8"),
+) as { properties?: Record<string, any> };
 
 const EVENT_KIND_SET = new Set<string>(EVENT_KINDS);
 const TOOL_FAILURE_PHASE_SET = new Set<string>(TOOL_FAILURE_PHASES);
@@ -106,9 +112,25 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   if (!isObject(data.rig)) {
     errs.push("rig must be object");
   } else {
-    if (typeof data.rig.isolated !== "boolean") errs.push("rig.isolated must be boolean");
+    // 隔離 rig 外で取った capture を real-cli-e2e として matrix に載せない
+    if (data.rig.isolated !== true) errs.push("rig.isolated must be true (隔離 rig 外の capture は採用しない)");
     if (typeof data.rig.internalRunMarker !== "boolean") {
       errs.push("rig.internalRunMarker must be boolean");
+    }
+  }
+
+  // JSON Schema と手書き検証の drift 防止: schema が知らないキーは弾く
+  const known = new Set(Object.keys(SCHEMA.properties ?? {}));
+  for (const k of Object.keys(data)) {
+    if (!known.has(k)) errs.push(`unknown top-level key (capability.schema.json 未定義): ${k}`);
+  }
+  const evKnown = new Set(Object.keys(SCHEMA.properties?.observedEvents?.items?.properties ?? {}));
+  if (Array.isArray(data.observedEvents)) {
+    for (const [i, ev] of data.observedEvents.entries()) {
+      if (!isObject(ev)) continue;
+      for (const k of Object.keys(ev)) {
+        if (!evKnown.has(k)) errs.push(`observedEvents[${i}]: unknown key (schema 未定義): ${k}`);
+      }
     }
   }
 
@@ -125,7 +147,12 @@ export interface AssembledMatrix {
   generatedAt: string;
   fixtureCount: number;
   fixtureIds: string[];
+  fixtureLimitations: string[]; // fixture 単位の caveat（cell に紐づかないもの）
   capabilities: AdapterCapabilities;
+}
+
+function dedupe(xs: string[]): string[] {
+  return [...new Set(xs)];
 }
 
 export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatrix {
@@ -148,6 +175,14 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
 
   const capabilities = emptyMatrix(nativeVersion);
   const phaseSet = new Set<ToolFailurePhase>();
+  const fixtureLimitations: string[] = [];
+  const HIGH_LEVEL_KEYS = [
+    "sessionStartInjection",
+    "promptAwareInjection",
+    "trueSessionEnd",
+    "subagentCapture",
+    "stableNativeSessionId",
+  ] as const;
 
   for (const f of fixtures) {
     for (const ev of f.observedEvents) {
@@ -155,23 +190,59 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       const kind = ev.kind as EventKind;
       const prev = capabilities.capture[kind];
       // native は synthesized に降格させない（別 fixture で native 観測済みなら維持）
-      if (prev.value === "native" && ev.capability === "synthesized") continue;
+      const demoting = prev.value === "native" && ev.capability === "synthesized";
+      // limitations / sourceEvents は上書きせず統合する（後勝ちで caveat を消さない）
+      const mergedLimits = dedupe([
+        ...(prev.value === "unknown" ? [] : prev.limitations),
+        ...(ev.limitations ?? []),
+      ]);
+      const mergedSources = dedupe([
+        ...(prev.value === "unknown" ? [] : prev.sourceEvents),
+        ...(ev.sourceEvents ?? []),
+      ]);
+      if (demoting) {
+        capabilities.capture[kind] = { ...prev, limitations: mergedLimits, sourceEvents: mergedSources };
+        continue;
+      }
+      const coverage = ev.coverage ?? (prev.value !== "unknown" ? prev.coverage : undefined);
       capabilities.capture[kind] = {
         value: ev.capability ?? "native",
-        sourceEvents: ev.sourceEvents ?? [],
+        sourceEvents: mergedSources,
         nativeVersion,
         evidenceKind: "real-cli-e2e",
         verifiedAt: f.capturedAt,
-        limitations: ev.limitations ?? [],
-        ...(ev.coverage !== undefined ? { coverage: ev.coverage } : {}),
+        limitations: mergedLimits,
+        ...(coverage !== undefined ? { coverage } : {}),
       };
     }
     for (const p of f.toolFailurePhasesObserved) {
       phaseSet.add(p);
     }
+    for (const l of f.limitations ?? []) fixtureLimitations.push(`[${f.fixtureId}] ${l}`);
+
+    // 高位 cell: fixture が観測結果を書いている場合のみ unknown を上書きする
+    const hl = f.highLevel;
+    if (hl) {
+      for (const key of HIGH_LEVEL_KEYS) {
+        const v = hl[key];
+        if (!v) continue;
+        capabilities[key] = {
+          value: v === "unsupported" ? "unsupported" : v,
+          sourceEvents: [],
+          nativeVersion,
+          evidenceKind: "real-cli-e2e",
+          verifiedAt: f.capturedAt,
+          limitations: [`observed in ${f.fixtureId}`],
+        };
+      }
+      if (hl.compactionRecoveryStrategy) {
+        capabilities.compactionRecoveryStrategy = hl.compactionRecoveryStrategy;
+      }
+    }
   }
 
   capabilities.toolFailurePhases = TOOL_FAILURE_PHASES.filter((p) => phaseSet.has(p));
+  capabilities.toolFailurePhasesUntested = TOOL_FAILURE_PHASES.filter((p) => !phaseSet.has(p));
 
   return {
     cli,
@@ -179,6 +250,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     generatedAt: new Date().toISOString(),
     fixtureCount: fixtures.length,
     fixtureIds: fixtures.map((f) => f.fixtureId),
+    fixtureLimitations,
     capabilities,
   };
 }

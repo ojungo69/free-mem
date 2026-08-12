@@ -2,17 +2,47 @@
   "fixtureId": "codex/injection",
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "capturedAt": "2026-08-12T11:17:40.000Z",
+  "capturedAt": "2026-08-12T11:16:43.112Z",
   "scenario": "SessionStart / UserPromptSubmit hook の stdout による context 注入を実証",
   "observedEvents": [
-    { "kind": "session_started", "capability": "native", "sourceEvents": ["SessionStart"] },
-    { "kind": "user_prompted", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
-    { "kind": "turn_completed", "capability": "native", "sourceEvents": ["Stop"] },
-    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"] }
+    {
+      "kind": "session_started",
+      "capability": "native",
+      "sourceEvents": [
+        "SessionStart"
+      ]
+    },
+    {
+      "kind": "user_prompted",
+      "capability": "native",
+      "sourceEvents": [
+        "UserPromptSubmit"
+      ]
+    },
+    {
+      "kind": "turn_completed",
+      "capability": "native",
+      "sourceEvents": [
+        "Stop"
+      ]
+    },
+    {
+      "kind": "session_ended",
+      "capability": "native",
+      "sourceEvents": [
+        "SessionEnd"
+      ]
+    }
   ],
   "toolFailurePhasesObserved": [],
   "limitations": [
     "注入実証: hook stdout の token `RIG_INJECT_5f3a9` を子セッションが逐語で復唱（real-cli-e2e 証跡）。Claude Code と同じく session 開始時点の注入が届く"
   ],
-  "rig": { "isolated": true, "internalRunMarker": true }
+  "rig": {
+    "isolated": true,
+    "internalRunMarker": true
+  },
+  "highLevel": {
+    "sessionStartInjection": "native"
+  }
 }

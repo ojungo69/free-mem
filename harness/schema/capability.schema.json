@@ -16,17 +16,37 @@
     "rig"
   ],
   "properties": {
-    "fixtureId": { "type": "string", "minLength": 1 },
-    "cli": { "type": "string", "enum": ["claude", "codex"] },
-    "nativeVersion": { "type": "string", "minLength": 1 },
-    "capturedAt": { "type": "string", "minLength": 1 },
-    "scenario": { "type": "string", "minLength": 1 },
+    "fixtureId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cli": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "nativeVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capturedAt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario": {
+      "type": "string",
+      "minLength": 1
+    },
     "observedEvents": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "properties": {
           "kind": {
             "type": "string",
@@ -47,17 +67,57 @@
             ]
           },
           "raw": true,
-          "at": { "type": "string" },
-          "capability": { "type": "string", "enum": ["native", "synthesized"] },
-          "sourceEvents": { "type": "array", "items": { "type": "string" } },
-          "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
-          "limitations": { "type": "array", "items": { "type": "string" } }
+          "at": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string",
+            "enum": [
+              "native",
+              "synthesized"
+            ]
+          },
+          "sourceEvents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         },
         "allOf": [
           {
             "comment": "§7.2: synthesized は根拠 native event の明示が必須",
-            "if": { "properties": { "capability": { "const": "synthesized" } }, "required": ["capability"] },
-            "then": { "required": ["sourceEvents"], "properties": { "sourceEvents": { "minItems": 1 } } }
+            "if": {
+              "properties": {
+                "capability": {
+                  "const": "synthesized"
+                }
+              },
+              "required": [
+                "capability"
+              ]
+            },
+            "then": {
+              "required": [
+                "sourceEvents"
+              ],
+              "properties": {
+                "sourceEvents": {
+                  "minItems": 1
+                }
+              }
+            }
           }
         ]
       }
@@ -78,15 +138,81 @@
     },
     "limitations": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "rig": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["isolated", "internalRunMarker"],
+      "required": [
+        "isolated",
+        "internalRunMarker"
+      ],
       "properties": {
-        "isolated": { "type": "boolean" },
-        "internalRunMarker": { "type": "boolean" }
+        "isolated": {
+          "type": "boolean",
+          "const": true
+        },
+        "internalRunMarker": {
+          "type": "boolean"
+        }
+      }
+    },
+    "highLevel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sessionStartInjection": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "promptAwareInjection": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "trueSessionEnd": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "subagentCapture": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "stableNativeSessionId": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "compactionRecoveryStrategy": {
+          "type": "string",
+          "enum": [
+            "native_pre_and_post",
+            "native_pre_next_prompt",
+            "session_compaction_event",
+            "turn_checkpoint_detect_reset",
+            "unsupported"
+          ]
+        }
       }
     }
   }

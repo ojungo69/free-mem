@@ -2,19 +2,64 @@
   "fixtureId": "codex/lifecycle-basic",
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "capturedAt": "2026-08-12T11:15:10.000Z",
+  "capturedAt": "2026-08-12T11:16:08.730Z",
   "scenario": "codex exec --json --dangerously-bypass-hook-trust の最小 run で hook lifecycle を観測",
   "observedEvents": [
-    { "kind": "session_started", "capability": "native", "sourceEvents": ["SessionStart"] },
-    { "kind": "user_prompted", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
-    { "kind": "assistant_completed", "capability": "synthesized", "sourceEvents": ["Stop"], "limitations": ["Stop.last_assistant_message から復元"] },
-    { "kind": "turn_completed", "capability": "native", "sourceEvents": ["Stop"], "limitations": ["Stop payload に turn_id があり turn 境界が native に識別できる（Claude 側には無い）"] },
-    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"], "limitations": ["reason は正常終了でも 'other'"] }
+    {
+      "kind": "session_started",
+      "capability": "native",
+      "sourceEvents": [
+        "SessionStart"
+      ]
+    },
+    {
+      "kind": "user_prompted",
+      "capability": "native",
+      "sourceEvents": [
+        "UserPromptSubmit"
+      ]
+    },
+    {
+      "kind": "assistant_completed",
+      "capability": "synthesized",
+      "sourceEvents": [
+        "Stop"
+      ],
+      "limitations": [
+        "Stop.last_assistant_message から復元"
+      ]
+    },
+    {
+      "kind": "turn_completed",
+      "capability": "native",
+      "sourceEvents": [
+        "Stop"
+      ],
+      "limitations": [
+        "Stop payload に `turn_id` があり turn 境界が native に識別できる。[2026-08-12 訂正: 『Claude 側には無い』は誤り — Claude は UserPromptSubmit/Stop/SessionEnd が同一 `prompt_id` を共有しており turn 対応付けは可能。差は id の名称と、Codex の SessionEnd には turn_id が無い点]"
+      ]
+    },
+    {
+      "kind": "session_ended",
+      "capability": "native",
+      "sourceEvents": [
+        "SessionEnd"
+      ],
+      "limitations": [
+        "reason は正常終了でも 'other'"
+      ]
+    }
   ],
   "toolFailurePhasesObserved": [],
   "limitations": [
     "config は features.hooks=true + [[hooks.X]] 形式が必須（トップレベル `hooks = true` は同名衝突で config 全体が parse error になる — rig で実証）",
     "CODEX_HOME を /tmp 配下に置くと PATH alias 作成を拒否する警告が出るが、実行自体は継続する"
   ],
-  "rig": { "isolated": true, "internalRunMarker": true }
+  "rig": {
+    "isolated": true,
+    "internalRunMarker": true
+  },
+  "highLevel": {
+    "sessionStartInjection": "native"
+  }
 }

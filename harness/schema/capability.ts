@@ -16,12 +16,15 @@ export type Capability = "native" | "synthesized" | "unsupported" | "unknown";
 
 export interface CapabilityEvidence {
   value: Capability;
+  // 未観測 cell は evidenceKind / verifiedAt を持たない（観測していないものに
+  // 証跡種別と検証時刻を書くと provenance の捏造になる）。§7.2 の型は必須だが、
+  // 本 harness では value==="unknown" のとき null を明示する。
   coverage?: number; // 既知の欠落があるcapabilityの被覆率
   sourceEvents: string[]; // synthesized時の根拠native event
   nativeVersion: string; // 検証したexact CLI version
   sourceCommit?: string;
-  evidenceKind: "official-doc" | "source-test" | "real-cli-e2e";
-  verifiedAt: string;
+  evidenceKind: "official-doc" | "source-test" | "real-cli-e2e" | null;
+  verifiedAt: string | null;
   limitations: string[];
 }
 
@@ -42,10 +45,15 @@ export type CompactionRecoveryStrategy =
 
 export interface AdapterCapabilities {
   capture: Record<EventKind, CapabilityEvidence>;
+  // 観測できた phase と、観測を試みていない phase を区別する（前者だけを並べると
+  // 「サポートしていない」と読めてしまうため）
   toolFailurePhases: ToolFailurePhase[];
+  toolFailurePhasesUntested: ToolFailurePhase[];
   sessionStartInjection: CapabilityEvidence;
   promptAwareInjection: CapabilityEvidence;
-  compactionRecoveryStrategy: CompactionRecoveryStrategy;
+  // §7.2 の union に "unknown" が無いため、未観測を表現できるよう null を許す
+  // （"unsupported" と書くと未計測を否定的事実として断定してしまう）
+  compactionRecoveryStrategy: CompactionRecoveryStrategy | null;
   trueSessionEnd: CapabilityEvidence;
   subagentCapture: CapabilityEvidence;
   stableNativeSessionId: CapabilityEvidence;
@@ -70,6 +78,15 @@ export interface CaptureFixture {
   toolFailurePhasesObserved: ToolFailurePhase[];
   limitations: string[];
   rig: { isolated: boolean; internalRunMarker: boolean }; // 隔離 rig 下で取ったか
+  // 高位 cell の観測結果（観測できた fixture だけが書く。書かなければ unknown のまま）
+  highLevel?: Partial<{
+    sessionStartInjection: "native" | "synthesized" | "unsupported";
+    promptAwareInjection: "native" | "synthesized" | "unsupported";
+    compactionRecoveryStrategy: CompactionRecoveryStrategy;
+    trueSessionEnd: "native" | "synthesized" | "unsupported";
+    subagentCapture: "native" | "synthesized" | "unsupported";
+    stableNativeSessionId: "native" | "synthesized" | "unsupported";
+  }>;
 }
 
 export const EVENT_KINDS: readonly EventKind[] = [
@@ -101,8 +118,8 @@ export function unknownEvidence(nativeVersion: string): CapabilityEvidence {
     value: "unknown",
     sourceEvents: [],
     nativeVersion,
-    evidenceKind: "real-cli-e2e",
-    verifiedAt: new Date().toISOString(),
+    evidenceKind: null,
+    verifiedAt: null,
     limitations: ["not observed in Phase 0B"],
   };
 }
@@ -115,9 +132,10 @@ export function emptyMatrix(nativeVersion: string): AdapterCapabilities {
   return {
     capture,
     toolFailurePhases: [],
+    toolFailurePhasesUntested: [],
     sessionStartInjection: unknownEvidence(nativeVersion),
     promptAwareInjection: unknownEvidence(nativeVersion),
-    compactionRecoveryStrategy: "unsupported",
+    compactionRecoveryStrategy: null,
     trueSessionEnd: unknownEvidence(nativeVersion),
     subagentCapture: unknownEvidence(nativeVersion),
     stableNativeSessionId: unknownEvidence(nativeVersion),

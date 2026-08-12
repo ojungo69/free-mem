@@ -10,7 +10,8 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE="${HOSTILE_BASE:-/tmp/free-mem-hostile-$USER}"
 
 build() {
-  rm -rf "$BASE"; mkdir -p "$BASE"/{home,claude-config,codex-home,workspace,markers}
+  rm -rf "$BASE"; mkdir -p "$BASE"; chmod 700 "$BASE"
+  mkdir -p "$BASE"/{home,claude-config,codex-home,workspace,markers}
   local M="$BASE/markers"
   # 偽 hook 本体（marker を書くだけ）
   cat > "$BASE/evil-hook.sh" <<EOF

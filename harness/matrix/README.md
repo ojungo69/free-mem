@@ -22,7 +22,7 @@
 | tool_started | native | native | PreToolUse |
 | tool_completed | native | native | PostToolUse |
 | tool_failed | synthesized | synthesized | **挙動が逆**: Claude は失敗時 PostToolUse を発火せず（2 回再現）、Codex は発火するが payload は `tool_response: ""` のみで成功と区別不能 |
-| turn_completed | synthesized | **native** | Codex の Stop payload には `turn_id` があり turn 境界が native に取れる。Claude には無い |
+| turn_completed | synthesized | **native** | Codex の Stop payload には `turn_id` がある。**Claude も turn 対応付け自体は可能**（UserPromptSubmit / Stop / SessionEnd が同一 `prompt_id` を共有。生 capture で確認）。差は id の名称と、Codex の SessionEnd には turn_id が無い点。[2026-08-12 訂正: 初版の「Claude には無い」は誤り] |
 | pre_compact / post_compact | unknown | unknown | 本 Phase では未観測（compact を発火させる長時間セッションが必要） |
 | session_idle | unknown | unknown | 未観測 |
 | session_interrupted | synthesized | unknown | Claude は「Stop 無しで SessionEnd」パターンで合成可能（SIGINT 実測）。Codex は未観測 |
@@ -33,11 +33,17 @@
 **Tier A は宣言しない**（v6.1 §29 Phase 0B の明示要件 + HI-23）。未観測 cell は `unknown` のままであり、
 本 matrix は「観測できたものだけを証跡付きで確定した」ものである。
 
-高位 cell（`sessionStartInjection` / `promptAwareInjection` / `compactionRecoveryStrategy` /
-`trueSessionEnd` / `subagentCapture` / `stableNativeSessionId`）は assembler が自動推定せず `unknown`
-のままにしてある（判定は Phase 4 の vertical route 実装時に、実運用要件と突き合わせて行う）。ただし
-注入については両 CLI とも **hook stdout の token を子セッションが逐語復唱する** ことを実測しており
-（`fixtures/*/injection*.json`）、Phase 4 の判定材料は取得済み。
+高位 cell は fixture が `highLevel` で観測結果を明記したものだけを反映する（推定はしない）。実測で
+確定したのは Claude の `sessionStartInjection` / `subagentCapture` / `stableNativeSessionId`（= native）
+と Codex の `sessionStartInjection`（= native）で、残りは `unknown` のまま。`compactionRecoveryStrategy`
+は §7.2 の union に "unknown" が無いため **null**（未計測）とし、`unsupported` とは書かない — 未計測を
+否定的事実として断定しないため。
+
+未観測 cell は `evidenceKind: null` / `verifiedAt: null` を持つ。観測していない cell に証跡種別と
+検証時刻を書くと provenance の捏造になるため、埋めない（初版は組立時刻を書いていた。2026-08-12 訂正）。
+
+`toolFailurePhases` は観測できた phase、`toolFailurePhasesUntested` は試していない phase。前者だけを
+見て「非対応」と読まないための対。fixture 単位の caveat は `fixtureLimitations` に全件保持する。
 
 ## 未観測を埋めるための追試（将来）
 

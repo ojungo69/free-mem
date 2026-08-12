@@ -2,17 +2,46 @@
   "fixtureId": "codex/tool-lifecycle-and-failure",
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "capturedAt": "2026-08-12T11:16:28.000Z",
+  "capturedAt": "2026-08-12T11:16:22.570Z",
   "scenario": "shell tool の成功実行と非ゼロ終了（`false`）を別 run で観測し、PostToolUse payload を比較",
   "observedEvents": [
-    { "kind": "session_started", "capability": "native", "sourceEvents": ["SessionStart"] },
-    { "kind": "user_prompted", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
-    { "kind": "tool_started", "capability": "native", "sourceEvents": ["PreToolUse"], "limitations": ["payload に tool_use_id / turn_id / tool_input あり"] },
-    { "kind": "tool_completed", "capability": "native", "sourceEvents": ["PostToolUse"] },
+    {
+      "kind": "session_started",
+      "capability": "native",
+      "sourceEvents": [
+        "SessionStart"
+      ]
+    },
+    {
+      "kind": "user_prompted",
+      "capability": "native",
+      "sourceEvents": [
+        "UserPromptSubmit"
+      ]
+    },
+    {
+      "kind": "tool_started",
+      "capability": "native",
+      "sourceEvents": [
+        "PreToolUse"
+      ],
+      "limitations": [
+        "payload に tool_use_id / turn_id / tool_input あり"
+      ]
+    },
+    {
+      "kind": "tool_completed",
+      "capability": "native",
+      "sourceEvents": [
+        "PostToolUse"
+      ]
+    },
     {
       "kind": "tool_failed",
       "capability": "synthesized",
-      "sourceEvents": ["PostToolUse"],
+      "sourceEvents": [
+        "PostToolUse"
+      ],
       "coverage": 0.5,
       "limitations": [
         "**Codex は tool 失敗時も PostToolUse を発火する**（Claude Code とは逆の挙動）。ただし payload に exit code / error フィールドは無く、成功時 tool_response=\"rigtool\\n\" に対し失敗時 tool_response=\"\" という違いしかない",
@@ -20,10 +49,29 @@
         "failurePhase の直接判別は不可"
       ]
     },
-    { "kind": "turn_completed", "capability": "native", "sourceEvents": ["Stop"] },
-    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"] }
+    {
+      "kind": "turn_completed",
+      "capability": "native",
+      "sourceEvents": [
+        "Stop"
+      ]
+    },
+    {
+      "kind": "session_ended",
+      "capability": "native",
+      "sourceEvents": [
+        "SessionEnd"
+      ]
+    }
   ],
-  "toolFailurePhasesObserved": ["executed"],
-  "limitations": ["permission_denied / schema_invalid / unknown_tool は未観測（rig は approval_policy=never / sandbox 指定で deny 分岐に到達しない）"],
-  "rig": { "isolated": true, "internalRunMarker": true }
+  "toolFailurePhasesObserved": [
+    "executed"
+  ],
+  "limitations": [
+    "permission_denied / schema_invalid / unknown_tool は未観測（rig は approval_policy=never / sandbox 指定で deny 分岐に到達しない）"
+  ],
+  "rig": {
+    "isolated": true,
+    "internalRunMarker": true
+  }
 }

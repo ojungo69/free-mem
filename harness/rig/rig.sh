@@ -7,7 +7,8 @@
 #   - capture 専用 hook のみを配線
 #   - 使い捨て git workspace (実 repo に触れない)
 #   - AGENT_MEMORY_INTERNAL_RUN=1 (§13.6 marker; 将来の adapter は capture 対象外にする)
-#   - 資格情報ファイルのみ scratch へコピー (子 CLI の認証に必要。teardown で削除)
+#   - 資格情報ファイルのみ scratch へコピー (子 CLI の認証に必要)。コピーは 1 回の実行中だけ
+#     置かれ、EXIT/INT/TERM の trap で必ず消える (teardown 待ちで /tmp に残さない)
 #
 # 使い方:
 #   rig.sh setup                     # RIG_BASE を作る (env RIG_BASE で場所指定可)
@@ -21,18 +22,26 @@ RIG_BASE="${RIG_BASE:-/tmp/free-mem-rig-$USER}"
 HOOK="$DIR/capture-hook.sh"
 CLAUDE_BIN="${CLAUDE_BIN:-$(command -v claude || true)}"
 CODEX_BIN="${CODEX_BIN:-$(command -v codex || true)}"
-NODE_DIR="$(dirname "$(command -v node)")"
+NODE_BIN="$(command -v node || true)"
+[ -n "$NODE_BIN" ] || { echo "node not found on PATH — refusing to run (PATH に '.' が混ざる事故を防ぐ)" >&2; exit 3; }
+NODE_DIR="$(dirname "$NODE_BIN")"
+
+# 資格情報コピーは必ず消す。teardown を呼び忘れても、異常終了しても残さない。
+purge_credentials() {
+  rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json" 2>/dev/null || true
+}
+trap purge_credentials EXIT INT TERM
+
+# 資格情報は「その 1 回の子 CLI 実行の間だけ」置く（trap で必ず消える）。
+stage_credentials() {
+  [ -f "$HOME/.claude/.credentials.json" ] && install -m 600 "$HOME/.claude/.credentials.json" "$RIG_BASE/claude-config/.credentials.json"
+  [ -f "$HOME/.codex/auth.json" ] && install -m 600 "$HOME/.codex/auth.json" "$RIG_BASE/codex-home/auth.json"
+  return 0
+}
 
 setup() {
   mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"
   mkdir -p "$RIG_BASE"/{home,claude-config,codex-home,workspace,capture}
-  # 資格情報 (認証済み子 CLI に必須。他の設定は一切持ち込まない)
-  if [ -f "$HOME/.claude/.credentials.json" ]; then
-    install -m 600 "$HOME/.claude/.credentials.json" "$RIG_BASE/claude-config/.credentials.json"
-  fi
-  if [ -f "$HOME/.codex/auth.json" ]; then
-    install -m 600 "$HOME/.codex/auth.json" "$RIG_BASE/codex-home/auth.json"
-  fi
   sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json" > "$RIG_BASE/claude-config/settings.json"
   sed "s|__HOOK__|$HOOK|g" "$DIR/codex-config-template.toml" > "$RIG_BASE/codex-home/config.toml"
   if [ ! -d "$RIG_BASE/workspace/.git" ]; then
@@ -64,6 +73,7 @@ claude_run() {
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/claude-$label.jsonl"
   : > "$capture"
+  stage_credentials
   { "$CLAUDE_BIN" --version; } > "$RIG_BASE/capture/claude-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
     run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
@@ -78,6 +88,7 @@ codex_run() {
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/codex-$label.jsonl"
   : > "$capture"
+  stage_credentials
   { "$CODEX_BIN" --version; } > "$RIG_BASE/capture/codex-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
     run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
