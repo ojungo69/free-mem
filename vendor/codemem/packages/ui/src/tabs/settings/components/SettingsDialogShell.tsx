@@ -16,7 +16,7 @@ export interface SettingsDialogShellProps {
 export function SettingsDialogShell({ DialogContent, onClose }: SettingsDialogShellProps) {
 	const [open, setOpen] = useState(settingsState.open);
 	const [activeTab, setActiveTabState] = useState<SettingsTabId>(
-		["observer", "queue", "sync"].includes(settingsState.activeTab)
+		["observer", "queue"].includes(settingsState.activeTab)
 			? (settingsState.activeTab as SettingsTabId)
 			: "observer",
 	);
@@ -37,7 +37,7 @@ export function SettingsDialogShell({ DialogContent, onClose }: SettingsDialogSh
 				setTooltip({ anchor: null, content: "", visible: false });
 			},
 			setActiveTab: (tab) => {
-				const nextTab = ["observer", "queue", "sync"].includes(tab) ? tab : "observer";
+				const nextTab = ["observer", "queue"].includes(tab) ? tab : "observer";
 				settingsState.activeTab = nextTab;
 				setActiveTabState(nextTab);
 			},
@@ -91,7 +91,6 @@ export function SettingsDialogShell({ DialogContent, onClose }: SettingsDialogSh
 		<>
 			<RadixDialog
 				ariaDescribedby="settingsDescription"
-				ariaLabelledby="settingsTitle"
 				contentClassName="modal"
 				contentId="settingsModal"
 				onCloseAutoFocus={(event) => {

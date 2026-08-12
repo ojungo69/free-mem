@@ -22,11 +22,6 @@ import {
 import { buildFilterClausesWithContext, type OwnershipFilterContext } from "./filters.js";
 import { getMaintenanceJob } from "./maintenance-jobs.js";
 import { projectClause } from "./project.js";
-/** Local-only shape retained after sync carve-out for vector maintenance helpers. */
-export interface ReplicationVectorWork {
-	upsertMemoryIds: number[];
-	deleteMemoryIds: number[];
-}
 
 import type { MemoryFilters } from "./types.js";
 
@@ -186,12 +181,6 @@ export interface BackfillVectorsOptions {
 	signal?: AbortSignal;
 }
 
-export interface ReplicationVectorMaintenanceResult {
-	deleted: number;
-	inserted: number;
-	errors: string[];
-}
-
 export type SemanticIndexState = "healthy" | "pending" | "failed" | "degraded";
 
 export interface SemanticIndexDiagnostics {
@@ -332,9 +321,9 @@ function summarizeSemanticIndexState(
 	}
 	if (state === "degraded") {
 		if (isEmbeddingDisabled()) {
-			return "Embeddings are disabled; sync data is available in keyword-only mode";
+			return "Embeddings are disabled; memories remain available in keyword-only mode";
 		}
-		return "Semantic-index coverage is unavailable; sync data is effectively running in keyword-only mode";
+		return "Semantic-index coverage is unavailable; memory search is running in keyword-only mode";
 	}
 	if (state === "pending") {
 		return job?.message ?? `${counts.pending} memory(s) still need semantic indexing`;
@@ -410,97 +399,6 @@ export function getSemanticIndexDiagnostics(
 				}
 			: null,
 	};
-}
-
-function uniqueMemoryIds(memoryIds: number[]): number[] {
-	return [...new Set(memoryIds.filter((memoryId) => Number.isInteger(memoryId) && memoryId > 0))];
-}
-
-function deleteVectorsForMemoryIds(db: Database, memoryIds: number[]): number {
-	if (!tableExists(db, "memory_vectors") || memoryIds.length === 0) return 0;
-	const placeholders = memoryIds.map(() => "?").join(", ");
-	const result = db
-		.prepare(`DELETE FROM memory_vectors WHERE memory_id IN (${placeholders})`)
-		.run(...memoryIds);
-	return result.changes;
-}
-
-export function pruneStaleCurrentModelVectors(
-	db: Database,
-	memoryIds: number[],
-	model: string,
-): number {
-	if (memoryIds.length === 0) return 0;
-	const placeholders = memoryIds.map(() => "?").join(", ");
-	const rows = db
-		.prepare(
-			`SELECT id, title, body_text FROM memory_items WHERE id IN (${placeholders}) ORDER BY id ASC`,
-		)
-		.all(...memoryIds) as MemoryTextRow[];
-	let deleted = 0;
-
-	for (const row of rows) {
-		const expectedHashes = chunkHashes(memoryText(row.title, row.body_text));
-		if (expectedHashes.length === 0) {
-			deleted += db
-				.prepare("DELETE FROM memory_vectors WHERE memory_id = ? AND model = ?")
-				.run(row.id, model).changes;
-			continue;
-		}
-		const hashPlaceholders = expectedHashes.map(() => "?").join(", ");
-		deleted += db
-			.prepare(
-				`DELETE FROM memory_vectors
-				 WHERE memory_id = ?
-				   AND model = ?
-				   AND content_hash NOT IN (${hashPlaceholders})`,
-			)
-			.run(row.id, model, ...expectedHashes).changes;
-	}
-
-	return deleted;
-}
-
-/**
- * Fallback-only sync maintenance path used when durable incremental queueing
- * fails after inbound replication has already been applied. New sync code
- * should prefer queueVectorBackfillForIncrementalSync so work survives restart.
- */
-export async function bestEffortMaintainVectorsForSyncFallback(
-	db: Database,
-	work: ReplicationVectorWork,
-): Promise<ReplicationVectorMaintenanceResult> {
-	const result: ReplicationVectorMaintenanceResult = { deleted: 0, inserted: 0, errors: [] };
-	const deleteMemoryIds = uniqueMemoryIds(work.deleteMemoryIds);
-	const upsertMemoryIds = uniqueMemoryIds(work.upsertMemoryIds);
-
-	if (!tableExists(db, "memory_vectors")) {
-		return result;
-	}
-
-	try {
-		result.deleted += deleteVectorsForMemoryIds(db, deleteMemoryIds);
-	} catch (error) {
-		result.errors.push(
-			`delete vectors failed: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
-
-	if (upsertMemoryIds.length === 0) return result;
-
-	try {
-		const backfill = await backfillVectors(db, { memoryIds: upsertMemoryIds });
-		result.inserted = backfill.inserted;
-		if (backfill.checked > 0) {
-			result.deleted += pruneStaleCurrentModelVectors(db, upsertMemoryIds, resolveEmbeddingModel());
-		}
-	} catch (error) {
-		result.errors.push(
-			`backfill vectors failed: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
-
-	return result;
 }
 
 // ---------------------------------------------------------------------------

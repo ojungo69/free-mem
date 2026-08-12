@@ -28,7 +28,6 @@ import {
 } from "../viewer-runtime.js";
 
 export type DatabaseState = "ready" | "missing" | "unavailable" | "unknown";
-export type SyncState = "healthy" | "degraded" | "disabled" | "error" | "unknown";
 export type MaintenanceState = "idle" | "running" | "failed" | "unknown";
 export type SemanticIndexState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 export type RawEventsState = "healthy" | "backlogged" | "failing" | "unknown";
@@ -47,7 +46,6 @@ export interface OperationalStatusReport {
 	version: string;
 	database: { state: DatabaseState };
 	runtime: { viewer: ViewerRuntimeObservation["state"]; pid?: number };
-	sync: { state: SyncState };
 	maintenance: { state: MaintenanceState };
 	semantic_index: { state: SemanticIndexState };
 	raw_events: { state: RawEventsState; pending: number };
@@ -128,19 +126,6 @@ const defaultDependencies: StatusDependencies = {
 	},
 };
 
-function boolValue(value: unknown): boolean | null {
-	if (typeof value === "boolean") return value;
-	if (typeof value !== "string") return null;
-	const normalized = value.trim().toLowerCase();
-	if (["1", "true", "yes", "on"].includes(normalized)) return true;
-	if (["0", "false", "no", "off"].includes(normalized)) return false;
-	return null;
-}
-
-function syncEnabled(config: Record<string, unknown>, env: NodeJS.ProcessEnv): boolean {
-	return boolValue(env.CODEMEM_SYNC_ENABLED) ?? boolValue(config.sync_enabled) ?? false;
-}
-
 function observerConfigured(config: Record<string, unknown>, env: NodeJS.ProcessEnv): boolean {
 	const fileConfigured = OBSERVER_IDENTITY_KEYS.some((key) => {
 		const value = config[key];
@@ -171,33 +156,6 @@ export function boundAttention(items: StatusAttention[]): StatusAttention[] {
 		severity: item.severity,
 		message: item.message.slice(0, 500),
 	}));
-}
-
-function projectSync(
-	enabled: boolean,
-	snapshot: OperationalStatusSnapshot | null,
-	attention: StatusAttention[],
-): SyncState {
-	if (!enabled) return "disabled";
-	if (!snapshot) return "unknown";
-	if (snapshot.sync.daemon_error || snapshot.sync.needs_attention) {
-		attention.push({
-			code: "sync_daemon_error",
-			severity: "error",
-			message: "Sync requires attention; run `codemem sync doctor`",
-		});
-		return "error";
-	}
-	if (snapshot.sync.peer_errors > 0) {
-		attention.push({
-			code: "sync_degraded",
-			severity: "warning",
-			message: "Sync has recent peer failures; run `codemem sync status`",
-		});
-		return "degraded";
-	}
-	if (!snapshot.sync.available) return "unknown";
-	return "healthy";
 }
 
 function addDatabaseAttention(state: DatabaseState, attention: StatusAttention[]): void {
@@ -387,7 +345,6 @@ export async function collectStatusReport(
 	const attention: StatusAttention[] = [];
 	addDatabaseAttention(databaseState, attention);
 	addRuntimeAttention(runtime, attention);
-	const sync = projectSync(syncEnabled(config, deps.env), snapshot, attention);
 	const subsystems = projectDatabaseSubsystems(
 		snapshot,
 		observerConfigured(config, deps.env),
@@ -401,7 +358,6 @@ export async function collectStatusReport(
 		version: VERSION,
 		database: { state: databaseState },
 		runtime: runtime.pid ? { viewer: runtime.state, pid: runtime.pid } : { viewer: runtime.state },
-		sync: { state: sync },
 		...subsystems,
 		attention: boundedAttention,
 	};
@@ -412,7 +368,6 @@ export function renderStatusReport(report: OperationalStatusReport): string {
 		`codemem status ${report.ok ? "OK" : "ATTENTION"}`,
 		`Database:       ${report.database.state}`,
 		`Viewer:         ${report.runtime.viewer}${report.runtime.pid ? ` (pid ${report.runtime.pid})` : ""}`,
-		`Sync:           ${report.sync.state}`,
 		`Maintenance:    ${report.maintenance.state}`,
 		`Semantic index: ${report.semantic_index.state}`,
 		`Raw events:     ${report.raw_events.state}${

@@ -13,7 +13,6 @@ export {
 	loadSummariesPage,
 	moveMemoryProject,
 	tracePack,
-	updateMemoryVisibility,
 } from "./api/memories";
 export { loadProjects, loadRuntimeInfo, pingViewerReady } from "./api/runtime";
 export { loadRawEvents, loadSession, loadStats, loadUsage } from "./api/stats";

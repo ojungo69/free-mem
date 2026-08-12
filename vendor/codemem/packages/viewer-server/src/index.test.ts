@@ -11,7 +11,6 @@ import { basename, dirname, join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import * as core from "@codemem/core";
 import {
-	ensureDeviceIdentity,
 	initTestSchema,
 	insertTestSession,
 	MemoryStore,
@@ -32,22 +31,21 @@ import { __usageCacheTestHooks } from "./routes/stats.js";
 function createTestStore(seedDevice = true): { store: MemoryStore; cleanup: () => void } {
 	const tmpDir = mkdtempSync(join(tmpdir(), "codemem-viewer-store-test-"));
 	const dbPath = join(tmpDir, "test.sqlite");
-	const previousKeysDir = process.env.CODEMEM_KEYS_DIR;
-	const keysDir = previousKeysDir?.trim() || join(tmpDir, "keys");
 	const rawDb = new Database(dbPath);
 	initTestSchema(rawDb);
 	if (seedDevice) {
-		ensureDeviceIdentity(rawDb, { keysDir, deviceId: "test-device-001" });
+		rawDb
+			.prepare(
+				"INSERT OR IGNORE INTO sync_device(device_id, public_key, fingerprint, created_at) VALUES (?, ?, ?, ?)",
+			)
+			.run("test-device-001", "test-public-key", "test-fingerprint", new Date().toISOString());
 	}
 	rawDb.close();
-	process.env.CODEMEM_KEYS_DIR = keysDir;
 	const store = new MemoryStore(dbPath);
 	return {
 		store,
 		cleanup: () => {
 			store.close();
-			if (previousKeysDir == null) delete process.env.CODEMEM_KEYS_DIR;
-			else process.env.CODEMEM_KEYS_DIR = previousKeysDir;
 			rmSync(tmpDir, { recursive: true, force: true });
 		},
 	};
@@ -2626,15 +2624,14 @@ describe("viewer-server", () => {
 		it("redacts sensitive config values from config responses", async () => {
 			const configPath = join(mkdtempSync(join(tmpdir(), "codemem-config-test-")), "config.json");
 			const prevConfig = process.env.CODEMEM_CONFIG;
-			const prevSecret = process.env.CODEMEM_SYNC_COORDINATOR_ADMIN_SECRET;
 			process.env.CODEMEM_CONFIG = configPath;
-			process.env.CODEMEM_SYNC_COORDINATOR_ADMIN_SECRET = "coord-secret";
 			writeFileSync(
 				configPath,
 				JSON.stringify({
 					observer_auth_file: "~/.codemem/token.txt",
 					observer_auth_command: ["print-token"],
 					observer_headers: { Authorization: "Bearer abc" },
+					sync_enabled: true,
 				}),
 			);
 			const { app, cleanup } = createTestApp();
@@ -2647,7 +2644,9 @@ describe("viewer-server", () => {
 				expect(config.observer_auth_file).toBe("[redacted]");
 				expect(config.observer_auth_command).toBe("[redacted]");
 				expect(config.observer_headers).toBe("[redacted]");
-				expect(effective.sync_coordinator_admin_secret).toBe("[redacted]");
+				expect(config).not.toHaveProperty("sync_enabled");
+				expect(effective).not.toHaveProperty("sync_coordinator_admin_secret");
+				expect(effective).not.toHaveProperty("sync_enabled");
 				expect(body.protected_keys).toEqual(
 					expect.arrayContaining([
 						"claude_command",
@@ -2656,15 +2655,12 @@ describe("viewer-server", () => {
 						"observer_auth_command",
 						"observer_headers",
 						"observer_base_url",
-						"sync_coordinator_url",
 					]),
 				);
 			} finally {
 				cleanup();
 				if (prevConfig == null) delete process.env.CODEMEM_CONFIG;
 				else process.env.CODEMEM_CONFIG = prevConfig;
-				if (prevSecret == null) delete process.env.CODEMEM_SYNC_COORDINATOR_ADMIN_SECRET;
-				else process.env.CODEMEM_SYNC_COORDINATOR_ADMIN_SECRET = prevSecret;
 			}
 		});
 
@@ -3002,11 +2998,11 @@ describe("viewer-server", () => {
 						"Content-Type": "application/json",
 						Origin: "http://localhost",
 					},
-					body: JSON.stringify({ config: { sync_enabled: "yes" } }),
+					body: JSON.stringify({ config: { observer_tier_routing_enabled: "yes" } }),
 				});
 				expect(res.status).toBe(400);
 				const body = (await res.json()) as Record<string, unknown>;
-				expect(body.error).toBe("sync_enabled must be boolean");
+				expect(body.error).toBe("observer_tier_routing_enabled must be boolean");
 			} finally {
 				cleanup();
 			}
@@ -3052,7 +3048,7 @@ describe("viewer-server", () => {
 			}
 		});
 
-		it("ignores unchanged protected keys during full config saves", async () => {
+		it("ignores unchanged protected keys and removes retired sync settings", async () => {
 			const configPath = join(mkdtempSync(join(tmpdir(), "codemem-config-test-")), "config.json");
 			const previous = process.env.CODEMEM_CONFIG;
 			process.env.CODEMEM_CONFIG = configPath;
@@ -3062,6 +3058,7 @@ describe("viewer-server", () => {
 					observer_model: "old-model",
 					observer_auth_command: ["print-token"],
 					sync_coordinator_url: "https://coord.example.test",
+					sync_enabled: true,
 				}),
 			);
 			const { app, cleanup } = createTestApp();
@@ -3084,7 +3081,8 @@ describe("viewer-server", () => {
 				const saved = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
 				expect(saved.observer_model).toBe("new-model");
 				expect(saved.observer_auth_command).toEqual(["print-token"]);
-				expect(saved.sync_coordinator_url).toBe("https://coord.example.test");
+				expect(saved).not.toHaveProperty("sync_coordinator_url");
+				expect(saved).not.toHaveProperty("sync_enabled");
 			} finally {
 				cleanup();
 				if (previous == null) delete process.env.CODEMEM_CONFIG;

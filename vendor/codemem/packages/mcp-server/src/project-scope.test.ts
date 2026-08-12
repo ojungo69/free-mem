@@ -29,55 +29,9 @@ describe("project-scope helpers", () => {
 		});
 	});
 
-	it("passes through advanced search knobs", async () => {
-		const { buildFilters } = await import("./project-scope.js");
-		expect(
-			buildFilters(
-				{
-					personal_first: false,
-					trust_bias: "soft",
-					widen_shared_when_weak: true,
-					widen_shared_min_personal_results: 2,
-					widen_shared_min_personal_score: 0.3,
-					ownership_scope: "mine",
-				},
-				"repo-name",
-			),
-		).toEqual({
-			personal_first: false,
-			project: "repo-name",
-			trust_bias: "soft",
-			widen_shared_when_weak: true,
-			widen_shared_min_personal_results: 2,
-			widen_shared_min_personal_score: 0.3,
-			ownership_scope: "mine",
-		});
-	});
-
-	it("passes through scope filters while preserving default project narrowing", async () => {
-		const { buildFilters } = await import("./project-scope.js");
-		expect(
-			buildFilters(
-				{
-					scope_id: "scope-a",
-					include_scope_ids: ["scope-a", "scope-b"],
-					exclude_scope_ids: ["scope-c"],
-				},
-				"repo-name",
-			),
-		).toEqual({
-			project: "repo-name",
-			scope_id: "scope-a",
-			include_scope_ids: ["scope-a", "scope-b"],
-			exclude_scope_ids: ["scope-c"],
-		});
-	});
-
 	it("supports explicit null default project for future all-project contexts", async () => {
 		const { buildFilters } = await import("./project-scope.js");
-		expect(buildFilters({ scope_id: "scope-a" }, null)).toEqual({
-			scope_id: "scope-a",
-		});
+		expect(buildFilters({}, null)).toBeUndefined();
 	});
 
 	it("falls back to default project when env or request project is blank on read filters", async () => {

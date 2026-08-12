@@ -11,7 +11,6 @@ import {
 } from "./status.js";
 
 const healthySnapshot: OperationalStatusSnapshot = {
-	sync: { available: true, daemon_error: false, needs_attention: false, peer_errors: 0 },
 	maintenance: { state: "idle", running: 0, failed: 0 },
 	semantic_index: { state: "healthy", vector_table_present: true },
 	raw_events: { available: true, pending: 0, failed_batches: 0 },
@@ -43,7 +42,7 @@ function harness(
 		now: () => new Date("2026-08-11T12:00:00.000Z"),
 		exists: () => true,
 		readText: () => JSON.stringify({ pid: 1234, host: "127.0.0.1", port: 38_888 }),
-		readConfig: () => ({ sync_enabled: true, observer_provider: "openai" }),
+		readConfig: () => ({ observer_provider: "openai" }),
 		resolveDbPath: () => "/safe/test.sqlite",
 		connectReadOnly: () => fakeDb,
 		collectDatabase: () => snapshot,
@@ -98,7 +97,6 @@ describe("status command", () => {
 			"version",
 			"database",
 			"runtime",
-			"sync",
 			"maintenance",
 			"semantic_index",
 			"raw_events",
@@ -111,7 +109,6 @@ describe("status command", () => {
 			version: VERSION,
 			database: { state: "ready" },
 			runtime: { viewer: "running", pid: 1234 },
-			sync: { state: "healthy" },
 			maintenance: { state: "idle" },
 			semantic_index: { state: "healthy" },
 			raw_events: { state: "healthy", pending: 0 },
@@ -134,18 +131,6 @@ describe("status command", () => {
 		expect(stdout).toHaveLength(1);
 		expect(stderr).toEqual([]);
 		expect(close).toHaveBeenCalledOnce();
-	});
-
-	it("keeps warnings successful and exits zero for degraded reports", async () => {
-		const snapshot = structuredClone(healthySnapshot);
-		snapshot.sync.peer_errors = 2;
-		const { command, stdout, exitCodes } = harness({ snapshot });
-		await command.parseAsync(["--json"], { from: "user" });
-		const report = JSON.parse(stdout[0] ?? "{}") as OperationalStatusReport;
-		expect(report.sync.state).toBe("degraded");
-		expect(report.ok).toBe(true);
-		expect(report.attention[0]?.severity).toBe("warning");
-		expect(exitCodes).toEqual([0]);
 	});
 
 	it("keeps an unready viewer running and reports its readiness warning", async () => {
@@ -189,31 +174,26 @@ describe("status command", () => {
 		expect(exitCodes).toEqual([0]);
 	});
 
-	it("projects disabled sync, unconfigured observer, and subsystem failures", async () => {
+	it("projects an unconfigured observer and subsystem failures", async () => {
 		const snapshot = structuredClone(healthySnapshot);
 		snapshot.semantic_index.state = "failed";
 		snapshot.raw_events = { available: true, pending: 2_000_000, failed_batches: 1 };
 		snapshot.observer.failed_batches = 1;
-		const { command, stdout } = harness({
-			snapshot,
-			readConfig: () => ({ sync_enabled: false }),
-		});
+		const { command, stdout } = harness({ snapshot, readConfig: () => ({}) });
 		await command.parseAsync(["--json"], { from: "user" });
 		const report = JSON.parse(stdout[0] ?? "{}") as OperationalStatusReport;
-		expect(report.sync.state).toBe("disabled");
 		expect(report.observer.state).toBe("unconfigured");
 		expect(report.semantic_index.state).toBe("failed");
 		expect(report.raw_events).toEqual({ state: "failing", pending: 2_000_000 });
 	});
 
-	it("reads sync and observer presence from environment evidence", async () => {
+	it("reads observer presence from environment evidence", async () => {
 		const { command, stdout } = harness({
 			readConfig: () => ({}),
-			env: { CODEMEM_SYNC_ENABLED: "true", CODEMEM_OBSERVER_PROVIDER: "openai" },
+			env: { CODEMEM_OBSERVER_PROVIDER: "openai" },
 		});
 		await command.parseAsync(["--json"], { from: "user" });
 		const report = JSON.parse(stdout[0] ?? "{}") as OperationalStatusReport;
-		expect(report.sync.state).toBe("healthy");
 		expect(report.observer.state).toBe("idle");
 	});
 

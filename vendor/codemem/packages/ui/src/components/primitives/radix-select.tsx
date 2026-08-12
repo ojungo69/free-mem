@@ -104,7 +104,7 @@ export function RadixSelect({
 				type="button"
 			>
 				<Select.Value placeholder={placeholder} />
-				<Select.Icon className="sync-radix-select-icon" aria-hidden="true">
+				<Select.Icon className="radix-select-icon" aria-hidden="true">
 					<SelectChevronIcon />
 				</Select.Icon>
 			</Select.Trigger>
@@ -119,7 +119,7 @@ export function RadixSelect({
 								value={encodeValue(option.value)}
 							>
 								<Select.ItemText>{option.label}</Select.ItemText>
-								<Select.ItemIndicator className="sync-radix-select-indicator">
+								<Select.ItemIndicator className="radix-select-indicator">
 									<SelectCheckIcon />
 								</Select.ItemIndicator>
 							</Select.Item>

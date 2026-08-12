@@ -415,45 +415,6 @@ export {
 	resolveProject,
 	resolveProjectRoot,
 } from "./project.js";
-export {
-	isProjectSyncEnablementError,
-	PROJECT_INVITE_PENDING_STATUS,
-	PROJECT_SYNC_ENABLEMENT_FAILED,
-	PROJECT_SYNC_ENABLEMENT_FAILURE_DETAIL,
-	ProjectSyncEnablementError,
-} from "./project-invite-acceptance.js";
-export type { ProjectInviteSummary } from "./project-invite-identity.js";
-export {
-	friendlyDeviceName,
-	normalizeDeviceNameHint,
-	normalizeIdentityDisplayName,
-	normalizeProjectInviteSummaries,
-} from "./project-invite-identity.js";
-export type {
-	ProjectScopeCandidate,
-	ProjectScopeGuardrailCode,
-	ProjectScopeGuardrailSeverity,
-	ProjectScopeGuardrailWarning,
-	ProjectScopeInventoryOptions,
-	ProjectScopeInventoryProject,
-	ProjectScopeInventoryResult,
-	ProjectScopeInventoryStatus,
-	ProjectScopeMappingChangeGuardrailAnalysis,
-	ProjectScopeSettingsMapping,
-	ReassignProjectScopeInventoryProjectResult,
-	SharingDomainSettingsScope,
-	UpsertProjectScopeMappingInput,
-} from "./project-scope-settings.js";
-export {
-	analyzeProjectScopeMappingChangeGuardrails,
-	deleteProjectScopeSettingsMapping,
-	listProjectScopeCandidates,
-	listProjectScopeInventory,
-	listProjectScopeSettingsMappings,
-	listSharingDomainSettingsScopes,
-	reassignProjectScopeInventoryProject,
-	upsertProjectScopeSettingsMapping,
-} from "./project-scope-settings.js";
 export * from "./prompt-pack-ledger.js";
 export type { FlushRawEventsOptions } from "./raw-event-flush.js";
 export { buildSessionContext, flushRawEvents } from "./raw-event-flush.js";
@@ -469,26 +430,6 @@ export type { RefQueryOptions, RefQueryResult } from "./ref-queries.js";
 export { findByConcept, findByFile } from "./ref-queries.js";
 export * from "./retrieval-ledger.js";
 export * from "./retrieval-surface-ledger.js";
-export type {
-	IdentityDevice,
-	MaintenanceJob,
-	NewIdentityDevice,
-	NewMaintenanceJob,
-	NewPolicyTeam,
-	NewPolicyTeamMembership,
-	NewProjectRecipient,
-	NewRecipientPolicyAuthorityStateRow,
-	NewRecipientPolicyDenyOverlay,
-	NewRecipientPolicyReconciliationStep,
-	NewRecipientPolicyReviewResolution,
-	PolicyTeam,
-	PolicyTeamMembership,
-	ProjectRecipient,
-	RecipientPolicyAuthorityStateRow,
-	RecipientPolicyDenyOverlay,
-	RecipientPolicyReconciliationStep,
-	RecipientPolicyReviewResolution,
-} from "./schema.js";
 export * as schema from "./schema.js";
 export { bootstrapSchema, ensureSchemaBootstrapped } from "./schema-bootstrap.js";
 export type {
@@ -553,7 +494,6 @@ export { deriveTags, fileTags, normalizeTag } from "./tags.js";
 export type { MixedScopeFixture } from "./test-utils.js";
 export { initTestSchema, insertTestSession, seedMixedScopeFixture } from "./test-utils.js";
 export type {
-	Actor,
 	Artifact,
 	ExplainError,
 	ExplainItem,
@@ -578,24 +518,9 @@ export type {
 	RawEventIngestSample,
 	RawEventIngestStats,
 	RawEventSession,
-	ReplicationClock,
-	ReplicationCursor,
-	ReplicationOp,
-	ReplicationOpsAgePrunePlan,
-	ReplicationOpsPruneResult,
 	Session,
 	SessionSummary,
 	StoreStats,
-	SyncAttempt,
-	SyncDaemonState,
-	SyncDevice,
-	SyncDirtyLocalState,
-	SyncMemorySnapshotItem,
-	SyncNonce,
-	SyncPeer,
-	SyncResetBoundary,
-	SyncResetRequired,
-	SyncResetState,
 	TimelineItemResponse,
 	UsageEvent,
 	UserPrompt,

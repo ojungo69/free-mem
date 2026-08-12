@@ -1,6 +1,6 @@
 import { Fragment, h } from "preact";
 import { useState } from "preact/hooks";
-import { setFeedScopeFilter, setFeedTypeFilter, state } from "../../../lib/state";
+import { setFeedTypeFilter, state } from "../../../lib/state";
 import { feedMetaText } from "../data/meta";
 import type { FeedItem, FeedViewOps } from "../types";
 import { ContextInspectorPanel } from "./ContextInspectorPanel";
@@ -40,20 +40,6 @@ export function FeedTabView({
 					},
 					placeholder: "Search title, body, tags…",
 					value: state.feedQuery,
-				}),
-				h(FeedToggle, {
-					active: state.feedScopeFilter,
-					id: "feedScopeToggle",
-					onSelect: (value) => {
-						if (value === state.feedScopeFilter) return;
-						setFeedScopeFilter(value);
-						void ops.loadFeedData();
-					},
-					options: [
-						{ value: "all", label: "All" },
-						{ value: "mine", label: "My memories" },
-						{ value: "theirs", label: "Other people" },
-					],
 				}),
 				h(FeedToggle, {
 					active: state.feedTypeFilter,

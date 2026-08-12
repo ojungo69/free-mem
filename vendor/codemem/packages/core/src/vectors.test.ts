@@ -11,7 +11,6 @@ import { MemoryStore } from "./store.js";
 import { initTestSchema, insertTestSession } from "./test-utils.js";
 import {
 	backfillVectors,
-	bestEffortMaintainVectorsForSyncFallback,
 	getSemanticIndexDiagnostics,
 	resolveSemanticSearchModel,
 	semanticSearch,
@@ -155,39 +154,14 @@ describe("vectors", () => {
 		});
 	});
 
-	it("runs best-effort sync fallback vector maintenance without throwing on embedding failures", async () => {
-		const sessionId = insertTestSession(db);
-		const now = new Date().toISOString();
-		const info = db
-			.prepare(
-				`INSERT INTO memory_items(session_id, kind, title, body_text, confidence,
-				 tags_text, active, created_at, updated_at, metadata_json, rev, visibility)
-				 VALUES (?, 'feature', 'Sync title', 'Sync body', 0.5, '', 1, ?, ?, '{}', 1, 'shared')`,
-			)
-			.run(sessionId, now, now);
-		const memoryId = Number(info.lastInsertRowid);
-
-		vi.mocked(embeddings.embedTexts).mockRejectedValue(new Error("embedding unavailable"));
-
-		const result = await bestEffortMaintainVectorsForSyncFallback(db, {
-			upsertMemoryIds: [memoryId],
-			deleteMemoryIds: [],
-		});
-
-		expect(result.inserted).toBe(0);
-		expect(result.errors).toEqual(["backfill vectors failed: embedding unavailable"]);
-		expect(db.prepare("SELECT COUNT(*) AS c FROM memory_vectors").get()).toMatchObject({ c: 0 });
-	});
-
 	it("reports pending semantic-index catch-up from queued maintenance job state", () => {
 		startMaintenanceJob(db, {
 			kind: "vector_model_migration",
 			title: "Re-indexing memories",
 			status: "pending",
-			message: "Queued vector catch-up for synced bootstrap data",
+			message: "Queued semantic-index catch-up",
 			progressTotal: 3,
 			metadata: {
-				trigger: "sync_bootstrap",
 				processed_embeddable: 1,
 				embeddable_total: 3,
 			},
@@ -201,7 +175,7 @@ describe("vectors", () => {
 			pending_memory_count: 2,
 			maintenance_job: {
 				status: "pending",
-				message: "Queued vector catch-up for synced bootstrap data",
+				message: "Queued semantic-index catch-up",
 			},
 		});
 	});
@@ -355,73 +329,8 @@ describe("vectors", () => {
 		expect(diagnostics).toMatchObject({
 			state: "degraded",
 			mode: "keyword_only",
-			summary: "Embeddings are disabled; sync data is available in keyword-only mode",
+			summary: "Embeddings are disabled; memories remain available in keyword-only mode",
 		});
-	});
-
-	it("deletes vector rows for replicated tombstones", async () => {
-		const vector = new Float32Array(384);
-		db.exec(`
-			INSERT INTO memory_vectors(embedding, memory_id, chunk_index, content_hash, model)
-			VALUES (
-				vec_f32('${JSON.stringify(Array.from(vector))}'),
-				321,
-				0,
-				'delete-hash',
-				'test-model'
-			)
-		`);
-
-		const result = await bestEffortMaintainVectorsForSyncFallback(db, {
-			upsertMemoryIds: [],
-			deleteMemoryIds: [321],
-		});
-
-		expect(result.deleted).toBe(1);
-		expect(result.errors).toEqual([]);
-		expect(
-			db.prepare("SELECT COUNT(*) AS c FROM memory_vectors WHERE memory_id = ?").get(321),
-		).toMatchObject({ c: 0 });
-	});
-
-	it("refreshes same-model vectors for replicated content updates", async () => {
-		const sessionId = insertTestSession(db);
-		const now = new Date().toISOString();
-		const info = db
-			.prepare(
-				`INSERT INTO memory_items(session_id, kind, title, body_text, confidence,
-				 tags_text, active, created_at, updated_at, metadata_json, rev, visibility)
-				 VALUES (?, 'feature', 'Fresh title', 'Fresh body', 0.5, '', 1, ?, ?, '{}', 1, 'shared')`,
-			)
-			.run(sessionId, now, now);
-		const memoryId = Number(info.lastInsertRowid);
-
-		const staleVector = new Float32Array(384);
-		db.exec(`
-			INSERT INTO memory_vectors(embedding, memory_id, chunk_index, content_hash, model)
-			VALUES (
-				vec_f32('${JSON.stringify(Array.from(staleVector))}'),
-				${memoryId},
-				0,
-				'stale-hash',
-				'test-model'
-			)
-		`);
-		vi.mocked(embeddings.embedTexts).mockResolvedValue([new Float32Array(384)]);
-
-		const result = await bestEffortMaintainVectorsForSyncFallback(db, {
-			upsertMemoryIds: [memoryId],
-			deleteMemoryIds: [],
-		});
-
-		expect(result.errors).toEqual([]);
-		const rows = db
-			.prepare(
-				"SELECT content_hash FROM memory_vectors WHERE memory_id = ? AND model = ? ORDER BY chunk_index",
-			)
-			.all(memoryId, "test-model") as Array<{ content_hash: string }>;
-		expect(rows).toHaveLength(1);
-		expect(rows[0]?.content_hash).not.toBe("stale-hash");
 	});
 
 	it("keeps stale-model vectors until a migration cutover removes them", async () => {

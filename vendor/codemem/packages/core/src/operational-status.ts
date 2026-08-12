@@ -5,12 +5,6 @@ export type OperationalMaintenanceState = "idle" | "running" | "failed" | "unkno
 export type OperationalSemanticState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 
 export interface OperationalStatusSnapshot {
-	sync: {
-		available: boolean;
-		daemon_error: boolean;
-		needs_attention: boolean;
-		peer_errors: number;
-	};
 	maintenance: {
 		state: OperationalMaintenanceState;
 		running: number;
@@ -49,48 +43,6 @@ function aggregateCount(
 	} catch {
 		return null;
 	}
-}
-
-function collectSync(db: Database): OperationalStatusSnapshot["sync"] {
-	const daemonTablePresent = tableExists(db, "sync_daemon_state");
-	const peersTablePresent = tableExists(db, "sync_peers");
-	let daemonError = false;
-	let needsAttention = false;
-	if (daemonTablePresent) {
-		// `phase` is an additive column; guard it so an older compatible
-		// database still reports daemon errors instead of failing the whole
-		// query into the catch below.
-		const phaseExpression = columnExists(db, "sync_daemon_state", "phase")
-			? "CASE WHEN phase = 'needs_attention' THEN 1 ELSE 0 END"
-			: "0";
-		try {
-			const row = db
-				.prepare(
-					`SELECT
-						CASE WHEN last_error_at IS NOT NULL
-							AND (last_ok_at IS NULL OR last_error_at > last_ok_at) THEN 1 ELSE 0 END AS daemon_error,
-						${phaseExpression} AS needs_attention
-					 FROM sync_daemon_state WHERE id = 1`,
-				)
-				.get() as { daemon_error?: unknown; needs_attention?: unknown } | undefined;
-			daemonError = Number(row?.daemon_error ?? 0) === 1;
-			needsAttention = Number(row?.needs_attention ?? 0) === 1;
-		} catch {
-			// Optional or older table shape: leave the bounded summary unknown/empty.
-		}
-	}
-
-	return {
-		available: daemonTablePresent && peersTablePresent,
-		daemon_error: daemonError,
-		needs_attention: needsAttention,
-		peer_errors:
-			aggregateCount(
-				db,
-				"sync_peers",
-				"SELECT COUNT(*) AS count FROM sync_peers WHERE last_error IS NOT NULL AND TRIM(last_error) != ''",
-			) ?? 0,
-	};
 }
 
 function collectMaintenance(db: Database): OperationalStatusSnapshot["maintenance"] {
@@ -232,7 +184,6 @@ export function collectOperationalStatus(
 	options: { embeddingDisabled?: boolean; recentFailureCutoff?: string } = {},
 ): OperationalStatusSnapshot {
 	return {
-		sync: collectSync(db),
 		maintenance: collectMaintenance(db),
 		semantic_index: collectSemanticIndex(db, options.embeddingDisabled === true),
 		raw_events: collectRawEvents(db, options.recentFailureCutoff),

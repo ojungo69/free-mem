@@ -1,3 +1,4 @@
+import * as Dialog from "@radix-ui/react-dialog";
 import type { ComponentChildren } from "preact";
 import { DialogCloseButton } from "../../../components/primitives/dialog-close-button";
 import { RadixTabs, RadixTabsContent } from "../../../components/primitives/radix-tabs";
@@ -47,7 +48,9 @@ export function SettingsModalContent({
 			}
 		>
 			<div className="modal-header">
-				<h2 id="settingsTitle">Settings</h2>
+				<Dialog.Title asChild>
+					<h2>Settings</h2>
+				</Dialog.Title>
 				<DialogCloseButton
 					ariaLabel="Close settings"
 					className="modal-close-button"

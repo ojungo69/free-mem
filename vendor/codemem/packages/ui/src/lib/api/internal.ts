@@ -27,16 +27,10 @@ export async function readJsonPayload<T = Record<string, unknown>>(
 	}
 }
 
-export function buildProjectParams(
-	project: string,
-	limit?: number,
-	offset?: number,
-	scope?: string,
-): string {
+export function buildProjectParams(project: string, limit?: number, offset?: number): string {
 	const params = new URLSearchParams();
 	params.set("project", project || "");
 	if (typeof limit === "number") params.set("limit", String(limit));
 	if (typeof offset === "number") params.set("offset", String(offset));
-	if (scope) params.set("scope", scope);
 	return params.toString();
 }

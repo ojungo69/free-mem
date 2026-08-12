@@ -31,13 +31,11 @@ const PROTECTED_WRITE_KEYS = new Set<string>([
 	"observer_auth_file",
 	"observer_auth_command",
 	"observer_headers",
-	"sync_coordinator_url",
 ] as const);
 const SECRET_CONFIG_KEYS = new Set<string>([
 	"observer_auth_file",
 	"observer_auth_command",
 	"observer_headers",
-	"sync_coordinator_admin_secret",
 ] as const);
 const REMOVED_CONFIG_KEYS = new Set<string>(["observer_rich_openai_use_responses"]);
 const ALLOWED_KEYS = [
@@ -66,18 +64,6 @@ const ALLOWED_KEYS = [
 	"observer_max_chars",
 	"pack_observation_limit",
 	"pack_session_limit",
-	"sync_enabled",
-	"sync_retention_enabled",
-	"sync_retention_max_age_days",
-	"sync_retention_max_size_mb",
-	"sync_host",
-	"sync_port",
-	"sync_interval_s",
-	"sync_mdns",
-	"sync_coordinator_url",
-	"sync_coordinator_group",
-	"sync_coordinator_timeout_s",
-	"sync_coordinator_presence_ttl_s",
 	"raw_events_sweeper_interval_s",
 ] as const;
 
@@ -94,16 +80,6 @@ const DEFAULTS: ConfigData = {
 	observer_max_chars: 12000,
 	pack_observation_limit: 50,
 	pack_session_limit: 10,
-	sync_enabled: false,
-	sync_retention_enabled: false,
-	sync_retention_max_age_days: 30,
-	sync_retention_max_size_mb: 512,
-	sync_host: "0.0.0.0",
-	sync_port: 7337,
-	sync_interval_s: 120,
-	sync_mdns: true,
-	sync_coordinator_timeout_s: 3,
-	sync_coordinator_presence_ttl_s: 180,
 	raw_events_sweeper_interval_s: 30,
 };
 
@@ -117,8 +93,8 @@ function loadProviderOptions(): string[] {
 
 function withoutRemovedConfigKeys(configData: ConfigData): ConfigData {
 	const next = { ...configData };
-	for (const key of REMOVED_CONFIG_KEYS) {
-		delete next[key];
+	for (const key of Object.keys(next)) {
+		if (REMOVED_CONFIG_KEYS.has(key) || key.startsWith("sync_")) delete next[key];
 	}
 	return next;
 }
@@ -296,11 +272,6 @@ function validateAndApplyUpdate(
 		else delete configData[key];
 		return null;
 	}
-	if (key === "sync_enabled" || key === "sync_retention_enabled" || key === "sync_mdns") {
-		if (typeof value !== "boolean") return `${key} must be boolean`;
-		configData[key] = value;
-		return null;
-	}
 	if (key === "observer_tier_routing_enabled") {
 		if (typeof value !== "boolean") return `${key} must be boolean`;
 		configData[key] = value;
@@ -315,10 +286,7 @@ function validateAndApplyUpdate(
 		key === "observer_rich_model" ||
 		key === "observer_rich_reasoning_effort" ||
 		key === "observer_rich_reasoning_summary" ||
-		key === "observer_auth_file" ||
-		key === "sync_host" ||
-		key === "sync_coordinator_url" ||
-		key === "sync_coordinator_group"
+		key === "observer_auth_file"
 	) {
 		if (typeof value !== "string") return `${key} must be string`;
 		const trimmed = value.trim();

@@ -11,14 +11,6 @@ describe("collectOperationalStatus", () => {
 			initTestSchema(db);
 			if (tableExists(db, "memory_vectors")) db.exec("DROP TABLE memory_vectors");
 			db.prepare(
-				`INSERT INTO sync_daemon_state(id, last_error_at, last_ok_at, phase)
-				 VALUES (1, '2026-08-11T12:00:00Z', '2026-08-11T11:00:00Z', 'needs_attention')`,
-			).run();
-			db.prepare(
-				`INSERT INTO sync_peers(peer_device_id, created_at, last_error)
-				 VALUES ('peer-1', '2026-08-11T10:00:00Z', 'private peer failure')`,
-			).run();
-			db.prepare(
 				`INSERT INTO maintenance_jobs(kind, title, status, updated_at, error)
 				 VALUES ('vector_model_migration', 'Vectors', 'failed', '2026-08-11T10:00:00Z', 'private vector failure')`,
 			).run();
@@ -52,7 +44,6 @@ describe("collectOperationalStatus", () => {
 			const result = collectOperationalStatus(db);
 
 			expect(result).toEqual({
-				sync: { available: true, daemon_error: true, needs_attention: true, peer_errors: 1 },
 				maintenance: { state: "idle", running: 0, failed: 0 },
 				semantic_index: { state: "failed", vector_table_present: false },
 				raw_events: { available: true, pending: 2, failed_batches: 1 },
@@ -73,50 +64,16 @@ describe("collectOperationalStatus", () => {
 		}
 	});
 
-	it("reports daemon errors when the additive phase column is absent", () => {
-		const db = new Database(":memory:");
-		try {
-			initTestSchema(db);
-			db.exec("DROP TABLE sync_daemon_state");
-			db.exec(
-				`CREATE TABLE sync_daemon_state (
-					id INTEGER PRIMARY KEY,
-					last_error TEXT,
-					last_traceback TEXT,
-					last_error_at TEXT,
-					last_ok_at TEXT
-				)`,
-			);
-			db.prepare(
-				`INSERT INTO sync_daemon_state(id, last_error_at, last_ok_at)
-				 VALUES (1, '2026-08-11T12:00:00Z', '2026-08-11T11:00:00Z')`,
-			).run();
-
-			const result = collectOperationalStatus(db, { embeddingDisabled: true });
-			expect(result.sync.daemon_error).toBe(true);
-			expect(result.sync.needs_attention).toBe(false);
-		} finally {
-			db.close();
-		}
-	});
-
 	it("tolerates optional tables being absent", () => {
 		const db = new Database(":memory:");
 		try {
 			initTestSchema(db);
 			if (tableExists(db, "memory_vectors")) db.exec("DROP TABLE memory_vectors");
-			for (const table of [
-				"maintenance_jobs",
-				"sync_daemon_state",
-				"sync_peers",
-				"sync_attempts",
-				"raw_event_flush_batches",
-			]) {
+			for (const table of ["maintenance_jobs", "raw_event_flush_batches"]) {
 				db.exec(`DROP TABLE ${table}`);
 			}
 
 			expect(collectOperationalStatus(db, { embeddingDisabled: true })).toEqual({
-				sync: { available: false, daemon_error: false, needs_attention: false, peer_errors: 0 },
 				maintenance: { state: "unknown", running: 0, failed: 0 },
 				semantic_index: { state: "degraded", vector_table_present: false },
 				raw_events: { available: false, pending: 0, failed_batches: 0 },

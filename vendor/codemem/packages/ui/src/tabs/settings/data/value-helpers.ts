@@ -116,9 +116,6 @@ export function configuredValueForKey(config: unknown, key: string): unknown {
 		case "observer_rich_reasoning_effort":
 		case "observer_rich_reasoning_summary":
 		case "observer_auth_file":
-		case "sync_host":
-		case "sync_coordinator_url":
-		case "sync_coordinator_group":
 			return normalizeTextValue(asInputString(cfg[key]));
 		case "observer_runtime":
 			return normalizeTextValue(asInputString(cfg.observer_runtime));
@@ -147,26 +144,16 @@ export function configuredValueForKey(config: unknown, key: string): unknown {
 		case "observer_rich_max_output_tokens":
 		case "pack_observation_limit":
 		case "pack_session_limit":
-		case "raw_events_sweeper_interval_s":
-		case "sync_port":
-		case "sync_interval_s": {
+		case "raw_events_sweeper_interval_s": {
 			if (!hasOwn(cfg, key)) return "";
 			const parsed = Number(cfg[key]);
 			return Number.isFinite(parsed) && parsed !== 0 ? parsed : "";
-		}
-		case "sync_coordinator_timeout_s":
-		case "sync_coordinator_presence_ttl_s": {
-			if (!hasOwn(cfg, key)) return "";
-			const parsed = Number(cfg[key]);
-			return Number.isFinite(parsed) && parsed > 0 ? parsed : "";
 		}
 		case "observer_auth_cache_ttl_s": {
 			if (!hasOwn(cfg, key)) return "";
 			const parsed = Number(cfg[key]);
 			return Number.isFinite(parsed) ? parsed : "";
 		}
-		case "sync_enabled":
-		case "sync_mdns":
 		case "observer_tier_routing_enabled":
 			return asBooleanValue(cfg[key]);
 		default:

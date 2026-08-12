@@ -18,10 +18,7 @@ export function FeedList({ items, loadingText }: { items: FeedItem[]; loadingTex
 		);
 	}
 	if (!items.length) {
-		const hasFilters =
-			Boolean(state.feedQuery.trim()) ||
-			state.feedTypeFilter !== "all" ||
-			state.feedScopeFilter !== "all";
+		const hasFilters = Boolean(state.feedQuery.trim()) || state.feedTypeFilter !== "all";
 		return h(
 			"div",
 			{ className: "small feed-empty-state" },
@@ -30,7 +27,7 @@ export function FeedList({ items, loadingText }: { items: FeedItem[]; loadingTex
 				"div",
 				null,
 				hasFilters
-					? "Try clearing filters, changing the scope, or using a broader search."
+					? "Try clearing filters or using a broader search."
 					: "Memories and session summaries will appear here once codemem has something worth keeping.",
 			),
 		);

@@ -6,7 +6,6 @@ type DialogContentProps = ComponentProps<typeof Dialog.Content>;
 
 export type RadixDialogProps = {
 	ariaDescribedby?: string;
-	ariaLabelledby?: string;
 	children?: ComponentChildren;
 	contentClassName?: string;
 	contentId: string;
@@ -24,7 +23,6 @@ export type RadixDialogProps = {
 
 export function RadixDialog({
 	ariaDescribedby,
-	ariaLabelledby,
 	children,
 	contentClassName,
 	contentId,
@@ -48,7 +46,6 @@ export function RadixDialog({
 					</Dialog.Overlay>
 					<Dialog.Content
 						aria-describedby={ariaDescribedby}
-						aria-labelledby={ariaLabelledby}
 						asChild
 						onCloseAutoFocus={onCloseAutoFocus}
 						onEscapeKeyDown={onEscapeKeyDown}

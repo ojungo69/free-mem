@@ -523,34 +523,6 @@ describe("MemoryStore", () => {
 			expect(memory.scope_id).toBe("acme-work");
 		});
 
-		it("reassigns memory scope and records the reassignment in metadata", () => {
-			const sessionId = insertTestSession(store.db);
-			store.db
-				.prepare(
-					`INSERT INTO replication_scopes(
-						scope_id, label, kind, authority_type, membership_epoch, status, created_at, updated_at
-					 ) VALUES (?, ?, 'team', 'local', 0, 'active', ?, ?)`,
-				)
-				.run("acme-work", "Acme Work", "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z");
-
-			const memId = store.remember(sessionId, "feature", "Scoped reassignment", "Feature body");
-			const before = store.db
-				.prepare("SELECT import_key, scope_id, rev FROM memory_items WHERE id = ?")
-				.get(memId) as { import_key: string; scope_id: string | null; rev: number };
-			expect(before.scope_id).toBe("local-default");
-
-			const updated = store.reassignMemoryScope(memId, "acme-work");
-
-			expect(updated.scope_id).toBe("acme-work");
-			expect(updated.rev).toBe(before.rev + 2);
-			expect(updated.metadata_json).toMatchObject({
-				last_scope_reassignment: {
-					old_scope_id: "local-default",
-					new_scope_id: "acme-work",
-				},
-			});
-		});
-
 		it("generates an import_key when not provided", () => {
 			const sessionId = insertTestSession(store.db);
 			const memId = store.remember(sessionId, "discovery", "Title", "Body");

@@ -1,7 +1,6 @@
 /* Memory + summary + pack-trace endpoints — paginated list fetches
- * keyed off the current project, visibility toggles and forget
- * actions on individual memories, and the pack-trace debug call used
- * by the Inspector. */
+ * keyed off the current project, memory actions, and the pack-trace
+ * debug call used by the Inspector. */
 
 import { buildProjectParams, fetchJson, payloadError, readJsonPayload } from "./internal";
 import type { PackTrace, PaginatedResponse } from "./types";
@@ -12,24 +11,10 @@ export async function loadMemories(project: string): Promise<PaginatedResponse> 
 
 export async function loadMemoriesPage(
 	project: string,
-	options?: { limit?: number; offset?: number; scope?: string },
+	options?: { limit?: number; offset?: number },
 ): Promise<PaginatedResponse> {
-	const query = buildProjectParams(project, options?.limit, options?.offset, options?.scope);
+	const query = buildProjectParams(project, options?.limit, options?.offset);
 	return fetchJson<PaginatedResponse>(`/api/observations?${query}`);
-}
-
-export async function updateMemoryVisibility(
-	memoryId: number,
-	visibility: "private" | "shared",
-): Promise<{ item?: unknown }> {
-	const resp = await fetch("/api/memories/visibility", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ memory_id: memoryId, visibility }),
-	});
-	const { text, payload } = await readJsonPayload<{ item?: unknown }>(resp);
-	if (!resp.ok) throw new Error(payloadError(payload) || text || "request failed");
-	return payload;
 }
 
 export async function moveMemoryProject(
@@ -67,9 +52,9 @@ export async function loadSummaries(project: string): Promise<PaginatedResponse>
 
 export async function loadSummariesPage(
 	project: string,
-	options?: { limit?: number; offset?: number; scope?: string },
+	options?: { limit?: number; offset?: number },
 ): Promise<PaginatedResponse> {
-	const query = buildProjectParams(project, options?.limit, options?.offset, options?.scope);
+	const query = buildProjectParams(project, options?.limit, options?.offset);
 	return fetchJson<PaginatedResponse>(`/api/summaries?${query}`);
 }
 

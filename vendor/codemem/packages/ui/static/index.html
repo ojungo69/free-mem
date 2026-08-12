@@ -217,12 +217,6 @@
         font-weight: var(--font-weight-semibold);
       }
 
-      #recipientPolicyManagementMount .small,
-      .recipient-policy-management-dialog .small,
-      #recipientPolicySharingMount .small {
-        color: var(--text-secondary);
-      }
-
       .tab-btn.active::after {
         content: "";
         position: absolute;
@@ -253,29 +247,11 @@
         flex-direction: column;
         gap: var(--sp-5);
       }
-      /* Sync tab wraps its cards in #syncMainView / #syncDiagnosticsView
-         sub-view containers, which breaks the .tab-panel flex gap inheritance.
-         Restore the gap inside each sub-view so Sync cards match the Feed
-         tab's card rhythm. */
-      #syncMainView,
-      #syncDiagnosticsView {
-        display: flex;
-        flex-direction: column;
-        gap: var(--sp-5);
-      }
 
       /* ── Cards / sections ──────────────────────────────────── */
-
-      /* Every bordered-surface component (card, stat tile, peer card,
-         actor row, modal card) shares the same tinted-inset background
-         + 1px translucent border. Pull it into one selector group so
-         each variant only declares radius, padding, shadow, and layout.
-         Markup unchanged — each class works standalone. */
       .surface,
       .card,
       .stat,
-      .peer-card,
-      .actor-row,
       .modal-card {
         background: var(--surface-1);
         border: 1px solid var(--border);
@@ -295,358 +271,21 @@
         margin-bottom: var(--sp-3);
       }
 
-      .coordinator-admin-shell {
-        display: grid;
-        gap: var(--sp-5);
-      }
-
-      .coordinator-admin-header,
-      .coordinator-admin-sections {
-        display: grid;
-        gap: var(--sp-3);
-      }
-
-      .coordinator-admin-summary-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: var(--sp-3);
-      }
-
-      .coordinator-admin-summary-card {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        padding: var(--sp-3);
-        background: var(--surface-0);
-        display: grid;
-        gap: 6px;
-      }
-
-      .coordinator-admin-summary-card strong {
-        font-size: var(--font-size-xl);
-        line-height: 1.3;
-      }
-
-      .coordinator-admin-inline-warning {
-        border: 1px solid rgba(240, 180, 41, 0.28);
-        background: rgba(240, 180, 41, 0.08);
-        border-radius: var(--radius-md);
-        padding: var(--sp-3);
-      }
-
-      .coordinator-admin-inline-meta {
-        margin-top: -4px;
-      }
-
-      .coordinator-admin-context-line {
-        padding-top: var(--sp-2);
-        border-top: 1px solid var(--border);
-      }
-
-      .coordinator-admin-groups-context {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: var(--sp-3);
-      }
-
-      .coordinator-admin-context-pair {
-        display: grid;
-        gap: 4px;
-        min-width: 0;
-        padding: var(--sp-2) 0;
-      }
-
-      .coordinator-admin-context-pair strong {
-        font-size: var(--font-size-xl);
-        line-height: 1.2;
-      }
-
-      .coordinator-admin-context-counts strong {
-        white-space: nowrap;
-      }
-
-      .coordinator-admin-tabs-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-2);
-      }
-
-      .coordinator-admin-tab-trigger {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-pill);
-        background: var(--surface-0);
-        color: var(--text-secondary);
-        padding: var(--sp-2) var(--sp-3);
-        font: inherit;
-        cursor: pointer;
-      }
-
-      .coordinator-admin-tab-trigger[data-state="active"] {
-        background: var(--accent-subtle);
-        border-color: var(--control-border);
-        color: var(--accent);
-      }
-
-      .coordinator-admin-tab-trigger:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
-
-      .coordinator-admin-panel {
-        display: grid;
-        gap: var(--sp-3);
-        padding-top: var(--sp-2);
-      }
-
-      .coordinator-admin-panel h3 {
-        font-size: var(--font-size-2xl);
-        line-height: 1.25;
-        margin: 0;
-      }
-
-      .coordinator-admin-form-grid {
-        display: grid;
-        gap: var(--sp-3);
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      }
-
-      .coordinator-admin-field {
-        display: grid;
-        gap: var(--sp-2);
-      }
-
-      .coordinator-admin-field > span {
-        font-size: var(--font-size-sm);
-        color: var(--text-secondary);
-        font-weight: var(--font-weight-semibold);
-      }
-
-      .coordinator-admin-output {
-        min-height: 108px;
-      }
-
-      .coordinator-admin-warning-list {
-        color: var(--status-attention);
-      }
-
-      .coordinator-admin-groups-toolbar {
-        justify-content: flex-start;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-
-      .coordinator-admin-primary-actions,
-      .coordinator-admin-secondary-actions {
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .coordinator-admin-inline-filter {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .coordinator-admin-inline-filter .section-meta {
-        line-height: 1;
-        margin: 0;
-      }
-
-      .coordinator-admin-switch {
-        width: 34px;
-        height: 20px;
-        border: 1px solid color-mix(in srgb, var(--text-tertiary) 42%, var(--control-border));
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--surface-1) 82%, var(--surface-0));
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-tertiary) 8%, transparent);
-        cursor: pointer;
-        flex-shrink: 0;
-        padding: 1px;
-        transition: background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
-      }
-
-      .coordinator-admin-switch:hover {
-        border-color: color-mix(in srgb, var(--accent) 38%, var(--control-hover-border));
-      }
-
-      .coordinator-admin-switch:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-
-      .coordinator-admin-switch[data-state="checked"] {
-        background: color-mix(in srgb, var(--accent) 18%, var(--surface-1));
-        border-color: color-mix(in srgb, var(--accent) 54%, var(--control-hover-border));
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
-      }
-
-      .coordinator-admin-switch:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
-
-      .coordinator-admin-switch-thumb {
-        display: block;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: color-mix(in srgb, var(--surface-0) 88%, white);
-        border: 1px solid color-mix(in srgb, var(--text-tertiary) 24%, transparent);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-        transition: transform var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
-        transform: translateX(0);
-      }
-
-      .coordinator-admin-switch[data-state="checked"] .coordinator-admin-switch-thumb {
-        transform: translateX(14px);
-        background: color-mix(in srgb, var(--accent) 88%, white);
-        border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-      }
-
-      .coordinator-admin-count-copy {
-        margin-left: 2px;
-      }
-
-      /* Scope-defaults drawer inside a group card. Reads top-down:
-         header · helper · auto-seed toggle (master) · include chips
-         · exclude chips · actions. Delimits itself as its own subsection
-         with a top border + breathing room so it doesn't run into the
-         peer-actions row above. Radix Collapsible.Content is the host,
-         so open/close is driven by data-state. */
-      .coordinator-admin-group-preferences {
-        display: grid;
-        gap: var(--sp-4);
-        padding-top: var(--sp-3);
-        border-top: 1px solid var(--border);
-        min-width: 0;
-      }
-      .coordinator-admin-group-preferences[data-state="closed"] { display: none; }
-      /* Rotate the trigger's chevron when the scope-defaults disclosure
-         is open. Matches the sync-tab device-row chevron affordance. */
-      .coordinator-admin-scope-trigger[data-state="open"] .device-row-chevron {
-        transform: rotate(90deg);
-      }
-      .coordinator-admin-scope-trigger .device-row-chevron {
-        display: inline-flex;
-        width: 14px;
-        height: 14px;
-        transition: transform var(--duration-fast) var(--ease-standard);
-      }
-      .coordinator-admin-scope-trigger .device-row-chevron svg {
-        width: 100%;
-        height: 100%;
-      }
-
-      .coordinator-admin-group-preferences > .coordinator-admin-field,
-      .coordinator-admin-group-preferences > .coordinator-admin-inline-filter {
-        min-width: 0;
-      }
-
-      .coordinator-admin-drawer-title {
-        font-size: var(--font-size-md);
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-primary);
-        margin: 0;
-        letter-spacing: 0.01em;
-      }
-
       /* Tighten the helper text directly under the drawer title so they
          read as one intro block, then let the sp-4 gap separate that
          block from the toggle. */
-      .coordinator-admin-group-preferences > .coordinator-admin-drawer-title + .peer-submeta {
-        margin-top: calc(-1 * var(--sp-3));
-      }
 
       /* Help text that lives INSIDE a chip field (e.g. "Exact names,
          leave empty to allow all") — looser than the row gap, tighter
          than the inter-section gap. */
-      .coordinator-admin-group-preferences .coordinator-admin-field > .peer-submeta {
-        margin-top: calc(-1 * var(--sp-1));
-      }
 
       /* Dim the chip editor when auto-seed is off so it visually reads
          as "configuration that isn't currently applied" rather than
          "broken input". */
-      .coordinator-admin-group-preferences .peer-scope-input:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
 
       /* Separate the action row (Save / Cancel) from the last field with
          an explicit gap + top border so the terminating region reads as
          distinct from the form controls above. */
-      .coordinator-admin-group-preferences > .peer-actions {
-        margin-top: var(--sp-1);
-        padding-top: var(--sp-3);
-        border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-      }
-
-      .coordinator-admin-group-preferences > .coordinator-admin-inline-filter {
-        gap: var(--sp-3);
-      }
-
-      .coordinator-admin-domain-management {
-        gap: var(--sp-4);
-      }
-
-      .coordinator-admin-scope-card-list {
-        display: grid;
-        gap: var(--sp-3);
-      }
-
-      .coordinator-admin-scope-card {
-        background: color-mix(in srgb, var(--surface-1) 72%, var(--surface-0));
-      }
-
-      .coordinator-admin-scope-member-list {
-        display: grid;
-        gap: var(--sp-2);
-        padding-top: var(--sp-2);
-      }
-
-      .coordinator-admin-scope-member-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--sp-3);
-        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-        border-radius: var(--radius-md);
-        padding: var(--sp-2) var(--sp-3);
-        background: var(--surface-0);
-      }
-
-      .coordinator-admin-scope-member-copy {
-        display: grid;
-        gap: 3px;
-        min-width: 0;
-      }
-
-      .coordinator-admin-scope-member-copy strong {
-        font-size: var(--font-size-md);
-      }
-
-      .coordinator-admin-scope-member-copy span {
-        color: var(--text-tertiary);
-        font-size: var(--font-size-sm);
-        line-height: 1.35;
-      }
-
-      @media (max-width: 720px) {
-        .coordinator-admin-scope-member-row {
-          align-items: flex-start;
-          flex-direction: column;
-        }
-      }
-
-      .coordinator-admin-empty-state {
-        padding: var(--sp-3) 0 var(--sp-1);
-      }
-
-      .coordinator-admin-list {
-        padding-left: var(--sp-4);
-        display: grid;
-        gap: var(--sp-2);
-      }
 
       .section-header {
         display: flex;
@@ -669,32 +308,6 @@
         display: flex;
         gap: var(--sp-2);
         align-items: center;
-      }
-
-      /* Utility link that navigates between sibling sub-surfaces (e.g.
-         main Sync view ↔ diagnostics sub-view). One treatment used for
-         both directions so header/back links read as the same vocabulary
-         — quieter than any real button nearby, since it's navigation,
-         not action. */
-      .sync-subview-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: var(--font-size-md);
-        font-weight: var(--font-weight-medium);
-        color: var(--text-secondary);
-        text-decoration: none;
-        padding: 4px 6px;
-        border-radius: var(--radius-sm);
-        transition: color var(--duration-fast) var(--ease-standard);
-      }
-      .sync-subview-link:hover {
-        color: var(--accent);
-      }
-      .sync-subview-link:focus-visible {
-        color: var(--accent);
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
       }
 
       .section-meta {
@@ -779,8 +392,6 @@
          standalone. */
       .btn,
       .settings-button,
-      .sync-legacy-button,
-      .feed-menu-trigger,
       .feed-expand {
         display: inline-flex;
         align-items: center;
@@ -810,196 +421,9 @@
         outline-offset: 2px;
         box-shadow: 0 0 0 4px var(--focus-ring);
       }
-
-      /* Device-row compact header. A non-interactive container holding
-         the status pip + name + chips + meta, with a dedicated disclosure
-         button (.device-row-toggle) for assistive tech and keyboard users.
-         The whole row still responds to click via a background click
-         handler on .peer-card, but the accessible name of the toggle stays
-         clean ("Expand device work").
-         See docs/plans/2026-04-23-sync-tab-redesign.md (PR 2). */
-      .device-row-head {
-        display: flex;
-        align-items: center;
-        gap: var(--sp-3);
-        width: 100%;
-        min-height: 56px;
-        padding: 10px var(--sp-4);
-      }
       /* Row head doubles as the Collapsible trigger so clicking anywhere
          on the band toggles the drawer. Button defaults are reset; the
          chevron at the right is a visual indicator only. */
-      button.device-row-head--trigger {
-        background: transparent;
-        border: none;
-        color: inherit;
-        text-align: left;
-        font: inherit;
-        cursor: pointer;
-      }
-      button.device-row-head--trigger:hover {
-        background: color-mix(in srgb, var(--surface-2) 60%, transparent);
-      }
-      button.device-row-head--trigger:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: -2px;
-      }
-      .device-row-chevron {
-        margin-left: auto;
-        flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        color: var(--text-secondary);
-      }
-      .device-row-chevron svg {
-        width: 18px;
-        height: 18px;
-        transition: transform var(--duration-fast) var(--ease-standard);
-      }
-      button.device-row-head--trigger[data-state="open"] .device-row-chevron svg {
-        transform: rotate(90deg);
-      }
-      .device-row-head .device-row-name {
-        flex: 1 1 auto;
-        min-width: 0;
-        font-size: var(--font-size-base);
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-primary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .device-row-head .device-row-chips {
-        display: inline-flex;
-        gap: 6px;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-      .device-row-head .device-row-meta {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-        font-feature-settings: 'tnum' 1;
-        white-space: nowrap;
-      }
-
-      /* Drawer content region revealed when the row is expanded.
-         Keeps the existing .peer-actions / .peer-scope styling intact —
-         this is just the outer wrapper + separator line. */
-      .device-row-drawer {
-        padding: var(--sp-3) var(--sp-4) var(--sp-4);
-        border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-        display: grid;
-        gap: var(--sp-3);
-      }
-
-      /* Device-row skeleton (shown during the initial sync load). Shape
-         matches the real row so layout doesn't shift when data arrives.
-         See docs/plans/2026-04-23-sync-tab-redesign.md (loading-states). */
-      .device-row-skeleton-list {
-        display: grid;
-        gap: var(--sp-2);
-      }
-      .device-row-skeleton {
-        display: flex;
-        align-items: center;
-        gap: var(--sp-3);
-        min-height: 56px;
-        padding: 10px var(--sp-3);
-        border-radius: var(--radius-lg);
-        border: 1px solid var(--border);
-        background: var(--surface-1);
-      }
-      .device-row-skeleton .skel-pip,
-      .device-row-skeleton .skel-name,
-      .device-row-skeleton .skel-chip {
-        display: inline-block;
-        border-radius: var(--radius-sm);
-        background: linear-gradient(90deg,
-          color-mix(in srgb, var(--surface-2) 82%, var(--surface-1)) 25%,
-          color-mix(in srgb, var(--surface-2) 60%, var(--surface-1)) 50%,
-          color-mix(in srgb, var(--surface-2) 82%, var(--surface-1)) 75%);
-        background-size: 200% 100%;
-        animation: device-skel-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
-      }
-      .device-row-skeleton .skel-pip {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-      }
-      .device-row-skeleton .skel-name {
-        flex: 1;
-        max-width: 180px;
-        height: 14px;
-      }
-      .device-row-skeleton .skel-chip {
-        width: 80px;
-        height: 18px;
-        border-radius: var(--radius-pill);
-      }
-      @keyframes device-skel-shimmer {
-        0%   { background-position: 200% 0; }
-        100% { background-position: -200% 0; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .device-row-skeleton .skel-pip,
-        .device-row-skeleton .skel-name,
-        .device-row-skeleton .skel-chip { animation: none; }
-      }
-
-      .sync-redact-control {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .sync-redact-switch {
-        width: 34px;
-        height: 20px;
-        border: 1px solid color-mix(in srgb, var(--text-tertiary) 42%, var(--control-border));
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--surface-1) 82%, var(--surface-0));
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-tertiary) 8%, transparent);
-        cursor: pointer;
-        flex-shrink: 0;
-        padding: 1px;
-        transition: background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
-      }
-
-      .sync-redact-switch:hover {
-        border-color: color-mix(in srgb, var(--accent) 38%, var(--control-hover-border));
-      }
-
-      .sync-redact-switch:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-
-      .sync-redact-switch[data-state="checked"] {
-        background: color-mix(in srgb, var(--accent) 18%, var(--surface-1));
-        border-color: color-mix(in srgb, var(--accent) 54%, var(--control-hover-border));
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
-      }
-
-      .sync-redact-switch-thumb {
-        display: block;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: color-mix(in srgb, var(--surface-0) 88%, white);
-        border: 1px solid color-mix(in srgb, var(--text-tertiary) 24%, transparent);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-        transition: transform var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
-        transform: translateX(0);
-      }
-
-      .sync-redact-switch[data-state="checked"] .sync-redact-switch-thumb {
-        transform: translateX(14px);
-        background: color-mix(in srgb, var(--accent) 88%, white);
-        border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-      }
 
       /* ── Selects / inputs ──────────────────────────────────── */
 
@@ -1019,313 +443,6 @@
         outline: none;
         border-color: var(--accent);
         box-shadow: 0 0 0 3px var(--focus-ring);
-      }
-
-      .projects-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-3);
-        align-items: center;
-        margin: var(--sp-4) 0 var(--sp-3);
-      }
-      .projects-toolbar .feed-search { flex: 1 1 320px; }
-      .projects-toolbar select {
-        padding: var(--sp-2) var(--sp-3);
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border);
-        background: var(--input-bg);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-md);
-      }
-      .project-inventory-list {
-        display: grid;
-        gap: var(--sp-3);
-        margin-top: var(--sp-4);
-      }
-      .project-inventory-skeleton {
-        display: grid;
-        gap: var(--sp-3);
-        margin-top: var(--sp-4);
-      }
-      .project-inventory-skeleton-row {
-        padding: var(--sp-4);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: var(--surface-1);
-      }
-      .project-inventory-skeleton-line {
-        height: 12px;
-        border-radius: var(--radius-pill);
-        background: linear-gradient(90deg, var(--border) 25%, var(--surface-2) 50%, var(--border) 75%);
-        background-size: 400px 100%;
-        animation: sync-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
-        margin: var(--sp-2) 0;
-      }
-      .project-inventory-skeleton-line.title { width: 42%; height: 16px; }
-      .project-inventory-skeleton-line.meta { width: 68%; }
-      .project-inventory-skeleton-line.signal { width: 86%; }
-      .project-inventory-row {
-        padding: var(--sp-4);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: var(--surface-1);
-      }
-      .project-inventory-row-header {
-        display: flex;
-        justify-content: space-between;
-        gap: var(--sp-3);
-        align-items: flex-start;
-      }
-      .project-inventory-title { font-size: var(--font-size-lg); font-weight: 650; color: var(--text-primary); }
-      .project-inventory-domain { font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--accent); }
-      .project-inventory-meta, .project-inventory-signal {
-        margin-top: var(--sp-2);
-        color: var(--text-secondary);
-        font-size: var(--font-size-sm);
-      }
-      .project-inventory-signal { overflow-wrap: anywhere; }
-      .project-inventory-badges {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-2);
-        margin-top: var(--sp-3);
-      }
-      .project-status-badge {
-        padding: 2px 8px;
-        border-radius: var(--radius-pill);
-        background: var(--surface-2);
-        color: var(--text-secondary);
-        font-size: var(--font-size-xs);
-        border: 1px solid var(--border);
-      }
-      .project-status-badge.needs_attention,
-      .project-status-badge.legacy_review { color: var(--accent-warm); background: var(--accent-warm-subtle); }
-      .project-status-badge.suggested { color: var(--accent); background: var(--accent-subtle); }
-      .project-inventory-details { margin-top: var(--sp-3); }
-      .project-inventory-details summary { cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); }
-      .project-detail-grid {
-        display: grid;
-        grid-template-columns: minmax(130px, max-content) 1fr;
-        gap: var(--sp-2) var(--sp-3);
-        margin-top: var(--sp-3);
-        font-size: var(--font-size-sm);
-      }
-      .project-detail-grid dt { color: var(--text-tertiary); }
-      .project-detail-grid dd { margin: 0; overflow-wrap: anywhere; color: var(--text-primary); }
-      .project-inventory-actions {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: var(--sp-2);
-        margin-top: var(--sp-4);
-      }
-      .project-domain-select {
-        min-width: min(100%, 260px);
-        padding: var(--sp-2) var(--sp-3);
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border);
-        background: var(--input-bg);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-md);
-      }
-      .project-guardrail-confirmation {
-        flex-basis: 100%;
-        margin-top: var(--sp-2);
-      }
-      .projects-pagination { margin-top: var(--sp-4); }
-      .recipient-policy-review > h3 { margin-top: var(--sp-4); }
-      .recipient-policy-review-status:empty { display: none; }
-      .recipient-policy-review-list { margin-top: var(--sp-3); }
-      .recipient-policy-review-item .project-inventory-actions label {
-        color: var(--text-secondary);
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-semibold);
-      }
-      .recipient-policy-review-select { min-width: min(100%, 280px); }
-      .recipient-policy-deferred { margin-top: var(--sp-3); }
-      .recipient-policy-preview { margin-top: var(--sp-3); }
-      .recipient-policy-preview-list { margin-top: var(--sp-2); }
-      .recipient-policy-preview-list ul {
-        margin-top: var(--sp-1);
-        padding-left: var(--sp-5);
-      }
-      .recipient-policy-blocked-heading { margin-top: var(--sp-5) !important; }
-      .project-selection-actions,
-      .recipient-policy-management-actions,
-      .recipient-policy-sharing-actions {
-        align-items: center;
-        flex-wrap: wrap;
-      }
-      .project-selection-target,
-      .recipient-policy-management-target,
-      .recipient-policy-sharing-target-24 {
-        min-width: 24px;
-        min-height: 24px;
-      }
-      .project-selection-control {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 32px;
-        min-width: 32px;
-        min-height: 32px;
-        cursor: pointer;
-      }
-      .project-selection-checkbox { width: 18px; height: 18px; }
-      .project-recipient-summary { margin-top: var(--sp-3); }
-      .project-recipient-status { color: var(--text-secondary); font-size: var(--font-size-sm); }
-      .project-recipient-chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-2);
-        padding: 0;
-        margin: var(--sp-2) 0 0;
-        list-style: none;
-      }
-      .project-recipient-chip {
-        padding: 3px 9px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-pill);
-        background: var(--surface-2);
-        color: var(--text-primary);
-        font-size: var(--font-size-xs);
-      }
-      .project-advanced-administration { margin-top: var(--sp-3); }
-      .project-advanced-surface summary,
-      .advanced-administration-disclosure > summary {
-        cursor: pointer;
-        color: var(--text-primary);
-        font-weight: var(--font-weight-semibold);
-      }
-      .recipient-policy-management-dialog .modal-card { width: min(720px, calc(100vw - 32px)); }
-      .recipient-policy-management-selection fieldset { border: 0; padding: 0; margin: var(--sp-4) 0 0; }
-      .recipient-policy-management-selection legend { font-weight: var(--font-weight-semibold); }
-      .recipient-policy-management-review section + section { margin-top: var(--sp-4); }
-      .recipient-policy-management-review h3 { margin: 0 0 var(--sp-2); }
-      .recipient-policy-management-review p,
-      .recipient-policy-management-review ul { margin-top: var(--sp-2); }
-      .recipient-policy-management-review ul,
-      .recipient-policy-management-details ul { padding-left: var(--sp-5); }
-      .recipient-policy-management-name { overflow-wrap: anywhere; }
-      .recipient-policy-management-choice > span { min-width: 0; }
-      .recipient-policy-management-description,
-      .recipient-policy-management-member-names,
-      .recipient-policy-management-recipient-context,
-      .recipient-policy-management-review li,
-      .recipient-policy-management-review li span {
-        min-width: 0;
-        overflow-wrap: anywhere;
-      }
-      .recipient-policy-management-details {
-        margin-top: var(--sp-3);
-        color: var(--text-secondary);
-      }
-      .recipient-policy-management-details summary {
-        color: var(--text-primary);
-        cursor: pointer;
-        font-weight: var(--font-weight-semibold);
-      }
-      .recipient-policy-management-details p { margin-top: var(--sp-2); }
-      .recipient-policy-management-details li { overflow-wrap: anywhere; }
-      .recipient-policy-management-status:empty { display: none; }
-      .recipient-policy-sharing-header { margin-bottom: var(--sp-4); }
-      .recipient-policy-sharing-tabs {
-        position: static;
-        display: flex;
-        gap: var(--sp-1);
-        margin-bottom: var(--sp-4);
-        padding: 0;
-        background: transparent;
-        border: 0;
-        z-index: auto;
-      }
-      .recipient-policy-sharing-tabs .tab-btn { color: var(--text-secondary); }
-      .recipient-policy-sharing-tabs .tab-btn.active { color: var(--text-primary); }
-      .recipient-policy-sharing-grid { display: grid; gap: var(--sp-3); }
-      .recipient-policy-sharing-card { border: 1px solid var(--border); border-radius: var(--radius-md); }
-      .recipient-policy-sharing-card-title {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--sp-3);
-      }
-      .recipient-policy-sharing-card-title h3 { margin: 0; }
-      .recipient-policy-sharing-details { display: grid; gap: var(--sp-3); margin: var(--sp-4) 0; }
-      .recipient-policy-sharing-details div {
-        display: grid;
-        grid-template-columns: minmax(150px, max-content) 1fr;
-        gap: var(--sp-3);
-      }
-      .recipient-policy-sharing-details dt { color: var(--text-secondary); }
-      .recipient-policy-sharing-details dd { margin: 0; color: var(--text-primary); }
-      .recipient-policy-invitation-result {
-        display: flex;
-        align-items: flex-start;
-        gap: var(--sp-3);
-        padding: var(--sp-4);
-        border: 1px solid color-mix(in srgb, var(--status-healthy) 36%, var(--border));
-        border-radius: var(--radius-md);
-        background: color-mix(in srgb, var(--status-healthy) 9%, var(--surface-1));
-      }
-      .recipient-policy-invitation-result:focus {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-        box-shadow: 0 0 0 4px var(--focus-ring);
-      }
-      .recipient-policy-invitation-result-mark {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 28px;
-        width: 28px;
-        height: 28px;
-        border-radius: var(--radius-pill);
-        background: color-mix(in srgb, var(--status-healthy) 18%, var(--surface-0));
-        color: var(--status-healthy);
-        font-weight: var(--font-weight-semibold);
-        line-height: 1;
-      }
-      .recipient-policy-invitation-result-copy { min-width: 0; }
-      .recipient-policy-invitation-result-copy h3 { margin: 0; }
-      .recipient-policy-invitation-result-copy p {
-        margin-top: var(--sp-2);
-        color: var(--text-secondary);
-        overflow-wrap: anywhere;
-      }
-
-      #devicesMount .recipient-policy-sharing-grid {
-        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-        list-style: none;
-        padding: 0;
-      }
-      #devicesMount .recipient-policy-sharing-card { height: 100%; }
-      #devicesMount .recipient-policy-sharing-card section + section { margin-top: var(--sp-4); }
-      #devicesMount .recipient-policy-sharing-card section ul {
-        display: grid;
-        gap: var(--sp-2);
-        margin-top: var(--sp-2);
-        padding-left: var(--sp-5);
-      }
-      #devicesMount .recipient-policy-sharing-card > .settings-button { margin-top: var(--sp-4); }
-
-      @media (max-width: 720px) {
-        .project-inventory-row-header { align-items: center; flex-wrap: wrap; }
-        .project-inventory-title { flex: 1 1 calc(100% - 48px); }
-        .project-recipient-action { width: 100%; }
-        .recipient-policy-management-dialog .modal-card { width: calc(100vw - 16px); }
-        .recipient-policy-management-actions,
-        .recipient-policy-sharing-responsive-actions { display: grid; grid-template-columns: 1fr; }
-        .recipient-policy-management-actions button,
-        .recipient-policy-sharing-responsive-actions button { min-height: 44px; width: 100%; }
-        .recipient-policy-sharing-responsive-tabs { overflow-x: auto; }
-        .recipient-policy-sharing-details div { grid-template-columns: 1fr; gap: var(--sp-1); }
-        .recipient-policy-invitation-result { padding: var(--sp-3); }
-        #devicesMount .recipient-policy-sharing-card > .settings-button {
-          min-height: 44px;
-          width: 100%;
-        }
       }
 
       /* 36×36 square icon buttons — theme toggle, settings gear. */
@@ -1485,10 +602,6 @@
         flex-direction: column;
         gap: var(--sp-3);
       }
-
-      /* Feed loading skeleton — mirrors the banner / body / footer shape so
-         the transition into real content doesn't shift layout. Reuses the
-         sync-shimmer keyframe below. */
       .feed-skeleton {
         display: flex;
         flex-direction: column;
@@ -1505,7 +618,7 @@
         height: 28px;
         background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
         background-size: 400px 100%;
-        animation: sync-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
+        animation: feed-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
         border-bottom: 1px solid var(--border);
       }
       .feed-skeleton-body {
@@ -1519,7 +632,7 @@
         border-radius: 6px;
         background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
         background-size: 400px 100%;
-        animation: sync-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
+        animation: feed-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
       }
       .feed-skeleton-line.w-85 { width: 85%; }
       .feed-skeleton-line.w-65 { width: 65%; }
@@ -1535,7 +648,7 @@
         border-radius: var(--radius-pill);
         background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
         background-size: 400px 100%;
-        animation: sync-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
+        animation: feed-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
       }
       .feed-skeleton-chip.w-36 { width: 36px; }
       .feed-skeleton-chip.w-56 { width: 56px; }
@@ -1610,63 +723,6 @@
         flex-shrink: 0;
       }
 
-      .feed-menu-panel {
-        min-width: 180px;
-        padding: 6px;
-        border-radius: var(--radius-lg);
-        border: 1px solid var(--border);
-        background: var(--surface-1);
-        box-shadow: var(--shadow-md);
-        z-index: 24;
-      }
-      .feed-menu-trigger {
-        width: 30px;
-        height: 30px;
-        border: 1px solid var(--border);
-        background: transparent;
-        color: var(--text-tertiary);
-        font-size: var(--font-size-2xl);
-        line-height: 1;
-        transition: background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
-      }
-      .feed-menu-trigger:hover,
-      .feed-menu-trigger[data-state="open"] {
-        background: var(--surface-2);
-        color: var(--text-primary);
-        border-color: var(--border-hover);
-      }
-      .feed-menu-trigger:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-        box-shadow: 0 0 0 4px var(--focus-ring);
-      }
-      .feed-menu-item {
-        display: flex;
-        align-items: center;
-        width: 100%;
-        min-height: 36px;
-        padding: 8px 10px;
-        border-radius: var(--radius-md);
-        color: var(--text-primary);
-        font-size: var(--font-size-md);
-        cursor: pointer;
-        user-select: none;
-        outline: none;
-      }
-      .feed-menu-item[data-highlighted] {
-        background: var(--surface-2);
-      }
-      .feed-menu-item[data-disabled] {
-        color: var(--text-tertiary);
-        cursor: default;
-      }
-      .feed-menu-item.danger {
-        color: var(--accent-warm);
-      }
-      .feed-menu-item.danger[data-highlighted] {
-        background: rgba(212, 100, 46, 0.1);
-      }
-
       .feed-title {
         font-weight: var(--font-weight-semibold);
         font-size: var(--font-size-lg);
@@ -1738,9 +794,7 @@
       .chip,
       .kind-chip,
       .provenance-chip,
-      .tag-chip,
-      .peer-scope-chip,
-      .badge {
+      .tag-chip {
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -1817,18 +871,6 @@
       }
       .feed-footer-left { display: flex; flex-direction: column; gap: 6px; }
       .feed-footer-right { display: flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
-      .feed-visibility-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-      .feed-visibility-select {
-        min-width: 180px;
-        padding: 6px 10px;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--border);
-        background: var(--input-bg);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-sm);
-      }
-      .feed-visibility-note { width: 100%; max-width: 60ch; font-size: var(--font-size-sm); color: var(--text-tertiary); }
 
       .feed-expand {
         border: 1px solid var(--border);
@@ -1893,15 +935,6 @@
         font-weight: var(--font-weight-medium);
       }
 
-      .badge {
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-semibold);
-        background: var(--accent-cool-subtle);
-        color: var(--accent-cool);
-      }
-      .badge-online { background: var(--accent-subtle); color: var(--accent); border-color: var(--accent-strong); }
-      .badge-offline { background: var(--accent-warm-subtle); color: var(--accent-warm); border-color: rgba(255, 180, 84, 0.3); }
-
       .pill {
         display: inline-block;
         padding: 2px 10px;
@@ -1917,41 +950,6 @@
       .pill-warning { background: var(--yellow-bg, #ca8a0422); color: var(--yellow-text, #ca8a04); }
       .pill-error { background: var(--red-bg, #dc262622); color: var(--red-text, #dc2626); }
 
-      /* Sync tab top-of-card online badge.
-         Subtle-wash treatment matches trust badges + kind chips + segmented
-         toggle active state. Handoff README §E mentioned "filled-mint pill"
-         but the reference ui_kit ships the subtle-wash variant — keeping it
-         in-family here for visual consistency. */
-      .sync-online-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 2px 10px;
-        border-radius: var(--radius-pill);
-        background: var(--accent-subtle);
-        color: var(--accent);
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-semibold);
-        letter-spacing: 0.02em;
-        transition: background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
-      }
-      .sync-online-badge::before {
-        content: "";
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: currentColor;
-        box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 24%, transparent);
-      }
-      .sync-online-badge.sync-online-offline {
-        background: var(--accent-warm-subtle);
-        color: var(--accent-warm);
-      }
-      .sync-online-badge.sync-online-error {
-        background: rgba(255, 122, 80, 0.16);
-        color: var(--status-attention);
-      }
-
       .match {
         padding: 0 2px;
         border-radius: 3px;
@@ -1959,15 +957,13 @@
         color: inherit;
       }
 
-      /* ── Health actions / sync actions ──────────────────────── */
-
-      .health-actions, .sync-actions {
+      .health-actions {
         display: grid;
         gap: var(--sp-2);
         margin: var(--sp-2) 0 var(--sp-3);
       }
 
-      .health-action, .sync-action {
+      .health-action {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
@@ -1979,562 +975,29 @@
       }
       /* General sibling, not adjacent: the invite/join panels sit in empty
          portal <div>s between action rows and the `+` selector would miss. */
-      .sync-action ~ .sync-action { margin-top: var(--sp-2); }
 
-      .health-action-text, .sync-action-text { font-size: var(--font-size-md); color: var(--text-primary); flex: 1; min-width: 0; }
-      .settings-link,
-      .sync-subview-link {
+      .health-action-text { font-size: var(--font-size-md); color: var(--text-primary); flex: 1; min-width: 0; }
+      .settings-link {
         color: var(--accent);
         text-decoration-color: color-mix(in srgb, var(--accent) 52%, transparent);
         text-underline-offset: 3px;
         transition: color var(--duration-fast) var(--ease-standard), text-decoration-color var(--duration-fast) var(--ease-standard);
       }
-      .settings-link:hover,
-      .sync-subview-link:hover {
+      .settings-link:hover {
         color: var(--accent-hover);
         text-decoration-color: currentColor;
       }
-      .sync-section-heading {
-        display: flex;
-        align-items: center;
-        gap: var(--sp-2);
-        margin-top: var(--sp-2);
-        flex-wrap: wrap;
-      }
-      .sync-section-label {
-        margin-top: 0;
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-bold);
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: var(--text-tertiary);
-      }
-      .sync-section-count {
-        font-size: var(--font-size-xs);
-        padding: 2px 8px;
-      }
-      .sync-section-note {
-        margin-top: -2px;
-        margin-bottom: var(--sp-1);
-        max-width: 72ch;
-      }
-      .health-action-command, .sync-action-command { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text-tertiary); }
+      .health-action-command { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text-tertiary); }
       .health-action-buttons { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
 
       /* ── Diagnostics ───────────────────────────────────────── */
 
-      .diag-list { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
-      /* Sync diagnostics row. Body wraps within its own column; timestamp
-         stays flush-right on the first line and doesn't shove the wrapped
-         body sideways. On narrow viewports the timestamp stacks under the
-         body so neither column has to compete with the other. */
-      .diag-line {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        padding: var(--sp-3);
-        background: var(--surface-2);
-        display: grid;
-        grid-template-columns: 1fr auto;
-        align-items: baseline;
-        gap: var(--sp-3);
-      }
-      .diag-line .left { min-width: 0; }
-      .diag-line .right { color: var(--text-tertiary); white-space: nowrap; }
-      @media (max-width: 600px) {
-        .diag-line { grid-template-columns: 1fr; }
-        .diag-line .right { font-size: var(--font-size-xs); }
-      }
-
-      .diag-group { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); background: var(--surface-2); }
-      .diag-group summary { cursor: pointer; color: var(--text-tertiary); font-size: var(--font-size-md); }
-
-      /* ── Peers ─────────────────────────────────────────────── */
-
-      /* Device list: full-width rows so the row head reads as a single
-         line and the expanded drawer uses the full card width. The old
-         2-column grid above 900px forced expansion into a narrow sidebar. */
-      .peer-list { display: grid; grid-template-columns: 1fr; gap: var(--sp-2); }
-      .peer-card {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        background: var(--surface-1);
-        padding: 0;
-        display: block;
-        overflow: hidden;
-      }
-      /* Padded variant for surfaces that reuse .peer-card as a generic
-         content card (e.g. coordinator-admin group cards). Device rows
-         keep padding:0 because their row-head owns its own interior. */
-      .peer-card.peer-card--padded {
-        padding: var(--sp-3);
-        display: grid;
-        gap: var(--sp-2);
-      }
-      .peer-title { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
-      .peer-title strong { font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
-      /* Direction glyph rendered when a peer is in mutual-trust state.
-         Handoff §E asked for ↕/↓/↑ but the full 3-way split requires a
-         peer-role field that doesn't exist in core yet — ship the
-         bidirectional marker against the existing trust signal and
-         defer the subscribed/publishing variants to a follow-up. */
-      .peer-direction {
-        margin-left: 6px;
-        font-family: var(--font-mono);
-        font-size: var(--font-size-md);
-        color: var(--text-tertiary);
-        vertical-align: baseline;
-      }
-      .actor-list { display: grid; gap: var(--sp-3); margin-top: var(--sp-3); }
-      .actor-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); border-radius: var(--radius-lg); padding: var(--sp-3); }
-      .actor-details { min-width: 0; display: grid; gap: 6px; }
-      .actor-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-      .actor-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
-      .legacy-review-card {
-        display: grid;
-        gap: var(--sp-3);
-        padding: var(--sp-3);
-        border: 1px solid color-mix(in srgb, var(--accent-warm) 24%, var(--border));
-        border-radius: var(--radius-lg);
-        background: color-mix(in srgb, var(--accent-warm-subtle) 34%, var(--surface-1));
-      }
-      .legacy-review-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: var(--sp-3);
-      }
-      .legacy-review-summary { margin-top: 6px; max-width: 78ch; color: var(--text-secondary); }
-      .legacy-review-warning { margin-top: 4px; max-width: 78ch; }
-      .legacy-review-groups {
-        display: grid;
-        gap: var(--sp-2);
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-      .legacy-review-toolbar {
-        display: grid;
-        gap: var(--sp-2);
-        padding: var(--sp-2);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: color-mix(in srgb, var(--surface-2) 72%, transparent);
-      }
-      .legacy-review-filter-row,
-      .legacy-review-bulk-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-2);
-        align-items: center;
-      }
-      .legacy-filter.active {
-        background: var(--accent-subtle);
-        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
-        color: var(--accent);
-      }
-      .legacy-review-search { flex: 1 1 260px; min-width: min(260px, 100%); }
-      .legacy-review-group {
-        display: grid;
-        gap: var(--sp-2);
-        padding: var(--sp-3);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: var(--surface-2);
-      }
-      .legacy-review-group-main {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: var(--sp-3);
-        align-items: start;
-      }
-      .legacy-review-title-wrap { display: flex; align-items: flex-start; gap: var(--sp-2); min-width: 0; }
-      .legacy-review-group-title { color: var(--text-primary); font-weight: var(--font-weight-bold); overflow-wrap: anywhere; }
-      .legacy-review-group-meta,
-      .legacy-review-reason {
-        margin-top: 2px;
-        color: var(--text-tertiary);
-        font-size: var(--font-size-sm);
-        line-height: 1.45;
-      }
-      .legacy-review-cleanup-note {
-        margin-top: 6px;
-        color: var(--accent-warm);
-        font-size: var(--font-size-sm);
-        line-height: 1.45;
-      }
-      .legacy-review-count {
-        justify-self: end;
-        white-space: nowrap;
-        padding: 3px 9px;
-        border-radius: var(--radius-pill);
-        background: var(--accent-neutral-subtle);
-        color: var(--text-secondary);
-        font-family: var(--font-mono);
-        font-size: var(--font-size-sm);
-      }
-      .legacy-review-confirmation {
-        padding: var(--sp-2) var(--sp-3);
-        border: 1px solid color-mix(in srgb, var(--accent-warm) 35%, var(--border));
-        border-radius: var(--radius-md);
-        background: var(--accent-warm-subtle);
-        color: var(--text-secondary);
-        font-size: var(--font-size-md);
-        line-height: 1.45;
-      }
-      .legacy-review-samples {
-        padding: var(--sp-2) var(--sp-3);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: color-mix(in srgb, var(--surface-1) 72%, transparent);
-      }
-      .legacy-review-samples summary {
-        cursor: pointer;
-        color: var(--text-primary);
-        font-weight: var(--font-weight-semibold);
-      }
-      .legacy-review-sample-list {
-        display: grid;
-        gap: var(--sp-2);
-        margin: var(--sp-2) 0 0;
-        padding: 0;
-        list-style: none;
-      }
-      .legacy-review-sample {
-        display: grid;
-        gap: 3px;
-        padding: var(--sp-2);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        background: var(--surface-1);
-      }
-      .legacy-review-sample-title { color: var(--text-primary); font-weight: var(--font-weight-semibold); }
-      .legacy-review-sample-body { color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.45; }
-      .legacy-review-target {
-        display: grid;
-        gap: 5px;
-        color: var(--text-tertiary);
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-semibold);
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
-      .legacy-review-actions { display: flex; justify-content: flex-end; }
-      .actor-name-input { min-width: 220px; }
-      .actor-merge-controls { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-      .actor-merge-select { min-width: 200px; }
-      .actor-merge-note { width: 100%; }
-      .actor-create-row { display: flex; align-items: flex-end; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-3); }
-      .actor-create-row input { flex: 1 1 260px; max-height: 40px; }
-      .actor-badge.local { background: rgba(31, 111, 92, 0.12); color: var(--accent); }
-      .peer-scope { display: grid; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
-      .peer-scope-summary, .peer-scope-effective { font-size: var(--font-size-sm); color: var(--text-secondary); }
-      .peer-actor-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-      .peer-scope-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
-      .peer-scope-editor { display: grid; gap: 8px; }
-      .peer-scope-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 32px; align-items: flex-start; padding: 8px 10px; margin: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
-      .peer-scope-chip { padding: 4px 8px; background: rgba(43, 122, 176, 0.12); color: var(--accent); font-size: var(--font-size-sm); }
-      .peer-scope-chip.empty { background: transparent; color: var(--text-tertiary); border-style: dashed; border-color: var(--border); }
-
-      /* ProjectScopePicker — selected chips on top, an "Add project"
-         button below that opens a Radix Popover with a searchable list.
-         Typing an unmatched name turns the last row into
-         `+ Create "foo"` so free-text entry folds into the same
-         surface. Used by coordinator-admin scope defaults and Sync
-         peer-scope drawers. */
-      .project-scope-picker {
-        display: grid;
-        gap: var(--sp-2);
-        position: relative;
-      }
-      .project-scope-picker-selected {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        padding: 8px 10px;
-        margin: 0;
-        min-height: 36px;
-        list-style: none;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        background: var(--surface-2);
-        align-items: center;
-      }
-      .project-scope-picker-selected-empty {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-      }
-      .project-scope-picker-selected-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 4px 4px 10px;
-        background: rgba(43, 122, 176, 0.16);
-        border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
-        border-radius: var(--radius-pill);
-        color: var(--accent);
-        font-size: var(--font-size-sm);
-      }
-      .project-scope-picker-selected-remove {
-        appearance: none;
-        border: none;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        padding: 0 4px;
-        font: inherit;
-        font-size: var(--font-size-base);
-        line-height: 1;
-        opacity: 0.7;
-      }
-      .project-scope-picker-selected-remove:hover { opacity: 1; }
-      .project-scope-picker-trigger {
-        justify-self: start;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 12px;
-        font-size: var(--font-size-sm);
-      }
-      .project-scope-picker-popover {
-        width: min(360px, 100%);
-        max-height: 280px;
-        display: grid;
-        grid-template-rows: auto 1fr;
-        gap: 4px;
-        padding: 6px;
-        background: var(--surface-1);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.3));
-        z-index: 50;
-      }
-      /* Vanilla-DOM popover (peer-scope) anchors inline under its trigger;
-         the Preact ToggleGroup version portals via Radix. Both share the
-         rest of the styling. */
-      .project-scope-picker-popover--inline {
-        position: absolute;
-        left: 0;
-        right: auto;
-        top: 100%;
-        margin-top: 6px;
-      }
-      .project-scope-picker-search {
-        appearance: none;
-        width: 100%;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        background: var(--surface-2);
-        color: var(--text-primary);
-        padding: 6px 10px;
-        font: inherit;
-        font-size: var(--font-size-md);
-      }
-      .project-scope-picker-search:focus {
-        outline: 2px solid var(--accent);
-        outline-offset: 1px;
-      }
-      .project-scope-picker-results {
-        margin: 0;
-        padding: 4px 0;
-        list-style: none;
-        max-height: 220px;
-        overflow-y: auto;
-        display: grid;
-        gap: 2px;
-      }
-      .project-scope-picker-empty-row {
-        padding: 8px 10px;
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-      }
-      .project-scope-picker-row {
-        appearance: none;
-        border: none;
-        background: transparent;
-        width: 100%;
-        text-align: left;
-        font: inherit;
-        display: grid;
-        grid-template-columns: 16px 1fr;
-        gap: 6px;
-        align-items: center;
-        padding: 6px 10px;
-        border-radius: var(--radius-sm);
-        cursor: pointer;
-        color: var(--text-secondary);
-        font-size: var(--font-size-md);
-      }
-      .project-scope-picker-row:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: -2px;
-      }
-      .project-scope-picker-row--active {
-        background: color-mix(in srgb, var(--accent) 10%, transparent);
-        color: var(--text-primary);
-      }
-      .project-scope-picker-row[aria-selected="true"] {
-        color: var(--accent);
-      }
-      .project-scope-picker-row-check {
-        display: inline-block;
-        width: 16px;
-        text-align: center;
-        font-size: var(--font-size-sm);
-        color: var(--accent);
-      }
-      .project-scope-picker-row--create .project-scope-picker-row-check {
-        color: var(--text-tertiary);
-      }
-      /* PresencePip — atomic health indicator.
-         See docs/plans/2026-04-23-sync-tab-redesign.md (loading-states). */
-      .presence-pip {
-        display: inline-block;
-        width: var(--presence-pip-size, 8px);
-        height: var(--presence-pip-size, 8px);
-        border-radius: 50%;
-        flex-shrink: 0;
-        vertical-align: middle;
-      }
-      .presence-pip--online    { background: var(--accent); }
-      .presence-pip--offline   { background: var(--accent-warm, var(--accent)); }
-      .presence-pip--degraded  { background: var(--accent-warm, var(--accent)); }
-      .presence-pip--attention { background: var(--accent-warm-strong, var(--accent-warm, var(--accent))); animation: pip-attention var(--duration-pulse) var(--ease-in-out) infinite; }
-      .presence-pip--syncing   { background: var(--accent); animation: pip-syncing var(--duration-pip) var(--ease-in-out) infinite; }
-      .presence-pip--unknown   { background: var(--text-tertiary); opacity: 0.6; }
-
-      @keyframes pip-attention {
-        0%, 100% { opacity: 0.6; transform: scale(1); }
-        50%      { opacity: 1;   transform: scale(1.15); }
-      }
-      @keyframes pip-syncing {
-        0%, 100% { opacity: 0.55; }
-        50%      { opacity: 1; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .presence-pip--attention,
-        .presence-pip--syncing { animation: none; opacity: 1; transform: none; }
-      }
-      .peer-scope-chip-remove { border: none; background: transparent; color: inherit; cursor: pointer; padding: 0; font: inherit; opacity: 0.75; }
-      .peer-scope-chip-remove:hover { opacity: 1; }
-      .peer-scope-input { width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-primary); padding: 8px 10px; font: inherit; }
-      .peer-scope-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-      .peer-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; }
-
       /* Labeled input wrapper — keeps a small uppercase caption visible even
          when the input has a value. Replaces aria-label-only inputs that
          were glaring once the deep-ink palette raised contrast. */
-      .sync-labeled-field { display: flex; flex-direction: column; gap: 4px; min-width: 180px; flex: 1 1 220px; }
-      .sync-labeled-field-caption {
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-medium);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--text-tertiary);
-      }
-      .peer-actions button.danger { color: var(--accent-warm); border-color: color-mix(in srgb, var(--accent-warm) 36%, var(--border)); }
-      .peer-actions button.danger:hover { background: var(--accent-warm-subtle); border-color: var(--accent-warm); }
-      .peer-card,
-      .actor-row,
-      .peer-scope-input,
-      .actor-list {
-        scroll-margin-top: 110px;
-      }
-      .peer-scope-editor-wrap {
-        display: grid;
-        gap: var(--sp-2);
-        overflow: hidden;
-        transition: max-height var(--duration-medium) var(--ease-standard), opacity var(--duration-base) var(--ease-standard);
-        max-height: 400px;
-        opacity: 1;
-      }
-      .peer-scope-editor-wrap.collapsed {
-        max-height: 0;
-        opacity: 0;
-        padding: 0;
-      }
-      @keyframes sync-shimmer {
+      @keyframes feed-shimmer {
         0% { background-position: -200px 0; }
         100% { background-position: 200px 0; }
-      }
-      .sync-skeleton { padding: 16px 0; }
-      .sync-skeleton-line {
-        height: 12px;
-        border-radius: 6px;
-        background: linear-gradient(90deg, var(--border) 25%, var(--surface-2) 50%, var(--border) 75%);
-        background-size: 400px 100%;
-        animation: sync-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
-        margin: 8px 0;
-      }
-      .sync-skeleton-line.short { width: 40%; }
-      .sync-skeleton-line.medium { width: 65%; }
-      .sync-skeleton-line.long { width: 85%; }
-      .sync-skeleton-block {
-        height: 56px;
-        border-radius: 8px;
-        background: linear-gradient(90deg, var(--border) 25%, var(--surface-2) 50%, var(--border) 75%);
-        background-size: 400px 100%;
-        animation: sync-shimmer var(--duration-shimmer) var(--ease-in-out) infinite;
-        margin: 8px 0;
-      }
-      .sync-empty-state {
-        padding: 20px;
-        text-align: center;
-        color: var(--text-dim, var(--text-tertiary));
-        font-size: 0.9rem;
-        border: 1px dashed var(--border);
-        border-radius: 8px;
-        margin: 8px 0;
-      }
-      .sync-empty-state strong {
-        display: block;
-        margin-bottom: 6px;
-        color: var(--text-secondary);
-        font-size: 0.95rem;
-      }
-      .sync-empty-state span {
-        display: block;
-        max-width: 54ch;
-        margin: 0 auto;
-        line-height: 1.5;
-      }
-      .sync-inline-feedback {
-        margin-top: 8px;
-        font-size: var(--font-size-sm);
-        color: var(--text-secondary);
-      }
-      .sync-inline-feedback.success { color: var(--accent); }
-      .sync-inline-feedback.warning { color: var(--accent-warm); }
-      .sync-field-error {
-        outline: 1.5px solid var(--red-text, #dc2626) !important;
-        outline-offset: -1px;
-      }
-      .sync-field-hint {
-        font-size: 0.78rem;
-        color: var(--red-text, #dc2626);
-        margin: 2px 0 0 2px;
-      }
-      @keyframes sync-shake {
-        0%, 100% { transform: translateX(0); }
-        20%, 60% { transform: translateX(-4px); }
-        40%, 80% { transform: translateX(4px); }
-      }
-      .sync-shake { animation: sync-shake var(--duration-shake) var(--ease-in-out); }
-      @keyframes sync-attention-target {
-        0% {
-          transform: translateY(0);
-          box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
-        }
-        35% {
-          transform: translateY(-1px);
-          box-shadow: 0 0 0 3px var(--focus-ring);
-        }
-        100% {
-          transform: translateY(0);
-          box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
-        }
-      }
-      .sync-attention-target {
-        animation: sync-attention-target var(--duration-attention) var(--ease-out);
       }
       .settings-button:disabled {
         opacity: 0.55;
@@ -2543,206 +1006,14 @@
       .settings-button {
         transition: opacity var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
       }
-      .sync-toggle-admin {
-        background: none;
-        border: none;
-        color: var(--text-dim, var(--text-tertiary));
-        padding: 4px 0;
-        cursor: pointer;
-        text-align: left;
-        margin-top: 16px;
-        font-size: 0.8rem;
-        text-decoration: underline;
-        text-decoration-style: dashed;
-        text-underline-offset: 3px;
-      }
-      .sync-toggle-admin:hover {
-        color: var(--accent);
-      }
-      .sync-ttl-group {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .sync-ttl-group label {
-        font-size: 0.8rem;
-        color: var(--text-dim, var(--text-tertiary));
-        white-space: nowrap;
-      }
-      .sync-team-summary {
-        display: grid;
-        gap: 8px;
-        padding: 12px 14px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        background: var(--surface-2);
-      }
-      .sync-team-status-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-      .sync-team-status-label {
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-semibold);
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: var(--text-tertiary);
-      }
-      .sync-team-headline {
-        font-size: var(--font-size-lg);
-        font-weight: var(--font-weight-bold);
-        color: var(--text-primary);
-      }
-      .sync-team-metrics {
-        font-size: var(--font-size-md);
-        color: var(--text-secondary);
-        font-feature-settings: 'tnum' 1;
-      }
-      .sync-team-metrics-secondary {
-        color: var(--text-tertiary);
-      }
-      .sync-radix-select-host {
-        min-width: 0;
-        max-width: 100%;
-      }
-      .sync-actor-select-host {
-        min-width: 220px;
-        max-width: 100%;
-        flex: 1 1 220px;
-      }
-      .sync-legacy-select-host {
-        min-width: 320px;
-        max-width: 100%;
-        flex: 1 1 320px;
-      }
-      .sync-radix-select-trigger {
-        display: inline-flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        width: 100%;
-        text-align: left;
-      }
-      .sync-radix-select-trigger > span:first-child {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .sync-radix-select-icon {
+      .radix-select-icon {
         color: var(--text-tertiary);
         flex: 0 0 auto;
       }
-      .sync-radix-select-content {
-        z-index: 30;
-        min-width: var(--radix-select-trigger-width);
-        max-width: min(420px, calc(100vw - 24px));
-        overflow: hidden;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: var(--surface-1);
-        box-shadow: var(--shadow-lg);
-      }
-      .sync-radix-select-viewport {
-        padding: 6px;
-      }
-      .sync-radix-select-item {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        min-height: 36px;
-        padding: 8px 12px;
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-md);
-        cursor: pointer;
-        user-select: none;
-      }
-      .sync-radix-select-item[data-highlighted] {
-        outline: none;
-        background: var(--accent-subtle);
-        color: var(--accent);
-      }
-      .sync-radix-select-item[data-disabled] {
-        opacity: 0.45;
-        cursor: default;
-      }
-      .sync-radix-select-indicator {
+      .radix-select-indicator {
         color: var(--accent);
         flex: 0 0 auto;
       }
-      .sync-legacy-claim-row { margin-top: 12px; gap: 12px; align-items: center; flex-wrap: wrap; }
-      .sync-legacy-select {
-        padding: 8px 12px;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--border);
-        background: var(--input-bg);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-md);
-        cursor: pointer;
-        transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
-      }
-      .sync-legacy-select:hover { border-color: var(--border-hover); }
-      .sync-legacy-select:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--focus-ring);
-      }
-      .sync-legacy-button {
-        border: 1px solid var(--control-border);
-        background: var(--control-bg);
-        color: var(--control-text);
-        padding: 8px 14px;
-        font-size: var(--font-size-md);
-        font-weight: var(--font-weight-semibold);
-        transition: background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
-      }
-      .sync-legacy-button:hover {
-        background: var(--control-hover-bg);
-        border-color: var(--control-hover-border);
-      }
-      .sync-legacy-button:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-      .sync-legacy-button:disabled {
-        opacity: 0.7;
-        cursor: default;
-        transform: none;
-      }
-      .sync-actor-select {
-        padding: 8px 12px;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--border);
-        background: var(--input-bg);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-md);
-        cursor: pointer;
-        transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
-      }
-      .sync-actor-select:hover { border-color: var(--border-hover); }
-      .sync-actor-select:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--focus-ring);
-      }
-      .peer-meta { font-size: var(--font-size-md); color: var(--text-tertiary); font-feature-settings: 'tnum' 1; }
-      .peer-addresses { font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text-tertiary); letter-spacing: 0.02em; }
-      .attempts-list { margin-top: var(--sp-3); display: grid; gap: 6px; font-size: var(--font-size-md); color: var(--text-tertiary); }
-
-      /* ── Pairing ───────────────────────────────────────────── */
-
-      .pairing-card { margin-top: var(--sp-4); border: 1px dashed var(--border); border-radius: var(--radius-lg); padding: var(--sp-4); display: grid; gap: var(--sp-3); background: var(--surface-2); }
-      .pairing-body { display: grid; gap: var(--sp-3); grid-template-columns: 1.4fr 1fr; align-items: start; }
-      .pairing-body pre { margin: 0; font-size: var(--font-size-sm); background: var(--surface-0); padding: var(--sp-3); border-radius: var(--radius-md); white-space: pre-wrap; word-break: break-all; }
-      @media (max-width: 900px) { .pairing-body { grid-template-columns: 1fr; } }
 
       /* ── Modal ──────────────────────────────────────────────── */
 
@@ -2760,22 +1031,6 @@
       }
       @media (max-height: 720px) { .modal { align-items: flex-start; } }
       .modal-backdrop[hidden], .modal[hidden] { display: none; }
-
-      .legacy-upgrade-modal .modal-card { width: min(620px, 100%); }
-      .legacy-upgrade-summary {
-        padding: var(--sp-3);
-        border: 1px solid color-mix(in srgb, var(--accent-warm) 28%, var(--border));
-        border-radius: var(--radius-md);
-        background: var(--accent-warm-subtle);
-        color: var(--text-secondary);
-        line-height: 1.5;
-      }
-      .legacy-upgrade-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-2);
-        justify-content: flex-end;
-      }
 
       .modal-card {
         width: min(520px, 100%);
@@ -3338,133 +1593,6 @@
         transition: background var(--duration-fast) var(--ease-standard);
       }
       .settings-save:hover { background: var(--control-hover-bg); }
-      .sync-dialog-card {
-        width: min(560px, 100%);
-      }
-      .sync-dialog-actions {
-        display: flex;
-        gap: var(--sp-2);
-        align-items: center;
-      }
-      .sync-dialog-input {
-        width: calc(100% - 6px);
-        margin: 3px;
-        padding: var(--sp-2) var(--sp-3);
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border);
-        background: var(--input-bg);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-md);
-        box-sizing: border-box;
-      }
-      .sync-dialog-input:focus {
-        border-color: var(--accent);
-        outline: 2px solid var(--focus-ring);
-        outline-offset: 1px;
-      }
-      .autocomplete-popover {
-        background: var(--surface-1, var(--bg-elevated));
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-        max-height: 260px;
-        overflow-y: auto;
-        padding: 4px;
-        z-index: 120;
-      }
-      .autocomplete-listbox {
-        display: flex;
-        flex-direction: column;
-        list-style: none;
-        margin: 0;
-        padding: 0;
-      }
-      .autocomplete-option {
-        padding: 6px 10px;
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-family: var(--font-sans);
-        font-size: var(--font-size-md);
-        cursor: pointer;
-        user-select: none;
-      }
-      .autocomplete-option:hover,
-      .autocomplete-option.active,
-      .autocomplete-option[aria-selected="true"] {
-        background: var(--surface-2, rgba(255, 255, 255, 0.06));
-        color: var(--accent);
-      }
-      .sync-dialog-confirm.danger {
-        background: rgba(182, 75, 47, 0.12);
-        border-color: rgba(182, 75, 47, 0.28);
-        color: var(--accent-warm);
-      }
-      .sync-dialog-confirm.danger:hover {
-        background: rgba(182, 75, 47, 0.18);
-        border-color: rgba(182, 75, 47, 0.38);
-      }
-      .sync-dialog-choice-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: var(--sp-2);
-      }
-      .sync-dialog-radio-list {
-        display: grid;
-        gap: var(--sp-2);
-      }
-      .sync-dialog-radio-option {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 12px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        background: color-mix(in srgb, var(--surface-1) 86%, var(--surface-0));
-        cursor: pointer;
-        transition: border-color var(--duration-fast) var(--ease-standard), background var(--duration-fast) var(--ease-standard);
-      }
-      .sync-dialog-radio-option:hover {
-        border-color: var(--border-hover);
-        background: color-mix(in srgb, var(--surface-1) 94%, var(--surface-0));
-      }
-      .sync-dialog-radio-option:has(button[data-state="checked"]) {
-        border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
-        background: color-mix(in srgb, var(--accent-subtle) 68%, var(--surface-1));
-      }
-      .sync-dialog-radio-option button {
-        width: 18px;
-        height: 18px;
-        border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--text-tertiary) 42%, var(--border));
-        background: var(--surface-0);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        flex: 0 0 auto;
-      }
-      .sync-dialog-radio-option button:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-      .sync-dialog-radio-option button[data-state="checked"] {
-        border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-        background: color-mix(in srgb, var(--accent-subtle) 82%, var(--surface-0));
-      }
-      .sync-dialog-radio-indicator {
-        width: 8px;
-        height: 8px;
-        border-radius: 999px;
-        background: var(--accent);
-      }
-      .sync-dialog-radio-label {
-        color: var(--text-primary);
-        font-size: var(--font-size-md);
-      }
       .settings-save:disabled { opacity: 0.6; cursor: not-allowed; }
       .settings-note { color: var(--text-tertiary); font-size: var(--font-size-sm); }
 
@@ -3507,16 +1635,6 @@
         .summary-row { grid-template-columns: 1fr; }
         .feed-card-header { flex-wrap: wrap; }
         .feed-actions { width: 100%; justify-content: flex-end; }
-        .actor-row { align-items: stretch; flex-direction: column; }
-        .peer-scope-row { grid-template-columns: 1fr; }
-        .feed-visibility-controls { align-items: stretch; }
-        .feed-visibility-select { width: 100%; }
-        .actor-actions { justify-content: flex-start; }
-        .legacy-review-header { flex-direction: column; }
-        .legacy-review-group-main { grid-template-columns: 1fr; }
-        .legacy-review-count { justify-self: start; }
-        .legacy-review-actions { justify-content: flex-start; }
-        .legacy-review-bulk-row .settings-save { width: 100%; }
       }
 
       @media (max-width: 720px) {
@@ -3541,33 +1659,9 @@
         .modal { padding: var(--sp-3); }
         .modal-card { padding: var(--sp-4); border-radius: var(--radius-lg); }
       }
-
-      /* ──────────────────────────────────────────────────────────────────
-         Token-aligned focus rings.
-
-         The interactive surfaces below previously relied on the browser's
-         default focus outline. They now share the same focus language as
-         the rest of the system:
-           - Buttons get a 2px var(--accent) outline with a 2px offset.
-           - Inputs and selects get an accent border + 3px var(--focus-ring)
-             halo, matching .feed-search / .project-filter / .sync-actor-select.
-         Radix-managed items (with [data-highlighted]) are intentionally not
-         touched here because their highlight state already serves as a
-         keyboard-focus indicator. */
-      .coordinator-admin-tab-trigger:focus-visible,
       .feed-inspector-button:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
-      }
-      .actor-merge-select:focus,
-      .actor-name-input:focus,
-      .feed-visibility-select:focus,
-      .legacy-review-search:focus,
-      .peer-scope-input:focus,
-      .project-domain-select:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--focus-ring);
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -3641,189 +1735,6 @@
 
     <!-- ── Settings modal ──────────────────────────────────── -->
     <div id="settingsDialogMount"></div>
-    <template id="settingsDialogTemplate">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2 id="settingsTitle">Memory & model settings</h2>
-          <button class="modal-close-button" id="settingsClose" aria-label="Close settings">
-            <i class="modal-close-button-icon" aria-hidden="true" data-lucide="x"></i>
-            <span class="modal-close-button-label">Close</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="small" id="settingsDescription">Configure connection, authentication, processing, and sync behavior.</div>
-          <div class="settings-tabs" role="tablist" aria-label="Settings sections">
-            <button class="settings-tab" id="settingsTabObserver" data-settings-tab="observer" role="tab" aria-selected="true" data-state="active">Connection</button>
-            <button class="settings-tab" id="settingsTabQueue" data-settings-tab="queue" role="tab" aria-selected="false" data-state="inactive">Processing</button>
-            <button class="settings-tab" id="settingsTabSync" data-settings-tab="sync" role="tab" aria-selected="false" data-state="inactive">Device Sync</button>
-          </div>
-          <div class="settings-advanced-toolbar field-checkbox">
-            <input class="cm-checkbox" id="settingsAdvancedToggle" type="checkbox" />
-            <label for="settingsAdvancedToggle">Show advanced controls</label>
-            <button class="help-icon" type="button" data-tooltip="Advanced controls include JSON fields, tuning values, and network overrides." aria-label="About advanced controls">?</button>
-          </div>
-
-          <div class="settings-panel" id="settingsPanelObserver" data-settings-panel="observer" data-state="active">
-            <div id="observerStatusBanner" class="observer-status-banner" hidden></div>
-            <div class="settings-group">
-              <h3 class="settings-group-title">Connection</h3>
-              <div class="field">
-                <div class="field-label">
-                  <label for="observerProvider">Model provider</label>
-                  <button class="help-icon" type="button" data-tooltip="Choose where model requests are sent. Use auto for recommended defaults." aria-label="About model provider">?</button>
-                </div>
-                <select id="observerProvider"><option value="">auto (default)</option></select>
-                <div class="small">`auto` uses recommended defaults for the selected connection mode.</div>
-              </div>
-              <div class="field">
-                <div class="field-label">
-                  <label for="observerModel">Model</label>
-                  <button class="help-icon" type="button" data-tooltip="Leave blank to use a recommended model for your selected mode/provider." aria-label="About model defaults">?</button>
-                </div>
-                <input id="observerModel" placeholder="leave empty for default" />
-                <div class="small">Default: `gpt-5.1-codex-mini` for Direct API; `claude-4.5-haiku` for Local Claude session.</div>
-                <div class="small" id="observerModelHint"></div>
-              </div>
-              <div class="field">
-                <div class="field-label">
-                  <label for="observerRuntime">Connection mode</label>
-                  <button class="help-icon" type="button" data-tooltip="Direct API uses provider credentials. Local Claude session uses local Claude runtime auth." aria-label="About connection mode">?</button>
-                </div>
-                <select id="observerRuntime">
-                  <option value="api_http">Direct API (default)</option>
-                  <option value="claude_sidecar">Local Claude session</option>
-                </select>
-                <div class="small">Switch between provider API credentials and local Claude session auth.</div>
-              </div>
-              <div class="field settings-advanced" hidden>
-                <label for="claudeCommand">Claude command (JSON argv)</label>
-                <textarea id="claudeCommand" rows="2" placeholder='["claude"]'></textarea>
-                <div class="small">Used by `claude_sidecar` runtime. Example wrapper: `["wrapper", "claude", "--"]`.</div>
-              </div>
-              <div class="field settings-advanced" hidden>
-                <label for="observerMaxChars">Request size limit (chars)</label>
-                <input id="observerMaxChars" type="number" min="1" />
-                <div class="small" id="observerMaxCharsHint"></div>
-              </div>
-            </div>
-
-            <div class="settings-group">
-              <h3 class="settings-group-title">Authentication</h3>
-              <div class="field">
-                <div class="field-label">
-                  <label for="observerAuthSource">Authentication method</label>
-                  <button class="help-icon" type="button" data-tooltip="Choose how credentials are resolved: environment, file, command, or none." aria-label="About authentication method">?</button>
-                </div>
-                <select id="observerAuthSource">
-                  <option value="auto">auto (default)</option>
-                  <option value="env">env</option>
-                  <option value="file">file</option>
-                  <option value="command">command</option>
-                  <option value="none">none</option>
-                </select>
-                <div class="small">Use `auto` unless you need a specific token source.</div>
-              </div>
-              <div class="field" id="observerAuthFileField" hidden>
-                <label for="observerAuthFile">Token file path</label>
-                <input id="observerAuthFile" placeholder="~/.codemem/work-token.txt" />
-                <div class="small">Reads token text from this file when method is `file`.</div>
-              </div>
-              <div class="field" id="observerAuthCommandField" hidden>
-                <div class="field-label">
-                  <label for="observerAuthCommand">Token command</label>
-                  <button class="help-icon" type="button" data-tooltip="Runs this command and uses stdout as the token. JSON argv only, no shell parsing." aria-label="About token command">?</button>
-                </div>
-                <textarea id="observerAuthCommand" rows="3" placeholder='["iap-auth", "--audience", "gateway"]'></textarea>
-                <div class="small">When method is `command`, command stdout is used as the token.</div>
-              </div>
-              <div class="small" id="observerAuthCommandNote" hidden>
-                Command format: JSON string array, e.g. `["iap-auth", "--audience", "gateway"]`.
-              </div>
-              <div class="field settings-advanced" hidden>
-                <label for="observerAuthTimeoutMs">Token command timeout (ms)</label>
-                <input id="observerAuthTimeoutMs" type="number" min="1" />
-              </div>
-              <div class="field settings-advanced" hidden>
-                <label for="observerAuthCacheTtlS">Token cache time (s)</label>
-                <input id="observerAuthCacheTtlS" type="number" min="0" />
-              </div>
-              <div class="field settings-advanced" hidden>
-                <div class="field-label">
-                  <label for="observerHeaders">Request headers (JSON)</label>
-                  <button class="help-icon" type="button" data-tooltip="Optional extra headers. Supports templates like ${auth.token}, ${auth.type}, ${auth.source}." aria-label="About request headers">?</button>
-                </div>
-                <textarea id="observerHeaders" rows="4" placeholder='{"Authorization":"Bearer ${auth.token}"}'></textarea>
-                <div class="small">Template variables: `${auth.token}`, `${auth.type}`, `${auth.source}`.</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-panel" id="settingsPanelQueue" data-settings-panel="queue" data-state="inactive" hidden>
-            <div class="settings-group">
-              <h3 class="settings-group-title">Processing</h3>
-              <div class="field">
-                <div class="field-label">
-                  <label for="rawEventsSweeperIntervalS">Background processing interval (seconds)</label>
-                  <button class="help-icon" type="button" data-tooltip="How often codemem checks for queued events to process in the background." aria-label="About background processing interval">?</button>
-                </div>
-                <input id="rawEventsSweeperIntervalS" type="number" min="1" />
-                <div class="small">How often background flush checks pending raw events.</div>
-              </div>
-            </div>
-            <div class="settings-group settings-advanced" hidden>
-              <h3 class="settings-group-title">Context Pack Limits</h3>
-              <div class="field settings-advanced" hidden>
-                <label for="packObservationLimit">Observation limit</label>
-                <input id="packObservationLimit" type="number" min="1" />
-                <div class="small">Default number of observations to include in a pack.</div>
-              </div>
-              <div class="field settings-advanced" hidden>
-                <label for="packSessionLimit">Session summary limit</label>
-                <input id="packSessionLimit" type="number" min="1" />
-                <div class="small">Default number of session summaries to include in a pack.</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-panel" id="settingsPanelSync" data-settings-panel="sync" data-state="inactive" hidden>
-            <div class="settings-group">
-              <h3 class="settings-group-title">Device Sync</h3>
-              <div class="field field-checkbox"><input class="cm-checkbox" id="syncEnabled" type="checkbox" /><label for="syncEnabled">Enable sync</label></div>
-              <div class="field"><label for="syncInterval">Sync interval (seconds)</label><input id="syncInterval" type="number" min="10" /></div>
-              <div class="field settings-advanced" hidden><label for="syncHost">Sync host</label><input id="syncHost" placeholder="127.0.0.1" /></div>
-              <div class="field settings-advanced" hidden><label for="syncPort">Sync port</label><input id="syncPort" type="number" min="1" /></div>
-              <div class="field field-checkbox settings-advanced" hidden><input class="cm-checkbox" id="syncMdns" type="checkbox" /><label for="syncMdns">Enable mDNS discovery</label></div>
-              <div class="field">
-                <label for="syncCoordinatorUrl">Coordinator URL</label>
-                <input id="syncCoordinatorUrl" placeholder="https://coord.example.com" />
-                <div class="small">Optional self-hosted/operator-run discovery service. Direct peer-to-peer sync remains the data path.</div>
-              </div>
-              <div class="field">
-                <label for="syncCoordinatorGroup">Coordinator group</label>
-                <input id="syncCoordinatorGroup" placeholder="nerdworld" />
-                <div class="small">Discovery namespace for peers using the same coordinator.</div>
-              </div>
-              <div class="field settings-advanced" hidden>
-                <label for="syncCoordinatorTimeout">Coordinator timeout (seconds)</label>
-                <input id="syncCoordinatorTimeout" type="number" min="1" />
-              </div>
-              <div class="field settings-advanced" hidden>
-                <label for="syncCoordinatorPresenceTtl">Presence TTL (seconds)</label>
-                <input id="syncCoordinatorPresenceTtl" type="number" min="1" />
-              </div>
-            </div>
-          </div>
-
-          <div class="small mono" id="settingsPath"></div>
-          <div class="small" id="settingsEffective"></div>
-          <div class="settings-note" id="settingsOverrides">Some values are controlled outside this screen and take priority.</div>
-        </div>
-        <div class="modal-footer">
-          <div class="small" id="settingsStatus">Ready</div>
-          <button class="settings-save" id="settingsSave">Save</button>
-        </div>
-      </div>
-    </template>
 
     <!-- ── Tab: Feed ───────────────────────────────────────── -->
     <div class="tab-panel" id="tab-feed">
@@ -3831,11 +1742,6 @@
         <div class="section-meta" id="feedMeta">Loading memories…</div>
         <div class="feed-controls-right">
           <input class="feed-search" id="feedSearch" placeholder="Search title, body, tags…" />
-          <div class="feed-toggle" id="feedScopeToggle">
-            <button class="toggle-button" data-filter="all">All</button>
-            <button class="toggle-button" data-filter="mine">My memories</button>
-            <button class="toggle-button" data-filter="theirs">Other actors</button>
-          </div>
           <div class="feed-toggle" id="feedTypeToggle">
             <button class="toggle-button" data-filter="all">All</button>
             <button class="toggle-button" data-filter="observations">Observations</button>

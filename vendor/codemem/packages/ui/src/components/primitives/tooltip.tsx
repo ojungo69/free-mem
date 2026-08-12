@@ -33,8 +33,8 @@ interface TooltipProviderProps {
  * trigger pays the full open delay both times; with it, the second trigger
  * opens immediately within `skipDelayDuration`.
  *
- * Mount one Provider per imperative render root (feed list, stat grid,
- * sync peers, etc.) since the viewer renders into multiple separate trees.
+ * Mount one Provider per imperative render root (feed list, stat grid, etc.)
+ * since the viewer renders into multiple separate trees.
  */
 export function TooltipProvider({
 	children,

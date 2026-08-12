@@ -654,7 +654,6 @@ export function memoryRoutes(getStore: StoreFactory) {
 			const msg = err instanceof Error ? err.message : String(err);
 			if (msg.includes("not found")) return c.json({ error: msg }, 404);
 			if (msg.includes("not owned")) return c.json({ error: msg }, 403);
-			if (msg.includes("sync_rebootstrap_in_progress")) return c.json({ error: msg }, 409);
 			return c.json({ error: msg }, 400);
 		}
 	});

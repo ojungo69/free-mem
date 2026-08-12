@@ -1,7 +1,6 @@
-/* Feed summary-line text — shows counts, scope, filters, "scroll for more". */
+/* Feed summary-line text — shows counts, filters, and "scroll for more". */
 
 import { state } from "../../../lib/state";
-import { feedScopeLabel } from "./helpers";
 
 export function feedMetaText(visibleCount: number, hasMorePages: boolean): string {
 	const filterLabel =
@@ -10,12 +9,11 @@ export function feedMetaText(visibleCount: number, hasMorePages: boolean): strin
 			: state.feedTypeFilter === "summaries"
 				? " · session summaries"
 				: "";
-	const scopeLabel = feedScopeLabel(state.feedScopeFilter);
 	const filteredLabel =
 		!state.feedQuery.trim() && state.lastFeedFilteredCount
 			? ` · ${state.lastFeedFilteredCount} observations filtered`
 			: "";
 	const queryLabel = state.feedQuery.trim() ? ` · matching "${state.feedQuery.trim()}"` : "";
 	const moreLabel = hasMorePages ? " · scroll for more" : "";
-	return `${visibleCount} items${filterLabel}${scopeLabel}${queryLabel}${filteredLabel}${moreLabel}`;
+	return `${visibleCount} items${filterLabel}${queryLabel}${filteredLabel}${moreLabel}`;
 }

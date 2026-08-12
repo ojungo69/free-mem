@@ -67,13 +67,10 @@ export interface CachedRawEventsPayload {
 
 const TAB_KEY = "codemem-tab";
 const FEED_FILTER_KEY = "codemem-feed-filter";
-const FEED_SCOPE_KEY = "codemem-feed-scope";
 const DETAILS_OPEN_KEY = "codemem-details-open";
 
 export const FEED_FILTERS = ["all", "observations", "summaries"] as const;
 export type FeedFilter = (typeof FEED_FILTERS)[number];
-export const FEED_SCOPES = ["all", "mine", "theirs"] as const;
-export type FeedScope = (typeof FEED_SCOPES)[number];
 
 /* ── Mutable application state ─────────────────────────────── */
 
@@ -92,7 +89,6 @@ export const state = {
 
 	/* Feed */
 	feedTypeFilter: "all" as FeedFilter,
-	feedScopeFilter: "all" as FeedScope,
 	feedQuery: "",
 	lastFeedItems: [] as unknown[],
 	lastFeedFilteredCount: 0,
@@ -163,19 +159,9 @@ export function getFeedTypeFilter(): FeedFilter {
 	return FEED_FILTERS.includes(saved as FeedFilter) ? (saved as FeedFilter) : "all";
 }
 
-export function getFeedScopeFilter(): FeedScope {
-	const saved = localStorage.getItem(FEED_SCOPE_KEY) || "all";
-	return FEED_SCOPES.includes(saved as FeedScope) ? (saved as FeedScope) : "all";
-}
-
 export function setFeedTypeFilter(value: string) {
 	state.feedTypeFilter = FEED_FILTERS.includes(value as FeedFilter) ? (value as FeedFilter) : "all";
 	localStorage.setItem(FEED_FILTER_KEY, state.feedTypeFilter);
-}
-
-export function setFeedScopeFilter(value: string) {
-	state.feedScopeFilter = FEED_SCOPES.includes(value as FeedScope) ? (value as FeedScope) : "all";
-	localStorage.setItem(FEED_SCOPE_KEY, state.feedScopeFilter);
 }
 
 export function isDetailsOpen(): boolean {
@@ -191,5 +177,4 @@ export function setDetailsOpen(open: boolean) {
 export function initState() {
 	state.activeTab = getActiveTab();
 	state.feedTypeFilter = getFeedTypeFilter();
-	state.feedScopeFilter = getFeedScopeFilter();
 }

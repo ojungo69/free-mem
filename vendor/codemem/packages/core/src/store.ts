@@ -2,7 +2,7 @@
  * MemoryStore — the main read/write surface for the codemem memory store.
  *
  * Manages a better-sqlite3 connection to the on-disk database and exposes
- * CRUD, search, pack, and sync helpers. Fresh databases are auto-bootstrapped
+ * CRUD, search, pack, and maintenance helpers. Fresh databases are auto-bootstrapped
  * on first construction: if the connected file has no schema (user_version 0),
  * `bootstrapSchema` runs before `assertSchemaReady` so every CLI/MCP entry
  * point gets a ready-to-use store without requiring an explicit
@@ -45,7 +45,7 @@ import type { RefQueryOptions, RefQueryResult } from "./ref-queries.js";
 import { findByConcept as findByConceptFn, findByFile as findByFileFn } from "./ref-queries.js";
 import * as schema from "./schema.js";
 import { resolveVisibleScopeIds } from "./scope-resolution.js";
-import { ensureMemoryScopeId, resolveSessionScopeId } from "./scope-stamping.js";
+import { resolveSessionScopeId } from "./scope-stamping.js";
 import {
 	type ExplainOptions,
 	explain as explainFn,
@@ -141,30 +141,6 @@ function cleanStr(value: unknown): string | null {
 	return trimmed.length > 0 ? trimmed : null;
 }
 
-function parseJsonList(value: unknown): string[] {
-	if (typeof value !== "string" || !value.trim()) return [];
-	try {
-		const parsed = JSON.parse(value);
-		return Array.isArray(parsed)
-			? parsed
-					.filter((item): item is string => typeof item === "string")
-					.map((item) => item.trim())
-					.filter(Boolean)
-			: [];
-	} catch {
-		return [];
-	}
-}
-
-function projectBasename(value: string | null | undefined): string {
-	const raw = cleanStr(value);
-	if (!raw) return "";
-	const parts = raw.replace(/\\/g, "/").split("/").filter(Boolean);
-	return parts[parts.length - 1] ?? raw;
-}
-
-const LEGACY_SYNC_ACTOR_DISPLAY_NAME = "Legacy synced peer";
-const LEGACY_SHARED_WORKSPACE_ID = "shared:legacy";
 const DEFAULT_CROSS_SESSION_DEDUP_WINDOW_MS = 3_600_000;
 const CROSS_SESSION_DEDUP_WINDOW_ENV = "CODEMEM_MEMORY_CROSS_SESSION_DEDUP_WINDOW_MS";
 const MAX_CROSS_SESSION_DEDUP_WINDOW_MS = 8_640_000_000_000_000;
@@ -977,8 +953,8 @@ export class MemoryStore {
 	 */
 	memoryOwnedBySelf(item: MemoryItem | MemoryResult | Record<string, unknown>): boolean {
 		// Always re-reads sync_peers via sameActorPeerIds(). This method
-		// authorizes mutating APIs (forgetMemory / setMemoryVisibility /
-		// reassignMemoryScope etc.) so it must reflect peer claim changes
+		// authorizes mutating APIs (forgetMemory / setMemoryVisibility),
+		// so it must reflect legacy peer claim changes
 		// the moment they land — no caching here. Callers that legitimately
 		// loop over many memories (search ranking, widening filters) should
 		// snapshot once via buildOwnershipPredicate() and reuse the closure.
@@ -1354,83 +1330,6 @@ export class MemoryStore {
 				if (!updated) {
 					throw new Error("memory not found after update");
 				}
-				return updated;
-			})
-			.immediate();
-	}
-
-	// reassignMemoryScope
-
-	/**
-	 * Move an active, locally owned memory to another Sharing domain.
-	 *
-	 * Scope assignment is effectively immutable once a memory may have replicated,
-	 * so this is not a bare `scope_id` update. The transaction emits an old-scope
-	 * delete/tombstone op followed by a new-scope upsert op with a newer Lamport
-	 * revision. Old-scope recipients learn to stop syncing the memory, while
-	 * already-copied data on those devices may still remain outside this store.
-	 */
-	reassignMemoryScope(memoryId: number, newScopeId: string): MemoryItemResponse {
-		const cleanedScopeId = newScopeId.trim();
-		if (!cleanedScopeId) throw new Error("scope_id must be a non-empty string");
-
-		return this.db
-			.transaction(() => {
-				const row = this.d
-					.select()
-					.from(schema.memoryItems)
-					.where(and(eq(schema.memoryItems.id, memoryId), eq(schema.memoryItems.active, 1)))
-					.get() as MemoryItem | undefined;
-				if (!row) throw new Error("memory not found");
-				if (!this.memoryOwnedBySelf(row)) throw new Error("memory not owned by this device");
-
-				const targetScope = this.d
-					.select({ scope_id: schema.replicationScopes.scope_id })
-					.from(schema.replicationScopes)
-					.where(
-						and(
-							eq(schema.replicationScopes.scope_id, cleanedScopeId),
-							eq(schema.replicationScopes.status, "active"),
-						),
-					)
-					.get();
-				if (!targetScope) throw new Error(`scope not found or inactive: ${cleanedScopeId}`);
-
-				const oldScopeId = ensureMemoryScopeId(this.db, memoryId);
-				if (!oldScopeId) throw new Error("memory scope could not be resolved");
-				if (oldScopeId === cleanedScopeId) {
-					const current = this.get(memoryId);
-					if (!current) throw new Error("memory not found after scope check");
-					return current;
-				}
-
-				const now = nowIso();
-				const oldRev = row.rev ?? 0;
-				// rev advances by 2 to preserve the historical tombstone+upsert rev spacing.
-				const upsertRev = oldRev + 2;
-				const meta = fromJson(row.metadata_json);
-				meta.clock_device_id = this.deviceId;
-				meta.last_scope_reassignment = {
-					old_scope_id: oldScopeId,
-					new_scope_id: cleanedScopeId,
-					reassigned_at: now,
-					warning:
-						"Already-copied data may remain on devices that previously received the old scope.",
-				};
-
-				this.d
-					.update(schema.memoryItems)
-					.set({
-						scope_id: cleanedScopeId,
-						updated_at: now,
-						metadata_json: toJson(meta),
-						rev: upsertRev,
-					})
-					.where(eq(schema.memoryItems.id, memoryId))
-					.run();
-
-				const updated = this.get(memoryId);
-				if (!updated) throw new Error("memory not found after scope reassignment");
 				return updated;
 			})
 			.immediate();
@@ -2608,20 +2507,6 @@ export class MemoryStore {
 		return { ...row, status: "error" };
 	}
 
-	getSyncDaemonState(): Record<string, unknown> | null {
-		const row = this.d
-			.select({
-				last_error: schema.syncDaemonState.last_error,
-				last_traceback: schema.syncDaemonState.last_traceback,
-				last_error_at: schema.syncDaemonState.last_error_at,
-				last_ok_at: schema.syncDaemonState.last_ok_at,
-			})
-			.from(schema.syncDaemonState)
-			.where(eq(schema.syncDaemonState.id, 1))
-			.get();
-		return row ? { ...row } : null;
-	}
-
 	sameActorPeerIds(): string[] {
 		if (!tableExists(this.db, "sync_peers")) return [];
 		const rows = this.d
@@ -2636,179 +2521,6 @@ export class MemoryStore {
 			.orderBy(schema.syncPeers.peer_device_id)
 			.all();
 		return rows.map((row) => String(row.peer_device_id ?? "").trim()).filter(Boolean);
-	}
-
-	claimedSameActorLegacyActorIds(): string[] {
-		return this.sameActorPeerIds().map((peerId) => `legacy-sync:${peerId}`);
-	}
-
-	claimableLegacyDeviceIds(): Record<string, unknown>[] {
-		const rows = this.d
-			.select({
-				origin_device_id: schema.memoryItems.origin_device_id,
-				memory_count: sql<number>`COUNT(*)`,
-				last_seen_at: sql<string | null>`MAX(${schema.memoryItems.created_at})`,
-			})
-			.from(schema.memoryItems)
-			.where(
-				and(
-					isNotNull(schema.memoryItems.origin_device_id),
-					sql`TRIM(${schema.memoryItems.origin_device_id}) != ''`,
-					sql`${schema.memoryItems.origin_device_id} != 'unknown'`,
-					sql`(
-						(${schema.memoryItems.actor_id} IS NULL OR TRIM(${schema.memoryItems.actor_id}) = '' OR ${schema.memoryItems.actor_id} LIKE 'legacy-sync:%')
-						AND (
-							${schema.memoryItems.actor_id} IS NULL
-							OR TRIM(${schema.memoryItems.actor_id}) = ''
-							OR ${schema.memoryItems.actor_id} LIKE 'legacy-sync:%'
-							OR ${schema.memoryItems.actor_display_name} = ${LEGACY_SYNC_ACTOR_DISPLAY_NAME}
-							OR ${schema.memoryItems.workspace_id} = ${LEGACY_SHARED_WORKSPACE_ID}
-							OR ${schema.memoryItems.trust_state} = 'legacy_unknown'
-						)
-					)`,
-					sql`${schema.memoryItems.origin_device_id} != ${this.deviceId}`,
-					sql`${schema.memoryItems.origin_device_id} NOT IN (
-						SELECT ${schema.syncPeers.peer_device_id}
-						FROM ${schema.syncPeers}
-						WHERE ${schema.syncPeers.peer_device_id} IS NOT NULL
-					)`,
-				),
-			)
-			.groupBy(schema.memoryItems.origin_device_id)
-			.orderBy(
-				desc(sql`MAX(${schema.memoryItems.created_at})`),
-				schema.memoryItems.origin_device_id,
-			)
-			.all();
-		return rows
-			.filter((row) => cleanStr(row.origin_device_id))
-			.map((row) => ({
-				origin_device_id: String(row.origin_device_id),
-				memory_count: Number(row.memory_count ?? 0),
-				last_seen_at: row.last_seen_at ?? null,
-			}));
-	}
-
-	private effectiveSyncProjectFilters(peerDeviceId?: string | null): {
-		include: string[];
-		exclude: string[];
-	} {
-		const config = readCodememConfigFile();
-		let include = parseJsonList(JSON.stringify(config.sync_projects_include ?? []));
-		let exclude = parseJsonList(JSON.stringify(config.sync_projects_exclude ?? []));
-		if (peerDeviceId) {
-			const row = this.d
-				.select({
-					projects_include_json: schema.syncPeers.projects_include_json,
-					projects_exclude_json: schema.syncPeers.projects_exclude_json,
-				})
-				.from(schema.syncPeers)
-				.where(eq(schema.syncPeers.peer_device_id, peerDeviceId))
-				.limit(1)
-				.get();
-			if (row) {
-				if (row.projects_include_json != null) include = parseJsonList(row.projects_include_json);
-				if (row.projects_exclude_json != null) exclude = parseJsonList(row.projects_exclude_json);
-			}
-		}
-		return { include, exclude };
-	}
-
-	private syncProjectAllowed(project: string | null, peerDeviceId?: string | null): boolean {
-		const { include, exclude } = this.effectiveSyncProjectFilters(peerDeviceId);
-		const name = cleanStr(project);
-		const basename = projectBasename(name);
-		if (include.length > 0 && !include.some((item) => item === name || item === basename))
-			return false;
-		if (exclude.some((item) => item === name || item === basename)) return false;
-		return true;
-	}
-
-	sharingReviewSummary(project?: string | null): Record<string, unknown>[] {
-		const selectedProject = cleanStr(project);
-		const claimedPeers = this.sameActorPeerIds();
-		const legacyActorIds = this.claimedSameActorLegacyActorIds();
-		const ownershipConditions = [eq(schema.memoryItems.actor_id, this.actorId)];
-		if (claimedPeers.length > 0) {
-			ownershipConditions.push(inArray(schema.memoryItems.origin_device_id, claimedPeers));
-		}
-		if (legacyActorIds.length > 0) {
-			ownershipConditions.push(inArray(schema.memoryItems.actor_id, legacyActorIds));
-		}
-		const ownershipWhere =
-			ownershipConditions.length === 1 ? ownershipConditions[0] : or(...ownershipConditions);
-		const rows = this.d
-			.select({
-				peer_device_id: schema.syncPeers.peer_device_id,
-				name: schema.syncPeers.name,
-				actor_id: schema.syncPeers.actor_id,
-				actor_display_name: schema.actors.display_name,
-				project: schema.sessions.project,
-				visibility: schema.memoryItems.visibility,
-				total: sql<number>`COUNT(*)`,
-			})
-			.from(schema.syncPeers)
-			.leftJoin(schema.actors, eq(schema.actors.actor_id, schema.syncPeers.actor_id))
-			.innerJoin(schema.memoryItems, sql`1 = 1`)
-			.innerJoin(schema.sessions, eq(schema.sessions.id, schema.memoryItems.session_id))
-			.where(
-				and(
-					eq(schema.memoryItems.active, 1),
-					isNotNull(schema.syncPeers.actor_id),
-					sql`TRIM(${schema.syncPeers.actor_id}) != ''`,
-					sql`${schema.syncPeers.actor_id} != ${this.actorId}`,
-					ownershipWhere,
-				),
-			)
-			.groupBy(
-				schema.syncPeers.peer_device_id,
-				schema.syncPeers.name,
-				schema.syncPeers.actor_id,
-				schema.actors.display_name,
-				schema.sessions.project,
-				schema.memoryItems.visibility,
-			)
-			.orderBy(schema.syncPeers.name, schema.syncPeers.peer_device_id)
-			.all();
-		const byPeer = new Map<string, Record<string, unknown>>();
-		for (const row of rows) {
-			const peerDeviceId = String(row.peer_device_id ?? "").trim();
-			const actorId = String(row.actor_id ?? "").trim();
-			if (!peerDeviceId || !actorId || actorId === this.actorId) continue;
-			const projectName = cleanStr(row.project);
-			if (selectedProject) {
-				const selectedBase = projectBasename(selectedProject);
-				const projectBase = projectBasename(projectName);
-				if (projectName !== selectedProject && projectBase !== selectedBase) continue;
-			}
-			if (!this.syncProjectAllowed(projectName, peerDeviceId)) continue;
-			const current = byPeer.get(peerDeviceId) ?? {
-				peer_device_id: peerDeviceId,
-				peer_name: cleanStr(row.name) ?? peerDeviceId,
-				actor_id: actorId,
-				actor_display_name: cleanStr(row.actor_display_name) ?? actorId,
-				project: selectedProject,
-				scope_label: selectedProject ?? "All allowed projects",
-				shareable_count: 0,
-				private_count: 0,
-			};
-			const total = Number(row.total ?? 0);
-			if (String(row.visibility ?? "") === "private") {
-				current.private_count = Number(current.private_count ?? 0) + total;
-			} else {
-				current.shareable_count = Number(current.shareable_count ?? 0) + total;
-			}
-			byPeer.set(peerDeviceId, current);
-		}
-		const results = [...byPeer.values()].map((item) => ({
-			...item,
-			total_count: Number(item.shareable_count ?? 0) + Number(item.private_count ?? 0),
-		}));
-		return results.sort(
-			(a: Record<string, unknown>, b: Record<string, unknown>) =>
-				String(a.peer_name ?? "").localeCompare(String(b.peer_name ?? "")) ||
-				String(a.peer_device_id ?? "").localeCompare(String(b.peer_device_id ?? "")),
-		);
 	}
 
 	// ref queries

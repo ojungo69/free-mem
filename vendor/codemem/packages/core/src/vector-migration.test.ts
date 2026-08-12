@@ -1,16 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as embeddings from "./embeddings.js";
-import { getMaintenanceJob, startMaintenanceJob } from "./maintenance-jobs.js";
+import { getMaintenanceJob } from "./maintenance-jobs.js";
 import { initTestSchema, insertTestSession } from "./test-utils.js";
-import {
-	queueVectorBackfillForIncrementalSync,
-	runVectorMigrationPass,
-	VECTOR_MODEL_MIGRATION_JOB,
-} from "./vector-migration.js";
+import { runVectorMigrationPass, VECTOR_MODEL_MIGRATION_JOB } from "./vector-migration.js";
 import { resolveSemanticSearchModel } from "./vectors.js";
 
 vi.mock("./embeddings.js", async () => {
@@ -246,159 +239,6 @@ describe("vector migration", () => {
 		expect(job?.status).not.toBe("completed");
 	});
 
-	it("completes an in-flight running job without re-embedding when corpus is already covered", async () => {
-		// Reproduces codemem-ad6m: sync-incremental trigger leaves the job in
-		// 'running' status after its queue drains; every memory is already
-		// covered by target-model vectors and no source model remains. The
-		// runner should fast-exit, marking the job completed, not re-embed
-		// the entire corpus.
-		const sessionId = insertTestSession(db);
-		seedMemory(db, 1, sessionId, "One", "Body one");
-		seedMemory(db, 2, sessionId, "Two", "Body two");
-		seedVector(db, 1, "test-model");
-		seedVector(db, 2, "test-model");
-		startMaintenanceJob(db, {
-			kind: VECTOR_MODEL_MIGRATION_JOB,
-			title: "Re-indexing memories",
-			status: "running",
-			message: "Queued sync vector catch-up complete",
-			progressCurrent: 2,
-			progressTotal: 2,
-			metadata: {
-				target_model: "test-model",
-				source_model: null,
-				last_cursor_id: 0,
-				processed_embeddable: 2,
-				embeddable_total: 2,
-				trigger: "sync_incremental",
-			},
-		});
-		const embedSpy = vi.mocked(embeddings.embedTexts);
-		const callsBefore = embedSpy.mock.calls.length;
-
-		await runVectorMigrationPass(db, { batchSize: 50 });
-
-		expect(embedSpy.mock.calls.length).toBe(callsBefore);
-		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
-		expect(job).toMatchObject({ status: "completed" });
-		const models = db
-			.prepare("SELECT model, COUNT(*) AS c FROM memory_vectors GROUP BY model ORDER BY model")
-			.all() as Array<{ model: string; c: number }>;
-		expect(models).toEqual([{ model: "test-model", c: 2 }]);
-	});
-
-	it("resumes incremental sync queued vector catch-up after restart", async () => {
-		const dbDir = mkdtempSync(join(tmpdir(), "codemem-vector-incremental-"));
-		const dbPath = join(dbDir, "restart-safe.sqlite");
-		let fileDb: Database | null = null;
-		try {
-			fileDb = new Database(dbPath);
-			initTestSchema(fileDb);
-			const sessionId = insertTestSession(fileDb);
-			seedMemory(fileDb, 1, sessionId, "Incremental memory", "Needs vectors after restart");
-
-			queueVectorBackfillForIncrementalSync(fileDb, {
-				upsertMemoryIds: [1],
-				deleteMemoryIds: [],
-			});
-
-			const pendingJob = getMaintenanceJob(fileDb, VECTOR_MODEL_MIGRATION_JOB);
-			expect(pendingJob).toMatchObject({
-				status: "pending",
-				message: "Queued vector catch-up for incremental sync data",
-				metadata: {
-					trigger: "sync_incremental",
-					pending_upsert_memory_ids: [1],
-					pending_delete_memory_ids: [],
-				},
-			});
-
-			fileDb.close();
-			fileDb = null;
-			fileDb = new Database(dbPath);
-			initTestSchema(fileDb);
-
-			await runVectorMigrationPass(fileDb, { batchSize: 10 });
-
-			const completedJob = getMaintenanceJob(fileDb, VECTOR_MODEL_MIGRATION_JOB);
-			expect(completedJob).toMatchObject({
-				status: "completed",
-				message: "Finished vector catch-up for incremental sync data",
-				metadata: {
-					pending_upsert_memory_ids: [],
-					pending_delete_memory_ids: [],
-				},
-			});
-
-			const models = fileDb
-				.prepare("SELECT model, COUNT(*) AS c FROM memory_vectors GROUP BY model ORDER BY model")
-				.all() as Array<{ model: string; c: number }>;
-			expect(models).toEqual([{ model: "test-model", c: 1 }]);
-		} finally {
-			fileDb?.close();
-			rmSync(dbDir, { recursive: true, force: true });
-		}
-	});
-
-	it("prunes stale current-model vectors while replaying queued incremental upserts", async () => {
-		const sessionId = insertTestSession(db);
-		seedMemory(db, 1, sessionId, "Incremental memory", "Fresh body");
-		db.exec(`
-			INSERT INTO memory_vectors(embedding, memory_id, chunk_index, content_hash, model)
-			VALUES (
-				vec_f32('${JSON.stringify(Array.from(new Float32Array(384)))}'),
-				1,
-				0,
-				'stale-current-hash',
-				'test-model'
-			)
-		`);
-
-		queueVectorBackfillForIncrementalSync(db, {
-			upsertMemoryIds: [1],
-			deleteMemoryIds: [],
-		});
-
-		await runVectorMigrationPass(db, { batchSize: 10 });
-
-		const rows = db
-			.prepare(
-				"SELECT content_hash FROM memory_vectors WHERE memory_id = ? AND model = ? ORDER BY content_hash",
-			)
-			.all(1, "test-model") as Array<{ content_hash: string }>;
-		expect(rows).toHaveLength(1);
-		expect(rows[0]?.content_hash).not.toBe("stale-current-hash");
-	});
-
-	it("preserves newly queued incremental ids while replaying queued work", async () => {
-		const sessionId = insertTestSession(db);
-		seedMemory(db, 1, sessionId, "One", "Body one");
-		seedMemory(db, 2, sessionId, "Two", "Body two");
-		seedVector(db, 2, "test-model");
-
-		queueVectorBackfillForIncrementalSync(db, {
-			upsertMemoryIds: [1],
-			deleteMemoryIds: [],
-		});
-		vi.mocked(embeddings.embedTexts).mockImplementationOnce(async () => {
-			queueVectorBackfillForIncrementalSync(db, {
-				upsertMemoryIds: [],
-				deleteMemoryIds: [2],
-			});
-			return [new Float32Array(384)];
-		});
-
-		await runVectorMigrationPass(db, { batchSize: 10 });
-
-		const runningJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
-		expect(runningJob).toMatchObject({
-			status: "running",
-			metadata: {
-				pending_delete_memory_ids: [2],
-			},
-		});
-	});
-
 	it("does not rewrite completed jobs when the embedding client is unavailable", async () => {
 		const sessionId = insertTestSession(db);
 		seedMemory(db, 1, sessionId, "One", "Body one");
@@ -437,7 +277,7 @@ describe("vector migration", () => {
 		});
 	});
 
-	it("removes stale old-model rows when queued work has zero embeddable memories", async () => {
+	it("removes stale old-model rows when there are zero embeddable memories", async () => {
 		const sessionId = insertTestSession(db);
 		seedMemory(db, 1, sessionId, "", "");
 		seedVector(db, 1, "old-model");

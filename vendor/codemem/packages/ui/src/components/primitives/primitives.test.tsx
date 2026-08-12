@@ -1,3 +1,4 @@
+import * as Dialog from "@radix-ui/react-dialog";
 import { type ComponentChild, render } from "preact";
 import { useState } from "preact/hooks";
 import { act } from "preact/test-utils";
@@ -5,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 let selectOnValueChange: ((value: string) => void) | undefined;
 let tabsOnValueChange: ((value: string) => void) | undefined;
-let radioOnValueChange: ((value: string) => void) | undefined;
 let switchOnCheckedChange: ((checked: boolean) => void) | undefined;
 
 type MockChildrenProps = {
@@ -67,29 +67,6 @@ vi.mock("@radix-ui/react-tabs", () => ({
 	Content: ({ children, ...props }: MockChildrenProps) => <div {...props}>{children}</div>,
 }));
 
-vi.mock("@radix-ui/react-radio-group", () => ({
-	Root: ({
-		children,
-		onValueChange,
-	}: {
-		children: ComponentChild;
-		onValueChange: (value: string) => void;
-	}) => {
-		radioOnValueChange = onValueChange;
-		return <div>{children}</div>;
-	},
-	Item: ({ id, value, ...props }: MockChildrenProps) => (
-		<input
-			{...props}
-			id={String(id)}
-			onChange={() => radioOnValueChange?.(String(value))}
-			type="radio"
-			value={String(value)}
-		/>
-	),
-	Indicator: ({ children, ...props }: MockChildrenProps) => <span {...props}>{children}</span>,
-}));
-
 vi.mock("@radix-ui/react-switch", () => ({
 	Root: ({ children, checked, onCheckedChange, ...props }: MockChildrenProps) => {
 		switchOnCheckedChange = onCheckedChange as ((checked: boolean) => void) | undefined;
@@ -110,7 +87,6 @@ vi.mock("@radix-ui/react-switch", () => ({
 
 import { DialogCloseButton } from "./dialog-close-button";
 import { RadixDialog } from "./radix-dialog";
-import { RadixRadioGroup } from "./radix-radio-group";
 import { RadixSelect } from "./radix-select";
 import { RadixSwitch } from "./radix-switch";
 import { RadixTabs } from "./radix-tabs";
@@ -138,7 +114,6 @@ afterEach(() => {
 	}
 	selectOnValueChange = undefined;
 	tabsOnValueChange = undefined;
-	radioOnValueChange = undefined;
 	switchOnCheckedChange = undefined;
 	document.body.innerHTML = "";
 });
@@ -188,7 +163,6 @@ describe("RadixDialog", () => {
 						Open dialog
 					</button>
 					<RadixDialog
-						ariaLabelledby="radix-dialog-title"
 						contentId="radix-dialog-content"
 						modal={false}
 						onCloseAutoFocus={(event) => {
@@ -199,7 +173,9 @@ describe("RadixDialog", () => {
 						open={open}
 						overlayId="radix-dialog-overlay"
 					>
-						<h2 id="radix-dialog-title">Primitive dialog</h2>
+						<Dialog.Title asChild>
+							<h2>Primitive dialog</h2>
+						</Dialog.Title>
 						<button type="button">Inside</button>
 					</RadixDialog>
 				</>
@@ -216,6 +192,10 @@ describe("RadixDialog", () => {
 		await vi.waitFor(() => {
 			expect(document.getElementById("radix-dialog-content")).not.toBeNull();
 		});
+		const dialog = document.getElementById("radix-dialog-content");
+		const titleId = dialog?.getAttribute("aria-labelledby");
+		expect(titleId).toBeTruthy();
+		expect(document.getElementById(titleId ?? "")?.textContent).toBe("Primitive dialog");
 
 		act(() => {
 			document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
@@ -288,34 +268,6 @@ describe("RadixSelect", () => {
 		});
 
 		expect(onValueChange).toHaveBeenCalledWith("");
-	});
-});
-
-describe("RadixRadioGroup", () => {
-	it("lets users select an option by clicking the visible label row", () => {
-		const onValueChange = vi.fn();
-		const root = renderIntoDocument(
-			<RadixRadioGroup
-				ariaLabel="Person to keep after combining duplicates"
-				onValueChange={onValueChange}
-				options={[
-					{ label: "Alex", value: "alex" },
-					{ label: "Sam", value: "sam" },
-				]}
-				value="alex"
-			/>,
-		);
-
-		const samLabel = Array.from(root.querySelectorAll("label")).find((label) =>
-			label.textContent?.includes("Sam"),
-		);
-		expect(samLabel).toBeTruthy();
-
-		act(() => {
-			samLabel?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-		});
-
-		expect(onValueChange).toHaveBeenCalledWith("sam");
 	});
 });
 

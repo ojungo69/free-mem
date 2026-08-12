@@ -451,7 +451,7 @@ describe("MCP memory access scope guards", () => {
 			const search = getTool(server, "memory_search");
 			const response = parseToolJson(
 				await search.handler(
-					{ query: "Ledger scope target", scope_id: "scope-a", limit: 10 },
+					{ query: "Ledger scope target", limit: 10 },
 					{ requestId: "request-search-1", sessionId: "transport-session-1" },
 				),
 			) as { items: Array<{ id: number }> };
@@ -464,11 +464,11 @@ describe("MCP memory access scope guards", () => {
 				retrievalStatus: "succeeded",
 				deliveryStatus: "handed_off",
 				project: "greenroom",
-				scopeId: "scope-a",
+				scopeId: null,
 				mode: null,
 				streamId: "transport-session-1",
 				limitRequested: 10,
-				filterSummary: { project: "greenroom", scope_id: "scope-a" },
+				filterSummary: { project: "greenroom" },
 			});
 			expect(attempt.latencyMs).toBeGreaterThanOrEqual(0);
 			expect(attempt.requestId).toMatch(/^[a-f0-9]{64}$/);

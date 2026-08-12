@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 
-export type ChipVariant = "kind" | "provenance" | "tag" | "badge" | "scope";
+export type ChipVariant = "kind" | "provenance" | "tag";
 
 interface ChipProps {
 	variant: ChipVariant;
@@ -18,13 +18,11 @@ const VARIANT_CLASS: Record<ChipVariant, string> = {
 	kind: "kind-chip",
 	provenance: "provenance-chip",
 	tag: "tag-chip",
-	badge: "badge",
-	scope: "peer-scope-chip",
 };
 
 /**
  * Canonical pill-shaped label. Renders `<span>` with the existing variant
- * class (`kind-chip`, `provenance-chip`, `tag-chip`, `badge`, `peer-scope-chip`)
+ * class (`kind-chip`, `provenance-chip`, or `tag-chip`)
  * — CSS is owned by the viewer stylesheet so output is identical to
  * hand-written spans. One component so future chips don't each grow their
  * own className concatenation.

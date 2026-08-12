@@ -8,12 +8,9 @@ import {
 	startMaintenanceJob,
 	updateMaintenanceJob,
 } from "./maintenance-jobs.js";
-import type { ReplicationVectorWork } from "./vectors.js";
-import { backfillVectors, pruneStaleCurrentModelVectors } from "./vectors.js";
+import { backfillVectors } from "./vectors.js";
 
 export const VECTOR_MODEL_MIGRATION_JOB = "vector_model_migration";
-const SYNC_BOOTSTRAP_TRIGGER = "sync_bootstrap";
-const SYNC_INCREMENTAL_TRIGGER = "sync_incremental";
 
 export interface VectorModelMigrationOptions {
 	batchSize?: number;
@@ -23,15 +20,8 @@ export interface VectorModelMigrationOptions {
 	signal?: AbortSignal;
 }
 
-// Runner uses this cadence after a tick that detected no work. A live
-// migration or queued sync work switches back to intervalMs automatically.
+// Runner uses this cadence after a tick that detected no work.
 const IDLE_INTERVAL_MS = 60_000;
-
-// Module-level singleton so the queue writers can nudge the runner out of
-// its long idle cadence the moment new incremental/bootstrap work lands.
-// Assumes one active runner per process (the viewer serve loop), which
-// matches the current deployment model.
-let activeRunner: VectorModelMigrationRunner | null = null;
 
 type MemoryRow = { id: number; title: string | null; body_text: string | null };
 
@@ -42,219 +32,7 @@ type MigrationMetadata = {
 	processed_embeddable?: number;
 	embeddable_total?: number;
 	removed_stale_rows?: number;
-	trigger?: string | null;
-	pending_upsert_memory_ids?: number[];
-	pending_delete_memory_ids?: number[];
 };
-
-function uniquePositiveIds(memoryIds: number[]): number[] {
-	return [
-		...new Set(memoryIds.filter((memoryId) => Number.isInteger(memoryId) && memoryId > 0)),
-	].sort((a, b) => a - b);
-}
-
-function metadataMemoryIds(value: unknown): number[] {
-	if (!Array.isArray(value)) return [];
-	return uniquePositiveIds(value.filter((item): item is number => typeof item === "number"));
-}
-
-function mergeQueuedSyncMemoryIds(
-	metadata: MigrationMetadata,
-	work: ReplicationVectorWork,
-): Pick<MigrationMetadata, "pending_upsert_memory_ids" | "pending_delete_memory_ids"> {
-	const pendingUpsertMemoryIds = new Set(metadataMemoryIds(metadata.pending_upsert_memory_ids));
-	const pendingDeleteMemoryIds = new Set(metadataMemoryIds(metadata.pending_delete_memory_ids));
-
-	for (const memoryId of uniquePositiveIds(work.deleteMemoryIds)) {
-		pendingUpsertMemoryIds.delete(memoryId);
-		pendingDeleteMemoryIds.add(memoryId);
-	}
-	for (const memoryId of uniquePositiveIds(work.upsertMemoryIds)) {
-		pendingDeleteMemoryIds.delete(memoryId);
-		pendingUpsertMemoryIds.add(memoryId);
-	}
-
-	return {
-		pending_upsert_memory_ids: [...pendingUpsertMemoryIds],
-		pending_delete_memory_ids: [...pendingDeleteMemoryIds],
-	};
-}
-
-function deleteVectorsForMemoryIds(db: SqliteDatabase, memoryIds: number[]): void {
-	if (memoryIds.length === 0) return;
-	const placeholders = memoryIds.map(() => "?").join(", ");
-	db.prepare(`DELETE FROM memory_vectors WHERE memory_id IN (${placeholders})`).run(...memoryIds);
-}
-
-function sameQueuedSyncMemoryIds(a: MigrationMetadata, b: MigrationMetadata): boolean {
-	return (
-		JSON.stringify(metadataMemoryIds(a.pending_upsert_memory_ids)) ===
-			JSON.stringify(metadataMemoryIds(b.pending_upsert_memory_ids)) &&
-		JSON.stringify(metadataMemoryIds(a.pending_delete_memory_ids)) ===
-			JSON.stringify(metadataMemoryIds(b.pending_delete_memory_ids))
-	);
-}
-
-export function wakeActiveVectorMigrationRunner(): void {
-	activeRunner?.wake();
-}
-
-export function queueVectorBackfillForIncrementalSync(
-	db: SqliteDatabase,
-	work: ReplicationVectorWork,
-): void {
-	const queuedWork = mergeQueuedSyncMemoryIds({}, work);
-	if (
-		(queuedWork.pending_upsert_memory_ids?.length ?? 0) === 0 &&
-		(queuedWork.pending_delete_memory_ids?.length ?? 0) === 0
-	) {
-		return;
-	}
-
-	const existingJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
-	const existingMetadata =
-		existingJob && existingJob.status !== "completed" && existingJob.status !== "cancelled"
-			? ((existingJob.metadata ?? {}) as MigrationMetadata)
-			: {};
-	const metadata: MigrationMetadata = {
-		...existingMetadata,
-		...mergeQueuedSyncMemoryIds(existingMetadata, work),
-		trigger: existingMetadata.trigger ?? SYNC_INCREMENTAL_TRIGGER,
-	};
-	const pendingWorkCount =
-		metadataMemoryIds(metadata.pending_upsert_memory_ids).length +
-		metadataMemoryIds(metadata.pending_delete_memory_ids).length;
-
-	if (!existingJob || existingJob.status === "completed" || existingJob.status === "cancelled") {
-		startMaintenanceJob(db, {
-			kind: VECTOR_MODEL_MIGRATION_JOB,
-			title: "Re-indexing memories",
-			status: "pending",
-			message: "Queued vector catch-up for incremental sync data",
-			progressTotal: null,
-			metadata,
-		});
-		wakeActiveVectorMigrationRunner();
-		return;
-	}
-
-	updateMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB, {
-		status: "pending",
-		message: "Queued vector catch-up for incremental sync data",
-		progressCurrent:
-			existingJob.status === "failed"
-				? 0
-				: Math.min(existingJob.progress.current, pendingWorkCount),
-		progressTotal: existingJob.progress.total,
-		metadata,
-	});
-	wakeActiveVectorMigrationRunner();
-}
-
-async function runQueuedSyncVectorWork(
-	db: SqliteDatabase,
-	job: NonNullable<ReturnType<typeof getMaintenanceJob>>,
-	targetModel: string,
-	batchSize: number,
-	signal?: AbortSignal,
-): Promise<{ completed: boolean; metadata: MigrationMetadata }> {
-	const metadata = (job.metadata ?? {}) as MigrationMetadata;
-	const pendingDeleteMemoryIds = metadataMemoryIds(metadata.pending_delete_memory_ids);
-	const pendingUpsertMemoryIds = metadataMemoryIds(metadata.pending_upsert_memory_ids);
-	if (pendingDeleteMemoryIds.length === 0 && pendingUpsertMemoryIds.length === 0) {
-		return { completed: false, metadata };
-	}
-
-	if (pendingDeleteMemoryIds.length > 0) {
-		deleteVectorsForMemoryIds(db, pendingDeleteMemoryIds);
-	}
-	const batchUpsertMemoryIds = pendingUpsertMemoryIds.slice(0, batchSize);
-	if (batchUpsertMemoryIds.length > 0) {
-		await backfillVectors(db, { memoryIds: batchUpsertMemoryIds, signal });
-		// If the abort fired mid-batch, backfillVectors may have only
-		// processed a prefix. Skip the prune-and-drop bookkeeping so the
-		// unprocessed IDs stay in pending_upsert_memory_ids for the next
-		// tick to retry.
-		if (signal?.aborted) {
-			return { completed: false, metadata };
-		}
-		pruneStaleCurrentModelVectors(db, batchUpsertMemoryIds, targetModel);
-	}
-
-	const drainedMetadata: MigrationMetadata = {
-		...metadata,
-		pending_delete_memory_ids: [],
-		pending_upsert_memory_ids: pendingUpsertMemoryIds.slice(batchUpsertMemoryIds.length),
-	};
-	const latestJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
-	const latestMetadata = (latestJob?.metadata ?? {}) as MigrationMetadata;
-	const nextMetadata = sameQueuedSyncMemoryIds(latestMetadata, metadata)
-		? drainedMetadata
-		: {
-				...latestMetadata,
-				...mergeQueuedSyncMemoryIds(latestMetadata, {
-					upsertMemoryIds: metadataMemoryIds(drainedMetadata.pending_upsert_memory_ids),
-					deleteMemoryIds: metadataMemoryIds(drainedMetadata.pending_delete_memory_ids),
-				}),
-			};
-	const remainingWorkCount =
-		metadataMemoryIds(nextMetadata.pending_delete_memory_ids).length +
-		metadataMemoryIds(nextMetadata.pending_upsert_memory_ids).length;
-	const incrementalOnly =
-		(metadata.trigger ?? SYNC_INCREMENTAL_TRIGGER) === SYNC_INCREMENTAL_TRIGGER &&
-		!metadata.source_model &&
-		!metadata.last_cursor_id &&
-		metadata.embeddable_total == null;
-
-	if (remainingWorkCount === 0 && incrementalOnly) {
-		completeMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB, {
-			message: "Finished vector catch-up for incremental sync data",
-			progressCurrent: 0,
-			progressTotal: null,
-			metadata: nextMetadata,
-		});
-		return { completed: true, metadata: nextMetadata };
-	}
-
-	updateMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB, {
-		status: remainingWorkCount > 0 ? "running" : job.status,
-		message:
-			remainingWorkCount > 0
-				? `Queued vector catch-up has ${remainingWorkCount} memory change(s) remaining`
-				: job.message,
-		progressCurrent: 0,
-		progressTotal: null,
-		metadata: nextMetadata,
-	});
-	return { completed: false, metadata: nextMetadata };
-}
-
-export function queueVectorBackfillForSyncBootstrap(
-	db: SqliteDatabase,
-	options: { embeddableTotal?: number | null } = {},
-): void {
-	const embeddableTotal =
-		typeof options.embeddableTotal === "number" && options.embeddableTotal >= 0
-			? options.embeddableTotal
-			: null;
-	const metadata: MigrationMetadata = {
-		last_cursor_id: 0,
-		processed_embeddable: 0,
-		trigger: SYNC_BOOTSTRAP_TRIGGER,
-	};
-	if (embeddableTotal != null) {
-		metadata.embeddable_total = embeddableTotal;
-	}
-	startMaintenanceJob(db, {
-		kind: VECTOR_MODEL_MIGRATION_JOB,
-		title: "Re-indexing memories",
-		status: "pending",
-		message: "Queued vector catch-up for synced bootstrap data",
-		progressTotal: embeddableTotal,
-		metadata,
-	});
-	wakeActiveVectorMigrationRunner();
-}
 
 function vectorModels(db: SqliteDatabase): Array<{ model: string; rows: number }> {
 	return db
@@ -334,7 +112,7 @@ export async function runVectorMigrationPass(
 	db: SqliteDatabase,
 	options: { batchSize?: number; signal?: AbortSignal } = {},
 ): Promise<void> {
-	let existingJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
+	const existingJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 	const isInFlightJob = existingJob?.status === "running" || existingJob?.status === "pending";
 	if (isEmbeddingDisabled()) {
 		if (isInFlightJob) {
@@ -356,83 +134,14 @@ export async function runVectorMigrationPass(
 	const targetModel = client.model;
 	const effectiveBatchSize = Math.max(1, options.batchSize ?? 50);
 	const existingMetadata = (existingJob?.metadata ?? {}) as MigrationMetadata;
-	const queuedSyncWorkCount =
-		metadataMemoryIds(existingMetadata.pending_upsert_memory_ids).length +
-		metadataMemoryIds(existingMetadata.pending_delete_memory_ids).length;
-	if (
-		existingJob?.status === "completed" &&
-		existingMetadata.target_model === targetModel &&
-		queuedSyncWorkCount === 0
-	) {
+	if (existingJob?.status === "completed" && existingMetadata.target_model === targetModel) {
 		return;
-	}
-	if (existingJob) {
-		const queuedSyncWork = await runQueuedSyncVectorWork(
-			db,
-			existingJob,
-			targetModel,
-			effectiveBatchSize,
-			options.signal,
-		);
-		if (queuedSyncWork.completed) {
-			return;
-		}
-		const queuedSyncRemainingWork =
-			metadataMemoryIds(queuedSyncWork.metadata.pending_delete_memory_ids).length +
-			metadataMemoryIds(queuedSyncWork.metadata.pending_upsert_memory_ids).length;
-		if (
-			(queuedSyncWork.metadata.trigger ?? SYNC_INCREMENTAL_TRIGGER) === SYNC_INCREMENTAL_TRIGGER &&
-			queuedSyncRemainingWork > 0
-		) {
-			return;
-		}
-		existingJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 	}
 	const sourceModel = detectSourceModel(db, targetModel);
 	const hasInFlightJob =
 		existingJob?.status === "running" ||
 		existingJob?.status === "pending" ||
 		existingJob?.status === "failed";
-	// codemem-ad6m: when a sync-triggered job (bootstrap or incremental)
-	// drains its queued work, status can remain 'running' without the
-	// batch loop having anything to do. The previous logic fell through
-	// and re-embedded the entire corpus. Fast-exit for that specific
-	// case — but ONLY for sync-triggered jobs, since the `uncovered`
-	// SQL counts memories that have ANY target-model row (even a single
-	// chunk of a multi-chunk memory). Full-migration jobs (no trigger,
-	// or an older full-migration trigger) must keep falling through to
-	// the batch loop so backfillVectors can detect partial chunk
-	// coverage and repair it.
-	const existingJobTrigger = (existingJob?.metadata as MigrationMetadata | undefined)?.trigger;
-	const fromSyncTrigger =
-		existingJobTrigger === SYNC_INCREMENTAL_TRIGGER ||
-		existingJobTrigger === SYNC_BOOTSTRAP_TRIGGER;
-	if (!sourceModel && fromSyncTrigger && hasInFlightJob) {
-		const uncovered = db
-			.prepare(
-				`SELECT COUNT(*) AS c FROM memory_items
-				 WHERE active = 1
-				   AND id NOT IN (SELECT DISTINCT memory_id FROM memory_vectors WHERE model = ?)`,
-			)
-			.get(targetModel) as { c?: number } | undefined;
-		if (Number(uncovered?.c ?? 0) <= 0) {
-			const jobMeta = (existingJob?.metadata ?? {}) as MigrationMetadata;
-			const indexedTotal = countEmbeddableActiveMemories(db);
-			completeMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB, {
-				message: "Finished re-indexing memories",
-				progressCurrent: indexedTotal,
-				progressTotal: indexedTotal,
-				metadata: {
-					...jobMeta,
-					source_model: null,
-					target_model: targetModel,
-					processed_embeddable: indexedTotal,
-					embeddable_total: indexedTotal,
-				},
-			});
-			return;
-		}
-	}
 	// Use cached embeddable_total from an in-progress job to avoid a full table scan per tick.
 	// Only recompute when starting a fresh migration or when the job is terminal.
 	const existingMeta = (existingJob?.metadata ?? {}) as MigrationMetadata;
@@ -591,34 +300,16 @@ export class VectorModelMigrationRunner {
 		if (this.active) return;
 		this.active = true;
 		this.lastTickWasIdle = false;
-		activeRunner = this;
 		this.schedule(100);
 	}
 
 	async stop(): Promise<void> {
 		this.active = false;
-		if (activeRunner === this) activeRunner = null;
 		if (this.timer) {
 			clearTimeout(this.timer);
 			this.timer = null;
 		}
 		if (this.currentRun) await this.currentRun;
-	}
-
-	/**
-	 * Pulls the runner out of its idle cadence and schedules an immediate
-	 * tick. Queue writers (sync bootstrap / incremental replication) call
-	 * this through {@link wakeActiveVectorMigrationRunner} so freshly
-	 * replicated memories don't sit unembedded for the full idle interval.
-	 */
-	wake(): void {
-		if (!this.active) return;
-		this.lastTickWasIdle = false;
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
-			this.schedule(100);
-		}
 	}
 
 	private schedule(delayMs: number): void {
@@ -674,18 +365,11 @@ export class VectorModelMigrationRunner {
 		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		if (job) {
 			// A `failed` job is not going to un-fail from polling; wait until
-			// an operator retries, queues new sync work, or embeddings become
-			// available again (all of which re-enter at full cadence on the
-			// next tick). Running/pending stay non-idle because work is in
-			// progress.
+			// an operator retries or embeddings become available again.
+			// Running/pending stay non-idle because work is in progress.
 			if (job.status === "running" || job.status === "pending") {
 				return false;
 			}
-			const meta = (job.metadata ?? {}) as MigrationMetadata;
-			const queued =
-				metadataMemoryIds(meta.pending_upsert_memory_ids).length +
-				metadataMemoryIds(meta.pending_delete_memory_ids).length;
-			if (queued > 0) return false;
 			return true;
 		}
 		// No job row yet. Peek coverage directly to tell whether the first

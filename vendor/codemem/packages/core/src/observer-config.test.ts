@@ -101,7 +101,7 @@ describe("codemem config path resolution", () => {
 	it("falls back to legacy config for reads until workspace config exists", () => {
 		const legacyPath = join(tmpHome, ".config", "codemem", "config.jsonc");
 		mkdirSync(join(tmpHome, ".config", "codemem"), { recursive: true });
-		writeFileSync(legacyPath, '{"sync_enabled": true}\n', "utf8");
+		writeFileSync(legacyPath, '{"observer_model": "test-model"}\n', "utf8");
 		process.env.CODEMEM_WORKSPACE_ID = "pilot-1";
 		expect(getCodememConfigPath()).toBe(legacyPath);
 	});
@@ -119,21 +119,21 @@ describe("codemem config path resolution", () => {
 
 	it("writes and reads workspace-scoped config files", () => {
 		const targetPath = writeWorkspaceCodememConfigFile("pilot-1", {
-			sync_enabled: true,
-			sync_port: 47337,
+			observer_model: "test-model",
+			raw_events_sweeper_interval_s: 45,
 		});
 		expect(targetPath).toBe(
 			join(tmpHome, ".codemem", "workspaces", "pilot-1", "config", "codemem.json"),
 		);
 		expect(readWorkspaceCodememConfigFile("pilot-1")).toEqual({
-			sync_enabled: true,
-			sync_port: 47337,
+			observer_model: "test-model",
+			raw_events_sweeper_interval_s: 45,
 		});
 	});
 
 	it("writes to the workspace path when workspace mode is active", () => {
 		process.env.CODEMEM_WORKSPACE_ID = "pilot-1";
-		const targetPath = writeCodememConfigFile({ sync_enabled: true });
+		const targetPath = writeCodememConfigFile({ observer_model: "test-model" });
 		expect(targetPath).toBe(
 			join(tmpHome, ".codemem", "workspaces", "pilot-1", "config", "codemem.json"),
 		);
@@ -141,8 +141,8 @@ describe("codemem config path resolution", () => {
 
 	it("reads JSONC config from an explicit path", () => {
 		const configPath = join(tmpHome, "workspace-config.jsonc");
-		writeFileSync(configPath, '{\n  // comment\n  "sync_enabled": true,\n}\n', "utf8");
-		expect(readCodememConfigFileAtPath(configPath)).toEqual({ sync_enabled: true });
+		writeFileSync(configPath, '{\n  // comment\n  "observer_model": "test-model",\n}\n', "utf8");
+		expect(readCodememConfigFileAtPath(configPath)).toEqual({ observer_model: "test-model" });
 	});
 });
 
@@ -283,23 +283,6 @@ describe("getCodememEnvOverrides", () => {
 		} finally {
 			delete process.env.CODEMEM_OBSERVER_REASONING_EFFORT;
 			delete process.env.CODEMEM_OBSERVER_REASONING_SUMMARY;
-		}
-	});
-
-	it("includes sync retention env overrides when set", () => {
-		process.env.CODEMEM_SYNC_RETENTION_ENABLED = "1";
-		process.env.CODEMEM_SYNC_RETENTION_MAX_AGE_DAYS = "14";
-		process.env.CODEMEM_SYNC_RETENTION_MAX_SIZE_MB = "256";
-		try {
-			expect(getCodememEnvOverrides()).toMatchObject({
-				sync_retention_enabled: "CODEMEM_SYNC_RETENTION_ENABLED",
-				sync_retention_max_age_days: "CODEMEM_SYNC_RETENTION_MAX_AGE_DAYS",
-				sync_retention_max_size_mb: "CODEMEM_SYNC_RETENTION_MAX_SIZE_MB",
-			});
-		} finally {
-			delete process.env.CODEMEM_SYNC_RETENTION_ENABLED;
-			delete process.env.CODEMEM_SYNC_RETENTION_MAX_AGE_DAYS;
-			delete process.env.CODEMEM_SYNC_RETENTION_MAX_SIZE_MB;
 		}
 	});
 

@@ -73,12 +73,6 @@ export function itemKey(item: FeedItem): string {
 	return `${String(item.kind || "").toLowerCase()}:${itemSignature(item)}`;
 }
 
-export function feedScopeLabel(scope: string): string {
-	if (scope === "mine") return " · my memories";
-	if (scope === "theirs") return " · other people";
-	return "";
-}
-
 export function trustStateLabel(trustState: string): string {
 	if (trustState === "legacy_unknown") return "legacy provenance";
 	if (trustState === "unreviewed") return "unreviewed";

@@ -34,13 +34,11 @@ let summaryHasMore = true;
 let loadMoreInFlight = false;
 let feedScrollHandlerBound = false;
 let feedProjectGeneration = 0;
-let lastFeedScope = "all";
 
 import { ensureFeedRenderBoundary, renderIntoFeedMount } from "./feed/data/mount";
 
 function resetPagination(project: string) {
 	lastFeedProject = project;
-	lastFeedScope = state.feedScopeFilter;
 	feedProjectGeneration += 1;
 	observationOffset = 0;
 	summaryOffset = 0;
@@ -115,7 +113,6 @@ async function loadMoreFeedPage() {
 				? api.loadMemoriesPage(requestProject, {
 						limit: OBSERVATION_PAGE_SIZE,
 						offset: startObservationOffset,
-						scope: state.feedScopeFilter,
 					})
 				: Promise.resolve({
 						items: [],
@@ -125,7 +122,6 @@ async function loadMoreFeedPage() {
 				? api.loadSummariesPage(requestProject, {
 						limit: SUMMARY_PAGE_SIZE,
 						offset: startSummaryOffset,
-						scope: state.feedScopeFilter,
 					})
 				: Promise.resolve({
 						items: [],
@@ -225,10 +221,6 @@ export function updateFeedTypeToggle() {
 	updateFeedView(true);
 }
 
-export function updateFeedScopeToggle() {
-	updateFeedView(true);
-}
-
 export function updateFeedView(force = false) {
 	const feedTab = document.getElementById("tab-feed");
 	if (!feedTab) return;
@@ -251,8 +243,7 @@ export function updateFeedView(force = false) {
 
 export async function loadFeedData() {
 	const project = state.currentProject || "";
-	const scopeChanged = state.feedScopeFilter !== lastFeedScope;
-	if (project !== lastFeedProject || scopeChanged) {
+	if (project !== lastFeedProject) {
 		resetPagination(project);
 		renderProjectSwitchLoadingState();
 	}
@@ -265,12 +256,10 @@ export async function loadFeedData() {
 		api.loadMemoriesPage(project, {
 			limit: observationsLimit,
 			offset: 0,
-			scope: state.feedScopeFilter,
 		}),
 		api.loadSummariesPage(project, {
 			limit: summariesLimit,
 			offset: 0,
-			scope: state.feedScopeFilter,
 		}),
 	]);
 
@@ -309,6 +298,5 @@ export async function loadFeedData() {
 		observationOffset,
 		pageNextOffset(observations, observationItems.length),
 	);
-	lastFeedScope = state.feedScopeFilter;
 	updateFeedView();
 }

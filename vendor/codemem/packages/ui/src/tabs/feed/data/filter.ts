@@ -39,5 +39,5 @@ export function computeSignature(items: FeedItem[]): string {
 	const parts = items.map(
 		(i) => `${itemSignature(i)}:${i.kind || ""}:${i.created_at_utc || i.created_at || ""}`,
 	);
-	return `${state.feedTypeFilter}|${state.feedScopeFilter}|${state.currentProject}|${normalize(state.feedQuery)}|${parts.join("|")}`;
+	return `${state.feedTypeFilter}|${state.currentProject}|${normalize(state.feedQuery)}|${parts.join("|")}`;
 }
