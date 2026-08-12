@@ -74,9 +74,12 @@ harness/                 # Phase 0B: hook golden matrix fixtures / sidecar hosti
 src/                     # base ADR 確定後、codemem 構造を継承して配置（Phase 1 以降）
 ```
 
-**Structure Decision**: 最終レイアウトは Phase 0A の base ADR に従属する（vendor 継続 or 選択移植で
-src/ 配置が変わる）。Phase 0A〜0B は `evidence/` と `harness/` のみ追加し、product コードに触れない
-（v6.1 の「機能変更なし」「product DB 変更なし」制約）。base ADR 確定時に本節を更新する。
+**Structure Decision**（2026-08-12 確定 — ADR-001）: base = codemem pinned vendor snapshot
+（`26438e75`）。レイアウト: `vendor/codemem/` が product コードの正本（pnpm workspace 構造ごと保持、
+Phase 1 以降の改変はここに直接コミット）、`evidence/` = Phase 0A 監査成果物、`harness/` = Phase 0B で
+追加する contract harness。`src/` 新設はしない（vendor 内 packages/* が実体のため）。上流追随なし・
+cherry-pick は §4.3 手続きのみ（`vendor/codemem/VENDOR.md`）。Phase 0A〜0B は product コードに触れない
+（v6.1 の「機能変更なし」「product DB 変更なし」制約）。
 
 ## 実行計画（v6.1 §29–30 の実行順序と体制）
 
