@@ -1609,6 +1609,8 @@ sidecar profileの有効化には、free-certified（§13.8）と同格の**vers
 ```text
 sidecar_profile_id
 cli_id / exact_cli_version / os
+provider ToS / documented-permission確認結果（subscription-backedのprogrammatic exec利用を
+  当該providerが第三者ツールに許可しているかの一次ソース確認。Claude経路と同じ法的lensを適用）
 effective_config inspection結果（hooks/plugins/MCP/tools無効の証跡）
 hostile fixture E2E結果（悪意あるhooks/plugins/MCP/AGENTS/web設定下でside effectゼロ）
 process-tree / FD leak test結果（hang/SIGINT/timeout/子孫プロセス残存）
