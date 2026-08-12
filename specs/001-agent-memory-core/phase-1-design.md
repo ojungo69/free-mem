@@ -14,7 +14,7 @@ Phase 0A 分類の fatal 10 経路 + 計画時実地検証で判明した未計�
 
 | 追加 # | 対象 | 位置 |
 |---|---|---|
-| +1 | Codex CLI sidecar 一式（4 関数 + 分岐 + helper） | `packages/core/src/observer-client.ts:2256-2595`、分岐 1381/1558-1559/1590/1638、helper 385-/652-696/784-/806- |
+| +1 | Codex CLI sidecar 一式（3 関数 + dispatch + 分岐） | `packages/core/src/observer-client.ts:2256-2590`、dispatch 1894、分岐 1381/1558-1559/1590/1638（2026-08-13 実地照合済み） |
 | +2 | codex-hook-inject の local store open | `packages/cli/src/commands/codex-hook-inject.ts:120-190`（`buildLocalPack`、store :125） |
 | +3 | flushBoundaryRawEvents の direct store | `packages/cli/src/commands/claude-hook-ingest.ts:218-265`（store :237） |
 

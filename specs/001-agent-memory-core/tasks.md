@@ -94,7 +94,7 @@ T053–T057 の harness runner 骨格（assert 内容と判定条件は Claude C
 ### A1–A4 / A6（T030→T031 直列）
 
 - [ ] T030 A1+A2+A3: `_callAnthropicConsumer`(2031-2073)+dispatch、`_callCodexConsumer`(1992-2030)+dispatch、`buildCodexHeaders`、`observer-auth.ts:49-183`+`:185-206` 削除。cascade = `explicit -> env -> file`。検証: `anthropic`×`oauth` 到達ゼロ / 第三者 credential path ゼロ / schema 残キーなし / tsc green
-- [ ] T031 A4 両 sidecar: Claude 側（2074-2255 + dispatch 1889）+ Codex 側（2256-2595 の 4 関数 + 分岐 1381/1558-1559/1590/1638 + helper 385-/652-696/784-/806-）削除。0B certification 両者 default disabled が根拠。**削除のみ、再実装は Phase 6**。検証: `bypassPermissions` ゼロ / sidecar 到達ゼロ / tsc green
+- [ ] T031 A4 両 sidecar: Claude 側（2074-2255 + dispatch 1889）+ Codex 側（2256-2590 の 3 関数 + dispatch 1894 + 分岐 1381/1558-1559/1590/1638）削除。0B certification 両者 default disabled が根拠。**削除のみ、再実装は Phase 6**。検証: `bypassPermissions` ゼロ / sidecar 到達ゼロ / tsc green
 - [ ] T032 [P] A6: bootstrap template 削除。検証: 参照ゼロ
 
 ### daemon 本体
