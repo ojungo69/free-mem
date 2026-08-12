@@ -61,6 +61,7 @@
 - **hook 面は合格**: hostile `config.toml` の偽 hook は 1 つも発火しなかった（`--ignore-user-config` が効く）。process-group kill / 残存 descendant ゼロも確認。
 - **指示面が不合格**: sidecar が処理する対象ディレクトリに敵対的な `AGENTS.md`（あるいは同等の instruction ファイル）が置かれていると、sidecar はその指示に従う。observer として他人のリポジトリや未検証のワークツリーを要約させる用途では、**要約対象がそのまま sidecar への命令チャネルになる**（prompt injection の面）。
 - 現行 CLI に「project instruction を無視する」documented なフラグは存在しない（`--ignore-user-config` = `$CODEX_HOME/config.toml` のみ、`--ignore-rules` = execpolicy `.rules` のみ）。§13.6 が要求する「documented な『全 tool 無効・hook 無効』の単一契約は存在しない」という記述は、**instruction 面まで含めるとさらに強く当てはまる**ことが実測で確認された。
+- なお v6.1 §13.6 の hostile fixture 要件は既に「悪意ある hooks/plugins/MCP/**AGENTS**/web 設定下で side effect ゼロ」と AGENTS を名指ししている。本判定は**仕様が想定していた failure mode をそのまま踏んだ**ものであり、新たな要件を後付けしたものではない。
 
 再認定の条件: instruction ファイルを無効化する documented なオプションが CLI に追加されるか、sidecar 側で「指示ファイルを含まない隔離コピー上でのみ実行する」設計（実行 cwd を harness が用意した空ディレクトリに固定し、対象データは stdin/引数でのみ渡す）を実装して再測定すること。後者は Phase 6 の optional PR で扱う。
 
