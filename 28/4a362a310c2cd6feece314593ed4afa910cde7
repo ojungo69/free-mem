@@ -1,0 +1,22 @@
+specs/001-agent-memory-core/phase-1-design.md
+  s_53b49580148924::t_1706b74c1be70d 1-89
+specs/001-agent-memory-core/tasks.md
+  s_53b49580148924::t_928e05f475018a 87
+  s_53b49580148924::t_8b552ec49ccad7 70,72-86,88-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "284a362a310c2cd6feece314593ed4afa910cde7",
+  "prompts": {},
+  "sessions": {
+    "s_53b49580148924": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab3fafbd-d92f-4844-ab5e-b61c2e7f3d86",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
