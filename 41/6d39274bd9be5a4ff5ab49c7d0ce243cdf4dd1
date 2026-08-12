@@ -1,0 +1,51 @@
+specs/001-agent-memory-core/tasks.md
+  s_65c23cd4cf8703::t_978cc69e782fb7 92
+evidence/phase1-disposition.md
+  s_65c23cd4cf8703::t_a4c1203fbe18f8 12-18,20-28,31-38
+  s_65c23cd4cf8703::t_ab2e46089a0362 197-198
+  s_65c23cd4cf8703::t_41b88425f18925 107-119
+  s_53b49580148924::t_7a7b91f985c36f 1-11,40-49,51-65,74-76,104-106,120-122,145-147,157-179,193-196
+  s_65c23cd4cf8703::t_81f1d830c240d1 148-156
+  s_65c23cd4cf8703::t_c80d6f2d1c8c5c 66-71,73
+  s_65c23cd4cf8703::t_d2c976b4e9b997 39,50
+  s_65c23cd4cf8703::t_dae36657abc1e6 180-192
+  s_65c23cd4cf8703::t_48267b856a993d 77-103
+  s_65c23cd4cf8703::t_ae16dda73f2989 19,29-30,72
+  s_65c23cd4cf8703::t_fe1d2e8c1639e9 123-144
+evidence/phase1-test-retire-list.md
+  s_65c23cd4cf8703::t_511a4fe1ebe032 162
+  s_65c23cd4cf8703::t_006fe5c40977e4 1-2,6-161
+  s_65c23cd4cf8703::t_2abcdfeae6efa7 276-328
+  s_65c23cd4cf8703::t_da770d2e9bbced 1469-1568
+  s_65c23cd4cf8703::t_f7692dc763a878 1957-2175
+  s_65c23cd4cf8703::t_c4579d3c0475fa 3-5
+  s_65c23cd4cf8703::t_abe62c8526c289 1569-1956
+  s_65c23cd4cf8703::t_216884bc2e2dcb 164-261
+  s_65c23cd4cf8703::t_f425b8f22d6aa4 163
+  s_65c23cd4cf8703::t_1a9e47d4ff627a 329-1468
+  s_65c23cd4cf8703::t_74ad8447256a12 262-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "416d39274bd9be5a4ff5ab49c7d0ce243cdf4dd1",
+  "prompts": {},
+  "sessions": {
+    "s_53b49580148924": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab3fafbd-d92f-4844-ab5e-b61c2e7f3d86",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    },
+    "s_65c23cd4cf8703": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a7-228e-7240-b3cb-f4df7e1a66d9",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
