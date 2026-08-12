@@ -57,7 +57,16 @@ export interface CaptureFixture {
   nativeVersion: string; // capture 時点の exact `--version` 出力
   capturedAt: string; // ISO 8601
   scenario: string; // 何を観測したか 1 行
-  observedEvents: Array<{ kind: EventKind | "raw"; raw?: unknown; at?: string }>;
+  // capability 既定 "native"。Stop→turn_completed 等の合成は "synthesized" + sourceEvents（§7.2）。
+  observedEvents: Array<{
+    kind: EventKind | "raw";
+    raw?: unknown;
+    at?: string;
+    capability?: "native" | "synthesized";
+    sourceEvents?: string[];
+    coverage?: number;
+    limitations?: string[];
+  }>;
   toolFailurePhasesObserved: ToolFailurePhase[];
   limitations: string[];
   rig: { isolated: boolean; internalRunMarker: boolean }; // 隔離 rig 下で取ったか

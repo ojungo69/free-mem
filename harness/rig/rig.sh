@@ -54,6 +54,8 @@ run_env() { # 最小環境で子 CLI を起動する共通部
     CODEX_HOME="$RIG_BASE/codex-home" \
     AGENT_MEMORY_INTERNAL_RUN=1 \
     CAPTURE_FILE="$capture" \
+    ${INJECT_MARKER:+INJECT_MARKER="$INJECT_MARKER"} \
+    ${HOOK_SLEEP:+HOOK_SLEEP="$HOOK_SLEEP"} \
     "$@"
 }
 

@@ -1,0 +1,28 @@
+{
+  "fixtureId": "claude/interrupt-and-hook-timeout",
+  "cli": "claude",
+  "nativeVersion": "2.1.228 (Claude Code)",
+  "capturedAt": "2026-08-12T11:12:30.000Z",
+  "scenario": "SIGINT による中断（8s deadline / 長文生成中）と、hook 自身が 15s ブロックした場合の挙動",
+  "observedEvents": [
+    { "kind": "session_started", "capability": "native", "sourceEvents": ["SessionStart"] },
+    { "kind": "user_prompted", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
+    {
+      "kind": "session_interrupted",
+      "capability": "synthesized",
+      "sourceEvents": ["SessionEnd"],
+      "coverage": 0.5,
+      "limitations": [
+        "SIGINT 中断時は **Stop が発火せず** SessionEnd のみ届く。しかし SessionEnd.reason は正常終了時と同じ 'other' で、中断と正常終了を hook payload だけでは区別できない",
+        "区別するには『Stop 無しで SessionEnd』というパターン合成が必要（本 fixture の根拠）"
+      ]
+    },
+    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"] }
+  ],
+  "toolFailurePhasesObserved": [],
+  "limitations": [
+    "hook timeout: settings の timeout=10 に対し hook を 15s ブロックさせても、捕捉 event 数・session 完了は正常時と同一（4 events）。hook の遅延は session を壊さないが、hook 側の timeout 超過は payload に現れない",
+    "interrupt fixture は timeout(1) 由来の SIGINT。ユーザーの Ctrl-C 経路（TTY）は未観測"
+  ],
+  "rig": { "isolated": true, "internalRunMarker": true }
+}

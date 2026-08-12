@@ -78,6 +78,12 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
       if ("at" in ev && typeof ev.at !== "string") {
         errs.push(`observedEvents[${i}].at must be string if present`);
       }
+      if ("capability" in ev && ev.capability !== "native" && ev.capability !== "synthesized") {
+        errs.push(`observedEvents[${i}].capability must be "native" | "synthesized"`);
+      }
+      if (ev.capability === "synthesized" && (!Array.isArray(ev.sourceEvents) || ev.sourceEvents.length === 0)) {
+        errs.push(`observedEvents[${i}]: synthesized requires non-empty sourceEvents (§7.2)`);
+      }
     });
   }
 
@@ -147,13 +153,17 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     for (const ev of f.observedEvents) {
       if (ev.kind === "raw") continue;
       const kind = ev.kind as EventKind;
+      const prev = capabilities.capture[kind];
+      // native は synthesized に降格させない（別 fixture で native 観測済みなら維持）
+      if (prev.value === "native" && ev.capability === "synthesized") continue;
       capabilities.capture[kind] = {
-        value: "native",
-        sourceEvents: [],
+        value: ev.capability ?? "native",
+        sourceEvents: ev.sourceEvents ?? [],
         nativeVersion,
         evidenceKind: "real-cli-e2e",
         verifiedAt: f.capturedAt,
-        limitations: [],
+        limitations: ev.limitations ?? [],
+        ...(ev.coverage !== undefined ? { coverage: ev.coverage } : {}),
       };
     }
     for (const p of f.toolFailurePhasesObserved) {

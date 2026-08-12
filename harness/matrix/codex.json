@@ -1,0 +1,198 @@
+{
+  "cli": "codex",
+  "nativeVersion": "codex-cli 0.147.0",
+  "generatedAt": "2026-08-12T11:17:31.695Z",
+  "fixtureCount": 3,
+  "fixtureIds": [
+    "codex/injection",
+    "codex/lifecycle-basic",
+    "codex/tool-lifecycle-and-failure"
+  ],
+  "capabilities": {
+    "capture": {
+      "session_started": {
+        "value": "native",
+        "sourceEvents": [
+          "SessionStart"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:16:28.000Z",
+        "limitations": []
+      },
+      "user_prompted": {
+        "value": "native",
+        "sourceEvents": [
+          "UserPromptSubmit"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:16:28.000Z",
+        "limitations": []
+      },
+      "assistant_completed": {
+        "value": "synthesized",
+        "sourceEvents": [
+          "Stop"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:15:10.000Z",
+        "limitations": [
+          "Stop.last_assistant_message から復元"
+        ]
+      },
+      "tool_started": {
+        "value": "native",
+        "sourceEvents": [
+          "PreToolUse"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:16:28.000Z",
+        "limitations": [
+          "payload に tool_use_id / turn_id / tool_input あり"
+        ]
+      },
+      "tool_completed": {
+        "value": "native",
+        "sourceEvents": [
+          "PostToolUse"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:16:28.000Z",
+        "limitations": []
+      },
+      "tool_failed": {
+        "value": "synthesized",
+        "sourceEvents": [
+          "PostToolUse"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:16:28.000Z",
+        "limitations": [
+          "**Codex は tool 失敗時も PostToolUse を発火する**（Claude Code とは逆の挙動）。ただし payload に exit code / error フィールドは無く、成功時 tool_response=\"rigtool\\n\" に対し失敗時 tool_response=\"\" という違いしかない",
+          "空 tool_response は『失敗』と『出力の無い成功』を区別できないため、失敗判定は transcript 参照か上位層の推定が必要",
+          "failurePhase の直接判別は不可"
+        ],
+        "coverage": 0.5
+      },
+      "turn_completed": {
+        "value": "native",
+        "sourceEvents": [
+          "Stop"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:16:28.000Z",
+        "limitations": []
+      },
+      "pre_compact": {
+        "value": "unknown",
+        "sourceEvents": [],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:17:31.695Z",
+        "limitations": [
+          "not observed in Phase 0B"
+        ]
+      },
+      "post_compact": {
+        "value": "unknown",
+        "sourceEvents": [],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:17:31.695Z",
+        "limitations": [
+          "not observed in Phase 0B"
+        ]
+      },
+      "session_idle": {
+        "value": "unknown",
+        "sourceEvents": [],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:17:31.695Z",
+        "limitations": [
+          "not observed in Phase 0B"
+        ]
+      },
+      "session_interrupted": {
+        "value": "unknown",
+        "sourceEvents": [],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:17:31.695Z",
+        "limitations": [
+          "not observed in Phase 0B"
+        ]
+      },
+      "session_ended": {
+        "value": "native",
+        "sourceEvents": [
+          "SessionEnd"
+        ],
+        "nativeVersion": "codex-cli 0.147.0",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:16:28.000Z",
+        "limitations": []
+      }
+    },
+    "toolFailurePhases": [
+      "executed"
+    ],
+    "sessionStartInjection": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:17:31.695Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "promptAwareInjection": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:17:31.695Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "compactionRecoveryStrategy": "unsupported",
+    "trueSessionEnd": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:17:31.695Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "subagentCapture": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:17:31.695Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "stableNativeSessionId": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:17:31.695Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    }
+  }
+}

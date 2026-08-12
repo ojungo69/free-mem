@@ -1,0 +1,202 @@
+{
+  "cli": "claude",
+  "nativeVersion": "2.1.228 (Claude Code)",
+  "generatedAt": "2026-08-12T11:15:37.836Z",
+  "fixtureCount": 5,
+  "fixtureIds": [
+    "claude/injection-and-subagent",
+    "claude/interrupt-and-hook-timeout",
+    "claude/lifecycle-basic",
+    "claude/tool-failed-executed",
+    "claude/tool-lifecycle"
+  ],
+  "capabilities": {
+    "capture": {
+      "session_started": {
+        "value": "native",
+        "sourceEvents": [
+          "SessionStart"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:09:33.000Z",
+        "limitations": []
+      },
+      "user_prompted": {
+        "value": "native",
+        "sourceEvents": [
+          "UserPromptSubmit"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:09:33.000Z",
+        "limitations": []
+      },
+      "assistant_completed": {
+        "value": "synthesized",
+        "sourceEvents": [
+          "Stop"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:07:44.644Z",
+        "limitations": [
+          "Stop payload の last_assistant_message から復元。native な assistant_completed hook は無い"
+        ]
+      },
+      "tool_started": {
+        "value": "native",
+        "sourceEvents": [
+          "PreToolUse"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:09:33.000Z",
+        "limitations": []
+      },
+      "tool_completed": {
+        "value": "native",
+        "sourceEvents": [
+          "PostToolUse"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:09:33.000Z",
+        "limitations": []
+      },
+      "tool_failed": {
+        "value": "synthesized",
+        "sourceEvents": [
+          "PreToolUse",
+          "Stop"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:10:11.502Z",
+        "limitations": [
+          "**PostToolUse は tool 失敗時に発火しない**（2 回実行で決定的に再現: PreToolUse のみ、PostToolUse 無し）。失敗の検出は PreToolUse の未完了 + Stop の last_assistant_message からの合成に依存する",
+          "failurePhase の直接判別は不可。executed failure と他 phase を hook 単体では区別できない"
+        ],
+        "coverage": 0.5
+      },
+      "turn_completed": {
+        "value": "synthesized",
+        "sourceEvents": [
+          "Stop"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:09:33.000Z",
+        "limitations": []
+      },
+      "pre_compact": {
+        "value": "unknown",
+        "sourceEvents": [],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:15:37.835Z",
+        "limitations": [
+          "not observed in Phase 0B"
+        ]
+      },
+      "post_compact": {
+        "value": "unknown",
+        "sourceEvents": [],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:15:37.835Z",
+        "limitations": [
+          "not observed in Phase 0B"
+        ]
+      },
+      "session_idle": {
+        "value": "unknown",
+        "sourceEvents": [],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:15:37.835Z",
+        "limitations": [
+          "not observed in Phase 0B"
+        ]
+      },
+      "session_interrupted": {
+        "value": "synthesized",
+        "sourceEvents": [
+          "SessionEnd"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:12:30.000Z",
+        "limitations": [
+          "SIGINT 中断時は **Stop が発火せず** SessionEnd のみ届く。しかし SessionEnd.reason は正常終了時と同じ 'other' で、中断と正常終了を hook payload だけでは区別できない",
+          "区別するには『Stop 無しで SessionEnd』というパターン合成が必要（本 fixture の根拠）"
+        ],
+        "coverage": 0.5
+      },
+      "session_ended": {
+        "value": "native",
+        "sourceEvents": [
+          "SessionEnd"
+        ],
+        "nativeVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "real-cli-e2e",
+        "verifiedAt": "2026-08-12T11:09:33.000Z",
+        "limitations": []
+      }
+    },
+    "toolFailurePhases": [
+      "executed"
+    ],
+    "sessionStartInjection": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "2.1.228 (Claude Code)",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:15:37.835Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "promptAwareInjection": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "2.1.228 (Claude Code)",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:15:37.835Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "compactionRecoveryStrategy": "unsupported",
+    "trueSessionEnd": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "2.1.228 (Claude Code)",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:15:37.835Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "subagentCapture": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "2.1.228 (Claude Code)",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:15:37.835Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "stableNativeSessionId": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "2.1.228 (Claude Code)",
+      "evidenceKind": "real-cli-e2e",
+      "verifiedAt": "2026-08-12T11:15:37.835Z",
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    }
+  }
+}

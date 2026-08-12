@@ -1,0 +1,18 @@
+{
+  "fixtureId": "claude/tool-lifecycle",
+  "cli": "claude",
+  "nativeVersion": "2.1.228 (Claude Code)",
+  "capturedAt": "2026-08-12T11:09:33.000Z",
+  "scenario": "Bash tool 成功実行（allowedTools 明示）で PreToolUse/PostToolUse の対を観測",
+  "observedEvents": [
+    { "kind": "session_started", "capability": "native", "sourceEvents": ["SessionStart"] },
+    { "kind": "user_prompted", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
+    { "kind": "tool_started", "capability": "native", "sourceEvents": ["PreToolUse"] },
+    { "kind": "tool_completed", "capability": "native", "sourceEvents": ["PostToolUse"] },
+    { "kind": "turn_completed", "capability": "synthesized", "sourceEvents": ["Stop"] },
+    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"] }
+  ],
+  "toolFailurePhasesObserved": [],
+  "limitations": [],
+  "rig": { "isolated": true, "internalRunMarker": true }
+}

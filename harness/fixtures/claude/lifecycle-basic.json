@@ -1,0 +1,17 @@
+{
+  "fixtureId": "claude/lifecycle-basic",
+  "cli": "claude",
+  "nativeVersion": "2.1.228 (Claude Code)",
+  "capturedAt": "2026-08-12T11:07:44.644Z",
+  "scenario": "最小 headless run（-p / haiku）で session 開始〜終了の hook lifecycle を観測",
+  "observedEvents": [
+    { "kind": "session_started", "at": "2026-08-12T11:07:44.644Z", "capability": "native", "sourceEvents": ["SessionStart"] },
+    { "kind": "user_prompted", "at": "2026-08-12T11:07:44.693Z", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
+    { "kind": "assistant_completed", "capability": "synthesized", "sourceEvents": ["Stop"], "limitations": ["Stop payload の last_assistant_message から復元。native な assistant_completed hook は無い"] },
+    { "kind": "turn_completed", "capability": "synthesized", "sourceEvents": ["Stop"], "limitations": ["Stop = turn 終端として扱う。turn 単位の native event は無い"] },
+    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"], "limitations": ["reason は headless 正常終了でも 'other'。終了理由の判別には使えない"] }
+  ],
+  "toolFailurePhasesObserved": [],
+  "limitations": ["headless (-p) run のみ。対話 TTY セッションは未観測"],
+  "rig": { "isolated": true, "internalRunMarker": true }
+}

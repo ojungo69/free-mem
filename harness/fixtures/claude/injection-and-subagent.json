@@ -1,0 +1,22 @@
+{
+  "fixtureId": "claude/injection-and-subagent",
+  "cli": "claude",
+  "nativeVersion": "2.1.228 (Claude Code)",
+  "capturedAt": "2026-08-12T11:11:38.160Z",
+  "scenario": "SessionStart/UserPromptSubmit hook stdout による context 注入の実証 + Task subagent の hook 観測",
+  "observedEvents": [
+    { "kind": "session_started", "capability": "native", "sourceEvents": ["SessionStart"] },
+    { "kind": "user_prompted", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
+    { "kind": "tool_started", "capability": "native", "sourceEvents": ["PreToolUse"], "limitations": ["subagent 起動も親側 PreToolUse(Task) として観測される"] },
+    { "kind": "tool_completed", "capability": "native", "sourceEvents": ["PostToolUse"] },
+    { "kind": "turn_completed", "capability": "synthesized", "sourceEvents": ["Stop"] },
+    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"] }
+  ],
+  "toolFailurePhasesObserved": [],
+  "limitations": [
+    "注入実証: hook stdout に置いた token `RIG_INJECT_5f3a9` を子セッションが逐語で復唱した（session 開始時点で注入が届くことの real-cli-e2e 証跡）",
+    "subagent: 親プロセスの hook に SubagentStop が 1 件届く。**subagent 内部の tool 使用・prompt は親 hook に現れない**（親からは Task tool 1 回として見える）",
+    "subagent の native session id は親と同一 session_id で報告され、subagent 固有 id は hook payload に無い"
+  ],
+  "rig": { "isolated": true, "internalRunMarker": true }
+}

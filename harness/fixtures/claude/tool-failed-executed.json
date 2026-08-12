@@ -1,0 +1,29 @@
+{
+  "fixtureId": "claude/tool-failed-executed",
+  "cli": "claude",
+  "nativeVersion": "2.1.228 (Claude Code)",
+  "capturedAt": "2026-08-12T11:10:11.502Z",
+  "scenario": "Bash tool が非ゼロ終了（`false`）— executed failure。2 回実行して同一結果を確認",
+  "observedEvents": [
+    { "kind": "session_started", "capability": "native", "sourceEvents": ["SessionStart"] },
+    { "kind": "user_prompted", "capability": "native", "sourceEvents": ["UserPromptSubmit"] },
+    { "kind": "tool_started", "capability": "native", "sourceEvents": ["PreToolUse"] },
+    {
+      "kind": "tool_failed",
+      "capability": "synthesized",
+      "sourceEvents": ["PreToolUse", "Stop"],
+      "coverage": 0.5,
+      "limitations": [
+        "**PostToolUse は tool 失敗時に発火しない**（2 回実行で決定的に再現: PreToolUse のみ、PostToolUse 無し）。失敗の検出は PreToolUse の未完了 + Stop の last_assistant_message からの合成に依存する",
+        "failurePhase の直接判別は不可。executed failure と他 phase を hook 単体では区別できない"
+      ]
+    },
+    { "kind": "turn_completed", "capability": "synthesized", "sourceEvents": ["Stop"] },
+    { "kind": "session_ended", "capability": "native", "sourceEvents": ["SessionEnd"] }
+  ],
+  "toolFailurePhasesObserved": ["executed"],
+  "limitations": [
+    "permission_denied / schema_invalid / unknown_tool phase は本 fixture では未観測（tool-denied 実行では Claude が許可済み範囲に収まり deny 分岐に到達せず）"
+  ],
+  "rig": { "isolated": true, "internalRunMarker": true }
+}

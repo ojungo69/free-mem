@@ -1,4 +1,10 @@
 # Phase 0B capture rig 用の最小 Codex 設定（CODEX_HOME に配置される）
+# hooks は [features] で有効化する（トップレベル `hooks = true` は
+# [[hooks.X]] テーブルと同名衝突して config 全体が parse error になる）
+approval_policy = "never"
+sandbox_mode = "read-only"
+
+[features]
 hooks = true
 
 [[hooks.SessionStart]]
