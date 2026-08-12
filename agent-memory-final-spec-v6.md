@@ -1,12 +1,13 @@
-# Agent Memory Continuity Platform 実装前完成仕様書 v6.0
+# Agent Memory Continuity Platform 実装前完成仕様書 v6.1
 
-> 更新日: 2026-08-12  
-> 状態: **Codex壁打ち・実装計画作成前の完成版規範仕様（統合版）**  
+> 更新日: 2026-08-12（v6.1: Codex壁打ち反映）  
+> 状態: **実装計画作成前の完成版規範仕様（統合版・壁打ち反映済み）**  
+> v6.1来歴: Codex実装前レビュー `codex-review-report-2026-08-12.md`（verdict: proceed-with-blockers）のblocking findings 13件を、23エージェントの反証検証（内部整合17+外部一次ソース6）にかけ、生き残った範囲を反映した。採否の記録は末尾「付録B: Codex壁打ち反映記録」を参照。  
 > 統合来歴: 併存していた2つのv5.0文書（`agent-memory-final-spec-v5.md` と `agent-memory-implementation-spec.md`）を、レビュー報告 `spec-review-2026-08-12.md` の差分判断表・確定指摘・外部検証、およびユーザー決定6件（2026-08-12）に基づき本書へ一本化した。採否の記録は末尾「付録A: v5統合決定記録」を参照。  
 > 旧文書: `agent-memory-design-brief.md`、`agent-memory-design-brief-v2.md`、`agent-memory-final-implementation-spec-v3.md`、`agent-memory-final-implementation-spec-v4.md`、`agent-memory-final-spec-v5.md`、`agent-memory-implementation-spec.md`  
 > 優先関係: 本書は旧文書と矛盾する箇所について優先する。  
 > プロジェクト名: 仮称 `Agent Memory Continuity Platform`。正式名称は実装scope外。  
-> 実装方針: 既存OSS統合型。`kunickiaj/codemem` forkを第一候補とし、Phase 0監査で致命的衝突が見つかった場合だけADRを再審議する。
+> 実装方針: 既存OSS統合型。`kunickiaj/codemem` のpinned vendor snapshot（commit `26438e75`）をdefault仮説とし、Phase 0のbase gate（§4.3）通過後にLocal Core base ADRを確定する。通常のupstream追随forkは前提にしない。
 
 ---
 
@@ -19,7 +20,7 @@
 ### 0.2 最終判断
 
 - 完全greenfield rewriteは初期方針にしない。
-- Local Coreは`codemem`をforkし、raw-event pipeline、SQLite、FTS5、sqlite-vec、observer、viewer、MCP、既存adapter資産を再利用する。
+- Local Coreは`codemem` commit `26438e75` のpinned vendor snapshotをdefault仮説とし、raw-event pipeline、SQLite、FTS5、sqlite-vec、observer、viewer、MCP、既存adapter資産を再利用する。base ADRの確定はPhase 0のbase gate（write-handle inventory完了・fatal/non-fatal分類・代替候補とのdelta記録）通過後とする。
 - Chroma、Python、uvx、chroma-mcpを必須依存にしない。
 - CMEM Proはoptionalなblack-box baseline/providerとして扱い、内部modelやprivate server実装を推測・再現しない。
 - Cloudflare Workers AIはoptionalな無料observer候補であり、必須依存ではない。
@@ -56,7 +57,7 @@ v4までの仕様を再点検し、以下を追加・確定した。
 19. raw event TTL前に`MemoryEvidenceSnapshot`を生成し、TTL後もdurable memoryのprovenanceを失わない。
 20. session異常終了（abandoned）判定はhost PID / boot identity / leaseによる5段階判定にし、単なる長時間idleをabandonedと誤判定しない。
 21. `free-certified`は期限付き認定（default 30日）とし、pricing/quota/terms変更で再検証する。
-22. 無料observerはローカル優先（sidecar検出→local model→Cloudflare free fallback）とし、free profileではbatching + 縮小budgetを既定にする。
+22. 無料observerはローカル優先（certified local model→Cloudflare free fallback。sidecarはauto対象外のexplicit opt-in — v6.1改訂、付録B.3）とし、free profileではbatching + 縮小budget + per-day hard capを既定にする。
 23. releaseは段階制にする。Core 1.0はClaude Code + Codexの2 Agent（4-path conformance）で先行し、OpenCode / Pi / Kimiは1.xで追加、25-path conformanceとfull benchmark evalはPlatform 1.0 gateへ移す。
 24. v1の評価は軽量回帰評価（20〜30 session・自動指標・安全系gateのみblocking）とし、claude-mem / CMEM比較のfull evalと品質claimはv1後の別トラックにする。
 
@@ -124,11 +125,12 @@ v4までの仕様を再点検し、以下を追加・確定した。
 
 すでに契約中のserviceを、追加課金なしで公式CLI経由で使用するprofile。
 
-- Claude subscription via official Claude CLI headless/sidecar
-- ChatGPT/Codex subscription via official Codex CLI exec/sidecar
+- ChatGPT/Codex subscription via official Codex CLI exec/sidecar（isolation certification合格version限定・default disabled。§13.6）
 - 既存NVIDIA NIM entitlement等
 
-Universal Freeとは呼ばない。
+**Claude subscription経路はこの区分に存在しない**（v6.1改訂）: Anthropic公式legalがthird-partyによるFree/Pro/Max credential経由を認めておらず、headless推奨modeの`--bare`はAPI key必須のため、Claude CLI sidecarはBYOK（有料区分）のみ（§13.5）。
+
+Universal Freeとは呼ばない。auto profile解決の対象にもしない（explicit opt-inのみ。§13.7）。
 
 このprofileの選択画面では、documented interfaceのみ使用していても、ヘッドレス自動呼び出しの大量実行がprovider利用規約と衝突し得るリスク（規約変更でprofileが使えなくなる可能性を含む）をユーザーへ明示する。
 
@@ -225,23 +227,23 @@ Workers AI、AI Gateway、Vectorize、WebSocketはPersonal Cloudの必須依存�
 
 1. memory subsystemの障害はcoding Agentの主作業を停止させない。
 2. local filesystemへbounded recordを書ける通常のsupported状態では、daemonがacceptedしたevent、またはadapterがspool成功したeventを失わない。完全なdisk failure等、persist自体が不可能な場合はcritical warningを出し、coding Agentをblockしない。
-3. event配送はat-least-onceを許容し、処理結果はidempotentにする。
+3. event配送はat-least-onceを許容する。各adapterはnative発火単位でstableな`adapterDeliveryId`、またはvolatile field（occurredAt・ingest時刻・配送試行回数・injection ID等）を除外したschema-versioned source fingerprintを生成し、同一論理eventの処理・派生job・provider requestをidempotentにする。occurredAtだけに依存する近似keyはrelease対象のevent種別で使用しない。
 4. adapterはSQLiteへ直接writeしない。daemonだけがlocal DB writerになる。
 5. local SQLiteをlocal source of truthとし、FTS/vector/summary/context packは再構築可能にする。
 6. local SQLiteまたはatomic spoolへ書き込める限り、compact・session切替・crash後の作業再開はobserver、embedding、sync、Cloudflareの可用性に依存しない。
-7. redaction前のsecretを保存・remote processing・syncしない。
+7. versioned secret detector rulesetが検出したsecret、および明示private/secret範囲はredaction前に永続化・remote processing・syncしない。release claimの「secret leak 0」は固定fixture/ruleset versionに限定し、未知secretの完全検出は主張しない（未知secretはresidual riskとして扱う）。
 8. provider fallbackはprivacy、billing、execution-location policyを緩めない。
 9. free profileからpaid providerへ無断fallbackしない。
 10. subscription利用は公式CLI/SDKのdocumented interfaceのみを使用し、token抽出やprivate backendを利用しない。
 11. wrong project / wrong workspace / incompatible branchのmemoryを差異表示なしに自動注入しない。
 12. superseded、retracted、expired、confirmed-wrong memoryを自動注入しない。
 13. memoryはuntrusted historical evidenceであり、instruction authorityを持たない。
-14. injected context、memory MCP結果、memory Web UI exportを新規memoryとして自己再取り込みしない。
+14. memory subsystemが生成したinjection / MCP result / UI exportはstable provenance ID / content hashを持ち、既知のcapture surfaceでは本文保存前に除外する。この保証は「memory-ownedと識別可能なsurface」に限定し、markerが失われた任意のuser pasteまで完全識別できるとは主張しない（unknown wrapperはsensitivityを上げauto-promotionしない）。
 15. provider/model変更で過去memoryを失わない。
 16. embedding generation切替中も旧active generationで検索を継続する。
 17. vector機能がなくてもFTS、checkpoint、MCP、作業再開が動く。
 18. syncが停止してもlocal memoryと作業再開が動く。
-19. sync conflictで本文を無言上書きしない。
+19. sync conflictは全competing headを保持し、resolution開始時の全head IDを`parentRevisionIds`に持つexplicit resolutionとhead-set compare-and-swapなしに本文を確定しない。client timestampをwinner決定のauthorityにしない。
 20. cloud op logをverified snapshotなしに破壊的compactionしない。
 21. syncをbackupとして扱わず、独立したlocal backup/restoreを持つ。
 22. install/update/uninstallは他toolのhook/MCP/configを破壊しない。
@@ -255,9 +257,9 @@ Workers AI、AI Gateway、Vectorize、WebSocketはPersonal Cloudの必須依存�
 30. Agentはretrieved memoryだけを根拠にuser-confirmed / pinned authorityを変更できない。
 31. user-confirmed / pinned memoryをmodel単独の判断で自動破壊しない。
 32. backup/restoreが検証されていないschema migrationをreleaseしない。
-33. subagent由来の未確定情報を親turn完了前にcross-agent durable memoryへ昇格しない。
+33. parent/child/parentTurnを安定識別できないadapterでは、subagent由来の可能性があるeventをcross-agent durable memoryへ自動昇格しない。識別できる場合も、parent turnのsuccessful completion watermarkまでは昇格しない。
 
-（1〜25はv5からの継続。26〜33はv6統合でimplementation-spec側から取り込んだ追補。既存番号の安定性を優先し振り直しは行わない。）
+（1〜25はv5からの継続。26〜33はv6統合でimplementation-spec側から取り込んだ追補。既存番号の安定性を優先し振り直しは行わない。3・7・14・19・33はCodex壁打ち反映で文言を精密化した。実装がこの不変条件を満たすことの検証方法はPhase Exit（§29）とrelease gate（§27.10）に配置する: 特に4はPhase 1 Exitのstatic scan + runtime DB-open traceで検証する。）
 
 ---
 
@@ -265,7 +267,7 @@ Workers AI、AI Gateway、Vectorize、WebSocketはPersonal Cloudの必須依存�
 
 ### 4.1 Default base
 
-`kunickiaj/codemem`をforkし、Phase 0開始時点のcommitをpinする。
+Phase 0のdefault仮説は`kunickiaj/codemem` commit `26438e75ce1d0fec6be34981f15045a15c89658b` のpinned vendor snapshotとする。通常のupstream追随forkは前提にせず、base ADR（Local Core）は§4.3のbase gate通過後にのみ確定する。
 
 再利用対象:
 
@@ -296,24 +298,36 @@ Workers AI、AI Gateway、Vectorize、WebSocketはPersonal Cloudの必須依存�
 - Windows / WSL bridge
 - Personal Memory Cloud
 
-### 4.3 Fork継続条件
+### 4.3 Base gate（base ADR確定条件）
 
-Phase 0監査で以下のどれかが成立した場合、ADR-001を再審議する。
+codememのdirect DB writeは例外fallback 1本ではなく、hook ingest（`claude-hook-ingest.ts`のdirectEnqueue等）、MCP server（`items.ts`）、CLI/admin、core store（`store.ts`のschema bootstrap込みwrite-capable `MemoryStore`）に横断していることを一次ソースで確認済み。したがって「fallback 1箇所の削除」ではなくstorage ownershipの再境界化として扱う。
+
+**base ADR確定のgate（Phase 0A Exit）**:
+
+1. exact toolchainでupstream checks/testsをgreenにできること（できない場合は理由を記録）
+2. **write-capable DB handleの完全なinventory**（全package・全経路の列挙）と、各handleのfatal/non-fatal分類・除去担当Phaseの明記
+3. sharing/coordinator機能へのcore mutation依存の有無の確認と切断計画
+4. undocumented/private backend・第三者credential cache loaderの除去または非到達化の計画（実removeはPhase 1 / PR 2）
+5. `ai-memory`（sole writer + hook spool実績あり・Rust）/ `remem` / 新規Node daemon shellとのdelta比較の記録（変更LOCではなく「残るwrite handle数・壊すtest数・移植資産数・unsafe auth path数」で比較）
+
+全write-capable handleの実除去とその検証（static scan + runtime DB-open traceでwriter=daemonのみ）はPhase 0ではなくPhase 1（sole-writer化）のExit blocking testとする。
+
+**再審議トリガー**（gate評価中に以下が成立した場合、greenfieldを即選ばず、MIT資産（parser/spool/schema/search/MCP/viewer）の選択移植と比較する）:
 
 - license / provenance上の致命的問題
 - current testsを再現可能な形でgreenにできない
 - daemon sole-writerへの移行がarchitecture上不可能
 - unsafe auth/backend pathがcoreへ深く結合し分離不能
--必要差分がgreenfield実装より明確に大きい
+- 必要差分がgreenfield実装より明確に大きい
 - upstream依存がrelease safetyを維持できない
 
 「自分で綺麗に書けそう」だけではgreenfieldへ移行しない。
 
 ### 4.4 Upstream追従
 
+- **pinned vendor snapshot方式**: 通常のupstream定期mergeは行わない。upstreamのsync/sharing領域はchurnが強く、本仕様が捨てる領域と衝突するため。
+- security/bugfixは個別cherry-pickに限定する（sync/sharing系の変更はdefault不採用）。
 - fork独自機能はpackage/module境界で隔離する。
-- upstream mergeは定期実施するが、自動mergeしない。
-- security fixは優先cherry-pickする。
 - team/sharing/coordinator機能はpersonal profileでdefault offにし、削除は監査後に判断する。
 - local core contractをupstream internal APIへ過度に結合しない。
 
@@ -368,12 +382,12 @@ Kimi Code ───┘      validate / normalize / bound / redact
                   └─ backups metadata
 
 Generation providers                    Sync provider
-├─ Cloudflare Workers AI                └─ BYOC Cloudflare Worker
-├─ Claude CLI sidecar                       + SQLite Durable Object
-├─ Codex CLI sidecar                        + cloud FTS
-├─ OpenAI-compatible                         + remote MCP
-├─ Anthropic API                             + snapshots
-├─ local OpenAI-compatible
+├─ local OpenAI-compatible              └─ BYOC Cloudflare Worker
+├─ Cloudflare Workers AI                    + SQLite Durable Object
+├─ OpenAI-compatible                        + cloud FTS
+├─ Anthropic API (BYOK)                     + remote MCP
+├─ Claude CLI sidecar (BYOK --bare opt-in)  + snapshots
+├─ Codex CLI sidecar (certified opt-in)
 └─ CMEM optional
 ```
 
@@ -396,15 +410,16 @@ Generation providers                    Sync provider
 
 Project名やcwd文字列だけで同一性を判断しない。
 
-優先順位:
+**canonical authorityはopaqueなrandom project UUID**（初回観測時に採番、repository-local設定`.agent-memory.toml`等へ保存可能）とする。Git由来の情報（canonical remote URL、root commit、repository fingerprint、Git common-dir、path）は**project link候補を生成するevidence**であり、自動merge authorityではない。
 
-1. repository-local明示設定`project_id`（`.agent-memory.toml`等）
-2. canonical Git remote + root commit / repository fingerprint
-3. Git common-dir fingerprint
-4. no-remote repository用のgenerated local project UUID + explicit device linking
-5. cwd fallbackはtemporary identityとしてのみ使用
+- remote URLはHTTPS/SSH/scp形式・insteadOf rewrite・renameで複数表現になり、forkはroot commitを共有し、shallow cloneのrootは真のrootではないため、これらをcanonical key生成に用いない。
+- identity stateは`verified` / `provisional` / `conflicted`を持つ。evidence衝突（同一evidenceが複数project UUIDを指す、fork/shallow/multiple-remote/git-replaceの検出）時は自動linkをfail closedにし、`conflicted`として手動解決へ回す。
+- 異なるproject UUIDを同一とみなす操作はuser-authoritativeなlink/merge（§6.5）とbackup/audit記録を必須とする。自動mergeは行わない。
+- Git common-dirはlinked worktreeのlocal workspace groupingにのみ使い、cross-device project identityには使わない。
+- no-remote repositoryのUUIDは他deviceへ自動伝播しない。cross-device接続はexplicit device linkingで行う。
+- host path mapping（Windows/WSL等）はproject verification後にのみ適用する。
 
-`stable_project_key`の生成材料とversionを保存し、algorithm変更時に再計算可能にする。
+`stable_project_key`（UUID）の生成材料・evidence・link承認履歴を保存し、監査可能にする。
 
 ### 6.2 Workspace identity
 
@@ -425,8 +440,9 @@ Project名やcwd文字列だけで同一性を判断しない。
 
 - default project boundaryはGit repository。
 - optional `scope_root`でmonorepo subprojectを分離できる。
+- scopeはpath文字列ではなくstable scope UUIDを持ち、directory renameはaliasの更新として扱う。
 - scopeを跨ぐproject-level decisionは明示的にpromotionする。
--同じrepository内の別scopeへraw transient stateを自動注入しない。
+- 同じrepository内の別scopeへraw transient stateを自動注入しない。
 
 ### 6.5 Manual repair
 
@@ -494,7 +510,26 @@ interface NormalizedEvent {
 ### 7.2 Capability declaration
 
 ```ts
-type Capability = "native" | "synthesized" | "unsupported";
+type Capability = "native" | "synthesized" | "unsupported" | "unknown";
+
+interface CapabilityEvidence {
+  value: Capability;
+  coverage?: number;              // 既知の欠落があるcapabilityの被覆率（例: tool failureの一部phaseのみ捕捉）
+  sourceEvents: string[];         // synthesized時の根拠native event
+  nativeVersion: string;          // 検証したexact CLI version
+  sourceCommit?: string;
+  evidenceKind: "official-doc" | "source-test" | "real-cli-e2e";
+  verifiedAt: string;
+  limitations: string[];
+}
+
+type ToolFailurePhase =
+  | "executed"          // tool本体が実行され失敗
+  | "permission_denied"
+  | "schema_invalid"
+  | "unknown_tool"
+  | "interrupt"
+  | "unknown";
 
 type CompactionRecoveryStrategy =
   | "native_pre_and_post"
@@ -504,15 +539,20 @@ type CompactionRecoveryStrategy =
   | "unsupported";
 
 interface AdapterCapabilities {
-  capture: Record<EventKind, Capability>;
-  sessionStartInjection: Capability;
-  promptAwareInjection: Capability;
+  capture: Record<EventKind, CapabilityEvidence>;
+  toolFailurePhases: ToolFailurePhase[];   // このadapterが区別・捕捉できるphase
+  sessionStartInjection: CapabilityEvidence;
+  promptAwareInjection: CapabilityEvidence;
   compactionRecoveryStrategy: CompactionRecoveryStrategy;
-  trueSessionEnd: Capability;
-  subagentCapture: Capability;
-  stableNativeSessionId: Capability;
+  trueSessionEnd: CapabilityEvidence;
+  subagentCapture: CapabilityEvidence;
+  stableNativeSessionId: CapabilityEvidence;
 }
 ```
+
+- E2E未実行のcapability cellは自動的に`unknown`とし、stable対応として表示しない（Hard Invariant 23）。
+- `tool_failed`はexecuted failureだけを意味しない。`failurePhase`（ToolFailurePhase）をevent payloadに含め、捕捉できないphaseはcoverage/limitationsに明記する。
+- `turn_completed` / `session_ended` / `session_interrupted`を合成するadapterは、根拠event（sourceEvents）とconfidenceを保存する。
 
 ### 7.3 Support tier
 
@@ -521,6 +561,12 @@ interface AdapterCapabilities {
 - Tier C: MCP/manualのみ
 
 Tier Aの注入要件は「**session開始時点で確実に注入が届くこと**」とする。native session-start注入と、最初のUserPromptSubmit等での合成注入（synthesized）のどちらでも、real CLI E2Eで確実性を示せればTier A要件を満たす。native注入かsynthesizedかはcapability declarationとUI/doctorに表示する。
+
+**Tierの付与と表示**:
+
+- TierはAgent名という一枚ラベルにではなく、`capability_hash + native_cli_version + E2E artifact`の組に対して付与する。CLIのversionが変わればTierは再検証までunknown側へ落ちる。
+- Tier A/B/Cのラベル表示は維持するが、UI/doctorではcapability profile（cellごとのnative/synthesized/unsupported/unknownとcoverage/limitations）を内訳として併記する。「session-end capture unsupported」と「main-session handoff成立」のように、単一ラベルでは潰れる差を必ず分離表示する。
+- 未観測cellを含むAgentをTier A表示しない。
 
 Release target（段階制、§1.2 / §2.1.1）:
 
@@ -544,6 +590,14 @@ README上の対応表だけでTierを上げない。
 - undocumented transcript scrapingをprimary contractにしない。
 - capture不能なevent種別とcoverage率をUI/doctorへ表示する。
 - `turn_completed`がnativeにない場合はStop、session idle、assistant completion等からsynthesizeし、根拠eventを保存する。
+
+**既知のnative limitation（2026-08-12、一次ソース確認済み。adapter設計とcoverage宣言の初期値に使う）**:
+
+- Claude Code: `Stop`はuser interruptでは発火しない（generic interrupt捕捉はunsupported）。tool failureのphase（permission denial / schema validation / unknown tool）はdocumented hookでは区別されず、coverage未満の`tool_failed`として扱う。
+- Codex: assistant/turn completionとtool success/failureの区別は`PostToolUse`系からの合成。`SessionEnd`はroot sessionのみでreasonはcurrent実装で`other`固定。明示的なInterrupt/SessionIdle hookは無い。compact再注入の正規面は`SessionStart(source=compact)`、fallbackは次UserPromptSubmit。
+- OpenCode: true session endはunsupported（`session.deleted`は削除でありendではない。plugin `dispose`はsession IDを持たない）。`chat.message`注入とexperimental compaction面はexact version E2E必須。
+- Pi: handler exceptionはfail-openだがhook timeoutの公式契約が無い（adapter側でdeadlineを持つ）。`session_shutdown`はprocess exitだけでなくnew/resume/forkによるactive-session置換境界。official subagent sampleは独立subprocessでparent ID contractを持たず`subagentCapture: unsupported`。
+- Kimi: Pre/PostCompactのstdout出力は無視される（戻しは次UserPromptSubmitで行う）。SubagentStart/Stopはagent名のみでchild instanceをjoinできず`subagentCapture: unsupported`。
 
 ### 7.5 Version handshake
 
@@ -619,33 +673,36 @@ spool/ready/<event-id>.json
 adapter実装間で割れないよう、導出式を固定する。
 
 ```text
-idempotencyKey = sha256(
-  agent
-  + ":" + nativeSessionId
-  + ":" + kind
-  + ":" + (nativeToolUseId ?? nativeTurnId ?? String(nativeSequence) ?? occurredAt)
-  + ":" + sourceHash
-)
+idempotencyKey =
+  adapterDeliveryId          # 第一authority: adapterがnative発火時に採番しspool前に永続化するstable ID
+  ?? sha256(                 # fallback: schema-versionedなcanonical source fingerprint
+       agent
+       + ":" + nativeSessionId
+       + ":" + kind
+       + ":" + (nativeToolUseId ?? nativeTurnId ?? String(nativeSequence))
+       + ":" + sourceHash
+     )
 ```
 
-- native IDが取得できるeventは同一native発火の再送で必ず同じkeyになる（at-least-once配送の重複除去が成立する）。
-- native IDが一切無いevent種別はoccurredAt + sourceHashで近似し、当該Agentのcapability declarationに`idempotency: "approximate"`を記録する。
+- **`adapterDeliveryId`**: native hookの1発火につき1回採番し、retry/再送では再利用する（発火時にspool tmp書き込みと同時に確定するため、同一論理eventの再送は必ず同じkeyになる）。
+- fingerprintのhash対象からvolatile field（occurredAt・ingest時刻・配送試行回数・injection ID等）を除外する。native IDが一切無く、adapterDeliveryIdの永続化もできないevent種別は`idempotency: "approximate"`（occurredAt近似）としてcapability declarationに記録するが、**approximateなadapterのeventはrelease blocking gateの対象event（checkpoint保存・pre_compact・session_ended等）に使用しない**（Hard Invariant 3）。
 - 導出式のversionは`normalized_schema_version`に含め、変更時は新旧keyの二重照合期間を設ける。
 
 #### Spool上限到達時の挙動
 
 - spool使用量80%で警告（hook stderr + daemon health）。
 - 上限到達後の新規eventは**受け付けず破棄し、種別ごとのdroppedカウンタを記録**する。既存spooled eventの無言削除は行わない。
-- `pre_compact` / `session_ended` / checkpoint保存に関わるeventは優先classとして上限とは別の予約枠へ書き込み、作業再開の連続性を守る。
+- `pre_compact` / `session_ended` / checkpoint保存に関わるeventは優先classとして上限とは別の予約枠へ書き込み、作業再開の連続性を守る。予約枠自体にもhard maximumを持ち、予約枠枯渇はcritical stateとしてdoctor/UIへ即時表示する。
 - dropが発生した場合、doctorはcritical warningを表示し、UIはevent coverage gapとして期間を表示する。
 - これはHard Invariant 2の明示的な例外である: 「boundedなlocal記録が可能な通常状態」を超えた持続的backlogでは、優先class以外のeventは損失し得るが、必ず可視化される。
+- spool経路の各点（tmp write / fsync / rename / daemon import commit / archive-delete）のfault injection testをrelease gateに含める（importはcommit-before-deleteを保証する）。
 
 ### 8.3 Event ordering
 
 - daemonはsessionごとにtransactionalな`ingest_seq`を付与する。
 - `nativeSequence`があれば保存するが、正規化後のDB orderは`ingest_seq`をauthorityとする。
 - digest orderは`nativeSequence -> occurredAt -> ingest_seq`の順で安定sortする。
-- parallel tool callは同一turn内のunordered setとして扱い、tool batch completionでfinalizeする。
+- parallel tool callは同一turn内のunordered setとして扱い、tool batch completionでfinalizeする。**tool batch completionの定義は§7.4の`turn_completed`（nativeまたはsynthesized）と同一**であり、別個の境界を発明しない。turn stateはopenな`nativeToolUseId`集合・terminal tool result・close reason（native boundary / synthesized / grace deadline超過）を保持し、grace deadline超過でcloseした場合は残openのtool useを`unknown` terminalとして記録する。
 - clock skewを前提とし、timestampだけで順序を決めない。
 
 ### 8.4 Reorder windowと遅延event
@@ -655,6 +712,7 @@ idempotencyKey = sha256(
 - late eventがread-only/低価値なら次batchのdeltaへ含める。
 - late eventがfile mutation、tool failure、user correction、assistant conclusion等のmaterial eventなら、該当event rangeを`stale_batch`にし、correction extraction jobを作る。
 - correctionは既存memoryを無言上書きせず、revision/supersede/contradict候補として保存する。
+- **correctionの因果伝播**: `stale_batch`化はbatch単体で閉じない。affected batchから派生した既存のmemory / summary / embedding item / context generationを`invalidatedBy`（correction batch ID）付きでsuperseded/stale化し、既にsessionへ注入済みのcontextがある場合は、次回injection時にbounded correction notice（訂正対象と新結論の1行要約）を含める（§17.4のsupersede機構の適用）。無効化の到達点はderived artifact provenance（§12.9）のwatermarkで追跡する。
 
 ### 8.5 Event batch
 
@@ -828,9 +886,12 @@ interface Session {
   sourceAgent: AgentId;
   nativeSessionId: string;
   status: SessionStatus;
+  hostId?: string;               // deviceを跨いで一意なhost識別子
   hostProcessId?: number;
   hostBootId?: string;
+  processStartIdentity?: string; // PID + process開始時刻等。PID再利用の誤liveness判定を防ぐ
   leaseUntil?: string;
+  heartbeatSeq?: string;         // 単調増加。同値の継続はstall判定材料
   startedAt: string;
   endedAt?: string;
   lastEventAt: string;
@@ -845,12 +906,12 @@ interface Session {
 無操作時間だけでabandonedにしない。
 
 1. native SessionEndの受信を最優先とする（受信していれば`completed`）。
-2. `hostProcessId` / `hostBootId`が取得可能ならprocess livenessを確認する。
+2. `hostProcessId` / `hostBootId`が取得可能ならprocess livenessを確認する。**process livenessは同一`hostId`かつ`processStartIdentity`一致時のみ有効とする**（PID再利用と、remote host上のsessionをlocalのprocess lookupで誤判定することを防ぐ。remote hostのsessionはliveness不明として扱う）。
 3. **process死亡 + lease expiryの両方を確認できた場合だけ**`abandoned`へ遷移する。
 4. liveness不明で単に長時間idleなだけなら`idle`のまま維持する（PCを数日離れただけの sessionをabandoned誤判定しない）。
 5. daemon再起動後もactive sessionを誤って破壊せず、resume候補として扱う。
 
-`abandoned`確定時のみ、latest committed work stateから`crash_recovery` checkpointを生成する（§11.5）。生成される`crash_recovery` checkpointの`taskLineageId`は、同一sourceSessionIdの既存checkpointがあればそれを継承し（acceptされないままcrashした場合も同一タスクの続きとして扱い、旧checkpointをsupersede可能にする）、無ければ新規採番する。
+`abandoned`確定時のみ、latest committed work stateから`crash_recovery` checkpointを生成する（§11.5）。生成される`crash_recovery` checkpointの`taskLineageId`は、同一sourceSessionIdの既存checkpointのうち**そのcheckpoint以降にtask boundary（§11.2）が記録されていないもの**があればそれを継承し（acceptされないままcrashした場合も同一タスクの続きとして扱い、旧checkpointをsupersede可能にする）、無ければ新規採番する。sourceSessionIdの一致だけを理由に継承しない（1つのnative session内で別タスクへ移っていた場合の誤統合を防ぐ）。
 
 ### 10.2 Session lineage
 
@@ -1019,11 +1080,22 @@ interface ContinuationCheckpoint {
   sourceAgent: AgentId;
   kind: CheckpointKind;
 
-  // 作業系譜。決定規則: (1) resume acceptを経たsessionの後続checkpointはacceptしたcheckpointのlineageを継承
-  // (2) それ以外は、同一sourceSessionIdの既存checkpointがあればそのlineageを継承（crash_recovery等のdaemon生成経路を含む）
+  // 作業系譜。決定規則:
+  // (1) resume acceptを経たsessionの後続checkpointは、acceptしたcheckpointのlineageを継承
+  // (2) それ以外は、同一sourceSessionIdの既存checkpointのうち「そのcheckpoint以降にtask boundaryが
+  //     記録されていないもの」があればそのlineageを継承（crash_recovery等のdaemon生成経路を含む）。
+  //     sourceSessionIdの一致だけでは継承しない
   // (3) どちらも無ければ新規採番
+  // task boundary: userのexplicit new-task宣言（CLI/UI/MCP）、native session fork、
+  //   または新規実質タスクの明示検出をtaskBoundaryReasonとして記録する
   taskLineageId: string;
+  taskBoundaryReason?: "explicit" | "accepted_resume" | "native_fork" | "new_substantive_task";
   parentCheckpointId?: string;
+
+  // claim fencing（§11.6）。claimごとに単調なfence tokenを発行し、accept/dismiss/reopenのCAS条件にする
+  revision: string;
+  claimFence?: string;
+  claimHeartbeatUntil?: string;
 
   // canonical observed state — SessionWorkStateのcanonical fieldsのsnapshot（観測のみ・必須）
   workStateVersion: number;
@@ -1116,16 +1188,19 @@ off
 
 relevance判定はlocal deterministic signal + FTSのみで行い、remote LLMに依存しない。判定理由（same branch、recency、prompt overlap、明示的な継続表現等）はresume ledgerへ保存し、thresholdはbenchmarkで調整する。同一sessionのcompact復旧はmodeに関わらず無条件full注入（§11.4）。
 
-#### Claim（重複配送防止）
+#### Claim（重複配送防止・fencing）
 
-full checkpoint注入の直前に、単一DB transactionで条件付きclaimを行う。
+full checkpoint注入の直前に、単一DB transactionで条件付きclaimを行い、**fencing token**を発行する。
 
 ```text
 UPDATE checkpoint
 SET status='delivered',
     deliveredToSessionId=<session>,
-    deliveryLeaseUntil=now()+lease   -- default 10分
-WHERE id=<id> AND (
+    deliveryLeaseUntil=now()+lease,        -- default 10分
+    claimFence=<新規単調token>,             -- claimごとに一意・単調
+    claimHeartbeatUntil=now()+heartbeat,
+    revision=<新revision>
+WHERE id=<id> AND revision=<読み取り時revision> AND (
   status='open'
   OR (status='delivered' AND deliveryLeaseUntil < now())
 )
@@ -1134,6 +1209,9 @@ WHERE id=<id> AND (
 - claimに成功したsessionだけが注入を実行する。並行して起動した他sessionのresolveは、lease有効な`delivered` checkpointを候補から除外する。
 - SessionStartのhint提示はclaimを発生させない（hintは複数sessionに同時に見えてよい）。
 - 注入先sessionがacceptedに至らないままlease期限が切れた場合、checkpointは再びclaim可能になる（起動直後crashの自己回復）。
+- **heartbeat延長**: 注入先sessionがactiveにevent送出を続けている間、daemonはlease/heartbeatを延長する。これにより「注入後のturnがlease既定10分を超えて実行中に、他sessionが再claimして二重注入する」raceを防ぐ。heartbeatが途絶しleaseも失効した場合のみ再claim可能とする。
+- **stale fenceの拒否**: accept / dismiss / reopenの各遷移は`checkpoint id + revision + claimFence + destination session`のcompare-and-swapを必須とし、旧fenceを持つ遅延requestを拒否する（response消失後に別sessionへ再claimされたケースで、旧sessionの遅延acceptが新claimを潰さない）。
+- **保証範囲**: この機構がexactly-once配送を保証するのは**同一daemon（同一device）内のat-most-one active claim**である。cross-deviceの重複配送はlocal-firstの契約上あり得る（§22.4のfork lineage保持で扱い、Track 1のduplicate-injection-0 gateはsingle-device Core 1.0を対象とする。§27.7）。
 
 #### 優先順位
 
@@ -1155,10 +1233,10 @@ WHERE id=<id> AND (
 
 ### 11.7 Delivery / acceptance / supersede
 
-- inject時: `open -> delivered`（§11.6のclaimと同一transaction）
-- destination sessionの最初のsuccessful turn完了時: `delivered -> accepted`。「最初のsuccessful turn」は、注入後に`session_ended` / `session_interrupted`を挟まず受信した最初の`turn_completed`と定義する。
+- inject時: `open -> delivered`（§11.6のclaimと同一transaction、fence発行）
+- destination sessionの最初のsuccessful turn完了時: `delivered -> accepted`。「最初のsuccessful turn」は、注入後に`session_ended` / `session_interrupted`を挟まず受信した最初の`turn_completed`と定義する。accept遷移は`id + revision + claimFence + deliveredToSessionId`のCASで行い、stale fenceは拒否する（§11.6）。
 - destinationが起動直後にcrashした場合、deliveryLease期限切れで自動的に再claim可能へ戻る。
-- dismiss（ユーザーまたはAgentの明示拒否）: resume ledgerへ記録し、checkpointを`open`へ戻した上で当該sessionではsuppressする。
+- dismiss（ユーザーまたはAgentの明示拒否）: resume ledgerへ記録し、checkpointを`open`へ戻した上で当該sessionではsuppressする（同じくfence CAS）。
 - supersede: 新checkpointが**同一`taskLineageId`**の旧checkpointを置換する場合のみ、旧checkpointをsupersededにする。lineage識別子が異なるcheckpointをsupersedeしない（別タスクの未完了作業を無言で失わない）。
 
 #### Concurrent checkpoints
@@ -1316,7 +1394,12 @@ interface DurableMemory {
   validFrom?: string;
   validTo?: string;
   expiresAt?: string;
-  origin: "extracted" | "manual" | "imported" | "consolidated";
+  origin: "extracted" | "manual" | "agent_explicit" | "imported" | "consolidated";
+  // provenanceQuality: 出所情報の質。truthState（真偽）とは独立の軸。
+  //   native = 本systemが自らcaptureしたevidenceに基づく
+  //   mapped = importでschema mappingを経由（evidence部分保持）
+  //   legacy_unknown = import元にprovenanceが無い
+  provenanceQuality: "native" | "mapped" | "legacy_unknown";
   sourceAgent?: AgentId;
   sourceGitHead?: string;
   extractionRunId?: string;
@@ -1372,7 +1455,7 @@ interface MemoryEvidenceSnapshot {
 
 - secret/private policyに従うbounded excerptのみを含む（raw本文の代替ではない）。
 - durable/pinned memoryと同等のretentionで保持する。
-- **retention jobは、durable memoryから参照されているraw eventを削除する前にsnapshot生成を完了していることをpreconditionとする**（`memory_sources`だけがdangling evidenceになる状態を作らない）。
+- **retention jobは、durable memoryから参照されているraw eventを削除する前にsnapshot生成を完了していることをpreconditionとする**（`memory_sources`だけがdangling evidenceになる状態を作らない）。このpreconditionは実装上、「snapshot commitと当該memoryのmetadata更新（`reextractable_until`等）が同一transactionまたはjob CASで確認されるまでraw deleteを実行しない」DB constraint/jobとして強制する（Hard Invariant 29の検証点）。private/secret policyによりexcerptを含められなかったsnapshotは、omissionの事実と理由コードを保持する。
 - `reextractable_until`（raw eventから再抽出可能な期限）をmemory metadataへ記録する。
 
 ### 12.10 Raw event retention
@@ -1451,6 +1534,18 @@ interface GenerationProviderCapabilities {
   supportsUsageReporting: boolean;
   supportsRequestIdempotency: boolean;
   supportsBatching: boolean;
+  // endpoint-level probe manifest（B-11/MR-13）: 対応endpoint・response format・
+  // streaming・usage・resolved model revisionを実API probeで確認した結果と有効期限。
+  // provider固有値（quota単価・model ID・JSON mode対応表）はruntime manifestとして持ち、
+  // business logicへhard-codeしない。
+  probeManifest?: {
+    endpoints: string[];
+    responseFormats: StructuredOutputMode[];
+    streaming: boolean;
+    resolvedModelRevision?: string;
+    probedAt: string;
+    probeExpiresAt: string;
+  };
 }
 
 interface GenerationProvider {
@@ -1462,33 +1557,39 @@ interface GenerationProvider {
 
 ### 13.5 Provider implementations
 
-必須transport/adapters:
+Core必須transport/adapters（実装はgeneric OpenAI-compatible / local OpenAI-compatible / documented API adapterに集約し、role別のservice分裂を作らない）:
 
-- Anthropic API
+- Anthropic API（BYOK）
 - generic OpenAI-compatible
-- Claude CLI sidecar
-- Codex CLI sidecar
-- local OpenAI-compatible
+- local OpenAI-compatible（Ollama / LM Studio / vLLM）
 
-評価候補:
+optional adapters（conditional・explicit opt-in）:
+
+- Claude CLI sidecar: **API-key/BYOKの`--bare` profileのみ**。`--bare`はOAuth/keychain credentialを読まないことが公式に保証された唯一のmode。subscription（Free/Pro/Max）credentialでのsidecar利用profileは**提供しない**（後述の法的制約）
+- Codex CLI sidecar: isolation certification（§13.6）合格version限定、default disabled
+
+評価候補（後続profile）:
 
 - Cloudflare Workers AI direct
 - Cloudflare AI Gateway
 - OpenRouter
 - NVIDIA NIM
-- Ollama / LM Studio / vLLM
 - CMEM optional
+
+**Claude subscription sidecarを提供しない理由（2026-08-12一次ソース確認）**: Anthropic公式legal-and-complianceは「third-party developerがClaude.ai loginを提供すること、およびFree/Pro/Max plan credentialを経由してrequestをroutingすること」を明示的に認めていない。また`claude --bare`（headless推奨mode）は`ANTHROPIC_API_KEY`必須でsubscription loginを使わない。したがって「契約済みsubscriptionで追加費用ゼロのobserver」というZero Incremental Cost（Claude経路）は成立せず、候補から恒久的に除外する。OAuth/keychainからのtoken抽出（claude-mem方式）はHard Invariant 10で従来から禁止済み。
 
 ### 13.6 Sidecar safety
 
-許可:
+前提: **official transportが存在すること（documented exec/JSON等）と、observerとして安全に隔離できることは別問題**として扱う。sidecarはisolation certificationに合格したexact versionでのみ有効化できる。
 
-- official Claude CLIのdocumented headless/JSON/schema output
-- official Codex CLIのdocumented/stable exec/JSON output
-- hard timeout
-- process tree cleanup
-- explicit working directory
-- tools disabledまたは最小化
+必須（満たせない場合はprofile自体をunavailableにする。努力目標ではない）:
+
+- official CLIのdocumented headless/JSON/schema outputのみ使用
+- external supervisorによるhard deadline、process-group/job-object単位のkill、pipe close、wait/reap、残存descendant/FD検査
+- explicit working directory（repository mutation禁止）
+- Claude sidecarは`--bare`必須（plain `-p`はsubscription credentialを読み得るため不可）
+- Codex sidecarは`--ephemeral`相当のprofile分離と、hooks/plugins/managed config/toolsの無効化。**documentedな「全tool無効・hook無効」の単一契約はcurrent Codex docsに存在しない**ため、実効config/tool setのinspectionとhostile fixture E2Eに合格したexact versionのみ認定する
+- structured outputはstream=falseとし、client側で同一JSON Schemaを再validateする
 - version compatibility matrix
 
 禁止:
@@ -1496,22 +1597,31 @@ interface GenerationProvider {
 - auth cache/token extraction
 - browser cookie利用
 - undocumented private backend direct request
-- subscription credentialの別serviceへの転送
+- subscription credentialの利用・転送（Claude sidecarはAPI key必須。§13.5）
 - official CLIの利用規約を迂回する実装
 
 CLIがprogrammatic useを変更・拒否した場合、profileをunavailableにし、credential迂回で維持しない。
 
-#### Sidecar isolation
+#### Sidecar isolation certification
 
-observer/summary用sidecarが本memory plugin自身を再起動・再captureするrecursionを禁止する。
+sidecar profileの有効化には、free-certified（§13.8）と同格の**versioned certification manifest**を必須とする:
 
+```text
+sidecar_profile_id
+cli_id / exact_cli_version / os
+effective_config inspection結果（hooks/plugins/MCP/tools無効の証跡）
+hostile fixture E2E結果（悪意あるhooks/plugins/MCP/AGENTS/web設定下でside effectゼロ）
+process-tree / FD leak test結果（hang/SIGINT/timeout/子孫プロセス残存）
+invalid/truncated JSON耐性
+verified_at / certification_expires_at
+```
+
+- 未認定・期限切れ・version不一致のsidecarはdefault disabled。
+- observer/summary用sidecarが本memory plugin自身を再起動・再captureするrecursionを禁止する。
 - `AGENT_MEMORY_INTERNAL_RUN=1`等のstable environment markerを付与する。
 - 全adapterはinternal runをcapture対象外にする。
-- official CLIにbare/no-plugin/no-hook modeがある場合は使用する。
-- coding toolsは不要なため、tool accessをnoneまたは最小readonlyへ制限する。
-- sidecar cwdは明示し、repository mutationを許可しない。
 - sidecar subprocessが生成したtranscript/eventを通常sessionへ混入させない。
-- recursion detectorとprocess-tree leak testをrelease gateへ含める。
+- recursion detector・hostile fixture・process-tree leak testをrelease gate（§27.10）へ含める。
 
 ### 13.7 Routing
 
@@ -1535,15 +1645,18 @@ observer/summary用sidecarが本memory plugin自身を再起動・再captureす�
 - remote forbidden dataをremoteへ送らない。
 - fallback provider/modelもprovenanceへ保存する。
 
-#### Profile自動解決はローカル優先（ユーザー決定 2026-08-12）
+#### Profile自動解決はローカル優先（ユーザー決定 2026-08-12、v6.1改訂）
 
 installerの`auto`解決は次の順で既定providerを提案する。
 
-1. official CLI sidecar検出（Claude/Codex契約済みユーザー）→ Zero Incremental Cost profile
-2. local model runtime検出（Ollama / LM Studio等）→ local free profile
-3. どちらも無い場合 → Cloudflare Workers AI free profile
+1. local model runtime検出（Ollama / LM Studio等）→ certified local free profile
+2. 無い場合 → certified Cloudflare Workers AI free profile（または他のcertified Universal Free候補）
 
-Cloudflare Workers AI freeは「ローカル手段を持たないユーザー向けの無料フォールバック」と位置づける。この優先順はUniversal Free保証（§1.4: Core 1.0で少なくとも1つのfree-certified profileを提供）を変えない。free-certified認定の対象はlocal model / Cloudflare free等のUniversal Free経路であり、sidecarはZero Incremental Costとして別区分のまま。
+**sidecarはauto解決の対象外**とし、explicit opt-inの別profileとしてのみ提供する（Codex sidecarはisolation certification合格version限定・default disabled、Claude sidecarはBYOK `--bare`のみで「無料」ではない）。
+
+> v6.1注記: v6.0では「sidecar検出→local→cloudflare-free」の順だったが、Codex壁打ちの外部検証でClaude subscription sidecarが法的に不成立（§13.5）、Codex sidecarのdocumented isolation契約が不存在と確認されたため、autoからsidecarを除外した。ユーザー決定④の趣旨（無料・batching・**ローカル優先**）は維持され、localが文字通り先頭になる。
+
+Cloudflare Workers AI freeは「ローカル手段を持たないユーザー向けの無料フォールバック」と位置づける。この優先順はUniversal Free保証（§1.4: Core 1.0で少なくとも1つのfree-certified profileを提供）を変えない。free-certified認定の対象はlocal model / Cloudflare free等のUniversal Free経路であり、subscription系sidecarをUniversal Freeに数えない。
 
 ### 13.8 Free-certified profile
 
@@ -1551,9 +1664,11 @@ Cloudflare Workers AI freeは「ローカル手段を持たないユーザー向
 
 - paid subscription/API key不要
 - Japanese / English / mixed benchmark合格
-- secret leak 0
-- representative daily workload（§14.2に数値定義）がcurrent free quota内
+- secret leak 0（versioned fixture/ruleset範囲。Hard Invariant 7）
+- **per-day hard budget内**: representative daily workload（§14.2に数値定義）を**retry・repair・cache missを含めた**hard capとして測定し、超過時はjobをqueueへ戻す（期待値80 requestではなくhard budget gate）
+- **密・疎の両trace合格**: batchが詰まるdense trace（200 turn連続）と、idle間隔が長くdigestが小さくなるsparse traceの双方でquota内を確認する（Workers AI無料枠は現行10,000 Neurons/day。8B fp8級で80 request×6k入力≈日次枠の約66%であり、余裕は薄い）
 - quota超過時queue保持/recovery合格
+- endpoint/format/streaming/usage/idempotencyの実API probe manifest（§13.4）を保存
 - model ID、provider、quota snapshot、benchmark dateをversioned manifestへ保存
 
 Cloudflare Workers AIが不合格なら品質基準を下げず、別free providerまたはlocal modelを評価する。
@@ -1576,7 +1691,7 @@ hardware_class nullable
 ```
 
 - certification lifetime default 30日。
-- provider pricing / quota / terms変更を検出したら即revalidationする。
+- provider pricing / quota / terms変更、**およびmodel ID/alias変更・response format互換の変化**を検出したら即revalidationする。
 - expiredなprofileはinstaller/UIで「認定期限切れ」と表示する。
 - expiredでも明示的なuser選択があれば使用できるが、`free-certified`とは表示しない。
 - 認定失効を理由にpaid providerへ無断fallbackしない（explicit opt-inのみ）。
@@ -1653,15 +1768,15 @@ PreCompact hot pathではcheckpoint保存だけを必須とし、observer完了�
 
 「1 turn ≒ 1 extraction request」を前提にしない。free quota profile（Cloudflare Workers AI free等）では、複数turnを1つのdigestへ束ねるbatchingを既定にする。
 
-- batch確定条件: idle boundary / meaningful event数（default 20）/ digest size上限 / session end のいずれか先着。turn completedごとには送信しない。
-- 目安: 200 turn/日の実働で observer request ≦ 80/日 に収まるようbatch窓を調整する。
-- **typical daily workloadの数値定義**: free-certified gate（§13.8 / §27）の合否判定は「200 turn/日、observer 80 request/日相当、入力budgetは下記free profile値」を基準workloadとして行う。
+- batch確定条件: idle boundary / meaningful event数（default 20）/ digest size上限 / session end のいずれか先着。turn completedごとには送信しない。**疎な利用（turn間隔が常にidle boundaryを超える）ではidle確定が1 turn=1 requestに退化するため、free profileでは加えて「digestあたり最小turn数または最小event数」の下限、およびper-day request hard capを持つ**（capはconfig `free_profile_batching.max_requests_per_day_hard_cap`。到達後のdigestは翌日windowへqueueされ、Hard Invariant 27によりeventは失われない）。
+- **per-day hard budget**: 80 request/日は目安（期待値）ではなくhard capとして扱い、**retry・repair（最大1回）・cache missもこのcapに算入する**。
+- **typical daily workloadの数値定義**: free-certified gate（§13.8 / §27）の合否判定は「dense: 200 turn/日連続、sparse: idle間隔がbatch窓を常に超える200 turn/日」の両traceで「observer ≦ 80 request/日（retry込み）、入力budgetは下記free profile値」を満たすことで行う。
 - 複数turnをまとめることで文脈が付くため、抽出品質の劣化は想定しない（benchmarkで確認する）。
-- paid / local / sidecar profileはlatency優先でturnごと抽出を選べる。
+- paid / local profileはlatency優先でturnごと抽出を選べる。
 
 ### 14.3 Token budget
 
-default（paid / local / sidecar profile）:
+default（paid / local / opt-in sidecar profile）:
 
 ```json
 {
@@ -1733,6 +1848,7 @@ interface ExtractedMemoryCandidate {
 - elided contentを推測しない
 - secretを再生成しない
 - observed repo stateを現在の真実と断定しない
+- **authority enum の拒否**: model出力の`ExtractedMemoryCandidate`が`durability: "pinned"`を含む場合、validation層で当該candidateをrejectまたは`durable`へ降格し、rejection/降格を`generation_run`へ記録する（§12.3「pinnedはuser操作のみ」・Hard Invariant 30/31のwire-levelの強制点。candidate schemaに`truthState`は存在しないため、user_confirmed等はそもそも表現不能である）。
 
 ### 14.6 Summary
 
@@ -1760,12 +1876,15 @@ Adapterが注入するcontextへstable markerと`injection_id`を付ける。
 </agent_memory_context>
 ```
 
+memory subsystemが生成する全てのowned surface（injection block、MCP tool result、UI export）には**stable provenance ID + content hash**を付与し、daemonはcapture時点で照合可能なowned-hash setを永続保持する（crash後もecho検出が失われない。§9.3のecho suppress stateの永続化と統合する）。
+
 capture時:
 
 - marker内本文をraw event本文から除外
 - injection IDだけmetadataへ残す
-- memory MCP tool outputをdefault exclusion
-- memory Web UI/export貼付けをsource tagで認識できる場合は除外
+- memory MCP tool outputをdefault exclusion（markerに依存しないcategorical exclusion）
+- memory Web UI/export貼付けをprovenance ID / content hash / source tagで認識できる場合は除外
+- markerもhash一致も無いが memory由来の可能性が疑われるunknown wrapperは、除外はしないがsensitivityを上げ、auto-promotionの対象にしない（Hard Invariant 14の保証範囲）
 - observer promptへ過去のinjected blockを再投入しない
 - exact echo/near-echo detectorをbenchmark testへ含める
 
@@ -1794,12 +1913,40 @@ interface EmbeddingProviderCapabilities {
   supportsUsageReporting: boolean;
 }
 
+interface EmbeddingItemRequest {
+  itemId: string;
+  memoryId: string;
+  memoryRevision: string;
+  inputHash: string;      // preprocessor適用後textのhash
+  text: string;
+}
+
+interface EmbeddingRequest {
+  requestId: string;
+  generationId: string;
+  modelRevision: string;      // resolved model revision（alias不可）
+  preprocessorId: string;
+  preprocessorVersion: string;
+  items: EmbeddingItemRequest[];
+  signal?: AbortSignal;
+}
+
+type EmbeddingItemResult =
+  | { itemId: string; status: "ok"; vector: Float32Array }
+  | { itemId: string;
+      status: "retryable_error" | "permanent_error" | "cancelled_or_unknown";
+      errorCode: string };
+
 interface EmbeddingProvider {
   capabilities(): Promise<EmbeddingProviderCapabilities>;
   health(): Promise<ProviderHealth>;
-  embed(texts: string[]): Promise<number[][]>;
+  embed(request: EmbeddingRequest): Promise<EmbeddingItemResult[]>;
 }
 ```
+
+- 結果はitem-addressable。順序やbatch単位の成功に依存せず、per-item ledger（`generation_id, memory_id, memory_revision, input_hash`をunique keyとする）で管理する。
+- 保存前validation: finite（NaN/Inf拒否）、exact dimension一致、metric一致、cosine時はL2 norm > 0。
+- `cancelled_or_unknown`はread-before-retry（ledger照合後にのみ再送）とし、二重保存しない。
 
 ### 15.3 Provider candidates
 
@@ -1818,12 +1965,13 @@ interface EmbeddingProvider {
 ```text
 none
 sqlite-vec
-lancedb
 ```
 
-Default: `sqlite-vec` optional。
+Default: `none`。certified `sqlite-vec`をopt-inとする（CoreはFTS-firstでreleaseできる。Hard Invariant 17）。
 
-LanceDB再評価条件:
+**sqlite-vecのsupply-chain pin**: stable release artifact（現行stable `v0.1.9`。sqlite-vecはpre-v1のためprerelease/alphaをpinしない）をSHA-256・platform tuple・ABIつきでallowlistし、daemonだけがallowlisted絶対pathからloadし、load直後にSQLiteのextension loadingをdisableする。hash不一致・extension不在時はFTS-onlyへfail closedする。
+
+**LanceDBは1.0 scopeから削除する**（enum・config・dependencyに含めない）。ADRに再評価条件のみ残す:
 
 - one projectでactive memories 100k超
 - representative vector query p95 > 100msが継続
@@ -1853,8 +2001,12 @@ model変更flow:
 ```text
 old generation active
   -> new generation background build
-  -> count/dimension/search smoke validation
-  -> atomic active switch
+     （build開始時にimmutableな対象set = 全active memoryの(revision, inputHash)一覧とstart watermarkを固定）
+  -> catch-up pass（build中に作成/改訂されたmemory revisionをwatermark以降から取り込む。
+     差分ゼロになるまで反復、上限回数超過はbuild failed）
+  -> per-item ledgerでcomplete coverage確認 + count/dimension/finite/norm validation + search smoke
+  -> atomic active switch（daemon single-writerのserialized write（§19.2）内でactive pointerを更新。
+     切替transactionでcoverage/watermarkを再検証し、不一致なら中断してold維持）
   -> old generation retiring
   -> grace period後にcleanup
 ```
@@ -1865,8 +2017,9 @@ Rules:
 - query embeddingはactive generationと同一model/dimension
 - partial generationを通常検索へ使わない
 - mismatchはfail closed
-- switch失敗時はold generation維持
+- switch失敗・中断時はold generation維持
 - embedding全停止時はFTS fallback
+- 「countが一致した」だけではactive化しない（stale revisionのvectorを含む世代をcount一致で通す事故を防ぐ。coverageはrevision/inputHash単位で判定する）
 
 ### 15.6 Embedding privacy
 
@@ -1882,8 +2035,8 @@ Rules:
 
 ### 16.1 Local baseline
 
-- FTS5 `unicode61`
-- FTS5 `trigram`
+- FTS5 `unicode61`（`remove_diacritics 2` + explicit tokenchars。設定はschemaに固定しdataset versionへ含める）
+- FTS5 `trigram`（explicit options/detailを固定。trigramは3文字未満のqueryに一致しない仕様のため、短queryは§16.5のroutingで扱う）
 - exact identifier/path stream
 - subject-key match
 - recent stream
@@ -1892,7 +2045,9 @@ Rules:
 - optional sqlite-vec semantic stream
 - Reciprocal Rank Fusion (RRF)
 
-BM25とcosineのraw scoreを直接加算しない。
+**FTS topology**: 初期defaultはcontentful derived table（本文をFTS tableに持たせる）。external-content + triggerの同期・rebuild失敗面を初期から抱えない。storage実測で問題化した場合のみexternal-contentへの移行をADRで再評価する。
+
+**RRF式の固定**: `score(d) = Σ_s 1/(k + rank_s(d))`。rankは1始まり、`k`・各streamの候補cap・dedupe key・missing stream時の扱い・tie-break順（score desc → authority desc → recency desc → memoryId asc）をdataset versionごとに固定し、benchmarkの再現性を保証する。BM25とcosineのraw scoreを直接加算しない。
 
 ### 16.2 Filter order
 
@@ -1919,7 +2074,7 @@ filterをranking後へ遅延させてprivate/wrong-project candidateを露出し
 - durability
 - user/runtime confirmation
 - memory type
-- negative signal: contradicted、legacy_unknown、branch mismatch、stale
+- negative signal: contradicted、`provenanceQuality: legacy_unknown`（§12.7）、branch mismatch、stale
 
 pinnedは無条件topではなく、relevanceがある場合のauthority bonusとする。
 
@@ -1935,10 +2090,11 @@ checkpointは通常memory searchと別streamにする。
 ### 16.5 Japanese / English
 
 - identifier/English: unicode61 + exact stream
-- Japanese: trigram + semantic stream
-- mixed query:両方をRRF
-- 2文字以下のCJK: exact/controlled n-gram fallback
+- Japanese（3文字以上）: trigram + semantic stream
+- mixed query:両方を独立streamとしてRRF
+- 2文字以下のCJK: exact/controlled n-gram fallback（trigramでは構造的に0件になるため必須経路。n-gramのn・最小長threshold・対象文字クラスは実装時に固定値としてdataset versionへ記録する）
 - external tokenizerをCore correctnessの必須依存にしない
+- 固定query fixture（例: 「京都」「京都駅」「resume」「résumé」、identifier/path、JP-EN混在）をretrieval gate（§27.6）へ含める
 
 ### 16.6 Cloud search
 
@@ -2161,16 +2317,29 @@ Output: checkpoint ID、source agent/session、canonical observed state、option
 ### 18.8 Transport
 
 - local: stdio
-- remote: Streamable HTTP
-- new SSE transportは作らない
+- remote: **MCP specification 2026-07-28のStreamable HTTP POST-only profile**を実装する。
+  - 単一MCP endpoint・POST-only（旧GET/SSE stream endpointは実装しない）
+  - **Origin検証はMUST**（allowlist外は403。DNS rebinding対策）
+  - `MCP-Protocol-Version` / `Mcp-Method` /（該当時）`Mcp-Name` headerの付与と、header/bodyの整合検証（mismatchは400）
+  - protocol version negotiationを実装し、unsupported versionは明示エラー
 - remote handlerはstatelessを優先
 
 ### 18.9 Auth
 
-- coding agents: Bearer token
+2つのprofileを分離する。
+
+**fixed first-party client profile**（本製品のCLI/daemon/公式client向け・Core〜Personal Cloud 1.0の対象）:
+
+- HTTPS必須
+- short-lived scoped Bearer token（audience=remote MCP限定・expiry・revoke・rate limit必須）
+- **sync device credentialとremote MCP credentialは別audience/別key**（分離「可能」ではなく必須。tokenの取り違えを構造的に排除）
 - custom header非対応client: local stdio bridgeがtoken付与
-- generic hosted clientsを正式対象にする前にOAuth conformanceを追加
-- sync device tokenとremote MCP read tokenを分離可能にする
+
+**generic hosted client profile**（将来）:
+
+- Protected Resource Metadata（RFC 9728）、OAuth 2.1 authorization server discovery、resource indicator/audience binding（RFC 8707）、scope、PKCE、refresh rotationの全てを満たすまで正式supportしない
+
+検証test: bad/missing Origin、header/body mismatch、unsupported version、expired/revoked/wrong-audience/wrong-scope token、sync tokenのMCP流用がすべて拒否されることをPersonal Cloud gateに含める。
 
 ---
 
@@ -2189,15 +2358,18 @@ rewrite条件:
 
 ### 19.2 Single writer
 
-- daemonだけがwrite
+- daemonだけがwrite。**daemon以外のprocess（hook/MCP/CLI/viewer）はwrite-capable SQLite connectionを開かない**。read-only connectionはschema bootstrap/DDL/ledger writeを行わない（read系constructorがDDLを実行してsole-writerを破る実装を禁止）
+- daemon unavailable時、他processはatomic spoolへの書き込みのみ（DBへ触れない）
 - WAL
 - foreign keys ON
 - busy timeout
-- write actorで直列化
+- write actorで直列化（embedding generation switch等のatomic pointer更新もこの直列化write内で行う）
 - long transaction禁止
 - migration中はadapter spool
 - DBをnetwork filesystemへ置かない
 - DB/WAL/spool/backup directoryはowner-only permissionをdefaultにする
+- **検証**: 「write-capable handle = daemonのみ」はsource static scanとruntime DB-open traceの両方でPhase 1 Exit / release gateとして検証する（Hard Invariant 4）。daemon停止中のingest/MCP remember/CLI rememberがDBへ触れず同一spoolへ入り、再起動後exactly one commitになることをtestで固定する
+- **local peer auth**: daemon RPC（unix socket / named pipe）はpeer identity（same-user）検証とsocket/file permissionを必須とし、別userのprocessからのwrite requestを拒否する。version handshake・schema allowlist・size boundも§7.5に従う
 
 ### 19.3 Main tables
 
@@ -2274,7 +2446,7 @@ POST /v1/sync/flush
 POST /v1/sync/pull
 ```
 
-`/v1/resume/resolve`は§11.6のclaim（transaction内 open→delivered + lease）を実行して注入対象を返す。hint取得はclaimしない`GET /v1/checkpoints`を使う。
+`/v1/resume/resolve`は§11.6のclaim（transaction内 open→delivered + lease + fence発行）を実行し、注入対象と`claimFence`/`revision`を返す。`/v1/resume/accept`・`/v1/resume/dismiss`は`checkpointId + revision + claimFence + sessionId`を必須paramとしCASで遷移する（stale fenceはtyped error）。hint取得はclaimしない`GET /v1/checkpoints`を使う。
 
 #### Daemonの単位とAPI認証
 
@@ -2321,11 +2493,25 @@ Retention default:
 - 7 daily
 - 4 weekly
 
-SQLite online backup APIまたはconsistent snapshotを使う。
+SQLite online backup APIまたはconsistent snapshotを使う（WAL fileの単純file copyはconsistent snapshotにならないため使わない。採用するNode bindingがOnline Backup APIを露出しない場合の代替手段は実装前にADR化する）。
 
 - DBとlocal backupはowner-only permissionを設定する。
 - off-device/export backupはencryptionをdefaultにする。
 - backupにはlocal-only/private dataが含まれ得ることをUIで明示する。
+
+#### Backup manifest
+
+各backupにhashed/signed manifestを付け、restore互換性を機械判定可能にする:
+
+```text
+schema_version
+sqlite_source_version
+fts_schema / normalization version
+sqlite-vec artifact version / SHA-256 / platform（vector有効時）
+active embedding generation ID
+canonical table row counts / checksums
+created watermark
+```
 
 ### 20.3 Commands
 
@@ -2348,6 +2534,8 @@ empty environmentへrestoreし、以下を回復できること。
 - FTS rebuild
 - vector rebuild
 - session lineage
+
+restore手順: fresh data directoryへcanonical DBを復元し、manifest（§20.2）と現行環境の互換性を検証した上でFTS/vector等のderived indexをrebuildし、検証後にatomic replaceする。**degraded restore**: vector extensionが不在・hash不一致でvector rebuildが失敗しても、checkpoint + FTS-onlyのrestoreは独立に成功しなければならない（作業再開をvector復旧に依存させない。Hard Invariant 17）。
 
 ### 20.5 Doctor
 
@@ -2508,7 +2696,9 @@ checkpointの配送状態をrevisionとして流すと、2台同時resumeのた�
 
 - syncするのは**checkpoint本文**（canonical state / semantic note / lineage）と**終端status（accepted / superseded / expired）**のみ。
 - `open→delivered`遷移、`deliveredToSessionId`、`deliveryLeaseUntil`はdeviceローカルの配送状態とし、syncのrevisionにしない。各deviceはローカルにclaimし、accepted到達時だけ終端statusをsyncする。
-- **accepted競合の単調merge**: 複数deviceが同一checkpointを別sessionでacceptedにした場合、conflictとしてuser解決に回さず、`max(acceptedAt)`、同時刻なら`deviceId`辞書順で決定論的にmergeする（受理の記録はresume ledgerに両方残る）。後続作業の分岐はtask lineage内のsupersede規則（§11.7）で収束させる。
+- **cross-device重複配送の契約**: 配送状態をsyncしないlocal-first modeは、partition中の2 deviceが同一checkpointを同時にclaim/注入し得ることを**仕様上許容される挙動**として明示する（Track 1のduplicate-injection-0 gateはsingle-device対象。§27.7）。
+- **accepted競合はfork保持**: 複数deviceが同一checkpointを別sessionでacceptedにした場合、client clockで勝者を選ばない（timestampはordering authorityではない。§22.6）。両方のacceptedをresume ledgerへ残し、それぞれの後続checkpointを**別fork lineage**（`forked_from`）として保持する。分岐はUI/resume候補で可視化し、収束はtask lineage内のsupersede規則（§11.7）とuserの継続先選択で行う。
+- cross-deviceでduplicate injection 0を要求する運用（将来のserver-authoritative claim mode）はPersonal Cloud実装時のADRとし、その場合のclaim authorityはcloud endpointに置く。
 
 ### 22.5 Operation envelope
 
@@ -2518,17 +2708,24 @@ interface SyncOperation {
   opId: string;
   syncSpaceId: string;
   originDeviceId: string;
-  originDeviceSeq: string;
+  originDeviceSeq: string;      // credential epoch内で一意かつstrictly monotonic
+  credentialEpoch: string;      // device credentialの世代。revoke/reset時に更新
+  keyId: string;
+  signature: string;            // canonical bodyへのdevice署名
   entityType: string;
   entityId: string;
   revisionId: string;
-  parentRevisionId?: string;
+  parentRevisionId?: string;    // linear reviseのみで使用
+  parentRevisionIds?: string[]; // resolve_conflict時: resolution開始時の全competing headをsorted順で列挙
   operation: "create" | "revise" | "tombstone" | "resolve_conflict";
   bodyHash: string;
   body: unknown;
   createdAt: string;
 }
 ```
+
+- `originDeviceSeq`のduplicate same hashはidempotent accept、same seq different hash・sequence gap policy違反はquarantineし、必要ならrebootstrapへ送る。
+- revoke済み`credentialEpoch`のopは、作成時刻（createdAt）に関係なくapplyしない（revoke前に署名済みで queueに残っていたopのreplayを防ぐ）。
 
 ### 22.6 Canonical encoding / IDs
 
@@ -2560,10 +2757,11 @@ LWWで本文を無言上書きしない。
 - same op ID + different hash: quarantine corruption
 - revisionはimmutable
 - linear parent: normal update
-- same parentから複数revision: concurrent conflict
+- same parentから複数revision: concurrent conflict（全headを保持）
 - tombstoneとconcurrent update: conflictとして保持
+- **multi-head resolution**: `resolve_conflict`はresolution開始時の**全competing head IDをsortedで`parentRevisionIds`に列挙**し、serverはapply時に「現在のhead集合 == parentRevisionIds」の**head-set compare-and-swap**を検証する。集合が変わっていた（新headが増えた）場合はresolutionをrejectし、client側で再解決させる。単一`parentRevisionId`はlinear reviseにのみ使い、conflict resolutionには使わない（1 headだけをconsumeして残headが再びcurrentになる再競合を防ぐ）。
 - explicit resolution opでwinner/mergeを記録
-- server seqはdelivery orderでありsemantic winnerではない
+- server seqはdelivery orderでありsemantic winnerではない。JCS（RFC 8785）はcanonical encodingのみを提供し、authorization/replay protectionやUnicode正規化を代替しない（署名・epochは§22.5、NFC等のtext正規化はschema側で規定）
 
 ### 22.9 Transactional materialization
 
@@ -2582,12 +2780,12 @@ success responseは`materialized_seq == head_seq`を保証する。
 ### 22.10 Device credentials
 
 - one-time enrollment secret
-- device-specific credential
+- device-specific credential + `credentialEpoch`（enrollment/rotate/revoke/PITR resetで更新）
 - token hashだけserver保存
-- device revoke
-- remote MCP tokenをsync tokenと分離可能
+- device revoke: revoke cutoverは`credentialEpoch`単位で行い、revoked epochのop・push・cursorを全て拒否する（§22.5）。revokeされたdeviceの再参加は新epochでのfull rebootstrapのみ
+- remote MCP tokenとsync tokenは別audience/別key（§18.9。「分離可能」ではなく必須）
 - root recovery tokenをnormal clientへ保存しない
-- replay protection
+- replay protection（per-request検証: signature + epoch + strict per-device sequence）
 
 ### 22.11 Snapshot / bootstrap / compaction
 
@@ -2596,11 +2794,11 @@ Snapshot:
 - canonical materialized rows
 - **tombstone行を必須で含める**（削除済みentityの復活防止）
 - snapshot sequence S
-- schema version / content hash
+- **signed snapshot manifest**: epoch、snapshot seq、schema version、row counts、chunk hashes、root hash、tombstone floor、transaction watermark、signature。importerは全pageが同一snapshot IDに属することとroot hashを検証してからatomic importする（partial/page混在snapshotのimport禁止）
 - paged rowsまたは<=1MiB chunks
 - optional encrypted export
 
-tombstoneのretention期間はcompaction retention windowより長く固定する。これにより「削除op発行→log compaction→長期offline端末がsnapshot importで復帰→ローカル残存の旧entityを未syncとしてpush→削除済みmemoryが全端末へ復活」という経路を塞ぐ。復帰した端末のpushは、snapshotに含まれるtombstoneと突き合わせてrejectする。
+**tombstone floor / entity epoch**: tombstoneのretention期間はcompaction retention windowより長く固定し、さらにcompactionごとに`tombstone floor`（この境界以前のbaseからのmutationは無効）を前進させる。floorより古いbase revision/cursorからのmutationはserverが無条件rejectし、該当deviceは**full rebootstrapを完了するまでpush不可**とする（MUST。retention windowを超えた長期offline端末の削除復活を、tombstone個別保持に頼らず構造的に塞ぐ）。retention window内の復帰は、snapshotに含まれるtombstoneとの突き合わせrejectで従来どおり防ぐ。
 
 New device:
 
@@ -2713,7 +2911,7 @@ Illustrative config. Model IDs、quota、limitsはruntime manifestへ置き、no
   },
   "generation": {
     "profile": "auto",
-    "profile_resolution_order": ["sidecar", "local", "cloudflare-free"],
+    "profile_resolution_order": ["local", "cloudflare-free"],
     "paid_fallback": false,
     "roles": {
       "observation_extraction": {
@@ -2755,7 +2953,8 @@ Illustrative config. Model IDs、quota、limitsはruntime manifestへ置き、no
     "free_profile_batching": {
       "enabled": true,
       "max_turns_per_digest": 8,
-      "max_requests_per_day_target": 80
+      "min_turns_per_digest": 3,
+      "max_requests_per_day_hard_cap": 80
     },
     "timeout_ms": 60000,
     "repair_attempts": 1
@@ -2770,13 +2969,15 @@ Illustrative config. Model IDs、quota、limitsはruntime manifestへ置き、no
     },
     "claude-cli-sidecar": {
       "enabled": false,
-      "command": ["claude"],
-      "billing_mode": "subscription"
+      "command": ["claude", "--bare"],
+      "billing_mode": "byok",
+      "requires": "ANTHROPIC_API_KEY"
     },
     "codex-cli-sidecar": {
       "enabled": false,
       "command": ["codex"],
-      "billing_mode": "subscription"
+      "billing_mode": "subscription",
+      "requires_isolation_certification": true
     },
     "local-openai-compatible": {
       "enabled": false,
@@ -2785,10 +2986,10 @@ Illustrative config. Model IDs、quota、limitsはruntime manifestへ置き、no
     }
   },
   "embedding": {
-    "enabled": true,
+    "enabled": false,
     "provider": "local-fastembed",
     "model": "auto-multilingual-certified",
-    "backend": "sqlite-vec",
+    "backend": "none",
     "fallback_to_fts": true,
     "remote_private": false
   },
@@ -3008,11 +3209,13 @@ Required controls:
 
 **Track 1（v1）**: 20〜30 sessions（Japanese / English / mixed を約4:4:2で維持）。scenarioは下記リストから安全系・継続系を優先して被覆する（secret fixture、injected-memory echo、crash recovery、compaction、Agent switch、branch conflictは必須）。
 
-**Track 2（post-v1）**: Minimum 120 sessions:
+**Track 2（post-v1）**: sample数はprimary endpointのpower analysisで決定する。120 sessionsは**最低pilot corpus**であり十分性の証明ではない:
 
 - Japanese 45
 - English 45
 - mixed 30
+
+session/project/template単位のduplicateはsplit前に除外する（split間leakage禁止）。
 
 Scenarios:
 
@@ -3069,19 +3272,30 @@ Track 1のgold labelは単一作成者+self-review（自動指標が判定可能
 
 **Track 2**:
 
-- current claude-mem recommended provider
+- current claude-mem recommended provider（version-pinned固定tag。runtime importはしない）
 - CMEM black-box（正規利用可能な場合）
 - codemem current default
-- Claude sidecar profile
-- Codex sidecar profile
+- Claude BYOK `--bare` profile（評価対象。無料区分ではない）
+- Codex sidecar profile（isolation certification合格時のみ）
 - Cloudflare candidate
 - local candidate
 
 CMEM output artifactの保存・再配布は利用規約とprivacyを確認し、問題があればaggregate metricsだけ保存する。
 
-- 品質claimを付けるreleaseの最低gateはcurrent claude-mem recommended baselineに対する非劣性とする。
-- 「CMEM同等以上」をclaimするprofileは、正規に利用可能なCMEMへ同一holdoutを流したdirect black-box比較を必須にする。
-- CMEMが利用不能なreleaseではCMEM claimを行わず、claude-mem baseline claimだけを行う。
+- 品質claimを付けるreleaseの最低gateは**primary baseline**（事前登録で固定。default: current claude-mem recommended provider）に対する非劣性とする。metricごとに「best baseline」を選び直すmoving targetを禁止する。
+- 「CMEM同等以上」をclaimするprofileは、正規に利用可能なCMEMへ同一holdoutを流したdirect black-box比較を必須にする。CMEMが再現不能・利用不能なreleaseではCMEM claimを行わない。
+- baseline実行はexact version/config/provider/model/date/request hashとraw output（または規約上許されるaggregate artifact）を保存し、再実行可能にする。upstream（claude-mem等）のtest greenを非劣性の証拠として流用しない。
+
+#### Track 2事前登録（pre-registration）
+
+Track 2の統計gateは、holdout実行前に以下をmanifestへ固定する:
+
+- primary endpoint（主要metric）とprimary baseline
+- 非劣性margin（-2%が**absoluteかrelativeか**を明記）と集計方法（session単位のpaired比較）
+- 信頼水準とCI算出方法（paired bootstrap等）、multiple-comparison policy
+- power analysisとsample数、seed/trial数、missing-run policy
+- judge protocol: semantic評価はprovider名・出力順を隠したrandomized paired formを**2名以上が独立採点**し、agreement（一致度）とadjudication記録を保存する。deterministic metricをprimaryにする
+- **sequestered one-shot holdout**: holdoutはprompt/model選定完了後に1回だけ実行する。反復releaseで消耗したholdoutはrefresh policyに従い入れ替える
 
 ### 27.5 Extraction gate
 
@@ -3125,13 +3339,13 @@ Track 1 advisory / Track 2 blocking:
 
 Continuation successのgold判定（canonical observed state基準。semantic noteが無くても判定可能な形で定義する）:
 
-- 注入されたresume blockがgoldのlatest prompt / last conclusion / active・modified files / test resultsを正しく含む
-- completed workを誤らない（gold外の完了主張をしない）
--次に取るべきactionがgold許容集合に入る（SemanticResumeNoteがある場合はそのnextActions、無い場合はcanonical stateから人手判定）
-- active files/blockersを保持
-- first resumed actionが危険な重複作業をしない
+- 注入されたresume blockがgoldのlatest prompt / last conclusion / active・modified files / test resultsを正しく含む（**canonical evidence recovery** — 機械比較で判定）
+- completed workを誤らない（gold外の完了主張をしない — 機械比較で判定）
+- active files/blockersを保持（機械比較で判定）
+- 次に取るべきactionがgold許容集合に入る（**semantic next-action quality** — SemanticResumeNoteがある場合は事前登録したgold許容集合と機械照合。人手判定が必要なケースはadvisory）
+- first resumed actionが危険な重複作業をしない（advisory）
 
-本gateは§27.7全体がTrack 1 blocking（作業再開はプロジェクトの最重要価値のため、v1でも機械判定部分を100%要求する）。
+**Track 1 blocking対象は、上記のうちcanonical observed stateとの機械比較で決定論的に判定できる項目のみ**（保存率・再注入率・duplicate 0・wrong project 0・canonical evidence recovery・完了誤主張0）。人手判定を要するsemantic next-action qualityとfirst-action安全性はTrack 1ではadvisoryとし、Track 2で事前登録ルールまたはblind judging（§27.12）により評価する。「provider停止時の最低保証」はcanonical evidence recoveryであり、意味的なnext actionの正しさまで100%保証するものではない（Hard Invariant 28に対応）。
 
 ### 27.8 Embedding gate
 
@@ -3155,9 +3369,11 @@ source Agentで作業
   ->作業継続
 ```
 
-- **Core 1.0**: Claude Code ⇄ Codexの2×2 = 4 paths、4/4 pass（blocking）。
-- **1.x**: Agent追加ごとに、追加Agentが絡む全pathをpass。
-- **Platform 1.0**: 5×5 = 25 paths、25/25 pass（blocking）。
+- **Core 1.0**: Claude Code ⇄ Codexの2×2 = 4 directed routes、4/4 pass（blocking）。
+- **1.x**: Agent追加ごとに、追加Agentが絡む全routeをpass。
+- **Platform 1.0**: 5×5 = 25 directed routes、25/25 pass（blocking）。
+
+**pathの数え方の固定**: 「path」は self route（同一Agent）を含む有向route scenarioとして数える（Core=4、Platform=25）。各route scenario内で**memoryとcheckpointの両artifact**を試験する。artifactを別caseとして数える場合は「50 cases」と明示し、25/50の数字を混在させない。unsupported capability（例: OpenCodeのtrue session end、Pi/Kimiのsubagent capture）はmain-session routeのpassを妨げないが、Tier表示はcapability profileの内訳付きで行い（§7.3）、「5 Agent完全parity」とは表記しない。
 
 ### 27.10 Reliability gate
 
@@ -3176,8 +3392,11 @@ source Agentで作業
 - local backup restore
 - cloud rebuild
 - concurrent Agent sessions（Core 1.0: Claude+Codex並行 / Platform 1.0: 5 Agent並行）
+- checkpoint claim/fence: response消失・lease超過turn（11分）・daemon再起動・同時2 local session・stale fence acceptのproperty/model-check test
+- spool fault injection（tmp write / fsync / rename / import commit / delete各点）
 - 72h soak
 - child process/file descriptor leak check
+- sidecar有効化時: hostile hooks/plugins/MCP fixture・process-tree/FD leak・invalid JSON（§13.6 certification）
 
 ### 27.11 Free-certified gate
 
@@ -3226,223 +3445,251 @@ Target未達でも正しさを優先し、性能gateとrelease blockerをADRで�
 
 ## 29. Implementation Phases
 
-### Phase 0 — Fork / Audit / Baseline
+（v6.1改訂: 「後で捨てる可能性の高い基盤を先に作らない」順へ再構成。adapter contract harnessをcontinuity実装より前に、Claude/Codex vertical routesをCore中盤に、FTS correctnessをembeddingより前に、Agent expansionをPersonal Cloudより前に置く。）
 
-- codemem fork + commit pin
-- full tests green
-- architecture/dependency map
-- license/SBOM
-- observer runtime audit
-- direct DB fallback audit
-- undocumented auth/private backend path特定
-- current benchmark runner
-- upstream merge policy
+### Phase 0A — Evidence Freeze / Base Bake-off（機能変更なし）
+
+- codemem `26438e75` / ai-memory `a9e9a24d` / remem `cde8bc05` をpin
+- exact toolchainでupstream check/testを実行し、license/SBOM/native assetを保存
+- 全DB open / write-capable handle / provider auth・backend / sync・sharing importの静的inventory
+- fork/vendor/greenfield deltaを「残るwrite handle数・壊すtest数・移植資産数・unsafe auth path数」で比較
+- observer runtime audit / current benchmark runner確認
 
 Exit:
 
-- fork継続/再審議ADR
+- **base ADR確定**（§4.3のbase gate。write-handle inventory完了 + fatal/non-fatal分類 + delta比較記録）
 - clean install
-- unsafe path action plan
+- unsafe path action plan（実removeはPhase 1）
+- gate failure時: 新規Node daemon shellへのMIT資産選択移植を比較検討（全面greenfieldにはしない）
 
-### Phase 1 — Core Reliability / Identity / Event Contract
+### Phase 0B — Adapter / Sidecar Contract Harness（product DB変更なし）
 
-- daemon sole writer
-- atomic spool
-- version handshake
-- project/workspace/branch identity
-- session/event sequencing
-- late-event policy
-- redaction/private tags
-- jobs/leases
+- Claude Code / Codex のexact stable binaryでhook lifecycle・timeout・first injection・compact・tool failure phase・interrupt・subagentをfixture化（golden matrix）
+- capability schemaの`unknown`/coverage/evidenceVersion対応（§7.2）
+- sidecarは別harnessでhostile config/tool/process-tree test（合格しなければdefault disabled確定。§13.6）
+- このPhaseでTier Aを宣言しない（未観測cellはunknown）
+
+Exit:
+
+- Claude/Codex capability golden matrix（version-pinned）
+- sidecar certification可否の判定
+
+### Phase 1 — Safety Boundary / Sole Writer
+
+- undocumented/private provider/auth loaderの物理削除・非到達化（Phase 0Aのaction plan実施）
+- daemonだけがwrite-capable DB handleを所有。hook/MCP/CLI/viewerはthin RPC client化
+- daemon unavailable時はatomic spoolのみ（read-only handleはDDL/bootstrap禁止）
+- local peer auth / version handshake / schema allowlist / size bound / redaction・private tags
+- install ownership manifest
 - backup baseline
 
 Exit:
 
-- duplicate/out-of-order/crash tests
+- **runtime DB-open trace + static scanでwrite-capable handle = daemonのみ（Hard Invariant 4のblocking検証）**
+- daemon kill/replay/duplicate/spool fault injection tests
 - no Agent blockage
 - backup restore smoke
 
-### Phase 2 — Continuity Subsystem
+### Phase 2 — Canonical Identity / Event State Machine
 
-- SessionWorkState
-- SessionLineage
-- ContinuationCheckpoint
-- compact strategies
-- crash/abandoned recovery
-- resume selection/delivery/acceptance
-- `memory_resume`
-- continuity UI
+- opaque project/workspace/scope UUID + alias conflict UI/CLI（§6）
+- adapterDeliveryId / tool failure phase / turn state（open tool set・close reason）/ late correction invalidation（§8）
+- session host/process identity・heartbeat・abandoned判定（§10.1）
+- jobs/leases
 
 Exit:
 
-- observer fully disabledでcompact/crash/session resume成功
-- Claude + one second Agentでvertical slice
+- identity collision matrix（fork/rename/shallow/worktree/no-remote/monorepo/WSL）
+- duplicate x10 / parallel・late event property tests
 
-### Phase 3 — Model Roles / Provider Contracts
+### Phase 3 — Continuity State Machine
 
-- generation roles
-- provider capabilities
-- run ledger/cache
-- official CLI sidecar safety
-- generic OpenAI-compatible
-- free-provider proof
-- session/rolling summary
-- consolidation
+- SessionWorkState / SessionLineage / ContinuationCheckpoint
+- explicit task lineage + task boundary / checkpoint claim fence・lease heartbeat・CAS（§11）
+- compact strategies / crash・abandoned recovery
+- resume selection（smart）/ delivery / acceptance / supersede
+- `memory_resume` + 最小viewer actions
+- mechanical evidence resumeとsemantic noteの分離metric
+
+Exit:
+
+- observer/embedding/sync全offでClaude・Codex各same-agent continuation成功
+- claim/fence property tests（§27.10）
+
+### Phase 4 — Thin Claude/Codex Vertical Routes
+
+- Claude Code adapter / Codex adapter完成（Phase 0B harness準拠）
+- installer/version matrix
+- 4 directed routes（Claude ⇄ Codex、self含む）を各memory+checkpointで実行
+- response loss / long turn / simultaneous sessions / managed hook limitationを含む
+
+Exit:
+
+- 4/4 route scenario pass
+- capability profile公開（Tierはevidence hashに付与）
+
+### Phase 5 — Local Retrieval / Injection / MCP Correctness
+
+- contentful dual FTS（unicode61 + trigram）/ exact・path・CJK routing / fixed RRF（§16）
+- hard filter順序 / envelope / provenance stripping / self-ingestion prevention
+- local stdio MCP 5 tools + user-authority CAS（§18）
+- vectorはoffのまま100k scale・JP/EN/mixed correctnessを通す
+
+Exit:
+
+- retrieval gate（§27.6）+ echo-loop test
+- 100k scale p95目標内（FTS-only）
+
+### Phase 6 — Generation Roles / Universal Free Candidate
+
+- 単一job runner + role/prompt/schema data（roleごとのservice分裂を作らない）
+- generation contract / run ledger / cache / client-side schema validation
+- generic OpenAI-compatible / local adapters
+- free providerはprobe manifest + hard daily budget（dense/sparse両trace）合格候補のみ認定
+- session/rolling summary / consolidation
+- claude-mem importer（tag-pinned one-way、canonical rowsのみ）
+- sidecar（Codex certified / Claude BYOK --bare）はcertification合格時のみ別optional PR
 
 Exit:
 
 - provider swap without data loss
-- at least one initial free candidate
+- 少なくとも1つのfree-certified profile
 
-### Phase 4 — Embedding / Retrieval / Injection
+### Phase 7 — Optional Embeddings
 
-- EmbeddingProvider contract
-- sqlite-vec generation lifecycle
-- dual FTS / RRF
-- branch-aware ranking
-- injection envelope/ledger
-- self-ingestion prevention
-- prompt-aware context pack
+- item-addressable embedding contract（§15.2）/ per-item ledger
+- stable sqlite-vec artifact pin（SHA-256/platform allowlist）
+- immutable build set + catch-up + serialized atomic switch（§15.5）
+- extension不在/不一致はFTS-only
 
 Exit:
 
-- vector off fallback
-- generation switch test
-- echo-loop test
+- generation switch test / vector off fallback
+- embedding gate（§27.8）
 
-### Phase 5 — Core Adapters（Claude Code + Codex）
+### Phase 8 — Core 1.0 Gates / Release
 
-- Claude Code adapter
-- Codex CLI adapter
-- installer/version matrix
-- 4-path conformance（Claude ⇄ Codex）
-
-Exit:
-
-- 両Agent Tier A
-- 4/4 functional path
-
-### Phase 6 — Core Quality / Core 1.0
-
-- Track 1回帰corpus（20〜30 session）
-- free-certified profile（期限付き認定 + batching/縮小budget検証）
-- Track 1 blocking gates（secret leak 0 / wrong project 0 / echo 0 / duplicate injection 0 / continuation 100%）+ advisory計測
-- 100k local scale
-- 72h soak
-- import/export
-- signed artifacts
-- clean-room install matrix
+- Track 1回帰corpus（20〜30 session）による deterministic safety/continuity gates（§27.7の機械判定項目）
+- backup/restore（manifest検証・degraded restore含む）
+- install/update/uninstall matrix / clean-room install
+- 72h soak / signed artifacts
+- quality metricsはadvisory（外部quality claimなし）
 
 Exit:
 
 - Core 1.0 release（Claude + Codex）
+- release後はcloudへ直行せずschema freeze
 
-### Phase 7 — Personal Memory Cloud
+### Phase 9 — Agent Expansion（cloudより先）
 
-- Worker + SQLite DO
-- device enrollment
-- immutable op/revision protocol
-- materialization/conflicts
-- checkpoint sync
-- cloud FTS
-- remote MCP
-- snapshot/bootstrap/compaction
-- quota/storage guard
-- cloud restore drill
-- Deploy Button/CLI deploy
-
-Exit:
-
-- multi-device convergence
-- cloud outage local continuity
-- snapshot restore
-
-### Phase 8 — Agent Expansion / Platform 1.0 Hardening
-
-- OpenCode / Pi / Kimi Code adapter（1.xとして順次release）
-- 25-path conformance
-- Track 2 full comparative eval（120 session corpus + holdout + baseline比較。品質claimはここで初めて付与）
-- Windows/WSL bridgeの需要評価と実装判断
-- cloud security review
-- remote MCP client matrix
-- backup/export integration
-- docs/migration
-- release rollback
-- optional Private Relay design ADR
+- OpenCode → Pi → Kimi Codeをversion-pinで順次追加（1.x release）
+- 追加Agentを含む全main directed routesをpass
+- unsupported session-end/subagent capabilityはTier B exception + capability profileとして公開
+- agent-neutral schemaの欠陥をcloud実装前に潰す
 
 Exit:
 
 - 1.x: 追加Agentごとのconformance pass + release
-- Platform 1.0 release（25/25 path + Track 2 full eval合格）
+- 25 directed routes（各memory+checkpoint）完了
+
+### Phase 10 — Personal Memory Cloud
+
+- Worker + SQLite DO / device enrollment（credential epoch）
+- signed immutable op/revision protocol / multi-parent resolution / head-set CAS
+- checkpoint sync（fork semantics）/ cloud FTS conformance
+- snapshot manifest / bootstrap / compaction（tombstone floor）/ device revoke
+- remote MCP（2026-07-28 profile: Origin/header検証 + scoped bearer）
+- quota/storage guard / cloud restore drill / Deploy Button・CLI deploy
+- multi-device checkpoint claim: server authority採用可否をADR化
+
+Exit:
+
+- multi-device convergence（3-way conflict / offline復帰 / revoke replay tests）
+- cloud outage local continuity
+- snapshot restore
+
+### Phase 11 — Platform 1.0 / Track 2
+
+- power-based corpus / sequestered holdout / blind judging / reproducible baselines（§27.4事前登録）
+- cloud convergence/restore/security・25 routes・capability profileを同一release artifactで再確認
+- Windows/WSL bridgeの需要評価と実装判断
+- cloud security review / remote MCP client matrix / docs / migration / release rollback
+- optional Private Relay design ADR
+
+Exit:
+
+- Platform 1.0 release（25/25 routes + Track 2 full eval合格。条件を満たしたprofileのみdataset/date/CI付きclaim）
 
 ---
 
 ## 30. Initial PR Sequence
 
-### PR 1 — Baseline and Audit
+（v6.1改訂: §29のPhase 0A〜8に1:1対応させる。）
 
-- fork/pin
-- tests
-- architecture map
-- auth/backend inventory
+### PR 1 — Evidence Freeze / Base Bake-off（Phase 0A）
+
+- 候補3種のpin / upstream tests実行 / license・SBOM
+- write-capable handle・auth backend・sharing import inventory
+- delta比較記録 → base ADR
 - no functional change
 
-### PR 2 — Safety Guardrails
+### PR 2 — Adapter / Sidecar Contract Harness（Phase 0B）
 
-- block undocumented backend use
-- sidecar command allowlist
-- invariant tests
-- secret/log redaction tests
+- Claude/Codex hook golden matrix fixtures
+- capability schema（unknown/coverage/evidence）
+- sidecar hostile harness → certification可否
+- product DB変更なし
 
-### PR 3 — Single Writer / Spool / Version Contract
+### PR 3 — Safety Boundary / Single Writer（Phase 1）
 
-- remove direct DB fallback
-- spool importer
-- schema handshake
-- recovery tests
+- undocumented backend/auth loaderの物理削除
+- remove direct DB fallback / thin RPC client化 / spool importer
+- local peer auth / schema handshake / install ownership manifest
+- runtime DB-open trace検証 + recovery tests
 
-### PR 4 — Identity / Event Ordering
+### PR 4 — Identity / Event State Machine（Phase 2）
 
-- project/workspace/branch
-- ingest seq
-- batch ranges
-- late events
+- opaque UUID identity + alias conflict
+- adapterDeliveryId / ingest seq / turn state / batch ranges
+- late event invalidation伝播
+- session host/process identity
 
-### PR 5 — Continuity Core
+### PR 5 — Continuity Core（Phase 3）
 
-- SessionWorkState
-- Checkpoint
-- lineage
-- crash recovery
+- SessionWorkState / Checkpoint（fence/lease/CAS）
+- task lineage + boundary
+- crash recovery / smart resume / memory_resume
 
-### PR 6 — Compact / Resume Adapters
+### PR 6 — Claude/Codex Vertical Routes（Phase 4）
 
-- Claude vertical slice
-- second Agent vertical slice
-- memory_resume
+- 両adapter完成
+- 4 directed routes（memory+checkpoint）
+- capability profile公開
 
-### PR 7 — Generation Role Contract
+### PR 7 — Retrieval / Injection / MCP（Phase 5）
 
-- current observer behind interface
-- run ledger/cache
-- no behavior change first
+- contentful dual FTS / fixed RRF / CJK routing
+- envelope / provenance stripping / echo-loop tests
+- local stdio MCP + authority CAS
 
-### PR 8 — Sidecars / Free Candidate
+### PR 8 — Generation Roles / Free Candidate（Phase 6）
 
-- official Claude/Codex invocation
-- Cloudflare direct proof
-- local provider proof
-- benchmark harness
+- 単一job runner + run ledger/cache
+- generic/local adapters / probe manifest / hard budget認定
+- claude-mem one-way importer
+- sidecarは別optional PR（certification合格時のみ）
 
-### PR 9 — Embedding Generations
+### PR 9 — Optional Embeddings（Phase 7）
 
-- provider contract
-- sqlite-vec lifecycle
+- item-addressable contract / per-item ledger
+- sqlite-vec artifact pin / build set + catch-up + atomic switch
 - FTS fallback
 
-### PR 10 — Codex Adapter完成 / 4-path Matrix
+### PR 10 — Core 1.0 Gates / Release（Phase 8）
 
-以後、Track 1 gateを通してCore 1.0（Claude + Codex）へ進む。OpenCode / Pi / Kimi adapterと25-path matrixはCore 1.0後の1.x系列で追加する。Cloudflare syncを最初のPRにしない。
+- Track 1 deterministic gates / backup・restore / install matrix / 72h soak / signed artifacts
+
+以後、Phase 9（Agent expansion 1.x）→ Phase 10（Personal Cloud）→ Phase 11（Platform 1.0 / Track 2）の順に進む。Cloudflare syncを最初のPRにしない。Codex adapterの完成をPR 10まで遅らせない（PR 6で完成させる）。
 
 ---
 
@@ -3450,20 +3697,29 @@ Exit:
 
 | ADR | Default |
 |---|---|
-| Local Core | codemem fork。Phase 0 fatal conflict時のみ再審議 |
-| Runtime | TypeScript/Node維持。測定後のみrewrite（adapter hot pathはcompiled binary、§28） |
+| Local Core | codemem `26438e75` pinned vendor snapshot仮説。Phase 0Aのbase gate（§4.3）通過後にADR確定 |
+| Upstream | 定期merge追随なし。security/bugfix単位のcherry-pickのみ |
+| Runtime | TypeScript/Node維持（Phase 0Aまでprovisional。sole-writer化のdeltaがai-memory/remem移行deltaを上回る場合のみ再審議）。adapter hot pathはcompiled binary（§28） |
+| Project identity | opaque project UUID canonical。Git evidenceはlink候補、自動merge禁止、collision時fail closed |
 | Work continuity | SessionWorkState + immutable checkpoint（canonical/semantic型分離） |
 | Compact path | LLMを待たないdeterministic save |
 | Resume | `smart` default。同一session compactは無条件full、新sessionはhint→初回prompt関連度判定 |
-| Checkpoint delivery | transaction内claim + delivery lease（default 10分）。配送状態はdevice-local |
+| Checkpoint delivery | fenced claim（fence + heartbeat + CAS、lease default 10分）。配送状態はdevice-local。cross-deviceはfork semantics（server claimはPersonal Cloud ADR） |
+| Capability宣言 | 4値（native/synthesized/unsupported/unknown）+ versioned coverage/evidence。Tierはcapability_hash単位 |
 | MCP tools | 5 tools。`memory_resume`を追加 |
 | MCP write authority | Agentはcreate/propose系のみ。confirm/pin/unpin/retract/mark_wrongはUI/CLI限定 + optimistic concurrency |
-| Generation model | roleごとに設定、未設定はprofile default継承 |
-| Free provider | ローカル優先（sidecar→local→Cloudflare free fallback）。modelはbenchmark後決定 |
-| Free certification | 期限付き認定（default 30日）。pricing/quota/terms変更で再検証 |
-| Free observer運用 | batching既定 + 縮小budget（input 6k）。基準workload = 200 turn/日・observer ≦80 req/日 |
-| Sidecar | official documented CLI only |
-| Embedding backend | sqlite-vec optional default |
+| Generation model | roleごとに設定、未設定はprofile default継承。実装は単一job runner + role data |
+| Free provider | certified local → certified Cloudflare free。**sidecarはauto対象外**（explicit opt-in）。modelはbenchmark後決定 |
+| Free certification | 期限付き認定（default 30日）。pricing/quota/terms/model ID/format変更で再検証。budgetはretry込みhard cap + dense/sparse両trace |
+| Free observer運用 | batching既定 + 縮小budget（input 6k）。基準workload = 200 turn/日・observer ≦80 req/日（hard cap） |
+| Claude sidecar | BYOK `--bare`のみ・default disabled。subscription profileは提供しない（公式legal） |
+| Codex sidecar | isolation certification合格version限定・default disabled |
+| Embedding backend | `none` default。certified sqlite-vec（stable artifact SHA-256/platform pin）をopt-in。LanceDBは未実装ADR |
+| FTS topology | contentful derived table。unicode61 `remove_diacritics 2` + trigram explicit config |
+| RRF | 式・k・cap・tie-breakをdataset versionごとに固定 |
+| Sync resolution | sorted multi-parent全head列挙 + head-set CAS。single parentはlinear reviseのみ |
+| Sync operation | keyId/signature/credentialEpoch必須。revoked epochは無条件reject |
+| Tombstone | retention window + tombstone floor/entity epoch。floor超過deviceはfull rebootstrapまでpush不可 |
 | Embedding model | benchmark-selected multilingual model |
 | Vector absent | FTS correctnessを維持 |
 | Checkpoint retention | latest open無期限（lineageごと）、accepted 90日、kind別expiry TTL |
@@ -3471,17 +3727,19 @@ Exit:
 | Session memory retention | default 90日 |
 | Durable memory retention |自動削除なし |
 | Backup | daily 7 + weekly 4 |
-| Release staging | Core 1.0 = Claude + Codex（4-path）。OpenCode/Pi/Kimiは1.x、25-path + full evalはPlatform 1.0 |
-| Evaluation | Track 1（v1軽量回帰・安全系のみblocking・claimなし）→ Track 2（post-v1 full eval・claim付与） |
-| Core release | cloud前にrelease可能 |
+| Release staging | Core 1.0 = Claude + Codex（4 routes）→ **Agent expansion 1.x（cloudより先）** → Personal Cloud → Platform 1.0（25 routes + Track 2） |
+| Evaluation | Track 1（v1軽量回帰・deterministic gateのみblocking・claimなし）→ Track 2（post-v1・事前登録statistical eval・claim付与） |
+| Platform claim | 25 main routes pass + capability limitation profile公開。unsupported subagent/session-endはapproved Tier B exception。「5 Agent完全parity」と表記しない |
+| Core release | cloud前にrelease可能（release後schema freeze） |
 | Personal Cloud | Worker + SQLite DO、Workers AI不要 |
-| WebSocket | default off/advisory only |
-| Cloud vector | FTS only default、Vectorize optional |
+| WebSocket | 初期schema/packageから除外（HTTP push/pullのみ）。ADRに再評価条件 |
+| Cloud vector | FTS only default。Vectorize/R2/AI Gatewayは初期scopeから除外 |
 | Private Relay | Platform 1.1候補 |
-| Remote MCP | Streamable HTTP、Bearer + optional bridge |
+| Remote MCP | local stdio / fixed-client scoped bearer profile / generic OAuth 2.1 profile分離（MCP 2026-07-28準拠） |
 | Telemetry | default off、local metricsのみ |
+| claude-mem | runtime/provider importしない。version-pinned比較baselineとone-way importerのみ |
 
-Blocking user decisionは残さない（2026-08-12のユーザー決定6件を反映済み。付録A参照）。Codex reviewで新しい証拠が出た場合だけADRを変更する。
+Blocking user decisionは残さない（2026-08-12のユーザー決定6件を反映済み。付録A参照。Codex壁打ちの新証拠によるADR変更は付録Bに記録済み）。以後のADR変更は実装中の新証拠がある場合のみ行う。
 
 ---
 
@@ -3514,6 +3772,8 @@ Blocking user decisionは残さない（2026-08-12のユーザー決定6件を�
 
 ## 33. Codex壁打ちで必ず検証する論点
 
+> **v6.1注記: 本節の壁打ちは2026-08-12に実施済み**（`codex-review-report-2026-08-12.md`、verdict: proceed-with-blockers）。全20論点はblocking findings B-01〜B-13・capability matrix・ADR変更として回答され、反証検証を経て本書へ反映した（付録B）。**実機E2Eでしか閉じない残unknown**（各pinned commitでのfull test green、sidecarのhostile環境での実効tool集合、Cloudflare SQLite DO上のtrigram実動、Node bindingのOnline Backup API露出、候補baseの実測移植量）はPhase 0A/0Bの検証対象として引き継ぐ。以下は記録として残す。
+
 Codexは本書を前提としつつ、以下をcurrent sourceで反証可能性込みで調査する。
 
 1. codemem forkが本当にgreenfieldより小さいか。
@@ -3543,11 +3803,11 @@ Codexは各論点について、`pass / risk / fail / unknown`、source path、�
 
 ## 34. Final Go Decision
 
-**GO: 既存OSS統合型で、Core 1.0を先に完成させる。**
+**CONDITIONAL GO: 既存OSS統合型で、Core 1.0を先に完成させる。** Core architectureの方向は維持するが、baseとsidecarはPhase 0 gate完了まで確定しない。Codex壁打ちのblocker（B-01〜B-13）は本書v6.1へ反映済み。
 
 ```text
 Local Core:
-  codemem fork (Phase 0 audit gate)
+  codemem 26438e75 pinned vendor snapshot hypothesis (Phase 0A base gate後にADR確定)
 
 Continuity:
   SessionWorkState + ContinuationCheckpoint
@@ -3555,19 +3815,19 @@ Continuity:
 
 Generation:
   role-based provider/model selection
-  at least one free-certified profile
-  official sidecars optional
+  at least one free-certified profile (certified local / Cloudflare free)
+  sidecars: explicit opt-in only (Claude=BYOK --bare, Codex=certified)
   CMEM optional baseline/provider
 
 Embedding:
   provider-agnostic
-  sqlite-vec optional default
-  generation build + atomic switch
+  default none, certified sqlite-vec opt-in
+  generation build + catch-up + atomic switch
 
 Adapters:
-  Core 1.0: Claude / Codex (4-path functional conformance)
-  1.x: OpenCode / Pi / Kimi
-  Platform 1.0: 25-path functional conformance
+  Core 1.0: Claude / Codex (4 directed routes)
+  1.x: OpenCode / Pi / Kimi (cloudより先に展開)
+  Platform 1.0: 25 directed routes + capability profile公開
 
 Sync:
   BYOC Cloudflare Worker + SQLite DO
@@ -3582,15 +3842,26 @@ Cost:
   no silent paid fallback
 ```
 
-成功定義:
+成功定義（GO条件）:
 
-**Core 1.0**:
+**Core 1.0 GO条件**:
 
-> Claude Code ⇄ Codex間4通りの記憶・checkpoint引き継ぎが自動で成立し、observer/embedding/syncが停止してもcompact・session・crash後に作業を再開でき、少なくとも一つのUniversal Free generation profile（期限付きfree-certified）を提供し、要約・抽出・統合・embedding modelを役割ごとに変更可能で、local障害からevent・durable memory・open checkpointを復旧できること。安全系gate（secret leak 0 / wrong project 0 / echo 0 / duplicate injection 0 / continuation 100%)を満たすこと。品質の対外claimは行わない。
+1. daemon以外のwrite-capable DB handle 0（static scan + runtime trace）
+2. Claude/Codex exact-versionでの4 directed routes pass（各memory+checkpoint）
+3. fenced checkpoint state machineとdeterministic event idempotencyのproperty tests pass
+4. opaque project identity collision suite pass（wrong project auto-injection 0）
+5. FTS-only continuation / backup・restore（degraded含む）pass
+6. 少なくとも一つのUniversal Free candidateがcurrent probe/hard budget認定済み（sidecarを必須にしない）
+7. secret/echo/wrong-projectのclaimはversioned deterministic fixtureの範囲を明記
+8. 品質の対外claimは行わない（Track 1はadvisory計測のみ）
 
-**Platform 1.0**:
+**Platform 1.0 GO条件**:
 
-> 5 Agent間25通りの記憶・checkpoint引き継ぎが自動で成立し、Personal Cloud syncを含むlocal/cloudの障害から復旧でき、Track 2 full evalで少なくとも一つのprofileがclaude-mem baseline（可能ならCMEM）へ非劣性を実測した上で、profile/dataset/date付きの品質claimを付与できること。
+1. 25 directed main-session routes pass（各memory+checkpoint）
+2. unsupported/partial capability profileを公開し、Tier B exceptionを承認記録付きで表示
+3. signed multi-head sync・tombstone floor・snapshot manifest・device revokeのtests pass
+4. MCP 2026-07-28 security profile pass
+5. 事前登録済みTrack 2でCI付き非劣性claimが再現可能（primary baseline=claude-mem。CMEM claimはdirect比較可能な場合のみ）
 
 ---
 
@@ -3621,6 +3892,12 @@ Official docs:
 - Cloudflare MCP Transport: `https://developers.cloudflare.com/agents/model-context-protocol/protocol/transport/`
 - SQLite FTS5: `https://www.sqlite.org/fts5.html`
 - sqlite-vec: `https://github.com/asg017/sqlite-vec`
+- MCP Streamable HTTP（2026-07-28）: `https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http`
+- MCP Authorization（2026-07-28）: `https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization`
+- Claude Code legal/compliance: `https://code.claude.com/docs/en/legal-and-compliance`
+- Codex hooks/CLI: `https://developers.openai.com/codex/hooks`
+
+v6.1反映の一次資料index（commit-pinned URL付き）は`codex-review-report-2026-08-12.md`の付記を参照。
 
 ---
 
@@ -3647,7 +3924,7 @@ implementation-spec側を移植: smart resume default / MCP書き込み権限分
 1. v6への統合実施を承認
 2. 段階release: Core 1.0 = Claude Code + Codex、OpenCode/Pi/Kimiは1.x、25-path+full evalはPlatform 1.0
 3. 記憶系機能はclaude-mem同等以上をフル実装。品質の対外claimと比較実測ゲートのみv1から外しTrack 2（post-v1）へ
-4. 無料observer: batching既定+入力budget 6k+ローカル優先（sidecar→local→Cloudflare free）
+4. 無料observer: batching既定+入力budget 6k+ローカル優先（sidecar→local→Cloudflare free。**v6.1で法的制約によりsidecarをauto解決から除外、local先頭へ改訂**。付録B.3参照）
 5. Web UIはminimal viewer構成、Windows/WSL bridgeはCore 1.0から除外
 6. 保持期間90日（生イベントの遡り再抽出窓と、session durability memoryの両方に適用）
 
@@ -3655,4 +3932,51 @@ implementation-spec側を移植: smart resume default / MCP書き込み権限分
 
 - Hard Invariantsは既存1〜25の番号安定性を優先し、v6追補分を26〜33として末尾追加した（振り直しはしていない）。
 - raw event retentionのproject設定範囲はv5の7〜30日から7〜90日へ拡張した（決定6に伴う意図的な設計変更）。
+
+---
+
+## 付録B: Codex壁打ち反映記録（2026-08-12 v6.1）
+
+### B.1 実施方法
+
+- 依頼文書: `agent-memory-codex-preimplementation-review-v5.md`（入力はv6のみ）
+- 報告: `codex-review-report-2026-08-12.md`。Executive verdict = **proceed-with-blockers / codemem-fork / confidence medium**。blocking findings 13件（blocker 10 + high 3）、Hard Invariant matrix（pass 17 / risk 7 / fail 9）、missing requirements 26件、ADR変更案、実装順修正案、section単位patch案。
+- 反証検証: findings 13件を23エージェント（spec内部整合17 + 外部一次ソース照合6）で検証。**refuted 0件**（confirmed 6 / partially_confirmed 7）。partially_confirmedの過大部分は採用範囲を絞った。
+
+### B.2 採否の要約
+
+全13件を採用（うち7件は検証で確定した範囲に調整して採用）:
+
+| ID | 採否 | 調整内容 |
+|---|---|---|
+| B-01 base gate | 採用（縮小） | Phase 0A Exit = write-handle inventory完了+分類+delta記録。handle全除去の検証はPhase 1 Exitへ配置（レビュー案の「Phase 0で除去完了まで」は過大と判定） |
+| B-02 capability 4値 | 採用 | Tier A/B/Cラベルは維持し、capability profileを内訳併記 |
+| B-03 claim fence | 採用（範囲精密化） | fence+heartbeat+CAS+task boundaryを追加。cross-device duplicateは§22.4が既にfork設計を持つため「契約の明文化」に留め、duplicate-0 gateをsingle-device限定と明記 |
+| B-04 idempotency | 採用（縮小） | adapterDeliveryId+correction伝播を追加。turn graph新設はせず§7.4 turn_completedへの相互参照+open set/close reasonの限定追加 |
+| B-05 project UUID | 採用 | fork自動同一視は「canonicalization未規定下のedge case」として付録に記録（既定挙動ではない） |
+| B-06 sidecar | 採用（範囲精密化） | Claude subscription sidecar廃止は法的根拠で確定（下記B.3）。Codex sidecarはcertification制。--bareと素の-pの区別を明記 |
+| B-07 schema矛盾 | 採用（縮小） | origin+provenanceQuality+pinned拒否+HI14 reword。「candidateがuser_confirmedを返せる」は誤り（schemaに存在しない）と判定し、その部分は不採用 |
+| B-08 embedding | 採用（縮小） | item-addressable contract+catch-up+sqlite-vec pin+RRF固定。pointer CASは§19.2 single-writer直列化の明示参照で代替。CJK routingは既存§16.5のパラメータ具体化 |
+| B-09 sync | 採用（縮小） | signature/epoch/multi-parent/head-set CAS/snapshot manifest/tombstone floor。retention window内のresurrectionは§22.11で既に防がれていると判定し、floorは「window超過」の穴に限定 |
+| B-10 remote MCP | 採用（全面） | MCP 2026-07-28要件（POST-only/Origin MUST/header検証/PRM/resource indicator/PKCE）を外部検証で全confirm |
+| B-11 free budget | 採用 | hard cap（retry込み）+dense/sparse両trace+probe manifest。10,000 Neurons/day・8B fp8で80req≈66%消費を外部検証で確認 |
+| B-12 backup manifest | 採用（縮小） | manifest+degraded restore。「extension不在でdaemon全体起動不能」は仕様と矛盾する誇張と判定し不採用 |
+| B-13 eval統計 | 採用 | Track 1のblocking範囲を機械判定項目に限定（§27.7の人手フォールバック矛盾を解消）。Track 2事前登録・power analysis・blind judging |
+
+構造変更: Phase 0A/0B〜11への再構成（adapter harness前倒し・Codex adapter完成をPR 6へ・FTS先行・Agent expansionをcloudより先へ）、LanceDB削除、WebSocket/Vectorize/R2/AI Gateway/Private Relay初期scope除外、claude-mem=baseline+importer限定、job runner一本化。
+
+### B.3 ユーザー決定④の改訂（要ユーザー確認事項）
+
+v6.0の無料observer自動解決順「sidecar→local→cloudflare-free」を「**local→cloudflare-free**（sidecarはexplicit opt-inのみ）」へ改訂した。根拠は選好ではなく法的制約:
+
+- Anthropic公式legal-and-compliance: third-partyがFree/Pro/Max subscription credentialを経由することを許可しない（明文）。
+- `claude --bare`（headless推奨mode）はANTHROPIC_API_KEY必須でOAuth/keychainを読まない。つまり「subscription契約済みなら追加費用ゼロ」のClaude observer経路は公式には存在しない。
+- Codex sidecarはdocumentedな隔離契約（全tool/hook無効化）が存在せず、certification合格version限定・default disabledとした。
+
+決定④の趣旨（無料運用・batching・ローカル優先）は維持される。この改訂に異議がある場合はv6.0の順序へ戻せるが、subscription credential利用は実装しない。
+
+### B.4 レビュー報告の既知の誤り（記録）
+
+- 報告が引用したclaude-memのcommit SHA `f792a27e...`はrepositoryに存在しない（検証時404）。ただしhooks.jsonの内容・oauth-token.tsのkeychain抽出という主張自体はcurrent mainで事実確認済み。本書はSHAではなくrelease tag `v13.15.0` / current mainを参照する。
+- 「§22.4のaccepted merge」への指摘のうち、retention window内のtombstone resurrectionシナリオは§22.11の既存条項が防いでいた（B-09の採用範囲を縮小した根拠）。
 
