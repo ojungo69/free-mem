@@ -1,0 +1,43 @@
+evidence/adr-001-base.md
+  s_001266e69504e4::t_6a71cabdf98577 14,16
+  s_001266e69504e4::t_844653d7d69bf3 35
+  s_001266e69504e4::t_d767bb5dfa6504 23
+  s_001266e69504e4::t_32e02a41e3c2c2 30
+specs/001-agent-memory-core/verify-tasks-report.md
+  s_001266e69504e4::t_706c028e404e78 42
+  s_001266e69504e4::t_b850c5e8b37e1b 35
+specs/001-agent-memory-core/plan.md
+  s_001266e69504e4::t_fe5bb2c2777d60 71,74
+evidence/delta-comparison.md
+  s_001266e69504e4::t_506f7d113b8027 24
+  s_001266e69504e4::t_c153b93d9ca4b8 14
+  s_001266e69504e4::t_c0c6458d3a0370 13
+  s_001266e69504e4::t_b5f706d4b61a82 32-33
+  s_001266e69504e4::t_cc307f2168b565 26
+evidence/codemem/write-handle-classification.md
+  s_001266e69504e4::t_7efeca301c179d 51
+  s_001266e69504e4::t_b36d032a3aefcd 29
+  s_001266e69504e4::t_77f4f7bc08bfc7 65-66,70-72
+  s_001266e69504e4::t_e8cdb7d30c48bb 9,12,15,18
+evidence/unsafe-path-action-plan.md
+  s_001266e69504e4::t_3626ee6f66b70a 10-11,13-14
+evidence/codemem/runtime-audit.md
+  s_001266e69504e4::t_9ac38982fb2a0e 21
+  s_001266e69504e4::t_e73e6ef4df2ec3 57-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2000f34a581261d265e23bde3de284dd5ba3d4fd",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
