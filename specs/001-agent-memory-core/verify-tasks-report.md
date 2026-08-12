@@ -32,14 +32,14 @@
 | T004 | ✅ VERIFIED | log 815KB→1.13MB 差し替え後 `HOST RETRY`×2・sbom.md に MIT/license 記載（修正詳細は上記） |
 | T005 | ✅ VERIFIED | `evidence/ai-memory/` log(99KB, HOST RETRY×1)+sbom(MIT) |
 | T006 | ✅ VERIFIED | `evidence/remem/` log(435KB, HOST RETRY×1)+sbom(MIT) |
-| T007 | ✅ VERIFIED | inventory 74,894B・`\.ts:NNN` file:line 参照 295 箇所 |
+| T007 | ✅ VERIFIED | inventory 74,894B・`\.ts:NNN` file:line 参照 1,083 箇所（含有行 295 行） |
 | T008 | ✅ VERIFIED | 両 inventory-summary.md 実在（12KB/10KB）・write 観点の記述あり（15/18 hits） |
 | T009 | ✅ VERIFIED | runtime-audit.md 11,913B・OpenCode plugin/observer の file:line 付き実監査（stub でない） |
 | T010 | ✅ VERIFIED | classification 8,169B・F1–F8+補遺・carve-out 節（本セッションで通読済み） |
 | T011 | ✅ VERIFIED | delta-comparison 6,799B・4 指標表 + 逐件 env-fail baseline 6 件 |
 | T012 | ✅ VERIFIED | action plan A1–A7 + 順序 + リスクノート |
 | T013 | ✅ VERIFIED | ADR-001 Accepted・§4.3 gate 表 5 行 PASS・却下代替案付き |
-| T014 | ✅ VERIFIED | `vendor/codemem/` 881 files が branch diff に存在・`.git`/node_modules なし・VENDor.md 出所記録 |
+| T014 | ✅ VERIFIED | `vendor/codemem/` 881 files が branch diff に存在・`.git`/node_modules なし・VENDOR.md 出所記録 |
 | T015 | ✅ VERIFIED | clean-install.md: corepack pnpm install --frozen-lockfile → build → CLI 0.40.2 PASS |
 
 Layer 4（dead-code）は全タスク not_applicable（成果物は markdown / log / vendor snapshot で、今回書いた application code はゼロ）。

@@ -7,11 +7,11 @@
 
 | # | 対象 | 操作 | 検証 |
 |---|---|---|---|
-| A1 | F1 Anthropic OAuth consumer | `observer-client.ts` の `_callAnthropicOauth`（1989 以降の OAuth consumer 節）と dispatch 分岐（1886-1922 内）を削除。`observer-auth.ts` の OAuth cascade 段も同時除去（A3 と共通） | grep で `anthropic` × `oauth` の到達経路ゼロ / tsc green |
-| A2 | F2 Codex consumer + F4 OpenCode OAuth cache 読出し | `_callCodexConsumer` / `buildCodexHeaders` / `observer-auth.ts:49-183`（cache path resolver・extractors・Codex header 構築）を削除 | 第三者 credential ファイルパス（OpenCode auth cache）への参照ゼロ |
+| A1 | F1 Anthropic OAuth consumer | `observer-client.ts` の `_callAnthropicConsumer`（2031-2073）と dispatch 分岐（1904 / 1911）を削除。`observer-auth.ts` の OAuth cascade 段も同時除去（A3 と共通） | grep で `anthropic` × `oauth` の到達経路ゼロ / tsc green |
+| A2 | F2 Codex consumer + F4 OpenCode OAuth cache 読出し | `_callCodexConsumer`（1992-2030、dispatch 1899 / 1910）/ `buildCodexHeaders` / `observer-auth.ts:49-183`（cache path resolver・extractors・Codex header 構築）を削除 | 第三者 credential ファイルパス（OpenCode auth cache）への参照ゼロ |
 | A3 | F8 credential command loader + cascade 縮小 | `observer-auth.ts:185-206` 削除。cascade を `explicit -> env -> file` に縮小し、`oauth`/`command` 段の型・設定キーも除去 | 設定 schema に残キーなし / 単体テスト更新 |
-| A4 | F3 Claude sidecar（plain -p） | `_buildSidecarCommand`/`_invokeSidecar`（2074-2245）を削除。v6.1 §13.6 準拠実装（`--bare` + `ANTHROPIC_API_KEY` 必須 + certification manifest）は Phase 6 の別 optional PR まで**不在のまま**とする | `bypassPermissions` 文字列の残存ゼロ |
-| A5 | F5/F6/補遺 hook 直接書込み | `claude-hook-ingest.ts:128-199` / `codex-hook-ingest.ts:128-197` の `directEnqueue`、`claude-hook-inject.ts:197-235` の store fallback、`claude-hook-file-context.ts:263-370` の store open を削除。置換: ingest は atomic spool（§8）、inject/file-context は daemon RPC read + event 投入 | Phase 1 Exit の runtime DB-open trace で hook プロセスから write-capable open ゼロ |
+| A4 | F3 Claude sidecar（plain -p） | `_buildSidecarCommand`(2074-2089) / `_invokeSidecar`(2090-2206) / `_callSidecar`(2207-2255) の 3 関数（連続 2074-2255）と dispatch 分岐（1889）を削除。v6.1 §13.6 準拠実装（`--bare` + `ANTHROPIC_API_KEY` 必須 + certification manifest）は Phase 6 の別 optional PR まで**不在のまま**とする | `bypassPermissions` 文字列の残存ゼロ / tsc green（呼出し元残存なし） |
+| A5 | F5/F6/F5'/F6' hook 直接書込み（4 経路） | `claude-hook-ingest.ts:128-199` の `directEnqueue` / `codex-hook-ingest.ts:128-197` の `directEnqueueCodexHook`（export 名はソース照合済み: 同 :121）、`claude-hook-inject.ts` の `buildLocalPack`（:128、呼出し 236-249 — **既定の第一経路**であり fallback ではない。HTTP 側 250-255 が fallback）、`claude-hook-file-context.ts:263-370` の store open を削除。置換: ingest は atomic spool（§8）、inject/file-context は daemon RPC read + event 投入 | Phase 1 Exit の runtime DB-open trace で hook プロセスから write-capable open ゼロ |
 | A6 | F7 bootstrap template | `scripts/templates/workspace-codemem-bootstrap.sh` を削除（Core 1.0 に workspace peer 概念なし） | テンプレート参照ゼロ |
 | A7 | carve-out 無効化（fatal ではないが同時実施が安全） | sync/coordinator/sharing/recipient-policy/MCP HTTP OAuth の各モジュール・routes・CLI サブコマンド登録を削除（T010 carve-out 節の一覧）。対応するテストファイルは retire リストに記録して削除 | CLI help に sync/coordinator 系が出ない / viewer から sync タブ関連 API 404 |
 

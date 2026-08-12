@@ -68,10 +68,10 @@ specs/001-agent-memory-core/
 ### Source Code (repository root)
 
 ```text
-vendor/codemem/          # pinned snapshot 26438e75（Phase 0A で取り込み、ローカル clone から）
+vendor/codemem/          # pinned snapshot 26438e75 = product コードの正本（Phase 1 以降ここに直接改変）
 evidence/                # Phase 0A 成果物: inventory / SBOM / delta 比較 / base ADR
 harness/                 # Phase 0B: hook golden matrix fixtures / sidecar hostile harness
-src/                     # base ADR 確定後、codemem 構造を継承して配置（Phase 1 以降）
+                         # src/ は新設しない（ADR-001: vendor 内 packages/* が実体）
 ```
 
 **Structure Decision**（2026-08-12 確定 — ADR-001）: base = codemem pinned vendor snapshot
