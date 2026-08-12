@@ -5,8 +5,6 @@ import type { ComponentChildren, JSX } from "preact";
 export type SettingsTabId = "observer" | "queue";
 
 export type SettingsFormState = {
-	claudeCommand: string;
-	codexCommand: string;
 	observerProvider: string;
 	observerModel: string;
 	observerTierRoutingEnabled: boolean;
@@ -19,7 +17,6 @@ export type SettingsFormState = {
 	observerRichReasoningEffort: string;
 	observerRichReasoningSummary: string;
 	observerRichMaxOutputTokens: string;
-	observerRuntime: string;
 	observerAuthSource: string;
 	observerAuthFile: string;
 	observerAuthCacheTtlS: string;

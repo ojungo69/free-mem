@@ -13,11 +13,10 @@ export function getObserverModelHint(
 		return "Tiered routing is enabled: simple/rich model selection now lives in Processing.";
 	}
 	const inferred = inferObserverModel(
-		values.observerRuntime.trim() || "api_http",
 		values.observerProvider.trim(),
 		normalizeTextValue(values.observerModel),
 	);
-	const overrideActive = ["observer_model", "observer_provider", "observer_runtime"].some((key) =>
+	const overrideActive = ["observer_model", "observer_provider"].some((key) =>
 		hasOwn(envOverrides, key),
 	);
 	const source = overrideActive ? "Env override" : inferred.source;
@@ -28,7 +27,7 @@ export function getTieredRoutingHelperText(values: SettingsFormState): string {
 	if (!values.observerTierRoutingEnabled) {
 		return "Off: codemem uses the base observer settings from the Connection tab for all batches. Explicit user settings always win over built-in routing defaults.";
 	}
-	return "On: codemem routes simpler batches to Luna and richer batches to Terra with medium reasoning by default. Official OpenAI requests always use Responses. The observer_openai_use_responses=false compatibility setting selects chat completions only for an explicitly configured custom OpenAI-compatible base URL. Sidecar runtimes route both tiers through their local CLI.";
+	return "On: codemem routes simpler batches to Luna and richer batches to Terra with medium reasoning by default. Official OpenAI requests always use Responses. The observer_openai_use_responses=false compatibility setting selects chat completions only for an explicitly configured custom OpenAI-compatible base URL.";
 }
 
 export function getObserverModelLabel(values: SettingsFormState): string {
@@ -44,7 +43,7 @@ export function getObserverModelTooltip(values: SettingsFormState): string {
 export function getObserverModelDescription(values: SettingsFormState): string {
 	return values.observerTierRoutingEnabled
 		? "Tiered routing is active. Use this only as a fallback while the Processing tab owns simple/rich model selection and explicit tier settings override built-in defaults."
-		: "Default: `gpt-5.4-mini` for Direct API, `gpt-5.1-codex-mini` for Local Codex session, or `claude-4.5-haiku` for Local Claude session.";
+		: "Default: `gpt-5.4-mini` for Direct API, or `claude-haiku-4-5` for the Anthropic provider.";
 }
 
 export function hiddenUnlessAdvanced(showAdvanced: boolean): boolean {

@@ -2,36 +2,14 @@ import { describe, expect, it } from "vitest";
 import { collectSettingsPayload } from "./collect-payload";
 import { EMPTY_FORM_STATE } from "./constants";
 import { formStateFromPayload } from "./form-state";
-import { formatAuthMethod } from "./format";
-import { inferObserverModel, mergeOverrideBaseline } from "./value-helpers";
+import { mergeOverrideBaseline } from "./value-helpers";
 
-describe("Codex sidecar settings helpers", () => {
-	it("infers the current Codex-sidecar default model", () => {
-		expect(inferObserverModel("codex_sidecar", "openai", "")).toEqual({
-			model: "gpt-5.1-codex-mini",
-			source: "Recommended (local Codex session)",
-		});
-	});
-
-	it("formats Codex-sidecar authentication status", () => {
-		expect(formatAuthMethod("codex_sidecar")).toBe("Local Codex session");
-	});
-
-	it("loads the protected Codex command into form state", () => {
-		const values = formStateFromPayload({
-			effective: {
-				observer_runtime: "codex_sidecar",
-				codex_command: ["/Applications/ChatGPT.app/Contents/Resources/codex"],
-			},
-		});
-
-		expect(values.observerRuntime).toBe("codex_sidecar");
-		expect(values.codexCommand).toContain("ChatGPT.app/Contents/Resources/codex");
-	});
-
-	it("loads and saves shared observer reasoning defaults", () => {
+describe("Observer settings helpers", () => {
+	it("P1-T031-02-settings-api-only loads and saves API-only observer settings", () => {
 		const values = formStateFromPayload({
 			config: {
+				observer_runtime: "codex_sidecar",
+				codex_command: ["codex"],
 				observer_reasoning_effort: "low",
 				observer_reasoning_summary: "concise",
 			},
@@ -56,6 +34,8 @@ describe("Codex sidecar settings helpers", () => {
 
 		expect(payload.observer_reasoning_effort).toBe("medium");
 		expect(payload.observer_reasoning_summary).toBe("auto");
+		expect(payload).not.toHaveProperty("codex_command");
+		expect(payload).not.toHaveProperty("observer_runtime");
 
 		expect(
 			mergeOverrideBaseline(

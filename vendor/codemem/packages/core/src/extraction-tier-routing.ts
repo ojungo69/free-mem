@@ -47,9 +47,8 @@ export const RICH_TIER_DEFAULTS: Partial<ObserverConfig> = {
 	observerMaxOutputTokens: 12000,
 };
 
-// No temperature on the Anthropic tiers: the Anthropic request builders and
-// the sidecar runtimes never send a sampling temperature, and newer Claude
-// models reject non-default values outright.
+// No temperature on the Anthropic tiers: newer Claude models reject
+// non-default values outright.
 export const SIMPLE_TIER_ANTHROPIC_DEFAULTS: Partial<ObserverConfig> = {
 	observerProvider: "anthropic",
 	observerModel: "claude-haiku-4-5",
@@ -85,12 +84,6 @@ function resolveRichTierDefaults(provider: KnownTierProvider): Partial<ObserverC
 	return provider === "anthropic" ? RICH_TIER_ANTHROPIC_DEFAULTS : RICH_TIER_DEFAULTS;
 }
 
-function normalizeRuntime(value: string | null | undefined): string {
-	const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-	if (normalized === "claude_sidecar" || normalized === "codex_sidecar") return normalized;
-	return "api_http";
-}
-
 function nullIfUndefined<T>(value: T | undefined): T | null {
 	return value === undefined ? null : value;
 }
@@ -111,7 +104,6 @@ function shouldUseOpenAIResponses(
 function requestedMetadata(
 	decision: ExtractionReplayTierRoutingDecision,
 	config: ObserverConfig,
-	fallbackReason: string | null = null,
 ): TierRoutingApplicationMetadata {
 	return {
 		requestedTier: decision.tier,
@@ -119,8 +111,8 @@ function requestedMetadata(
 		requestedModel: config.observerModel ?? null,
 		requestedRuntime: config.observerRuntime ?? null,
 		requestedOpenAIResponses: nullIfUndefined(config.observerOpenAIUseResponses),
-		fallbackApplied: fallbackReason != null,
-		fallbackReason,
+		fallbackApplied: false,
+		fallbackReason: null,
 	};
 }
 
@@ -128,113 +120,7 @@ export function buildTieredObserverSelection(
 	baseConfig: ObserverConfig,
 	decision: ExtractionReplayTierRoutingDecision,
 ): TieredObserverConfigSelection {
-	const normalizedRuntime = normalizeRuntime(baseConfig.observerRuntime);
 	const explicitConfigKeys = new Set(baseConfig.observerExplicitConfigKeys ?? []);
-	if (normalizedRuntime === "claude_sidecar") {
-		const sidecarProviderKey =
-			decision.tier === "simple" ? "observerSimpleProvider" : "observerRichProvider";
-		const hasExplicitProviderOverride =
-			explicitConfigKeys.has(sidecarProviderKey) || explicitConfigKeys.has("observerProvider");
-		const requestedProvider =
-			(sidecarProviderKey === "observerSimpleProvider"
-				? trimmedProvider(baseConfig.observerSimpleProvider)
-				: trimmedProvider(baseConfig.observerRichProvider)) ??
-			trimmedProvider(baseConfig.observerProvider);
-		const tierDefaults =
-			decision.tier === "simple" ? SIMPLE_TIER_ANTHROPIC_DEFAULTS : RICH_TIER_ANTHROPIC_DEFAULTS;
-		const observer = {
-			...baseConfig,
-			observerProvider: "anthropic",
-			observerModel:
-				decision.tier === "simple"
-					? (baseConfig.observerSimpleModel ??
-						tierDefaults.observerModel ??
-						baseConfig.observerModel)
-					: (baseConfig.observerRichModel ??
-						tierDefaults.observerModel ??
-						baseConfig.observerModel),
-			observerTemperature:
-				decision.tier === "simple"
-					? (baseConfig.observerSimpleTemperature ??
-						tierDefaults.observerTemperature ??
-						baseConfig.observerTemperature)
-					: (baseConfig.observerRichTemperature ??
-						tierDefaults.observerTemperature ??
-						baseConfig.observerTemperature),
-			observerOpenAIUseResponses: undefined,
-			observerReasoningEffort: null,
-			observerReasoningSummary: null,
-			observerMaxOutputTokens:
-				decision.tier === "simple"
-					? baseConfig.observerMaxTokens
-					: (baseConfig.observerRichMaxOutputTokens ??
-						tierDefaults.observerMaxOutputTokens ??
-						baseConfig.observerMaxTokens),
-		};
-		const fallbackReason =
-			hasExplicitProviderOverride && requestedProvider && requestedProvider !== "anthropic"
-				? "unsupported tier override for runtime"
-				: null;
-		return {
-			observer,
-			metadata: requestedMetadata(
-				decision,
-				{
-					...observer,
-					observerProvider: requestedProvider ?? observer.observerProvider,
-					observerRuntime: normalizedRuntime,
-				},
-				fallbackReason,
-			),
-		};
-	}
-	if (normalizedRuntime === "codex_sidecar") {
-		const sidecarProviderKey =
-			decision.tier === "simple" ? "observerSimpleProvider" : "observerRichProvider";
-		const hasExplicitProviderOverride =
-			explicitConfigKeys.has(sidecarProviderKey) || explicitConfigKeys.has("observerProvider");
-		const requestedProvider =
-			(sidecarProviderKey === "observerSimpleProvider"
-				? trimmedProvider(baseConfig.observerSimpleProvider)
-				: trimmedProvider(baseConfig.observerRichProvider)) ??
-			trimmedProvider(baseConfig.observerProvider);
-		const observer = {
-			...baseConfig,
-			observerProvider: "openai",
-			observerModel:
-				decision.tier === "simple"
-					? (baseConfig.observerSimpleModel ?? baseConfig.observerModel)
-					: (baseConfig.observerRichModel ?? baseConfig.observerModel),
-			observerTemperature:
-				decision.tier === "simple"
-					? (baseConfig.observerSimpleTemperature ?? baseConfig.observerTemperature)
-					: (baseConfig.observerRichTemperature ?? baseConfig.observerTemperature),
-			observerOpenAIUseResponses: undefined,
-			observerReasoningEffort: null,
-			observerReasoningSummary: null,
-			observerMaxOutputTokens:
-				decision.tier === "simple"
-					? baseConfig.observerMaxTokens
-					: (baseConfig.observerRichMaxOutputTokens ?? baseConfig.observerMaxTokens),
-		};
-		const fallbackReason =
-			hasExplicitProviderOverride && requestedProvider && requestedProvider !== "openai"
-				? "unsupported tier override for runtime"
-				: null;
-		return {
-			observer,
-			metadata: requestedMetadata(
-				decision,
-				{
-					...observer,
-					observerProvider: requestedProvider ?? observer.observerProvider,
-					observerRuntime: normalizedRuntime,
-				},
-				fallbackReason,
-			),
-		};
-	}
-
 	if (decision.tier === "simple") {
 		const knownProvider =
 			normalizeKnownProvider(baseConfig.observerSimpleProvider) ??
@@ -245,6 +131,7 @@ export function buildTieredObserverSelection(
 				knownProvider === "openai" && shouldUseOpenAIResponses(baseConfig, explicitConfigKeys);
 			const observer = {
 				...baseConfig,
+				observerRuntime: "api_http",
 				observerProvider: knownProvider,
 				observerModel:
 					baseConfig.observerSimpleModel ?? tierDefaults.observerModel ?? baseConfig.observerModel,
@@ -263,10 +150,7 @@ export function buildTieredObserverSelection(
 			};
 			return {
 				observer,
-				metadata: requestedMetadata(decision, {
-					...observer,
-					observerRuntime: normalizedRuntime,
-				}),
+				metadata: requestedMetadata(decision, observer),
 			};
 		}
 		// Unknown/custom provider (e.g. opencode, bespoke gateway): preserve the
@@ -276,6 +160,7 @@ export function buildTieredObserverSelection(
 			trimmedProvider(baseConfig.observerSimpleProvider) ?? baseConfig.observerProvider ?? null;
 		const observer = {
 			...baseConfig,
+			observerRuntime: "api_http",
 			observerProvider: preservedProvider,
 			observerModel: baseConfig.observerSimpleModel ?? baseConfig.observerModel,
 			observerTemperature: baseConfig.observerSimpleTemperature ?? baseConfig.observerTemperature,
@@ -286,10 +171,7 @@ export function buildTieredObserverSelection(
 		};
 		return {
 			observer,
-			metadata: requestedMetadata(decision, {
-				...observer,
-				observerRuntime: normalizedRuntime,
-			}),
+			metadata: requestedMetadata(decision, observer),
 		};
 	}
 
@@ -302,6 +184,7 @@ export function buildTieredObserverSelection(
 		const useOpenAIResponses = isOpenAI && shouldUseOpenAIResponses(baseConfig, explicitConfigKeys);
 		const observer = {
 			...baseConfig,
+			observerRuntime: "api_http",
 			observerProvider: knownProvider,
 			observerModel:
 				baseConfig.observerRichModel ?? tierDefaults.observerModel ?? baseConfig.observerModel,
@@ -332,10 +215,7 @@ export function buildTieredObserverSelection(
 		};
 		return {
 			observer,
-			metadata: requestedMetadata(decision, {
-				...observer,
-				observerRuntime: normalizedRuntime,
-			}),
+			metadata: requestedMetadata(decision, observer),
 		};
 	}
 	// Unknown/custom provider: preserve base provider and only honor explicit
@@ -344,6 +224,7 @@ export function buildTieredObserverSelection(
 		trimmedProvider(baseConfig.observerRichProvider) ?? baseConfig.observerProvider ?? null;
 	const observer = {
 		...baseConfig,
+		observerRuntime: "api_http",
 		observerProvider: preservedProvider,
 		observerModel: baseConfig.observerRichModel ?? baseConfig.observerModel,
 		observerTemperature: baseConfig.observerRichTemperature ?? baseConfig.observerTemperature,
@@ -359,10 +240,7 @@ export function buildTieredObserverSelection(
 	};
 	return {
 		observer,
-		metadata: requestedMetadata(decision, {
-			...observer,
-			observerRuntime: normalizedRuntime,
-		}),
+		metadata: requestedMetadata(decision, observer),
 	};
 }
 

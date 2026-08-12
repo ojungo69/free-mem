@@ -2628,9 +2628,12 @@ describe("viewer-server", () => {
 			writeFileSync(
 				configPath,
 				JSON.stringify({
+					claude_command: ["claude"],
+					codex_command: ["codex"],
 					observer_auth_file: "~/.codemem/token.txt",
 					observer_auth_timeout_ms: 1500,
 					observer_headers: { Authorization: "Bearer abc" },
+					observer_runtime: "codex_sidecar",
 					sync_enabled: true,
 				}),
 			);
@@ -2643,19 +2646,19 @@ describe("viewer-server", () => {
 				const effective = body.effective as Record<string, unknown>;
 				expect(config.observer_auth_file).toBe("[redacted]");
 				expect(config.observer_headers).toBe("[redacted]");
+				expect(config).not.toHaveProperty("claude_command");
+				expect(config).not.toHaveProperty("codex_command");
+				expect(effective).not.toHaveProperty("claude_command");
+				expect(effective).not.toHaveProperty("codex_command");
+				expect(config).not.toHaveProperty("observer_runtime");
+				expect(effective.observer_runtime).toBe("api_http");
 				expect(config).not.toHaveProperty("observer_auth_timeout_ms");
 				expect(effective).not.toHaveProperty("observer_auth_timeout_ms");
 				expect(config).not.toHaveProperty("sync_enabled");
 				expect(effective).not.toHaveProperty("sync_coordinator_admin_secret");
 				expect(effective).not.toHaveProperty("sync_enabled");
 				expect(body.protected_keys).toEqual(
-					expect.arrayContaining([
-						"claude_command",
-						"codex_command",
-						"observer_auth_file",
-						"observer_headers",
-						"observer_base_url",
-					]),
+					expect.arrayContaining(["observer_auth_file", "observer_headers", "observer_base_url"]),
 				);
 			} finally {
 				cleanup();
@@ -2671,6 +2674,21 @@ describe("viewer-server", () => {
 			process.env.CODEMEM_CONFIG = configPath;
 			const { app, cleanup } = createTestApp({ sweeper: { notifyConfigChanged } });
 			try {
+				for (const observerRuntime of ["claude_sidecar", "codex_sidecar"]) {
+					const retiredRuntime = await app.request("/api/config", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+							Origin: "http://localhost",
+						},
+						body: JSON.stringify({ config: { observer_runtime: observerRuntime } }),
+					});
+					expect(retiredRuntime.status).toBe(400);
+					expect(await retiredRuntime.json()).toEqual({
+						error: "observer_runtime must be api_http",
+					});
+				}
+
 				const res = await app.request("/api/config", {
 					method: "POST",
 					headers: {
@@ -2725,130 +2743,6 @@ describe("viewer-server", () => {
 				cleanup();
 				if (previous == null) delete process.env.CODEMEM_CONFIG;
 				else process.env.CODEMEM_CONFIG = previous;
-			}
-		});
-
-		it("accepts the Codex sidecar runtime and exposes its protected command", async () => {
-			const configPath = join(mkdtempSync(join(tmpdir(), "codemem-config-test-")), "config.json");
-			const previous = process.env.CODEMEM_CONFIG;
-			process.env.CODEMEM_CONFIG = configPath;
-			const { app, cleanup } = createTestApp();
-			try {
-				const res = await app.request("/api/config", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						Origin: "http://localhost",
-					},
-					body: JSON.stringify({ config: { observer_runtime: "codex_sidecar" } }),
-				});
-
-				expect(res.status).toBe(200);
-				const body = (await res.json()) as Record<string, unknown>;
-				expect((body.config as Record<string, unknown>).observer_runtime).toBe("codex_sidecar");
-				expect((body.effective as Record<string, unknown>).codex_command).toEqual(["codex"]);
-				expect(body.protected_keys).toEqual(expect.arrayContaining(["codex_command"]));
-			} finally {
-				cleanup();
-				if (previous == null) delete process.env.CODEMEM_CONFIG;
-				else process.env.CODEMEM_CONFIG = previous;
-			}
-		});
-
-		it("reports CODEMEM_CODEX_COMMAND as normalized env-managed config", async () => {
-			const configPath = join(mkdtempSync(join(tmpdir(), "codemem-config-test-")), "config.json");
-			const previousConfig = process.env.CODEMEM_CONFIG;
-			const previousCommand = process.env.CODEMEM_CODEX_COMMAND;
-			process.env.CODEMEM_CONFIG = configPath;
-			process.env.CODEMEM_CODEX_COMMAND =
-				'["/Applications/ChatGPT.app/Contents/Resources/codex","--profile","observer"]';
-			const { app, cleanup } = createTestApp();
-			try {
-				const res = await app.request("/api/config");
-				expect(res.status).toBe(200);
-				const body = (await res.json()) as Record<string, unknown>;
-				expect((body.effective as Record<string, unknown>).codex_command).toEqual([
-					"/Applications/ChatGPT.app/Contents/Resources/codex",
-					"--profile",
-					"observer",
-				]);
-				expect(body.env_overrides).toEqual(
-					expect.objectContaining({ codex_command: "CODEMEM_CODEX_COMMAND" }),
-				);
-			} finally {
-				cleanup();
-				if (previousConfig == null) delete process.env.CODEMEM_CONFIG;
-				else process.env.CODEMEM_CONFIG = previousConfig;
-				if (previousCommand == null) delete process.env.CODEMEM_CODEX_COMMAND;
-				else process.env.CODEMEM_CODEX_COMMAND = previousCommand;
-			}
-		});
-
-		it("normalizes a string-form Codex command from the config file", async () => {
-			const configPath = join(mkdtempSync(join(tmpdir(), "codemem-config-test-")), "config.json");
-			const previousConfig = process.env.CODEMEM_CONFIG;
-			const previousCommand = process.env.CODEMEM_CODEX_COMMAND;
-			process.env.CODEMEM_CONFIG = configPath;
-			delete process.env.CODEMEM_CODEX_COMMAND;
-			writeFileSync(configPath, JSON.stringify({ codex_command: "codex --profile observer" }));
-			const { app, cleanup } = createTestApp();
-			try {
-				const res = await app.request("/api/config");
-				expect(res.status).toBe(200);
-				const body = (await res.json()) as Record<string, unknown>;
-				expect((body.effective as Record<string, unknown>).codex_command).toEqual([
-					"codex",
-					"--profile",
-					"observer",
-				]);
-			} finally {
-				cleanup();
-				if (previousConfig == null) delete process.env.CODEMEM_CONFIG;
-				else process.env.CODEMEM_CONFIG = previousConfig;
-				if (previousCommand == null) delete process.env.CODEMEM_CODEX_COMMAND;
-				else process.env.CODEMEM_CODEX_COMMAND = previousCommand;
-			}
-		});
-
-		it("does not report normalized command arrays as changed on unrelated saves", async () => {
-			const configPath = join(mkdtempSync(join(tmpdir(), "codemem-config-test-")), "config.json");
-			const previousConfig = process.env.CODEMEM_CONFIG;
-			const previousClaudeCommand = process.env.CODEMEM_CLAUDE_COMMAND;
-			const previousCodexCommand = process.env.CODEMEM_CODEX_COMMAND;
-			process.env.CODEMEM_CONFIG = configPath;
-			delete process.env.CODEMEM_CLAUDE_COMMAND;
-			delete process.env.CODEMEM_CODEX_COMMAND;
-			writeFileSync(
-				configPath,
-				JSON.stringify({
-					codex_command: "codex --profile observer",
-					observer_model: "gpt-5.4-mini",
-				}),
-			);
-			const { app, cleanup } = createTestApp();
-			try {
-				const res = await app.request("/api/config", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						Origin: "http://localhost",
-					},
-					body: JSON.stringify({ config: { observer_model: "gpt-5.4" } }),
-				});
-
-				expect(res.status).toBe(200);
-				const body = (await res.json()) as Record<string, unknown>;
-				const effects = body.effects as Record<string, unknown>;
-				expect(effects.effective_keys).toEqual(["observer_model"]);
-				expect(effects.restart_required_keys).toEqual(["observer_model"]);
-			} finally {
-				cleanup();
-				if (previousConfig == null) delete process.env.CODEMEM_CONFIG;
-				else process.env.CODEMEM_CONFIG = previousConfig;
-				if (previousClaudeCommand == null) delete process.env.CODEMEM_CLAUDE_COMMAND;
-				else process.env.CODEMEM_CLAUDE_COMMAND = previousClaudeCommand;
-				if (previousCodexCommand == null) delete process.env.CODEMEM_CODEX_COMMAND;
-				else process.env.CODEMEM_CODEX_COMMAND = previousCodexCommand;
 			}
 		});
 

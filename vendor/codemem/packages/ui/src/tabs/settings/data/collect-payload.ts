@@ -2,7 +2,7 @@
  * viewer expects. Validates JSON-array / number / temperature fields
  * and throws labeled errors for the save flow to surface. */
 
-import { parseCommandArgv, parseObserverHeaders } from "./parse";
+import { parseObserverHeaders } from "./parse";
 import type { SettingsFormState } from "./types";
 import { normalizeTextValue } from "./value-helpers";
 
@@ -18,46 +18,6 @@ export function collectSettingsPayload(
 ): Record<string, unknown> {
 	const { values, touchedKeys, baseline } = input;
 	const allowUntouchedParseErrors = input.allowUntouchedParseErrors === true;
-	let claudeCommand: string[] = [];
-	try {
-		claudeCommand = parseCommandArgv(values.claudeCommand, {
-			label: "claude command",
-			normalize: true,
-			requireNonEmpty: true,
-		});
-	} catch (error) {
-		if (!allowUntouchedParseErrors || touchedKeys.has("claude_command")) {
-			throw error;
-		}
-		const baselineValue = baseline.claude_command;
-		claudeCommand = Array.isArray(baselineValue)
-			? baselineValue
-					.filter((item): item is string => typeof item === "string")
-					.map((item) => item.trim())
-					.filter((item) => item.length > 0)
-			: [];
-	}
-
-	let codexCommand: string[] = [];
-	try {
-		codexCommand = parseCommandArgv(values.codexCommand, {
-			label: "codex command",
-			normalize: true,
-			requireNonEmpty: true,
-		});
-	} catch (error) {
-		if (!allowUntouchedParseErrors || touchedKeys.has("codex_command")) {
-			throw error;
-		}
-		const baselineValue = baseline.codex_command;
-		codexCommand = Array.isArray(baselineValue)
-			? baselineValue
-					.filter((item): item is string => typeof item === "string")
-					.map((item) => item.trim())
-					.filter((item) => item.length > 0)
-			: [];
-	}
-
 	let headers: Record<string, string> = {};
 	try {
 		headers = parseObserverHeaders(values.observerHeaders);
@@ -124,8 +84,6 @@ export function collectSettingsPayload(
 	}
 
 	return {
-		claude_command: claudeCommand,
-		codex_command: codexCommand,
 		observer_provider: normalizeTextValue(values.observerProvider),
 		observer_model: normalizeTextValue(values.observerModel),
 		observer_tier_routing_enabled: values.observerTierRoutingEnabled,
@@ -138,7 +96,6 @@ export function collectSettingsPayload(
 		observer_rich_reasoning_effort: normalizeTextValue(values.observerRichReasoningEffort),
 		observer_rich_reasoning_summary: normalizeTextValue(values.observerRichReasoningSummary),
 		observer_rich_max_output_tokens: richMaxOutputTokens,
-		observer_runtime: normalizeTextValue(values.observerRuntime || "api_http") || "api_http",
 		observer_auth_source: normalizeTextValue(values.observerAuthSource || "auto") || "auto",
 		observer_auth_file: normalizeTextValue(values.observerAuthFile),
 		observer_auth_cache_ttl_s: authCacheTtl,

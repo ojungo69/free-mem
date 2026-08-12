@@ -369,22 +369,22 @@ describe("extraction replay", () => {
 		let callCount = 0;
 		let observerStatus = {
 			provider: "test",
-			model: "requested-sidecar-model",
-			runtime: "claude_sidecar",
-			auth: { source: "none", type: "claude_sidecar", hasToken: false },
-			actualModel: "requested-sidecar-model",
+			model: "requested-model",
+			runtime: "api_http",
+			auth: { source: "none", type: "api_direct", hasToken: false },
+			actualModel: "requested-model",
 			modelFallbackApplied: false,
 			modelFallbackReason: null as string | null,
 		};
 		const observer = {
-			model: "requested-sidecar-model",
-			requestedModel: "requested-sidecar-model",
+			model: "requested-model",
+			requestedModel: "requested-model",
 			observe: async () => {
 				callCount += 1;
 				if (callCount === 2) {
 					observerStatus = {
 						...observerStatus,
-						actualModel: "requested-sidecar-model",
+						actualModel: "requested-model",
 						modelFallbackApplied: false,
 						modelFallbackReason: null,
 					};
@@ -392,8 +392,8 @@ describe("extraction replay", () => {
 				}
 				observerStatus = {
 					...observerStatus,
-					model: "fallback-sidecar-model",
-					actualModel: "fallback-sidecar-model",
+					model: "fallback-model",
+					actualModel: "fallback-model",
 					modelFallbackApplied: true,
 					modelFallbackReason: "requested model unavailable",
 				};
@@ -401,7 +401,7 @@ describe("extraction replay", () => {
 					raw: `<observation><type>discovery</type><title>Retained replay result</title><narrative>Keep this usable initial observation.</narrative></observation><observation><type>bugfix</type><title>Truncated`,
 					parsed: null,
 					provider: "test",
-					model: "fallback-sidecar-model",
+					model: "fallback-model",
 				};
 			},
 			getStatus: () => observerStatus,
@@ -419,8 +419,8 @@ describe("extraction replay", () => {
 		expect(result.observer.repairedRaw).toBeNull();
 		expect(result.observer.repairedDiagnostics).toBeNull();
 		expect(result.observer.diagnostics).toEqual(result.observer.initialDiagnostics);
-		expect(result.observer.requestedModel).toBe("requested-sidecar-model");
-		expect(result.observer.resolvedModel).toBe("fallback-sidecar-model");
+		expect(result.observer.requestedModel).toBe("requested-model");
+		expect(result.observer.resolvedModel).toBe("fallback-model");
 		expect(result.observer.modelFallbackApplied).toBe(true);
 		expect(result.observer.modelFallbackReason).toBe("requested model unavailable");
 	});

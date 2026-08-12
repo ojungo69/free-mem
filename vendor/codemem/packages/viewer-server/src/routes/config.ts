@@ -7,7 +7,6 @@
 
 import {
 	CODEMEM_CONFIG_ENV_OVERRIDES,
-	coerceObserverCommand,
 	getCodememConfigPath,
 	getCodememEnvOverrides,
 	listObserverProviderOptions,
@@ -21,25 +20,22 @@ type ConfigData = Record<string, unknown>;
 
 const REDACTED_VALUE = "[redacted]";
 
-const RUNTIMES = new Set(["api_http", "claude_sidecar", "codex_sidecar"]);
 const AUTH_SOURCES = new Set(["auto", "env", "file", "none"]);
 const HOT_RELOAD_KEYS = new Set(["raw_events_sweeper_interval_s"]);
 const PROTECTED_WRITE_KEYS = new Set<string>([
-	"claude_command",
-	"codex_command",
 	"observer_base_url",
 	"observer_auth_file",
 	"observer_headers",
 ] as const);
 const SECRET_CONFIG_KEYS = new Set<string>(["observer_auth_file", "observer_headers"] as const);
 const REMOVED_CONFIG_KEYS = new Set<string>([
+	"claude_command",
+	"codex_command",
 	"observer_auth_command",
 	"observer_auth_timeout_ms",
 	"observer_rich_openai_use_responses",
 ]);
 const ALLOWED_KEYS = [
-	"claude_command",
-	"codex_command",
 	"observer_base_url",
 	"observer_provider",
 	"observer_model",
@@ -65,8 +61,6 @@ const ALLOWED_KEYS = [
 ] as const;
 
 const DEFAULTS: ConfigData = {
-	claude_command: ["claude"],
-	codex_command: ["codex"],
 	observer_runtime: "api_http",
 	observer_auth_source: "auto",
 	observer_tier_routing_enabled: false,
@@ -91,24 +85,25 @@ function withoutRemovedConfigKeys(configData: ConfigData): ConfigData {
 	for (const key of Object.keys(next)) {
 		if (REMOVED_CONFIG_KEYS.has(key) || key.startsWith("sync_")) delete next[key];
 	}
+	if (
+		typeof next.observer_runtime !== "string" ||
+		next.observer_runtime.trim().toLowerCase() !== "api_http"
+	) {
+		delete next.observer_runtime;
+	} else {
+		next.observer_runtime = "api_http";
+	}
 	return next;
 }
 
 function getEffectiveConfig(configData: ConfigData): ConfigData {
 	const effective: ConfigData = { ...DEFAULTS, ...configData };
-	for (const key of ["claude_command", "codex_command"] as const) {
-		effective[key] = coerceObserverCommand(effective[key]) ?? DEFAULTS[key];
-	}
 	for (const [key, envVar] of Object.entries(CODEMEM_CONFIG_ENV_OVERRIDES) as Array<
 		[string, string]
 	>) {
 		const val = process.env[envVar];
 		if (val == null || val === "") continue;
-		if (key === "claude_command" || key === "codex_command") {
-			effective[key] = coerceObserverCommand(val) ?? effective[key];
-		} else {
-			effective[key] = val;
-		}
+		effective[key] = val;
 	}
 	return effective;
 }
@@ -202,18 +197,6 @@ function asStringMap(value: unknown): Record<string, string> | null {
 	return parsed;
 }
 
-function asExecutableArgv(value: unknown): string[] | null {
-	if (!Array.isArray(value)) return null;
-	const argv: string[] = [];
-	for (const item of value) {
-		if (typeof item !== "string") return null;
-		const token = item.trim();
-		if (!token) return null;
-		argv.push(token);
-	}
-	return argv;
-}
-
 function validateAndApplyUpdate(
 	configData: ConfigData,
 	key: (typeof ALLOWED_KEYS)[number],
@@ -238,9 +221,7 @@ function validateAndApplyUpdate(
 	if (key === "observer_runtime") {
 		if (typeof value !== "string") return "observer_runtime must be string";
 		const runtime = value.trim().toLowerCase();
-		if (!RUNTIMES.has(runtime)) {
-			return "observer_runtime must be one of: api_http, claude_sidecar, codex_sidecar";
-		}
+		if (runtime !== "api_http") return "observer_runtime must be api_http";
 		configData[key] = runtime;
 		return null;
 	}
@@ -251,13 +232,6 @@ function validateAndApplyUpdate(
 			return "observer_auth_source must be one of: auto, env, file, none";
 		}
 		configData[key] = source;
-		return null;
-	}
-	if (key === "claude_command" || key === "codex_command") {
-		const argv = asExecutableArgv(value);
-		if (argv == null) return `${key} must be string array`;
-		if (argv.length > 0) configData[key] = argv;
-		else delete configData[key];
 		return null;
 	}
 	if (key === "observer_headers") {

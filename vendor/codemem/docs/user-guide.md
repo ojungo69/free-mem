@@ -45,10 +45,10 @@ codemem status --db-path ./codemem.sqlite --config ./codemem.json
 - Persists only changed settings on save (unchanged effective defaults are not rewritten to config).
 - Uses task-oriented sections: `Connection`, `Processing`, and `Device Sync`.
 - Includes a `Show advanced controls` toggle for technical tuning fields (JSON headers, token-file caching, tier-routing tuning, network overrides, and pack limits).
-- Connection/auth settings map to `claude_command`, `observer_runtime`, `observer_provider`, `observer_model`, `observer_base_url`, `observer_auth_source`, `observer_auth_file`, `observer_auth_cache_ttl_s`, and `observer_headers`.
+- Connection/auth settings map to `observer_provider`, `observer_model`, `observer_base_url`, `observer_auth_source`, `observer_auth_file`, `observer_auth_cache_ttl_s`, and `observer_headers`.
 - Processing settings include `raw_events_sweeper_interval_s` plus tiered observer routing controls for `observer_tier_routing_enabled`, `observer_simple_model`, `observer_simple_temperature`, `observer_reasoning_effort`, `observer_reasoning_summary`, `observer_rich_model`, `observer_rich_temperature`, `observer_rich_reasoning_effort`, `observer_rich_reasoning_summary`, and `observer_rich_max_output_tokens`.
 - When tiered routing is enabled, the Processing tab becomes the primary place for model selection; the Connection tab's base `observer_model` acts as a fallback rather than a competing primary control.
-- When you have not made an explicit routing choice, codemem may enable tiered routing automatically for capability-safe paths such as OpenAI/Anthropic over `api_http` and Claude subscription usage over `claude_sidecar`.
+- When you have not made an explicit routing choice, codemem may enable tiered routing automatically for capability-safe OpenAI/Anthropic requests over `api_http`.
 - Explicit routing, model, and reasoning settings take precedence over built-in defaults where the selected transport supports them. OpenAI transport behavior has the simple-tier exception described below.
 - OpenAI tier routing defaults to `gpt-5.6-luna` for simple batches and `gpt-5.6-terra` for rich batches.
 - Rich routing defaults to 12,000 output tokens, while an explicit global `observer_max_output_tokens` setting or benchmark `--max-output-tokens` override applies to both tiers; `observer_rich_max_output_tokens` remains the highest-priority rich-only override.
@@ -66,19 +66,12 @@ codemem status --db-path ./codemem.sqlite --config ./codemem.json
 
 ## Observer auth configuration
 
-- Runtime choices are `api_http`, `claude_sidecar`, and `codex_sidecar`.
-- `claude_sidecar` runs observer calls through the local Claude runtime (subscription/session auth) and does not require `ANTHROPIC_API_KEY`.
-- `claude_command` controls how `claude_sidecar` invokes Claude CLI (default `["claude"]`).
-  - Wrapper example: `"claude_command": ["wrapper", "claude", "--"]`
-- `codex_sidecar` runs observer calls through the local Codex CLI login and does not require `OPENAI_API_KEY`.
-- `codex_command` controls how `codex_sidecar` invokes Codex CLI (default `["codex"]`).
+- Runtime choice is `api_http`.
 - Default model selection:
 - `api_http`: `gpt-5.4-mini` unless `observer_model` is set.
-- `claude_sidecar`: `claude-4.5-haiku` unless `observer_model` is set.
-- `codex_sidecar`: `gpt-5.1-codex-mini` unless `observer_model` is set.
+- Anthropic: `claude-haiku-4-5` unless `observer_model` is set.
 - Tier routing may pick different simple/rich models automatically when the current runtime/provider path is marked capability-safe.
 - Anthropic direct API calls use Anthropic's direct model IDs. codemem translates the common shorthand `claude-4.5-haiku` to `claude-haiku-4-5`; if you want a fixed snapshot, set a versioned model like `claude-haiku-4-5-20251001` directly.
-- If a configured `observer_model` is unsupported by a sidecar CLI, codemem retries once with that CLI's default model.
 - Supported auth sources: `auto`, `env`, `file`, `none`. `auto` resolves an explicitly configured API key first, then supported environment variables, then `observer_auth_file`.
 - Header templates can use `${auth.token}`, `${auth.type}`, and `${auth.source}`.
 - Settings are grouped into `Connection`, `Processing`, and `Device Sync` sections with shell-agnostic labels.
@@ -93,7 +86,6 @@ Example token-file gateway config:
 {
   "observer_provider": "your-gateway-provider",
   "observer_base_url": "https://gateway.example/v1",
-  "observer_runtime": "api_http",
   "observer_auth_source": "file",
   "observer_auth_file": "/path/to/gateway-token",
   "observer_auth_cache_ttl_s": 300,

@@ -80,59 +80,6 @@ export function ObserverPanel({
 						{getObserverModelHint()}
 					</div>
 				</Field>
-				<Field>
-					<div className="field-label">
-						<label htmlFor="observerRuntime">Connection mode</label>
-						<button
-							aria-label="About connection mode"
-							className="help-icon"
-							data-tooltip="Direct API uses provider credentials. Local sessions use the selected Claude or Codex CLI login."
-							type="button"
-						>
-							?
-						</button>
-					</div>
-					<RadixSelect
-						ariaLabel="Connection mode"
-						contentClassName="settings-select-content"
-						id="observerRuntime"
-						itemClassName="settings-select-item"
-						onValueChange={onSelectValueChange("observerRuntime")}
-						options={[
-							{ label: "Direct API (default)", value: "api_http" },
-							{ label: "Local Claude session", value: "claude_sidecar" },
-							{ label: "Local Codex session", value: "codex_sidecar" },
-						]}
-						triggerClassName="settings-select-trigger"
-						value={values.observerRuntime}
-						viewportClassName="settings-select-viewport"
-					/>
-					<div className="small">
-						Switch between provider API credentials and local Claude or Codex CLI auth.
-					</div>
-				</Field>
-				<Field className="field settings-advanced" hidden={hiddenUnlessAdvanced()}>
-					<label htmlFor="codexCommand">Codex command (JSON argv)</label>
-					<TextArea
-						disabled
-						id="codexCommand"
-						placeholder='["codex"]'
-						rows={2}
-						value={values.codexCommand}
-					/>
-					<div className="small">{protectedConfigHelp("codex_command")}</div>
-				</Field>
-				<Field className="field settings-advanced" hidden={hiddenUnlessAdvanced()}>
-					<label htmlFor="claudeCommand">Claude command (JSON argv)</label>
-					<TextArea
-						disabled
-						id="claudeCommand"
-						placeholder='["claude"]'
-						rows={2}
-						value={values.claudeCommand}
-					/>
-					<div className="small">{protectedConfigHelp("claude_command")}</div>
-				</Field>
 				<Field className="field settings-advanced" hidden={hiddenUnlessAdvanced()}>
 					<label htmlFor="observerMaxChars">Request size limit (chars)</label>
 					<TextInput

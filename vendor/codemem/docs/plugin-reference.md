@@ -216,7 +216,7 @@ Example agent requests:
 
 ## Observer model defaults
 
-- OpenAI: `gpt-5.1-codex-mini`
+- OpenAI: `gpt-5.4-mini`
 - Anthropic: `claude-4.5-haiku` (mapped to Anthropic direct API alias `claude-haiku-4-5` when using `api_http`)
 
 Provider/model selection can be overridden with `CODEMEM_OBSERVER_PROVIDER` and
@@ -224,19 +224,10 @@ Provider/model selection can be overridden with `CODEMEM_OBSERVER_PROVIDER` and
 
 ### Observer auth modes
 
-Observer execution supports API, Claude, and Codex runtime paths.
+Observer execution uses the `api_http` runtime. The default OpenAI model is
+`gpt-5.4-mini` unless `observer_model` is set.
 
-- Runtime values: `api_http`, `claude_sidecar`, `codex_sidecar`.
-- `claude_sidecar` runs observer calls via local Claude runtime auth (no `ANTHROPIC_API_KEY` required).
-- `claude_sidecar` uses `claude_command` (or `CODEMEM_CLAUDE_COMMAND`) as argv prefix for launching Claude CLI. Default: `["claude"]`.
-- `codex_sidecar` runs observer calls via the local `codex` CLI (`codex exec`), so Codex / ChatGPT Pro users get memory extraction with **no API key** — auth is delegated to the Codex CLI (`~/.codex`). It uses `codex_command` (or `CODEMEM_CODEX_COMMAND`) as the argv prefix. Default: `["codex"]`. The spawned process runs with `--ephemeral --ignore-user-config -s read-only` and codemem's own hooks suppressed, so it never recurses into capture.
-- codemem auto-selects `codex_sidecar` only when no `observer_runtime` is set, no API key or token file is configured, the `codex` CLI is resolvable, and `~/.codex/auth.json` exists. Otherwise set `observer_runtime = "codex_sidecar"` (or `CODEMEM_OBSERVER_RUNTIME=codex_sidecar`) explicitly.
-- Default models:
-- `api_http`: `gpt-5.1-codex-mini` unless `observer_model` is set.
-- `claude_sidecar`: `claude-4.5-haiku` unless `observer_model` is set.
-- `codex_sidecar`: `gpt-5.1-codex-mini` unless `observer_model` is set; the selected model is passed to `codex exec` via `-m` (tier routing).
 - Anthropic direct API calls accept Anthropic model IDs/aliases; use `claude-haiku-4-5-20251001` if you need a pinned snapshot instead of the moving alias.
-- If `observer_model` is unsupported in Claude CLI, codemem retries once without `--model`. The same fallback applies to `codex_sidecar`: an unavailable tier model is retried once without `-m`.
 - Supported auth sources: `auto`, `env`, `file`, `none`. Automatic resolution follows explicit key → environment → file.
 - Supported: API keys and gateway tokens codemem can read directly.
 - Custom provider path does not implicitly fall back to unrelated environment tokens; use the provider key, `CODEMEM_OBSERVER_API_KEY`, or `file`.
@@ -248,7 +239,6 @@ For gateway auth, configure a token file plus templated headers:
 {
   "observer_provider": "your-gateway-provider",
   "observer_base_url": "https://gateway.example/v1",
-  "observer_runtime": "api_http",
   "observer_auth_source": "file",
   "observer_auth_file": "/path/to/gateway-token",
   "observer_auth_cache_ttl_s": 300,
@@ -374,10 +364,8 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 | `CODEMEM_OPENCODE_MODEL` | Model for `opencode run` (default `gpt-5.1-codex-mini`). |
 | `CODEMEM_OPENCODE_AGENT` | Agent for `opencode run` (optional). |
 | `CODEMEM_OBSERVER_PROVIDER` | Force `openai`, `anthropic`, or a custom provider key (optional). |
-| `CODEMEM_OBSERVER_MODEL` | Override observer model (default `gpt-5.1-codex-mini` or `claude-4.5-haiku`). |
+| `CODEMEM_OBSERVER_MODEL` | Override observer model (default `gpt-5.4-mini` or `claude-haiku-4-5`). |
 | `CODEMEM_OBSERVER_API_KEY` | API key for observer model (optional). |
-| `CODEMEM_CLAUDE_COMMAND` | JSON argv array for Claude CLI invocation used by `claude_sidecar` (default `["claude"]`). |
-| `CODEMEM_OBSERVER_RUNTIME` | Observer runtime mode (`api_http` or `claude_sidecar`). |
 | `CODEMEM_OBSERVER_AUTH_SOURCE` | Observer auth source (`auto`, `env`, `file`, `none`). |
 | `CODEMEM_OBSERVER_AUTH_FILE` | Path to token file used when auth source is `file`. |
 | `CODEMEM_OBSERVER_AUTH_CACHE_TTL_S` | Cache TTL for token-file auth resolution in seconds (default `300`). |

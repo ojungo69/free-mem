@@ -28,18 +28,7 @@ export function formStateFromPayload(payload: ConfigPayload): SettingsFormState 
 					),
 				)
 			: {};
-	const claudeCommandValue = effectiveOrConfigured(config, effective, "claude_command");
-	const claudeCommand = Array.isArray(claudeCommandValue)
-		? claudeCommandValue.filter((item): item is string => typeof item === "string")
-		: [];
-	const codexCommandValue = effectiveOrConfigured(config, effective, "codex_command");
-	const codexCommand = Array.isArray(codexCommandValue)
-		? codexCommandValue.filter((item): item is string => typeof item === "string")
-		: [];
-
 	return {
-		claudeCommand: claudeCommand.length ? JSON.stringify(claudeCommand, null, 2) : "",
-		codexCommand: codexCommand.length ? JSON.stringify(codexCommand, null, 2) : "",
 		observerProvider: asInputString(effectiveOrConfigured(config, effective, "observer_provider")),
 		observerModel: asInputString(effectiveOrConfigured(config, effective, "observer_model")),
 		observerTierRoutingEnabled: asBooleanValue(
@@ -72,8 +61,6 @@ export function formStateFromPayload(payload: ConfigPayload): SettingsFormState 
 		observerRichMaxOutputTokens: asInputString(
 			effectiveOrConfigured(config, effective, "observer_rich_max_output_tokens"),
 		),
-		observerRuntime:
-			asInputString(effectiveOrConfigured(config, effective, "observer_runtime")) || "api_http",
 		observerAuthSource:
 			asInputString(effectiveOrConfigured(config, effective, "observer_auth_source")) || "auto",
 		observerAuthFile: asInputString(effectiveOrConfigured(config, effective, "observer_auth_file")),

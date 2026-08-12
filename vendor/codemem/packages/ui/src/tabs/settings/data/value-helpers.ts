@@ -59,17 +59,10 @@ export function normalizeTextValue(value: string): string {
 }
 
 export function inferObserverModel(
-	runtime: string,
 	provider: string,
 	configuredModel: string,
 ): { model: string; source: string } {
 	if (configuredModel) return { model: configuredModel, source: "Configured" };
-	if (runtime === "claude_sidecar") {
-		return { model: DEFAULT_ANTHROPIC_MODEL, source: "Recommended (local Claude session)" };
-	}
-	if (runtime === "codex_sidecar") {
-		return { model: DEFAULT_OPENAI_MODEL, source: "Recommended (local Codex session)" };
-	}
 	if (provider === "anthropic") {
 		return { model: DEFAULT_ANTHROPIC_MODEL, source: "Recommended (Anthropic provider)" };
 	}
@@ -85,28 +78,6 @@ export function inferObserverModel(
 export function configuredValueForKey(config: unknown, key: string): unknown {
 	const cfg = (config ?? {}) as Record<string, unknown>;
 	switch (key) {
-		case "claude_command": {
-			const value = cfg.claude_command;
-			if (!Array.isArray(value)) return [];
-			const normalized: string[] = [];
-			value.forEach((item) => {
-				if (typeof item !== "string") return;
-				const token = item.trim();
-				if (token) normalized.push(token);
-			});
-			return normalized;
-		}
-		case "codex_command": {
-			const value = cfg.codex_command;
-			if (!Array.isArray(value)) return [];
-			const normalized: string[] = [];
-			value.forEach((item) => {
-				if (typeof item !== "string") return;
-				const token = item.trim();
-				if (token) normalized.push(token);
-			});
-			return normalized;
-		}
 		case "observer_provider":
 		case "observer_model":
 		case "observer_simple_model":
@@ -117,8 +88,6 @@ export function configuredValueForKey(config: unknown, key: string): unknown {
 		case "observer_rich_reasoning_summary":
 		case "observer_auth_file":
 			return normalizeTextValue(asInputString(cfg[key]));
-		case "observer_runtime":
-			return normalizeTextValue(asInputString(cfg.observer_runtime));
 		case "observer_auth_source":
 			return normalizeTextValue(asInputString(cfg.observer_auth_source));
 		case "observer_headers": {

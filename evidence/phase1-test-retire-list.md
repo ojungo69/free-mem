@@ -4,6 +4,7 @@
 baseline: `evidence/phase1-test-baseline-pre.txt` (`9deb8e2`, SHA-256 `525348b0b36e23bb5c1ccbfa51b000eb4a2f9b6f2c8a4f5a25a2e88ed0949f79`)
 post-A7: `f1e84cf` / `/tmp/free-mem-phase1-post-t028.json` (SHA-256 `b475b510a9ba231e2cc58f62ff26a41c5cfcb5b85758c81ffe5593c24d89926c`)
 post-T030: `/tmp/free-mem-phase1-post-t030-final.json` (SHA-256 `3b84e9d1f62a43ab6b00cef098ce475a24c7f9b6450489fe0bfacf0b4611e6b3`)
+post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164eb5e1ee84c23e087a33a811bad05949f3d5f3108ca1`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -11,12 +12,12 @@ post-T030: `/tmp/free-mem-phase1-post-t030-final.json` (SHA-256 `3b84e9d1f62a43a
 | 区分 | 件数 |
 |---|---:|
 | 事前 baseline | 4,037 |
-| 維持 | 2,030 |
-| retire | 2,007 |
-| 登録済み追加（A7 17 + T030 1） | 18 |
-| post-T030 | 2,048 |
+| 維持 | 1,986 |
+| retire | 2,051 |
+| 登録済み追加（A7 17 + T030 1 + T031 2） | 20 |
+| post-T031 | 2,006 |
 
-機械式は `4,037 - 2,007 + 18 = 2,048`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
+機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
 post-A7 の実行結果は total 2,062 / passed 2,051 / failed 8。failed 8 名はすべて baseline に存在する linked-worktree の cwd / consumer 環境依存群で、新規 failure は 0。該当名:
 
@@ -33,6 +34,8 @@ packages/mcp-server/src/project-scope.test.ts > project-scope helpers > falls ba
 
 post-T030 は total 2,048 / passed 2,038 / failed 7 / todo 3。上記 8 名のうち T030 で retire した Codex consumer test 以外の 7 名だけが残り、新規 failure は 0。
 
+post-T031 は total 2,006 / passed 1,996 / failed 7 / todo 3。post-T030 との差は sidecar 関連 retire 44 名 + 登録済み追加 2 名と完全一致し、failed 7 名も同一で新規 failure は 0。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -45,6 +48,7 @@ post-T030 は total 2,048 / passed 2,038 / failed 7 / todo 3。上記 8 名の�
 | R-UI | `packages/ui/**` | 385 | sync/coordinator/sharing/devices/projects UI・API client・孤立 primitive を削除 | 削除 file は `No test files found`、削除 route は feed fallback、bundle に削除 tab label なし |
 | R-VIEWER | `packages/viewer-server/**` | 217 | sync/coordinator/sharing route・maintenance と対応 test を削除 | 削除 file/title は Vitest no-match、`/api/sync/status` と `/api/coordinator/admin/status` は HTTP 404 |
 | R-AUTH | `packages/core/src/observer-auth.test.ts`, `observer-client.test.ts` | 15 | T030 で OAuth consumer、OpenCode auth cache、command 認証を物理削除 | retire title は `No test found`、登録 token test が explicit→env→file のみを固定 |
+| R-SIDECAR | core/UI/viewer の observer runtime test | 44 | T031 で Claude/Codex subprocess、自動選択、command 設定、UI surface を物理削除 | retire title/file は `No test found`、登録 token tests が旧 runtime の API-only 化と設定非表示を固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -92,6 +96,8 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | token | owner | test が固定する失敗条件 |
 |---|---|---|
 | `P1-T030-01-auth-cascade` | T030 | observer 認証が explicit → env → file 以外の資格情報経路へ到達する |
+| `P1-T031-01-sidecar-retired` | T031 | 廃止済み Claude/Codex sidecar runtime が subprocess 経路へ到達する |
+| `P1-T031-02-settings-api-only` | T031 | viewer 設定が廃止済み runtime/command を再送または表示する |
 | `P1-T033-01-single-writer` | T033 | write-capable DB handle が writer actor 外で開く |
 | `P1-T033-02-migration-gate` | T033 | backup verify 前に migration が始まる |
 | `P1-T033-03-no-raw-db-export` | T033 | public export から raw Database を取得できる |
@@ -183,6 +189,53 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 - packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > respects a configured auth command
 - packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > respects a configured command auth source
 - packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > yields to a usable OpenCode OAuth cache
+
+### R-SIDECAR (44)
+
+- packages/core/src/extraction-tier-routing.test.ts > extraction tier routing > does not record fallback on claude_sidecar when provider was not explicitly requested
+- packages/core/src/extraction-tier-routing.test.ts > extraction tier routing > maps claude_sidecar rich tier routing onto Claude defaults
+- packages/core/src/extraction-tier-routing.test.ts > extraction tier routing > maps claude_sidecar simple tier routing onto Claude defaults
+- packages/core/src/extraction-tier-routing.test.ts > extraction tier routing > preserves the Codex sidecar default for rich tier routing
+- packages/core/src/extraction-tier-routing.test.ts > extraction tier routing > preserves the Codex sidecar default for simple tier routing
+- packages/core/src/extraction-tier-routing.test.ts > extraction tier routing > records a visible fallback when an incompatible provider is requested on claude_sidecar
+- packages/core/src/observer-client.test.ts > ObserverClient > constructor > defaults tier routing on for claude_sidecar
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > leaves resolved model null when retry payload omits model
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > passes the selected sidecar model via --model
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > raises ObserverAuthError when the sidecar reports an auth failure
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > reports the actual sidecar model after retrying without --model
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > returns null and records ENOENT when the claude binary is missing
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > sidecar error classifiers > does not misclassify unrelated errors as auth errors
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > sidecar error classifiers > does not misclassify unrelated errors as model errors
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > sidecar error classifiers > matches auth errors from known Claude CLI phrasings
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > sidecar error classifiers > matches model errors from known Claude CLI phrasings
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > codex sidecar error classifiers > does not false-positive on operational log noise (paths, offsets)
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > codex sidecar error classifiers > does not misclassify unrelated errors as auth errors
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > codex sidecar error classifiers > does not misclassify unrelated errors as model errors
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > codex sidecar error classifiers > matches auth errors from known Codex CLI phrasings
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > codex sidecar error classifiers > matches model errors from known Codex CLI phrasings
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > omits -m when useModel is false
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > passes the selected model via -m
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > raises ObserverAuthError when the sidecar reports an auth failure
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > retries without -m and reports fallback on model-unavailable
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar > skips API key init when constructed with no key
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar real spawn > returns null output and a redacted error on non-zero exit
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() — codex_sidecar real spawn > scrubs CLAUDE_CODE_* env, forwards the prompt on stdin, captures -o, and cleans up
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > does not override an explicit runtime
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > requires the codex CLI to be available
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > requires ~/.codex/auth.json to exist
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > respects a configured file auth source
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > respects an explicit auth file path
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > selects codex_sidecar when all preconditions hold
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > yields to any available API key
+- packages/ui/src/tabs/settings/components/ObserverPanel.test.tsx > ObserverPanel > offers a local Codex runtime and shows its protected command
+- packages/ui/src/tabs/settings/data/value-helpers.test.ts > Codex sidecar settings helpers > formats Codex-sidecar authentication status
+- packages/ui/src/tabs/settings/data/value-helpers.test.ts > Codex sidecar settings helpers > infers the current Codex-sidecar default model
+- packages/ui/src/tabs/settings/data/value-helpers.test.ts > Codex sidecar settings helpers > loads and saves shared observer reasoning defaults
+- packages/ui/src/tabs/settings/data/value-helpers.test.ts > Codex sidecar settings helpers > loads the protected Codex command into form state
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > accepts the Codex sidecar runtime and exposes its protected command
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > does not report normalized command arrays as changed on unrelated saves
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > normalizes a string-form Codex command from the config file
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > reports CODEMEM_CODEX_COMMAND as normalized env-managed config
 
 ### R-E2E (95)
 

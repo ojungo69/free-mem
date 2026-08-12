@@ -3,7 +3,7 @@ import type { DistillCandidate } from "./distill.js";
 /**
  * Injected LLM call. Returns the model's raw text, or null when unavailable.
  * Kept abstract so core stays pure and testable; the CLI wires this to the
- * configured observer runtime (api_http / claude_sidecar / codex_sidecar).
+ * configured observer API transport.
  */
 export type DistillRuleDrafter = (system: string, user: string) => Promise<string | null>;
 
