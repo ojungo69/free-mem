@@ -1,0 +1,19 @@
+specs/001-agent-memory-core/tasks.md
+  s_001266e69504e4::t_99d9a3a8d9942f 53-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f4af588a983464200ecec06326367dd262662807",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
