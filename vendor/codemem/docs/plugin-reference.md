@@ -230,28 +230,27 @@ Observer execution supports API, Claude, and Codex runtime paths.
 - `claude_sidecar` runs observer calls via local Claude runtime auth (no `ANTHROPIC_API_KEY` required).
 - `claude_sidecar` uses `claude_command` (or `CODEMEM_CLAUDE_COMMAND`) as argv prefix for launching Claude CLI. Default: `["claude"]`.
 - `codex_sidecar` runs observer calls via the local `codex` CLI (`codex exec`), so Codex / ChatGPT Pro users get memory extraction with **no API key** — auth is delegated to the Codex CLI (`~/.codex`). It uses `codex_command` (or `CODEMEM_CODEX_COMMAND`) as the argv prefix. Default: `["codex"]`. The spawned process runs with `--ephemeral --ignore-user-config -s read-only` and codemem's own hooks suppressed, so it never recurses into capture.
-- codemem auto-selects `codex_sidecar` only when no `observer_runtime` is set, no API key is available from any provider, the OpenCode OAuth cache has no usable credentials, the `codex` CLI is resolvable, and `~/.codex/auth.json` exists. Otherwise set `observer_runtime = "codex_sidecar"` (or `CODEMEM_OBSERVER_RUNTIME=codex_sidecar`) explicitly.
+- codemem auto-selects `codex_sidecar` only when no `observer_runtime` is set, no API key or token file is configured, the `codex` CLI is resolvable, and `~/.codex/auth.json` exists. Otherwise set `observer_runtime = "codex_sidecar"` (or `CODEMEM_OBSERVER_RUNTIME=codex_sidecar`) explicitly.
 - Default models:
 - `api_http`: `gpt-5.1-codex-mini` unless `observer_model` is set.
 - `claude_sidecar`: `claude-4.5-haiku` unless `observer_model` is set.
 - `codex_sidecar`: `gpt-5.1-codex-mini` unless `observer_model` is set; the selected model is passed to `codex exec` via `-m` (tier routing).
 - Anthropic direct API calls accept Anthropic model IDs/aliases; use `claude-haiku-4-5-20251001` if you need a pinned snapshot instead of the moving alias.
 - If `observer_model` is unsupported in Claude CLI, codemem retries once without `--model`. The same fallback applies to `codex_sidecar`: an unavailable tier model is retried once without `-m`.
-- Supported auth sources: `auto`, `env`, `file`, `command`, `none`.
+- Supported auth sources: `auto`, `env`, `file`, `none`. Automatic resolution follows explicit key → environment → file.
 - Supported: API keys and gateway tokens codemem can read directly.
-- Custom provider path does not implicitly fall back to OpenCode/IAP env tokens; use provider key, `CODEMEM_OBSERVER_API_KEY`, `file`, or `command`.
+- Custom provider path does not implicitly fall back to unrelated environment tokens; use the provider key, `CODEMEM_OBSERVER_API_KEY`, or `file`.
 - For codemem-native custom providers, set `observer_base_url` (or `CODEMEM_OBSERVER_BASE_URL`) to avoid relying on OpenCode provider config.
 
-For command-refreshed gateway auth, configure a command token source plus templated headers:
+For gateway auth, configure a token file plus templated headers:
 
 ```json
 {
   "observer_provider": "your-gateway-provider",
   "observer_base_url": "https://gateway.example/v1",
   "observer_runtime": "api_http",
-  "observer_auth_source": "command",
-  "observer_auth_command": ["iap-auth", "--audience", "example"],
-  "observer_auth_timeout_ms": 1500,
+  "observer_auth_source": "file",
+  "observer_auth_file": "/path/to/gateway-token",
   "observer_auth_cache_ttl_s": 300,
   "observer_headers": {
     "Authorization": "Bearer ${auth.token}"
@@ -259,18 +258,13 @@ For command-refreshed gateway auth, configure a command token source plus templa
 }
 ```
 
-`observer_auth_command` is direct argv execution (no shell interpolation).
-
-- Config key type: JSON string array (`["cmd", "arg1", "arg2"]`).
-- Env var `CODEMEM_OBSERVER_AUTH_COMMAND` must also be a JSON string array (for example `'["iap-auth","--audience","example"]'`), not a space-separated command string.
-
 Header template variables:
 
 - `${auth.token}`
 - `${auth.type}`
 - `${auth.source}`
 
-Command/file token cache behavior:
+Token-file cache behavior:
 
 - Successful token resolutions are cached for `observer_auth_cache_ttl_s`.
 - Failed token resolutions are not cached.
@@ -370,7 +364,6 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 | `CODEMEM_PLUGIN_CMD_TIMEOUT` | Milliseconds before a plugin CLI call is aborted (default `20000`). |
 | `CODEMEM_MIN_VERSION` | Minimum required CLI version for plugin compatibility warnings (default `0.9.20`). |
 | `CODEMEM_BACKEND_UPDATE_POLICY` | Backend update behavior on compatibility mismatch: `notify` (default), `auto`, or `off`. |
-| `CODEMEM_CODEX_ENDPOINT` | Override Codex OAuth endpoint. |
 | `CODEMEM_PLUGIN_DEBUG` | Set to `1`, `true`, or `yes` to log plugin lifecycle events. |
 | `CODEMEM_PLUGIN_IGNORE` | Skip all plugin behavior for this process. |
 | `CODEMEM_INJECT_CONTEXT` | Set to `0` to disable memory pack injection (default on). |
@@ -385,11 +378,9 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 | `CODEMEM_OBSERVER_API_KEY` | API key for observer model (optional). |
 | `CODEMEM_CLAUDE_COMMAND` | JSON argv array for Claude CLI invocation used by `claude_sidecar` (default `["claude"]`). |
 | `CODEMEM_OBSERVER_RUNTIME` | Observer runtime mode (`api_http` or `claude_sidecar`). |
-| `CODEMEM_OBSERVER_AUTH_SOURCE` | Observer auth source (`auto`, `env`, `file`, `command`, `none`). |
+| `CODEMEM_OBSERVER_AUTH_SOURCE` | Observer auth source (`auto`, `env`, `file`, `none`). |
 | `CODEMEM_OBSERVER_AUTH_FILE` | Path to token file used when auth source is `file`. |
-| `CODEMEM_OBSERVER_AUTH_COMMAND` | Command argv as a JSON string array used when auth source is `command`. |
-| `CODEMEM_OBSERVER_AUTH_TIMEOUT_MS` | Command auth timeout in milliseconds (default `1500`). |
-| `CODEMEM_OBSERVER_AUTH_CACHE_TTL_S` | Cache TTL for command/file auth resolution in seconds (default `300`). |
+| `CODEMEM_OBSERVER_AUTH_CACHE_TTL_S` | Cache TTL for token-file auth resolution in seconds (default `300`). |
 | `CODEMEM_OBSERVER_HEADERS` | JSON object of templated observer headers, e.g. `{"Authorization":"Bearer ${auth.token}"}`. |
 | `CODEMEM_OBSERVER_MAX_CHARS` | Max observer prompt characters (default `12000`). |
 | `CODEMEM_RAW_EVENTS_BACKOFF_MS` | Backoff window after stream failure before retrying stream POSTs (default `10000`). |

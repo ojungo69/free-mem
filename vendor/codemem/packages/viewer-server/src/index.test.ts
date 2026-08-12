@@ -2629,7 +2629,7 @@ describe("viewer-server", () => {
 				configPath,
 				JSON.stringify({
 					observer_auth_file: "~/.codemem/token.txt",
-					observer_auth_command: ["print-token"],
+					observer_auth_timeout_ms: 1500,
 					observer_headers: { Authorization: "Bearer abc" },
 					sync_enabled: true,
 				}),
@@ -2642,8 +2642,9 @@ describe("viewer-server", () => {
 				const config = body.config as Record<string, unknown>;
 				const effective = body.effective as Record<string, unknown>;
 				expect(config.observer_auth_file).toBe("[redacted]");
-				expect(config.observer_auth_command).toBe("[redacted]");
 				expect(config.observer_headers).toBe("[redacted]");
+				expect(config).not.toHaveProperty("observer_auth_timeout_ms");
+				expect(effective).not.toHaveProperty("observer_auth_timeout_ms");
 				expect(config).not.toHaveProperty("sync_enabled");
 				expect(effective).not.toHaveProperty("sync_coordinator_admin_secret");
 				expect(effective).not.toHaveProperty("sync_enabled");
@@ -2652,7 +2653,6 @@ describe("viewer-server", () => {
 						"claude_command",
 						"codex_command",
 						"observer_auth_file",
-						"observer_auth_command",
 						"observer_headers",
 						"observer_base_url",
 					]),
@@ -3036,12 +3036,12 @@ describe("viewer-server", () => {
 						"Content-Type": "application/json",
 						Origin: "http://localhost",
 					},
-					body: JSON.stringify({ config: { observer_auth_command: ["print-token"] } }),
+					body: JSON.stringify({ config: { observer_auth_file: "/tmp/token" } }),
 				});
 				expect(res.status).toBe(403);
 				const body = (await res.json()) as Record<string, unknown>;
 				expect(body.error).toBe(
-					"observer_auth_command cannot be changed from the viewer API; edit the config file or environment instead",
+					"observer_auth_file cannot be changed from the viewer API; edit the config file or environment instead",
 				);
 			} finally {
 				cleanup();
@@ -3056,7 +3056,9 @@ describe("viewer-server", () => {
 				configPath,
 				JSON.stringify({
 					observer_model: "old-model",
-					observer_auth_command: ["print-token"],
+					observer_auth_file: "/tmp/token",
+					observer_auth_command: ["retired-token-command"],
+					observer_auth_timeout_ms: 1500,
 					sync_coordinator_url: "https://coord.example.test",
 					sync_enabled: true,
 				}),
@@ -3072,7 +3074,7 @@ describe("viewer-server", () => {
 					body: JSON.stringify({
 						config: {
 							observer_model: "new-model",
-							observer_auth_command: "[redacted]",
+							observer_auth_file: "[redacted]",
 							sync_coordinator_url: "https://coord.example.test",
 						},
 					}),
@@ -3080,7 +3082,9 @@ describe("viewer-server", () => {
 				expect(res.status).toBe(200);
 				const saved = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
 				expect(saved.observer_model).toBe("new-model");
-				expect(saved.observer_auth_command).toEqual(["print-token"]);
+				expect(saved.observer_auth_file).toBe("/tmp/token");
+				expect(saved).not.toHaveProperty("observer_auth_command");
+				expect(saved).not.toHaveProperty("observer_auth_timeout_ms");
 				expect(saved).not.toHaveProperty("sync_coordinator_url");
 				expect(saved).not.toHaveProperty("sync_enabled");
 			} finally {

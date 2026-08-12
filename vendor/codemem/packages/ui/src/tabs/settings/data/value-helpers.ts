@@ -121,11 +121,6 @@ export function configuredValueForKey(config: unknown, key: string): unknown {
 			return normalizeTextValue(asInputString(cfg.observer_runtime));
 		case "observer_auth_source":
 			return normalizeTextValue(asInputString(cfg.observer_auth_source));
-		case "observer_auth_command": {
-			const value = cfg.observer_auth_command;
-			if (!Array.isArray(value)) return [];
-			return value.filter((item) => typeof item === "string");
-		}
 		case "observer_headers": {
 			const value = cfg.observer_headers;
 			if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -137,7 +132,6 @@ export function configuredValueForKey(config: unknown, key: string): unknown {
 			});
 			return headers;
 		}
-		case "observer_auth_timeout_ms":
 		case "observer_max_chars":
 		case "observer_simple_temperature":
 		case "observer_rich_temperature":

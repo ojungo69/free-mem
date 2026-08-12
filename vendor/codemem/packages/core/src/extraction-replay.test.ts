@@ -37,8 +37,6 @@ function replayObserverConfig(overrides: Partial<ObserverConfig> = {}): Observer
 		observerHeaders: {},
 		observerAuthSource: "none",
 		observerAuthFile: null,
-		observerAuthCommand: [],
-		observerAuthTimeoutMs: 1_500,
 		observerAuthCacheTtlS: 300,
 		observerExplicitConfigKeys: [],
 		...overrides,
@@ -169,10 +167,11 @@ describe("extraction replay", () => {
 		const observer = {
 			model: "test-model",
 			requestedModel: "test-model-alias",
+			openaiUseResponses: true,
 			reasoningEffort: "medium",
 			reasoningSummary: "auto",
 			maxOutputTokens: 12_000,
-			temperature: 0.2,
+			temperature: null,
 			observe: async () => {
 				callCount += 1;
 				if (callCount === 1) {
@@ -239,8 +238,8 @@ describe("extraction replay", () => {
 			getStatus: () => ({
 				provider: "test",
 				model: "test-model",
-				runtime: "api_http",
-				auth: { source: "opencode", type: "codex_consumer", hasToken: true },
+				runtime: "responses_api",
+				auth: { source: "env", type: "api_direct", hasToken: true },
 			}),
 		} as unknown as ObserverClient;
 		let callCount = 0;
@@ -257,10 +256,10 @@ describe("extraction replay", () => {
 		expect(result.observer.provider).toBe("test");
 		expect(result.observer.requestedModel).toBe("test-model-alias");
 		expect(result.observer.resolvedModel).toBe("test-model");
-		expect(result.observer.transport).toBe("codex_consumer");
+		expect(result.observer.transport).toBe("responses_api");
 		expect(result.observer.reasoningEffort).toBe("medium");
 		expect(result.observer.reasoningSummary).toBe("auto");
-		expect(result.observer.maxOutputTokens).toBeNull();
+		expect(result.observer.maxOutputTokens).toBe(12_000);
 		expect(result.observer.temperature).toBeNull();
 		expect(result.observer.modelFallbackApplied).toBe(false);
 		expect(result.observer.repairApplied).toBe(true);

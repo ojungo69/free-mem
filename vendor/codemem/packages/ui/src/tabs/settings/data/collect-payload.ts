@@ -58,19 +58,6 @@ export function collectSettingsPayload(
 			: [];
 	}
 
-	let authCommand: string[] = [];
-	try {
-		authCommand = parseCommandArgv(values.observerAuthCommand, { label: "observer auth command" });
-	} catch (error) {
-		if (!allowUntouchedParseErrors || touchedKeys.has("observer_auth_command")) {
-			throw error;
-		}
-		const baselineValue = baseline.observer_auth_command;
-		authCommand = Array.isArray(baselineValue)
-			? baselineValue.filter((item): item is string => typeof item === "string")
-			: [];
-	}
-
 	let headers: Record<string, string> = {};
 	try {
 		headers = parseObserverHeaders(values.observerHeaders);
@@ -154,8 +141,6 @@ export function collectSettingsPayload(
 		observer_runtime: normalizeTextValue(values.observerRuntime || "api_http") || "api_http",
 		observer_auth_source: normalizeTextValue(values.observerAuthSource || "auto") || "auto",
 		observer_auth_file: normalizeTextValue(values.observerAuthFile),
-		observer_auth_command: authCommand,
-		observer_auth_timeout_ms: Number(values.observerAuthTimeoutMs || 0) || "",
 		observer_auth_cache_ttl_s: authCacheTtl,
 		observer_headers: headers,
 		observer_max_chars: Number(values.observerMaxChars || 0) || "",

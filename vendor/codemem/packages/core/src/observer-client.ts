@@ -17,17 +17,10 @@ import { promisify } from "node:util";
 import { codememHomeDir } from "./home.js";
 
 import {
-	buildCodexHeaders,
-	extractOAuthAccess,
-	extractOAuthAccountId,
-	extractOAuthExpires,
-	extractProviderApiKey,
-	loadOpenCodeOAuthCache,
 	ObserverAuthAdapter,
 	type ObserverAuthMaterial,
 	redactText,
 	renderObserverHeaders,
-	resolveOAuthProvider,
 } from "./observer-auth.js";
 import {
 	coerceObserverCommand,
@@ -54,8 +47,6 @@ const DEFAULT_CODEX_SIDECAR_MODEL = "gpt-5.1-codex-mini";
 
 const ANTHROPIC_MESSAGES_ENDPOINT = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-
-const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
 
 const FETCH_TIMEOUT_MS = 60_000;
 
@@ -129,8 +120,6 @@ export interface ObserverConfig {
 	observerHeaders: Record<string, string>;
 	observerAuthSource: string;
 	observerAuthFile: string | null;
-	observerAuthCommand: string[];
-	observerAuthTimeoutMs: number;
 	observerAuthCacheTtlS: number;
 	claudeCommand?: string[];
 	codexCommand?: string[];
@@ -336,71 +325,27 @@ function coerceStringMap(value: unknown): Record<string, string> | null {
 	return null;
 }
 
-function coerceCommand(value: unknown): string[] | null {
-	if (value == null) return null;
-	if (Array.isArray(value)) {
-		return value.every((v) => typeof v === "string") ? (value as string[]) : null;
-	}
-	if (typeof value === "string") {
-		const trimmed = value.trim();
-		if (!trimmed) return [];
-		try {
-			const parsed = JSON.parse(trimmed);
-			if (Array.isArray(parsed) && parsed.every((v: unknown) => typeof v === "string")) {
-				return parsed as string[];
-			}
-		} catch {
-			/* not JSON — ignore */
-		}
-		return null;
-	}
-	return null;
-}
-/**
- * True when the OpenCode OAuth cache holds usable credentials for any built-in
- * provider (openai/anthropic OAuth access, or an opencode API key). Used to
- * gate codex_sidecar auto-defaulting so we do not shell the codex CLI when a
- * direct API/OAuth path is already available.
- */
-function hasUsableOpenCodeOAuthCache(): boolean {
-	const cache = loadOpenCodeOAuthCache();
-	if (Object.keys(cache).length === 0) return false;
-	const now = nowMs();
-	for (const provider of ["openai", "anthropic"]) {
-		const access = extractOAuthAccess(cache, provider);
-		if (!access) continue;
-		const expires = extractOAuthExpires(cache, provider);
-		if (expires == null || expires > now) return true;
-	}
-	return !!extractProviderApiKey(cache, "opencode");
-}
-
 /**
  * Decide whether to auto-select the codex_sidecar runtime. Pure/testable: the
  * caller supplies the filesystem/PATH-derived facts. Auto-selection must not
- * override an explicit runtime, available API keys, the OpenCode OAuth cache,
- * or an explicitly configured file/command auth source (those feed api_http and
- * would otherwise be silently ignored once the sidecar skips provider init).
+ * override an explicit runtime, available API keys, or an explicitly configured
+ * file auth source (those feed api_http and would otherwise be silently ignored
+ * once the sidecar skips provider init).
  */
 export function shouldAutoSelectCodexSidecar(opts: {
 	observerRuntime: string | null;
 	hasAnyApiKey: boolean;
 	observerAuthSource: string | null;
 	observerAuthFile: string | null;
-	observerAuthCommand: string[] | null;
-	hasUsableOpenCodeCache: boolean;
 	codexAvailable: boolean;
 	codexAuthExists: boolean;
 }): boolean {
 	if (opts.observerRuntime) return false;
 	if (opts.hasAnyApiKey) return false;
-	const hasConfiguredAuthSource =
-		opts.observerAuthSource === "file" ||
-		opts.observerAuthSource === "command" ||
-		!!opts.observerAuthFile ||
-		(Array.isArray(opts.observerAuthCommand) && opts.observerAuthCommand.length > 0);
+	const source = (opts.observerAuthSource ?? "").trim().toLowerCase();
+	const hasConfiguredAuthSource = (!!source && source !== "auto") || !!opts.observerAuthFile;
 	if (hasConfiguredAuthSource) return false;
-	return !opts.hasUsableOpenCodeCache && opts.codexAvailable && opts.codexAuthExists;
+	return opts.codexAvailable && opts.codexAuthExists;
 }
 
 /** True when the `codex` CLI (or configured codex command) is resolvable on PATH. */
@@ -451,8 +396,6 @@ export function loadObserverConfig(): ObserverConfig {
 		observerHeaders: {},
 		observerAuthSource: "auto",
 		observerAuthFile: null,
-		observerAuthCommand: [],
-		observerAuthTimeoutMs: 1_500,
 		observerAuthCacheTtlS: 300,
 	};
 
@@ -546,10 +489,6 @@ export function loadObserverConfig(): ObserverConfig {
 	if (typeof data.observer_auth_source === "string")
 		cfg.observerAuthSource = data.observer_auth_source;
 	if (typeof data.observer_auth_file === "string") cfg.observerAuthFile = data.observer_auth_file;
-	cfg.observerAuthTimeoutMs = parseIntSafe(
-		data.observer_auth_timeout_ms,
-		cfg.observerAuthTimeoutMs,
-	);
 	cfg.observerAuthCacheTtlS = parseIntSafe(
 		data.observer_auth_cache_ttl_s,
 		cfg.observerAuthCacheTtlS,
@@ -557,9 +496,6 @@ export function loadObserverConfig(): ObserverConfig {
 
 	const headers = coerceStringMap(data.observer_headers);
 	if (headers) cfg.observerHeaders = headers;
-
-	const authCmd = coerceCommand(data.observer_auth_command);
-	if (authCmd) cfg.observerAuthCommand = authCmd;
 
 	// claude_command: string or string[] → string[]
 	const claudeCmd = coerceObserverCommand(data.claude_command);
@@ -625,10 +561,6 @@ export function loadObserverConfig(): ObserverConfig {
 		process.env.CODEMEM_OBSERVER_MAX_TOKENS,
 		cfg.observerMaxTokens,
 	);
-	cfg.observerAuthTimeoutMs = parseIntSafe(
-		process.env.CODEMEM_OBSERVER_AUTH_TIMEOUT_MS,
-		cfg.observerAuthTimeoutMs,
-	);
 	cfg.observerAuthCacheTtlS = parseIntSafe(
 		process.env.CODEMEM_OBSERVER_AUTH_CACHE_TTL_S,
 		cfg.observerAuthCacheTtlS,
@@ -636,9 +568,6 @@ export function loadObserverConfig(): ObserverConfig {
 
 	const envHeaders = coerceStringMap(process.env.CODEMEM_OBSERVER_HEADERS);
 	if (envHeaders) cfg.observerHeaders = envHeaders;
-
-	const envAuthCmd = coerceCommand(process.env.CODEMEM_OBSERVER_AUTH_COMMAND);
-	if (envAuthCmd) cfg.observerAuthCommand = envAuthCmd;
 
 	const envClaudeCmd = coerceObserverCommand(process.env.CODEMEM_CLAUDE_COMMAND);
 	if (envClaudeCmd) cfg.claudeCommand = envClaudeCmd;
@@ -674,21 +603,16 @@ export function loadObserverConfig(): ObserverConfig {
 			Array.isArray(cfg.codexCommand) && cfg.codexCommand.length > 0 ? cfg.codexCommand : ["codex"];
 		const codexExecutable = codexCommand[0] ?? "codex";
 		const codexAuthPath = join(codememHomeDir(), ".codex", "auth.json");
-		const hasConfiguredAuthSource =
-			cfg.observerAuthSource === "file" ||
-			cfg.observerAuthSource === "command" ||
-			!!cfg.observerAuthFile ||
-			(Array.isArray(cfg.observerAuthCommand) && cfg.observerAuthCommand.length > 0);
+		const source = cfg.observerAuthSource.trim().toLowerCase();
+		const hasConfiguredAuthSource = (!!source && source !== "auto") || !!cfg.observerAuthFile;
 		if (
 			shouldAutoSelectCodexSidecar({
 				observerRuntime: cfg.observerRuntime,
 				hasAnyApiKey,
 				observerAuthSource: cfg.observerAuthSource,
 				observerAuthFile: cfg.observerAuthFile,
-				observerAuthCommand: cfg.observerAuthCommand,
-				// Skip the filesystem/PATH probes when a file/command auth source is
+				// Skip the filesystem/PATH probes when a file auth source is
 				// configured — those feed api_http and must not be hijacked.
-				hasUsableOpenCodeCache: hasConfiguredAuthSource || hasUsableOpenCodeOAuthCache(),
 				codexAvailable: !hasConfiguredAuthSource && codexCliAvailable(codexExecutable),
 				codexAuthExists: existsSync(codexAuthPath),
 			})
@@ -836,18 +760,12 @@ function resolveAnthropicEndpoint(): string {
 	return process.env.CODEMEM_ANTHROPIC_ENDPOINT ?? ANTHROPIC_MESSAGES_ENDPOINT;
 }
 
-function buildAnthropicHeaders(token: string, isOAuth: boolean): Record<string, string> {
-	const headers: Record<string, string> = {
+function buildAnthropicHeaders(token: string): Record<string, string> {
+	return {
 		"anthropic-version": ANTHROPIC_VERSION,
 		"content-type": "application/json",
+		"x-api-key": token,
 	};
-	if (isOAuth) {
-		headers.authorization = `Bearer ${token}`;
-		headers["anthropic-beta"] = "oauth-2025-04-20";
-	} else {
-		headers["x-api-key"] = token;
-	}
-	return headers;
 }
 
 function buildAnthropicPayload(
@@ -988,17 +906,6 @@ function mergeHeadersCaseInsensitive(
 	return merged;
 }
 
-function replaceHeadersCaseInsensitive(
-	target: Record<string, string>,
-	override: Record<string, string>,
-): void {
-	const merged = mergeHeadersCaseInsensitive(target, override);
-	for (const key of Object.keys(target)) {
-		delete target[key];
-	}
-	Object.assign(target, merged);
-}
-
 function buildOpenAIPayload(
 	model: string,
 	systemPrompt: string,
@@ -1132,97 +1039,6 @@ function parseOpenAIResponsesResponse(body: Record<string, unknown>): string | n
 }
 
 // ---------------------------------------------------------------------------
-// Codex consumer helpers
-// ---------------------------------------------------------------------------
-
-function resolveCodexEndpoint(): string {
-	return process.env.CODEMEM_CODEX_ENDPOINT ?? CODEX_API_ENDPOINT;
-}
-
-function buildCodexPayload(
-	model: string,
-	systemPrompt: string,
-	userPrompt: string,
-	reasoningEffort: string | null,
-	reasoningSummary: string | null,
-): Record<string, unknown> {
-	const payload: Record<string, unknown> = {
-		model,
-		instructions: systemPrompt,
-		input: [
-			{
-				role: "user",
-				content: [{ type: "input_text", text: userPrompt }],
-			},
-		],
-		store: false,
-		stream: true,
-	};
-	if (reasoningEffort || reasoningSummary) {
-		const reasoning: Record<string, unknown> = {};
-		if (reasoningEffort) reasoning.effort = reasoningEffort;
-		if (reasoningSummary) reasoning.summary = reasoningSummary;
-		payload.reasoning = reasoning;
-	}
-	return payload;
-}
-
-// ---------------------------------------------------------------------------
-// SSE stream text extraction (shared for Codex and Anthropic OAuth)
-// ---------------------------------------------------------------------------
-
-function extractTextFromSSE(
-	rawText: string,
-	extractDelta: (event: Record<string, unknown>) => string | null,
-): ObserverCallResult {
-	const parts: string[] = [];
-	const usageFields: Record<string, unknown> = {};
-	for (const line of rawText.split("\n")) {
-		if (!line.startsWith("data:")) continue;
-		const payload = line.slice(5).trim();
-		if (!payload || payload === "[DONE]") continue;
-		try {
-			const event = JSON.parse(payload) as Record<string, unknown>;
-			const delta = extractDelta(event);
-			if (delta) parts.push(delta);
-			for (const candidate of [event, event.response, event.message]) {
-				if (typeof candidate !== "object" || candidate == null || Array.isArray(candidate))
-					continue;
-				const usage = (candidate as Record<string, unknown>).usage;
-				if (typeof usage === "object" && usage != null && !Array.isArray(usage)) {
-					Object.assign(usageFields, usage);
-				}
-			}
-		} catch {
-			// skip malformed events
-		}
-	}
-	return {
-		raw: parts.length > 0 ? parts.join("").trim() : null,
-		usage: normalizeObserverUsage({ usage: usageFields }),
-	};
-}
-
-function extractCodexDelta(event: Record<string, unknown>): string | null {
-	if (event.type === "response.output_text.delta") {
-		const delta = event.delta;
-		return typeof delta === "string" && delta ? delta : null;
-	}
-	return null;
-}
-
-function extractAnthropicStreamDelta(event: Record<string, unknown>): string | null {
-	if (event.type === "content_block_delta") {
-		const delta = event.delta as Record<string, unknown> | undefined;
-		if (delta && delta.type === "text_delta") {
-			const text = delta.text;
-			return typeof text === "string" && text ? text : null;
-		}
-	}
-	return null;
-}
-
-// ---------------------------------------------------------------------------
 // nowMs helper
 // ---------------------------------------------------------------------------
 
@@ -1238,8 +1054,7 @@ function nowMs(): number {
  * LLM client for analyzing coding session transcripts and extracting memories.
  *
  * Resolves provider + auth from codemem config, then calls the LLM via fetch.
- * Supports Anthropic Messages API, OpenAI Chat Completions, Codex consumer
- * (OpenAI OAuth + SSE), and Anthropic OAuth consumer (SSE).
+ * Supports Anthropic Messages API, OpenAI APIs, and local sidecar runtimes.
  */
 export class ObserverClient {
 	readonly provider: string;
@@ -1265,8 +1080,6 @@ export class ObserverClient {
 	readonly maxOutputTokens: number;
 	readonly authSource: string;
 	readonly authFile: string | null;
-	readonly authCommand: string[];
-	readonly authTimeoutMs: number;
 	readonly authCacheTtlS: number;
 
 	/** Resolved auth material — updated on refresh. */
@@ -1285,11 +1098,6 @@ export class ObserverClient {
 	// Codex sidecar state
 	private readonly _codexCommand: string[];
 	private readonly _codexSidecarModel: string;
-
-	// OAuth consumer state
-	private _codexAccess: string | null = null;
-	private _codexAccountId: string | null = null;
-	private _anthropicOAuthAccess: string | null = null;
 
 	// Error tracking
 	private _lastErrorCode: string | null = null;
@@ -1328,7 +1136,7 @@ export class ObserverClient {
 			if (builtIn) resolved = builtIn;
 		}
 		if (!resolved) {
-			resolved = resolveOAuthProvider(null, model || DEFAULT_OPENAI_MODEL);
+			resolved = model.toLowerCase().startsWith("claude") ? "anthropic" : "openai";
 		}
 		if (
 			resolved !== "openai" &&
@@ -1473,8 +1281,6 @@ export class ObserverClient {
 				: this.maxTokens;
 		this.authSource = cfg.observerAuthSource;
 		this.authFile = cfg.observerAuthFile;
-		this.authCommand = [...cfg.observerAuthCommand];
-		this.authTimeoutMs = cfg.observerAuthTimeoutMs;
 		this.authCacheTtlS = cfg.observerAuthCacheTtlS;
 		this._observerHeaders = { ...cfg.observerHeaders };
 		this._apiKey = cfg.observerApiKey ?? null;
@@ -1487,8 +1293,6 @@ export class ObserverClient {
 		this.authAdapter = new ObserverAuthAdapter({
 			source: cfg.observerAuthSource,
 			filePath: cfg.observerAuthFile,
-			command: cfg.observerAuthCommand,
-			timeoutMs: Math.max(100, cfg.observerAuthTimeoutMs),
 			cacheTtlS: Math.max(0, cfg.observerAuthCacheTtlS),
 		});
 		this.auth = { token: null, authType: "none", source: "none" };
@@ -1498,11 +1302,7 @@ export class ObserverClient {
 		const isSidecarRuntime = this.runtime === "claude_sidecar" || this.runtime === "codex_sidecar";
 		if (!isSidecarRuntime) {
 			this._initProvider(false);
-		} else if (
-			cfg.observerAuthSource === "file" ||
-			cfg.observerAuthSource === "command" ||
-			cfg.observerAuthSource === "env"
-		) {
+		} else if (cfg.observerAuthSource === "file" || cfg.observerAuthSource === "env") {
 			// The sidecar runtimes authenticate through the local CLI and do not
 			// consult observer_auth_source, so flag the mismatch to avoid silently
 			// ignoring user config.
@@ -1541,8 +1341,6 @@ export class ObserverClient {
 			observerHeaders: { ...this._observerHeaders },
 			observerAuthSource: this.authSource,
 			observerAuthFile: this.authFile,
-			observerAuthCommand: [...this.authCommand],
-			observerAuthTimeoutMs: this.authTimeoutMs,
 			observerAuthCacheTtlS: this.authCacheTtlS,
 			claudeCommand: [...this._claudeCommand],
 			codexCommand: [...this._codexCommand],
@@ -1557,10 +1355,6 @@ export class ObserverClient {
 			method = "claude_sidecar";
 		} else if (this.runtime === "codex_sidecar") {
 			method = "codex_sidecar";
-		} else if (this._anthropicOAuthAccess) {
-			method = "anthropic_consumer";
-		} else if (this._codexAccess) {
-			method = "codex_consumer";
 		} else if (this.provider === "opencode" && this.auth.token) {
 			method = "sdk_client";
 		} else if (this.auth.token) {
@@ -1608,7 +1402,7 @@ export class ObserverClient {
 	}
 
 	private canCallOpenAIDirectWithoutAuth(): boolean {
-		return this._customBaseUrlAllowsNoAuth && !this._codexAccess && this.provider !== "anthropic";
+		return this._customBaseUrlAllowsNoAuth && this.provider !== "anthropic";
 	}
 
 	/**
@@ -1693,7 +1487,7 @@ export class ObserverClient {
 		schema: Record<string, unknown>,
 	): Promise<ObserverStructuredJsonResponse> {
 		const startedAt = nowMs();
-		if (this.provider === "openai" && this.openaiUseResponses && !this._codexAccess) {
+		if (this.provider === "openai" && this.openaiUseResponses) {
 			if (!this.auth.token && !this.canCallOpenAIDirectWithoutAuth()) {
 				this._initProvider(true);
 				if (!this.auth.token && !this.canCallOpenAIDirectWithoutAuth()) {
@@ -1747,43 +1541,38 @@ export class ObserverClient {
 		}
 
 		if (this.provider === "anthropic") {
-			// Anthropic OAuth consumer uses SSE streaming which may not support
-			// structured output_config reliably. Fall back to observe() for OAuth.
-			// Direct API key path supports non-streaming structured outputs.
-			if (!this._anthropicOAuthAccess) {
-				if (!this.auth.token) {
-					this._initProvider(true);
-				}
-				if (this.auth.token) {
-					const headers = buildAnthropicHeaders(this.auth.token, false);
-					const mergedHeaders = mergeHeadersCaseInsensitive(
-						headers,
-						renderObserverHeaders(this._observerHeaders, this.auth),
-					);
-					const call = await this._fetchJSON(
-						resolveAnthropicEndpoint(),
-						mergedHeaders,
-						buildAnthropicStructuredPayload(
-							this.model,
-							systemPrompt,
-							userPrompt,
-							this.maxTokens,
-							schema,
-						),
-						{ parseResponse: parseAnthropicResponse, providerLabel: "Anthropic" },
-					);
-					return {
-						raw: call.raw,
-						parsed: call.raw ? tryParseJSON(call.raw) : null,
-						provider: this.provider,
-						model: this.model,
-						elapsedMs: Math.max(0, nowMs() - startedAt),
-						usage: call.usage,
-						usedStructuredOutputs: true,
-					};
-				}
+			if (!this.auth.token) {
+				this._initProvider(true);
 			}
-			// OAuth or no token — fall through to observe() fallback below
+			if (this.auth.token) {
+				const headers = buildAnthropicHeaders(this.auth.token);
+				const mergedHeaders = mergeHeadersCaseInsensitive(
+					headers,
+					renderObserverHeaders(this._observerHeaders, this.auth),
+				);
+				const call = await this._fetchJSON(
+					resolveAnthropicEndpoint(),
+					mergedHeaders,
+					buildAnthropicStructuredPayload(
+						this.model,
+						systemPrompt,
+						userPrompt,
+						this.maxTokens,
+						schema,
+					),
+					{ parseResponse: parseAnthropicResponse, providerLabel: "Anthropic" },
+				);
+				return {
+					raw: call.raw,
+					parsed: call.raw ? tryParseJSON(call.raw) : null,
+					provider: this.provider,
+					model: this.model,
+					elapsedMs: Math.max(0, nowMs() - startedAt),
+					usage: call.usage,
+					usedStructuredOutputs: true,
+				};
+			}
+			// No token — fall through to observe() so it reports the standard auth error.
 		}
 
 		const fallback = await this.observe(systemPrompt, userPrompt);
@@ -1803,23 +1592,6 @@ export class ObserverClient {
 	// -----------------------------------------------------------------------
 
 	private _initProvider(forceRefresh: boolean): void {
-		this._codexAccess = null;
-		this._codexAccountId = null;
-		this._anthropicOAuthAccess = null;
-
-		const oauthCache = loadOpenCodeOAuthCache();
-		let oauthAccess: string | null = null;
-		let oauthProvider: string | null = null;
-
-		if (this.provider === "openai" || this.provider === "anthropic") {
-			oauthProvider = resolveOAuthProvider(this.provider, this.model);
-			oauthAccess = extractOAuthAccess(oauthCache, oauthProvider);
-			const oauthExpires = extractOAuthExpires(oauthCache, oauthProvider);
-			if (oauthAccess && oauthExpires != null && oauthExpires <= nowMs()) {
-				oauthAccess = null;
-			}
-		}
-
 		if (this.provider !== "openai" && this.provider !== "anthropic") {
 			// Custom provider — resolve base URL, model ID, and headers from OpenCode config
 			const providerConfig = getOpenCodeProviderConfig(this.provider);
@@ -1841,9 +1613,7 @@ export class ObserverClient {
 			const effectiveBaseUrl = this._customBaseUrl;
 			if (!effectiveBaseUrl) return;
 
-			const cachedApiKey =
-				this.provider === "opencode" ? extractProviderApiKey(oauthCache, this.provider) : null;
-			const apiKey = getProviderApiKey(providerConfig) || this._apiKey || cachedApiKey;
+			const apiKey = getProviderApiKey(providerConfig) || this._apiKey;
 
 			this.auth = this.authAdapter.resolve({
 				explicitToken: apiKey,
@@ -1854,12 +1624,8 @@ export class ObserverClient {
 			this.auth = this.authAdapter.resolve({
 				explicitToken: this._apiKey,
 				envTokens: [process.env.ANTHROPIC_API_KEY ?? ""],
-				oauthToken: oauthAccess,
 				forceRefresh,
 			});
-			if (this.auth.source === "oauth" && oauthAccess) {
-				this._anthropicOAuthAccess = oauthAccess;
-			}
 		} else {
 			// OpenAI
 			this.auth = this.authAdapter.resolve({
@@ -1869,13 +1635,8 @@ export class ObserverClient {
 					process.env.OPENAI_API_KEY ?? "",
 					process.env.CODEX_API_KEY ?? "",
 				],
-				oauthToken: oauthAccess,
 				forceRefresh,
 			});
-			if (this.auth.source === "oauth" && oauthAccess) {
-				this._codexAccess = oauthAccess;
-				this._codexAccountId = extractOAuthAccountId(oauthCache, oauthProvider ?? "openai");
-			}
 		}
 	}
 
@@ -1894,21 +1655,9 @@ export class ObserverClient {
 			return emptyCallResult(await this._callCodexSidecar(systemPrompt, userPrompt));
 		}
 
-		// Codex consumer path (OpenAI OAuth)
-		if (this._codexAccess) {
-			return this._callCodexConsumer(systemPrompt, userPrompt);
-		}
-
-		// Anthropic OAuth consumer path
-		if (this._anthropicOAuthAccess) {
-			return this._callAnthropicConsumer(systemPrompt, userPrompt);
-		}
-
 		// Refresh if we have no token
 		if (!this.auth.token && !this.canCallOpenAIDirectWithoutAuth()) {
 			this._initProvider(true);
-			if (this._codexAccess) return this._callCodexConsumer(systemPrompt, userPrompt);
-			if (this._anthropicOAuthAccess) return this._callAnthropicConsumer(systemPrompt, userPrompt);
 			if (!this.auth.token && !this.canCallOpenAIDirectWithoutAuth()) {
 				this._setLastError(`${capitalize(this.provider)} credentials are missing.`, "auth_missing");
 				return emptyCallResult(null);
@@ -1932,7 +1681,7 @@ export class ObserverClient {
 	): Promise<ObserverCallResult> {
 		const url = resolveAnthropicEndpoint();
 		const token = this.auth.token ?? "";
-		const headers = buildAnthropicHeaders(token, false);
+		const headers = buildAnthropicHeaders(token);
 		const mergedHeaders = mergeHeadersCaseInsensitive(
 			headers,
 			renderObserverHeaders(this._observerHeaders, this.auth),
@@ -1982,88 +1731,6 @@ export class ObserverClient {
 		return this._fetchJSON(url, mergedHeaders, payload, {
 			parseResponse: this.openaiUseResponses ? parseOpenAIResponsesResponse : parseOpenAIResponse,
 			providerLabel: capitalize(this.provider),
-		});
-	}
-
-	// -----------------------------------------------------------------------
-	// Codex consumer (OpenAI OAuth + SSE streaming)
-	// -----------------------------------------------------------------------
-
-	private async _callCodexConsumer(
-		systemPrompt: string,
-		userPrompt: string,
-	): Promise<ObserverCallResult> {
-		if (!this._codexAccess) return emptyCallResult(null);
-
-		const headers = buildCodexHeaders(this._codexAccess, this._codexAccountId);
-		if (Object.keys(this._observerHeaders).length > 0) {
-			const codexAuth: ObserverAuthMaterial = {
-				token: this._codexAccess,
-				authType: "bearer",
-				source: this.auth.source,
-			};
-			replaceHeadersCaseInsensitive(
-				headers,
-				renderObserverHeaders(this._observerHeaders, codexAuth),
-			);
-		}
-		headers["content-type"] = "application/json";
-
-		const payload = buildCodexPayload(
-			this.model,
-			systemPrompt,
-			userPrompt,
-			this.reasoningEffort,
-			this.reasoningSummary,
-		);
-		const url = resolveCodexEndpoint();
-
-		return this._fetchSSE(url, headers, payload, extractCodexDelta, {
-			providerLabel: "OpenAI",
-			authErrorMessage: "OpenAI authentication failed. Refresh credentials and retry.",
-		});
-	}
-
-	// -----------------------------------------------------------------------
-	// Anthropic OAuth consumer (SSE streaming)
-	// -----------------------------------------------------------------------
-
-	private async _callAnthropicConsumer(
-		systemPrompt: string,
-		userPrompt: string,
-	): Promise<ObserverCallResult> {
-		if (!this._anthropicOAuthAccess) return emptyCallResult(null);
-
-		const headers = buildAnthropicHeaders(this._anthropicOAuthAccess, true);
-		if (Object.keys(this._observerHeaders).length > 0) {
-			const anthropicAuth: ObserverAuthMaterial = {
-				token: this._anthropicOAuthAccess,
-				authType: "bearer",
-				source: this.auth.source,
-			};
-			replaceHeadersCaseInsensitive(
-				headers,
-				renderObserverHeaders(this._observerHeaders, anthropicAuth),
-			);
-		}
-
-		// Append ?beta=true to the endpoint
-		const baseEndpoint = resolveAnthropicEndpoint();
-		const endpointUrl = new URL(baseEndpoint);
-		endpointUrl.searchParams.set("beta", "true");
-		const url = endpointUrl.toString();
-
-		const payload: Record<string, unknown> = {
-			model: normalizeAnthropicModel(this.model),
-			max_tokens: this.maxTokens,
-			stream: true,
-			messages: [{ role: "user", content: userPrompt }],
-			system: systemPrompt,
-		};
-
-		return this._fetchSSE(url, headers, payload, extractAnthropicStreamDelta, {
-			providerLabel: "Anthropic",
-			authErrorMessage: "Anthropic authentication failed. Refresh credentials and retry.",
 		});
 	}
 
@@ -2532,53 +2199,6 @@ export class ObserverClient {
 				);
 			}
 			return { raw: result, usage: normalizeObserverUsage(body) };
-		} catch (err) {
-			if (err instanceof ObserverAuthError) throw err;
-			this._setLastError(
-				`${opts.providerLabel} processing failed during observer inference.`,
-				"observer_call_failed",
-			);
-			return emptyCallResult(null);
-		}
-	}
-
-	// -----------------------------------------------------------------------
-	// Shared fetch: SSE streaming response
-	// -----------------------------------------------------------------------
-
-	private async _fetchSSE(
-		url: string,
-		headers: Record<string, string>,
-		payload: Record<string, unknown>,
-		extractDelta: (event: Record<string, unknown>) => string | null,
-		opts: { providerLabel: string; authErrorMessage: string },
-	): Promise<ObserverCallResult> {
-		try {
-			const response = await fetch(url, {
-				method: "POST",
-				headers,
-				body: JSON.stringify(payload),
-				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-			});
-
-			if (!response.ok) {
-				// Consume body to avoid dangling connection
-				await response.text().catch(() => "");
-				if (isAuthStatus(response.status)) {
-					this._setLastError(opts.authErrorMessage, "auth_failed");
-					throw new ObserverAuthError(`${opts.providerLabel} auth error: ${response.status}`);
-				}
-				this._setLastError(
-					`${opts.providerLabel} request failed during observer processing.`,
-					"provider_request_failed",
-				);
-				return emptyCallResult(null);
-			}
-
-			// Read full response body as text and parse SSE events. Token usage is
-			// collected only from parsed events, never inferred from response length.
-			const rawText = await response.text();
-			return extractTextFromSSE(rawText, extractDelta);
 		} catch (err) {
 			if (err instanceof ObserverAuthError) throw err;
 			this._setLastError(

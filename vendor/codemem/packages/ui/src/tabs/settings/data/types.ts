@@ -22,8 +22,6 @@ export type SettingsFormState = {
 	observerRuntime: string;
 	observerAuthSource: string;
 	observerAuthFile: string;
-	observerAuthCommand: string;
-	observerAuthTimeoutMs: string;
 	observerAuthCacheTtlS: string;
 	observerHeaders: string;
 	observerMaxChars: string;
@@ -76,7 +74,6 @@ export type SettingsPanelProps = {
 	observerMaxCharsDefault: string;
 	providerOptions: Array<{ label: string; value: string }>;
 	showAuthFile: boolean;
-	showAuthCommand: boolean;
 	showTieredRouting: boolean;
 	hiddenUnlessAdvanced: () => boolean;
 	onTextInput: <K extends keyof SettingsFormState>(

@@ -63,7 +63,6 @@ function SettingsDialogContent() {
 	const values = settingsState.renderState.values;
 	const observerMaxCharsDefault = String(state.configDefaults?.observer_max_chars || "");
 	const showAuthFile = values.observerAuthSource === "file";
-	const showAuthCommand = values.observerAuthSource === "command";
 	const showTieredRouting = values.observerTierRoutingEnabled;
 	const providerOptions = Array.from(
 		new Set(
@@ -80,7 +79,6 @@ function SettingsDialogContent() {
 		observerMaxCharsDefault,
 		providerOptions,
 		showAuthFile,
-		showAuthCommand,
 		showTieredRouting,
 		hiddenUnlessAdvanced,
 		onTextInput,

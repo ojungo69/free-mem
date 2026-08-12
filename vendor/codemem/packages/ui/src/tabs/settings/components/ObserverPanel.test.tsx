@@ -35,7 +35,6 @@ function props(): SettingsPanelProps & { observerStatusBannerSlot: null } {
 		observerMaxCharsDefault: "12000",
 		providerOptions: [],
 		showAuthFile: false,
-		showAuthCommand: false,
 		showTieredRouting: false,
 		hiddenUnlessAdvanced: () => false,
 		onTextInput: () => vi.fn(),

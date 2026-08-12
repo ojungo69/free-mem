@@ -3,10 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	buildTieredObserverConfig,
-	type ExtractionReplayTierRoutingDecision,
-} from "./extraction-tier-routing.js";
-import {
 	isCodexSidecarAuthError,
 	isCodexSidecarModelError,
 	isSidecarAuthError,
@@ -47,8 +43,6 @@ describe("loadObserverConfig", () => {
 		"CODEMEM_OBSERVER_MAX_OUTPUT_TOKENS",
 		"CODEMEM_OBSERVER_AUTH_SOURCE",
 		"CODEMEM_OBSERVER_AUTH_FILE",
-		"CODEMEM_OBSERVER_AUTH_COMMAND",
-		"CODEMEM_OBSERVER_AUTH_TIMEOUT_MS",
 		"CODEMEM_OBSERVER_AUTH_CACHE_TTL_S",
 		"CODEMEM_OBSERVER_MAX_CHARS",
 		"CODEMEM_OBSERVER_MAX_TOKENS",
@@ -84,7 +78,6 @@ describe("loadObserverConfig", () => {
 		expect(cfg.observerMaxTokens).toBe(4_000);
 		expect(cfg.observerTemperature).toBe(0.2);
 		expect(cfg.observerAuthSource).toBe("auto");
-		expect(cfg.observerAuthCommand).toEqual([]);
 		expect(cfg.observerHeaders).toEqual({});
 	});
 
@@ -268,8 +261,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.tierRoutingEnabled).toBe(true);
@@ -289,8 +280,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.tierRoutingEnabled).toBe(false);
@@ -310,8 +299,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "none",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.tierRoutingEnabled).toBe(false);
@@ -331,8 +318,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "none",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.tierRoutingEnabled).toBe(false);
@@ -351,8 +336,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.tierRoutingEnabled).toBe(true);
@@ -371,8 +354,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.provider).toBe("openai");
@@ -393,8 +374,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.temperature).toBe(0.2);
@@ -413,8 +392,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.provider).toBe("anthropic");
@@ -438,8 +415,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.model).toBe("gpt-4o");
@@ -463,8 +438,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.openaiUseResponses).toBe(true);
@@ -486,8 +459,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.openaiUseResponses).toBe(true);
@@ -508,8 +479,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.simpleProvider).toBe("anthropic");
@@ -532,15 +501,11 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "file",
 				observerAuthFile: "/tmp/observer-auth.json",
-				observerAuthCommand: ["security", "find-generic-password"],
-				observerAuthTimeoutMs: 2500,
 				observerAuthCacheTtlS: 120,
 			});
 			const config = client.toConfig();
 			expect(config.observerAuthSource).toBe("file");
 			expect(config.observerAuthFile).toBe("/tmp/observer-auth.json");
-			expect(config.observerAuthCommand).toEqual(["security", "find-generic-password"]);
-			expect(config.observerAuthTimeoutMs).toBe(2500);
 			expect(config.observerAuthCacheTtlS).toBe(120);
 		});
 
@@ -557,8 +522,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.provider).toBe("anthropic");
@@ -570,12 +533,6 @@ describe("ObserverClient", () => {
 			const tmpDir = mkdtempSync(join(tmpdir(), "codemem-opencode-test-"));
 			const configDir = join(tmpDir, ".config", "opencode");
 			mkdirSync(configDir, { recursive: true });
-			mkdirSync(join(tmpDir, ".local", "share", "opencode"), { recursive: true });
-			const cachedToken = fixtureToken("opencode-inferred-provider");
-			writeFileSync(
-				join(tmpDir, ".local", "share", "opencode", "auth.json"),
-				JSON.stringify({ opencode: { type: "api", key: cachedToken } }),
-			);
 			try {
 				writeFileSync(
 					join(configDir, "opencode.jsonc"),
@@ -593,13 +550,11 @@ describe("ObserverClient", () => {
 					observerHeaders: {},
 					observerAuthSource: "auto",
 					observerAuthFile: null,
-					observerAuthCommand: [],
-					observerAuthTimeoutMs: 1500,
 					observerAuthCacheTtlS: 300,
 				});
 				expect(client.provider).toBe("opencode");
 				expect(client.model).toBe("gpt-5.4-mini");
-				expect(client.getStatus().auth.hasToken).toBe(true);
+				expect(client.getStatus().auth.hasToken).toBe(false);
 			} finally {
 				if (prevHome == null) delete process.env.HOME;
 				else process.env.HOME = prevHome;
@@ -620,88 +575,12 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 
 			expect((client as unknown as { _customBaseUrl: string | null })._customBaseUrl).toBe(
 				"https://proxy.example.test/v1",
 			);
-		});
-
-		it("prefers explicit observer api key over cached opencode auth", () => {
-			const prevHome = process.env.HOME;
-			const tmpDir = mkdtempSync(join(tmpdir(), "codemem-opencode-override-test-"));
-			mkdirSync(join(tmpDir, ".local", "share", "opencode"), { recursive: true });
-			const cachedToken = fixtureToken("opencode-cached");
-			const explicitToken = fixtureToken("opencode-explicit");
-			writeFileSync(
-				join(tmpDir, ".local", "share", "opencode", "auth.json"),
-				JSON.stringify({ opencode: { type: "api", key: cachedToken } }),
-			);
-			try {
-				process.env.HOME = tmpDir;
-				const client = new ObserverClient({
-					observerProvider: "opencode",
-					observerModel: "opencode/gpt-5.4-mini",
-					observerRuntime: null,
-					observerApiKey: explicitToken,
-					observerBaseUrl: null,
-					observerMaxChars: 12_000,
-					observerMaxTokens: 4_000,
-					observerHeaders: {},
-					observerAuthSource: "auto",
-					observerAuthFile: null,
-					observerAuthCommand: [],
-					observerAuthTimeoutMs: 1500,
-					observerAuthCacheTtlS: 300,
-				});
-				expect((client as unknown as { auth: { token: string | null } }).auth.token).toBe(
-					explicitToken,
-				);
-			} finally {
-				if (prevHome == null) delete process.env.HOME;
-				else process.env.HOME = prevHome;
-				rmSync(tmpDir, { recursive: true, force: true });
-			}
-		});
-
-		it("does not use auth cache API keys for arbitrary custom providers", () => {
-			const prevHome = process.env.HOME;
-			const tmpDir = mkdtempSync(join(tmpdir(), "codemem-custom-provider-test-"));
-			const configDir = join(tmpDir, ".config", "opencode");
-			mkdirSync(configDir, { recursive: true });
-			mkdirSync(join(tmpDir, ".local", "share", "opencode"), { recursive: true });
-			const ignoredCachedToken = fixtureToken("ignored-custom-provider-cache");
-			writeFileSync(join(configDir, "opencode.jsonc"), JSON.stringify({ provider: { acme: {} } }));
-			writeFileSync(
-				join(tmpDir, ".local", "share", "opencode", "auth.json"),
-				JSON.stringify({ acme: { type: "api", key: ignoredCachedToken } }),
-			);
-			try {
-				process.env.HOME = tmpDir;
-				const client = new ObserverClient({
-					observerProvider: "acme",
-					observerModel: "acme/custom-model",
-					observerRuntime: null,
-					observerApiKey: null,
-					observerBaseUrl: null,
-					observerMaxChars: 12_000,
-					observerMaxTokens: 4_000,
-					observerHeaders: {},
-					observerAuthSource: "auto",
-					observerAuthFile: null,
-					observerAuthCommand: [],
-					observerAuthTimeoutMs: 1500,
-					observerAuthCacheTtlS: 300,
-				});
-				expect(client.getStatus().auth.hasToken).toBe(false);
-			} finally {
-				if (prevHome == null) delete process.env.HOME;
-				else process.env.HOME = prevHome;
-				rmSync(tmpDir, { recursive: true, force: true });
-			}
 		});
 	});
 
@@ -718,8 +597,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "none",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			const status = client.getStatus();
@@ -743,8 +620,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "none",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			// No credentials → auth_missing error after observe attempt
@@ -767,76 +642,11 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			const status = client.getStatus();
 			expect(status.auth.hasToken).toBe(true);
 			expect(status.auth.type).toBe("api_direct");
-		});
-
-		it("does not report responses_api runtime when OpenAI OAuth codex transport is active", () => {
-			const client = new ObserverClient({
-				observerProvider: "openai",
-				observerModel: "gpt-5.4",
-				observerRuntime: null,
-				observerApiKey: null,
-				observerBaseUrl: null,
-				observerTemperature: 0.2,
-				observerOpenAIUseResponses: true,
-				observerReasoningEffort: "low",
-				observerReasoningSummary: "auto",
-				observerMaxOutputTokens: 12000,
-				observerMaxChars: 12_000,
-				observerMaxTokens: 4_000,
-				observerHeaders: {},
-				observerAuthSource: "auto",
-				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
-				observerAuthCacheTtlS: 300,
-			});
-			(client as unknown as { _codexAccess: string | null })._codexAccess = "oauth-token";
-			const status = client.getStatus();
-			expect(status.auth.type).toBe("codex_consumer");
-			expect(status.runtime).toBe("api_http");
-		});
-
-		it("reports sdk_client auth type for opencode cached key auth", () => {
-			const prevHome = process.env.HOME;
-			const tmpDir = mkdtempSync(join(tmpdir(), "codemem-opencode-auth-test-"));
-			mkdirSync(join(tmpDir, ".local", "share", "opencode"), { recursive: true });
-			const cachedToken = fixtureToken("opencode-sdk-client");
-			writeFileSync(
-				join(tmpDir, ".local", "share", "opencode", "auth.json"),
-				JSON.stringify({ opencode: { type: "api", key: cachedToken } }),
-			);
-			try {
-				process.env.HOME = tmpDir;
-				const client = new ObserverClient({
-					observerProvider: "opencode",
-					observerModel: "opencode/gpt-5.4-mini",
-					observerRuntime: null,
-					observerApiKey: null,
-					observerBaseUrl: null,
-					observerMaxChars: 12_000,
-					observerMaxTokens: 4_000,
-					observerHeaders: {},
-					observerAuthSource: "auto",
-					observerAuthFile: null,
-					observerAuthCommand: [],
-					observerAuthTimeoutMs: 1500,
-					observerAuthCacheTtlS: 300,
-				});
-				const status = client.getStatus();
-				expect(status.auth.hasToken).toBe(true);
-				expect(status.auth.type).toBe("sdk_client");
-			} finally {
-				if (prevHome == null) delete process.env.HOME;
-				else process.env.HOME = prevHome;
-				rmSync(tmpDir, { recursive: true, force: true });
-			}
 		});
 	});
 
@@ -853,8 +663,6 @@ describe("ObserverClient", () => {
 				observerHeaders: {},
 				observerAuthSource: "none",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(() => client.refreshAuth()).not.toThrow();
@@ -885,8 +693,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 	}
@@ -976,8 +782,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 			observerExplicitConfigKeys: ["observerOpenAIUseResponses"],
 		});
@@ -1016,8 +820,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 			observerExplicitConfigKeys: ["observerOpenAIUseResponses"],
 		});
@@ -1113,94 +915,6 @@ describe("ObserverClient.observe()", () => {
 		expect(noReasoningClient.temperature).toBe(0.2);
 	});
 
-	it.each([
-		{ tier: "simple", expectedModel: "gpt-5.6-luna" },
-		{ tier: "rich", expectedModel: "gpt-5.6-terra" },
-	] as const)("sends the shipped $tier tier over OAuth codex_consumer", async (scenario) => {
-		const prevHome = process.env.HOME;
-		const savedApiKeys = {
-			OPENCODE_API_KEY: process.env.OPENCODE_API_KEY,
-			OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-			CODEX_API_KEY: process.env.CODEX_API_KEY,
-		};
-		delete process.env.OPENCODE_API_KEY;
-		delete process.env.OPENAI_API_KEY;
-		delete process.env.CODEX_API_KEY;
-		const tmpDir = mkdtempSync(join(tmpdir(), `codemem-${scenario.tier}-oauth-tier-test-`));
-		mkdirSync(join(tmpDir, ".local", "share", "opencode"), { recursive: true });
-		writeFileSync(
-			join(tmpDir, ".local", "share", "opencode", "auth.json"),
-			JSON.stringify({
-				openai: {
-					access: "oauth-test-token",
-					accountId: "acct-test",
-					expires: Date.now() + 60_000,
-				},
-			}),
-		);
-		let capturedUrl: string | undefined;
-		let capturedBody: Record<string, unknown> | undefined;
-		globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-			capturedUrl = String(input);
-			capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-			return new Response(
-				['data: {"type":"response.output_text.delta","delta":"ok"}', ""].join("\n\n"),
-				{ status: 200, headers: { "content-type": "text/event-stream" } },
-			);
-		}) as typeof globalThis.fetch;
-		const decision: ExtractionReplayTierRoutingDecision = {
-			tier: scenario.tier,
-			reasons: ["test selection"],
-			observer: {},
-		};
-
-		try {
-			process.env.HOME = tmpDir;
-			const config = buildTieredObserverConfig(
-				{
-					observerProvider: "openai",
-					observerModel: "gpt-5.4-mini",
-					observerRuntime: "api_http",
-					observerApiKey: null,
-					observerBaseUrl: null,
-					observerTemperature: 0.2,
-					observerSimpleModel: null,
-					observerRichModel: null,
-					observerReasoningEffort: null,
-					observerRichReasoningEffort: null,
-					observerMaxChars: 12_000,
-					observerMaxTokens: 4_000,
-					observerHeaders: {},
-					observerAuthSource: "auto",
-					observerAuthFile: null,
-					observerAuthCommand: [],
-					observerAuthTimeoutMs: 1_500,
-					observerAuthCacheTtlS: 300,
-					observerExplicitConfigKeys: [],
-				},
-				decision,
-			);
-
-			const client = new ObserverClient(config);
-			await client.observe("system", "user");
-
-			expect(client.getStatus().auth.type).toBe("codex_consumer");
-			expect(capturedUrl).toContain("chatgpt.com/backend-api/codex/responses");
-			expect(capturedBody?.model).toBe(scenario.expectedModel);
-			expect(capturedBody?.reasoning).toEqual({ effort: "medium" });
-			expect(capturedBody?.max_output_tokens).toBeUndefined();
-			expect(capturedBody?.temperature).toBeUndefined();
-		} finally {
-			if (prevHome == null) delete process.env.HOME;
-			else process.env.HOME = prevHome;
-			for (const [key, value] of Object.entries(savedApiKeys)) {
-				if (value === undefined) delete process.env[key];
-				else process.env[key] = value;
-			}
-			rmSync(tmpDir, { recursive: true, force: true });
-		}
-	});
-
 	it("normalizes unpaired UTF-16 surrogates after prompt clipping", async () => {
 		const apiKey = fixtureToken("openai-well-formed-unicode");
 		let capturedInput: Array<{ role: string; content: Array<{ text: string }> }> = [];
@@ -1284,8 +998,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "none",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 
@@ -1328,8 +1040,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 			observerExplicitConfigKeys: ["observerOpenAIUseResponses"],
 		});
@@ -1389,8 +1099,6 @@ describe("ObserverClient.observe()", () => {
 				observerHeaders: {},
 				observerAuthSource: "none",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 			expect(client.requestedModel).toBe("work/fast");
@@ -1427,8 +1135,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "none",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 
@@ -1466,8 +1172,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "none",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 
@@ -1532,8 +1236,6 @@ describe("ObserverClient.observe()", () => {
 				observerHeaders: {},
 				observerAuthSource: "auto",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			});
 
@@ -1579,8 +1281,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 
@@ -1622,70 +1322,6 @@ describe("ObserverClient.observe()", () => {
 		expect(result.raw).toBe("retry success");
 	});
 
-	it("passes configured reasoning overrides to the codex consumer request", async () => {
-		const prevHome = process.env.HOME;
-		const tmpDir = mkdtempSync(join(tmpdir(), "codemem-codex-consumer-test-"));
-		mkdirSync(join(tmpDir, ".local", "share", "opencode"), { recursive: true });
-		writeFileSync(
-			join(tmpDir, ".local", "share", "opencode", "auth.json"),
-			JSON.stringify({
-				openai: {
-					access: "oauth-test-token",
-					accountId: "acct-test",
-					expires: Date.now() + 60_000,
-				},
-			}),
-		);
-
-		let capturedBody: Record<string, unknown> | undefined;
-		globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
-			capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-			return new Response(
-				[
-					'data: {"type":"response.output_text.delta","delta":"<summary><request>ok</request></summary>"}',
-					'data: {"type":"response.completed","response":{"usage":{"input_tokens":211,"output_tokens":37,"total_tokens":248}}}',
-					"",
-				].join("\n\n"),
-				{ status: 200, headers: { "content-type": "text/event-stream" } },
-			);
-		}) as typeof globalThis.fetch;
-
-		try {
-			process.env.HOME = tmpDir;
-			const client = new ObserverClient({
-				observerProvider: "openai",
-				observerModel: "gpt-5.4-mini",
-				observerRuntime: null,
-				observerApiKey: null,
-				observerBaseUrl: null,
-				observerReasoningEffort: "medium",
-				observerReasoningSummary: "auto",
-				observerMaxChars: 12_000,
-				observerMaxTokens: 4_000,
-				observerHeaders: {},
-				observerAuthSource: "auto",
-				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
-				observerAuthCacheTtlS: 300,
-			});
-
-			const result = await client.observe("SYSTEM XML CONTRACT", "USER SESSION TRANSCRIPT");
-
-			expect(client.getStatus().auth.type).toBe("codex_consumer");
-			expect(capturedBody?.instructions).toBe("SYSTEM XML CONTRACT");
-			expect(capturedBody?.reasoning).toEqual({
-				effort: "medium",
-				summary: "auto",
-			});
-			expect(result.usage).toEqual({ inputTokens: 211, outputTokens: 37, totalTokens: 248 });
-		} finally {
-			if (prevHome == null) delete process.env.HOME;
-			else process.env.HOME = prevHome;
-			rmSync(tmpDir, { recursive: true, force: true });
-		}
-	});
-
 	it("returns null raw when no credentials available", async () => {
 		const client = new ObserverClient({
 			observerProvider: "openai",
@@ -1698,8 +1334,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "none",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 
@@ -1719,8 +1353,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 		const command = (
@@ -1742,8 +1374,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 		(
@@ -1779,8 +1409,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 		(
@@ -1812,8 +1440,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 			claudeCommand: ["/nonexistent/claude-binary-that-does-not-exist"],
 		});
@@ -1863,8 +1489,6 @@ describe("ObserverClient.observe()", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 		});
 		let calls = 0;
@@ -1928,8 +1552,6 @@ function makeCodexSidecarClient(overrides?: { model?: string | null }): Observer
 		observerHeaders: {},
 		observerAuthSource: "auto",
 		observerAuthFile: null,
-		observerAuthCommand: [],
-		observerAuthTimeoutMs: 1500,
 		observerAuthCacheTtlS: 300,
 	});
 }
@@ -2084,8 +1706,6 @@ describe("ObserverClient.observe() — codex_sidecar real spawn", () => {
 			observerHeaders: {},
 			observerAuthSource: "auto",
 			observerAuthFile: null,
-			observerAuthCommand: [],
-			observerAuthTimeoutMs: 1500,
 			observerAuthCacheTtlS: 300,
 			codexCommand: [process.execPath, scriptPath],
 		});
@@ -2160,8 +1780,6 @@ describe("shouldAutoSelectCodexSidecar", () => {
 		hasAnyApiKey: false,
 		observerAuthSource: "auto" as string | null,
 		observerAuthFile: null as string | null,
-		observerAuthCommand: [] as string[] | null,
-		hasUsableOpenCodeCache: false,
 		codexAvailable: true,
 		codexAuthExists: true,
 	};
@@ -2180,26 +1798,14 @@ describe("shouldAutoSelectCodexSidecar", () => {
 
 	it("respects a configured file auth source", () => {
 		expect(shouldAutoSelectCodexSidecar({ ...base, observerAuthSource: "file" })).toBe(false);
-	});
-
-	it("respects a configured command auth source", () => {
-		expect(shouldAutoSelectCodexSidecar({ ...base, observerAuthSource: "command" })).toBe(false);
+		expect(shouldAutoSelectCodexSidecar({ ...base, observerAuthSource: "none" })).toBe(false);
+		expect(shouldAutoSelectCodexSidecar({ ...base, observerAuthSource: "retired" })).toBe(false);
 	});
 
 	it("respects an explicit auth file path", () => {
 		expect(shouldAutoSelectCodexSidecar({ ...base, observerAuthFile: "~/.tokens/obs" })).toBe(
 			false,
 		);
-	});
-
-	it("respects a configured auth command", () => {
-		expect(shouldAutoSelectCodexSidecar({ ...base, observerAuthCommand: ["op", "read"] })).toBe(
-			false,
-		);
-	});
-
-	it("yields to a usable OpenCode OAuth cache", () => {
-		expect(shouldAutoSelectCodexSidecar({ ...base, hasUsableOpenCodeCache: true })).toBe(false);
 	});
 
 	it("requires the codex CLI to be available", () => {

@@ -36,10 +36,6 @@ export function formStateFromPayload(payload: ConfigPayload): SettingsFormState 
 	const codexCommand = Array.isArray(codexCommandValue)
 		? codexCommandValue.filter((item): item is string => typeof item === "string")
 		: [];
-	const authCommandValue = effectiveOrConfigured(config, effective, "observer_auth_command");
-	const authCommand = Array.isArray(authCommandValue)
-		? authCommandValue.filter((item): item is string => typeof item === "string")
-		: [];
 
 	return {
 		claudeCommand: claudeCommand.length ? JSON.stringify(claudeCommand, null, 2) : "",
@@ -81,10 +77,6 @@ export function formStateFromPayload(payload: ConfigPayload): SettingsFormState 
 		observerAuthSource:
 			asInputString(effectiveOrConfigured(config, effective, "observer_auth_source")) || "auto",
 		observerAuthFile: asInputString(effectiveOrConfigured(config, effective, "observer_auth_file")),
-		observerAuthCommand: authCommand.length ? JSON.stringify(authCommand, null, 2) : "",
-		observerAuthTimeoutMs: asInputString(
-			effectiveOrConfigured(config, effective, "observer_auth_timeout_ms"),
-		),
 		observerAuthCacheTtlS: asInputString(
 			effectiveOrConfigured(config, effective, "observer_auth_cache_ttl_s"),
 		),

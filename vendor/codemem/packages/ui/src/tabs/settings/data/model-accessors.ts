@@ -28,7 +28,7 @@ export function getTieredRoutingHelperText(values: SettingsFormState): string {
 	if (!values.observerTierRoutingEnabled) {
 		return "Off: codemem uses the base observer settings from the Connection tab for all batches. Explicit user settings always win over built-in routing defaults.";
 	}
-	return "On: codemem routes simpler batches to Luna and richer batches to Terra with medium reasoning by default. Official OpenAI and OAuth Codex consumer requests always use Responses. The observer_openai_use_responses=false compatibility setting selects chat completions only for an explicitly configured custom OpenAI-compatible base URL. Sidecar runtimes route both tiers through their local CLI.";
+	return "On: codemem routes simpler batches to Luna and richer batches to Terra with medium reasoning by default. Official OpenAI requests always use Responses. The observer_openai_use_responses=false compatibility setting selects chat completions only for an explicitly configured custom OpenAI-compatible base URL. Sidecar runtimes route both tiers through their local CLI.";
 }
 
 export function getObserverModelLabel(values: SettingsFormState): string {

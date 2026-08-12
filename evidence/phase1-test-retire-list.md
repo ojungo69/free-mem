@@ -3,6 +3,7 @@
 日付: 2026-08-13
 baseline: `evidence/phase1-test-baseline-pre.txt` (`9deb8e2`, SHA-256 `525348b0b36e23bb5c1ccbfa51b000eb4a2f9b6f2c8a4f5a25a2e88ed0949f79`)
 post-A7: `f1e84cf` / `/tmp/free-mem-phase1-post-t028.json` (SHA-256 `b475b510a9ba231e2cc58f62ff26a41c5cfcb5b85758c81ffe5593c24d89926c`)
+post-T030: `/tmp/free-mem-phase1-post-t030-final.json` (SHA-256 `3b84e9d1f62a43ab6b00cef098ce475a24c7f9b6450489fe0bfacf0b4611e6b3`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -10,12 +11,12 @@ post-A7: `f1e84cf` / `/tmp/free-mem-phase1-post-t028.json` (SHA-256 `b475b510a9b
 | 区分 | 件数 |
 |---|---:|
 | 事前 baseline | 4,037 |
-| 維持 | 2,045 |
-| retire | 1,992 |
-| A7 中に追加済み | 17 |
-| post-A7 | 2,062 |
+| 維持 | 2,030 |
+| retire | 2,007 |
+| 登録済み追加（A7 17 + T030 1） | 18 |
+| post-T030 | 2,048 |
 
-機械式は `4,037 - 1,992 + 17 = 2,062`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
+機械式は `4,037 - 2,007 + 18 = 2,048`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
 post-A7 の実行結果は total 2,062 / passed 2,051 / failed 8。failed 8 名はすべて baseline に存在する linked-worktree の cwd / consumer 環境依存群で、新規 failure は 0。該当名:
 
@@ -30,6 +31,8 @@ packages/core/src/project.test.ts > project helpers > returns cwd basename when 
 packages/mcp-server/src/project-scope.test.ts > project-scope helpers > falls back to default project when env or request project is blank on read filters
 ```
 
+post-T030 は total 2,048 / passed 2,038 / failed 7 / todo 3。上記 8 名のうち T030 で retire した Codex consumer test 以外の 7 名だけが残り、新規 failure は 0。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -41,6 +44,7 @@ packages/mcp-server/src/project-scope.test.ts > project-scope helpers > falls ba
 | R-MCP | `packages/mcp-server/**` | 97 | HTTP transport/OAuth/OIDC/provider/audit と A7 scope 入力を削除 | 削除 file は `No test files found`、`codemem mcp --help` に HTTP mode なし |
 | R-UI | `packages/ui/**` | 385 | sync/coordinator/sharing/devices/projects UI・API client・孤立 primitive を削除 | 削除 file は `No test files found`、削除 route は feed fallback、bundle に削除 tab label なし |
 | R-VIEWER | `packages/viewer-server/**` | 217 | sync/coordinator/sharing route・maintenance と対応 test を削除 | 削除 file/title は Vitest no-match、`/api/sync/status` と `/api/coordinator/admin/status` は HTTP 404 |
+| R-AUTH | `packages/core/src/observer-auth.test.ts`, `observer-client.test.ts` | 15 | T030 で OAuth consumer、OpenCode auth cache、command 認証を物理削除 | retire title は `No test found`、登録 token test が explicit→env→file のみを固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -87,6 +91,7 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 
 | token | owner | test が固定する失敗条件 |
 |---|---|---|
+| `P1-T030-01-auth-cascade` | T030 | observer 認証が explicit → env → file 以外の資格情報経路へ到達する |
 | `P1-T033-01-single-writer` | T033 | write-capable DB handle が writer actor 外で開く |
 | `P1-T033-02-migration-gate` | T033 | backup verify 前に migration が始まる |
 | `P1-T033-03-no-raw-db-export` | T033 | public export から raw Database を取得できる |
@@ -160,6 +165,24 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 ## Retired fully qualified names（machine-generated）
 
 以下は理由 ID ごとに分類し、各 ID 内では baseline 順。各行の `R-*` は上記理由/signature を参照する。
+
+### R-AUTH (15)
+
+- packages/core/src/observer-auth.test.ts > ObserverAuthAdapter > resolve > caches command/file results
+- packages/core/src/observer-auth.test.ts > ObserverAuthAdapter > resolve > falls back to oauth token
+- packages/core/src/observer-auth.test.ts > resolveOAuthProvider > detects anthropic from claude model
+- packages/core/src/observer-auth.test.ts > resolveOAuthProvider > detects openai from non-claude model
+- packages/core/src/observer-auth.test.ts > resolveOAuthProvider > respects explicit configured provider
+- packages/core/src/observer-client.test.ts > ObserverClient > constructor > does not use auth cache API keys for arbitrary custom providers
+- packages/core/src/observer-client.test.ts > ObserverClient > constructor > prefers explicit observer api key over cached opencode auth
+- packages/core/src/observer-client.test.ts > ObserverClient > getStatus > does not report responses_api runtime when OpenAI OAuth codex transport is active
+- packages/core/src/observer-client.test.ts > ObserverClient > getStatus > reports sdk_client auth type for opencode cached key auth
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > passes configured reasoning overrides to the codex consumer request
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > sends the shipped 'rich' tier over OAuth codex_consumer
+- packages/core/src/observer-client.test.ts > ObserverClient.observe() > sends the shipped 'simple' tier over OAuth codex_consumer
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > respects a configured auth command
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > respects a configured command auth source
+- packages/core/src/observer-client.test.ts > shouldAutoSelectCodexSidecar > yields to a usable OpenCode OAuth cache
 
 ### R-E2E (95)
 

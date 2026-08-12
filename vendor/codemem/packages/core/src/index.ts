@@ -337,19 +337,11 @@ export {
 } from "./memory-quality.js";
 export type { ObserverAuthMaterial } from "./observer-auth.js";
 export {
-	buildCodexHeaders,
-	extractOAuthAccess,
-	extractOAuthAccountId,
-	extractOAuthExpires,
-	extractProviderApiKey,
-	loadOpenCodeOAuthCache,
 	ObserverAuthAdapter,
 	probeAvailableCredentials,
 	readAuthFile,
 	redactText,
 	renderObserverHeaders,
-	resolveOAuthProvider,
-	runAuthCommand,
 } from "./observer-auth.js";
 export type {
 	ObserverConfig,

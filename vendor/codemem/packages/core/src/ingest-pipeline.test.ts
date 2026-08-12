@@ -3110,8 +3110,6 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				observerHeaders: {},
 				observerAuthSource: "none",
 				observerAuthFile: null,
-				observerAuthCommand: [],
-				observerAuthTimeoutMs: 1500,
 				observerAuthCacheTtlS: 300,
 			}),
 			observe: async () => ({

@@ -32,8 +32,6 @@ export const INPUT_TO_CONFIG_KEY: Record<keyof SettingsFormState, string> = {
 	observerRuntime: "observer_runtime",
 	observerAuthSource: "observer_auth_source",
 	observerAuthFile: "observer_auth_file",
-	observerAuthCommand: "observer_auth_command",
-	observerAuthTimeoutMs: "observer_auth_timeout_ms",
 	observerAuthCacheTtlS: "observer_auth_cache_ttl_s",
 	observerHeaders: "observer_headers",
 	observerMaxChars: "observer_max_chars",
@@ -47,7 +45,6 @@ export const PROTECTED_VIEWER_CONFIG_KEYS = new Set([
 	"codex_command",
 	"observer_base_url",
 	"observer_auth_file",
-	"observer_auth_command",
 	"observer_headers",
 ]);
 
@@ -69,8 +66,6 @@ export const EMPTY_FORM_STATE: SettingsFormState = {
 	observerRuntime: "api_http",
 	observerAuthSource: "auto",
 	observerAuthFile: "",
-	observerAuthCommand: "",
-	observerAuthTimeoutMs: "",
 	observerAuthCacheTtlS: "",
 	observerHeaders: "",
 	observerMaxChars: "",

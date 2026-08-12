@@ -714,13 +714,9 @@ async function replayPreparedBatch(
 		response.repaired?.usage ?? null,
 		repairAttempted,
 	);
-	const transport =
-		observerStatus.auth.type === "codex_consumer" ||
-		observerStatus.auth.type === "anthropic_consumer"
-			? observerStatus.auth.type
-			: observerStatus.runtime;
-	const reportsRequestLimits = transport !== "codex_consumer";
-	const reportsReasoning = observer.openaiUseResponses || transport === "codex_consumer";
+	const transport = observerStatus.runtime;
+	const reportsRequestLimits = true;
+	const reportsReasoning = observer.openaiUseResponses;
 
 	return {
 		scenario: {

@@ -257,10 +257,7 @@ Observer runtime/auth:
 - `claude_sidecar` command is configurable with `claude_command` (`CODEMEM_CLAUDE_COMMAND`) as a JSON argv array.
   - Config file example: `"claude_command": ["wrapper", "claude", "--"]`
   - Env var example: `CODEMEM_CLAUDE_COMMAND='["wrapper","claude","--"]'`
-- Auth sources: `auto`, `env`, `file`, `command`, `none`.
-- `observer_auth_command` must be a JSON string array (argv), not a space-separated string.
-  - Config file example: `"observer_auth_command": ["iap-auth", "--audience", "example"]`
-  - Env var example: `CODEMEM_OBSERVER_AUTH_COMMAND='["iap-auth","--audience","example"]'`
+- Auth sources: `auto`, `env`, `file`, `none`. Automatic resolution uses explicit configuration, then environment variables, then the configured token file.
 - Header templates support `${auth.token}`, `${auth.type}`, and `${auth.source}` (for example `Authorization: Bearer ${auth.token}`).
 - Queue cadence is configurable with `raw_events_sweeper_interval_s` (seconds) in Settings/config.
 

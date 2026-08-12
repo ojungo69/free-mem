@@ -7,7 +7,6 @@ import {
 	readAuthFile,
 	redactText,
 	renderObserverHeaders,
-	resolveOAuthProvider,
 } from "./observer-auth.js";
 
 describe("ObserverAuthAdapter", () => {
@@ -27,13 +26,6 @@ describe("ObserverAuthAdapter", () => {
 			expect(result.source).toBe("env");
 		});
 
-		it("falls back to oauth token", () => {
-			const adapter = new ObserverAuthAdapter();
-			const result = adapter.resolve({ oauthToken: "tok-oauth" });
-			expect(result.token).toBe("tok-oauth");
-			expect(result.source).toBe("oauth");
-		});
-
 		it("returns no token with source=none", () => {
 			const adapter = new ObserverAuthAdapter({ source: "none" });
 			const result = adapter.resolve({ explicitToken: "ignored" });
@@ -42,7 +34,7 @@ describe("ObserverAuthAdapter", () => {
 			expect(result.source).toBe("none");
 		});
 
-		it("caches command/file results", () => {
+		it("P1-T030-01-auth-cascade resolves only explicit, env, and file credentials", () => {
 			let tmpDir: string;
 			let tokenFile: string;
 			tmpDir = mkdtempSync(join(tmpdir(), "codemem-auth-test-"));
@@ -50,6 +42,22 @@ describe("ObserverAuthAdapter", () => {
 			writeFileSync(tokenFile, "tok-cached\n");
 
 			try {
+				const autoAdapter = new ObserverAuthAdapter({ filePath: tokenFile });
+				expect(
+					autoAdapter.resolve({ explicitToken: "tok-explicit", envTokens: ["tok-env"] }),
+				).toMatchObject({ token: "tok-explicit", source: "explicit" });
+				expect(autoAdapter.resolve({ envTokens: ["tok-env"] })).toMatchObject({
+					token: "tok-env",
+					source: "env",
+				});
+				expect(autoAdapter.resolve()).toMatchObject({ token: "tok-cached", source: "file" });
+				expect(
+					new ObserverAuthAdapter({ source: "retired", filePath: tokenFile }).resolve({
+						explicitToken: "tok-explicit",
+						envTokens: ["tok-env"],
+					}),
+				).toEqual({ token: null, authType: "none", source: "none" });
+
 				const adapter = new ObserverAuthAdapter({
 					source: "file",
 					filePath: tokenFile,
@@ -113,20 +121,6 @@ describe("readAuthFile", () => {
 
 	it("returns null for null path", () => {
 		expect(readAuthFile(null)).toBeNull();
-	});
-});
-
-describe("resolveOAuthProvider", () => {
-	it("detects anthropic from claude model", () => {
-		expect(resolveOAuthProvider(null, "claude-3-opus")).toBe("anthropic");
-	});
-
-	it("detects openai from non-claude model", () => {
-		expect(resolveOAuthProvider(null, "gpt-4")).toBe("openai");
-	});
-
-	it("respects explicit configured provider", () => {
-		expect(resolveOAuthProvider("anthropic", "gpt-4")).toBe("anthropic");
 	});
 });
 

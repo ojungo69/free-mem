@@ -203,8 +203,6 @@ export const CODEMEM_CONFIG_ENV_OVERRIDES: Record<string, string> = {
 	observer_runtime: "CODEMEM_OBSERVER_RUNTIME",
 	observer_auth_source: "CODEMEM_OBSERVER_AUTH_SOURCE",
 	observer_auth_file: "CODEMEM_OBSERVER_AUTH_FILE",
-	observer_auth_command: "CODEMEM_OBSERVER_AUTH_COMMAND",
-	observer_auth_timeout_ms: "CODEMEM_OBSERVER_AUTH_TIMEOUT_MS",
 	observer_auth_cache_ttl_s: "CODEMEM_OBSERVER_AUTH_CACHE_TTL_S",
 	observer_headers: "CODEMEM_OBSERVER_HEADERS",
 	observer_max_chars: "CODEMEM_OBSERVER_MAX_CHARS",

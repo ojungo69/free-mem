@@ -33,8 +33,6 @@ function baseConfig(overrides: Partial<ObserverConfig> = {}): ObserverConfig {
 		observerHeaders: {},
 		observerAuthSource: "none",
 		observerAuthFile: null,
-		observerAuthCommand: [],
-		observerAuthTimeoutMs: 1500,
 		observerAuthCacheTtlS: 300,
 		observerExplicitConfigKeys: [],
 		...overrides,

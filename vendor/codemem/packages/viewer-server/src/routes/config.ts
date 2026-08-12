@@ -22,22 +22,21 @@ type ConfigData = Record<string, unknown>;
 const REDACTED_VALUE = "[redacted]";
 
 const RUNTIMES = new Set(["api_http", "claude_sidecar", "codex_sidecar"]);
-const AUTH_SOURCES = new Set(["auto", "env", "file", "command", "none"]);
+const AUTH_SOURCES = new Set(["auto", "env", "file", "none"]);
 const HOT_RELOAD_KEYS = new Set(["raw_events_sweeper_interval_s"]);
 const PROTECTED_WRITE_KEYS = new Set<string>([
 	"claude_command",
 	"codex_command",
 	"observer_base_url",
 	"observer_auth_file",
-	"observer_auth_command",
 	"observer_headers",
 ] as const);
-const SECRET_CONFIG_KEYS = new Set<string>([
-	"observer_auth_file",
+const SECRET_CONFIG_KEYS = new Set<string>(["observer_auth_file", "observer_headers"] as const);
+const REMOVED_CONFIG_KEYS = new Set<string>([
 	"observer_auth_command",
-	"observer_headers",
-] as const);
-const REMOVED_CONFIG_KEYS = new Set<string>(["observer_rich_openai_use_responses"]);
+	"observer_auth_timeout_ms",
+	"observer_rich_openai_use_responses",
+]);
 const ALLOWED_KEYS = [
 	"claude_command",
 	"codex_command",
@@ -57,8 +56,6 @@ const ALLOWED_KEYS = [
 	"observer_runtime",
 	"observer_auth_source",
 	"observer_auth_file",
-	"observer_auth_command",
-	"observer_auth_timeout_ms",
 	"observer_auth_cache_ttl_s",
 	"observer_headers",
 	"observer_max_chars",
@@ -73,8 +70,6 @@ const DEFAULTS: ConfigData = {
 	observer_runtime: "api_http",
 	observer_auth_source: "auto",
 	observer_tier_routing_enabled: false,
-	observer_auth_command: [],
-	observer_auth_timeout_ms: 1500,
 	observer_auth_cache_ttl_s: 300,
 	observer_headers: {},
 	observer_max_chars: 12000,
@@ -253,12 +248,12 @@ function validateAndApplyUpdate(
 		if (typeof value !== "string") return "observer_auth_source must be string";
 		const source = value.trim().toLowerCase();
 		if (!AUTH_SOURCES.has(source)) {
-			return "observer_auth_source must be one of: auto, env, file, command, none";
+			return "observer_auth_source must be one of: auto, env, file, none";
 		}
 		configData[key] = source;
 		return null;
 	}
-	if (key === "claude_command" || key === "codex_command" || key === "observer_auth_command") {
+	if (key === "claude_command" || key === "codex_command") {
 		const argv = asExecutableArgv(value);
 		if (argv == null) return `${key} must be string array`;
 		if (argv.length > 0) configData[key] = argv;

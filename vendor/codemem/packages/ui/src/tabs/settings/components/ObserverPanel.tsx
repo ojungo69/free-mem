@@ -12,7 +12,6 @@ export function ObserverPanel({
 	observerMaxCharsDefault,
 	providerOptions,
 	showAuthFile,
-	showAuthCommand,
 	hiddenUnlessAdvanced,
 	onTextInput,
 	onSelectValueChange,
@@ -157,7 +156,7 @@ export function ObserverPanel({
 						<button
 							aria-label="About authentication method"
 							className="help-icon"
-							data-tooltip="Choose how credentials are resolved: environment, file, command, or none."
+							data-tooltip="Choose whether credentials are resolved automatically, from environment variables, from a file, or not used."
 							type="button"
 						>
 							?
@@ -171,17 +170,16 @@ export function ObserverPanel({
 						onValueChange={onSelectValueChange("observerAuthSource")}
 						options={[
 							{ label: "auto (default)", value: "auto" },
-							{ label: "env", value: "env" },
-							{ label: "file", value: "file" },
-							{ label: "command", value: "command" },
-							{ label: "none", value: "none" },
+							{ label: "Environment variables", value: "env" },
+							{ label: "Token file", value: "file" },
+							{ label: "No credentials", value: "none" },
 						]}
 						triggerClassName="settings-select-trigger"
 						value={values.observerAuthSource}
 						viewportClassName="settings-select-viewport"
 					/>
 					<div className="small">
-						Use `auto` unless you need to force a file or command-based token source.
+						Use `auto` unless you need to force environment variables or a token file.
 					</div>
 				</Field>
 				<Field hidden={!showAuthFile} id="observerAuthFileField">
@@ -194,46 +192,11 @@ export function ObserverPanel({
 					/>
 					<div className="small">{protectedConfigHelp("observer_auth_file")}</div>
 				</Field>
-				<Field hidden={!showAuthCommand} id="observerAuthCommandField">
-					<div className="field-label">
-						<label htmlFor="observerAuthCommand">Token command</label>
-						<button
-							aria-label="About token command"
-							className="help-icon"
-							data-tooltip="Runs this command and uses stdout as the token. JSON argv only, no shell parsing."
-							type="button"
-						>
-							?
-						</button>
-					</div>
-					<TextArea
-						disabled
-						id="observerAuthCommand"
-						placeholder='["iap-auth", "--audience", "gateway"]'
-						rows={3}
-						value={values.observerAuthCommand}
-					/>
-					<div className="small">{protectedConfigHelp("observer_auth_command")}</div>
-				</Field>
-				<div className="small" hidden={!showAuthCommand} id="observerAuthCommandNote">
-					Command format: JSON string array, e.g. `["iap-auth", "--audience", "gateway"]`.
-				</div>
 				<SettingsHint hidden={hiddenUnlessAdvanced()}>
-					These advanced credential overrides only matter when you need custom command timing,
-					cached tokens, or extra request headers.
+					These advanced credential options control token-file caching and extra request headers.
 				</SettingsHint>
 				<Field className="field settings-advanced" hidden={hiddenUnlessAdvanced()}>
-					<label htmlFor="observerAuthTimeoutMs">Token command timeout (ms)</label>
-					<TextInput
-						id="observerAuthTimeoutMs"
-						min="1"
-						onInput={onTextInput("observerAuthTimeoutMs")}
-						type="number"
-						value={values.observerAuthTimeoutMs}
-					/>
-				</Field>
-				<Field className="field settings-advanced" hidden={hiddenUnlessAdvanced()}>
-					<label htmlFor="observerAuthCacheTtlS">Token cache time (s)</label>
+					<label htmlFor="observerAuthCacheTtlS">Token file cache time (seconds)</label>
 					<TextInput
 						id="observerAuthCacheTtlS"
 						min="0"

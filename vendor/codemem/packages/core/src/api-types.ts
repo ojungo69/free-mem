@@ -195,9 +195,8 @@ export interface ApiObserverActiveStatus {
 
 /** Per-provider credential probe result. */
 export interface ApiProviderCredential {
-	oauth: boolean;
 	api_key: boolean;
-	source: string | null;
+	env_var: boolean;
 }
 
 /** Credential availability — provider-keyed map (from probe_available_credentials()). */

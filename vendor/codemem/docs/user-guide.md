@@ -44,15 +44,15 @@ codemem status --db-path ./codemem.sqlite --config ./codemem.json
 - Shows effective values (configured or default) to avoid blank/ambiguous fields.
 - Persists only changed settings on save (unchanged effective defaults are not rewritten to config).
 - Uses task-oriented sections: `Connection`, `Processing`, and `Device Sync`.
-- Includes a `Show advanced controls` toggle for technical tuning fields (JSON headers, cache/timeout, tier-routing tuning, network overrides, and pack limits).
-- Connection/auth settings map to `claude_command`, `observer_runtime`, `observer_provider`, `observer_model`, `observer_base_url`, `observer_auth_source`, `observer_auth_file`, `observer_auth_command`, `observer_auth_timeout_ms`, `observer_auth_cache_ttl_s`, and `observer_headers`.
+- Includes a `Show advanced controls` toggle for technical tuning fields (JSON headers, token-file caching, tier-routing tuning, network overrides, and pack limits).
+- Connection/auth settings map to `claude_command`, `observer_runtime`, `observer_provider`, `observer_model`, `observer_base_url`, `observer_auth_source`, `observer_auth_file`, `observer_auth_cache_ttl_s`, and `observer_headers`.
 - Processing settings include `raw_events_sweeper_interval_s` plus tiered observer routing controls for `observer_tier_routing_enabled`, `observer_simple_model`, `observer_simple_temperature`, `observer_reasoning_effort`, `observer_reasoning_summary`, `observer_rich_model`, `observer_rich_temperature`, `observer_rich_reasoning_effort`, `observer_rich_reasoning_summary`, and `observer_rich_max_output_tokens`.
 - When tiered routing is enabled, the Processing tab becomes the primary place for model selection; the Connection tab's base `observer_model` acts as a fallback rather than a competing primary control.
 - When you have not made an explicit routing choice, codemem may enable tiered routing automatically for capability-safe paths such as OpenAI/Anthropic over `api_http` and Claude subscription usage over `claude_sidecar`.
 - Explicit routing, model, and reasoning settings take precedence over built-in defaults where the selected transport supports them. OpenAI transport behavior has the simple-tier exception described below.
 - OpenAI tier routing defaults to `gpt-5.6-luna` for simple batches and `gpt-5.6-terra` for rich batches.
 - Rich routing defaults to 12,000 output tokens, while an explicit global `observer_max_output_tokens` setting or benchmark `--max-output-tokens` override applies to both tiers; `observer_rich_max_output_tokens` remains the highest-priority rich-only override.
-- Official OpenAI direct API tiers always use Responses and explicitly send reasoning effort `medium` unless you configure a different effort. OAuth `codex_consumer` requests also remain on Responses. `observer_openai_use_responses: false` is only a custom-gateway compatibility setting: it selects chat completions when `observer_base_url` explicitly points to an OpenAI-compatible gateway, and official OpenAI cannot opt out of Responses. Chat-completions requests do not report reasoning effort or summary because those controls are not transmitted.
+- Official OpenAI direct API tiers always use Responses and explicitly send reasoning effort `medium` unless you configure a different effort. `observer_openai_use_responses: false` is only a custom-gateway compatibility setting: it selects chat completions when `observer_base_url` explicitly points to an OpenAI-compatible gateway, and official OpenAI cannot opt out of Responses. Chat-completions requests do not report reasoning effort or summary because those controls are not transmitted.
 - OpenAI Responses requests omit temperature whenever active reasoning is configured because GPT-5.1+ accepts sampling controls only with reasoning effort `none`; replay and benchmark metadata report that temperature as not transmitted.
 - Configure reasoning shared by both OpenAI Responses tiers with the Processing tab's advanced `Shared reasoning defaults`, the global `observer_reasoning_effort` / `observer_reasoning_summary` file settings, or their `CODEMEM_OBSERVER_REASONING_*` environment variables. The `observer_rich_reasoning_*` settings remain optional rich-specific overrides.
 - The 2026-08-07 list rates are Luna at $1.00/M input and $6.00/M output versus GPT-5.4-mini at $0.75/M input and $4.50/M output; Terra and GPT-5.4 are both $2.50/M input and $15.00/M output. Measured extraction cost can rise by more than the list-rate difference when a model produces more output tokens.
@@ -79,27 +79,23 @@ codemem status --db-path ./codemem.sqlite --config ./codemem.json
 - Tier routing may pick different simple/rich models automatically when the current runtime/provider path is marked capability-safe.
 - Anthropic direct API calls use Anthropic's direct model IDs. codemem translates the common shorthand `claude-4.5-haiku` to `claude-haiku-4-5`; if you want a fixed snapshot, set a versioned model like `claude-haiku-4-5-20251001` directly.
 - If a configured `observer_model` is unsupported by a sidecar CLI, codemem retries once with that CLI's default model.
-- Supported auth sources: `auto`, `env`, `file`, `command`, `none`.
-- `observer_auth_command` is argv and must be a JSON string array, not a space-separated string.
-  - Config file form: `"observer_auth_command": ["iap-auth", "--audience", "example"]`
-  - Env var form (`CODEMEM_OBSERVER_AUTH_COMMAND`): `'["iap-auth","--audience","example"]'`
+- Supported auth sources: `auto`, `env`, `file`, `none`. `auto` resolves an explicitly configured API key first, then supported environment variables, then `observer_auth_file`.
 - Header templates can use `${auth.token}`, `${auth.type}`, and `${auth.source}`.
 - Settings are grouped into `Connection`, `Processing`, and `Device Sync` sections with shell-agnostic labels.
 - Queue settings include `raw_events_sweeper_interval_s` (seconds), which controls background pending-event drain cadence.
 - Tiered routing settings live in the Processing tab. The basic view exposes the tier-routing toggle plus simple/rich model choices, while advanced controls reveal the extra rich-tier tuning knobs.
 - To avoid overlapping primary controls, the Connection tab reframes `observer_model` as a fallback whenever tiered routing is enabled.
-- Rich-tier OpenAI transport tuning remains visible in Processing. Official OpenAI tiers and OAuth `codex_consumer` always use Responses with reasoning effort `medium` by default. An explicit custom `observer_base_url` may use `observer_openai_use_responses: false` for chat-completions compatibility.
+- Rich-tier OpenAI transport tuning remains visible in Processing. Official OpenAI tiers always use Responses with reasoning effort `medium` by default. An explicit custom `observer_base_url` may use `observer_openai_use_responses: false` for chat-completions compatibility.
 
-Example command-token gateway config:
+Example token-file gateway config:
 
 ```json
 {
   "observer_provider": "your-gateway-provider",
   "observer_base_url": "https://gateway.example/v1",
   "observer_runtime": "api_http",
-  "observer_auth_source": "command",
-  "observer_auth_command": ["iap-auth", "--audience", "example"],
-  "observer_auth_timeout_ms": 1500,
+  "observer_auth_source": "file",
+  "observer_auth_file": "/path/to/gateway-token",
   "observer_auth_cache_ttl_s": 300,
   "observer_headers": {
     "Authorization": "Bearer ${auth.token}",

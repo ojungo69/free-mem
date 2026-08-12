@@ -1,5 +1,5 @@
-/* JSON parsers for the settings form: the `claude_command` / observer-auth
- * argv arrays (parseCommandArgv) and the observer HTTP headers object
+/* JSON parsers for the settings form: the sidecar command argv arrays
+ * (parseCommandArgv) and the observer HTTP headers object
  * (parseObserverHeaders). Each throws a labeled Error on validation
  * failure so the save flow can surface a field-specific message. */
 

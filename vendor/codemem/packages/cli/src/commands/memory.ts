@@ -1503,7 +1503,7 @@ function createMemoryExtractionBenchmarkCommand(): Command {
 						`OpenAI Responses: ${observerSummary.openaiUseResponses === null ? "mixed" : observerSummary.openaiUseResponses ? "yes" : "no"}`,
 						`Reasoning effort: ${observerSummary.reasoningEffort ?? "not transmitted"}`,
 						`Reasoning summary: ${observerSummary.reasoningSummary ?? "not transmitted"}`,
-						`Max output tokens: ${observerSummary.transport === "codex_consumer" ? "not transmitted" : (observerSummary.maxOutputTokens ?? "mixed")}`,
+						`Max output tokens: ${observerSummary.maxOutputTokens ?? "mixed"}`,
 						`Temperature: ${observerSummary.transport === "mixed" ? "mixed" : (observerSummary.temperature ?? "not transmitted")}`,
 						`Transcript budget override: ${transcriptBudget ?? "default"}`,
 						`Repetitions: ${summary.repetitions}`,

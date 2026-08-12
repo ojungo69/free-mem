@@ -15,10 +15,6 @@ export function joinPhrases(values: string[]): string {
 
 export function formatAuthMethod(method: string): string {
 	switch (method) {
-		case "anthropic_consumer":
-			return "OAuth (Claude Max/Pro)";
-		case "codex_consumer":
-			return "OAuth (ChatGPT subscription)";
 		case "sdk_client":
 			return "API key";
 		case "claude_sidecar":
@@ -34,7 +30,6 @@ export function formatAuthMethod(method: string): string {
 
 export function formatCredentialSources(creds: Record<string, boolean>): string {
 	const parts: string[] = [];
-	if (creds.oauth) parts.push("OAuth");
 	if (creds.api_key) parts.push("API key");
 	if (creds.env_var) parts.push("env var");
 	return parts.length ? parts.join(", ") : "none";
