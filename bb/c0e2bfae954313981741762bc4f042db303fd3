@@ -1,0 +1,1806 @@
+evidence/codemem/write-handle-classification.md
+  s_001266e69504e4::t_1a1a947c68e16f 1-28,31-69
+  s_001266e69504e4::t_1a45db92d4f8c8 29-30
+evidence/adr-001-base.md
+  s_001266e69504e4::t_3c62f6798fe2c8 1-36
+evidence/clean-install.md
+  s_001266e69504e4::t_5611cf7be0a643 1-20
+evidence/delta-comparison.md
+  s_001266e69504e4::t_ebb1130c5f8f14 1-11,13-31,33-37
+  s_001266e69504e4::t_fc161d33f95fe8 32
+  s_001266e69504e4::t_27c80762335a9e 12
+evidence/unsafe-path-action-plan.md
+  s_001266e69504e4::t_edcaf7f7e591b1 1-30
+evidence/README.md
+  s_001266e69504e4::t_396898d37969a2 1-21
+evidence/ai-memory/inventory-summary.md
+  s_001266e69504e4::t_2ff59b8f3210b4 1-98
+evidence/ai-memory/sbom.md
+  s_001266e69504e4::t_259d6aaabef6c5 1-127
+evidence/ai-memory/upstream-test.log
+  s_001266e69504e4::t_5a5f60f330a601 1-1668
+evidence/codemem/runtime-audit.md
+  s_001266e69504e4::t_ffddd6851907e3 1-56
+evidence/codemem/sbom.md
+  s_001266e69504e4::t_adc752f9a2aacd 1-112
+evidence/codemem/upstream-test.log
+  s_001266e69504e4::t_22c78580d4cd21 1-7037
+evidence/codemem/write-handle-inventory.md
+  s_001266e69504e4::t_26988902e5a0cb 1-444
+evidence/remem/inventory-summary.md
+  s_001266e69504e4::t_9b04bc7d93a299 1-91
+evidence/remem/sbom.md
+  s_001266e69504e4::t_56acd636dc5c1e 1-85
+evidence/remem/upstream-test.log
+  s_001266e69504e4::t_a7df834a2f4bd1 1-5023
+specs/001-agent-memory-core/tasks.md
+  s_001266e69504e4::t_5d142ca3bf3658 23-25,29-34,38-41,45-46
+vendor/codemem/.agents/plugins/marketplace.json
+  s_001266e69504e4::t_4f03ba32a80517 1-20
+vendor/codemem/.beads/.gitignore
+  s_001266e69504e4::t_8f1920ddff588f 1-73
+vendor/codemem/.beads/README.md
+  s_001266e69504e4::t_3eb6493077ff4a 1-81
+vendor/codemem/.beads/config.yaml
+  s_001266e69504e4::t_6e39f024f2f9ef 1-68
+vendor/codemem/.beads/metadata.json
+  s_001266e69504e4::t_05b5d16b920673 1-7
+vendor/codemem/.claude-plugin/marketplace.json
+  s_001266e69504e4::t_b59b5e58e1d7a1 1-22
+vendor/codemem/.gitattributes
+  s_001266e69504e4::t_96543010702829 1-3
+vendor/codemem/.github/PULL_REQUEST_TEMPLATE.md
+  s_001266e69504e4::t_331b7fd8f95ba2 1-26
+vendor/codemem/.github/dependabot.yml
+  s_001266e69504e4::t_f2ef61632e0d2d 1-27
+vendor/codemem/.github/release.yml
+  s_001266e69504e4::t_895a37b0f8ff95 1-35
+vendor/codemem/.github/workflows/ci.yml
+  s_001266e69504e4::t_a496c53afcf4f8 1-213
+vendor/codemem/.github/workflows/release.yml
+  s_001266e69504e4::t_7fd905df501824 1-205
+vendor/codemem/.gitignore
+  s_001266e69504e4::t_27728c74990d5c 1-91
+vendor/codemem/.husky/pre-commit
+  s_001266e69504e4::t_1fac3b568fea01 1-2
+vendor/codemem/.npmrc
+  s_001266e69504e4::t_2fa065129a878c 1
+vendor/codemem/.opencode/.npmrc
+  s_001266e69504e4::t_71fcfe922d7aab 1
+vendor/codemem/.opencode/lib
+  s_001266e69504e4::t_b482a7ad3ce1dc 1
+vendor/codemem/.opencode/plugins/codemem.js
+  s_001266e69504e4::t_b2e7af294dbd02 1
+vendor/codemem/.opencode/tests
+  s_001266e69504e4::t_cd16ecec6c9878 1
+vendor/codemem/AGENTS.md
+  s_001266e69504e4::t_e48fb50f9f5046 1-47
+vendor/codemem/CLAUDE.md
+  s_001266e69504e4::t_d2dcec138c07b5 1
+vendor/codemem/CONTRIBUTING.md
+  s_001266e69504e4::t_3a408a2566de8d 1-98
+vendor/codemem/LICENSE
+  s_001266e69504e4::t_63d55d761b1104 1-21
+vendor/codemem/README.md
+  s_001266e69504e4::t_059ad554cfe22f 1-377
+vendor/codemem/SECURITY.md
+  s_001266e69504e4::t_08452600b81392 1-20
+vendor/codemem/biome.json
+  s_001266e69504e4::t_b032d112722eec 1-78
+vendor/codemem/deploy/docker/Dockerfile
+  s_001266e69504e4::t_64dd6704424d2a 1-21
+vendor/codemem/deploy/docker/README.md
+  s_001266e69504e4::t_c79edbe9485f02 1-157
+vendor/codemem/deploy/docker/docker-compose.yml
+  s_001266e69504e4::t_3e1ed32dfdf859 1-123
+vendor/codemem/deploy/docker/environment.example
+  s_001266e69504e4::t_45dfeaea4d337f 1-37
+vendor/codemem/docker-compose.dogfood.yml
+  s_001266e69504e4::t_caa2c8affcb0aa 1-28
+vendor/codemem/docker-compose.e2e.yml
+  s_001266e69504e4::t_90f3bb76a5e80c 1-122
+vendor/codemem/docs/adr/0001-project-recipient-policy-boundaries.md
+  s_001266e69504e4::t_652f6606f929bd 1-198
+vendor/codemem/docs/anchor-peer-deployment.md
+  s_001266e69504e4::t_2ab973dcf69da0 1-153
+vendor/codemem/docs/architecture.md
+  s_001266e69504e4::t_9082f0bacb4bf9 1-364
+vendor/codemem/docs/autostart/launchd/com.codemem.sync.plist
+  s_001266e69504e4::t_5c0739c8da6835 1-23
+vendor/codemem/docs/autostart/systemd/codemem-sync.service
+  s_001266e69504e4::t_e9a557bcdb3710 1-11
+vendor/codemem/docs/cli-design-conventions.md
+  s_001266e69504e4::t_9d4b7edef019de 1-284
+vendor/codemem/docs/cloudflare-coordinator-deployment.md
+  s_001266e69504e4::t_54120b590dff1e 1-272
+vendor/codemem/docs/contracts/pre-provisioned-workspace-runtime-attachment.md
+  s_001266e69504e4::t_a762d351fc2af4 1-305
+vendor/codemem/docs/coordinator-deployment.md
+  s_001266e69504e4::t_8b9ff60dfbe68c 1-260
+vendor/codemem/docs/coordinator-discovery.md
+  s_001266e69504e4::t_30556776df0a70 1-288
+vendor/codemem/docs/coordinator-e2e-runbook.md
+  s_001266e69504e4::t_70375b26e4e407 1-197
+vendor/codemem/docs/design/README.md
+  s_001266e69504e4::t_35c179c975a04b 1-36
+vendor/codemem/docs/design/attention-vocabulary-anatomy.md
+  s_001266e69504e4::t_81c78190d93537 1-100
+vendor/codemem/docs/design/device-row-anatomy.md
+  s_001266e69504e4::t_50c90c6eec26d5 1-115
+vendor/codemem/docs/design/disclosure-region-anatomy.md
+  s_001266e69504e4::t_449bcba51b68c5 1-92
+vendor/codemem/docs/migration-python-to-ts.md
+  s_001266e69504e4::t_a97726bf77d526 1-32
+vendor/codemem/docs/plans/2026-01-15-opencode-oauth-observer.md
+  s_001266e69504e4::t_c07917acd8589a 1-285
+vendor/codemem/docs/plans/2026-01-23-stream-only-rollout.md
+  s_001266e69504e4::t_1628afac27f01c 1-149
+vendor/codemem/docs/plans/2026-01-24-p2p-sync-phase-1.md
+  s_001266e69504e4::t_f06dd2bdd30577 1-294
+vendor/codemem/docs/plans/2026-01-24-p2p-sync-phase-2.md
+  s_001266e69504e4::t_15463eebb24421 1-223
+vendor/codemem/docs/plans/2026-03-01-memory-explain-contract.md
+  s_001266e69504e4::t_4708f93f7d100b 1-128
+vendor/codemem/docs/plans/2026-03-02-multi-agent-adapter-architecture-design.md
+  s_001266e69504e4::t_470484285ea550 1-170
+vendor/codemem/docs/plans/2026-03-03-adapter-session-identity-decoupling.md
+  s_001266e69504e4::t_28fa59c0f638b1 1-251
+vendor/codemem/docs/plans/2026-03-03-observer-auth-adapter-and-runtime-plan.md
+  s_001266e69504e4::t_9f164d6f7c9033 1-152
+vendor/codemem/docs/plans/2026-03-08-identity-aware-sync-shared-memory-foundation.md
+  s_001266e69504e4::t_983f2e0a6e27af 1-299
+vendor/codemem/docs/plans/2026-03-08-shared-memory-trust-state-semantics.md
+  s_001266e69504e4::t_5229b12c51a21e 1-119
+vendor/codemem/docs/plans/2026-03-12-actor-affinity-weighting-beyond-personal-first.md
+  s_001266e69504e4::t_5da1845dd96739 1-134
+vendor/codemem/docs/plans/2026-03-12-actor-registry-peer-assignment-contract.md
+  s_001266e69504e4::t_eb3474a171dd62 1-324
+vendor/codemem/docs/plans/2026-03-12-adaptive-widening-personal-to-shared-retrieval.md
+  s_001266e69504e4::t_c8a2155d714969 1-235
+vendor/codemem/docs/plans/2026-03-12-cloudflare-bootstrap-script-design.md
+  s_001266e69504e4::t_7ae2f3d951a032 1-157
+vendor/codemem/docs/plans/2026-03-12-coordinator-backed-cross-network-discovery.md
+  s_001266e69504e4::t_782b1acaed305f 1-384
+vendor/codemem/docs/plans/2026-03-12-optional-relay-coordinator-mode.md
+  s_001266e69504e4::t_adf4857e1cd77a 1-240
+vendor/codemem/docs/plans/2026-03-12-project-first-sharing-private-override.md
+  s_001266e69504e4::t_cc0db95e6273cf 1-109
+vendor/codemem/docs/plans/2026-03-12-relay-and-buffered-delivery-follow-on.md
+  s_001266e69504e4::t_eb245cd2c7d910 1-63
+vendor/codemem/docs/plans/2026-03-12-trust-aware-review-and-retrieval-follow-on.md
+  s_001266e69504e4::t_ef708224c23d2c 1-196
+vendor/codemem/docs/plans/2026-03-13-remote-coordinator-admin-access-control.md
+  s_001266e69504e4::t_866cefa11f7cf4 1-150
+vendor/codemem/docs/plans/2026-03-14-coordinator-invite-and-join-flow.md
+  s_001266e69504e4::t_a088f3d846aac6 1-270
+vendor/codemem/docs/plans/2026-03-14-coordinator-invite-payload-contract.md
+  s_001266e69504e4::t_c6762f062402b4 1-142
+vendor/codemem/docs/plans/2026-03-15-db-coexistence-contract.md
+  s_001266e69504e4::t_c2b706f15d5e0f 1-367
+vendor/codemem/docs/plans/2026-03-15-embedding-packaging.md
+  s_001266e69504e4::t_7f87cb169ea7a3 1-268
+vendor/codemem/docs/plans/2026-03-15-install-matrix.md
+  s_001266e69504e4::t_d42ba9f3b57feb 1-237
+vendor/codemem/docs/plans/2026-03-15-runtime-topology-decision.md
+  s_001266e69504e4::t_2307eeb613341f 1-231
+vendor/codemem/docs/plans/2026-03-15-user-migration-compatibility.md
+  s_001266e69504e4::t_a182595a792e9b 1-292
+vendor/codemem/docs/plans/2026-03-16-ts-store-parity-gaps.md
+  s_001266e69504e4::t_d38892f08aeaa3 1-85
+vendor/codemem/docs/plans/2026-03-26-sync-coordinator-peer-suggestions-design.md
+  s_001266e69504e4::t_7129ebdffadde0 1-217
+vendor/codemem/docs/plans/2026-03-27-cloudflare-coordinator-compatibility-audit.md
+  s_001266e69504e4::t_9aab3649a1d25c 1-227
+vendor/codemem/docs/plans/2026-04-01-docker-e2e-sync-harness-design.md
+  s_001266e69504e4::t_008239f19fbd5d 1-494
+vendor/codemem/docs/plans/2026-04-01-fast-peer-bootstrap-design.md
+  s_001266e69504e4::t_d67e25526ca1d6 1-101
+vendor/codemem/docs/plans/2026-04-02-seed-peer-fleet-orchestration-pilot-design.md
+  s_001266e69504e4::t_4c21f852615a87 1-457
+vendor/codemem/docs/plans/2026-04-02-seed-peer-fleet-orchestration-pilot-implementation-plan.md
+  s_001266e69504e4::t_a6ee1bb779923b 1-149
+vendor/codemem/docs/plans/2026-04-05-context-injection-test-design.md
+  s_001266e69504e4::t_7bb21ab2d62490 1-308
+vendor/codemem/docs/plans/2026-04-06-memory-quality-taxonomy-design.md
+  s_001266e69504e4::t_3b49d7b725fab7 1-463
+vendor/codemem/docs/plans/2026-04-07-injection-first-eval-scenarios.md
+  s_001266e69504e4::t_83b577ea1e60a7 1-216
+vendor/codemem/docs/plans/2026-04-07-memory-quality-model.md
+  s_001266e69504e4::t_50e645e1b1cdcd 1-285
+vendor/codemem/docs/plans/2026-04-07-recap-policy.md
+  s_001266e69504e4::t_e3b16ad342a783 1-232
+vendor/codemem/docs/plans/2026-04-07-rich-session-under-extraction-eval-case.md
+  s_001266e69504e4::t_deb773d46f97f0 1-272
+vendor/codemem/docs/plans/2026-04-07-session-boundary-matrix.md
+  s_001266e69504e4::t_a8cc20f7c385a8 1-266
+vendor/codemem/docs/plans/2026-04-07-track-3-injection-first-memory-policy.md
+  s_001266e69504e4::t_f70edbbabe8e76 1-289
+vendor/codemem/docs/plans/2026-04-08-observer-tier-routing-rollout.md
+  s_001266e69504e4::t_5114dee3177baa 1-211
+vendor/codemem/docs/plans/2026-04-08-pack-trace-context-inspector-design.md
+  s_001266e69504e4::t_5e93ca384f87d6 1-427
+vendor/codemem/docs/plans/2026-04-08-pack-usefulness-roadmap.md
+  s_001266e69504e4::t_c2ad84a0a19832 1-202
+vendor/codemem/docs/plans/2026-04-08-phase-b-pack-dedup-design.md
+  s_001266e69504e4::t_b35d079ef30be6 1-336
+vendor/codemem/docs/plans/2026-04-08-tiered-observer-settings-ui-design.md
+  s_001266e69504e4::t_9ebcae4607ec76 1-246
+vendor/codemem/docs/plans/2026-04-11-file-concept-index-layer.md
+  s_001266e69504e4::t_24ffceae1cb618 1-544
+vendor/codemem/docs/plans/2026-04-11-scoped-memory-retrieval-design.md
+  s_001266e69504e4::t_186a012f29dca4 1-550
+vendor/codemem/docs/plans/2026-04-11-sync-vector-handling-design.md
+  s_001266e69504e4::t_28c741cb44d494 1-404
+vendor/codemem/docs/plans/2026-04-12-coordinator-admin-ui-design.md
+  s_001266e69504e4::t_6cfd751454f962 1-316
+vendor/codemem/docs/plans/2026-04-17-cross-project-fallback-retrieval.md
+  s_001266e69504e4::t_cc3b9ea1e06270 1-177
+vendor/codemem/docs/plans/2026-04-21-default-on-tiered-routing-design.md
+  s_001266e69504e4::t_3545f90b2a6ff1 1-239
+vendor/codemem/docs/plans/2026-04-22-multi-team-coordinator-groups-design.md
+  s_001266e69504e4::t_e5be3adeb8ec0c 1-295
+vendor/codemem/docs/plans/2026-04-23-sync-tab-redesign.md
+  s_001266e69504e4::t_091bff3dc86c94 1-1228
+vendor/codemem/docs/plans/2026-04-30-seed-and-mesh-architecture-converged.md
+  s_001266e69504e4::t_0b38ec6c3d36b3 1-295
+vendor/codemem/docs/plans/2026-04-30-seed-and-mesh-architecture-research.md
+  s_001266e69504e4::t_89ac1bf43e5257 1-181
+vendor/codemem/docs/plans/2026-04-30-sharing-domain-scope-design.md
+  s_001266e69504e4::t_c6740a8efd2929 1-913
+vendor/codemem/docs/plans/2026-05-06-maintenance-worker-isolation-design.md
+  s_001266e69504e4::t_c23b69993ffd9a 1-43
+vendor/codemem/docs/plans/2026-05-06-sharing-domain-030-release-readiness-checklist.md
+  s_001266e69504e4::t_9973c2ce57db84 1-81
+vendor/codemem/docs/plans/2026-05-06-sharing-domain-boundary-checkpoint.md
+  s_001266e69504e4::t_525835db2696a8 1-56
+vendor/codemem/docs/plans/2026-05-06-sharing-domain-release-readiness-ux-design.md
+  s_001266e69504e4::t_6a65fcbd3484ca 1-160
+vendor/codemem/docs/plans/2026-05-08-sharing-domain-guided-setup-flow.md
+  s_001266e69504e4::t_bee697d0c8935d 1-354
+vendor/codemem/docs/plans/2026-05-12-mixed-sharing-domain-dogfood-validation.md
+  s_001266e69504e4::t_fe8b0a0a5d2f3b 1-121
+vendor/codemem/docs/plans/2026-05-22-mcp-multitenant-phase-3-design.md
+  s_001266e69504e4::t_0207dc6ba084da 1-241
+vendor/codemem/docs/plans/2026-05-22-mcp-oauth-phase1-split.md
+  s_001266e69504e4::t_325ba7cb0da06e 1-77
+vendor/codemem/docs/plans/2026-05-22-team-space-sharing-ux-design.md
+  s_001266e69504e4::t_e67318fa02ccb6 1-342
+vendor/codemem/docs/plans/2026-05-25-scoped-sync-postmortem.md
+  s_001266e69504e4::t_71c1d23cde887e 1-80
+vendor/codemem/docs/plans/2026-05-25-scoped-sync-protocol.md
+  s_001266e69504e4::t_afdccdf907c2a5 1-255
+vendor/codemem/docs/plans/2026-05-27-authenticated-owner-aware-sync-follow-up.md
+  s_001266e69504e4::t_e51190028f3b4d 1-59
+vendor/codemem/docs/plans/2026-05-28-codex-first-class-integration.md
+  s_001266e69504e4::t_9457b1ef3eb524 1-431
+vendor/codemem/docs/plans/2026-06-27-distill-fact-miner-design.md
+  s_001266e69504e4::t_79a7a6ac4a0c0a 1-191
+vendor/codemem/docs/plans/2026-06-27-distill-fact-miner-implementation-plan.md
+  s_001266e69504e4::t_99da2dde541e80 1-98
+vendor/codemem/docs/plans/2026-06-28-memory-worthiness-policy.md
+  s_001266e69504e4::t_cc2632a97c9a88 1-513
+vendor/codemem/docs/plans/2026-06-29-derived-fact-derivation-design.md
+  s_001266e69504e4::t_01bb9dc6da2e22 1-986
+vendor/codemem/docs/plans/2026-07-10-observer-eval-and-codex-sidecar-settings-design.md
+  s_001266e69504e4::t_c3117a08e0e218 1-157
+vendor/codemem/docs/plans/2026-07-10-observer-extraction-model-eval-design.md
+  s_001266e69504e4::t_23ddc82ee5323e 1-117
+vendor/codemem/docs/plans/2026-07-20-project-first-teammate-sharing-design.md
+  s_001266e69504e4::t_5358adecc6bcd9 1-439
+vendor/codemem/docs/plans/2026-07-20-project-first-teammate-sharing-implementation.md
+  s_001266e69504e4::t_feb2aeaab4d8cd 1-315
+vendor/codemem/docs/plans/2026-07-21-project-recipient-sharing-identity-design.md
+  s_001266e69504e4::t_85086dac721bd1 1-470
+vendor/codemem/docs/plans/2026-07-21-project-recipient-sharing-implementation.md
+  s_001266e69504e4::t_76718f8a27d65b 1-465
+vendor/codemem/docs/plans/2026-07-23-disposable-sharing-dogfood-design.md
+  s_001266e69504e4::t_3193b02427392b 1-118
+vendor/codemem/docs/plans/2026-07-23-disposable-sharing-dogfood-implementation.md
+  s_001266e69504e4::t_9989c6b99d2872 1-64
+vendor/codemem/docs/plans/2026-07-23-exact-project-local-default-isolation-design.md
+  s_001266e69504e4::t_1b348a9c390787 1-114
+vendor/codemem/docs/plans/2026-07-23-exact-project-local-default-isolation-implementation.md
+  s_001266e69504e4::t_547e62d4c04e64 1-121
+vendor/codemem/docs/plans/2026-07-23-fresh-recipient-invitation-bootstrap-design.md
+  s_001266e69504e4::t_d34b43f76d8254 1-90
+vendor/codemem/docs/plans/2026-07-23-fresh-recipient-invitation-bootstrap-implementation.md
+  s_001266e69504e4::t_b105a44413ea3b 1-53
+vendor/codemem/docs/plans/2026-07-23-sharing-dogfood-stabilization-design.md
+  s_001266e69504e4::t_7a66d890c88844 1-64
+vendor/codemem/docs/plans/2026-07-23-sharing-dogfood-stabilization-implementation.md
+  s_001266e69504e4::t_31f2e914bc6555 1-49
+vendor/codemem/docs/plans/2026-07-25-device-provisioning-reconciler-design.md
+  s_001266e69504e4::t_cccdf7093e5127 1-265
+vendor/codemem/docs/plans/2026-07-25-signed-add-device-invites-design.md
+  s_001266e69504e4::t_a4eefe6e9ff249 1-56
+vendor/codemem/docs/plans/2026-07-25-signed-add-device-invites-implementation.md
+  s_001266e69504e4::t_54312c471928d8 1-39
+vendor/codemem/docs/plans/2026-07-28-group-scoped-enrollment-revocation-design.md
+  s_001266e69504e4::t_8794718268a1f0 1-50
+vendor/codemem/docs/plans/2026-07-28-pre-040-product-completion-design.md
+  s_001266e69504e4::t_69d4133c394e19 1-78
+vendor/codemem/docs/plans/2026-07-28-recipient-managed-project-projection-design.md
+  s_001266e69504e4::t_ef13661c6cdc17 1-77
+vendor/codemem/docs/plans/2026-07-29-coordinator-enrollment-reconciliation-issues-design.md
+  s_001266e69504e4::t_9aae87d15017e6 1-61
+vendor/codemem/docs/plans/2026-08-03-outcome-retrieval-attribution-ledger-design.md
+  s_001266e69504e4::t_f27ace4ddb52ea 1-726
+vendor/codemem/docs/plans/2026-08-09-release-0.40.1-continuity-hotfix-design.md
+  s_001266e69504e4::t_17690650ad1ffa 1-112
+vendor/codemem/docs/plans/2026-08-10-release-0.41-fast-focused-recall-design.md
+  s_001266e69504e4::t_8f2589b886269b 1-261
+vendor/codemem/docs/plans/2026-08-10-release-0.41-fast-focused-recall-implementation.md
+  s_001266e69504e4::t_5e181ba8a3d059 1-156
+vendor/codemem/docs/plans/2026-08-11-cli-operational-status-and-command-tree-consolidation-design.md
+  s_001266e69504e4::t_780f5e4d4a653a 1-225
+vendor/codemem/docs/plans/2026-08-11-cli-operational-status-and-command-tree-consolidation-plan.md
+  s_001266e69504e4::t_0addfccb6b65b0 1-161
+vendor/codemem/docs/plans/adapter-event-v1.fixtures.json
+  s_001266e69504e4::t_c187eb69548931 1-220
+vendor/codemem/docs/plans/adapter-event-v1.schema.json
+  s_001266e69504e4::t_0ffc245f35f2cf 1-227
+vendor/codemem/docs/plugin-reference.md
+  s_001266e69504e4::t_a9d5c6855f968e 1-427
+vendor/codemem/docs/remote-mcp-oauth.md
+  s_001266e69504e4::t_a61063a28f825c 1-198
+vendor/codemem/docs/remote-mcp-partner-v1.md
+  s_001266e69504e4::t_2e32ca839cfe17 1-142
+vendor/codemem/docs/rename-migration.md
+  s_001266e69504e4::t_66fc530082e980 1-125
+vendor/codemem/docs/superpowers/specs/2026-08-10-recipient-policy-multi-project-diagnostics-design.md
+  s_001266e69504e4::t_ff05108dd01857 1-40
+vendor/codemem/docs/sync-provenance.md
+  s_001266e69504e4::t_49e21037be1375 1-66
+vendor/codemem/docs/trusted-publisher.md
+  s_001266e69504e4::t_055bcdaf6d294e 1-79
+vendor/codemem/docs/user-guide.md
+  s_001266e69504e4::t_6f33d703d5c7f2 1-481
+vendor/codemem/docs/versioning.md
+  s_001266e69504e4::t_bd95ed4f7256ba 1-82
+vendor/codemem/drizzle.config.ts
+  s_001266e69504e4::t_f34a446eab7928 1-10
+vendor/codemem/e2e/README.md
+  s_001266e69504e4::t_0c25177a7efce5 1-187
+vendor/codemem/e2e/bin/dogfood.test.ts
+  s_001266e69504e4::t_7b7b9cd71369c2 1-582
+vendor/codemem/e2e/bin/dogfood.ts
+  s_001266e69504e4::t_a88b51deaca824 1-626
+vendor/codemem/e2e/bin/run-local.ts
+  s_001266e69504e4::t_616cfb5e38c13e 1-132
+vendor/codemem/e2e/fleet/examples/compose-shared-seed.json
+  s_001266e69504e4::t_7cc81d9ae0b7a5 1-70
+vendor/codemem/e2e/fleet/readiness.ts
+  s_001266e69504e4::t_3ae7088e4607ff 1-70
+vendor/codemem/e2e/fleet/spec.ts
+  s_001266e69504e4::t_636aa917479ae4 1-174
+vendor/codemem/e2e/images/peer.Dockerfile
+  s_001266e69504e4::t_b7f4f286477b5f 1-18
+vendor/codemem/e2e/lib/artifacts.ts
+  s_001266e69504e4::t_9cde7efecdce62 1-34
+vendor/codemem/e2e/lib/assert.ts
+  s_001266e69504e4::t_d7f855371c439f 1-11
+vendor/codemem/e2e/lib/compose.test.ts
+  s_001266e69504e4::t_3fcc811cb0d05d 1-272
+vendor/codemem/e2e/lib/compose.ts
+  s_001266e69504e4::t_c76f2f187ffb07 1-232
+vendor/codemem/e2e/lib/coordinator.ts
+  s_001266e69504e4::t_ade9db30604ddb 1-75
+vendor/codemem/e2e/lib/scenario-context.ts
+  s_001266e69504e4::t_b126b8aa22af96 1-38
+vendor/codemem/e2e/lib/seed.ts
+  s_001266e69504e4::t_6c0d82642839d6 1-54
+vendor/codemem/e2e/lib/wait.ts
+  s_001266e69504e4::t_12c22f913ac4dd 1-23
+vendor/codemem/e2e/scenarios/bootstrap.ts
+  s_001266e69504e4::t_34e534a6e3e903 1-384
+vendor/codemem/e2e/scenarios/coordinator.ts
+  s_001266e69504e4::t_3bef946c6dd4e1 1-196
+vendor/codemem/e2e/scenarios/direct-sync.ts
+  s_001266e69504e4::t_43eb144059f3fc 1-341
+vendor/codemem/e2e/scenarios/fleet-cleanup.ts
+  s_001266e69504e4::t_4f81a7a96ed333 1-304
+vendor/codemem/e2e/scenarios/fleet-ready.ts
+  s_001266e69504e4::t_8ead49f1748d58 1-411
+vendor/codemem/e2e/scenarios/fleet-smoke.ts
+  s_001266e69504e4::t_011465484ff3e5 1-170
+vendor/codemem/e2e/scenarios/project-sharing.ts
+  s_001266e69504e4::t_6c5030e60baef4 1-1473
+vendor/codemem/e2e/scenarios/sharing-domains.ts
+  s_001266e69504e4::t_2d1f46d92cf6e2 1-74
+vendor/codemem/e2e/scenarios/smoke.ts
+  s_001266e69504e4::t_7036db1f30aa3c 1-81
+vendor/codemem/e2e/scripts/accept-discovered.ts
+  s_001266e69504e4::t_552c68740216e4 1-153
+vendor/codemem/e2e/scripts/add-shared-memory.ts
+  s_001266e69504e4::t_eaa5b5b2d1c4fb 1-76
+vendor/codemem/e2e/scripts/coordinator-status.ts
+  s_001266e69504e4::t_6f222adae08f3e 1-38
+vendor/codemem/e2e/scripts/dogfood-sharing-fixture.test.ts
+  s_001266e69504e4::t_c2b55c26a07f4d 1-334
+vendor/codemem/e2e/scripts/dogfood-sharing-fixture.ts
+  s_001266e69504e4::t_8e078c1f1b0fb3 1-309
+vendor/codemem/e2e/scripts/fixture-summary.ts
+  s_001266e69504e4::t_03ba8b205a125c 1-51
+vendor/codemem/e2e/scripts/peer-identity.ts
+  s_001266e69504e4::t_b673b255db6dbd 1-21
+vendor/codemem/e2e/scripts/pin-peer.ts
+  s_001266e69504e4::t_212ad9474e34ad 1-56
+vendor/codemem/e2e/scripts/project-sharing-fixture.ts
+  s_001266e69504e4::t_8ba276b733ce43 1-665
+vendor/codemem/e2e/scripts/remove-local-peer.ts
+  s_001266e69504e4::t_a9dc323a0551ca 1-35
+vendor/codemem/e2e/scripts/sharing-domain-smoke.ts
+  s_001266e69504e4::t_ad16b1430c1084 1-929
+vendor/codemem/e2e/seeds/load.ts
+  s_001266e69504e4::t_042644d9794cd5 1-92
+vendor/codemem/examples/cloudflare-coordinator/.gitignore
+  s_001266e69504e4::t_38f3c82faee38b 1-2
+vendor/codemem/examples/cloudflare-coordinator/README.md
+  s_001266e69504e4::t_618ca948f8b028 1-9
+vendor/codemem/examples/cloudflare-coordinator/wrangler.toml.example
+  s_001266e69504e4::t_6aeabe8903c1d5 1-9
+vendor/codemem/package.json
+  s_001266e69504e4::t_97b8e9ee129470 1-59
+vendor/codemem/packages/cli/.opencode/.gitignore
+  s_001266e69504e4::t_4b5852823d712a 1-2
+vendor/codemem/packages/cli/.opencode/.npmrc
+  s_001266e69504e4::t_c8b5951dc50819 1
+vendor/codemem/packages/cli/.opencode/lib/compat.js
+  s_001266e69504e4::t_b1beb06c6720a4 1-155
+vendor/codemem/packages/cli/.opencode/package.json
+  s_001266e69504e4::t_00d881c698d44f 1-6
+vendor/codemem/packages/cli/.opencode/plugins/codemem.js
+  s_001266e69504e4::t_f55065dc002909 1-8
+vendor/codemem/packages/cli/.opencode/tests/compat.test.js
+  s_001266e69504e4::t_692cd6125de34a 1-160
+vendor/codemem/packages/cli/.opencode/tests/plugin-adapter.test.js
+  s_001266e69504e4::t_896ca932cad504 1-333
+vendor/codemem/packages/cli/.opencode/tests/plugin-injection-failures.test.js
+  s_001266e69504e4::t_ccc7b9ce7157ce 1-109
+vendor/codemem/packages/cli/.opencode/tests/plugin-injection.test.js
+  s_001266e69504e4::t_5868e96391a043 1-895
+vendor/codemem/packages/cli/.opencode/tests/plugin-probe-parity.test.js
+  s_001266e69504e4::t_29f329add7a250 1-156
+vendor/codemem/packages/cli/.opencode/tests/plugin-toast.test.js
+  s_001266e69504e4::t_f0f1b48e1df457 1-91
+vendor/codemem/packages/cli/.opencode/tests/plugin-transform-hook.test.js
+  s_001266e69504e4::t_7ea316e92a9adb 1-2387
+vendor/codemem/packages/cli/.opencode/tests/plugin-viewer-health.test.js
+  s_001266e69504e4::t_29e52f0b039da8 1-213
+vendor/codemem/packages/cli/.opencode/tests/plugin-working-set.test.js
+  s_001266e69504e4::t_346b7515cc404e 1-154
+vendor/codemem/packages/cli/.opencode/tests/setup.js
+  s_001266e69504e4::t_9b43ccb2b34f51 1-13
+vendor/codemem/packages/cli/.opencode/vitest.config.ts
+  s_001266e69504e4::t_6e795239bc66b1 1-17
+vendor/codemem/packages/cli/README.md
+  s_001266e69504e4::t_a930ab1352be75 1-37
+vendor/codemem/packages/cli/package.json
+  s_001266e69504e4::t_5931d628d10e15 1-66
+vendor/codemem/packages/cli/scripts/packed-artifact-smoke.mjs
+  s_001266e69504e4::t_95520ef47ee140 1-94
+vendor/codemem/packages/cli/smoke.vitest.config.ts
+  s_001266e69504e4::t_ced0477f440537 1-10
+vendor/codemem/packages/cli/src/command-tree.test.ts
+  s_001266e69504e4::t_a0a4cfaf898e65 1-108
+vendor/codemem/packages/cli/src/command-tree.ts
+  s_001266e69504e4::t_69a09c772a2497 1-199
+vendor/codemem/packages/cli/src/commands/alias-deprecation.test.ts
+  s_001266e69504e4::t_31a37a19fed8e3 1-82
+vendor/codemem/packages/cli/src/commands/claude-hook-file-context.test.ts
+  s_001266e69504e4::t_cefbeea8baa5ea 1-919
+vendor/codemem/packages/cli/src/commands/claude-hook-file-context.ts
+  s_001266e69504e4::t_ffdfed4b9526cd 1-587
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest-spool.test.ts
+  s_001266e69504e4::t_aecb39f6987e17 1-368
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest-spool.ts
+  s_001266e69504e4::t_fd8e8764681fef 1-488
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest.test.ts
+  s_001266e69504e4::t_6366fd26c51766 1-440
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest.ts
+  s_001266e69504e4::t_7b6c433d7b8d1e 1-483
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.contract.test.ts
+  s_001266e69504e4::t_215f3eeb870765 1-318
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.test.ts
+  s_001266e69504e4::t_681973da5b1a11 1-534
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.ts
+  s_001266e69504e4::t_e928b56639c6a5 1-314
+vendor/codemem/packages/cli/src/commands/claude-hook-plugin-log.test.ts
+  s_001266e69504e4::t_abebf9696138e1 1-89
+vendor/codemem/packages/cli/src/commands/claude-hook-plugin-log.ts
+  s_001266e69504e4::t_f84bc69920dd9f 1-49
+vendor/codemem/packages/cli/src/commands/claude-hook-session-state.test.ts
+  s_001266e69504e4::t_f001c71312b58c 1-351
+vendor/codemem/packages/cli/src/commands/claude-hook-session-state.ts
+  s_001266e69504e4::t_6b2ea64276bbd7 1-289
+vendor/codemem/packages/cli/src/commands/codex-hook-ingest-spool.ts
+  s_001266e69504e4::t_e2a2fcc8665121 1-342
+vendor/codemem/packages/cli/src/commands/codex-hook-ingest.test.ts
+  s_001266e69504e4::t_bc2c9763b68095 1-330
+vendor/codemem/packages/cli/src/commands/codex-hook-ingest.ts
+  s_001266e69504e4::t_34aa82475f9e30 1-351
+vendor/codemem/packages/cli/src/commands/codex-hook-inject.test.ts
+  s_001266e69504e4::t_992bac9a8b4720 1-284
+vendor/codemem/packages/cli/src/commands/codex-hook-inject.ts
+  s_001266e69504e4::t_08368153de14f4 1-271
+vendor/codemem/packages/cli/src/commands/config.test.ts
+  s_001266e69504e4::t_fbe83a764fc11e 1-151
+vendor/codemem/packages/cli/src/commands/config.ts
+  s_001266e69504e4::t_740c816d64410b 1-230
+vendor/codemem/packages/cli/src/commands/coordinator.ts
+  s_001266e69504e4::t_c1d6980c8930c0 1-1292
+vendor/codemem/packages/cli/src/commands/db.test.ts
+  s_001266e69504e4::t_030d667dc02d4a 1-349
+vendor/codemem/packages/cli/src/commands/db.ts
+  s_001266e69504e4::t_c84d2f4e542964 1-1044
+vendor/codemem/packages/cli/src/commands/distill.test.ts
+  s_001266e69504e4::t_10183f83170421 1-419
+vendor/codemem/packages/cli/src/commands/distill.ts
+  s_001266e69504e4::t_4d4ce8508da17d 1-443
+vendor/codemem/packages/cli/src/commands/embed.test.ts
+  s_001266e69504e4::t_4010a80fa957df 1-41
+vendor/codemem/packages/cli/src/commands/embed.ts
+  s_001266e69504e4::t_3e62571c0c4fc0 1-91
+vendor/codemem/packages/cli/src/commands/enqueue-raw-event.ts
+  s_001266e69504e4::t_b2556c3672f874 1-115
+vendor/codemem/packages/cli/src/commands/export-memories.ts
+  s_001266e69504e4::t_2bf70cf0ed4eaa 1-75
+vendor/codemem/packages/cli/src/commands/import-memories.ts
+  s_001266e69504e4::t_c43b90d6efd64b 1-115
+vendor/codemem/packages/cli/src/commands/maintenance.ts
+  s_001266e69504e4::t_26bf635cdcd62b 1-176
+vendor/codemem/packages/cli/src/commands/mcp.test.ts
+  s_001266e69504e4::t_eb39b72c8ef729 1-130
+vendor/codemem/packages/cli/src/commands/mcp.ts
+  s_001266e69504e4::t_84eef2aa47a497 1-82
+vendor/codemem/packages/cli/src/commands/memory-inject.test.ts
+  s_001266e69504e4::t_6b150229190c5f 1-114
+vendor/codemem/packages/cli/src/commands/memory.test.ts
+  s_001266e69504e4::t_ba95c69c643bd0 1-480
+vendor/codemem/packages/cli/src/commands/memory.ts
+  s_001266e69504e4::t_95302b2ccbed10 1-1695
+vendor/codemem/packages/cli/src/commands/pack-ledger.test.ts
+  s_001266e69504e4::t_311de62cb4cad8 1-179
+vendor/codemem/packages/cli/src/commands/pack-shared.test.ts
+  s_001266e69504e4::t_a64feb5a0be9a6 1-101
+vendor/codemem/packages/cli/src/commands/pack-shared.ts
+  s_001266e69504e4::t_08d9fd72911291 1-127
+vendor/codemem/packages/cli/src/commands/pack.test.ts
+  s_001266e69504e4::t_fc2794b768ce74 1-694
+vendor/codemem/packages/cli/src/commands/pack.ts
+  s_001266e69504e4::t_c9a567449015b8 1-506
+vendor/codemem/packages/cli/src/commands/recent.ts
+  s_001266e69504e4::t_0f20cb5f01e2c7 1-67
+vendor/codemem/packages/cli/src/commands/search.ts
+  s_001266e69504e4::t_6e47891936dab6 1-96
+vendor/codemem/packages/cli/src/commands/serve-invocation.ts
+  s_001266e69504e4::t_5182cba7d383e9 1-110
+vendor/codemem/packages/cli/src/commands/serve.test.ts
+  s_001266e69504e4::t_a71bf52f039013 1-530
+vendor/codemem/packages/cli/src/commands/serve.ts
+  s_001266e69504e4::t_b62302a9b14dc5 1-958
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_001266e69504e4::t_cf0bc947930680 1-387
+vendor/codemem/packages/cli/src/commands/setup-config.test.ts
+  s_001266e69504e4::t_df07eb12802776 1-81
+vendor/codemem/packages/cli/src/commands/setup-config.ts
+  s_001266e69504e4::t_7ddb9a47c12988 1-27
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_001266e69504e4::t_20498003f63bf2 1-633
+vendor/codemem/packages/cli/src/commands/stats.test.ts
+  s_001266e69504e4::t_6d6bd93b82698a 1-269
+vendor/codemem/packages/cli/src/commands/stats.ts
+  s_001266e69504e4::t_91938aac3c4f2a 1-126
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_001266e69504e4::t_dc9659e7ab6b16 1-309
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_001266e69504e4::t_e27681eac76cf7 1-463
+vendor/codemem/packages/cli/src/commands/sync-helpers.ts
+  s_001266e69504e4::t_fefb0f73317863 1-94
+vendor/codemem/packages/cli/src/commands/sync.test.ts
+  s_001266e69504e4::t_1cc6e925977624 1-615
+vendor/codemem/packages/cli/src/commands/sync.ts
+  s_001266e69504e4::t_0617f0bd872c46 1-1430
+vendor/codemem/packages/cli/src/commands/version.ts
+  s_001266e69504e4::t_247b72861f2a1d 1-10
+vendor/codemem/packages/cli/src/help-style.ts
+  s_001266e69504e4::t_2804bca4623e50 1-20
+vendor/codemem/packages/cli/src/index.smoke.test.ts
+  s_001266e69504e4::t_6c33596ed42728 1-72
+vendor/codemem/packages/cli/src/index.ts
+  s_001266e69504e4::t_2b46172ed1b075 1-77
+vendor/codemem/packages/cli/src/maintenance-worker-runtime.test.ts
+  s_001266e69504e4::t_bdb49d42f1566f 1-95
+vendor/codemem/packages/cli/src/maintenance-worker-runtime.ts
+  s_001266e69504e4::t_e3dea9a6cc7031 1-259
+vendor/codemem/packages/cli/src/shared-options.ts
+  s_001266e69504e4::t_fee8a1742e3585 1-115
+vendor/codemem/packages/cli/src/viewer-runtime.test.ts
+  s_001266e69504e4::t_d56c94f70f17c8 1-173
+vendor/codemem/packages/cli/src/viewer-runtime.ts
+  s_001266e69504e4::t_8387771e6b7345 1-133
+vendor/codemem/packages/cli/tsconfig.json
+  s_001266e69504e4::t_87ecc27d3f60fc 1-9
+vendor/codemem/packages/cli/vite.config.ts
+  s_001266e69504e4::t_b6f4ee77426584 1-46
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0001_init.sql
+  s_001266e69504e4::t_f3a54f9172fefa 1-59
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0002_add_reciprocal_approvals.sql
+  s_001266e69504e4::t_f2d99e2568cc01 1-9
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0003_harden_reciprocal_approval_pending_pairs.sql
+  s_001266e69504e4::t_8bcba1425a8c57 1-33
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0004_add_group_archival.sql
+  s_001266e69504e4::t_b7b6f1d3621a97 1
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0005_add_scope_memberships.sql
+  s_001266e69504e4::t_0062af8f6d273c 1-44
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0006_add_scope_membership_audit_log.sql
+  s_001266e69504e4::t_7783e3a0be62cc 1-24
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0007_add_invite_project_intent_reference.sql
+  s_001266e69504e4::t_3bdc2bb7c034ac 1-5
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0008_add_project_invite_acceptance.sql
+  s_001266e69504e4::t_27da952492c6a8 1-30
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0009_add_recipient_invite_kinds.sql
+  s_001266e69504e4::t_3c903af0d0e4e7 1-11
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0010_add_scope_membership_effect_receipts.sql
+  s_001266e69504e4::t_17e2bafe23d7e1 1-23
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0011_add_recipient_reviewed_intent.sql
+  s_001266e69504e4::t_da76b0fb6a5226 1
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0012_add_enrolled_device_identity.sql
+  s_001266e69504e4::t_6f5e9996295f00 1
+vendor/codemem/packages/cloudflare-coordinator-worker/migrations/0013_add_invite_assigned_identity.sql
+  s_001266e69504e4::t_52d2cd2ead86c4 1
+vendor/codemem/packages/cloudflare-coordinator-worker/package.json
+  s_001266e69504e4::t_7875610d68366c 1-33
+vendor/codemem/packages/cloudflare-coordinator-worker/schema.sql
+  s_001266e69504e4::t_6ce9352eab3c21 1-211
+vendor/codemem/packages/cloudflare-coordinator-worker/scripts/assert-worker-bundle-clean.mjs
+  s_001266e69504e4::t_21ba5246595c1b 1-79
+vendor/codemem/packages/cloudflare-coordinator-worker/scripts/assert-worker-bundle-clean.test.mjs
+  s_001266e69504e4::t_948d12cf897574 1-72
+vendor/codemem/packages/cloudflare-coordinator-worker/src/index.test.ts
+  s_001266e69504e4::t_872c0eab68f5a1 1-639
+vendor/codemem/packages/cloudflare-coordinator-worker/src/index.ts
+  s_001266e69504e4::t_84f3ff839afa79 1-43
+vendor/codemem/packages/cloudflare-coordinator-worker/src/request-verifier.ts
+  s_001266e69504e4::t_25e07495b79760 1-125
+vendor/codemem/packages/cloudflare-coordinator-worker/test/apply-migrations.ts
+  s_001266e69504e4::t_e525bb397e517b 1-4
+vendor/codemem/packages/cloudflare-coordinator-worker/test/env.d.ts
+  s_001266e69504e4::t_1bb405792bd6c9 1-8
+vendor/codemem/packages/cloudflare-coordinator-worker/test/worker.integration.test.ts
+  s_001266e69504e4::t_eeeee900ca4d4f 1-1269
+vendor/codemem/packages/cloudflare-coordinator-worker/tsconfig.json
+  s_001266e69504e4::t_e84eb03a5d111e 1-12
+vendor/codemem/packages/cloudflare-coordinator-worker/vite.config.ts
+  s_001266e69504e4::t_0c9d5b1233b931 1-24
+vendor/codemem/packages/cloudflare-coordinator-worker/vitest.config.ts
+  s_001266e69504e4::t_404af12fd14fec 1-36
+vendor/codemem/packages/cloudflare-coordinator-worker/vitest.node.config.ts
+  s_001266e69504e4::t_21339f6ac268dd 1-19
+vendor/codemem/packages/cloudflare-coordinator-worker/wrangler.jsonc
+  s_001266e69504e4::t_4e8d769d96e381 1-13
+vendor/codemem/packages/cloudflare-coordinator-worker/wrangler.toml.example
+  s_001266e69504e4::t_1421a36cc73487 1-12
+vendor/codemem/packages/core/package.json
+  s_001266e69504e4::t_53dc950d6c810f 1-54
+vendor/codemem/packages/core/scripts/generate-test-schema.ts
+  s_001266e69504e4::t_94e7d21a44b1a0 1-29
+vendor/codemem/packages/core/src/address-utils.ts
+  s_001266e69504e4::t_d88f04971e22b6 1-104
+vendor/codemem/packages/core/src/api-types.ts
+  s_001266e69504e4::t_d1fdca9a7e73d7 1-918
+vendor/codemem/packages/core/src/apply-patch.test.ts
+  s_001266e69504e4::t_ccd74cfac61928 1-86
+vendor/codemem/packages/core/src/apply-patch.ts
+  s_001266e69504e4::t_c8d5f0ebda16c0 1-53
+vendor/codemem/packages/core/src/attribution-assessment.test.ts
+  s_001266e69504e4::t_072a70ff1dd5ed 1-5052
+vendor/codemem/packages/core/src/attribution-assessment.ts
+  s_001266e69504e4::t_15bf950d7d375e 1-1561
+vendor/codemem/packages/core/src/attribution-diagnostics.test.ts
+  s_001266e69504e4::t_e0b8b1e3955a65 1-750
+vendor/codemem/packages/core/src/attribution-diagnostics.ts
+  s_001266e69504e4::t_e847c26cb374a0 1-295
+vendor/codemem/packages/core/src/better-sqlite-coordinator-runtime.ts
+  s_001266e69504e4::t_23d63bbc9d8546 1-36
+vendor/codemem/packages/core/src/better-sqlite-coordinator-store.ts
+  s_001266e69504e4::t_bf9a28d3e9f222 1-2227
+vendor/codemem/packages/core/src/build-session-context.test.ts
+  s_001266e69504e4::t_50f98f137917fd 1-106
+vendor/codemem/packages/core/src/claude-hooks.test.ts
+  s_001266e69504e4::t_b2ef3eabf2f7c4 1-787
+vendor/codemem/packages/core/src/claude-hooks.ts
+  s_001266e69504e4::t_de8b47f738789b 1-732
+vendor/codemem/packages/core/src/codex-hooks.test.ts
+  s_001266e69504e4::t_0a8748801802fc 1-225
+vendor/codemem/packages/core/src/codex-hooks.ts
+  s_001266e69504e4::t_fa8946efff49c6 1-323
+vendor/codemem/packages/core/src/coordinator-actions.test.ts
+  s_001266e69504e4::t_96e1ca39ca8ac1 1-2925
+vendor/codemem/packages/core/src/coordinator-actions.ts
+  s_001266e69504e4::t_67afc08a8f21a2 1-2529
+vendor/codemem/packages/core/src/coordinator-api.test.ts
+  s_001266e69504e4::t_5c6e9b4c613d83 1-3218
+vendor/codemem/packages/core/src/coordinator-api.ts
+  s_001266e69504e4::t_08749ea42a88b9 1-2415
+vendor/codemem/packages/core/src/coordinator-enrollment-reconciler.test.ts
+  s_001266e69504e4::t_d2431a6fbfbc32 1-769
+vendor/codemem/packages/core/src/coordinator-enrollment-reconciler.ts
+  s_001266e69504e4::t_234052d746a4e0 1-299
+vendor/codemem/packages/core/src/coordinator-enrollment-reconciliation-issues.test.ts
+  s_001266e69504e4::t_c458886d559097 1-86
+vendor/codemem/packages/core/src/coordinator-enrollment-reconciliation-issues.ts
+  s_001266e69504e4::t_4e86d259a346ec 1-140
+vendor/codemem/packages/core/src/coordinator-group-preferences.test.ts
+  s_001266e69504e4::t_6e20e72e888f22 1-163
+vendor/codemem/packages/core/src/coordinator-group-preferences.ts
+  s_001266e69504e4::t_70b0f4e891de2f 1-182
+vendor/codemem/packages/core/src/coordinator-invites.test.ts
+  s_001266e69504e4::t_ded9811caa3ab2 1-90
+vendor/codemem/packages/core/src/coordinator-invites.ts
+  s_001266e69504e4::t_daa79a8b28d0f3 1-90
+vendor/codemem/packages/core/src/coordinator-membership-effects.ts
+  s_001266e69504e4::t_6d00aa4616ed42 1-134
+vendor/codemem/packages/core/src/coordinator-runtime.test.ts
+  s_001266e69504e4::t_95327c04ec1bf7 1-1029
+vendor/codemem/packages/core/src/coordinator-runtime.ts
+  s_001266e69504e4::t_7e7d2328c580f1 1-989
+vendor/codemem/packages/core/src/coordinator-store-contract.ts
+  s_001266e69504e4::t_32d138a8657e55 1-520
+vendor/codemem/packages/core/src/coordinator-store-test-harness.ts
+  s_001266e69504e4::t_347dd1338cf410 1-2540
+vendor/codemem/packages/core/src/coordinator-store.test.ts
+  s_001266e69504e4::t_43b2adf8d64616 1-211
+vendor/codemem/packages/core/src/coordinator-store.ts
+  s_001266e69504e4::t_47494888f790e7 1-38
+vendor/codemem/packages/core/src/d1-coordinator-runtime.test.ts
+  s_001266e69504e4::t_231e8399db6fd1 1-189
+vendor/codemem/packages/core/src/d1-coordinator-runtime.ts
+  s_001266e69504e4::t_1a6f791c391586 1-27
+vendor/codemem/packages/core/src/d1-coordinator-store.test.ts
+  s_001266e69504e4::t_04677461f8839c 1-675
+vendor/codemem/packages/core/src/d1-coordinator-store.ts
+  s_001266e69504e4::t_7459c99fe62e1f 1-2310
+vendor/codemem/packages/core/src/db.test.ts
+  s_001266e69504e4::t_8542bc73a5fe5c 1-1547
+vendor/codemem/packages/core/src/db.ts
+  s_001266e69504e4::t_f5add93dcd2dfc 1-1595
+vendor/codemem/packages/core/src/dedup-key-backfill.test.ts
+  s_001266e69504e4::t_fc84d6eb123559 1-138
+vendor/codemem/packages/core/src/dedup-key-backfill.ts
+  s_001266e69504e4::t_6a4968a4c6c25d 1-231
+vendor/codemem/packages/core/src/distill-draft.test.ts
+  s_001266e69504e4::t_66d41128946102 1-117
+vendor/codemem/packages/core/src/distill-draft.ts
+  s_001266e69504e4::t_87a94df68c2bf5 1-185
+vendor/codemem/packages/core/src/distill-judge.test.ts
+  s_001266e69504e4::t_185ec4ef9f4dea 1-142
+vendor/codemem/packages/core/src/distill-judge.ts
+  s_001266e69504e4::t_660a8b7e43815b 1-173
+vendor/codemem/packages/core/src/distill.test.ts
+  s_001266e69504e4::t_a7c76695d5c29e 1-1840
+vendor/codemem/packages/core/src/distill.ts
+  s_001266e69504e4::t_6eca7c172fd1b8 1-1061
+vendor/codemem/packages/core/src/embeddings.test.ts
+  s_001266e69504e4::t_bfba9c2f77d2ba 1-115
+vendor/codemem/packages/core/src/embeddings.ts
+  s_001266e69504e4::t_5718b742a034d7 1-206
+vendor/codemem/packages/core/src/eval-scenarios.test.ts
+  s_001266e69504e4::t_095ff8ca0181e2 1-32
+vendor/codemem/packages/core/src/eval-scenarios.ts
+  s_001266e69504e4::t_74431ae3a4b95a 1-180
+vendor/codemem/packages/core/src/export-import.test.ts
+  s_001266e69504e4::t_2bc81be07fb5e6 1-373
+vendor/codemem/packages/core/src/export-import.ts
+  s_001266e69504e4::t_29fd5eb186ea3d 1-771
+vendor/codemem/packages/core/src/extraction-benchmark-scoring.test.ts
+  s_001266e69504e4::t_be8a5324282456 1-374
+vendor/codemem/packages/core/src/extraction-benchmark-scoring.ts
+  s_001266e69504e4::t_3d37bd8c9da5ed 1-489
+vendor/codemem/packages/core/src/extraction-benchmarks.test.ts
+  s_001266e69504e4::t_0a632c8fb18ccc 1-194
+vendor/codemem/packages/core/src/extraction-benchmarks.ts
+  s_001266e69504e4::t_73b45f1f37860b 1-1065
+vendor/codemem/packages/core/src/extraction-eval.test.ts
+  s_001266e69504e4::t_cf8b6e2e2e23ed 1-330
+vendor/codemem/packages/core/src/extraction-eval.ts
+  s_001266e69504e4::t_60c37fe403cb71 1-462
+vendor/codemem/packages/core/src/extraction-model-pricing.test.ts
+  s_001266e69504e4::t_39cb4b1c5274fc 1-92
+vendor/codemem/packages/core/src/extraction-model-pricing.ts
+  s_001266e69504e4::t_f72238c3ef6fd1 1-112
+vendor/codemem/packages/core/src/extraction-replay.test.ts
+  s_001266e69504e4::t_a1bbe4dc07d3dd 1-730
+vendor/codemem/packages/core/src/extraction-replay.ts
+  s_001266e69504e4::t_b196ab13dd1fc4 1-835
+vendor/codemem/packages/core/src/extraction-tier-routing.test.ts
+  s_001266e69504e4::t_7b2d1472787d3a 1-581
+vendor/codemem/packages/core/src/extraction-tier-routing.ts
+  s_001266e69504e4::t_b30010bed7504c 1-403
+vendor/codemem/packages/core/src/filters.ts
+  s_001266e69504e4::t_dc35c59a205226 1-345
+vendor/codemem/packages/core/src/home.ts
+  s_001266e69504e4::t_06947415e90c7c 1-5
+vendor/codemem/packages/core/src/index.test.ts
+  s_001266e69504e4::t_e149d0b1f8a420 1-8
+vendor/codemem/packages/core/src/index.ts
+  s_001266e69504e4::t_4fc7cbc8679726 1-1183
+vendor/codemem/packages/core/src/ingest-events.ts
+  s_001266e69504e4::t_ecf768b5d8dcb6 1-311
+vendor/codemem/packages/core/src/ingest-filters.ts
+  s_001266e69504e4::t_6571dba17732dc 1-54
+vendor/codemem/packages/core/src/ingest-pipeline.test.ts
+  s_001266e69504e4::t_6f64d2efc8ae04 1-3448
+vendor/codemem/packages/core/src/ingest-pipeline.ts
+  s_001266e69504e4::t_ee4d1ecb58bc0f 1-999
+vendor/codemem/packages/core/src/ingest-prompts.test.ts
+  s_001266e69504e4::t_c407628c1499b2 1-162
+vendor/codemem/packages/core/src/ingest-prompts.ts
+  s_001266e69504e4::t_40174edfd06d64 1-385
+vendor/codemem/packages/core/src/ingest-routing.ts
+  s_001266e69504e4::t_584f6541cd0134 1-84
+vendor/codemem/packages/core/src/ingest-sanitize.ts
+  s_001266e69504e4::t_28f817fedaacea 1-174
+vendor/codemem/packages/core/src/ingest-transcript.ts
+  s_001266e69504e4::t_d0bc46dd0ad61c 1-305
+vendor/codemem/packages/core/src/ingest-types.ts
+  s_001266e69504e4::t_cab98cd74d6206 1-93
+vendor/codemem/packages/core/src/ingest-xml-parser.ts
+  s_001266e69504e4::t_97e8099119482b 1-1584
+vendor/codemem/packages/core/src/integers.ts
+  s_001266e69504e4::t_c74d381c3e9b5e 1-44
+vendor/codemem/packages/core/src/internal/cloudflare-coordinator.ts
+  s_001266e69504e4::t_0a8b62c937f3a9 1-11
+vendor/codemem/packages/core/src/legacy-recipient-policy-projection.test.ts
+  s_001266e69504e4::t_305a28afd7a5dc 1-555
+vendor/codemem/packages/core/src/legacy-recipient-policy-projection.ts
+  s_001266e69504e4::t_f6a475b3e4675d 1-986
+vendor/codemem/packages/core/src/maintenance-jobs.test.ts
+  s_001266e69504e4::t_b389af5936672b 1-280
+vendor/codemem/packages/core/src/maintenance-jobs.ts
+  s_001266e69504e4::t_be636580f1e0b4 1-296
+vendor/codemem/packages/core/src/maintenance.test.ts
+  s_001266e69504e4::t_7142aacf18cf44 1-2604
+vendor/codemem/packages/core/src/maintenance.ts
+  s_001266e69504e4::t_9b973d87c9ebd4 1-108
+vendor/codemem/packages/core/src/maintenance/ai-structured.ts
+  s_001266e69504e4::t_33a90634165276 1-447
+vendor/codemem/packages/core/src/maintenance/backfill-narrative.ts
+  s_001266e69504e4::t_6fa15f724bcf38 1-82
+vendor/codemem/packages/core/src/maintenance/backfill-tags.ts
+  s_001266e69504e4::t_824535cdb52210 1-130
+vendor/codemem/packages/core/src/maintenance/dedup-keys.ts
+  s_001266e69504e4::t_db0590eea35d3e 1-166
+vendor/codemem/packages/core/src/maintenance/dedup.ts
+  s_001266e69504e4::t_31ca48a3cc4470 1-105
+vendor/codemem/packages/core/src/maintenance/init-vacuum.ts
+  s_001266e69504e4::t_96862b608b9872 1-36
+vendor/codemem/packages/core/src/maintenance/low-signal.ts
+  s_001266e69504e4::t_1a5b52847c11b2 1-105
+vendor/codemem/packages/core/src/maintenance/memory-artifact-report.ts
+  s_001266e69504e4::t_afb171e7882190 1-179
+vendor/codemem/packages/core/src/maintenance/memory-role-helpers.test.ts
+  s_001266e69504e4::t_e4af5dc7a742d4 1-116
+vendor/codemem/packages/core/src/maintenance/memory-role-helpers.ts
+  s_001266e69504e4::t_53c68f2f63343d 1-411
+vendor/codemem/packages/core/src/maintenance/memory-role-report.ts
+  s_001266e69504e4::t_41bddde28357db 1-458
+vendor/codemem/packages/core/src/maintenance/narrative-extract.ts
+  s_001266e69504e4::t_c02a8a0760d774 1-32
+vendor/codemem/packages/core/src/maintenance/reliability.ts
+  s_001266e69504e4::t_4ea074ac7ebe63 1-255
+vendor/codemem/packages/core/src/maintenance/relink.ts
+  s_001266e69504e4::t_8b1374044309b4 1-410
+vendor/codemem/packages/core/src/maintenance/scan-secrets.ts
+  s_001266e69504e4::t_c9691ab24451b4 1-414
+vendor/codemem/packages/core/src/maintenance/status.ts
+  s_001266e69504e4::t_124b16c78a4da7 1-144
+vendor/codemem/packages/core/src/maintenance/tag-helpers.ts
+  s_001266e69504e4::t_ff168fdc6c0be3 1-82
+vendor/codemem/packages/core/src/maintenance/types.ts
+  s_001266e69504e4::t_eff87a92f0e707 1-310
+vendor/codemem/packages/core/src/maintenance/with-db.ts
+  s_001266e69504e4::t_09abf15928be41 1-42
+vendor/codemem/packages/core/src/memory-dedup.ts
+  s_001266e69504e4::t_646b15cd4b8731 1-19
+vendor/codemem/packages/core/src/memory-quality.test.ts
+  s_001266e69504e4::t_e273e033996d83 1-567
+vendor/codemem/packages/core/src/memory-quality.ts
+  s_001266e69504e4::t_7104766437ee04 1-600
+vendor/codemem/packages/core/src/observer-auth.test.ts
+  s_001266e69504e4::t_2166740cb67a7b 1-164
+vendor/codemem/packages/core/src/observer-auth.ts
+  s_001266e69504e4::t_4d2290233401dc 1-413
+vendor/codemem/packages/core/src/observer-client.test.ts
+  s_001266e69504e4::t_7799cced981060 1-2212
+vendor/codemem/packages/core/src/observer-client.ts
+  s_001266e69504e4::t_10e6146d6b606b 1-2666
+vendor/codemem/packages/core/src/observer-config.test.ts
+  s_001266e69504e4::t_d0ad17f413b1a2 1-471
+vendor/codemem/packages/core/src/observer-config.ts
+  s_001266e69504e4::t_599f10c621a62b 1-789
+vendor/codemem/packages/core/src/operational-status.test.ts
+  s_001266e69504e4::t_8f215516ffb6b9 1-129
+vendor/codemem/packages/core/src/operational-status.ts
+  s_001266e69504e4::t_058201345f66f5 1-241
+vendor/codemem/packages/core/src/outcome-evidence.test.ts
+  s_001266e69504e4::t_8a2b0085dcd2cc 1-2854
+vendor/codemem/packages/core/src/outcome-evidence.ts
+  s_001266e69504e4::t_b36354f71071ce 1-1703
+vendor/codemem/packages/core/src/pack-eval-fixtures.ts
+  s_001266e69504e4::t_1118ee2848cb2b 1-170
+vendor/codemem/packages/core/src/pack.eval.test.ts
+  s_001266e69504e4::t_c8c917c69080b1 1-212
+vendor/codemem/packages/core/src/pack.test.ts
+  s_001266e69504e4::t_76fdda9396e470 1-2424
+vendor/codemem/packages/core/src/pack.ts
+  s_001266e69504e4::t_a8e4f3d371f4b5 1-2166
+vendor/codemem/packages/core/src/project-invite-acceptance.ts
+  s_001266e69504e4::t_92c5411aa5b1af 1-27
+vendor/codemem/packages/core/src/project-invite-identity.test.ts
+  s_001266e69504e4::t_acfb7847e953c5 1-45
+vendor/codemem/packages/core/src/project-invite-identity.ts
+  s_001266e69504e4::t_77173552acb47b 1-62
+vendor/codemem/packages/core/src/project-scope-settings.test.ts
+  s_001266e69504e4::t_cd8b2b4ac92d8b 1-1492
+vendor/codemem/packages/core/src/project-scope-settings.ts
+  s_001266e69504e4::t_98f144025b8c4d 1-1321
+vendor/codemem/packages/core/src/project-share-intent.ts
+  s_001266e69504e4::t_eaee36beae01c9 1-96
+vendor/codemem/packages/core/src/project.test.ts
+  s_001266e69504e4::t_b37b5a428e8e2d 1-106
+vendor/codemem/packages/core/src/project.ts
+  s_001266e69504e4::t_779612b39bd8bf 1-112
+vendor/codemem/packages/core/src/prompt-pack-ledger.test.ts
+  s_001266e69504e4::t_5a59e1009655cf 1-965
+vendor/codemem/packages/core/src/prompt-pack-ledger.ts
+  s_001266e69504e4::t_b2081ed90e9177 1-381
+vendor/codemem/packages/core/src/query-sanitizer.ts
+  s_001266e69504e4::t_e13d48a6b08458 1-199
+vendor/codemem/packages/core/src/raw-event-flush.test.ts
+  s_001266e69504e4::t_6c33c155d1fa0f 1-614
+vendor/codemem/packages/core/src/raw-event-flush.ts
+  s_001266e69504e4::t_9be31ea839f552 1-374
+vendor/codemem/packages/core/src/raw-event-sweeper.test.ts
+  s_001266e69504e4::t_924c43d718c1bc 1-564
+vendor/codemem/packages/core/src/raw-event-sweeper.ts
+  s_001266e69504e4::t_29ef170584c4b2 1-478
+vendor/codemem/packages/core/src/recap-policy.ts
+  s_001266e69504e4::t_02e8011cc26f5e 1-56
+vendor/codemem/packages/core/src/recipient-policy-contract.test.ts
+  s_001266e69504e4::t_5f9c79f57dbd31 1-235
+vendor/codemem/packages/core/src/recipient-policy-contract.ts
+  s_001266e69504e4::t_6f2b670bf6020c 1-189
+vendor/codemem/packages/core/src/recipient-policy-edges.test.ts
+  s_001266e69504e4::t_8a0d4d898b6985 1-802
+vendor/codemem/packages/core/src/recipient-policy-edges.ts
+  s_001266e69504e4::t_56dcf2bdcbabc4 1-851
+vendor/codemem/packages/core/src/recipient-policy-intent.ts
+  s_001266e69504e4::t_264aced279d79b 1-129
+vendor/codemem/packages/core/src/recipient-policy-migration.test.ts
+  s_001266e69504e4::t_c6a1057b715e9d 1-1050
+vendor/codemem/packages/core/src/recipient-policy-migration.ts
+  s_001266e69504e4::t_f5a938a1ede011 1-812
+vendor/codemem/packages/core/src/recipient-policy-onboarding.test.ts
+  s_001266e69504e4::t_2cb286db4fb2d0 1-1516
+vendor/codemem/packages/core/src/recipient-policy-onboarding.ts
+  s_001266e69504e4::t_7cc587741b8e69 1-1369
+vendor/codemem/packages/core/src/recipient-policy-reconciler.test.ts
+  s_001266e69504e4::t_b9bc392e0bdd5a 1-1689
+vendor/codemem/packages/core/src/recipient-policy-reconciler.ts
+  s_001266e69504e4::t_9fda79fac6c06a 1-1473
+vendor/codemem/packages/core/src/recipient-policy-reconciliation.test.ts
+  s_001266e69504e4::t_c97726fd0321c2 1-645
+vendor/codemem/packages/core/src/recipient-policy-reconciliation.ts
+  s_001266e69504e4::t_da8c3cf4911275 1-1049
+vendor/codemem/packages/core/src/recipient-policy-review.test.ts
+  s_001266e69504e4::t_309f8aa2f54090 1-660
+vendor/codemem/packages/core/src/recipient-policy-review.ts
+  s_001266e69504e4::t_8d0484d4c66110 1-730
+vendor/codemem/packages/core/src/recipient-reviewed-intent.test.ts
+  s_001266e69504e4::t_a338ee0c46d22e 1-184
+vendor/codemem/packages/core/src/recipient-reviewed-intent.ts
+  s_001266e69504e4::t_1c9c7f613b109b 1-324
+vendor/codemem/packages/core/src/ref-backfill.test.ts
+  s_001266e69504e4::t_3d7dce41618278 1-268
+vendor/codemem/packages/core/src/ref-backfill.ts
+  s_001266e69504e4::t_4dbd4868d5ce3f 1-303
+vendor/codemem/packages/core/src/ref-populate.ts
+  s_001266e69504e4::t_1e9d9410de30f3 1-70
+vendor/codemem/packages/core/src/ref-queries.test.ts
+  s_001266e69504e4::t_4533f1cc570bcc 1-293
+vendor/codemem/packages/core/src/ref-queries.ts
+  s_001266e69504e4::t_dd0a9edc80b5f8 1-187
+vendor/codemem/packages/core/src/request-rate-limit.ts
+  s_001266e69504e4::t_a91dbcea56cd94 1-69
+vendor/codemem/packages/core/src/retrieval-ledger.test.ts
+  s_001266e69504e4::t_7b36e38cac788a 1-3258
+vendor/codemem/packages/core/src/retrieval-ledger.ts
+  s_001266e69504e4::t_29fd74df7534a5 1-1612
+vendor/codemem/packages/core/src/retrieval-surface-ledger.ts
+  s_001266e69504e4::t_71f08a001d641d 1-301
+vendor/codemem/packages/core/src/schema-bootstrap.ts
+  s_001266e69504e4::t_1eb7a12dd7d730 1-818
+vendor/codemem/packages/core/src/schema.ts
+  s_001266e69504e4::t_ef50d5493aa161 1-1258
+vendor/codemem/packages/core/src/scope-backfill.test.ts
+  s_001266e69504e4::t_816c6f437685c1 1-609
+vendor/codemem/packages/core/src/scope-backfill.ts
+  s_001266e69504e4::t_2d04d397060e5d 1-756
+vendor/codemem/packages/core/src/scope-membership-cache.test.ts
+  s_001266e69504e4::t_65c33c0cdb5abb 1-618
+vendor/codemem/packages/core/src/scope-membership-cache.ts
+  s_001266e69504e4::t_d9479a42e2587e 1-848
+vendor/codemem/packages/core/src/scope-membership-semantics.test.ts
+  s_001266e69504e4::t_c54d229ab66024 1-46
+vendor/codemem/packages/core/src/scope-membership-semantics.ts
+  s_001266e69504e4::t_b0085a9c0da157 1-57
+vendor/codemem/packages/core/src/scope-regression.test.ts
+  s_001266e69504e4::t_2f41ab9f920a19 1-124
+vendor/codemem/packages/core/src/scope-resolution.test.ts
+  s_001266e69504e4::t_0aadb75a3b2b79 1-191
+vendor/codemem/packages/core/src/scope-resolution.ts
+  s_001266e69504e4::t_2ec7a6d6628250 1-314
+vendor/codemem/packages/core/src/scope-stamping.ts
+  s_001266e69504e4::t_4e24508978cda8 1-110
+vendor/codemem/packages/core/src/search.test.ts
+  s_001266e69504e4::t_836560d8ef96d3 1-2036
+vendor/codemem/packages/core/src/search.ts
+  s_001266e69504e4::t_cb7f311226e036 1-1581
+vendor/codemem/packages/core/src/secret-scanner.test.ts
+  s_001266e69504e4::t_632441956a5cf6 1-450
+vendor/codemem/packages/core/src/secret-scanner.ts
+  s_001266e69504e4::t_3264c15889b656 1-493
+vendor/codemem/packages/core/src/session-context-backfill.test.ts
+  s_001266e69504e4::t_d2c881acb13307 1-378
+vendor/codemem/packages/core/src/session-context-backfill.ts
+  s_001266e69504e4::t_b06291bc6b6805 1-433
+vendor/codemem/packages/core/src/session-policy.test.ts
+  s_001266e69504e4::t_f8dabdd154f684 1-143
+vendor/codemem/packages/core/src/session-policy.ts
+  s_001266e69504e4::t_f7fbf8f8a1be12 1-86
+vendor/codemem/packages/core/src/share-operation-lifecycle.test.ts
+  s_001266e69504e4::t_57f4ebaeb6175f 1-257
+vendor/codemem/packages/core/src/share-operation-lifecycle.ts
+  s_001266e69504e4::t_d8bcb01b84b5fc 1-210
+vendor/codemem/packages/core/src/share-operation.test.ts
+  s_001266e69504e4::t_08b21752941f88 1-889
+vendor/codemem/packages/core/src/share-operation.ts
+  s_001266e69504e4::t_228afde9eaac83 1-654
+vendor/codemem/packages/core/src/share-provisioning.test.ts
+  s_001266e69504e4::t_f7363d16ffa8e6 1-1081
+vendor/codemem/packages/core/src/share-provisioning.ts
+  s_001266e69504e4::t_881ac374be9351 1-845
+vendor/codemem/packages/core/src/store.test.ts
+  s_001266e69504e4::t_2d90c4516f62c4 1-2243
+vendor/codemem/packages/core/src/store.ts
+  s_001266e69504e4::t_1b7562923b1e26 1-2919
+vendor/codemem/packages/core/src/summary-dedup-backfill.test.ts
+  s_001266e69504e4::t_27bedb5937c97f 1-195
+vendor/codemem/packages/core/src/summary-dedup-backfill.ts
+  s_001266e69504e4::t_c44bd867420392 1-342
+vendor/codemem/packages/core/src/summary-memory.test.ts
+  s_001266e69504e4::t_2255de823ff38b 1-21
+vendor/codemem/packages/core/src/summary-memory.ts
+  s_001266e69504e4::t_d9c0a816e59816 1-74
+vendor/codemem/packages/core/src/sync-auth-constants.ts
+  s_001266e69504e4::t_a4a05ae2f71392 1
+vendor/codemem/packages/core/src/sync-auth.test.ts
+  s_001266e69504e4::t_fbe4e8156d811d 1-446
+vendor/codemem/packages/core/src/sync-auth.ts
+  s_001266e69504e4::t_c1098045db6412 1-286
+vendor/codemem/packages/core/src/sync-bootstrap-constants.ts
+  s_001266e69504e4::t_818f60e8a9a7bd 1-6
+vendor/codemem/packages/core/src/sync-bootstrap.test.ts
+  s_001266e69504e4::t_cbb1ed1f86bc40 1-791
+vendor/codemem/packages/core/src/sync-bootstrap.ts
+  s_001266e69504e4::t_21a91d072a7ba7 1-586
+vendor/codemem/packages/core/src/sync-capability.test.ts
+  s_001266e69504e4::t_936e051f95d1eb 1-17
+vendor/codemem/packages/core/src/sync-capability.ts
+  s_001266e69504e4::t_1a905437cb06e7 1-85
+vendor/codemem/packages/core/src/sync-daemon.test.ts
+  s_001266e69504e4::t_4c580070ba8d8d 1-791
+vendor/codemem/packages/core/src/sync-daemon.ts
+  s_001266e69504e4::t_45f55d477381db 1-400
+vendor/codemem/packages/core/src/sync-discovery.test.ts
+  s_001266e69504e4::t_4565e2b25a9d87 1-464
+vendor/codemem/packages/core/src/sync-discovery.ts
+  s_001266e69504e4::t_80293ff55317ea 1-495
+vendor/codemem/packages/core/src/sync-fingerprint.ts
+  s_001266e69504e4::t_a73e9bd3f7abfa 1-6
+vendor/codemem/packages/core/src/sync-http-client.test.ts
+  s_001266e69504e4::t_86d268491c8d08 1-125
+vendor/codemem/packages/core/src/sync-http-client.ts
+  s_001266e69504e4::t_8365fb20c718d4 1-114
+vendor/codemem/packages/core/src/sync-identity.test.ts
+  s_001266e69504e4::t_8caca7e912662f 1-606
+vendor/codemem/packages/core/src/sync-identity.ts
+  s_001266e69504e4::t_d53a27a45a6992 1-584
+vendor/codemem/packages/core/src/sync-mixed-scope.test.ts
+  s_001266e69504e4::t_9346456b975071 1-582
+vendor/codemem/packages/core/src/sync-pass.test.ts
+  s_001266e69504e4::t_c53f9ec324f8d1 1-2851
+vendor/codemem/packages/core/src/sync-pass.ts
+  s_001266e69504e4::t_c1ee506903e0d4 1-1855
+vendor/codemem/packages/core/src/sync-reassign-scope.test.ts
+  s_001266e69504e4::t_b4b8c02dadd4e1 1-305
+vendor/codemem/packages/core/src/sync-replication.test.ts
+  s_001266e69504e4::t_09764cf4103466 1-4621
+vendor/codemem/packages/core/src/sync-replication.ts
+  s_001266e69504e4::t_189e9062145fec 1-3912
+vendor/codemem/packages/core/src/sync-retention-runner.test.ts
+  s_001266e69504e4::t_c9d84eefb4cda7 1-222
+vendor/codemem/packages/core/src/sync-retention-runner.ts
+  s_001266e69504e4::t_7d2f694c84f0ee 1-266
+vendor/codemem/packages/core/src/sync-scope-protocol.test.ts
+  s_001266e69504e4::t_fa409a0f9975e7 1-560
+vendor/codemem/packages/core/src/sync-scope-protocol.ts
+  s_001266e69504e4::t_efb396ab870a56 1-317
+vendor/codemem/packages/core/src/tags.ts
+  s_001266e69504e4::t_35fb44c6d59b4c 1-169
+vendor/codemem/packages/core/src/test-schema.generated.test.ts
+  s_001266e69504e4::t_63894e8e2daf40 1-23
+vendor/codemem/packages/core/src/test-schema.generated.ts
+  s_001266e69504e4::t_1c4082cd789439 1-9
+vendor/codemem/packages/core/src/test-utils.ts
+  s_001266e69504e4::t_95e75ea061015e 1-156
+vendor/codemem/packages/core/src/types.ts
+  s_001266e69504e4::t_e5338f4236a879 1-750
+vendor/codemem/packages/core/src/vector-migration.test.ts
+  s_001266e69504e4::t_902f7319f2249e 1-618
+vendor/codemem/packages/core/src/vector-migration.ts
+  s_001266e69504e4::t_22a1f5b75027f1 1-713
+vendor/codemem/packages/core/src/vectors.test.ts
+  s_001266e69504e4::t_10752c21071ce2 1-759
+vendor/codemem/packages/core/src/vectors.ts
+  s_001266e69504e4::t_115e24439c7164 1-779
+vendor/codemem/packages/core/src/viewer-probe.test.ts
+  s_001266e69504e4::t_85350c45d450bc 1-135
+vendor/codemem/packages/core/src/viewer-probe.ts
+  s_001266e69504e4::t_be8c7bee8ff4aa 1-145
+vendor/codemem/packages/core/src/xenova-transformers.d.ts
+  s_001266e69504e4::t_c12b75e8604dd6 1-24
+vendor/codemem/packages/core/tsconfig.json
+  s_001266e69504e4::t_8a81eb1028640b 1-11
+vendor/codemem/packages/core/vite.config.ts
+  s_001266e69504e4::t_337a9413ceb9bd 1-34
+vendor/codemem/packages/mcp-server/package.json
+  s_001266e69504e4::t_32dbe1b7ed7ee2 1-60
+vendor/codemem/packages/mcp-server/src/audit.test.ts
+  s_001266e69504e4::t_ba409fd87f12f6 1-161
+vendor/codemem/packages/mcp-server/src/audit.ts
+  s_001266e69504e4::t_11cd78e1058f60 1-139
+vendor/codemem/packages/mcp-server/src/canonical-json.ts
+  s_001266e69504e4::t_7f48a9c42f5907 1-14
+vendor/codemem/packages/mcp-server/src/content.ts
+  s_001266e69504e4::t_a8c1063675c49a 1-7
+vendor/codemem/packages/mcp-server/src/distill.test.ts
+  s_001266e69504e4::t_74a755c0df38b4 1-199
+vendor/codemem/packages/mcp-server/src/http.test.ts
+  s_001266e69504e4::t_b6a5a052a4cdbd 1-1198
+vendor/codemem/packages/mcp-server/src/http.ts
+  s_001266e69504e4::t_c5fba57e4a31c3 1-896
+vendor/codemem/packages/mcp-server/src/index.ts
+  s_001266e69504e4::t_912855401be652 1-2
+vendor/codemem/packages/mcp-server/src/mcp-retrieval-ledger.ts
+  s_001266e69504e4::t_dec4e2ae1149fc 1-399
+vendor/codemem/packages/mcp-server/src/memory-access.test.ts
+  s_001266e69504e4::t_81c9b63a142254 1-1419
+vendor/codemem/packages/mcp-server/src/memory-access.ts
+  s_001266e69504e4::t_b45894305e3f9e 1-91
+vendor/codemem/packages/mcp-server/src/memory-kinds.ts
+  s_001266e69504e4::t_9876a9d84a914b 1-9
+vendor/codemem/packages/mcp-server/src/oauth.test.ts
+  s_001266e69504e4::t_9f810c39d49fa2 1-843
+vendor/codemem/packages/mcp-server/src/oauth.ts
+  s_001266e69504e4::t_50b7a51e173d95 1-1239
+vendor/codemem/packages/mcp-server/src/oidc.test.ts
+  s_001266e69504e4::t_4afc4be5cf5e88 1-619
+vendor/codemem/packages/mcp-server/src/oidc.ts
+  s_001266e69504e4::t_2bf26d14fe180d 1-328
+vendor/codemem/packages/mcp-server/src/project-scope.test.ts
+  s_001266e69504e4::t_f9e98a70c4160c 1-103
+vendor/codemem/packages/mcp-server/src/project-scope.ts
+  s_001266e69504e4::t_18848ddd056e61 1-64
+vendor/codemem/packages/mcp-server/src/provider.test.ts
+  s_001266e69504e4::t_68a7f069d6ad95 1-668
+vendor/codemem/packages/mcp-server/src/provider.ts
+  s_001266e69504e4::t_87d70c27e5d3fa 1-338
+vendor/codemem/packages/mcp-server/src/schemas.ts
+  s_001266e69504e4::t_e7c5c0c19f504d 1-42
+vendor/codemem/packages/mcp-server/src/server.test.ts
+  s_001266e69504e4::t_99dd69278c0b3b 1-33
+vendor/codemem/packages/mcp-server/src/server.ts
+  s_001266e69504e4::t_d4ab3464345de0 1-42
+vendor/codemem/packages/mcp-server/src/stdio-viewer.test.ts
+  s_001266e69504e4::t_07d0a5f15fde80 1-188
+vendor/codemem/packages/mcp-server/src/stdio-viewer.ts
+  s_001266e69504e4::t_ffc48c2b07ef9b 1-113
+vendor/codemem/packages/mcp-server/src/stdio.ts
+  s_001266e69504e4::t_18ece1d36ba5d5 1-55
+vendor/codemem/packages/mcp-server/src/tool-context.ts
+  s_001266e69504e4::t_bf7f0d90e7d02b 1-20
+vendor/codemem/packages/mcp-server/src/tools/distill.ts
+  s_001266e69504e4::t_d5c94eb8100b47 1-165
+vendor/codemem/packages/mcp-server/src/tools/items.ts
+  s_001266e69504e4::t_f5a5238890a80d 1-128
+vendor/codemem/packages/mcp-server/src/tools/learn.ts
+  s_001266e69504e4::t_d7b314a45edced 1-94
+vendor/codemem/packages/mcp-server/src/tools/schema.ts
+  s_001266e69504e4::t_a9328fb2d30bf1 1-30
+vendor/codemem/packages/mcp-server/src/tools/search.ts
+  s_001266e69504e4::t_d159f6c2152661 1-233
+vendor/codemem/packages/mcp-server/src/tools/timeline.ts
+  s_001266e69504e4::t_ac60b31e162f54 1-219
+vendor/codemem/packages/mcp-server/tsconfig.json
+  s_001266e69504e4::t_4bdd074e4bc687 1-12
+vendor/codemem/packages/mcp-server/vite.config.ts
+  s_001266e69504e4::t_96d6195b0dacdd 1-38
+vendor/codemem/packages/opencode-plugin/.opencode/lib/compat.js
+  s_001266e69504e4::t_7202da944e0bd4 1-155
+vendor/codemem/packages/opencode-plugin/.opencode/package.json
+  s_001266e69504e4::t_1876051eb23e38 1-6
+vendor/codemem/packages/opencode-plugin/.opencode/plugins/codemem.js
+  s_001266e69504e4::t_535f1a92c85739 1-3769
+vendor/codemem/packages/opencode-plugin/.opencode/plugins/runtime.js
+  s_001266e69504e4::t_66fb735faba9e9 1
+vendor/codemem/packages/opencode-plugin/LICENSE
+  s_001266e69504e4::t_95b7749abe0a0e 1-21
+vendor/codemem/packages/opencode-plugin/README.md
+  s_001266e69504e4::t_9bc8df7bf769a4 1-29
+vendor/codemem/packages/opencode-plugin/index.js
+  s_001266e69504e4::t_e70516f6deacfa 1-2
+vendor/codemem/packages/opencode-plugin/package.json
+  s_001266e69504e4::t_9a08b18753bcd2 1-51
+vendor/codemem/packages/opencode-plugin/scripts/packed-artifact-smoke.mjs
+  s_001266e69504e4::t_2f9e7125d130f3 1-77
+vendor/codemem/packages/ui/package.json
+  s_001266e69504e4::t_7ef79732ddf324 1-37
+vendor/codemem/packages/ui/scripts/make-dev-html.mjs
+  s_001266e69504e4::t_c62c243b480dcf 1-35
+vendor/codemem/packages/ui/scripts/stage-viewer-static.mjs
+  s_001266e69504e4::t_fe17f861c86b9b 1-58
+vendor/codemem/packages/ui/src/app-devices.test.tsx
+  s_001266e69504e4::t_1cc24aec6e17ae 1-241
+vendor/codemem/packages/ui/src/app-sharing.test.tsx
+  s_001266e69504e4::t_7ea5be2fb99f4a 1-102
+vendor/codemem/packages/ui/src/app-sharing.ts
+  s_001266e69504e4::t_1600e75507b72a 1-97
+vendor/codemem/packages/ui/src/app.ts
+  s_001266e69504e4::t_0a515d5b190c96 1-771
+vendor/codemem/packages/ui/src/components/primitives/autocomplete-input.tsx
+  s_001266e69504e4::t_fd0e197367c4d1 1-175
+vendor/codemem/packages/ui/src/components/primitives/chip-input.tsx
+  s_001266e69504e4::t_c1749470c7110a 1-96
+vendor/codemem/packages/ui/src/components/primitives/chip.tsx
+  s_001266e69504e4::t_051e9a1ae88be4 1-40
+vendor/codemem/packages/ui/src/components/primitives/dialog-close-button.tsx
+  s_001266e69504e4::t_20ca368b1bca41 1-28
+vendor/codemem/packages/ui/src/components/primitives/presence-pip.tsx
+  s_001266e69504e4::t_7e1801c5a789b2 1-37
+vendor/codemem/packages/ui/src/components/primitives/primitives.test.tsx
+  s_001266e69504e4::t_2ab27342d7b808 1-419
+vendor/codemem/packages/ui/src/components/primitives/project-scope-picker.tsx
+  s_001266e69504e4::t_2e978b213951e6 1-248
+vendor/codemem/packages/ui/src/components/primitives/radix-dialog.tsx
+  s_001266e69504e4::t_189223d0f3275a 1-91
+vendor/codemem/packages/ui/src/components/primitives/radix-radio-group.tsx
+  s_001266e69504e4::t_f58b3c1bbc752b 1-68
+vendor/codemem/packages/ui/src/components/primitives/radix-select.tsx
+  s_001266e69504e4::t_91a3bf96b17677 1-132
+vendor/codemem/packages/ui/src/components/primitives/radix-switch.tsx
+  s_001266e69504e4::t_1ee3362124cf4c 1-37
+vendor/codemem/packages/ui/src/components/primitives/radix-tabs.tsx
+  s_001266e69504e4::t_ff048e7d072f65 1-66
+vendor/codemem/packages/ui/src/components/primitives/text-area.tsx
+  s_001266e69504e4::t_52c23c8f44734d 1-7
+vendor/codemem/packages/ui/src/components/primitives/text-input.tsx
+  s_001266e69504e4::t_441fe7369a8bf2 1-7
+vendor/codemem/packages/ui/src/components/primitives/toast.tsx
+  s_001266e69504e4::t_ada572ce65ef66 1-85
+vendor/codemem/packages/ui/src/components/primitives/tooltip.tsx
+  s_001266e69504e4::t_c7e2080a003c70 1-86
+vendor/codemem/packages/ui/src/lib/api.ts
+  s_001266e69504e4::t_cedd4d97f945ba 1-144
+vendor/codemem/packages/ui/src/lib/api/config.ts
+  s_001266e69504e4::t_ced4244f2aa1a2 1-34
+vendor/codemem/packages/ui/src/lib/api/coordinator-admin.ts
+  s_001266e69504e4::t_fd1e8b91b7cc65 1-297
+vendor/codemem/packages/ui/src/lib/api/internal.ts
+  s_001266e69504e4::t_e0821a881ba21c 1-42
+vendor/codemem/packages/ui/src/lib/api/memories.ts
+  s_001266e69504e4::t_40c1b51b80409e 1-91
+vendor/codemem/packages/ui/src/lib/api/runtime.test.ts
+  s_001266e69504e4::t_85edf695502838 1-26
+vendor/codemem/packages/ui/src/lib/api/runtime.ts
+  s_001266e69504e4::t_ecb9e889d74f5a 1-29
+vendor/codemem/packages/ui/src/lib/api/stats.ts
+  s_001266e69504e4::t_c474d00d00706b 1-21
+vendor/codemem/packages/ui/src/lib/api/sync.test.ts
+  s_001266e69504e4::t_497b74fd18d8ee 1-499
+vendor/codemem/packages/ui/src/lib/api/sync.ts
+  s_001266e69504e4::t_f142daf4eee114 1-1331
+vendor/codemem/packages/ui/src/lib/api/types.ts
+  s_001266e69504e4::t_fbd4bbd7450523 1-119
+vendor/codemem/packages/ui/src/lib/dom.ts
+  s_001266e69504e4::t_239ba52dad5438 1-70
+vendor/codemem/packages/ui/src/lib/form.ts
+  s_001266e69504e4::t_42e312420c8dcb 1-41
+vendor/codemem/packages/ui/src/lib/format.test.ts
+  s_001266e69504e4::t_677a894e259cf2 1-72
+vendor/codemem/packages/ui/src/lib/format.ts
+  s_001266e69504e4::t_ba9864fd22298c 1-195
+vendor/codemem/packages/ui/src/lib/keyboard.test.ts
+  s_001266e69504e4::t_56f70353564359 1-253
+vendor/codemem/packages/ui/src/lib/keyboard.ts
+  s_001266e69504e4::t_6175eee67f28b1 1-128
+vendor/codemem/packages/ui/src/lib/notice.ts
+  s_001266e69504e4::t_6809070c758e8a 1-15
+vendor/codemem/packages/ui/src/lib/state.test.ts
+  s_001266e69504e4::t_4d30e39dbf1a18 1-124
+vendor/codemem/packages/ui/src/lib/state.ts
+  s_001266e69504e4::t_f37973d01860f2 1-473
+vendor/codemem/packages/ui/src/lib/theme.ts
+  s_001266e69504e4::t_c2d819c6af4917 1-72
+vendor/codemem/packages/ui/src/project-first-layout.test.ts
+  s_001266e69504e4::t_e4d17cab021ae7 1-133
+vendor/codemem/packages/ui/src/tabs/coordinator-admin.tsx
+  s_001266e69504e4::t_8bb29ef5510eee 1-9
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/devices-panel.test.tsx
+  s_001266e69504e4::t_21730ba2c638b1 1-93
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/devices-panel.ts
+  s_001266e69504e4::t_a2ba1da7b33cb1 1-161
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/groups-panel.ts
+  s_001266e69504e4::t_8e2c45999005b4 1-780
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/invites-panel.test.tsx
+  s_001266e69504e4::t_3bee35d7ccf341 1-65
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/invites-panel.ts
+  s_001266e69504e4::t_0cdccf35081aba 1-185
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/join-requests-panel.test.tsx
+  s_001266e69504e4::t_d2668c180d8f27 1-77
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/join-requests-panel.ts
+  s_001266e69504e4::t_9c9429f983b8a5 1-89
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/components/scope-management-panel.ts
+  s_001266e69504e4::t_8ad0d02fbb4914 1-490
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/actions.test.ts
+  s_001266e69504e4::t_3f24c4803c2557 1-166
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/actions.ts
+  s_001266e69504e4::t_9af479425233ba 1-304
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/device-card.test.ts
+  s_001266e69504e4::t_5b3cbb71e825d1 1-29
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/device-card.ts
+  s_001266e69504e4::t_c251a2a106bdcb 1-28
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/scope-management.test.ts
+  s_001266e69504e4::t_5aa51b0702e09c 1-142
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/scope-management.ts
+  s_001266e69504e4::t_4948de26a9a504 1-150
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/state.ts
+  s_001266e69504e4::t_f1f8174c562a90 1-113
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/summary.ts
+  s_001266e69504e4::t_87fe429703c9ad 1-48
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/target-group.test.ts
+  s_001266e69504e4::t_65a3a0b8984034 1-42
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/target-group.ts
+  s_001266e69504e4::t_56a710e102c055 1-115
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/team-card.test.ts
+  s_001266e69504e4::t_5bfcd9ec6fef7e 1-116
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/data/team-card.ts
+  s_001266e69504e4::t_e04b3a15ab58d0 1-70
+vendor/codemem/packages/ui/src/tabs/coordinator-admin/lifecycle.ts
+  s_001266e69504e4::t_7b6172991f26aa 1-269
+vendor/codemem/packages/ui/src/tabs/devices.test.tsx
+  s_001266e69504e4::t_7dae733f37b570 1-364
+vendor/codemem/packages/ui/src/tabs/devices.tsx
+  s_001266e69504e4::t_06cac57d340507 1-423
+vendor/codemem/packages/ui/src/tabs/feed.test.ts
+  s_001266e69504e4::t_525de5def8c751 1-110
+vendor/codemem/packages/ui/src/tabs/feed.ts
+  s_001266e69504e4::t_960d3f304bab14 1-314
+vendor/codemem/packages/ui/src/tabs/feed/components/ContextInspectorPanel.tsx
+  s_001266e69504e4::t_60fe34af084e39 1-248
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedItemCard.test.tsx
+  s_001266e69504e4::t_f2f9d21ab0d573 1-54
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedItemCard.tsx
+  s_001266e69504e4::t_a7813973835d0e 1-423
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedItemMenu.tsx
+  s_001266e69504e4::t_e307c9573c2e39 1-52
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedList.tsx
+  s_001266e69504e4::t_15fab94f5d4579 1-60
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedSkeletonItem.tsx
+  s_001266e69504e4::t_39fdeeec9f0a0e 1-30
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedTabView.tsx
+  s_001266e69504e4::t_2459ba6a18a68b 1-88
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedToggle.tsx
+  s_001266e69504e4::t_4ac3ba3d767d3b 1-33
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedViewToggle.tsx
+  s_001266e69504e4::t_d8d76e8867d8fb 1-31
+vendor/codemem/packages/ui/src/tabs/feed/components/ProvenanceChip.tsx
+  s_001266e69504e4::t_576764feb35d70 1-6
+vendor/codemem/packages/ui/src/tabs/feed/components/TagChip.tsx
+  s_001266e69504e4::t_d6db3a97ae8602 1-9
+vendor/codemem/packages/ui/src/tabs/feed/components/TraceCandidateGroup.tsx
+  s_001266e69504e4::t_5de5c7b8133707 1-41
+vendor/codemem/packages/ui/src/tabs/feed/data/body-renderers.ts
+  s_001266e69504e4::t_8bf79325024576 1-81
+vendor/codemem/packages/ui/src/tabs/feed/data/filter.ts
+  s_001266e69504e4::t_2892c5033f4a8b 1-43
+vendor/codemem/packages/ui/src/tabs/feed/data/helpers.ts
+  s_001266e69504e4::t_cca59d4fef182c 1-116
+vendor/codemem/packages/ui/src/tabs/feed/data/inspector-query.ts
+  s_001266e69504e4::t_b9e0f69f817a26 1-25
+vendor/codemem/packages/ui/src/tabs/feed/data/meta.ts
+  s_001266e69504e4::t_b0030d291b8071 1-21
+vendor/codemem/packages/ui/src/tabs/feed/data/mount.ts
+  s_001266e69504e4::t_2179bf2e4a2a75 1-21
+vendor/codemem/packages/ui/src/tabs/feed/data/observation-view.ts
+  s_001266e69504e4::t_f768d26e48c461 1-63
+vendor/codemem/packages/ui/src/tabs/feed/data/pagination.ts
+  s_001266e69504e4::t_17d4e6c35b1a18 1-32
+vendor/codemem/packages/ui/src/tabs/feed/data/sanitize.test.ts
+  s_001266e69504e4::t_26c8d6a016137c 1-162
+vendor/codemem/packages/ui/src/tabs/feed/data/sanitize.ts
+  s_001266e69504e4::t_b2bb2b70bf2af6 1-86
+vendor/codemem/packages/ui/src/tabs/feed/data/summary-extract.ts
+  s_001266e69504e4::t_c44b45bfd21042 1-119
+vendor/codemem/packages/ui/src/tabs/feed/types.ts
+  s_001266e69504e4::t_8c4e1cb4a8e198 1-68
+vendor/codemem/packages/ui/src/tabs/health.ts
+  s_001266e69504e4::t_7587115517d572 1-9
+vendor/codemem/packages/ui/src/tabs/health/components.ts
+  s_001266e69504e4::t_4ca4db7ad1977b 1-190
+vendor/codemem/packages/ui/src/tabs/health/lifecycle.ts
+  s_001266e69504e4::t_43f81f596ee18c 1-37
+vendor/codemem/packages/ui/src/tabs/health/render/health-overview.ts
+  s_001266e69504e4::t_af9ac6c5c00b12 1-338
+vendor/codemem/packages/ui/src/tabs/health/render/session-summary.ts
+  s_001266e69504e4::t_dad321aa221b35 1-67
+vendor/codemem/packages/ui/src/tabs/health/render/stats.ts
+  s_001266e69504e4::t_69ff53140f8e5e 1-114
+vendor/codemem/packages/ui/src/tabs/health/types.ts
+  s_001266e69504e4::t_3900d1d557010a 1-42
+vendor/codemem/packages/ui/src/tabs/project-sharing.test.tsx
+  s_001266e69504e4::t_87a17658bde354 1-581
+vendor/codemem/packages/ui/src/tabs/project-sharing.tsx
+  s_001266e69504e4::t_04048c8ec55d3b 1-367
+vendor/codemem/packages/ui/src/tabs/projects.test.ts
+  s_001266e69504e4::t_81a4f5ebd05e86 1-2069
+vendor/codemem/packages/ui/src/tabs/projects.ts
+  s_001266e69504e4::t_abc443476eb378 1-1386
+vendor/codemem/packages/ui/src/tabs/recipient-policy-invitations.test.tsx
+  s_001266e69504e4::t_5832b829931aba 1-997
+vendor/codemem/packages/ui/src/tabs/recipient-policy-invitations.tsx
+  s_001266e69504e4::t_42380e76265768 1-828
+vendor/codemem/packages/ui/src/tabs/recipient-policy-management.test.tsx
+  s_001266e69504e4::t_d343c7daa1d0be 1-1123
+vendor/codemem/packages/ui/src/tabs/recipient-policy-management.tsx
+  s_001266e69504e4::t_0aca5346bd627b 1-878
+vendor/codemem/packages/ui/src/tabs/recipient-policy-projects.ts
+  s_001266e69504e4::t_b7e8d60a1d49fc 1-57
+vendor/codemem/packages/ui/src/tabs/recipient-policy-review.ts
+  s_001266e69504e4::t_fb9cd2f094a20d 1-108
+vendor/codemem/packages/ui/src/tabs/recipient-policy-sharing.test.tsx
+  s_001266e69504e4::t_e20bfba48494be 1-372
+vendor/codemem/packages/ui/src/tabs/recipient-policy-sharing.tsx
+  s_001266e69504e4::t_441b45295d52c6 1-475
+vendor/codemem/packages/ui/src/tabs/settings.tsx
+  s_001266e69504e4::t_c99080d36f2ce7 1-18
+vendor/codemem/packages/ui/src/tabs/settings/components/Field.tsx
+  s_001266e69504e4::t_1790b08321e3dd 1-19
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverPanel.test.tsx
+  s_001266e69504e4::t_c8bdb0c8e36815 1-74
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverPanel.tsx
+  s_001266e69504e4::t_7a857022f0e8b0 1-272
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverStatusBanner.tsx
+  s_001266e69504e4::t_b6459188cee984 1-130
+vendor/codemem/packages/ui/src/tabs/settings/components/ProcessingPanel.tsx
+  s_001266e69504e4::t_ce513eb948833f 1-218
+vendor/codemem/packages/ui/src/tabs/settings/components/SettingsDialogShell.tsx
+  s_001266e69504e4::t_4b64b7471369d4 1-120
+vendor/codemem/packages/ui/src/tabs/settings/components/SettingsHint.tsx
+  s_001266e69504e4::t_f92be06450993b 1-9
+vendor/codemem/packages/ui/src/tabs/settings/components/SettingsModalContent.tsx
+  s_001266e69504e4::t_0ba67083f1d544 1-138
+vendor/codemem/packages/ui/src/tabs/settings/components/SettingsSectionIntro.tsx
+  s_001266e69504e4::t_c153849d02ae72 1-10
+vendor/codemem/packages/ui/src/tabs/settings/components/SettingsSwitchRow.tsx
+  s_001266e69504e4::t_6accfd99d78ecf 1-46
+vendor/codemem/packages/ui/src/tabs/settings/components/SyncPanel.test.tsx
+  s_001266e69504e4::t_5b364f50f25ec5 1-120
+vendor/codemem/packages/ui/src/tabs/settings/components/SyncPanel.tsx
+  s_001266e69504e4::t_894ce956fc14d5 1-118
+vendor/codemem/packages/ui/src/tabs/settings/data/collect-payload.ts
+  s_001266e69504e4::t_cdc4e370796582 1-175
+vendor/codemem/packages/ui/src/tabs/settings/data/config-loader.ts
+  s_001266e69504e4::t_d5b0435bba7f7d 1-93
+vendor/codemem/packages/ui/src/tabs/settings/data/constants.ts
+  s_001266e69504e4::t_4cc0ee5e318c10 1-100
+vendor/codemem/packages/ui/src/tabs/settings/data/diff-payload.ts
+  s_001266e69504e4::t_da7e2bd0405626 1-26
+vendor/codemem/packages/ui/src/tabs/settings/data/dom.ts
+  s_001266e69504e4::t_cc59317f693a93 1-53
+vendor/codemem/packages/ui/src/tabs/settings/data/event-handlers.ts
+  s_001266e69504e4::t_cad02f496a45f2 1-71
+vendor/codemem/packages/ui/src/tabs/settings/data/form-state.ts
+  s_001266e69504e4::t_58b02dcb001135 1-120
+vendor/codemem/packages/ui/src/tabs/settings/data/format.ts
+  s_001266e69504e4::t_6e0014384ac7db 1-48
+vendor/codemem/packages/ui/src/tabs/settings/data/model-accessors.ts
+  s_001266e69504e4::t_200f8cbd79c75c 1-64
+vendor/codemem/packages/ui/src/tabs/settings/data/notice.ts
+  s_001266e69504e4::t_6dbc9436876969 1-83
+vendor/codemem/packages/ui/src/tabs/settings/data/parse.ts
+  s_001266e69504e4::t_4cd193eb13f5fd 1-41
+vendor/codemem/packages/ui/src/tabs/settings/data/state-ops.ts
+  s_001266e69504e4::t_b8c77fa720240c 1-51
+vendor/codemem/packages/ui/src/tabs/settings/data/state.ts
+  s_001266e69504e4::t_ce8ef443f011d6 1-49
+vendor/codemem/packages/ui/src/tabs/settings/data/types.ts
+  s_001266e69504e4::t_4ac3fc50a45cbe 1-102
+vendor/codemem/packages/ui/src/tabs/settings/data/value-helpers.test.ts
+  s_001266e69504e4::t_99030f63bc14d3 1-80
+vendor/codemem/packages/ui/src/tabs/settings/data/value-helpers.ts
+  s_001266e69504e4::t_144d0ea6295ad2 1-189
+vendor/codemem/packages/ui/src/tabs/settings/hooks/use-help-tooltip.tsx
+  s_001266e69504e4::t_6f4794d666dcc5 1-137
+vendor/codemem/packages/ui/src/tabs/settings/lifecycle.tsx
+  s_001266e69504e4::t_83c448fbf3e52c 1-216
+vendor/codemem/packages/ui/src/tabs/sync/components/project-invite-acceptance-copy.test.ts
+  s_001266e69504e4::t_8a418ee054a2de 1-16
+vendor/codemem/packages/ui/src/tabs/sync/components/project-share-operations.test.tsx
+  s_001266e69504e4::t_09ba7da2c08d58 1-256
+vendor/codemem/packages/ui/src/tabs/sync/components/project-share-operations.tsx
+  s_001266e69504e4::t_f7f90f827eb153 1-288
+vendor/codemem/packages/ui/src/tabs/sync/components/render-root.tsx
+  s_001266e69504e4::t_a13c3d652618bc 1-21
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-actors.tsx
+  s_001266e69504e4::t_bb33713c671d8a 1-282
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-diagnostics.tsx
+  s_001266e69504e4::t_808187f6f3734f 1-111
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-disclosure.tsx
+  s_001266e69504e4::t_d909f3dbba5410 1-196
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-empty-state.tsx
+  s_001266e69504e4::t_91a3109d3d0d97 1-15
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-inline-feedback.tsx
+  s_001266e69504e4::t_93517445852c10 1-18
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-invite-join-panels.test.tsx
+  s_001266e69504e4::t_a247adc52f24ce 1-53
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-invite-join-panels.tsx
+  s_001266e69504e4::t_2d7ce9a3f247d2 1-219
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-legacy-claims.tsx
+  s_001266e69504e4::t_a248a811f4bf79 1-77
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-peers.test.ts
+  s_001266e69504e4::t_c7774b688fbe0a 1-14
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-peers.tsx
+  s_001266e69504e4::t_2076f5e746ad35 1-697
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-sharing-review.test.tsx
+  s_001266e69504e4::t_d973332f1dfe7e 1-547
+vendor/codemem/packages/ui/src/tabs/sync/components/sync-sharing-review.tsx
+  s_001266e69504e4::t_2e4b4f4ccc29b1 1-683
+vendor/codemem/packages/ui/src/tabs/sync/components/team-sync-panel.test.tsx
+  s_001266e69504e4::t_e54308dd9d19c6 1-160
+vendor/codemem/packages/ui/src/tabs/sync/components/team-sync-panel.tsx
+  s_001266e69504e4::t_d83bedca041264 1-427
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics.test.ts
+  s_001266e69504e4::t_ba887cd0716042 1-39
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics.ts
+  s_001266e69504e4::t_eaa66fe039648a 1-16
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics/helpers.test.ts
+  s_001266e69504e4::t_8add14efe43b6d 1-26
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics/helpers.ts
+  s_001266e69504e4::t_0a74d62df292e8 1-90
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics/lifecycle.ts
+  s_001266e69504e4::t_50338753f27a40 1-116
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics/render/sync-attempts.test.ts
+  s_001266e69504e4::t_d8ba01bb8260a0 1-66
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics/render/sync-attempts.ts
+  s_001266e69504e4::t_2986382ab3db92 1-105
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics/render/sync-status.ts
+  s_001266e69504e4::t_81ba65f0bbc86a 1-244
+vendor/codemem/packages/ui/src/tabs/sync/diagnostics/types.ts
+  s_001266e69504e4::t_e33d34d4bee0e3 1-74
+vendor/codemem/packages/ui/src/tabs/sync/helpers.test.ts
+  s_001266e69504e4::t_c75db51d0a2f17 1-146
+vendor/codemem/packages/ui/src/tabs/sync/helpers.ts
+  s_001266e69504e4::t_8f3452c83a66fe 1-521
+vendor/codemem/packages/ui/src/tabs/sync/index.test.ts
+  s_001266e69504e4::t_1fad54a9dba881 1-196
+vendor/codemem/packages/ui/src/tabs/sync/index.ts
+  s_001266e69504e4::t_c58f9aef9a9110 1-318
+vendor/codemem/packages/ui/src/tabs/sync/peer-scope-collapsible.tsx
+  s_001266e69504e4::t_cba412e1203471 1-71
+vendor/codemem/packages/ui/src/tabs/sync/people.ts
+  s_001266e69504e4::t_a417d1d32713cc 1-365
+vendor/codemem/packages/ui/src/tabs/sync/sync-dialogs.tsx
+  s_001266e69504e4::t_cf6e6f3421bd22 1-74
+vendor/codemem/packages/ui/src/tabs/sync/sync-dialogs/components/duplicate-person-content.test.tsx
+  s_001266e69504e4::t_7654fd270fabad 1-110
+vendor/codemem/packages/ui/src/tabs/sync/sync-dialogs/components/duplicate-person-content.tsx
+  s_001266e69504e4::t_75c7b0a750dc72 1-172
+vendor/codemem/packages/ui/src/tabs/sync/sync-dialogs/components/sync-dialog-body.tsx
+  s_001266e69504e4::t_80dfbf84a4d5c6 1-152
+vendor/codemem/packages/ui/src/tabs/sync/sync-dialogs/components/sync-dialog-host.tsx
+  s_001266e69504e4::t_7ec10b30182c59 1-96
+vendor/codemem/packages/ui/src/tabs/sync/sync-dialogs/internal.ts
+  s_001266e69504e4::t_3617e60555f5e7 1-61
+vendor/codemem/packages/ui/src/tabs/sync/sync-dialogs/types.ts
+  s_001266e69504e4::t_41765e3cf30cc8 1-54
+vendor/codemem/packages/ui/src/tabs/sync/sync-view-controller.ts
+  s_001266e69504e4::t_3ee8872a6d3cdc 1-44
+vendor/codemem/packages/ui/src/tabs/sync/team-sync.ts
+  s_001266e69504e4::t_f32621230a48b7 1-9
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/data/state.ts
+  s_001266e69504e4::t_b4059c6c9cb1b3 1-18
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/events/init-team-sync-events.test.ts
+  s_001266e69504e4::t_c2ee96c23041e4 1-227
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/events/init-team-sync-events.ts
+  s_001266e69504e4::t_d69fd3b74ea10e 1-328
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/helpers/dom.ts
+  s_001266e69504e4::t_6cdc50cb6ad33b 1-25
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/helpers/invite-panel-dom.ts
+  s_001266e69504e4::t_4cc65cd5950cd0 1-120
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/render/render-team-sync.test.ts
+  s_001266e69504e4::t_eacad48c1e7305 1-130
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/render/render-team-sync.ts
+  s_001266e69504e4::t_e6013f5a45b851 1-614
+vendor/codemem/packages/ui/src/tabs/sync/team-sync/render/sharing-review.ts
+  s_001266e69504e4::t_3f9db82e2205ef 1-162
+vendor/codemem/packages/ui/src/tabs/sync/view-model.test.ts
+  s_001266e69504e4::t_bd53b82080ad2b 1-1479
+vendor/codemem/packages/ui/src/tabs/sync/view-model.ts
+  s_001266e69504e4::t_7765c68a6429bf 1-76
+vendor/codemem/packages/ui/src/tabs/sync/view-model/coordinator-approval.ts
+  s_001266e69504e4::t_edd3294047e49f 1-207
+vendor/codemem/packages/ui/src/tabs/sync/view-model/device-names.ts
+  s_001266e69504e4::t_2f8eafc44e5bbc 1-29
+vendor/codemem/packages/ui/src/tabs/sync/view-model/internal.ts
+  s_001266e69504e4::t_f02930949821c9 1-36
+vendor/codemem/packages/ui/src/tabs/sync/view-model/peer-status.ts
+  s_001266e69504e4::t_18452733566b85 1-386
+vendor/codemem/packages/ui/src/tabs/sync/view-model/people-derivations.ts
+  s_001266e69504e4::t_3470b303b734e4 1-60
+vendor/codemem/packages/ui/src/tabs/sync/view-model/primary-status.ts
+  s_001266e69504e4::t_bbce12af89f6dd 1-292
+vendor/codemem/packages/ui/src/tabs/sync/view-model/sync-view-model.ts
+  s_001266e69504e4::t_29fb346174f66f 1-331
+vendor/codemem/packages/ui/src/tabs/sync/view-model/types.ts
+  s_001266e69504e4::t_ea45eb1d163f69 1-299
+vendor/codemem/packages/ui/static/favicon.svg
+  s_001266e69504e4::t_42469eb42a22b4 1-4
+vendor/codemem/packages/ui/static/index.html
+  s_001266e69504e4::t_63852d7204ca65 1-4151
+vendor/codemem/packages/ui/static/themes.css
+  s_001266e69504e4::t_d1e30658c4adbb 1-143
+vendor/codemem/packages/ui/static/tokens.css
+  s_001266e69504e4::t_bf5ce8feb0f198 1-156
+vendor/codemem/packages/ui/tsconfig.json
+  s_001266e69504e4::t_8136b26e43b502 1-20
+vendor/codemem/packages/ui/vite.config.ts
+  s_001266e69504e4::t_dc1281adacb516 1-123
+vendor/codemem/packages/viewer-server/package.json
+  s_001266e69504e4::t_ac4886ca643146 1-50
+vendor/codemem/packages/viewer-server/src/helpers.test.ts
+  s_001266e69504e4::t_edeeb99d6c0fe4 1-16
+vendor/codemem/packages/viewer-server/src/helpers.ts
+  s_001266e69504e4::t_7dd94ac59b296d 1-39
+vendor/codemem/packages/viewer-server/src/index.test.ts
+  s_001266e69504e4::t_8cc55d0a745fb9 1-15371
+vendor/codemem/packages/viewer-server/src/index.ts
+  s_001266e69504e4::t_8fa1ac4ff7fb8d 1-205
+vendor/codemem/packages/viewer-server/src/middleware.ts
+  s_001266e69504e4::t_5496e82f30aaef 1-124
+vendor/codemem/packages/viewer-server/src/request-rate-limit.ts
+  s_001266e69504e4::t_2b95c3530df20f 1-50
+vendor/codemem/packages/viewer-server/src/routes/config.ts
+  s_001266e69504e4::t_1fd2ea163abc5b 1-474
+vendor/codemem/packages/viewer-server/src/routes/health.test.ts
+  s_001266e69504e4::t_8c13c14b578745 1-175
+vendor/codemem/packages/viewer-server/src/routes/health.ts
+  s_001266e69504e4::t_8e78914a8d9fff 1-35
+vendor/codemem/packages/viewer-server/src/routes/memory.ts
+  s_001266e69504e4::t_b264e9d6530700 1-663
+vendor/codemem/packages/viewer-server/src/routes/observer-status.ts
+  s_001266e69504e4::t_e002c092e7d80f 1-96
+vendor/codemem/packages/viewer-server/src/routes/pack.ts
+  s_001266e69504e4::t_254c6454cb0aae 1-540
+vendor/codemem/packages/viewer-server/src/routes/raw-events.ts
+  s_001266e69504e4::t_654c2c8978b3c2 1-487
+vendor/codemem/packages/viewer-server/src/routes/stats.ts
+  s_001266e69504e4::t_f8a4d3c4588090 1-495
+vendor/codemem/packages/viewer-server/src/routes/sync.ts
+  s_001266e69504e4::t_817b59a50d4944 1-7656
+vendor/codemem/packages/viewer-server/src/share-operation-maintenance.test.ts
+  s_001266e69504e4::t_81792eaec1a341 1-1664
+vendor/codemem/packages/viewer-server/src/viewer-html.ts
+  s_001266e69504e4::t_4158a60d2109f3 1-21
+vendor/codemem/packages/viewer-server/tsconfig.json
+  s_001266e69504e4::t_a595b2a0ed018d 1-12
+vendor/codemem/packages/viewer-server/vite.config.ts
+  s_001266e69504e4::t_db64b79958e28a 1-29
+vendor/codemem/plugins/claude/.claude-plugin/plugin.json
+  s_001266e69504e4::t_f6f200c642ace5 1-20
+vendor/codemem/plugins/claude/hooks/hooks.json
+  s_001266e69504e4::t_53446be338e742 1-76
+vendor/codemem/plugins/claude/scripts/ingest-hook.sh
+  s_001266e69504e4::t_f0e4add88e0500 1-137
+vendor/codemem/plugins/claude/scripts/inject-context-hook.sh
+  s_001266e69504e4::t_c77ef0a3e7eba3 1-36
+vendor/codemem/plugins/claude/scripts/pre-read-hook.sh
+  s_001266e69504e4::t_c40692b2db2caa 1-36
+vendor/codemem/plugins/claude/scripts/user-prompt-hook.sh
+  s_001266e69504e4::t_e464e8b59e5351 1-44
+vendor/codemem/plugins/codex/.codex-plugin/plugin.json
+  s_001266e69504e4::t_29f51227a448eb 1-35
+vendor/codemem/plugins/codex/.mcp.json
+  s_001266e69504e4::t_563a1b61eea017 1-8
+vendor/codemem/plugins/codex/hooks/hooks.json
+  s_001266e69504e4::t_15bada6fe35302 1-52
+vendor/codemem/plugins/codex/scripts/ingest-hook.mjs
+  s_001266e69504e4::t_8d57209d9ee336 1-106
+vendor/codemem/plugins/codex/scripts/inject-context-hook.mjs
+  s_001266e69504e4::t_0344da617fa3b4 1-10
+vendor/codemem/plugins/codex/scripts/user-prompt-hook.mjs
+  s_001266e69504e4::t_6cadaee2170e13 1-129
+vendor/codemem/pnpm-lock.yaml
+  s_001266e69504e4::t_50093c5dc6dcf1 1-7238
+vendor/codemem/pnpm-workspace.yaml
+  s_001266e69504e4::t_5d8026bf1364d3 1-34
+vendor/codemem/scripts/dev.sh
+  s_001266e69504e4::t_d488d3073e54f2 1-90
+vendor/codemem/scripts/eval/README.md
+  s_001266e69504e4::t_22fd83ba5f503b 1-87
+vendor/codemem/scripts/eval/baselines/main.json
+  s_001266e69504e4::t_d3bd8ac62c8412 1-14
+vendor/codemem/scripts/eval/lib.ts
+  s_001266e69504e4::t_547b54cea03cc7 1-287
+vendor/codemem/scripts/eval/pack-eval.ts
+  s_001266e69504e4::t_37e7d73906d69f 1-145
+vendor/codemem/scripts/eval/package.json
+  s_001266e69504e4::t_a2fa1db90e14fd 1-7
+vendor/codemem/scripts/eval/scenarios.ts
+  s_001266e69504e4::t_2eeaa9c9ddbcb4 1-51
+vendor/codemem/scripts/eval/tsconfig.json
+  s_001266e69504e4::t_fc0ec9314b5f3c 1-17
+vendor/codemem/scripts/release-tag-preflight.sh
+  s_001266e69504e4::t_caefae1d9721f8 1-83
+vendor/codemem/scripts/release-version.mjs
+  s_001266e69504e4::t_9442d3de0aa1c7 1-395
+vendor/codemem/scripts/release-version.test.mjs
+  s_001266e69504e4::t_3215ccf02ef8fe 1-208
+vendor/codemem/scripts/templates/workspace-codemem-bootstrap.sh
+  s_001266e69504e4::t_6c973c839b7562 1-81
+vendor/codemem/scripts/workspace-bootstrap-template.sh
+  s_001266e69504e4::t_f8630f876cb1f6 1-258
+vendor/codemem/scripts/workspace/pin-peer.ts
+  s_001266e69504e4::t_57046e1fa7c591 1-55
+vendor/codemem/scripts/workspace/prove-workspace-codemem-bootstrap-local.sh
+  s_001266e69504e4::t_9ae357ecdf8050 1-208
+vendor/codemem/scripts/workspace/read-peer-identity.ts
+  s_001266e69504e4::t_3b344d5532d5db 1-42
+vendor/codemem/scripts/workspace/workspace-codemem-bootstrap-local.sh
+  s_001266e69504e4::t_b434c514e91a98 1-311
+vendor/codemem/tsconfig.base.json
+  s_001266e69504e4::t_f9ce3982e39420 1-28
+vendor/codemem/tsconfig.json
+  s_001266e69504e4::t_28b2a2afe6460f 1-11
+vendor/codemem/vitest.config.ts
+  s_001266e69504e4::t_722f8e4a411e5f 1-18
+vendor/codemem/VENDOR.md
+  s_001266e69504e4::t_7a22c32298b9e9 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bbc0e2bfae954313981741762bc4f042db303fd3",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
