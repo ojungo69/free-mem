@@ -1,0 +1,39 @@
+harness/rig/claude-settings-template.json
+  s_001266e69504e4::t_7a4cc580642c57 1-13
+harness/rig/capture-hook.sh
+  s_001266e69504e4::t_779874048480f5 19
+  s_001266e69504e4::t_637d1f60663763 7-11
+  s_001266e69504e4::t_64b2e19aebbd40 1-6,12-18,20
+harness/rig/codex-config-template.toml
+  s_001266e69504e4::t_9a0b500d6666a3 1-38
+harness/rig/rig.sh
+  s_001266e69504e4::t_876cbcf1d654b7 81
+  s_001266e69504e4::t_eefb462e998244 1-66,68-80,82-95
+  s_001266e69504e4::t_98cf5cce72f66c 67
+specs/001-agent-memory-core/tasks.md
+  s_001266e69504e4::t_7b202e626f675c 60-61
+harness/README.md
+  s_001266e69504e4::t_5fbb1f325b7e6b 1-15
+harness/assemble.ts
+  s_001266e69504e4::t_2b6408094c0ead 1-327
+harness/schema/capability.schema.json
+  s_001266e69504e4::t_096d528276146c 1-82
+harness/schema/capability.ts
+  s_001266e69504e4::t_d2cb11cb99dfce 1-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7e41f5d902bfb6f9cfd3f010beecc7034e077758",
+  "prompts": {},
+  "sessions": {
+    "s_001266e69504e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "464e9357-a9fc-4c99-8bc9-ef8a37fec100",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
