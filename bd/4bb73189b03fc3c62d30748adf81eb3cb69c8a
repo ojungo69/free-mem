@@ -1,0 +1,58 @@
+specs/001-agent-memory-core/tasks.md
+  s_a8ab9debe9c635::t_2e364ae5088c14 107-108,132
+  s_a8ab9debe9c635::t_e40bdcc08d7441 109,113,133
+specs/001-agent-memory-core/verify-tasks-report.md
+  s_a8ab9debe9c635::t_c551b10a20ab25 1,3,5-7,12-17,19,21-24,26,28-30,32-55
+vendor/codemem/packages/core/src/daemon-canonical.ts
+  s_a546c8dc2f182a::t_9a2189ab117154 1-47
+vendor/codemem/packages/core/src/daemon-peer.test.ts
+  s_a546c8dc2f182a::t_d9ade333e074a4 34
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_a546c8dc2f182a::t_e5bcfe9b3ffc41 23,66,131,145
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_a546c8dc2f182a::t_7c952cffb08124 3-13,18,25-42,65-99,102-256,288-289,306-317,369,383,386,390-391,413-783,785-787,790-895,897-898,902-1045,1060-1062,1065-1090,1096-1112,1131,1133,1142,1154-1157
+vendor/codemem/packages/core/src/index.ts
+  s_a546c8dc2f182a::t_5b9751e121dbce 48,379-385,437-446
+vendor/codemem/packages/core/src/migration-runner.ts
+  s_a546c8dc2f182a::t_2b10f31dcd2d73 34,52
+vendor/codemem/packages/core/src/online-backup.ts
+  s_76ef2fe9f4de15::t_43aae75f22c125 1-399
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_a546c8dc2f182a::t_e34f51ce0fbca6 28,223,227,229,361-364,366-367,375,380,389
+vendor/codemem/packages/core/src/schema-bootstrap.ts
+  s_a546c8dc2f182a::t_d6fa96c7d7c216 9,659
+vendor/codemem/packages/core/src/storage.ts
+  s_a546c8dc2f182a::t_a0aa52082a5bcb 35,67,76,231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bd4bb73189b03fc3c62d30748adf81eb3cb69c8a",
+  "prompts": {},
+  "sessions": {
+    "s_76ef2fe9f4de15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffb94-93f6-70a2-aaf5-6acc169f943c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    },
+    "s_a546c8dc2f182a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a4-bf1e-7901-9075-16ec75330b26",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    },
+    "s_a8ab9debe9c635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffbb2-e673-7831-80fe-fbc9d071eb77",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
