@@ -6,6 +6,7 @@ import {
 	REQUIRED_BOOTSTRAPPED_TABLES,
 	SCHEMA_VERSION,
 } from "./db.js";
+import { ensureMutationReceiptSchema } from "./mutation-dispatcher.js";
 import { TEST_SCHEMA_BASE_DDL } from "./test-schema.generated.js";
 
 const RETRIEVAL_EXPOSURE_DETACH_UNAVAILABLE_MEMORY_DDL = `
@@ -655,6 +656,7 @@ export function bootstrapSchema(db: Database): void {
 		db.exec(SCHEMA_AUX_DDL);
 		ensureRetrievalAttemptColumns(db);
 		ensureOutcomeEvidenceColumns(db);
+		ensureMutationReceiptSchema(db);
 		assertBootstrapTablesCreated(db);
 		db.pragma(`user_version = ${SCHEMA_VERSION}`);
 	}).immediate();

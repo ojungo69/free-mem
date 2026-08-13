@@ -20,7 +20,7 @@ function handshake(overrides: Partial<core.RpcRequest> = {}): core.RpcRequest {
 		method: "GET /v1/health",
 		adapter_version: "1",
 		native_cli_version: "1",
-		normalized_schema_version: core.SCHEMA_VERSION,
+		normalized_schema_version: core.NORMALIZED_SCHEMA_VERSION,
 		local_api_version: core.LOCAL_API_VERSION,
 		capability_hash: core.RPC_CAPABILITY_HASH,
 		...overrides,
@@ -63,7 +63,7 @@ describe("Phase 1 daemon RPC", () => {
 		created.push(handle);
 		const unknownMethod = await core.callDaemonRpc(
 			handle.socketPath,
-			handshake({ method: "POST /v1/events" }),
+			handshake({ method: "POST /v1/not-a-method" }),
 		);
 		expect(unknownMethod).toMatchObject({ error: { code: "unknown_method" } });
 		const unknownField = await core.callDaemonRpc(
@@ -128,7 +128,7 @@ describe("Phase 1 daemon RPC", () => {
 				instanceId: handle.identity.nonce,
 				protocolVersion: {
 					localApi: core.LOCAL_API_VERSION,
-					normalizedSchema: core.SCHEMA_VERSION,
+					normalizedSchema: core.NORMALIZED_SCHEMA_VERSION,
 				},
 			},
 		});
@@ -142,7 +142,7 @@ describe("Phase 1 daemon RPC", () => {
 				instanceId: handle.identity.nonce,
 				protocolVersion: {
 					localApi: core.LOCAL_API_VERSION,
-					normalizedSchema: core.SCHEMA_VERSION,
+					normalizedSchema: core.NORMALIZED_SCHEMA_VERSION,
 				},
 				diagnostics: { lock: "held", socket: "listening" },
 			},

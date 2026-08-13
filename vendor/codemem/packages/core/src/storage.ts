@@ -32,6 +32,7 @@ export interface StorageLayout {
 	lockPath: string;
 	identityPath: string;
 	socketPath: string;
+	backupsDir: string;
 }
 
 export type StorageJournalState = "prepared" | "switched" | "committed";
@@ -63,6 +64,7 @@ export function resolveStorageLayout(dataDir: string = DEFAULT_DATA_DIR): Storag
 		lockPath: join(controlDir, "lock.db"),
 		identityPath: join(controlDir, "identity.json"),
 		socketPath: join(controlDir, "daemon.sock"),
+		backupsDir: join(controlDir, "backups"),
 	};
 }
 
@@ -71,6 +73,7 @@ export function ensureStorageLayout(layout: StorageLayout): void {
 	ensurePrivateDirectory(layout.controlDir);
 	ensurePrivateDirectory(layout.dbDir);
 	ensurePrivateDirectory(layout.versionsDir);
+	ensurePrivateDirectory(layout.backupsDir);
 }
 
 function validateOperationId(operationId: string): void {
@@ -225,7 +228,7 @@ export function recoverStorageJournal(
 	return { action: "rolled_back", state: journal.state };
 }
 
-function activateDatabaseArtifact(
+export function activateDatabaseArtifact(
 	layout: StorageLayout,
 	input: { operationId: string; pointer: string; artifactSha256: string },
 ): void {

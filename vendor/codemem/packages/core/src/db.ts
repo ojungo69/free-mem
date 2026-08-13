@@ -21,6 +21,7 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import * as sqliteVec from "sqlite-vec";
+import { ensureMutationReceiptSchema } from "./mutation-dispatcher.js";
 import { expandUserPath } from "./observer-config.js";
 import { canAutoBootstrapSchema, ensureRetrievalLedgerSchema } from "./schema-bootstrap.js";
 import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
@@ -30,7 +31,7 @@ type DatabaseType = import("better-sqlite3").Database;
 export type Database = DatabaseType;
 
 /** Current schema version this TS runtime was built against. */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 19;
 
 /**
  * Minimum schema version the TS runtime can operate with.
@@ -1456,6 +1457,7 @@ export function ensureAdditiveSchemaCompatibility(db: DatabaseType): void {
 		if (recipientPolicyTablesReady && currentVersion > 0 && currentVersion < SCHEMA_VERSION) {
 			db.pragma(`user_version = ${SCHEMA_VERSION}`);
 		}
+		ensureMutationReceiptSchema(db);
 		markSchemaCompatApplied(db);
 	}
 	try {

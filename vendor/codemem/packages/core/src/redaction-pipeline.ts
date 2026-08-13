@@ -25,6 +25,7 @@ export type AgentMemoryConfig = {
 export type RedactionOptions = {
 	config?: AgentMemoryConfig;
 	allowlist?: string[];
+	metadataKeys?: string[];
 	maxBytes?: number;
 };
 
@@ -219,13 +220,13 @@ function runPipeline(
 	else if (privateOmitted) sensitivity = "private";
 
 	if (layer === "intake" && detections.length > 0) {
-		payload = keepMetadataOnly(payload);
+		payload = keepMetadataOnly(payload, options.metadataKeys);
 		sensitivity = "secret";
 	}
 	if (config?.degraded) {
-		payload = keepMetadataOnly(payload);
+		payload = keepMetadataOnly(payload, options.metadataKeys);
 	}
-	payload = enforceMaxBytes(payload, options.maxBytes ?? EVENT_MAX_BYTES);
+	payload = enforceMaxBytes(payload, options.maxBytes ?? EVENT_MAX_BYTES, options.metadataKeys);
 
 	return {
 		payload,
@@ -357,11 +358,13 @@ function mergeDetections(...groups: ScanDetection[][]): ScanDetection[] {
 	return Array.from(counts.entries()).map(([kind, count]) => ({ kind, count }));
 }
 
-function keepMetadataOnly(payload: Record<string, unknown>): Record<string, unknown> {
+function keepMetadataOnly(
+	payload: Record<string, unknown>,
+	metadataKeys: string[] = ["id", "type"],
+): Record<string, unknown> {
 	const next: Record<string, unknown> = {};
-	for (const key of ["id", "type"] as const) {
-		const value = payload[key];
-		if (typeof value === "string" && value.length <= 256) next[key] = value;
+	for (const key of metadataKeys) {
+		if (Object.hasOwn(payload, key)) next[key] = payload[key];
 	}
 	return next;
 }
@@ -369,11 +372,12 @@ function keepMetadataOnly(payload: Record<string, unknown>): Record<string, unkn
 function enforceMaxBytes(
 	payload: Record<string, unknown>,
 	maxBytes: number,
+	metadataKeys?: string[],
 ): Record<string, unknown> {
 	try {
 		if (Buffer.byteLength(JSON.stringify(payload), "utf8") <= maxBytes) return payload;
 	} catch {
-		return keepMetadataOnly(payload);
+		return keepMetadataOnly(payload, metadataKeys);
 	}
 	const trimmed = { ...payload };
 	for (const key of SECRET_BODY_KEYS) delete trimmed[key];
@@ -382,7 +386,7 @@ function enforceMaxBytes(
 	} catch {
 		return {};
 	}
-	const meta = keepMetadataOnly(trimmed);
+	const meta = keepMetadataOnly(trimmed, metadataKeys);
 	try {
 		if (Buffer.byteLength(JSON.stringify(meta), "utf8") <= maxBytes) return meta;
 	} catch {

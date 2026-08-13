@@ -31,7 +31,7 @@ describe("Phase 1 peer auth", () => {
 			method: "GET /v1/health",
 			adapter_version: "1",
 			native_cli_version: "1",
-			normalized_schema_version: core.SCHEMA_VERSION,
+			normalized_schema_version: core.NORMALIZED_SCHEMA_VERSION,
 			local_api_version: core.LOCAL_API_VERSION,
 			capability_hash: core.RPC_CAPABILITY_HASH,
 		});

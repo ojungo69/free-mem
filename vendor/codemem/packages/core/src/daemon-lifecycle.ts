@@ -3,6 +3,7 @@ import { appendFileSync, chmodSync, existsSync, readFileSync, unlinkSync } from 
 import { createConnection, createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
+import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
 import { attachDaemonRpc, type DaemonRpcContext } from "./daemon-rpc.js";
 import {
 	ensureStorageLayout,
@@ -17,6 +18,8 @@ import {
 	durableReplaceFile,
 	readProcessIdentity,
 } from "./storage-platform.js";
+import type { MemoryStore } from "./store.js";
+import type { WriterActor } from "./writer-actor.js";
 
 export type DaemonIdentity = {
 	version: 1;
@@ -45,6 +48,8 @@ type LiveDaemon = {
 	server: Server;
 	identity: DaemonIdentity;
 	layout: StorageLayout;
+	writer: WriterActor;
+	store: MemoryStore;
 };
 
 const liveDaemons = new Map<string, LiveDaemon>();
@@ -181,6 +186,16 @@ function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
 		} catch {
 			// server may already be closed
 		}
+		try {
+			live.store.close();
+		} catch {
+			// store may already be closed
+		}
+		try {
+			if (live.writer.open) live.writer.close();
+		} catch {
+			// writer is released with the daemon
+		}
 	}
 	removeControlArtifacts(layout);
 	if (live) {
@@ -232,10 +247,12 @@ export async function startDaemon(options: {
 
 	const lock = acquireExclusiveLock(layout.lockPath);
 
+	let canonical: CanonicalWriter | undefined;
 	let server: Server | undefined;
 	let started = false;
 	try {
 		recoverStorageJournal(layout);
+		canonical = await openCanonicalWriter(layout);
 		const liveIdentity = readProcessIdentity(process.pid);
 		const identity: DaemonIdentity = {
 			version: 1,
@@ -249,13 +266,22 @@ export async function startDaemon(options: {
 			dataDir: layout.dataDir,
 			deadlineMs: options.rpcDeadlineMs,
 			now: options.now,
+			writer: canonical.db,
+			store: canonical.store,
 			onStop: () => {
 				const current = liveDaemons.get(layout.dataDir);
 				if (current && sameIdentity(current.identity, identity)) stopLive(layout.dataDir);
 			},
 		});
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
-		const live: LiveDaemon = { lock, server, identity, layout };
+		const live: LiveDaemon = {
+			lock,
+			server,
+			identity,
+			layout,
+			writer: canonical.db,
+			store: canonical.store,
+		};
 		liveDaemons.set(layout.dataDir, live);
 		started = true;
 		return {
@@ -272,6 +298,18 @@ export async function startDaemon(options: {
 			},
 		};
 	} catch (error) {
+		if (canonical) {
+			try {
+				canonical.store.close();
+			} catch {
+				// store may already be closed
+			}
+			try {
+				if (canonical.db.open) canonical.db.close();
+			} catch {
+				// writer is released with the failed start
+			}
+		}
 		if (server) {
 			try {
 				server.close();

@@ -31,7 +31,7 @@ export interface RunDatabaseMigrationsOptions {
 	backupAndVerify: MigrationBackupVerifier;
 }
 
-function migrationKind(db: WriterActor): "bootstrap" | "upgrade" | null {
+export function peekMigrationKind(db: WriterActor): "bootstrap" | "upgrade" | null {
 	const version = getSchemaVersion(db);
 	if (canAutoBootstrapSchema(db)) return "bootstrap";
 	if (version === 0) {
@@ -49,7 +49,7 @@ export function runDatabaseMigrations(
 	db: WriterActor,
 	options: RunDatabaseMigrationsOptions,
 ): void {
-	const kind = migrationKind(db);
+	const kind = peekMigrationKind(db);
 	if (!kind) return;
 
 	const verification = options.backupAndVerify({

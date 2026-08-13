@@ -82,7 +82,7 @@ const ALLOWED_MEMORY_KINDS = new Set([
 ]);
 
 /** Normalize and validate a memory kind. Throws on invalid kinds. */
-function validateMemoryKind(kind: string): string {
+export function validateMemoryKind(kind: string): string {
 	const normalized = kind.trim().toLowerCase();
 	if (!ALLOWED_MEMORY_KINDS.has(normalized)) {
 		throw new Error(
@@ -203,62 +203,67 @@ export class MemoryStore {
 		return this._drizzle;
 	}
 
+	private readonly ownsConnection: boolean;
+
 	constructor(
 		dbPath: string = DEFAULT_DB_PATH,
-		options: { backupAndVerify?: MigrationBackupVerifier } = {},
+		options: { backupAndVerify?: MigrationBackupVerifier; connection?: WriterActor } = {},
 	) {
 		this.dbPath = resolveDbPath(dbPath);
-		this.db = openMigratedWriter(this.dbPath, options.backupAndVerify);
+		this.ownsConnection = options.connection === undefined;
+		this.db = options.connection ?? openMigratedWriter(this.dbPath, options.backupAndVerify);
 		try {
 			loadSqliteVec(this.db);
 			assertSchemaReady(this.db);
 			ensurePlannerStats(this.db);
+			// Read config once and use it for both actor identity and scanner
+			// rule overrides. Workspace-scoped rules and allowlist live under the
+			// `secret_scanner` block (see loadScannerOptionsFromConfig).
+			const config = readCodememConfigFile();
+			this.scanner = new SecretScanner(loadScannerOptionsFromConfig(config));
+
+			// Resolve device ID: env var → sync_device table → stable "local" fallback.
+			// Python uses exactly this order and fallback.
+			const envDeviceId = process.env.CODEMEM_DEVICE_ID?.trim();
+			if (envDeviceId) {
+				this.deviceId = envDeviceId;
+			} else {
+				// Guard: sync_device may not exist in older/minimal schemas
+				let dbDeviceId: string | undefined;
+				try {
+					const row = this.d
+						.select({ device_id: schema.syncDevice.device_id })
+						.from(schema.syncDevice)
+						.limit(1)
+						.get();
+					dbDeviceId = row?.device_id;
+				} catch {
+					// Table doesn't exist — fall through to stable default
+				}
+				this.deviceId = dbDeviceId ?? "local";
+			}
+
+			// Resolve actor identity — matches Python load_config() precedence:
+			// config file, then env override, then local fallbacks.
+			const configActorId = Object.hasOwn(process.env, "CODEMEM_ACTOR_ID")
+				? cleanStr(process.env.CODEMEM_ACTOR_ID)
+				: (cleanStr(config.actor_id) ?? null);
+			this.actorIdUsesDeviceFallback = !configActorId;
+			this.actorId = configActorId || `local:${this.deviceId}`;
+
+			const configDisplayName = Object.hasOwn(process.env, "CODEMEM_ACTOR_DISPLAY_NAME")
+				? cleanStr(process.env.CODEMEM_ACTOR_DISPLAY_NAME)
+				: (cleanStr(config.actor_display_name) ?? null);
+			this.actorDisplayName =
+				configDisplayName ||
+				process.env.USER?.trim() ||
+				process.env.USERNAME?.trim() ||
+				this.actorId;
+			this.crossSessionDedupWindowMs = resolveCrossSessionDedupWindowMs();
 		} catch (err) {
-			this.db.close();
+			if (this.ownsConnection) this.db.close();
 			throw err;
 		}
-
-		// Read config once and use it for both actor identity and scanner
-		// rule overrides. Workspace-scoped rules and allowlist live under the
-		// `secret_scanner` block (see loadScannerOptionsFromConfig).
-		const config = readCodememConfigFile();
-		this.scanner = new SecretScanner(loadScannerOptionsFromConfig(config));
-
-		// Resolve device ID: env var → sync_device table → stable "local" fallback.
-		// Python uses exactly this order and fallback.
-		const envDeviceId = process.env.CODEMEM_DEVICE_ID?.trim();
-		if (envDeviceId) {
-			this.deviceId = envDeviceId;
-		} else {
-			// Guard: sync_device may not exist in older/minimal schemas
-			let dbDeviceId: string | undefined;
-			try {
-				const row = this.d
-					.select({ device_id: schema.syncDevice.device_id })
-					.from(schema.syncDevice)
-					.limit(1)
-					.get();
-				dbDeviceId = row?.device_id;
-			} catch {
-				// Table doesn't exist — fall through to stable default
-			}
-			this.deviceId = dbDeviceId ?? "local";
-		}
-
-		// Resolve actor identity — matches Python load_config() precedence:
-		// config file, then env override, then local fallbacks.
-		const configActorId = Object.hasOwn(process.env, "CODEMEM_ACTOR_ID")
-			? cleanStr(process.env.CODEMEM_ACTOR_ID)
-			: (cleanStr(config.actor_id) ?? null);
-		this.actorIdUsesDeviceFallback = !configActorId;
-		this.actorId = configActorId || `local:${this.deviceId}`;
-
-		const configDisplayName = Object.hasOwn(process.env, "CODEMEM_ACTOR_DISPLAY_NAME")
-			? cleanStr(process.env.CODEMEM_ACTOR_DISPLAY_NAME)
-			: (cleanStr(config.actor_display_name) ?? null);
-		this.actorDisplayName =
-			configDisplayName || process.env.USER?.trim() || process.env.USERNAME?.trim() || this.actorId;
-		this.crossSessionDedupWindowMs = resolveCrossSessionDedupWindowMs();
 	}
 
 	hasCurrentIdentity(): boolean {
@@ -2233,9 +2238,10 @@ export class MemoryStore {
 	recordRawEventsBatch(
 		opencodeSessionId: string,
 		events: Record<string, unknown>[],
+		sourceName = "opencode",
 	): { inserted: number; skipped: number } {
 		if (!opencodeSessionId.trim()) throw new Error("opencode_session_id is required");
-		const [source, streamId] = this.normalizeStreamIdentity("opencode", opencodeSessionId);
+		const [source, streamId] = this.normalizeStreamIdentity(sourceName, opencodeSessionId);
 
 		return this.db.transaction(() => {
 			const now = nowIso();
@@ -2538,6 +2544,6 @@ export class MemoryStore {
 	/** Close the database connection. */
 	close(): void {
 		this.db.pragma("optimize");
-		this.db.close();
+		if (this.ownsConnection) this.db.close();
 	}
 }

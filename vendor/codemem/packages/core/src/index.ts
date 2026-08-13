@@ -45,6 +45,7 @@ export {
 	dispatchDaemonRpc,
 	LOCAL_API_VERSION,
 	mapPeerConnectError,
+	NORMALIZED_SCHEMA_VERSION,
 	RPC_CAPABILITY_HASH,
 	RPC_MAX_BYTES,
 	RPC_METHODS,
@@ -375,6 +376,13 @@ export {
 	runDatabaseMigrations,
 	verifyFreshDatabase,
 } from "./migration-runner.js";
+export type { MutationReceipt } from "./mutation-dispatcher.js";
+export {
+	dispatchClassA,
+	ensureMutationReceiptSchema,
+	hashMutationPayload,
+	MutationConflictError,
+} from "./mutation-dispatcher.js";
 export type { ObserverAuthMaterial } from "./observer-auth.js";
 export {
 	ObserverAuthAdapter,
@@ -426,6 +434,16 @@ export {
 	writeCodememConfigFile,
 	writeWorkspaceCodememConfigFile,
 } from "./observer-config.js";
+export type { BackupCheck, BackupVerification, VerifiedBackup } from "./online-backup.js";
+export {
+	backupPayloadHash,
+	createCanonicalBackup,
+	createOnlineBackup,
+	requireVerifiedBackup,
+	runGatedMigration,
+	verifyCanonicalBackup,
+	verifyOnlineBackup,
+} from "./online-backup.js";
 export * from "./operational-status.js";
 export * from "./outcome-evidence.js";
 export type { PackArtifacts } from "./pack.js";
