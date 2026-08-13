@@ -1,0 +1,42 @@
+specs/001-agent-memory-core/verify-tasks-report.md
+  s_a8ab9debe9c635::t_f21be1bdb258dc 35
+  s_a8ab9debe9c635::t_563780bb8af537 42-43
+  s_a8ab9debe9c635::t_6f9f092de9d09f 1,3,13,23,27,31-34,37,39-41,49
+specs/001-agent-memory-core/tasks.md
+  s_a8ab9debe9c635::t_cac23439fd5faf 114
+  s_a8ab9debe9c635::t_6a521126114e3a 115
+evidence/phase1-disposition.md
+  s_a8ab9debe9c635::t_cac23439fd5faf 216-220,222,224-225
+  s_a8ab9debe9c635::t_f21be1bdb258dc 221
+  s_a8ab9debe9c635::t_6a521126114e3a 223
+vendor/codemem/packages/core/src/index.ts
+  s_a8ab9debe9c635::t_af964ea0d2a248 386,539
+vendor/codemem/packages/core/src/storage.ts
+  s_a546c8dc2f182a::t_1c874a8f5d8e7b 35,68,78
+vendor/codemem/packages/core/src/store.ts
+  s_a8ab9debe9c635::t_51e4d1c96758c1 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3027e588169eaf572ed17251f5da1bc40716275f",
+  "prompts": {},
+  "sessions": {
+    "s_a546c8dc2f182a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a4-bf1e-7901-9075-16ec75330b26",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    },
+    "s_a8ab9debe9c635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffbb2-e673-7831-80fe-fbc9d071eb77",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
