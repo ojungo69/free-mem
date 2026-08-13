@@ -1,0 +1,37 @@
+specs/001-agent-memory-core/quickstart.md
+  s_a8ab9debe9c635::t_056593b85c8cc1 10
+.gitleaks.toml
+  s_a8ab9debe9c635::t_f7a2474fa8ff84 1-12
+specs/001-agent-memory-core/tasks.md
+  s_a8ab9debe9c635::t_056593b85c8cc1 162-170
+specs/001-agent-memory-core/spec.md
+  s_a8ab9debe9c635::t_056593b85c8cc1 129
+specs/001-agent-memory-core/plan.md
+  s_a8ab9debe9c635::t_056593b85c8cc1 13,35,50,86
+SECURITY.md
+  s_a8ab9debe9c635::t_f7a2474fa8ff84 1-12
+THIRD_PARTY_NOTICES.md
+  s_a8ab9debe9c635::t_f7a2474fa8ff84 1-13
+.github/workflows/ci.yml
+  s_a8ab9debe9c635::t_f7a2474fa8ff84 1-50
+README.md
+  s_a8ab9debe9c635::t_f7a2474fa8ff84 1-50
+.github/secret_scanning.yml
+  s_a8ab9debe9c635::t_f7a2474fa8ff84 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6637270dc0efb2eb972c60fcc14687b96455794d",
+  "prompts": {},
+  "sessions": {
+    "s_a8ab9debe9c635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffbb2-e673-7831-80fe-fbc9d071eb77",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
