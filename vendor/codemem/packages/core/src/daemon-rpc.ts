@@ -72,6 +72,16 @@ export type DaemonRpcContext = {
 	onStop: () => void;
 };
 
+export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
+	if (error.code === "EACCES") {
+		return typedError("peer_denied", "Peer is not allowed to connect to the daemon socket.");
+	}
+	if (error.code === "ECONNREFUSED" || error.code === "ENOENT") {
+		return typedError("daemon_unavailable", "Daemon is not running.", true);
+	}
+	return typedError("peer_denied", error.message || "Peer connection failed.");
+}
+
 function typedError(code: string, message: string, retryable = false): TypedRpcError {
 	return { error: { code, message, retryable } };
 }

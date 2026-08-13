@@ -44,6 +44,7 @@ export {
 	callDaemonRpc,
 	dispatchDaemonRpc,
 	LOCAL_API_VERSION,
+	mapPeerConnectError,
 	RPC_CAPABILITY_HASH,
 	RPC_MAX_BYTES,
 	RPC_METHODS,
@@ -276,6 +277,15 @@ export {
 	parseObserverResponse,
 	SUPPORTED_OBSERVATION_KINDS,
 } from "./ingest-xml-parser.js";
+export type { InstallManifest, ManagedBlock } from "./install-manifest.js";
+export {
+	applyManagedBlock,
+	installWithManifest,
+	readInstallManifest,
+	removeManagedBlock,
+	uninstallWithManifest,
+	writeInstallManifest,
+} from "./install-manifest.js";
 export { parsePositiveMemoryId, parseStrictInteger } from "./integers.js";
 export type {
 	BackfillTagsTextOptions,
