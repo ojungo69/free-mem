@@ -1,0 +1,25 @@
+evidence/phase1-disposition.md
+  s_a546c8dc2f182a::t_34459e4382905b 197-205
+specs/001-agent-memory-core/tasks.md
+  s_a546c8dc2f182a::t_41905df6e5ffc7 104-105
+vendor/codemem/packages/core/src/daemon-lifecycle.test.ts
+  s_a546c8dc2f182a::t_9381de0cf91e35 1-212
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_a546c8dc2f182a::t_4e116d0b063894 1-375
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e23b2e5e1cfca93f717b679895c5828bb6ad1feb",
+  "prompts": {},
+  "sessions": {
+    "s_a546c8dc2f182a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff6a4-bf1e-7901-9075-16ec75330b26",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <jurarawww@gmail.com>"
+    }
+  }
+}
