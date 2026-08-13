@@ -3,6 +3,7 @@ import { appendFileSync, chmodSync, existsSync, readFileSync, unlinkSync } from 
 import { createConnection, createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
+import { attachDaemonRpc, type DaemonRpcContext } from "./daemon-rpc.js";
 import {
 	ensureStorageLayout,
 	recoverStorageJournal,
@@ -154,31 +155,10 @@ function acquireExclusiveLock(lockPath: string): BetterSqlite3.Database {
 	}
 }
 
-function bindPrivateSocket(
-	socketPath: string,
-	identity: DaemonIdentity,
-	onStop: () => void,
-): Promise<Server> {
+function bindPrivateSocket(socketPath: string, rpc: DaemonRpcContext): Promise<Server> {
 	if (existsSync(socketPath)) unlinkSync(socketPath);
-	const health = `${JSON.stringify({ status: "ok", pid: identity.pid })}\n`;
 	const server = createServer((connection) => {
-		connection.once("data", (chunk) => {
-			const line = chunk.toString("utf8");
-			if (line.startsWith("STOP")) {
-				const nonce = line.slice(4).trim();
-				if (nonce && nonce === identity.nonce) {
-					connection.end(`${JSON.stringify({ status: "stopping" })}\n`);
-					onStop();
-					return;
-				}
-				connection.end(`${JSON.stringify({ status: "mismatch" })}\n`);
-				return;
-			}
-			connection.end(health);
-		});
-		connection.setTimeout(2_000, () => {
-			connection.end(health);
-		});
+		attachDaemonRpc(connection, rpc);
 	});
 	return new Promise((resolveListen, reject) => {
 		server.once("error", reject);
@@ -240,7 +220,11 @@ function requestCleanStop(socketPath: string, nonce: string): Promise<boolean> {
 	});
 }
 
-export async function startDaemon(options: { dataDir: string }): Promise<DaemonHandle> {
+export async function startDaemon(options: {
+	dataDir: string;
+	rpcDeadlineMs?: number;
+	now?: () => number;
+}): Promise<DaemonHandle> {
 	assertSupportedStoragePlatform();
 	assertDataDirPreflight(options.dataDir);
 	const layout = resolveStorageLayout(options.dataDir);
@@ -260,9 +244,15 @@ export async function startDaemon(options: { dataDir: string }): Promise<DaemonH
 			fingerprint: liveIdentity.fingerprint,
 			nonce: randomUUID(),
 		};
-		server = await bindPrivateSocket(layout.socketPath, identity, () => {
-			const current = liveDaemons.get(layout.dataDir);
-			if (current && sameIdentity(current.identity, identity)) stopLive(layout.dataDir);
+		server = await bindPrivateSocket(layout.socketPath, {
+			identity,
+			dataDir: layout.dataDir,
+			deadlineMs: options.rpcDeadlineMs,
+			now: options.now,
+			onStop: () => {
+				const current = liveDaemons.get(layout.dataDir);
+				if (current && sameIdentity(current.identity, identity)) stopLive(layout.dataDir);
+			},
 		});
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
 		const live: LiveDaemon = { lock, server, identity, layout };

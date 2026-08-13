@@ -39,6 +39,15 @@ export {
 	startDaemon,
 	stopDaemon,
 } from "./daemon-lifecycle.js";
+export type { RpcRequest, RpcSuccess, TypedRpcError } from "./daemon-rpc.js";
+export {
+	callDaemonRpc,
+	dispatchDaemonRpc,
+	LOCAL_API_VERSION,
+	RPC_CAPABILITY_HASH,
+	RPC_MAX_BYTES,
+	RPC_METHODS,
+} from "./daemon-rpc.js";
 export {
 	assertSchemaReady,
 	connect,
