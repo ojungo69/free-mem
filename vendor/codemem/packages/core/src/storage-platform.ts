@@ -221,7 +221,14 @@ export function readProcessIdentity(pid: number): { startTime: string; fingerpri
 	} catch {
 		// boot_id is a uniqueness aid; starttime still distinguishes PID reuse on one boot.
 	}
-	const exe = realpathSync(readlinkSync(`/proc/${pid}/exe`));
+	const link = readlinkSync(`/proc/${pid}/exe`);
+	const target = link.endsWith(" (deleted)") ? link.slice(0, -" (deleted)".length) : link;
+	let exe: string;
+	try {
+		exe = realpathSync(target);
+	} catch {
+		exe = target;
+	}
 	const cmdline = readFileSync(`/proc/${pid}/cmdline`);
 	return {
 		startTime: `${bootId}:${startTime}`,

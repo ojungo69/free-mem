@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, readFileSync, unlinkSync } from "node:fs";
-import { createServer, type Server } from "node:net";
+import { createConnection, createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import {
@@ -120,7 +120,12 @@ async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<b
 }
 
 function isDaemonProcessAlive(layout: StorageLayout): boolean {
-	const identity = readIdentityFile(layout.identityPath);
+	let identity: DaemonIdentity | null;
+	try {
+		identity = readIdentityFile(layout.identityPath);
+	} catch {
+		return false;
+	}
 	if (!identity) return false;
 	if (!processAlive(identity.pid)) return false;
 	try {
@@ -149,10 +154,25 @@ function acquireExclusiveLock(lockPath: string): BetterSqlite3.Database {
 	}
 }
 
-function bindPrivateSocket(socketPath: string, identity: DaemonIdentity): Promise<Server> {
+function bindPrivateSocket(
+	socketPath: string,
+	identity: DaemonIdentity,
+	onStop: () => void,
+): Promise<Server> {
 	if (existsSync(socketPath)) unlinkSync(socketPath);
+	const health = `${JSON.stringify({ status: "ok", pid: identity.pid })}\n`;
 	const server = createServer((connection) => {
-		connection.end(`${JSON.stringify({ status: "ok", pid: identity.pid })}\n`);
+		connection.once("data", (chunk) => {
+			if (chunk.toString("utf8").startsWith("STOP")) {
+				connection.end(`${JSON.stringify({ status: "stopping" })}\n`);
+				onStop();
+				return;
+			}
+			connection.end(health);
+		});
+		connection.setTimeout(2_000, () => {
+			connection.end(health);
+		});
 	});
 	return new Promise((resolveListen, reject) => {
 		server.once("error", reject);
@@ -198,6 +218,27 @@ function stopLive(dataDir: string): void {
 	releaseResources(live.layout, live);
 }
 
+function requestCleanStop(socketPath: string): Promise<boolean> {
+	return new Promise((resolveStop) => {
+		const socket = createConnection(socketPath);
+		let settled = false;
+		const finish = (ok: boolean) => {
+			if (settled) return;
+			settled = true;
+			socket.destroy();
+			resolveStop(ok);
+		};
+		socket.setTimeout(500);
+		socket.once("connect", () => {
+			socket.write("STOP\n");
+			socket.end();
+		});
+		socket.once("error", () => finish(false));
+		socket.once("timeout", () => finish(false));
+		socket.once("close", () => finish(true));
+	});
+}
+
 export async function startDaemon(options: { dataDir: string }): Promise<DaemonHandle> {
 	assertSupportedStoragePlatform();
 	assertDataDirPreflight(options.dataDir);
@@ -217,7 +258,10 @@ export async function startDaemon(options: { dataDir: string }): Promise<DaemonH
 			fingerprint: liveIdentity.fingerprint,
 			nonce: randomUUID(),
 		};
-		server = await bindPrivateSocket(layout.socketPath, identity);
+		server = await bindPrivateSocket(layout.socketPath, identity, () => {
+			const current = liveDaemons.get(layout.dataDir);
+			if (current && sameIdentity(current.identity, identity)) stopLive(layout.dataDir);
+		});
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
 		const live: LiveDaemon = { lock, server, identity, layout };
 		liveDaemons.set(layout.dataDir, live);
@@ -229,6 +273,8 @@ export async function startDaemon(options: { dataDir: string }): Promise<DaemonH
 			socketPath: layout.socketPath,
 			identityPath: layout.identityPath,
 			stop: async () => {
+				const current = liveDaemons.get(layout.dataDir);
+				if (!current || !sameIdentity(current.identity, identity)) return;
 				stopLive(layout.dataDir);
 			},
 		};
@@ -269,6 +315,12 @@ function removeControlArtifacts(layout: StorageLayout): void {
 }
 
 function cleanupIfStillOwner(layout: StorageLayout, snapshot: DaemonIdentity | null): void {
+	if (!existsSync(layout.lockPath)) {
+		const current = readIdentityFile(layout.identityPath);
+		if (snapshot && current && !sameIdentity(snapshot, current)) return;
+		removeControlArtifacts(layout);
+		return;
+	}
 	let lock: BetterSqlite3.Database;
 	try {
 		lock = acquireExclusiveLock(layout.lockPath);
@@ -291,7 +343,12 @@ export function readDaemonHealth(dataDir: string): DaemonHealth {
 	if (!existsSync(layout.socketPath) || !isDaemonProcessAlive(layout)) {
 		return { status: "not_running", dataDir: layout.dataDir };
 	}
-	const identity = readIdentityFile(layout.identityPath);
+	let identity: DaemonIdentity | null;
+	try {
+		identity = readIdentityFile(layout.identityPath);
+	} catch {
+		return { status: "not_running", dataDir: layout.dataDir };
+	}
 	if (!identity) return { status: "not_running", dataDir: layout.dataDir };
 	return {
 		status: "ok",
@@ -330,7 +387,13 @@ export async function forceKillDaemon(dataDir: string, expected?: DaemonIdentity
 	if (!identitiesMatch(second, liveSecond)) {
 		throw new Error("Force-kill refused: daemon identity mismatch.");
 	}
+	if (second.pid === process.pid) {
+		throw new Error("Force-kill refused: the daemon runs in the calling process; use stopDaemon.");
+	}
 
+	// ponytail: kill(2) still addresses a PID number. pidfd_send_signal would
+	// close the reuse window after this last check; Node has no pidfd yet.
+	// Upgrade: pidfd_open + pidfd_send_signal when available. T055 covers reuse.
 	process.kill(second.pid, "SIGKILL");
 	if (!(await waitUntil(() => !processAlive(second.pid), 1000))) {
 		throw new Error("Force-kill did not terminate the identified process.");
@@ -358,6 +421,9 @@ export async function stopDaemon(
 		return { action: "stopped" };
 	}
 	const timeoutMs = options?.timeoutMs ?? 2000;
+	if (existsSync(layout.socketPath)) {
+		await requestCleanStop(layout.socketPath);
+	}
 	if (await waitUntil(() => !isDaemonProcessAlive(layout), timeoutMs)) {
 		cleanupIfStillOwner(layout, snapshot);
 		return { action: "stopped" };

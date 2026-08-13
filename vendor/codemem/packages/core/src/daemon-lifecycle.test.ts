@@ -85,6 +85,9 @@ describe("Phase 1 daemon lifecycle", () => {
 		const second = await core.startDaemon({ dataDir });
 		running.push(second);
 		expect(core.readDaemonHealth(dataDir).status).toBe("ok");
+		await first.stop();
+		expect(core.readDaemonHealth(dataDir).status).toBe("ok");
+		expect(statSync(second.socketPath).isSocket()).toBe(true);
 		await second.stop();
 		running.pop();
 	});
