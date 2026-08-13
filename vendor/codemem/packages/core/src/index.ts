@@ -450,6 +450,12 @@ export * from "./prompt-pack-ledger.js";
 export type { FlushRawEventsOptions } from "./raw-event-flush.js";
 export { buildSessionContext, flushRawEvents } from "./raw-event-flush.js";
 export { RawEventSweeper } from "./raw-event-sweeper.js";
+export type { AgentMemoryConfig, RedactionResult } from "./redaction-pipeline.js";
+export {
+	applyDaemonIntake,
+	parseAgentMemoryToml,
+	preprocessAdapterEvent,
+} from "./redaction-pipeline.js";
 export {
 	hasPendingRefBackfill,
 	REF_BACKFILL_JOB,
