@@ -194,5 +194,14 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 
 - 本表の「削除 / 置換 / 移設 / 無効化」全行の消化 + §9 以外での daemon 外 open ゼロ = T048/T053 の判定基準。
 - 実装で新設される surface（control/lock.db・backup verify・staging・viewer 認証・spool）は各タスク完了時に本表へ追記し、T053 直前に再生成して完全一致を検証する。
+
+## T034 新設 surface（2026-08-13）
+
+| surface | path | disposition | class | authority |
+|---|---|---|---|---|
+| instance lock | `control/lock.db` | daemon常駐(T034)。better-sqlite3 `BEGIN EXCLUSIVE`・busy_timeout 0・journal DELETE・0600。SQLITE_BUSY = 二重起動拒否 | − | − |
+| force-kill identity | `control/identity.json` | daemon常駐(T034)。PID + startTime + exe/cmdline fingerprint + nonce。不一致は kill 拒否 | − | − |
+| RPC socket (bind only) | `control/daemon.sock` | daemon常駐(T034)。parent 0700 / socket 0600。handshake / allowlist / typed RPC は T035 | − | − |
+| health probe | `readDaemonHealth(dataDir)` + socket liveness line | daemon常駐(T034)。typed instance/protocol/doctor は T035 | − | − |
 - viewer の pack transport mutation は削除、browser の pack/trace は `POST /v1/context/pack` read relay（ledger は daemon 内）に確定した。未決 disposition は 0 件。
 - inventory 全数 + F9–F11 補遺に未分類の production DB-open 経路は rg 全数照合で存在しない（2026-08-13 時点）。

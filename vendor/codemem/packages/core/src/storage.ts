@@ -29,6 +29,9 @@ export interface StorageLayout {
 	versionsDir: string;
 	currentPointerPath: string;
 	journalPath: string;
+	lockPath: string;
+	identityPath: string;
+	socketPath: string;
 }
 
 export type StorageJournalState = "prepared" | "switched" | "committed";
@@ -57,6 +60,9 @@ export function resolveStorageLayout(dataDir: string = DEFAULT_DATA_DIR): Storag
 		versionsDir: join(dbDir, "versions"),
 		currentPointerPath: join(dbDir, "current"),
 		journalPath: join(controlDir, "restore-journal.json"),
+		lockPath: join(controlDir, "lock.db"),
+		identityPath: join(controlDir, "identity.json"),
+		socketPath: join(controlDir, "daemon.sock"),
 	};
 }
 

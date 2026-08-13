@@ -27,6 +27,18 @@ export {
 	MAPPABLE_CODEX_HOOK_EVENTS,
 	mapCodexHookPayload,
 } from "./codex-hooks.js";
+export type { DaemonHandle, DaemonHealth, DaemonIdentity } from "./daemon-lifecycle.js";
+export {
+	assertDataDirPreflight,
+	forceKillDaemon,
+	isForbiddenMountFstype,
+	isNetworkFilesystemType,
+	isWslWindowsSharePath,
+	readDaemonHealth,
+	readProcessIdentity,
+	startDaemon,
+	stopDaemon,
+} from "./daemon-lifecycle.js";
 export {
 	assertSchemaReady,
 	connect,
