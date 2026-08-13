@@ -118,7 +118,7 @@ describe("export/import", () => {
 		const dbPath = createDbPath("source");
 		seedSourceDb(dbPath);
 
-		const payload = exportMemories({ dbPath });
+		const payload = exportMemories({ dbPath, project: "codemem" });
 
 		expect(payload.version).toBe("1.0");
 		expect(payload.sessions).toHaveLength(1);
@@ -199,7 +199,7 @@ describe("export/import", () => {
 		const dbPath = createDbPath("inactive");
 		seedSourceDb(dbPath);
 
-		const payload = exportMemories({ dbPath, includeInactive: true });
+		const payload = exportMemories({ dbPath, project: "codemem", includeInactive: true });
 
 		expect(payload.memory_items).toHaveLength(2);
 	});
@@ -207,7 +207,11 @@ describe("export/import", () => {
 	it("imports idempotently and supports dry run", () => {
 		const sourcePath = createDbPath("source-import");
 		seedSourceDb(sourcePath);
-		const payload = exportMemories({ dbPath: sourcePath, includeInactive: true });
+		const payload = exportMemories({
+			dbPath: sourcePath,
+			project: "codemem",
+			includeInactive: true,
+		});
 
 		const destPath = createDbPath("dest-import");
 		const destDb = new Database(destPath);

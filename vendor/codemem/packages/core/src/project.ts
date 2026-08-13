@@ -54,21 +54,22 @@ function findGitAnchor(startCwd: string): string | null {
 		if (existsSync(gitPath)) {
 			try {
 				if (lstatSync(gitPath).isDirectory()) {
+					if (existsSync(resolve(gitPath, "HEAD"))) return current;
+				} else {
+					const text = readFileSync(gitPath, "utf8").trim();
+					if (text.startsWith("gitdir:")) {
+						const gitdir = resolve(current, text.slice("gitdir:".length).trim()).replaceAll(
+							"\\",
+							"/",
+						);
+						const worktreeMarker = "/.git/worktrees/";
+						const worktreeIndex = gitdir.indexOf(worktreeMarker);
+						if (worktreeIndex >= 0) {
+							return gitdir.slice(0, worktreeIndex);
+						}
+					}
 					return current;
 				}
-				const text = readFileSync(gitPath, "utf8").trim();
-				if (text.startsWith("gitdir:")) {
-					const gitdir = resolve(current, text.slice("gitdir:".length).trim()).replaceAll(
-						"\\",
-						"/",
-					);
-					const worktreeMarker = "/.git/worktrees/";
-					const worktreeIndex = gitdir.indexOf(worktreeMarker);
-					if (worktreeIndex >= 0) {
-						return gitdir.slice(0, worktreeIndex);
-					}
-				}
-				return current;
 			} catch {
 				return current;
 			}

@@ -49,9 +49,20 @@ describe("project helpers", () => {
 		const repoRoot = join(tmpDir, "my-repo");
 		const nested = join(repoRoot, "packages", "core");
 		mkdirSync(join(repoRoot, ".git"), { recursive: true });
+		writeFileSync(join(repoRoot, ".git", "HEAD"), "ref: refs/heads/main\n");
 		mkdirSync(nested, { recursive: true });
 
 		expect(resolveProject(nested)).toBe("my-repo");
+	});
+
+	it("ignores a .git directory that is not a Git repository", () => {
+		tmpDir = mkdtempSync(join(tmpdir(), "codemem-project-test-"));
+		const falseRoot = join(tmpDir, "not-a-repo");
+		const nested = join(falseRoot, "nested");
+		mkdirSync(join(falseRoot, ".git"), { recursive: true });
+		mkdirSync(nested, { recursive: true });
+
+		expect(resolveProject(nested)).toBe("nested");
 	});
 
 	it("resolves main repo basename for git worktrees", () => {
@@ -73,6 +84,7 @@ describe("project helpers", () => {
 		const repoRoot = join(tmpDir, "my-repo");
 		const nested = join(repoRoot, "packages", "core");
 		mkdirSync(join(repoRoot, ".git"), { recursive: true });
+		writeFileSync(join(repoRoot, ".git", "HEAD"), "ref: refs/heads/main\n");
 		mkdirSync(nested, { recursive: true });
 
 		expect(resolveProjectRoot(nested)).toBe(repoRoot);

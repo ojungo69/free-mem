@@ -36,12 +36,17 @@ describe("project-scope helpers", () => {
 
 	it("falls back to default project when env or request project is blank on read filters", async () => {
 		process.env.CODEMEM_PROJECT = "   ";
-		const { buildFilters, resolveDefaultProject } = await import("./project-scope.js");
-		expect(resolveDefaultProject()).toBe("codemem");
-		expect(buildFilters({ project: "   ", kind: "change" }, "repo-name")).toEqual({
-			kind: "change",
-			project: "repo-name",
-		});
+		const cwd = vi.spyOn(process, "cwd").mockReturnValue("/tmp/codemem");
+		try {
+			const { buildFilters, resolveDefaultProject } = await import("./project-scope.js");
+			expect(resolveDefaultProject()).toBe("codemem");
+			expect(buildFilters({ project: "   ", kind: "change" }, "repo-name")).toEqual({
+				kind: "change",
+				project: "repo-name",
+			});
+		} finally {
+			cwd.mockRestore();
+		}
 	});
 
 	it("resolveWriteProject never falls back to the server default project", async () => {
