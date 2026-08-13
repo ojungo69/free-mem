@@ -32,6 +32,7 @@ export interface StorageLayout {
 	lockPath: string;
 	identityPath: string;
 	socketPath: string;
+	spoolDir: string;
 	backupsDir: string;
 }
 
@@ -64,6 +65,7 @@ export function resolveStorageLayout(dataDir: string = DEFAULT_DATA_DIR): Storag
 		lockPath: join(controlDir, "lock.db"),
 		identityPath: join(controlDir, "identity.json"),
 		socketPath: join(controlDir, "daemon.sock"),
+		spoolDir: join(controlDir, "spool"),
 		backupsDir: join(controlDir, "backups"),
 	};
 }
@@ -73,6 +75,7 @@ export function ensureStorageLayout(layout: StorageLayout): void {
 	ensurePrivateDirectory(layout.controlDir);
 	ensurePrivateDirectory(layout.dbDir);
 	ensurePrivateDirectory(layout.versionsDir);
+	ensurePrivateDirectory(layout.spoolDir);
 	ensurePrivateDirectory(layout.backupsDir);
 }
 

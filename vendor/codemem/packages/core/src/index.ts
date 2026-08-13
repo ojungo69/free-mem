@@ -383,6 +383,7 @@ export {
 	hashMutationPayload,
 	MutationConflictError,
 } from "./mutation-dispatcher.js";
+export * from "./normalized-event.js";
 export type { ObserverAuthMaterial } from "./observer-auth.js";
 export {
 	ObserverAuthAdapter,
@@ -535,6 +536,7 @@ export {
 	SESSION_CONTEXT_BACKFILL_JOB,
 	SessionContextBackfillRunner,
 } from "./session-context-backfill.js";
+export * from "./spool.js";
 export type { StorageJournal, StorageJournalState, StorageLayout } from "./storage.js";
 export {
 	DEFAULT_DATA_DIR,

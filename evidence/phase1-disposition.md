@@ -213,3 +213,13 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 | `POST /v1/operations/backup/create` / `verify` | RPC method | T050 最小面。handshake 後 `not_implemented` / verify stub | B | user-authority |
 - viewer の pack transport mutation は削除、browser の pack/trace は `POST /v1/context/pack` read relay（ledger は daemon 内）に確定した。未決 disposition は 0 件。
 - inventory 全数 + F9–F11 補遺に未分類の production DB-open 経路は rg 全数照合で存在しない（2026-08-13 時点）。
+
+## T039 新設 surface（2026-08-14）
+
+| surface | path | disposition | class | authority |
+|---|---|---|---|---|
+| atomic spool producer | `control/spool/tmp/*.json.tmp` → `control/spool/ready/*.json` | T038 adapter 前処理後の `POST /v1/events` / `POST /v1/memories/record` だけを保存。sensitivity / ruleset / degraded / private omitted / local-only metadataを保持し、idempotency key + payload hash filename、write+fsync+atomic rename。import は T040 | A | agent-callable |
+| spool quota/counter | `control/spool/dropped-counter` | 通常128MiB・予約16MiB（64KiB/file、最低64 eventを超える）・tmp+ready 合算。80%をstderr + health/doctorへ表示。4KiB事前確保領域をlock下write-in-place | − | − |
+| spool lock | `control/spool/lock` | `open(wx)` 排他fileをfd存命保持しinode照合。PID + OS start identity + fingerprint + nonce、stale owner回収、100ms hard deadline。hook側SQLite handleなし | − | − |
+| spool quarantine | `control/spool/quarantine/*.json` | 32MiB別枠。満杯時readyを削除せず新規隔離を拒否しcritical counter。broken/conflict判定と呼出しはT040 | − | − |
+| legacy spool drain | `{claude-hook-spool,codex-hook-spool}/*.json` | handler成功後だけ旧fileをfsync付き削除。失敗/tmp/bad entryは保持。legacy cutoverでの実呼出しはT051 | A | agent-callable |

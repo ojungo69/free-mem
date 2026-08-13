@@ -1,21 +1,55 @@
 import { createHash } from "node:crypto";
 import { createConnection, type Socket } from "node:net";
 import { buildFilterClausesWithContext } from "./filters.js";
+import { validateMemoryKind } from "./memory-kinds.js";
 import { dispatchClassA, MutationConflictError } from "./mutation-dispatcher.js";
+import {
+	NORMALIZED_EVENT_FIELDS,
+	NORMALIZED_SCHEMA_VERSION,
+	validateNormalizedEvent,
+} from "./normalized-event.js";
+
+export { NORMALIZED_SCHEMA_VERSION } from "./normalized-event.js";
+
 import {
 	BackupRequestError,
 	createCanonicalBackup,
 	verifyCanonicalBackup,
 } from "./online-backup.js";
 import { applyDaemonIntake } from "./redaction-pipeline.js";
-import { type MemoryStore, validateMemoryKind } from "./store.js";
+import { readSpoolStatus } from "./spool.js";
+import type { MemoryStore } from "./store.js";
 import type { MemoryFilters } from "./types.js";
 import type { WriterActor } from "./writer-actor.js";
 
 type RpcIdentity = { pid: number; nonce: string };
 
+function spoolHealth(dataDir: string): Record<string, unknown> {
+	try {
+		const status = readSpoolStatus(dataDir);
+		return {
+			status: status.critical ? "critical" : status.warnings.length > 0 ? "warning" : "ok",
+			critical: status.critical,
+			warnings: status.warnings,
+			droppedTotal: status.dropped.total,
+			droppedByKind: status.dropped.byKind,
+			firstDroppedAt: status.dropped.firstDroppedAt,
+			lastDroppedAt: status.dropped.lastDroppedAt,
+			quarantineRejected: status.dropped.quarantineRejected,
+			normalBytes: status.normalBytes,
+			reservedBytes: status.reservedBytes,
+			quarantineBytes: status.quarantineBytes,
+		};
+	} catch {
+		return {
+			status: "unavailable",
+			critical: true,
+			warnings: ["spool status unavailable"],
+		};
+	}
+}
+
 export const LOCAL_API_VERSION = 1;
-export const NORMALIZED_SCHEMA_VERSION = 1;
 export const RPC_MAX_BYTES = 32 * 1024;
 export const RPC_DEFAULT_DEADLINE_MS = 2_000;
 
@@ -140,48 +174,6 @@ const VIEW_COLLECTIONS = new Set([
 	"config",
 ]);
 
-const NORMALIZED_EVENT_FIELDS = [
-	"schemaVersion",
-	"eventId",
-	"idempotencyKey",
-	"agent",
-	"agentInstanceId",
-	"parentSessionId",
-	"nativeSessionId",
-	"nativeTurnId",
-	"nativeToolUseId",
-	"nativeSequence",
-	"projectKey",
-	"workspaceKey",
-	"branchKey",
-	"cwd",
-	"gitHeadSha",
-	"dirtyTreeFingerprint",
-	"kind",
-	"occurredAt",
-	"model",
-	"payload",
-	"sourceHash",
-	"sensitivity",
-	"injectedContextIds",
-] as const;
-
-const AGENT_IDS = new Set(["claude-code", "codex", "opencode", "pi", "kimi"]);
-const EVENT_KINDS = new Set([
-	"session_started",
-	"user_prompted",
-	"assistant_completed",
-	"tool_started",
-	"tool_completed",
-	"tool_failed",
-	"turn_completed",
-	"pre_compact",
-	"post_compact",
-	"session_idle",
-	"session_interrupted",
-	"session_ended",
-]);
-const SENSITIVITIES = new Set(["normal", "private", "secret"]);
 const PERSISTED_ID_FIELDS = new Set(["idempotencyKey", "requestId", "operationId", "backupId"]);
 
 const FILTER_FIELDS = new Set([
@@ -394,6 +386,7 @@ async function handleMethod(
 			status: "ok",
 			instanceId: ctx.identity.nonce,
 			protocolVersion: protocolVersions(),
+			spool: spoolHealth(ctx.dataDir),
 		};
 	}
 	if (method === "GET /v1/doctor") {
@@ -407,6 +400,7 @@ async function handleMethod(
 				lock: "held",
 				socket: "listening",
 				platform: process.platform,
+				spool: spoolHealth(ctx.dataDir),
 			},
 		};
 	}
@@ -478,14 +472,6 @@ async function handleMethod(
 	};
 }
 
-function requiredEventString(event: Record<string, unknown>, field: string): string {
-	const value = event[field];
-	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new RpcRequestError(`event.${field} is required.`);
-	}
-	return value.trim();
-}
-
 function strongestSensitivity(
 	claimed: "normal" | "private" | "secret",
 	detected: "normal" | "private" | "secret",
@@ -500,8 +486,10 @@ function normalizedEvent(
 	normalizedSchemaVersion: number,
 ): Record<string, unknown> {
 	const event = asObject(body.event);
-	if (!Object.hasOwn(event, "payload")) {
-		throw new RpcRequestError("event.payload is required.");
+	try {
+		validateNormalizedEvent(event, normalizedSchemaVersion);
+	} catch (error) {
+		throw new RpcRequestError(error instanceof Error ? error.message : "event is invalid.");
 	}
 	const intake = applyDaemonIntake(event, {
 		allowlist: [...NORMALIZED_EVENT_FIELDS],
@@ -509,67 +497,20 @@ function normalizedEvent(
 	});
 	const payload = intake.payload;
 	if (!Object.hasOwn(payload, "payload")) payload.payload = {};
-	if (payload.schemaVersion !== normalizedSchemaVersion) {
-		throw new RpcRequestError("event.schemaVersion is incompatible.");
+	let validated: ReturnType<typeof validateNormalizedEvent>;
+	try {
+		validated = validateNormalizedEvent(payload, normalizedSchemaVersion);
+	} catch (error) {
+		throw new RpcRequestError(error instanceof Error ? error.message : "event is invalid.");
 	}
-	const eventId = requiredEventString(payload, "eventId");
-	const idempotencyKey = requiredEventString(payload, "idempotencyKey");
+	const { eventId, idempotencyKey, sensitivity } = validated;
 	if (idempotencyKey !== body.idempotencyKey) {
 		throw new RpcRequestError("event.idempotencyKey must match the request envelope.");
-	}
-	const agent = requiredEventString(payload, "agent");
-	if (!AGENT_IDS.has(agent)) throw new RpcRequestError("event.agent is unsupported.");
-	const kind = requiredEventString(payload, "kind");
-	if (!EVENT_KINDS.has(kind)) throw new RpcRequestError("event.kind is unsupported.");
-	const sensitivity = requiredEventString(payload, "sensitivity");
-	if (!SENSITIVITIES.has(sensitivity)) {
-		throw new RpcRequestError("event.sensitivity is unsupported.");
-	}
-	const occurredAt = requiredEventString(payload, "occurredAt");
-	if (!Number.isFinite(Date.parse(occurredAt))) {
-		throw new RpcRequestError("event.occurredAt is invalid.");
-	}
-	const sourceHash = requiredEventString(payload, "sourceHash");
-	if (!/^[a-f0-9]{64}$/.test(sourceHash)) {
-		throw new RpcRequestError("event.sourceHash must be a SHA-256 hex digest.");
-	}
-	for (const field of ["nativeSessionId", "projectKey", "workspaceKey", "cwd"] as const) {
-		requiredEventString(payload, field);
-	}
-	for (const field of [
-		"agentInstanceId",
-		"parentSessionId",
-		"nativeTurnId",
-		"nativeToolUseId",
-		"branchKey",
-		"gitHeadSha",
-		"dirtyTreeFingerprint",
-		"model",
-	] as const) {
-		if (payload[field] !== undefined && typeof payload[field] !== "string") {
-			throw new RpcRequestError(`event.${field} must be a string.`);
-		}
-	}
-	if (
-		payload.nativeSequence !== undefined &&
-		(!Number.isInteger(payload.nativeSequence) || Number(payload.nativeSequence) < 0)
-	) {
-		throw new RpcRequestError("event.nativeSequence must be a non-negative integer.");
-	}
-	if (
-		payload.injectedContextIds !== undefined &&
-		(!Array.isArray(payload.injectedContextIds) ||
-			!payload.injectedContextIds.every((value) => typeof value === "string"))
-	) {
-		throw new RpcRequestError("event.injectedContextIds must be an array of strings.");
 	}
 	return {
 		...payload,
 		eventId,
-		sensitivity: strongestSensitivity(
-			sensitivity as "normal" | "private" | "secret",
-			intake.sensitivity,
-		),
+		sensitivity: strongestSensitivity(sensitivity, intake.sensitivity),
 		secret_rules_version: intake.secret_rules_version,
 		redaction_degraded: intake.degraded,
 		private_content_omitted: intake.private_content_omitted,
