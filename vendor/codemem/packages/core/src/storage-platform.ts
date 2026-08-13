@@ -26,10 +26,38 @@ export function assertSupportedStoragePlatform(): void {
 	}
 }
 
+function assertNotSymlinkDirectory(path: string): void {
+	const info = lstatSync(path);
+	if (info.isSymbolicLink()) {
+		throw new Error(`data_dir preflight rejected a symbolic link: ${path}`);
+	}
+	if (!info.isDirectory()) {
+		throw new Error(`Private path is not a directory: ${path}`);
+	}
+}
+
 export function ensurePrivateDirectory(path: string): void {
 	assertSupportedStoragePlatform();
-	mkdirSync(path, { recursive: true, mode: 0o700 });
+	let existing: ReturnType<typeof lstatSync> | undefined;
+	try {
+		existing = lstatSync(path);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+	}
+	if (existing) {
+		assertNotSymlinkDirectory(path);
+	} else {
+		mkdirSync(path, { recursive: true, mode: 0o700 });
+		assertNotSymlinkDirectory(path);
+	}
 	chmodSync(path, 0o700);
+	if (isNetworkFilesystemType(statfsSync(path).type)) {
+		throw new Error("data_dir preflight rejected a network filesystem.");
+	}
+	const fstype = mountFstypeFor(path);
+	if (fstype && isForbiddenMountFstype(fstype)) {
+		throw new Error("data_dir preflight rejected a network filesystem.");
+	}
 }
 
 export function fsyncPath(path: string): void {

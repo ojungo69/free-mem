@@ -2,10 +2,12 @@ import { spawn } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
 	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -194,7 +196,7 @@ describe("Phase 1 daemon lifecycle", () => {
 		}
 	});
 
-	it("P1-T034-04-data-dir-preflight", () => {
+	it("P1-T034-04-data-dir-preflight", async () => {
 		expect(core.isNetworkFilesystemType(0x6969)).toBe(true);
 		expect(core.isNetworkFilesystemType(0xff534d42)).toBe(true);
 		expect(core.isNetworkFilesystemType(0x65735546)).toBe(true);
@@ -211,5 +213,11 @@ describe("Phase 1 daemon lifecycle", () => {
 		const local = join(tempDir("codemem-daemon-preflight-"), "data");
 		expect(() => core.assertDataDirPreflight(local)).not.toThrow();
 		expect(existsSync(local)).toBe(false);
+
+		const linked = tempDir("codemem-daemon-symlink-");
+		const dataDir = join(linked, "data");
+		mkdirSync(dataDir, { mode: 0o700 });
+		symlinkSync(join(linked, "elsewhere"), join(dataDir, "control"));
+		await expect(core.startDaemon({ dataDir })).rejects.toThrow(/symbolic link|preflight/i);
 	});
 });

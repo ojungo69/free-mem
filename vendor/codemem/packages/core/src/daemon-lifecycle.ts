@@ -163,9 +163,15 @@ function bindPrivateSocket(
 	const health = `${JSON.stringify({ status: "ok", pid: identity.pid })}\n`;
 	const server = createServer((connection) => {
 		connection.once("data", (chunk) => {
-			if (chunk.toString("utf8").startsWith("STOP")) {
-				connection.end(`${JSON.stringify({ status: "stopping" })}\n`);
-				onStop();
+			const line = chunk.toString("utf8");
+			if (line.startsWith("STOP")) {
+				const nonce = line.slice(4).trim();
+				if (nonce && nonce === identity.nonce) {
+					connection.end(`${JSON.stringify({ status: "stopping" })}\n`);
+					onStop();
+					return;
+				}
+				connection.end(`${JSON.stringify({ status: "mismatch" })}\n`);
 				return;
 			}
 			connection.end(health);
@@ -195,20 +201,15 @@ function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
 		} catch {
 			// server may already be closed
 		}
+	}
+	removeControlArtifacts(layout);
+	if (live) {
 		try {
 			if (live.lock.open) live.lock.close();
 		} catch {
-			// lock connection may already be closed
+			// lock is released after control artifacts are gone
 		}
 	}
-	if (existsSync(layout.socketPath)) {
-		try {
-			unlinkSync(layout.socketPath);
-		} catch {
-			// stale socket cleanup is best-effort
-		}
-	}
-	durableRemoveFile(layout.identityPath);
 }
 
 function stopLive(dataDir: string): void {
@@ -218,7 +219,7 @@ function stopLive(dataDir: string): void {
 	releaseResources(live.layout, live);
 }
 
-function requestCleanStop(socketPath: string): Promise<boolean> {
+function requestCleanStop(socketPath: string, nonce: string): Promise<boolean> {
 	return new Promise((resolveStop) => {
 		const socket = createConnection(socketPath);
 		let settled = false;
@@ -230,7 +231,7 @@ function requestCleanStop(socketPath: string): Promise<boolean> {
 		};
 		socket.setTimeout(500);
 		socket.once("connect", () => {
-			socket.write("STOP\n");
+			socket.write(`STOP ${nonce}\n`);
 			socket.end();
 		});
 		socket.once("error", () => finish(false));
@@ -248,6 +249,7 @@ export async function startDaemon(options: { dataDir: string }): Promise<DaemonH
 	const lock = acquireExclusiveLock(layout.lockPath);
 
 	let server: Server | undefined;
+	let started = false;
 	try {
 		recoverStorageJournal(layout);
 		const liveIdentity = readProcessIdentity(process.pid);
@@ -265,6 +267,7 @@ export async function startDaemon(options: { dataDir: string }): Promise<DaemonH
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
 		const live: LiveDaemon = { lock, server, identity, layout };
 		liveDaemons.set(layout.dataDir, live);
+		started = true;
 		return {
 			dataDir: layout.dataDir,
 			layout,
@@ -293,13 +296,20 @@ export async function startDaemon(options: { dataDir: string }): Promise<DaemonH
 				// leftover socket must not outlive a failed start
 			}
 		}
-		durableRemoveFile(layout.identityPath);
 		try {
-			lock.close();
+			durableRemoveFile(layout.identityPath);
 		} catch {
-			// lock must not leak if startup fails after acquire
+			// keep the original startup error
 		}
 		throw error;
+	} finally {
+		if (!started) {
+			try {
+				if (lock.open) lock.close();
+			} catch {
+				// lock must not leak if startup fails after acquire
+			}
+		}
 	}
 }
 
@@ -315,12 +325,6 @@ function removeControlArtifacts(layout: StorageLayout): void {
 }
 
 function cleanupIfStillOwner(layout: StorageLayout, snapshot: DaemonIdentity | null): void {
-	if (!existsSync(layout.lockPath)) {
-		const current = readIdentityFile(layout.identityPath);
-		if (snapshot && current && !sameIdentity(snapshot, current)) return;
-		removeControlArtifacts(layout);
-		return;
-	}
 	let lock: BetterSqlite3.Database;
 	try {
 		lock = acquireExclusiveLock(layout.lockPath);
@@ -421,8 +425,8 @@ export async function stopDaemon(
 		return { action: "stopped" };
 	}
 	const timeoutMs = options?.timeoutMs ?? 2000;
-	if (existsSync(layout.socketPath)) {
-		await requestCleanStop(layout.socketPath);
+	if (snapshot && existsSync(layout.socketPath)) {
+		await requestCleanStop(layout.socketPath, snapshot.nonce);
 	}
 	if (await waitUntil(() => !isDaemonProcessAlive(layout), timeoutMs)) {
 		cleanupIfStillOwner(layout, snapshot);
