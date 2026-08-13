@@ -10,7 +10,7 @@
 ## Summary
 
 codemem pinned vendor snapshot（commit `26438e75`）をベースに、v6.1 §29 の Phase 0A→8 を
-§30 の PR 1–10（1:1 対応）としてローカルブランチ単位で実装し、各 Phase の Exit gate
+§30 の PR 1–10（1:1 対応）として phase branch 単位で実装し、各 Phase の Exit gate
 （決定論的検証のみ）を通過させて Core 1.0（Claude Code + Codex 対応）に到達する。
 Phase 0A の base bake-off が不合格の場合のみ、MIT 資産の選択移植へ分岐（v6.1 §4.3 / Phase 0A Exit）。
 
@@ -32,7 +32,7 @@ Phase 0A の base bake-off が不合格の場合のみ、MIT 資産の選択移�
 
 **Performance Goals**: v6.1 §28（検索 100k 件で FTS-only p95 目標内、ほか §28 の目標値）
 
-**Constraints**: ゼロ増分コスト（80 req/day hard cap）/ 平文外部送信禁止 / fail-closed / ローカル完結（push・PR・公開 fork 禁止）
+**Constraints**: ゼロ増分コスト（80 req/day hard cap）/ 平文外部送信禁止 / fail-closed / runtime data はローカル完結 / source 公開は publication gate 後のみ / tag・package・release は Phase 8 まで禁止
 
 **Scale/Scope**: 記憶 100k 件スケール、Claude + Codex の 4 directed routes（Core 1.0 時点）
 
@@ -47,7 +47,7 @@ Phase 0A の base bake-off が不合格の場合のみ、MIT 資産の選択移�
 | III. プライバシー境界 | PASS | redaction/secret detector/daemon auth/credential storage は Claude Code 自ら実装（委譲しない）。Phase 1/5/6 に配置 |
 | IV. 安全境界 | PASS | Phase 1 の sole writer 検証が Hard Invariant 4 の blocking gate |
 | V. 決定論的ゲート | PASS | 全 Exit gate は Track 1 機械判定のみ（§27/§29） |
-| VI. ローカル完結 | PASS | §30 の「PR」はローカルブランチ作業単位として読み替え。push/PR/公開 fork なし |
+| VI. ローカル完結 | PASS（2026-08-14 source visibility 改訂） | runtime/data はローカルのまま。ユーザー決定により publication gate 後の GitHub source/PR だけ許可し、release gate は変更しない |
 
 **Phase 1 設計後の再評価**: PASS（設計成果物は v6.1 への索引であり新規違反なし。2026-08-12）
 
@@ -83,7 +83,7 @@ cherry-pick は §4.3 手続きのみ（`vendor/codemem/VENDOR.md`）。Phase 0A
 
 ## 実行計画（v6.1 §29–30 の実行順序と体制）
 
-各 Phase = 1 ローカルブランチ（`phase-0a-evidence` 等）+ worktree 隔離。マージ条件 = 該当 Exit gate
+各 Phase = 1 branch（`phase-0a-evidence` 等）+ worktree 隔離。GitHub 公開後もマージ条件 = 該当 Exit gate
 （spec.md SC-0A〜SC-8）+ 2 本立てレビュー（正しさ → ponytail-review）+ speckit-verify-tasks（委譲回は必須）。
 
 | Phase | ブランチ | 主実行者（委譲ルーティング） | セキュリティ関連（Claude Code 自ら） |

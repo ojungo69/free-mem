@@ -1,0 +1,12 @@
+title = "free-mem secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic credential shapes required by redaction tests."
+targetRules = ["generic-api-key", "gcp-api-key", "jwt"]
+paths = [
+  '''^vendor/codemem/packages/core/src/secret-scanner\.test\.ts$''',
+  '''^vendor/codemem/packages/core/src/sync-replication\.test\.ts$''',
+]

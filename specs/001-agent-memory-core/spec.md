@@ -126,5 +126,5 @@ CapabilityEvidence（§7.2）/ EmbeddingRequest・ledger（§15）/ SyncOperatio
 
 - 実装順序・PR 分割は v6.1 §30（PR 1–10、Phase 0A〜8 に 1:1 対応）に従う。
 - Phase 9–11（Agent expansion / Personal Cloud / Platform 1.0）は本フィーチャーの範囲外（後続フィーチャー）。
-- 開発はローカル完結（constitution Principle VI）: push / PR 作成 / 公開 fork を行わない。§30 の「PR」はローカルブランチ単位のマージ可能な作業単位として読み替える。
+- 2026-08-14 のユーザー決定により、公開準備ゲート通過後の GitHub source 公開と PR は許可する。これは Core 1.0 release ではなく、runtime data のローカル境界、Phase 順序、Exit gate、tag/package/release 禁止（Phase 8 まで）を変更しない。
 - ベースが bake-off で不合格の場合の分岐（MIT 資産選択移植）は v6.1 Phase 0A Exit の規定に従い、その時点で plan を改訂する。

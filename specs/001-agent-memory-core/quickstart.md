@@ -7,7 +7,7 @@ Phase ごとの「これが通れば次へ進める」検証手順。期待結�
 
 ## 前提
 
-- ローカル完結: いかなる手順も push / PR 作成 / 公開 fork を行わない。
+- runtime data はローカル完結。source の push / PR は publication gate 通過後のみ許可し、tag / package / release は Phase 8 まで行わない。
 - 候補リポはリポジトリ外（`~/projects/free-mem-vendor/` 等の sibling）にローカル clone し、
   pin commit を checkout してから `vendor/` へ取り込む。
 - 実装は worktree 隔離ブランチ上で行い、Exit gate 通過 + 2 本立てレビュー後に main へマージ。

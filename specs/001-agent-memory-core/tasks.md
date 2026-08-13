@@ -159,6 +159,15 @@ T039/T040 → {T042, T044}（spool fail-over 経路）
 barrier: {T028..T052 全完了} → {T053..T057} → T058
 ```
 
+## Repository source publication（Phase 1 Exit と独立、2026-08-14 ユーザー決定）
+
+**Goal**: 未完成であることを明示した source を公開し、Core 1.0 release と誤認させずに継続開発を可視化する。
+
+- [ ] T059 [P] public-readiness: root README / security policy / third-party notice / license status、全履歴 secret scan（合成 credential fixture の2 exact path のみ除外）、clean checkout の frozen install → build → check、commit SHA pin 済み CI
+- [ ] T060 GitHub public repository を作成して現 WIP branch を push。private vulnerability reporting、CI、secret scan、公開 visibility を live 確認。tag / package / release は作成しない。前提: T059
+
+Sonar coverage は source 公開の blocking gate にしない。Sonar project と full-suite 由来 LCOV を同時に導入する時だけ設定し、focused test の coverage を全体値として公開しない。
+
 ## Phase 2 — Canonical Identity / Event State Machine（着手時に詳細化）
 
 Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。
