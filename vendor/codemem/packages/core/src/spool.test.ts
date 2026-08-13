@@ -182,7 +182,7 @@ describe("phase 1 spool contract", () => {
 				capability_hash: RPC_CAPABILITY_HASH,
 			});
 			expect(health).toMatchObject({
-				result: { spool: { status: "warning", warnings: ["normal spool usage reached 80%"] } },
+				result: { spool: { status: "critical", warnings: ["normal spool usage reached 80%"] } },
 			});
 		} finally {
 			await daemon.stop();

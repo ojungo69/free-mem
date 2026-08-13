@@ -47,6 +47,25 @@ const LOCK_WAIT_MS = 5;
 const LOCK_WAIT_ARRAY = new Int32Array(new SharedArrayBuffer(4));
 // ponytail: One global lock keeps quota/counter/claim atomic; shard only if measured contention exceeds the deadline.
 const RESERVED_EVENT_KINDS = new Set(["pre_compact", "session_ended"]);
+const SHA256 = /^[a-f0-9]{64}$/;
+const RULESET_VERSION = /^[a-f0-9]{64}(?::degraded)?$/;
+const SENSITIVITIES = new Set(["normal", "private", "secret"]);
+const SPOOL_ENTRY_FIELDS = new Set([
+	"version",
+	"method",
+	"idempotencyKey",
+	"payloadHash",
+	"quotaClass",
+	"redaction",
+	"body",
+]);
+const REDACTION_FIELDS = new Set([
+	"sensitivity",
+	"secret_rules_version",
+	"redaction_degraded",
+	"private_content_omitted",
+	"local_only",
+]);
 const METHOD_FIELDS: Record<string, readonly string[]> = {
 	"POST /v1/events": ["idempotencyKey", "event"],
 	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body", "confidence", "project"],
@@ -134,6 +153,8 @@ export type SpoolOptions = {
 	config?: AgentMemoryConfig;
 	onWarning?: (message: string) => void;
 };
+
+export type SpoolImportOutcome = "committed" | "conflict";
 
 const EMPTY_COUNTER: DropCounter = {
 	version: 1,
@@ -489,6 +510,32 @@ function rejectUnknownFields(
 	if (unknown) throw new Error(`${label} contains an unsupported field: ${unknown}`);
 }
 
+function validatePreparedMemoryBody(body: Record<string, unknown>, idempotencyKey: string): string {
+	let kind: string;
+	try {
+		kind = validateMemoryKind(String(body.kind));
+	} catch {
+		throw new Error("Memory kind is unsupported.");
+	}
+	if (
+		body.idempotencyKey !== idempotencyKey ||
+		typeof body.kind !== "string" ||
+		typeof body.title !== "string" ||
+		body.title.length === 0 ||
+		typeof body.body !== "string" ||
+		body.body.length === 0 ||
+		(body.project !== undefined && typeof body.project !== "string") ||
+		(body.confidence !== undefined &&
+			(typeof body.confidence !== "number" ||
+				!Number.isFinite(body.confidence) ||
+				body.confidence < 0 ||
+				body.confidence > 1))
+	) {
+		throw new Error("Memory record is incomplete after adapter preprocessing.");
+	}
+	return kind;
+}
+
 function spoolRedaction(result: RedactionResult): SpoolRedactionMetadata {
 	return {
 		sensitivity: result.sensitivity,
@@ -543,27 +590,7 @@ function prepareMutation(input: SpoolMutation, config?: AgentMemoryConfig): Spoo
 		});
 		body = redacted.payload;
 		redaction = spoolRedaction(redacted);
-		try {
-			body.kind = validateMemoryKind(String(body.kind));
-		} catch {
-			throw new Error("Memory kind is unsupported.");
-		}
-		if (
-			body.idempotencyKey !== idempotencyKey ||
-			typeof body.kind !== "string" ||
-			typeof body.title !== "string" ||
-			body.title.length === 0 ||
-			typeof body.body !== "string" ||
-			body.body.length === 0 ||
-			(body.project !== undefined && typeof body.project !== "string") ||
-			(body.confidence !== undefined &&
-				(typeof body.confidence !== "number" ||
-					!Number.isFinite(body.confidence) ||
-					body.confidence < 0 ||
-					body.confidence > 1))
-		) {
-			throw new Error("Memory record is incomplete after adapter preprocessing.");
-		}
+		body.kind = validatePreparedMemoryBody(body, idempotencyKey);
 	}
 
 	const payloadHash = hashMutationPayload({ method: input.method, body, redaction });
@@ -618,6 +645,90 @@ function readSpoolFile(path: string): string {
 		throw new Error("Spool entry is not a bounded regular file.");
 	}
 	return readFileSync(path, "utf8");
+}
+
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error(`${label} must be an object.`);
+	}
+	return value as Record<string, unknown>;
+}
+
+function validateSpoolRedaction(value: unknown): SpoolRedactionMetadata {
+	const redaction = asRecord(value, "Spool redaction metadata");
+	rejectUnknownFields(redaction, REDACTION_FIELDS, "Spool redaction metadata");
+	if (
+		!SENSITIVITIES.has(String(redaction.sensitivity)) ||
+		typeof redaction.secret_rules_version !== "string" ||
+		!RULESET_VERSION.test(redaction.secret_rules_version) ||
+		typeof redaction.redaction_degraded !== "boolean" ||
+		typeof redaction.private_content_omitted !== "boolean" ||
+		typeof redaction.local_only !== "boolean" ||
+		redaction.redaction_degraded !== redaction.secret_rules_version.endsWith(":degraded")
+	) {
+		throw new Error("Spool redaction metadata is malformed.");
+	}
+	return redaction as SpoolRedactionMetadata;
+}
+
+function parseSpoolEntry(serialized: string, name: string, area: "tmp" | "ready"): SpoolEntry {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(serialized);
+	} catch {
+		throw new Error("Spool entry is not valid JSON.");
+	}
+	const object = asRecord(parsed, "Spool entry");
+	rejectUnknownFields(object, SPOOL_ENTRY_FIELDS, "Spool entry");
+	if (
+		object.version !== 1 ||
+		(object.method !== "POST /v1/events" && object.method !== "POST /v1/memories/record") ||
+		(object.quotaClass !== "normal" && object.quotaClass !== "reserved") ||
+		typeof object.payloadHash !== "string" ||
+		!SHA256.test(object.payloadHash)
+	) {
+		throw new Error("Spool entry envelope is malformed.");
+	}
+	const method = object.method;
+	const idempotencyKey = validateIdempotencyKey(object.idempotencyKey);
+	const quotaClass = object.quotaClass;
+	const payloadHash = object.payloadHash;
+	const redaction = validateSpoolRedaction(object.redaction);
+	const body = asRecord(object.body, "Spool request");
+	rejectUnknownFields(body, new Set(METHOD_FIELDS[method]), "Spool request");
+	if (body.idempotencyKey !== idempotencyKey) {
+		throw new Error("Request idempotencyKey must match the spool envelope.");
+	}
+
+	if (method === "POST /v1/events") {
+		const event = asRecord(body.event, "Spool event");
+		const validated = validateNormalizedEvent(event);
+		if (
+			validated.idempotencyKey !== idempotencyKey ||
+			validated.sensitivity !== redaction.sensitivity ||
+			quotaClass !== (RESERVED_EVENT_KINDS.has(validated.kind) ? "reserved" : "normal")
+		) {
+			throw new Error("Spool event metadata is inconsistent.");
+		}
+	} else {
+		if (validatePreparedMemoryBody(body, idempotencyKey) !== body.kind || quotaClass !== "normal") {
+			throw new Error("Spool memory metadata is inconsistent.");
+		}
+	}
+
+	if (hashMutationPayload({ method, body, redaction }) !== payloadHash) {
+		throw new Error("Spool payload hash does not match its contents.");
+	}
+	const keyHash = createHash("sha256").update(idempotencyKey, "utf8").digest("hex");
+	const readyName = `${quotaClass}-${keyHash}-${payloadHash}.json`;
+	if (name !== (area === "tmp" ? `${readyName}.tmp` : readyName)) {
+		throw new Error("Spool filename does not match its contents.");
+	}
+	const entry = object as SpoolEntry;
+	if (serialized !== `${canonicalMutationJson(entry)}\n`) {
+		throw new Error("Spool entry is not canonically encoded.");
+	}
+	return entry;
 }
 
 function capacityError(error: unknown): boolean {
@@ -762,10 +873,132 @@ export function spoolMutation(input: SpoolMutation, options: SpoolOptions = {}):
 	}
 }
 
+type QuarantineReason = "broken_json" | "idempotency_conflict";
+
+function moveToQuarantineLocked(
+	layout: SpoolLayout,
+	area: "tmp" | "ready",
+	name: string,
+	reason: QuarantineReason,
+): { status: "moved" | "full"; path?: string } {
+	if (basename(name) !== name) throw new Error("Invalid spool quarantine request.");
+	const source = join(area === "tmp" ? layout.tmpDir : layout.readyDir, name);
+	const info = lstatSync(source);
+	if (!info.isFile() || info.isSymbolicLink()) {
+		throw new Error("Spool quarantine source is not a regular file.");
+	}
+	const usage = scanUsage(layout);
+	if (usage.quarantineBytes + info.size > SPOOL_QUARANTINE_QUOTA_BYTES) {
+		incrementQuarantineRejected(layout);
+		return { status: "full" };
+	}
+	const destination = join(layout.quarantineDir, `${reason}-${name}`);
+	if (existsSync(destination)) throw new Error("Quarantine entry already exists.");
+	renameSync(source, destination);
+	fsyncPath(area === "tmp" ? layout.tmpDir : layout.readyDir);
+	fsyncPath(layout.quarantineDir);
+	return { status: "moved", path: destination };
+}
+
+function recoverTmpEntriesLocked(layout: SpoolLayout): void {
+	for (const name of readdirSync(layout.tmpDir).sort()) {
+		const source = join(layout.tmpDir, name);
+		let serialized: string;
+		try {
+			serialized = readSpoolFile(source);
+			parseSpoolEntry(serialized, name, "tmp");
+		} catch {
+			moveToQuarantineLocked(layout, "tmp", name, "broken_json");
+			continue;
+		}
+		const readyName = name.slice(0, -".tmp".length);
+		const readyPath = join(layout.readyDir, readyName);
+		if (existsSync(readyPath)) {
+			if (readSpoolFile(readyPath) === serialized) durableRemoveFile(source);
+			else moveToQuarantineLocked(layout, "tmp", name, "broken_json");
+			continue;
+		}
+		renameSync(source, readyPath);
+		fsyncPath(layout.tmpDir);
+		fsyncPath(layout.readyDir);
+	}
+}
+
+export function importReadySpoolEntries(
+	dataDir: string,
+	handler: (entry: SpoolEntry) => SpoolImportOutcome,
+): void {
+	const layout = resolveSpoolLayout(dataDir);
+	let names: string[];
+	let lock: SpoolLockHandle;
+	try {
+		lock = acquireSpoolLock(dataDir);
+	} catch {
+		warn(undefined, "spool importer could not acquire the spool lock; entries were retained.");
+		return;
+	}
+	try {
+		initializeCounter(layout.counterPath);
+		recoverTmpEntriesLocked(layout);
+		names = readdirSync(layout.readyDir).sort();
+	} catch {
+		warn(undefined, "spool importer recovery failed; entries were retained.");
+		return;
+	} finally {
+		lock.close();
+	}
+
+	for (const name of names) {
+		try {
+			lock = acquireSpoolLock(dataDir);
+		} catch {
+			warn(undefined, "spool importer could not acquire the spool lock; entries were retained.");
+			return;
+		}
+		try {
+			const path = join(layout.readyDir, name);
+			if (!existsSync(path)) continue;
+			let entry: SpoolEntry;
+			try {
+				entry = parseSpoolEntry(readSpoolFile(path), name, "ready");
+			} catch {
+				const moved = moveToQuarantineLocked(layout, "ready", name, "broken_json");
+				if (moved.status === "full") {
+					warn(undefined, "spool quarantine is full; ready entry was retained.");
+				}
+				continue;
+			}
+			let outcome: SpoolImportOutcome;
+			try {
+				outcome = handler(entry);
+			} catch {
+				warn(undefined, "spool import failed; ready entry was retained.");
+				continue;
+			}
+			if (outcome === "committed") {
+				durableRemoveFile(path);
+				continue;
+			}
+			if (outcome === "conflict") {
+				const moved = moveToQuarantineLocked(layout, "ready", name, "idempotency_conflict");
+				if (moved.status === "full") {
+					warn(undefined, "spool quarantine is full; conflicting entry was retained.");
+				}
+				continue;
+			}
+			warn(undefined, "spool importer received an invalid outcome; ready entry was retained.");
+		} catch {
+			warn(undefined, "spool importer could not process an entry; it was retained.");
+		} finally {
+			lock.close();
+		}
+	}
+}
+
 export function quarantineSpoolEntry(
 	dataDir: string,
 	readyName: string,
-	reason: "broken_json" | "idempotency_conflict",
+	reason: QuarantineReason,
 ): { status: "moved" | "full"; path?: string } {
 	if (
 		basename(readyName) !== readyName ||
@@ -778,22 +1011,7 @@ export function quarantineSpoolEntry(
 	const lock = acquireSpoolLock(dataDir);
 	try {
 		initializeCounter(layout.counterPath);
-		const source = join(layout.readyDir, readyName);
-		const info = lstatSync(source);
-		if (!info.isFile() || info.isSymbolicLink()) {
-			throw new Error("Ready spool entry is not a regular file.");
-		}
-		const usage = scanUsage(layout);
-		if (usage.quarantineBytes + info.size > SPOOL_QUARANTINE_QUOTA_BYTES) {
-			incrementQuarantineRejected(layout);
-			return { status: "full" };
-		}
-		const destination = join(layout.quarantineDir, `${reason}-${readyName}`);
-		if (existsSync(destination)) throw new Error("Quarantine entry already exists.");
-		renameSync(source, destination);
-		fsyncPath(layout.readyDir);
-		fsyncPath(layout.quarantineDir);
-		return { status: "moved", path: destination };
+		return moveToQuarantineLocked(layout, "ready", readyName, reason);
 	} finally {
 		lock.close();
 	}

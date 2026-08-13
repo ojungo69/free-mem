@@ -218,8 +218,15 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 
 | surface | path | disposition | class | authority |
 |---|---|---|---|---|
-| atomic spool producer | `control/spool/tmp/*.json.tmp` → `control/spool/ready/*.json` | T038 adapter 前処理後の `POST /v1/events` / `POST /v1/memories/record` だけを保存。sensitivity / ruleset / degraded / private omitted / local-only metadataを保持し、idempotency key + payload hash filename、write+fsync+atomic rename。import は T040 | A | agent-callable |
+| atomic spool producer | `control/spool/tmp/*.json.tmp` → `control/spool/ready/*.json` | T038 adapter 前処理後の `POST /v1/events` / `POST /v1/memories/record` だけを保存。sensitivity / ruleset / degraded / private omitted / local-only metadataを保持し、idempotency key + payload hash filename、write+fsync+atomic rename。T040 importer が回収 | A | agent-callable |
 | spool quota/counter | `control/spool/dropped-counter` | 通常128MiB・予約16MiB（64KiB/file、最低64 eventを超える）・tmp+ready 合算。80%をstderr + health/doctorへ表示。4KiB事前確保領域をlock下write-in-place | − | − |
 | spool lock | `control/spool/lock` | `open(wx)` 排他fileをfd存命保持しinode照合。PID + OS start identity + fingerprint + nonce、stale owner回収、100ms hard deadline。hook側SQLite handleなし | − | − |
-| spool quarantine | `control/spool/quarantine/*.json` | 32MiB別枠。満杯時readyを削除せず新規隔離を拒否しcritical counter。broken/conflict判定と呼出しはT040 | − | − |
+| spool quarantine | `control/spool/quarantine/*.json` | 32MiB別枠。満杯時readyを削除せず新規隔離を拒否しcritical counter。T040 importer が broken / tamper / conflict を隔離 | − | − |
 | legacy spool drain | `{claude-hook-spool,codex-hook-spool}/*.json` | handler成功後だけ旧fileをfsync付き削除。失敗/tmp/bad entryは保持。legacy cutoverでの実呼出しはT051 | A | agent-callable |
+
+## T040 新設 surface（2026-08-14）
+
+| surface | path | disposition | class | authority |
+|---|---|---|---|---|
+| spool importer | `importReadySpoolEntries` + `control/spool/{tmp,ready,quarantine}` | daemon起動時と1秒ごとに実行。entryをcanonical JSON・payload hash・hashed filename・method schema・quota classまで再検証し、valid tmpをreadyへ回復。dispatcher成功後だけreadyをfsync付き削除し、失敗・quarantine満杯では保持 | A | daemon内部 |
+| spool dispatcher bridge | `dispatchSpoolMutation` → `handleEvent` / `handleRemember` → `dispatchClassA` | direct RPC と同一handler/transactional receiptを使用。同一method+key・異payloadはDB conflict記録後にspool fileをquarantine。adapter metadataとdaemon第2層redactionを強い側へ統合 | A | daemon内部 |

@@ -4,7 +4,8 @@ import { createConnection, createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
-import { attachDaemonRpc, type DaemonRpcContext } from "./daemon-rpc.js";
+import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
+import { importReadySpoolEntries } from "./spool.js";
 import {
 	ensureStorageLayout,
 	recoverStorageJournal,
@@ -50,6 +51,7 @@ type LiveDaemon = {
 	layout: StorageLayout;
 	writer: WriterActor;
 	store: MemoryStore;
+	spoolSweepTimer: ReturnType<typeof setInterval>;
 };
 
 const liveDaemons = new Map<string, LiveDaemon>();
@@ -181,6 +183,7 @@ function bindPrivateSocket(socketPath: string, rpc: DaemonRpcContext): Promise<S
 
 function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
 	if (live) {
+		clearInterval(live.spoolSweepTimer);
 		try {
 			live.server.close();
 		} catch {
@@ -261,7 +264,7 @@ export async function startDaemon(options: {
 			fingerprint: liveIdentity.fingerprint,
 			nonce: randomUUID(),
 		};
-		server = await bindPrivateSocket(layout.socketPath, {
+		const rpc: DaemonRpcContext = {
 			identity,
 			dataDir: layout.dataDir,
 			deadlineMs: options.rpcDeadlineMs,
@@ -272,8 +275,19 @@ export async function startDaemon(options: {
 				const current = liveDaemons.get(layout.dataDir);
 				if (current && sameIdentity(current.identity, identity)) stopLive(layout.dataDir);
 			},
-		});
+		};
+		const sweepSpool = () => {
+			try {
+				importReadySpoolEntries(layout.dataDir, (entry) => dispatchSpoolMutation(rpc, entry));
+			} catch {
+				console.error("[codemem] spool sweep failed; ready entries were retained.");
+			}
+		};
+		sweepSpool();
+		server = await bindPrivateSocket(layout.socketPath, rpc);
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
+		const spoolSweepTimer = setInterval(sweepSpool, 1_000);
+		spoolSweepTimer.unref();
 		const live: LiveDaemon = {
 			lock,
 			server,
@@ -281,6 +295,7 @@ export async function startDaemon(options: {
 			layout,
 			writer: canonical.db,
 			store: canonical.store,
+			spoolSweepTimer,
 		};
 		liveDaemons.set(layout.dataDir, live);
 		started = true;

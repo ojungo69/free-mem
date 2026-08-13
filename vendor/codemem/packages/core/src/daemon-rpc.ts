@@ -16,8 +16,13 @@ import {
 	createCanonicalBackup,
 	verifyCanonicalBackup,
 } from "./online-backup.js";
-import { applyDaemonIntake } from "./redaction-pipeline.js";
-import { readSpoolStatus } from "./spool.js";
+import { applyDaemonIntake, type RedactionResult } from "./redaction-pipeline.js";
+import {
+	readSpoolStatus,
+	type SpoolEntry,
+	type SpoolImportOutcome,
+	type SpoolRedactionMetadata,
+} from "./spool.js";
 import type { MemoryStore } from "./store.js";
 import type { MemoryFilters } from "./types.js";
 import type { WriterActor } from "./writer-actor.js";
@@ -481,9 +486,31 @@ function strongestSensitivity(
 	return "normal";
 }
 
+function mergedRedaction(
+	intake: RedactionResult,
+	previous?: SpoolRedactionMetadata,
+	claimed: SpoolRedactionMetadata["sensitivity"] = "normal",
+): SpoolRedactionMetadata {
+	const versions = [...new Set([intake.secret_rules_version, previous?.secret_rules_version])]
+		.filter((value): value is string => typeof value === "string")
+		.sort();
+	return {
+		sensitivity: strongestSensitivity(
+			strongestSensitivity(claimed, intake.sensitivity),
+			previous?.sensitivity ?? "normal",
+		),
+		secret_rules_version: versions.join("+"),
+		redaction_degraded: intake.degraded || (previous?.redaction_degraded ?? false),
+		private_content_omitted:
+			intake.private_content_omitted || (previous?.private_content_omitted ?? false),
+		local_only: intake.local_only || (previous?.local_only ?? false),
+	};
+}
+
 function normalizedEvent(
 	body: Record<string, unknown>,
 	normalizedSchemaVersion: number,
+	previousRedaction?: SpoolRedactionMetadata,
 ): Record<string, unknown> {
 	const event = asObject(body.event);
 	try {
@@ -507,14 +534,16 @@ function normalizedEvent(
 	if (idempotencyKey !== body.idempotencyKey) {
 		throw new RpcRequestError("event.idempotencyKey must match the request envelope.");
 	}
+	const redaction = mergedRedaction(intake, previousRedaction, sensitivity);
+	if (redaction.sensitivity === "secret") payload.payload = {};
 	return {
 		...payload,
 		eventId,
-		sensitivity: strongestSensitivity(sensitivity, intake.sensitivity),
-		secret_rules_version: intake.secret_rules_version,
-		redaction_degraded: intake.degraded,
-		private_content_omitted: intake.private_content_omitted,
-		local_only: intake.local_only,
+		sensitivity: redaction.sensitivity,
+		secret_rules_version: redaction.secret_rules_version,
+		redaction_degraded: redaction.redaction_degraded,
+		private_content_omitted: redaction.private_content_omitted,
+		local_only: redaction.local_only,
 	};
 }
 
@@ -522,8 +551,9 @@ function handleEvent(
 	ctx: DaemonRpcContext,
 	body: Record<string, unknown>,
 	normalizedSchemaVersion: number,
+	previousRedaction?: SpoolRedactionMetadata,
 ): Record<string, unknown> {
-	const event = normalizedEvent(body, normalizedSchemaVersion);
+	const event = normalizedEvent(body, normalizedSchemaVersion, previousRedaction);
 	const eventId = String(event.eventId);
 	const eventType = String(event.kind);
 	const nativeSessionId = String(event.nativeSessionId);
@@ -611,6 +641,7 @@ function handleEventBatch(
 function handleRemember(
 	ctx: DaemonRpcContext,
 	body: Record<string, unknown>,
+	previousRedaction?: SpoolRedactionMetadata,
 ): Record<string, unknown> {
 	let kind: string;
 	try {
@@ -629,9 +660,18 @@ function handleRemember(
 			confidence: body.confidence,
 			project: body.project,
 		},
-		{ allowlist: ["kind", "title", "body", "confidence", "project"] },
+		{
+			allowlist: ["kind", "title", "body", "confidence", "project"],
+			metadataKeys: ["kind", "confidence", "project"],
+		},
 	);
-	const confidence = intake.payload.confidence ?? 0.5;
+	const redaction = mergedRedaction(intake, previousRedaction);
+	const payload: Record<string, unknown> = { ...intake.payload, kind };
+	if (redaction.sensitivity === "secret") {
+		delete payload.title;
+		delete payload.body;
+	}
+	const confidence = payload.confidence ?? 0.5;
 	if (
 		typeof confidence !== "number" ||
 		!Number.isFinite(confidence) ||
@@ -643,23 +683,17 @@ function handleRemember(
 	const receipt = dispatchClassA(ctx.writer, {
 		method: "POST /v1/memories/record",
 		idempotencyKey: String(body.idempotencyKey),
-		payload: { ...intake.payload, kind },
+		payload: { ...payload, redaction },
 		apply: () => {
-			const sessionId = ensureSession(ctx.writer, optionalString(intake.payload.project));
+			const sessionId = ensureSession(ctx.writer, optionalString(payload.project));
 			const memoryId = ctx.store.remember(
 				sessionId,
 				kind,
-				String(intake.payload.title ?? ""),
-				String(intake.payload.body ?? ""),
+				String(payload.title ?? ""),
+				String(payload.body ?? ""),
 				confidence,
 				undefined,
-				{
-					sensitivity: intake.sensitivity,
-					secret_rules_version: intake.secret_rules_version,
-					redaction_degraded: intake.degraded,
-					private_content_omitted: intake.private_content_omitted,
-					local_only: intake.local_only,
-				},
+				redaction,
 			);
 			return { memoryId };
 		},
@@ -668,6 +702,23 @@ function handleRemember(
 		receiptId: receipt.receiptId,
 		memoryId: receipt.result.memoryId,
 	};
+}
+
+export function dispatchSpoolMutation(
+	ctx: DaemonRpcContext,
+	entry: SpoolEntry,
+): SpoolImportOutcome {
+	try {
+		if (entry.method === "POST /v1/events") {
+			handleEvent(ctx, entry.body, NORMALIZED_SCHEMA_VERSION, entry.redaction);
+		} else {
+			handleRemember(ctx, entry.body, entry.redaction);
+		}
+		return "committed";
+	} catch (error) {
+		if (error instanceof MutationConflictError) return "conflict";
+		throw error;
+	}
 }
 
 function handleForget(
