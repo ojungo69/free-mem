@@ -1,0 +1,53 @@
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_7406da6155c7e1 155-157
+evidence/phase1-t052-backup-restore-validation.md
+  s_211aa7fe546c35::t_7406da6155c7e1 1-57
+vendor/codemem/packages/cli/src/commands/backup.ts
+  s_211aa7fe546c35::t_d3d4ccc1331663 1-124
+vendor/codemem/packages/core/src/online-backup.ts
+  s_211aa7fe546c35::t_0bff61220af3c9 2-10,12-13,19-33,51,62-66,68-122,124-125,165-239,243-244,249,251-256,260-493,563,566,568-571,575,584-585,596-597,613,622,628-633,636,640,680-681,686-689,692,696,760,776,790-791,797-799,802-821,826,829-1083
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_abfab6cba5b0f7 618
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_6df0868633c820 618
+vendor/codemem/docs/adr/0002-backup-manifest-authenticity.md
+  s_211aa7fe546c35::t_565dde9e5ddada 1-19
+vendor/codemem/packages/cli/src/command-tree.ts
+  s_211aa7fe546c35::t_a440a1e7a43a82 11,43,162
+vendor/codemem/packages/cli/src/commands/backup.test.ts
+  s_211aa7fe546c35::t_d03e0b6280fad1 1-18
+vendor/codemem/packages/core/src/daemon-canonical.ts
+  s_211aa7fe546c35::t_7fc465e9c74712 2,28
+vendor/codemem/packages/core/src/daemon-jobs.ts
+  s_211aa7fe546c35::t_ccf4c95632b761 717
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_211aa7fe546c35::t_ba8dfe74b8efb5 16,69-71,204-205,316,327,371-373,375-396
+vendor/codemem/packages/core/src/daemon-rpc-contract.ts
+  s_211aa7fe546c35::t_4c95029e4cdf0c 44
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_b62b67810bc1e3 32-33,151,187,320,323-326,431,444,462-464,477,492-508,859,1357,1393-1396,1398-1400,1404
+vendor/codemem/packages/core/src/index.ts
+  s_211aa7fe546c35::t_6329b546e0d7fa 427-436,440,442-443,445-446
+vendor/codemem/packages/core/src/online-backup.test.ts
+  s_211aa7fe546c35::t_4b572c2791f53c 2-12,345-574
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_4495294b226a47 14,145-179
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_9162f1e15f7a96 6,33-36,92-93,143-150,154-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "355f19f1a5c9773fe0ca1398ae8d9b7a55c36152",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
