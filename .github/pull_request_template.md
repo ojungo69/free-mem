@@ -4,12 +4,12 @@ Describe what changed and why. Keep the scope narrow enough to review and revert
 
 ## Validation
 
-List the commands, fixtures, or manual checks used to validate this change.
+List the commands, fixtures, or manual checks used to validate this change. Run the product checks from the `vendor/codemem` workspace.
 
-- [ ] `corepack pnpm run build`
-- [ ] `corepack pnpm run tsc`
-- [ ] `corepack pnpm run lint`
-- [ ] `CI=true corepack pnpm run test:coverage`
+- [ ] `cd vendor/codemem && corepack pnpm run build`
+- [ ] `cd vendor/codemem && corepack pnpm run tsc`
+- [ ] `cd vendor/codemem && corepack pnpm run lint`
+- [ ] `cd vendor/codemem && CI=true corepack pnpm run test:coverage`
 - [ ] Other validation is documented below, or a reason is given for skipped checks.
 
 ## Safety and compatibility
