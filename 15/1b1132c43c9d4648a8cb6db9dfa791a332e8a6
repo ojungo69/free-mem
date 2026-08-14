@@ -1,0 +1,42 @@
+evidence/phase1-t057-backup-restore-smoke-validation.md
+  s_211aa7fe546c35::t_25786fc9358b3e 1-51
+harness/phase1-backup-restore-smoke.mjs
+  s_211aa7fe546c35::t_63ea25e0d8a03e 5,212,310-317
+  s_211aa7fe546c35::t_47aa35212ceee9 253-273,448,451-453,492,495-499,505,771-782
+  s_211aa7fe546c35::t_30c778f6c8bca9 193,339-351,427-429
+  s_211aa7fe546c35::t_88a0292c9a2328 1-4,6-192,194-211,213-252,274-309,318-338,352-426,430-447,449-450,454-491,493-494,500-504,506-770,783-892
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_e6fd36c759b797 173-175
+evidence/phase1-test-retire-list.md
+  s_211aa7fe546c35::t_ab3f4ec022d933 217
+vendor/codemem/packages/core/src/backup-restore-smoke.test.ts
+  s_211aa7fe546c35::t_3ae0ee9f72aa79 1-364
+vendor/codemem/package.json
+  s_211aa7fe546c35::t_5bf0be6cc5695c 17
+vendor/codemem/packages/core/src/storage.ts
+  s_87b1ab3ddfc27c::t_9c91ccb2a87c35 164,166-167,173-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "151b1132c43c9d4648a8cb6db9dfa791a332e8a6",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_87b1ab3ddfc27c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a001a7-be8c-7861-b7e9-6a1108f31854",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
