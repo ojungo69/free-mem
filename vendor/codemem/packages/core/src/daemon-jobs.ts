@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { statSync } from "node:fs";
-import { connect, getSchemaVersion, isEmbeddingDisabled } from "./db.js";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { connect, connectReadOnly, getSchemaVersion, isEmbeddingDisabled } from "./db.js";
 import {
 	DEDUP_KEY_BACKFILL_JOB,
 	hasPendingDedupKeyBackfill,
@@ -461,15 +463,27 @@ function normalizeProjects(
 	};
 }
 
-function getDaemonMemoryRoleReport(
+async function getDaemonMemoryRoleReport(
 	dbPath: string,
 	options: Parameters<typeof getMemoryRoleReportWithStore>[1],
 ) {
-	const store = new MemoryStore(connect(dbPath), { closeConnection: true });
+	const directory = mkdtempSync(join(tmpdir(), "codemem-role-report-"));
+	const snapshotPath = join(directory, "snapshot.sqlite");
 	try {
-		return getMemoryRoleReportWithStore(store, options);
+		const source = connectReadOnly(dbPath);
+		try {
+			await source.backup(snapshotPath);
+		} finally {
+			source.close();
+		}
+		const store = new MemoryStore(connect(snapshotPath), { closeConnection: true });
+		try {
+			return getMemoryRoleReportWithStore(store, options);
+		} finally {
+			store.close();
+		}
 	} finally {
-		store.close();
+		rmSync(directory, { recursive: true, force: true });
 	}
 }
 
@@ -514,6 +528,14 @@ export class DaemonJobService {
 
 	isMaintenanceMode(): boolean {
 		return this.maintenanceMode;
+	}
+
+	hasPendingWork(): boolean {
+		return Boolean(
+			this.store.db
+				.prepare("SELECT 1 FROM daemon_jobs WHERE state IN ('queued', 'running') LIMIT 1")
+				.get(),
+		);
 	}
 
 	submit(input: { kind: unknown; args?: unknown; dryRun?: unknown }): {
@@ -727,6 +749,7 @@ export class DaemonJobService {
 					destinationDir: resolveStorageLayout(this.options.dataDir).backupsDir,
 					operationId: `maintenance-${row.job_id}`,
 					reason: `Before daemon maintenance job ${row.kind}`,
+					retentionClass: "manual",
 				});
 				requireVerifiedBackup(proof);
 				const check = verifyOnlineBackup({
@@ -900,10 +923,11 @@ export class DaemonJobService {
 					includeInactive: optionalBoolean(args, "includeInactive") ?? false,
 					probes: optionalStrings(args, "probes", 50, 4_096),
 				};
-				return compareMemoryRoleReports(
+				const [baseline, candidate] = await Promise.all([
 					getDaemonMemoryRoleReport(String(args.baselineDbPath), options),
 					getDaemonMemoryRoleReport(String(args.candidateDbPath), options),
-				);
+				]);
+				return compareMemoryRoleReports(baseline, candidate);
 			}
 			case "report.artifact":
 				return getMemoryArtifactReportWithDb(this.store.db, {

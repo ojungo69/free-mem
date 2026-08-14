@@ -391,14 +391,22 @@ async function surfacePrivacyGate(core, root) {
 	const surfaceEvents = entries.filter((entry) => entry.method === "POST /v1/events");
 	assert.equal(surfaceEvents.length, 3);
 	assert.equal(entries.filter((entry) => entry.method === "POST /v1/memories/record").length, 1);
+	const cliEvent = surfaceEvents.find(
+		(entry) => entry.body.event.eventId === "phase1-t055-cli-event-1",
+	);
+	assert.ok(cliEvent, "CLI event identity missing");
 	assert.deepEqual(
-		new Set(surfaceEvents.map((entry) => entry.body.event.nativeSessionId)),
-		new Set(["phase1-t055-hook-ingest", "phase1-t055-hook-inject", "phase1-t055-cli"]),
+		new Set(
+			surfaceEvents
+				.filter((entry) => entry !== cliEvent)
+				.map((entry) => entry.body.event.nativeSessionId),
+		),
+		new Set(["phase1-t055-hook-ingest", "phase1-t055-hook-inject"]),
 	);
-	assert.ok(
-		surfaceEvents.some((entry) => entry.body.event.eventId === "phase1-t055-cli-event-1"),
-		"CLI event identity missing",
-	);
+	if (cliEvent.body.event.nativeSessionId !== "phase1-t055-cli") {
+		assert.match(cliEvent.body.event.nativeSessionId, /^redacted:[a-f0-9]{32}$/);
+		assert.equal(cliEvent.redaction.redaction_degraded, true);
+	}
 
 	const worker = startDaemonWorker(dataDir, env);
 	await worker.ready;
@@ -540,7 +548,10 @@ async function classAReplayGate(core, root) {
 	ready = await worker.ready;
 	assert.deepEqual(readdirSync(core.resolveSpoolLayout(dataDir).readyDir), []);
 	const selectedMemoryId = (
-		await rpc(core, ready.socketPath, "POST /v1/memories/record", responseLostMemory)
+		await rpc(core, ready.socketPath, "POST /v1/memories/record", {
+			...responseLostMemory,
+			adapterRedaction: responseLostMemoryEntry.redaction,
+		})
 	).memoryId;
 	const rememberBody = {
 		idempotencyKey: "x10-remember",
@@ -942,11 +953,11 @@ async function classBReplayGate(core, root) {
 	const operationId = "phase1-t055-export-crash";
 	const outputPath = join(fixtureRoot, "crashed-export.json");
 	const exportRequest = { outputPath, filters: { allProjects: true } };
-	await rpc(core, ready.socketPath, "POST /v1/operations/export", {
+	const interruptedExport = rpc(core, ready.socketPath, "POST /v1/operations/export", {
 		operationId,
 		payloadHash: core.hashMutationPayload(exportRequest),
 		...exportRequest,
-	});
+	}).catch((error) => error);
 	const journalPath = join(layout.controlDir, "operations", `${operationId}.json`);
 	await waitUntil("export writing temporary artifact", () => {
 		return (
@@ -957,6 +968,7 @@ async function classBReplayGate(core, root) {
 	assert.equal(readJson(journalPath).state, "writing");
 	assert.ok(outputTemps(outputPath).length > 0, "export crash fixture missed the temporary artifact");
 	await killWorker(worker);
+	await interruptedExport;
 	if (existsSync(outputPath)) JSON.parse(readFileSync(outputPath, "utf8"));
 
 	worker = startDaemonWorker(dataDir, env);

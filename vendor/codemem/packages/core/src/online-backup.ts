@@ -125,6 +125,13 @@ export type RestoreBackupResult = {
 	restartRequired: true;
 };
 
+type RestoreResultRecord = {
+	version: 1;
+	payloadHash: string;
+	artifactSha256: string;
+	manifestHash: string;
+};
+
 const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 
@@ -959,13 +966,40 @@ export function restorePayloadHash(backupId: string): string {
 }
 
 function removeStagingArtifact(path: string): void {
-	for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
+	for (const candidate of [path, `${path}-wal`, `${path}-shm`, `${path}.restore.json`]) {
 		try {
 			durableRemoveFile(candidate);
 		} catch {
 			// Preserve the restore failure; an unreferenced staging file is safe to retry.
 		}
 	}
+}
+
+function readRestoreResult(path: string): RestoreResultRecord | null {
+	if (!existsSync(path)) return null;
+	const info = lstatSync(path);
+	if (!info.isFile() || info.isSymbolicLink()) {
+		throw new BackupRequestError("conflict", "Restore result is not a regular file.");
+	}
+	let value: unknown;
+	try {
+		value = JSON.parse(readFileSync(path, "utf8"));
+	} catch {
+		throw new BackupRequestError("conflict", "Restore result is unreadable.");
+	}
+	const record = value as Partial<RestoreResultRecord>;
+	if (
+		record.version !== 1 ||
+		typeof record.payloadHash !== "string" ||
+		!SHA256.test(record.payloadHash) ||
+		typeof record.artifactSha256 !== "string" ||
+		!SHA256.test(record.artifactSha256) ||
+		typeof record.manifestHash !== "string" ||
+		!SHA256.test(record.manifestHash)
+	) {
+		throw new BackupRequestError("conflict", "Restore result is malformed.");
+	}
+	return record as RestoreResultRecord;
 }
 
 function rebuildStagedDerivedIndexes(path: string, manifest: BackupManifest): void {
@@ -1009,17 +1043,59 @@ export function restoreCanonicalBackup(input: {
 	if (input.payloadHash !== restorePayloadHash(input.backupId)) {
 		throw new BackupRequestError("invalid_request", "Restore payloadHash does not match backupId.");
 	}
+	const layout = resolveStorageLayout(input.dataDir);
+	const operationToken = createHash("sha256")
+		.update(input.operationId, "utf8")
+		.digest("hex")
+		.slice(0, 32);
+	const pointerName = `restore-${operationToken}-${input.payloadHash.slice(0, 16)}.sqlite`;
+	const pointer = `versions/${pointerName}`;
+	const destination = join(layout.versionsDir, pointerName);
+	const resultPath = `${destination}.restore.json`;
+	const conflicting = readdirSync(layout.versionsDir).find(
+		(name) =>
+			name.startsWith(`restore-${operationToken}-`) &&
+			(name.endsWith(".sqlite") || name.endsWith(".sqlite.restore.json")) &&
+			name !== pointerName &&
+			name !== `${pointerName}.restore.json`,
+	);
+	if (conflicting) {
+		throw new BackupRequestError(
+			"conflict",
+			"Restore operation ID already exists with a different payload.",
+		);
+	}
+	const previousResult = readRestoreResult(resultPath);
+	if (previousResult && previousResult.payloadHash !== input.payloadHash) {
+		throw new BackupRequestError(
+			"conflict",
+			"Restore operation ID already exists with a different payload.",
+		);
+	}
 	if (pendingBackups > 0) {
 		throw new BackupRequestError(
 			"conflict",
 			"A backup is active; retry restore after it completes.",
 		);
 	}
+	if (readCurrentDatabasePointer(layout) === pointer) {
+		if (!previousResult) {
+			throw new BackupRequestError("conflict", "Restore result is missing.");
+		}
+		return {
+			operationId: input.operationId,
+			backupId: input.backupId,
+			pointer,
+			artifactSha256: previousResult.artifactSha256,
+			manifestHash: previousResult.manifestHash,
+			restartRequired: true,
+		};
+	}
+
 	const check = verifyCanonicalBackup({ dataDir: input.dataDir, backupId: input.backupId });
 	if (!check.valid || !check.manifestHash) {
 		throw new BackupRequestError("invalid_request", "Backup failed restore verification.");
 	}
-	const layout = resolveStorageLayout(input.dataDir);
 	const sidecar = readSidecar(backupSidecarPath(layout.backupsDir, input.backupId));
 	if (!sidecar) {
 		throw new BackupRequestError("invalid_request", "Backup manifest is not restorable.");
@@ -1030,33 +1106,6 @@ export function restoreCanonicalBackup(input: {
 		sidecar.manifest.fts_schema.normalization_version !== NORMALIZED_SCHEMA_VERSION
 	) {
 		throw new BackupRequestError("invalid_request", "Backup manifest is incompatible.");
-	}
-
-	const operationToken = createHash("sha256")
-		.update(input.operationId, "utf8")
-		.digest("hex")
-		.slice(0, 32);
-	const pointerName = `restore-${operationToken}-${input.payloadHash.slice(0, 16)}.sqlite`;
-	const pointer = `versions/${pointerName}`;
-	const destination = join(layout.versionsDir, pointerName);
-	const conflicting = readdirSync(layout.versionsDir).find(
-		(name) => name.startsWith(`restore-${operationToken}-`) && name !== pointerName,
-	);
-	if (conflicting) {
-		throw new BackupRequestError(
-			"conflict",
-			"Restore operation ID already exists with a different payload.",
-		);
-	}
-	if (readCurrentDatabasePointer(layout) === pointer) {
-		return {
-			operationId: input.operationId,
-			backupId: input.backupId,
-			pointer,
-			artifactSha256: sidecar.manifest.artifact_sha256,
-			manifestHash: sidecar.manifest_hash,
-			restartRequired: true,
-		};
 	}
 
 	let staged = false;
@@ -1082,6 +1131,15 @@ export function restoreCanonicalBackup(input: {
 	}
 
 	const artifactSha256 = sha256File(destination);
+	durableReplaceFile(
+		resultPath,
+		`${JSON.stringify({
+			version: 1,
+			payloadHash: input.payloadHash,
+			artifactSha256,
+			manifestHash: sidecar.manifest_hash,
+		} satisfies RestoreResultRecord)}\n`,
+	);
 	activateDatabaseArtifact(layout, {
 		operationId: input.operationId,
 		pointer,

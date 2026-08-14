@@ -346,20 +346,21 @@ export class DaemonOperationService {
 			createdAt: now,
 			updatedAt: now,
 		});
-		setImmediate(() => {
-			try {
-				void this.jobs
-					.schedule(
-						() => this.execute(operationId),
-						kind === "import" && !(request as ImportRequest).dryRun,
-					)
-					.catch(() => {
-						this.fail(operationId, "operation_failed", "The daemon operation failed.");
-					});
-			} catch {
-				this.fail(operationId, "daemon_stopping", "The daemon stopped before the operation ran.");
-			}
-		});
+		try {
+			void this.jobs
+				.schedule(
+					async () => {
+						await new Promise<void>((resolve) => setImmediate(resolve));
+						await this.execute(operationId);
+					},
+					kind === "import" && !(request as ImportRequest).dryRun,
+				)
+				.catch(() => {
+					this.fail(operationId, "operation_failed", "The daemon operation failed.");
+				});
+		} catch {
+			this.fail(operationId, "daemon_stopping", "The daemon stopped before the operation ran.");
+		}
 		return { operationId, state: "prepared" };
 	}
 
@@ -379,6 +380,10 @@ export class DaemonOperationService {
 			result: journal.result,
 			error: journal.error,
 		};
+	}
+
+	hasPending(): boolean {
+		return [...this.journals.values()].some((journal) => !TERMINAL_STATES.has(journal.state));
 	}
 
 	private async execute(operationId: string): Promise<void> {
@@ -439,6 +444,7 @@ export class DaemonOperationService {
 				destinationDir: resolveStorageLayout(this.dataDir).backupsDir,
 				operationId: backupId,
 				reason: `Before daemon import ${journal.operationId}`,
+				retentionClass: "manual",
 			});
 			requireVerifiedBackup(proof);
 			const check = verifyOnlineBackup({

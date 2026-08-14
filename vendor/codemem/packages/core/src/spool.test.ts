@@ -526,6 +526,42 @@ describe("phase 1 spool contract", () => {
 		const entry = JSON.parse(readFileSync(result.path as string, "utf8"));
 		expect(entry.body.event.eventId).toBe("event-degraded");
 		expect(entry.redaction.redaction_degraded).toBe(true);
+
+		const memoryKey = "degraded-memory";
+		const privateProject = "PRIVATE_DEGRADED_PROJECT";
+		const memory = spoolMutation(
+			{
+				method: "POST /v1/memories/record",
+				idempotencyKey: memoryKey,
+				body: {
+					idempotencyKey: memoryKey,
+					kind: "decision",
+					title: "raw title",
+					body: "raw body",
+					project: privateProject,
+				},
+			},
+			{
+				dataDir,
+				previousRedaction: {
+					sensitivity: "normal",
+					secret_rules_version: `${"b".repeat(64)}:degraded`,
+					redaction_degraded: true,
+					private_content_omitted: false,
+					local_only: false,
+				},
+			},
+		);
+		expect(memory.status).toBe("queued");
+		const serialized = readFileSync(memory.path as string, "utf8");
+		expect(serialized).not.toContain(privateProject);
+		expect(JSON.parse(serialized)).toMatchObject({
+			body: {
+				title: "[REDACTED:degraded]",
+				body: "[REDACTED:degraded]",
+			},
+			redaction: { redaction_degraded: true },
+		});
 	});
 
 	it("keeps a degraded spool rescan over healthy adapter metadata", async () => {

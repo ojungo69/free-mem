@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -305,7 +305,8 @@ describe("Phase 1 daemon RPC", () => {
 	});
 
 	it("P1-T043-12-daemon-view-collections serves collections from the daemon store", async () => {
-		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		const dataDir = tempDataDir();
+		const handle = await core.startDaemon({ dataDir });
 		created.push(handle);
 		const recorded = await core.callDaemonRpc(
 			handle.socketPath,
@@ -388,19 +389,28 @@ describe("Phase 1 daemon RPC", () => {
 			status: 200,
 			body: { queue: { pending: 0, sessions: 0 } },
 		});
+		const previousConfig = process.env.CODEMEM_CONFIG;
 		const previousHeaders = process.env.CODEMEM_OBSERVER_HEADERS;
+		const configPath = join(dataDir, "viewer-config.json");
+		writeFileSync(configPath, JSON.stringify({ observer_api_key: "viewer-secret" }));
+		process.env.CODEMEM_CONFIG = configPath;
 		process.env.CODEMEM_OBSERVER_HEADERS = JSON.stringify({ Authorization: "secret-value" });
 		try {
 			expect(await view("config")).toMatchObject({
 				status: 200,
 				body: {
-					config: expect.any(Object),
-					effective: { observer_headers: "[redacted]" },
+					config: { observer_api_key: "[redacted]" },
+					effective: {
+						observer_api_key: "[redacted]",
+						observer_headers: "[redacted]",
+					},
 					env_overrides: { observer_headers: "CODEMEM_OBSERVER_HEADERS" },
-					protected_keys: expect.any(Array),
+					protected_keys: expect.arrayContaining(["observer_api_key"]),
 				},
 			});
 		} finally {
+			if (previousConfig === undefined) delete process.env.CODEMEM_CONFIG;
+			else process.env.CODEMEM_CONFIG = previousConfig;
 			if (previousHeaders === undefined) delete process.env.CODEMEM_OBSERVER_HEADERS;
 			else process.env.CODEMEM_OBSERVER_HEADERS = previousHeaders;
 		}

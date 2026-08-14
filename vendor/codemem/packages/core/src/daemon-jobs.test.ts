@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { LOCAL_API_VERSION, RPC_CAPABILITY_HASH } from "./daemon-rpc-contract.js
 import { connect } from "./db.js";
 import { NORMALIZED_SCHEMA_VERSION } from "./normalized-event.js";
 import { SecretScanner } from "./secret-scanner.js";
-import { resolveStorageLayout } from "./storage.js";
+import { resolveStorageLayout, sha256File } from "./storage.js";
 import { MemoryStore } from "./store.js";
 import { initTestSchema } from "./test-utils.js";
 import type { WriterActor } from "./writer-actor.js";
@@ -93,6 +93,7 @@ describe("daemon jobs", () => {
 		};
 
 		const submitted = service.submit({ kind: "projects.normalize", args: {}, dryRun: false });
+		expect(service.hasPendingWork()).toBe(true);
 		await entered;
 		expect(service.isMaintenanceMode()).toBe(true);
 		const response = await dispatchDaemonRpc(
@@ -129,12 +130,28 @@ describe("daemon jobs", () => {
 		releaseMaintenance();
 		const completed = await waitForTerminal(submitted.jobId);
 		expect(completed).toMatchObject({ state: "completed", attempts: 1 });
+		expect(service.hasPendingWork()).toBe(false);
 		expect(service.isMaintenanceMode()).toBe(false);
 		const backupDir = resolveStorageLayout(dir).backupsDir;
 		expect(readdirSync(backupDir).sort()).toEqual([
 			`maintenance-${submitted.jobId}.json`,
 			`maintenance-${submitted.jobId}.sqlite`,
 		]);
+		const backupPath = join(backupDir, `maintenance-${submitted.jobId}.sqlite`);
+		const backupHash = sha256File(backupPath);
+		expect(
+			JSON.parse(readFileSync(join(backupDir, `maintenance-${submitted.jobId}.json`), "utf8")),
+		).toMatchObject({ manifest: { retention_class: "manual" } });
+		const compared = service.submit({
+			kind: "report.role-compare",
+			args: { baselineDbPath: backupPath, candidateDbPath: backupPath },
+			dryRun: true,
+		});
+		expect(await waitForTerminal(compared.jobId)).toMatchObject({
+			state: "completed",
+			attempts: 1,
+		});
+		expect(sha256File(backupPath)).toBe(backupHash);
 
 		db.prepare("INSERT INTO sessions(started_at, project) VALUES (?, ?)").run(
 			"2026-08-14T00:00:00.000Z",

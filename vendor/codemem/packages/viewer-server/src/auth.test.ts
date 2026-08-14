@@ -73,11 +73,20 @@ describe("viewer HTTP security boundary", () => {
 		expect(rpc).not.toHaveBeenCalled();
 	});
 
-	it("P1-T043-11-loopback-cookie-csp exchanges loopback nonce under a strict CSP", async () => {
+	it("P1-T043-11-loopback-cookie-csp retires cookie auth for loopback sessions", async () => {
 		const nonce = "n".repeat(43);
 		const rpc = vi.fn<ViewerRpcCall>(async (method, body) => {
 			if (method === "POST /v1/viewer/auth/exchange" && body?.nonce === nonce) {
 				return { session: { cookie: "signed-session", expiresAt: Date.now() + 10_000 } };
+			}
+			if (method === "POST /v1/viewer/auth/verify" && body?.session === "signed-session") {
+				return { authenticated: true };
+			}
+			if (method === "POST /v1/viewer/auth/logout" && body?.session === "signed-session") {
+				return { loggedOut: true };
+			}
+			if (method === "GET /v1/view") {
+				return { status: 200, body: { version: "test" } };
 			}
 			throw new Error(`unexpected ${method}`);
 		});
@@ -89,14 +98,35 @@ describe("viewer HTTP security boundary", () => {
 				body: JSON.stringify({ nonce }),
 			});
 
-			expect(response.status).toBe(204);
-			expect(response.headers.get("set-cookie")).toContain(
-				"codemem_session=signed-session; HttpOnly; SameSite=Strict; Path=/",
-			);
+			expect(response.status).toBe(200);
+			expect(response.headers.get("set-cookie")).toBeNull();
+			expect(await response.json()).toEqual({ session: "signed-session" });
 			expect(response.headers.get("referrer-policy")).toBe("no-referrer");
 			expect(response.headers.get("content-security-policy")).toContain("script-src 'self'");
 			expect(response.headers.get("content-security-policy")).not.toContain("unpkg.com");
 		}
+
+		const sessionAuth = await app.request("http://127.0.0.1:3737/api/runtime", {
+			headers: { Authorization: "Session signed-session" },
+		});
+		expect(sessionAuth.status).toBe(200);
+
+		const cookieOnly = await app.request("http://127.0.0.1:3737/api/runtime", {
+			headers: { Cookie: "codemem_session=signed-session" },
+		});
+		expect(cookieOnly.status).toBe(401);
+
+		const logout = await app.request("http://127.0.0.1:3737/api/auth/logout", {
+			method: "POST",
+			headers: {
+				Authorization: "Session signed-session",
+				Origin: "http://127.0.0.1:3737",
+			},
+		});
+		expect(logout.status).toBe(204);
+		expect(rpc).toHaveBeenCalledWith("POST /v1/viewer/auth/logout", {
+			session: "signed-session",
+		});
 	});
 
 	it("P1-T043-08-viewer-daemon-unavailable returns typed 503 without the daemon", async () => {
@@ -191,16 +221,25 @@ describe("viewer HTTP security boundary", () => {
 				headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1:3737" },
 				body: JSON.stringify({ nonce: issued.nonce }),
 			});
-			const cookie = exchange.headers.get("set-cookie")?.split(";", 1)[0];
-			expect(cookie).toMatch(/^codemem_session=/);
+			const session = ((await exchange.json()) as { session?: unknown }).session;
+			expect(session).toMatch(/^v1\./);
+			expect(exchange.headers.get("set-cookie")).toBeNull();
 			expect(
-				(await app.request("/api/runtime", { headers: { Cookie: cookie ?? "" } })).status,
+				(
+					await app.request("/api/runtime", {
+						headers: { Authorization: `Session ${String(session)}` },
+					})
+				).status,
 			).toBe(200);
 
 			await daemon.stop();
 			daemon = await startDaemon({ dataDir });
 			expect(
-				(await app.request("/api/runtime", { headers: { Cookie: cookie ?? "" } })).status,
+				(
+					await app.request("/api/runtime", {
+						headers: { Authorization: `Session ${String(session)}` },
+					})
+				).status,
 			).toBe(401);
 		} finally {
 			await daemon.stop();

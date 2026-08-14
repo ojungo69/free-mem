@@ -86,7 +86,7 @@ describe("Phase 1 online backup", () => {
 		}
 	});
 
-	it("P1-T050-02-create-and-verify", async () => {
+	it("P1-T050-03-online-backup-consistency", async () => {
 		const dir = tempDir("codemem-backup-create-");
 		const dbPath = join(dir, "source.sqlite");
 		const destDir = join(dir, "backups");
@@ -136,7 +136,7 @@ describe("Phase 1 online backup", () => {
 		}
 	});
 
-	it("P1-T050-03-fail-closed-hi25", async () => {
+	it("P1-T050-02-backup-failure-blocks", async () => {
 		expect(() => core.requireVerifiedBackup({ verified: false, evidence: "nope" })).toThrow(
 			/verified backup/i,
 		);
@@ -309,7 +309,7 @@ describe("Phase 1 online backup", () => {
 		}
 	});
 
-	it("P1-T050-07-v18-receipt-migration-is-backed-up", async () => {
+	it("P1-T050-01-backup-before-migration", async () => {
 		const dir = tempDir("codemem-backup-v18-");
 		const dbPath = join(dir, "v18.sqlite");
 		const destDir = join(dir, "backups");
@@ -555,6 +555,8 @@ describe("Phase 1 online backup", () => {
 		const newPointer = core.readCurrentDatabasePointer(handle.layout);
 		expect(newPointer).not.toBe(oldPointer);
 		expect(oldPointer && existsSync(join(handle.layout.dbDir, oldPointer))).toBe(true);
+		if (!("result" in restored)) throw new Error("restore failed");
+		const restoredArtifactSha256 = restored.result.artifactSha256;
 
 		const snapshot = ReadOnlyActor.open(join(handle.layout.dbDir, newPointer as string));
 		try {
@@ -568,8 +570,96 @@ describe("Phase 1 online backup", () => {
 			snapshot.close();
 		}
 
+		const heldSource = WriterActor.open(join(root, "held-backup-source.sqlite"));
+		core.initTestSchema(heldSource);
+		let releaseBackup!: () => void;
+		let markBackupEntered!: () => void;
+		const backupEntered = new Promise<void>((resolve) => {
+			markBackupEntered = resolve;
+		});
+		const backupHold = new Promise<void>((resolve) => {
+			releaseBackup = resolve;
+		});
+		const heldBackup = core.createOnlineBackup({
+			db: {
+				name: heldSource.name,
+				backup: async (destinationFile) => {
+					markBackupEntered();
+					await backupHold;
+					return heldSource.backup(destinationFile);
+				},
+			},
+			destinationDir: join(root, "held-backups"),
+			operationId: "held-backup",
+			reason: "held backup",
+		});
+		await backupEntered;
+		try {
+			expect(() =>
+				core.restoreCanonicalBackup({
+					dataDir,
+					operationId: "restore-operation",
+					payloadHash: core.restorePayloadHash("restore-source"),
+					backupId: "restore-source",
+				}),
+			).toThrow(/backup is active/i);
+		} finally {
+			releaseBackup();
+			await heldBackup;
+			heldSource.close();
+		}
+
 		const restarted = await core.startDaemon({ dataDir });
 		created.push(restarted);
+		expect(core.readDaemonHealth(dataDir).status).toBe("ok");
+		let maintenanceMode = true;
+		for (let attempt = 0; attempt < 200 && maintenanceMode; attempt++) {
+			const health = await request(`restarted-health-${attempt}`, "GET /v1/health", {});
+			maintenanceMode =
+				"result" in health &&
+				(health.result as { maintenanceMode?: boolean }).maintenanceMode === true;
+			if (maintenanceMode) await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		expect(maintenanceMode).toBe(false);
+		expect(
+			await request("after-restart", "POST /v1/memories/record", {
+				idempotencyKey: "restore-after-restart",
+				kind: "decision",
+				title: "After restored restart",
+				body: "An idempotent replay must not erase this row.",
+			}),
+		).toMatchObject({ result: { receiptId: expect.any(String) } });
+		const replayed = await request("restore-replay", "POST /v1/backup/restore", {
+			operationId: "restore-operation",
+			payloadHash: core.restorePayloadHash("restore-source"),
+			backupId: "restore-source",
+		});
+		expect(replayed).toMatchObject({
+			result: {
+				pointer: newPointer,
+				artifactSha256: restoredArtifactSha256,
+				restartRequired: true,
+			},
+		});
+		for (let attempt = 0; attempt < 100; attempt++) {
+			if (core.readDaemonHealth(dataDir).status === "not_running") break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		expect(core.readDaemonHealth(dataDir).status).toBe("not_running");
+		expect(core.readCurrentDatabasePointer(handle.layout)).toBe(newPointer);
+
+		const replaySnapshot = ReadOnlyActor.open(join(handle.layout.dbDir, newPointer as string));
+		try {
+			expect(replaySnapshot.prepare("SELECT title FROM memory_items ORDER BY id").all()).toEqual([
+				{ title: "Before restore point" },
+				{ title: "After restored restart" },
+			]);
+		} finally {
+			replaySnapshot.close();
+		}
+
+		const verifiedRestart = await core.startDaemon({ dataDir });
+		created.push(verifiedRestart);
 		expect(core.readDaemonHealth(dataDir).status).toBe("ok");
 	});
 });

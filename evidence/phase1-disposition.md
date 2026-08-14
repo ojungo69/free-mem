@@ -15,14 +15,14 @@
 
 | endpoint | request schema → response schema | class / exactly-once | daemon 不在時 |
 |---|---|---|---|
-| `POST /v1/events` | `{ idempotencyKey, event }` → `{ receiptId, status }` | A。receipt と event を同一 transaction。同一 key・異 payload hash = `idempotency_conflict` + quarantine | hook/adapter は T038(a) 後の同一 envelope を spool。CLI は spool 成功を表示。直接 DB fallback 禁止 |
+| `POST /v1/events` | `{ idempotencyKey, event, adapterRedaction? }` → `{ receiptId, status }` | A。receipt と event を同一 transaction。同一 key・異 payload hash = `idempotency_conflict` + quarantine | hook/adapter は T038(a) 後の同一 envelope を spool。CLI は spool 成功を表示。直接 DB fallback 禁止 |
 | `POST /v1/events/batch` | `{ items: [{ idempotencyKey, event }] }` → `{ receipts[] }` | A。item 単位 receipt。同一 key・異 payload hash = conflict + quarantine | hook/adapter は T038(a) 後の同一 batch envelope を spool。直接 DB fallback 禁止 |
 | `POST /v1/context/pack` | `{ requestId, context, limit?, tokenBudget?, filters?, trace? }` → `{ pack, trace?, retrievalReceiptId }` | read + A。pack 読出しと usage/retrieval ledger receipt を daemon 内で処理。同一 requestId・異 payload hash = conflict | hook inject は空 context で fail-open、CLI/MCP は typed `daemon_unavailable`、viewer は HTTP 503。DB fallback 禁止 |
-| `POST /v1/search` | `{ requestId, mode, query?, ids?, filters?, limit? }` → `{ items, retrievalReceiptId }` | read + A。`mode` = `search|recent|timeline|expand|explain|search_index|get_many`。ledger receipt は同一 transaction | CLI/MCP は typed `daemon_unavailable`、viewer は 503 |
+| `POST /v1/search` | `{ requestId, mode, query?, repositoryPath?, ids?, memoryId?, depthBefore?, depthAfter?, includePackContext?, filters?, limit? }` → `{ items, retrievalReceiptId }` | read + A。`mode` = `search|search_index|find_by_file|recent|timeline|get_many|explain|expand`。ledger receipt は同一 transaction | CLI/MCP は typed `daemon_unavailable`、viewer は 503 |
 | `POST /v1/retrieval/file-context` | `{ attemptId, startedAt, completedAt, retrievalStatus, candidateIds?, candidateCount?, selectedIds?, failureCode?, failureStage?, project?, repositoryPath?, sourceSessionId? }` → `{ recorded, inserted?|errorCode? }` | A。file-context retrieval attempt と exposure を daemon transaction 内で記録 | hook は retrieval 本体を継続し、ledger failure を本文取得失敗へ昇格しない |
 | `POST /v1/retrieval/file-context/delivery` | `{ attemptId, status:"handed_off"|"failed" }` → `{ updated, errorCode? }` | A。上記 attempt の delivery 状態だけを更新 | hook は typed failure を記録し、Agent の file read を阻害しない |
-| `GET /v1/memories/:id` | path `id` + query `{ project?, kind? }` → `{ item|null, retrievalReceiptId }` | read + A（retrieval ledger） | CLI/MCP は typed `daemon_unavailable`、viewer は 503 |
-| `POST /v1/memories/record` | `{ idempotencyKey, kind, title, body, confidence?, project? }` → `{ receiptId, memoryId }` | A。memory + receipt 同一 transaction。同一 key・異 payload hash = conflict + quarantine | spoolable caller のみ spool。直接 DB fallback 禁止 |
+| `GET /v1/memories/:id` | path `id` + `{ requestId, project?, kind? }` → `{ item|null, retrievalReceiptId }` | read + A（retrieval ledger） | CLI/MCP は typed `daemon_unavailable`、viewer は 503 |
+| `POST /v1/memories/record` | `{ idempotencyKey, kind, title, body, confidence?, project?, adapterRedaction? }` → `{ receiptId, memoryId }` | A。memory + receipt 同一 transaction。同一 key・異 payload hash = conflict + quarantine | spoolable caller のみ spool。直接 DB fallback 禁止 |
 | `DELETE /v1/memories/:id` | path `id` + `{ requestId, expectedRevision? }` → `{ receiptId, status }` | A。**user-authority**。遅延 replay を避けるため spool 不可 | typed `daemon_unavailable`、自動 retry・DB fallback とも禁止 |
 | `GET /v1/checkpoints` | query `{ project?, state?, limit? }` → `{ checkpoints[] }` | read | typed `daemon_unavailable` / viewer 503 |
 | `GET /v1/health` / `GET /v1/doctor` | body なし → `{ status, instanceId, protocolVersion, diagnostics? }` | read | CLI `status` だけ `{ status: "not_running" }` として exit 0。他 caller は typed `daemon_unavailable` |
@@ -74,7 +74,7 @@ Class B の `payloadHash` は endpoint ごとの allowlisted payload に対す�
 | F6 | cli/codex-hook-ingest.ts:128 `connect(dbPath)` | `POST /v1/events`。共通 schema。RPC cutoff 後は同 envelope を spool | spool のみ化(T041) | A | agent-callable |
 | F5' | cli/claude-hook-inject.ts:134 `new MemoryStore`（buildLocalPack） | `POST /v1/context/pack` `{ requestId,context,limit,tokenBudget,filters,trace:false }`。不在 = 空 context + exit 0 | RPC read + daemon 内 usage ledger(T041) | read + A | agent-callable |
 | F10 | cli/codex-hook-inject.ts:125 `new MemoryStore`（buildLocalPack） | `POST /v1/context/pack` `{ requestId,context,limit,tokenBudget,filters,trace:false }`。不在 = 空 context + exit 0 | RPC read + daemon 内 usage ledger(T041) | read + A | agent-callable |
-| F6' | cli/claude-hook-file-context.ts:269,310 store open | `POST /v1/search` `{ requestId,mode:"timeline",query,filters,limit }`。不在 = additionalContext なし + exit 0 | RPC read + daemon 内 retrieval ledger(T041) | read + A | agent-callable |
+| F6' | cli/claude-hook-file-context.ts `queryByFile` | `POST /v1/search` `{ requestId,mode:"find_by_file",repositoryPath,filters,limit }`。不在 = additionalContext なし + exit 0 | RPC read + daemon 内 retrieval ledger(T041) | read + A | agent-callable |
 
 ## §4 CLI → RPC 化 / typed 無効化（T044）
 

@@ -87,6 +87,11 @@ function applyPrivateRegex(
 		const output: Record<string, unknown> = {};
 		let privateHit = false;
 		for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+			const keyResult = applyPrivateRegex(key, patterns);
+			if (keyResult.privateHit) {
+				privateHit = true;
+				continue;
+			}
 			const result = applyPrivateRegex(item, patterns);
 			output[key] = result.value;
 			privateHit ||= result.privateHit;

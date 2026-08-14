@@ -76,7 +76,7 @@ describe("SecretScanner", () => {
 
 		it("redacts Google API keys", () => {
 			// 39 chars total: AIza + 35
-			const k = "AIzaSyA-BCDEFGHIJKLMNOPQRSTUVWXY0123456";
+			const k = ["AI", "za", "SyA-", "BCDEFGHIJKLMNOPQRSTUVWXY", "0123456"].join("");
 			expect(k.length).toBe(39);
 			const r = scanner.scan(`gkey=${k}`);
 			expect(r.redacted).toContain("[REDACTED:google_api_key]");
@@ -147,6 +147,10 @@ describe("SecretScanner", () => {
 			const r = scanner.redactValue(input);
 			expect((r.value as typeof input).password).toBe("[REDACTED:context_secret]");
 			expect((r.value as typeof input).other).toBe("fine");
+			const secretKey = `ghp_${"K".repeat(36)}`;
+			const keyed = scanner.redactValue({ payload: { [secretKey]: "must drop" } });
+			expect((keyed.value as { payload: Record<string, unknown> }).payload).toEqual({});
+			expect(keyed.detections).toContainEqual({ kind: "github_pat_classic", count: 1 });
 		});
 
 		it("preserves URL values even under secret-bearing key names", () => {

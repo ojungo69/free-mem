@@ -218,6 +218,9 @@ const MAINTENANCE_BLOCKED_METHODS = new Set<RpcMethod>([
 	"DELETE /v1/memories/:id",
 	"POST /v1/backup/create",
 	"POST /v1/backup/restore",
+	"POST /v1/operations/export",
+	"POST /v1/operations/import",
+	"POST /v1/jobs",
 ]);
 
 const VIEW_COLLECTIONS = new Set([
@@ -522,7 +525,9 @@ async function handleMethod(
 	if (method === "POST /v1/backup/restore") {
 		const restoreState = ctx.restoreState ?? { active: false };
 		ctx.restoreState = restoreState;
-		if (restoreState.active) throw new BackupRequestError("conflict", "Restore is active.");
+		if (restoreState.active || ctx.operations.hasPending() || ctx.jobs.hasPendingWork()) {
+			throw new BackupRequestError("conflict", "Restore conflicts with active daemon work.");
+		}
 		restoreState.active = true;
 		try {
 			return restoreCanonicalBackup({
@@ -842,7 +847,7 @@ function handleRemember(
 		},
 		{
 			allowlist: ["kind", "title", "body", "confidence", "project"],
-			metadataKeys: ["kind", "confidence", "project"],
+			metadataKeys: ["kind", "confidence"],
 		},
 	);
 	const redaction = mergedRedaction(intake, previousRedaction);
@@ -850,6 +855,7 @@ function handleRemember(
 	if (redaction.sensitivity === "secret" || redaction.redaction_degraded) {
 		delete payload.title;
 		delete payload.body;
+		delete payload.project;
 	}
 	const confidence = payload.confidence ?? 0.5;
 	if (

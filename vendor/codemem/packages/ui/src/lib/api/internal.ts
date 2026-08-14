@@ -20,7 +20,11 @@ type ViewerSessionBootstrap = {
 	state: unknown;
 	replaceState: (data: unknown, unused: string, url?: string | URL | null) => void;
 	fetch: typeof fetch;
+	sessionStorage: Pick<Storage, "getItem" | "setItem">;
 };
+
+const VIEWER_SESSION_STORAGE_KEY = "codemem.viewer.session";
+const VIEWER_SESSION_PATTERN = /^[A-Za-z0-9._-]{1,512}$/;
 
 export function bootstrapViewerSession(
 	options: ViewerSessionBootstrap = {
@@ -30,6 +34,7 @@ export function bootstrapViewerSession(
 		state: window.history.state,
 		replaceState: window.history.replaceState.bind(window.history),
 		fetch,
+		sessionStorage: window.sessionStorage,
 	},
 ): Promise<void> {
 	const fragment = new URLSearchParams(options.hash.replace(/^#/, ""));
@@ -48,13 +53,27 @@ export function bootstrapViewerSession(
 	return options
 		.fetch("/api/auth/exchange", {
 			method: "POST",
-			credentials: "same-origin",
+			credentials: "omit",
 			cache: "no-store",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ nonce }),
 		})
-		.then((response) => {
+		.then(async (response) => {
 			if (!response.ok) throw new Error("Viewer login failed");
+			const payload: unknown = await response.json();
+			if (
+				!payload ||
+				typeof payload !== "object" ||
+				Array.isArray(payload) ||
+				typeof (payload as { session?: unknown }).session !== "string" ||
+				!VIEWER_SESSION_PATTERN.test((payload as { session: string }).session)
+			) {
+				throw new Error("Viewer login failed");
+			}
+			options.sessionStorage.setItem(
+				VIEWER_SESSION_STORAGE_KEY,
+				(payload as { session: string }).session,
+			);
 		});
 }
 
@@ -63,7 +82,18 @@ const viewerSessionReady =
 
 export async function viewerFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
 	await viewerSessionReady;
-	return fetch(input, { credentials: "same-origin", ...init });
+	const headers = new Headers(input instanceof Request ? input.headers : undefined);
+	new Headers(init?.headers).forEach((value, key) => {
+		headers.set(key, value);
+	});
+	const session =
+		typeof window === "undefined"
+			? null
+			: window.sessionStorage.getItem(VIEWER_SESSION_STORAGE_KEY);
+	if (session && VIEWER_SESSION_PATTERN.test(session)) {
+		headers.set("Authorization", `Session ${session}`);
+	}
+	return fetch(input, { ...init, credentials: "omit", headers });
 }
 
 export async function fetchJson<T = Record<string, unknown>>(url: string): Promise<T> {

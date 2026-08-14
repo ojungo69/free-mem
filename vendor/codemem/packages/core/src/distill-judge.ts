@@ -79,7 +79,8 @@ export function parseJudgeVerdict(text: string | null | undefined): {
 
 	const cleaned = firstLine
 		.replace(/^[-*+]\s+/, "")
-		.replace(/^["'`]+|["'`]+$/g, "")
+		.replace(/^["'`]+/, "")
+		.replace(/["'`]+$/, "")
 		.trim();
 	const match = cleaned.match(VERDICT_PATTERN);
 	if (!match) return { verdict: "unjudged", reason: null };

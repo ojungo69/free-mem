@@ -8,6 +8,7 @@ import {
 	DEFAULT_DATA_DIR,
 	hashMutationPayload,
 	LOCAL_API_VERSION,
+	NORMALIZED_EVENT_FIELDS,
 	NORMALIZED_SCHEMA_VERSION,
 	parseAgentMemoryToml,
 	preprocessAdapterEvent,
@@ -17,6 +18,7 @@ import {
 	resolveProjectRoot,
 	resolveStorageLayout,
 	type SpoolRedactionMetadata,
+	sealDegradedNormalizedEvent,
 	spoolMutation,
 	VERSION,
 	validateNormalizedEvent,
@@ -83,7 +85,6 @@ const METADATA_FIELDS = new Set([
 	"expectedRevision",
 	"kind",
 	"confidence",
-	"project",
 	"dryRun",
 	"state",
 	"submittedAfter",
@@ -155,9 +156,11 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 				const config = loadProjectConfig(cwd());
 				const redacted = preprocessAdapterEvent(
 					{ reason: preparedBody.reason },
-					{ allowlist: ["reason"], metadataKeys: ["reason"], config },
+					{ allowlist: ["reason"], metadataKeys: [], config },
 				);
-				const reason = String(redacted.payload.reason ?? "");
+				const reason = redacted.degraded
+					? "[REDACTED:degraded]"
+					: String(redacted.payload.reason ?? "");
 				preparedBody.reason = reason;
 				preparedBody.payloadHash = backupPayloadHash(reason);
 				return {
@@ -188,6 +191,39 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 			};
 		}
 		const config = fields.length === 0 ? undefined : loadProjectConfig(cwd());
+		if (method === "POST /v1/events") {
+			const rawEvent = body.event;
+			if (!rawEvent || typeof rawEvent !== "object" || Array.isArray(rawEvent)) {
+				throw new Error("event must be an object");
+			}
+			const redacted = preprocessAdapterEvent(rawEvent, {
+				allowlist: [...NORMALIZED_EVENT_FIELDS],
+				metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
+				config,
+			});
+			const event = redacted.degraded
+				? sealDegradedNormalizedEvent(redacted.payload)
+				: redacted.payload;
+			if (!Object.hasOwn(event, "payload")) event.payload = {};
+			const sensitivity = redacted.degraded ? "secret" : redacted.sensitivity;
+			event.sensitivity = sensitivity;
+			if (sensitivity === "secret") event.payload = {};
+			validateNormalizedEvent(event);
+			if (event.idempotencyKey !== body.idempotencyKey) {
+				throw new Error("event.idempotencyKey must match the request envelope");
+			}
+			return {
+				body: { idempotencyKey: body.idempotencyKey, event },
+				config,
+				redaction: {
+					sensitivity,
+					secret_rules_version: redacted.secret_rules_version,
+					redaction_degraded: redacted.degraded,
+					private_content_omitted: redacted.private_content_omitted,
+					local_only: redacted.local_only,
+				},
+			};
+		}
 		const redacted = preprocessAdapterEvent(body, {
 			allowlist: [...fields],
 			metadataKeys: fields.filter((field) => METADATA_FIELDS.has(field)),
@@ -197,16 +233,6 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 		if (method === "POST /v1/memories/record" && redacted.degraded) {
 			preparedBody.title = "[REDACTED:degraded]";
 			preparedBody.body = "[REDACTED:degraded]";
-		}
-		if (method === "POST /v1/events") {
-			const event = preparedBody.event;
-			if (!event || typeof event !== "object" || Array.isArray(event)) {
-				throw new Error("event must be an object");
-			}
-			const normalized = event as Record<string, unknown>;
-			normalized.sensitivity = redacted.sensitivity;
-			if (redacted.sensitivity === "secret") normalized.payload = {};
-			validateNormalizedEvent(normalized);
 		}
 		return {
 			body: preparedBody,

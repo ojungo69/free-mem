@@ -1461,6 +1461,11 @@ var SecretScanner = class {
 			seen.set(value, out);
 			const merged = /* @__PURE__ */ new Map();
 			for (const [k, v] of Object.entries(obj)) {
+				const keyScan = this.scan(k);
+				if (keyScan.detections.length > 0) {
+					for (const d of keyScan.detections) merged.set(d.kind, (merged.get(d.kind) ?? 0) + d.count);
+					continue;
+				}
 				const r = this.redactValueInternal(v, k, seen);
 				out[k] = r.value;
 				for (const d of r.detections) merged.set(d.kind, (merged.get(d.kind) ?? 0) + d.count);
@@ -1530,6 +1535,10 @@ function applyPrivateRegex(value, patterns) {
 		const output = {};
 		let privateHit = false;
 		for (const [key, item] of Object.entries(value)) {
+			if (applyPrivateRegex(key, patterns).privateHit) {
+				privateHit = true;
+				continue;
+			}
 			const result = applyPrivateRegex(item, patterns);
 			output[key] = result.value;
 			privateHit ||= result.privateHit;
@@ -2628,13 +2637,18 @@ function prepareMutation(input, config, previousRedaction) {
 			metadataKeys: [
 				"idempotencyKey",
 				"kind",
-				"confidence",
-				"project"
+				"confidence"
 			],
 			config: retryConfig
 		});
 		body = redacted.payload;
 		redaction = mergeSpoolRedaction(spoolRedaction(redacted), previousRedaction);
+		if (redaction.sensitivity === "secret" || redaction.redaction_degraded) {
+			const placeholder = redaction.redaction_degraded ? "[REDACTED:degraded]" : "[REDACTED:secret]";
+			body.title = placeholder;
+			body.body = placeholder;
+			delete body.project;
+		}
 		body.kind = validatePreparedMemoryBody(body, idempotencyKey);
 	}
 	const payloadHash = hashMutationPayload({
@@ -6190,19 +6204,55 @@ function projectRoot(cwd) {
 	}
 	return null;
 }
+function repositoryPath(root, absolute) {
+	const path = relative(root, absolute).replaceAll("\\", "/");
+	return !path || path === ".." || path.startsWith("../") || isAbsolute(path) ? null : path;
+}
+function physicalPath(path) {
+	let current = path;
+	const suffix = [];
+	for (;;) {
+		try {
+			lstatSync(current);
+		} catch (error) {
+			if (error.code !== "ENOENT") return null;
+			const parent = dirname(current);
+			if (parent === current) return null;
+			suffix.unshift(basename(current));
+			current = parent;
+			continue;
+		}
+		try {
+			return resolve(realpathSync(current), ...suffix);
+		} catch {
+			return null;
+		}
+	}
+}
+function policyPathCandidates(path, root, cwd) {
+	const absolute = isAbsolute(path) ? resolve(path) : resolve(cwd, path);
+	const lexical = repositoryPath(root, absolute);
+	const physicalRoot = physicalPath(root);
+	const physicalTarget = physicalPath(absolute);
+	if (!lexical || !physicalRoot || !physicalTarget) return null;
+	const physical = repositoryPath(physicalRoot, physicalTarget);
+	return physical ? [...new Set([lexical, physical])] : null;
+}
 function configuredPathMatches(path, root, cwd, patterns) {
-	const repositoryPath = relative(root, isAbsolute(path) ? resolve(path) : resolve(cwd, path)).replaceAll("\\", "/");
-	if (!repositoryPath || repositoryPath === ".." || repositoryPath.startsWith("../") || isAbsolute(repositoryPath)) return false;
+	const candidates = policyPathCandidates(path, root, cwd);
+	if (!candidates) return false;
 	return patterns.some((rawPattern) => {
 		const pattern = rawPattern.trim().replaceAll("\\", "/").replace(/^\.\//, "");
 		if (!pattern) return false;
 		const prefix = pattern.replace(/\/+$/, "");
-		if (repositoryPath === prefix || repositoryPath.startsWith(`${prefix}/`)) return true;
-		try {
-			return matchesGlob(repositoryPath, pattern);
-		} catch {
-			return false;
-		}
+		return candidates.some((candidate) => {
+			if (candidate === prefix || candidate.startsWith(`${prefix}/`)) return true;
+			try {
+				return matchesGlob(candidate, pattern);
+			} catch {
+				return false;
+			}
+		});
 	});
 }
 function hookPaths(payload) {
@@ -6216,7 +6266,6 @@ function hookPaths(payload) {
 		const value = toolInput[field];
 		if (typeof value === "string" && value.trim()) paths.push(value.trim());
 	}
-	if (typeof payload.transcript_path === "string" && payload.transcript_path.trim()) paths.push(payload.transcript_path.trim());
 	paths.push(...extractModifiedPathsFromHook(payload));
 	return paths;
 }
@@ -6247,9 +6296,12 @@ function loadHookPolicy(payload) {
 	}
 	const paths = hookPaths(payload);
 	const cwd = resolve(String(payload.cwd));
+	const toolInput = payload.tool_input;
+	const opaqueCommand = toolInput && typeof toolInput === "object" && !Array.isArray(toolInput) ? toolInput.command : void 0;
+	const pathPolicyConfigured = config.ignorePaths.length > 0 || config.localOnlyPaths.length > 0;
 	return {
 		config,
-		ignored: paths.some((path) => configuredPathMatches(path, root, cwd, config.ignorePaths)),
+		ignored: paths.some((path) => policyPathCandidates(path, root, cwd) === null) || pathPolicyConfigured && typeof opaqueCommand === "string" && opaqueCommand.trim().length > 0 || paths.some((path) => configuredPathMatches(path, root, cwd, config.ignorePaths)),
 		localOnly: paths.some((path) => configuredPathMatches(path, root, cwd, config.localOnlyPaths))
 	};
 }

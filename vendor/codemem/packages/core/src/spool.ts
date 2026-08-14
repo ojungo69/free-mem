@@ -625,11 +625,19 @@ function prepareMutation(
 	} else {
 		const redacted = preprocessAdapterEvent(input.body, {
 			allowlist: [...methodFields],
-			metadataKeys: ["idempotencyKey", "kind", "confidence", "project"],
+			metadataKeys: ["idempotencyKey", "kind", "confidence"],
 			config: retryConfig,
 		});
 		body = redacted.payload;
 		redaction = mergeSpoolRedaction(spoolRedaction(redacted), previousRedaction);
+		if (redaction.sensitivity === "secret" || redaction.redaction_degraded) {
+			const placeholder = redaction.redaction_degraded
+				? "[REDACTED:degraded]"
+				: "[REDACTED:secret]";
+			body.title = placeholder;
+			body.body = placeholder;
+			delete body.project;
+		}
 		body.kind = validatePreparedMemoryBody(body, idempotencyKey);
 	}
 

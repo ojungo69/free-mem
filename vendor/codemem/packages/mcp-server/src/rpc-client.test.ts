@@ -111,6 +111,37 @@ describe("MCP daemon RPC client", () => {
 			} finally {
 				reader.close();
 			}
+
+			writeFileSync(join(fixture.root, ".agent-memory.toml"), 'secret_regex = ["(a+)+$"]\n');
+			const degradedIdempotencyKey = "mcp-event-degraded";
+			const degradedProject = "MCP_EVENT_DEGRADED_PROJECT";
+			const degradedEvent = {
+				...event,
+				eventId: "mcp-event-degraded-1",
+				idempotencyKey: degradedIdempotencyKey,
+				projectKey: degradedProject,
+				payload: { text: `${"a".repeat(26)}!` },
+				sourceHash: hashMutationPayload({ degraded: true }),
+			};
+			expect(
+				await client.requestWithSpool("POST /v1/events", {
+					idempotencyKey: degradedIdempotencyKey,
+					event: degradedEvent,
+				}),
+			).toMatchObject({ ok: true, result: { receiptId: expect.any(String) } });
+
+			const degradedReader = ReadOnlyActor.open(realpathSync(daemon.layout.currentPointerPath));
+			try {
+				const row = degradedReader
+					.prepare("SELECT payload_json FROM raw_events WHERE event_id = ?")
+					.get("mcp-event-degraded-1") as { payload_json: string };
+				expect(row.payload_json).not.toContain(degradedProject);
+				expect(JSON.parse(row.payload_json)).toMatchObject({
+					_normalized: { sensitivity: "secret", redaction_degraded: true },
+				});
+			} finally {
+				degradedReader.close();
+			}
 		} finally {
 			await daemon.stop();
 			rmSync(fixture.root, { recursive: true, force: true });
@@ -128,6 +159,7 @@ describe("MCP daemon RPC client", () => {
 				...rememberBody("degraded-direct"),
 				title: secret,
 				body: "MCP_DEGRADED_PRIVATE",
+				project: "MCP_DEGRADED_PROJECT",
 			});
 			expect(remembered).toMatchObject({ ok: true, result: { memoryId: expect.any(Number) } });
 			if (!remembered.ok) throw new Error("degraded remember failed");
@@ -135,17 +167,22 @@ describe("MCP daemon RPC client", () => {
 			const reader = ReadOnlyActor.open(realpathSync(daemon.layout.currentPointerPath));
 			try {
 				const row = reader
-					.prepare("SELECT title, body_text, metadata_json FROM memory_items WHERE id = ?")
+					.prepare(
+						`SELECT m.title, m.body_text, m.metadata_json, s.project
+						 FROM memory_items m JOIN sessions s ON s.id = m.session_id WHERE m.id = ?`,
+					)
 					.get(remembered.result.memoryId) as {
 					title: string;
 					body_text: string;
 					metadata_json: string;
+					project: string | null;
 				};
 				expect(row.title).toBe("");
 				expect(row.body_text).toBe("");
 				expect(JSON.parse(row.metadata_json)).toMatchObject({ redaction_degraded: true });
 				expect(JSON.stringify(row)).not.toContain(secret);
 				expect(JSON.stringify(row)).not.toContain("MCP_DEGRADED_PRIVATE");
+				expect(JSON.stringify(row)).not.toContain("MCP_DEGRADED_PROJECT");
 			} finally {
 				reader.close();
 			}
@@ -220,6 +257,21 @@ describe("MCP daemon RPC client", () => {
 			expect(
 				await client.request("POST /v1/backup/verify", { backupId: "mcp-backup" }),
 			).toMatchObject({ ok: true, result: { backupId: "mcp-backup", valid: true } });
+			writeFileSync(join(fixture.root, ".agent-memory.toml"), 'secret_regex = ["(a+)+$"]\n');
+			const degradedReason = `${"a".repeat(26)}!`;
+			expect(
+				await client.request("POST /v1/backup/create", {
+					operationId: "mcp-backup-degraded",
+					reason: degradedReason,
+					payloadHash: backupPayloadHash(degradedReason),
+				}),
+			).toMatchObject({ ok: true, result: { backupId: "mcp-backup-degraded" } });
+			const degradedSidecar = readFileSync(
+				join(resolveStorageLayout(fixture.dataDir).backupsDir, "mcp-backup-degraded.json"),
+				"utf8",
+			);
+			expect(degradedSidecar).not.toContain(degradedReason);
+			expect(degradedSidecar).toContain("[REDACTED:degraded]");
 		} finally {
 			await daemon.stop();
 			rmSync(fixture.root, { recursive: true, force: true });

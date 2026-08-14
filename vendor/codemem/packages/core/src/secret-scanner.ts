@@ -282,6 +282,13 @@ export class SecretScanner {
 			seen.set(value, out);
 			const merged = new Map<string, number>();
 			for (const [k, v] of Object.entries(obj)) {
+				const keyScan = this.scan(k);
+				if (keyScan.detections.length > 0) {
+					for (const d of keyScan.detections) {
+						merged.set(d.kind, (merged.get(d.kind) ?? 0) + d.count);
+					}
+					continue;
+				}
 				const r = this.redactValueInternal(v, k, seen);
 				out[k] = r.value;
 				for (const d of r.detections) merged.set(d.kind, (merged.get(d.kind) ?? 0) + d.count);

@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -474,6 +481,9 @@ describe("hook thin clients", () => {
 				'local_only_paths = ["local/**", "packages/app/local/**"]',
 			].join("\n"),
 		);
+		mkdirSync(join(workspace, "ignored"), { recursive: true });
+		writeFileSync(join(workspace, "ignored", "secret.ts"), "private fixture");
+		symlinkSync("ignored", join(workspace, "alias"), "dir");
 		const base = {
 			hook_event_name: "PreToolUse",
 			session_id: "session-path-policy",
@@ -481,6 +491,19 @@ describe("hook thin clients", () => {
 			timestamp: "2026-08-14T01:00:00.000Z",
 			tool_name: "Read",
 		};
+		expect(
+			prepareHookEvent("claude", {
+				...base,
+				tool_input: { file_path: "alias/secret.ts" },
+			}).status,
+		).toBe("skipped");
+		expect(
+			prepareHookEvent("claude", {
+				...base,
+				tool_name: "Bash",
+				tool_input: { command: "cat ignored/secret.ts" },
+			}).status,
+		).toBe("skipped");
 		let fileContextQueried = false;
 		await buildClaudeFileContext(
 			{ ...base, tool_input: { file_path: join(workspace, "ignored", "secret.ts") } },

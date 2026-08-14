@@ -20,8 +20,13 @@ const DEFAULTS: ConfigData = {
 	pack_session_limit: 10,
 	raw_events_sweeper_interval_s: 30,
 };
-const PROTECTED_KEYS = ["observer_auth_file", "observer_base_url", "observer_headers"];
-const SECRET_KEYS = new Set(["observer_auth_file", "observer_headers"]);
+const PROTECTED_KEYS = [
+	"observer_api_key",
+	"observer_auth_file",
+	"observer_base_url",
+	"observer_headers",
+];
+const SECRET_KEYS = new Set(["observer_api_key", "observer_auth_file", "observer_headers"]);
 const REMOVED_KEYS = new Set([
 	"claude_command",
 	"codex_command",

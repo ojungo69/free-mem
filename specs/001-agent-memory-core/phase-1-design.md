@@ -36,7 +36,7 @@ Phase 0A 分類の fatal 10 経路 + 計画時実地検証で判明した未計�
 | 9 | secret scanner | vendor SecretScanner 土台 + gitleaks 互換 pin + syntax subset 契約。**全 rule（built-in/gitleaks/user）を kill 可能 worker で bounded 実行**（corpus は回帰試験専用。daemon 側常駐 worker で償却）+ event 単位総 deadline。mandatory pinned rule 変換失敗 = release gate fail。optional/user 失敗 = skip + doctor 警告 + degraded。ruleset hash = 実ロード集合から生成。長さ 512/件数 100 cap。不正 pattern = 本文非保存 / 処理 fail-open |
 | 10 | install ownership manifest | 最小定義 + managed-block 機構（selector/marker + fingerprint + compare-before-remove + atomic write + roundtrip 検証） |
 | 11 | exactly-once | mutation class 3 分類（T029 表の列）: **(A) transactional DB → daemon 内共有 dispatcher（RPC・spool import 両経路）+ receipt を副作用と同一 transaction** (B) filesystem 副作用（backup/restore/export）→ operation ID + durable journal (C) 非 spoolable maintenance → maintenance mode 直列のみ。既存 unique constraint で同等の event 系は表で証明し省略可。同一 key 異 payload = conflict → quarantine |
-| 12 | viewer auth | read-only 化。**永続 Bearer（256-bit・0600・非 browser クライアント用・URL 不出）と、daemon 再起動ごとに生成する session 署名鍵を分離**。browser = 短寿命（60s）単回 nonce → httpOnly+SameSite=Strict session cookie（TTL 12h・再起動失効・logout・同時 session 上限 8 / 超過 = 最旧 evict・交換直後 history.replaceState + Referrer-Policy）。cookie + Origin 検証 + CSP + loopback 限定 bind + query 非ログ。API は Bearer / cookie 両受理 |
+| 12 | viewer auth | read-only 化。**永続 Bearer（256-bit・0600・非 browser クライアント用・URL 不出）と、daemon 再起動ごとに生成する session 署名鍵を分離**。browser = 短寿命（60s）単回 nonce → origin/port 単位の `sessionStorage` + `Authorization: Session`（TTL 12h・再起動失効・logout・同時 session 上限 8 / 超過 = 最旧 evict・交換直後 history.replaceState + Referrer-Policy）。host-scoped cookie は別 loopback port へ送信されるため不採用。Session header + Origin 検証 + CSP + loopback 限定 bind + query 非ログ。API は非 browser Bearer / browser Session を受理 |
 | 13 | 後続 Phase CLI | typed 無効化 stub（distill/embed 等。RPC 移植しない） |
 | 14 | single-instance lock | 専用 `control/lock.db` に better-sqlite3 `BEGIN IMMEDIATE` writer reservation を存命保持（busy_timeout 0 / journal DELETE / 0600 / preflight 後・資源 open 前取得。SQLITE_BUSY = fail-closed）。同時 `BEGIN EXCLUSIVE` では実プロセス競合で所有者0件が観測されたため、reader を持たない専用 DB の single-writer mutex には IMMEDIATE を使う。**force-kill identity**: control root に 0600 identity record（PID + OS start time + exe/cmdline fingerprint + instance nonce）atomic 保存。通常停止 = 認証 socket 経由。force-kill 前に複数 identity 再検証・不一致 = 拒否 |
 | 15 | migration 順序 | connect() から bootstrap/migration 分離。schema 変更（receipt 表含む）は backup + verify 成功後のみ |
@@ -96,5 +96,5 @@ backup 署名の Phase 1 実装（hash のみ。署名は ADR 記録 + Phase 8 b
 
 主な修正例（レビューで捕捉された設計誤り）: spool 生 payload 保存（HI-7 違反）→ adapter 前処理必須化 /
 「daemon 停止 + CLI 直接 open」の maintenance 案（HI-4 違反）→ maintenance mode /
-Bearer×httpOnly の矛盾 → nonce→cookie 交換 / data_dir 全体 rename swap → control/db 分離 /
+Bearer×browser session の分離 → nonce→origin/port 単位 Session 交換 / data_dir 全体 rename swap → control/db 分離 /
 T040 完了条件の循環 → synthetic producer 限定化。

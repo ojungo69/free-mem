@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
-import { dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:path";
 import {
 	type AgentMemoryConfig,
 	buildNormalizedEventFromClaudeHook,
@@ -84,32 +84,63 @@ function projectRoot(cwd: unknown): string | null {
 	return null;
 }
 
+function repositoryPath(root: string, absolute: string): string | null {
+	const path = relative(root, absolute).replaceAll("\\", "/");
+	return !path || path === ".." || path.startsWith("../") || isAbsolute(path) ? null : path;
+}
+
+function physicalPath(path: string): string | null {
+	let current = path;
+	const suffix: string[] = [];
+	for (;;) {
+		try {
+			lstatSync(current);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+			const parent = dirname(current);
+			if (parent === current) return null;
+			suffix.unshift(basename(current));
+			current = parent;
+			continue;
+		}
+		try {
+			return resolve(realpathSync(current), ...suffix);
+		} catch {
+			return null;
+		}
+	}
+}
+
+function policyPathCandidates(path: string, root: string, cwd: string): string[] | null {
+	const absolute = isAbsolute(path) ? resolve(path) : resolve(cwd, path);
+	const lexical = repositoryPath(root, absolute);
+	const physicalRoot = physicalPath(root);
+	const physicalTarget = physicalPath(absolute);
+	if (!lexical || !physicalRoot || !physicalTarget) return null;
+	const physical = repositoryPath(physicalRoot, physicalTarget);
+	return physical ? [...new Set([lexical, physical])] : null;
+}
+
 function configuredPathMatches(
 	path: string,
 	root: string,
 	cwd: string,
 	patterns: string[],
 ): boolean {
-	const absolute = isAbsolute(path) ? resolve(path) : resolve(cwd, path);
-	const repositoryPath = relative(root, absolute).replaceAll("\\", "/");
-	if (
-		!repositoryPath ||
-		repositoryPath === ".." ||
-		repositoryPath.startsWith("../") ||
-		isAbsolute(repositoryPath)
-	) {
-		return false;
-	}
+	const candidates = policyPathCandidates(path, root, cwd);
+	if (!candidates) return false;
 	return patterns.some((rawPattern) => {
 		const pattern = rawPattern.trim().replaceAll("\\", "/").replace(/^\.\//, "");
 		if (!pattern) return false;
 		const prefix = pattern.replace(/\/+$/, "");
-		if (repositoryPath === prefix || repositoryPath.startsWith(`${prefix}/`)) return true;
-		try {
-			return matchesGlob(repositoryPath, pattern);
-		} catch {
-			return false;
-		}
+		return candidates.some((candidate) => {
+			if (candidate === prefix || candidate.startsWith(`${prefix}/`)) return true;
+			try {
+				return matchesGlob(candidate, pattern);
+			} catch {
+				return false;
+			}
+		});
 	});
 }
 
@@ -121,9 +152,6 @@ function hookPaths(payload: Record<string, unknown>): string[] {
 			const value = (toolInput as Record<string, unknown>)[field];
 			if (typeof value === "string" && value.trim()) paths.push(value.trim());
 		}
-	}
-	if (typeof payload.transcript_path === "string" && payload.transcript_path.trim()) {
-		paths.push(payload.transcript_path.trim());
 	}
 	paths.push(...extractModifiedPathsFromHook(payload));
 	return paths;
@@ -150,9 +178,20 @@ function loadHookPolicy(payload: Record<string, unknown>): {
 	}
 	const paths = hookPaths(payload);
 	const cwd = resolve(String(payload.cwd));
+	const toolInput = payload.tool_input;
+	const opaqueCommand =
+		toolInput && typeof toolInput === "object" && !Array.isArray(toolInput)
+			? (toolInput as Record<string, unknown>).command
+			: undefined;
+	const pathPolicyConfigured = config.ignorePaths.length > 0 || config.localOnlyPaths.length > 0;
 	return {
 		config,
-		ignored: paths.some((path) => configuredPathMatches(path, root, cwd, config.ignorePaths)),
+		ignored:
+			paths.some((path) => policyPathCandidates(path, root, cwd) === null) ||
+			(pathPolicyConfigured &&
+				typeof opaqueCommand === "string" &&
+				opaqueCommand.trim().length > 0) ||
+			paths.some((path) => configuredPathMatches(path, root, cwd, config.ignorePaths)),
 		localOnly: paths.some((path) => configuredPathMatches(path, root, cwd, config.localOnlyPaths)),
 	};
 }

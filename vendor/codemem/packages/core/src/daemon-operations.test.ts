@@ -2,7 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSy
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { DaemonJobService } from "./daemon-jobs.js";
+import { DaemonOperationService } from "./daemon-operations.js";
+import { connect } from "./db.js";
 import * as core from "./index.js";
+import { MemoryStore } from "./store.js";
 
 const handles: Array<{ stop: () => Promise<void> }> = [];
 const roots: string[] = [];
@@ -56,6 +60,91 @@ afterEach(async () => {
 
 describe("daemon class B operations", { timeout: 20_000 }, () => {
 	it("P1-T047-01-operation-id-conflict", async () => {
+		const pendingDataDir = tempDataDir();
+		const pendingDb = connect(join(dirname(pendingDataDir), "pending.sqlite"));
+		core.initTestSchema(pendingDb);
+		const pendingStore = new MemoryStore(pendingDb, { closeConnection: true });
+		let scheduled = 0;
+		const pendingJobs = {
+			isMaintenanceMode: () => false,
+			hasPendingWork: () => false,
+			schedule: () => {
+				scheduled++;
+				return new Promise<void>(() => {});
+			},
+		} as unknown as DaemonJobService;
+		try {
+			const pendingOperations = new DaemonOperationService(
+				pendingStore,
+				pendingJobs,
+				pendingDataDir,
+			);
+			const pendingBody = {
+				outputPath: join(dirname(pendingDataDir), "pending-export.json"),
+				filters: { allProjects: true },
+			};
+			pendingOperations.submit("export", {
+				operationId: "pending-export",
+				payloadHash: core.hashMutationPayload(pendingBody),
+				...pendingBody,
+			});
+			expect(scheduled).toBe(1);
+			expect(pendingOperations.hasPending()).toBe(true);
+			const restoreConflict = await core.dispatchDaemonRpc(
+				JSON.stringify(
+					handshake("POST /v1/backup/restore", {
+						operationId: "pending-restore",
+						payloadHash: core.restorePayloadHash("missing-backup"),
+						backupId: "missing-backup",
+					}),
+				),
+				{
+					identity: { pid: process.pid, nonce: "pending" },
+					dataDir: pendingDataDir,
+					onStop: () => {},
+					writer: pendingDb,
+					store: pendingStore,
+					viewerAuth: {} as never,
+					viewerRead: async () => ({}),
+					jobs: pendingJobs,
+					operations: pendingOperations,
+				} as Parameters<typeof core.dispatchDaemonRpc>[1],
+			);
+			expect(restoreConflict).toMatchObject({ error: { code: "conflict" } });
+		} finally {
+			pendingStore.close();
+		}
+
+		const scheduledDataDir = tempDataDir();
+		const scheduledDb = connect(join(dirname(scheduledDataDir), "scheduled.sqlite"));
+		core.initTestSchema(scheduledDb);
+		const scheduledStore = new MemoryStore(scheduledDb, { closeConnection: true });
+		const scheduledJobs = new DaemonJobService(scheduledStore);
+		try {
+			const scheduledOperations = new DaemonOperationService(
+				scheduledStore,
+				scheduledJobs,
+				scheduledDataDir,
+			);
+			const outputPath = join(dirname(scheduledDataDir), "scheduled-export.json");
+			const requestBody = { outputPath, filters: { allProjects: true } };
+			expect(
+				scheduledOperations.submit("export", {
+					operationId: "scheduled-export",
+					payloadHash: core.hashMutationPayload(requestBody),
+					...requestBody,
+				}),
+			).toEqual({ operationId: "scheduled-export", state: "prepared" });
+			expect(scheduledOperations.hasPending()).toBe(true);
+			await Promise.resolve();
+			expect(existsSync(outputPath)).toBe(false);
+			await scheduledJobs.stop();
+			expect(existsSync(outputPath)).toBe(true);
+		} finally {
+			await scheduledJobs.stop();
+			scheduledStore.close();
+		}
+
 		const dataDir = tempDataDir();
 		const handle = await core.startDaemon({ dataDir });
 		handles.push(handle);
@@ -212,10 +301,15 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 			payloadHash: core.hashMutationPayload(operationBody),
 			...operationBody,
 		});
-		expect(await waitForTerminal(handle, retryId)).toMatchObject({
+		const completed = await waitForTerminal(handle, retryId);
+		expect(completed).toMatchObject({
 			state: "committed",
 			result: { memory_items: 1, backupId: expect.any(String) },
 		});
+		const backupId = String((completed.result as Record<string, unknown>).backupId);
+		expect(
+			JSON.parse(readFileSync(join(handle.layout.backupsDir, `${backupId}.json`), "utf8")),
+		).toMatchObject({ manifest: { retention_class: "manual" } });
 		expect(await request(handle, "GET /v1/view", { collection: "stats" })).toMatchObject({
 			body: { database: { memory_items: 1 } },
 		});

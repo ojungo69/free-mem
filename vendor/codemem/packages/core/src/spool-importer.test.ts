@@ -105,7 +105,7 @@ async function waitForDaemonJobsIdle(socketPath: string): Promise<boolean> {
 }
 
 describe("phase 1 spool importer", () => {
-	it("P1-T040-01-synthetic-commit-before-delete", async () => {
+	it("P1-T040-01-commit-before-delete", async () => {
 		const dataDir = await tempDataDir();
 		const queued = spool.spoolMutation(memoryMutation("import-unit", "unit"), {
 			dataDir,
@@ -137,7 +137,7 @@ describe("phase 1 spool importer", () => {
 		expect(existsSync(recoveredReadyPath)).toBe(false);
 	});
 
-	it("P1-T040-02-startup-conflict-and-broken-json-quarantine", async () => {
+	it("P1-T040-03-import-conflict", async () => {
 		const dataDir = await tempDataDir();
 		const variants = [
 			memoryMutation("startup-conflict", "first"),
@@ -187,7 +187,7 @@ describe("phase 1 spool importer", () => {
 		}
 	});
 
-	it("P1-T040-03-periodic-sweeper-uses-shared-dispatcher", async () => {
+	it("P1-T040-02-import-exactly-once", async () => {
 		const dataDir = await tempDataDir();
 		const daemon = await startDaemon({ dataDir });
 		let stopped = false;

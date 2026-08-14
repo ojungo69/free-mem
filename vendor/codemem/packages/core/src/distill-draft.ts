@@ -75,7 +75,8 @@ export function sanitizeRuleLine(text: string | null | undefined): string | null
 	let rule = firstLine
 		.replace(/^[-*+]\s+/, "") // strip markdown bullet
 		.replace(/^\d+[.)]\s+/, "") // strip numbered list marker
-		.replace(/^["'`]+|["'`]+$/g, "") // strip surrounding quotes/backticks
+		.replace(/^["'`]+/, "") // strip leading quotes/backticks
+		.replace(/["'`]+$/, "") // strip trailing quotes/backticks
 		.replace(/\s+/g, " ")
 		.trim();
 
@@ -121,7 +122,7 @@ export function applyDistillRule(currentText: string, rule: string): DistillAppl
 	}
 
 	const managedBlock = `${DISTILL_LESSONS_HEADING}\n\n${DISTILL_BLOCK_BEGIN}\n${bullet}\n${DISTILL_BLOCK_END}\n`;
-	const trimmed = existing.replace(/\s+$/, "");
+	const trimmed = existing.trimEnd();
 	if (trimmed.length === 0) return { text: managedBlock, changed: true };
 	return { text: `${trimmed}\n\n${managedBlock}`, changed: true };
 }

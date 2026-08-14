@@ -132,7 +132,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		});
 	});
 
-	it("P1-T036-03-events-conflict", async () => {
+	it("P1-T036-02-idempotency-conflict", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
 		const first = await core.callDaemonRpc(
@@ -302,7 +302,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		}
 	});
 
-	it("P1-T036-05-view-search-allowlist", async () => {
+	it("P1-T036-03-endpoint-allowlist", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
 		const alpha = await core.callDaemonRpc(
@@ -445,7 +445,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		expect(conflict).toMatchObject({ error: { code: "idempotency_conflict" } });
 	});
 
-	it("P1-T036-08-side-effect-and-receipt-share-one-transaction", () => {
+	it("P1-T036-01-receipt-atomicity", () => {
 		const db = WriterActor.open(":memory:");
 		try {
 			core.ensureMutationReceiptSchema(db);

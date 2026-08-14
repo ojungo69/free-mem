@@ -14,7 +14,6 @@ export type { ViewerRpcCall } from "./rpc-client.js";
 export { createViewerRpcCall } from "./rpc-client.js";
 export { VERSION };
 
-const SESSION_COOKIE = "codemem_session";
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SESSION_PATTERN = /^[A-Za-z0-9._-]{1,512}$/;
 const MAX_AUTH_BODY_BYTES = 1024;
@@ -40,21 +39,15 @@ export interface AppOptions {
 	rpc?: ViewerRpcCall;
 }
 
-function cookieValue(header: string | undefined): string | null {
-	if (!header) return null;
-	const matches = header
-		.split(";")
-		.map((part) => part.trim())
-		.filter((part) => part.startsWith(`${SESSION_COOKIE}=`))
-		.map((part) => part.slice(SESSION_COOKIE.length + 1));
-	return matches.length === 1 && SESSION_PATTERN.test(matches[0] ?? "")
-		? (matches[0] ?? null)
-		: null;
-}
-
 function bearerValue(header: string | undefined): string | null {
 	if (!header) return null;
 	const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(header);
+	return match?.[1] ?? null;
+}
+
+function sessionValue(header: string | undefined): string | null {
+	if (!header) return null;
+	const match = /^Session ([A-Za-z0-9._-]{1,512})$/.exec(header);
 	return match?.[1] ?? null;
 }
 
@@ -167,12 +160,8 @@ export function createApp(opts: AppOptions = {}) {
 			if (!session || typeof session.cookie !== "string" || !SESSION_PATTERN.test(session.cookie)) {
 				return c.json({ error: "invalid or expired nonce" }, 401);
 			}
-			c.header(
-				"Set-Cookie",
-				`${SESSION_COOKIE}=${session.cookie}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`,
-			);
 			c.header("Cache-Control", "no-store");
-			return c.body(null, 204);
+			return c.json({ session: session.cookie });
 		} catch (error) {
 			return rpcFailure(c, error);
 		}
@@ -198,8 +187,9 @@ export function createApp(opts: AppOptions = {}) {
 	});
 
 	app.use("/api/*", async (c, next) => {
-		const bearer = bearerValue(c.req.header("Authorization"));
-		const session = cookieValue(c.req.header("Cookie"));
+		const authorization = c.req.header("Authorization");
+		const bearer = bearerValue(authorization);
+		const session = sessionValue(authorization);
 		if (!bearer && !session) {
 			c.header("WWW-Authenticate", "Bearer");
 			return c.json({ error: { code: "unauthorized", message: "Authentication required." } }, 401);
@@ -220,10 +210,9 @@ export function createApp(opts: AppOptions = {}) {
 	});
 
 	app.post("/api/auth/logout", async (c) => {
-		const session = cookieValue(c.req.header("Cookie"));
+		const session = sessionValue(c.req.header("Authorization"));
 		try {
 			if (session) await rpc("POST /v1/viewer/auth/logout", { session });
-			c.header("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
 			c.header("Cache-Control", "no-store");
 			return c.body(null, 204);
 		} catch (error) {

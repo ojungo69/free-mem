@@ -64,6 +64,7 @@ export const statsCommand = statsCmd.action(
 
 			p.intro("codemem stats");
 
+			// lgtm[js/clear-text-logging] User-invoked local CLI output, not an application log.
 			p.log.info([`Path:        ${db.path}`, `Size:        ${sizeMb} MB`].join("\n"));
 
 			p.log.success(

@@ -162,10 +162,10 @@ tool_field_allowlist = "body"
 	it("uses the caller allowlist when project config omits a tool allowlist", () => {
 		const config = core.parseAgentMemoryToml('private_regex = ["customer-[0-9]+"]');
 		const result = core.preprocessAdapterEvent(
-			{ body: "keep customer-42", denied: "drop" },
-			{ config, allowlist: ["body"] },
+			{ body: "keep customer-42", metadata: { "customer-99": "drop" }, denied: "drop" },
+			{ config, allowlist: ["body", "metadata"] },
 		);
-		expect(result.payload).toEqual({ body: "keep " });
+		expect(result.payload).toEqual({ body: "keep ", metadata: {} });
 		expect(result.sensitivity).toBe("private");
 	});
 
