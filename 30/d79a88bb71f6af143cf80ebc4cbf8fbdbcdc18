@@ -1,0 +1,49 @@
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_6a3bc704d81ffa 164-166
+evidence/phase1-t054-runtime-db-open-validation.md
+  s_211aa7fe546c35::t_6a3bc704d81ffa 1-59,61-65,67
+  s_211aa7fe546c35::t_6f291b92ceb01e 60,66
+harness/phase1-runtime-db-open-trace.mjs
+  s_211aa7fe546c35::t_95fd25937d890c 304-307
+  s_211aa7fe546c35::t_422c2c10865656 1-38,40-155,163-303,308-484,486-532,534-590,597-819,826-827,836-973,980-999,1001,1005-1050,1052-1084,1093-1193,1195-1274
+  s_211aa7fe546c35::t_c710a90a11cc55 485,533
+  s_211aa7fe546c35::t_8fc6cca8be23b6 1000,1002-1004,1051
+  s_211aa7fe546c35::t_dd1528ab6b6015 39
+  s_211aa7fe546c35::t_3f87fa07159e6d 156-162,591-596,974-979,1085-1092
+  s_211aa7fe546c35::t_7977d8d354ef3d 1194
+  s_211aa7fe546c35::t_7345b1af033869 820-825,828-835
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_1b7367ac44164d 2-3,1739-1760
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_933d08ef59dd3f 2-3,1739-1760
+vendor/codemem/package.json
+  s_211aa7fe546c35::t_c97a67ba8c0687 14
+vendor/codemem/packages/cli/src/hook-core.ts
+  s_211aa7fe546c35::t_9b7428d280ebd0 29
+vendor/codemem/packages/cli/vite.hook.config.ts
+  s_211aa7fe546c35::t_c5cbb708636317 29-32
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_2868ef06c34954 1389-1399,1404,1408-1411,1413,1417
+vendor/codemem/packages/core/src/spool.ts
+  s_211aa7fe546c35::t_59f8cf72e456a7 26
+vendor/codemem/packages/core/src/storage-layout.ts
+  s_211aa7fe546c35::t_560ed5a7f68880 1-39
+vendor/codemem/packages/core/src/storage.ts
+  s_211aa7fe546c35::t_6fa6cfb9bd1de7 11-12,23-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "30d79a88bb71f6af143cf80ebc4cbf8fbdbcdc18",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
