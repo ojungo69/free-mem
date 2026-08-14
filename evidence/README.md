@@ -17,6 +17,7 @@
 | base ADR | adr-001-base.md | T013 |
 | clean install 検証 | clean-install.md | T015 |
 | viewer 認証・read-only RPC security validation | phase1-t043-viewer-security-validation.md | T043 |
+| CLI daemon RPC cutover validation | phase1-t044-cli-rpc-validation.md | T044 |
 
 pin: codemem 26438e75ce1d0fec6be34981f15045a15c89658b / ai-memory a9e9a24d50f59e970fc01ae48efe647abf20702e / remem cde8bc05504c74794d044ef118f74d8f828adbf5
 clone 元: ~/projects/free-mem-vendor/（ローカル clone のみ・公開 fork なし）

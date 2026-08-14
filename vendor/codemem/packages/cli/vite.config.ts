@@ -17,9 +17,16 @@ function executableOutput() {
 
 export default defineConfig({
 	resolve: {
-		alias: {
-			"@codemem/core": resolve(import.meta.dirname, "../core/src/index.ts"),
-		},
+		alias: [
+			{
+				find: "@codemem/core",
+				replacement: resolve(import.meta.dirname, "../core/src/index.ts"),
+			},
+			{
+				find: /^@codemem\/mcp$/,
+				replacement: resolve(import.meta.dirname, "../mcp-server/src/index.ts"),
+			},
+		],
 		conditions: ["source"],
 	},
 	// CLI uses Vite SSR mode for build (--ssr flag in package.json build script).

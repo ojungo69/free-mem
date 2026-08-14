@@ -127,7 +127,9 @@ T053–T057 の harness runner 骨格（assert 内容と判定条件は Claude C
 - [X] T043 [P] viewer read-only 化 = 判断 #12 契約。blocking test: 未認証 401 / 誤 token 401 / 悪意 Origin 403 / nonce 再利用・期限切れ・同時交換 race / TTL 失効・daemon 再起動失効・logout・session 上限 evict・history.replaceState・Referrer-Policy / 別 UID 拒否（可用時）。前提: T036, T037, T038
   - 実装証拠: daemon-owned `control/token`（256-bit・0600）、single-use nonce、HMAC session（TTL/logout/restart/上限 eviction）、`GET /v1/view` read relay。viewer は cookie/Origin/CSP/no-store を強制し、DB handle・mutation/ingest/config-write route・remote script/font を削除。CLI は nonce を URL fragment で渡し、fetch 前に `history.replaceState` で除去
   - 検証証拠: `viewer-auth.test.ts` / `daemon-rpc.test.ts` / `viewer-server/src/auth.test.ts` / `ui/src/lib/api/internal.test.ts` の `P1-T043-01..13`、実 Chromium で fragment 除去・httpOnly cookie・data API・read-only settings を確認。別 UID live 実行は権限不足のため、0700/0600/EACCES の既存 peer test を fallback とした。serial full suite 396 suites / 1,894 tests / failed 0
-- [ ] T044 CLI: production 分 RPC 化 + 後続 Phase 機能 typed stub（判断 #13）。前提: T036, T037, T038, T039/T040（spoolable mutation の fail-over 経路）
+- [X] T044 CLI: production 分 RPC 化 + 後続 Phase 機能 typed stub（判断 #13）。前提: T036, T037, T038, T039/T040（spoolable mutation の fail-over 経路）
+  - 実装証拠: `vendor/codemem/packages/cli/src/commands/{enqueue-raw-event,memory,pack,recent,search,stats,status,serve}.ts` が共有 `@codemem/mcp` RPC client を使用。spoolable event/remember は redacted spool、forget/read は typed failure。distill/embed/extraction replay/benchmark は Phase 6/7 typed stub、旧 prompt-pack-ledger は削除
+  - 検証証拠: `cli-rpc.test.ts` (P1-T044-01..03)、`rpc-client.test.ts` の direct event redaction、`evidence/phase1-t044-cli-rpc-validation.md`。serial full suite 390 suites / 1,836 tests / failed 0、test 集合は `1,894 - 61 + 3 = 1,836`
 - [ ] T045 maintenance/backfill → daemon 内 jobs 移設。前提: T033
 - [ ] T046 破壊的 maintenance = daemon maintenance mode（判断 #6）。前提: T045, T050
 - [ ] T047 [P] export/import → daemon RPC（destructive import = maintenance mode + backup precondition）。前提: T036, T046, T050

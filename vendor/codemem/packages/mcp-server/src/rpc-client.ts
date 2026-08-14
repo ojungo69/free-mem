@@ -17,13 +17,18 @@ import {
 	type SpoolRedactionMetadata,
 	spoolMutation,
 	VERSION,
+	validateNormalizedEvent,
 } from "@codemem/core";
 
 const PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 
 const RPC_FIELDS = {
 	"GET /v1/health": [],
+	"GET /v1/doctor": [],
+	"GET /v1/view": ["collection", "sessionId", "project", "kind", "scope", "limit", "offset"],
 	"GET /v1/memories/:id": ["id", "requestId", "project", "kind"],
+	"DELETE /v1/memories/:id": ["id", "requestId", "expectedRevision"],
+	"POST /v1/events": ["idempotencyKey", "event"],
 	"POST /v1/context/pack": ["requestId", "context", "limit", "tokenBudget", "filters", "trace"],
 	"POST /v1/search": [
 		"requestId",
@@ -53,6 +58,11 @@ const METADATA_FIELDS = new Set([
 	"limit",
 	"tokenBudget",
 	"trace",
+	"collection",
+	"sessionId",
+	"offset",
+	"scope",
+	"expectedRevision",
 	"kind",
 	"confidence",
 	"project",
@@ -65,10 +75,15 @@ export type McpRpcOutcome =
 
 export interface McpRpcClient {
 	request(method: SupportedMcpRpcMethod, body: Record<string, unknown>): Promise<McpRpcOutcome>;
+	requestWithSpool(
+		method: SpoolableMcpRpcMethod,
+		body: Record<string, unknown>,
+	): Promise<McpRpcOutcome>;
 	remember(body: Record<string, unknown>): Promise<McpRpcOutcome>;
 }
 
 export type SupportedMcpRpcMethod = keyof typeof RPC_FIELDS;
+export type SpoolableMcpRpcMethod = "POST /v1/events" | "POST /v1/memories/record";
 
 export interface McpRpcClientOptions {
 	dataDir?: string;
@@ -102,8 +117,19 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 			metadataKeys: fields.filter((field) => METADATA_FIELDS.has(field)),
 			config,
 		});
+		const preparedBody = redacted.payload;
+		if (method === "POST /v1/events") {
+			const event = preparedBody.event;
+			if (!event || typeof event !== "object" || Array.isArray(event)) {
+				throw new Error("event must be an object");
+			}
+			const normalized = event as Record<string, unknown>;
+			normalized.sensitivity = redacted.sensitivity;
+			if (redacted.sensitivity === "secret") normalized.payload = {};
+			validateNormalizedEvent(normalized);
+		}
 		return {
-			body: redacted.payload,
+			body: preparedBody,
 			config,
 			redaction: {
 				sensitivity: redacted.sensitivity,
@@ -120,6 +146,10 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 		prepared: PreparedRequest,
 	): Promise<McpRpcOutcome> => {
 		try {
+			const body =
+				method === "POST /v1/events"
+					? { ...prepared.body, adapterRedaction: prepared.redaction }
+					: prepared.body;
 			const response = await callDaemonRpc(
 				resolveStorageLayout(dataDir()).socketPath,
 				{
@@ -130,7 +160,7 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 					normalized_schema_version: NORMALIZED_SCHEMA_VERSION,
 					local_api_version: LOCAL_API_VERSION,
 					capability_hash: RPC_CAPABILITY_HASH,
-					body: prepared.body,
+					body,
 				},
 				{
 					timeoutMs: RPC_DEFAULT_DEADLINE_MS,
@@ -167,10 +197,10 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 			}
 		},
 
-		async remember(body) {
+		async requestWithSpool(method, body) {
 			let prepared: PreparedRequest;
 			try {
-				prepared = prepare("POST /v1/memories/record", body);
+				prepared = prepare(method, body);
 			} catch {
 				return {
 					ok: false,
@@ -181,13 +211,13 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 					},
 				};
 			}
-			const response = await send("POST /v1/memories/record", prepared);
+			const response = await send(method, prepared);
 			if (response.ok || !response.error.retryable) return response;
 
 			const idempotencyKey = String(prepared.body.idempotencyKey ?? "");
 			const queued = spoolMutation(
 				{
-					method: "POST /v1/memories/record",
+					method,
 					idempotencyKey,
 					body: prepared.body,
 				},
@@ -208,6 +238,10 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 					retryable: true,
 				},
 			};
+		},
+
+		remember(body) {
+			return this.requestWithSpool("POST /v1/memories/record", body);
 		},
 	};
 }

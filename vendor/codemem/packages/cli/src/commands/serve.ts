@@ -3,7 +3,14 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import * as p from "@clack/prompts";
-import { initDatabase, resolveDbPath } from "@codemem/core";
+import {
+	type DaemonHandle,
+	initDatabase,
+	readDaemonHealth,
+	resolveDbPath,
+	resolveStorageLayout,
+	startDaemon,
+} from "@codemem/core";
 import { Command, Option } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -11,6 +18,7 @@ import {
 	addDbOption,
 	addViewerHostOptions,
 	emitDeprecationWarning,
+	resolveDataDirOpt,
 } from "../shared-options.js";
 import {
 	isLoopbackHost,
@@ -350,6 +358,15 @@ async function waitForPortRelease(host: string, port: number, timeoutMs = 10000)
 	return false;
 }
 
+async function waitForPortOpen(host: string, port: number, timeoutMs = 10000): Promise<boolean> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (await isPortOpen(host, port)) return true;
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	return false;
+}
+
 async function stopExistingViewer(
 	dbPath: string,
 	target: { host: string; port: number },
@@ -446,6 +463,22 @@ export function sqliteVecFailureDiagnostics(error: unknown, dbPath: string): str
 	];
 }
 
+async function issueViewerNonce(dataDir: string, timeoutMs = 10_000): Promise<string | null> {
+	const { createViewerRpcCall } = await import("@codemem/server");
+	const rpc = createViewerRpcCall({ socketPath: resolveStorageLayout(dataDir).socketPath });
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		try {
+			const result = await rpc("POST /v1/viewer/auth/nonce");
+			if (typeof result.nonce === "string") return result.nonce;
+		} catch {
+			// The detached child may still be opening the canonical database.
+		}
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	return null;
+}
+
 async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promise<void> {
 	if (warnIfViewerExposed(invocation.host, invocation.port)) return;
 	if (await isPortOpen(invocation.host, invocation.port)) {
@@ -458,12 +491,14 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 		process.exitCode = 1;
 		return;
 	}
+	const dataDir = resolveDataDirOpt({ dbPath: invocation.dbPath ?? undefined });
 	const child = spawn(process.execPath, buildForegroundRunnerArgs(scriptPath, invocation), {
 		cwd: process.cwd(),
 		detached: true,
 		stdio: "ignore",
 		env: {
 			...process.env,
+			CODEMEM_DATA_DIR: dataDir,
 			...(invocation.dbPath ? { CODEMEM_DB: invocation.dbPath } : {}),
 			...(invocation.configPath ? { CODEMEM_CONFIG: invocation.configPath } : {}),
 		},
@@ -477,15 +512,26 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 		);
 	}
 	let browserUrl = viewerUrl(invocation, "/");
-	try {
-		const { createViewerRpcCall } = await import("@codemem/server");
-		const result = await createViewerRpcCall()("POST /v1/viewer/auth/nonce");
-		if (typeof result.nonce === "string") {
-			browserUrl += `/#auth=${encodeURIComponent(result.nonce)}`;
+	const nonce = await issueViewerNonce(dataDir);
+	const viewerReady = nonce ? await waitForPortOpen(invocation.host, invocation.port) : false;
+	if (!nonce || !viewerReady) {
+		try {
+			if (typeof child.pid === "number") process.kill(child.pid, "SIGTERM");
+		} catch {
+			// Child already exited after startup failure.
 		}
-	} catch {
-		p.log.warn("Daemon unavailable; viewer API requests will return 503 until it starts.");
+		if (invocation.dbPath) {
+			try {
+				rmSync(pidFilePath(invocation.dbPath));
+			} catch {
+				// No pidfile was published.
+			}
+		}
+		p.log.error("Daemon did not become ready; viewer startup was aborted.");
+		process.exitCode = 1;
+		return;
 	}
+	browserUrl += `/#auth=${encodeURIComponent(nonce)}`;
 	p.intro("codemem viewer");
 	p.outro(`Viewer started in background (pid ${child.pid}). Open: ${browserUrl}`);
 }
@@ -502,15 +548,26 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 		process.exitCode = 1;
 		return;
 	}
-	const rpc = createViewerRpcCall();
+	const dataDir = resolveDataDirOpt({ dbPath: invocation.dbPath ?? undefined });
+	process.env.CODEMEM_DATA_DIR = dataDir;
+	let daemon: DaemonHandle | null = null;
+	if (readDaemonHealth(dataDir).status !== "ok") {
+		try {
+			daemon = await startDaemon({ dataDir });
+		} catch (error) {
+			if (readDaemonHealth(dataDir).status !== "ok") throw error;
+		}
+	}
+	const rpc = createViewerRpcCall({ socketPath: resolveStorageLayout(dataDir).socketPath });
 	let browserUrl = viewerUrl(invocation, "/");
 	try {
 		const result = await rpc("POST /v1/viewer/auth/nonce");
 		if (typeof result.nonce === "string") {
 			browserUrl += `/#auth=${encodeURIComponent(result.nonce)}`;
 		}
-	} catch {
-		p.log.warn("Daemon unavailable; viewer API requests will return 503 until it starts.");
+	} catch (error) {
+		await daemon?.stop();
+		throw error;
 	}
 
 	const dbPath = resolveDbPath(invocation.dbPath ?? undefined);
@@ -537,10 +594,13 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 		} else {
 			p.log.error(err.message);
 		}
-		process.exit(1);
+		void (daemon?.stop() ?? Promise.resolve()).finally(() => process.exit(1));
 	});
 
+	let shuttingDown = false;
 	const shutdown = async () => {
+		if (shuttingDown) return;
+		shuttingDown = true;
 		p.outro("shutting down");
 		await new Promise<void>((resolve) => {
 			server.close(() => resolve());
@@ -553,6 +613,7 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 		} catch {
 			// ignore
 		}
+		await daemon?.stop();
 		process.exit(0);
 	};
 

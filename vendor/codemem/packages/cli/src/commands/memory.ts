@@ -5,16 +5,11 @@
  * Inject is deprecated in favor of `codemem pack`.
  */
 
+import { randomUUID } from "node:crypto";
 import * as p from "@clack/prompts";
 import {
 	compareMemoryRoleReports,
 	connectReadOnly,
-	type ExtractionBenchmarkScore,
-	type ExtractionModelCostEstimate,
-	type ExtractionStructuralDiagnostics,
-	estimateExtractionModelCost,
-	getExtractionBenchmarkProfile,
-	getExtractionModelPricing,
 	getInjectionEvalScenarioPack,
 	getInjectionEvalScenarioPrompts,
 	getMemoryArtifactReport,
@@ -23,16 +18,11 @@ import {
 	getRawEventRelinkReport,
 	getSessionExtractionEval,
 	getSessionExtractionEvalScenario,
-	loadObserverConfig,
-	MemoryStore,
-	ObserverClient,
-	type ObserverTokenUsage,
-	replayBatchExtraction,
-	replayBatchExtractionWithTierRouting,
+	type MemoryItemResponse,
 	resolveDbPath,
 	resolveProject,
-	scoreExtractionBenchmarkOutput,
 } from "@codemem/core";
+import { createMcpRpcClient } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -40,8 +30,10 @@ import {
 	addJsonOption,
 	type DbOpts,
 	emitDeprecationWarning,
+	emitFeatureUnavailable,
 	emitJsonError,
 	type JsonOpts,
+	resolveDataDirOpt,
 	resolveDbOpt,
 } from "../shared-options.js";
 import { buildPackRequestOptions, collectWorkingSetFile } from "./pack-shared.js";
@@ -53,14 +45,15 @@ function parseStrictPositiveId(value: string): number | null {
 	return Number.isFinite(n) && n >= 1 && Number.isInteger(n) ? n : null;
 }
 
-export function resolveOpenAIResponsesOverride(
-	cliEnabled: boolean | undefined,
-	configured: boolean | undefined,
-): boolean | undefined {
-	return cliEnabled === true ? true : configured;
+function emitMemoryRpcError(json: boolean | undefined, code: string, message: string): void {
+	if (json) emitJsonError(code, message);
+	else {
+		p.log.error(message);
+		process.exitCode = 1;
+	}
 }
 
-function showMemoryAction(idStr: string, opts: DbOpts & JsonOpts): void {
+async function showMemoryAction(idStr: string, opts: DbOpts & JsonOpts): Promise<void> {
 	const memoryId = parseStrictPositiveId(idStr);
 	if (memoryId === null) {
 		if (opts.json) {
@@ -71,38 +64,35 @@ function showMemoryAction(idStr: string, opts: DbOpts & JsonOpts): void {
 		}
 		return;
 	}
-	const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
-	try {
-		const item = store.get(memoryId);
-		if (!item) {
-			if (opts.json) {
-				emitJsonError("not_found", `Memory ${memoryId} not found`);
-			} else {
-				p.log.error(`Memory ${memoryId} not found`);
-				process.exitCode = 1;
-			}
-			return;
-		}
-		if (opts.json) {
-			console.log(JSON.stringify(item, null, 2));
-		} else {
-			// Human-readable format
-			console.log(`#${item.id} [${item.kind}] ${item.title}`);
-			if (item.subtitle) console.log(`  ${item.subtitle}`);
-			console.log(`  created: ${item.created_at}  confidence: ${item.confidence}`);
-			if (item.tags_text) console.log(`  tags: ${item.tags_text}`);
-			if (item.body_text) {
-				const preview =
-					item.body_text.length > 300 ? `${item.body_text.slice(0, 300)}…` : item.body_text;
-				console.log(`\n${preview}`);
-			}
-		}
-	} finally {
-		store.close();
+	const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).request(
+		"GET /v1/memories/:id",
+		{ id: memoryId, requestId: randomUUID() },
+	);
+	if (!outcome.ok) {
+		emitMemoryRpcError(opts.json, outcome.error.code, outcome.error.message);
+		return;
+	}
+	const item = outcome.result.item as MemoryItemResponse | null;
+	if (!item) {
+		emitMemoryRpcError(opts.json, "not_found", `Memory ${memoryId} not found`);
+		return;
+	}
+	if (opts.json) {
+		console.log(JSON.stringify(item, null, 2));
+		return;
+	}
+	console.log(`#${item.id} [${item.kind}] ${item.title}`);
+	if (item.subtitle) console.log(`  ${item.subtitle}`);
+	console.log(`  created: ${item.created_at}  confidence: ${item.confidence}`);
+	if (item.tags_text) console.log(`  tags: ${item.tags_text}`);
+	if (item.body_text) {
+		const preview =
+			item.body_text.length > 300 ? `${item.body_text.slice(0, 300)}…` : item.body_text;
+		console.log(`\n${preview}`);
 	}
 }
 
-function forgetMemoryAction(idStr: string, opts: DbOpts & JsonOpts): void {
+async function forgetMemoryAction(idStr: string, opts: DbOpts & JsonOpts): Promise<void> {
 	const memoryId = parseStrictPositiveId(idStr);
 	if (memoryId === null) {
 		if (opts.json) {
@@ -113,26 +103,16 @@ function forgetMemoryAction(idStr: string, opts: DbOpts & JsonOpts): void {
 		}
 		return;
 	}
-	const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
-	try {
-		if (!store.get(memoryId)) {
-			if (opts.json) {
-				emitJsonError("not_found", `Memory ${memoryId} not found`);
-			} else {
-				p.log.error(`Memory ${memoryId} not found`);
-				process.exitCode = 1;
-			}
-			return;
-		}
-		store.forget(memoryId);
-		if (opts.json) {
-			console.log(JSON.stringify({ id: memoryId, status: "forgotten" }));
-		} else {
-			p.log.success(`Memory ${memoryId} marked inactive`);
-		}
-	} finally {
-		store.close();
+	const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).request(
+		"DELETE /v1/memories/:id",
+		{ id: memoryId, requestId: randomUUID() },
+	);
+	if (!outcome.ok) {
+		emitMemoryRpcError(opts.json, outcome.error.code, outcome.error.message);
+		return;
 	}
+	if (opts.json) console.log(JSON.stringify({ id: memoryId, status: "forgotten" }));
+	else p.log.success(`Memory ${memoryId} marked inactive`);
 }
 
 interface RememberMemoryOptions extends DbOpts, JsonOpts {
@@ -143,64 +123,39 @@ interface RememberMemoryOptions extends DbOpts, JsonOpts {
 	project?: string;
 }
 
-function rollbackManualMemory(store: MemoryStore, sessionId: number, memoryId: number): void {
-	store.db.transaction(() => {
-		const row = store.db
-			.prepare("SELECT import_key FROM memory_items WHERE id = ?")
-			.get(memoryId) as { import_key: string | null } | undefined;
-		store.db.prepare("DELETE FROM memory_vectors WHERE memory_id = ?").run(memoryId);
-		store.db.prepare("DELETE FROM memory_file_refs WHERE memory_id = ?").run(memoryId);
-		store.db.prepare("DELETE FROM memory_concept_refs WHERE memory_id = ?").run(memoryId);
-		store.db
-			.prepare(
-				"DELETE FROM replication_ops WHERE entity_type = 'memory_item' AND (entity_id = ? OR entity_id = ?)",
-			)
-			.run(row?.import_key ?? "", String(memoryId));
-		store.db.prepare("DELETE FROM memory_items WHERE id = ?").run(memoryId);
-		store.db
-			.prepare(
-				`DELETE FROM sessions
-				 WHERE id = ?
-				   AND NOT EXISTS (SELECT 1 FROM memory_items WHERE session_id = ?)`,
-			)
-			.run(sessionId, sessionId);
-	})();
-}
-
 async function rememberMemoryAction(opts: RememberMemoryOptions): Promise<void> {
-	const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
-	let sessionId: number | null = null;
+	if ((opts.tags?.length ?? 0) > 0) {
+		emitFeatureUnavailable("memory tags", 2, opts.json);
+		return;
+	}
 	try {
 		const project = resolveProject(process.cwd(), opts.project ?? null);
-		sessionId = store.startSession({
-			cwd: process.cwd(),
-			project,
-			user: process.env.USER ?? "unknown",
-			toolVersion: "manual",
-			metadata: { manual: true },
-		});
-		const memId = store.remember(sessionId, opts.kind, opts.title, opts.body, 0.5, opts.tags);
-		if (!store.get(memId)) {
-			await store.flushPendingVectorWrites();
-			rollbackManualMemory(store, sessionId, memId);
-			sessionId = null;
-			throw new Error("unauthorized_scope");
+		const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).requestWithSpool(
+			"POST /v1/memories/record",
+			{
+				idempotencyKey: randomUUID(),
+				kind: opts.kind,
+				title: opts.title,
+				body: opts.body,
+				confidence: 0.5,
+				...(project ? { project } : {}),
+			},
+		);
+		if (!outcome.ok) {
+			emitMemoryRpcError(opts.json, outcome.error.code, outcome.error.message);
+			return;
 		}
-		store.endSession(sessionId, { manual: true });
-		await store.flushPendingVectorWrites();
+		const memId = outcome.result.memoryId;
 		if (opts.json) {
-			console.log(JSON.stringify({ id: memId }));
+			console.log(
+				JSON.stringify(
+					typeof memId === "number" ? { id: memId } : { status: outcome.result.status },
+				),
+			);
 		} else {
-			p.log.success(`Stored memory ${memId}`);
+			p.log.success(typeof memId === "number" ? `Stored memory ${memId}` : "Memory queued");
 		}
 	} catch (err) {
-		if (sessionId !== null) {
-			try {
-				store.endSession(sessionId, { manual: true, error: true });
-			} catch {
-				// ignore — already in error path
-			}
-		}
 		const message = err instanceof Error ? err.message : String(err);
 		if (opts.json) {
 			emitJsonError("remember_failed", message);
@@ -208,8 +163,6 @@ async function rememberMemoryAction(opts: RememberMemoryOptions): Promise<void> 
 			p.log.error(`Failed to store memory: ${message}`);
 			process.exitCode = 1;
 		}
-	} finally {
-		store.close();
 	}
 }
 
@@ -282,16 +235,19 @@ function createInjectMemoryCommand(): Command {
 			},
 		) => {
 			emitDeprecationWarning("codemem memory inject", "codemem pack");
-			const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
-			try {
-				const { limit, budget, filters } = buildPackRequestOptions(opts, {
-					envProject: process.env.CODEMEM_PROJECT,
-				});
-				const pack = await store.buildMemoryPackAsync(context, limit, budget, filters);
-				console.log(pack.pack_text ?? "");
-			} finally {
-				store.close();
+			const { limit, budget, filters } = buildPackRequestOptions(opts, {
+				envProject: process.env.CODEMEM_PROJECT,
+			});
+			const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).request(
+				"POST /v1/context/pack",
+				{ requestId: randomUUID(), context, limit, tokenBudget: budget, filters, trace: false },
+			);
+			if (!outcome.ok) {
+				emitMemoryRpcError(undefined, outcome.error.code, outcome.error.message);
+				return;
 			}
+			const pack = outcome.result.pack as { pack_text?: string } | undefined;
+			console.log(pack?.pack_text ?? "");
 		},
 	);
 	return cmd;
@@ -805,221 +761,8 @@ function createMemoryExtractionReplayCommand(): Command {
 		.requiredOption("--scenario <id>", "built-in extraction eval scenario ID");
 	addDbOption(cmd);
 	addJsonOption(cmd);
-	cmd.action(
-		async (
-			opts: DbOpts &
-				JsonOpts & {
-					batchId: string;
-					observerTierRouting?: boolean;
-					openaiResponses?: boolean;
-					reasoningEffort?: string;
-					reasoningSummary?: string;
-					maxOutputTokens?: string;
-					observerTemperature?: string;
-					transcriptBudget?: string;
-					scenario: string;
-				},
-		) => {
-			try {
-				const batchIdInput = opts.batchId?.trim() ?? "";
-				const batchId = parseStrictPositiveId(batchIdInput);
-				if (batchId === null) {
-					throw new Error(`Invalid batch ID: ${batchIdInput || opts.batchId}`);
-				}
-				const scenarioId = opts.scenario?.trim() ?? "";
-				const scenario = getSessionExtractionEvalScenario(scenarioId);
-				if (!scenario) {
-					throw new Error(`Unknown extraction eval scenario: ${scenarioId || opts.scenario}`);
-				}
-				const transcriptBudgetInput = opts.transcriptBudget?.trim() ?? "";
-				const transcriptBudget =
-					transcriptBudgetInput.length > 0 ? parseStrictPositiveId(transcriptBudgetInput) : null;
-				if (transcriptBudgetInput.length > 0 && transcriptBudget === null) {
-					throw new Error(
-						`Invalid transcript budget: ${transcriptBudgetInput || opts.transcriptBudget}`,
-					);
-				}
-				const observerTemperatureInput = opts.observerTemperature?.trim() ?? "";
-				let observerTemperature: number | undefined;
-				if (observerTemperatureInput.length > 0) {
-					const parsed = Number(observerTemperatureInput);
-					if (!Number.isFinite(parsed)) {
-						throw new Error(
-							`Invalid observer temperature: ${observerTemperatureInput || opts.observerTemperature}`,
-						);
-					}
-					observerTemperature = parsed;
-				}
-				const maxOutputTokensInput = opts.maxOutputTokens?.trim() ?? "";
-				const maxOutputTokens =
-					maxOutputTokensInput.length > 0 ? parseStrictPositiveId(maxOutputTokensInput) : null;
-				if (maxOutputTokensInput.length > 0 && maxOutputTokens === null) {
-					throw new Error(
-						`Invalid max output tokens: ${maxOutputTokensInput || opts.maxOutputTokens}`,
-					);
-				}
-				const observerConfig = loadObserverConfig();
-				const observerConfigWithOverrides = {
-					...observerConfig,
-					observerTemperature: observerTemperature ?? observerConfig.observerTemperature,
-					observerOpenAIUseResponses: resolveOpenAIResponsesOverride(
-						opts.openaiResponses,
-						observerConfig.observerOpenAIUseResponses,
-					),
-					observerReasoningEffort:
-						opts.reasoningEffort === undefined
-							? observerConfig.observerReasoningEffort
-							: opts.reasoningEffort.trim() || null,
-					observerReasoningSummary:
-						opts.reasoningSummary === undefined
-							? observerConfig.observerReasoningSummary
-							: opts.reasoningSummary.trim() || null,
-					observerMaxOutputTokens:
-						maxOutputTokens ??
-						observerConfig.observerMaxOutputTokens ??
-						observerConfig.observerMaxTokens,
-					observerExplicitConfigKeys:
-						maxOutputTokens === null
-							? observerConfig.observerExplicitConfigKeys
-							: [
-									...new Set([
-										...(observerConfig.observerExplicitConfigKeys ?? []),
-										"observerMaxOutputTokens",
-									]),
-								],
-				};
-				const observer = new ObserverClient(observerConfigWithOverrides);
-				const replayDb = connectReadOnly(resolveDbPath(resolveDbOpt(opts)));
-				const result = await (async () => {
-					try {
-						return opts.observerTierRouting === true
-							? await replayBatchExtractionWithTierRouting(replayDb, observerConfigWithOverrides, {
-									batchId,
-									scenarioId: scenario.id,
-									transcriptBudget: transcriptBudget ?? undefined,
-								})
-							: await replayBatchExtraction(replayDb, observer, {
-									batchId,
-									scenarioId: scenario.id,
-									transcriptBudget: transcriptBudget ?? undefined,
-								});
-					} finally {
-						replayDb.close();
-					}
-				})();
-
-				if (opts.json) {
-					console.log(JSON.stringify(result, null, 2));
-					return;
-				}
-
-				p.intro("codemem memory extraction-replay");
-				p.log.info(
-					[
-						`Scenario: ${result.scenario.id} — ${result.scenario.title}`,
-						`Batch: ${result.target.batchId}`,
-						`Session: ${result.target.sessionId}`,
-						`Observer: ${result.observer.provider}/${result.observer.model}`,
-						`Tier: ${result.observer.tier ?? "manual"}`,
-						`OpenAI Responses: ${result.observer.openaiUseResponses ? "yes" : "no"}`,
-						`Reasoning effort: ${result.observer.reasoningEffort ?? "none"}`,
-						`Classification: ${result.classification.status}`,
-						`Pass: ${result.evaluation.pass ? "yes" : "no"}`,
-					].join("\n"),
-				);
-				if (result.classification.reason) {
-					p.log.message(`Classification reason: ${result.classification.reason}`);
-				}
-				if (result.evaluation.failureReasons.length > 0) {
-					p.log.warn("Failure reasons:");
-					for (const reason of result.evaluation.failureReasons) {
-						p.log.message(`  - ${reason}`);
-					}
-				}
-				p.log.info(
-					[
-						`Fresh summaries: ${result.evaluation.counts.summaries}`,
-						`Fresh observations: ${result.evaluation.counts.observations}`,
-						`Summary thread coverage: ${result.evaluation.coverage.summaryThreadCoverage}`,
-						`Observation thread coverage: ${result.evaluation.coverage.observationThreadCoverage}`,
-						`Total thread coverage: ${result.evaluation.coverage.totalThreadCoverage}`,
-					].join("\n"),
-				);
-				p.outro("done");
-			} catch (error) {
-				const message = error instanceof Error ? error.message : "Extraction replay failed";
-				if (opts.json) {
-					emitJsonError("extraction_replay_failed", message);
-				} else {
-					p.log.error(message);
-					process.exitCode = 1;
-				}
-				return;
-			}
-		},
-	);
+	cmd.action((opts: JsonOpts) => emitFeatureUnavailable("memory extraction replay", 6, opts.json));
 	return cmd;
-}
-
-interface BenchmarkDispositionQuality {
-	summaryDisposition: {
-		expected: string;
-		actual: string;
-		score: number | null;
-	};
-}
-
-export function reconcileExtractionBenchmarkStatus<T extends BenchmarkDispositionQuality>(input: {
-	purpose: "shape_quality" | "replay_robustness";
-	classification: {
-		status: "pass" | "shape_fail" | "observer_no_output";
-		reason: string;
-	};
-	finalFailureReasons: string[];
-	initialQuality: T | null;
-	finalQuality: T | null;
-}): {
-	status: "pass" | "shape_fail" | "observer_no_output";
-	reason: string;
-	quality: T | null;
-	initialQuality: T | null;
-} {
-	const quality = input.finalQuality;
-	let status = input.classification.status;
-	let reason = input.classification.reason;
-	if (input.purpose === "shape_quality" && quality && status !== "observer_no_output") {
-		if (quality.summaryDisposition.score === 0) {
-			status = "shape_fail";
-			reason = `summary disposition ${quality.summaryDisposition.actual} does not satisfy expected ${quality.summaryDisposition.expected}`;
-		} else if (
-			status === "shape_fail" &&
-			quality.summaryDisposition.actual === "skip" &&
-			input.finalFailureReasons.length > 0 &&
-			input.finalFailureReasons.every((failure) => failure.startsWith("summary count "))
-		) {
-			status = "pass";
-			reason = "valid low-signal skip satisfies benchmark disposition";
-		}
-	}
-	return { status, reason, quality, initialQuality: input.initialQuality };
-}
-
-interface BenchmarkReasoningSettings {
-	reasoningEffort: string | null;
-	reasoningSummary: string | null;
-}
-
-export function summarizeBenchmarkReasoning(
-	runs: readonly BenchmarkReasoningSettings[],
-	fallback: BenchmarkReasoningSettings,
-): BenchmarkReasoningSettings {
-	const source = runs[0] ?? fallback;
-	const reasoningEfforts = new Set(runs.map((run) => run.reasoningEffort));
-	const reasoningSummaries = new Set(runs.map((run) => run.reasoningSummary));
-	return {
-		reasoningEffort: reasoningEfforts.size > 1 ? "mixed" : source.reasoningEffort,
-		reasoningSummary: reasoningSummaries.size > 1 ? "mixed" : source.reasoningSummary,
-	};
 }
 
 function createMemoryExtractionBenchmarkCommand(): Command {
@@ -1060,503 +803,8 @@ function createMemoryExtractionBenchmarkCommand(): Command {
 		);
 	addDbOption(cmd);
 	addJsonOption(cmd);
-	cmd.action(
-		async (
-			opts: DbOpts &
-				JsonOpts & {
-					benchmark: string;
-					observerProvider?: string;
-					observerModel?: string;
-					observerTierRouting?: boolean;
-					openaiResponses?: boolean;
-					reasoningEffort?: string;
-					reasoningSummary?: string;
-					maxOutputTokens?: string;
-					observerTemperature?: string;
-					transcriptBudget?: string;
-					repetitions?: string;
-				},
-		) => {
-			try {
-				const benchmarkId = opts.benchmark?.trim() ?? "";
-				const benchmark = getExtractionBenchmarkProfile(benchmarkId);
-				if (!benchmark) {
-					throw new Error(`Unknown extraction benchmark: ${benchmarkId || opts.benchmark}`);
-				}
-				const transcriptBudgetInput = opts.transcriptBudget?.trim() ?? "";
-				const transcriptBudget =
-					transcriptBudgetInput.length > 0 ? parseStrictPositiveId(transcriptBudgetInput) : null;
-				if (transcriptBudgetInput.length > 0 && transcriptBudget === null) {
-					throw new Error(
-						`Invalid transcript budget: ${transcriptBudgetInput || opts.transcriptBudget}`,
-					);
-				}
-				const observerTemperatureInput = opts.observerTemperature?.trim() ?? "";
-				let observerTemperature: number | undefined;
-				if (observerTemperatureInput.length > 0) {
-					const parsed = Number(observerTemperatureInput);
-					if (!Number.isFinite(parsed)) {
-						throw new Error(
-							`Invalid observer temperature: ${observerTemperatureInput || opts.observerTemperature}`,
-						);
-					}
-					observerTemperature = parsed;
-				}
-				const maxOutputTokensInput = opts.maxOutputTokens?.trim() ?? "";
-				const maxOutputTokens =
-					maxOutputTokensInput.length > 0 ? parseStrictPositiveId(maxOutputTokensInput) : null;
-				if (maxOutputTokensInput.length > 0 && maxOutputTokens === null) {
-					throw new Error(
-						`Invalid max output tokens: ${maxOutputTokensInput || opts.maxOutputTokens}`,
-					);
-				}
-				const repetitionsInput = opts.repetitions?.trim() ?? "1";
-				const repetitions = parseStrictPositiveId(repetitionsInput);
-				if (repetitions === null || repetitions > 10) {
-					throw new Error(`Invalid repetitions: ${repetitionsInput || opts.repetitions}`);
-				}
-				const observerConfig = loadObserverConfig();
-				const observerConfigWithOverrides = {
-					...observerConfig,
-					observerProvider: opts.observerProvider?.trim() || observerConfig.observerProvider,
-					observerModel: opts.observerModel?.trim() || observerConfig.observerModel,
-					observerTemperature: observerTemperature ?? observerConfig.observerTemperature,
-					observerOpenAIUseResponses: resolveOpenAIResponsesOverride(
-						opts.openaiResponses,
-						observerConfig.observerOpenAIUseResponses,
-					),
-					observerReasoningEffort:
-						opts.reasoningEffort === undefined
-							? observerConfig.observerReasoningEffort
-							: opts.reasoningEffort.trim() || null,
-					observerReasoningSummary:
-						opts.reasoningSummary === undefined
-							? observerConfig.observerReasoningSummary
-							: opts.reasoningSummary.trim() || null,
-					observerMaxOutputTokens:
-						maxOutputTokens ??
-						observerConfig.observerMaxOutputTokens ??
-						observerConfig.observerMaxTokens,
-					observerExplicitConfigKeys:
-						maxOutputTokens === null
-							? observerConfig.observerExplicitConfigKeys
-							: [
-									...new Set([
-										...(observerConfig.observerExplicitConfigKeys ?? []),
-										"observerMaxOutputTokens",
-									]),
-								],
-				};
-				const observer = new ObserverClient(observerConfigWithOverrides);
-				const runs = [] as Array<{
-					iteration: number;
-					batchId: number;
-					sessionId: number;
-					label: string;
-					purpose: "shape_quality" | "replay_robustness";
-					complexity: string;
-					scenarioId: string;
-					expectedTier: string | null;
-					expectedSummaryDisposition: "required" | "optional" | "skip";
-					analysis: {
-						eventSpan: number;
-						promptCount: number;
-						toolCount: number;
-						transcriptLength: number;
-					};
-					status: "pass" | "shape_fail" | "observer_no_output";
-					reason: string;
-					tier: string;
-					provider: string;
-					model: string;
-					transport: string;
-					requestedModel: string;
-					resolvedModel: string | null;
-					modelFallbackApplied: boolean;
-					modelFallbackReason: string | null;
-					openaiUseResponses: boolean;
-					reasoningEffort: string | null;
-					reasoningSummary: string | null;
-					maxOutputTokens: number | null;
-					temperature: number | null;
-					summaries: number;
-					observations: number;
-					repairApplied: boolean;
-					initial: {
-						raw: string | null;
-						status: "pass" | "shape_fail" | "observer_no_output";
-						reason: string;
-						pass: boolean;
-						failureReasons: string[];
-						summaries: number;
-						observations: number;
-						diagnostics: ExtractionStructuralDiagnostics | null;
-						elapsedMs: number | null;
-						usage: ObserverTokenUsage | null;
-						quality: ExtractionBenchmarkScore | null;
-					};
-					repair: {
-						applied: boolean;
-						raw: string | null;
-						status: "pass" | "shape_fail" | "observer_no_output" | null;
-						reason: string | null;
-						pass: boolean | null;
-						failureReasons: string[];
-						summaries: number | null;
-						observations: number | null;
-						diagnostics: ExtractionStructuralDiagnostics | null;
-						elapsedMs: number | null;
-						usage: ObserverTokenUsage | null;
-						quality: ExtractionBenchmarkScore | null;
-					};
-					telemetry: {
-						totalElapsedMs: number | null;
-						totalUsage: ObserverTokenUsage | null;
-					};
-					pricing: ReturnType<typeof getExtractionModelPricing>;
-					cost: {
-						initial: ExtractionModelCostEstimate | null;
-						repair: ExtractionModelCostEstimate | null;
-						total: ExtractionModelCostEstimate | null;
-						unavailableReason:
-							| "missing_usage"
-							| "unknown_model_pricing"
-							| "model_fallback_unresolved"
-							| null;
-					};
-					quality: ExtractionBenchmarkScore | null;
-				}>;
-				const replayDb = connectReadOnly(resolveDbPath(resolveDbOpt(opts)));
-				try {
-					for (let iteration = 1; iteration <= repetitions; iteration += 1) {
-						for (const batch of benchmark.batches) {
-							const scenarioId = batch.scenarioId ?? benchmark.scenarioId;
-							const result =
-								opts.observerTierRouting === true
-									? await replayBatchExtractionWithTierRouting(
-											replayDb,
-											observerConfigWithOverrides,
-											{
-												batchId: batch.batchId,
-												scenarioId,
-												transcriptBudget: transcriptBudget ?? undefined,
-											},
-										)
-									: await replayBatchExtraction(replayDb, observer, {
-											batchId: batch.batchId,
-											scenarioId,
-											transcriptBudget: transcriptBudget ?? undefined,
-										});
-							const costModel = result.observer.modelFallbackApplied
-								? result.observer.resolvedModel
-								: (result.observer.resolvedModel ?? result.observer.model);
-							const initialCost = costModel
-								? estimateExtractionModelCost(costModel, result.observer.initialUsage)
-								: null;
-							const repairCost = costModel
-								? estimateExtractionModelCost(costModel, result.observer.repairedUsage)
-								: null;
-							const totalCost = costModel
-								? estimateExtractionModelCost(costModel, result.observer.totalUsage)
-								: null;
-							const pricing = costModel ? getExtractionModelPricing(costModel) : null;
-							const costUnavailableReason = totalCost
-								? null
-								: result.observer.modelFallbackApplied && !result.observer.resolvedModel
-									? "model_fallback_unresolved"
-									: result.observer.totalUsage == null
-										? "missing_usage"
-										: "unknown_model_pricing";
-							const initialQuality = result.observer.initialDiagnostics
-								? scoreExtractionBenchmarkOutput({
-										parsed: result.observer.initialParsed,
-										diagnostics: result.observer.initialDiagnostics,
-										review: batch.review ?? {
-											status: "unreviewed",
-											reviewerNotes: "No durable-fact review has been recorded for this batch.",
-										},
-										estimatedCostUsd: initialCost?.totalCostUsd ?? null,
-										expectedSummaryDisposition: batch.expectedSummaryDisposition,
-									})
-								: null;
-							const repairQuality =
-								result.observer.repairedParsed && result.observer.repairedDiagnostics
-									? scoreExtractionBenchmarkOutput({
-											parsed: result.observer.repairedParsed,
-											diagnostics: result.observer.repairedDiagnostics,
-											review: batch.review ?? {
-												status: "unreviewed",
-												reviewerNotes: "No durable-fact review has been recorded for this batch.",
-											},
-											estimatedCostUsd: repairCost?.totalCostUsd ?? null,
-											expectedSummaryDisposition: batch.expectedSummaryDisposition,
-										})
-									: null;
-							const finalQuality = result.observer.diagnostics
-								? scoreExtractionBenchmarkOutput({
-										parsed: result.observer.parsed,
-										diagnostics: result.observer.diagnostics,
-										review: batch.review ?? {
-											status: "unreviewed",
-											reviewerNotes: "No durable-fact review has been recorded for this batch.",
-										},
-										estimatedCostUsd: totalCost?.totalCostUsd ?? null,
-										expectedSummaryDisposition: batch.expectedSummaryDisposition,
-									})
-								: null;
-							const reconciled = reconcileExtractionBenchmarkStatus({
-								purpose: batch.purpose,
-								classification: result.classification,
-								finalFailureReasons: result.evaluation.failureReasons,
-								initialQuality,
-								finalQuality,
-							});
-							runs.push({
-								iteration,
-								batchId: batch.batchId,
-								sessionId: batch.sessionId,
-								label: batch.label,
-								purpose: batch.purpose,
-								complexity: batch.complexity,
-								scenarioId,
-								expectedTier: batch.expectedTier ?? null,
-								expectedSummaryDisposition: batch.expectedSummaryDisposition,
-								analysis: {
-									eventSpan: result.analysis.eventSpan,
-									promptCount: result.analysis.promptCount,
-									toolCount: result.analysis.toolCount,
-									transcriptLength: result.analysis.transcriptLength,
-								},
-								status: reconciled.status,
-								reason: reconciled.reason,
-								tier: result.observer.tier ?? "manual",
-								provider: result.observer.provider,
-								model: result.observer.model,
-								transport: result.observer.transport,
-								requestedModel: result.observer.requestedModel,
-								resolvedModel: result.observer.resolvedModel,
-								modelFallbackApplied: result.observer.modelFallbackApplied,
-								modelFallbackReason: result.observer.modelFallbackReason,
-								openaiUseResponses: result.observer.openaiUseResponses,
-								reasoningEffort: result.observer.reasoningEffort,
-								reasoningSummary: result.observer.reasoningSummary,
-								maxOutputTokens: result.observer.maxOutputTokens,
-								temperature: result.observer.temperature,
-								summaries: result.evaluation.counts.summaries,
-								observations: result.evaluation.counts.observations,
-								repairApplied: result.observer.repairApplied,
-								initial: {
-									raw: result.observer.initialRaw,
-									status: result.initialClassification.status,
-									reason: result.initialClassification.reason,
-									pass: result.initialEvaluation.pass,
-									failureReasons: result.initialEvaluation.failureReasons,
-									summaries: result.initialEvaluation.counts.summaries,
-									observations: result.initialEvaluation.counts.observations,
-									diagnostics: result.observer.initialDiagnostics,
-									elapsedMs: result.observer.initialElapsedMs,
-									usage: result.observer.initialUsage,
-									quality: reconciled.initialQuality,
-								},
-								repair: {
-									applied: result.observer.repairApplied,
-									raw: result.observer.repairedRaw,
-									status: result.repairedClassification?.status ?? null,
-									reason: result.repairedClassification?.reason ?? null,
-									pass: result.repairedEvaluation?.pass ?? null,
-									failureReasons: result.repairedEvaluation?.failureReasons ?? [],
-									summaries: result.repairedEvaluation?.counts.summaries ?? null,
-									observations: result.repairedEvaluation?.counts.observations ?? null,
-									diagnostics: result.observer.repairedDiagnostics,
-									elapsedMs: result.observer.repairedElapsedMs,
-									usage: result.observer.repairedUsage,
-									quality: repairQuality,
-								},
-								telemetry: {
-									totalElapsedMs: result.observer.totalElapsedMs,
-									totalUsage: result.observer.totalUsage,
-								},
-								pricing,
-								cost: {
-									initial: initialCost,
-									repair: repairCost,
-									total: totalCost,
-									unavailableReason: costUnavailableReason,
-								},
-								quality: reconciled.quality,
-							});
-						}
-					}
-				} finally {
-					replayDb.close();
-				}
-				const reviewedQualityRuns = runs.filter((run) => run.quality?.weightedQualityScore != null);
-				const knownCostRuns = runs.filter((run) => run.cost.total != null);
-				const knownElapsedRuns = runs.filter((run) => run.telemetry.totalElapsedMs != null);
-				const summary = {
-					repetitions,
-					total: runs.length,
-					shapeQualityTotal: runs.filter((run) => run.purpose === "shape_quality").length,
-					shapeQualityPasses: runs.filter(
-						(run) => run.purpose === "shape_quality" && run.status === "pass",
-					).length,
-					shapeQualityFails: runs.filter(
-						(run) => run.purpose === "shape_quality" && run.status === "shape_fail",
-					).length,
-					expectedTierTotal: runs.filter((run) => run.expectedTier != null).length,
-					expectedTierMatches: runs.filter(
-						(run) => run.expectedTier != null && run.expectedTier === run.tier,
-					).length,
-					robustnessNoOutput: runs.filter((run) => run.status === "observer_no_output").length,
-					summaryDispositionTotal: runs.filter((run) => run.quality != null).length,
-					summaryDispositionMatches: runs.filter(
-						(run) => run.quality?.summaryDisposition.score === 1,
-					).length,
-					reviewedQualityRuns: reviewedQualityRuns.length,
-					knownCostRuns: knownCostRuns.length,
-					unknownCostRuns: runs.length - knownCostRuns.length,
-					missingUsageRuns: runs.filter((run) => run.cost.unavailableReason === "missing_usage")
-						.length,
-					unknownPricingRuns: runs.filter(
-						(run) => run.cost.unavailableReason === "unknown_model_pricing",
-					).length,
-					fallbackUnresolvedRuns: runs.filter(
-						(run) => run.cost.unavailableReason === "model_fallback_unresolved",
-					).length,
-					totalKnownCostUsd: knownCostRuns.reduce(
-						(sum, run) => sum + (run.cost.total?.totalCostUsd ?? 0),
-						0,
-					),
-					knownElapsedRuns: knownElapsedRuns.length,
-					totalKnownElapsedMs: knownElapsedRuns.reduce(
-						(sum, run) => sum + (run.telemetry.totalElapsedMs ?? 0),
-						0,
-					),
-					perBatchStability: benchmark.batches.map((batch) => {
-						const batchRuns = runs.filter((run) => run.batchId === batch.batchId);
-						const passes = batchRuns.filter((run) => run.status === "pass").length;
-						return {
-							batchId: batch.batchId,
-							purpose: batch.purpose,
-							passes,
-							total: batchRuns.length,
-							passRate: batchRuns.length > 0 ? passes / batchRuns.length : null,
-							statuses: batchRuns.map((run) => run.status),
-						};
-					}),
-				};
-				const uniqueObserverKeys = Array.from(
-					new Set(runs.map((run) => `${run.provider}::${run.model}::${run.transport}`)),
-				);
-				const benchmarkReasoning = summarizeBenchmarkReasoning(runs, {
-					reasoningEffort: observer.reasoningEffort,
-					reasoningSummary: observer.reasoningSummary,
-				});
-				const observerSummary =
-					opts.observerTierRouting === true
-						? {
-								provider:
-									uniqueObserverKeys.length === 1
-										? (runs[0]?.provider ?? observer.provider)
-										: "mixed",
-								model:
-									uniqueObserverKeys.length === 1 ? (runs[0]?.model ?? observer.model) : "mixed",
-								transport:
-									uniqueObserverKeys.length === 1 ? (runs[0]?.transport ?? "unknown") : "mixed",
-								tierRouting: true,
-								openaiUseResponses:
-									uniqueObserverKeys.length === 1
-										? (runs[0]?.openaiUseResponses ?? observer.openaiUseResponses)
-										: null,
-								reasoningEffort: benchmarkReasoning.reasoningEffort,
-								reasoningSummary: benchmarkReasoning.reasoningSummary,
-								maxOutputTokens:
-									uniqueObserverKeys.length === 1 ? (runs[0]?.maxOutputTokens ?? null) : null,
-								temperature:
-									uniqueObserverKeys.length === 1 ? (runs[0]?.temperature ?? null) : null,
-								transcriptBudget: transcriptBudget ?? null,
-								selectedObservers: uniqueObserverKeys,
-							}
-						: {
-								provider: observer.provider,
-								model: observer.model,
-								transport: runs[0]?.transport ?? observer.getStatus().runtime,
-								tierRouting: false,
-								openaiUseResponses: observer.openaiUseResponses,
-								reasoningEffort: benchmarkReasoning.reasoningEffort,
-								reasoningSummary: benchmarkReasoning.reasoningSummary,
-								maxOutputTokens: runs[0]?.maxOutputTokens ?? null,
-								temperature: runs[0]?.temperature ?? null,
-								transcriptBudget: transcriptBudget ?? null,
-								selectedObservers: uniqueObserverKeys,
-							};
-				const output = {
-					benchmark: {
-						id: benchmark.id,
-						title: benchmark.title,
-						scenarioId: benchmark.scenarioId,
-						modelCandidates: benchmark.modelCandidates,
-					},
-					observer: observerSummary,
-					summary,
-					runs,
-				};
-
-				if (opts.json) {
-					console.log(JSON.stringify(output, null, 2));
-					return;
-				}
-
-				p.intro("codemem memory extraction-benchmark");
-				p.log.info(
-					[
-						`Benchmark: ${benchmark.id} — ${benchmark.title}`,
-						`Observer: ${observerSummary.provider}/${observerSummary.model}`,
-						`Transport: ${observerSummary.transport}`,
-						`Tier routing: ${opts.observerTierRouting === true ? "yes" : "no"}`,
-						`OpenAI Responses: ${observerSummary.openaiUseResponses === null ? "mixed" : observerSummary.openaiUseResponses ? "yes" : "no"}`,
-						`Reasoning effort: ${observerSummary.reasoningEffort ?? "not transmitted"}`,
-						`Reasoning summary: ${observerSummary.reasoningSummary ?? "not transmitted"}`,
-						`Max output tokens: ${observerSummary.maxOutputTokens ?? "mixed"}`,
-						`Temperature: ${observerSummary.transport === "mixed" ? "mixed" : (observerSummary.temperature ?? "not transmitted")}`,
-						`Transcript budget override: ${transcriptBudget ?? "default"}`,
-						`Repetitions: ${summary.repetitions}`,
-						`Shape-quality passes: ${summary.shapeQualityPasses}/${summary.shapeQualityTotal}`,
-						`Shape-quality fails: ${summary.shapeQualityFails}`,
-						`Expected-tier matches: ${summary.expectedTierMatches}/${summary.expectedTierTotal}`,
-						`Observer no-output cases: ${summary.robustnessNoOutput}`,
-						`Summary disposition matches: ${summary.summaryDispositionMatches}/${summary.summaryDispositionTotal}`,
-						`Reviewed quality runs: ${summary.reviewedQualityRuns} (compare per-run dimensions; scores are fixture-specific)`,
-						`Known estimated cost: $${summary.totalKnownCostUsd.toFixed(6)} (${summary.knownCostRuns}/${summary.total}; missing usage=${summary.missingUsageRuns}, unknown pricing=${summary.unknownPricingRuns}, unresolved fallback=${summary.fallbackUnresolvedRuns})`,
-						`Known elapsed time: ${summary.totalKnownElapsedMs}ms (${summary.knownElapsedRuns}/${summary.total} run(s))`,
-					].join("\n"),
-				);
-				for (const run of runs) {
-					const qualityLabel =
-						run.quality?.weightedQualityScore == null
-							? "n/a"
-							: run.quality.weightedQualityScore.toFixed(3);
-					const costLabel =
-						run.cost.total == null ? "n/a" : `$${run.cost.total.totalCostUsd.toFixed(6)}`;
-					const latencyLabel =
-						run.telemetry.totalElapsedMs == null ? "n/a" : `${run.telemetry.totalElapsedMs}ms`;
-					const missingRequired = run.quality?.requiredRecall.missingLabelIds.join(",") || "none";
-					p.log.message(
-						`  [${run.batchId}#${run.iteration}] ${run.status.padEnd(18)} ${run.complexity.padEnd(10)} tier=${run.tier.padEnd(6)} expected=${(run.expectedTier ?? "n/a").padEnd(6)} disposition=${run.quality?.summaryDisposition.actual ?? "n/a"}/${run.expectedSummaryDisposition} span=${String(run.analysis.eventSpan).padEnd(3)} prompts=${run.analysis.promptCount} tools=${String(run.analysis.toolCount).padEnd(2)} transcript=${run.analysis.transcriptLength} ${run.provider}/${run.model} [${run.transport}] initial=${run.initial.summaries}s/${run.initial.observations}o final=${run.summaries}s/${run.observations}o quality=${qualityLabel} coverage=${run.quality?.weightedQualityCoverage?.toFixed(3) ?? "n/a"} required_missing=${missingRequired} cost=${costLabel} latency=${latencyLabel} schema_loss=${run.initial.diagnostics?.dataLoss === true ? "yes" : "no"} fallback=${run.modelFallbackApplied ? "yes" : "no"} repair=${run.repairApplied ? "yes" : "no"} — ${run.label}`,
-					);
-				}
-				p.outro("done");
-			} catch (error) {
-				const message = error instanceof Error ? error.message : "Extraction benchmark failed";
-				if (opts.json) {
-					emitJsonError("extraction_benchmark_failed", message);
-				} else {
-					p.log.error(message);
-					process.exitCode = 1;
-				}
-				return;
-			}
-		},
+	cmd.action((opts: JsonOpts) =>
+		emitFeatureUnavailable("memory extraction benchmark", 6, opts.json),
 	);
 	return cmd;
 }

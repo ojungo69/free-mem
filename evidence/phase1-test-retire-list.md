@@ -6,6 +6,7 @@ post-A7: `f1e84cf` / `/tmp/free-mem-phase1-post-t028.json` (SHA-256 `b475b510a9b
 post-T030: `/tmp/free-mem-phase1-post-t030-final.json` (SHA-256 `3b84e9d1f62a43ab6b00cef098ce475a24c7f9b6450489fe0bfacf0b4611e6b3`)
 post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164eb5e1ee84c23e087a33a811bad05949f3d5f3108ca1`)
 post-T043: `/tmp/free-mem-phase1-post-t043-serial-final.json` (SHA-256 `d2e58af19a2b84bf7fc005ec931fcb9dcacb27445b05a7e293d29d405512bdfa`)
+post-T044: `/tmp/free-mem-phase1-post-t044-serial-final3.json` (SHA-256 `f570ca29bb73d8987e3ad8e55af963bd1979bfd5d358f89de85f7ef313c91d17`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -21,6 +22,9 @@ post-T043: `/tmp/free-mem-phase1-post-t043-serial-final.json` (SHA-256 `d2e58af1
 | T043 retire | 61 |
 | T043 登録済み追加 | 13 |
 | post-T043 | 1,894 |
+| T044 retire | 61 |
+| T044 登録済み追加 | 3 |
+| post-T044 | 1,836 |
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -43,6 +47,8 @@ post-T031 は total 2,006 / passed 1,996 / failed 7 / todo 3。post-T030 との�
 
 T043 は直前 1,942 件から旧 viewer 直結 test 61 件を retire し、manifest 登録済み 13 件を追加した。機械式は `1,942 - 61 + 13 = 1,894`。post-T043 の serial full suite は 396 suites / total 1,894 / passed 1,891 / todo 3 / failed 0。通常の並列 full run では、互いに異なる既存 test が 1 件ずつ resource/concurrency failure になったため、各対象を単独再実行して成功を確認したうえで serial full suite を正本にした。
 
+T044 は post-T043 1,894 件から旧 CLI local DB / prompt ledger / 後続 Phase 実装 test 61 件を retire し、manifest 登録済み 3 件だけを追加した。機械式は `1,894 - 61 + 3 = 1,836`。post-T044 の serial full suite は 390 suites / total 1,836 / passed 1,833 / todo 3 / failed 0。post-only 完全修飾名は `P1-T044-01..03` の3件と完全一致する。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -57,6 +63,7 @@ T043 は直前 1,942 件から旧 viewer 直結 test 61 件を retire し、mani
 | R-AUTH | `packages/core/src/observer-auth.test.ts`, `observer-client.test.ts` | 15 | T030 で OAuth consumer、OpenCode auth cache、command 認証を物理削除 | retire title は `No test found`、登録 token test が explicit→env→file のみを固定 |
 | R-SIDECAR | core/UI/viewer の observer runtime test | 44 | T031 で Claude/Codex subprocess、自動選択、command 設定、UI surface を物理削除 | retire title/file は `No test found`、登録 token tests が旧 runtime の API-only 化と設定非表示を固定 |
 | R-T043-VIEWER | viewer direct DB/mutation/transport test + core viewer HTTP hook test | 61 | T043 で viewer を認証済み read-only daemon RPC relay に限定し、direct DB・mutation・hook ingest・旧 pack transport を物理削除 | retire title/file は `No test found`。登録済み T043 13 件が bearer/nonce/session/origin/CSP/read-only/RPC/503 を固定 |
+| R-T044-CLI | CLI local DB/ledger/Phase 6-7 implementation test | 61 | T044 で production CLI を daemon RPC 化し、独立 prompt ledger と後続 Phase の local 実装を削除 | retire title/file は `No test found`。登録済み T044 3 件が endpoint map / typed stub / no DB fallback を固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -244,6 +251,72 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 - packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > returns {inserted:0, skipped:1} for unsupported hook event
 - packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > returns 400 for invalid JSON
 - packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > allows POST without Origin header (CLI callers)
+
+## T044 retired fully qualified names（R-T044-CLI、61）
+
+```text
+packages/cli/src/commands/distill.test.ts > distill command does not write when the model declines to draft a rule
+packages/cli/src/commands/distill.test.ts > distill command drafts a rule for the top candidate and prints a diff without writing
+packages/cli/src/commands/distill.test.ts > distill command emits JSON candidates and passes parsed options to core
+packages/cli/src/commands/distill.test.ts > distill command emits JSON usage errors without throwing
+packages/cli/src/commands/distill.test.ts > distill command falls back to unjudged output when no observer is configured
+packages/cli/src/commands/distill.test.ts > distill command judges before drafting so the draft targets the top surviving candidate
+packages/cli/src/commands/distill.test.ts > distill command judges candidates by default and drops routine-activity clusters from the report
+packages/cli/src/commands/distill.test.ts > distill command keeps unjudged candidates when the model output is unparseable
+packages/cli/src/commands/distill.test.ts > distill command overfetches when judging and backfills routine drops up to the limit
+packages/cli/src/commands/distill.test.ts > distill command refuses to draft a project-scoped candidate from another repo
+packages/cli/src/commands/distill.test.ts > distill command renders evidence only when explain is enabled
+packages/cli/src/commands/distill.test.ts > distill command reports a structured error when drafting has no observer
+packages/cli/src/commands/distill.test.ts > distill command skips judging entirely with --no-judge
+packages/cli/src/commands/embed.test.ts > embed command prefers explicit --project over CODEMEM_PROJECT
+packages/cli/src/commands/embed.test.ts > embed command supports all-projects override
+packages/cli/src/commands/memory-inject.test.ts > memory inject command closes the store when inject pack generation fails
+packages/cli/src/commands/memory-inject.test.ts > memory inject command prints an empty string when inject returns no pack text
+packages/cli/src/commands/memory.test.ts > benchmark observer overrides preserves configured Responses transport unless the CLI flag enables it
+packages/cli/src/commands/memory.test.ts > benchmark reasoning summaries preserves explicit null reasoning from tier-routed benchmark runs
+packages/cli/src/commands/memory.test.ts > memory command error boundaries accepts a valid skip when the final failure is only summary count
+packages/cli/src/commands/memory.test.ts > memory command error boundaries does not accept a repaired skip with non-summary final failures
+packages/cli/src/commands/memory.test.ts > memory command error boundaries does not throw and emits a JSON error for an invalid extraction-replay batch id
+packages/cli/src/commands/memory.test.ts > memory command error boundaries does not throw and emits a JSON error for an unknown extraction-benchmark id
+packages/cli/src/commands/memory.test.ts > memory command error boundaries preserves a repaired benchmark pass when the initial disposition failed
+packages/cli/src/commands/memory.test.ts > memory command error boundaries preserves observer_no_output before summary disposition scoring
+packages/cli/src/commands/memory.test.ts > memory command error boundaries rejects unsafe extraction-benchmark repetition counts before running a model
+packages/cli/src/commands/memory.test.ts > memory command scope safety does not forget memories outside visible sharing domains
+packages/cli/src/commands/memory.test.ts > memory command scope safety stores vectors for manually remembered memories
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport delegates UUID and timestamp validation without echoing rejected values
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport handles failure recording, successful delivery retry, and cache reuse
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport records an instrumented combined pack through the CLI boundary
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport surfaces a changed-artifact idempotency conflict after caller cache loss
+packages/cli/src/commands/pack.test.ts > pack command accepts only bounded allowlisted internal ledger metadata
+packages/cli/src/commands/pack.test.ts > pack command dispatches the nested pack trace commander path
+packages/cli/src/commands/pack.test.ts > pack command emits a stable ledger conflict outcome with the built pack JSON
+packages/cli/src/commands/pack.test.ts > pack command emits legacy pack JSON when internal ledger stdin is malformed
+packages/cli/src/commands/pack.test.ts > pack command emits structured json errors for trace failures
+packages/cli/src/commands/pack.test.ts > pack command emits structured usage errors for invalid main pack numeric input
+packages/cli/src/commands/pack.test.ts > pack command emits structured usage errors for invalid numeric json input
+packages/cli/src/commands/pack.test.ts > pack command keeps storage-unavailable ledger failures fail-open
+packages/cli/src/commands/pack.test.ts > pack command omits project filters for all-projects pack requests
+packages/cli/src/commands/pack.test.ts > pack command passes explicit compression mode through main pack command
+packages/cli/src/commands/pack.test.ts > pack command rejects invalid compression mode
+packages/cli/src/commands/pack.test.ts > pack command supports the commander command path with json output
+packages/cli/src/commands/pack.test.ts > pack command waits for internal ledger persistence before emitting instrumented pack output
+packages/cli/src/commands/stats.test.ts > stats command auto-initializes a fresh database before reporting stats
+packages/cli/src/commands/stats.test.ts > stats command emits bounded machine-readable and concise attribution diagnostics without sensitive content
+packages/cli/src/commands/stats.test.ts > stats command reports memory counts through the local scope visibility gate
+packages/cli/src/commands/status.test.ts > status command does not treat observer tuning alone as configured
+packages/cli/src/commands/status.test.ts > status command emits the exact required healthy JSON shape with one stdout object
+packages/cli/src/commands/status.test.ts > status command keeps an unready viewer running and reports its readiness warning
+packages/cli/src/commands/status.test.ts > status command projects an unconfigured observer and subsystem failures
+packages/cli/src/commands/status.test.ts > status command reads observer presence from environment evidence
+packages/cli/src/commands/status.test.ts > status command registers shared options and no positional arguments
+packages/cli/src/commands/status.test.ts > status command rejects unknown options as usage errors
+packages/cli/src/commands/status.test.ts > status command renders compact human output and detailed command suggestions
+packages/cli/src/commands/status.test.ts > status command reports a missing database without creating it
+packages/cli/src/commands/status.test.ts > status command reports retryable observer failures as backoff warnings
+packages/cli/src/commands/status.test.ts > status command sets ok false for error attention while still exiting zero
+packages/cli/src/commands/status.test.ts > status command suppresses newer-schema compatibility warnings in JSON mode
+packages/cli/src/commands/status.test.ts > status command uses configured loopback viewer defaults when no PID record exists
+```
 
 ## Retired fully qualified names（machine-generated）
 

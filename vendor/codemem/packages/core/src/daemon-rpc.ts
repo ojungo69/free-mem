@@ -12,6 +12,7 @@ import {
 	type RpcSuccess,
 	type TypedRpcError,
 } from "./daemon-rpc-contract.js";
+import { isEmbeddingDisabled } from "./db.js";
 import { validateMemoryKind } from "./memory-kinds.js";
 import { dispatchClassA, MutationConflictError } from "./mutation-dispatcher.js";
 import {
@@ -19,6 +20,7 @@ import {
 	NORMALIZED_SCHEMA_VERSION,
 	validateNormalizedEvent,
 } from "./normalized-event.js";
+import { collectOperationalStatus } from "./operational-status.js";
 
 export { NORMALIZED_SCHEMA_VERSION } from "./normalized-event.js";
 
@@ -44,6 +46,7 @@ import type { ViewerReadHandler } from "./viewer-read.js";
 import type { WriterActor } from "./writer-actor.js";
 
 type RpcIdentity = { pid: number; nonce: string };
+const RECENT_FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function spoolHealth(dataDir: string): Record<string, unknown> {
 	try {
@@ -403,6 +406,10 @@ async function handleMethod(
 		};
 	}
 	if (method === "GET /v1/doctor") {
+		const operationalStatus = collectOperationalStatus(ctx.writer, {
+			embeddingDisabled: isEmbeddingDisabled(),
+			recentFailureCutoff: new Date(Date.now() - RECENT_FAILURE_WINDOW_MS).toISOString(),
+		});
 		return {
 			status: "ok",
 			instanceId: ctx.identity.nonce,
@@ -419,6 +426,7 @@ async function handleMethod(
 					p95TargetMs: 150,
 					budgets: HOOK_DELIVERY_BUDGETS,
 				},
+				operationalStatus,
 			},
 		};
 	}

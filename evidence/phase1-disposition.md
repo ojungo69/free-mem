@@ -86,8 +86,8 @@ Class B の `payloadHash` は `operationId` / `payloadHash` を除く allowliste
 | prompt-pack-ledger | 独立 endpoint を廃止。pack/search/get の daemon 内 ledger receipt に統合 | typed 無効化後に command 削除 | − | − |
 | recent | `POST /v1/search` `{ requestId,mode:"recent",filters,limit }`。不在 = typed error | RPC read | read + A ledger | user-authority |
 | search | `POST /v1/search` `{ requestId,mode:"search",query,filters,limit }`。不在 = typed error | RPC read | read + A ledger | user-authority |
-| stats | `GET /v1/view/stats`。不在 = typed error | RPC read | read | user-authority |
-| status.ts の `connectReadOnly` | `GET /v1/health` + 必要時 `GET /v1/doctor`。不在 = `not_running` 表示 + exit 0 | RPC read（readonly 例外なし） | read | user-authority |
+| stats | `GET /v1/view` `{collection:"stats"}`。不在 = typed error | RPC read | read | user-authority |
+| status | `GET /v1/health` + `GET /v1/doctor`。不在 = `not_running` / DB `unknown` 表示 + exit 0 | RPC read（readonly 例外なし） | read | user-authority |
 | memory role-report / role-compare / artifact-report / relink-report / relink-plan | `POST /v1/jobs` kind = `report.memory-role|report.role-compare|report.artifact|report.relink|plan.relink` → `GET /v1/jobs/:id`。不在/応答不明 = 自動 retry なし | daemon jobs(T045) | C | user-authority |
 | memory extraction-report | `POST /v1/jobs` kind = `report.extraction` → job result。不在/応答不明 = 自動 retry なし | daemon job(T045) | C | user-authority |
 | memory extraction-replay / extraction-benchmark | endpoint なし。不在時を含め常に `{ code:"feature_unavailable", phase:6 }` | typed 無効化（Phase 6 で再設計） | − | user-authority |
@@ -242,3 +242,13 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 | viewer read relay | `GET /v1/view` + allowlisted context/health RPC | viewer processのDB handleとmutation/ingest/config-write routeを削除。daemon不在はtyped 503でDB fallbackなし | read | user-authority |
 | viewer public health | `GET /api/health` → `GET /v1/health` | liveness metadataだけを非認証で返す。probeは未検証loopback listenerへBearerを送らない。data APIは引き続き認証必須 | read | − |
 | viewer web policy | loopback HTTP response headers / static bundle | `script-src 'self'`、第三者script/fontなし、frame/object/base/form拒否。既存inline CSSのためstyleのみ`unsafe-inline` | − | − |
+
+## T044 新設・確定 surface（2026-08-14）
+
+| surface | path | disposition | class | authority |
+|---|---|---|---|---|
+| shared CLI RPC client | `@codemem/mcp` `createMcpRpcClient` | CLI/MCP が同一 endpoint allowlist、project policy pre-redaction、typed failure、shared spool を使用。client process は DB を開かない | read / A | caller に従う |
+| CLI event/remember fail-over | `requestWithSpool` → `control/spool/ready` | RPC 前に redaction。event は adapter metadata を保持。forget と read は spool せず typed failure | A | event = agent-callable、remember/forget = user-authority |
+| CLI read surface | context/search/memory/view/health/doctor RPC | pack/search/recent/show/stats/status は daemon read。独立 prompt-pack ledger command は削除 | read + A ledger | user-authority |
+| later-phase typed stub | distill / embed / extraction replay / benchmark | local DB/model 実装を削除し Phase 6/7 `feature_unavailable` のみ | − | user-authority |
+| CLI service lifecycle | `serve start|stop|restart` | resolved data directory の daemon socket と viewer を同時管理。explicit legacy DB path は data directory の導出だけに使用 | − | user-authority |

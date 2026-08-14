@@ -43,9 +43,8 @@ describe("root command tree", () => {
 			.map((command) => command.name())
 			.filter((name) => name !== "help" && !visibleNames.has(name));
 
-		expect(hiddenNames).toEqual(
-			expect.arrayContaining(["show", "forget", "remember", "prompt-pack-ledger"]),
-		);
+		expect(hiddenNames).toEqual(expect.arrayContaining(["show", "forget", "remember"]));
+		expect(program.commands.map((command) => command.name())).not.toContain("prompt-pack-ledger");
 		for (const hiddenName of hiddenNames) {
 			expect(ROOT_COMPLETION_COMMANDS).not.toContain(hiddenName);
 		}

@@ -1,7 +1,20 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startDaemon } from "@codemem/core";
+import {
+	hashMutationPayload,
+	NORMALIZED_SCHEMA_VERSION,
+	ReadOnlyActor,
+	startDaemon,
+} from "@codemem/core";
 import { describe, expect, it } from "vitest";
 import { createMcpRpcClient, mcpRequestId } from "./rpc-client.js";
 
@@ -54,6 +67,47 @@ describe("MCP daemon RPC client", () => {
 				requestId: mcpRequestId("memory_get", "direct-2"),
 			});
 			expect(JSON.stringify(fetched)).not.toContain("TOKEN_SUPERSECRET");
+
+			const idempotencyKey = "mcp-event-redaction";
+			const event = {
+				schemaVersion: NORMALIZED_SCHEMA_VERSION,
+				eventId: "mcp-event-redaction-1",
+				idempotencyKey,
+				agent: "opencode",
+				nativeSessionId: "mcp-redaction-session",
+				projectKey: "demo",
+				workspaceKey: fixture.root,
+				cwd: fixture.root,
+				kind: "user_prompted",
+				occurredAt: "2026-08-14T00:00:00.000Z",
+				payload: {
+					text: "TOKEN_SUPERSECRET <private>hidden</private> <local-only>device</local-only>",
+				},
+				sourceHash: hashMutationPayload({ secret: "TOKEN_SUPERSECRET" }),
+				sensitivity: "normal",
+			};
+			expect(
+				await client.requestWithSpool("POST /v1/events", { idempotencyKey, event }),
+			).toMatchObject({ ok: true, result: { receiptId: expect.any(String) } });
+
+			const reader = ReadOnlyActor.open(realpathSync(daemon.layout.currentPointerPath));
+			try {
+				const row = reader
+					.prepare("SELECT payload_json FROM raw_events WHERE event_id = ?")
+					.get("mcp-event-redaction-1") as { payload_json: string };
+				expect(row.payload_json).not.toContain("TOKEN_SUPERSECRET");
+				expect(row.payload_json).not.toContain("hidden");
+				expect(row.payload_json).not.toContain("device");
+				expect(JSON.parse(row.payload_json)).toMatchObject({
+					_normalized: {
+						sensitivity: "secret",
+						private_content_omitted: true,
+						local_only: true,
+					},
+				});
+			} finally {
+				reader.close();
+			}
 		} finally {
 			await daemon.stop();
 			rmSync(fixture.root, { recursive: true, force: true });

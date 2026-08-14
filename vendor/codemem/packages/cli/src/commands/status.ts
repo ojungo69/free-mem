@@ -1,15 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-	collectOperationalStatus,
-	connectReadOnly,
-	isEmbeddingDisabled,
 	type OperationalStatusSnapshot,
 	readCodememConfigFile,
 	readCodememConfigFileAtPath,
 	resolveDbPath,
 	VERSION,
 } from "@codemem/core";
+import { createMcpRpcClient, type McpRpcOutcome } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -19,6 +17,7 @@ import {
 	type ConfigOpts,
 	type DbOpts,
 	type JsonOpts,
+	resolveDataDirOpt,
 	resolveDbOpt,
 } from "../shared-options.js";
 import {
@@ -28,6 +27,7 @@ import {
 } from "../viewer-runtime.js";
 
 export type DatabaseState = "ready" | "missing" | "unavailable" | "unknown";
+export type DaemonState = "running" | "not_running" | "unavailable";
 export type MaintenanceState = "idle" | "running" | "failed" | "unknown";
 export type SemanticIndexState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 export type RawEventsState = "healthy" | "backlogged" | "failing" | "unknown";
@@ -44,6 +44,7 @@ export interface OperationalStatusReport {
 	checked_at: string;
 	ok: boolean;
 	version: string;
+	daemon: { state: DaemonState };
 	database: { state: DatabaseState };
 	runtime: { viewer: ViewerRuntimeObservation["state"]; pid?: number };
 	maintenance: { state: MaintenanceState };
@@ -61,9 +62,10 @@ export interface StatusDependencies {
 	readText: (path: string) => string | null;
 	readConfig: (path?: string) => Record<string, unknown>;
 	resolveDbPath: (path?: string) => string;
-	connectReadOnly: typeof connectReadOnly;
-	collectDatabase: typeof collectOperationalStatus;
-	embeddingDisabled: () => boolean;
+	requestRpc: (
+		dataDir: string,
+		method: "GET /v1/health" | "GET /v1/doctor",
+	) => Promise<McpRpcOutcome>;
 	fetch: typeof fetch;
 	isProcessRunning: (pid: number) => boolean | null;
 	env: NodeJS.ProcessEnv;
@@ -74,7 +76,6 @@ export interface StatusDependencies {
 
 const MAX_ATTENTION = 20;
 const DEFAULT_VIEWER_PORT = 38_888;
-const RECENT_FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const OBSERVER_IDENTITY_KEYS = [
 	"observer_provider",
 	"observer_model",
@@ -98,9 +99,7 @@ const defaultDependencies: StatusDependencies = {
 	},
 	readConfig: (path) => (path ? readCodememConfigFileAtPath(path) : readCodememConfigFile()),
 	resolveDbPath,
-	connectReadOnly,
-	collectDatabase: collectOperationalStatus,
-	embeddingDisabled: isEmbeddingDisabled,
+	requestRpc: (dataDir, method) => createMcpRpcClient({ dataDir }).request(method, {}),
 	fetch,
 	isProcessRunning: (pid) => {
 		try {
@@ -172,6 +171,32 @@ function addDatabaseAttention(state: DatabaseState, attention: StatusAttention[]
 			message: "Database could not be read",
 		});
 	}
+}
+
+function addDaemonAttention(state: DaemonState, attention: StatusAttention[]): void {
+	if (state === "not_running") {
+		attention.push({
+			code: "daemon_not_running",
+			severity: "warning",
+			message: "Daemon is not running; run `codemem serve start` if needed",
+		});
+	} else if (state === "unavailable") {
+		attention.push({
+			code: "daemon_unavailable",
+			severity: "error",
+			message: "Daemon health could not be determined",
+		});
+	}
+}
+
+function doctorOperationalStatus(
+	result: Record<string, unknown>,
+): OperationalStatusSnapshot | null {
+	const diagnostics = result.diagnostics;
+	if (!diagnostics || typeof diagnostics !== "object" || Array.isArray(diagnostics)) return null;
+	const snapshot = (diagnostics as Record<string, unknown>).operationalStatus;
+	if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
+	return snapshot as OperationalStatusSnapshot;
 }
 
 function addRuntimeAttention(
@@ -306,30 +331,23 @@ export async function collectStatusReport(
 	const checkedAt = deps.now();
 	const config = deps.readConfig(opts.config);
 	const dbPath = deps.resolveDbPath(resolveDbOpt(opts));
-	let databaseState: DatabaseState = "missing";
+	const dataDir = resolveDataDirOpt(opts);
+	const health = await deps.requestRpc(dataDir, "GET /v1/health");
+	let daemonState: DaemonState = "not_running";
+	let databaseState: DatabaseState = "unknown";
 	let snapshot: OperationalStatusSnapshot | null = null;
-	if (deps.exists(dbPath)) {
-		let db: ReturnType<typeof connectReadOnly> | null = null;
-		try {
-			db = deps.connectReadOnly(dbPath, {
-				warn: opts.json ? () => {} : deps.writeStderr,
-			});
-		} catch {
+	if (health.ok) {
+		daemonState = "running";
+		const doctor = await deps.requestRpc(dataDir, "GET /v1/doctor");
+		if (doctor.ok) {
+			databaseState = "ready";
+			snapshot = doctorOperationalStatus(doctor.result);
+		} else {
 			databaseState = "unavailable";
 		}
-		if (db) {
-			try {
-				snapshot = deps.collectDatabase(db, {
-					embeddingDisabled: deps.embeddingDisabled(),
-					recentFailureCutoff: new Date(
-						checkedAt.getTime() - RECENT_FAILURE_WINDOW_MS,
-					).toISOString(),
-				});
-				databaseState = "ready";
-			} finally {
-				db.close();
-			}
-		}
+	} else if (health.error.code !== "daemon_unavailable") {
+		daemonState = "unavailable";
+		databaseState = "unavailable";
 	}
 
 	const pidPath = join(dirname(dbPath), "viewer.pid");
@@ -343,6 +361,7 @@ export async function collectStatusReport(
 		viewerDefaultTarget(deps.env),
 	);
 	const attention: StatusAttention[] = [];
+	addDaemonAttention(daemonState, attention);
 	addDatabaseAttention(databaseState, attention);
 	addRuntimeAttention(runtime, attention);
 	const subsystems = projectDatabaseSubsystems(
@@ -356,6 +375,7 @@ export async function collectStatusReport(
 		checked_at: checkedAt.toISOString(),
 		ok,
 		version: VERSION,
+		daemon: { state: daemonState },
 		database: { state: databaseState },
 		runtime: runtime.pid ? { viewer: runtime.state, pid: runtime.pid } : { viewer: runtime.state },
 		...subsystems,
@@ -366,6 +386,7 @@ export async function collectStatusReport(
 export function renderStatusReport(report: OperationalStatusReport): string {
 	const lines = [
 		`codemem status ${report.ok ? "OK" : "ATTENTION"}`,
+		`Daemon:         ${report.daemon.state}`,
 		`Database:       ${report.database.state}`,
 		`Viewer:         ${report.runtime.viewer}${report.runtime.pid ? ` (pid ${report.runtime.pid})` : ""}`,
 		`Maintenance:    ${report.maintenance.state}`,
