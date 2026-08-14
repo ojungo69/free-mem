@@ -19,6 +19,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -32,8 +33,17 @@ jobs:
         run: corepack pnpm install --frozen-lockfile
       - name: Build
         run: corepack pnpm run build
-      - name: Typecheck, lint, and test
-        run: CI=true corepack pnpm run check
+      - name: Typecheck and lint
+        run: corepack pnpm run tsc && corepack pnpm run lint
+      - name: Test with coverage
+        run: CI=true corepack pnpm run test:coverage
+      - name: Analyze with SonarQube Cloud
+        if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        with:
+          projectBaseDir: vendor/codemem
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   secrets:
     runs-on: ubuntu-24.04
