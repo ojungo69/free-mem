@@ -1,0 +1,80 @@
+evidence/phase1-test-retire-list.md
+  s_211aa7fe546c35::t_8c34df83e03b3f 10
+  s_211aa7fe546c35::t_507c9e76842aa2 29-31,56-57,73,328-338
+  s_211aa7fe546c35::t_136e0c0941a951 339-340
+evidence/phase1-t045-t046-daemon-jobs-validation.md
+  s_211aa7fe546c35::t_507c9e76842aa2 1-55,58-62,64-65,67-73
+  s_211aa7fe546c35::t_8c34df83e03b3f 56-57,63,66
+evidence/README.md
+  s_211aa7fe546c35::t_507c9e76842aa2 21
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_507c9e76842aa2 133-138
+vendor/codemem/packages/cli/src/commands/cli-rpc.test.ts
+  s_211aa7fe546c35::t_c34abb2147c274 8,11,156-166,177-276
+vendor/codemem/packages/cli/src/commands/daemon-job.ts
+  s_211aa7fe546c35::t_e030eef4de1628 1-72
+vendor/codemem/packages/cli/src/commands/db.test.ts
+  s_211aa7fe546c35::t_e935cf48a95169 1,6-18,129-179,185-186,188-191,193-209,217-218,220-236,238-245,247,250,252
+vendor/codemem/packages/cli/src/commands/memory.ts
+  s_211aa7fe546c35::t_8811d33d574d39 10,17-20,38,41-47,63-73,296,323,329-333,452,455,458-465,484-486,492-496,585,600,605-609,669,699-708,851,866,871-875,916,931,936-940
+vendor/codemem/packages/core/src/daemon-jobs.test.ts
+  s_211aa7fe546c35::t_d9f9e00f8eb445 1-13,15-18,21-26,29-45,47-48,50-59,62-91,93-125,128-136,138-153
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_211aa7fe546c35::t_9ef76e452168eb 30-51,290,323-515
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_19091bbac9b25d 2,194-209,315,422,435,548-553,556-567,570-575,820,1318-1324
+vendor/codemem/packages/core/src/maintenance/memory-artifact-report.ts
+  s_211aa7fe546c35::t_679e79b2b48375 1,58-72,74-76,94-124,126-144,146-152,154-155,157-158,160-167,170,172-174,176-184
+vendor/codemem/packages/core/src/maintenance/memory-role-report.ts
+  s_211aa7fe546c35::t_a764f1ef1da2cb 54-70,72-74,99-114,116-140,142-147,149-155,157-175,177-202,204,206-208,215-216,218-340,343-391,393,395-418
+vendor/codemem/packages/core/src/maintenance/reliability.ts
+  s_211aa7fe546c35::t_26917e78df044c 6,35-107,114-218,235-246,253
+vendor/codemem/packages/core/src/maintenance/status.ts
+  s_211aa7fe546c35::t_40628f420671c4 6,12-13,15-25,27-51,53-54,56-68,71-101,105-106,108-119,121,123-147
+vendor/codemem/packages/core/src/schema-bootstrap.ts
+  s_211aa7fe546c35::t_19f8965d61651b 1,298
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_bff15eec4b651c 10,17,143-180
+vendor/codemem/packages/cli/src/commands/db.ts
+  s_211aa7fe546c35::t_58b19b687ff1cd 2,12-25,61-65,67-70,79-83,85-88,101,118-152,154-156,168-206,209,219-225,227-229,244,253-279,318-319,321-324,326,331-334,336-338,347-368,370,381-398,400-411,414,431,450-465,493,502-512,540,551-561,591,602-616,649,658-668,698,707-717,764-783,813,822-837
+vendor/codemem/packages/cli/src/commands/maintenance.ts
+  s_211aa7fe546c35::t_0980aa5971516f 2,9,11,14-25,28,32,37-46,48,50-53,55,62,65,69-74
+vendor/codemem/packages/cli/src/commands/serve.test.ts
+  s_211aa7fe546c35::t_2b584f373196d2 1
+vendor/codemem/packages/core/src/daemon-jobs-schema.ts
+  s_211aa7fe546c35::t_92ded4d2d13c90 1-19
+vendor/codemem/packages/core/src/daemon-jobs.ts
+  s_211aa7fe546c35::t_28f6c127632144 1-3,7-32,34,36-39,41-46,48-49,51-171,173-185,188-189,191-200,203-213,216-222,224-330,332-387,389-415,417-420,422-449,451-452,455-461,463-464,466-479,483-719,721-723,725,728-734,736-759,761-935
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_211aa7fe546c35::t_635c1038669736 7,60,199,264,281-286,300,311,321,332,351
+vendor/codemem/packages/core/src/db.ts
+  s_211aa7fe546c35::t_6410b80255f210 24,35,1022
+vendor/codemem/packages/core/src/maintenance.ts
+  s_211aa7fe546c35::t_cbc498009de062 1-9,13,19,21,23-28,58-63
+vendor/codemem/packages/core/src/maintenance/init-vacuum.ts
+  s_211aa7fe546c35::t_cfc997df298754 5-11,43-51
+vendor/codemem/packages/core/src/maintenance/relink.ts
+  s_211aa7fe546c35::t_6fb659ad47baec 41,339-346
+vendor/codemem/packages/core/src/online-backup.test.ts
+  s_211aa7fe546c35::t_783a617424b765 317,328
+vendor/codemem/packages/core/src/spool-importer.test.ts
+  s_211aa7fe546c35::t_bf1f58b7700848 84-87,90,96-106,179,195
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_37e7db12eaa8e7 46-48,72-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d813339f9fa3f4a8f42fdb6d15de869ce3ad6fb1",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
