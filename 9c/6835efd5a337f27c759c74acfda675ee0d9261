@@ -1,0 +1,33 @@
+.github/CODEOWNERS
+  s_211aa7fe546c35::t_8e5d9de618d710 1-2
+.github/ISSUE_TEMPLATE/bug_report.yml
+  s_211aa7fe546c35::t_6e9d57552f3bd4 1-95
+.github/ISSUE_TEMPLATE/config.yml
+  s_211aa7fe546c35::t_cd35a56a9d4bad 1-5
+.github/ISSUE_TEMPLATE/feature_request.yml
+  s_211aa7fe546c35::t_3c8c778d847db3 1-54
+.github/dependabot.yml
+  s_211aa7fe546c35::t_493334f462c54d 1-16
+.github/pull_request_template.md
+  s_211aa7fe546c35::t_534a0e283d73d5 1-25
+.github/workflows/codeql.yml
+  s_211aa7fe546c35::t_b3c43bac29ad1e 1-45
+vendor/codemem/packages/core/src/spool.test.ts
+  s_211aa7fe546c35::t_d9cd9472ffb65f 164-166,181,202,383-390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9c6835efd5a337f27c759c74acfda675ee0d9261",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
