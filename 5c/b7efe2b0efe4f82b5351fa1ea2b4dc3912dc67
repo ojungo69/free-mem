@@ -1,0 +1,34 @@
+.github/workflows/ci.yml
+  s_a8ab9debe9c635::t_a8ecdc709cafea 41
+  s_a8ab9debe9c635::t_d2c6732673fdb6 22,36-40,42-46
+specs/001-agent-memory-core/tasks.md
+  s_a8ab9debe9c635::t_a8ecdc709cafea 169
+vendor/codemem/pnpm-lock.yaml
+  s_a8ab9debe9c635::t_4538ae834b0a64 18-20,68-70,91,137,174,199,294,411-414,1659-1667,1739-1741,2296-2299,2324-2326,2385-2396,2400-2402,2546-2552,3011-3014,3479-3480,4349-4362,4464-4469,5005-5006,5025-5026,5079-5091,5094-5095,5231-5240,5726-5729,5923,5947,5952,5976,5981,6005
+vendor/codemem/.gitignore
+  s_a8ab9debe9c635::t_ccd776d7d4929f 10
+vendor/codemem/package.json
+  s_a8ab9debe9c635::t_3d9385d0a78c73 9,34
+vendor/codemem/pnpm-workspace.yaml
+  s_a8ab9debe9c635::t_2792cf5b2561bf 28
+vendor/codemem/sonar-project.properties
+  s_a8ab9debe9c635::t_6627e33830e0d9 1-8
+vendor/codemem/vitest.config.ts
+  s_a8ab9debe9c635::t_515f8ab6fc85b0 7-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5cb7efe2b0efe4f82b5351fa1ea2b4dc3912dc67",
+  "prompts": {},
+  "sessions": {
+    "s_a8ab9debe9c635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffbb2-e673-7831-80fe-fbc9d071eb77",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
