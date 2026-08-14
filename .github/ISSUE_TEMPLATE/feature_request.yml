@@ -1,0 +1,54 @@
+name: Feature proposal
+description: Propose a focused capability or behavior change
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem and required behavior before proposing implementation details. free-mem is pre-release source and its safety invariants take priority over feature breadth.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or operator problem needs to be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior and acceptance criteria.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include simpler workarounds and why they are insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Safety and compatibility impact
+      description: Address fail-open behavior, sole-writer boundaries, authentication, redaction, spool/replay, migrations, backups, RPC compatibility, and private-data handling as applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Proposed validation
+      description: List tests, fixtures, benchmarks, failure injection, or migration checks that would prove the change works safely.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and specifications for overlapping work.
+          required: true
+        - label: This proposal does not include credentials, private memory content, database files, or private local paths.
+          required: true
