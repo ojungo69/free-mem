@@ -998,7 +998,9 @@ function handleSearch(
 	} else if (mode === "timeline") {
 		items = ctx.store.timeline(query, memoryId, depthBefore, depthAfter, filters);
 	} else if (mode === "get_many") {
-		items = ids.map((id) => ctx.store.get(id)).filter((item) => item !== null);
+		items = ids.flatMap((id) =>
+			ctx.store.timeline(null, id, 0, 0, filters).filter((item) => item.id === id),
+		);
 	} else if (mode === "explain") {
 		items = ctx.store.explain(query, ids, limit, filters, {
 			includePackContext: body.includePackContext === true,

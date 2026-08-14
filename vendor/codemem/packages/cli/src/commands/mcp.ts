@@ -1,17 +1,12 @@
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
-import { addDbOption, type DbOpts, resolveDbOpt } from "../shared-options.js";
 
 const mcpCmd = new Command("mcp")
 	.configureHelp(helpStyle)
 	.description("Start an MCP server")
 	.summary("Start the MCP stdio server");
 
-addDbOption(mcpCmd);
-
-export const mcpCommand = mcpCmd.action(async (opts: DbOpts) => {
-	const dbPath = resolveDbOpt(opts);
-	if (dbPath) process.env.CODEMEM_DB = dbPath;
+export const mcpCommand = mcpCmd.action(async () => {
 	try {
 		await import("@codemem/mcp/stdio");
 	} catch (err) {

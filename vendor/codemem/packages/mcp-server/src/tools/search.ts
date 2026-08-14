@@ -1,99 +1,70 @@
-import type { MemoryResult } from "@codemem/core";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { withMcpRetrieval } from "../mcp-retrieval-ledger.js";
+import { rpcContent } from "../content.js";
 import { buildFilters } from "../project-scope.js";
+import { mcpRequestId } from "../rpc-client.js";
 import { filterSchema } from "../schemas.js";
 import type { ToolRegistrationContext } from "../tool-context.js";
 
+function items(result: Record<string, unknown>): { items: unknown[] } {
+	return { items: Array.isArray(result.items) ? result.items : [] };
+}
+
 export function registerSearchTools(server: McpServer, context: ToolRegistrationContext): void {
-	const { defaultProject, store } = context;
+	const { client, defaultProject } = context;
 
 	server.tool(
 		"memory_search",
 		"Search memories by text query. Returns full body text for each match.",
 		{
-			query: z.string().describe("Search query"),
+			query: z.string().min(1).max(16_384).describe("Search query"),
 			limit: z.number().int().min(1).max(50).default(5).describe("Max results"),
 			...filterSchema,
 		},
 		async (args, extra) => {
-			return withMcpRetrieval(
-				context,
-				{
-					surface: "mcp_search",
-					toolName: "memory_search",
-					toolArguments: args,
+			const filters = buildFilters(args, defaultProject());
+			return rpcContent(
+				await client.request("POST /v1/search", {
+					requestId: mcpRequestId("memory_search", extra?.requestId),
+					mode: "search",
 					query: args.query,
 					limit: args.limit,
-					resolveFilters: () => buildFilters(args, defaultProject()),
-					requestId: extra?.requestId,
-					sourceSessionId: extra?.sessionId,
-					invocationIdentity: extra?.signal,
-				},
-				(filters) => {
-					const items = store.search(args.query, args.limit, filters);
-					return {
-						value: {
-							items: items.map((m: MemoryResult) => ({
-								id: m.id,
-								title: m.title,
-								kind: m.kind,
-								body: m.body_text,
-								confidence: m.confidence,
-								score: m.score,
-								session_id: m.session_id,
-								metadata: m.metadata,
-							})),
-						},
-						memoryIds: items.map((item) => item.id),
-						filters,
-					};
-				},
+					...(filters ? { filters } : {}),
+				}),
+				items,
 			);
 		},
 	);
 
 	server.tool(
 		"memory_search_index",
-		"Search memories by text query. Returns compact index entries (no body) for browsing.",
+		"Search memories by text query. Returns compact index entries without body text.",
 		{
-			query: z.string().describe("Search query"),
+			query: z.string().min(1).max(16_384).describe("Search query"),
 			limit: z.number().int().min(1).max(50).default(8).describe("Max results"),
 			...filterSchema,
 		},
 		async (args, extra) => {
-			return withMcpRetrieval(
-				context,
-				{
-					surface: "mcp_search_index",
-					toolName: "memory_search_index",
-					toolArguments: args,
+			const filters = buildFilters(args, defaultProject());
+			return rpcContent(
+				await client.request("POST /v1/search", {
+					requestId: mcpRequestId("memory_search_index", extra?.requestId),
+					mode: "search_index",
 					query: args.query,
 					limit: args.limit,
-					resolveFilters: () => buildFilters(args, defaultProject()),
-					requestId: extra?.requestId,
-					sourceSessionId: extra?.sessionId,
-					invocationIdentity: extra?.signal,
-				},
-				(filters) => {
-					const items = store.search(args.query, args.limit, filters);
-					return {
-						value: {
-							items: items.map((m: MemoryResult) => ({
-								id: m.id,
-								kind: m.kind,
-								title: m.title,
-								score: m.score,
-								created_at: m.created_at,
-								session_id: m.session_id,
-								metadata: m.metadata,
-							})),
-						},
-						memoryIds: items.map((item) => item.id),
-						filters,
-					};
-				},
+					...(filters ? { filters } : {}),
+				}),
+				(result) => ({
+					items: Array.isArray(result.items)
+						? result.items.map((value) => {
+								if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+								const entry = { ...(value as Record<string, unknown>) };
+								delete entry.body;
+								delete entry.body_text;
+								return entry;
+							})
+						: [],
+				}),
 			);
 		},
 	);
@@ -102,40 +73,25 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 		"memory_explain",
 		"Explain search results with detailed scoring breakdown.",
 		{
-			query: z.string().optional().describe("Search query"),
-			ids: z.array(z.number().int()).max(200).optional().describe("Specific memory IDs to explain"),
+			query: z.string().min(1).max(16_384).optional().describe("Search query"),
+			ids: z.array(z.number().int().positive()).max(200).optional().describe("Memory IDs"),
 			limit: z.number().int().min(1).max(50).default(10).describe("Max results"),
 			include_pack_context: z.boolean().default(false).describe("Include formatted pack context"),
 			...filterSchema,
 		},
 		async (args, extra) => {
-			return withMcpRetrieval(
-				context,
-				{
-					surface: "mcp_explain",
-					toolName: "memory_explain",
-					toolArguments: args,
-					query: args.query,
+			const filters = buildFilters(args, defaultProject());
+			return rpcContent(
+				await client.request("POST /v1/search", {
+					requestId: mcpRequestId("memory_explain", extra?.requestId),
+					mode: "explain",
+					...(args.query ? { query: args.query } : {}),
+					...(args.ids ? { ids: args.ids } : {}),
 					limit: args.limit,
-					resolveFilters: () => buildFilters(args, defaultProject()),
-					requestId: extra?.requestId,
-					sourceSessionId: extra?.sessionId,
-					invocationIdentity: extra?.signal,
-				},
-				(filters) => {
-					const result = store.explain(args.query ?? null, args.ids ?? null, args.limit, filters, {
-						includePackContext: args.include_pack_context,
-					});
-					const fatalInputError = result.errors.some(
-						(error) => error.code === "INVALID_ARGUMENT" && error.field === "query",
-					);
-					return {
-						value: result,
-						memoryIds: result.items.map((item) => item.id),
-						filters,
-						retrievalStatus: fatalInputError ? ("failed" as const) : undefined,
-					};
-				},
+					includePackContext: args.include_pack_context,
+					...(filters ? { filters } : {}),
+				}),
+				(result) => result.items ?? { items: [], errors: [] },
 			);
 		},
 	);
@@ -148,85 +104,48 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 			...filterSchema,
 		},
 		async (args, extra) => {
-			return withMcpRetrieval(
-				context,
-				{
-					surface: "mcp_recent",
-					toolName: "memory_recent",
-					toolArguments: args,
+			const filters = buildFilters(args, defaultProject());
+			return rpcContent(
+				await client.request("POST /v1/search", {
+					requestId: mcpRequestId("memory_recent", extra?.requestId),
+					mode: "recent",
 					limit: args.limit,
-					resolveFilters: () => buildFilters(args, defaultProject()),
-					requestId: extra?.requestId,
-					sourceSessionId: extra?.sessionId,
-					invocationIdentity: extra?.signal,
-				},
-				(filters) => {
-					const items = store.recent(args.limit, filters);
-					return { value: { items }, memoryIds: items.map((item) => item.id), filters };
-				},
+					...(filters ? { filters } : {}),
+				}),
+				items,
 			);
 		},
 	);
 
 	server.tool(
 		"memory_pack",
-		"Build a formatted memory pack from search results — quick one-shot context block.",
+		"Build a formatted memory pack from search results.",
 		{
-			context: z.string().describe("Context description to search for"),
+			context: z.string().min(1).max(16_384).describe("Context description to search for"),
 			limit: z.number().int().min(1).max(50).optional().describe("Max items to include"),
-			compact: z
-				.boolean()
-				.optional()
-				.describe(
-					"When true, render a scannable index of all items with full detail only for the top N (default 3). Saves tokens when broad overview matters more than per-item detail.",
-				),
-			compact_detail_count: z
+			token_budget: z
 				.number()
 				.int()
 				.min(0)
-				.max(50)
+				.max(Number.MAX_SAFE_INTEGER)
 				.optional()
-				.describe("Number of items to show in full detail in compact mode (default 3)"),
-			compression_mode: z
-				.enum(["off", "compact", "ids"])
-				.optional()
-				.describe(
-					"Near-related compression mode: off disables it, compact applies only to compact rendering, ids applies in all modes. Defaults to CODEMEM_PACK_COMPRESSION or compact.",
-				),
+				.describe("Maximum pack tokens"),
+			trace: z.boolean().default(false).describe("Include retrieval trace"),
 			...filterSchema,
 		},
 		async (args, extra) => {
-			return withMcpRetrieval(
-				context,
-				{
-					surface: "mcp_pack",
-					toolName: "memory_pack",
-					toolArguments: args,
-					query: args.context,
-					limit: args.limit ?? null,
-					resolveFilters: () => buildFilters(args, defaultProject()),
-					requestId: extra?.requestId,
-					sourceSessionId: extra?.sessionId,
-					invocationIdentity: extra?.signal,
-				},
-				async (filters) => {
-					const renderOptions =
-						args.compact || args.compact_detail_count != null || args.compression_mode != null
-							? {
-									compact: args.compact ?? (args.compact_detail_count != null ? true : undefined),
-									compactDetailCount: args.compact_detail_count,
-									compressionMode: args.compression_mode,
-								}
-							: undefined;
-					const result = await store.buildMemoryPackAsync(
-						args.context,
-						args.limit ?? undefined,
-						null,
-						filters,
-						renderOptions,
-					);
-					return { value: result, memoryIds: result.item_ids, filters };
-				},
+			const filters = buildFilters(args, defaultProject());
+			return rpcContent(
+				await client.request("POST /v1/context/pack", {
+					requestId: mcpRequestId("memory_pack", extra?.requestId),
+					context: args.context,
+					...(args.limit === undefined ? {} : { limit: args.limit }),
+					...(args.token_budget === undefined ? {} : { tokenBudget: args.token_budget }),
+					trace: args.trace,
+					...(filters ? { filters } : {}),
+				}),
+				(result) =>
+					result.trace === undefined ? result.pack : { pack: result.pack, trace: result.trace },
 			);
 		},
 	);

@@ -184,6 +184,45 @@ describe("Phase 1 daemon RPC", () => {
 		expect(safe).toMatchObject({ result: { items: [], retrievalReceiptId: expect.any(String) } });
 	});
 
+	it("applies search filters to get_many reads", async () => {
+		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		created.push(handle);
+		const remember = async (id: string, project: string) => {
+			const response = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id,
+					method: "POST /v1/memories/record",
+					body: {
+						idempotencyKey: id,
+						kind: "decision",
+						title: `${project} title`,
+						body: `${project} body`,
+						project,
+					},
+				}),
+			);
+			if ("error" in response) throw new Error(response.error.code);
+			return Number(response.result.memoryId);
+		};
+		const demoId = await remember("remember-demo", "demo");
+		const otherId = await remember("remember-other", "other");
+		const response = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "get-many",
+				method: "POST /v1/search",
+				body: {
+					requestId: "get-many",
+					mode: "get_many",
+					ids: [demoId, otherId],
+					filters: { project: "demo" },
+				},
+			}),
+		);
+		expect(response).toMatchObject({ result: { items: [{ id: demoId }] } });
+	});
+
 	it("P1-T041-05 records and completes the file-context retrieval ledger in the daemon", async () => {
 		const dataDir = tempDataDir();
 		const handle = await core.startDaemon({ dataDir });

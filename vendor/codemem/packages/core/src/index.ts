@@ -42,6 +42,7 @@ export {
 } from "./daemon-lifecycle.js";
 export type {
 	FileContextRetrievalAttempt,
+	RpcMethod,
 	RpcRequest,
 	RpcSuccess,
 	TypedRpcError,
@@ -54,6 +55,7 @@ export {
 	mapPeerConnectError,
 	NORMALIZED_SCHEMA_VERSION,
 	RPC_CAPABILITY_HASH,
+	RPC_DEFAULT_DEADLINE_MS,
 	RPC_MAX_BYTES,
 	RPC_METHODS,
 } from "./daemon-rpc.js";

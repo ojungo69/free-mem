@@ -547,6 +547,25 @@ function spoolRedaction(result: RedactionResult): SpoolRedactionMetadata {
 	};
 }
 
+function mergeSpoolRedaction(
+	current: SpoolRedactionMetadata,
+	previousValue?: SpoolRedactionMetadata,
+): SpoolRedactionMetadata {
+	if (!previousValue) return current;
+	const previous = validateSpoolRedaction(previousValue);
+	return {
+		...previous,
+		sensitivity:
+			previous.sensitivity === "secret" || current.sensitivity === "secret"
+				? "secret"
+				: previous.sensitivity === "private" || current.sensitivity === "private"
+					? "private"
+					: "normal",
+		private_content_omitted: previous.private_content_omitted || current.private_content_omitted,
+		local_only: previous.local_only || current.local_only,
+	};
+}
+
 function prepareMutation(
 	input: SpoolMutation,
 	config?: AgentMemoryConfig,
@@ -585,22 +604,8 @@ function prepareMutation(
 		}
 		redaction = spoolRedaction(redacted);
 		redaction.sensitivity = event.sensitivity as SpoolRedactionMetadata["sensitivity"];
-		if (previousRedaction) {
-			const previous = validateSpoolRedaction(previousRedaction);
-			redaction = {
-				...previous,
-				sensitivity:
-					previous.sensitivity === "secret" || redaction.sensitivity === "secret"
-						? "secret"
-						: previous.sensitivity === "private" || redaction.sensitivity === "private"
-							? "private"
-							: "normal",
-				private_content_omitted:
-					previous.private_content_omitted || redaction.private_content_omitted,
-				local_only: previous.local_only || redaction.local_only,
-			};
-			event.sensitivity = redaction.sensitivity;
-		}
+		redaction = mergeSpoolRedaction(redaction, previousRedaction);
+		event.sensitivity = redaction.sensitivity;
 		quotaClass = RESERVED_EVENT_KINDS.has(String(event.kind)) ? "reserved" : "normal";
 		body = { idempotencyKey, event };
 	} else {
@@ -610,7 +615,7 @@ function prepareMutation(
 			config,
 		});
 		body = redacted.payload;
-		redaction = spoolRedaction(redacted);
+		redaction = mergeSpoolRedaction(spoolRedaction(redacted), previousRedaction);
 		body.kind = validatePreparedMemoryBody(body, idempotencyKey);
 	}
 

@@ -2876,6 +2876,16 @@ function spoolRedaction(result) {
 		local_only: result.local_only
 	};
 }
+function mergeSpoolRedaction(current, previousValue) {
+	if (!previousValue) return current;
+	const previous = validateSpoolRedaction(previousValue);
+	return {
+		...previous,
+		sensitivity: previous.sensitivity === "secret" || current.sensitivity === "secret" ? "secret" : previous.sensitivity === "private" || current.sensitivity === "private" ? "private" : "normal",
+		private_content_omitted: previous.private_content_omitted || current.private_content_omitted,
+		local_only: previous.local_only || current.local_only
+	};
+}
 function prepareMutation(input, config, previousRedaction) {
 	const idempotencyKey = validateIdempotencyKey(input.idempotencyKey);
 	const methodFields = METHOD_FIELDS[input.method];
@@ -2901,16 +2911,8 @@ function prepareMutation(input, config, previousRedaction) {
 		else if (redacted.sensitivity === "private" && event.sensitivity === "normal") event.sensitivity = "private";
 		redaction = spoolRedaction(redacted);
 		redaction.sensitivity = event.sensitivity;
-		if (previousRedaction) {
-			const previous = validateSpoolRedaction(previousRedaction);
-			redaction = {
-				...previous,
-				sensitivity: previous.sensitivity === "secret" || redaction.sensitivity === "secret" ? "secret" : previous.sensitivity === "private" || redaction.sensitivity === "private" ? "private" : "normal",
-				private_content_omitted: previous.private_content_omitted || redaction.private_content_omitted,
-				local_only: previous.local_only || redaction.local_only
-			};
-			event.sensitivity = redaction.sensitivity;
-		}
+		redaction = mergeSpoolRedaction(redaction, previousRedaction);
+		event.sensitivity = redaction.sensitivity;
 		quotaClass = RESERVED_EVENT_KINDS.has(String(event.kind)) ? "reserved" : "normal";
 		body = {
 			idempotencyKey,
@@ -2928,7 +2930,7 @@ function prepareMutation(input, config, previousRedaction) {
 			config
 		});
 		body = redacted.payload;
-		redaction = spoolRedaction(redacted);
+		redaction = mergeSpoolRedaction(spoolRedaction(redacted), previousRedaction);
 		body.kind = validatePreparedMemoryBody(body, idempotencyKey);
 	}
 	const payloadHash = hashMutationPayload({

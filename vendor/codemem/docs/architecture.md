@@ -11,7 +11,7 @@ codemem has five main pieces: **adapters** that capture shell/runtime activity, 
 | Observer | Produces typed observations and session summaries from transcripts | `packages/core/src/ingest-prompts.ts`, `packages/core/src/ingest-xml-parser.ts` |
 | Store | SQLite persistence for sessions, memories, artifacts, embeddings | `packages/core/src/store.ts`, `packages/core/src/schema.ts` |
 | Viewer | Local web UI + JSON APIs for stats, sessions, and memory items | `packages/viewer-server/src/`, `packages/ui/src/` |
-| MCP server | Exposes memory tools (search, timeline, pack, remember, forget) to OpenCode | `packages/mcp-server/src/` |
+| MCP server | Thin stdio RPC client for read, remember, and daemon status tools | `packages/mcp-server/src/` |
 | CLI | Ties everything together: ingest, serve, search, export/import, sync | `packages/cli/src/` |
 
 The viewer trust model is intentionally local-first: it is designed for loopback access from the same machine, with
@@ -36,7 +36,7 @@ flowchart LR
     IN --> OB["Observer"]
     OB -->|typed observations\nsession summary| IN
     IN -->|memories, artifacts| DB
-    DB -->|search, pack| MCP["MCP server"]
+    MCP["MCP server"] -->|versioned read / remember RPC| DR
     DB --> VW
 ```
 
@@ -49,7 +49,7 @@ flowchart LR
 7. Ingest builds a transcript from user prompts and assistant messages, then hands it to the observer.
 8. The observer returns typed observations and an optional session summary as XML.
 9. Ingest writes artifacts (transcript, context snapshots), observations, and summaries to SQLite.
-10. The viewer, MCP server, and CLI all read from the same SQLite database.
+10. The daemon is the only write-capable SQLite owner. MCP uses versioned RPC for reads and remember; a failed remember RPC falls back to the same pre-redacted atomic spool.
 
 ## Adapter support matrix and rollout
 
@@ -63,7 +63,7 @@ Support tiers describe operational expectations for each adapter path:
 |---|---|---|
 | OpenCode plugin | Supported | Primary reference adapter for lifecycle events and injection behavior. |
 | Claude hooks/plugin | Supported | Standalone runtime with pre-RPC redaction, daemon RPC reads/writes, and shared atomic-spool fallback. |
-| Codex plugin (hooks + MCP) | Experimental (early beta) | Hook capture and prompt-time injection use the standalone runtime and daemon RPC/spool path. MCP migration remains tracked separately. |
+| Codex plugin (hooks + MCP) | Experimental (early beta) | Hook capture, prompt-time injection, and MCP use daemon RPC; capture and remember retain the shared redacted spool fallback. |
 | Windsurf integration | Experimental | Planned via shared adapter contract after OpenCode/Claude stabilization. |
 | Cursor integration | Experimental | Planned via shared adapter contract after OpenCode/Claude stabilization. |
 

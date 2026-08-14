@@ -24,6 +24,10 @@ describe("mcp command", () => {
 		expect(httpCommand).toBeUndefined();
 	});
 
+	it("does not expose a direct database option", () => {
+		expect(mcpCommand.options.some((option) => option.long === "--db-path")).toBe(false);
+	});
+
 	it("runs stdio mode by default", async () => {
 		await mcpCommand.parseAsync([], { from: "user" });
 		expect(stdioImportMock).toHaveBeenCalledTimes(1);

@@ -182,16 +182,15 @@ slash commands in the OpenCode chat input.
 
 ## MCP tools exposed to agents
 
-The MCP server exposes memory retrieval and write tools such as `memory_search`,
-`memory_pack`, `memory_recent`, `memory_remember`, and `memory_forget`.
+The stdio MCP process is a thin daemon RPC client and never opens SQLite. Phase 1
+exposes `memory_search`, `memory_search_index`, `memory_recent`, `memory_timeline`,
+`memory_expand`, `memory_explain`, `memory_get`, `memory_get_observations`,
+`memory_pack`, `memory_schema`, `memory_remember`, and `memory_status`.
 
-`memory_distill_candidates` mines recurring lessons into reviewable context
-candidates. It is read-only and does not modify documentation files. By
-default an observer-model worthiness pass drops routine-activity clusters
-(release/CI status, review passes with no findings, context lookups) before
-the candidates are returned; pass `judge: false` to skip it. When no observer
-model is configured the tool returns unjudged output with `judged: false` and
-a `judge_error` in the metadata.
+Read calls fail with typed `daemon_unavailable` output while the daemon is down.
+`memory_remember` is pre-redacted and queued to the shared atomic spool instead.
+User-authority tools such as forget, confirm, pin, retract, and destructive bulk
+actions are not registered for agents.
 
 Example agent requests:
 
