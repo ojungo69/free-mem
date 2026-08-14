@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
 	lstatSync,
 	readdirSync,
@@ -168,13 +168,17 @@ function isInside(parent: string, candidate: string): boolean {
 	return child === "" || (!child.startsWith(`..${sep}`) && child !== "..");
 }
 
-function replaceOutputFile(path: string, contents: string): void {
+function exportTempPath(path: string, operationId: string): string {
+	return `${path}.${hashMutationPayload(operationId).slice(0, 32)}.tmp`;
+}
+
+function replaceOutputFile(path: string, operationId: string, contents: string): void {
 	const parent = dirname(path);
 	const parentInfo = lstatSync(parent);
 	if (parentInfo.isSymbolicLink() || !parentInfo.isDirectory()) {
 		throw new Error("Export output parent must be a directory, not a symbolic link.");
 	}
-	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+	const temporaryPath = exportTempPath(path, operationId);
 	try {
 		writeFileSync(temporaryPath, contents, {
 			encoding: "utf8",
@@ -191,6 +195,27 @@ function replaceOutputFile(path: string, contents: string): void {
 			// The temporary file may not exist or may already have been renamed.
 		}
 		throw error;
+	}
+}
+
+function removeInterruptedExportTemps(journal: OperationJournal): boolean {
+	if (journal.kind !== "export") return true;
+	try {
+		const outputPath = exportOutputPath((journal.request as ExportRequest).outputPath);
+		const parent = dirname(outputPath);
+		const temporaryPath = exportTempPath(outputPath, journal.operationId);
+		let info: ReturnType<typeof lstatSync>;
+		try {
+			info = lstatSync(temporaryPath);
+		} catch (error) {
+			return (error as NodeJS.ErrnoException).code === "ENOENT";
+		}
+		if (info.isSymbolicLink() || !info.isFile()) return false;
+		unlinkSync(temporaryPath);
+		fsyncPath(parent);
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -249,12 +274,15 @@ export class DaemonOperationService {
 			const journal = parseJournal(readFileSync(join(this.directory, fileName), "utf8"), fileName);
 			this.journals.set(journal.operationId, journal);
 			if (!TERMINAL_STATES.has(journal.state)) {
+				const cleanupVerified = removeInterruptedExportTemps(journal);
 				this.persist({
 					...journal,
 					state: "failed",
 					error: {
 						code: "daemon_restarted",
-						message: "The daemon restarted before the operation completed.",
+						message: cleanupVerified
+							? "The daemon restarted before the operation completed."
+							: "The daemon restarted; interrupted export cleanup could not be verified.",
 					},
 					updatedAt: new Date().toISOString(),
 				});
@@ -370,7 +398,7 @@ export class DaemonOperationService {
 			if (isInside(realpathSync(resolve(this.dataDir)), outputPath)) {
 				throw new Error("Export output resolves inside the daemon data directory.");
 			}
-			replaceOutputFile(outputPath, text);
+			replaceOutputFile(outputPath, journal.operationId, text);
 			const expectedHash = createHash("sha256").update(text, "utf8").digest("hex");
 			const outputSha256 = sha256File(outputPath);
 			if (outputSha256 !== expectedHash) throw new Error("Export verification failed.");

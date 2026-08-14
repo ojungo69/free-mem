@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
 	chmodSync,
 	existsSync,
@@ -458,6 +458,22 @@ function writeManifestSidecar(path: string, manifest: BackupManifest): BackupSid
 	return sidecar;
 }
 
+function removeInterruptedBackupTemp(destinationDir: string, operationId: string): void {
+	const path = join(destinationDir, `${operationId}.tmp`);
+	let info: ReturnType<typeof lstatSync>;
+	try {
+		info = lstatSync(path);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+		throw error;
+	}
+	if (info.isSymbolicLink() || !info.isFile()) {
+		throw new Error("Interrupted backup temp must be a regular file.");
+	}
+	unlinkSync(path);
+	fsyncPath(destinationDir);
+}
+
 function manifestSnapshotDiagnostics(manifest: BackupManifest, artifactPath: string): string[] {
 	let actual: ArtifactManifestFields;
 	try {
@@ -606,6 +622,7 @@ async function createOnlineBackupUnlocked(input: {
 	}
 
 	ensurePrivateDirectory(input.destinationDir);
+	removeInterruptedBackupTemp(input.destinationDir, input.operationId);
 	const artifactPath = backupArtifactPath(input.destinationDir, input.operationId);
 	const sidecarFile = backupSidecarPath(input.destinationDir, input.operationId);
 	const sourcePath = input.db.name ?? "";
@@ -641,10 +658,7 @@ async function createOnlineBackupUnlocked(input: {
 		};
 	}
 
-	const temporaryPath = join(
-		input.destinationDir,
-		`${input.operationId}.${process.pid}.${randomUUID()}.tmp`,
-	);
+	const temporaryPath = join(input.destinationDir, `${input.operationId}.tmp`);
 	try {
 		await input.db.backup(temporaryPath);
 		finalizeStandaloneBackup(temporaryPath);

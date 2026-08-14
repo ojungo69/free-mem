@@ -2362,15 +2362,22 @@ function spoolMutation(input, options = {}) {
 		if (bytes > 65536) throw new Error("Spool entry exceeds 64 KiB.");
 		if (existsSync(readyPath)) {
 			if (readSpoolFile(readyPath) !== serialized) return resultForIoFailure(input, entry, layout, /* @__PURE__ */ new Error("Existing spool entry does not match its content hash."), options.onWarning);
-			return {
-				status: "duplicate",
-				quotaClass: entry.quotaClass,
-				path: readyPath
-			};
+			try {
+				fsyncPath(layout.tmpDir);
+				fsyncPath(layout.readyDir);
+				return {
+					status: "duplicate",
+					quotaClass: entry.quotaClass,
+					path: readyPath
+				};
+			} catch (error) {
+				return resultForIoFailure(input, entry, layout, error, options.onWarning);
+			}
 		}
 		if (existsSync(tmpPath)) {
 			if (readSpoolFile(tmpPath) !== serialized) return resultForIoFailure(input, entry, layout, /* @__PURE__ */ new Error("Existing spool temp entry is incomplete or corrupt."), options.onWarning);
 			try {
+				fsyncPath(tmpPath);
 				renameSync(tmpPath, readyPath);
 				fsyncPath(layout.tmpDir);
 				fsyncPath(layout.readyDir);

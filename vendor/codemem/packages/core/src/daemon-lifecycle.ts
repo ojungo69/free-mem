@@ -160,20 +160,20 @@ function isDaemonProcessAlive(layout: StorageLayout): boolean {
 	}
 }
 
-function acquireExclusiveLock(lockPath: string): BetterSqlite3.Database {
+function acquireWriterLock(lockPath: string): BetterSqlite3.Database {
 	const lock = new BetterSqlite3(lockPath, { timeout: 0, fileMustExist: false });
 	try {
 		chmodSync(lockPath, 0o600);
 		lock.pragma("journal_mode = DELETE");
 		lock.pragma("busy_timeout = 0");
-		lock.exec("BEGIN EXCLUSIVE");
+		lock.exec("BEGIN IMMEDIATE");
 		recordLockOpen(lockPath);
 		return lock;
 	} catch (error) {
 		lock.close();
 		const message = error instanceof Error ? error.message : String(error);
 		if (/busy|locked|SQLITE_BUSY/i.test(message)) {
-			throw new Error("Daemon already running for this data_dir (exclusive lock busy).");
+			throw new Error("Daemon already running for this data_dir (writer lock busy).");
 		}
 		throw error;
 	}
@@ -269,7 +269,7 @@ export async function startDaemon(options: {
 	const layout = resolveStorageLayout(options.dataDir);
 	ensureStorageLayout(layout);
 
-	const lock = acquireExclusiveLock(layout.lockPath);
+	const lock = acquireWriterLock(layout.lockPath);
 
 	let canonical: CanonicalWriter | undefined;
 	let sweeper: RawEventSweeper | undefined;
@@ -469,7 +469,7 @@ function removeControlArtifacts(layout: StorageLayout): void {
 function cleanupIfStillOwner(layout: StorageLayout, snapshot: DaemonIdentity | null): void {
 	let lock: BetterSqlite3.Database;
 	try {
-		lock = acquireExclusiveLock(layout.lockPath);
+		lock = acquireWriterLock(layout.lockPath);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (/already running/i.test(message)) return;

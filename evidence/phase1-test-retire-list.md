@@ -209,6 +209,7 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T052-02-backup-retention-permissions` | T052 | retention 7d/4w または owner-only permission が崩れる |
 | `P1-T052-03-restore-journal-order` | T052 | restore の durable state 順序・rollback が判断 #16 と異なる |
 | `P1-T052-04-backup-privacy-copy` | T052 | private/local-only を含み得る表示、off-device 非提供表示がない |
+| `P1-T055-01-spool-fault-boundaries` | T055 | tmp write / file・directory fsync / durable delete の障害後に spool が消失または二重適用される |
 
 ## T043 retired fully qualified names（61）
 

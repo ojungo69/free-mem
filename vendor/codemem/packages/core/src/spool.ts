@@ -842,7 +842,13 @@ export function spoolMutation(input: SpoolMutation, options: SpoolOptions = {}):
 					options.onWarning,
 				);
 			}
-			return { status: "duplicate", quotaClass: entry.quotaClass, path: readyPath };
+			try {
+				fsyncPath(layout.tmpDir);
+				fsyncPath(layout.readyDir);
+				return { status: "duplicate", quotaClass: entry.quotaClass, path: readyPath };
+			} catch (error) {
+				return resultForIoFailure(input, entry, layout, error, options.onWarning);
+			}
 		}
 		if (existsSync(tmpPath)) {
 			if (readSpoolFile(tmpPath) !== serialized) {
@@ -855,6 +861,7 @@ export function spoolMutation(input: SpoolMutation, options: SpoolOptions = {}):
 				);
 			}
 			try {
+				fsyncPath(tmpPath);
 				renameSync(tmpPath, readyPath);
 				fsyncPath(layout.tmpDir);
 				fsyncPath(layout.readyDir);
@@ -944,6 +951,7 @@ function recoverTmpEntriesLocked(layout: SpoolLayout): void {
 			else moveToQuarantineLocked(layout, "tmp", name, "broken_json");
 			continue;
 		}
+		fsyncPath(source);
 		renameSync(source, readyPath);
 		fsyncPath(layout.tmpDir);
 		fsyncPath(layout.readyDir);

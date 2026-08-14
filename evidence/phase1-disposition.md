@@ -204,7 +204,7 @@ T053 harness は TypeScript AST で alias/deep import、opener、DDL、旧 direc
 
 | surface | path | disposition | class | authority |
 |---|---|---|---|---|
-| instance lock | `control/lock.db` | daemon常駐(T034)。better-sqlite3 `BEGIN EXCLUSIVE`・busy_timeout 0・journal DELETE・0600。SQLITE_BUSY = 二重起動拒否 | − | − |
+| instance lock | `control/lock.db` | daemon常駐(T034)。better-sqlite3 `BEGIN IMMEDIATE` writer reservation・busy_timeout 0・journal DELETE・0600。SQLITE_BUSY = 二重起動拒否 | − | − |
 | force-kill identity | `control/identity.json` | daemon常駐(T034)。PID + startTime + exe/cmdline fingerprint + nonce。不一致は kill 拒否 | − | − |
 | RPC socket (bind only) | `control/daemon.sock` | daemon常駐(T034)。parent 0700 / socket 0600。handshake / allowlist / typed RPC は T035 | − | − |
 | health probe | `readDaemonHealth(dataDir)` + socket liveness line | daemon常駐(T034)。typed instance/protocol/doctor は T035 | − | − |

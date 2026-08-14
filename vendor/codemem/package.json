@@ -12,6 +12,7 @@
     "lint": "pnpm exec biome check packages/",
     "phase1:static-scan": "node --experimental-strip-types ../../harness/phase1-static-scan.ts",
     "phase1:runtime-db-open-trace": "pnpm run build && node ../../harness/phase1-runtime-db-open-trace.mjs",
+    "phase1:fault-injection": "pnpm run build && node ../../harness/phase1-fault-injection.mjs && pnpm exec vitest run packages/core/src/spool.test.ts packages/core/src/spool-importer.test.ts packages/core/src/mutation-dispatcher.test.ts packages/core/src/online-backup.test.ts packages/core/src/daemon-operations.test.ts --maxWorkers=1 --no-file-parallelism",
     "format": "pnpm exec biome check --write packages/",
     "tsc": "pnpm exec tsc --build",
     "typecheck": "pnpm run tsc",

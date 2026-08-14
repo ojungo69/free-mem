@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	statSync,
 	truncateSync,
 	unlinkSync,
@@ -34,13 +35,47 @@ import {
 	SPOOL_RESERVED_QUOTA_BYTES,
 	spoolMutation,
 } from "./spool.js";
+import { resolveStorageLayout } from "./storage-layout.js";
+import { ReadOnlyActor } from "./writer-actor.js";
 
-const fsFault = vi.hoisted(() => ({ renameDiskFull: false }));
+const fsFault = vi.hoisted(() => ({
+	renameDiskFull: false,
+	tmpWrite: false,
+	flushWrite: false,
+	fsyncSuffix: "",
+	readyUnlink: false,
+}));
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
+	const ioError = (message: string): NodeJS.ErrnoException => {
+		const error = new Error(message) as NodeJS.ErrnoException;
+		error.code = "EIO";
+		return error;
+	};
 	return {
 		...actual,
+		writeFileSync(...args: Parameters<typeof actual.writeFileSync>): void {
+			if (fsFault.tmpWrite && String(args[0]).endsWith(".json.tmp")) {
+				throw ioError("synthetic spool temp write failure");
+			}
+			if (fsFault.flushWrite && String(args[0]).endsWith(".json.tmp")) {
+				Reflect.apply(actual.writeFileSync, actual, [
+					args[0],
+					args[1],
+					{ ...(args[2] as object), flush: false },
+				]);
+				throw ioError("synthetic spool flush failure");
+			}
+			actual.writeFileSync(...args);
+		},
+		fsyncSync(fd: number): void {
+			const target = actual.readlinkSync(`/proc/self/fd/${fd}`);
+			if (fsFault.fsyncSuffix && target.endsWith(fsFault.fsyncSuffix)) {
+				throw ioError("synthetic spool fsync failure");
+			}
+			actual.fsyncSync(fd);
+		},
 		renameSync(source: string, destination: string): void {
 			if (fsFault.renameDiskFull && destination.includes("/control/spool/ready/")) {
 				const error = new Error("no space left on device") as NodeJS.ErrnoException;
@@ -49,6 +84,12 @@ vi.mock("node:fs", async (importOriginal) => {
 			}
 			actual.renameSync(source, destination);
 		},
+		unlinkSync(path: string): void {
+			if (fsFault.readyUnlink && path.includes("/control/spool/ready/")) {
+				throw ioError("synthetic durable spool delete failure");
+			}
+			actual.unlinkSync(path);
+		},
 	};
 });
 
@@ -56,6 +97,10 @@ const roots: string[] = [];
 
 afterEach(async () => {
 	fsFault.renameDiskFull = false;
+	fsFault.tmpWrite = false;
+	fsFault.flushWrite = false;
+	fsFault.fsyncSuffix = "";
+	fsFault.readyUnlink = false;
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -88,6 +133,24 @@ function eventBody(
 			sensitivity: "normal",
 		},
 	};
+}
+
+function expectExactlyOneEvent(dataDir: string, key: string): void {
+	const reader = ReadOnlyActor.open(realpathSync(resolveStorageLayout(dataDir).currentPointerPath));
+	try {
+		expect(
+			reader
+				.prepare(
+					"SELECT COUNT(*) AS n FROM mutation_receipts WHERE method = 'POST /v1/events' AND idempotency_key = ?",
+				)
+				.get(key),
+		).toEqual({ n: 1 });
+		expect(
+			reader.prepare("SELECT COUNT(*) AS n FROM raw_events WHERE event_id = ?").get(`event-${key}`),
+		).toEqual({ n: 1 });
+	} finally {
+		reader.close();
+	}
 }
 
 function writeSparse(path: string, bytes: number): void {
@@ -449,5 +512,132 @@ describe("phase 1 spool contract", () => {
 		expect(existsSync(join(codexDir, "hook-2.json"))).toBe(true);
 		expect(existsSync(join(claudeDir, ".hook-tmp-partial.json"))).toBe(true);
 		expect(existsSync(join(codexDir, ".bad-json.json"))).toBe(true);
+	});
+
+	it("P1-T055-01-spool-fault-boundaries", async () => {
+		const writeDataDir = await tempDataDir();
+		fsFault.tmpWrite = true;
+		expect(
+			spoolMutation(
+				{
+					method: "POST /v1/events",
+					idempotencyKey: "fault-write",
+					body: eventBody("fault-write"),
+				},
+				{ dataDir: writeDataDir, onWarning: () => {} },
+			),
+		).toMatchObject({ status: "dropped", reason: "io_error" });
+		fsFault.tmpWrite = false;
+		const writeLayout = resolveSpoolLayout(writeDataDir);
+		expect(readdirSync(writeLayout.tmpDir)).toEqual([]);
+		expect(readdirSync(writeLayout.readyDir)).toEqual([]);
+
+		const fileSyncDataDir = await tempDataDir();
+		fsFault.flushWrite = true;
+		expect(
+			spoolMutation(
+				{
+					method: "POST /v1/events",
+					idempotencyKey: "fault-file-fsync",
+					body: eventBody("fault-file-fsync"),
+				},
+				{ dataDir: fileSyncDataDir, onWarning: () => {} },
+			),
+		).toMatchObject({ status: "dropped", reason: "io_error" });
+		const fileSyncLayout = resolveSpoolLayout(fileSyncDataDir);
+		expect(readdirSync(fileSyncLayout.tmpDir)).toHaveLength(1);
+		fsFault.flushWrite = false;
+		fsFault.fsyncSuffix = ".json.tmp";
+		expect(
+			spoolMutation(
+				{
+					method: "POST /v1/events",
+					idempotencyKey: "fault-file-fsync",
+					body: eventBody("fault-file-fsync"),
+				},
+				{ dataDir: fileSyncDataDir, onWarning: () => {} },
+			),
+		).toMatchObject({ status: "dropped", reason: "io_error" });
+		expect(readdirSync(fileSyncLayout.tmpDir)).toHaveLength(1);
+		const recoveryFaulted = await startDaemon({ dataDir: fileSyncDataDir });
+		await recoveryFaulted.stop();
+		expect(readdirSync(fileSyncLayout.tmpDir)).toHaveLength(1);
+		expect(readdirSync(fileSyncLayout.readyDir)).toEqual([]);
+		fsFault.fsyncSuffix = "";
+		const recovered = await startDaemon({ dataDir: fileSyncDataDir });
+		await recovered.stop();
+		expect(readdirSync(fileSyncLayout.tmpDir)).toEqual([]);
+		expect(readdirSync(fileSyncLayout.readyDir)).toEqual([]);
+		expectExactlyOneEvent(fileSyncDataDir, "fault-file-fsync");
+
+		for (const directory of ["tmp", "ready"] as const) {
+			const dataDir = await tempDataDir();
+			const layout = resolveSpoolLayout(dataDir);
+			fsFault.fsyncSuffix = `/control/spool/${directory}`;
+			const key = `fault-${directory}-fsync`;
+			expect(
+				spoolMutation(
+					{ method: "POST /v1/events", idempotencyKey: key, body: eventBody(key) },
+					{ dataDir, onWarning: () => {} },
+				),
+			).toMatchObject({ status: "dropped", reason: "io_error" });
+			expect(readdirSync(layout.readyDir)).toHaveLength(1);
+			expect(
+				spoolMutation(
+					{ method: "POST /v1/events", idempotencyKey: key, body: eventBody(key) },
+					{ dataDir, onWarning: () => {} },
+				),
+			).toMatchObject({ status: "dropped", reason: "io_error" });
+			expect(readdirSync(layout.readyDir)).toHaveLength(1);
+			fsFault.fsyncSuffix = "";
+			expect(
+				spoolMutation(
+					{ method: "POST /v1/events", idempotencyKey: key, body: eventBody(key) },
+					{ dataDir, onWarning: () => {} },
+				),
+			).toMatchObject({ status: "duplicate" });
+		}
+
+		const deleteDataDir = await tempDataDir();
+		const queued = spoolMutation(
+			{
+				method: "POST /v1/events",
+				idempotencyKey: "fault-delete",
+				body: eventBody("fault-delete"),
+			},
+			{ dataDir: deleteDataDir, onWarning: () => {} },
+		);
+		expect(queued.status).toBe("queued");
+		fsFault.readyUnlink = true;
+		const first = await startDaemon({ dataDir: deleteDataDir });
+		await first.stop();
+		expect(existsSync(queued.path as string)).toBe(true);
+		fsFault.readyUnlink = false;
+		const second = await startDaemon({ dataDir: deleteDataDir });
+		await second.stop();
+		expect(existsSync(queued.path as string)).toBe(false);
+		expectExactlyOneEvent(deleteDataDir, "fault-delete");
+
+		const deleteSyncDataDir = await tempDataDir();
+		const deleteSyncQueued = spoolMutation(
+			{
+				method: "POST /v1/events",
+				idempotencyKey: "fault-delete-fsync",
+				body: eventBody("fault-delete-fsync"),
+			},
+			{ dataDir: deleteSyncDataDir, onWarning: () => {} },
+		);
+		expect(deleteSyncQueued.status).toBe("queued");
+		const serialized = readFileSync(deleteSyncQueued.path as string, "utf8");
+		fsFault.fsyncSuffix = "/control/spool/ready";
+		const third = await startDaemon({ dataDir: deleteSyncDataDir });
+		await third.stop();
+		expect(existsSync(deleteSyncQueued.path as string)).toBe(false);
+		writeFileSync(deleteSyncQueued.path as string, serialized, { mode: 0o600 });
+		fsFault.fsyncSuffix = "";
+		const fourth = await startDaemon({ dataDir: deleteSyncDataDir });
+		await fourth.stop();
+		expect(existsSync(deleteSyncQueued.path as string)).toBe(false);
+		expectExactlyOneEvent(deleteSyncDataDir, "fault-delete-fsync");
 	});
 });
