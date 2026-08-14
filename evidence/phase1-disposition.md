@@ -1,6 +1,6 @@
 # T029(b) — Phase 1 disposition 表（実装開始条件・T053 照合の正本）
 
-日付: 2026-08-13 / 作成: Claude Code（セキュリティ判定につき委譲なし）
+日付: 2026-08-14 / 作成: Claude Code（セキュリティ判定につき委譲なし）
 入力: `codemem/write-handle-inventory.md`（T007 全数）+ `codemem/write-handle-classification.md`（T010 + 2026-08-13 補遺 F9–F11）+ A7 実施後の実地 rg 全数再列挙。
 行番号は **A7 削除後の現行 tree** を基準に再照合済み（凍結 evidence の旧行番号と異なる場合は本表が優先）。
 
@@ -19,23 +19,26 @@
 | `POST /v1/events/batch` | `{ items: [{ idempotencyKey, event }] }` → `{ receipts[] }` | A。item 単位 receipt。同一 key・異 payload hash = conflict + quarantine | hook/adapter は T038(a) 後の同一 batch envelope を spool。直接 DB fallback 禁止 |
 | `POST /v1/context/pack` | `{ requestId, context, limit?, tokenBudget?, filters?, trace? }` → `{ pack, trace?, retrievalReceiptId }` | read + A。pack 読出しと usage/retrieval ledger receipt を daemon 内で処理。同一 requestId・異 payload hash = conflict | hook inject は空 context で fail-open、CLI/MCP は typed `daemon_unavailable`、viewer は HTTP 503。DB fallback 禁止 |
 | `POST /v1/search` | `{ requestId, mode, query?, ids?, filters?, limit? }` → `{ items, retrievalReceiptId }` | read + A。`mode` = `search|recent|timeline|expand|explain|search_index|get_many`。ledger receipt は同一 transaction | CLI/MCP は typed `daemon_unavailable`、viewer は 503 |
+| `POST /v1/retrieval/file-context` | `{ attemptId, startedAt, completedAt, retrievalStatus, candidateIds?, candidateCount?, selectedIds?, failureCode?, failureStage?, project?, repositoryPath?, sourceSessionId? }` → `{ recorded, inserted?|errorCode? }` | A。file-context retrieval attempt と exposure を daemon transaction 内で記録 | hook は retrieval 本体を継続し、ledger failure を本文取得失敗へ昇格しない |
+| `POST /v1/retrieval/file-context/delivery` | `{ attemptId, status:"handed_off"|"failed" }` → `{ updated, errorCode? }` | A。上記 attempt の delivery 状態だけを更新 | hook は typed failure を記録し、Agent の file read を阻害しない |
 | `GET /v1/memories/:id` | path `id` + query `{ project?, kind? }` → `{ item|null, retrievalReceiptId }` | read + A（retrieval ledger） | CLI/MCP は typed `daemon_unavailable`、viewer は 503 |
 | `POST /v1/memories/record` | `{ idempotencyKey, kind, title, body, confidence?, project? }` → `{ receiptId, memoryId }` | A。memory + receipt 同一 transaction。同一 key・異 payload hash = conflict + quarantine | spoolable caller のみ spool。直接 DB fallback 禁止 |
 | `DELETE /v1/memories/:id` | path `id` + `{ requestId, expectedRevision? }` → `{ receiptId, status }` | A。**user-authority**。遅延 replay を避けるため spool 不可 | typed `daemon_unavailable`、自動 retry・DB fallback とも禁止 |
 | `GET /v1/checkpoints` | query `{ project?, state?, limit? }` → `{ checkpoints[] }` | read | typed `daemon_unavailable` / viewer 503 |
 | `GET /v1/health` / `GET /v1/doctor` | body なし → `{ status, instanceId, protocolVersion, diagnostics? }` | read | CLI `status` だけ `{ status: "not_running" }` として exit 0。他 caller は typed `daemon_unavailable` |
 | `GET /v1/view` | `{ collection, sessionId?, project?, kind?, scope?, limit?, offset? }`。`collection` は sessions/projects/memories/observations/summaries/session/memory/artifacts/raw-events/raw-events-status/stats/runtime/usage/observer-status/config の allowlist → `{ status, body }` | read。collection と viewer route は §6 で 1 対 1 | viewer は `{ error: { code: "daemon_unavailable", ... } }` + HTTP 503。local DB fallback 禁止 |
-| `POST /v1/viewer/auth/{nonce,exchange,verify,logout}` | nonce=`{}`→`{nonce,expiresAt}`、exchange=`{nonce}`→`{session}`、verify=`{bearer?,session?}`→`{authenticated}`、logout=`{session}`→`{loggedOut}` | Unix DAC 内のviewer認証。nonce 60s単回、session 12h/上限8/daemon再起動失効 | browser交換失敗またはdata API 503。Bearer/nonce/sessionのDB fallback・URL query・log出力禁止 |
+| `POST /v1/viewer/auth/nonce` / `POST /v1/viewer/auth/exchange` / `POST /v1/viewer/auth/verify` / `POST /v1/viewer/auth/logout` | nonce=`{}`→`{nonce,expiresAt}`、exchange=`{nonce}`→`{session}`、verify=`{bearer?,session?}`→`{authenticated}`、logout=`{session}`→`{loggedOut}` | Unix DAC 内のviewer認証。nonce 60s単回、session 12h/上限8/daemon再起動失効 | browser交換失敗またはdata API 503。Bearer/nonce/sessionのDB fallback・URL query・log出力禁止 |
 | `POST /v1/operations/export` | `{ operationId, payloadHash, outputPath, filters }` → `{ operationId, state }` | B。client が UUID を生成。`prepared→writing→verified→committed` | typed `daemon_unavailable`。自動 retry・client 側 export fallback 禁止 |
 | `POST /v1/operations/import` | `{ operationId, payloadHash, inputPath, remapProject?, dryRun? }` → `{ operationId, state }` | B。client UUID。destructive 時 `prepared→backup_verified→applying→committed` | typed `daemon_unavailable`。自動 retry・client 側 import fallback 禁止 |
-| `POST /v1/operations/backup/create` | `{ operationId, payloadHash, reason }` → `{ operationId, state }` | B。client UUID。`prepared→snapshotting→verified→committed` | typed `daemon_unavailable`。自動 retry・client 側 backup fallback 禁止 |
-| `POST /v1/operations/backup/verify` | `{ backupId }` → `{ backupId, valid, manifestHash, diagnostics[] }` | read（artifact 非改変） | typed `daemon_unavailable`。自動 retry なし |
-| `POST /v1/operations/backup/restore` | `{ operationId, payloadHash, backupId }` → `{ operationId, state }` | B。client UUID。`prepared→staging→switched→verified→committed`。失敗時は journal に `rolling_back→rolled_back|failed` | typed `daemon_unavailable`。自動 retry・直接 restore 禁止 |
+| `GET /v1/backup/list` | `{}` → `{ backups[] }` | read。各 artifact / manifest / owner mode を再検証 | typed `daemon_unavailable`。client 側 filesystem fallback 禁止 |
+| `POST /v1/backup/create` | `{ operationId, payloadHash, reason }` → `{ operationId, backupId, state:"completed", artifactSha256, manifestHash }` | B。client UUID。完成 artifact + manifest sidecar が durable result。同一 ID・同一 hash は検証後 replay、異 hash は副作用前 conflict | typed `daemon_unavailable`。自動 retry・client 側 backup fallback 禁止 |
+| `POST /v1/backup/verify` | `{ backupId }` → `{ backupId, valid, manifestHash, diagnostics[] }` | read（artifact 非改変） | typed `daemon_unavailable`。自動 retry なし |
+| `POST /v1/backup/restore` | `{ operationId, payloadHash, backupId }` → `{ operationId, backupId, pointer, artifactSha256, manifestHash, restartRequired:true }` | B。client UUID。fresh staging 検証後、storage journal `prepared→switched→committed` で current pointer を切替。旧 artifact は保持 | typed `daemon_unavailable`。自動 retry・直接 restore 禁止 |
 | `GET /v1/operations/:id` | path `id` → `{ operationId, payloadHash, state, result?, error? }` | B の結果再取得。全 B endpoint で同一 operationId + 同一 hash は現在/最終結果を返し、異 hash は副作用前に `idempotency_conflict` | typed `daemon_unavailable` |
 | `POST /v1/jobs` | `{ kind, args, dryRun? }` → `{ jobId, state }` | C。daemon maintenance mode 内で直列、`maxAttempts=1` | typed `daemon_unavailable`。応答不明を含め client 自動 retry 禁止 |
 | `GET /v1/jobs` / `GET /v1/jobs/:id` | query `{ kind?, state?, submittedAfter? }` / path `id` → `{ jobs[] }` / `{ job }` | C の照会・結果再取得。再実行は user が新 job を明示 trigger | typed `daemon_unavailable` |
 
-Class B の `payloadHash` は `operationId` / `payloadHash` を除く allowlisted request の canonical JSON に対する SHA-256。journal は各 state 更新を atomic replace + fsync し、失敗・daemon 再起動後も `GET /v1/operations/:id` で同じ結果へ収束する。Class C は job ID を受領した後だけ照会し、lost response 時は `GET /v1/jobs` で探索してから user が判断する。
+Class B の `payloadHash` は endpoint ごとの allowlisted payload に対する SHA-256。export/import は operation journal と `GET /v1/operations/:id`、backup create は artifact + manifest sidecar、restore は deterministic staging 名 + storage journal により同じ結果へ収束する。Class C は job ID を受領した後だけ照会し、lost response 時は `GET /v1/jobs` で探索してから user が判断する。
 
 ## §1 A7 で削除済み（2026-08-13、`9deb8e2..f1e84cf`・290 deleted paths）
 
@@ -178,18 +181,19 @@ Class B の `payloadHash` は `operationId` / `payloadHash` を除く allowliste
 - plugins/claude / plugins/codex の hook シェル・opencode-plugin: CLI/npx 起動のみで直接 DB open なし
 - UI（ブラウザ側）: HTTP client のみ
 
-## §11 2026-08-13 live tree 再照合
+## §11 2026-08-14 live tree 再照合
 
 `vendor/codemem` で test/spec を除外して再走査した。
 
-| opener | production hit | 本表の disposition |
+| opener | production file set | 本表の disposition |
 |---|---:|---|
-| `new MemoryStore(` | 31 | hooks = §3、CLI = §4、MCP = §5、viewer = §6、maintenance = §7 |
-| direct `connect(` call | 16 | hook 2 = §3、CLI/db/export/import = §4、backfill/maintenance = §7、store/extraction = §8 |
-| `connectReadOnly(` call | 2 | CLI status = §4、maintenance wrapper = §7 |
-| `new Database(` | 2 | core/db.ts の writable/readonly opener 定義のみ。audited wrapper 内部へ = §8 |
+| `new MemoryStore(` | 2 files: `daemon-canonical.ts`, `daemon-jobs.ts` | daemon canonical store / comparison job のみ = §8 / T048 |
+| direct `connect(` call | 2 files: `daemon-canonical.ts`, `daemon-jobs.ts` | audited writer を daemon 所有 code だけが開く = §8 / T048 |
+| `connectReadOnly(` call | 0 files | definition は `db.ts` 内部、production caller 0 |
+| `WriterActor.open` / `ReadOnlyActor.open` | 4 files: `db.ts`, `legacy-cutover.ts`, `online-backup.ts`, `storage.ts` | audited wrapper / cutover / backup / storage verification = T048 |
+| runtime `better-sqlite3` + raw constructor | 2 files: `daemon-lifecycle.ts`, `writer-actor.ts` | instance lock + audited actor 実装だけ = T034 / T048 |
 
-scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`rg -n '\\bconnect(ReadOnly)?\\(' ...`、`rg -n 'new Database\\(' ...` を使用した。MCP SDK の `server.connect(transport)` と定義・comment は direct DB-open count から除外した。inventory 本文 + F9–F11 補遺の全 production opener は上表のいずれかに対応し、未分類 0。
+T053 harness は TypeScript AST で alias/deep import、opener、DDL、旧 direct path、未認定 sidecar、public runtime export を走査し、上記 file set と exact match させる。MCP SDK の `server.connect(transport)` と type-only DB import は opener に数えない。inventory 本文 + F9–F11 補遺の未分類 production 経路は 0。
 
 ## 完了条件との対応
 
@@ -211,7 +215,7 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 |---|---|---|---|---|
 | daemon RPC | `control/daemon.sock` JSONL | daemon常駐(T035)。handshake + allowlist + 32KiB + hard deadline。未知 method/field 拒否 | − | − |
 | `GET /v1/health` / `GET /v1/doctor` | RPC method | read。`{ status, instanceId, protocolVersion, diagnostics? }` | − | − |
-| `POST /v1/operations/backup/create` / `verify` | RPC method | T050 最小面。handshake 後 `not_implemented` / verify stub | B | user-authority |
+| `GET /v1/backup/list` / `POST /v1/backup/create` / `POST /v1/backup/verify` / `POST /v1/backup/restore` | RPC method | T050 online backup を T052 で manifest/list/retention/journal restore まで完成 | B / read | user-authority |
 - viewer の pack transport mutation は削除、browser の pack/trace は `POST /v1/context/pack` read relay（ledger は daemon 内）に確定した。未決 disposition は 0 件。
 - inventory 全数 + F9–F11 補遺に未分類の production DB-open 経路は rg 全数照合で存在しない（2026-08-13 時点）。
 
@@ -275,3 +279,14 @@ path を受け取って DB を自己 open していた export/import、maintenan
 | rollback hardlink | `control/legacy-*.legacy-recovery.sqlite` | tombstone前に旧inodeをprivate hardlinkで保持。final owner検査までの失敗時だけ旧pathとcanonical pointerを一意にrollback | − | daemon内部 |
 | legacy tombstone | 旧 DB path → `control/legacy-db-tombstone/` symlink | atomic rename + parent fsync後にfinal owner検査。旧binaryのcanonical writeと別DB新規生成を双方拒否 | − | daemon内部 |
 | legacy spool handoff | `{claude-hook-spool,codex-hook-spool}` → T039 ready spool | canonical daemon 起動ごとに normalized event 化を再試行し、共通redaction済みdurable spoolへ移せた後だけ旧fileを削除。変換不能・quota失敗は保持 | A | agent-callable |
+
+## T052 backup / restore surface（2026-08-14）
+
+| surface | path | disposition | class | authority |
+|---|---|---|---|---|
+| canonical backup artifact | `control/backups/<id>.sqlite` | SQLite online backup 完了後に standalone 化・0600・fsync・integrity/hash検証。live DB inode / symlink / WAL sidecar は拒否 | B | local user / daemon内部 |
+| canonical manifest | `control/backups/<id>.json` | 完成 artifact を read-only で開き、schema/SQLite/FTS/sqlite-vec/generation/canonical rows/watermark/privacy を記録。canonical hash + artifact hash、Phase 1 は hash-only | B | local user / daemon内部 |
+| daily retention | `daily-YYYY-MM-DD` + 7 daily / 4 older weekly | daemon 1分 sweep。maintenance/restore 中は開始せず、automatic だけ prune、manual は保持 | B | daemon内部 |
+| restore staging | `db/versions/restore-<operation>-<payload>.sqlite` | verified artifactをCOPYFILE_EXCL、FTS rebuild、vector degraded、manifest/rows/integrity再検証後だけ publish | B | local user |
+| restore activation | `control/restore-journal.json` + `db/current` | 判断 #16 `prepared→switched→committed` + reopen/integrity。成功 response 後 daemon停止、旧 artifact保持 | B | local user |
+| backup CLI | `codemem backup create|list|verify|restore` | shared RPC clientのみ。reasonはproject custom secret rule適用後にhash再計算。private/local-only と off-device/export Phase 1非提供を表示 | B / read | user-authority |
