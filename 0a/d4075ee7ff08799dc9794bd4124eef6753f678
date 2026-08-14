@@ -1,0 +1,61 @@
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_a0221a4dbd1b21 167-169
+  s_211aa7fe546c35::t_903cfe46bfb891 104
+evidence/phase1-disposition.md
+  s_211aa7fe546c35::t_903cfe46bfb891 207
+evidence/phase1-t055-fault-injection-validation.md
+  s_211aa7fe546c35::t_dc25ef02272dd6 22,56-57
+  s_211aa7fe546c35::t_a0221a4dbd1b21 1-21,23-55
+evidence/phase1-test-retire-list.md
+  s_211aa7fe546c35::t_29dcd83320b448 212
+specs/001-agent-memory-core/phase-1-design.md
+  s_211aa7fe546c35::t_dc25ef02272dd6 41
+harness/phase1-fault-injection.mjs
+  s_211aa7fe546c35::t_c2f9156c07297f 100-117,120,122,126,131
+  s_211aa7fe546c35::t_f5c87909cea615 645-676,680,710-748,750-762,764-789,791-819,825-897,904,906-927,934-950,955-957,959-963,965-991,1023-1094
+  s_211aa7fe546c35::t_62be369e99bc20 23,823
+  s_211aa7fe546c35::t_925e71b8e58720 24,749,763,790
+  s_211aa7fe546c35::t_1c6755654813eb 681-709
+  s_211aa7fe546c35::t_5fb3c6a089a4ba 898-902
+  s_211aa7fe546c35::t_467da0a12315ae 621
+  s_211aa7fe546c35::t_2cd49f43c150a2 992-1022
+  s_211aa7fe546c35::t_8e39364f803fa1 287-290,466-467,472-500,502-515,518-526,528-531,533-535,598-599
+  s_211aa7fe546c35::t_b8c3958a198238 1-22,25-99,118-119,121,123-125,127-130,132-286,291-375,379-383,385-388,390,402-405,407-465,468-471,501,516-517,527,532,536-541,545-562,564-565,576-582,584-597,600-620,622-628,638-644
+  s_211aa7fe546c35::t_af47a5e09b31c5 677-679
+  s_211aa7fe546c35::t_080c54ac014c4e 406
+  s_211aa7fe546c35::t_24dc19de72b760 376-378,384,389,391-401,630-637,820-822,824,903,905,928-933,951-954,958,964
+  s_211aa7fe546c35::t_00b3274729d7c1 563,566-570,572,574-575,583,629
+  s_211aa7fe546c35::t_33b1a1fefba07a 542-544,571,573
+vendor/codemem/packages/core/src/online-backup.ts
+  s_211aa7fe546c35::t_1687d3d07020ff 1,461-476,625,661
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_a21204af0c0dc2 2365-2375,2380
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_f8c0e515616e05 2365-2375,2380
+vendor/codemem/package.json
+  s_211aa7fe546c35::t_c9994575075710 15
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_211aa7fe546c35::t_4c24b8a391ab16 163,169,176,272,472
+vendor/codemem/packages/core/src/daemon-operations.ts
+  s_211aa7fe546c35::t_b59907ed512022 1,171-175,181,201-221,277,283-285,401
+vendor/codemem/packages/core/src/spool.test.ts
+  s_211aa7fe546c35::t_48b7f09d1a93d4 7,38-39,41-47,51-55,58-78,87-92,100-103,138-155,516-642
+vendor/codemem/packages/core/src/spool.ts
+  s_211aa7fe546c35::t_dafd1c746a5a9f 845-851,864,954
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0ad4075ee7ff08799dc9794bd4124eef6753f678",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
