@@ -20,6 +20,7 @@
 | CLI daemon RPC cutover validation | phase1-t044-cli-rpc-validation.md | T044 |
 | daemon jobs・maintenance mode validation | phase1-t045-t046-daemon-jobs-validation.md | T045–T046 |
 | export/import daemon operation validation | phase1-t047-operations-validation.md | T047 |
+| daemon-only DB handle validation | phase1-t048-zero-external-db-handles-validation.md | T048 |
 
 pin: codemem 26438e75ce1d0fec6be34981f15045a15c89658b / ai-memory a9e9a24d50f59e970fc01ae48efe647abf20702e / remem cde8bc05504c74794d044ef118f74d8f828adbf5
 clone 元: ~/projects/free-mem-vendor/（ローカル clone のみ・公開 fork なし）

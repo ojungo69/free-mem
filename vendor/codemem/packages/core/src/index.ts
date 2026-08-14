@@ -59,8 +59,6 @@ export {
 } from "./daemon-rpc.js";
 export {
 	assertSchemaReady,
-	connect,
-	connectReadOnly,
 	DEFAULT_DB_PATH,
 	fromJson,
 	fromJsonStrict,
@@ -76,7 +74,6 @@ export {
 } from "./db.js";
 export {
 	DEDUP_KEY_BACKFILL_JOB,
-	DedupKeyBackfillRunner,
 	hasPendingDedupKeyBackfill,
 	runDedupKeyBackfillPass,
 } from "./dedup-key-backfill.js";
@@ -167,8 +164,6 @@ export {
 export type { ExportOptions, ExportPayload, ImportOptions, ImportResult } from "./export-import.js";
 export {
 	buildImportKey,
-	exportMemories,
-	importMemories,
 	mergeSummaryMetadata,
 	readImportPayload,
 } from "./export-import.js";
@@ -329,17 +324,7 @@ export {
 	deactivateLowSignalObservations,
 	dedupNearDuplicateMemories,
 	extractNarrativeFromBody,
-	getMemoryArtifactReport,
-	getMemoryRoleReport,
-	getRawEventRelinkPlan,
-	getRawEventRelinkReport,
-	getRawEventStatus,
-	getReliabilityMetrics,
-	initDatabase,
-	rawEventsGate,
-	retryRawEventFailures,
 	scanSecretsRetroactive,
-	vacuumDatabase,
 } from "./maintenance.js";
 export type {
 	MaintenanceJobRecord,
@@ -378,11 +363,7 @@ export type {
 	MigrationBackupVerifier,
 	RunDatabaseMigrationsOptions,
 } from "./migration-runner.js";
-export {
-	openMigratedWriter,
-	runDatabaseMigrations,
-	verifyFreshDatabase,
-} from "./migration-runner.js";
+export { runDatabaseMigrations, verifyFreshDatabase } from "./migration-runner.js";
 export type { MutationReceipt } from "./mutation-dispatcher.js";
 export {
 	dispatchClassA,
@@ -485,7 +466,6 @@ export {
 export {
 	hasPendingRefBackfill,
 	REF_BACKFILL_JOB,
-	RefBackfillRunner,
 	runRefBackfillPass,
 } from "./ref-backfill.js";
 export { clearMemoryRefs, normalizeConcept, populateMemoryRefs } from "./ref-populate.js";
@@ -500,7 +480,6 @@ export type {
 	ScopeBackfillOptions,
 	ScopeBackfillReason,
 	ScopeBackfillResult,
-	ScopeBackfillRunnerOptions,
 } from "./scope-backfill.js";
 export {
 	backfillScopeIds,
@@ -510,7 +489,6 @@ export {
 	LEGACY_SHARED_REVIEW_SCOPE_ID,
 	runScopeBackfillPass,
 	SCOPE_BACKFILL_JOB,
-	ScopeBackfillRunner,
 } from "./scope-backfill.js";
 export type {
 	CanonicalWorkspaceIdentity,
@@ -541,7 +519,6 @@ export {
 	hasPendingSessionContextBackfill,
 	runSessionContextBackfillPass,
 	SESSION_CONTEXT_BACKFILL_JOB,
-	SessionContextBackfillRunner,
 } from "./session-context-backfill.js";
 export * from "./spool.js";
 export type { StorageJournal, StorageJournalState, StorageLayout } from "./storage.js";
@@ -555,18 +532,21 @@ export {
 	sha256File,
 	writeStorageJournal,
 } from "./storage.js";
-export { MemoryStore } from "./store.js";
+export type { MemoryStore } from "./store.js";
 export {
 	hasPendingSummaryDedupBackfill,
 	runSummaryDedupBackfillPass,
 	SUMMARY_DEDUP_BACKFILL_JOB,
-	SummaryDedupBackfillRunner,
 } from "./summary-dedup-backfill.js";
 export { canonicalMemoryKind, getSummaryMetadata, isSummaryLikeMemory } from "./summary-memory.js";
 export { deriveTags, fileTags, normalizeTag } from "./tags.js";
 // Test utilities (exported for consumer packages like viewer-server)
 export type { MixedScopeFixture } from "./test-utils.js";
-export { initTestSchema, insertTestSession, seedMixedScopeFixture } from "./test-utils.js";
+export {
+	initTestSchema,
+	insertTestSession,
+	seedMixedScopeFixture,
+} from "./test-utils.js";
 export type {
 	Artifact,
 	ExplainError,
@@ -599,11 +579,7 @@ export type {
 	UsageEvent,
 	UserPrompt,
 } from "./types.js";
-export {
-	runVectorMigrationPass,
-	VECTOR_MODEL_MIGRATION_JOB,
-	VectorModelMigrationRunner,
-} from "./vector-migration.js";
+export { runVectorMigrationPass, VECTOR_MODEL_MIGRATION_JOB } from "./vector-migration.js";
 export type {
 	BackfillVectorsOptions,
 	BackfillVectorsResult,
@@ -635,4 +611,4 @@ export {
 	VIEWER_SERVICE_DISCRIMINATOR,
 	viewerUrl,
 } from "./viewer-probe.js";
-export { ReadOnlyActor, WriterActor } from "./writer-actor.js";
+export type { ReadOnlyActor, WriterActor } from "./writer-actor.js";

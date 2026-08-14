@@ -9,8 +9,8 @@ import {
 	buildMemoryPackWithTrace,
 	estimateTokens,
 } from "./pack.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema, insertTestSession } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
 import type { MemoryResult } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ describe("buildMemoryPack", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		sessionId = insertTestSession(store.db);
 	});
 
@@ -1504,7 +1504,7 @@ describe("buildMemoryPack artifact_class trace + relevance ordering", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		sessionId = insertTestSession(store.db);
 	});
 
@@ -1598,7 +1598,7 @@ describe("buildMemoryPack structured content", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		sessionId = insertTestSession(store.db);
 	});
 
@@ -1791,7 +1791,7 @@ describe("buildMemoryPack compact mode", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		sessionId = insertTestSession(store.db);
 	});
 
@@ -2077,7 +2077,7 @@ describe("buildMemoryPack cluster compression", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		sessionId = insertTestSession(store.db);
 	});
 
@@ -2361,7 +2361,7 @@ describe("buildMemoryPack file-ref candidates in task and recall modes", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		sessionId = insertTestSession(store.db);
 	});
 

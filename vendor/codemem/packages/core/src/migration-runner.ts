@@ -1,6 +1,5 @@
 import {
 	assertSchemaReady,
-	connect,
 	ensureAdditiveSchemaCompatibility,
 	getSchemaVersion,
 	isSchemaCompatibilityCurrent,
@@ -72,18 +71,3 @@ export const verifyFreshDatabase: MigrationBackupVerifier = ({ db }) => {
 	const verified = canAutoBootstrapSchema(db);
 	return { verified, evidence: verified ? "fresh-empty-database" : "" };
 };
-
-/** Open the writer actor and perform the explicit, gated migration phase. */
-export function openMigratedWriter(
-	dbPath: string,
-	backupAndVerify: MigrationBackupVerifier = verifyFreshDatabase,
-): WriterActor {
-	const db = connect(dbPath);
-	try {
-		runDatabaseMigrations(db, { dbPath, backupAndVerify });
-		return db;
-	} catch (error) {
-		db.close();
-		throw error;
-	}
-}

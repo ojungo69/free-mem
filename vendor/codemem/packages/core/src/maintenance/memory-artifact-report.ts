@@ -7,7 +7,6 @@ import type {
 	MemoryArtifactReport,
 	MemoryArtifactReportOptions,
 } from "./types.js";
-import { withReadOnlyDb } from "./with-db.js";
 
 const ARTIFACTS: MemoryArtifactClass[] = [
 	"session_summary",
@@ -49,13 +48,6 @@ function incrementNestedArtifactCount(
 	const bucket = target[key] ?? {};
 	target[key] = bucket;
 	bucket[artifact] = (bucket[artifact] ?? 0) + 1;
-}
-
-export function getMemoryArtifactReport(
-	dbPath?: string,
-	opts: MemoryArtifactReportOptions = {},
-): MemoryArtifactReport {
-	return withReadOnlyDb(dbPath, (db) => getMemoryArtifactReportWithDb(db, opts));
 }
 
 export function getMemoryArtifactReportWithDb(

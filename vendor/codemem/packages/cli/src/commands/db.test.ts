@@ -3,20 +3,20 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
+import type { MemoryStore } from "@codemem/core";
 import {
 	callDaemonRpc,
 	hashMutationPayload,
-	initDatabase,
 	LOCAL_API_VERSION,
-	MemoryStore,
 	NORMALIZED_SCHEMA_VERSION,
-	ReadOnlyActor,
 	RPC_CAPABILITY_HASH,
 	readCurrentDatabasePointer,
 	resolveStorageLayout,
 	startDaemon,
 } from "@codemem/core";
 import { describe, expect, it, vi } from "vitest";
+import { openTestMemoryStore } from "../../../core/src/test-utils.js";
+import { ReadOnlyActor } from "../../../core/src/writer-actor.js";
 import { dbCommand } from "./db.js";
 
 describe("db command", () => {
@@ -115,14 +115,14 @@ describe("db command", () => {
 	}
 
 	function countRawEvents(dbPath: string): number {
-		const store = new MemoryStore(dbPath);
+		const db = ReadOnlyActor.open(dbPath);
 		try {
-			const row = store.db.prepare("SELECT COUNT(*) AS cnt FROM raw_events").get() as {
+			const row = db.prepare("SELECT COUNT(*) AS cnt FROM raw_events").get() as {
 				cnt: number;
 			};
 			return Number(row.cnt);
 		} finally {
-			store.close();
+			db.close();
 		}
 	}
 
@@ -259,8 +259,7 @@ describe("db command", () => {
 		if (!pruneRaw) throw new Error("expected prune-raw-events command");
 
 		const dbPath = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-bad-")), "test.sqlite");
-		initDatabase(dbPath);
-		const store = new MemoryStore(dbPath);
+		const store = openTestMemoryStore(dbPath);
 		seedRawEvent(store, "sess-x", "evt-0", Date.now() - 10 * 86_400_000);
 		store.close();
 		expect(countRawEvents(dbPath)).toBe(1);
@@ -318,7 +317,7 @@ describe("db command", () => {
 		if (!dedup) throw new Error("expected dedup-memories command");
 
 		const dbPath = join(mkdtempSync(join(tmpdir(), "codemem-db-cmd-")), "test.sqlite");
-		initDatabase(dbPath);
+		openTestMemoryStore(dbPath).close();
 		const logErrorSpy = vi.spyOn(p.log, "error").mockImplementation(() => {});
 		const originalExitCode = process.exitCode;
 		process.exitCode = undefined;

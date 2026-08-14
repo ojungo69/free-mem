@@ -139,7 +139,9 @@ T053–T057 の harness runner 骨格（assert 内容と判定条件は Claude C
 - [X] T047 [P] export/import → daemon RPC（destructive import = maintenance mode + backup precondition）。前提: T036, T046, T050
   - 実装証拠: `vendor/codemem/packages/core/src/daemon-operations.ts`（canonical payload hash、fsync journal、atomic export、restart result、verified backup-before-import）、`daemon-rpc.ts` / `daemon-lifecycle.ts`（RPC + daemon ownership）、CLI `commands/{daemon-operation,export-memories,import-memories}.ts`（POST 一度 + GET polling、stdin/stdout temp compatibility、DB fallback なし）
   - 検証証拠: `daemon-operations.test.ts` (P1-T047-01..03)、`alias-deprecation.test.ts`（実 daemon CLI compatibility）、`evidence/phase1-t047-operations-validation.md`。serial full suite 392 suites / 1,835 tests / failed 0
-- [ ] T048 daemon 外 DB handle 完全ゼロ（判断 #7）: 全 read → RPC read client、connectReadOnly 残 2 箇所も RPC 移行。前提: T041–T047（全 client/jobs 移設後にのみ判定可能）
+- [X] T048 daemon 外 DB handle 完全ゼロ（判断 #7）: 全 read → RPC read client、connectReadOnly 残 2 箇所も RPC 移行。前提: T041–T047（全 client/jobs 移設後にのみ判定可能）
+  - 実装証拠: `vendor/codemem/packages/core/src/{index,store,test-utils,sole-writer-boundary.test}.ts`。production の `connect` / `connectReadOnly` / `MemoryStore` / actor / raw SQLite opener は daemon 所有実装だけに限定し、public runtime export と path 自己 open wrapper・旧 runner class を削除。test opener は exact `test-utils.ts` のみ
+  - 検証証拠: `P1-T048-01-zero-external-db-handles`、focused 156 tests、forced tsc、lint、serial full 393 suites / total 1,828 / passed 1,825 / todo 3 / failed 0。`evidence/phase1-t048-zero-external-db-handles-validation.md`
 
 ### install / backup / cutover
 

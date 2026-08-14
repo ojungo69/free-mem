@@ -29,14 +29,21 @@ import {
 	tableExists,
 	toJson,
 } from "./db.js";
-import { openMigratedWriter, runDatabaseMigrations } from "./migration-runner.js";
+import { runDatabaseMigrations } from "./migration-runner.js";
 import { bootstrapSchema } from "./schema-bootstrap.js";
 import { resolveStorageLayout, runLegacyMigration, sha256File } from "./storage.js";
 
 const verifyTestBackup = () => ({ verified: true, evidence: "db-test-backup" });
 
 function connectMigrated(path: string): Database {
-	return openMigratedWriter(path, verifyTestBackup);
+	const db = connect(path);
+	try {
+		runDatabaseMigrations(db, { dbPath: path, backupAndVerify: verifyTestBackup });
+		return db;
+	} catch (error) {
+		db.close();
+		throw error;
+	}
 }
 
 function connectBootstrapped(path: string): Database {

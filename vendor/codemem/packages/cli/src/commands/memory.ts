@@ -8,12 +8,12 @@
 import { randomUUID } from "node:crypto";
 import * as p from "@clack/prompts";
 import type {
-	compareMemoryRoleReports,
-	getMemoryArtifactReport,
-	getMemoryRoleReport,
-	getRawEventRelinkPlan,
-	getRawEventRelinkReport,
 	getSessionExtractionEval,
+	MemoryArtifactReport,
+	RawEventRelinkPlan as MemoryRelinkPlan,
+	RawEventRelinkReport as MemoryRelinkReport,
+	MemoryRoleReportComparison as MemoryRoleComparison,
+	MemoryRoleReport,
 } from "@codemem/core";
 import {
 	getInjectionEvalScenarioPack,
@@ -38,12 +38,7 @@ import {
 import { type DaemonJobRunOutcome, runDaemonJob } from "./daemon-job.js";
 import { buildPackRequestOptions, collectWorkingSetFile } from "./pack-shared.js";
 
-type MemoryRoleReport = ReturnType<typeof getMemoryRoleReport>;
-type MemoryRoleComparison = ReturnType<typeof compareMemoryRoleReports>;
-type MemoryArtifactReport = ReturnType<typeof getMemoryArtifactReport>;
 type MemoryExtractionReport = ReturnType<typeof getSessionExtractionEval>;
-type MemoryRelinkReport = ReturnType<typeof getRawEventRelinkReport>;
-type MemoryRelinkPlan = ReturnType<typeof getRawEventRelinkPlan>;
 
 /** Parse a strict positive integer, rejecting prefixes like "12abc". */
 function parseStrictPositiveId(value: string): number | null {

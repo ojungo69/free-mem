@@ -6,11 +6,6 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { Database } from "../db.js";
 import * as schema from "../schema.js";
 import type { RawEventStatusResult } from "./types.js";
-import { withDb } from "./with-db.js";
-
-export function getRawEventStatus(dbPath?: string, limit = 25): RawEventStatusResult {
-	return withDb(dbPath, (db) => getRawEventStatusWithDb(db, limit));
-}
 
 export function getRawEventStatusWithDb(db: Database, limit = 25): RawEventStatusResult {
 	const d = drizzle(db, { schema });
@@ -99,10 +94,6 @@ export function getRawEventStatusWithDb(db: Database, limit = 25): RawEventStatu
 			max_body_bytes: 2_000_000,
 		},
 	};
-}
-
-export function retryRawEventFailures(dbPath?: string, limit = 25): { retried: number } {
-	return withDb(dbPath, (db) => retryRawEventFailuresWithDb(db, limit));
 }
 
 export function retryRawEventFailuresWithDb(db: Database, limit = 25): { retried: number } {

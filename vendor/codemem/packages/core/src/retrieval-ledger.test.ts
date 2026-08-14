@@ -4,7 +4,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ensureAdditiveSchemaCompatibility, SCHEMA_VERSION } from "./db.js";
-import { exportMemories } from "./export-import.js";
+import { exportMemoriesWithDb } from "./export-import.js";
 import {
 	DEFAULT_RETRIEVAL_LEDGER_RETENTION_DAYS,
 	finalizeRetrievalAttemptRetention,
@@ -30,9 +30,9 @@ import {
 } from "./retrieval-ledger.js";
 import { recordRetrievalSurface, sanitizeRetrievalFilters } from "./retrieval-surface-ledger.js";
 import { ensureRetrievalLedgerSchema } from "./schema-bootstrap.js";
-import { MemoryStore } from "./store.js";
+import type { MemoryStore } from "./store.js";
 import { TEST_SCHEMA_BASE_DDL } from "./test-schema.generated.js";
-import { initTestSchema } from "./test-utils.js";
+import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 import type { MemoryFilters } from "./types.js";
 
 const STARTED_AT = "2026-08-03T10:00:00.000Z";
@@ -2825,7 +2825,7 @@ describe("retrieval attribution ledger", () => {
 	it("keeps exact retries idempotent after the store soft-deletes a referenced memory", () => {
 		const dir = mkdtempSync(join(tmpdir(), "codemem-retrieval-ledger-soft-delete-"));
 		const dbPath = join(dir, "ledger.sqlite");
-		const store = new MemoryStore(dbPath);
+		const store = openTestMemoryStore(dbPath);
 		try {
 			seed(store.db);
 			recordRetrievalAttempt(store.db, input());
@@ -2870,7 +2870,7 @@ describe("retrieval attribution ledger", () => {
 	it("keeps local-only exact retries idempotent after the store soft-deletes their memory", () => {
 		const dir = mkdtempSync(join(tmpdir(), "codemem-retrieval-ledger-local-soft-delete-"));
 		const dbPath = join(dir, "ledger.sqlite");
-		const store = new MemoryStore(dbPath);
+		const store = openTestMemoryStore(dbPath);
 		try {
 			seed(store.db);
 			const localOnly = input({
@@ -3166,7 +3166,7 @@ describe("retrieval ledger data boundaries", () => {
 
 		let store: MemoryStore | undefined;
 		try {
-			store = new MemoryStore(dbPath, {
+			store = openTestMemoryStore(dbPath, {
 				backupAndVerify: () => ({ verified: true, evidence: "legacy-ledger-test-backup" }),
 			});
 			expect(
@@ -3227,7 +3227,7 @@ describe("retrieval ledger data boundaries", () => {
 		let store: MemoryStore | undefined;
 		try {
 			expect(() => {
-				store = new MemoryStore(dbPath);
+				store = openTestMemoryStore(dbPath);
 			}).not.toThrow();
 		} finally {
 			store?.close();
@@ -3251,7 +3251,13 @@ describe("retrieval ledger data boundaries", () => {
 		}
 
 		try {
-			const payload = exportMemories({ dbPath, allProjects: true, includeInactive: true });
+			const exportDb = new Database(dbPath, { readonly: true });
+			const payload = exportMemoriesWithDb(exportDb, {
+				dbPath,
+				allProjects: true,
+				includeInactive: true,
+			});
+			exportDb.close();
 			expect(payload).not.toHaveProperty("retrieval_attempts");
 			expect(payload).not.toHaveProperty("retrieval_exposures");
 			expect(JSON.stringify(payload)).not.toContain("018f2db4-f9d3-7a22-8d18-d92a968cb111");

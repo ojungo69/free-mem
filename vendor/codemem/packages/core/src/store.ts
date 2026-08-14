@@ -12,7 +12,6 @@ import { and, desc, eq, gt, inArray, isNotNull, lt, lte, or, type SQL, sql } fro
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import {
 	assertSchemaReady,
-	DEFAULT_DB_PATH,
 	ensurePlannerStats,
 	fromJson,
 	isEmbeddingDisabled,
@@ -25,7 +24,6 @@ import {
 import { buildFilterClausesWithContext, type OwnershipFilterContext } from "./filters.js";
 import { buildMemoryDedupKey, normalizeMemoryDedupTitle } from "./memory-dedup.js";
 import { validateMemoryKind } from "./memory-kinds.js";
-import { type MigrationBackupVerifier, openMigratedWriter } from "./migration-runner.js";
 import { readCodememConfigFile } from "./observer-config.js";
 import type { PackArtifacts } from "./pack.js";
 import {
@@ -182,13 +180,10 @@ export class MemoryStore {
 
 	private readonly ownsConnection: boolean;
 
-	constructor(
-		dbPath: string = DEFAULT_DB_PATH,
-		options: { backupAndVerify?: MigrationBackupVerifier; connection?: WriterActor } = {},
-	) {
-		this.dbPath = resolveDbPath(dbPath);
-		this.ownsConnection = options.connection === undefined;
-		this.db = options.connection ?? openMigratedWriter(this.dbPath, options.backupAndVerify);
+	constructor(connection: WriterActor, options: { closeConnection?: boolean } = {}) {
+		this.dbPath = resolveDbPath(connection.name);
+		this.ownsConnection = options.closeConnection === true;
+		this.db = connection;
 		try {
 			loadSqliteVec(this.db);
 			assertSchemaReady(this.db);

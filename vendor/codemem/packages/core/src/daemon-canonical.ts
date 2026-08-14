@@ -38,7 +38,7 @@ export async function openCanonicalWriter(layout: StorageLayout): Promise<Canoni
 				artifactSha256: sha256File(dbPath),
 			});
 		}
-		const store = new MemoryStore(dbPath, { connection: db });
+		const store = new MemoryStore(db);
 		return { db, dbPath, store };
 	} catch (error) {
 		db.close();

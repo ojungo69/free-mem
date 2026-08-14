@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connect } from "./db.js";
 import { buildMemoryPack } from "./pack.js";
 import { createPackEvalCorpus } from "./pack-eval-fixtures.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 import type { MemoryResult } from "./types.js";
 
 describe("buildMemoryPack usefulness evals", () => {
@@ -19,7 +19,7 @@ describe("buildMemoryPack usefulness evals", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {

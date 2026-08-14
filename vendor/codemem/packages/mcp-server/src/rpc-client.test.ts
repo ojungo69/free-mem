@@ -13,11 +13,11 @@ import { join } from "node:path";
 import {
 	hashMutationPayload,
 	NORMALIZED_SCHEMA_VERSION,
-	ReadOnlyActor,
 	resolveStorageLayout,
 	startDaemon,
 } from "@codemem/core";
 import { describe, expect, it } from "vitest";
+import { ReadOnlyActor } from "../../core/src/writer-actor.js";
 import { createMcpRpcClient, mcpRequestId } from "./rpc-client.js";
 
 function projectFixture() {

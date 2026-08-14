@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
 	HOOK_DELIVERY_BUDGETS,
-	MemoryStore,
 	parseAgentMemoryToml,
 	readCurrentDatabasePointer,
 	resolveSpoolLayout,
@@ -13,6 +12,7 @@ import {
 	startDaemon,
 } from "@codemem/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { openTestMemoryStore } from "../../../core/src/test-utils.js";
 import { buildClaudeFileContext } from "./claude-hook-file-context.js";
 import { ingestClaudeHookPayload } from "./claude-hook-ingest.js";
 import { buildClaudeHookInjection } from "./claude-hook-inject.js";
@@ -661,7 +661,7 @@ describe("hook thin clients", () => {
 		const layout = resolveStorageLayout(dataDir);
 		const pointer = readCurrentDatabasePointer(layout);
 		expect(pointer).not.toBeNull();
-		const store = new MemoryStore(resolve(layout.dbDir, pointer as string));
+		const store = openTestMemoryStore(resolve(layout.dbDir, pointer as string));
 		try {
 			const attempt = store.db
 				.prepare(
@@ -729,7 +729,7 @@ describe("hook thin clients", () => {
 
 		const layout = resolveStorageLayout(dataDir);
 		const pointer = readCurrentDatabasePointer(layout);
-		const store = new MemoryStore(resolve(layout.dbDir, pointer as string));
+		const store = openTestMemoryStore(resolve(layout.dbDir, pointer as string));
 		try {
 			const rows = store.db
 				.prepare(

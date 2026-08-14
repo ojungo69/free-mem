@@ -2,17 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connect, tableExists } from "./db.js";
 import { buildFilterClauses, buildFilterClausesWithContext } from "./filters.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema, insertTestSession } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { insertTestSession, openTestMemoryStore } from "./test-utils.js";
 import * as vectors from "./vectors.js";
 
 // ---------------------------------------------------------------------------
-// Helper: create a MemoryStore backed by a temp DB with test schema.
-// We can't use the MemoryStore constructor directly because it calls
-// assertSchemaReady which requires the schema to already exist. Instead,
-// we pre-initialize the schema, then construct the store.
+// Helper: create a MemoryStore backed by a migrated temp DB.
 // ---------------------------------------------------------------------------
 
 describe("MemoryStore", () => {
@@ -38,12 +34,7 @@ describe("MemoryStore", () => {
 		delete process.env.CODEMEM_MEMORY_CROSS_SESSION_DEDUP_WINDOW_MS;
 		delete process.env.CODEMEM_DEBUG;
 		dbPath = join(tmpDir, "test.sqlite");
-		// Pre-create the schema so MemoryStore constructor's assertSchemaReady passes
-		const setupDb = connect(dbPath);
-		initTestSchema(setupDb);
-		setupDb.close();
-		// Now open via MemoryStore
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -261,7 +252,7 @@ describe("MemoryStore", () => {
 				process.env.CODEMEM_CONFIG as string,
 				JSON.stringify({ actor_id: "actor:configured", actor_display_name: "Configured User" }),
 			);
-			store = new MemoryStore(dbPath);
+			store = openTestMemoryStore(dbPath);
 
 			store.adoptEnsuredDeviceIdentity("device-for-configured-actor");
 
@@ -276,7 +267,7 @@ describe("MemoryStore", () => {
 				process.env.CODEMEM_CONFIG as string,
 				JSON.stringify({ actor_id: "actor:configured", actor_display_name: "Configured User" }),
 			);
-			store = new MemoryStore(dbPath);
+			store = openTestMemoryStore(dbPath);
 			const now = "2026-07-23T12:00:00.000Z";
 			store.db
 				.prepare(
@@ -384,7 +375,7 @@ describe("MemoryStore", () => {
 				process.env.CODEMEM_CONFIG as string,
 				JSON.stringify({ actor_id: "actor:config", actor_display_name: "Config User" }),
 			);
-			store = new MemoryStore(dbPath);
+			store = openTestMemoryStore(dbPath);
 
 			expect(store.actorId).toBe("actor:config");
 			expect(store.actorDisplayName).toBe("Config User");
@@ -398,7 +389,7 @@ describe("MemoryStore", () => {
 			);
 			process.env.CODEMEM_ACTOR_ID = "actor:env";
 			process.env.CODEMEM_ACTOR_DISPLAY_NAME = "Env User";
-			store = new MemoryStore(dbPath);
+			store = openTestMemoryStore(dbPath);
 
 			expect(store.actorId).toBe("actor:env");
 			expect(store.actorDisplayName).toBe("Env User");
@@ -466,7 +457,7 @@ describe("MemoryStore", () => {
 					},
 				}),
 			);
-			store = new MemoryStore(dbPath);
+			store = openTestMemoryStore(dbPath);
 			const sessionId = insertTestSession(store.db);
 			const memId = store.remember(
 				sessionId,
@@ -872,7 +863,7 @@ describe("MemoryStore", () => {
 		it("disables cross-session dedup when the window env var is 0", () => {
 			store.close();
 			process.env.CODEMEM_MEMORY_CROSS_SESSION_DEDUP_WINDOW_MS = "0";
-			store = new MemoryStore(dbPath);
+			store = openTestMemoryStore(dbPath);
 
 			const sessionA = insertTestSession(store.db);
 			const sessionB = insertTestSession(store.db);
@@ -895,7 +886,7 @@ describe("MemoryStore", () => {
 		it("clamps absurdly large cross-session dedup windows instead of throwing", () => {
 			store.close();
 			process.env.CODEMEM_MEMORY_CROSS_SESSION_DEDUP_WINDOW_MS = "9000000000000000";
-			store = new MemoryStore(dbPath);
+			store = openTestMemoryStore(dbPath);
 
 			const sessionA = insertTestSession(store.db);
 			const sessionB = insertTestSession(store.db);
@@ -1908,98 +1899,5 @@ describe("buildFilterClauses", () => {
 		// MemoryStore.buildOwnershipPredicate().
 		expect(result.clauses).toEqual(["(0 = 1)"]);
 		expect(result.params).toEqual([]);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Fresh-database auto-bootstrap
-// ---------------------------------------------------------------------------
-
-describe("MemoryStore constructor auto-bootstrap", () => {
-	let tmpDir: string;
-	let prevCodememConfig: string | undefined;
-
-	beforeEach(() => {
-		prevCodememConfig = process.env.CODEMEM_CONFIG;
-		tmpDir = mkdtempSync(join(tmpdir(), "codemem-bootstrap-test-"));
-		process.env.CODEMEM_CONFIG = join(tmpDir, "config.json");
-	});
-
-	afterEach(() => {
-		if (prevCodememConfig === undefined) delete process.env.CODEMEM_CONFIG;
-		else process.env.CODEMEM_CONFIG = prevCodememConfig;
-		rmSync(tmpDir, { recursive: true, force: true });
-	});
-
-	it("bootstraps schema when constructed against a path with no existing file", () => {
-		const dbPath = join(tmpDir, "fresh.sqlite");
-		// No pre-seeding — let the constructor discover an uninitialized DB.
-		// This mirrors the MCP server / claude-hook-ingest entry points hitting
-		// a fresh plugin install inside a wiped sandbox VM.
-		const store = new MemoryStore(dbPath);
-		try {
-			// If bootstrap worked, basic reads succeed and stats report an empty store.
-			const stats = store.stats();
-			expect(stats.database.memory_items).toBe(0);
-			expect(stats.database.sessions).toBe(0);
-			expect(tableExists(store.db, "memory_vectors")).toBe(true);
-
-			// Real query-path coverage: exercising `recent` / `recentByKinds`
-			// hits memory_items + FTS/provenance joins that assertSchemaReady
-			// alone doesn't catch if any table is missing.
-			expect(store.recent(10)).toEqual([]);
-			expect(store.recentByKinds(["discovery"])).toEqual([]);
-
-			// And a write-then-read round-trip through the same constructor-
-			// bootstrapped handle — the actual MCP-server hot path on fresh DBs.
-			const sessionId = insertTestSession(store.db);
-			const memId = store.remember(
-				sessionId,
-				"discovery",
-				"post-bootstrap insert",
-				"written on an auto-bootstrapped DB",
-			);
-			expect(store.get(memId)?.title).toBe("post-bootstrap insert");
-		} finally {
-			store.close();
-		}
-	});
-
-	it("bootstraps schema when constructed against an empty existing file", () => {
-		const dbPath = join(tmpDir, "empty.sqlite");
-		// Touch an empty file so connect() has to bootstrap an existing empty DB.
-		writeFileSync(dbPath, "");
-		const store = new MemoryStore(dbPath);
-		try {
-			const stats = store.stats();
-			expect(stats.database.memory_items).toBe(0);
-			// Same query-path smoke test as the fresh-path case.
-			expect(store.recent(10)).toEqual([]);
-		} finally {
-			store.close();
-		}
-	});
-
-	it("does not re-bootstrap an already-initialized database", () => {
-		const dbPath = join(tmpDir, "existing.sqlite");
-		// First construction bootstraps.
-		const first = new MemoryStore(dbPath);
-		const sessionId = insertTestSession(first.db);
-		const memId = first.remember(
-			sessionId,
-			"discovery",
-			"persisted memory",
-			"should survive a second construction",
-		);
-		first.close();
-
-		// Second construction must not wipe or re-run bootstrap DDL destructively.
-		const second = new MemoryStore(dbPath);
-		try {
-			const fetched = second.get(memId);
-			expect(fetched?.title).toBe("persisted memory");
-		} finally {
-			second.close();
-		}
 	});
 });

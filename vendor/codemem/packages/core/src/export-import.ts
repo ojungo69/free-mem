@@ -1,14 +1,6 @@
 import { readFileSync } from "node:fs";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import {
-	assertSchemaReady,
-	connect,
-	type Database,
-	fromJson,
-	resolveDbPath,
-	toJson,
-	toJsonNullable,
-} from "./db.js";
+import { assertSchemaReady, type Database, fromJson, toJson, toJsonNullable } from "./db.js";
 import { buildFilterClausesWithContext } from "./filters.js";
 import { expandUserPath } from "./observer-config.js";
 import { projectColumnClause, resolveProject as resolveProjectName } from "./project.js";
@@ -306,15 +298,6 @@ function fetchMemoryRows(
 		.all(...params) as JsonObject[];
 }
 
-export function exportMemories(opts: ExportOptions = {}): ExportPayload {
-	const db = connect(resolveDbPath(opts.dbPath));
-	try {
-		return exportMemoriesWithDb(db, opts);
-	} finally {
-		db.close();
-	}
-}
-
 export function exportMemoriesWithDb(db: Database, opts: ExportOptions = {}): ExportPayload {
 	assertSchemaReady(db);
 	const resolvedProject = resolveExportProject(opts);
@@ -569,15 +552,6 @@ function insertSummary(d: DrizzleDb, row: JsonObject): number {
 	const id = rows[0]?.id;
 	if (id == null) throw new Error("summary insert returned no id");
 	return id;
-}
-
-export function importMemories(payload: ExportPayload, opts: ImportOptions = {}): ImportResult {
-	const db = connect(resolveDbPath(opts.dbPath));
-	try {
-		return importMemoriesWithDb(db, payload, opts);
-	} finally {
-		db.close();
-	}
 }
 
 export function importMemoriesWithDb(

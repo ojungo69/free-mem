@@ -14,10 +14,9 @@
  */
 
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import { connect, fromJson, resolveDbPath, toJson } from "./db.js";
+import { fromJson, toJson } from "./db.js";
 import {
 	completeMaintenanceJob,
-	failMaintenanceJob,
 	getMaintenanceJob,
 	startMaintenanceJob,
 	updateMaintenanceJob,
@@ -31,14 +30,6 @@ type SummaryDedupBackfillMetadata = {
 	superseded_rows?: number;
 	last_session_id?: number;
 };
-
-export interface SummaryDedupBackfillRunnerOptions {
-	batchSize?: number;
-	intervalMs?: number;
-	dbPath?: string;
-	signal?: AbortSignal;
-	deviceId?: string;
-}
 
 interface CandidateRow {
 	id: number;
@@ -253,80 +244,4 @@ export async function runSummaryDedupBackfillPass(
 		},
 	});
 	return true;
-}
-
-export class SummaryDedupBackfillRunner {
-	private readonly dbPath: string;
-	private readonly signal?: AbortSignal;
-	private readonly batchSize: number;
-	private readonly intervalMs: number;
-	private readonly deviceId?: string;
-	private active = false;
-	private timer: ReturnType<typeof setTimeout> | null = null;
-	private currentRun: Promise<void> | null = null;
-
-	constructor(options: SummaryDedupBackfillRunnerOptions = {}) {
-		this.dbPath = resolveDbPath(options.dbPath);
-		this.signal = options.signal;
-		this.batchSize = Math.max(1, options.batchSize ?? 50);
-		this.intervalMs = Math.max(1000, options.intervalMs ?? 5000);
-		this.deviceId = options.deviceId;
-	}
-
-	start(): void {
-		if (this.active) return;
-		this.active = true;
-		this.schedule(100);
-	}
-
-	async stop(): Promise<void> {
-		this.active = false;
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
-		}
-		if (this.currentRun) await this.currentRun;
-	}
-
-	private schedule(delayMs: number): void {
-		if (!this.active || this.signal?.aborted) return;
-		this.timer = setTimeout(() => {
-			this.timer = null;
-			this.currentRun = this.runOnce()
-				.catch((err) => {
-					console.error("Summary-dedup backfill runner tick failed:", err);
-				})
-				.finally(() => {
-					this.currentRun = null;
-					this.schedule(this.intervalMs);
-				});
-		}, delayMs);
-		if (typeof this.timer === "object" && "unref" in this.timer) this.timer.unref();
-	}
-
-	private async runOnce(): Promise<void> {
-		if (!this.active || this.signal?.aborted) return;
-		let db: SqliteDatabase | null = null;
-		try {
-			db = connect(this.dbPath) as SqliteDatabase;
-			const hasMoreWork = await runSummaryDedupBackfillPass(db, {
-				batchSize: this.batchSize,
-				deviceId: this.deviceId,
-			});
-			if (!hasMoreWork) {
-				this.active = false;
-			}
-		} catch (error) {
-			if (db) {
-				failMaintenanceJob(
-					db,
-					SUMMARY_DEDUP_BACKFILL_JOB,
-					error instanceof Error ? error.message : String(error),
-				);
-			}
-			console.warn("Summary-dedup backfill runner failed", error);
-		} finally {
-			db?.close();
-		}
-	}
 }

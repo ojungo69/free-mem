@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MemoryStore } from "@codemem/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	buildForegroundRunnerArgs,
@@ -12,7 +11,6 @@ import {
 	isLoopbackOnlyHost,
 	isSqliteVecLoadFailure,
 	pickViewerPidCandidate,
-	prepareViewerDatabase,
 	respondsLikeCodememViewer,
 	sqliteVecFailureDiagnostics,
 	terminateTrustedViewerPid,
@@ -248,26 +246,6 @@ describe("serve command option resolution", () => {
 		try {
 			expect(findTrustedSystemCommand(["ps", executable])).toBe(executable);
 			expect(findTrustedSystemCommand(["ps"])).toBeNull();
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("prepares a fresh viewer database before startup", () => {
-		const dir = mkdtempSync(join(tmpdir(), "codemem-serve-"));
-		const dbPath = join(dir, "viewer.sqlite");
-		try {
-			const prepared = prepareViewerDatabase(dbPath);
-			expect(prepared).toBe(dbPath);
-
-			process.env.CODEMEM_EMBEDDING_DISABLED = "1";
-			const db = new MemoryStore(dbPath);
-			try {
-				expect(db.dbPath).toBe(dbPath);
-			} finally {
-				db.close();
-				delete process.env.CODEMEM_EMBEDDING_DISABLED;
-			}
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

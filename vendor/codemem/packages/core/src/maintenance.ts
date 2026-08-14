@@ -1,29 +1,16 @@
-export {
-	initDatabase,
-	vacuumDatabase,
-	vacuumDatabaseWithDb,
-} from "./maintenance/init-vacuum.js";
-export {
-	getMemoryArtifactReport,
-	getMemoryArtifactReportWithDb,
-} from "./maintenance/memory-artifact-report.js";
+export { vacuumDatabaseWithDb } from "./maintenance/init-vacuum.js";
+export { getMemoryArtifactReportWithDb } from "./maintenance/memory-artifact-report.js";
 export {
 	compareMemoryRoleReports,
-	getMemoryRoleReport,
 	getMemoryRoleReportWithStore,
 } from "./maintenance/memory-role-report.js";
 export {
-	applyRawEventRelinkPlan,
 	applyRawEventRelinkPlanWithDb,
-	getRawEventRelinkPlan,
 	getRawEventRelinkPlanWithDb,
-	getRawEventRelinkReport,
 	getRawEventRelinkReportFromDb,
 } from "./maintenance/relink.js";
 export {
-	getRawEventStatus,
 	getRawEventStatusWithDb,
-	retryRawEventFailures,
 	retryRawEventFailuresWithDb,
 } from "./maintenance/status.js";
 export type {
@@ -56,9 +43,7 @@ export type {
 
 export type { GateResult, ReliabilityMetrics } from "./maintenance/reliability.js";
 export {
-	getReliabilityMetrics,
 	getReliabilityMetricsWithDb,
-	rawEventsGate,
 	rawEventsGateWithDb,
 } from "./maintenance/reliability.js";
 

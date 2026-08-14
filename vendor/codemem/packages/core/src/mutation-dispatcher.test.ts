@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import * as core from "./index.js";
+import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 const created: Array<{ stop: () => Promise<void> }> = [];
 const dirs: string[] = [];
@@ -64,7 +65,7 @@ describe("Phase 1 mutation dispatcher", () => {
 	it("P1-T036-01-receipt-schema", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			expect(
 				reader
@@ -165,7 +166,7 @@ describe("Phase 1 mutation dispatcher", () => {
 			}),
 		);
 		expect(conflict).toMatchObject({ error: { code: "idempotency_conflict" } });
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			const row = reader
 				.prepare(
@@ -205,7 +206,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		);
 		expect(response).toMatchObject({ result: { status: "committed" } });
 
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			const row = reader
 				.prepare("SELECT payload_json FROM raw_events WHERE event_id = ?")
@@ -289,7 +290,7 @@ describe("Phase 1 mutation dispatcher", () => {
 			}),
 		);
 		expect(secretIdentifier).toMatchObject({ error: { code: "invalid_request" } });
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			expect(
 				reader
@@ -378,7 +379,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		const memoryId = (remembered as core.RpcSuccess).result.memoryId;
 		await first.stop();
 
-		const db = core.WriterActor.open(realpathSync(first.layout.currentPointerPath));
+		const db = WriterActor.open(realpathSync(first.layout.currentPointerPath));
 		try {
 			const now = new Date().toISOString();
 			db.prepare(
@@ -445,7 +446,7 @@ describe("Phase 1 mutation dispatcher", () => {
 	});
 
 	it("P1-T036-08-side-effect-and-receipt-share-one-transaction", () => {
-		const db = core.WriterActor.open(":memory:");
+		const db = WriterActor.open(":memory:");
 		try {
 			core.ensureMutationReceiptSchema(db);
 			db.exec("CREATE TABLE probe(value TEXT NOT NULL)");

@@ -5,7 +5,6 @@ import { dirname, isAbsolute, join } from "node:path";
 import * as p from "@clack/prompts";
 import {
 	type DaemonHandle,
-	initDatabase,
 	readDaemonHealth,
 	resolveDbPath,
 	resolveStorageLayout,
@@ -72,10 +71,6 @@ export function isLikelyViewerCommand(command: string): boolean {
 		lowered.includes("/cli/dist/index.js") ||
 		lowered.includes("packages/cli/src/index.ts")
 	);
-}
-
-export function prepareViewerDatabase(dbPath?: string | null): string {
-	return initDatabase(dbPath ?? undefined).path;
 }
 
 export function pickViewerPidCandidate(

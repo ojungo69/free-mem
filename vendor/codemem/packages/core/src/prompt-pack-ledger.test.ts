@@ -11,8 +11,8 @@ import {
 	recordPromptPackTerminal,
 } from "./prompt-pack-ledger.js";
 import { getRetrievalAttempt, updateRetrievalDelivery } from "./retrieval-ledger.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema, insertTestSession } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
 import type { MemoryResult } from "./types.js";
 
 const startedAt = "2026-08-03T10:00:00.000Z";
@@ -34,7 +34,7 @@ describe("prompt-pack retrieval ledger", () => {
 		const db = connect(storePath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(storePath);
+		store = openTestMemoryStore(storePath);
 		sessionId = insertTestSession(store.db);
 	});
 
@@ -237,7 +237,7 @@ describe("prompt-pack retrieval ledger", () => {
 			).ok,
 		).toBe(true);
 		store.close();
-		store = new MemoryStore(storePath);
+		store = openTestMemoryStore(storePath);
 		const exactPersistedRetry = recordPromptPackArtifacts(
 			store.db,
 			metadata,

@@ -35,8 +35,8 @@ import {
 } from "./ingest-xml-parser.js";
 import type { ObserverConfig } from "./observer-client.js";
 import { flushRawEvents } from "./raw-event-flush.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 
 // ---------------------------------------------------------------------------
 // ingest-events
@@ -1971,7 +1971,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -2483,7 +2483,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		const setupDbOn = connect(dbPathOn);
 		initTestSchema(setupDbOn);
 		setupDbOn.close();
-		const routingStore = new MemoryStore(dbPathOn);
+		const routingStore = openTestMemoryStore(dbPathOn);
 		try {
 			process.env.CODEMEM_CAPTURE_ROUTING = "1";
 			await ingest(buildPayload(), routingStore, {
@@ -3240,7 +3240,7 @@ describe("cleanOrphanSessions", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -3295,7 +3295,7 @@ describe("supersedePriorObserverSummaries", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {

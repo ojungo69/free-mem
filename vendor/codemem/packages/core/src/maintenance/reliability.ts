@@ -5,7 +5,6 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { Database } from "../db.js";
 import * as schema from "../schema.js";
-import { withDb } from "./with-db.js";
 
 export interface ReliabilityMetrics {
 	counts: {
@@ -26,13 +25,6 @@ export interface ReliabilityMetrics {
 		session_boundary_accuracy: number;
 	};
 	window_hours: number | null;
-}
-
-export function getReliabilityMetrics(
-	dbPath?: string,
-	windowHours?: number | null,
-): ReliabilityMetrics {
-	return withDb(dbPath, (db) => getReliabilityMetricsWithDb(db, windowHours));
 }
 
 export function getReliabilityMetricsWithDb(
@@ -222,18 +214,6 @@ export interface GateResult {
 	passed: boolean;
 	failures: string[];
 	metrics: ReliabilityMetrics;
-}
-
-export function rawEventsGate(
-	dbPath?: string,
-	opts?: {
-		minFlushSuccessRate?: number;
-		maxDroppedEventRate?: number;
-		minSessionBoundaryAccuracy?: number;
-		windowHours?: number;
-	},
-): GateResult {
-	return withDb(dbPath, (db) => rawEventsGateWithDb(db, opts));
 }
 
 export function rawEventsGateWithDb(

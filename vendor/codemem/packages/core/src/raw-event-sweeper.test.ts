@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connect } from "./db.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 
 function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +29,7 @@ describe("RawEventSweeper auto flush", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {

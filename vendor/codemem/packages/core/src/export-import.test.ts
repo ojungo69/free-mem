@@ -3,8 +3,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { exportMemories, importMemories, readImportPayload } from "./export-import.js";
+import type { ExportOptions, ExportPayload, ImportOptions } from "./export-import.js";
+import { exportMemoriesWithDb, importMemoriesWithDb, readImportPayload } from "./export-import.js";
 import { initTestSchema } from "./test-utils.js";
+
+function exportMemories(opts: ExportOptions): ExportPayload {
+	const db = new Database(opts.dbPath as string);
+	try {
+		return exportMemoriesWithDb(db, opts);
+	} finally {
+		db.close();
+	}
+}
+
+function importMemories(
+	payload: ExportPayload,
+	opts: ImportOptions,
+): ReturnType<typeof importMemoriesWithDb> {
+	const db = new Database(opts.dbPath as string);
+	try {
+		return importMemoriesWithDb(db, payload, opts);
+	} finally {
+		db.close();
+	}
+}
 
 function createDbPath(name: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "codemem-export-import-"));

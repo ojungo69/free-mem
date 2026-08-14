@@ -1,6 +1,6 @@
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import { connect, isEmbeddingDisabled, loadSqliteVec, resolveDbPath } from "./db.js";
-import { getEmbeddingClient, resolveEmbeddingModel } from "./embeddings.js";
+import { isEmbeddingDisabled } from "./db.js";
+import { getEmbeddingClient } from "./embeddings.js";
 import {
 	completeMaintenanceJob,
 	failMaintenanceJob,
@@ -11,17 +11,6 @@ import {
 import { backfillVectors } from "./vectors.js";
 
 export const VECTOR_MODEL_MIGRATION_JOB = "vector_model_migration";
-
-export interface VectorModelMigrationOptions {
-	batchSize?: number;
-	intervalMs?: number;
-	idleIntervalMs?: number;
-	dbPath?: string;
-	signal?: AbortSignal;
-}
-
-// Runner uses this cadence after a tick that detected no work.
-const IDLE_INTERVAL_MS = 60_000;
 
 type MemoryRow = { id: number; title: string | null; body_text: string | null };
 
@@ -274,124 +263,5 @@ export async function runVectorMigrationPass(
 				},
 			});
 		})();
-	}
-}
-
-export class VectorModelMigrationRunner {
-	private readonly dbPath: string;
-	private readonly signal?: AbortSignal;
-	private readonly batchSize: number;
-	private readonly intervalMs: number;
-	private readonly idleIntervalMs: number;
-	private active = false;
-	private timer: ReturnType<typeof setTimeout> | null = null;
-	private currentRun: Promise<void> | null = null;
-	private lastTickWasIdle = false;
-
-	constructor(options: VectorModelMigrationOptions = {}) {
-		this.dbPath = resolveDbPath(options.dbPath);
-		this.signal = options.signal;
-		this.batchSize = Math.max(1, options.batchSize ?? 50);
-		this.intervalMs = Math.max(1000, options.intervalMs ?? 5000);
-		this.idleIntervalMs = Math.max(1000, options.idleIntervalMs ?? IDLE_INTERVAL_MS);
-	}
-
-	start(): void {
-		if (this.active) return;
-		this.active = true;
-		this.lastTickWasIdle = false;
-		this.schedule(100);
-	}
-
-	async stop(): Promise<void> {
-		this.active = false;
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
-		}
-		if (this.currentRun) await this.currentRun;
-	}
-
-	private schedule(delayMs: number): void {
-		if (!this.active || this.signal?.aborted) return;
-		this.timer = setTimeout(() => {
-			this.timer = null;
-			this.currentRun = this.runOnce()
-				.catch((err) => {
-					console.error("Vector migration runner tick failed:", err);
-				})
-				.finally(() => {
-					this.currentRun = null;
-					const next = this.lastTickWasIdle ? this.idleIntervalMs : this.intervalMs;
-					this.schedule(next);
-				});
-		}, delayMs);
-		if (typeof this.timer === "object" && "unref" in this.timer) this.timer.unref();
-	}
-
-	private async runOnce(): Promise<void> {
-		if (!this.active || this.signal?.aborted) return;
-		let db: SqliteDatabase | null = null;
-		try {
-			db = connect(this.dbPath) as SqliteDatabase;
-			loadSqliteVec(db);
-			await runVectorMigrationPass(db, {
-				batchSize: this.batchSize,
-				signal: this.signal,
-			});
-			this.lastTickWasIdle = this.computeIdle(db);
-		} catch (error) {
-			if (db) {
-				failMaintenanceJob(
-					db,
-					VECTOR_MODEL_MIGRATION_JOB,
-					error instanceof Error ? error.message : String(error),
-				);
-			}
-			// Treat exceptions as idle — a thrown tick is not going to unthrow
-			// at 5s cadence. The failMaintenanceJob record captures the error;
-			// the next tick at IDLE_INTERVAL_MS will retry.
-			this.lastTickWasIdle = true;
-			console.warn("Vector migration runner failed", error);
-		} finally {
-			db?.close();
-		}
-	}
-
-	private computeIdle(db: SqliteDatabase): boolean {
-		// Embeddings disabled → the pass returns immediately with no work
-		// possible. Polling fast adds nothing.
-		if (isEmbeddingDisabled()) return true;
-		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
-		if (job) {
-			// A `failed` job is not going to un-fail from polling; wait until
-			// an operator retries or embeddings become available again.
-			// Running/pending stay non-idle because work is in progress.
-			if (job.status === "running" || job.status === "pending") {
-				return false;
-			}
-			return true;
-		}
-		// No job row yet. Peek coverage directly to tell whether the first
-		// tick on a fresh DB genuinely had nothing to do.
-		const targetModel = resolveEmbeddingModel();
-		try {
-			const uncovered = db
-				.prepare(
-					`SELECT COUNT(*) AS c FROM memory_items
-					 WHERE active = 1
-					   AND TRIM(COALESCE(title, '') || COALESCE(body_text, '')) != ''
-					   AND id NOT IN (SELECT DISTINCT memory_id FROM memory_vectors WHERE model = ?)`,
-				)
-				.get(targetModel) as { c?: number } | undefined;
-			if (Number(uncovered?.c ?? 0) > 0) return false;
-			return detectSourceModel(db, targetModel) === null;
-		} catch (error) {
-			// Don't silently tick fast forever on a query failure; log so it
-			// shows up in dogfood logs. Conservatively treat as non-idle so
-			// the next tick tries again at full cadence.
-			console.warn("Vector migration runner idle peek failed", error);
-			return false;
-		}
 	}
 }

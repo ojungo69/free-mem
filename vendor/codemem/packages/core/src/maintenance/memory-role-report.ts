@@ -5,7 +5,7 @@
 import { getInjectionEvalScenarioByPrompt } from "../eval-scenarios.js";
 import { inferMemoryRole } from "../memory-quality.js";
 import { buildMemoryPack } from "../pack.js";
-import { MemoryStore } from "../store.js";
+import type { MemoryStore } from "../store.js";
 import { canonicalMemoryKind, isSummaryLikeMemory } from "../summary-memory.js";
 import {
 	classifyProbeArtifactBucket,
@@ -23,7 +23,6 @@ import type {
 	MemoryRoleProbeResult,
 	MemoryRoleReport,
 	MemoryRoleReportComparison,
-	MemoryRoleReportComparisonOptions,
 	MemoryRoleReportOptions,
 } from "./types.js";
 
@@ -45,18 +44,6 @@ function inferMemoryRoleForReport(row: {
 		project: row.project,
 		session_minutes: row.session_minutes,
 	});
-}
-
-export function getMemoryRoleReport(
-	dbPath?: string,
-	opts: MemoryRoleReportOptions = {},
-): MemoryRoleReport {
-	const store = new MemoryStore(dbPath);
-	try {
-		return getMemoryRoleReportWithStore(store, opts);
-	} finally {
-		store.close();
-	}
 }
 
 export function getMemoryRoleReportWithStore(
@@ -419,12 +406,9 @@ export function getMemoryRoleReportWithStore(
 }
 
 export function compareMemoryRoleReports(
-	baselineDbPath: string,
-	candidateDbPath: string,
-	opts: MemoryRoleReportComparisonOptions = {},
+	baseline: MemoryRoleReport,
+	candidate: MemoryRoleReport,
 ): MemoryRoleReportComparison {
-	const baseline = getMemoryRoleReport(baselineDbPath, opts);
-	const candidate = getMemoryRoleReport(candidateDbPath, opts);
 	return {
 		baseline,
 		candidate,

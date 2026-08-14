@@ -9,16 +9,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync } from "node:zlib";
+import type { MemoryStore } from "@codemem/core";
 import {
 	initTestSchema,
 	insertTestSession,
-	MemoryStore,
 	startMaintenanceJob,
 	updateMaintenanceJob,
 	VERSION,
 } from "@codemem/core";
 import Database from "better-sqlite3";
 import { describe, expect, it, vi } from "vitest";
+import { openTestMemoryStore } from "../../core/src/test-utils.js";
 import { createViewerReadHandler } from "../../core/src/viewer-read.js";
 import { __usageCacheTestHooks } from "../../core/src/viewer-routes/stats.js";
 import { createApp } from "./index.js";
@@ -40,7 +41,7 @@ function createTestStore(seedDevice = true): { store: MemoryStore; cleanup: () =
 			.run("test-device-001", "test-public-key", "test-fingerprint", new Date().toISOString());
 	}
 	rawDb.close();
-	const store = new MemoryStore(dbPath);
+	const store = openTestMemoryStore(dbPath);
 	return {
 		store,
 		cleanup: () => {

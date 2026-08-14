@@ -9,6 +9,7 @@ post-T043: `/tmp/free-mem-phase1-post-t043-serial-final.json` (SHA-256 `d2e58af1
 post-T044: `/tmp/free-mem-phase1-post-t044-serial-final3.json` (SHA-256 `f570ca29bb73d8987e3ad8e55af963bd1979bfd5d358f89de85f7ef313c91d17`)
 post-T046: `/tmp/free-mem-phase1-post-t046-serial-final3.json` (SHA-256 `297ebd3719add24b02bdd6882d172180926960e4f3d7cfcb45d881f3849e2388`)
 post-T047: `/tmp/free-mem-phase1-post-t047-serial.json` (SHA-256 `dce42b151bd40e1e49ed7fc67948e95f3904a75a5f68fac30f9fe17433158b2d`)
+post-T048: `/tmp/free-mem-phase1-post-t048-serial.json` (SHA-256 `e7367709111ae546c770b5dac1c4654c9a878341d4a699a7ae13450c3c089f4c`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -33,6 +34,10 @@ post-T047: `/tmp/free-mem-phase1-post-t047-serial.json` (SHA-256 `dce42b151bd40e
 | T047 stub retire | 1 |
 | T047 登録済み追加 | 3 |
 | post-T047 | 1,835 |
+| T048 direct-opener retire | 10 |
+| T048 daemon-handle replacement | 2 |
+| T048 登録済み追加 | 1 |
+| post-T048 | 1,828 |
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -61,6 +66,8 @@ T045/T046 は post-T044 1,836 件から別 process maintenance worker 固有 tes
 
 T047 は `not_implemented` を固定していた T036 class B stub 1 件を retire し、manifest 登録済み 3 件を追加した。機械式は `1,833 - 1 + 3 = 1,835`。post-T047 の serial full suite は 392 suites / total 1,835 / passed 1,832 / todo 3 / failed 0。追加 test は `P1-T047-01..03` に一致する。
 
+T048 は daemon 外で DB を自己 open していた init/viewer/store constructor test 10 件を retire し、vacuum / vector migration の handle 注入版 2 件と manifest 登録済み境界 test 1 件を追加した。機械式は `1,835 - 10 + 2 + 1 = 1,828`。post-T048 の serial full suite は 393 suites / total 1,828 / passed 1,825 / todo 3 / failed 0。追加境界 test は `P1-T048-01-zero-external-db-handles` と一致する。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -78,6 +85,7 @@ T047 は `not_implemented` を固定していた T036 class B stub 1 件を reti
 | R-T044-CLI | CLI local DB/ledger/Phase 6-7 implementation test | 61 | T044 で production CLI を daemon RPC 化し、独立 prompt ledger と後続 Phase の local 実装を削除 | retire title/file は `No test found`。登録済み T044 3 件が endpoint map / typed stub / no DB fallback を固定 |
 | R-T045-JOBS | maintenance worker runtime / serve worker PID test | 8 | T045 で別 process worker を daemon 内 durable jobs へ吸収し、worker command・PID 管理を削除 | 削除 file/title は `No test found`。登録済み T045/T046 5 件が job result/no retry/worker 廃止/maintenance mode/spool を固定 |
 | R-T047-STUB | T036 class B not-implemented stub | 1 | T047 で export/import operation 本体を実装し、stub expectation を登録済み T047 3 件へ置換 | retire title は `No test found`。登録済み test が conflict/result retrieval/import backup precondition を固定 |
+| R-T048-OPENERS | daemon 外 direct init/store opener test | 10 | T048 で path 自己 open API と public DB opener を削除し、daemon handle 注入と exact test helper へ限定 | retire title は `No test found`。vacuum/vector handle 注入 test と登録済み T048 scan が動作・境界を固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -349,6 +357,21 @@ packages/cli/src/commands/serve.test.ts > serve command option resolution > refu
 
 ```text
 packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-06-class-b-stub
+```
+
+## T048 retired fully qualified names（R-T048-OPENERS、10）
+
+```text
+packages/cli/src/commands/serve.test.ts > serve command option resolution > prepares a fresh viewer database before startup
+packages/core/src/maintenance-jobs.test.ts > maintenance jobs > initDatabase ensures maintenance_jobs exists on existing schema-ready dbs
+packages/core/src/maintenance.test.ts > maintenance > initializes and vacuums a schema-ready database
+packages/core/src/maintenance.test.ts > maintenance > initializes a fresh database schema
+packages/core/src/maintenance.test.ts > maintenance > does not initialize unrelated non-empty SQLite databases
+packages/core/src/maintenance.test.ts > maintenance > runs raw-event relink remediation during initDatabase
+packages/core/src/store.test.ts > MemoryStore constructor auto-bootstrap > bootstraps schema when constructed against a path with no existing file
+packages/core/src/store.test.ts > MemoryStore constructor auto-bootstrap > bootstraps schema when constructed against an empty existing file
+packages/core/src/store.test.ts > MemoryStore constructor auto-bootstrap > does not re-bootstrap an already-initialized database
+packages/core/src/vectors.test.ts > memory_vectors bootstrap on fresh databases > creates memory_vectors via auto-bootstrap when constructing MemoryStore against a fresh path
 ```
 
 ## Retired fully qualified names（machine-generated）

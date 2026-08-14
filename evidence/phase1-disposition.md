@@ -252,3 +252,15 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 | CLI read surface | context/search/memory/view/health/doctor RPC | pack/search/recent/show/stats/status は daemon read。独立 prompt-pack ledger command は削除 | read + A ledger | user-authority |
 | later-phase typed stub | distill / embed / extraction replay / benchmark | local DB/model 実装を削除し Phase 6/7 `feature_unavailable` のみ | − | user-authority |
 | CLI service lifecycle | `serve start|stop|restart` | resolved data directory の daemon socket と viewer を同時管理。explicit legacy DB path は data directory の導出だけに使用 | − | user-authority |
+
+## T048 DB handle closure（2026-08-14）
+
+| opener | production allowlist | disposition |
+|---|---|---|
+| `connect` / `connectReadOnly` | `core/db.ts` 定義、`daemon-canonical.ts`、`daemon-jobs.ts` | package runtime export を削除。daemon canonical store と daemon job の report comparison だけが audited writer を開く。`connectReadOnly` の production caller は 0 |
+| `new MemoryStore` | `daemon-canonical.ts`、`daemon-jobs.ts` | constructor は既 open `WriterActor` 必須。path/default/bootstrap による自己 open を削除し、public runtime export は type-only 化 |
+| `WriterActor.open` / `ReadOnlyActor.open` | `db.ts`、`online-backup.ts`、`storage.ts` | package runtime export を type-only 化。backup/verify/storage と audited wrapper 内だけに限定 |
+| `new BetterSqlite3` | `daemon-lifecycle.ts`、`writer-actor.ts` | daemon instance lock と actor 実装内部だけに限定 |
+| test-only opener | `packages/core/src/test-utils.ts` と test file | `openTestMemoryStore` は package public export せず、exact-path scan 例外からのみ利用 |
+
+path を受け取って DB を自己 open していた export/import、maintenance/report/relink/reliability/status、migration wrapper と、独立 connection を所有していた backfill runner class は削除した。daemon job/operation handler は既存 handle を受け取る `*WithDb` / pass 関数だけを利用する。`P1-T048-01-zero-external-db-handles` は production source の opener allowlistと、public runtime bypass の不在を同時に固定する。T053 では同じ基準を harness の restricted-import / deep-import scan へ昇格する。

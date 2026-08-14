@@ -4,7 +4,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ensureAdditiveSchemaCompatibility } from "./db.js";
-import { exportMemories } from "./export-import.js";
+import { exportMemoriesWithDb } from "./export-import.js";
 import {
 	deterministicCheckEvidence,
 	efficiencyEvidence,
@@ -2844,7 +2844,13 @@ describe("outcome evidence data boundary", () => {
 		}
 
 		try {
-			const payload = exportMemories({ dbPath, allProjects: true, includeInactive: true });
+			const exportDb = new Database(dbPath, { readonly: true });
+			const payload = exportMemoriesWithDb(exportDb, {
+				dbPath,
+				allProjects: true,
+				includeInactive: true,
+			});
+			exportDb.close();
 			expect(payload).not.toHaveProperty("outcome_evidence");
 			expect(JSON.stringify(payload)).not.toContain(id(100));
 		} finally {

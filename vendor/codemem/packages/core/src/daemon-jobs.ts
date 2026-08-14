@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
-import { getSchemaVersion, isEmbeddingDisabled } from "./db.js";
+import { connect, getSchemaVersion, isEmbeddingDisabled } from "./db.js";
 import {
 	DEDUP_KEY_BACKFILL_JOB,
 	hasPendingDedupKeyBackfill,
@@ -40,7 +40,7 @@ import {
 	SESSION_CONTEXT_BACKFILL_JOB,
 } from "./session-context-backfill.js";
 import { resolveStorageLayout } from "./storage.js";
-import type { MemoryStore } from "./store.js";
+import { MemoryStore } from "./store.js";
 import {
 	hasPendingSummaryDedupBackfill,
 	runSummaryDedupBackfillPass,
@@ -460,6 +460,18 @@ function normalizeProjects(
 	};
 }
 
+function getDaemonMemoryRoleReport(
+	dbPath: string,
+	options: Parameters<typeof getMemoryRoleReportWithStore>[1],
+) {
+	const store = new MemoryStore(connect(dbPath), { closeConnection: true });
+	try {
+		return getMemoryRoleReportWithStore(store, options);
+	} finally {
+		store.close();
+	}
+}
+
 function snapshot(row: DaemonJobRow | undefined): DaemonJobSnapshot | null {
 	if (!row) return null;
 	return {
@@ -875,13 +887,18 @@ export class DaemonJobService {
 					includeInactive: optionalBoolean(args, "includeInactive") ?? false,
 					probes: optionalStrings(args, "probes", 50, 4_096),
 				});
-			case "report.role-compare":
-				return compareMemoryRoleReports(String(args.baselineDbPath), String(args.candidateDbPath), {
+			case "report.role-compare": {
+				const options = {
 					project: optionalString(args, "project", 512),
 					allProjects: optionalBoolean(args, "allProjects") ?? false,
 					includeInactive: optionalBoolean(args, "includeInactive") ?? false,
 					probes: optionalStrings(args, "probes", 50, 4_096),
-				});
+				};
+				return compareMemoryRoleReports(
+					getDaemonMemoryRoleReport(String(args.baselineDbPath), options),
+					getDaemonMemoryRoleReport(String(args.candidateDbPath), options),
+				);
+			}
 			case "report.artifact":
 				return getMemoryArtifactReportWithDb(this.store.db, {
 					project: optionalString(args, "project", 512),

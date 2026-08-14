@@ -44,7 +44,7 @@ describe("daemon jobs", () => {
 			) VALUES (?, 'narrative.backfill', '{}', 0, 'running', 1, 1, NULL, NULL, ?, ?, NULL)`,
 		).run("00000000-0000-4000-8000-000000000002", submittedAt, "2026-08-14T00:00:01.000Z");
 
-		store = new MemoryStore(join(dir, "jobs.sqlite"), { connection: db });
+		store = new MemoryStore(db);
 		const service = new DaemonJobService(store);
 
 		expect(service.get("00000000-0000-4000-8000-000000000001")).toMatchObject({
@@ -63,7 +63,7 @@ describe("daemon jobs", () => {
 		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-maintenance-"));
 		db = connect(join(dir, "jobs.sqlite"));
 		initTestSchema(db);
-		store = new MemoryStore(join(dir, "jobs.sqlite"), { connection: db });
+		store = new MemoryStore(db);
 		let enterMaintenance = () => {};
 		const entered = new Promise<void>((resolve) => {
 			enterMaintenance = resolve;

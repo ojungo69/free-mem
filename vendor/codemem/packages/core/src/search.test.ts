@@ -13,8 +13,8 @@ import {
 	recencyScore,
 	rerankResults,
 } from "./search.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema, insertTestSession } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
 import type { MemoryResult } from "./types.js";
 
 function insertCoordinatorScope(store: MemoryStore, scopeId: string): void {
@@ -695,7 +695,7 @@ describe("MemoryStore.search", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -1021,7 +1021,7 @@ describe("scope visibility filter (resolved visible set)", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -1251,7 +1251,7 @@ describe("MemoryStore.search cross-project widening", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -1481,7 +1481,7 @@ describe("MemoryStore.timeline", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -1706,7 +1706,7 @@ describe("MemoryStore.explain", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {

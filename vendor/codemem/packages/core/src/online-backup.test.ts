@@ -3,7 +3,9 @@ import { existsSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { connect } from "./db.js";
 import * as core from "./index.js";
+import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 const created: Array<{ stop: () => Promise<void> }> = [];
 const dirs: string[] = [];
@@ -49,7 +51,7 @@ describe("Phase 1 online backup", () => {
 		const dir = tempDir("codemem-backup-api-");
 		const dbPath = join(dir, "source.sqlite");
 		const dest = join(dir, "snapshot.sqlite");
-		const db = core.WriterActor.open(dbPath);
+		const db = WriterActor.open(dbPath);
 		try {
 			expect(typeof db.backup).toBe("function");
 			db.pragma("journal_mode = WAL");
@@ -64,7 +66,7 @@ describe("Phase 1 online backup", () => {
 		}
 
 		expect(existsSync(`${dest}-wal`)).toBe(false);
-		const copy = core.ReadOnlyActor.open(dest);
+		const copy = ReadOnlyActor.open(dest);
 		try {
 			expect(copy.prepare("SELECT value FROM probe ORDER BY value").all()).toEqual([
 				{ value: "before" },
@@ -78,7 +80,7 @@ describe("Phase 1 online backup", () => {
 		const dir = tempDir("codemem-backup-create-");
 		const dbPath = join(dir, "source.sqlite");
 		const destDir = join(dir, "backups");
-		const db = core.WriterActor.open(dbPath);
+		const db = WriterActor.open(dbPath);
 		try {
 			db.pragma("journal_mode = WAL");
 			db.exec("CREATE TABLE probe (value TEXT NOT NULL)");
@@ -137,7 +139,7 @@ describe("Phase 1 online backup", () => {
 		const blocked = join(dir, "blocked");
 		writeFileSync(blocked, "not-a-directory");
 		const dbPath = join(dir, "upgrade.sqlite");
-		const db = core.WriterActor.open(dbPath);
+		const db = WriterActor.open(dbPath);
 		try {
 			db.exec("CREATE TABLE memory_items (id INTEGER PRIMARY KEY)");
 			db.exec("CREATE TABLE sessions (id INTEGER PRIMARY KEY)");
@@ -282,7 +284,7 @@ describe("Phase 1 online backup", () => {
 		const dir = tempDir("codemem-backup-fresh-");
 		const destDir = join(dir, "backups");
 		const dbPath = join(dir, "fresh.sqlite");
-		const db = core.connect(dbPath);
+		const db = connect(dbPath);
 		try {
 			await core.runGatedMigration(db, {
 				dbPath,
@@ -301,7 +303,7 @@ describe("Phase 1 online backup", () => {
 		const dir = tempDir("codemem-backup-v18-");
 		const dbPath = join(dir, "v18.sqlite");
 		const destDir = join(dir, "backups");
-		const db = core.connect(dbPath);
+		const db = connect(dbPath);
 		try {
 			core.runDatabaseMigrations(db, {
 				dbPath,

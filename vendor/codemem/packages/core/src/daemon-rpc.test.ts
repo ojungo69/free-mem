@@ -3,7 +3,9 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { connect } from "./db.js";
 import * as core from "./index.js";
+import { openTestMemoryStore } from "./test-utils.js";
 
 const created: Array<{ stop: () => Promise<void> }> = [];
 const dirs: string[] = [];
@@ -466,7 +468,7 @@ describe("Phase 1 daemon RPC", () => {
 		const pointer = core.readCurrentDatabasePointer(layout);
 		if (!pointer) throw new Error("canonical database pointer is missing");
 		const dbPath = join(layout.dbDir, pointer);
-		const seed = core.connect(dbPath);
+		const seed = connect(dbPath);
 		try {
 			seed.prepare("UPDATE memory_items SET dedup_key = NULL WHERE id = ?").run(memoryId);
 			seed.prepare("DELETE FROM maintenance_jobs WHERE kind = ?").run(core.DEDUP_KEY_BACKFILL_JOB);
@@ -502,7 +504,7 @@ describe("Phase 1 daemon RPC", () => {
 		]);
 
 		await second.stop();
-		const verify = core.connect(dbPath);
+		const verify = connect(dbPath);
 		try {
 			const row = verify
 				.prepare("SELECT dedup_key FROM memory_items WHERE id = ?")
@@ -651,7 +653,7 @@ describe("Phase 1 daemon RPC", () => {
 		await handle.stop();
 		const layout = core.resolveStorageLayout(dataDir);
 		const pointer = core.readCurrentDatabasePointer(layout);
-		const store = new core.MemoryStore(resolve(layout.dbDir, pointer as string));
+		const store = openTestMemoryStore(resolve(layout.dbDir, pointer as string));
 		try {
 			const rows = store.db
 				.prepare(
