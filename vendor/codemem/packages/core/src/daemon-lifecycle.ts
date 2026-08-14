@@ -7,9 +7,14 @@ import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js
 import { DaemonJobService } from "./daemon-jobs.js";
 import { DaemonOperationService } from "./daemon-operations.js";
 import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
+import { cutoverLegacyLayoutIfNeeded } from "./legacy-cutover.js";
+import {
+	buildNormalizedEventFromClaudeHook,
+	buildNormalizedEventFromCodexHook,
+} from "./normalized-event.js";
 import { ObserverClient } from "./observer-client.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
-import { importReadySpoolEntries } from "./spool.js";
+import { drainLegacySpool, importReadySpoolEntries, spoolMutation } from "./spool.js";
 import {
 	ensureStorageLayout,
 	recoverStorageJournal,
@@ -267,6 +272,7 @@ export async function startDaemon(options: {
 	let started = false;
 	try {
 		recoverStorageJournal(layout);
+		await cutoverLegacyLayoutIfNeeded(layout);
 		canonical = await openCanonicalWriter(layout);
 		const liveIdentity = readProcessIdentity(process.pid);
 		const identity: DaemonIdentity = {
@@ -318,6 +324,27 @@ export async function startDaemon(options: {
 				console.error("[codemem] spool sweep failed; ready entries were retained.");
 			}
 		};
+		const drained = await drainLegacySpool(layout.dataDir, (source, payload) => {
+			const event =
+				source === "claude"
+					? buildNormalizedEventFromClaudeHook(payload)
+					: buildNormalizedEventFromCodexHook(payload);
+			if (!event) return false;
+			const idempotencyKey = String(event.idempotencyKey);
+			return (
+				spoolMutation(
+					{
+						method: "POST /v1/events",
+						idempotencyKey,
+						body: { idempotencyKey, event },
+					},
+					{ dataDir: layout.dataDir },
+				).status !== "dropped"
+			);
+		});
+		if (drained.failed > 0) {
+			console.error("[codemem] some legacy spool entries were retained for retry.");
+		}
 		sweepSpool();
 		server = await bindPrivateSocket(layout.socketPath, rpc);
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);

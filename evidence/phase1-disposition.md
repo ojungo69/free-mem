@@ -259,8 +259,19 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 |---|---|---|
 | `connect` / `connectReadOnly` | `core/db.ts` 定義、`daemon-canonical.ts`、`daemon-jobs.ts` | package runtime export を削除。daemon canonical store と daemon job の report comparison だけが audited writer を開く。`connectReadOnly` の production caller は 0 |
 | `new MemoryStore` | `daemon-canonical.ts`、`daemon-jobs.ts` | constructor は既 open `WriterActor` 必須。path/default/bootstrap による自己 open を削除し、public runtime export は type-only 化 |
-| `WriterActor.open` / `ReadOnlyActor.open` | `db.ts`、`online-backup.ts`、`storage.ts` | package runtime export を type-only 化。backup/verify/storage と audited wrapper 内だけに限定 |
+| `WriterActor.open` / `ReadOnlyActor.open` | `db.ts`、`legacy-cutover.ts`、`online-backup.ts`、`storage.ts` | package runtime export を type-only 化。daemon cutover/backup/verify/storage と audited wrapper 内だけに限定 |
 | `new BetterSqlite3` | `daemon-lifecycle.ts`、`writer-actor.ts` | daemon instance lock と actor 実装内部だけに限定 |
 | test-only opener | `packages/core/src/test-utils.ts` と test file | `openTestMemoryStore` は package public export せず、exact-path scan 例外からのみ利用 |
 
 path を受け取って DB を自己 open していた export/import、maintenance/report/relink/reliability/status、migration wrapper と、独立 connection を所有していた backfill runner class は削除した。daemon job/operation handler は既存 handle を受け取る `*WithDb` / pass 関数だけを利用する。`P1-T048-01-zero-external-db-handles` は production source の opener allowlistと、public runtime bypass の不在を同時に固定する。T053 では同じ基準を harness の restricted-import / deep-import scan へ昇格する。
+
+## T051 legacy cutover surface（2026-08-14）
+
+| surface | path | disposition | class | authority |
+|---|---|---|---|---|
+| install target manifest | `control/install-manifest.json` | setup が管理した hook/MCP/runtime file の SHA-256 を owner-only atomic file に記録。部分 setup は他 integration を保持し、選択 integration の消滅 target は除外。cutover 開始前と unlock 直前に再照合し、欠落/symlink/hash drift は中止 | − | local user |
+| legacy owner handoff | 旧 DB inode + `/proc/*/fd` / trusted absolute `lsof` | transient owner grace後、identity再検証できる旧 codemem processだけへSIGTERM。prepared前とunlock直前に owner set = `{daemonPid}` を要求 | − | daemon内部 |
+| legacy backup/publish | `control/backups/legacy-*.sqlite` → `db/versions/` → `db/current` | daemon EXCLUSIVE保持中のread-only handleからT050 online backupを作成・verifyし、判断 #16 journalでpublish | B | daemon内部 |
+| rollback hardlink | `control/legacy-*.legacy-recovery.sqlite` | tombstone前に旧inodeをprivate hardlinkで保持。final owner検査までの失敗時だけ旧pathとcanonical pointerを一意にrollback | − | daemon内部 |
+| legacy tombstone | 旧 DB path → `control/legacy-db-tombstone/` symlink | atomic rename + parent fsync後にfinal owner検査。旧binaryのcanonical writeと別DB新規生成を双方拒否 | − | daemon内部 |
+| legacy spool handoff | `{claude-hook-spool,codex-hook-spool}` → T039 ready spool | canonical daemon 起動ごとに normalized event 化を再試行し、共通redaction済みdurable spoolへ移せた後だけ旧fileを削除。変換不能・quota失敗は保持 | A | agent-callable |

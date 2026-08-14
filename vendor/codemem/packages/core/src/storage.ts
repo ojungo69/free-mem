@@ -29,6 +29,7 @@ export interface StorageLayout {
 	versionsDir: string;
 	currentPointerPath: string;
 	journalPath: string;
+	installManifestPath: string;
 	lockPath: string;
 	identityPath: string;
 	socketPath: string;
@@ -62,6 +63,7 @@ export function resolveStorageLayout(dataDir: string = DEFAULT_DATA_DIR): Storag
 		versionsDir: join(dbDir, "versions"),
 		currentPointerPath: join(dbDir, "current"),
 		journalPath: join(controlDir, "restore-journal.json"),
+		installManifestPath: join(controlDir, "install-manifest.json"),
 		lockPath: join(controlDir, "lock.db"),
 		identityPath: join(controlDir, "identity.json"),
 		socketPath: join(controlDir, "daemon.sock"),

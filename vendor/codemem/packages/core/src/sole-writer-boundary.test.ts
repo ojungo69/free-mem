@@ -38,6 +38,7 @@ describe("Phase 1 sole-writer boundary", () => {
 			]),
 			actorOpen: new Set([
 				"packages/core/src/db.ts",
+				"packages/core/src/legacy-cutover.ts",
 				"packages/core/src/online-backup.ts",
 				"packages/core/src/storage.ts",
 				"packages/core/src/writer-actor.ts",

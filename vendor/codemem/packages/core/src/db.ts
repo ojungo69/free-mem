@@ -307,9 +307,8 @@ export function isEmbeddingDisabled(): boolean {
 /**
  * Read the schema `user_version` pragma from the database.
  *
- * Returns `0` for a freshly-created or empty file, which is the signal
- * The migration runner and `bootstrapSchema` use this to decide whether to run
- * the initial DDL.
+ * Returns `0` for a freshly-created or empty file, which the migration runner
+ * and `bootstrapSchema` use as the signal to run the initial DDL.
  */
 export function getSchemaVersion(db: DatabaseType): number {
 	const row = db.pragma("user_version", { simple: true });

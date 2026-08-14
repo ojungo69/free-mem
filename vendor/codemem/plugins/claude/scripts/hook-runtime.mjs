@@ -2586,6 +2586,7 @@ function resolveStorageLayout(dataDir = DEFAULT_DATA_DIR) {
 		versionsDir: join(dbDir, "versions"),
 		currentPointerPath: join(dbDir, "current"),
 		journalPath: join(controlDir, "restore-journal.json"),
+		installManifestPath: join(controlDir, "install-manifest.json"),
 		lockPath: join(controlDir, "lock.db"),
 		identityPath: join(controlDir, "identity.json"),
 		socketPath: join(controlDir, "daemon.sock"),

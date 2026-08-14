@@ -280,9 +280,10 @@ export {
 	parseObserverResponse,
 	SUPPORTED_OBSERVATION_KINDS,
 } from "./ingest-xml-parser.js";
-export type { InstallManifest, ManagedBlock } from "./install-manifest.js";
+export type { InstallManifest, ManagedBlock, ManagedTarget } from "./install-manifest.js";
 export {
 	applyManagedBlock,
+	captureManagedTarget,
 	installWithManifest,
 	readInstallManifest,
 	removeManagedBlock,

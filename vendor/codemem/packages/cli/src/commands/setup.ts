@@ -26,7 +26,14 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as p from "@clack/prompts";
-import { VERSION } from "@codemem/core";
+import {
+	captureManagedTarget,
+	DEFAULT_DATA_DIR,
+	readInstallManifest,
+	resolveStorageLayout,
+	VERSION,
+	writeInstallManifest,
+} from "@codemem/core";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import { loadJsoncConfig, resolveOpencodeConfigPath, writeJsonConfig } from "./setup-config.js";
@@ -609,6 +616,42 @@ export function installCodex(force: boolean): boolean {
 	return ok;
 }
 
+function setupDataDir(): string {
+	const configured = process.env.CODEMEM_DATA_DIR?.trim();
+	if (configured) return configured;
+	const dbPath = process.env.CODEMEM_DB?.trim();
+	if (!dbPath) return DEFAULT_DATA_DIR;
+	return dirname(dbPath.startsWith("~/") ? join(homedir(), dbPath.slice(2)) : dbPath);
+}
+
+export function writeSetupInstallManifest(
+	files: Array<{ id: string; path: string }>,
+	dataDir: string = setupDataDir(),
+	replaceIds: readonly string[] = files.map((file) => file.id),
+): void {
+	const unique = new Map(files.map((file) => [resolve(file.path), file]));
+	const captured = [...unique.values()].map((file) =>
+		captureManagedTarget(file.id, resolve(file.path)),
+	);
+	if (captured.length === 0) throw new Error("No managed thin-client targets were installed.");
+	const manifestPath = resolveStorageLayout(dataDir).installManifestPath;
+	const previous = existsSync(manifestPath)
+		? readInstallManifest(manifestPath)
+		: { version: 1 as const, blocks: [] };
+	const replaced = new Set(replaceIds);
+	const targets = new Map(
+		(previous.targets ?? [])
+			.filter((target) => !replaced.has(target.id))
+			.map((target) => [target.id, target]),
+	);
+	for (const target of captured) targets.set(target.id, target);
+	writeInstallManifest(manifestPath, {
+		version: 1,
+		blocks: previous.blocks,
+		targets: [...targets.values()],
+	});
+}
+
 export const setupCommand = new Command("setup")
 	.configureHelp(helpStyle)
 	.description("Install codemem plugin + MCP config for OpenCode and Claude Code")
@@ -626,6 +669,8 @@ export const setupCommand = new Command("setup")
 			p.intro(`codemem setup v${VERSION}`);
 			const force = opts.force ?? false;
 			let ok = true;
+			const managedTargets: Array<{ id: string; path: string }> = [];
+			const managedTargetIds: string[] = [];
 
 			const onlyFlag = Boolean(opts.opencodeOnly || opts.claudeOnly || opts.codexOnly);
 
@@ -636,23 +681,69 @@ export const setupCommand = new Command("setup")
 
 			if (doOpencode) {
 				p.log.step("Installing OpenCode plugin...");
-				ok = installPlugin(force) && ok;
+				const pluginOk = installPlugin(force);
+				ok = pluginOk && ok;
 				p.log.step("Installing OpenCode MCP config...");
-				ok = installMcp(force) && ok;
+				const mcpOk = installMcp(force);
+				ok = mcpOk && ok;
+				if (pluginOk && mcpOk) {
+					managedTargetIds.push("opencode-plugin-mcp");
+					managedTargets.push({
+						id: "opencode-plugin-mcp",
+						path: resolveOpencodeConfigPath(opencodeConfigDir()),
+					});
+				}
 			}
 
 			if (doClaude) {
 				p.log.step("Installing Claude Code MCP config...");
-				ok = installClaudeMcp(force) && ok;
+				const claudeOk = installClaudeMcp(force);
+				ok = claudeOk && ok;
+				if (claudeOk) {
+					managedTargetIds.push("claude-mcp", "claude-hooks");
+					managedTargets.push({
+						id: "claude-mcp",
+						path: join(claudeConfigDir(), "settings.json"),
+					});
+					const hooksPath = join(claudeConfigDir(), "plugins", "codemem", "hooks", "hooks.json");
+					if (existsSync(hooksPath)) {
+						managedTargets.push({ id: "claude-hooks", path: hooksPath });
+					}
+				}
 			}
 
 			if (doCodex) {
 				p.log.step("Configuring Codex (MCP + hooks)...");
-				ok = installCodex(force) && ok;
+				const codexOk = installCodex(force);
+				ok = codexOk && ok;
+				if (codexOk) {
+					managedTargetIds.push("codex-mcp", "codex-hooks", "codex-hook-runtime");
+					for (const [id, name] of [
+						["codex-mcp", "config.toml"],
+						["codex-hooks", "hooks.json"],
+						["codex-hook-runtime", "codemem-hook-runtime.mjs"],
+					] as const) {
+						const path = join(codexConfigDir(), name);
+						if (existsSync(path)) managedTargets.push({ id, path });
+					}
+				}
 				p.log.info("Codex next steps:");
 				p.log.info("  - Restart Codex to load the new configuration");
 				p.log.info("  - On first run, approve the one-time prompt to trust the codemem hooks");
 				p.log.info("  - MCP recall works immediately (no trust prompt required)");
+			}
+
+			if (ok) {
+				try {
+					writeSetupInstallManifest(managedTargets, setupDataDir(), managedTargetIds);
+				} catch (error) {
+					p.log.error(
+						`Failed to write the install ownership manifest: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					ok = false;
+				}
 			}
 
 			if (ok) {

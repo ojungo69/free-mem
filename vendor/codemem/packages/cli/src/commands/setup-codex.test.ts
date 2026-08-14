@@ -10,6 +10,7 @@ import {
 	installCodexHookRuntime,
 	isTransientNpxBinPath,
 	setupCommand,
+	writeSetupInstallManifest,
 } from "./setup.js";
 
 // Resolve the same command base the implementation will use in this environment
@@ -78,6 +79,38 @@ describe("Codex hook runtime install", () => {
 });
 
 describe("installCodex — fresh CODEX_HOME", () => {
+	it("records the installed MCP and hook files in the cutover manifest", () => {
+		expect(installCodex(false)).toBe(true);
+		const dataDir = join(codexHome, "data");
+		writeSetupInstallManifest([{ id: "codex-mcp", path: join(codexHome, "config.toml") }], dataDir);
+		writeSetupInstallManifest(
+			[{ id: "codex-hooks", path: join(codexHome, "hooks.json") }],
+			dataDir,
+		);
+
+		const manifest = JSON.parse(
+			readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8"),
+		) as { blocks: unknown[]; targets: Array<{ id: string; fingerprint: string }> };
+		expect(manifest.blocks).toEqual([]);
+		expect(manifest.targets.map((target) => target.id).sort()).toEqual([
+			"codex-hooks",
+			"codex-mcp",
+		]);
+		expect(manifest.targets.every((target) => /^[a-f0-9]{64}$/.test(target.fingerprint))).toBe(
+			true,
+		);
+
+		writeSetupInstallManifest(
+			[{ id: "codex-hooks", path: join(codexHome, "hooks.json") }],
+			dataDir,
+			["codex-mcp", "codex-hooks"],
+		);
+		const reconciled = JSON.parse(
+			readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8"),
+		) as { targets: Array<{ id: string }> };
+		expect(reconciled.targets.map((target) => target.id)).toEqual(["codex-hooks"]);
+	});
+
 	it("writes the MCP block and all four hook events with correct schema", () => {
 		expect(installCodex(false)).toBe(true);
 

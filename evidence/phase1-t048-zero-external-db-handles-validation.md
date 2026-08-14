@@ -22,7 +22,7 @@ test-only exact allowlist を除き、DB connection を開く production code �
 |---|---|
 | `connect` / `connectReadOnly` | `core/db.ts`、`core/daemon-canonical.ts`、`core/daemon-jobs.ts` |
 | `new MemoryStore` | `core/daemon-canonical.ts`、`core/daemon-jobs.ts` |
-| `WriterActor.open` / `ReadOnlyActor.open` | `core/db.ts`、`core/online-backup.ts`、`core/storage.ts` |
+| `WriterActor.open` / `ReadOnlyActor.open` | `core/db.ts`、`core/legacy-cutover.ts`、`core/online-backup.ts`、`core/storage.ts` |
 | raw `BetterSqlite3` | `core/daemon-lifecycle.ts`、`core/writer-actor.ts` |
 
 `connectReadOnly` は audited internal definition のみ残り、production caller は 0。MCP SDK の `server.connect(transport)` は SQLite opener ではないため scan の negative-lookbehind で除外する。
