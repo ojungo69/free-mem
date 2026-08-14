@@ -8,6 +8,7 @@ import {
 	buildMaintenanceWorkerArgs,
 	commandHasExactDbPath,
 	extractViewerPid,
+	findTrustedSystemCommand,
 	isLikelyMaintenanceWorkerCommand,
 	isLikelyViewerCommand,
 	isLocalHost,
@@ -269,6 +270,18 @@ describe("serve command option resolution", () => {
 		expect(isLocalHost("::1")).toBe(true);
 		expect(isLocalHost("0.0.0.0")).toBe(true);
 		expect(isLocalHost("example.com")).toBe(false);
+	});
+
+	it("only resolves process inspection tools from fixed absolute paths", () => {
+		const dir = mkdtempSync(join(tmpdir(), "codemem-system-tool-"));
+		const executable = join(dir, "ps");
+		writeFileSync(executable, "");
+		try {
+			expect(findTrustedSystemCommand(["ps", executable])).toBe(executable);
+			expect(findTrustedSystemCommand(["ps"])).toBeNull();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("prepares a fresh viewer database before startup", () => {

@@ -1223,8 +1223,7 @@ describe("MemoryStore", () => {
 		});
 
 		it("is a no-op for non-existent memory", () => {
-			// Should not throw
-			store.forget(99999);
+			expect(() => store.forget(99999)).not.toThrow();
 		});
 	});
 

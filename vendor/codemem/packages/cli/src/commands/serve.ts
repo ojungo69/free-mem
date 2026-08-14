@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import * as p from "@clack/prompts";
 import {
 	initDatabase,
@@ -85,9 +85,15 @@ export function pickViewerPidCandidate(
 	return statsPid ?? listenerPid ?? null;
 }
 
+export function findTrustedSystemCommand(candidates: readonly string[]): string | null {
+	return candidates.find((path) => isAbsolute(path) && existsSync(path)) ?? null;
+}
+
 function lookupListeningPid(host: string, port: number): number | null {
 	if (!isLocalHost(host)) return null;
-	const result = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
+	const lsof = findTrustedSystemCommand(["/usr/bin/lsof", "/usr/sbin/lsof"]);
+	if (!lsof) return null;
+	const result = spawnSync(lsof, ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
 		encoding: "utf-8",
 		timeout: 1000,
 	});
@@ -102,7 +108,9 @@ function lookupListeningPid(host: string, port: number): number | null {
 }
 
 function readProcessCommand(pid: number): string | null {
-	const result = spawnSync("ps", ["-p", String(pid), "-o", "command="], {
+	const ps = findTrustedSystemCommand(["/bin/ps", "/usr/bin/ps"]);
+	if (!ps) return null;
+	const result = spawnSync(ps, ["-p", String(pid), "-o", "command="], {
 		encoding: "utf-8",
 		timeout: 1000,
 	});
