@@ -23,7 +23,7 @@ import {
 } from "./normalized-event.js";
 import type { AgentMemoryConfig, RedactionResult } from "./redaction-pipeline.js";
 import { preprocessAdapterEvent } from "./redaction-pipeline.js";
-import { resolveStorageLayout } from "./storage.js";
+import { resolveStorageLayout } from "./storage-layout.js";
 import {
 	durableRemoveFile,
 	ensurePrivateDirectory,

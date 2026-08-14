@@ -1386,22 +1386,35 @@ export async function dispatchDaemonRpc(
 export function attachDaemonRpc(connection: Socket, ctx: DaemonRpcContext): void {
 	let buffer = Buffer.alloc(0);
 	let done = false;
+	let stopAfterResponse = false;
+	let stopRequested = false;
+	const requestStopAfterResponse = () => {
+		if (!stopAfterResponse || stopRequested) return;
+		stopRequested = true;
+		ctx.onStop();
+	};
+	connection.on("error", () => {
+		connection.destroy();
+		requestStopAfterResponse();
+	});
 	const finish = (payload?: RpcSuccess | TypedRpcError) => {
 		if (done) return;
 		done = true;
 		if (payload) {
-			const restartRequired =
+			stopAfterResponse =
 				ctx.restoreState?.active === true &&
 				"result" in payload &&
 				payload.result.restartRequired === true;
+			if (connection.destroyed) {
+				requestStopAfterResponse();
+				return;
+			}
 			try {
-				connection.end(`${JSON.stringify(payload)}\n`, () => {
-					if (restartRequired) ctx.onStop();
-				});
+				connection.end(`${JSON.stringify(payload)}\n`, requestStopAfterResponse);
 				return;
 			} catch {
 				// connection already closed
-				if (restartRequired) ctx.onStop();
+				requestStopAfterResponse();
 			}
 		}
 		connection.destroy();

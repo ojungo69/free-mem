@@ -11,6 +11,7 @@
     "test:release-version": "node --test scripts/release-version.test.mjs",
     "lint": "pnpm exec biome check packages/",
     "phase1:static-scan": "node --experimental-strip-types ../../harness/phase1-static-scan.ts",
+    "phase1:runtime-db-open-trace": "pnpm run build && node ../../harness/phase1-runtime-db-open-trace.mjs",
     "format": "pnpm exec biome check --write packages/",
     "tsc": "pnpm exec tsc --build",
     "typecheck": "pnpm run tsc",

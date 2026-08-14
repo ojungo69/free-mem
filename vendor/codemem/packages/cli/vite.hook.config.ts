@@ -26,6 +26,10 @@ export default defineConfig({
 		},
 		rollupOptions: {
 			external: [/^node:/, ...builtinModules],
+			output: {
+				banner:
+					'import { createRequire as __createRequire } from "node:module";\nconst require = __createRequire(import.meta.url);',
+			},
 		},
 		outDir: "dist",
 		emptyOutDir: false,

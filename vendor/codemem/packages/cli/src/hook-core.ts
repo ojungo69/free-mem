@@ -26,4 +26,4 @@ export {
 export type { RefQueryResult } from "../../core/src/ref-queries.js";
 export type { SpoolRedactionMetadata } from "../../core/src/spool.js";
 export { spoolMutation } from "../../core/src/spool.js";
-export { DEFAULT_DATA_DIR, resolveStorageLayout } from "../../core/src/storage.js";
+export { DEFAULT_DATA_DIR, resolveStorageLayout } from "../../core/src/storage-layout.js";
