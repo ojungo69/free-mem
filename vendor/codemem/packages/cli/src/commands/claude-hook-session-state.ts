@@ -24,6 +24,7 @@ const MAX_WORKING_SET_PATHS = 8;
 const MAX_QUERY_CHARS = 500;
 const MAX_QUERY_FILE_BASENAMES = 5;
 const SESSION_FILE_LABEL_CHARS = 24;
+const SESSION_STATE_VERSION = 2;
 
 function stableSessionSuffix(sessionId: string): string {
 	let hash = 0xcbf29ce484222325n;
@@ -101,6 +102,10 @@ export function loadSessionState(sessionId: string): SessionState {
 			return defaultSessionState();
 		}
 		const obj = parsed as Record<string, unknown>;
+		if (obj.version !== SESSION_STATE_VERSION) {
+			rmSync(path, { force: true });
+			return defaultSessionState();
+		}
 		return {
 			first_prompt: typeof obj.first_prompt === "string" ? obj.first_prompt.trim() : "",
 			last_prompt: typeof obj.last_prompt === "string" ? obj.last_prompt.trim() : "",
@@ -108,6 +113,11 @@ export function loadSessionState(sessionId: string): SessionState {
 			updated_at: typeof obj.updated_at === "string" ? obj.updated_at.trim() : "",
 		};
 	} catch {
+		try {
+			rmSync(path, { force: true });
+		} catch {
+			// best-effort cleanup of unusable ephemeral state
+		}
 		return defaultSessionState();
 	}
 }
@@ -118,16 +128,17 @@ function nowIso(): string {
 
 export function saveSessionState(sessionId: string, state: SessionState): void {
 	const dir = contextDir();
-	mkdirSync(dir, { recursive: true });
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
 	const path = statePathForSession(sessionId);
 	const tmpPath = `${path}.tmp`;
 	const payload = {
+		version: SESSION_STATE_VERSION,
 		first_prompt: String(state.first_prompt ?? ""),
 		last_prompt: String(state.last_prompt ?? ""),
 		files_modified: normalizeStringList(state.files_modified, MAX_FILES_MODIFIED),
 		updated_at: String(state.updated_at ?? ""),
 	};
-	writeFileSync(tmpPath, JSON.stringify(payload), { encoding: "utf8" });
+	writeFileSync(tmpPath, JSON.stringify(payload), { encoding: "utf8", mode: 0o600 });
 	renameSync(tmpPath, path);
 }
 
@@ -188,7 +199,11 @@ export function extractModifiedPathsFromHook(payload: Record<string, unknown>): 
  * or when SessionEnd just cleared the state. Failures are swallowed —
  * hook commands must never crash on state I/O errors.
  */
-export function trackHookSessionState(payload: Record<string, unknown>): SessionState | null {
+export function trackHookSessionState(
+	payload: Record<string, unknown>,
+	sanitizedPrompt: string,
+	sanitizedModifiedPaths: string[],
+): SessionState | null {
 	const sessionRaw = payload.session_id;
 	if (typeof sessionRaw !== "string") return null;
 	const sessionId = sessionRaw.trim();
@@ -206,7 +221,7 @@ export function trackHookSessionState(payload: Record<string, unknown>): Session
 	let changed = false;
 
 	if (hookEventName === "UserPromptSubmit") {
-		const prompt = normalizePromptText(payload.prompt);
+		const prompt = normalizePromptText(sanitizedPrompt);
 		if (prompt) {
 			if (!state.first_prompt) {
 				state.first_prompt = prompt;
@@ -220,7 +235,7 @@ export function trackHookSessionState(payload: Record<string, unknown>): Session
 	} else if (hookEventName === "PostToolUse" || hookEventName === "PostToolUseFailure") {
 		const existing = state.files_modified.filter((path) => path.trim().length > 0);
 		const seen = new Set(existing);
-		for (const path of extractModifiedPathsFromHook(payload)) {
+		for (const path of sanitizedModifiedPaths) {
 			if (seen.has(path)) continue;
 			existing.push(path);
 			seen.add(path);

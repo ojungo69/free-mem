@@ -3,19 +3,21 @@ import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
-	MemoryStore,
+	type FileContextRetrievalAttempt,
+	preprocessAdapterEvent,
 	type RefQueryResult,
-	type RetrievalSurfaceRecordInput,
-	recordRetrievalSurface,
-	resolveDbPath,
 	resolveHookProject,
-	resolveRetrievalSession,
-	tryUpdateRetrievalDelivery,
 } from "@codemem/core";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
-import { addDbOption, type DbOpts, resolveDbOpt } from "../shared-options.js";
+import { addDbOption, type DbOpts } from "../shared-options.js";
 import { logHookEvent } from "./claude-hook-plugin-log.js";
+import {
+	deliverHookEvent,
+	type PreparedHookEvent,
+	prepareHookEvent,
+	requestHookRpc,
+} from "./hook-rpc-client.js";
 
 type FileContextResult = {
 	continue?: true;
@@ -30,11 +32,10 @@ type FileContextOpts = DbOpts;
 
 type FileContextDeps = {
 	queryByFile?: typeof queryByFile;
-	resolveDb?: typeof resolveDbPath;
 	statFile?: typeof statFile;
-	createStore?: (dbPath: string) => MemoryStore;
-	recordAttempt?: (dbPath: string, input: RetrievalSurfaceRecordInput) => void;
-	updateDelivery?: (dbPath: string, attemptId: string, status: "handed_off" | "failed") => void;
+	deliver?: typeof deliverHookEvent;
+	recordAttempt?: (input: FileContextRetrievalAttempt) => Promise<void>;
+	updateDelivery?: (attemptId: string, status: "handed_off" | "failed") => Promise<void>;
 	now?: () => Date;
 	createAttemptId?: () => string;
 };
@@ -70,12 +71,6 @@ const KIND_ICONS: Record<string, string> = {
 
 function emitJson(value: FileContextResult): void {
 	console.log(JSON.stringify(value));
-}
-
-function emitError(value: { error: string; message: string }): void {
-	// Errors go to stderr so a non-zero exit from `codemem` doesn't poison
-	// the bash hook's stdout when it falls back to `npx -y codemem ...`.
-	process.stderr.write(`${JSON.stringify(value)}\n`);
 }
 
 function continueResult(): FileContextResult {
@@ -260,20 +255,25 @@ function formatTimeline(
 	return lines.join("\n");
 }
 
-function queryByFile(
-	dbPath: string,
+async function queryByFile(
 	relativePath: string,
 	project: string | null,
 	limit: number,
-): RefQueryResult[] {
-	const store = new MemoryStore(dbPath);
-	try {
-		const opts: { project?: string; limit: number } = { limit };
-		if (project) opts.project = project;
-		return store.findByFile(relativePath, opts);
-	} finally {
-		store.close();
-	}
+	deadlineAtMs?: number,
+): Promise<RefQueryResult[]> {
+	const result = await requestHookRpc(
+		"claude",
+		"POST /v1/search",
+		{
+			requestId: randomUUID(),
+			mode: "find_by_file",
+			repositoryPath: relativePath,
+			limit,
+			filters: project ? { project } : {},
+		},
+		{ deadlineAtMs },
+	);
+	return Array.isArray(result.items) ? (result.items as RefQueryResult[]) : [];
 }
 
 function resolveProject(payload: Record<string, unknown>): string | null {
@@ -281,100 +281,98 @@ function resolveProject(payload: Record<string, unknown>): string | null {
 	return resolveHookProject(cwd, payload.project);
 }
 
-function sourceSessionId(payload: Record<string, unknown>): string | null {
-	const value = payload.session_id;
-	return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
 export async function buildClaudeFileContext(
 	payload: Record<string, unknown>,
-	opts: FileContextOpts,
+	_opts: FileContextOpts,
 	deps: FileContextDeps = {},
 ): Promise<FileContextResult> {
-	if (envTruthy(process.env.CODEMEM_PLUGIN_IGNORE)) {
+	if (envTruthy(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult();
+	let prepared: PreparedHookEvent;
+	try {
+		prepared = prepareHookEvent("claude", payload);
+	} catch {
 		return continueResult();
 	}
-
-	const filePath = extractFilePath(payload);
-	if (!filePath) {
-		return continueResult();
-	}
-
-	const startedAt = (deps.now ?? (() => new Date()))();
-	const attemptId = (deps.createAttemptId ?? randomUUID)();
-	const resolveDb = deps.resolveDb ?? resolveDbPath;
-	let resolvedDbPath: string | null = null;
-	let activeStore: MemoryStore | null = null;
-	const getStore = (): MemoryStore => {
-		resolvedDbPath ??= resolveDb(resolveDbOpt(opts));
-		activeStore ??= (deps.createStore ?? ((dbPath) => new MemoryStore(dbPath)))(resolvedDbPath);
-		return activeStore;
-	};
-	const finish = (result: FileContextResult): FileContextResult => {
-		try {
-			activeStore?.close();
-		} catch {
-			// Cleanup happens after attribution and must not suppress valid hook output.
-		}
-		activeStore = null;
+	const delivery = (deps.deliver ?? deliverHookEvent)("claude", payload, { prepared }).catch(
+		() => ({
+			via: "dropped" as const,
+		}),
+	);
+	const finish = async (result: FileContextResult): Promise<FileContextResult> => {
+		await delivery;
 		return result;
 	};
-	const record = (
-		attemptInput: Omit<
-			RetrievalSurfaceRecordInput,
-			"attemptId" | "surface" | "trigger" | "startedAt" | "completedAt" | "recorderVersion"
-		>,
-	): void => {
+	if (prepared.status === "skipped") return finish(continueResult());
+	const filePath = extractFilePath(payload);
+	if (!filePath) return finish(continueResult());
+
+	const now = deps.now ?? (() => new Date());
+	const startedAt = now();
+	const attemptId = (deps.createAttemptId ?? randomUUID)();
+	const nativeSessionId = prepared.event.nativeSessionId;
+	const sourceSessionId =
+		typeof nativeSessionId === "string" && nativeSessionId.trim() ? nativeSessionId.trim() : null;
+	const record = async (
+		input: Omit<FileContextRetrievalAttempt, "attemptId" | "startedAt" | "completedAt">,
+	): Promise<void> => {
 		if (!envNotDisabled(process.env.CODEMEM_RETRIEVAL_LEDGER || "1")) return;
 		try {
-			resolvedDbPath ??= resolveDb(resolveDbOpt(opts));
-			const completedAt = (deps.now ?? (() => new Date()))();
-			const ledgerInput: RetrievalSurfaceRecordInput = {
-				...attemptInput,
+			const completedAt = now();
+			const attempt: FileContextRetrievalAttempt = {
+				...input,
 				attemptId,
-				surface: "file_context",
-				trigger: "automatic",
 				startedAt: startedAt.toISOString(),
 				completedAt: completedAt.toISOString(),
-				latencyMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
-				recorderVersion: "claude-file-context-v1",
-				source: "claude",
-				streamId: sourceSessionId(payload),
-				sourceSessionId: sourceSessionId(payload),
-				mode: "claude_pre_tool_use_read",
+				sourceSessionId,
 			};
-			if (deps.recordAttempt) {
-				deps.recordAttempt(resolvedDbPath, ledgerInput);
-			} else {
-				const store = getStore();
-				recordRetrievalSurface(store.db, {
-					...ledgerInput,
-					sessionId: resolveRetrievalSession(store.db, "claude", ledgerInput.sourceSessionId),
-				});
+			if (deps.recordAttempt) await deps.recordAttempt(attempt);
+			else {
+				await requestHookRpc(
+					"claude",
+					"POST /v1/retrieval/file-context",
+					{ ...attempt },
+					{
+						deadlineAtMs: prepared.deadlineAtMs,
+					},
+				);
 			}
 		} catch {
-			// Resolving or writing the local ledger must not affect hook output.
+			// Retrieval attribution must not affect hook output.
 		}
 	};
-	const updateDelivery = (status: "handed_off" | "failed"): void => {
+	const updateDelivery = async (status: "handed_off" | "failed"): Promise<void> => {
 		if (!envNotDisabled(process.env.CODEMEM_RETRIEVAL_LEDGER || "1")) return;
 		try {
-			resolvedDbPath ??= resolveDb(resolveDbOpt(opts));
-			if (deps.updateDelivery) {
-				deps.updateDelivery(resolvedDbPath, attemptId, status);
-			} else {
-				tryUpdateRetrievalDelivery(getStore().db, attemptId, status);
+			if (deps.updateDelivery) await deps.updateDelivery(attemptId, status);
+			else {
+				await requestHookRpc(
+					"claude",
+					"POST /v1/retrieval/file-context/delivery",
+					{ attemptId, status },
+					{ deadlineAtMs: prepared.deadlineAtMs },
+				);
 			}
 		} catch {
-			// Delivery remains successful even if local attribution cannot be updated.
+			// Retrieval attribution must not affect hook output.
 		}
 	};
 	if (!envNotDisabled(process.env.CODEMEM_FILE_CONTEXT || "1")) {
-		record({
+		await record({
 			retrievalStatus: "skipped",
-			deliveryStatus: "not_attempted",
 			failureCode: "file_context_disabled",
 			failureStage: "configuration",
+		});
+		return finish(continueResult());
+	}
+	if (
+		prepared.redaction.sensitivity !== "normal" ||
+		prepared.redaction.private_content_omitted ||
+		prepared.redaction.local_only
+	) {
+		await record({
+			retrievalStatus: "skipped",
+			failureCode: "privacy_policy",
+			failureStage: "redaction",
 		});
 		return finish(continueResult());
 	}
@@ -392,17 +390,37 @@ export async function buildClaudeFileContext(
 	const escapesCwd =
 		relativePath === ".." || relativePath.startsWith("../") || isAbsolute(relativePath);
 	if (!relativePath || escapesCwd) {
-		logHookEvent(
-			`file_context.skip reason=outside_cwd path=${JSON.stringify(filePath)} cwd=${JSON.stringify(cwd)}`,
-		);
-		record({
+		logHookEvent("file_context.skip reason=outside_cwd");
+		await record({
 			retrievalStatus: "skipped",
-			deliveryStatus: "not_attempted",
 			failureCode: "outside_cwd",
 			failureStage: "path_validation",
 		});
 		return finish(continueResult());
 	}
+
+	const project = resolveProject(payload);
+	const redactedQuery = preprocessAdapterEvent(
+		{ repositoryPath: relativePath, project },
+		{ allowlist: ["repositoryPath", "project"], config: prepared.config },
+	);
+	const safePath = redactedQuery.payload.repositoryPath;
+	const safeProject = redactedQuery.payload.project;
+	if (
+		redactedQuery.sensitivity !== "normal" ||
+		redactedQuery.private_content_omitted ||
+		typeof safePath !== "string" ||
+		safePath !== relativePath ||
+		(project !== null && safeProject !== project)
+	) {
+		await record({
+			retrievalStatus: "skipped",
+			failureCode: "privacy_policy",
+			failureStage: "redaction",
+		});
+		return finish(continueResult());
+	}
+	const safeProjectValue = typeof safeProject === "string" ? safeProject : null;
 
 	const minBytes = Number.parseInt(
 		process.env.CODEMEM_FILE_CONTEXT_MIN_BYTES ?? `${FILE_GATE_MIN_BYTES}`,
@@ -413,89 +431,71 @@ export async function buildClaudeFileContext(
 
 	const stat = (deps.statFile ?? statFile)(absolutePath);
 	if (!stat) {
-		logHookEvent(`file_context.skip reason=stat_failed path=${JSON.stringify(relativePath)}`);
-		record({
+		logHookEvent(`file_context.skip reason=stat_failed path=${JSON.stringify(safePath)}`);
+		await record({
 			retrievalStatus: "skipped",
-			deliveryStatus: "not_attempted",
 			failureCode: "stat_failed",
 			failureStage: "file_access",
-			repositoryPaths: [relativePath],
+			repositoryPath: safePath,
 		});
 		return finish(continueResult());
 	}
-	const bypassSizeGate = SMALL_FILE_BYPASS_PATTERNS.some((p) => p.test(relativePath));
+	const bypassSizeGate = SMALL_FILE_BYPASS_PATTERNS.some((p) => p.test(safePath));
 	if (stat.sizeBytes < minBytesEffective && !bypassSizeGate) {
 		logHookEvent(
-			`file_context.skip reason=below_size_gate path=${JSON.stringify(relativePath)} size=${stat.sizeBytes} gate=${minBytesEffective}`,
+			`file_context.skip reason=below_size_gate path=${JSON.stringify(safePath)} size=${stat.sizeBytes} gate=${minBytesEffective}`,
 		);
-		record({
+		await record({
 			retrievalStatus: "skipped",
-			deliveryStatus: "not_attempted",
 			failureCode: "below_size_gate",
 			failureStage: "size_gate",
-			repositoryPaths: [relativePath],
+			repositoryPath: safePath,
 		});
 		return finish(continueResult());
 	}
 
-	const project = resolveProject(payload);
 	const queryFn = deps.queryByFile ?? queryByFile;
-
 	let rows: RefQueryResult[] = [];
 	try {
-		resolvedDbPath ??= resolveDb(resolveDbOpt(opts));
-		rows = deps.queryByFile
-			? queryFn(resolvedDbPath, relativePath, project, FETCH_LIMIT)
-			: getStore().findByFile(relativePath, {
-					limit: FETCH_LIMIT,
-					...(project ? { project } : {}),
-				});
-	} catch (err) {
-		logHookEvent(
-			`codemem claude-hook-file-context query failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		record({
+		rows = await queryFn(safePath, safeProjectValue, FETCH_LIMIT, prepared.deadlineAtMs);
+	} catch {
+		logHookEvent("codemem claude-hook-file-context query failed");
+		await record({
 			retrievalStatus: "failed",
-			deliveryStatus: "not_attempted",
 			failureCode: "query_failed",
 			failureStage: "retrieval",
-			project,
-			filters: project ? { project } : undefined,
-			repositoryPaths: [relativePath],
+			project: safeProjectValue,
+			repositoryPath: safePath,
 		});
 		return finish(continueResult());
 	}
 
 	if (rows.length === 0) {
 		logHookEvent(
-			`file_context.skip reason=no_observations path=${JSON.stringify(relativePath)} project=${JSON.stringify(project ?? "")}`,
+			`file_context.skip reason=no_observations path=${JSON.stringify(safePath)} project=${JSON.stringify(safeProjectValue ?? "")}`,
 		);
-		record({
+		await record({
 			retrievalStatus: "no_results",
-			deliveryStatus: "not_attempted",
-			project,
-			filters: project ? { project } : undefined,
-			repositoryPaths: [relativePath],
+			project: safeProjectValue,
+			repositoryPath: safePath,
 		});
 		return finish(continueResult());
 	}
 
-	const top = scoreAndDedupe(rows, relativePath, DISPLAY_LIMIT);
+	const top = scoreAndDedupe(rows, safePath, DISPLAY_LIMIT);
 	if (top.length === 0) {
 		logHookEvent(
-			`file_context.skip reason=no_top_after_dedupe path=${JSON.stringify(relativePath)} candidates=${rows.length}`,
+			`file_context.skip reason=no_top_after_dedupe path=${JSON.stringify(safePath)} candidates=${rows.length}`,
 		);
-		record({
+		await record({
 			retrievalStatus: "succeeded",
-			deliveryStatus: "not_attempted",
 			candidateIds: rows.map((row) => row.id),
 			candidateCount: rows.length,
 			selectedIds: [],
 			failureCode: "no_top_after_dedupe",
 			failureStage: "selection",
-			project,
-			filters: project ? { project } : undefined,
-			repositoryPaths: [relativePath],
+			project: safeProjectValue,
+			repositoryPath: safePath,
 		});
 		return finish(continueResult());
 	}
@@ -511,30 +511,27 @@ export async function buildClaudeFileContext(
 		}
 	}
 
-	record({
+	await record({
 		retrievalStatus: "succeeded",
-		deliveryStatus: "not_attempted",
 		candidateIds: rows.map((row) => row.id),
 		candidateCount: rows.length,
 		selectedIds: top.map((row) => row.id),
-		project,
-		filters: project ? { project } : undefined,
-		repositoryPaths: [relativePath],
+		project: safeProjectValue,
+		repositoryPath: safePath,
 	});
 
 	let timeline: string;
 	try {
-		timeline = formatTimeline(top, relativePath, staleness);
+		timeline = formatTimeline(top, safePath, staleness);
 	} catch {
-		updateDelivery("failed");
+		await updateDelivery("failed");
 		return finish(continueResult());
 	}
 
 	logHookEvent(
-		`file_context.ok path=${JSON.stringify(relativePath)} candidates=${rows.length} surfaced=${top.length} project=${JSON.stringify(project ?? "")} stale=${staleness ? "true" : "false"}`,
+		`file_context.ok path=${JSON.stringify(safePath)} candidates=${rows.length} surfaced=${top.length} project=${JSON.stringify(safeProjectValue ?? "")} stale=${staleness ? "true" : "false"}`,
 	);
-	updateDelivery("handed_off");
-
+	await updateDelivery("handed_off");
 	return finish({
 		hookSpecificOutput: {
 			hookEventName: "PreToolUse",
@@ -564,23 +561,13 @@ export const claudeHookFileContextCommand = claudeHookFileContextCmd.action(
 			return;
 		}
 
-		let payload: Record<string, unknown>;
 		try {
 			const parsed = JSON.parse(trimmed) as unknown;
-			if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
-				emitError({ error: "parse_error", message: "payload must be a JSON object" });
-				process.exitCode = 1;
-				return;
-			}
-			payload = parsed as Record<string, unknown>;
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+			emitJson(await buildClaudeFileContext(parsed as Record<string, unknown>, opts));
 		} catch {
-			emitError({ error: "parse_error", message: "invalid JSON" });
-			process.exitCode = 1;
-			return;
+			emitJson(continueResult());
 		}
-
-		const result = await buildClaudeFileContext(payload, opts);
-		emitJson(result);
 	},
 );
 

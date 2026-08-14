@@ -162,8 +162,9 @@ function runPipeline(
 	layer: "adapter" | "intake",
 ): RedactionResult {
 	const config = options.config;
-	const allow = resolveAllowlist(options.allowlist, config);
-	const deny = new Set(config?.toolFieldDenylist ?? []);
+	const allow = resolveAllowlist(options.allowlist);
+	const toolAllow = new Set(config?.toolFieldAllowlist ?? []);
+	const toolDeny = new Set(config?.toolFieldDenylist ?? []);
 	const source =
 		input && typeof input === "object" && !Array.isArray(input)
 			? (input as Record<string, unknown>)
@@ -173,8 +174,8 @@ function runPipeline(
 		payload = {};
 	} else {
 		for (const [key, value] of Object.entries(source)) {
-			if (allow.has(key) && !deny.has(key) && !isSensitiveFieldName(key)) {
-				payload[key] = dropSensitiveFields(value, deny);
+			if (allow.has(key) && !isSensitiveFieldName(key)) {
+				payload[key] = dropSensitiveFields(value, toolAllow, toolDeny);
 			}
 		}
 	}
@@ -296,30 +297,39 @@ function rulesetVersion(rules: SecretRule[], degraded: boolean): string {
 	return degraded ? `${hash}:degraded` : hash;
 }
 
-function resolveAllowlist(
-	requested: string[] | undefined,
-	config: AgentMemoryConfig | undefined,
-): Set<string> {
-	const configured = config?.toolFieldAllowlist;
-	if (requested && configured) {
-		return new Set(requested.filter((key) => configured.includes(key)));
-	}
-	return new Set(requested ?? configured ?? DEFAULT_ALLOWLIST);
+function resolveAllowlist(requested: string[] | undefined): Set<string> {
+	return new Set(requested ?? DEFAULT_ALLOWLIST);
 }
 
-function dropSensitiveFields(value: unknown, deny: Set<string>): unknown {
-	if (Array.isArray(value)) return value.map((item) => dropSensitiveFields(item, deny));
+function dropSensitiveFields(
+	value: unknown,
+	toolAllow: Set<string>,
+	toolDeny: Set<string>,
+	insideToolInput = false,
+	restrictToAllowlist = false,
+): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => dropSensitiveFields(item, toolAllow, toolDeny, insideToolInput));
+	}
 	if (value && typeof value === "object") {
 		const next: Record<string, unknown> = {};
 		for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
 			if (
-				deny.has(key) ||
+				toolDeny.has(key) ||
+				(restrictToAllowlist && toolAllow.size > 0 && !toolAllow.has(key)) ||
 				isSensitiveFieldName(key) ||
 				/<\/?(?:private|local-only|injected-context)>/i.test(key)
 			) {
 				continue;
 			}
-			next[key] = dropSensitiveFields(child, deny);
+			const startsToolInput = key === "tool_input";
+			next[key] = dropSensitiveFields(
+				child,
+				toolAllow,
+				toolDeny,
+				insideToolInput || startsToolInput,
+				startsToolInput,
+			);
 		}
 		return next;
 	}

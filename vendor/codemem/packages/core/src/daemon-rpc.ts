@@ -1,5 +1,17 @@
-import { createHash } from "node:crypto";
-import { createConnection, type Socket } from "node:net";
+import type { Socket } from "node:net";
+import {
+	type FileContextRetrievalAttempt,
+	HOOK_DELIVERY_BUDGETS,
+	LOCAL_API_VERSION,
+	RPC_CAPABILITY_HASH,
+	RPC_DEFAULT_DEADLINE_MS,
+	RPC_MAX_BYTES,
+	RPC_METHODS,
+	type RpcMethod,
+	type RpcRequest,
+	type RpcSuccess,
+	type TypedRpcError,
+} from "./daemon-rpc-contract.js";
 import { buildFilterClausesWithContext } from "./filters.js";
 import { validateMemoryKind } from "./memory-kinds.js";
 import { dispatchClassA, MutationConflictError } from "./mutation-dispatcher.js";
@@ -17,11 +29,14 @@ import {
 	verifyCanonicalBackup,
 } from "./online-backup.js";
 import { applyDaemonIntake, type RedactionResult } from "./redaction-pipeline.js";
+import { tryUpdateRetrievalDelivery } from "./retrieval-ledger.js";
+import { recordRetrievalSurface, resolveRetrievalSession } from "./retrieval-surface-ledger.js";
 import {
 	readSpoolStatus,
 	type SpoolEntry,
 	type SpoolImportOutcome,
 	type SpoolRedactionMetadata,
+	validateSpoolRedaction,
 } from "./spool.js";
 import type { MemoryStore } from "./store.js";
 import type { MemoryFilters } from "./types.js";
@@ -54,38 +69,22 @@ function spoolHealth(dataDir: string): Record<string, unknown> {
 	}
 }
 
-export const LOCAL_API_VERSION = 1;
-export const RPC_MAX_BYTES = 32 * 1024;
-export const RPC_DEFAULT_DEADLINE_MS = 2_000;
-
-export const RPC_METHODS = [
-	"GET /v1/health",
-	"GET /v1/doctor",
-	"POST /v1/events",
-	"POST /v1/events/batch",
-	"POST /v1/context/pack",
-	"POST /v1/search",
-	"GET /v1/memories/:id",
-	"POST /v1/memories/record",
-	"DELETE /v1/memories/:id",
-	"GET /v1/checkpoints",
-	"GET /v1/view",
-	"POST /v1/backup/create",
-	"POST /v1/backup/verify",
-	"POST /v1/backup/restore",
-	"POST /v1/operations/export",
-	"POST /v1/operations/import",
-	"GET /v1/operations/:id",
-	"POST /v1/jobs",
-	"GET /v1/jobs",
-	"GET /v1/jobs/:id",
-] as const;
-
-export type RpcMethod = (typeof RPC_METHODS)[number];
-
-export const RPC_CAPABILITY_HASH = createHash("sha256")
-	.update(RPC_METHODS.join("\n"))
-	.digest("hex");
+export type {
+	FileContextRetrievalAttempt,
+	RpcMethod,
+	RpcRequest,
+	RpcSuccess,
+	TypedRpcError,
+} from "./daemon-rpc-contract.js";
+export {
+	callDaemonRpc,
+	HOOK_DELIVERY_BUDGETS,
+	LOCAL_API_VERSION,
+	RPC_CAPABILITY_HASH,
+	RPC_DEFAULT_DEADLINE_MS,
+	RPC_MAX_BYTES,
+	RPC_METHODS,
+} from "./daemon-rpc-contract.js";
 
 const TOP_LEVEL_FIELDS = new Set([
 	"id",
@@ -101,13 +100,14 @@ const TOP_LEVEL_FIELDS = new Set([
 const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"GET /v1/health": [],
 	"GET /v1/doctor": [],
-	"POST /v1/events": ["idempotencyKey", "event"],
+	"POST /v1/events": ["idempotencyKey", "event", "adapterRedaction"],
 	"POST /v1/events/batch": ["items"],
 	"POST /v1/context/pack": ["requestId", "context", "limit", "tokenBudget", "filters", "trace"],
 	"POST /v1/search": [
 		"requestId",
 		"mode",
 		"query",
+		"repositoryPath",
 		"ids",
 		"memoryId",
 		"depthBefore",
@@ -116,6 +116,21 @@ const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 		"filters",
 		"limit",
 	],
+	"POST /v1/retrieval/file-context": [
+		"attemptId",
+		"startedAt",
+		"completedAt",
+		"retrievalStatus",
+		"candidateIds",
+		"candidateCount",
+		"selectedIds",
+		"failureCode",
+		"failureStage",
+		"project",
+		"repositoryPath",
+		"sourceSessionId",
+	],
+	"POST /v1/retrieval/file-context/delivery": ["attemptId", "status"],
 	"GET /v1/memories/:id": ["id", "requestId", "project", "kind"],
 	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body", "confidence", "project"],
 	"DELETE /v1/memories/:id": ["id", "requestId", "expectedRevision"],
@@ -145,6 +160,8 @@ const METHOD_REQUIRED_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"POST /v1/events/batch": ["items"],
 	"POST /v1/context/pack": ["requestId", "context"],
 	"POST /v1/search": ["requestId", "mode"],
+	"POST /v1/retrieval/file-context": ["attemptId", "startedAt", "completedAt", "retrievalStatus"],
+	"POST /v1/retrieval/file-context/delivery": ["attemptId", "status"],
 	"GET /v1/memories/:id": ["id", "requestId"],
 	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body"],
 	"DELETE /v1/memories/:id": ["id", "requestId"],
@@ -250,26 +267,6 @@ class RpcRequestError extends Error {
 		this.name = "RpcRequestError";
 	}
 }
-
-export type TypedRpcError = {
-	error: { code: string; message: string; retryable: boolean };
-};
-
-export type RpcRequest = {
-	id: string;
-	method: string;
-	adapter_version: string;
-	native_cli_version: string;
-	normalized_schema_version: number;
-	local_api_version: number;
-	capability_hash: string;
-	body?: Record<string, unknown>;
-};
-
-export type RpcSuccess = {
-	id: string;
-	result: Record<string, unknown>;
-};
 
 export type ProtocolVersions = {
 	localApi: number;
@@ -406,6 +403,11 @@ async function handleMethod(
 				socket: "listening",
 				platform: process.platform,
 				spool: spoolHealth(ctx.dataDir),
+				hookDelivery: {
+					implementation: "node-fallback",
+					p95TargetMs: 150,
+					budgets: HOOK_DELIVERY_BUDGETS,
+				},
 			},
 		};
 	}
@@ -436,7 +438,16 @@ async function handleMethod(
 		};
 	}
 	if (method === "POST /v1/events") {
-		return handleEvent(ctx, body, normalizedSchemaVersion);
+		let adapterRedaction: SpoolRedactionMetadata | undefined;
+		try {
+			adapterRedaction =
+				body.adapterRedaction === undefined
+					? undefined
+					: validateSpoolRedaction(body.adapterRedaction);
+		} catch {
+			throw new RpcRequestError("adapterRedaction is malformed.");
+		}
+		return handleEvent(ctx, body, normalizedSchemaVersion, adapterRedaction);
 	}
 	if (method === "POST /v1/events/batch") {
 		return handleEventBatch(ctx, body, normalizedSchemaVersion);
@@ -452,6 +463,12 @@ async function handleMethod(
 	}
 	if (method === "POST /v1/search") {
 		return handleSearch(ctx, body);
+	}
+	if (method === "POST /v1/retrieval/file-context") {
+		return handleFileContextRetrieval(ctx, body as FileContextRetrievalAttempt);
+	}
+	if (method === "POST /v1/retrieval/file-context/delivery") {
+		return handleFileContextDelivery(ctx, body);
 	}
 	if (method === "GET /v1/memories/:id") {
 		return handleMemoryGet(ctx, body);
@@ -557,8 +574,13 @@ function handleEvent(
 	const eventId = String(event.eventId);
 	const eventType = String(event.kind);
 	const nativeSessionId = String(event.nativeSessionId);
-	const source = String(event.agent);
+	const source = event.agent === "claude-code" ? "claude" : String(event.agent);
 	const occurredAtMs = Date.parse(String(event.occurredAt));
+	const { payload, ...normalizedMetadata } = event;
+	const rawPayload =
+		payload && typeof payload === "object" && !Array.isArray(payload)
+			? { ...(payload as Record<string, unknown>), ...event, _normalized: normalizedMetadata }
+			: { ...event, _normalized: normalizedMetadata };
 	const receipt = dispatchClassA(ctx.writer, {
 		method: "POST /v1/events",
 		idempotencyKey: String(body.idempotencyKey),
@@ -569,6 +591,7 @@ function handleEvent(
 				source,
 				cwd: String(event.cwd),
 				project: String(event.projectKey),
+				startedAt: eventType === "session_started" ? String(event.occurredAt) : null,
 				lastSeenTsWallMs: occurredAtMs,
 			});
 			const recorded = ctx.store.recordRawEventsBatch(
@@ -577,7 +600,7 @@ function handleEvent(
 					{
 						event_id: eventId,
 						event_type: eventType,
-						payload: event,
+						payload: rawPayload,
 						ts_wall_ms: occurredAtMs,
 					},
 				],
@@ -786,6 +809,129 @@ function handlePack(ctx: DaemonRpcContext, body: Record<string, unknown>): Recor
 	};
 }
 
+const FILE_CONTEXT_ATTEMPT_ID =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const FILE_CONTEXT_RETRIEVAL_STATUSES = new Set(["succeeded", "no_results", "skipped", "failed"]);
+
+function repositoryRelativePath(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const path = value.trim().replaceAll("\\", "/");
+	if (
+		!path ||
+		!isSafePersistedText(path, 4096) ||
+		path.startsWith("/") ||
+		/^[A-Za-z]:\//.test(path) ||
+		path.split("/").includes("..")
+	) {
+		return null;
+	}
+	return path;
+}
+
+function fileContextText(value: unknown, field: string, maxBytes: number): string | null {
+	if (value === undefined || value === null || value === "") return null;
+	if (typeof value !== "string" || !isSafePersistedText(value, maxBytes)) {
+		throw new RpcRequestError(`${field} is invalid.`);
+	}
+	return value;
+}
+
+function fileContextTimestamp(value: unknown, field: string): string {
+	const timestamp = fileContextText(value, field, 64);
+	if (!timestamp || !Number.isFinite(Date.parse(timestamp))) {
+		throw new RpcRequestError(`${field} must be an ISO timestamp.`);
+	}
+	return timestamp;
+}
+
+function handleFileContextRetrieval(
+	ctx: DaemonRpcContext,
+	body: FileContextRetrievalAttempt,
+): Record<string, unknown> {
+	if (!FILE_CONTEXT_ATTEMPT_ID.test(String(body.attemptId))) {
+		throw new RpcRequestError("attemptId is invalid.");
+	}
+	if (!FILE_CONTEXT_RETRIEVAL_STATUSES.has(String(body.retrievalStatus))) {
+		throw new RpcRequestError("retrievalStatus is invalid.");
+	}
+	const startedAt = fileContextTimestamp(body.startedAt, "startedAt");
+	const completedAt = fileContextTimestamp(body.completedAt, "completedAt");
+	const startedMs = Date.parse(startedAt);
+	const completedMs = Date.parse(completedAt);
+	if (completedMs < startedMs) throw new RpcRequestError("completedAt precedes startedAt.");
+	const candidateIds = parseIds(body.candidateIds);
+	const selectedIds = parseIds(body.selectedIds);
+	const candidateCount = parseBoundedInteger(
+		body.candidateCount,
+		candidateIds.length,
+		0,
+		200,
+		"candidateCount",
+	);
+	const repositoryPath =
+		body.repositoryPath === undefined ? null : repositoryRelativePath(body.repositoryPath);
+	if (body.repositoryPath !== undefined && !repositoryPath) {
+		throw new RpcRequestError("repositoryPath must be a safe repository-relative path.");
+	}
+	const project = fileContextText(body.project, "project", 512);
+	const sourceSessionId = fileContextText(body.sourceSessionId, "sourceSessionId", 512);
+	const failureCode = fileContextText(body.failureCode, "failureCode", 128);
+	const failureStage = fileContextText(body.failureStage, "failureStage", 128);
+	const outcome = recordRetrievalSurface(ctx.store.db, {
+		attemptId: body.attemptId,
+		surface: "file_context",
+		trigger: "automatic",
+		startedAt,
+		completedAt,
+		retrievalStatus: body.retrievalStatus,
+		deliveryStatus: "not_attempted",
+		candidateIds,
+		candidateCount,
+		selectedIds,
+		recorderVersion: "claude-file-context-v1",
+		sessionId: resolveRetrievalSession(ctx.store.db, "claude", sourceSessionId),
+		source: "claude",
+		streamId: sourceSessionId,
+		sourceSessionId,
+		latencyMs: completedMs - startedMs,
+		project,
+		mode: "claude_pre_tool_use_read",
+		filters: project ? { project } : undefined,
+		repositoryPaths: repositoryPath ? [repositoryPath] : undefined,
+		failureCode,
+		failureStage,
+	});
+	if (!outcome.ok) {
+		if (outcome.reason === "invalid_input" || outcome.reason === "idempotency_conflict") {
+			throw new RpcRequestError("file-context retrieval attempt is invalid.");
+		}
+		return { recorded: false, errorCode: outcome.errorCode };
+	}
+	return { recorded: true, inserted: outcome.value.inserted };
+}
+
+function handleFileContextDelivery(
+	ctx: DaemonRpcContext,
+	body: Record<string, unknown>,
+): Record<string, unknown> {
+	const attemptId = String(body.attemptId);
+	if (!FILE_CONTEXT_ATTEMPT_ID.test(attemptId)) {
+		throw new RpcRequestError("attemptId is invalid.");
+	}
+	const status = String(body.status);
+	if (status !== "handed_off" && status !== "failed") {
+		throw new RpcRequestError("status is invalid.");
+	}
+	const outcome = tryUpdateRetrievalDelivery(ctx.store.db, attemptId, status);
+	if (!outcome.ok) {
+		if (outcome.reason !== "storage_unavailable") {
+			throw new RpcRequestError("file-context retrieval delivery is invalid.");
+		}
+		return { updated: false, errorCode: outcome.errorCode };
+	}
+	return { updated: outcome.value.changed };
+}
+
 function handleSearch(
 	ctx: DaemonRpcContext,
 	body: Record<string, unknown>,
@@ -795,12 +941,14 @@ function handleSearch(
 	const limit = parseBoundedInteger(body.limit, 10, 1, 100, "limit");
 	const ids = parseIds(body.ids);
 	const query = typeof body.query === "string" ? body.query : null;
+	const repositoryPath = repositoryRelativePath(body.repositoryPath);
 	const memoryId = body.memoryId === undefined ? null : requirePositiveInt(body.memoryId);
 	const depthBefore = parseBoundedInteger(body.depthBefore, 3, 0, 100, "depthBefore");
 	const depthAfter = parseBoundedInteger(body.depthAfter, 3, 0, 100, "depthAfter");
 	const supportedMode = [
 		"search",
 		"search_index",
+		"find_by_file",
 		"recent",
 		"timeline",
 		"get_many",
@@ -810,6 +958,9 @@ function handleSearch(
 	if (!supportedMode) throw new RpcRequestError(`Unsupported search mode: ${mode}`);
 	if ((mode === "search" || mode === "search_index") && !query) {
 		throw new RpcRequestError("query is required for search mode.");
+	}
+	if (mode === "find_by_file" && !repositoryPath) {
+		throw new RpcRequestError("repositoryPath must be a safe repository-relative path.");
 	}
 	if ((mode === "get_many" || mode === "expand") && ids.length === 0) {
 		throw new RpcRequestError(`ids are required for ${mode} mode.`);
@@ -823,6 +974,7 @@ function handleSearch(
 		payload: {
 			mode: body.mode,
 			query: body.query,
+			repositoryPath,
 			ids: body.ids,
 			memoryId,
 			depthBefore,
@@ -836,6 +988,11 @@ function handleSearch(
 	let items: unknown;
 	if (mode === "search" || mode === "search_index") {
 		items = ctx.store.search(query as string, limit, filters);
+	} else if (mode === "find_by_file") {
+		items = ctx.store.findByFile(repositoryPath as string, {
+			limit,
+			...(filters?.project ? { project: filters.project } : {}),
+		});
 	} else if (mode === "recent") {
 		items = ctx.store.recent(limit, filters);
 	} else if (mode === "timeline") {
@@ -1150,46 +1307,5 @@ export function attachDaemonRpc(connection: Socket, ctx: DaemonRpcContext): void
 	});
 	connection.setTimeout(ctx.deadlineMs ?? RPC_DEFAULT_DEADLINE_MS, () => {
 		finish(typedError("deadline_exceeded", "RPC hard deadline exceeded.", true));
-	});
-}
-
-export function callDaemonRpc(
-	socketPath: string,
-	request: RpcRequest,
-	options?: { timeoutMs?: number },
-): Promise<RpcSuccess | TypedRpcError> {
-	return new Promise((resolve, reject) => {
-		const socket = createConnection(socketPath);
-		let settled = false;
-		const finish = (error?: Error, value?: RpcSuccess | TypedRpcError) => {
-			if (settled) return;
-			settled = true;
-			socket.destroy();
-			if (error) reject(error);
-			else resolve(value as RpcSuccess | TypedRpcError);
-		};
-		let buf = Buffer.alloc(0);
-		socket.setTimeout(options?.timeoutMs ?? RPC_DEFAULT_DEADLINE_MS);
-		socket.once("connect", () => {
-			socket.write(`${JSON.stringify(request)}\n`);
-		});
-		socket.on("data", (chunk: Buffer) => {
-			buf = Buffer.concat([buf, chunk]);
-			const newline = buf.indexOf(0x0a);
-			if (newline < 0) return;
-			try {
-				finish(
-					undefined,
-					JSON.parse(buf.subarray(0, newline).toString("utf8")) as RpcSuccess | TypedRpcError,
-				);
-			} catch (error) {
-				finish(error instanceof Error ? error : new Error(String(error)));
-			}
-		});
-		socket.once("error", (error) => finish(error));
-		socket.once("timeout", () => finish(new Error("RPC client timed out")));
-		socket.once("close", () => {
-			if (!settled) finish(new Error("RPC connection closed without a response"));
-		});
 	});
 }

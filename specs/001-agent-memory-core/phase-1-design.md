@@ -27,7 +27,7 @@ Phase 0A 分類の fatal 10 経路 + 計画時実地検証で判明した未計�
 |---|---|---|
 | 1 | busy timeout | 5000ms（canonical DB のみ。lock.db は 0） |
 | 2 | peer auth | **ADR-002**（下記）: Unix DAC（0700 dir + 0600 socket）正式化。EACCES/ECONNREFUSED → typed error 写像。別 UID 実接続テスト（可用時実走 / 不可時 permission assert）。Linux/WSL 以外 fail-closed |
-| 3 | hook deadline | Agent 別 hard deadline を Phase 0B fixture 実測 host budget から**実装前成果物**として確定（Codex wrapper ≈2s 考慮。表 = Agent 別 hard cap / RPC cutoff / spool lock wait / fsync 余裕）。全体 − spool 専用予約（≥400ms）= RPC 上限。RPC は AbortController + socket timeout で cutoff（spool write ≤64KiB bounded の実測根拠込み）。予約超過 = dropped counter へ。実 hook 経由で timeout 直前保全検証。p95 目標（Node fallback 150ms）+ doctor 表示 |
+| 3 | hook deadline | 下表の Agent 別 budget を採用。RPC は AbortSignal + socket timeout、失敗後は lock 100ms + fsync 400ms の予約枠で spool、さらに host 側 watchdog を置く。Node fallback p95 目標 150ms と budget は doctor に表示 |
 | 4 | spool quota | 通常 128 MiB / 予約 16 MiB・最低 64 event / file 64 KiB / 集計 tmp+ready / quarantine 別枠 32 MiB（満杯 = ready 非削除・新規 quarantine 停止 + critical）。dropped counter = 事前確保固定領域 write-in-place（完全 disk full は stderr のみと限界明記）。claim = spool lock 下原子 |
 | 5 | 設定キー | Phase 1 新設。cascade 縮小は observer-config 直接改修 |
 | 6 | 破壊的 maintenance | daemon maintenance mode（writer actor 実行・期間中 adapter spool・CLI = RPC trigger）。daemon 停止 + CLI 直接 open は不採用（HI-4 違反のため） |
@@ -41,6 +41,17 @@ Phase 0A 分類の fatal 10 経路 + 計画時実地検証で判明した未計�
 | 14 | single-instance lock | 専用 `control/lock.db` に better-sqlite3 `BEGIN EXCLUSIVE` 存命保持（busy_timeout 0 / journal DELETE / 0600 / preflight 後・資源 open 前取得。SQLITE_BUSY = fail-closed）。**force-kill identity**: control root に 0600 identity record（PID + OS start time + exe/cmdline fingerprint + instance nonce）atomic 保存。通常停止 = 認証 socket 経由。force-kill 前に複数 identity 再検証・不一致 = 拒否 |
 | 15 | migration 順序 | connect() から bootstrap/migration 分離。schema 変更（receipt 表含む）は backup + verify 成功後のみ |
 | 16 | storage layout + restore | `data_dir/control/`（lock.db・identity・socket・token・spool・backups・restore journal = swap 対象外）/ `data_dir/db/`（`current` symlink pointer 経由。**pointer 形式は §19.6 version 管理下・永続契約にしない。transport/lock/pointer は薄い platform interface module 1 枚に集約、Windows/macOS は Phase 11 引継ぎ**）。restore 厳密順序: journal prepared fsync → staging fsync → pointer rename → 親 dir fsync → switched fsync → reopen+integrity → **committed fsync（integrity 後）**。**journal 更新自体も atomic replace 規律（tmp→fsync→rename→parent fsync、old/new pointer + artifact hash + operation ID 記載）**。journal recovery は lock 直後・DB open 前。旧版は committed まで保持・失敗時 pointer 戻し + fsync。in-place 禁止。legacy cutover の排他契約は T051 |
+
+### 判断 #3: hook deadline budget
+
+Phase 0B では Claude Code の host timeout 10 秒設定下で 15 秒 block 後も session 継続、Codex は既存 wrapper の約 2 秒 cutoff を確認した。実装はそれより厳しい次の固定 budget とする。spool reserve は lock wait と fsync margin の合計 500ms で、要求された 400ms 以上を確保する。
+
+| Agent | client hard cap | RPC cutoff | spool lock wait | fsync margin | outer watchdog |
+|---|---:|---:|---:|---:|---:|
+| Claude Code | 2000ms | 1500ms | 100ms | 400ms | 3000ms |
+| Codex | 1500ms | 1000ms | 100ms | 400ms | 5000ms |
+
+spool file は 64KiB 上限、tmp write + flush + rename + 親 directory fsync とする。RPC cutoff 後も同じ idempotency key を使い、`pre_compact` / `session_ended` は予約 quota に入る。outer watchdog は Claude plugin `hooks.json` の 3 秒、Codex plugin / setup-generated hook の 5 秒で強制する。実装値の正本は `HOOK_DELIVERY_BUDGETS`、doctor の `hookDelivery` は実装経路 `node-fallback` と p95 目標 150ms を返す。
 
 ## ADR-002: daemon peer authentication = Unix DAC
 

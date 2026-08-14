@@ -8,14 +8,16 @@
  *  - buildIngestPayloadFromHook: session context fields
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildIngestPayloadFromHook,
 	buildRawEventEnvelopeFromHook,
+	extractFromTranscript,
 	mapClaudeHookPayload,
+	TRANSCRIPT_TAIL_MAX_BYTES,
 } from "./claude-hooks.js";
 
 // ---------------------------------------------------------------------------
@@ -216,6 +218,25 @@ describe("mapClaudeHookPayload", () => {
 			expect(event).not.toBeNull();
 			expect(event?.event_type).toBe("assistant");
 			expect(event?.payload.text).toBe("assistant from transcript");
+		});
+
+		it("bounds transcript fallback to the most recent 256 KiB", () => {
+			const dir = mkdtempSync(join(tmpdir(), "codemem-test-"));
+			const transcriptPath = join(dir, "transcript.jsonl");
+			try {
+				writeFileSync(
+					transcriptPath,
+					`${"x".repeat(TRANSCRIPT_TAIL_MAX_BYTES + 1_024)}\n${JSON.stringify({
+						role: "assistant",
+						content: "recent assistant",
+					})}\n`,
+					"utf8",
+				);
+				expect(TRANSCRIPT_TAIL_MAX_BYTES).toBe(256 * 1024);
+				expect(extractFromTranscript(transcriptPath)).toEqual(["recent assistant", null]);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
 		});
 
 		it("uses relative transcript path with cwd", () => {

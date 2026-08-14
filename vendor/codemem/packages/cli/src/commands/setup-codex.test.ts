@@ -7,6 +7,7 @@ import {
 	codememCodexHookBase,
 	codexConfigDir,
 	installCodex,
+	installCodexHookRuntime,
 	isTransientNpxBinPath,
 	setupCommand,
 } from "./setup.js";
@@ -17,8 +18,7 @@ import {
 const HOOK_BASE = codememCodexHookBase();
 const INGEST_CMD = `${HOOK_BASE} codex-hook-ingest`;
 const INJECT_CMD = `${HOOK_BASE} codex-hook-inject`;
-const INGEST_TIMEOUT = HOOK_BASE === "codemem" ? 10 : 30;
-const INJECT_TIMEOUT = HOOK_BASE === "codemem" ? 10 : 20;
+const HOOK_TIMEOUT = 5;
 
 const savedCodexHome = process.env.CODEX_HOME;
 let codexHome: string;
@@ -66,6 +66,17 @@ describe("codexConfigDir", () => {
 	});
 });
 
+describe("Codex hook runtime install", () => {
+	it("copies the standalone runtime and quotes its setup command", () => {
+		const source = join(codexHome, "source runtime.mjs");
+		writeFileSync(source, "// runtime\n", "utf8");
+		const target = installCodexHookRuntime(codexHome, source);
+		expect(target).toBe(join(codexHome, "codemem-hook-runtime.mjs"));
+		expect(readFileSync(target as string, "utf8")).toBe("// runtime\n");
+		expect(codememCodexHookBase(target)).toBe(`node '${target}'`);
+	});
+});
+
 describe("installCodex — fresh CODEX_HOME", () => {
 	it("writes the MCP block and all four hook events with correct schema", () => {
 		expect(installCodex(false)).toBe(true);
@@ -95,27 +106,21 @@ describe("installCodex — fresh CODEX_HOME", () => {
 			expect(group.hooks[0]).toEqual({
 				type: "command",
 				command: INGEST_CMD,
-				timeout: INGEST_TIMEOUT,
+				timeout: HOOK_TIMEOUT,
 				statusMessage: "codemem",
 			});
 		}
 
-		// UserPromptSubmit has BOTH ingest then inject, in order.
+		// Injection also captures the prompt event, so one hook owns both actions.
 		const ups = groupsFor(hooks, "UserPromptSubmit");
 		expect(ups).toHaveLength(1);
 		const upsGroup = ups[0];
 		if (!upsGroup) throw new Error("missing UserPromptSubmit group");
-		expect(upsGroup.hooks).toHaveLength(2);
+		expect(upsGroup.hooks).toHaveLength(1);
 		expect(upsGroup.hooks[0]).toEqual({
 			type: "command",
-			command: INGEST_CMD,
-			timeout: INGEST_TIMEOUT,
-			statusMessage: "codemem capture",
-		});
-		expect(upsGroup.hooks[1]).toEqual({
-			type: "command",
 			command: INJECT_CMD,
-			timeout: INJECT_TIMEOUT,
+			timeout: HOOK_TIMEOUT,
 			statusMessage: "codemem recall",
 		});
 	});
@@ -133,6 +138,82 @@ describe("installCodex — fresh CODEX_HOME", () => {
 });
 
 describe("installCodex — idempotency", () => {
+	it("replaces an installed standalone-runtime hook instead of duplicating it", () => {
+		writeFileSync(
+			join(codexHome, "hooks.json"),
+			`${JSON.stringify({
+				hooks: {
+					UserPromptSubmit: [
+						{
+							hooks: [
+								{
+									type: "command",
+									command: "node '/tmp/codex/codemem-hook-runtime.mjs' codex-hook-inject",
+									timeout: HOOK_TIMEOUT,
+									statusMessage: "codemem recall",
+								},
+							],
+						},
+					],
+				},
+			})}\n`,
+			"utf8",
+		);
+
+		expect(installCodex(false)).toBe(true);
+		const commands = groupsFor(readHooks(), "UserPromptSubmit").flatMap((group) =>
+			group.hooks.map((hook) => hook.command),
+		);
+		expect(commands.filter((command) => command.includes("codex-hook-inject"))).toEqual([
+			INJECT_CMD,
+		]);
+	});
+
+	it("migrates the legacy prompt ingest plus inject pair without --force", () => {
+		writeFileSync(
+			join(codexHome, "hooks.json"),
+			`${JSON.stringify(
+				{
+					hooks: {
+						UserPromptSubmit: [
+							{
+								hooks: [
+									{
+										type: "command",
+										command: INGEST_CMD,
+										timeout: HOOK_TIMEOUT,
+										statusMessage: "codemem",
+									},
+								],
+							},
+							{
+								hooks: [
+									{
+										type: "command",
+										command: INJECT_CMD,
+										timeout: HOOK_TIMEOUT,
+										statusMessage: "codemem recall",
+									},
+								],
+							},
+						],
+					},
+				},
+				null,
+				2,
+			)}\n`,
+			"utf8",
+		);
+
+		expect(installCodex(false)).toBe(true);
+		const hooks = readHooks();
+		const commands = groupsFor(hooks, "UserPromptSubmit").flatMap((group) =>
+			group.hooks.map((hook) => hook.command),
+		);
+		expect(commands).toEqual([INJECT_CMD]);
+		expect(groupsFor(hooks, "UserPromptSubmit")[0]?.hooks[0]?.timeout).toBe(HOOK_TIMEOUT);
+	});
+
 	it("does not duplicate the MCP block or hook entries on re-run", () => {
 		expect(installCodex(false)).toBe(true);
 		expect(installCodex(false)).toBe(true);
@@ -147,7 +228,7 @@ describe("installCodex — idempotency", () => {
 		expect(groupsFor(hooks, "Stop")).toHaveLength(1);
 		const ups = groupsFor(hooks, "UserPromptSubmit");
 		expect(ups).toHaveLength(1);
-		expect(ups[0]?.hooks).toHaveLength(2);
+		expect(ups[0]?.hooks).toHaveLength(1);
 	});
 
 	it("does not duplicate codemem hooks when run again with --force", () => {
@@ -158,7 +239,7 @@ describe("installCodex — idempotency", () => {
 		expect(groupsFor(hooks, "SessionStart")).toHaveLength(1);
 		const ups = groupsFor(hooks, "UserPromptSubmit");
 		expect(ups).toHaveLength(1);
-		expect(ups[0]?.hooks).toHaveLength(2);
+		expect(ups[0]?.hooks).toHaveLength(1);
 	});
 });
 
@@ -232,9 +313,9 @@ describe("installCodex — non-destructive merge", () => {
 		const hooks = readHooks();
 		const ups = groupsFor(hooks, "UserPromptSubmit");
 		const commands = ups.flatMap((g) => g.hooks.map((h) => h.command));
-		// Unrelated user hook survives; codemem hooks present exactly once.
+		// Unrelated user hook survives; the combined capture/recall hook appears once.
 		expect(commands).toContain("echo user-ups");
-		expect(commands.filter((c) => c === INGEST_CMD)).toHaveLength(1);
+		expect(commands.filter((c) => c === INGEST_CMD)).toHaveLength(0);
 		expect(commands.filter((c) => c === INJECT_CMD)).toHaveLength(1);
 	});
 });
@@ -263,39 +344,29 @@ describe("setup command options", () => {
 });
 
 describe("buildCodememCodexHookGroups — command base", () => {
-	it("uses a direct `codemem` call with short timeouts when on PATH", () => {
+	it("uses a direct `codemem` call with the outer watchdog", () => {
 		const groups = buildCodememCodexHookGroups("codemem");
 		const ups = groups.UserPromptSubmit?.[0]?.hooks ?? [];
 		expect(ups[0]).toEqual({
 			type: "command",
-			command: "codemem codex-hook-ingest",
-			timeout: 10,
-			statusMessage: "codemem capture",
-		});
-		expect(ups[1]).toEqual({
-			type: "command",
 			command: "codemem codex-hook-inject",
-			timeout: 10,
+			timeout: 5,
 			statusMessage: "codemem recall",
 		});
+		expect(ups).toHaveLength(1);
 		expect(groups.SessionStart?.[0]?.hooks?.[0]?.command).toBe("codemem codex-hook-ingest");
 	});
 
-	it("uses `npx -y codemem` with generous timeouts as the fallback", () => {
+	it("uses the same watchdog for the npx fallback", () => {
 		const groups = buildCodememCodexHookGroups("npx -y codemem");
 		const ups = groups.UserPromptSubmit?.[0]?.hooks ?? [];
 		expect(ups[0]).toEqual({
 			type: "command",
-			command: "npx -y codemem codex-hook-ingest",
-			timeout: 30,
-			statusMessage: "codemem capture",
-		});
-		expect(ups[1]).toEqual({
-			type: "command",
 			command: "npx -y codemem codex-hook-inject",
-			timeout: 20,
+			timeout: 5,
 			statusMessage: "codemem recall",
 		});
+		expect(ups).toHaveLength(1);
 		expect(groups.Stop?.[0]?.hooks?.[0]?.command).toBe("npx -y codemem codex-hook-ingest");
 	});
 });

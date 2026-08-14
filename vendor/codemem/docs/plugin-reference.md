@@ -43,11 +43,11 @@ The plugin starts MCP with the TS CLI:
 
 - `codemem mcp`
 
-Claude hook ingestion is HTTP enqueue-first (`POST /api/claude-hooks` to the local codemem server) with a CLI direct-enqueue fallback when the server path is unavailable:
+Claude hooks run the packaged standalone Node runtime. It applies project policy and redaction before sending normalized events to the local daemon RPC socket; when RPC is unavailable, the same redacted event is written to the bounded atomic spool:
 
 - `codemem claude-hook-ingest`
 
-Contract note: fallback is direct local DB enqueue from the TS CLI. There is currently no file spool/lock durability path in the fallback contract.
+Hook clients never open SQLite. Claude's outer watchdog is 3 seconds; the client uses a shorter RPC cutoff so the spool has a reserved completion window.
 
 You can update an existing marketplace install with:
 
@@ -55,30 +55,24 @@ You can update an existing marketplace install with:
 /plugin marketplace update codemem-marketplace
 ```
 
-Ingest one Claude hook payload from stdin (this is what the installed hook script calls):
+The CLI keeps a compatible manual stdin entry point:
 
 ```bash
 printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"sess-1","cwd":"/tmp/demo"}' | codemem claude-hook-ingest
 ```
 
-`inject-context-hook.sh` is also a thin wrapper and delegates prompt-time context output to
-codemem's local pack-generation path, with optional HTTP `/api/pack` fallback.
-
-By default, `SessionEnd` triggers a boundary flush after enqueue to preserve progress without waiting for sweeper timing. Set `CODEMEM_CLAUDE_HOOK_FLUSH=0` to force enqueue-only behavior, and set `CODEMEM_CLAUDE_HOOK_FLUSH_ON_STOP=1` to include `Stop` boundary flush.
+Prompt-time context and file-context reads use daemon RPC. `UserPromptSubmit` performs recall and event delivery in one hook invocation; `SessionEnd` is delivered through the same RPC-or-spool path as other events.
 
 The packaged template currently registers these hook events in `plugins/claude/hooks/hooks.json`:
 - `SessionStart`
 - `UserPromptSubmit`
+- `PreToolUse` (`Read` only)
 - `PostToolUse`
 - `PostToolUseFailure`
 - `Stop`
 - `SessionEnd`
 
-`UserPromptSubmit` runs `scripts/user-prompt-hook.sh`, which:
-- sends the hook payload into capture ingest (`ingest-hook.sh`) in the background, and
-- returns `hookSpecificOutput.additionalContext` from local CLI/store pack generation for prompt-time memory injection.
-
-Prompt-time Claude injection uses local pack generation first and falls back to `/api/pack` only when local generation fails and `CODEMEM_INJECT_HTTP_FALLBACK` is enabled.
+`UserPromptSubmit` runs `scripts/hook-runtime.mjs claude-hook-inject`, which requests a context pack over daemon RPC while delivering the normalized prompt event. Failures return a continue response and never block the Claude session.
 
 For Claude hooks, project resolution precedence is:
 
@@ -86,26 +80,19 @@ For Claude hooks, project resolution precedence is:
 2. repo/cwd-derived project name (`resolve_project(cwd)`)
 3. payload `project` fallback (only when cwd is unavailable)
 
-`PreToolUse` is intentionally deferred in the default template. Current memory extraction uses `PostToolUse` / `PostToolUseFailure` (`tool_result`) as the shipped Claude tool signal.
+`PreToolUse:Read` requests the existing per-file observation timeline over daemon RPC. Retrieval attempts and delivery status remain recorded in the daemon-owned retrieval ledger.
 
 ## Codex integration (early beta)
 
 Codex support is early beta — functional and dogfooded end-to-end, but not yet promoted to a stable support tier. The Codex plugin uses the same shared raw-event pipeline as Claude and OpenCode. It is packaged under `plugins/codex/` with `.codex-plugin/plugin.json`, bundled `.mcp.json`, and hook scripts under `plugins/codex/scripts/`.
 
-Codex hook ingestion is HTTP enqueue-first (`POST /api/codex-hooks`) with a CLI fallback chain:
-
-- `codemem codex-hook-ingest` — direct local DB enqueue when the viewer API is unavailable.
-- When both HTTP and direct enqueue fail, the payload is written to a Codex-specific on-disk spool (`~/.codemem/codex-hook-spool`) and drained on a later invocation.
+Codex hooks use the same standalone runtime, daemon RPC, redaction, and bounded atomic spool as Claude. Hook clients never open SQLite. The Codex outer watchdog is 5 seconds.
 
 ```bash
 printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"codex-1","cwd":"/tmp/demo"}' | codemem codex-hook-ingest
 ```
 
-`UserPromptSubmit` runs `scripts/user-prompt-hook.mjs`, which:
-- sends the hook payload into capture ingest (`ingest-hook.mjs`) in the background, and
-- returns `hookSpecificOutput.additionalContext` from `codemem codex-hook-inject` for prompt-time memory injection.
-
-Prompt-time Codex injection uses local pack generation first and falls back to `/api/pack` when local generation fails or returns no pack and `CODEMEM_INJECT_HTTP_FALLBACK` is enabled. The injected pack is framed as codemem reference data, not instructions, before it is returned as Codex `additionalContext`. It honors the same injection controls as Claude: `CODEMEM_INJECT_CONTEXT`, `CODEMEM_INJECT_LIMIT`, `CODEMEM_INJECT_TOKEN_BUDGET`, `CODEMEM_INJECT_MAX_CHARS`, and `CODEMEM_INJECT_HTTP_MAX_TIME_S`. Hook failures always emit `{"continue": true}` so Codex sessions are never blocked.
+`UserPromptSubmit` runs `scripts/hook-runtime.mjs codex-hook-inject`, which requests a context pack and delivers the prompt event concurrently over daemon RPC. The injected pack is framed as codemem reference data, not instructions, before it is returned as Codex `additionalContext`. It honors `CODEMEM_INJECT_CONTEXT`, `CODEMEM_INJECT_LIMIT`, `CODEMEM_INJECT_TOKEN_BUDGET`, and `CODEMEM_INJECT_MAX_CHARS`. Hook failures always emit `{"continue": true}` so Codex sessions are never blocked.
 
 ```bash
 printf '%s\n' '{"hook_event_name":"UserPromptSubmit","session_id":"codex-1","prompt":"what did we change","cwd":"/tmp/demo"}' | codemem codex-hook-inject
@@ -147,16 +134,14 @@ npx -y codemem setup --codex-only   # or, with a global install: codemem setup -
 What it does (idempotent; honors `CODEX_HOME`; backs up existing files; `--force` to refresh):
 
 - **MCP:** appends `[mcp_servers.codemem]` (`command = "npx"`, `args = ["-y", "codemem", "mcp"]`) to `<CODEX_HOME>/config.toml` if not already present. The file is never reparsed or reformatted — only appended — so comments and unrelated servers (including secrets) are preserved.
-- **Hooks:** merges `SessionStart`, `UserPromptSubmit` (ingest + inject), `PostToolUse`, and `Stop` into `<CODEX_HOME>/hooks.json`, preserving any unrelated user hooks. Hook commands resolve to a direct `codemem codex-hook-*` call when `codemem` is on `PATH`, otherwise `npx -y codemem codex-hook-*`.
+- **Hooks:** installs the bundled runtime as `<CODEX_HOME>/codemem-hook-runtime.mjs` (mode `0600`) and merges `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop` into `<CODEX_HOME>/hooks.json`, preserving unrelated user hooks. `UserPromptSubmit` uses one combined capture/recall hook. Existing legacy codemem hook groups are migrated on a normal rerun.
 
 Hooks loaded from the user config layer require a one-time trust approval in Codex (you'll be prompted on first run; MCP recall needs no trust). Codex setup also runs automatically in a plain `codemem setup` when a Codex home (`~/.codex` or `$CODEX_HOME`) is detected.
 
 ### Troubleshooting
 
-- **No memories and no raw events captured.** Confirm the `codemem` the hooks resolve actually has the Codex commands: `codemem codex-hook-ingest </dev/null` should print a structured `{"error":"read_error",...}`, not `unknown command`. The Codex commands are first published in codemem 0.35.0; the `0.34.0` release on npm predates them, so an older global install (or the `npx -y codemem@<plugin version>` fallback while the plugin manifest still pins a pre-0.35 version) silently fails and spools. Inspect the backlog at `~/.codemem/codex-hook-spool/` and the plugin log at `~/.codemem/plugin.log`.
-- **`database locked` in the plugin log / payloads spooling.** The direct-DB fallback lost the writer lock (the viewer or maintenance worker held it). Keep the viewer running and current — it owns the single writer and serves `POST /api/codex-hooks`, so HTTP enqueue avoids cross-process lock contention.
-- **`POST /api/codex-hooks` returns 404.** The running viewer predates Codex support; restart or upgrade it to a build that serves the route.
-- **Spool backlog drains automatically** on the next successful ingest; force it by piping any spooled payload back through `codemem codex-hook-ingest` while the viewer is up.
+- **No memories and no raw events captured.** Confirm `<CODEX_HOME>/hooks.json` points to `<CODEX_HOME>/codemem-hook-runtime.mjs`, then check daemon health. Hook failures are fail-open and RPC failures enter the shared `control/spool/ready` queue under the configured data directory.
+- **Spool backlog drains automatically** when the daemon starts and during its periodic sweep. A retained backlog means the daemon is unavailable or rejecting the normalized event; inspect daemon health/doctor output and `~/.codemem/plugin.log`.
 - **A model rejects injected context** (for example "the conversation must end with a user message"): disable prompt-time injection with `CODEMEM_INJECT_CONTEXT=0`. Capture/ingest keeps working and recall is still available through the MCP tools.
 
 ## Post-restart config sanity checklist
@@ -341,15 +326,7 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 | `CODEMEM_VIEWER_AUTO_STOP` | Set to `0`/`false`/`off` to keep the viewer running after OpenCode exits (default on). |
 | `CODEMEM_PLUGIN_LOG` | Path for the plugin log file (set `1`/`true`/`yes` for `~/.codemem/plugin.log`; Claude hook failures are logged to this path by default). |
 | `CODEMEM_PLUGIN_LOG_PATH` | Explicit log file path for Claude hook script logging (overrides `CODEMEM_PLUGIN_LOG` for that script). |
-| `CODEMEM_CLAUDE_HOOK_HTTP_CONNECT_TIMEOUT_S` | Claude hook HTTP enqueue connect timeout in seconds (default `1`). |
-| `CODEMEM_CLAUDE_HOOK_HTTP_MAX_TIME_S` | Claude hook HTTP enqueue total timeout in seconds (default `2`). |
-| `CODEMEM_CODEX_HOOK_HTTP_TIMEOUT_MS` | Codex hook HTTP enqueue timeout in milliseconds (default `1000`). |
-| `CODEMEM_CODEX_HOOK_LOCK_DIR` | Codex hook fallback lock path (default `~/.codemem/codex-hook-ingest.lock`). |
-| `CODEMEM_CODEX_HOOK_LOCK_TTL_S` | Seconds before a Codex hook fallback lock is treated as stale (default `120`). |
-| `CODEMEM_CODEX_HOOK_SPOOL_DIR` | Codex hook fallback spool directory (default `~/.codemem/codex-hook-spool`). |
-| `CODEMEM_INJECT_HTTP_CONNECT_TIMEOUT_S` | `UserPromptSubmit` pack injection connect timeout in seconds (default `1`). |
-| `CODEMEM_INJECT_HTTP_MAX_TIME_S` | Viewer request timeout for OpenCode packs/ledger transitions and total HTTP pack timeout for Claude/Codex `UserPromptSubmit` (default `2` seconds). |
-| `CODEMEM_INJECT_HTTP_FALLBACK` | Set to `0` to disable HTTP `/api/pack` fallback for Claude/Codex prompt-time injection (default `1`). |
+| `CODEMEM_INJECT_HTTP_MAX_TIME_S` | Viewer request timeout for OpenCode packs and ledger transitions (default `2` seconds). Claude/Codex hooks use daemon RPC deadlines instead. |
 | `CODEMEM_INJECT_MAX_CHARS` | Max chars returned as Claude/Codex `additionalContext` (default `16000`). |
 | `CODEMEM_PLUGIN_CMD_TIMEOUT` | Milliseconds before a plugin CLI call is aborted (default `20000`). |
 | `CODEMEM_MIN_VERSION` | Minimum required CLI version for plugin compatibility warnings (default `0.9.20`). |
@@ -383,8 +360,6 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 | `CODEMEM_RAW_EVENTS_SWEEPER_LIMIT` | Max idle sessions to flush per sweeper tick (default `25`). |
 | `CODEMEM_RAW_EVENTS_STUCK_BATCH_MS` | Mark flush batches older than this many ms as error (default `300000`). |
 | `CODEMEM_RAW_EVENTS_RETENTION_MS` | If >0, delete raw events older than this many ms (default `0`, keep forever). |
-| `CODEMEM_CLAUDE_HOOK_FLUSH` | Set to `0` to disable immediate `SessionEnd` boundary flush (default on for `SessionEnd`; `Stop` still requires `CODEMEM_CLAUDE_HOOK_FLUSH_ON_STOP=1`). |
-| `CODEMEM_CLAUDE_HOOK_FLUSH_ON_STOP` | Set to `1` to flush on Claude `Stop` hooks in addition to `SessionEnd` (default off). |
 
 ## Compatibility guidance behavior
 

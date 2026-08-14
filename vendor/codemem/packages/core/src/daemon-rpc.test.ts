@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import * as core from "./index.js";
 
@@ -144,8 +144,141 @@ describe("Phase 1 daemon RPC", () => {
 					localApi: core.LOCAL_API_VERSION,
 					normalizedSchema: core.NORMALIZED_SCHEMA_VERSION,
 				},
-				diagnostics: { lock: "held", socket: "listening" },
+				diagnostics: {
+					lock: "held",
+					socket: "listening",
+					hookDelivery: {
+						implementation: "node-fallback",
+						p95TargetMs: 150,
+						budgets: core.HOOK_DELIVERY_BUDGETS,
+					},
+				},
 			},
 		});
+	});
+
+	it("P1-T041-04-file-search stays repository-relative", async () => {
+		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		created.push(handle);
+		const escaped = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				method: "POST /v1/search",
+				body: { requestId: "search-escape", mode: "find_by_file", repositoryPath: "../secret" },
+			}),
+		);
+		expect(escaped).toMatchObject({ error: { code: "invalid_request" } });
+
+		const safe = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "req-safe-file",
+				method: "POST /v1/search",
+				body: {
+					requestId: "search-safe",
+					mode: "find_by_file",
+					repositoryPath: "src/auth.ts",
+				},
+			}),
+		);
+		expect(safe).toMatchObject({ result: { items: [], retrievalReceiptId: expect.any(String) } });
+	});
+
+	it("P1-T041-05 records and completes the file-context retrieval ledger in the daemon", async () => {
+		const dataDir = tempDataDir();
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const common = {
+			startedAt: "2026-08-14T01:00:00.000Z",
+			completedAt: "2026-08-14T01:00:00.010Z",
+			repositoryPath: "src/auth.ts",
+			project: "free-mem",
+			sourceSessionId: "claude-session",
+		};
+		const noResults = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "req-ledger-empty",
+				method: "POST /v1/retrieval/file-context",
+				body: {
+					...common,
+					attemptId: "11111111-1111-4111-8111-111111111111",
+					retrievalStatus: "no_results",
+				},
+			}),
+		);
+		expect(noResults).toMatchObject({ result: { recorded: true } });
+
+		const succeeded = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "req-ledger-success",
+				method: "POST /v1/retrieval/file-context",
+				body: {
+					...common,
+					attemptId: "22222222-2222-4222-8222-222222222222",
+					retrievalStatus: "succeeded",
+					candidateIds: [999],
+					candidateCount: 1,
+					selectedIds: [999],
+				},
+			}),
+		);
+		expect(succeeded).toMatchObject({ result: { recorded: true } });
+		const delivered = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "req-ledger-delivery",
+				method: "POST /v1/retrieval/file-context/delivery",
+				body: {
+					attemptId: "22222222-2222-4222-8222-222222222222",
+					status: "handed_off",
+				},
+			}),
+		);
+		expect(delivered).toMatchObject({ result: { updated: true } });
+
+		const escaped = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "req-ledger-escape",
+				method: "POST /v1/retrieval/file-context",
+				body: {
+					...common,
+					attemptId: "33333333-3333-4333-8333-333333333333",
+					repositoryPath: "/secret",
+					retrievalStatus: "no_results",
+				},
+			}),
+		);
+		expect(escaped).toMatchObject({ error: { code: "invalid_request" } });
+
+		await handle.stop();
+		const layout = core.resolveStorageLayout(dataDir);
+		const pointer = core.readCurrentDatabasePointer(layout);
+		const store = new core.MemoryStore(resolve(layout.dbDir, pointer as string));
+		try {
+			const rows = store.db
+				.prepare(
+					"SELECT attempt_id, surface, retrieval_status, delivery_status FROM retrieval_attempts ORDER BY attempt_id",
+				)
+				.all();
+			expect(rows).toEqual([
+				{
+					attempt_id: "11111111-1111-4111-8111-111111111111",
+					surface: "file_context",
+					retrieval_status: "no_results",
+					delivery_status: "not_attempted",
+				},
+				{
+					attempt_id: "22222222-2222-4222-8222-222222222222",
+					surface: "file_context",
+					retrieval_status: "succeeded",
+					delivery_status: "handed_off",
+				},
+			]);
+		} finally {
+			store.close();
+		}
 	});
 });

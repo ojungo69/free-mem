@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ingest-hook.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-runtime.mjs\" claude-hook-ingest",
+            "timeout": 3
           }
         ]
       }
@@ -16,7 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/user-prompt-hook.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-runtime.mjs\" claude-hook-inject",
+            "timeout": 3
           }
         ]
       }
@@ -27,7 +29,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pre-read-hook.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-runtime.mjs\" claude-hook-file-context",
+            "timeout": 3
           }
         ]
       }
@@ -37,7 +40,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ingest-hook.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-runtime.mjs\" claude-hook-ingest",
+            "timeout": 3
           }
         ]
       }
@@ -47,7 +51,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ingest-hook.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-runtime.mjs\" claude-hook-ingest",
+            "timeout": 3
           }
         ]
       }
@@ -57,7 +62,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ingest-hook.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-runtime.mjs\" claude-hook-ingest",
+            "timeout": 3
           }
         ]
       }
@@ -67,7 +73,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ingest-hook.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-runtime.mjs\" claude-hook-ingest",
+            "timeout": 3
           }
         ]
       }

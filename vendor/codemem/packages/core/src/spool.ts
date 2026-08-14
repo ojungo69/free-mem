@@ -151,6 +151,7 @@ export type SpoolOptions = {
 	dataDir?: string;
 	lockDeadlineMs?: number;
 	config?: AgentMemoryConfig;
+	previousRedaction?: SpoolRedactionMetadata;
 	onWarning?: (message: string) => void;
 };
 
@@ -546,7 +547,11 @@ function spoolRedaction(result: RedactionResult): SpoolRedactionMetadata {
 	};
 }
 
-function prepareMutation(input: SpoolMutation, config?: AgentMemoryConfig): SpoolEntry {
+function prepareMutation(
+	input: SpoolMutation,
+	config?: AgentMemoryConfig,
+	previousRedaction?: SpoolRedactionMetadata,
+): SpoolEntry {
 	const idempotencyKey = validateIdempotencyKey(input.idempotencyKey);
 	const methodFields = METHOD_FIELDS[input.method];
 	if (!methodFields) throw new Error("RPC method is not spoolable.");
@@ -580,6 +585,22 @@ function prepareMutation(input: SpoolMutation, config?: AgentMemoryConfig): Spoo
 		}
 		redaction = spoolRedaction(redacted);
 		redaction.sensitivity = event.sensitivity as SpoolRedactionMetadata["sensitivity"];
+		if (previousRedaction) {
+			const previous = validateSpoolRedaction(previousRedaction);
+			redaction = {
+				...previous,
+				sensitivity:
+					previous.sensitivity === "secret" || redaction.sensitivity === "secret"
+						? "secret"
+						: previous.sensitivity === "private" || redaction.sensitivity === "private"
+							? "private"
+							: "normal",
+				private_content_omitted:
+					previous.private_content_omitted || redaction.private_content_omitted,
+				local_only: previous.local_only || redaction.local_only,
+			};
+			event.sensitivity = redaction.sensitivity;
+		}
 		quotaClass = RESERVED_EVENT_KINDS.has(String(event.kind)) ? "reserved" : "normal";
 		body = { idempotencyKey, event };
 	} else {
@@ -654,7 +675,7 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
 	return value as Record<string, unknown>;
 }
 
-function validateSpoolRedaction(value: unknown): SpoolRedactionMetadata {
+export function validateSpoolRedaction(value: unknown): SpoolRedactionMetadata {
 	const redaction = asRecord(value, "Spool redaction metadata");
 	rejectUnknownFields(redaction, REDACTION_FIELDS, "Spool redaction metadata");
 	if (
@@ -763,7 +784,7 @@ function resultForIoFailure(
 export function spoolMutation(input: SpoolMutation, options: SpoolOptions = {}): SpoolWriteResult {
 	let entry: SpoolEntry;
 	try {
-		entry = prepareMutation(input, options.config);
+		entry = prepareMutation(input, options.config, options.previousRedaction);
 	} catch {
 		warn(options.onWarning, "spool rejected an invalid mutation; event was dropped.");
 		const kind = dropKind(input);

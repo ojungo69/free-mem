@@ -19,6 +19,7 @@ export {
 	mapClaudeHookPayload,
 	normalizeProjectLabel,
 	resolveHookProject,
+	TRANSCRIPT_TAIL_MAX_BYTES,
 } from "./claude-hooks.js";
 export type { CodexHookAdapterEvent, CodexHookRawEventEnvelope } from "./codex-hooks.js";
 export {
@@ -39,10 +40,16 @@ export {
 	startDaemon,
 	stopDaemon,
 } from "./daemon-lifecycle.js";
-export type { RpcRequest, RpcSuccess, TypedRpcError } from "./daemon-rpc.js";
+export type {
+	FileContextRetrievalAttempt,
+	RpcRequest,
+	RpcSuccess,
+	TypedRpcError,
+} from "./daemon-rpc.js";
 export {
 	callDaemonRpc,
 	dispatchDaemonRpc,
+	HOOK_DELIVERY_BUDGETS,
 	LOCAL_API_VERSION,
 	mapPeerConnectError,
 	NORMALIZED_SCHEMA_VERSION,

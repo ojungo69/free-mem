@@ -188,6 +188,13 @@ describe("Phase 1 mutation dispatcher", () => {
 				method: "POST /v1/events",
 				body: {
 					idempotencyKey: "secret-event",
+					adapterRedaction: {
+						sensitivity: "secret",
+						secret_rules_version: "a".repeat(64),
+						redaction_degraded: false,
+						private_content_omitted: true,
+						local_only: true,
+					},
 					event: normalizedEvent({
 						eventId: "secret-event-1",
 						idempotencyKey: "secret-event",
@@ -208,6 +215,8 @@ describe("Phase 1 mutation dispatcher", () => {
 				eventId: "secret-event-1",
 				payload: {},
 				sensitivity: "secret",
+				private_content_omitted: true,
+				local_only: true,
 			});
 		} finally {
 			reader.close();

@@ -118,7 +118,9 @@ T053–T057 の harness runner 骨格（assert 内容と判定条件は Claude C
 
 ### A5 + thin client 化
 
-- [ ] T041 A5: directEnqueue×2 → spool のみ化、flushBoundaryRawEvents 除去、claude/codex inject buildLocalPack + file-context → RPC read + event 投入。全経路 T038(a) + Agent 別 deadline/spool 予約 + 外側 watchdog（判断 #3）。実 hook timeout 直前保全テスト。前提: T037, T038, T040
+- [X] T041 A5: directEnqueue×2 → spool のみ化、flushBoundaryRawEvents 除去、claude/codex inject buildLocalPack + file-context → RPC read + event 投入。全経路 T038(a) + Agent 別 deadline/spool 予約 + 外側 watchdog（判断 #3）。実 hook timeout 直前保全テスト。前提: T037, T038, T040
+  - 実装証拠: `vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts`（共通 normalize/redaction、daemon RPC、deadline、shared spool）、`vendor/codemem/packages/cli/src/hook-runtime.ts` + `vite.hook.config.ts`（256KiB bounded standalone runtime）、Claude/Codex ingest・inject・file-context thin client、`vendor/codemem/packages/core/src/daemon-rpc.ts`（file-context retrieval ledger + SessionStart timestamp）、`vendor/codemem/packages/cli/src/commands/setup.ts`（legacy 2-hook migration + bundled runtime）。旧 agent 専用 spool module と direct DB/HTTP/boundary flush 経路は削除
+  - 検証証拠: `hook-thin-client.test.ts` (P1-T041-01..04、pre-RPC/spool/session-state policy、tool allow/deny、ignore/local-only/apply_patch、実 1500/1000ms cutoff + 500ms reserve)、`daemon-rpc.test.ts` (P1-T041-04..05)、`hook-runtime.test.ts`、packed artifact の install×2 idempotency。workspace build / tsc / lint / full Vitest / plugin / smoke green
 - [ ] T042 [P] MCP stdio → RPC client 化。Phase 1 surface = read + remember + status 最小 allowlist。user-authority mutation（memory_forget 等）は物理削除 or typed-disable + tool-list 検査 + 拒否試験（正式 surface = Phase 5）。前提: T036, T037, T038, T039/T040（remember の spool fail-over 経路）
 - [ ] T043 [P] viewer read-only 化 = 判断 #12 契約。blocking test: 未認証 401 / 誤 token 401 / 悪意 Origin 403 / nonce 再利用・期限切れ・同時交換 race / TTL 失効・daemon 再起動失効・logout・session 上限 evict・history.replaceState・Referrer-Policy / 別 UID 拒否（可用時）。前提: T036, T037, T038
 - [ ] T044 CLI: production 分 RPC 化 + 後続 Phase 機能 typed stub（判断 #13）。前提: T036, T037, T038, T039/T040（spoolable mutation の fail-over 経路）

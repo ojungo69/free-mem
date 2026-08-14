@@ -152,6 +152,57 @@ tool_field_allowlist = "body"
 		expect(dropped.payload.body).toBeUndefined();
 	});
 
+	it("uses the caller allowlist when project config omits a tool allowlist", () => {
+		const config = core.parseAgentMemoryToml('private_regex = ["customer-[0-9]+"]');
+		const result = core.preprocessAdapterEvent(
+			{ body: "keep customer-42", denied: "drop" },
+			{ config, allowlist: ["body"] },
+		);
+		expect(result.payload).toEqual({ body: "keep " });
+		expect(result.sensitivity).toBe("private");
+	});
+
+	it("applies project tool-field policy without dropping the event schema", () => {
+		const config = core.parseAgentMemoryToml(`
+tool_field_allowlist = ["file_path", "options"]
+tool_field_denylist = ["debug_blob"]
+`);
+		const result = core.preprocessAdapterEvent(
+			{
+				schemaVersion: 1,
+				payload: {
+					_adapter: {
+						payload: {
+							tool_name: "Edit",
+							tool_input: {
+								file_path: "src/public.ts",
+								unlisted: "drop",
+								options: { mode: "safe", debug_blob: "drop" },
+							},
+						},
+					},
+				},
+			},
+			{ config, allowlist: ["schemaVersion", "payload"] },
+		);
+		expect(result.payload.schemaVersion).toBe(1);
+		expect(result.payload).toHaveProperty("payload");
+		expect(result.payload).toMatchObject({
+			payload: {
+				_adapter: {
+					payload: {
+						tool_input: {
+							file_path: "src/public.ts",
+							options: { mode: "safe" },
+						},
+					},
+				},
+			},
+		});
+		expect(JSON.stringify(result.payload)).not.toContain("unlisted");
+		expect(JSON.stringify(result.payload)).not.toContain("debug_blob");
+	});
+
 	it("P1-T038-06-no-plaintext-log", () => {
 		const logs = captureLogs();
 		try {

@@ -12,7 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 
@@ -38,6 +38,8 @@ export const MAPPABLE_CLAUDE_HOOK_EVENTS = new Set([
 	"Stop",
 	"SessionEnd",
 ]);
+
+export const TRANSCRIPT_TAIL_MAX_BYTES = 256 * 1024;
 
 // ---------------------------------------------------------------------------
 // Timestamp helpers
@@ -346,7 +348,26 @@ export function extractFromTranscript(
 	let assistantUsage: Record<string, number> | null = null;
 
 	try {
-		const content = readFileSync(resolvedPath, "utf-8");
+		const descriptor = openSync(resolvedPath, "r");
+		let content: string;
+		try {
+			const size = fstatSync(descriptor).size;
+			const length = Math.min(size, TRANSCRIPT_TAIL_MAX_BYTES);
+			const start = Math.max(0, size - length);
+			const buffer = Buffer.alloc(length);
+			let offset = 0;
+			while (offset < length) {
+				const read = readSync(descriptor, buffer, offset, length - offset, start + offset);
+				if (read === 0) break;
+				offset += read;
+			}
+			content = buffer.subarray(0, offset).toString("utf8");
+			if (start > 0) content = content.slice(Math.max(0, content.indexOf("\n") + 1));
+		} finally {
+			closeSync(descriptor);
+		}
+		// ponytail: 256 KiB tail bounds hook latency; use reverse streaming only if transcripts
+		// start emitting individual JSONL records larger than this ceiling.
 		for (const rawLine of content.split("\n")) {
 			const line = rawLine.trim();
 			if (!line) continue;

@@ -64,6 +64,21 @@ describe("claude-hook-session-state", () => {
 			expect(loadSessionState("ok")).toEqual(defaultSessionState());
 		});
 
+		it("drops legacy state written before pre-persistence redaction", () => {
+			saveSessionState("legacy", defaultSessionState());
+			writeFileSync(
+				statePathForSession("legacy"),
+				JSON.stringify({
+					first_prompt: "legacy private prompt",
+					last_prompt: "legacy private prompt",
+					files_modified: ["local/private.ts"],
+					updated_at: "2026-04-09T00:00:00Z",
+				}),
+				"utf8",
+			);
+			expect(loadSessionState("legacy")).toEqual(defaultSessionState());
+		});
+
 		it("normalizes and caps fields when reading back", () => {
 			saveSessionState("normalize", {
 				first_prompt: "  first  ",
@@ -92,6 +107,7 @@ describe("claude-hook-session-state", () => {
 			expect(existsSync(path)).toBe(true);
 
 			const persisted = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+			expect(persisted.version).toBe(2);
 			expect(persisted.first_prompt).toBe(original.first_prompt);
 			expect(persisted.files_modified).toEqual(original.files_modified);
 
@@ -199,28 +215,28 @@ describe("claude-hook-session-state", () => {
 
 	describe("trackHookSessionState", () => {
 		it("returns null when payload has no usable session id", () => {
-			expect(trackHookSessionState({ hook_event_name: "UserPromptSubmit" })).toBeNull();
+			expect(trackHookSessionState({ hook_event_name: "UserPromptSubmit" }, "", [])).toBeNull();
 			expect(
-				trackHookSessionState({ session_id: "   ", hook_event_name: "UserPromptSubmit" }),
+				trackHookSessionState({ session_id: "   ", hook_event_name: "UserPromptSubmit" }, "", []),
 			).toBeNull();
 		});
 
 		it("UserPromptSubmit sets first_prompt once and keeps tracking last_prompt", () => {
 			const sessionId = "track-1";
-			trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "UserPromptSubmit",
-				prompt: "investigate flaky test",
-			});
+			trackHookSessionState(
+				{ session_id: sessionId, hook_event_name: "UserPromptSubmit" },
+				"investigate flaky test",
+				[],
+			);
 			let state = loadSessionState(sessionId);
 			expect(state.first_prompt).toBe("investigate flaky test");
 			expect(state.last_prompt).toBe("investigate flaky test");
 
-			trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "UserPromptSubmit",
-				prompt: "now check the fixture",
-			});
+			trackHookSessionState(
+				{ session_id: sessionId, hook_event_name: "UserPromptSubmit" },
+				"now check the fixture",
+				[],
+			);
 			state = loadSessionState(sessionId);
 			expect(state.first_prompt).toBe("investigate flaky test"); // unchanged
 			expect(state.last_prompt).toBe("now check the fixture");
@@ -228,51 +244,65 @@ describe("claude-hook-session-state", () => {
 
 		it("PostToolUse appends modified files and dedupes across calls", () => {
 			const sessionId = "track-2";
-			trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "PostToolUse",
-				tool_name: "edit",
-				tool_input: { filePath: "packages/cli/src/a.ts" },
-			});
-			trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "PostToolUseFailure",
-				tool_name: "write",
-				tool_input: { file_path: "packages/cli/src/b.ts" },
-			});
-			trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "PostToolUse",
-				tool_name: "edit",
-				tool_input: { filePath: "packages/cli/src/a.ts" }, // duplicate
-			});
+			trackHookSessionState(
+				{
+					session_id: sessionId,
+					hook_event_name: "PostToolUse",
+					tool_name: "edit",
+					tool_input: { filePath: "packages/cli/src/a.ts" },
+				},
+				"",
+				["packages/cli/src/a.ts"],
+			);
+			trackHookSessionState(
+				{
+					session_id: sessionId,
+					hook_event_name: "PostToolUseFailure",
+					tool_name: "write",
+					tool_input: { file_path: "packages/cli/src/b.ts" },
+				},
+				"",
+				["packages/cli/src/b.ts"],
+			);
+			trackHookSessionState(
+				{
+					session_id: sessionId,
+					hook_event_name: "PostToolUse",
+					tool_name: "edit",
+					tool_input: { filePath: "packages/cli/src/a.ts" }, // duplicate
+				},
+				"",
+				["packages/cli/src/a.ts"],
+			);
 			const state = loadSessionState(sessionId);
 			expect(state.files_modified).toEqual(["packages/cli/src/a.ts", "packages/cli/src/b.ts"]);
 		});
 
 		it("SessionEnd clears the on-disk state", () => {
 			const sessionId = "track-3";
-			trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "UserPromptSubmit",
-				prompt: "kick off work",
-			});
+			trackHookSessionState(
+				{ session_id: sessionId, hook_event_name: "UserPromptSubmit" },
+				"kick off work",
+				[],
+			);
 			expect(existsSync(statePathForSession(sessionId))).toBe(true);
 
-			const result = trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "SessionEnd",
-			});
+			const result = trackHookSessionState(
+				{ session_id: sessionId, hook_event_name: "SessionEnd" },
+				"",
+				[],
+			);
 			expect(result).toBeNull();
 			expect(existsSync(statePathForSession(sessionId))).toBe(false);
 		});
 
 		it("returns loaded state without writing for unrelated events", () => {
 			const sessionId = "track-4";
-			const result = trackHookSessionState({
-				session_id: sessionId,
-				hook_event_name: "SessionStart",
-			});
+			const result = trackHookSessionState(
+				{ session_id: sessionId, hook_event_name: "SessionStart" },
+				"",
+				[],
+			);
 			expect(result).toEqual(defaultSessionState());
 			expect(existsSync(statePathForSession(sessionId))).toBe(false);
 		});

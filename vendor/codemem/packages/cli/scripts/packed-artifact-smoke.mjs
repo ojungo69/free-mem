@@ -17,11 +17,11 @@ function fail(message, result) {
 	throw new Error(message);
 }
 
-function run(command, args, cwd = packageRoot) {
+function run(command, args, cwd = packageRoot, env = process.env) {
 	const result = spawnSync(command, args, {
 		cwd,
 		encoding: "utf8",
-		env: process.env,
+		env,
 	});
 	if (result.status !== 0) {
 		fail(`Command failed: ${command} ${args.join(" ")}`, result);
@@ -69,6 +69,10 @@ try {
 
 	const tarListing = run("tar", ["-tf", packedTarball]).stdout;
 	assert(tarListing.includes("package/dist/index.js"), "Packed artifact is missing dist/index.js");
+	assert(
+		tarListing.includes("package/dist/hook-runtime.js"),
+		"Packed artifact is missing dist/hook-runtime.js",
+	);
 	assert(tarListing.includes("package/README.md"), "Packed artifact is missing README.md");
 
 	const installDir = join(tempDir, "install");
@@ -80,6 +84,10 @@ try {
 	assert(existsSync(cliBin), "Installed artifact is missing the codemem binary");
 	assert(existsSync(join(installedPackageRoot, "dist", "index.js")), "Installed artifact is missing dist/index.js");
 	assert(
+		existsSync(join(installedPackageRoot, "dist", "hook-runtime.js")),
+		"Installed artifact is missing dist/hook-runtime.js",
+	);
+	assert(
 		existsSync(join(installedPackageRoot, "README.md")),
 		"Installed artifact is missing README.md",
 	);
@@ -89,6 +97,22 @@ try {
 
 	const versionOutput = run(cliBin, ["version"]).stdout.trim();
 	assert(versionOutput === packageVersion, `Installed CLI reported ${versionOutput}, expected ${packageVersion}`);
+
+	const codexHome = join(tempDir, "codex-home");
+	const setupEnv = { ...process.env, CODEX_HOME: codexHome };
+	run(cliBin, ["setup", "--codex-only"], packageRoot, setupEnv);
+	run(cliBin, ["setup", "--codex-only"], packageRoot, setupEnv);
+	const installedRuntime = join(codexHome, "codemem-hook-runtime.mjs");
+	assert(existsSync(installedRuntime), "Codex setup did not install the standalone hook runtime");
+	const hookConfig = JSON.parse(readFileSync(join(codexHome, "hooks.json"), "utf8"));
+	const commands = Object.values(hookConfig.hooks).flatMap((groups) =>
+		groups.flatMap((group) => group.hooks.map((hook) => hook.command)),
+	);
+	assert(
+		commands.every((command) => command.includes("codemem-hook-runtime.mjs")),
+		"Codex setup left a hook on the npx startup path",
+	);
+	assert(commands.length === 4, "Codex setup duplicated a standalone-runtime hook");
 } finally {
 	rmSync(tempDir, { recursive: true, force: true });
 }
