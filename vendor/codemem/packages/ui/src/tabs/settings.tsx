@@ -14,5 +14,4 @@ export {
 	closeSettings,
 	initSettings,
 	openSettings,
-	saveSettings,
 } from "./settings/lifecycle";

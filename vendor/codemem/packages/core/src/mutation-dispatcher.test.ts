@@ -335,7 +335,7 @@ describe("Phase 1 mutation dispatcher", () => {
 			handle.socketPath,
 			handshake({ method: "GET /v1/view", body: { collection: "sessions" } }),
 		);
-		expect(view).toMatchObject({ result: { collection: "sessions" } });
+		expect(view).toMatchObject({ result: { status: 200, body: { items: expect.any(Array) } } });
 		const search = await core.callDaemonRpc(
 			handle.socketPath,
 			handshake({
@@ -393,17 +393,20 @@ describe("Phase 1 mutation dispatcher", () => {
 
 		const second = await core.startDaemon({ dataDir });
 		created.push(second);
-		for (const [collection, expected] of [
-			["memories", []],
-			["sessions", []],
-			["stats", { memories: 0 }],
-		] as const) {
+		for (const collection of ["memories", "sessions"] as const) {
 			const response = await core.callDaemonRpc(
 				second.socketPath,
 				handshake({ method: "GET /v1/view", body: { collection } }),
 			);
-			expect(response).toMatchObject({ result: { collection, items: expected } });
+			expect(response).toMatchObject({ result: { status: 200, body: { items: [] } } });
 		}
+		const stats = await core.callDaemonRpc(
+			second.socketPath,
+			handshake({ method: "GET /v1/view", body: { collection: "stats" } }),
+		);
+		expect(stats).toMatchObject({
+			result: { status: 200, body: { database: { memory_items: 0 } } },
+		});
 	});
 
 	it("P1-T036-06-class-b-stub", async () => {

@@ -24,7 +24,8 @@
 | `DELETE /v1/memories/:id` | path `id` + `{ requestId, expectedRevision? }` → `{ receiptId, status }` | A。**user-authority**。遅延 replay を避けるため spool 不可 | typed `daemon_unavailable`、自動 retry・DB fallback とも禁止 |
 | `GET /v1/checkpoints` | query `{ project?, state?, limit? }` → `{ checkpoints[] }` | read | typed `daemon_unavailable` / viewer 503 |
 | `GET /v1/health` / `GET /v1/doctor` | body なし → `{ status, instanceId, protocolVersion, diagnostics? }` | read | CLI `status` だけ `{ status: "not_running" }` として exit 0。他 caller は typed `daemon_unavailable` |
-| `GET /v1/view/{sessions,projects,memories,observations,summaries,session,memory,artifacts,raw-events,raw-events-status,stats,runtime,usage,observer-status,config}` | current viewer route の allowlisted query（ID/project/paging/filter）→同 route の typed JSON response | read。各 suffix と viewer route は §6 で 1 対 1 | viewer は `{ error: { code: "daemon_unavailable", ... } }` + HTTP 503。local DB fallback 禁止 |
+| `GET /v1/view` | `{ collection, sessionId?, project?, kind?, scope?, limit?, offset? }`。`collection` は sessions/projects/memories/observations/summaries/session/memory/artifacts/raw-events/raw-events-status/stats/runtime/usage/observer-status/config の allowlist → `{ status, body }` | read。collection と viewer route は §6 で 1 対 1 | viewer は `{ error: { code: "daemon_unavailable", ... } }` + HTTP 503。local DB fallback 禁止 |
+| `POST /v1/viewer/auth/{nonce,exchange,verify,logout}` | nonce=`{}`→`{nonce,expiresAt}`、exchange=`{nonce}`→`{session}`、verify=`{bearer?,session?}`→`{authenticated}`、logout=`{session}`→`{loggedOut}` | Unix DAC 内のviewer認証。nonce 60s単回、session 12h/上限8/daemon再起動失効 | browser交換失敗またはdata API 503。Bearer/nonce/sessionのDB fallback・URL query・log出力禁止 |
 | `POST /v1/operations/export` | `{ operationId, payloadHash, outputPath, filters }` → `{ operationId, state }` | B。client が UUID を生成。`prepared→writing→verified→committed` | typed `daemon_unavailable`。自動 retry・client 側 export fallback 禁止 |
 | `POST /v1/operations/import` | `{ operationId, payloadHash, inputPath, remapProject?, dryRun? }` → `{ operationId, state }` | B。client UUID。destructive 時 `prepared→backup_verified→applying→committed` | typed `daemon_unavailable`。自動 retry・client 側 import fallback 禁止 |
 | `POST /v1/operations/backup/create` | `{ operationId, payloadHash, reason }` → `{ operationId, state }` | B。client UUID。`prepared→snapshotting→verified→committed` | typed `daemon_unavailable`。自動 retry・client 側 backup fallback 禁止 |
@@ -124,20 +125,20 @@ Class B の `payloadHash` は `operationId` / `payloadHash` を除く allowliste
 |---|---|---|---|---|---|
 | index.ts sharedStore | RPC client のみ。browser 認証後の allowlisted route だけ呼出し | 全 data API = typed JSON 503。local DB fallback なし | sharedStore 削除(T043) | − | − |
 | `GET /api/health` | `GET /v1/health` | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/sessions` | `GET /v1/view/sessions`（project/paging filter） | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/projects` | `GET /v1/view/projects` | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/memories` | `GET /v1/view/memories`（project/kind/paging filter） | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/observations` | `GET /v1/view/observations`（project/paging filter） | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/summaries` | `GET /v1/view/summaries`（project/paging filter） | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/session` | `GET /v1/view/session` `{ sessionId }` | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/memory` | `GET /v1/view/memory` `{ id }` | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/artifacts` | `GET /v1/view/artifacts`（session/project filter） | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/sessions` | `GET /v1/view` `{collection:"sessions", project?, limit?, offset?}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/projects` | `GET /v1/view` `{collection:"projects"}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/memories` | `GET /v1/view` `{collection:"memories", project?, kind?, limit?, offset?}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/observations` | `GET /v1/view` `{collection:"observations", project?, scope?, limit?, offset?}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/summaries` | `GET /v1/view` `{collection:"summaries", project?, scope?, limit?, offset?}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/session` | `GET /v1/view` `{collection:"session", project?}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/memory` | `GET /v1/view` `{collection:"memory", project?, kind?, limit?}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/artifacts` | `GET /v1/view` `{collection:"artifacts", sessionId?, project?}` | typed JSON 503 | RPC relay | read | user-authority |
 | `GET /api/pack` | `POST /v1/context/pack` `{ requestId,context,limit,tokenBudget,filters,trace:false }` | typed JSON 503 | RPC relay | read + A ledger | user-authority |
 | `POST /api/pack/trace` | `POST /v1/context/pack` の `trace:true`。working-set は filters に allowlist copy。ledger は daemon が同一 request 内で記録 | typed JSON 503 | **RPC read relay に確定**。viewer 自身は書込まない | read + A ledger | user-authority |
-| `GET /api/raw-events` / `/api/raw-events/status` | `GET /v1/view/raw-events` / `GET /v1/view/raw-events-status` | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/stats` / `/api/runtime` / `/api/usage` | `GET /v1/view/stats` / `runtime` / `usage` | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/observer-status` | `GET /v1/view/observer-status` | typed JSON 503 | RPC relay | read | user-authority |
-| `GET /api/config` | `GET /v1/view/config`（secret は daemon 側で redaction） | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/raw-events` / `/api/raw-events/status` | `GET /v1/view` `{collection:"raw-events"|"raw-events-status"}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/stats` / `/api/runtime` / `/api/usage` | `GET /v1/view` `{collection:"stats"|"runtime"|"usage", project?}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/observer-status` | `GET /v1/view` `{collection:"observer-status"}` | typed JSON 503 | RPC relay | read | user-authority |
+| `GET /api/config` | `GET /v1/view` `{collection:"config"}`（secret は daemon 側で redaction） | typed JSON 503 | RPC relay | read | user-authority |
 | `POST /api/memories/visibility` / `project` / `forget` | endpoint なし | HTTP 404（route 非登録） | **削除**（UI 操作は A7 で撤去済み） | − | − |
 | `POST /api/raw-events` / `claude-hooks` / `codex-hooks` | endpoint なし。hook は T041 で daemon socket 直行 | HTTP 404 | **削除** | − | − |
 | routes/pack.ts `GET /api/prompt-pack-profile` / transport `POST /api/pack` / `POST /api/prompt-pack-ledger` | endpoint なし。hook/MCP は T041/T042 で daemon RPC 直行、ledger は pack/search/get に統合 | HTTP 404 | **pack transport routes 全削除** | − | − |
@@ -230,3 +231,14 @@ scan は `rg -n 'new MemoryStore\\(' packages/*/src --glob '!**/*.test.ts'`、`r
 |---|---|---|---|---|
 | spool importer | `importReadySpoolEntries` + `control/spool/{tmp,ready,quarantine}` | daemon起動時と1秒ごとに実行。entryをcanonical JSON・payload hash・hashed filename・method schema・quota classまで再検証し、valid tmpをreadyへ回復。dispatcher成功後だけreadyをfsync付き削除し、失敗・quarantine満杯では保持 | A | daemon内部 |
 | spool dispatcher bridge | `dispatchSpoolMutation` → `handleEvent` / `handleRemember` → `dispatchClassA` | direct RPC と同一handler/transactional receiptを使用。同一method+key・異payloadはDB conflict記録後にspool fileをquarantine。adapter metadataとdaemon第2層redactionを強い側へ統合 | A | daemon内部 |
+
+## T043 新設 surface（2026-08-14）
+
+| surface | path | disposition | class | authority |
+|---|---|---|---|---|
+| viewer bearer | `control/token` | daemon が256-bit tokenを0600で永続化。regular file・owner・mode・形式を再読込時も検査し、CLI/plugin probeはheaderにだけ載せる | − | local user |
+| viewer browser auth | `POST /v1/viewer/auth/{nonce,exchange,verify,logout}` | nonce/session stateはdaemon memoryだけが所有。nonce 60秒・one-use、session 12時間・上限8・logout/restart失効 | − | local user |
+| browser credential exchange | URL `#auth=<nonce>` → `/api/auth/exchange` → `codemem_session` | fragmentをnetwork前に`history.replaceState`で除去。exact loopback Origin、httpOnly/SameSite=Strict cookie、no-store、no-referrer | − | local user |
+| viewer read relay | `GET /v1/view` + allowlisted context/health RPC | viewer processのDB handleとmutation/ingest/config-write routeを削除。daemon不在はtyped 503でDB fallbackなし | read | user-authority |
+| viewer public health | `GET /api/health` → `GET /v1/health` | liveness metadataだけを非認証で返す。probeは未検証loopback listenerへBearerを送らない。data APIは引き続き認証必須 | read | − |
+| viewer web policy | loopback HTTP response headers / static bundle | `script-src 'self'`、第三者script/fontなし、frame/object/base/form拒否。既存inline CSSのためstyleのみ`unsafe-inline` | − | − |

@@ -5,6 +5,7 @@ baseline: `evidence/phase1-test-baseline-pre.txt` (`9deb8e2`, SHA-256 `525348b0b
 post-A7: `f1e84cf` / `/tmp/free-mem-phase1-post-t028.json` (SHA-256 `b475b510a9ba231e2cc58f62ff26a41c5cfcb5b85758c81ffe5593c24d89926c`)
 post-T030: `/tmp/free-mem-phase1-post-t030-final.json` (SHA-256 `3b84e9d1f62a43ab6b00cef098ce475a24c7f9b6450489fe0bfacf0b4611e6b3`)
 post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164eb5e1ee84c23e087a33a811bad05949f3d5f3108ca1`)
+post-T043: `/tmp/free-mem-phase1-post-t043-serial-final.json` (SHA-256 `d2e58af19a2b84bf7fc005ec931fcb9dcacb27445b05a7e293d29d405512bdfa`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -16,6 +17,10 @@ post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164
 | retire | 2,051 |
 | 登録済み追加（A7 17 + T030 1 + T031 2） | 20 |
 | post-T031 | 2,006 |
+| T043 直前 | 1,942 |
+| T043 retire | 61 |
+| T043 登録済み追加 | 13 |
+| post-T043 | 1,894 |
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -36,6 +41,8 @@ post-T030 は total 2,048 / passed 2,038 / failed 7 / todo 3。上記 8 名の�
 
 post-T031 は total 2,006 / passed 1,996 / failed 7 / todo 3。post-T030 との差は sidecar 関連 retire 44 名 + 登録済み追加 2 名と完全一致し、failed 7 名も同一で新規 failure は 0。
 
+T043 は直前 1,942 件から旧 viewer 直結 test 61 件を retire し、manifest 登録済み 13 件を追加した。機械式は `1,942 - 61 + 13 = 1,894`。post-T043 の serial full suite は 396 suites / total 1,894 / passed 1,891 / todo 3 / failed 0。通常の並列 full run では、互いに異なる既存 test が 1 件ずつ resource/concurrency failure になったため、各対象を単独再実行して成功を確認したうえで serial full suite を正本にした。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -49,6 +56,7 @@ post-T031 は total 2,006 / passed 1,996 / failed 7 / todo 3。post-T030 との�
 | R-VIEWER | `packages/viewer-server/**` | 217 | sync/coordinator/sharing route・maintenance と対応 test を削除 | 削除 file/title は Vitest no-match、`/api/sync/status` と `/api/coordinator/admin/status` は HTTP 404 |
 | R-AUTH | `packages/core/src/observer-auth.test.ts`, `observer-client.test.ts` | 15 | T030 で OAuth consumer、OpenCode auth cache、command 認証を物理削除 | retire title は `No test found`、登録 token test が explicit→env→file のみを固定 |
 | R-SIDECAR | core/UI/viewer の observer runtime test | 44 | T031 で Claude/Codex subprocess、自動選択、command 設定、UI surface を物理削除 | retire title/file は `No test found`、登録 token tests が旧 runtime の API-only 化と設定非表示を固定 |
+| R-T043-VIEWER | viewer direct DB/mutation/transport test + core viewer HTTP hook test | 61 | T043 で viewer を認証済み read-only daemon RPC relay に限定し、direct DB・mutation・hook ingest・旧 pack transport を物理削除 | retire title/file は `No test found`。登録済み T043 13 件が bearer/nonce/session/origin/CSP/read-only/RPC/503 を固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -143,6 +151,11 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T043-06-browser-url-privacy` | T043 | history.replaceState / Referrer-Policy で token URL を除去しない |
 | `P1-T043-07-viewer-read-only` | T043 | viewer mutation route または direct DB handle が残る |
 | `P1-T043-08-viewer-daemon-unavailable` | T043 | daemon 不在 data API が typed 503 にならない |
+| `P1-T043-09-bearer-file` | T043 | 256-bit Bearer が `control/token` に0600で永続化されない |
+| `P1-T043-10-daemon-auth-rpc` | T043 | nonce/session の生成・検証・logout がdaemon外へ逸脱する |
+| `P1-T043-11-loopback-cookie-csp` | T043 | loopback cookie交換、httpOnly/SameSite、self-only script CSP が崩れる |
+| `P1-T043-12-daemon-view-collections` | T043 | viewer collection read がdaemon-owned storeを通らない |
+| `P1-T043-13-daemon-restart-session` | T043 | 実daemon再起動後も旧HTTP sessionが有効 |
 | `P1-T044-01-cli-rpc-map` | T044 | T029 endpoint/schema と CLI command の対応がずれる |
 | `P1-T044-02-cli-typed-stubs` | T044 | Phase 6/7 command が local 実装へ到達する |
 | `P1-T044-03-cli-no-db-fallback` | T044 | CLI process が daemon 不在時に DB を開く |
@@ -167,6 +180,70 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T052-02-backup-retention-permissions` | T052 | retention 7d/4w または owner-only permission が崩れる |
 | `P1-T052-03-restore-journal-order` | T052 | restore の durable state 順序・rollback が判断 #16 と異なる |
 | `P1-T052-04-backup-privacy-copy` | T052 | private/local-only を含み得る表示、off-device 非提供表示がない |
+
+## T043 retired fully qualified names（61）
+
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > applies sharing-domain visibility to memory list endpoints
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > keeps mixed-domain unauthorized scope rows out of viewer direct surfaces
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > applies mine/theirs scope filters to observations
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > moves an owned memory to a new project via /api/memories/project
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > rejects /api/memories/project with empty project
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > does not mutate memories outside visible sharing domains
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > forgets an owned memory via the viewer API
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > treats repeated forget requests as a no-op success
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > rejects forgetting a memory not owned by this device
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > treats metadata-only local provenance as owned for forget requests
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > validates forget requests
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > preserves query parameters on the /api/memories alias
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > routes observer summaries into summaries and excludes them from observations
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > keeps session observation counts aligned with active feed items
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > excludes hidden sharing domains from session memory counts
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > gates prompt and artifact aggregate counts by visible memory sessions
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > tolerates malformed metadata when classifying summaries
+- packages/viewer-server/src/index.test.ts > viewer-server > GET /api/pack > uses async pack builder path
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > rejects requests from a different viewer identity target
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > rejects a viewer whose cached effective identity is stale
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > validates structured request fields
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > returns the same machine-readable pack as GET for equivalent inputs
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > passes project, working-set, and render options to the shared builder
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > records attempts and reports changed-artifact conflicts without blocking pack delivery
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > returns a stable structured error when pack construction fails
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > delivers a built pack when ledger instrumentation fails
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/prompt-pack-ledger > preserves record, delivery, and cache-reuse idempotency
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/prompt-pack-ledger > returns structured validation and core failure outcomes
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack/trace > uses async pack trace builder path
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack/trace > rejects invalid trace payloads
+- packages/viewer-server/src/index.test.ts > viewer-server > GET /api/observer-status > returns live observer status and suppresses stale failures after success
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > GET resolves the same workspace-scoped file as the core resolver POST uses
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > returns provider options from real opencode config prefixes
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > redacts sensitive config values from config responses
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > writes config and returns effects
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > returns tiered observer routing fields from config
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > writes tiered observer routing config
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > accepts built-in observer providers on a clean config
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > clears hot-reload env override when interval key is removed
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > returns warnings for env-overridden keys
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > validates payload types
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > rejects invalid tiered observer routing values
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > rejects protected config mutations from the viewer API
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > ignores unchanged protected keys and removes retired sync settings
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > rejects non-object config wrapper payloads
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > parses integer fields strictly
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > allows POST without Origin header (CLI/programmatic callers)
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > rejects POST without Origin but with cross-site Sec-Fetch-Site
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > rejects POST with non-loopback Origin
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > allows POST with loopback Origin
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > allows GET without Origin header
+- packages/viewer-server/src/index.test.ts > viewer-server > returns 400 for invalid JSON on visibility updates
+- packages/viewer-server/src/helpers.test.ts > queryInt > parses full integer strings
+- packages/viewer-server/src/helpers.test.ts > queryInt > rejects partial or non-integer strings
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > returns the stable healthy viewer contract through createApp
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > uses only a cheap schema-page database probe without stats aggregation or egress
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > reports store construction failure as degraded HTTP 200 without error details
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > reports database probe failure as degraded HTTP 200 without error details
+- packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > returns {inserted:0, skipped:1} for unsupported hook event
+- packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > returns 400 for invalid JSON
+- packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > allows POST without Origin header (CLI callers)
 
 ## Retired fully qualified names（machine-generated）
 

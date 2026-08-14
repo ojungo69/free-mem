@@ -157,6 +157,147 @@ describe("Phase 1 daemon RPC", () => {
 		});
 	});
 
+	it("P1-T043-10-daemon-auth-rpc exchanges and verifies sessions through the daemon", async () => {
+		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		created.push(handle);
+		const nonceResponse = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({ method: "POST /v1/viewer/auth/nonce" }),
+		);
+		if (!("result" in nonceResponse)) throw new Error("nonce RPC failed");
+		const nonce = String(nonceResponse.result.nonce);
+
+		const exchange = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({ method: "POST /v1/viewer/auth/exchange", body: { nonce } }),
+		);
+		if (!("result" in exchange)) throw new Error("exchange RPC failed");
+		const session = (exchange.result.session as { cookie?: unknown } | null)?.cookie;
+		expect(typeof session).toBe("string");
+
+		const verify = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				method: "POST /v1/viewer/auth/verify",
+				body: { session },
+			}),
+		);
+		expect(verify).toMatchObject({ result: { authenticated: true } });
+
+		const logout = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({ method: "POST /v1/viewer/auth/logout", body: { session } }),
+		);
+		expect(logout).toMatchObject({ result: { loggedOut: true } });
+		const rejected = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({ method: "POST /v1/viewer/auth/verify", body: { session } }),
+		);
+		expect(rejected).toMatchObject({ result: { authenticated: false } });
+	});
+
+	it("P1-T043-12-daemon-view-collections serves collections from the daemon store", async () => {
+		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		created.push(handle);
+		const recorded = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				method: "POST /v1/memories/record",
+				body: {
+					idempotencyKey: "viewer-seed",
+					kind: "discovery",
+					title: "Viewer seed",
+					body: "Visible through daemon RPC",
+					project: "/tmp/viewer-project",
+				},
+			}),
+		);
+		expect(recorded).toMatchObject({ result: { memoryId: expect.any(Number) } });
+		await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "viewer-summary",
+				method: "POST /v1/memories/record",
+				body: {
+					idempotencyKey: "viewer-summary",
+					kind: "session_summary",
+					title: "Viewer summary",
+					body: "Summary through daemon RPC",
+					project: "/tmp/viewer-project",
+				},
+			}),
+		);
+
+		const view = async (collection: string, body: Record<string, unknown> = {}) => {
+			const response = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({ method: "GET /v1/view", body: { collection, ...body } }),
+			);
+			if (!("result" in response)) throw new Error(`${collection} view failed`);
+			return response.result;
+		};
+
+		expect(await view("projects")).toEqual({
+			status: 200,
+			body: { projects: ["viewer-project"] },
+		});
+		expect(await view("observations", { limit: 10 })).toMatchObject({
+			status: 200,
+			body: { items: [{ title: "Viewer seed" }], pagination: { has_more: false } },
+		});
+		expect(await view("summaries", { limit: 10 })).toMatchObject({
+			status: 200,
+			body: { items: [{ title: "Viewer summary" }], pagination: { has_more: false } },
+		});
+		const sessions = await view("sessions");
+		expect(sessions).toMatchObject({
+			status: 200,
+			body: { items: [{ project: "/tmp/viewer-project" }] },
+		});
+		const sessionId = Number((sessions.body as { items: Array<{ id: number }> }).items[0]?.id);
+		expect(await view("artifacts", { sessionId })).toEqual({
+			status: 200,
+			body: { items: [] },
+		});
+		expect(await view("session", { project: "/tmp/viewer-project" })).toMatchObject({
+			status: 200,
+			body: { memories: 2, observations: 1 },
+		});
+		expect(await view("stats")).toMatchObject({
+			status: 200,
+			body: { database: { memory_items: 2 }, maintenance_jobs: [] },
+		});
+		expect(await view("runtime")).toEqual({ status: 200, body: { version: core.VERSION } });
+		expect(await view("raw-events")).toMatchObject({
+			status: 200,
+			body: { pending: 0, sessions: 0 },
+		});
+		expect(await view("raw-events-status")).toMatchObject({
+			status: 200,
+			body: { items: [], ingest: { available: false, mode: "daemon_rpc" } },
+		});
+		expect(await view("observer-status")).toMatchObject({
+			status: 200,
+			body: { queue: { pending: 0, sessions: 0 } },
+		});
+		const previousHeaders = process.env.CODEMEM_OBSERVER_HEADERS;
+		process.env.CODEMEM_OBSERVER_HEADERS = JSON.stringify({ Authorization: "secret-value" });
+		try {
+			expect(await view("config")).toMatchObject({
+				status: 200,
+				body: {
+					config: expect.any(Object),
+					effective: { observer_headers: "[redacted]" },
+					env_overrides: { observer_headers: "CODEMEM_OBSERVER_HEADERS" },
+					protected_keys: expect.any(Array),
+				},
+			});
+		} finally {
+			if (previousHeaders === undefined) delete process.env.CODEMEM_OBSERVER_HEADERS;
+			else process.env.CODEMEM_OBSERVER_HEADERS = previousHeaders;
+		}
+	});
+
 	it("P1-T041-04-file-search stays repository-relative", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);

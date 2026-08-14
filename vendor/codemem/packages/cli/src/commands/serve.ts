@@ -1,16 +1,9 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import * as p from "@clack/prompts";
-import {
-	initDatabase,
-	isEmbeddingDisabled,
-	type MemoryStore,
-	ObserverClient,
-	RawEventSweeper,
-	resolveDbPath,
-} from "@codemem/core";
+import { initDatabase, resolveDbPath } from "@codemem/core";
 import { Command, Option } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -55,11 +48,11 @@ export function isLoopbackOnlyHost(host: string): boolean {
 	return isLoopbackHost(host);
 }
 
-function warnIfViewerExposed(host: string, port: number): void {
-	if (isLoopbackOnlyHost(host)) return;
-	p.log.warn(
-		`Viewer bound to ${host}:${port}. codemem's viewer trust model assumes localhost-only access; do not expose it through a reverse proxy, tunnel, or public bind without adding your own auth layer.`,
-	);
+function warnIfViewerExposed(host: string, port: number): boolean {
+	if (isLoopbackOnlyHost(host)) return false;
+	p.log.error(`Refusing to bind the viewer to non-loopback address ${host}:${port}.`);
+	process.exitCode = 1;
+	return true;
 }
 
 export function isLikelyViewerCommand(command: string): boolean {
@@ -430,50 +423,6 @@ export function buildMaintenanceWorkerArgs(
 	return args;
 }
 
-function startMaintenanceWorkerProcess(invocation: ResolvedServeInvocation): ChildProcess | null {
-	const scriptPath = process.argv[1];
-	if (!scriptPath) {
-		p.log.warn("Unable to resolve CLI entrypoint for maintenance worker launch");
-		return null;
-	}
-	const dbPath = resolveDbPath(invocation.dbPath ?? undefined);
-	const child = spawn(process.execPath, buildMaintenanceWorkerArgs(scriptPath, invocation), {
-		cwd: process.cwd(),
-		stdio: "ignore",
-		env: {
-			...process.env,
-			CODEMEM_DB: dbPath,
-			...(invocation.configPath ? { CODEMEM_CONFIG: invocation.configPath } : {}),
-		},
-	});
-	child.unref();
-	if (child.pid) {
-		writeFileSync(
-			maintenanceWorkerPidFilePath(dbPath),
-			JSON.stringify({ pid: child.pid, dbPath }),
-			"utf-8",
-		);
-		p.log.step(`Maintenance worker started (pid ${child.pid})`);
-	}
-	return child;
-}
-
-async function stopMaintenanceWorkerProcess(
-	child: ChildProcess | null,
-	dbPath: string,
-): Promise<void> {
-	if (child?.pid && isProcessRunning(child.pid)) {
-		await terminateProcessPid(child.pid, { gracefulMs: 5000, forceMs: 5000 });
-	} else {
-		await terminateTrustedMaintenanceWorker(dbPath, { gracefulMs: 5000, forceMs: 5000 });
-	}
-	try {
-		rmSync(maintenanceWorkerPidFilePath(dbPath));
-	} catch {
-		// ignore
-	}
-}
-
 export function isSqliteVecLoadFailure(error: unknown): boolean {
 	if (!(error instanceof Error)) return false;
 	const text = error.message.toLowerCase();
@@ -498,9 +447,9 @@ export function sqliteVecFailureDiagnostics(error: unknown, dbPath: string): str
 }
 
 async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promise<void> {
-	warnIfViewerExposed(invocation.host, invocation.port);
+	if (warnIfViewerExposed(invocation.host, invocation.port)) return;
 	if (await isPortOpen(invocation.host, invocation.port)) {
-		p.log.warn(`Viewer already running at http://${invocation.host}:${invocation.port}`);
+		p.log.warn(`Viewer already running at ${viewerUrl(invocation, "/")}`);
 		return;
 	}
 	const scriptPath = process.argv[1];
@@ -527,65 +476,46 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 			"utf-8",
 		);
 	}
+	let browserUrl = viewerUrl(invocation, "/");
+	try {
+		const { createViewerRpcCall } = await import("@codemem/server");
+		const result = await createViewerRpcCall()("POST /v1/viewer/auth/nonce");
+		if (typeof result.nonce === "string") {
+			browserUrl += `/#auth=${encodeURIComponent(result.nonce)}`;
+		}
+	} catch {
+		p.log.warn("Daemon unavailable; viewer API requests will return 503 until it starts.");
+	}
 	p.intro("codemem viewer");
-	p.outro(
-		`Viewer started in background (pid ${child.pid}) at http://${invocation.host}:${invocation.port}`,
-	);
+	p.outro(`Viewer started in background (pid ${child.pid}). Open: ${browserUrl}`);
 }
 
 async function startForegroundViewer(invocation: ResolvedServeInvocation): Promise<void> {
-	const { createApp, closeStore, getStore } = await import("@codemem/server");
+	const { createApp, createViewerRpcCall } = await import("@codemem/server");
 	const { serve } = await import("@hono/node-server");
 
 	if (invocation.dbPath) process.env.CODEMEM_DB = invocation.dbPath;
 	if (invocation.configPath) process.env.CODEMEM_CONFIG = invocation.configPath;
-	warnIfViewerExposed(invocation.host, invocation.port);
+	if (warnIfViewerExposed(invocation.host, invocation.port)) return;
 	if (await isPortOpen(invocation.host, invocation.port)) {
-		p.log.warn(`Viewer already running at http://${invocation.host}:${invocation.port}`);
+		p.log.warn(`Viewer already running at ${viewerUrl(invocation, "/")}`);
 		process.exitCode = 1;
 		return;
 	}
-	const preparedDb = prepareViewerDatabase(invocation.dbPath);
-
-	const observer = new ObserverClient();
-	let store: MemoryStore;
+	const rpc = createViewerRpcCall();
+	let browserUrl = viewerUrl(invocation, "/");
 	try {
-		store = getStore();
-	} catch (err) {
-		if (isEmbeddingDisabled() || !isSqliteVecLoadFailure(err)) {
-			throw err;
+		const result = await rpc("POST /v1/viewer/auth/nonce");
+		if (typeof result.nonce === "string") {
+			browserUrl += `/#auth=${encodeURIComponent(result.nonce)}`;
 		}
-
-		p.log.warn("sqlite-vec failed to load; retrying viewer startup with embeddings disabled");
-		for (const line of sqliteVecFailureDiagnostics(
-			err,
-			resolveDbPath(invocation.dbPath ?? undefined),
-		)) {
-			p.log.warn(`sqlite-vec diagnostic: ${line}`);
-		}
-		process.env.CODEMEM_EMBEDDING_DISABLED = "1";
-		closeStore();
-		store = getStore();
-		p.log.warn("Embeddings disabled for this viewer process; raw-event ingestion remains active.");
+	} catch {
+		p.log.warn("Daemon unavailable; viewer API requests will return 503 until it starts.");
 	}
-
-	const sweeper = new RawEventSweeper(store, { observer });
-	sweeper.start();
 
 	const dbPath = resolveDbPath(invocation.dbPath ?? undefined);
-	if (!(await terminateTrustedMaintenanceWorker(dbPath, { gracefulMs: 1000, forceMs: 5000 }))) {
-		p.log.warn(
-			"Existing maintenance worker is not trusted or did not stop; starting viewer anyway",
-		);
-	}
-
-	const app = createApp({
-		storeFactory: () => store,
-		sweeper,
-		observer,
-	});
+	const app = createApp({ rpc });
 	const pidPath = pidFilePath(dbPath);
-	let maintenanceWorker: ChildProcess | null = null;
 
 	const server = serve(
 		{ fetch: app.fetch, hostname: invocation.host, port: invocation.port },
@@ -597,15 +527,13 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 			);
 			p.intro("codemem viewer");
 			p.log.success(`Listening on http://${info.address}:${info.port}`);
-			p.log.info(`Database: ${preparedDb}`);
-			p.log.step("Raw event sweeper started");
-			maintenanceWorker = startMaintenanceWorkerProcess(invocation);
+			p.log.info(`Open: ${browserUrl}`);
 		},
 	);
 
 	server.on("error", (err: NodeJS.ErrnoException) => {
 		if (err.code === "EADDRINUSE") {
-			p.log.warn(`Viewer already running at http://${invocation.host}:${invocation.port}`);
+			p.log.warn(`Viewer already running at ${viewerUrl(invocation, "/")}`);
 		} else {
 			p.log.error(err.message);
 		}
@@ -614,9 +542,6 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 
 	const shutdown = async () => {
 		p.outro("shutting down");
-		await stopMaintenanceWorkerProcess(maintenanceWorker, dbPath);
-		await sweeper.stop();
-
 		await new Promise<void>((resolve) => {
 			server.close(() => resolve());
 		}).catch(() => {
@@ -628,31 +553,17 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 		} catch {
 			// ignore
 		}
-		closeStore();
 		process.exit(0);
 	};
 
 	// Force-exit safety net if graceful shutdown stalls for an unusually long time.
 	const forceShutdown = () => {
 		setTimeout(() => {
-			if (maintenanceWorker?.pid && isProcessRunning(maintenanceWorker.pid)) {
-				try {
-					process.kill(maintenanceWorker.pid, "SIGKILL");
-				} catch {
-					// ignore
-				}
-			}
 			try {
 				rmSync(pidPath);
 			} catch {
 				// ignore
 			}
-			try {
-				rmSync(maintenanceWorkerPidFilePath(dbPath));
-			} catch {
-				// ignore
-			}
-			closeStore();
 			process.exit(1);
 		}, 30000).unref();
 	};

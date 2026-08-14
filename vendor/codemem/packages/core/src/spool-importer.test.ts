@@ -156,8 +156,9 @@ describe("phase 1 spool importer", () => {
 				rpc("GET /v1/view", { collection: "memories" }, "view-startup-import"),
 			);
 			expect(view).toHaveProperty("result");
-			const memories = (view as { result: { items: Array<{ id: number; title: string }> } }).result
-				.items;
+			const memories = (
+				view as { result: { body: { items: Array<{ id: number; title: string }> } } }
+			).result.body.items;
 			expect(memories).toHaveLength(1);
 			const committed = variants.find((variant) => variant.body.title === memories[0]?.title);
 			expect(committed).toBeDefined();

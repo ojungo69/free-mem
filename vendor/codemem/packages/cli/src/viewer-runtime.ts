@@ -1,8 +1,12 @@
-import { probeCodememViewerLiveness, type ViewerLivenessProbeDependencies } from "@codemem/core";
+import {
+	isLoopbackHost,
+	probeCodememViewerLiveness,
+	type ViewerLivenessProbeDependencies,
+} from "@codemem/core";
 
 // The probe contract lives in @codemem/core so the CLI and MCP server share
 // one implementation; re-export it for existing CLI consumers.
-export { probeCodememViewerLiveness, viewerUrl } from "@codemem/core";
+export { isLoopbackHost, probeCodememViewerLiveness, viewerUrl } from "@codemem/core";
 
 export interface ViewerPidRecord {
 	pid: number;
@@ -71,25 +75,6 @@ export function parseViewerPidRecord(raw: string | null): ParsedViewerPidRecord 
 		const pid = Number(trimmed);
 		return isValidPid(pid) ? { state: "legacy", pid } : { state: "malformed" };
 	}
-}
-
-export function isLoopbackHost(host: string): boolean {
-	const normalized = host
-		.trim()
-		.toLowerCase()
-		.replace(/^\[(.*)\]$/, "$1");
-	const ipv4Parts = normalized.split(".");
-	const isIpv4Loopback =
-		ipv4Parts.length >= 1 &&
-		ipv4Parts.length <= 4 &&
-		ipv4Parts[0] === "127" &&
-		ipv4Parts.every((part) => /^\d+$/.test(part) && Number(part) <= 255);
-	return (
-		normalized === "localhost" ||
-		normalized === "::1" ||
-		normalized === "0:0:0:0:0:0:0:1" ||
-		isIpv4Loopback
-	);
 }
 
 export type ViewerProbeTarget = Pick<ViewerPidRecord, "host" | "port"> & { pid?: number };

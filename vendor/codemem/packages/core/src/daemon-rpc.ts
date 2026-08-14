@@ -12,7 +12,6 @@ import {
 	type RpcSuccess,
 	type TypedRpcError,
 } from "./daemon-rpc-contract.js";
-import { buildFilterClausesWithContext } from "./filters.js";
 import { validateMemoryKind } from "./memory-kinds.js";
 import { dispatchClassA, MutationConflictError } from "./mutation-dispatcher.js";
 import {
@@ -40,6 +39,8 @@ import {
 } from "./spool.js";
 import type { MemoryStore } from "./store.js";
 import type { MemoryFilters } from "./types.js";
+import type { ViewerAuthState } from "./viewer-auth.js";
+import type { ViewerReadHandler } from "./viewer-read.js";
 import type { WriterActor } from "./writer-actor.js";
 
 type RpcIdentity = { pid: number; nonce: string };
@@ -135,7 +136,11 @@ const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body", "confidence", "project"],
 	"DELETE /v1/memories/:id": ["id", "requestId", "expectedRevision"],
 	"GET /v1/checkpoints": ["project", "state", "limit"],
-	"GET /v1/view": ["collection", "id", "sessionId", "project", "kind", "limit"],
+	"GET /v1/view": ["collection", "sessionId", "project", "kind", "scope", "limit", "offset"],
+	"POST /v1/viewer/auth/nonce": [],
+	"POST /v1/viewer/auth/exchange": ["nonce"],
+	"POST /v1/viewer/auth/verify": ["bearer", "session"],
+	"POST /v1/viewer/auth/logout": ["session"],
 	"POST /v1/backup/create": ["operationId", "payloadHash", "reason"],
 	"POST /v1/backup/verify": ["backupId"],
 	"POST /v1/backup/restore": ["operationId", "payloadHash", "backupId"],
@@ -167,6 +172,10 @@ const METHOD_REQUIRED_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"DELETE /v1/memories/:id": ["id", "requestId"],
 	"GET /v1/checkpoints": [],
 	"GET /v1/view": ["collection"],
+	"POST /v1/viewer/auth/nonce": [],
+	"POST /v1/viewer/auth/exchange": ["nonce"],
+	"POST /v1/viewer/auth/verify": [],
+	"POST /v1/viewer/auth/logout": ["session"],
 	"POST /v1/backup/create": ["operationId", "payloadHash", "reason"],
 	"POST /v1/backup/verify": ["backupId"],
 	"POST /v1/backup/restore": ["operationId", "payloadHash", "backupId"],
@@ -281,6 +290,8 @@ export type DaemonRpcContext = {
 	onStop: () => void;
 	writer: WriterActor;
 	store: MemoryStore;
+	viewerAuth: ViewerAuthState;
+	viewerRead: ViewerReadHandler;
 };
 
 export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
@@ -478,6 +489,32 @@ async function handleMethod(
 	}
 	if (method === "GET /v1/view") {
 		return handleView(ctx, body);
+	}
+	if (method === "POST /v1/viewer/auth/nonce") {
+		return ctx.viewerAuth.issueNonce();
+	}
+	if (method === "POST /v1/viewer/auth/exchange") {
+		if (typeof body.nonce !== "string") throw new RpcRequestError("nonce must be a string.");
+		return { session: ctx.viewerAuth.exchangeNonce(body.nonce) };
+	}
+	if (method === "POST /v1/viewer/auth/verify") {
+		if (body.bearer !== undefined && typeof body.bearer !== "string") {
+			throw new RpcRequestError("bearer must be a string.");
+		}
+		if (body.session !== undefined && typeof body.session !== "string") {
+			throw new RpcRequestError("session must be a string.");
+		}
+		const bearer = typeof body.bearer === "string" ? body.bearer : null;
+		const session = typeof body.session === "string" ? body.session : null;
+		return {
+			authenticated:
+				(bearer !== null && ctx.viewerAuth.verifyBearer(bearer)) ||
+				(session !== null && ctx.viewerAuth.verifySession(session)),
+		};
+	}
+	if (method === "POST /v1/viewer/auth/logout") {
+		if (typeof body.session !== "string") throw new RpcRequestError("session must be a string.");
+		return { loggedOut: ctx.viewerAuth.logout(body.session) };
 	}
 	if (method === "POST /v1/jobs") {
 		return { jobId: null, state: "not_implemented", kind: body.kind };
@@ -1050,47 +1087,31 @@ function handleMemoryGet(
 	};
 }
 
-function handleView(ctx: DaemonRpcContext, body: Record<string, unknown>): Record<string, unknown> {
+async function handleView(
+	ctx: DaemonRpcContext,
+	body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
 	const collection = String(body.collection);
 	if (!VIEW_COLLECTIONS.has(collection)) {
 		throw new RpcRequestError(`Unknown view collection: ${collection}`);
 	}
-	const filters = parseMemoryFilters({
-		...(body.project === undefined ? {} : { project: body.project }),
-		...(body.kind === undefined ? {} : { kind: body.kind }),
-		...(body.sessionId === undefined ? {} : { session_id: requirePositiveInt(body.sessionId) }),
-	});
-	const limit = parseBoundedInteger(body.limit, 100, 1, 100, "limit");
-	if (collection === "sessions") {
-		const filterResult = buildFilterClausesWithContext(filters, ctx.store.ownershipFilterContext());
-		const clauses = [
-			"memory_items.session_id = sessions.id",
-			"memory_items.active = 1",
-			...filterResult.clauses,
-		];
-		const items = ctx.writer
-			.prepare(
-				`SELECT sessions.id, sessions.project, sessions.started_at, sessions.cwd
-				 FROM sessions
-				 WHERE EXISTS (SELECT 1 FROM memory_items WHERE ${clauses.join(" AND ")})
-				 ORDER BY sessions.id DESC LIMIT ?`,
-			)
-			.all(...filterResult.params, limit);
-		return { collection, items };
+	if (body.limit !== undefined) parseBoundedInteger(body.limit, 20, 1, 1_000, "limit");
+	if (body.offset !== undefined) {
+		parseBoundedInteger(body.offset, 0, 0, 1_000_000, "offset");
 	}
-	if (collection === "memories") {
-		const items = ctx.store.recent(limit, filters).map(({ id, kind, title, project }) => ({
-			id,
-			kind,
-			title,
-			project,
-		}));
-		return { collection, items };
+	if (body.sessionId !== undefined) requirePositiveInt(body.sessionId);
+	for (const field of ["project", "kind"] as const) {
+		if (
+			body[field] !== undefined &&
+			(typeof body[field] !== "string" || Buffer.byteLength(body[field], "utf8") > 4_096)
+		) {
+			throw new RpcRequestError(`${field} must be a bounded string.`);
+		}
 	}
-	if (collection === "stats") {
-		return { collection, items: { memories: ctx.store.stats().database.memory_items } };
+	if (body.scope !== undefined && body.scope !== "mine" && body.scope !== "theirs") {
+		throw new RpcRequestError("scope must be mine or theirs.");
 	}
-	return { collection, items: [] };
+	return (await ctx.viewerRead(body)) as Record<string, unknown>;
 }
 
 function ensureSession(db: WriterActor, project: string | null): number {

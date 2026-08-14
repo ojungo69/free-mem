@@ -7,11 +7,67 @@
 export function payloadError(payload: unknown): string | undefined {
 	if (!payload || typeof payload !== "object") return undefined;
 	const maybeError = (payload as { error?: unknown }).error;
-	return typeof maybeError === "string" ? maybeError : undefined;
+	if (typeof maybeError === "string") return maybeError;
+	if (!maybeError || typeof maybeError !== "object") return undefined;
+	const message = (maybeError as { message?: unknown }).message;
+	return typeof message === "string" ? message : undefined;
+}
+
+type ViewerSessionBootstrap = {
+	hash: string;
+	pathname: string;
+	search: string;
+	state: unknown;
+	replaceState: (data: unknown, unused: string, url?: string | URL | null) => void;
+	fetch: typeof fetch;
+};
+
+export function bootstrapViewerSession(
+	options: ViewerSessionBootstrap = {
+		hash: window.location.hash,
+		pathname: window.location.pathname,
+		search: window.location.search,
+		state: window.history.state,
+		replaceState: window.history.replaceState.bind(window.history),
+		fetch,
+	},
+): Promise<void> {
+	const fragment = new URLSearchParams(options.hash.replace(/^#/, ""));
+	const nonce = fragment.get("auth");
+	if (nonce === null) return Promise.resolve();
+	fragment.delete("auth");
+	const remaining = fragment.toString();
+	options.replaceState(
+		options.state,
+		"",
+		`${options.pathname}${options.search}${remaining ? `#${remaining}` : ""}`,
+	);
+	if (!/^[A-Za-z0-9_-]{43}$/.test(nonce)) {
+		return Promise.reject(new Error("Invalid viewer login nonce"));
+	}
+	return options
+		.fetch("/api/auth/exchange", {
+			method: "POST",
+			credentials: "same-origin",
+			cache: "no-store",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ nonce }),
+		})
+		.then((response) => {
+			if (!response.ok) throw new Error("Viewer login failed");
+		});
+}
+
+const viewerSessionReady =
+	typeof window === "undefined" ? Promise.resolve() : bootstrapViewerSession();
+
+export async function viewerFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+	await viewerSessionReady;
+	return fetch(input, { credentials: "same-origin", ...init });
 }
 
 export async function fetchJson<T = Record<string, unknown>>(url: string): Promise<T> {
-	const resp = await fetch(url);
+	const resp = await viewerFetch(url);
 	if (!resp.ok) throw new Error(`${url}: ${resp.status} ${resp.statusText}`);
 	return resp.json() as Promise<T>;
 }

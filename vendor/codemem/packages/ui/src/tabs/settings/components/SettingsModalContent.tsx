@@ -2,7 +2,6 @@ import * as Dialog from "@radix-ui/react-dialog";
 import type { ComponentChildren } from "preact";
 import { DialogCloseButton } from "../../../components/primitives/dialog-close-button";
 import { RadixTabs, RadixTabsContent } from "../../../components/primitives/radix-tabs";
-import { handlePrimaryActionKeyboard } from "../../../lib/keyboard";
 import { SETTINGS_TABS } from "../data/constants";
 import type { SettingsPanelProps, SettingsRenderState } from "../data/types";
 import { ObserverPanel } from "./ObserverPanel";
@@ -15,9 +14,7 @@ export interface SettingsModalContentProps {
 	activeTab: string;
 	showAdvanced: boolean;
 	renderState: SettingsRenderState;
-	settingsDirty: boolean;
 	onClose: () => void;
-	onSave: () => void;
 	onActiveTabChange: (tab: string) => void;
 	onAdvancedToggle: (checked: boolean) => void;
 	observerStatusBannerSlot: ComponentChildren;
@@ -28,25 +25,13 @@ export function SettingsModalContent({
 	activeTab,
 	showAdvanced,
 	renderState,
-	settingsDirty,
 	onClose,
-	onSave,
 	onActiveTabChange,
 	onAdvancedToggle,
 	observerStatusBannerSlot,
 }: SettingsModalContentProps) {
-	const saveDisabled = !settingsDirty || renderState.isSaving;
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: delegated keydown for primary-action handling; the actual interactive element is the Save button below, which is announced semantically. Radix Dialog handles Escape itself.
-		<div
-			className="modal-card"
-			onKeyDown={(event) =>
-				handlePrimaryActionKeyboard(event, {
-					onSubmit: onSave,
-					disabled: saveDisabled,
-				})
-			}
-		>
+		<div className="modal-card">
 			<div className="modal-header">
 				<Dialog.Title asChild>
 					<h2>Settings</h2>
@@ -59,7 +44,7 @@ export function SettingsModalContent({
 			</div>
 			<div className="modal-body">
 				<div className="small" id="settingsDescription">
-					Tune how codemem connects and processes work.
+					View the effective configuration. Edit the local config file to make changes.
 				</div>
 				<div className="settings-advanced-toolbar">
 					<SettingsSwitchRow
@@ -91,11 +76,15 @@ export function SettingsModalContent({
 					value={activeTab}
 				>
 					<RadixTabsContent className="settings-panel" forceMount value="observer">
-						<ObserverPanel {...panelProps} observerStatusBannerSlot={observerStatusBannerSlot} />
+						<fieldset className="settings-panel-readonly" disabled>
+							<ObserverPanel {...panelProps} observerStatusBannerSlot={observerStatusBannerSlot} />
+						</fieldset>
 					</RadixTabsContent>
 
 					<RadixTabsContent className="settings-panel" forceMount value="queue">
-						<ProcessingPanel {...panelProps} />
+						<fieldset className="settings-panel-readonly" disabled>
+							<ProcessingPanel {...panelProps} />
+						</fieldset>
 					</RadixTabsContent>
 				</RadixTabs>
 
@@ -120,15 +109,8 @@ export function SettingsModalContent({
 				<div className="small" id="settingsStatus">
 					{renderState.statusText}
 				</div>
-				<button
-					className="settings-save"
-					data-primary-action="true"
-					disabled={saveDisabled}
-					id="settingsSave"
-					onClick={onSave}
-					type="button"
-				>
-					{renderState.isSaving ? "Saving…" : "Save changes"}
+				<button className="settings-save" disabled id="settingsSave" type="button">
+					Read-only
 				</button>
 			</div>
 		</div>

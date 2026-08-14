@@ -2,7 +2,13 @@
  * keyed off the current project, memory actions, and the pack-trace
  * debug call used by the Inspector. */
 
-import { buildProjectParams, fetchJson, payloadError, readJsonPayload } from "./internal";
+import {
+	buildProjectParams,
+	fetchJson,
+	payloadError,
+	readJsonPayload,
+	viewerFetch,
+} from "./internal";
 import type { PackTrace, PaginatedResponse } from "./types";
 
 export async function loadMemories(project: string): Promise<PaginatedResponse> {
@@ -15,35 +21,6 @@ export async function loadMemoriesPage(
 ): Promise<PaginatedResponse> {
 	const query = buildProjectParams(project, options?.limit, options?.offset);
 	return fetchJson<PaginatedResponse>(`/api/observations?${query}`);
-}
-
-export async function moveMemoryProject(
-	memoryId: number,
-	project: string,
-): Promise<{ session_id: number; project: string; moved_memory_count: number }> {
-	const resp = await fetch("/api/memories/project", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ memory_id: memoryId, project }),
-	});
-	const { text, payload } = await readJsonPayload<{
-		session_id: number;
-		project: string;
-		moved_memory_count: number;
-	}>(resp);
-	if (!resp.ok) throw new Error(payloadError(payload) || text || "request failed");
-	return payload;
-}
-
-export async function forgetMemory(memoryId: number): Promise<{ status?: string }> {
-	const resp = await fetch("/api/memories/forget", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ memory_id: memoryId }),
-	});
-	const { text, payload } = await readJsonPayload<{ status?: string }>(resp);
-	if (!resp.ok) throw new Error(payloadError(payload) || text || "request failed");
-	return payload;
 }
 
 export async function loadSummaries(project: string): Promise<PaginatedResponse> {
@@ -65,7 +42,7 @@ export async function tracePack(payload: {
 	token_budget?: number | null;
 	limit?: number;
 }): Promise<PackTrace> {
-	const resp = await fetch("/api/pack/trace", {
+	const resp = await viewerFetch("/api/pack/trace", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),

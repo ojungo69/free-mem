@@ -3,16 +3,12 @@
  * to SettingsDialogContent + the settingsState-driven handlers. */
 
 import { render } from "preact";
-import * as api from "../../lib/api";
 import { $, $button } from "../../lib/dom";
-import { showGlobalNotice } from "../../lib/notice";
 import { state } from "../../lib/state";
 import type { ObserverStatusShape } from "./components/ObserverStatusBanner";
 import { ObserverStatusBanner as ObserverStatusBannerComponent } from "./components/ObserverStatusBanner";
 import { SettingsDialogShell } from "./components/SettingsDialogShell";
 import { SettingsModalContent } from "./components/SettingsModalContent";
-import { collectSettingsPayload, isProtectedConfigKey } from "./data/config-loader";
-import { diffSettingsPayload } from "./data/diff-payload";
 import { createSettingsEventHandlers } from "./data/event-handlers";
 import {
 	getObserverModelDescription as getObserverModelDescriptionRaw,
@@ -23,7 +19,6 @@ import {
 	hiddenUnlessAdvanced as hiddenUnlessAdvancedRaw,
 	protectedConfigHelp,
 } from "./data/model-accessors";
-import { buildSettingsNotice } from "./data/notice";
 import { settingsState } from "./data/state";
 import {
 	hideHelpTooltip,
@@ -31,7 +26,6 @@ import {
 	setDirty,
 	setSettingsTab,
 	updateFormState,
-	updateRenderState,
 } from "./data/state-ops";
 import type { SettingsPanelProps } from "./data/types";
 
@@ -98,15 +92,9 @@ function SettingsDialogContent() {
 			activeTab={settingsState.activeTab}
 			showAdvanced={settingsState.showAdvanced}
 			renderState={settingsState.renderState}
-			settingsDirty={state.settingsDirty}
 			onClose={() => {
 				if (settingsState.startPolling && settingsState.refresh) {
 					closeSettings(settingsState.startPolling, settingsState.refresh);
-				}
-			}}
-			onSave={() => {
-				if (settingsState.startPolling && settingsState.refresh) {
-					void saveSettings(settingsState.startPolling, settingsState.refresh);
 				}
 			}}
 			onActiveTabChange={setSettingsTab}
@@ -124,9 +112,6 @@ function renderSettingsShell() {
 	const mount = $("settingsDialogMount");
 	if (!mount) return;
 	render(<SettingsDialogShellBound />, mount);
-	// Lucide icon replacement happens in the shell's open-state effect — the
-	// Dialog renders children only while open, so createIcons() here would
-	// no-op against the unmounted tree.
 }
 
 function ensureSettingsShell() {
@@ -166,38 +151,6 @@ export function closeSettings(startPolling: () => void, refreshCallback: () => v
 	settingsState.touchedKeys = new Set<string>();
 	startPolling();
 	refreshCallback();
-}
-
-export async function saveSettings(startPolling: () => void, refreshCallback: () => void) {
-	if (settingsState.renderState.isSaving) return;
-	updateRenderState({ isSaving: true, statusText: "Saving changes…" });
-
-	try {
-		const current = collectSettingsPayload({ allowUntouchedParseErrors: true });
-		const changed = diffSettingsPayload({
-			current,
-			baseline: settingsState.baseline,
-			envOverrides: settingsState.envOverrides,
-			touchedKeys: settingsState.touchedKeys,
-			isProtected: isProtectedConfigKey,
-		});
-		if (Object.keys(changed).length === 0) {
-			updateRenderState({ isSaving: false, statusText: "No unsaved changes" });
-			setDirty(false);
-			closeSettings(startPolling, refreshCallback);
-			return;
-		}
-
-		const result = await api.saveConfig(changed);
-		const notice = buildSettingsNotice(result);
-		updateRenderState({ isSaving: false, statusText: "Saved changes" });
-		setDirty(false);
-		closeSettings(startPolling, refreshCallback);
-		showGlobalNotice(notice.message, notice.type);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : "unknown error";
-		updateRenderState({ isSaving: false, statusText: `Save failed: ${message}` });
-	}
 }
 
 export function initSettings(

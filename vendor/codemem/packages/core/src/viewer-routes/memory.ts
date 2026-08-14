@@ -2,19 +2,23 @@
  * Memory routes — observations, summaries, sessions, projects, pack, artifacts.
  */
 
-import type { MemoryFilters, MemoryStore } from "@codemem/core";
-import {
-	buildFilterClausesWithContext,
-	canonicalMemoryKind,
-	fromJson,
-	isSummaryLikeMemory as isCoreSummaryLikeMemory,
-	parseStrictInteger,
-	schema,
-} from "@codemem/core";
 import { eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
-import { queryInt } from "../helpers.js";
+import { fromJson } from "../db.js";
+import { buildFilterClausesWithContext } from "../filters.js";
+import { parseStrictInteger } from "../integers.js";
+import { schema } from "../schema.js";
+import type { MemoryStore } from "../store.js";
+import {
+	canonicalMemoryKind,
+	isSummaryLikeMemory as isCoreSummaryLikeMemory,
+} from "../summary-memory.js";
+import type { MemoryFilters } from "../types.js";
+
+function queryInt(value: string | undefined, fallback: number): number {
+	return parseStrictInteger(value) ?? fallback;
+}
 
 type StoreFactory = () => MemoryStore;
 
@@ -425,86 +429,6 @@ export function memoryRoutes(getStore: StoreFactory) {
 		}
 	});
 
-	// GET /api/pack
-	app.get("/api/pack", async (c) => {
-		const store = getStore();
-		{
-			const context = c.req.query("context") || "";
-			if (!context) {
-				return c.json({ error: "context required" }, 400);
-			}
-			const limit = queryInt(c.req.query("limit"), 10);
-			const tokenBudgetStr = c.req.query("token_budget");
-			let tokenBudget: number | undefined;
-			if (tokenBudgetStr) {
-				tokenBudget = parseStrictInteger(tokenBudgetStr) ?? undefined;
-				if (tokenBudget === undefined) {
-					return c.json({ error: "token_budget must be int" }, 400);
-				}
-			}
-			const project = c.req.query("project") || undefined;
-			const filters: { project?: string } = {};
-			if (project) filters.project = project;
-			const pack = await store.buildMemoryPackAsync(context, limit, tokenBudget ?? null, filters);
-			return c.json(pack);
-		}
-	});
-
-	app.post("/api/pack/trace", async (c) => {
-		const store = getStore();
-		const parsed = await c.req.json().catch(() => Symbol.for("invalid-json"));
-		if (parsed === Symbol.for("invalid-json")) {
-			return c.json({ error: "invalid json body" }, 400);
-		}
-		const body = parsed as {
-			context?: unknown;
-			limit?: unknown;
-			token_budget?: unknown;
-			project?: unknown;
-			working_set_files?: unknown;
-		} | null;
-		const context = typeof body?.context === "string" ? body.context.trim() : "";
-		if (!context) {
-			return c.json({ error: "context required" }, 400);
-		}
-		const limit =
-			body?.limit == null
-				? 10
-				: typeof body.limit === "number" && Number.isInteger(body.limit) && body.limit >= 1
-					? body.limit
-					: null;
-		if (limit == null) {
-			return c.json({ error: "limit must be a positive int" }, 400);
-		}
-		let tokenBudget: number | null = null;
-		if (body?.token_budget != null) {
-			if (
-				typeof body.token_budget !== "number" ||
-				!Number.isInteger(body.token_budget) ||
-				body.token_budget < 0
-			) {
-				return c.json({ error: "token_budget must be int" }, 400);
-			}
-			tokenBudget = body.token_budget;
-		}
-		const project = typeof body?.project === "string" && body.project.trim() ? body.project : null;
-		if (body?.working_set_files != null && !Array.isArray(body.working_set_files)) {
-			return c.json({ error: "working_set_files must be an array of strings" }, 400);
-		}
-		if (
-			Array.isArray(body?.working_set_files) &&
-			body.working_set_files.some((value) => typeof value !== "string")
-		) {
-			return c.json({ error: "working_set_files must be an array of strings" }, 400);
-		}
-		const workingSetFiles = Array.isArray(body?.working_set_files) ? body.working_set_files : [];
-		const filters: { project?: string; working_set_paths?: string[] } = {};
-		if (project) filters.project = project;
-		if (workingSetFiles.length > 0) filters.working_set_paths = workingSetFiles;
-		const trace = await store.buildMemoryPackTraceAsync(context, limit, tokenBudget, filters);
-		return c.json(trace);
-	});
-
 	// GET /api/memory
 	app.get("/api/memory", (c) => {
 		const store = getStore();
@@ -544,117 +468,6 @@ export function memoryRoutes(getStore: StoreFactory) {
 				.where(eq(schema.artifacts.session_id, sessionId))
 				.all();
 			return c.json({ items: rows });
-		}
-	});
-
-	// POST /api/memories/visibility
-	app.post("/api/memories/visibility", async (c) => {
-		const store = getStore();
-		let body: Record<string, unknown>;
-		try {
-			body = await c.req.json<Record<string, unknown>>();
-		} catch {
-			return c.json({ error: "invalid JSON" }, 400);
-		}
-		const memoryId = parseStrictInteger(
-			typeof body.memory_id === "string" ? body.memory_id : String(body.memory_id ?? ""),
-		);
-		if (memoryId == null || memoryId <= 0) {
-			return c.json({ error: "memory_id must be int" }, 400);
-		}
-		if (!store.get(memoryId)) {
-			return c.json({ error: "memory not found" }, 404);
-		}
-		const visibility = String(body.visibility ?? "").trim();
-		if (visibility !== "private" && visibility !== "shared") {
-			return c.json({ error: "visibility must be private or shared" }, 400);
-		}
-		try {
-			const item = store.updateMemoryVisibility(memoryId, visibility);
-			return c.json({ item });
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg.includes("not found")) return c.json({ error: msg }, 404);
-			if (msg.includes("not owned")) return c.json({ error: msg }, 403);
-			return c.json({ error: msg }, 400);
-		}
-	});
-
-	// POST /api/memories/project
-	app.post("/api/memories/project", async (c) => {
-		const store = getStore();
-		let body: Record<string, unknown>;
-		try {
-			body = await c.req.json<Record<string, unknown>>();
-		} catch {
-			return c.json({ error: "invalid JSON" }, 400);
-		}
-		const memoryId = parseStrictInteger(
-			typeof body.memory_id === "string" ? body.memory_id : String(body.memory_id ?? ""),
-		);
-		if (memoryId == null || memoryId <= 0) {
-			return c.json({ error: "memory_id must be int" }, 400);
-		}
-		const project = String(body.project ?? "").trim();
-		if (!project) {
-			return c.json({ error: "project must be a non-empty string" }, 400);
-		}
-		if (!store.get(memoryId)) {
-			return c.json({ error: "memory not found" }, 404);
-		}
-		try {
-			const result = store.moveMemoryProject(memoryId, project);
-			return c.json(result);
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg.includes("not found")) return c.json({ error: msg }, 404);
-			if (msg.includes("not owned")) return c.json({ error: msg }, 403);
-			return c.json({ error: msg }, 400);
-		}
-	});
-
-	// POST /api/memories/forget
-	app.post("/api/memories/forget", async (c) => {
-		const store = getStore();
-		let body: Record<string, unknown>;
-		try {
-			body = await c.req.json<Record<string, unknown>>();
-		} catch {
-			return c.json({ error: "invalid JSON" }, 400);
-		}
-		const memoryId = parseStrictInteger(
-			typeof body.memory_id === "string" ? body.memory_id : String(body.memory_id ?? ""),
-		);
-		if (memoryId == null || memoryId <= 0) {
-			return c.json({ error: "memory_id must be int" }, 400);
-		}
-		if (!store.get(memoryId)) {
-			return c.json({ error: "memory not found" }, 404);
-		}
-
-		const row = drizzle(store.db, { schema })
-			.select()
-			.from(schema.memoryItems)
-			.where(eq(schema.memoryItems.id, memoryId))
-			.get();
-		if (!row) {
-			return c.json({ error: "memory not found" }, 404);
-		}
-		if (!store.memoryOwnedBySelf(row as Record<string, unknown>)) {
-			return c.json({ error: "memory not owned by this device" }, 403);
-		}
-		if (Number(row.active ?? 1) === 0 || row.deleted_at != null) {
-			return c.json({ status: "ok" });
-		}
-
-		try {
-			store.forget(memoryId);
-			return c.json({ status: "ok" });
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg.includes("not found")) return c.json({ error: msg }, 404);
-			if (msg.includes("not owned")) return c.json({ error: msg }, 403);
-			return c.json({ error: msg }, 400);
 		}
 	});
 

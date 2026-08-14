@@ -4,14 +4,12 @@
  * the decomposition; this file now only keeps the public API stable
  * for `import * as api from "../lib/api"` call sites. */
 
-export { loadConfig, loadObserverStatus, saveConfig } from "./api/config";
+export { loadConfig, loadObserverStatus } from "./api/config";
 export {
-	forgetMemory,
 	loadMemories,
 	loadMemoriesPage,
 	loadSummaries,
 	loadSummariesPage,
-	moveMemoryProject,
 	tracePack,
 } from "./api/memories";
 export { loadProjects, loadRuntimeInfo, pingViewerReady } from "./api/runtime";

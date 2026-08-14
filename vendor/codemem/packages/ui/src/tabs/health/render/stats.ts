@@ -12,7 +12,7 @@ import {
 	formatTokenCount,
 } from "../../../lib/format";
 import { state } from "../../../lib/state";
-import { renderIcons, renderStatBlocks, renderText } from "../components";
+import { renderStatBlocks, renderText } from "../components";
 import type { StatItem } from "../types";
 
 export function renderStats() {
@@ -110,5 +110,4 @@ export function renderStats() {
 		const dbPath = collapseHome(db.path || "unknown");
 		renderText(metaLine, `DB: ${dbPath} · ${formatBytes(db.size_bytes || 0)}${projectSuffix}`);
 	}
-	renderIcons();
 }

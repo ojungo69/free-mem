@@ -38,12 +38,8 @@ export function setTheme(theme: string) {
 	localStorage.setItem(THEME_STORAGE_KEY, selected.id);
 }
 
-interface LucideLike {
-	createIcons: () => void;
-}
-
 /**
- * Theme toggle as a Lucide icon button. The icon shows the *destination*
+ * The icon shows the *destination*
  * mode — sun while dark, moon while light — so the button reads as
  * "click me to become this." Aria-label and icon update each flip.
  */
@@ -58,8 +54,6 @@ export function initThemeToggle(button: HTMLButtonElement | null) {
 		icon.setAttribute("data-lucide", iconName);
 		icon.setAttribute("aria-hidden", "true");
 		button.appendChild(icon);
-		const lucide = (globalThis as { lucide?: LucideLike }).lucide;
-		lucide?.createIcons?.();
 	};
 
 	applyIcon(getTheme() === "dark" ? "dark" : "light");

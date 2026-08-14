@@ -5,21 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>codemem viewer</title>
     <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script>
-      (function() {
-        try {
-          var rawTheme = localStorage.getItem('codemem-theme') || '';
-          if (!rawTheme) return;
-          var mode = rawTheme.indexOf('dark') === 0 ? 'dark' : 'light';
-          document.documentElement.setAttribute('data-theme', mode);
-          document.documentElement.setAttribute('data-color-mode', mode);
-        } catch (_e) {}
-      })();
-    </script>
     <link rel="stylesheet" href="/assets/tokens.css" />
     <link rel="stylesheet" href="/assets/themes.css" />
     <style>
@@ -64,6 +49,31 @@
       }
 
       [hidden] { display: none !important; }
+
+      i[data-lucide] { display: inline-flex; align-items: center; justify-content: center; font-style: normal; }
+      i[data-lucide]::before { content: "•"; }
+      i[data-lucide="sun"]::before { content: "☀"; }
+      i[data-lucide="moon"]::before { content: "◐"; }
+      i[data-lucide="settings"]::before { content: "⚙"; }
+      i[data-lucide="x"]::before { content: "×"; }
+      i[data-lucide="check"]::before { content: "✓"; }
+      i[data-lucide="help-circle"]::before { content: "?"; }
+      i[data-lucide="alert-triangle"]::before { content: "!"; }
+      i[data-lucide="loader"]::before { content: "…"; }
+      i[data-lucide="activity"]::before, i[data-lucide="heart-pulse"]::before { content: "⌁"; }
+      i[data-lucide="archive"]::before, i[data-lucide="package"]::before { content: "▣"; }
+      i[data-lucide="book-open"]::before { content: "▤"; }
+      i[data-lucide="check-circle"]::before, i[data-lucide="copy-check"]::before,
+      i[data-lucide="shield-check"]::before { content: "✓"; }
+      i[data-lucide="clock-3"]::before { content: "◷"; }
+      i[data-lucide="inbox"]::before { content: "⌄"; }
+      i[data-lucide="layers"]::before { content: "▱"; }
+      i[data-lucide="pencil"]::before { content: "✎"; }
+      i[data-lucide="percent"]::before { content: "%"; }
+      i[data-lucide="sparkles"]::before { content: "✦"; }
+      i[data-lucide="tag"]::before { content: "◇"; }
+      i[data-lucide="trending-up"]::before { content: "↗"; }
+      i[data-lucide="workflow"]::before { content: "⌘"; }
 
       /* ── Accessibility ─────────────────────────────────────── */
 
@@ -1285,6 +1295,7 @@
       .settings-panel { display: flex; flex-direction: column; gap: var(--sp-3); }
       .settings-panel[data-state="inactive"] { display: none; }
       .settings-panel[hidden] { display: none; }
+      .settings-panel-readonly { border: 0; margin: 0; min-width: 0; padding: 0; }
       .settings-section-intro {
         display: flex;
         flex-direction: column;

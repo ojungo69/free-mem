@@ -5,9 +5,11 @@
  * Returns observer runtime info, credential availability, and queue status.
  */
 
-import type { ObserverClient } from "@codemem/core";
-import { type MemoryStore, probeAvailableCredentials, type RawEventSweeper } from "@codemem/core";
 import { Hono } from "hono";
+import { probeAvailableCredentials } from "../observer-auth.js";
+import type { ObserverClient } from "../observer-client.js";
+import type { RawEventSweeper } from "../raw-event-sweeper.js";
+import type { MemoryStore } from "../store.js";
 
 type StoreFactory = () => MemoryStore;
 

@@ -2,21 +2,19 @@
  * CORS and cross-origin protection middleware.
  *
  * Ports Python's reject_cross_origin() logic from codemem/viewer_http.py.
- * GETs are allowed from any origin (viewer is local-only).
- * Mutations (POST/DELETE/PATCH/PUT) require an Origin header matching a
- * loopback address, or are rejected with 403.
+ * Every browser Origin must be loopback. Cookie-authenticated reads are
+ * sensitive too, so safe methods do not receive a cross-origin exception.
  */
 
+import { isLoopbackHost } from "@codemem/core";
 import type { Context, Next } from "hono";
 import { createMiddleware } from "hono/factory";
-
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 /**
  * Check whether an Origin header value is a valid loopback URL.
  * Mirrors Python's _is_allowed_loopback_origin_url().
  */
-function isLoopbackOrigin(origin: string): boolean {
+export function isLoopbackOrigin(origin: string): boolean {
 	let url: URL;
 	try {
 		url = new URL(origin);
@@ -25,10 +23,18 @@ function isLoopbackOrigin(origin: string): boolean {
 	}
 	if (url.protocol !== "http:" && url.protocol !== "https:") return false;
 	if (url.username || url.password) return false;
-	return LOOPBACK_HOSTS.has(url.hostname);
+	return isLoopbackHost(url.hostname);
 }
 
-/** HTTP methods that mutate state and require origin validation. */
+export function isViewerOrigin(origin: string, requestUrl: string): boolean {
+	if (!isLoopbackOrigin(origin)) return false;
+	try {
+		return new URL(origin).origin === new URL(requestUrl).origin;
+	} catch {
+		return false;
+	}
+}
+
 const UNSAFE_METHODS = new Set(["POST", "DELETE", "PATCH", "PUT"]);
 
 /**
@@ -54,10 +60,8 @@ function isUnsafeMissingOrigin(c: Context): boolean {
  *
  * Ports Python's `reject_cross_origin(missing_origin_policy="reject_if_unsafe")`:
  *
- * - GET/HEAD/OPTIONS: allowed from any origin (viewer is local-only).
- * - POST/DELETE/PATCH/PUT:
- *   - Origin present + loopback → allowed (browser on localhost)
- *   - Origin present + non-loopback → rejected 403
+ * - Any supplied Origin must exactly match the viewer scheme, host, and port.
+ * - POST/DELETE/PATCH/PUT without Origin:
  *   - No Origin + no suspicious browser signals → allowed (CLI callers)
  *   - No Origin + suspicious Sec-Fetch-Site/Referer → rejected 403
  *
@@ -70,32 +74,17 @@ export function originGuard() {
 		const origin = c.req.header("Origin");
 		const method = c.req.method;
 
-		if (UNSAFE_METHODS.has(method)) {
-			if (origin) {
-				// Origin present — must be loopback
-				if (!isLoopbackOrigin(origin)) {
-					return c.json({ error: "forbidden" }, 403);
-				}
-				// Valid loopback origin — echo it for CORS
-				c.header("Access-Control-Allow-Origin", origin);
-				c.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-				c.header("Access-Control-Allow-Headers", "Content-Type");
-			} else {
-				// No Origin — reject only if browser signals indicate cross-site
-				// (matches Python's reject_if_unsafe policy for API endpoints)
-				if (isUnsafeMissingOrigin(c)) {
-					return c.json({ error: "forbidden" }, 403);
-				}
-				// CLI / programmatic caller — no CORS headers needed
-			}
-		} else if (origin && isLoopbackOrigin(origin)) {
-			// Safe method with valid origin — echo for preflight
-			c.header("Access-Control-Allow-Origin", origin);
-			c.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-			c.header("Access-Control-Allow-Headers", "Content-Type");
+		if (origin && !isViewerOrigin(origin, c.req.url)) {
+			return c.json({ error: "forbidden" }, 403);
 		}
-		// No origin or non-loopback on safe method: no ACAO header set.
-		// Browser enforces same-origin; we don't set permissive headers.
+		if (!origin && UNSAFE_METHODS.has(method) && isUnsafeMissingOrigin(c)) {
+			return c.json({ error: "forbidden" }, 403);
+		}
+		if (origin) {
+			c.header("Access-Control-Allow-Origin", origin);
+			c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+			c.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
+		}
 
 		await next();
 	});
@@ -112,13 +101,26 @@ export function preflightHandler() {
 			return;
 		}
 		const origin = c.req.header("Origin");
-		if (origin && isLoopbackOrigin(origin)) {
+		if (origin && isViewerOrigin(origin, c.req.url)) {
 			c.header("Access-Control-Allow-Origin", origin);
-			c.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-			c.header("Access-Control-Allow-Headers", "Content-Type");
+			c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+			c.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
 			c.header("Access-Control-Max-Age", "86400");
 			return c.body(null, 204);
 		}
-		return c.body(null, 204);
+		return c.json({ error: "forbidden" }, 403);
+	});
+}
+
+export function securityHeaders() {
+	return createMiddleware(async (c: Context, next: Next) => {
+		c.header("Referrer-Policy", "no-referrer");
+		c.header("X-Content-Type-Options", "nosniff");
+		c.header("X-Frame-Options", "DENY");
+		c.header(
+			"Content-Security-Policy",
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+		);
+		await next();
 	});
 }

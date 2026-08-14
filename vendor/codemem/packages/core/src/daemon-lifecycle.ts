@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
 import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
+import { ObserverClient } from "./observer-client.js";
+import { RawEventSweeper } from "./raw-event-sweeper.js";
 import { importReadySpoolEntries } from "./spool.js";
 import {
 	ensureStorageLayout,
@@ -20,6 +22,8 @@ import {
 	readProcessIdentity,
 } from "./storage-platform.js";
 import type { MemoryStore } from "./store.js";
+import { ViewerAuthState } from "./viewer-auth.js";
+import { createViewerReadHandler } from "./viewer-read.js";
 import type { WriterActor } from "./writer-actor.js";
 
 export type DaemonIdentity = {
@@ -51,6 +55,7 @@ type LiveDaemon = {
 	layout: StorageLayout;
 	writer: WriterActor;
 	store: MemoryStore;
+	sweeper: RawEventSweeper;
 	spoolSweepTimer: ReturnType<typeof setInterval>;
 };
 
@@ -181,7 +186,7 @@ function bindPrivateSocket(socketPath: string, rpc: DaemonRpcContext): Promise<S
 	});
 }
 
-function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
+async function releaseResources(layout: StorageLayout, live?: LiveDaemon): Promise<void> {
 	if (live) {
 		clearInterval(live.spoolSweepTimer);
 		try {
@@ -189,6 +194,7 @@ function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
 		} catch {
 			// server may already be closed
 		}
+		await live.sweeper.stop();
 		try {
 			live.store.close();
 		} catch {
@@ -210,11 +216,11 @@ function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
 	}
 }
 
-function stopLive(dataDir: string): void {
+async function stopLive(dataDir: string): Promise<void> {
 	const live = liveDaemons.get(dataDir);
 	if (!live) return;
 	liveDaemons.delete(dataDir);
-	releaseResources(live.layout, live);
+	await releaseResources(live.layout, live);
 }
 
 function requestCleanStop(socketPath: string, nonce: string): Promise<boolean> {
@@ -251,6 +257,7 @@ export async function startDaemon(options: {
 	const lock = acquireExclusiveLock(layout.lockPath);
 
 	let canonical: CanonicalWriter | undefined;
+	let sweeper: RawEventSweeper | undefined;
 	let server: Server | undefined;
 	let started = false;
 	try {
@@ -264,6 +271,9 @@ export async function startDaemon(options: {
 			fingerprint: liveIdentity.fingerprint,
 			nonce: randomUUID(),
 		};
+		const observer = new ObserverClient();
+		sweeper = new RawEventSweeper(canonical.store, { observer });
+		sweeper.start();
 		const rpc: DaemonRpcContext = {
 			identity,
 			dataDir: layout.dataDir,
@@ -271,9 +281,19 @@ export async function startDaemon(options: {
 			now: options.now,
 			writer: canonical.db,
 			store: canonical.store,
+			viewerAuth: new ViewerAuthState({
+				controlDir: layout.controlDir,
+				instanceId: identity.nonce,
+				now: options.now,
+			}),
+			viewerRead: createViewerReadHandler({ store: canonical.store, sweeper, observer }),
 			onStop: () => {
 				const current = liveDaemons.get(layout.dataDir);
-				if (current && sameIdentity(current.identity, identity)) stopLive(layout.dataDir);
+				if (current && sameIdentity(current.identity, identity)) {
+					void stopLive(layout.dataDir).catch(() => {
+						console.error("[codemem] daemon shutdown failed.");
+					});
+				}
 			},
 		};
 		const sweepSpool = () => {
@@ -295,6 +315,7 @@ export async function startDaemon(options: {
 			layout,
 			writer: canonical.db,
 			store: canonical.store,
+			sweeper,
 			spoolSweepTimer,
 		};
 		liveDaemons.set(layout.dataDir, live);
@@ -309,10 +330,11 @@ export async function startDaemon(options: {
 			stop: async () => {
 				const current = liveDaemons.get(layout.dataDir);
 				if (!current || !sameIdentity(current.identity, identity)) return;
-				stopLive(layout.dataDir);
+				await stopLive(layout.dataDir);
 			},
 		};
 	} catch (error) {
+		if (sweeper) await sweeper.stop();
 		if (canonical) {
 			try {
 				canonical.store.close();
@@ -464,7 +486,7 @@ export async function stopDaemon(
 	const layout = resolveStorageLayout(dataDir);
 	const snapshot = readIdentityFile(layout.identityPath);
 	if (liveDaemons.has(layout.dataDir)) {
-		stopLive(layout.dataDir);
+		await stopLive(layout.dataDir);
 		return { action: "stopped" };
 	}
 	const timeoutMs = options?.timeoutMs ?? 2000;

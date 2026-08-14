@@ -65,7 +65,7 @@ export function renderConfigModal(payload: unknown) {
 		overridesVisible: Object.keys(envOverrides).length > 0,
 		pathText: state.configPath ? `Config path: ${state.configPath}` : "Config path: n/a",
 		providers: toProviderList(data.providers),
-		statusText: "No unsaved changes",
+		statusText: "Viewer settings are read-only.",
 		values,
 	});
 

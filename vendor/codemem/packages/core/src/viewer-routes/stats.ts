@@ -4,13 +4,11 @@
  * Ports Python's viewer_routes/stats.py.
  */
 
-import {
-	buildFilterClausesWithContext,
-	listMaintenanceJobs,
-	type MemoryStore,
-	VERSION,
-} from "@codemem/core";
 import { Hono } from "hono";
+import { buildFilterClausesWithContext } from "../filters.js";
+import { listMaintenanceJobs } from "../maintenance-jobs.js";
+import type { MemoryStore } from "../store.js";
+import { VERSION } from "../version.js";
 
 function maintenanceJobSortKey(job: {
 	started_at: string | null;

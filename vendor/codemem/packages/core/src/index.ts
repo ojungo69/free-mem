@@ -5,8 +5,6 @@
  * and type definitions shared across the codemem TS backend.
  */
 
-export const VERSION = "0.40.2";
-
 export * as Api from "./api-types.js";
 export { extractApplyPatchPaths, MUTATING_TOOL_NAMES } from "./apply-patch.js";
 export * from "./attribution-assessment.js";
@@ -618,12 +616,21 @@ export {
 	semanticSearch,
 	storeVectors,
 } from "./vectors.js";
+export { VERSION } from "./version.js";
+export {
+	readViewerBearerToken,
+	VIEWER_NONCE_TTL_MS,
+	VIEWER_SESSION_LIMIT,
+	VIEWER_SESSION_TTL_MS,
+	ViewerAuthState,
+} from "./viewer-auth.js";
 export type {
 	ViewerLivenessProbeDependencies,
 	ViewerLivenessProbeResult,
 	ViewerTarget,
 } from "./viewer-probe.js";
 export {
+	isLoopbackHost,
 	probeCodememViewerLiveness,
 	VIEWER_SERVICE_DISCRIMINATOR,
 	viewerUrl,
