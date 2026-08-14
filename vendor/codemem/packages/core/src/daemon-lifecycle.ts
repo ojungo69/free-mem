@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
 import { DaemonJobService } from "./daemon-jobs.js";
+import { DaemonOperationService } from "./daemon-operations.js";
 import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
 import { ObserverClient } from "./observer-client.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
@@ -284,6 +285,7 @@ export async function startDaemon(options: {
 			beforeMaintenance: () => maintenanceSweeper.stop(),
 			afterMaintenance: () => maintenanceSweeper.start(),
 		});
+		const operations = new DaemonOperationService(canonical.store, jobs, layout.dataDir);
 		const rpc: DaemonRpcContext = {
 			identity,
 			dataDir: layout.dataDir,
@@ -298,6 +300,7 @@ export async function startDaemon(options: {
 			}),
 			viewerRead: createViewerReadHandler({ store: canonical.store, sweeper, observer }),
 			jobs,
+			operations,
 			onStop: () => {
 				const current = liveDaemons.get(layout.dataDir);
 				if (current && sameIdentity(current.identity, identity)) {

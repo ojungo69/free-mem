@@ -1,5 +1,6 @@
 import type { Socket } from "node:net";
 import { DaemonJobRequestError, type DaemonJobService } from "./daemon-jobs.js";
+import { DaemonOperationRequestError, type DaemonOperationService } from "./daemon-operations.js";
 import {
 	type FileContextRetrievalAttempt,
 	HOOK_DELIVERY_BUDGETS,
@@ -183,7 +184,7 @@ const METHOD_REQUIRED_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"POST /v1/backup/create": ["operationId", "payloadHash", "reason"],
 	"POST /v1/backup/verify": ["backupId"],
 	"POST /v1/backup/restore": ["operationId", "payloadHash", "backupId"],
-	"POST /v1/operations/export": ["operationId", "payloadHash", "outputPath"],
+	"POST /v1/operations/export": ["operationId", "payloadHash", "outputPath", "filters"],
 	"POST /v1/operations/import": ["operationId", "payloadHash", "inputPath"],
 	"GET /v1/operations/:id": ["id"],
 	"POST /v1/jobs": ["kind"],
@@ -203,8 +204,6 @@ const MAINTENANCE_BLOCKED_METHODS = new Set<RpcMethod>([
 	"DELETE /v1/memories/:id",
 	"POST /v1/backup/create",
 	"POST /v1/backup/restore",
-	"POST /v1/operations/export",
-	"POST /v1/operations/import",
 ]);
 
 const VIEW_COLLECTIONS = new Set([
@@ -313,6 +312,7 @@ export type DaemonRpcContext = {
 	viewerAuth: ViewerAuthState;
 	viewerRead: ViewerReadHandler;
 	jobs: DaemonJobService;
+	operations: DaemonOperationService;
 };
 
 export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
@@ -543,6 +543,15 @@ async function handleMethod(
 	if (method === "POST /v1/viewer/auth/logout") {
 		if (typeof body.session !== "string") throw new RpcRequestError("session must be a string.");
 		return { loggedOut: ctx.viewerAuth.logout(body.session) };
+	}
+	if (method === "POST /v1/operations/export") {
+		return ctx.operations.submit("export", body);
+	}
+	if (method === "POST /v1/operations/import") {
+		return ctx.operations.submit("import", body);
+	}
+	if (method === "GET /v1/operations/:id") {
+		return ctx.operations.get(body.id);
 	}
 	if (method === "POST /v1/jobs") {
 		try {
@@ -1332,6 +1341,9 @@ export async function dispatchDaemonRpc(
 			return typedError(error.code, error.message);
 		}
 		if (error instanceof BackupRequestError) {
+			return typedError(error.code, error.message);
+		}
+		if (error instanceof DaemonOperationRequestError) {
 			return typedError(error.code, error.message);
 		}
 		if (error instanceof MutationConflictError) {

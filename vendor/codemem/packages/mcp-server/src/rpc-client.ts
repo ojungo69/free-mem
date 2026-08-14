@@ -5,6 +5,7 @@ import {
 	type AgentMemoryConfig,
 	callDaemonRpc,
 	DEFAULT_DATA_DIR,
+	hashMutationPayload,
 	LOCAL_API_VERSION,
 	NORMALIZED_SCHEMA_VERSION,
 	parseAgentMemoryToml,
@@ -46,6 +47,15 @@ const RPC_FIELDS = {
 	"POST /v1/jobs": ["kind", "args", "dryRun"],
 	"GET /v1/jobs": ["kind", "state", "submittedAfter"],
 	"GET /v1/jobs/:id": ["id"],
+	"POST /v1/operations/export": ["operationId", "payloadHash", "outputPath", "filters"],
+	"POST /v1/operations/import": [
+		"operationId",
+		"payloadHash",
+		"inputPath",
+		"remapProject",
+		"dryRun",
+	],
+	"GET /v1/operations/:id": ["id"],
 } as const satisfies Partial<Record<RpcMethod, readonly string[]>>;
 
 const METADATA_FIELDS = new Set([
@@ -72,6 +82,12 @@ const METADATA_FIELDS = new Set([
 	"dryRun",
 	"state",
 	"submittedAfter",
+	"operationId",
+	"payloadHash",
+	"outputPath",
+	"inputPath",
+	"remapProject",
+	"filters",
 ]);
 
 export type McpRpcError = { code: string; message: string; retryable: boolean };
@@ -117,6 +133,25 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 		body: Record<string, unknown>,
 	): PreparedRequest => {
 		const fields = RPC_FIELDS[method];
+		if (method === "POST /v1/operations/export" || method === "POST /v1/operations/import") {
+			// These user-authority paths are local control metadata. Redacting them could redirect
+			// a filesystem side effect; the daemon validates the allowlist, hash, and destination.
+			const preparedBody = Object.fromEntries(
+				fields.filter((field) => Object.hasOwn(body, field)).map((field) => [field, body[field]]),
+			);
+			const { operationId: _operationId, payloadHash: _payloadHash, ...request } = preparedBody;
+			preparedBody.payloadHash = hashMutationPayload(request);
+			return {
+				body: preparedBody,
+				redaction: {
+					sensitivity: "normal",
+					secret_rules_version: "",
+					redaction_degraded: false,
+					private_content_omitted: false,
+					local_only: false,
+				},
+			};
+		}
 		const config = fields.length === 0 ? undefined : loadProjectConfig(cwd());
 		const redacted = preprocessAdapterEvent(body, {
 			allowlist: [...fields],

@@ -1,6 +1,7 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as p from "@clack/prompts";
-import type { ExportPayload } from "@codemem/core";
-import { importMemories, readImportPayload, resolveDbPath } from "@codemem/core";
 import { Command } from "commander";
 import { invokedAsTopLevelAlias } from "../command-tree.js";
 import { helpStyle } from "../help-style.js";
@@ -11,8 +12,8 @@ import {
 	emitDeprecationWarning,
 	emitJsonError,
 	type JsonOpts,
-	resolveDbOpt,
 } from "../shared-options.js";
+import { resolveOperationFilePath, runDaemonOperation } from "./daemon-operation.js";
 
 const cmd = new Command("import-memories")
 	.configureHelp(helpStyle)
@@ -25,7 +26,7 @@ addDbOption(cmd);
 addJsonOption(cmd);
 
 cmd.action(
-	(
+	async (
 		inputFile: string,
 		opts: DbOpts &
 			JsonOpts & {
@@ -39,76 +40,77 @@ cmd.action(
 		if (!opts.json && invokedAsTopLevelAlias("import-memories")) {
 			emitDeprecationWarning("codemem import-memories", "codemem memory import");
 		}
-		let payload: ExportPayload;
+		let temporaryDirectory: string | null = null;
+		let safeToRemoveTemporary = true;
 		try {
-			payload = readImportPayload(inputFile);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : "Invalid import file";
-			if (opts.json) {
-				emitJsonError("invalid_input", message);
+			let inputPath: string;
+			if (inputFile === "-") {
+				temporaryDirectory = mkdtempSync(join(tmpdir(), "codemem-import-"));
+				inputPath = join(temporaryDirectory, "import.json");
 			} else {
-				p.log.error(message);
-				process.exitCode = 1;
+				inputPath = resolveOperationFilePath(inputFile);
 			}
-			return;
-		}
+			if (inputFile === "-") {
+				writeFileSync(inputPath, readFileSync(0, "utf8"), {
+					encoding: "utf8",
+					mode: 0o600,
+					flush: true,
+				});
+			}
+			const request: Record<string, unknown> = { inputPath };
+			if (opts.remapProject) request.remapProject = opts.remapProject;
+			if (opts.dryRun) request.dryRun = true;
+			if (!opts.json) p.intro("codemem import-memories");
+			safeToRemoveTemporary = false;
+			const outcome = await runDaemonOperation(opts, "POST /v1/operations/import", request);
+			safeToRemoveTemporary = outcome.ok || outcome.terminal;
+			if (!outcome.ok) {
+				const message = `${outcome.error.message} Operation ID: ${outcome.operationId}`;
+				if (opts.json) emitJsonError(outcome.error.code, message);
+				else {
+					p.log.error(message);
+					process.exitCode = 1;
+				}
+				return;
+			}
 
-		if (!opts.json) {
-			p.intro("codemem import-memories");
-			p.log.info(
+			const result = outcome.result;
+			if (opts.json) {
+				console.log(
+					JSON.stringify({
+						sessions: Number(result.sessions ?? 0),
+						memory_items: Number(result.memory_items ?? 0),
+						skipped: result.dryRun === true,
+					}),
+				);
+				return;
+			}
+
+			if (result.dryRun === true) {
+				p.outro("dry run complete");
+				return;
+			}
+			p.log.success(
 				[
-					`Export version: ${payload.version}`,
-					`Exported at:    ${payload.exported_at}`,
-					`Sessions:       ${payload.sessions.length.toLocaleString()}`,
-					`Memories:       ${payload.memory_items.length.toLocaleString()}`,
-					`Summaries:      ${payload.session_summaries.length.toLocaleString()}`,
-					`Prompts:        ${payload.user_prompts.length.toLocaleString()}`,
+					`Imported sessions:  ${Number(result.sessions ?? 0).toLocaleString()}`,
+					`Imported prompts:   ${Number(result.user_prompts ?? 0).toLocaleString()}`,
+					`Imported memories:  ${Number(result.memory_items ?? 0).toLocaleString()}`,
+					`Imported summaries: ${Number(result.session_summaries ?? 0).toLocaleString()}`,
 				].join("\n"),
 			);
-		}
-
-		let result: ReturnType<typeof importMemories>;
-		try {
-			result = importMemories(payload, {
-				dbPath: resolveDbPath(resolveDbOpt(opts)),
-				remapProject: opts.remapProject,
-				dryRun: opts.dryRun,
-			});
+			p.outro("done");
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Import failed";
-			if (opts.json) {
-				emitJsonError("import_failed", message);
-			} else {
+			if (opts.json) emitJsonError("import_failed", message);
+			else {
 				p.log.error(message);
 				process.exitCode = 1;
 			}
-			return;
+		} finally {
+			if (temporaryDirectory && safeToRemoveTemporary) {
+				rmSync(temporaryDirectory, { recursive: true, force: true });
+			}
 		}
-
-		if (opts.json) {
-			console.log(
-				JSON.stringify({
-					sessions: result.sessions,
-					memory_items: result.memory_items,
-					skipped: result.dryRun,
-				}),
-			);
-			return;
-		}
-
-		if (result.dryRun) {
-			p.outro("dry run complete");
-			return;
-		}
-		p.log.success(
-			[
-				`Imported sessions:  ${result.sessions.toLocaleString()}`,
-				`Imported prompts:   ${result.user_prompts.toLocaleString()}`,
-				`Imported memories:  ${result.memory_items.toLocaleString()}`,
-				`Imported summaries: ${result.session_summaries.toLocaleString()}`,
-			].join("\n"),
-		);
-		p.outro("done");
 	},
 );
 

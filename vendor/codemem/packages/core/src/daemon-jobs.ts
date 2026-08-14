@@ -582,6 +582,16 @@ export class DaemonJobService {
 		await this.queue;
 	}
 
+	schedule(work: () => Promise<void> | void, maintenance = false): Promise<void> {
+		if (!this.accepting) throw new Error("Daemon job service is stopping.");
+		const scheduled = this.queue.then(async () => {
+			if (maintenance) await this.runInMaintenance(work);
+			else await work();
+		});
+		this.queue = scheduled.catch(() => undefined);
+		return scheduled;
+	}
+
 	private enqueue(
 		kind: string,
 		args: Record<string, unknown>,
@@ -690,9 +700,7 @@ export class DaemonJobService {
 		const maintenance = row.dry_run === 0 && MAINTENANCE_JOB_KINDS.has(row.kind);
 		if (!maintenance) return this.execute(row, args);
 
-		this.maintenanceMode = true;
-		try {
-			await this.options.beforeMaintenance?.();
+		return this.runInMaintenance(async () => {
 			let backupId: string | null = null;
 			if (BACKUP_REQUIRED_JOB_KINDS.has(row.kind)) {
 				if (!this.options.dataDir)
@@ -716,6 +724,14 @@ export class DaemonJobService {
 			return backupId && result && typeof result === "object" && !Array.isArray(result)
 				? { ...(result as Record<string, unknown>), backupId }
 				: result;
+		});
+	}
+
+	private async runInMaintenance<T>(work: () => Promise<T> | T): Promise<T> {
+		this.maintenanceMode = true;
+		try {
+			await this.options.beforeMaintenance?.();
+			return await work();
 		} finally {
 			try {
 				await this.options.afterMaintenance?.();

@@ -409,23 +409,6 @@ describe("Phase 1 mutation dispatcher", () => {
 		});
 	});
 
-	it("P1-T036-06-class-b-stub", async () => {
-		const handle = await core.startDaemon({ dataDir: tempDataDir() });
-		created.push(handle);
-		const exported = await core.callDaemonRpc(
-			handle.socketPath,
-			handshake({
-				method: "POST /v1/operations/export",
-				body: {
-					operationId: "exp-1",
-					payloadHash: "a".repeat(64),
-					outputPath: "/tmp/out.json",
-				},
-			}),
-		);
-		expect(exported).toMatchObject({ result: { state: "not_implemented" } });
-	});
-
 	it("P1-T036-07-delete-revision-is-part-of-idempotency", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);

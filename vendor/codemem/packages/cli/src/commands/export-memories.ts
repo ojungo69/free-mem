@@ -1,21 +1,13 @@
-import { writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
-import { exportMemories, resolveDbPath } from "@codemem/core";
+import { resolveProject } from "@codemem/core";
 import { Command } from "commander";
 import { invokedAsTopLevelAlias } from "../command-tree.js";
 import { helpStyle } from "../help-style.js";
-import {
-	addDbOption,
-	type DbOpts,
-	emitDeprecationWarning,
-	resolveDbOpt,
-} from "../shared-options.js";
-
-function expandUserPath(value: string): string {
-	return value.startsWith("~/") ? join(homedir(), value.slice(2)) : value;
-}
+import { addDbOption, type DbOpts, emitDeprecationWarning } from "../shared-options.js";
+import { resolveOperationFilePath, runDaemonOperation } from "./daemon-operation.js";
 
 const cmd = new Command("export-memories")
 	.configureHelp(helpStyle)
@@ -29,7 +21,7 @@ const cmd = new Command("export-memories")
 addDbOption(cmd);
 
 cmd.action(
-	(
+	async (
 		output: string,
 		opts: DbOpts & {
 			project?: string;
@@ -44,31 +36,59 @@ cmd.action(
 		if (output !== "-" && invokedAsTopLevelAlias("export-memories")) {
 			emitDeprecationWarning("codemem export-memories", "codemem memory export");
 		}
-		const payload = exportMemories({
-			dbPath: resolveDbPath(resolveDbOpt(opts)),
-			project: opts.project,
-			allProjects: opts.allProjects,
-			includeInactive: opts.includeInactive,
-			since: opts.since,
-		});
-		const text = `${JSON.stringify(payload, null, 2)}\n`;
-		if (output === "-") {
-			process.stdout.write(text);
-			return;
+		let temporaryDirectory: string | null = null;
+		let safeToRemoveTemporary = true;
+		try {
+			let outputPath: string;
+			if (output === "-") {
+				temporaryDirectory = mkdtempSync(join(tmpdir(), "codemem-export-"));
+				outputPath = join(temporaryDirectory, "export.json");
+			} else {
+				outputPath = resolveOperationFilePath(output);
+			}
+			const filters: Record<string, unknown> = {};
+			if (opts.allProjects) filters.allProjects = true;
+			else {
+				filters.project =
+					process.env.CODEMEM_PROJECT?.trim() ||
+					resolveProject(process.cwd(), opts.project ?? null);
+			}
+			if (opts.includeInactive) filters.includeInactive = true;
+			if (opts.since) filters.since = opts.since;
+			safeToRemoveTemporary = false;
+			const outcome = await runDaemonOperation(opts, "POST /v1/operations/export", {
+				outputPath,
+				filters,
+			});
+			safeToRemoveTemporary = outcome.ok || outcome.terminal;
+			if (!outcome.ok) {
+				p.log.error(`${outcome.error.message} Operation ID: ${outcome.operationId}`);
+				process.exitCode = 1;
+				return;
+			}
+			if (output === "-") {
+				process.stdout.write(readFileSync(outputPath, "utf8"));
+				return;
+			}
+			p.intro("codemem export-memories");
+			p.log.success(
+				[
+					`Output:    ${outputPath}`,
+					`Sessions:  ${Number(outcome.result.sessions ?? 0).toLocaleString()}`,
+					`Memories:  ${Number(outcome.result.memory_items ?? 0).toLocaleString()}`,
+					`Summaries: ${Number(outcome.result.session_summaries ?? 0).toLocaleString()}`,
+					`Prompts:   ${Number(outcome.result.user_prompts ?? 0).toLocaleString()}`,
+				].join("\n"),
+			);
+			p.outro("done");
+		} catch (error) {
+			p.log.error(error instanceof Error ? error.message : "Export failed");
+			process.exitCode = 1;
+		} finally {
+			if (temporaryDirectory && safeToRemoveTemporary) {
+				rmSync(temporaryDirectory, { recursive: true, force: true });
+			}
 		}
-		const outputPath = expandUserPath(output);
-		writeFileSync(outputPath, text, "utf8");
-		p.intro("codemem export-memories");
-		p.log.success(
-			[
-				`Output:    ${outputPath}`,
-				`Sessions:  ${payload.sessions.length.toLocaleString()}`,
-				`Memories:  ${payload.memory_items.length.toLocaleString()}`,
-				`Summaries: ${payload.session_summaries.length.toLocaleString()}`,
-				`Prompts:   ${payload.user_prompts.length.toLocaleString()}`,
-			].join("\n"),
-		);
-		p.outro("done");
 	},
 );
 

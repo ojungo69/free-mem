@@ -136,7 +136,9 @@ T053–T057 の harness runner 骨格（assert 内容と判定条件は Claude C
 - [X] T046 破壊的 maintenance = daemon maintenance mode（判断 #6）。前提: T045, T050
   - 実装証拠: destructive job は sweeper/spool import/通常 write を停止し、T050 online backup の作成・検証成功後だけ mutation を開始。backup/verify 失敗時は job failed・DB unchanged、maintenance response は retryable で spoolable client が共有 spool へ保全
   - 検証証拠: `daemon-jobs.test.ts` (P1-T046-01)、`mcp-server/src/rpc-client.test.ts` (P1-T046-02)。serial full suite 390 suites / 1,833 tests / failed 0
-- [ ] T047 [P] export/import → daemon RPC（destructive import = maintenance mode + backup precondition）。前提: T036, T046, T050
+- [X] T047 [P] export/import → daemon RPC（destructive import = maintenance mode + backup precondition）。前提: T036, T046, T050
+  - 実装証拠: `vendor/codemem/packages/core/src/daemon-operations.ts`（canonical payload hash、fsync journal、atomic export、restart result、verified backup-before-import）、`daemon-rpc.ts` / `daemon-lifecycle.ts`（RPC + daemon ownership）、CLI `commands/{daemon-operation,export-memories,import-memories}.ts`（POST 一度 + GET polling、stdin/stdout temp compatibility、DB fallback なし）
+  - 検証証拠: `daemon-operations.test.ts` (P1-T047-01..03)、`alias-deprecation.test.ts`（実 daemon CLI compatibility）、`evidence/phase1-t047-operations-validation.md`。serial full suite 392 suites / 1,835 tests / failed 0
 - [ ] T048 daemon 外 DB handle 完全ゼロ（判断 #7）: 全 read → RPC read client、connectReadOnly 残 2 箇所も RPC 移行。前提: T041–T047（全 client/jobs 移設後にのみ判定可能）
 
 ### install / backup / cutover

@@ -8,6 +8,7 @@ post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164
 post-T043: `/tmp/free-mem-phase1-post-t043-serial-final.json` (SHA-256 `d2e58af19a2b84bf7fc005ec931fcb9dcacb27445b05a7e293d29d405512bdfa`)
 post-T044: `/tmp/free-mem-phase1-post-t044-serial-final3.json` (SHA-256 `f570ca29bb73d8987e3ad8e55af963bd1979bfd5d358f89de85f7ef313c91d17`)
 post-T046: `/tmp/free-mem-phase1-post-t046-serial-final3.json` (SHA-256 `297ebd3719add24b02bdd6882d172180926960e4f3d7cfcb45d881f3849e2388`)
+post-T047: `/tmp/free-mem-phase1-post-t047-serial.json` (SHA-256 `dce42b151bd40e1e49ed7fc67948e95f3904a75a5f68fac30f9fe17433158b2d`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -29,6 +30,9 @@ post-T046: `/tmp/free-mem-phase1-post-t046-serial-final3.json` (SHA-256 `297ebd3
 | T045 retire | 8 |
 | T045/T046 登録済み追加 | 5 |
 | post-T046 | 1,833 |
+| T047 stub retire | 1 |
+| T047 登録済み追加 | 3 |
+| post-T047 | 1,835 |
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -55,6 +59,8 @@ T044 は post-T043 1,894 件から旧 CLI local DB / prompt ledger / 後続 Phas
 
 T045/T046 は post-T044 1,836 件から別 process maintenance worker 固有 test 8 件を retire し、manifest 登録済み 5 件を追加した。機械式は `1,836 - 8 + 5 = 1,833`。post-T046 の serial full suite は 390 suites / total 1,833 / passed 1,830 / todo 3 / failed 0。追加 test は `P1-T045-01..03` と `P1-T046-01..02` に一致する。
 
+T047 は `not_implemented` を固定していた T036 class B stub 1 件を retire し、manifest 登録済み 3 件を追加した。機械式は `1,833 - 1 + 3 = 1,835`。post-T047 の serial full suite は 392 suites / total 1,835 / passed 1,832 / todo 3 / failed 0。追加 test は `P1-T047-01..03` に一致する。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -71,6 +77,7 @@ T045/T046 は post-T044 1,836 件から別 process maintenance worker 固有 tes
 | R-T043-VIEWER | viewer direct DB/mutation/transport test + core viewer HTTP hook test | 61 | T043 で viewer を認証済み read-only daemon RPC relay に限定し、direct DB・mutation・hook ingest・旧 pack transport を物理削除 | retire title/file は `No test found`。登録済み T043 13 件が bearer/nonce/session/origin/CSP/read-only/RPC/503 を固定 |
 | R-T044-CLI | CLI local DB/ledger/Phase 6-7 implementation test | 61 | T044 で production CLI を daemon RPC 化し、独立 prompt ledger と後続 Phase の local 実装を削除 | retire title/file は `No test found`。登録済み T044 3 件が endpoint map / typed stub / no DB fallback を固定 |
 | R-T045-JOBS | maintenance worker runtime / serve worker PID test | 8 | T045 で別 process worker を daemon 内 durable jobs へ吸収し、worker command・PID 管理を削除 | 削除 file/title は `No test found`。登録済み T045/T046 5 件が job result/no retry/worker 廃止/maintenance mode/spool を固定 |
+| R-T047-STUB | T036 class B not-implemented stub | 1 | T047 で export/import operation 本体を実装し、stub expectation を登録済み T047 3 件へ置換 | retire title は `No test found`。登録済み test が conflict/result retrieval/import backup precondition を固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -336,6 +343,12 @@ packages/cli/src/commands/serve.test.ts > serve command option resolution > requ
 packages/cli/src/commands/serve.test.ts > serve command option resolution > cleans stale maintenance worker pidfiles
 packages/cli/src/commands/serve.test.ts > serve command option resolution > does not stop a maintenance worker pidfile for another database
 packages/cli/src/commands/serve.test.ts > serve command option resolution > refuses running legacy maintenance worker pidfiles without database ownership
+```
+
+## T047 retired fully qualified names（R-T047-STUB、1）
+
+```text
+packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-06-class-b-stub
 ```
 
 ## Retired fully qualified names（machine-generated）
