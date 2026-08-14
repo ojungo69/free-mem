@@ -7,19 +7,19 @@
 
 import { randomUUID } from "node:crypto";
 import * as p from "@clack/prompts";
-import {
+import type {
 	compareMemoryRoleReports,
-	connectReadOnly,
-	getInjectionEvalScenarioPack,
-	getInjectionEvalScenarioPrompts,
 	getMemoryArtifactReport,
 	getMemoryRoleReport,
 	getRawEventRelinkPlan,
 	getRawEventRelinkReport,
 	getSessionExtractionEval,
+} from "@codemem/core";
+import {
+	getInjectionEvalScenarioPack,
+	getInjectionEvalScenarioPrompts,
 	getSessionExtractionEvalScenario,
 	type MemoryItemResponse,
-	resolveDbPath,
 	resolveProject,
 } from "@codemem/core";
 import { createMcpRpcClient } from "@codemem/mcp";
@@ -34,9 +34,16 @@ import {
 	emitJsonError,
 	type JsonOpts,
 	resolveDataDirOpt,
-	resolveDbOpt,
 } from "../shared-options.js";
+import { type DaemonJobRunOutcome, runDaemonJob } from "./daemon-job.js";
 import { buildPackRequestOptions, collectWorkingSetFile } from "./pack-shared.js";
+
+type MemoryRoleReport = ReturnType<typeof getMemoryRoleReport>;
+type MemoryRoleComparison = ReturnType<typeof compareMemoryRoleReports>;
+type MemoryArtifactReport = ReturnType<typeof getMemoryArtifactReport>;
+type MemoryExtractionReport = ReturnType<typeof getSessionExtractionEval>;
+type MemoryRelinkReport = ReturnType<typeof getRawEventRelinkReport>;
+type MemoryRelinkPlan = ReturnType<typeof getRawEventRelinkPlan>;
 
 /** Parse a strict positive integer, rejecting prefixes like "12abc". */
 function parseStrictPositiveId(value: string): number | null {
@@ -51,6 +58,17 @@ function emitMemoryRpcError(json: boolean | undefined, code: string, message: st
 		p.log.error(message);
 		process.exitCode = 1;
 	}
+}
+
+function emitMemoryJobError(
+	json: boolean | undefined,
+	outcome: Extract<DaemonJobRunOutcome, { ok: false }>,
+): void {
+	emitMemoryRpcError(
+		json,
+		outcome.error.code,
+		outcome.jobId ? `${outcome.error.message} Job ID: ${outcome.jobId}` : outcome.error.message,
+	);
 }
 
 async function showMemoryAction(idStr: string, opts: DbOpts & JsonOpts): Promise<void> {
@@ -275,7 +293,7 @@ function createMemoryRoleReportCommand(): Command {
 	addDbOption(cmd);
 	addJsonOption(cmd);
 	cmd.action(
-		(
+		async (
 			opts: DbOpts &
 				JsonOpts & {
 					project?: string;
@@ -302,12 +320,17 @@ function createMemoryRoleReportCommand(): Command {
 					...(opts.probe ?? []),
 					...getInjectionEvalScenarioPrompts(opts.scenario ?? []),
 				];
-				const result = getMemoryRoleReport(resolveDbOpt(opts), {
+				const outcome = await runDaemonJob(opts, "report.memory-role", {
 					project,
 					allProjects: opts.allProjects === true,
 					includeInactive: opts.inactive === true,
 					probes,
 				});
+				if (!outcome.ok) {
+					emitMemoryJobError(opts.json, outcome);
+					return;
+				}
+				const result = outcome.result as MemoryRoleReport;
 
 				if (opts.json) {
 					console.log(JSON.stringify(result, null, 2));
@@ -426,18 +449,20 @@ function createMemoryRoleCompareCommand(): Command {
 			[],
 		)
 		.option("--inactive", "include inactive memories");
+	addDbOption(cmd);
 	addJsonOption(cmd);
 	cmd.action(
-		(
+		async (
 			baselineDb: string,
 			candidateDb: string,
-			opts: JsonOpts & {
-				project?: string;
-				allProjects?: boolean;
-				probe?: string[];
-				scenario?: string[];
-				inactive?: boolean;
-			},
+			opts: DbOpts &
+				JsonOpts & {
+					project?: string;
+					allProjects?: boolean;
+					probe?: string[];
+					scenario?: string[];
+					inactive?: boolean;
+				},
 		) => {
 			try {
 				const project =
@@ -456,12 +481,19 @@ function createMemoryRoleCompareCommand(): Command {
 					...(opts.probe ?? []),
 					...getInjectionEvalScenarioPrompts(opts.scenario ?? []),
 				];
-				const result = compareMemoryRoleReports(baselineDb, candidateDb, {
+				const outcome = await runDaemonJob(opts, "report.role-compare", {
+					baselineDbPath: baselineDb,
+					candidateDbPath: candidateDb,
 					project,
 					allProjects: opts.allProjects === true,
 					includeInactive: opts.inactive === true,
 					probes,
 				});
+				if (!outcome.ok) {
+					emitMemoryJobError(opts.json, outcome);
+					return;
+				}
+				const result = outcome.result as MemoryRoleComparison;
 
 				if (opts.json) {
 					console.log(JSON.stringify(result, null, 2));
@@ -550,7 +582,7 @@ function createMemoryArtifactReportCommand(): Command {
 	addDbOption(cmd);
 	addJsonOption(cmd);
 	cmd.action(
-		(
+		async (
 			opts: DbOpts &
 				JsonOpts & {
 					project?: string;
@@ -565,11 +597,16 @@ function createMemoryArtifactReportCommand(): Command {
 						: opts.project?.trim() ||
 							process.env.CODEMEM_PROJECT?.trim() ||
 							resolveProject(process.cwd(), null);
-				const result = getMemoryArtifactReport(resolveDbOpt(opts), {
+				const outcome = await runDaemonJob(opts, "report.artifact", {
 					project,
 					allProjects: opts.allProjects === true,
 					includeInactive: opts.inactive === true,
 				});
+				if (!outcome.ok) {
+					emitMemoryJobError(opts.json, outcome);
+					return;
+				}
+				const result = outcome.result as MemoryArtifactReport;
 
 				if (opts.json) {
 					console.log(JSON.stringify(result, null, 2));
@@ -629,7 +666,7 @@ function createMemoryExtractionReportCommand(): Command {
 	addDbOption(cmd);
 	addJsonOption(cmd);
 	cmd.action(
-		(
+		async (
 			opts: DbOpts &
 				JsonOpts & {
 					sessionId: string;
@@ -659,24 +696,16 @@ function createMemoryExtractionReportCommand(): Command {
 				if (!scenario) {
 					throw new Error(`Unknown extraction eval scenario: ${scenarioId || opts.scenario}`);
 				}
-				const result = (() => {
-					const db = connectReadOnly(resolveDbPath(resolveDbOpt(opts)));
-					try {
-						return batchId != null
-							? getSessionExtractionEval(db, {
-									batchId,
-									scenarioId: scenario.id,
-									includeInactive: opts.inactive === true,
-								})
-							: getSessionExtractionEval(db, {
-									sessionId: sessionId as number,
-									scenarioId: scenario.id,
-									includeInactive: opts.inactive === true,
-								});
-					} finally {
-						db.close();
-					}
-				})();
+				const outcome = await runDaemonJob(opts, "report.extraction", {
+					...(batchId != null ? { batchId } : { sessionId: sessionId as number }),
+					scenarioId: scenario.id,
+					includeInactive: opts.inactive === true,
+				});
+				if (!outcome.ok) {
+					emitMemoryJobError(opts.json, outcome);
+					return;
+				}
+				const result = outcome.result as MemoryExtractionReport;
 
 				if (opts.json) {
 					console.log(JSON.stringify(result, null, 2));
@@ -819,7 +848,7 @@ function createMemoryRelinkReportCommand(): Command {
 	addDbOption(cmd);
 	addJsonOption(cmd);
 	cmd.action(
-		(
+		async (
 			opts: DbOpts &
 				JsonOpts & {
 					project?: string;
@@ -834,11 +863,16 @@ function createMemoryRelinkReportCommand(): Command {
 						process.env.CODEMEM_PROJECT?.trim() ||
 						resolveProject(process.cwd(), null);
 			const limit = Number.parseInt(opts.limit ?? "25", 10) || 25;
-			const result = getRawEventRelinkReport(resolveDbOpt(opts), {
+			const outcome = await runDaemonJob(opts, "report.relink", {
 				project,
 				allProjects: opts.allProjects === true,
 				limit,
 			});
+			if (!outcome.ok) {
+				emitMemoryJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as MemoryRelinkReport;
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -879,7 +913,7 @@ function createMemoryRelinkPlanCommand(): Command {
 	addDbOption(cmd);
 	addJsonOption(cmd);
 	cmd.action(
-		(
+		async (
 			opts: DbOpts &
 				JsonOpts & {
 					project?: string;
@@ -894,11 +928,16 @@ function createMemoryRelinkPlanCommand(): Command {
 						process.env.CODEMEM_PROJECT?.trim() ||
 						resolveProject(process.cwd(), null);
 			const limit = Number.parseInt(opts.limit ?? "25", 10) || 25;
-			const result = getRawEventRelinkPlan(resolveDbOpt(opts), {
+			const outcome = await runDaemonJob(opts, "plan.relink", {
 				project,
 				allProjects: opts.allProjects === true,
 				limit,
 			});
+			if (!outcome.ok) {
+				emitMemoryJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as MemoryRelinkPlan;
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));

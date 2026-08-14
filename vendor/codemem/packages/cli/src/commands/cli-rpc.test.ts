@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { hashMutationPayload, NORMALIZED_SCHEMA_VERSION, startDaemon } from "@codemem/core";
 import { createMcpRpcClient } from "@codemem/mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { dbCommand } from "./db.js";
 import { distillCommand } from "./distill.js";
 import { embedCommand } from "./embed.js";
+import { maintenanceCommand } from "./maintenance.js";
 import {
 	forgetMemoryCommand,
 	memoryCommand,
@@ -151,6 +153,17 @@ describe("Phase 1 CLI RPC cutover", () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		const inject = memoryCommand.commands.find((command) => command.name() === "inject");
 		if (!inject) throw new Error("inject command missing");
+		const dbSubcommand = (name: string) => {
+			const command = dbCommand.commands.find((candidate) => candidate.name() === name);
+			if (!command) throw new Error(`db ${name} command missing`);
+			return command;
+		};
+		const memorySubcommand = (name: string) => {
+			const command = memoryCommand.commands.find((candidate) => candidate.name() === name);
+			if (!command) throw new Error(`memory ${name} command missing`);
+			return command;
+		};
+		const legacyDb = join(root, "legacy.sqlite");
 
 		const commands: Array<() => Promise<unknown>> = [
 			() => searchCommand.parseAsync(["query", "--json"], { from: "user" }),
@@ -161,6 +174,106 @@ describe("Phase 1 CLI RPC cutover", () => {
 			() => forgetMemoryCommand.parseAsync(["1", "--json"], { from: "user" }),
 			() => inject.parseAsync(["query"], { from: "user" }),
 			() => createStatusCommand().parseAsync(["--json"], { from: "user" }),
+			() =>
+				maintenanceCommand.parseAsync(["status", "--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() => dbSubcommand("init").parseAsync(["--db-path", legacyDb], { from: "user" }),
+			() => dbSubcommand("vacuum").parseAsync(["--db-path", legacyDb], { from: "user" }),
+			() =>
+				dbSubcommand("prune-raw-events").parseAsync(["--dry-run", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("raw-events-status").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("raw-events-retry").parseAsync(["--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("raw-events-gate").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("size-report").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("rename-project").parseAsync(["old", "new", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("normalize-projects").parseAsync(["--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("backfill-tags").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("backfill-dedup-keys").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("backfill-narrative").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("ai-backfill-structured").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("prune-observations").parseAsync(
+					["--dry-run", "--json", "--db-path", legacyDb],
+					{ from: "user" },
+				),
+			() =>
+				dbSubcommand("prune-memories").parseAsync(["--dry-run", "--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("dedup-memories").parseAsync(["--dry-run", "--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				dbSubcommand("scan-secrets").parseAsync(["--dry-run", "--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				memorySubcommand("role-report").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				memorySubcommand("role-compare").parseAsync([legacyDb, legacyDb, "--json"], {
+					from: "user",
+				}),
+			() =>
+				memorySubcommand("artifact-report").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				memorySubcommand("extraction-report").parseAsync(
+					[
+						"--session-id",
+						"1",
+						"--scenario",
+						"simple-batch-shape",
+						"--json",
+						"--db-path",
+						legacyDb,
+					],
+					{ from: "user" },
+				),
+			() =>
+				memorySubcommand("relink-report").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
+			() =>
+				memorySubcommand("relink-plan").parseAsync(["--json", "--db-path", legacyDb], {
+					from: "user",
+				}),
 			() =>
 				rememberMemoryCommand.parseAsync(
 					["--kind", "decision", "--title", "queued", "--body", "safe", "--json"],

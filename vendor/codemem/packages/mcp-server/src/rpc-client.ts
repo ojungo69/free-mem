@@ -43,6 +43,9 @@ const RPC_FIELDS = {
 		"limit",
 	],
 	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body", "confidence", "project"],
+	"POST /v1/jobs": ["kind", "args", "dryRun"],
+	"GET /v1/jobs": ["kind", "state", "submittedAfter"],
+	"GET /v1/jobs/:id": ["id"],
 } as const satisfies Partial<Record<RpcMethod, readonly string[]>>;
 
 const METADATA_FIELDS = new Set([
@@ -66,6 +69,9 @@ const METADATA_FIELDS = new Set([
 	"kind",
 	"confidence",
 	"project",
+	"dryRun",
+	"state",
+	"submittedAfter",
 ]);
 
 export type McpRpcError = { code: string; message: string; retryable: boolean };

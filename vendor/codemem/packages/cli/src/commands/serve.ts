@@ -136,60 +136,6 @@ function pidFilePath(dbPath: string): string {
 	return join(dirname(dbPath), "viewer.pid");
 }
 
-export function maintenanceWorkerPidFilePath(dbPath: string): string {
-	return join(dirname(dbPath), "maintenance-worker.pid");
-}
-
-function readMaintenanceWorkerPidRecord(
-	dbPath: string,
-): { pid: number; dbPath: string | null } | null {
-	const pidPath = maintenanceWorkerPidFilePath(dbPath);
-	if (!existsSync(pidPath)) return null;
-	const raw = readFileSync(pidPath, "utf-8").trim();
-	try {
-		const parsed = JSON.parse(raw) as { pid?: unknown; dbPath?: unknown } | number;
-		if (typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0) {
-			return { pid: Math.trunc(parsed), dbPath: null };
-		}
-		if (
-			typeof parsed === "object" &&
-			parsed !== null &&
-			typeof parsed.pid === "number" &&
-			Number.isFinite(parsed.pid) &&
-			parsed.pid > 0
-		) {
-			return {
-				pid: Math.trunc(parsed.pid),
-				dbPath: typeof parsed.dbPath === "string" ? resolveDbPath(parsed.dbPath) : null,
-			};
-		}
-	} catch {
-		const parsed = Number.parseInt(raw, 10);
-		if (Number.isFinite(parsed) && parsed > 0) return { pid: parsed, dbPath: null };
-	}
-	return null;
-}
-
-export function isLikelyMaintenanceWorkerCommand(command: string): boolean {
-	const lowered = command.toLowerCase();
-	if (!/\bmaintenance\s+worker\b/.test(lowered)) return false;
-	return (
-		lowered.includes("codemem") ||
-		lowered.includes("packages/cli/dist/index.js") ||
-		lowered.includes("/cli/dist/index.js") ||
-		lowered.includes("packages/cli/src/index.ts")
-	);
-}
-
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export function commandHasExactDbPath(command: string, dbPath: string): boolean {
-	const escapedPath = escapeRegExp(resolveDbPath(dbPath));
-	return new RegExp(`(?:^|\\s)--db-path(?:=|\\s+)${escapedPath}(?:\\s|$)`).test(command);
-}
-
 function readViewerPidRecord(dbPath: string): ViewerPidRecord | null {
 	const pidPath = pidFilePath(dbPath);
 	if (!existsSync(pidPath)) return null;
@@ -316,39 +262,6 @@ export async function terminateTrustedViewerPid(
 	return terminateProcessPid(pid, timeouts);
 }
 
-export async function terminateTrustedMaintenanceWorker(
-	dbPath: string,
-	timeouts: { gracefulMs?: number; forceMs?: number } = {},
-): Promise<boolean> {
-	const pidPath = maintenanceWorkerPidFilePath(dbPath);
-	const record = readMaintenanceWorkerPidRecord(dbPath);
-	if (!record) return true;
-	const expectedDbPath = resolveDbPath(dbPath);
-	if (record.dbPath && record.dbPath !== expectedDbPath) return false;
-	if (!isProcessRunning(record.pid)) {
-		try {
-			rmSync(pidPath);
-		} catch {
-			// ignore
-		}
-		return true;
-	}
-	const command = readProcessCommand(record.pid);
-	if (!command || !isLikelyMaintenanceWorkerCommand(command)) return false;
-	if (record.dbPath !== expectedDbPath || !commandHasExactDbPath(command, expectedDbPath)) {
-		return false;
-	}
-	const stopped = await terminateProcessPid(record.pid, timeouts);
-	if (stopped) {
-		try {
-			rmSync(pidPath);
-		} catch {
-			// ignore
-		}
-	}
-	return stopped;
-}
-
 async function waitForPortRelease(host: string, port: number, timeoutMs = 10000): Promise<boolean> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -426,17 +339,6 @@ export function buildForegroundRunnerArgs(
 	if (invocation.dbPath) {
 		args.push("--db-path", invocation.dbPath);
 	}
-	return args;
-}
-
-export function buildMaintenanceWorkerArgs(
-	scriptPath: string,
-	invocation: ResolvedServeInvocation,
-	execArgv: string[] = process.execArgv,
-): string[] {
-	const args = [...execArgv, scriptPath, "maintenance", "worker"];
-	if (invocation.dbPath) args.push("--db-path", invocation.dbPath);
-	if (invocation.configPath) args.push("--config", invocation.configPath);
 	return args;
 }
 
@@ -661,15 +563,8 @@ async function runServeInvocation(invocation: ResolvedServeInvocation): Promise<
 			port: invocation.port,
 		});
 		if (result.stopped) {
-			const workerStopped = await terminateTrustedMaintenanceWorker(dbPath, {
-				gracefulMs: 5000,
-				forceMs: 5000,
-			});
 			p.intro("codemem viewer");
 			p.log.success(`Stopped viewer${result.pid ? ` (pid ${result.pid})` : ""}`);
-			if (!workerStopped) {
-				p.log.warn("Maintenance worker pidfile exists but did not match trusted worker command");
-			}
 			if (invocation.mode === "stop") {
 				p.outro("done");
 				return;
@@ -685,14 +580,7 @@ async function runServeInvocation(invocation: ResolvedServeInvocation): Promise<
 			process.exitCode = 1;
 			return;
 		} else if (invocation.mode === "stop") {
-			const workerStopped = await terminateTrustedMaintenanceWorker(dbPath, {
-				gracefulMs: 5000,
-				forceMs: 5000,
-			});
 			p.intro("codemem viewer");
-			if (!workerStopped) {
-				p.log.warn("Maintenance worker pidfile exists but did not match trusted worker command");
-			}
 			p.outro("No background viewer found");
 			return;
 		}

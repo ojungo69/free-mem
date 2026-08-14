@@ -27,6 +27,28 @@ function handshake(overrides: Partial<core.RpcRequest> = {}): core.RpcRequest {
 	};
 }
 
+async function waitForDaemonJob(
+	socketPath: string,
+	jobId: string,
+): Promise<Record<string, unknown> | null> {
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const response = await core.callDaemonRpc(
+			socketPath,
+			handshake({
+				id: `job-${jobId}-${attempt}`,
+				method: "GET /v1/jobs/:id",
+				body: { id: jobId },
+			}),
+		);
+		if ("result" in response) {
+			const job = (response.result.job as Record<string, unknown> | null) ?? null;
+			if (job?.state === "completed" || job?.state === "failed") return job;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	return null;
+}
+
 afterEach(async () => {
 	for (const handle of created.splice(0)) {
 		try {
@@ -265,7 +287,7 @@ describe("Phase 1 daemon RPC", () => {
 		});
 		expect(await view("stats")).toMatchObject({
 			status: 200,
-			body: { database: { memory_items: 2 }, maintenance_jobs: [] },
+			body: { database: { memory_items: 2 }, maintenance_jobs: expect.any(Array) },
 		});
 		expect(await view("runtime")).toEqual({ status: 200, body: { version: core.VERSION } });
 		expect(await view("raw-events")).toMatchObject({
@@ -295,6 +317,199 @@ describe("Phase 1 daemon RPC", () => {
 		} finally {
 			if (previousHeaders === undefined) delete process.env.CODEMEM_OBSERVER_HEADERS;
 			else process.env.CODEMEM_OBSERVER_HEADERS = previousHeaders;
+		}
+	});
+
+	it("P1-T045-01-job-id-result", async () => {
+		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		created.push(handle);
+		const remembered = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				method: "POST /v1/memories/record",
+				body: {
+					idempotencyKey: "job-memory",
+					kind: "session_summary",
+					title: "Job seed",
+					body: "## Completed\nMigrated hooks\n\n## Learned\nDaemon owns writes",
+				},
+			}),
+		);
+		if (!("result" in remembered)) throw new Error("memory seed failed");
+
+		const submitted = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "submit-job",
+				method: "POST /v1/jobs",
+				body: { kind: "narrative.backfill", args: { limit: 10 } },
+			}),
+		);
+		if (!("result" in submitted)) throw new Error("job submission failed");
+		expect(submitted.result).toMatchObject({
+			jobId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+			state: "queued",
+		});
+
+		const jobId = String(submitted.result.jobId);
+		const job = await waitForDaemonJob(handle.socketPath, jobId);
+		expect(job).toMatchObject({
+			jobId,
+			kind: "narrative.backfill",
+			state: "completed",
+			attempts: 1,
+			maxAttempts: 1,
+			result: { checked: 1, updated: 1, skipped: 0 },
+		});
+
+		const memory = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "job-memory-get",
+				method: "GET /v1/memories/:id",
+				body: { id: remembered.result.memoryId, requestId: "job-memory-get" },
+			}),
+		);
+		if (!("result" in memory)) throw new Error("memory read failed");
+		const sessionId = Number((memory.result.item as { session_id: number }).session_id);
+		const layout = core.resolveStorageLayout(handle.dataDir);
+		const pointer = core.readCurrentDatabasePointer(layout);
+		if (!pointer) throw new Error("canonical database pointer is missing");
+		const dbPath = join(layout.dbDir, pointer);
+		process.env.CODEMEM_EMBEDDING_DISABLED = "1";
+		try {
+			for (const [kind, args, dryRun] of [
+				["db.vacuum", {}],
+				["raw-events.prune", { maxAgeDays: 36_500, vacuum: false }, true],
+				["raw-events.retry", { limit: 5 }],
+				["projects.rename", { oldName: "missing", newName: "renamed" }, true],
+				["projects.normalize", {}, true],
+				["observations.prune", { limit: 5 }, true],
+				["memories.prune", { limit: 5, kinds: ["observation"] }, true],
+				["memories.dedup", { limit: 5, windowMs: 3_600_000 }, true],
+				["secrets.scan", { limit: 5 }, true],
+				["tags.backfill", { limit: 10 }],
+				["dedup-keys.backfill", { limit: 10 }],
+				["structured.backfill", { limit: 10, kinds: ["discovery"], overwrite: false }],
+				["refs.backfill", { batchSize: 10 }],
+				["scopes.backfill", { batchSize: 10 }],
+				["session-context.backfill", { batchSize: 10 }],
+				["summary-dedup.backfill", { batchSize: 10 }],
+				["vectors.migrate", { batchSize: 10 }],
+				["report.memory-role", { allProjects: true, includeInactive: false, probes: [] }],
+				["report.role-compare", { baselineDbPath: dbPath, candidateDbPath: dbPath }],
+				["report.artifact", { allProjects: true, includeInactive: false }],
+				["report.relink", { allProjects: true, limit: 5 }],
+				["plan.relink", { allProjects: true, limit: 5 }],
+				[
+					"report.extraction",
+					{ sessionId, scenarioId: "simple-batch-shape", includeInactive: false },
+				],
+				["report.raw-events", { limit: 5 }],
+				[
+					"gate.raw-events",
+					{
+						minFlushSuccessRate: 0.95,
+						maxDroppedEventRate: 0.05,
+						minSessionBoundaryAccuracy: 0.9,
+						windowHours: 24,
+					},
+				],
+				["report.db-size", { limit: 5 }],
+				["db.init", {}],
+			] as const) {
+				const next = await core.callDaemonRpc(
+					handle.socketPath,
+					handshake({
+						id: `submit-${kind}`,
+						method: "POST /v1/jobs",
+						body: { kind, args, dryRun: dryRun ?? kind.startsWith("report.") },
+					}),
+				);
+				expect("result" in next, `${kind} submission`).toBe(true);
+				if (!("result" in next)) continue;
+				const completed = await waitForDaemonJob(handle.socketPath, String(next.result.jobId));
+				expect(completed, kind).toMatchObject({
+					kind,
+					state: "completed",
+					attempts: 1,
+					maxAttempts: 1,
+					result: expect.anything(),
+				});
+			}
+		} finally {
+			delete process.env.CODEMEM_EMBEDDING_DISABLED;
+		}
+	});
+
+	it("P1-T045-03-worker-absorbed", async () => {
+		const dataDir = tempDataDir();
+		const first = await core.startDaemon({ dataDir });
+		created.push(first);
+		const remembered = await core.callDaemonRpc(
+			first.socketPath,
+			handshake({
+				method: "POST /v1/memories/record",
+				body: {
+					idempotencyKey: "legacy-dedup-key",
+					kind: "discovery",
+					title: "Legacy memory",
+					body: "Backfill this row inside the daemon",
+				},
+			}),
+		);
+		if (!("result" in remembered)) throw new Error("memory seed failed");
+		const memoryId = Number(remembered.result.memoryId);
+		await first.stop();
+
+		const layout = core.resolveStorageLayout(dataDir);
+		const pointer = core.readCurrentDatabasePointer(layout);
+		if (!pointer) throw new Error("canonical database pointer is missing");
+		const dbPath = join(layout.dbDir, pointer);
+		const seed = core.connect(dbPath);
+		try {
+			seed.prepare("UPDATE memory_items SET dedup_key = NULL WHERE id = ?").run(memoryId);
+			seed.prepare("DELETE FROM maintenance_jobs WHERE kind = ?").run(core.DEDUP_KEY_BACKFILL_JOB);
+		} finally {
+			seed.close();
+		}
+
+		const second = await core.startDaemon({ dataDir });
+		created.push(second);
+		let jobs: Array<Record<string, unknown>> = [];
+		for (let attempt = 0; attempt < 100; attempt++) {
+			const response = await core.callDaemonRpc(
+				second.socketPath,
+				handshake({
+					id: `auto-job-${attempt}`,
+					method: "GET /v1/jobs",
+					body: { kind: "dedup-keys.backfill" },
+				}),
+			);
+			if ("result" in response) {
+				jobs = response.result.jobs as Array<Record<string, unknown>>;
+				if (jobs.some((job) => job.state === "completed")) break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		expect(jobs).toMatchObject([
+			{
+				kind: "dedup-keys.backfill",
+				state: "completed",
+				attempts: 1,
+				maxAttempts: 1,
+			},
+		]);
+
+		await second.stop();
+		const verify = core.connect(dbPath);
+		try {
+			const row = verify
+				.prepare("SELECT dedup_key FROM memory_items WHERE id = ?")
+				.get(memoryId) as { dedup_key: string | null };
+			expect(row.dedup_key).toBeTypeOf("string");
+		} finally {
+			verify.close();
 		}
 	});
 

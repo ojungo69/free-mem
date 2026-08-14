@@ -1,4 +1,5 @@
 import type { Socket } from "node:net";
+import { DaemonJobRequestError, type DaemonJobService } from "./daemon-jobs.js";
 import {
 	type FileContextRetrievalAttempt,
 	HOOK_DELIVERY_BUDGETS,
@@ -190,6 +191,22 @@ const METHOD_REQUIRED_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"GET /v1/jobs/:id": ["id"],
 };
 
+const MAINTENANCE_BLOCKED_METHODS = new Set<RpcMethod>([
+	"POST /v1/events",
+	"POST /v1/events/batch",
+	"POST /v1/context/pack",
+	"POST /v1/search",
+	"POST /v1/retrieval/file-context",
+	"POST /v1/retrieval/file-context/delivery",
+	"GET /v1/memories/:id",
+	"POST /v1/memories/record",
+	"DELETE /v1/memories/:id",
+	"POST /v1/backup/create",
+	"POST /v1/backup/restore",
+	"POST /v1/operations/export",
+	"POST /v1/operations/import",
+]);
+
 const VIEW_COLLECTIONS = new Set([
 	"sessions",
 	"projects",
@@ -295,6 +312,7 @@ export type DaemonRpcContext = {
 	store: MemoryStore;
 	viewerAuth: ViewerAuthState;
 	viewerRead: ViewerReadHandler;
+	jobs: DaemonJobService;
 };
 
 export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
@@ -401,6 +419,7 @@ async function handleMethod(
 		return {
 			status: "ok",
 			instanceId: ctx.identity.nonce,
+			maintenanceMode: ctx.jobs.isMaintenanceMode(),
 			protocolVersion: protocolVersions(),
 			spool: spoolHealth(ctx.dataDir),
 		};
@@ -413,6 +432,7 @@ async function handleMethod(
 		return {
 			status: "ok",
 			instanceId: ctx.identity.nonce,
+			maintenanceMode: ctx.jobs.isMaintenanceMode(),
 			protocolVersion: protocolVersions(),
 			diagnostics: {
 				pid: ctx.identity.pid,
@@ -525,13 +545,34 @@ async function handleMethod(
 		return { loggedOut: ctx.viewerAuth.logout(body.session) };
 	}
 	if (method === "POST /v1/jobs") {
-		return { jobId: null, state: "not_implemented", kind: body.kind };
+		try {
+			return ctx.jobs.submit({ kind: body.kind, args: body.args, dryRun: body.dryRun });
+		} catch (error) {
+			if (error instanceof DaemonJobRequestError) throw new RpcRequestError(error.message);
+			throw error;
+		}
 	}
 	if (method === "GET /v1/jobs") {
-		return { jobs: [] };
+		try {
+			return {
+				jobs: ctx.jobs.list({
+					kind: body.kind,
+					state: body.state,
+					submittedAfter: body.submittedAfter,
+				}),
+			};
+		} catch (error) {
+			if (error instanceof DaemonJobRequestError) throw new RpcRequestError(error.message);
+			throw error;
+		}
 	}
 	if (method === "GET /v1/jobs/:id") {
-		return { job: null, id: body.id };
+		try {
+			return { job: ctx.jobs.get(body.id) };
+		} catch (error) {
+			if (error instanceof DaemonJobRequestError) throw new RpcRequestError(error.message);
+			throw error;
+		}
 	}
 	return {
 		operationId: body.operationId ?? body.id,
@@ -776,6 +817,7 @@ export function dispatchSpoolMutation(
 	ctx: DaemonRpcContext,
 	entry: SpoolEntry,
 ): SpoolImportOutcome {
+	if (ctx.jobs.isMaintenanceMode()) throw new Error("maintenance mode is active");
 	try {
 		if (entry.method === "POST /v1/events") {
 			handleEvent(ctx, entry.body, NORMALIZED_SCHEMA_VERSION, entry.redaction);
@@ -1272,6 +1314,13 @@ export async function dispatchDaemonRpc(
 	const elapsed = (ctx.now ?? Date.now)() - started;
 	if (elapsed >= deadlineMs) {
 		return typedError("deadline_exceeded", "RPC hard deadline exceeded.", true);
+	}
+	if (ctx.jobs.isMaintenanceMode() && MAINTENANCE_BLOCKED_METHODS.has(request.method)) {
+		return typedError(
+			"maintenance_mode",
+			"The daemon is in maintenance mode; retryable mutations must be queued locally.",
+			true,
+		);
 	}
 	try {
 		return {

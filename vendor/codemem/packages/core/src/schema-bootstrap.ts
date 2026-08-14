@@ -1,3 +1,4 @@
+import { DAEMON_JOBS_DDL } from "./daemon-jobs-schema.js";
 import type { Database } from "./db.js";
 import {
 	getSchemaVersion,
@@ -294,6 +295,7 @@ const RETRIEVAL_LEDGER_SCHEMA_OBJECTS = [
 
 const SCHEMA_AUX_DDL = `
 ${RETRIEVAL_LEDGER_DDL}
+${DAEMON_JOBS_DDL}
 
 CREATE INDEX IF NOT EXISTS idx_sync_peers_actor_id ON sync_peers(actor_id);
 

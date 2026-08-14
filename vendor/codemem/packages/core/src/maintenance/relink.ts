@@ -38,7 +38,7 @@ function hasOutOfGroupBridgeRows(
 	return row != null;
 }
 
-function getRawEventRelinkReportFromDb(
+export function getRawEventRelinkReportFromDb(
 	db: Database,
 	opts: RawEventRelinkReportOptions = {},
 ): RawEventRelinkReport {
@@ -336,7 +336,14 @@ export function getRawEventRelinkPlan(
 	dbPath?: string,
 	opts: RawEventRelinkPlanOptions = {},
 ): RawEventRelinkPlan {
-	const report = getRawEventRelinkReport(dbPath, opts);
+	return withDb(dbPath, (db) => getRawEventRelinkPlanWithDb(db, opts));
+}
+
+export function getRawEventRelinkPlanWithDb(
+	db: Database,
+	opts: RawEventRelinkPlanOptions = {},
+): RawEventRelinkPlan {
+	const report = getRawEventRelinkReportFromDb(db, opts);
 	const actions: RawEventRelinkAction[] = [];
 	let bridgeCreations = 0;
 	let memoryRepoints = 0;

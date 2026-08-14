@@ -4,6 +4,7 @@ import { createConnection, createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
+import { DaemonJobService } from "./daemon-jobs.js";
 import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
 import { ObserverClient } from "./observer-client.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
@@ -56,6 +57,7 @@ type LiveDaemon = {
 	writer: WriterActor;
 	store: MemoryStore;
 	sweeper: RawEventSweeper;
+	jobs: DaemonJobService;
 	spoolSweepTimer: ReturnType<typeof setInterval>;
 };
 
@@ -194,6 +196,7 @@ async function releaseResources(layout: StorageLayout, live?: LiveDaemon): Promi
 		} catch {
 			// server may already be closed
 		}
+		await live.jobs.stop();
 		await live.sweeper.stop();
 		try {
 			live.store.close();
@@ -258,6 +261,7 @@ export async function startDaemon(options: {
 
 	let canonical: CanonicalWriter | undefined;
 	let sweeper: RawEventSweeper | undefined;
+	let jobs: DaemonJobService | undefined;
 	let server: Server | undefined;
 	let started = false;
 	try {
@@ -274,6 +278,12 @@ export async function startDaemon(options: {
 		const observer = new ObserverClient();
 		sweeper = new RawEventSweeper(canonical.store, { observer });
 		sweeper.start();
+		const maintenanceSweeper = sweeper;
+		jobs = new DaemonJobService(canonical.store, {
+			dataDir: layout.dataDir,
+			beforeMaintenance: () => maintenanceSweeper.stop(),
+			afterMaintenance: () => maintenanceSweeper.start(),
+		});
 		const rpc: DaemonRpcContext = {
 			identity,
 			dataDir: layout.dataDir,
@@ -287,6 +297,7 @@ export async function startDaemon(options: {
 				now: options.now,
 			}),
 			viewerRead: createViewerReadHandler({ store: canonical.store, sweeper, observer }),
+			jobs,
 			onStop: () => {
 				const current = liveDaemons.get(layout.dataDir);
 				if (current && sameIdentity(current.identity, identity)) {
@@ -297,6 +308,7 @@ export async function startDaemon(options: {
 			},
 		};
 		const sweepSpool = () => {
+			if (jobs?.isMaintenanceMode()) return;
 			try {
 				importReadySpoolEntries(layout.dataDir, (entry) => dispatchSpoolMutation(rpc, entry));
 			} catch {
@@ -306,6 +318,7 @@ export async function startDaemon(options: {
 		sweepSpool();
 		server = await bindPrivateSocket(layout.socketPath, rpc);
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
+		jobs.startInternalBackfills();
 		const spoolSweepTimer = setInterval(sweepSpool, 1_000);
 		spoolSweepTimer.unref();
 		const live: LiveDaemon = {
@@ -316,6 +329,7 @@ export async function startDaemon(options: {
 			writer: canonical.db,
 			store: canonical.store,
 			sweeper,
+			jobs,
 			spoolSweepTimer,
 		};
 		liveDaemons.set(layout.dataDir, live);
@@ -334,6 +348,7 @@ export async function startDaemon(options: {
 			},
 		};
 	} catch (error) {
+		if (jobs) await jobs.stop();
 		if (sweeper) await sweeper.stop();
 		if (canonical) {
 			try {

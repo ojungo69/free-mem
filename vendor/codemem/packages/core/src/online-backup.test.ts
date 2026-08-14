@@ -314,7 +314,7 @@ describe("Phase 1 online backup", () => {
 			`);
 			db.pragma("user_version = 18");
 
-			expect(core.SCHEMA_VERSION).toBe(19);
+			expect(core.SCHEMA_VERSION).toBe(20);
 			await core.runGatedMigration(db, {
 				dbPath,
 				destinationDir: destDir,
@@ -325,7 +325,7 @@ describe("Phase 1 online backup", () => {
 			expect(existsSync(join(destDir, "schema-v19.sqlite"))).toBe(true);
 			expect(core.tableExists(db, "mutation_receipts")).toBe(true);
 			expect(core.tableExists(db, "mutation_quarantine")).toBe(true);
-			expect(core.getSchemaVersion(db)).toBe(19);
+			expect(core.getSchemaVersion(db)).toBe(20);
 		} finally {
 			db.close();
 		}

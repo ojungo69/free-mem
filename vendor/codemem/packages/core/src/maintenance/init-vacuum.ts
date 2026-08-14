@@ -2,7 +2,13 @@
  */
 
 import { statSync } from "node:fs";
-import { assertSchemaReady, connect, getSchemaVersion, resolveDbPath } from "../db.js";
+import {
+	assertSchemaReady,
+	connect,
+	type Database,
+	getSchemaVersion,
+	resolveDbPath,
+} from "../db.js";
 import { ensureMaintenanceJobsSchema } from "../maintenance-jobs.js";
 import { runDatabaseMigrations, verifyFreshDatabase } from "../migration-runner.js";
 import { canAutoBootstrapSchema } from "../schema-bootstrap.js";
@@ -34,9 +40,13 @@ export function initDatabase(dbPath?: string): { path: string; sizeBytes: number
 }
 
 export function vacuumDatabase(dbPath?: string): { path: string; sizeBytes: number } {
-	return withDb(dbPath, (db, resolvedPath) => {
-		db.exec("VACUUM");
-		const stats = statSync(resolvedPath);
-		return { path: resolvedPath, sizeBytes: stats.size };
-	});
+	return withDb(dbPath, (db, resolvedPath) => vacuumDatabaseWithDb(db, resolvedPath));
+}
+
+export function vacuumDatabaseWithDb(
+	db: Database,
+	path = db.name,
+): { path: string; sizeBytes: number } {
+	db.exec("VACUUM");
+	return { path, sizeBytes: statSync(path).size };
 }

@@ -7,12 +7,14 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	hashMutationPayload,
 	NORMALIZED_SCHEMA_VERSION,
 	ReadOnlyActor,
+	resolveStorageLayout,
 	startDaemon,
 } from "@codemem/core";
 import { describe, expect, it } from "vitest";
@@ -135,6 +137,44 @@ describe("MCP daemon RPC client", () => {
 				redaction: { sensitivity: "secret" },
 			});
 		} finally {
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it("P1-T046-02-maintenance-spool", async () => {
+		const fixture = projectFixture();
+		const layout = resolveStorageLayout(fixture.dataDir);
+		mkdirSync(layout.controlDir, { recursive: true, mode: 0o700 });
+		const server = createServer((socket) => {
+			socket.once("data", () => {
+				socket.end(
+					`${JSON.stringify({
+						error: {
+							code: "maintenance_mode",
+							message: "The daemon is in maintenance mode.",
+							retryable: true,
+						},
+					})}\n`,
+				);
+			});
+		});
+		await new Promise<void>((resolve, reject) => {
+			server.once("error", reject);
+			server.listen(layout.socketPath, resolve);
+		});
+		try {
+			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
+			const body = rememberBody("maintenance-spool");
+			expect(await client.remember(body)).toMatchObject({
+				ok: true,
+				result: { status: "queued", duplicate: false },
+			});
+			const readyDir = join(layout.spoolDir, "ready");
+			const files = readdirSync(readyDir);
+			expect(files).toHaveLength(1);
+			expect(readFileSync(join(readyDir, files[0]), "utf8")).not.toContain("TOKEN_SUPERSECRET");
+		} finally {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
 			rmSync(fixture.root, { recursive: true, force: true });
 		}
 	});

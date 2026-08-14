@@ -130,8 +130,12 @@ T053–T057 の harness runner 骨格（assert 内容と判定条件は Claude C
 - [X] T044 CLI: production 分 RPC 化 + 後続 Phase 機能 typed stub（判断 #13）。前提: T036, T037, T038, T039/T040（spoolable mutation の fail-over 経路）
   - 実装証拠: `vendor/codemem/packages/cli/src/commands/{enqueue-raw-event,memory,pack,recent,search,stats,status,serve}.ts` が共有 `@codemem/mcp` RPC client を使用。spoolable event/remember は redacted spool、forget/read は typed failure。distill/embed/extraction replay/benchmark は Phase 6/7 typed stub、旧 prompt-pack-ledger は削除
   - 検証証拠: `cli-rpc.test.ts` (P1-T044-01..03)、`rpc-client.test.ts` の direct event redaction、`evidence/phase1-t044-cli-rpc-validation.md`。serial full suite 390 suites / 1,836 tests / failed 0、test 集合は `1,894 - 61 + 3 = 1,836`
-- [ ] T045 maintenance/backfill → daemon 内 jobs 移設。前提: T033
-- [ ] T046 破壊的 maintenance = daemon maintenance mode（判断 #6）。前提: T045, T050
+- [X] T045 maintenance/backfill → daemon 内 jobs 移設。前提: T033
+  - 実装証拠: `vendor/codemem/packages/core/src/daemon-jobs.ts` / `daemon-jobs-schema.ts`（durable `daemon_jobs`、全 class C registry、`maxAttempts=1`、再起動 orphan fail、内部 backfill 吸収）、`daemon-rpc.ts`（POST/GET jobs）、CLI `commands/daemon-job.ts`（POST 一度だけ + GET polling）。旧 `maintenance-worker-runtime` と worker PID 管理は削除
+  - 検証証拠: `daemon-rpc.test.ts` (P1-T045-01/03)、`daemon-jobs.test.ts` (P1-T045-02)、`cli-rpc.test.ts` (P1-T044-03 拡張)、`evidence/phase1-t045-t046-daemon-jobs-validation.md`
+- [X] T046 破壊的 maintenance = daemon maintenance mode（判断 #6）。前提: T045, T050
+  - 実装証拠: destructive job は sweeper/spool import/通常 write を停止し、T050 online backup の作成・検証成功後だけ mutation を開始。backup/verify 失敗時は job failed・DB unchanged、maintenance response は retryable で spoolable client が共有 spool へ保全
+  - 検証証拠: `daemon-jobs.test.ts` (P1-T046-01)、`mcp-server/src/rpc-client.test.ts` (P1-T046-02)。serial full suite 390 suites / 1,833 tests / failed 0
 - [ ] T047 [P] export/import → daemon RPC（destructive import = maintenance mode + backup precondition）。前提: T036, T046, T050
 - [ ] T048 daemon 外 DB handle 完全ゼロ（判断 #7）: 全 read → RPC read client、connectReadOnly 残 2 箇所も RPC 移行。前提: T041–T047（全 client/jobs 移設後にのみ判定可能）
 

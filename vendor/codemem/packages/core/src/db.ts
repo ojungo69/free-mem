@@ -21,6 +21,7 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import * as sqliteVec from "sqlite-vec";
+import { DAEMON_JOBS_DDL } from "./daemon-jobs-schema.js";
 import { ensureMutationReceiptSchema } from "./mutation-dispatcher.js";
 import { expandUserPath } from "./observer-config.js";
 import { canAutoBootstrapSchema, ensureRetrievalLedgerSchema } from "./schema-bootstrap.js";
@@ -31,7 +32,7 @@ type DatabaseType = import("better-sqlite3").Database;
 export type Database = DatabaseType;
 
 /** Current schema version this TS runtime was built against. */
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * Minimum schema version the TS runtime can operate with.
@@ -1018,6 +1019,7 @@ export function ensureAdditiveSchemaCompatibility(db: DatabaseType): void {
 		} catch {
 			// Keep compatibility shim fail-open for optional additive tables.
 		}
+		db.exec(DAEMON_JOBS_DDL);
 
 		try {
 			db.exec(`

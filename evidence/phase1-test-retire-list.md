@@ -7,6 +7,7 @@ post-T030: `/tmp/free-mem-phase1-post-t030-final.json` (SHA-256 `3b84e9d1f62a43a
 post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164eb5e1ee84c23e087a33a811bad05949f3d5f3108ca1`)
 post-T043: `/tmp/free-mem-phase1-post-t043-serial-final.json` (SHA-256 `d2e58af19a2b84bf7fc005ec931fcb9dcacb27445b05a7e293d29d405512bdfa`)
 post-T044: `/tmp/free-mem-phase1-post-t044-serial-final3.json` (SHA-256 `f570ca29bb73d8987e3ad8e55af963bd1979bfd5d358f89de85f7ef313c91d17`)
+post-T046: `/tmp/free-mem-phase1-post-t046-serial-final3.json` (SHA-256 `297ebd3719add24b02bdd6882d172180926960e4f3d7cfcb45d881f3849e2388`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -25,6 +26,9 @@ post-T044: `/tmp/free-mem-phase1-post-t044-serial-final3.json` (SHA-256 `f570ca2
 | T044 retire | 61 |
 | T044 登録済み追加 | 3 |
 | post-T044 | 1,836 |
+| T045 retire | 8 |
+| T045/T046 登録済み追加 | 5 |
+| post-T046 | 1,833 |
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -49,6 +53,8 @@ T043 は直前 1,942 件から旧 viewer 直結 test 61 件を retire し、mani
 
 T044 は post-T043 1,894 件から旧 CLI local DB / prompt ledger / 後続 Phase 実装 test 61 件を retire し、manifest 登録済み 3 件だけを追加した。機械式は `1,894 - 61 + 3 = 1,836`。post-T044 の serial full suite は 390 suites / total 1,836 / passed 1,833 / todo 3 / failed 0。post-only 完全修飾名は `P1-T044-01..03` の3件と完全一致する。
 
+T045/T046 は post-T044 1,836 件から別 process maintenance worker 固有 test 8 件を retire し、manifest 登録済み 5 件を追加した。機械式は `1,836 - 8 + 5 = 1,833`。post-T046 の serial full suite は 390 suites / total 1,833 / passed 1,830 / todo 3 / failed 0。追加 test は `P1-T045-01..03` と `P1-T046-01..02` に一致する。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -64,6 +70,7 @@ T044 は post-T043 1,894 件から旧 CLI local DB / prompt ledger / 後続 Phas
 | R-SIDECAR | core/UI/viewer の observer runtime test | 44 | T031 で Claude/Codex subprocess、自動選択、command 設定、UI surface を物理削除 | retire title/file は `No test found`、登録 token tests が旧 runtime の API-only 化と設定非表示を固定 |
 | R-T043-VIEWER | viewer direct DB/mutation/transport test + core viewer HTTP hook test | 61 | T043 で viewer を認証済み read-only daemon RPC relay に限定し、direct DB・mutation・hook ingest・旧 pack transport を物理削除 | retire title/file は `No test found`。登録済み T043 13 件が bearer/nonce/session/origin/CSP/read-only/RPC/503 を固定 |
 | R-T044-CLI | CLI local DB/ledger/Phase 6-7 implementation test | 61 | T044 で production CLI を daemon RPC 化し、独立 prompt ledger と後続 Phase の local 実装を削除 | retire title/file は `No test found`。登録済み T044 3 件が endpoint map / typed stub / no DB fallback を固定 |
+| R-T045-JOBS | maintenance worker runtime / serve worker PID test | 8 | T045 で別 process worker を daemon 内 durable jobs へ吸収し、worker command・PID 管理を削除 | 削除 file/title は `No test found`。登録済み T045/T046 5 件が job result/no retry/worker 廃止/maintenance mode/spool を固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -316,6 +323,19 @@ packages/cli/src/commands/status.test.ts > status command reports retryable obse
 packages/cli/src/commands/status.test.ts > status command sets ok false for error attention while still exiting zero
 packages/cli/src/commands/status.test.ts > status command suppresses newer-schema compatibility warnings in JSON mode
 packages/cli/src/commands/status.test.ts > status command uses configured loopback viewer defaults when no PID record exists
+```
+
+## T045 retired fully qualified names（R-T045-JOBS、8）
+
+```text
+packages/cli/src/maintenance-worker-runtime.test.ts > maintenance worker runtime > stops a failed active backfill even when its pending predicate remains true
+packages/cli/src/maintenance-worker-runtime.test.ts > maintenance worker runtime > constructs vector migration with the smaller worker-specific batch size
+packages/cli/src/commands/serve.test.ts > serve command option resolution > builds maintenance worker args from the current runner
+packages/cli/src/commands/serve.test.ts > serve command option resolution > matches likely codemem maintenance worker command lines
+packages/cli/src/commands/serve.test.ts > serve command option resolution > requires exact maintenance worker db-path command ownership
+packages/cli/src/commands/serve.test.ts > serve command option resolution > cleans stale maintenance worker pidfiles
+packages/cli/src/commands/serve.test.ts > serve command option resolution > does not stop a maintenance worker pidfile for another database
+packages/cli/src/commands/serve.test.ts > serve command option resolution > refuses running legacy maintenance worker pidfiles without database ownership
 ```
 
 ## Retired fully qualified names（machine-generated）

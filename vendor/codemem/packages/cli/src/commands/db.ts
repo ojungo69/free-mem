@@ -1,24 +1,5 @@
-import { statSync } from "node:fs";
 import * as p from "@clack/prompts";
-import {
-	aiBackfillStructuredContent,
-	backfillMemoryDedupKeys,
-	backfillNarrativeFromBody,
-	backfillTagsText,
-	connect,
-	deactivateLowSignalMemories,
-	deactivateLowSignalObservations,
-	dedupNearDuplicateMemories,
-	getRawEventStatus,
-	initDatabase,
-	MemoryStore,
-	rawEventsGate,
-	resolveDbPath,
-	resolveProject,
-	retryRawEventFailures,
-	scanSecretsRetroactive,
-	vacuumDatabase,
-} from "@codemem/core";
+import { resolveProject } from "@codemem/core";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -27,11 +8,21 @@ import {
 	type DbOpts,
 	emitJsonError,
 	type JsonOpts,
-	resolveDbOpt,
 } from "../shared-options.js";
+import { type DaemonJobRunOutcome, runDaemonJob } from "./daemon-job.js";
 
-function escapeSqlLikePattern(value: string): string {
-	return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+function emitJobError(
+	json: boolean | undefined,
+	outcome: Extract<DaemonJobRunOutcome, { ok: false }>,
+): void {
+	const message = outcome.jobId
+		? `${outcome.error.message} Job ID: ${outcome.jobId}`
+		: outcome.error.message;
+	if (json) emitJsonError(outcome.error.code, message);
+	else {
+		p.log.error(message);
+		process.exitCode = 1;
+	}
 }
 
 function formatBytes(bytes: number): string {
@@ -67,16 +58,16 @@ const initCmd = new Command("init")
 	.configureHelp(helpStyle)
 	.description("Create or verify the SQLite database and schema");
 addDbOption(initCmd);
-initCmd.action((opts: DbOpts) => {
-	try {
-		const result = initDatabase(resolveDbOpt(opts));
-		p.intro("codemem db init");
-		p.log.success(`Database ready: ${result.path}`);
-		p.outro(`Size: ${result.sizeBytes.toLocaleString()} bytes`);
-	} catch (error) {
-		p.log.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
+initCmd.action(async (opts: DbOpts) => {
+	const outcome = await runDaemonJob(opts, "db.init", {});
+	if (!outcome.ok) {
+		emitJobError(undefined, outcome);
+		return;
 	}
+	const result = outcome.result as { path: string; sizeBytes: number };
+	p.intro("codemem db init");
+	p.log.success(`Database ready: ${result.path}`);
+	p.outro(`Size: ${result.sizeBytes.toLocaleString()} bytes`);
 });
 dbCommand.addCommand(initCmd);
 
@@ -85,16 +76,16 @@ const vacuumCmd = new Command("vacuum")
 	.configureHelp(helpStyle)
 	.description("Run VACUUM on the SQLite database");
 addDbOption(vacuumCmd);
-vacuumCmd.action((opts: DbOpts) => {
-	try {
-		const result = vacuumDatabase(resolveDbOpt(opts));
-		p.intro("codemem db vacuum");
-		p.log.success(`Vacuumed: ${result.path}`);
-		p.outro(`Size: ${result.sizeBytes.toLocaleString()} bytes`);
-	} catch (error) {
-		p.log.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
+vacuumCmd.action(async (opts: DbOpts) => {
+	const outcome = await runDaemonJob(opts, "db.vacuum", {});
+	if (!outcome.ok) {
+		emitJobError(undefined, outcome);
+		return;
 	}
+	const result = outcome.result as { path: string; sizeBytes: number };
+	p.intro("codemem db vacuum");
+	p.log.success(`Vacuumed: ${result.path}`);
+	p.outro(`Size: ${result.sizeBytes.toLocaleString()} bytes`);
 });
 dbCommand.addCommand(vacuumCmd);
 
@@ -107,18 +98,13 @@ const pruneRawEventsCmd = new Command("prune-raw-events")
 	.option("--vacuum", "run VACUUM explicitly after prune completes");
 addDbOption(pruneRawEventsCmd);
 pruneRawEventsCmd.action(
-	(
+	async (
 		opts: DbOpts & {
 			dryRun?: boolean;
 			maxAgeDays: string;
 			vacuum?: boolean;
 		},
 	) => {
-		// Validate before opening the DB. This is a destructive command and
-		// raw_events are the re-extraction source, so a mistyped/zero age must be
-		// rejected rather than silently coerced to a real purge window. Match the
-		// WHOLE string against digits: Number.parseInt would accept "1foo"/"1.5"
-		// as 1 and proceed to delete.
 		const rawAge = opts.maxAgeDays.trim();
 		const maxAgeDays = Number.parseInt(rawAge, 10);
 		if (!/^\d+$/.test(rawAge) || !Number.isInteger(maxAgeDays) || maxAgeDays < 1) {
@@ -129,52 +115,45 @@ pruneRawEventsCmd.action(
 			process.exitCode = 1;
 			return;
 		}
-		const dbPath = resolveDbPath(resolveDbOpt(opts));
-		// Construct the store inside the guarded block so an unreadable or
-		// schema-incompatible DB surfaces a clean error + exit code rather than an
-		// uncaught throw from the command handler.
-		let store: MemoryStore | null = null;
-		try {
-			store = new MemoryStore(dbPath);
-			const maxAgeMs = maxAgeDays * 86_400_000;
-			const status = store.rawEventsRetentionStatus(maxAgeMs);
-			p.intro("codemem db prune-raw-events");
-			p.log.warn(
-				"raw_events is the re-extraction source. Age-based purge is NOT extraction-aware: " +
-					"pruning a window shorter than your extraction lag can delete un-extracted events. " +
-					"The 90-day default mitigates this.",
-			);
-			p.log.info(
-				`raw_events: ${status.total_rows.toLocaleString()} rows, ~${formatBytes(status.estimated_bytes)} on disk`,
-			);
-			p.log.info(
-				`Older than ${maxAgeDays} day(s): ${status.candidate_rows.toLocaleString()} row(s) to delete`,
-			);
-
-			if (opts.dryRun) {
-				p.outro("Dry run only; no changes made");
-				return;
-			}
-
-			const deleted = store.purgeRawEvents(maxAgeMs);
-			p.log.info(`Deleted raw_events: ${deleted.toLocaleString()}`);
-			if (opts.vacuum) {
-				p.log.step("Running VACUUM as requested...");
-				store.close();
-				store = null;
-				const vacuumed = vacuumDatabase(dbPath);
-				p.outro(`Done. VACUUM complete. File size is now ${formatBytes(vacuumed.sizeBytes)}.`);
-				return;
-			}
-			p.outro(
-				"Done. SQLite file size may not shrink until you run `codemem db vacuum` explicitly (or re-run this command with --vacuum).",
-			);
-		} catch (error) {
-			p.log.error(error instanceof Error ? error.message : String(error));
-			process.exitCode = 1;
-		} finally {
-			store?.close();
+		const outcome = await runDaemonJob(
+			opts,
+			"raw-events.prune",
+			{ maxAgeDays, vacuum: opts.vacuum === true },
+			opts.dryRun === true,
+		);
+		if (!outcome.ok) {
+			emitJobError(undefined, outcome);
+			return;
 		}
+		const result = outcome.result as {
+			status: { total_rows: number; estimated_bytes: number; candidate_rows: number };
+			deleted: number;
+			vacuumed: { sizeBytes: number } | null;
+		};
+		p.intro("codemem db prune-raw-events");
+		p.log.warn(
+			"raw_events is the re-extraction source. Age-based purge is NOT extraction-aware: " +
+				"pruning a window shorter than your extraction lag can delete un-extracted events. " +
+				"The 90-day default mitigates this.",
+		);
+		p.log.info(
+			`raw_events: ${result.status.total_rows.toLocaleString()} rows, ~${formatBytes(result.status.estimated_bytes)} on disk`,
+		);
+		p.log.info(
+			`Older than ${maxAgeDays} day(s): ${result.status.candidate_rows.toLocaleString()} row(s) to delete`,
+		);
+		if (opts.dryRun) {
+			p.outro("Dry run only; no changes made");
+			return;
+		}
+		p.log.info(`Deleted raw_events: ${result.deleted.toLocaleString()}`);
+		if (result.vacuumed) {
+			p.outro(`Done. VACUUM complete. File size is now ${formatBytes(result.vacuumed.sizeBytes)}.`);
+			return;
+		}
+		p.outro(
+			"Done. SQLite file size may not shrink until you run `codemem db vacuum` explicitly (or re-run this command with --vacuum).",
+		);
 	},
 );
 dbCommand.addCommand(pruneRawEventsCmd);
@@ -186,37 +165,48 @@ const rawEventsStatusCmd = new Command("raw-events-status")
 	.option("-n, --limit <n>", "max rows to show", "25");
 addDbOption(rawEventsStatusCmd);
 addJsonOption(rawEventsStatusCmd);
-rawEventsStatusCmd.action((opts: DbOpts & JsonOpts & { limit: string }) => {
-	try {
-		const result = getRawEventStatus(resolveDbOpt(opts), Number.parseInt(opts.limit, 10) || 25);
-		if (opts.json) {
-			console.log(JSON.stringify(result, null, 2));
-			return;
-		}
-		p.intro("codemem db raw-events-status");
-		p.log.info(
-			`Totals: ${result.totals.pending.toLocaleString()} pending across ${result.totals.sessions.toLocaleString()} session(s)`,
-		);
-		if (result.items.length === 0) {
-			p.outro("No pending raw events");
-			return;
-		}
-		for (const item of result.items) {
-			p.log.message(
-				`${item.source}:${item.stream_id} pending=${Math.max(0, item.last_received_event_seq - item.last_flushed_event_seq)} ` +
-					`received=${item.last_received_event_seq} flushed=${item.last_flushed_event_seq} project=${item.project ?? ""}`,
-			);
-		}
-		p.outro("done");
-	} catch (error) {
-		const message = error instanceof Error ? error.message : "Failed to read raw-event status";
-		if (opts.json) {
-			emitJsonError("raw_events_status_failed", message);
-		} else {
-			p.log.error(message);
-			process.exitCode = 1;
-		}
+rawEventsStatusCmd.action(async (opts: DbOpts & JsonOpts & { limit: string }) => {
+	const outcome = await runDaemonJob(
+		opts,
+		"report.raw-events",
+		{
+			limit: Number.parseInt(opts.limit, 10) || 25,
+		},
+		true,
+	);
+	if (!outcome.ok) {
+		emitJobError(opts.json, outcome);
+		return;
 	}
+	const result = outcome.result as {
+		totals: { pending: number; sessions: number };
+		items: Array<{
+			source: string;
+			stream_id: string;
+			last_received_event_seq: number;
+			last_flushed_event_seq: number;
+			project: string | null;
+		}>;
+	};
+	if (opts.json) {
+		console.log(JSON.stringify(result, null, 2));
+		return;
+	}
+	p.intro("codemem db raw-events-status");
+	p.log.info(
+		`Totals: ${result.totals.pending.toLocaleString()} pending across ${result.totals.sessions.toLocaleString()} session(s)`,
+	);
+	if (result.items.length === 0) {
+		p.outro("No pending raw events");
+		return;
+	}
+	for (const item of result.items) {
+		p.log.message(
+			`${item.source}:${item.stream_id} pending=${Math.max(0, item.last_received_event_seq - item.last_flushed_event_seq)} ` +
+				`received=${item.last_received_event_seq} flushed=${item.last_flushed_event_seq} project=${item.project ?? ""}`,
+		);
+	}
+	p.outro("done");
 });
 dbCommand.addCommand(rawEventsStatusCmd);
 
@@ -226,15 +216,17 @@ const rawEventsRetryCmd = new Command("raw-events-retry")
 	.description("Requeue failed raw-event flush batches")
 	.option("-n, --limit <n>", "max failed batches to requeue", "25");
 addDbOption(rawEventsRetryCmd);
-rawEventsRetryCmd.action((opts: DbOpts & { limit: string }) => {
-	try {
-		const result = retryRawEventFailures(resolveDbOpt(opts), Number.parseInt(opts.limit, 10) || 25);
-		p.intro("codemem db raw-events-retry");
-		p.outro(`Requeued ${result.retried.toLocaleString()} failed batch(es)`);
-	} catch (error) {
-		p.log.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
+rawEventsRetryCmd.action(async (opts: DbOpts & { limit: string }) => {
+	const outcome = await runDaemonJob(opts, "raw-events.retry", {
+		limit: Number.parseInt(opts.limit, 10) || 25,
+	});
+	if (!outcome.ok) {
+		emitJobError(undefined, outcome);
+		return;
 	}
+	const result = outcome.result as { retried: number };
+	p.intro("codemem db raw-events-retry");
+	p.outro(`Requeued ${result.retried.toLocaleString()} failed batch(es)`);
 });
 dbCommand.addCommand(rawEventsRetryCmd);
 
@@ -249,7 +241,7 @@ const rawEventsGateCmd = new Command("raw-events-gate")
 addDbOption(rawEventsGateCmd);
 addJsonOption(rawEventsGateCmd);
 rawEventsGateCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				minFlushSuccessRate: string;
@@ -258,12 +250,33 @@ rawEventsGateCmd.action(
 				windowHours: string;
 			},
 	) => {
-		const result = rawEventsGate(resolveDbOpt(opts), {
-			minFlushSuccessRate: Number.parseFloat(opts.minFlushSuccessRate),
-			maxDroppedEventRate: Number.parseFloat(opts.maxDroppedEventRate),
-			minSessionBoundaryAccuracy: Number.parseFloat(opts.minSessionBoundaryAccuracy),
-			windowHours: Number.parseFloat(opts.windowHours),
-		});
+		const outcome = await runDaemonJob(
+			opts,
+			"gate.raw-events",
+			{
+				minFlushSuccessRate: Number.parseFloat(opts.minFlushSuccessRate),
+				maxDroppedEventRate: Number.parseFloat(opts.maxDroppedEventRate),
+				minSessionBoundaryAccuracy: Number.parseFloat(opts.minSessionBoundaryAccuracy),
+				windowHours: Number.parseFloat(opts.windowHours),
+			},
+			true,
+		);
+		if (!outcome.ok) {
+			emitJobError(opts.json, outcome);
+			return;
+		}
+		const result = outcome.result as {
+			passed: boolean;
+			failures: string[];
+			metrics: {
+				rates: {
+					flush_success_rate: number;
+					dropped_event_rate: number;
+					session_boundary_accuracy: number;
+				};
+				window_hours: number | null;
+			};
+		};
 
 		if (opts.json) {
 			console.log(JSON.stringify(result, null, 2));
@@ -302,59 +315,27 @@ const renameProjectCmd = new Command("rename-project")
 	.argument("<new-name>", "new project name")
 	.option("--apply", "apply changes (default is dry-run)");
 addDbOption(renameProjectCmd);
-renameProjectCmd.action((oldName: string, newName: string, opts: DbOpts & { apply?: boolean }) => {
-	const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
-	try {
+renameProjectCmd.action(
+	async (oldName: string, newName: string, opts: DbOpts & { apply?: boolean }) => {
 		const dryRun = !opts.apply;
-		const escapedOld = escapeSqlLikePattern(oldName);
-		const suffixPattern = `%/${escapedOld}`;
-		const tables = ["sessions", "raw_event_sessions"] as const;
-		const counts: Record<string, number> = {};
-		const run = () => {
-			for (const table of tables) {
-				const rows = store.db
-					.prepare(
-						`SELECT COUNT(*) as cnt FROM ${table} WHERE project = ? OR project LIKE ? ESCAPE '\\'`,
-					)
-					.get(oldName, suffixPattern) as { cnt: number };
-				counts[table] = rows.cnt;
-				if (!dryRun && rows.cnt > 0) {
-					store.db
-						.prepare(`UPDATE ${table} SET project = ? WHERE project = ?`)
-						.run(newName, oldName);
-					store.db
-						.prepare(
-							`UPDATE ${table} SET project = ? WHERE project LIKE ? ESCAPE '\\' AND project != ?`,
-						)
-						.run(newName, suffixPattern, newName);
-				}
-			}
-		};
-		if (dryRun) {
-			run();
-		} else {
-			store.db.transaction(run)();
+		const outcome = await runDaemonJob(opts, "projects.rename", { oldName, newName }, dryRun);
+		if (!outcome.ok) {
+			emitJobError(undefined, outcome);
+			return;
 		}
+		const result = outcome.result as { counts: Record<string, number> };
 		const action = dryRun ? "Will rename" : "Renamed";
 		p.intro("codemem db rename-project");
 		p.log.info(`${action} ${oldName} → ${newName}`);
 		p.log.info(
-			[`Sessions: ${counts.sessions}`, `Raw event sessions: ${counts.raw_event_sessions}`].join(
-				"\n",
-			),
+			[
+				`Sessions: ${result.counts.sessions}`,
+				`Raw event sessions: ${result.counts.raw_event_sessions}`,
+			].join("\n"),
 		);
-		if (dryRun) {
-			p.outro("Pass --apply to execute");
-		} else {
-			p.outro("done");
-		}
-	} catch (error) {
-		p.log.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
-	} finally {
-		store.close();
-	}
-});
+		p.outro(dryRun ? "Pass --apply to execute" : "done");
+	},
+);
 dbCommand.addCommand(renameProjectCmd);
 
 // --- db normalize-projects ---
@@ -363,73 +344,30 @@ const normalizeProjectsCmd = new Command("normalize-projects")
 	.description("Normalize path-like project identifiers to their basename")
 	.option("--apply", "apply changes (default is dry-run)");
 addDbOption(normalizeProjectsCmd);
-normalizeProjectsCmd.action((opts: DbOpts & { apply?: boolean }) => {
-	const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
-	try {
-		const dryRun = !opts.apply;
-		const tables = ["sessions", "raw_event_sessions"] as const;
-		const rewrites: Map<string, string> = new Map();
-		const counts: Record<string, number> = {};
-
-		const run = () => {
-			for (const table of tables) {
-				const projects = store.db
-					.prepare(
-						`SELECT DISTINCT project FROM ${table} WHERE project IS NOT NULL AND project LIKE '%/%'`,
-					)
-					.all() as Array<{ project: string }>;
-				let updated = 0;
-				for (const row of projects) {
-					const basename = row.project.split("/").pop() ?? row.project;
-					if (basename !== row.project) {
-						rewrites.set(row.project, basename);
-						if (!dryRun) {
-							const info = store.db
-								.prepare(`UPDATE ${table} SET project = ? WHERE project = ?`)
-								.run(basename, row.project);
-							updated += info.changes;
-						} else {
-							const cnt = store.db
-								.prepare(`SELECT COUNT(*) as cnt FROM ${table} WHERE project = ?`)
-								.get(row.project) as { cnt: number };
-							updated += cnt.cnt;
-						}
-					}
-				}
-				counts[table] = updated;
-			}
-		};
-		if (dryRun) {
-			run();
-		} else {
-			store.db.transaction(run)();
-		}
-
-		p.intro("codemem db normalize-projects");
-		p.log.info(`Dry run: ${dryRun}`);
-		p.log.info(
-			[
-				`Sessions to update: ${counts.sessions}`,
-				`Raw event sessions to update: ${counts.raw_event_sessions}`,
-			].join("\n"),
-		);
-		if (rewrites.size > 0) {
-			p.log.info("Rewritten paths:");
-			for (const [from, to] of [...rewrites.entries()].sort()) {
-				p.log.message(`  ${from} → ${to}`);
-			}
-		}
-		if (dryRun) {
-			p.outro("Pass --apply to execute");
-		} else {
-			p.outro("done");
-		}
-	} catch (error) {
-		p.log.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
-	} finally {
-		store.close();
+normalizeProjectsCmd.action(async (opts: DbOpts & { apply?: boolean }) => {
+	const dryRun = !opts.apply;
+	const outcome = await runDaemonJob(opts, "projects.normalize", {}, dryRun);
+	if (!outcome.ok) {
+		emitJobError(undefined, outcome);
+		return;
 	}
+	const result = outcome.result as {
+		counts: Record<string, number>;
+		rewrites: Array<{ from: string; to: string }>;
+	};
+	p.intro("codemem db normalize-projects");
+	p.log.info(`Dry run: ${dryRun}`);
+	p.log.info(
+		[
+			`Sessions to update: ${result.counts.sessions}`,
+			`Raw event sessions to update: ${result.counts.raw_event_sessions}`,
+		].join("\n"),
+	);
+	if (result.rewrites.length > 0) {
+		p.log.info("Rewritten paths:");
+		for (const { from, to } of result.rewrites) p.log.message(`  ${from} → ${to}`);
+	}
+	p.outro(dryRun ? "Pass --apply to execute" : "done");
 });
 dbCommand.addCommand(normalizeProjectsCmd);
 
@@ -440,63 +378,40 @@ const sizeReportCmd = new Command("size-report")
 	.option("--limit <n>", "number of largest tables/indexes to show", "12");
 addDbOption(sizeReportCmd);
 addJsonOption(sizeReportCmd);
-sizeReportCmd.action((opts: DbOpts & JsonOpts & { limit: string }) => {
-	const dbPath = resolveDbPath(resolveDbOpt(opts));
-	const db = connect(dbPath);
-	try {
-		const limit = Math.max(1, Number.parseInt(opts.limit, 10) || 12);
-		const fileSizeBytes = statSync(dbPath).size;
-		const pageInfo = db
-			.prepare("SELECT page_count * page_size as total FROM pragma_page_count, pragma_page_size")
-			.get() as { total: number } | undefined;
-		const freePages = db.prepare("SELECT freelist_count FROM pragma_freelist_count").get() as
-			| { freelist_count: number }
-			| undefined;
-		const pageSize = db.prepare("PRAGMA page_size").get() as { page_size: number } | undefined;
-		const tables = db
-			.prepare(
-				`SELECT name, SUM(pgsize) as size_bytes
-				 FROM dbstat
-				 GROUP BY name
-				 ORDER BY size_bytes DESC
-				 LIMIT ?`,
-			)
-			.all(limit) as Array<{ name: string; size_bytes: number }>;
-
-		if (opts.json) {
-			console.log(
-				JSON.stringify(
-					{
-						file_size_bytes: fileSizeBytes,
-						db_size_bytes: pageInfo?.total ?? 0,
-						free_bytes: (freePages?.freelist_count ?? 0) * (pageSize?.page_size ?? 4096),
-						tables: tables.map((t) => ({ name: t.name, size_bytes: t.size_bytes })),
-					},
-					null,
-					2,
-				),
-			);
-			return;
-		}
-
-		p.intro("codemem db size-report");
-		p.log.info(
-			[
-				`File size:     ${formatBytes(fileSizeBytes)}`,
-				`DB size:       ${formatBytes(pageInfo?.total ?? 0)}`,
-				`Free space:    ${formatBytes((freePages?.freelist_count ?? 0) * (pageSize?.page_size ?? 4096))}`,
-			].join("\n"),
-		);
-		if (tables.length > 0) {
-			p.log.info("Largest objects:");
-			for (const t of tables) {
-				p.log.message(`  ${t.name.padEnd(40)} ${formatBytes(t.size_bytes).padStart(10)}`);
-			}
-		}
-		p.outro("done");
-	} finally {
-		db.close();
+sizeReportCmd.action(async (opts: DbOpts & JsonOpts & { limit: string }) => {
+	const limit = Math.max(1, Number.parseInt(opts.limit, 10) || 12);
+	const outcome = await runDaemonJob(opts, "report.db-size", { limit }, true);
+	if (!outcome.ok) {
+		emitJobError(opts.json, outcome);
+		return;
 	}
+	const result = outcome.result as {
+		file_size_bytes: number;
+		db_size_bytes: number;
+		free_bytes: number;
+		tables: Array<{ name: string; size_bytes: number }>;
+	};
+
+	if (opts.json) {
+		console.log(JSON.stringify(result, null, 2));
+		return;
+	}
+
+	p.intro("codemem db size-report");
+	p.log.info(
+		[
+			`File size:     ${formatBytes(result.file_size_bytes)}`,
+			`DB size:       ${formatBytes(result.db_size_bytes)}`,
+			`Free space:    ${formatBytes(result.free_bytes)}`,
+		].join("\n"),
+	);
+	if (result.tables.length > 0) {
+		p.log.info("Largest objects:");
+		for (const t of result.tables) {
+			p.log.message(`  ${t.name.padEnd(40)} ${formatBytes(t.size_bytes).padStart(10)}`);
+		}
+	}
+	p.outro("done");
 });
 dbCommand.addCommand(sizeReportCmd);
 
@@ -513,7 +428,7 @@ const backfillTagsCmd = new Command("backfill-tags")
 addDbOption(backfillTagsCmd);
 addJsonOption(backfillTagsCmd);
 backfillTagsCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				limit?: string;
@@ -524,7 +439,6 @@ backfillTagsCmd.action(
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = parseOptionalPositiveInt(opts.limit);
 			const project =
@@ -533,14 +447,22 @@ backfillTagsCmd.action(
 					: opts.project?.trim() ||
 						process.env.CODEMEM_PROJECT?.trim() ||
 						resolveProject(process.cwd(), null);
-			const result = backfillTagsText(store.db, {
-				limit,
-				since: opts.since ?? null,
-				project,
-				activeOnly: !opts.inactive,
-				dryRun: opts.dryRun === true,
-				scanner: store.scanner,
-			});
+			const outcome = await runDaemonJob(
+				opts,
+				"tags.backfill",
+				{
+					limit,
+					since: opts.since ?? null,
+					project,
+					activeOnly: !opts.inactive,
+				},
+				opts.dryRun === true,
+			);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as { checked: number; updated: number; skipped: number };
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -554,8 +476,6 @@ backfillTagsCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );
@@ -570,17 +490,26 @@ const pruneObsCmd = new Command("prune-observations")
 addDbOption(pruneObsCmd);
 addJsonOption(pruneObsCmd);
 pruneObsCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				limit?: string;
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = parseOptionalPositiveInt(opts.limit);
-			const result = deactivateLowSignalObservations(store.db, limit ?? null, opts.dryRun === true);
+			const outcome = await runDaemonJob(
+				opts,
+				"observations.prune",
+				{ limit },
+				opts.dryRun === true,
+			);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as { checked: number; deactivated: number };
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -593,8 +522,6 @@ pruneObsCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );
@@ -610,7 +537,7 @@ const pruneMemCmd = new Command("prune-memories")
 addDbOption(pruneMemCmd);
 addJsonOption(pruneMemCmd);
 pruneMemCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				limit?: string;
@@ -618,15 +545,20 @@ pruneMemCmd.action(
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = parseOptionalPositiveInt(opts.limit);
 			const kinds = parseKindsCsv(opts.kinds);
-			const result = deactivateLowSignalMemories(store.db, {
-				kinds,
-				limit: limit ?? null,
-				dryRun: opts.dryRun === true,
-			});
+			const outcome = await runDaemonJob(
+				opts,
+				"memories.prune",
+				{ kinds, limit },
+				opts.dryRun === true,
+			);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as { checked: number; deactivated: number };
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -639,8 +571,6 @@ pruneMemCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );
@@ -658,7 +588,7 @@ const dedupCmd = new Command("dedup-memories")
 addDbOption(dedupCmd);
 addJsonOption(dedupCmd);
 dedupCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				window?: string;
@@ -666,15 +596,24 @@ dedupCmd.action(
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const windowMs = parseOptionalPositiveInt(opts.window);
 			const limit = parseOptionalPositiveInt(opts.limit);
-			const result = dedupNearDuplicateMemories(store.db, {
-				windowMs,
-				limit,
-				dryRun: opts.dryRun === true,
-			});
+			const outcome = await runDaemonJob(
+				opts,
+				"memories.dedup",
+				{ windowMs, limit },
+				opts.dryRun === true,
+			);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as {
+				checked: number;
+				deactivated: number;
+				pairs: Array<{ kept_id: number; deactivated_id: number; title: string }>;
+			};
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -694,8 +633,6 @@ dedupCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );
@@ -709,20 +646,26 @@ const backfillDedupKeysCmd = new Command("backfill-dedup-keys")
 addDbOption(backfillDedupKeysCmd);
 addJsonOption(backfillDedupKeysCmd);
 backfillDedupKeysCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				limit?: string;
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = parseOptionalPositiveInt(opts.limit);
-			const result = backfillMemoryDedupKeys(store.db, {
-				limit,
-				dryRun: opts.dryRun === true,
-			});
+			const outcome = await runDaemonJob(
+				opts,
+				"dedup-keys.backfill",
+				{ limit },
+				opts.dryRun === true,
+			);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as { checked: number; updated: number; skipped: number };
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -736,8 +679,6 @@ backfillDedupKeysCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );
@@ -754,21 +695,26 @@ const backfillNarrativeCmd = new Command("backfill-narrative")
 addDbOption(backfillNarrativeCmd);
 addJsonOption(backfillNarrativeCmd);
 backfillNarrativeCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				limit?: string;
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = parseOptionalPositiveInt(opts.limit);
-			const result = backfillNarrativeFromBody(store.db, {
-				limit,
-				dryRun: opts.dryRun === true,
-				scanner: store.scanner,
-			});
+			const outcome = await runDaemonJob(
+				opts,
+				"narrative.backfill",
+				{ limit },
+				opts.dryRun === true,
+			);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as { checked: number; updated: number; skipped: number };
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -782,8 +728,6 @@ backfillNarrativeCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );
@@ -814,17 +758,29 @@ aiBackfillStructuredCmd.action(
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = parseOptionalPositiveInt(opts.limit);
 			const kinds = parseKindsCsv(opts.kinds);
-			const result = await aiBackfillStructuredContent(store.db, {
-				limit,
-				kinds,
-				overwrite: opts.overwrite === true,
-				dryRun: opts.dryRun === true,
-				scanner: store.scanner,
-			});
+			const outcome = await runDaemonJob(
+				opts,
+				"structured.backfill",
+				{
+					limit,
+					kinds,
+					overwrite: opts.overwrite === true,
+				},
+				opts.dryRun === true,
+			);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as {
+				checked: number;
+				updated: number;
+				skipped: number;
+				failed: number;
+			};
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -840,8 +796,6 @@ aiBackfillStructuredCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );
@@ -856,21 +810,31 @@ const scanSecretsCmd = new Command("scan-secrets")
 addDbOption(scanSecretsCmd);
 addJsonOption(scanSecretsCmd);
 scanSecretsCmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				limit?: string;
 				dryRun?: boolean;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = parseOptionalPositiveInt(opts.limit);
-			const result = scanSecretsRetroactive(store.db, {
-				limit,
-				dryRun: opts.dryRun === true,
-				scanner: store.scanner,
-			});
+			const outcome = await runDaemonJob(opts, "secrets.scan", { limit }, opts.dryRun === true);
+			if (!outcome.ok) {
+				emitJobError(opts.json, outcome);
+				return;
+			}
+			const result = outcome.result as {
+				checked: number;
+				updated: number;
+				skippedOversized: number;
+				detections: Array<{ kind: string; count: number }>;
+				samples: Array<{
+					id: number;
+					redactedTitle?: string | null;
+					detections: Array<{ kind: string; count: number }>;
+				}>;
+			};
 
 			if (opts.json) {
 				console.log(JSON.stringify(result, null, 2));
@@ -899,8 +863,6 @@ scanSecretsCmd.action(
 		} catch (error) {
 			p.log.error(error instanceof Error ? error.message : String(error));
 			process.exitCode = 1;
-		} finally {
-			store.close();
 		}
 	},
 );

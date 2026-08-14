@@ -81,13 +81,27 @@ function rpc(method: string, body: Record<string, unknown>, id: string): RpcRequ
 	};
 }
 
-async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+async function waitUntil(
+	predicate: () => boolean | Promise<boolean>,
+	timeoutMs: number,
+): Promise<boolean> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		if (predicate()) return true;
+		if (await predicate()) return true;
 		await new Promise((resolve) => setTimeout(resolve, 25));
 	}
 	return predicate();
+}
+
+async function waitForDaemonJobsIdle(socketPath: string): Promise<boolean> {
+	return waitUntil(async () => {
+		const response = await callDaemonRpc(socketPath, rpc("GET /v1/jobs", {}, "wait-for-jobs"));
+		const jobs = (response as { result?: { jobs?: Array<{ state?: string }> } }).result?.jobs;
+		return (
+			Array.isArray(jobs) &&
+			jobs.every((job) => job.state === "completed" || job.state === "failed")
+		);
+	}, 3_000);
 }
 
 describe("phase 1 spool importer", () => {
@@ -162,6 +176,7 @@ describe("phase 1 spool importer", () => {
 			expect(memories).toHaveLength(1);
 			const committed = variants.find((variant) => variant.body.title === memories[0]?.title);
 			expect(committed).toBeDefined();
+			expect(await waitForDaemonJobsIdle(daemon.socketPath)).toBe(true);
 			const replay = await callDaemonRpc(
 				daemon.socketPath,
 				rpc("POST /v1/memories/record", committed?.body ?? {}, "replay-startup-import"),
@@ -177,6 +192,7 @@ describe("phase 1 spool importer", () => {
 		const daemon = await startDaemon({ dataDir });
 		let stopped = false;
 		try {
+			expect(await waitForDaemonJobsIdle(daemon.socketPath)).toBe(true);
 			const mutation = eventMutation("periodic-event");
 			const queued = spool.spoolMutation(mutation, { dataDir, onWarning: () => {} });
 			expect(queued.status).toBe("queued");
