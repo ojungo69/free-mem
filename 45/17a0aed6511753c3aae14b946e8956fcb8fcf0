@@ -1,0 +1,118 @@
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_668205a2e0c4c4 121-123
+specs/001-agent-memory-core/phase-1-design.md
+  s_211aa7fe546c35::t_701fd314a8bb06 30,45-54
+  s_211aa7fe546c35::t_5ed4db70ac486a 55
+vendor/codemem/packages/cli/src/commands/claude-hook-file-context.test.ts
+  s_211aa7fe546c35::t_a67881f646444d 1-2,8-56,58,61-63,68,71-72,74,77-80,85,88-95,97-100,103-105,107,110-115,117-119,122-123,125-126,130-142,145-146,148,151-156,159-161,165-166,168,171-178,181,183-185,189-193,198,201-207,210-211,214-216,218,220,223-226,230,232-233
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.ts
+  s_211aa7fe546c35::t_6252fc68788250 1,4,13-18,30,32-33,36-37,59,63-68,73,84,87-89,93-100,102,104-107,110-112,114-116,119-136,140,147-152,157,159,164,166-168,170
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_211aa7fe546c35::t_a1f748db2e678a 10,21,69-79,109,114,119,123,141-216,231,242,316,318,347,353,356,360,366,369
+vendor/codemem/packages/cli/src/hook-core.ts
+  s_211aa7fe546c35::t_2c4db61e5fd546 1-29
+vendor/codemem/packages/cli/src/hook-runtime.test.ts
+  s_211aa7fe546c35::t_428a0b7062bc86 1-18
+vendor/codemem/packages/cli/src/hook-runtime.ts
+  s_211aa7fe546c35::t_f8c941af383ca1 1-94
+vendor/codemem/packages/core/src/daemon-rpc-contract.ts
+  s_211aa7fe546c35::t_10ff98870cbc01 1-137
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_0acb9661f853c5 1-14,32-33,39,72-87,103,110,119-133,163-164,406-410,441-450,467-472,577,579-583,594,603,812-934,944,951,962-964,977,991-995
+vendor/codemem/packages/core/src/mutation-dispatcher.test.ts
+  s_211aa7fe546c35::t_62e2583e91eb5d 191-197,218-219
+vendor/codemem/packages/core/src/normalized-event.ts
+  s_211aa7fe546c35::t_aad697432557db 1-6,56-127
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_2485e1acf4c1e7 1-7513
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_d5bcb078408a71 1-7513
+vendor/codemem/docs/architecture.md
+  s_211aa7fe546c35::t_f2d25ade4c9608 9,28-33,45,65-66,314-316
+vendor/codemem/docs/plugin-reference.md
+  s_211aa7fe546c35::t_43f3561ea456f9 46,50,58,64,69,75,83,89,95,137,143-144,329
+vendor/codemem/packages/cli/.opencode/tests/plugin-adapter.test.js
+  s_211aa7fe546c35::t_2df141d4755192 166
+vendor/codemem/packages/cli/package.json
+  s_211aa7fe546c35::t_c20a30c9065bee 16
+vendor/codemem/packages/cli/scripts/packed-artifact-smoke.mjs
+  s_211aa7fe546c35::t_d94a9b937ad3e4 20,24,72-75,86-89,100-115
+vendor/codemem/packages/cli/scripts/sync-hook-runtime.mjs
+  s_211aa7fe546c35::t_f4186c5e0dac6d 1-13
+vendor/codemem/packages/cli/src/commands/claude-hook-file-context.ts
+  s_211aa7fe546c35::t_05c2d8cff123cb 6-7,13,15-20,36-38,258,262-276,286,289-293,296-305,307,309-310,312-317,320-322,326,328-337,340,343,346-353,356,360,367-378,393-394,402-424,434-435,439,443,446,448,452,460-463,467-468,475,477,479-480,485,488,490,497-498,514,519-520,525,527,532,534,566-567,569
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest.test.ts
+  s_211aa7fe546c35::t_5b8ff570d556f8 1,5,7,9,12-13,18-40,42,45-48,52-53
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest.ts
+  s_211aa7fe546c35::t_0bc113a59241ab 1,6,8-11,13,15-16,24,27-28,30-51,53-54,57-62,67,69,82,110-112
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.contract.test.ts
+  s_211aa7fe546c35::t_b2b3f066f826e5 10-12,17-19,29-31,35-37,41-44,48-51,56,62-65,73-75,78-79,83-84,88,91-105
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.test.ts
+  s_211aa7fe546c35::t_4715f420c5048d 10,17-28,31-37,41-46,49-52,55,66-75,89-96,98-101,105-110,116,119,121,123-125,127,129,131,134-136,140,143,145,147,150-156,160-161,164,168-169,173,175-179
+vendor/codemem/packages/cli/src/commands/claude-hook-session-state.test.ts
+  s_211aa7fe546c35::t_211e8ccb03e536 67-81,110,218,220,226-230,235-239,247-276,283-287,290-294,301-305
+vendor/codemem/packages/cli/src/commands/claude-hook-session-state.ts
+  s_211aa7fe546c35::t_35097d90f7d3f3 27,105-108,116-120,131,135,141,202-206,224,238
+vendor/codemem/packages/cli/src/commands/codex-hook-ingest.test.ts
+  s_211aa7fe546c35::t_2d9451496a0bd0 1-2,4-8,11,13-18,21-23,27-41,43-49
+vendor/codemem/packages/cli/src/commands/codex-hook-ingest.ts
+  s_211aa7fe546c35::t_855f099a981228 1,7-8,10,13,31-36,46,49-55,61,63,103-105
+vendor/codemem/packages/cli/src/commands/codex-hook-inject.test.ts
+  s_211aa7fe546c35::t_7f9df07fc0ca53 16-26,29-34,38-41,43,46-48,52,62-71,75-78,81-85,87,90-92,94-96,101,104-106,108,110-111,113,115,117-119,122,124,127-129,136,140-141,145,147-151
+vendor/codemem/packages/cli/src/commands/codex-hook-inject.ts
+  s_211aa7fe546c35::t_47cb37581e0ebb 1,4,7-12,22,24-25,30,61-66,71,89-92,97,102-108,110-116,119-135,139,147-152,157,159,166-168
+vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts
+  s_211aa7fe546c35::t_dc0555ce0ba5c0 1-3,5-22,24-64,67-69,71,73,75-79,81,84-97,100-110,113-119,122-123,125-126,129-138,140-144,146,148-154,157-164,166-167,170-177,179-184,186-210,213-223,225-237,239-240,243-248,250,252,254-261,263-268,270-274,276-290,294-314,316-328,330-345,347-356
+vendor/codemem/packages/cli/src/commands/hook-thin-client.test.ts
+  s_211aa7fe546c35::t_9e304ba0e6d895 1-3,5,7-33,35-69,72-80,83-112,114-129,131-132,135-146,149-168,171-183,186-188,191-192,194-222,225-246,249-251,254-273,275-290,293-357,359-381,384-386,389-400,402-414,416-429,432-434,437-460,463-585,587-601,603-605,608-627,630-700,703-714,716-748
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_211aa7fe546c35::t_aabac3d0a68c7c 15-24,26-27,342,351-352,356-378,381-382,385,389,400,421-422,506-510,533,541-543,547,593-597,605-606,608
+vendor/codemem/packages/cli/vite.hook.config.ts
+  s_211aa7fe546c35::t_990684ff19e8d3 1-35
+vendor/codemem/packages/core/src/claude-hooks.test.ts
+  s_211aa7fe546c35::t_54d472b8f422ff 11,18,20,223-241
+vendor/codemem/packages/core/src/claude-hooks.ts
+  s_211aa7fe546c35::t_b90b33265e19fb 15,42-43,351-370
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_211aa7fe546c35::t_5f57ba68af74d4 4,147-155,159-283
+vendor/codemem/packages/core/src/index.ts
+  s_211aa7fe546c35::t_e6e5bec5442c49 22,43-48,52
+vendor/codemem/packages/core/src/redaction-pipeline.test.ts
+  s_211aa7fe546c35::t_97b45f76ba48c7 155-205
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_211aa7fe546c35::t_5c7be7c2a12d1a 165-167,177-178,300-301,304-313,318-319,325-332
+vendor/codemem/packages/core/src/spool.ts
+  s_211aa7fe546c35::t_54f1112aed3943 154,550-554,588-603,678,787
+vendor/codemem/plugins/claude/hooks/hooks.json
+  s_211aa7fe546c35::t_2bec761264d7d8 9-10,20-21,32-33,43-44,54-55,65-66,76-77
+vendor/codemem/plugins/claude/scripts/ingest-hook.sh
+  s_211aa7fe546c35::t_016972bd197e4a 20-23,141
+vendor/codemem/plugins/claude/scripts/inject-context-hook.sh
+  s_211aa7fe546c35::t_69769861bc418f 9-12
+vendor/codemem/plugins/claude/scripts/pre-read-hook.sh
+  s_211aa7fe546c35::t_7d03da03bb8ff1 9-12
+vendor/codemem/plugins/claude/scripts/user-prompt-hook.sh
+  s_211aa7fe546c35::t_7a75528302c103 9-11
+vendor/codemem/plugins/codex/hooks/hooks.json
+  s_211aa7fe546c35::t_f2eaabc5601421 8,20,32,44
+vendor/codemem/plugins/codex/scripts/ingest-hook.mjs
+  s_211aa7fe546c35::t_58f63312e69862 1-2,7-13,17-20,23-24,34-36,43,48,51-52
+vendor/codemem/plugins/codex/scripts/user-prompt-hook.mjs
+  s_211aa7fe546c35::t_fd64c7aa008676 1-2,7-16,19,30-32,38-45,47-48,50,75-76,78-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4517a0aed6511753c3aae14b946e8956fcb8fcf0",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
