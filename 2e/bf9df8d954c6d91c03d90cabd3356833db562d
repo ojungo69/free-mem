@@ -1,0 +1,48 @@
+evidence/phase1-t047-operations-validation.md
+  s_211aa7fe546c35::t_8faee04453c253 1-60
+evidence/phase1-test-retire-list.md
+  s_211aa7fe546c35::t_92d3cc208d9f48 348-353
+  s_211aa7fe546c35::t_8faee04453c253 11,33-35,62-63,80
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_8faee04453c253 139-141
+evidence/README.md
+  s_211aa7fe546c35::t_8faee04453c253 22
+vendor/codemem/packages/cli/src/commands/daemon-operation.ts
+  s_211aa7fe546c35::t_dfcd1a19e59e62 1-87
+vendor/codemem/packages/core/src/export-import.ts
+  s_211aa7fe546c35::t_b4b128423e3c13 312-316,318-353,355-358,361-377,575-587,593-633,635-642,645-661,663-680,682-705,708-730,733,735-740,742-760,762-779
+vendor/codemem/packages/cli/src/commands/alias-deprecation.test.ts
+  s_211aa7fe546c35::t_9703f565a3d06a 4,13,15,18-20,23-24,26
+vendor/codemem/packages/cli/src/commands/export-memories.ts
+  s_211aa7fe546c35::t_f18b17e57e8251 1-2,5,9-10,24,39-90
+vendor/codemem/packages/cli/src/commands/import-memories.ts
+  s_211aa7fe546c35::t_4e9d6f8b1cd49f 1-3,16,29,43-44,46-49,51-74,77-93,95-98,101,104-105,109-112
+vendor/codemem/packages/core/src/daemon-jobs.ts
+  s_211aa7fe546c35::t_b8b79709090eb7 585-594,703,727-734
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_211aa7fe546c35::t_46be7751a47067 8,288,303
+vendor/codemem/packages/core/src/daemon-operations.test.ts
+  s_211aa7fe546c35::t_9e335157ea38c3 1-223
+vendor/codemem/packages/core/src/daemon-operations.ts
+  s_211aa7fe546c35::t_b0c7ed5a27f84b 1-475
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_03b2e7ea1fcb34 3,187,315,547-555,1346-1348
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_9e55917cd4a9d6 8,50-58,85-90,136-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2ebf9df8d954c6d91c03d90cabd3356833db562d",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
