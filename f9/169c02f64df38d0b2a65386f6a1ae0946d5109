@@ -1,0 +1,19 @@
+vendor/codemem/sonar-project.properties
+  s_a8ab9debe9c635::t_fd20f06fb2f97e 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f9169c02f64df38d0b2a65386f6a1ae0946d5109",
+  "prompts": {},
+  "sessions": {
+    "s_a8ab9debe9c635": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffbb2-e673-7831-80fe-fbc9d071eb77",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
