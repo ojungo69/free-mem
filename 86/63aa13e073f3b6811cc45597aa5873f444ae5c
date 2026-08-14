@@ -1,0 +1,78 @@
+evidence/phase1-t044-cli-rpc-validation.md
+  s_211aa7fe546c35::t_bb5411f88c8006 1-62
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_bb5411f88c8006 130-132
+evidence/README.md
+  s_211aa7fe546c35::t_bb5411f88c8006 20
+evidence/phase1-test-retire-list.md
+  s_211aa7fe546c35::t_f4e59aa05c08e2 255-320
+  s_211aa7fe546c35::t_5fc3aa4f1cc4db 9,25-27,50-51,66
+evidence/phase1-disposition.md
+  s_211aa7fe546c35::t_828d4390c204f2 89-90,245-254
+vendor/codemem/packages/cli/src/commands/memory.ts
+  s_211aa7fe546c35::t_dd5d958631d43a 8,21,25,33,36,48-53,56,67-91,95,106-112,114-115,127-130,133-146,148,150-154,156,238-247,249-250,764,806-807
+vendor/codemem/packages/cli/src/commands/pack.ts
+  s_211aa7fe546c35::t_6491a4c28112e6 1,3-5,13,97,101-112,116,118-127,133,136,164,168-173,175-183,191-200
+vendor/codemem/packages/cli/src/commands/search.ts
+  s_211aa7fe546c35::t_965de5cc2d1d2c 1,3-4,13,29,48-67
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_211aa7fe546c35::t_6e65c766834518 10,20,30,47,65-68,102,176-201,334-337,339-345,348-350,364,378,389
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_519e8a9016bd31 15,23,49,409-412,429
+vendor/codemem/packages/mcp-server/src/index.ts
+  s_211aa7fe546c35::t_d4a73a9bb75dbc 1-2
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_894d6d4fa3f0c0 20,27-28,30-31,61-65,78-81,86,120-130,132,149-152,163,200,203,214,220,242-245
+vendor/codemem/packages/cli/src/command-tree.test.ts
+  s_211aa7fe546c35::t_285ce9762c5d52 46-47
+vendor/codemem/packages/cli/src/command-tree.ts
+  s_211aa7fe546c35::t_f5ba7c077caafe 31
+vendor/codemem/packages/cli/src/commands/cli-rpc.test.ts
+  s_211aa7fe546c35::t_2072173ac3f795 1-2,5-9,11-18,20,22-24,26-34,36-41,43-50,52-68,70-88,90-112,114,118-128,130-135,137-142,145-153,155-172,175-178
+vendor/codemem/packages/cli/src/commands/distill.test.ts
+  s_211aa7fe546c35::t_66c417f325be45 2,11-21
+vendor/codemem/packages/cli/src/commands/distill.ts
+  s_211aa7fe546c35::t_d110234ba0eb62 6,36
+vendor/codemem/packages/cli/src/commands/embed.test.ts
+  s_211aa7fe546c35::t_86b8264755b73d 1-2
+vendor/codemem/packages/cli/src/commands/embed.ts
+  s_211aa7fe546c35::t_b09e5f0e3f5353 6,23-24
+vendor/codemem/packages/cli/src/commands/enqueue-raw-event.ts
+  s_211aa7fe546c35::t_c3c9468558cae0 1-7,10,56-64,101-137,139
+vendor/codemem/packages/cli/src/commands/memory-inject.test.ts
+  s_211aa7fe546c35::t_97ad22b0ffc8a0 4-7,12,18,24-29,41-50,52,56-57,60-61
+vendor/codemem/packages/cli/src/commands/memory.test.ts
+  s_211aa7fe546c35::t_521be20aa2cdd3 1
+vendor/codemem/packages/cli/src/commands/pack.test.ts
+  s_211aa7fe546c35::t_fad1ae23b6f6ae 1,5-7,10-48,51,57,63-72,76-77,80,83,85,88-94,96-97,101-103,105-109,111,117-120,122,124-127,129,132-133
+vendor/codemem/packages/cli/src/commands/recent.ts
+  s_211aa7fe546c35::t_e8644c883598ea 1-3,12,27,45-57
+vendor/codemem/packages/cli/src/commands/serve.ts
+  s_211aa7fe546c35::t_51094c9989aefa 6-13,21,361-369,466-481,494,501,515-521,523-532,534,551-561,568-570,597,600,602-603,616
+vendor/codemem/packages/cli/src/commands/stats.ts
+  s_211aa7fe546c35::t_c2e10afde1edf8 2-3,10,13,36,39-51,54-55
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_211aa7fe546c35::t_50c8e24e79ec76 1,6,10-16,19-21,25-35,40-44,47-50,52,54-56,59-61,64,68-69,72-75,81,83,87-102
+vendor/codemem/packages/cli/src/shared-options.ts
+  s_211aa7fe546c35::t_36da2725435ba1 11-13,34-42,107-114
+vendor/codemem/packages/cli/vite.config.ts
+  s_211aa7fe546c35::t_1efc6bedaa834e 20-29
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_a182379443006b 1-9,12-17,70-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8663aa13e073f3b6811cc45597aa5873f444ae5c",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
