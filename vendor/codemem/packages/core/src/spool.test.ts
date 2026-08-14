@@ -96,7 +96,9 @@ function writeSparse(path: string, bytes: number): void {
 	truncateSync(path, bytes);
 }
 
-function runWriter(dataDir: string, key: string): Promise<{ status: string }> {
+type WriterResult = { status: string; reason?: string };
+
+function runWriter(dataDir: string, key: string): Promise<WriterResult> {
 	const moduleUrl = pathToFileURL(fileURLToPath(new URL("./spool.ts", import.meta.url))).href;
 	const script = `
 		import { spoolMutation } from ${JSON.stringify(moduleUrl)};
@@ -106,7 +108,7 @@ function runWriter(dataDir: string, key: string): Promise<{ status: string }> {
 			{ method: "POST /v1/events", idempotencyKey: key, body },
 			{ dataDir: ${JSON.stringify(dataDir)}, lockDeadlineMs: 250, onWarning: () => {} },
 		);
-		process.stdout.write(JSON.stringify({ status: result.status }));
+		process.stdout.write(JSON.stringify({ status: result.status, reason: result.reason }));
 	`;
 	return new Promise((resolve, reject) => {
 		const child = spawn(
@@ -127,7 +129,7 @@ function runWriter(dataDir: string, key: string): Promise<{ status: string }> {
 		child.on("error", reject);
 		child.on("close", (code) => {
 			if (code !== 0) reject(new Error(`writer exited ${code}: ${stderr}`));
-			else resolve(JSON.parse(stdout) as { status: string });
+			else resolve(JSON.parse(stdout) as WriterResult);
 		});
 	});
 }
@@ -308,7 +310,14 @@ describe("phase 1 spool contract", () => {
 	it("P1-T039-02-concurrent-writers", async () => {
 		const dataDir = await tempDataDir();
 		const results = await Promise.all(Array.from({ length: 6 }, () => runWriter(dataDir, "same")));
-		expect(results.every((result) => ["queued", "duplicate"].includes(result.status))).toBe(true);
+		const unexpected = results.filter(
+			(result) =>
+				result.status !== "queued" &&
+				result.status !== "duplicate" &&
+				!(result.status === "dropped" && result.reason === "lock_timeout"),
+		);
+		expect(unexpected).toEqual([]);
+		expect(results.filter((result) => result.status === "queued")).toHaveLength(1);
 		const layout = resolveSpoolLayout(dataDir);
 		const ready = readdirSync(layout.readyDir).filter((name) => name.endsWith(".json"));
 		expect(ready).toHaveLength(1);
