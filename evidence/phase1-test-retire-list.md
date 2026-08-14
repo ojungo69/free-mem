@@ -214,6 +214,7 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T056-02-gitleaks-pin-source` | T056 | runtime scanner の Gitleaks version / config hash / mandatory subset が固定値から逸脱する |
 | `P1-T056-03-gitleaks-subset-conversion` | T056 | subset converter が未対応構文を受理する、または mandatory rule を redaction できない |
 | `P1-T056-04-gitleaks-ruleset-hash` | T056 | ruleset hash が pin・実ロード順・由来・entropy・capture group を反映しない |
+| `P1-T057-01-backup-restore-fault-matrix` | T057 | fresh-dir restore、derived index rebuild、journal durability、legacy split-brain のいずれかが一意に回復しない |
 
 ## T043 retired fully qualified names（61）
 

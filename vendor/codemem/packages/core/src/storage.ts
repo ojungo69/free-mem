@@ -161,16 +161,17 @@ function verifyArtifact(layout: StorageLayout, pointer: string, expectedSha256: 
 }
 
 function restorePointer(layout: StorageLayout, pointer: string | null): void {
+	const current = readCurrentDatabasePointer(layout);
 	if (pointer === null) {
-		durableRemoveFile(layout.currentPointerPath);
+		if (current === null) fsyncPath(layout.dbDir);
+		else durableRemoveFile(layout.currentPointerPath);
 		return;
 	}
 	if (!existsSync(artifactPath(layout, pointer))) {
 		throw new Error(`Cannot recover missing previous database artifact: ${pointer}`);
 	}
-	if (readCurrentDatabasePointer(layout) !== pointer) {
-		durableReplaceSymlink(layout.currentPointerPath, pointer);
-	}
+	if (current === pointer) fsyncPath(layout.dbDir);
+	else durableReplaceSymlink(layout.currentPointerPath, pointer);
 }
 
 export function recoverStorageJournal(
