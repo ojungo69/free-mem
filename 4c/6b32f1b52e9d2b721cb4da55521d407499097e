@@ -1,0 +1,54 @@
+evidence/phase1-disposition.md
+  s_211aa7fe546c35::t_636c5e028afabe 267-271,273-276
+  s_211aa7fe546c35::t_10144ac12c0787 272,277
+  s_211aa7fe546c35::t_ad06908b817c0e 262
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_8978152b15f3bb 152-153
+  s_211aa7fe546c35::t_4dc67df13a1b53 154
+evidence/phase1-t048-zero-external-db-handles-validation.md
+  s_211aa7fe546c35::t_ad06908b817c0e 25
+evidence/phase1-t051-legacy-cutover-validation.md
+  s_211aa7fe546c35::t_10144ac12c0787 16-17,45,51-52
+  s_211aa7fe546c35::t_8978152b15f3bb 1-15,18-41,47-50,53
+  s_211aa7fe546c35::t_4dc67df13a1b53 42-44,46
+vendor/codemem/packages/core/src/legacy-cutover.test.ts
+  s_211aa7fe546c35::t_8b3989ee670c8b 1-212
+vendor/codemem/packages/core/src/legacy-cutover.ts
+  s_211aa7fe546c35::t_734a13c37e49c2 1-437
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_57c8a79398825a 2589
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_1ea57770437b6c 2589
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_211aa7fe546c35::t_6de2c6b8bfdcfe 13,82-113
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_211aa7fe546c35::t_5be7340653ce54 29-36,619-654,672-673,684-685,687-695,700-712,717-729,736-748
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_211aa7fe546c35::t_ffb2618965d456 10-14,17,275,327-347
+vendor/codemem/packages/core/src/db.ts
+  s_211aa7fe546c35::t_2b93ae3de20aba 310-311
+vendor/codemem/packages/core/src/index.ts
+  s_211aa7fe546c35::t_104258663b4368 283,286
+vendor/codemem/packages/core/src/install-manifest.ts
+  s_211aa7fe546c35::t_412575e56d4304 2-10,20-25,29,40,44-61,115-119,125-175
+vendor/codemem/packages/core/src/sole-writer-boundary.test.ts
+  s_211aa7fe546c35::t_c2d29777d0c232 41
+vendor/codemem/packages/core/src/storage.ts
+  s_211aa7fe546c35::t_db12b09595a6e0 32,66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4c6b32f1b52e9d2b721cb4da55521d407499097e",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
