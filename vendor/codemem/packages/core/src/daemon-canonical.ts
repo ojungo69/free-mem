@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { chmodSync } from "node:fs";
 import { join } from "node:path";
 import { connect } from "./db.js";
 import { runGatedMigration } from "./online-backup.js";
@@ -24,6 +25,7 @@ export async function openCanonicalWriter(layout: StorageLayout): Promise<Canoni
 	const dbPath = join(layout.dbDir, pointer);
 	const db = connect(dbPath);
 	try {
+		chmodSync(dbPath, 0o600);
 		await runGatedMigration(db, {
 			dbPath,
 			destinationDir: layout.backupsDir,

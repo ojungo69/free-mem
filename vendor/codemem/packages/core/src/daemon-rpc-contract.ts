@@ -41,6 +41,7 @@ export const RPC_METHODS = [
 	"POST /v1/viewer/auth/exchange",
 	"POST /v1/viewer/auth/verify",
 	"POST /v1/viewer/auth/logout",
+	"GET /v1/backup/list",
 	"POST /v1/backup/create",
 	"POST /v1/backup/verify",
 	"POST /v1/backup/restore",

@@ -29,6 +29,8 @@ export { NORMALIZED_SCHEMA_VERSION } from "./normalized-event.js";
 import {
 	BackupRequestError,
 	createCanonicalBackup,
+	listCanonicalBackups,
+	restoreCanonicalBackup,
 	verifyCanonicalBackup,
 } from "./online-backup.js";
 import { applyDaemonIntake, type RedactionResult } from "./redaction-pipeline.js";
@@ -146,6 +148,7 @@ const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"POST /v1/viewer/auth/exchange": ["nonce"],
 	"POST /v1/viewer/auth/verify": ["bearer", "session"],
 	"POST /v1/viewer/auth/logout": ["session"],
+	"GET /v1/backup/list": [],
 	"POST /v1/backup/create": ["operationId", "payloadHash", "reason"],
 	"POST /v1/backup/verify": ["backupId"],
 	"POST /v1/backup/restore": ["operationId", "payloadHash", "backupId"],
@@ -181,6 +184,7 @@ const METHOD_REQUIRED_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"POST /v1/viewer/auth/exchange": ["nonce"],
 	"POST /v1/viewer/auth/verify": [],
 	"POST /v1/viewer/auth/logout": ["session"],
+	"GET /v1/backup/list": [],
 	"POST /v1/backup/create": ["operationId", "payloadHash", "reason"],
 	"POST /v1/backup/verify": ["backupId"],
 	"POST /v1/backup/restore": ["operationId", "payloadHash", "backupId"],
@@ -313,7 +317,12 @@ export type DaemonRpcContext = {
 	viewerRead: ViewerReadHandler;
 	jobs: DaemonJobService;
 	operations: DaemonOperationService;
+	restoreState?: { active: boolean };
 };
+
+function isMaintenanceMode(ctx: DaemonRpcContext): boolean {
+	return ctx.jobs.isMaintenanceMode() || ctx.restoreState?.active === true;
+}
 
 export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
 	if (error.code === "EACCES") {
@@ -419,7 +428,7 @@ async function handleMethod(
 		return {
 			status: "ok",
 			instanceId: ctx.identity.nonce,
-			maintenanceMode: ctx.jobs.isMaintenanceMode(),
+			maintenanceMode: isMaintenanceMode(ctx),
 			protocolVersion: protocolVersions(),
 			spool: spoolHealth(ctx.dataDir),
 		};
@@ -432,7 +441,7 @@ async function handleMethod(
 		return {
 			status: "ok",
 			instanceId: ctx.identity.nonce,
-			maintenanceMode: ctx.jobs.isMaintenanceMode(),
+			maintenanceMode: isMaintenanceMode(ctx),
 			protocolVersion: protocolVersions(),
 			diagnostics: {
 				pid: ctx.identity.pid,
@@ -450,6 +459,9 @@ async function handleMethod(
 			},
 		};
 	}
+	if (method === "GET /v1/backup/list") {
+		return { backups: listCanonicalBackups(ctx.dataDir) };
+	}
 	if (method === "POST /v1/backup/create") {
 		const proof = await createCanonicalBackup({
 			dataDir: ctx.dataDir,
@@ -462,6 +474,7 @@ async function handleMethod(
 			backupId: proof.backupId,
 			state: "completed",
 			artifactSha256: proof.artifactSha256,
+			manifestHash: proof.manifestHash,
 		};
 	}
 	if (method === "POST /v1/backup/verify") {
@@ -475,6 +488,23 @@ async function handleMethod(
 			manifestHash: check.manifestHash,
 			diagnostics: check.diagnostics,
 		};
+	}
+	if (method === "POST /v1/backup/restore") {
+		const restoreState = ctx.restoreState ?? { active: false };
+		ctx.restoreState = restoreState;
+		if (restoreState.active) throw new BackupRequestError("conflict", "Restore is active.");
+		restoreState.active = true;
+		try {
+			return restoreCanonicalBackup({
+				dataDir: ctx.dataDir,
+				operationId: String(body.operationId),
+				payloadHash: String(body.payloadHash),
+				backupId: String(body.backupId),
+			});
+		} catch (error) {
+			restoreState.active = false;
+			throw error;
+		}
 	}
 	if (method === "POST /v1/events") {
 		let adapterRedaction: SpoolRedactionMetadata | undefined;
@@ -826,7 +856,7 @@ export function dispatchSpoolMutation(
 	ctx: DaemonRpcContext,
 	entry: SpoolEntry,
 ): SpoolImportOutcome {
-	if (ctx.jobs.isMaintenanceMode()) throw new Error("maintenance mode is active");
+	if (isMaintenanceMode(ctx)) throw new Error("maintenance mode is active");
 	try {
 		if (entry.method === "POST /v1/events") {
 			handleEvent(ctx, entry.body, NORMALIZED_SCHEMA_VERSION, entry.redaction);
@@ -1324,7 +1354,7 @@ export async function dispatchDaemonRpc(
 	if (elapsed >= deadlineMs) {
 		return typedError("deadline_exceeded", "RPC hard deadline exceeded.", true);
 	}
-	if (ctx.jobs.isMaintenanceMode() && MAINTENANCE_BLOCKED_METHODS.has(request.method)) {
+	if (isMaintenanceMode(ctx) && MAINTENANCE_BLOCKED_METHODS.has(request.method)) {
 		return typedError(
 			"maintenance_mode",
 			"The daemon is in maintenance mode; retryable mutations must be queued locally.",
@@ -1360,11 +1390,18 @@ export function attachDaemonRpc(connection: Socket, ctx: DaemonRpcContext): void
 		if (done) return;
 		done = true;
 		if (payload) {
+			const restartRequired =
+				ctx.restoreState?.active === true &&
+				"result" in payload &&
+				payload.result.restartRequired === true;
 			try {
-				connection.end(`${JSON.stringify(payload)}\n`);
+				connection.end(`${JSON.stringify(payload)}\n`, () => {
+					if (restartRequired) ctx.onStop();
+				});
 				return;
 			} catch {
 				// connection already closed
+				if (restartRequired) ctx.onStop();
 			}
 		}
 		connection.destroy();

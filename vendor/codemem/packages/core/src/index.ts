@@ -424,12 +424,26 @@ export {
 	writeCodememConfigFile,
 	writeWorkspaceCodememConfigFile,
 } from "./observer-config.js";
-export type { BackupCheck, BackupVerification, VerifiedBackup } from "./online-backup.js";
+export type {
+	BackupCheck,
+	BackupListEntry,
+	BackupManifest,
+	BackupRetentionClass,
+	BackupSidecarV2,
+	BackupVerification,
+	RestoreBackupResult,
+	VerifiedBackup,
+} from "./online-backup.js";
 export {
 	backupPayloadHash,
 	createCanonicalBackup,
+	createDailyBackup,
 	createOnlineBackup,
+	listCanonicalBackups,
+	pruneBackupRetention,
 	requireVerifiedBackup,
+	restoreCanonicalBackup,
+	restorePayloadHash,
 	runGatedMigration,
 	verifyCanonicalBackup,
 	verifyOnlineBackup,

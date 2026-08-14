@@ -13,6 +13,7 @@ import {
 	buildNormalizedEventFromCodexHook,
 } from "./normalized-event.js";
 import { ObserverClient } from "./observer-client.js";
+import { createDailyBackup } from "./online-backup.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
 import { drainLegacySpool, importReadySpoolEntries, spoolMutation } from "./spool.js";
 import {
@@ -65,6 +66,9 @@ type LiveDaemon = {
 	sweeper: RawEventSweeper;
 	jobs: DaemonJobService;
 	spoolSweepTimer: ReturnType<typeof setInterval>;
+	backupSweepTimer: ReturnType<typeof setInterval> | null;
+	dailyBackupTask: Promise<void> | null;
+	lastDailyBackupId: string | null;
 };
 
 const liveDaemons = new Map<string, LiveDaemon>();
@@ -197,6 +201,8 @@ function bindPrivateSocket(socketPath: string, rpc: DaemonRpcContext): Promise<S
 async function releaseResources(layout: StorageLayout, live?: LiveDaemon): Promise<void> {
 	if (live) {
 		clearInterval(live.spoolSweepTimer);
+		if (live.backupSweepTimer) clearInterval(live.backupSweepTimer);
+		await live.dailyBackupTask;
 		try {
 			live.server.close();
 		} catch {
@@ -307,6 +313,7 @@ export async function startDaemon(options: {
 			viewerRead: createViewerReadHandler({ store: canonical.store, sweeper, observer }),
 			jobs,
 			operations,
+			restoreState: { active: false },
 			onStop: () => {
 				const current = liveDaemons.get(layout.dataDir);
 				if (current && sameIdentity(current.identity, identity)) {
@@ -317,7 +324,7 @@ export async function startDaemon(options: {
 			},
 		};
 		const sweepSpool = () => {
-			if (jobs?.isMaintenanceMode()) return;
+			if (jobs?.isMaintenanceMode() || rpc.restoreState?.active) return;
 			try {
 				importReadySpoolEntries(layout.dataDir, (entry) => dispatchSpoolMutation(rpc, entry));
 			} catch {
@@ -361,7 +368,32 @@ export async function startDaemon(options: {
 			sweeper,
 			jobs,
 			spoolSweepTimer,
+			backupSweepTimer: null,
+			dailyBackupTask: null,
+			lastDailyBackupId: null,
 		};
+		const sweepBackup = () => {
+			if (jobs?.isMaintenanceMode() || rpc.restoreState?.active) return;
+			const instant = new Date((options.now ?? Date.now)());
+			const backupId = `daily-${instant.toISOString().slice(0, 10)}`;
+			if (live.dailyBackupTask || live.lastDailyBackupId === backupId) return;
+			live.dailyBackupTask = createDailyBackup({
+				db: live.writer,
+				destinationDir: live.layout.backupsDir,
+				now: () => instant,
+			})
+				.then((proof) => {
+					live.lastDailyBackupId = proof.backupId;
+				})
+				.catch(() => {
+					console.error("[codemem] daily backup failed; it will be retried.");
+				})
+				.finally(() => {
+					live.dailyBackupTask = null;
+				});
+		};
+		live.backupSweepTimer = setInterval(sweepBackup, 60_000);
+		live.backupSweepTimer.unref();
 		liveDaemons.set(layout.dataDir, live);
 		started = true;
 		return {

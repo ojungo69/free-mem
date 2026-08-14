@@ -11,6 +11,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	backupPayloadHash,
 	hashMutationPayload,
 	NORMALIZED_SCHEMA_VERSION,
 	resolveStorageLayout,
@@ -137,6 +138,41 @@ describe("MCP daemon RPC client", () => {
 				redaction: { sensitivity: "secret" },
 			});
 		} finally {
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it("routes backup create, list, and verify through the daemon", async () => {
+		const fixture = projectFixture();
+		const daemon = await startDaemon({ dataDir: fixture.dataDir });
+		try {
+			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
+			const reason = "manual TOKEN_SUPERSECRET backup";
+			expect(
+				await client.request("POST /v1/backup/create", {
+					operationId: "mcp-backup",
+					reason,
+					payloadHash: backupPayloadHash(reason),
+				}),
+			).toMatchObject({
+				ok: true,
+				result: { backupId: "mcp-backup", manifestHash: expect.any(String) },
+			});
+			const sidecar = readFileSync(
+				join(resolveStorageLayout(fixture.dataDir).backupsDir, "mcp-backup.json"),
+				"utf8",
+			);
+			expect(sidecar).not.toContain("TOKEN_SUPERSECRET");
+			expect(sidecar).toContain("[REDACTED:user_1]");
+			expect(await client.request("GET /v1/backup/list", {})).toMatchObject({
+				ok: true,
+				result: { backups: [expect.objectContaining({ backupId: "mcp-backup", valid: true })] },
+			});
+			expect(
+				await client.request("POST /v1/backup/verify", { backupId: "mcp-backup" }),
+			).toMatchObject({ ok: true, result: { backupId: "mcp-backup", valid: true } });
+		} finally {
+			await daemon.stop();
 			rmSync(fixture.root, { recursive: true, force: true });
 		}
 	});

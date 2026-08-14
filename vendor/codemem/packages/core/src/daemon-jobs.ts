@@ -714,7 +714,7 @@ export class DaemonJobService {
 
 		return this.runInMaintenance(async () => {
 			let backupId: string | null = null;
-			if (BACKUP_REQUIRED_JOB_KINDS.has(row.kind)) {
+			if (BACKUP_REQUIRED_JOB_KINDS.has(row.kind) || args.internal !== true) {
 				if (!this.options.dataDir)
 					throw new Error("maintenance backup data directory is unavailable");
 				const proof = await createOnlineBackup({

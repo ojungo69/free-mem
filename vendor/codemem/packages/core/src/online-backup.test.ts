@@ -1,5 +1,15 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -331,5 +341,235 @@ describe("Phase 1 online backup", () => {
 		} finally {
 			db.close();
 		}
+	});
+
+	it("P1-T052-01-backup-manifest-hash", async () => {
+		const root = tempDir("codemem-backup-manifest-");
+		const dataDir = join(root, "data");
+		const db = WriterActor.open(join(root, "source.sqlite"));
+		try {
+			db.pragma("journal_mode = WAL");
+			db.exec("CREATE TABLE probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL)");
+			const insert = db.prepare("INSERT INTO probe(value) VALUES (?)");
+			const seed = db.transaction(() => {
+				for (let index = 0; index < 2_000; index++) insert.run(`seed-${index}-${"x".repeat(512)}`);
+			});
+			seed();
+
+			let wroteDuringBackup = false;
+			const proof = await core.createOnlineBackup({
+				db: {
+					name: db.name,
+					backup: (destinationFile) =>
+						db.backup(destinationFile, {
+							progress: () => {
+								if (!wroteDuringBackup) {
+									insert.run("written-while-backup-ran");
+									wroteDuringBackup = true;
+								}
+								return 1;
+							},
+						}),
+				},
+				destinationDir: core.resolveStorageLayout(dataDir).backupsDir,
+				operationId: "manifest-live-writer",
+				reason: "manifest consistency",
+			});
+			expect(wroteDuringBackup).toBe(true);
+
+			const sidecar = JSON.parse(
+				readFileSync(
+					join(core.resolveStorageLayout(dataDir).backupsDir, "manifest-live-writer.json"),
+					"utf8",
+				),
+			) as core.BackupSidecarV2;
+			expect(sidecar).toMatchObject({
+				version: 2,
+				authenticity: "hash-only",
+				signature: null,
+				manifest: {
+					manifest_version: 1,
+					schema_version: 0,
+					sqlite_source_version: expect.any(String),
+					fts_schema: {
+						normalization_version: core.NORMALIZED_SCHEMA_VERSION,
+						sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+					},
+					sqlite_vec: null,
+					active_embedding_generation_id: null,
+					created_watermark: {
+						raw_event_id: null,
+						raw_event_created_at: null,
+					},
+					privacy: {
+						may_contain_private_or_local_only: true,
+						off_device_export: "not_available_in_phase_1",
+					},
+				},
+			});
+			expect(sidecar.manifest_hash).toBe(core.hashMutationPayload(sidecar.manifest));
+			expect(sidecar.manifest.artifact_sha256).toBe(proof.artifactSha256);
+			const snapshot = ReadOnlyActor.open(proof.artifactPath);
+			try {
+				const row = snapshot.prepare("SELECT COUNT(*) AS count FROM probe").get() as {
+					count: number;
+				};
+				expect(sidecar.manifest.canonical_tables).toContainEqual(
+					expect.objectContaining({ name: "probe", row_count: row.count }),
+				);
+			} finally {
+				snapshot.close();
+			}
+			expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
+				valid: true,
+				manifestHash: sidecar.manifest_hash,
+			});
+			const probeManifest = sidecar.manifest.canonical_tables.find(
+				(table) => table.name === "probe",
+			);
+			expect(probeManifest).toBeTruthy();
+			if (!probeManifest) throw new Error("probe manifest is missing");
+			probeManifest.row_count++;
+			sidecar.manifest_hash = core.hashMutationPayload(sidecar.manifest);
+			writeFileSync(
+				join(core.resolveStorageLayout(dataDir).backupsDir, "manifest-live-writer.json"),
+				`${JSON.stringify(sidecar)}\n`,
+			);
+			expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
+				valid: false,
+				diagnostics: expect.arrayContaining(["backup manifest canonical row mismatch"]),
+			});
+		} finally {
+			db.close();
+		}
+	});
+
+	it("P1-T052-02-backup-retention-permissions", async () => {
+		const root = tempDir("codemem-backup-retention-");
+		const dataDir = join(root, "data");
+		const backupDir = core.resolveStorageLayout(dataDir).backupsDir;
+		const daemon = await core.startDaemon({ dataDir });
+		created.push(daemon);
+		expect(statSync(realpathSync(daemon.layout.currentPointerPath)).mode & 0o777).toBe(0o600);
+		const db = WriterActor.open(join(root, "source.sqlite"));
+		try {
+			db.exec("CREATE TABLE probe (value TEXT NOT NULL); INSERT INTO probe VALUES ('keep')");
+			for (let index = 0; index < 11; index++) {
+				const date = new Date(Date.UTC(2026, 0, 1 + index * 7));
+				await core.createOnlineBackup({
+					db,
+					destinationDir: backupDir,
+					operationId: `automatic-${String(index).padStart(2, "0")}`,
+					reason: "scheduled",
+					retentionClass: "automatic",
+					now: () => date,
+				});
+			}
+			const daily = await core.createDailyBackup({
+				db,
+				destinationDir: backupDir,
+				now: () => new Date(Date.UTC(2026, 0, 1 + 11 * 7)),
+			});
+			expect(daily.backupId).toBe("daily-2026-03-19");
+			await core.createOnlineBackup({
+				db,
+				destinationDir: backupDir,
+				operationId: "manual-keep",
+				reason: "manual",
+				retentionClass: "manual",
+			});
+
+			const retention = core.pruneBackupRetention(backupDir);
+			expect(retention.removed).toEqual([]);
+			expect(retention.kept).toHaveLength(11);
+			expect(existsSync(join(backupDir, "automatic-00.sqlite"))).toBe(false);
+			expect(existsSync(join(backupDir, "manual-keep.sqlite"))).toBe(true);
+			expect(statSync(backupDir).mode & 0o777).toBe(0o700);
+			for (const file of readdirSync(backupDir)) {
+				expect(statSync(join(backupDir, file)).mode & 0o777).toBe(0o600);
+			}
+		} finally {
+			db.close();
+		}
+	});
+
+	it("P1-T052-03-restore-journal-order", async () => {
+		const root = tempDir("codemem-backup-restore-");
+		const dataDir = join(root, "data");
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const request = (id: string, method: string, body: Record<string, unknown>) =>
+			core.callDaemonRpc(handle.socketPath, handshake({ id, method, body }));
+
+		expect(
+			await request("before", "POST /v1/memories/record", {
+				idempotencyKey: "restore-before",
+				kind: "decision",
+				title: "Before restore point",
+				body: "This row belongs in the backup.",
+			}),
+		).toMatchObject({ result: { receiptId: expect.any(String) } });
+		const reason = "restore smoke";
+		const backedUp = await request("backup", "POST /v1/backup/create", {
+			operationId: "restore-source",
+			payloadHash: reasonHash(reason),
+			reason,
+		});
+		expect(backedUp).toMatchObject({ result: { backupId: "restore-source" } });
+		const canonicalSidecar = JSON.parse(
+			readFileSync(join(handle.layout.backupsDir, "restore-source.json"), "utf8"),
+		) as core.BackupSidecarV2;
+		expect(canonicalSidecar.manifest.sqlite_vec).toMatchObject({
+			version: expect.any(String),
+			artifact_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+			platform: `${process.platform}-${process.arch}`,
+		});
+		expect(
+			await request("after", "POST /v1/memories/record", {
+				idempotencyKey: "restore-after",
+				kind: "decision",
+				title: "After restore point",
+				body: "This row must disappear after restore.",
+			}),
+		).toMatchObject({ result: { receiptId: expect.any(String) } });
+
+		const oldPointer = core.readCurrentDatabasePointer(handle.layout);
+		const restored = await request("restore", "POST /v1/backup/restore", {
+			operationId: "restore-operation",
+			payloadHash: core.restorePayloadHash("restore-source"),
+			backupId: "restore-source",
+		});
+		expect(restored).toMatchObject({
+			result: {
+				operationId: "restore-operation",
+				backupId: "restore-source",
+				restartRequired: true,
+			},
+		});
+		for (let attempt = 0; attempt < 100; attempt++) {
+			if (core.readDaemonHealth(dataDir).status === "not_running") break;
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		expect(core.readDaemonHealth(dataDir).status).toBe("not_running");
+		expect(existsSync(handle.layout.journalPath)).toBe(false);
+		const newPointer = core.readCurrentDatabasePointer(handle.layout);
+		expect(newPointer).not.toBe(oldPointer);
+		expect(oldPointer && existsSync(join(handle.layout.dbDir, oldPointer))).toBe(true);
+
+		const snapshot = ReadOnlyActor.open(join(handle.layout.dbDir, newPointer as string));
+		try {
+			expect(snapshot.prepare("SELECT title FROM memory_items ORDER BY id").all()).toEqual([
+				{ title: "Before restore point" },
+			]);
+			expect(
+				snapshot.prepare("SELECT rowid FROM memory_fts WHERE memory_fts MATCH 'before'").all(),
+			).toHaveLength(1);
+		} finally {
+			snapshot.close();
+		}
+
+		const restarted = await core.startDaemon({ dataDir });
+		created.push(restarted);
+		expect(core.readDaemonHealth(dataDir).status).toBe("ok");
 	});
 });

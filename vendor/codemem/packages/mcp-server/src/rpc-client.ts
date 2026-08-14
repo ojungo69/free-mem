@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
 	type AgentMemoryConfig,
+	backupPayloadHash,
 	callDaemonRpc,
 	DEFAULT_DATA_DIR,
 	hashMutationPayload,
@@ -29,6 +30,10 @@ const RPC_FIELDS = {
 	"GET /v1/view": ["collection", "sessionId", "project", "kind", "scope", "limit", "offset"],
 	"GET /v1/memories/:id": ["id", "requestId", "project", "kind"],
 	"DELETE /v1/memories/:id": ["id", "requestId", "expectedRevision"],
+	"GET /v1/backup/list": [],
+	"POST /v1/backup/create": ["operationId", "payloadHash", "reason"],
+	"POST /v1/backup/verify": ["backupId"],
+	"POST /v1/backup/restore": ["operationId", "payloadHash", "backupId"],
 	"POST /v1/events": ["idempotencyKey", "event"],
 	"POST /v1/context/pack": ["requestId", "context", "limit", "tokenBudget", "filters", "trace"],
 	"POST /v1/search": [
@@ -84,6 +89,8 @@ const METADATA_FIELDS = new Set([
 	"submittedAfter",
 	"operationId",
 	"payloadHash",
+	"backupId",
+	"reason",
 	"outputPath",
 	"inputPath",
 	"remapProject",
@@ -133,14 +140,42 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 		body: Record<string, unknown>,
 	): PreparedRequest => {
 		const fields = RPC_FIELDS[method];
-		if (method === "POST /v1/operations/export" || method === "POST /v1/operations/import") {
-			// These user-authority paths are local control metadata. Redacting them could redirect
-			// a filesystem side effect; the daemon validates the allowlist, hash, and destination.
+		if (
+			method === "POST /v1/operations/export" ||
+			method === "POST /v1/operations/import" ||
+			method === "POST /v1/backup/create" ||
+			method === "POST /v1/backup/verify" ||
+			method === "POST /v1/backup/restore"
+		) {
+			// Keep IDs and filesystem control metadata intact; backup reason is redacted below.
 			const preparedBody = Object.fromEntries(
 				fields.filter((field) => Object.hasOwn(body, field)).map((field) => [field, body[field]]),
 			);
-			const { operationId: _operationId, payloadHash: _payloadHash, ...request } = preparedBody;
-			preparedBody.payloadHash = hashMutationPayload(request);
+			if (method === "POST /v1/backup/create") {
+				const config = loadProjectConfig(cwd());
+				const redacted = preprocessAdapterEvent(
+					{ reason: preparedBody.reason },
+					{ allowlist: ["reason"], metadataKeys: ["reason"], config },
+				);
+				const reason = String(redacted.payload.reason ?? "");
+				preparedBody.reason = reason;
+				preparedBody.payloadHash = backupPayloadHash(reason);
+				return {
+					body: preparedBody,
+					config,
+					redaction: {
+						sensitivity: redacted.sensitivity,
+						secret_rules_version: redacted.secret_rules_version,
+						redaction_degraded: redacted.degraded,
+						private_content_omitted: redacted.private_content_omitted,
+						local_only: redacted.local_only,
+					},
+				};
+			}
+			if (method === "POST /v1/operations/export" || method === "POST /v1/operations/import") {
+				const { operationId: _operationId, payloadHash: _payloadHash, ...request } = preparedBody;
+				preparedBody.payloadHash = hashMutationPayload(request);
+			}
 			return {
 				body: preparedBody,
 				redaction: {
