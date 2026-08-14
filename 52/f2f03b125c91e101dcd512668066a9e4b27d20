@@ -1,0 +1,63 @@
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_c314561ccd566d 124-126
+vendor/codemem/packages/core/src/spool.ts
+  s_211aa7fe546c35::t_9bc6b8e98ead07 550-568,607-608,618
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_72a623ef22d815 2879-2888,2914-2915,2933
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_a95f158561a801 2879-2888,2914-2915,2933
+vendor/codemem/README.md
+  s_211aa7fe546c35::t_4927d1181a4492 171,186,204,212
+vendor/codemem/docs/architecture.md
+  s_211aa7fe546c35::t_fabb5ed1e3c97c 14,39,52,66
+vendor/codemem/docs/plugin-reference.md
+  s_211aa7fe546c35::t_55aa8aa7176691 185-193
+vendor/codemem/packages/cli/src/commands/mcp.test.ts
+  s_211aa7fe546c35::t_1fb0ad8b6f0e1a 27-30
+vendor/codemem/packages/cli/src/commands/mcp.ts
+  s_211aa7fe546c35::t_93c72961d7a051 9
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_211aa7fe546c35::t_7a01ec39910fb3 187-225
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_ca14cbb4a01ada 1001-1003
+vendor/codemem/packages/core/src/index.ts
+  s_211aa7fe546c35::t_e29a61879c6d60 45,58
+vendor/codemem/packages/mcp-server/src/content.ts
+  s_211aa7fe546c35::t_bb0d6f2c86ae86 1-2,7-11
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_cbbd262b18bfe4 1,4-13,15,17-22,26-41,44-60,63-85
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_6b038c872df1e3 1-2,5-14,16-19,22-68,71-75,78-86,89-167,169-171,173-180,182,184-210,212-224
+vendor/codemem/packages/mcp-server/src/schemas.ts
+  s_211aa7fe546c35::t_7756d50a2f24c5 4-9
+vendor/codemem/packages/mcp-server/src/server.test.ts
+  s_211aa7fe546c35::t_1de4b8338e01d8 1-3,6,8-42,47-157
+vendor/codemem/packages/mcp-server/src/server.ts
+  s_211aa7fe546c35::t_9fd78c37612821 1,4,11,14
+vendor/codemem/packages/mcp-server/src/stdio.ts
+  s_211aa7fe546c35::t_342fb8a63b2355 7,14-15
+vendor/codemem/packages/mcp-server/src/tool-context.ts
+  s_211aa7fe546c35::t_764cf38a84a77f 1,7-8,12
+vendor/codemem/packages/mcp-server/src/tools/items.ts
+  s_211aa7fe546c35::t_496b54fb195f1d 3-5,10,16,20-27,36,40-48,58-59,61,63-76,80-81
+vendor/codemem/packages/mcp-server/src/tools/search.ts
+  s_211aa7fe546c35::t_4640eecad8150c 3,5,9-12,14,20,25-29,32-34,41,43,48-52,55-67,76-77,83-89,91-94,107-111,113-115,122,124,126,130,132-133,137-148
+vendor/codemem/packages/mcp-server/src/tools/timeline.ts
+  s_211aa7fe546c35::t_969fd078a2d287 3,5,10,16-19,23-34,44-45,48-49,53-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "52f2f03b125c91e101dcd512668066a9e4b27d20",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
