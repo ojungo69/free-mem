@@ -1,0 +1,95 @@
+name: Bug report
+description: Report a reproducible defect in the pre-release source
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        free-mem is pre-release software. Use synthetic data only. Do not include credentials, private memory content, database files, or private local paths.
+  - type: input
+    id: commit
+    attributes:
+      label: Affected commit
+      description: Provide the full commit SHA or branch and commit.
+      placeholder: f9169c02f64df38d0b2a65386f6a1ae0946d5109
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent or integration
+      options:
+        - Claude Code
+        - Codex CLI
+        - OpenCode
+        - Pi / OMP
+        - Kimi Code
+        - Daemon / core
+        - Viewer
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Node/pnpm versions, and relevant runtime details.
+      placeholder: Windows 11 / WSL2 Ubuntu, x86_64, Node 24.16.0, pnpm 11.8.0
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest deterministic reproduction using synthetic data.
+      placeholder: |
+        1. Start from a clean checkout...
+        2. Run...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Paste only minimal logs, stack traces, or fixture output after removing secrets and private paths.
+      render: shell
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Safety impact
+      options:
+        - No known data or security impact
+        - Agent operation is blocked instead of failing open
+        - Possible data loss or duplicate commit
+        - Possible authentication or authorization issue
+        - Possible secret or private-data exposure
+        - Migration, backup, or recovery risk
+        - Unknown
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I used synthetic data and removed credentials, private memory content, database files, and private local paths.
+          required: true
+        - label: I will use private vulnerability reporting instead of this form if the report describes an exploitable security vulnerability.
+          required: true
