@@ -1,0 +1,43 @@
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_4fcc7c7ce3b323 161-163
+harness/phase1-static-scan.ts
+  s_211aa7fe546c35::t_8addc20745dae9 132-133,368-372
+  s_211aa7fe546c35::t_816730f8d469c8 469
+  s_211aa7fe546c35::t_339d527c87e403 444-446,453,532-538
+  s_211aa7fe546c35::t_ff014d1a458c7f 226-230
+  s_211aa7fe546c35::t_5968dd1f58391a 28,447-452,454-468,491
+  s_211aa7fe546c35::t_206860eeeb5dd2 234-236,520-531
+  s_211aa7fe546c35::t_458de483caa67d 24-27,354,407-438
+  s_211aa7fe546c35::t_933f1ec4f06e4c 204-213,216-224,231-233,237-238,255,257-259,261
+  s_211aa7fe546c35::t_04becc2d3ac2fd 1-23,29-131,134-203,214-215,225,239-254,256,260,262-353,355-367,373-406,439-443,470-490,492-519,539-556
+evidence/phase1-disposition.md
+  s_211aa7fe546c35::t_92eae0d7cb2e01 3,22-23,30,33-36,41,184,188,190-194,196,218,282-292
+harness/README.md
+  s_211aa7fe546c35::t_04becc2d3ac2fd 8-9,21
+evidence/phase1-t053-static-scan-validation.md
+  s_211aa7fe546c35::t_4fcc7c7ce3b323 1-19,21-37,39-49
+  s_211aa7fe546c35::t_c7f54a16f2119e 20
+  s_211aa7fe546c35::t_aa2df10b688e06 38
+vendor/codemem/biome.json
+  s_211aa7fe546c35::t_d138a65bcce27e 29-55,94-110
+vendor/codemem/package.json
+  s_211aa7fe546c35::t_4f3ad113ebf8b9 13
+vendor/codemem/packages/core/src/sole-writer-boundary.test.ts
+  s_211aa7fe546c35::t_1aa7939fb4dda8 1-2,6,10-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e20628027680312856609500a9a165aa40fe0256",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
