@@ -3,6 +3,7 @@ import { createRequire as __createRequire } from "node:module";
 const require = __createRequire(import.meta.url);
 import { basename, dirname, isAbsolute, join, matchesGlob, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { MessageChannel, Worker, isMainThread, parentPort, receiveMessageOnPort, workerData } from "node:worker_threads";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, statfsSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
@@ -115,6 +116,7 @@ var MAPPABLE_CLAUDE_HOOK_EVENTS = new Set([
 	"SessionEnd"
 ]);
 var TRANSCRIPT_TAIL_MAX_BYTES = 256 * 1024;
+var UNKNOWN_OCCURRED_AT$1 = "1970-01-01T00:00:00.000Z";
 function nowIso$2() {
 	return (/* @__PURE__ */ new Date()).toISOString().replace("+00:00", "").replace(/\.(\d{3})\d*Z$/, ".$1Z");
 }
@@ -408,7 +410,7 @@ function mapClaudeHookPayload(payload) {
 	const sessionId = coerceSessionId$1(payload);
 	if (!sessionId) return null;
 	const normalizedRawTs = normalizeIsoTs$1(payload.ts ?? payload.timestamp);
-	const ts = normalizedRawTs ?? nowIso$2();
+	let ts = normalizedRawTs ?? nowIso$2();
 	const toolUseId = String(payload.tool_use_id ?? "").trim();
 	const consumed = new Set([
 		"hook_event_name",
@@ -512,6 +514,7 @@ function mapClaudeHookPayload(payload) {
 		eventIdPayload = { ...eventPayload };
 		consumed.add("reason");
 	}
+	if (hookEvent === "SessionEnd" && normalizedRawTs === null) ts = UNKNOWN_OCCURRED_AT$1;
 	const meta = {
 		hook_event_name: hookEvent,
 		ordering_confidence: "low"
@@ -521,7 +524,7 @@ function mapClaudeHookPayload(payload) {
 	const unknown = {};
 	for (const [k, v] of Object.entries(payload)) if (!consumed.has(k)) unknown[k] = v;
 	if (Object.keys(unknown).length > 0) meta.hook_fields = unknown;
-	const eventId = stableEventId$1(sessionId, hookEvent, normalizedRawTs ?? ts, toolUseId, createHash("sha256").update(JSON.stringify(sortKeys$1(eventIdPayload), (_key, value) => {
+	const eventId = stableEventId$1(sessionId, hookEvent, hookEvent === "SessionEnd" && normalizedRawTs === null ? "" : ts, toolUseId, createHash("sha256").update(JSON.stringify(sortKeys$1(eventIdPayload), (_key, value) => {
 		if (value === void 0) return "None";
 		if (typeof value === "bigint") return String(value);
 		return value;
@@ -581,6 +584,9 @@ function buildRawEventEnvelopeFromHook(hookPayload) {
 		started_at: hookEventName === "SessionStart" ? ts : null
 	};
 }
+//#endregion
+//#region ../core/src/daemon-rpc-contract.ts
+var RPC_MAX_BYTES = 32 * 1024;
 var HOOK_DELIVERY_BUDGETS = {
 	claude: {
 		clientHardCapMs: 2e3,
@@ -645,17 +651,25 @@ function callDaemonRpc(socketPath, request, options) {
 		abortListener = () => finish(/* @__PURE__ */ new Error("RPC client aborted"));
 		if (signal?.aborted) abortListener();
 		else signal?.addEventListener("abort", abortListener, { once: true });
-		let buffer = Buffer.alloc(0);
+		const chunks = [];
+		let responseBytes = 0;
 		socket.setTimeout(options?.timeoutMs ?? 2e3);
 		socket.once("connect", () => {
 			socket.write(`${JSON.stringify(request)}\n`);
 		});
 		socket.on("data", (chunk) => {
-			buffer = Buffer.concat([buffer, chunk]);
-			const newline = buffer.indexOf(10);
+			const newline = chunk.indexOf(10);
+			const responseChunk = newline < 0 ? chunk : chunk.subarray(0, newline + 1);
+			responseBytes += responseChunk.length;
+			if (options?.maxResponseBytes !== void 0 && responseBytes > options.maxResponseBytes) {
+				finish(/* @__PURE__ */ new Error(`RPC response exceeds ${options.maxResponseBytes} bytes`));
+				return;
+			}
+			chunks.push(responseChunk);
 			if (newline < 0) return;
+			const buffer = Buffer.concat(chunks, responseBytes);
 			try {
-				finish(void 0, JSON.parse(buffer.subarray(0, newline).toString("utf8")));
+				finish(void 0, JSON.parse(buffer.subarray(0, -1).toString("utf8")));
 			} catch (error) {
 				finish(error instanceof Error ? error : new Error(String(error)));
 			}
@@ -680,8 +694,10 @@ var MAPPABLE_CODEX_HOOK_EVENTS = new Set([
 	"UserPromptSubmit",
 	"PreToolUse",
 	"PostToolUse",
-	"Stop"
+	"Stop",
+	"SessionEnd"
 ]);
+var UNKNOWN_OCCURRED_AT = "1970-01-01T00:00:00.000Z";
 function nowIso$1() {
 	return (/* @__PURE__ */ new Date()).toISOString().replace(/\.(\d{3})\d*Z$/, ".$1Z");
 }
@@ -721,8 +737,9 @@ function mapCodexHookPayload(payload) {
 	const sessionId = coerceSessionId(payload);
 	if (!sessionId) return null;
 	const normalizedRawTs = normalizeIsoTs(payload.ts ?? payload.timestamp);
-	const ts = normalizedRawTs ?? nowIso$1();
+	let ts = normalizedRawTs ?? nowIso$1();
 	const generatedEventNonce = coerceString(payload.codemem_generated_event_nonce);
+	const timestampWasGenerated = normalizedRawTs === null || Boolean(generatedEventNonce);
 	const toolUseId = coerceString(payload.tool_use_id);
 	const turnId = coerceString(payload.turn_id);
 	const consumed = new Set([
@@ -792,6 +809,12 @@ function mapCodexHookPayload(payload) {
 		consumed.add("tool_input");
 		consumed.add("tool_response");
 		consumed.add("matcher_aliases");
+	} else if (hookEvent === "SessionEnd") {
+		eventType = "session_end";
+		eventPayload = { reason: payload.reason ?? null };
+		eventIdPayload = { ...eventPayload };
+		contentAnchoredEventId = true;
+		consumed.add("reason");
 	} else {
 		const rawAssistantText = coerceString(payload.last_assistant_message);
 		let assistantText = rawAssistantText;
@@ -813,18 +836,19 @@ function mapCodexHookPayload(payload) {
 		consumed.add("last_assistant_message");
 		consumed.add("target");
 	}
+	if (contentAnchoredEventId && timestampWasGenerated) ts = UNKNOWN_OCCURRED_AT;
 	const meta = {
 		hook_event_name: hookEvent,
 		ordering_confidence: "low"
 	};
 	if (toolUseId) meta.tool_use_id = toolUseId;
 	if (turnId) meta.turn_id = turnId;
-	if (normalizedRawTs === null) meta.ts_normalized = "generated";
+	if (timestampWasGenerated) meta.ts_normalized = "generated";
 	const unknown = {};
 	for (const [key, value] of Object.entries(payload)) if (!consumed.has(key)) unknown[key] = value;
 	if (Object.keys(unknown).length > 0) meta.hook_fields = unknown;
 	const payloadHash = createHash("sha256").update(JSON.stringify(sortKeys(eventIdPayload)), "utf-8").digest("hex");
-	const eventId = stableEventId(sessionId, hookEvent, normalizedRawTs ?? (contentAnchoredEventId ? "" : ts), turnId, toolUseId, contentAnchoredEventId ? "" : generatedEventNonce, payloadHash);
+	const eventId = stableEventId(sessionId, hookEvent, contentAnchoredEventId && timestampWasGenerated ? "" : normalizedRawTs ?? ts, turnId, toolUseId, contentAnchoredEventId && timestampWasGenerated ? "" : generatedEventNonce, payloadHash);
 	const cwd = typeof payload.cwd === "string" ? payload.cwd : null;
 	return {
 		schema_version: "1.0",
@@ -930,6 +954,20 @@ var SENSITIVITIES$1 = new Set([
 	"secret"
 ]);
 var FIELDS = new Set(NORMALIZED_EVENT_FIELDS);
+var DEGRADED_COPY_FIELDS = [
+	"schemaVersion",
+	"eventId",
+	"idempotencyKey",
+	"agent",
+	"kind",
+	"occurredAt",
+	"sourceHash"
+];
+var REDACTED_METADATA_VALUE = /^redacted:[a-f0-9]{32}$/;
+function redactedMetadataValue(value) {
+	if (typeof value === "string" && REDACTED_METADATA_VALUE.test(value)) return value;
+	return `redacted:${hashMutationPayload(value).slice(0, 32)}`;
+}
 function normalizedKind(adapter) {
 	if (adapter.event_type === "session_start") return "session_started";
 	if (adapter.event_type === "prompt") return "user_prompted";
@@ -1037,6 +1075,110 @@ function validateNormalizedEvent(event, schemaVersion = 1) {
 		sourceHash
 	};
 }
+function sealDegradedNormalizedEvent(event) {
+	const sealed = {};
+	for (const field of DEGRADED_COPY_FIELDS) if (Object.hasOwn(event, field)) sealed[field] = event[field];
+	for (const field of [
+		"nativeSessionId",
+		"projectKey",
+		"workspaceKey",
+		"cwd"
+	]) sealed[field] = redactedMetadataValue(event[field]);
+	sealed.payload = {};
+	sealed.sensitivity = "secret";
+	return sealed;
+}
+//#endregion
+//#region ../core/src/gitleaks-pinned-rules.ts
+var MAX_RULES = 100;
+var MAX_PATTERN_LENGTH = 512;
+var GITLEAKS_PIN = {
+	version: "8.30.1",
+	configUrl: "https://raw.githubusercontent.com/gitleaks/gitleaks/v8.30.1/config/gitleaks.toml",
+	configSha256: "e163e53b9e7e8a8511e77271e2b323ed057759542a6d988258afe3a1fa329caf",
+	subsetContractVersion: 1
+};
+var PINNED_SUBSET = [
+	{
+		id: "age-secret-key",
+		regex: "AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}"
+	},
+	{
+		id: "artifactory-api-key",
+		regex: String.raw`\bAKCp[A-Za-z0-9]{69}\b`,
+		entropy: 4.5
+	},
+	{
+		id: "sentry-user-token",
+		regex: String.raw`\b(sntryu_[a-f0-9]{64})(?:[\x60'"\s;]|\\[nr]|$)`,
+		entropy: 3.5
+	},
+	{
+		id: "shippo-api-token",
+		regex: String.raw`\b(shippo_(?:live|test)_[a-fA-F0-9]{40})(?:[\x60'"\s;]|\\[nr]|$)`,
+		entropy: 2
+	},
+	{
+		id: "shopify-access-token",
+		regex: "shpat_[a-fA-F0-9]{32}",
+		entropy: 2
+	},
+	{
+		id: "sonar-api-token",
+		regex: String.raw`(?i)[\w.-]{0,50}?(?:sonar[_.-]?(login|token))(?:[ \t\w.-]{0,20})[\s'"]{0,3}(?:=|>|:{1,3}=|\|\||:|=>|\?=|,)[\x60'"\s=]{0,5}((?:squ_|sqp_|sqa_)?[a-z0-9=_\-]{40})(?:[\x60'"\s;]|\\[nr]|$)`,
+		secretGroup: 2
+	}
+];
+PINNED_SUBSET.map((rule) => rule.id);
+function countRegExpCaptureGroups(re) {
+	const match = new RegExp(`(?:${re.source})|`, re.flags.replace(/[gy]/g, "")).exec("");
+	return Math.max(0, (match?.length ?? 1) - 1);
+}
+function convertGitleaksRules(sources) {
+	if (sources.length > MAX_RULES) throw new Error("gitleaks subset exceeds 100 rules");
+	const seen = /* @__PURE__ */ new Set();
+	return sources.map((source) => {
+		if (!source.id || seen.has(source.id)) throw new Error("gitleaks rule id is missing or duplicate");
+		seen.add(source.id);
+		if (!source.regex || source.regex.length > MAX_PATTERN_LENGTH) throw new Error(`gitleaks rule ${source.id} has an invalid pattern length`);
+		let patternSource = source.regex;
+		let flags = "g";
+		if (patternSource.startsWith("(?i)")) {
+			patternSource = patternSource.slice(4);
+			flags = "gi";
+		}
+		if (patternSource.replaceAll("(?:", "").includes("(?") || patternSource.includes("[[:") || patternSource.includes("\\z") || patternSource.includes("\\A") || patternSource.includes("\\C") || /\\[1-9]/.test(patternSource)) throw new Error(`gitleaks rule ${source.id} uses unsupported regex syntax`);
+		if (source.entropy !== void 0 && (!Number.isFinite(source.entropy) || source.entropy < 0)) throw new Error(`gitleaks rule ${source.id} has invalid entropy`);
+		const pattern = new RegExp(patternSource, flags);
+		if (source.secretGroup !== void 0 && (!Number.isInteger(source.secretGroup) || source.secretGroup < 1 || source.secretGroup > countRegExpCaptureGroups(pattern))) throw new Error(`gitleaks rule ${source.id} has invalid secretGroup`);
+		return {
+			kind: source.id,
+			pattern,
+			...source.entropy === void 0 ? {} : { minEntropy: source.entropy },
+			...source.secretGroup === void 0 ? {} : { redactGroup: source.secretGroup },
+			origin: `gitleaks:${GITLEAKS_PIN.version}:${source.id}`
+		};
+	});
+}
+var MANDATORY_GITLEAKS_RULES = convertGitleaksRules(PINNED_SUBSET);
+function fingerprintSecretRules(rules, degraded) {
+	const hash = createHash("sha256").update(JSON.stringify({
+		gitleaks: {
+			version: GITLEAKS_PIN.version,
+			configSha256: GITLEAKS_PIN.configSha256,
+			subsetContractVersion: GITLEAKS_PIN.subsetContractVersion
+		},
+		rules: rules.map((rule) => ({
+			origin: rule.origin ?? "codemem",
+			kind: rule.kind,
+			source: rule.pattern.source,
+			flags: rule.pattern.flags,
+			minEntropy: rule.minEntropy ?? null,
+			redactGroup: rule.redactGroup ?? null
+		}))
+	})).digest("hex");
+	return degraded ? `${hash}:degraded` : hash;
+}
 //#endregion
 //#region ../core/src/ingest-sanitize.ts
 function fieldSegments(value) {
@@ -1068,6 +1210,24 @@ function isSensitiveFieldName(fieldName) {
 }
 //#endregion
 //#region ../core/src/secret-scanner.ts
+/**
+* Write-time secret scanner for the codemem store.
+*
+* Detects common secrets in memory write payloads (titles, bodies, narratives,
+* structured fields, and free-form metadata) and replaces them with
+* `[REDACTED:<kind>]` markers before persistence. There is no override flag:
+* codemem has no legitimate use case for storing live secrets, so any escape
+* hatch becomes the bypass that makes scanning theater.
+*
+* Scope of this foundation: the local-write chokepoint inside `MemoryStore.remember`.
+* Other writers into `memory_items` (sync replication apply, sync bootstrap
+* snapshot apply, AI/maintenance backfills of narrative/facts/concepts/tags)
+* are NOT scanned by this module yet — they are addressed by dependent bd
+* issues (codemem-hflk for sync-receive, codemem-tzrn for compaction/AI output,
+* codemem-vb2s for retroactive sweep over already-stored content). Workspace-level
+* rule overrides (codemem-ben8) and the test-fixture allowlist (codemem-jasn)
+* plug in via `ScannerOptions` without changing this module's shape.
+*/
 /** Field names whose string values should be treated as secret-bearing. */
 var SECRET_BEARING_KEY = /^(?:secret|token|password|passwd|pwd|auth|bearer|credential|api[_-]?key|access[_-]?key|client[_-]?secret|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer[_-]?token|api[_-]?token)$/i;
 /**
@@ -1078,7 +1238,7 @@ var SECRET_BEARING_KEY = /^(?:secret|token|password|passwd|pwd|auth|bearer|crede
 * more-general ones — see the OpenAI rule, which uses a negative lookahead to
 * avoid swallowing Anthropic keys regardless of order.
 */
-var DEFAULT_RULES = [
+var LOCAL_RULES = [
 	{
 		kind: "aws_access_key_id",
 		pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g
@@ -1152,6 +1312,7 @@ var DEFAULT_RULES = [
 		redactGroup: 1
 	}
 ];
+var DEFAULT_RULES = [...MANDATORY_GITLEAKS_RULES, ...LOCAL_RULES];
 /** Shannon entropy in bits per character. */
 function shannonEntropy(text) {
 	if (text.length === 0) return 0;
@@ -1190,9 +1351,18 @@ function isPlainObject(value) {
 var SecretScanner = class {
 	rules;
 	allowlist;
+	degraded;
 	constructor(opts = {}) {
 		this.rules = [...DEFAULT_RULES, ...opts.rules ?? []];
 		this.allowlist = opts.allowlist ?? [];
+		this.degraded = opts.degraded === true;
+	}
+	workerOptions() {
+		return {
+			rules: this.rules.slice(DEFAULT_RULES.length),
+			allowlist: [...this.allowlist],
+			degraded: this.degraded
+		};
 	}
 	/** Scan a single string. Returns the redacted form and per-kind detection counts. */
 	scan(text) {
@@ -1234,7 +1404,7 @@ var SecretScanner = class {
 	* stack-overflow the scanner.
 	*/
 	redactValue(value, parentKey) {
-		return this.redactValueInternal(value, parentKey, /* @__PURE__ */ new WeakSet());
+		return this.redactValueInternal(value, parentKey, /* @__PURE__ */ new WeakMap());
 	}
 	redactValueInternal(value, parentKey, seen) {
 		if (typeof value === "string") {
@@ -1258,12 +1428,13 @@ var SecretScanner = class {
 			};
 		}
 		if (Array.isArray(value)) {
-			if (seen.has(value)) return {
-				value,
+			const previous = seen.get(value);
+			if (previous) return {
+				value: previous,
 				detections: []
 			};
-			seen.add(value);
 			const out = [];
+			seen.set(value, out);
 			const merged = /* @__PURE__ */ new Map();
 			for (const item of value) {
 				const r = this.redactValueInternal(item, parentKey, seen);
@@ -1276,17 +1447,18 @@ var SecretScanner = class {
 			};
 		}
 		if (value !== null && typeof value === "object") {
-			if (seen.has(value)) return {
-				value,
-				detections: []
-			};
 			if (!isPlainObject(value)) return {
 				value,
 				detections: []
 			};
-			seen.add(value);
+			const previous = seen.get(value);
+			if (previous) return {
+				value: previous,
+				detections: []
+			};
 			const obj = value;
 			const out = {};
+			seen.set(value, out);
 			const merged = /* @__PURE__ */ new Map();
 			for (const [k, v] of Object.entries(obj)) {
 				const r = this.redactValueInternal(v, k, seen);
@@ -1315,6 +1487,201 @@ function aggregateMap(map) {
 		kind,
 		count
 	}));
+}
+//#endregion
+//#region ../core/src/redaction-worker.ts
+var REDACTION_WORKER_STARTUP_DEADLINE_MS = 1e3;
+var activeWorker;
+var activeWorkerReady;
+var activeWorkerStartedAt = 0;
+function isRedactionWorkerData(value) {
+	return Boolean(value) && typeof value === "object" && value.role === "redaction-worker" && value.ready instanceof SharedArrayBuffer;
+}
+function applyPrivateRegex(value, patterns) {
+	if (typeof value === "string") {
+		let output = value;
+		let privateHit = false;
+		for (const source of patterns) {
+			const pattern = new RegExp(source, "g");
+			if (!pattern.test(output)) continue;
+			privateHit = true;
+			pattern.lastIndex = 0;
+			output = output.replace(pattern, "");
+		}
+		return {
+			value: output,
+			privateHit
+		};
+	}
+	if (Array.isArray(value)) {
+		const output = [];
+		let privateHit = false;
+		for (const item of value) {
+			const result = applyPrivateRegex(item, patterns);
+			output.push(result.value);
+			privateHit ||= result.privateHit;
+		}
+		return {
+			value: output,
+			privateHit
+		};
+	}
+	if (value && typeof value === "object") {
+		const output = {};
+		let privateHit = false;
+		for (const [key, item] of Object.entries(value)) {
+			const result = applyPrivateRegex(item, patterns);
+			output[key] = result.value;
+			privateHit ||= result.privateHit;
+		}
+		return {
+			value: output,
+			privateHit
+		};
+	}
+	return {
+		value,
+		privateHit: false
+	};
+}
+function handleWorkerMessage(message) {
+	const signal = new Int32Array(message.signal);
+	let response;
+	try {
+		if (message.request.type === "private") response = {
+			ok: true,
+			detections: [],
+			...applyPrivateRegex(message.request.value, message.request.patterns)
+		};
+		else response = {
+			ok: true,
+			privateHit: false,
+			...new SecretScanner({
+				rules: message.request.rules,
+				allowlist: message.request.allowlist
+			}).redactValue(message.request.value, message.request.parentKey)
+		};
+	} catch {
+		response = { ok: false };
+	}
+	message.port.postMessage(response);
+	Atomics.store(signal, 0, 1);
+	Atomics.notify(signal, 0);
+	message.port.close();
+}
+if (!isMainThread && isRedactionWorkerData(workerData)) {
+	parentPort?.on("message", handleWorkerMessage);
+	const ready = new Int32Array(workerData.ready);
+	Atomics.store(ready, 0, 1);
+	Atomics.notify(ready, 0);
+}
+function getWorker() {
+	if (!activeWorker) {
+		const moduleUrl = new URL(import.meta.url);
+		const ready = new Int32Array(new SharedArrayBuffer(4));
+		const worker = new Worker(moduleUrl, {
+			workerData: {
+				role: "redaction-worker",
+				ready: ready.buffer
+			},
+			...moduleUrl.pathname.endsWith(".ts") ? { execArgv: ["--import", "tsx"] } : {}
+		});
+		activeWorker = worker;
+		activeWorkerReady = ready;
+		activeWorkerStartedAt = performance.now();
+		worker.unref();
+		worker.once("error", () => {
+			if (activeWorker !== worker) return;
+			activeWorker = void 0;
+			activeWorkerReady = void 0;
+			activeWorkerStartedAt = 0;
+			Atomics.store(ready, 0, -1);
+			Atomics.notify(ready, 0);
+		});
+		worker.once("exit", () => {
+			if (activeWorker !== worker) return;
+			activeWorker = void 0;
+			activeWorkerReady = void 0;
+			activeWorkerStartedAt = 0;
+			Atomics.store(ready, 0, -1);
+			Atomics.notify(ready, 0);
+		});
+	}
+	return activeWorker;
+}
+function warmRedactionWorker(deadlineAtMs) {
+	let worker;
+	try {
+		worker = getWorker();
+	} catch {
+		return false;
+	}
+	const ready = activeWorkerReady;
+	if (!ready) return false;
+	if (Atomics.load(ready, 0) === 0) {
+		const startupRemaining = REDACTION_WORKER_STARTUP_DEADLINE_MS - (performance.now() - activeWorkerStartedAt);
+		const eventRemaining = deadlineAtMs === void 0 ? startupRemaining : deadlineAtMs - performance.now();
+		const waitMs = Math.floor(Math.min(startupRemaining, eventRemaining));
+		if (waitMs > 0) Atomics.wait(ready, 0, 0, waitMs);
+	}
+	if (Atomics.load(ready, 0) === 1) return true;
+	if (deadlineAtMs === void 0 || performance.now() - activeWorkerStartedAt >= REDACTION_WORKER_STARTUP_DEADLINE_MS) discardWorker(worker);
+	return false;
+}
+if (!isMainThread && workerData && typeof workerData === "object" && workerData.role === "hook-runtime") getWorker();
+function discardWorker(worker) {
+	if (activeWorker === worker) {
+		activeWorker = void 0;
+		activeWorkerReady = void 0;
+		activeWorkerStartedAt = 0;
+	}
+	worker.terminate();
+}
+function runWorker(request, deadlineAtMs) {
+	const remaining = Math.floor(deadlineAtMs - performance.now());
+	if (remaining < 1) return { ok: false };
+	let worker;
+	try {
+		worker = getWorker();
+	} catch {
+		return { ok: false };
+	}
+	if (!activeWorkerReady || Atomics.load(activeWorkerReady, 0) !== 1) return { ok: false };
+	const { port1, port2 } = new MessageChannel();
+	const signal = new Int32Array(new SharedArrayBuffer(4));
+	try {
+		worker.postMessage({
+			request,
+			port: port2,
+			signal: signal.buffer
+		}, [port2]);
+		if (Atomics.wait(signal, 0, 0, remaining) === "timed-out") {
+			discardWorker(worker);
+			return { ok: false };
+		}
+		return receiveMessageOnPort(port1)?.message ?? { ok: false };
+	} catch {
+		discardWorker(worker);
+		return { ok: false };
+	} finally {
+		port1.close();
+	}
+}
+function redactValueInWorker(value, userRules, deadlineAtMs, allowlist = [], parentKey) {
+	return runWorker({
+		type: "secret",
+		value,
+		rules: userRules,
+		allowlist,
+		parentKey
+	}, deadlineAtMs);
+}
+function applyPrivateRegexInWorker(value, patterns, deadlineAtMs) {
+	return runWorker({
+		type: "private",
+		value,
+		patterns
+	}, deadlineAtMs);
 }
 //#endregion
 //#region ../core/src/redaction-pipeline.ts
@@ -1402,12 +1769,13 @@ function parseAgentMemoryToml(source) {
 		}
 	}
 	const compiled = compileUserRules(strings("secret_regex"), warnings);
-	degraded = degraded || compiled.degraded;
+	const privatePatterns = compilePrivatePatterns(strings("private_regex"), warnings);
+	degraded = degraded || compiled.degraded || privatePatterns.degraded;
 	const rules = compiled.rules;
 	return {
 		ignorePaths: strings("ignore_paths"),
 		localOnlyPaths: strings("local_only_paths"),
-		privateRegex: strings("private_regex"),
+		privateRegex: privatePatterns.patterns,
 		secretRules: rules,
 		toolFieldAllowlist: strings("tool_field_allowlist"),
 		toolFieldDenylist: strings("tool_field_denylist"),
@@ -1430,27 +1798,51 @@ function runPipeline(input, options, layer) {
 	else for (const [key, value] of Object.entries(source)) if (allow.has(key) && !isSensitiveFieldName(key)) payload[key] = dropSensitiveFields(value, toolAllow, toolDeny);
 	payload = mapStrings(payload, stripInjectedContext);
 	payload = mapStrings(payload, (text, key) => PATH_KEYS.has(key) ? normalizePathValue(text) : text);
-	const rules = [...DEFAULT_RULES, ...config?.secretRules ?? []];
-	const scanner = new SecretScanner({ rules: config?.secretRules });
-	const firstScan = scanner.redactValue(payload);
-	payload = asObject(firstScan.value);
+	const userRules = config?.secretRules ?? [];
+	const rules = [...DEFAULT_RULES, ...userRules];
+	const workerDeadlineAtMs = performance.now() + 100;
+	const firstScan = warmRedactionWorker(workerDeadlineAtMs) ? redactValueInWorker(payload, userRules, workerDeadlineAtMs) : { ok: false };
+	const loadedRules = firstScan.ok ? rules : [];
+	let workerDegraded = !firstScan.ok;
+	let detections = firstScan.ok ? firstScan.detections : [];
+	payload = firstScan.ok ? asObject(firstScan.value) : keepMetadataOnly(payload, options.metadataKeys);
 	let privateOmitted = false;
 	let localOnly = false;
 	payload = mapStrings(payload, (text) => {
 		const stripped = stripReservedMarkup(text);
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
-		const again = stripReservedMarkup(applyPrivateRegex(stripped.text, config, () => {
+		return stripped.text;
+	});
+	if (config?.privateRegex.length && !workerDegraded) {
+		const metadata = keepMetadataOnly(payload, options.metadataKeys);
+		const privateScan = applyPrivateRegexInWorker(payload, config.privateRegex, workerDeadlineAtMs);
+		if (privateScan.ok) {
+			payload = asObject(privateScan.value);
+			privateOmitted ||= privateScan.privateHit;
+		} else {
+			payload = metadata;
 			privateOmitted = true;
-		}));
+			workerDegraded = true;
+		}
+	}
+	payload = mapStrings(payload, (text) => {
+		const again = stripReservedMarkup(text);
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
 	});
-	const secondScan = scanner.redactValue(payload);
-	payload = asObject(secondScan.value);
+	if (!workerDegraded) {
+		const secondScan = redactValueInWorker(payload, userRules, workerDeadlineAtMs);
+		if (secondScan.ok) {
+			payload = asObject(secondScan.value);
+			detections = mergeDetections(detections, secondScan.detections);
+		} else {
+			payload = keepMetadataOnly(payload, options.metadataKeys);
+			workerDegraded = true;
+		}
+	}
 	payload = boundSize(payload, options.maxBytes ?? EVENT_MAX_BYTES);
-	const detections = mergeDetections(firstScan.detections, secondScan.detections);
 	if (detections.length > 0) process.stderr.write(`[redaction] layer=${layer} kinds=${detections.map((item) => item.kind).join(",")}\n`);
 	let sensitivity = "normal";
 	if (detections.length > 0) sensitivity = "secret";
@@ -1459,17 +1851,18 @@ function runPipeline(input, options, layer) {
 		payload = keepMetadataOnly(payload, options.metadataKeys);
 		sensitivity = "secret";
 	}
-	if (config?.degraded) payload = keepMetadataOnly(payload, options.metadataKeys);
+	const degraded = Boolean(config?.degraded) || workerDegraded;
+	if (degraded) payload = keepMetadataOnly(payload, options.metadataKeys);
 	payload = enforceMaxBytes(payload, options.maxBytes ?? EVENT_MAX_BYTES, options.metadataKeys);
 	return {
 		payload,
 		sensitivity,
-		secret_rules_version: rulesetVersion(rules, Boolean(config?.degraded)),
-		degraded: Boolean(config?.degraded),
+		secret_rules_version: fingerprintSecretRules(loadedRules, degraded),
+		degraded,
 		private_content_omitted: privateOmitted,
 		local_only: localOnly,
 		detections,
-		warnings: config?.warnings ?? []
+		warnings: workerDegraded ? [...config?.warnings ?? [], "redaction worker deadline exceeded"] : config?.warnings ?? []
 	};
 }
 function compileUserRules(patterns, warnings) {
@@ -1484,7 +1877,8 @@ function compileUserRules(patterns, warnings) {
 		try {
 			rules.push({
 				kind: `user_${rules.length + 1}`,
-				pattern: new RegExp(pattern, "g")
+				pattern: new RegExp(pattern, "g"),
+				origin: "user"
 			});
 		} catch {
 			warnings.push("secret_regex pattern is invalid");
@@ -1497,6 +1891,32 @@ function compileUserRules(patterns, warnings) {
 	}
 	return {
 		rules,
+		degraded
+	};
+}
+function compilePrivatePatterns(patterns, warnings) {
+	const valid = [];
+	let degraded = false;
+	for (const pattern of patterns.slice(0, USER_RULE_MAX)) {
+		if (pattern.length > USER_PATTERN_MAX) {
+			warnings.push("private_regex pattern exceeds 512 characters");
+			degraded = true;
+			continue;
+		}
+		try {
+			new RegExp(pattern, "g");
+			valid.push(pattern);
+		} catch {
+			warnings.push("private_regex pattern is invalid");
+			degraded = true;
+		}
+	}
+	if (patterns.length > USER_RULE_MAX) {
+		warnings.push("private_regex exceeds 100 patterns");
+		degraded = true;
+	}
+	return {
+		patterns: valid,
 		degraded
 	};
 }
@@ -1513,10 +1933,6 @@ function parseTomlValue(raw) {
 	if (raw.startsWith("\"") && raw.endsWith("\"") || raw.startsWith("'") && raw.endsWith("'")) return raw.slice(1, -1);
 	return raw;
 }
-function rulesetVersion(rules, degraded) {
-	const hash = createHash("sha256").update(rules.map((rule) => `${rule.kind}\n${rule.pattern.source}\n${rule.pattern.flags}`).join("\n")).digest("hex");
-	return degraded ? `${hash}:degraded` : hash;
-}
 function resolveAllowlist(requested) {
 	return new Set(requested ?? DEFAULT_ALLOWLIST);
 }
@@ -1532,21 +1948,6 @@ function dropSensitiveFields(value, toolAllow, toolDeny, insideToolInput = false
 		return next;
 	}
 	return value;
-}
-function applyPrivateRegex(text, config, onHit) {
-	if (!config?.privateRegex.length) return text;
-	let next = text;
-	for (const pattern of config.privateRegex) try {
-		const re = new RegExp(pattern, "g");
-		if (re.test(next)) {
-			onHit();
-			next = next.replace(re, "");
-		}
-	} catch {
-		onHit();
-		return "";
-	}
-	return next;
 }
 function mergeDetections(...groups) {
 	const counts = /* @__PURE__ */ new Map();
@@ -1901,7 +2302,7 @@ var LOCK_INITIALIZATION_GRACE_MS = 25;
 var LOCK_WAIT_MS = 5;
 var LOCK_WAIT_ARRAY = new Int32Array(new SharedArrayBuffer(4));
 var RESERVED_EVENT_KINDS = new Set(["pre_compact", "session_ended"]);
-var RULESET_VERSION = /^[a-f0-9]{64}(?::degraded)?$/;
+var RULESET_VERSION = /^[a-f0-9]{64}(?::degraded)?(?:\+[a-f0-9]{64}(?::degraded)?)*$/;
 var SENSITIVITIES = new Set([
 	"normal",
 	"private",
@@ -2179,9 +2580,11 @@ function spoolRedaction(result) {
 function mergeSpoolRedaction(current, previousValue) {
 	if (!previousValue) return current;
 	const previous = validateSpoolRedaction(previousValue);
+	const versions = [...new Set([...current.secret_rules_version.split("+"), ...previous.secret_rules_version.split("+")])].sort();
 	return {
-		...previous,
 		sensitivity: previous.sensitivity === "secret" || current.sensitivity === "secret" ? "secret" : previous.sensitivity === "private" || current.sensitivity === "private" ? "private" : "normal",
+		secret_rules_version: versions.join("+"),
+		redaction_degraded: previous.redaction_degraded || current.redaction_degraded,
 		private_content_omitted: previous.private_content_omitted || current.private_content_omitted,
 		local_only: previous.local_only || current.local_only
 	};
@@ -2195,15 +2598,16 @@ function prepareMutation(input, config, previousRedaction) {
 	let body;
 	let redaction;
 	let quotaClass = "normal";
+	const retryConfig = previousRedaction?.redaction_degraded ? void 0 : config;
 	if (input.method === "POST /v1/events") {
 		const rawEvent = input.body.event;
 		if (!rawEvent || typeof rawEvent !== "object" || Array.isArray(rawEvent)) throw new Error("event is required before spooling.");
 		const redacted = preprocessAdapterEvent(rawEvent, {
 			allowlist: [...NORMALIZED_EVENT_FIELDS],
 			metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
-			config
+			config: retryConfig
 		});
-		const event = redacted.payload;
+		const event = redacted.degraded || previousRedaction?.redaction_degraded ? sealDegradedNormalizedEvent(redacted.payload) : redacted.payload;
 		if (!Object.hasOwn(event, "payload")) event.payload = {};
 		if (event.idempotencyKey !== idempotencyKey) throw new Error("event.idempotencyKey must match the spool envelope.");
 		validateNormalizedEvent(event);
@@ -2227,7 +2631,7 @@ function prepareMutation(input, config, previousRedaction) {
 				"confidence",
 				"project"
 			],
-			config
+			config: retryConfig
 		});
 		body = redacted.payload;
 		redaction = mergeSpoolRedaction(spoolRedaction(redacted), previousRedaction);
@@ -2289,7 +2693,7 @@ function asRecord(value, label) {
 function validateSpoolRedaction(value) {
 	const redaction = asRecord(value, "Spool redaction metadata");
 	rejectUnknownFields(redaction, REDACTION_FIELDS, "Spool redaction metadata");
-	if (!SENSITIVITIES.has(String(redaction.sensitivity)) || typeof redaction.secret_rules_version !== "string" || !RULESET_VERSION.test(redaction.secret_rules_version) || typeof redaction.redaction_degraded !== "boolean" || typeof redaction.private_content_omitted !== "boolean" || typeof redaction.local_only !== "boolean" || redaction.redaction_degraded !== redaction.secret_rules_version.endsWith(":degraded")) throw new Error("Spool redaction metadata is malformed.");
+	if (!SENSITIVITIES.has(String(redaction.sensitivity)) || typeof redaction.secret_rules_version !== "string" || !RULESET_VERSION.test(redaction.secret_rules_version) || typeof redaction.redaction_degraded !== "boolean" || typeof redaction.private_content_omitted !== "boolean" || typeof redaction.local_only !== "boolean" || redaction.redaction_degraded !== redaction.secret_rules_version.includes(":degraded")) throw new Error("Spool redaction metadata is malformed.");
 	return redaction;
 }
 function capacityError(error) {
@@ -5761,6 +6165,7 @@ var NATIVE_CLI_VERSION = {
 	codex: "codex-cli 0.147.0"
 };
 var PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
+var HOOK_RPC_RESPONSE_MAX_BYTES = 256 * 1024;
 var HOOK_RPC_TIMEOUT_MS = {
 	claude: HOOK_DELIVERY_BUDGETS.claude.rpcCutoffMs,
 	codex: HOOK_DELIVERY_BUDGETS.codex.rpcCutoffMs
@@ -5858,8 +6263,13 @@ function promptFromEvent(event) {
 	const text = adapterPayload.text;
 	return typeof text === "string" ? text.trim().replace(/\n/g, " ") : "";
 }
-function prepareHookEvent(agent, payload) {
-	const deadlineAtMs = performance.now() + HOOK_DELIVERY_BUDGETS[agent].clientHardCapMs;
+function reportSpoolWarning(message) {
+	try {
+		writeSync(2, `[codemem] ${message}\n`);
+	} catch {}
+	logHookEvent(`hook.spool ${message}`);
+}
+function prepareHookEvent(agent, payload, deadlineAtMs = performance.now() + HOOK_DELIVERY_BUDGETS[agent].clientHardCapMs) {
 	const policy = loadHookPolicy(payload);
 	if (policy.ignored) return {
 		status: "skipped",
@@ -5877,17 +6287,18 @@ function prepareHookEvent(agent, payload) {
 		metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
 		config: policy.config
 	});
-	const rpcEvent = redacted.payload;
+	const rpcEvent = redacted.degraded ? sealDegradedNormalizedEvent(redacted.payload) : redacted.payload;
 	if (!Object.hasOwn(rpcEvent, "payload")) rpcEvent.payload = {};
-	rpcEvent.sensitivity = redacted.sensitivity;
-	if (redacted.sensitivity === "secret") rpcEvent.payload = {};
+	const sensitivity = redacted.degraded ? "secret" : redacted.sensitivity;
+	rpcEvent.sensitivity = sensitivity;
+	if (sensitivity === "secret") rpcEvent.payload = {};
 	validateNormalizedEvent(rpcEvent);
 	return {
 		status: "ready",
 		deadlineAtMs,
 		event: rpcEvent,
 		redaction: {
-			sensitivity: redacted.sensitivity,
+			sensitivity,
 			secret_rules_version: redacted.secret_rules_version,
 			redaction_degraded: redacted.degraded,
 			private_content_omitted: redacted.private_content_omitted,
@@ -5915,7 +6326,8 @@ async function requestHookRpc(agent, method, body, options = {}) {
 		body
 	}, {
 		timeoutMs,
-		signal: AbortSignal.timeout(timeoutMs)
+		signal: AbortSignal.timeout(timeoutMs),
+		maxResponseBytes: method === "POST /v1/context/pack" ? HOOK_RPC_RESPONSE_MAX_BYTES : RPC_MAX_BYTES
 	});
 	if ("error" in result) throw new Error(`hook RPC failed: ${result.error.code}`);
 	return result.result;
@@ -5958,7 +6370,7 @@ async function deliverHookEvent(agent, payload, options = {}) {
 			config: prepared.config,
 			previousRedaction: prepared.redaction,
 			lockDeadlineMs: Math.floor(lockBudget),
-			onWarning: (message) => logHookEvent(`hook.spool ${message}`)
+			onWarning: reportSpoolWarning
 		}).status === "dropped" ? "dropped" : "spool" };
 	}
 }
@@ -6174,7 +6586,7 @@ async function buildClaudeFileContext(payload, _opts, deps = {}) {
 	if (envTruthy$2(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult$2();
 	let prepared;
 	try {
-		prepared = prepareHookEvent("claude", payload);
+		prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	} catch {
 		return continueResult$2();
 	}
@@ -6390,7 +6802,7 @@ function emitStructuredError(errorCode, message) {
 	}));
 }
 async function ingestClaudeHookPayload(payload, _opts, deps = {}) {
-	const prepared = prepareHookEvent("claude", payload);
+	const prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	if (prepared.status === "ready") try {
 		const eventPayload = prepared.event.payload;
 		const adapter = eventPayload && typeof eventPayload === "object" && !Array.isArray(eventPayload) ? eventPayload._adapter : null;
@@ -6494,7 +6906,7 @@ function resolveInjectProject$1(payload) {
 }
 async function buildClaudeHookInjection(payload, _opts, deps = {}) {
 	if (envTruthy$1(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult$1();
-	const prepared = prepareHookEvent("claude", payload);
+	const prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	if (prepared.status === "skipped") return continueResult$1();
 	let state = null;
 	try {
@@ -6581,7 +6993,7 @@ function normalizePayloadForIngest(payload) {
 }
 async function ingestCodexHookPayload(payload, _opts, deps = {}) {
 	const normalized = normalizePayloadForIngest(payload);
-	const prepared = prepareHookEvent("codex", normalized);
+	const prepared = prepareHookEvent("codex", normalized, _opts.deadlineAtMs);
 	const result = await (deps.deliver ?? deliverHookEvent)("codex", normalized, { prepared });
 	return {
 		inserted: result.via === "rpc" ? 1 : 0,
@@ -6689,7 +7101,7 @@ function buildCodexInjectQuery(prompt, project) {
 async function buildCodexHookInjection(payload, _opts, deps = {}) {
 	if (envTruthy(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult();
 	if (payload.hook_event_name !== HOOK_EVENT_NAME) return continueResult();
-	const prepared = prepareHookEvent("codex", payload);
+	const prepared = prepareHookEvent("codex", payload, _opts.deadlineAtMs);
 	if (prepared.status === "skipped") return continueResult();
 	const prompt = normalizePromptText(prepared.safePrompt);
 	const deliver = deps.deliver ?? deliverHookEvent;
@@ -6744,6 +7156,7 @@ codexHookInjectCmd.action(async (opts) => {
 //#endregion
 //#region src/hook-runtime.ts
 var HOOK_RUNTIME_INPUT_MAX_BYTES = 256 * 1024;
+var HOOK_RUNTIME_OUTPUT_MAX_BYTES = 256 * 1024;
 var CONTINUE = "{\"continue\":true}";
 var COMMANDS = new Set([
 	"claude-hook-file-context",
@@ -6763,7 +7176,7 @@ function disabled() {
 		"on"
 	].includes(String(process.env.CODEMEM_PLUGIN_IGNORE ?? "").trim().toLowerCase());
 }
-async function runHookRuntime(command, raw) {
+async function runHookRuntime(command, raw, deadlineAtMs) {
 	if (!COMMANDS.has(command)) throw new Error("unsupported hook command");
 	if (disabled() || Buffer.byteLength(raw, "utf8") > 262144) return fallback(command);
 	let payload;
@@ -6774,38 +7187,94 @@ async function runHookRuntime(command, raw) {
 	} catch {
 		return fallback(command);
 	}
+	const budget = command.startsWith("claude-") ? HOOK_DELIVERY_BUDGETS.claude : HOOK_DELIVERY_BUDGETS.codex;
+	warmRedactionWorker(deadlineAtMs === void 0 ? void 0 : deadlineAtMs - budget.spoolReserveMs - 100);
 	try {
 		if (command === "claude-hook-ingest") {
 			await ingestClaudeHookPayload(payload, {
 				host: "127.0.0.1",
-				port: 38888
+				port: 38888,
+				deadlineAtMs
 			});
 			return "";
 		}
 		if (command === "codex-hook-ingest") {
 			await ingestCodexHookPayload(payload, {
 				host: "127.0.0.1",
-				port: 38888
+				port: 38888,
+				deadlineAtMs
 			});
 			return CONTINUE;
 		}
-		if (command === "claude-hook-inject") return JSON.stringify(await buildClaudeHookInjection(payload, {}));
-		if (command === "codex-hook-inject") return JSON.stringify(await buildCodexHookInjection(payload, {}));
-		return JSON.stringify(await buildClaudeFileContext(payload, {}));
+		if (command === "claude-hook-inject") return JSON.stringify(await buildClaudeHookInjection(payload, { deadlineAtMs }));
+		if (command === "codex-hook-inject") return JSON.stringify(await buildCodexHookInjection(payload, { deadlineAtMs }));
+		return JSON.stringify(await buildClaudeFileContext(payload, { deadlineAtMs }));
 	} catch {
 		return fallback(command);
 	}
 }
-async function readStdin() {
+function clientHardCapMs(command) {
+	return command.startsWith("claude-") ? HOOK_DELIVERY_BUDGETS.claude.clientHardCapMs : HOOK_DELIVERY_BUDGETS.codex.clientHardCapMs;
+}
+async function readStdin(deadlineAtMs) {
 	const chunks = [];
 	let size = 0;
-	for await (const chunk of process.stdin) {
-		const buffer = Buffer.from(chunk);
-		size += buffer.length;
-		if (size > 262144) return null;
-		chunks.push(buffer);
+	const timeout = setTimeout(() => process.stdin.destroy(/* @__PURE__ */ new Error("hook stdin deadline exceeded")), Math.max(1, deadlineAtMs - performance.now()));
+	try {
+		for await (const chunk of process.stdin) {
+			const buffer = Buffer.from(chunk);
+			size += buffer.length;
+			if (size > 262144) return null;
+			chunks.push(buffer);
+		}
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timeout);
 	}
 	return Buffer.concat(chunks).toString("utf8");
+}
+function isHookRuntimeWorkerData(value) {
+	return Boolean(value) && typeof value === "object" && value.role === "hook-runtime" && typeof value.command === "string" && typeof value.raw === "string" && typeof value.deadlineAtMs === "number";
+}
+async function runSupervisedHookRuntime(command, raw, deadlineAtMs) {
+	const fallbackOutput = fallback(command);
+	const remaining = Math.floor(deadlineAtMs - performance.now());
+	if (remaining < 1) return fallbackOutput;
+	return new Promise((resolveOutput) => {
+		let worker;
+		try {
+			worker = new Worker(new URL(import.meta.url), { workerData: {
+				role: "hook-runtime",
+				command,
+				raw,
+				deadlineAtMs
+			} });
+		} catch {
+			resolveOutput(fallbackOutput);
+			return;
+		}
+		worker.unref();
+		let settled = false;
+		const finish = (output) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeout);
+			worker.terminate();
+			resolveOutput(output);
+		};
+		const timeout = setTimeout(() => finish(fallbackOutput), remaining);
+		worker.once("message", (message) => {
+			if (typeof message !== "string" || Buffer.byteLength(message, "utf8") > HOOK_RUNTIME_OUTPUT_MAX_BYTES) {
+				finish(fallbackOutput);
+				return;
+			}
+			finish(message);
+		});
+		worker.once("messageerror", () => finish(fallbackOutput));
+		worker.once("error", () => finish(fallbackOutput));
+		worker.once("exit", () => finish(fallbackOutput));
+	});
 }
 async function main() {
 	const command = process.argv[2] ?? "";
@@ -6813,10 +7282,30 @@ async function main() {
 		process.exitCode = 2;
 		return;
 	}
-	const raw = await readStdin();
-	const output = raw === null ? fallback(command) : await runHookRuntime(command, raw);
-	if (output) process.stdout.write(output);
+	const deadlineAtMs = clientHardCapMs(command) - 50;
+	const raw = await readStdin(deadlineAtMs);
+	const output = raw === null ? fallback(command) : await runSupervisedHookRuntime(command, raw, deadlineAtMs);
+	if (output) await new Promise((resolveWrite) => {
+		let settled = false;
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeout);
+			resolveWrite();
+		};
+		const timeout = setTimeout(() => {
+			process.stdout.destroy();
+			finish();
+		}, Math.max(1, deadlineAtMs - performance.now()));
+		process.stdout.write(output, finish);
+	});
 }
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) await main();
+if (!isMainThread && isHookRuntimeWorkerData(workerData)) {
+	let output = fallback(workerData.command);
+	try {
+		output = await runHookRuntime(workerData.command, workerData.raw, workerData.deadlineAtMs);
+	} catch {}
+	parentPort?.postMessage(output);
+} else if (isMainThread && process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) await main();
 //#endregion
 export { HOOK_RUNTIME_INPUT_MAX_BYTES, runHookRuntime };

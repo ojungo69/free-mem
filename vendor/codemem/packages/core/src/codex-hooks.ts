@@ -18,7 +18,9 @@ export const MAPPABLE_CODEX_HOOK_EVENTS = new Set([
 	"PreToolUse",
 	"PostToolUse",
 	"Stop",
+	"SessionEnd",
 ]);
+const UNKNOWN_OCCURRED_AT = "1970-01-01T00:00:00.000Z";
 
 function nowIso(): string {
 	return new Date().toISOString().replace(/\.(\d{3})\d*Z$/, ".$1Z");
@@ -94,8 +96,9 @@ export function mapCodexHookPayload(
 	if (!sessionId) return null;
 
 	const normalizedRawTs = normalizeIsoTs(payload.ts ?? payload.timestamp);
-	const ts = normalizedRawTs ?? nowIso();
+	let ts = normalizedRawTs ?? nowIso();
 	const generatedEventNonce = coerceString(payload.codemem_generated_event_nonce);
+	const timestampWasGenerated = normalizedRawTs === null || Boolean(generatedEventNonce);
 	const toolUseId = coerceString(payload.tool_use_id);
 	const turnId = coerceString(payload.turn_id);
 
@@ -162,6 +165,12 @@ export function mapCodexHookPayload(
 		consumed.add("tool_input");
 		consumed.add("tool_response");
 		consumed.add("matcher_aliases");
+	} else if (hookEvent === "SessionEnd") {
+		eventType = "session_end";
+		eventPayload = { reason: payload.reason ?? null };
+		eventIdPayload = { ...eventPayload };
+		contentAnchoredEventId = true;
+		consumed.add("reason");
 	} else {
 		// Stop: prefer the inline assistant message, then fall back to the
 		// transcript's last assistant text so Codex Stop payloads that only
@@ -199,13 +208,15 @@ export function mapCodexHookPayload(
 		consumed.add("target");
 	}
 
+	if (contentAnchoredEventId && timestampWasGenerated) ts = UNKNOWN_OCCURRED_AT;
+
 	const meta: Record<string, unknown> = {
 		hook_event_name: hookEvent,
 		ordering_confidence: "low",
 	};
 	if (toolUseId) meta.tool_use_id = toolUseId;
 	if (turnId) meta.turn_id = turnId;
-	if (normalizedRawTs === null) meta.ts_normalized = "generated";
+	if (timestampWasGenerated) meta.ts_normalized = "generated";
 
 	const unknown: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(payload)) {
@@ -221,8 +232,8 @@ export function mapCodexHookPayload(
 	// Excluding the generated wall-clock ts and per-call nonce keeps the id stable
 	// when Codex omits a timestamp. Other event types keep the generated-time
 	// fallbacks to avoid collisions for repeated timestamp-less payloads.
-	const eventIdTs = normalizedRawTs ?? (contentAnchoredEventId ? "" : ts);
-	const eventIdNonce = contentAnchoredEventId ? "" : generatedEventNonce;
+	const eventIdTs = contentAnchoredEventId && timestampWasGenerated ? "" : (normalizedRawTs ?? ts);
+	const eventIdNonce = contentAnchoredEventId && timestampWasGenerated ? "" : generatedEventNonce;
 	const eventId = stableEventId(
 		sessionId,
 		hookEvent,

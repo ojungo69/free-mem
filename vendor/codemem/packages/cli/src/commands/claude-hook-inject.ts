@@ -26,7 +26,7 @@ type InjectResult = {
 };
 
 const HOOK_EVENT_NAME = "UserPromptSubmit" as const;
-type InjectOpts = DbOpts;
+type InjectOpts = DbOpts & { deadlineAtMs?: number };
 export type PackResult = HookPackResult;
 type InjectDeps = {
 	requestPack?: typeof requestHookPack;
@@ -85,7 +85,7 @@ export async function buildClaudeHookInjection(
 	deps: InjectDeps = {},
 ): Promise<InjectResult> {
 	if (envTruthy(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult();
-	const prepared = prepareHookEvent("claude", payload);
+	const prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	if (prepared.status === "skipped") return continueResult();
 
 	let state: SessionState | null = null;

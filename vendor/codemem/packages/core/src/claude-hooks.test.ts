@@ -173,6 +173,18 @@ describe("mapClaudeHookPayload", () => {
 			expect(event?.event_type).toBe("session_end");
 			expect(event?.payload.reason).toBe("user_exit");
 		});
+
+		it("keeps timestamp-less retries stable", () => {
+			const payload = {
+				hook_event_name: "SessionEnd",
+				session_id: "sess-end-retry",
+				reason: "user_exit",
+			};
+			const first = mapClaudeHookPayload(payload);
+			const second = mapClaudeHookPayload(payload);
+			expect(first?.event_id).toBe(second?.event_id);
+			expect(first?.ts).toBe("1970-01-01T00:00:00.000Z");
+		});
 	});
 
 	describe("Stop → assistant", () => {

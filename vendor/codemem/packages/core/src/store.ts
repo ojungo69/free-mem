@@ -24,7 +24,7 @@ import {
 import { buildFilterClausesWithContext, type OwnershipFilterContext } from "./filters.js";
 import { buildMemoryDedupKey, normalizeMemoryDedupTitle } from "./memory-dedup.js";
 import { validateMemoryKind } from "./memory-kinds.js";
-import { readCodememConfigFile } from "./observer-config.js";
+import { readCodememConfigFile, readCodememConfigFileWithStatus } from "./observer-config.js";
 import type { PackArtifacts } from "./pack.js";
 import {
 	buildMemoryPack,
@@ -34,6 +34,11 @@ import {
 	buildMemoryPackWithTrace,
 	buildMemoryPackWithTraceAsync,
 } from "./pack.js";
+import {
+	REDACTION_WORKER_DEADLINE_MS,
+	redactValueInWorker,
+	warmRedactionWorker,
+} from "./redaction-worker.js";
 import { populateMemoryRefs } from "./ref-populate.js";
 import type { RefQueryOptions, RefQueryResult } from "./ref-queries.js";
 import { findByConcept as findByConceptFn, findByFile as findByFileFn } from "./ref-queries.js";
@@ -48,7 +53,6 @@ import {
 } from "./search.js";
 import {
 	loadScannerOptionsFromConfig,
-	mergeDetections,
 	type ScanDetection,
 	SecretScanner,
 } from "./secret-scanner.js";
@@ -181,6 +185,7 @@ export class MemoryStore {
 	private readonly ownsConnection: boolean;
 
 	constructor(connection: WriterActor, options: { closeConnection?: boolean } = {}) {
+		warmRedactionWorker();
 		this.dbPath = resolveDbPath(connection.name);
 		this.ownsConnection = options.closeConnection === true;
 		this.db = connection;
@@ -191,8 +196,11 @@ export class MemoryStore {
 			// Read config once and use it for both actor identity and scanner
 			// rule overrides. Workspace-scoped rules and allowlist live under the
 			// `secret_scanner` block (see loadScannerOptionsFromConfig).
-			const config = readCodememConfigFile();
-			this.scanner = new SecretScanner(loadScannerOptionsFromConfig(config));
+			const configRead = readCodememConfigFileWithStatus();
+			const config = configRead.config;
+			const scannerOptions = loadScannerOptionsFromConfig(config);
+			scannerOptions.degraded ||= configRead.degraded;
+			this.scanner = new SecretScanner(scannerOptions);
 
 			// Resolve device ID: env var → sync_device table → stable "local" fallback.
 			// Python uses exactly this order and fallback.
@@ -676,30 +684,34 @@ export class MemoryStore {
 		const validKind = validateMemoryKind(kind);
 		const now = nowIso();
 
-		// Scan for secrets BEFORE any further processing. The redacted forms are
-		// what get deduped, embedded, and persisted; the originals never reach
-		// disk. There is no override flag — see secret-scanner.ts.
-		const scanner = this.scanner;
-		const titleScan = scanner.scan(title);
-		const bodyScan = scanner.scan(bodyText);
-		const safeTitle = titleScan.redacted;
-		const safeBody = bodyScan.redacted;
-
-		// Tags are written verbatim into tags_text and mirrored into the FTS
-		// index. Scan each one so a malformed caller can't use a tag as a
-		// scanner bypass.
-		const tagDetections: ScanDetection[] = [];
-		const safeTags = tags
-			? tags.map((t) => {
-					const r = scanner.scan(t);
-					tagDetections.push(...r.detections);
-					return r.redacted;
-				})
+		// Scan the complete write once in the shared killable worker. On worker
+		// failure, preserve only non-content metadata needed to surface degraded
+		// delivery without ever writing the unscanned body.
+		const scannerOptions = this.scanner.workerOptions();
+		const workerDeadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
+		if (!scannerOptions.degraded) warmRedactionWorker(workerDeadlineAtMs);
+		const scan = scannerOptions.degraded
+			? { ok: false as const }
+			: redactValueInWorker(
+					{ title, bodyText, tags, metadata: metadata ?? {} },
+					scannerOptions.rules ?? [],
+					workerDeadlineAtMs,
+					scannerOptions.allowlist,
+				);
+		const value = scan.ok ? (scan.value as Record<string, unknown>) : {};
+		const safeTitle = typeof value.title === "string" ? value.title : "";
+		const safeBody = typeof value.bodyText === "string" ? value.bodyText : "";
+		const safeTags = Array.isArray(value.tags)
+			? value.tags.filter((tag): tag is string => typeof tag === "string")
 			: undefined;
 		const tagsText = safeTags ? [...new Set(safeTags)].sort().join(" ") : "";
-
-		const metaScan = scanner.redactValue(metadata ?? {});
-		const metaPayload = { ...(metaScan.value as Record<string, unknown>) };
+		const metaPayload: Record<string, unknown> =
+			scan.ok &&
+			value.metadata &&
+			typeof value.metadata === "object" &&
+			!Array.isArray(value.metadata)
+				? { ...(value.metadata as Record<string, unknown>) }
+				: { redaction_degraded: true };
 		const dedupKey = buildMemoryDedupKey(safeTitle);
 
 		metaPayload.clock_device_id ??= this.deviceId;
@@ -819,11 +831,7 @@ export class MemoryStore {
 
 		this.enqueueVectorWrite(memoryId, safeTitle, safeBody);
 
-		const detections = mergeDetections(
-			titleScan.detections,
-			bodyScan.detections,
-			metaScan.detections,
-		);
+		const detections = scan.ok ? scan.detections : [];
 		if (detections.length > 0) {
 			this.logSecretRedactions(memoryId, validKind, detections);
 		}

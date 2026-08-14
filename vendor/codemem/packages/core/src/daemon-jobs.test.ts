@@ -7,6 +7,7 @@ import { type DaemonRpcContext, dispatchDaemonRpc } from "./daemon-rpc.js";
 import { LOCAL_API_VERSION, RPC_CAPABILITY_HASH } from "./daemon-rpc-contract.js";
 import { connect } from "./db.js";
 import { NORMALIZED_SCHEMA_VERSION } from "./normalized-event.js";
+import { SecretScanner } from "./secret-scanner.js";
 import { resolveStorageLayout } from "./storage.js";
 import { MemoryStore } from "./store.js";
 import { initTestSchema } from "./test-utils.js";
@@ -150,6 +151,31 @@ describe("daemon jobs", () => {
 				}
 			).project,
 		).toBe("team/demo");
+		await service.stop();
+	});
+
+	it("bounds configured regexes used by daemon maintenance jobs", async () => {
+		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-redaction-worker-"));
+		db = connect(join(dir, "jobs.sqlite"));
+		initTestSchema(db);
+		store = new MemoryStore(db);
+		const sessionId = store.startSession({ project: "redaction-worker" });
+		store.remember(sessionId, "discovery", "seed", `${"a".repeat(26)}!`);
+		store.scanner = new SecretScanner({
+			rules: [{ kind: "catastrophic", pattern: /(a+)+$/g }],
+		});
+		const service = new DaemonJobService(store);
+		const submitted = service.submit({ kind: "secrets.scan", args: { limit: 1 }, dryRun: true });
+		let result = service.get(submitted.jobId);
+		for (let attempt = 0; attempt < 100 && result?.state !== "failed"; attempt++) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			result = service.get(submitted.jobId);
+		}
+		expect(result).toMatchObject({
+			state: "failed",
+			attempts: 1,
+			error: { code: "redaction_degraded" },
+		});
 		await service.stop();
 	});
 });

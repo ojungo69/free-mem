@@ -15,6 +15,7 @@ import {
 import { ObserverClient } from "./observer-client.js";
 import { createDailyBackup } from "./online-backup.js";
 import { RawEventSweeper } from "./raw-event-sweeper.js";
+import { warmRedactionWorker } from "./redaction-worker.js";
 import { drainLegacySpool, importReadySpoolEntries, spoolMutation } from "./spool.js";
 import {
 	ensureStorageLayout,
@@ -268,6 +269,7 @@ export async function startDaemon(options: {
 	assertDataDirPreflight(options.dataDir);
 	const layout = resolveStorageLayout(options.dataDir);
 	ensureStorageLayout(layout);
+	warmRedactionWorker();
 
 	const lock = acquireWriterLock(layout.lockPath);
 

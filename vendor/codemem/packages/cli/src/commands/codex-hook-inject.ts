@@ -20,6 +20,7 @@ type InjectResult = {
 };
 
 export type CodexPackResult = HookPackResult;
+type InjectOpts = DbOpts & { deadlineAtMs?: number };
 type InjectDeps = {
 	requestPack?: typeof requestHookPack;
 	deliver?: typeof deliverHookEvent;
@@ -94,12 +95,12 @@ function buildCodexInjectQuery(prompt: string, project: string | null): string {
 
 export async function buildCodexHookInjection(
 	payload: Record<string, unknown>,
-	_opts: DbOpts,
+	_opts: InjectOpts,
 	deps: InjectDeps = {},
 ): Promise<InjectResult> {
 	if (envTruthy(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult();
 	if (payload.hook_event_name !== HOOK_EVENT_NAME) return continueResult();
-	const prepared = prepareHookEvent("codex", payload);
+	const prepared = prepareHookEvent("codex", payload, _opts.deadlineAtMs);
 	if (prepared.status === "skipped") return continueResult();
 	const prompt = normalizePromptText(prepared.safePrompt);
 	const deliver = deps.deliver ?? deliverHookEvent;

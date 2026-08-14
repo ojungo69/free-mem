@@ -52,6 +52,21 @@ const KINDS = new Set([
 const SENSITIVITIES = new Set(["normal", "private", "secret"]);
 
 const FIELDS = new Set<string>(NORMALIZED_EVENT_FIELDS);
+const DEGRADED_COPY_FIELDS = [
+	"schemaVersion",
+	"eventId",
+	"idempotencyKey",
+	"agent",
+	"kind",
+	"occurredAt",
+	"sourceHash",
+] as const;
+const REDACTED_METADATA_VALUE = /^redacted:[a-f0-9]{32}$/;
+
+function redactedMetadataValue(value: unknown): string {
+	if (typeof value === "string" && REDACTED_METADATA_VALUE.test(value)) return value;
+	return `redacted:${hashMutationPayload(value).slice(0, 32)}`;
+}
 
 type HookAdapterEvent = ClaudeHookAdapterEvent | CodexHookAdapterEvent;
 type HookEnvelope = ClaudeHookRawEventEnvelope | CodexHookRawEventEnvelope;
@@ -208,4 +223,19 @@ export function validateNormalizedEvent(
 		occurredAt,
 		sourceHash,
 	};
+}
+
+export function sealDegradedNormalizedEvent(
+	event: Record<string, unknown>,
+): Record<string, unknown> {
+	const sealed: Record<string, unknown> = {};
+	for (const field of DEGRADED_COPY_FIELDS) {
+		if (Object.hasOwn(event, field)) sealed[field] = event[field];
+	}
+	for (const field of ["nativeSessionId", "projectKey", "workspaceKey", "cwd"] as const) {
+		sealed[field] = redactedMetadataValue(event[field]);
+	}
+	sealed.payload = {};
+	sealed.sensitivity = "secret";
+	return sealed;
 }

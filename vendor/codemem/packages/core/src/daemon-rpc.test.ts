@@ -1,5 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { createConnection } from "node:net";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -124,6 +124,64 @@ describe("Phase 1 daemon RPC", () => {
 		});
 		expect(JSON.parse(oversized)).toMatchObject({ error: { code: "payload_too_large" } });
 
+		const oversizedResponse = await new Promise<unknown>((resolve, reject) => {
+			const dataDir = tempDataDir();
+			const layout = core.resolveStorageLayout(dataDir);
+			mkdirSync(layout.controlDir, { recursive: true, mode: 0o700 });
+			const server = createServer((socket) => {
+				socket.once("data", () => socket.write("x".repeat(core.RPC_MAX_BYTES + 1)));
+			});
+			server.once("error", reject);
+			server.listen(layout.socketPath, () => {
+				core
+					.callDaemonRpc(layout.socketPath, handshake(), {
+						timeoutMs: 1_000,
+						maxResponseBytes: core.RPC_MAX_BYTES,
+					})
+					.then(
+						(value) => {
+							server.close();
+							resolve(value);
+						},
+						(error: unknown) => {
+							server.close();
+							resolve(error);
+						},
+					);
+			});
+		});
+		expect(oversizedResponse).toBeInstanceOf(Error);
+		expect(String(oversizedResponse)).toContain("response exceeds");
+
+		const responseWithTrailingBytes = await new Promise<unknown>((resolve, reject) => {
+			const dataDir = tempDataDir();
+			const layout = core.resolveStorageLayout(dataDir);
+			mkdirSync(layout.controlDir, { recursive: true, mode: 0o700 });
+			const response = `${JSON.stringify({ id: "req-1", result: { status: "ok" } })}\n`;
+			const server = createServer((socket) => {
+				socket.once("data", () => socket.end(`${response}${"x".repeat(core.RPC_MAX_BYTES)}`));
+			});
+			server.once("error", reject);
+			server.listen(layout.socketPath, () => {
+				core
+					.callDaemonRpc(layout.socketPath, handshake(), {
+						timeoutMs: 1_000,
+						maxResponseBytes: Buffer.byteLength(response),
+					})
+					.then(
+						(value) => {
+							server.close();
+							resolve(value);
+						},
+						(error: unknown) => {
+							server.close();
+							reject(error);
+						},
+					);
+			});
+		});
+		expect(responseWithTrailingBytes).toEqual({ id: "req-1", result: { status: "ok" } });
+
 		let now = 0;
 		const handle = await core.startDaemon({
 			dataDir: tempDataDir(),
@@ -176,8 +234,34 @@ describe("Phase 1 daemon RPC", () => {
 						p95TargetMs: 150,
 						budgets: core.HOOK_DELIVERY_BUDGETS,
 					},
+					redaction: {
+						status: "ok",
+						degradedDeliveries: 0,
+						workerDeadlineMs: core.REDACTION_WORKER_DEADLINE_MS,
+					},
 				},
 			},
+		});
+	});
+
+	it("rejects malformed memory adapter redaction metadata", async () => {
+		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		created.push(handle);
+		const response = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				method: "POST /v1/memories/record",
+				body: {
+					idempotencyKey: "malformed-memory-redaction",
+					kind: "decision",
+					title: "Safe title",
+					body: "Safe body",
+					adapterRedaction: {},
+				},
+			}),
+		);
+		expect(response).toMatchObject({
+			error: { code: "invalid_request", message: "adapterRedaction is malformed." },
 		});
 	});
 

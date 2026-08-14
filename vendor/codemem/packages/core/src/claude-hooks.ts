@@ -40,6 +40,7 @@ export const MAPPABLE_CLAUDE_HOOK_EVENTS = new Set([
 ]);
 
 export const TRANSCRIPT_TAIL_MAX_BYTES = 256 * 1024;
+const UNKNOWN_OCCURRED_AT = "1970-01-01T00:00:00.000Z";
 
 // ---------------------------------------------------------------------------
 // Timestamp helpers
@@ -469,7 +470,7 @@ export function mapClaudeHookPayload(
 
 	const rawTs = payload.ts ?? payload.timestamp;
 	const normalizedRawTs = normalizeIsoTs(rawTs);
-	const ts = normalizedRawTs ?? nowIso();
+	let ts = normalizedRawTs ?? nowIso();
 	const toolUseId = String(payload.tool_use_id ?? "").trim();
 
 	const consumed = new Set([
@@ -596,6 +597,7 @@ export function mapClaudeHookPayload(
 		eventIdPayload = { ...eventPayload };
 		consumed.add("reason");
 	}
+	if (hookEvent === "SessionEnd" && normalizedRawTs === null) ts = UNKNOWN_OCCURRED_AT;
 
 	// Build meta — forward unknown fields as hook_fields
 	const meta: Record<string, unknown> = {
@@ -612,7 +614,7 @@ export function mapClaudeHookPayload(
 	if (Object.keys(unknown).length > 0) meta.hook_fields = unknown;
 
 	// Compute stable event id
-	const eventIdTsSeed = normalizedRawTs ?? ts;
+	const eventIdTsSeed = hookEvent === "SessionEnd" && normalizedRawTs === null ? "" : ts;
 	// Matches Python's json.dumps(sort_keys=True, default=str):
 	// - sortKeys() recursively sorts object keys
 	// - the replacer coerces non-JSON-native values to strings (like Python's default=str)

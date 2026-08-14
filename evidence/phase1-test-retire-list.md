@@ -210,6 +210,10 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T052-03-restore-journal-order` | T052 | restore の durable state 順序・rollback が判断 #16 と異なる |
 | `P1-T052-04-backup-privacy-copy` | T052 | private/local-only を含み得る表示、off-device 非提供表示がない |
 | `P1-T055-01-spool-fault-boundaries` | T055 | tmp write / file・directory fsync / durable delete の障害後に spool が消失または二重適用される |
+| `P1-T056-01-redaction-worker-deadline` | T056 | catastrophic user regex が hook/daemon を停止させる、または timeout 時に本文を保存する |
+| `P1-T056-02-gitleaks-pin-source` | T056 | runtime scanner の Gitleaks version / config hash / mandatory subset が固定値から逸脱する |
+| `P1-T056-03-gitleaks-subset-conversion` | T056 | subset converter が未対応構文を受理する、または mandatory rule を redaction できない |
+| `P1-T056-04-gitleaks-ruleset-hash` | T056 | ruleset hash が pin・実ロード順・由来・entropy・capture group を反映しない |
 
 ## T043 retired fully qualified names（61）
 

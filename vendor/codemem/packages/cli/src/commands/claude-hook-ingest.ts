@@ -12,7 +12,7 @@ import { deliverHookEvent, prepareHookEvent } from "./hook-rpc-client.js";
 
 type IngestVia = "rpc" | "spool" | "skipped" | "dropped";
 type IngestResult = { inserted: number; skipped: number; via: IngestVia };
-type IngestOpts = { host: string; port: string | number } & DbOpts;
+type IngestOpts = { host: string; port: string | number; deadlineAtMs?: number } & DbOpts;
 type IngestDeps = { deliver?: typeof deliverHookEvent };
 
 function emitStructuredError(errorCode: string, message: string): void {
@@ -24,7 +24,7 @@ export async function ingestClaudeHookPayload(
 	_opts: IngestOpts,
 	deps: IngestDeps = {},
 ): Promise<IngestResult> {
-	const prepared = prepareHookEvent("claude", payload);
+	const prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	if (prepared.status === "ready") {
 		try {
 			const eventPayload = prepared.event.payload;

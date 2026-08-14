@@ -412,6 +412,7 @@ export function buildCodememCodexHookGroups(base: string): Record<string, CodexH
 		],
 		PostToolUse: [{ hooks: [{ ...ingest }] }],
 		Stop: [{ hooks: [{ ...ingest }] }],
+		SessionEnd: [{ hooks: [{ ...ingest }] }],
 	};
 }
 

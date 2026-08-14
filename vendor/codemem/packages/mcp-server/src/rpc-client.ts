@@ -194,6 +194,10 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 			config,
 		});
 		const preparedBody = redacted.payload;
+		if (method === "POST /v1/memories/record" && redacted.degraded) {
+			preparedBody.title = "[REDACTED:degraded]";
+			preparedBody.body = "[REDACTED:degraded]";
+		}
 		if (method === "POST /v1/events") {
 			const event = preparedBody.event;
 			if (!event || typeof event !== "object" || Array.isArray(event)) {
@@ -223,7 +227,7 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 	): Promise<McpRpcOutcome> => {
 		try {
 			const body =
-				method === "POST /v1/events"
+				method === "POST /v1/events" || method === "POST /v1/memories/record"
 					? { ...prepared.body, adapterRedaction: prepared.redaction }
 					: prepared.body;
 			const response = await callDaemonRpc(

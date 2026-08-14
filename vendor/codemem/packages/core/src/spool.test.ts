@@ -22,6 +22,7 @@ import {
 	NORMALIZED_SCHEMA_VERSION,
 	RPC_CAPABILITY_HASH,
 } from "./daemon-rpc.js";
+import { parseAgentMemoryToml } from "./redaction-pipeline.js";
 import {
 	acquireSpoolLock,
 	drainLegacySpool,
@@ -34,6 +35,7 @@ import {
 	SPOOL_RESERVED_MIN_EVENTS,
 	SPOOL_RESERVED_QUOTA_BYTES,
 	spoolMutation,
+	validateSpoolRedaction,
 } from "./spool.js";
 import { resolveStorageLayout } from "./storage-layout.js";
 import { ReadOnlyActor } from "./writer-actor.js";
@@ -161,8 +163,13 @@ function writeSparse(path: string, bytes: number): void {
 
 function runWriter(dataDir: string, key: string): Promise<{ status: string }> {
 	const moduleUrl = pathToFileURL(fileURLToPath(new URL("./spool.ts", import.meta.url))).href;
+	const workerUrl = pathToFileURL(
+		fileURLToPath(new URL("./redaction-worker.ts", import.meta.url)),
+	).href;
 	const script = `
 		import { spoolMutation } from ${JSON.stringify(moduleUrl)};
+		import { warmRedactionWorker } from ${JSON.stringify(workerUrl)};
+		if (!warmRedactionWorker()) throw new Error("redaction worker did not start");
 		const key = ${JSON.stringify(key)};
 		const body = ${JSON.stringify(eventBody(key))};
 		const result = spoolMutation(
@@ -487,6 +494,67 @@ describe("phase 1 spool contract", () => {
 		});
 		expect(warnings.join("\n")).not.toContain("not-a-kind");
 		expect(warnings.join("\n")).not.toContain("inner-key");
+	});
+
+	it("does not rerun failed user rules on an already degraded event", async () => {
+		const dataDir = await tempDataDir();
+		const key = "degraded";
+		const result = spoolMutation(
+			{ method: "POST /v1/events", idempotencyKey: key, body: eventBody(key) },
+			{
+				dataDir,
+				config: parseAgentMemoryToml('secret_regex = ["event-degraded"]'),
+				previousRedaction: {
+					sensitivity: "normal",
+					secret_rules_version: `${"a".repeat(64)}:degraded`,
+					redaction_degraded: true,
+					private_content_omitted: false,
+					local_only: false,
+				},
+			},
+		);
+		expect(result.status).toBe("queued");
+		const entry = JSON.parse(readFileSync(result.path as string, "utf8"));
+		expect(entry.body.event.eventId).toBe("event-degraded");
+		expect(entry.redaction.redaction_degraded).toBe(true);
+	});
+
+	it("keeps a degraded spool rescan over healthy adapter metadata", async () => {
+		const dataDir = await tempDataDir();
+		const key = "spool-rescan-degraded";
+		const secret = `${"a".repeat(26)}!`;
+		const previousVersion = "a".repeat(64);
+		const result = spoolMutation(
+			{
+				method: "POST /v1/events",
+				idempotencyKey: key,
+				body: eventBody(key, "tool_completed", { text: secret }),
+			},
+			{
+				dataDir,
+				config: parseAgentMemoryToml('secret_regex = ["(a+)+$"]'),
+				previousRedaction: {
+					sensitivity: "normal",
+					secret_rules_version: previousVersion,
+					redaction_degraded: false,
+					private_content_omitted: false,
+					local_only: false,
+				},
+			},
+		);
+		expect(result.status).toBe("queued");
+		const serialized = readFileSync(result.path as string, "utf8");
+		expect(serialized).not.toContain(secret);
+		const entry = JSON.parse(serialized);
+		expect(entry.body.event.payload).toEqual({});
+		expect(entry.redaction).toMatchObject({
+			sensitivity: "secret",
+			redaction_degraded: true,
+		});
+		const versions = String(entry.redaction.secret_rules_version).split("+");
+		expect(versions).toContain(previousVersion);
+		expect(versions.some((version) => version.endsWith(":degraded"))).toBe(true);
+		expect(validateSpoolRedaction(entry.redaction)).toEqual(entry.redaction);
 	});
 
 	it("P1-T039-04-old-format-drain", async () => {

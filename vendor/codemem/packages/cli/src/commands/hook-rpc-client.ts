@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:path";
 import {
 	type AgentMemoryConfig,
@@ -14,8 +14,10 @@ import {
 	parseAgentMemoryToml,
 	preprocessAdapterEvent,
 	RPC_CAPABILITY_HASH,
+	RPC_MAX_BYTES,
 	resolveStorageLayout,
 	type SpoolRedactionMetadata,
+	sealDegradedNormalizedEvent,
 	spoolMutation,
 	VERSION,
 	validateNormalizedEvent,
@@ -53,6 +55,7 @@ const NATIVE_CLI_VERSION: Record<HookAgent, string> = {
 };
 
 const PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
+const HOOK_RPC_RESPONSE_MAX_BYTES = 256 * 1024;
 
 const HOOK_RPC_TIMEOUT_MS: Record<HookAgent, number> = {
 	claude: HOOK_DELIVERY_BUDGETS.claude.rpcCutoffMs,
@@ -167,11 +170,20 @@ function promptFromEvent(event: Record<string, unknown>): string {
 	return typeof text === "string" ? text.trim().replace(/\n/g, " ") : "";
 }
 
+function reportSpoolWarning(message: string): void {
+	try {
+		writeSync(2, `[codemem] ${message}\n`);
+	} catch {
+		// The supervisor still returns the exact fail-open hook result.
+	}
+	logHookEvent(`hook.spool ${message}`);
+}
+
 export function prepareHookEvent(
 	agent: HookAgent,
 	payload: Record<string, unknown>,
+	deadlineAtMs = performance.now() + HOOK_DELIVERY_BUDGETS[agent].clientHardCapMs,
 ): PreparedHookEvent {
-	const deadlineAtMs = performance.now() + HOOK_DELIVERY_BUDGETS[agent].clientHardCapMs;
 	const policy = loadHookPolicy(payload);
 	if (policy.ignored) {
 		return { status: "skipped", deadlineAtMs, config: policy.config };
@@ -188,13 +200,16 @@ export function prepareHookEvent(
 		metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
 		config: policy.config,
 	});
-	const rpcEvent = redacted.payload;
+	const rpcEvent = redacted.degraded
+		? sealDegradedNormalizedEvent(redacted.payload)
+		: redacted.payload;
 	if (!Object.hasOwn(rpcEvent, "payload")) rpcEvent.payload = {};
-	rpcEvent.sensitivity = redacted.sensitivity;
-	if (redacted.sensitivity === "secret") rpcEvent.payload = {};
+	const sensitivity = redacted.degraded ? "secret" : redacted.sensitivity;
+	rpcEvent.sensitivity = sensitivity;
+	if (sensitivity === "secret") rpcEvent.payload = {};
 	validateNormalizedEvent(rpcEvent);
 	const adapterRedaction: SpoolRedactionMetadata = {
-		sensitivity: redacted.sensitivity,
+		sensitivity,
 		secret_rules_version: redacted.secret_rules_version,
 		redaction_degraded: redacted.degraded,
 		private_content_omitted: redacted.private_content_omitted,
@@ -234,7 +249,12 @@ export async function requestHookRpc(
 			capability_hash: RPC_CAPABILITY_HASH,
 			body,
 		},
-		{ timeoutMs, signal: AbortSignal.timeout(timeoutMs) },
+		{
+			timeoutMs,
+			signal: AbortSignal.timeout(timeoutMs),
+			maxResponseBytes:
+				method === "POST /v1/context/pack" ? HOOK_RPC_RESPONSE_MAX_BYTES : RPC_MAX_BYTES,
+		},
 	);
 	if ("error" in result) throw new Error(`hook RPC failed: ${result.error.code}`);
 	return result.result;
@@ -284,7 +304,7 @@ export async function deliverHookEvent(
 				config: prepared.config,
 				previousRedaction: prepared.redaction,
 				lockDeadlineMs: Math.floor(lockBudget),
-				onWarning: (message) => logHookEvent(`hook.spool ${message}`),
+				onWarning: reportSpoolWarning,
 			},
 		);
 		return { via: spooled.status === "dropped" ? "dropped" : "spool" };

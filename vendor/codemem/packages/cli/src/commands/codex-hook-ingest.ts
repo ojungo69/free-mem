@@ -9,7 +9,7 @@ import { deliverHookEvent, prepareHookEvent } from "./hook-rpc-client.js";
 
 type IngestVia = "rpc" | "spool" | "skipped" | "dropped";
 type IngestResult = { inserted: number; skipped: number; via: IngestVia };
-type IngestOpts = { host: string; port: string | number } & DbOpts;
+type IngestOpts = { host: string; port: string | number; deadlineAtMs?: number } & DbOpts;
 type IngestDeps = { deliver?: typeof deliverHookEvent };
 
 function emitHookContinue(): void {
@@ -47,7 +47,7 @@ export async function ingestCodexHookPayload(
 	deps: IngestDeps = {},
 ): Promise<IngestResult> {
 	const normalized = normalizePayloadForIngest(payload);
-	const prepared = prepareHookEvent("codex", normalized);
+	const prepared = prepareHookEvent("codex", normalized, _opts.deadlineAtMs);
 	const result = await (deps.deliver ?? deliverHookEvent)("codex", normalized, { prepared });
 	return {
 		inserted: result.via === "rpc" ? 1 : 0,

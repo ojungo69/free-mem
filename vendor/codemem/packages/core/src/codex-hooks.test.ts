@@ -146,6 +146,14 @@ describe("mapCodexHookPayload", () => {
 	});
 
 	it("skips unsupported events and missing session IDs", () => {
+		const sessionEnd = mapCodexHookPayload({
+			hook_event_name: "SessionEnd",
+			session_id: "codex-session",
+			timestamp: "2026-08-12T11:16:11.327Z",
+			reason: "other",
+		});
+		expect(sessionEnd?.event_type).toBe("session_end");
+		expect(sessionEnd?.payload).toEqual({ reason: "other" });
 		expect(
 			mapCodexHookPayload({ hook_event_name: "PermissionRequest", session_id: "s" }),
 		).toBeNull();
@@ -162,6 +170,44 @@ describe("mapCodexHookPayload", () => {
 			timestamp: "2026-05-29T01:00:00Z",
 		};
 		expect(mapCodexHookPayload(payload)?.event_id).toBe(mapCodexHookPayload(payload)?.event_id);
+	});
+
+	it("keeps timestamp-less SessionEnd retries stable after ingest normalization", () => {
+		const payload = {
+			hook_event_name: "SessionEnd",
+			session_id: "codex-session",
+			reason: "other",
+		};
+		const first = mapCodexHookPayload({
+			...payload,
+			timestamp: "2026-05-29T01:00:00Z",
+			codemem_generated_event_nonce: "first",
+		});
+		const second = mapCodexHookPayload({
+			...payload,
+			timestamp: "2026-05-29T01:00:05Z",
+			codemem_generated_event_nonce: "second",
+		});
+		expect(first?.event_id).toBe(second?.event_id);
+		expect(first?.ts).toBe("1970-01-01T00:00:00.000Z");
+		expect(second?.ts).toBe("1970-01-01T00:00:00.000Z");
+	});
+
+	it("keeps distinct timestamped Stop events distinct without turn IDs", () => {
+		const payload = {
+			hook_event_name: "Stop",
+			session_id: "codex-session",
+			last_assistant_message: "Done",
+		};
+		const first = mapCodexHookPayload({
+			...payload,
+			timestamp: "2026-05-29T01:00:00Z",
+		});
+		const second = mapCodexHookPayload({
+			...payload,
+			timestamp: "2026-05-29T01:00:05Z",
+		});
+		expect(first?.event_id).not.toBe(second?.event_id);
 	});
 
 	it("uses generated timestamps to avoid collisions for repeated timestamp-less payloads", () => {

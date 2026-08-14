@@ -97,7 +97,7 @@ export type RpcSuccess = {
 export function callDaemonRpc(
 	socketPath: string,
 	request: RpcRequest,
-	options?: { timeoutMs?: number; signal?: AbortSignal },
+	options?: { timeoutMs?: number; signal?: AbortSignal; maxResponseBytes?: number },
 ): Promise<RpcSuccess | TypedRpcError> {
 	return new Promise((resolve, reject) => {
 		const socket = createConnection(socketPath);
@@ -115,19 +115,27 @@ export function callDaemonRpc(
 		abortListener = () => finish(new Error("RPC client aborted"));
 		if (signal?.aborted) abortListener();
 		else signal?.addEventListener("abort", abortListener, { once: true });
-		let buffer = Buffer.alloc(0);
+		const chunks: Buffer[] = [];
+		let responseBytes = 0;
 		socket.setTimeout(options?.timeoutMs ?? RPC_DEFAULT_DEADLINE_MS);
 		socket.once("connect", () => {
 			socket.write(`${JSON.stringify(request)}\n`);
 		});
 		socket.on("data", (chunk: Buffer) => {
-			buffer = Buffer.concat([buffer, chunk]);
-			const newline = buffer.indexOf(0x0a);
+			const newline = chunk.indexOf(0x0a);
+			const responseChunk = newline < 0 ? chunk : chunk.subarray(0, newline + 1);
+			responseBytes += responseChunk.length;
+			if (options?.maxResponseBytes !== undefined && responseBytes > options.maxResponseBytes) {
+				finish(new Error(`RPC response exceeds ${options.maxResponseBytes} bytes`));
+				return;
+			}
+			chunks.push(responseChunk);
 			if (newline < 0) return;
+			const buffer = Buffer.concat(chunks, responseBytes);
 			try {
 				finish(
 					undefined,
-					JSON.parse(buffer.subarray(0, newline).toString("utf8")) as RpcSuccess | TypedRpcError,
+					JSON.parse(buffer.subarray(0, -1).toString("utf8")) as RpcSuccess | TypedRpcError,
 				);
 			} catch (error) {
 				finish(error instanceof Error ? error : new Error(String(error)));

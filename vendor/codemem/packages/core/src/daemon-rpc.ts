@@ -20,6 +20,7 @@ import { dispatchClassA, MutationConflictError } from "./mutation-dispatcher.js"
 import {
 	NORMALIZED_EVENT_FIELDS,
 	NORMALIZED_SCHEMA_VERSION,
+	sealDegradedNormalizedEvent,
 	validateNormalizedEvent,
 } from "./normalized-event.js";
 import { collectOperationalStatus } from "./operational-status.js";
@@ -34,6 +35,7 @@ import {
 	verifyCanonicalBackup,
 } from "./online-backup.js";
 import { applyDaemonIntake, type RedactionResult } from "./redaction-pipeline.js";
+import { REDACTION_WORKER_DEADLINE_MS } from "./redaction-worker.js";
 import { tryUpdateRetrievalDelivery } from "./retrieval-ledger.js";
 import { recordRetrievalSurface, resolveRetrievalSession } from "./retrieval-surface-ledger.js";
 import {
@@ -140,7 +142,15 @@ const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 	],
 	"POST /v1/retrieval/file-context/delivery": ["attemptId", "status"],
 	"GET /v1/memories/:id": ["id", "requestId", "project", "kind"],
-	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body", "confidence", "project"],
+	"POST /v1/memories/record": [
+		"idempotencyKey",
+		"kind",
+		"title",
+		"body",
+		"confidence",
+		"project",
+		"adapterRedaction",
+	],
 	"DELETE /v1/memories/:id": ["id", "requestId", "expectedRevision"],
 	"GET /v1/checkpoints": ["project", "state", "limit"],
 	"GET /v1/view": ["collection", "sessionId", "project", "kind", "scope", "limit", "offset"],
@@ -438,6 +448,21 @@ async function handleMethod(
 			embeddingDisabled: isEmbeddingDisabled(),
 			recentFailureCutoff: new Date(Date.now() - RECENT_FAILURE_WINDOW_MS).toISOString(),
 		});
+		const degradedDeliveries = Number(
+			(
+				ctx.writer
+					.prepare(
+						`SELECT
+						(SELECT COUNT(*) FROM raw_events
+							 WHERE json_extract(payload_json, '$.redaction_degraded') = 1) +
+						(SELECT COUNT(*) FROM memory_items
+							 WHERE json_extract(metadata_json, '$.redaction_degraded') = 1) +
+						(SELECT COUNT(*) FROM daemon_jobs
+							 WHERE error_code = 'redaction_degraded') AS count`,
+					)
+					.get() as { count?: number } | undefined
+			)?.count ?? 0,
+		);
 		return {
 			status: "ok",
 			instanceId: ctx.identity.nonce,
@@ -454,6 +479,11 @@ async function handleMethod(
 					implementation: "node-fallback",
 					p95TargetMs: 150,
 					budgets: HOOK_DELIVERY_BUDGETS,
+				},
+				redaction: {
+					status: degradedDeliveries > 0 ? "warning" : "ok",
+					degradedDeliveries,
+					workerDeadlineMs: REDACTION_WORKER_DEADLINE_MS,
 				},
 				operationalStatus,
 			},
@@ -506,7 +536,7 @@ async function handleMethod(
 			throw error;
 		}
 	}
-	if (method === "POST /v1/events") {
+	if (method === "POST /v1/events" || method === "POST /v1/memories/record") {
 		let adapterRedaction: SpoolRedactionMetadata | undefined;
 		try {
 			adapterRedaction =
@@ -516,13 +546,12 @@ async function handleMethod(
 		} catch {
 			throw new RpcRequestError("adapterRedaction is malformed.");
 		}
-		return handleEvent(ctx, body, normalizedSchemaVersion, adapterRedaction);
+		return method === "POST /v1/events"
+			? handleEvent(ctx, body, normalizedSchemaVersion, adapterRedaction)
+			: handleRemember(ctx, body, adapterRedaction);
 	}
 	if (method === "POST /v1/events/batch") {
 		return handleEventBatch(ctx, body, normalizedSchemaVersion);
-	}
-	if (method === "POST /v1/memories/record") {
-		return handleRemember(ctx, body);
 	}
 	if (method === "DELETE /v1/memories/:id") {
 		return handleForget(ctx, body);
@@ -633,9 +662,9 @@ function mergedRedaction(
 	previous?: SpoolRedactionMetadata,
 	claimed: SpoolRedactionMetadata["sensitivity"] = "normal",
 ): SpoolRedactionMetadata {
-	const versions = [...new Set([intake.secret_rules_version, previous?.secret_rules_version])]
-		.filter((value): value is string => typeof value === "string")
-		.sort();
+	const versions = [
+		...new Set([intake.secret_rules_version, ...(previous?.secret_rules_version.split("+") ?? [])]),
+	].sort();
 	return {
 		sensitivity: strongestSensitivity(
 			strongestSensitivity(claimed, intake.sensitivity),
@@ -664,7 +693,10 @@ function normalizedEvent(
 		allowlist: [...NORMALIZED_EVENT_FIELDS],
 		metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
 	});
-	const payload = intake.payload;
+	const payload =
+		intake.degraded || previousRedaction?.redaction_degraded
+			? sealDegradedNormalizedEvent(intake.payload)
+			: intake.payload;
 	if (!Object.hasOwn(payload, "payload")) payload.payload = {};
 	let validated: ReturnType<typeof validateNormalizedEvent>;
 	try {
@@ -815,7 +847,7 @@ function handleRemember(
 	);
 	const redaction = mergedRedaction(intake, previousRedaction);
 	const payload: Record<string, unknown> = { ...intake.payload, kind };
-	if (redaction.sensitivity === "secret") {
+	if (redaction.sensitivity === "secret" || redaction.redaction_degraded) {
 		delete payload.title;
 		delete payload.body;
 	}

@@ -28,7 +28,7 @@ type FileContextResult = {
 	};
 };
 
-type FileContextOpts = DbOpts;
+type FileContextOpts = DbOpts & { deadlineAtMs?: number };
 
 type FileContextDeps = {
 	queryByFile?: typeof queryByFile;
@@ -289,7 +289,7 @@ export async function buildClaudeFileContext(
 	if (envTruthy(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult();
 	let prepared: PreparedHookEvent;
 	try {
-		prepared = prepareHookEvent("claude", payload);
+		prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	} catch {
 		return continueResult();
 	}

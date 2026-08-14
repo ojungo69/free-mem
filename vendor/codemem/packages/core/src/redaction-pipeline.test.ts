@@ -1,10 +1,14 @@
 import { homedir } from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import * as core from "./index.js";
 
 const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
 const GITHUB_PAT = `ghp_${"A".repeat(36)}`;
 const INJECTED = `<injected-context>echo ${AWS_KEY}</injected-context>`;
+
+beforeAll(() => {
+	expect(core.warmRedactionWorker()).toBe(true);
+});
 
 function captureLogs(): { lines: string[]; restore: () => void } {
 	const lines: string[] = [];
@@ -144,6 +148,9 @@ tool_field_allowlist = "body"
 		expect(parsed.warnings.join("\n")).not.toMatch(/true|123|body|AKIA|ghp_/);
 		const leakedLine = core.parseAgentMemoryToml(`${AWS_KEY} without-equals`);
 		expect(leakedLine.warnings.join("\n")).not.toContain(AWS_KEY);
+		const invalidPrivate = core.parseAgentMemoryToml(`private_regex = ["(", "${"x".repeat(513)}"]`);
+		expect(invalidPrivate.privateRegex).toEqual([]);
+		expect(invalidPrivate.degraded).toBe(true);
 		const dropped = core.preprocessAdapterEvent(
 			{ body: "plain text only" },
 			{ config: parsed, allowlist: ["body"] },
@@ -220,5 +227,34 @@ tool_field_denylist = ["debug_blob"]
 		} finally {
 			logs.restore();
 		}
+	});
+
+	it("P1-T056-01-redaction-worker-deadline", () => {
+		for (const key of ["private_regex", "secret_regex"]) {
+			const config = core.parseAgentMemoryToml(`${key} = ["(a+)+$"]`);
+			const started = performance.now();
+			const result = core.preprocessAdapterEvent(
+				{ id: `regex-timeout-${key}`, body: `${"a".repeat(26)}!` },
+				{ config, allowlist: ["id", "body"], metadataKeys: ["id"] },
+			);
+			expect(performance.now() - started).toBeLessThan(300);
+			expect(result.degraded).toBe(true);
+			expect(result.payload).toEqual({ id: `regex-timeout-${key}` });
+			expect(result.secret_rules_version).toMatch(/:degraded$/);
+		}
+		const recoveredStarted = performance.now();
+		const recovered = core.preprocessAdapterEvent({ id: "healthy", body: "safe" });
+		expect(performance.now() - recoveredStarted).toBeLessThan(300);
+		expect(recovered.degraded).toBe(false);
+		expect(recovered.payload).toMatchObject({ id: "healthy", body: "safe" });
+		const custom = core.preprocessAdapterEvent(
+			{ id: "custom", body: "customer-123" },
+			{
+				config: core.parseAgentMemoryToml('secret_regex = ["customer-[0-9]+"]'),
+				allowlist: ["id", "body"],
+			},
+		);
+		expect(custom.degraded).toBe(false);
+		expect(custom.payload.body).toBe("[REDACTED:user_1]");
 	});
 });

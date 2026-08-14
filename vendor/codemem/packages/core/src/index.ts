@@ -478,6 +478,7 @@ export {
 	parseAgentMemoryToml,
 	preprocessAdapterEvent,
 } from "./redaction-pipeline.js";
+export { REDACTION_WORKER_DEADLINE_MS, warmRedactionWorker } from "./redaction-worker.js";
 export {
 	hasPendingRefBackfill,
 	REF_BACKFILL_JOB,

@@ -109,10 +109,15 @@ try {
 		groups.flatMap((group) => group.hooks.map((hook) => hook.command)),
 	);
 	assert(
+		JSON.stringify(Object.keys(hookConfig.hooks).sort()) ===
+			JSON.stringify(["PostToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]),
+		"Codex setup installed an unexpected hook event set",
+	);
+	assert(
 		commands.every((command) => command.includes("codemem-hook-runtime.mjs")),
 		"Codex setup left a hook on the npx startup path",
 	);
-	assert(commands.length === 4, "Codex setup duplicated a standalone-runtime hook");
+	assert(commands.length === 5, "Codex setup duplicated a standalone-runtime hook");
 } finally {
 	rmSync(tempDir, { recursive: true, force: true });
 }

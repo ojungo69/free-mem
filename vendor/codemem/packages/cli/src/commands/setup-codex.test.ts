@@ -111,7 +111,7 @@ describe("installCodex — fresh CODEX_HOME", () => {
 		expect(reconciled.targets.map((target) => target.id)).toEqual(["codex-hooks"]);
 	});
 
-	it("writes the MCP block and all four hook events with correct schema", () => {
+	it("writes the MCP block and all hook events with correct schema", () => {
 		expect(installCodex(false)).toBe(true);
 
 		const toml = readConfigToml();
@@ -124,13 +124,14 @@ describe("installCodex — fresh CODEX_HOME", () => {
 		const hooks = readHooks();
 		expect(Object.keys(hooks).sort()).toEqual([
 			"PostToolUse",
+			"SessionEnd",
 			"SessionStart",
 			"Stop",
 			"UserPromptSubmit",
 		]);
 
 		// Single-ingest events.
-		for (const event of ["SessionStart", "PostToolUse", "Stop"]) {
+		for (const event of ["SessionStart", "PostToolUse", "Stop", "SessionEnd"]) {
 			const groups = groupsFor(hooks, event);
 			expect(groups).toHaveLength(1);
 			const group = groups[0];

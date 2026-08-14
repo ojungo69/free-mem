@@ -117,6 +117,55 @@ describe("MCP daemon RPC client", () => {
 		}
 	});
 
+	it("persists degraded remember diagnostics across daemon restart", async () => {
+		const fixture = projectFixture();
+		writeFileSync(join(fixture.root, ".agent-memory.toml"), 'secret_regex = ["(a+)+$"]\n');
+		let daemon = await startDaemon({ dataDir: fixture.dataDir });
+		try {
+			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
+			const secret = `${"a".repeat(26)}!`;
+			const remembered = await client.remember({
+				...rememberBody("degraded-direct"),
+				title: secret,
+				body: "MCP_DEGRADED_PRIVATE",
+			});
+			expect(remembered).toMatchObject({ ok: true, result: { memoryId: expect.any(Number) } });
+			if (!remembered.ok) throw new Error("degraded remember failed");
+
+			const reader = ReadOnlyActor.open(realpathSync(daemon.layout.currentPointerPath));
+			try {
+				const row = reader
+					.prepare("SELECT title, body_text, metadata_json FROM memory_items WHERE id = ?")
+					.get(remembered.result.memoryId) as {
+					title: string;
+					body_text: string;
+					metadata_json: string;
+				};
+				expect(row.title).toBe("");
+				expect(row.body_text).toBe("");
+				expect(JSON.parse(row.metadata_json)).toMatchObject({ redaction_degraded: true });
+				expect(JSON.stringify(row)).not.toContain(secret);
+				expect(JSON.stringify(row)).not.toContain("MCP_DEGRADED_PRIVATE");
+			} finally {
+				reader.close();
+			}
+
+			expect(await client.request("GET /v1/doctor", {})).toMatchObject({
+				ok: true,
+				result: { diagnostics: { redaction: { status: "warning", degradedDeliveries: 1 } } },
+			});
+			await daemon.stop();
+			daemon = await startDaemon({ dataDir: fixture.dataDir });
+			expect(await client.request("GET /v1/doctor", {})).toMatchObject({
+				ok: true,
+				result: { diagnostics: { redaction: { status: "warning", degradedDeliveries: 1 } } },
+			});
+		} finally {
+			await daemon.stop().catch(() => {});
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
 	it("P1-T042-03-mcp-remember-spool", async () => {
 		const fixture = projectFixture();
 		try {

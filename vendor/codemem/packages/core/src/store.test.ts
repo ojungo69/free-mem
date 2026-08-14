@@ -476,6 +476,38 @@ describe("MemoryStore", () => {
 			expect(row?.body_text).not.toContain("AKIAIOSFODNN7EXAMPLE");
 		});
 
+		it("persists metadata only when workspace scanner config is invalid", () => {
+			const invalidConfigs = [
+				JSON.stringify({
+					secret_scanner: {
+						rules: [{ kind: "invalid", pattern: "SECRET-[A-Z]+", redactGroup: 1 }],
+					},
+				}),
+				JSON.stringify({
+					secret_scanner: {
+						rules: [
+							{
+								kind: "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+								pattern: "INTERNAL-SECRET",
+							},
+						],
+					},
+				}),
+				"{ invalid JSON",
+			];
+			for (const invalidConfig of invalidConfigs) {
+				store.close();
+				writeFileSync(process.env.CODEMEM_CONFIG as string, invalidConfig);
+				store = openTestMemoryStore(dbPath);
+				const sessionId = insertTestSession(store.db);
+				const memId = store.remember(sessionId, "discovery", "Private title", "Private body");
+				const row = store.get(memId);
+				expect(row?.title).toBe("");
+				expect(row?.body_text).toBe("");
+				expect(row?.metadata_json).toMatchObject({ redaction_degraded: true });
+			}
+		});
+
 		it("stamps local-default scope on new memory by default", () => {
 			const sessionId = insertTestSession(store.db);
 			const memId = store.remember(sessionId, "feature", "Scoped default", "Feature body");

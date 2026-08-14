@@ -28,6 +28,7 @@ import {
 } from "./maintenance.js";
 import { getMaintenanceJob } from "./maintenance-jobs.js";
 import { createOnlineBackup, requireVerifiedBackup, verifyOnlineBackup } from "./online-backup.js";
+import { RedactionWorkerError, WorkerSecretScanner } from "./redaction-worker.js";
 import { hasPendingRefBackfill, REF_BACKFILL_JOB, runRefBackfillPass } from "./ref-backfill.js";
 import {
 	hasPendingScopeBackfill,
@@ -694,14 +695,18 @@ export class DaemonJobService {
 					 WHERE job_id = ? AND state = 'running'`,
 				)
 				.run(resultJson, new Date().toISOString(), jobId);
-		} catch {
+		} catch (error) {
 			this.store.db
 				.prepare(
 					`UPDATE daemon_jobs
-					 SET state = 'failed', result_json = NULL, error_code = 'job_failed', finished_at = ?
+					 SET state = 'failed', result_json = NULL, error_code = ?, finished_at = ?
 					 WHERE job_id = ? AND state = 'running'`,
 				)
-				.run(new Date().toISOString(), jobId);
+				.run(
+					error instanceof RedactionWorkerError ? "redaction_degraded" : "job_failed",
+					new Date().toISOString(),
+					jobId,
+				);
 		}
 	}
 
@@ -765,6 +770,7 @@ export class DaemonJobService {
 		const batchSize = optionalInteger(args, "batchSize") ?? undefined;
 		const limit = optionalInteger(args, "limit") ?? undefined;
 		const internal = args.internal === true;
+		const scanner = new WorkerSecretScanner(this.store.scanner);
 		switch (row.kind) {
 			case "db.init":
 				return {
@@ -815,7 +821,7 @@ export class DaemonJobService {
 				return scanSecretsRetroactive(this.store.db, {
 					limit,
 					dryRun: row.dry_run === 1,
-					scanner: this.store.scanner,
+					scanner,
 				});
 			case "tags.backfill":
 				return backfillTagsText(this.store.db, {
@@ -824,7 +830,7 @@ export class DaemonJobService {
 					project: optionalString(args, "project", 512),
 					activeOnly: optionalBoolean(args, "activeOnly") ?? true,
 					dryRun: row.dry_run === 1,
-					scanner: this.store.scanner,
+					scanner,
 				});
 			case "dedup-keys.backfill":
 				if (!internal) {
@@ -839,7 +845,7 @@ export class DaemonJobService {
 				return backfillNarrativeFromBody(this.store.db, {
 					limit,
 					dryRun: row.dry_run === 1,
-					scanner: this.store.scanner,
+					scanner,
 				});
 			case "structured.backfill":
 				return aiBackfillStructuredContent(this.store.db, {
@@ -847,7 +853,7 @@ export class DaemonJobService {
 					kinds: optionalStrings(args, "kinds", 50, 128),
 					overwrite: optionalBoolean(args, "overwrite") ?? false,
 					dryRun: row.dry_run === 1,
-					scanner: this.store.scanner,
+					scanner,
 				});
 			case "refs.backfill":
 				await this.runPasses(() => runRefBackfillPass(this.store.db, { batchSize }));
