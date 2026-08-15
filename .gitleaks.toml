@@ -7,6 +7,7 @@ useDefault = true
 description = "Synthetic credential shapes required by redaction tests."
 targetRules = ["generic-api-key", "gcp-api-key", "jwt"]
 paths = [
+  '''^harness/phase1-no-agent-blockage\.mjs$''',
   '''^vendor/codemem/packages/core/src/secret-scanner\.test\.ts$''',
   '''^vendor/codemem/packages/core/src/sync-replication\.test\.ts$''',
 ]
