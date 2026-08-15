@@ -1,0 +1,21 @@
+vendor/codemem/scripts/release-version.mjs
+  s_211aa7fe546c35::t_865cda119187f9 19,174,176,239,241
+vendor/codemem/scripts/release-version.test.mjs
+  s_211aa7fe546c35::t_98fbd96d4045c2 39,139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4bb22cb04b766c3f9b2bb0c56097a83fbf333353",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
