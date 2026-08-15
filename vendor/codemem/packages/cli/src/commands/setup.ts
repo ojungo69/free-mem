@@ -201,12 +201,7 @@ function managedLegacyCodexBlock(block: string): boolean {
 }
 
 function sameCodexMcpBlock(block: string, runtime: SetupRuntime): boolean {
-	const parsed = parseCodexMcpCommand(block);
-	const expected = managedMcp(runtime);
-	return (
-		parsed?.command === expected.command &&
-		JSON.stringify(parsed.args) === JSON.stringify(expected.args)
-	);
+	return block === codexMcpBlock(runtime);
 }
 
 function sameManagedMcpCommand(entry: unknown, runtime: SetupRuntime): boolean {

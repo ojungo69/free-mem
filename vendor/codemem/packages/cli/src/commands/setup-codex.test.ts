@@ -469,6 +469,19 @@ describe("installCodex — non-destructive merge", () => {
 			expect(installCodex(false)).toBe(true);
 		}
 		const runtime = resolveSetupRuntime();
+		const disabledManaged = [
+			"[mcp_servers.codemem]",
+			`command = ${JSON.stringify(process.execPath)}`,
+			`args = [${JSON.stringify(runtime.cliPath)}, "mcp"]`,
+			"startup_timeout_sec = 30",
+			"tool_timeout_sec = 60",
+			"enabled = false",
+			"",
+		].join("\n");
+		writeFileSync(join(codexHome, "config.toml"), disabledManaged, "utf-8");
+		expect(installCodex(false)).toBe(true);
+		expect(readConfigToml()).not.toContain("enabled = false");
+
 		const commentedManaged = `${original}[mcp_servers.codemem]\n# command = ${JSON.stringify(process.execPath)}\n# args = [${JSON.stringify(runtime.cliPath)}, "mcp"]\ncommand = "custom"\nargs = ["mcp"]\n`;
 		writeFileSync(join(codexHome, "config.toml"), commentedManaged, "utf-8");
 		expect(installCodex(false)).toBe(false);
