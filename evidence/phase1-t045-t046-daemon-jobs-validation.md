@@ -13,7 +13,7 @@ maintenance / backfill / report の class C surface を daemon 所有の durable
 ## durable job contract
 
 - schema v20 の `daemon_jobs` に args、dry-run、state、attempt、result、timestamp を永続化する。`max_attempts` は DB constraint と API projection の双方で 1 固定。
-- daemon 再起動時の `queued` / `running` は `daemon_restarted` で failed にし、自動再投入しない。
+- daemon 再起動時の `queued` / `running` は `daemon_restarted` で failed にする。user-triggered Class-C job は自動再送しない。未完了の内部 backfill だけは、その `daemon_restarted` failure を確認後に fresh job として再投入する（各 job の `max_attempts=1` は維持）。
 - `POST /v1/jobs` は `{jobId,state}`、`GET /v1/jobs/:id` は durable result、一覧は kind/state/submittedAfter の allowlist filter のみ。
 - CLI は POST を一度だけ実行する。lost response、failed、timeout 後に POST を再送せず、job ID 取得後は GET polling のみ。
 - job args は kind ごとの allowlist・型・長さ・件数上限を検証する。dry-run を実装していない mutating kind は `dryRun:true` を投入前に拒否する。
@@ -37,7 +37,7 @@ queued -> running -> maintenanceMode=true -> sweeper stop
 | token | 証明 |
 |---|---|
 | `P1-T045-01-job-id-result` | 全登録 kind が job ID を返し、durable result を GET できる |
-| `P1-T045-02-job-no-auto-retry` | 再起動時 queued/running が attempt を増やさず failed になる |
+| `P1-T045-02-job-no-auto-retry` | 再起動時 queued/running が attempt を増やさず failed になる。user job は再送せず、pending な internal backfill だけを fresh job へ再投入する |
 | `P1-T045-03-worker-absorbed` | 旧 worker source/command/PID 管理がなく、内部 backfill が daemon job になる |
 | `P1-T046-01-maintenance-mode` | mode 中 write 拒否、backup artifact、backup failure 時 DB unchanged、unsupported dry-run 拒否 |
 | `P1-T046-02-maintenance-spool` | synthetic retryable maintenance response を redacted spool へ保全 |

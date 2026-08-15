@@ -2,11 +2,11 @@
 
 日付: 2026-08-16
 
-対象: product candidate `546edd346a4b1c35b72850377512108f742f55b8`（`fix: restore MCP compatibility contracts`）
+初回対象: product candidate `546edd346a4b1c35b72850377512108f742f55b8`（`fix: restore MCP compatibility contracts`）
 
 ## 結論
 
-SC-1 の候補検証は完了した。`main` へのマージはこの候補検証の外にある最終外部ステップであり、本記録はマージ済みとは主張しない。
+SC-1 の初回候補検証は完了した。後続の closure refresh は下記に追記し、`main` へのマージと外部設定は引き続き最終外部ステップとして分離する。
 
 ## Final gates
 
@@ -21,7 +21,26 @@ SC-1 の候補検証は完了した。`main` へのマージはこの候補検�
 - Vitest JSON SHA-256: `5b7d261b88a42da32d1c094205170b4ece4a5dd35fc5f090cf0289f77d1911ba`。LCOV SHA-256: `149e5691ae96496053d09aef38c1e160f75857528e50d0f03e793ced999c1746`。
 - tsc、Biome 393 files、workspace build、3 standalone hook bundle の byte 一致（SHA-256 `9cd97306668ba5a159a2bed1591b11e2ec78bf725b6ac7c2d137f0d220a82ac8`）も pass。
 - final analysis closure は focused 6 files / 176 tests、viewer API 2 files / 2 tests、UI production build、tsc、targeted Biome、GitNexus caller impact、independent correctness/security review、Ponytail review が pass。
-- PR closure は deadline-sensitive test の production同等 prewarm（`51ee76e`）と、MCP request scope / public search shape / `--db-path` 互換復元（`546edd3`）を追加した。最終候補で workspace build、tsc、targeted Biome、focused 6 files / 40 tests、全114 files / `1,854` tests、test-set comparator、CLI help、GitNexus caller impact、independent correctness/security review、Ponytail review が pass。
+- PR closure は deadline-sensitive test の production同等 prewarm（`51ee76e`）と、MCP request scope / public search shape / `--db-path` 互換復元（`546edd3`）を追加した。初回候補で workspace build、tsc、targeted Biome、focused 6 files / 40 tests、全114 files / `1,854` tests、test-set comparator、CLI help、GitNexus caller impact、independent correctness/security review、Ponytail review が pass。
+
+## 2026-08-16 closure refresh
+
+product-code candidate `01440d5`（evidence-only commit 前）で、初回候補後の setup/runtime、release alignment、retrieval attribution、bounded runtime trace、Dependabot Sonar gate、内部 backfill resume、selected-lane setup、T037 peer error production wiring を再検証した。
+
+- toolchain は Node `v24.16.0` / Corepack pnpm `11.8.0`。workspace build、`tsc --build`、Biome 393 files が pass。
+- serial full suite は 401 suites / `1,854 = 1,851 passed + 3 todo` / failed 0。Vitest JSON SHA-256 は `32f3ceea08f11a9939300dd60ded15dcd26f0d45952caa7ab1f3ba2e6a821b25`。
+- test-set comparator は `4,037 - 2,376 + 193 = 1,854`、registered tokens 83、unexpected 0。
+- T053 static scan は 279 production files / 0 violations。
+- T054 は 7 runtime states × 6 independent process surfaces が pass。T055 は built surface / Class A / lifecycle / Class B と focused 5 files / 34 tests が pass。
+- T056 は fail-open gate、focused 13 files / 314 tests、packed artifact が pass。healthy p95 は Claude `132.5ms` / Codex `131.9ms` で 150ms 目標内。
+- T057 は real-process fresh restore / journal fail-closed / legacy fencing と focused 4 files / 19 tests が pass。
+- CLI dist / Claude / Codex の standalone hook bundle は byte 一致、SHA-256 `c9ee97876394fba32eb8e7e8adc4327db7f4bc7e0aa315eec222e35440a6cc47`。
+- setup は source checkout の共通 built CLI/hook を事前検査し、built CLI と選択 lane の config/installed runtimeをmanifestへ記録する。OpenCode は絶対Node/checkout pathを持つwrapperとplugin sourceも記録し、plugin不在をmutation前に拒否する。packed `--codex-only` は OpenCode package 非同梱でも2回成功した。lane config と install manifest は失敗時 rollback する。
+- T037 は shared socket transport の実 `EACCES` を `peer_denied` / non-retryable にし、`ECONNREFUSED|ENOENT` だけを retryable unavailable にする。その他の socket error は reject のままなので spool/fail-open 契約を弱めない。
+- changed production 4 filesへの Semgrep `p/security-audit` は 22 rules / 0 findings。independent correctness、manual security、T037、selected-lane setup review は blocker-free。Ponytail reviewでは既存 typed-error helperを shared transportへ移す縮小だけを採用し、追加 abstraction/dependency は作らなかった。
+- immutable machine verifier は evidence-aware matcher の **25 / 31** を維持する。現候補は source/caller/test/evidence/exit-gate の手動 five-layer auditで T027–T057 **31 / 31**。T037 は production socket callerまで再確認済み。
+
+本 refresh 時点では、この候補を対象とする PR push、live Sonar/Codacy/CodeQL、`main` merge、Sonar long-lived branch移行は未実行であり、初回候補や過去PRの結果を現候補の外部greenとはみなさない。
 
 ## Machine verifier と手動照合
 
@@ -55,12 +74,12 @@ Fresh-session verifier の immutable report は `61acb3d` で生成した。そ�
 | interrupted restore recovery trusted a result sidecar without rechecking the activated SQLite artifact | fixed | before writer open, noncommitted restore journals require the saved main-file SHA-256 and absence of WAL/SHM; mismatch preserves pointer, journal, artifact, and sidecars and fails closed |
 | viewer API helper could attach its session header to a future absolute-URL caller | fixed | `viewerFetch` accepts only relative `/api/` paths before adding authorization; the existing browser-auth test proves a cross-origin URL is rejected before `fetch` |
 | viewer config projection exposed `observer_api_key` | fixed | the browser-facing projection now redacts the supported plaintext credential and has a literal-key regression |
-| daemon-job POST/GET lifecycle was reported as a retry concern | rejected by contract | T045 Class-C contract is one POST plus GET polling; restart marks orphaned work failed and automatic retry is prohibited |
+| daemon-job POST/GET lifecycle was reported as a retry concern | rejected by contract | user-triggered T045 Class-C work is one POST plus GET polling and is never auto-retried; only pending internal backfills resume as fresh jobs after a durable `daemon_restarted` failure |
 | MCP request IDs were reused after a stdio server restart | fixed | request identity now includes the transport session or one per-server scope; all ten read/write callers share the same root helper |
 | `memory_search` exposed internal `body_text` and omitted public `body` | fixed | only the public `memory_search` selector restores the pre-RPC eight-field response shape |
 | `codemem mcp` no longer accepted the shared `--db-path` option | fixed | the existing shared option resolver sets `CODEMEM_DB` before the stdio server import; daemon-only ownership remains unchanged |
 
-All valid findings above were fixed through `546edd3`; the daemon-job report is not a defect under the explicit Class-C contract. Independent correctness, manual security, and Ponytail re-reviews returned blocker-free. The dedicated Codex Security runner could not start because the active global config combines `multi_agent_v2` with `agents.max_threads`; persistent user configuration was not changed, and the same final diff received the manual security review instead. Semgrep findings were reviewed with no remaining valid High/Critical issue. CodeQL alerts `#29` / `#30` were dismissed as false positives because their test-only `/tmp` sources reach non-creating `r` / `r+` opens on existing private paths; the aggregate check then passed.
+All valid findings above were fixed through the initial candidate `546edd3`; the daemon-job report is not a defect under the explicit Class-C contract. Independent correctness, manual security, and Ponytail re-reviews returned blocker-free. The dedicated Codex Security runner could not start because the active global config combines `multi_agent_v2` with `agents.max_threads`; persistent user configuration was not changed, and the initial candidate diff received the manual security review instead. Semgrep findings were reviewed with no remaining valid High/Critical issue. CodeQL alerts `#29` / `#30` were dismissed as false positives because their test-only `/tmp` sources reach non-creating `r` / `r+` opens on existing private paths; the aggregate check then passed. The later `01440d5` delta has its own closure-refresh reviews and Semgrep result above.
 
 `.codacy.yml` uses documented `include_paths` to include the vendored product source and engine-specific Lizard exclusions only; this is a scope override, not an allowlist. Live Codacy status remains an external push-time check. See [Codacy configuration file](https://docs.codacy.com/repositories-configure/codacy-configuration-file/).
 
@@ -89,4 +108,4 @@ Backups can contain private/local-only data; Phase 1 supports local backup only.
 
 ## Terminal external step
 
-Before merging `546edd3` to `main`, obtain the independent approval required by the repository workflow, then perform the merge and recheck the resulting `main` CI. Neither action was performed by this candidate validation.
+Before merging the closure candidate headed by product-code commit `01440d5` to `main`, obtain the independent approval required by the repository workflow, then perform the merge and recheck the resulting `main` CI. Neither action was performed by this local candidate validation.
