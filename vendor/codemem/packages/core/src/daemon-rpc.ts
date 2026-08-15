@@ -1018,7 +1018,7 @@ function recordMcpRpcRetrieval(
 	completedAt: Date,
 	failed: boolean,
 	memoryIds: number[],
-): void {
+): boolean {
 	const requestId = String(body.requestId);
 	const retrievalStatus: RetrievalStatus = failed
 		? "failed"
@@ -1032,8 +1032,7 @@ function recordMcpRpcRetrieval(
 		startedAt: startedAt.toISOString(),
 		completedAt: completedAt.toISOString(),
 		retrievalStatus,
-		deliveryStatus:
-			failed || memoryIds.length === 0 ? ("not_attempted" as const) : ("handed_off" as const),
+		deliveryStatus: "not_attempted" as const,
 		candidateIds: failed ? [] : memoryIds,
 		selectedIds: failed ? [] : memoryIds,
 		recorderVersion: "mcp-retrieval-v1",
@@ -1044,15 +1043,15 @@ function recordMcpRpcRetrieval(
 		failureStage: failed ? "retrieval" : undefined,
 	};
 	const outcome = recordRetrievalSurface(ctx.store.db, input);
+	if (outcome.ok) return true;
 	if (
 		!failed &&
-		!outcome.ok &&
 		outcome.reason === "idempotency_conflict" &&
-		((retrievalStatus === "succeeded" && input.deliveryStatus === "handed_off") ||
-			(retrievalStatus === "no_results" && input.deliveryStatus === "not_attempted"))
+		(retrievalStatus === "succeeded" || retrievalStatus === "no_results")
 	) {
-		reconcileFailedRetrievalSurface(ctx.store.db, input);
+		return reconcileFailedRetrievalSurface(ctx.store.db, input).ok;
 	}
+	return false;
 }
 
 function safeRecordMcpRpcRetrieval(
@@ -1062,12 +1061,12 @@ function safeRecordMcpRpcRetrieval(
 	startedAt: Date,
 	failed: boolean,
 	result?: Record<string, unknown>,
-): void {
+): boolean {
 	try {
 		const retrieval = failed
 			? { failed: true, memoryIds: [] }
 			: mcpRetrievalResult(surface, result ?? {});
-		recordMcpRpcRetrieval(
+		const recorded = recordMcpRpcRetrieval(
 			ctx,
 			body,
 			surface,
@@ -1076,8 +1075,10 @@ function safeRecordMcpRpcRetrieval(
 			retrieval.failed,
 			retrieval.memoryIds,
 		);
+		return recorded && !retrieval.failed && retrieval.memoryIds.length > 0;
 	} catch {
 		// MCP results must remain independent from local retrieval diagnostics.
+		return false;
 	}
 }
 
@@ -1096,8 +1097,10 @@ function handleRetrievalRpc(
 		safeRecordMcpRpcRetrieval(ctx, body, surface, startedAt, true);
 		throw error;
 	}
-	safeRecordMcpRpcRetrieval(ctx, body, surface, startedAt, false, result);
-	return result;
+	const hasResults = safeRecordMcpRpcRetrieval(ctx, body, surface, startedAt, false, result);
+	return hasResults
+		? { ...result, retrievalAttemptId: mcpAttemptId(surface, String(body.requestId)) }
+		: result;
 }
 
 function handlePack(ctx: DaemonRpcContext, body: Record<string, unknown>): Record<string, unknown> {
@@ -1139,7 +1142,7 @@ function handlePack(ctx: DaemonRpcContext, body: Record<string, unknown>): Recor
 }
 
 const FILE_CONTEXT_ATTEMPT_ID =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FILE_CONTEXT_RETRIEVAL_STATUSES = new Set(["succeeded", "no_results", "skipped", "failed"]);
 
 function repositoryRelativePath(value: unknown): string | null {

@@ -1202,9 +1202,12 @@ export function recordRetrievalAttempt(
 					existing.request_id != null &&
 					existing.request_id === attempt.request_id &&
 					existing.retrieval_status === attempt.retrieval_status &&
-					existing.delivery_status === attempt.delivery_status &&
-					((attempt.retrieval_status === "succeeded" && attempt.delivery_status === "handed_off") ||
+					((attempt.retrieval_status === "succeeded" &&
+						((attempt.delivery_status === "handed_off" &&
+							existing.delivery_status === "handed_off") ||
+							attempt.delivery_status === "not_attempted")) ||
 						(attempt.retrieval_status === "no_results" &&
+							existing.delivery_status === "not_attempted" &&
 							attempt.delivery_status === "not_attempted"));
 				const sameRetryRetentionPolicy = hasSameRetryRetentionPolicy(attempt, existing);
 				const ignoredAttemptKeys = [
@@ -1266,7 +1269,8 @@ export function reconcileFailedRetrievalAttempt(
 	const attemptId = attempt.attempt_id as string;
 	const exposures = canonicalExposures(input, attemptId);
 	const isSuccessfulCompletion =
-		(attempt.retrieval_status === "succeeded" && attempt.delivery_status === "handed_off") ||
+		(attempt.retrieval_status === "succeeded" &&
+			(attempt.delivery_status === "not_attempted" || attempt.delivery_status === "handed_off")) ||
 		(attempt.retrieval_status === "no_results" && attempt.delivery_status === "not_attempted");
 	if (attempt.request_id == null || !isSuccessfulCompletion) {
 		throw new RetrievalLedgerValidationError(

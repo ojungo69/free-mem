@@ -7,6 +7,7 @@ import { attachDaemonRpc } from "./daemon-rpc.js";
 import { connect } from "./db.js";
 import * as core from "./index.js";
 import { openTestMemoryStore } from "./test-utils.js";
+import { ReadOnlyActor } from "./writer-actor.js";
 
 const created: Array<{ stop: () => Promise<void> }> = [];
 const dirs: string[] = [];
@@ -829,17 +830,42 @@ describe("Phase 1 daemon RPC", () => {
 				mcp(requestId, method, { requestId, ...body }),
 			),
 		);
-		for (const success of successes) expect("result" in success).toBe(true);
-		expect(
-			"result" in
-				(await mcp("mcp-search", "POST /v1/search", {
-					requestId: "mcp-search",
-					mode: "search",
-					query: "demo",
-					limit: 5,
-					filters: { project: "demo" },
-				})),
-		).toBe(true);
+		const attemptIds = successes.map((success) => {
+			if ("error" in success) throw new Error(success.error.code);
+			expect(success.result.retrievalAttemptId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+			);
+			return String(success.result.retrievalAttemptId);
+		});
+		const replay = await mcp("mcp-search", "POST /v1/search", {
+			requestId: "mcp-search",
+			mode: "search",
+			query: "demo",
+			limit: 5,
+			filters: { project: "demo" },
+		});
+		expect(replay).toMatchObject({ result: { retrievalAttemptId: attemptIds[2] } });
+		const activeLayout = core.resolveStorageLayout(dataDir);
+		const activePointer = core.readCurrentDatabasePointer(activeLayout);
+		const pendingReader = ReadOnlyActor.open(resolve(activeLayout.dbDir, activePointer as string));
+		try {
+			expect(
+				pendingReader
+					.prepare("SELECT DISTINCT delivery_status FROM retrieval_attempts WHERE source = 'mcp'")
+					.pluck()
+					.all(),
+			).toEqual(["not_attempted"]);
+		} finally {
+			pendingReader.close();
+		}
+		for (const attemptId of attemptIds) {
+			expect(
+				await mcp(`delivery-${attemptId}`, "POST /v1/retrieval/file-context/delivery", {
+					attemptId,
+					status: "handed_off",
+				}),
+			).toMatchObject({ result: { updated: true } });
+		}
 		const empty = await mcp("mcp-empty", "POST /v1/search", {
 			requestId: "mcp-empty",
 			mode: "search",
@@ -877,6 +903,9 @@ describe("Phase 1 daemon RPC", () => {
 			project: "demo",
 		});
 		expect(getWithBrokenLedger).toMatchObject({ result: { item: { id: demoId } } });
+		if ("result" in getWithBrokenLedger) {
+			expect(getWithBrokenLedger.result).not.toHaveProperty("retrievalAttemptId");
+		}
 		const searchErrorWithBrokenLedger = await mcp("mcp-ledger-broken-search", "POST /v1/search", {
 			requestId: "mcp-ledger-broken-search",
 			mode: "search",

@@ -51,6 +51,7 @@ const RPC_FIELDS = {
 		"filters",
 		"limit",
 	],
+	"POST /v1/retrieval/file-context/delivery": ["attemptId", "status"],
 	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body", "confidence", "project"],
 	"POST /v1/jobs": ["kind", "args", "dryRun"],
 	"GET /v1/jobs": ["kind", "state", "submittedAfter"],
@@ -68,6 +69,7 @@ const RPC_FIELDS = {
 
 const METADATA_FIELDS = new Set([
 	"id",
+	"attemptId",
 	"requestId",
 	"idempotencyKey",
 	"mode",
@@ -88,6 +90,7 @@ const METADATA_FIELDS = new Set([
 	"confidence",
 	"dryRun",
 	"state",
+	"status",
 	"submittedAfter",
 	"operationId",
 	"payloadHash",
@@ -101,7 +104,11 @@ const METADATA_FIELDS = new Set([
 
 export type McpRpcError = { code: string; message: string; retryable: boolean };
 export type McpRpcOutcome =
-	| { ok: true; result: Record<string, unknown> }
+	| {
+			ok: true;
+			result: Record<string, unknown>;
+			finalizeDelivery?: (status: "handed_off" | "failed") => Promise<void>;
+	  }
 	| { ok: false; error: McpRpcError };
 
 export interface McpRpcClient {
@@ -293,7 +300,27 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 							: response.error,
 				};
 			}
-			return { ok: true, result: response.result };
+			const retrievalAttemptId = response.result.retrievalAttemptId;
+			if (typeof retrievalAttemptId !== "string") return { ok: true, result: response.result };
+			const result = { ...response.result };
+			delete result.retrievalAttemptId;
+			return {
+				ok: true,
+				result,
+				finalizeDelivery: async (status) => {
+					try {
+						await send(
+							"POST /v1/retrieval/file-context/delivery",
+							prepare("POST /v1/retrieval/file-context/delivery", {
+								attemptId: retrievalAttemptId,
+								status,
+							}),
+						);
+					} catch {
+						// Retrieval diagnostics must never alter the MCP tool result.
+					}
+				},
+			};
 		} catch {
 			return {
 				ok: false,

@@ -20,6 +20,7 @@ import {
 } from "@codemem/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReadOnlyActor } from "../../core/src/writer-actor.js";
+import { rpcContent } from "./content.js";
 import { createMcpRpcClient, mcpRequestId } from "./rpc-client.js";
 
 const projectConfigRace = vi.hoisted(() => ({
@@ -130,11 +131,28 @@ describe("MCP daemon RPC client", () => {
 			const remembered = await client.remember(rememberBody("direct-1"));
 			expect(remembered).toMatchObject({ ok: true, result: { memoryId: expect.any(Number) } });
 			if (!remembered.ok) throw new Error("remember failed");
+			const retrievalRequestId = mcpRequestId("memory_get", "direct-2");
 			const fetched = await client.request("GET /v1/memories/:id", {
 				id: remembered.result.memoryId,
-				requestId: mcpRequestId("memory_get", "direct-2"),
+				requestId: retrievalRequestId,
 			});
 			expect(JSON.stringify(fetched)).not.toContain("TOKEN_SUPERSECRET");
+			expect(fetched).toMatchObject({ ok: true, finalizeDelivery: expect.any(Function) });
+			if (!fetched.ok) throw new Error("memory get failed");
+			expect(fetched.result).not.toHaveProperty("retrievalAttemptId");
+			await fetched.finalizeDelivery?.("handed_off");
+			expect(rpcContent(fetched)).toMatchObject({ content: [{ type: "text" }] });
+			const deliveryReader = ReadOnlyActor.open(realpathSync(daemon.layout.currentPointerPath));
+			try {
+				expect(
+					deliveryReader
+						.prepare("SELECT delivery_status FROM retrieval_attempts WHERE request_id = ?")
+						.pluck()
+						.get(retrievalRequestId),
+				).toBe("handed_off");
+			} finally {
+				deliveryReader.close();
+			}
 			const configPath = join(fixture.root, ".agent-memory.toml");
 			expect(readFileSync(configPath, "utf8")).toContain("OTHER_[A-Z]+");
 

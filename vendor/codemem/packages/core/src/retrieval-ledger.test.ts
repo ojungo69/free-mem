@@ -1032,7 +1032,7 @@ describe("retrieval attribution ledger", () => {
 			latencyMs: 150,
 			retentionDays: 7,
 			retrievalStatus: "succeeded" as const,
-			deliveryStatus: "handed_off" as const,
+			deliveryStatus: "not_attempted" as const,
 			candidateCount: 1,
 			selectedCount: 1,
 			failureCode: null,
@@ -1041,7 +1041,7 @@ describe("retrieval attribution ledger", () => {
 				{
 					rank: 1,
 					disposition: "selected" as const,
-					handoffStatus: "handed_off" as const,
+					handoffStatus: "not_attempted" as const,
 					memoryImportKey: "retry-success",
 				},
 			],
@@ -1070,12 +1070,21 @@ describe("retrieval attribution ledger", () => {
 		expect(reconcileFailedRetrievalAttempt(db, succeeded).attempt).toMatchObject({
 			attemptId: failed.attemptId,
 			retrievalStatus: "succeeded",
-			deliveryStatus: "handed_off",
+			deliveryStatus: "not_attempted",
 			failureCode: null,
-			exposures: [{ attemptId: failed.attemptId, handoffStatus: "handed_off" }],
+			exposures: [{ attemptId: failed.attemptId, handoffStatus: "not_attempted" }],
 			startedAt: STARTED_AT,
 			latencyMs: 250,
 			retentionUntil: "2026-08-10T10:00:00.000Z",
+		});
+		expect(updateRetrievalDelivery(db, failed.attemptId, "failed")).toMatchObject({
+			changed: true,
+			attempt: { deliveryStatus: "failed" },
+		});
+		expect(recordRetrievalAttempt(db, succeeded).inserted).toBe(false);
+		expect(updateRetrievalDelivery(db, failed.attemptId, "handed_off")).toMatchObject({
+			changed: true,
+			attempt: { deliveryStatus: "handed_off" },
 		});
 		expect(recordRetrievalAttempt(db, succeeded).inserted).toBe(false);
 		expect(() => reconcileFailedRetrievalAttempt(db, succeeded)).toThrow(/conflicts/);
