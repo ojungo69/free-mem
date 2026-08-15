@@ -631,6 +631,18 @@ var RPC_CAPABILITY_HASH = createHash("sha256").update([
 	"GET /v1/jobs",
 	"GET /v1/jobs/:id"
 ].join("\n")).digest("hex");
+function typedError(code, message, retryable = false) {
+	return { error: {
+		code,
+		message,
+		retryable
+	} };
+}
+function mapPeerConnectError(error) {
+	if (error.code === "EACCES") return typedError("peer_denied", "Peer is not allowed to connect to the daemon socket.");
+	if (error.code === "ECONNREFUSED" || error.code === "ENOENT") return typedError("daemon_unavailable", "Daemon is not running.", true);
+	return typedError("peer_denied", error.message || "Peer connection failed.");
+}
 function callDaemonRpc(socketPath, request, options) {
 	return new Promise((resolve, reject) => {
 		const socket = createConnection(socketPath);
@@ -671,7 +683,14 @@ function callDaemonRpc(socketPath, request, options) {
 				finish(error instanceof Error ? error : new Error(String(error)));
 			}
 		});
-		socket.once("error", (error) => finish(error));
+		socket.once("error", (error) => {
+			const peerError = error;
+			if (peerError.code === "EACCES" || peerError.code === "ECONNREFUSED" || peerError.code === "ENOENT") {
+				finish(void 0, mapPeerConnectError(peerError));
+				return;
+			}
+			finish(peerError);
+		});
 		socket.once("timeout", () => finish(/* @__PURE__ */ new Error("RPC client timed out")));
 		socket.once("close", () => {
 			if (!settled) finish(/* @__PURE__ */ new Error("RPC connection closed without a response"));

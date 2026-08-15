@@ -281,7 +281,18 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 					signal: AbortSignal.timeout(deadlineMs),
 				},
 			);
-			if ("error" in response) return { ok: false, error: response.error };
+			if ("error" in response) {
+				return {
+					ok: false,
+					error:
+						response.error.code === "daemon_unavailable"
+							? {
+									...response.error,
+									message: "The local memory daemon is unavailable.",
+								}
+							: response.error,
+				};
+			}
 			return { ok: true, result: response.result };
 		} catch {
 			return {

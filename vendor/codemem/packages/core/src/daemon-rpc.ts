@@ -15,6 +15,7 @@ import {
 	type RpcSuccess,
 	rpcDeadlineForMethod,
 	type TypedRpcError,
+	typedError,
 } from "./daemon-rpc-contract.js";
 import { isEmbeddingDisabled } from "./db.js";
 import { validateMemoryKind } from "./memory-kinds.js";
@@ -98,6 +99,7 @@ export {
 	callDaemonRpc,
 	HOOK_DELIVERY_BUDGETS,
 	LOCAL_API_VERSION,
+	mapPeerConnectError,
 	RPC_CAPABILITY_HASH,
 	RPC_DEFAULT_DEADLINE_MS,
 	RPC_MAX_BYTES,
@@ -345,20 +347,6 @@ export type DaemonRpcContext = {
 
 function isMaintenanceMode(ctx: DaemonRpcContext): boolean {
 	return ctx.jobs.isMaintenanceMode() || ctx.restoreState?.active === true;
-}
-
-export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
-	if (error.code === "EACCES") {
-		return typedError("peer_denied", "Peer is not allowed to connect to the daemon socket.");
-	}
-	if (error.code === "ECONNREFUSED" || error.code === "ENOENT") {
-		return typedError("daemon_unavailable", "Daemon is not running.", true);
-	}
-	return typedError("peer_denied", error.message || "Peer connection failed.");
-}
-
-function typedError(code: string, message: string, retryable = false): TypedRpcError {
-	return { error: { code, message, retryable } };
 }
 
 function isSafePersistedText(value: unknown, maxBytes: number): value is string {

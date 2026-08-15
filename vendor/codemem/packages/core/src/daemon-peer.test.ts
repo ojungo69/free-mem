@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,6 +36,23 @@ describe("Phase 1 peer auth", () => {
 			capability_hash: core.RPC_CAPABILITY_HASH,
 		});
 		expect(ok).toMatchObject({ result: { status: "ok" } });
+		chmodSync(handle.socketPath, 0);
+		try {
+			const denied = await core.callDaemonRpc(handle.socketPath, {
+				id: "peer-denied",
+				method: "GET /v1/health",
+				adapter_version: "1",
+				native_cli_version: "1",
+				normalized_schema_version: core.NORMALIZED_SCHEMA_VERSION,
+				local_api_version: core.LOCAL_API_VERSION,
+				capability_hash: core.RPC_CAPABILITY_HASH,
+			});
+			expect(denied).toMatchObject({
+				error: { code: "peer_denied", retryable: false },
+			});
+		} finally {
+			chmodSync(handle.socketPath, 0o600);
+		}
 		expect(core.mapPeerConnectError({ code: "EACCES", message: "denied" })).toMatchObject({
 			error: { code: "peer_denied", retryable: false },
 		});
