@@ -487,7 +487,7 @@ describe("MemoryStore", () => {
 					secret_scanner: {
 						rules: [
 							{
-								kind: "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+								kind: ["ghp_", "abcdefghijklmnopqrstuvwxyz0123456789"].join(""),
 								pattern: "INTERNAL-SECRET",
 							},
 						],

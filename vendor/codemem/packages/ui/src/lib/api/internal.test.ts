@@ -86,5 +86,10 @@ describe("viewer browser auth bootstrap", () => {
 		expect(headers.get("Authorization")).toBe("Session signed-session");
 		expect(headers.get("X-Test")).toBe("preserved");
 		expect(init.credentials).toBe("omit");
+
+		await expect(viewerFetch("https://example.invalid/api/runtime")).rejects.toThrow(
+			"Viewer API URL must be relative",
+		);
+		expect(viewerFetchImpl).toHaveBeenCalledOnce();
 	});
 });

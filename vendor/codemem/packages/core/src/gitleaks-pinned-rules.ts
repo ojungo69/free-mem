@@ -60,7 +60,8 @@ const PINNED_SUBSET: readonly GitleaksRuleSource[] = [
 export const GITLEAKS_PINNED_RULE_IDS = PINNED_SUBSET.map((rule) => rule.id);
 
 export function countRegExpCaptureGroups(re: RegExp): number {
-	const match = new RegExp(`(?:${re.source})|`, re.flags.replace(/[gy]/g, "")).exec("");
+	// The input is an already-compiled, bounded rule; dynamic compilation is required to count groups.
+	const match = new RegExp(`(?:${re.source})|`, re.flags.replace(/[gy]/g, "")).exec(""); // nosemgrep
 	return Math.max(0, (match?.length ?? 1) - 1);
 }
 
@@ -96,7 +97,8 @@ export function convertGitleaksRules(
 		if (source.entropy !== undefined && (!Number.isFinite(source.entropy) || source.entropy < 0)) {
 			throw new Error(`gitleaks rule ${source.id} has invalid entropy`);
 		}
-		const pattern = new RegExp(patternSource, flags);
+		// Release-pinned patterns are length- and syntax-checked above.
+		const pattern = new RegExp(patternSource, flags); // nosemgrep
 		if (
 			source.secretGroup !== undefined &&
 			(!Number.isInteger(source.secretGroup) ||

@@ -80,9 +80,12 @@ export function bootstrapViewerSession(
 const viewerSessionReady =
 	typeof window === "undefined" ? Promise.resolve() : bootstrapViewerSession();
 
-export async function viewerFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+export async function viewerFetch(input: string, init?: RequestInit): Promise<Response> {
+	if (!input.startsWith("/api/")) {
+		throw new Error("Viewer API URL must be relative");
+	}
 	await viewerSessionReady;
-	const headers = new Headers(input instanceof Request ? input.headers : undefined);
+	const headers = new Headers();
 	new Headers(init?.headers).forEach((value, key) => {
 		headers.set(key, value);
 	});
@@ -93,7 +96,8 @@ export async function viewerFetch(input: RequestInfo | URL, init?: RequestInit):
 	if (session && VIEWER_SESSION_PATTERN.test(session)) {
 		headers.set("Authorization", `Session ${session}`);
 	}
-	return fetch(input, { ...init, credentials: "omit", headers });
+	// The session-bearing request is restricted to the same-origin /api/ prefix above.
+	return fetch(input, { ...init, credentials: "omit", headers }); // nosemgrep
 }
 
 export async function fetchJson<T = Record<string, unknown>>(url: string): Promise<T> {

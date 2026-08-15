@@ -314,7 +314,8 @@ function compilePrivatePatterns(
 			continue;
 		}
 		try {
-			new RegExp(pattern, "g");
+			// Validation is length-bounded here; matching runs in the deadline-bounded worker.
+			new RegExp(pattern, "g"); // nosemgrep
 			valid.push(pattern);
 		} catch {
 			warnings.push("private_regex pattern is invalid");

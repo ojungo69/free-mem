@@ -1152,14 +1152,14 @@ export function restoreCanonicalBackup(input: {
 		throw new BackupRequestError("invalid_request", "Restore payloadHash does not match backupId.");
 	}
 	const target = restoreTarget(input);
-	const conflicting = readdirSync(target.layout.versionsDir).find(
+	const hasConflict = readdirSync(target.layout.versionsDir).some(
 		(name) =>
 			name.startsWith(`restore-${target.operationToken}-`) &&
 			(name.endsWith(".sqlite") || name.endsWith(".sqlite.restore.json")) &&
 			name !== target.pointerName &&
 			name !== `${target.pointerName}.restore.json`,
 	);
-	if (conflicting) {
+	if (hasConflict) {
 		throw new BackupRequestError(
 			"conflict",
 			"Restore operation ID already exists with a different payload.",

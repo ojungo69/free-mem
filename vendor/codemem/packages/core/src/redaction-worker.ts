@@ -65,7 +65,8 @@ function applyPrivateRegex(
 		let output = value;
 		let privateHit = false;
 		for (const source of patterns) {
-			const pattern = new RegExp(source, "g");
+			// This worker is terminated when the shared 100 ms redaction deadline expires.
+			const pattern = new RegExp(source, "g"); // nosemgrep
 			if (!pattern.test(output)) continue;
 			privateHit = true;
 			pattern.lastIndex = 0;

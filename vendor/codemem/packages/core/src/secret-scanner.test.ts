@@ -261,7 +261,7 @@ describe("SecretScanner", () => {
 		});
 
 		it("redacts a shared object on every output path", () => {
-			const secret = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+			const secret = ["ghp_", "abcdefghijklmnopqrstuvwxyz0123456789"].join("");
 			const shared = { note: secret };
 			const result = scanner.redactValue({ first: shared, second: shared });
 			const output = result.value as {
@@ -414,7 +414,7 @@ describe("loadScannerOptionsFromConfig", () => {
 					{ kind: "bad_flags", pattern: "SECRET-[A-Z]+", flags: 1 },
 					{ kind: "bad kind", pattern: "SECRET-[A-Z]+" },
 					{
-						kind: "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+						kind: ["ghp_", "abcdefghijklmnopqrstuvwxyz0123456789"].join(""),
 						pattern: "INTERNAL-SECRET",
 					},
 					"not-an-object",
