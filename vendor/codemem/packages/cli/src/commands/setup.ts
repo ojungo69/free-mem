@@ -75,14 +75,19 @@ export function resolveSetupRuntime(): SetupRuntime {
 	}
 	const hookRuntimePath = resolve(dirname(cliPath), "hook-runtime.js");
 	const opencodePluginPath = resolve(dirname(cliPath), "../../opencode-plugin/index.js");
-	for (const [label, path] of [
-		["bundled hook runtime", hookRuntimePath],
-		["OpenCode plugin", opencodePluginPath],
-	] as const) {
-		if (!regularFile(path))
-			throw new Error(`${label} not found at ${path}; run \`pnpm run build\`.`);
-	}
+	if (!regularFile(hookRuntimePath))
+		throw new Error(
+			`Bundled hook runtime not found at ${hookRuntimePath}; run \`pnpm run build\`.`,
+		);
 	return { cliPath, hookRuntimePath, opencodePluginPath };
+}
+
+function opencodePluginAvailable(runtime: SetupRuntime): boolean {
+	if (regularFile(runtime.opencodePluginPath)) return true;
+	p.log.error(
+		`OpenCode plugin not found at ${runtime.opencodePluginPath}; run \`pnpm run build\`.`,
+	);
+	return false;
 }
 
 function managedMcp(runtime: SetupRuntime): { command: string; args: string[] } {
@@ -296,6 +301,7 @@ export function installPlugin(
 	force: boolean,
 	runtime: SetupRuntime = resolveSetupRuntime(),
 ): boolean {
+	if (!opencodePluginAvailable(runtime)) return false;
 	if (!opencodeWrapperReplacementAllowed(force, runtime)) return false;
 	// Clean up legacy copied plugin files first.
 	migrateLegacyOpencodePlugin();
@@ -794,6 +800,7 @@ export function installClaude(
 }
 
 function preflightOpencode(force: boolean, runtime: SetupRuntime): boolean {
+	if (!opencodePluginAvailable(runtime)) return false;
 	if (!opencodeWrapperReplacementAllowed(force, runtime)) return false;
 	const path = resolveOpencodeConfigPath(opencodeConfigDir());
 	let config: Record<string, unknown>;

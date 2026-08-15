@@ -458,6 +458,13 @@ describe("setup command options", () => {
 
 		const runtime = resolveSetupRuntime();
 		const opencodeDir = join(codexHome, ".config", "opencode");
+		expect(
+			installPlugin(false, {
+				...runtime,
+				opencodePluginPath: join(codexHome, "missing-opencode-plugin.js"),
+			}),
+		).toBe(false);
+		expect(existsSync(join(opencodeDir, "plugins", "codemem.js"))).toBe(false);
 		mkdirSync(opencodeDir, { recursive: true });
 		writeFileSync(
 			join(opencodeDir, "opencode.jsonc"),
