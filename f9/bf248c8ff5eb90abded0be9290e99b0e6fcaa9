@@ -1,0 +1,40 @@
+specs/001-agent-memory-core/verify-tasks-report.md
+  s_211aa7fe546c35::t_0940e7d0f777a6 3,6-7
+  s_211aa7fe546c35::t_7d2124541e7313 1,8,18-20,22,24,26-34,36-42,44,46,51-58,60,62-68,70,72,74-128,132-142,144-178,191
+  s_211aa7fe546c35::t_22ebd8d8a84e6a 50,192
+  s_211aa7fe546c35::t_6a3e5fecc8ee84 5,186,188
+  s_211aa7fe546c35::t_971f1aa5dbb0b8 179-185,187,189-190
+  s_211aa7fe546c35::t_15e7acbf8fe5e6 4
+evidence/README.md
+  s_211aa7fe546c35::t_971f1aa5dbb0b8 1,31
+  s_211aa7fe546c35::t_c018c7a94f4298 3,24-30
+evidence/phase1-t051-legacy-cutover-validation.md
+  s_211aa7fe546c35::t_6a3e5fecc8ee84 3,5,9,11-13,17,28,56-57
+evidence/phase1-disposition.md
+  s_211aa7fe546c35::t_6a3e5fecc8ee84 278-279
+evidence/phase1-t058-final-validation.md
+  s_211aa7fe546c35::t_6a3e5fecc8ee84 5,41,44,71
+  s_211aa7fe546c35::t_7b4fdc06210578 16,48,52-54,63-64
+  s_211aa7fe546c35::t_971f1aa5dbb0b8 1-4,6-15,17-40,42-43,45-47,49-51,55-62,65-70
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_6a3e5fecc8ee84 176
+  s_211aa7fe546c35::t_7b4fdc06210578 172
+README.md
+  s_211aa7fe546c35::t_bb0e442515b5c8 7-8,12-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f9bf248c8ff5eb90abded0be9290e99b0e6fcaa9",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
