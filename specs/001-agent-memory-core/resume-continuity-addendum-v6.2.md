@@ -31,7 +31,7 @@ This addendum is runtime-language neutral. The TypeScript reference implementati
 
 A DurableMemory result MUST NOT be treated as a continuation checkpoint. A session summary MUST NOT substitute for a checkpoint. A generation provider failure MUST NOT prevent deterministic continuation.
 
-Core 1.0 may claim smooth automatic continuation only for an exact Agent/native-CLI/capability-hash tuple that passes the real-CLI E2E gates in §10.
+Core 1.0 may claim smooth automatic continuation only for an exact Agent/native-CLI/capability-hash tuple that passes the real-CLI E2E gates in §8.2 and §13.
 
 ## 2. Canonical identity and task ownership
 
@@ -393,14 +393,16 @@ The v6.1 rule `first successful turn -> accepted` is superseded.
 
 A first successful turn may only establish `engaged` when it contains qualifying evidence. `accepted` requires one of:
 
-- explicit user or supported Agent acceptance;
+- explicit user acceptance;
 - explicit continuation language plus a related successful action;
 - a successful file/test/command/todo action linked to the checkpoint and followed by no contradiction;
 - manual `memory_resume accept` through a user-authoritative surface.
 
+Agent-generated text that merely claims the task is resumed does not establish explicit acceptance. It can contribute engagement evidence only when verified runtime events show related work.
+
 A turn that says the checkpoint is wrong, starts an unrelated task, or merely completes without related work MUST NOT accept the checkpoint.
 
-Dismissal closes only that delivery attempt by default. The checkpoint remains eligible for another session unless an explicit disposition event closes it.
+Dismissal closes only that delivery attempt by default. The checkpoint remains eligible for another session unless an explicit disposition event closes it. An explicit user dismissal may additionally create a retracted/expired disposition according to the selected UI/CLI action.
 
 ## 7. Workspace reconciliation
 
