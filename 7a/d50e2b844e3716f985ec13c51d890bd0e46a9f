@@ -1,0 +1,29 @@
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_06c6a015dc6037::t_6c410599e6771e 1,39-48,449,559-561,564-566,575-577,939-1114,1582-1588
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_211aa7fe546c35::t_61f5ed24829ea1 721-722,758-960
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7ad50e2b844e3716f985ec13c51d890bd0e46a9f",
+  "prompts": {},
+  "sessions": {
+    "s_06c6a015dc6037": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00659-a414-7de0-88c2-5f33cac969f4",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
