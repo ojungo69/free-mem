@@ -7,7 +7,7 @@ Persistent memory for [OpenCode](https://opencode.ai) and [Claude Code](https://
 - **Local-first** — everything lives in SQLite on your machine
 - **Hybrid retrieval** — FTS5 BM25 lexical search + sqlite-vec semantic search, merged and re-ranked
 - **Automatic injection** — the OpenCode plugin injects context into every prompt, no manual steps
-- **Claude Code plugin support** — install from the codemem marketplace source
+- **Claude Code support** — setup-managed MCP and bundled hooks
 - **Built-in viewer** — browse memories, sessions, and observer output in a local web UI
 - **Peer-to-peer sync** — replicate memories across machines without a central service
 
@@ -18,86 +18,70 @@ Persistent memory for [OpenCode](https://opencode.ai) and [Claude Code](https://
 
 ## Quick start
 
-**Prerequisites:** Node.js 24+ and npm (or pnpm)
+This free-mem checkout is pre-release and has no published package. The supported
+install path is deliberately source-only: build this checkout, then run its CLI by
+path. npm, global `PATH`, and remote marketplace installs can select upstream
+CodeMem and are not supported here.
+
+**Prerequisites:** Node.js 24+ and pnpm
+
+Run these commands from this `vendor/codemem` directory first:
+
+```text
+corepack pnpm install --frozen-lockfile
+corepack pnpm run build
+```
 
 ### OpenCode
 
-1. Install the OpenCode plugin and MCP config:
+Install the checkout-pinned OpenCode wrapper and MCP config:
 
 ```text
-npx -y codemem setup --opencode-only
+node packages/cli/dist/index.js setup --opencode-only
 ```
 
-2. Restart OpenCode.
+Then restart OpenCode. Setup records the absolute built CLI and plugin source in
+the ownership manifest; rebuild and rerun setup after moving or updating the
+checkout.
 
-The OpenCode plugin manages backend execution automatically — no separate global install is required.
-
-3. Verify:
+Verify with the same built CLI:
 
 ```text
-# Works on fresh installs (no global codemem needed)
-npx -y codemem stats
-npx -y codemem db raw-events-status
+node packages/cli/dist/index.js stats
+node packages/cli/dist/index.js db raw-events-status
 ```
 
 That's it. The plugin captures activity, builds memories, and injects context from here on.
 
-If you want `codemem` available directly on your `PATH` for manual commands, install the CLI globally:
+### Claude Code
+
+Install the checkout-pinned MCP config and bundled hooks:
 
 ```text
-npm install -g codemem
+node packages/cli/dist/index.js setup --claude-only
 ```
 
-OpenCode plugin and CLI are now split intentionally:
+Setup honors `CLAUDE_CONFIG_DIR`, copies the standalone hook runtime into that
+config directory, and merges all seven hook groups into `settings.json` while
+preserving unrelated settings and hooks. It also disables the exact legacy local
+plugin entry when enabled so events are not delivered twice. Rebuild and rerun
+setup to refresh both MCP and hooks.
 
-- `@codemem/opencode-plugin` — OpenCode plugin package
-- `codemem` — CLI and MCP commands
-
-### Claude Code (marketplace install)
-
-1. Install codemem's Claude MCP config:
-
-```text
-npx -y codemem setup --claude-only
-```
-
-2. In [Claude Code](https://claude.ai/code), add the codemem marketplace source and install the plugin:
-
-```text
-/plugin marketplace add kunickiaj/codemem
-/plugin install codemem
-```
-
-The Claude plugin starts MCP with the TS CLI (`codemem mcp`).
-
-Claude hook ingestion is HTTP enqueue-first (`POST /api/claude-hooks`) and falls back to direct local DB enqueue via `codemem claude-hook-ingest` when the local server path is unavailable. Experimental Codex hook ingestion follows the same shared raw-event pipeline through `POST /api/codex-hooks`, `codemem codex-hook-ingest`, and a Codex-specific fallback spool.
-
-Claude hook events share the same raw-event queue pipeline used by OpenCode. `UserPromptSubmit` runs
-capture ingest in the background and injects memory context via Claude `additionalContext` using
-local pack generation by default, with optional HTTP `/api/pack` fallback.
+Claude hooks use daemon RPC and the shared bounded spool; they never open SQLite.
+`UserPromptSubmit` captures the event and returns recalled context through Claude
+`additionalContext`.
 
 ### Codex (early beta)
 
-Codex support is **early beta** — functional and dogfooded, but not yet promoted to a stable support tier. It installs through Codex's own plugin marketplace:
-
-1. Add the codemem marketplace and install the plugin:
+Codex support is **early beta**. Configure it directly from this checkout:
 
 ```text
-codex plugin marketplace add https://github.com/kunickiaj/codemem.git
-codex plugin add codemem@codemem
+node packages/cli/dist/index.js setup --codex-only
 ```
 
-2. Restart Codex.
-
-The Codex plugin bundles its MCP config (`codemem mcp`) and hooks. Hooks call `codemem` from your `PATH` and fall back to `npx -y codemem@<version>`, so a global install is optional (installing `codemem` globally reduces hook latency). Validated targets are Codex CLI 0.135+ and current Desktop builds.
-
-**API-key Codex Desktop (marketplace unavailable):** When plugin installation is greyed out (non-subscription / API-key Desktop), configure codemem without the plugin surface:
-
-```text
-npx -y codemem setup --codex-only
-```
-
-This merges `[mcp_servers.codemem]` into `~/.codex/config.toml` and writes `~/.codex/hooks.json` (SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd) — backing up existing files and preserving unrelated entries. Restart Codex and approve the one-time prompt to trust the codemem hooks. MCP recall works immediately. If `codemem` is on your `PATH` the hooks call it directly; otherwise they fall back to `npx -y codemem`. Honors `CODEX_HOME`; re-runnable (use `--force` to refresh).
+This writes an absolute built-CLI MCP entry, copies the bundled standalone hook
+runtime, and merges the hook configuration while preserving unrelated entries.
+Restart Codex and approve the one-time hook trust prompt.
 
 Codex hooks deliver redacted normalized events over daemon RPC and use the shared bounded spool when RPC is unavailable. `UserPromptSubmit` delivers the prompt while requesting memory context for `additionalContext`; disable injection with `CODEMEM_INJECT_CONTEXT=0`. See [docs/plugin-reference.md](docs/plugin-reference.md) for details and troubleshooting.
 
@@ -204,7 +188,7 @@ Candidate mining is deterministic, and by default an observer-model worthiness p
 To give the LLM direct access to the Phase 1 memory tools (read, remember, and daemon status):
 
 ```text
-codemem setup --opencode-only
+node packages/cli/dist/index.js setup --opencode-only
 ```
 
 This updates your OpenCode config to install the plugin and register the MCP server. Restart OpenCode to activate.
@@ -328,20 +312,14 @@ Embeddings are stored in sqlite-vec and written automatically when memories are 
 ## Alternative install methods
 
 <details>
-<summary>Local development, npx, git install</summary>
+<summary>Local development</summary>
 
 ### Local development
 
 ```text
-pnpm install
-pnpm build
-pnpm run codemem --help
-```
-
-### Via npx (no install)
-
-```text
-npx -y codemem stats
+corepack pnpm install --frozen-lockfile
+corepack pnpm run build
+node packages/cli/dist/index.js --help
 ```
 
 ### Plugin for development

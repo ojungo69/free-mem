@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadJsoncConfig, resolveOpencodeConfigPath } from "./setup-config.js";
+import { loadJsoncConfig, resolveOpencodeConfigPath, writeJsonConfig } from "./setup-config.js";
 
 const tempDirs: string[] = [];
 
@@ -77,5 +77,18 @@ describe("loadJsoncConfig", () => {
 				},
 			},
 		});
+
+		chmodSync(configPath, 0o640);
+		writeJsonConfig(configPath, { updated: true });
+		expect(loadJsoncConfig(configPath)).toEqual({ updated: true });
+		if (process.platform !== "win32") {
+			expect(statSync(configPath).mode & 0o777).toBe(0o640);
+		}
+		expect(readdirSync(dir).some((entry) => entry.endsWith(".tmp"))).toBe(false);
+		const newConfigPath = join(dir, "new.json");
+		writeJsonConfig(newConfigPath, { created: true });
+		if (process.platform !== "win32") {
+			expect(statSync(newConfigPath).mode & 0o777).toBe(0o600);
+		}
 	});
 });

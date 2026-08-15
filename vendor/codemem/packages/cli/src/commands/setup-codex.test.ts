@@ -1,48 +1,64 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { resolveRuntimeDataDir } from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	buildCodememClaudeHookGroups,
 	buildCodememCodexHookGroups,
+	claudeConfigDir,
 	codememCodexHookBase,
 	codexConfigDir,
+	installClaude,
 	installCodex,
 	installCodexHookRuntime,
+	installMcp,
+	installPlugin,
 	isTransientNpxBinPath,
+	resolveSetupRuntime,
 	setupCommand,
 	writeSetupInstallManifest,
 } from "./setup.js";
 
-// Resolve the same command base the implementation will use in this environment
-// (direct `codemem` when on PATH, else `npx -y codemem`) so integration
-// assertions are deterministic across dev and CI.
-const HOOK_BASE = codememCodexHookBase();
-const INGEST_CMD = `${HOOK_BASE} codex-hook-ingest`;
-const INJECT_CMD = `${HOOK_BASE} codex-hook-inject`;
 const HOOK_TIMEOUT = 5;
 
 const savedCodexHome = process.env.CODEX_HOME;
+const savedClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
 const savedDataDir = process.env.CODEMEM_DATA_DIR;
 const savedDb = process.env.CODEMEM_DB;
+const savedHome = process.env.HOME;
 let codexHome: string;
+let claudeHome: string;
 let runtimeDirs: string[];
+let INGEST_CMD: string;
+let INJECT_CMD: string;
 
 beforeEach(() => {
 	codexHome = mkdtempSync(join(tmpdir(), "codemem-setup-codex-"));
+	claudeHome = join(codexHome, "claude config's");
 	process.env.CODEX_HOME = codexHome;
+	process.env.CLAUDE_CONFIG_DIR = claudeHome;
+	process.env.HOME = codexHome;
 	runtimeDirs = [];
 	delete process.env.CODEMEM_DATA_DIR;
 	delete process.env.CODEMEM_DB;
+	const hookBase = codememCodexHookBase(join(codexHome, "codemem-hook-runtime.mjs"));
+	INGEST_CMD = `${hookBase} codex-hook-ingest`;
+	INJECT_CMD = `${hookBase} codex-hook-inject`;
 });
 
 afterEach(() => {
 	if (savedCodexHome === undefined) delete process.env.CODEX_HOME;
 	else process.env.CODEX_HOME = savedCodexHome;
+	if (savedClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+	else process.env.CLAUDE_CONFIG_DIR = savedClaudeConfigDir;
 	if (savedDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
 	else process.env.CODEMEM_DATA_DIR = savedDataDir;
 	if (savedDb === undefined) delete process.env.CODEMEM_DB;
 	else process.env.CODEMEM_DB = savedDb;
+	if (savedHome === undefined) delete process.env.HOME;
+	else process.env.HOME = savedHome;
 	for (const dataDir of runtimeDirs) rmSync(dataDir, { recursive: true, force: true });
 	rmSync(codexHome, { recursive: true, force: true });
 });
@@ -76,17 +92,27 @@ function readConfigToml(): string {
 describe("codexConfigDir", () => {
 	it("honors CODEX_HOME", () => {
 		expect(codexConfigDir()).toBe(codexHome);
+		expect(claudeConfigDir()).toBe(claudeHome);
 	});
 });
 
 describe("Codex hook runtime install", () => {
 	it("copies the standalone runtime and quotes its setup command", () => {
+		const runtime = resolveSetupRuntime();
+		expect(runtime.cliPath).toBe(resolve(import.meta.dirname, "../../dist/index.js"));
+		expect(runtime.opencodePluginPath).toBe(
+			resolve(import.meta.dirname, "../../../opencode-plugin/index.js"),
+		);
+
 		const source = join(codexHome, "source runtime.mjs");
 		writeFileSync(source, "// runtime\n", "utf8");
 		const target = installCodexHookRuntime(codexHome, source);
 		expect(target).toBe(join(codexHome, "codemem-hook-runtime.mjs"));
 		expect(readFileSync(target as string, "utf8")).toBe("// runtime\n");
-		expect(codememCodexHookBase(target)).toBe(`node '${target}'`);
+		expect(codememCodexHookBase(target)).toBe(`'${process.execPath}' '${target}'`);
+		expect(codememCodexHookBase("/tmp/runtime path's", "/tmp/node path's")).toBe(
+			"'/tmp/node path'\\''s' '/tmp/runtime path'\\''s'",
+		);
 	});
 });
 
@@ -94,7 +120,15 @@ describe("installCodex — fresh CODEX_HOME", () => {
 	it("records the installed MCP and hook files in the cutover manifest", () => {
 		expect(installCodex(false)).toBe(true);
 		const dataDir = join(codexHome, "data");
-		writeSetupInstallManifest([{ id: "codex-mcp", path: join(codexHome, "config.toml") }], dataDir);
+		const runtimeTarget = join(codexHome, "runtime.mjs");
+		writeFileSync(runtimeTarget, "v1\n", "utf8");
+		writeSetupInstallManifest(
+			[
+				{ id: "codex-mcp", path: join(codexHome, "config.toml") },
+				{ id: "cli-runtime", path: runtimeTarget },
+			],
+			dataDir,
+		);
 		writeSetupInstallManifest(
 			[{ id: "codex-hooks", path: join(codexHome, "hooks.json") }],
 			dataDir,
@@ -105,22 +139,36 @@ describe("installCodex — fresh CODEX_HOME", () => {
 		) as { blocks: unknown[]; targets: Array<{ id: string; fingerprint: string }> };
 		expect(manifest.blocks).toEqual([]);
 		expect(manifest.targets.map((target) => target.id).sort()).toEqual([
+			"cli-runtime",
 			"codex-hooks",
 			"codex-mcp",
 		]);
 		expect(manifest.targets.every((target) => /^[a-f0-9]{64}$/.test(target.fingerprint))).toBe(
 			true,
 		);
+		const firstRuntimeFingerprint = manifest.targets.find(
+			(target) => target.id === "cli-runtime",
+		)?.fingerprint;
 
+		writeFileSync(runtimeTarget, "v2\n", "utf8");
 		writeSetupInstallManifest(
-			[{ id: "codex-hooks", path: join(codexHome, "hooks.json") }],
+			[
+				{ id: "codex-hooks", path: join(codexHome, "hooks.json") },
+				{ id: "cli-runtime", path: runtimeTarget },
+			],
 			dataDir,
-			["codex-mcp", "codex-hooks"],
+			["cli-runtime", "codex-mcp", "codex-hooks"],
 		);
 		const reconciled = JSON.parse(
 			readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8"),
-		) as { targets: Array<{ id: string }> };
-		expect(reconciled.targets.map((target) => target.id)).toEqual(["codex-hooks"]);
+		) as { targets: Array<{ id: string; fingerprint: string }> };
+		expect(reconciled.targets.map((target) => target.id).sort()).toEqual([
+			"cli-runtime",
+			"codex-hooks",
+		]);
+		expect(reconciled.targets.find((target) => target.id === "cli-runtime")?.fingerprint).not.toBe(
+			firstRuntimeFingerprint,
+		);
 
 		const customDbPath = join(codexHome, "setup.sqlite");
 		process.env.CODEMEM_DB = customDbPath;
@@ -135,8 +183,9 @@ describe("installCodex — fresh CODEX_HOME", () => {
 
 		const toml = readConfigToml();
 		expect(toml).toContain("[mcp_servers.codemem]");
-		expect(toml).toContain('command = "npx"');
-		expect(toml).toContain('args = ["-y", "codemem", "mcp"]');
+		expect(toml).toContain(`command = ${JSON.stringify(process.execPath)}`);
+		expect(toml).toContain(`args = [${JSON.stringify(resolveSetupRuntime().cliPath)}, "mcp"]`);
+		expect(toml).not.toContain("npx");
 		expect(toml).toContain("startup_timeout_sec = 30");
 		expect(toml).toContain("tool_timeout_sec = 60");
 
@@ -314,6 +363,13 @@ describe("installCodex — non-destructive merge", () => {
 		expect(toml).toContain("[mcp_servers.other]");
 		expect(toml).toContain('command = "other-cmd"');
 		expect(toml).toContain("[mcp_servers.codemem]");
+
+		const custom = `${original}[mcp_servers.codemem]\ncommand = "npx"\nargs = ["custom-wrapper", "mcp"]\n`;
+		writeFileSync(join(codexHome, "config.toml"), custom, "utf-8");
+		expect(installCodex(false)).toBe(false);
+		expect(readConfigToml()).toBe(custom);
+		expect(installCodex(true)).toBe(true);
+		expect(readConfigToml()).toContain('[mcp_servers.other]\ncommand = "other-cmd"');
 	});
 
 	it("preserves an unrelated user SessionStart hook and adds the codemem hook", () => {
@@ -327,6 +383,12 @@ describe("installCodex — non-destructive merge", () => {
 								command: "echo user-hook",
 								timeout: 10,
 								statusMessage: "user",
+							},
+							{
+								type: "command",
+								command: "codemem codex-hook-ingest",
+								timeout: 5,
+								statusMessage: "legacy codemem",
 							},
 						],
 					},
@@ -389,10 +451,245 @@ describe("isTransientNpxBinPath", () => {
 });
 
 describe("setup command options", () => {
-	it("declares --codex-only (consistent with --opencode-only/--claude-only) and no redundant --codex", () => {
+	it("declares --codex-only (consistent with --opencode-only/--claude-only) and no redundant --codex", async () => {
 		const longs = setupCommand.options.map((o) => o.long);
 		expect(longs).toContain("--codex-only");
 		expect(longs).not.toContain("--codex");
+
+		const runtime = resolveSetupRuntime();
+		const opencodeDir = join(codexHome, ".config", "opencode");
+		mkdirSync(opencodeDir, { recursive: true });
+		writeFileSync(
+			join(opencodeDir, "opencode.jsonc"),
+			`${JSON.stringify({
+				plugin: ["@codemem/opencode-plugin"],
+				mcp: {
+					codemem: {
+						type: "local",
+						command: [
+							process.execPath,
+							join(codexHome, "old", "packages", "cli", "dist", "index.js"),
+							"mcp",
+						],
+					},
+				},
+			})}\n`,
+			"utf8",
+		);
+		mkdirSync(claudeHome, { recursive: true });
+		writeFileSync(
+			join(claudeHome, "settings.json"),
+			`${JSON.stringify({
+				mcpServers: { codemem: { command: "npx", args: ["-y", "codemem", "mcp"] } },
+				enabledPlugins: {
+					"codemem@codemem-marketplace": true,
+					"other@marketplace": true,
+				},
+				hooks: {
+					SessionStart: [
+						{
+							hooks: [
+								{ type: "command", command: "echo user-hook", timeout: 9 },
+								{ type: "command", command: "codemem claude-hook-ingest", timeout: 3 },
+							],
+						},
+					],
+				},
+			})}\n`,
+			"utf8",
+		);
+		expect(installPlugin(false)).toBe(true);
+		expect(installMcp(false)).toBe(true);
+		expect(installClaude(false)).toBe(true);
+
+		const opencode = JSON.parse(
+			readFileSync(join(codexHome, ".config", "opencode", "opencode.jsonc"), "utf8"),
+		) as { mcp: { codemem: { command: string[] } } };
+		expect(opencode.mcp.codemem.command).toEqual([process.execPath, runtime.cliPath, "mcp"]);
+		(opencode.mcp.codemem as { enabled?: boolean }).enabled = false;
+		writeFileSync(join(opencodeDir, "opencode.jsonc"), `${JSON.stringify(opencode)}\n`, "utf8");
+		expect(installMcp(false)).toBe(true);
+		expect(
+			(
+				JSON.parse(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8")) as {
+					mcp: { codemem: { enabled: boolean } };
+				}
+			).mcp.codemem.enabled,
+		).toBe(true);
+		const wrapper = readFileSync(
+			join(codexHome, ".config", "opencode", "plugins", "codemem.js"),
+			"utf8",
+		);
+		expect(wrapper).toContain(JSON.stringify(runtime.cliPath));
+		expect(wrapper).toContain(JSON.stringify(pathToFileURL(runtime.opencodePluginPath).href));
+		expect(wrapper).toContain(`process.env.CODEMEM_RUNNER = ${JSON.stringify(process.execPath)}`);
+		expect(wrapper).not.toContain('process.env.CODEMEM_RUNNER = "node"');
+		expect(wrapper).not.toContain("npx");
+		const wrapperPath = join(opencodeDir, "plugins", "codemem.js");
+		const userWrapper =
+			"// codemem setup-managed wrapper\nexport default async function userPlugin() { return {}; }\n";
+		writeFileSync(wrapperPath, userWrapper, "utf8");
+		const configBeforeWrapperRefusal = readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8");
+		expect(installPlugin(false)).toBe(false);
+		expect(readFileSync(wrapperPath, "utf8")).toBe(userWrapper);
+		expect(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8")).toBe(
+			configBeforeWrapperRefusal,
+		);
+		expect(installPlugin(true)).toBe(true);
+		const managedWrapper = readFileSync(wrapperPath, "utf8");
+		writeFileSync(
+			wrapperPath,
+			managedWrapper
+				.replace("// codemem setup-managed wrapper\n", "")
+				.replace(JSON.stringify(process.execPath), '"node"'),
+			"utf8",
+		);
+		expect(installPlugin(false)).toBe(true);
+		expect(readFileSync(wrapperPath, "utf8")).toBe(managedWrapper);
+
+		const claude = JSON.parse(readFileSync(join(claudeHome, "settings.json"), "utf8")) as {
+			mcpServers: { codemem: { command: string; args: string[] } };
+			enabledPlugins: Record<string, boolean>;
+			hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+		};
+		expect(claude.mcpServers.codemem).toEqual({
+			command: process.execPath,
+			args: [runtime.cliPath, "mcp"],
+		});
+		expect(claude.enabledPlugins).toEqual({
+			"codemem@codemem-marketplace": false,
+			"other@marketplace": true,
+		});
+		expect(Object.keys(claude.hooks).sort()).toEqual(
+			Object.keys(buildCodememClaudeHookGroups("managed-runtime")).sort(),
+		);
+		expect(claude.hooks.SessionStart?.[0]?.hooks[0]?.command).toBe("echo user-hook");
+		expect(claude.hooks.SessionStart?.[0]?.hooks).toHaveLength(1);
+		expect(claude.hooks.SessionStart?.[1]?.hooks[0]?.command).toContain(process.execPath);
+		expect(claude.hooks.SessionStart?.[1]?.hooks[0]?.command).toContain(
+			codememCodexHookBase(join(claudeHome, "codemem-hook-runtime.mjs")),
+		);
+		expect(existsSync(join(claudeHome, "codemem-hook-runtime.mjs"))).toBe(true);
+
+		const customOpencode = {
+			mcp: {
+				codemem: { type: "local", command: ["bash", "-c", "codemem", "mcp"] },
+			},
+		};
+		writeFileSync(
+			join(opencodeDir, "opencode.jsonc"),
+			`${JSON.stringify(customOpencode)}\n`,
+			"utf8",
+		);
+		expect(installMcp(false)).toBe(false);
+		expect(JSON.parse(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8"))).toEqual(
+			customOpencode,
+		);
+		expect(installMcp(true)).toBe(true);
+
+		const repoRoot = resolve(import.meta.dirname, "../../../..");
+		const tracked = [
+			"plugins/claude/scripts/ingest-hook.sh",
+			"plugins/claude/scripts/inject-context-hook.sh",
+			"plugins/claude/scripts/pre-read-hook.sh",
+			"plugins/codex/scripts/ingest-hook.mjs",
+			"plugins/codex/scripts/user-prompt-hook.mjs",
+		];
+		for (const relativePath of tracked) {
+			expect(readFileSync(join(repoRoot, relativePath), "utf8"), relativePath).not.toMatch(
+				/npx(?:\s+-y)?\s+codemem|command -v codemem/,
+			);
+		}
+		const claudePlugin = JSON.parse(
+			readFileSync(join(repoRoot, "plugins/claude/.claude-plugin/plugin.json"), "utf8"),
+		) as { mcpServers?: unknown };
+		const codexPlugin = JSON.parse(
+			readFileSync(join(repoRoot, "plugins/codex/.codex-plugin/plugin.json"), "utf8"),
+		) as { mcpServers?: unknown };
+		expect(claudePlugin.mcpServers).toBeUndefined();
+		expect(codexPlugin.mcpServers).toBeUndefined();
+		expect(existsSync(join(repoRoot, "plugins/codex/.mcp.json"))).toBe(false);
+
+		for (const relativePath of ["README.md", "docs/plugin-reference.md"]) {
+			const documentation = readFileSync(join(repoRoot, relativePath), "utf8");
+			expect(documentation, relativePath).toContain("node packages/cli/dist/index.js setup");
+			expect(documentation, relativePath).not.toMatch(
+				/npx -y codemem|npm install -g codemem|\/plugin marketplace add kunickiaj\/codemem|codex plugin marketplace add https:\/\/github\.com\/kunickiaj\/codemem|fall back to `npx|from (?:your )?`PATH`/,
+			);
+		}
+
+		const dataDir = join(codexHome, "setup-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		const opencodeBeforePreflight = readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8");
+		writeFileSync(
+			join(claudeHome, "settings.json"),
+			`${JSON.stringify({
+				mcpServers: { codemem: { command: "bash", args: ["custom", "mcp"] } },
+			})}\n`,
+			"utf8",
+		);
+		await setupCommand.parseAsync(["node", "codemem"]);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8")).toBe(opencodeBeforePreflight);
+		expect(existsSync(join(dataDir, "control", "install-manifest.json"))).toBe(false);
+		expect(installClaude(true)).toBe(true);
+		writeSetupInstallManifest(
+			[
+				{ id: "claude-hooks", path: join(claudeHome, "settings.json") },
+				{ id: "opencode-plugin-mcp", path: join(opencodeDir, "opencode.jsonc") },
+			],
+			dataDir,
+		);
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--claude-only"]);
+		const claudeManifest = JSON.parse(
+			readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8"),
+		) as { targets: Array<{ id: string; path: string; fingerprint: string }> };
+		expect(claudeManifest.targets.map((target) => target.id).sort()).toEqual([
+			"claude-hook-runtime",
+			"claude-mcp",
+			"cli-runtime",
+			"opencode-plugin-mcp",
+		]);
+		expect(claudeManifest.targets.find((target) => target.id === "claude-hook-runtime")?.path).toBe(
+			join(claudeHome, "codemem-hook-runtime.mjs"),
+		);
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		const manifest = JSON.parse(
+			readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8"),
+		) as { targets: Array<{ id: string; path: string; fingerprint: string }> };
+		expect(manifest.targets.map((target) => target.id).sort()).toEqual([
+			"claude-hook-runtime",
+			"claude-mcp",
+			"cli-runtime",
+			"opencode-mcp",
+			"opencode-plugin",
+			"opencode-plugin-source",
+		]);
+		expect(manifest.targets.find((target) => target.id === "cli-runtime")?.path).toBe(
+			runtime.cliPath,
+		);
+		expect(manifest.targets.every((target) => /^[a-f0-9]{64}$/.test(target.fingerprint))).toBe(
+			true,
+		);
+
+		const blockedDataDir = join(codexHome, "blocked-setup-data");
+		mkdirSync(blockedDataDir, { recursive: true });
+		writeFileSync(join(blockedDataDir, "control"), "not-a-directory\n", "utf8");
+		process.env.CODEMEM_DATA_DIR = blockedDataDir;
+		const beforeFailedLane = JSON.parse(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8"));
+		beforeFailedLane.mcp.codemem.enabled = false;
+		writeFileSync(
+			join(opencodeDir, "opencode.jsonc"),
+			`${JSON.stringify(beforeFailedLane, null, 2)}\n`,
+			"utf8",
+		);
+		const beforeFailedLaneText = readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8");
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8")).toBe(beforeFailedLaneText);
+		expect(readFileSync(join(blockedDataDir, "control"), "utf8")).toBe("not-a-directory\n");
 	});
 });
 
@@ -443,28 +740,29 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 	it('detects a quoted [mcp_servers."codemem"] table and does not append a duplicate', () => {
 		writeFileSync(
 			join(codexHome, "config.toml"),
-			'[mcp_servers."codemem"]\ncommand = "npx"\n',
+			'[mcp_servers."codemem"]\ncommand = "npx"\nargs = ["-y", "codemem", "mcp"]\n',
 			"utf-8",
 		);
 
 		expect(installCodex(false)).toBe(true);
 
 		const toml = readConfigToml();
-		// No unquoted duplicate appended.
-		expect(toml).not.toContain("[mcp_servers.codemem]\n");
+		expect(toml.match(/\[mcp_servers\.codemem\]/g)).toHaveLength(1);
+		expect(toml).toContain(`command = ${JSON.stringify(process.execPath)}`);
 	});
 
 	it("tolerates whitespace inside the table header", () => {
 		writeFileSync(
 			join(codexHome, "config.toml"),
-			'[ mcp_servers . codemem ]\ncommand = "npx"\n',
+			'[ mcp_servers . codemem ]\ncommand = "npx"\nargs = ["-y", "codemem", "mcp"]\n',
 			"utf-8",
 		);
 
 		expect(installCodex(false)).toBe(true);
 
 		const toml = readConfigToml();
-		expect(toml.split("[mcp_servers.codemem]").length - 1).toBe(0);
+		expect(toml.match(/\[mcp_servers\.codemem\]/g)).toHaveLength(1);
+		expect(toml).toContain(`command = ${JSON.stringify(process.execPath)}`);
 	});
 });
 
@@ -476,6 +774,13 @@ describe("installCodex — malformed hooks.json", () => {
 		expect(installCodex(false)).toBe(false);
 		// File left untouched (no overwrite, no backup-then-replace).
 		expect(readFileSync(join(codexHome, "hooks.json"), "utf-8")).toBe(broken);
+
+		mkdirSync(claudeHome, { recursive: true });
+		const settingsPath = join(claudeHome, "settings.json");
+		writeFileSync(settingsPath, broken, "utf8");
+		expect(installClaude(false)).toBe(false);
+		expect(readFileSync(settingsPath, "utf8")).toBe(broken);
+		expect(existsSync(join(claudeHome, "codemem-hook-runtime.mjs"))).toBe(false);
 	});
 });
 

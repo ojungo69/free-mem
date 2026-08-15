@@ -12,14 +12,13 @@
     "codemem",
     "memory",
     "codex",
-    "mcp"
+    "hooks"
   ],
-  "mcpServers": "./.mcp.json",
   "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "codemem",
     "shortDescription": "Persistent memory for Codex sessions.",
-    "longDescription": "Capture Codex session context across projects and recall relevant memories through hooks and MCP tools.",
+    "longDescription": "Capture Codex session context through the bundled hook runtime. Pre-release MCP is installed by the checkout CLI.",
     "developerName": "Adam Kunicki",
     "category": "Engineering",
     "capabilities": [

@@ -40,6 +40,16 @@ CI=true corepack pnpm run check
 The build runs before the test gate because viewer assets and internal package outputs
 are generated, ignored artifacts.
 
+Pre-release editor setup must run the built CLI directly from this checkout:
+
+```sh
+node vendor/codemem/packages/cli/dist/index.js setup --opencode-only # or --claude-only / --codex-only
+```
+
+Setup records the absolute CLI, plugin, and hook runtime artifacts and their fingerprints. Rebuild and
+rerun setup after moving or updating the checkout. npm/PATH-resolved codemem runtimes
+are intentionally unsupported until free-mem publishes a release artifact.
+
 ## Security
 
 Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
