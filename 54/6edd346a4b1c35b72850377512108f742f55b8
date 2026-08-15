@@ -1,0 +1,39 @@
+evidence/phase1-test-retire-list.md
+  s_211aa7fe546c35::t_4f32a88f6049db 270
+vendor/codemem/packages/cli/src/commands/mcp.test.ts
+  s_211aa7fe546c35::t_308cade9c28cba 7,11-12,17-18,31-32,36-37
+vendor/codemem/packages/cli/src/commands/mcp.ts
+  s_211aa7fe546c35::t_4ada6cfc016011 3,10-14
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_79508aeff2021b 217-220
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_2e0c43896ff8b5 28,131-135,137-139
+vendor/codemem/packages/mcp-server/src/server.test.ts
+  s_211aa7fe546c35::t_6684488557f26a 86-105,116-119,126,154-167,178-189
+vendor/codemem/packages/mcp-server/src/server.ts
+  s_211aa7fe546c35::t_9f818343643b0c 1,16
+vendor/codemem/packages/mcp-server/src/tool-context.ts
+  s_211aa7fe546c35::t_8b24878f2ea409 15
+vendor/codemem/packages/mcp-server/src/tools/items.ts
+  s_211aa7fe546c35::t_b0ac133e44635a 10,24,43-47,71-75
+vendor/codemem/packages/mcp-server/src/tools/search.ts
+  s_211aa7fe546c35::t_585d570027ed25 14,28-32,38-55,72-76,111-115,139-143,173-177
+vendor/codemem/packages/mcp-server/src/tools/timeline.ts
+  s_211aa7fe546c35::t_a0a673824d2caf 10,26-30,62-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "546edd346a4b1c35b72850377512108f742f55b8",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
