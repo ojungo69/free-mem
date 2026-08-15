@@ -1,0 +1,39 @@
+vendor/codemem/packages/core/src/claude-hooks.ts
+  s_211aa7fe546c35::t_1a65682efb98ac 15,345,348-350
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_95d3eaeb07d2f1::t_2809487d9c8e06 25-75,77-83,127-128,138-146
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_95d3eaeb07d2f1::t_75cc312d4d0707 2,367-388
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_d382c72fac7c0a 8,326,329-331
+vendor/codemem/packages/core/src/claude-hooks.test.ts
+  s_211aa7fe546c35::t_54d472b8f422ff 11
+  s_211aa7fe546c35::t_c7aa3f408595e7 23-56,283-285
+  s_211aa7fe546c35::t_d98dd636a32fb9 286
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_1254e1193c8a28 8,326,329-331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d05f841a09a89a183a2c0ebb371ee4141b8a8f06",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_95d3eaeb07d2f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3aa54209-9db9-4f5e-b7c8-0c15d4430519",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
