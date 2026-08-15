@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import {
 	type AgentMemoryConfig,
@@ -364,10 +364,27 @@ function loadProjectConfig(cwd: string): AgentMemoryConfig | undefined {
 	const root = resolveProjectRoot(cwd);
 	if (!root) return undefined;
 	const path = join(root, ".agent-memory.toml");
-	if (!existsSync(path)) return undefined;
-	const stat = statSync(path);
-	if (!stat.isFile() || stat.size > PROJECT_CONFIG_MAX_BYTES) {
-		throw new Error("Project memory policy is invalid.");
+	let descriptor: number;
+	try {
+		descriptor = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+		throw error;
 	}
-	return parseAgentMemoryToml(readFileSync(path, "utf8"));
+	try {
+		const opened = fstatSync(descriptor);
+		if (!opened.isFile() || opened.size > PROJECT_CONFIG_MAX_BYTES) {
+			throw new Error("Project memory policy is invalid.");
+		}
+		const buffer = Buffer.alloc(opened.size);
+		let length = 0;
+		while (length < buffer.length) {
+			const bytesRead = readSync(descriptor, buffer, length, buffer.length - length, length);
+			if (bytesRead === 0) break;
+			length += bytesRead;
+		}
+		return parseAgentMemoryToml(buffer.subarray(0, length).toString("utf8"));
+	} finally {
+		closeSync(descriptor);
+	}
 }

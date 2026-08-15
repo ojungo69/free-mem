@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, matchesGlob, relative, resolve, se
 import { pathToFileURL } from "node:url";
 import { MessageChannel, Worker, isMainThread, parentPort, receiveMessageOnPort, workerData } from "node:worker_threads";
 import { createHash, randomUUID } from "node:crypto";
-import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, statfsSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, statfsSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { createConnection } from "node:net";
 import { styleText } from "node:util";
@@ -320,18 +320,15 @@ function extractFromTranscript(transcriptPath, cwdHint) {
 		}
 		resolvedPath = resolve(base, raw);
 	}
-	try {
-		if (!statSync(resolvedPath, { throwIfNoEntry: false })?.isFile()) return [null, null];
-	} catch {
-		return [null, null];
-	}
 	let assistantText = null;
 	let assistantUsage = null;
 	try {
-		const descriptor = openSync(resolvedPath, "r");
+		const descriptor = openSync(resolvedPath, constants.O_RDONLY | constants.O_NONBLOCK);
 		let content;
 		try {
-			const size = fstatSync(descriptor).size;
+			const opened = fstatSync(descriptor);
+			if (!opened.isFile()) return [null, null];
+			const size = opened.size;
 			const length = Math.min(size, TRANSCRIPT_TAIL_MAX_BYTES);
 			const start = Math.max(0, size - length);
 			const buffer = Buffer.alloc(length);
