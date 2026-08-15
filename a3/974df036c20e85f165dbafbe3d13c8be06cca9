@@ -1,0 +1,19 @@
+harness/phase1-runtime-db-open-trace.mjs
+  s_211aa7fe546c35::t_cdb8cfd30c3d0b 533
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a3974df036c20e85f165dbafbe3d13c8be06cca9",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
