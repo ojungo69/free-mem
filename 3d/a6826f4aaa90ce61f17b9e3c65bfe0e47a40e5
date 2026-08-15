@@ -1,0 +1,35 @@
+vendor/codemem/packages/core/src/gitleaks-pinned-rules.ts
+  s_211aa7fe546c35::t_fec8bd7fdf2053 63-64,100-101
+vendor/codemem/packages/core/src/online-backup.ts
+  s_211aa7fe546c35::t_0e636a63911d68 1155,1162
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_211aa7fe546c35::t_16ef0539dfd2a9 317-318
+vendor/codemem/packages/core/src/redaction-worker.ts
+  s_211aa7fe546c35::t_21fb2ec7cb0110 68-69
+vendor/codemem/packages/core/src/secret-scanner.test.ts
+  s_211aa7fe546c35::t_e0c75880308c44 264,417
+vendor/codemem/packages/core/src/storage.ts
+  s_211aa7fe546c35::t_d84c9b3781a9fd 12,23
+vendor/codemem/packages/core/src/store.test.ts
+  s_211aa7fe546c35::t_a92d1fd8e9b6ae 490
+vendor/codemem/packages/ui/src/lib/api/internal.test.ts
+  s_211aa7fe546c35::t_8cd7ad4fe930c8 89-93
+vendor/codemem/packages/ui/src/lib/api/internal.ts
+  s_211aa7fe546c35::t_b2f64a103d552c 83-86,88,99-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3da6826f4aaa90ce61f17b9e3c65bfe0e47a40e5",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
