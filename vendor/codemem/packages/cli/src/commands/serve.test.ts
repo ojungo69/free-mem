@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import net, { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,10 +16,18 @@ const childProcessMocks = vi.hoisted(() => ({
 	})),
 }));
 
+const serverMocks = vi.hoisted(() => ({
+	createViewerRpcCall: vi.fn(),
+}));
+
 vi.mock("node:child_process", async (importOriginal) => ({
 	...(await importOriginal<typeof import("node:child_process")>()),
 	spawn: childProcessMocks.spawn,
 	spawnSync: childProcessMocks.spawnSync,
+}));
+
+vi.mock("@codemem/server", () => ({
+	createViewerRpcCall: serverMocks.createViewerRpcCall,
 }));
 
 import {
@@ -46,8 +54,10 @@ import {
 describe("serve command option resolution", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 		childProcessMocks.spawn.mockClear();
 		childProcessMocks.spawnSync.mockClear();
+		serverMocks.createViewerRpcCall.mockReset();
 	});
 
 	it("treats bare serve as a foreground start", async () => {
@@ -110,6 +120,121 @@ describe("serve command option resolution", () => {
 			await serveCommand.parseAsync(["invalid-action"], { from: "user" });
 			expect(process.exitCode).toBe(1);
 			expect(output.mock.calls.flat().join("")).toContain("Unknown serve action: invalid-action");
+
+			vi.spyOn(net, "createConnection").mockImplementation((() => {
+				const socket = new net.Socket();
+				queueMicrotask(() => socket.emit("connect"));
+				return socket;
+			}) as typeof net.createConnection);
+			const healthy = {
+				service: "codemem-viewer",
+				version: "0.0.0-test",
+				pid: 12345,
+				uptime_ms: 1_000,
+				ready: true,
+				database: { reachable: true },
+			};
+			const challengeNonce = "c".repeat(43);
+			const freshNonce = "f".repeat(43);
+			const session = "v1.signed-session.999.ZGFlbW9u.signature";
+			const runExistingViewer = async (
+				options: {
+					health?: unknown;
+					nonces?: unknown[];
+					nonceErrorAt?: number;
+					exchangeStatus?: number;
+					exchangeBody?: unknown;
+					loggedOut?: unknown;
+				} = {},
+			) => {
+				const events: string[] = [];
+				const nonces = [...(options.nonces ?? [challengeNonce, freshNonce])];
+				const rpc = vi.fn(async (method: string, body: Record<string, unknown> = {}) => {
+					if (method === "POST /v1/viewer/auth/nonce") {
+						events.push("nonce");
+						if (events.filter((event) => event === "nonce").length === options.nonceErrorAt) {
+							throw new Error("nonce RPC failed");
+						}
+						return { nonce: nonces.shift() };
+					}
+					if (method === "POST /v1/viewer/auth/logout") {
+						events.push(`logout:${String(body.session)}`);
+						return { loggedOut: options.loggedOut ?? true };
+					}
+					throw new Error(`unexpected ${method}`);
+				});
+				serverMocks.createViewerRpcCall.mockReturnValue(rpc);
+				const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+					const pathname = new URL(String(input)).pathname;
+					if (pathname === "/api/health") {
+						events.push("health");
+						return new Response(JSON.stringify(options.health ?? healthy), {
+							status: 200,
+							headers: { "content-type": "application/json" },
+						});
+					}
+					if (pathname === "/api/auth/exchange") {
+						const payload = JSON.parse(String(init?.body)) as { nonce?: unknown };
+						expect(new Headers(init?.headers).get("Origin")).toBe(`http://127.0.0.1:${port}`);
+						events.push(`exchange:${String(payload.nonce)}`);
+						return new Response(JSON.stringify(options.exchangeBody ?? { session }), {
+							status: options.exchangeStatus ?? 200,
+							headers: { "content-type": "application/json" },
+						});
+					}
+					throw new Error(`unexpected viewer request ${pathname}`);
+				});
+				vi.stubGlobal("fetch", fetchMock);
+				output.mockClear();
+				childProcessMocks.spawn.mockClear();
+				process.exitCode = 0;
+				await serveCommand.parseAsync(
+					["start", "--host", "127.0.0.1", "--port", String(port), "--db-path", dbPath],
+					{ from: "user" },
+				);
+				return { events, text: output.mock.calls.flat().join("") };
+			};
+
+			const reused = await runExistingViewer();
+			expect(process.exitCode).toBe(0);
+			expect(reused.events).toEqual([
+				"health",
+				"nonce",
+				`exchange:${challengeNonce}`,
+				`logout:${session}`,
+				"nonce",
+			]);
+			expect(reused.text).toContain(
+				`Viewer already running at http://127.0.0.1:${port}/#auth=${freshNonce}`,
+			);
+			expect(serverMocks.createViewerRpcCall).toHaveBeenLastCalledWith({
+				socketPath: join(root, "control", "daemon.sock"),
+			});
+			expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+
+			for (const failure of [
+				{
+					label: "wrong service",
+					options: { health: { ...healthy, service: "other-service" } },
+				},
+				{
+					label: "different daemon",
+					options: { exchangeStatus: 401, exchangeBody: { error: "invalid or expired nonce" } },
+				},
+				{ label: "nonce RPC failure", options: { nonceErrorAt: 1 } },
+				{ label: "malformed challenge nonce", options: { nonces: ["short"] } },
+				{ label: "malformed session", options: { exchangeBody: { session: "bad session" } } },
+				{ label: "logout refused", options: { loggedOut: false } },
+				{
+					label: "malformed fresh nonce",
+					options: { nonces: [challengeNonce, "short"] },
+				},
+			]) {
+				const rejected = await runExistingViewer(failure.options);
+				expect(process.exitCode, failure.label).toBe(1);
+				expect(rejected.text, failure.label).not.toContain("/#auth=");
+				expect(childProcessMocks.spawn, failure.label).not.toHaveBeenCalled();
+			}
 		} finally {
 			process.exitCode = originalExitCode;
 			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;

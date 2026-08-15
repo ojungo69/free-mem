@@ -10,6 +10,7 @@ import {
 	resolveStorageLayout,
 	startDaemon,
 } from "@codemem/core";
+import type { ViewerRpcCall } from "@codemem/server";
 import { Command, Option } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -376,10 +377,57 @@ async function issueViewerNonce(dataDir: string, timeoutMs = 10_000): Promise<st
 	return null;
 }
 
+async function existingViewerLoginUrl(
+	invocation: ResolvedServeInvocation,
+	rpc: ViewerRpcCall,
+	request: typeof fetch = fetch,
+): Promise<string> {
+	const fail = () => new Error("Existing viewer is not bound to this database runtime.");
+	const issueNonce = async () => {
+		const result = await rpc("POST /v1/viewer/auth/nonce");
+		if (typeof result.nonce !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(result.nonce)) {
+			throw fail();
+		}
+		return result.nonce;
+	};
+
+	try {
+		const probe = await probeCodememViewerLiveness(invocation, {
+			fetch: request,
+			timeoutMs: 1_000,
+		});
+		if (probe.state !== "live") throw fail();
+		const challenge = await issueNonce();
+		const origin = new URL(viewerUrl(invocation, "/")).origin;
+		const exchange = await request(viewerUrl(invocation, "/api/auth/exchange"), {
+			method: "POST",
+			credentials: "omit",
+			cache: "no-store",
+			signal: AbortSignal.timeout(1_000),
+			headers: { "Content-Type": "application/json", Origin: origin },
+			body: JSON.stringify({ nonce: challenge }),
+		});
+		if (!exchange.ok) throw fail();
+		const payload = (await exchange.json()) as { session?: unknown };
+		if (typeof payload.session !== "string" || !/^[A-Za-z0-9._-]{1,512}$/.test(payload.session)) {
+			throw fail();
+		}
+		const logout = await rpc("POST /v1/viewer/auth/logout", { session: payload.session });
+		if (logout.loggedOut !== true) throw fail();
+		const nonce = await issueNonce();
+		return `${viewerUrl(invocation, "/")}#auth=${encodeURIComponent(nonce)}`;
+	} catch {
+		throw fail();
+	}
+}
+
 async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promise<void> {
 	if (warnIfViewerExposed(invocation.host, invocation.port)) return;
+	const dataDir = resolveDataDirOpt({ dbPath: invocation.dbPath ?? undefined });
 	if (await isPortOpen(invocation.host, invocation.port)) {
-		p.log.warn(`Viewer already running at ${viewerUrl(invocation, "/")}`);
+		const { createViewerRpcCall } = await import("@codemem/server");
+		const rpc = createViewerRpcCall({ socketPath: resolveStorageLayout(dataDir).socketPath });
+		p.log.warn(`Viewer already running at ${await existingViewerLoginUrl(invocation, rpc)}`);
 		return;
 	}
 	const scriptPath = process.argv[1];
@@ -388,7 +436,6 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 		process.exitCode = 1;
 		return;
 	}
-	const dataDir = resolveDataDirOpt({ dbPath: invocation.dbPath ?? undefined });
 	const child = spawn(process.execPath, buildForegroundRunnerArgs(scriptPath, invocation), {
 		cwd: process.cwd(),
 		detached: true,
