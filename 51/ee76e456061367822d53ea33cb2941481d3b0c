@@ -1,0 +1,27 @@
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.contract.test.ts
+  s_211aa7fe546c35::t_24eb1bbf48d45d 4-5,63-64
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.test.ts
+  s_211aa7fe546c35::t_03bae946bf8c9e 4-5,20-21
+vendor/codemem/packages/cli/src/commands/codex-hook-inject.test.ts
+  s_211aa7fe546c35::t_bbd0c36b6f810e 4-5,19-20
+vendor/codemem/packages/core/src/legacy-cutover.test.ts
+  s_211aa7fe546c35::t_43a04e1920bd5c 375
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_f69e2df2de4e36 292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "51ee76e456061367822d53ea33cb2941481d3b0c",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
