@@ -1,12 +1,15 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import {
 	existsSync,
+	linkSync,
 	lstatSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	readlinkSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -151,6 +154,36 @@ describe("Phase 1 legacy layout cutover", () => {
 		expect(lstatSync(legacyPath).isSymbolicLink()).toBe(true);
 		expect(lstatSync(readlinkSync(legacyPath)).isDirectory()).toBe(true);
 		expect(listOpenFileOwners(legacyPath)).toEqual([]);
+
+		const interrupted = fixture();
+		const recoveryPath = join(
+			interrupted.layout.controlDir,
+			"legacy-00000000-0000-4000-8000-000000000001.legacy-recovery.sqlite",
+		);
+		const tombstoneDir = join(interrupted.layout.controlDir, "legacy-db-tombstone");
+		linkSync(interrupted.legacyPath, recoveryPath);
+		mkdirSync(tombstoneDir, { recursive: true, mode: 0o700 });
+		rmSync(interrupted.legacyPath);
+		symlinkSync(tombstoneDir, interrupted.legacyPath, "dir");
+
+		const restarted = await startDaemon({ dataDir: interrupted.layout.dataDir });
+		await restarted.stop();
+		const interruptedPointer = readCurrentDatabasePointer(interrupted.layout);
+		expect(interruptedPointer).not.toBeNull();
+		const recovered = ReadOnlyActor.open(
+			join(interrupted.layout.dbDir, interruptedPointer as string),
+		);
+		try {
+			expect(recovered.prepare("SELECT value FROM legacy_probe").pluck().get()).toBe("preserved");
+		} finally {
+			recovered.close();
+		}
+		expect(lstatSync(interrupted.legacyPath).isSymbolicLink()).toBe(true);
+		expect(
+			readdirSync(interrupted.layout.controlDir).filter((name) =>
+				name.endsWith(".legacy-recovery.sqlite"),
+			),
+		).toEqual([]);
 	});
 
 	it("P1-T051-04-old-binary-split-brain", async () => {

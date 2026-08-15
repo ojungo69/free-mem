@@ -7,6 +7,7 @@ import {
 	lstatSync,
 	readdirSync,
 	readFileSync,
+	readlinkSync,
 	renameSync,
 	statSync,
 	symlinkSync,
@@ -235,6 +236,35 @@ function restoreRecoveryLink(legacyPath: string, recoveryPath: string): void {
 	fsyncPath(dirname(legacyPath));
 }
 
+const LEGACY_RECOVERY_NAME =
+	/^legacy-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.legacy-recovery\.sqlite$/;
+
+function recoverInterruptedLegacyCutover(layout: StorageLayout, legacyPath: string): void {
+	const legacyInfo = lstatSync(legacyPath);
+	const tombstoned =
+		legacyInfo.isSymbolicLink() &&
+		resolve(dirname(legacyPath), readlinkSync(legacyPath)) ===
+			join(layout.controlDir, "legacy-db-tombstone");
+	if (!tombstoned && !legacyInfo.isFile()) return;
+
+	const recoveryPaths = readdirSync(layout.controlDir)
+		.filter((name) => LEGACY_RECOVERY_NAME.test(name))
+		.map((name) => join(layout.controlDir, name))
+		.filter((path) => lstatSync(path).isFile())
+		.sort();
+	if (recoveryPaths.length === 0) {
+		if (tombstoned) throw new Error("Interrupted legacy cutover recovery file is missing.");
+		return;
+	}
+
+	const identity = fileIdentity(tombstoned ? (recoveryPaths[0] as string) : legacyPath);
+	if (!recoveryPaths.every((path) => pathHasIdentity(path, identity))) {
+		throw new Error("Interrupted legacy cutover recovery files are ambiguous.");
+	}
+	if (tombstoned) restoreRecoveryLink(legacyPath, recoveryPaths.shift() as string);
+	for (const path of recoveryPaths) durableRemoveFile(path);
+}
+
 function pathHasIdentity(path: string, identity: FileIdentity): boolean {
 	try {
 		const current = statSync(path);
@@ -433,5 +463,7 @@ export async function cutoverLegacyLayoutIfNeeded(
 			"Multiple legacy database paths exist; cutover requires one unambiguous source.",
 		);
 	}
-	return cutoverLegacyDatabase({ layout, legacyPath: [...candidates][0] as string });
+	const legacyPath = [...candidates][0] as string;
+	recoverInterruptedLegacyCutover(layout, legacyPath);
+	return cutoverLegacyDatabase({ layout, legacyPath });
 }
