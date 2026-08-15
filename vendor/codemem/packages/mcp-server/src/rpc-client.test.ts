@@ -289,7 +289,7 @@ describe("MCP daemon RPC client", () => {
 			expect(
 				await client.request("POST /v1/backup/verify", { backupId: "mcp-backup" }),
 			).toMatchObject({ ok: true, result: { backupId: "mcp-backup", valid: true } });
-			writeFileSync(join(fixture.root, ".agent-memory.toml"), 'secret_regex = ["(a+)+$"]\n');
+			writeFileSync(join(fixture.root, ".agent-memory.toml"), 'secret_regex = ["["]\n');
 			const degradedReason = `${"a".repeat(26)}!`;
 			const originalBackup = ReadOnlyActor.prototype.backup;
 			const delayedBackup = vi

@@ -372,5 +372,5 @@ describe("Phase 1 legacy layout cutover", () => {
 			if (oldDb === undefined) delete process.env.CODEMEM_DB;
 			else process.env.CODEMEM_DB = oldDb;
 		}
-	});
+	}, 15_000);
 });

@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { warmRedactionWorker } from "@codemem/core";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildClaudeHookInjection } from "./claude-hook-inject.js";
 
 type Fixture = {
@@ -58,6 +59,8 @@ const fixtures: Fixture[] = [
 		},
 	},
 ];
+
+beforeAll(() => expect(warmRedactionWorker()).toBe(true));
 
 describe("claude-hook-inject output contract", () => {
 	let root: string;

@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { warmRedactionWorker } from "@codemem/core";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
 	buildClaudeHookInjection,
 	claudeHookInjectCommand,
@@ -15,6 +16,8 @@ const pack = (packText: string, items = 0, packTokens = 0): PackResult => ({
 	packTokens,
 });
 const delivered = async () => ({ via: "rpc" as const });
+
+beforeAll(() => expect(warmRedactionWorker()).toBe(true));
 
 describe("claude-hook-inject", () => {
 	let root: string;
