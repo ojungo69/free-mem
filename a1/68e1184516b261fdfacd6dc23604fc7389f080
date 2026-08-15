@@ -1,0 +1,21 @@
+vendor/codemem/packages/cli/src/commands/serve.test.ts
+  s_211aa7fe546c35::t_e3e503664c8ecd 2,19-22,29-32,57,60,123-237
+vendor/codemem/packages/cli/src/commands/serve.ts
+  s_211aa7fe546c35::t_1fd3184afcd09c 13,380-423,426,428-430
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a168e1184516b261fdfacd6dc23604fc7389f080",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
