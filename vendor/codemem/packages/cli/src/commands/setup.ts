@@ -11,7 +11,16 @@
  * Designed to be safe to run repeatedly (idempotent unless --force).
  */
 
-import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	existsSync,
+	fstatSync,
+	lstatSync,
+	mkdirSync,
+	openSync,
+	readFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -939,12 +948,41 @@ type SetupFileSnapshot = {
 function captureSetupFileSnapshots(paths: readonly string[]): SetupFileSnapshot[] {
 	const unique = [...new Set(paths.map((path) => resolve(path)))];
 	return unique.map((path) => {
-		if (!existsSync(path)) return { path, contents: null, mode: 0o600 };
-		const info = lstatSync(path);
-		if (!info.isFile() || info.isSymbolicLink()) {
-			throw new Error(`Setup transaction target is not a regular file: ${path}`);
+		let descriptor: number;
+		try {
+			descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+				try {
+					lstatSync(path);
+				} catch (currentError) {
+					if ((currentError as NodeJS.ErrnoException).code === "ENOENT") {
+						return { path, contents: null, mode: 0o600 };
+					}
+					throw currentError;
+				}
+				throw new Error(`Setup transaction target changed while being snapshotted: ${path}`);
+			}
+			throw error;
 		}
-		return { path, contents: readFileSync(path), mode: info.mode & 0o777 };
+		try {
+			const opened = fstatSync(descriptor);
+			if (!opened.isFile()) {
+				throw new Error(`Setup transaction target is not a regular file: ${path}`);
+			}
+			const contents = readFileSync(descriptor);
+			const current = lstatSync(path);
+			if (current.isSymbolicLink() || current.dev !== opened.dev || current.ino !== opened.ino) {
+				throw new Error(`Setup transaction target changed while being snapshotted: ${path}`);
+			}
+			return {
+				path,
+				contents,
+				mode: opened.mode & 0o777,
+			};
+		} finally {
+			closeSync(descriptor);
+		}
 	});
 }
 

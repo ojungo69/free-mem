@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveRuntimeDataDir } from "@codemem/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildCodememClaudeHookGroups,
 	buildCodememCodexHookGroups,
@@ -20,6 +20,24 @@ import {
 	setupCommand,
 	writeSetupInstallManifest,
 } from "./setup.js";
+
+const setupSnapshotRace = vi.hoisted(() => ({ path: "", replacementPath: "" }));
+
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		openSync(...args: Parameters<typeof actual.openSync>) {
+			const descriptor = actual.openSync(...args);
+			if (String(args[0]) === setupSnapshotRace.path) {
+				actual.renameSync(setupSnapshotRace.replacementPath, setupSnapshotRace.path);
+				setupSnapshotRace.path = "";
+				setupSnapshotRace.replacementPath = "";
+			}
+			return descriptor;
+		},
+	};
+});
 
 const HOOK_TIMEOUT = 5;
 
@@ -49,6 +67,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	setupSnapshotRace.path = "";
+	setupSnapshotRace.replacementPath = "";
 	if (savedCodexHome === undefined) delete process.env.CODEX_HOME;
 	else process.env.CODEX_HOME = savedCodexHome;
 	if (savedClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
@@ -697,6 +717,18 @@ describe("setup command options", () => {
 		expect(process.exitCode).toBe(1);
 		expect(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8")).toBe(beforeFailedLaneText);
 		expect(readFileSync(join(blockedDataDir, "control"), "utf8")).toBe("not-a-directory\n");
+
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		const configPath = join(opencodeDir, "opencode.jsonc");
+		const replacementPath = `${configPath}.race-replacement`;
+		const replacementText = '{"mcp":{"codemem":{"type":"local","command":["replacement"]}}}\n';
+		writeFileSync(replacementPath, replacementText, "utf8");
+		setupSnapshotRace.path = configPath;
+		setupSnapshotRace.replacementPath = replacementPath;
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(configPath, "utf8")).toBe(replacementText);
 	});
 });
 
