@@ -830,6 +830,16 @@ describe("Phase 1 daemon RPC", () => {
 			),
 		);
 		for (const success of successes) expect("result" in success).toBe(true);
+		expect(
+			"result" in
+				(await mcp("mcp-search", "POST /v1/search", {
+					requestId: "mcp-search",
+					mode: "search",
+					query: "demo",
+					limit: 5,
+					filters: { project: "demo" },
+				})),
+		).toBe(true);
 		const empty = await mcp("mcp-empty", "POST /v1/search", {
 			requestId: "mcp-empty",
 			mode: "search",
@@ -897,7 +907,13 @@ describe("Phase 1 daemon RPC", () => {
 				)
 				.all() as Attempt[];
 			expect(attempts).toHaveLength(11);
-			expect(attempts.every((attempt) => /^[0-9a-f-]{36}$/.test(attempt.attempt_id))).toBe(true);
+			expect(
+				attempts.every((attempt) =>
+					/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+						attempt.attempt_id,
+					),
+				),
+			).toBe(true);
 			const byRequest = new Map(attempts.map((attempt) => [attempt.request_id, attempt]));
 			for (const [requestId, surface] of successfulReads) {
 				expect(byRequest.get(requestId)).toMatchObject({

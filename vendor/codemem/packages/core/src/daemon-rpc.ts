@@ -1005,7 +1005,7 @@ function mcpAttemptId(surface: RetrievalSurface, requestId: string): string {
 		.update(`${surface}\0${requestId}`, "utf8")
 		.digest("hex")
 		.slice(0, 32);
-	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${(
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${(
 		(Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8
 	).toString(16)}${hex.slice(17, 20)}-${hex.slice(20)}`;
 }
