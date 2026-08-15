@@ -1,0 +1,35 @@
+vendor/codemem/packages/cli/src/commands/serve.test.ts
+  s_93f5757df1df49::t_623f41a6611837 107-109
+vendor/codemem/packages/cli/src/hook-runtime.test.ts
+  s_93f5757df1df49::t_0cec5069a0ab39 51-53
+vendor/codemem/packages/core/src/online-backup.test.ts
+  s_93f5757df1df49::t_951dc8c67547ad 3,19,517-528,708-725
+vendor/codemem/packages/core/src/viewer-auth.test.ts
+  s_211aa7fe546c35::t_722b6d1f8ead3a 1-9,47-68,79,81,83,103-107,114,116-117
+vendor/codemem/packages/viewer-server/src/auth.test.ts
+  s_93f5757df1df49::t_0b692e1a7c26ce 105-120,546-551,571-576
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b26ee6dff64d45936e5ccdcbf6690f1c80244c2b",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_93f5757df1df49": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a004d2-aa70-7463-92c8-f193f6f9379d",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
