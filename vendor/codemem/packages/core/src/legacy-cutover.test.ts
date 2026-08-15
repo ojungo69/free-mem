@@ -160,8 +160,13 @@ describe("Phase 1 legacy layout cutover", () => {
 			interrupted.layout.controlDir,
 			"legacy-00000000-0000-4000-8000-000000000001.legacy-recovery.sqlite",
 		);
+		const duplicateRecoveryPath = join(
+			interrupted.layout.controlDir,
+			"legacy-00000000-0000-4000-8000-000000000002.legacy-recovery.sqlite",
+		);
 		const tombstoneDir = join(interrupted.layout.controlDir, "legacy-db-tombstone");
 		linkSync(interrupted.legacyPath, recoveryPath);
+		linkSync(interrupted.legacyPath, duplicateRecoveryPath);
 		mkdirSync(tombstoneDir, { recursive: true, mode: 0o700 });
 		rmSync(interrupted.legacyPath);
 		symlinkSync(tombstoneDir, interrupted.legacyPath, "dir");
@@ -184,7 +189,47 @@ describe("Phase 1 legacy layout cutover", () => {
 				name.endsWith(".legacy-recovery.sqlite"),
 			),
 		).toEqual([]);
-	});
+
+		const missing = fixture();
+		const missingTombstone = join(missing.layout.controlDir, "legacy-db-tombstone");
+		mkdirSync(missingTombstone, { recursive: true, mode: 0o700 });
+		rmSync(missing.legacyPath);
+		symlinkSync(missingTombstone, missing.legacyPath, "dir");
+		await expect(startDaemon({ dataDir: missing.layout.dataDir })).rejects.toThrow(
+			/recovery file is missing/i,
+		);
+		expect(readCurrentDatabasePointer(missing.layout)).toBeNull();
+		expect(lstatSync(missing.legacyPath).isSymbolicLink()).toBe(true);
+
+		const ambiguous = fixture();
+		const ambiguousTombstone = join(ambiguous.layout.controlDir, "legacy-db-tombstone");
+		const ambiguousRecoveryPath = join(
+			ambiguous.layout.controlDir,
+			"legacy-00000000-0000-4000-8000-000000000003.legacy-recovery.sqlite",
+		);
+		const conflictingRecoveryPath = join(
+			ambiguous.layout.controlDir,
+			"legacy-00000000-0000-4000-8000-000000000004.legacy-recovery.sqlite",
+		);
+		linkSync(ambiguous.legacyPath, ambiguousRecoveryPath);
+		writeFileSync(conflictingRecoveryPath, "different database identity", { mode: 0o600 });
+		mkdirSync(ambiguousTombstone, { recursive: true, mode: 0o700 });
+		rmSync(ambiguous.legacyPath);
+		symlinkSync(ambiguousTombstone, ambiguous.legacyPath, "dir");
+		await expect(startDaemon({ dataDir: ambiguous.layout.dataDir })).rejects.toThrow(/ambiguous/i);
+		expect(readCurrentDatabasePointer(ambiguous.layout)).toBeNull();
+		expect(lstatSync(ambiguous.legacyPath).isSymbolicLink()).toBe(true);
+		expect(existsSync(ambiguousRecoveryPath)).toBe(true);
+		expect(existsSync(conflictingRecoveryPath)).toBe(true);
+		const preservedRecovery = ReadOnlyActor.open(ambiguousRecoveryPath);
+		try {
+			expect(preservedRecovery.prepare("SELECT value FROM legacy_probe").pluck().get()).toBe(
+				"preserved",
+			);
+		} finally {
+			preservedRecovery.close();
+		}
+	}, 15_000);
 
 	it("P1-T051-04-old-binary-split-brain", async () => {
 		const { layout, legacyPath } = fixture();

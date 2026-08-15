@@ -1,7 +1,27 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const childProcessMocks = vi.hoisted(() => ({
+	spawn: vi.fn(),
+	spawnSync: vi.fn(() => ({
+		pid: 0,
+		output: [null, "", ""],
+		stdout: "",
+		stderr: "",
+		status: 1,
+		signal: null,
+	})),
+}));
+
+vi.mock("node:child_process", async (importOriginal) => ({
+	...(await importOriginal<typeof import("node:child_process")>()),
+	spawn: childProcessMocks.spawn,
+	spawnSync: childProcessMocks.spawnSync,
+}));
+
 import {
 	buildForegroundRunnerArgs,
 	extractViewerPid,
@@ -12,6 +32,7 @@ import {
 	isSqliteVecLoadFailure,
 	pickViewerPidCandidate,
 	respondsLikeCodememViewer,
+	serveCommand,
 	sqliteVecFailureDiagnostics,
 	terminateTrustedViewerPid,
 } from "./serve.js";
@@ -25,9 +46,11 @@ import {
 describe("serve command option resolution", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
+		childProcessMocks.spawn.mockClear();
+		childProcessMocks.spawnSync.mockClear();
 	});
 
-	it("treats bare serve as a foreground start", () => {
+	it("treats bare serve as a foreground start", async () => {
 		const resolved = resolveLegacyServeInvocation({ host: "127.0.0.1", port: "38888" });
 		expect(resolved).toEqual({
 			mode: "start",
@@ -37,6 +60,67 @@ describe("serve command option resolution", () => {
 			port: 38888,
 			background: false,
 		});
+
+		const port = await new Promise<number>((resolve, reject) => {
+			const server = createServer();
+			server.once("error", reject);
+			server.listen(0, "127.0.0.1", () => {
+				const address = server.address();
+				if (!address || typeof address === "string") {
+					server.close();
+					reject(new Error("failed to reserve a loopback port"));
+					return;
+				}
+				server.close((error) => (error ? reject(error) : resolve(address.port)));
+			});
+		});
+		const root = mkdtempSync(join(tmpdir(), "codemem-serve-command-"));
+		const dbPath = join(root, "isolated.sqlite");
+		const originalExitCode = process.exitCode;
+		const originalDataDir = process.env.CODEMEM_DATA_DIR;
+		const originalDb = process.env.CODEMEM_DB;
+		const originalConfig = process.env.CODEMEM_CONFIG;
+		const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		try {
+			process.exitCode = 0;
+			await serveCommand.parseAsync(
+				["stop", "--host", "127.0.0.1", "--port", String(port), "--db-path", dbPath],
+				{ from: "user" },
+			);
+			expect(process.exitCode).toBe(0);
+			expect(output.mock.calls.flat().join("")).toContain("No background viewer found");
+			expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+
+			for (const action of ["start", "restart"]) {
+				output.mockClear();
+				process.exitCode = 0;
+				await serveCommand.parseAsync(
+					[action, "--host", "0.0.0.0", "--port", String(port), "--db-path", dbPath],
+					{ from: "user" },
+				);
+				expect(process.exitCode, action).toBe(1);
+				expect(output.mock.calls.flat().join(""), action).toContain(
+					`Refusing to bind the viewer to non-loopback address 0.0.0.0:${port}.`,
+				);
+				expect(childProcessMocks.spawn, action).not.toHaveBeenCalled();
+			}
+
+			output.mockClear();
+			process.exitCode = 0;
+			await serveCommand.parseAsync(["invalid-action"], { from: "user" });
+			expect(process.exitCode).toBe(1);
+			expect(output.mock.calls.flat().join("")).toContain("Unknown serve action: invalid-action");
+		} finally {
+			process.exitCode = originalExitCode;
+			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = originalDataDir;
+			if (originalDb === undefined) delete process.env.CODEMEM_DB;
+			else process.env.CODEMEM_DB = originalDb;
+			if (originalConfig === undefined) delete process.env.CODEMEM_CONFIG;
+			else process.env.CODEMEM_CONFIG = originalConfig;
+			output.mockRestore();
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("treats serve --background as a background start", () => {

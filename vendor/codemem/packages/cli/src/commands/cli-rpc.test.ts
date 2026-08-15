@@ -1,13 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashMutationPayload, NORMALIZED_SCHEMA_VERSION, startDaemon } from "@codemem/core";
 import { createMcpRpcClient } from "@codemem/mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { backupCommand } from "./backup.js";
+import { resolveOperationFilePath, runDaemonOperation } from "./daemon-operation.js";
 import { dbCommand } from "./db.js";
 import { distillCommand } from "./distill.js";
 import { embedCommand } from "./embed.js";
+import { exportMemoriesCommand } from "./export-memories.js";
+import { importMemoriesCommand } from "./import-memories.js";
 import { maintenanceCommand } from "./maintenance.js";
 import {
 	forgetMemoryCommand,
@@ -23,11 +35,14 @@ import { createStatusCommand } from "./status.js";
 
 const cleanup: string[] = [];
 const originalDataDir = process.env.CODEMEM_DATA_DIR;
+const originalProject = process.env.CODEMEM_PROJECT;
 const originalTrace = process.env.CODEMEM_DB_OPEN_TRACE;
 
 afterEach(() => {
 	if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
 	else process.env.CODEMEM_DATA_DIR = originalDataDir;
+	if (originalProject === undefined) delete process.env.CODEMEM_PROJECT;
+	else process.env.CODEMEM_PROJECT = originalProject;
 	if (originalTrace === undefined) delete process.env.CODEMEM_DB_OPEN_TRACE;
 	else process.env.CODEMEM_DB_OPEN_TRACE = originalTrace;
 	for (const path of cleanup.splice(0)) rmSync(path, { recursive: true, force: true });
@@ -46,12 +61,22 @@ describe("Phase 1 CLI RPC cutover", () => {
 	it("P1-T044-01-cli-rpc-map", async () => {
 		const { root, dataDir } = fixture("codemem-cli-rpc-map-");
 		process.env.CODEMEM_DATA_DIR = dataDir;
+		delete process.env.CODEMEM_PROJECT;
 		const output: string[] = [];
+		const humanOutput: string[] = [];
 		vi.spyOn(console, "log").mockImplementation((value) => output.push(String(value)));
 		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(process.stdout, "write").mockImplementation((value) => {
+			humanOutput.push(String(value));
+			return true;
+		});
 		const daemon = await startDaemon({ dataDir });
 		try {
 			const client = createMcpRpcClient({ dataDir, cwd: () => root });
+			const exportPath = join(root, "memories.json");
+			const filteredExportPath = join(root, "memories-filtered.json");
+			const importPath = join(root, "memories-import.json");
+			const invalidImportPath = join(root, "invalid-import.json");
 			await rememberMemoryCommand.parseAsync(
 				[
 					"--kind",
@@ -87,6 +112,77 @@ describe("Phase 1 CLI RPC cutover", () => {
 			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({
 				daemon: { state: "running" },
 				database: { state: "ready" },
+			});
+			await backupCommand.parseAsync(["create", "--reason", "cli-rpc-test", "--json"], {
+				from: "user",
+			});
+			const backupId = String(
+				(JSON.parse(output.at(-1) ?? "{}") as { backupId?: unknown }).backupId,
+			);
+			expect(backupId).toMatch(/^[A-Za-z0-9._-]+$/);
+			await backupCommand.parseAsync(["list", "--json"], { from: "user" });
+			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({
+				backups: [expect.objectContaining({ backupId, valid: true })],
+			});
+			await backupCommand.parseAsync(["verify", backupId, "--json"], { from: "user" });
+			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({ backupId, valid: true });
+
+			await exportMemoriesCommand.parseAsync([exportPath, "--all-projects"], { from: "user" });
+			expect(JSON.parse(readFileSync(exportPath, "utf8"))).toMatchObject({
+				memory_items: [expect.objectContaining({ id, title: "Use daemon RPC" })],
+			});
+			await exportMemoriesCommand.parseAsync(
+				[
+					filteredExportPath,
+					"--project",
+					"demo",
+					"--include-inactive",
+					"--since",
+					"2000-01-01T00:00:00.000Z",
+				],
+				{ from: "user" },
+			);
+			expect(JSON.parse(readFileSync(filteredExportPath, "utf8"))).toMatchObject({
+				export_metadata: {
+					include_inactive: true,
+					filters: { project: "demo", since: "2000-01-01T00:00:00.000Z" },
+				},
+				memory_items: [expect.objectContaining({ id })],
+			});
+			await importMemoriesCommand.parseAsync([exportPath, "--dry-run", "--json"], {
+				from: "user",
+			});
+			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({
+				memory_items: 1,
+				skipped: true,
+			});
+			writeFileSync(invalidImportPath, "{\n", { mode: 0o600 });
+			await importMemoriesCommand.parseAsync([invalidImportPath, "--json"], { from: "user" });
+			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({
+				error: "invalid_import",
+				message: expect.stringContaining("Operation ID:"),
+			});
+			expect(process.exitCode).toBe(1);
+			process.exitCode = 0;
+			await maintenanceCommand.parseAsync(["status", "--json"], { from: "user" });
+			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({ jobs: expect.any(Array) });
+			await maintenanceCommand.parseAsync(["status"], { from: "user" });
+			expect(humanOutput.join("")).toContain("codemem maintenance");
+			expect(humanOutput.join("")).toContain("completed");
+			const importPayload = JSON.parse(readFileSync(exportPath, "utf8")) as {
+				memory_items: Array<Record<string, unknown>>;
+			};
+			for (const memory of importPayload.memory_items) {
+				memory.import_key = `cli-rpc-import-${String(memory.id)}`;
+			}
+			writeFileSync(importPath, JSON.stringify(importPayload), { mode: 0o600 });
+			await importMemoriesCommand.parseAsync([importPath, "--remap-project", "imported-demo"], {
+				from: "user",
+			});
+			expect(humanOutput.join("")).toContain("Imported memories:  1");
+			await statsCommand.parseAsync(["--json"], { from: "user" });
+			expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({
+				database: { memory_items: 2 },
 			});
 
 			const event = {
@@ -284,6 +380,18 @@ describe("Phase 1 CLI RPC cutover", () => {
 			process.exitCode = 0;
 			await run();
 		}
+		expect(resolveOperationFilePath("~/x")).toBe(join(homedir(), "x"));
+		const absentOperation = await runDaemonOperation({}, "POST /v1/operations/export", {
+			outputPath: join(root, "never-exported.json"),
+			filters: {},
+		});
+		expect(absentOperation).toMatchObject({
+			ok: false,
+			operationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+			terminal: false,
+			error: { code: "daemon_unavailable", retryable: true },
+		});
+		expect(existsSync(join(root, "never-exported.json"))).toBe(false);
 
 		const paths = readdirSync(root, { recursive: true }).map(String);
 		expect(paths).not.toContain("db-open.jsonl");
