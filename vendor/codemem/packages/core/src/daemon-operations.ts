@@ -307,6 +307,36 @@ function parseJournal(raw: string, fileName: string): OperationJournal {
 	return { ...parsed, request } as OperationJournal;
 }
 
+export function recoverDaemonRestoresBeforeOpen(dataDir: string): void {
+	const directory = join(resolveStorageLayout(dataDir).controlDir, "operations");
+	ensurePrivateDirectory(directory);
+	for (const fileName of readdirSync(directory)
+		.filter((name) => name.endsWith(".json"))
+		.sort()) {
+		const path = join(directory, fileName);
+		const journal = parseJournal(readFileSync(path, "utf8"), fileName);
+		if (journal.kind !== "backup-restore" || journal.state === "committed") continue;
+		const request = journal.request as BackupRestoreRequest;
+		const recovered = recoverCanonicalRestoreResult({
+			dataDir,
+			operationId: journal.operationId,
+			payloadHash: journal.payloadHash,
+			backupId: request.backupId,
+		});
+		if (!recovered) continue;
+		durableReplaceFile(
+			path,
+			`${JSON.stringify({
+				...journal,
+				state: "committed",
+				result: recovered,
+				error: null,
+				updatedAt: new Date().toISOString(),
+			} satisfies OperationJournal)}\n`,
+		);
+	}
+}
+
 export class DaemonOperationService {
 	private readonly directory: string;
 	private readonly journals = new Map<string, OperationJournal>();

@@ -1091,7 +1091,23 @@ export function recoverCanonicalRestoreResult(input: {
 			"Restore operation ID already exists with a different payload.",
 		);
 	}
-	return completedRestoreResult(input, target, result);
+	const completed = completedRestoreResult(input, target, result);
+	if (
+		completed &&
+		(existsSync(`${target.destination}-wal`) || existsSync(`${target.destination}-shm`))
+	) {
+		throw new BackupRequestError(
+			"conflict",
+			"Restore artifact has WAL sidecars during durable recovery.",
+		);
+	}
+	if (completed && sha256File(target.destination) !== completed.artifactSha256) {
+		throw new BackupRequestError(
+			"conflict",
+			"Restore artifact hash mismatch during durable recovery.",
+		);
+	}
+	return completed;
 }
 
 function rebuildStagedDerivedIndexes(path: string, manifest: BackupManifest): void {

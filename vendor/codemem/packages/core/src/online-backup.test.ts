@@ -723,6 +723,11 @@ describe("Phase 1 online backup", () => {
 		writeFileSync(restoreResultPath, `${JSON.stringify(mismatchedRestoreResult)}\n`);
 		expect(() => recoverCanonicalRestoreResult(recoveryInput)).toThrow("different payload");
 		writeFileSync(restoreResultPath, restoreResult);
+		const restoreOperationPath = join(
+			handle.layout.controlDir,
+			"operations",
+			"restore-operation.json",
+		);
 		expect(() =>
 			core.restoreCanonicalBackup({
 				dataDir,
@@ -804,9 +809,62 @@ describe("Phase 1 online backup", () => {
 			heldSource.close();
 		}
 
+		const committedRestoreOperation = JSON.parse(
+			readFileSync(restoreOperationPath, "utf8"),
+		) as Record<string, unknown>;
+		const interruptedRestoreOperation = `${JSON.stringify({
+			...committedRestoreOperation,
+			state: "applying",
+			result: null,
+			error: null,
+		})}\n`;
+		writeFileSync(restoreOperationPath, interruptedRestoreOperation, { mode: 0o600 });
+		const expectInterruptedRestoreRejected = async (message: RegExp) => {
+			let started: Awaited<ReturnType<typeof core.startDaemon>> | null = null;
+			let failure: unknown = null;
+			try {
+				started = await core.startDaemon({ dataDir });
+				created.push(started);
+			} catch (error) {
+				failure = error;
+			}
+			expect(failure).toMatchObject({ message: expect.stringMatching(message) });
+			expect(started).toBeNull();
+			expect(core.readCurrentDatabasePointer(handle.layout)).toBe(newPointer);
+			expect(readFileSync(restoreOperationPath, "utf8")).toBe(interruptedRestoreOperation);
+		};
+		const pristineRestoreArtifact = readFileSync(stagedPath);
+		const tamper = WriterActor.open(stagedPath);
+		try {
+			tamper.pragma("journal_mode = DELETE");
+			tamper.exec("CREATE TABLE external_restore_tamper (value TEXT)");
+		} finally {
+			tamper.close();
+		}
+		const tamperedRestoreArtifactSha256 = core.sha256File(stagedPath);
+		expect(tamperedRestoreArtifactSha256).not.toBe(restoredArtifactSha256);
+		await expectInterruptedRestoreRejected(/restore artifact hash mismatch/i);
+		expect(core.sha256File(stagedPath)).toBe(tamperedRestoreArtifactSha256);
+		writeFileSync(stagedPath, pristineRestoreArtifact, { mode: 0o600 });
+		expect(core.sha256File(stagedPath)).toBe(restoredArtifactSha256);
+		const walPath = `${stagedPath}-wal`;
+		const shmPath = `${stagedPath}-shm`;
+		writeFileSync(walPath, "uncommitted restore write", { mode: 0o600 });
+		writeFileSync(shmPath, "uncommitted restore index", { mode: 0o600 });
+		await expectInterruptedRestoreRejected(/restore artifact has WAL sidecars/i);
+		expect(core.sha256File(stagedPath)).toBe(restoredArtifactSha256);
+		expect(existsSync(walPath)).toBe(true);
+		expect(existsSync(shmPath)).toBe(true);
+		rmSync(walPath);
+		rmSync(shmPath);
+
 		const restarted = await core.startDaemon({ dataDir });
 		created.push(restarted);
 		expect(core.readDaemonHealth(dataDir).status).toBe("ok");
+		expect(JSON.parse(readFileSync(restoreOperationPath, "utf8"))).toMatchObject({
+			state: "committed",
+			result: { artifactSha256: restoredArtifactSha256 },
+		});
 		let maintenanceMode = true;
 		for (let attempt = 0; attempt < 200 && maintenanceMode; attempt++) {
 			const health = await request(`restarted-health-${attempt}`, "GET /v1/health", {});
@@ -824,6 +882,8 @@ describe("Phase 1 online backup", () => {
 				body: "An idempotent replay must not erase this row.",
 			}),
 		).toMatchObject({ result: { receiptId: expect.any(String) } });
+		expect(existsSync(`${stagedPath}-wal`)).toBe(true);
+		expect(existsSync(`${stagedPath}-shm`)).toBe(true);
 		const replayed = await request("restore-replay", "POST /v1/backup/restore", {
 			operationId: "restore-operation",
 			payloadHash: core.restorePayloadHash("restore-source"),

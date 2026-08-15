@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
 import { DaemonJobService } from "./daemon-jobs.js";
-import { DaemonOperationService } from "./daemon-operations.js";
+import { DaemonOperationService, recoverDaemonRestoresBeforeOpen } from "./daemon-operations.js";
 import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
 import { cutoverLegacyLayoutIfNeeded } from "./legacy-cutover.js";
 import {
@@ -281,6 +281,7 @@ export async function startDaemon(options: {
 	try {
 		recoverStorageJournal(layout);
 		await cutoverLegacyLayoutIfNeeded(layout);
+		recoverDaemonRestoresBeforeOpen(layout.dataDir);
 		canonical = await openCanonicalWriter(layout);
 		const liveIdentity = readProcessIdentity(process.pid);
 		const identity: DaemonIdentity = {
