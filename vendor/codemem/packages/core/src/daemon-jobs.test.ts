@@ -32,17 +32,28 @@ describe("daemon jobs", () => {
 		db = connect(join(dir, "jobs.sqlite"));
 		initTestSchema(db);
 		const submittedAt = "2026-08-14T00:00:00.000Z";
+		db.exec(`
+			INSERT INTO sessions(started_at) VALUES ('2026-08-14T00:00:00.000Z');
+			INSERT INTO memory_items(
+				session_id, kind, title, body_text, active, created_at, updated_at,
+				metadata_json, files_read, scope_id
+			) VALUES (
+				last_insert_rowid(), 'discovery', 'Legacy memory', 'Needs backfill', 1,
+				'2026-08-14T00:00:00.000Z', '2026-08-14T00:00:00.000Z', '{}',
+				'["README.md"]', NULL
+			);
+		`);
 		db.prepare(
 			`INSERT INTO daemon_jobs(
 				job_id, kind, args_json, dry_run, state, attempts, max_attempts,
 				result_json, error_code, submitted_at, started_at, finished_at
-			) VALUES (?, 'narrative.backfill', '{}', 0, 'queued', 0, 1, NULL, NULL, ?, NULL, NULL)`,
+			) VALUES (?, 'scopes.backfill', '{"internal":true}', 0, 'queued', 0, 1, NULL, NULL, ?, NULL, NULL)`,
 		).run("00000000-0000-4000-8000-000000000001", submittedAt);
 		db.prepare(
 			`INSERT INTO daemon_jobs(
 				job_id, kind, args_json, dry_run, state, attempts, max_attempts,
 				result_json, error_code, submitted_at, started_at, finished_at
-			) VALUES (?, 'narrative.backfill', '{}', 0, 'running', 1, 1, NULL, NULL, ?, ?, NULL)`,
+			) VALUES (?, 'refs.backfill', '{}', 0, 'running', 1, 1, NULL, NULL, ?, ?, NULL)`,
 		).run("00000000-0000-4000-8000-000000000002", submittedAt, "2026-08-14T00:00:01.000Z");
 
 		store = new MemoryStore(db);
@@ -60,20 +71,19 @@ describe("daemon jobs", () => {
 		});
 		expect(service.get("00000000-0000-4000-8000-000000000099")).toBeNull();
 		expect(() => service.get("not-a-job-id")).toThrow("job id is invalid");
-		expect(
-			service.list({
-				kind: "narrative.backfill",
-				state: "failed",
-				submittedAfter: submittedAt,
-			}),
-		).toHaveLength(2);
+		expect(() => service.submit({ kind: "scopes.backfill", args: { internal: true } })).toThrow(
+			"Unknown job argument: internal",
+		);
+		service.startInternalBackfills();
+		await service.stop();
+		expect(service.list({ kind: "scopes.backfill" })).toHaveLength(2);
+		expect(service.list({ kind: "refs.backfill" })).toHaveLength(1);
 		expect(() => service.list({ kind: "unknown" })).toThrow("job kind is unsupported");
 		expect(() => service.list({ state: "cancelled" })).toThrow("job state is invalid");
 		expect(() => service.list({ submittedAfter: "yesterday" })).toThrow(
 			"submittedAfter must be an ISO timestamp",
 		);
 
-		await service.stop();
 		expect(() => service.submit({ kind: "db.init" })).toThrow("service is stopping");
 		expect(() => service.schedule(() => {})).toThrow("service is stopping");
 	});

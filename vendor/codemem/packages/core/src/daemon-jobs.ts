@@ -663,9 +663,19 @@ export class DaemonJobService {
 		for (const [kind, pending] of plans) {
 			if (!pending()) continue;
 			const latest = this.store.db
-				.prepare("SELECT state FROM daemon_jobs WHERE kind = ? ORDER BY submitted_at DESC LIMIT 1")
-				.get(kind) as { state: DaemonJobState } | undefined;
-			if (latest?.state === "queued" || latest?.state === "running" || latest?.state === "failed") {
+				.prepare(
+					`SELECT state, error_code, json_extract(args_json, '$.internal') AS internal
+					 FROM daemon_jobs WHERE kind = ? ORDER BY submitted_at DESC LIMIT 1`,
+				)
+				.get(kind) as
+				| { state: DaemonJobState; error_code: string | null; internal: number | null }
+				| undefined;
+			if (
+				latest?.state === "queued" ||
+				latest?.state === "running" ||
+				(latest?.state === "failed" &&
+					(latest.error_code !== "daemon_restarted" || latest.internal !== 1))
+			) {
 				continue;
 			}
 			this.enqueue(kind, { internal: true }, false);
