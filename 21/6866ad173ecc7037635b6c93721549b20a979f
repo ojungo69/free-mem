@@ -1,0 +1,33 @@
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_211aa7fe546c35::t_dd4dca44d78c75 10,833-868,906-908
+vendor/codemem/packages/mcp-server/src/content.ts
+  s_211aa7fe546c35::t_7e923e769f1cf9 7-15,20-28
+vendor/codemem/packages/mcp-server/src/server.test.ts
+  s_211aa7fe546c35::t_e2040e738c3175 80,82-88,92-94,96-110,112-113,184-201
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_859a33036addf6 1021,1035,1046,1050,1052,1054,1064,1069,1078,1081,1100-1103,1145
+vendor/codemem/packages/core/src/retrieval-ledger.test.ts
+  s_211aa7fe546c35::t_d4e39c18313c6a 1035,1044,1073,1075,1080-1088
+vendor/codemem/packages/core/src/retrieval-ledger.ts
+  s_211aa7fe546c35::t_d5c3e0a7309963 1205-1208,1210,1272-1273
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_5aa1cdd079c301 23,134,137,140-155
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_7f2b68bf0f7171 54,72,93,107-111,303-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "216866ad173ecc7037635b6c93721549b20a979f",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
