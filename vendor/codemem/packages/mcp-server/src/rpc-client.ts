@@ -25,6 +25,7 @@ import {
 } from "@codemem/core";
 
 const PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
+const PROCESS_REQUEST_SCOPE = randomUUID();
 
 const RPC_FIELDS = {
 	"GET /v1/health": [],
@@ -127,9 +128,15 @@ type PreparedRequest = {
 	redaction: SpoolRedactionMetadata;
 };
 
-export function mcpRequestId(toolName: string, requestId: string | number | undefined): string {
+export function mcpRequestId(
+	toolName: string,
+	requestId: string | number | undefined,
+	requestScope: string = PROCESS_REQUEST_SCOPE,
+): string {
 	const value = requestId === undefined ? randomUUID() : String(requestId);
-	return createHash("sha256").update(`${toolName}\0${value}`, "utf8").digest("hex");
+	return createHash("sha256")
+		.update(`${requestScope}\0${toolName}\0${value}`, "utf8")
+		.digest("hex");
 }
 
 export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcClient {

@@ -214,7 +214,10 @@ describe("MCP daemon RPC client", () => {
 		const originalDb = process.env.CODEMEM_DB;
 		try {
 			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
-			const body = rememberBody("spool-1");
+			const scopedId = mcpRequestId("memory_remember", "spool-1", "mcp-session-a");
+			expect(scopedId).toBe(mcpRequestId("memory_remember", "spool-1", "mcp-session-a"));
+			expect(scopedId).not.toBe(mcpRequestId("memory_remember", "spool-1", "mcp-session-b"));
+			const body = { ...rememberBody("spool-1"), idempotencyKey: scopedId };
 			const queued = await client.remember(body);
 			const duplicate = await client.remember(body);
 			expect(queued).toMatchObject({ ok: true, result: { status: "queued", duplicate: false } });

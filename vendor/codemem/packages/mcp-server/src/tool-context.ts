@@ -12,4 +12,5 @@ export interface ToolRegistrationContext {
 	client: McpRpcClient;
 	defaultProject: () => string | null;
 	envProject: () => string | null;
+	requestScope: string;
 }

@@ -7,7 +7,7 @@ import { filterSchema, memoryKindSchema } from "../schemas.js";
 import type { ToolRegistrationContext } from "../tool-context.js";
 
 export function registerItemTools(server: McpServer, context: ToolRegistrationContext): void {
-	const { client, envProject } = context;
+	const { client, envProject, requestScope } = context;
 
 	server.tool(
 		"memory_get",
@@ -21,7 +21,7 @@ export function registerItemTools(server: McpServer, context: ToolRegistrationCo
 			return rpcContent(
 				await client.request("GET /v1/memories/:id", {
 					id: args.memory_id,
-					requestId: mcpRequestId("memory_get", extra?.requestId),
+					requestId: mcpRequestId("memory_get", extra?.requestId, extra?.sessionId ?? requestScope),
 					...(filters ?? {}),
 				}),
 				(result) => result.item ?? { error: { code: "not_found", message: "Memory not found." } },
@@ -40,7 +40,11 @@ export function registerItemTools(server: McpServer, context: ToolRegistrationCo
 			const filters = buildFilters(args, null);
 			return rpcContent(
 				await client.request("POST /v1/search", {
-					requestId: mcpRequestId("memory_get_observations", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_get_observations",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					mode: "get_many",
 					ids: args.ids,
 					...(filters ? { filters } : {}),
@@ -64,7 +68,11 @@ export function registerItemTools(server: McpServer, context: ToolRegistrationCo
 			const project = resolveWriteProject({ project: args.project, envProject: envProject() });
 			return rpcContent(
 				await client.remember({
-					idempotencyKey: mcpRequestId("memory_remember", extra?.requestId),
+					idempotencyKey: mcpRequestId(
+						"memory_remember",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					kind: args.kind,
 					title: args.title,
 					body: args.body,

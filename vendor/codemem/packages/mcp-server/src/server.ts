@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { VERSION } from "@codemem/core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveDefaultProject } from "./project-scope.js";
@@ -12,6 +13,7 @@ export function createCodememMcpServer(options: CodememMcpServerOptions = {}): M
 	const server = new McpServer({ name: "codemem", version: VERSION });
 	const context: ToolRegistrationContext = {
 		client: options.client ?? createMcpRpcClient({ dataDir: options.dataDir }),
+		requestScope: randomUUID(),
 		// Resolve lazily per call so long-running servers pick up the current
 		// CODEMEM_PROJECT / process.cwd() rather than the value at construction.
 		defaultProject: () => {

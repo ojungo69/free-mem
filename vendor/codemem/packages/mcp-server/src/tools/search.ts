@@ -11,7 +11,7 @@ function items(result: Record<string, unknown>): { items: unknown[] } {
 }
 
 export function registerSearchTools(server: McpServer, context: ToolRegistrationContext): void {
-	const { client, defaultProject } = context;
+	const { client, defaultProject, requestScope } = context;
 
 	server.tool(
 		"memory_search",
@@ -25,13 +25,34 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 			const filters = buildFilters(args, defaultProject());
 			return rpcContent(
 				await client.request("POST /v1/search", {
-					requestId: mcpRequestId("memory_search", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_search",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					mode: "search",
 					query: args.query,
 					limit: args.limit,
 					...(filters ? { filters } : {}),
 				}),
-				items,
+				(result) => ({
+					items: Array.isArray(result.items)
+						? result.items.map((value) => {
+								if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+								const item = value as Record<string, unknown>;
+								return {
+									id: item.id,
+									title: item.title,
+									kind: item.kind,
+									body: item.body_text,
+									confidence: item.confidence,
+									score: item.score,
+									session_id: item.session_id,
+									metadata: item.metadata,
+								};
+							})
+						: [],
+				}),
 			);
 		},
 	);
@@ -48,7 +69,11 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 			const filters = buildFilters(args, defaultProject());
 			return rpcContent(
 				await client.request("POST /v1/search", {
-					requestId: mcpRequestId("memory_search_index", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_search_index",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					mode: "search_index",
 					query: args.query,
 					limit: args.limit,
@@ -83,7 +108,11 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 			const filters = buildFilters(args, defaultProject());
 			return rpcContent(
 				await client.request("POST /v1/search", {
-					requestId: mcpRequestId("memory_explain", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_explain",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					mode: "explain",
 					...(args.query ? { query: args.query } : {}),
 					...(args.ids ? { ids: args.ids } : {}),
@@ -107,7 +136,11 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 			const filters = buildFilters(args, defaultProject());
 			return rpcContent(
 				await client.request("POST /v1/search", {
-					requestId: mcpRequestId("memory_recent", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_recent",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					mode: "recent",
 					limit: args.limit,
 					...(filters ? { filters } : {}),
@@ -137,7 +170,11 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 			const filters = buildFilters(args, defaultProject());
 			return rpcContent(
 				await client.request("POST /v1/context/pack", {
-					requestId: mcpRequestId("memory_pack", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_pack",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					context: args.context,
 					...(args.limit === undefined ? {} : { limit: args.limit }),
 					...(args.token_budget === undefined ? {} : { tokenBudget: args.token_budget }),

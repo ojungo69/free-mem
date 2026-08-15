@@ -83,6 +83,26 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 				calls.push({ method, body });
 				if (method === "GET /v1/memories/:id") return { ok: true, result: { item: { id: 7 } } };
 				if (method === "POST /v1/context/pack") return { ok: true, result: { pack: {} } };
+				if (body.mode === "search") {
+					return {
+						ok: true,
+						result: {
+							items: [
+								{
+									id: 7,
+									title: "Result",
+									kind: "decision",
+									body_text: "Public body",
+									confidence: 0.9,
+									score: 0.8,
+									session_id: 3,
+									metadata: { source: "test" },
+									created_at: "internal-only",
+								},
+							],
+						},
+					};
+				}
 				if (body.mode === "explain") return { ok: true, result: { items: { items: [] } } };
 				return { ok: true, result: { items: [], status: "ok" } };
 			},
@@ -93,13 +113,17 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 		};
 		const connection = await connect(fake);
 		try {
+			await connection.client.callTool({
+				name: "memory_remember",
+				arguments: { kind: "decision", title: "title", body: "body" },
+			});
 			await connection.client.callTool({ name: "memory_status", arguments: {} });
 			await connection.client.callTool({ name: "memory_get", arguments: { memory_id: 7 } });
 			await connection.client.callTool({
 				name: "memory_get_observations",
 				arguments: { ids: [7] },
 			});
-			await connection.client.callTool({
+			const search = await connection.client.callTool({
 				name: "memory_search",
 				arguments: { query: "query" },
 			});
@@ -115,11 +139,6 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 			});
 			await connection.client.callTool({ name: "memory_expand", arguments: { ids: [7] } });
 			await connection.client.callTool({ name: "memory_pack", arguments: { context: "query" } });
-			await connection.client.callTool({
-				name: "memory_remember",
-				arguments: { kind: "decision", title: "title", body: "body" },
-			});
-
 			expect(calls.map(({ method, body }) => [method, body.mode ?? null])).toEqual([
 				["GET /v1/health", null],
 				["GET /v1/memories/:id", null],
@@ -132,6 +151,20 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 				["POST /v1/search", "expand"],
 				["POST /v1/context/pack", null],
 			]);
+			expect(JSON.parse((search.content[0] as { text: string }).text)).toEqual({
+				items: [
+					{
+						id: 7,
+						title: "Result",
+						kind: "decision",
+						body: "Public body",
+						confidence: 0.9,
+						score: 0.8,
+						session_id: 3,
+						metadata: { source: "test" },
+					},
+				],
+			});
 			expect(remembers).toEqual([
 				expect.objectContaining({
 					idempotencyKey: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -142,6 +175,18 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 				}),
 			]);
 			expect(calls.every(({ body }) => !Object.hasOwn(body, "store"))).toBe(true);
+
+			const secondSession = await connect(fake);
+			try {
+				await secondSession.client.callTool({
+					name: "memory_remember",
+					arguments: { kind: "decision", title: "title", body: "body" },
+				});
+			} finally {
+				await secondSession.close();
+			}
+			expect(remembers).toHaveLength(2);
+			expect(remembers[1]?.idempotencyKey).not.toBe(remembers[0]?.idempotencyKey);
 		} finally {
 			await connection.close();
 		}

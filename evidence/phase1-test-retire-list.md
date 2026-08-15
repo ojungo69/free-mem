@@ -267,7 +267,7 @@ final inventory にだけ存在し、A7 exact 名または事前登録 token で
 - packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > keeps the codex default RPC cutoff inside its hard cap and spools
 - packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > redacts project and working-set filters before pack RPC
 - packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > uses the declared Agent-specific outer watchdogs
-- packages/cli/src/commands/mcp.test.ts > mcp command > does not expose a direct database option
+- packages/cli/src/commands/mcp.test.ts > mcp command > routes the database option to the daemon-backed stdio server
 - packages/cli/src/commands/serve.test.ts > serve command option resolution > only resolves process inspection tools from fixed absolute paths
 - packages/cli/src/commands/setup-codex.test.ts > Codex hook runtime install > copies the standalone runtime and quotes its setup command
 - packages/cli/src/commands/setup-codex.test.ts > buildCodememCodexHookGroups — command base > uses a direct `codemem` call with the outer watchdog

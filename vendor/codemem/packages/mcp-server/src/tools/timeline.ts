@@ -7,7 +7,7 @@ import { filterSchema } from "../schemas.js";
 import type { ToolRegistrationContext } from "../tool-context.js";
 
 export function registerTimelineTools(server: McpServer, context: ToolRegistrationContext): void {
-	const { client, defaultProject } = context;
+	const { client, defaultProject, requestScope } = context;
 
 	server.tool(
 		"memory_timeline",
@@ -23,7 +23,11 @@ export function registerTimelineTools(server: McpServer, context: ToolRegistrati
 			const filters = buildFilters(args, defaultProject());
 			return rpcContent(
 				await client.request("POST /v1/search", {
-					requestId: mcpRequestId("memory_timeline", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_timeline",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					mode: "timeline",
 					...(args.query ? { query: args.query } : {}),
 					...(args.memory_id === undefined ? {} : { memoryId: args.memory_id }),
@@ -55,7 +59,11 @@ export function registerTimelineTools(server: McpServer, context: ToolRegistrati
 			const filters = buildFilters(args, filterDefaultProject);
 			return rpcContent(
 				await client.request("POST /v1/search", {
-					requestId: mcpRequestId("memory_expand", extra?.requestId),
+					requestId: mcpRequestId(
+						"memory_expand",
+						extra?.requestId,
+						extra?.sessionId ?? requestScope,
+					),
 					mode: "expand",
 					ids: args.ids,
 					depthBefore: args.depth_before,

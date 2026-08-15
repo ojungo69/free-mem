@@ -4,14 +4,18 @@ import { mcpCommand } from "./mcp.js";
 const stdioImportMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@codemem/mcp/stdio", () => {
-	stdioImportMock();
+	stdioImportMock(process.env.CODEMEM_DB);
 	return {};
 });
+
+const originalDb = process.env.CODEMEM_DB;
 
 describe("mcp command", () => {
 	afterEach(() => {
 		stdioImportMock.mockClear();
 		process.exitCode = undefined;
+		if (originalDb === undefined) delete process.env.CODEMEM_DB;
+		else process.env.CODEMEM_DB = originalDb;
 	});
 
 	it("keeps stdio mode as the default command", () => {
@@ -24,12 +28,12 @@ describe("mcp command", () => {
 		expect(httpCommand).toBeUndefined();
 	});
 
-	it("does not expose a direct database option", () => {
-		expect(mcpCommand.options.some((option) => option.long === "--db-path")).toBe(false);
+	it("routes the database option to the daemon-backed stdio server", () => {
+		expect(mcpCommand.options.some((option) => option.long === "--db-path")).toBe(true);
 	});
 
 	it("runs stdio mode by default", async () => {
-		await mcpCommand.parseAsync([], { from: "user" });
-		expect(stdioImportMock).toHaveBeenCalledTimes(1);
+		await mcpCommand.parseAsync(["--db-path", "/tmp/codemem-mcp.sqlite"], { from: "user" });
+		expect(stdioImportMock).toHaveBeenCalledWith("/tmp/codemem-mcp.sqlite");
 	});
 });
