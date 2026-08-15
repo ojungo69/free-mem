@@ -1,0 +1,21 @@
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_211aa7fe546c35::t_9671c843cceb3b 413-417,856-867
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_211aa7fe546c35::t_99dbea11a16758 180,183,185,187-190,192,196-200,202-203,205-206,465
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "87195f5a3667402c16ec9e278f5a1a159eef718c",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
