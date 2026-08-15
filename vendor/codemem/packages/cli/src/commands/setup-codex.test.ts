@@ -1062,11 +1062,18 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 describe("installCodex — malformed hooks.json", () => {
 	it("returns false and does not clobber an unparseable hooks.json", () => {
 		const broken = "{ this is not valid json ";
-		writeFileSync(join(codexHome, "hooks.json"), broken, "utf-8");
+		const hooksPath = join(codexHome, "hooks.json");
+		writeFileSync(hooksPath, broken, "utf-8");
 
 		expect(installCodex(false)).toBe(false);
 		// File left untouched (no overwrite, no backup-then-replace).
-		expect(readFileSync(join(codexHome, "hooks.json"), "utf-8")).toBe(broken);
+		expect(readFileSync(hooksPath, "utf-8")).toBe(broken);
+
+		for (const malformedRoot of ["null\n", "[]\n"]) {
+			writeFileSync(hooksPath, malformedRoot, "utf-8");
+			expect(installCodex(false)).toBe(false);
+			expect(readFileSync(hooksPath, "utf-8")).toBe(malformedRoot);
+		}
 
 		mkdirSync(claudeHome, { recursive: true });
 		const settingsPath = join(claudeHome, "settings.json");

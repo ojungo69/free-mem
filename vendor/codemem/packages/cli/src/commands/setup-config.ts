@@ -159,14 +159,22 @@ export function resolveOpencodeConfigPath(configDir: string): string {
 	return jsoncPath;
 }
 
+export function parseObjectJson(contents: string): Record<string, unknown> {
+	const value: unknown = JSON.parse(contents);
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("JSON root must be an object");
+	}
+	return value as Record<string, unknown>;
+}
+
 export function loadJsoncConfig(path: string): Record<string, unknown> {
 	if (!existsSync(path)) return {};
 	const raw = readFileSync(path, "utf-8");
 	try {
-		return JSON.parse(raw) as Record<string, unknown>;
+		return parseObjectJson(raw);
 	} catch {
 		const cleaned = stripTrailingCommas(stripJsonComments(raw));
-		return JSON.parse(cleaned) as Record<string, unknown>;
+		return parseObjectJson(cleaned);
 	}
 }
 

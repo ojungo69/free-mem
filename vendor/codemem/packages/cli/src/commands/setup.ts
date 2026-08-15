@@ -34,6 +34,7 @@ import {
 	atomicReplaceSetupFile,
 	captureSetupFileSnapshots,
 	loadJsoncConfig,
+	parseObjectJson,
 	recordSetupFileMutation,
 	resolveOpencodeConfigPath,
 	type SetupFileMutation,
@@ -780,7 +781,7 @@ function installCodexHooks(
 	let config: Record<string, unknown> = {};
 	if (existsSync(hooksPath)) {
 		try {
-			config = JSON.parse(readFileSync(hooksPath, "utf-8")) as Record<string, unknown>;
+			config = parseObjectJson(readFileSync(hooksPath, "utf-8"));
 		} catch (err) {
 			p.log.error(
 				`Failed to parse ${hooksPath}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1057,7 +1058,7 @@ function preflightCodex(force: boolean, runtime: SetupRuntime): boolean {
 	if (!existsSync(hooksPath)) return true;
 	let config: Record<string, unknown>;
 	try {
-		config = JSON.parse(readFileSync(hooksPath, "utf8")) as Record<string, unknown>;
+		config = parseObjectJson(readFileSync(hooksPath, "utf8"));
 	} catch (error) {
 		p.log.error(
 			`Failed to parse ${hooksPath}: ${error instanceof Error ? error.message : String(error)}`,

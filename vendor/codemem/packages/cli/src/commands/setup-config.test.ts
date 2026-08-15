@@ -118,5 +118,10 @@ describe("loadJsoncConfig", () => {
 			),
 		).toThrow("Setup target changed before its first write");
 		expect(readFileSync(racedPath, "utf8")).toBe('{"value":"concurrent"}\n');
+
+		for (const malformedRoot of ["null\n", "[]\n"]) {
+			writeFileSync(configPath, malformedRoot, "utf8");
+			expect(() => loadJsoncConfig(configPath)).toThrow("JSON root must be an object");
+		}
 	});
 });
