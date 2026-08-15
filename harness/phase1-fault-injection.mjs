@@ -5,9 +5,12 @@ import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	chmodSync,
+	closeSync,
 	existsSync,
+	fstatSync,
 	mkdirSync,
 	mkdtempSync,
+	openSync,
 	readFileSync,
 	readdirSync,
 	realpathSync,
@@ -384,9 +387,15 @@ async function surfacePrivacyGate(core, root) {
 	const entries = [];
 	for (const name of ready) {
 		const path = join(spool.readyDir, name);
-		assert.equal(statSync(path).mode & 0o777, 0o600, `${name} is not owner-only`);
-		assertNoNeedles(readFileSync(path), [secret, privateText, "<private>"], name);
-		entries.push(JSON.parse(readFileSync(path, "utf8")));
+		const descriptor = openSync(path, "r");
+		try {
+			const content = readFileSync(descriptor);
+			assert.equal(fstatSync(descriptor).mode & 0o777, 0o600, `${name} is not owner-only`);
+			assertNoNeedles(content, [secret, privateText, "<private>"], name);
+			entries.push(JSON.parse(content.toString("utf8")));
+		} finally {
+			closeSync(descriptor);
+		}
 	}
 	const surfaceEvents = entries.filter((entry) => entry.method === "POST /v1/events");
 	assert.equal(surfaceEvents.length, 3);

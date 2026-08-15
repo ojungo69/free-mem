@@ -305,9 +305,10 @@ const NUMBER_FILTER_FIELDS = new Set([
 ]);
 
 class RpcRequestError extends Error {
-	readonly code = "invalid_request";
-
-	constructor(message: string) {
+	constructor(
+		message: string,
+		readonly code = "invalid_request",
+	) {
 		super(message);
 		this.name = "RpcRequestError";
 	}
@@ -920,11 +921,12 @@ function handleForget(
 		idempotencyKey: String(body.requestId),
 		payload: { id, expectedRevision },
 		apply: () => {
+			const current = ctx.store.get(id);
+			if (!current) {
+				throw new RpcRequestError(`Memory ${id} not found.`, "not_found");
+			}
 			if (expectedRevision !== undefined) {
-				const current = ctx.writer
-					.prepare("SELECT rev FROM memory_items WHERE id = ? LIMIT 1")
-					.get(id) as { rev: number } | undefined;
-				if (!current || Number(current.rev ?? 0) !== expectedRevision) {
+				if (Number(current.rev ?? 0) !== expectedRevision) {
 					throw new Error("revision mismatch.");
 				}
 			}

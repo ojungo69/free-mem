@@ -75,10 +75,11 @@ export function sanitizeRuleLine(text: string | null | undefined): string | null
 	let rule = firstLine
 		.replace(/^[-*+]\s+/, "") // strip markdown bullet
 		.replace(/^\d+[.)]\s+/, "") // strip numbered list marker
-		.replace(/^["'`]+/, "") // strip leading quotes/backticks
-		.replace(/["'`]+$/, "") // strip trailing quotes/backticks
-		.replace(/\s+/g, " ")
-		.trim();
+		.replace(/^["'`]+/, ""); // strip leading quotes/backticks
+	while (rule.endsWith('"') || rule.endsWith("'") || rule.endsWith("`")) {
+		rule = rule.slice(0, -1);
+	}
+	rule = rule.replace(/\s+/g, " ").trim();
 
 	if (!rule || rule.toUpperCase() === SKIP_TOKEN) return null;
 	if (rule.length > MAX_RULE_CHARS) rule = `${rule.slice(0, MAX_RULE_CHARS - 1).trimEnd()}…`;

@@ -437,6 +437,28 @@ describe("Phase 1 mutation dispatcher", () => {
 	it("P1-T036-07-delete-revision-is-part-of-idempotency", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
+		const missing = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				method: "DELETE /v1/memories/:id",
+				body: { id: 999_999, requestId: "delete-missing" },
+			}),
+		);
+		expect(missing).toMatchObject({
+			error: { code: "not_found", retryable: false },
+		});
+		const receiptReader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		try {
+			expect(
+				receiptReader
+					.prepare(
+						"SELECT COUNT(*) AS count FROM mutation_receipts WHERE method = ? AND idempotency_key = ?",
+					)
+					.get("DELETE /v1/memories/:id", "delete-missing"),
+			).toEqual({ count: 0 });
+		} finally {
+			receiptReader.close();
+		}
 		const remembered = await core.callDaemonRpc(
 			handle.socketPath,
 			handshake({

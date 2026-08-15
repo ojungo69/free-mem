@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeSync } from "node:fs";
+import {
+	closeSync,
+	existsSync,
+	fstatSync,
+	lstatSync,
+	openSync,
+	readFileSync,
+	realpathSync,
+	statSync,
+	writeSync,
+} from "node:fs";
 import { basename, dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:path";
 import {
 	type AgentMemoryConfig,
@@ -132,7 +142,8 @@ function configuredPathMatches(
 	return patterns.some((rawPattern) => {
 		const pattern = rawPattern.trim().replaceAll("\\", "/").replace(/^\.\//, "");
 		if (!pattern) return false;
-		const prefix = pattern.replace(/\/+$/, "");
+		let prefix = pattern;
+		while (prefix.endsWith("/")) prefix = prefix.slice(0, -1);
 		return candidates.some((candidate) => {
 			if (candidate === prefix || candidate.startsWith(`${prefix}/`)) return true;
 			try {
@@ -165,15 +176,22 @@ function loadHookPolicy(payload: Record<string, unknown>): {
 	const root = projectRoot(payload.cwd);
 	if (!root) return { ignored: false, localOnly: false };
 	const configPath = join(root, ".agent-memory.toml");
-	if (!existsSync(configPath)) return { ignored: false, localOnly: false };
 	let config: AgentMemoryConfig;
 	try {
-		const stat = statSync(configPath);
-		if (!stat.isFile() || stat.size > PROJECT_CONFIG_MAX_BYTES) {
-			return { ignored: true, localOnly: false };
+		const descriptor = openSync(configPath, "r");
+		try {
+			const stat = fstatSync(descriptor);
+			if (!stat.isFile() || stat.size > PROJECT_CONFIG_MAX_BYTES) {
+				return { ignored: true, localOnly: false };
+			}
+			config = parseAgentMemoryToml(readFileSync(descriptor, "utf8"));
+		} finally {
+			closeSync(descriptor);
 		}
-		config = parseAgentMemoryToml(readFileSync(configPath, "utf8"));
-	} catch {
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			return { ignored: false, localOnly: false };
+		}
 		return { ignored: true, localOnly: false };
 	}
 	const paths = hookPaths(payload);
@@ -206,7 +224,7 @@ function promptFromEvent(event: Record<string, unknown>): string {
 		return "";
 	}
 	const text = (adapterPayload as Record<string, unknown>).text;
-	return typeof text === "string" ? text.trim().replace(/\n/g, " ") : "";
+	return typeof text === "string" ? text.trim().replaceAll("\n", " ") : "";
 }
 
 function reportSpoolWarning(message: string): void {
