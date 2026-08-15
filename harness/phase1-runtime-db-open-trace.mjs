@@ -530,7 +530,7 @@ async function runSurfaceBatch(label, fixture, daemonPid) {
 			fixture.workspace,
 		),
 		startCaptured("mcp", [mcpPath], `${mcpInput}\n`, fixture.env, fixture.workspace),
-		startCaptured("cli", [cliPath, "backup", "list", "--json"], "", fixture.env, fixture.workspace),
+		startCaptured("cli", [cliPath, "status", "--json"], "", fixture.env, fixture.workspace),
 		startCaptured(
 			"viewer",
 			[scriptPath, "__viewer", fixture.dataDir],
