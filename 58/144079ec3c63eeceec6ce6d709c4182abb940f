@@ -1,0 +1,108 @@
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_d5bcb078408a71 6651,6658-6661,6675-6679,6704-6707,6717-6720,6799,6909-6912,7006-7009,7020,7024,7028,7046-7048,7097-7100,7209-7212,7216,7220,7224,7237-7239
+  s_211aa7fe546c35::t_b0329e931f1a69 2151-2168,2870,2909,3034,3524,3827,3882,5906-5909,6209-6210,6397,6448
+vendor/codemem/packages/cli/src/commands/claude-hook-file-context.test.ts
+  s_211aa7fe546c35::t_5b112c5d4443d1 63
+  s_04c2b4c4c07349::t_90b02c21a23340 57,60
+  s_211aa7fe546c35::t_a67881f646444d 62
+vendor/codemem/packages/core/src/storage-layout.ts
+  s_04c2b4c4c07349::t_5b03723562a6de 1-2
+  s_211aa7fe546c35::t_2063d303a44d3d 7,24-54
+  s_211aa7fe546c35::t_560ed5a7f68880 4
+vendor/codemem/packages/core/src/storage.ts
+  s_04c2b4c4c07349::t_301f263eaca6b3 12-17,29
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest.test.ts
+  s_04c2b4c4c07349::t_76d13e6887b2d4 35,44,48
+  s_211aa7fe546c35::t_5b8ff570d556f8 46
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.test.ts
+  s_04c2b4c4c07349::t_2b0429938764f4 56,65,73
+  s_211aa7fe546c35::t_4715f420c5048d 67-71
+vendor/codemem/packages/core/src/index.ts
+  s_04c2b4c4c07349::t_efdad50a86d1e0 547
+vendor/codemem/packages/cli/src/commands/codex-hook-ingest.ts
+  s_211aa7fe546c35::t_855f099a981228 7,51-54
+vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts
+  s_04c2b4c4c07349::t_a9f4a24684ae61 27,40-45,80-81,302,364
+vendor/codemem/packages/cli/src/commands/codex-hook-ingest.test.ts
+  s_04c2b4c4c07349::t_86d1e296f81664 12,20,24
+  s_211aa7fe546c35::t_2d9451496a0bd0 22
+vendor/codemem/packages/cli/src/commands/claude-hook-inject.ts
+  s_211aa7fe546c35::t_6252fc68788250 4,90,108,112,116,133-137,139
+vendor/codemem/packages/viewer-server/src/rpc-client.ts
+  s_04c2b4c4c07349::t_a0076e9db5e982 8,33
+vendor/codemem/packages/cli/src/commands/claude-hook-file-context.ts
+  s_211aa7fe546c35::t_05c2d8cff123cb 13,263,275,297-303,339,356,464
+vendor/codemem/packages/cli/src/commands/serve.test.ts
+  s_211aa7fe546c35::t_c7824a0c911e6a 3-5,34,97-122
+  s_211aa7fe546c35::t_e3e503664c8ecd 239
+vendor/codemem/packages/cli/src/hook-core.ts
+  s_04c2b4c4c07349::t_4a0733ef1feca7 35-39
+vendor/codemem/packages/cli/src/commands/claude-hook-ingest.ts
+  s_211aa7fe546c35::t_0bc113a59241ab 6,57-60
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_04c2b4c4c07349::t_102bb585add17d 32,621
+vendor/codemem/packages/cli/src/commands/codex-hook-inject.ts
+  s_211aa7fe546c35::t_47cb37581e0ebb 4,105,109,113,117,133-137,139
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_04c2b4c4c07349::t_97db49a3f280c7 17,120,136
+vendor/codemem/packages/cli/src/shared-options.ts
+  s_04c2b4c4c07349::t_3b4b6ef39ec8fe 11,34
+vendor/codemem/packages/core/src/legacy-cutover.ts
+  s_04c2b4c4c07349::t_4fb2ff6a67eb68 26
+  s_03f49cd98a2d32::t_a1e0324a31f575 447-452
+vendor/codemem/packages/cli/vite.hook.config.ts
+  s_04c2b4c4c07349::t_68048fc7d2f720 15
+vendor/codemem/packages/cli/src/commands/hook-thin-client.test.ts
+  s_211aa7fe546c35::t_af309341e47237 29-34,38,44-45,128-184
+  s_04c2b4c4c07349::t_0abd1c3996795d 17
+vendor/codemem/packages/core/src/legacy-cutover.test.ts
+  s_211aa7fe546c35::t_b4224409d82b11 23-27,35,38-48,320-374
+  s_211aa7fe546c35::t_d667c04b8b7d42 171,187-189,191-210,212-214
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_211aa7fe546c35::t_e7985c0a3d7b2f 4,26-27,29,34-36,42-46,124-130
+vendor/codemem/packages/cli/src/hook-runtime.test.ts
+  s_04c2b4c4c07349::t_cf708e17ea5b02 112-121
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_04c2b4c4c07349::t_7d5a7dd284ca39 17
+  s_211aa7fe546c35::t_cd558171834b95 213-214,233-253,255-258
+vendor/codemem/packages/cli/src/commands/codex-hook-inject.test.ts
+  s_04c2b4c4c07349::t_dd1cf653f75a69 53,61,69
+  s_211aa7fe546c35::t_7f9df07fc0ca53 63-67
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_6936fc415350d8 2151-2168,2870,2909,3034,3524,3827,3882,5906-5909,6209-6210,6397,6448
+  s_211aa7fe546c35::t_2485e1acf4c1e7 6651,6658-6661,6675-6679,6704-6707,6717-6720,6799,6909-6912,7006-7009,7020,7024,7028,7046-7048,7097-7100,7209-7212,7216,7220,7224,7237-7239
+vendor/codemem/packages/cli/src/commands/db.test.ts
+  s_211aa7fe546c35::t_57cae4a3a48707 188-189,191-192,210,213-215,228-229,231-232,250,253-255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "58144079ec3c63eeceec6ce6d709c4182abb940f",
+  "prompts": {},
+  "sessions": {
+    "s_03f49cd98a2d32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0050f-fe4a-7163-9064-ff794090ff4e",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_04c2b4c4c07349": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0050f-d1b9-72c0-8409-84b496ed3349",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
