@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { resolveRuntimeDataDir } from "@codemem/core";
+import { acquireSpoolLock, resolveRuntimeDataDir } from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildCodememClaudeHookGroups,
@@ -30,12 +30,29 @@ import {
 	writeSetupInstallManifest,
 } from "./setup.js";
 
-const setupSnapshotRace = vi.hoisted(() => ({ path: "", replacementPath: "" }));
+const setupSnapshotRace = vi.hoisted(() => ({
+	path: "",
+	replacementPath: "",
+	afterRename: "",
+	afterTempWrite: "",
+	beforeLink: "",
+	mutationPath: "",
+	mutationText: "",
+}));
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
 	return {
 		...actual,
+		writeFileSync(...args: Parameters<typeof actual.writeFileSync>) {
+			actual.writeFileSync(...args);
+			if (String(args[0]).startsWith(`${setupSnapshotRace.afterTempWrite}.${process.pid}.`)) {
+				actual.writeFileSync(setupSnapshotRace.mutationPath, setupSnapshotRace.mutationText);
+				setupSnapshotRace.afterTempWrite = "";
+				setupSnapshotRace.mutationPath = "";
+				setupSnapshotRace.mutationText = "";
+			}
+		},
 		openSync(...args: Parameters<typeof actual.openSync>) {
 			const descriptor = actual.openSync(...args);
 			if (String(args[0]) === setupSnapshotRace.path) {
@@ -44,6 +61,24 @@ vi.mock("node:fs", async (importOriginal) => {
 				setupSnapshotRace.replacementPath = "";
 			}
 			return descriptor;
+		},
+		renameSync(...args: Parameters<typeof actual.renameSync>) {
+			actual.renameSync(...args);
+			if (String(args[1]) === setupSnapshotRace.afterRename) {
+				actual.writeFileSync(setupSnapshotRace.mutationPath, setupSnapshotRace.mutationText);
+				setupSnapshotRace.afterRename = "";
+				setupSnapshotRace.mutationPath = "";
+				setupSnapshotRace.mutationText = "";
+			}
+		},
+		linkSync(...args: Parameters<typeof actual.linkSync>) {
+			if (String(args[1]) === setupSnapshotRace.beforeLink) {
+				actual.writeFileSync(setupSnapshotRace.mutationPath, setupSnapshotRace.mutationText);
+				setupSnapshotRace.beforeLink = "";
+				setupSnapshotRace.mutationPath = "";
+				setupSnapshotRace.mutationText = "";
+			}
+			actual.linkSync(...args);
 		},
 	};
 });
@@ -78,6 +113,11 @@ beforeEach(() => {
 afterEach(() => {
 	setupSnapshotRace.path = "";
 	setupSnapshotRace.replacementPath = "";
+	setupSnapshotRace.afterRename = "";
+	setupSnapshotRace.afterTempWrite = "";
+	setupSnapshotRace.beforeLink = "";
+	setupSnapshotRace.mutationPath = "";
+	setupSnapshotRace.mutationText = "";
 	if (savedCodexHome === undefined) delete process.env.CODEX_HOME;
 	else process.env.CODEX_HOME = savedCodexHome;
 	if (savedClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
@@ -178,6 +218,24 @@ describe("installCodex — fresh CODEX_HOME", () => {
 		expect(manifest.targets.every((target) => /^[a-f0-9]{64}$/.test(target.fingerprint))).toBe(
 			true,
 		);
+		const manifestBeforeContention = readFileSync(
+			join(dataDir, "control", "install-manifest.json"),
+			"utf8",
+		);
+		const heldSetupLock = acquireSpoolLock(dataDir);
+		try {
+			expect(() =>
+				writeSetupInstallManifest(
+					[{ id: "codex-hooks", path: join(codexHome, "hooks.json") }],
+					dataDir,
+				),
+			).toThrow("Spool lock deadline exceeded");
+			expect(readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8")).toBe(
+				manifestBeforeContention,
+			);
+		} finally {
+			heldSetupLock.close();
+		}
 		const firstRuntimeFingerprint = manifest.targets.find(
 			(target) => target.id === "cli-runtime",
 		)?.fingerprint;
@@ -422,6 +480,16 @@ describe("installCodex — non-destructive merge", () => {
 		expect(readConfigToml()).toBe(custom);
 		expect(installCodex(true)).toBe(true);
 		expect(readConfigToml()).toContain('[mcp_servers.other]\ncommand = "other-cmd"');
+
+		for (const key of ["mcp_servers.codemem", '"mcp_servers".codemem']) {
+			const dotted = `${key} = { command = "custom", args = ["mcp"] }\n\n${original}`;
+			writeFileSync(join(codexHome, "config.toml"), dotted, "utf-8");
+			expect(installCodex(false)).toBe(false);
+			expect(readConfigToml()).toBe(dotted);
+			expect(installCodex(true)).toBe(true);
+			expect(readConfigToml()).not.toContain(`${key} =`);
+			expect(readConfigToml()).toContain('[mcp_servers.other]\ncommand = "other-cmd"');
+		}
 	});
 
 	it("preserves an unrelated user SessionStart hook and adds the codemem hook", () => {
@@ -775,6 +843,32 @@ describe("setup command options", () => {
 		expect(manifest.targets.every((target) => /^[a-f0-9]{64}$/.test(target.fingerprint))).toBe(
 			true,
 		);
+		const manifestBeforeContention = readFileSync(
+			join(dataDir, "control", "install-manifest.json"),
+			"utf8",
+		);
+		const configBeforeContention = readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8");
+		const wrapperBeforeContention = readFileSync(
+			join(opencodeDir, "plugins", "codemem.js"),
+			"utf8",
+		);
+		const heldSetupLock = acquireSpoolLock(dataDir);
+		try {
+			process.exitCode = undefined;
+			await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+			expect(process.exitCode).toBe(1);
+			expect(readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8")).toBe(
+				manifestBeforeContention,
+			);
+			expect(readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8")).toBe(
+				configBeforeContention,
+			);
+			expect(readFileSync(join(opencodeDir, "plugins", "codemem.js"), "utf8")).toBe(
+				wrapperBeforeContention,
+			);
+		} finally {
+			heldSetupLock.close();
+		}
 
 		const blockedDataDir = join(codexHome, "blocked-setup-data");
 		mkdirSync(blockedDataDir, { recursive: true });
@@ -805,6 +899,70 @@ describe("setup command options", () => {
 		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
 		expect(process.exitCode).toBe(1);
 		expect(readFileSync(configPath, "utf8")).toBe(replacementText);
+		writeFileSync(configPath, '{"plugin":["codemem"],"mcp":{}}\n', "utf8");
+		const interleavedConfig = '{"mcp":{},"user":"concurrent"}\n';
+		setupSnapshotRace.afterRename = configPath;
+		setupSnapshotRace.mutationPath = configPath;
+		setupSnapshotRace.mutationText = interleavedConfig;
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(configPath, "utf8")).toBe(interleavedConfig);
+		writeFileSync(configPath, '{"plugin":["codemem"],"mcp":{}}\n', "utf8");
+		const siblingConfigPath = join(opencodeDir, "opencode.json");
+		const siblingConfig = '{"mcp":{},"user":"concurrent sibling"}\n';
+		setupSnapshotRace.afterRename = configPath;
+		setupSnapshotRace.mutationPath = siblingConfigPath;
+		setupSnapshotRace.mutationText = siblingConfig;
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(siblingConfigPath, "utf8")).toBe(siblingConfig);
+		rmSync(siblingConfigPath);
+
+		const racedWrapperPath = join(opencodeDir, "plugins", "codemem.js");
+		for (const afterRename of [`${racedWrapperPath}.codemem.bak`, racedWrapperPath]) {
+			const mutationText = `// concurrent unmanaged wrapper after ${afterRename}\n`;
+			expect(installMcp(true, runtime)).toBe(true);
+			writeFileSync(racedWrapperPath, "// previously managed wrapper\n", "utf8");
+			writeSetupInstallManifest([{ id: "opencode-plugin", path: racedWrapperPath }], dataDir);
+			setupSnapshotRace.afterRename = afterRename;
+			setupSnapshotRace.mutationPath = racedWrapperPath;
+			setupSnapshotRace.mutationText = mutationText;
+			process.exitCode = undefined;
+			await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+			expect(process.exitCode).toBe(1);
+			expect(readFileSync(racedWrapperPath, "utf8")).toBe(mutationText);
+		}
+		expect(installMcp(true, runtime)).toBe(true);
+		writeFileSync(racedWrapperPath, "// previously managed wrapper\n", "utf8");
+		writeSetupInstallManifest([{ id: "opencode-plugin", path: racedWrapperPath }], dataDir);
+		setupSnapshotRace.afterTempWrite = racedWrapperPath;
+		setupSnapshotRace.mutationPath = racedWrapperPath;
+		setupSnapshotRace.mutationText = "// concurrent wrapper during temp write\n";
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(racedWrapperPath, "utf8")).toBe(
+			"// concurrent wrapper during temp write\n",
+		);
+		rmSync(racedWrapperPath);
+		setupSnapshotRace.beforeLink = racedWrapperPath;
+		setupSnapshotRace.mutationPath = racedWrapperPath;
+		setupSnapshotRace.mutationText = "// concurrent newly created wrapper\n";
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(racedWrapperPath, "utf8")).toBe("// concurrent newly created wrapper\n");
+
+		process.env.CODEMEM_DATA_DIR = join(codexHome, "wrapper-preflight-data");
+		const blockedWrapperPath = join(opencodeDir, "plugins", "codemem.js");
+		rmSync(blockedWrapperPath);
+		mkdirSync(blockedWrapperPath);
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only", "--force"]);
+		expect(process.exitCode).toBe(1);
+		expect(lstatSync(blockedWrapperPath).isDirectory()).toBe(true);
 	});
 });
 
@@ -853,7 +1011,12 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 	});
 
 	it('detects a quoted [mcp_servers."codemem"] table and does not append a duplicate', () => {
-		for (const header of ['[mcp_servers."codemem"]', "[mcp_servers.'codemem']"]) {
+		for (const header of [
+			'[mcp_servers."codemem"]',
+			"[mcp_servers.'codemem']",
+			'["mcp_servers".codemem]',
+			"['mcp_servers'.'codemem']",
+		]) {
 			writeFileSync(
 				join(codexHome, "config.toml"),
 				`${header}\ncommand = "npx"\nargs = [\n  "-y",\n  "codemem",\n  "mcp",\n]\n`,
@@ -864,6 +1027,20 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 			expect(toml).not.toContain(header);
 			expect(toml.match(/\[mcp_servers\.codemem\]/g)).toHaveLength(1);
 			expect(toml).toContain(`command = ${JSON.stringify(process.execPath)}`);
+		}
+		for (const custom of [
+			'mcp_servers.codemem.command = "custom"\nmcp_servers.codemem.args = ["mcp"]\n',
+			'mcp_servers = { codemem = { command = "custom", args = ["mcp"] }, other = { command = "other" } }\n',
+			'mcp_servers={codemem={command="custom",args=["mcp"]}}\n',
+			'[mcp_servers]\ncodemem = { command = "custom", args = ["mcp"] }\n',
+			'[mcp_servers]\ncodemem.command = "custom"\ncodemem.args = ["mcp"]\n',
+			'[mcp_servers.codemem.env]\nNODE_OPTIONS = "--require=/tmp/payload.cjs"\n',
+			'[mcp_servers.codemem]\ncommand = "npx"\nargs = ["-y", "codemem", "mcp"]\n\n[mcp_servers.codemem.env]\nNODE_OPTIONS = "--require=/tmp/payload.cjs"\n',
+		]) {
+			writeFileSync(join(codexHome, "config.toml"), custom, "utf8");
+			expect(installCodex(false)).toBe(false);
+			expect(installCodex(true)).toBe(false);
+			expect(readFileSync(join(codexHome, "config.toml"), "utf8")).toBe(custom);
 		}
 	});
 

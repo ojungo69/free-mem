@@ -11,21 +11,14 @@
  * Designed to be safe to run repeatedly (idempotent unless --force).
  */
 
-import {
-	closeSync,
-	constants,
-	existsSync,
-	fstatSync,
-	lstatSync,
-	mkdirSync,
-	openSync,
-	readFileSync,
-} from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as p from "@clack/prompts";
 import {
+	acquireSpoolLock,
 	captureManagedTarget,
 	readInstallManifest,
 	resolveRuntimeDataDir,
@@ -36,10 +29,18 @@ import {
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
+	assertSetupFileMutationAllowed,
 	atomicRemoveSetupFile,
 	atomicReplaceSetupFile,
+	captureSetupFileSnapshots,
 	loadJsoncConfig,
+	recordSetupFileMutation,
 	resolveOpencodeConfigPath,
+	type SetupFileMutation,
+	type SetupFileSnapshot,
+	setupFileMatchesMutation,
+	setupFileSnapshotUnchanged,
+	withSetupFileMutationTracking,
 	writeJsonConfig,
 } from "./setup-config.js";
 
@@ -295,48 +296,77 @@ function knownLegacyOpencodeWrapper(content: string): boolean {
 	}
 }
 
-function manifestOwnsTarget(id: string, path: string): boolean {
+function manifestOwnsTarget(id: string, path: string, fingerprint: string): boolean {
 	const manifestPath = resolveStorageLayout(setupDataDir()).installManifestPath;
 	if (!existsSync(manifestPath)) return false;
 	try {
 		const expected = readInstallManifest(manifestPath).targets?.find(
 			(target) => target.id === id && resolve(target.path) === resolve(path),
 		);
-		return expected?.fingerprint === captureManagedTarget(id, path).fingerprint;
+		return expected?.fingerprint === fingerprint;
 	} catch {
 		return false;
 	}
 }
 
-function opencodeWrapperReplacementAllowed(force: boolean, runtime: SetupRuntime): boolean {
+function approvedOpencodeWrapperSnapshot(
+	force: boolean,
+	runtime: SetupRuntime,
+): SetupFileSnapshot | null {
 	const target = join(opencodeConfigDir(), "plugins", "codemem.js");
 	const content = opencodeWrapper(runtime);
-	if (!existsSync(target)) return true;
-	const current = readFileSync(target, "utf8");
+	let snapshot: SetupFileSnapshot;
+	try {
+		const captured = captureSetupFileSnapshots([target])[0];
+		if (!captured) return null;
+		snapshot = captured;
+	} catch (error) {
+		p.log.error(
+			`Failed to inspect the OpenCode plugin wrapper at ${target}: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return null;
+	}
+	if (snapshot.contents === null) return snapshot;
+	const current = Buffer.from(snapshot.contents);
 	if (
-		current === content ||
+		current.toString("utf8") === content ||
 		force ||
-		knownLegacyOpencodeWrapper(current) ||
-		manifestOwnsTarget("opencode-plugin", target)
+		knownLegacyOpencodeWrapper(current.toString("utf8")) ||
+		manifestOwnsTarget(
+			"opencode-plugin",
+			target,
+			createHash("sha256").update(current).digest("hex"),
+		)
 	) {
-		return true;
+		return snapshot;
 	}
 	p.log.error(
 		`Refusing to replace an unmanaged OpenCode plugin wrapper at ${target}; use --force.`,
 	);
-	return false;
+	return null;
+}
+
+function opencodeWrapperReplacementAllowed(force: boolean, runtime: SetupRuntime): boolean {
+	return approvedOpencodeWrapperSnapshot(force, runtime) !== null;
 }
 
 function installOpencodeWrapper(force: boolean, runtime: SetupRuntime): boolean {
 	const target = join(opencodeConfigDir(), "plugins", "codemem.js");
 	const content = opencodeWrapper(runtime);
-	if (existsSync(target) && readFileSync(target, "utf8") === content) return true;
-	if (!opencodeWrapperReplacementAllowed(force, runtime)) return false;
+	const snapshot = approvedOpencodeWrapperSnapshot(force, runtime);
+	if (snapshot === null) return false;
 	try {
-		if (existsSync(target)) {
-			atomicReplaceSetupFile(`${target}.codemem.bak`, readFileSync(target));
+		if (!setupFileSnapshotUnchanged(snapshot)) {
+			throw new Error(`OpenCode plugin wrapper changed before replacement: ${target}`);
 		}
-		atomicReplaceSetupFile(target, content);
+		if (snapshot.contents !== null) {
+			if (Buffer.from(snapshot.contents).toString("utf8") === content) return true;
+			atomicReplaceSetupFile(`${target}.codemem.bak`, snapshot.contents);
+		}
+		if (!setupFileSnapshotUnchanged(snapshot)) {
+			throw new Error(`OpenCode plugin wrapper changed before replacement: ${target}`);
+		}
+		atomicReplaceSetupFile(target, content, snapshot.mode, snapshot.contents === null, snapshot);
 		p.log.success(`Local OpenCode plugin installed: ${target}`);
 		return true;
 	} catch (error) {
@@ -354,13 +384,13 @@ function installOpencodeWrapper(force: boolean, runtime: SetupRuntime): boolean 
 export function installPlugin(
 	force: boolean,
 	runtime: SetupRuntime = resolveSetupRuntime(),
+	configPath: string = resolveOpencodeConfigPath(opencodeConfigDir()),
 ): boolean {
 	if (!opencodePluginAvailable(runtime)) return false;
 	if (!opencodeWrapperReplacementAllowed(force, runtime)) return false;
 	// Clean up legacy copied plugin files first.
 	migrateLegacyOpencodePlugin();
 
-	const configPath = resolveOpencodeConfigPath(opencodeConfigDir());
 	let config: Record<string, unknown>;
 	try {
 		config = loadJsoncConfig(configPath);
@@ -397,8 +427,11 @@ export function installPlugin(
 	return installOpencodeWrapper(force, runtime);
 }
 
-export function installMcp(force: boolean, runtime: SetupRuntime = resolveSetupRuntime()): boolean {
-	const configPath = resolveOpencodeConfigPath(opencodeConfigDir());
+export function installMcp(
+	force: boolean,
+	runtime: SetupRuntime = resolveSetupRuntime(),
+	configPath: string = resolveOpencodeConfigPath(opencodeConfigDir()),
+): boolean {
 	let config: Record<string, unknown>;
 	try {
 		config = loadJsoncConfig(configPath);
@@ -460,16 +493,55 @@ function codexMcpBlock(runtime: SetupRuntime): string {
 
 // Detect an existing codemem MCP table in config.toml text. Tolerates TOML
 // whitespace around brackets/dots and a quoted key, and avoids false-matching
-// sibling tables like `[mcp_servers.codemem-foo]` (the optional quote is matched
-// symmetrically via the backreference, so `codemem` must be followed by `]`).
-const CODEX_MCP_TABLE_RE = /^[ \t]*\[[ \t]*mcp_servers[ \t]*\.[ \t]*(["']?)codemem\1[ \t]*\]/m;
+// sibling tables like `[mcp_servers.codemem-foo]` (optional quotes are matched
+// symmetrically via backreferences, so `codemem` must be followed by `]`).
+const CODEX_MCP_TABLE_RE =
+	/^[ \t]*\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\]/m;
+const CODEX_MCP_DESCENDANT_TABLE_RE =
+	/^[ \t]*\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\./m;
+const CODEX_MCP_DOTTED_RE = /^[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*=.*$/m;
+const CODEX_MCP_DESCENDANT_RE =
+	/^[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\./m;
+const CODEX_MCP_INLINE_PARENT_RE =
+	/^[ \t]*(["']?)mcp_servers\1[ \t]*=[ \t]*\{(?:[ \t]*(["']?)codemem\2[ \t]*=|[^\r\n]*,[ \t]*(["']?)codemem\3[ \t]*=)/m;
+const CODEX_MCP_PARENT_TABLE_RE = /^[ \t]*\[[ \t]*(["']?)mcp_servers\1[ \t]*\][ \t]*(?:#.*)?$/m;
+const CODEX_MCP_PARENT_CHILD_RE = /^[ \t]*(["']?)codemem\1[ \t]*(?:=|\.)/m;
+
+function hasUnsupportedCodexMcpLayout(existing: string): boolean {
+	if (CODEX_MCP_DESCENDANT_TABLE_RE.test(existing)) return true;
+	const firstTable = existing.search(/^[ \t]*\[[^\r\n]*\][ \t]*(?:#.*)?$/m);
+	const rootAssignments = firstTable < 0 ? existing : existing.slice(0, firstTable);
+	if (
+		CODEX_MCP_DESCENDANT_RE.test(rootAssignments) ||
+		CODEX_MCP_INLINE_PARENT_RE.test(rootAssignments)
+	) {
+		return true;
+	}
+	const parent = CODEX_MCP_PARENT_TABLE_RE.exec(existing);
+	if (parent?.index === undefined) return false;
+	const bodyStart = parent.index + parent[0].length;
+	const nextTable = existing.slice(bodyStart).search(/^[ \t]*\[/m);
+	const body = existing.slice(bodyStart, nextTable < 0 ? existing.length : bodyStart + nextTable);
+	return CODEX_MCP_PARENT_CHILD_RE.test(body);
+}
 
 function codexMcpTable(existing: string): { start: number; end: number; block: string } | null {
 	const match = CODEX_MCP_TABLE_RE.exec(existing);
-	if (match?.index === undefined) return null;
-	const nextTable = existing.slice(match.index + match[0].length).search(/^[ \t]*\[/m);
-	const end = nextTable < 0 ? existing.length : match.index + match[0].length + nextTable;
-	return { start: match.index, end, block: existing.slice(match.index, end).trim() };
+	if (match?.index !== undefined) {
+		const nextTable = existing.slice(match.index + match[0].length).search(/^[ \t]*\[/m);
+		const end = nextTable < 0 ? existing.length : match.index + match[0].length + nextTable;
+		return { start: match.index, end, block: existing.slice(match.index, end).trim() };
+	}
+	const firstTable = existing.search(/^[ \t]*\[[^\r\n]*\][ \t]*(?:#.*)?$/m);
+	const dotted = CODEX_MCP_DOTTED_RE.exec(
+		firstTable < 0 ? existing : existing.slice(0, firstTable),
+	);
+	if (dotted?.index === undefined) return null;
+	return {
+		start: dotted.index,
+		end: dotted.index + dotted[0].length,
+		block: dotted[0].trim(),
+	};
 }
 
 /** A single Codex command-hook entry. */
@@ -618,6 +690,12 @@ function installCodexMcp(codexHome: string, force: boolean, runtime: SetupRuntim
 	const existing = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "";
 	const block = codexMcpBlock(runtime);
 	const currentTable = codexMcpTable(existing);
+	if (hasUnsupportedCodexMcpLayout(existing)) {
+		p.log.error(
+			`Refusing to replace an unsupported codemem MCP layout in ${configPath}; normalize or remove it first.`,
+		);
+		return false;
+	}
 	let next = existing;
 	if (currentTable) {
 		const current = currentTable.block;
@@ -920,16 +998,15 @@ export function installClaude(
 	}
 }
 
-function preflightOpencode(force: boolean, runtime: SetupRuntime): boolean {
+function preflightOpencode(force: boolean, runtime: SetupRuntime, configPath: string): boolean {
 	if (!opencodePluginAvailable(runtime)) return false;
 	if (!opencodeWrapperReplacementAllowed(force, runtime)) return false;
-	const path = resolveOpencodeConfigPath(opencodeConfigDir());
 	let config: Record<string, unknown>;
 	try {
-		config = loadJsoncConfig(path);
+		config = loadJsoncConfig(configPath);
 	} catch (error) {
 		p.log.error(
-			`Failed to parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
+			`Failed to parse ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
 		);
 		return false;
 	}
@@ -938,12 +1015,12 @@ function preflightOpencode(force: boolean, runtime: SetupRuntime): boolean {
 		configuredMcp !== undefined &&
 		(configuredMcp === null || typeof configuredMcp !== "object" || Array.isArray(configuredMcp))
 	) {
-		p.log.error(`Refusing to replace malformed MCP configuration in ${path}.`);
+		p.log.error(`Refusing to replace malformed MCP configuration in ${configPath}.`);
 		return false;
 	}
 	const current = (configuredMcp as Record<string, unknown> | undefined)?.codemem;
 	if (managedMcpReplacementAllowed(current, force, runtime, sameOpencodeMcp)) return true;
-	p.log.error(`Refusing to replace a custom codemem MCP entry in ${path}; use --force.`);
+	p.log.error(`Refusing to replace a custom codemem MCP entry in ${configPath}; use --force.`);
 	return false;
 }
 
@@ -960,6 +1037,12 @@ function preflightCodex(force: boolean, runtime: SetupRuntime): boolean {
 		return false;
 	}
 	const current = codexMcpTable(existing)?.block;
+	if (hasUnsupportedCodexMcpLayout(existing)) {
+		p.log.error(
+			`Refusing to replace an unsupported codemem MCP layout in ${configPath}; normalize or remove it first.`,
+		);
+		return false;
+	}
 	if (
 		current &&
 		!force &&
@@ -1051,56 +1134,26 @@ function preflightInstallManifest(dataDir: string): boolean {
 	}
 }
 
-type SetupFileSnapshot = {
-	path: string;
-	contents: Uint8Array | null;
-	mode: number;
-};
-
-function captureSetupFileSnapshots(paths: readonly string[]): SetupFileSnapshot[] {
-	const unique = [...new Set(paths.map((path) => resolve(path)))];
-	return unique.map((path) => {
-		let descriptor: number;
-		try {
-			descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-				try {
-					lstatSync(path);
-				} catch (currentError) {
-					if ((currentError as NodeJS.ErrnoException).code === "ENOENT") {
-						return { path, contents: null, mode: 0o600 };
-					}
-					throw currentError;
-				}
-				throw new Error(`Setup transaction target changed while being snapshotted: ${path}`);
-			}
-			throw error;
-		}
-		try {
-			const opened = fstatSync(descriptor);
-			if (!opened.isFile()) {
-				throw new Error(`Setup transaction target is not a regular file: ${path}`);
-			}
-			const contents = readFileSync(descriptor);
-			const current = lstatSync(path);
-			if (current.isSymbolicLink() || current.dev !== opened.dev || current.ino !== opened.ino) {
-				throw new Error(`Setup transaction target changed while being snapshotted: ${path}`);
-			}
-			return {
-				path,
-				contents,
-				mode: opened.mode & 0o777,
-			};
-		} finally {
-			closeSync(descriptor);
-		}
+function setupTransactionStateUnchanged(
+	snapshots: readonly SetupFileSnapshot[],
+	mutations: ReadonlyMap<string, SetupFileMutation>,
+): boolean {
+	return snapshots.every((snapshot) => {
+		const mutation = mutations.get(snapshot.path);
+		return mutation
+			? setupFileMatchesMutation(snapshot.path, mutation)
+			: setupFileSnapshotUnchanged(snapshot);
 	});
 }
 
-function restoreSetupFileSnapshots(snapshots: readonly SetupFileSnapshot[]): boolean {
+function restoreSetupFileSnapshots(
+	snapshots: readonly SetupFileSnapshot[],
+	mutations: ReadonlyMap<string, SetupFileMutation>,
+): boolean {
 	let restored = true;
 	for (const snapshot of [...snapshots].reverse()) {
+		const mutation = mutations.get(snapshot.path);
+		if (!mutation || !setupFileMatchesMutation(snapshot.path, mutation)) continue;
 		try {
 			if (snapshot.contents === null) atomicRemoveSetupFile(snapshot.path);
 			else atomicReplaceSetupFile(snapshot.path, snapshot.contents, snapshot.mode);
@@ -1118,6 +1171,7 @@ function restoreSetupFileSnapshots(snapshots: readonly SetupFileSnapshot[]): boo
 
 /** Mutate one editor lane and publish its ownership manifest as one fail-closed unit. */
 function runSetupLaneTransaction(
+	dataDir: string,
 	paths: readonly string[],
 	mutate: () => boolean,
 	commitManifest: () => void,
@@ -1131,14 +1185,24 @@ function runSetupLaneTransaction(
 		);
 		return false;
 	}
+	const mutations = new Map<string, SetupFileMutation>();
+	const baselines = new Map(snapshots.map((snapshot) => [snapshot.path, snapshot]));
+	let manifestLock: ReturnType<typeof acquireSpoolLock> | null = null;
 	try {
-		if (!mutate()) {
-			if (!restoreSetupFileSnapshots(snapshots)) {
+		if (!withSetupFileMutationTracking(mutations, baselines, mutate)) {
+			if (!restoreSetupFileSnapshots(snapshots, mutations)) {
 				p.log.error("Setup rollback was incomplete; inspect the paths reported above.");
 			}
 			return false;
 		}
-		commitManifest();
+		if (!setupTransactionStateUnchanged(snapshots, mutations)) {
+			throw new Error("Setup target changed before ownership manifest commit.");
+		}
+		manifestLock = acquireSpoolLock(dataDir);
+		withSetupFileMutationTracking(mutations, baselines, commitManifest);
+		if (!setupTransactionStateUnchanged(snapshots, mutations)) {
+			throw new Error("Setup target changed during ownership manifest commit.");
+		}
 		return true;
 	} catch (error) {
 		p.log.error(
@@ -1146,24 +1210,26 @@ function runSetupLaneTransaction(
 				error instanceof Error ? error.message : String(error)
 			}`,
 		);
-		if (!restoreSetupFileSnapshots(snapshots)) {
+		if (!restoreSetupFileSnapshots(snapshots, mutations)) {
 			p.log.error("Setup rollback was incomplete; inspect the paths reported above.");
 		}
 		return false;
+	} finally {
+		manifestLock?.close();
 	}
 }
 
-export function writeSetupInstallManifest(
+function writeSetupInstallManifestUnlocked(
 	files: Array<{ id: string; path: string }>,
 	dataDir: string = setupDataDir(),
 	replaceIds: readonly string[] = files.map((file) => file.id),
 ): void {
+	const manifestPath = resolveStorageLayout(dataDir).installManifestPath;
 	const unique = new Map(files.map((file) => [resolve(file.path), file]));
 	const captured = [...unique.values()].map((file) =>
 		captureManagedTarget(file.id, resolve(file.path)),
 	);
 	if (captured.length === 0) throw new Error("No managed thin-client targets were installed.");
-	const manifestPath = resolveStorageLayout(dataDir).installManifestPath;
 	const previous = existsSync(manifestPath)
 		? readInstallManifest(manifestPath)
 		: { version: 1 as const, blocks: [] };
@@ -1174,11 +1240,27 @@ export function writeSetupInstallManifest(
 			.map((target) => [target.id, target]),
 	);
 	for (const target of captured) targets.set(target.id, target);
-	writeInstallManifest(manifestPath, {
-		version: 1,
+	const nextManifest = {
+		version: 1 as const,
 		blocks: previous.blocks,
 		targets: [...targets.values()],
-	});
+	};
+	assertSetupFileMutationAllowed(manifestPath);
+	recordSetupFileMutation(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`, 0o600);
+	writeInstallManifest(manifestPath, nextManifest);
+}
+
+export function writeSetupInstallManifest(
+	files: Array<{ id: string; path: string }>,
+	dataDir: string = setupDataDir(),
+	replaceIds: readonly string[] = files.map((file) => file.id),
+): void {
+	const lock = acquireSpoolLock(dataDir);
+	try {
+		writeSetupInstallManifestUnlocked(files, dataDir, replaceIds);
+	} finally {
+		lock.close();
+	}
 }
 
 export const setupCommand = new Command("setup")
@@ -1212,10 +1294,14 @@ export const setupCommand = new Command("setup")
 			const doClaude = opts.claudeOnly || !onlyFlag;
 			// With no only-flag, Codex runs only when a Codex home is detected.
 			const doCodex = opts.codexOnly || (!onlyFlag && existsSync(codexConfigDir()));
+			const opencodeConfigPath = doOpencode
+				? resolveOpencodeConfigPath(opencodeConfigDir())
+				: undefined;
 			const dataDir = setupDataDir();
 			if (
 				!preflightInstallManifest(dataDir) ||
-				(doOpencode && !preflightOpencode(force, runtime)) ||
+				(opencodeConfigPath !== undefined &&
+					!preflightOpencode(force, runtime, opencodeConfigPath)) ||
 				(doClaude && !loadClaudeConfiguration(force, runtime)) ||
 				(doCodex && !preflightCodex(force, runtime))
 			) {
@@ -1229,7 +1315,7 @@ export const setupCommand = new Command("setup")
 				targets: Array<{ id: string; path: string }>,
 				replaceIds: readonly string[],
 			): void => {
-				writeSetupInstallManifest(
+				writeSetupInstallManifestUnlocked(
 					[{ id: "cli-runtime", path: runtime.cliPath }, ...targets],
 					dataDir,
 					["cli-runtime", ...replaceIds],
@@ -1240,27 +1326,34 @@ export const setupCommand = new Command("setup")
 				process.exitCode = 1;
 			};
 
-			if (doOpencode) {
-				const configPath = resolveOpencodeConfigPath(opencodeConfigDir());
-				const wrapperPath = join(opencodeConfigDir(), "plugins", "codemem.js");
+			if (opencodeConfigPath !== undefined) {
+				const configPath = opencodeConfigPath;
+				const configDir = opencodeConfigDir();
+				const wrapperPath = join(configDir, "plugins", "codemem.js");
 				const targets = [
 					{ id: "opencode-plugin", path: wrapperPath },
 					{ id: "opencode-plugin-source", path: runtime.opencodePluginPath },
 					{ id: "opencode-mcp", path: configPath },
 				];
 				const installed = runSetupLaneTransaction(
+					dataDir,
 					[
 						manifestPath,
-						configPath,
+						join(configDir, "opencode.json"),
+						join(configDir, "opencode.jsonc"),
 						wrapperPath,
 						`${wrapperPath}.codemem.bak`,
-						join(opencodeConfigDir(), "lib", "compat.js"),
+						join(configDir, "lib", "compat.js"),
 					],
 					() => {
+						if (resolveOpencodeConfigPath(configDir) !== configPath) {
+							p.log.error("OpenCode configuration path changed during setup.");
+							return false;
+						}
 						p.log.step("Installing OpenCode plugin...");
-						if (!installPlugin(force, runtime)) return false;
+						if (!installPlugin(force, runtime, configPath)) return false;
 						p.log.step("Installing OpenCode MCP config...");
-						return installMcp(force, runtime);
+						return installMcp(force, runtime, configPath);
 					},
 					() =>
 						recordTargets(targets, [
@@ -1286,6 +1379,7 @@ export const setupCommand = new Command("setup")
 					{ id: "claude-hook-runtime", path: runtimePath },
 				];
 				const installed = runSetupLaneTransaction(
+					dataDir,
 					[
 						manifestPath,
 						settingsPath,
@@ -1316,6 +1410,7 @@ export const setupCommand = new Command("setup")
 					{ id: "codex-hook-runtime", path: runtimePath },
 				];
 				const installed = runSetupLaneTransaction(
+					dataDir,
 					[
 						manifestPath,
 						configPath,
