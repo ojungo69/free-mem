@@ -396,6 +396,21 @@ describe("installCodex — non-destructive merge", () => {
 		expect(toml).toContain('command = "other-cmd"');
 		expect(toml).toContain("[mcp_servers.codemem]");
 
+		for (const [command, args] of [
+			["codemem", ["mcp"]],
+			["/tmp/.npm/_npx/abc/node_modules/.bin/codemem", ["mcp"]],
+			["/usr/bin/node", ["/tmp/codemem/packages/cli/dist/index.js", "mcp"]],
+			["uvx", ["codemem==0.19.0", "mcp"]],
+			["uv", ["run", "codemem==0.19.0", "mcp"]],
+			["uv", ["tool", "run", "codemem==0.19.0", "mcp"]],
+			["npx", ["-p", "codemem", "codemem", "mcp"]],
+			["npx", ["--package=codemem", "codemem", "mcp"]],
+		] satisfies Array<[string, string[]]>) {
+			const legacy = `${original}[mcp_servers.codemem]\ncommand = ${JSON.stringify(command)}\nargs = [${args.map((arg) => JSON.stringify(arg)).join(", ")}]\n`;
+			writeFileSync(join(codexHome, "config.toml"), legacy, "utf-8");
+			expect(installCodex(false)).toBe(true);
+		}
+
 		const custom = `${original}[mcp_servers."codemem"]\n# stale args = ["/tmp/old/packages/cli/dist/index.js", "mcp"]\ncommand = "npx"\nargs = ["--package", "@acme/codemem", "codemem", "mcp"]\n`;
 		writeFileSync(join(codexHome, "config.toml"), custom, "utf-8");
 		expect(installCodex(false)).toBe(false);
