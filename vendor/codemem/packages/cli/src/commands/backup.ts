@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
 import * as p from "@clack/prompts";
-import { backupPayloadHash, restorePayloadHash } from "@codemem/core";
 import { createMcpRpcClient, type McpRpcOutcome } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
@@ -12,6 +10,7 @@ import {
 	type JsonOpts,
 	resolveDataDirOpt,
 } from "../shared-options.js";
+import { runDaemonOperation } from "./daemon-operation.js";
 
 export const BACKUP_PRIVACY_NOTICE =
 	"Backups may contain private and local-only data. Phase 1 provides local backups only; off-device backup and export are not available.";
@@ -22,10 +21,16 @@ function client(opts: DbOpts) {
 	return createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) });
 }
 
-function reportError(outcome: Extract<McpRpcOutcome, { ok: false }>, json = false): void {
-	if (json) emitJsonError(outcome.error.code, outcome.error.message);
+function reportError(
+	outcome: Extract<McpRpcOutcome, { ok: false }> & { operationId?: string },
+	json = false,
+): void {
+	const message = outcome.operationId
+		? `${outcome.error.message} Operation ID: ${outcome.operationId}`
+		: outcome.error.message;
+	if (json) emitJsonError(outcome.error.code, message);
 	else {
-		p.log.error(outcome.error.message);
+		p.log.error(message);
 		process.exitCode = 1;
 	}
 }
@@ -45,11 +50,8 @@ const createCommand = new Command("create")
 addDbOption(createCommand);
 addJsonOption(createCommand);
 createCommand.action(async (opts: BackupOpts & { reason: string }) => {
-	const operationId = randomUUID();
-	const outcome = await client(opts).request("POST /v1/backup/create", {
-		operationId,
+	const outcome = await runDaemonOperation(opts, "POST /v1/backup/create", {
 		reason: opts.reason,
-		payloadHash: backupPayloadHash(opts.reason),
 	});
 	if (!outcome.ok) return reportError(outcome, opts.json);
 	printResult(outcome.result, opts.json);
@@ -103,11 +105,7 @@ const restoreCommand = new Command("restore")
 addDbOption(restoreCommand);
 addJsonOption(restoreCommand);
 restoreCommand.action(async (backupId: string, opts: BackupOpts) => {
-	const outcome = await client(opts).request("POST /v1/backup/restore", {
-		operationId: randomUUID(),
-		backupId,
-		payloadHash: restorePayloadHash(backupId),
-	});
+	const outcome = await runDaemonOperation(opts, "POST /v1/backup/restore", { backupId });
 	if (!outcome.ok) return reportError(outcome, opts.json);
 	printResult(outcome.result, opts.json);
 	if (!opts.json)

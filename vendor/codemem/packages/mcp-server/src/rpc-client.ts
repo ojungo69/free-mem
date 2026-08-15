@@ -13,10 +13,10 @@ import {
 	parseAgentMemoryToml,
 	preprocessAdapterEvent,
 	RPC_CAPABILITY_HASH,
-	RPC_DEFAULT_DEADLINE_MS,
 	type RpcMethod,
 	resolveProjectRoot,
 	resolveStorageLayout,
+	rpcDeadlineForMethod,
 	type SpoolRedactionMetadata,
 	sealDegradedNormalizedEvent,
 	spoolMutation,
@@ -252,6 +252,7 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 		prepared: PreparedRequest,
 	): Promise<McpRpcOutcome> => {
 		try {
+			const deadlineMs = rpcDeadlineForMethod(method);
 			const body =
 				method === "POST /v1/events" || method === "POST /v1/memories/record"
 					? { ...prepared.body, adapterRedaction: prepared.redaction }
@@ -269,8 +270,8 @@ export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcCli
 					body,
 				},
 				{
-					timeoutMs: RPC_DEFAULT_DEADLINE_MS,
-					signal: AbortSignal.timeout(RPC_DEFAULT_DEADLINE_MS),
+					timeoutMs: deadlineMs,
+					signal: AbortSignal.timeout(deadlineMs),
 				},
 			);
 			if ("error" in response) return { ok: false, error: response.error };

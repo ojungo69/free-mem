@@ -4,6 +4,7 @@ import { createConnection } from "node:net";
 export const LOCAL_API_VERSION = 1;
 export const RPC_MAX_BYTES = 32 * 1024;
 export const RPC_DEFAULT_DEADLINE_MS = 2_000;
+const RPC_BACKUP_DEADLINE_MS = 30 * 60 * 1_000;
 export const HOOK_DELIVERY_BUDGETS = {
 	claude: {
 		clientHardCapMs: 2_000,
@@ -54,6 +55,17 @@ export const RPC_METHODS = [
 ] as const;
 
 export type RpcMethod = (typeof RPC_METHODS)[number];
+
+const BACKUP_RPC_METHODS = new Set<string>([
+	"GET /v1/backup/list",
+	"POST /v1/backup/create",
+	"POST /v1/backup/verify",
+	"POST /v1/backup/restore",
+]);
+
+export function rpcDeadlineForMethod(method: string): number {
+	return BACKUP_RPC_METHODS.has(method) ? RPC_BACKUP_DEADLINE_MS : RPC_DEFAULT_DEADLINE_MS;
+}
 
 export type FileContextRetrievalAttempt = {
 	attemptId: string;

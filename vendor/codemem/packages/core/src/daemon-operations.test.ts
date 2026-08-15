@@ -1,12 +1,13 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DaemonJobService } from "./daemon-jobs.js";
 import { DaemonOperationService } from "./daemon-operations.js";
 import { connect } from "./db.js";
 import * as core from "./index.js";
 import { MemoryStore } from "./store.js";
+import { ReadOnlyActor } from "./writer-actor.js";
 
 const handles: Array<{ stop: () => Promise<void> }> = [];
 const roots: string[] = [];
@@ -56,6 +57,7 @@ async function waitForTerminal(
 afterEach(async () => {
 	for (const handle of handles.splice(0)) await handle.stop();
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+	vi.restoreAllMocks();
 });
 
 describe("daemon class B operations", { timeout: 20_000 }, () => {
@@ -489,6 +491,187 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 		expect(await request(restarted, "GET /v1/operations/:id", { id: operationId })).toEqual(
 			completed,
 		);
+
+		const delayedDataDir = tempDataDir();
+		const delayed = await core.startDaemon({ dataDir: delayedDataDir });
+		handles.push(delayed);
+		const delayedOperationId = "lost-backup-response";
+		const delayedReason = "response loss durability";
+		let backupStarted: (() => void) | undefined;
+		const backupStart = new Promise<void>((resolve) => {
+			backupStarted = resolve;
+		});
+		let releaseBackup: (() => void) | undefined;
+		const backupGate = new Promise<void>((resolve) => {
+			releaseBackup = resolve;
+		});
+		const originalBackup = ReadOnlyActor.prototype.backup;
+		const backupSpy = vi
+			.spyOn(ReadOnlyActor.prototype, "backup")
+			.mockImplementationOnce(async function (destinationFile, options) {
+				backupStarted?.();
+				await backupGate;
+				return originalBackup.call(this, destinationFile, options);
+			});
+		const delayedBody = {
+			operationId: delayedOperationId,
+			reason: delayedReason,
+			payloadHash: core.backupPayloadHash(delayedReason),
+		};
+		const lostResponse = core
+			.callDaemonRpc(delayed.socketPath, handshake("POST /v1/backup/create", delayedBody), {
+				timeoutMs: 25,
+			})
+			.then(
+				() => null,
+				(error: unknown) => error,
+			);
+		await backupStart;
+		expect(await lostResponse).toBeInstanceOf(Error);
+		releaseBackup?.();
+		const delayedCompleted = await waitForTerminal(delayed, delayedOperationId);
+		expect(delayedCompleted).toMatchObject({
+			operationId: delayedOperationId,
+			payloadHash: core.backupPayloadHash(delayedReason),
+			state: "committed",
+			result: {
+				operationId: delayedOperationId,
+				backupId: delayedOperationId,
+				state: "completed",
+				artifactSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+				manifestHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+			},
+		});
+		expect(await request(delayed, "POST /v1/backup/create", delayedBody)).toEqual(
+			delayedCompleted.result,
+		);
+		expect(
+			await core.callDaemonRpc(
+				delayed.socketPath,
+				handshake("POST /v1/backup/create", {
+					...delayedBody,
+					reason: "different response loss payload",
+					payloadHash: core.backupPayloadHash("different response loss payload"),
+				}),
+			),
+		).toMatchObject({ error: { code: "conflict" } });
+		expect(backupSpy).toHaveBeenCalledTimes(1);
+		backupSpy.mockRestore();
+		await delayed.stop();
+		const delayedJournalPath = join(
+			core.resolveStorageLayout(delayedDataDir).controlDir,
+			"operations",
+			`${delayedOperationId}.json`,
+		);
+		const delayedJournal = JSON.parse(readFileSync(delayedJournalPath, "utf8")) as Record<
+			string,
+			unknown
+		>;
+		writeFileSync(
+			delayedJournalPath,
+			`${JSON.stringify({
+				...delayedJournal,
+				state: "failed",
+				result: null,
+				error: { code: "operation_failed", message: "response was lost" },
+			})}\n`,
+			{ mode: 0o600 },
+		);
+		const recoveredBackup = await core.startDaemon({ dataDir: delayedDataDir });
+		handles.push(recoveredBackup);
+		expect(
+			await request(recoveredBackup, "GET /v1/operations/:id", { id: delayedOperationId }),
+		).toEqual(delayedCompleted);
+
+		const crashDataDir = tempDataDir();
+		const crashed = await core.startDaemon({ dataDir: crashDataDir });
+		handles.push(crashed);
+		await crashed.stop();
+		const crashLayout = core.resolveStorageLayout(crashDataDir);
+		const crashOperationId = "artifact-before-complete";
+		const crashReason = "replay interrupted backup";
+		const crashPayloadHash = core.backupPayloadHash(crashReason);
+		const nonRetryOperationId = "failed-for-another-reason";
+		const nonRetryReason = "do not replay other failures";
+		const now = "2026-08-14T00:00:00.000Z";
+		writeFileSync(join(crashLayout.backupsDir, `${crashOperationId}.tmp`), "interrupted", {
+			mode: 0o600,
+		});
+		for (const failed of [
+			{
+				operationId: crashOperationId,
+				reason: crashReason,
+				payloadHash: crashPayloadHash,
+				code: "daemon_restarted",
+			},
+			{
+				operationId: nonRetryOperationId,
+				reason: nonRetryReason,
+				payloadHash: core.backupPayloadHash(nonRetryReason),
+				code: "operation_failed",
+			},
+		]) {
+			writeFileSync(
+				join(crashLayout.controlDir, "operations", `${failed.operationId}.json`),
+				`${JSON.stringify({
+					version: 1,
+					operationId: failed.operationId,
+					payloadHash: failed.payloadHash,
+					kind: "backup-create",
+					state: "failed",
+					request: { reason: failed.reason },
+					result: null,
+					error: { code: failed.code, message: "The backup was interrupted." },
+					createdAt: now,
+					updatedAt: now,
+				})}\n`,
+				{ mode: 0o600 },
+			);
+		}
+		const replayed = await core.startDaemon({ dataDir: crashDataDir });
+		handles.push(replayed);
+		expect(
+			await request(replayed, "GET /v1/operations/:id", { id: crashOperationId }),
+		).toMatchObject({ state: "failed", error: { code: "daemon_restarted" } });
+		const replaySpy = vi.spyOn(ReadOnlyActor.prototype, "backup");
+		const nonRetryBody = {
+			operationId: nonRetryOperationId,
+			reason: nonRetryReason,
+			payloadHash: core.backupPayloadHash(nonRetryReason),
+		};
+		expect(
+			await core.callDaemonRpc(
+				replayed.socketPath,
+				handshake("POST /v1/backup/create", nonRetryBody),
+			),
+		).toMatchObject({ error: { code: "internal_error" } });
+		const crashBody = {
+			operationId: crashOperationId,
+			reason: crashReason,
+			payloadHash: crashPayloadHash,
+		};
+		expect(
+			await core.callDaemonRpc(
+				replayed.socketPath,
+				handshake("POST /v1/backup/create", {
+					...crashBody,
+					reason: "conflicting replay",
+					payloadHash: core.backupPayloadHash("conflicting replay"),
+				}),
+			),
+		).toMatchObject({ error: { code: "conflict" } });
+		expect(replaySpy).not.toHaveBeenCalled();
+		const replayResult = await request(replayed, "POST /v1/backup/create", crashBody);
+		expect(replayResult).toMatchObject({
+			operationId: crashOperationId,
+			backupId: crashOperationId,
+			state: "completed",
+		});
+		expect(await request(replayed, "POST /v1/backup/create", crashBody)).toEqual(replayResult);
+		expect(replaySpy).toHaveBeenCalledTimes(1);
+		expect(existsSync(join(crashLayout.backupsDir, `${crashOperationId}.tmp`))).toBe(false);
+		expect(existsSync(join(crashLayout.backupsDir, `${crashOperationId}.sqlite`))).toBe(true);
+		expect(existsSync(join(crashLayout.backupsDir, `${crashOperationId}.json`))).toBe(true);
 	});
 
 	it("P1-T047-03-import-backup-precondition", async () => {

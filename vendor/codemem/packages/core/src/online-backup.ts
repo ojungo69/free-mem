@@ -801,6 +801,33 @@ export async function createCanonicalBackup(input: {
 	}
 }
 
+export function recoverCanonicalBackupResult(input: {
+	dataDir: string;
+	operationId: string;
+	payloadHash: string;
+}): VerifiedBackup | null {
+	validateOperationId(input.operationId);
+	const layout = resolveStorageLayout(input.dataDir);
+	const sidecar = readSidecar(backupSidecarPath(layout.backupsDir, input.operationId));
+	if (!sidecar) return null;
+	if (sidecar.manifest.payload_hash !== input.payloadHash) {
+		throw new BackupRequestError(
+			"conflict",
+			"Backup operation ID already exists with a different payload.",
+		);
+	}
+	const check = verifyCanonicalBackup({ dataDir: input.dataDir, backupId: input.operationId });
+	if (!check.valid || !check.manifestHash) return null;
+	return {
+		verified: true,
+		evidence: `recovered-online-backup:${input.operationId}:${check.manifestHash}`,
+		backupId: input.operationId,
+		artifactPath: backupArtifactPath(layout.backupsDir, input.operationId),
+		artifactSha256: sidecar.manifest.artifact_sha256,
+		manifestHash: check.manifestHash,
+	};
+}
+
 export function verifyCanonicalBackup(input: {
 	dataDir: string;
 	backupId: string;
@@ -965,6 +992,32 @@ export function restorePayloadHash(backupId: string): string {
 	return createHash("sha256").update(canonicalMutationJson({ backupId }), "utf8").digest("hex");
 }
 
+function restoreTarget(input: { dataDir: string; operationId: string; payloadHash: string }): {
+	layout: ReturnType<typeof resolveStorageLayout>;
+	operationToken: string;
+	pointerName: string;
+	pointer: string;
+	destination: string;
+	resultPath: string;
+} {
+	const layout = resolveStorageLayout(input.dataDir);
+	const operationToken = createHash("sha256")
+		.update(input.operationId, "utf8")
+		.digest("hex")
+		.slice(0, 32);
+	const pointerName = `restore-${operationToken}-${input.payloadHash.slice(0, 16)}.sqlite`;
+	const pointer = `versions/${pointerName}`;
+	const destination = join(layout.versionsDir, pointerName);
+	return {
+		layout,
+		operationToken,
+		pointerName,
+		pointer,
+		destination,
+		resultPath: `${destination}.restore.json`,
+	};
+}
+
 function removeStagingArtifact(path: string): void {
 	for (const candidate of [path, `${path}-wal`, `${path}-shm`, `${path}.restore.json`]) {
 		try {
@@ -1000,6 +1053,45 @@ function readRestoreResult(path: string): RestoreResultRecord | null {
 		throw new BackupRequestError("conflict", "Restore result is malformed.");
 	}
 	return record as RestoreResultRecord;
+}
+
+function completedRestoreResult(
+	input: { operationId: string; backupId: string; payloadHash: string },
+	target: ReturnType<typeof restoreTarget>,
+	result: RestoreResultRecord | null,
+): RestoreBackupResult | null {
+	if (readCurrentDatabasePointer(target.layout) !== target.pointer) return null;
+	if (!result) throw new BackupRequestError("conflict", "Restore result is missing.");
+	return {
+		operationId: input.operationId,
+		backupId: input.backupId,
+		pointer: target.pointer,
+		artifactSha256: result.artifactSha256,
+		manifestHash: result.manifestHash,
+		restartRequired: true,
+	};
+}
+
+export function recoverCanonicalRestoreResult(input: {
+	dataDir: string;
+	operationId: string;
+	payloadHash: string;
+	backupId: string;
+}): RestoreBackupResult | null {
+	validateOperationId(input.operationId);
+	validateOperationId(input.backupId);
+	if (input.payloadHash !== restorePayloadHash(input.backupId)) {
+		throw new BackupRequestError("invalid_request", "Restore payloadHash does not match backupId.");
+	}
+	const target = restoreTarget(input);
+	const result = readRestoreResult(target.resultPath);
+	if (result && result.payloadHash !== input.payloadHash) {
+		throw new BackupRequestError(
+			"conflict",
+			"Restore operation ID already exists with a different payload.",
+		);
+	}
+	return completedRestoreResult(input, target, result);
 }
 
 function rebuildStagedDerivedIndexes(path: string, manifest: BackupManifest): void {
@@ -1043,21 +1135,13 @@ export function restoreCanonicalBackup(input: {
 	if (input.payloadHash !== restorePayloadHash(input.backupId)) {
 		throw new BackupRequestError("invalid_request", "Restore payloadHash does not match backupId.");
 	}
-	const layout = resolveStorageLayout(input.dataDir);
-	const operationToken = createHash("sha256")
-		.update(input.operationId, "utf8")
-		.digest("hex")
-		.slice(0, 32);
-	const pointerName = `restore-${operationToken}-${input.payloadHash.slice(0, 16)}.sqlite`;
-	const pointer = `versions/${pointerName}`;
-	const destination = join(layout.versionsDir, pointerName);
-	const resultPath = `${destination}.restore.json`;
-	const conflicting = readdirSync(layout.versionsDir).find(
+	const target = restoreTarget(input);
+	const conflicting = readdirSync(target.layout.versionsDir).find(
 		(name) =>
-			name.startsWith(`restore-${operationToken}-`) &&
+			name.startsWith(`restore-${target.operationToken}-`) &&
 			(name.endsWith(".sqlite") || name.endsWith(".sqlite.restore.json")) &&
-			name !== pointerName &&
-			name !== `${pointerName}.restore.json`,
+			name !== target.pointerName &&
+			name !== `${target.pointerName}.restore.json`,
 	);
 	if (conflicting) {
 		throw new BackupRequestError(
@@ -1065,7 +1149,7 @@ export function restoreCanonicalBackup(input: {
 			"Restore operation ID already exists with a different payload.",
 		);
 	}
-	const previousResult = readRestoreResult(resultPath);
+	const previousResult = readRestoreResult(target.resultPath);
 	if (previousResult && previousResult.payloadHash !== input.payloadHash) {
 		throw new BackupRequestError(
 			"conflict",
@@ -1078,25 +1162,14 @@ export function restoreCanonicalBackup(input: {
 			"A backup is active; retry restore after it completes.",
 		);
 	}
-	if (readCurrentDatabasePointer(layout) === pointer) {
-		if (!previousResult) {
-			throw new BackupRequestError("conflict", "Restore result is missing.");
-		}
-		return {
-			operationId: input.operationId,
-			backupId: input.backupId,
-			pointer,
-			artifactSha256: previousResult.artifactSha256,
-			manifestHash: previousResult.manifestHash,
-			restartRequired: true,
-		};
-	}
+	const completed = completedRestoreResult(input, target, previousResult);
+	if (completed) return completed;
 
 	const check = verifyCanonicalBackup({ dataDir: input.dataDir, backupId: input.backupId });
 	if (!check.valid || !check.manifestHash) {
 		throw new BackupRequestError("invalid_request", "Backup failed restore verification.");
 	}
-	const sidecar = readSidecar(backupSidecarPath(layout.backupsDir, input.backupId));
+	const sidecar = readSidecar(backupSidecarPath(target.layout.backupsDir, input.backupId));
 	if (!sidecar) {
 		throw new BackupRequestError("invalid_request", "Backup manifest is not restorable.");
 	}
@@ -1109,30 +1182,33 @@ export function restoreCanonicalBackup(input: {
 	}
 
 	let staged = false;
-	if (existsSync(destination)) {
-		const info = lstatSync(destination);
+	if (existsSync(target.destination)) {
+		const info = lstatSync(target.destination);
 		staged = info.isFile() && !info.isSymbolicLink();
-		if (!staged) removeStagingArtifact(destination);
+		if (!staged) removeStagingArtifact(target.destination);
 	}
-	if (staged && manifestSnapshotDiagnostics(sidecar.manifest, destination).length > 0) {
-		removeStagingArtifact(destination);
+	if (staged && manifestSnapshotDiagnostics(sidecar.manifest, target.destination).length > 0) {
+		removeStagingArtifact(target.destination);
 		staged = false;
 	}
 	if (!staged) {
 		try {
-			durableCopyFile(backupArtifactPath(layout.backupsDir, input.backupId), destination);
-			rebuildStagedDerivedIndexes(destination, sidecar.manifest);
-			const diagnostics = manifestSnapshotDiagnostics(sidecar.manifest, destination);
+			durableCopyFile(
+				backupArtifactPath(target.layout.backupsDir, input.backupId),
+				target.destination,
+			);
+			rebuildStagedDerivedIndexes(target.destination, sidecar.manifest);
+			const diagnostics = manifestSnapshotDiagnostics(sidecar.manifest, target.destination);
 			if (diagnostics.length > 0) throw new Error(diagnostics.join("; "));
 		} catch (error) {
-			removeStagingArtifact(destination);
+			removeStagingArtifact(target.destination);
 			throw error;
 		}
 	}
 
-	const artifactSha256 = sha256File(destination);
+	const artifactSha256 = sha256File(target.destination);
 	durableReplaceFile(
-		resultPath,
+		target.resultPath,
 		`${JSON.stringify({
 			version: 1,
 			payloadHash: input.payloadHash,
@@ -1140,15 +1216,15 @@ export function restoreCanonicalBackup(input: {
 			manifestHash: sidecar.manifest_hash,
 		} satisfies RestoreResultRecord)}\n`,
 	);
-	activateDatabaseArtifact(layout, {
+	activateDatabaseArtifact(target.layout, {
 		operationId: input.operationId,
-		pointer,
+		pointer: target.pointer,
 		artifactSha256,
 	});
 	return {
 		operationId: input.operationId,
 		backupId: input.backupId,
-		pointer,
+		pointer: target.pointer,
 		artifactSha256,
 		manifestHash: sidecar.manifest_hash,
 		restartRequired: true,

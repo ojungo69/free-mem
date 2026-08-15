@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-const request = vi.fn();
+const { request, runDaemonOperation } = vi.hoisted(() => ({
+	request: vi.fn(),
+	runDaemonOperation: vi.fn(),
+}));
 vi.mock("@codemem/mcp", () => ({
 	createMcpRpcClient: () => ({ request }),
 }));
+vi.mock("./daemon-operation.js", () => ({ runDaemonOperation }));
 
 import { BACKUP_PRIVACY_NOTICE, backupCommand } from "./backup.js";
 
@@ -19,21 +23,29 @@ describe("backup command", () => {
 			backupCommand.outputHelp();
 			backupCommand.configureOutput(output);
 
-			request.mockResolvedValueOnce({ ok: true, result: { backupId: "backup-json" } });
+			runDaemonOperation.mockResolvedValueOnce({
+				ok: true,
+				operationId: "backup-json",
+				result: { backupId: "backup-json" },
+			});
 			await backupCommand.parseAsync(["create", "--reason", "release", "--json"], {
 				from: "user",
 			});
-			expect(request).toHaveBeenLastCalledWith("POST /v1/backup/create", {
-				operationId: expect.any(String),
-				reason: "release",
-				payloadHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-			});
+			expect(runDaemonOperation).toHaveBeenLastCalledWith(
+				expect.objectContaining({ json: true, reason: "release" }),
+				"POST /v1/backup/create",
+				{ reason: "release" },
+			);
 			expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
 				backupId: "backup-json",
 				privacy: BACKUP_PRIVACY_NOTICE,
 			});
 
-			request.mockResolvedValueOnce({ ok: true, result: { backupId: "backup-human" } });
+			runDaemonOperation.mockResolvedValueOnce({
+				ok: true,
+				operationId: "backup-human",
+				result: { backupId: "backup-human" },
+			});
 			await backupCommand.parseAsync(["create"], { from: "user" });
 
 			request.mockResolvedValueOnce({ ok: true, result: { backups: [] } });
@@ -77,24 +89,28 @@ describe("backup command", () => {
 			await backupCommand.parseAsync(["verify", "invalid-human"], { from: "user" });
 			expect(process.exitCode).toBe(1);
 
-			request.mockResolvedValueOnce({
+			runDaemonOperation.mockResolvedValueOnce({
 				ok: true,
+				operationId: "restore-json",
 				result: { backupId: "restore-json", state: "completed" },
 			});
 			await backupCommand.parseAsync(["restore", "restore-json", "--json"], { from: "user" });
-			expect(request).toHaveBeenLastCalledWith("POST /v1/backup/restore", {
-				operationId: expect.any(String),
-				backupId: "restore-json",
-				payloadHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-			});
-			request.mockResolvedValueOnce({
+			expect(runDaemonOperation).toHaveBeenLastCalledWith(
+				expect.objectContaining({ json: true }),
+				"POST /v1/backup/restore",
+				{ backupId: "restore-json" },
+			);
+			runDaemonOperation.mockResolvedValueOnce({
 				ok: true,
+				operationId: "restore-human",
 				result: { backupId: "restore-human", state: "completed" },
 			});
 			await backupCommand.parseAsync(["restore", "restore-human"], { from: "user" });
 
 			const failure = {
 				ok: false,
+				operationId: "lost-operation",
+				terminal: false,
 				error: { code: "daemon_unavailable", message: "daemon down", retryable: true },
 			};
 			const failureCases: Array<[string[], boolean]> = [
@@ -104,14 +120,21 @@ describe("backup command", () => {
 				[["restore", "missing"], false],
 			];
 			for (const [args, json] of failureCases) {
-				request.mockResolvedValueOnce(failure);
+				if (args[0] === "create" || args[0] === "restore") {
+					runDaemonOperation.mockResolvedValueOnce(failure);
+				} else {
+					request.mockResolvedValueOnce({ ok: false, error: failure.error });
+				}
 				process.exitCode = 0;
 				await backupCommand.parseAsync(args, { from: "user" });
 				expect(process.exitCode).toBe(1);
 				if (json) {
 					expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toEqual({
 						error: "daemon_unavailable",
-						message: "daemon down",
+						message:
+							args[0] === "create" || args[0] === "restore"
+								? "daemon down Operation ID: lost-operation"
+								: "daemon down",
 					});
 				}
 			}

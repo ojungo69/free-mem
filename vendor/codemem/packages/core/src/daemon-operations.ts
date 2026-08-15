@@ -13,7 +13,18 @@ import type { DaemonJobService } from "./daemon-jobs.js";
 import { exportMemoriesWithDb, importMemoriesWithDb, readImportPayload } from "./export-import.js";
 import { hashMutationPayload } from "./mutation-dispatcher.js";
 import { expandUserPath } from "./observer-config.js";
-import { createOnlineBackup, requireVerifiedBackup, verifyOnlineBackup } from "./online-backup.js";
+import {
+	BackupRequestError,
+	backupPayloadHash,
+	createCanonicalBackup,
+	createOnlineBackup,
+	recoverCanonicalBackupResult,
+	recoverCanonicalRestoreResult,
+	requireVerifiedBackup,
+	restoreCanonicalBackup,
+	restorePayloadHash,
+	verifyOnlineBackup,
+} from "./online-backup.js";
 import { resolveStorageLayout, sha256File } from "./storage.js";
 import { durableReplaceFile, ensurePrivateDirectory, fsyncPath } from "./storage-platform.js";
 import type { MemoryStore } from "./store.js";
@@ -27,8 +38,10 @@ type ExportFilters = {
 
 type ExportRequest = { outputPath: string; filters: ExportFilters };
 type ImportRequest = { inputPath: string; remapProject?: string; dryRun?: boolean };
-type OperationRequest = ExportRequest | ImportRequest;
-type OperationKind = "export" | "import";
+type BackupCreateRequest = { reason: string };
+type BackupRestoreRequest = { backupId: string };
+type OperationRequest = ExportRequest | ImportRequest | BackupCreateRequest | BackupRestoreRequest;
+type OperationKind = "export" | "import" | "backup-create" | "backup-restore";
 type OperationState =
 	| "prepared"
 	| "writing"
@@ -58,7 +71,12 @@ export type DaemonOperationSnapshot = Pick<
 
 export class DaemonOperationRequestError extends Error {
 	constructor(
-		readonly code: "invalid_request" | "idempotency_conflict" | "not_found",
+		readonly code:
+			| "invalid_request"
+			| "idempotency_conflict"
+			| "not_found"
+			| "conflict"
+			| "internal_error",
 		message: string,
 	) {
 		super(message);
@@ -146,6 +164,36 @@ function importRequest(body: Record<string, unknown>): ImportRequest {
 	return request;
 }
 
+function backupCreateRequest(body: Record<string, unknown>): BackupCreateRequest {
+	return { reason: boundedString(body.reason, "reason", 1_024) };
+}
+
+function backupRestoreRequest(body: Record<string, unknown>): BackupRestoreRequest {
+	const backupId = boundedString(body.backupId, "backupId", 128);
+	if (!OPERATION_ID.test(backupId)) {
+		throw new DaemonOperationRequestError("invalid_request", "backupId is invalid.");
+	}
+	return { backupId };
+}
+
+function parseOperationRequest(
+	kind: OperationKind,
+	body: Record<string, unknown>,
+): OperationRequest {
+	if (kind === "export") return exportRequest(body);
+	if (kind === "import") return importRequest(body);
+	if (kind === "backup-create") return backupCreateRequest(body);
+	return backupRestoreRequest(body);
+}
+
+function operationPayloadHash(kind: OperationKind, request: OperationRequest): string {
+	if (kind === "backup-create") return backupPayloadHash((request as BackupCreateRequest).reason);
+	if (kind === "backup-restore") {
+		return restorePayloadHash((request as BackupRestoreRequest).backupId);
+	}
+	return hashMutationPayload(request);
+}
+
 function operationPath(value: string): string {
 	return resolve(expandUserPath(value));
 }
@@ -228,7 +276,9 @@ function parseJournal(raw: string, fileName: string): OperationJournal {
 		!OPERATION_ID.test(parsed.operationId) ||
 		typeof parsed.payloadHash !== "string" ||
 		!SHA256.test(parsed.payloadHash) ||
-		(parsed.kind !== "export" && parsed.kind !== "import") ||
+		!(["export", "import", "backup-create", "backup-restore"] as const).includes(
+			parsed.kind as OperationKind,
+		) ||
 		typeof parsed.state !== "string" ||
 		![
 			"prepared",
@@ -247,11 +297,11 @@ function parseJournal(raw: string, fileName: string): OperationJournal {
 	) {
 		throw new Error(`Daemon operation journal is malformed: ${fileName}`);
 	}
-	const request =
-		parsed.kind === "export"
-			? exportRequest(parsed.request as Record<string, unknown>)
-			: importRequest(parsed.request as Record<string, unknown>);
-	if (hashMutationPayload(request) !== parsed.payloadHash) {
+	const request = parseOperationRequest(
+		parsed.kind as OperationKind,
+		parsed.request as Record<string, unknown>,
+	);
+	if (operationPayloadHash(parsed.kind as OperationKind, request) !== parsed.payloadHash) {
 		throw new Error(`Daemon operation journal hash is invalid: ${fileName}`);
 	}
 	return { ...parsed, request } as OperationJournal;
@@ -260,6 +310,7 @@ function parseJournal(raw: string, fileName: string): OperationJournal {
 export class DaemonOperationService {
 	private readonly directory: string;
 	private readonly journals = new Map<string, OperationJournal>();
+	private readonly completions = new Map<string, Promise<void>>();
 
 	constructor(
 		private readonly store: MemoryStore,
@@ -273,6 +324,11 @@ export class DaemonOperationService {
 			.sort()) {
 			const journal = parseJournal(readFileSync(join(this.directory, fileName), "utf8"), fileName);
 			this.journals.set(journal.operationId, journal);
+			const recovered = journal.state === "committed" ? null : this.recoverBackupResult(journal);
+			if (recovered) {
+				this.transition(journal.operationId, "committed", recovered);
+				continue;
+			}
 			if (!TERMINAL_STATES.has(journal.state)) {
 				const cleanupVerified = removeInterruptedExportTemps(journal);
 				this.persist({
@@ -302,8 +358,8 @@ export class DaemonOperationService {
 		if (!SHA256.test(payloadHash)) {
 			throw new DaemonOperationRequestError("invalid_request", "payloadHash is invalid.");
 		}
-		const request = kind === "export" ? exportRequest(body) : importRequest(body);
-		if (hashMutationPayload(request) !== payloadHash) {
+		const request = parseOperationRequest(kind, body);
+		if (operationPayloadHash(kind, request) !== payloadHash) {
 			throw new DaemonOperationRequestError(
 				"invalid_request",
 				"payloadHash does not match the operation request.",
@@ -326,9 +382,35 @@ export class DaemonOperationService {
 		if (existing) {
 			if (existing.kind !== kind || existing.payloadHash !== payloadHash) {
 				throw new DaemonOperationRequestError(
-					"idempotency_conflict",
+					kind === "backup-create" || kind === "backup-restore"
+						? "conflict"
+						: "idempotency_conflict",
 					"Operation ID already exists with a different payload.",
 				);
+			}
+			if (
+				(kind === "backup-create" || kind === "backup-restore") &&
+				existing.state === "failed" &&
+				existing.error?.code === "daemon_restarted"
+			) {
+				const recovered = this.recoverBackupResult(existing);
+				if (recovered) {
+					this.transition(operationId, "committed", recovered);
+					return { operationId, state: "committed" };
+				}
+				this.persist({
+					...existing,
+					state: "prepared",
+					result: null,
+					error: null,
+					updatedAt: new Date().toISOString(),
+				});
+				try {
+					this.schedule(operationId, kind, request);
+				} catch {
+					this.fail(operationId, "daemon_stopping", "The daemon stopped before the operation ran.");
+				}
+				return { operationId, state: "prepared" };
 			}
 			return { operationId, state: existing.state };
 		}
@@ -347,21 +429,59 @@ export class DaemonOperationService {
 			updatedAt: now,
 		});
 		try {
-			void this.jobs
-				.schedule(
-					async () => {
-						await new Promise<void>((resolve) => setImmediate(resolve));
-						await this.execute(operationId);
-					},
-					kind === "import" && !(request as ImportRequest).dryRun,
-				)
-				.catch(() => {
-					this.fail(operationId, "operation_failed", "The daemon operation failed.");
-				});
+			this.schedule(operationId, kind, request);
 		} catch {
 			this.fail(operationId, "daemon_stopping", "The daemon stopped before the operation ran.");
 		}
 		return { operationId, state: "prepared" };
+	}
+
+	async runBackup(
+		kind: "backup-create" | "backup-restore",
+		body: Record<string, unknown>,
+	): Promise<Record<string, unknown>> {
+		const accepted = this.submit(kind, body);
+		const completion = this.completions.get(accepted.operationId);
+		if (completion) {
+			try {
+				await completion;
+			} catch {
+				// The authoritative backup/restore result is checked below.
+			}
+		}
+		const journal = this.journals.get(accepted.operationId);
+		if (journal?.state === "committed" && journal.result) return journal.result;
+		if (journal) {
+			try {
+				const recovered = this.recoverBackupResult(journal);
+				if (recovered) {
+					try {
+						this.transition(journal.operationId, "committed", recovered);
+					} catch {
+						// The online-backup or restore result remains the durable authority.
+					}
+					return recovered;
+				}
+			} catch {
+				// Fall through to the sanitized operation error.
+			}
+		}
+		if (journal?.state === "failed" && journal.error) {
+			const code = ["invalid_request", "conflict", "idempotency_conflict", "not_found"].includes(
+				journal.error.code,
+			)
+				? (journal.error.code as
+						| "invalid_request"
+						| "conflict"
+						| "idempotency_conflict"
+						| "not_found")
+				: "internal_error";
+			throw new DaemonOperationRequestError(code, journal.error.message);
+		}
+		throw new DaemonOperationRequestError(
+			"internal_error",
+			"The daemon backup operation did not produce a durable result.",
+		);
 	}
 
 	get(operationIdValue: unknown): DaemonOperationSnapshot {
@@ -390,7 +510,118 @@ export class DaemonOperationService {
 		const journal = this.journals.get(operationId);
 		if (journal?.state !== "prepared") return;
 		if (journal.kind === "export") this.executeExport(journal);
-		else await this.executeImport(journal);
+		else if (journal.kind === "import") await this.executeImport(journal);
+		else if (journal.kind === "backup-create") await this.executeBackupCreate(journal);
+		else this.executeBackupRestore(journal);
+	}
+
+	private schedule(operationId: string, kind: OperationKind, request: OperationRequest): void {
+		const completion = this.jobs
+			.schedule(
+				async () => {
+					await new Promise<void>((resolve) => setImmediate(resolve));
+					await this.execute(operationId);
+				},
+				(kind === "import" && !(request as ImportRequest).dryRun) || kind === "backup-restore",
+			)
+			.catch(() => {
+				this.fail(operationId, "operation_failed", "The daemon operation failed.");
+			});
+		this.completions.set(operationId, completion);
+		void completion.finally(() => {
+			if (this.completions.get(operationId) === completion) this.completions.delete(operationId);
+		});
+	}
+
+	private async executeBackupCreate(journal: OperationJournal): Promise<void> {
+		try {
+			const request = journal.request as BackupCreateRequest;
+			const proof = await createCanonicalBackup({
+				dataDir: this.dataDir,
+				operationId: journal.operationId,
+				payloadHash: journal.payloadHash,
+				reason: request.reason,
+			});
+			this.transition(journal.operationId, "committed", {
+				operationId: proof.backupId,
+				backupId: proof.backupId,
+				state: "completed",
+				artifactSha256: proof.artifactSha256,
+				manifestHash: proof.manifestHash,
+			});
+		} catch (error) {
+			this.recoverOrFailBackup(journal, error, "The daemon backup operation failed.");
+		}
+	}
+
+	private executeBackupRestore(journal: OperationJournal): void {
+		try {
+			const request = journal.request as BackupRestoreRequest;
+			this.transition(
+				journal.operationId,
+				"committed",
+				restoreCanonicalBackup({
+					dataDir: this.dataDir,
+					operationId: journal.operationId,
+					payloadHash: journal.payloadHash,
+					backupId: request.backupId,
+				}),
+			);
+		} catch (error) {
+			this.recoverOrFailBackup(journal, error, "The daemon restore operation failed.");
+		}
+	}
+
+	private recoverOrFailBackup(
+		journal: OperationJournal,
+		error: unknown,
+		fallbackMessage: string,
+	): void {
+		try {
+			const recovered = this.recoverBackupResult(journal);
+			if (recovered) {
+				this.transition(journal.operationId, "committed", recovered);
+				return;
+			}
+		} catch {
+			// Preserve the original operation failure below.
+		}
+		this.failBackup(journal.operationId, error, fallbackMessage);
+	}
+
+	private failBackup(operationId: string, error: unknown, fallbackMessage: string): void {
+		if (error instanceof BackupRequestError) {
+			this.fail(operationId, error.code, error.message);
+			return;
+		}
+		this.fail(operationId, "operation_failed", fallbackMessage);
+	}
+
+	private recoverBackupResult(journal: OperationJournal): Record<string, unknown> | null {
+		if (journal.kind === "backup-create") {
+			const proof = recoverCanonicalBackupResult({
+				dataDir: this.dataDir,
+				operationId: journal.operationId,
+				payloadHash: journal.payloadHash,
+			});
+			return proof
+				? {
+						operationId: proof.backupId,
+						backupId: proof.backupId,
+						state: "completed",
+						artifactSha256: proof.artifactSha256,
+						manifestHash: proof.manifestHash,
+					}
+				: null;
+		}
+		if (journal.kind !== "backup-restore") return null;
+		const request = journal.request as BackupRestoreRequest;
+		return recoverCanonicalRestoreResult({
+			dataDir: this.dataDir,
+			operationId: journal.operationId,
+			payloadHash: journal.payloadHash,
+			backupId: request.backupId,
+		});
 	}
 
 	private executeExport(journal: OperationJournal): void {

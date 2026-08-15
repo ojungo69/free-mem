@@ -3,6 +3,7 @@ import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { attachDaemonRpc } from "./daemon-rpc.js";
 import { connect } from "./db.js";
 import * as core from "./index.js";
 import { openTestMemoryStore } from "./test-utils.js";
@@ -103,6 +104,16 @@ describe("Phase 1 daemon RPC", () => {
 	});
 
 	it("P1-T035-03-size-and-deadline", async () => {
+		expect(core.rpcDeadlineForMethod("GET /v1/health")).toBe(core.RPC_DEFAULT_DEADLINE_MS);
+		for (const method of [
+			"GET /v1/backup/list",
+			"POST /v1/backup/create",
+			"POST /v1/backup/verify",
+			"POST /v1/backup/restore",
+		]) {
+			expect(core.rpcDeadlineForMethod(method)).toBeGreaterThan(2_000);
+		}
+
 		const oversized = await new Promise<string>((resolve, reject) => {
 			void core.startDaemon({ dataDir: tempDataDir() }).then((handle) => {
 				created.push(handle);
@@ -194,6 +205,76 @@ describe("Phase 1 daemon RPC", () => {
 		created.push(handle);
 		const late = await core.callDaemonRpc(handle.socketPath, handshake());
 		expect(late).toMatchObject({ error: { code: "deadline_exceeded", retryable: true } });
+
+		const restoreDataDir = tempDataDir();
+		const restoreLayout = core.resolveStorageLayout(restoreDataDir);
+		mkdirSync(restoreLayout.controlDir, { recursive: true, mode: 0o700 });
+		let releaseRestore: (() => void) | undefined;
+		const restoreGate = new Promise<void>((resolve) => {
+			releaseRestore = resolve;
+		});
+		let stopCalls = 0;
+		const restoreServer = createServer((connection) => {
+			attachDaemonRpc(connection, {
+				identity: { pid: process.pid, nonce: "late-restore" },
+				dataDir: restoreDataDir,
+				deadlineMs: 10,
+				onStop: () => {
+					stopCalls++;
+				},
+				writer: {} as never,
+				store: {} as never,
+				viewerAuth: {} as never,
+				viewerRead: async () => ({}),
+				jobs: {
+					isMaintenanceMode: () => false,
+					hasPendingWork: () => false,
+				} as never,
+				operations: {
+					hasPending: () => false,
+					runBackup: async () => {
+						await restoreGate;
+						return {
+							operationId: "late-restore",
+							backupId: "late-backup",
+							pointer: "versions/late.sqlite",
+							artifactSha256: "a".repeat(64),
+							manifestHash: "b".repeat(64),
+							restartRequired: true,
+						};
+					},
+				} as never,
+				restoreState: { active: false },
+			});
+		});
+		await new Promise<void>((resolve, reject) => {
+			restoreServer.once("error", reject);
+			restoreServer.listen(restoreLayout.socketPath, resolve);
+		});
+		try {
+			const timedOutRestore = await core.callDaemonRpc(
+				restoreLayout.socketPath,
+				handshake({
+					method: "POST /v1/backup/restore",
+					body: {
+						operationId: "late-restore",
+						backupId: "late-backup",
+						payloadHash: core.restorePayloadHash("late-backup"),
+					},
+				}),
+				{ timeoutMs: 1_000 },
+			);
+			expect(timedOutRestore).toMatchObject({ error: { code: "deadline_exceeded" } });
+			expect(stopCalls).toBe(0);
+			releaseRestore?.();
+			for (let attempt = 0; attempt < 50 && stopCalls === 0; attempt++) {
+				await new Promise<void>((resolve) => setImmediate(resolve));
+			}
+			expect(stopCalls).toBe(1);
+		} finally {
+			releaseRestore?.();
+			await new Promise<void>((resolve) => restoreServer.close(() => resolve()));
+		}
 	});
 
 	it("P1-T035-04-health-doctor", async () => {

@@ -7,6 +7,7 @@ import type { DbOpts } from "../shared-options.js";
 import { resolveDataDirOpt } from "../shared-options.js";
 
 type OperationMethod = "POST /v1/operations/export" | "POST /v1/operations/import";
+type BackupOperationMethod = "POST /v1/backup/create" | "POST /v1/backup/restore";
 
 export type DaemonOperationRunOutcome =
 	| { ok: true; operationId: string; result: Record<string, unknown> }
@@ -23,7 +24,7 @@ export function resolveOperationFilePath(value: string): string {
 
 export async function runDaemonOperation(
 	opts: DbOpts,
-	method: OperationMethod,
+	method: OperationMethod | BackupOperationMethod,
 	request: Record<string, unknown>,
 ): Promise<DaemonOperationRunOutcome> {
 	const client = createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) });
@@ -33,15 +34,23 @@ export async function runDaemonOperation(
 		payloadHash: hashMutationPayload(request),
 		...request,
 	});
-	if (!submitted.ok) {
-		return { ok: false, operationId, terminal: false, error: submitted.error };
+	if (
+		submitted.ok &&
+		(method === "POST /v1/backup/create" || method === "POST /v1/backup/restore")
+	) {
+		return { ok: true, operationId, result: submitted.result };
 	}
 
 	const deadline = Date.now() + 30 * 60 * 1000;
 	while (Date.now() < deadline) {
 		const response = await client.request("GET /v1/operations/:id", { id: operationId });
 		if (!response.ok) {
-			return { ok: false, operationId, terminal: false, error: response.error };
+			return {
+				ok: false,
+				operationId,
+				terminal: false,
+				error: submitted.ok ? response.error : submitted.error,
+			};
 		}
 		if (response.result.state === "committed") {
 			const result = response.result.result;

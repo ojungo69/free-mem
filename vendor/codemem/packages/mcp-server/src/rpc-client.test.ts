@@ -17,9 +17,13 @@ import {
 	resolveStorageLayout,
 	startDaemon,
 } from "@codemem/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReadOnlyActor } from "../../core/src/writer-actor.js";
 import { createMcpRpcClient, mcpRequestId } from "./rpc-client.js";
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 function projectFixture() {
 	const root = mkdtempSync(join(tmpdir(), "codemem-mcp-rpc-"));
@@ -259,6 +263,14 @@ describe("MCP daemon RPC client", () => {
 			).toMatchObject({ ok: true, result: { backupId: "mcp-backup", valid: true } });
 			writeFileSync(join(fixture.root, ".agent-memory.toml"), 'secret_regex = ["(a+)+$"]\n');
 			const degradedReason = `${"a".repeat(26)}!`;
+			const originalBackup = ReadOnlyActor.prototype.backup;
+			const delayedBackup = vi
+				.spyOn(ReadOnlyActor.prototype, "backup")
+				.mockImplementationOnce(async function (destinationFile, options) {
+					await new Promise((resolve) => setTimeout(resolve, 2_100));
+					return originalBackup.call(this, destinationFile, options);
+				});
+			const startedAt = Date.now();
 			expect(
 				await client.request("POST /v1/backup/create", {
 					operationId: "mcp-backup-degraded",
@@ -266,6 +278,9 @@ describe("MCP daemon RPC client", () => {
 					payloadHash: backupPayloadHash(degradedReason),
 				}),
 			).toMatchObject({ ok: true, result: { backupId: "mcp-backup-degraded" } });
+			expect(Date.now() - startedAt).toBeGreaterThanOrEqual(2_000);
+			expect(delayedBackup).toHaveBeenCalledTimes(1);
+			delayedBackup.mockRestore();
 			const degradedSidecar = readFileSync(
 				join(resolveStorageLayout(fixture.dataDir).backupsDir, "mcp-backup-degraded.json"),
 				"utf8",

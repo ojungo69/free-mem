@@ -12,6 +12,7 @@ import {
 	type RpcMethod,
 	type RpcRequest,
 	type RpcSuccess,
+	rpcDeadlineForMethod,
 	type TypedRpcError,
 } from "./daemon-rpc-contract.js";
 import { isEmbeddingDisabled } from "./db.js";
@@ -29,9 +30,7 @@ export { NORMALIZED_SCHEMA_VERSION } from "./normalized-event.js";
 
 import {
 	BackupRequestError,
-	createCanonicalBackup,
 	listCanonicalBackups,
-	restoreCanonicalBackup,
 	verifyCanonicalBackup,
 } from "./online-backup.js";
 import { applyDaemonIntake, type RedactionResult } from "./redaction-pipeline.js";
@@ -94,6 +93,7 @@ export {
 	RPC_DEFAULT_DEADLINE_MS,
 	RPC_MAX_BYTES,
 	RPC_METHODS,
+	rpcDeadlineForMethod,
 } from "./daemon-rpc-contract.js";
 
 const TOP_LEVEL_FIELDS = new Set([
@@ -497,19 +497,7 @@ async function handleMethod(
 		return { backups: listCanonicalBackups(ctx.dataDir) };
 	}
 	if (method === "POST /v1/backup/create") {
-		const proof = await createCanonicalBackup({
-			dataDir: ctx.dataDir,
-			operationId: String(body.operationId),
-			reason: String(body.reason),
-			payloadHash: String(body.payloadHash),
-		});
-		return {
-			operationId: proof.backupId,
-			backupId: proof.backupId,
-			state: "completed",
-			artifactSha256: proof.artifactSha256,
-			manifestHash: proof.manifestHash,
-		};
+		return ctx.operations.runBackup("backup-create", body);
 	}
 	if (method === "POST /v1/backup/verify") {
 		const check = verifyCanonicalBackup({
@@ -531,12 +519,7 @@ async function handleMethod(
 		}
 		restoreState.active = true;
 		try {
-			return restoreCanonicalBackup({
-				dataDir: ctx.dataDir,
-				operationId: String(body.operationId),
-				payloadHash: String(body.payloadHash),
-				backupId: String(body.backupId),
-			});
+			return await ctx.operations.runBackup("backup-restore", body);
 		} catch (error) {
 			restoreState.active = false;
 			throw error;
@@ -1345,7 +1328,6 @@ export async function dispatchDaemonRpc(
 	ctx: DaemonRpcContext,
 ): Promise<RpcSuccess | TypedRpcError> {
 	const started = (ctx.now ?? Date.now)();
-	const deadlineMs = ctx.deadlineMs ?? RPC_DEFAULT_DEADLINE_MS;
 	const request = parseRequest(raw);
 	if ("error" in request) return request;
 	const handshake = handshakeError(request);
@@ -1353,6 +1335,7 @@ export async function dispatchDaemonRpc(
 	if (!isRpcMethod(request.method)) {
 		return typedError("unknown_method", `Unknown RPC method: ${request.method}`);
 	}
+	const deadlineMs = ctx.deadlineMs ?? rpcDeadlineForMethod(request.method);
 	const body = request.body ?? {};
 	const extra = unknownFields(body, METHOD_BODY_FIELDS[request.method]);
 	if (extra.length > 0) {
@@ -1438,13 +1421,18 @@ export function attachDaemonRpc(connection: Socket, ctx: DaemonRpcContext): void
 		requestStopAfterResponse();
 	});
 	const finish = (payload?: RpcSuccess | TypedRpcError) => {
-		if (done) return;
-		done = true;
 		if (payload) {
-			stopAfterResponse =
+			stopAfterResponse ||=
 				ctx.restoreState?.active === true &&
 				"result" in payload &&
 				payload.result.restartRequired === true;
+		}
+		if (done) {
+			requestStopAfterResponse();
+			return;
+		}
+		done = true;
+		if (payload) {
 			if (connection.destroyed) {
 				requestStopAfterResponse();
 				return;
@@ -1483,6 +1471,14 @@ export function attachDaemonRpc(connection: Socket, ctx: DaemonRpcContext): void
 			return;
 		}
 		dispatching = true;
+		try {
+			const request = JSON.parse(line) as { method?: unknown };
+			if (typeof request.method === "string") {
+				connection.setTimeout(ctx.deadlineMs ?? rpcDeadlineForMethod(request.method));
+			}
+		} catch {
+			// Canonical parsing below returns the typed invalid_json response.
+		}
 		void dispatchDaemonRpc(line, ctx).then(finish, () => {
 			finish(typedError("internal_error", "RPC handler failed."));
 		});

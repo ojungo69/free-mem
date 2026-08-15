@@ -56,6 +56,7 @@ export {
 	RPC_DEFAULT_DEADLINE_MS,
 	RPC_MAX_BYTES,
 	RPC_METHODS,
+	rpcDeadlineForMethod,
 } from "./daemon-rpc.js";
 export {
 	assertSchemaReady,
