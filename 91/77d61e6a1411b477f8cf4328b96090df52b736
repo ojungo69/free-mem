@@ -1,0 +1,33 @@
+vendor/codemem/packages/cli/src/commands/setup-config.test.ts
+  s_3ac342c3240e69::t_38e540783835a2 1-9,13-20,108-120
+vendor/codemem/packages/cli/src/commands/setup-config.ts
+  s_3ac342c3240e69::t_38b1a6d62b81c8 5,7,9,18,21-153,200-201,203-206,220-231,244,247
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_211aa7fe546c35::t_18efe1f3f8f3a5 14,33-41,47-55,65-82,116-120,221-238,483-492,846-871,902-965,1014-1019,1031-1044
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_211aa7fe546c35::t_c5544efdef2a78 14-15,21,32,35,37,39-43,299,306,312-315,318-330,332,334-339,341,346-350,356-357,359-367,369,387,430-434,496-526,530-544,693-698,1001,1006,1009,1018,1023,1040-1045,1137-1145,1149-1152,1155-1156,1174,1188-1190,1192-1193,1198-1205,1213,1217-1218,1222,1227,1243-1244,1247-1263,1297-1299,1303-1304,1318,1329-1332,1339,1342-1343,1346,1349-1352,1354,1356,1382,1413
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9177d61e6a1411b477f8cf4328b96090df52b736",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_3ac342c3240e69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff64ca65-c732-4368-af94-a7cf393db32f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
