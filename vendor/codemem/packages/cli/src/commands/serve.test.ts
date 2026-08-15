@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net, { createServer } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+import { resolveStorageLayout } from "@codemem/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const childProcessMocks = vi.hoisted(() => ({
@@ -30,6 +31,7 @@ vi.mock("@codemem/server", () => ({
 	createViewerRpcCall: serverMocks.createViewerRpcCall,
 }));
 
+import { resolveDataDirOpt } from "../shared-options.js";
 import {
 	buildForegroundRunnerArgs,
 	extractViewerPid,
@@ -92,6 +94,32 @@ describe("serve command option resolution", () => {
 		const originalConfig = process.env.CODEMEM_CONFIG;
 		const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 		try {
+			delete process.env.CODEMEM_DATA_DIR;
+			delete process.env.CODEMEM_DB;
+			const siblingDbPath = join(root, "sibling.sqlite");
+			expect(resolveDataDirOpt()).toBe(join(homedir(), ".codemem"));
+			const customDataDir = resolveDataDirOpt({ dbPath });
+			const siblingDataDir = resolveDataDirOpt({ dbPath: siblingDbPath });
+			expect(dirname(customDataDir)).toBe(join(homedir(), ".codemem", "runtimes"));
+			expect(basename(customDataDir)).toMatch(/^[a-f0-9]{32}$/);
+			expect(resolveDataDirOpt({ dbPath })).toBe(customDataDir);
+			expect(customDataDir).not.toBe(siblingDataDir);
+			const longDbPath = join(root, "x".repeat(180), "deeply-nested.sqlite");
+			expect(
+				Buffer.byteLength(
+					resolveStorageLayout(resolveDataDirOpt({ dbPath: longDbPath })).socketPath,
+				),
+			).toBeLessThan(108);
+			expect(resolveDataDirOpt({ dbPath: join(homedir(), ".codemem", "mem.sqlite") })).toBe(
+				join(homedir(), ".codemem"),
+			);
+			const explicitDataDir = join(root, "explicit-data");
+			process.env.CODEMEM_DATA_DIR = explicitDataDir;
+			process.env.CODEMEM_DB = dbPath;
+			expect(resolveDataDirOpt({ dbPath: siblingDbPath })).toBe(explicitDataDir);
+			delete process.env.CODEMEM_DATA_DIR;
+			delete process.env.CODEMEM_DB;
+
 			process.exitCode = 0;
 			await serveCommand.parseAsync(
 				["stop", "--host", "127.0.0.1", "--port", String(port), "--db-path", dbPath],
@@ -208,7 +236,7 @@ describe("serve command option resolution", () => {
 				`Viewer already running at http://127.0.0.1:${port}/#auth=${freshNonce}`,
 			);
 			expect(serverMocks.createViewerRpcCall).toHaveBeenLastCalledWith({
-				socketPath: join(root, "control", "daemon.sock"),
+				socketPath: resolveStorageLayout(customDataDir).socketPath,
 			});
 			expect(childProcessMocks.spawn).not.toHaveBeenCalled();
 

@@ -9,7 +9,12 @@ import {
 	readSync,
 } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { DEFAULT_DATA_DIR, resolveStorageLayout, type StorageLayout } from "./storage-layout.js";
+import {
+	DEFAULT_DATA_DIR,
+	resolveRuntimeDataDir,
+	resolveStorageLayout,
+	type StorageLayout,
+} from "./storage-layout.js";
 import {
 	durableCopyFile,
 	durableRemoveFile,
@@ -21,7 +26,7 @@ import {
 import { ReadOnlyActor } from "./writer-actor.js";
 
 export type { StorageLayout };
-export { DEFAULT_DATA_DIR, resolveStorageLayout };
+export { DEFAULT_DATA_DIR, resolveRuntimeDataDir, resolveStorageLayout };
 
 export type StorageJournalState = "prepared" | "switched" | "committed";
 

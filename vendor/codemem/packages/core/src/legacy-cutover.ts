@@ -23,6 +23,7 @@ import {
 	runLegacyMigration,
 	type StorageLayout,
 } from "./storage.js";
+import { resolveDatabaseRuntimeDataDir } from "./storage-layout.js";
 import {
 	durableRemoveFile,
 	durableReplaceFile,
@@ -443,7 +444,12 @@ export async function cutoverLegacyLayoutIfNeeded(
 	const candidates = new Set<string>();
 	if (configured) {
 		const path = resolve(expandHome(configured));
-		if (dirname(path) === layout.dataDir && existsSync(path)) candidates.add(path);
+		if (
+			existsSync(path) &&
+			(dirname(path) === layout.dataDir || resolveDatabaseRuntimeDataDir(path) === layout.dataDir)
+		) {
+			candidates.add(path);
+		}
 	}
 	if (candidates.size === 0) {
 		const defaultLegacy = join(layout.dataDir, "mem.sqlite");

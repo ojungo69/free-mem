@@ -8,9 +8,7 @@
  * See docs/cli-design-conventions.md for the full spec.
  */
 
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { DEFAULT_DATA_DIR } from "@codemem/core";
+import { resolveRuntimeDataDir } from "@codemem/core";
 import type { Command } from "commander";
 import { Option } from "commander";
 
@@ -33,11 +31,7 @@ export function resolveDbOpt(opts: { db?: string; dbPath?: string }): string | u
 
 /** Resolve the canonical daemon root while preserving the legacy DB-path override. */
 export function resolveDataDirOpt(opts: { db?: string; dbPath?: string } = {}): string {
-	const configured = process.env.CODEMEM_DATA_DIR?.trim();
-	if (configured) return configured;
-	const dbPath = resolveDbOpt(opts) ?? process.env.CODEMEM_DB?.trim();
-	if (!dbPath) return DEFAULT_DATA_DIR;
-	return dirname(dbPath.startsWith("~/") ? join(homedir(), dbPath.slice(2)) : dbPath);
+	return resolveRuntimeDataDir({ dbPath: resolveDbOpt(opts) });
 }
 
 // ---------------------------------------------------------------------------

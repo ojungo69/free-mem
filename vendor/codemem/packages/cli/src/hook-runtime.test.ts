@@ -109,6 +109,16 @@ describe("bundled hook runtime", () => {
 				"user_prompted",
 				"user_prompted",
 			]);
+			const claudeBundle = readFileSync(
+				join(process.cwd(), "plugins", "claude", "scripts", "hook-runtime.mjs"),
+				"utf8",
+			);
+			const codexBundle = readFileSync(
+				join(process.cwd(), "plugins", "codex", "scripts", "hook-runtime.mjs"),
+				"utf8",
+			);
+			expect(claudeBundle).toBe(codexBundle);
+			expect(claudeBundle).not.toMatch(/^\/\/#region (?:\/|[A-Za-z]:[\\/]).*node_modules/m);
 		} finally {
 			for (const [key, value] of Object.entries(env)) {
 				if (value === undefined) delete process.env[key];

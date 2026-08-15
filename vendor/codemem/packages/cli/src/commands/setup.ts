@@ -28,8 +28,8 @@ import { fileURLToPath } from "node:url";
 import * as p from "@clack/prompts";
 import {
 	captureManagedTarget,
-	DEFAULT_DATA_DIR,
 	readInstallManifest,
+	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	VERSION,
 	writeInstallManifest,
@@ -618,11 +618,7 @@ export function installCodex(force: boolean): boolean {
 }
 
 function setupDataDir(): string {
-	const configured = process.env.CODEMEM_DATA_DIR?.trim();
-	if (configured) return configured;
-	const dbPath = process.env.CODEMEM_DB?.trim();
-	if (!dbPath) return DEFAULT_DATA_DIR;
-	return dirname(dbPath.startsWith("~/") ? join(homedir(), dbPath.slice(2)) : dbPath);
+	return resolveRuntimeDataDir();
 }
 
 export function writeSetupInstallManifest(

@@ -53,6 +53,7 @@ describe("claude-hook-inject", () => {
 	});
 
 	it("requests the daemon pack and returns exact additionalContext", async () => {
+		const dbPath = join(root, "custom.sqlite");
 		const result = await buildClaudeHookInjection(
 			{
 				hook_event_name: "UserPromptSubmit",
@@ -61,11 +62,15 @@ describe("claude-hook-inject", () => {
 				cwd: "/tmp/codemem",
 				project: "codemem",
 			},
-			{},
+			{ dbPath },
 			{
-				deliver: delivered,
-				requestPack: async (agent, input) => {
+				deliver: async (_agent, _payload, options) => {
+					expect(options).toMatchObject({ dbPath });
+					return { via: "rpc" };
+				},
+				requestPack: async (agent, input, options) => {
 					expect(agent).toBe("claude");
+					expect(options).toMatchObject({ dbPath });
 					expect(input).toMatchObject({
 						context: "fix auth callback codemem",
 						project: "codemem",

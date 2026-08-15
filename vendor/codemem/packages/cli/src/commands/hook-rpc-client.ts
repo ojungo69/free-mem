@@ -16,7 +16,6 @@ import {
 	buildNormalizedEventFromClaudeHook,
 	buildNormalizedEventFromCodexHook,
 	callDaemonRpc,
-	DEFAULT_DATA_DIR,
 	HOOK_DELIVERY_BUDGETS,
 	LOCAL_API_VERSION,
 	NORMALIZED_EVENT_FIELDS,
@@ -25,6 +24,7 @@ import {
 	preprocessAdapterEvent,
 	RPC_CAPABILITY_HASH,
 	RPC_MAX_BYTES,
+	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	type SpoolRedactionMetadata,
 	sealDegradedNormalizedEvent,
@@ -37,7 +37,12 @@ import { extractModifiedPathsFromHook } from "./claude-hook-session-state.js";
 
 export type HookAgent = "claude" | "codex";
 
-type RpcOptions = { dataDir?: string; rpcTimeoutMs?: number; deadlineAtMs?: number };
+type RpcOptions = {
+	dataDir?: string;
+	dbPath?: string;
+	rpcTimeoutMs?: number;
+	deadlineAtMs?: number;
+};
 
 export type HookPackResult = { packText: string; items: number; packTokens: number };
 
@@ -72,9 +77,8 @@ const HOOK_RPC_TIMEOUT_MS: Record<HookAgent, number> = {
 	codex: HOOK_DELIVERY_BUDGETS.codex.rpcCutoffMs,
 };
 
-function hookDataDir(dataDir?: string): string {
-	const configured = process.env.CODEMEM_DATA_DIR?.trim();
-	return dataDir ?? (configured || DEFAULT_DATA_DIR);
+function hookDataDir(options: RpcOptions): string {
+	return resolveRuntimeDataDir(options);
 }
 
 function projectRoot(cwd: unknown): string | null {
@@ -295,7 +299,7 @@ export async function requestHookRpc(
 		timeoutMs = Math.min(timeoutMs, remaining);
 	}
 	const result = await callDaemonRpc(
-		resolveStorageLayout(hookDataDir(options.dataDir)).socketPath,
+		resolveStorageLayout(hookDataDir(options)).socketPath,
 		{
 			id: randomUUID(),
 			method,
@@ -357,7 +361,7 @@ export async function deliverHookEvent(
 				body: { idempotencyKey, event: prepared.event },
 			},
 			{
-				dataDir: hookDataDir(options.dataDir),
+				dataDir: hookDataDir(options),
 				config: prepared.config,
 				previousRedaction: prepared.redaction,
 				lockDeadlineMs: Math.floor(lockBudget),

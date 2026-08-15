@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
-import { addDbOption, addViewerHostOptions, type DbOpts } from "../shared-options.js";
+import { addDbOption, addViewerHostOptions, type DbOpts, resolveDbOpt } from "../shared-options.js";
 import {
 	extractModifiedPathsFromHook,
 	trackHookSessionState,
@@ -54,7 +54,10 @@ export async function ingestClaudeHookPayload(
 			// Session-state enrichment is best effort and must not block capture.
 		}
 	}
-	const result = await (deps.deliver ?? deliverHookEvent)("claude", payload, { prepared });
+	const result = await (deps.deliver ?? deliverHookEvent)("claude", payload, {
+		prepared,
+		dbPath: resolveDbOpt(_opts),
+	});
 	return {
 		inserted: result.via === "rpc" ? 1 : 0,
 		skipped: result.via === "skipped" ? 1 : 0,

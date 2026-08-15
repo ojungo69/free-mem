@@ -9,6 +9,7 @@ describe("codex-hook-ingest", () => {
 	});
 
 	it("reports daemon delivery without a DB fallback", async () => {
+		const dbPath = "/tmp/codemem-codex-ingest.sqlite";
 		const result = await ingestCodexHookPayload(
 			{
 				hook_event_name: "UserPromptSubmit",
@@ -16,10 +17,11 @@ describe("codex-hook-ingest", () => {
 				prompt: "resume work",
 				timestamp: "2026-08-14T01:00:00.000Z",
 			},
-			{ host: "127.0.0.1", port: 38888 },
+			{ host: "127.0.0.1", port: 38888, dbPath },
 			{
-				deliver: async (agent) => {
+				deliver: async (agent, _payload, options) => {
 					expect(agent).toBe("codex");
+					expect(options).toMatchObject({ dbPath });
 					return { via: "spool" };
 				},
 			},

@@ -32,6 +32,7 @@ describe("claude-hook-ingest", () => {
 		["skipped", { inserted: 0, skipped: 1, via: "skipped" }],
 		["dropped", { inserted: 0, skipped: 0, via: "dropped" }],
 	] as const)("reports %s delivery without a DB fallback", async (via, expected) => {
+		const dbPath = join(stateDir, "custom.sqlite");
 		const payload = {
 			hook_event_name: "UserPromptSubmit",
 			session_id: "claude-session",
@@ -40,10 +41,11 @@ describe("claude-hook-ingest", () => {
 		let delivered: Record<string, unknown> | undefined;
 		const result = await ingestClaudeHookPayload(
 			payload,
-			{ host: "127.0.0.1", port: 38888 },
+			{ host: "127.0.0.1", port: 38888, dbPath },
 			{
-				deliver: async (agent, value) => {
+				deliver: async (agent, value, options) => {
 					expect(agent).toBe("claude");
+					expect(options).toMatchObject({ dbPath });
 					delivered = value;
 					return { via };
 				},

@@ -20,7 +20,11 @@ import { startDaemon } from "./daemon-lifecycle.js";
 import { captureManagedTarget, writeInstallManifest } from "./install-manifest.js";
 import { cutoverLegacyDatabase, listOpenFileOwners } from "./legacy-cutover.js";
 import { runDatabaseMigrations } from "./migration-runner.js";
-import { readCurrentDatabasePointer, resolveStorageLayout } from "./storage.js";
+import {
+	readCurrentDatabasePointer,
+	resolveRuntimeDataDir,
+	resolveStorageLayout,
+} from "./storage.js";
 import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 const require = createRequire(import.meta.url);
@@ -28,11 +32,20 @@ const sqliteModule = require.resolve("better-sqlite3");
 const dirs: string[] = [];
 const children: ChildProcess[] = [];
 
-function fixture() {
+function fixture(customDatabase = false, legacyParentRuntime = false) {
 	const root = mkdtempSync(join(tmpdir(), "codemem-legacy-cutover-"));
 	dirs.push(root);
-	const layout = resolveStorageLayout(join(root, "data"));
-	const legacyPath = join(layout.dataDir, "mem.sqlite");
+	const legacyPath = customDatabase
+		? join(root, "custom.sqlite")
+		: join(root, "data", "mem.sqlite");
+	const layout = resolveStorageLayout(
+		customDatabase
+			? legacyParentRuntime
+				? root
+				: resolveRuntimeDataDir({ dbPath: legacyPath })
+			: join(root, "data"),
+	);
+	if (!layout.dataDir.startsWith(`${root}/`) && layout.dataDir !== root) dirs.push(layout.dataDir);
 	const db = WriterActor.open(legacyPath);
 	runDatabaseMigrations(db, {
 		dbPath: legacyPath,
@@ -155,7 +168,7 @@ describe("Phase 1 legacy layout cutover", () => {
 		expect(lstatSync(readlinkSync(legacyPath)).isDirectory()).toBe(true);
 		expect(listOpenFileOwners(legacyPath)).toEqual([]);
 
-		const interrupted = fixture();
+		const interrupted = fixture(true, true);
 		const recoveryPath = join(
 			interrupted.layout.controlDir,
 			"legacy-00000000-0000-4000-8000-000000000001.legacy-recovery.sqlite",
@@ -171,24 +184,35 @@ describe("Phase 1 legacy layout cutover", () => {
 		rmSync(interrupted.legacyPath);
 		symlinkSync(tombstoneDir, interrupted.legacyPath, "dir");
 
-		const restarted = await startDaemon({ dataDir: interrupted.layout.dataDir });
-		await restarted.stop();
-		const interruptedPointer = readCurrentDatabasePointer(interrupted.layout);
-		expect(interruptedPointer).not.toBeNull();
-		const recovered = ReadOnlyActor.open(
-			join(interrupted.layout.dbDir, interruptedPointer as string),
-		);
+		const interruptedDb = process.env.CODEMEM_DB;
+		process.env.CODEMEM_DB = interrupted.legacyPath;
+		let restarted: Awaited<ReturnType<typeof startDaemon>> | undefined;
 		try {
-			expect(recovered.prepare("SELECT value FROM legacy_probe").pluck().get()).toBe("preserved");
+			const interruptedDataDir = resolveRuntimeDataDir({ dbPath: interrupted.legacyPath });
+			expect(interruptedDataDir).toBe(interrupted.layout.dataDir);
+			restarted = await startDaemon({ dataDir: interruptedDataDir });
+			await restarted.stop();
+			const interruptedPointer = readCurrentDatabasePointer(interrupted.layout);
+			expect(interruptedPointer).not.toBeNull();
+			const recovered = ReadOnlyActor.open(
+				join(interrupted.layout.dbDir, interruptedPointer as string),
+			);
+			try {
+				expect(recovered.prepare("SELECT value FROM legacy_probe").pluck().get()).toBe("preserved");
+			} finally {
+				recovered.close();
+			}
+			expect(lstatSync(interrupted.legacyPath).isSymbolicLink()).toBe(true);
+			expect(
+				readdirSync(interrupted.layout.controlDir).filter((name) =>
+					name.endsWith(".legacy-recovery.sqlite"),
+				),
+			).toEqual([]);
 		} finally {
-			recovered.close();
+			await restarted?.stop().catch(() => {});
+			if (interruptedDb === undefined) delete process.env.CODEMEM_DB;
+			else process.env.CODEMEM_DB = interruptedDb;
 		}
-		expect(lstatSync(interrupted.legacyPath).isSymbolicLink()).toBe(true);
-		expect(
-			readdirSync(interrupted.layout.controlDir).filter((name) =>
-				name.endsWith(".legacy-recovery.sqlite"),
-			),
-		).toEqual([]);
 
 		const missing = fixture();
 		const missingTombstone = join(missing.layout.controlDir, "legacy-db-tombstone");
@@ -293,5 +317,60 @@ describe("Phase 1 legacy layout cutover", () => {
 		expect(existsSync(`${legacyPath}-wal`)).toBe(false);
 		expect(existsSync(`${legacyPath}-shm`)).toBe(false);
 		expect(existsSync(join(legacySpool, "legacy-event.json"))).toBe(false);
+
+		const custom = fixture(true);
+		const originalDb = process.env.CODEMEM_DB;
+		process.env.CODEMEM_DB = custom.legacyPath;
+		let customDaemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
+		try {
+			customDaemon = await startDaemon({ dataDir: custom.layout.dataDir });
+			await customDaemon.stop();
+			const customPointer = readCurrentDatabasePointer(custom.layout);
+			expect(customPointer).not.toBeNull();
+			const customReader = ReadOnlyActor.open(join(custom.layout.dbDir, customPointer as string));
+			try {
+				expect(customReader.prepare("SELECT value FROM legacy_probe").pluck().get()).toBe(
+					"preserved",
+				);
+			} finally {
+				customReader.close();
+			}
+			expect(lstatSync(custom.legacyPath).isSymbolicLink()).toBe(true);
+		} finally {
+			await customDaemon?.stop().catch(() => {});
+			if (originalDb === undefined) delete process.env.CODEMEM_DB;
+			else process.env.CODEMEM_DB = originalDb;
+		}
+
+		const oldCustom = fixture(true, true);
+		const oldDb = process.env.CODEMEM_DB;
+		process.env.CODEMEM_DB = oldCustom.legacyPath;
+		let oldDaemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
+		let resumedDaemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
+		try {
+			oldDaemon = await startDaemon({ dataDir: oldCustom.layout.dataDir });
+			await oldDaemon.stop();
+			const resumedDataDir = resolveRuntimeDataDir({ dbPath: oldCustom.legacyPath });
+			expect(resumedDataDir).toBe(oldCustom.layout.dataDir);
+			resumedDaemon = await startDaemon({ dataDir: resumedDataDir });
+			await resumedDaemon.stop();
+			const resumedPointer = readCurrentDatabasePointer(oldCustom.layout);
+			expect(resumedPointer).not.toBeNull();
+			const resumedReader = ReadOnlyActor.open(
+				join(oldCustom.layout.dbDir, resumedPointer as string),
+			);
+			try {
+				expect(resumedReader.prepare("SELECT value FROM legacy_probe").pluck().get()).toBe(
+					"preserved",
+				);
+			} finally {
+				resumedReader.close();
+			}
+		} finally {
+			await oldDaemon?.stop().catch(() => {});
+			await resumedDaemon?.stop().catch(() => {});
+			if (oldDb === undefined) delete process.env.CODEMEM_DB;
+			else process.env.CODEMEM_DB = oldDb;
+		}
 	});
 });

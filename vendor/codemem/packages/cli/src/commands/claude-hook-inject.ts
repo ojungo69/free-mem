@@ -1,7 +1,7 @@
 import { resolveHookProject } from "@codemem/core";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
-import { addDbOption, type DbOpts } from "../shared-options.js";
+import { addDbOption, type DbOpts, resolveDbOpt } from "../shared-options.js";
 import { logHookEvent } from "./claude-hook-plugin-log.js";
 import {
 	buildInjectQuery,
@@ -87,6 +87,7 @@ export async function buildClaudeHookInjection(
 	if (envTruthy(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult();
 	const prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	if (prepared.status === "skipped") return continueResult();
+	const deliveryOptions = { prepared, dbPath: resolveDbOpt(_opts) };
 
 	let state: SessionState | null = null;
 	try {
@@ -104,15 +105,15 @@ export async function buildClaudeHookInjection(
 	const prompt = normalizePromptText(prepared.safePrompt);
 	const deliver = deps.deliver ?? deliverHookEvent;
 	if (!prompt) {
-		await deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" as const }));
+		await deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" as const }));
 		return continueResult();
 	}
 	if (!envNotDisabled(process.env.CODEMEM_INJECT_CONTEXT || "1")) {
-		await deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" as const }));
+		await deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" as const }));
 		return continueResult();
 	}
 	if (prepared.redaction.local_only) {
-		await deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" as const }));
+		await deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" as const }));
 		return continueResult();
 	}
 
@@ -129,9 +130,13 @@ export async function buildClaudeHookInjection(
 				limit: parsePositiveInt(process.env.CODEMEM_INJECT_LIMIT, 8),
 				tokenBudget: parsePositiveInt(process.env.CODEMEM_INJECT_TOKEN_BUDGET, 800),
 			},
-			{ config: prepared.config, deadlineAtMs: prepared.deadlineAtMs },
+			{
+				config: prepared.config,
+				deadlineAtMs: prepared.deadlineAtMs,
+				dbPath: deliveryOptions.dbPath,
+			},
 		).catch(() => EMPTY_PACK),
-		deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" as const })),
+		deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" as const })),
 	]);
 
 	const fields = [

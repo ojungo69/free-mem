@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveRuntimeDataDir } from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	buildCodememCodexHookGroups,
@@ -22,16 +23,27 @@ const INJECT_CMD = `${HOOK_BASE} codex-hook-inject`;
 const HOOK_TIMEOUT = 5;
 
 const savedCodexHome = process.env.CODEX_HOME;
+const savedDataDir = process.env.CODEMEM_DATA_DIR;
+const savedDb = process.env.CODEMEM_DB;
 let codexHome: string;
+let runtimeDirs: string[];
 
 beforeEach(() => {
 	codexHome = mkdtempSync(join(tmpdir(), "codemem-setup-codex-"));
 	process.env.CODEX_HOME = codexHome;
+	runtimeDirs = [];
+	delete process.env.CODEMEM_DATA_DIR;
+	delete process.env.CODEMEM_DB;
 });
 
 afterEach(() => {
 	if (savedCodexHome === undefined) delete process.env.CODEX_HOME;
 	else process.env.CODEX_HOME = savedCodexHome;
+	if (savedDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+	else process.env.CODEMEM_DATA_DIR = savedDataDir;
+	if (savedDb === undefined) delete process.env.CODEMEM_DB;
+	else process.env.CODEMEM_DB = savedDb;
+	for (const dataDir of runtimeDirs) rmSync(dataDir, { recursive: true, force: true });
 	rmSync(codexHome, { recursive: true, force: true });
 });
 
@@ -109,6 +121,13 @@ describe("installCodex — fresh CODEX_HOME", () => {
 			readFileSync(join(dataDir, "control", "install-manifest.json"), "utf8"),
 		) as { targets: Array<{ id: string }> };
 		expect(reconciled.targets.map((target) => target.id)).toEqual(["codex-hooks"]);
+
+		const customDbPath = join(codexHome, "setup.sqlite");
+		process.env.CODEMEM_DB = customDbPath;
+		const customDataDir = resolveRuntimeDataDir({ dbPath: customDbPath });
+		runtimeDirs.push(customDataDir);
+		writeSetupInstallManifest([{ id: "codex-hooks", path: join(codexHome, "hooks.json") }]);
+		expect(existsSync(join(customDataDir, "control", "install-manifest.json"))).toBe(true);
 	});
 
 	it("writes the MCP block and all hook events with correct schema", () => {

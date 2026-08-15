@@ -14,6 +14,7 @@ import {
 	HOOK_DELIVERY_BUDGETS,
 	parseAgentMemoryToml,
 	readCurrentDatabasePointer,
+	resolveRuntimeDataDir,
 	resolveSpoolLayout,
 	resolveStorageLayout,
 	startDaemon,
@@ -25,15 +26,23 @@ import { ingestClaudeHookPayload } from "./claude-hook-ingest.js";
 import { buildClaudeHookInjection } from "./claude-hook-inject.js";
 import { statePathForSession } from "./claude-hook-session-state.js";
 import { buildCodexHookInjection } from "./codex-hook-inject.js";
-import { deliverHookEvent, prepareHookEvent, requestHookPack } from "./hook-rpc-client.js";
+import {
+	deliverHookEvent,
+	prepareHookEvent,
+	requestHookPack,
+	requestHookRpc,
+} from "./hook-rpc-client.js";
 
 const roots: string[] = [];
 const originalDataDir = process.env.CODEMEM_DATA_DIR;
+const originalDb = process.env.CODEMEM_DB;
 const originalContextDir = process.env.CODEMEM_CLAUDE_HOOK_CONTEXT_DIR;
 
 afterEach(async () => {
 	if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
 	else process.env.CODEMEM_DATA_DIR = originalDataDir;
+	if (originalDb === undefined) delete process.env.CODEMEM_DB;
+	else process.env.CODEMEM_DB = originalDb;
 	if (originalContextDir === undefined) delete process.env.CODEMEM_CLAUDE_HOOK_CONTEXT_DIR;
 	else process.env.CODEMEM_CLAUDE_HOOK_CONTEXT_DIR = originalContextDir;
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -116,6 +125,63 @@ describe("hook thin clients", () => {
 		} finally {
 			await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
 		}
+
+		delete process.env.CODEMEM_DATA_DIR;
+		const customDbPath = join(root, "hook.sqlite");
+		process.env.CODEMEM_DB = customDbPath;
+		const customDataDir = resolveRuntimeDataDir({ dbPath: customDbPath });
+		roots.push(customDataDir);
+		const customStorage = resolveStorageLayout(customDataDir);
+		mkdirSync(customStorage.controlDir, { recursive: true, mode: 0o700 });
+		const rpcServer = createServer((socket) => {
+			socket.once("data", (chunk: Buffer) => {
+				const request = JSON.parse(chunk.toString("utf8")) as { id: string };
+				socket.end(`${JSON.stringify({ id: request.id, result: { status: "ok" } })}\n`);
+			});
+		});
+		await new Promise<void>((resolveListen, reject) => {
+			rpcServer.once("error", reject);
+			rpcServer.listen(customStorage.socketPath, resolveListen);
+		});
+		try {
+			await expect(requestHookRpc("claude", "GET /v1/health", {})).resolves.toEqual({
+				status: "ok",
+			});
+		} finally {
+			await new Promise<void>((resolveClose) => rpcServer.close(() => resolveClose()));
+		}
+
+		const envResult = await deliverHookEvent(
+			"claude",
+			{
+				hook_event_name: "SessionEnd",
+				session_id: "session-env-db",
+				cwd: root,
+				timestamp: "2026-08-14T01:00:00.000Z",
+				reason: "done",
+			},
+			{ rpcTimeoutMs: 25 },
+		);
+		expect(envResult).toEqual({ via: "spool" });
+		expect(readdirSync(resolveSpoolLayout(customDataDir).readyDir)).toHaveLength(1);
+
+		delete process.env.CODEMEM_DB;
+		const optionDbPath = join(root, "hook-option.sqlite");
+		const optionDataDir = resolveRuntimeDataDir({ dbPath: optionDbPath });
+		roots.push(optionDataDir);
+		const optionResult = await deliverHookEvent(
+			"claude",
+			{
+				hook_event_name: "SessionEnd",
+				session_id: "session-option-db",
+				cwd: root,
+				timestamp: "2026-08-14T01:00:00.000Z",
+				reason: "done",
+			},
+			{ dbPath: optionDbPath, rpcTimeoutMs: 25 },
+		);
+		expect(optionResult).toEqual({ via: "spool" });
+		expect(readdirSync(resolveSpoolLayout(optionDataDir).readyDir)).toHaveLength(1);
 	});
 
 	it("does not start a spool write after the fsync reserve is exhausted", async () => {

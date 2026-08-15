@@ -185,7 +185,11 @@ describe("db command", () => {
 		const dataDir = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-")), "data");
 		const daemon = await startDaemon({ dataDir });
 		const oldTs = Date.now() - 200 * 86_400_000; // well past a 1-day cutoff
+		const originalDataDir = process.env.CODEMEM_DATA_DIR;
+		const originalExitCode = process.exitCode;
 		try {
+			process.env.CODEMEM_DATA_DIR = dataDir;
+			process.exitCode = 0;
 			await seedDaemonRawEvent(daemon.socketPath, "sess-dry", "evt-0", oldTs);
 			await seedDaemonRawEvent(daemon.socketPath, "sess-dry", "evt-1", oldTs + 1000);
 			expect(await daemonRawEventCount(daemon.socketPath)).toBe(2);
@@ -203,8 +207,12 @@ describe("db command", () => {
 				{ from: "node" },
 			);
 
+			expect(process.exitCode).toBe(0);
 			expect(await daemonRawEventCount(daemon.socketPath)).toBe(2);
 		} finally {
+			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = originalDataDir;
+			process.exitCode = originalExitCode;
 			await daemon.stop();
 		}
 	});
@@ -217,7 +225,11 @@ describe("db command", () => {
 		const dataDir = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-")), "data");
 		const daemon = await startDaemon({ dataDir });
 		const now = Date.now();
+		const originalDataDir = process.env.CODEMEM_DATA_DIR;
+		const originalExitCode = process.exitCode;
 		try {
+			process.env.CODEMEM_DATA_DIR = dataDir;
+			process.exitCode = 0;
 			await seedDaemonRawEvent(daemon.socketPath, "sess-old", "evt-0", now - 10 * 86_400_000);
 			await seedDaemonRawEvent(daemon.socketPath, "sess-old", "evt-1", now - 5 * 86_400_000);
 			await seedDaemonRawEvent(daemon.socketPath, "sess-new", "evt-2", now - 1000);
@@ -235,8 +247,12 @@ describe("db command", () => {
 				{ from: "node" },
 			);
 
+			expect(process.exitCode).toBe(0);
 			expect(await daemonRawEventCount(daemon.socketPath)).toBe(1);
 		} finally {
+			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = originalDataDir;
+			process.exitCode = originalExitCode;
 			await daemon.stop();
 		}
 		const layout = resolveStorageLayout(dataDir);

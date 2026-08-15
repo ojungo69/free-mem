@@ -5,7 +5,6 @@ import {
 	type AgentMemoryConfig,
 	backupPayloadHash,
 	callDaemonRpc,
-	DEFAULT_DATA_DIR,
 	hashMutationPayload,
 	LOCAL_API_VERSION,
 	NORMALIZED_EVENT_FIELDS,
@@ -15,6 +14,7 @@ import {
 	RPC_CAPABILITY_HASH,
 	type RpcMethod,
 	resolveProjectRoot,
+	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	rpcDeadlineForMethod,
 	type SpoolRedactionMetadata,
@@ -117,6 +117,7 @@ export type SpoolableMcpRpcMethod = "POST /v1/events" | "POST /v1/memories/recor
 
 export interface McpRpcClientOptions {
 	dataDir?: string;
+	dbPath?: string;
 	cwd?: () => string;
 }
 
@@ -132,8 +133,7 @@ export function mcpRequestId(toolName: string, requestId: string | number | unde
 }
 
 export function createMcpRpcClient(options: McpRpcClientOptions = {}): McpRpcClient {
-	const dataDir = () =>
-		options.dataDir ?? (process.env.CODEMEM_DATA_DIR?.trim() || DEFAULT_DATA_DIR);
+	const dataDir = () => resolveRuntimeDataDir(options);
 	const cwd = options.cwd ?? (() => process.cwd());
 
 	const prepare = (

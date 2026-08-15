@@ -10,7 +10,7 @@ import {
 } from "@codemem/core";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
-import { addDbOption, type DbOpts } from "../shared-options.js";
+import { addDbOption, type DbOpts, resolveDbOpt } from "../shared-options.js";
 import { logHookEvent } from "./claude-hook-plugin-log.js";
 import {
 	deliverHookEvent,
@@ -260,6 +260,7 @@ async function queryByFile(
 	project: string | null,
 	limit: number,
 	deadlineAtMs?: number,
+	dbPath?: string,
 ): Promise<RefQueryResult[]> {
 	const result = await requestHookRpc(
 		"claude",
@@ -271,7 +272,7 @@ async function queryByFile(
 			limit,
 			filters: project ? { project } : {},
 		},
-		{ deadlineAtMs },
+		{ deadlineAtMs, dbPath },
 	);
 	return Array.isArray(result.items) ? (result.items as RefQueryResult[]) : [];
 }
@@ -293,11 +294,13 @@ export async function buildClaudeFileContext(
 	} catch {
 		return continueResult();
 	}
-	const delivery = (deps.deliver ?? deliverHookEvent)("claude", payload, { prepared }).catch(
-		() => ({
-			via: "dropped" as const,
-		}),
-	);
+	const dbPath = resolveDbOpt(_opts);
+	const delivery = (deps.deliver ?? deliverHookEvent)("claude", payload, {
+		prepared,
+		dbPath,
+	}).catch(() => ({
+		via: "dropped" as const,
+	}));
 	const finish = async (result: FileContextResult): Promise<FileContextResult> => {
 		await delivery;
 		return result;
@@ -333,6 +336,7 @@ export async function buildClaudeFileContext(
 					{ ...attempt },
 					{
 						deadlineAtMs: prepared.deadlineAtMs,
+						dbPath,
 					},
 				);
 			}
@@ -349,7 +353,7 @@ export async function buildClaudeFileContext(
 					"claude",
 					"POST /v1/retrieval/file-context/delivery",
 					{ attemptId, status },
-					{ deadlineAtMs: prepared.deadlineAtMs },
+					{ deadlineAtMs: prepared.deadlineAtMs, dbPath },
 				);
 			}
 		} catch {
@@ -457,7 +461,7 @@ export async function buildClaudeFileContext(
 	const queryFn = deps.queryByFile ?? queryByFile;
 	let rows: RefQueryResult[] = [];
 	try {
-		rows = await queryFn(safePath, safeProjectValue, FETCH_LIMIT, prepared.deadlineAtMs);
+		rows = await queryFn(safePath, safeProjectValue, FETCH_LIMIT, prepared.deadlineAtMs, dbPath);
 	} catch {
 		logHookEvent("codemem claude-hook-file-context query failed");
 		await record({

@@ -12,6 +12,7 @@ const coreVersion = String(
 export default defineConfig({
 	define: { __CODEMEM_VERSION__: JSON.stringify(coreVersion) },
 	resolve: {
+		preserveSymlinks: true,
 		alias: {
 			"@codemem/core": resolve(import.meta.dirname, "src/hook-core.ts"),
 		},

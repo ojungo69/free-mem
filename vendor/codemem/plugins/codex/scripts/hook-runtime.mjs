@@ -2148,6 +2148,24 @@ function validateMemoryKind(kind) {
 //#endregion
 //#region ../core/src/storage-layout.ts
 var DEFAULT_DATA_DIR = join(homedir(), ".codemem");
+var DEFAULT_DB_PATH = join(DEFAULT_DATA_DIR, "mem.sqlite");
+function resolveDatabaseRuntimeDataDir(dbPath) {
+	const resolvedDbPath = resolve(dbPath.startsWith("~/") ? join(homedir(), dbPath.slice(2)) : dbPath);
+	if (resolvedDbPath === resolve(DEFAULT_DB_PATH)) return DEFAULT_DATA_DIR;
+	const legacyDataDir = dirname(resolvedDbPath);
+	try {
+		const tombstonePath = join(legacyDataDir, "control", "legacy-db-tombstone");
+		if (lstatSync(resolvedDbPath).isSymbolicLink() && resolve(dirname(resolvedDbPath), readlinkSync(resolvedDbPath)) === tombstonePath) return legacyDataDir;
+	} catch {}
+	return join(DEFAULT_DATA_DIR, "runtimes", createHash("sha256").update(resolvedDbPath, "utf8").digest("hex").slice(0, 32));
+}
+function resolveRuntimeDataDir(options = {}) {
+	const dataDir = options.dataDir?.trim() || process.env.CODEMEM_DATA_DIR?.trim();
+	if (dataDir) return dataDir;
+	const dbPath = options.dbPath?.trim() || process.env.CODEMEM_DB?.trim();
+	if (!dbPath) return DEFAULT_DATA_DIR;
+	return resolveDatabaseRuntimeDataDir(dbPath);
+}
 function resolveStorageLayout(dataDir = DEFAULT_DATA_DIR) {
 	const root = resolve(dataDir);
 	const controlDir = join(root, "control");
@@ -2849,7 +2867,7 @@ function spoolMutation(input, options = {}) {
 //#region src/hook-core.ts
 var VERSION = "0.40.2";
 //#endregion
-//#region ../../node_modules/.pnpm/commander@14.0.3/node_modules/commander/lib/error.js
+//#region node_modules/commander/lib/error.js
 var require_error = /* @__PURE__ */ __commonJSMin(((exports) => {
 	/**
 	* CommanderError class
@@ -2888,7 +2906,7 @@ var require_error = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.InvalidArgumentError = InvalidArgumentError;
 }));
 //#endregion
-//#region ../../node_modules/.pnpm/commander@14.0.3/node_modules/commander/lib/argument.js
+//#region node_modules/commander/lib/argument.js
 var require_argument = /* @__PURE__ */ __commonJSMin(((exports) => {
 	var { InvalidArgumentError } = require_error();
 	var Argument = class {
@@ -3013,7 +3031,7 @@ var require_argument = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.humanReadableArgName = humanReadableArgName;
 }));
 //#endregion
-//#region ../../node_modules/.pnpm/commander@14.0.3/node_modules/commander/lib/help.js
+//#region node_modules/commander/lib/help.js
 var require_help = /* @__PURE__ */ __commonJSMin(((exports) => {
 	var { humanReadableArgName } = require_argument();
 	/**
@@ -3503,7 +3521,7 @@ var require_help = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.stripColor = stripColor;
 }));
 //#endregion
-//#region ../../node_modules/.pnpm/commander@14.0.3/node_modules/commander/lib/option.js
+//#region node_modules/commander/lib/option.js
 var require_option = /* @__PURE__ */ __commonJSMin(((exports) => {
 	var { InvalidArgumentError } = require_error();
 	var Option = class {
@@ -3806,7 +3824,7 @@ var require_option = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.DualOptions = DualOptions;
 }));
 //#endregion
-//#region ../../node_modules/.pnpm/commander@14.0.3/node_modules/commander/lib/suggestSimilar.js
+//#region node_modules/commander/lib/suggestSimilar.js
 var require_suggestSimilar = /* @__PURE__ */ __commonJSMin(((exports) => {
 	var maxDistance = 3;
 	function editDistance(a, b) {
@@ -3861,7 +3879,7 @@ var require_suggestSimilar = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.suggestSimilar = suggestSimilar;
 }));
 //#endregion
-//#region ../../node_modules/.pnpm/commander@14.0.3/node_modules/commander/lib/command.js
+//#region node_modules/commander/lib/command.js
 var require_command = /* @__PURE__ */ __commonJSMin(((exports) => {
 	var EventEmitter = __require("node:events").EventEmitter;
 	var childProcess = __require("node:child_process");
@@ -5885,6 +5903,10 @@ function addDbOption(cmd) {
 	cmd.addOption(new Option("--db <path>", "database path").hideHelp());
 	return cmd;
 }
+/** Resolve the db path from parsed opts that may have --db or --db-path. */
+function resolveDbOpt(opts) {
+	return opts.dbPath ?? opts.db;
+}
 /** Add --host and --port for the viewer/serve service. */
 function addViewerHostOptions(cmd, defaults = {}) {
 	cmd.option("--host <host>", "viewer host", defaults.host ?? "127.0.0.1");
@@ -6184,9 +6206,8 @@ var HOOK_RPC_TIMEOUT_MS = {
 	claude: HOOK_DELIVERY_BUDGETS.claude.rpcCutoffMs,
 	codex: HOOK_DELIVERY_BUDGETS.codex.rpcCutoffMs
 };
-function hookDataDir(dataDir) {
-	const configured = process.env.CODEMEM_DATA_DIR?.trim();
-	return dataDir ?? (configured || DEFAULT_DATA_DIR);
+function hookDataDir(options) {
+	return resolveRuntimeDataDir(options);
 }
 function projectRoot(cwd) {
 	if (typeof cwd !== "string" || !isAbsolute(cwd.trim())) return null;
@@ -6373,7 +6394,7 @@ async function requestHookRpc(agent, method, body, options = {}) {
 		if (remaining < 1) throw new Error("hook RPC deadline exhausted");
 		timeoutMs = Math.min(timeoutMs, remaining);
 	}
-	const result = await callDaemonRpc(resolveStorageLayout(hookDataDir(options.dataDir)).socketPath, {
+	const result = await callDaemonRpc(resolveStorageLayout(hookDataDir(options)).socketPath, {
 		id: randomUUID(),
 		method,
 		adapter_version: VERSION,
@@ -6424,7 +6445,7 @@ async function deliverHookEvent(agent, payload, options = {}) {
 				event: prepared.event
 			}
 		}, {
-			dataDir: hookDataDir(options.dataDir),
+			dataDir: hookDataDir(options),
 			config: prepared.config,
 			previousRedaction: prepared.redaction,
 			lockDeadlineMs: Math.floor(lockBudget),
@@ -6627,14 +6648,17 @@ function formatTimeline(rows, filePath, staleness) {
 	}
 	return lines.join("\n");
 }
-async function queryByFile(relativePath, project, limit, deadlineAtMs) {
+async function queryByFile(relativePath, project, limit, deadlineAtMs, dbPath) {
 	const result = await requestHookRpc("claude", "POST /v1/search", {
 		requestId: randomUUID(),
 		mode: "find_by_file",
 		repositoryPath: relativePath,
 		limit,
 		filters: project ? { project } : {}
-	}, { deadlineAtMs });
+	}, {
+		deadlineAtMs,
+		dbPath
+	});
 	return Array.isArray(result.items) ? result.items : [];
 }
 function resolveProject(payload) {
@@ -6648,7 +6672,11 @@ async function buildClaudeFileContext(payload, _opts, deps = {}) {
 	} catch {
 		return continueResult$2();
 	}
-	const delivery = (deps.deliver ?? deliverHookEvent)("claude", payload, { prepared }).catch(() => ({ via: "dropped" }));
+	const dbPath = resolveDbOpt(_opts);
+	const delivery = (deps.deliver ?? deliverHookEvent)("claude", payload, {
+		prepared,
+		dbPath
+	}).catch(() => ({ via: "dropped" }));
 	const finish = async (result) => {
 		await delivery;
 		return result;
@@ -6673,7 +6701,10 @@ async function buildClaudeFileContext(payload, _opts, deps = {}) {
 				sourceSessionId
 			};
 			if (deps.recordAttempt) await deps.recordAttempt(attempt);
-			else await requestHookRpc("claude", "POST /v1/retrieval/file-context", { ...attempt }, { deadlineAtMs: prepared.deadlineAtMs });
+			else await requestHookRpc("claude", "POST /v1/retrieval/file-context", { ...attempt }, {
+				deadlineAtMs: prepared.deadlineAtMs,
+				dbPath
+			});
 		} catch {}
 	};
 	const updateDelivery = async (status) => {
@@ -6683,7 +6714,10 @@ async function buildClaudeFileContext(payload, _opts, deps = {}) {
 			else await requestHookRpc("claude", "POST /v1/retrieval/file-context/delivery", {
 				attemptId,
 				status
-			}, { deadlineAtMs: prepared.deadlineAtMs });
+			}, {
+				deadlineAtMs: prepared.deadlineAtMs,
+				dbPath
+			});
 		} catch {}
 	};
 	if (!envNotDisabled$2(process.env.CODEMEM_FILE_CONTEXT || "1")) {
@@ -6762,7 +6796,7 @@ async function buildClaudeFileContext(payload, _opts, deps = {}) {
 	const queryFn = deps.queryByFile ?? queryByFile;
 	let rows = [];
 	try {
-		rows = await queryFn(safePath, safeProjectValue, FETCH_LIMIT, prepared.deadlineAtMs);
+		rows = await queryFn(safePath, safeProjectValue, FETCH_LIMIT, prepared.deadlineAtMs, dbPath);
 	} catch {
 		logHookEvent("codemem claude-hook-file-context query failed");
 		await record({
@@ -6872,7 +6906,10 @@ async function ingestClaudeHookPayload(payload, _opts, deps = {}) {
 			hook_event_name: payload.hook_event_name
 		}, prepared.redaction.local_only ? "" : prepared.safePrompt, prepared.redaction.local_only ? [] : safePaths);
 	} catch {}
-	const result = await (deps.deliver ?? deliverHookEvent)("claude", payload, { prepared });
+	const result = await (deps.deliver ?? deliverHookEvent)("claude", payload, {
+		prepared,
+		dbPath: resolveDbOpt(_opts)
+	});
 	return {
 		inserted: result.via === "rpc" ? 1 : 0,
 		skipped: result.via === "skipped" ? 1 : 0,
@@ -6966,6 +7003,10 @@ async function buildClaudeHookInjection(payload, _opts, deps = {}) {
 	if (envTruthy$1(process.env.CODEMEM_PLUGIN_IGNORE)) return continueResult$1();
 	const prepared = prepareHookEvent("claude", payload, _opts.deadlineAtMs);
 	if (prepared.status === "skipped") return continueResult$1();
+	const deliveryOptions = {
+		prepared,
+		dbPath: resolveDbOpt(_opts)
+	};
 	let state = null;
 	try {
 		state = trackHookSessionState({
@@ -6976,15 +7017,15 @@ async function buildClaudeHookInjection(payload, _opts, deps = {}) {
 	const prompt = normalizePromptText(prepared.safePrompt);
 	const deliver = deps.deliver ?? deliverHookEvent;
 	if (!prompt) {
-		await deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" }));
+		await deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" }));
 		return continueResult$1();
 	}
 	if (!envNotDisabled$1(process.env.CODEMEM_INJECT_CONTEXT || "1")) {
-		await deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" }));
+		await deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" }));
 		return continueResult$1();
 	}
 	if (prepared.redaction.local_only) {
-		await deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" }));
+		await deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" }));
 		return continueResult$1();
 	}
 	const project = resolveInjectProject$1(payload);
@@ -7002,8 +7043,9 @@ async function buildClaudeHookInjection(payload, _opts, deps = {}) {
 		tokenBudget: parsePositiveInt$1(process.env.CODEMEM_INJECT_TOKEN_BUDGET, 800)
 	}, {
 		config: prepared.config,
-		deadlineAtMs: prepared.deadlineAtMs
-	}).catch(() => EMPTY_PACK$1), deliver("claude", payload, { prepared }).catch(() => ({ via: "dropped" }))]);
+		deadlineAtMs: prepared.deadlineAtMs,
+		dbPath: deliveryOptions.dbPath
+	}).catch(() => EMPTY_PACK$1), deliver("claude", payload, deliveryOptions).catch(() => ({ via: "dropped" }))]);
 	logHookEvent([
 		"inject.pack.ok",
 		"source=claude",
@@ -7052,7 +7094,10 @@ function normalizePayloadForIngest(payload) {
 async function ingestCodexHookPayload(payload, _opts, deps = {}) {
 	const normalized = normalizePayloadForIngest(payload);
 	const prepared = prepareHookEvent("codex", normalized, _opts.deadlineAtMs);
-	const result = await (deps.deliver ?? deliverHookEvent)("codex", normalized, { prepared });
+	const result = await (deps.deliver ?? deliverHookEvent)("codex", normalized, {
+		prepared,
+		dbPath: resolveDbOpt(_opts)
+	});
 	return {
 		inserted: result.via === "rpc" ? 1 : 0,
 		skipped: result.via === "skipped" ? 1 : 0,
@@ -7161,18 +7206,22 @@ async function buildCodexHookInjection(payload, _opts, deps = {}) {
 	if (payload.hook_event_name !== HOOK_EVENT_NAME) return continueResult();
 	const prepared = prepareHookEvent("codex", payload, _opts.deadlineAtMs);
 	if (prepared.status === "skipped") return continueResult();
+	const deliveryOptions = {
+		prepared,
+		dbPath: resolveDbOpt(_opts)
+	};
 	const prompt = normalizePromptText(prepared.safePrompt);
 	const deliver = deps.deliver ?? deliverHookEvent;
 	if (!prompt) {
-		await deliver("codex", payload, { prepared }).catch(() => ({ via: "dropped" }));
+		await deliver("codex", payload, deliveryOptions).catch(() => ({ via: "dropped" }));
 		return continueResult();
 	}
 	if (!envNotDisabled(process.env.CODEMEM_INJECT_CONTEXT || "1")) {
-		await deliver("codex", payload, { prepared }).catch(() => ({ via: "dropped" }));
+		await deliver("codex", payload, deliveryOptions).catch(() => ({ via: "dropped" }));
 		return continueResult();
 	}
 	if (prepared.redaction.local_only) {
-		await deliver("codex", payload, { prepared }).catch(() => ({ via: "dropped" }));
+		await deliver("codex", payload, deliveryOptions).catch(() => ({ via: "dropped" }));
 		return continueResult();
 	}
 	const project = resolveInjectProject(payload);
@@ -7185,8 +7234,9 @@ async function buildCodexHookInjection(payload, _opts, deps = {}) {
 		tokenBudget: parsePositiveInt(process.env.CODEMEM_INJECT_TOKEN_BUDGET, 800)
 	}, {
 		config: prepared.config,
-		deadlineAtMs: prepared.deadlineAtMs
-	}).catch(() => EMPTY_PACK), deliver("codex", payload, { prepared }).catch(() => ({ via: "dropped" }))]);
+		deadlineAtMs: prepared.deadlineAtMs,
+		dbPath: deliveryOptions.dbPath
+	}).catch(() => EMPTY_PACK), deliver("codex", payload, deliveryOptions).catch(() => ({ via: "dropped" }))]);
 	logHookEvent([
 		"inject.pack.ok",
 		"source=codex",

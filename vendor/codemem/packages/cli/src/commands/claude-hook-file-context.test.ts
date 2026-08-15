@@ -54,11 +54,13 @@ describe("claude-hook-file-context", () => {
 
 	it("delivers the hook event even when no file path can be searched", async () => {
 		let count = 0;
+		const dbPath = "/tmp/codemem-file-context.sqlite";
 		const result = await buildClaudeFileContext(
 			{ hook_event_name: "PreToolUse", session_id: "s", tool_name: "Read" },
-			{},
+			{ dbPath },
 			{
-				deliver: async () => {
+				deliver: async (_agent, _payload, options) => {
+					expect(options).toMatchObject({ dbPath });
 					count += 1;
 					return { via: "rpc" };
 				},

@@ -50,6 +50,7 @@ describe("codex-hook-inject", () => {
 	});
 
 	it("requests a daemon pack and frames it as reference data", async () => {
+		const dbPath = join(root, "custom.sqlite");
 		const result = await buildCodexHookInjection(
 			{
 				hook_event_name: "UserPromptSubmit",
@@ -57,11 +58,15 @@ describe("codex-hook-inject", () => {
 				prompt: "fix auth callback",
 				project: "codemem",
 			},
-			{},
+			{ dbPath },
 			{
-				deliver: delivered,
-				requestPack: async (agent, input) => {
+				deliver: async (_agent, _payload, options) => {
+					expect(options).toMatchObject({ dbPath });
+					return { via: "rpc" };
+				},
+				requestPack: async (agent, input, options) => {
 					expect(agent).toBe("codex");
+					expect(options).toMatchObject({ dbPath });
 					expect(input).toMatchObject({
 						context: "fix auth callback codemem",
 						project: "codemem",

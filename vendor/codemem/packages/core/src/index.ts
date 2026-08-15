@@ -544,6 +544,7 @@ export {
 	ensureStorageLayout,
 	readCurrentDatabasePointer,
 	recoverStorageJournal,
+	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	runLegacyMigration,
 	sha256File,

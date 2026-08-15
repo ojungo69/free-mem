@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
 	callDaemonRpc,
-	DEFAULT_DATA_DIR,
 	LOCAL_API_VERSION,
 	NORMALIZED_SCHEMA_VERSION,
 	RPC_CAPABILITY_HASH,
 	type RpcMethod,
+	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	VERSION,
 } from "@codemem/core";
@@ -30,7 +30,7 @@ export function createViewerRpcCall(options?: {
 	socketPath?: string;
 	timeoutMs?: number;
 }): ViewerRpcCall {
-	const dataDir = process.env.CODEMEM_DATA_DIR?.trim() || DEFAULT_DATA_DIR;
+	const dataDir = resolveRuntimeDataDir();
 	const socketPath = options?.socketPath ?? resolveStorageLayout(dataDir).socketPath;
 	return async (method, body = {}) => {
 		try {

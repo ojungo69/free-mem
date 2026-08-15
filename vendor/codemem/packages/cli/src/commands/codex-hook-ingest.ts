@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
-import { addDbOption, addViewerHostOptions, type DbOpts } from "../shared-options.js";
+import { addDbOption, addViewerHostOptions, type DbOpts, resolveDbOpt } from "../shared-options.js";
 import { deliverHookEvent, prepareHookEvent } from "./hook-rpc-client.js";
 
 type IngestVia = "rpc" | "spool" | "skipped" | "dropped";
@@ -48,7 +48,10 @@ export async function ingestCodexHookPayload(
 ): Promise<IngestResult> {
 	const normalized = normalizePayloadForIngest(payload);
 	const prepared = prepareHookEvent("codex", normalized, _opts.deadlineAtMs);
-	const result = await (deps.deliver ?? deliverHookEvent)("codex", normalized, { prepared });
+	const result = await (deps.deliver ?? deliverHookEvent)("codex", normalized, {
+		prepared,
+		dbPath: resolveDbOpt(_opts),
+	});
 	return {
 		inserted: result.via === "rpc" ? 1 : 0,
 		skipped: result.via === "skipped" ? 1 : 0,

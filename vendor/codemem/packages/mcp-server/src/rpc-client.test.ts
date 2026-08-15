@@ -14,6 +14,7 @@ import {
 	backupPayloadHash,
 	hashMutationPayload,
 	NORMALIZED_SCHEMA_VERSION,
+	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	startDaemon,
 } from "@codemem/core";
@@ -209,6 +210,8 @@ describe("MCP daemon RPC client", () => {
 
 	it("P1-T042-03-mcp-remember-spool", async () => {
 		const fixture = projectFixture();
+		const originalDataDir = process.env.CODEMEM_DATA_DIR;
+		const originalDb = process.env.CODEMEM_DB;
 		try {
 			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
 			const body = rememberBody("spool-1");
@@ -227,7 +230,32 @@ describe("MCP daemon RPC client", () => {
 				idempotencyKey: body.idempotencyKey,
 				redaction: { sensitivity: "secret" },
 			});
+
+			delete process.env.CODEMEM_DATA_DIR;
+			const customDbPath = join(fixture.root, "mcp.sqlite");
+			process.env.CODEMEM_DB = customDbPath;
+			const customDataDir = resolveRuntimeDataDir({ dbPath: customDbPath });
+			const daemon = await startDaemon({ dataDir: customDataDir });
+			try {
+				const envClient = createMcpRpcClient({ cwd: () => fixture.root });
+				expect(await envClient.request("GET /v1/health", {})).toMatchObject({ ok: true });
+				await daemon.stop();
+				const envBody = rememberBody("spool-env-db");
+				expect(await envClient.remember(envBody)).toMatchObject({
+					ok: true,
+					result: { status: "queued", duplicate: false },
+				});
+				const envReadyDir = join(customDataDir, "control", "spool", "ready");
+				expect(readdirSync(envReadyDir)).toHaveLength(1);
+			} finally {
+				await daemon.stop().catch(() => {});
+				rmSync(customDataDir, { recursive: true, force: true });
+			}
 		} finally {
+			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = originalDataDir;
+			if (originalDb === undefined) delete process.env.CODEMEM_DB;
+			else process.env.CODEMEM_DB = originalDb;
 			rmSync(fixture.root, { recursive: true, force: true });
 		}
 	});
