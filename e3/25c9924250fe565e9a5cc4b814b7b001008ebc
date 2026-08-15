@@ -1,0 +1,67 @@
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_211aa7fe546c35::t_e7985c0a3d7b2f 3,25-26,32-33,39-42,120-126
+vendor/codemem/packages/core/src/legacy-cutover.test.ts
+  s_211aa7fe546c35::t_b4224409d82b11 23-27,35,38-43,304-327
+vendor/codemem/packages/core/src/storage-layout.ts
+  s_211aa7fe546c35::t_2063d303a44d3d 5,22-34
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_cd558171834b95 12,208-209,228-247,249-252
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_6936fc415350d8 2151-2159,2861,2900,3025,3515,3818,3873,6196-6197,6384,6435
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_b0329e931f1a69 2151-2159,2861,2900,3025,3515,3818,3873,6196-6197,6384,6435
+vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts
+  s_04c2b4c4c07349::t_a9f4a24684ae61 27,40-45,80-81,302,364
+vendor/codemem/packages/cli/src/commands/hook-thin-client.test.ts
+  s_211aa7fe546c35::t_af309341e47237 28-33,37,43-44,127-181
+vendor/codemem/packages/cli/src/commands/serve.test.ts
+  s_211aa7fe546c35::t_c7824a0c911e6a 3-4,25,86-104
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_04c2b4c4c07349::t_102bb585add17d 32,621
+vendor/codemem/packages/cli/src/hook-core.ts
+  s_04c2b4c4c07349::t_4a0733ef1feca7 35-39
+vendor/codemem/packages/cli/src/shared-options.ts
+  s_04c2b4c4c07349::t_3b4b6ef39ec8fe 11,34
+vendor/codemem/packages/core/src/index.ts
+  s_04c2b4c4c07349::t_efdad50a86d1e0 546
+vendor/codemem/packages/core/src/legacy-cutover.ts
+  s_03f49cd98a2d32::t_a1e0324a31f575 446-451
+vendor/codemem/packages/core/src/storage.ts
+  s_04c2b4c4c07349::t_301f263eaca6b3 12-17,29
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_04c2b4c4c07349::t_97db49a3f280c7 18,120,136
+vendor/codemem/packages/viewer-server/src/rpc-client.ts
+  s_04c2b4c4c07349::t_a0076e9db5e982 8,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e325c9924250fe565e9a5cc4b814b7b001008ebc",
+  "prompts": {},
+  "sessions": {
+    "s_03f49cd98a2d32": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0050f-fe4a-7163-9064-ff794090ff4e",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_04c2b4c4c07349": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0050f-d1b9-72c0-8409-84b496ed3349",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
