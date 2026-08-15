@@ -25,7 +25,7 @@ SC-1 の初回候補検証は完了した。後続の closure refresh は下記�
 
 ## 2026-08-16 closure refresh
 
-closure refresh は `01440d5` のfull gate bundleと、その後の product-code candidate `87195f5`、test-only coverage closure `55323dd` を分けて記録する。
+closure refresh は `01440d5` のfull gate bundleと、その後の product-code candidate `a263513`、historical validated head `87195f5`、test-only coverage closure `55323dd` を分けて記録する。
 
 - toolchain は Node `v24.16.0` / Corepack pnpm `11.8.0`。
 
@@ -49,12 +49,18 @@ test-only `55323dd` は既存title内で direct / transient npx / Node checkout 
 
 `87195f5` は single-quoted Codex MCP table と、commented managed assignment が active custom commandを隠す2件を修正した。table quoteは対称一致し、current/legacy 判定はactive `command` / `args` parserを共有する。既存title内の2 regressionは旧実装で意図したassertion failure、修正後 focused setup 1 file / 23 tests、Biome、`tsc --build`、CLI build、Semgrep 22 rules / 0 findings、independent correctness/security review、Ponytail review が pass。
 
-同headの push run `31910863263` と PR run `31910865507` は full coverage を含む `check` が passした。PR #7 の Sonar new-code coverage は `81.3528336380256%`（lines `477 / 572`、conditions `413 / 522`）。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secretsもpassし、review threadは12件中unresolved 0。
+`87195f5` headの push run `31910863263` と PR run `31910865507` は full coverage を含む `check` が passした。PR #7 の Sonar new-code coverage は `81.3528336380256%`（lines `477 / 572`、conditions `413 / 522`）。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secretsもpassし、review threadは12件中unresolved 0。
+
+`9177d61` は setup config transaction の最終 hardening である。snapshot は `O_NOFOLLOW` FD と再照合を使い、既存 target の publish直前変更を拒否する。新規 OpenCode wrapper は hard-link no-clobber で公開し、install manifest の capture/read/merge/write は既存 spool lock で直列化する。Codex TOML の dotted / inline-parent / descendant の `mcp_servers.codemem` 表現は `--force` を含め fail-closed とし、既知の table 形式だけを更新する。
+
+`a263513` は JSON/JSONC root を共通 object parser で検証し、Codex hooks の preflight/install と OpenCode/Claude config の全 caller で `null`・array・primitive を mutation 前に拒否する。旧実装は `null` root で `TypeError`、OpenCode loader は非objectを受理するREDを確認し、既存title内の回帰は拒否後の元bytes保持を固定した。最終deltaは setup/config 2 files / 28 tests、関連 6 files / 38 tests、変更4 filesのBiome、`tsc --build`、workspace build、packed artifact、T053 static scan 279 production files / 0 violations、Semgrep `p/security-audit` 22 rules / 0 findings、3 hook bundle SHA-256 `c9ee97876394fba32eb8e7e8adc4327db7f4bc7e0aa315eec222e35440a6cc47`、independent correctness/security/Ponytail review が passした。
+
+同headの push run `31915346516` と PR run `31915349208` は full coverage を含む `check` が passした。PR #7 の Sonar new-code coverage は `85.83270535041447%`（lines `617 / 700`、conditions `522 / 627`）。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secretsもpassし、review threadはunresolved 0。
 
 - closure production deltaへの Semgrep `p/security-audit` は初回 changed 4 filesと最終 setup targetの各runで22 rules / 0 findings。independent correctness、manual security、T037、selected-lane setup、CodeQL #57 review は blocker-free。Ponytail reviewでは既存 typed-error helperと既存 safe file-descriptor patternを再利用し、追加 abstraction/dependency は作らなかった。
 - immutable machine verifier は evidence-aware matcher の **25 / 31** を維持する。現候補は source/caller/test/evidence/exit-gate の手動 five-layer auditで T027–T057 **31 / 31**。T037 は production socket callerまで再確認済み。
 
-PR #7 の code/test head `87195f5` は上記live checksで再検証済み。`main` merge と Sonar long-lived branch移行は、この repository evidence commit 後に実施する external stepとして分離する。
+PR #7 の code/test head `a263513` は上記local delta gateとlive checksで再検証済み。`87195f5` のlive coverage/checkはhistorical headの記録として保持する。`main` merge と Sonar long-lived branch移行は、この repository evidence commit 後に実施する external stepとして分離する。
 
 ## Machine verifier と手動照合
 
