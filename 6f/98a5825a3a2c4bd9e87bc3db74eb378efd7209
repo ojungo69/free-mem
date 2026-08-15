@@ -1,0 +1,25 @@
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_d40694a73a34fb::t_056d18f9478593 8,284
+vendor/codemem/packages/core/src/daemon-operations.ts
+  s_d40694a73a34fb::t_e82e3d56574a60 310-339
+vendor/codemem/packages/core/src/online-backup.test.ts
+  s_d40694a73a34fb::t_8910e68a2932ac 726-730,812-849,853-856,874-875
+vendor/codemem/packages/core/src/online-backup.ts
+  s_d40694a73a34fb::t_1c22c3fbfb7198 1094-1101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6f98a5825a3a2c4bd9e87bc3db74eb378efd7209",
+  "prompts": {},
+  "sessions": {
+    "s_d40694a73a34fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0058f-ed72-7b43-b2d3-eaa657303ba3",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
