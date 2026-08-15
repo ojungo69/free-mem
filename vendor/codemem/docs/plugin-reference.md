@@ -41,11 +41,12 @@ Install MCP and all seven hook groups directly from the built checkout:
 node packages/cli/dist/index.js setup --claude-only
 ```
 
-Setup honors `CLAUDE_CONFIG_DIR` and otherwise uses `~/.claude`. It writes the
-absolute built CLI MCP command into `settings.json`, copies the bundled standalone
-runtime to `codemem-hook-runtime.mjs`, and merges only codemem-owned hook groups.
-Unrelated MCP servers, settings, plugins, and hooks are preserved. A malformed
-settings file or unknown custom codemem MCP entry is left untouched.
+Setup writes the absolute built CLI MCP command into
+`$CLAUDE_CONFIG_DIR/.claude.json`, copies the bundled standalone runtime into
+that directory, and merges only codemem-owned hook groups into `settings.json`.
+Without the override it uses `~/.claude.json` for MCP and `~/.claude` for hooks.
+Unrelated MCP servers, state, settings, plugins, and hooks are preserved. A
+malformed config file or unknown custom codemem MCP entry is left untouched.
 
 Claude hooks run the packaged standalone Node runtime. It applies project policy and redaction before sending normalized events to the local daemon RPC socket; when RPC is unavailable, the same redacted event is written to the bounded atomic spool:
 

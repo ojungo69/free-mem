@@ -62,10 +62,12 @@ node packages/cli/dist/index.js setup --claude-only
 ```
 
 Setup honors `CLAUDE_CONFIG_DIR`, copies the standalone hook runtime into that
-config directory, and merges all seven hook groups into `settings.json` while
-preserving unrelated settings and hooks. It also disables the exact legacy local
-plugin entry when enabled so events are not delivered twice. Rebuild and rerun
-setup to refresh both MCP and hooks.
+config directory, writes the user MCP entry to
+`$CLAUDE_CONFIG_DIR/.claude.json`, and merges all seven hook groups into
+`settings.json` while preserving unrelated state, settings, and hooks. Without
+the override it uses `~/.claude.json` for MCP and `~/.claude` for hooks. It also
+disables the exact legacy local plugin entry when enabled so events are not
+delivered twice. Rebuild and rerun setup to refresh both MCP and hooks.
 
 Claude hooks use daemon RPC and the shared bounded spool; they never open SQLite.
 `UserPromptSubmit` captures the event and returns recalled context through Claude

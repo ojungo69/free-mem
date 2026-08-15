@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -129,6 +138,9 @@ describe("Codex hook runtime install", () => {
 		const target = installCodexHookRuntime(codexHome, source);
 		expect(target).toBe(join(codexHome, "codemem-hook-runtime.mjs"));
 		expect(readFileSync(target as string, "utf8")).toBe("// runtime\n");
+		chmodSync(target as string, 0o666);
+		expect(installCodexHookRuntime(codexHome, source)).toBe(target);
+		expect(lstatSync(target as string).mode & 0o777).toBe(0o600);
 		expect(codememCodexHookBase(target)).toBe(`'${process.execPath}' '${target}'`);
 		expect(codememCodexHookBase("/tmp/runtime path's", "/tmp/node path's")).toBe(
 			"'/tmp/node path'\\''s' '/tmp/runtime path'\\''s'",
@@ -525,6 +537,14 @@ describe("setup command options", () => {
 			})}\n`,
 			"utf8",
 		);
+		writeFileSync(
+			join(claudeHome, ".claude.json"),
+			`${JSON.stringify({
+				unrelatedState: "preserved",
+				mcpServers: { other: { command: "/bin/echo", args: ["other"] } },
+			})}\n`,
+			"utf8",
+		);
 		expect(installPlugin(false)).toBe(true);
 		expect(installMcp(false)).toBe(true);
 		expect(installClaude(false)).toBe(true);
@@ -575,14 +595,20 @@ describe("setup command options", () => {
 		expect(readFileSync(wrapperPath, "utf8")).toBe(managedWrapper);
 
 		const claude = JSON.parse(readFileSync(join(claudeHome, "settings.json"), "utf8")) as {
-			mcpServers: { codemem: { command: string; args: string[] } };
 			enabledPlugins: Record<string, boolean>;
 			hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
 		};
-		expect(claude.mcpServers.codemem).toEqual({
+		expect(claude).not.toHaveProperty("mcpServers");
+		const claudeMcp = JSON.parse(readFileSync(join(claudeHome, ".claude.json"), "utf8")) as {
+			unrelatedState: string;
+			mcpServers: Record<string, { command: string; args: string[] }>;
+		};
+		expect(claudeMcp.mcpServers.codemem).toEqual({
 			command: process.execPath,
 			args: [runtime.cliPath, "mcp"],
 		});
+		expect(claudeMcp.mcpServers.other).toEqual({ command: "/bin/echo", args: ["other"] });
+		expect(claudeMcp.unrelatedState).toBe("preserved");
 		expect(claude.enabledPlugins).toEqual({
 			"codemem@codemem-marketplace": false,
 			"other@marketplace": true,
@@ -597,6 +623,17 @@ describe("setup command options", () => {
 			codememCodexHookBase(join(claudeHome, "codemem-hook-runtime.mjs")),
 		);
 		expect(existsSync(join(claudeHome, "codemem-hook-runtime.mjs"))).toBe(true);
+		const legacyCustom = `${JSON.stringify({
+			...claude,
+			mcpServers: { codemem: { command: "bash", args: ["custom", "mcp"] } },
+		})}\n`;
+		writeFileSync(join(claudeHome, "settings.json"), legacyCustom, "utf8");
+		expect(installClaude(false)).toBe(false);
+		expect(readFileSync(join(claudeHome, "settings.json"), "utf8")).toBe(legacyCustom);
+		expect(installClaude(true)).toBe(true);
+		expect(JSON.parse(readFileSync(join(claudeHome, "settings.json"), "utf8"))).not.toHaveProperty(
+			"mcpServers",
+		);
 
 		const customOpencode = {
 			mcp: {
@@ -640,6 +677,7 @@ describe("setup command options", () => {
 		for (const relativePath of ["README.md", "docs/plugin-reference.md"]) {
 			const documentation = readFileSync(join(repoRoot, relativePath), "utf8");
 			expect(documentation, relativePath).toContain("node packages/cli/dist/index.js setup");
+			expect(documentation, relativePath).toContain(".claude.json");
 			expect(documentation, relativePath).not.toMatch(
 				/npx -y codemem|npm install -g codemem|\/plugin marketplace add kunickiaj\/codemem|codex plugin marketplace add https:\/\/github\.com\/kunickiaj\/codemem|fall back to `npx|from (?:your )?`PATH`/,
 			);
@@ -649,7 +687,7 @@ describe("setup command options", () => {
 		process.env.CODEMEM_DATA_DIR = dataDir;
 		const opencodeBeforePreflight = readFileSync(join(opencodeDir, "opencode.jsonc"), "utf8");
 		writeFileSync(
-			join(claudeHome, "settings.json"),
+			join(claudeHome, ".claude.json"),
 			`${JSON.stringify({
 				mcpServers: { codemem: { command: "bash", args: ["custom", "mcp"] } },
 			})}\n`,
@@ -674,10 +712,14 @@ describe("setup command options", () => {
 		) as { targets: Array<{ id: string; path: string; fingerprint: string }> };
 		expect(claudeManifest.targets.map((target) => target.id).sort()).toEqual([
 			"claude-hook-runtime",
+			"claude-hooks",
 			"claude-mcp",
 			"cli-runtime",
 			"opencode-plugin-mcp",
 		]);
+		expect(claudeManifest.targets.find((target) => target.id === "claude-mcp")?.path).toBe(
+			join(claudeHome, ".claude.json"),
+		);
 		expect(claudeManifest.targets.find((target) => target.id === "claude-hook-runtime")?.path).toBe(
 			join(claudeHome, "codemem-hook-runtime.mjs"),
 		);
@@ -687,6 +729,7 @@ describe("setup command options", () => {
 		) as { targets: Array<{ id: string; path: string; fingerprint: string }> };
 		expect(manifest.targets.map((target) => target.id).sort()).toEqual([
 			"claude-hook-runtime",
+			"claude-hooks",
 			"claude-mcp",
 			"cli-runtime",
 			"opencode-mcp",
@@ -819,6 +862,13 @@ describe("installCodex — malformed hooks.json", () => {
 		writeFileSync(settingsPath, broken, "utf8");
 		expect(installClaude(false)).toBe(false);
 		expect(readFileSync(settingsPath, "utf8")).toBe(broken);
+		expect(existsSync(join(claudeHome, "codemem-hook-runtime.mjs"))).toBe(false);
+
+		writeFileSync(settingsPath, "{}\n", "utf8");
+		const mcpPath = join(claudeHome, ".claude.json");
+		writeFileSync(mcpPath, broken, "utf8");
+		expect(installClaude(false)).toBe(false);
+		expect(readFileSync(mcpPath, "utf8")).toBe(broken);
 		expect(existsSync(join(claudeHome, "codemem-hook-runtime.mjs"))).toBe(false);
 	});
 });

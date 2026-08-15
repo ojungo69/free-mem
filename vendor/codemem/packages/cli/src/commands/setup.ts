@@ -51,6 +51,11 @@ export function claudeConfigDir(): string {
 	return process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
 }
 
+function claudeMcpConfigPath(): string {
+	const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+	return configured ? join(configured, ".claude.json") : join(homedir(), ".claude.json");
+}
+
 /** Resolve the Codex home directory, honoring CODEX_HOME. */
 export function codexConfigDir(): string {
 	return process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
@@ -461,7 +466,7 @@ function installHookRuntime(configDir: string, source: string, label: string): s
 	if (!existsSync(source)) return null;
 	const target = join(configDir, "codemem-hook-runtime.mjs");
 	try {
-		atomicReplaceSetupFile(target, readFileSync(source));
+		atomicReplaceSetupFile(target, readFileSync(source), 0o600);
 		return target;
 	} catch {
 		p.log.error(`Failed to install the bundled ${label} hook runtime at ${target}`);
@@ -702,37 +707,83 @@ function installCodexHooks(
 
 const CLAUDE_PLUGIN_ID = "codemem@codemem-marketplace";
 
-function loadClaudeSettings(
+function loadClaudeConfiguration(
 	force: boolean,
 	runtime: SetupRuntime,
-): { path: string; settings: Record<string, unknown> } | null {
-	const path = join(claudeConfigDir(), "settings.json");
+): {
+	settingsPath: string;
+	settings: Record<string, unknown>;
+	mcpPath: string;
+	mcpConfig: Record<string, unknown>;
+} | null {
+	const settingsPath = join(claudeConfigDir(), "settings.json");
 	let settings: Record<string, unknown>;
 	try {
-		settings = loadJsoncConfig(path);
+		settings = loadJsoncConfig(settingsPath);
 	} catch (error) {
 		p.log.error(
-			`Failed to parse ${path}: ${error instanceof Error ? error.message : String(error)}`,
+			`Failed to parse ${settingsPath}: ${error instanceof Error ? error.message : String(error)}`,
 		);
 		p.log.info(
-			`Leaving ${path} untouched. Fix or remove the file, then re-run \`codemem setup --claude-only\`.`,
+			`Leaving ${settingsPath} untouched. Fix or remove the file, then re-run \`codemem setup --claude-only\`.`,
 		);
 		return null;
 	}
+	if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+		p.log.error(`Refusing to replace malformed settings in ${settingsPath}.`);
+		return null;
+	}
+	const legacyMcpServers = settings.mcpServers;
+	if (
+		legacyMcpServers !== undefined &&
+		(legacyMcpServers === null ||
+			typeof legacyMcpServers !== "object" ||
+			Array.isArray(legacyMcpServers))
+	) {
+		p.log.error(`Refusing to replace malformed mcpServers in ${settingsPath}.`);
+		return null;
+	}
+	if (
+		!managedMcpReplacementAllowed(
+			(legacyMcpServers as Record<string, unknown> | undefined)?.codemem,
+			force,
+			runtime,
+			sameManagedMcpCommand,
+		)
+	) {
+		p.log.error(`Refusing to migrate a custom codemem MCP entry in ${settingsPath}; use --force.`);
+		return null;
+	}
 
-	const existingMcpServers = settings.mcpServers;
+	const mcpPath = claudeMcpConfigPath();
+	let mcpConfig: Record<string, unknown>;
+	try {
+		mcpConfig = loadJsoncConfig(mcpPath);
+	} catch {
+		p.log.error(`Failed to parse ${mcpPath}; configuration contents were not logged.`);
+		p.log.info(
+			`Leaving ${mcpPath} untouched. Fix or remove the file, then re-run \`codemem setup --claude-only\`.`,
+		);
+		return null;
+	}
+	if (!mcpConfig || typeof mcpConfig !== "object" || Array.isArray(mcpConfig)) {
+		p.log.error(`Refusing to replace malformed state in ${mcpPath}.`);
+		return null;
+	}
+
+	const existingMcpServers = mcpConfig.mcpServers;
 	if (
 		existingMcpServers !== undefined &&
 		(existingMcpServers === null ||
 			typeof existingMcpServers !== "object" ||
 			Array.isArray(existingMcpServers))
 	) {
-		p.log.error(`Refusing to replace malformed mcpServers in ${path}.`);
+		p.log.error(`Refusing to replace malformed mcpServers in ${mcpPath}.`);
 		return null;
 	}
 	const mcpServers = (existingMcpServers ?? {}) as Record<string, unknown>;
 	if (!managedMcpReplacementAllowed(mcpServers.codemem, force, runtime, sameManagedMcpCommand)) {
-		p.log.error(`Refusing to replace a custom codemem MCP entry in ${path}; use --force.`);
+		p.log.error(`Refusing to replace a custom codemem MCP entry in ${mcpPath}; use --force.`);
 		return null;
 	}
 
@@ -741,20 +792,20 @@ function loadClaudeSettings(
 		hooks !== undefined &&
 		(hooks === null || typeof hooks !== "object" || Array.isArray(hooks))
 	) {
-		p.log.error(`Refusing to replace malformed hooks in ${path}.`);
+		p.log.error(`Refusing to replace malformed hooks in ${settingsPath}.`);
 		return null;
 	}
 	if (hooks && typeof hooks === "object") {
 		for (const event of Object.keys(buildCodememClaudeHookGroups("managed-runtime"))) {
 			const groups = (hooks as Record<string, unknown>)[event];
 			if (groups !== undefined && !Array.isArray(groups)) {
-				p.log.error(`Refusing to replace malformed ${event} hooks in ${path}.`);
+				p.log.error(`Refusing to replace malformed ${event} hooks in ${settingsPath}.`);
 				return null;
 			}
 		}
 	}
 
-	return { path, settings };
+	return { settingsPath, settings, mcpPath, mcpConfig };
 }
 
 /** Configure Claude MCP and hooks directly from this checkout. */
@@ -762,17 +813,30 @@ export function installClaude(
 	force: boolean,
 	runtime: SetupRuntime = resolveSetupRuntime(),
 ): boolean {
-	const prepared = loadClaudeSettings(force, runtime);
+	const prepared = loadClaudeConfiguration(force, runtime);
 	if (!prepared) return false;
 
 	const runtimePath = installHookRuntime(claudeConfigDir(), runtime.hookRuntimePath, "Claude");
 	if (!runtimePath) return false;
 
-	const { path, settings } = prepared;
-	const before = JSON.stringify(settings);
-	const mcpServers = (settings.mcpServers ?? {}) as Record<string, unknown>;
+	const { settingsPath, settings, mcpPath, mcpConfig } = prepared;
+	const beforeSettings = JSON.stringify(settings);
+	const beforeMcp = JSON.stringify(mcpConfig);
+	const staleSettingsMcp = settings.mcpServers;
+	if (
+		staleSettingsMcp &&
+		typeof staleSettingsMcp === "object" &&
+		!Array.isArray(staleSettingsMcp)
+	) {
+		const staleServers = staleSettingsMcp as Record<string, unknown>;
+		if (staleServers.codemem !== undefined) {
+			delete staleServers.codemem;
+			if (Object.keys(staleServers).length === 0) delete settings.mcpServers;
+		}
+	}
+	const mcpServers = (mcpConfig.mcpServers ?? {}) as Record<string, unknown>;
 	mcpServers.codemem = managedMcp(runtime);
-	settings.mcpServers = mcpServers;
+	mcpConfig.mcpServers = mcpServers;
 	mergeCodememHookGroups(settings, buildCodememClaudeHookGroups(codememCodexHookBase(runtimePath)));
 
 	const enabledPlugins = settings.enabledPlugins;
@@ -785,24 +849,32 @@ export function installClaude(
 		(enabledPlugins as Record<string, unknown>)[CLAUDE_PLUGIN_ID] = false;
 	}
 
-	if (before === JSON.stringify(settings) && existsSync(path)) {
-		p.log.info(`Claude MCP and hooks already use the managed runtime in ${path}`);
+	const settingsChanged = beforeSettings !== JSON.stringify(settings) || !existsSync(settingsPath);
+	const mcpChanged = beforeMcp !== JSON.stringify(mcpConfig) || !existsSync(mcpPath);
+	if (!settingsChanged && !mcpChanged) {
+		p.log.info("Claude MCP and hooks already use the managed runtime");
 		return true;
 	}
-	if (existsSync(path)) {
-		try {
-			atomicReplaceSetupFile(`${path}.codemem.bak`, readFileSync(path));
-		} catch {
-			// Non-fatal: the original remains in place until the write below.
+	for (const [path, changed] of [
+		[settingsPath, settingsChanged],
+		[mcpPath, mcpChanged],
+	] as const) {
+		if (changed && existsSync(path)) {
+			try {
+				atomicReplaceSetupFile(`${path}.codemem.bak`, readFileSync(path));
+			} catch {
+				// Non-fatal: the original remains in place until the write below.
+			}
 		}
 	}
 	try {
-		writeJsonConfig(path, settings);
-		p.log.success(`Claude MCP and hooks installed: ${path}`);
+		if (settingsChanged) writeJsonConfig(settingsPath, settings);
+		if (mcpChanged) writeJsonConfig(mcpPath, mcpConfig);
+		p.log.success(`Claude MCP and hooks installed: ${settingsPath}, ${mcpPath}`);
 		return true;
 	} catch (error) {
 		p.log.error(
-			`Failed to write ${path}: ${error instanceof Error ? error.message : String(error)}`,
+			`Failed to write Claude configuration: ${error instanceof Error ? error.message : String(error)}`,
 		);
 		return false;
 	}
@@ -1104,7 +1176,7 @@ export const setupCommand = new Command("setup")
 			if (
 				!preflightInstallManifest(dataDir) ||
 				(doOpencode && !preflightOpencode(force, runtime)) ||
-				(doClaude && !loadClaudeSettings(force, runtime)) ||
+				(doClaude && !loadClaudeConfiguration(force, runtime)) ||
 				(doCodex && !preflightCodex(force, runtime))
 			) {
 				p.outro("Setup stopped before changing editor configuration");
@@ -1166,13 +1238,22 @@ export const setupCommand = new Command("setup")
 
 			if (doClaude) {
 				const settingsPath = join(claudeConfigDir(), "settings.json");
+				const mcpPath = claudeMcpConfigPath();
 				const runtimePath = join(claudeConfigDir(), "codemem-hook-runtime.mjs");
 				const targets = [
-					{ id: "claude-mcp", path: settingsPath },
+					{ id: "claude-mcp", path: mcpPath },
+					{ id: "claude-hooks", path: settingsPath },
 					{ id: "claude-hook-runtime", path: runtimePath },
 				];
 				const installed = runSetupLaneTransaction(
-					[manifestPath, settingsPath, `${settingsPath}.codemem.bak`, runtimePath],
+					[
+						manifestPath,
+						settingsPath,
+						`${settingsPath}.codemem.bak`,
+						mcpPath,
+						`${mcpPath}.codemem.bak`,
+						runtimePath,
+					],
 					() => {
 						p.log.step("Installing Claude Code MCP and hooks...");
 						return installClaude(force, runtime);
