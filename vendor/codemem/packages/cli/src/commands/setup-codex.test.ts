@@ -410,6 +410,11 @@ describe("installCodex — non-destructive merge", () => {
 			writeFileSync(join(codexHome, "config.toml"), legacy, "utf-8");
 			expect(installCodex(false)).toBe(true);
 		}
+		const runtime = resolveSetupRuntime();
+		const commentedManaged = `${original}[mcp_servers.codemem]\n# command = ${JSON.stringify(process.execPath)}\n# args = [${JSON.stringify(runtime.cliPath)}, "mcp"]\ncommand = "custom"\nargs = ["mcp"]\n`;
+		writeFileSync(join(codexHome, "config.toml"), commentedManaged, "utf-8");
+		expect(installCodex(false)).toBe(false);
+		expect(readConfigToml()).toBe(commentedManaged);
 
 		const custom = `${original}[mcp_servers."codemem"]\n# stale args = ["/tmp/old/packages/cli/dist/index.js", "mcp"]\ncommand = "npx"\nargs = ["--package", "@acme/codemem", "codemem", "mcp"]\n`;
 		writeFileSync(join(codexHome, "config.toml"), custom, "utf-8");
@@ -848,17 +853,18 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 	});
 
 	it('detects a quoted [mcp_servers."codemem"] table and does not append a duplicate', () => {
-		writeFileSync(
-			join(codexHome, "config.toml"),
-			'[mcp_servers."codemem"]\ncommand = "npx"\nargs = [\n  "-y",\n  "codemem",\n  "mcp",\n]\n',
-			"utf-8",
-		);
-
-		expect(installCodex(false)).toBe(true);
-
-		const toml = readConfigToml();
-		expect(toml.match(/\[mcp_servers\.codemem\]/g)).toHaveLength(1);
-		expect(toml).toContain(`command = ${JSON.stringify(process.execPath)}`);
+		for (const header of ['[mcp_servers."codemem"]', "[mcp_servers.'codemem']"]) {
+			writeFileSync(
+				join(codexHome, "config.toml"),
+				`${header}\ncommand = "npx"\nargs = [\n  "-y",\n  "codemem",\n  "mcp",\n]\n`,
+				"utf-8",
+			);
+			expect(installCodex(false)).toBe(true);
+			const toml = readConfigToml();
+			expect(toml).not.toContain(header);
+			expect(toml.match(/\[mcp_servers\.codemem\]/g)).toHaveLength(1);
+			expect(toml).toContain(`command = ${JSON.stringify(process.execPath)}`);
+		}
 	});
 
 	it("tolerates whitespace inside the table header", () => {

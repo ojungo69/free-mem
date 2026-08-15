@@ -177,26 +177,33 @@ function managedLegacyCommand(command: unknown, args?: unknown): boolean {
 	return false;
 }
 
-function managedLegacyCodexBlock(block: string): boolean {
+function parseCodexMcpCommand(block: string): { command: string; args: string[] } | null {
 	const commandSource = /^\s*command\s*=\s*("(?:\\.|[^"\\])*")\s*(?:#.*)?$/m.exec(block)?.[1];
 	const argsSource = /^\s*args\s*=\s*\[([\s\S]*?)\]\s*(?:#.*)?$/m.exec(block)?.[1];
-	if (!commandSource || argsSource === undefined) return false;
+	if (!commandSource || argsSource === undefined) return null;
 	const stringSources = argsSource.match(/"(?:\\.|[^"\\])*"/g) ?? [];
-	if (argsSource.replace(/"(?:\\.|[^"\\])*"/g, "").replace(/[\s,]/g, "") !== "") return false;
+	if (argsSource.replace(/"(?:\\.|[^"\\])*"/g, "").replace(/[\s,]/g, "") !== "") return null;
 	try {
-		return managedLegacyCommand(
-			JSON.parse(commandSource),
-			stringSources.map((source) => JSON.parse(source)),
-		);
+		return {
+			command: JSON.parse(commandSource),
+			args: stringSources.map((source) => JSON.parse(source)),
+		};
 	} catch {
-		return false;
+		return null;
 	}
 }
 
+function managedLegacyCodexBlock(block: string): boolean {
+	const parsed = parseCodexMcpCommand(block);
+	return parsed !== null && managedLegacyCommand(parsed.command, parsed.args);
+}
+
 function sameCodexMcpBlock(block: string, runtime: SetupRuntime): boolean {
+	const parsed = parseCodexMcpCommand(block);
+	const expected = managedMcp(runtime);
 	return (
-		block.includes(`command = ${JSON.stringify(process.execPath)}`) &&
-		block.includes(`args = [${JSON.stringify(runtime.cliPath)}, "mcp"]`)
+		parsed?.command === expected.command &&
+		JSON.stringify(parsed.args) === JSON.stringify(expected.args)
 	);
 }
 
@@ -455,7 +462,7 @@ function codexMcpBlock(runtime: SetupRuntime): string {
 // whitespace around brackets/dots and a quoted key, and avoids false-matching
 // sibling tables like `[mcp_servers.codemem-foo]` (the optional quote is matched
 // symmetrically via the backreference, so `codemem` must be followed by `]`).
-const CODEX_MCP_TABLE_RE = /^[ \t]*\[[ \t]*mcp_servers[ \t]*\.[ \t]*("?)codemem\1[ \t]*\]/m;
+const CODEX_MCP_TABLE_RE = /^[ \t]*\[[ \t]*mcp_servers[ \t]*\.[ \t]*(["']?)codemem\1[ \t]*\]/m;
 
 function codexMcpTable(existing: string): { start: number; end: number; block: string } | null {
 	const match = CODEX_MCP_TABLE_RE.exec(existing);
