@@ -377,12 +377,11 @@ describe("Phase 1 online backup", () => {
 			});
 			expect(wroteDuringBackup).toBe(true);
 
-			const sidecar = JSON.parse(
-				readFileSync(
-					join(core.resolveStorageLayout(dataDir).backupsDir, "manifest-live-writer.json"),
-					"utf8",
-				),
-			) as core.BackupSidecarV2;
+			const sidecarPath = join(
+				core.resolveStorageLayout(dataDir).backupsDir,
+				"manifest-live-writer.json",
+			);
+			const sidecar = JSON.parse(readFileSync(sidecarPath, "utf8")) as core.BackupSidecarV2;
 			expect(sidecar).toMatchObject({
 				version: 2,
 				authenticity: "hash-only",
@@ -424,6 +423,7 @@ describe("Phase 1 online backup", () => {
 				valid: true,
 				manifestHash: sidecar.manifest_hash,
 			});
+			const validSidecar = structuredClone(sidecar);
 			const probeManifest = sidecar.manifest.canonical_tables.find(
 				(table) => table.name === "probe",
 			);
@@ -431,14 +431,87 @@ describe("Phase 1 online backup", () => {
 			if (!probeManifest) throw new Error("probe manifest is missing");
 			probeManifest.row_count++;
 			sidecar.manifest_hash = core.hashMutationPayload(sidecar.manifest);
-			writeFileSync(
-				join(core.resolveStorageLayout(dataDir).backupsDir, "manifest-live-writer.json"),
-				`${JSON.stringify(sidecar)}\n`,
-			);
+			writeFileSync(sidecarPath, `${JSON.stringify(sidecar)}\n`);
 			expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
 				valid: false,
 				diagnostics: expect.arrayContaining(["backup manifest canonical row mismatch"]),
 			});
+
+			for (const malformed of [
+				"{",
+				JSON.stringify({ ...validSidecar, version: 1 }),
+				JSON.stringify({ ...validSidecar, authenticity: "signed" }),
+				JSON.stringify({ ...validSidecar, signature: "unexpected" }),
+				JSON.stringify({
+					...validSidecar,
+					manifest: { ...validSidecar.manifest, created_at: "not-a-timestamp" },
+				}),
+			]) {
+				writeFileSync(sidecarPath, `${malformed}\n`);
+				expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
+					valid: false,
+					manifestHash: null,
+					diagnostics: ["backup sidecar is malformed"],
+				});
+			}
+
+			const manifestMismatches: Array<{
+				diagnostic: string;
+				rehash: boolean;
+				mutate: (candidate: core.BackupSidecarV2) => void;
+			}> = [
+				{
+					diagnostic: "backup manifest operation ID mismatch",
+					rehash: true,
+					mutate: (candidate) => {
+						candidate.manifest.operation_id = "different-backup";
+					},
+				},
+				{
+					diagnostic: "backup manifest hash mismatch",
+					rehash: false,
+					mutate: (candidate) => {
+						candidate.manifest.reason = "tampered reason";
+					},
+				},
+				{
+					diagnostic: "backup manifest schema version mismatch",
+					rehash: true,
+					mutate: (candidate) => {
+						candidate.manifest.schema_version++;
+					},
+				},
+				{
+					diagnostic: "backup manifest FTS schema mismatch",
+					rehash: true,
+					mutate: (candidate) => {
+						candidate.manifest.fts_schema.definitions = [
+							{ type: "trigger", name: "unexpected_fts_trigger", sql: "SELECT 1" },
+						];
+						candidate.manifest.fts_schema.sha256 = core.hashMutationPayload(
+							candidate.manifest.fts_schema.definitions,
+						);
+					},
+				},
+				{
+					diagnostic: "backup manifest watermark mismatch",
+					rehash: true,
+					mutate: (candidate) => {
+						candidate.manifest.created_watermark.raw_event_id = 0;
+					},
+				},
+			];
+			for (const { diagnostic, rehash, mutate } of manifestMismatches) {
+				const candidate = structuredClone(validSidecar);
+				mutate(candidate);
+				if (rehash) candidate.manifest_hash = core.hashMutationPayload(candidate.manifest);
+				writeFileSync(sidecarPath, `${JSON.stringify(candidate)}\n`);
+				expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
+					valid: false,
+					diagnostics: expect.arrayContaining([diagnostic]),
+				});
+			}
+			writeFileSync(sidecarPath, `${JSON.stringify(validSidecar)}\n`);
 		} finally {
 			db.close();
 		}
@@ -478,12 +551,44 @@ describe("Phase 1 online backup", () => {
 				reason: "manual",
 				retentionClass: "manual",
 			});
+			await core.createOnlineBackup({
+				db,
+				destinationDir: backupDir,
+				operationId: "automatic-same-day",
+				reason: "scheduled",
+				retentionClass: "automatic",
+				now: () => new Date(Date.UTC(2026, 2, 19, 12)),
+			});
+			await core.createOnlineBackup({
+				db,
+				destinationDir: backupDir,
+				operationId: "automatic-week-duplicate",
+				reason: "scheduled",
+				retentionClass: "automatic",
+				now: () => new Date(Date.UTC(2026, 0, 21)),
+			});
+			writeFileSync(join(backupDir, "malformed.json"), "{\n", { mode: 0o600 });
+			writeFileSync(join(backupDir, "malformed.sqlite"), "ignored", { mode: 0o600 });
+			writeFileSync(join(backupDir, "invalid id.json"), "{\n", { mode: 0o600 });
+			writeFileSync(join(backupDir, "invalid id.sqlite"), "ignored", { mode: 0o600 });
 
 			const retention = core.pruneBackupRetention(backupDir);
-			expect(retention.removed).toEqual([]);
+			expect(retention.removed).toHaveLength(2);
+			expect(retention.removed).toEqual(
+				expect.arrayContaining(["daily-2026-03-19", "automatic-week-duplicate"]),
+			);
 			expect(retention.kept).toHaveLength(11);
 			expect(existsSync(join(backupDir, "automatic-00.sqlite"))).toBe(false);
+			expect(existsSync(join(backupDir, "daily-2026-03-19.sqlite"))).toBe(false);
+			expect(existsSync(join(backupDir, "automatic-same-day.sqlite"))).toBe(true);
 			expect(existsSync(join(backupDir, "manual-keep.sqlite"))).toBe(true);
+			expect(existsSync(join(backupDir, "malformed.sqlite"))).toBe(true);
+			expect(existsSync(join(backupDir, "invalid id.sqlite"))).toBe(true);
+			const listed = core.listCanonicalBackups(dataDir);
+			expect(listed).toContainEqual(
+				expect.objectContaining({ backupId: "malformed", valid: false }),
+			);
+			expect(listed.some((entry) => entry.backupId === "invalid id")).toBe(false);
 			expect(statSync(backupDir).mode & 0o777).toBe(0o700);
 			for (const file of readdirSync(backupDir)) {
 				expect(statSync(join(backupDir, file)).mode & 0o777).toBe(0o600);
@@ -534,9 +639,33 @@ describe("Phase 1 online backup", () => {
 		).toMatchObject({ result: { receiptId: expect.any(String) } });
 
 		const oldPointer = core.readCurrentDatabasePointer(handle.layout);
+		const restorePayloadHash = core.restorePayloadHash("restore-source");
+		const restoreToken = createHash("sha256")
+			.update("restore-operation", "utf8")
+			.digest("hex")
+			.slice(0, 32);
+		const stagedPath = join(
+			handle.layout.versionsDir,
+			`restore-${restoreToken}-${restorePayloadHash.slice(0, 16)}.sqlite`,
+		);
+		const backupArtifactPath = join(handle.layout.backupsDir, "restore-source.sqlite");
+		writeFileSync(`${backupArtifactPath}-wal`, "stale", { mode: 0o600 });
+		expect(() =>
+			core.restoreCanonicalBackup({
+				dataDir,
+				operationId: "restore-rejects-wal",
+				payloadHash: restorePayloadHash,
+				backupId: "restore-source",
+			}),
+		).toThrow("Backup failed restore verification");
+		expect(core.readCurrentDatabasePointer(handle.layout)).toBe(oldPointer);
+		rmSync(`${backupArtifactPath}-wal`);
+		writeFileSync(stagedPath, "stale staged database", { mode: 0o600 });
+		writeFileSync(`${stagedPath}-wal`, "stale wal", { mode: 0o600 });
+		writeFileSync(`${stagedPath}-shm`, "stale shm", { mode: 0o600 });
 		const restored = await request("restore", "POST /v1/backup/restore", {
 			operationId: "restore-operation",
-			payloadHash: core.restorePayloadHash("restore-source"),
+			payloadHash: restorePayloadHash,
 			backupId: "restore-source",
 		});
 		expect(restored).toMatchObject({
@@ -555,8 +684,42 @@ describe("Phase 1 online backup", () => {
 		const newPointer = core.readCurrentDatabasePointer(handle.layout);
 		expect(newPointer).not.toBe(oldPointer);
 		expect(oldPointer && existsSync(join(handle.layout.dbDir, oldPointer))).toBe(true);
+		expect(existsSync(stagedPath)).toBe(true);
+		expect(existsSync(`${stagedPath}-wal`)).toBe(false);
+		expect(existsSync(`${stagedPath}-shm`)).toBe(false);
 		if (!("result" in restored)) throw new Error("restore failed");
 		const restoredArtifactSha256 = restored.result.artifactSha256;
+		const restoreResultPath = `${stagedPath}.restore.json`;
+		const restoreResult = readFileSync(restoreResultPath, "utf8");
+		expect(() =>
+			core.restoreCanonicalBackup({
+				dataDir,
+				operationId: "restore-operation",
+				payloadHash: core.restorePayloadHash("different-backup"),
+				backupId: "different-backup",
+			}),
+		).toThrow("different payload");
+		writeFileSync(restoreResultPath, "{}\n");
+		expect(() =>
+			core.restoreCanonicalBackup({
+				dataDir,
+				operationId: "restore-operation",
+				payloadHash: restorePayloadHash,
+				backupId: "restore-source",
+			}),
+		).toThrow("Restore result is malformed");
+		writeFileSync(restoreResultPath, restoreResult);
+		rmSync(restoreResultPath);
+		expect(() =>
+			core.restoreCanonicalBackup({
+				dataDir,
+				operationId: "restore-operation",
+				payloadHash: restorePayloadHash,
+				backupId: "restore-source",
+			}),
+		).toThrow("Restore result is missing");
+		expect(core.readCurrentDatabasePointer(handle.layout)).toBe(newPointer);
+		writeFileSync(restoreResultPath, restoreResult, { mode: 0o600 });
 
 		const snapshot = ReadOnlyActor.open(join(handle.layout.dbDir, newPointer as string));
 		try {

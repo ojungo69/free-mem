@@ -79,6 +79,143 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 				pendingJobs,
 				pendingDataDir,
 			);
+			const validationOutputPath = join(dirname(pendingDataDir), "validation-export.json");
+			const invalidRequests: Array<{
+				kind: "export" | "import";
+				body: Record<string, unknown>;
+				error: string;
+			}> = [
+				{
+					kind: "export",
+					body: {
+						operationId: "bad/id",
+						payloadHash: "0".repeat(64),
+						outputPath: validationOutputPath,
+						filters: {},
+					},
+					error: "operationId is invalid",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "invalid-hash",
+						payloadHash: "not-a-hash",
+						outputPath: validationOutputPath,
+						filters: {},
+					},
+					error: "payloadHash is invalid",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "missing-filters",
+						payloadHash: "0".repeat(64),
+						outputPath: validationOutputPath,
+					},
+					error: "filters must be an object",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "unknown-filter",
+						payloadHash: "0".repeat(64),
+						outputPath: validationOutputPath,
+						filters: { unknown: true },
+					},
+					error: "Unknown export filter: unknown",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "invalid-boolean",
+						payloadHash: "0".repeat(64),
+						outputPath: validationOutputPath,
+						filters: { includeInactive: "yes" },
+					},
+					error: "filters.includeInactive must be a boolean",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "invalid-since",
+						payloadHash: "0".repeat(64),
+						outputPath: validationOutputPath,
+						filters: { since: "yesterday" },
+					},
+					error: "filters.since must be an ISO date",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "conflicting-filters",
+						payloadHash: "0".repeat(64),
+						outputPath: validationOutputPath,
+						filters: { project: "demo", allProjects: true },
+					},
+					error: "filters.project cannot be combined with allProjects",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "stdout-export",
+						payloadHash: "0".repeat(64),
+						outputPath: "-",
+						filters: {},
+					},
+					error: "outputPath must be a file path",
+				},
+				{
+					kind: "import",
+					body: { operationId: "stdin-import", payloadHash: "0".repeat(64), inputPath: "-" },
+					error: "inputPath must be a file path",
+				},
+				{
+					kind: "import",
+					body: {
+						operationId: "invalid-remap",
+						payloadHash: "0".repeat(64),
+						inputPath: validationOutputPath,
+						remapProject: "bad\0project",
+					},
+					error: "remapProject is invalid",
+				},
+				{
+					kind: "import",
+					body: {
+						operationId: "invalid-dry-run",
+						payloadHash: "0".repeat(64),
+						inputPath: validationOutputPath,
+						dryRun: "yes",
+					},
+					error: "dryRun must be a boolean",
+				},
+				{
+					kind: "export",
+					body: {
+						operationId: "hash-mismatch",
+						payloadHash: "0".repeat(64),
+						outputPath: validationOutputPath,
+						filters: { allProjects: true },
+					},
+					error: "payloadHash does not match the operation request",
+				},
+			];
+			for (const invalid of invalidRequests) {
+				expect(() => pendingOperations.submit(invalid.kind, invalid.body)).toThrow(invalid.error);
+			}
+			expect(() => pendingOperations.get("bad/id")).toThrow("Operation ID is invalid");
+			expect(() => pendingOperations.get("missing-operation")).toThrow("Operation was not found");
+			const insideBody = {
+				outputPath: join(pendingDataDir, "inside-data-dir.json"),
+				filters: { allProjects: true },
+			};
+			expect(() =>
+				pendingOperations.submit("export", {
+					operationId: "inside-data-dir",
+					payloadHash: core.hashMutationPayload(insideBody),
+					...insideBody,
+				}),
+			).toThrow("outside the daemon data directory");
 			const pendingBody = {
 				outputPath: join(dirname(pendingDataDir), "pending-export.json"),
 				filters: { allProjects: true },
@@ -113,6 +250,40 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 			expect(restoreConflict).toMatchObject({ error: { code: "conflict" } });
 		} finally {
 			pendingStore.close();
+		}
+
+		const stoppingDataDir = tempDataDir();
+		const stoppingDb = connect(join(dirname(stoppingDataDir), "stopping.sqlite"));
+		core.initTestSchema(stoppingDb);
+		const stoppingStore = new MemoryStore(stoppingDb, { closeConnection: true });
+		const stoppingJobs = {
+			schedule: () => {
+				throw new Error("daemon is stopping");
+			},
+		} as unknown as DaemonJobService;
+		try {
+			const stoppingOperations = new DaemonOperationService(
+				stoppingStore,
+				stoppingJobs,
+				stoppingDataDir,
+			);
+			const stoppingBody = {
+				outputPath: join(dirname(stoppingDataDir), "stopping-export.json"),
+				filters: { allProjects: true },
+			};
+			expect(
+				stoppingOperations.submit("export", {
+					operationId: "stopping-export",
+					payloadHash: core.hashMutationPayload(stoppingBody),
+					...stoppingBody,
+				}),
+			).toEqual({ operationId: "stopping-export", state: "prepared" });
+			expect(stoppingOperations.get("stopping-export")).toMatchObject({
+				state: "failed",
+				error: { code: "daemon_stopping" },
+			});
+		} finally {
+			stoppingStore.close();
 		}
 
 		const scheduledDataDir = tempDataDir();
@@ -193,6 +364,98 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 	});
 
 	it("P1-T047-02-operation-result-retrieval", async () => {
+		const recoveryDataDir = tempDataDir();
+		const recoveryDb = connect(join(dirname(recoveryDataDir), "recovery.sqlite"));
+		core.initTestSchema(recoveryDb);
+		const recoveryStore = new MemoryStore(recoveryDb, { closeConnection: true });
+		const recoveryJobs = {
+			schedule: () => Promise.resolve(),
+		} as unknown as DaemonJobService;
+		try {
+			new DaemonOperationService(recoveryStore, recoveryJobs, recoveryDataDir);
+			const operationsDir = join(
+				core.resolveStorageLayout(recoveryDataDir).controlDir,
+				"operations",
+			);
+			const interrupted = [
+				{
+					operationId: "recover-clean-export",
+					outputPath: join(dirname(recoveryDataDir), "recover-clean.json"),
+					cleanupVerified: true,
+				},
+				{
+					operationId: "recover-symlink-export",
+					outputPath: join(dirname(recoveryDataDir), "recover-symlink.json"),
+					cleanupVerified: false,
+				},
+			];
+			for (const candidate of interrupted) {
+				const requestBody = {
+					outputPath: candidate.outputPath,
+					filters: { allProjects: true },
+				};
+				const temporaryPath = `${candidate.outputPath}.${core
+					.hashMutationPayload(candidate.operationId)
+					.slice(0, 32)}.tmp`;
+				if (candidate.cleanupVerified) {
+					writeFileSync(temporaryPath, "interrupted export", { mode: 0o600 });
+				} else {
+					const target = join(dirname(recoveryDataDir), "symlink-target");
+					writeFileSync(target, "must not be removed", { mode: 0o600 });
+					symlinkSync(target, temporaryPath);
+				}
+				const now = "2026-08-14T00:00:00.000Z";
+				writeFileSync(
+					join(operationsDir, `${candidate.operationId}.json`),
+					`${JSON.stringify({
+						version: 1,
+						operationId: candidate.operationId,
+						payloadHash: core.hashMutationPayload(requestBody),
+						kind: "export",
+						state: "writing",
+						request: requestBody,
+						result: null,
+						error: null,
+						createdAt: now,
+						updatedAt: now,
+					})}\n`,
+					{ mode: 0o600 },
+				);
+			}
+			const recovered = new DaemonOperationService(recoveryStore, recoveryJobs, recoveryDataDir);
+			expect(recovered.get("recover-clean-export")).toMatchObject({
+				state: "failed",
+				error: {
+					code: "daemon_restarted",
+					message: "The daemon restarted before the operation completed.",
+				},
+			});
+			expect(recovered.get("recover-symlink-export")).toMatchObject({
+				state: "failed",
+				error: {
+					code: "daemon_restarted",
+					message: "The daemon restarted; interrupted export cleanup could not be verified.",
+				},
+			});
+			expect(
+				existsSync(
+					`${interrupted[0].outputPath}.${core
+						.hashMutationPayload(interrupted[0].operationId)
+						.slice(0, 32)}.tmp`,
+				),
+			).toBe(false);
+			expect(
+				existsSync(
+					`${interrupted[1].outputPath}.${core
+						.hashMutationPayload(interrupted[1].operationId)
+						.slice(0, 32)}.tmp`,
+				),
+			).toBe(true);
+			expect(recovered.hasPending()).toBe(false);
+		} finally {
+			recoveryStore.close();
+		}
+
 		const dataDir = tempDataDir();
 		const outputPath = join(dirname(dataDir), "export.json");
 		const operationId = crypto.randomUUID();
@@ -231,6 +494,7 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 	it("P1-T047-03-import-backup-precondition", async () => {
 		const dataDir = tempDataDir();
 		const inputPath = join(dirname(dataDir), "import.json");
+		const invalidInputPath = join(dirname(dataDir), "invalid-import.json");
 		writeFileSync(
 			inputPath,
 			JSON.stringify({
@@ -275,8 +539,37 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 			}),
 			{ mode: 0o600 },
 		);
+		writeFileSync(invalidInputPath, "{\n", { mode: 0o600 });
 		const handle = await core.startDaemon({ dataDir });
 		handles.push(handle);
+
+		const invalidImportBody = { inputPath: invalidInputPath };
+		const invalidImportId = crypto.randomUUID();
+		await request(handle, "POST /v1/operations/import", {
+			operationId: invalidImportId,
+			payloadHash: core.hashMutationPayload(invalidImportBody),
+			...invalidImportBody,
+		});
+		expect(await waitForTerminal(handle, invalidImportId)).toMatchObject({
+			state: "failed",
+			error: { code: "invalid_import" },
+		});
+
+		const previewBody = { inputPath, remapProject: "preview-project", dryRun: true };
+		const previewId = crypto.randomUUID();
+		await request(handle, "POST /v1/operations/import", {
+			operationId: previewId,
+			payloadHash: core.hashMutationPayload(previewBody),
+			...previewBody,
+		});
+		expect(await waitForTerminal(handle, previewId)).toMatchObject({
+			state: "committed",
+			result: { dryRun: true, memory_items: 1 },
+		});
+		expect(await request(handle, "GET /v1/view", { collection: "stats" })).toMatchObject({
+			body: { database: { memory_items: 0 } },
+		});
+
 		rmSync(handle.layout.backupsDir, { recursive: true });
 		writeFileSync(handle.layout.backupsDir, "backup directory blocked", { mode: 0o600 });
 
@@ -313,5 +606,42 @@ describe("daemon class B operations", { timeout: 20_000 }, () => {
 		expect(await request(handle, "GET /v1/view", { collection: "stats" })).toMatchObject({
 			body: { database: { memory_items: 1 } },
 		});
+
+		const exportFailureDataDir = tempDataDir();
+		const exportFailureDb = connect(join(dirname(exportFailureDataDir), "export-failure.sqlite"));
+		core.initTestSchema(exportFailureDb);
+		const exportFailureStore = new MemoryStore(exportFailureDb, { closeConnection: true });
+		let scheduledWork: (() => Promise<void> | void) | null = null;
+		const capturedJobs = {
+			schedule: (work: () => Promise<void> | void) => {
+				scheduledWork = work;
+				return Promise.resolve();
+			},
+		} as unknown as DaemonJobService;
+		try {
+			const exportFailureOperations = new DaemonOperationService(
+				exportFailureStore,
+				capturedJobs,
+				exportFailureDataDir,
+			);
+			const outputDir = mkdtempSync(join(dirname(exportFailureDataDir), "vanishing-export-"));
+			const outputPath = join(outputDir, "export.json");
+			const exportBody = { outputPath, filters: { allProjects: true } };
+			exportFailureOperations.submit("export", {
+				operationId: "vanishing-export",
+				payloadHash: core.hashMutationPayload(exportBody),
+				...exportBody,
+			});
+			rmSync(outputDir, { recursive: true });
+			if (!scheduledWork) throw new Error("export work was not scheduled");
+			await scheduledWork();
+			expect(exportFailureOperations.get("vanishing-export")).toMatchObject({
+				state: "failed",
+				error: { code: "export_failed" },
+			});
+			expect(existsSync(outputPath)).toBe(false);
+		} finally {
+			exportFailureStore.close();
+		}
 	});
 });

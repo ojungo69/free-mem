@@ -27,7 +27,7 @@ describe("daemon jobs", () => {
 		dir = null;
 	});
 
-	it("P1-T045-02-job-no-auto-retry", () => {
+	it("P1-T045-02-job-no-auto-retry", async () => {
 		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-jobs-"));
 		db = connect(join(dir, "jobs.sqlite"));
 		initTestSchema(db);
@@ -58,6 +58,24 @@ describe("daemon jobs", () => {
 			attempts: 1,
 			error: { code: "daemon_restarted" },
 		});
+		expect(service.get("00000000-0000-4000-8000-000000000099")).toBeNull();
+		expect(() => service.get("not-a-job-id")).toThrow("job id is invalid");
+		expect(
+			service.list({
+				kind: "narrative.backfill",
+				state: "failed",
+				submittedAfter: submittedAt,
+			}),
+		).toHaveLength(2);
+		expect(() => service.list({ kind: "unknown" })).toThrow("job kind is unsupported");
+		expect(() => service.list({ state: "cancelled" })).toThrow("job state is invalid");
+		expect(() => service.list({ submittedAfter: "yesterday" })).toThrow(
+			"submittedAfter must be an ISO timestamp",
+		);
+
+		await service.stop();
+		expect(() => service.submit({ kind: "db.init" })).toThrow("service is stopping");
+		expect(() => service.schedule(() => {})).toThrow("service is stopping");
 	});
 
 	it("P1-T046-01-maintenance-mode", async () => {
@@ -80,6 +98,88 @@ describe("daemon jobs", () => {
 				await released;
 			},
 		});
+		const invalidRequests: Array<{
+			input: { kind: unknown; args?: unknown; dryRun?: unknown };
+			error: string;
+		}> = [
+			{ input: { kind: false }, error: "job kind is unsupported" },
+			{ input: { kind: "db.init", args: [] }, error: "args must be an object" },
+			{
+				input: { kind: "db.init", args: { surprise: true } },
+				error: "Unknown job argument: surprise",
+			},
+			{
+				input: { kind: "report.db-size", args: { limit: 0 } },
+				error: "args.limit must be an integer between 1 and 10000",
+			},
+			{
+				input: { kind: "report.db-size", args: { limit: 1.5 } },
+				error: "args.limit must be an integer between 1 and 10000",
+			},
+			{
+				input: { kind: "gate.raw-events", args: { minFlushSuccessRate: Number.NaN } },
+				error: "args.minFlushSuccessRate must be between 0 and 1",
+			},
+			{
+				input: { kind: "gate.raw-events", args: { maxDroppedEventRate: 2 } },
+				error: "args.maxDroppedEventRate must be between 0 and 1",
+			},
+			{
+				input: { kind: "report.artifact", args: { includeInactive: "yes" } },
+				error: "args.includeInactive must be a boolean",
+			},
+			{
+				input: { kind: "report.artifact", args: { project: "bad\0project" } },
+				error: "args.project is invalid",
+			},
+			{
+				input: { kind: "report.memory-role", args: { probes: "probe" } },
+				error: "args.probes is invalid",
+			},
+			{
+				input: { kind: "report.memory-role", args: { probes: [""] } },
+				error: "args.probes is invalid",
+			},
+			{
+				input: { kind: "report.memory-role", args: { probes: Array(51).fill("probe") } },
+				error: "args.probes is invalid",
+			},
+			{
+				input: { kind: "tags.backfill", args: { since: "yesterday" } },
+				error: "args.since must be an ISO timestamp",
+			},
+			{
+				input: { kind: "report.role-compare", args: {} },
+				error: "args.baselineDbPath is required",
+			},
+			{
+				input: { kind: "report.role-compare", args: { baselineDbPath: "/tmp/baseline" } },
+				error: "args.candidateDbPath is required",
+			},
+			{
+				input: { kind: "projects.rename", args: { oldName: "old" } },
+				error: "projects.rename requires oldName and newName",
+			},
+			{
+				input: { kind: "raw-events.prune", args: {} },
+				error: "raw-events.prune requires maxAgeDays",
+			},
+			{
+				input: { kind: "report.extraction", args: { scenarioId: "scenario" } },
+				error: "report.extraction requires scenarioId and exactly one of sessionId or batchId",
+			},
+			{
+				input: {
+					kind: "report.extraction",
+					args: { scenarioId: "scenario", sessionId: 1, batchId: 1 },
+				},
+				error: "report.extraction requires scenarioId and exactly one of sessionId or batchId",
+			},
+			{ input: { kind: "db.init", dryRun: "yes" }, error: "dryRun must be a boolean" },
+		];
+		for (const request of invalidRequests) {
+			expect(() => service.submit(request.input)).toThrow(request.error);
+		}
 		expect(() => service.submit({ kind: "raw-events.retry", args: {}, dryRun: true })).toThrow(
 			"raw-events.retry does not support dryRun",
 		);
@@ -153,6 +253,96 @@ describe("daemon jobs", () => {
 		});
 		expect(sha256File(backupPath)).toBe(backupHash);
 
+		db.exec(`
+			INSERT INTO sessions(started_at, cwd, project, user, tool_version) VALUES
+				('2026-08-14T00:00:00.000Z', '/tmp/literal', 'root/a%b_c', 'test', 'test'),
+				('2026-08-14T00:00:01.000Z', '/tmp/zeta', 'root/zeta', 'test', 'test');
+			INSERT INTO raw_event_sessions(
+				source, stream_id, opencode_session_id, cwd, project, started_at,
+				last_seen_ts_wall_ms, last_received_event_seq, last_flushed_event_seq, updated_at
+			) VALUES
+				('opencode', 'rename', 'rename', '/tmp/literal', 'root/a%b_c',
+				 '2026-08-14T00:00:00.000Z', 1, 0, 0, '2026-08-14T00:00:00.000Z'),
+				('opencode', 'normalize', 'normalize', '/tmp/alpha', 'root/alpha',
+				 '2026-08-14T00:00:01.000Z', 1, 0, 0, '2026-08-14T00:00:01.000Z');
+		`);
+		const renameDryRun = service.submit({
+			kind: "projects.rename",
+			args: { oldName: "a%b_c", newName: "literal" },
+			dryRun: true,
+		});
+		expect(await waitForTerminal(renameDryRun.jobId)).toMatchObject({
+			state: "completed",
+			result: { counts: { sessions: 1, raw_event_sessions: 1 } },
+		});
+		expect(
+			(
+				db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE project = 'root/a%b_c'").get() as {
+					count: number;
+				}
+			).count,
+		).toBe(1);
+		const renamed = service.submit({
+			kind: "projects.rename",
+			args: { oldName: "a%b_c", newName: "literal" },
+			dryRun: false,
+		});
+		expect(await waitForTerminal(renamed.jobId)).toMatchObject({
+			state: "completed",
+			result: {
+				counts: { sessions: 1, raw_event_sessions: 1 },
+				backupId: `maintenance-${renamed.jobId}`,
+			},
+		});
+		expect(
+			(
+				db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE project = 'literal'").get() as {
+					count: number;
+				}
+			).count,
+		).toBe(1);
+
+		const normalizeDryRun = service.submit({
+			kind: "projects.normalize",
+			args: {},
+			dryRun: true,
+		});
+		expect(await waitForTerminal(normalizeDryRun.jobId)).toMatchObject({
+			state: "completed",
+			result: {
+				counts: { sessions: 1, raw_event_sessions: 1 },
+				rewrites: [
+					{ from: "root/alpha", to: "alpha" },
+					{ from: "root/zeta", to: "zeta" },
+				],
+			},
+		});
+		const normalized = service.submit({ kind: "projects.normalize", args: {}, dryRun: false });
+		expect(await waitForTerminal(normalized.jobId)).toMatchObject({
+			state: "completed",
+			result: {
+				counts: { sessions: 1, raw_event_sessions: 1 },
+				backupId: `maintenance-${normalized.jobId}`,
+			},
+		});
+		expect(
+			db
+				.prepare(
+					"SELECT project FROM sessions WHERE project IN ('literal', 'zeta') ORDER BY project",
+				)
+				.all(),
+		).toEqual([{ project: "literal" }, { project: "zeta" }]);
+
+		for (const request of [
+			{ kind: "db.init", args: {} },
+			{ kind: "report.db-size", args: { limit: 1 } },
+			{ kind: "report.raw-events", args: { limit: 1 } },
+			{ kind: "raw-events.prune", args: { maxAgeDays: 1, vacuum: false }, dryRun: true },
+			{ kind: "raw-events.prune", args: { maxAgeDays: 1, vacuum: true }, dryRun: false },
+		]) {
+			const job = service.submit(request);
+			expect(await waitForTerminal(job.jobId)).toMatchObject({ state: "completed", attempts: 1 });
+		}
 		db.prepare("INSERT INTO sessions(started_at, project) VALUES (?, ?)").run(
 			"2026-08-14T00:00:00.000Z",
 			"team/demo",
