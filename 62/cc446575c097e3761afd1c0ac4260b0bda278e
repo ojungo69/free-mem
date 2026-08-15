@@ -1,0 +1,31 @@
+vendor/codemem/packages/core/src/daemon-jobs.test.ts
+  s_211aa7fe546c35::t_4b4851efa8144d 30,61-78,101-182,256-345
+vendor/codemem/packages/core/src/daemon-operations.test.ts
+  s_45af7ccadd2150::t_535ae1446511a6 82-218,255-288,367-458,497,542,545-572,609-645
+vendor/codemem/packages/core/src/online-backup.test.ts
+  s_211aa7fe546c35::t_cde707d04179fc 380-384,426,434,439-514,554-573,576-579,582-583,585-591,642-665,668,687-689,692-722
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "62cc446575c097e3761afd1c0ac4260b0bda278e",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_45af7ccadd2150": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a004b7-5d5c-7d52-a0be-58e9b9505d88",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
