@@ -1,0 +1,35 @@
+harness/phase1-fault-injection.mjs
+  s_211aa7fe546c35::t_60c525a12e804f 8,10,13,390-398
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_3540bd9e7f23d3 6247-6248,6282-6295,6322
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_0229f0abc326fb 6247-6248,6282-6295,6322
+vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts
+  s_211aa7fe546c35::t_7fe7341fa91fdc 2-12,145-146,181-193,227
+vendor/codemem/packages/core/src/daemon-jobs.ts
+  s_211aa7fe546c35::t_fafbcb30b38c40 462-464
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_9ffab65724afb7 308-311,924-927,929
+vendor/codemem/packages/core/src/distill-draft.ts
+  s_211aa7fe546c35::t_e253715ca5681d 78-82
+vendor/codemem/packages/core/src/distill-judge.ts
+  s_211aa7fe546c35::t_81cbca909477c9 80-84
+vendor/codemem/packages/core/src/mutation-dispatcher.test.ts
+  s_211aa7fe546c35::t_7395f730cf0e26 440-461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f763a31d85fe9e1ce97e21686ac8a93400125cb2",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
