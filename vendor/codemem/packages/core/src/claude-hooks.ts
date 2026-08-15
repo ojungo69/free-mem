@@ -12,7 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 
@@ -38,6 +38,9 @@ export const MAPPABLE_CLAUDE_HOOK_EVENTS = new Set([
 	"Stop",
 	"SessionEnd",
 ]);
+
+export const TRANSCRIPT_TAIL_MAX_BYTES = 256 * 1024;
+const UNKNOWN_OCCURRED_AT = "1970-01-01T00:00:00.000Z";
 
 // ---------------------------------------------------------------------------
 // Timestamp helpers
@@ -346,7 +349,26 @@ export function extractFromTranscript(
 	let assistantUsage: Record<string, number> | null = null;
 
 	try {
-		const content = readFileSync(resolvedPath, "utf-8");
+		const descriptor = openSync(resolvedPath, "r");
+		let content: string;
+		try {
+			const size = fstatSync(descriptor).size;
+			const length = Math.min(size, TRANSCRIPT_TAIL_MAX_BYTES);
+			const start = Math.max(0, size - length);
+			const buffer = Buffer.alloc(length);
+			let offset = 0;
+			while (offset < length) {
+				const read = readSync(descriptor, buffer, offset, length - offset, start + offset);
+				if (read === 0) break;
+				offset += read;
+			}
+			content = buffer.subarray(0, offset).toString("utf8");
+			if (start > 0) content = content.slice(Math.max(0, content.indexOf("\n") + 1));
+		} finally {
+			closeSync(descriptor);
+		}
+		// ponytail: 256 KiB tail bounds hook latency; use reverse streaming only if transcripts
+		// start emitting individual JSONL records larger than this ceiling.
 		for (const rawLine of content.split("\n")) {
 			const line = rawLine.trim();
 			if (!line) continue;
@@ -448,7 +470,7 @@ export function mapClaudeHookPayload(
 
 	const rawTs = payload.ts ?? payload.timestamp;
 	const normalizedRawTs = normalizeIsoTs(rawTs);
-	const ts = normalizedRawTs ?? nowIso();
+	let ts = normalizedRawTs ?? nowIso();
 	const toolUseId = String(payload.tool_use_id ?? "").trim();
 
 	const consumed = new Set([
@@ -575,6 +597,7 @@ export function mapClaudeHookPayload(
 		eventIdPayload = { ...eventPayload };
 		consumed.add("reason");
 	}
+	if (hookEvent === "SessionEnd" && normalizedRawTs === null) ts = UNKNOWN_OCCURRED_AT;
 
 	// Build meta — forward unknown fields as hook_fields
 	const meta: Record<string, unknown> = {
@@ -591,7 +614,7 @@ export function mapClaudeHookPayload(
 	if (Object.keys(unknown).length > 0) meta.hook_fields = unknown;
 
 	// Compute stable event id
-	const eventIdTsSeed = normalizedRawTs ?? ts;
+	const eventIdTsSeed = hookEvent === "SessionEnd" && normalizedRawTs === null ? "" : ts;
 	// Matches Python's json.dumps(sort_keys=True, default=str):
 	// - sortKeys() recursively sorts object keys
 	// - the replacer coerces non-JSON-native values to strings (like Python's default=str)

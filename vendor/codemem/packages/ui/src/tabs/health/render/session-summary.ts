@@ -4,7 +4,7 @@
 
 import { formatReductionPercent, formatTimestamp, formatTokenCount } from "../../../lib/format";
 import { state } from "../../../lib/state";
-import { renderIcons, renderStatBlocks, renderText } from "../components";
+import { renderStatBlocks, renderText } from "../components";
 import type { StatItem, UsageEvent } from "../types";
 
 export function renderSessionSummary() {
@@ -62,6 +62,4 @@ export function renderSessionSummary() {
 
 	renderText(sessionMeta, [scopeLabel, packLine, lastPackLine].filter(Boolean).join(" · "));
 	renderStatBlocks(sessionGrid, items);
-
-	renderIcons();
 }

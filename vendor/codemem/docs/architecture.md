@@ -6,12 +6,12 @@ codemem has five main pieces: **adapters** that capture shell/runtime activity, 
 
 | Component | What it does | Key files |
 |-----------|-------------|-----------|
-| Adapters | Capture OpenCode/Claude events and enqueue raw events for ingest | `packages/opencode-plugin/.opencode/plugins/codemem.js`, `plugins/claude/scripts/ingest-hook.sh`, `packages/core/src/claude-hooks.ts` |
+| Adapters | Capture OpenCode/Claude/Codex events and enqueue raw events for ingest | `packages/opencode-plugin/.opencode/plugins/codemem.js`, `packages/cli/src/hook-runtime.ts`, `packages/cli/src/commands/hook-rpc-client.ts` |
 | Ingest pipeline | Extracts tool events, builds transcripts, runs the observer | `packages/core/src/ingest-pipeline.ts`, `packages/core/src/ingest-events.ts` |
 | Observer | Produces typed observations and session summaries from transcripts | `packages/core/src/ingest-prompts.ts`, `packages/core/src/ingest-xml-parser.ts` |
 | Store | SQLite persistence for sessions, memories, artifacts, embeddings | `packages/core/src/store.ts`, `packages/core/src/schema.ts` |
 | Viewer | Local web UI + JSON APIs for stats, sessions, and memory items | `packages/viewer-server/src/`, `packages/ui/src/` |
-| MCP server | Exposes memory tools (search, timeline, pack, remember, forget) to OpenCode | `packages/mcp-server/src/` |
+| MCP server | Thin stdio RPC client for read, remember, and daemon status tools | `packages/mcp-server/src/` |
 | CLI | Ties everything together: ingest, serve, search, export/import, sync | `packages/cli/src/` |
 
 The viewer trust model is intentionally local-first: it is designed for loopback access from the same machine, with
@@ -25,29 +25,31 @@ flowchart LR
     OC["OpenCode"] -->|tool/message events| OCA["OpenCode adapter"]
     OCA -->|POST /api/raw-events| VW["Viewer API"]
     OCA -->|fallback: enqueue-raw-event CLI| DB
-    CH["Claude hooks"] -->|POST /api/claude-hooks| VW
-    CH -->|fallback: claude-hook-ingest direct enqueue| DB
-    CX["Codex hooks"] -->|POST /api/codex-hooks| VW
-    CX -->|fallback: codex-hook-ingest direct enqueue/spool| DB
+    CH["Claude hooks"] -->|redacted normalized event| DR["Daemon RPC"]
+    CX["Codex hooks"] -->|redacted normalized event| DR
+    CH -->|RPC failure| SP["Atomic spool"]
+    CX -->|RPC failure| SP
+    SP -->|startup + periodic import| DR
+    DR --> DB
     VW --> DB["SQLite"]
     DB -->|flush batch claimed| IN["Ingest pipeline"]
     IN --> OB["Observer"]
     OB -->|typed observations\nsession summary| IN
     IN -->|memories, artifacts| DB
-    DB -->|search, pack| MCP["MCP server"]
+    MCP["MCP server"] -->|versioned read / remember RPC| DR
     DB --> VW
 ```
 
 1. Adapters capture tool/conversation lifecycle events and normalize them into raw events with optional `_adapter` envelopes.
 2. OpenCode streams raw events to the viewer ingest API (`POST /api/raw-events`) with preflight checks (`GET /api/raw-events/status`) and can fall back to CLI queue enqueue when stream writes fail. Prompt-time packs and prompt-pack ledger transitions also use viewer POST APIs first, with CLI fallback only for retryable transport or version failures.
-3. Claude hook ingestion posts to `POST /api/claude-hooks` first and falls back to `codemem claude-hook-ingest` direct enqueue when the local viewer API is unavailable. Codex hook ingestion follows the same HTTP-first shape through `POST /api/codex-hooks`, then `codemem codex-hook-ingest` direct enqueue, with a Codex-specific on-disk spool as the last-resort fallback.
+3. Claude and Codex hook runtimes apply project policy/redaction before daemon RPC. RPC failure writes the same normalized event to the shared bounded atomic spool; daemon startup and periodic sweeps import it through the same mutation dispatcher.
 4. The viewer/store persists raw events and queues durable flush batches.
 5. Idle and sweeper workers claim batches and run them through ingest.
 6. Before building session context, raw events are passed through `normalizeEventsForSessionContext` (in `ingest-transcript.ts`) which projects adapter-enveloped events (`_adapter` schema v1.0) into the flat `user_prompt` / `tool.execute.after` shapes that `buildSessionContext` scans. This is critical for Claude Code hook events which always arrive wrapped in the adapter envelope.
 7. Ingest builds a transcript from user prompts and assistant messages, then hands it to the observer.
 8. The observer returns typed observations and an optional session summary as XML.
 9. Ingest writes artifacts (transcript, context snapshots), observations, and summaries to SQLite.
-10. The viewer, MCP server, and CLI all read from the same SQLite database.
+10. The daemon is the only write-capable SQLite owner. MCP uses versioned RPC for reads and remember; a failed remember RPC falls back to the same pre-redacted atomic spool.
 
 ## Adapter support matrix and rollout
 
@@ -60,8 +62,8 @@ Support tiers describe operational expectations for each adapter path:
 | Adapter | Tier | Notes |
 |---|---|---|
 | OpenCode plugin | Supported | Primary reference adapter for lifecycle events and injection behavior. |
-| Claude hooks/plugin | Supported | Hook-first queue path with CLI/runtime fallback and parity slices tracked in adapter stack PRs. |
-| Codex plugin (hooks + MCP) | Experimental (early beta) | Functional capture pipeline (`plugins/codex/`, `packages/core/src/codex-hooks.ts`) dogfooded end-to-end: hooks → `POST /api/codex-hooks` → observer → memories. Prompt-time injection present and env-gated but not fully validated on strict models. Not yet promoted to a stable support tier. |
+| Claude hooks/plugin | Supported | Standalone runtime with pre-RPC redaction, daemon RPC reads/writes, and shared atomic-spool fallback. |
+| Codex plugin (hooks + MCP) | Experimental (early beta) | Hook capture, prompt-time injection, and MCP use daemon RPC; capture and remember retain the shared redacted spool fallback. |
 | Windsurf integration | Experimental | Planned via shared adapter contract after OpenCode/Claude stabilization. |
 | Cursor integration | Experimental | Planned via shared adapter contract after OpenCode/Claude stabilization. |
 
@@ -309,10 +311,9 @@ The OpenCode adapter streams each captured event to the viewer API (`captureEven
 
 When stream delivery is unavailable, the adapter can enqueue raw events through the CLI fallback path (`enqueue-raw-event`) so events still enter durable queue processing.
 
-Claude hook ingestion is enqueue-first (`POST /api/claude-hooks`) with CLI fallback. The route nudges the raw-event
-sweeper after enqueue, but actual auto-flush still depends on `CODEMEM_RAW_EVENTS_AUTO_FLUSH=1`; otherwise processing
-waits for the normal idle/sweeper path. `CODEMEM_CLAUDE_HOOK_FLUSH_ON_STOP=1` remains a separate opt-in for `Stop`
-events.
+Claude and Codex hooks deliver redacted normalized events to daemon RPC. On RPC failure they use the shared bounded
+atomic spool. `pre_compact` and `session_ended` use reserved spool quota; successful daemon commit precedes durable
+spool deletion.
 
 ### OpenCode session finalization triggers
 - `session.idle` — finalizes current local buffer
@@ -328,10 +329,6 @@ events.
 - Preflight check: `GET /api/raw-events/status` with periodic re-checks (`CODEMEM_RAW_EVENTS_STATUS_CHECK_MS`), bounded by a 5-second timeout
 - Backoff on failure: configurable via `CODEMEM_RAW_EVENTS_BACKOFF_MS`; on stream failure the plugin can fall back to CLI enqueue for durable persistence
 - Once events are accepted by the viewer/store queue, flush workers handle retries
-
-### Claude hook flush boundaries
-- `CODEMEM_CLAUDE_HOOK_FLUSH=1` enables immediate `SessionEnd` boundary flush attempts
-- `CODEMEM_CLAUDE_HOOK_FLUSH_ON_STOP=1` extends immediate flush to `Stop` when boundary flush is enabled
 
 ## Bootstrap grant verification flow
 

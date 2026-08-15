@@ -5,8 +5,6 @@
  * and type definitions shared across the codemem TS backend.
  */
 
-export const VERSION = "0.40.2";
-
 export * as Api from "./api-types.js";
 export { extractApplyPatchPaths, MUTATING_TOOL_NAMES } from "./apply-patch.js";
 export * from "./attribution-assessment.js";
@@ -19,6 +17,7 @@ export {
 	mapClaudeHookPayload,
 	normalizeProjectLabel,
 	resolveHookProject,
+	TRANSCRIPT_TAIL_MAX_BYTES,
 } from "./claude-hooks.js";
 export type { CodexHookAdapterEvent, CodexHookRawEventEnvelope } from "./codex-hooks.js";
 export {
@@ -39,21 +38,28 @@ export {
 	startDaemon,
 	stopDaemon,
 } from "./daemon-lifecycle.js";
-export type { RpcRequest, RpcSuccess, TypedRpcError } from "./daemon-rpc.js";
+export type {
+	FileContextRetrievalAttempt,
+	RpcMethod,
+	RpcRequest,
+	RpcSuccess,
+	TypedRpcError,
+} from "./daemon-rpc.js";
 export {
 	callDaemonRpc,
 	dispatchDaemonRpc,
+	HOOK_DELIVERY_BUDGETS,
 	LOCAL_API_VERSION,
 	mapPeerConnectError,
 	NORMALIZED_SCHEMA_VERSION,
 	RPC_CAPABILITY_HASH,
+	RPC_DEFAULT_DEADLINE_MS,
 	RPC_MAX_BYTES,
 	RPC_METHODS,
+	rpcDeadlineForMethod,
 } from "./daemon-rpc.js";
 export {
 	assertSchemaReady,
-	connect,
-	connectReadOnly,
 	DEFAULT_DB_PATH,
 	fromJson,
 	fromJsonStrict,
@@ -69,7 +75,6 @@ export {
 } from "./db.js";
 export {
 	DEDUP_KEY_BACKFILL_JOB,
-	DedupKeyBackfillRunner,
 	hasPendingDedupKeyBackfill,
 	runDedupKeyBackfillPass,
 } from "./dedup-key-backfill.js";
@@ -160,8 +165,6 @@ export {
 export type { ExportOptions, ExportPayload, ImportOptions, ImportResult } from "./export-import.js";
 export {
 	buildImportKey,
-	exportMemories,
-	importMemories,
 	mergeSummaryMetadata,
 	readImportPayload,
 } from "./export-import.js";
@@ -278,9 +281,10 @@ export {
 	parseObserverResponse,
 	SUPPORTED_OBSERVATION_KINDS,
 } from "./ingest-xml-parser.js";
-export type { InstallManifest, ManagedBlock } from "./install-manifest.js";
+export type { InstallManifest, ManagedBlock, ManagedTarget } from "./install-manifest.js";
 export {
 	applyManagedBlock,
+	captureManagedTarget,
 	installWithManifest,
 	readInstallManifest,
 	removeManagedBlock,
@@ -322,17 +326,7 @@ export {
 	deactivateLowSignalObservations,
 	dedupNearDuplicateMemories,
 	extractNarrativeFromBody,
-	getMemoryArtifactReport,
-	getMemoryRoleReport,
-	getRawEventRelinkPlan,
-	getRawEventRelinkReport,
-	getRawEventStatus,
-	getReliabilityMetrics,
-	initDatabase,
-	rawEventsGate,
-	retryRawEventFailures,
 	scanSecretsRetroactive,
-	vacuumDatabase,
 } from "./maintenance.js";
 export type {
 	MaintenanceJobRecord,
@@ -371,11 +365,7 @@ export type {
 	MigrationBackupVerifier,
 	RunDatabaseMigrationsOptions,
 } from "./migration-runner.js";
-export {
-	openMigratedWriter,
-	runDatabaseMigrations,
-	verifyFreshDatabase,
-} from "./migration-runner.js";
+export { runDatabaseMigrations, verifyFreshDatabase } from "./migration-runner.js";
 export type { MutationReceipt } from "./mutation-dispatcher.js";
 export {
 	dispatchClassA,
@@ -435,12 +425,26 @@ export {
 	writeCodememConfigFile,
 	writeWorkspaceCodememConfigFile,
 } from "./observer-config.js";
-export type { BackupCheck, BackupVerification, VerifiedBackup } from "./online-backup.js";
+export type {
+	BackupCheck,
+	BackupListEntry,
+	BackupManifest,
+	BackupRetentionClass,
+	BackupSidecarV2,
+	BackupVerification,
+	RestoreBackupResult,
+	VerifiedBackup,
+} from "./online-backup.js";
 export {
 	backupPayloadHash,
 	createCanonicalBackup,
+	createDailyBackup,
 	createOnlineBackup,
+	listCanonicalBackups,
+	pruneBackupRetention,
 	requireVerifiedBackup,
+	restoreCanonicalBackup,
+	restorePayloadHash,
 	runGatedMigration,
 	verifyCanonicalBackup,
 	verifyOnlineBackup,
@@ -475,10 +479,10 @@ export {
 	parseAgentMemoryToml,
 	preprocessAdapterEvent,
 } from "./redaction-pipeline.js";
+export { REDACTION_WORKER_DEADLINE_MS, warmRedactionWorker } from "./redaction-worker.js";
 export {
 	hasPendingRefBackfill,
 	REF_BACKFILL_JOB,
-	RefBackfillRunner,
 	runRefBackfillPass,
 } from "./ref-backfill.js";
 export { clearMemoryRefs, normalizeConcept, populateMemoryRefs } from "./ref-populate.js";
@@ -493,7 +497,6 @@ export type {
 	ScopeBackfillOptions,
 	ScopeBackfillReason,
 	ScopeBackfillResult,
-	ScopeBackfillRunnerOptions,
 } from "./scope-backfill.js";
 export {
 	backfillScopeIds,
@@ -503,7 +506,6 @@ export {
 	LEGACY_SHARED_REVIEW_SCOPE_ID,
 	runScopeBackfillPass,
 	SCOPE_BACKFILL_JOB,
-	ScopeBackfillRunner,
 } from "./scope-backfill.js";
 export type {
 	CanonicalWorkspaceIdentity,
@@ -534,7 +536,6 @@ export {
 	hasPendingSessionContextBackfill,
 	runSessionContextBackfillPass,
 	SESSION_CONTEXT_BACKFILL_JOB,
-	SessionContextBackfillRunner,
 } from "./session-context-backfill.js";
 export * from "./spool.js";
 export type { StorageJournal, StorageJournalState, StorageLayout } from "./storage.js";
@@ -543,23 +544,27 @@ export {
 	ensureStorageLayout,
 	readCurrentDatabasePointer,
 	recoverStorageJournal,
+	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	runLegacyMigration,
 	sha256File,
 	writeStorageJournal,
 } from "./storage.js";
-export { MemoryStore } from "./store.js";
+export type { MemoryStore } from "./store.js";
 export {
 	hasPendingSummaryDedupBackfill,
 	runSummaryDedupBackfillPass,
 	SUMMARY_DEDUP_BACKFILL_JOB,
-	SummaryDedupBackfillRunner,
 } from "./summary-dedup-backfill.js";
 export { canonicalMemoryKind, getSummaryMetadata, isSummaryLikeMemory } from "./summary-memory.js";
 export { deriveTags, fileTags, normalizeTag } from "./tags.js";
 // Test utilities (exported for consumer packages like viewer-server)
 export type { MixedScopeFixture } from "./test-utils.js";
-export { initTestSchema, insertTestSession, seedMixedScopeFixture } from "./test-utils.js";
+export {
+	initTestSchema,
+	insertTestSession,
+	seedMixedScopeFixture,
+} from "./test-utils.js";
 export type {
 	Artifact,
 	ExplainError,
@@ -592,11 +597,7 @@ export type {
 	UsageEvent,
 	UserPrompt,
 } from "./types.js";
-export {
-	runVectorMigrationPass,
-	VECTOR_MODEL_MIGRATION_JOB,
-	VectorModelMigrationRunner,
-} from "./vector-migration.js";
+export { runVectorMigrationPass, VECTOR_MODEL_MIGRATION_JOB } from "./vector-migration.js";
 export type {
 	BackfillVectorsOptions,
 	BackfillVectorsResult,
@@ -609,14 +610,23 @@ export {
 	semanticSearch,
 	storeVectors,
 } from "./vectors.js";
+export { VERSION } from "./version.js";
+export {
+	readViewerBearerToken,
+	VIEWER_NONCE_TTL_MS,
+	VIEWER_SESSION_LIMIT,
+	VIEWER_SESSION_TTL_MS,
+	ViewerAuthState,
+} from "./viewer-auth.js";
 export type {
 	ViewerLivenessProbeDependencies,
 	ViewerLivenessProbeResult,
 	ViewerTarget,
 } from "./viewer-probe.js";
 export {
+	isLoopbackHost,
 	probeCodememViewerLiveness,
 	VIEWER_SERVICE_DISCRIMINATOR,
 	viewerUrl,
 } from "./viewer-probe.js";
-export { ReadOnlyActor, WriterActor } from "./writer-actor.js";
+export type { ReadOnlyActor, WriterActor } from "./writer-actor.js";

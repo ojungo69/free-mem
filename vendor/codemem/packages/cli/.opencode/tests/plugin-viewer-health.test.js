@@ -37,6 +37,7 @@ describe("OpenCode viewer health monitor", () => {
     expect(monitor.state().consecutiveFailures).toBe(0);
     expect(restartViewer).not.toHaveBeenCalled();
     expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fetchFn.mock.calls[0]?.[1]?.headers).toBeUndefined();
     expect(timeoutSignal).toHaveBeenCalledWith(5_000);
   });
 

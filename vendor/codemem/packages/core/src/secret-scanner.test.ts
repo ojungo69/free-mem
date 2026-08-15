@@ -76,7 +76,7 @@ describe("SecretScanner", () => {
 
 		it("redacts Google API keys", () => {
 			// 39 chars total: AIza + 35
-			const k = "AIzaSyA-BCDEFGHIJKLMNOPQRSTUVWXY0123456";
+			const k = ["AI", "za", "SyA-", "BCDEFGHIJKLMNOPQRSTUVWXY", "0123456"].join("");
 			expect(k.length).toBe(39);
 			const r = scanner.scan(`gkey=${k}`);
 			expect(r.redacted).toContain("[REDACTED:google_api_key]");
@@ -147,6 +147,10 @@ describe("SecretScanner", () => {
 			const r = scanner.redactValue(input);
 			expect((r.value as typeof input).password).toBe("[REDACTED:context_secret]");
 			expect((r.value as typeof input).other).toBe("fine");
+			const secretKey = `ghp_${"K".repeat(36)}`;
+			const keyed = scanner.redactValue({ payload: { [secretKey]: "must drop" } });
+			expect((keyed.value as { payload: Record<string, unknown> }).payload).toEqual({});
+			expect(keyed.detections).toContainEqual({ kind: "github_pat_classic", count: 1 });
 		});
 
 		it("preserves URL values even under secret-bearing key names", () => {
@@ -255,6 +259,19 @@ describe("SecretScanner", () => {
 			arr.push(arr);
 			expect(() => scanner.redactValue(arr)).not.toThrow();
 		});
+
+		it("redacts a shared object on every output path", () => {
+			const secret = ["ghp_", "abcdefghijklmnopqrstuvwxyz0123456789"].join("");
+			const shared = { note: secret };
+			const result = scanner.redactValue({ first: shared, second: shared });
+			const output = result.value as {
+				first: { note: string };
+				second: { note: string };
+			};
+			expect(output.first).toBe(output.second);
+			expect(output.first.note).toBe("[REDACTED:github_pat_classic]");
+			expect(JSON.stringify(output)).not.toContain(secret);
+		});
 	});
 
 	describe("edge cases", () => {
@@ -354,12 +371,14 @@ describe("redactMemoryFields", () => {
 });
 
 describe("loadScannerOptionsFromConfig", () => {
-	it("returns empty options for missing or malformed config", async () => {
+	it("returns empty options for missing config and degrades malformed scanner blocks", async () => {
 		const { loadScannerOptionsFromConfig } = await import("./secret-scanner.js");
 		expect(loadScannerOptionsFromConfig(null)).toEqual({});
 		expect(loadScannerOptionsFromConfig({})).toEqual({});
-		expect(loadScannerOptionsFromConfig({ secret_scanner: "not-an-object" })).toEqual({});
-		expect(loadScannerOptionsFromConfig({ secret_scanner: [] })).toEqual({});
+		expect(loadScannerOptionsFromConfig({ secret_scanner: "not-an-object" })).toEqual({
+			degraded: true,
+		});
+		expect(loadScannerOptionsFromConfig({ secret_scanner: [] })).toEqual({ degraded: true });
 	});
 
 	it("loads workspace rules with regex compilation and entropy floor", async () => {
@@ -381,7 +400,7 @@ describe("loadScannerOptionsFromConfig", () => {
 		expect(r.redacted).toContain("[REDACTED:internal_acme_token]");
 	});
 
-	it("drops malformed rule entries silently", async () => {
+	it("keeps valid rules but marks malformed entries degraded", async () => {
 		const { loadScannerOptionsFromConfig } = await import("./secret-scanner.js");
 		const opts = loadScannerOptionsFromConfig({
 			secret_scanner: {
@@ -390,6 +409,14 @@ describe("loadScannerOptionsFromConfig", () => {
 					{ kind: "missing_pattern" },
 					{ pattern: "\\bnope\\b" },
 					{ kind: "bad_regex", pattern: "[unterminated" },
+					{ kind: "bad_entropy", pattern: "SECRET-[A-Z]+", minEntropy: -1 },
+					{ kind: "bad_group", pattern: "SECRET-[A-Z]+", redactGroup: 1 },
+					{ kind: "bad_flags", pattern: "SECRET-[A-Z]+", flags: 1 },
+					{ kind: "bad kind", pattern: "SECRET-[A-Z]+" },
+					{
+						kind: ["ghp_", "abcdefghijklmnopqrstuvwxyz0123456789"].join(""),
+						pattern: "INTERNAL-SECRET",
+					},
 					"not-an-object",
 					42,
 				],
@@ -397,6 +424,8 @@ describe("loadScannerOptionsFromConfig", () => {
 		});
 		expect(opts.rules).toHaveLength(1);
 		expect(opts.rules?.[0]?.kind).toBe("ok");
+		expect(opts.degraded).toBe(true);
+		expect(new SecretScanner(opts).workerOptions().degraded).toBe(true);
 	});
 
 	it("loads allowlist with literal strings and regex literals", async () => {
@@ -407,6 +436,7 @@ describe("loadScannerOptionsFromConfig", () => {
 			},
 		});
 		expect(opts.allowlist).toHaveLength(2);
+		expect(opts.degraded).toBe(true);
 		const scanner = new SecretScanner(opts);
 		// Literal allowlist entry
 		expect(scanner.scan("creds: AKIAFAKEFIXTURE0001 in env").redacted).toContain(

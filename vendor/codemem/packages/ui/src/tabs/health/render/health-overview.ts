@@ -11,7 +11,7 @@ import {
 	secondsSince,
 } from "../../../lib/format";
 import { state } from "../../../lib/state";
-import { buildHealthCard, renderActionList, renderHealthCards, renderIcons } from "../components";
+import { buildHealthCard, renderActionList, renderHealthCards } from "../components";
 import type { HealthAction, HealthCardInput } from "../types";
 
 export function renderHealthOverview() {
@@ -208,6 +208,4 @@ export function renderHealthOverview() {
 	healthMeta.textContent = drivers.length
 		? `Why this status: ${drivers.join(", ")}.`
 		: "Healthy right now. Diagnostics stay available if you want details.";
-
-	renderIcons();
 }

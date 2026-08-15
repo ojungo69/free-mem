@@ -56,6 +56,10 @@ describe("distill judge", () => {
 			verdict: "routine",
 			reason: "context lookup results",
 		});
+		expect(parseJudgeVerdict('"LESSON: quoted reason"')).toEqual({
+			verdict: "lesson",
+			reason: "quoted reason",
+		});
 	});
 
 	it("returns unjudged for empty or unparseable output", () => {

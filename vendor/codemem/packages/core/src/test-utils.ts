@@ -2,9 +2,15 @@
  * Test utilities for the codemem TS backend.
  */
 
-import { type Database, ensureAdditiveSchemaCompatibility } from "./db.js";
+import { connect, type Database, ensureAdditiveSchemaCompatibility } from "./db.js";
+import {
+	type MigrationBackupVerifier,
+	runDatabaseMigrations,
+	verifyFreshDatabase,
+} from "./migration-runner.js";
 import { bootstrapSchema } from "./schema-bootstrap.js";
 import { LOCAL_DEFAULT_SCOPE_ID } from "./scope-resolution.js";
+import { MemoryStore } from "./store.js";
 
 /**
  * Create the full schema for test databases.
@@ -12,6 +18,23 @@ import { LOCAL_DEFAULT_SCOPE_ID } from "./scope-resolution.js";
 export function initTestSchema(db: Database): void {
 	bootstrapSchema(db);
 	ensureAdditiveSchemaCompatibility(db);
+}
+
+export function openTestMemoryStore(
+	dbPath: string,
+	options: { backupAndVerify?: MigrationBackupVerifier } = {},
+): MemoryStore {
+	const db = connect(dbPath);
+	try {
+		runDatabaseMigrations(db, {
+			dbPath,
+			backupAndVerify: options.backupAndVerify ?? verifyFreshDatabase,
+		});
+		return new MemoryStore(db, { closeConnection: true });
+	} catch (error) {
+		db.close();
+		throw error;
+	}
 }
 
 /**
@@ -153,5 +176,5 @@ export function seedMixedScopeFixture(db: Database, deviceId = "local"): MixedSc
 	};
 }
 
-// Re-export for test convenience
-export { MemoryStore } from "./store.js";
+// Re-export the type for test convenience without exposing a production opener.
+export type { MemoryStore } from "./store.js";

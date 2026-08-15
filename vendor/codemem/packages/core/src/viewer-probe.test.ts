@@ -37,6 +37,7 @@ describe("probeCodememViewerLiveness", () => {
 			degraded: false,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://127.0.0.1:38888/api/health");
+		expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has("Authorization")).toBe(false);
 	});
 
 	it("treats unready or database-unreachable health as degraded liveness", async () => {

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MemoryStore } from "@codemem/core";
+import { startDaemon } from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exportMemoriesCommand } from "./export-memories.js";
 import { importMemoriesCommand } from "./import-memories.js";
@@ -10,16 +10,20 @@ describe("deprecated top-level alias warnings", () => {
 	const originalArgv = process.argv;
 	let dir: string;
 	let dbPath: string;
+	let daemon: Awaited<ReturnType<typeof startDaemon>>;
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		process.env.CODEMEM_EMBEDDING_DISABLED = "1";
 		dir = mkdtempSync(join(tmpdir(), "codemem-alias-"));
-		dbPath = join(dir, "alias.sqlite");
-		new MemoryStore(dbPath).close();
+		const dataDir = join(dir, "data");
+		dbPath = join(dataDir, "alias.sqlite");
+		daemon = await startDaemon({ dataDir });
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		await daemon.stop();
 		process.argv = originalArgv;
+		process.exitCode = undefined;
 		delete process.env.CODEMEM_EMBEDDING_DISABLED;
 		vi.restoreAllMocks();
 		rmSync(dir, { recursive: true, force: true });

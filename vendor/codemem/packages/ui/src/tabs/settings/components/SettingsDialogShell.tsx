@@ -71,16 +71,6 @@ export function SettingsDialogShell({ DialogContent, onClose }: SettingsDialogSh
 		};
 	}, []);
 
-	// Radix Dialog mounts its children only while `open` is true, so any
-	// <i data-lucide="..."> stubs inside the dialog need a createIcons pass
-	// every time the modal opens. Running it on the shell mount (before the
-	// children exist) is a no-op for those nodes.
-	useEffect(() => {
-		if (!open) return;
-		const lucide = (globalThis as { lucide?: { createIcons?: () => void } }).lucide;
-		lucide?.createIcons?.();
-	}, [open]);
-
 	const close = useCallback(() => {
 		if (settingsState.startPolling && settingsState.refresh) {
 			onClose(settingsState.startPolling, settingsState.refresh);

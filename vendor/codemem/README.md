@@ -97,9 +97,9 @@ The Codex plugin bundles its MCP config (`codemem mcp`) and hooks. Hooks call `c
 npx -y codemem setup --codex-only
 ```
 
-This merges `[mcp_servers.codemem]` into `~/.codex/config.toml` and writes `~/.codex/hooks.json` (SessionStart, UserPromptSubmit, PostToolUse, Stop) — backing up existing files and preserving unrelated entries. Restart Codex and approve the one-time prompt to trust the codemem hooks. MCP recall works immediately. If `codemem` is on your `PATH` the hooks call it directly; otherwise they fall back to `npx -y codemem`. Honors `CODEX_HOME`; re-runnable (use `--force` to refresh).
+This merges `[mcp_servers.codemem]` into `~/.codex/config.toml` and writes `~/.codex/hooks.json` (SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd) — backing up existing files and preserving unrelated entries. Restart Codex and approve the one-time prompt to trust the codemem hooks. MCP recall works immediately. If `codemem` is on your `PATH` the hooks call it directly; otherwise they fall back to `npx -y codemem`. Honors `CODEX_HOME`; re-runnable (use `--force` to refresh).
 
-Codex hook ingestion shares the same raw-event pipeline as Claude and OpenCode: HTTP enqueue-first (`POST /api/codex-hooks`), then `codemem codex-hook-ingest` direct enqueue, with a Codex-specific spool fallback. `UserPromptSubmit` runs capture ingest in the background and injects memory context via `additionalContext`; disable injection with `CODEMEM_INJECT_CONTEXT=0`. See [docs/plugin-reference.md](docs/plugin-reference.md) for details and troubleshooting.
+Codex hooks deliver redacted normalized events over daemon RPC and use the shared bounded spool when RPC is unavailable. `UserPromptSubmit` delivers the prompt while requesting memory context for `additionalContext`; disable injection with `CODEMEM_INJECT_CONTEXT=0`. See [docs/plugin-reference.md](docs/plugin-reference.md) for details and troubleshooting.
 
 > Migrating from `opencode-mem`? See [docs/rename-migration.md](docs/rename-migration.md).
 
@@ -168,8 +168,7 @@ For architecture details, see [docs/architecture.md](docs/architecture.md).
 | | `codemem db raw-events-status` | Show raw-event queue status |
 | **Config** | `codemem config` | View or update configuration |
 | | `codemem setup` | Interactive first-run setup |
-| **Plumbing** | `codemem mcp` | MCP stdio server; best-effort starts the local viewer unless `CODEMEM_VIEWER=0` or `CODEMEM_VIEWER_AUTO=0` is set |
-| | `codemem mcp http` | Local Streamable HTTP MCP server (`POST /mcp`, loopback-only by default) |
+| **Plumbing** | `codemem mcp` | MCP stdio client for the local sole-writer daemon |
 | | `codemem claude-hook-ingest` | Claude hook event ingestion (stdin) |
 | | `codemem codex-hook-ingest` | Codex hook event ingestion (stdin, experimental) |
 | | `codemem codex-hook-inject` | Codex prompt-time memory injection (stdin, experimental) |
@@ -184,7 +183,7 @@ for the stable machine-readable report. `codemem stats` remains the inventory an
 usage command; use `sync status`/`sync doctor`, `maintenance status`, and
 `db raw-events-status` for subsystem detail.
 
-Pack rendering defaults to self-contained context. For token-constrained experiments, `codemem pack <context> --compact` renders an index plus top details. Near-related compression is controlled by `--compression-mode off|compact|ids` (or `CODEMEM_PACK_COMPRESSION`); MCP `memory_pack` exposes the same setting as `compression_mode`. Use `ids` only when the agent can follow up with `memory_get_observations`.
+Pack rendering defaults to self-contained context. For token-constrained experiments, `codemem pack <context> --compact` renders an index plus top details. Near-related compression is controlled by `--compression-mode off|compact|ids` (or `CODEMEM_PACK_COMPRESSION`). Use `ids` only when the agent can follow up with `memory_get_observations`.
 
 ### Distill recurring lessons
 
@@ -202,7 +201,7 @@ Candidate mining is deterministic, and by default an observer-model worthiness p
 
 ## MCP tools
 
-To give the LLM direct access to memory tools (search, timeline, pack, distill candidates, remember, forget):
+To give the LLM direct access to the Phase 1 memory tools (read, remember, and daemon status):
 
 ```text
 codemem setup --opencode-only
@@ -210,9 +209,7 @@ codemem setup --opencode-only
 
 This updates your OpenCode config to install the plugin and register the MCP server. Restart OpenCode to activate.
 
-The standalone `codemem-mcp-ts` binary runs the same stdio server used by `codemem mcp`. Viewer autostart is on by default for both invocation paths; set `CODEMEM_VIEWER=0` or `CODEMEM_VIEWER_AUTO=0` to disable. MCP autostart and the `serve start`/`stop`/`restart` lifecycle identify a running viewer through `GET /api/health` (service discriminator `codemem-viewer`), with one bounded `GET /api/stats` compatibility probe when an older viewer returns `404`.
-
-For local HTTP transport testing, run `codemem mcp http`. It listens on `127.0.0.1:38889` by default and exposes Streamable HTTP at `POST /mcp`; use `--host`, `--port`, and `--db-path` to override those values. OAuth discovery metadata and Dynamic Client Registration are available at `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource/mcp`, and `/register`; set `--public-url` or `CODEMEM_MCP_HTTP_PUBLIC_URL` to the externally reachable `/mcp` URL so advertised endpoints use the public origin. `/authorize` redirects through a configured upstream OIDC provider before issuing public-client authorization codes, `/token` supports PKCE S256 exchange, and `/oauth/revoke` revokes access tokens. When a public URL or OIDC configuration is present, `POST /mcp` requires a valid bearer token; local-only HTTP mode remains unauthenticated for development and still applies loopback Host/Origin checks. Non-loopback binds are rejected unless you explicitly pass `--unsafe-public` or set `CODEMEM_MCP_HTTP_UNSAFE_PUBLIC=1`.
+The standalone `codemem-mcp-ts` binary runs the same stdio server used by `codemem mcp`. It never opens SQLite or starts the viewer. Read tools return a typed `daemon_unavailable` error when the local daemon is down; `memory_remember` instead queues the same pre-redacted request in the shared atomic spool. User-authority mutations such as forget, confirm, pin, retract, and destructive bulk actions are deliberately absent from the agent-callable MCP surface.
 
 ## Configuration
 
@@ -233,11 +230,6 @@ Common overrides:
 | `CODEMEM_INJECT_SURFACE` | `message` (default) to inject near the latest OpenCode user message; `system` for the legacy OpenCode system-prompt surface |
 | `CODEMEM_VIEWER_HOST`, `CODEMEM_VIEWER_PORT` | Host/port the plugin-managed viewer should start, probe, and restart |
 | `CODEMEM_VIEWER_AUTO` | `0` to disable auto-starting the viewer |
-| `CODEMEM_MCP_HTTP_HOST`, `CODEMEM_MCP_HTTP_PORT` | Host/port for `codemem mcp http` |
-| `CODEMEM_MCP_HTTP_PUBLIC_URL` | Public `/mcp` URL advertised in MCP OAuth metadata |
-| `CODEMEM_MCP_OIDC_ISSUER_URL`, `CODEMEM_MCP_OIDC_CLIENT_ID`, `CODEMEM_MCP_OIDC_CLIENT_SECRET` | Upstream OIDC provider used before MCP OAuth code issuance |
-| `CODEMEM_MCP_OAUTH_ALLOWED_SUBJECT`, `CODEMEM_MCP_OAUTH_ALLOWED_EMAIL` | Single-user allowlist for upstream OIDC identity; at least one is required when OIDC is configured |
-| `CODEMEM_MCP_HTTP_UNSAFE_PUBLIC` | `1`, `true`, or `yes` to allow non-loopback MCP HTTP binds |
 
 Viewer note:
 

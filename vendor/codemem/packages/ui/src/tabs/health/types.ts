@@ -1,5 +1,5 @@
-/* Shared types for the Health tab — card inputs, stat rows, action
- * recommendations, and the Lucide runtime shape used by renderIcons.
+/* Shared types for the Health tab — card inputs, stat rows, and action
+ * recommendations.
  * Kept in one module so the component + renderer slices can agree on
  * shapes without bouncing through the barrel. */
 
@@ -35,8 +35,4 @@ export type StatItem = {
 export type UsageEvent = {
 	event?: string;
 	count?: number;
-};
-
-export type LucideRuntime = {
-	createIcons: () => void;
 };

@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connect } from "./db.js";
 import { findByConcept, findByFile } from "./ref-queries.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema, insertTestSession } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
 
 describe("ref-queries", () => {
 	let tmpDir: string;
@@ -28,7 +28,7 @@ describe("ref-queries", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		sessionId = insertTestSession(store.db);
 	});
 

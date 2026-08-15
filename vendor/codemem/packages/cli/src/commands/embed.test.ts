@@ -1,12 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { embedCommand, resolveEmbedProjectScope } from "./embed.js";
-
-const prevProject = process.env.CODEMEM_PROJECT;
-
-afterEach(() => {
-	if (prevProject === undefined) delete process.env.CODEMEM_PROJECT;
-	else process.env.CODEMEM_PROJECT = prevProject;
-});
+import { describe, expect, it } from "vitest";
+import { embedCommand } from "./embed.js";
 
 describe("embed command", () => {
 	it("registers expected options for vector backfill", () => {
@@ -27,15 +20,5 @@ describe("embed command", () => {
 		expect(help).toContain("Backfill semantic embeddings");
 		expect(help).toContain("--all-projects");
 		expect(help).toContain("--dry-run");
-	});
-
-	it("prefers explicit --project over CODEMEM_PROJECT", () => {
-		process.env.CODEMEM_PROJECT = "env-project";
-		expect(resolveEmbedProjectScope("/tmp", "cli-project", false)).toBe("cli-project");
-	});
-
-	it("supports all-projects override", () => {
-		process.env.CODEMEM_PROJECT = "env-project";
-		expect(resolveEmbedProjectScope("/tmp", "cli-project", true)).toBeNull();
 	});
 });

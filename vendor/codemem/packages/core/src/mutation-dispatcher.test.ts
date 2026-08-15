@@ -1,8 +1,10 @@
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { Worker } from "node:worker_threads";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as core from "./index.js";
+import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 const created: Array<{ stop: () => Promise<void> }> = [];
 const dirs: string[] = [];
@@ -64,7 +66,7 @@ describe("Phase 1 mutation dispatcher", () => {
 	it("P1-T036-01-receipt-schema", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			expect(
 				reader
@@ -131,7 +133,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		});
 	});
 
-	it("P1-T036-03-events-conflict", async () => {
+	it("P1-T036-02-idempotency-conflict", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
 		const first = await core.callDaemonRpc(
@@ -165,7 +167,7 @@ describe("Phase 1 mutation dispatcher", () => {
 			}),
 		);
 		expect(conflict).toMatchObject({ error: { code: "idempotency_conflict" } });
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			const row = reader
 				.prepare(
@@ -188,6 +190,13 @@ describe("Phase 1 mutation dispatcher", () => {
 				method: "POST /v1/events",
 				body: {
 					idempotencyKey: "secret-event",
+					adapterRedaction: {
+						sensitivity: "secret",
+						secret_rules_version: "a".repeat(64),
+						redaction_degraded: false,
+						private_content_omitted: true,
+						local_only: true,
+					},
 					event: normalizedEvent({
 						eventId: "secret-event-1",
 						idempotencyKey: "secret-event",
@@ -198,7 +207,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		);
 		expect(response).toMatchObject({ result: { status: "committed" } });
 
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			const row = reader
 				.prepare("SELECT payload_json FROM raw_events WHERE event_id = ?")
@@ -208,6 +217,8 @@ describe("Phase 1 mutation dispatcher", () => {
 				eventId: "secret-event-1",
 				payload: {},
 				sensitivity: "secret",
+				private_content_omitted: true,
+				local_only: true,
 			});
 		} finally {
 			reader.close();
@@ -280,7 +291,30 @@ describe("Phase 1 mutation dispatcher", () => {
 			}),
 		);
 		expect(secretIdentifier).toMatchObject({ error: { code: "invalid_request" } });
-		const reader = core.ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		const postMessage = vi.spyOn(Worker.prototype, "postMessage").mockImplementation(() => {
+			throw new Error("injected redaction worker failure");
+		});
+		try {
+			const degradedSecretIdentifier = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					method: "POST /v1/memories/record",
+					id: "req-6",
+					body: {
+						idempotencyKey: `ghp_${"B".repeat(36)}`,
+						kind: "discovery",
+						title: "must not persist while degraded",
+						body: "must not persist while degraded",
+					},
+				}),
+			);
+			expect(degradedSecretIdentifier).toMatchObject({
+				error: { code: "invalid_request" },
+			});
+		} finally {
+			postMessage.mockRestore();
+		}
+		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			expect(
 				reader
@@ -292,7 +326,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		}
 	});
 
-	it("P1-T036-05-view-search-allowlist", async () => {
+	it("P1-T036-03-endpoint-allowlist", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
 		const alpha = await core.callDaemonRpc(
@@ -326,7 +360,7 @@ describe("Phase 1 mutation dispatcher", () => {
 			handle.socketPath,
 			handshake({ method: "GET /v1/view", body: { collection: "sessions" } }),
 		);
-		expect(view).toMatchObject({ result: { collection: "sessions" } });
+		expect(view).toMatchObject({ result: { status: 200, body: { items: expect.any(Array) } } });
 		const search = await core.callDaemonRpc(
 			handle.socketPath,
 			handshake({
@@ -369,7 +403,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		const memoryId = (remembered as core.RpcSuccess).result.memoryId;
 		await first.stop();
 
-		const db = core.WriterActor.open(realpathSync(first.layout.currentPointerPath));
+		const db = WriterActor.open(realpathSync(first.layout.currentPointerPath));
 		try {
 			const now = new Date().toISOString();
 			db.prepare(
@@ -384,39 +418,47 @@ describe("Phase 1 mutation dispatcher", () => {
 
 		const second = await core.startDaemon({ dataDir });
 		created.push(second);
-		for (const [collection, expected] of [
-			["memories", []],
-			["sessions", []],
-			["stats", { memories: 0 }],
-		] as const) {
+		for (const collection of ["memories", "sessions"] as const) {
 			const response = await core.callDaemonRpc(
 				second.socketPath,
 				handshake({ method: "GET /v1/view", body: { collection } }),
 			);
-			expect(response).toMatchObject({ result: { collection, items: expected } });
+			expect(response).toMatchObject({ result: { status: 200, body: { items: [] } } });
 		}
-	});
-
-	it("P1-T036-06-class-b-stub", async () => {
-		const handle = await core.startDaemon({ dataDir: tempDataDir() });
-		created.push(handle);
-		const exported = await core.callDaemonRpc(
-			handle.socketPath,
-			handshake({
-				method: "POST /v1/operations/export",
-				body: {
-					operationId: "exp-1",
-					payloadHash: "a".repeat(64),
-					outputPath: "/tmp/out.json",
-				},
-			}),
+		const stats = await core.callDaemonRpc(
+			second.socketPath,
+			handshake({ method: "GET /v1/view", body: { collection: "stats" } }),
 		);
-		expect(exported).toMatchObject({ result: { state: "not_implemented" } });
+		expect(stats).toMatchObject({
+			result: { status: 200, body: { database: { memory_items: 0 } } },
+		});
 	});
 
 	it("P1-T036-07-delete-revision-is-part-of-idempotency", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
+		const missing = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				method: "DELETE /v1/memories/:id",
+				body: { id: 999_999, requestId: "delete-missing" },
+			}),
+		);
+		expect(missing).toMatchObject({
+			error: { code: "not_found", retryable: false },
+		});
+		const receiptReader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
+		try {
+			expect(
+				receiptReader
+					.prepare(
+						"SELECT COUNT(*) AS count FROM mutation_receipts WHERE method = ? AND idempotency_key = ?",
+					)
+					.get("DELETE /v1/memories/:id", "delete-missing"),
+			).toEqual({ count: 0 });
+		} finally {
+			receiptReader.close();
+		}
 		const remembered = await core.callDaemonRpc(
 			handle.socketPath,
 			handshake({
@@ -449,8 +491,8 @@ describe("Phase 1 mutation dispatcher", () => {
 		expect(conflict).toMatchObject({ error: { code: "idempotency_conflict" } });
 	});
 
-	it("P1-T036-08-side-effect-and-receipt-share-one-transaction", () => {
-		const db = core.WriterActor.open(":memory:");
+	it("P1-T036-01-receipt-atomicity", () => {
+		const db = WriterActor.open(":memory:");
 		try {
 			core.ensureMutationReceiptSchema(db);
 			db.exec("CREATE TABLE probe(value TEXT NOT NULL)");

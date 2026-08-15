@@ -8,6 +8,7 @@
  * See docs/cli-design-conventions.md for the full spec.
  */
 
+import { resolveRuntimeDataDir } from "@codemem/core";
 import type { Command } from "commander";
 import { Option } from "commander";
 
@@ -26,6 +27,11 @@ export function addDbOption(cmd: Command): Command {
 /** Resolve the db path from parsed opts that may have --db or --db-path. */
 export function resolveDbOpt(opts: { db?: string; dbPath?: string }): string | undefined {
 	return opts.dbPath ?? opts.db;
+}
+
+/** Resolve the canonical daemon root while preserving the legacy DB-path override. */
+export function resolveDataDirOpt(opts: { db?: string; dbPath?: string } = {}): string {
+	return resolveRuntimeDataDir({ dbPath: resolveDbOpt(opts) });
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +96,14 @@ export function emitDeprecationWarning(oldForm: string, newForm: string): void {
 export function emitJsonError(errorCode: string, message: string, exitCode = 1): void {
 	console.log(JSON.stringify({ error: errorCode, message }));
 	process.exitCode = exitCode;
+}
+
+/** Emit the stable placeholder contract for a feature owned by a later phase. */
+export function emitFeatureUnavailable(feature: string, phase: number, json = false): void {
+	const message = `${feature} is unavailable until Phase ${phase}.`;
+	if (json) console.log(JSON.stringify({ code: "feature_unavailable", phase, message }));
+	else console.error(message);
+	process.exitCode = 1;
 }
 
 // ---------------------------------------------------------------------------

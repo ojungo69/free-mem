@@ -1,12 +1,13 @@
-import { createHash } from "node:crypto";
 import { homedir } from "node:os";
+import { fingerprintSecretRules } from "./gitleaks-pinned-rules.js";
 import { isSensitiveFieldName } from "./ingest-sanitize.js";
 import {
-	DEFAULT_RULES,
-	type ScanDetection,
-	type SecretRule,
-	SecretScanner,
-} from "./secret-scanner.js";
+	applyPrivateRegexInWorker,
+	REDACTION_WORKER_DEADLINE_MS,
+	redactValueInWorker,
+	warmRedactionWorker,
+} from "./redaction-worker.js";
+import { DEFAULT_RULES, type ScanDetection, type SecretRule } from "./secret-scanner.js";
 
 export type Sensitivity = "normal" | "private" | "secret";
 
@@ -82,9 +83,6 @@ const KNOWN_TOML_KEYS = new Set([
 	"remote_processing",
 ]);
 
-// ponytail: SecretScanner runs in-process. ReDoS can hang one rule until the
-// event deadline; upgrade is a killable worker_thread (judgment #9).
-
 export function parseAgentMemoryToml(source: string): AgentMemoryConfig {
 	const warnings: string[] = [];
 	const parsed = new Map<string, unknown>();
@@ -129,13 +127,14 @@ export function parseAgentMemoryToml(source: string): AgentMemoryConfig {
 	}
 
 	const compiled = compileUserRules(strings("secret_regex"), warnings);
-	degraded = degraded || compiled.degraded;
+	const privatePatterns = compilePrivatePatterns(strings("private_regex"), warnings);
+	degraded = degraded || compiled.degraded || privatePatterns.degraded;
 	const rules = compiled.rules;
 	// ignorePaths / localOnlyPaths are parsed fail-closed here; path policy apply is T041.
 	return {
 		ignorePaths: strings("ignore_paths"),
 		localOnlyPaths: strings("local_only_paths"),
-		privateRegex: strings("private_regex"),
+		privateRegex: privatePatterns.patterns,
 		secretRules: rules,
 		toolFieldAllowlist: strings("tool_field_allowlist"),
 		toolFieldDenylist: strings("tool_field_denylist"),
@@ -162,8 +161,9 @@ function runPipeline(
 	layer: "adapter" | "intake",
 ): RedactionResult {
 	const config = options.config;
-	const allow = resolveAllowlist(options.allowlist, config);
-	const deny = new Set(config?.toolFieldDenylist ?? []);
+	const allow = resolveAllowlist(options.allowlist);
+	const toolAllow = new Set(config?.toolFieldAllowlist ?? []);
+	const toolDeny = new Set(config?.toolFieldDenylist ?? []);
 	const source =
 		input && typeof input === "object" && !Array.isArray(input)
 			? (input as Record<string, unknown>)
@@ -173,8 +173,8 @@ function runPipeline(
 		payload = {};
 	} else {
 		for (const [key, value] of Object.entries(source)) {
-			if (allow.has(key) && !deny.has(key) && !isSensitiveFieldName(key)) {
-				payload[key] = dropSensitiveFields(value, deny);
+			if (allow.has(key) && !isSensitiveFieldName(key)) {
+				payload[key] = dropSensitiveFields(value, toolAllow, toolDeny);
 			}
 		}
 	}
@@ -184,10 +184,19 @@ function runPipeline(
 		PATH_KEYS.has(key) ? normalizePathValue(text) : text,
 	);
 
-	const rules = [...DEFAULT_RULES, ...(config?.secretRules ?? [])];
-	const scanner = new SecretScanner({ rules: config?.secretRules });
-	const firstScan = scanner.redactValue(payload);
-	payload = asObject(firstScan.value);
+	const userRules = config?.secretRules ?? [];
+	const rules = [...DEFAULT_RULES, ...userRules];
+	const workerDeadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
+	const workerReady = warmRedactionWorker(workerDeadlineAtMs);
+	const firstScan = workerReady
+		? redactValueInWorker(payload, userRules, workerDeadlineAtMs)
+		: { ok: false as const };
+	const loadedRules = firstScan.ok ? rules : [];
+	let workerDegraded = !firstScan.ok;
+	let detections = firstScan.ok ? firstScan.detections : [];
+	payload = firstScan.ok
+		? asObject(firstScan.value)
+		: keepMetadataOnly(payload, options.metadataKeys);
 
 	let privateOmitted = false;
 	let localOnly = false;
@@ -195,20 +204,39 @@ function runPipeline(
 		const stripped = stripReservedMarkup(text);
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
-		const regexed = applyPrivateRegex(stripped.text, config, () => {
+		return stripped.text;
+	});
+	if (config?.privateRegex.length && !workerDegraded) {
+		const metadata = keepMetadataOnly(payload, options.metadataKeys);
+		const privateScan = applyPrivateRegexInWorker(payload, config.privateRegex, workerDeadlineAtMs);
+		if (privateScan.ok) {
+			payload = asObject(privateScan.value);
+			privateOmitted ||= privateScan.privateHit;
+		} else {
+			payload = metadata;
 			privateOmitted = true;
-		});
-		const again = stripReservedMarkup(regexed);
+			workerDegraded = true;
+		}
+	}
+	payload = mapStrings(payload, (text) => {
+		const again = stripReservedMarkup(text);
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
 	});
 
 	// Tags can reassemble split secrets; scan again after markup removal.
-	const secondScan = scanner.redactValue(payload);
-	payload = asObject(secondScan.value);
+	if (!workerDegraded) {
+		const secondScan = redactValueInWorker(payload, userRules, workerDeadlineAtMs);
+		if (secondScan.ok) {
+			payload = asObject(secondScan.value);
+			detections = mergeDetections(detections, secondScan.detections);
+		} else {
+			payload = keepMetadataOnly(payload, options.metadataKeys);
+			workerDegraded = true;
+		}
+	}
 	payload = boundSize(payload, options.maxBytes ?? EVENT_MAX_BYTES);
-	const detections = mergeDetections(firstScan.detections, secondScan.detections);
 	if (detections.length > 0) {
 		process.stderr.write(
 			`[redaction] layer=${layer} kinds=${detections.map((item) => item.kind).join(",")}\n`,
@@ -223,7 +251,8 @@ function runPipeline(
 		payload = keepMetadataOnly(payload, options.metadataKeys);
 		sensitivity = "secret";
 	}
-	if (config?.degraded) {
+	const degraded = Boolean(config?.degraded) || workerDegraded;
+	if (degraded) {
 		payload = keepMetadataOnly(payload, options.metadataKeys);
 	}
 	payload = enforceMaxBytes(payload, options.maxBytes ?? EVENT_MAX_BYTES, options.metadataKeys);
@@ -231,12 +260,14 @@ function runPipeline(
 	return {
 		payload,
 		sensitivity,
-		secret_rules_version: rulesetVersion(rules, Boolean(config?.degraded)),
-		degraded: Boolean(config?.degraded),
+		secret_rules_version: fingerprintSecretRules(loadedRules, degraded),
+		degraded,
 		private_content_omitted: privateOmitted,
 		local_only: localOnly,
 		detections,
-		warnings: config?.warnings ?? [],
+		warnings: workerDegraded
+			? [...(config?.warnings ?? []), "redaction worker deadline exceeded"]
+			: (config?.warnings ?? []),
 	};
 }
 
@@ -256,6 +287,7 @@ function compileUserRules(
 			rules.push({
 				kind: `user_${rules.length + 1}`,
 				pattern: new RegExp(pattern, "g"),
+				origin: "user",
 			});
 		} catch {
 			warnings.push("secret_regex pattern is invalid");
@@ -267,6 +299,34 @@ function compileUserRules(
 		degraded = true;
 	}
 	return { rules, degraded };
+}
+
+function compilePrivatePatterns(
+	patterns: string[],
+	warnings: string[],
+): { patterns: string[]; degraded: boolean } {
+	const valid: string[] = [];
+	let degraded = false;
+	for (const pattern of patterns.slice(0, USER_RULE_MAX)) {
+		if (pattern.length > USER_PATTERN_MAX) {
+			warnings.push("private_regex pattern exceeds 512 characters");
+			degraded = true;
+			continue;
+		}
+		try {
+			// Validation is length-bounded here; matching runs in the deadline-bounded worker.
+			new RegExp(pattern, "g"); // nosemgrep
+			valid.push(pattern);
+		} catch {
+			warnings.push("private_regex pattern is invalid");
+			degraded = true;
+		}
+	}
+	if (patterns.length > USER_RULE_MAX) {
+		warnings.push("private_regex exceeds 100 patterns");
+		degraded = true;
+	}
+	return { patterns: valid, degraded };
 }
 
 function parseTomlValue(raw: string): unknown {
@@ -287,65 +347,43 @@ function parseTomlValue(raw: string): unknown {
 	return raw;
 }
 
-function rulesetVersion(rules: SecretRule[], degraded: boolean): string {
-	const hash = createHash("sha256")
-		.update(
-			rules.map((rule) => `${rule.kind}\n${rule.pattern.source}\n${rule.pattern.flags}`).join("\n"),
-		)
-		.digest("hex");
-	return degraded ? `${hash}:degraded` : hash;
+function resolveAllowlist(requested: string[] | undefined): Set<string> {
+	return new Set(requested ?? DEFAULT_ALLOWLIST);
 }
 
-function resolveAllowlist(
-	requested: string[] | undefined,
-	config: AgentMemoryConfig | undefined,
-): Set<string> {
-	const configured = config?.toolFieldAllowlist;
-	if (requested && configured) {
-		return new Set(requested.filter((key) => configured.includes(key)));
+function dropSensitiveFields(
+	value: unknown,
+	toolAllow: Set<string>,
+	toolDeny: Set<string>,
+	insideToolInput = false,
+	restrictToAllowlist = false,
+): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => dropSensitiveFields(item, toolAllow, toolDeny, insideToolInput));
 	}
-	return new Set(requested ?? configured ?? DEFAULT_ALLOWLIST);
-}
-
-function dropSensitiveFields(value: unknown, deny: Set<string>): unknown {
-	if (Array.isArray(value)) return value.map((item) => dropSensitiveFields(item, deny));
 	if (value && typeof value === "object") {
 		const next: Record<string, unknown> = {};
 		for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
 			if (
-				deny.has(key) ||
+				toolDeny.has(key) ||
+				(restrictToAllowlist && toolAllow.size > 0 && !toolAllow.has(key)) ||
 				isSensitiveFieldName(key) ||
 				/<\/?(?:private|local-only|injected-context)>/i.test(key)
 			) {
 				continue;
 			}
-			next[key] = dropSensitiveFields(child, deny);
+			const startsToolInput = key === "tool_input";
+			next[key] = dropSensitiveFields(
+				child,
+				toolAllow,
+				toolDeny,
+				insideToolInput || startsToolInput,
+				startsToolInput,
+			);
 		}
 		return next;
 	}
 	return value;
-}
-
-function applyPrivateRegex(
-	text: string,
-	config: AgentMemoryConfig | undefined,
-	onHit: () => void,
-): string {
-	if (!config?.privateRegex.length) return text;
-	let next = text;
-	for (const pattern of config.privateRegex) {
-		try {
-			const re = new RegExp(pattern, "g");
-			if (re.test(next)) {
-				onHit();
-				next = next.replace(re, "");
-			}
-		} catch {
-			onHit();
-			return "";
-		}
-	}
-	return next;
 }
 
 function mergeDetections(...groups: ScanDetection[][]): ScanDetection[] {

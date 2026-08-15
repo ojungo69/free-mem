@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import * as p from "@clack/prompts";
-import { MemoryStore, resolveDbPath, resolveProject } from "@codemem/core";
+import { resolveProject } from "@codemem/core";
+import { createMcpRpcClient } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -8,7 +10,7 @@ import {
 	type DbOpts,
 	emitJsonError,
 	type JsonOpts,
-	resolveDbOpt,
+	resolveDataDirOpt,
 } from "../shared-options.js";
 
 const searchCmd = new Command("search")
@@ -24,7 +26,7 @@ addDbOption(searchCmd);
 addJsonOption(searchCmd);
 
 export const searchCommand = searchCmd.action(
-	(
+	async (
 		query: string,
 		opts: DbOpts &
 			JsonOpts & {
@@ -34,7 +36,6 @@ export const searchCommand = searchCmd.action(
 				kind?: string;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = Math.max(1, Number.parseInt(opts.limit, 10) || 5);
 			const filters: { kind?: string; project?: string } = {};
@@ -44,7 +45,26 @@ export const searchCommand = searchCmd.action(
 				const project = defaultProject || resolveProject(process.cwd(), opts.project ?? null);
 				if (project) filters.project = project;
 			}
-			const results = store.search(query, limit, filters);
+			const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).request(
+				"POST /v1/search",
+				{ requestId: randomUUID(), mode: "search", query, filters, limit },
+			);
+			if (!outcome.ok) {
+				if (opts.json) emitJsonError(outcome.error.code, outcome.error.message);
+				else {
+					p.log.error(outcome.error.message);
+					process.exitCode = 1;
+				}
+				return;
+			}
+			const results = outcome.result.items as Array<{
+				id: number;
+				kind: string;
+				title: string;
+				body_text: string;
+				created_at: string;
+				score: number;
+			}>;
 
 			if (opts.json) {
 				console.log(JSON.stringify(results, null, 2));
@@ -79,8 +99,6 @@ export const searchCommand = searchCmd.action(
 				process.exitCode = 1;
 			}
 			return;
-		} finally {
-			store.close();
 		}
 	},
 );

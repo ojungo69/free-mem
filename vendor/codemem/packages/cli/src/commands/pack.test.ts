@@ -1,694 +1,305 @@
-import { Readable } from "node:stream";
+import type { PackTrace } from "@codemem/core";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const buildMemoryPackAsync = vi.fn();
-const buildMemoryPackWithTraceAsync = vi.fn(async (...args: unknown[]) => {
-	const response = await buildMemoryPackAsync(...args);
-	return {
-		response,
-		trace: {
-			version: 1,
-			inputs: {
-				query: String(args[0] ?? ""),
-				project: null,
-				working_set_files: [],
-				token_budget: null,
-				limit: Number(args[1] ?? 10),
-			},
-			mode: { selected: "default", reasons: [] },
-			retrieval: { candidate_count: response.items.length, candidates: [] },
-			assembly: {
-				deduped_ids: [],
-				collapsed_groups: [],
-				compressed_clusters: [],
-				trimmed_ids: [],
-				trim_reasons: [],
-				sections: { summary: [], timeline: [], observations: [] },
-			},
-			output: {
-				estimated_tokens: response.metrics.pack_tokens,
-				truncated: false,
-				section_counts: { summary: 0, timeline: 0, observations: 0 },
-				pack_text: response.pack_text,
-			},
-		},
-	};
-});
-const buildMemoryPackTraceAsync = vi.fn();
-const closeStore = vi.fn();
-type MockLedgerOutcome =
-	| { ok: true; value: { inserted: boolean } }
-	| {
-			ok: false;
-			errorCode: "retrieval_ledger_write_failed";
-			reason: "idempotency_conflict" | "storage_unavailable";
-	  };
-const { recordPromptPackArtifacts } = vi.hoisted(() => ({
-	recordPromptPackArtifacts: vi.fn(
-		(): MockLedgerOutcome => ({
-			ok: true,
-			value: { inserted: true },
-		}),
-	),
+const request = vi.fn();
+vi.mock("@codemem/mcp", () => ({
+	createMcpRpcClient: () => ({ request }),
 }));
-const storePaths: Array<string | undefined> = [];
 
-vi.mock("@codemem/core", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@codemem/core")>();
-	return {
-		...actual,
-		MemoryStore: class {
-			db = {};
-			constructor(dbPath?: string) {
-				storePaths.push(dbPath);
-			}
-			buildMemoryPackAsync = buildMemoryPackAsync;
-			buildMemoryPackWithTraceAsync = buildMemoryPackWithTraceAsync;
-			buildMemoryPackTraceAsync = buildMemoryPackTraceAsync;
-			close = closeStore;
-		},
-		promptPackArtifactFingerprint: () => "a".repeat(64),
-		recordPromptPackArtifacts,
-		resolveDbPath: (value?: string) => value,
-	};
-});
+import { packCommand, renderPackTrace } from "./pack.js";
 
-import { packCommand, parseInternalLedgerPayload, renderPackTrace } from "./pack.js";
+const pack = {
+	items: [{ id: 7, kind: "decision", title: "Use daemon RPC" }],
+	pack_text: "RPC PACK",
+	metrics: {
+		total_items: 1,
+		pack_tokens: 2,
+		fallback_used: false,
+		sources: { fts: 0, semantic: 0, fuzzy: 0 },
+	},
+};
+
+const candidate: PackTrace["retrieval"]["candidates"][number] = {
+	id: 7,
+	rank: 1,
+	kind: "decision",
+	title: "Use daemon RPC",
+	preview: "CLI commands use the daemon.",
+	scores: {
+		base_score: 0.75,
+		combined_score: 0.9,
+		recency: 0.1,
+		kind_bonus: 0.1,
+		quality_boost: 0,
+		role_adjustment: 0,
+		working_set_overlap: 0.5,
+		query_path_overlap: 0,
+		personal_bias: 0,
+		shared_trust_penalty: 0,
+		recap_penalty: 0,
+		tasklike_penalty: 0,
+		text_overlap: 2,
+		tag_overlap: 1,
+	},
+	reasons: ["query match", "working-set overlap"],
+	disposition: "selected",
+	section: "summary",
+	artifact_class: "derived_fact",
+	inferred_role: "durable",
+	role_reason: "decision",
+};
+
+const trace = {
+	version: 1,
+	inputs: {
+		query: "continue work",
+		project: "demo",
+		working_set_files: ["src/index.ts"],
+		token_budget: 90,
+		limit: 10,
+	},
+	mode: { selected: "task", reasons: ["task-like query"] },
+	retrieval: {
+		candidate_count: 4,
+		candidates: [
+			candidate,
+			{
+				...candidate,
+				id: 8,
+				rank: 2,
+				preview: "",
+				scores: {
+					...candidate.scores,
+					base_score: null,
+					combined_score: null,
+					working_set_overlap: 0,
+					text_overlap: 0,
+					tag_overlap: 0,
+				},
+				reasons: [],
+				disposition: "dropped",
+				section: null,
+			},
+			{ ...candidate, id: 9, rank: 3, disposition: "deduped", section: null },
+			{ ...candidate, id: 10, rank: 4, disposition: "trimmed", section: null },
+		],
+	},
+	assembly: {
+		deduped_ids: [9],
+		collapsed_groups: [],
+		compressed_clusters: [],
+		trimmed_ids: [10],
+		trim_reasons: ["token budget"],
+		sections: { summary: [7], timeline: [], observations: [] },
+	},
+	output: {
+		estimated_tokens: 2,
+		truncated: true,
+		section_counts: { summary: 1, timeline: 0, observations: 0 },
+		pack_text: "RPC PACK",
+	},
+} as PackTrace;
 
 afterEach(() => {
-	buildMemoryPackAsync.mockReset();
-	buildMemoryPackWithTraceAsync.mockClear();
-	buildMemoryPackTraceAsync.mockReset();
-	closeStore.mockReset();
-	recordPromptPackArtifacts.mockReset();
-	recordPromptPackArtifacts.mockReturnValue({ ok: true, value: { inserted: true } });
-	storePaths.length = 0;
+	request.mockReset();
 	process.exitCode = 0;
 	vi.restoreAllMocks();
 });
 
 async function parsePackCommand(args: string[]): Promise<void> {
-	const root = new Command("codemem");
-	root.enablePositionalOptions();
-	root.addCommand(packCommand);
+	const root = new Command("codemem").enablePositionalOptions().addCommand(packCommand);
 	await root.parseAsync(["pack", ...args], { from: "user" });
 }
 
-async function parseTraceCommand(args: string[]): Promise<void> {
-	const trace = packCommand.commands.find((command) => command.name() === "trace");
-	if (!trace) throw new Error("trace command missing");
-	await trace.parseAsync(args, { from: "user" });
-}
-
 describe("pack command", () => {
-	it("accepts only bounded allowlisted internal ledger metadata", () => {
-		expect(
-			parseInternalLedgerPayload(
-				JSON.stringify({
-					action: "delivery",
-					attempt_id: "018f2db4-f9d3-7a22-8d18-000000000001",
-					delivery_status: "handed_off",
-				}),
-			),
-		).toMatchObject({ action: "delivery", delivery_status: "handed_off" });
-		expect(() =>
-			parseInternalLedgerPayload(JSON.stringify({ attempt_id: "safe", raw_prompt: "secret" })),
-		).toThrow("rejects sensitive field");
-		expect(() =>
-			parseInternalLedgerPayload(
-				JSON.stringify({ attempt_id: "safe", source_session_id: "/private/tmp/session.json" }),
-			),
-		).toThrow("rejects absolute paths");
-		expect(() =>
-			parseInternalLedgerPayload(
-				JSON.stringify({ attempt_id: "safe", source_session_id: "C:\\private\\session.json" }),
-			),
-		).toThrow("rejects absolute paths");
-		expect(() =>
-			parseInternalLedgerPayload(
-				JSON.stringify({ attempt_id: "safe", request_id: "x".repeat(17 * 1024) }),
-			),
-		).toThrow("exceeds 16384 bytes");
-		expect(() =>
-			parseInternalLedgerPayload(JSON.stringify({ action: "unknown", attempt_id: "safe" })),
-		).toThrow("action is invalid");
-		expect(() =>
-			parseInternalLedgerPayload(
-				JSON.stringify({ attempt_id: "safe", delivery_status: "not_attempted" }),
-			),
-		).toThrow("delivery_status is invalid");
-		expect(() =>
-			parseInternalLedgerPayload(JSON.stringify({ attempt_id: "safe", prompt_number: -1 })),
-		).toThrow("non-negative integer");
-	});
-
 	it("registers trace as a pack subcommand with shared options", () => {
-		const trace = packCommand.commands.find((command) => command.name() === "trace");
-		expect(trace).toBeDefined();
-		expect(trace?.registeredArguments[0]?.required).toBe(true);
-		expect(trace?.registeredArguments[0]?.name()).toBe("context");
-		const longs = trace?.options.map((option) => option.long) ?? [];
-		expect(longs).toContain("--db-path");
-		expect(longs).toContain("--json");
-		expect(longs).toContain("--working-set-file");
-		expect(longs).toContain("--project");
-		expect(longs).toContain("--all-projects");
-	});
-
-	it("renders grouped human-readable trace text", () => {
-		const rendered = renderPackTrace({
-			version: 1,
-			inputs: {
-				query: "continue viewer health work",
-				sanitized_query: "viewer health work",
-				project: "codemem",
-				working_set_files: ["packages/ui/src/app.ts"],
-				token_budget: 1800,
-				limit: 10,
-			},
-			mode: {
-				selected: "task",
-				reasons: ["query matched task hints", "working set present"],
-			},
-			retrieval: {
-				candidate_count: 2,
-				candidates: [
-					{
-						id: 101,
-						rank: 1,
-						kind: "decision",
-						title: "Keep Search as the inspector entry point",
-						preview: "Search is the first manual query surface.",
-						scores: {
-							base_score: 1.2,
-							combined_score: 2.4,
-							recency: 0.9,
-							kind_bonus: 0.2,
-							quality_boost: 0.1,
-							role_adjustment: 0.12,
-							working_set_overlap: 0.16,
-							query_path_overlap: 0,
-							personal_bias: 0,
-							shared_trust_penalty: 0,
-							recap_penalty: 0,
-							tasklike_penalty: 0,
-							text_overlap: 2,
-							tag_overlap: 1,
-						},
-						reasons: ["matched query terms", "selected for summary"],
-						disposition: "selected",
-						section: "summary",
-						artifact_class: "unknown",
-						inferred_role: "durable",
-						role_reason: "durable_kind",
-					},
-					{
-						id: 102,
-						rank: 2,
-						kind: "feature",
-						title: "Viewer Inspector follow-on",
-						preview: "Manual query inspection follows the CLI trace.",
-						scores: {
-							base_score: 0.8,
-							combined_score: 1.4,
-							recency: 0.8,
-							kind_bonus: 0.18,
-							quality_boost: 0.08,
-							role_adjustment: 0.12,
-							working_set_overlap: 0,
-							query_path_overlap: 0,
-							personal_bias: 0,
-							shared_trust_penalty: 0,
-							recap_penalty: 0,
-							tasklike_penalty: 0,
-							text_overlap: 1,
-							tag_overlap: 0,
-						},
-						reasons: ["not selected for final pack"],
-						disposition: "dropped",
-						section: null,
-						artifact_class: "unknown",
-						inferred_role: "general",
-						role_reason: "general",
-					},
-				],
-			},
-			assembly: {
-				deduped_ids: [],
-				collapsed_groups: [],
-				compressed_clusters: [],
-				trimmed_ids: [],
-				trim_reasons: [],
-				sections: {
-					summary: [101],
-					timeline: [],
-					observations: [],
-				},
-			},
-			output: {
-				estimated_tokens: 42,
-				truncated: false,
-				section_counts: {
-					summary: 1,
-					timeline: 0,
-					observations: 0,
-				},
-				pack_text: "## Summary\n[101] (decision) Keep Search as the inspector entry point",
-			},
-		});
-
-		expect(rendered).toContain("Pack trace");
-		expect(rendered).toContain("Sanitized query: viewer health work");
-		expect(rendered).toContain("Mode reasons: query matched task hints, working set present");
-		expect(rendered).toContain("Selected");
-		expect(rendered).toContain("Dropped");
-		expect(rendered).toContain("truncated: no");
-		expect(rendered).toContain("Final pack");
-		expect(rendered).toContain("## Summary");
+		const nested = packCommand.commands.find((command) => command.name() === "trace");
+		expect(nested?.options.map((option) => option.long)).toEqual(
+			expect.arrayContaining([
+				"--db-path",
+				"--json",
+				"--working-set-file",
+				"--project",
+				"--all-projects",
+			]),
+		);
 	});
 
 	it("supports the main pack commander path with json output", async () => {
-		buildMemoryPackAsync.mockResolvedValue({
-			items: [{ id: 101, kind: "decision", title: "Keep Search", subtitle: null }],
-			metrics: {
-				total_items: 1,
-				pack_tokens: 42,
-				fallback_used: false,
-				sources: { fts: 1, semantic: 0, fuzzy: 0 },
-			},
-			pack_text: "## Summary\n[101] (decision) Keep Search",
-		});
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		request.mockResolvedValue({ ok: true, result: { pack } });
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
 		await parsePackCommand([
-			"continue viewer health work",
+			"continue work",
 			"--json",
 			"--project",
-			"codemem",
-			"--working-set-file",
-			"packages/ui/src/app.ts",
+			"demo",
 			"--token-budget",
-			"120",
-			"--compact",
-			"--compact-detail",
-			"2",
+			"90",
 		]);
 
-		expect(buildMemoryPackAsync).toHaveBeenCalledWith(
-			"continue viewer health work",
-			10,
-			120,
-			{ project: "codemem", working_set_paths: ["packages/ui/src/app.ts"] },
-			{ compact: true, compactDetailCount: 2 },
-		);
-		expect(buildMemoryPackWithTraceAsync).not.toHaveBeenCalled();
-		const output = logSpy.mock.calls.at(-1)?.[0];
-		const parsed = JSON.parse(String(output));
-		expect(parsed).toMatchObject({
-			pack_text: "## Summary\n[101] (decision) Keep Search",
-			metrics: { total_items: 1 },
+		expect(request).toHaveBeenCalledWith("POST /v1/context/pack", {
+			requestId: expect.any(String),
+			context: "continue work",
+			limit: 10,
+			tokenBudget: 90,
+			filters: { project: "demo" },
+			trace: false,
 		});
-		expect(parsed).not.toHaveProperty("trace");
-		expect(parsed).not.toHaveProperty("attempt_id");
-		expect(parsed).not.toHaveProperty("delivery_status");
-	});
-
-	it("emits legacy pack JSON when internal ledger stdin is malformed", async () => {
-		buildMemoryPackAsync.mockResolvedValue({
-			items: [{ id: 101, kind: "decision", title: "Safe output", subtitle: null }],
-			metrics: {
-				total_items: 1,
-				pack_tokens: 20,
-				fallback_used: false,
-				sources: { fts: 1, semantic: 0, fuzzy: 0 },
-			},
-			pack_text: "## Summary\n[101] (decision) Safe output",
-		});
-		vi.spyOn(process, "stdin", "get").mockReturnValue(
-			Readable.from(["not-json"]) as unknown as typeof process.stdin,
-		);
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		await parsePackCommand(["safe query", "--json", "--internal-ledger"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(buildMemoryPackWithTraceAsync).toHaveBeenCalledTimes(1);
-		expect(JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))).toMatchObject({
-			pack_text: "## Summary\n[101] (decision) Safe output",
-			metrics: { total_items: 1 },
-			ledger_artifact_fingerprint: "a".repeat(64),
-		});
-	});
-
-	it("waits for internal ledger persistence before emitting instrumented pack output", async () => {
-		buildMemoryPackAsync.mockResolvedValue({
-			items: [{ id: 101, kind: "decision", title: "Early output", subtitle: null }],
-			metrics: {
-				total_items: 1,
-				pack_tokens: 20,
-				fallback_used: false,
-				sources: { fts: 1, semantic: 0, fuzzy: 0 },
-			},
-			pack_text: "## Summary\n[101] (decision) Early output",
-		});
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		const stdin = new Readable({
-			read() {
-				expect(logSpy).not.toHaveBeenCalled();
-				this.push("not-json");
-				this.push(null);
-			},
-		});
-		vi.spyOn(process, "stdin", "get").mockReturnValue(stdin as unknown as typeof process.stdin);
-
-		await parsePackCommand(["safe query", "--json", "--internal-ledger"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
-			pack_text: "## Summary\n[101] (decision) Early output",
-		});
-	});
-
-	it("emits a stable ledger conflict outcome with the built pack JSON", async () => {
-		buildMemoryPackAsync.mockResolvedValue({
-			items: [{ id: 101, kind: "decision", title: "Conflicting output", subtitle: null }],
-			metrics: {
-				total_items: 1,
-				pack_tokens: 20,
-				fallback_used: false,
-				sources: { fts: 1, semantic: 0, fuzzy: 0 },
-			},
-			pack_text: "## Summary\n[101] (decision) Conflicting output",
-		});
-		recordPromptPackArtifacts.mockReturnValue({
-			ok: false,
-			errorCode: "retrieval_ledger_write_failed",
-			reason: "idempotency_conflict",
-		});
-		vi.spyOn(process, "stdin", "get").mockReturnValue(
-			Readable.from([
-				JSON.stringify({
-					attempt_id: "018f2db4-f9d3-7a22-8d18-000000000001",
-					request_id: "stable-request",
-				}),
-			]) as unknown as typeof process.stdin,
-		);
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		await parsePackCommand(["safe query", "--json", "--internal-ledger"]);
-
-		expect(process.exitCode).toBe(0);
-		expect(JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))).toMatchObject({
-			pack_text: "## Summary\n[101] (decision) Conflicting output",
-			ledger_outcome: {
-				ok: false,
-				errorCode: "retrieval_ledger_write_failed",
-				reason: "idempotency_conflict",
-			},
-		});
-	});
-
-	it("keeps storage-unavailable ledger failures fail-open", async () => {
-		buildMemoryPackAsync.mockResolvedValue({
-			items: [{ id: 101, kind: "decision", title: "Available output", subtitle: null }],
-			metrics: {
-				total_items: 1,
-				pack_tokens: 20,
-				fallback_used: false,
-				sources: { fts: 1, semantic: 0, fuzzy: 0 },
-			},
-			pack_text: "## Summary\n[101] (decision) Available output",
-		});
-		recordPromptPackArtifacts.mockReturnValue({
-			ok: false,
-			errorCode: "retrieval_ledger_write_failed",
-			reason: "storage_unavailable",
-		});
-		vi.spyOn(process, "stdin", "get").mockReturnValue(
-			Readable.from([
-				JSON.stringify({
-					attempt_id: "018f2db4-f9d3-7a22-8d18-000000000002",
-					request_id: "storage-request",
-				}),
-			]) as unknown as typeof process.stdin,
-		);
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		await parsePackCommand(["safe query", "--json", "--internal-ledger"]);
-
-		const output = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]));
-		expect(output.pack_text).toContain("Available output");
-		expect(output).not.toHaveProperty("ledger_outcome");
-		expect(process.exitCode).toBe(0);
-	});
-
-	it("omits project filters for all-projects pack requests", async () => {
-		buildMemoryPackAsync.mockResolvedValue({
-			items: [],
-			metrics: {
-				total_items: 0,
-				pack_tokens: 0,
-				fallback_used: false,
-				sources: { fts: 0, semantic: 0, fuzzy: 0 },
-			},
-			pack_text: "",
-		});
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		await parsePackCommand([
-			"continue viewer health work",
-			"--json",
-			"--all-projects",
-			"--working-set-file",
-			"packages/ui/src/app.ts",
-		]);
-
-		expect(buildMemoryPackAsync).toHaveBeenCalledWith(
-			"continue viewer health work",
-			10,
-			undefined,
-			{ working_set_paths: ["packages/ui/src/app.ts"] },
-			undefined,
-		);
-		expect(JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))).toMatchObject({ items: [] });
-	});
-
-	it("passes explicit compression mode through main pack command", async () => {
-		buildMemoryPackAsync.mockResolvedValue({
-			items: [],
-			metrics: {
-				total_items: 0,
-				pack_tokens: 0,
-				fallback_used: false,
-				sources: { fts: 0, semantic: 0, fuzzy: 0 },
-			},
-			pack_text: "",
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+			pack_text: "RPC PACK",
 		});
 
-		await parsePackCommand(["continue viewer health work", "--compression-mode", "ids"]);
+		const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		await parsePackCommand(["continue work", "--all-projects"]);
+		expect(output.mock.calls.flat().join("")).toContain("Use daemon RPC");
+		expect(output.mock.calls.flat().join("")).toContain("RPC PACK");
 
-		expect(buildMemoryPackAsync).toHaveBeenCalledWith(
-			"continue viewer health work",
-			10,
-			undefined,
-			expect.any(Object),
-			{ compressionMode: "ids" },
-		);
-	});
-
-	it("rejects invalid compression mode", async () => {
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		await parsePackCommand([
-			"continue viewer health work",
-			"--json",
-			"--compression-mode",
-			"banana",
-		]);
-
-		expect(JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))).toEqual({
-			error: "usage_error",
-			message: "compression mode must be one of: off, compact, ids",
+		output.mockClear();
+		request.mockResolvedValueOnce({
+			ok: true,
+			result: { pack: { ...pack, metrics: { ...pack.metrics, fallback_used: true } } },
 		});
-		expect(process.exitCode).toBe(2);
-		expect(errorSpy).not.toHaveBeenCalled();
-		expect(buildMemoryPackAsync).not.toHaveBeenCalled();
-	});
-
-	it("emits structured json errors for pack failures", async () => {
-		buildMemoryPackAsync.mockRejectedValue(new Error("pack blew up"));
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		await parsePackCommand(["continue viewer health work", "--json"]);
-
-		expect(JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))).toEqual({
-			error: "pack_failed",
-			message: "pack blew up",
-		});
-		expect(process.exitCode).toBe(1);
-		expect(errorSpy).not.toHaveBeenCalled();
-	});
-
-	it("emits structured usage errors for invalid main pack numeric input", async () => {
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		await parsePackCommand(["continue viewer health work", "--json", "--limit", "nope"]);
-
-		expect(JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))).toEqual({
-			error: "usage_error",
-			message: "limit must be a positive integer",
-		});
-		expect(process.exitCode).toBe(2);
-		expect(errorSpy).not.toHaveBeenCalled();
-		expect(buildMemoryPackAsync).not.toHaveBeenCalled();
-	});
-
-	it("supports the commander command path with json output", async () => {
-		buildMemoryPackTraceAsync.mockResolvedValue({
-			version: 1,
-			inputs: {
-				query: "continue viewer health work",
-				project: "codemem",
-				working_set_files: [],
-				token_budget: null,
-				limit: 10,
-			},
-			mode: { selected: "task", reasons: ["query matched task hints"] },
-			retrieval: { candidate_count: 0, candidates: [] },
-			assembly: {
-				deduped_ids: [],
-				collapsed_groups: [],
-				trimmed_ids: [],
-				trim_reasons: [],
-				sections: { summary: [], timeline: [], observations: [] },
-			},
-			output: {
-				estimated_tokens: 0,
-				truncated: false,
-				section_counts: { summary: 0, timeline: 0, observations: 0 },
-				pack_text: "",
-			},
-		});
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		await parseTraceCommand(["continue viewer health work", "--json"]);
-
-		const output = logSpy.mock.calls.at(-1)?.[0];
-		expect(typeof output).toBe("string");
-		expect(JSON.parse(String(output))).toMatchObject({
-			version: 1,
-			mode: { selected: "task" },
-		});
-	});
-
-	it("emits structured json errors for trace failures", async () => {
-		buildMemoryPackTraceAsync.mockRejectedValue(new Error("trace blew up"));
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		await parseTraceCommand(["continue viewer health work", "--json"]);
-
-		const output = logSpy.mock.calls.at(-1)?.[0];
-		expect(JSON.parse(String(output))).toEqual({
-			error: "pack_trace_failed",
-			message: "trace blew up",
-		});
-		expect(process.exitCode).toBe(1);
-		expect(errorSpy).not.toHaveBeenCalled();
-	});
-
-	it("emits structured usage errors for invalid numeric json input", async () => {
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-		await parseTraceCommand(["continue viewer health work", "--json", "--limit", "nope"]);
-
-		const output = logSpy.mock.calls.at(-1)?.[0];
-		expect(JSON.parse(String(output))).toEqual({
-			error: "usage_error",
-			message: "limit must be a positive integer",
-		});
-		expect(process.exitCode).toBe(2);
-		expect(errorSpy).not.toHaveBeenCalled();
-		expect(buildMemoryPackTraceAsync).not.toHaveBeenCalled();
-	});
-
-	it("dispatches the nested pack trace commander path", async () => {
-		buildMemoryPackTraceAsync.mockResolvedValue({
-			version: 1,
-			inputs: {
-				query: "continue viewer health work",
-				project: null,
-				working_set_files: [],
-				token_budget: null,
-				limit: 10,
-			},
-			mode: { selected: "task", reasons: ["query matched task hints"] },
-			retrieval: { candidate_count: 0, candidates: [] },
-			assembly: {
-				deduped_ids: [],
-				collapsed_groups: [],
-				trimmed_ids: [],
-				trim_reasons: [],
-				sections: { summary: [], timeline: [], observations: [] },
-			},
-			output: {
-				estimated_tokens: 0,
-				truncated: false,
-				section_counts: { summary: 0, timeline: 0, observations: 0 },
-				pack_text: "",
-			},
-		});
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-		await parsePackCommand(["trace", "continue viewer health work"]);
-
-		expect(buildMemoryPackTraceAsync).toHaveBeenCalledTimes(1);
-		expect(String(logSpy.mock.calls.at(-1)?.[0] ?? "")).toContain("Pack trace");
+		await parsePackCommand(["continue work", "--all-projects"]);
+		expect(output.mock.calls.flat().join("")).toContain("(fallback)");
+		output.mockClear();
+		request.mockResolvedValueOnce({ ok: true, result: { pack: { ...pack, items: [] } } });
+		await parsePackCommand(["continue work", "--all-projects"]);
+		expect(output.mock.calls.flat().join("")).toContain("No relevant memories found.");
 	});
 
 	it("routes trace flags to the trace subcommand after the positional context", async () => {
-		buildMemoryPackTraceAsync.mockResolvedValue({
-			version: 1,
-			inputs: {
-				query: "continue viewer health work",
-				project: null,
-				working_set_files: [],
-				token_budget: null,
-				limit: 10,
-			},
-			mode: { selected: "task", reasons: ["query matched task hints"] },
-			retrieval: { candidate_count: 0, candidates: [] },
-			assembly: {
-				deduped_ids: [],
-				collapsed_groups: [],
-				trimmed_ids: [],
-				trim_reasons: [],
-				sections: { summary: [], timeline: [], observations: [] },
-			},
-			output: {
-				estimated_tokens: 0,
-				truncated: false,
-				section_counts: { summary: 0, timeline: 0, observations: 0 },
-				pack_text: "",
-			},
+		request.mockResolvedValue({ ok: true, result: { pack, trace } });
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		await parsePackCommand(["trace", "continue work", "--json", "--all-projects"]);
+		expect(request.mock.calls[0]?.[1]).toMatchObject({
+			context: "continue work",
+			filters: {},
+			trace: true,
 		});
-		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+			version: 1,
+			mode: { selected: "task" },
+		});
 
-		await parsePackCommand([
-			"trace",
-			"continue viewer health work",
-			"--json",
-			"--db-path",
-			"/tmp/codemem-test.sqlite",
-		]);
+		await parsePackCommand(["trace", "continue work", "--all-projects"]);
+		expect(String(log.mock.calls.at(-1)?.[0])).toContain("1. [7] (decision) Use daemon RPC");
+		expect(String(log.mock.calls.at(-1)?.[0])).toContain("Trimmed\n4. [10]");
+	});
 
-		expect(buildMemoryPackTraceAsync).toHaveBeenCalledTimes(1);
-		expect(JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))).toMatchObject({ version: 1 });
-		expect(storePaths.at(-1)).toBe("/tmp/codemem-test.sqlite");
+	it("emits structured json errors for pack failures", async () => {
+		request.mockResolvedValue({
+			ok: false,
+			error: { code: "daemon_unavailable", message: "daemon down", retryable: true },
+		});
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		await parsePackCommand(["continue work", "--json"]);
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toEqual({
+			error: "daemon_unavailable",
+			message: "daemon down",
+		});
+		expect(process.exitCode).toBe(1);
+
+		process.exitCode = 0;
+		const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		await parsePackCommand(["continue work"]);
+		expect(process.exitCode).toBe(1);
+		expect(output.mock.calls.flat().join("")).toContain("daemon down");
+
+		process.exitCode = 0;
+		await parsePackCommand(["trace", "continue work", "--json"]);
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toEqual({
+			error: "daemon_unavailable",
+			message: "daemon down",
+		});
+		expect(process.exitCode).toBe(1);
+		process.exitCode = 0;
+		output.mockClear();
+		await parsePackCommand(["trace", "continue work"]);
+		expect(process.exitCode).toBe(1);
+		expect(output.mock.calls.flat().join("")).toContain("daemon down");
+
+		request.mockRejectedValueOnce("pack primitive rejection");
+		process.exitCode = 0;
+		await parsePackCommand(["continue work", "--json"]);
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toEqual({
+			error: "pack_failed",
+			message: "pack primitive rejection",
+		});
+		expect(process.exitCode).toBe(1);
+		request.mockRejectedValueOnce(17);
+		process.exitCode = 0;
+		output.mockClear();
+		await parsePackCommand(["continue work"]);
+		expect(process.exitCode).toBe(1);
+		expect(output.mock.calls.flat().join("")).toContain("17");
+
+		request.mockRejectedValueOnce(true);
+		process.exitCode = 0;
+		await parsePackCommand(["trace", "continue work", "--json"]);
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toEqual({
+			error: "pack_trace_failed",
+			message: "true",
+		});
+		expect(process.exitCode).toBe(1);
+		request.mockRejectedValueOnce(null);
+		process.exitCode = 0;
+		output.mockClear();
+		await parsePackCommand(["trace", "continue work"]);
+		expect(process.exitCode).toBe(1);
+		expect(output.mock.calls.flat().join("")).toContain("null");
+
+		const requestCount = request.mock.calls.length;
+		process.exitCode = 0;
+		await parsePackCommand(["continue work", "--compact", "--json"]);
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+			error: "usage_error",
+			message: expect.stringContaining("rendering overrides"),
+		});
+		expect(process.exitCode).toBe(2);
+		process.exitCode = 0;
+		output.mockClear();
+		await parsePackCommand(["continue work", "--compact"]);
+		expect(process.exitCode).toBe(2);
+		expect(output.mock.calls.flat().join("")).toContain("rendering overrides");
+		process.exitCode = 0;
+		await parsePackCommand(["trace", "continue work", "--compact", "--json"]);
+		expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+			error: "usage_error",
+		});
+		expect(process.exitCode).toBe(2);
+		process.exitCode = 0;
+		output.mockClear();
+		await parsePackCommand(["trace", "continue work", "--compact"]);
+		expect(process.exitCode).toBe(2);
+		expect(output.mock.calls.flat().join("")).toContain("rendering overrides");
+		expect(request).toHaveBeenCalledTimes(requestCount);
+	});
+
+	it("renders grouped human-readable trace text", async () => {
+		const rendered = renderPackTrace(trace);
+		expect(rendered).toContain("Final pack\nRPC PACK");
+		expect(rendered).toContain("combined=0.90 base=0.75 text=2 tag=1 working_set=0.50");
+		expect(rendered).toContain("- deduped ids: 9");
+		expect(rendered).toContain("- truncated: yes");
+		expect(
+			renderPackTrace({
+				...trace,
+				inputs: {
+					...trace.inputs,
+					sanitized_query: "continue safe work",
+					working_set_files: [],
+				},
+			}),
+		).toContain("- Sanitized query: continue safe work\n- Project: demo\n- Working set: (none)");
+
+		const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		await parsePackCommand(["continue work", "--limit", "0"]);
+		expect(request).not.toHaveBeenCalled();
+		expect(process.exitCode).toBe(2);
+		expect(output.mock.calls.flat().join("")).toContain("limit must be a positive integer");
 	});
 });

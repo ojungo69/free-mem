@@ -15,8 +15,8 @@ import {
 	selectDistillCorpus,
 } from "./distill.js";
 import { resolveEmbeddingModel, serializeFloat32 } from "./embeddings.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 
 describe("distill", () => {
 	let tmpDir: string;
@@ -36,7 +36,7 @@ describe("distill", () => {
 		const setupDb = connect(dbPath);
 		initTestSchema(setupDb);
 		setupDb.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {

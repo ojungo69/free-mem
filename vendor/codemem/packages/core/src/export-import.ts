@@ -1,14 +1,6 @@
 import { readFileSync } from "node:fs";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import {
-	assertSchemaReady,
-	connect,
-	type Database,
-	fromJson,
-	resolveDbPath,
-	toJson,
-	toJsonNullable,
-} from "./db.js";
+import { assertSchemaReady, type Database, fromJson, toJson, toJsonNullable } from "./db.js";
 import { buildFilterClausesWithContext } from "./filters.js";
 import { expandUserPath } from "./observer-config.js";
 import { projectColumnClause, resolveProject as resolveProjectName } from "./project.js";
@@ -306,74 +298,66 @@ function fetchMemoryRows(
 		.all(...params) as JsonObject[];
 }
 
-export function exportMemories(opts: ExportOptions = {}): ExportPayload {
-	const db = connect(resolveDbPath(opts.dbPath));
-	try {
-		assertSchemaReady(db);
-		const resolvedProject = resolveExportProject(opts);
-		const filters: JsonObject = {};
-		if (resolvedProject) filters.project = resolvedProject;
-		if (opts.since) filters.since = opts.since;
-		const scopeFilter = buildScopeFilter(db);
+export function exportMemoriesWithDb(db: Database, opts: ExportOptions = {}): ExportPayload {
+	assertSchemaReady(db);
+	const resolvedProject = resolveExportProject(opts);
+	const filters: JsonObject = {};
+	if (resolvedProject) filters.project = resolvedProject;
+	if (opts.since) filters.since = opts.since;
+	const scopeFilter = buildScopeFilter(db);
 
-		const sessions = querySessions(
-			db,
-			resolvedProject,
-			opts.since ?? null,
-			scopeFilter,
-			Boolean(opts.includeInactive),
-		);
-		const sessionIds = sessions.map((row) => Number(row.id)).filter(Number.isFinite);
+	const sessions = querySessions(
+		db,
+		resolvedProject,
+		opts.since ?? null,
+		scopeFilter,
+		Boolean(opts.includeInactive),
+	);
+	const sessionIds = sessions.map((row) => Number(row.id)).filter(Number.isFinite);
 
-		const memories = fetchMemoryRows(
-			db,
-			sessionIds,
-			scopeFilter,
-			Boolean(opts.includeInactive),
-		).map((row) => parseMemoryExportRow(row));
+	const memories = fetchMemoryRows(db, sessionIds, scopeFilter, Boolean(opts.includeInactive)).map(
+		(row) => parseMemoryExportRow(row),
+	);
 
-		const summaries = fetchBySessionIds(
-			db,
-			"session_summaries",
-			sessionIds,
-			"created_at_epoch ASC",
-		).map((row) => parseRowJsonFields(row, ["metadata_json", "files_read", "files_edited"]));
+	const summaries = fetchBySessionIds(
+		db,
+		"session_summaries",
+		sessionIds,
+		"created_at_epoch ASC",
+	).map((row) => parseRowJsonFields(row, ["metadata_json", "files_read", "files_edited"]));
 
-		const prompts = fetchBySessionIds(db, "user_prompts", sessionIds, "created_at_epoch ASC").map(
-			(row) => parseRowJsonFields(row, ["metadata_json"]),
-		);
+	const prompts = fetchBySessionIds(db, "user_prompts", sessionIds, "created_at_epoch ASC").map(
+		(row) => parseRowJsonFields(row, ["metadata_json"]),
+	);
 
-		const promptImportKeys = new Map<number, string>();
-		for (const prompt of prompts) {
-			if (typeof prompt.id === "number" && typeof prompt.import_key === "string") {
-				promptImportKeys.set(prompt.id, prompt.import_key);
-			}
+	const promptImportKeys = new Map<number, string>();
+	for (const prompt of prompts) {
+		if (typeof prompt.id === "number" && typeof prompt.import_key === "string") {
+			promptImportKeys.set(prompt.id, prompt.import_key);
 		}
-		for (const memory of memories) {
-			if (typeof memory.user_prompt_id === "number") {
-				memory.user_prompt_import_key = promptImportKeys.get(memory.user_prompt_id) ?? null;
-			}
-		}
-
-		return {
-			version: "1.0",
-			exported_at: nowIso(),
-			export_metadata: {
-				tool_version: "codemem",
-				projects: [...new Set(sessions.map((s) => String(s.project ?? "")).filter(Boolean))],
-				total_memories: memories.length,
-				total_sessions: sessions.length,
-				include_inactive: Boolean(opts.includeInactive),
-				filters,
-			},
-			sessions,
-			memory_items: memories,
-			session_summaries: summaries,
-			user_prompts: prompts,
-		};
-	} finally {
-		db.close();
 	}
+	for (const memory of memories) {
+		if (typeof memory.user_prompt_id === "number") {
+			memory.user_prompt_import_key = promptImportKeys.get(memory.user_prompt_id) ?? null;
+		}
+	}
+
+	return {
+		version: "1.0",
+		exported_at: nowIso(),
+		export_metadata: {
+			tool_version: "codemem",
+			projects: [...new Set(sessions.map((s) => String(s.project ?? "")).filter(Boolean))],
+			total_memories: memories.length,
+			total_sessions: sessions.length,
+			include_inactive: Boolean(opts.includeInactive),
+			filters,
+		},
+		sessions,
+		memory_items: memories,
+		session_summaries: summaries,
+		user_prompts: prompts,
+	};
 }
 
 export function readImportPayload(inputFile: string): ExportPayload {
@@ -570,202 +554,201 @@ function insertSummary(d: DrizzleDb, row: JsonObject): number {
 	return id;
 }
 
-export function importMemories(payload: ExportPayload, opts: ImportOptions = {}): ImportResult {
+export function importMemoriesWithDb(
+	db: Database,
+	payload: ExportPayload,
+	opts: ImportOptions = {},
+): ImportResult {
 	const sessionsData = Array.isArray(payload.sessions) ? payload.sessions : [];
 	const memoriesData = Array.isArray(payload.memory_items) ? payload.memory_items : [];
 	const summariesData = Array.isArray(payload.session_summaries) ? payload.session_summaries : [];
 	const promptsData = Array.isArray(payload.user_prompts) ? payload.user_prompts : [];
 
-	const db = connect(resolveDbPath(opts.dbPath));
-	try {
-		assertSchemaReady(db);
-		const deviceId = resolveLocalDeviceId(db);
-		validateImportScopes(db, memoriesData, deviceId, opts.remapProject ?? null);
-		if (opts.dryRun) {
-			return {
-				sessions: sessionsData.length,
-				user_prompts: promptsData.length,
-				memory_items: memoriesData.length,
-				session_summaries: summariesData.length,
-				dryRun: true,
-			};
-		}
-		const d = drizzle(db, { schema });
-		return db.transaction(() => {
-			const sessionMapping = new Map<number, number>();
-			const promptMapping = new Map<number, number>();
-			const promptImportKeyMapping = new Map<string, number>();
-			let importedSessions = 0;
-			let importedPrompts = 0;
-			let importedMemories = 0;
-			let importedSummaries = 0;
-
-			for (const session of sessionsData) {
-				const oldSessionId = Number(session.id);
-				const project = opts.remapProject || normalizeImportedProject(session.project);
-				const importKey = buildImportKey("export", "session", session.id, {
-					project,
-					createdAt: typeof session.started_at === "string" ? session.started_at : null,
-				});
-				const existingId = findImportedId(db, "sessions", importKey);
-				if (existingId != null) {
-					sessionMapping.set(oldSessionId, existingId);
-					continue;
-				}
-				const metadata: JsonObject = {
-					source: "export",
-					original_session_id: session.id,
-					original_started_at: session.started_at ?? null,
-					original_ended_at: session.ended_at ?? null,
-					import_metadata: session.metadata_json ?? null,
-					import_key: importKey,
-				};
-				const newId = insertSession(d, {
-					...session,
-					project,
-					metadata_json: metadata,
-					import_key: importKey,
-				});
-				sessionMapping.set(oldSessionId, newId);
-				importedSessions += 1;
-			}
-
-			for (const prompt of promptsData) {
-				const oldSessionId = Number(prompt.session_id);
-				const newSessionId = sessionMapping.get(oldSessionId);
-				if (newSessionId == null) continue;
-				const project = opts.remapProject || normalizeImportedProject(prompt.project);
-				const promptImportKey =
-					typeof prompt.import_key === "string" && prompt.import_key.trim()
-						? prompt.import_key.trim()
-						: buildImportKey("export", "prompt", prompt.id, {
-								project,
-								createdAt: typeof prompt.created_at === "string" ? prompt.created_at : null,
-							});
-				const existingId = findImportedId(db, "user_prompts", promptImportKey);
-				if (existingId != null) {
-					if (typeof prompt.id === "number") promptMapping.set(prompt.id, existingId);
-					promptImportKeyMapping.set(promptImportKey, existingId);
-					continue;
-				}
-				const metadata: JsonObject = {
-					source: "export",
-					original_prompt_id: prompt.id ?? null,
-					original_created_at: prompt.created_at ?? null,
-					import_metadata: prompt.metadata_json ?? null,
-					import_key: promptImportKey,
-				};
-				const newId = insertPrompt(d, {
-					...prompt,
-					session_id: newSessionId,
-					project,
-					metadata_json: metadata,
-					import_key: promptImportKey,
-				});
-				if (typeof prompt.id === "number") promptMapping.set(prompt.id, newId);
-				promptImportKeyMapping.set(promptImportKey, newId);
-				importedPrompts += 1;
-			}
-
-			for (const memory of memoriesData) {
-				const oldSessionId = Number(memory.session_id);
-				const newSessionId = sessionMapping.get(oldSessionId);
-				if (newSessionId == null) continue;
-				const project = opts.remapProject || normalizeImportedProject(memory.project);
-				const memoryImportKey =
-					typeof memory.import_key === "string" && memory.import_key.trim()
-						? memory.import_key.trim()
-						: buildImportKey("export", "memory", memory.id, {
-								project,
-								createdAt: typeof memory.created_at === "string" ? memory.created_at : null,
-							});
-				if (findImportedId(db, "memory_items", memoryImportKey) != null) continue;
-
-				let linkedPromptId: number | null = null;
-				if (
-					typeof memory.user_prompt_import_key === "string" &&
-					memory.user_prompt_import_key.trim()
-				) {
-					linkedPromptId =
-						promptImportKeyMapping.get(memory.user_prompt_import_key.trim()) ??
-						findImportedId(db, "user_prompts", memory.user_prompt_import_key.trim());
-				} else if (typeof memory.user_prompt_id === "number") {
-					linkedPromptId = promptMapping.get(memory.user_prompt_id) ?? null;
-				}
-
-				const baseMetadata: JsonObject = {
-					source: "export",
-					original_memory_id: memory.id ?? null,
-					original_created_at: memory.created_at ?? null,
-					import_metadata: memory.metadata_json ?? null,
-					import_key: memoryImportKey,
-				};
-				if (
-					typeof memory.user_prompt_import_key === "string" &&
-					memory.user_prompt_import_key.trim()
-				) {
-					baseMetadata.user_prompt_import_key = memory.user_prompt_import_key.trim();
-				}
-				const metadata =
-					memory.kind === "session_summary"
-						? mergeSummaryMetadata(baseMetadata, memory.metadata_json ?? null)
-						: baseMetadata;
-
-				insertMemory(
-					db,
-					d,
-					{
-						...memory,
-						session_id: newSessionId,
-						project,
-						user_prompt_id: linkedPromptId,
-						metadata_json: metadata,
-						import_key: memoryImportKey,
-					},
-					deviceId,
-				);
-				importedMemories += 1;
-			}
-
-			for (const summary of summariesData) {
-				const oldSessionId = Number(summary.session_id);
-				const newSessionId = sessionMapping.get(oldSessionId);
-				if (newSessionId == null) continue;
-				const project = opts.remapProject || normalizeImportedProject(summary.project);
-				const summaryImportKey =
-					typeof summary.import_key === "string" && summary.import_key.trim()
-						? summary.import_key.trim()
-						: buildImportKey("export", "summary", summary.id, {
-								project,
-								createdAt: typeof summary.created_at === "string" ? summary.created_at : null,
-							});
-				if (findImportedId(db, "session_summaries", summaryImportKey) != null) continue;
-				const metadata: JsonObject = {
-					source: "export",
-					original_summary_id: summary.id ?? null,
-					original_created_at: summary.created_at ?? null,
-					import_metadata: summary.metadata_json ?? null,
-					import_key: summaryImportKey,
-				};
-				insertSummary(d, {
-					...summary,
-					session_id: newSessionId,
-					project,
-					metadata_json: metadata,
-					import_key: summaryImportKey,
-				});
-				importedSummaries += 1;
-			}
-
-			return {
-				sessions: importedSessions,
-				user_prompts: importedPrompts,
-				memory_items: importedMemories,
-				session_summaries: importedSummaries,
-				dryRun: false,
-			};
-		})();
-	} finally {
-		db.close();
+	assertSchemaReady(db);
+	const deviceId = resolveLocalDeviceId(db);
+	validateImportScopes(db, memoriesData, deviceId, opts.remapProject ?? null);
+	if (opts.dryRun) {
+		return {
+			sessions: sessionsData.length,
+			user_prompts: promptsData.length,
+			memory_items: memoriesData.length,
+			session_summaries: summariesData.length,
+			dryRun: true,
+		};
 	}
+	const d = drizzle(db, { schema });
+	return db.transaction(() => {
+		const sessionMapping = new Map<number, number>();
+		const promptMapping = new Map<number, number>();
+		const promptImportKeyMapping = new Map<string, number>();
+		let importedSessions = 0;
+		let importedPrompts = 0;
+		let importedMemories = 0;
+		let importedSummaries = 0;
+
+		for (const session of sessionsData) {
+			const oldSessionId = Number(session.id);
+			const project = opts.remapProject || normalizeImportedProject(session.project);
+			const importKey = buildImportKey("export", "session", session.id, {
+				project,
+				createdAt: typeof session.started_at === "string" ? session.started_at : null,
+			});
+			const existingId = findImportedId(db, "sessions", importKey);
+			if (existingId != null) {
+				sessionMapping.set(oldSessionId, existingId);
+				continue;
+			}
+			const metadata: JsonObject = {
+				source: "export",
+				original_session_id: session.id,
+				original_started_at: session.started_at ?? null,
+				original_ended_at: session.ended_at ?? null,
+				import_metadata: session.metadata_json ?? null,
+				import_key: importKey,
+			};
+			const newId = insertSession(d, {
+				...session,
+				project,
+				metadata_json: metadata,
+				import_key: importKey,
+			});
+			sessionMapping.set(oldSessionId, newId);
+			importedSessions += 1;
+		}
+
+		for (const prompt of promptsData) {
+			const oldSessionId = Number(prompt.session_id);
+			const newSessionId = sessionMapping.get(oldSessionId);
+			if (newSessionId == null) continue;
+			const project = opts.remapProject || normalizeImportedProject(prompt.project);
+			const promptImportKey =
+				typeof prompt.import_key === "string" && prompt.import_key.trim()
+					? prompt.import_key.trim()
+					: buildImportKey("export", "prompt", prompt.id, {
+							project,
+							createdAt: typeof prompt.created_at === "string" ? prompt.created_at : null,
+						});
+			const existingId = findImportedId(db, "user_prompts", promptImportKey);
+			if (existingId != null) {
+				if (typeof prompt.id === "number") promptMapping.set(prompt.id, existingId);
+				promptImportKeyMapping.set(promptImportKey, existingId);
+				continue;
+			}
+			const metadata: JsonObject = {
+				source: "export",
+				original_prompt_id: prompt.id ?? null,
+				original_created_at: prompt.created_at ?? null,
+				import_metadata: prompt.metadata_json ?? null,
+				import_key: promptImportKey,
+			};
+			const newId = insertPrompt(d, {
+				...prompt,
+				session_id: newSessionId,
+				project,
+				metadata_json: metadata,
+				import_key: promptImportKey,
+			});
+			if (typeof prompt.id === "number") promptMapping.set(prompt.id, newId);
+			promptImportKeyMapping.set(promptImportKey, newId);
+			importedPrompts += 1;
+		}
+
+		for (const memory of memoriesData) {
+			const oldSessionId = Number(memory.session_id);
+			const newSessionId = sessionMapping.get(oldSessionId);
+			if (newSessionId == null) continue;
+			const project = opts.remapProject || normalizeImportedProject(memory.project);
+			const memoryImportKey =
+				typeof memory.import_key === "string" && memory.import_key.trim()
+					? memory.import_key.trim()
+					: buildImportKey("export", "memory", memory.id, {
+							project,
+							createdAt: typeof memory.created_at === "string" ? memory.created_at : null,
+						});
+			if (findImportedId(db, "memory_items", memoryImportKey) != null) continue;
+
+			let linkedPromptId: number | null = null;
+			if (
+				typeof memory.user_prompt_import_key === "string" &&
+				memory.user_prompt_import_key.trim()
+			) {
+				linkedPromptId =
+					promptImportKeyMapping.get(memory.user_prompt_import_key.trim()) ??
+					findImportedId(db, "user_prompts", memory.user_prompt_import_key.trim());
+			} else if (typeof memory.user_prompt_id === "number") {
+				linkedPromptId = promptMapping.get(memory.user_prompt_id) ?? null;
+			}
+
+			const baseMetadata: JsonObject = {
+				source: "export",
+				original_memory_id: memory.id ?? null,
+				original_created_at: memory.created_at ?? null,
+				import_metadata: memory.metadata_json ?? null,
+				import_key: memoryImportKey,
+			};
+			if (
+				typeof memory.user_prompt_import_key === "string" &&
+				memory.user_prompt_import_key.trim()
+			) {
+				baseMetadata.user_prompt_import_key = memory.user_prompt_import_key.trim();
+			}
+			const metadata =
+				memory.kind === "session_summary"
+					? mergeSummaryMetadata(baseMetadata, memory.metadata_json ?? null)
+					: baseMetadata;
+
+			insertMemory(
+				db,
+				d,
+				{
+					...memory,
+					session_id: newSessionId,
+					project,
+					user_prompt_id: linkedPromptId,
+					metadata_json: metadata,
+					import_key: memoryImportKey,
+				},
+				deviceId,
+			);
+			importedMemories += 1;
+		}
+
+		for (const summary of summariesData) {
+			const oldSessionId = Number(summary.session_id);
+			const newSessionId = sessionMapping.get(oldSessionId);
+			if (newSessionId == null) continue;
+			const project = opts.remapProject || normalizeImportedProject(summary.project);
+			const summaryImportKey =
+				typeof summary.import_key === "string" && summary.import_key.trim()
+					? summary.import_key.trim()
+					: buildImportKey("export", "summary", summary.id, {
+							project,
+							createdAt: typeof summary.created_at === "string" ? summary.created_at : null,
+						});
+			if (findImportedId(db, "session_summaries", summaryImportKey) != null) continue;
+			const metadata: JsonObject = {
+				source: "export",
+				original_summary_id: summary.id ?? null,
+				original_created_at: summary.created_at ?? null,
+				import_metadata: summary.metadata_json ?? null,
+				import_key: summaryImportKey,
+			};
+			insertSummary(d, {
+				...summary,
+				session_id: newSessionId,
+				project,
+				metadata_json: metadata,
+				import_key: summaryImportKey,
+			});
+			importedSummaries += 1;
+		}
+
+		return {
+			sessions: importedSessions,
+			user_prompts: importedPrompts,
+			memory_items: importedMemories,
+			session_summaries: importedSummaries,
+			dryRun: false,
+		};
+	})();
 }

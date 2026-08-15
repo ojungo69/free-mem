@@ -2,11 +2,7 @@ import * as Select from "@radix-ui/react-select";
 
 const EMPTY_SENTINEL = "__codemem-empty-select__";
 
-/* Inline SVGs for the select trigger chevron and item indicator. Using
- * inline SVG (not <i data-lucide=...>) sidesteps a race condition: Radix
- * Select mounts its content in a Portal on open, after the Settings
- * dialog's only createIcons() pass has already run, so a lucide stub
- * inside the portal would never get replaced. */
+/* Inline SVGs for the select trigger chevron and item indicator. */
 function SelectChevronIcon() {
 	return (
 		<svg

@@ -1,7 +1,7 @@
 # codemem
 
 - Public repo: never add secrets, internal hostnames, private identifiers, or local artifact paths. Keep `.tmp/`, `.venv/`, `*.sqlite`, `packages/*/dist/`, `packages/viewer-server/static/`, and `.opencode/package-lock.json` out of git.
-- Default to the TypeScript toolchain: this repo is a pnpm workspace on Node 24 / pnpm 10.33.0.
+- Default to the TypeScript toolchain: this repo is a pnpm workspace on Node 24 / pnpm 11.8.0.
 
 ## What runs where
 
@@ -11,7 +11,6 @@
 - Viewer UI source: `packages/ui/src/`.
 - OpenCode plugin source of truth: `packages/opencode-plugin/.opencode/plugins/codemem.js`.
 - `packages/cli/.opencode/plugins/codemem.js` and repo-root `.opencode/plugins/codemem.js` are wrappers/re-exports, not the main implementation.
-- `packages/cloudflare-coordinator-worker/` is its own worker package with separate tests.
 
 ## Commands worth using
 
@@ -20,8 +19,7 @@
 - Build everything: `pnpm run build`
 - Run CLI from source: `pnpm run codemem --help`
 - Run one vitest file: `pnpm exec vitest run packages/cli/src/commands/serve.test.ts`
-- Run one package script: `pnpm --filter codemem test`, `pnpm --filter @codemem/ui build`, `pnpm --filter @codemem/cloudflare-coordinator-worker test:worker`
-- E2E smoke: `CODEMEM_E2E_BUILD=1 CODEMEM_E2E_JSON=1 pnpm run e2e:smoke -- --json` (artifacts land in `.tmp/e2e-artifacts`)
+- Run one package script: `pnpm --filter codemem test`, `pnpm --filter @codemem/ui build`
 
 ## Gotchas agents usually miss
 

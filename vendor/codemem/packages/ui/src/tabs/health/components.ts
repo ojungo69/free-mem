@@ -8,13 +8,7 @@
 import { Fragment, h, render } from "preact";
 import { Tooltip, TooltipProvider } from "../../components/primitives/tooltip";
 import { copyToClipboard } from "../../lib/dom";
-import type {
-	HealthAction,
-	HealthActionRowProps,
-	HealthCardInput,
-	LucideRuntime,
-	StatItem,
-} from "./types";
+import type { HealthAction, HealthActionRowProps, HealthCardInput, StatItem } from "./types";
 
 export function buildHealthCard(input: HealthCardInput): HealthCardInput {
 	return input;
@@ -29,6 +23,7 @@ export function HealthCard({ label, value, detail, icon, className, title }: Hea
 		},
 		icon
 			? h("i", {
+					"aria-hidden": "true",
 					"data-lucide": icon,
 					class: "stat-icon",
 				})
@@ -121,6 +116,7 @@ export function StatBlock({ label, value, icon, tooltip }: StatItem) {
 			style: tooltip ? "cursor: help;" : undefined,
 		},
 		h("i", {
+			"aria-hidden": "true",
 			"data-lucide": icon,
 			class: "stat-icon",
 		}),
@@ -149,11 +145,6 @@ export function renderStatBlocks(container: HTMLElement | null, items: StatItem[
 export function renderText(container: HTMLElement | null, value: string) {
 	if (!container) return;
 	render(h(Fragment, null, value), container);
-}
-
-export function renderIcons() {
-	const lucide = (globalThis as typeof globalThis & { lucide?: LucideRuntime }).lucide;
-	if (lucide && typeof lucide.createIcons === "function") lucide.createIcons();
 }
 
 export function renderHealthCards(container: HTMLElement | null, cards: HealthCardInput[]) {

@@ -7,8 +7,7 @@ import * as dbModule from "./db.js";
 import * as embeddings from "./embeddings.js";
 import { startMaintenanceJob } from "./maintenance-jobs.js";
 import { ensureSchemaBootstrapped } from "./schema-bootstrap.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema, insertTestSession } from "./test-utils.js";
+import { initTestSchema, insertTestSession, openTestMemoryStore } from "./test-utils.js";
 import {
 	backfillVectors,
 	getSemanticIndexDiagnostics,
@@ -565,7 +564,7 @@ describe("vectors", () => {
 // Fresh-database bootstrap coverage for memory_vectors.
 // Regression guard for codemem-yco1: bootstrapSchema must create the
 // sqlite-vec virtual table so the unguarded `resolveSemanticSearchModel`
-// query path does not throw on a freshly auto-bootstrapped DB.
+// query path does not throw on a freshly migrated DB.
 // ---------------------------------------------------------------------------
 
 describe("memory_vectors bootstrap on fresh databases", () => {
@@ -610,11 +609,11 @@ describe("memory_vectors bootstrap on fresh databases", () => {
 		}
 	});
 
-	it("creates memory_vectors via auto-bootstrap when constructing MemoryStore against a fresh path", async () => {
+	it("creates memory_vectors when explicitly migrating a fresh database", async () => {
 		const dbPath = join(tmpDir, "vectors-fresh.sqlite");
-		// No pre-seeding — constructor discovers an uninitialized file and
-		// runs ensureSchemaBootstrapped, which must now create memory_vectors.
-		const store = new MemoryStore(dbPath);
+		// The test helper runs the explicit migration path, which must create
+		// memory_vectors before constructing the store.
+		const store = openTestMemoryStore(dbPath);
 		try {
 			const tableRow = store.db
 				.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_vectors'")

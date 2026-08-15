@@ -13,7 +13,7 @@
 	],
 	"scripts": {
 		"clean": "rm -rf dist",
-		"build": "pnpm exec vite build --ssr src/index.ts --outDir dist",
+		"build": "pnpm exec vite build --ssr src/index.ts --outDir dist && pnpm exec vite build --config vite.hook.config.ts && node scripts/sync-hook-runtime.mjs",
 		"test": "pnpm exec vitest run",
 		"test:packed-artifact": "node ./scripts/packed-artifact-smoke.mjs",
 		"test:plugin": "pnpm exec vitest run --config .opencode/vitest.config.ts",

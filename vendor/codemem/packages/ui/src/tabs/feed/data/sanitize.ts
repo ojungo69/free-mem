@@ -48,9 +48,8 @@ const ALLOWED_ATTR = ["href", "title"];
 
 /* Shared DOMPurify options for both sanitize paths (kept in one place so they
  * can't drift). ALLOW_DATA_ATTR must be false: DOMPurify keeps data-* attributes
- * by default even with ALLOWED_ATTR set, and the feed runs lucide.createIcons()
- * after rendering, which would turn a peer-supplied `data-lucide="..."` into an
- * SVG — mutating sanitized content and bypassing this allowlist. */
+ * by default even with ALLOWED_ATTR set, but viewer components use data attributes
+ * for presentation and sanitized peer content must not enter that namespace. */
 const SANITIZE_OPTIONS = { ALLOWED_TAGS, ALLOWED_ATTR, ALLOW_DATA_ATTR: false };
 
 export function isSafeHref(value: string): boolean {

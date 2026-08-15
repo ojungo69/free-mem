@@ -1,4 +1,6 @@
-import { MemoryStore, resolveDbPath, resolveProject } from "@codemem/core";
+import { randomUUID } from "node:crypto";
+import { resolveProject } from "@codemem/core";
+import { createMcpRpcClient } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
@@ -7,7 +9,7 @@ import {
 	type DbOpts,
 	emitJsonError,
 	type JsonOpts,
-	resolveDbOpt,
+	resolveDataDirOpt,
 } from "../shared-options.js";
 
 const cmd = new Command("recent")
@@ -22,7 +24,7 @@ addDbOption(cmd);
 addJsonOption(cmd);
 
 cmd.action(
-	(
+	async (
 		opts: DbOpts &
 			JsonOpts & {
 				limit: string;
@@ -31,7 +33,6 @@ cmd.action(
 				kind?: string;
 			},
 	) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
 		try {
 			const limit = Math.max(1, Number.parseInt(opts.limit, 10) || 5);
 			const filters: { kind?: string; project?: string } = {};
@@ -41,7 +42,19 @@ cmd.action(
 				const project = defaultProject || resolveProject(process.cwd(), opts.project ?? null);
 				if (project) filters.project = project;
 			}
-			const items = store.recent(limit, filters);
+			const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).request(
+				"POST /v1/search",
+				{ requestId: randomUUID(), mode: "recent", filters, limit },
+			);
+			if (!outcome.ok) {
+				if (opts.json) emitJsonError(outcome.error.code, outcome.error.message);
+				else {
+					console.error(outcome.error.message);
+					process.exitCode = 1;
+				}
+				return;
+			}
+			const items = outcome.result.items as Array<{ id: number; kind: string; title: string }>;
 			if (opts.json) {
 				console.log(JSON.stringify(items));
 			} else {
@@ -58,8 +71,6 @@ cmd.action(
 				process.exitCode = 1;
 			}
 			return;
-		} finally {
-			store.close();
 		}
 	},
 );

@@ -6,8 +6,8 @@ import { buildRawEventEnvelopeFromHook } from "./claude-hooks.js";
 import { connect } from "./db.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
 import { flushRawEvents } from "./raw-event-flush.js";
-import { MemoryStore } from "./store.js";
-import { initTestSchema } from "./test-utils.js";
+import type { MemoryStore } from "./store.js";
+import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 
 describe("flushRawEvents max retry", () => {
 	let tmpDir: string;
@@ -21,7 +21,7 @@ describe("flushRawEvents max retry", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 	});
 
 	afterEach(() => {
@@ -317,8 +317,8 @@ describe("flushRawEvents max retry", () => {
 		expect(before.status).toBe("gave_up");
 
 		// retryRawEventFailures should not touch it
-		const { retryRawEventFailures } = await import("./maintenance.js");
-		const retried = retryRawEventFailures(store.dbPath);
+		const { retryRawEventFailuresWithDb } = await import("./maintenance.js");
+		const retried = retryRawEventFailuresWithDb(store.db);
 		expect(retried.retried).toBe(0);
 
 		// Still gave_up

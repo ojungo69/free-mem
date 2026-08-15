@@ -2,14 +2,14 @@
  * info, and project list. Kept separate from stats so the tiny
  * readiness ping does not pull in the stats payload helpers. */
 
-import { fetchJson } from "./internal";
+import { fetchJson, viewerFetch } from "./internal";
 import type { RuntimeInfo } from "./types";
 
 export async function pingViewerReady(timeoutMs = 1200): Promise<void> {
 	const controller = new AbortController();
 	const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 	try {
-		const resp = await fetch("/api/runtime", {
+		const resp = await viewerFetch("/api/runtime", {
 			cache: "no-store",
 			signal: controller.signal,
 		});

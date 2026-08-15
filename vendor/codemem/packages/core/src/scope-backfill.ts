@@ -7,10 +7,8 @@
  */
 
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import { connect, resolveDbPath } from "./db.js";
 import {
 	completeMaintenanceJob,
-	failMaintenanceJob,
 	getMaintenanceJob,
 	startMaintenanceJob,
 	updateMaintenanceJob,
@@ -57,13 +55,6 @@ export interface ScopeBackfillOptions {
 	memoryLimit?: number;
 	replicationOpLimit?: number;
 	now?: string;
-}
-
-export interface ScopeBackfillRunnerOptions {
-	batchSize?: number;
-	intervalMs?: number;
-	dbPath?: string;
-	signal?: AbortSignal;
 }
 
 type ScopeBackfillMetadata = {
@@ -667,90 +658,4 @@ export async function runScopeBackfillPass(
 		metadata,
 	});
 	return true;
-}
-
-export class ScopeBackfillRunner {
-	private readonly dbPath: string;
-	private readonly signal?: AbortSignal;
-	private readonly batchSize: number;
-	private readonly intervalMs: number;
-	private active = false;
-	private timer: ReturnType<typeof setTimeout> | null = null;
-	private currentRun: Promise<void> | null = null;
-
-	constructor(options: ScopeBackfillRunnerOptions = {}) {
-		this.dbPath = resolveDbPath(options.dbPath);
-		this.signal = options.signal;
-		this.batchSize = Math.max(1, options.batchSize ?? 250);
-		this.intervalMs = Math.max(1000, options.intervalMs ?? 5000);
-	}
-
-	start(): void {
-		if (this.active) return;
-		this.active = true;
-		this.schedule(100);
-	}
-
-	async stop(): Promise<void> {
-		this.active = false;
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
-		}
-		if (this.signal?.aborted) return;
-		if (this.currentRun) await this.currentRun;
-	}
-
-	private schedule(delayMs: number): void {
-		if (!this.active || this.signal?.aborted) return;
-		this.timer = setTimeout(() => {
-			this.timer = null;
-			this.currentRun = this.runOnce()
-				.catch((err) => {
-					console.error("Scope backfill runner tick failed:", err);
-				})
-				.finally(() => {
-					this.currentRun = null;
-					this.schedule(this.intervalMs);
-				});
-		}, delayMs);
-		if (typeof this.timer === "object" && "unref" in this.timer) this.timer.unref();
-	}
-
-	private async runOnce(): Promise<void> {
-		if (!this.active || this.signal?.aborted) return;
-		let db: SqliteDatabase | null = null;
-		try {
-			db = connect(this.dbPath) as SqliteDatabase;
-			const hasMoreWork = await runScopeBackfillPass(db, { batchSize: this.batchSize });
-			if (!hasMoreWork) {
-				this.active = false;
-			}
-		} catch (error) {
-			if (isTransientSqliteBusy(error)) {
-				console.warn("Scope backfill runner deferred because the database is busy", error);
-				return;
-			}
-			if (db) {
-				failMaintenanceJob(
-					db,
-					SCOPE_BACKFILL_JOB,
-					error instanceof Error ? error.message : String(error),
-				);
-			}
-			console.warn("Scope backfill runner failed", error);
-		} finally {
-			db?.close();
-		}
-	}
-}
-
-function isTransientSqliteBusy(error: unknown): boolean {
-	const code =
-		typeof error === "object" && error != null
-			? String((error as { code?: unknown }).code ?? "")
-			: "";
-	if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") return true;
-	const message = error instanceof Error ? error.message : String(error);
-	return /database is (?:locked|busy)/i.test(message);
 }

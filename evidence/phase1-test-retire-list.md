@@ -5,6 +5,11 @@ baseline: `evidence/phase1-test-baseline-pre.txt` (`9deb8e2`, SHA-256 `525348b0b
 post-A7: `f1e84cf` / `/tmp/free-mem-phase1-post-t028.json` (SHA-256 `b475b510a9ba231e2cc58f62ff26a41c5cfcb5b85758c81ffe5593c24d89926c`)
 post-T030: `/tmp/free-mem-phase1-post-t030-final.json` (SHA-256 `3b84e9d1f62a43ab6b00cef098ce475a24c7f9b6450489fe0bfacf0b4611e6b3`)
 post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164eb5e1ee84c23e087a33a811bad05949f3d5f3108ca1`)
+post-T043: `/tmp/free-mem-phase1-post-t043-serial-final.json` (SHA-256 `d2e58af19a2b84bf7fc005ec931fcb9dcacb27445b05a7e293d29d405512bdfa`)
+post-T044: `/tmp/free-mem-phase1-post-t044-serial-final3.json` (SHA-256 `f570ca29bb73d8987e3ad8e55af963bd1979bfd5d358f89de85f7ef313c91d17`)
+post-T046: `/tmp/free-mem-phase1-post-t046-serial-final3.json` (SHA-256 `297ebd3719add24b02bdd6882d172180926960e4f3d7cfcb45d881f3849e2388`)
+post-T047: `/tmp/free-mem-phase1-post-t047-serial.json` (SHA-256 `dce42b151bd40e1e49ed7fc67948e95f3904a75a5f68fac30f9fe17433158b2d`)
+post-T048: `/tmp/free-mem-phase1-post-t048-serial.json` (SHA-256 `e7367709111ae546c770b5dac1c4654c9a878341d4a699a7ae13450c3c089f4c`)
 比較単位: `<relative test file> > <ancestor titles> > <title>` の multiset（status は集合キーから除外）
 
 ## 集計
@@ -16,6 +21,23 @@ post-T031: `/tmp/free-mem-phase1-post-t031.json` (SHA-256 `4c6778965dcd6f176e164
 | retire | 2,051 |
 | 登録済み追加（A7 17 + T030 1 + T031 2） | 20 |
 | post-T031 | 2,006 |
+| T043 直前 | 1,942 |
+| T043 retire | 61 |
+| T043 登録済み追加 | 13 |
+| post-T043 | 1,894 |
+| T044 retire | 61 |
+| T044 登録済み追加 | 3 |
+| post-T044 | 1,836 |
+| T045 retire | 8 |
+| T045/T046 登録済み追加 | 5 |
+| post-T046 | 1,833 |
+| T047 stub retire | 1 |
+| T047 登録済み追加 | 3 |
+| post-T047 | 1,835 |
+| T048 direct-opener retire | 10 |
+| T048 daemon-handle replacement | 2 |
+| T048 登録済み追加 | 1 |
+| post-T048 | 1,828 |
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -36,6 +58,16 @@ post-T030 は total 2,048 / passed 2,038 / failed 7 / todo 3。上記 8 名の�
 
 post-T031 は total 2,006 / passed 1,996 / failed 7 / todo 3。post-T030 との差は sidecar 関連 retire 44 名 + 登録済み追加 2 名と完全一致し、failed 7 名も同一で新規 failure は 0。
 
+T043 は直前 1,942 件から旧 viewer 直結 test 61 件を retire し、manifest 登録済み 13 件を追加した。機械式は `1,942 - 61 + 13 = 1,894`。post-T043 の serial full suite は 396 suites / total 1,894 / passed 1,891 / todo 3 / failed 0。通常の並列 full run では、互いに異なる既存 test が 1 件ずつ resource/concurrency failure になったため、各対象を単独再実行して成功を確認したうえで serial full suite を正本にした。
+
+T044 は post-T043 1,894 件から旧 CLI local DB / prompt ledger / 後続 Phase 実装 test 61 件を retire し、manifest 登録済み 3 件だけを追加した。機械式は `1,894 - 61 + 3 = 1,836`。post-T044 の serial full suite は 390 suites / total 1,836 / passed 1,833 / todo 3 / failed 0。post-only 完全修飾名は `P1-T044-01..03` の3件と完全一致する。
+
+T045/T046 は post-T044 1,836 件から別 process maintenance worker 固有 test 8 件を retire し、manifest 登録済み 5 件を追加した。機械式は `1,836 - 8 + 5 = 1,833`。post-T046 の serial full suite は 390 suites / total 1,833 / passed 1,830 / todo 3 / failed 0。追加 test は `P1-T045-01..03` と `P1-T046-01..02` に一致する。
+
+T047 は `not_implemented` を固定していた T036 class B stub 1 件を retire し、manifest 登録済み 3 件を追加した。機械式は `1,833 - 1 + 3 = 1,835`。post-T047 の serial full suite は 392 suites / total 1,835 / passed 1,832 / todo 3 / failed 0。追加 test は `P1-T047-01..03` に一致する。
+
+T048 は daemon 外で DB を自己 open していた init/viewer/store constructor test 10 件を retire し、vacuum / vector migration の handle 注入版 2 件と manifest 登録済み境界 test 1 件を追加した。機械式は `1,835 - 10 + 2 + 1 = 1,828`。post-T048 の serial full suite は 393 suites / total 1,828 / passed 1,825 / todo 3 / failed 0。追加境界 test は `P1-T048-01-zero-external-db-handles` と一致する。
+
 ## retire 理由・failure signature・再現
 
 | ID | file scope | 件数 | retire 理由 | 期待 failure signature |
@@ -49,6 +81,11 @@ post-T031 は total 2,006 / passed 1,996 / failed 7 / todo 3。post-T030 との�
 | R-VIEWER | `packages/viewer-server/**` | 217 | sync/coordinator/sharing route・maintenance と対応 test を削除 | 削除 file/title は Vitest no-match、`/api/sync/status` と `/api/coordinator/admin/status` は HTTP 404 |
 | R-AUTH | `packages/core/src/observer-auth.test.ts`, `observer-client.test.ts` | 15 | T030 で OAuth consumer、OpenCode auth cache、command 認証を物理削除 | retire title は `No test found`、登録 token test が explicit→env→file のみを固定 |
 | R-SIDECAR | core/UI/viewer の observer runtime test | 44 | T031 で Claude/Codex subprocess、自動選択、command 設定、UI surface を物理削除 | retire title/file は `No test found`、登録 token tests が旧 runtime の API-only 化と設定非表示を固定 |
+| R-T043-VIEWER | viewer direct DB/mutation/transport test + core viewer HTTP hook test | 61 | T043 で viewer を認証済み read-only daemon RPC relay に限定し、direct DB・mutation・hook ingest・旧 pack transport を物理削除 | retire title/file は `No test found`。登録済み T043 13 件が bearer/nonce/session/origin/CSP/read-only/RPC/503 を固定 |
+| R-T044-CLI | CLI local DB/ledger/Phase 6-7 implementation test | 61 | T044 で production CLI を daemon RPC 化し、独立 prompt ledger と後続 Phase の local 実装を削除 | retire title/file は `No test found`。登録済み T044 3 件が endpoint map / typed stub / no DB fallback を固定 |
+| R-T045-JOBS | maintenance worker runtime / serve worker PID test | 8 | T045 で別 process worker を daemon 内 durable jobs へ吸収し、worker command・PID 管理を削除 | 削除 file/title は `No test found`。登録済み T045/T046 5 件が job result/no retry/worker 廃止/maintenance mode/spool を固定 |
+| R-T047-STUB | T036 class B not-implemented stub | 1 | T047 で export/import operation 本体を実装し、stub expectation を登録済み T047 3 件へ置換 | retire title は `No test found`。登録済み test が conflict/result retrieval/import backup precondition を固定 |
+| R-T048-OPENERS | daemon 外 direct init/store opener test | 10 | T048 で path 自己 open API と public DB opener を削除し、daemon handle 注入と exact test helper へ限定 | retire title は `No test found`。vacuum/vector handle 注入 test と登録済み T048 scan が動作・境界を固定 |
 
 再現コマンド（cwd = `vendor/codemem`）:
 
@@ -143,6 +180,11 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T043-06-browser-url-privacy` | T043 | history.replaceState / Referrer-Policy で token URL を除去しない |
 | `P1-T043-07-viewer-read-only` | T043 | viewer mutation route または direct DB handle が残る |
 | `P1-T043-08-viewer-daemon-unavailable` | T043 | daemon 不在 data API が typed 503 にならない |
+| `P1-T043-09-bearer-file` | T043 | 256-bit Bearer が `control/token` に0600で永続化されない |
+| `P1-T043-10-daemon-auth-rpc` | T043 | nonce/session の生成・検証・logout がdaemon外へ逸脱する |
+| `P1-T043-11-loopback-cookie-csp` | T043 | loopback cookie交換、httpOnly/SameSite、self-only script CSP が崩れる |
+| `P1-T043-12-daemon-view-collections` | T043 | viewer collection read がdaemon-owned storeを通らない |
+| `P1-T043-13-daemon-restart-session` | T043 | 実daemon再起動後も旧HTTP sessionが有効 |
 | `P1-T044-01-cli-rpc-map` | T044 | T029 endpoint/schema と CLI command の対応がずれる |
 | `P1-T044-02-cli-typed-stubs` | T044 | Phase 6/7 command が local 実装へ到達する |
 | `P1-T044-03-cli-no-db-fallback` | T044 | CLI process が daemon 不在時に DB を開く |
@@ -167,6 +209,277 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T052-02-backup-retention-permissions` | T052 | retention 7d/4w または owner-only permission が崩れる |
 | `P1-T052-03-restore-journal-order` | T052 | restore の durable state 順序・rollback が判断 #16 と異なる |
 | `P1-T052-04-backup-privacy-copy` | T052 | private/local-only を含み得る表示、off-device 非提供表示がない |
+| `P1-T055-01-spool-fault-boundaries` | T055 | tmp write / file・directory fsync / durable delete の障害後に spool が消失または二重適用される |
+| `P1-T056-01-redaction-worker-deadline` | T056 | catastrophic user regex が hook/daemon を停止させる、または timeout 時に本文を保存する |
+| `P1-T056-02-gitleaks-pin-source` | T056 | runtime scanner の Gitleaks version / config hash / mandatory subset が固定値から逸脱する |
+| `P1-T056-03-gitleaks-subset-conversion` | T056 | subset converter が未対応構文を受理する、または mandatory rule を redaction できない |
+| `P1-T056-04-gitleaks-ruleset-hash` | T056 | ruleset hash が pin・実ロード順・由来・entropy・capture group を反映しない |
+| `P1-T057-01-backup-restore-fault-matrix` | T057 | fresh-dir restore、derived index rebuild、journal durability、legacy split-brain のいずれかが一意に回復しない |
+
+## T058 final post-only exact additions（96）
+
+final inventory にだけ存在し、A7 exact 名または事前登録 token では識別されない test。multiset multiplicity を保持する。
+
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > applies the size gate but bypasses it for config files
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > delivers the hook event even when no file path can be searched
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > fails open when daemon search fails
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > honors the global kill switch before event delivery
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > keeps legacy DB flags while describing PreToolUse output
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > marks delivery failed when formatting cannot hand off selected rows
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > records a no-results attempt
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > rejects paths outside cwd before daemon search
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context > scores, deduplicates, and formats daemon search results
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest > keeps legacy flags while describing daemon delivery
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest > reports dropped delivery without a DB fallback
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest > reports rpc delivery without a DB fallback
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest > reports skipped delivery without a DB fallback
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest > reports spool delivery without a DB fallback
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject output contract > 'disabled injection continues without …'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject output contract > 'empty prompt continues without output'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject output contract > 'long pack is truncated deterministica…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject output contract > 'non-prompt events cannot inject promp…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject output contract > 'prompt emits exact UserPromptSubmit o…'
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject > enriches the query from session state and passes working-set paths
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject > fails open when the daemon read fails
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject > honors the global kill switch before RPC or event delivery
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject > keeps legacy DB flags without opening SQLite
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject > logs RPC pack metrics without pack content
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject > requests the daemon pack and returns exact additionalContext
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject > truncates the returned pack and keeps the hook schema stable
+- packages/cli/src/commands/claude-hook-session-state.test.ts > claude-hook-session-state > loadSessionState > drops legacy state written before pre-persistence redaction
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest > gives repeated timestamp-less payloads distinct delivery identities
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest > keeps legacy flags while describing daemon delivery
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest > reports daemon delivery without a DB fallback
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject > continues without RPC for an ineligible payload
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject > continues without RPC for an ineligible payload
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject > fails open when daemon retrieval fails
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject > keeps legacy DB flags without opening SQLite
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject > logs RPC metrics without pack content
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject > preserves the safety frame when the body is truncated
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject > requests a daemon pack and frames it as reference data
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > P1-T041-01b redacts hook content before the RPC write
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > P1-T041-01c applies repository policy before RPC and spool
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > P1-T041-01d shares the sanitized prompt with pack RPC and session state
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > P1-T041-01e enforces ignore and local-only path policy
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > P1-T041-04 preserves SessionStart timestamps through RPC and spool import
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > does not start a spool write after the fsync reserve is exhausted
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > keeps the claude default RPC cutoff inside its hard cap and spools
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > keeps the codex default RPC cutoff inside its hard cap and spools
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > redacts project and working-set filters before pack RPC
+- packages/cli/src/commands/hook-thin-client.test.ts > hook thin clients > uses the declared Agent-specific outer watchdogs
+- packages/cli/src/commands/mcp.test.ts > mcp command > routes the database option to the daemon-backed stdio server
+- packages/cli/src/commands/serve.test.ts > serve command option resolution > only resolves process inspection tools from fixed absolute paths
+- packages/cli/src/commands/setup-codex.test.ts > Codex hook runtime install > copies the standalone runtime and quotes its setup command
+- packages/cli/src/commands/setup-codex.test.ts > buildCodememCodexHookGroups — command base > uses a direct `codemem` call with the outer watchdog
+- packages/cli/src/commands/setup-codex.test.ts > buildCodememCodexHookGroups — command base > uses the same watchdog for the npx fallback
+- packages/cli/src/commands/setup-codex.test.ts > installCodex — fresh CODEX_HOME > records the installed MCP and hook files in the cutover manifest
+- packages/cli/src/commands/setup-codex.test.ts > installCodex — fresh CODEX_HOME > writes the MCP block and all hook events with correct schema
+- packages/cli/src/commands/setup-codex.test.ts > installCodex — idempotency > migrates the legacy prompt ingest plus inject pair without --force
+- packages/cli/src/commands/setup-codex.test.ts > installCodex — idempotency > replaces an installed standalone-runtime hook instead of duplicating it
+- packages/cli/src/hook-runtime.test.ts > bundled hook runtime > fails open without persisting invalid or oversized input
+- packages/cli/src/hook-runtime.test.ts > bundled hook runtime > rejects commands outside the hook-only allowlist
+- packages/core/src/claude-hooks.test.ts > mapClaudeHookPayload > SessionEnd → session_end > keeps timestamp-less retries stable
+- packages/core/src/claude-hooks.test.ts > mapClaudeHookPayload > Stop → assistant > bounds transcript fallback to the most recent 256 KiB
+- packages/core/src/codex-hooks.test.ts > mapCodexHookPayload > keeps distinct timestamped Stop events distinct without turn IDs
+- packages/core/src/codex-hooks.test.ts > mapCodexHookPayload > keeps timestamp-less SessionEnd retries stable after ingest normalization
+- packages/core/src/daemon-jobs.test.ts > daemon jobs > bounds configured regexes used by daemon maintenance jobs
+- packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > P1-T041-04-file-search stays repository-relative
+- packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > P1-T041-05 records and completes the file-context retrieval ledger in the daemon
+- packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > applies search filters to get_many reads
+- packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > rejects malformed memory adapter redaction metadata
+- packages/core/src/maintenance.test.ts > maintenance > vacuums a schema-ready database
+- packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-01-receipt-schema
+- packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-02-events-idempotent
+- packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-02b-event-id-required
+- packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-04-memories-record
+- packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-05b-view-hides-inaccessible-scopes
+- packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-07-delete-revision-is-part-of-idempotency
+- packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T038-07-daemon-persists-secret-events-without-secret-body
+- packages/core/src/online-backup.test.ts > Phase 1 online backup > P1-T050-01-db-backup-api
+- packages/core/src/online-backup.test.ts > Phase 1 online backup > P1-T050-04-rpc-create-verify
+- packages/core/src/online-backup.test.ts > Phase 1 online backup > P1-T050-05-payload-hash-and-replay
+- packages/core/src/online-backup.test.ts > Phase 1 online backup > P1-T050-06-fresh-bootstrap-skips-online-backup
+- packages/core/src/project.test.ts > project helpers > ignores a .git directory that is not a Git repository
+- packages/core/src/redaction-pipeline.test.ts > Phase 1 redaction > applies project tool-field policy without dropping the event schema
+- packages/core/src/redaction-pipeline.test.ts > Phase 1 redaction > uses the caller allowlist when project config omits a tool allowlist
+- packages/core/src/secret-scanner.test.ts > SecretScanner > non-plain objects and cycles in redactValue > redacts a shared object on every output path
+- packages/core/src/secret-scanner.test.ts > loadScannerOptionsFromConfig > keeps valid rules but marks malformed entries degraded
+- packages/core/src/secret-scanner.test.ts > loadScannerOptionsFromConfig > returns empty options for missing config and degrades malformed scanner blocks
+- packages/core/src/spool-importer.test.ts > phase 1 spool importer > P1-T040-04-spooled-redaction-metadata-matches-direct-replay
+- packages/core/src/spool.test.ts > phase 1 spool contract > does not rerun failed user rules on an already degraded event
+- packages/core/src/spool.test.ts > phase 1 spool contract > keeps a degraded spool rescan over healthy adapter metadata
+- packages/core/src/store.test.ts > MemoryStore > remember > persists metadata only when workspace scanner config is invalid
+- packages/core/src/vectors.test.ts > memory_vectors bootstrap on fresh databases > creates memory_vectors when explicitly migrating a fresh database
+- packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > persists degraded remember diagnostics across daemon restart
+- packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > redacts project policy matches before the daemon can persist them
+- packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > returns a typed error instead of opening a local database when the daemon is down
+- packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > routes backup create, list, and verify through the daemon
+- packages/mcp-server/src/server.test.ts > Phase 1 MCP stdio RPC surface > exports a side-effect-free factory from the package root
+- packages/mcp-server/src/server.test.ts > Phase 1 MCP stdio RPC surface > maps every read tool to its fixed daemon endpoint and mode
+
+## T043 retired fully qualified names（61）
+
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > applies sharing-domain visibility to memory list endpoints
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > keeps mixed-domain unauthorized scope rows out of viewer direct surfaces
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > applies mine/theirs scope filters to observations
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > moves an owned memory to a new project via /api/memories/project
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > rejects /api/memories/project with empty project
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > does not mutate memories outside visible sharing domains
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > forgets an owned memory via the viewer API
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > treats repeated forget requests as a no-op success
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > rejects forgetting a memory not owned by this device
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > treats metadata-only local provenance as owned for forget requests
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > validates forget requests
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > preserves query parameters on the /api/memories alias
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > routes observer summaries into summaries and excludes them from observations
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > keeps session observation counts aligned with active feed items
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > excludes hidden sharing domains from session memory counts
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > gates prompt and artifact aggregate counts by visible memory sessions
+- packages/viewer-server/src/index.test.ts > viewer-server > memory feed routes > tolerates malformed metadata when classifying summaries
+- packages/viewer-server/src/index.test.ts > viewer-server > GET /api/pack > uses async pack builder path
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > rejects requests from a different viewer identity target
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > rejects a viewer whose cached effective identity is stale
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > validates structured request fields
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > returns the same machine-readable pack as GET for equivalent inputs
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > passes project, working-set, and render options to the shared builder
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > records attempts and reports changed-artifact conflicts without blocking pack delivery
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > returns a stable structured error when pack construction fails
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack > delivers a built pack when ledger instrumentation fails
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/prompt-pack-ledger > preserves record, delivery, and cache-reuse idempotency
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/prompt-pack-ledger > returns structured validation and core failure outcomes
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack/trace > uses async pack trace builder path
+- packages/viewer-server/src/index.test.ts > viewer-server > POST /api/pack/trace > rejects invalid trace payloads
+- packages/viewer-server/src/index.test.ts > viewer-server > GET /api/observer-status > returns live observer status and suppresses stale failures after success
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > GET resolves the same workspace-scoped file as the core resolver POST uses
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > returns provider options from real opencode config prefixes
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > redacts sensitive config values from config responses
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > writes config and returns effects
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > returns tiered observer routing fields from config
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > writes tiered observer routing config
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > accepts built-in observer providers on a clean config
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > clears hot-reload env override when interval key is removed
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > returns warnings for env-overridden keys
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > validates payload types
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > rejects invalid tiered observer routing values
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > rejects protected config mutations from the viewer API
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > ignores unchanged protected keys and removes retired sync settings
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > rejects non-object config wrapper payloads
+- packages/viewer-server/src/index.test.ts > viewer-server > /api/config > parses integer fields strictly
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > allows POST without Origin header (CLI/programmatic callers)
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > rejects POST without Origin but with cross-site Sec-Fetch-Site
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > rejects POST with non-loopback Origin
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > allows POST with loopback Origin
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > allows GET without Origin header
+- packages/viewer-server/src/index.test.ts > viewer-server > CORS middleware > returns 400 for invalid JSON on visibility updates
+- packages/viewer-server/src/helpers.test.ts > queryInt > parses full integer strings
+- packages/viewer-server/src/helpers.test.ts > queryInt > rejects partial or non-integer strings
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > returns the stable healthy viewer contract through createApp
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > uses only a cheap schema-page database probe without stats aggregation or egress
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > reports store construction failure as degraded HTTP 200 without error details
+- packages/viewer-server/src/routes/health.test.ts > GET /api/health > reports database probe failure as degraded HTTP 200 without error details
+- packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > returns {inserted:0, skipped:1} for unsupported hook event
+- packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > returns 400 for invalid JSON
+- packages/core/src/claude-hooks.test.ts > POST /api/claude-hooks via viewer-server > allows POST without Origin header (CLI callers)
+
+## T044 retired fully qualified names（R-T044-CLI、61）
+
+```text
+packages/cli/src/commands/distill.test.ts > distill command > does not write when the model declines to draft a rule
+packages/cli/src/commands/distill.test.ts > distill command > drafts a rule for the top candidate and prints a diff without writing
+packages/cli/src/commands/distill.test.ts > distill command > emits JSON candidates and passes parsed options to core
+packages/cli/src/commands/distill.test.ts > distill command > emits JSON usage errors without throwing
+packages/cli/src/commands/distill.test.ts > distill command > falls back to unjudged output when no observer is configured
+packages/cli/src/commands/distill.test.ts > distill command > judges before drafting so the draft targets the top surviving candidate
+packages/cli/src/commands/distill.test.ts > distill command > judges candidates by default and drops routine-activity clusters from the report
+packages/cli/src/commands/distill.test.ts > distill command > keeps unjudged candidates when the model output is unparseable
+packages/cli/src/commands/distill.test.ts > distill command > overfetches when judging and backfills routine drops up to the limit
+packages/cli/src/commands/distill.test.ts > distill command > refuses to draft a project-scoped candidate from another repo
+packages/cli/src/commands/distill.test.ts > distill command > renders evidence only when explain is enabled
+packages/cli/src/commands/distill.test.ts > distill command > reports a structured error when drafting has no observer
+packages/cli/src/commands/distill.test.ts > distill command > skips judging entirely with --no-judge
+packages/cli/src/commands/embed.test.ts > embed command > prefers explicit --project over CODEMEM_PROJECT
+packages/cli/src/commands/embed.test.ts > embed command > supports all-projects override
+packages/cli/src/commands/memory-inject.test.ts > memory inject command > closes the store when inject pack generation fails
+packages/cli/src/commands/memory-inject.test.ts > memory inject command > prints an empty string when inject returns no pack text
+packages/cli/src/commands/memory.test.ts > benchmark observer overrides > preserves configured Responses transport unless the CLI flag enables it
+packages/cli/src/commands/memory.test.ts > benchmark reasoning summaries > preserves explicit null reasoning from tier-routed benchmark runs
+packages/cli/src/commands/memory.test.ts > memory command error boundaries > accepts a valid skip when the final failure is only summary count
+packages/cli/src/commands/memory.test.ts > memory command error boundaries > does not accept a repaired skip with non-summary final failures
+packages/cli/src/commands/memory.test.ts > memory command error boundaries > does not throw and emits a JSON error for an invalid extraction-replay batch id
+packages/cli/src/commands/memory.test.ts > memory command error boundaries > does not throw and emits a JSON error for an unknown extraction-benchmark id
+packages/cli/src/commands/memory.test.ts > memory command error boundaries > preserves a repaired benchmark pass when the initial disposition failed
+packages/cli/src/commands/memory.test.ts > memory command error boundaries > preserves observer_no_output before summary disposition scoring
+packages/cli/src/commands/memory.test.ts > memory command error boundaries > rejects unsafe extraction-benchmark repetition counts before running a model
+packages/cli/src/commands/memory.test.ts > memory command scope safety > does not forget memories outside visible sharing domains
+packages/cli/src/commands/memory.test.ts > memory command scope safety > stores vectors for manually remembered memories
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport > delegates UUID and timestamp validation without echoing rejected values
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport > handles failure recording, successful delivery retry, and cache reuse
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport > records an instrumented combined pack through the CLI boundary
+packages/cli/src/commands/pack-ledger.test.ts > prompt-pack ledger transport > surfaces a changed-artifact idempotency conflict after caller cache loss
+packages/cli/src/commands/pack.test.ts > pack command > accepts only bounded allowlisted internal ledger metadata
+packages/cli/src/commands/pack.test.ts > pack command > dispatches the nested pack trace commander path
+packages/cli/src/commands/pack.test.ts > pack command > emits a stable ledger conflict outcome with the built pack JSON
+packages/cli/src/commands/pack.test.ts > pack command > emits legacy pack JSON when internal ledger stdin is malformed
+packages/cli/src/commands/pack.test.ts > pack command > emits structured json errors for trace failures
+packages/cli/src/commands/pack.test.ts > pack command > emits structured usage errors for invalid main pack numeric input
+packages/cli/src/commands/pack.test.ts > pack command > emits structured usage errors for invalid numeric json input
+packages/cli/src/commands/pack.test.ts > pack command > keeps storage-unavailable ledger failures fail-open
+packages/cli/src/commands/pack.test.ts > pack command > omits project filters for all-projects pack requests
+packages/cli/src/commands/pack.test.ts > pack command > passes explicit compression mode through main pack command
+packages/cli/src/commands/pack.test.ts > pack command > rejects invalid compression mode
+packages/cli/src/commands/pack.test.ts > pack command > supports the commander command path with json output
+packages/cli/src/commands/pack.test.ts > pack command > waits for internal ledger persistence before emitting instrumented pack output
+packages/cli/src/commands/stats.test.ts > stats command > auto-initializes a fresh database before reporting stats
+packages/cli/src/commands/stats.test.ts > stats command > emits bounded machine-readable and concise attribution diagnostics without sensitive content
+packages/cli/src/commands/stats.test.ts > stats command > reports memory counts through the local scope visibility gate
+packages/cli/src/commands/status.test.ts > status command > does not treat observer tuning alone as configured
+packages/cli/src/commands/status.test.ts > status command > emits the exact required healthy JSON shape with one stdout object
+packages/cli/src/commands/status.test.ts > status command > keeps an unready viewer running and reports its readiness warning
+packages/cli/src/commands/status.test.ts > status command > projects an unconfigured observer and subsystem failures
+packages/cli/src/commands/status.test.ts > status command > reads observer presence from environment evidence
+packages/cli/src/commands/status.test.ts > status command > registers shared options and no positional arguments
+packages/cli/src/commands/status.test.ts > status command > rejects unknown options as usage errors
+packages/cli/src/commands/status.test.ts > status command > renders compact human output and detailed command suggestions
+packages/cli/src/commands/status.test.ts > status command > reports a missing database without creating it
+packages/cli/src/commands/status.test.ts > status command > reports retryable observer failures as backoff warnings
+packages/cli/src/commands/status.test.ts > status command > sets ok false for error attention while still exiting zero
+packages/cli/src/commands/status.test.ts > status command > suppresses newer-schema compatibility warnings in JSON mode
+packages/cli/src/commands/status.test.ts > status command > uses configured loopback viewer defaults when no PID record exists
+```
+
+## T045 retired fully qualified names（R-T045-JOBS、8）
+
+```text
+packages/cli/src/maintenance-worker-runtime.test.ts > maintenance worker runtime > stops a failed active backfill even when its pending predicate remains true
+packages/cli/src/maintenance-worker-runtime.test.ts > maintenance worker runtime > constructs vector migration with the smaller worker-specific batch size
+packages/cli/src/commands/serve.test.ts > serve command option resolution > builds maintenance worker args from the current runner
+packages/cli/src/commands/serve.test.ts > serve command option resolution > matches likely codemem maintenance worker command lines
+packages/cli/src/commands/serve.test.ts > serve command option resolution > requires exact maintenance worker db-path command ownership
+packages/cli/src/commands/serve.test.ts > serve command option resolution > cleans stale maintenance worker pidfiles
+packages/cli/src/commands/serve.test.ts > serve command option resolution > does not stop a maintenance worker pidfile for another database
+packages/cli/src/commands/serve.test.ts > serve command option resolution > refuses running legacy maintenance worker pidfiles without database ownership
+```
+
+## T047 retired fully qualified names（R-T047-STUB、1）
+
+```text
+packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-06-class-b-stub
+```
+
+## T048 retired fully qualified names（R-T048-OPENERS、10）
+
+```text
+packages/cli/src/commands/serve.test.ts > serve command option resolution > prepares a fresh viewer database before startup
+packages/core/src/maintenance-jobs.test.ts > maintenance jobs > initDatabase ensures maintenance_jobs exists on existing schema-ready dbs
+packages/core/src/maintenance.test.ts > maintenance > initializes and vacuums a schema-ready database
+packages/core/src/maintenance.test.ts > maintenance > initializes a fresh database schema
+packages/core/src/maintenance.test.ts > maintenance > does not initialize unrelated non-empty SQLite databases
+packages/core/src/maintenance.test.ts > maintenance > runs raw-event relink remediation during initDatabase
+packages/core/src/store.test.ts > MemoryStore constructor auto-bootstrap > bootstraps schema when constructed against a path with no existing file
+packages/core/src/store.test.ts > MemoryStore constructor auto-bootstrap > bootstraps schema when constructed against an empty existing file
+packages/core/src/store.test.ts > MemoryStore constructor auto-bootstrap > does not re-bootstrap an already-initialized database
+packages/core/src/vectors.test.ts > memory_vectors bootstrap on fresh databases > creates memory_vectors via auto-bootstrap when constructing MemoryStore against a fresh path
+```
 
 ## Retired fully qualified names（machine-generated）
 
@@ -2249,3 +2562,196 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 - packages/viewer-server/src/share-operation-maintenance.test.ts > reconcileConfiguredCoordinatorEnrollment > reports a sanitized local snapshot reconciliation failure
 - packages/viewer-server/src/share-operation-maintenance.test.ts > reconcileConfiguredCoordinatorEnrollment > reports sanitized failures for each coordinator fetch stage
 - packages/viewer-server/src/share-operation-maintenance.test.ts > reconcileConfiguredCoordinatorEnrollment > skips recipient devices without coordinator admin configuration
+
+## T058 additional baseline retired fully qualified names（188）
+
+事前 baseline に存在し final inventory から除去済みだが、従来の retire 節に未記録だった test。baseline 順・multiset multiplicity を保持する。
+
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > annotates the timeline header when the file was modified after the newest observation
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > bypasses the size gate for small config files (json/toml/yaml)
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > delivers file context without recording when retrieval evidence capture is disabled
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > does not annotate when the file mtime is within the fresh tolerance window
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > does not classify in-repo basenames starting with .. as outside cwd
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > emits a PreToolUse additionalContext when observations exist and file is older
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > keeps disabled file-context fail-open when the database cannot be resolved
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > keeps disabled file-context fail-open when the ledger write fails
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > keeps successful delivery fail-open when the ledger recorder throws
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > keeps successful hook output and handed-off delivery when store cleanup throws
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > logs file_context.skip when the file is below the size gate and not a small-config bypass
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > logs file_context.skip when the file resolves outside cwd
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > logs file_context.skip when the query returns no observations
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > records disabled file-context as one skipped attempt without changing hook output
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > records file-context query failures with a stable code
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > records selected observations as handed off and correlates a known Claude session
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > records selection before formatting and confirms delivery afterward
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > records the 'below-size-gate' lifecycle without absolute paths
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > records the 'no-observations' lifecycle without absolute paths
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > records the 'outside-cwd' lifecycle without absolute paths
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > registers expected options and help text
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > returns continue when CODEMEM_FILE_CONTEXT disables injection
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > returns continue when CODEMEM_PLUGIN_IGNORE is truthy
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > returns continue when file is below the size gate
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > returns continue when file is missing from disk
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > returns continue when payload has no file_path
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > score-then-dedupe surfaces the highest-scoring observation per session
+- packages/cli/src/commands/claude-hook-file-context.test.ts > claude-hook-file-context command > uses the production store retrieval path when no query dependency is injected
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > hasSpooledEntries > ignores in-flight tmp files and quarantined .bad-* files
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > hasSpooledEntries > returns false when the spool dir does not exist
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > hasSpooledEntries > returns false when the spool dir is empty
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > hasSpooledEntries > returns true when an active hook entry exists
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > lockTtlSeconds + spoolDir reflect env overrides > returns custom TTL when env is set
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > lockTtlSeconds + spoolDir reflect env overrides > returns the env-overridden spool dir
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > recoverStaleTmpSpool > leaves fresh .hook-tmp-*.json files alone
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > recoverStaleTmpSpool > renames stale .hook-tmp-*.json files to hook-recovered-*.json
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > shouldForceBoundaryFlush > does not flush Stop unless both flush envs opt in
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > shouldForceBoundaryFlush > flushes SessionEnd by default
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > shouldForceBoundaryFlush > respects CODEMEM_CLAUDE_HOOK_FLUSH=0 to disable SessionEnd flushing
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > shouldForceBoundaryFlush > returns false for unrelated events
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spool failure logging > appends a spooled payload note to the plugin log
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spool failure logging > logs reading failure when payload file disappears between listdir and read
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spool stat survives missing dir > drainSpool returns zero counts when the dir cannot be created
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spoolPayload + drainSpool roundtrip > ignores tmp files (.hook-tmp-*.json) during drain
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spoolPayload + drainSpool roundtrip > leaves the spool entry on disk when the handler returns false
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spoolPayload + drainSpool roundtrip > processes queued payloads in lexicographic (oldest-first) filename order
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spoolPayload + drainSpool roundtrip > quarantines malformed JSON files so they don't loop forever
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spoolPayload + drainSpool roundtrip > quarantines parseable but non-object payloads
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > spoolPayload + drainSpool roundtrip > writes a payload that drainSpool can replay through a handler
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > statSync sanity (no test pollution) > baseDir is the only thing the test owns
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > withClaudeHookIngestLock > acquires the lock, runs fn, and removes the lock dir on success
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > withClaudeHookIngestLock > removes the lock dir even when fn throws
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > withClaudeHookIngestLock > throws LockBusyError when the lock cannot be acquired
+- packages/cli/src/commands/claude-hook-ingest-spool.test.ts > claude-hook-ingest-spool > withClaudeHookIngestLock > treats a lock held by a non-existent PID as stale and recovers it
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > direct enqueue bootstraps fresh databases on demand
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > direct enqueue inserts once and then deduplicates event_id
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > direct enqueue skips unsupported hook payloads gracefully
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > durability layer > Stop flush truth table: only fires when BOTH flush envs are truthy
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > durability layer > drains spooled backlog on the HTTP-success path so a recovered viewer doesn't strand entries
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > durability layer > drains spooled payloads through the handler before processing the new payload
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > durability layer > force-flushes SessionEnd via direct ingest + boundary flush even when HTTP succeeded
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > durability layer > skips backlog drain on HTTP success when spool is empty (no extra HTTP calls)
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > durability layer > spools the payload when both HTTP and direct ingest fail
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > durability layer > treats HTTP `skipped > 0` (deterministic null envelope) as a successful no-op
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > falls back to direct ingest when HTTP path fails
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > registers expected options and help text
+- packages/cli/src/commands/claude-hook-ingest.test.ts > claude-hook-ingest command > returns HTTP result when viewer ingest succeeds
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'Injection disabled via CODEMEM_INJECT…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'Local pack throws → HTTP fallback wins'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'PostToolUse payload (no prompt) → con…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'SessionEnd payload → continue without…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'SessionStart payload (no prompt) → co…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'Truncation: pack longer than CODEMEM_…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'UserPromptSubmit invariance: payload …'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'UserPromptSubmit with empty string pr…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'UserPromptSubmit with no hook_event_n…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'UserPromptSubmit with no prompt key →…'
+- packages/cli/src/commands/claude-hook-inject.contract.test.ts > claude-hook-inject contract fixtures > 'UserPromptSubmit with non-empty promp…'
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > always emits UserPromptSubmit hookEventName even when payload carries a different hook_event_name
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > appends [pack truncated] marker when additionalContext exceeds CODEMEM_INJECT_MAX_CHARS
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > emits UserPromptSubmit hookEventName when payload omits hook_event_name
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > enriches the retrieval query with prior session state and propagates working_set_paths
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > falls back to HTTP pack generation when local generation fails
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > logs inject.pack.ok with empty=true when no pack is produced
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > logs inject.pack.ok with metrics on local pack success
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > logs origin=http when local pack fails and http fallback succeeds
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > normalizes multi-line prompts before composing the rich query
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > registers expected options and help text
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > returns continue with local additionalContext when local pack succeeds
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > returns continue without additionalContext when CODEMEM_INJECT_CONTEXT disables injection
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > returns continue without additionalContext when all generation paths fail
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > returns continue without additionalContext when no prompt is present
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > returns continue without injection when CODEMEM_PLUGIN_IGNORE is truthy
+- packages/cli/src/commands/claude-hook-inject.test.ts > claude-hook-inject command > truncates additionalContext to CODEMEM_INJECT_MAX_CHARS
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > direct enqueue bootstraps fresh databases on demand
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > direct enqueue inserts once and deduplicates event_id
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > direct enqueue skips unsupported hook payloads gracefully
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > direct enqueue starts a new stream sequence at zero to match the store path
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > does not collide repeated timestamp-less payloads
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > drains queued spool entries after HTTP recovers
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > drains queued spool entries via direct fallback when the viewer stays down
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > falls back to direct ingest when HTTP path fails
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > registers expected options and help text
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > returns HTTP result when viewer ingest succeeds
+- packages/cli/src/commands/codex-hook-ingest.test.ts > codex-hook-ingest command > spools payloads when HTTP and direct ingest fail
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > continues when all pack generation paths fail
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > falls back to HTTP when local pack fails
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > frames injected memories as reference data rather than instructions
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > logs Codex injection metrics
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > preserves the safety frame when CODEMEM_INJECT_MAX_CHARS is tiny
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > preserves the safety frame when truncating the memory body
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > registers expected options and help text
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > respects CODEMEM_INJECT_CONTEXT=0
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > returns Codex additionalContext when local pack succeeds
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > returns continue for non-UserPromptSubmit payloads
+- packages/cli/src/commands/codex-hook-inject.test.ts > codex-hook-inject command > returns continue without additionalContext for empty prompts
+- packages/cli/src/commands/setup-codex.test.ts > buildCodememCodexHookGroups — command base > uses `npx -y codemem` with generous timeouts as the fallback
+- packages/cli/src/commands/setup-codex.test.ts > buildCodememCodexHookGroups — command base > uses a direct `codemem` call with short timeouts when on PATH
+- packages/cli/src/commands/setup-codex.test.ts > installCodex — fresh CODEX_HOME > writes the MCP block and all four hook events with correct schema
+- packages/core/src/secret-scanner.test.ts > loadScannerOptionsFromConfig > drops malformed rule entries silently
+- packages/core/src/secret-scanner.test.ts > loadScannerOptionsFromConfig > returns empty options for missing or malformed config
+- packages/mcp-server/src/distill.test.ts > memory_distill_candidates MCP tool > falls back to unjudged output when the observer is unavailable
+- packages/mcp-server/src/distill.test.ts > memory_distill_candidates MCP tool > judges candidates and drops routine-activity clusters when judge is set
+- packages/mcp-server/src/distill.test.ts > memory_distill_candidates MCP tool > mines candidates within the server default project
+- packages/mcp-server/src/distill.test.ts > memory_distill_candidates MCP tool > rejects project filters when all-project mining is requested
+- packages/mcp-server/src/distill.test.ts > memory_distill_candidates MCP tool > supports all-project mining for user-scoped candidates
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > hides unauthorized scoped IDs and intersects explicit scope filters
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > keeps blank project filters default-scoped for expansion-style direct reads
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > keeps mixed-domain unauthorized scope rows out of MCP direct reads
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > leaves the session project null when no explicit/env project is supplied
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > normalizes blank project inputs to null on memory_remember
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > refuses to forget unauthorized or explicitly filtered-out memories
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > covers direct, observations, index, explain, recent, pack, timeline, and expand surfaces
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > does not capture when MCP retrieval ledger capture is disabled
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > does not let an explicit failed status override delivered memories
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > does not let completed active siblings consume or erase a pending failure
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > includes canonical call content when a transport session reuses a request ID
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > keeps MCP delivery fail-open when ledger tables are unavailable
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > keeps concurrent identical successful invocations distinct
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > keeps duplicate processing of one runtime invocation idempotent
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > keeps filter resolution failures inside the MCP fail-open boundary
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > keeps partial memory_explain errors nonfatal when a memory is delivered
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > keeps successful MCP results fail-open when identity bookkeeping throws
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > memory_expand still applies the default project when project is omitted
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > memory_expand with explicit blank project returns cross-project anchors (B2 regression)
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > memory_forget removes an ID outside the server default project (B1 regression)
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > memory_get returns an ID outside the server default project (B1 regression)
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > memory_get still honors an explicit project filter on direct-ID lookups
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > memory_get_observations returns IDs outside the server default project (B1 regression)
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > preserves ordinary error content as a failed retrieval
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > reconciles a concurrent failure after its successful sibling completes
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > reconciles a failed MCP request retry into one persisted no-results completion
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > reconciles a failed MCP request retry into the persisted handed-off success
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > reconciles an exact failed retry when no results are encoded as not_found
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > reconciles two concurrent failures one-for-one with sequential successes
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records a valid empty memory_explain result as no-results
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records an explicit empty failed status independently from response rendering
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records explicit MCP surfaces, effective filters, returned IDs, and delivery
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records invalid-only memory_explain ids as failed
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records missing memory_explain input as failed without changing its structured payload
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records repeated completed calls with identical IDs and arguments as new attempts
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records repeated completed no-results calls as new attempts
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records retrieval failures without changing the MCP error response
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > registered MCP tool scope behavior (regression for #1119 reviewer P1s) > records successful empty search, recent, and timeline calls as undelivered no-results
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > rolls back remembered MCP memories that resolve to unauthorized scopes
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > stamps remembered MCP memories with the resolved project scope
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > surfaces unauthorized_scope as a stable error contract through memory_remember
+- packages/mcp-server/src/memory-access.test.ts > MCP memory access scope guards > uses the env project for memory_remember when no explicit project is supplied
+- packages/mcp-server/src/server.test.ts > createCodememMcpServer > exports a side-effect-free factory from the package root
+- packages/mcp-server/src/server.test.ts > createCodememMcpServer > registers the full MCP memory tool surface
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer ensure > does not spawn when the viewer is healthy
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer ensure > respects the CODEMEM_VIEWER opt-out
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer ensure > respects the CODEMEM_VIEWER_AUTO opt-out
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer ensure > spawns detached with preserved arguments and polls five times
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer ensure > stops polling as soon as the spawned viewer becomes healthy
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer ensure > swallows spawn failures
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > accepts a live degraded viewer
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > accepts a live healthy viewer
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > falls back to stats exactly once when health is absent
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects a stats fallback with invalid viewer_pid
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects a stats fallback with malformed JSON
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects a stats fallback with missing viewer_pid
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects a stats fallback with server error
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects malformed JSON without compatibility fallback
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects network failure without compatibility fallback
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects server error without compatibility fallback
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects timeout without compatibility fallback
+- packages/mcp-server/src/stdio-viewer.test.ts > MCP viewer probe > rejects wrong service without compatibility fallback

@@ -14,7 +14,7 @@ import {
 } from "./attribution-assessment.js";
 import { getAttributionDiagnostics } from "./attribution-diagnostics.js";
 import { ensureAdditiveSchemaCompatibility } from "./db.js";
-import { exportMemories } from "./export-import.js";
+import { exportMemoriesWithDb } from "./export-import.js";
 import {
 	deterministicCheckEvidence,
 	explicitFeedbackEvidence,
@@ -5041,7 +5041,13 @@ describe("attribution assessment data boundary", () => {
 		}
 
 		try {
-			const payload = exportMemories({ dbPath, allProjects: true, includeInactive: true });
+			const exportDb = new Database(dbPath, { readonly: true });
+			const payload = exportMemoriesWithDb(exportDb, {
+				dbPath,
+				allProjects: true,
+				includeInactive: true,
+			});
+			exportDb.close();
 			expect(payload).not.toHaveProperty("attribution_assessments");
 			expect(payload).not.toHaveProperty("attribution_assessment_evidence");
 			expect(JSON.stringify(payload)).not.toContain(id(220));

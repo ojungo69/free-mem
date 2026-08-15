@@ -16,7 +16,6 @@ import type {
 	RawEventRelinkReport,
 	RawEventRelinkReportOptions,
 } from "./types.js";
-import { withDb } from "./with-db.js";
 
 function hasOutOfGroupBridgeRows(
 	db: Database,
@@ -38,7 +37,7 @@ function hasOutOfGroupBridgeRows(
 	return row != null;
 }
 
-function getRawEventRelinkReportFromDb(
+export function getRawEventRelinkReportFromDb(
 	db: Database,
 	opts: RawEventRelinkReportOptions = {},
 ): RawEventRelinkReport {
@@ -325,18 +324,11 @@ export function applyRawEventRelinkPlanWithDb(
 	};
 }
 
-export function getRawEventRelinkReport(
-	dbPath?: string,
-	opts: RawEventRelinkReportOptions = {},
-): RawEventRelinkReport {
-	return withDb(dbPath, (db) => getRawEventRelinkReportFromDb(db, opts));
-}
-
-export function getRawEventRelinkPlan(
-	dbPath?: string,
+export function getRawEventRelinkPlanWithDb(
+	db: Database,
 	opts: RawEventRelinkPlanOptions = {},
 ): RawEventRelinkPlan {
-	const report = getRawEventRelinkReport(dbPath, opts);
+	const report = getRawEventRelinkReportFromDb(db, opts);
 	const actions: RawEventRelinkAction[] = [];
 	let bridgeCreations = 0;
 	let memoryRepoints = 0;
@@ -400,11 +392,4 @@ export function getRawEventRelinkPlan(
 		actions,
 		skipped_groups: skippedGroups,
 	};
-}
-
-export function applyRawEventRelinkPlan(
-	dbPath?: string,
-	opts: RawEventRelinkApplyOptions = {},
-): RawEventRelinkApplyResult {
-	return withDb(dbPath, (db) => applyRawEventRelinkPlanWithDb(db, opts));
 }

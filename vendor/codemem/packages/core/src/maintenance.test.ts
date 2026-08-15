@@ -5,29 +5,108 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import {
 	aiBackfillStructuredContent,
-	applyRawEventRelinkPlan,
 	applyRawEventRelinkPlanWithDb,
 	backfillMemoryDedupKeys,
 	backfillNarrativeFromBody,
 	backfillTagsText,
-	compareMemoryRoleReports,
+	compareMemoryRoleReports as compareMemoryRoleReportValues,
 	deactivateLowSignalMemories,
 	deactivateLowSignalObservations,
 	dedupNearDuplicateMemories,
 	extractNarrativeFromBody,
-	getMemoryArtifactReport,
-	getMemoryRoleReport,
-	getRawEventRelinkPlan,
-	getRawEventRelinkReport,
-	getRawEventStatus,
-	getReliabilityMetrics,
-	initDatabase,
-	retryRawEventFailures,
+	getMemoryArtifactReportWithDb,
+	getMemoryRoleReportWithStore,
+	getRawEventRelinkPlanWithDb,
+	getRawEventRelinkReportFromDb,
+	getRawEventStatusWithDb,
+	getReliabilityMetricsWithDb,
+	retryRawEventFailuresWithDb,
 	scanSecretsRetroactive,
-	vacuumDatabase,
+	vacuumDatabaseWithDb,
 } from "./maintenance.js";
 import { getMaintenanceJob } from "./maintenance-jobs.js";
-import { initTestSchema } from "./test-utils.js";
+import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
+
+function withTestDb<T>(dbPath: string, run: (db: Database.Database) => T): T {
+	const db = new Database(dbPath);
+	try {
+		return run(db);
+	} finally {
+		db.close();
+	}
+}
+
+function getRawEventStatus(dbPath: string, limit = 25) {
+	return withTestDb(dbPath, (db) => getRawEventStatusWithDb(db, limit));
+}
+
+function retryRawEventFailures(dbPath: string, limit = 25) {
+	return withTestDb(dbPath, (db) => retryRawEventFailuresWithDb(db, limit));
+}
+
+function getReliabilityMetrics(dbPath: string, windowHours?: number | null) {
+	return withTestDb(dbPath, (db) => getReliabilityMetricsWithDb(db, windowHours));
+}
+
+function getMemoryArtifactReport(
+	dbPath: string,
+	opts: Parameters<typeof getMemoryArtifactReportWithDb>[1] = {},
+) {
+	const db = new Database(dbPath, { readonly: true });
+	try {
+		return getMemoryArtifactReportWithDb(db, opts);
+	} finally {
+		db.close();
+	}
+}
+
+function getMemoryRoleReport(
+	dbPath: string,
+	opts: Parameters<typeof getMemoryRoleReportWithStore>[1] = {},
+) {
+	const store = openTestMemoryStore(dbPath);
+	try {
+		return getMemoryRoleReportWithStore(store, opts);
+	} finally {
+		store.close();
+	}
+}
+
+function compareMemoryRoleReports(
+	baselineDbPath: string,
+	candidateDbPath: string,
+	opts: Parameters<typeof getMemoryRoleReportWithStore>[1] = {},
+) {
+	return compareMemoryRoleReportValues(
+		getMemoryRoleReport(baselineDbPath, opts),
+		getMemoryRoleReport(candidateDbPath, opts),
+	);
+}
+
+function getRawEventRelinkReport(
+	dbPath: string,
+	opts: Parameters<typeof getRawEventRelinkReportFromDb>[1] = {},
+) {
+	return withTestDb(dbPath, (db) => getRawEventRelinkReportFromDb(db, opts));
+}
+
+function getRawEventRelinkPlan(
+	dbPath: string,
+	opts: Parameters<typeof getRawEventRelinkPlanWithDb>[1] = {},
+) {
+	return withTestDb(dbPath, (db) => getRawEventRelinkPlanWithDb(db, opts));
+}
+
+function applyRawEventRelinkPlan(
+	dbPath: string,
+	opts: Parameters<typeof applyRawEventRelinkPlanWithDb>[1] = {},
+) {
+	return withTestDb(dbPath, (db) => applyRawEventRelinkPlanWithDb(db, opts));
+}
+
+function vacuumDatabase(dbPath: string) {
+	return withTestDb(dbPath, (db) => vacuumDatabaseWithDb(db, dbPath));
+}
 
 function createDbPath(name: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "codemem-maintenance-"));
@@ -127,52 +206,13 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		}
 	});
 
-	it("initializes and vacuums a schema-ready database", () => {
+	it("vacuums a schema-ready database", () => {
 		const dbPath = createDbPath("init-vacuum");
 		seedMaintenanceDb(dbPath);
-
-		const init = initDatabase(dbPath);
-		expect(init.path).toBe(dbPath);
-		expect(init.sizeBytes).toBeGreaterThan(0);
 
 		const vacuum = vacuumDatabase(dbPath);
 		expect(vacuum.path).toBe(dbPath);
 		expect(vacuum.sizeBytes).toBeGreaterThan(0);
-	});
-
-	it("initializes a fresh database schema", () => {
-		const dbPath = createDbPath("fresh-init");
-
-		const init = initDatabase(dbPath);
-		expect(init.path).toBe(dbPath);
-		expect(init.sizeBytes).toBeGreaterThan(0);
-
-		const db = new Database(dbPath, { readonly: true });
-		try {
-			expect(() => db.prepare("SELECT 1 FROM memory_items LIMIT 1").get()).not.toThrow();
-			expect(() => db.prepare("SELECT 1 FROM sessions LIMIT 1").get()).not.toThrow();
-			expect(db.pragma("user_version", { simple: true })).toBeGreaterThan(0);
-		} finally {
-			db.close();
-		}
-	});
-
-	it("does not initialize unrelated non-empty SQLite databases", () => {
-		const dbPath = createDbPath("unrelated-init");
-		const unrelated = new Database(dbPath);
-		unrelated.exec("CREATE TABLE unrelated_data (id INTEGER PRIMARY KEY)");
-		unrelated.close();
-
-		expect(() => initDatabase(dbPath)).toThrow(/Refusing to initialize .*non-codemem schema/);
-
-		const db = new Database(dbPath, { readonly: true });
-		try {
-			expect(() => db.prepare("SELECT 1 FROM memory_items LIMIT 1").get()).toThrow();
-			expect(() => db.prepare("SELECT 1 FROM unrelated_data LIMIT 1").get()).not.toThrow();
-			expect(db.pragma("user_version", { simple: true })).toBe(0);
-		} finally {
-			db.close();
-		}
 	});
 
 	it("reports max retry depth from raw_event_flush_batches.attempt_count", () => {
@@ -1260,49 +1300,6 @@ describe("maintenance", { timeout: 15_000 }, () => {
 			verify.close();
 		}
 	}, 15_000);
-
-	it("runs raw-event relink remediation during initDatabase", () => {
-		const dbPath = createDbPath("init-relink-apply");
-		const db = new Database(dbPath);
-		try {
-			initTestSchema(db);
-			db.exec(`
-				INSERT INTO sessions(id, started_at, ended_at, cwd, project, user, tool_version, metadata_json) VALUES
-				  (1, '2026-03-01T10:00:00Z', '2026-03-01T10:10:00Z', '/tmp/repo', 'codemem', 'adam', 'test', '{"session_context":{"source":"opencode","flusher":"raw_events","streamId":"ses-2"}}'),
-				  (2, '2026-03-01T10:12:00Z', '2026-03-01T10:13:00Z', '/tmp/repo', 'codemem', 'adam', 'test', '{"session_context":{"source":"opencode","flusher":"raw_events","streamId":"ses-2"}}');
-				INSERT INTO memory_items(
-					id, session_id, kind, title, body_text, active, created_at, updated_at, metadata_json, import_key
-				) VALUES
-				  (1, 2, 'decision', 'Decision 2', 'body', 1, '2026-03-01T10:13:00Z', '2026-03-01T10:13:00Z', '{}', 'k2');
-			`);
-		} finally {
-			db.close();
-		}
-
-		initDatabase(dbPath);
-
-		const verify = new Database(dbPath, { readonly: true });
-		try {
-			const sessions = verify.prepare("SELECT id FROM sessions ORDER BY id").all() as Array<{
-				id: number;
-			}>;
-			expect(sessions).toEqual([{ id: 1 }]);
-
-			const bridge = verify
-				.prepare(
-					"SELECT source, stream_id, session_id FROM opencode_sessions WHERE stream_id = 'ses-2'",
-				)
-				.get() as { source: string; stream_id: string; session_id: number };
-			expect(bridge).toEqual({ source: "opencode", stream_id: "ses-2", session_id: 1 });
-
-			const memory = verify.prepare("SELECT session_id FROM memory_items WHERE id = 1").get() as {
-				session_id: number;
-			};
-			expect(memory.session_id).toBe(1);
-		} finally {
-			verify.close();
-		}
-	});
 
 	it("is idempotent when raw-event relink remediation is applied twice", () => {
 		const dbPath = createDbPath("raw-event-relink-apply-idempotent");

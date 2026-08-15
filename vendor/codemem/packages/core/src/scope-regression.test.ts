@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { connect, type Database } from "./db.js";
 import * as embeddings from "./embeddings.js";
-import { exportMemories } from "./export-import.js";
+import { exportMemoriesWithDb } from "./export-import.js";
 import { buildMemoryPack } from "./pack.js";
-import { MemoryStore } from "./store.js";
+import type { MemoryStore } from "./store.js";
 import type { MixedScopeFixture } from "./test-utils.js";
-import { initTestSchema, seedMixedScopeFixture } from "./test-utils.js";
+import { initTestSchema, openTestMemoryStore, seedMixedScopeFixture } from "./test-utils.js";
 import { semanticSearch } from "./vectors.js";
 
 vi.mock("./embeddings.js", async () => {
@@ -34,7 +34,7 @@ describe("mixed-domain scope regression", () => {
 		const db = connect(dbPath);
 		initTestSchema(db);
 		db.close();
-		store = new MemoryStore(dbPath);
+		store = openTestMemoryStore(dbPath);
 		fixture = seedMixedScopeFixture(store.db, store.deviceId);
 	});
 
@@ -97,7 +97,7 @@ describe("mixed-domain scope regression", () => {
 		expect(pack.pack_text).toContain(fixture.visibleTitles[1]);
 		expect(pack.pack_text).not.toContain(fixture.unauthorizedTitle);
 
-		const payload = exportMemories({ dbPath, allProjects: true });
+		const payload = exportMemoriesWithDb(store.db, { dbPath, allProjects: true });
 		const exportedTitles = payload.memory_items.map((memory) => String(memory.title));
 		expect(exportedTitles).toEqual(expect.arrayContaining(fixture.visibleTitles));
 		expect(exportedTitles).not.toContain(fixture.unauthorizedTitle);

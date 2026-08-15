@@ -183,10 +183,6 @@ function renderFeedTab(items: FeedItem[], options?: { loadingText?: string }) {
 		feedTab,
 		h(FeedTabView, { items, loadingText: options?.loadingText, ops: feedOps }),
 	);
-	const globalLucide = (globalThis as { lucide?: { createIcons: () => void } }).lucide;
-	if (globalLucide && !options?.loadingText) {
-		globalLucide.createIcons();
-	}
 	return true;
 }
 

@@ -1,7 +1,13 @@
-import { MemoryStore, resolveDbPath, stripPrivateObj } from "@codemem/core";
+import {
+	hashMutationPayload,
+	NORMALIZED_SCHEMA_VERSION,
+	stripPrivateObj,
+	validateNormalizedEvent,
+} from "@codemem/core";
+import { createMcpRpcClient } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
-import { addDbOption, type DbOpts, resolveDbOpt } from "../shared-options.js";
+import { addDbOption, type DbOpts, resolveDataDirOpt } from "../shared-options.js";
 
 const SESSION_ID_KEYS = [
 	"session_stream_id",
@@ -47,6 +53,15 @@ function emitStructuredError(errorCode: string, message: string): void {
 	process.exitCode = 1;
 }
 
+const EVENT_KINDS: Record<string, string> = {
+	session_start: "session_started",
+	prompt: "user_prompted",
+	assistant: "assistant_completed",
+	tool_call: "tool_started",
+	tool_result: "tool_completed",
+	session_end: "session_ended",
+};
+
 const enqueueCmd = new Command("enqueue-raw-event")
 	.configureHelp(helpStyle)
 	.description("Enqueue one raw event from stdin into the durable queue");
@@ -74,12 +89,8 @@ export const enqueueRawEventCommand = enqueueCmd.action(async (opts: DbOpts) => 
 
 		const cwd = typeof payload.cwd === "string" ? payload.cwd : null;
 		const project = typeof payload.project === "string" ? payload.project : null;
-		const startedAt = typeof payload.started_at === "string" ? payload.started_at : null;
 		const tsWallMs = Number.isFinite(Number(payload.ts_wall_ms))
 			? Math.floor(Number(payload.ts_wall_ms))
-			: null;
-		const tsMonoMs = Number.isFinite(Number(payload.ts_mono_ms))
-			? Number(payload.ts_mono_ms)
 			: null;
 		const eventId = typeof payload.event_id === "string" ? payload.event_id.trim() : "";
 		const eventPayload =
@@ -87,28 +98,45 @@ export const enqueueRawEventCommand = enqueueCmd.action(async (opts: DbOpts) => 
 				? (stripPrivateObj(payload.payload) as Record<string, unknown>)
 				: {};
 
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
-		try {
-			store.updateRawEventSessionMeta({
-				opencodeSessionId: sessionId,
-				source: "opencode",
-				cwd,
-				project,
-				startedAt,
-				lastSeenTsWallMs: tsWallMs,
-			});
-			store.recordRawEventsBatch(sessionId, [
-				{
-					event_id: eventId,
-					event_type: eventType,
-					payload: eventPayload,
-					ts_wall_ms: tsWallMs,
-					ts_mono_ms: tsMonoMs,
-				},
-			]);
-		} finally {
-			store.close();
+		const adapter =
+			eventPayload._adapter &&
+			typeof eventPayload._adapter === "object" &&
+			!Array.isArray(eventPayload._adapter)
+				? (eventPayload._adapter as Record<string, unknown>)
+				: {};
+		const adapterType = typeof adapter.event_type === "string" ? adapter.event_type : eventType;
+		const kind = EVENT_KINDS[adapterType];
+		if (!kind) throw new Error(`unsupported event_type: ${adapterType}`);
+		if (!eventId) throw new Error("event_id required");
+		const occurredAt =
+			typeof adapter.ts === "string" && Number.isFinite(Date.parse(adapter.ts))
+				? adapter.ts
+				: new Date(tsWallMs ?? Date.now()).toISOString();
+		const normalized = {
+			schemaVersion: NORMALIZED_SCHEMA_VERSION,
+			eventId,
+			idempotencyKey: eventId,
+			agent: "opencode",
+			nativeSessionId: sessionId,
+			projectKey: project ?? cwd ?? "unknown",
+			workspaceKey: cwd ?? "unknown",
+			cwd: cwd ?? "unknown",
+			kind,
+			occurredAt,
+			payload: eventPayload,
+			sourceHash: hashMutationPayload({ sessionId, eventId, adapterType, eventPayload }),
+			sensitivity: "normal",
+		};
+		validateNormalizedEvent(normalized);
+		const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).requestWithSpool(
+			"POST /v1/events",
+			{ idempotencyKey: eventId, event: normalized },
+		);
+		if (!outcome.ok) {
+			emitStructuredError(outcome.error.code, outcome.error.message);
+			return;
 		}
+		console.log(JSON.stringify(outcome.result));
 	} catch (err) {
 		emitStructuredError("enqueue_error", err instanceof Error ? err.message : String(err));
 	}

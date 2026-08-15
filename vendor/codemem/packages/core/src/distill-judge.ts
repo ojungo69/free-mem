@@ -77,10 +77,11 @@ export function parseJudgeVerdict(text: string | null | undefined): {
 		.find((line) => line.length > 0);
 	if (!firstLine) return { verdict: "unjudged", reason: null };
 
-	const cleaned = firstLine
-		.replace(/^[-*+]\s+/, "")
-		.replace(/^["'`]+|["'`]+$/g, "")
-		.trim();
+	let cleaned = firstLine.replace(/^[-*+]\s+/, "").replace(/^["'`]+/, "");
+	while (cleaned.endsWith('"') || cleaned.endsWith("'") || cleaned.endsWith("`")) {
+		cleaned = cleaned.slice(0, -1);
+	}
+	cleaned = cleaned.trim();
 	const match = cleaned.match(VERDICT_PATTERN);
 	if (!match) return { verdict: "unjudged", reason: null };
 

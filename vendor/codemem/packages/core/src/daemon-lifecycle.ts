@@ -4,8 +4,19 @@ import { createConnection, createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
+import { DaemonJobService } from "./daemon-jobs.js";
+import { DaemonOperationService, recoverDaemonRestoresBeforeOpen } from "./daemon-operations.js";
 import { attachDaemonRpc, type DaemonRpcContext, dispatchSpoolMutation } from "./daemon-rpc.js";
-import { importReadySpoolEntries } from "./spool.js";
+import { cutoverLegacyLayoutIfNeeded } from "./legacy-cutover.js";
+import {
+	buildNormalizedEventFromClaudeHook,
+	buildNormalizedEventFromCodexHook,
+} from "./normalized-event.js";
+import { ObserverClient } from "./observer-client.js";
+import { createDailyBackup } from "./online-backup.js";
+import { RawEventSweeper } from "./raw-event-sweeper.js";
+import { warmRedactionWorker } from "./redaction-worker.js";
+import { drainLegacySpool, importReadySpoolEntries, spoolMutation } from "./spool.js";
 import {
 	ensureStorageLayout,
 	recoverStorageJournal,
@@ -20,6 +31,8 @@ import {
 	readProcessIdentity,
 } from "./storage-platform.js";
 import type { MemoryStore } from "./store.js";
+import { ViewerAuthState } from "./viewer-auth.js";
+import { createViewerReadHandler } from "./viewer-read.js";
 import type { WriterActor } from "./writer-actor.js";
 
 export type DaemonIdentity = {
@@ -51,7 +64,12 @@ type LiveDaemon = {
 	layout: StorageLayout;
 	writer: WriterActor;
 	store: MemoryStore;
+	sweeper: RawEventSweeper;
+	jobs: DaemonJobService;
 	spoolSweepTimer: ReturnType<typeof setInterval>;
+	backupSweepTimer: ReturnType<typeof setInterval> | null;
+	dailyBackupTask: Promise<void> | null;
+	lastDailyBackupId: string | null;
 };
 
 const liveDaemons = new Map<string, LiveDaemon>();
@@ -143,20 +161,20 @@ function isDaemonProcessAlive(layout: StorageLayout): boolean {
 	}
 }
 
-function acquireExclusiveLock(lockPath: string): BetterSqlite3.Database {
+function acquireWriterLock(lockPath: string): BetterSqlite3.Database {
 	const lock = new BetterSqlite3(lockPath, { timeout: 0, fileMustExist: false });
 	try {
 		chmodSync(lockPath, 0o600);
 		lock.pragma("journal_mode = DELETE");
 		lock.pragma("busy_timeout = 0");
-		lock.exec("BEGIN EXCLUSIVE");
+		lock.exec("BEGIN IMMEDIATE");
 		recordLockOpen(lockPath);
 		return lock;
 	} catch (error) {
 		lock.close();
 		const message = error instanceof Error ? error.message : String(error);
 		if (/busy|locked|SQLITE_BUSY/i.test(message)) {
-			throw new Error("Daemon already running for this data_dir (exclusive lock busy).");
+			throw new Error("Daemon already running for this data_dir (writer lock busy).");
 		}
 		throw error;
 	}
@@ -181,14 +199,18 @@ function bindPrivateSocket(socketPath: string, rpc: DaemonRpcContext): Promise<S
 	});
 }
 
-function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
+async function releaseResources(layout: StorageLayout, live?: LiveDaemon): Promise<void> {
 	if (live) {
 		clearInterval(live.spoolSweepTimer);
+		if (live.backupSweepTimer) clearInterval(live.backupSweepTimer);
+		await live.dailyBackupTask;
 		try {
 			live.server.close();
 		} catch {
 			// server may already be closed
 		}
+		await live.jobs.stop();
+		await live.sweeper.stop();
 		try {
 			live.store.close();
 		} catch {
@@ -210,11 +232,11 @@ function releaseResources(layout: StorageLayout, live?: LiveDaemon): void {
 	}
 }
 
-function stopLive(dataDir: string): void {
+async function stopLive(dataDir: string): Promise<void> {
 	const live = liveDaemons.get(dataDir);
 	if (!live) return;
 	liveDaemons.delete(dataDir);
-	releaseResources(live.layout, live);
+	await releaseResources(live.layout, live);
 }
 
 function requestCleanStop(socketPath: string, nonce: string): Promise<boolean> {
@@ -247,14 +269,19 @@ export async function startDaemon(options: {
 	assertDataDirPreflight(options.dataDir);
 	const layout = resolveStorageLayout(options.dataDir);
 	ensureStorageLayout(layout);
+	warmRedactionWorker();
 
-	const lock = acquireExclusiveLock(layout.lockPath);
+	const lock = acquireWriterLock(layout.lockPath);
 
 	let canonical: CanonicalWriter | undefined;
+	let sweeper: RawEventSweeper | undefined;
+	let jobs: DaemonJobService | undefined;
 	let server: Server | undefined;
 	let started = false;
 	try {
 		recoverStorageJournal(layout);
+		await cutoverLegacyLayoutIfNeeded(layout);
+		recoverDaemonRestoresBeforeOpen(layout.dataDir);
 		canonical = await openCanonicalWriter(layout);
 		const liveIdentity = readProcessIdentity(process.pid);
 		const identity: DaemonIdentity = {
@@ -264,6 +291,16 @@ export async function startDaemon(options: {
 			fingerprint: liveIdentity.fingerprint,
 			nonce: randomUUID(),
 		};
+		const observer = new ObserverClient();
+		sweeper = new RawEventSweeper(canonical.store, { observer });
+		sweeper.start();
+		const maintenanceSweeper = sweeper;
+		jobs = new DaemonJobService(canonical.store, {
+			dataDir: layout.dataDir,
+			beforeMaintenance: () => maintenanceSweeper.stop(),
+			afterMaintenance: () => maintenanceSweeper.start(),
+		});
+		const operations = new DaemonOperationService(canonical.store, jobs, layout.dataDir);
 		const rpc: DaemonRpcContext = {
 			identity,
 			dataDir: layout.dataDir,
@@ -271,21 +308,57 @@ export async function startDaemon(options: {
 			now: options.now,
 			writer: canonical.db,
 			store: canonical.store,
+			viewerAuth: new ViewerAuthState({
+				controlDir: layout.controlDir,
+				instanceId: identity.nonce,
+				now: options.now,
+			}),
+			viewerRead: createViewerReadHandler({ store: canonical.store, sweeper, observer }),
+			jobs,
+			operations,
+			restoreState: { active: false },
 			onStop: () => {
 				const current = liveDaemons.get(layout.dataDir);
-				if (current && sameIdentity(current.identity, identity)) stopLive(layout.dataDir);
+				if (current && sameIdentity(current.identity, identity)) {
+					void stopLive(layout.dataDir).catch(() => {
+						console.error("[codemem] daemon shutdown failed.");
+					});
+				}
 			},
 		};
 		const sweepSpool = () => {
+			if (jobs?.isMaintenanceMode() || rpc.restoreState?.active) return;
 			try {
 				importReadySpoolEntries(layout.dataDir, (entry) => dispatchSpoolMutation(rpc, entry));
 			} catch {
 				console.error("[codemem] spool sweep failed; ready entries were retained.");
 			}
 		};
+		const drained = await drainLegacySpool(layout.dataDir, (source, payload) => {
+			const event =
+				source === "claude"
+					? buildNormalizedEventFromClaudeHook(payload)
+					: buildNormalizedEventFromCodexHook(payload);
+			if (!event) return false;
+			const idempotencyKey = String(event.idempotencyKey);
+			return (
+				spoolMutation(
+					{
+						method: "POST /v1/events",
+						idempotencyKey,
+						body: { idempotencyKey, event },
+					},
+					{ dataDir: layout.dataDir },
+				).status !== "dropped"
+			);
+		});
+		if (drained.failed > 0) {
+			console.error("[codemem] some legacy spool entries were retained for retry.");
+		}
 		sweepSpool();
 		server = await bindPrivateSocket(layout.socketPath, rpc);
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
+		jobs.startInternalBackfills();
 		const spoolSweepTimer = setInterval(sweepSpool, 1_000);
 		spoolSweepTimer.unref();
 		const live: LiveDaemon = {
@@ -295,8 +368,35 @@ export async function startDaemon(options: {
 			layout,
 			writer: canonical.db,
 			store: canonical.store,
+			sweeper,
+			jobs,
 			spoolSweepTimer,
+			backupSweepTimer: null,
+			dailyBackupTask: null,
+			lastDailyBackupId: null,
 		};
+		const sweepBackup = () => {
+			if (jobs?.isMaintenanceMode() || rpc.restoreState?.active) return;
+			const instant = new Date((options.now ?? Date.now)());
+			const backupId = `daily-${instant.toISOString().slice(0, 10)}`;
+			if (live.dailyBackupTask || live.lastDailyBackupId === backupId) return;
+			live.dailyBackupTask = createDailyBackup({
+				db: live.writer,
+				destinationDir: live.layout.backupsDir,
+				now: () => instant,
+			})
+				.then((proof) => {
+					live.lastDailyBackupId = proof.backupId;
+				})
+				.catch(() => {
+					console.error("[codemem] daily backup failed; it will be retried.");
+				})
+				.finally(() => {
+					live.dailyBackupTask = null;
+				});
+		};
+		live.backupSweepTimer = setInterval(sweepBackup, 60_000);
+		live.backupSweepTimer.unref();
 		liveDaemons.set(layout.dataDir, live);
 		started = true;
 		return {
@@ -309,10 +409,12 @@ export async function startDaemon(options: {
 			stop: async () => {
 				const current = liveDaemons.get(layout.dataDir);
 				if (!current || !sameIdentity(current.identity, identity)) return;
-				stopLive(layout.dataDir);
+				await stopLive(layout.dataDir);
 			},
 		};
 	} catch (error) {
+		if (jobs) await jobs.stop();
+		if (sweeper) await sweeper.stop();
 		if (canonical) {
 			try {
 				canonical.store.close();
@@ -370,7 +472,7 @@ function removeControlArtifacts(layout: StorageLayout): void {
 function cleanupIfStillOwner(layout: StorageLayout, snapshot: DaemonIdentity | null): void {
 	let lock: BetterSqlite3.Database;
 	try {
-		lock = acquireExclusiveLock(layout.lockPath);
+		lock = acquireWriterLock(layout.lockPath);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (/already running/i.test(message)) return;
@@ -464,7 +566,7 @@ export async function stopDaemon(
 	const layout = resolveStorageLayout(dataDir);
 	const snapshot = readIdentityFile(layout.identityPath);
 	if (liveDaemons.has(layout.dataDir)) {
-		stopLive(layout.dataDir);
+		await stopLive(layout.dataDir);
 		return { action: "stopped" };
 	}
 	const timeoutMs = options?.timeoutMs ?? 2000;

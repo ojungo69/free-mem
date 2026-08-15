@@ -17,12 +17,10 @@
  */
 
 import type { Database as SqliteDatabase } from "better-sqlite3";
-import { connect, resolveDbPath } from "./db.js";
 import { normalizeEventsForSessionContext } from "./ingest-transcript.js";
 import type { SessionContext } from "./ingest-types.js";
 import {
 	completeMaintenanceJob,
-	failMaintenanceJob,
 	getMaintenanceJob,
 	startMaintenanceJob,
 	updateMaintenanceJob,
@@ -40,13 +38,6 @@ type SessionContextBackfillMetadata = {
 	skipped_no_bridge?: number;
 	unchanged_sessions?: number;
 };
-
-export interface SessionContextBackfillRunnerOptions {
-	batchSize?: number;
-	intervalMs?: number;
-	dbPath?: string;
-	signal?: AbortSignal;
-}
 
 interface CandidateSessionRow {
 	id: number;
@@ -359,75 +350,4 @@ function summarizeCompletion(metadata: SessionContextBackfillMetadata): string {
 	}
 	const skipSuffix = skipped > 0 ? ` (${skipped} skipped)` : "";
 	return `Rebuilt session_context for ${rewritten} of ${processed} sessions${skipSuffix}`;
-}
-
-export class SessionContextBackfillRunner {
-	private readonly dbPath: string;
-	private readonly signal?: AbortSignal;
-	private readonly batchSize: number;
-	private readonly intervalMs: number;
-	private active = false;
-	private timer: ReturnType<typeof setTimeout> | null = null;
-	private currentRun: Promise<void> | null = null;
-
-	constructor(options: SessionContextBackfillRunnerOptions = {}) {
-		this.dbPath = resolveDbPath(options.dbPath);
-		this.signal = options.signal;
-		this.batchSize = Math.max(1, options.batchSize ?? 100);
-		this.intervalMs = Math.max(1000, options.intervalMs ?? 5000);
-	}
-
-	start(): void {
-		if (this.active) return;
-		this.active = true;
-		this.schedule(100);
-	}
-
-	async stop(): Promise<void> {
-		this.active = false;
-		if (this.timer) {
-			clearTimeout(this.timer);
-			this.timer = null;
-		}
-		if (this.currentRun) await this.currentRun;
-	}
-
-	private schedule(delayMs: number): void {
-		if (!this.active || this.signal?.aborted) return;
-		this.timer = setTimeout(() => {
-			this.timer = null;
-			this.currentRun = this.runOnce()
-				.catch((err) => {
-					console.error("Session-context backfill runner tick failed:", err);
-				})
-				.finally(() => {
-					this.currentRun = null;
-					this.schedule(this.intervalMs);
-				});
-		}, delayMs);
-		if (typeof this.timer === "object" && "unref" in this.timer) this.timer.unref();
-	}
-
-	private async runOnce(): Promise<void> {
-		if (!this.active || this.signal?.aborted) return;
-		let db: SqliteDatabase | null = null;
-		try {
-			db = connect(this.dbPath) as SqliteDatabase;
-			const hasMoreWork = await runSessionContextBackfillPass(db, { batchSize: this.batchSize });
-			if (!hasMoreWork) {
-				this.active = false;
-			}
-		} catch (error) {
-			if (db) {
-				failMaintenanceJob(
-					db,
-					SESSION_CONTEXT_BACKFILL_JOB,
-					error instanceof Error ? error.message : String(error),
-				);
-			}
-			console.warn("Session-context backfill runner failed", error);
-		} finally {
-			db?.close();
-		}
-	}
 }

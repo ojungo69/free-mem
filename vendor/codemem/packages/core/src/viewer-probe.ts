@@ -27,6 +27,25 @@ export interface ViewerTarget {
 	port: number;
 }
 
+export function isLoopbackHost(host: string): boolean {
+	const normalized = host
+		.trim()
+		.toLowerCase()
+		.replace(/^\[(.*)\]$/, "$1");
+	const ipv4Parts = normalized.split(".");
+	const isIpv4Loopback =
+		ipv4Parts.length >= 1 &&
+		ipv4Parts.length <= 4 &&
+		ipv4Parts[0] === "127" &&
+		ipv4Parts.every((part) => /^\d+$/.test(part) && Number(part) <= 255);
+	return (
+		normalized === "localhost" ||
+		normalized === "::1" ||
+		normalized === "0:0:0:0:0:0:0:1" ||
+		isIpv4Loopback
+	);
+}
+
 export interface ViewerLivenessProbeDependencies {
 	fetch: typeof fetch;
 	timeoutMs?: number;

@@ -26,6 +26,33 @@
 			},
 			"style": {
 				"noNonNullAssertion": "error",
+				"noRestrictedImports": {
+					"level": "error",
+					"options": {
+						"paths": {
+							"better-sqlite3": {
+								"importNames": ["default"],
+								"message": "Runtime SQLite imports are daemon-owned; use the audited actor boundary."
+							},
+							"@codemem/core": {
+								"importNames": [
+									"connect",
+									"connectReadOnly",
+									"MemoryStore",
+									"ReadOnlyActor",
+									"WriterActor"
+								],
+								"message": "DB handles and stores are daemon-owned runtime capabilities."
+							}
+						},
+						"patterns": [
+							{
+								"group": ["@codemem/core/*"],
+								"message": "Deep core imports bypass the public sole-writer boundary."
+							}
+						]
+					}
+				},
 				"useConst": "error",
 				"useImportType": "error"
 			},
@@ -64,6 +91,23 @@
 		]
 	},
 	"overrides": [
+		{
+			"includes": [
+				"packages/core/src/daemon-lifecycle.ts",
+				"packages/core/src/writer-actor.ts",
+				"packages/core/src/test-utils.ts",
+				"packages/**/src/**/*.test.ts",
+				"packages/**/src/**/*.test.tsx",
+				"packages/**/src/**/*.eval.test.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": "off"
+					}
+				}
+			}
+		},
 		{
 			"includes": ["packages/ui/**"],
 			"linter": {

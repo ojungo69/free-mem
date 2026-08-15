@@ -17,6 +17,10 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)}"
 PLUGIN_MANIFEST="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
 
+if command -v node >/dev/null 2>&1 && [ -r "${SCRIPT_DIR}/hook-runtime.mjs" ]; then
+  exec node "${SCRIPT_DIR}/hook-runtime.mjs" claude-hook-ingest
+fi
+
 # Portable millisecond-resolution clock.
 #
 # - bash 5+ exposes `EPOCHREALTIME` (fractional epoch seconds). Zero subshells.
@@ -134,4 +138,4 @@ if command -v npx >/dev/null 2>&1; then
 fi
 
 log_line "codemem claude-hook-ingest failed: all command attempts failed"
-exit 1
+exit 0

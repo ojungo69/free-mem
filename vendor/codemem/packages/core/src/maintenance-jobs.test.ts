@@ -1,9 +1,5 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { initDatabase } from "./maintenance.js";
 import {
 	completeMaintenanceJob,
 	failMaintenanceJob,
@@ -13,11 +9,6 @@ import {
 	updateMaintenanceJob,
 } from "./maintenance-jobs.js";
 import { initTestSchema } from "./test-utils.js";
-
-function createDbPath(name: string): string {
-	const dir = mkdtempSync(join(tmpdir(), "codemem-maintenance-jobs-"));
-	return join(dir, `${name}.sqlite`);
-}
 
 describe("maintenance jobs", () => {
 	it("starts and reads a running job", () => {
@@ -255,26 +246,6 @@ describe("maintenance jobs", () => {
 			expect(jobs.map((job) => job.kind)).toEqual(["one", "two"]);
 		} finally {
 			db.close();
-		}
-	});
-
-	it("initDatabase ensures maintenance_jobs exists on existing schema-ready dbs", () => {
-		const dbPath = createDbPath("init-existing");
-		const db = new Database(dbPath);
-		try {
-			initTestSchema(db);
-			db.prepare("DROP TABLE maintenance_jobs").run();
-		} finally {
-			db.close();
-		}
-
-		initDatabase(dbPath);
-
-		const verify = new Database(dbPath, { readonly: true });
-		try {
-			expect(() => verify.prepare("SELECT 1 FROM maintenance_jobs LIMIT 1").get()).not.toThrow();
-		} finally {
-			verify.close();
 		}
 	});
 });

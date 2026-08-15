@@ -19,11 +19,12 @@ import { canonicalMutationJson, hashMutationPayload } from "./mutation-dispatche
 import {
 	isNormalizedEventKind,
 	NORMALIZED_EVENT_FIELDS,
+	sealDegradedNormalizedEvent,
 	validateNormalizedEvent,
 } from "./normalized-event.js";
 import type { AgentMemoryConfig, RedactionResult } from "./redaction-pipeline.js";
 import { preprocessAdapterEvent } from "./redaction-pipeline.js";
-import { resolveStorageLayout } from "./storage.js";
+import { resolveStorageLayout } from "./storage-layout.js";
 import {
 	durableRemoveFile,
 	ensurePrivateDirectory,
@@ -48,7 +49,7 @@ const LOCK_WAIT_ARRAY = new Int32Array(new SharedArrayBuffer(4));
 // ponytail: One global lock keeps quota/counter/claim atomic; shard only if measured contention exceeds the deadline.
 const RESERVED_EVENT_KINDS = new Set(["pre_compact", "session_ended"]);
 const SHA256 = /^[a-f0-9]{64}$/;
-const RULESET_VERSION = /^[a-f0-9]{64}(?::degraded)?$/;
+const RULESET_VERSION = /^[a-f0-9]{64}(?::degraded)?(?:\+[a-f0-9]{64}(?::degraded)?)*$/;
 const SENSITIVITIES = new Set(["normal", "private", "secret"]);
 const SPOOL_ENTRY_FIELDS = new Set([
 	"version",
@@ -151,6 +152,7 @@ export type SpoolOptions = {
 	dataDir?: string;
 	lockDeadlineMs?: number;
 	config?: AgentMemoryConfig;
+	previousRedaction?: SpoolRedactionMetadata;
 	onWarning?: (message: string) => void;
 };
 
@@ -546,7 +548,37 @@ function spoolRedaction(result: RedactionResult): SpoolRedactionMetadata {
 	};
 }
 
-function prepareMutation(input: SpoolMutation, config?: AgentMemoryConfig): SpoolEntry {
+function mergeSpoolRedaction(
+	current: SpoolRedactionMetadata,
+	previousValue?: SpoolRedactionMetadata,
+): SpoolRedactionMetadata {
+	if (!previousValue) return current;
+	const previous = validateSpoolRedaction(previousValue);
+	const versions = [
+		...new Set([
+			...current.secret_rules_version.split("+"),
+			...previous.secret_rules_version.split("+"),
+		]),
+	].sort();
+	return {
+		sensitivity:
+			previous.sensitivity === "secret" || current.sensitivity === "secret"
+				? "secret"
+				: previous.sensitivity === "private" || current.sensitivity === "private"
+					? "private"
+					: "normal",
+		secret_rules_version: versions.join("+"),
+		redaction_degraded: previous.redaction_degraded || current.redaction_degraded,
+		private_content_omitted: previous.private_content_omitted || current.private_content_omitted,
+		local_only: previous.local_only || current.local_only,
+	};
+}
+
+function prepareMutation(
+	input: SpoolMutation,
+	config?: AgentMemoryConfig,
+	previousRedaction?: SpoolRedactionMetadata,
+): SpoolEntry {
 	const idempotencyKey = validateIdempotencyKey(input.idempotencyKey);
 	const methodFields = METHOD_FIELDS[input.method];
 	if (!methodFields) throw new Error("RPC method is not spoolable.");
@@ -558,6 +590,9 @@ function prepareMutation(input: SpoolMutation, config?: AgentMemoryConfig): Spoo
 	let body: Record<string, unknown>;
 	let redaction: SpoolRedactionMetadata;
 	let quotaClass: SpoolQuotaClass = "normal";
+	// A degraded adapter result is already metadata-only. Re-running the failed
+	// user rules can mutate required IDs and drop the fail-open spool entry.
+	const retryConfig = previousRedaction?.redaction_degraded ? undefined : config;
 	if (input.method === "POST /v1/events") {
 		const rawEvent = input.body.event;
 		if (!rawEvent || typeof rawEvent !== "object" || Array.isArray(rawEvent)) {
@@ -566,9 +601,12 @@ function prepareMutation(input: SpoolMutation, config?: AgentMemoryConfig): Spoo
 		const redacted = preprocessAdapterEvent(rawEvent, {
 			allowlist: [...NORMALIZED_EVENT_FIELDS],
 			metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
-			config,
+			config: retryConfig,
 		});
-		const event = redacted.payload;
+		const event =
+			redacted.degraded || previousRedaction?.redaction_degraded
+				? sealDegradedNormalizedEvent(redacted.payload)
+				: redacted.payload;
 		if (!Object.hasOwn(event, "payload")) event.payload = {};
 		if (event.idempotencyKey !== idempotencyKey) {
 			throw new Error("event.idempotencyKey must match the spool envelope.");
@@ -580,16 +618,26 @@ function prepareMutation(input: SpoolMutation, config?: AgentMemoryConfig): Spoo
 		}
 		redaction = spoolRedaction(redacted);
 		redaction.sensitivity = event.sensitivity as SpoolRedactionMetadata["sensitivity"];
+		redaction = mergeSpoolRedaction(redaction, previousRedaction);
+		event.sensitivity = redaction.sensitivity;
 		quotaClass = RESERVED_EVENT_KINDS.has(String(event.kind)) ? "reserved" : "normal";
 		body = { idempotencyKey, event };
 	} else {
 		const redacted = preprocessAdapterEvent(input.body, {
 			allowlist: [...methodFields],
-			metadataKeys: ["idempotencyKey", "kind", "confidence", "project"],
-			config,
+			metadataKeys: ["idempotencyKey", "kind", "confidence"],
+			config: retryConfig,
 		});
 		body = redacted.payload;
-		redaction = spoolRedaction(redacted);
+		redaction = mergeSpoolRedaction(spoolRedaction(redacted), previousRedaction);
+		if (redaction.sensitivity === "secret" || redaction.redaction_degraded) {
+			const placeholder = redaction.redaction_degraded
+				? "[REDACTED:degraded]"
+				: "[REDACTED:secret]";
+			body.title = placeholder;
+			body.body = placeholder;
+			delete body.project;
+		}
 		body.kind = validatePreparedMemoryBody(body, idempotencyKey);
 	}
 
@@ -654,7 +702,7 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
 	return value as Record<string, unknown>;
 }
 
-function validateSpoolRedaction(value: unknown): SpoolRedactionMetadata {
+export function validateSpoolRedaction(value: unknown): SpoolRedactionMetadata {
 	const redaction = asRecord(value, "Spool redaction metadata");
 	rejectUnknownFields(redaction, REDACTION_FIELDS, "Spool redaction metadata");
 	if (
@@ -664,7 +712,7 @@ function validateSpoolRedaction(value: unknown): SpoolRedactionMetadata {
 		typeof redaction.redaction_degraded !== "boolean" ||
 		typeof redaction.private_content_omitted !== "boolean" ||
 		typeof redaction.local_only !== "boolean" ||
-		redaction.redaction_degraded !== redaction.secret_rules_version.endsWith(":degraded")
+		redaction.redaction_degraded !== redaction.secret_rules_version.includes(":degraded")
 	) {
 		throw new Error("Spool redaction metadata is malformed.");
 	}
@@ -763,7 +811,7 @@ function resultForIoFailure(
 export function spoolMutation(input: SpoolMutation, options: SpoolOptions = {}): SpoolWriteResult {
 	let entry: SpoolEntry;
 	try {
-		entry = prepareMutation(input, options.config);
+		entry = prepareMutation(input, options.config, options.previousRedaction);
 	} catch {
 		warn(options.onWarning, "spool rejected an invalid mutation; event was dropped.");
 		const kind = dropKind(input);
@@ -816,7 +864,13 @@ export function spoolMutation(input: SpoolMutation, options: SpoolOptions = {}):
 					options.onWarning,
 				);
 			}
-			return { status: "duplicate", quotaClass: entry.quotaClass, path: readyPath };
+			try {
+				fsyncPath(layout.tmpDir);
+				fsyncPath(layout.readyDir);
+				return { status: "duplicate", quotaClass: entry.quotaClass, path: readyPath };
+			} catch (error) {
+				return resultForIoFailure(input, entry, layout, error, options.onWarning);
+			}
 		}
 		if (existsSync(tmpPath)) {
 			if (readSpoolFile(tmpPath) !== serialized) {
@@ -829,6 +883,7 @@ export function spoolMutation(input: SpoolMutation, options: SpoolOptions = {}):
 				);
 			}
 			try {
+				fsyncPath(tmpPath);
 				renameSync(tmpPath, readyPath);
 				fsyncPath(layout.tmpDir);
 				fsyncPath(layout.readyDir);
@@ -918,6 +973,7 @@ function recoverTmpEntriesLocked(layout: SpoolLayout): void {
 			else moveToQuarantineLocked(layout, "tmp", name, "broken_json");
 			continue;
 		}
+		fsyncPath(source);
 		renameSync(source, readyPath);
 		fsyncPath(layout.tmpDir);
 		fsyncPath(layout.readyDir);

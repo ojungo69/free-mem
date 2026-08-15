@@ -1,14 +1,16 @@
 import * as p from "@clack/prompts";
-import { getAttributionDiagnostics, MemoryStore, resolveDbPath } from "@codemem/core";
+import type { StoreStats } from "@codemem/core";
+import { createMcpRpcClient } from "@codemem/mcp";
 import { Command, Option } from "commander";
 import { helpStyle } from "../help-style.js";
 import {
 	addDbOption,
 	addJsonOption,
 	type DbOpts,
+	emitFeatureUnavailable,
 	emitJsonError,
 	type JsonOpts,
-	resolveDbOpt,
+	resolveDataDirOpt,
 } from "../shared-options.js";
 
 function fmtPct(n: number): string {
@@ -30,44 +32,27 @@ addDbOption(statsCmd);
 addJsonOption(statsCmd);
 statsCmd.addOption(new Option("-a, --attribution", "show local retrieval attribution diagnostics"));
 
-function renderAttributionDiagnostics(
-	report: ReturnType<typeof getAttributionDiagnostics>,
-): string {
-	const evidence = report.evidenceCompleteness;
-	return [
-		"Retrieval attribution diagnostics (local, bounded)",
-		`Lifecycle: ${report.lifecycle.requestedAttempts} requested, ${report.lifecycle.selectedAttempts} selected, ${report.lifecycle.handedOffAttempts} handed off`,
-		`Exposures: ${report.lifecycle.selectedExposures} selected, ${report.lifecycle.handedOffExposures} handed off`,
-		`Evidence: ${[
-			`${evidence.assessedAttempts} assessed`,
-			`${evidence.unassessedAttempts} unassessed`,
-			`${evidence.assessedKnownAttempts} known`,
-			`${evidence.assessedUnknownAttempts} unknown`,
-			`${evidence.assessmentStatusIndeterminateAttempts} status indeterminate`,
-			`${evidence.assessmentDetailsIncompleteAttempts} details incomplete`,
-			`${evidence.assessmentRowsInvalid} invalid rows`,
-			`${evidence.assessmentRowsOmittedByLimit} omitted by limit`,
-		].join(", ")}`,
-		`Latency: ${report.overhead.latencySampleCount} samples, ${report.overhead.averageLatencyMs ?? "unknown"} ms average`,
-		`Steering: ${report.sourceLocationSteering.assessmentCount} source-location assessments, ${report.sourceLocationSteering.matchedPathCount} matched paths`,
-		`Findings: ${report.findings.stale} stale, ${report.findings.harmful} harmful`,
-		"Limitations:",
-		...report.limitations.map((limitation) => `- ${limitation}`),
-	].join("\n");
-}
-
 export const statsCommand = statsCmd.action(
-	(opts: DbOpts & JsonOpts & { attribution?: boolean }) => {
-		const store = new MemoryStore(resolveDbPath(resolveDbOpt(opts)));
+	async (opts: DbOpts & JsonOpts & { attribution?: boolean }) => {
 		try {
 			if (opts.attribution) {
-				const report = getAttributionDiagnostics(store.db);
-				console.log(
-					opts.json ? JSON.stringify(report, null, 2) : renderAttributionDiagnostics(report),
-				);
+				emitFeatureUnavailable("attribution diagnostics", 5, opts.json);
 				return;
 			}
-			const result = store.stats();
+			const outcome = await createMcpRpcClient({ dataDir: resolveDataDirOpt(opts) }).request(
+				"GET /v1/view",
+				{ collection: "stats" },
+			);
+			if (!outcome.ok) {
+				if (opts.json) emitJsonError(outcome.error.code, outcome.error.message);
+				else {
+					p.log.error(outcome.error.message);
+					process.exitCode = 1;
+				}
+				return;
+			}
+			if (outcome.result.status !== 200) throw new Error("Daemon stats request failed");
+			const result = outcome.result.body as StoreStats;
 			if (opts.json) {
 				// lgtm[js/clear-text-logging] This is intentional CLI stdout for `--json`, not an application log.
 				console.log(JSON.stringify(result, null, 2));
@@ -79,6 +64,7 @@ export const statsCommand = statsCmd.action(
 
 			p.intro("codemem stats");
 
+			// lgtm[js/clear-text-logging] User-invoked local CLI output, not an application log.
 			p.log.info([`Path:        ${db.path}`, `Size:        ${sizeMb} MB`].join("\n"));
 
 			p.log.success(
@@ -119,8 +105,6 @@ export const statsCommand = statsCmd.action(
 				process.exitCode = 1;
 			}
 			return;
-		} finally {
-			store.close();
 		}
 	},
 );

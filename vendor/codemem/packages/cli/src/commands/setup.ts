@@ -12,11 +12,28 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as p from "@clack/prompts";
-import { VERSION } from "@codemem/core";
+import {
+	captureManagedTarget,
+	readInstallManifest,
+	resolveRuntimeDataDir,
+	resolveStorageLayout,
+	VERSION,
+	writeInstallManifest,
+} from "@codemem/core";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
 import { loadJsoncConfig, resolveOpencodeConfigPath, writeJsonConfig } from "./setup-config.js";
@@ -329,6 +346,7 @@ interface CodexHookGroup {
 
 /** Marker substring identifying codemem-owned hook commands. */
 const CODEMEM_HOOK_MARKER = "codemem codex-hook-";
+const CODEMEM_RUNTIME_HOOK_MARKER = "codemem-hook-runtime.mjs";
 
 /**
  * Resolve how Codex hooks should invoke codemem. Prefer a direct `codemem` call
@@ -337,23 +355,45 @@ const CODEMEM_HOOK_MARKER = "codemem codex-hook-";
  * so capture/recall still work without a global install. Mirrors the plugin
  * wrapper's `codemem`-first / `npx` fallback model.
  */
-export function codememCodexHookBase(): string {
+export function codememCodexHookBase(runtimePath?: string | null): string {
+	if (runtimePath) return `node '${runtimePath.replaceAll("'", "'\\''")}'`;
 	return codememOnPath() ? "codemem" : "npx -y codemem";
+}
+
+function packagedHookRuntimePath(): string {
+	return resolve(dirname(fileURLToPath(import.meta.url)), "hook-runtime.js");
+}
+
+export function installCodexHookRuntime(
+	codexHome: string,
+	source = packagedHookRuntimePath(),
+): string | null {
+	if (!existsSync(source)) return null;
+	const target = join(codexHome, "codemem-hook-runtime.mjs");
+	const temporary = `${target}.tmp-${process.pid}`;
+	try {
+		copyFileSync(source, temporary);
+		chmodSync(temporary, 0o600);
+		renameSync(temporary, target);
+		return target;
+	} catch {
+		rmSync(temporary, { force: true });
+		p.log.error(`Failed to install the bundled Codex hook runtime at ${target}`);
+		return null;
+	}
 }
 
 /**
  * Build the codemem-owned hook groups keyed by Codex event name, given the
- * resolved command base (`codemem` or `npx -y codemem`). Timeouts are ceilings,
- * not expected runtimes; npx gets more headroom to absorb a cold resolve.
+ * resolved command base (`codemem` or `npx -y codemem`). Every hook is bounded
+ * by the same outer watchdog; the thin client owns the shorter RPC cutoff.
  */
 export function buildCodememCodexHookGroups(base: string): Record<string, CodexHookGroup[]> {
-	const isNpx = base !== "codemem";
-	const ingestTimeout = isNpx ? 30 : 10;
-	const injectTimeout = isNpx ? 20 : 10;
+	const timeout = 5;
 	const ingest: CodexHookCommand = {
 		type: "command",
 		command: `${base} codex-hook-ingest`,
-		timeout: ingestTimeout,
+		timeout,
 		statusMessage: "codemem",
 	};
 	return {
@@ -363,14 +403,8 @@ export function buildCodememCodexHookGroups(base: string): Record<string, CodexH
 				hooks: [
 					{
 						type: "command",
-						command: `${base} codex-hook-ingest`,
-						timeout: ingestTimeout,
-						statusMessage: "codemem capture",
-					},
-					{
-						type: "command",
 						command: `${base} codex-hook-inject`,
-						timeout: injectTimeout,
+						timeout,
 						statusMessage: "codemem recall",
 					},
 				],
@@ -378,6 +412,7 @@ export function buildCodememCodexHookGroups(base: string): Record<string, CodexH
 		],
 		PostToolUse: [{ hooks: [{ ...ingest }] }],
 		Stop: [{ hooks: [{ ...ingest }] }],
+		SessionEnd: [{ hooks: [{ ...ingest }] }],
 	};
 }
 
@@ -391,7 +426,8 @@ function isCodememHookGroup(group: unknown): boolean {
 			h != null &&
 			typeof h === "object" &&
 			typeof (h as { command?: unknown }).command === "string" &&
-			(h as { command: string }).command.includes(CODEMEM_HOOK_MARKER),
+			((h as { command: string }).command.includes(CODEMEM_HOOK_MARKER) ||
+				(h as { command: string }).command.includes(CODEMEM_RUNTIME_HOOK_MARKER)),
 	);
 }
 
@@ -475,7 +511,11 @@ function installCodexMcp(codexHome: string, force: boolean): boolean {
  * Write/merge codemem hook registrations into Codex hooks.json, preserving any
  * unrelated user hooks. Returns true on success.
  */
-function installCodexHooks(codexHome: string, force: boolean): boolean {
+function installCodexHooks(
+	codexHome: string,
+	_force: boolean,
+	runtimePath: string | null = null,
+): boolean {
 	const hooksPath = join(codexHome, "hooks.json");
 
 	let config: Record<string, unknown> = {};
@@ -498,26 +538,21 @@ function installCodexHooks(codexHome: string, force: boolean): boolean {
 		hooks = {};
 	}
 
-	const ours = buildCodememCodexHookGroups(codememCodexHookBase());
+	const ours = buildCodememCodexHookGroups(codememCodexHookBase(runtimePath));
 	let changed = false;
 
 	for (const [event, ourGroups] of Object.entries(ours)) {
 		const current = hooks[event];
 		const existingGroups: unknown[] = Array.isArray(current) ? [...current] : [];
-		const hasCodemem = existingGroups.some(isCodememHookGroup);
-
-		if (hasCodemem && !force) {
-			// Already present — leave as-is (idempotent).
-			continue;
-		}
-
 		// Drop only codemem-owned groups; preserve unrelated user hooks.
 		const preserved = existingGroups.filter((g) => !isCodememHookGroup(g));
-		hooks[event] = [...preserved, ...ourGroups];
+		const desired = [...preserved, ...ourGroups];
+		if (JSON.stringify(existingGroups) === JSON.stringify(desired)) continue;
+		hooks[event] = desired;
 		changed = true;
 	}
 
-	if (!changed && !force) {
+	if (!changed) {
 		p.log.info(`Codex hooks already configured in ${hooksPath}`);
 		config.hooks = hooks;
 		return true;
@@ -563,7 +598,11 @@ export function installCodex(force: boolean): boolean {
 		return false;
 	}
 
-	if (codememOnPath()) {
+	const runtimeSource = packagedHookRuntimePath();
+	const runtimePath = installCodexHookRuntime(codexHome, runtimeSource);
+	if (runtimePath) {
+		p.log.info("Codex hooks will use the bundled standalone runtime.");
+	} else if (codememOnPath()) {
 		p.log.info("Codex hooks will call `codemem` directly (found on PATH).");
 	} else {
 		p.log.info(
@@ -571,10 +610,43 @@ export function installCodex(force: boolean): boolean {
 		);
 	}
 
-	let ok = true;
+	let ok = !existsSync(runtimeSource);
+	if (runtimePath) ok = true;
 	ok = installCodexMcp(codexHome, force) && ok;
-	ok = installCodexHooks(codexHome, force) && ok;
+	ok = installCodexHooks(codexHome, force, runtimePath) && ok;
 	return ok;
+}
+
+function setupDataDir(): string {
+	return resolveRuntimeDataDir();
+}
+
+export function writeSetupInstallManifest(
+	files: Array<{ id: string; path: string }>,
+	dataDir: string = setupDataDir(),
+	replaceIds: readonly string[] = files.map((file) => file.id),
+): void {
+	const unique = new Map(files.map((file) => [resolve(file.path), file]));
+	const captured = [...unique.values()].map((file) =>
+		captureManagedTarget(file.id, resolve(file.path)),
+	);
+	if (captured.length === 0) throw new Error("No managed thin-client targets were installed.");
+	const manifestPath = resolveStorageLayout(dataDir).installManifestPath;
+	const previous = existsSync(manifestPath)
+		? readInstallManifest(manifestPath)
+		: { version: 1 as const, blocks: [] };
+	const replaced = new Set(replaceIds);
+	const targets = new Map(
+		(previous.targets ?? [])
+			.filter((target) => !replaced.has(target.id))
+			.map((target) => [target.id, target]),
+	);
+	for (const target of captured) targets.set(target.id, target);
+	writeInstallManifest(manifestPath, {
+		version: 1,
+		blocks: previous.blocks,
+		targets: [...targets.values()],
+	});
 }
 
 export const setupCommand = new Command("setup")
@@ -594,6 +666,8 @@ export const setupCommand = new Command("setup")
 			p.intro(`codemem setup v${VERSION}`);
 			const force = opts.force ?? false;
 			let ok = true;
+			const managedTargets: Array<{ id: string; path: string }> = [];
+			const managedTargetIds: string[] = [];
 
 			const onlyFlag = Boolean(opts.opencodeOnly || opts.claudeOnly || opts.codexOnly);
 
@@ -604,23 +678,69 @@ export const setupCommand = new Command("setup")
 
 			if (doOpencode) {
 				p.log.step("Installing OpenCode plugin...");
-				ok = installPlugin(force) && ok;
+				const pluginOk = installPlugin(force);
+				ok = pluginOk && ok;
 				p.log.step("Installing OpenCode MCP config...");
-				ok = installMcp(force) && ok;
+				const mcpOk = installMcp(force);
+				ok = mcpOk && ok;
+				if (pluginOk && mcpOk) {
+					managedTargetIds.push("opencode-plugin-mcp");
+					managedTargets.push({
+						id: "opencode-plugin-mcp",
+						path: resolveOpencodeConfigPath(opencodeConfigDir()),
+					});
+				}
 			}
 
 			if (doClaude) {
 				p.log.step("Installing Claude Code MCP config...");
-				ok = installClaudeMcp(force) && ok;
+				const claudeOk = installClaudeMcp(force);
+				ok = claudeOk && ok;
+				if (claudeOk) {
+					managedTargetIds.push("claude-mcp", "claude-hooks");
+					managedTargets.push({
+						id: "claude-mcp",
+						path: join(claudeConfigDir(), "settings.json"),
+					});
+					const hooksPath = join(claudeConfigDir(), "plugins", "codemem", "hooks", "hooks.json");
+					if (existsSync(hooksPath)) {
+						managedTargets.push({ id: "claude-hooks", path: hooksPath });
+					}
+				}
 			}
 
 			if (doCodex) {
 				p.log.step("Configuring Codex (MCP + hooks)...");
-				ok = installCodex(force) && ok;
+				const codexOk = installCodex(force);
+				ok = codexOk && ok;
+				if (codexOk) {
+					managedTargetIds.push("codex-mcp", "codex-hooks", "codex-hook-runtime");
+					for (const [id, name] of [
+						["codex-mcp", "config.toml"],
+						["codex-hooks", "hooks.json"],
+						["codex-hook-runtime", "codemem-hook-runtime.mjs"],
+					] as const) {
+						const path = join(codexConfigDir(), name);
+						if (existsSync(path)) managedTargets.push({ id, path });
+					}
+				}
 				p.log.info("Codex next steps:");
 				p.log.info("  - Restart Codex to load the new configuration");
 				p.log.info("  - On first run, approve the one-time prompt to trust the codemem hooks");
 				p.log.info("  - MCP recall works immediately (no trust prompt required)");
+			}
+
+			if (ok) {
+				try {
+					writeSetupInstallManifest(managedTargets, setupDataDir(), managedTargetIds);
+				} catch (error) {
+					p.log.error(
+						`Failed to write the install ownership manifest: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					ok = false;
+				}
 			}
 
 			if (ok) {

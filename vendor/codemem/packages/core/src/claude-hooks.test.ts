@@ -8,14 +8,16 @@
  *  - buildIngestPayloadFromHook: session context fields
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildIngestPayloadFromHook,
 	buildRawEventEnvelopeFromHook,
+	extractFromTranscript,
 	mapClaudeHookPayload,
+	TRANSCRIPT_TAIL_MAX_BYTES,
 } from "./claude-hooks.js";
 
 // ---------------------------------------------------------------------------
@@ -171,6 +173,18 @@ describe("mapClaudeHookPayload", () => {
 			expect(event?.event_type).toBe("session_end");
 			expect(event?.payload.reason).toBe("user_exit");
 		});
+
+		it("keeps timestamp-less retries stable", () => {
+			const payload = {
+				hook_event_name: "SessionEnd",
+				session_id: "sess-end-retry",
+				reason: "user_exit",
+			};
+			const first = mapClaudeHookPayload(payload);
+			const second = mapClaudeHookPayload(payload);
+			expect(first?.event_id).toBe(second?.event_id);
+			expect(first?.ts).toBe("1970-01-01T00:00:00.000Z");
+		});
 	});
 
 	describe("Stop → assistant", () => {
@@ -216,6 +230,25 @@ describe("mapClaudeHookPayload", () => {
 			expect(event).not.toBeNull();
 			expect(event?.event_type).toBe("assistant");
 			expect(event?.payload.text).toBe("assistant from transcript");
+		});
+
+		it("bounds transcript fallback to the most recent 256 KiB", () => {
+			const dir = mkdtempSync(join(tmpdir(), "codemem-test-"));
+			const transcriptPath = join(dir, "transcript.jsonl");
+			try {
+				writeFileSync(
+					transcriptPath,
+					`${"x".repeat(TRANSCRIPT_TAIL_MAX_BYTES + 1_024)}\n${JSON.stringify({
+						role: "assistant",
+						content: "recent assistant",
+					})}\n`,
+					"utf8",
+				);
+				expect(TRANSCRIPT_TAIL_MAX_BYTES).toBe(256 * 1024);
+				expect(extractFromTranscript(transcriptPath)).toEqual(["recent assistant", null]);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
 		});
 
 		it("uses relative transcript path with cwd", () => {
@@ -716,72 +749,5 @@ describe("buildIngestPayloadFromHook", () => {
 		});
 
 		expect(ingest?.cwd).toBe("/home/user/myrepo");
-	});
-});
-
-// ---------------------------------------------------------------------------
-// HTTP route integration (POST /api/claude-hooks via viewer-server)
-// ---------------------------------------------------------------------------
-
-describe("POST /api/claude-hooks via viewer-server", () => {
-	/** Build a minimal store stub + Hono app for HTTP-level tests. */
-	async function makeTestApp() {
-		const { createApp } = await import("../../viewer-server/src/index.js");
-		const { initTestSchema } = await import("./index.js");
-		const Database = (await import("better-sqlite3")).default;
-		const rawDb = new Database(":memory:");
-		initTestSchema(rawDb);
-		// biome-ignore lint/suspicious/noExplicitAny: minimal test stub
-		const store: any = {
-			db: rawDb,
-			dbPath: ":memory:",
-			deviceId: "test-device",
-			stats: () => ({ database: {} }),
-			close: () => rawDb.close(),
-			rawEventBacklogTotals: () => ({}),
-		};
-		return createApp({ storeFactory: () => store });
-	}
-
-	// POST mutations require a loopback Origin header to pass the origin guard.
-	const LOOPBACK_HEADERS = {
-		"Content-Type": "application/json",
-		Origin: "http://localhost",
-	};
-
-	it("returns {inserted:0, skipped:1} for unsupported hook event", async () => {
-		const app = await makeTestApp();
-		const res = await app.request("/api/claude-hooks", {
-			method: "POST",
-			headers: LOOPBACK_HEADERS,
-			body: JSON.stringify({ hook_event_name: "SomeUnknown", session_id: "s1" }),
-		});
-
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ inserted: 0, skipped: 1 });
-	});
-
-	it("returns 400 for invalid JSON", async () => {
-		const app = await makeTestApp();
-		const res = await app.request("/api/claude-hooks", {
-			method: "POST",
-			headers: LOOPBACK_HEADERS,
-			body: "not-json{",
-		});
-
-		expect(res.status).toBe(400);
-	});
-
-	it("allows POST without Origin header (CLI callers)", async () => {
-		const app = await makeTestApp();
-		const res = await app.request("/api/claude-hooks", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ hook_event_name: "SomeUnknown", session_id: "s1" }),
-		});
-
-		// Should NOT be 403 — CLI callers don't send Origin
-		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ inserted: 0, skipped: 1 });
 	});
 });

@@ -1,5 +1,6 @@
 import { isAbsolute, posix, win32 } from "node:path";
 import type { Database } from "./db.js";
+import { WorkerSecretScanner } from "./redaction-worker.js";
 import {
 	DEFAULT_RETRIEVAL_LEDGER_RETENTION_DAYS,
 	MAX_RETRIEVAL_JSON_BYTES,
@@ -244,7 +245,7 @@ const QUALITY_CHECK_TYPES = new Set<OutcomeEvidenceType>([
 	"quality.lint_result",
 	"quality.build_result",
 ]);
-const SECRET_SCANNER = new SecretScanner();
+const SECRET_SCANNER = new WorkerSecretScanner(new SecretScanner());
 const OUTCOME_EVIDENCE_QUERY_BATCH_SIZE = MAX_OUTCOME_EVIDENCE_QUERY_LIMIT;
 const EXPLICIT_TIMESTAMP_PATTERN =
 	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?([Zz]|[+-](\d{2}):?(\d{2}))$/;

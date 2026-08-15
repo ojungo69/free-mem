@@ -8,6 +8,7 @@
  */
 
 import { Command } from "commander";
+import { backupCommand } from "./commands/backup.js";
 import { claudeHookFileContextCommand } from "./commands/claude-hook-file-context.js";
 import { claudeHookIngestCommand } from "./commands/claude-hook-ingest.js";
 import { claudeHookInjectCommand } from "./commands/claude-hook-inject.js";
@@ -28,7 +29,7 @@ import {
 	rememberMemoryCommand,
 	showMemoryCommand,
 } from "./commands/memory.js";
-import { packCommand, promptPackLedgerCommand } from "./commands/pack.js";
+import { packCommand } from "./commands/pack.js";
 import { recentCommand } from "./commands/recent.js";
 import { searchCommand } from "./commands/search.js";
 import { serveCommand } from "./commands/serve.js";
@@ -39,6 +40,7 @@ import { versionCommand } from "./commands/version.js";
 import { helpStyle } from "./help-style.js";
 
 export const ROOT_COMPLETION_COMMANDS = [
+	"backup",
 	"claude-hook-file-context",
 	"claude-hook-inject",
 	"claude-hook-ingest",
@@ -157,6 +159,7 @@ function registerMemoryGroupWrappers(): void {
 export function registerRootCommands(program: Command): Command {
 	registerMemoryGroupWrappers();
 
+	program.addCommand(backupCommand);
 	program.addCommand(serveCommand);
 	program.addCommand(configCommand);
 	program.addCommand(mcpCommand);
@@ -178,7 +181,6 @@ export function registerRootCommands(program: Command): Command {
 	program.addCommand(recentCommand);
 	program.addCommand(searchCommand);
 	program.addCommand(packCommand);
-	program.addCommand(promptPackLedgerCommand, { hidden: true });
 	// Deprecated top-level aliases — use `memory show`, `memory forget`,
 	// `memory remember` instead. Hidden from --help and shell completion but
 	// still functional for backwards compat.

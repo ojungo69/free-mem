@@ -1,9 +1,22 @@
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
-import { initDatabase, MemoryStore } from "@codemem/core";
+import type { MemoryStore } from "@codemem/core";
+import {
+	callDaemonRpc,
+	hashMutationPayload,
+	LOCAL_API_VERSION,
+	NORMALIZED_SCHEMA_VERSION,
+	RPC_CAPABILITY_HASH,
+	readCurrentDatabasePointer,
+	resolveStorageLayout,
+	startDaemon,
+} from "@codemem/core";
 import { describe, expect, it, vi } from "vitest";
+import { openTestMemoryStore } from "../../../core/src/test-utils.js";
+import { ReadOnlyActor } from "../../../core/src/writer-actor.js";
 import { dbCommand } from "./db.js";
 
 describe("db command", () => {
@@ -102,15 +115,66 @@ describe("db command", () => {
 	}
 
 	function countRawEvents(dbPath: string): number {
-		const store = new MemoryStore(dbPath);
+		const db = ReadOnlyActor.open(dbPath);
 		try {
-			const row = store.db.prepare("SELECT COUNT(*) AS cnt FROM raw_events").get() as {
+			const row = db.prepare("SELECT COUNT(*) AS cnt FROM raw_events").get() as {
 				cnt: number;
 			};
 			return Number(row.cnt);
 		} finally {
-			store.close();
+			db.close();
 		}
+	}
+
+	async function seedDaemonRawEvent(
+		socketPath: string,
+		sessionId: string,
+		eventId: string,
+		tsWallMs: number,
+	): Promise<void> {
+		const response = await callDaemonRpc(socketPath, {
+			id: randomUUID(),
+			method: "POST /v1/events",
+			adapter_version: "test",
+			native_cli_version: "test",
+			normalized_schema_version: NORMALIZED_SCHEMA_VERSION,
+			local_api_version: LOCAL_API_VERSION,
+			capability_hash: RPC_CAPABILITY_HASH,
+			body: {
+				idempotencyKey: eventId,
+				event: {
+					schemaVersion: NORMALIZED_SCHEMA_VERSION,
+					eventId,
+					idempotencyKey: eventId,
+					agent: "opencode",
+					nativeSessionId: sessionId,
+					projectKey: "db-test",
+					workspaceKey: "db-test",
+					cwd: process.cwd(),
+					kind: "user_prompted",
+					occurredAt: new Date(tsWallMs).toISOString(),
+					payload: { text: `seed ${eventId}` },
+					sourceHash: hashMutationPayload({ eventId }),
+					sensitivity: "normal",
+				},
+			},
+		});
+		if ("error" in response) throw new Error(response.error.code);
+	}
+
+	async function daemonRawEventCount(socketPath: string): Promise<number> {
+		const response = await callDaemonRpc(socketPath, {
+			id: randomUUID(),
+			method: "GET /v1/view",
+			adapter_version: "test",
+			native_cli_version: "test",
+			normalized_schema_version: NORMALIZED_SCHEMA_VERSION,
+			local_api_version: LOCAL_API_VERSION,
+			capability_hash: RPC_CAPABILITY_HASH,
+			body: { collection: "raw-events" },
+		});
+		if ("error" in response) throw new Error(response.error.code);
+		return Number((response.result.body as { pending?: number }).pending ?? 0);
 	}
 
 	it("prune-raw-events --dry-run deletes nothing", async () => {
@@ -118,21 +182,39 @@ describe("db command", () => {
 		expect(pruneRaw).toBeDefined();
 		if (!pruneRaw) throw new Error("expected prune-raw-events command");
 
-		const dbPath = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-")), "test.sqlite");
-		initDatabase(dbPath);
+		const dataDir = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-")), "data");
+		const daemon = await startDaemon({ dataDir });
 		const oldTs = Date.now() - 200 * 86_400_000; // well past a 1-day cutoff
-		const store = new MemoryStore(dbPath);
-		seedRawEvent(store, "sess-dry", "evt-0", oldTs);
-		seedRawEvent(store, "sess-dry", "evt-1", oldTs + 1000);
-		store.close();
-		expect(countRawEvents(dbPath)).toBe(2);
+		const originalDataDir = process.env.CODEMEM_DATA_DIR;
+		const originalExitCode = process.exitCode;
+		try {
+			process.env.CODEMEM_DATA_DIR = dataDir;
+			process.exitCode = 0;
+			await seedDaemonRawEvent(daemon.socketPath, "sess-dry", "evt-0", oldTs);
+			await seedDaemonRawEvent(daemon.socketPath, "sess-dry", "evt-1", oldTs + 1000);
+			expect(await daemonRawEventCount(daemon.socketPath)).toBe(2);
 
-		await pruneRaw.parseAsync(
-			["node", "prune-raw-events", "--db-path", dbPath, "--max-age-days", "1", "--dry-run"],
-			{ from: "node" },
-		);
+			await pruneRaw.parseAsync(
+				[
+					"node",
+					"prune-raw-events",
+					"--db-path",
+					join(dataDir, "legacy.sqlite"),
+					"--max-age-days",
+					"1",
+					"--dry-run",
+				],
+				{ from: "node" },
+			);
 
-		expect(countRawEvents(dbPath)).toBe(2);
+			expect(process.exitCode).toBe(0);
+			expect(await daemonRawEventCount(daemon.socketPath)).toBe(2);
+		} finally {
+			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = originalDataDir;
+			process.exitCode = originalExitCode;
+			await daemon.stop();
+		}
 	});
 
 	it("prune-raw-events deletes events older than the cutoff and keeps newer ones", async () => {
@@ -140,32 +222,50 @@ describe("db command", () => {
 		expect(pruneRaw).toBeDefined();
 		if (!pruneRaw) throw new Error("expected prune-raw-events command");
 
-		const dbPath = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-")), "test.sqlite");
-		initDatabase(dbPath);
+		const dataDir = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-")), "data");
+		const daemon = await startDaemon({ dataDir });
 		const now = Date.now();
-		const store = new MemoryStore(dbPath);
-		// Two old events (older than a 1-day cutoff) and one recent event.
-		seedRawEvent(store, "sess-old", "evt-0", now - 10 * 86_400_000);
-		seedRawEvent(store, "sess-old", "evt-1", now - 5 * 86_400_000);
-		seedRawEvent(store, "sess-new", "evt-2", now - 1000);
-		store.close();
-		expect(countRawEvents(dbPath)).toBe(3);
-
-		await pruneRaw.parseAsync(
-			["node", "prune-raw-events", "--db-path", dbPath, "--max-age-days", "1"],
-			{ from: "node" },
-		);
-
-		// Only the recent event survives.
-		expect(countRawEvents(dbPath)).toBe(1);
-		const store2 = new MemoryStore(dbPath);
+		const originalDataDir = process.env.CODEMEM_DATA_DIR;
+		const originalExitCode = process.exitCode;
 		try {
-			const remaining = store2.db.prepare("SELECT event_id FROM raw_events").all() as Array<{
+			process.env.CODEMEM_DATA_DIR = dataDir;
+			process.exitCode = 0;
+			await seedDaemonRawEvent(daemon.socketPath, "sess-old", "evt-0", now - 10 * 86_400_000);
+			await seedDaemonRawEvent(daemon.socketPath, "sess-old", "evt-1", now - 5 * 86_400_000);
+			await seedDaemonRawEvent(daemon.socketPath, "sess-new", "evt-2", now - 1000);
+			expect(await daemonRawEventCount(daemon.socketPath)).toBe(3);
+
+			await pruneRaw.parseAsync(
+				[
+					"node",
+					"prune-raw-events",
+					"--db-path",
+					join(dataDir, "legacy.sqlite"),
+					"--max-age-days",
+					"1",
+				],
+				{ from: "node" },
+			);
+
+			expect(process.exitCode).toBe(0);
+			expect(await daemonRawEventCount(daemon.socketPath)).toBe(1);
+		} finally {
+			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = originalDataDir;
+			process.exitCode = originalExitCode;
+			await daemon.stop();
+		}
+		const layout = resolveStorageLayout(dataDir);
+		const pointer = readCurrentDatabasePointer(layout);
+		if (!pointer) throw new Error("canonical database pointer is missing");
+		const reader = ReadOnlyActor.open(join(layout.dbDir, pointer));
+		try {
+			const remaining = reader.prepare("SELECT event_id FROM raw_events").all() as Array<{
 				event_id: string;
 			}>;
-			expect(remaining.map((r) => r.event_id)).toEqual(["evt-2"]);
+			expect(remaining.map((row) => row.event_id)).toEqual(["evt-2"]);
 		} finally {
-			store2.close();
+			reader.close();
 		}
 	});
 
@@ -175,8 +275,7 @@ describe("db command", () => {
 		if (!pruneRaw) throw new Error("expected prune-raw-events command");
 
 		const dbPath = join(mkdtempSync(join(tmpdir(), "codemem-db-prune-raw-bad-")), "test.sqlite");
-		initDatabase(dbPath);
-		const store = new MemoryStore(dbPath);
+		const store = openTestMemoryStore(dbPath);
 		seedRawEvent(store, "sess-x", "evt-0", Date.now() - 10 * 86_400_000);
 		store.close();
 		expect(countRawEvents(dbPath)).toBe(1);
@@ -234,7 +333,7 @@ describe("db command", () => {
 		if (!dedup) throw new Error("expected dedup-memories command");
 
 		const dbPath = join(mkdtempSync(join(tmpdir(), "codemem-db-cmd-")), "test.sqlite");
-		initDatabase(dbPath);
+		openTestMemoryStore(dbPath).close();
 		const logErrorSpy = vi.spyOn(p.log, "error").mockImplementation(() => {});
 		const originalExitCode = process.exitCode;
 		process.exitCode = undefined;

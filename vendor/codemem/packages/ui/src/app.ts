@@ -5,8 +5,6 @@
  * Orchestrates tab routing, polling, and delegates rendering to tab modules.
  */
 
-/* global lucide */
-
 declare const __CODEMEM_GIT_COMMIT__: string;
 
 import { mountToastHost } from "./components/primitives/toast";

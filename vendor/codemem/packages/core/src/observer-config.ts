@@ -389,24 +389,38 @@ export function readCodememConfigFile(): Record<string, unknown> {
 	return readCodememConfigFileAtPath(configPath);
 }
 
+export function readCodememConfigFileWithStatus(): {
+	config: Record<string, unknown>;
+	degraded: boolean;
+} {
+	return readCodememConfigFileAtPathWithStatus(getCodememConfigPath());
+}
+
 export function readCodememConfigFileAtPath(configPath: string): Record<string, unknown> {
+	return readCodememConfigFileAtPathWithStatus(configPath).config;
+}
+
+function readCodememConfigFileAtPathWithStatus(configPath: string): {
+	config: Record<string, unknown>;
+	degraded: boolean;
+} {
 	const resolvedPath = expandUserPath(configPath);
-	if (!existsSync(resolvedPath)) return {};
+	if (!existsSync(resolvedPath)) return { config: {}, degraded: false };
 
 	let text: string;
 	try {
 		text = readFileSync(resolvedPath, "utf-8");
 	} catch {
-		return {};
+		return { config: {}, degraded: true };
 	}
 
-	if (!text.trim()) return {};
+	if (!text.trim()) return { config: {}, degraded: false };
 
 	try {
 		const parsed = JSON.parse(text) as unknown;
 		return parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: {};
+			? { config: parsed as Record<string, unknown>, degraded: false }
+			: { config: {}, degraded: true };
 	} catch {
 		// fall through to JSONC
 	}
@@ -415,10 +429,10 @@ export function readCodememConfigFileAtPath(configPath: string): Record<string, 
 		const cleaned = stripTrailingCommas(stripJsonComments(text));
 		const parsed = JSON.parse(cleaned) as unknown;
 		return parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: {};
+			? { config: parsed as Record<string, unknown>, degraded: false }
+			: { config: {}, degraded: true };
 	} catch {
-		return {};
+		return { config: {}, degraded: true };
 	}
 }
 

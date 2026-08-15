@@ -14,7 +14,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
+import { connect } from "./db.js";
 import * as core from "./index.js";
+import { openTestMemoryStore } from "./test-utils.js";
 
 type StorageLayout = {
 	controlDir: string;
@@ -59,7 +61,7 @@ describe("Phase 1 daemon foundation", () => {
 		const dbPath = join(dir, "memory.sqlite");
 		process.env.CODEMEM_DB_OPEN_TRACE = tracePath;
 
-		const db = core.connect(dbPath);
+		const db = connect(dbPath);
 		try {
 			expect(db.constructor.name).toBe("WriterActor");
 		} finally {
@@ -85,10 +87,10 @@ describe("Phase 1 daemon foundation", () => {
 	it("P1-T033-02-migration-gate", () => {
 		const runDatabaseMigrations = Reflect.get(core, "runDatabaseMigrations") as
 			| ((
-					db: ReturnType<typeof core.connect>,
+					db: ReturnType<typeof connect>,
 					options: {
 						dbPath: string;
-						backupAndVerify: (context: { db: ReturnType<typeof core.connect> }) => {
+						backupAndVerify: (context: { db: ReturnType<typeof connect> }) => {
 							verified: boolean;
 							evidence: string;
 						};
@@ -99,7 +101,7 @@ describe("Phase 1 daemon foundation", () => {
 
 		const dir = tempDir("codemem-migration-gate-");
 		const dbPath = join(dir, "allowed.sqlite");
-		const db = core.connect(dbPath);
+		const db = connect(dbPath);
 		try {
 			runDatabaseMigrations?.(db, {
 				dbPath,
@@ -116,7 +118,7 @@ describe("Phase 1 daemon foundation", () => {
 		}
 
 		const rejectedPath = join(dir, "rejected.sqlite");
-		const rejectedDb = core.connect(rejectedPath);
+		const rejectedDb = connect(rejectedPath);
 		try {
 			expect(() =>
 				runDatabaseMigrations?.(rejectedDb, {
@@ -133,9 +135,10 @@ describe("Phase 1 daemon foundation", () => {
 
 	it("P1-T033-03-no-raw-db-export", () => {
 		const dir = tempDir("codemem-public-db-");
-		const store = new core.MemoryStore(join(dir, "memory.sqlite"));
+		const store = openTestMemoryStore(join(dir, "memory.sqlite"));
 		try {
 			expect(Reflect.get(core, "Database")).toBeUndefined();
+			expect(Reflect.get(core, "MemoryStore")).toBeUndefined();
 			expect(store.db).not.toBeInstanceOf(BetterSqlite3);
 			expect(Reflect.get(store.db, "raw")).toBeUndefined();
 			expect(Object.values(store.db).some((value) => value instanceof BetterSqlite3)).toBe(false);

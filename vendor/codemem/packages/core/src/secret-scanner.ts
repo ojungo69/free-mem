@@ -17,6 +17,8 @@
  * plug in via `ScannerOptions` without changing this module's shape.
  */
 
+import { countRegExpCaptureGroups, MANDATORY_GITLEAKS_RULES } from "./gitleaks-pinned-rules.js";
+
 export interface SecretRule {
 	/** Stable identifier surfaced in the redaction marker and detection log. */
 	kind: string;
@@ -34,6 +36,8 @@ export interface SecretRule {
 	 * should be preserved.
 	 */
 	redactGroup?: number;
+	/** Rule provenance included in the runtime ruleset fingerprint. */
+	origin?: string;
 }
 
 export interface ScanDetection {
@@ -49,6 +53,8 @@ export interface ScanResult {
 export interface ScannerOptions {
 	/** Additional rules merged with `DEFAULT_RULES`. */
 	rules?: SecretRule[];
+	/** Invalid optional rules were dropped; callers must persist metadata only. */
+	degraded?: boolean;
 	/**
 	 * Strings or regexes that bypass redaction even when matched. NOTE: string
 	 * entries match by exact equality against the matched substring; regex
@@ -70,7 +76,7 @@ const SECRET_BEARING_KEY =
  * more-general ones — see the OpenAI rule, which uses a negative lookahead to
  * avoid swallowing Anthropic keys regardless of order.
  */
-export const DEFAULT_RULES: SecretRule[] = [
+const LOCAL_RULES: SecretRule[] = [
 	// AWS — both halves of an access key pair
 	{ kind: "aws_access_key_id", pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
 	// AWS secret access key — 40 base64-ish chars; require entropy to filter FPs
@@ -126,6 +132,8 @@ export const DEFAULT_RULES: SecretRule[] = [
 	},
 ];
 
+export const DEFAULT_RULES: SecretRule[] = [...MANDATORY_GITLEAKS_RULES, ...LOCAL_RULES];
+
 /** Shannon entropy in bits per character. */
 function shannonEntropy(text: string): number {
 	if (text.length === 0) return 0;
@@ -174,10 +182,20 @@ function isPlainObject(value: object): boolean {
 export class SecretScanner {
 	private readonly rules: SecretRule[];
 	private readonly allowlist: Array<string | RegExp>;
+	private readonly degraded: boolean;
 
 	constructor(opts: ScannerOptions = {}) {
 		this.rules = [...DEFAULT_RULES, ...(opts.rules ?? [])];
 		this.allowlist = opts.allowlist ?? [];
+		this.degraded = opts.degraded === true;
+	}
+
+	workerOptions(): ScannerOptions {
+		return {
+			rules: this.rules.slice(DEFAULT_RULES.length),
+			allowlist: [...this.allowlist],
+			degraded: this.degraded,
+		};
 	}
 
 	/** Scan a single string. Returns the redacted form and per-kind detection counts. */
@@ -216,13 +234,13 @@ export class SecretScanner {
 	 * stack-overflow the scanner.
 	 */
 	redactValue(value: unknown, parentKey?: string): { value: unknown; detections: ScanDetection[] } {
-		return this.redactValueInternal(value, parentKey, new WeakSet());
+		return this.redactValueInternal(value, parentKey, new WeakMap());
 	}
 
 	private redactValueInternal(
 		value: unknown,
 		parentKey: string | undefined,
-		seen: WeakSet<object>,
+		seen: WeakMap<object, unknown>,
 	): { value: unknown; detections: ScanDetection[] } {
 		if (typeof value === "string") {
 			if (parentKey && SECRET_BEARING_KEY.test(parentKey) && this.looksLikeSecretValue(value)) {
@@ -238,9 +256,10 @@ export class SecretScanner {
 			return { value: result.redacted, detections: result.detections };
 		}
 		if (Array.isArray(value)) {
-			if (seen.has(value)) return { value, detections: [] };
-			seen.add(value);
+			const previous = seen.get(value);
+			if (previous) return { value: previous, detections: [] };
 			const out: unknown[] = [];
+			seen.set(value, out);
 			const merged = new Map<string, number>();
 			for (const item of value) {
 				const r = this.redactValueInternal(item, parentKey, seen);
@@ -250,18 +269,26 @@ export class SecretScanner {
 			return { value: out, detections: aggregateMap(merged) };
 		}
 		if (value !== null && typeof value === "object") {
-			if (seen.has(value)) return { value, detections: [] };
 			if (!isPlainObject(value)) {
 				// Non-plain objects (Date, Map, Set, RegExp, Buffer, typed arrays,
 				// class instances) are returned unchanged. Walking them would
 				// silently strip prototype methods and corrupt state.
 				return { value, detections: [] };
 			}
-			seen.add(value);
+			const previous = seen.get(value);
+			if (previous) return { value: previous, detections: [] };
 			const obj = value as Record<string, unknown>;
 			const out: Record<string, unknown> = {};
+			seen.set(value, out);
 			const merged = new Map<string, number>();
 			for (const [k, v] of Object.entries(obj)) {
+				const keyScan = this.scan(k);
+				if (keyScan.detections.length > 0) {
+					for (const d of keyScan.detections) {
+						merged.set(d.kind, (merged.get(d.kind) ?? 0) + d.count);
+					}
+					continue;
+				}
 				const r = this.redactValueInternal(v, k, seen);
 				out[k] = r.value;
 				for (const d of r.detections) merged.set(d.kind, (merged.get(d.kind) ?? 0) + d.count);
@@ -308,8 +335,8 @@ function aggregateMap(map: Map<string, number>): ScanDetection[] {
  * }
  * ```
  *
- * Malformed entries are silently dropped — config errors should never block
- * a workspace from opening.
+ * Malformed entries are dropped and mark the options degraded. The daemon can
+ * still start, but write callers must persist metadata only until config is fixed.
  */
 export function loadScannerOptionsFromConfig(
 	config: Record<string, unknown> | null | undefined,
@@ -317,51 +344,91 @@ export function loadScannerOptionsFromConfig(
 	const empty: ScannerOptions = {};
 	if (!config || typeof config !== "object") return empty;
 	const block = (config as { secret_scanner?: unknown }).secret_scanner;
-	if (!block || typeof block !== "object" || Array.isArray(block)) return empty;
+	if (block === undefined) return empty;
+	if (!block || typeof block !== "object" || Array.isArray(block)) return { degraded: true };
 	const out: ScannerOptions = {};
 
 	const rawRules = (block as { rules?: unknown }).rules;
 	if (Array.isArray(rawRules)) {
+		if (rawRules.length > 100) out.degraded = true;
 		const rules: SecretRule[] = [];
-		for (const entry of rawRules) {
-			if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+		const defaultScanner = new SecretScanner();
+		for (const entry of rawRules.slice(0, 100)) {
+			if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+				out.degraded = true;
+				continue;
+			}
 			const e = entry as Record<string, unknown>;
-			if (typeof e.kind !== "string" || typeof e.pattern !== "string") continue;
+			if (
+				typeof e.kind !== "string" ||
+				!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(e.kind) ||
+				defaultScanner.scan(e.kind).detections.length > 0 ||
+				typeof e.pattern !== "string" ||
+				e.pattern.length === 0 ||
+				e.pattern.length > 512
+			) {
+				out.degraded = true;
+				continue;
+			}
+			if (e.flags !== undefined && typeof e.flags !== "string") {
+				out.degraded = true;
+				continue;
+			}
 			const flagsRaw = typeof e.flags === "string" ? e.flags : "g";
 			const flags = flagsRaw.includes("g") ? flagsRaw : `${flagsRaw}g`;
 			let pattern: RegExp;
 			try {
 				pattern = new RegExp(e.pattern, flags);
 			} catch {
+				out.degraded = true;
 				continue;
 			}
-			const rule: SecretRule = { kind: e.kind, pattern };
-			if (typeof e.minEntropy === "number" && Number.isFinite(e.minEntropy)) {
+			const rule: SecretRule = { kind: e.kind, pattern, origin: "user-config" };
+			if (typeof e.minEntropy === "number" && Number.isFinite(e.minEntropy) && e.minEntropy >= 0) {
 				rule.minEntropy = e.minEntropy;
+			} else if (e.minEntropy !== undefined) {
+				out.degraded = true;
+				continue;
 			}
 			if (
 				typeof e.redactGroup === "number" &&
 				Number.isInteger(e.redactGroup) &&
-				e.redactGroup > 0
+				e.redactGroup > 0 &&
+				e.redactGroup <= countRegExpCaptureGroups(pattern)
 			) {
 				rule.redactGroup = e.redactGroup;
+			} else if (e.redactGroup !== undefined) {
+				out.degraded = true;
+				continue;
 			}
 			rules.push(rule);
 		}
 		if (rules.length > 0) out.rules = rules;
+	} else if (rawRules !== undefined) {
+		out.degraded = true;
 	}
 
 	const rawAllowlist = (block as { allowlist?: unknown }).allowlist;
 	if (Array.isArray(rawAllowlist)) {
+		if (rawAllowlist.length > 100) out.degraded = true;
 		const allowlist: Array<string | RegExp> = [];
-		for (const entry of rawAllowlist) {
-			if (typeof entry !== "string" || entry.length === 0) continue;
+		for (const entry of rawAllowlist.slice(0, 100)) {
+			if (typeof entry !== "string" || entry.length === 0 || entry.length > 512) {
+				out.degraded = true;
+				continue;
+			}
 			// Strings of the form /pattern/flags are parsed as regex; everything
 			// else is treated as a literal.
 			const re = parseRegexLiteral(entry);
+			if (entry.startsWith("/") && entry.lastIndexOf("/") > 0 && !re) {
+				out.degraded = true;
+				continue;
+			}
 			allowlist.push(re ?? entry);
 		}
 		if (allowlist.length > 0) out.allowlist = allowlist;
+	} else if (rawAllowlist !== undefined) {
+		out.degraded = true;
 	}
 
 	return out;

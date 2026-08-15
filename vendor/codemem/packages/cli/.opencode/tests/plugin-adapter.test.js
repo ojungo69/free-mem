@@ -163,7 +163,7 @@ describe("opencode adapter event mapping", () => {
   });
 
   test("resolveProjectName falls back to cwd basename when project metadata is missing", () => {
-    const projectName = __testUtils.resolveProjectName(null, "/tmp/workspaces/codemem");
+    const projectName = __testUtils.resolveProjectName(null, "/__codemem_no_git__/codemem");
 
     expect(projectName).toBe("codemem");
   });
