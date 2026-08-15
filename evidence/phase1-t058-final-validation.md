@@ -2,7 +2,7 @@
 
 日付: 2026-08-15
 
-対象: product candidate `f44a9880d357e2bbb0c5e568fe18deac651b543a`（`fix(viewer): bound streamed JSON requests`）
+対象: product candidate `a8ff359d7648fdec55fbf2419d6760efcce7bf68`（`fix: verify interrupted restore artifacts`）
 
 ## 結論
 
@@ -11,12 +11,14 @@ SC-1 の候補検証は完了した。`main` へのマージはこの候補検�
 ## Final gates
 
 - toolchain: Node `v24.16.0` / Corepack pnpm `11.8.0`。
-- CI `check`: `1,854 = 1,851 passed + 3 todo`、failure 0。
+- clean checkout `check`: 114 files、`1,854 = 1,851 passed + 3 todo`、failure 0。
 - test-set comparator: `4,037`（事前）`- 2,376`（retire）`+ 193`（登録済み追加）`= 1,854`（最終）。
-- T055 fault injection: pass。T056 no-Agent-blockage: pass、最終 p95 は Claude `133.1ms` / Codex `147.6ms` で 150ms 目標内。T057 backup/restore smoke: pass。
+- T055 fault injection: built surface / Class A / lifecycle / Class B 全 pass、focused 5 files / 34 tests。T056 no-Agent-blockage: pass、最終 p95 は Claude `148.3ms` / Codex `139.3ms` で 150ms 目標内、13 files / 314 tests と packed artifact も pass。T057 backup/restore smoke: real-process gate と focused 4 files / 19 tests が pass。
 - T029 の disposition は T053 static scan で再照合済み（279 production files / 0 violations）。
-- CLI help と viewer smoke は candidate build で pass。clean checkout は frozen lockfile install → build → check の順で pass。
-- 最終 viewer body-limit 修正後も tsc、Biome 393 files、viewer build、serial full suite 114 files / 1,854 tests（1,851 passed + 3 todo）は pass。
+- clean checkout は frozen lockfile install → build → check → CLI help → 実 viewer 起動 / health / 正常停止の順で pass。
+- full coverage は statements `76.86%`、branches `69.10%`、functions `81.48%`、lines `79.18%`。LCOV と `origin/main...a8ff359` の追加 executable line / branch outcome を照合した Sonar new-code 近似は `5,595 / 6,929 = 80.75%`。Sonar の SCM 判定と Quality Gate は push 後の解析を正本とする。
+- Vitest JSON SHA-256: `8d1dca8e36871c1dd0ae25fb19b321c429c06fbd711920cfe94aadb480740b83`。LCOV SHA-256: `149e5691ae96496053d09aef38c1e160f75857528e50d0f03e793ced999c1746`。
+- tsc、Biome 393 files、workspace build、3 standalone hook bundle の byte 一致（SHA-256 `9cd97306668ba5a159a2bed1591b11e2ec78bf725b6ac7c2d137f0d220a82ac8`）も pass。
 
 ## Machine verifier と手動照合
 
@@ -41,9 +43,17 @@ SC-1 の候補検証は完了した。`main` へのマージはこの候補検�
 | legacy cutover could publish the current pointer before tombstone/final owner checks | fixed | migration/publication moved after identity, tombstone, owner-scan, and manifest checks; ordering regression test added |
 | process loss after tombstone but before pointer publication required manual recovery | fixed | startup verifies the exact tombstone and matching recovery hardlink, restores the legacy path, and reruns cutover; preserved-row regression added |
 | unauthenticated viewer JSON handling buffered a chunked body before enforcing its size limit | fixed | installed Hono `bodyLimit` now rejects both JSON POST routes before `readBoundedJson`; the existing auth security case proves 413 before the full stream or RPC dispatch |
+| loopback-port cookie scope exposed viewer sessions to another local listener | fixed | cookie auth was retired; the browser holds an origin-scoped `Authorization: Session` value, and cookie-only requests are rejected |
+| existing-viewer login and custom DB viewer ownership were not bound to one runtime endpoint | fixed | PID ownership now lives under the resolved private runtime root; exact host family / port and daemon-issued nonce exchange are required before reuse or stop |
+| custom `--db-path` runtimes shared parent control paths and callers dropped the explicit DB path | fixed | fixed-length path-hash runtime roots are resolved once and propagated through CLI hooks, MCP, viewer, setup, and legacy cutover recovery |
+| backup create / restore could exceed the shared 2-second RPC deadline after committing | fixed | backup methods use durable operation journals and GET recovery; same-ID replay is stable and restore stop runs after late completion |
+| interrupted restore recovery trusted a result sidecar without rechecking the activated SQLite artifact | fixed | before writer open, noncommitted restore journals require the saved main-file SHA-256 and absence of WAL/SHM; mismatch preserves pointer, journal, artifact, and sidecars and fails closed |
+| viewer config projection exposed `observer_api_key` | fixed | the browser-facing projection now redacts the supported plaintext credential and has a literal-key regression |
 | daemon-job POST/GET lifecycle was reported as a retry concern | rejected by contract | T045 Class-C contract is one POST plus GET polling; restart marks orphaned work failed and automatic retry is prohibited |
 
-All four valid final findings were fixed through `f44a988`; the daemon-job report is not a defect under the explicit Class-C contract. The streamed-body fix was found by the independent agy security review and its focused re-review returned `ok: true`; Semgrep `p/default` findings were reviewed with no remaining valid High/Critical issue.
+All valid findings above were fixed through `a8ff359`; the daemon-job report is not a defect under the explicit Class-C contract. Independent correctness, manual security, and Ponytail re-reviews returned blocker-free. The dedicated Codex Security runner could not start because the active global config combines `multi_agent_v2` with `agents.max_threads`; persistent user configuration was not changed, and the same final diff received the manual security review instead. Semgrep findings were reviewed with no remaining valid High/Critical issue.
+
+`.codacy.yml` uses documented `include_paths` to include the vendored product source and engine-specific Lizard exclusions only; this is a scope override, not an allowlist. Live Codacy status remains an external push-time check. See [Codacy configuration file](https://docs.codacy.com/repositories-configure/codacy-configuration-file/).
 
 ## Upgrade and rollback commands
 
@@ -70,4 +80,4 @@ Backups can contain private/local-only data; Phase 1 supports local backup only.
 
 ## Terminal external step
 
-Before merging `f44a988` to `main`, obtain the independent approval required by the repository workflow, then perform the merge and recheck the resulting `main` CI. Neither action was performed by this candidate validation.
+Before merging `a8ff359` to `main`, obtain the independent approval required by the repository workflow, then perform the merge and recheck the resulting `main` CI. Neither action was performed by this candidate validation.
