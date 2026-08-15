@@ -1,0 +1,33 @@
+vendor/codemem/README.md
+  s_a66c5aa5a229b8::t_c925e530ee5901 65-70
+vendor/codemem/docs/plugin-reference.md
+  s_a66c5aa5a229b8::t_64a856f118a1f2 44-49
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_211aa7fe546c35::t_dae7b502218db5 1-10,141-143,540-547,601-606,610-611,626-636,680,690,715,720-722,732,866-872
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_211aa7fe546c35::t_d02ea3099bcac0 54-58,469,710,713-719,722,725-728,730-763,765,769-772,774,781,786,795,802,808,816,822-837,839,852-855,858-867,871-873,877,1179,1241,1244-1245,1249-1256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a478665c269995d6a39d3dab678d88b36fddb350",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_a66c5aa5a229b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a006d8-23e1-7d53-a475-59377ebf5888",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
