@@ -1,0 +1,37 @@
+vendor/codemem/packages/core/src/daemon-peer.test.ts
+  s_3ac342c3240e69::t_fe2044fcafe512 1,39-55
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_969c24dfefe24f 634-645,686-693
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_211aa7fe546c35::t_9902cedf01c158 634-645,686-693
+vendor/codemem/packages/core/src/daemon-rpc-contract.ts
+  s_211aa7fe546c35::t_d1b726f595e411 93-96,113-122,170-181
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_207a41ae22092d 18,102
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_42dcdc601656f4 284-295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "01440d5c8ea1d3e5221569a19137f505ca6e3007",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_3ac342c3240e69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff64ca65-c732-4368-af94-a7cf393db32f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
