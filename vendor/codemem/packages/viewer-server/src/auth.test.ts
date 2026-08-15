@@ -91,6 +91,25 @@ describe("viewer HTTP security boundary", () => {
 			throw new Error(`unexpected ${method}`);
 		});
 		const app = mountedApp(rpc);
+		let pulls = 0;
+		const oversizedBody = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulls += 1;
+				controller.enqueue(new Uint8Array(600));
+				if (pulls === 8) controller.close();
+			},
+		});
+		const oversized = await app.request(
+			new Request("http://127.0.0.1:3737/api/auth/exchange", {
+				method: "POST",
+				headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1:3737" },
+				body: oversizedBody,
+				duplex: "half",
+			} as RequestInit & { duplex: "half" }),
+		);
+		expect(oversized.status).toBe(413);
+		expect(pulls).toBeLessThan(8);
+		expect(rpc).not.toHaveBeenCalled();
 		for (const origin of ["http://127.0.0.2:3737", "http://[::1]:3737"]) {
 			const response = await app.request(`${origin}/api/auth/exchange`, {
 				method: "POST",

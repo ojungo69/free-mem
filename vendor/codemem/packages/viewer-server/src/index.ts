@@ -7,6 +7,7 @@ import { parseStrictInteger, VERSION, VIEWER_SERVICE_DISCRIMINATOR } from "@code
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { isViewerOrigin, originGuard, preflightHandler, securityHeaders } from "./middleware.js";
 import { createViewerRpcCall, type ViewerRpcCall, ViewerRpcError } from "./rpc-client.js";
 
@@ -132,6 +133,13 @@ export function createApp(opts: AppOptions = {}) {
 		await next();
 	});
 
+	app.use(
+		"/api/auth/exchange",
+		bodyLimit({
+			maxSize: MAX_AUTH_BODY_BYTES,
+			onError: (c) => c.json({ error: "invalid request" }, 413),
+		}),
+	);
 	app.post("/api/auth/exchange", async (c) => {
 		const origin = c.req.header("Origin");
 		if (!origin || !isViewerOrigin(origin, c.req.url)) {
@@ -250,6 +258,13 @@ export function createApp(opts: AppOptions = {}) {
 		}
 	});
 
+	app.use(
+		"/api/pack/trace",
+		bodyLimit({
+			maxSize: 32 * 1024,
+			onError: (c) => c.json({ error: "invalid json body" }, 413),
+		}),
+	);
 	app.post("/api/pack/trace", async (c) => {
 		let payload: unknown;
 		try {
