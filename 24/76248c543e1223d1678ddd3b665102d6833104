@@ -1,0 +1,41 @@
+vendor/codemem/packages/cli/src/commands/backup.test.ts
+  s_211aa7fe546c35::t_95c3a9c7db3cb9 3-6,10,26-30,34-38,44-48,92,94,98-103,105,112-113,123-127,134-137
+vendor/codemem/packages/cli/src/commands/backup.ts
+  s_211aa7fe546c35::t_2f6a9dcba1f770 13,24-31,33,53,108
+vendor/codemem/packages/cli/src/commands/daemon-operation.ts
+  s_211aa7fe546c35::t_501df959457c0d 10,27,37-41,48-53
+vendor/codemem/packages/core/src/daemon-operations.ts
+  s_211aa7fe546c35::t_fb3b25596109a0 16-27,41-44,74-79,167-196,279-281,300-304,313,327-331,361-362,385-387,408,415-462,489-600
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_211aa7fe546c35::t_47fe7157c19d67 6,107-116,208-277
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_2e3c8663e5b9dc 15,96,500,522,1338,1425,1429-1435,1474-1481
+vendor/codemem/packages/core/src/index.ts
+  s_211aa7fe546c35::t_30598cddffa742 59
+vendor/codemem/packages/core/src/online-backup.ts
+  s_211aa7fe546c35::t_f67dc1f5dfba15 804-830,995-1020,1058-1096,1138-1139,1141,1143-1144,1152,1165-1166,1172,1185-1186,1188,1190-1191,1196-1201,1204,1209,1211,1219,1221,1227
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_211aa7fe546c35::t_b1f78684bb9650 19,255,273-274
+vendor/codemem/packages/core/src/daemon-operations.test.ts
+  s_211aa7fe546c35::t_2bf77eca8e269c 4,10,60,494-584
+vendor/codemem/packages/core/src/daemon-rpc-contract.ts
+  s_211aa7fe546c35::t_26045a562eed19 7,59-69
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_211aa7fe546c35::t_d134689cdc9e34 20,24-27,266-273,281-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2476248c543e1223d1678ddd3b665102d6833104",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
