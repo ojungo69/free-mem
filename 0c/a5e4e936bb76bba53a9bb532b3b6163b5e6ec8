@@ -1,0 +1,25 @@
+vendor/codemem/packages/core/src/attribution-assessment.test.ts
+  s_211aa7fe546c35::t_df90d78f010216 5,29,43-46
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_211aa7fe546c35::t_5478231c4ecdc1 833-842,910-916
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_791d097d62641e 1008
+vendor/codemem/packages/core/src/redaction-pipeline.test.ts
+  s_211aa7fe546c35::t_25f6697303cce1 244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0ca5e4e936bb76bba53a9bb532b3b6163b5e6ec8",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
