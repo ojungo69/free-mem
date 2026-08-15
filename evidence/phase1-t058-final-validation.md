@@ -25,7 +25,7 @@ SC-1 の初回候補検証は完了した。後続の closure refresh は下記�
 
 ## 2026-08-16 closure refresh
 
-closure refresh は `01440d5` のfull gate bundleと、その後の最終 product-code candidate `1a42c65` のsetup snapshot TOCTOU deltaを分けて記録する。
+closure refresh は `01440d5` のfull gate bundleと、その後の product-code candidate `87195f5`、test-only coverage closure `55323dd` を分けて記録する。
 
 - toolchain は Node `v24.16.0` / Corepack pnpm `11.8.0`。
 
@@ -41,12 +41,20 @@ closure refresh は `01440d5` のfull gate bundleと、その後の最終 produc
 - setup は source checkout の共通 built CLI/hook を事前検査し、built CLI と選択 lane の config/installed runtimeをmanifestへ記録する。OpenCode は絶対Node/checkout pathを持つwrapperとplugin sourceも記録し、plugin不在をmutation前に拒否する。packed `--codex-only` は OpenCode package 非同梱でも2回成功した。lane config と install manifest は失敗時 rollback する。
 - T037 は shared socket transport の実 `EACCES` を `peer_denied` / non-retryable にし、`ECONNREFUSED|ENOENT` だけを retryable unavailable にする。その他の socket error は reject のままなので spool/fail-open 契約を弱めない。
 
-最終 `1a42c65` delta は setup snapshotを既存coreと同じ `O_NOFOLLOW -> fstat/read(fd) -> post-read lstat` へ変更した。inode swapを注入した既存title内の回帰testは旧実装で意図したassertion failure、修正後 setup/config 2 files / 28 tests、workspace build、`tsc --build`、targeted Biome、packed artifact が pass。
+`1a42c65` delta は setup snapshotを既存coreと同じ `O_NOFOLLOW -> fstat/read(fd) -> post-read lstat` へ変更した。inode swapを注入した既存title内の回帰testは旧実装で意図したassertion failure、修正後 setup/config 2 files / 28 tests、workspace build、`tsc --build`、targeted Biome、packed artifact が pass。
+
+その後の product-code delta は `0ca5e4e`（redaction worker readiness）、`216866a`（MCP retrieval の SDK handoff finalization）、`a478665`（Claude user-scope MCP と setup transaction）、`89384c3`（custom MCP package spec の no-force ownership境界）。`89384c3` では focused 4 files / 30 tests、CLI build、`tsc --build`、targeted Biome、independent correctness/security review、Ponytail review が pass。custom scoped package、npm alias、file/git/URL spec、Codex TOML comment injection は unmanaged として拒否し、既知 launcher/argv だけを明示 allowlist する。
+
+test-only `55323dd` は既存title内で direct / transient npx / Node checkout / uvx / uv run / uv tool run / npx `-p` / npx `--package=` の8形を追加した。focused setup test 1 file / 23 tests、Biome、`tsc --build`、CLI build が pass。PR run `31910079592` と push run `31910076790` は full coverage を含む `check` が passし、PR #7 の Sonar new-code coverage は `81.2327506899724%`（lines `472 / 567`、conditions `411 / 520`）へ上昇した。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secrets も passした。
+
+`87195f5` は single-quoted Codex MCP table と、commented managed assignment が active custom commandを隠す2件を修正した。table quoteは対称一致し、current/legacy 判定はactive `command` / `args` parserを共有する。既存title内の2 regressionは旧実装で意図したassertion failure、修正後 focused setup 1 file / 23 tests、Biome、`tsc --build`、CLI build、Semgrep 22 rules / 0 findings、independent correctness/security review、Ponytail review が pass。
+
+同headの push run `31910863263` と PR run `31910865507` は full coverage を含む `check` が passした。PR #7 の Sonar new-code coverage は `81.3528336380256%`（lines `477 / 572`、conditions `413 / 522`）。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secretsもpassし、review threadは12件中unresolved 0。
 
 - closure production deltaへの Semgrep `p/security-audit` は初回 changed 4 filesと最終 setup targetの各runで22 rules / 0 findings。independent correctness、manual security、T037、selected-lane setup、CodeQL #57 review は blocker-free。Ponytail reviewでは既存 typed-error helperと既存 safe file-descriptor patternを再利用し、追加 abstraction/dependency は作らなかった。
 - immutable machine verifier は evidence-aware matcher の **25 / 31** を維持する。現候補は source/caller/test/evidence/exit-gate の手動 five-layer auditで T027–T057 **31 / 31**。T037 は production socket callerまで再確認済み。
 
-本 refresh 時点では、この候補を対象とする PR push、live Sonar/Codacy/CodeQL、`main` merge、Sonar long-lived branch移行は未実行であり、初回候補や過去PRの結果を現候補の外部greenとはみなさない。
+PR #7 の code/test head `87195f5` は上記live checksで再検証済み。`main` merge と Sonar long-lived branch移行は、この repository evidence commit 後に実施する external stepとして分離する。
 
 ## Machine verifier と手動照合
 
@@ -86,7 +94,7 @@ Fresh-session verifier の immutable report は `61acb3d` で生成した。そ�
 | `codemem mcp` no longer accepted the shared `--db-path` option | fixed | the existing shared option resolver sets `CODEMEM_DB` before the stdio server import; daemon-only ownership remains unchanged |
 | setup rollback snapshots checked and read editor config by path in separate operations | fixed | snapshots use one non-following file descriptor for `fstat` and bytes, then verify post-read path identity; deterministic inode-swap regression leaves the replacement untouched |
 
-Valid initial findings were fixed through `546edd3`; the daemon-job report is not a defect under the explicit Class-C contract. Independent correctness, manual security, and Ponytail re-reviews returned blocker-free. The dedicated Codex Security runner could not start because the active global config combines `multi_agent_v2` with `agents.max_threads`; persistent user configuration was not changed, and the initial candidate diff received the manual security review instead. Semgrep findings were reviewed with no remaining valid High/Critical issue. CodeQL alerts `#29` / `#30` were dismissed as false positives because their test-only `/tmp` sources reach non-creating `r` / `r+` opens on existing private paths; the aggregate check then passed. The later `1a42c65` delta has its own closure-refresh reviews, real #57 fix, and Semgrep result above.
+Valid initial findings were fixed through `546edd3`; the daemon-job report is not a defect under the explicit Class-C contract. Independent correctness, manual security, and Ponytail re-reviews returned blocker-free. The dedicated Codex Security runner could not start because the active global config combines `multi_agent_v2` with `agents.max_threads`; persistent user configuration was not changed, and the initial candidate diff received the manual security review instead. Semgrep findings were reviewed with no remaining valid High/Critical issue. CodeQL alerts `#29` / `#30` were dismissed as false positives because their test-only `/tmp` sources reach non-creating `r` / `r+` opens on existing private paths; the aggregate check then passed. The later deltas through `87195f5` have their own closure-refresh correctness/security/Ponytail reviews, and `55323dd` received the test-contract and Ponytail reviews above.
 
 `.codacy.yml` uses documented `include_paths` to include the vendored product source and engine-specific Lizard exclusions only; this is a scope override, not an allowlist. Live Codacy status remains an external push-time check. See [Codacy configuration file](https://docs.codacy.com/repositories-configure/codacy-configuration-file/).
 
@@ -115,4 +123,4 @@ Backups can contain private/local-only data; Phase 1 supports local backup only.
 
 ## Terminal external step
 
-Before merging the closure candidate headed by product-code commit `1a42c65` to `main`, obtain the independent approval required by the repository workflow, then perform the merge and recheck the resulting `main` CI. Neither action was performed by this local candidate validation.
+Product-code commit `87195f5` includes test-only closure `55323dd` and is the verified PR #7 code/test head. The repository evidence commit records its green checks; merge `main`, recheck the resulting `main` CI, then migrate the Sonar long-lived branch only after confirming the expected branch IDs and clean Quality Gate. These external mutations occur after this evidence commit rather than being presented as local validation.
