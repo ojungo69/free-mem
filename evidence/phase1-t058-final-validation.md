@@ -2,7 +2,7 @@
 
 日付: 2026-08-15
 
-対象: product candidate `c4feb833da8c652bdd1d3efa70e8a6e96d33d015`（`fix: recover interrupted legacy cutover`）
+対象: product candidate `f44a9880d357e2bbb0c5e568fe18deac651b543a`（`fix(viewer): bound streamed JSON requests`）
 
 ## 結論
 
@@ -16,6 +16,7 @@ SC-1 の候補検証は完了した。`main` へのマージはこの候補検�
 - T055 fault injection: pass。T056 no-Agent-blockage: pass、最終 p95 は Claude `133.1ms` / Codex `147.6ms` で 150ms 目標内。T057 backup/restore smoke: pass。
 - T029 の disposition は T053 static scan で再照合済み（279 production files / 0 violations）。
 - CLI help と viewer smoke は candidate build で pass。clean checkout は frozen lockfile install → build → check の順で pass。
+- 最終 viewer body-limit 修正後も tsc、Biome 393 files、viewer build、serial full suite 114 files / 1,854 tests（1,851 passed + 3 todo）は pass。
 
 ## Machine verifier と手動照合
 
@@ -39,9 +40,10 @@ SC-1 の候補検証は完了した。`main` へのマージはこの候補検�
 | degraded redaction worker failure could admit a persisted control identifier | fixed | `isSafePersistedText` now rejects `intake.degraded`; regression test covers injected worker failure |
 | legacy cutover could publish the current pointer before tombstone/final owner checks | fixed | migration/publication moved after identity, tombstone, owner-scan, and manifest checks; ordering regression test added |
 | process loss after tombstone but before pointer publication required manual recovery | fixed | startup verifies the exact tombstone and matching recovery hardlink, restores the legacy path, and reruns cutover; preserved-row regression added |
+| unauthenticated viewer JSON handling buffered a chunked body before enforcing its size limit | fixed | installed Hono `bodyLimit` now rejects both JSON POST routes before `readBoundedJson`; the existing auth security case proves 413 before the full stream or RPC dispatch |
 | daemon-job POST/GET lifecycle was reported as a retry concern | rejected by contract | T045 Class-C contract is one POST plus GET polling; restart marks orphaned work failed and automatic retry is prohibited |
 
-All three valid final findings were fixed through `c4feb83`; the daemon-job report is not a defect under the explicit Class-C contract.
+All four valid final findings were fixed through `f44a988`; the daemon-job report is not a defect under the explicit Class-C contract. The streamed-body fix was found by the independent agy security review and its focused re-review returned `ok: true`; Semgrep `p/default` findings were reviewed with no remaining valid High/Critical issue.
 
 ## Upgrade and rollback commands
 
@@ -68,4 +70,4 @@ Backups can contain private/local-only data; Phase 1 supports local backup only.
 
 ## Terminal external step
 
-Before merging `c4feb83` to `main`, obtain the independent approval required by the repository workflow, then perform the merge and recheck the resulting `main` CI. Neither action was performed by this candidate validation.
+Before merging `f44a988` to `main`, obtain the independent approval required by the repository workflow, then perform the merge and recheck the resulting `main` CI. Neither action was performed by this candidate validation.

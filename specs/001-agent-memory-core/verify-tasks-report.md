@@ -2,7 +2,7 @@
 
 日付: 2026-08-15
 
-scope: `branch` (`origin/main` `5d863f1f3994e3612fecf9472d6a13b8611c3fd6` → product candidate `c4feb833da8c652bdd1d3efa70e8a6e96d33d015`)
+scope: `branch` (`origin/main` `5d863f1f3994e3612fecf9472d6a13b8611c3fd6` → product candidate `f44a9880d357e2bbb0c5e568fe18deac651b543a`)
 
 対象: 31 tasks (`T027`–`T057`)
 repository: non-shallow / changed files: 257
@@ -183,9 +183,9 @@ The machine verifier result remains **25 / 31**. It is a structural verifier sco
 
 Manual candidate reconciliation is **31 / 31** for T027–T057. The six non-verified machine outcomes are scope limits rather than unresolved implementation evidence: T027 worktree/branch metadata is outside the diff; T028's frozen baseline is not reintroduced in the candidate diff; T030 and T031 are deletion tasks that lack a positive presence target (T031 also has no source path); T032 supplies no path/symbol/acceptance artifact; and T037's referenced test was not modified in candidate scope. Source, caller/export checks, recorded validation, and the final test-set comparator resolve those six tasks manually.
 
-The product candidate through `c4feb83` passed the recorded gates on Node `v24.16.0` / pnpm `11.8.0`: CI check `1,854 = 1,851 passed + 3 todo`, comparator `4,037 - 2,376 + 193 = 1,854`, T055/T056/T057 gates, T029/T053 static-scan reconciliation, CLI help, and viewer smoke. T056 p95 was Claude `133.1ms` and Codex `147.6ms`. The final interruption-recovery closure additionally passed T051 4/4, daemon lifecycle 4/4, forced TypeScript build, and targeted Biome.
+The product candidate through `f44a988` passed the recorded gates on Node `v24.16.0` / pnpm `11.8.0`: CI check `1,854 = 1,851 passed + 3 todo`, comparator `4,037 - 2,376 + 193 = 1,854`, T055/T056/T057 gates, T029/T053 static-scan reconciliation, CLI help, and viewer smoke. T056 p95 was Claude `133.1ms` and Codex `147.6ms`. The final interruption-recovery closure additionally passed T051 4/4, daemon lifecycle 4/4, forced TypeScript build, and targeted Biome; the streamed-body fix then passed viewer build plus the full serial 114-file / 1,854-test gate.
 
-The final security matrix fixed all three valid findings through `c4feb83`: degraded redaction-worker handling rejects persisted control identifiers, legacy cutover does not publish before tombstone/final-owner checks, and an interrupted tombstone state automatically resumes from its verified recovery hardlink. The daemon-job finding is rejected by the T045 Class-C contract (one POST, GET polling, no automatic retry). Upgrade/rollback commands are recorded in `evidence/phase1-t058-final-validation.md`.
+The final security matrix fixed all four valid findings through `f44a988`: degraded redaction-worker handling rejects persisted control identifiers, legacy cutover does not publish before tombstone/final-owner checks, an interrupted tombstone state automatically resumes from its verified recovery hardlink, and viewer JSON routes enforce their byte limits before buffering streamed bodies. The daemon-job finding is rejected by the T045 Class-C contract (one POST, GET polling, no automatic retry). Upgrade/rollback commands are recorded in `evidence/phase1-t058-final-validation.md`.
 
 `main` merge remains the terminal external step after independent approval; this report does not claim it occurred.
 
