@@ -1,0 +1,25 @@
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_211aa7fe546c35::t_adca750ff499c4 363
+vendor/codemem/packages/core/src/legacy-cutover.test.ts
+  s_211aa7fe546c35::t_362024e9a45146 131,136-141,143
+vendor/codemem/packages/core/src/legacy-cutover.ts
+  s_211aa7fe546c35::t_caf1f59224bb2e 318-327
+vendor/codemem/packages/core/src/mutation-dispatcher.test.ts
+  s_211aa7fe546c35::t_f6066972a8db07 4-5,294-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1292f62fe81bd0aa000c496d956854a0e2522228",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
