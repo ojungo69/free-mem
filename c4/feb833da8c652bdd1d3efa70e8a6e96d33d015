@@ -1,0 +1,21 @@
+vendor/codemem/packages/core/src/legacy-cutover.test.ts
+  s_211aa7fe546c35::t_d667c04b8b7d42 4,8,12,157-186
+vendor/codemem/packages/core/src/legacy-cutover.ts
+  s_211aa7fe546c35::t_703d737dc7246e 10,239-267,466-468
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c4feb833da8c652bdd1d3efa70e8a6e96d33d015",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
