@@ -1,0 +1,21 @@
+evidence/phase1-t058-final-validation.md
+  s_211aa7fe546c35::t_fc56881f8ebd5f 3,5,21,24,32,59-61,63,92
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_fc56881f8ebd5f 176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0d5f3ed51328dc1bbe934e7eec74493192ae279e",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
