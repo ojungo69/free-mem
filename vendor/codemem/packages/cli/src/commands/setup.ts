@@ -62,6 +62,8 @@ export function codexConfigDir(): string {
 }
 
 const MANAGED_OPENCODE_PLUGIN_SPECS = ["@codemem/opencode-plugin", "codemem", "@kunickiaj/codemem"];
+const MANAGED_LEGACY_MCP_SPEC =
+	/^(?:codemem(?:@[A-Za-z0-9][A-Za-z0-9._-]*)?|@kunickiaj\/codemem(?:@[A-Za-z0-9][A-Za-z0-9._-]*)?|codemem==[A-Za-z0-9][A-Za-z0-9._+-]*)$/;
 
 export type SetupRuntime = {
 	cliPath: string;
@@ -125,39 +127,70 @@ function migrateLegacyOpencodePlugin(): void {
 	}
 }
 
+function managedLegacyPackageSpec(value: unknown): boolean {
+	return typeof value === "string" && MANAGED_LEGACY_MCP_SPEC.test(value);
+}
+
 function managedLegacyCommand(command: unknown, args?: unknown): boolean {
 	const words = Array.isArray(command)
 		? command
 		: typeof command === "string"
 			? [command, ...(Array.isArray(args) ? args : [])]
 			: [];
-	if (words.at(-1) !== "mcp") return false;
+	if (!words.every((word): word is string => typeof word === "string") || words.at(-1) !== "mcp")
+		return false;
 	const launcher = words[0];
-	const hasManagedPackage = words.some(
-		(word) =>
-			typeof word === "string" &&
-			(/^(?:@[^/]+\/)?codemem(?:@[^/]*)?$/.test(word) || /^codemem==[^/]+$/.test(word)),
-	);
-	return (
-		(hasManagedPackage &&
-			typeof launcher === "string" &&
-			(["npx", "uv", "uvx", "codemem"].includes(launcher) || isTransientNpxBinPath(launcher))) ||
-		words.some(
-			(word) =>
-				typeof word === "string" &&
-				word.replaceAll("\\", "/").endsWith("/packages/cli/dist/index.js"),
-		)
-	);
+	if (!launcher) return false;
+	if (words.length === 2)
+		return (
+			launcher === "codemem" ||
+			(isTransientNpxBinPath(launcher) &&
+				/\/codemem(?:\.cmd)?$/.test(launcher.replaceAll("\\", "/")))
+		);
+	if (
+		words.length === 3 &&
+		/(?:^|\/)node(?:\.exe)?$/.test(launcher.replaceAll("\\", "/")) &&
+		words[1]?.replaceAll("\\", "/").endsWith("/packages/cli/dist/index.js")
+	)
+		return true;
+	if (launcher === "uvx") return words.length === 3 && managedLegacyPackageSpec(words[1]);
+	if (launcher === "uv") {
+		return (
+			(words.length === 4 && words[1] === "run" && managedLegacyPackageSpec(words[2])) ||
+			(words.length === 5 &&
+				words[1] === "tool" &&
+				words[2] === "run" &&
+				managedLegacyPackageSpec(words[3]))
+		);
+	}
+	if (launcher !== "npx") return false;
+	const npxArgs =
+		words[1] === "-y" || words[1] === "--yes" ? words.slice(2, -1) : words.slice(1, -1);
+	if (npxArgs.length === 1) return managedLegacyPackageSpec(npxArgs[0]);
+	if (npxArgs.length === 3 && ["-p", "--package"].includes(npxArgs[0] ?? ""))
+		return managedLegacyPackageSpec(npxArgs[1]) && npxArgs[2] === "codemem";
+	if (npxArgs.length === 2 && /^(?:-p|--package)=/.test(npxArgs[0] ?? ""))
+		return (
+			managedLegacyPackageSpec(npxArgs[0]?.slice(npxArgs[0].indexOf("=") + 1)) &&
+			npxArgs[1] === "codemem"
+		);
+	return false;
 }
 
 function managedLegacyCodexBlock(block: string): boolean {
-	if (!/"mcp"/.test(block)) return false;
-	if (/packages[\\/]cli[\\/]dist[\\/]index\.js"\s*,\s*"mcp"/.test(block)) return true;
-	const command = /^\s*command\s*=\s*"(npx|uvx?|codemem)"/m.exec(block)?.[1];
-	if (command === "codemem") return true;
-	return (
-		command !== undefined && /"(?:@[^"/]+\/)?codemem(?:@[^"/]*)?"|"codemem==[^"/]+"/.test(block)
-	);
+	const commandSource = /^\s*command\s*=\s*("(?:\\.|[^"\\])*")\s*(?:#.*)?$/m.exec(block)?.[1];
+	const argsSource = /^\s*args\s*=\s*\[([\s\S]*?)\]\s*(?:#.*)?$/m.exec(block)?.[1];
+	if (!commandSource || argsSource === undefined) return false;
+	const stringSources = argsSource.match(/"(?:\\.|[^"\\])*"/g) ?? [];
+	if (argsSource.replace(/"(?:\\.|[^"\\])*"/g, "").replace(/[\s,]/g, "") !== "") return false;
+	try {
+		return managedLegacyCommand(
+			JSON.parse(commandSource),
+			stringSources.map((source) => JSON.parse(source)),
+		);
+	} catch {
+		return false;
+	}
 }
 
 function sameCodexMcpBlock(block: string, runtime: SetupRuntime): boolean {

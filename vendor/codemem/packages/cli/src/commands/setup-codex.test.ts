@@ -396,7 +396,7 @@ describe("installCodex — non-destructive merge", () => {
 		expect(toml).toContain('command = "other-cmd"');
 		expect(toml).toContain("[mcp_servers.codemem]");
 
-		const custom = `${original}[mcp_servers.codemem]\ncommand = "npx"\nargs = ["custom-wrapper", "mcp"]\n`;
+		const custom = `${original}[mcp_servers."codemem"]\n# stale args = ["/tmp/old/packages/cli/dist/index.js", "mcp"]\ncommand = "npx"\nargs = ["--package", "@acme/codemem", "codemem", "mcp"]\n`;
 		writeFileSync(join(codexHome, "config.toml"), custom, "utf-8");
 		expect(installCodex(false)).toBe(false);
 		expect(readConfigToml()).toBe(custom);
@@ -625,7 +625,12 @@ describe("setup command options", () => {
 		expect(existsSync(join(claudeHome, "codemem-hook-runtime.mjs"))).toBe(true);
 		const legacyCustom = `${JSON.stringify({
 			...claude,
-			mcpServers: { codemem: { command: "bash", args: ["custom", "mcp"] } },
+			mcpServers: {
+				codemem: {
+					command: "npx",
+					args: ["--package", "@acme/codemem", "codemem", "mcp"],
+				},
+			},
 		})}\n`;
 		writeFileSync(join(claudeHome, "settings.json"), legacyCustom, "utf8");
 		expect(installClaude(false)).toBe(false);
@@ -637,7 +642,10 @@ describe("setup command options", () => {
 
 		const customOpencode = {
 			mcp: {
-				codemem: { type: "local", command: ["bash", "-c", "codemem", "mcp"] },
+				codemem: {
+					type: "local",
+					command: ["npx", "--package", "@acme/codemem", "codemem", "mcp"],
+				},
 			},
 		};
 		writeFileSync(
@@ -689,7 +697,12 @@ describe("setup command options", () => {
 		writeFileSync(
 			join(claudeHome, ".claude.json"),
 			`${JSON.stringify({
-				mcpServers: { codemem: { command: "bash", args: ["custom", "mcp"] } },
+				mcpServers: {
+					codemem: {
+						command: "npx",
+						args: ["--package=codemem@npm:attacker", "codemem", "mcp"],
+					},
+				},
 			})}\n`,
 			"utf8",
 		);
@@ -822,7 +835,7 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 	it('detects a quoted [mcp_servers."codemem"] table and does not append a duplicate', () => {
 		writeFileSync(
 			join(codexHome, "config.toml"),
-			'[mcp_servers."codemem"]\ncommand = "npx"\nargs = ["-y", "codemem", "mcp"]\n',
+			'[mcp_servers."codemem"]\ncommand = "npx"\nargs = [\n  "-y",\n  "codemem",\n  "mcp",\n]\n',
 			"utf-8",
 		);
 
