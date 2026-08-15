@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+	chmodSync,
 	existsSync,
 	mkdtempSync,
 	readdirSync,
@@ -15,6 +16,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect } from "./db.js";
 import * as core from "./index.js";
+import { recoverCanonicalRestoreResult } from "./online-backup.js";
 import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 const created: Array<{ stop: () => Promise<void> }> = [];
@@ -512,6 +514,18 @@ describe("Phase 1 online backup", () => {
 				});
 			}
 			writeFileSync(sidecarPath, `${JSON.stringify(validSidecar)}\n`);
+			chmodSync(proof.artifactPath, 0o644);
+			expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
+				valid: false,
+				diagnostics: expect.arrayContaining(["backup artifact is not owner-only"]),
+			});
+			chmodSync(proof.artifactPath, 0o600);
+			rmSync(sidecarPath);
+			expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
+				valid: false,
+				manifestHash: null,
+				diagnostics: ["backup sidecar is missing"],
+			});
 		} finally {
 			db.close();
 		}
@@ -691,6 +705,24 @@ describe("Phase 1 online backup", () => {
 		const restoredArtifactSha256 = restored.result.artifactSha256;
 		const restoreResultPath = `${stagedPath}.restore.json`;
 		const restoreResult = readFileSync(restoreResultPath, "utf8");
+		const recoveryInput = {
+			dataDir,
+			operationId: "restore-operation",
+			payloadHash: restorePayloadHash,
+			backupId: "restore-source",
+		};
+		expect(recoverCanonicalRestoreResult(recoveryInput)).toMatchObject({
+			operationId: "restore-operation",
+			backupId: "restore-source",
+			pointer: newPointer,
+			artifactSha256: restoredArtifactSha256,
+			restartRequired: true,
+		});
+		const mismatchedRestoreResult = JSON.parse(restoreResult) as Record<string, unknown>;
+		mismatchedRestoreResult.payloadHash = "0".repeat(64);
+		writeFileSync(restoreResultPath, `${JSON.stringify(mismatchedRestoreResult)}\n`);
+		expect(() => recoverCanonicalRestoreResult(recoveryInput)).toThrow("different payload");
+		writeFileSync(restoreResultPath, restoreResult);
 		expect(() =>
 			core.restoreCanonicalBackup({
 				dataDir,

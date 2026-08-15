@@ -104,6 +104,9 @@ describe("serve command option resolution", () => {
 			expect(basename(customDataDir)).toMatch(/^[a-f0-9]{32}$/);
 			expect(resolveDataDirOpt({ dbPath })).toBe(customDataDir);
 			expect(customDataDir).not.toBe(siblingDataDir);
+			expect(resolveDataDirOpt({ dbPath: "~/custom.sqlite" })).toBe(
+				resolveDataDirOpt({ dbPath: join(homedir(), "custom.sqlite") }),
+			);
 			const longDbPath = join(root, "x".repeat(180), "deeply-nested.sqlite");
 			expect(
 				Buffer.byteLength(

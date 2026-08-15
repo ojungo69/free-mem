@@ -48,6 +48,9 @@ describe("bundled hook runtime", () => {
 			await expect(runHookRuntime("codex-hook-ingest", "{}")).resolves.toBe('{"continue":true}');
 			delete process.env.CODEMEM_PLUGIN_IGNORE;
 			expect(ready()).toEqual([]);
+			await expect(
+				runHookRuntime("codex-hook-ingest", "{}", performance.now() + 1_000),
+			).resolves.toBe('{"continue":true}');
 
 			const claudePayload = (sessionId: string) =>
 				JSON.stringify({

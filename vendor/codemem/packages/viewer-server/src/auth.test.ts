@@ -102,6 +102,22 @@ describe("viewer HTTP security boundary", () => {
 			},
 		});
 		expect(missingOrigin.status).toBe(403);
+		const allowedPreflight = await app.request("http://127.0.0.1:3737/api/runtime", {
+			method: "OPTIONS",
+			headers: { Origin: "http://127.0.0.1:3737" },
+		});
+		expect(allowedPreflight.status).toBe(204);
+		expect(allowedPreflight.headers.get("access-control-allow-origin")).toBe(
+			"http://127.0.0.1:3737",
+		);
+		expect(allowedPreflight.headers.get("access-control-max-age")).toBe("86400");
+		for (const origin of [undefined, "not a URL"]) {
+			const rejectedPreflight = await app.request("http://127.0.0.1:3737/api/runtime", {
+				method: "OPTIONS",
+				headers: origin ? { Origin: origin } : undefined,
+			});
+			expect(rejectedPreflight.status, origin).toBe(403);
+		}
 		for (const origin of [undefined, "https://attacker.example"]) {
 			const exchange = await app.request("http://127.0.0.1:3737/api/auth/exchange", {
 				method: "POST",
@@ -527,6 +543,12 @@ describe("viewer HTTP security boundary", () => {
 					})
 				).status,
 			).toBe(200);
+			await expect(rpc("GET /v1/unknown" as never)).rejects.toMatchObject({
+				name: "ViewerRpcError",
+				code: "unknown_method",
+				message: "Unknown RPC method: GET /v1/unknown",
+				retryable: false,
+			});
 
 			const issued = await rpc("POST /v1/viewer/auth/nonce");
 			const exchange = await app.request("http://127.0.0.1:3737/api/auth/exchange", {
@@ -546,6 +568,12 @@ describe("viewer HTTP security boundary", () => {
 			).toBe(200);
 
 			await daemon.stop();
+			await expect(rpc("GET /v1/health")).rejects.toMatchObject({
+				name: "ViewerRpcError",
+				code: "daemon_unavailable",
+				message: "Daemon is not running.",
+				retryable: true,
+			});
 			daemon = await startDaemon({ dataDir });
 			expect(
 				(

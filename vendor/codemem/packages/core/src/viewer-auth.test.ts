@@ -1,4 +1,12 @@
-import { lstatSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	chmodSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,6 +44,28 @@ describe("viewer auth", () => {
 		const restarted = new ViewerAuthState({ controlDir, instanceId: "daemon-b" });
 		expect(readFileSync(tokenPath, "utf8").trim()).toBe(token);
 		expect(restarted.verifyBearer(token)).toBe(true);
+
+		const directoryControlDir = tempControlDir();
+		mkdirSync(join(directoryControlDir, "token"), { recursive: true });
+		expect(
+			() => new ViewerAuthState({ controlDir: directoryControlDir, instanceId: "directory" }),
+		).toThrow("Viewer bearer token must be a regular file.");
+
+		const insecureControlDir = tempControlDir();
+		mkdirSync(insecureControlDir, { recursive: true });
+		const insecureTokenPath = join(insecureControlDir, "token");
+		writeFileSync(insecureTokenPath, `${token}\n`, { mode: 0o600 });
+		chmodSync(insecureTokenPath, 0o644);
+		expect(
+			() => new ViewerAuthState({ controlDir: insecureControlDir, instanceId: "insecure" }),
+		).toThrow("Viewer bearer token permissions must be 0600.");
+
+		const malformedControlDir = tempControlDir();
+		mkdirSync(malformedControlDir, { recursive: true });
+		writeFileSync(join(malformedControlDir, "token"), "short\n", { mode: 0o600 });
+		expect(
+			() => new ViewerAuthState({ controlDir: malformedControlDir, instanceId: "malformed" }),
+		).toThrow("Viewer bearer token is malformed.");
 	});
 
 	it("P1-T043-03-nonce-single-use-race rejects expired or concurrent nonce reuse", async () => {
@@ -46,10 +76,12 @@ describe("viewer auth", () => {
 			now: () => now,
 		});
 		const expired = auth.issueNonce();
+		const staleSibling = auth.issueNonce();
 		now += VIEWER_NONCE_TTL_MS + 1;
-		expect(auth.exchangeNonce(expired.nonce)).toBeNull();
-
 		const current = auth.issueNonce();
+		expect(auth.exchangeNonce(expired.nonce)).toBeNull();
+		expect(auth.exchangeNonce(staleSibling.nonce)).toBeNull();
+
 		const exchanged = await Promise.all([
 			Promise.resolve().then(() => auth.exchangeNonce(current.nonce)),
 			Promise.resolve().then(() => auth.exchangeNonce(current.nonce)),
@@ -68,17 +100,21 @@ describe("viewer auth", () => {
 		});
 		const session = auth.exchangeNonce(auth.issueNonce().nonce);
 		expect(session).not.toBeNull();
-		expect(auth.verifySession(session?.cookie ?? "")).toBe(true);
+		const cookie = session?.cookie ?? "";
+		expect(auth.verifySession(cookie)).toBe(true);
+		const tamperedCookie = `${cookie.slice(0, -1)}${cookie.endsWith("A") ? "B" : "A"}`;
+		expect(auth.verifySession(tamperedCookie)).toBe(false);
+		expect(auth.logout("malformed")).toBe(false);
 
 		const restarted = new ViewerAuthState({
 			controlDir,
 			instanceId: "daemon-b",
 			now: () => now,
 		});
-		expect(restarted.verifySession(session?.cookie ?? "")).toBe(false);
+		expect(restarted.verifySession(cookie)).toBe(false);
 
-		expect(auth.logout(session?.cookie ?? "")).toBe(true);
-		expect(auth.verifySession(session?.cookie ?? "")).toBe(false);
+		expect(auth.logout(cookie)).toBe(true);
+		expect(auth.verifySession(cookie)).toBe(false);
 
 		const expiring = auth.exchangeNonce(auth.issueNonce().nonce);
 		now += VIEWER_SESSION_TTL_MS + 1;
