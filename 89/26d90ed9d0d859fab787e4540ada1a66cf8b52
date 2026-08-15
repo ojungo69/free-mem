@@ -1,0 +1,25 @@
+specs/001-agent-memory-core/tasks.md
+  s_211aa7fe546c35::t_c3cf6faddafe3f 176
+specs/001-agent-memory-core/verify-tasks-report.md
+  s_211aa7fe546c35::t_04b311ea8b44f5 5
+  s_211aa7fe546c35::t_c3cf6faddafe3f 186,188
+evidence/phase1-t058-final-validation.md
+  s_211aa7fe546c35::t_c3cf6faddafe3f 19,43,46,73
+  s_211aa7fe546c35::t_04b311ea8b44f5 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8926d90ed9d0d859fab787e4540ada1a66cf8b52",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
