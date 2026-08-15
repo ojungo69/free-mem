@@ -1,0 +1,30 @@
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_211aa7fe546c35::t_d360210f2da8f7 2,348,350-360
+vendor/codemem/packages/cli/src/commands/serve.test.ts
+  s_211aa7fe546c35::t_e3e503664c8ecd 186
+  s_211aa7fe546c35::t_054eb02d5064e3 1,158,169-174,202-206,305-380
+  s_211aa7fe546c35::t_995092c162d9fd 155-157
+  s_211aa7fe546c35::t_9e420b02ed93b4 159-161,166-168
+  s_211aa7fe546c35::t_a73fa6b68058d3 175-177
+  s_211aa7fe546c35::t_a0ef45da64177d 149-154,162-165,178-179
+vendor/codemem/packages/cli/src/commands/serve.ts
+  s_211aa7fe546c35::t_2cbd1661ec3c2f 4,131-132,135-136,146-159,163,166,168,280,283-292,296,306,387-424,427,434-437,450-452,484,533,601-602,609,618
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_211aa7fe546c35::t_e3352a35be3423 1-2,79,104-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a06645d70d9e266b414460c4e8c7792c6f2c7e9f",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
