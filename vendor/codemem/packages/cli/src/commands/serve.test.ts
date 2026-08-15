@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net, { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -146,13 +146,44 @@ describe("serve command option resolution", () => {
 				expect(childProcessMocks.spawn, action).not.toHaveBeenCalled();
 			}
 
+			const newRuntime = join(root, "new-runtime");
+			process.env.CODEMEM_DATA_DIR = newRuntime;
+			const unref = vi.fn();
+			childProcessMocks.spawn.mockReturnValue({ pid: 23_456, unref } as never);
+			serverMocks.createViewerRpcCall.mockReturnValue(
+				vi.fn(async (method: string) => {
+					if (method === "POST /v1/viewer/auth/nonce") return { nonce: "n".repeat(43) };
+					throw new Error(`unexpected ${method}`);
+				}),
+			);
+			let connectionAttempt = 0;
+			const connectionSpy = vi.spyOn(net, "createConnection").mockImplementation((() => {
+				const socket = new net.Socket();
+				queueMicrotask(() => {
+					connectionAttempt += 1;
+					if (connectionAttempt === 1) socket.emit("error", new Error("not listening"));
+					else socket.emit("connect");
+				});
+				return socket;
+			}) as typeof net.createConnection);
+			output.mockClear();
+			process.exitCode = 0;
+			await serveCommand.parseAsync(
+				["start", "--host", "127.0.0.1", "--port", String(port), "--db-path", dbPath],
+				{ from: "user" },
+			);
+			expect(process.exitCode).toBe(0);
+			expect(unref).toHaveBeenCalledOnce();
+			expect(existsSync(newRuntime)).toBe(false);
+			delete process.env.CODEMEM_DATA_DIR;
+
 			output.mockClear();
 			process.exitCode = 0;
 			await serveCommand.parseAsync(["invalid-action"], { from: "user" });
 			expect(process.exitCode).toBe(1);
 			expect(output.mock.calls.flat().join("")).toContain("Unknown serve action: invalid-action");
 
-			vi.spyOn(net, "createConnection").mockImplementation((() => {
+			connectionSpy.mockImplementation((() => {
 				const socket = new net.Socket();
 				queueMicrotask(() => socket.emit("connect"));
 				return socket;
@@ -168,6 +199,11 @@ describe("serve command option resolution", () => {
 			const challengeNonce = "c".repeat(43);
 			const freshNonce = "f".repeat(43);
 			const session = "v1.signed-session.999.ZGFlbW9u.signature";
+			mkdirSync(customDataDir, { recursive: true });
+			writeFileSync(
+				join(customDataDir, "viewer.pid"),
+				JSON.stringify({ pid: 12_345, host: "127.0.0.1", port }),
+			);
 			const runExistingViewer = async (
 				options: {
 					health?: unknown;
@@ -266,6 +302,82 @@ describe("serve command option resolution", () => {
 				expect(rejected.text, failure.label).not.toContain("/#auth=");
 				expect(childProcessMocks.spawn, failure.label).not.toHaveBeenCalled();
 			}
+
+			const viewerPid = 45_678;
+			const stopSignals: string[] = [];
+			let viewerRunning = true;
+			vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+				expect(pid).toBe(viewerPid);
+				if (signal === 0) {
+					if (!viewerRunning) throw new Error("not running");
+					return true;
+				}
+				stopSignals.push(String(signal));
+				viewerRunning = false;
+				return true;
+			});
+			const runtimeRpc = vi.fn(async (method: string) => {
+				if (method === "POST /v1/viewer/auth/nonce") return { nonce: "b".repeat(43) };
+				throw new Error(`unexpected ${method}`);
+			});
+			serverMocks.createViewerRpcCall.mockReturnValue(runtimeRpc);
+			const runtimeFetch = vi.fn<typeof fetch>(async (input) => {
+				const pathname = new URL(String(input)).pathname;
+				if (pathname === "/api/health") {
+					return new Response(JSON.stringify(healthy), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					});
+				}
+				if (pathname === "/api/auth/exchange") {
+					return new Response(JSON.stringify({ error: "invalid or expired nonce" }), {
+						status: 401,
+						headers: { "content-type": "application/json" },
+					});
+				}
+				if (pathname === "/api/stats") {
+					return new Response(JSON.stringify({ viewer_pid: viewerPid }), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					});
+				}
+				throw new Error(`unexpected viewer request ${pathname}`);
+			});
+			vi.stubGlobal("fetch", runtimeFetch);
+			mkdirSync(siblingDataDir, { recursive: true });
+			writeFileSync(
+				join(siblingDataDir, "viewer.pid"),
+				JSON.stringify({ pid: viewerPid, host: "127.0.0.1", port }),
+			);
+			output.mockClear();
+			process.exitCode = 0;
+			await serveCommand.parseAsync(
+				["stop", "--host", "127.0.0.1", "--port", String(port), "--db-path", siblingDbPath],
+				{ from: "user" },
+			);
+			expect(stopSignals).toEqual([]);
+			expect(output.mock.calls.flat().join("")).toContain("No background viewer found");
+			expect(runtimeRpc.mock.calls.map((call) => call[0])).toEqual(["POST /v1/viewer/auth/nonce"]);
+
+			writeFileSync(
+				join(customDataDir, "viewer.pid"),
+				JSON.stringify({ pid: viewerPid, host: "::1", port }),
+			);
+			runtimeRpc.mockClear();
+			runtimeFetch.mockClear();
+			output.mockClear();
+			process.exitCode = 0;
+			await serveCommand.parseAsync(
+				["start", "--host", "127.0.0.1", "--port", String(port), "--db-path", dbPath],
+				{ from: "user" },
+			);
+			expect(output.mock.calls.flat().join("")).toContain(`already managed by viewer ::1:${port}`);
+			expect(runtimeRpc).not.toHaveBeenCalled();
+			expect(
+				runtimeFetch.mock.calls.some(
+					(call) => new URL(String(call[0])).pathname === "/api/auth/exchange",
+				),
+			).toBe(false);
 		} finally {
 			process.exitCode = originalExitCode;
 			if (originalDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;

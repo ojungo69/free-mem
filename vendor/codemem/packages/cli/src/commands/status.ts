@@ -1,10 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
 	type OperationalStatusSnapshot,
 	readCodememConfigFile,
 	readCodememConfigFileAtPath,
-	resolveDbPath,
 	VERSION,
 } from "@codemem/core";
 import { createMcpRpcClient, type McpRpcOutcome } from "@codemem/mcp";
@@ -18,7 +17,6 @@ import {
 	type DbOpts,
 	type JsonOpts,
 	resolveDataDirOpt,
-	resolveDbOpt,
 } from "../shared-options.js";
 import {
 	observeViewerRuntime,
@@ -61,7 +59,6 @@ export interface StatusDependencies {
 	exists: (path: string) => boolean;
 	readText: (path: string) => string | null;
 	readConfig: (path?: string) => Record<string, unknown>;
-	resolveDbPath: (path?: string) => string;
 	requestRpc: (
 		dataDir: string,
 		method: "GET /v1/health" | "GET /v1/doctor",
@@ -98,7 +95,6 @@ const defaultDependencies: StatusDependencies = {
 		}
 	},
 	readConfig: (path) => (path ? readCodememConfigFileAtPath(path) : readCodememConfigFile()),
-	resolveDbPath,
 	requestRpc: (dataDir, method) => createMcpRpcClient({ dataDir }).request(method, {}),
 	fetch,
 	isProcessRunning: (pid) => {
@@ -330,7 +326,6 @@ export async function collectStatusReport(
 ): Promise<OperationalStatusReport> {
 	const checkedAt = deps.now();
 	const config = deps.readConfig(opts.config);
-	const dbPath = deps.resolveDbPath(resolveDbOpt(opts));
 	const dataDir = resolveDataDirOpt(opts);
 	const health = await deps.requestRpc(dataDir, "GET /v1/health");
 	let daemonState: DaemonState = "not_running";
@@ -350,16 +345,19 @@ export async function collectStatusReport(
 		databaseState = "unavailable";
 	}
 
-	const pidPath = join(dirname(dbPath), "viewer.pid");
+	const pidPath = join(dataDir, "viewer.pid");
 	const parsedPid = parseViewerPidRecord(deps.exists(pidPath) ? deps.readText(pidPath) : null);
-	const runtime = await observeViewerRuntime(
-		parsedPid,
-		{
-			fetch: deps.fetch,
-			isProcessRunning: deps.isProcessRunning,
-		},
-		viewerDefaultTarget(deps.env),
-	);
+	const runtime: ViewerRuntimeObservation =
+		parsedPid.state === "missing"
+			? { state: "stopped" }
+			: await observeViewerRuntime(
+					parsedPid,
+					{
+						fetch: deps.fetch,
+						isProcessRunning: deps.isProcessRunning,
+					},
+					viewerDefaultTarget(deps.env),
+				);
 	const attention: StatusAttention[] = [];
 	addDaemonAttention(daemonState, attention);
 	addDatabaseAttention(databaseState, attention);

@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { resolveRuntimeDataDir } from "@codemem/core";
 import type { McpRpcOutcome } from "@codemem/mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -27,7 +29,6 @@ function dependencies(
 		exists: () => false,
 		readText: () => null,
 		readConfig: () => ({}),
-		resolveDbPath: () => "/tmp/codemem/codemem.db",
 		requestRpc: async () => daemonUnavailable,
 		fetch: vi.fn(async () => {
 			throw new Error("viewer unavailable");
@@ -75,7 +76,7 @@ describe("status command", () => {
 		);
 	});
 
-	it("caps and bounds attention entries", () => {
+	it("caps and bounds attention entries", async () => {
 		const attention = boundAttention(
 			Array.from({ length: 25 }, (_, index) => ({
 				code: `unsafe-${index}`,
@@ -100,5 +101,37 @@ describe("status command", () => {
 				attention: [],
 			}),
 		).toContain("Database:       missing");
+
+		const previousDataDir = process.env.CODEMEM_DATA_DIR;
+		delete process.env.CODEMEM_DATA_DIR;
+		try {
+			const dbPaths = ["/tmp/codemem/a.sqlite", "/tmp/codemem/b.sqlite"];
+			const pidPaths: string[] = [];
+			const fetchMock = vi.fn<typeof fetch>();
+			const deps = dependencies({
+				exists: (path) => {
+					pidPaths.push(path);
+					return false;
+				},
+				fetch: fetchMock,
+			});
+			for (const dbPath of dbPaths) {
+				await createStatusCommand(deps).parseAsync(["--db-path", dbPath, "--json"], {
+					from: "user",
+				});
+			}
+			expect(pidPaths).toEqual(
+				dbPaths.map((dbPath) => join(resolveRuntimeDataDir({ dbPath }), "viewer.pid")),
+			);
+			expect(new Set(pidPaths).size).toBe(2);
+			expect(deps.stdout.map((text) => JSON.parse(text).runtime.viewer)).toEqual([
+				"stopped",
+				"stopped",
+			]);
+			expect(fetchMock).not.toHaveBeenCalled();
+		} finally {
+			if (previousDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
+			else process.env.CODEMEM_DATA_DIR = previousDataDir;
+		}
 	});
 });

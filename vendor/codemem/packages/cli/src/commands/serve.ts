@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
-import { dirname, isAbsolute, join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import * as p from "@clack/prompts";
 import {
 	type DaemonHandle,
@@ -128,12 +128,12 @@ function isTrustedViewerPid(
 	return isLikelyViewerCommand(command);
 }
 
-function pidFilePath(dbPath: string): string {
-	return join(dirname(dbPath), "viewer.pid");
+function pidFilePath(dataDir: string): string {
+	return join(dataDir, "viewer.pid");
 }
 
-function readViewerPidRecord(dbPath: string): ViewerPidRecord | null {
-	const pidPath = pidFilePath(dbPath);
+function readViewerPidRecord(dataDir: string): ViewerPidRecord | null {
+	const pidPath = pidFilePath(dataDir);
 	if (!existsSync(pidPath)) return null;
 	// Shared strict parser keeps `serve` and `codemem status` agreeing on
 	// what counts as a valid viewer PID record.
@@ -143,29 +143,29 @@ function readViewerPidRecord(dbPath: string): ViewerPidRecord | null {
 	return null;
 }
 function normalizeViewerHost(host: string): string {
-	const normalized = host.trim().toLowerCase();
-	if (
-		normalized === "localhost" ||
-		normalized === "127.0.0.1" ||
-		normalized === "::1" ||
-		normalized === "[::1]"
-	) {
-		return "loopback";
-	}
-	return normalized;
+	const normalized = host
+		.trim()
+		.toLowerCase()
+		.replace(/^\[(.*)\]$/, "$1");
+	return normalized === "0:0:0:0:0:0:0:1" ? "::1" : normalized;
+}
+
+function sameViewerEndpoint(
+	left: { host: string; port: number },
+	right: { host: string; port: number },
+): boolean {
+	return (
+		normalizeViewerHost(left.host) === normalizeViewerHost(right.host) && left.port === right.port
+	);
 }
 
 async function findRuntimeViewerConflict(
-	dbPath: string,
+	dataDir: string,
 	target: { host: string; port: number },
 ): Promise<ViewerPidRecord | null> {
-	const record = readViewerPidRecord(dbPath);
+	const record = readViewerPidRecord(dataDir);
 	if (!record) return null;
-	if (
-		normalizeViewerHost(record.host) === normalizeViewerHost(target.host) &&
-		record.port === target.port
-	)
-		return null;
+	if (sameViewerEndpoint(record, target)) return null;
 	if (!isProcessRunning(record.pid)) return null;
 	if (!(await respondsLikeCodememViewer(record))) return null;
 	return record;
@@ -277,15 +277,23 @@ async function waitForPortOpen(host: string, port: number, timeoutMs = 10000): P
 }
 
 async function stopExistingViewer(
-	dbPath: string,
+	dataDir: string,
 	target: { host: string; port: number },
 ): Promise<{ stopped: boolean; pid: number | null }> {
-	const pidPath = pidFilePath(dbPath);
-	const record = readViewerPidRecord(dbPath);
+	const pidPath = pidFilePath(dataDir);
+	const record = readViewerPidRecord(dataDir);
+	if (!record || !sameViewerEndpoint(record, target)) return { stopped: false, pid: null };
+	const { createViewerRpcCall } = await import("@codemem/server");
+	const rpc = createViewerRpcCall({ socketPath: resolveStorageLayout(dataDir).socketPath });
+	try {
+		await verifyViewerRuntimeBinding(target, rpc);
+	} catch {
+		return { stopped: false, pid: null };
+	}
 	const viewerPidFromStats = await lookupViewerPidFromStats(target.host, target.port);
 	const listenerPid = lookupListeningPid(target.host, target.port);
 	const viewerPid = pickViewerPidCandidate(viewerPidFromStats, listenerPid);
-	if (viewerPid && isTrustedViewerPid(viewerPid, target, listenerPid)) {
+	if (viewerPid === record.pid && isTrustedViewerPid(viewerPid, target, listenerPid)) {
 		const stopped = await terminateTrustedViewerPid(viewerPid);
 		if (!stopped) return { stopped: false, pid: viewerPid };
 		try {
@@ -295,8 +303,7 @@ async function stopExistingViewer(
 		}
 		return { stopped: true, pid: viewerPid };
 	}
-
-	if (!record) return { stopped: false, pid: null };
+	if (viewerPid !== null) return { stopped: false, pid: null };
 
 	const recordListenerPid = lookupListeningPid(record.host, record.port);
 	if (
@@ -377,44 +384,57 @@ async function issueViewerNonce(dataDir: string, timeoutMs = 10_000): Promise<st
 	return null;
 }
 
+async function issueBoundViewerNonce(rpc: ViewerRpcCall): Promise<string> {
+	const result = await rpc("POST /v1/viewer/auth/nonce");
+	if (typeof result.nonce !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(result.nonce)) {
+		throw new Error("Viewer nonce is malformed.");
+	}
+	return result.nonce;
+}
+
+async function verifyViewerRuntimeBinding(
+	target: { host: string; port: number },
+	rpc: ViewerRpcCall,
+	request: typeof fetch = fetch,
+): Promise<void> {
+	const probe = await probeCodememViewerLiveness(target, {
+		fetch: request,
+		timeoutMs: 1_000,
+	});
+	if (probe.state !== "live") throw new Error("Viewer health is unavailable.");
+
+	const challenge = await issueBoundViewerNonce(rpc);
+	const origin = new URL(viewerUrl(target, "/")).origin;
+	const exchange = await request(viewerUrl(target, "/api/auth/exchange"), {
+		method: "POST",
+		credentials: "omit",
+		cache: "no-store",
+		signal: AbortSignal.timeout(1_000),
+		headers: { "Content-Type": "application/json", Origin: origin },
+		body: JSON.stringify({ nonce: challenge }),
+	});
+	if (!exchange.ok) throw new Error("Viewer nonce exchange failed.");
+	const payload = (await exchange.json()) as { session?: unknown };
+	if (typeof payload.session !== "string" || !/^[A-Za-z0-9._-]{1,512}$/.test(payload.session)) {
+		throw new Error("Viewer session is malformed.");
+	}
+	const logout = await rpc("POST /v1/viewer/auth/logout", { session: payload.session });
+	if (logout.loggedOut !== true) throw new Error("Viewer session logout failed.");
+}
+
 async function existingViewerLoginUrl(
 	invocation: ResolvedServeInvocation,
+	dataDir: string,
 	rpc: ViewerRpcCall,
 	request: typeof fetch = fetch,
 ): Promise<string> {
 	const fail = () => new Error("Existing viewer is not bound to this database runtime.");
-	const issueNonce = async () => {
-		const result = await rpc("POST /v1/viewer/auth/nonce");
-		if (typeof result.nonce !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(result.nonce)) {
-			throw fail();
-		}
-		return result.nonce;
-	};
 
 	try {
-		const probe = await probeCodememViewerLiveness(invocation, {
-			fetch: request,
-			timeoutMs: 1_000,
-		});
-		if (probe.state !== "live") throw fail();
-		const challenge = await issueNonce();
-		const origin = new URL(viewerUrl(invocation, "/")).origin;
-		const exchange = await request(viewerUrl(invocation, "/api/auth/exchange"), {
-			method: "POST",
-			credentials: "omit",
-			cache: "no-store",
-			signal: AbortSignal.timeout(1_000),
-			headers: { "Content-Type": "application/json", Origin: origin },
-			body: JSON.stringify({ nonce: challenge }),
-		});
-		if (!exchange.ok) throw fail();
-		const payload = (await exchange.json()) as { session?: unknown };
-		if (typeof payload.session !== "string" || !/^[A-Za-z0-9._-]{1,512}$/.test(payload.session)) {
-			throw fail();
-		}
-		const logout = await rpc("POST /v1/viewer/auth/logout", { session: payload.session });
-		if (logout.loggedOut !== true) throw fail();
-		const nonce = await issueNonce();
+		const record = readViewerPidRecord(dataDir);
+		if (!record || !sameViewerEndpoint(record, invocation)) throw fail();
+		await verifyViewerRuntimeBinding(invocation, rpc, request);
+		const nonce = await issueBoundViewerNonce(rpc);
 		return `${viewerUrl(invocation, "/")}#auth=${encodeURIComponent(nonce)}`;
 	} catch {
 		throw fail();
@@ -427,7 +447,9 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 	if (await isPortOpen(invocation.host, invocation.port)) {
 		const { createViewerRpcCall } = await import("@codemem/server");
 		const rpc = createViewerRpcCall({ socketPath: resolveStorageLayout(dataDir).socketPath });
-		p.log.warn(`Viewer already running at ${await existingViewerLoginUrl(invocation, rpc)}`);
+		p.log.warn(
+			`Viewer already running at ${await existingViewerLoginUrl(invocation, dataDir, rpc)}`,
+		);
 		return;
 	}
 	const scriptPath = process.argv[1];
@@ -448,13 +470,6 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 		},
 	});
 	child.unref();
-	if (invocation.dbPath) {
-		writeFileSync(
-			pidFilePath(invocation.dbPath),
-			JSON.stringify({ pid: child.pid, host: invocation.host, port: invocation.port }),
-			"utf-8",
-		);
-	}
 	let browserUrl = viewerUrl(invocation, "/");
 	const nonce = await issueViewerNonce(dataDir);
 	const viewerReady = nonce ? await waitForPortOpen(invocation.host, invocation.port) : false;
@@ -466,7 +481,7 @@ async function startBackgroundViewer(invocation: ResolvedServeInvocation): Promi
 		}
 		if (invocation.dbPath) {
 			try {
-				rmSync(pidFilePath(invocation.dbPath));
+				rmSync(pidFilePath(dataDir));
 			} catch {
 				// No pidfile was published.
 			}
@@ -514,9 +529,8 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 		throw error;
 	}
 
-	const dbPath = resolveDbPath(invocation.dbPath ?? undefined);
 	const app = createApp({ rpc });
-	const pidPath = pidFilePath(dbPath);
+	const pidPath = pidFilePath(dataDir);
 
 	const server = serve(
 		{ fetch: app.fetch, hostname: invocation.host, port: invocation.port },
@@ -584,14 +598,15 @@ async function startForegroundViewer(invocation: ResolvedServeInvocation): Promi
 
 async function runServeInvocation(invocation: ResolvedServeInvocation): Promise<void> {
 	const dbPath = resolveDbPath(invocation.dbPath ?? undefined);
-	const runtimeConflict = await findRuntimeViewerConflict(dbPath, {
+	const dataDir = resolveDataDirOpt({ dbPath });
+	const runtimeConflict = await findRuntimeViewerConflict(dataDir, {
 		host: invocation.host,
 		port: invocation.port,
 	});
 	if (runtimeConflict) {
 		p.intro("codemem viewer");
 		p.log.error(
-			`Database runtime at ${dirname(dbPath)} is already managed by viewer ${runtimeConflict.host}:${runtimeConflict.port} (pid ${runtimeConflict.pid})`,
+			`Database runtime at ${dataDir} is already managed by viewer ${runtimeConflict.host}:${runtimeConflict.port} (pid ${runtimeConflict.pid})`,
 		);
 		p.log.info(
 			"Use the matching --host/--port, stop the existing viewer first, or use a separate db/runtime folder for another viewer.",
@@ -600,7 +615,7 @@ async function runServeInvocation(invocation: ResolvedServeInvocation): Promise<
 		return;
 	}
 	if (invocation.mode === "stop" || invocation.mode === "restart") {
-		const result = await stopExistingViewer(dbPath, {
+		const result = await stopExistingViewer(dataDir, {
 			host: invocation.host,
 			port: invocation.port,
 		});
