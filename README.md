@@ -4,13 +4,15 @@
 > Core 1.0 release. Do not use it with production secrets or irreplaceable memory data.
 
 free-mem is a local-first agent-memory continuity project for Claude Code and Codex.
-The current work is Phase 1: establishing the sole-writer, authentication, redaction,
-spool, migration, and backup safety boundary.
+Phase 1 establishes the sole-writer, authentication, redaction, spool, migration, and
+backup safety boundary.
 
 ## Status
 
-- Phase 1 is incomplete; follow the checked state in
-  [`specs/001-agent-memory-core/tasks.md`](specs/001-agent-memory-core/tasks.md).
+- The Phase 1 safety boundary is implemented and candidate-validated; see
+  [`specs/001-agent-memory-core/tasks.md`](specs/001-agent-memory-core/tasks.md) and
+  [`evidence/phase1-t058-final-validation.md`](evidence/phase1-t058-final-validation.md).
+- The broader project remains pre-release; later phases are not complete.
 - No package, release artifact, compatibility promise, or support promise is made yet.
 - Public source visibility does not change the local-only runtime and data boundary.
 

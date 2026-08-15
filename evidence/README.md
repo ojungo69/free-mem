@@ -1,6 +1,6 @@
-# Phase 0A — Evidence Freeze 成果物索引
+# Evidence 成果物索引
 
-正本: v6.1 §29 Phase 0A / §4.3 base gate / specs/001-agent-memory-core/tasks.md T001–T016
+正本: `agent-memory-final-spec-v6.md` / `specs/001-agent-memory-core/phase-1-design.md` / `specs/001-agent-memory-core/tasks.md`
 
 | 成果物 | パス | タスク |
 |---|---|---|
@@ -21,6 +21,14 @@
 | daemon jobs・maintenance mode validation | phase1-t045-t046-daemon-jobs-validation.md | T045–T046 |
 | export/import daemon operation validation | phase1-t047-operations-validation.md | T047 |
 | daemon-only DB handle validation | phase1-t048-zero-external-db-handles-validation.md | T048 |
+| legacy cutover validation | phase1-t051-legacy-cutover-validation.md | T051 |
+| backup/restore baseline validation | phase1-t052-backup-restore-validation.md | T052 |
+| static exit-gate validation | phase1-t053-static-scan-validation.md | T053 |
+| runtime DB ownership validation | phase1-t054-runtime-db-open-validation.md | T054 |
+| fault-injection validation | phase1-t055-fault-injection-validation.md | T055 |
+| no-Agent-blockage validation | phase1-t056-no-agent-blockage-validation.md | T056 |
+| backup/restore smoke validation | phase1-t057-backup-restore-smoke-validation.md | T057 |
+| Phase 1 final candidate validation（machine 25/31 と manual 31/31 を分離） | phase1-t058-final-validation.md | T058 |
 
 pin: codemem 26438e75ce1d0fec6be34981f15045a15c89658b / ai-memory a9e9a24d50f59e970fc01ae48efe647abf20702e / remem cde8bc05504c74794d044ef118f74d8f828adbf5
 clone 元: ~/projects/free-mem-vendor/（ローカル clone のみ・公開 fork なし）

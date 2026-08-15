@@ -275,8 +275,8 @@ path を受け取って DB を自己 open していた export/import、maintenan
 |---|---|---|---|---|
 | install target manifest | `control/install-manifest.json` | setup が管理した hook/MCP/runtime file の SHA-256 を owner-only atomic file に記録。部分 setup は他 integration を保持し、選択 integration の消滅 target は除外。cutover 開始前と unlock 直前に再照合し、欠落/symlink/hash drift は中止 | − | local user |
 | legacy owner handoff | 旧 DB inode + `/proc/*/fd` / trusted absolute `lsof` | transient owner grace後、identity再検証できる旧 codemem processだけへSIGTERM。prepared前とunlock直前に owner set = `{daemonPid}` を要求 | − | daemon内部 |
-| legacy backup/publish | `control/backups/legacy-*.sqlite` → `db/versions/` → `db/current` | daemon EXCLUSIVE保持中のread-only handleからT050 online backupを作成・verifyし、判断 #16 journalでpublish | B | daemon内部 |
-| rollback hardlink | `control/legacy-*.legacy-recovery.sqlite` | tombstone前に旧inodeをprivate hardlinkで保持。final owner検査までの失敗時だけ旧pathとcanonical pointerを一意にrollback | − | daemon内部 |
+| legacy backup/publish | `control/backups/legacy-*.sqlite` → `db/versions/` → `db/current` | daemon EXCLUSIVE保持中のread-only handleからT050 online backupを作成・verify。tombstone・final owner/manifest検査後に判断 #16 journalでpublish | B | daemon内部 |
+| rollback hardlink | `control/legacy-*.legacy-recovery.sqlite` | tombstone前に旧inodeをprivate hardlinkで保持。通常失敗は旧pathへrollbackし、tombstone後のprocess crashは次回起動でexact target + dev/inodeを検証して旧pathを復元。不一致・欠損はfail-closed | − | daemon内部 |
 | legacy tombstone | 旧 DB path → `control/legacy-db-tombstone/` symlink | atomic rename + parent fsync後にfinal owner検査。旧binaryのcanonical writeと別DB新規生成を双方拒否 | − | daemon内部 |
 | legacy spool handoff | `{claude-hook-spool,codex-hook-spool}` → T039 ready spool | canonical daemon 起動ごとに normalized event 化を再試行し、共通redaction済みdurable spoolへ移せた後だけ旧fileを削除。変換不能・quota失敗は保持 | A | agent-callable |
 
