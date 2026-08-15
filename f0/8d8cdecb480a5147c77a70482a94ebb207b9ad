@@ -1,0 +1,21 @@
+vendor/codemem/packages/core/src/daemon-jobs.test.ts
+  s_211aa7fe546c35::t_1468f45269ed8c 35-45,50,56,74-80
+vendor/codemem/packages/core/src/daemon-jobs.ts
+  s_211aa7fe546c35::t_28b9652cbcd6ce 666-678
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f08d8cdecb480a5147c77a70482a94ebb207b9ad",
+  "prompts": {},
+  "sessions": {
+    "s_211aa7fe546c35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ffdcb-e994-7732-bb4e-56faff6022eb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
