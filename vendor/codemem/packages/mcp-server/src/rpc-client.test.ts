@@ -22,7 +22,65 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReadOnlyActor } from "../../core/src/writer-actor.js";
 import { createMcpRpcClient, mcpRequestId } from "./rpc-client.js";
 
+const projectConfigRace = vi.hoisted(() => ({
+	path: "",
+	replacement: "",
+	growPath: "",
+	growBy: "",
+	descriptor: -1,
+	initialSize: 0,
+	bytesRead: 0,
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	function replacePath(path: string) {
+		const replacementPath = `${path}.replacement`;
+		actual.writeFileSync(replacementPath, projectConfigRace.replacement, "utf8");
+		actual.renameSync(replacementPath, path);
+		projectConfigRace.path = "";
+	}
+	return {
+		...actual,
+		statSync(...args: Parameters<typeof actual.statSync>) {
+			const info = actual.statSync(...args);
+			if (String(args[0]) === projectConfigRace.path) {
+				replacePath(String(args[0]));
+			}
+			return info;
+		},
+		openSync(...args: Parameters<typeof actual.openSync>) {
+			const descriptor = actual.openSync(...args);
+			const path = String(args[0]);
+			if (path === projectConfigRace.path) replacePath(path);
+			if (path === projectConfigRace.growPath) projectConfigRace.descriptor = descriptor;
+			return descriptor;
+		},
+		fstatSync(...args: Parameters<typeof actual.fstatSync>) {
+			const info = actual.fstatSync(...args);
+			if (args[0] === projectConfigRace.descriptor && projectConfigRace.growPath) {
+				projectConfigRace.initialSize = info.size;
+				actual.appendFileSync(projectConfigRace.growPath, projectConfigRace.growBy, "utf8");
+				projectConfigRace.growPath = "";
+			}
+			return info;
+		},
+		readSync(...args: Parameters<typeof actual.readSync>) {
+			const bytesRead = actual.readSync(...args);
+			if (args[0] === projectConfigRace.descriptor) projectConfigRace.bytesRead += bytesRead;
+			return bytesRead;
+		},
+	};
+});
+
 afterEach(() => {
+	projectConfigRace.path = "";
+	projectConfigRace.replacement = "";
+	projectConfigRace.growPath = "";
+	projectConfigRace.growBy = "";
+	projectConfigRace.descriptor = -1;
+	projectConfigRace.initialSize = 0;
+	projectConfigRace.bytesRead = 0;
 	vi.restoreAllMocks();
 });
 
@@ -66,6 +124,8 @@ describe("MCP daemon RPC client", () => {
 		const fixture = projectFixture();
 		const daemon = await startDaemon({ dataDir: fixture.dataDir });
 		try {
+			projectConfigRace.path = join(fixture.root, ".agent-memory.toml");
+			projectConfigRace.replacement = 'secret_regex = ["OTHER_[A-Z]+"]\n';
 			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
 			const remembered = await client.remember(rememberBody("direct-1"));
 			expect(remembered).toMatchObject({ ok: true, result: { memoryId: expect.any(Number) } });
@@ -75,6 +135,15 @@ describe("MCP daemon RPC client", () => {
 				requestId: mcpRequestId("memory_get", "direct-2"),
 			});
 			expect(JSON.stringify(fetched)).not.toContain("TOKEN_SUPERSECRET");
+			const configPath = join(fixture.root, ".agent-memory.toml");
+			expect(readFileSync(configPath, "utf8")).toContain("OTHER_[A-Z]+");
+
+			writeFileSync(configPath, 'secret_regex = ["TOKEN_[A-Z]+"]\n');
+			projectConfigRace.growPath = configPath;
+			projectConfigRace.growBy = `#${"x".repeat(70_000)}\n`;
+			expect(await client.remember(rememberBody("growing-config"))).toMatchObject({ ok: true });
+			expect(projectConfigRace.bytesRead).toBe(projectConfigRace.initialSize);
+			writeFileSync(configPath, 'secret_regex = ["TOKEN_[A-Z]+"]\n');
 
 			const idempotencyKey = "mcp-event-redaction";
 			const event = {

@@ -12,7 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, fstatSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 
@@ -338,21 +338,16 @@ export function extractFromTranscript(
 		resolvedPath = resolve(base, raw);
 	}
 
-	try {
-		const stat = statSync(resolvedPath, { throwIfNoEntry: false });
-		if (!stat?.isFile()) return [null, null];
-	} catch {
-		return [null, null];
-	}
-
 	let assistantText: string | null = null;
 	let assistantUsage: Record<string, number> | null = null;
 
 	try {
-		const descriptor = openSync(resolvedPath, "r");
+		const descriptor = openSync(resolvedPath, constants.O_RDONLY | constants.O_NONBLOCK);
 		let content: string;
 		try {
-			const size = fstatSync(descriptor).size;
+			const opened = fstatSync(descriptor);
+			if (!opened.isFile()) return [null, null];
+			const size = opened.size;
 			const length = Math.min(size, TRANSCRIPT_TAIL_MAX_BYTES);
 			const start = Math.max(0, size - length);
 			const buffer = Buffer.alloc(length);

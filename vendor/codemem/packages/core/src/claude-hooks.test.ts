@@ -8,7 +8,7 @@
  *  - buildIngestPayloadFromHook: session context fields
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +19,40 @@ import {
 	mapClaudeHookPayload,
 	TRANSCRIPT_TAIL_MAX_BYTES,
 } from "./claude-hooks.js";
+
+const transcriptRace = vi.hoisted(() => ({ path: "", replacement: "" }));
+
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	function replacePath(path: string) {
+		const replacementPath = `${path}.replacement`;
+		actual.writeFileSync(replacementPath, transcriptRace.replacement, "utf8");
+		actual.renameSync(replacementPath, path);
+		transcriptRace.path = "";
+	}
+	return {
+		...actual,
+		statSync(...args: Parameters<typeof actual.statSync>) {
+			const info = actual.statSync(...args);
+			if (String(args[0]) === transcriptRace.path) {
+				replacePath(String(args[0]));
+			}
+			return info;
+		},
+		openSync(...args: Parameters<typeof actual.openSync>) {
+			const descriptor = actual.openSync(...args);
+			if (String(args[0]) === transcriptRace.path) {
+				replacePath(String(args[0]));
+			}
+			return descriptor;
+		},
+	};
+});
+
+afterEach(() => {
+	transcriptRace.path = "";
+	transcriptRace.replacement = "";
+});
 
 // ---------------------------------------------------------------------------
 // mapClaudeHookPayload — event type mapping
@@ -246,6 +280,10 @@ describe("mapClaudeHookPayload", () => {
 				);
 				expect(TRANSCRIPT_TAIL_MAX_BYTES).toBe(256 * 1024);
 				expect(extractFromTranscript(transcriptPath)).toEqual(["recent assistant", null]);
+				transcriptRace.path = transcriptPath;
+				transcriptRace.replacement = '{"role":"assistant","content":"swapped transcript"}\n';
+				expect(extractFromTranscript(transcriptPath)).toEqual(["recent assistant", null]);
+				expect(readFileSync(transcriptPath, "utf8")).toContain("swapped transcript");
 			} finally {
 				rmSync(dir, { recursive: true, force: true });
 			}
