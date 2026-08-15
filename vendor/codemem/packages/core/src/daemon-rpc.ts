@@ -360,7 +360,7 @@ function isSafePersistedText(value: unknown, maxBytes: number): value is string 
 		return false;
 	}
 	const intake = applyDaemonIntake({ id: value }, { allowlist: ["id"] });
-	return intake.sensitivity === "normal" && intake.payload.id === value;
+	return !intake.degraded && intake.sensitivity === "normal" && intake.payload.id === value;
 }
 
 function unknownFields(

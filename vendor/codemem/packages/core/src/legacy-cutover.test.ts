@@ -128,12 +128,19 @@ describe("Phase 1 legacy layout cutover", () => {
 	it("P1-T051-03-tombstone-before-unlock", async () => {
 		const { layout, legacyPath } = fixture();
 		const events: string[] = [];
+		let pointerAtTombstone: string | null | undefined;
 
 		await cutoverLegacyDatabase({
 			layout,
 			legacyPath,
-			onStep: (event) => events.push(event),
+			onStep: (event) => {
+				events.push(event);
+				if (event === "tombstone_installed") {
+					pointerAtTombstone = readCurrentDatabasePointer(layout);
+				}
+			},
 		});
+		expect(pointerAtTombstone).toBeNull();
 		expect(events.indexOf("tombstone_installed")).toBeGreaterThanOrEqual(0);
 		expect(events.indexOf("final_owner_scan")).toBeGreaterThan(
 			events.indexOf("tombstone_installed"),

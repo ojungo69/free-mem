@@ -305,16 +305,6 @@ export async function cutoverLegacyDatabase(input: {
 		});
 		if (!check.valid) throw new Error("Legacy cutover backup verification failed.");
 
-		const pointer = `versions/${operationId}.sqlite`;
-		const artifactPath = join(input.layout.dbDir, pointer);
-		runLegacyMigration({
-			layout: input.layout,
-			operationId,
-			verifiedBackupPath: proof.artifactPath,
-			verifiedBackupSha256: proof.artifactSha256,
-		});
-		published = { pointer, artifactPath };
-
 		if (!pathHasIdentity(input.legacyPath, identity)) {
 			throw new Error("Legacy database path changed during cutover.");
 		}
@@ -324,6 +314,16 @@ export async function cutoverLegacyDatabase(input: {
 		assertSoleCutoverOwner(identity, recoveryPath);
 		recordCutoverStep(input.onStep, "final_owner_scan");
 		assertInstallManifestCurrent(input.layout.installManifestPath);
+
+		const pointer = `versions/${operationId}.sqlite`;
+		const artifactPath = join(input.layout.dbDir, pointer);
+		runLegacyMigration({
+			layout: input.layout,
+			operationId,
+			verifiedBackupPath: proof.artifactPath,
+			verifiedBackupSha256: proof.artifactSha256,
+		});
+		published = { pointer, artifactPath };
 
 		lock.exec("COMMIT");
 		transactionOpen = false;

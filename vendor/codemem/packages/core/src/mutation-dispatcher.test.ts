@@ -1,7 +1,8 @@
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { Worker } from "node:worker_threads";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as core from "./index.js";
 import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
@@ -290,6 +291,29 @@ describe("Phase 1 mutation dispatcher", () => {
 			}),
 		);
 		expect(secretIdentifier).toMatchObject({ error: { code: "invalid_request" } });
+		const postMessage = vi.spyOn(Worker.prototype, "postMessage").mockImplementation(() => {
+			throw new Error("injected redaction worker failure");
+		});
+		try {
+			const degradedSecretIdentifier = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					method: "POST /v1/memories/record",
+					id: "req-6",
+					body: {
+						idempotencyKey: `ghp_${"B".repeat(36)}`,
+						kind: "discovery",
+						title: "must not persist while degraded",
+						body: "must not persist while degraded",
+					},
+				}),
+			);
+			expect(degradedSecretIdentifier).toMatchObject({
+				error: { code: "invalid_request" },
+			});
+		} finally {
+			postMessage.mockRestore();
+		}
 		const reader = ReadOnlyActor.open(realpathSync(handle.layout.currentPointerPath));
 		try {
 			expect(
