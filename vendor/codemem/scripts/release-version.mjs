@@ -16,7 +16,7 @@ const REQUIRED_REPO_MARKERS = [
 	"packages/opencode-plugin/package.json",
 	"packages/mcp-server/package.json",
 	"packages/viewer-server/package.json",
-	"packages/core/src/index.ts",
+	"packages/core/src/version.ts",
 	"packages/core/src/index.test.ts",
 	"packages/cli/.opencode/plugins/codemem.js",
 	"packages/opencode-plugin/.opencode/plugins/codemem.js",
@@ -171,9 +171,9 @@ export function readVersions(root) {
 		mcp_server_package: extractPackageVersion(repoRoot, "packages/mcp-server/package.json"),
 		viewer_server_package: extractPackageVersion(repoRoot, "packages/viewer-server/package.json"),
 		core_runtime: extractSingle(
-			readText(resolveManagedPath(repoRoot, "packages/core/src/index.ts")),
+			readText(resolveManagedPath(repoRoot, "packages/core/src/version.ts")),
 			CORE_VERSION_RE,
-			"Could not find VERSION export in packages/core/src/index.ts",
+			"Could not find VERSION export in packages/core/src/version.ts",
 		),
 		core_runtime_test: extractSingle(
 			readText(resolveManagedPath(repoRoot, "packages/core/src/index.test.ts")),
@@ -236,9 +236,9 @@ export function setVersion(root, version, { dryRun = false } = {}) {
 
 	const textUpdates = [
 		{
-			relativePath: "packages/core/src/index.ts",
+			relativePath: "packages/core/src/version.ts",
 			regex: CORE_VERSION_RE,
-			missing: "Could not replace VERSION export in packages/core/src/index.ts",
+			missing: "Could not replace VERSION export in packages/core/src/version.ts",
 		},
 		{
 			relativePath: "packages/core/src/index.test.ts",
