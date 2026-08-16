@@ -2278,6 +2278,41 @@ test("空白だけの scenarioId は proven な scenario を名指したこと�
   );
 });
 
+test("直接呼びの correlateTerminalEvent も空白の identity 材料を拒否する", () => {
+  // `assertSameScope` は lineage と Agent しか束縛せず、候補の絞り込みは `sessionId` の等値
+  // だけを見る。空白の `sessionId` を持つ terminal は、同じく空白の `sessionId` を持つ
+  // pending（復元した checkpoint や別実装が書いた状態。凍結 schema に minLength は無い）と
+  // 一致して閉じてしまう。空白同士は「同じ session」ではなく「どちらも名乗っていない」
+  // 還元器は空白の sessionId を受け付けないので、被害側の状態は「復元した checkpoint」を模して
+  // 正常に作った pending の sessionId だけを空にする
+  const started = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const victim: TaskWorkStateSnapshotV1 = {
+    ...started,
+    state: {
+      ...started.state,
+      pendingOperations: started.state.pendingOperations.map((pending) => ({
+        ...pending,
+        correlation: { ...pending.correlation, sessionId: "" },
+      })),
+    },
+  };
+  for (const blank of ["", " ", "\t", "\u{200B}"]) {
+    assert.throws(
+      () =>
+        correlateTerminalEvent(
+          victim,
+          terminalEvent({ sessionId: blank, operation: { ...MATCH_KEY_ONLY, phase: "terminal" } }),
+        ),
+      /sessionId が空文字/,
+      JSON.stringify(blank),
+    );
+  }
+  // 対照: 名乗りのある session は従来どおり照合まで進む（ここでは候補ゼロ）
+  const ok = correlateTerminalEvent(victim, terminalEvent({ sessionId: "session-2" }));
+  if (ok.matched !== null) assert.fail("別 session の pending を閉じた");
+  assert.equal(ok.diagnostic, "terminal_orphaned");
+});
+
 test("直接呼びの correlateTerminalEvent も decimal string でない ingestSeq を拒否する", () => {
   // §22.6 の制約は `compareIngestSeq` が start を選んだ後にしか走らないので、候補ゼロで
   // 早期 return する経路では検査されない。還元器は入口で落とすのに直接呼びだけが
