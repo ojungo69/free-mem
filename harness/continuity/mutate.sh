@@ -108,7 +108,7 @@ mutate "      correlation.diagnostic === \"terminal_orphaned\"" "      false" &&
 mutate "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: [matched]," "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: []," && run "順序不明で候補を unknown にしない"
-mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    // eslint-disable-next-line" && run "退避で順序材料を刈らない"
+mutate "      if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" "      void evictedId;" && run "退避で順序材料を刈らない"
 mutate "      (operation.nativeOperationId === undefined
         ? undefined
         : previous.state.pendingOperations.find(" "      (true
@@ -239,6 +239,8 @@ mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.st
 mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\" || sameTurn.some((pending) => pending.status === incoming)" && run "確定済みの説明で turn 種別だけ見ない"
 mutate "  const open = plausible.filter(isOpen);" "  const open = compatible.filter(isOpen);" && run "open の切り分けを turn 絞り込みより前にする"
 mutate "        : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);" "        : compatible.find((pending) => pending.status !== incoming);" && run "矛盾判定に open な候補も混ぜる"
+mutate "  return pending.filter((candidate) => !dropped.has(candidate));" "  return pending.filter((candidate) => ![...dropped].some((d) => d.operationId === candidate.operationId));" && run "退避の保持判定を operationId の一致に戻す"
+mutate "      if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" "      operationStarts.delete(evictedId);" && run "生存する同名の順序材料も退避で消す"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか

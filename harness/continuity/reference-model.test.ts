@@ -682,6 +682,46 @@ test("退避した operation の順序材料も落とす", () => {
   assert.equal(result.snapshot.operationStarts.has("op-0"), false);
 });
 
+/** 上限まで埋めた状態のうち index 1 を index 0 と同名にする（frozen schema は一意性を課さない）。 */
+function collidedFilledSnapshot(): TaskWorkStateSnapshotV1 {
+  const snapshot = filledSnapshot(true);
+  const pendingOperations = snapshot.state.pendingOperations.map((pending, index) =>
+    index === 1
+      ? { ...pending, operationId: "op-0", correlation: { ...pending.correlation, operationId: "op-0" } }
+      : pending,
+  );
+  return { ...snapshot, state: { ...snapshot.state, pendingOperations } };
+}
+
+test("状態側で operationId が衝突していても退避は必要な件数しか落とさない", () => {
+  // 落とす相手を `operationId` の集合で持つと、1 件分の枠を空けるつもりで同名の兄弟まで
+  // まとめて消える。上限に収めるのが目的なのに、上限を下回ってなお生きている operation が消える
+  const result = reduceTaskWorkState(collidedFilledSnapshot(), startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  assert.equal(result.snapshot.state.pendingOperations.length, CONTINUITY_LIMITS.arrayItems);
+  // 落ちたのは terminal 済みの 1 件だけで、同名の started な兄弟は残る
+  const survivors = result.snapshot.state.pendingOperations.filter((p) => p.operationId === "op-0");
+  assert.equal(survivors.length, 1);
+  assert.equal(survivors[0]?.status, "started");
+});
+
+test("同名の兄弟が残っているなら退避で順序材料を消さない", () => {
+  // `operationStarts` の鍵は `operationId` なので、退避した側の id で消すと生きている
+  // 兄弟の順序材料まで落ち、次の terminal が terminal_order_unverifiable で unknown に倒れる
+  const snapshot = collidedFilledSnapshot();
+  const seeded: TaskWorkStateSnapshotV1 = {
+    ...snapshot,
+    operationStarts: new Map(
+      snapshot.state.pendingOperations.map((pending) => [
+        pending.operationId,
+        { ingestSeq: "1", turnIdSource: "native" as const },
+      ]),
+    ),
+  };
+  const result = reduceTaskWorkState(seeded, startEvent(), new Map());
+  assert.equal(result.snapshot.operationStarts.has("op-0"), true);
+});
+
 test("上限に余裕があるときは退避の診断を出さない", () => {
   const result = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
   assert.deepEqual(result.diagnostics, []);

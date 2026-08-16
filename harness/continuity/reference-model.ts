@@ -738,14 +738,19 @@ export function reduceTaskWorkState(
     const retained = retainPendingOperations(previous.state.pendingOperations);
     // 黙って間引かない。退避した operation の event 自体は event store に残るが、状態からは
     // 消えるので、どれを落としたかを診断に出す
-    const kept = new Set(retained.map((pending) => pending.operationId));
+    const kept = new Set(retained);
     const evicted = previous.state.pendingOperations
-      .filter((pending) => !kept.has(pending.operationId))
+      .filter((pending) => !kept.has(pending))
       .map((pending) => pending.operationId);
     // 退避した operation の start facts も落とす。残すと pendingOperations が 256 件で頭打ちの
-    // 一方でこの表だけが単調増加する
+    // 一方でこの表だけが単調増加する。ただし `operationStarts` の鍵は `operationId` なので、
+    // 同名の兄弟が残っているなら消せない。消すと生きている operation の順序材料が黙って落ち、
+    // 次の terminal が terminal_order_unverifiable で unknown に倒れる
+    const retainedIds = new Set(retained.map((pending) => pending.operationId));
     const operationStarts = new Map(previous.operationStarts);
-    for (const evictedId of evicted) operationStarts.delete(evictedId);
+    for (const evictedId of evicted) {
+      if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);
+    }
     operationStarts.set(operationId, { ingestSeq: event.ingestSeq, turnIdSource: event.turnIdSource });
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...retained, started],
@@ -873,14 +878,18 @@ const EVICTION_ORDER: readonly PendingOperation["status"][] = [
 function retainPendingOperations(pending: PendingOperation[]): PendingOperation[] {
   if (pending.length < CONTINUITY_LIMITS.arrayItems) return pending;
   const dropCount = pending.length - CONTINUITY_LIMITS.arrayItems + 1;
-  const dropped = new Set<string>();
+  // 落とす相手は `operationId` ではなく要素の参照で持つ。frozen schema は `operationId` に
+  // 一意性を課さないので、復元した状態には同名の pending が並びうる。id の集合で持つと
+  // (a) 1 件分の枠を空けるつもりで同名の兄弟までまとめて消え、(b) `dropped.size` が件数でなく
+  // 異なり数になるので、上限を割ってもなお足りないと判定できない
+  const dropped = new Set<PendingOperation>();
   for (const status of EVICTION_ORDER) {
     for (const candidate of pending) {
       if (dropped.size === dropCount) break;
-      if (candidate.status === status) dropped.add(candidate.operationId);
+      if (candidate.status === status) dropped.add(candidate);
     }
   }
-  return pending.filter((candidate) => !dropped.has(candidate.operationId));
+  return pending.filter((candidate) => !dropped.has(candidate));
 }
 
 /**
