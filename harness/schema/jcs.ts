@@ -169,8 +169,13 @@ function assertPlainArray(value: unknown[]): void {
     }
   }
   for (let i = 0; i < value.length; i++) {
-    if (!Object.hasOwn(value, i)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, i);
+    if (!descriptor) {
       throw new Error(`JCS: 穴のある配列は canonicalize できない（位置 ${i}）`);
+    }
+    // object 側と同じ理由。添字の getter も読むたびに違う値を返せる
+    if (!("value" in descriptor)) {
+      throw new Error(`JCS: getter/setter を持つ配列は canonicalize できない（位置 ${i}）`);
     }
   }
 }

@@ -229,4 +229,14 @@ test("getter を持つ object は canonicalize しない（hash が決定的で�
   assert.equal(JSON.stringify(counter), '{"a":2}');
   assert.throws(() => canonicalizeJson(counter), /getter\/setter/);
   assert.equal(calls, 2, "canonicalizeJson は getter を呼ばない");
+
+  // 配列の添字も同じ（`assertPlainArray` は key の同一性だけ見ていた）
+  let reads = 0;
+  const indexed: unknown[] = [];
+  Object.defineProperty(indexed, "0", { enumerable: true, get: () => ++reads });
+  Object.defineProperty(indexed, "length", { value: 1 });
+  assert.equal(JSON.stringify(indexed), "[1]");
+  assert.equal(JSON.stringify(indexed), "[2]");
+  assert.throws(() => canonicalizeJson(indexed), /getter\/setter/);
+  assert.equal(reads, 2, "canonicalizeJson は添字の getter も呼ばない");
 });
