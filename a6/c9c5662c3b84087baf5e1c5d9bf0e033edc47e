@@ -1,0 +1,38 @@
+harness/schema/validate.ts
+  s_5cbc4c67c8b3b4::t_dce52bcea1cdca 82-85
+  s_5cbc4c67c8b3b4::t_7c4c8cafcfb100 51-57
+  s_5cbc4c67c8b3b4::t_816733986f968a 242,245
+  s_5cbc4c67c8b3b4::t_c7ebac9ebc098d 281-285
+  s_5cbc4c67c8b3b4::t_bdce3d2529f74b 58-59
+harness/assemble.ts
+  s_5cbc4c67c8b3b4::t_ed3cb640efb251 119-130
+  s_5cbc4c67c8b3b4::t_eca7abf2ba9b7b 16,21
+  s_5cbc4c67c8b3b4::t_614a0b6f38ce95 156-157,159
+  s_5cbc4c67c8b3b4::t_a322b60c252988 40,320-324
+  s_5cbc4c67c8b3b4::t_165a68881b2be3 436-441
+  s_5cbc4c67c8b3b4::t_4d6583cf68bec6 4,442-455
+harness/schema/capability.ts
+  s_5cbc4c67c8b3b4::t_24ebdbf1a44d52 194-197,203-204,211-213
+harness/continuity/fixture-validation.test.ts
+  s_5cbc4c67c8b3b4::t_b0f1bedc2ca5d8 1-62
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_36258911d83cc1 166-199
+harness/continuity/capability-contract.test.ts
+  s_5cbc4c67c8b3b4::t_b199f1030e7611 152-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a6c9c5662c3b84087baf5e1c5d9bf0e033edc47e",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
