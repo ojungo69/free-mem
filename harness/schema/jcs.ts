@@ -24,10 +24,8 @@ import { readFileSync } from "node:fs";
  * well-formed 化で `"\ud800"` とエスケープして返してしまうため、そのままだと
  * 「TS では hash が出るが、準拠した Rust 実装は計算を拒否する」状態になる。
  */
-function encodeString(value: string): string {
-  if (!value.isWellFormed()) {
-    throw new Error(`JCS: 対になっていない代理を含む文字列は canonicalize できない: ${JSON.stringify(value)}`);
-  }
+function encodeString(value: string, where: string): string {
+  assertIJsonString(value, where);
   return JSON.stringify(value);
 }
 
@@ -73,11 +71,12 @@ export function readIJsonFile<T = unknown>(url: URL | string): T {
  * （JCS §3.2.2.2）は代理だけが対象で noncharacter は見ないため、ここが I-JSON の担当。
  */
 function assertIJsonString(value: string, where: string): void {
+  // 不対代理の検出は ES2024 の `isWellFormed` そのもの（JCS §3.2.2.2 が中止を求める形）
+  if (!value.isWellFormed()) {
+    throw new Error(`I-JSON: ${where} に対になっていない代理が入っている`);
+  }
   for (const ch of value) {
     const cp = ch.codePointAt(0) ?? 0;
-    if (cp >= 0xd800 && cp <= 0xdfff) {
-      throw new Error(`I-JSON: ${where} に対になっていない代理が入っている: U+${hex(cp)}`);
-    }
     if ((cp & 0xfffe) === 0xfffe || (cp >= 0xfdd0 && cp <= 0xfdef)) {
       throw new Error(`I-JSON: ${where} に noncharacter が入っている: U+${hex(cp)}`);
     }
@@ -185,7 +184,7 @@ export function canonicalizeJson(value: unknown): string {
     // JCS は -0 を 0 として出す。`JSON.stringify(-0)` も "0" だが意図を明示しておく
     return JSON.stringify(Object.is(value, -0) ? 0 : value);
   }
-  if (typeof value === "string") return encodeString(value);
+  if (typeof value === "string") return encodeString(value, "文字列");
   if (Array.isArray(value)) {
     assertPlainArray(value);
     // 添字で回す。`Array.from` や `map` は呼び出し側が差し替えた `Symbol.iterator` を
@@ -209,13 +208,20 @@ export function canonicalizeJson(value: unknown): string {
     if (Reflect.ownKeys(value).length !== Object.keys(value).length) {
       throw new Error("JCS: symbol キーまたは非 enumerable な property を持つ object は canonicalize できない");
     }
+    // getter は `Object.entries` が呼び出す。副作用や呼ぶたび変わる値があると、同じ object から
+    // 違う bytes が出る（hash が決定的でなくなる）
+    for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+      if (!("value" in descriptor)) {
+        throw new Error(`JCS: getter/setter を持つ object は canonicalize できない: ${key}`);
+      }
+    }
     // `JSON.stringify` は undefined の property を黙って落とすが、ここでは落とさない。
     // 落とすと `{ a: 1, b: undefined }` が `{ a: 1 }` と同じ hash になり、組み立て損ねた
     // 契約値が「その欄は元々無かった」ものとして通ってしまう。undefined は下で throw する
     const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
       a < b ? -1 : a > b ? 1 : 0,
     );
-    return `{${entries.map(([k, v]) => `${encodeString(k)}:${canonicalizeJson(v)}`).join(",")}}`;
+    return `{${entries.map(([k, v]) => `${encodeString(k, `キー ${JSON.stringify(k)}`)}:${canonicalizeJson(v)}`).join(",")}}`;
   }
   throw new Error(`JCS: JSON に無い型は canonicalize できない: ${typeof value}`);
 }

@@ -208,3 +208,25 @@ test("UTF-8 として不正な bytes は置換せずに落とす（RFC 7493 §2.
   // 正しい UTF-8 はそのまま
   assert.equal(decodeUtf8(new TextEncoder().encode('{"a":"é"}'), "t.json"), '{"a":"é"}');
 });
+
+test("canonicalize も I-JSON の文字列だけを受ける（parseIJson と同じ範囲）", () => {
+  // JCS §3.1 は入力を I-JSON に限るので、noncharacter を含む値から bytes を出すべきでない
+  assert.throws(() => canonicalizeJson("\uFFFE"), /noncharacter/);
+  assert.throws(() => canonicalizeJson({ "\uFDD0": 1 }), /noncharacter/);
+  assert.throws(() => canonicalizeJson({ a: ["\uFFFF"] }), /noncharacter/);
+  assert.equal(canonicalizeJson({ "\u{10384}": "é" }), '{"\u{10384}":"é"}');
+});
+
+test("getter を持つ object は canonicalize しない（hash が決定的でなくなる）", () => {
+  let calls = 0;
+  const counter = {
+    get a() {
+      return ++calls;
+    },
+  };
+  // `JSON.stringify` は getter を呼ぶので、同じ object から違う bytes が出る
+  assert.equal(JSON.stringify(counter), '{"a":1}');
+  assert.equal(JSON.stringify(counter), '{"a":2}');
+  assert.throws(() => canonicalizeJson(counter), /getter\/setter/);
+  assert.equal(calls, 2, "canonicalizeJson は getter を呼ばない");
+});
