@@ -1969,33 +1969,97 @@ test("identity が一致する確定済み兄弟がいても、衝突する open
   );
 });
 
-test("canonicalInputHash を省いた terminal は照合できないものとして扱う", () => {
+test("候補が複数あるとき canonicalInputHash を省いた terminal は照合できないものとして扱う", () => {
   // 両方 present のときだけ比べる衝突検査は復元耐性のためにあるが、そのままだと欄を省くだけで
-  // 検査を無効化できる。省略は wire 側の自由なので、これは攻撃者が選べる経路
-  const started = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  // 検査を無効化できる。省略は wire 側の自由なので、これは攻撃者が選べる経路。
+  // 弁別子が hash しか残っていない形＝同じ matchKey に hash 違いの兄弟が並ぶ形でだけ発火する
+  const A = { ...MATCH_KEY_ONLY, canonicalInputHash: "input-hash-A" } as const;
+  const B = { ...MATCH_KEY_ONLY, canonicalInputHash: "input-hash-B" } as const;
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-a", adapterDeliveryId: "d-start-a", canonicalFingerprint: "f-start-a", operation: A, ingestSeq: "11" }),
+    terminalEvent({ eventId: "term-a", adapterDeliveryId: "d-term-a", canonicalFingerprint: "f-term-a", operation: { ...A, phase: "terminal" }, ingestSeq: "12" }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: B, ingestSeq: "13" }),
+  ]);
   const omitted = reduceTaskWorkState(
-    started,
-    terminalEvent({ operation: { ...MATCH_KEY_ONLY, phase: "terminal", canonicalInputHash: undefined } }),
-    new Map(),
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "14",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal", canonicalInputHash: undefined },
+    }),
+    prepared.ledger,
   );
   assert.equal(omitted.outcome, "applied");
   assert.deepEqual(
     omitted.diagnostics.map((d) => d.code),
     ["terminal_identity_unverifiable"],
   );
-  // succeeded を名乗られても unknown に倒れる
-  assert.equal(omitted.snapshot.state.pendingOperations[0]?.status, "unknown");
+  // succeeded を名乗られても B は unknown に倒れる。確定済みの A は動かない
+  assert.deepEqual(
+    omitted.snapshot.state.pendingOperations.map((p) => p.status),
+    ["succeeded", "unknown"],
+  );
   // 隔離ではなく台帳に入るので、後から届いた本物の terminal がそのまま閉じられる
   const real = reduceTaskWorkState(
     omitted.snapshot,
     terminalEvent({
       eventId: "event-fail", adapterDeliveryId: "delivery-fail", canonicalFingerprint: "fingerprint-fail",
-      kind: "tool_failed", successful: false, operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "13",
+      kind: "tool_failed", successful: false, operation: { ...B, phase: "terminal" }, ingestSeq: "15",
     }),
     omitted.ledger,
   );
   assert.deepEqual(real.diagnostics, []);
-  assert.equal(real.snapshot.state.pendingOperations[0]?.status, "failed");
+  assert.deepEqual(
+    real.snapshot.state.pendingOperations.map((p) => p.status),
+    ["succeeded", "failed"],
+  );
+});
+
+test("候補が 1 件なら canonicalInputHash の省略は照合を妨げない", () => {
+  // §4.3 の matchKey は canonical input hash を入力に含むので、仕様どおりに導出する adapter では
+  // hash 違いの兄弟は候補に並ばない。付け替えられる相手が居ない以上、省略で盗めるものが無い。
+  // 「terminal は入力ではなく結果なので hash を載せない」adapter を締め出さないための対照
+  for (const [label, op] of [
+    ["rule 2（matchKey）", MATCH_KEY_ONLY],
+    ["rule 1（nativeOperationId）", START_OPERATION],
+  ] as const) {
+    const started = startedSnapshot(startEvent({ operation: op }));
+    const omitted = reduceTaskWorkState(
+      started,
+      terminalEvent({ operation: { ...op, phase: "terminal", canonicalInputHash: undefined } }),
+      new Map(),
+    );
+    assert.deepEqual(omitted.diagnostics, [], label);
+    assert.equal(omitted.snapshot.state.pendingOperations[0]?.status, "succeeded", label);
+  }
+});
+
+test("確定済みの候補に矛盾する terminal は hash を省いても隔離される", () => {
+  // 照合不能の検査を成否矛盾検査より前に置くと、hash を省くだけで隔離（台帳を消費しない）を
+  // 回避して照合不能（台帳を消費する）に化け、訂正版の再配送が重複 no-op として捨てられる
+  const A = { ...MATCH_KEY_ONLY, canonicalInputHash: "input-hash-A" } as const;
+  const B = { ...MATCH_KEY_ONLY, canonicalInputHash: "input-hash-B" } as const;
+  const failed = { kind: "tool_failed", successful: false } as const;
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-a", adapterDeliveryId: "d-start-a", canonicalFingerprint: "f-start-a", operation: A, ingestSeq: "11" }),
+    terminalEvent({ eventId: "term-a", adapterDeliveryId: "d-term-a", canonicalFingerprint: "f-term-a", operation: { ...A, phase: "terminal" }, ingestSeq: "12", ...failed }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: B, ingestSeq: "13" }),
+    terminalEvent({ eventId: "term-b", adapterDeliveryId: "d-term-b", canonicalFingerprint: "f-term-b", operation: { ...B, phase: "terminal" }, ingestSeq: "14", ...failed }),
+  ]);
+  const forged = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "15",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal", canonicalInputHash: undefined },
+    }),
+    prepared.ledger,
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(
+    forged.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+  // 隔離は配送鍵を消費しないので、訂正版が後から効く
+  assert.equal(forged.ledger.size, prepared.ledger.size);
 });
 
 test("記録側も canonicalInputHash を持たないなら省略は照合を妨げない", () => {

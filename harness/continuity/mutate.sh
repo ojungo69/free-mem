@@ -8,9 +8,10 @@
 #
 # 実行件数も必ず突き合わせる。アンカー文字列が実装の変更で外れると `assert old in s` が落ちて
 # `&&` が短絡し、その変異は **出力に何も出ないまま黙って飛ばされる**:
-#   grep -oP '&& run "\K[^"]+' harness/continuity/mutate.sh | sort > /tmp/want.txt
+#   grep -oP '&& run "\K[^"]+' harness/continuity/mutate.sh | grep -v '^\\K' | sort > /tmp/want.txt
 #   bash harness/continuity/mutate.sh | grep -oP '^.*?(?=\s+ℹ fail )' | sed 's/ *$//' | sort > /tmp/got.txt
 #   comm -23 /tmp/want.txt /tmp/got.txt   # 空でなければ黙って飛ばされている
+# （このコメント行自体が 1 行目の grep に引っかかるので `grep -v '^\K'` で落とす）
 #
 # 中断すると変異が残るので、その場合は `git checkout harness/continuity/reference-model.ts`。
 set -u
@@ -196,3 +197,6 @@ mutate "        (existing.correlation.turnId !== undefined &&
 mutate "        (existing.correlation.turnId !== undefined &&
           event.turnId !== undefined &&
           existing.correlation.turnId !== event.turnId) ||" "        (existing.correlation.turnId !== event.turnId) ||" && run "再配送 start の turn 存在ガードを外す"
+mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.find(identityUnverifiable);" && run "候補 1 件でも照合不能ゲートを発火させる"
+mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 2 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの候補数を 1 件ずらす"
+mutate "  if (open.length === 0) {" "  if (open.length === 0 && compatible.find(identityUnverifiable) === undefined) {" && run "照合不能を成否矛盾検査より先に判定する"

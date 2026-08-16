@@ -1045,6 +1045,16 @@ export function correlateTerminalEvent(
   // 必須欄で空も許さない（`assertOperationFields`）ので terminal から省けないため
   const identityUnverifiable = (pending: PendingOperation): boolean =>
     pending.correlation.canonicalInputHash !== undefined && operation.canonicalInputHash === undefined;
+  // ただしこれが実害になるのは、この terminal が付きうる候補が 2 件以上あるときだけ。
+  // 1 件しか残っていないなら省略で付け替えられる相手が居ないので、§4.3 の照合権限
+  // （rule 1 = nativeOperationId、rule 2 = matchKey + 互換な turn/kind）が既に相手を
+  // 一意に決めている。`canonicalInputHash` は凍結 envelope の optional（§3.1）なので省略は
+  // schema 妥当で、§4.3 が terminal に課すのは「non-conflicting な payload/source hash」＝
+  // 衝突しないことであって、不在は衝突ではない。§4.3 の matchKey は canonical input hash を
+  // 入力に含むので、仕様どおりに導出する adapter では hash 違いの兄弟はそもそも候補に並ばない。
+  // 候補が 2 件以上並ぶのは matchKey を仕様どおりに導出しない adapter だけで、そこでは
+  // hash が唯一の弁別子なので、省略された時点で倒す。素で発火させると「terminal は入力では
+  // なく結果なので hash を載せない」adapter の terminal が 1 通残らず閉じなくなる
   // 候補が複数あるとき（§4.3 どおりに matchKey を導出しない adapter では、同じ matchKey で
   // input hash が違う pending が並びうる）、identity が衝突する候補は「この terminal のもので
   // ある可能性」から外すだけで、他の候補の照合を妨げない。全件衝突なら隔離、そうでなければ
@@ -1065,15 +1075,6 @@ export function correlateTerminalEvent(
   const open = compatible.filter((pending) => pending.status === "started" || pending.status === "unknown");
   // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
   const openIds = open.map((pending) => pending.operationId);
-  const unverifiable = compatible.find(identityUnverifiable);
-  if (unverifiable !== undefined) {
-    return {
-      matched: null,
-      diagnostic: "terminal_identity_unverifiable",
-      detail: `operation ${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている`,
-      unresolvedOperationIds: openIds,
-    };
-  }
   if (open.length === 0) {
     // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を
     // 課す。配送 ID が違う 2 通目は dedupe で比べられず、上の identity 衝突検査も kind と
@@ -1104,6 +1105,18 @@ export function correlateTerminalEvent(
       diagnostic: "terminal_already_applied",
       detail: "候補はすべて terminal 済み",
       unresolvedOperationIds: [],
+    };
+  }
+  // 照合不能の検査は上の成否矛盾検査より後に置く。前に置くと、確定済みの候補に矛盾する
+  // terminal が hash を省くだけで隔離（台帳を消費しないので訂正版が後から効く）を回避して
+  // 照合不能（台帳を消費する）に化け、訂正版の再配送が重複 no-op として黙って捨てられる
+  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;
+  if (unverifiable !== undefined) {
+    return {
+      matched: null,
+      diagnostic: "terminal_identity_unverifiable",
+      detail: `operation ${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている`,
+      unresolvedOperationIds: openIds,
     };
   }
   // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
