@@ -2129,22 +2129,17 @@ test("turn が両立する確定済み候補が 1 件も無いなら適用済み
     terminalEvent({ eventId: "term-b", adapterDeliveryId: "d-term-b", canonicalFingerprint: "f-term-b", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
   ]);
   assert.equal(prepared.snapshot.state.pendingOperations[0]?.status, "succeeded");
-  for (const [label, extra] of [
-    ["成否が一致", {}],
-    ["成否が逆", { kind: "tool_failed", successful: false }],
-  ] as const) {
-    const result = reduceTaskWorkState(
-      prepared.snapshot,
-      terminalEvent({
-        eventId: `term-${label}`, adapterDeliveryId: `d-${label}`, canonicalFingerprint: `f-${label}`,
-        ingestSeq: "13", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native", ...extra,
-      }),
-      prepared.ledger,
-    );
-    assert.deepEqual(result.diagnostics.map((d) => d.code), ["terminal_unmatched"], label);
-    // 候補は確定済みなので `unknown` に倒す相手は居ない
-    assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded", label);
-  }
+  const agreeing = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-agree", adapterDeliveryId: "d-agree", canonicalFingerprint: "f-agree",
+      ingestSeq: "13", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native",
+    }),
+    prepared.ledger,
+  );
+  assert.deepEqual(agreeing.diagnostics.map((d) => d.code), ["terminal_unmatched"]);
+  // 候補は確定済みなので `unknown` に倒す相手は居ない
+  assert.equal(agreeing.snapshot.state.pendingOperations[0]?.status, "succeeded");
   // 対照: turn が両立する候補があれば従来どおり適用済みとして通る
   const same = reduceTaskWorkState(
     prepared.snapshot,
@@ -2155,6 +2150,36 @@ test("turn が両立する確定済み候補が 1 件も無いなら適用済み
     prepared.ledger,
   );
   assert.deepEqual(same.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("turn が両立しなくても成否が矛盾する terminal は隔離する", () => {
+  // 矛盾の検出は「閉じる権限があるか」ではなく「壊れた証跡か」の判定なので turn 両立は要らない。
+  // ここまで絞ると候補が全部落ちたときに `find` が undefined を返し、隔離（台帳を消費しない）が
+  // `terminal_already_applied`（台帳を消費する）に化けて、訂正版が重複 no-op になる
+  const failed = { kind: "tool_failed", successful: false } as const;
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "synthesized_monotonic" }),
+    terminalEvent({ eventId: "term-a", adapterDeliveryId: "d-term-a", canonicalFingerprint: "f-term-a", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "12", turnIdSource: "synthesized_monotonic", ...failed }),
+  ]);
+  assert.equal(prepared.snapshot.state.pendingOperations[0]?.status, "failed");
+  // turn 種別が違う / turn そのものが違う のどちらでも、成否が逆なら隔離する
+  for (const [label, extra] of [
+    ["種別違い", { turnIdSource: "native" }],
+    ["別 turn", { turnIdSource: "synthesized_monotonic", turnId: "turn-2" }],
+  ] as const) {
+    const forged = reduceTaskWorkState(
+      prepared.snapshot,
+      terminalEvent({
+        eventId: `term-${label}`, adapterDeliveryId: `d-${label}`, canonicalFingerprint: `f-${label}`,
+        ingestSeq: "13", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ...extra,
+      }),
+      prepared.ledger,
+    );
+    assert.equal(forged.outcome, "quarantined", label);
+    assert.deepEqual(forged.diagnostics.map((d) => d.code), ["terminal_conflict"], label);
+    // 隔離は配送鍵を消費しないので、訂正版が後から効く
+    assert.equal(forged.ledger.size, prepared.ledger.size, label);
+  }
 });
 
 test("記録側も canonicalInputHash を持たないなら省略は照合を妨げない", () => {

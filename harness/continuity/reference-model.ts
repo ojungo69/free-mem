@@ -1145,35 +1145,42 @@ export function correlateTerminalEvent(
     // 再配送として説明がつく。兄弟の成否だけを見て隔離すると健全な再配送が台帳に入らず、
     // adapter は無限再送になる。この分岐では候補は全件確定済み（open が空）なので、
     // 一致が無ければどの候補も矛盾している
-    // 説明にも矛盾判定にも「この terminal が閉じえた候補」だけを使う。素の `compatible` で
-    // 説明を許すと、turn 種別が両立しない兄弟が囮になる: native の failed と
-    // synthesized_monotonic の succeeded が同じ matchKey・同じ turnId で並ぶとき、succeeded を
-    // 名乗る native の 2 通目が兄弟に説明されて `terminal_already_applied` になり、隔離
-    // （台帳を消費しない）を回避して台帳を消費するので、後から届く訂正版が重複 no-op になる
+    // ここは性質の違う 2 つの問いを続けて解くので、**母数を分ける**。
+    // (i) この terminal は候補の再配送として説明がつくか → **turn 両立が要る**。
+    //     閉じえた候補だけが説明役になれる。素の `compatible` で説明を許すと、turn 種別が
+    //     両立しない兄弟が囮になる: native の failed と synthesized_monotonic の succeeded が
+    //     同じ matchKey・同じ turnId で並ぶとき、succeeded を名乗る native の 2 通目が兄弟に
+    //     説明されて隔離を回避する
+    // (ii) 確定済みの候補と成否が矛盾していないか → **turn 両立は要らない**。
+    //     これは「閉じる権限があるか」ではなく「壊れた証跡か」の判定で、matchKey・kind・
+    //     input hash まで同じ terminal が確定済みの status と逆を主張しているなら、turn の
+    //     導出が §4.3 どおりでない adapter だとしても矛盾は矛盾。ここを絞ると、候補が全部
+    //     落ちた場合に `find` が undefined を返して隔離（台帳を消費しない）が
+    //     `terminal_already_applied`（台帳を消費する）に化け、訂正版が重複 no-op になる
     const settled = eligibleOf(sameTurnOf(compatible));
-    // 絞った結果が空なのは「候補は全件確定済みで、しかもこの terminal が閉じえたものは
-    // 1 件も無い」= 再配送では説明できない。そのまま下へ落とすと `contradicted` が undefined に
-    // なって `terminal_already_applied` を名乗り、閉じえなかった terminal が適用済みとして
-    // 台帳に入る。§4.3 の「zero にマッチした terminal は unmatched evidence として保存する」
-    // どおり `terminal_unmatched` にする。候補は全件確定済みなので `unknown` に倒す相手は居ない
-    if (settled.length === 0) {
-      return {
-        matched: null,
-        diagnostic: "terminal_unmatched",
-        detail: "候補はすべて terminal 済みで、turn が両立するものが無い",
-        unresolvedOperationIds: [],
-      };
-    }
     const incoming = terminalStatusOf(terminalEvent);
     const contradicted =
       incoming === "unknown" || settled.some((pending) => pending.status === incoming)
         ? undefined
-        : settled.find((pending) => pending.status !== incoming);
+        : compatible.find((pending) => pending.status !== incoming);
+    // 隔離は台帳を消費しないので、消費する分岐より必ず先に判定する
     if (contradicted !== undefined) {
       return {
         matched: null,
         diagnostic: "terminal_conflict",
         detail: `operation ${contradicted.operationId} は ${contradicted.status} で確定済みなのに ${incoming} を名乗る terminal が来た`,
+        unresolvedOperationIds: [],
+      };
+    }
+    // 矛盾はしていないが turn が両立する候補も無い = 「候補は全件確定済みで、この terminal が
+    // 閉じえたものは 1 件も無い」。再配送では説明できないので `terminal_already_applied` を
+    // 名乗らせない。§4.3 の「zero にマッチした terminal は unmatched evidence として保存する」
+    // どおり `terminal_unmatched`。候補は全件確定済みなので `unknown` に倒す相手は居ない
+    if (settled.length === 0) {
+      return {
+        matched: null,
+        diagnostic: "terminal_unmatched",
+        detail: "候補はすべて terminal 済みで、turn が両立するものが無い",
         unresolvedOperationIds: [],
       };
     }
