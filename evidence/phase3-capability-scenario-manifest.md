@@ -66,6 +66,10 @@ manifestHash = SHA-256hex( JCS( { …manifest, scenarios: scenarioId 昇順 } ) 
   （JCS は配列を並べ替えないので、順序の正規化は値の側の仕事）と、
   `manifestHash` 自身を入力から除くこと
 - scenario のキーは列挙しない。手で並べた列挙は欄が増えたときに黙って入力から漏れる
+- 入力の manifest は **I-JSON**（RFC 7493）であること。RFC 8785 §3.1 が canonicalize の
+  入力をそこに限っており、§2.3 は object の重複 property 名を禁じている。`JSON.parse` は
+  重複を後勝ちで潰すため、潰れた値からは hash が出てしまい、同じファイルを拒否する準拠実装と
+  食い違う。読み込みは `harness/schema/jcs.ts` の `parseIJson` を通す
 
 この規則は `harness/continuity/capability-manifest.test.ts` が強制する。同 test は
 再計算して `manifestHash` と照合するほか、scenario の各欄を書き換えると hash が必ず変わること
