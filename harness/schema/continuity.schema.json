@@ -4,7 +4,7 @@
   "$defs": {
     "IsoTimestamp": {
       "type": "string",
-      "$comment": "正本は「timestamps は UTC RFC3339」（agent-memory-final-spec-v6.md §22.6）。小数秒は RFC3339 の `time-secfrac = \".\" 1*DIGIT` に合わせて桁数を固定しない。各成分の範囲までは絞るが、暦としての実在（2 月 30 日・閏年）は pattern では表せないので、そこは Task 5 の runtime validator が受け持つ（#27）。",
+      "$comment": "正本は「timestamps は UTC RFC3339」（agent-memory-final-spec-v6.md §22.6）。小数秒は RFC3339 の `time-secfrac = \".\" 1*DIGIT` に合わせて桁数を固定しない。一方で **offset は `Z` 固定、秒は 00-59 に絞っている**——RFC3339 は `+00:00` のような数値 offset とうるう秒の `:60` も許すが、同じ瞬間の綴りが複数あると canonical hash と dedupe が割れるため。正本に明記の無い profile なので #33 で追認を仰ぐ。暦としての実在（2 月 30 日・閏年・うるう秒日）は pattern では表せないので Task 5 の runtime validator が受け持つ（#27）。",
       "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?Z$"
     },
     "TaskBindingRole": {
