@@ -183,9 +183,17 @@ function dedupe(xs: string[]): string[] {
 }
 
 export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatrix {
+  // この関数のガードは全て throw にする（fail は process.exit で、テストから確認できず
+  // --test 実行中に踏むとスイート全体が途中で死ぬ）。CLI 側は catch して同じ終了コードを返す
   if (fixtures.length === 0) {
-    fail("no valid fixtures to assemble");
+    throw new Error("no valid fixtures to assemble");
   }
+
+  // fixtureId で正規化してから畳む。同格な観測どうしの勝ち負けが「どの順で渡したか」で
+  // 変わると、matrix の provenance が readdir の並びや呼び出し側の都合で入れ替わる。
+  // ponytail: 同格の勝者は fixtureId 順で決まるだけで、新しい観測を優先はしない。
+  // verifiedAt を「最後に確認した時刻」として読ませたくなったら畳み込みに recency 規則が要る
+  fixtures = [...fixtures].sort((a, b) => (a.fixtureId < b.fixtureId ? -1 : 1));
 
   const cli = fixtures[0].cli;
   const nativeVersion = fixtures[0].nativeVersion;
@@ -200,10 +208,10 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   }
   for (const f of fixtures) {
     if (f.cli !== cli) {
-      fail(`cli mismatch: ${fixtures[0].fixtureId}=${cli} vs ${f.fixtureId}=${f.cli}`);
+      throw new Error(`cli mismatch: ${fixtures[0].fixtureId}=${cli} vs ${f.fixtureId}=${f.cli}`);
     }
     if (f.nativeVersion !== nativeVersion) {
-      fail(
+      throw new Error(
         `version-pin violation: ${fixtures[0].fixtureId}=${nativeVersion} vs ${f.fixtureId}=${f.nativeVersion}`,
       );
     }
@@ -240,13 +248,15 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       const kind = ev.kind as EventKind;
       const prev = capabilities.capture[kind];
       // native は synthesized に降格させない（別 fixture で native 観測済みなら維持）。
-      // 値が上がらないなら証跡の質でも降格させない: hash 付きの実測を hash 無しの自己申告で
-      // 上書きすると、補強のつもりで足した fixture が file 名順しだいで証跡を消す
+      // 値が上がらないなら、証跡が良くなるときだけ書き換える。hash 付きの実測を hash 無しの
+      // 自己申告で潰さないだけでなく、完全に同格な観測どうし（同じ値・どちらも hash 付き）でも
+      // 「後に読んだ fixture が勝つ」＝ file 名順で証跡の出どころが変わるのを止める。
+      // 同格なら先に読んだ方を残す（高位 cell の畳み込みと同じ向き）
       const evValue = ev.capability ?? "native";
       const upgrades = (CAPABILITY_STRENGTH[evValue] ?? 0) > (CAPABILITY_STRENGTH[prev.value] ?? -1);
-      const demoting =
-        (prev.value === "native" && evValue === "synthesized") ||
-        (!upgrades && Boolean(prev.evidenceHash) && !f.evidenceHash);
+      const improvesEvidence = Boolean(f.evidenceHash) && !prev.evidenceHash;
+      const keepPrev =
+        (prev.value === "native" && evValue === "synthesized") || (!upgrades && !improvesEvidence);
       // limitations / sourceEvents は上書きせず統合する（後勝ちで caveat を消さない）
       const mergedLimits = dedupe([
         ...(prev.value === "unknown" ? [] : prev.limitations),
@@ -256,7 +266,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
         ...(prev.value === "unknown" ? [] : prev.sourceEvents),
         ...(ev.sourceEvents ?? []),
       ]);
-      if (demoting) {
+      if (keepPrev) {
         capabilities.capture[kind] = { ...prev, limitations: mergedLimits, sourceEvents: mergedSources };
         continue;
       }
@@ -274,8 +284,10 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
         nativeVersion,
         evidenceKind: hashed ? "real-cli-e2e" : "source-test",
         verifiedAt: f.capturedAt,
+        // hash 無しで一度書いた caveat は、hash 付きに差し替えた時点で消す
+        // （残すと「transcript に紐付いた実測」と「自己申告」を同じ cell が同時に主張する）
         limitations: hashed
-          ? mergedLimits
+          ? mergedLimits.filter((l) => !l.startsWith("no evidenceHash:"))
           : dedupe([...mergedLimits, "no evidenceHash: transcript に紐付いていない自己申告"]),
         sourceFixtureId: f.fixtureId,
         evidenceHash: f.evidenceHash ?? null,
@@ -668,6 +680,28 @@ async function selfTest(): Promise<void> {
       const cap = assembleFromFixtures([...order]).capabilities.capture.session_started;
       assert(cap.evidenceKind === "real-cli-e2e", "capture keeps the hashed provenance");
       assert(cap.evidenceHash === "1".repeat(64), "capture keeps the hash");
+      assert(
+        !cap.limitations.some((l) => l.startsWith("no evidenceHash:")),
+        "hash 付きに差し替えたら自己申告の caveat は残さない",
+      );
+    }
+
+    // 完全に同格（同じ値・どちらも hash 付き）なら先に読んだ方を残す。
+    // 後勝ちだと「どの run がこの cell を証明したか」が file 名で入れ替わる
+    const capHashed2 = {
+      ...capHashed,
+      fixtureId: "claude/cap-hashed-2",
+      capturedAt: at2,
+      evidenceHash: "2".repeat(64),
+      observedEvents: [{ kind: "session_started" as const, at: at2 }],
+    };
+    for (const order of [
+      [capHashed, capHashed2],
+      [capHashed2, capHashed],
+    ]) {
+      const cap = assembleFromFixtures([...order]).capabilities.capture.session_started;
+      assert(cap.sourceFixtureId === "claude/cap-hashed", "同格な観測は fixtureId 順で決める");
+      assert(cap.evidenceHash === "1".repeat(64), "証跡の出どころが並び順で入れ替わらない");
     }
 
     // 同じ値・同じ強度なら evidenceHash のある観測を採る（並び順で実測の証跡を捨てない）

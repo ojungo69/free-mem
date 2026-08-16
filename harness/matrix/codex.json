@@ -1,7 +1,7 @@
 {
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "generatedAt": "2026-08-16T05:58:30.099Z",
+  "generatedAt": "2026-08-16T06:26:30.792Z",
   "fixtureCount": 3,
   "fixtureIds": [
     "codex/injection",
@@ -23,11 +23,11 @@
         ],
         "nativeVersion": "codex-cli 0.147.0",
         "evidenceKind": "source-test",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
         "limitations": [
           "no evidenceHash: transcript に紐付いていない自己申告"
         ],
-        "sourceFixtureId": "codex/tool-lifecycle-and-failure",
+        "sourceFixtureId": "codex/injection",
         "evidenceHash": null
       },
       "user_prompted": {
@@ -37,11 +37,11 @@
         ],
         "nativeVersion": "codex-cli 0.147.0",
         "evidenceKind": "source-test",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
         "limitations": [
           "no evidenceHash: transcript に紐付いていない自己申告"
         ],
-        "sourceFixtureId": "codex/tool-lifecycle-and-failure",
+        "sourceFixtureId": "codex/injection",
         "evidenceHash": null
       },
       "assistant_completed": {
@@ -113,12 +113,12 @@
         ],
         "nativeVersion": "codex-cli 0.147.0",
         "evidenceKind": "source-test",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
         "limitations": [
           "no evidenceHash: transcript に紐付いていない自己申告",
           "Stop payload に `turn_id` があり turn 境界が native に識別できる。[2026-08-12 訂正: 『Claude 側には無い』は誤り — Claude は UserPromptSubmit/Stop/SessionEnd が同一 `prompt_id` を共有しており turn 対応付けは可能。差は id の名称と、Codex の SessionEnd には turn_id が無い点]"
         ],
-        "sourceFixtureId": "codex/tool-lifecycle-and-failure",
+        "sourceFixtureId": "codex/injection",
         "evidenceHash": null
       },
       "pre_compact": {
@@ -168,12 +168,12 @@
         ],
         "nativeVersion": "codex-cli 0.147.0",
         "evidenceKind": "source-test",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
         "limitations": [
           "no evidenceHash: transcript に紐付いていない自己申告",
           "reason は正常終了でも 'other'"
         ],
-        "sourceFixtureId": "codex/tool-lifecycle-and-failure",
+        "sourceFixtureId": "codex/injection",
         "evidenceHash": null
       }
     },

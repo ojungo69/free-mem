@@ -410,3 +410,36 @@ test("$defs 名にハイフン・ドットを使える", () => {
   assert.deepEqual(validateAgainstSchema("x", { $ref: "#/$defs/Iso-Timestamp" }, root), []);
   assert.equal(validateAgainstSchema(1, { $ref: "#/$defs/Iso-Timestamp" }, root).length, 1);
 });
+
+test("$defs の誤記は validateContractValue（本番の入口）からも検出する", () => {
+  // 入口が渡すのは root ではなく $defs の 1 つ。root を歩かないと、参照が外れた定義の
+  // 誤記だけが検査を免れ、「どの契約を検証したか」で schema の正しさが変わる
+  const root: JsonSchemaDocument = {
+    $defs: { Used: { type: "string" }, Unused: { type: "object", required: "kind" } },
+  };
+  assert.throws(
+    () => validateContractValue("Used", "x", root, LIMITS),
+    /schema keyword required at \$\.\$defs\.Unused must be an array of strings/,
+  );
+});
+
+test("常に不一致になる schema（空の type / enum / anyOf）も誤記として弾く", () => {
+  for (const bad of [{ type: [] }, { type: [1, 2] }, { enum: [] }, { anyOf: [] }, { oneOf: [] }]) {
+    assert.throws(() => validateAgainstSchema("x", bad, ROOT), /must be a (string or )?non-empty/);
+  }
+  // allOf: [] は「制約なし」で無害なので通す
+  assert.deepEqual(validateAgainstSchema("x", { allOf: [] }, ROOT), []);
+});
+
+test("長さ制限の検査は文字列長に比例した確保をしない", () => {
+  // Array.from(s) だと「64 バイト超で落とす値」の展開に数百 MB 確保する逆転が起きていた
+  const huge = "a".repeat(32 * 1024 * 1024);
+  const before = process.memoryUsage().heapUsed;
+  assert.equal(validateAgainstSchema(huge, { type: "string", maxLength: 10 }, ROOT).length, 1);
+  assert.deepEqual(validateAgainstSchema(huge, { type: "string", minLength: 10 }, ROOT), []);
+  assert.ok(process.memoryUsage().heapUsed - before < 64 * 1024 * 1024, "長さ検査で大きく確保しない");
+  // code point 単位の意味は保つ（絵文字 1 文字 = 長さ 1）
+  assert.equal(validateAgainstSchema("😀😀", { type: "string", maxLength: 2 }, ROOT).length, 0);
+  assert.equal(validateAgainstSchema("😀😀", { type: "string", maxLength: 1 }, ROOT).length, 1);
+  assert.equal(validateAgainstSchema("😀😀", { type: "string", minLength: 3 }, ROOT).length, 1);
+});

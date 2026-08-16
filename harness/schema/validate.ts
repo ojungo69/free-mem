@@ -66,8 +66,14 @@ const SUPPORTED_KEYWORDS = new Set([
 const isNumber = (v: unknown): boolean => typeof v === "number";
 const isSchemaLike = (v: unknown): boolean => isPlainObject(v) || typeof v === "boolean";
 const KEYWORD_VALUE_KIND: Record<string, { name: string; check: (v: unknown) => boolean }> = {
-  type: { name: "a string or array of strings", check: (v) => typeof v === "string" || Array.isArray(v) },
-  enum: { name: "an array", check: Array.isArray },
+  // 空配列や非文字列の要素も弾く。`type: []` / `enum: []` は何にも一致しない schema で、
+  // 放っておくと「expected type , got string」のようにデータ側の誤りとして報告される
+  type: {
+    name: "a string or non-empty array of strings",
+    check: (v) =>
+      typeof v === "string" || (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string")),
+  },
+  enum: { name: "a non-empty array", check: (v) => Array.isArray(v) && v.length > 0 },
   required: { name: "an array of strings", check: (v) => Array.isArray(v) && v.every((x) => typeof x === "string") },
   properties: { name: "an object", check: isPlainObject },
   $defs: { name: "an object", check: isPlainObject },
@@ -76,8 +82,9 @@ const KEYWORD_VALUE_KIND: Record<string, { name: string; check: (v: unknown) => 
   if: { name: "a schema", check: isSchemaLike },
   then: { name: "a schema", check: isSchemaLike },
   else: { name: "a schema", check: isSchemaLike },
-  oneOf: { name: "an array of schemas", check: Array.isArray },
-  anyOf: { name: "an array of schemas", check: Array.isArray },
+  // 空の oneOf / anyOf も同じく常に不一致（allOf は空なら「制約なし」で無害なので素通しでよい）
+  oneOf: { name: "a non-empty array of schemas", check: (v) => Array.isArray(v) && v.length > 0 },
+  anyOf: { name: "a non-empty array of schemas", check: (v) => Array.isArray(v) && v.length > 0 },
   allOf: { name: "an array of schemas", check: Array.isArray },
   minItems: { name: "a number", check: isNumber },
   maxItems: { name: "a number", check: isNumber },
@@ -308,12 +315,25 @@ function assertSchemaSupported(
   }
 }
 
-/** JSON Schema の文字列長は Unicode code point 数。String#length は UTF-16 code unit 数で絵文字を 2 と数える */
-const codePointLength = (s: string): number => Array.from(s).length;
+/**
+ * JSON Schema の文字列長は Unicode code point 数。String#length は UTF-16 code unit 数で絵文字を 2 と数える。
+ * bound を超えた時点で打ち切るので返り値は min(実際の長さ, bound + 1)。長さの上限を検査するために
+ * 長さに比例した確保をしない（信頼境界では findStructuralViolations のバイト数上限より前に走るため、
+ * Array.from だと「64 バイト超で落とす値」の展開に 32MB 確保する、という逆転が起きる）
+ */
+const codePointLengthUpTo = (s: string, bound: number): number => {
+  let n = 0;
+  for (const _ of s) {
+    n += 1;
+    if (n > bound) break;
+  }
+  return n;
+};
 
 // JSON 上 -0 と 0 は同じ数（JSON.stringify(-0) === "0"）だが JSON.parse("-0") は -0 を返し、
 // isDeepStrictEqual は別物と見る。放置すると `expected const 0, got 0` という読めない issue になる。
-// ponytail: const object の奥に埋もれた -0 までは畳まない。契約に現れたら深い正規化へ
+// ponytail: const object の奥に埋もれた -0 までは畳まない（`{a: -0}` vs `const {a: 0}` は今も
+// 不一致で、読めない issue のまま）。契約に現れたら両辺を JSON round-trip して深く正規化する
 const jsonEqual = (a: unknown, b: unknown): boolean =>
   isDeepStrictEqual(Object.is(a, -0) ? 0 : a, Object.is(b, -0) ? 0 : b);
 
@@ -323,6 +343,13 @@ const jsonEqual = (a: unknown, b: unknown): boolean =>
 // キーを足しても再検査されない）。この repo の schema は JSON.parse したまま凍結して使う
 const schemaChecked = new WeakMap<object, JsonSchemaDocument>();
 
+/** 同じ schema object を root ごとに一度だけ歩く */
+function checkSchemaOnce(schema: unknown, root: JsonSchemaDocument, path: string): void {
+  if (isPlainObject(schema) && schemaChecked.get(schema) === root) return;
+  assertSchemaSupported(schema, root, path, new Set());
+  if (isPlainObject(schema)) schemaChecked.set(schema, root);
+}
+
 /** schema 側を先に検査してから値を検査する。外から呼ぶのはこちら。 */
 export function validateAgainstSchema(
   value: unknown,
@@ -330,10 +357,7 @@ export function validateAgainstSchema(
   root: JsonSchemaDocument,
   path = "$",
 ): ValidationIssue[] {
-  if (!isPlainObject(schema) || schemaChecked.get(schema) !== root) {
-    assertSchemaSupported(schema, root, path, new Set());
-    if (isPlainObject(schema)) schemaChecked.set(schema, root);
-  }
+  checkSchemaOnce(schema, root, path);
   return validateNode(value, schema, root, path, [], 0);
 }
 
@@ -396,10 +420,16 @@ function validateNode(
     // ponytail: pattern は毎回コンパイルし、backtracking にも上限が無い。schema は repo 内の
     // 凍結された JSON でレビューを通るため今は許容している。外部由来の schema を受けるなら
     // pattern の事前検査（安全な部分集合への制限）か worker での実行が要る
-    if (typeof schema.minLength === "number" && codePointLength(value) < schema.minLength) {
+    if (
+      typeof schema.minLength === "number" &&
+      codePointLengthUpTo(value, schema.minLength) < schema.minLength
+    ) {
       issues.push({ path, message: `string shorter than minLength ${schema.minLength}` });
     }
-    if (typeof schema.maxLength === "number" && codePointLength(value) > schema.maxLength) {
+    if (
+      typeof schema.maxLength === "number" &&
+      codePointLengthUpTo(value, schema.maxLength) > schema.maxLength
+    ) {
       issues.push({ path, message: `string longer than maxLength ${schema.maxLength}` });
     }
     if (typeof schema.pattern === "string" && !new RegExp(schema.pattern).test(value)) {
@@ -488,6 +518,9 @@ export function validateContractValue(
   root: JsonSchemaDocument,
   limits: StructuralLimits,
 ): ValidationIssue[] {
+  // root ごと歩く。$defs のうち $ref から辿れるものしか見ないと、参照が外れた定義の誤記だけが
+  // 検査を免れる。ここは値ごとに呼ばれるが memo が効くので root あたり 1 回で済む
+  checkSchemaOnce(root, root, "$");
   const nonJson = findNonJsonValues(value);
   if (nonJson.length > 0) return nonJson;
   const defs = root.$defs;
