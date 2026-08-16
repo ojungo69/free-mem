@@ -399,8 +399,8 @@ function startedSnapshot(event = startEvent()): TaskWorkStateSnapshotV1 {
 test("nativeOperationId 一致で terminal が閉じる", () => {
   const snapshot = startedSnapshot();
   const correlation = correlateTerminalEvent(snapshot, terminalEvent());
+  if (correlation.matched === null) assert.fail(`照合されなかった: ${correlation.detail}`);
   assert.equal(correlation.rule, "native_operation_id");
-  assert.notEqual(correlation.matched, null);
 
   const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
@@ -415,8 +415,8 @@ test("nativeOperationId が無ければ operationMatchKey + turn で閉じる", 
     operation: { phase: "terminal", operationMatchKey: "match-key-1", operationKind: "Bash" },
   });
   const correlation = correlateTerminalEvent(snapshot, terminal);
+  if (correlation.matched === null) assert.fail(`照合されなかった: ${correlation.detail}`);
   assert.equal(correlation.rule, "match_key");
-  assert.notEqual(correlation.matched, null);
 });
 
 test("turn が確立していない terminal は rule 2 で閉じない", () => {
@@ -433,7 +433,6 @@ test("turn が確立していない terminal は rule 2 で閉じない", () => 
   });
   const correlation = correlateTerminalEvent(snapshot, terminal);
   assert.equal(correlation.matched, null);
-  assert.equal(correlation.rule, "no_match");
 });
 
 test("open な候補が複数ある matchKey 一致は閉じない", () => {

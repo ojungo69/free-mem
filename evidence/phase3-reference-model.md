@@ -118,14 +118,14 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 ## 5. 変異テスト（2026-08-17）
 
 各ゲートをわざと壊し、対応する test が落ちることを確認した。11 件すべてで 1 件以上が失敗し、
-復元後は 34/34 green。
+復元後は 36/36 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---|
 | dedupe 判定を外す | 3 |
 | `lastIngestSeq` の max を外す | 1 |
 | `ingestSeq` を数値比較にする | 1 |
-| operation envelope 必須を外す | 1 |
+| operation envelope 必須を外す | 2 |
 | intake の attestation 必須を外す | 1 |
 | rule 2 の turn 同一性要求を外す | 1 |
 | turn 同一性の不変条件を外す | 1 |

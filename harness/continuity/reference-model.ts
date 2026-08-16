@@ -176,7 +176,6 @@ export interface WorkStateRevisionEntryV1 {
   revision: string;
   contentHash: string;
   eventId: string;
-  ingestSeq: string;
 }
 
 /** 適用済み idempotency key → 最初に適用した eventId。 */
@@ -229,10 +228,6 @@ function deriveOperationId(startEventId: string, operationMatchKey: string): str
   return sha256Hex(canonicalizeJson({ schema: OPERATION_ID_SCHEMA_ID, startEventId, operationMatchKey }));
 }
 
-const SENSITIVITY_RANK: ReadonlyMap<string, number> = new Map(
-  SENSITIVITIES.map((value, index) => [value, index]),
-);
-
 /**
  * v6「構成要素の最大機密度（集約値）」。構成要素を手で並べると、状態に欄が増えたとき
  * 集約から漏れるので、内容を走査して見つけた `sensitivity` すべての最大を取る。
@@ -247,7 +242,7 @@ function aggregateSensitivity(content: Omit<WorkStateContentV1, "sensitivity">):
     if (value === null || typeof value !== "object") return;
     for (const [key, child] of Object.entries(value)) {
       if (key === "sensitivity" && typeof child === "string") {
-        rank = Math.max(rank, SENSITIVITY_RANK.get(child) ?? 0);
+        rank = Math.max(rank, SENSITIVITIES.indexOf(child as Sensitivity));
         continue;
       }
       visit(child);
@@ -275,11 +270,14 @@ function nextContent(
 function commit(
   previous: TaskWorkStateSnapshotV1,
   event: NormalizedContinuityEvent,
-  content: WorkStateContentV1,
-  operationStartSeq: ReadonlyMap<string, string>,
   ledger: IdempotencyLedger,
-  diagnostics: readonly ContinuityDiagnosticV1[],
+  applied: {
+    pendingOperations: readonly PendingOperation[];
+    diagnostics: readonly ContinuityDiagnosticV1[];
+    operationStartSeq?: ReadonlyMap<string, string>;
+  },
 ): TaskStateReductionResult {
+  const content = nextContent(previous.state, event, applied.pendingOperations);
   const contentHash = contentHashOf(content);
   const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
   const nextLedger = new Map(ledger);
@@ -288,15 +286,12 @@ function commit(
     applied: true,
     snapshot: {
       state: { ...content, stateRevision: revision },
-      history: [
-        ...previous.history,
-        { revision, contentHash, eventId: event.eventId, ingestSeq: event.ingestSeq },
-      ],
-      operationStartSeq,
+      history: [...previous.history, { revision, contentHash, eventId: event.eventId }],
+      operationStartSeq: applied.operationStartSeq ?? previous.operationStartSeq,
     },
     contentHash,
     ledger: nextLedger,
-    diagnostics,
+    diagnostics: applied.diagnostics,
   };
 }
 
@@ -337,58 +332,37 @@ export function reduceTaskWorkState(
   }
 
   const operation = event.operation;
+  const unchanged = { pendingOperations: previous.state.pendingOperations, diagnostics: [] };
+
   if (operation === undefined || operation.phase === "progress") {
-    return commit(
-      previous,
-      event,
-      nextContent(previous.state, event, previous.state.pendingOperations),
-      previous.operationStartSeq,
-      idempotencyLedger,
-      [],
-    );
+    return commit(previous, event, idempotencyLedger, unchanged);
   }
 
   if (operation.phase === "start") {
     const operationId = deriveOperationId(event.eventId, operation.operationMatchKey);
+    // 台帳と状態がずれた状態で同じ start を再適用しても、同じ operation を二重に積まない
     if (previous.state.pendingOperations.some((pending) => pending.operationId === operationId)) {
-      return commit(
-        previous,
-        event,
-        nextContent(previous.state, event, previous.state.pendingOperations),
-        previous.operationStartSeq,
-        idempotencyLedger,
-        [
-          {
-            code: "duplicate_operation_start",
-            eventId: event.eventId,
-            detail: `operationId ${operationId} は既に pending`,
-          },
+      return commit(previous, event, idempotencyLedger, {
+        ...unchanged,
+        diagnostics: [
+          { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${operationId} は既に pending` },
         ],
-      );
+      });
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
-    const startSeq = new Map(previous.operationStartSeq);
-    startSeq.set(operationId, event.ingestSeq);
-    return commit(
-      previous,
-      event,
-      nextContent(previous.state, event, [...previous.state.pendingOperations, started]),
-      startSeq,
-      idempotencyLedger,
-      [],
-    );
+    return commit(previous, event, idempotencyLedger, {
+      pendingOperations: [...previous.state.pendingOperations, started],
+      diagnostics: [],
+      operationStartSeq: new Map(previous.operationStartSeq).set(operationId, event.ingestSeq),
+    });
   }
 
   const correlation = correlateTerminalEvent(previous, event);
   if (correlation.matched === null) {
-    return commit(
-      previous,
-      event,
-      nextContent(previous.state, event, previous.state.pendingOperations),
-      previous.operationStartSeq,
-      idempotencyLedger,
-      [{ code: correlation.diagnostic, eventId: event.eventId, detail: correlation.detail }],
-    );
+    return commit(previous, event, idempotencyLedger, {
+      ...unchanged,
+      diagnostics: [{ code: correlation.diagnostic, eventId: event.eventId, detail: correlation.detail }],
+    });
   }
 
   const matchedId = correlation.matched.operationId;
@@ -398,24 +372,19 @@ export function reduceTaskWorkState(
     event.successful === true ? ("succeeded" as const)
     : event.successful === false ? ("failed" as const)
     : ("unknown" as const);
-  const closed = previous.state.pendingOperations.map((pending) =>
-    pending.operationId === matchedId
-      ? {
-          ...pending,
-          status,
-          sourceEventIds: [...pending.sourceEventIds, event.eventId],
-          terminalAt: event.occurredAt,
-        }
-      : pending,
-  );
-  return commit(
-    previous,
-    event,
-    nextContent(previous.state, event, closed),
-    previous.operationStartSeq,
-    idempotencyLedger,
-    [],
-  );
+  return commit(previous, event, idempotencyLedger, {
+    pendingOperations: previous.state.pendingOperations.map((pending) =>
+      pending.operationId === matchedId
+        ? {
+            ...pending,
+            status,
+            sourceEventIds: [...pending.sourceEventIds, event.eventId],
+            terminalAt: event.occurredAt,
+          }
+        : pending,
+    ),
+    diagnostics: [],
+  });
 }
 
 function startPendingOperation(
@@ -466,11 +435,7 @@ function startPendingOperation(
 
 export type TerminalCorrelationResult =
   | { matched: PendingOperation; rule: "native_operation_id" | "match_key" }
-  | { matched: null; rule: "no_match"; diagnostic: ContinuityDiagnosticCode; detail: string };
-
-function isOpen(pending: PendingOperation): boolean {
-  return pending.status === "started" || pending.status === "unknown";
-}
+  | { matched: null; diagnostic: ContinuityDiagnosticCode; detail: string };
 
 /**
  * §4.3 の terminal 照合。authority は順序付き:
@@ -487,7 +452,7 @@ export function correlateTerminalEvent(
   assertTurnIdentity(terminalEvent);
   const operation = terminalEvent.operation;
   if (operation === undefined || operation.phase !== "terminal") {
-    return { matched: null, rule: "no_match", diagnostic: "terminal_unmatched", detail: "terminal envelope が無い" };
+    return { matched: null, diagnostic: "terminal_unmatched", detail: "terminal envelope が無い" };
   }
   const lineage = terminalEvent.taskLineageId ?? previous.state.taskLineageId;
   const sameScope = previous.state.pendingOperations.filter(
@@ -519,16 +484,14 @@ export function correlateTerminalEvent(
   if (candidates.length === 0) {
     return {
       matched: null,
-      rule: "no_match",
       diagnostic: "terminal_unmatched",
       detail: "一致する open な operation が無い",
     };
   }
-  const open = candidates.filter(isOpen);
+  const open = candidates.filter((pending) => pending.status === "started" || pending.status === "unknown");
   if (open.length === 0) {
     return {
       matched: null,
-      rule: "no_match",
       diagnostic: "terminal_already_applied",
       detail: "候補はすべて terminal 済み",
     };
@@ -536,7 +499,6 @@ export function correlateTerminalEvent(
   if (open.length > 1) {
     return {
       matched: null,
-      rule: "no_match",
       diagnostic: "terminal_ambiguous",
       detail: `open な候補が ${open.length} 件`,
     };
@@ -547,7 +509,6 @@ export function correlateTerminalEvent(
   if (startSeq === undefined || compareIngestSeq(terminalEvent.ingestSeq, startSeq) <= 0) {
     return {
       matched: null,
-      rule: "no_match",
       diagnostic: "terminal_out_of_order",
       detail: "terminal が start より後であることを権威順序で確認できない",
     };
@@ -560,7 +521,6 @@ export function correlateTerminalEvent(
   ) {
     return {
       matched: null,
-      rule: "no_match",
       diagnostic: "terminal_conflict",
       detail: "canonicalInputHash が start と衝突",
     };
