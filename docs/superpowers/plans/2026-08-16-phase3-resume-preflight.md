@@ -150,7 +150,24 @@ const CONTINUITY_LIMITS = {
 
 - [ ] Reject unknown keys, non-JSON values, invalid timestamps/decimal strings, invalid scores, excessive structure, and schema-version mismatch.
 - [ ] Use identical limits in runtime validators and JSON Schema.
-- [ ] Emit schema/fixture SHA-256 values for TypeScript/Rust parity.
+- [x] Emit schema/fixture SHA-256 values for TypeScript/Rust parity. — `harness/contract-hashes.mjs` が `harness/schema/**` と `harness/fixtures/**` の `.json` / `.jsonl` 27 件の生バイト SHA-256 を出し、`harness/contract-hashes.json` に凍結する。CI の "Contract hashes are regenerated" が再生成との差分を見る。
+
+### 正本に型定義が無いもの（この Task では凍結しない）
+
+上のリストのうち次の 5 つは、addendum v6.2 §2-13 の `ts` ブロックに型定義が存在しない。
+transcription の対象が無いので **書かない**（推測で型を起こすと、正本に無いものが
+「凍結された契約」の顔をして残る）。
+
+| 項目 | 状況 |
+|---|---|
+| `WorkspaceReconciliationReport` | 本計画 §Task 6 の関数シグネチャに名前だけ現れる。addendum に型定義なし |
+| owned injection ledger | 正確な型名すら定まっていない |
+| `CaptureStripResult` | addendum に記述なし |
+| `ResumeQualityReportV1` | §14 が `benchmarks/behavioral/contract.schema.json` を **sole machine-readable authority** と定めている。continuity.schema.json 側に重複定義しない |
+| `ContinuityDoctorReportV1` | §14 に散文の要件のみ。`doctor continuity --json` を実装する Task で型を決める |
+
+- `MEMO`: `DecimalString` も凍結していない。本計画は score を decimal string と書いているが、
+  addendum の該当フィールドはいずれも `number` である（§2.1 / §3 / §4）。正本に合わせた。
 
 ---
 

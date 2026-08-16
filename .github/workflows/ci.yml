@@ -63,6 +63,73 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.16.0
+      - name: Published manifest versions are immutable
+        # §13「Adding or removing a required scenario requires a manifest version bump
+        # recorded in the evidence file」。test 側は manifest・hash・evidence の 3 つを
+        # 突き合わせるが、その 3 つは同じ変更の中で一緒に書き換えられるため、版を据え置いた
+        # まま集合を変える経路を塞げない。origin/main に既に載っている版のファイルを
+        # 不変の基準として扱い、変更を拒否する（新しい版は新しいファイルで足す）。
+        #
+        # 列挙は **基準側**（origin/main）から行う。作業ツリー側を列挙すると、公開済みの版を
+        # 削除・rename したときに旧 path が一度も比較されず素通りする。
+        #
+        # 比較は作業ツリーではなく HEAD に対して行う。同じ job の前段が manifest を基準の
+        # 内容へ書き戻すと、merge 対象の commit が変更済みでも作業ツリー比較では空になる。
+        #
+        # main-protection ruleset は required_status_checks だけで PR を必須にしていない
+        # （green な commit を直接 main へ進められる。#34）ため、pull_request に限定すると
+        # branch への push で検査が飛び、その commit が green のまま main に入る。
+        # イベントを問わず走らせる。main への push では origin/main == HEAD で空振りになるが、
+        # その commit は branch 側の実行で既に検査されている。
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          # 送信先 ref を明示する。`git fetch origin main` だけだと remote の refspec 次第で
+          # origin/main が作られず、後続が黙って空振りする
+          git fetch --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          git rev-parse --verify origin/main >/dev/null
+          base=origin/main
+          # main への直 push では origin/main も HEAD も push 後の commit を指すので、
+          # 同じものどうしを比べて必ず成功する。ruleset は直 push を禁じていない（#34）ため、
+          # この場合だけ push 前の commit を基準にする
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF_NAME" = "main" ]; then
+            case "$PUSH_BEFORE" in
+              "" | 0000000000000000000000000000000000000000)
+                echo "::error::main への push だが push 前の commit が取れない。基準が無いので検査できない"
+                exit 1
+                ;;
+            esac
+            git fetch --depth=1 origin "$PUSH_BEFORE"
+            base="$PUSH_BEFORE"
+          fi
+          # 列挙の失敗を握り潰さない。`|| true` を付けると「基準に 1 件も無い」と
+          # 区別が付かず、検査ゼロで成功する
+          git ls-tree -r --name-only "$base" -- harness/schema > /tmp/baseline-schema.txt
+          status=0
+          while read -r f; do
+            [ -n "$f" ] || continue
+            git diff --exit-code "$base" HEAD -- "$f" >/dev/null || {
+              echo "::error file=$f::公開済みの版を変更・削除している。scenario 集合を変えるなら新しい版のファイルを追加し、evidence に節を足すこと（§13）"
+              status=1
+            }
+          done < <(grep -E 'capability-scenarios\.v[0-9]+\.json$' /tmp/baseline-schema.txt || true)
+          exit $status
+
+
+      - name: Contract hashes are regenerated
+        # plan Task 4「Emit schema/fixture SHA-256 values for TypeScript/Rust parity」。
+        # Rust 側が同じ契約を読んでいることを確かめる手段が版番号しかないと、drift した複製を
+        # 読んでいても気付けない。生バイトの hash なので整形の違いも検出する。
+        #
+        # 凍結・生成物の検査は repo のコードを走らせる前に置く。後段の test や assemble が
+        # 作業ツリーを書き換えると、この比較は「書き換え後どうし」を見ることになる
+        run: |
+          node harness/contract-hashes.mjs > /tmp/contract-hashes.json
+          diff harness/contract-hashes.json /tmp/contract-hashes.json
+
+
       - name: Capability matrix self-test
         # PASS 行を必須にする: entry point の起動条件が変わって黙って no-op しても exit 0 になるため
         run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS

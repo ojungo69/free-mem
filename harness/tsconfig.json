@@ -1,7 +1,7 @@
 {
   "//": "harness は node --experimental-strip-types で直接実行する（型は剥がされるだけで検査されない）。CI がこの設定で型検査する。",
   "compilerOptions": {
-    "target": "ES2023",
+    "target": "ES2024",
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "allowImportingTsExtensions": true,

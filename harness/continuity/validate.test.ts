@@ -6,7 +6,10 @@ import {
   validateAgainstSchema,
   validateContractValue,
   type JsonSchemaDocument,
+  type StructuralLimits,
 } from "../schema/validate.ts";
+import { CONTINUITY_LIMITS } from "../schema/continuity.ts";
+import { readIJsonFile } from "../schema/jcs.ts";
 
 const LIMITS = { jsonDepth: 4, stringUtf8Bytes: 16, arrayItems: 3, objectKeys: 3 };
 
@@ -346,10 +349,51 @@ test("if / then / else を評価する", () => {
   assert.ok(validateAgainstSchema({}, schema, ROOT).some((i) => /missing required property: capability/.test(i.message)));
 });
 
-test("sparse array の hole を JSON 妥当性検査で見逃さない", () => {
+test("JSON に無い配列の状態を妥当性検査で見逃さない", () => {
   // JSON.stringify は hole を null にするため「検証した形」と「保存する形」がずれる
-  const issues = findNonJsonValues([1, , 3]);
-  assert.ok(issues.some((i) => /non-JSON value of type undefined/.test(i.message)));
+  assert.ok(findNonJsonValues([1, , 3]).some((i) => /1 holes \(length 3\)/.test(i.message)));
+
+  // 添字以外の own key と getter も JSON に出ない（消えた欄が検証済みとして通る）
+  const tagged: unknown[] & { audit?: unknown } = [1];
+  tagged.audit = { shouldNotDisappear: true };
+  assert.equal(JSON.stringify(tagged), "[1]");
+  assert.ok(findNonJsonValues(tagged).some((i) => /non-index own key: audit/.test(i.message)));
+
+  const accessor: unknown[] = [];
+  Object.defineProperty(accessor, "0", { enumerable: true, get: () => 1 });
+  Object.defineProperty(accessor, "length", { value: 1 });
+  assert.ok(findNonJsonValues(accessor).some((i) => /getter\/setter/.test(i.message)));
+
+  // prototype 側の添字で穴を埋めても own property ではない（値は読めるのに JSON には出ない）
+  const proto: unknown[] = Object.create(Array.prototype) as unknown[];
+  proto[0] = "inherited";
+  const inherited = Object.setPrototypeOf(Array(1), proto) as unknown[];
+  assert.equal(inherited[0], "inherited");
+  assert.ok(findNonJsonValues(inherited).some((i) => /1 holes \(length 1\)/.test(i.message)));
+
+  assert.deepEqual(findNonJsonValues([1, "a", { b: [2] }]), []);
+
+  // 穴は 1 件にまとめる。1 つずつ issue にすると Array(2**32-1) で検証側が停止する
+  assert.equal(findNonJsonValues(Array(500_000)).length, 1);
+
+  // object 側も getter を呼ばず、symbol と非 enumerable を落とす
+  let reads = 0;
+  const changing = Object.defineProperty({}, "a", {
+    enumerable: true,
+    get: () => (++reads <= 1 ? "safe" : "changed"),
+  });
+  assert.ok(findNonJsonValues(changing).some((i) => /getter\/setter/.test(i.message)));
+  assert.equal(reads, 0, "検証は getter を呼ばない");
+  const hidden = Object.defineProperty({}, "hidden", { value: "lost" });
+  assert.equal(JSON.stringify(hidden), "{}");
+  assert.ok(findNonJsonValues(hidden).some((i) => /non-enumerable/.test(i.message)));
+  assert.ok(
+    findNonJsonValues({ [Symbol("s")]: 1 }).some((i) => /symbol key/.test(i.message)),
+  );
+
+  // Proxy は descriptor と実際の読み出しで別の値を返せる
+  const proxy = new Proxy({ a: 0 }, { get: () => Math.floor(1) });
+  assert.ok(findNonJsonValues(proxy).some((i) => /Proxy/.test(i.message)));
 });
 
 test("anyOf / oneOf の分岐にある schema 誤記を飲み込まない", () => {
@@ -451,4 +495,166 @@ test("長さ・件数の上下限は非負整数だけ受け付ける", () => {
   }
   // minimum / maximum は負数も小数も正当
   assert.deepEqual(validateAgainstSchema(-0.5, { minimum: -1.5, maximum: 0 }, ROOT), []);
+});
+
+/**
+ * §10 の上限は 12 個あるが、`findStructuralViolations` が測るのは 4 個だけ。
+ * 残りは「addendum の数値を凍結しただけで、まだ誰も検査していない」状態にある。
+ *
+ * 数値を宣言したまま検査を持たないと、その値は黙って守られなくなる。ここで
+ * 「強制済み」と「未強制（追跡先つき）」に分けて全キーを網羅させ、上限を足したのに
+ * どちらにも入れなかった場合に落ちるようにする。
+ */
+test("CONTINUITY_LIMITS のキーは強制済みか、未強制として明示されているかのどちらか", () => {
+  // 型でも縛る。StructuralLimits に欄を足したらここが型エラーになる
+  const enforced: readonly (keyof StructuralLimits & keyof typeof CONTINUITY_LIMITS)[] = [
+    "jsonDepth",
+    "stringUtf8Bytes",
+    "arrayItems",
+    "objectKeys",
+  ];
+  // schema 側の制約として書かれているもの（構造の walk ではなく JSON Schema が見る）
+  const enforcedBySchema = ["rankedCandidates"];
+  // 未強制。Task 5 の runtime validator で塞ぐ（#32）
+  const deferred = [
+    "hintTokens",
+    "fullCapsuleTokens",
+    "promptMemoryTokens",
+    "combinedTokens",
+    "absoluteTokens",
+    "capsulePayloadBytes",
+    "wrapperBytes",
+  ];
+
+  const all = [...enforced, ...enforcedBySchema, ...deferred];
+  assert.deepEqual([...all].sort(), Object.keys(CONTINUITY_LIMITS).sort());
+  assert.equal(new Set(all).size, all.length);
+
+  // 「強制済み」が名ばかりでないことを、上限超過が実際に issue になることで見る
+  const tiny = { jsonDepth: 2, stringUtf8Bytes: 4, arrayItems: 1, objectKeys: 1 };
+  for (const [value, key] of [
+    [{ a: { b: { c: 1 } } }, "jsonDepth"],
+    ["abcde", "stringUtf8Bytes"],
+    [[1, 2], "arrayItems"],
+    [{ a: 1, b: 2 }, "objectKeys"],
+  ] as const) {
+    const issues = findStructuralViolations(value, tiny);
+    assert.ok(
+      issues.some((i) => i.message.includes(key)),
+      `${key}: ${JSON.stringify(issues)}`,
+    );
+  }
+
+  // 「未強制」も名ばかりでないことを見る。32KiB を超える capsule が素通りする現状を固定し、
+  // #32 を実装したらこの assert が落ちて更新を強制する
+  const oversized = { warnings: Array.from({ length: 5 }, () => "x".repeat(8192)) };
+  assert.ok(Buffer.byteLength(JSON.stringify(oversized), "utf8") > CONTINUITY_LIMITS.capsulePayloadBytes);
+  assert.deepEqual(findStructuralViolations(oversized, CONTINUITY_LIMITS), []);
+
+});
+
+test("schema の type 名の誤記は preflight で落とす（#23）", () => {
+  // `strng` はキーワード名としては正しいので、名前と値の種別の検査は通る。
+  // 実行時はどの値にも一致しないため、その欄の正当な値をすべて拒否する schema になる
+  for (const bad of ["strng", "String", "int", ""]) {
+    assert.throws(
+      () => validateAgainstSchema("x", { type: bad }, ROOT),
+      /invalid type name/,
+      bad,
+    );
+    // 配列形も同じ。1 つでも誤記があれば落とす
+    assert.throws(() => validateAgainstSchema("x", { type: ["string", bad] }, ROOT), /invalid type name/, bad);
+  }
+  // 参照されていない $defs の中でも検査される（踏まないまま凍結されるのを防ぐ）。
+  // 実際の使われ方と同じく、文書そのものを schema として渡したときに $defs が歩かれる
+  const doc = { $defs: { Unused: { type: "strng" } } } as unknown as JsonSchemaDocument;
+  assert.throws(() => validateAgainstSchema(undefined, doc, doc), /invalid type name/);
+  // 正当な型名は 7 つとも通る
+  for (const ok of ["string", "number", "integer", "boolean", "object", "array", "null"]) {
+    assert.doesNotThrow(() => validateAgainstSchema(null, { type: ok }, ROOT), ok);
+  }
+  assert.doesNotThrow(() => validateAgainstSchema("x", { type: ["string", "null"] }, ROOT));
+});
+
+test("rankedCandidates は schema 側で強制されていて、上限は定数と一致する", () => {
+  // §10 の「candidates 5」は ResumeSelectionDecisionV1.rankedCandidates の maxItems として
+  // 書かれている。リテラルで書いてあるだけだと定数と黙ってずれるので、両者を突き合わせる
+  const root = readIJsonFile<JsonSchemaDocument>(new URL("../schema/continuity.schema.json", import.meta.url));
+  const defs = (root.$defs ?? {}) as Record<string, Record<string, unknown>>;
+  const decision = defs.ResumeSelectionDecisionV1 as { properties: Record<string, { maxItems?: number }> };
+  assert.equal(decision.properties.rankedCandidates?.maxItems, CONTINUITY_LIMITS.rankedCandidates);
+
+  // 名ばかりでないことを、上限ちょうどと 1 つ超過で見る
+  const candidate = {
+    checkpointId: "c1",
+    checkpointRevision: "r1",
+    taskLineageId: "t1",
+    score: 0.5,
+    reasonCodes: [],
+  };
+  const decisionValue = (count: number) => ({
+    schemaVersion: 1,
+    decisionId: "d1",
+    sessionId: "s1",
+    boundary: "session_start",
+    mode: "smart",
+    strategy: "automatic",
+    datasetVersion: "v1",
+    profileId: "p1",
+    capabilityHash: "h1",
+    action: "none",
+    reasonCodes: [],
+    rankedCandidates: Array.from({ length: count }, () => candidate),
+    confidenceBand: "none",
+    decidedAt: "2026-08-16T00:00:00Z",
+  });
+  const issuesAt = (count: number) =>
+    validateContractValue("ResumeSelectionDecisionV1", decisionValue(count), root, CONTINUITY_LIMITS)
+      .map((i) => `${i.path} ${i.message}`)
+      .filter((m) => /rankedCandidates/.test(m) && /maxItems|array of/.test(m));
+  assert.deepEqual(issuesAt(CONTINUITY_LIMITS.rankedCandidates), []);
+  assert.equal(issuesAt(CONTINUITY_LIMITS.rankedCandidates + 1).length > 0, true);
+});
+
+test("sequence と watermark は decimal string でなければ通らない（正本 §22.6）", () => {
+  // §22.6:「server seq、device seq、epoch は JavaScript safe integer を超えても壊れない
+  // decimal string として wire へ出す」。string 型のままだと ordering の権威が任意の文字列になる
+  const schema = readIJsonFile<JsonSchemaDocument>(
+    new URL("../schema/continuity.schema.json", import.meta.url),
+  );
+  const event = {
+    eventId: "e1",
+    canonicalFingerprint: "f1",
+    kind: "prompt",
+    ingestSeq: "12",
+    occurredAt: "2026-08-16T00:00:00Z",
+    sessionId: "s1",
+    turnIdSource: "unavailable",
+    sourceAgent: "codex",
+    provenance: { sourceAgentVersion: "1.0.0", evidenceKind: "synthesized", captureMethod: "hook" },
+    payload: {},
+  };
+  assert.deepEqual(
+    validateContractValue("NormalizedContinuityEvent", event, schema, CONTINUITY_LIMITS),
+    [],
+  );
+  // safe integer を超える値は通る（decimal string にしている理由そのもの）
+  assert.deepEqual(
+    validateContractValue(
+      "NormalizedContinuityEvent",
+      { ...event, ingestSeq: "9007199254740993000" },
+      schema,
+      CONTINUITY_LIMITS,
+    ),
+    [],
+  );
+  for (const bad of ["not-a-decimal", "", "12.5", "-1", "007", "1e3", " 12", "12 "]) {
+    const issues = validateContractValue(
+      "NormalizedContinuityEvent",
+      { ...event, ingestSeq: bad },
+      schema,
+      CONTINUITY_LIMITS,
+    );
+    assert.ok(issues.length > 0, `ingestSeq ${JSON.stringify(bad)} が通った`);
+  }
 });

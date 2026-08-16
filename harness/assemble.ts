@@ -1,5 +1,4 @@
 import { readdir, readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -16,11 +15,10 @@ import {
   type ToolFailurePhase,
 } from "./schema/capability.ts";
 import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
+import { decodeUtf8, parseIJson, readIJsonFile } from "./schema/jcs.ts";
 
 // JSON Schema は「置いてあるだけ」にせず、キー集合の正本として実際に読む
-const SCHEMA = JSON.parse(
-  readFileSync(new URL("./schema/capability.schema.json", import.meta.url), "utf8"),
-) as JsonSchemaDocument & { properties?: Record<string, any> };
+const SCHEMA = readIJsonFile(new URL("./schema/capability.schema.json", import.meta.url)) as JsonSchemaDocument & { properties?: Record<string, any> };
 
 // SCHEMA は起動時に 1 度読むだけなので、そこから引く集合も module 読み込み時に固める
 const KNOWN_KEYS = new Set(Object.keys(SCHEMA.properties ?? {}));
@@ -446,13 +444,13 @@ async function loadFixtures(fixturesDir: string): Promise<CaptureFixture[]> {
     const path = join(fixturesDir, name);
     let raw: string;
     try {
-      raw = await readFile(path, "utf8");
+      raw = decodeUtf8(await readFile(path), path);
     } catch (e) {
       fail(`${name}: read failed: ${String(e)}`);
     }
     let data: unknown;
     try {
-      data = JSON.parse(raw);
+      data = parseIJson(raw);
     } catch (e) {
       fail(`${name}: invalid JSON: ${String(e)}`);
     }
