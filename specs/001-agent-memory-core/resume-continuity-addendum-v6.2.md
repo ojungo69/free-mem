@@ -495,10 +495,18 @@ interface ContradictionEvidenceV1 {
   observedAt: string;
 }
 
+interface ContradictionScanRangeV1 {
+  fromIngestSeq: string;
+  toIngestSeq: string;
+  scannedAt: string;
+  complete: boolean;
+}
+
 interface EngagementEvaluationContextV1 {
   sourceEvents: NormalizedContinuityEvent[];
   checkpointAnchors: CheckpointAnchorV1[];
   contradictions: ContradictionEvidenceV1[];
+  contradictionScan: ContradictionScanRangeV1;
   destinationTurnId: string;
   destinationTurnIdSource: TurnIdSource;
   destinationAgentVersion: string;
@@ -544,10 +552,13 @@ Every post-claim command validates the caller-supplied `attemptId`, attempt revi
 The attempt-local tuple is not sufficient on its own: after lease expiry the reclaimed checkpoint has a new active attempt while the old attempt's own `attemptId`/revision/fence/session remain internally consistent. Therefore every post-claim command additionally CASes against the active projection **inside the same daemon transaction**:
 
 1. load `CheckpointDispositionProjection` by checkpoint ID;
-2. require `projection.activeDeliveryAttemptId === command.attemptId`;
-3. require `projection.activeClaimFence === command.fence`;
-4. require `projection.activeLeaseUntil` to be unexpired at transaction time;
-5. only then apply the attempt-local transition.
+2. require `projection.state === "open"`;
+3. require `projection.activeDeliveryAttemptId === command.attemptId`;
+4. require `projection.activeClaimFence === command.fence`;
+5. require `projection.activeLeaseUntil` to be unexpired at transaction time;
+6. only then apply the attempt-local transition.
+
+Appending any terminal disposition (`accepted`, `superseded`, `expired`, `retracted`) is one transaction that also abandons the active attempt and clears `activeDeliveryAttemptId`, `activeClaimFence`, and `activeLeaseUntil`. A checkpoint that stops being `open` therefore has no attempt that can still pass the CAS, and a delayed `mark_delivered` for a superseded/expired/retracted checkpoint is `stale_attempt` instead of a late injection. This ordering is a required fixture: supersede/expire/retract between claim and delivery must prevent the delivery.
 
 Heartbeat renewal is the typed `renew_lease` command, not out-of-band prose: it passes the same attempt/revision/fence/session tuple, runs the same projection CAS, and extends the attempt's `heartbeatUntil`/`leaseUntil` together with the projection's `activeLeaseUntil` in one transaction, so lease state never diverges between attempt and projection. A renewal that arrives after reclaim fails the CAS and cannot extend a stale attempt; the heartbeat-versus-reclaim ordering is a required fixture alongside the delivery race. Lease expiry, reclaim, and replacement are a single transaction that terminates the old attempt (`abandoned`, revision bump) and rotates `activeDeliveryAttemptId`/`activeClaimFence` together. A delayed `mark_delivered`, `record_engagement`, `dismiss`, or `abandon` from a reclaimed attempt therefore fails step 2 or 3, is typed `stale_attempt`, and causes no state change and no delivery. The reclaim-versus-delivery race is a required fixture: a delayed command from the reclaimed attempt must never mark delivery, record engagement, or accept.
 
@@ -598,7 +609,7 @@ Acceptance receives attempt, current disposition events/projection, checkpoint m
 
 1. validates command attempt ID/revision/fence/session;
 2. revalidates engagement from normalized source events and anchors;
-3. verifies no later contradiction;
+3. **re-queries contradictions from the daemon's own event store inside this transaction** — over the destination session and task lineage, from delivery through evaluation end — instead of trusting the caller's `contradictions` array, which is advisory input only. The caller-supplied `contradictionScan` range must cover that window and be `complete`; a narrower, stale, or incomplete range aborts acceptance. Any contradiction found by the daemon blocks acceptance even when the caller omitted it;
 4. verifies open checkpoint projection and active attempt identity;
 5. appends accepted disposition linked to the attempt;
 6. advances projection to accepted and clears active claim;

@@ -248,7 +248,8 @@ acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 ### Command CAS
 
 - [ ] Every post-claim command includes and validates `attemptId`, attempt revision, fence, and destination session.
-- [ ] The same transaction CASes against the projection's `activeDeliveryAttemptId`, `activeClaimFence`, and unexpired lease; reclaim terminates the old attempt and rotates both projection fields together.
+- [ ] The same transaction CASes against `projection.state === "open"` plus the projection's `activeDeliveryAttemptId`, `activeClaimFence`, and unexpired lease; reclaim terminates the old attempt and rotates both projection fields together, and appending any terminal disposition abandons the active attempt and clears all three fields.
+- [ ] Supersede/expire/retract-between-claim-and-delivery fixture: the delayed `mark_delivered` is `stale_attempt` and no injection happens.
 - [ ] Reclaim-versus-delivery race fixture: a delayed `mark_delivered`/`record_engagement` from the reclaimed attempt is typed `stale_attempt` and changes nothing.
 - [ ] `renew_lease` is a typed post-claim command under the same CAS; heartbeat-versus-reclaim fixture proves a renewal arriving after reclaim cannot extend the stale attempt's lease.
 - [ ] Mismatched attempt ID/revision/fence/session is typed stale/invalid and causes no state change.
@@ -264,7 +265,7 @@ Use fixed weights from the addendum. Tests must revalidate submitted evidence fr
 - [ ] anchor belongs to the checkpoint/task lineage;
 - [ ] duplicate evidence counts once;
 - [ ] failed/unknown/unrelated/out-of-window/fabricated labels score zero;
-- [ ] explicit rejection, confirmed other task, incompatible workspace, or runtime invalidation blocks acceptance;
+- [ ] explicit rejection, confirmed other task, incompatible workspace, or runtime invalidation blocks acceptance — the daemon re-queries contradictions from its own event store inside the acceptance transaction and requires the caller's `contradictionScan` range to be complete and to cover delivery→evaluation end; RED: a context that omits an existing rejection still fails to accept;
 - [ ] Agent prose alone cannot accept.
 
 Automatic acceptance requires cumulative score ≥0.80, at least two evidence kinds, at least one successful runtime kind, and no contradiction. Atomic acceptance appends accepted disposition and advances projection+attempt together. Accepted attempt/open projection is impossible.
