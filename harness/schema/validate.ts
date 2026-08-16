@@ -182,8 +182,10 @@ export function validateAgainstSchema(
     }
   }
 
+  // draft 2020-12 では $ref に兄弟キーワードを併記できる（`{$ref, maxLength}` など）。
+  // ここで return すると併記した制約が黙って落ちるので、参照先を検査してから残りも続ける
   if (typeof schema.$ref === "string") {
-    return [...issues, ...validateAgainstSchema(value, resolveRef(schema.$ref, root), root, path)];
+    issues.push(...validateAgainstSchema(value, resolveRef(schema.$ref, root), root, path));
   }
 
   const actual = typeOf(value);

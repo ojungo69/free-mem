@@ -197,3 +197,14 @@ test("format は未対応キーワードとして拒否する（黙って無視�
   const issues = validateAgainstSchema("not-a-date", { type: "string", format: "date-time" }, ROOT);
   assert.ok(issues.some((i) => i.message === "unsupported schema keyword: format"));
 });
+
+test("$ref に併記した兄弟キーワードも評価する（draft 2020-12）", () => {
+  const schema = { $ref: "#/$defs/Role", enum: ["primary"] };
+  assert.deepEqual(validateAgainstSchema("primary", schema, ROOT), []);
+  // $ref は通るが enum で落ちる: 早期 return だと素通りしていた
+  const issues = validateAgainstSchema("side", schema, ROOT);
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].message, /value not in enum/);
+  // $ref 側で落ちる場合も両方報告する
+  assert.ok(validateAgainstSchema(1, schema, ROOT).some((i) => /expected type string/.test(i.message)));
+});
