@@ -202,6 +202,17 @@ test("binary64 で表せない数を含む JSON は読まない（RFC 7493 §2.2
   ]) {
     assert.throws(() => parseIJson(bad), /正確に表せない/, bad);
   }
+  // 小数・指数で書いた同じ値も落とす（整数の綴りだけ見ると素通りする）
+  for (const bad of [
+    '{"a":9007199254740993.0}',
+    '{"a":9.007199254740993e15}',
+    '{"a":1.0000000000000001}',
+    '{"a":0.30000000000000004}',
+  ]) {
+    assert.throws(() => parseIJson(bad), /有効数字が 15 桁を超える/, bad);
+  }
+  assert.deepEqual(parseIJson('{"a":1.10,"b":1.5e300,"c":0.1}'), { a: 1.1, b: 1.5e300, c: 0.1 });
+
   // 見るのは**整数として書かれた綴り**だけ。`1e21` は 2**53 より大きいが正確に表せるので通す
   assert.deepEqual(parseIJson('{"a":1e21}'), { a: 1e21 });
   assert.deepEqual(parseIJson('{"a":9007199254740992}'), { a: 9007199254740992 });
@@ -246,6 +257,11 @@ test("UTF-8 として不正な bytes は置換せずに落とす（RFC 7493 §2.
   const broken = new Uint8Array([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]); // {"a":"\xff"}
   assert.equal(Buffer.from(broken).toString("utf8"), '{"a":"\ufffd"}');
   assert.throws(() => decodeUtf8(broken, "t.json"), /UTF-8 として不正/);
+  // BOM は既定の TextDecoder が黙って剥がす。剥がさずに落とす（同じ bytes を読む他の実装は
+  // JSON として拒否するので、こちらだけ通ると契約ファイルが「読める」ことにならない）
+  const withBom = new Uint8Array([0xef, 0xbb, 0xbf, 0x7b, 0x7d]); // BOM + {}
+  assert.equal(new TextDecoder("utf-8").decode(withBom), "{}");
+  assert.throws(() => decodeUtf8(withBom, "t.json"), /BOM/);
   // 正しい UTF-8 はそのまま
   assert.equal(decodeUtf8(new TextEncoder().encode('{"a":"é"}'), "t.json"), '{"a":"é"}');
 });
