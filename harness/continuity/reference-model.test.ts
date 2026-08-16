@@ -2152,6 +2152,36 @@ test("turn が両立する確定済み候補が 1 件も無いなら適用済み
   assert.deepEqual(same.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
 });
 
+test("状態側で operationId が衝突していても terminal は 1 件しか閉じない", () => {
+  // `operationId` は `eventId` + matchKey からの導出なので還元器は重複を作らないが、凍結 schema は
+  // `maxLength` しか課さず一意性も要求しない。復元した checkpoint や別実装が書いた状態では
+  // schema 妥当なまま重複しうるので、`operationId` の等値で当てると 1 通で N 件が閉じる
+  const pending = (operationId: string, nativeOperationId: string): PendingOperation =>
+    ({
+      operationId,
+      correlation: {
+        operationId, startEventId: `start-${nativeOperationId}`, nativeOperationId,
+        operationMatchKey: `match-${nativeOperationId}`, sessionId: "session-1", taskLineageId: "lineage-1",
+        turnId: "turn-1", toolName: "Bash", canonicalInputHash: "input-hash-1",
+      },
+      kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
+      sourceEventIds: [`start-${nativeOperationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+    }) as unknown as PendingOperation;
+  for (const duplicated of ["", "op-dup"]) {
+    const victim: TaskWorkStateSnapshotV1 = {
+      state: emptyState({ pendingOperations: [pending(duplicated, "toolu_1"), pending(duplicated, "toolu_2")] }),
+      history: [],
+      operationStarts: new Map([[duplicated, { ingestSeq: "11", turnIdSource: "native" as const }]]),
+    };
+    const result = reduceTaskWorkState(victim, terminalEvent(), new Map());
+    assert.deepEqual(
+      result.snapshot.state.pendingOperations.map((p) => p.status),
+      ["succeeded", "started"],
+      JSON.stringify(duplicated),
+    );
+  }
+});
+
 test("turn が両立しなくても成否が矛盾する terminal は隔離する", () => {
   // 矛盾の検出は「閉じる権限があるか」ではなく「壊れた証跡か」の判定なので turn 両立は要らない。
   // ここまで絞ると候補が全部落ちたときに `find` が undefined を返し、隔離（台帳を消費しない）が

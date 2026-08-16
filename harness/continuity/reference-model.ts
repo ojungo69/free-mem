@@ -819,8 +819,15 @@ export function reduceTaskWorkState(
   const status = terminalStatusOf(event);
   const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([matchedId]));
   return commit(previous, event, idempotencyLedger, {
+    // 照合された 1 件だけを更新する。`operationId` の等値で当てると、**状態側で
+    // `operationId` が衝突している**とき terminal 1 通が複数の operation を診断ゼロで閉じる。
+    // `operationId` は `eventId` + matchKey からの導出なので還元器は重複を作らないが、
+    // 凍結 schema は `maxLength` しか課さず一意性も要求しないため、checkpoint から復元した
+    // 状態や別実装が書いた状態では schema 妥当なまま重複しうる（状態側 identity の検査は
+    // Task 6 `reconcileWorkspace` 待ち）。候補の絞り込みは `.filter` だけなので、照合結果は
+    // この配列の要素そのもの = 参照で当てれば重複があっても 1 件に限定できる
     pendingOperations: previous.state.pendingOperations.map((pending) =>
-      pending.operationId === matchedId
+      pending === correlation.matched
         ? withSourceEvent({ ...pending, status, terminalAt: event.occurredAt }, event.eventId)
         : pending,
     ),

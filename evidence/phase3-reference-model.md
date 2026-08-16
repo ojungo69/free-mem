@@ -30,6 +30,7 @@
 | 遅れて届いた event も後続 revision を作り、証跡を書き換えない | §4.2 | 適用は常に新しい revision を作る。既存 `sourceEventIds` は追記のみ |
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent`。`nativeOperationId` を名乗った terminal は rule 1 だけで判定する（一致しないときに rule 2 へ落とすと、matchKey の導出が §4.3 どおりでない adapter 相手に別 operation を診断なしで閉じてしまう。wire 越しに導出は検証できない） |
 | terminal は start より後（権威順序）・未適用・payload/source hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較。**「未適用」と「非衝突」は配送 ID が違う 2 通目で同時に問題になる**: dedupe は内容を比べられず、identity 衝突検査は kind と input hash しか見ないので、成否だけが逆の terminal が「適用済み」として黙って通っていた。受理済み terminal の source hash は状態に持っていない（凍結 schema に置き場が無い。#43）が、確定した status は持っているので、**成否の矛盾は `terminal_conflict` で隔離する**（どちらかが `unknown` = 成否を主張していない場合は矛盾ではない）。rule 2 の候補は同じ matchKey の兄弟をまとめて拾う（同じ turn で同じ tool を同じ入力で 2 回動かした場合など）ので、矛盾の判定は候補集合全体に対して行う: **成否が一致する候補が 1 件でもあれば再配送として説明がつく**ので隔離しない。兄弟の成否だけを見て隔離すると、健全な再配送が台帳に入らないまま無限に再送される。source hash（`canonicalFingerprint`）の衝突は correlation より前の dedupe で見る。冪等台帳が eventId だけを持つと、同じ配送 ID で内容が違う event が `duplicate` として捨てられて衝突検査が到達不能になるので、台帳は適用時の source hash も保持する（`LedgerEntryV1`）。衝突は `delivery_conflict` で隔離 |
+| terminal は照合された 1 件だけを閉じる | §4.3 | 適用は `operationId` の等値ではなく**照合結果の参照**で当てる。`operationId` は `eventId` + matchKey からの導出なので還元器は重複を作らないが、凍結 schema は `maxLength` しか課さず一意性も要求しないため、復元した checkpoint や別実装が書いた状態では schema 妥当なまま重複しうる。等値で当てると terminal 1 通が複数の operation を**診断ゼロで**閉じる（空文字の重複でも非空の重複でも同じ）。候補の絞り込みは `.filter` だけなので照合結果は状態の配列の要素そのもので、参照で当てれば重複があっても 1 件に限定できる。状態側 identity 欄そのものの検査は Task 6 `reconcileWorkspace` 待ち |
 | 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
 | correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。判定材料は `operationKind`（= 保持側の `toolName`）と `canonicalInputHash` の直接比較で、terminal 側では `operationMatchKey` を比べない（§4.3 の matchKey は入力に「turn when present」を含むので、turn をまたいだ terminal が start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない = turn 両立は rule 2 の要件なので、ここで一致を求めると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じない）。kind は matchKey の入力に含まれる identity の一部だが turn と違って start から terminal の間に変わらないので、rule 1 で選んだ候補にも要求できる（**§4.3 の rule 1 の字義は native ID + session/lineage だけなので、kind で絞るのは harness 判断**。identity の一部であること自体は §4.3 の matchKey 導出が担保している）。ただし `toolName` は凍結 schema の `required` に無いので、checkpoint から復元した状態や別実装が書いた状態では schema 妥当なまま欠けうる。素で比べると健全な terminal が永久に隔離され台帳にも入らない（= adapter が無限再送）ため、兄弟の `canonicalInputHash` と同じく**両方 present のときだけ**比べる。start の再配送側は `operationMatchKey` / `operationKind` / `nativeOperationId` / `canonicalInputHash` / `sessionId` / `turnId` を見る（同じ native ID は同じ呼び出しなので turn も同じはず）。`sessionId` を含めるのは、`operationId` が `eventId` + `matchKey` からの導出で session を含まず、`assertSameScope` も lineage と Agent しか束縛せず、状態が session を持たない（lineage は session をまたぐ）ため、ここで比べないと誰も比べないから。`OperationCorrelationV1` の `required` なので任意欄と違って両方 present ガードは要らない。`turnId` も同じく誰も比べていなかった（§4.3 は matchKey の入力に「turn when present」を含むので、正しく導出された matchKey なら turn が違えば matchKey も違うが、導出は wire 越しに検証できない）。記録された turn は rule 2 の候補選び（`eligible`）が使うので、古い turn のまま重複として台帳に入れると、その operation は本来の turn の terminal で閉じられず `terminal_unmatched` で `unknown` に倒れる。`turnId` は `required` に無く `turnIdSource: unavailable` では正当に不在なので、こちらは両方 present のときだけ比べる。start 側の `turnIdSource` は凍結 schema の外（`operationStarts`。#35）にあり、復元直後は空でちょうど必要なときに比べられないので、識別材料には含めない。**隔離するのは候補が全件衝突する場合だけ**にする: §4.3 どおりに matchKey を導出しない adapter では同じ matchKey で input hash が違う pending が並びうるので、identity が衝突する候補は「この terminal のものである可能性」から外すだけにして、他の候補の照合を妨げない。兄弟の identity を根拠に隔離すると live な operation が永久に閉じない。**免除ではなく絞り込みにする**のが要点で、「互換な候補が 1 件でもあれば全体を免除する」形にすると、確定済みの互換候補が囮になって衝突する open な候補に terminal が付く（確定済み A（hash A）＋ open な B（hash B）に A の terminal を再配送すると、B が診断ゼロで `succeeded` になる）。以降の open 選択・確定済み成否の照合はすべて互換な候補だけを見る。**terminal が識別材料を省いた場合は「衝突しない」ではなく「照合できない」**: 両方 present ガードは復元耐性のためにあるが、そのままだと `canonicalInputHash` を省くだけで検査を無効化でき、同じ matchKey の別 operation を閉じられる（省略は wire 側の自由なので攻撃者が選べる経路）。記録側が持つ欄を terminal が省いていたら適用せず、`terminal_identity_unverifiable` で候補を `unknown` に倒す（隔離ではないので台帳には入り、後から届いた本物の terminal がそのまま閉じられる）。`toolName` 側に対称のものが要らないのは、`operationKind` が envelope の必須欄で空も許さないため terminal から省けないから。**ただし発火は互換な候補が 2 件以上あるときに限る**: `canonicalInputHash` は凍結 envelope の任意欄（§3.1）なので省略自体は schema 妥当で、§4.3 が terminal に課すのは「non-conflicting な payload/source hash」＝衝突しないことであって不在は衝突ではない。§4.3 の matchKey は canonical input hash を入力に含むので、仕様どおりに導出する adapter では hash 違いの兄弟はそもそも候補に並ばず、候補が 1 件なら省略で付け替えられる相手が居ない（照合権限は rule 1 = `nativeOperationId`、rule 2 = matchKey + 互換な turn/kind が既に一意に決めている）。素で発火させると「terminal は入力ではなく結果なので hash を載せない」adapter の terminal が 1 通残らず閉じなくなる。候補が 2 件以上並ぶのは matchKey を仕様どおりに導出しない adapter だけで、そこでは hash が唯一の弁別子なので省略された時点で倒す。**判定の位置は成否矛盾検査より後**にする: 前に置くと、確定済みの候補に矛盾する terminal が hash を省くだけで隔離（台帳を消費しないので訂正版が後から効く）を回避して照合不能（台帳を消費する）に化け、訂正版の再配送が重複 no-op として捨てられる |
 | 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる）。矛盾は照合の成否と無関係な event 自身の性質なので、**照合前に判定して全経路（隔離・unmatched・適用）で出す**。照合できた場合しか出さないと、同じ壊れた adapter でも operation が既に閉じているときだけ `terminal_already_applied` に埋もれて見えなくなる |
@@ -374,8 +375,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**99 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 99 件（黙って飛ばされた変異ゼロ）、復元後は 115/115 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**100 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 100 件（黙って飛ばされた変異ゼロ）、復元後は 116/116 green。
 
 kill 率より先に**実行件数**を見ること。変異はソース中の文字列アンカーで当てるので、実装を直すと
 `assert old in s` が落ちて `&&` が短絡し、その変異は**出力に何も出ないまま黙って飛ばされる**
@@ -412,7 +413,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | rule 1 の排他を外す | 1 |
 | rule 2 の turn 同一性要求を外す | 2 |
 | 候補が複数のときの拒否を外す | 2 |
-| terminal 側に matchKey 一致を要求し直す | 1 |
+| terminal 側に matchKey 一致を要求し直す | 2 |
 | identity 衝突を候補 1 件で判定する | 4 |
 | terminal の canonicalInputHash 衝突検査を外す | 5 |
 | identity 衝突の隔離を外す | 5 |
@@ -492,6 +493,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空白の sourceAgent を素通しする | 1 |
 | turn 両立ゼロの確定済みを適用済みにする | 1 |
 | 矛盾判定の母数まで turn で絞る | 1 |
+| terminal の適用先を operationId の等値で当てる | 1 |
 | 確定済みの説明に turn 両立を求めない | 2 |
 | 確定済みの説明で turn 種別だけ見ない | 2 |
 

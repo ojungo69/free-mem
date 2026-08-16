@@ -223,6 +223,7 @@ mutate "  assertIdentityMaterial(terminalEvent);" "" && run "直接呼びの ide
 mutate "  if (isBlank(event.sourceAgent)) {" "  if (false) {" && run "空白の sourceAgent を素通しする"
 mutate "    if (settled.length === 0) {" "    if (false) {" && run "turn 両立ゼロの確定済みを適用済みにする"
 mutate "        : compatible.find((pending) => pending.status !== incoming);" "        : settled.find((pending) => pending.status !== incoming);" && run "矛盾判定の母数まで turn で絞る"
+mutate "      pending === correlation.matched" "      pending.operationId === matchedId" && run "terminal の適用先を operationId の等値で当てる"
 mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = compatible;" && run "確定済みの説明に turn 両立を求めない"
 mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = sameTurnOf(compatible);" && run "確定済みの説明で turn 種別だけ見ない"
 cp "$BAK" "$SRC"
