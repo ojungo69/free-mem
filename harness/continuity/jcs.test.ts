@@ -49,8 +49,10 @@ test("JSON に無い値は受け付けない", () => {
   }
   assert.throws(() => canonicalizeJson(() => 1), /JSON に無い型/);
   assert.throws(() => canonicalizeJson(1n), /JSON に無い型/);
-  // undefined の property は落とす（`JSON.stringify` と同じ扱い）
-  assert.equal(canonicalizeJson({ a: 1, b: undefined }), '{"a":1}');
+  // undefined の property は落とさない。落とすと `{ a: 1 }` と同じ hash になり、
+  // 組み立て損ねた契約値が「その欄は元々無かった」ものとして通る
+  assert.equal(JSON.stringify({ a: 1, b: undefined }), '{"a":1}');
+  assert.throws(() => canonicalizeJson({ a: 1, b: undefined }), /JSON に無い型/);
 });
 
 test("対になっていない代理は拒否する（RFC 8785 §3.2.2.2）", () => {

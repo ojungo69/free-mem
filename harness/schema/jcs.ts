@@ -151,9 +151,12 @@ export function canonicalizeJson(value: unknown): string {
   // JSON でない bytes が出てしまうので、穴は下の「JSON に無い型」で落とす
   if (Array.isArray(value)) return `[${Array.from(value, (item) => canonicalizeJson(item)).join(",")}]`;
   if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    // `JSON.stringify` は undefined の property を黙って落とすが、ここでは落とさない。
+    // 落とすと `{ a: 1, b: undefined }` が `{ a: 1 }` と同じ hash になり、組み立て損ねた
+    // 契約値が「その欄は元々無かった」ものとして通ってしまう。undefined は下で throw する
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
     return `{${entries.map(([k, v]) => `${encodeString(k)}:${canonicalizeJson(v)}`).join(",")}}`;
   }
   throw new Error(`JCS: JSON に無い型は canonicalize できない: ${typeof value}`);
