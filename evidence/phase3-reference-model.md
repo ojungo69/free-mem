@@ -66,12 +66,24 @@ capability matrix にも無い。表が来るまでは:
 `CanonicalWorkStateV1.sensitivity` は「構成要素の最大」なので、pending operation が 1 件でもあれば
 `private` 以上になる。remote routing を実装する前に #36 を閉じる必要がある。
 
-### 2.4 成否を主張しない terminal
+### 2.4 intake が付ける kind は native / synthesized の 2 値
+
+§3.1 は intake の導出元（peer identity・channel・captureMethod・capability matrix）を挙げるが、
+`derived` は AI 由来の派生物に付く種別で、event intake の出力ではない。よって
+`stampIntakeEvidence` は `native` か `synthesized` しか返さない。
+
+### 2.5 別 lineage の event は適用しない
+
+状態は lineage ごとに 1 つ（§4）。`taskLineageId` が状態と食い違う event を還元すると、
+境界の確定（§4.4）を経ずに前の task の状態が書き換わるため拒否する。`taskLineageId` を持たない
+event は、還元先の状態の lineage に属するものとして扱う。
+
+### 2.6 成否を主張しない terminal
 
 `successful` が無い terminal は成功とも失敗とも言えないので `unknown` にする
 （§4.3「Missing or ambiguous terminal evidence establishes `unknown`」の同じ扱い）。
 
-### 2.5 event kind の分類（#29）
+### 2.7 event kind の分類（#29）
 
 `operation` envelope を要求する kind の集合は正本に無い。harness の正規化語彙
 （`harness/schema/capability.ts` の `EventKind`）に対する分類を

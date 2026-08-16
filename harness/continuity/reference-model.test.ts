@@ -249,6 +249,27 @@ test("適用は直前の状態を書き換えない", () => {
   assert.notEqual(result.snapshot.state, snapshot.state);
 });
 
+test("別 lineage の event は適用しない", () => {
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), startEvent({ taskLineageId: "lineage-2" }), new Map()),
+    /別 lineage の event は適用しない/,
+  );
+  // lineage を持たない event は、還元先の状態の lineage に属するものとして扱う
+  const result = reduceTaskWorkState(emptySnapshot(), startEvent({ taskLineageId: undefined }), new Map());
+  assert.equal(result.snapshot.state.pendingOperations[0]?.correlation.taskLineageId, "lineage-1");
+});
+
+test("ledger を取り違えても同じ start が二重に pending へ入らない", () => {
+  // 台帳と状態がずれた（復元・移送）ときの最後の砦。operationId が同じなら追加しない
+  const first = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
+  const again = reduceTaskWorkState(first.snapshot, startEvent(), new Map());
+  assert.equal(again.snapshot.state.pendingOperations.length, 1);
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+});
+
 // --- §3.1 operation envelope ------------------------------------------------
 
 test("operation event に envelope が無ければ schema violation", () => {
@@ -442,18 +463,14 @@ test("open な候補が複数ある matchKey 一致は閉じない", () => {
   );
 });
 
-test("session や lineage が違う terminal は閉じない", () => {
+test("session が違う terminal は閉じない", () => {
   const snapshot = startedSnapshot();
-  for (const differing of [
-    terminalEvent({ sessionId: "session-2" }),
-    terminalEvent({ taskLineageId: "lineage-2" }),
-  ]) {
-    const result = reduceTaskWorkState(snapshot, differing, new Map());
-    assert.deepEqual(
-      result.diagnostics.map((d) => d.code),
-      ["terminal_unmatched"],
-    );
-  }
+  const result = reduceTaskWorkState(snapshot, terminalEvent({ sessionId: "session-2" }), new Map());
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_unmatched"],
+  );
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
 
 test("権威順序で start より前の terminal は閉じない", () => {

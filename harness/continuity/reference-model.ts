@@ -316,6 +316,13 @@ export function reduceTaskWorkState(
   assertOperationEnvelope(event);
   assertTurnIdentity(event);
   assertIngestSeq(event.ingestSeq);
+  // 状態は lineage ごとに 1 つ（§4）。別 lineage の event を黙って取り込むと、境界の確定
+  // （§4.4）を経ずに前の task の状態が書き換わる
+  if (event.taskLineageId !== undefined && event.taskLineageId !== previous.state.taskLineageId) {
+    throw new Error(
+      `別 lineage の event は適用しない: 状態 ${previous.state.taskLineageId} / event ${event.taskLineageId}`,
+    );
+  }
   const key = idempotencyKeyOf(event);
 
   if (idempotencyLedger.has(key)) {
