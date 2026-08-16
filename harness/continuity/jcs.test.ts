@@ -166,6 +166,14 @@ test("素の object でない値は canonicalize しない", () => {
   }
   assert.throws(() => canonicalizeJson(new Capsule()), /できない: Capsule/);
   assert.throws(() => canonicalizeJson({ a: new Date(0) }), /素の object でない/);
+  // `Object.entries` が飛ばす own property を持つ object も落とす（`{}` として hash されるため）
+  assert.equal(JSON.stringify(Object.defineProperty({}, "x", { value: 1 })), "{}");
+  assert.throws(
+    () => canonicalizeJson(Object.defineProperty({}, "x", { value: 1 })),
+    /非 enumerable/,
+  );
+  assert.throws(() => canonicalizeJson({ [Symbol("s")]: 1 }), /symbol キー/);
+
   // `{}` と `Object.create(null)` 由来は通る（JSON.parse が返すのはこの 2 つ）
   assert.equal(canonicalizeJson({ a: 1 }), '{"a":1}');
   assert.equal(canonicalizeJson(Object.assign(Object.create(null), { a: 1 })), '{"a":1}');

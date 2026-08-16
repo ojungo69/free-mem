@@ -186,6 +186,11 @@ export function canonicalizeJson(value: unknown): string {
         `JCS: 素の object でない値は canonicalize できない: ${value.constructor?.name ?? "不明"}`,
       );
     }
+    // `Object.entries` は symbol キーと非 enumerable な own property を黙って飛ばすので、
+    // それらを持つ object は「空の object」として hash されてしまう
+    if (Reflect.ownKeys(value).length !== Object.keys(value).length) {
+      throw new Error("JCS: symbol キーまたは非 enumerable な property を持つ object は canonicalize できない");
+    }
     // `JSON.stringify` は undefined の property を黙って落とすが、ここでは落とさない。
     // 落とすと `{ a: 1, b: undefined }` が `{ a: 1 }` と同じ hash になり、組み立て損ねた
     // 契約値が「その欄は元々無かった」ものとして通ってしまう。undefined は下で throw する
