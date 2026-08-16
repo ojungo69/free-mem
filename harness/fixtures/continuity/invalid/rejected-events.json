@@ -10,7 +10,13 @@
         "captureMethod": "native_event",
         "channel": "rpc"
       }
-    ]
+    ],
+    "attestation": {
+      "ingestReceiptId": "receipt-intake",
+      "peerIdentityId": "peer-1",
+      "channel": "rpc",
+      "attestedAt": "2026-08-16T00:00:00Z"
+    }
   },
   "cases": [
     {
@@ -172,7 +178,7 @@
     },
     {
       "name": "forged-native-over-hook-spool",
-      "reason": "§3.1 capability hash を写し proven な scenarioId を名乗っても、hook/spool 経路では native にならない",
+      "reason": "§3.1 capability hash を写し proven な scenarioId を名乗っても、hook で捕まえた event を spool 経路で入れた分は native にならない",
       "event": {
         "eventId": "invalid-forged-native",
         "adapterDeliveryId": "delivery-start",
@@ -209,7 +215,15 @@
           "tool_name": "Bash"
         }
       },
-      "rejectedBy": "intake"
+      "rejectedBy": "intake",
+      "intakeOverride": {
+        "attestation": {
+          "ingestReceiptId": "receipt-spool",
+          "peerIdentityId": "peer-1",
+          "channel": "spool",
+          "attestedAt": "2026-08-16T00:00:00Z"
+        }
+      }
     }
   ]
 }

@@ -35,12 +35,20 @@ const SCHEMA_ROOT = readIJsonFile<JsonSchemaDocument>(
 const CAPABILITY_HASH = "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11";
 const VERSION = "2.1.228 (Claude Code)";
 
+const ATTESTATION = {
+  ingestReceiptId: "receipt-1",
+  peerIdentityId: "peer-1",
+  channel: "rpc",
+  attestedAt: "2026-08-16T00:00:01Z",
+} as const;
+
 const INTAKE: IntakeContextV1 = {
   exactAgentVersion: VERSION,
   activeCapabilityHash: CAPABILITY_HASH,
   provenScenarios: [
     { scenarioId: "tool-call-lifecycle", captureMethod: "native_event", channel: "rpc" },
   ],
+  attestation: ATTESTATION,
 };
 
 function emptyState(overrides: Partial<CanonicalWorkStateV1> = {}): CanonicalWorkStateV1 {
@@ -69,7 +77,7 @@ function emptyState(overrides: Partial<CanonicalWorkStateV1> = {}): CanonicalWor
 }
 
 function emptySnapshot(overrides: Partial<CanonicalWorkStateV1> = {}): TaskWorkStateSnapshotV1 {
-  return { state: emptyState(overrides), history: [], operationStartSeq: new Map() };
+  return { state: emptyState(overrides), history: [], operationStarts: new Map() };
 }
 
 function startEvent(overrides: Partial<NormalizedContinuityEvent> = {}): NormalizedContinuityEvent {
@@ -91,12 +99,7 @@ function startEvent(overrides: Partial<NormalizedContinuityEvent> = {}): Normali
       captureMethod: "native_event",
       capabilityHash: CAPABILITY_HASH,
       scenarioId: "tool-call-lifecycle",
-      ingestAttestation: {
-        ingestReceiptId: "receipt-1",
-        peerIdentityId: "peer-1",
-        channel: "rpc",
-        attestedAt: "2026-08-16T00:00:01Z",
-      },
+      ingestAttestation: ATTESTATION,
     },
     operation: {
       phase: "start",
@@ -192,7 +195,7 @@ test("lastIngestSeq は遅れて届いた event で戻らない", () => {
 
 test("同じ adapterDeliveryId を 10 回適用しても最初の 1 回しか効かない", () => {
   const first = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
-  assert.equal(first.applied, true);
+  assert.equal(first.outcome, "applied");
   const bytes = canonicalizeJson(first.snapshot.state);
 
   let snapshot = first.snapshot;
@@ -205,7 +208,7 @@ test("同じ adapterDeliveryId を 10 回適用しても最初の 1 回しか効
       occurredAt: "2026-08-16T00:00:09Z",
     });
     const result = reduceTaskWorkState(snapshot, redelivered, ledger);
-    assert.equal(result.applied, false);
+    assert.equal(result.outcome, "duplicate");
     assert.equal(canonicalizeJson(result.snapshot.state), bytes);
     assert.equal(result.contentHash, first.contentHash);
     assert.equal(result.snapshot.state.stateRevision, first.snapshot.state.stateRevision);
@@ -222,7 +225,7 @@ test("adapterDeliveryId が無い event は canonical fingerprint で重複判�
   assert.equal(idempotencyKeyOf(event), "fingerprint-start");
   const first = reduceTaskWorkState(emptySnapshot(), event, new Map());
   const again = reduceTaskWorkState(first.snapshot, { ...event, eventId: "other" }, first.ledger);
-  assert.equal(again.applied, false);
+  assert.equal(again.outcome, "duplicate");
 });
 
 test("配送 ID が違えば別の論理 event として適用される", () => {
@@ -236,7 +239,7 @@ test("配送 ID が違えば別の論理 event として適用される", () => 
     operation: { ...startEvent().operation!, operationMatchKey: "match-key-2", nativeOperationId: "toolu_2" },
   });
   const second = reduceTaskWorkState(first.snapshot, other, first.ledger);
-  assert.equal(second.applied, true);
+  assert.equal(second.outcome, "applied");
   assert.equal(second.snapshot.state.pendingOperations.length, 2);
 });
 
@@ -342,10 +345,7 @@ test("native の条件を満たす event は native のまま", () => {
 
 test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => {
   const cases: Array<[string, NormalizedContinuityEvent]> = [
-    [
-      "ingestAttestation が無い",
-      startEvent({ provenance: { ...startEvent().provenance, ingestAttestation: undefined } }),
-    ],
+
     [
       "capabilityHash が active と違う",
       startEvent({ provenance: { ...startEvent().provenance, capabilityHash: "0".repeat(64) } }),
@@ -359,15 +359,6 @@ test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => 
       startEvent({ provenance: { ...startEvent().provenance, captureMethod: "hook" } }),
     ],
     [
-      "channel が proven の組と違う",
-      startEvent({
-        provenance: {
-          ...startEvent().provenance,
-          ingestAttestation: { ...startEvent().provenance.ingestAttestation!, channel: "spool" },
-        },
-      }),
-    ],
-    [
       "sourceAgentVersion が exact でない",
       startEvent({ provenance: { ...startEvent().provenance, sourceAgentVersion: "2.1.228" } }),
     ],
@@ -375,6 +366,33 @@ test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => 
   for (const [label, event] of cases) {
     assert.equal(stampIntakeEvidence(event, INTAKE).provenance.evidenceKind, "synthesized", label);
   }
+  // 認証されていない経路（受領証を出せない）でも native にならない
+  const unauthenticated: IntakeContextV1 = { ...INTAKE, attestation: undefined };
+  assert.equal(stampIntakeEvidence(startEvent(), unauthenticated).provenance.evidenceKind, "synthesized");
+  // channel は intake の受領証側の値で判定する。proven の組に無い channel なら native にならない
+  const spool: IntakeContextV1 = { ...INTAKE, attestation: { ...ATTESTATION, channel: "spool" } };
+  assert.equal(stampIntakeEvidence(startEvent(), spool).provenance.evidenceKind, "synthesized");
+});
+
+test("caller の ingestAttestation は読まずに intake の受領証で置き換える", () => {
+  const forged = startEvent({
+    provenance: {
+      ...startEvent().provenance,
+      ingestAttestation: {
+        ingestReceiptId: "forged-receipt",
+        peerIdentityId: "attacker",
+        channel: "rpc",
+        attestedAt: "2026-08-16T00:00:01Z",
+      },
+    },
+  });
+  // 認証済み経路: 受領証は intake のものに差し替わる
+  const stamped = stampIntakeEvidence(forged, INTAKE);
+  assert.deepEqual(stamped.provenance.ingestAttestation, ATTESTATION);
+  // 認証されていない経路: 名乗った受領証ごと落ちる
+  const unauthenticated = stampIntakeEvidence(forged, { ...INTAKE, attestation: undefined });
+  assert.equal(unauthenticated.provenance.ingestAttestation, undefined);
+  assert.equal(unauthenticated.provenance.evidenceKind, "synthesized");
 });
 
 test("§3.1 の必須 negative: capability hash を写した native 主張は hook/spool 経路で synthesized になる", () => {
@@ -458,7 +476,7 @@ test("open な候補が複数ある matchKey 一致は閉じない", () => {
   );
   assert.deepEqual(
     result.snapshot.state.pendingOperations.map((p) => p.status),
-    ["started", "started"],
+    ["unknown", "unknown"],
   );
 });
 
@@ -482,15 +500,38 @@ test("権威順序で start より前の terminal は閉じない", () => {
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
 
-test("canonicalInputHash が食い違う terminal は閉じない", () => {
+test("canonicalInputHash が食い違う terminal は隔離する", () => {
   const snapshot = startedSnapshot();
   const conflicting = terminalEvent({
     operation: { ...terminalEvent().operation!, canonicalInputHash: "input-hash-other" },
   });
-  const result = reduceTaskWorkState(snapshot, conflicting, new Map());
+  const ledger: IdempotencyLedger = new Map();
+  const result = reduceTaskWorkState(snapshot, conflicting, ledger);
+  assert.equal(result.outcome, "quarantined");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
     ["terminal_conflict"],
+  );
+  // 状態も台帳も動かない。動かすと訂正版の再配送が重複 no-op として捨てられる
+  assert.equal(result.snapshot, snapshot);
+  assert.equal(result.ledger, ledger);
+  assert.equal(result.ledger.size, 0);
+  assert.equal(result.snapshot.history.length, snapshot.history.length);
+});
+
+test("turnIdSource の種別が違えば rule 2 では閉じない", () => {
+  const start = startEvent({
+    operation: { phase: "start", operationMatchKey: "match-key-1", operationKind: "Bash" },
+  });
+  const snapshot = startedSnapshot(start);
+  const terminal = terminalEvent({
+    turnIdSource: "synthesized_monotonic",
+    operation: { phase: "terminal", operationMatchKey: "match-key-1", operationKind: "Bash" },
+  });
+  const result = reduceTaskWorkState(snapshot, terminal, new Map());
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_unmatched"],
   );
 });
 
@@ -610,7 +651,7 @@ interface ReductionFixture {
   expected: Array<{
     eventId: string;
     evidenceKind: string;
-    applied: boolean;
+    outcome: string;
     contentHash: string;
     stateRevision: string;
     historyLength: number;
@@ -625,6 +666,7 @@ interface RejectionFixture {
     name: string;
     rejectedBy: "schema" | "runtime" | "intake";
     reason: string;
+    intakeOverride?: Partial<IntakeContextV1>;
     event: NormalizedContinuityEvent;
   }>;
 }
@@ -658,7 +700,10 @@ test("negative fixture は宣言した層で落ちる", () => {
       );
       continue;
     }
-    const stamped = stampIntakeEvidence(testCase.event, fixture.intakeContext);
+    const stamped = stampIntakeEvidence(testCase.event, {
+      ...fixture.intakeContext,
+      ...testCase.intakeOverride,
+    });
     assert.equal(stamped.provenance.evidenceKind, "synthesized", testCase.name);
   }
   assert.deepEqual([...layers].sort(), ["intake", "runtime", "schema"]);
@@ -671,7 +716,7 @@ test("fixture の期待値は参照実装の出力と一致する（TS/Rust pari
   let snapshot: TaskWorkStateSnapshotV1 = {
     state: fixture.initialState,
     history: [],
-    operationStartSeq: new Map(),
+    operationStarts: new Map(),
   };
   let ledger: IdempotencyLedger = new Map();
   const actual = fixture.events.map((raw) => {
@@ -682,7 +727,7 @@ test("fixture の期待値は参照実装の出力と一致する（TS/Rust pari
     return {
       eventId: event.eventId,
       evidenceKind: event.provenance.evidenceKind,
-      applied: result.applied,
+      outcome: result.outcome,
       contentHash: result.contentHash,
       stateRevision: result.snapshot.state.stateRevision,
       historyLength: result.snapshot.history.length,

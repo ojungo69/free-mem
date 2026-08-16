@@ -16,10 +16,12 @@ import {
   type CanonicalWorkStateV1,
   type ContinuityCaptureMethod,
   type ContinuityIngestAttestationV1,
+  type ContinuityOperationPhase,
   type NormalizedContinuityEvent,
   type OperationCorrelationV1,
   type PendingOperation,
   type Sensitivity,
+  type TurnIdSource,
 } from "../schema/continuity.ts";
 
 const INGEST_SEQ_PATTERN = /^(0|[1-9][0-9]*)$/;
@@ -74,6 +76,12 @@ export interface IntakeContextV1 {
   exactAgentVersion: string;
   activeCapabilityHash: string;
   provenScenarios: readonly ProvenScenarioV1[];
+  /**
+   * 認証済みの取り込みに対して daemon が発行する受領証。認証されていない経路
+   * （peer identity を確かめられない spool 等）では持たない。caller が送ってきた
+   * `provenance.ingestAttestation` は常にこの値で置き換える。
+   */
+  attestation?: ContinuityIngestAttestationV1;
 }
 
 /**
@@ -85,8 +93,10 @@ export function stampIntakeEvidence(
   event: NormalizedContinuityEvent,
   context: IntakeContextV1,
 ): NormalizedContinuityEvent {
-  const { provenance } = event;
-  const attestation = provenance.ingestAttestation;
+  // caller の attestation は読まずに捨てる。読んだ時点で「認証済みだと名乗れる」ことになり、
+  // §3.1 が禁じている自己申告の native authority が通ってしまう
+  const { ingestAttestation: _claimed, ...provenance } = event.provenance;
+  const attestation = context.attestation;
   const proven =
     attestation !== undefined &&
     provenance.sourceAgentVersion === context.exactAgentVersion &&
@@ -100,7 +110,11 @@ export function stampIntakeEvidence(
     );
   return {
     ...event,
-    provenance: { ...provenance, evidenceKind: proven ? "native" : "synthesized" },
+    provenance: {
+      ...provenance,
+      evidenceKind: proven ? "native" : "synthesized",
+      ...(attestation !== undefined ? { ingestAttestation: attestation } : {}),
+    },
   };
 }
 
@@ -108,12 +122,18 @@ export function stampIntakeEvidence(
 
 const NON_OPERATION_KIND_SET: ReadonlySet<string> = new Set(NON_OPERATION_EVENT_KINDS);
 
+// `kind` は開いた文字列なので、素の object を添字で引くと `__proto__` や `constructor` が
+// 値として返る。自分のキーだけを持つ Map で引く
+const OPERATION_PHASE_BY_KIND: ReadonlyMap<string, ContinuityOperationPhase> = new Map(
+  Object.entries(OPERATION_EVENT_PHASES),
+);
+
 /**
  * §3.1「operation event without a valid `operation` envelope is a schema violation」。
  * schema では kind が開いた文字列のため表現できず（#29）、この層で落とす。
  */
 export function assertOperationEnvelope(event: NormalizedContinuityEvent): void {
-  const expectedPhase = (OPERATION_EVENT_PHASES as Record<string, string | undefined>)[event.kind];
+  const expectedPhase = OPERATION_PHASE_BY_KIND.get(event.kind);
   if (expectedPhase === undefined) {
     if (event.operation !== undefined && NON_OPERATION_KIND_SET.has(event.kind)) {
       throw new Error(`§3.1 違反: operation 系でない kind ${event.kind} が operation envelope を持つ`);
@@ -181,15 +201,21 @@ export interface WorkStateRevisionEntryV1 {
 /** 適用済み idempotency key → 最初に適用した eventId。 */
 export type IdempotencyLedger = ReadonlyMap<string, string>;
 
+/** start event のうち frozen schema に入らない値（#35）。 */
+export interface OperationStartFactsV1 {
+  ingestSeq: string;
+  turnIdSource: TurnIdSource;
+}
+
 export interface TaskWorkStateSnapshotV1 {
   state: CanonicalWorkStateV1;
   history: readonly WorkStateRevisionEntryV1[];
   /**
-   * operationId → start event の ingestSeq。§4.3「terminal は start より後でなければならない」を
-   * 権威順序（ingestSeq）で判定するために持つ。`PendingOperation` は startedAt（時刻）しか
-   * 持たないため、frozen schema の外に置く（#35）。
+   * operationId → start event の権威順序と turn 同一性の種別。§4.3 の「terminal は start より
+   * 後」「rule 2 は同じ `turnIdSource` 種別を要求する」を判定するために持つ。
+   * `PendingOperation` / `OperationCorrelationV1` はどちらも持てないので frozen schema の外に置く。
    */
-  operationStartSeq: ReadonlyMap<string, string>;
+  operationStarts: ReadonlyMap<string, OperationStartFactsV1>;
 }
 
 export type ContinuityDiagnosticCode =
@@ -207,7 +233,8 @@ export interface ContinuityDiagnosticV1 {
 }
 
 export interface TaskStateReductionResult {
-  applied: boolean;
+  /** applied = 状態に入った / duplicate = 重複で no-op / quarantined = 衝突として隔離 */
+  outcome: "applied" | "duplicate" | "quarantined";
   snapshot: TaskWorkStateSnapshotV1;
   contentHash: string;
   ledger: IdempotencyLedger;
@@ -274,7 +301,7 @@ function commit(
   applied: {
     pendingOperations: readonly PendingOperation[];
     diagnostics: readonly ContinuityDiagnosticV1[];
-    operationStartSeq?: ReadonlyMap<string, string>;
+    operationStarts?: ReadonlyMap<string, OperationStartFactsV1>;
   },
 ): TaskStateReductionResult {
   const content = nextContent(previous.state, event, applied.pendingOperations);
@@ -283,11 +310,11 @@ function commit(
   const nextLedger = new Map(ledger);
   nextLedger.set(idempotencyKeyOf(event), event.eventId);
   return {
-    applied: true,
+    outcome: "applied",
     snapshot: {
       state: { ...content, stateRevision: revision },
       history: [...previous.history, { revision, contentHash, eventId: event.eventId }],
-      operationStartSeq: applied.operationStartSeq ?? previous.operationStartSeq,
+      operationStarts: applied.operationStarts ?? previous.operationStarts,
     },
     contentHash,
     ledger: nextLedger,
@@ -323,7 +350,7 @@ export function reduceTaskWorkState(
   if (idempotencyLedger.has(key)) {
     const { stateRevision: _ignored, ...content } = previous.state;
     return {
-      applied: false,
+      outcome: "duplicate",
       snapshot: previous,
       contentHash: contentHashOf(content),
       ledger: idempotencyLedger,
@@ -353,15 +380,40 @@ export function reduceTaskWorkState(
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...previous.state.pendingOperations, started],
       diagnostics: [],
-      operationStartSeq: new Map(previous.operationStartSeq).set(operationId, event.ingestSeq),
+      operationStarts: new Map(previous.operationStarts).set(operationId, {
+        ingestSeq: event.ingestSeq,
+        turnIdSource: event.turnIdSource,
+      }),
     });
   }
 
   const correlation = correlateTerminalEvent(previous, event);
   if (correlation.matched === null) {
+    const diagnostics = [
+      { code: correlation.diagnostic, eventId: event.eventId, detail: correlation.detail },
+    ];
+    // v6「same op ID + different hash: quarantine corruption」。衝突した event は状態にも
+    // 台帳にも入れない（入れると、訂正された再配送が重複 no-op として黙って捨てられる）
+    if (correlation.diagnostic === "terminal_conflict") {
+      const { stateRevision: _ignored, ...content } = previous.state;
+      return {
+        outcome: "quarantined",
+        snapshot: previous,
+        contentHash: contentHashOf(content),
+        ledger: idempotencyLedger,
+        diagnostics,
+      };
+    }
+    // §4.3「曖昧な terminal は候補を unknown にする」。open のまま残すので、後から
+    // 権威ある証跡が来れば閉じられる
+    const ambiguous = new Set(correlation.ambiguousOperationIds ?? []);
     return commit(previous, event, idempotencyLedger, {
-      ...unchanged,
-      diagnostics: [{ code: correlation.diagnostic, eventId: event.eventId, detail: correlation.detail }],
+      pendingOperations: previous.state.pendingOperations.map((pending) =>
+        ambiguous.has(pending.operationId) && pending.status === "started"
+          ? { ...pending, status: "unknown" as const }
+          : pending,
+      ),
+      diagnostics,
     });
   }
 
@@ -435,7 +487,13 @@ function startPendingOperation(
 
 export type TerminalCorrelationResult =
   | { matched: PendingOperation; rule: "native_operation_id" | "match_key" }
-  | { matched: null; diagnostic: ContinuityDiagnosticCode; detail: string };
+  | {
+      matched: null;
+      diagnostic: ContinuityDiagnosticCode;
+      detail: string;
+      /** ambiguous のときだけ、どの open な候補が曖昧なのかを返す。 */
+      ambiguousOperationIds?: readonly string[];
+    };
 
 /**
  * §4.3 の terminal 照合。authority は順序付き:
@@ -473,11 +531,12 @@ export function correlateTerminalEvent(
           (pending) =>
             pending.correlation.operationMatchKey === operation.operationMatchKey &&
             pending.correlation.toolName === operation.operationKind &&
-            // §4.3「rule 2 は双方が turn 同一性を持つことを要求する」。§3.1 の不変条件
-            // （unavailable のとき turnId は不在）を assertTurnIdentity で確定させてあるので、
-            // turnId の有無がそのまま turn 同一性の有無になる。
+            // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する」。
+            // §3.1 の不変条件（unavailable のとき turnId は不在）は assertTurnIdentity で
+            // 確定させてあるので、turnId の有無がそのまま turn 同一性の有無になる。
             pending.correlation.turnId !== undefined &&
-            pending.correlation.turnId === terminalEvent.turnId,
+            pending.correlation.turnId === terminalEvent.turnId &&
+            previous.operationStarts.get(pending.operationId)?.turnIdSource === terminalEvent.turnIdSource,
         );
   const rule = byNativeId.length > 0 ? "native_operation_id" : "match_key";
 
@@ -501,12 +560,13 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_ambiguous",
       detail: `open な候補が ${open.length} 件`,
+      ambiguousOperationIds: open.map((pending) => pending.operationId),
     };
   }
   const matched = open[0] as PendingOperation;
 
-  const startSeq = previous.operationStartSeq.get(matched.operationId);
-  if (startSeq === undefined || compareIngestSeq(terminalEvent.ingestSeq, startSeq) <= 0) {
+  const start = previous.operationStarts.get(matched.operationId);
+  if (start === undefined || compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
     return {
       matched: null,
       diagnostic: "terminal_out_of_order",

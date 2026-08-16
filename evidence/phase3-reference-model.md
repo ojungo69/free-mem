@@ -13,8 +13,8 @@
 
 | 規則 | 正本 | 実装 |
 |---|---|---|
-| `evidenceKind` / `ingestAttestation` は intake が割り当て、caller の値を信頼しない | §3.1 | `stampIntakeEvidence` が caller の値を無視して再計算する |
-| native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized` |
+| `evidenceKind` / `ingestAttestation` は intake が割り当て、caller の値を信頼しない | §3.1 | `stampIntakeEvidence` は caller の `ingestAttestation` を読まずに捨て、認証済み経路の受領証（`IntakeContextV1.attestation`）で置き換える |
+| native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない） |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
 | operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない |
@@ -24,7 +24,9 @@
 | 遅れて届いた event も後続 revision を作り、証跡を書き換えない | §4.2 | 適用は常に新しい revision を作る。既存 `sourceEventIds` は追記のみ |
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent` |
 | terminal は start より後（権威順序）・未適用・hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較 |
-| 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_unmatched` / `terminal_ambiguous` を返し、候補の status は変えない |
+| 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_unmatched` / `terminal_ambiguous` を返す。曖昧な候補は open のまま `unknown` にする |
+| correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる） |
+| rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する |
 | 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState` |
 | seq は safe integer を超える decimal string | v6 §22.6 | `compareIngestSeq` は桁数 → 辞書順の 2 段比較。`Number()` を使わない |
 
@@ -66,24 +68,29 @@ capability matrix にも無い。表が来るまでは:
 `CanonicalWorkStateV1.sensitivity` は「構成要素の最大」なので、pending operation が 1 件でもあれば
 `private` 以上になる。remote routing を実装する前に #36 を閉じる必要がある。
 
-### 2.4 intake が付ける kind は native / synthesized の 2 値
+### 2.4 還元の結果は 3 値
+
+`applied` / `duplicate` / `quarantined` を `outcome` として返す。`quarantined` は状態も台帳も
+更新しないので、訂正した event を後から入れ直せる。
+
+### 2.5 intake が付ける kind は native / synthesized の 2 値
 
 §3.1 は intake の導出元（peer identity・channel・captureMethod・capability matrix）を挙げるが、
 `derived` は AI 由来の派生物に付く種別で、event intake の出力ではない。よって
 `stampIntakeEvidence` は `native` か `synthesized` しか返さない。
 
-### 2.5 別 lineage の event は適用しない
+### 2.6 別 lineage の event は適用しない
 
 状態は lineage ごとに 1 つ（§4）。`taskLineageId` が状態と食い違う event を還元すると、
 境界の確定（§4.4）を経ずに前の task の状態が書き換わるため拒否する。`taskLineageId` を持たない
 event は、還元先の状態の lineage に属するものとして扱う。
 
-### 2.6 成否を主張しない terminal
+### 2.7 成否を主張しない terminal
 
 `successful` が無い terminal は成功とも失敗とも言えないので `unknown` にする
 （§4.3「Missing or ambiguous terminal evidence establishes `unknown`」の同じ扱い）。
 
-### 2.7 event kind の分類（#29）
+### 2.8 event kind の分類（#29）
 
 `operation` envelope を要求する kind の集合は正本に無い。harness の正規化語彙
 （`harness/schema/capability.ts` の `EventKind`）に対する分類を
@@ -96,8 +103,9 @@ envelope を要求しない（既知の非 operation kind が envelope を持つ
 
 - **per-kind の状態投影は未実装**。prompt / file / command / test を `Observed*` へ写す規則が addendum に
   無いため、還元は bookkeeping（watermark・revision・pendingOperations）だけを行う。
-- **§4.3 の権威順序検査は状態の外の索引に依存する**（#35）。`PendingOperation` は start の
-  `ingestSeq` を持たないので、`TaskWorkStateSnapshotV1.operationStartSeq` を frozen schema の外に置いた。
+- **§4.3 の権威順序と turn 種別の検査は状態の外の索引に依存する**（#35）。`PendingOperation` /
+  `OperationCorrelationV1` は start の `ingestSeq` も `turnIdSource` も持たないので、
+  `TaskWorkStateSnapshotV1.operationStarts` を frozen schema の外に置いた。
 - **boundary authority（§2.2 / §4.4）は未実装**。§3.1 の必須 negative の後半
   「forged native event は task boundary を confirm できない」は、confirm 側が入るまで
   「synthesized へ降格する」ところまでしか検証していない。
@@ -117,8 +125,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。11 件すべてで 1 件以上が失敗し、
-復元後は 36/36 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。15 件すべてで 1 件以上が失敗し、
+復元後は 38/38 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---|
@@ -126,7 +134,11 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | `lastIngestSeq` の max を外す | 1 |
 | `ingestSeq` を数値比較にする | 1 |
 | operation envelope 必須を外す | 2 |
-| intake の attestation 必須を外す | 1 |
+| intake の attestation 必須を外す | 2 |
+| caller の attestation を信じる | 1 |
+| 衝突の隔離を外す | 1 |
+| 曖昧候補の unknown 化を外す | 1 |
+| `turnIdSource` 種別の一致要求を外す | 1 |
 | rule 2 の turn 同一性要求を外す | 1 |
 | turn 同一性の不変条件を外す | 1 |
 | terminal の権威順序検査を外す | 1 |

@@ -10,7 +10,13 @@
         "captureMethod": "native_event",
         "channel": "rpc"
       }
-    ]
+    ],
+    "attestation": {
+      "ingestReceiptId": "receipt-intake",
+      "peerIdentityId": "peer-1",
+      "channel": "rpc",
+      "attestedAt": "2026-08-16T00:00:00Z"
+    }
   },
   "initialState": {
     "schemaVersion": 1,
@@ -184,7 +190,7 @@
     {
       "eventId": "event-start",
       "evidenceKind": "native",
-      "applied": true,
+      "outcome": "applied",
       "contentHash": "acac3a418a26dc66b72cf19c460d1c4ec6d898ee61c02c077db1c3197f54a645",
       "stateRevision": "03ef3d78bc72988bfff9f25b69cc15a68df8350d139e3d844af8ee903730cf28",
       "historyLength": 1,
@@ -196,7 +202,7 @@
     {
       "eventId": "event-start-redelivered",
       "evidenceKind": "native",
-      "applied": false,
+      "outcome": "duplicate",
       "contentHash": "acac3a418a26dc66b72cf19c460d1c4ec6d898ee61c02c077db1c3197f54a645",
       "stateRevision": "03ef3d78bc72988bfff9f25b69cc15a68df8350d139e3d844af8ee903730cf28",
       "historyLength": 1,
@@ -208,7 +214,7 @@
     {
       "eventId": "event-terminal",
       "evidenceKind": "native",
-      "applied": true,
+      "outcome": "applied",
       "contentHash": "656cb86ce6ac558bae8916f5f370780f01960cbe73f0699cf8b3a40bd8408ea9",
       "stateRevision": "d58c75ff3f87bf2da159db84745a3cea91e5dc96e8275630f12e45a8a9a01b51",
       "historyLength": 2,
@@ -220,7 +226,7 @@
     {
       "eventId": "event-terminal-orphan",
       "evidenceKind": "native",
-      "applied": true,
+      "outcome": "applied",
       "contentHash": "b4ff05da094fc78dec65bde3d17605ac99df001f33bda42bafd330d7aa23720b",
       "stateRevision": "0959a00caddb39dcc6b7b2a8f9b9b33c6ae174bdeb76d55cda9bd59531277434",
       "historyLength": 3,
