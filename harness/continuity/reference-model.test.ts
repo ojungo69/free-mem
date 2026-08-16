@@ -35,6 +35,16 @@ const SCHEMA_ROOT = readIJsonFile<JsonSchemaDocument>(
 const CAPABILITY_HASH = "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11";
 const VERSION = "2.1.228 (Claude Code)";
 
+const START_OPERATION = {
+  phase: "start",
+  operationMatchKey: "match-key-1",
+  operationKind: "Bash",
+  nativeOperationId: "toolu_1",
+  canonicalInputHash: "input-hash-1",
+} as const satisfies NonNullable<NormalizedContinuityEvent["operation"]>;
+
+const TERMINAL_OPERATION = { ...START_OPERATION, phase: "terminal" } as const;
+
 const ATTESTATION = {
   ingestReceiptId: "receipt-1",
   peerIdentityId: "peer-1",
@@ -101,29 +111,22 @@ function startEvent(overrides: Partial<NormalizedContinuityEvent> = {}): Normali
       scenarioId: "tool-call-lifecycle",
       ingestAttestation: ATTESTATION,
     },
-    operation: {
-      phase: "start",
-      operationMatchKey: "match-key-1",
-      operationKind: "Bash",
-      nativeOperationId: "toolu_1",
-      canonicalInputHash: "input-hash-1",
-    },
+    operation: START_OPERATION,
     payload: { tool_name: "Bash" },
     ...overrides,
   };
 }
 
 function terminalEvent(overrides: Partial<NormalizedContinuityEvent> = {}): NormalizedContinuityEvent {
-  const base = startEvent();
   return {
-    ...base,
+    ...startEvent(),
     eventId: "event-terminal",
     adapterDeliveryId: "delivery-terminal",
     canonicalFingerprint: "fingerprint-terminal",
     kind: "tool_completed",
     ingestSeq: "12",
     occurredAt: "2026-08-16T00:00:02Z",
-    operation: { ...base.operation!, phase: "terminal" },
+    operation: TERMINAL_OPERATION,
     payload: { tool_response: "ok" },
     successful: true,
     ...overrides,
@@ -236,7 +239,7 @@ test("配送 ID が違えば別の論理 event として適用される", () => 
     eventId: "event-start-2",
     adapterDeliveryId: "delivery-start-2",
     ingestSeq: "13",
-    operation: { ...startEvent().operation!, operationMatchKey: "match-key-2", nativeOperationId: "toolu_2" },
+    operation: { ...START_OPERATION, operationMatchKey: "match-key-2", nativeOperationId: "toolu_2" },
   });
   const second = reduceTaskWorkState(first.snapshot, other, first.ledger);
   assert.equal(second.outcome, "applied");
@@ -288,7 +291,7 @@ test("operation event に envelope が無ければ schema violation", () => {
 
 test("kind と envelope の phase がずれていれば schema violation", () => {
   assert.throws(
-    () => assertOperationEnvelope(startEvent({ operation: { ...startEvent().operation!, phase: "terminal" } })),
+    () => assertOperationEnvelope(startEvent({ operation: TERMINAL_OPERATION })),
     /phase は start だが envelope は terminal/,
   );
 });
@@ -309,7 +312,7 @@ test("envelope を要求しない kind は素通りする", () => {
 
 test("envelope の必須値が空なら schema violation", () => {
   assert.throws(
-    () => assertOperationEnvelope(startEvent({ operation: { ...startEvent().operation!, operationKind: "" } })),
+    () => assertOperationEnvelope(startEvent({ operation: { ...START_OPERATION, operationKind: "" } })),
     /operationMatchKey \/ operationKind が空/,
   );
 });
@@ -503,7 +506,7 @@ test("権威順序で start より前の terminal は閉じない", () => {
 test("canonicalInputHash が食い違う terminal は隔離する", () => {
   const snapshot = startedSnapshot();
   const conflicting = terminalEvent({
-    operation: { ...terminalEvent().operation!, canonicalInputHash: "input-hash-other" },
+    operation: { ...TERMINAL_OPERATION, canonicalInputHash: "input-hash-other" },
   });
   const ledger: IdempotencyLedger = new Map();
   const result = reduceTaskWorkState(snapshot, conflicting, ledger);
