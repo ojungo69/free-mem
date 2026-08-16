@@ -36,7 +36,7 @@ function normalizeIsoTs(value: unknown): string | null {
 	if (Number.isNaN(parsed.getTime())) return null;
 	const hasFractional = /\.\d+([Zz+-]|$)/.test(text);
 	return hasFractional
-		? parsed.toISOString().replace(/\.(\d{3})Z$/, ".$1000Z")
+		? parsed.toISOString().replace(/\.(\d{3})Z$/, (_match, millis: string) => `.${millis}000Z`)
 		: parsed.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 

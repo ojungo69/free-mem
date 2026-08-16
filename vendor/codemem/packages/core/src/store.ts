@@ -885,11 +885,7 @@ export class MemoryStore {
 		// Visibility defaults to "shared" (matches Python behavior)
 		let visibility = clean(metadata.visibility);
 		if (!visibility || (visibility !== "private" && visibility !== "shared")) {
-			if (explicitWorkspaceKind === "shared" || explicitWorkspaceId?.startsWith("shared:")) {
-				visibility = "shared";
-			} else {
-				visibility = "shared";
-			}
+			visibility = "shared";
 		}
 
 		// Workspace kind derives from visibility

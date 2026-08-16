@@ -90,7 +90,7 @@ function normalizeIsoTs(value: unknown): string | null {
 		// Has fractional seconds — produce microsecond precision like Python (6 digits)
 		const iso = d.toISOString(); // "YYYY-MM-DDTHH:MM:SS.mmmZ"
 		// Pad from 3 digits to 6 to match Python's microsecond output
-		return iso.replace(/\.(\d{3})Z$/, ".$1000Z");
+		return iso.replace(/\.(\d{3})Z$/, (_match, millis: string) => `.${millis}000Z`);
 	} catch {
 		return null;
 	}

@@ -139,7 +139,7 @@ function normalizeIsoTs$1(value) {
 		const d = new Date(parseText);
 		if (Number.isNaN(d.getTime())) return null;
 		if (!/\.\d+([Zz+-]|$)/.test(text)) return d.toISOString().replace(/\.\d{3}Z$/, "Z");
-		return d.toISOString().replace(/\.(\d{3})Z$/, ".$1000Z");
+		return d.toISOString().replace(/\.(\d{3})Z$/, (_match, millis) => `.${millis}000Z`);
 	} catch {
 		return null;
 	}
@@ -724,7 +724,7 @@ function normalizeIsoTs(value) {
 	const hasTimezone = /[Zz]$/.test(text) || /[+-]\d{2}:\d{2}$/.test(text) || /[+-]\d{4}$/.test(text);
 	const parsed = new Date(hasTimezone ? text : `${text}Z`);
 	if (Number.isNaN(parsed.getTime())) return null;
-	return /\.\d+([Zz+-]|$)/.test(text) ? parsed.toISOString().replace(/\.(\d{3})Z$/, ".$1000Z") : parsed.toISOString().replace(/\.\d{3}Z$/, "Z");
+	return /\.\d+([Zz+-]|$)/.test(text) ? parsed.toISOString().replace(/\.(\d{3})Z$/, (_match, millis) => `.${millis}000Z`) : parsed.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 function isoToWallMs(value) {
 	return new Date(value).getTime();

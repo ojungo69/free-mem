@@ -293,6 +293,8 @@ function sweepUsagePayloadCache(cache: Map<string, UsageCacheEntry>, nowMs: numb
  * cache exists to avoid. Fails safe: any error forces a unique value so the
  * request bypasses the cache and recomputes visibility from scratch.
  */
+let cacheBypassCounter = 0;
+
 function scopeVisibilityGeneration(store: MemoryStore): string {
 	try {
 		const row = store.db
@@ -320,7 +322,7 @@ function scopeVisibilityGeneration(store: MemoryStore): string {
 	} catch {
 		// Fail safe: bypass the cache rather than risk serving a payload
 		// computed under stale visibility rules.
-		return `bypass-${Date.now()}-${Math.random()}`;
+		return `bypass-${Date.now()}-${++cacheBypassCounter}`;
 	}
 }
 

@@ -46,7 +46,7 @@ export function insertTestSession(db: Database): number {
 		.prepare(
 			"INSERT INTO sessions(started_at, cwd, project, user, tool_version) VALUES (?, ?, ?, ?, ?)",
 		)
-		.run(now, "/tmp/test", "test-project", "test-user", "test");
+		.run(now, "/workspace/test", "test-project", "test-user", "test");
 	return Number(info.lastInsertRowid);
 }
 
