@@ -775,6 +775,90 @@ test("放棄は自 lineage の operation だけを unknown にする", () => {
   assert.equal(own.state.pendingOperations[0]?.status, "unknown");
 });
 
+test("correlateTerminalEvent は intake が降格する欄を照合権限に使う", () => {
+  // 公開 API を素の `NormalizedContinuityEvent` で受けていた根拠は「correlate は `provenance` を
+  // 一度も読まないので authority label を消費しない」だったが、これは誤りだった。この関数は
+  // rule 2 の候補選びで `turnIdSource` を見ていて、その欄は intake が認証結果に応じて書き換える。
+  // intake を飛ばすと、証明の無い native turn 主張がそのまま照合権限になる。引数型を
+  // `IntakeStampedEventV1` にして型で intake の通過を要求したので、その理由を実測で残す
+  const unproven: IntakeContextV1 = { ...INTAKE, nativeTurnIdentityProven: false };
+  const snapshot = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const raw = terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } });
+  // intake を通す前の主張（native）は rule 2 の候補選びを通る
+  assert.equal(correlateTerminalEvent(snapshot, raw).matched?.operationId,
+    snapshot.state.pendingOperations[0]?.operationId);
+  // 同じ event でも intake が unavailable へ降格すると、turn 両立が成り立たず閉じられない
+  const stamped = stampIntakeEvidence(raw, unproven).event;
+  const downgraded = correlateTerminalEvent(snapshot, stamped);
+  assert.equal(downgraded.matched, null);
+  assert.equal(downgraded.diagnostic, "terminal_unmatched");
+});
+
+test("同名 operationId の兄弟でも、配列順で再配送の結果が変わらない", () => {
+  // 選ぶ側を native id の枝だけ直していたので、derived id の枝は先頭 1 件で決めていた。
+  // 隔離は鍵を消費せず還元器は純関数なので、衝突する兄弟が先頭に来ただけで健全な再配送が
+  // 永久に収束しなくなる（実測で配列順により quarantined / applied に割れた）
+  const base = startedSnapshot();
+  const compatible = base.state.pendingOperations[0] as PendingOperation;
+  const conflicting: PendingOperation = {
+    ...compatible,
+    correlation: { ...compatible.correlation, sessionId: "session-other" },
+  };
+  for (const order of [[conflicting, compatible], [compatible, conflicting]]) {
+    const snapshot: TaskWorkStateSnapshotV1 = {
+      ...base,
+      operationStarts: new Map(),
+      state: { ...base.state, pendingOperations: [...order] },
+    };
+    const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+    assert.equal(result.outcome, "applied");
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  }
+});
+
+test("上限退避は別 lineage の要素を自 lineage の証跡より先に落とす", () => {
+  // 「上限は容量の判断なので lineage を見ない」としていたが、それだと別 lineage の要素を注入して
+  // 自 lineage の確定済み証跡を押し出せた（実測: 自 lineage の succeeded 1 件 + 別 lineage の
+  // started 255 件で満杯にして自 lineage の start を入れると、succeeded が退避されて別 lineage は
+  // 255 件全て残った）。lineage 外は照合・放棄のどの経路からも候補にならないので、残す価値が低い
+  const base = startedSnapshot();
+  const template = base.state.pendingOperations[0] as PendingOperation;
+  const mine: PendingOperation = { ...template, status: "succeeded" };
+  const theirs = Array.from({ length: CONTINUITY_LIMITS.arrayItems - 1 }, (_, index) => ({
+    ...template,
+    operationId: `their-${index}`,
+    status: "started" as const,
+    correlation: {
+      ...template.correlation,
+      operationId: `their-${index}`,
+      taskLineageId: "lineage-other",
+      nativeOperationId: `toolu_their_${index}`,
+      operationMatchKey: `mk-their-${index}`,
+    },
+  }));
+  const full: TaskWorkStateSnapshotV1 = {
+    ...base,
+    operationStarts: new Map(),
+    state: { ...base.state, pendingOperations: [mine, ...theirs] },
+  };
+  const result = reduceTaskWorkState(
+    full,
+    startEvent({
+      eventId: "event-new",
+      adapterDeliveryId: "delivery-new",
+      ingestSeq: "99",
+      operation: { ...MATCH_KEY_ONLY, operationMatchKey: "mk-new" },
+    }),
+    new Map(),
+  );
+  const kept = result.snapshot.state.pendingOperations;
+  assert.equal(kept.length, CONTINUITY_LIMITS.arrayItems);
+  // 自 lineage の確定済み証跡は残り、落ちたのは別 lineage の 1 件
+  assert.equal(kept.filter((p) => p.correlation.taskLineageId === base.state.taskLineageId).length, 2);
+  assert.equal(kept.filter((p) => p.correlation.taskLineageId === "lineage-other").length, 254);
+  assert.equal(kept.find((p) => p.status === "succeeded")?.operationId, mine.operationId);
+});
+
 test("別 lineage の双子が居ると、現 lineage の operation は順序を確認できない側へ倒れる", () => {
   // lineage で絞ると、別 lineage の双子は再配送の相手にならないので現 lineage 側に新しい pending が
   // 積まれる。`operationId` は eventId + matchKey からの導出で lineage を含まないため、状態には

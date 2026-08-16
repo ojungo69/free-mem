@@ -766,10 +766,15 @@ export function reduceTaskWorkState(
     // identity が完全に一致する兄弟への健全な再配送が永久に隔離される**（実測: matchKey も
     // input hash も一致する op-2 宛ての再配送が、op-1 と比べられて start_conflict になった）。
     // 互換な兄弟が居るならそれを再配送の相手にし、居ないときだけ先頭を衝突の証拠に使う
-    const existing =
-      inLineage.find((pending) => pending.operationId === operationId) ??
-      nativeMatches.find((pending) => !startConflictsWith(pending)) ??
-      nativeMatches[0];
+    // **同じ選び方を derived id の兄弟にも適用する**。片方の枝（native id）だけ互換な兄弟を
+    // 優先していたので、`operationId` が衝突する状態では**配列順で結果が変わっていた**
+    // （実測: 衝突する兄弟が先頭なら `start_conflict`、互換な兄弟が先頭なら
+    // `duplicate_operation_start`）。隔離は鍵を消費せず還元器は純関数なので、前者は同じ再配送が
+    // 永久に収束しない。選ぶ側を 1 箇所直したらもう 1 箇所の選ぶ側が残っていた形
+    const idMatches = inLineage.filter((pending) => pending.operationId === operationId);
+    const preferCompatible = (candidates: readonly PendingOperation[]): PendingOperation | undefined =>
+      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];
+    const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);
     const startConflict = existing !== undefined && startConflictsWith(existing);
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
@@ -794,7 +799,7 @@ export function reduceTaskWorkState(
       });
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
-    const retained = retainPendingOperations(previous.state.pendingOperations);
+    const retained = retainPendingOperations(previous.state.pendingOperations, previous.state.taskLineageId);
     // 黙って間引かない。退避した operation の event 自体は event store に残るが、状態からは
     // 消えるので、どれを落としたかを診断に出す
     const kept = new Set(retained);
@@ -936,7 +941,18 @@ const EVICTION_ORDER: readonly PendingOperation["status"][] = [
   "started",
 ];
 
-function retainPendingOperations(pending: PendingOperation[]): PendingOperation[] {
+/**
+ * 退避の優先順位。**lineage 外が status 順より先に来る**。当初は「上限は容量の判断なので lineage を
+ * 見ない」としていたが、それだと**別 lineage の要素で自 lineage の証跡を押し出せた**（実測:
+ * 自 lineage の `succeeded` 1 件 + 別 lineage の `started` 255 件で満杯の状態に自 lineage の start を
+ * 入れると、自 lineage の `succeeded` が退避されて別 lineage 255 件は全て残った）。lineage 外の要素は
+ * `assertSameScope` の外にあり、照合・放棄のどの経路からも候補にならないので、状態に残しておく
+ * 価値が自 lineage の確定済み証跡より低い。容量の判断だからこそ、価値の低いものから落とす。
+ */
+function retainPendingOperations(
+  pending: PendingOperation[],
+  taskLineageId: string,
+): PendingOperation[] {
   if (pending.length < CONTINUITY_LIMITS.arrayItems) return pending;
   const dropCount = pending.length - CONTINUITY_LIMITS.arrayItems + 1;
   // 落とす相手は `operationId` ではなく要素の参照で持つ。frozen schema は `operationId` に
@@ -944,10 +960,14 @@ function retainPendingOperations(pending: PendingOperation[]): PendingOperation[
   // (a) 1 件分の枠を空けるつもりで同名の兄弟までまとめて消え、(b) `dropped.size` が件数でなく
   // 異なり数になるので、上限を割ってもなお足りないと判定できない
   const dropped = new Set<PendingOperation>();
-  for (const status of EVICTION_ORDER) {
+  const passes: readonly ((candidate: PendingOperation) => boolean)[] = [
+    (candidate) => candidate.correlation.taskLineageId !== taskLineageId,
+    ...EVICTION_ORDER.map((status) => (candidate: PendingOperation) => candidate.status === status),
+  ];
+  for (const matches of passes) {
     for (const candidate of pending) {
       if (dropped.size === dropCount) break;
-      if (candidate.status === status) dropped.add(candidate);
+      if (matches(candidate)) dropped.add(candidate);
     }
   }
   return pending.filter((candidate) => !dropped.has(candidate));
@@ -1086,7 +1106,14 @@ function startFactsFor(
  */
 export function correlateTerminalEvent(
   previous: TaskWorkStateSnapshotV1,
-  terminalEvent: NormalizedContinuityEvent,
+  // **intake 済みの event しか受けない**。当初は「correlate は `provenance` を一度も読まないので
+  // authority label を消費しない」として素の `NormalizedContinuityEvent` を受けていたが、これは
+  // 誤りだった: この関数は rule 2 の候補選びで `turnIdSource` を、`assertSameScope` で `sourceAgent` を
+  // 見ており、**どちらも intake が認証結果に応じて書き換える欄**。intake を飛ばすと、証明の無い
+  // native turn 主張がそのまま照合権限になる（実測: 未証明 native の rule 2 terminal は直接呼びだと
+  // matched になり、`stampIntakeEvidence` を通すと `unavailable` へ降格して `terminal_unmatched`）。
+  // 型で intake の通過を要求すれば、還元器（`IntakeStampedEventV1`）と入口の前提が揃う
+  terminalEvent: IntakeStampedEventV1,
 ): TerminalCorrelationResult {
   // 公開 API なので還元器を経由しない呼び出しがありうる。envelope の検査を飛ばすと、既知の
   // terminal kind が envelope 無しで届いたとき §3.1 違反が `terminal_unmatched` という

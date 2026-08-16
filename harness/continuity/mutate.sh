@@ -269,6 +269,8 @@ mutate "    const inLineage = previous.state.pendingOperations.filter(
     );" "    const inLineage = previous.state.pendingOperations;" && run "別 lineage の pending も再配送の相手にする"
 mutate "        pending.correlation.sessionId === event.sessionId &&
         pending.correlation.taskLineageId === state.taskLineageId," "        pending.correlation.sessionId === event.sessionId," && run "放棄が別 lineage の operation も倒す"
+mutate "    const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" "    const existing = idMatches[0] ?? preferCompatible(nativeMatches);" && run "derived id の兄弟は先頭 1 件で決める"
+mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId," "    () => false," && run "退避で lineage 外を優先しない"
 mutate "            code: \"delivery_conflict\",
             eventId: event.eventId,
             detail: \`event \${applied.eventId} と同じ配送 ID で source hash が違う\`,
@@ -282,8 +284,7 @@ mutate "            code: \"delivery_conflict\",
       };" && run "放棄の配送衝突を診断に出さない"
 mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を引く"
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
-mutate "      nativeMatches.find((pending) => !startConflictsWith(pending)) ??
-      nativeMatches[0];" "      nativeMatches[0];" && run "native id の兄弟から互換な候補を選ばない"
+mutate "      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];" "      candidates[0];" && run "native id の兄弟から互換な候補を選ばない"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
