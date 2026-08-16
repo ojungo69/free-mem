@@ -571,8 +571,12 @@ export function reduceTaskWorkState(
       existing !== undefined &&
       (existing.correlation.operationMatchKey !== operation.operationMatchKey ||
         // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
-        // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない
-        existing.correlation.toolName !== operation.operationKind ||
+        // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない。
+        // `toolName` は凍結 schema の required に無いので、checkpoint から復元した状態や
+        // 別実装が書いた状態では schema 妥当なまま欠けうる。素で比べると健全な再配送が
+        // 永久に隔離されるので、兄弟の 2 つと同じく両方 present のときだけ比べる
+        (existing.correlation.toolName !== undefined &&
+          existing.correlation.toolName !== operation.operationKind) ||
         // 上の検索が operationId 一致で当たった場合、nativeOperationId は一度も比べていない。
         // 同じ eventId・matchKey で native ID だけ違う start を重複として台帳に入れると、
         // 同じく訂正版を戻せなくなる（native ID 一致で当たった場合はここは常に等しい）
@@ -903,8 +907,12 @@ export function correlateTerminalEvent(
       // kind は §4.3 の matchKey の入力に含まれる identity の一部で、turn と違って start から
       // terminal の間に変わらない。rule 2 の候補は matchKey 一致で選ぶので kind も揃っているが、
       // rule 1 は nativeOperationId だけで選ぶので、kind を見ないと別種の operation を閉じられる。
-      // start 側の identity 衝突検査と対称にする（両側とも空文字は schema violation で落ちている）
-      pending.correlation.toolName !== operation.operationKind ||
+      // start 側の identity 衝突検査と対称にする。`toolName` は凍結 schema の required に
+      // 無いので、checkpoint から復元した状態や別実装が書いた状態では schema 妥当なまま
+      // 欠けうる。素で比べると健全な terminal が永久に隔離され、台帳にも入らないので
+      // adapter は無限再送になる。兄弟の `canonicalInputHash` と同じく両方 present のときだけ比べる
+      (pending.correlation.toolName !== undefined &&
+        pending.correlation.toolName !== operation.operationKind) ||
       (pending.correlation.canonicalInputHash !== undefined &&
         operation.canonicalInputHash !== undefined &&
         pending.correlation.canonicalInputHash !== operation.canonicalInputHash),

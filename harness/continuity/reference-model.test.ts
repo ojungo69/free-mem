@@ -1621,3 +1621,34 @@ test("放棄でも同じ配送 ID で source hash が違えば隔離する", () 
   assert.equal(conflicting.state, first.state);
   assert.equal(conflicting.ledger, first.ledger);
 });
+
+test("toolName を持たない schema 妥当な pending でも rule 1 の terminal は閉じる", () => {
+  // toolName は凍結 schema の required に無い（required は operationId / startEventId /
+  // operationMatchKey / sessionId / taskLineageId の 5 つ）。checkpoint から復元した状態や
+  // 別実装が書いた状態では欠けうるので、kind を素で比べると健全な terminal が永久に隔離され、
+  // 台帳にも入らないので adapter が無限再送になる
+  const started = startedSnapshot();
+  const pending = started.state.pendingOperations[0];
+  if (pending === undefined) assert.fail("pending が無い");
+  const { toolName: _dropped, ...correlation } = pending.correlation;
+  const state = { ...started.state, pendingOperations: [{ ...pending, correlation }] };
+  assert.deepEqual(
+    validateContractValue("CanonicalWorkStateV1", state, SCHEMA_ROOT, CONTINUITY_LIMITS),
+    [],
+  );
+  const closed = reduceTaskWorkState({ ...started, state }, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied");
+  assert.deepEqual(closed.diagnostics, []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  // start 側も同じ非対称を持っていたので、再配送 start が隔離されないことも見る
+  const again = reduceTaskWorkState(
+    { ...started, state },
+    startEvent({ adapterDeliveryId: "delivery-start-3", canonicalFingerprint: "fingerprint-start-3", ingestSeq: "14" }),
+    new Map(),
+  );
+  assert.equal(again.outcome, "applied");
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+});
