@@ -163,10 +163,22 @@ addendum に無い**ので、「必ず残る」とは書けない。退避を状
 terminal が順序違反に見える）。これで復元 → start 再配送 → terminal で `succeeded` まで戻る。
 
 **この復旧は「状態と冪等台帳を同時にリセットする」運用が前提**（#35 が閉じるまで）。台帳だけが
-残る運用では、再配送された start が最上流の dedupe で `duplicate` になって還元器まで届かず、
-`operationStarts` は空のままになる。詰まりはしない（terminal は `unknown` に倒れて台帳に入る）が、
-`succeeded` までは戻らない。start の `ingestSeq` を `PendingOperation` が持てば（#35）この前提は
-要らなくなる。
+残る運用では、再配送された start は `reduceTaskWorkState` の 1 行目の dedupe で `duplicate` になり、
+`operationStarts` を戻す分岐まで進まない。詰まりはしない（terminal は `unknown` に倒れて台帳に
+入る）が、`succeeded` までは戻らない。start の `ingestSeq` を `PendingOperation` が持てば（#35）
+この前提は要らなくなる。
+
+逆に**台帳だけを失った復元**では、再配送された start が還元器に届く。再送契約では再配送の
+`eventId` が変わるので、`operationId = SHA-256(JCS({schema, startEventId, operationMatchKey}))` は
+一致しない。そのままだと同じ operation が 2 件積まれ、以後 rule 1 の terminal が候補 2 件で
+何も閉じられなくなる。`nativeOperationId` は本物の呼び出しごとに一意なので、それが一致する
+pending があれば再配送として扱う。`nativeOperationId` を出さない adapter では 2 回目の本物の
+呼び出しと区別できないので、この経路は使わない（§4.3 が rule 1 だけに閉じる権限を与えているのと
+同じ非対称）。
+
+再配送で戻す `ingestSeq` は再配送側のもので、元の start のものではない（失われている: #35）。
+そのため「元の start より後・再配送より前」の terminal は `terminal_out_of_order` になり `unknown`
+に倒れる。通してしまうより fail closed を選んだ結果で、#35 が閉じれば消える。
 
 **`terminal_orphaned` の隔離には期限が無い**。start が後から来る孤児（順序前後）と、start が二度と
 来ない孤児（退避で消えた operation、daemon が実行途中で attach して terminal だけ捕まえた場合）は
@@ -236,7 +248,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 ## 5. 変異テスト（2026-08-17）
 
 各ゲートをわざと壊し、対応する test が落ちることを確認した。37 件すべてで 1 件以上が失敗し、
-復元後は 60/60 green。
+復元後は 63/63 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -260,14 +272,14 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 候補が複数のときの拒否を外す | 1 |
 | canonicalInputHash 衝突検査を外す | 2 |
 | start 不在の分岐を外す | 1 |
-| terminal の権威順序検査を外す | 2 |
+| terminal の権威順序検査を外す | 3 |
 | 順序違反で候補を巻き込む | 1 |
 | 候補ゼロの terminal を台帳に入れる | 4 |
 | 順序不明で候補を unknown にしない | 1 |
-| 再配送 start で順序材料を戻さない | 1 |
-| 再配送 start が順序材料を上書きする | 1 |
 | 退避で順序材料を刈らない | 1 |
-| 候補の unknown 化を外す | 5 |
+| 再配送 start を nativeOperationId で拾わない | 2 |
+| 再配送の判定を matchKey にする | 4 |
+| 候補の unknown 化を外す | 6 |
 | unknown 化で証跡を残さない | 2 |
 | sourceEventIds の上限を外す | 1 |
 | pendingOperations の上限を外す | 1 |

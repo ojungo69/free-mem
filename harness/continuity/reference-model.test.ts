@@ -559,7 +559,8 @@ function filledSnapshot(resolveFirst: boolean): TaskWorkStateSnapshotV1 {
   const pendingOperations = Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, index) => ({
     ...template,
     operationId: `op-${index}`,
-    correlation: { ...template.correlation, operationId: `op-${index}` },
+    // nativeOperationId は本物の呼び出しごとに一意（同じ値を並べると再配送に見える）
+    correlation: { ...template.correlation, operationId: `op-${index}`, nativeOperationId: `toolu_filled_${index}` },
     status: resolveFirst && index === 0 ? ("succeeded" as const) : ("started" as const),
   }));
   return emptySnapshot({ pendingOperations });
@@ -1099,6 +1100,61 @@ test("復元後に start を再配送すると権威順序の材料が戻る", (
   assert.equal(again.snapshot.operationStarts.size, 1);
   const closed = reduceTaskWorkState(again.snapshot, terminalEvent(), again.ledger);
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("eventId が変わった再配送 start でも operation を二重に積まない", () => {
+  // 再送契約（上の「同じ配送 ID の再送は…」）では eventId が変わる。台帳だけを失った復元では
+  // 導出 operationId が一致しないので、nativeOperationId で拾わないと同じ operation が 2 件になり、
+  // rule 1 の terminal が候補 2 件で何も閉じられなくなる
+  const started = startedSnapshot();
+  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const redelivered = reduceTaskWorkState(
+    restored,
+    startEvent({ eventId: "event-start-retry-0", ingestSeq: "3" }),
+    new Map(),
+  );
+  assert.deepEqual(
+    redelivered.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+  assert.equal(redelivered.snapshot.state.pendingOperations.length, 1);
+  const closed = reduceTaskWorkState(redelivered.snapshot, terminalEvent(), redelivered.ledger);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("nativeOperationId が違う 2 回目の呼び出しは別 operation として積む", () => {
+  // 再配送の判定に matchKey を使うと、同じ tool を同じ入力で 2 回呼んだだけで 1 件に潰れる
+  const started = startedSnapshot();
+  const second = reduceTaskWorkState(
+    started,
+    startEvent({
+      eventId: "event-start-2",
+      ingestSeq: "3",
+      operation: { ...START_OPERATION, nativeOperationId: "toolu_second" },
+    }),
+    new Map(),
+  );
+  assert.deepEqual(second.diagnostics, []);
+  assert.equal(second.snapshot.state.pendingOperations.length, 2);
+});
+
+test("復元後の start 再配送が terminal より後なら fail closed で unknown に倒す", () => {
+  // 元の start の ingestSeq は失われている（#35）。再配送の ingestSeq を使う以上、
+  // 「元の start より後・再配送より前」の terminal は順序を確かめられない。
+  // 通してしまうより unknown に倒すほうを選ぶ
+  const started = startedSnapshot();
+  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const late = reduceTaskWorkState(
+    restored,
+    startEvent({ eventId: "event-start-retry-1", ingestSeq: "20" }),
+    new Map(),
+  );
+  const closed = reduceTaskWorkState(late.snapshot, terminalEvent(), late.ledger);
+  assert.deepEqual(
+    closed.diagnostics.map((d) => d.code),
+    ["terminal_out_of_order"],
+  );
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "unknown");
 });
 
 test("再配送された start は既存の順序材料を上書きしない", () => {

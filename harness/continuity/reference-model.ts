@@ -475,19 +475,34 @@ export function reduceTaskWorkState(
 
   if (operation.phase === "start") {
     const operationId = deriveOperationId(event.eventId, operation.operationMatchKey);
-    // 台帳と状態がずれた状態で同じ start を再適用しても、同じ operation を二重に積まない
-    if (previous.state.pendingOperations.some((pending) => pending.operationId === operationId)) {
+    // 台帳と状態がずれた状態で同じ start を再適用しても、同じ operation を二重に積まない。
+    // 再配送は eventId が変わる（再送契約: 同じ adapterDeliveryId・違う eventId・違う ingestSeq）
+    // ので導出した operationId は一致しない。台帳だけを失った復元では素通りして同じ operation が
+    // 二重に積まれ、以後 rule 1 の terminal が候補 2 件で何も閉じられなくなる。
+    // `nativeOperationId` は本物の呼び出しごとに一意なので、それが一致する pending があれば
+    // 再配送として扱う（持たない start では 2 回目の本物の呼び出しと区別できないので触らない）
+    const existing =
+      previous.state.pendingOperations.find((pending) => pending.operationId === operationId) ??
+      (operation.nativeOperationId === undefined
+        ? undefined
+        : previous.state.pendingOperations.find(
+            (pending) =>
+              pending.correlation.nativeOperationId === operation.nativeOperationId &&
+              pending.correlation.sessionId === event.sessionId &&
+              pending.correlation.taskLineageId === previous.state.taskLineageId,
+          ));
+    if (existing !== undefined) {
       return commit(previous, event, idempotencyLedger, {
         ...unchanged,
         diagnostics: [
-          { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${operationId} は既に pending` },
+          { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${existing.operationId} は既に pending` },
         ],
         // checkpoint から復元すると pendingOperations だけが戻り operationStarts は空になる（#35）。
         // 再配送された start で権威順序の材料を戻す。既にある分は上書きしない（後から来た
         // 再配送の ingestSeq で上書きすると、飛行中の terminal が順序違反に見える）
-        operationStarts: previous.operationStarts.has(operationId)
+        operationStarts: previous.operationStarts.has(existing.operationId)
           ? previous.operationStarts
-          : new Map(previous.operationStarts).set(operationId, {
+          : new Map(previous.operationStarts).set(existing.operationId, {
               ingestSeq: event.ingestSeq,
               turnIdSource: event.turnIdSource,
             }),
