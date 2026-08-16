@@ -1,0 +1,27 @@
+.github/workflows/ci.yml
+  s_5cbc4c67c8b3b4::t_af26c62db50060 71-86
+evidence/phase3-capability-scenario-manifest.md
+  s_5cbc4c67c8b3b4::t_960090e91eea29 31-38
+harness/continuity/capability-manifest.test.ts
+  s_5cbc4c67c8b3b4::t_abc646ef6484e0 117-120
+harness/continuity/schema-freeze.test.ts
+  s_5cbc4c67c8b3b4::t_a10a719a032318 496-502
+harness/schema/continuity.schema.json
+  s_5cbc4c67c8b3b4::t_ec34cea68eb889 7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0a95df5b9940bd00c2d179b8a08f2dd3284f960d",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
