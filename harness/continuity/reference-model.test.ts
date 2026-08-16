@@ -806,6 +806,24 @@ test("turnIdSource の種別が違えば rule 2 では閉じない", () => {
     result.diagnostics.map((d) => d.code),
     ["terminal_unmatched"],
   );
+  // 理由は「turn 同一性が無い」ではなく「種別が違う」。§3.1 は降格の理由を doctor が
+  // 報告することを求めているので取り違えない
+  assert.match(result.diagnostics[0]?.detail ?? "", /turnIdSource/);
+  // unknown に倒すのは種別が違う候補だけ。同じ matchKey で turn が違う open は巻き込まない
+  const other = reduceTaskWorkState(
+    snapshot,
+    startEvent({
+      eventId: "start-other", adapterDeliveryId: "d-other", canonicalFingerprint: "f-other", ingestSeq: "13",
+      turnId: "turn-9",
+      operation: { phase: "start", operationMatchKey: "match-key-1", operationKind: "Bash" },
+    }),
+    new Map(),
+  );
+  const scoped = reduceTaskWorkState(other.snapshot, terminal, other.ledger);
+  assert.deepEqual(
+    scoped.snapshot.state.pendingOperations.map((p) => p.status),
+    ["unknown", "started"],
+  );
 });
 
 test("確定済みの成否と矛盾する 2 度目の terminal は隔離する", () => {
@@ -2183,4 +2201,83 @@ test("再配送 start が turn を変えたら隔離する", () => {
     unavailable.diagnostics.map((d) => d.code),
     ["duplicate_operation_start"],
   );
+});
+
+// --- round 12: intake authority の空白・公開 API の scope・turn 種別（#37） -------
+
+test("空白だけの intake authority 値は native を成立させない", () => {
+  // 「未設定」を空文字で表すとは限らない。空白 1 文字・タブ・書式制御文字で表す daemon でも、
+  // caller が同じ値を名乗れば一致してしまうので、identity 材料と同じ `isBlank` で落とす
+  for (const blank of ["", " ", "\t", "\u{200B}", "\u{FEFF}"]) {
+    const label = JSON.stringify(blank);
+    const hashBlank = stampIntakeEvidence(
+      { ...startEvent(), provenance: { ...startEvent().provenance, capabilityHash: blank } },
+      { ...INTAKE, activeCapabilityHash: blank },
+    );
+    assert.equal(hashBlank.event.provenance.evidenceKind, "synthesized", `capabilityHash ${label}`);
+    const agentBlank = stampIntakeEvidence(
+      { ...startEvent(), sourceAgent: blank },
+      { ...INTAKE, expectedSourceAgent: blank },
+    );
+    assert.equal(agentBlank.event.provenance.evidenceKind, "synthesized", `sourceAgent ${label}`);
+    const versionBlank = stampIntakeEvidence(
+      { ...startEvent(), provenance: { ...startEvent().provenance, sourceAgentVersion: blank } },
+      { ...INTAKE, exactAgentVersion: blank },
+    );
+    assert.equal(versionBlank.event.provenance.evidenceKind, "synthesized", `version ${label}`);
+  }
+  // 対照: 空白を含むが空白だけではない値は従来どおり native
+  const spaced = "2.1.228 (Claude Code)";
+  assert.equal(stampIntakeEvidence(startEvent(), { ...INTAKE, exactAgentVersion: spaced }).event.provenance.evidenceKind, "native");
+});
+
+test("直接呼びの correlateTerminalEvent も別 Agent の terminal を拒否する", () => {
+  // 候補の絞り込みは session と lineage しか見ない。還元器と同じ検査を入口でしないと、
+  // 別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する
+  const started = startedSnapshot(startEvent());
+  assert.throws(
+    () => correlateTerminalEvent(started, terminalEvent({ sourceAgent: "codex" })),
+    /別 Agent の event は適用しない/,
+  );
+  // 対照: 同じ Agent は従来どおり閉じられる
+  assert.equal(correlateTerminalEvent(started, terminalEvent()).matched?.status, "started");
+});
+
+test("turn 種別が違う候補は rule 2 の候補から外す", () => {
+  // §4.3「rule 2 は双方が同じ turnIdSource 種別の turn 同一性を持つことを要求する」。
+  // 同じ matchKey・同じ turnId で種別だけ違う 2 件が並ぶとき、種別で絞れば 1 件になるので
+  // rule 2 の「exactly one open candidate」が成立する
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-a", adapterDeliveryId: "d-sa", canonicalFingerprint: "f-sa", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-sb", canonicalFingerprint: "f-sb", operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
+  ]);
+  assert.equal(prepared.snapshot.state.pendingOperations.length, 2);
+  const closed = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({ eventId: "term-x", adapterDeliveryId: "d-tx", canonicalFingerprint: "f-tx", ingestSeq: "13", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native" }),
+    prepared.ledger,
+  );
+  assert.deepEqual(closed.diagnostics, []);
+  assert.deepEqual(
+    closed.snapshot.state.pendingOperations.map((p) => p.status),
+    ["succeeded", "started"],
+  );
+});
+
+test("turn 種別の材料が無い候補は種別違いとして落とさない", () => {
+  // 種別は start 側の材料（operationStarts、#35）にしかなく、復元直後は空。材料が無いことを
+  // 「種別が違う」と読むと、復元直後の全 terminal が理由を取り違えた診断になる
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-a", adapterDeliveryId: "d-sa", canonicalFingerprint: "f-sa", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-sb", canonicalFingerprint: "f-sb", operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
+  ]);
+  const restored = { state: prepared.snapshot.state, history: [], operationStarts: new Map() };
+  const result = correlateTerminalEvent(
+    restored,
+    terminalEvent({ operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native" }),
+  );
+  // 材料が無いので 2 件とも残り、種別違いではなく曖昧として報告する
+  if (result.matched !== null) assert.fail("材料が無いのに閉じた");
+  assert.equal(result.diagnostic, "terminal_ambiguous");
+  assert.equal(result.unresolvedOperationIds.length, 2);
 });

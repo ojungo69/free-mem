@@ -68,7 +68,7 @@ mutate "    attestation !== undefined &&
     // 空文字同士は" && run "intake の attestation 必須を外す"
 mutate "  const { ingestAttestation: _claimed, ...provenance } = event.provenance;" "  const provenance = event.provenance;" && run "caller の attestation を信じる"
 mutate "    event.sourceAgent === context.expectedSourceAgent &&" "    true &&" && run "sourceAgent の束縛を外す"
-mutate "    context.expectedSourceAgent !== \"\" &&" "    true &&" && run "空の Agent 名を素通しする"
+mutate "    !isBlank(context.expectedSourceAgent) &&" "    true &&" && run "空の Agent 名を素通しする"
 mutate "    event.turnIdSource === \"native\" && !(authenticatedVersion && context.nativeTurnIdentityProven);" "    false;" && run "native turn の証明要求を外す"
 mutate "!(authenticatedVersion && context.nativeTurnIdentityProven)" "!context.nativeTurnIdentityProven" && run "turn 証明の version 束縛を外す"
 mutate "    diagnostics: turnDowngraded
@@ -149,10 +149,9 @@ mutate "  const applied = idempotencyLedger.get(key);
 mutate "  return event.adapterDeliveryId === undefined || isBlank(event.adapterDeliveryId)
     ? \`f:\${key}\`
     : \`d:\${key}\`;" "  return key;" && run "台帳の keyspace 分離を外す"
-mutate "    context.activeCapabilityHash !== \"\" &&
+mutate "    !isBlank(context.activeCapabilityHash) &&
     provenance.capabilityHash === context.activeCapabilityHash &&" "    provenance.capabilityHash === context.activeCapabilityHash &&" && run "空の capabilityHash を素通しする"
 mutate "  return known < 0 ? SENSITIVITIES.length - 1 : known;" "  return known;" && run "未知の sensitivity で fail open する"
-mutate "  if (rule === \"match_key\" && start.turnIdSource !== terminalEvent.turnIdSource) {" "  if (false) {" && run "rule 2 の turn 種別一致要求を外す"
 mutate "  if (
     (operation.nativeOperationId !== undefined && isBlank(operation.nativeOperationId)) ||
     (operation.canonicalInputHash !== undefined && isBlank(operation.canonicalInputHash))
@@ -208,6 +207,14 @@ mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityU
 mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 2 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの候補数を 1 件ずらす"
 mutate "  if (open.length === 0) {" "  if (open.length === 0 && compatible.find(identityUnverifiable) === undefined) {" && run "照合不能を成否矛盾検査より先に判定する"
 
+mutate "    !isBlank(context.activeCapabilityHash) &&" "    context.activeCapabilityHash !== \"\" &&" && run "空白だけの capability hash を authority にする"
+mutate "    !isBlank(context.expectedSourceAgent) &&" "    context.expectedSourceAgent !== \"\" &&" && run "空白だけの Agent 名を authority にする"
+mutate "    !isBlank(context.exactAgentVersion) &&" "    context.exactAgentVersion !== \"\" &&" && run "空白だけの exact version を authority にする"
+mutate "  assertSameScope(previous.state, terminalEvent);" "" && run "直接呼びの Agent 検査を外す"
+mutate "          const recorded = previous.operationStarts.get(pending.operationId)?.turnIdSource;
+          return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return true;" && run "rule 2 の turn 種別の絞り込みを外す"
+mutate "          return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return recorded === terminalEvent.turnIdSource;" && run "turn 種別の材料が無い候補も落とす"
+mutate "      unresolvedOperationIds: sourceMismatch ? sameTurn.map((pending) => pending.operationId) : openIds," "      unresolvedOperationIds: openIds," && run "種別違いの巻き込み範囲を広げる"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 | grep -E '^ℹ (pass|fail) '

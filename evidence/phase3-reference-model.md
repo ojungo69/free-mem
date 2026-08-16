@@ -14,14 +14,14 @@
 | 規則 | 正本 | 実装 |
 |---|---|---|
 | `evidenceKind` / `ingestAttestation` は intake が割り当て、caller の値を信頼しない | §3.1 | `stampIntakeEvidence` は caller の `ingestAttestation` を読まずに捨て、認証済み経路の受領証（`IntakeContextV1.attestation`）で置き換える |
-| native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない） |
+| native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない）。**authority 側の値が空なら一致は成立させない**（`activeCapabilityHash` / `expectedSourceAgent` / `exactAgentVersion`）: capability matrix が未整備の daemon で caller が同じ空値を名乗ると native が成立してしまう。「未設定」の表し方は空文字とは限らないので、identity 材料と同じ `isBlank`（空白・タブ・U+200B・U+FEFF まで）で落とす |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | `event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と一致しなければ native にしない。認証済みの adapter が他 Agent 名義で native authority を得られないようにする |
 | `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす。証明は version に紐づくので、受領証・`sourceAgent`・`sourceAgentVersion` の束縛（`authenticatedVersion`）が成り立たない event にも適用しない。`capabilityHash` は capability matrix にまだ turn identity の cell が無い（#40）ため turn の判定には使わない。`synthesized_monotonic` は adapter 由来なので触らない |
-| どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ |
+| どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ。**turn 種別（`turnIdSource`）の一致は候補の絞り込みで見る**: 種別は start 側の材料（`operationStarts`。凍結 schema の外・#35）にしかないので、以前は候補を 1 件に絞ってから最後に比べていた。それだと「同じ matchKey・同じ turnId で種別だけ違う」候補が 2 件並んだとき、種別で 1 件に決まるはずのものが `terminal_ambiguous` になって**両方 `unknown` に倒れ、配送鍵も消費される**。絞り込み時に見れば rule 2 の「exactly one open candidate」が成立して閉じられる。ただし**材料がある候補だけ**種別で絞る（復元直後は `operationStarts` が空なので、材料が無いことを「種別が違う」と読むと理由を取り違える。§3.1 は降格の理由を doctor が報告することを求めている）。候補ゼロのときの診断も「turn 同一性が無い」と「種別が違う」で書き分け、`unknown` に倒す相手は種別違いならその候補だけにする |
 | turn scoping を要求する規則は unavailable に fail closed になり、downgrade の理由は doctor が報告する | §3.1 | intake の降格は `turn_identity_downgraded` 診断を返す。`stampIntakeEvidence` の戻り値は `{ event, diagnostics }` |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
-| operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない。公開している `correlateTerminalEvent` も入口で同じ検査を行う（還元器を経由しない呼び出しで飛ばすと、既知の terminal kind が envelope 無しで届いたとき §3.1 違反が「照合できなかっただけ」の `terminal_unmatched` に化けて、壊れた adapter の証跡がそのまま保存される） |
+| operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない。公開している `correlateTerminalEvent` も入口で同じ検査を行う（還元器を経由しない呼び出しで飛ばすと、既知の terminal kind が envelope 無しで届いたとき §3.1 違反が「照合できなかっただけ」の `terminal_unmatched` に化けて、壊れた adapter の証跡がそのまま保存される）。同じ理由で `assertSameScope` も入口で行う: 候補の絞り込みは session と lineage しか見ず、状態は Agent を 1 つしか持たないので、ここで比べないと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する |
 | dedupe authority は `adapterDeliveryId`、無ければ canonical fingerprint | v6 §8.2 | `idempotencyKeyOf` は fallback（union ではない。正本の導出式が `??` で書かれている）。schema が `adapterDeliveryId` に minLength を持たないので、空文字は「無い」として fingerprint へ落とす |
 | dedupe は revision 採番の**前** | §4.2 | `reduceTaskWorkState` は ledger 照合を最初に行い、重複なら何も採番しない |
 | 重複した論理 event は no-op（同じ state bytes・content hash・revision・history） | §4.2 | 重複経路は入力の snapshot をそのまま返す。ledger も同一参照 |
@@ -372,8 +372,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**82 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 82 件（黙って飛ばされた変異ゼロ）、復元後は 104/104 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**88 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 88 件（黙って飛ばされた変異ゼロ）、復元後は 108/108 green。
 
 kill 率より先に**実行件数**を見ること。変異はソース中の文字列アンカーで当てるので、実装を直すと
 `assert old in s` が落ちて `&&` が短絡し、その変異は**出力に何も出ないまま黙って飛ばされる**
@@ -400,16 +400,16 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | intake の attestation 必須を外す | 3 |
 | caller の attestation を信じる | 1 |
 | sourceAgent の束縛を外す | 2 |
-| 空の Agent 名を素通しする | 1 |
+| 空の Agent 名を素通しする | 2 |
 | native turn の証明要求を外す | 3 |
 | turn 証明の version 束縛を外す | 2 |
 | turn 降格を黙って行う | 1 |
 | turn 同一性の不変条件を外す | 1 |
-| state への Agent 束縛を外す | 1 |
+| state への Agent 束縛を外す | 2 |
 | 空 adapterDeliveryId の fallback を外す | 2 |
 | rule 1 の排他を外す | 1 |
 | rule 2 の turn 同一性要求を外す | 2 |
-| 候補が複数のときの拒否を外す | 1 |
+| 候補が複数のときの拒否を外す | 2 |
 | terminal 側に matchKey 一致を要求し直す | 1 |
 | identity 衝突を候補 1 件で判定する | 4 |
 | terminal の canonicalInputHash 衝突検査を外す | 5 |
@@ -429,7 +429,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | start の matchKey 衝突検査を外す | 1 |
 | start の canonicalInputHash 衝突検査を外す | 1 |
 | 放棄を session で絞らない | 1 |
-| 候補の unknown 化を外す | 9 |
+| 候補の unknown 化を外す | 10 |
 | unknown 化で証跡を残さない | 2 |
 | sourceEventIds の上限を外す | 1 |
 | pendingOperations の上限を外す | 1 |
@@ -439,9 +439,8 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | revision ごとの配列分離を外す | 1 |
 | 放棄経路の dedupe を外す | 2 |
 | 台帳の keyspace 分離を外す | 1 |
-| 空の capabilityHash を素通しする | 1 |
+| 空の capabilityHash を素通しする | 2 |
 | 未知の sensitivity で fail open する | 1 |
-| rule 2 の turn 種別一致要求を外す | 1 |
 | 空文字の任意欄を素通しする | 2 |
 | start の operationKind 比較を外す | 1 |
 | start の toolName 存在ガードを外す | 1 |
@@ -462,8 +461,8 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空文字の eventId を素通しする | 2 |
 | sensitivity の下限に直前の集約値を使わない | 1 |
 | 空文字の sessionId を素通しする | 2 |
-| 空白文字を identity 材料として通す | 1 |
-| 書式制御文字だけの identity 材料を通す | 1 |
+| 空白文字を identity 材料として通す | 2 |
+| 書式制御文字だけの identity 材料を通す | 2 |
 | 空の operationMatchKey / operationKind を素通しする | 2 |
 | open の選択を identity 互換に絞らない | 1 |
 | canonicalInputHash の省略を照合可能として扱う | 1 |
@@ -475,6 +474,13 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 候補 1 件でも照合不能ゲートを発火させる | 1 |
 | 照合不能ゲートの候補数を 1 件ずらす | 1 |
 | 照合不能を成否矛盾検査より先に判定する | 1 |
+| 空白だけの capability hash を authority にする | 1 |
+| 空白だけの Agent 名を authority にする | 1 |
+| 空白だけの exact version を authority にする | 1 |
+| 直接呼びの Agent 検査を外す | 1 |
+| rule 2 の turn 種別の絞り込みを外す | 2 |
+| turn 種別の材料が無い候補も落とす | 1 |
+| 種別違いの巻き込み範囲を広げる | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

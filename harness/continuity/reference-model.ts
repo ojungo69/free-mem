@@ -133,16 +133,19 @@ export function stampIntakeEvidence(
   const authenticatedVersion =
     attestation !== undefined &&
     // 空文字同士は「一致」ではなく「どちらも名乗っていない」。素通りさせない
-    context.expectedSourceAgent !== "" &&
-    context.exactAgentVersion !== "" &&
+    // 「未設定」の表し方は空文字とは限らない。identity 材料と同じ理由（`isBlank`）で、
+    // 空白 1 文字・タブ・U+200B で「無い」を表す daemon でも同じ実害が起きる
+    !isBlank(context.expectedSourceAgent) &&
+    !isBlank(context.exactAgentVersion) &&
     event.sourceAgent === context.expectedSourceAgent &&
     provenance.sourceAgentVersion === context.exactAgentVersion;
   const proven =
     authenticatedVersion &&
-    // 空文字同士は「一致」ではない。capability matrix が未整備の daemon（activeCapabilityHash が
-    // 空）で、caller も空を名乗ると native が成立してしまう。§3.1 は proven を「active exact-version
-    // capability matrix hash と等しいこと」と定義しているので、matrix が無いなら proven も無い
-    context.activeCapabilityHash !== "" &&
+    // 空同士は「一致」ではない。capability matrix が未整備の daemon（activeCapabilityHash が
+    // 空）で、caller も同じ空を名乗ると native が成立してしまう。§3.1 は proven を「active
+    // exact-version capability matrix hash と等しいこと」と定義しているので、matrix が無いなら
+    // proven も無い
+    !isBlank(context.activeCapabilityHash) &&
     provenance.capabilityHash === context.activeCapabilityHash &&
     provenance.scenarioId !== undefined &&
     context.provenScenarios.some(
@@ -967,6 +970,11 @@ export function correlateTerminalEvent(
   // 「照合できなかっただけ」の結果に化けて、壊れた adapter の証跡がそのまま保存される
   assertOperationEnvelope(terminalEvent);
   assertTurnIdentity(terminalEvent);
+  // 候補の絞り込みは session と lineage しか見ない（状態は Agent を 1 つしか持たないので、
+  // 状態と event の Agent はここで突き合わせるしかない）。還元器は同じ検査を入口でしているが、
+  // 直接呼びで飛ばすと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを
+  // 適用してしまう
+  assertSameScope(previous.state, terminalEvent);
   const operation = terminalEvent.operation;
   if (operation === undefined || operation.phase !== "terminal") {
     return {
@@ -1123,11 +1131,13 @@ export function correlateTerminalEvent(
   // unavailable のとき rule 2 は適用されず、operation は unknown のままになる。閉じられるのは
   // rule 1 だけ」。§3.1 の不変条件（unavailable のとき turnId は不在）は assertTurnIdentity で
   // 確定させてあるので、turnId の有無がそのまま turn 同一性の有無になる。
-  // turn 種別の比較はここでは行わない。種別は start 側の材料（operationStarts）にしか無く、
-  // 復元直後はそれが空なので、ここで比べると「材料が無い」を「turn 同一性が無い」と報告して
-  // しまう。§3.1 は降格の理由を doctor が報告することを求めているので、原因の取り違えは規範違反。
-  // 材料の有無は下の start 解決で 1 件に絞ってから見る
-  const eligible =
+  // turn 種別は start 側の材料（operationStarts、#35）にしか無く、復元直後はそれが空になる。
+  // 材料が無いことを「種別が違う」と読むと、復元直後の全 terminal が「turn 同一性が無い」に
+  // 化けて理由を取り違える（§3.1 は降格の理由を doctor が報告することを求めている）ので、
+  // **材料がある候補だけ**種別で絞る。材料があるのに種別が違う候補は §4.3 の turn 両立を
+  // 満たさないので候補から外す。外した結果 open な候補が 1 件になれば rule 2 の
+  // 「exactly one open candidate」が成立して閉じられる
+  const sameTurn =
     byNativeId.length > 0
       ? open
       : open.filter(
@@ -1135,12 +1145,25 @@ export function correlateTerminalEvent(
             pending.correlation.turnId !== undefined &&
             pending.correlation.turnId === terminalEvent.turnId,
         );
+  const eligible =
+    byNativeId.length > 0
+      ? sameTurn
+      : sameTurn.filter((pending) => {
+          const recorded = previous.operationStarts.get(pending.operationId)?.turnIdSource;
+          return recorded === undefined || recorded === terminalEvent.turnIdSource;
+        });
   if (eligible.length === 0) {
+    // turn 同一性が無いのか、同一性はあるが種別が違うのかで理由が変わる。§3.1 は降格の理由を
+    // doctor が報告することを求めているので取り違えない。`unknown` に倒す相手も、種別違いなら
+    // その候補だけにして、同じ matchKey の無関係な open を巻き込まない
+    const sourceMismatch = sameTurn.length > 0;
     return {
       matched: null,
       diagnostic: "terminal_unmatched",
-      detail: "turn 同一性が無いので rule 2 では閉じられない",
-      unresolvedOperationIds: openIds,
+      detail: sourceMismatch
+        ? `turnIdSource が terminal の ${terminalEvent.turnIdSource} と違うので rule 2 では閉じられない`
+        : "turn 同一性が無いので rule 2 では閉じられない",
+      unresolvedOperationIds: sourceMismatch ? sameTurn.map((pending) => pending.operationId) : openIds,
     };
   }
   if (eligible.length > 1) {
@@ -1164,16 +1187,6 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_order_unverifiable",
       detail: `operation ${matched.operationId} の start が状態に無く、権威順序を確認できない`,
-      unresolvedOperationIds: [matched.operationId],
-    };
-  }
-  // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する」。種別は
-  // start 側にしか無いので、材料が揃ったここで見る。rule 1 は turn を要求しないので対象外
-  if (rule === "match_key" && start.turnIdSource !== terminalEvent.turnIdSource) {
-    return {
-      matched: null,
-      diagnostic: "terminal_unmatched",
-      detail: `turnIdSource が ${start.turnIdSource} と ${terminalEvent.turnIdSource} で違うので rule 2 では閉じられない`,
       unresolvedOperationIds: [matched.operationId],
     };
   }
