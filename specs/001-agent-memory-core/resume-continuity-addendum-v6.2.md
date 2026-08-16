@@ -21,7 +21,7 @@ All Phase 1 sole-writer, fail-open, spool, redaction, peer-auth, backup, and use
 
 The contract is runtime-language neutral. The TypeScript reference and Rust candidate MUST implement the same schemas, transition semantics, fixtures, hashes, and reports.
 
-Core 1.0 may claim smooth automatic continuation only for an exact Agent/native-CLI/capability-hash tuple that passes §8, the completed preflight in §14, and the release gates in §15.
+Core 1.0 may claim smooth automatic continuation only for an exact Agent/native-CLI/capability-hash tuple that passes §8, the completed preflight in §13, and the release gates in §14.
 
 ## 1. Separation of concerns
 
@@ -78,13 +78,15 @@ interface TaskBoundaryProposalV1 {
   revision: string;
 }
 
+type TaskBoundaryDecisionSource = "user" | "native_runtime";
+
 type TaskBoundaryDecisionV1 =
   | {
       kind: "confirm";
       proposalId: string;
       expectedProposalRevision: string;
       expectedBindingRevision: string;
-      source: "user" | "runtime";
+      source: TaskBoundaryDecisionSource;
       sourceEventIds: string[];
     }
   | {
@@ -92,19 +94,22 @@ type TaskBoundaryDecisionV1 =
       proposalId: string;
       expectedProposalRevision: string;
       expectedBindingRevision: string;
-      source: "user" | "runtime";
+      source: TaskBoundaryDecisionSource;
       sourceEventIds: string[];
     };
 ```
 
-### 2.2 Boundary rules
+### 2.2 Boundary rules and authority
 
 - `explicit_user`, `native_fork`, and `accepted_resume` may establish a new primary binding.
 - Heuristics may only create a proposal; they cannot supersede, retract, unbind, or delete the old lineage.
 - Short acknowledgements such as `yes`, `continue`, or `ok` do not create a new task.
-- **Confirm** validates proposal/session/binding revisions, marks the proposal confirmed, unbinds the old primary, and creates the new primary binding in one daemon transaction.
-- **Reject** validates the same revisions, marks the proposal rejected, and leaves the old binding unchanged.
-- Stale, competing, cross-session, or invalid confirm/reject commands are rejected with no binding change.
+- A **user** may confirm or reject any visible proposal through a user-authoritative surface.
+- `native_runtime` may confirm only a proposal whose evidence kind is `native_fork` or `accepted_resume`, and only when every `sourceEventId` resolves to an exact-version capability-proven native event for that session. It may not confirm `agent_proposal` or `deterministic_shift`.
+- Agent/model output, prompt-derived classifications, semantic similarity, or heuristic goal-shift scores never constitute `native_runtime` confirmation.
+- Confirm validates proposal/session/binding revisions, marks the proposal confirmed, unbinds the old primary, and creates the new primary binding in one daemon transaction.
+- Reject validates the same revisions, marks the proposal rejected, and leaves the old binding unchanged.
+- Stale, competing, cross-session, unsupported-authority, or invalid confirm/reject commands are rejected with no binding change.
 
 ## 3. Shared evidence types
 
@@ -186,10 +191,23 @@ interface ObservedTest {
   sensitivity: Sensitivity;
 }
 
+interface OperationCorrelationV1 {
+  operationId: string;
+  startEventId: string;
+  nativeOperationId?: string;
+  operationMatchKey: string;
+  sessionId: string;
+  taskLineageId: string;
+  turnId?: string;
+  toolName?: string;
+  canonicalInputHash?: string;
+}
+
 type ReplayPolicy = "never_auto" | "verify_first" | "safe_idempotent";
 
 interface PendingOperation {
   operationId: string;
+  correlation: OperationCorrelationV1;
   kind:
     | "command"
     | "file_mutation"
@@ -271,11 +289,19 @@ interface CanonicalWorkStateV1 {
 - Late terminal/correction events create later revisions without rewriting source evidence.
 - Semantic refinement cannot alter canonical observed fields.
 
-### 4.3 Pending operations
+### 4.3 Pending-operation start and terminal correlation
 
-- Stable start evidence creates `started`.
-- Trustworthy terminal evidence creates `succeeded` or `failed`.
-- Missing or ambiguous terminal evidence becomes `unknown`.
+- A stable start event creates `OperationCorrelationV1` and `PendingOperation(status="started")`.
+- `operationMatchKey` is a schema-versioned SHA-256 over the normalized Agent, native session, task lineage, turn when present, operation/tool kind, stable native operation ID when present, and canonical input hash. Volatile time and delivery-attempt fields are excluded.
+- Terminal matching authority is ordered:
+  1. exact `nativeOperationId` + same session/task lineage;
+  2. otherwise exact `operationMatchKey` + same session/task lineage + compatible turn/kind, with exactly one open candidate;
+  3. otherwise no match.
+- Command text, tool name, timestamp proximity, or cwd alone are never sufficient.
+- A terminal event must occur after the start event in authoritative event order, must not already be applied, and must have a non-conflicting payload/source hash.
+- A terminal event that matches zero or multiple open operations does not close any operation. Preserve it as unmatched evidence, leave candidates `unknown`, and emit a diagnostic. A correlation/hash conflict is quarantined according to the event-conflict contract.
+- A matched late terminal event references the original `operationId` and `startEventId`, creates a later work-state revision, and changes only that operation to `succeeded` or `failed`.
+- Missing or ambiguous terminal evidence establishes `unknown` at abandonment/recovery.
 - Unknown renders as `result unknown; verify current state before retry`.
 - Shell commands default to `verify_first`; migrations/deploys/publishing/destructive/external/credential operations default to `never_auto`.
 - `safe_idempotent` requires an explicit idempotency contract and matching capability evidence.
@@ -666,7 +692,9 @@ Initial preflight profile: full `0.75`, hint `0.35`, ambiguity margin `0.08`, ma
 - Full requires exactly one high-confidence candidate, outside ambiguity margin, at an allowed boundary/mode/capability/reconciliation state.
 - Decision/reasons are persisted. Threshold changes require dataset bump and reviewed before/after report.
 
-## 12. Durable-memory history and evidence preservation
+## 12. Durable-memory history, temporal validity, and derived-artifact invalidation
+
+### 12.1 Memory history
 
 - Semantic notes and consolidated memories retain source event/fact IDs.
 - Raw evidence is not deleted during derivation.
@@ -675,6 +703,56 @@ Initial preflight profile: full `0.75`, hint `0.35`, ambiguity margin `0.08`, ma
 - Stale/contradicted facts remain inspectable but are excluded/down-ranked from current retrieval.
 - Output may prefer consolidated observations while preserving source records.
 - Presentation dedupe never deletes source evidence.
+
+### 12.2 Derived-artifact dependencies
+
+```ts
+type DerivedArtifactKind =
+  | "summary"
+  | "semantic_resume_note"
+  | "checkpoint_semantic_note"
+  | "consolidated_memory"
+  | "embedding_item"
+  | "context_pack_cache"
+  | "cloud_projection";
+
+type DerivedArtifactStatus = "active" | "stale" | "invalidated" | "rebuilding";
+
+interface DerivedArtifactDependencyV1 {
+  artifactId: string;
+  artifactKind: DerivedArtifactKind;
+  artifactRevision: string;
+  sourceMemoryId: string;
+  sourceMemoryRevision: string;
+  sourceContentHash: string;
+  sourceEventIds: string[];
+  generationId?: string;
+}
+
+interface DerivedArtifactInvalidationEventV1 {
+  eventId: string;
+  artifactId: string;
+  artifactKind: DerivedArtifactKind;
+  expectedArtifactRevision: string;
+  sourceMemoryId: string;
+  invalidatingMemoryRevision: string;
+  reason: "memory_updated" | "memory_superseded" | "memory_retracted" | "memory_invalidated";
+  resultingStatus: "stale" | "invalidated";
+  idempotencyKey: string;
+  createdAt: string;
+}
+```
+
+### 12.3 Causal invalidation rules
+
+- Every derived artifact records exact source memory revisions/content hashes and source evidence IDs.
+- In the same daemon transaction that commits an UPDATE/SUPERSEDE/RETRACT or temporal invalidation, all known dependent artifacts are marked `stale` or `invalidated` and deterministic rebuild jobs are enqueued. The invalidation idempotency key is derived from `(memoryId, invalidatingRevision, artifactId, reason)`.
+- Query, injection, resume rendering, embedding activation, cloud projection, and cache lookup MUST verify that dependency revisions still match current memory projections. A stale/invalidation job delay or failure therefore cannot make an old artifact eligible.
+- Immutable historical checkpoints are not rewritten. At resume time, affected selected-memory content or semantic notes are omitted/marked stale unless a compatible re-derived artifact exists. Canonical observed checkpoint state remains historical evidence.
+- Embedding eligibility is keyed by `(memoryId, memoryRevision, inputHash, generationId)`; a prior revision vector cannot satisfy current coverage.
+- Summary/consolidated-memory/context-pack artifacts remain excluded until rebuild succeeds. Rebuild creates a new artifact revision and dependency set; it never overwrites historical provenance.
+- Crash/replay of memory mutation and invalidation converges exactly once. A rebuild failure leaves canonical continuation and FTS fallback available while the derived artifact stays excluded.
+- Sync/cloud projections receive the new revision/tombstone as an independent immutable operation; sync is not used to infer local invalidation success.
 
 ## 13. Preflight and automatic-support states
 
@@ -691,11 +769,11 @@ Unsupported/unknown-after-test does not block generic/manual continuity implemen
 
 `benchmarks/behavioral/contract.schema.json` is the sole machine-readable authority for `ResumeQualityReportV1`.
 
-Zero-tolerance numeric counters include duplicate injection, wrong scope, incompatible auto-resume, unsafe unknown replay, early acceptance, accepted-attempt/open-checkpoint, stale fence, capsule boundary escape, malformed capsule trusted, and source evidence deletion. All must be zero; deterministic critical scenarios must be 100% pass.
+Zero-tolerance numeric counters include duplicate injection, wrong scope, incompatible auto-resume, unsafe unknown replay, early acceptance, accepted-attempt/open-checkpoint, stale fence, capsule boundary escape, malformed capsule trusted, source evidence deletion, and stale derived artifact use. All must be zero; deterministic critical scenarios must be 100% pass.
 
 Behavioral metrics include wrong resume, unnecessary hint, candidate accuracy, critical-state recall, fabricated/stale state, re-explanation turns/tokens, first useful action, task completion, hint/full tokens, and claude-mem baseline delta. `unsupported` is allowed only where declared inapplicable; a required metric marked unsupported fails the gate.
 
-`doctor continuity --json` is versioned and reports exact version/capability hash, scenario dispositions, strategy, mode, threshold/dataset, last boundary/selection reasons, reconciliation, active attempt/lease summary, unknown pending count, preflight/unmet gate IDs, and schema/fixture/report hashes. It never emits raw prompts, commands, private/secret values, or capsule content.
+`doctor continuity --json` is versioned and reports exact version/capability hash, scenario dispositions, strategy, mode, threshold/dataset, last boundary/selection reasons, reconciliation, active attempt/lease summary, unknown pending count, stale/invalidated derived-artifact counts, preflight/unmet gate IDs, and schema/fixture/report hashes. It never emits raw prompts, commands, private/secret values, or capsule content.
 
 Major public resume scenarios MUST meet #8's frozen claude-mem non-inferiority gate or receive an explicit reviewed exception ADR before Core 1.0.
 
@@ -712,4 +790,4 @@ Major public resume scenarios MUST meet #8's frozen claude-mem non-inferiority g
 
 ## 16. Exit criteria
 
-Implemented when machine-readable schemas/fixtures exist; TS/Rust consume identical fixtures; exact Claude/Codex dispositions are recorded; task state/idempotency, boundary confirm/reject, pending operations, lineage-aware dispositions, initial claim, source-verified engagement, atomic acceptance, fail-closed reconciliation, explicit delivery boundaries, selection, sensitivity, capsule render/capture, memory history, quality report, and doctor all pass; and Phase 3/Core 1.0 gates enforce this addendum.
+Implemented when machine-readable schemas/fixtures exist; TS/Rust consume identical fixtures; exact Claude/Codex dispositions are recorded; task state/idempotency, terminal correlation, boundary authority/confirm/reject, pending operations, lineage-aware dispositions, initial claim, source-verified engagement, atomic acceptance, fail-closed reconciliation, explicit delivery boundaries, selection, sensitivity, capsule render/capture, memory history, derived-artifact invalidation, quality report, and doctor all pass; and Phase 3/Core 1.0 gates enforce this addendum.
