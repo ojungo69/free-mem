@@ -30,6 +30,8 @@ export {
 	warmRedactionWorker,
 } from "../../core/src/redaction-worker.js";
 export type { RefQueryResult } from "../../core/src/ref-queries.js";
+// 依存ゼロの文字列ユーティリティ。hook 側でも `/x+$/` の二次挙動を避けるために要る
+export { isOneOf, trimEndWhere } from "../../core/src/text-trim.js";
 export type { SpoolRedactionMetadata } from "../../core/src/spool.js";
 export { spoolMutation } from "../../core/src/spool.js";
 export {

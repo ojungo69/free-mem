@@ -2145,6 +2145,31 @@ function asObject(value) {
 	return {};
 }
 //#endregion
+//#region ../core/src/text-trim.ts
+function codePointBefore(value, end) {
+	const last = value.charCodeAt(end - 1);
+	if (last >= 56320 && last <= 57343 && end >= 2) {
+		const first = value.charCodeAt(end - 2);
+		if (first >= 55296 && first <= 56319) return value.slice(end - 2, end);
+	}
+	return value[end - 1];
+}
+/** Drop code points matching `drop` from the end of `value`. */
+function trimEndWhere(value, drop) {
+	let end = value.length;
+	while (end > 0) {
+		const char = codePointBefore(value, end);
+		if (!drop(char)) break;
+		end -= char.length;
+	}
+	return value.slice(0, end);
+}
+/** Build a `drop` predicate from a literal character set. */
+function isOneOf(chars) {
+	const set = new Set(chars);
+	return (char) => set.has(char);
+}
+//#endregion
 //#region ../core/src/memory-kinds.ts
 var ALLOWED_MEMORY_KINDS = new Set([
 	"discovery",
@@ -5988,6 +6013,8 @@ function logHookEvent(message) {
 * can build a query richer than the bare current prompt and so that
 * file-locality boosts can target files the user just edited.
 */
+var HYPHEN = isOneOf("-");
+var TRAILING_SLASH = isOneOf("/");
 var MAX_FILES_MODIFIED = 64;
 var MAX_QUERY_CHARS = 500;
 var SESSION_FILE_LABEL_CHARS = 24;
@@ -6020,7 +6047,7 @@ function contextDir() {
 function sessionFileStem(sessionId) {
 	const trimmed = sessionId.trim();
 	if (!trimmed) return "session-state";
-	return `${trimmed.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, SESSION_FILE_LABEL_CHARS) || "session"}-${stableSessionSuffix(trimmed)}`;
+	return `${trimEndWhere(trimmed.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+/, ""), HYPHEN).slice(0, SESSION_FILE_LABEL_CHARS) || "session"}-${stableSessionSuffix(trimmed)}`;
 }
 function statePathForSession(sessionId) {
 	return join(contextDir(), `${sessionFileStem(sessionId)}.json`);
@@ -6180,7 +6207,7 @@ function trackHookSessionState(payload, sanitizedPrompt, sanitizedModifiedPaths)
 	return state;
 }
 function pathBasename(value) {
-	const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+	const normalized = trimEndWhere(value.replace(/\\/g, "/"), TRAILING_SLASH);
 	if (!normalized) return "";
 	const parts = normalized.split("/");
 	return parts[parts.length - 1] ?? "";
