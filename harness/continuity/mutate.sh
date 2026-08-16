@@ -250,9 +250,11 @@ mutate "      detail: \`operation \${unverifiable.operationId} は canonicalInpu
 mutate "  if (rule === \"native_operation_id\" && compatible.length > 1) {" "  if (false) {" && run "rule 1 の候補が複数でも 1 件選ぶ"
 mutate "  if (rule === \"native_operation_id\" && compatible.length > 1) {" "  if (rule === \"native_operation_id\" && byNativeId.length > 1) {" && run "rule 1 の候補数を identity 絞り込み前で数える"
 mutate "          (recordedSource !== undefined &&
+            recordedSource !== \"unavailable\" &&
             event.turnIdSource !== \"unavailable\" &&
             recordedSource !== event.turnIdSource) ||" "          false ||" && run "再配送 start の turn 種別を見ない"
 mutate "            event.turnIdSource !== \"unavailable\" &&" "            true &&" && run "降格した再配送 start も隔離する"
+mutate "            recordedSource !== \"unavailable\" &&" "            true &&" && run "記録が降格されていても再配送を隔離する"
 mutate "            code: \"delivery_conflict\",
             eventId: event.eventId,
             detail: \`event \${applied.eventId} と同じ配送 ID で source hash が違う\`,

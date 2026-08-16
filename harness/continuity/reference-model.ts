@@ -719,12 +719,18 @@ export function reduceTaskWorkState(
           // 残る（再配送された start で `operationStarts` は埋めない）ので、再配送側の種別で来た
           // terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` になり、
           // **健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。復元直後は記録が
-          // 無いので、`eligibleOf` と同じく材料があるときだけ比べる。ただし**降格は衝突にしない**:
-          // `unavailable` は intake 自身が作る値（proven でない version の native 主張はここへ落ちる）
-          // なので、同じ start が証明の取れない経路で再配送されれば正当に `unavailable` で届く。
-          // これを隔離すると、証明が復旧するまで健全な再配送が二度と台帳に入らない。塞ぎたいのは
-          // 種別の**すり替え**（native ⇄ synthesized_monotonic）で、そちらは intake が作らない
+          // 無いので、`eligibleOf` と同じく材料があるときだけ比べる。**矛盾と言えるのは双方が
+          // 具体的な turn 同一性を主張している場合だけ**にする: `unavailable` は「turn 同一性を
+          // 主張していない」という表明で、§4.3 もどちらかが `unavailable` なら rule 2 を適用しないと
+          // 言うだけで矛盾とは言わない。片側でも `unavailable` を衝突にすると、intake が降格した
+          // start（proven でない version の native 主張はここへ落ちる）と、証明が回復した後の
+          // 同じ start の再配送とが噛み合わず、**還元器は純関数なので毎回同じ隔離になる
+          // = 決定論的な永久隔離と無限再送**になる（`started` を矛盾集合から外した理由と同型）。
+          // 免除しても記録は汚れない: 再配送は `operationStarts` を書かないので、記録された種別は
+          // どちらの経路でも元のまま残る。塞ぐのは種別の**すり替え**（native ⇄
+          // synthesized_monotonic）だけで、そこは 2 つの具体的な主張が食い違っている
           (recordedSource !== undefined &&
+            recordedSource !== "unavailable" &&
             event.turnIdSource !== "unavailable" &&
             recordedSource !== event.turnIdSource) ||
           // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として

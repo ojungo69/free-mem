@@ -742,6 +742,26 @@ test("再配送 start が turn の種別をすり替えたら隔離する", () =
   )?.turnIdSource, "native");
 });
 
+test("記録が降格されていても、証明が戻った再配送を隔離しない", () => {
+  // 記録側の `unavailable` は intake が作る（proven でない version の native 主張はここへ落ちる）。
+  // 証明が回復した後に同じ start が `native` で再配送されるのは正当な経路なのに、これを衝突に
+  // すると還元器は純関数なので毎回同じ隔離になり、決定論的な永久隔離と無限再送になる。
+  // すり替えの検知は「2 つの具体的な主張が食い違っている」場合だけに閉じる
+  const downgraded = startedSnapshot(
+    startEvent({ operation: MATCH_KEY_ONLY, turnId: undefined, turnIdSource: "unavailable" }),
+  );
+  const recovered = reduceTaskWorkState(
+    downgraded,
+    startEvent({ operation: MATCH_KEY_ONLY, turnIdSource: "native", ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.deepEqual(recovered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  // 免除しても記録は汚れない。再配送は `operationStarts` を書かないので降格された種別のまま残る
+  assert.equal(recovered.snapshot.operationStarts.get(
+    downgraded.state.pendingOperations[0]?.operationId as string,
+  )?.turnIdSource, "unavailable");
+});
+
 /** 上限まで埋めた状態のうち index 1 を index 0 と同名にする（frozen schema は一意性を課さない）。 */
 function collidedFilledSnapshot(): TaskWorkStateSnapshotV1 {
   const snapshot = filledSnapshot(true);
