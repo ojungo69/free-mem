@@ -927,27 +927,71 @@ test("上限退避は別 lineage の要素を自 lineage の証跡より先に�
   assert.equal(kept.find((p) => p.status === "succeeded")?.operationId, mine.operationId);
 });
 
-test("別 lineage の双子が居ると、現 lineage の operation は順序を確認できない側へ倒れる", () => {
+test("別 lineage の双子は順序材料の帰属を曖昧にしない", () => {
   // lineage で絞ると、別 lineage の双子は再配送の相手にならないので現 lineage 側に新しい pending が
   // 積まれる。`operationId` は eventId + matchKey からの導出で lineage を含まないため、状態には
-  // **同じ id の pending が 2 件**並ぶ。`operationStarts` の鍵も `operationId` なので、この状態では
-  // どちらの材料かを判別できない。§3.1 の fail closed どおり「材料なし」として扱い、terminal は
-  // `terminal_order_unverifiable` で `unknown` に倒れる（誤って succeeded にはしない）。
-  // 退避で同名の材料を無条件に落としたのと同じ判断で、根治は #35（材料を状態に持たせる）
+  // **同じ id の pending が 2 件**並ぶ。ここで一度「どちらの材料か判別できない」として材料なしに
+  // 倒したが、**それは誤りだったので撤回する**（外部のコードレビューが指摘し、実測で確認した）。
+  // `operationStarts` は凍結 schema の外にあるので checkpoint から復元されることが無く、entry を
+  // 書けるのは `assertSameScope` を通った自 lineage の start だけ。よって別 lineage の双子は帰属を
+  // 曖昧にしない。数に入れると「曖昧でないものを曖昧と読む」ことになり、fail closed に見えて
+  // **`turnIdSource` のすり替え検査まで無効化する fail open** を作っていた（下の test で固定）
   const applied = reduceTaskWorkState(foreignLineage(startedSnapshot()), startEvent(), new Map());
   assert.equal(new Set(applied.snapshot.state.pendingOperations.map((p) => p.operationId)).size, 1);
   assert.equal(applied.snapshot.state.pendingOperations.length, 2);
   const closed = reduceTaskWorkState(applied.snapshot, terminalEvent(), new Map());
-  assert.deepEqual(closed.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
   const mine = closed.snapshot.state.pendingOperations.find(
     (p) => p.correlation.taskLineageId === closed.snapshot.state.taskLineageId,
   );
-  assert.equal(mine?.status, "unknown");
+  assert.equal(mine?.status, "succeeded");
   // 別 lineage の双子は候補ですらないので触らない
   const theirs = closed.snapshot.state.pendingOperations.find(
     (p) => p.correlation.taskLineageId === "lineage-other",
   );
   assert.equal(theirs?.status, "started");
+});
+
+test("別 lineage の双子は turn 種別のすり替え検査を無効化しない", () => {
+  // `startFactsFor` が別 lineage の同名 pending まで数えていたとき、`recordedSource !== undefined`
+  // 節が常に false になり、すり替えた再配送が隔離されず**配送鍵まで消費した**（実測）
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY, turnIdSource: "native" }));
+  const own = base.state.pendingOperations[0] as PendingOperation;
+  const twin: PendingOperation = {
+    ...own,
+    correlation: { ...own.correlation, taskLineageId: "lineage-other" },
+  };
+  const withTwin: TaskWorkStateSnapshotV1 = {
+    ...base,
+    state: { ...base.state, pendingOperations: [own, twin] },
+  };
+  const switched = reduceTaskWorkState(
+    withTwin,
+    startEvent({ operation: MATCH_KEY_ONLY, turnIdSource: "synthesized_monotonic", ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.equal(switched.outcome, "quarantined");
+  assert.deepEqual(switched.diagnostics.map((d) => d.code), ["start_conflict"]);
+  assert.equal(switched.ledger.size, 0);
+});
+
+test("自 lineage で id が衝突しているときは材料なしに倒す", () => {
+  // 帰属を判別できないのはこちらだけ。`operationStarts` の鍵は `operationId` なので、同じ lineage に
+  // 同名の pending が並ぶと、退避した側や別の兄弟の材料で順序検査が通ってしまう
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const own = base.state.pendingOperations[0] as PendingOperation;
+  // 同名だが確定済みの兄弟。open は 1 件のままなので候補選びは曖昧にならず、材料の帰属だけが曖昧になる
+  const settled: PendingOperation = { ...own, status: "succeeded" };
+  const collided: TaskWorkStateSnapshotV1 = {
+    ...base,
+    state: { ...base.state, pendingOperations: [own, settled] },
+  };
+  const closed = reduceTaskWorkState(
+    collided,
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
 });
 
 test("再配送 start が turn の種別をすり替えたら隔離する", () => {
@@ -1055,6 +1099,37 @@ test("上限に余裕があるときは退避の診断を出さない", () => {
   const result = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.snapshot.state.pendingOperations.length, 1);
+});
+
+test("語彙外の turnIdSource は turn 同一性の検査で落とす", () => {
+  // 語彙は凍結 schema にしかなく、参照模型は event が schema 検証を通ってから届くとは限らない。
+  // 語彙外の綴りは `unavailable` の分岐にも intake の `native` 証明要求にも当たらないので、
+  // **降格を丸ごと迂回して自称 `turnId` を保持できた**（実測: "Native" / "NATIVE" / 末尾空白の
+  // "native " / キリル а の同形異字 / "bogus" が診断ゼロで通った）。そのまま rule 2 に入ると
+  // `sameTurnOf` は turnId の等値、`eligibleOf` は自己一致で通るので turn scope が丸ごと成立する
+  for (const forged of ["Native", "NATIVE", "native ", "n\u0430tive", "bogus", ""]) {
+    assert.throws(
+      () => assertTurnIdentity(startEvent({ turnIdSource: forged as never, turnId: "turn-forged" })),
+      /turnIdSource が語彙外/,
+      `語彙外の ${JSON.stringify(forged)} が通った`,
+    );
+  }
+  // 締めすぎていないこと: 語彙内の 3 つは通る
+  assertTurnIdentity(startEvent({ turnIdSource: "native", turnId: "turn-1" }));
+  assertTurnIdentity(startEvent({ turnIdSource: "synthesized_monotonic", turnId: "turn-1" }));
+  assertTurnIdentity(startEvent({ turnIdSource: "unavailable", turnId: undefined }));
+});
+
+test("語彙外の turnIdSource は還元器と公開入口の 3 つとも受け取らない", () => {
+  const forged = startEvent({ turnIdSource: "Native" as never, turnId: "turn-forged" });
+  assert.throws(() => reduceTaskWorkState(emptySnapshot(), forged, new Map()), /語彙外/);
+  assert.throws(() => correlateTerminalEvent(startedSnapshot(), terminalEvent({
+    turnIdSource: "Native" as never, turnId: "turn-forged",
+  })), /語彙外/);
+  assert.throws(() => finalizeAbandonedState(startedSnapshot().state, startEvent({
+    kind: "session_ended", operation: undefined, eventId: "event-abandon",
+    adapterDeliveryId: "delivery-abandon", turnIdSource: "Native" as never, turnId: "turn-forged",
+  }), new Map()), /語彙外/);
 });
 
 test("proven でない version の native turn 主張は unavailable へ降格する", () => {

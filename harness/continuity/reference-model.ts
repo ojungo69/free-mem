@@ -14,6 +14,7 @@ import {
   NON_OPERATION_EVENT_KINDS,
   OPERATION_EVENT_PHASES,
   SENSITIVITIES,
+  TURN_ID_SOURCES,
   type CanonicalWorkStateV1,
   type ContinuityCaptureMethod,
   type ContinuityIngestAttestationV1,
@@ -331,6 +332,19 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
  * turnId の有無を根拠にできるよう、ここで不変条件を確定させる。
  */
 export function assertTurnIdentity(event: NormalizedContinuityEvent): void {
+  // **語彙そのものを先に確かめる**。`TurnIdSource` の語彙は凍結 schema にしかなく、参照模型は
+  // event が schema 検証を通ってから届くとは限らない（intake も還元器も生の値を読む）。語彙外の
+  // 綴りは `unavailable` の分岐にも intake の `native` 証明要求にも当たらないので、**降格を
+  // 丸ごと迂回して自称 `turnId` を保持できた**（実測: `"Native"` / `"NATIVE"` / 末尾空白の
+  // `"native "` / キリル а の同形異字 / `"bogus"` がいずれも診断ゼロで通り、`turnId` は
+  // `"turn-FORGED"` のまま残った）。そのまま §4.3 rule 2 に入ると、`sameTurnOf` は `turnId` の
+  // 等値、`eligibleOf` は記録と event の**自己一致**で通るので、捏造した turn 同一性で turn scope が
+  // まるごと成立する。空白の identity 材料と同じ扱いで、語彙外はここで落とす
+  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSource)) {
+    throw new Error(
+      `§3.1 違反: turnIdSource が語彙外: ${JSON.stringify(event.turnIdSource)}`,
+    );
+  }
   const hasTurnId = event.turnId !== undefined;
   if (event.turnIdSource === "unavailable") {
     if (hasTurnId) {
@@ -1118,7 +1132,22 @@ function startFactsFor(
 ): OperationStartFactsV1 | undefined {
   let seen = 0;
   for (const pending of snapshot.state.pendingOperations) {
-    if (pending.operationId === operationId) seen += 1;
+    // **数えるのは自 lineage の pending だけ**。`operationStarts` は凍結 schema の外にあるので
+    // checkpoint から復元されることが無く、entry を書けるのは `assertSameScope` を通った
+    // 自 lineage の start だけ（この関数が読む側、書く側とも 1 箇所）。よって別 lineage の同名
+    // pending は entry の帰属を曖昧にしない。数に入れると**曖昧でないものを曖昧と読む**ことになり、
+    // 材料なし扱いが 2 方向に効いてしまう: 健全な operation が `terminal_order_unverifiable` で
+    // `unknown` に倒れるだけでなく、`startConflictsWith` の `recordedSource !== undefined` 節が
+    // 常に false になって **`turnIdSource` のすり替え検査が無効化される**（実測: 別 lineage の
+    // 双子を 1 件置くと、native → synthesized_monotonic にすり替えた再配送が `start_conflict` から
+    // `duplicate_operation_start` に変わり配送鍵まで消費した = fail open）。
+    // 自 lineage で id が衝突している場合だけは帰属を判別できないので、従来どおり材料なしに倒す
+    if (
+      pending.operationId === operationId &&
+      pending.correlation.taskLineageId === snapshot.state.taskLineageId
+    ) {
+      seen += 1;
+    }
     if (seen > 1) return undefined;
   }
   return snapshot.operationStarts.get(operationId);
