@@ -121,28 +121,37 @@ function assertIJsonStrings(value: unknown, path: string): void {
  * 数値リテラルの綴りが `JSON.parse` で変わらないことを見る。読んだ値だけでは
  * 「元々そう書いてあった」のか「丸められた」のか区別が付かない。
  *
- * - 整数として書かれたものは BigInt で厳密に比べる（`9007199254740992` のように
- *   16 桁でも正確に表せる値があるので、桁数で切ると正当な値を落とす）
- * - 小数・指数のものは有効数字 15 桁までに制限する。binary64 が往復を保証するのはそこまでで、
- *   それを超える綴り（`9007199254740993.0`・`1.0000000000000001`）は黙って別の値になる。
- *   正本 §22.6 はその大きさ・精度の値を decimal string で wire に出すと定めている
+ * 判定は「その double を最短表記に戻したものが、書かれた綴りと同じ値か」。`0.1` のように
+ * 2 進で正確に表せない値でも、最短表記が `0.1` に戻るなら綴りは保たれている。逆に
+ * `9007199254740993` や `1.0000000000000001` は最短表記が別の値になり、読んだ時点で
+ * 情報が落ちている。正本 §22.6 はこの大きさ・精度の値を decimal string で wire に出すと定めている。
  */
 function assertRepresentableNumber(token: string): void {
-  if (/^-?\d+$/.test(token)) {
-    const parsed = Number(token);
-    // 桁あふれ（Infinity）は値の側の検査が受け持つ
-    if (Number.isFinite(parsed) && BigInt(token) !== BigInt(parsed)) {
-      throw new Error(`I-JSON: 整数 ${token} は binary64 で正確に表せない（decimal string で書く）`);
-    }
-    return;
-  }
-  const mantissa = token.replace(/^-/, "").split(/[eE]/)[0] ?? "";
-  const digits = mantissa.replace(".", "").replace(/^0+/, "").replace(/0+$/, "");
-  if (digits.length > 15) {
+  const parsed = Number(token);
+  // 桁あふれ（Infinity）は値の側の検査が受け持つ
+  if (!Number.isFinite(parsed)) return;
+  if (!sameDecimalValue(token, String(parsed))) {
     throw new Error(
-      `I-JSON: 数値 ${token} は有効数字が 15 桁を超える（binary64 の往復が保証されない）`,
+      `I-JSON: 数値 ${token} は binary64 に収まらない（読むと ${String(parsed)} になる。decimal string で書く）`,
     );
   }
+}
+
+/** 10 進リテラルを `num × 10 ** exp` に分解する（`1.5e3` → `15 × 10 ** 2`） */
+function decimalParts(token: string): { num: bigint; exp: number } {
+  const [mantissa = "", exponent] = token.split(/[eE]/);
+  const negative = mantissa.startsWith("-");
+  const [intPart = "", fracPart = ""] = mantissa.replace(/^[+-]/, "").split(".");
+  const digits = BigInt(`${intPart || "0"}${fracPart}`);
+  return { num: negative ? -digits : digits, exp: Number(exponent ?? 0) - fracPart.length };
+}
+
+/** 2 つの 10 進リテラルが同じ値か。`1.10` と `1.1`、`1e21` と `1e+21` は同じ */
+function sameDecimalValue(a: string, b: string): boolean {
+  const x = decimalParts(a);
+  const y = decimalParts(b);
+  const shift = Math.min(x.exp, y.exp);
+  return x.num * 10n ** BigInt(x.exp - shift) === y.num * 10n ** BigInt(y.exp - shift);
 }
 
 /**
