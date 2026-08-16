@@ -240,20 +240,29 @@ function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent[
 }
 
 /**
- * `canonicalFingerprint` は schema の `required` に入っているが `maxLength` しか制約が無いので
- * 空文字が届きうる。v6 §8.2 の dedupe authority は「`adapterDeliveryId`、無ければ canonical
- * fingerprint」で、空文字を「値がある」と読むと 2 通りに壊れる:
+ * identity の材料になる欄は schema の `required` に入っていても `maxLength` しか制約が無いので
+ * 空文字が届きうる。空文字を「値がある」と読むと、別々の event が同じ identity に潰れる。
+ *
+ * `canonicalFingerprint`: v6 §8.2 の dedupe authority は「`adapterDeliveryId`、無ければ canonical
+ * fingerprint」なので、空文字だと 2 通りに壊れる。
  *
  * - 配送 ID を持たない event が全部 `f:` という 1 つの鍵に潰れ、最初の 1 件以外が診断ゼロで消える
  * - 配送 ID を持つ event は台帳に source hash 無しで載り、同じ配送 ID の訂正版が衝突検査を
  *   素通りして重複として捨てられる（訂正が永久に届かない）
  *
- * 空文字の `adapterDeliveryId` を「無い」として fingerprint へ落とすのと違い、こちらは落とし先が
+ * `eventId`: `deriveOperationId(eventId, matchKey)` の材料なので、空文字だと同じ turn の
+ * rule 2 の start が 2 件とも同じ operationId になり、2 件目が `duplicate_operation_start` として
+ * 消える（以後その operation の terminal は照合できない）。
+ *
+ * 空文字の `adapterDeliveryId` を「無い」として fingerprint へ落とすのと違い、どちらも落とし先が
  * 無いので schema violation にする。
  */
-function assertDeliveryIdentity(event: NormalizedContinuityEvent): void {
+function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   if (event.canonicalFingerprint === "") {
     throw new Error("§3.1 違反: canonicalFingerprint が空文字（dedupe authority が定まらない）");
+  }
+  if (event.eventId === "") {
+    throw new Error("§3.1 違反: eventId が空文字（operation identity が導出できない）");
   }
 }
 
@@ -272,6 +281,14 @@ export function assertTurnIdentity(event: NormalizedContinuityEvent): void {
   }
   if (!hasTurnId) {
     throw new Error(`§3.1 違反: turnIdSource が ${event.turnIdSource} なのに turnId が無い`);
+  }
+  // schema は `turnId` に maxLength しか課さないので空文字が届きうる。空文字を「turn がある」と
+  // 読むと、§4.3 rule 2 の turn 同一性が空文字同士で成立して無関係な turn の operation を閉じる。
+  // すべての unavailable な turn を空文字で表す adapter では、全 operation が 1 つの turn に潰れる
+  if (event.turnId === "") {
+    throw new Error(
+      `§3.1 違反: turnIdSource が ${event.turnIdSource} なのに turnId が空文字（unavailable として送る）`,
+    );
   }
 }
 
@@ -428,8 +445,25 @@ function deriveOperationId(startEventId: string, operationMatchKey: string): str
  * v6「構成要素の最大機密度（集約値）」。構成要素を手で並べると、状態に欄が増えたとき
  * 集約から漏れるので、内容を走査して見つけた `sensitivity` すべての最大を取る。
  */
-function aggregateSensitivity(content: Omit<WorkStateContentV1, "sensitivity">): Sensitivity {
-  let rank = 0;
+function rankOfSensitivity(value: string): number {
+  // 未知の語彙を indexOf の -1 のまま流すと最下位（normal）に落ちる = fail open。
+  // §10 の語彙外は「機密度不明」なので最上位に倒す
+  const known = SENSITIVITIES.indexOf(value as Sensitivity);
+  return known < 0 ? SENSITIVITIES.length - 1 : known;
+}
+
+/**
+ * §10「`sensitivity` は構成要素 event の最大機密度を常に反映する」。`floor` には直前の revision の
+ * 集約値を渡す。集約値を実体に持たせる理由が「raw event の TTL 後には遡って判定できない」こと
+ * なので、構成要素が状態から消えても機密度は下げない（`retainPendingOperations` の退避は
+ * 保管上の都合であって「機密ではなくなった」という証跡ではない）。この模型に格下げの event は
+ * 無いので、単調非減少にして §9.2 の remote 送信ゲートを fail closed に保つ。
+ */
+function aggregateSensitivity(
+  content: Omit<WorkStateContentV1, "sensitivity">,
+  floor: Sensitivity,
+): Sensitivity {
+  let rank = rankOfSensitivity(floor);
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) {
       for (const item of value) visit(item);
@@ -438,10 +472,7 @@ function aggregateSensitivity(content: Omit<WorkStateContentV1, "sensitivity">):
     if (value === null || typeof value !== "object") return;
     for (const [key, child] of Object.entries(value)) {
       if (key === "sensitivity" && typeof child === "string") {
-        // 未知の語彙を indexOf の -1 のまま流すと最下位（normal）に落ちる = fail open。
-        // §10 の語彙外は「機密度不明」なので最上位に倒す
-        const known = SENSITIVITIES.indexOf(child as Sensitivity);
-        rank = Math.max(rank, known < 0 ? SENSITIVITIES.length - 1 : known);
+        rank = Math.max(rank, rankOfSensitivity(child));
         continue;
       }
       visit(child);
@@ -465,7 +496,10 @@ function nextContent(
     lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
     updatedAt: event.occurredAt,
   };
-  return { ...withoutSensitivity, sensitivity: aggregateSensitivity(withoutSensitivity) };
+  return {
+    ...withoutSensitivity,
+    sensitivity: aggregateSensitivity(withoutSensitivity, previous.sensitivity),
+  };
 }
 
 function commit(
@@ -527,7 +561,7 @@ export function reduceTaskWorkState(
 ): TaskStateReductionResult {
   assertOperationEnvelope(event);
   assertTurnIdentity(event);
-  assertDeliveryIdentity(event);
+  assertIdentityMaterial(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(previous.state, event);
   // 放棄の kind をこの入口に渡すと、operation envelope を持たないので下の汎用 commit に落ちて
@@ -1105,7 +1139,7 @@ export function finalizeAbandonedState(
 ): AbandonmentResultV1 {
   assertOperationEnvelope(event);
   assertTurnIdentity(event);
-  assertDeliveryIdentity(event);
+  assertIdentityMaterial(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(state, event);
   if (!ABANDONMENT_EVENT_KINDS.has(event.kind)) {

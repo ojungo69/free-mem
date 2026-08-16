@@ -76,7 +76,12 @@ capability matrix にも無い。表が来るまでは:
 `private` 以上になる。remote routing を実装する前に #36 を閉じる必要がある。
 
 集約は状態の内容を走査して見つけた `sensitivity` の最大を取る（欄を手で並べると、状態に欄が
-増えたとき集約から漏れるため）。§10 の語彙（`normal` / `private` / `secret`）に無い値を見つけた
+増えたとき集約から漏れるため）。**直前の revision の集約値を下限に含める**ので、集約は revision を
+またいで単調非減少になる。§10 が集約値を実体に持たせる理由は「raw event の TTL 後には遡って判定
+できない」ことなので、構成要素が状態から消えても機密度は下げない（`retainPendingOperations` の退避は
+保管上の都合であって「機密ではなくなった」という証跡ではない）。含めないと、唯一の `secret` な
+構成要素が退避された次の revision で `private` / `normal` に落ち、§9.2 の remote 送信ゲートが開く。
+この模型に格下げの event は無いので、単調にしても失うものは無い。§10 の語彙（`normal` / `private` / `secret`）に無い値を見つけた
 ときは最上位に倒す。`indexOf` の `-1` をそのまま順位に使うと最下位（`normal`）に落ちて fail open
 になるので、「機密度不明」は自動 resume を止める側へ倒す。
 
@@ -243,7 +248,17 @@ event ではなく checkpoint 経路なのでここには含めない。
 `canonicalFingerprint` は schema の `required` に入っているが `maxLength` しか制約が無いので空文字が届きうる。v6 §8.2 の dedupe authority は「`adapterDeliveryId`、無ければ canonical fingerprint」なので、空文字を「値がある」と読むと
 2 通りに壊れる: 配送 ID を持たない event が全部 1 つの鍵に潰れて最初の 1 件以外が診断ゼロで消える／配送 ID を持つ event は
 台帳に source hash 無しで載り、同じ配送 ID の訂正版が衝突検査を素通りして重複として捨てられる。空文字の
-`adapterDeliveryId` は fingerprint へ落とせるがこちらは落とし先が無いので、`assertDeliveryIdentity` で schema violation にする。
+`adapterDeliveryId` は fingerprint へ落とせるがこちらは落とし先が無いので、`assertIdentityMaterial` で schema violation にする。
+
+同じ関数で `eventId` の空文字も落とす。`deriveOperationId(eventId, matchKey)` の材料なので、空文字だと同じ turn の
+rule 2 の start が 2 件とも同じ operationId になり、2 件目が `duplicate_operation_start` として消える
+（以後その operation の terminal は照合できない）。
+
+`turnId` も同じ形の穴を持つ。schema は `maxLength` しか課さないので、`turnIdSource` が native /
+synthesized_monotonic のまま空文字が届きうる。空文字を「turn がある」と読むと §4.3 rule 2 の turn 同一性が
+空文字同士で成立し、無関係な turn の operation を閉じる。unavailable な turn を全部空文字で表す adapter では
+全 operation が 1 つの turn に潰れるので、`assertTurnIdentity` で schema violation にする（`unavailable` の
+ときに `turnId` を持てない不変条件は従来どおり）。
 
 envelope の任意欄（`nativeOperationId` / `canonicalInputHash`）は schema が `maxLength` しか持たない
 ので空文字が届きうる。空文字を「値がある」と読むと rule 1 が「native ID を持たない operation」
@@ -317,8 +332,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。65 件すべてで 1 件以上が失敗し、
-復元後は 90/90 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。68 件すべてで 1 件以上が失敗し、
+復元後は 93/93 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -374,7 +389,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | start の toolName 存在ガードを外す | 1 |
 | 放棄 kind の制限を外す | 1 |
 | 配送 ID 衝突の隔離を外す | 1 |
-| sensitivity 集約を normal 固定にする | 3 |
+| sensitivity 集約を normal 固定にする | 4 |
 | adapter 固有 kind の欄検査を外す | 1 |
 | start の nativeOperationId 比較を外す | 1 |
 | terminal の operationKind 比較を外す | 1 |
@@ -387,6 +402,9 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | identity 衝突を候補 1 件で判定する | 1 |
 | 矛盾診断を照合済み経路だけに戻す | 1 |
 | 放棄 kind を還元器に通す | 1 |
+| 空文字の turnId を素通しする | 1 |
+| 空文字の eventId を素通しする | 1 |
+| sensitivity の下限に直前の集約値を使わない | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

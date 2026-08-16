@@ -833,6 +833,58 @@ test("確定済みの成否と矛盾する 2 度目の terminal は隔離する"
   assert.equal(again.ledger, closed.ledger);
 });
 
+test("空文字の turnId は schema violation", () => {
+  // schema は maxLength しか課さないので空文字が届く。「turn がある」と読むと §4.3 rule 2 の
+  // turn 同一性が空文字同士で成立し、無関係な turn の operation を閉じる。unavailable な turn を
+  // 全部空文字で表す adapter では、全 operation が 1 つの turn に潰れる
+  assert.throws(() => reduceTaskWorkState(emptySnapshot(), startEvent({ turnId: "" }), new Map()), /turnId が空文字/);
+  assert.throws(
+    () =>
+      reduceTaskWorkState(
+        emptySnapshot(),
+        startEvent({ turnIdSource: "synthesized_monotonic", turnId: "" }),
+        new Map(),
+      ),
+    /turnId が空文字/,
+  );
+  // unavailable は従来どおり turnId 不在を要求する（空文字での代用も落ちる）
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), startEvent({ turnIdSource: "unavailable", turnId: "" }), new Map()),
+    /turnId がある/,
+  );
+});
+
+test("空文字の eventId は schema violation", () => {
+  // deriveOperationId(eventId, matchKey) の材料なので、空文字だと同じ turn の rule 2 の start が
+  // 2 件とも同じ operationId になり、2 件目が duplicate_operation_start として消える
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), startEvent({ eventId: "" }), new Map()),
+    /eventId が空文字/,
+  );
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        startedSnapshot().state,
+        startEvent({ eventId: "", kind: "session_ended", ingestSeq: "4", operation: undefined }),
+        new Map(),
+      ),
+    /eventId が空文字/,
+  );
+});
+
+test("構成要素が消えても sensitivity は下がらない", () => {
+  // §10「sensitivity は構成要素 event の最大機密度を常に反映する」。集約値を実体に持たせる理由が
+  // 「raw event の TTL 後には遡って判定できない」ことなので、構成要素が状態から消えても下げない
+  // （retainPendingOperations の退避は保管上の都合で、機密でなくなった証跡ではない）
+  const snapshot = emptySnapshot({ sensitivity: "secret" });
+  assert.deepEqual(
+    snapshot.state.activeFiles.filter((file) => file.sensitivity === "secret"),
+    [],
+  );
+  const applied = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(applied.snapshot.state.sensitivity, "secret");
+});
+
 test("放棄の kind を reduceTaskWorkState に渡すと落ちる", () => {
   // operation envelope を持たないので汎用 commit に落ちて状態を変えないまま台帳の鍵だけを
   // 消費する。その台帳で finalizeAbandonedState を呼ぶと重複として捨てられ、放棄が永久に
