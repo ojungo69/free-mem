@@ -252,7 +252,8 @@ acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 - [ ] Reclaim terminates the old attempt and rotates the projection's active attempt and fence together. Appending a delivery-invalidating disposition (`superseded`, `expired`, `retracted`) abandons the active attempt and clears the active attempt/fence/lease; acceptance clears the same fields but advances its own attempt to `accepted` (§6.4) instead of abandoning it.
 - [ ] Supersede/expire/retract-between-claim-and-delivery fixture: the delayed `mark_delivered` is `stale_attempt` and no injection happens.
 - [ ] Reclaim-versus-delivery race fixture: a delayed `mark_delivered`/`record_engagement` from the reclaimed attempt is typed `stale_attempt` and changes nothing.
-- [ ] `dismiss` and `abandon` clear the projection's active attempt/fence/lease in the same transaction; immediate-reclaim fixture proves the next claim succeeds without waiting for lease expiry.
+- [ ] `dismiss` and `abandon` clear the projection's active attempt/fence/lease in the same transaction; `dismiss` additionally appends a per-`(checkpointId, destinationSessionId)` suppression entry so the rejecting session stops being an eligible destination.
+- [ ] Immediate-reclaim fixtures: after `abandon` the same session reclaims without waiting for lease expiry; after `dismiss` a different eligible session reclaims immediately while the dismissing session is rejected as ineligible.
 - [ ] `renew_lease` is a typed post-claim command under the same CAS; heartbeat-versus-reclaim fixture proves a renewal arriving after reclaim cannot extend the stale attempt's lease.
 - [ ] Mismatched attempt ID/revision/fence/session is typed stale/invalid and causes no state change.
 
