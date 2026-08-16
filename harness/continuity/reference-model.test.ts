@@ -504,9 +504,10 @@ test("open な候補が複数ある matchKey 一致は閉じない", () => {
 test("session が違う terminal は閉じない", () => {
   const snapshot = startedSnapshot();
   const result = reduceTaskWorkState(snapshot, terminalEvent({ sessionId: "session-2" }), new Map());
+  assert.equal(result.outcome, "quarantined");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["terminal_unmatched"],
+    ["terminal_orphaned"],
   );
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
@@ -580,6 +581,24 @@ test("pendingOperations が上限のとき terminal 済みを落として新し�
     ["pending_operations_evicted"],
   );
   assert.match(result.diagnostics[0]?.detail ?? "", /op-0/);
+});
+
+test("退避した operation の順序材料も落とす", () => {
+  // pendingOperations が 256 件で頭打ちの一方、operationStarts だけ単調増加すると
+  // 権威順序の判定表がメモリを食い続ける
+  const snapshot = filledSnapshot(true);
+  const seeded: TaskWorkStateSnapshotV1 = {
+    ...snapshot,
+    operationStarts: new Map(
+      snapshot.state.pendingOperations.map((pending) => [
+        pending.operationId,
+        { ingestSeq: "1", turnIdSource: "native" as const },
+      ]),
+    ),
+  };
+  const result = reduceTaskWorkState(seeded, startEvent(), new Map());
+  assert.equal(result.snapshot.operationStarts.size, CONTINUITY_LIMITS.arrayItems);
+  assert.equal(result.snapshot.operationStarts.has("op-0"), false);
 });
 
 test("上限に余裕があるときは退避の診断を出さない", () => {
@@ -1024,29 +1043,69 @@ test("一致しない nativeOperationId を名乗る terminal は matchKey へ�
     successful: false,
   });
   const result = reduceTaskWorkState(snapshot, stray, new Map());
+  assert.equal(result.outcome, "quarantined");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["terminal_unmatched"],
+    ["terminal_orphaned"],
   );
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
 
-test("start が状態に無い terminal は隔離し、start を入れ直せば閉じられる", () => {
-  // checkpoint から復元すると operationStarts が空になる（#35）。順序を確認できないだけの
-  // 健全な terminal を「順序違反」として台帳に入れると、二度と閉じられなくなる
+test("start より先に届いた terminal は台帳に入れない（後から start が来れば閉じられる）", () => {
+  // hook と transcript scan の取り込み順、再起動後の catch-up で順序前後は正常に起きる。
+  // 候補が 1 件も無い terminal を台帳に入れると、後から start が届いても二度と閉じられない
+  const empty = emptySnapshot();
+  const early = reduceTaskWorkState(empty, terminalEvent(), new Map());
+  assert.equal(early.outcome, "quarantined");
+  assert.deepEqual(
+    early.diagnostics.map((d) => d.code),
+    ["terminal_orphaned"],
+  );
+  assert.equal(early.ledger.size, 0);
+  // start が届いてから同じ terminal を再配送すれば閉じられる
+  const started = reduceTaskWorkState(early.snapshot, startEvent(), early.ledger);
+  const closed = reduceTaskWorkState(started.snapshot, terminalEvent(), started.ledger);
+  assert.equal(closed.outcome, "applied");
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("start が状態に無い terminal は閉じないが、詰まらせず unknown に倒す", () => {
+  // checkpoint から復元すると operationStarts が空になる（#35）。ここで隔離すると復元後は
+  // 全 terminal が隔離され、operation が started のまま二度と閉じられない（resume capsule が
+  // 「まだ実行中」と偽る）。閉じずに unknown へ倒し、台帳には入れる
   const started = startedSnapshot();
   const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
   const result = reduceTaskWorkState(restored, terminalEvent(), new Map());
-  assert.equal(result.outcome, "quarantined");
+  assert.equal(result.outcome, "applied");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
     ["terminal_order_unverifiable"],
   );
-  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
-  assert.equal(result.ledger.size, 0);
-  // start を取り込み直せば同じ terminal で閉じられる
-  const closed = reduceTaskWorkState(started, terminalEvent(), result.ledger);
-  assert.equal(closed.outcome, "applied");
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.equal(result.snapshot.state.pendingOperations[0]?.sourceEventIds.at(-1), "event-terminal");
+  assert.equal(result.ledger.size, 1);
+});
+
+test("復元後に start を再配送すると権威順序の材料が戻る", () => {
+  // duplicate_operation_start で operationStarts を戻さないと、復元した state では
+  // 以後どの terminal も順序を確認できず unknown 止まりになる
+  const started = startedSnapshot();
+  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const again = reduceTaskWorkState(restored, startEvent({ ingestSeq: "3" }), new Map());
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+  assert.equal(again.snapshot.operationStarts.size, 1);
+  const closed = reduceTaskWorkState(again.snapshot, terminalEvent(), again.ledger);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("再配送された start は既存の順序材料を上書きしない", () => {
+  // 後から来た再配送の ingestSeq で上書きすると、飛行中の terminal が順序違反に見える
+  const started = startedSnapshot();
+  const again = reduceTaskWorkState(started, startEvent({ ingestSeq: "99" }), new Map());
+  const closed = reduceTaskWorkState(again.snapshot, terminalEvent(), again.ledger);
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
 });
 

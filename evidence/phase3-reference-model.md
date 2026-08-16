@@ -28,7 +28,7 @@
 | 遅れて届いた event も後続 revision を作り、証跡を書き換えない | §4.2 | 適用は常に新しい revision を作る。既存 `sourceEventIds` は追記のみ |
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent`。`nativeOperationId` を名乗った terminal は rule 1 だけで判定する（一致しないときに rule 2 へ落とすと、matchKey の導出が §4.3 どおりでない adapter 相手に別 operation を診断なしで閉じてしまう。wire 越しに導出は検証できない） |
 | terminal は start より後（権威順序）・未適用・hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較 |
-| 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_unmatched` / `terminal_ambiguous` を返す。曖昧な候補は open のまま `unknown` にする |
+| 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
 | correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる） |
 | rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する |
 | 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない |
@@ -118,22 +118,49 @@ frozen schema は `pendingOperations` も `sourceEventIds` も 256 件（§10 �
   同じ operation に terminal が何度でも再照合され、上限を見ないと還元器自身が schema 違反の
   状態を出す（test で `CanonicalWorkStateV1` として検証している）
 
-落ちた event 自体は event store に残る（状態は projection で、証跡の正本ではない）。ただし退避後に
-その operation の訂正 terminal が来ると unmatched になる。完了した operation の永続的な置き場は
-per-kind projection（§3 の未実装項目）で、そこが入るまでは上限に達した長い session で相関の履歴が
-短くなる。この扱いも #39 で決める。
+状態は projection なので、退避した operation の event 自体は daemon の event store 側に残りうる
+（§6.4 は acceptance transaction の中で event store を再照会する）。ただし **event の保持期間は
+addendum に無い**ので、「必ず残る」とは書けない。退避を状態に記録する場所も frozen schema には
+無く、`started` を落とした場合その operation は状態から痕跡ごと消える（診断には出るが、診断は
+永続化されない）。完了した operation の永続的な置き場は per-kind projection（§3 の未実装項目）で、
+そこが入るまでは上限に達した長い session で相関の履歴が短くなる。この扱いも #39 で決める。
 
-### 2.10 権威順序を「破った」と「確かめられない」を分ける
+側索引 `operationStarts` は frozen schema の外にあるので上限を持たないが、退避した
+`operationId` は同時に削る。削らないと `pendingOperations` が 256 件で頭打ちの一方でこの表だけが
+単調増加する。
 
-§4.3 は「terminal は start より後」と要求するが、破ったときの扱いを書いていない。2 つに分けた:
+### 2.10 閉じられない terminal を「記録できる」と「記録できない」で分ける
 
-- **順序を確かめて破っている**（start の `ingestSeq` が状態にあり、terminal がそれ以前）:
-  terminal の証跡が来ている以上「まだ走っている」とは言えないので、閉じずに一致した 1 件を
-  `unknown` にする。同じ match key の無関係な open は巻き込まない
-- **順序を確かめられない**（checkpoint から復元して `operationStarts` が空: #35）:
-  terminal 自体は健全なので、状態にも台帳にも入れずに隔離する（`terminal_order_unverifiable`）。
-  「順序違反」として台帳に入れると、start を取り込み直しても同じ terminal は重複 no-op になり、
-  その operation は二度と閉じられない
+§4.3 は「zero or multiple にマッチした terminal は何も閉じず、unmatched evidence として保ち、
+候補を `unknown` のままにし、診断を出す」と要求するが、`outcome` と冪等台帳の扱いは書いていない。
+**状態に記録できる相手が居るかどうか**で分けた。
+
+**隔離する（状態にも台帳にも入れない）**:
+
+- `terminal_conflict`（v6「same op ID + different hash: quarantine corruption」）。台帳に入れると
+  訂正版の再配送が重複 no-op として黙って捨てられる
+- `terminal_orphaned`（候補が 1 件も無い）。start より先に terminal が届く順序前後は正常運用で
+  起きる（hook と transcript scan の取り込み順、再起動後の catch-up）。台帳に入れると、後から
+  start が届いても同じ terminal は重複 no-op になり二度と閉じられない。隔離しておけば再配送で
+  拾い直せるし、閉じられない operation が状態に残るわけでもない
+
+**候補を `unknown` に倒して台帳へ入れる**:
+
+- `terminal_unmatched`（候補は居るが turn 両立などで 1 件に絞れない）/ `terminal_ambiguous`
+- `terminal_out_of_order`（start の `ingestSeq` が状態にあり、terminal がそれ以前）。terminal の
+  証跡が来ている以上「まだ走っている」とは言えない。`unknown` にするのは一致した 1 件だけで、
+  同じ match key の無関係な open は巻き込まない
+- `terminal_order_unverifiable`（checkpoint から復元して `operationStarts` が空: #35）。**ここを
+  隔離にしてはいけない**。復元直後は全 terminal がこの分岐に落ちるため、隔離すると operation が
+  `started` のまま二度と閉じられず、resume capsule が「まだ実行中」と偽る（`unknown` より悪い）。
+  §3.1 の fail closed（自動経路を降格し、理由を doctor に出す）どおり `unknown` へ倒す
+
+`terminal_orphaned` を `terminal_unmatched` と別 code にしたのは、同じ code で `outcome` が
+分かれると doctor が「start 待ちの孤児」と「候補は居るが絞れない」を区別できないため。
+
+復元後に同じ start が再配送された場合は `duplicate_operation_start` の経路で `operationStarts` を
+戻す（既にある分は上書きしない。後から来た再配送の `ingestSeq` で上書きすると、飛行中の
+terminal が順序違反に見える）。これで復元 → start 再配送 → terminal で `succeeded` まで戻る。
 
 ### 2.11 event kind の分類（#29）
 
@@ -160,6 +187,17 @@ envelope を要求しない（既知の非 operation kind が envelope を持つ
 - **intake の診断は呼び出し側が集める**。`stampIntakeEvidence` は `{ event, diagnostics }` を返すが、
   それを還元結果の診断と併せて doctor へ渡すのは daemon 側の仕事で、参照実装は連結しない。
 - **`lastIngestSeq` の意味は正本に無い**（#38）。ここでは単調な watermark として実装している。
+- **turn identity の降格を誰が行うかは正本が決めていない**（#41）。§3.1 が intake に与えている
+  権限は `evidenceKind` と `ingestAttestation` で、`turnIdSource` の書き換えは明示されていない
+  （§14 は未証明時の措置を `turnIdentityDisposition` による delivery 層の downgrade として書く）。
+  ここでは fail closed の向きに合わせて intake が `unavailable` へ倒している。
+  同じ節で `synthesized_monotonic` は「adapter-assigned monotonic turn counter」とだけ定義され、
+  `native` の「proven for that exact version」に相当する認証条件が無い。正本が無言なので
+  monotonic は認証されていなくても降格しない実装にしてある。これも #41 で決める。
+- **`assertSameScope` の不一致は throw する**。別 Agent / 別 lineage の event を状態に渡すのは
+  router のバグなので隔離ではなく例外に倒しているが、`sourceAgent` は event が名乗る値なので、
+  scope を event 由来で選ぶ実装だと 1 件の取り違えで stream が止まりうる。daemon 側で
+  「state は認証済み peer identity で選ぶ」を守る前提。
 - **session 全体を 1 回の fold で流す用途には向かない**。`commit` は event ごとに冪等台帳と
   history を複製するので、fold の長さに対して二乗で伸びる（実測: 1,000 event 61ms、
   5,000 event 1,024ms、20,000 event 23,332ms）。参照実装は「同じ fixture から TS と Rust が
@@ -180,8 +218,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。33 件すべてで 1 件以上が失敗し、
-復元後は 56/56 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。37 件すべてで 1 件以上が失敗し、
+復元後は 60/60 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -204,16 +242,20 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | turnIdSource 種別の一致要求を外す | 1 |
 | 候補が複数のときの拒否を外す | 1 |
 | canonicalInputHash 衝突検査を外す | 2 |
-| start 不在の隔離を外す | 1 |
+| start 不在の分岐を外す | 1 |
 | terminal の権威順序検査を外す | 2 |
 | 順序違反で候補を巻き込む | 1 |
-| 順序不明の terminal を台帳に入れる | 1 |
-| 候補の unknown 化を外す | 4 |
-| unknown 化で証跡を残さない | 1 |
+| 候補ゼロの terminal を台帳に入れる | 4 |
+| 順序不明で候補を unknown にしない | 1 |
+| 再配送 start で順序材料を戻さない | 1 |
+| 再配送 start が順序材料を上書きする | 1 |
+| 退避で順序材料を刈らない | 1 |
+| 候補の unknown 化を外す | 5 |
+| unknown 化で証跡を残さない | 2 |
 | sourceEventIds の上限を外す | 1 |
 | pendingOperations の上限を外す | 1 |
 | 退避対象から open を外す（詰まる） | 1 |
-| 退避件数の上限を外す | 2 |
+| 退避件数の上限を外す | 3 |
 | 退避を黙って行う | 2 |
 | revision ごとの配列分離を外す | 1 |
 | 放棄経路の dedupe を外す | 1 |

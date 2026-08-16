@@ -311,6 +311,7 @@ export interface TaskWorkStateSnapshotV1 {
 
 export type ContinuityDiagnosticCode =
   | "terminal_unmatched"
+  | "terminal_orphaned"
   | "terminal_ambiguous"
   | "terminal_conflict"
   | "terminal_out_of_order"
@@ -481,6 +482,15 @@ export function reduceTaskWorkState(
         diagnostics: [
           { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${operationId} は既に pending` },
         ],
+        // checkpoint から復元すると pendingOperations だけが戻り operationStarts は空になる（#35）。
+        // 再配送された start で権威順序の材料を戻す。既にある分は上書きしない（後から来た
+        // 再配送の ingestSeq で上書きすると、飛行中の terminal が順序違反に見える）
+        operationStarts: previous.operationStarts.has(operationId)
+          ? previous.operationStarts
+          : new Map(previous.operationStarts).set(operationId, {
+              ingestSeq: event.ingestSeq,
+              turnIdSource: event.turnIdSource,
+            }),
       });
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
@@ -491,6 +501,11 @@ export function reduceTaskWorkState(
     const evicted = previous.state.pendingOperations
       .filter((pending) => !kept.has(pending.operationId))
       .map((pending) => pending.operationId);
+    // 退避した operation の start facts も落とす。残すと pendingOperations が 256 件で頭打ちの
+    // 一方でこの表だけが単調増加する
+    const operationStarts = new Map(previous.operationStarts);
+    for (const evictedId of evicted) operationStarts.delete(evictedId);
+    operationStarts.set(operationId, { ingestSeq: event.ingestSeq, turnIdSource: event.turnIdSource });
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...retained, started],
       diagnostics:
@@ -503,10 +518,7 @@ export function reduceTaskWorkState(
                 detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため退避: ${evicted.join(", ")}`,
               },
             ],
-      operationStarts: new Map(previous.operationStarts).set(operationId, {
-        ingestSeq: event.ingestSeq,
-        turnIdSource: event.turnIdSource,
-      }),
+      operationStarts,
     });
   }
 
@@ -515,13 +527,17 @@ export function reduceTaskWorkState(
     const diagnostics = [
       { code: correlation.diagnostic, eventId: event.eventId, detail: correlation.detail },
     ];
-    // v6「same op ID + different hash: quarantine corruption」。衝突した event は状態にも
-    // 台帳にも入れない（入れると、訂正された再配送が重複 no-op として黙って捨てられる）。
-    // 権威順序を確認できない terminal も同じ扱いにする。健全な terminal を「順序違反」として
-    // 台帳に入れると、start を取り込み直しても二度と閉じられなくなる
+    // 隔離するのは「状態に記録できる相手が居ない」場合だけにする。
+    // - `terminal_conflict`: v6「same op ID + different hash: quarantine corruption」。台帳に
+    //   入れると訂正された再配送が重複 no-op として黙って捨てられる
+    // - `terminal_orphaned`: 候補が 1 件も無い。start より先に terminal が届く順序前後は正常運用
+    //   （hook と transcript scan の取り込み順、再起動後の catch-up）なので、台帳に入れると
+    //   後から start が届いても二度と閉じられない。隔離しておけば再配送で拾い直せる
+    // 候補が居る分岐（unmatched / ambiguous / order_unverifiable）は下の commit で unknown に
+    // 倒して台帳へ入れる。隔離すると operation が `started` のまま残り、状態が嘘をつく
     if (
       correlation.diagnostic === "terminal_conflict" ||
-      correlation.diagnostic === "terminal_order_unverifiable"
+      correlation.diagnostic === "terminal_orphaned"
     ) {
       return quarantine(previous, idempotencyLedger, diagnostics);
     }
@@ -580,8 +596,9 @@ function truncationDiagnostic(
  *
  * 「落とせるものが無ければ取り込まない」にはできない。`unknown` を消す経路が他に無いので、
  * 枠が `started` / `unknown` で埋まると以後すべての start が入らなくなり、訂正版の存在しない
- * 隔離を adapter が永久に再送し続ける（回復経路が無い）。落とした事実は診断に出し、event
- * 自体は event store に残る（§6.4）。
+ * 隔離を adapter が永久に再送し続ける（回復経路が無い）。落とした事実は診断に出す。
+ * 状態は projection で、daemon 側には event store がある（§6.4 が acceptance transaction の
+ * 中でそれを再照会する）が、event の保持期間そのものは addendum に無い（#39）。
  */
 const EVICTION_ORDER: readonly PendingOperation["status"][] = [
   "succeeded",
@@ -605,7 +622,7 @@ function retainPendingOperations(pending: PendingOperation[]): PendingOperation[
 
 /**
  * frozen schema は `sourceEventIds` も 256 件（§10 の `arrayItems`）に制限する。projection は
- * 上限で頭打ちにし、超えた分は event store 側だけに残す（§6.4）。上限を見ずに append すると、
+ * 上限で頭打ちにし、超えた分は状態に載せない（記録できなかった事実は診断に出す）。上限を見ずに append すると、
  * 同じ operation に届き続ける terminal で還元器自身が schema 違反の状態を出す。
  */
 function withSourceEvent(pending: PendingOperation, eventId: string): PendingOperation {
@@ -731,10 +748,12 @@ export function correlateTerminalEvent(
   // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
   const openIds = open.map((pending) => pending.operationId);
 
+  // 候補が 1 件も無い terminal は「候補はあるが閉じられない」とは別物なので別の code にする。
+  // 前者は状態に書ける相手が居ないので隔離、後者は候補を unknown にして台帳へ入れる
   if (candidates.length === 0) {
     return {
       matched: null,
-      diagnostic: "terminal_unmatched",
+      diagnostic: "terminal_orphaned",
       detail:
         operation.nativeOperationId === undefined
           ? "一致する operation が無い"
@@ -800,13 +819,15 @@ export function correlateTerminalEvent(
   const start = previous.operationStarts.get(matched.operationId);
   if (start === undefined) {
     // start の ingestSeq が状態に無い（checkpoint から復元した等: #35）。順序を確認できない
-    // だけで、terminal 自体は健全なので、状態も台帳も変えずに隔離する。start を取り込み直せば
-    // 同じ terminal を再配送して閉じられる
+    // ので閉じることはできないが、隔離してはいけない: 復元直後は全 terminal がこの分岐に
+    // 落ちるため、隔離すると operation が `started` のまま二度と閉じられず、resume capsule が
+    // 「まだ実行中」と偽る。§3.1 の fail closed（自動経路を降格し理由を doctor に出す）どおり
+    // 候補を unknown に倒して台帳へ入れる
     return {
       matched: null,
       diagnostic: "terminal_order_unverifiable",
       detail: `operation ${matched.operationId} の start が状態に無く、権威順序を確認できない`,
-      unresolvedOperationIds: [],
+      unresolvedOperationIds: [matched.operationId],
     };
   }
   if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
