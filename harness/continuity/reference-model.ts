@@ -82,6 +82,12 @@ export interface IntakeContextV1 {
    */
   expectedSourceAgent: string;
   exactAgentVersion: string;
+  /**
+   * §3.1「`turnIdSource="native"` は、その exact version について proven な native turn
+   * identifier を要求する」。capability matrix にまだ turn identity の cell が無いので（#40）、
+   * intake 側の既知事実としてここで受け取る。false のとき caller の native 主張は降格する。
+   */
+  nativeTurnIdentityProven: boolean;
   activeCapabilityHash: string;
   provenScenarios: readonly ProvenScenarioV1[];
   /**
@@ -117,8 +123,14 @@ export function stampIntakeEvidence(
         scenario.captureMethod === provenance.captureMethod &&
         scenario.channel === attestation.channel,
     );
+  // §3.1「turn identity は payload の慣習ではなく canonical」。proven でない version の native
+  // 主張をそのまま通すと、rule 2 の turn 両立を caller が自作した turnId で満たせてしまう。
+  // 証明が無いなら turn 同一性は確立できない = unavailable（turnId は §3.1 の不変条件で不在）
+  const turnDowngraded = event.turnIdSource === "native" && !context.nativeTurnIdentityProven;
+  const { turnId: _claimedTurnId, ...withoutTurnId } = event;
   return {
-    ...event,
+    ...(turnDowngraded ? withoutTurnId : event),
+    ...(turnDowngraded ? { turnIdSource: "unavailable" as const } : {}),
     provenance: {
       ...provenance,
       evidenceKind: proven ? "native" : "synthesized",
@@ -247,7 +259,8 @@ export type ContinuityDiagnosticCode =
   | "terminal_out_of_order"
   | "terminal_already_applied"
   | "duplicate_operation_start"
-  | "pending_operations_overflow";
+  | "pending_operations_overflow"
+  | "pending_operations_evicted";
 
 export interface ContinuityDiagnosticV1 {
   code: ContinuityDiagnosticCode;
@@ -420,9 +433,24 @@ export function reduceTaskWorkState(
         },
       ]);
     }
+    // 黙って間引かない。退避した operation の event 自体は event store に残るが、状態からは
+    // 消えるので、どれを落としたかを診断に出す
+    const kept = new Set(retained.map((pending) => pending.operationId));
+    const evicted = previous.state.pendingOperations
+      .filter((pending) => !kept.has(pending.operationId))
+      .map((pending) => pending.operationId);
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...retained, started],
-      diagnostics: [],
+      diagnostics:
+        evicted.length === 0
+          ? []
+          : [
+              {
+                code: "pending_operations_evicted",
+                eventId: event.eventId,
+                detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため terminal 済みを退避: ${evicted.join(", ")}`,
+              },
+            ],
       operationStarts: new Map(previous.operationStarts).set(operationId, {
         ingestSeq: event.ingestSeq,
         turnIdSource: event.turnIdSource,

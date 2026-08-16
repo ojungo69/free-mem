@@ -56,6 +56,7 @@ const ATTESTATION = {
 const INTAKE: IntakeContextV1 = {
   expectedSourceAgent: "claude",
   exactAgentVersion: VERSION,
+  nativeTurnIdentityProven: true,
   activeCapabilityHash: CAPABILITY_HASH,
   provenScenarios: [
     { scenarioId: "tool-call-lifecycle", captureMethod: "native_event", channel: "rpc" },
@@ -560,6 +561,49 @@ test("pendingOperations が上限のとき terminal 済みを落として新し�
     result.snapshot.state.pendingOperations.some((p) => p.operationId === "op-0"),
     false,
   );
+  // 黙って落とさない
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["pending_operations_evicted"],
+  );
+  assert.match(result.diagnostics[0]?.detail ?? "", /op-0/);
+});
+
+test("上限に余裕があるときは退避の診断を出さない", () => {
+  const result = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.snapshot.state.pendingOperations.length, 1);
+});
+
+test("proven でない version の native turn 主張は unavailable へ降格する", () => {
+  // §3.1「turnIdSource=native は exact version について proven な native turn identifier を要求する」
+  const unproven: IntakeContextV1 = { ...INTAKE, nativeTurnIdentityProven: false };
+  const stamped = stampIntakeEvidence(startEvent(), unproven);
+  assert.equal(stamped.turnIdSource, "unavailable");
+  assert.equal(stamped.turnId, undefined);
+  assertTurnIdentity(stamped);
+
+  // 降格した start は rule 2 で閉じられない（自作の turnId で turn 両立を満たせない）
+  const snapshot = startedSnapshot(stamped);
+  const terminal = stampIntakeEvidence(
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    unproven,
+  );
+  const result = reduceTaskWorkState(snapshot, terminal, new Map());
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_unmatched"],
+  );
+});
+
+test("proven な version の native turn 主張と adapter 側の monotonic turn は触らない", () => {
+  // 降格が「native を名乗る全部」を潰していないことを、通るべき側で確かめる
+  assert.equal(stampIntakeEvidence(startEvent(), INTAKE).turnIdSource, "native");
+  assert.equal(stampIntakeEvidence(startEvent(), INTAKE).turnId, "turn-1");
+  const monotonic = startEvent({ turnIdSource: "synthesized_monotonic", turnId: "turn-7" });
+  const unproven: IntakeContextV1 = { ...INTAKE, nativeTurnIdentityProven: false };
+  assert.equal(stampIntakeEvidence(monotonic, unproven).turnIdSource, "synthesized_monotonic");
+  assert.equal(stampIntakeEvidence(monotonic, unproven).turnId, "turn-7");
 });
 
 test("落とせる terminal 済みが無いとき start は隔離する", () => {

@@ -26,7 +26,7 @@
     "fixtures/codex/raw/codex-tool-ok.jsonl": "1aaefa4f701901b10fd8ecadcdc4112ef45179e21693a116e4134bd3dd589cd4",
     "fixtures/codex/tool-lifecycle-and-failure.json": "0e7f25f0c63e78a9aaa0a12ef67ad948c1059f5d30b0c2a8f6d29ac929f70488",
     "fixtures/continuity/invalid/rejected-events.json": "c7fccf7c122e3da6cb344e63d89f897b0ae1f66aad5addfa9b1cc424e6953582",
-    "fixtures/continuity/tool-lifecycle-reduction.json": "97b64bce9c4b00a52d13aef6da6e0104641fda3413d62bcb1be31c638832c0a8",
+    "fixtures/continuity/tool-lifecycle-reduction.json": "26bb00d9c2f762bb6c895b65e612eec9a709977b1737f74e83655f255bed9202",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
     "schema/capability.schema.json": "e3c62825f8364ca7879bb0d803ab139dd9bd16d031290d06592cbe6b8d6aef23",
     "schema/continuity.schema.json": "b65ebfa17a0acb99be006319788668d3281b76fa571fc2b39b58df22779d1402"

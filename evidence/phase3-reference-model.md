@@ -17,6 +17,7 @@
 | native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない） |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | `event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と一致しなければ native にしない。認証済みの adapter が他 Agent 名義で native authority を得られないようにする |
+| `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす（capability matrix にまだ turn identity の cell が無い: #40）。`synthesized_monotonic` は adapter 由来なので触らない |
 | どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
 | operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない |
@@ -108,6 +109,12 @@ frozen schema は `pendingOperations` を 256 件（§10 の `arrayItems`）に�
 - `started` と `unknown` は落とさない（後から rule 1 の terminal で閉じられる可能性がある）
 - 落とせるものが無ければ **状態を作らずに隔離する**（`pending_operations_overflow`）。
   schema 違反の状態を作るより、取り込まずに診断を出すほうが安全側
+- 退避したときは `pending_operations_evicted` に落とした `operationId` を並べる（黙って間引かない）
+
+退避された operation の event 自体は event store に残る（状態は projection で、証跡の正本ではない）。
+ただし退避後にその operation の訂正 terminal が来ると unmatched になる。完了した operation の
+永続的な置き場は per-kind projection（§3 の未実装項目）で、そこが入るまでは上限に達した長い
+session で相関の履歴が短くなる。この扱いも #39 で決める。
 
 ### 2.10 権威順序に反する terminal も候補を `unknown` にする
 
@@ -162,8 +169,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。18 件すべてで 1 件以上が失敗し、
-復元後は 43/43 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。20 件すべてで 1 件以上が失敗し、
+復元後は 46/46 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---|
@@ -174,6 +181,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | intake の attestation 必須を外す | 2 |
 | caller の attestation を信じる | 1 |
 | `sourceAgent` の束縛を外す | 1 |
+| native turn の証明要求を外す | 1 |
 | 衝突の隔離を外す | 1 |
 | 候補の unknown 化を外す | 3 |
 | `turnIdSource` 種別の一致要求を外す | 1 |
@@ -183,9 +191,12 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 候補が複数のときの拒否を外す | 1 |
 | `pendingOperations` の上限を外す | 1 |
 | open な operation も退避対象にする | 1 |
+| 退避を黙って行う | 1 |
 | sensitivity 集約を `normal` 固定にする | 2 |
 | `canonicalInputHash` 衝突検査を外す | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
-rule 1 なら閉じること、上限に達していても terminal 済みがあれば start を取り込むこと。
+rule 1 なら閉じること、上限に達していても terminal 済みがあれば start を取り込むこと、上限に
+余裕があれば退避の診断を出さないこと、proven な version の native turn と adapter の
+`synthesized_monotonic` は降格しないこと。
