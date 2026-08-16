@@ -72,6 +72,18 @@ if (failures.length === 0) {
     } else if (pkg.license === undefined && pkg.private !== true) {
       failures.push(`${rel}: publishable vendored package has no license field (expected "MIT")`);
     }
+
+    // `license: "MIT"` は metadata であって配布物ではない。MIT 本文は「すべての複製または
+    // 実質的部分に含めること」を条件にしているので、公開される tarball に本文が要る。
+    // npm は package ルートの LICENSE を `files` の指定に関わらず必ず tarball に入れるため、
+    // ここではファイルの存在と本文の一致だけを見る（`npm pack` を CI で走らせなくてよい）。
+    if (pkg.private === true || file === pkgFiles[0]) continue;
+    const licensePath = join(dirname(file), "LICENSE");
+    if (!existsSync(licensePath)) {
+      failures.push(`${rel}: publishable package ships no LICENSE file (MIT 本文が tarball に載らない)`);
+    } else if (readFileSync(licensePath, "utf8") !== vendorLicense) {
+      failures.push(`${dirname(rel)}/LICENSE: does not match vendor/codemem/LICENSE`);
+    }
   }
 }
 
