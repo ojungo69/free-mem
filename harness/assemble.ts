@@ -404,20 +404,18 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   // （evidenceHash を持たない現行 fixture では disposition に完全に無反応になる）。
   // fixture 順に依らないよう sort する（同じ証拠集合なら同じ入力列になる）。
   // ponytail: §13 の manifest hash はまだ無い（Task 5 で入る）。入る場所はこの配列
+  capabilities.resumeDeliveryStrategy = resolveResumeDeliveryStrategy(capabilities);
+  // 欄を数え上げると取りこぼす（2 ラウンド続けて欄を落とした: disposition 全部 → coverage）。
+  // capabilityHashInputs 自身だけ外して、畳んだ結果を丸ごと 1 行にする。
+  // resumeDeliveryStrategy を先に代入するのは、tier そのものも入力に含めるため
+  // （cell の値が同じでも「1 つの run が対を証明したか」で tier は変わる = §8 の区別）
+  const { capabilityHashInputs: _unused, ...folded } = capabilities;
   capabilities.capabilityHashInputs = [
     `cli:${cli}`,
     `nativeVersion:${nativeVersion}`,
     ...fixtures.map((f) => `fixture:${f.fixtureId}@${f.evidenceHash ?? "no-evidence-hash"}`).sort(),
-    ...HIGH_LEVEL_KEYS.map(
-      (k) => `highLevel:${k}=${capabilities[k].value}/${capabilities[k].evidenceKind ?? "none"}`,
-    ),
-    `compactionRecoveryStrategy:${capabilities.compactionRecoveryStrategy ?? "unknown"}`,
-    ...Object.entries(capabilities.capture)
-      .map(([k, c]) => `capture:${k}=${c.value}/${c.evidenceKind ?? "none"}`)
-      .sort(),
-    `toolFailurePhases:${capabilities.toolFailurePhases.join(",")}`,
+    `capabilities:${JSON.stringify(folded)}`,
   ];
-  capabilities.resumeDeliveryStrategy = resolveResumeDeliveryStrategy(capabilities);
 
   return {
     cli,
@@ -732,6 +730,23 @@ async function selfTest(): Promise<void> {
         "fixture の同一性は変えていない",
       );
       assert(a.join() !== b.join(), "disposition が変われば capability hash の入力も変わる");
+      // 欄の数え上げで落としやすいもの: coverage（出荷済み matrix に実在する）と、
+      // cell の値が同じでも変わりうる tier
+      const cov = {
+        ...base,
+        highLevel: undefined,
+        observedEvents: [{ kind: "session_started" as const, at: at1, coverage: 0.5 }],
+      };
+      const cov9 = { ...cov, observedEvents: [{ kind: "session_started" as const, at: at1, coverage: 0.9 }] };
+      assert(
+        assembleFromFixtures([cov]).capabilities.capabilityHashInputs.join() !==
+          assembleFromFixtures([cov9]).capabilities.capabilityHashInputs.join(),
+        "coverage が変われば capability hash の入力も変わる",
+      );
+      assert(
+        a.some((s) => s.includes('"resumeDeliveryStrategy"')),
+        "tier そのものも capability hash の入力に含める",
+      );
     }
 
     // 同じ値・同じ強度なら evidenceHash のある観測を採る（並び順で実測の証跡を捨てない）
