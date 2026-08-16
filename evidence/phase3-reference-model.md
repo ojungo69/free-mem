@@ -20,10 +20,10 @@
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | `event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と一致しなければ native にしない。認証済みの adapter が他 Agent 名義で native authority を得られないようにする |
 | `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす。証明は version に紐づくので、受領証・`sourceAgent`・`sourceAgentVersion` の束縛（`authenticatedVersion`）が成り立たない event にも適用しない。`capabilityHash` は capability matrix にまだ turn identity の cell が無い（#40）ため turn の判定には使わない。`synthesized_monotonic` は adapter 由来なので触らない。**この帰結として `activeCapabilityHash` または `scenarioId` だけが空白の場合、`evidenceKind` は `synthesized` に落ちるが `turnIdSource` は `native` のまま残る**（降格は `authenticatedVersion` だけに依存する）。turn identity の cell が matrix に入る（#40）まではこの非対称が正しい振る舞いで、回帰ではない |
-| どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ。**turn 種別（`turnIdSource`）の一致は候補の絞り込みで見る**: 種別は start 側の材料（`operationStarts`。凍結 schema の外・#35）にしかないので、以前は候補を 1 件に絞ってから最後に比べていた。それだと「同じ matchKey・同じ turnId で種別だけ違う」候補が 2 件並んだとき、種別で 1 件に決まるはずのものが `terminal_ambiguous` になって**両方 `unknown` に倒れ、配送鍵も消費される**。絞り込み時に見れば rule 2 の「exactly one open candidate」が成立して閉じられる。ただし**材料がある候補だけ**種別で絞る（復元直後は `operationStarts` が空なので、材料が無いことを「種別が違う」と読むと理由を取り違える。§3.1 は降格の理由を doctor が報告することを求めている）。候補ゼロのときの診断も「turn 同一性が無い」と「種別が違う」で書き分け、`unknown` に倒す相手は種別違いならその候補だけにする。**同じ絞り込みは、確定済みの候補で再配送を説明するときにも要る**（open な候補を選ぶときだけではない）: これは「この terminal が閉じえた候補」の定義なので、素の候補集合で説明を許すと、`native` の failed と `synthesized_monotonic` の succeeded が同じ matchKey・同じ turnId で並ぶとき、succeeded を名乗る `native` の 2 通目が**兄弟に説明されて** `terminal_already_applied` になる。隔離（台帳を消費しない）を回避して台帳を消費するので、後から届く訂正版が重複 no-op として捨てられる。絞り込みは `sameTurnOf` / `eligibleOf` の 2 つに切り出して、確定済みの説明・open な候補選びの両方で同じものを使う（rule 1 を名乗った terminal は turn 両立を要求しないので、どちらも `byNativeId` があれば素通しする） |
+| どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ。**turn 種別（`turnIdSource`）の一致は候補の絞り込みで見る**: 種別は start 側の材料（`operationStarts`。凍結 schema の外・#35）にしかないので、以前は候補を 1 件に絞ってから最後に比べていた。それだと「同じ matchKey・同じ turnId で種別だけ違う」候補が 2 件並んだとき、種別で 1 件に決まるはずのものが `terminal_ambiguous` になって**両方 `unknown` に倒れ、配送鍵も消費される**。絞り込み時に見れば rule 2 の「exactly one open candidate」が成立して閉じられる。ただし**材料がある候補だけ**種別で絞る（復元直後は `operationStarts` が空なので、材料が無いことを「種別が違う」と読むと理由を取り違える。§3.1 は降格の理由を doctor が報告することを求めている）。候補ゼロのときの診断も「turn 同一性が無い」と「種別が違う」で書き分け、`unknown` に倒す相手は種別違いならその候補だけにする。**同じ絞り込みは、確定済みの候補で再配送を説明するときにも要る**（open な候補を選ぶときだけではない）: これは「この terminal が閉じえた候補」の定義なので、素の候補集合で説明を許すと、`native` の failed と `synthesized_monotonic` の succeeded が同じ matchKey・同じ turnId で並ぶとき、succeeded を名乗る `native` の 2 通目が**兄弟に説明されて** `terminal_already_applied` になる。隔離（台帳を消費しない）を回避して台帳を消費するので、後から届く訂正版が重複 no-op として捨てられる。絞り込みは `sameTurnOf` / `eligibleOf` の 2 つに切り出して、確定済みの説明・open な候補選びの両方で同じものを使う（rule 1 を名乗った terminal は turn 両立を要求しないので、どちらも `byNativeId` があれば素通しする）。**絞った結果が空になる場合を別に扱う**: 「候補は全件確定済みで、しかもこの terminal が閉じえたものは 1 件も無い」は再配送では説明できないので、そのまま落とすと `contradicted` が undefined になって `terminal_already_applied` を名乗り、閉じえなかった terminal が適用済みとして台帳に入る。§4.3 の「zero にマッチした terminal は unmatched evidence として保存する」どおり `terminal_unmatched` にする（候補は全件確定済みなので `unknown` に倒す相手は居ない = `unresolvedOperationIds` は空）。rule 1 では `sameTurnOf` / `eligibleOf` が素通しなので `settled` が空になるのは rule 2 だけ |
 | turn scoping を要求する規則は unavailable に fail closed になり、downgrade の理由は doctor が報告する | §3.1 | intake の降格は `turn_identity_downgraded` 診断を返す。`stampIntakeEvidence` の戻り値は `{ event, diagnostics }` |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
-| operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない。公開している `correlateTerminalEvent` も入口で同じ検査を行う（還元器を経由しない呼び出しで飛ばすと、既知の terminal kind が envelope 無しで届いたとき §3.1 違反が「照合できなかっただけ」の `terminal_unmatched` に化けて、壊れた adapter の証跡がそのまま保存される）。同じ理由で `assertSameScope` も入口で行う: 候補の絞り込みは session と lineage しか見ず、状態は Agent を 1 つしか持たないので、ここで比べないと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する。**§22.6 の `ingestSeq` decimal string 制約も同じ理由で入口に置く**: `compareIngestSeq` は start を選んだ後の順序比較でしか走らないので、候補ゼロ・適用済み・曖昧・照合不能で早期 return する経路では検査されず、還元器が入口で落とす入力を直接呼びだけが `terminal_orphaned` として返していた。同じ突き合わせで `assertIdentityMaterial` の欠落も見つけた: `assertSameScope` は lineage と Agent しか束縛せず、候補の絞り込みは `sessionId` の等値だけを見るので、**空白の `sessionId` を持つ terminal が、同じく空白の `sessionId` を持つ pending（復元した checkpoint や別実装が書いた状態。凍結 schema に minLength は無い）を診断ゼロで閉じられた**。空白同士は「同じ session」ではなく「どちらも名乗っていない」。公開入口で守る不変条件は envelope・turn 同一性・identity 材料・`ingestSeq`・scope の 5 つになり、還元器および `finalizeAbandonedState` と同じ集合になった。**この「公開 API と還元器で守る不変条件の集合がずれる」形は round 12・14 と合わせて 3 回出ているので、export を増やすときは還元器入口の集合と突き合わせること**。なお `correlateTerminalEvent` の引数型だけ `NormalizedContinuityEvent` で、`reduceTaskWorkState` / `finalizeAbandonedState` の `IntakeStampedEventV1` と違う（intake の呼び順を型で固定する仕掛けが掛かっていない）。これは意図どおりで、correlate は `provenance` を一度も読まない = authority label を消費しないので、intake を経由しない event を受けても authority 判定の迂回にはならない |
+| operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない。公開している `correlateTerminalEvent` も入口で同じ検査を行う（還元器を経由しない呼び出しで飛ばすと、既知の terminal kind が envelope 無しで届いたとき §3.1 違反が「照合できなかっただけ」の `terminal_unmatched` に化けて、壊れた adapter の証跡がそのまま保存される）。同じ理由で `assertSameScope` も入口で行う: 候補の絞り込みは session と lineage しか見ず、状態は Agent を 1 つしか持たないので、ここで比べないと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する。**§22.6 の `ingestSeq` decimal string 制約も同じ理由で入口に置く**: `compareIngestSeq` は start を選んだ後の順序比較でしか走らないので、候補ゼロ・適用済み・曖昧・照合不能で早期 return する経路では検査されず、還元器が入口で落とす入力を直接呼びだけが `terminal_orphaned` として返していた。同じ突き合わせで `assertIdentityMaterial` の欠落も見つけた: `assertSameScope` は lineage と Agent しか束縛せず、候補の絞り込みは `sessionId` の等値だけを見るので、**空白の `sessionId` を持つ terminal が、同じく空白の `sessionId` を持つ pending（復元した checkpoint や別実装が書いた状態。凍結 schema に minLength は無い）を診断ゼロで閉じられた**。空白同士は「同じ session」ではなく「どちらも名乗っていない」。**同じことが `sourceAgent` にもある**: `assertSameScope` は `event.sourceAgent === state.sourceAgent` の等値しか見ず、凍結 schema は event 側にも状態側にも `maxLength` しか課さないので、Agent 同一性を「不明」として空白で表す adapter が 2 つあると互いの状態を同じ scope として書き換えられる（intake の降格は `evidenceKind` を落とすだけで scope は縛らないので、ここで落とさないと誰も落とさない）。`assertIdentityMaterial` で `canonicalFingerprint` / `eventId` / `sessionId` / `sourceAgent` の 4 欄を落とす。公開入口で守る不変条件は envelope・turn 同一性・identity 材料・`ingestSeq`・scope の 5 つになり、還元器および `finalizeAbandonedState` と同じ集合になった。**この「公開 API と還元器で守る不変条件の集合がずれる」形は round 12・14 と合わせて 3 回出ているので、export を増やすときは還元器入口の集合と突き合わせること**。なお `correlateTerminalEvent` の引数型だけ `NormalizedContinuityEvent` で、`reduceTaskWorkState` / `finalizeAbandonedState` の `IntakeStampedEventV1` と違う（intake の呼び順を型で固定する仕掛けが掛かっていない）。これは意図どおりで、correlate は `provenance` を一度も読まない = authority label を消費しないので、intake を経由しない event を受けても authority 判定の迂回にはならない |
 | dedupe authority は `adapterDeliveryId`、無ければ canonical fingerprint | v6 §8.2 | `idempotencyKeyOf` は fallback（union ではない。正本の導出式が `??` で書かれている）。schema が `adapterDeliveryId` に minLength を持たないので、空白だけの値は「無い」として fingerprint へ落とす（`isBlank` なので空文字だけでなく空白・タブ・U+200B・U+FEFF も含む） |
 | dedupe は revision 採番の**前** | §4.2 | `reduceTaskWorkState` は ledger 照合を最初に行い、重複なら何も採番しない |
 | 重複した論理 event は no-op（同じ state bytes・content hash・revision・history） | §4.2 | 重複経路は入力の snapshot をそのまま返す。ledger も同一参照 |
@@ -374,8 +374,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**96 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 96 件（黙って飛ばされた変異ゼロ）、復元後は 113/113 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**98 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 98 件（黙って飛ばされた変異ゼロ）、復元後は 114/114 green。
 
 kill 率より先に**実行件数**を見ること。変異はソース中の文字列アンカーで当てるので、実装を直すと
 `assert old in s` が落ちて `&&` が短絡し、その変異は**出力に何も出ないまま黙って飛ばされる**
@@ -480,7 +480,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空白だけの Agent 名を authority にする | 1 |
 | 空白だけの exact version を authority にする | 1 |
 | 直接呼びの Agent 検査を外す | 1 |
-| rule 2 の turn 種別の絞り込みを外す | 3 |
+| rule 2 の turn 種別の絞り込みを外す | 4 |
 | turn 種別の材料が無い候補も落とす | 1 |
 | 種別違いの巻き込み範囲を広げる | 1 |
 | 受領証 ID が空でも認証済みとする | 1 |
@@ -489,8 +489,10 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空白の scenarioId で proven を成立させる | 1 |
 | 直接呼びの ingestSeq 検査を外す | 1 |
 | 直接呼びの identity 材料検査を外す | 1 |
-| 確定済みの説明に turn 両立を求めない | 1 |
-| 確定済みの説明で turn 種別だけ見ない | 1 |
+| 空白の sourceAgent を素通しする | 1 |
+| turn 両立ゼロの確定済みを適用済みにする | 1 |
+| 確定済みの説明に turn 両立を求めない | 2 |
+| 確定済みの説明で turn 種別だけ見ない | 2 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

@@ -298,6 +298,14 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   if (isBlank(event.sessionId)) {
     throw new Error("§3.1 違反: sessionId が空文字（session scope が定まらない）");
   }
+  // `assertSameScope` は `event.sourceAgent === state.sourceAgent` の等値しか見ない。凍結 schema は
+  // event 側にも状態側にも `maxLength` しか課さないので、Agent 同一性を「不明」として空白で表す
+  // adapter が 2 つあると、互いの状態を同じ scope として書き換えられる（空白同士は「同じ Agent」
+  // ではなく「どちらも名乗っていない」）。intake の降格は evidenceKind を落とすだけで scope は
+  // 縛らないので、ここで落とさないと誰も落とさない
+  if (isBlank(event.sourceAgent)) {
+    throw new Error("§3.1 違反: sourceAgent が空文字（Agent scope が定まらない）");
+  }
 }
 
 /**
@@ -1143,6 +1151,19 @@ export function correlateTerminalEvent(
     // 名乗る native の 2 通目が兄弟に説明されて `terminal_already_applied` になり、隔離
     // （台帳を消費しない）を回避して台帳を消費するので、後から届く訂正版が重複 no-op になる
     const settled = eligibleOf(sameTurnOf(compatible));
+    // 絞った結果が空なのは「候補は全件確定済みで、しかもこの terminal が閉じえたものは
+    // 1 件も無い」= 再配送では説明できない。そのまま下へ落とすと `contradicted` が undefined に
+    // なって `terminal_already_applied` を名乗り、閉じえなかった terminal が適用済みとして
+    // 台帳に入る。§4.3 の「zero にマッチした terminal は unmatched evidence として保存する」
+    // どおり `terminal_unmatched` にする。候補は全件確定済みなので `unknown` に倒す相手は居ない
+    if (settled.length === 0) {
+      return {
+        matched: null,
+        diagnostic: "terminal_unmatched",
+        detail: "候補はすべて terminal 済みで、turn が両立するものが無い",
+        unresolvedOperationIds: [],
+      };
+    }
     const incoming = terminalStatusOf(terminalEvent);
     const contradicted =
       incoming === "unknown" || settled.some((pending) => pending.status === incoming)

@@ -2121,6 +2121,42 @@ test("turn 種別が両立しない兄弟は矛盾する terminal の言い訳�
   assert.deepEqual(honest.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
 });
 
+test("turn が両立する確定済み候補が 1 件も無いなら適用済みを名乗らない", () => {
+  // 「候補は全件確定済みで、この terminal が閉じえたものは 1 件も無い」は再配送では説明できない。
+  // `terminal_already_applied` を名乗ると、閉じえなかった terminal が適用済みとして台帳に入る
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "synthesized_monotonic" }),
+    terminalEvent({ eventId: "term-b", adapterDeliveryId: "d-term-b", canonicalFingerprint: "f-term-b", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
+  ]);
+  assert.equal(prepared.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  for (const [label, extra] of [
+    ["成否が一致", {}],
+    ["成否が逆", { kind: "tool_failed", successful: false }],
+  ] as const) {
+    const result = reduceTaskWorkState(
+      prepared.snapshot,
+      terminalEvent({
+        eventId: `term-${label}`, adapterDeliveryId: `d-${label}`, canonicalFingerprint: `f-${label}`,
+        ingestSeq: "13", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native", ...extra,
+      }),
+      prepared.ledger,
+    );
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ["terminal_unmatched"], label);
+    // 候補は確定済みなので `unknown` に倒す相手は居ない
+    assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded", label);
+  }
+  // 対照: turn が両立する候補があれば従来どおり適用済みとして通る
+  const same = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-same", adapterDeliveryId: "d-same", canonicalFingerprint: "f-same", ingestSeq: "14",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "synthesized_monotonic",
+    }),
+    prepared.ledger,
+  );
+  assert.deepEqual(same.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
 test("記録側も canonicalInputHash を持たないなら省略は照合を妨げない", () => {
   const noHash = { ...MATCH_KEY_ONLY, canonicalInputHash: undefined } as const;
   const closed = apply(emptySnapshot(), [
@@ -2141,6 +2177,18 @@ test("空白文字だけの identity 材料は空文字と同じく schema viola
         `${field} = ${JSON.stringify(blank)}`,
       );
     }
+    // `sourceAgent` は状態側も event 側も maxLength しか課されないので、Agent 同一性を「不明」として
+    // 空白で表す adapter が 2 つあると `assertSameScope` の等値で互いの状態を書き換えられる
+    assert.throws(
+      () =>
+        reduceTaskWorkState(
+          { state: emptyState({ sourceAgent: blank }), history: [], operationStarts: new Map() },
+          startEvent({ sourceAgent: blank }),
+          new Map(),
+        ),
+      /sourceAgent が空文字/,
+      `sourceAgent = ${JSON.stringify(blank)}`,
+    );
     assert.throws(
       () => reduceTaskWorkState(emptySnapshot(), startEvent({ operation: { ...START_OPERATION, operationMatchKey: blank } }), new Map()),
       /§3.1 違反/,
