@@ -959,12 +959,17 @@ export function correlateTerminalEvent(
     // input hash しか見ないので、成否だけが逆の terminal が「適用済み」として黙って通る。
     // 受理済み terminal の source hash は状態に持っていない（凍結 schema に置き場が無い。#43）が、
     // 確定済みの status は持っているので、成否の矛盾だけはここで検出できる。
-    // どちらかが unknown のときは「成否を主張していない」ので矛盾ではない
+    // どちらかが unknown のときは「成否を主張していない」ので矛盾ではない。
+    // rule 2 の候補は同じ matchKey の兄弟をまとめて拾う（同じ turn で同じ tool を同じ入力で
+    // 2 回など）ので、成否が一致する候補が 1 件でもあれば、この terminal はその候補の
+    // 再配送として説明がつく。兄弟の成否だけを見て隔離すると健全な再配送が台帳に入らず、
+    // adapter は無限再送になる。この分岐では候補は全件確定済み（open が空）なので、
+    // 一致が無ければどの候補も矛盾している
     const incoming = terminalStatusOf(terminalEvent);
     const contradicted =
-      incoming === "unknown" ? undefined : (
-        candidates.find((pending) => pending.status !== "unknown" && pending.status !== incoming)
-      );
+      incoming === "unknown" || candidates.some((pending) => pending.status === incoming)
+        ? undefined
+        : candidates.find((pending) => pending.status !== incoming);
     if (contradicted !== undefined) {
       return {
         matched: null,

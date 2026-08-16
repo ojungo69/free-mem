@@ -833,6 +833,67 @@ test("確定済みの成否と矛盾する 2 度目の terminal は隔離する"
   assert.equal(again.ledger, closed.ledger);
 });
 
+test("同じ成否を名乗る 2 度目の terminal は適用済みとして扱う", () => {
+  const snapshot = startedSnapshot();
+  const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+  const again = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({ eventId: "event-terminal-2", adapterDeliveryId: "delivery-terminal-2", ingestSeq: "13" }),
+    closed.ledger,
+  );
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["terminal_already_applied"],
+  );
+  assert.equal(again.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("成否が違う兄弟が確定済みでも、成否が一致する再配送は隔離しない", () => {
+  // rule 2 の候補は同じ matchKey の兄弟をまとめて拾う。同じ turn で同じ tool を同じ入力で
+  // 2 回動かして成否が分かれると、片方の terminal の再配送がもう片方の成否を根拠に隔離される。
+  // 隔離は台帳に入らないので adapter は無限再送になる
+  const first = startEvent({ eventId: "event-start-a", operation: MATCH_KEY_ONLY });
+  const firstTerminal = terminalEvent({
+    eventId: "event-terminal-a",
+    adapterDeliveryId: "delivery-terminal-a",
+    ingestSeq: "12",
+    operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+  });
+  const second = startEvent({ eventId: "event-start-b", adapterDeliveryId: "delivery-start-b", ingestSeq: "13", operation: MATCH_KEY_ONLY });
+  const secondTerminal = terminalEvent({
+    eventId: "event-terminal-b",
+    adapterDeliveryId: "delivery-terminal-b",
+    ingestSeq: "14",
+    successful: false,
+    kind: "tool_failed",
+    operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+  });
+  const settled = apply(emptySnapshot(), [first, firstTerminal, second, secondTerminal]);
+  assert.deepEqual(
+    settled.snapshot.state.pendingOperations.map((pending) => pending.status),
+    ["succeeded", "failed"],
+  );
+
+  const again = reduceTaskWorkState(
+    settled.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-a-2",
+      adapterDeliveryId: "delivery-terminal-a-2",
+      ingestSeq: "15",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+    }),
+    settled.ledger,
+  );
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["terminal_already_applied"],
+  );
+  assert.deepEqual(
+    again.snapshot.state.pendingOperations.map((pending) => pending.status),
+    ["succeeded", "failed"],
+  );
+});
+
 test("成否を主張しない 2 度目の terminal は矛盾ではない", () => {
   // unknown は「成否を主張していない」なので、確定済みの succeeded と矛盾しない。
   // 矛盾扱いにすると、成否を出さない adapter の再送が全部隔離されて無限再送になる
