@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	classifyMemoryWorthiness,
+	hasSameLineCoOccurrence,
 	inferMemoryRole,
 	isDerivedFactRow,
+	REVIEW_TELEMETRY_OUTCOMES,
+	REVIEW_TELEMETRY_SUBJECTS,
 	readArtifactClass,
 } from "./memory-quality.js";
 
@@ -563,5 +566,43 @@ describe("readArtifactClass (read-only in-place marker)", () => {
 		expect(readArtifactClass({ derivation: "candidate" })).toBe("unknown");
 		expect(isDerivedFactRow({})).toBe(false);
 		expect(isDerivedFactRow({ metadata: { is_summary: true } })).toBe(false);
+	});
+});
+
+describe("hasSameLineCoOccurrence", () => {
+	// 置き換え元の 2 本（順序反転の対）。同じ行に両方あるかを見ていた
+	const ORIGINAL = [
+		/\b(?:reviewer|review|re-reviewed|pull request|pr)\b.*\b(?:no blockers?|no findings?|approved|no remaining issues?)\b/,
+		/\b(?:no blockers?|no findings?|approved|no remaining issues?)\b.*\b(?:reviewer|review|re-reviewed|pull request|pr)\b/,
+	];
+	const check = (text: string) =>
+		hasSameLineCoOccurrence(text, REVIEW_TELEMETRY_SUBJECTS, REVIEW_TELEMETRY_OUTCOMES);
+
+	it("matches the pair of regexes it replaced", () => {
+		const cases = [
+			"pr approved",
+			"approved by the reviewer",
+			"pr,approved",
+			"pr",
+			"approved",
+			"",
+			"reviewer said nothing",
+			// 行をまたぐ組み合わせは元も拾わない（`.` が改行に当たらないため）
+			"pr\napproved",
+			"approved\rpr",
+			"pull request no findings",
+			"no remaining issues re-reviewed",
+			// 3 行目だけが条件を満たす
+			"nothing\nhere\npull request: no blockers\ntail",
+			"prapproved",
+		];
+		for (const s of cases) expect(check(s)).toBe(ORIGINAL.some((p) => p.test(s)));
+	});
+
+	it("does not scale with the length of the line", () => {
+		// ORIGINAL はこの入力で二次に走る（48k で ~0.5s、600k で ~64s を実測）
+		const started = performance.now();
+		expect(check("pr ".repeat(200_000))).toBe(false);
+		expect(performance.now() - started).toBeLessThan(1000);
 	});
 });

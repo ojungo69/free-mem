@@ -263,7 +263,7 @@ export function trackHookSessionState(
 }
 
 function pathBasename(value: string): string {
-	const normalized = trimEndWhere(value.replace(/\\/g, "/"), TRAILING_SLASH);
+	const normalized = trimEndWhere(value.replaceAll("\\", "/"), TRAILING_SLASH);
 	if (!normalized) return "";
 	const parts = normalized.split("/");
 	return parts[parts.length - 1] ?? "";

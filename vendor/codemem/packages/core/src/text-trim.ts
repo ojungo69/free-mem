@@ -8,20 +8,11 @@
  * from a transcript, a hook payload, an import file, or a model response.
  *
  * Leading trims of the same shape (`/^x+/`) are already linear — the anchor pins the start
- * position — but are expressed here too so both edges read the same way.
+ * position — so they stay as regexes at their call sites and have no helper here.
  *
  * Predicates receive whole code points, not UTF-16 code units, so `\p{P}` and friends keep
  * behaving the way the `u`-flagged regexes they replace did.
  */
-
-function codePointAt(value: string, index: number): string {
-	const first = value.charCodeAt(index);
-	if (first >= 0xd800 && first <= 0xdbff && index + 1 < value.length) {
-		const second = value.charCodeAt(index + 1);
-		if (second >= 0xdc00 && second <= 0xdfff) return value.slice(index, index + 2);
-	}
-	return value[index] as string;
-}
 
 function codePointBefore(value: string, end: number): string {
 	const last = value.charCodeAt(end - 1);
@@ -41,22 +32,6 @@ export function trimEndWhere(value: string, drop: (char: string) => boolean): st
 		end -= char.length;
 	}
 	return value.slice(0, end);
-}
-
-/** Drop code points matching `drop` from the start of `value`. */
-export function trimStartWhere(value: string, drop: (char: string) => boolean): string {
-	let start = 0;
-	while (start < value.length) {
-		const char = codePointAt(value, start);
-		if (!drop(char)) break;
-		start += char.length;
-	}
-	return value.slice(start);
-}
-
-/** Drop code points matching `drop` from both ends of `value`. */
-export function trimWhere(value: string, drop: (char: string) => boolean): string {
-	return trimStartWhere(trimEndWhere(value, drop), drop);
 }
 
 /** Build a `drop` predicate from a literal character set. */

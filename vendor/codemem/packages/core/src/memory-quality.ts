@@ -149,6 +149,24 @@ function hasAnyPattern(text: string, patterns: RegExp[]): boolean {
 	return patterns.some((pattern) => pattern.test(text));
 }
 
+/** `.` がマッチしない 4 文字。`\bA\b.*\bB\b` は「同じ行に両方ある」を見ていた */
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+
+/**
+ * 同じ行に `a` と `b` が両方出るか。`\bA\b.*\bB\b` とその順序反転版の組と等価で、
+ * 二次挙動だけ外れる。前者は開始位置ごとに `.*` が行末まで走るため、observer 応答の
+ * ような長い 1 行で入力長の 2 乗に比例して遅くなる（600KB で 63 秒を実測）。
+ */
+export function hasSameLineCoOccurrence(text: string, a: RegExp, b: RegExp): boolean {
+	return text.split(LINE_BREAK).some((line) => a.test(line) && b.test(line));
+}
+
+export const REVIEW_TELEMETRY_SUBJECTS = /\b(?:reviewer|review|re-reviewed|pull request|pr)\b/;
+export const REVIEW_TELEMETRY_OUTCOMES =
+	/\b(?:no blockers?|no findings?|approved|no remaining issues?)\b/;
+export const VALIDATION_TELEMETRY_SUBJECTS = /\b(?:tests?|lint|ci|build|typecheck|tsc)\b/;
+export const VALIDATION_TELEMETRY_OUTCOMES = /\b(?:passed|green|succeeded|clean)\b/;
+
 function memoryText(input: InferMemoryRoleInput): string {
 	return `${input.title} ${input.body_text}`.trim().toLowerCase();
 }
@@ -464,20 +482,10 @@ export function classifyMemoryWorthiness(input: InferMemoryRoleInput): MemoryWor
 	}
 
 	// 3. Telemetry/process suppression (only when no durable keep-signal exists).
-	if (
-		hasAnyPattern(text, [
-			/\b(?:reviewer|review|re-reviewed|pull request|pr)\b.*\b(?:no blockers?|no findings?|approved|no remaining issues?)\b/,
-			/\b(?:no blockers?|no findings?|approved|no remaining issues?)\b.*\b(?:reviewer|review|re-reviewed|pull request|pr)\b/,
-		])
-	) {
+	if (hasSameLineCoOccurrence(text, REVIEW_TELEMETRY_SUBJECTS, REVIEW_TELEMETRY_OUTCOMES)) {
 		return { artifact: "telemetry", action: "suppress", reasons: ["review_telemetry_no_findings"] };
 	}
-	if (
-		hasAnyPattern(text, [
-			/\b(?:tests?|lint|ci|build|typecheck|tsc)\b.*\b(?:passed|green|succeeded|clean)\b/,
-			/\b(?:passed|green|succeeded|clean)\b.*\b(?:tests?|lint|ci|build|typecheck|tsc)\b/,
-		])
-	) {
+	if (hasSameLineCoOccurrence(text, VALIDATION_TELEMETRY_SUBJECTS, VALIDATION_TELEMETRY_OUTCOMES)) {
 		return { artifact: "telemetry", action: "suppress", reasons: ["validation_telemetry_only"] };
 	}
 	if (

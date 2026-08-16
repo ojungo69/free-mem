@@ -1,6 +1,14 @@
 /* Memory-role probe scoring + helper utilities. */
 
 import { getInjectionEvalScenarioByPrompt } from "../eval-scenarios.js";
+// 判定そのものを classifyMemoryWorthiness と共有する（写して同期させると必ずずれる）
+import {
+	hasSameLineCoOccurrence,
+	REVIEW_TELEMETRY_OUTCOMES,
+	REVIEW_TELEMETRY_SUBJECTS,
+	VALIDATION_TELEMETRY_OUTCOMES,
+	VALIDATION_TELEMETRY_SUBJECTS,
+} from "../memory-quality.js";
 import { getSummaryMetadata, isSummaryLikeMemory } from "../summary-memory.js";
 import type {
 	MemoryArtifactBucket,
@@ -32,14 +40,6 @@ function hasAnyPattern(text: string, patterns: RegExp[]): boolean {
 	return patterns.some((pattern) => pattern.test(text));
 }
 
-const REVIEW_TELEMETRY_PATTERNS: RegExp[] = [
-	/\b(?:reviewer|review|re-reviewed|pull request|pr)\b.*\b(?:no blockers?|no findings?|approved|no remaining issues?)\b/,
-	/\b(?:no blockers?|no findings?|approved|no remaining issues?)\b.*\b(?:reviewer|review|re-reviewed|pull request|pr)\b/,
-];
-const VALIDATION_TELEMETRY_PATTERNS: RegExp[] = [
-	/\b(?:tests?|lint|ci|build|typecheck|tsc)\b.*\b(?:passed|green|succeeded|clean)\b/,
-	/\b(?:passed|green|succeeded|clean)\b.*\b(?:tests?|lint|ci|build|typecheck|tsc)\b/,
-];
 // Keep in sync with the runtime_bootstrap_noise patterns in
 // classifyMemoryWorthiness (memory-quality.ts). The probe-side detector must
 // recognize the same bootstrap telemetry the classifier suppresses, otherwise
@@ -56,10 +56,18 @@ const BOOTSTRAP_TELEMETRY_PATTERNS: RegExp[] = [
 ];
 
 export function isReviewTelemetryText(text: string): boolean {
-	return hasAnyPattern(text.toLowerCase(), REVIEW_TELEMETRY_PATTERNS);
+	return hasSameLineCoOccurrence(
+		text.toLowerCase(),
+		REVIEW_TELEMETRY_SUBJECTS,
+		REVIEW_TELEMETRY_OUTCOMES,
+	);
 }
 export function isValidationTelemetryText(text: string): boolean {
-	return hasAnyPattern(text.toLowerCase(), VALIDATION_TELEMETRY_PATTERNS);
+	return hasSameLineCoOccurrence(
+		text.toLowerCase(),
+		VALIDATION_TELEMETRY_SUBJECTS,
+		VALIDATION_TELEMETRY_OUTCOMES,
+	);
 }
 export function isBootstrapTelemetryText(text: string): boolean {
 	return hasAnyPattern(text.toLowerCase(), BOOTSTRAP_TELEMETRY_PATTERNS);

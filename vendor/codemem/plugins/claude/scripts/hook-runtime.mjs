@@ -2881,6 +2881,21 @@ function spoolMutation(input, options = {}) {
 }
 //#endregion
 //#region ../core/src/text-trim.ts
+/**
+* Linear-time edge trimming.
+*
+* `s.replace(/x+$/, "")` looks harmless but is quadratic in the length of a run of `x`:
+* the engine retries the greedy `x+` from every start position and each attempt walks to
+* the end before `$` fails. A 32k run of `/` costs ~530ms; 128k costs ~8s. These helpers
+* run once over the affected edge instead, and every call site takes text that arrives
+* from a transcript, a hook payload, an import file, or a model response.
+*
+* Leading trims of the same shape (`/^x+/`) are already linear — the anchor pins the start
+* position — so they stay as regexes at their call sites and have no helper here.
+*
+* Predicates receive whole code points, not UTF-16 code units, so `\p{P}` and friends keep
+* behaving the way the `u`-flagged regexes they replace did.
+*/
 function codePointBefore(value, end) {
 	const last = value.charCodeAt(end - 1);
 	if (last >= 56320 && last <= 57343 && end >= 2) {
@@ -6207,7 +6222,7 @@ function trackHookSessionState(payload, sanitizedPrompt, sanitizedModifiedPaths)
 	return state;
 }
 function pathBasename(value) {
-	const normalized = trimEndWhere(value.replace(/\\/g, "/"), TRAILING_SLASH);
+	const normalized = trimEndWhere(value.replaceAll("\\", "/"), TRAILING_SLASH);
 	if (!normalized) return "";
 	const parts = normalized.split("/");
 	return parts[parts.length - 1] ?? "";

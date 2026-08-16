@@ -1,30 +1,22 @@
 import { describe, expect, it } from "vitest";
-import {
-	isOneOf,
-	isSpaceOrPunctuation,
-	isWhitespace,
-	trimEndWhere,
-	trimStartWhere,
-	trimWhere,
-} from "./text-trim.js";
+import { isOneOf, isSpaceOrPunctuation, isWhitespace, trimEndWhere } from "./text-trim.js";
 
 const SLASH = isOneOf("/");
 
-describe("trimEndWhere / trimStartWhere / trimWhere", () => {
+describe("trimEndWhere", () => {
 	it("matches the regexes they replace", () => {
 		// 置き換え元と同じ結果になることを、境界を含めて確かめる
 		const cases = ["", "/", "//", "a/", "a//", "/a", "//a//", "a", "/a/b//", "  ", "a  "];
 		for (const s of cases) {
 			expect(trimEndWhere(s, SLASH)).toBe(s.replace(/\/+$/, ""));
-			expect(trimStartWhere(s, SLASH)).toBe(s.replace(/^\/+/, ""));
 			expect(trimEndWhere(s, isWhitespace)).toBe(s.replace(/\s+$/, ""));
 		}
 	});
 
-	it("trims both edges without touching the middle", () => {
-		expect(trimWhere("--a--b--", isOneOf("-"))).toBe("a--b");
-		expect(trimWhere("---", isOneOf("-"))).toBe("");
-		expect(trimWhere("", isOneOf("-"))).toBe("");
+	it("leaves the middle alone", () => {
+		expect(trimEndWhere("--a--b--", isOneOf("-"))).toBe("--a--b");
+		expect(trimEndWhere("---", isOneOf("-"))).toBe("");
+		expect(trimEndWhere("", isOneOf("-"))).toBe("");
 	});
 
 	it("treats surrogate pairs as one code point, like the /u regexes", () => {
@@ -67,58 +59,6 @@ describe("ReDoS を外した正規表現の等価性", () => {
 			"_.json",
 		];
 		for (const s of cases) expect(after.test(s)).toBe(before.test(s));
-	});
-
-	it("`label: value` 判定は元の正規表現と同じになる", () => {
-		const before = /.+?:\s+.+/;
-		const after = /[^\n]:\s+[^\n]/;
-		const cases = [
-			"label: value",
-			"label:value",
-			"label:  value",
-			": value",
-			"a:b: c",
-			"a:\nb",
-			"a:\n",
-			"",
-			":",
-			"a: ",
-			"one two: three four",
-		];
-		for (const s of cases) expect(after.test(s)).toBe(before.test(s));
-	});
-
-	it("「変更なし」フィルタは元の正規表現と同じ文を拾う", () => {
-		const before =
-			/\bno\s+code\s*,?\s+configuration\s*,?\s+or\s+documentation\s+changes?\s+(?:were|was)\s+made\b/i;
-		const after =
-			/\bno\s+code[\s,]+configuration[\s,]+or\s+documentation\s+changes?\s+(?:were|was)\s+made\b/i;
-		const positives = [
-			"no code, configuration, or documentation changes were made",
-			"No code configuration or documentation change was made",
-			"NO CODE ,  CONFIGURATION , OR DOCUMENTATION CHANGES WERE MADE",
-		];
-		for (const s of positives) {
-			expect(before.test(s)).toBe(true);
-			expect(after.test(s)).toBe(true);
-		}
-		const negatives = [
-			"no code changes were made",
-			"code, configuration, or documentation changes",
-		];
-		for (const s of negatives) expect(after.test(s)).toBe(before.test(s));
-	});
-
-	it("空白と読点だけの差は許容が広がるが、拾う対象は変わらない", () => {
-		// `\s*,?\s+` → `[\s,]+` で「空白なしのカンマ区切り」も通るようになる。
-		// 元は落としていた形なので、広がった側だけを明示しておく
-		const before =
-			/\bno\s+code\s*,?\s+configuration\s*,?\s+or\s+documentation\s+changes?\s+(?:were|was)\s+made\b/i;
-		const after =
-			/\bno\s+code[\s,]+configuration[\s,]+or\s+documentation\s+changes?\s+(?:were|was)\s+made\b/i;
-		const widened = "no code,configuration,or documentation changes were made";
-		expect(before.test(widened)).toBe(false);
-		expect(after.test(widened)).toBe(true);
 	});
 
 	it("フェンス剥がしは元の正規表現と同じ結果になる", () => {
