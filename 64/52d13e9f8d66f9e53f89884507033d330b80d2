@@ -1,0 +1,27 @@
+harness/assemble.ts
+  s_5cbc4c67c8b3b4::t_c54b5259d1f7fb 529-561,563
+  s_5cbc4c67c8b3b4::t_1361ecfa271997 261-263,268,276-308
+  s_5cbc4c67c8b3b4::t_2fec2ded82b25f 14
+  s_5cbc4c67c8b3b4::t_d47de1134739e2 219-223
+  s_5cbc4c67c8b3b4::t_263517bb579b75 309-310
+harness/matrix/claude.json
+  s_5cbc4c67c8b3b4::t_18b9c814458571 4,180,234,247
+harness/matrix/codex.json
+  s_5cbc4c67c8b3b4::t_dc8a04ca8dcfe2 4,170-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6452d13e9f8d66f9e53f89884507033d330b80d2",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
