@@ -2072,6 +2072,27 @@ test("候補が複数あるとき canonicalInputHash を省いた terminal は�
   );
 });
 
+test("照合不能で unknown に倒すのも turn が両立する候補だけ", () => {
+  // 照合不能は「この terminal がどの候補を指すか決められない」であって、閉じえない候補まで
+  // 巻き込んでよい話ではない。§4.3 の rule 2 で閉じられない turn 非両立の候補は、そもそも
+  // この terminal の candidates ではないので `started` のまま残す
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-a", adapterDeliveryId: "d-start-a", canonicalFingerprint: "f-start-a", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
+  ]);
+  assert.deepEqual(prepared.snapshot.state.pendingOperations.map((p) => p.status), ["started", "started"]);
+  const omitted = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "13",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal", canonicalInputHash: undefined }, turnIdSource: "native",
+    }),
+    prepared.ledger,
+  );
+  assert.deepEqual(omitted.diagnostics.map((d) => d.code), ["terminal_identity_unverifiable"]);
+  assert.deepEqual(omitted.snapshot.state.pendingOperations.map((p) => p.status), ["unknown", "started"]);
+});
+
 test("候補が 1 件なら canonicalInputHash の省略は照合を妨げない", () => {
   // §4.3 の matchKey は canonical input hash を入力に含むので、仕様どおりに導出する adapter では
   // hash 違いの兄弟は候補に並ばない。付け替えられる相手が居ない以上、省略で盗めるものが無い。
@@ -2337,6 +2358,61 @@ test("turn が両立しなくても成否が矛盾する terminal は隔離す�
     // 隔離は配送鍵を消費しないので、訂正版が後から効く
     assert.equal(forged.ledger.size, prepared.ledger.size, label);
   }
+});
+
+/**
+ * turn 種別が違う live な B（synthesized_monotonic）と、確定済みの A（native）が同じ matchKey で
+ * 並ぶ状態。**open を先頭に置く**: 矛盾の相手を配列順で拾う実装なので、確定済みを先頭にすると
+ * 母数を広げる変異が同じ候補を掴んでしまい、母数の違いが観測できない
+ */
+function openThenSettledSibling(): ReturnType<typeof apply> {
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "synthesized_monotonic" }),
+    startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "native" }),
+    terminalEvent({ eventId: "term-a", adapterDeliveryId: "d-term-a", canonicalFingerprint: "f-term-a", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "13", turnIdSource: "native" }),
+  ]);
+  assert.deepEqual(prepared.snapshot.state.pendingOperations.map((p) => p.status), ["started", "succeeded"]);
+  return prepared;
+}
+
+test("記録できる open な候補が居るなら、確定済みとの矛盾より unmatched を優先する", () => {
+  // §4.3:368 は「zero か複数の open にマッチした terminal は何も閉じず、unmatched な証跡として
+  // 保存し candidates を unknown にする」と終状態を名指ししている。ここで隔離を優先すると
+  // open な候補は `started` のまま残って状態が嘘をつき、しかも `turnIdSource` の食い違いは
+  // adapter の捕捉経路という定常的な性質なので「訂正版」が存在せず、還元器は純関数なので
+  // 再送は毎回同じ隔離になる = adapter は無限再送する
+  const failed = { kind: "tool_failed", successful: false } as const;
+  const prepared = openThenSettledSibling();
+  const orphaned = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "14",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native", turnId: "turn-9", ...failed,
+    }),
+    prepared.ledger,
+  );
+  assert.equal(orphaned.outcome, "applied");
+  assert.deepEqual(orphaned.diagnostics.map((d) => d.code), ["terminal_unmatched"]);
+  assert.deepEqual(orphaned.snapshot.state.pendingOperations.map((p) => p.status), ["unknown", "succeeded"]);
+  assert.equal(orphaned.snapshot.history.length, prepared.snapshot.history.length + 1);
+});
+
+test("矛盾の診断は確定済みの候補を名指しする", () => {
+  // 矛盾判定の母数を `compatible` 全体に広げると、open な兄弟のほうが先に見つかって
+  // 「started で確定済み」という自己矛盾した診断になる。open は成否を主張していない
+  const failed = { kind: "tool_failed", successful: false } as const;
+  const prepared = openThenSettledSibling();
+  const forged = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-y", adapterDeliveryId: "d-term-y", canonicalFingerprint: "f-term-y", ingestSeq: "14",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native", ...failed,
+    }),
+    prepared.ledger,
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(forged.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.match(forged.diagnostics[0]?.detail ?? "", /succeeded で確定済み/);
 });
 
 test("記録側も canonicalInputHash を持たないなら省略は照合を妨げない", () => {

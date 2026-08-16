@@ -1190,9 +1190,22 @@ export function correlateTerminalEvent(
     //     ただし**確定済みの候補だけ**を見る: この分岐に来るのは「turn が両立する open な候補が
     //     無い」場合で、turn が両立しない open な候補は残りうる。`started` は成否を主張して
     //     いないので、それを矛盾として隔離すると健全な terminal が台帳に入らず無限再送になる
+    // (iii) 隔離と unmatched のどちらがこの領域を持つか → **記録できる候補が居るなら unmatched**。
+    //     §4.3:368 は「zero か複数の open にマッチした terminal は何も閉じず、unmatched な証跡と
+    //     して保存し、candidates を `unknown` にして診断を出す」と終状態まで名指ししている。
+    //     矛盾ゲートの優先順位は「確定済みの候補しか居ない」形について `terminal_already_applied`
+    //     に対して決めたもので、round 17 で `open` の切り分けを turn 絞り込みの後ろに移したとき
+    //     `open.length === 0` の到達範囲が広がったのに、`terminal_unmatched` に対して決め直して
+    //     いなかった。そのため「確定済みの兄弟が居て、turn が両立しない open な候補も居る」形が
+    //     隔離に落ち、open な候補は `started` のまま残って状態が嘘をつく。**`turnIdSource` の
+    //     食い違いは adapter の捕捉経路という定常的な性質なので「訂正版」が存在せず、還元器は
+    //     純関数なので再送は毎回同じ隔離になる**——`started` を矛盾集合から外した理由（無限再送）と
+    //     同型の失敗が、確定済みの兄弟経由で残っていた。記録できる候補が 1 件でも居るなら、
+    //     台帳を消費してでも candidates を `unknown` にするほうが §4.3 の終状態に合う
     const incoming = terminalStatusOf(terminalEvent);
+    const recordable = plausible.length === 0 && compatible.some(isOpen);
     const contradicted =
-      incoming === "unknown" || plausible.some((pending) => pending.status === incoming)
+      recordable || incoming === "unknown" || plausible.some((pending) => pending.status === incoming)
         ? undefined
         : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);
     // 隔離は台帳を消費しないので、消費する分岐より必ず先に判定する

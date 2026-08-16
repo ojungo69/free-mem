@@ -179,8 +179,8 @@ mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && ap
 
 mutate "  if (isBlank(event.canonicalFingerprint)) {" "  if (false) {" && run "空 canonicalFingerprint を素通しする"
 mutate "    if (contradicted !== undefined) {" "    if (false) {" && run "確定済み成否との矛盾検査を外す"
-mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      false" && run "成否を主張しない terminal も矛盾扱いにする"
-mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\"" && run "成否が一致する兄弟の検査を外す"
+mutate "      recordable || incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      recordable || false" && run "成否を主張しない terminal も矛盾扱いにする"
+mutate "      recordable || incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      recordable || incoming === \"unknown\"" && run "成否が一致する兄弟の検査を外す"
 
 mutate "  if (ABANDONMENT_EVENT_KINDS.has(event.kind)) {" "  if (false) {" && run "放棄 kind を還元器に通す"
 mutate "  if (event.turnId !== undefined && isBlank(event.turnId)) {" "  if (false) {" && run "空文字の turnId を素通しする"
@@ -235,12 +235,16 @@ mutate "    state.pendingOperations.filter(
   );
   const pendingOperations = state.pendingOperations.map((pending) =>
     abandoned.has(pending.operationId as unknown as PendingOperation)" && run "放棄の適用先を operationId の等値で当てる"
-mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\" || compatible.some((pending) => pending.status === incoming)" && run "確定済みの説明に turn 両立を求めない"
-mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\" || sameTurn.some((pending) => pending.status === incoming)" && run "確定済みの説明で turn 種別だけ見ない"
+mutate "      recordable || incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      recordable || incoming === \"unknown\" || compatible.some((pending) => pending.status === incoming)" && run "確定済みの説明に turn 両立を求めない"
+mutate "      recordable || incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      recordable || incoming === \"unknown\" || sameTurn.some((pending) => pending.status === incoming)" && run "確定済みの説明で turn 種別だけ見ない"
 mutate "  const open = plausible.filter(isOpen);" "  const open = compatible.filter(isOpen);" && run "open の切り分けを turn 絞り込みより前にする"
 mutate "        : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);" "        : compatible.find((pending) => pending.status !== incoming);" && run "矛盾判定に open な候補も混ぜる"
 mutate "  return pending.filter((candidate) => !dropped.has(candidate));" "  return pending.filter((candidate) => ![...dropped].some((d) => d.operationId === candidate.operationId));" && run "退避の保持判定を operationId の一致に戻す"
 mutate "      if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" "      operationStarts.delete(evictedId);" && run "生存する同名の順序材料も退避で消す"
+mutate "      recordable || incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" && run "記録できる候補が居ても隔離を優先する"
+mutate "      detail: \`operation \${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている\`,
+      unresolved: open," "      detail: \`operation \${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている\`,
+      unresolved: compatible.filter(isOpen)," && run "照合不能で turn 非両立の候補も巻き込む"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
