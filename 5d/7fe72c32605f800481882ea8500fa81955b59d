@@ -1,0 +1,31 @@
+harness/schema/validate.ts
+  s_5cbc4c67c8b3b4::t_8c76864b63f545 218-223,225-234,237-255,258,264-274
+  s_5cbc4c67c8b3b4::t_c6bdbb0c0acff4 202-210
+  s_5cbc4c67c8b3b4::t_f9ad42f5546d33 291,346,358,362,368,371,376,387,389
+harness/phase1-static-scan.ts
+  s_5cbc4c67c8b3b4::t_5abe4a6b5de74e 308-310
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_85b2f5c0eb4574 199-202
+  s_5cbc4c67c8b3b4::t_120bec428dd390 272-275,277-298,300-311
+  s_5cbc4c67c8b3b4::t_335e373610fec2 115-118
+harness/assemble.ts
+  s_5cbc4c67c8b3b4::t_42b9d0ec8956dd 305-330
+  s_5cbc4c67c8b3b4::t_6708f2b9673e6b 269-272,275-276
+  s_5cbc4c67c8b3b4::t_0fef7497b1b9ed 492-545
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5d7fe72c32605f800481882ea8500fa81955b59d",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
