@@ -415,6 +415,80 @@ test("turnId は turnIdSource と対で成立する（§3.1）", () => {
   }
 });
 
+test("evidenceKind=native は attestation 一式を伴う（§3.1）", () => {
+  // 凍結表は `if` の中身が書き換わったことは見るが、条件が実際に発火するかは見ない。
+  // property 名を打ち間違えた `if` は既存の fixture を素通しするので、ここで発火を見る
+  const base: contract.ContinuityEventProvenanceV1 = {
+    sourceAgentVersion: "1.0.0",
+    evidenceKind: "synthesized",
+    captureMethod: "hook",
+  };
+  const nativeExtras: Record<string, unknown> = {
+    capabilityHash: "h1",
+    scenarioId: "sc1",
+    ingestAttestation: {
+      ingestReceiptId: "r1",
+      peerIdentityId: "p1",
+      channel: "rpc",
+      attestedAt: "2026-08-16T00:00:00Z",
+    },
+  };
+  const schema = { $ref: "#/$defs/ContinuityEventProvenanceV1" };
+  const issues = (value: unknown) => validateAgainstSchema(value, schema, root);
+
+  // 土台も、native に一式そろえた形も、違反ゼロ
+  assert.deepEqual(issues(base), []);
+  assert.deepEqual(issues({ ...base, evidenceKind: "native", ...nativeExtras }), []);
+
+  for (const key of ["capabilityHash", "scenarioId", "ingestAttestation"]) {
+    const partial = { ...nativeExtras };
+    delete partial[key];
+    const found = issues({ ...base, evidenceKind: "native", ...partial });
+    assert.ok(
+      found.some((i) => `${i.path} ${i.message}`.includes(key)),
+      `native なのに ${key} 欠落が見逃された: ${JSON.stringify(found)}`,
+    );
+    // native 以外では同じ欠落が違反にならない（条件付きであることの確認）
+    for (const kind of ["synthesized", "derived"]) {
+      assert.deepEqual(issues({ ...base, evidenceKind: kind, ...partial }), [], `${kind}/${key}`);
+    }
+  }
+});
+
+test("子孫の無効化は viaArtifactId を伴う（§12.3）", () => {
+  const base: contract.DerivedArtifactInvalidationEventV1 = {
+    eventId: "e1",
+    artifactId: "a1",
+    artifactKind: "summary",
+    expectedArtifactRevision: "r1",
+    sourceMemoryId: "m1",
+    invalidatingMemoryRevision: "mr1",
+    hopDepth: 0,
+    reason: "memory_updated",
+    resultingStatus: "stale",
+    idempotencyKey: "k1",
+    createdAt: "2026-08-16T00:00:00Z",
+  };
+  const schema = { $ref: "#/$defs/DerivedArtifactInvalidationEventV1" };
+  const issues = (value: unknown) => validateAgainstSchema(value, schema, root);
+
+  assert.deepEqual(issues(base), []);
+  assert.deepEqual(
+    issues({ ...base, reason: "source_artifact_invalidated", hopDepth: 1, viaArtifactId: "a0" }),
+    [],
+  );
+
+  // 子孫（source_artifact_invalidated）でだけ viaArtifactId が要る
+  const missing = issues({ ...base, reason: "source_artifact_invalidated", hopDepth: 1 });
+  assert.ok(
+    missing.some((i) => `${i.path} ${i.message}`.includes("viaArtifactId")),
+    JSON.stringify(missing),
+  );
+  for (const reason of ["memory_superseded", "memory_retracted", "memory_invalidated"]) {
+    assert.deepEqual(issues({ ...base, reason }), [], reason);
+  }
+});
+
 test("IsoTimestamp は成分の範囲まで見る", () => {
   const bad = (s: string) => validateAgainstSchema(s, { $ref: "#/$defs/IsoTimestamp" }, root).length > 0;
   assert.equal(bad("2026-08-16T00:00:00Z"), false);
