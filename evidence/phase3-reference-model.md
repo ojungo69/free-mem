@@ -217,6 +217,11 @@ envelope を要求しない（既知の非 operation kind が envelope を持つ
 - **intake の診断は呼び出し側が集める**。`stampIntakeEvidence` は `{ event, diagnostics }` を返すが、
   それを還元結果の診断と併せて doctor へ渡すのは daemon 側の仕事で、参照実装は連結しない。
 - **`lastIngestSeq` の意味は正本に無い**（#38）。ここでは単調な watermark として実装している。
+- **event kind が成否を主張するかは語彙に書かれていない**。`tool_completed` / `tool_failed` は
+  `harness/schema/capability.ts` の `EventKind` に列挙があるだけで、意味の定義が正本にも harness にも
+  無い。`tool_failed` は名前が失敗を宣言しているので `successful: true` を矛盾として扱うが、
+  `tool_completed` が成功まで主張するかは決められないので `successful: false` は矛盾扱いしない
+  （`failed` のまま記録する）。語彙側で決めるべき宿題。
 - **turn identity の降格を誰が行うかは正本が決めていない**（#41）。§3.1 が intake に与えている
   権限は `evidenceKind` と `ingestAttestation` で、`turnIdSource` の書き換えは明示されていない
   （§14 は未証明時の措置を `turnIdentityDisposition` による delivery 層の downgrade として書く）。
@@ -248,8 +253,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。42 件すべてで 1 件以上が失敗し、
-復元後は 68/68 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。43 件すべてで 1 件以上が失敗し、
+復元後は 70/70 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -271,8 +276,9 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | rule 2 の turn 同一性要求を外す | 2 |
 | turnIdSource 種別の一致要求を外す | 1 |
 | 候補が複数のときの拒否を外す | 1 |
-| matchKey 衝突検査を外す | 1 |
+| matchKey 衝突検査を外す | 2 |
 | canonicalInputHash 衝突検査を外す | 2 |
+| identity 衝突の隔離を外す | 4 |
 | kind と successful の矛盾を素通しする | 1 |
 | 矛盾した terminal を succeeded にする | 1 |
 | start 不在の分岐を外す | 1 |

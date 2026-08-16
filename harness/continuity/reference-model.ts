@@ -805,6 +805,29 @@ export function correlateTerminalEvent(
       unresolvedOperationIds: [],
     };
   }
+  // 衝突検査はすべての早期 return より前に置く。後ろに置くと「terminal 済み」「順序不明」で
+  // 先に return してしまい、corrupt な event が隔離されずに台帳へ入って、訂正版の再配送が
+  // 重複 no-op として黙って捨てられる。
+  // §4.3「operationMatchKey は Agent・session・lineage・turn・kind・native operation ID・
+  // canonical input hash に対する schema-versioned SHA-256」。rule 2 の候補は matchKey 一致で
+  // 選んでいるので、これが効くのは rule 1（nativeOperationId だけで選ぶ）の候補
+  const conflicting = candidates.find(
+    (pending) =>
+      pending.correlation.operationMatchKey !== operation.operationMatchKey ||
+      // matchKey の導出が §4.3 どおりでない adapter に備えて input hash も直接見る
+      (pending.correlation.canonicalInputHash !== undefined &&
+        operation.canonicalInputHash !== undefined &&
+        pending.correlation.canonicalInputHash !== operation.canonicalInputHash),
+  );
+  if (conflicting !== undefined) {
+    return {
+      matched: null,
+      diagnostic: "terminal_conflict",
+      detail: `operation ${conflicting.operationId} と identity が衝突`,
+      // 隔離は状態を一切変えないので、候補も unknown にしない
+      unresolvedOperationIds: [],
+    };
+  }
   if (open.length === 0) {
     return {
       matched: null,
@@ -844,33 +867,6 @@ export function correlateTerminalEvent(
   }
   const matched = eligible[0] as PendingOperation;
 
-  // 衝突検査を権威順序より先に置く。逆順だと「順序不明かつ hash 衝突」の terminal が
-  // 隔離されずに台帳へ入り、訂正版の再配送が重複 no-op として黙って捨てられる。
-  // §4.3「`operationMatchKey` は Agent・session・lineage・turn・operation kind・native operation ID・
-  // canonical input hash に対する schema-versioned SHA-256」。rule 1 は nativeOperationId だけで
-  // 選ぶので、matchKey が違えば「同じ operation ID に別の identity hash」= v6 の quarantine 対象
-  if (matched.correlation.operationMatchKey !== operation.operationMatchKey) {
-    return {
-      matched: null,
-      diagnostic: "terminal_conflict",
-      detail: "operationMatchKey が start と衝突",
-      unresolvedOperationIds: [],
-    };
-  }
-  const startHash = matched.correlation.canonicalInputHash;
-  if (
-    startHash !== undefined &&
-    operation.canonicalInputHash !== undefined &&
-    startHash !== operation.canonicalInputHash
-  ) {
-    return {
-      matched: null,
-      diagnostic: "terminal_conflict",
-      detail: "canonicalInputHash が start と衝突",
-      // 隔離は状態を一切変えないので、候補も unknown にしない
-      unresolvedOperationIds: [],
-    };
-  }
   const start = previous.operationStarts.get(matched.operationId);
   if (start === undefined) {
     // start の ingestSeq が状態に無い（checkpoint から復元した等: #35）。順序を確認できない

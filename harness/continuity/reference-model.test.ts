@@ -1244,6 +1244,45 @@ test("tool_failed が successful: true を名乗っても succeeded にしない
   );
 });
 
+test("terminal 済みの候補に対する identity 衝突も隔離する", () => {
+  // 衝突検査が「terminal 済み」の早期 return より後にあると、corrupt な event が台帳へ入り
+  // 訂正版の再配送が重複 no-op になる
+  const snapshot = startedSnapshot();
+  const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+  const forged = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-forged",
+      ingestSeq: "9",
+      adapterDeliveryId: "delivery-forged",
+      operation: { ...TERMINAL_OPERATION, operationMatchKey: "match-key-other" },
+    }),
+    closed.ledger,
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(
+    forged.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+  assert.equal(forged.ledger.size, closed.ledger.size);
+});
+
+test("terminal 済みへの同一 identity の再配送は already_applied として台帳に入る", () => {
+  // 衝突検査を前に出したせいで正当な再配送まで隔離しては困る
+  const snapshot = startedSnapshot();
+  const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+  const again = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({ eventId: "event-terminal-again", ingestSeq: "9", adapterDeliveryId: "delivery-again" }),
+    closed.ledger,
+  );
+  assert.equal(again.outcome, "applied");
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["terminal_already_applied"],
+  );
+});
+
 test("tool_failed が successful: false なら矛盾しない", () => {
   const snapshot = startedSnapshot();
   const result = reduceTaskWorkState(
