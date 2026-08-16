@@ -6,7 +6,7 @@ evidence file」と定めており、本ファイルがその evidence file に�
 
 正本: `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md`
 
-## manifestVersion 1 — 収録した 7 scenario
+## manifestVersion 1 — 収録した 7 個の scenario
 
 すべて addendum §8 の次の 1 文を出典とする。
 

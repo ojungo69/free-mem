@@ -4,7 +4,8 @@
   "$defs": {
     "IsoTimestamp": {
       "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$"
+      "$comment": "各成分の範囲まで絞る。暦としての実在（2 月 30 日・閏年）は pattern では表せないので、そこは Task 5 の runtime validator が受け持つ（#27）。",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{3})?Z$"
     },
     "TaskBindingRole": {
       "type": "string",
@@ -541,6 +542,17 @@
         "sourceAgent",
         "provenance",
         "payload"
+      ],
+      "allOf": [
+        {
+          "$comment": "§3.1: turnId MUST be present when turnIdSource is native or synthesized_monotonic, and MUST be absent when it is unavailable.",
+          "if": {
+            "required": ["turnIdSource"],
+            "properties": { "turnIdSource": { "const": "unavailable" } }
+          },
+          "then": { "properties": { "turnId": false } },
+          "else": { "required": ["turnId"] }
+        }
       ],
       "properties": {
         "eventId": {
