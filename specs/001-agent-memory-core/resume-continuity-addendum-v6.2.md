@@ -153,12 +153,20 @@ type ContinuityCaptureMethod =
   | "transcript_scan"
   | "user_surface";
 
+interface ContinuityIngestAttestationV1 {
+  ingestReceiptId: string;
+  peerIdentityId: string;
+  channel: "rpc" | "spool";
+  attestedAt: string;
+}
+
 interface ContinuityEventProvenanceV1 {
   sourceAgentVersion: string;
   evidenceKind: EvidenceKind;
   captureMethod: ContinuityCaptureMethod;
   capabilityHash?: string;
   scenarioId?: string;
+  ingestAttestation?: ContinuityIngestAttestationV1;
 }
 
 type TurnIdSource = "native" | "synthesized_monotonic" | "unavailable";
@@ -197,7 +205,9 @@ Evidence certainty never grants instruction authority. Model output is always `d
 ### 3.1 Provenance, turn identity, and operation envelope
 
 - Every adapter MUST populate `provenance`. `sourceAgentVersion` is the exact CLI version recorded at capture; a missing or non-exact version makes the event non-authoritative for every rule that requires native authority.
-- `provenance.evidenceKind = "native"` additionally requires `capabilityHash` equal to the active exact-version capability matrix hash and `scenarioId` naming a scenario whose disposition for that exact version is `proven`. An event that fails either check is treated as `synthesized` regardless of its declared kind.
+- **`evidenceKind` and `ingestAttestation` are assigned by the daemon intake layer, never trusted from the caller.** Intake overwrites any adapter-supplied value: it derives the kind from the authenticated peer identity (§Phase 1 peer auth), the ingest channel, the declared `captureMethod`, and the capability matrix, then stamps `ingestAttestation` with the receipt of that authenticated ingestion. An adapter can therefore claim a capture method, but it cannot self-declare native authority.
+- `provenance.evidenceKind = "native"` additionally requires `ingestAttestation` to be present, `capabilityHash` equal to the active exact-version capability matrix hash, and `scenarioId` naming a scenario whose disposition for that exact version is `proven` **for that `captureMethod`/channel pair**. An event that fails any check is `synthesized` regardless of what the caller sent.
+- Required negative fixtures: an event submitted with `evidenceKind="native"`, a copied capability hash, and a proven scenario ID over an ordinary hook/spool path is ingested as `synthesized` and cannot confirm a task boundary.
 - Turn identity is canonical, not a payload convention. `turnIdSource="native"` requires a native turn identifier proven for that exact version; `synthesized_monotonic` is an adapter-assigned monotonic turn counter per `(sessionId, user-prompt boundary)`; `unavailable` means the adapter cannot establish turn identity.
 - `turnId` MUST be present when `turnIdSource` is `native` or `synthesized_monotonic`, and MUST be absent when it is `unavailable`.
 - Every rule that requires turn scoping (engagement destination turn, terminal-correlation turn compatibility) fails closed against `unavailable`: the event cannot satisfy the requirement, the affected automatic path is downgraded, and the reason is reported by doctor.
@@ -490,6 +500,10 @@ interface EngagementEvaluationContextV1 {
   checkpointAnchors: CheckpointAnchorV1[];
   contradictions: ContradictionEvidenceV1[];
   destinationTurnId: string;
+  destinationTurnIdSource: TurnIdSource;
+  destinationAgentVersion: string;
+  destinationCapabilityHash: string;
+  turnIdentityDisposition: CapabilityTestDisposition;
   evaluationStartedAt: string;
   evaluationEndedAt: string;
 }
@@ -521,7 +535,8 @@ type DeliveryCommandV1 =
   | { kind: "record_engagement"; attemptId: string; revision: string; fence: string; sessionId: string; evidence: EngagementEvidence }
   | { kind: "accept"; attemptId: string; revision: string; fence: string; sessionId: string; projectionRevision: string }
   | { kind: "dismiss"; attemptId: string; revision: string; fence: string; sessionId: string }
-  | { kind: "abandon"; attemptId: string; revision: string; fence: string; sessionId: string; reason: string };
+  | { kind: "abandon"; attemptId: string; revision: string; fence: string; sessionId: string; reason: string }
+  | { kind: "renew_lease"; attemptId: string; revision: string; fence: string; sessionId: string; requestedLeaseUntil: string };
 ```
 
 Every post-claim command validates the caller-supplied `attemptId`, attempt revision, fence, and destination session. A mismatched attempt ID is a typed stale/invalid request and causes no state change.
@@ -534,7 +549,7 @@ The attempt-local tuple is not sufficient on its own: after lease expiry the rec
 4. require `projection.activeLeaseUntil` to be unexpired at transaction time;
 5. only then apply the attempt-local transition.
 
-Heartbeat renewal extends the attempt's `heartbeatUntil`/`leaseUntil` and the projection's `activeLeaseUntil` in one transaction under the same CAS, so lease state never diverges between attempt and projection. Lease expiry, reclaim, and replacement are a single transaction that terminates the old attempt (`abandoned`, revision bump) and rotates `activeDeliveryAttemptId`/`activeClaimFence` together. A delayed `mark_delivered`, `record_engagement`, `dismiss`, or `abandon` from a reclaimed attempt therefore fails step 2 or 3, is typed `stale_attempt`, and causes no state change and no delivery. The reclaim-versus-delivery race is a required fixture: a delayed command from the reclaimed attempt must never mark delivery, record engagement, or accept.
+Heartbeat renewal is the typed `renew_lease` command, not out-of-band prose: it passes the same attempt/revision/fence/session tuple, runs the same projection CAS, and extends the attempt's `heartbeatUntil`/`leaseUntil` together with the projection's `activeLeaseUntil` in one transaction, so lease state never diverges between attempt and projection. A renewal that arrives after reclaim fails the CAS and cannot extend a stale attempt; the heartbeat-versus-reclaim ordering is a required fixture alongside the delivery race. Lease expiry, reclaim, and replacement are a single transaction that terminates the old attempt (`abandoned`, revision bump) and rotates `activeDeliveryAttemptId`/`activeClaimFence` together. A delayed `mark_delivered`, `record_engagement`, `dismiss`, or `abandon` from a reclaimed attempt therefore fails step 2 or 3, is typed `stale_attempt`, and causes no state change and no delivery. The reclaim-versus-delivery race is a required fixture: a delayed command from the reclaimed attempt must never mark delivery, record engagement, or accept.
 
 ### 6.2 Initial claim CAS
 
@@ -568,7 +583,8 @@ Contract v1 weights:
 - Failed/unknown/unrelated events score zero.
 - Evidence labels are not trusted by themselves. The evaluator MUST verify each source event exists in `EngagementEvaluationContextV1`, has the expected kind/success state, occurs after delivery and before evaluation end, and links to a declared anchor.
 - Turn scoping is verified from canonical turn identity (§3.1), not from time window plus anchor match: a source event counts only when `event.sessionId` equals the destination session and `event.turnId` equals `destinationTurnId`. An event with `turnIdSource="unavailable"`, a missing `turnId`, or a different `turnId` scores zero.
-- When the destination Agent/version has no proven turn identity, automatic acceptance is unavailable for that version; delivery downgrades to hint/manual and doctor reports the downgrade reason. Explicit user acceptance remains available.
+- Destination turn provenance is validated **before** scoring, from the evaluation context: `destinationAgentVersion` and `destinationCapabilityHash` must match the active matrix, and `turnIdentityDisposition` must be `proven`. A caller-selected `destinationTurnId` alone never unlocks the automatic path.
+- When the destination Agent/version has no proven turn identity (`turnIdentityDisposition != "proven"` or `destinationTurnIdSource="unavailable"`), automatic acceptance is unavailable for that version even if matching events exist; delivery downgrades to hint/manual and doctor reports the downgrade reason. Explicit user acceptance remains available.
 - `engaged`: one valid linked item score `>=0.35`.
 - Automatic `accepted`: cumulative score `>=0.80`, at least two evidence kinds, at least one successful runtime kind, no contradiction.
 - Explicit user/manual acceptance may atomically perform delivered/engaged/accepted at score `1.00`.
@@ -649,10 +665,12 @@ Mode and exact capability are intersected at a specific boundary:
 | Mode | session_start | first_user_prompt | post_compact | manual |
 |---|---|---|---|---|
 | smart | proven hint only | full only with proven prompt gate + selection/reconciliation | full only with proven compact single-delivery | allowed |
-| always | full only with proven SessionStart path | no duplicate automatic full if already delivered; otherwise proven prompt fallback only | full only with proven compact single-delivery | allowed |
+| always | full only with proven SessionStart path + selection/reconciliation | no duplicate automatic full if already delivered; otherwise proven prompt fallback + selection/reconciliation only | full only with proven compact single-delivery + selection/reconciliation | allowed |
 | hint_only | proven hint only | no automatic full | no automatic full | allowed |
-| compact_only | none | none | full only with proven compact single-delivery | allowed |
+| compact_only | none | none | full only with proven compact single-delivery + selection/reconciliation | allowed |
 | off | none | none | none | allowed |
+
+`+ selection/reconciliation` is shorthand for the §11 full-action predicate: one high-confidence candidate outside the ambiguity margin and a reconciliation status that permits automatic full delivery. Capability proof alone never authorizes a full action in any mode.
 
 Boundary is explicit in selection input/output and fixtures. Checkpoint kind or prompt presence is not used to guess the delivery boundary.
 
@@ -809,7 +827,7 @@ interface DerivedArtifactDependencyV1 {
   artifactKind: DerivedArtifactKind;
   artifactRevision: string;
   sources: DerivedArtifactSourceRefV1[];
-  baseMemoryClosure: Array<{ memoryId: string; memoryRevision: string }>;
+  baseMemoryClosure: Array<{ memoryId: string; memoryRevision: string; contentHash: string }>;
   sourceEventIds: string[];
   generationId?: string;
 }

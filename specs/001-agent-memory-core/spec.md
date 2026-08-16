@@ -132,8 +132,8 @@ SyncOperation（Core 1.0では未実装）。
 - **SC-0B**: exact capability matrix、sidecar certification。source/READMEだけでTierを上げない。
 - **SC-1**: daemon-only write handle、fault injection、no Agent blockage、backup restore smoke。
 - **SC-2**: identity collision、duplicate x10、parallel/late-event property tests。
-- **SC-3P**: 全required capability scenarioが`not_run`以外のdispositionを持ち、typed schema/hash、duplicate-event no-op、task-boundary proposal/confirmation、pending-operation、fail-closed reconciliation、initial-claim race、engagement threshold/contradiction、atomic acceptance、mode × capability、selection ambiguity、sensitivity、renderer/capture negative test、memory-history、quality-report reproducibility、doctor fixtureがpassする。未証明capabilityは適切にdowngradeする。
-- **SC-3**: providerなしでsame-agent continuation成功。duplicate full injection、wrong scope、incompatible auto-resume、unsafe unknown replay、early acceptance、accepted-attempt/open-checkpoint、stale fence、capsule escape、malformed capsule trust、source evidence deletionが全て0。
+- **SC-3P**: `ContractPreflightState=complete`（addendum §13 と同一 predicate: manifest exact-set 一致 — missing / extra / duplicate / manifest hash mismatch / artifact 欠落は全て blocking — + matrix 再生成 + runtime-neutral fixture green）。全required capability scenarioが`not_run`以外のdispositionを持ち、typed schema/hash、duplicate-event no-op、task-boundary proposal/confirmation、pending-operation、fail-closed reconciliation、initial-claim race、engagement threshold/contradiction、atomic acceptance、mode × capability、selection ambiguity、sensitivity、renderer/capture negative test、memory-history、quality-report reproducibility、doctor fixtureがpassする。未証明capabilityは適切にdowngradeする。
+- **SC-3**: providerなしでsame-agent continuation成功。duplicate full injection、wrong scope、incompatible auto-resume、unsafe unknown replay、early acceptance、accepted-attempt/open-checkpoint、stale fence、capsule escape、malformed capsule trust、source evidence deletion、stale derived artifact use（直接依存・推移依存の両方）が全て0。
 - **SC-4**: 4/4 route pass、destination Agentの証明済みstrategyのみ使用。
 - **SC-5**: retrieval + echo-loop + temporal/source preservation + 100k FTS-only performance pass。
 - **SC-6**: provider swap、free-certified profile ≥1、generation停止時continuation pass。
@@ -163,7 +163,7 @@ Behavioral metricは`number | "unsupported"`。ただし該当Phase/Releaseが�
 ## Assumptions
 
 - Phase順序はv6.1 §30を基礎とするが、FR-3P / SC-3PをPhase 3 product実装前のblocking barrierとして挿入する。
-- Contract preflightは全required scenario実行・disposition済み + runtime-neutral contract greenでcomplete。capabilityがunsupported/unknown_after_testでもgeneric/manual implementationは可能だが、automatic strategy/Tierはproven時のみ。
+- Contract preflightの`complete`はaddendum §13と同一predicate: required scenario manifestとのexact-set一致（missing / extra / duplicate / manifest hash mismatch は fail）+ 全scenario disposition済み + evidence artifact存在 + matrix再生成 + runtime-neutral contract green。capabilityがunsupported/unknown_after_testでもgeneric/manual implementationは可能だが、automatic strategy/Tierはproven時のみ。
 - #1 Stage 0/1がTS/Rust方向を決めるまで、大規模なPhase 2以降のTS product codeを増やさない。schema/fixture/harnessはruntime-neutralなので並行可能。
 - Phase 9〜11は後続feature。
 - public sourceはCore 1.0 releaseを意味せず、Phase 8までtag/package/release禁止。

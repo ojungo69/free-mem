@@ -111,7 +111,7 @@ node --experimental-strip-types harness/assemble.ts harness/fixtures/codex harne
 Create `harness/schema/continuity.ts` and a matching closed JSON Schema defining:
 
 - `JsonValue`, `Observed<T>`, `Sensitivity`, `Freshness`
-- `NormalizedContinuityEvent` with `turnId`/`turnIdSource`, `ContinuityEventProvenanceV1`, and the `ContinuityOperationRefV1` envelope
+- `NormalizedContinuityEvent` with `turnId`/`turnIdSource`, `ContinuityEventProvenanceV1` (incl. daemon-assigned `ContinuityIngestAttestationV1`), and the `ContinuityOperationRefV1` envelope
 - `CanonicalWorkStateV1`, `OperationCorrelationV1`, `PendingOperation`
 - `SessionTaskBinding`, `TaskBoundaryProposalV1`, `TaskBoundaryDecisionV1`, `TaskBoundaryAuthorityContextV1`
 - `ContinuationCheckpointV2`, checkpoint metadata/disposition/projection
@@ -189,7 +189,8 @@ rejectTaskBoundary(binding, proposal, decision, authority): BoundaryRejectResult
 - [ ] Heuristics create only a proposal; no binding change.
 - [ ] User may confirm/reject any proposal through a user-authoritative surface.
 - [ ] `native_runtime` may confirm only `native_fork` or `accepted_resume` proposals whose source events are exact-version capability-proven native events.
-- [ ] Authority is verified from resolved source events (`evidenceKind`, `capabilityHash`, `sourceAgentVersion`, proven `scenarioId`, session), never from the caller-supplied `source` field. Fixtures cover fabricated, unresolved, cross-session, synthesized, and capability-unproven source events.
+- [ ] Authority is verified from resolved source events (`evidenceKind`, `ingestAttestation`, `capabilityHash`, `sourceAgentVersion`, proven `scenarioId`, session), never from the caller-supplied `source` field. Fixtures cover fabricated, unresolved, cross-session, synthesized, and capability-unproven source events.
+- [ ] `evidenceKind`/`ingestAttestation` are stamped at daemon intake from the authenticated peer and channel; RED: an event submitted over an ordinary hook/spool path with `evidenceKind="native"`, a copied capability hash, and a proven scenario ID is stored as `synthesized` and cannot confirm a boundary.
 - [ ] Agent/model text, similarity scores, `agent_proposal`, and `deterministic_shift` cannot be runtime-confirmed.
 - [ ] Confirm atomically validates revisions, marks proposal confirmed, and creates the new binding; it unbinds the old primary only for `proposedRole="primary"`. Confirmation fixtures exercise `primary`, `side`, and `subagent` and assert the primary binding survives the latter two.
 - [ ] Reject marks proposal rejected and keeps old binding.
@@ -249,13 +250,15 @@ acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 - [ ] Every post-claim command includes and validates `attemptId`, attempt revision, fence, and destination session.
 - [ ] The same transaction CASes against the projection's `activeDeliveryAttemptId`, `activeClaimFence`, and unexpired lease; reclaim terminates the old attempt and rotates both projection fields together.
 - [ ] Reclaim-versus-delivery race fixture: a delayed `mark_delivered`/`record_engagement` from the reclaimed attempt is typed `stale_attempt` and changes nothing.
+- [ ] `renew_lease` is a typed post-claim command under the same CAS; heartbeat-versus-reclaim fixture proves a renewal arriving after reclaim cannot extend the stale attempt's lease.
 - [ ] Mismatched attempt ID/revision/fence/session is typed stale/invalid and causes no state change.
 
 ### Engagement and acceptance
 
 Use fixed weights from the addendum. Tests must revalidate submitted evidence from actual `NormalizedContinuityEvent` records and checkpoint anchors:
 
-- [ ] source event exists, belongs to the destination session, and carries `turnId === destinationTurnId` with `turnIdSource != "unavailable"`; an unproven turn identity disables automatic acceptance for that exact version;
+- [ ] destination turn provenance is validated before scoring: `destinationAgentVersion`/`destinationCapabilityHash` match the active matrix and `turnIdentityDisposition` is `proven`; otherwise the automatic path is unreachable regardless of matching events;
+- [ ] source event exists, belongs to the destination session, and carries `turnId === destinationTurnId` with `turnIdSource != "unavailable"`;
 - [ ] kind and success state match the claimed evidence kind;
 - [ ] event is after delivery and within lease/30-minute window;
 - [ ] anchor belongs to the checkpoint/task lineage;
@@ -317,7 +320,7 @@ Tests:
 - [ ] Derived observation retains every source memory/event ID; deleting source evidence violates the invariant.
 - [ ] Output dedupe never deletes source records.
 - [ ] UPDATE/SUPERSEDE/RETRACT/temporal invalidation atomically marks every known dependent artifact — direct and transitive through artifact-to-artifact edges — stale/invalidated and enqueues deterministic rebuild jobs.
-- [ ] Query/injection/resume/embedding/cache/cloud eligibility verifies both direct `sources` and `baseMemoryClosure` revisions/content hashes, so delayed/failed invalidation jobs cannot expose stale artifacts.
+- [ ] Query/injection/resume/embedding/cache/cloud eligibility verifies both direct `sources` and `baseMemoryClosure` revisions **and content hashes** — closure entries carry `contentHash` so a descendant can detect a same-revision content mismatch — so delayed/failed invalidation jobs cannot expose stale artifacts.
 - [ ] Multi-hop fixture (memory → consolidated memory → context-pack cache and embedding) proves every descendant is excluded before its invalidation job runs; a dependency cycle or unresolvable closure is quarantined and excluded.
 - [ ] Immutable checkpoint canonical state remains historical; stale selected-memory or semantic-note content is omitted/marked stale until re-derived.
 - [ ] Embedding coverage is keyed by memory ID + revision + input hash + generation ID.
@@ -330,7 +333,7 @@ Tests:
 
 `benchmarks/behavioral/contract.schema.json` is the machine authority for `ResumeQualityReportV1`.
 
-- [ ] Numeric zero-tolerance counters include duplicate injection, wrong scope, incompatible auto-resume, unsafe unknown replay, early acceptance, accepted-attempt/open-projection, stale fence, capsule escape, malformed capsule trusted, source evidence deletion, and stale derived artifact use.
+- [ ] Numeric zero-tolerance counters include duplicate injection, wrong scope, incompatible auto-resume, unsafe unknown replay, early acceptance, accepted-attempt/open-checkpoint, stale fence, capsule escape, malformed capsule trusted, source evidence deletion, and stale derived artifact use.
 - [ ] Behavioral metrics include wrong resume, unnecessary hint, candidate accuracy, critical-state recall, fabricated/stale state, re-explanation turns/tokens, first useful action, task completion, hint/full tokens, and claude-mem deltas.
 - [ ] `unsupported` is permitted only for declared inapplicable behavioral metrics. A required Phase/Release metric marked unsupported fails the gate.
 - [ ] Reference, TypeScript, Rust, and public claude-mem adapters consume the same fixture format.
@@ -354,7 +357,9 @@ cmp /tmp/a.json /tmp/b.json
 - [ ] Add P3P barriers to `tasks.md`:
 
 ```text
-#1 Stage 0 + all scenarios dispositioned + contract fixtures green
+#1 Stage 0 + ContractPreflightState = complete (addendum §13 predicate:
+manifest exact-set + manifest hash + artifacts + regenerated matrices +
+runtime-neutral fixtures green)
   -> generic Phase 3 implementation may start
 
 exact strategy capability proven
