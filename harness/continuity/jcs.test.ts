@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canonicalizeJson } from "../schema/jcs.ts";
+import { canonicalizeJson, parseIJson } from "../schema/jcs.ts";
 
 /**
  * JCS そのものを実装している以上、「JCS になっている」ことを見る test が要る。
@@ -73,4 +73,32 @@ test("キー順が違うだけの object は同じ bytes になる", () => {
   assert.equal(canonicalizeJson(a), canonicalizeJson(b));
   // 配列の順序が違えば別物
   assert.notEqual(canonicalizeJson({ z: [1, 2] }), canonicalizeJson({ z: [2, 1] }));
+});
+
+test("重複した property 名を持つ JSON は読まない（RFC 8785 §3.1 / RFC 7493 §2.3）", () => {
+  // `JSON.parse` は後勝ちで潰すだけ。潰れた値は canonicalize できてしまう
+  assert.deepEqual(JSON.parse('{"a":1,"a":2}'), { a: 2 });
+
+  for (const bad of [
+    '{"a":1,"a":2}',
+    '{"a":{"k":1,"k":2}}',
+    '{"a":[{"k":1,"k":2}]}',
+    '{"a":[1,{"b":[{"k":{},"k":[]}]}]}',
+    '{"\u0061b":1,"ab":2}', // エスケープ違いでも同じ property 名
+  ]) {
+    assert.throws(() => parseIJson(bad), /property 名が重複/, bad);
+  }
+});
+
+test("重複していない JSON はそのまま読める", () => {
+  assert.deepEqual(parseIJson('{"a":1,"b":2}'), { a: 1, b: 2 });
+  // 別々の object に同じ名前が出るのは重複ではない
+  assert.deepEqual(parseIJson('{"a":{"k":1},"b":{"k":2}}'), { a: { k: 1 }, b: { k: 2 } });
+  assert.deepEqual(parseIJson('[{"k":1},{"k":2}]'), [{ k: 1 }, { k: 2 }]);
+  // 値の側の文字列は property 名ではない。`"` や `{` を含んでも誤検出しない
+  assert.deepEqual(parseIJson('{"a":"\\"k\\":1,\\"k\\":2","k":3}'), { a: '"k":1,"k":2', k: 3 });
+  assert.deepEqual(parseIJson('{"a":"}{[,","b":"\\\\"}'), { a: "}{[,", b: "\\" });
+  // 整形されていても位置を見失わない
+  assert.deepEqual(parseIJson('{\n  "a" : 1,\n  "b" : [ 1, 2 ]\n}'), { a: 1, b: [1, 2] });
+  assert.throws(() => parseIJson('{\n  "a" : 1,\n  "a" : 2\n}'), /property 名が重複/);
 });

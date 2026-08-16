@@ -16,9 +16,10 @@ import {
   type ToolFailurePhase,
 } from "./schema/capability.ts";
 import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
+import { parseIJson } from "./schema/jcs.ts";
 
 // JSON Schema は「置いてあるだけ」にせず、キー集合の正本として実際に読む
-const SCHEMA = JSON.parse(
+const SCHEMA = parseIJson(
   readFileSync(new URL("./schema/capability.schema.json", import.meta.url), "utf8"),
 ) as JsonSchemaDocument & { properties?: Record<string, any> };
 
@@ -452,7 +453,7 @@ async function loadFixtures(fixturesDir: string): Promise<CaptureFixture[]> {
     }
     let data: unknown;
     try {
-      data = JSON.parse(raw);
+      data = parseIJson(raw);
     } catch (e) {
       fail(`${name}: invalid JSON: ${String(e)}`);
     }

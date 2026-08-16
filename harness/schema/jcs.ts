@@ -37,6 +37,63 @@ function encodeString(value: string): string {
   return JSON.stringify(value);
 }
 
+/**
+ * RFC 8785 §3.1 は canonicalize する入力を I-JSON（RFC 7493）に限る。RFC 7493 §2.3 は
+ * object の重複 property 名を禁じるが、`JSON.parse` は**後勝ちで黙って潰す**。潰れた後の
+ * 値は canonicalize できてしまうので、TS 側は hash を出し、準拠した実装は同じファイルを
+ * 拒否する、という食い違いが残る。契約 JSON はここを通して読む。
+ */
+export function parseIJson<T = unknown>(text: string): T {
+  const value = JSON.parse(text) as T;
+  assertNoDuplicateKeys(text);
+  return value;
+}
+
+/**
+ * `JSON.parse` が構文を検査した後の生テキストを走査して、同じ object 内の重複キーを見つける。
+ * 構文の妥当性は前段で保証済みなので、文字列の範囲と object/array の入れ子だけ追えばよい。
+ */
+function assertNoDuplicateKeys(text: string): void {
+  const stack: (Set<string> | null)[] = []; // object なら見たキーの集合、array なら null
+  let expectKey = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") {
+      stack.push(new Set());
+      expectKey = true;
+      continue;
+    }
+    if (ch === "[") {
+      stack.push(null);
+      expectKey = false;
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      stack.pop();
+      expectKey = false;
+      continue;
+    }
+    if (ch === ",") {
+      expectKey = stack[stack.length - 1] instanceof Set;
+      continue;
+    }
+    if (ch !== '"') continue;
+    const start = i;
+    for (i++; i < text.length && text[i] !== '"'; i += text[i] === "\\" ? 2 : 1);
+    const seen = stack[stack.length - 1];
+    if (!expectKey || !(seen instanceof Set)) continue; // 値の側の文字列
+    expectKey = false;
+    // エスケープを解いてから比べる。`"\u0061b"` と `"ab"` は同じ property 名
+    const key = JSON.parse(text.slice(start, i + 1)) as string;
+    if (seen.has(key)) {
+      throw new Error(
+        `I-JSON: object の property 名が重複している: ${JSON.stringify(key)}（位置 ${start}）`,
+      );
+    }
+    seen.add(key);
+  }
+}
+
 /** JCS で canonicalize した JSON 文字列を返す。undefined・NaN・関数は入力として認めない */
 export function canonicalizeJson(value: unknown): string {
   if (value === null) return "null";

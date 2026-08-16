@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { validateAgainstSchema, validateContractValue, type JsonSchemaDocument } from "../schema/validate.ts";
 import * as contract from "../schema/continuity.ts";
+import { parseIJson } from "../schema/jcs.ts";
 
-const root = JSON.parse(
+const root = parseIJson<JsonSchemaDocument>(
   readFileSync(new URL("../schema/continuity.schema.json", import.meta.url), "utf8"),
 ) as JsonSchemaDocument;
 
@@ -425,6 +426,27 @@ const FROZEN_DEFS = [
 
 test("$defs の名前集合は凍結されている", () => {
   assert.deepEqual(Object.keys(defs).sort(), [...FROZEN_DEFS].sort());
+});
+
+/**
+ * schema にしかない定義。`IsoTimestamp` は RFC3339 の `pattern` を持つ `string` で、
+ * TS 側は素の `string` として書いてある（型として宣言する意味が無い）
+ */
+const SCHEMA_ONLY_DEFS = ["IsoTimestamp"];
+
+/**
+ * 上の凍結は schema ↔ 固定表の 2 点しか見ていないので、**TS の宣言だけ消しても**全部通る
+ * （参照の無い型は `tsc` も咎めない）。型は実行時に列挙できないため、ソースから
+ * `export type` / `export interface` の名前を取って第 3 点にする。
+ */
+test("$defs の名前集合は continuity.ts の型宣言と一致する", () => {
+  const source = readFileSync(new URL("../schema/continuity.ts", import.meta.url), "utf8");
+  const declared = [...source.matchAll(/^export (?:type|interface) (\w+)\b/gm)].map((m) => m[1]);
+  assert.equal(new Set(declared).size, declared.length, "同じ名前を 2 度 export している");
+  assert.deepEqual(
+    declared.sort(),
+    FROZEN_DEFS.filter((name) => !SCHEMA_ONLY_DEFS.includes(name)).sort(),
+  );
 });
 
 test("continuity.schema.json は schema 側の誤記を持たない", () => {

@@ -4,6 +4,7 @@ import { validateFixture, assembleFromFixtures } from "../assemble.ts";
 import type { CaptureFixture } from "../schema/capability.ts";
 import { validateAgainstSchema, type JsonSchemaDocument } from "../schema/validate.ts";
 import { readFileSync, readdirSync } from "node:fs";
+import { parseIJson } from "../schema/jcs.ts";
 
 const VERSION = "1.2.3-test";
 const AT = "2026-08-16T00:00:00.000Z";
@@ -78,7 +79,7 @@ test("synthesized 対は evidenceHash が無ければ manual_only に落ちる",
 });
 
 test("既存 fixture は capability.schema.json 全体に対して妥当（schema と手書き検証の drift 検出）", () => {
-  const schema = JSON.parse(
+  const schema = parseIJson<JsonSchemaDocument>(
     readFileSync(new URL("../schema/capability.schema.json", import.meta.url), "utf8"),
   ) as JsonSchemaDocument;
   let checked = 0;
@@ -86,7 +87,7 @@ test("既存 fixture は capability.schema.json 全体に対して妥当（schem
     const dir = new URL(`../fixtures/${cli}/`, import.meta.url);
     for (const name of readdirSync(dir)) {
       if (!name.endsWith(".json")) continue;
-      const data = JSON.parse(readFileSync(new URL(name, dir), "utf8"));
+      const data = parseIJson(readFileSync(new URL(name, dir), "utf8"));
       assert.deepEqual(validateAgainstSchema(data, schema, schema), [], `${cli}/${name}`);
       checked++;
     }

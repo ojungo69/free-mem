@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { validateContractValue, type JsonSchemaDocument } from "../schema/validate.ts";
 import * as contract from "../schema/continuity.ts";
-import { canonicalizeJson } from "../schema/jcs.ts";
+import { canonicalizeJson, parseIJson } from "../schema/jcs.ts";
 
 /**
  * §13 は capability-scenarios.v1.json を「required scenario ID の唯一の権威」と定めているが、
@@ -14,7 +14,7 @@ import { canonicalizeJson } from "../schema/jcs.ts";
  * 正規化規則は evidence/phase3-capability-scenario-manifest.md 側で定義してある。
  * この test はその規則どおりに再計算して照合する（手で埋めた値を宣言のまま放置しない）。
  */
-const root = JSON.parse(
+const root = parseIJson<JsonSchemaDocument>(
   readFileSync(new URL("../schema/continuity.schema.json", import.meta.url), "utf8"),
 ) as JsonSchemaDocument;
 
@@ -30,9 +30,11 @@ const manifestFiles = readdirSync(schemaDir)
 
 const manifests = manifestFiles.map((file) => ({
   file,
-  value: JSON.parse(
+  // 重複 property 名は `JSON.parse` だと後勝ちで潰れ、潰れた後の値からは hash も出てしまう。
+  // RFC 8785 §3.1 は canonicalize の入力を I-JSON に限るので、読む段で落とす
+  value: parseIJson<contract.CapabilityScenarioManifestV1>(
     readFileSync(new URL(file, schemaDir), "utf8"),
-  ) as contract.CapabilityScenarioManifestV1,
+  ),
 }));
 
 test("versioned manifest が 1 つ以上あり、ファイル名と manifestVersion が一致する", () => {
