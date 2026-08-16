@@ -118,13 +118,18 @@ function assertIJsonStrings(value: unknown, path: string): void {
 }
 
 /**
- * 数値リテラルの綴りが `JSON.parse` で変わらないことを見る。読んだ値だけでは
+ * 数値リテラルが **その値の正規形（最短表記）で書かれている**ことを見る。読んだ値だけでは
  * 「元々そう書いてあった」のか「丸められた」のか区別が付かない。
  *
  * 判定は「その double を最短表記に戻したものが、書かれた綴りと同じ値か」。`0.1` のように
  * 2 進で正確に表せない値でも、最短表記が `0.1` に戻るなら綴りは保たれている。逆に
- * `9007199254740993` や `1.0000000000000001` は最短表記が別の値になり、読んだ時点で
- * 情報が落ちている。正本 §22.6 はこの大きさ・精度の値を decimal string で wire に出すと定めている。
+ * `9007199254740993` や `1.0000000000000001` は最短表記が別の値になり、読んだ時点で情報が
+ * 落ちている（正本 §22.6 はこの大きさ・精度の値を decimal string で wire に出すと定めている）。
+ *
+ * 正規形を要求するので、同じ double を指す別の綴り——`0.1` の厳密な 10 進展開
+ * `0.1000000000000000055511151231257827021181583404541015625` のような書き方——も通らない。
+ * 値としては同じでも bytes が違い、JCS が出す canonical 表記（＝最短表記）とも食い違うため、
+ * 契約ファイルでは 1 つの値に 1 つの綴りに揃える。timestamp を `Z` 固定にしているのと同じ理由。
  */
 function assertRepresentableNumber(token: string): void {
   const parsed = Number(token);
@@ -132,7 +137,7 @@ function assertRepresentableNumber(token: string): void {
   if (!Number.isFinite(parsed)) return;
   if (!sameDecimalValue(token, String(parsed))) {
     throw new Error(
-      `I-JSON: 数値 ${token} は binary64 に収まらない（読むと ${String(parsed)} になる。decimal string で書く）`,
+      `I-JSON: 数値 ${token} が正規形でない（読むと ${String(parsed)} になる。最短表記で書く）`,
     );
   }
 }
