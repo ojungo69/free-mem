@@ -96,8 +96,18 @@ function assertIJsonStrings(value: unknown, path: string): void {
   // RFC 7493 §2.2 は binary64 で表せない数（例として `1E400` を挙げている）を SHOULD NOT と
   // している。`JSON.parse("1e400")` は Infinity になり、そこから先の比較も hash も意味を
   // 失うので、契約ファイルとしては受け取らない
-  if (typeof value === "number" && !Number.isFinite(value)) {
-    throw new Error(`I-JSON: ${path} の数値が binary64 で表せない: ${value}`);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(`I-JSON: ${path} の数値が binary64 で表せない: ${value}`);
+    }
+    // 正本 §22.6 は「safe integer を超えても壊れない値は decimal string として wire へ出す」と
+    // 定めている。JSON の数値として書かれていると `JSON.parse` が黙って丸めるので
+    // （9007199254740993 → …92）、契約ファイルの文字列と読んだ値がずれる
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+      throw new Error(
+        `I-JSON: ${path} の整数が safe integer を超えている（decimal string で書く）: ${value}`,
+      );
+    }
   }
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertIJsonStrings(item, `${path}[${index}]`));

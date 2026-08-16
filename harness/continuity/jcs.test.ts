@@ -192,8 +192,21 @@ test("binary64 で表せない数を含む JSON は読まない（RFC 7493 §2.2
   for (const bad of ['{"a":1e400}', '{"a":-1e400}', '{"a":[1e400]}', '{"a":{"b":1e400}}']) {
     assert.throws(() => parseIJson(bad), /binary64 で表せない/, bad);
   }
-  // 表せる範囲はそのまま通る
-  assert.deepEqual(parseIJson('{"a":1e308,"b":-0,"c":0.1}'), { a: 1e308, b: -0, c: 0.1 });
+  // safe integer を超える整数も拒否する。`JSON.parse` が黙って丸めるので、ファイルの文字列と
+  // 読んだ値がずれる（正本 §22.6 はこの大きさの値を decimal string で書けと定めている）
+  assert.equal(JSON.parse('{"a":9007199254740993}').a, 9007199254740992);
+  for (const bad of ['{"a":9007199254740993}', '{"a":-9007199254740993}', '{"a":[1e30]}']) {
+    assert.throws(() => parseIJson(bad), /safe integer を超えている/, bad);
+  }
+  // 2**53 以上は指数表記でも整数値なので同じ扱い（`1e30` も丸められた値でしかない）
+  assert.equal(Number.isInteger(1e30), true);
+  // 正確に表せる範囲はそのまま通る
+  assert.deepEqual(parseIJson('{"a":9007199254740991,"b":-0,"c":0.1,"d":-12}'), {
+    a: 9007199254740991,
+    b: -0,
+    c: 0.1,
+    d: -12,
+  });
 });
 
 test("素の object でない値は canonicalize しない", () => {
