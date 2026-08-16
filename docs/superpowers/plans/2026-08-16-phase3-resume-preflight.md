@@ -150,7 +150,7 @@ const CONTINUITY_LIMITS = {
 
 - [ ] Reject unknown keys, non-JSON values, invalid timestamps/decimal strings, invalid scores, excessive structure, and schema-version mismatch.
 - [ ] Use identical limits in runtime validators and JSON Schema.
-- [ ] Emit schema/fixture SHA-256 values for TypeScript/Rust parity.
+- [x] Emit schema/fixture SHA-256 values for TypeScript/Rust parity. — `harness/contract-hashes.mjs` が `harness/schema/**` と `harness/fixtures/**` の `.json` / `.jsonl` 27 件の生バイト SHA-256 を出し、`harness/contract-hashes.json` に凍結する。CI の "Contract hashes are regenerated" が再生成との差分を見る。
 
 ### 正本に型定義が無いもの（この Task では凍結しない）
 

@@ -507,3 +507,26 @@ test("CONTINUITY_LIMITS のキーは強制済みか、未強制として明示�
   assert.ok(Buffer.byteLength(JSON.stringify(oversized), "utf8") > CONTINUITY_LIMITS.capsulePayloadBytes);
   assert.deepEqual(findStructuralViolations(oversized, CONTINUITY_LIMITS), []);
 });
+
+test("schema の type 名の誤記は preflight で落とす（#23）", () => {
+  // `strng` はキーワード名としては正しいので、名前と値の種別の検査は通る。
+  // 実行時はどの値にも一致しないため、その欄の正当な値をすべて拒否する schema になる
+  for (const bad of ["strng", "String", "int", ""]) {
+    assert.throws(
+      () => validateAgainstSchema("x", { type: bad }, ROOT),
+      /invalid type name/,
+      bad,
+    );
+    // 配列形も同じ。1 つでも誤記があれば落とす
+    assert.throws(() => validateAgainstSchema("x", { type: ["string", bad] }, ROOT), /invalid type name/, bad);
+  }
+  // 参照されていない $defs の中でも検査される（踏まないまま凍結されるのを防ぐ）。
+  // 実際の使われ方と同じく、文書そのものを schema として渡したときに $defs が歩かれる
+  const doc = { $defs: { Unused: { type: "strng" } } } as unknown as JsonSchemaDocument;
+  assert.throws(() => validateAgainstSchema(undefined, doc, doc), /invalid type name/);
+  // 正当な型名は 7 つとも通る
+  for (const ok of ["string", "number", "integer", "boolean", "object", "array", "null"]) {
+    assert.doesNotThrow(() => validateAgainstSchema(null, { type: ok }, ROOT), ok);
+  }
+  assert.doesNotThrow(() => validateAgainstSchema("x", { type: ["string", "null"] }, ROOT));
+});

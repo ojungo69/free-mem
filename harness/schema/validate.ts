@@ -31,6 +31,17 @@ export interface JsonSchemaDocument {
   [key: string]: unknown;
 }
 
+/** JSON Schema draft 2020-12 の型名。`type` の値はこれ以外を取らない */
+const JSON_SCHEMA_TYPES = new Set([
+  "string",
+  "number",
+  "integer",
+  "boolean",
+  "object",
+  "array",
+  "null",
+]);
+
 const SUPPORTED_KEYWORDS = new Set([
   "$ref",
   "$schema",
@@ -282,6 +293,17 @@ function assertSchemaSupported(
     const expected = KEYWORD_VALUE_KIND[key];
     if (expected && !expected.check(schema[key])) {
       throw new Error(`schema keyword ${key} at ${path} must be ${expected.name}`);
+    }
+  }
+  // `type` の値は名前そのものが制約になる。`"strng"` はキーワード名としては正しいので
+  // 上のループを通り、実行時はどの値にも一致しない = その欄の正当な値をすべて拒否する
+  // schema になる。使われていない `$defs` なら誰も踏まないまま凍結される
+  if (schema.type !== undefined) {
+    const names = Array.isArray(schema.type) ? schema.type : [schema.type];
+    for (const name of names) {
+      if (typeof name !== "string" || !JSON_SCHEMA_TYPES.has(name)) {
+        throw new Error(`invalid type name at ${path}: ${JSON.stringify(name)}`);
+      }
     }
   }
   // pattern は値が文字列のときしか評価されない。`{type:"number", pattern:"["}` のような

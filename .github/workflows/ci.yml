@@ -100,6 +100,14 @@ jobs:
           EOF
           exit $status
 
+      - name: Contract hashes are regenerated
+        # plan Task 4「Emit schema/fixture SHA-256 values for TypeScript/Rust parity」。
+        # Rust 側が同じ契約を読んでいることを確かめる手段が版番号しかないと、drift した複製を
+        # 読んでいても気付けない。生バイトの hash なので整形の違いも検出する
+        run: |
+          node harness/contract-hashes.mjs > /tmp/contract-hashes.json
+          diff harness/contract-hashes.json /tmp/contract-hashes.json
+
       - name: Matrices are regenerated, not hand-edited
         # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
         # generatedAt は実行ごとに変わるので比較から外す

@@ -1,0 +1,32 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "fixtures/claude/injection-and-subagent.json": "c61f04baf3d4094650b84a0911932ce88de4c2fabb4effee10c39398a099ef58",
+    "fixtures/claude/interrupt-and-hook-timeout.json": "9424afe9a53ffa783044f5da1ae016f3f14a6e988fa665d5ce89172c8c3764de",
+    "fixtures/claude/lifecycle-basic.json": "21451509b311fbea1927b00f9ae8779a365cc248d1497edd1984ad207b27b0ff",
+    "fixtures/claude/raw/claude-hook-timeout.jsonl": "c09c0fea350ce06b0ecd7aa98db4b42459def6164130d7a3d84502781d8a9d87",
+    "fixtures/claude/raw/claude-inject.jsonl": "00c71abe7e54d2560026cce5722cf39e203cf30e21576f1b370022b1840e7213",
+    "fixtures/claude/raw/claude-interrupt.jsonl": "5cade0369306b5bbbf15c679e777ddf1211621ff9dca8dee131f5020ce04d1cf",
+    "fixtures/claude/raw/claude-interrupt2.jsonl": "acf7f52855aa7cea9fa42d88c30b08a7983f8fb187e201b91c79682c11f402be",
+    "fixtures/claude/raw/claude-interrupt3.jsonl": "35cf5d6cd90e5347f074249d3a5df8f8f39f1a2fb6fcb150cba75a2aeb1da417",
+    "fixtures/claude/raw/claude-interrupt4.jsonl": "0b6e936b7fc0ff05549be53e990451e677a07ab94408e1e190a73ca280259ae5",
+    "fixtures/claude/raw/claude-lifecycle-basic.jsonl": "7f3a47b1e27e54bbf2157b8facfcc050a1dbd6d77439337760ed8471c8c5202e",
+    "fixtures/claude/raw/claude-subagent.jsonl": "6f2b48ae1654b1f85644862df739e2d15db3cde7c85d3275cf1b430753cf8fcc",
+    "fixtures/claude/raw/claude-tool-denied.jsonl": "f00e7cc19e6b97af361741276bbfd4b03cc319d9f0e9b6b4c7cb4c377b1416c4",
+    "fixtures/claude/raw/claude-tool-fail.jsonl": "99dc2d63ede38499e16369978666153754e9a9ae0d1ef6a17347989392d08e16",
+    "fixtures/claude/raw/claude-tool-fail2.jsonl": "5f168b009d0a109861725af13e95ecff32ce52f8444ffd61f6700920b4b9809b",
+    "fixtures/claude/raw/claude-tool-ok.jsonl": "ea8485c3cb9586930570c5e4bafc2214065a4a6733e01a75082db002189d4cdc",
+    "fixtures/claude/tool-failed-executed.json": "b5397e9b80c99a6daea19d7aa3459571b27f1c2220035f0e4b63b32b4bd926ad",
+    "fixtures/claude/tool-lifecycle.json": "2991f14a9b92497dca38de4973f82d8843650e5f649bbc96993b2462a08d84d5",
+    "fixtures/codex/injection.json": "d7ab8cc79faf3a4d40460820b925c2098a3dea5c52b00b1062ecb257e3439c9d",
+    "fixtures/codex/lifecycle-basic.json": "ae77df03a66f1b152732f4e449c99d8f6e96946f62686168c5991963a1aa58de",
+    "fixtures/codex/raw/codex-inject.jsonl": "e48bc3310c295a865b14a424cc7892a63b775d3afa0f9524124bd6a26b13ca80",
+    "fixtures/codex/raw/codex-lifecycle-basic.jsonl": "09a006b93306daae568e2ba77b8660b9ac6f385077bf9bd789007b1219fe5ef0",
+    "fixtures/codex/raw/codex-tool-fail.jsonl": "067269f7de6d1bc31eb7f909dec71380426229211095e534a973e7c2653a4b55",
+    "fixtures/codex/raw/codex-tool-ok.jsonl": "1aaefa4f701901b10fd8ecadcdc4112ef45179e21693a116e4134bd3dd589cd4",
+    "fixtures/codex/tool-lifecycle-and-failure.json": "0e7f25f0c63e78a9aaa0a12ef67ad948c1059f5d30b0c2a8f6d29ac929f70488",
+    "schema/capability-scenarios.v1.json": "707e9f3003605500a3b142666eb44c1ccb6c3e54e26cbca0804e3492c7f90f8a",
+    "schema/capability.schema.json": "e3c62825f8364ca7879bb0d803ab139dd9bd16d031290d06592cbe6b8d6aef23",
+    "schema/continuity.schema.json": "ed305949519a19cf48c65feda6160b1e800ac528cb04244ad67f8eb724e19cb1"
+  }
+}
