@@ -1,0 +1,25 @@
+harness/continuity/schema-freeze.test.ts
+  s_5cbc4c67c8b3b4::t_3a05c01463c530 4,11-134,138,144-151,155-200,202-230
+  s_5cbc4c67c8b3b4::t_e8108bafde3a52 201
+harness/schema/continuity.schema.json
+  s_5cbc4c67c8b3b4::t_e927310dddc216 546-556
+  s_5cbc4c67c8b3b4::t_92e5f8a74bf3bc 7-8
+evidence/phase3-capability-scenario-manifest.md
+  s_5cbc4c67c8b3b4::t_47e024f324f212 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f2781ac3f63fab616c9642da83d69c9b51880549",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
