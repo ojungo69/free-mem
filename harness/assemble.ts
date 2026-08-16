@@ -183,29 +183,27 @@ function dedupe(xs: string[]): string[] {
 }
 
 export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatrix {
-  // この関数のガードは全て throw にする（fail は process.exit で、テストから確認できず
-  // --test 実行中に踏むとスイート全体が途中で死ぬ）。CLI 側は catch して同じ終了コードを返す
+  // この関数のガードは fail ではなく throw にする。process.exit だとテストから確認できず、
+  // --test 実行中に踏むとスイート全体が途中で死ぬ。CLI 側は catch して同じ終了コードを返す
   if (fixtures.length === 0) {
     throw new Error("no valid fixtures to assemble");
   }
+  // fixtureId は cell 間の「同一の実測か」の照合キー（capability.ts sameEvidenceSource）。
+  // 重複したまま通すと別 run 同士を同一実測と誤認する
+  const seenIds = new Set<string>();
+  for (const f of fixtures) {
+    if (seenIds.has(f.fixtureId)) throw new Error(`duplicate fixtureId: ${f.fixtureId}`);
+    seenIds.add(f.fixtureId);
+  }
 
-  // fixtureId で正規化してから畳む。同格な観測どうしの勝ち負けが「どの順で渡したか」で
-  // 変わると、matrix の provenance が readdir の並びや呼び出し側の都合で入れ替わる。
+  // 一意と分かってから fixtureId で正規化する。同格な観測どうしの勝ち負けが「どの順で
+  // 渡したか」で変わると、matrix の provenance が readdir の並びや呼び出し側の都合で入れ替わる。
   // ponytail: 同格の勝者は fixtureId 順で決まるだけで、新しい観測を優先はしない。
   // verifiedAt を「最後に確認した時刻」として読ませたくなったら畳み込みに recency 規則が要る
   fixtures = [...fixtures].sort((a, b) => (a.fixtureId < b.fixtureId ? -1 : 1));
 
   const cli = fixtures[0].cli;
   const nativeVersion = fixtures[0].nativeVersion;
-  // fixtureId は cell 間の「同一の実測か」の照合キー（capability.ts sameEvidenceSource）。
-  // 重複したまま通すと別 run 同士を同一実測と誤認する
-  const seenIds = new Set<string>();
-  for (const f of fixtures) {
-    // validateFixture と同じ理由で throw。process.exit だとテストから確認できず、
-    // --test 実行中に踏むとスイート全体が途中で死ぬ
-    if (seenIds.has(f.fixtureId)) throw new Error(`duplicate fixtureId: ${f.fixtureId}`);
-    seenIds.add(f.fixtureId);
-  }
   for (const f of fixtures) {
     if (f.cli !== cli) {
       throw new Error(`cli mismatch: ${fixtures[0].fixtureId}=${cli} vs ${f.fixtureId}=${f.cli}`);
@@ -249,9 +247,8 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       const prev = capabilities.capture[kind];
       // native は synthesized に降格させない（別 fixture で native 観測済みなら維持）。
       // 値が上がらないなら、証跡が良くなるときだけ書き換える。hash 付きの実測を hash 無しの
-      // 自己申告で潰さないだけでなく、完全に同格な観測どうし（同じ値・どちらも hash 付き）でも
-      // 「後に読んだ fixture が勝つ」＝ file 名順で証跡の出どころが変わるのを止める。
-      // 同格なら先に読んだ方を残す（高位 cell の畳み込みと同じ向き）
+      // 自己申告で潰さないだけでなく、完全に同格な観測（同じ値・どちらも hash 付き）でも
+      // 後勝ちにしない（勝者は入り口で正規化した fixtureId 順で決まる）
       const evValue = ev.capability ?? "native";
       const upgrades = (CAPABILITY_STRENGTH[evValue] ?? 0) > (CAPABILITY_STRENGTH[prev.value] ?? -1);
       const improvesEvidence = Boolean(f.evidenceHash) && !prev.evidenceHash;
