@@ -27,6 +27,6 @@
     "fixtures/codex/tool-lifecycle-and-failure.json": "0e7f25f0c63e78a9aaa0a12ef67ad948c1059f5d30b0c2a8f6d29ac929f70488",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
     "schema/capability.schema.json": "e3c62825f8364ca7879bb0d803ab139dd9bd16d031290d06592cbe6b8d6aef23",
-    "schema/continuity.schema.json": "ed305949519a19cf48c65feda6160b1e800ac528cb04244ad67f8eb724e19cb1"
+    "schema/continuity.schema.json": "53949dff581883f93882ab47a3fa77dc53bfb16ac1f4d6c3a33042d828fd3c2b"
   }
 }

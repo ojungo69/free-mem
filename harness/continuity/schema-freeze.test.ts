@@ -457,6 +457,9 @@ function stripCommentsAndStrings(source: string): string {
       continue;
     }
     if (two === "/*") {
+      // 空文字にすると `export/**/interface X {}` が `exportinterface` になって
+      // 宣言が走査から消える。区切りとして空白を 1 つ残す
+      out += " ";
       for (i += 2; i < source.length && source.slice(i, i + 2) !== "*/"; i++) {
         if (source[i] === "\n") out += "\n";
       }
@@ -498,6 +501,8 @@ function declaredTypeNames(source: string): string[] {
     }
     // 値の export（union 定数と CONTINUITY_LIMITS）は型ではないので数えない
     if (/^export const \w+[\s:=]/.test(statement)) continue;
+    // `export` という名前の property（`interface X { export: string }`）は宣言ではない
+    if (/^export ?\??:/.test(statement)) continue;
     assert.fail(`型名を取れない export の形: ${statement.slice(0, 60)}`);
   }
   return names;
@@ -531,6 +536,14 @@ test("名前を取れない export の形は落とす（AST を持たない代�
   assert.deepEqual(declaredTypeNames("export interface A<T> {\n  x: T;\n}\n"), ["A"]);
   // 1 行に 2 つ書いても両方数える
   assert.deepEqual(declaredTypeNames("export const C = 1; export interface Extra {}\n"), ["Extra"]);
+  // コメントを区切りに使った宣言も拾う（空文字に潰すと `exportinterface` になって消える）
+  assert.deepEqual(declaredTypeNames("export/**/interface Extra {}\n"), ["Extra"]);
+  assert.deepEqual(declaredTypeNames("export/*doc*/type A = string;\n"), ["A"]);
+  // `export` という名前の property は宣言ではない
+  assert.deepEqual(
+    declaredTypeNames("export interface HasField {\n  export: string;\n}\n"),
+    ["HasField"],
+  );
   // 正規表現リテラルは走査の前提外なので素通りさせない
   assert.throws(
     () => declaredTypeNames("export const R = /[/*]/;\nexport interface Extra {}\n"),
@@ -770,4 +783,23 @@ test("IsoTimestamp は成分の範囲まで見る", () => {
   }
   // 暦としての実在は pattern では表せない。ここは通ってしまう（#27）
   assert.equal(bad("2026-02-30T00:00:00Z"), false);
+});
+
+test("decimal string の pattern は sequence/watermark 全部に付いている（正本 §22.6）", () => {
+  // §22.6 は seq / epoch を decimal string として wire に出すと定めている。1 箇所だけ外しても
+  // 他の test は通るので、pattern が付いている path の集合そのものを凍結する
+  const decimal = "^(0|[1-9][0-9]*)$";
+  const found: string[] = [];
+  for (const [path, node] of walkDefs()) {
+    if (node.pattern === decimal) found.push(path);
+  }
+  assert.deepEqual(found.sort(), [
+    "CanonicalWorkStateV1.properties.lastIngestSeq",
+    "ContinuationCheckpointV2.properties.memoryWatermark",
+    "ContradictionScanRangeV1.properties.fromIngestSeq",
+    "ContradictionScanRangeV1.properties.toIngestSeq",
+    "NormalizedContinuityEvent.properties.ingestSeq",
+    "Observed.properties.ingestSeq",
+    "SemanticResumeNoteV1.properties.generatedFromIngestSeq",
+  ]);
 });

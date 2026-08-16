@@ -615,3 +615,46 @@ test("rankedCandidates は schema 側で強制されていて、上限は定数�
   assert.deepEqual(issuesAt(CONTINUITY_LIMITS.rankedCandidates), []);
   assert.equal(issuesAt(CONTINUITY_LIMITS.rankedCandidates + 1).length > 0, true);
 });
+
+test("sequence と watermark は decimal string でなければ通らない（正本 §22.6）", () => {
+  // §22.6:「server seq、device seq、epoch は JavaScript safe integer を超えても壊れない
+  // decimal string として wire へ出す」。string 型のままだと ordering の権威が任意の文字列になる
+  const schema = readIJsonFile<JsonSchemaDocument>(
+    new URL("../schema/continuity.schema.json", import.meta.url),
+  );
+  const event = {
+    eventId: "e1",
+    canonicalFingerprint: "f1",
+    kind: "prompt",
+    ingestSeq: "12",
+    occurredAt: "2026-08-16T00:00:00Z",
+    sessionId: "s1",
+    turnIdSource: "unavailable",
+    sourceAgent: "codex",
+    provenance: { sourceAgentVersion: "1.0.0", evidenceKind: "synthesized", captureMethod: "hook" },
+    payload: {},
+  };
+  assert.deepEqual(
+    validateContractValue("NormalizedContinuityEvent", event, schema, CONTINUITY_LIMITS),
+    [],
+  );
+  // safe integer を超える値は通る（decimal string にしている理由そのもの）
+  assert.deepEqual(
+    validateContractValue(
+      "NormalizedContinuityEvent",
+      { ...event, ingestSeq: "9007199254740993000" },
+      schema,
+      CONTINUITY_LIMITS,
+    ),
+    [],
+  );
+  for (const bad of ["not-a-decimal", "", "12.5", "-1", "007", "1e3", " 12", "12 "]) {
+    const issues = validateContractValue(
+      "NormalizedContinuityEvent",
+      { ...event, ingestSeq: bad },
+      schema,
+      CONTINUITY_LIMITS,
+    );
+    assert.ok(issues.length > 0, `ingestSeq ${JSON.stringify(bad)} が通った`);
+  }
+});
