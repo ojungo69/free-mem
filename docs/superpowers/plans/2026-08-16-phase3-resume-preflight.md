@@ -265,7 +265,7 @@ Use fixed weights from the addendum. Tests must revalidate submitted evidence fr
 - [ ] anchor belongs to the checkpoint/task lineage;
 - [ ] duplicate evidence counts once;
 - [ ] failed/unknown/unrelated/out-of-window/fabricated labels score zero;
-- [ ] explicit rejection, confirmed other task, incompatible workspace, or runtime invalidation blocks acceptance — the daemon re-queries contradictions from its own event store inside the acceptance transaction, from delivery through a watermark it reads itself (caller ranges are advisory only); RED: a context that omits an existing rejection still fails to accept, and a rejection stored after the submitted `evaluationEndedAt` but before acceptance still blocks it;
+- [ ] explicit rejection, confirmed other task, incompatible workspace, or runtime invalidation blocks acceptance — the daemon re-queries contradictions from its own event store inside the acceptance transaction, from delivery through a watermark it reads itself (caller ranges are advisory only), scanning `explicit_rejection` and `new_task_confirmed` session-wide and filtering only `runtime_invalidated` to the resumed lineage; RED: a context that omits an existing rejection still fails to accept, and a rejection stored after the submitted `evaluationEndedAt` but before acceptance still blocks it;
 - [ ] Agent prose alone cannot accept.
 
 Automatic acceptance requires cumulative score ≥0.80, at least two evidence kinds, at least one successful runtime kind, and no contradiction. Atomic acceptance appends accepted disposition and advances projection+attempt together. Accepted attempt/open projection is impossible.
