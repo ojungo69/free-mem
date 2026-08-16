@@ -1,0 +1,28 @@
+harness/continuity/reference-model.ts
+  s_5cbc4c67c8b3b4::t_46011732cac348 826
+  s_5cbc4c67c8b3b4::t_2df6f0f07bb1a9 803-806,808-811
+  s_5cbc4c67c8b3b4::t_2cf19b2a7c91d5 1340-1342,1344-1346,1349
+  s_5cbc4c67c8b3b4::t_cb1df52b7c82c6 900-905,907
+harness/continuity/reference-model.test.ts
+  s_5cbc4c67c8b3b4::t_abbc41723032ba 2185-2215
+evidence/phase3-reference-model.md
+  s_5cbc4c67c8b3b4::t_f3e0134d99c8b9 33,378-379,434,497
+harness/continuity/mutate.sh
+  s_5cbc4c67c8b3b4::t_e5d975f120285b 121,226-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f26e68ccd00d236f0f3e20f82d2d477f848180a1",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
