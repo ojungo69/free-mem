@@ -271,6 +271,9 @@ mutate "        pending.correlation.sessionId === event.sessionId &&
         pending.correlation.taskLineageId === state.taskLineageId," "        pending.correlation.sessionId === event.sessionId," && run "放棄が別 lineage の operation も倒す"
 mutate "    const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" "    const existing = idMatches[0] ?? preferCompatible(nativeMatches);" && run "derived id の兄弟は先頭 1 件で決める"
 mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId," "    () => false," && run "退避で lineage 外を優先しない"
+mutate "        nativeOperationId: existing.correlation.nativeOperationId ?? operation.nativeOperationId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
+mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
+mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
 mutate "            code: \"delivery_conflict\",
             eventId: event.eventId,
             detail: \`event \${applied.eventId} と同じ配送 ID で source hash が違う\`,

@@ -786,8 +786,36 @@ export function reduceTaskWorkState(
       ]);
     }
     if (existing !== undefined) {
+      // **再配送が持っていて記録に欠けている識別材料は、鍵を消費する前に埋める**。凍結 schema の
+      // `OperationCorrelationV1` は `nativeOperationId` / `canonicalInputHash` / `toolName` を
+      // required にしていないので、復元した checkpoint や別実装が書いた状態では欠けうる。欠けたまま
+      // 重複として鍵だけ消費すると、**その material を使う照合が永久に成立しない**（実測: native id を
+      // 持たない pending に native id 付きの start を再配送すると重複になり、その native id を名乗る
+      // terminal は rule 1 で候補ゼロ = `terminal_orphaned` の隔離を繰り返し、operation は `started` の
+      // まま止まる）。埋めるのが安全なのは、ここに来た時点で `startConflictsWith` が false = 両方が
+      // 持つ欄はすべて一致していると確認済みだから。欠けている欄を埋めるだけなら矛盾は作れない。
+      // **`turnId` と `turnIdSource` は埋めない**: どちらも turn scoped で、再配送は元の start と
+      // 違う turn で届きうる。記録が turn 同一性を持たないときに再配送側の turn を書くと、rule 2 の
+      // 照合権限を「元の start に無かった turn」で与えることになる（欠落と違って、これは記録の
+      // 意味を変える）。降格された turn の回復は #35 の本筋で扱う
+      const recovered: OperationCorrelationV1 = {
+        ...existing.correlation,
+        nativeOperationId: existing.correlation.nativeOperationId ?? operation.nativeOperationId,
+        canonicalInputHash: existing.correlation.canonicalInputHash ?? operation.canonicalInputHash,
+        toolName: existing.correlation.toolName ?? operation.operationKind,
+      };
+      // 「何を埋めたか」は上の object から導く。埋める欄を別の場所に手で並べると、欄が増えたとき
+      // 片方だけ更新されて緑のまま守らなくなる
+      const filled = (Object.keys(recovered) as (keyof OperationCorrelationV1)[]).some(
+        (field) => existing.correlation[field] !== recovered[field],
+      );
       return commit(previous, event, idempotencyLedger, {
-        ...unchanged,
+        // 埋める材料が無いときは状態を触らない（意味の無い revision 採番を作らない）
+        pendingOperations: filled
+          ? previous.state.pendingOperations.map((pending) =>
+              pending === existing ? { ...pending, correlation: recovered } : pending,
+            )
+          : previous.state.pendingOperations,
         diagnostics: [
           { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${existing.operationId} は既に pending` },
         ],
@@ -1282,8 +1310,23 @@ export function correlateTerminalEvent(
   // 絞ると、turn が両立しない open な兄弟が「open が居る」と数えられて確定済み経路が飛ばされ、
   // 確定済み候補への健全な再配送が `terminal_unmatched` に化けて、その兄弟を `unknown` に倒し
   // 台帳まで消費する（兄弟はこの terminal では閉じえないので巻き込む理由が無い）
+  // §4.3 の順序要件（terminal の `ingestSeq` は start より後）も**絞り込みで見る**。これまでは
+  // 候補を 1 件に決めたあとの検査だったので、start が 10 と 20 の候補が並ぶとき `ingestSeq` 15 の
+  // terminal は「10 の側しか閉じえない」のに両方が候補として数えられ、`terminal_ambiguous` で
+  // **両方 `unknown` に倒れて台帳まで消費される**（実測）。`turnIdSource` と同じ扱いで、材料が
+  // ある候補だけを対象にし、rule 1 を名乗った terminal は絞らない。
+  // **全件が順序不適合なら絞らない**: そこで空にすると、候補 1 件が順序違反というだけの場合に
+  // `terminal_out_of_order`（何が起きたかを名指しする診断）が `terminal_unmatched` に化ける
+  const orderableOf = (list: readonly PendingOperation[]): readonly PendingOperation[] => {
+    if (byNativeId.length > 0) return list;
+    const orderable = list.filter((pending) => {
+      const start = startFactsFor(previous, pending.operationId);
+      return start === undefined || compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) > 0;
+    });
+    return orderable.length === 0 ? list : orderable;
+  };
   const sameTurn = sameTurnOf(compatible);
-  const plausible = eligibleOf(sameTurn);
+  const plausible = orderableOf(eligibleOf(sameTurn));
   const open = plausible.filter(isOpen);
   if (open.length === 0) {
     // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を

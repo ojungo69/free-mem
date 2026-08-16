@@ -775,6 +775,74 @@ test("放棄は自 lineage の operation だけを unknown にする", () => {
   assert.equal(own.state.pendingOperations[0]?.status, "unknown");
 });
 
+test("再配送が持つ識別材料は、鍵を消費する前に記録へ埋める", () => {
+  // 凍結 schema は `nativeOperationId` を required にしていないので、復元した checkpoint では
+  // 欠けうる。欠けたまま重複として鍵だけ消費すると、その native id を名乗る terminal は rule 1 で
+  // 候補ゼロになり `terminal_orphaned` の隔離を繰り返して operation が `started` のまま止まる
+  const seeded = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  assert.equal(seeded.state.pendingOperations[0]?.correlation.nativeOperationId, undefined);
+  const redelivered = reduceTaskWorkState(seeded, startEvent({ ingestSeq: "13" }), new Map());
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.equal(redelivered.snapshot.state.pendingOperations[0]?.correlation.nativeOperationId, "toolu_1");
+  // 埋まったので rule 1 の terminal が閉じられる
+  const closed = reduceTaskWorkState(redelivered.snapshot, terminalEvent(), new Map());
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("turn scoped な欄は再配送で埋めない", () => {
+  // `turnId` / `turnIdSource` は turn scoped で、再配送は元の start と違う turn で届きうる。
+  // 記録が turn 同一性を持たないときに再配送側の turn を書くと、**元の start に無かった turn で
+  // rule 2 の照合権限を与える**ことになる。欠落を埋めるのと違い、これは記録の意味を変える
+  const unproven: IntakeContextV1 = { ...INTAKE, nativeTurnIdentityProven: false };
+  const downgraded = stampIntakeEvidence(startEvent({ operation: MATCH_KEY_ONLY }), unproven).event;
+  const seeded = startedSnapshot(downgraded);
+  const operationId = seeded.state.pendingOperations[0]?.operationId as string;
+  assert.equal(seeded.operationStarts.get(operationId)?.turnIdSource, "unavailable");
+  const redelivered = reduceTaskWorkState(
+    seeded,
+    startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.equal(redelivered.snapshot.operationStarts.get(operationId)?.turnIdSource, "unavailable");
+  assert.equal(redelivered.snapshot.state.pendingOperations[0]?.correlation.turnId, undefined);
+});
+
+test("start の順序で候補を絞ってから曖昧さを数える", () => {
+  // start が 10 と 20 の候補が並ぶとき、`ingestSeq` 15 の terminal は 10 の側しか閉じえない。
+  // 順序を「1 件に決めたあとの検査」にしていると両方が候補として数えられ、`terminal_ambiguous` で
+  // 両方 `unknown` に倒れて台帳まで消費される（訂正版が重複 no-op になるので隔離より悪い）
+  const first = startedSnapshot(
+    startEvent({ eventId: "event-a", adapterDeliveryId: "delivery-a", ingestSeq: "10", operation: MATCH_KEY_ONLY }),
+  );
+  const both = reduceTaskWorkState(
+    first,
+    startEvent({ eventId: "event-b", adapterDeliveryId: "delivery-b", ingestSeq: "20", operation: MATCH_KEY_ONLY }),
+    new Map(),
+  );
+  const late = terminalEvent({ ingestSeq: "15", operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } });
+  const closed = reduceTaskWorkState(both.snapshot, late, new Map());
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.deepEqual(closed.snapshot.state.pendingOperations.map((p) => p.status), ["succeeded", "started"]);
+  // 全件が順序不適合なら絞らない。候補 1 件の順序違反を terminal_unmatched に化けさせない
+  const tooEarly = reduceTaskWorkState(
+    first,
+    terminalEvent({ ingestSeq: "5", operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(tooEarly.diagnostics.map((d) => d.code), ["terminal_out_of_order"]);
+});
+
+// 型境界そのものを tsc で固定する。実行時 test では固定できない（helper が
+// `IntakeStampedEventV1` へキャストして返すので、引数型を `NormalizedContinuityEvent` に戻しても
+// 実行結果は変わらない）。引数型が広がると下の `@ts-expect-error` が「未使用の抑止」になって
+// tsc が落ちる = 締めた側と緩めた側の両方向で発火する
+function _correlateRejectsUnstampedEvents(raw: NormalizedContinuityEvent): void {
+  // @ts-expect-error correlateTerminalEvent は intake 済みの event しか受けない
+  correlateTerminalEvent(emptySnapshot(), raw);
+}
+
 test("correlateTerminalEvent は intake が降格する欄を照合権限に使う", () => {
   // 公開 API を素の `NormalizedContinuityEvent` で受けていた根拠は「correlate は `provenance` を
   // 一度も読まないので authority label を消費しない」だったが、これは誤りだった。この関数は
