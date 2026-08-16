@@ -21,6 +21,10 @@ const SCHEMA = JSON.parse(
   readFileSync(new URL("./schema/capability.schema.json", import.meta.url), "utf8"),
 ) as JsonSchemaDocument & { properties?: Record<string, any> };
 
+// SCHEMA は起動時に 1 度読むだけなので、そこから引く集合も module 読み込み時に固める
+const KNOWN_KEYS = new Set(Object.keys(SCHEMA.properties ?? {}));
+const KNOWN_EVENT_KEYS = new Set(Object.keys(SCHEMA.properties?.observedEvents?.items?.properties ?? {}));
+
 const EVENT_KIND_SET = new Set<string>(EVENT_KINDS);
 const TOOL_FAILURE_PHASE_SET = new Set<string>(TOOL_FAILURE_PHASES);
 const CLI_SET = new Set(["claude", "codex"]);
@@ -142,16 +146,14 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   }
 
   // JSON Schema と手書き検証の drift 防止: schema が知らないキーは弾く
-  const known = new Set(Object.keys(SCHEMA.properties ?? {}));
   for (const k of Object.keys(data)) {
-    if (!known.has(k)) errs.push(`unknown top-level key (capability.schema.json 未定義): ${k}`);
+    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key (capability.schema.json 未定義): ${k}`);
   }
-  const evKnown = new Set(Object.keys(SCHEMA.properties?.observedEvents?.items?.properties ?? {}));
   if (Array.isArray(data.observedEvents)) {
     for (const [i, ev] of data.observedEvents.entries()) {
       if (!isObject(ev)) continue;
       for (const k of Object.keys(ev)) {
-        if (!evKnown.has(k)) errs.push(`observedEvents[${i}]: unknown key (schema 未定義): ${k}`);
+        if (!KNOWN_EVENT_KEYS.has(k)) errs.push(`observedEvents[${i}]: unknown key (schema 未定義): ${k}`);
       }
     }
   }

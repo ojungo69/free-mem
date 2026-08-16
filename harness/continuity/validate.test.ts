@@ -111,6 +111,12 @@ test("discriminated union はちょうど 1 variant に一致しなければな�
   assert.match(wrongShape[0].message, /expected exactly 1 oneOf match, got 0/);
 });
 
+test("oneOf は 2 件一致した時点で打ち切るが、不一致として報告する", () => {
+  const schema = { oneOf: [{ type: "string" }, { type: "string" }, { type: "string" }] };
+  const issues = validateAgainstSchema("x", schema, ROOT);
+  assert.match(issues[0].message, /expected exactly 1 oneOf match, got 2 or more/);
+});
+
 test("未対応の schema キーワードは黙って無視せずエラーにする", () => {
   assert.throws(
     () => validateAgainstSchema("x", { type: "string", multipleOf: 2 }, ROOT),

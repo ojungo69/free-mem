@@ -255,6 +255,10 @@ function assertSchemaSupported(
   }
 }
 
+// 一度歩いた schema object は覚えておく。schema は repo 内の静的 JSON で、同じ object を
+// 値ごとに歩き直しても結論は変わらない。root ごとに覚えるのは、$ref の解決先が root 依存のため
+const schemaChecked = new WeakMap<object, JsonSchemaDocument>();
+
 /** schema 側を先に検査してから値を検査する。外から呼ぶのはこちら。 */
 export function validateAgainstSchema(
   value: unknown,
@@ -262,7 +266,10 @@ export function validateAgainstSchema(
   root: JsonSchemaDocument,
   path = "$",
 ): ValidationIssue[] {
-  assertSchemaSupported(schema, root, path, new Set());
+  if (!isPlainObject(schema) || schemaChecked.get(schema) !== root) {
+    assertSchemaSupported(schema, root, path, new Set());
+    if (isPlainObject(schema)) schemaChecked.set(schema, root);
+  }
   return validateNode(value, schema, root, path, []);
 }
 
@@ -374,11 +381,14 @@ function validateNode(
     if (!ok) issues.push({ path, message: "value matches none of anyOf" });
   }
   if (Array.isArray(schema.oneOf)) {
-    const matched = schema.oneOf.filter(
-      (sub) => validateNode(value, sub, root, path, refStack).length === 0,
-    );
-    if (matched.length !== 1) {
-      issues.push({ path, message: `expected exactly 1 oneOf match, got ${matched.length}` });
+    // 2 件一致した時点で結果は確定する。variant の多い判別共用体で残りを回さない
+    let matched = 0;
+    for (const sub of schema.oneOf) {
+      if (validateNode(value, sub, root, path, refStack).length === 0 && ++matched === 2) break;
+    }
+    if (matched !== 1) {
+      const got = matched === 2 ? "2 or more" : String(matched);
+      issues.push({ path, message: `expected exactly 1 oneOf match, got ${got}` });
     }
   }
 
