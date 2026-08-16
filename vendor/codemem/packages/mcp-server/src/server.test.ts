@@ -77,34 +77,40 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 
 	it("maps every read tool to its fixed daemon endpoint and mode", async () => {
 		const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+		const deliveries: string[] = [];
 		const remembers: Record<string, unknown>[] = [];
+		const retrieved = (result: Record<string, unknown>) => ({
+			ok: true as const,
+			result,
+			finalizeDelivery: async (status: "handed_off" | "failed") => {
+				deliveries.push(status);
+			},
+		});
 		const fake: McpRpcClient = {
 			async request(method, body) {
 				calls.push({ method, body });
-				if (method === "GET /v1/memories/:id") return { ok: true, result: { item: { id: 7 } } };
-				if (method === "POST /v1/context/pack") return { ok: true, result: { pack: {} } };
+				if (method === "GET /v1/health") return { ok: true, result: { status: "ok" } };
+				if (method === "GET /v1/memories/:id") return retrieved({ item: { id: 7 } });
+				if (method === "POST /v1/context/pack") return retrieved({ pack: {} });
 				if (body.mode === "search") {
-					return {
-						ok: true,
-						result: {
-							items: [
-								{
-									id: 7,
-									title: "Result",
-									kind: "decision",
-									body_text: "Public body",
-									confidence: 0.9,
-									score: 0.8,
-									session_id: 3,
-									metadata: { source: "test" },
-									created_at: "internal-only",
-								},
-							],
-						},
-					};
+					return retrieved({
+						items: [
+							{
+								id: 7,
+								title: "Result",
+								kind: "decision",
+								body_text: "Public body",
+								confidence: 0.9,
+								score: 0.8,
+								session_id: 3,
+								metadata: { source: "test" },
+								created_at: "internal-only",
+							},
+						],
+					});
 				}
-				if (body.mode === "explain") return { ok: true, result: { items: { items: [] } } };
-				return { ok: true, result: { items: [], status: "ok" } };
+				if (body.mode === "explain") return retrieved({ items: { items: [] } });
+				return retrieved({ items: [], status: "ok" });
 			},
 			async remember(body) {
 				remembers.push(body);
@@ -175,6 +181,24 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 				}),
 			]);
 			expect(calls.every(({ body }) => !Object.hasOwn(body, "store"))).toBe(true);
+			expect(deliveries).toEqual(Array(9).fill("handed_off"));
+			const transformFailure = {
+				get id(): never {
+					throw new Error("injected MCP response transform failure");
+				},
+			};
+			const originalRequest = fake.request;
+			fake.request = async (method, body) =>
+				body.mode === "search"
+					? retrieved({ items: [transformFailure] })
+					: originalRequest(method, body);
+			expect(
+				await connection.client.callTool({
+					name: "memory_search",
+					arguments: { query: "transform failure" },
+				}),
+			).toMatchObject({ isError: true });
+			expect(deliveries.at(-1)).toBe("failed");
 
 			const secondSession = await connect(fake);
 			try {

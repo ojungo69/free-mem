@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Socket } from "node:net";
 import { DaemonJobRequestError, type DaemonJobService } from "./daemon-jobs.js";
 import { DaemonOperationRequestError, type DaemonOperationService } from "./daemon-operations.js";
@@ -14,6 +15,7 @@ import {
 	type RpcSuccess,
 	rpcDeadlineForMethod,
 	type TypedRpcError,
+	typedError,
 } from "./daemon-rpc-contract.js";
 import { isEmbeddingDisabled } from "./db.js";
 import { validateMemoryKind } from "./memory-kinds.js";
@@ -35,8 +37,16 @@ import {
 } from "./online-backup.js";
 import { applyDaemonIntake, type RedactionResult } from "./redaction-pipeline.js";
 import { REDACTION_WORKER_DEADLINE_MS } from "./redaction-worker.js";
-import { tryUpdateRetrievalDelivery } from "./retrieval-ledger.js";
-import { recordRetrievalSurface, resolveRetrievalSession } from "./retrieval-surface-ledger.js";
+import {
+	type RetrievalStatus,
+	type RetrievalSurface,
+	tryUpdateRetrievalDelivery,
+} from "./retrieval-ledger.js";
+import {
+	reconcileFailedRetrievalSurface,
+	recordRetrievalSurface,
+	resolveRetrievalSession,
+} from "./retrieval-surface-ledger.js";
 import {
 	readSpoolStatus,
 	type SpoolEntry,
@@ -89,6 +99,7 @@ export {
 	callDaemonRpc,
 	HOOK_DELIVERY_BUDGETS,
 	LOCAL_API_VERSION,
+	mapPeerConnectError,
 	RPC_CAPABILITY_HASH,
 	RPC_DEFAULT_DEADLINE_MS,
 	RPC_MAX_BYTES,
@@ -338,20 +349,6 @@ function isMaintenanceMode(ctx: DaemonRpcContext): boolean {
 	return ctx.jobs.isMaintenanceMode() || ctx.restoreState?.active === true;
 }
 
-export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
-	if (error.code === "EACCES") {
-		return typedError("peer_denied", "Peer is not allowed to connect to the daemon socket.");
-	}
-	if (error.code === "ECONNREFUSED" || error.code === "ENOENT") {
-		return typedError("daemon_unavailable", "Daemon is not running.", true);
-	}
-	return typedError("peer_denied", error.message || "Peer connection failed.");
-}
-
-function typedError(code: string, message: string, retryable = false): TypedRpcError {
-	return { error: { code, message, retryable } };
-}
-
 function isSafePersistedText(value: unknown, maxBytes: number): value is string {
 	if (
 		typeof value !== "string" ||
@@ -437,6 +434,7 @@ async function handleMethod(
 	body: Record<string, unknown>,
 	ctx: DaemonRpcContext,
 	normalizedSchemaVersion: number,
+	nativeCliVersion: string,
 ): Promise<Record<string, unknown>> {
 	if (method === "GET /v1/health") {
 		return {
@@ -546,10 +544,14 @@ async function handleMethod(
 		return handleForget(ctx, body);
 	}
 	if (method === "POST /v1/context/pack") {
-		return handlePack(ctx, body);
+		return handleRetrievalRpc(ctx, body, mcpRetrievalSurface(method, body, nativeCliVersion), () =>
+			handlePack(ctx, body),
+		);
 	}
 	if (method === "POST /v1/search") {
-		return handleSearch(ctx, body);
+		return handleRetrievalRpc(ctx, body, mcpRetrievalSurface(method, body, nativeCliVersion), () =>
+			handleSearch(ctx, body),
+		);
 	}
 	if (method === "POST /v1/retrieval/file-context") {
 		return handleFileContextRetrieval(ctx, body as FileContextRetrievalAttempt);
@@ -558,7 +560,9 @@ async function handleMethod(
 		return handleFileContextDelivery(ctx, body);
 	}
 	if (method === "GET /v1/memories/:id") {
-		return handleMemoryGet(ctx, body);
+		return handleRetrievalRpc(ctx, body, mcpRetrievalSurface(method, body, nativeCliVersion), () =>
+			handleMemoryGet(ctx, body),
+		);
 	}
 	if (method === "GET /v1/checkpoints") {
 		return { checkpoints: [] };
@@ -920,6 +924,185 @@ function handleForget(
 	return { receiptId: receipt.receiptId, status: receipt.status };
 }
 
+const MCP_SEARCH_SURFACES: Record<string, RetrievalSurface> = {
+	search: "mcp_search",
+	search_index: "mcp_search_index",
+	recent: "mcp_recent",
+	timeline: "mcp_timeline",
+	get_many: "mcp_get_observations",
+	explain: "mcp_explain",
+	expand: "mcp_expand",
+};
+
+function mcpRetrievalSurface(
+	method: RpcMethod,
+	body: Record<string, unknown>,
+	nativeCliVersion: string,
+): RetrievalSurface | null {
+	if (nativeCliVersion !== "mcp-stdio") return null;
+	if (method === "POST /v1/context/pack") return "mcp_pack";
+	if (method === "GET /v1/memories/:id") return "mcp_get";
+	return method === "POST /v1/search" ? (MCP_SEARCH_SURFACES[String(body.mode)] ?? null) : null;
+}
+
+function returnedMemoryIds(value: unknown): number[] {
+	if (!Array.isArray(value)) return [];
+	const ids: number[] = [];
+	for (const item of value) {
+		const id =
+			typeof item === "number"
+				? item
+				: item && typeof item === "object" && !Array.isArray(item)
+					? (item as Record<string, unknown>).id
+					: null;
+		if (typeof id === "number" && Number.isInteger(id) && id > 0 && !ids.includes(id)) {
+			ids.push(id);
+		}
+	}
+	return ids;
+}
+
+function mcpRetrievalResult(
+	surface: RetrievalSurface,
+	result: Record<string, unknown>,
+): { failed: boolean; memoryIds: number[] } {
+	if (surface === "mcp_get") {
+		return { failed: false, memoryIds: returnedMemoryIds(result.item ? [result.item] : []) };
+	}
+	if (surface === "mcp_pack") {
+		const pack = result.pack;
+		return {
+			failed: false,
+			memoryIds: returnedMemoryIds(
+				pack && typeof pack === "object" && !Array.isArray(pack)
+					? (pack as Record<string, unknown>).item_ids
+					: [],
+			),
+		};
+	}
+	if (surface === "mcp_explain") {
+		const explanation = result.items;
+		const payload =
+			explanation && typeof explanation === "object" && !Array.isArray(explanation)
+				? (explanation as Record<string, unknown>)
+				: {};
+		const failed = Array.isArray(payload.errors)
+			? payload.errors.some(
+					(error) =>
+						error != null &&
+						typeof error === "object" &&
+						(error as Record<string, unknown>).code === "INVALID_ARGUMENT" &&
+						(error as Record<string, unknown>).field === "query",
+				)
+			: false;
+		return { failed, memoryIds: failed ? [] : returnedMemoryIds(payload.items) };
+	}
+	return { failed: false, memoryIds: returnedMemoryIds(result.items) };
+}
+
+function mcpAttemptId(surface: RetrievalSurface, requestId: string): string {
+	const hex = createHash("sha256")
+		.update(`${surface}\0${requestId}`, "utf8")
+		.digest("hex")
+		.slice(0, 32);
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${(
+		(Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8
+	).toString(16)}${hex.slice(17, 20)}-${hex.slice(20)}`;
+}
+
+function recordMcpRpcRetrieval(
+	ctx: DaemonRpcContext,
+	body: Record<string, unknown>,
+	surface: RetrievalSurface,
+	startedAt: Date,
+	completedAt: Date,
+	failed: boolean,
+	memoryIds: number[],
+): boolean {
+	const requestId = String(body.requestId);
+	const retrievalStatus: RetrievalStatus = failed
+		? "failed"
+		: memoryIds.length > 0
+			? "succeeded"
+			: "no_results";
+	const input = {
+		attemptId: mcpAttemptId(surface, requestId),
+		surface,
+		trigger: "explicit" as const,
+		startedAt: startedAt.toISOString(),
+		completedAt: completedAt.toISOString(),
+		retrievalStatus,
+		deliveryStatus: "not_attempted" as const,
+		candidateIds: failed ? [] : memoryIds,
+		selectedIds: failed ? [] : memoryIds,
+		recorderVersion: "mcp-retrieval-v1",
+		source: "mcp",
+		requestId,
+		latencyMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
+		failureCode: failed ? "tool_failed" : undefined,
+		failureStage: failed ? "retrieval" : undefined,
+	};
+	const outcome = recordRetrievalSurface(ctx.store.db, input);
+	if (outcome.ok) return true;
+	if (
+		!failed &&
+		outcome.reason === "idempotency_conflict" &&
+		(retrievalStatus === "succeeded" || retrievalStatus === "no_results")
+	) {
+		return reconcileFailedRetrievalSurface(ctx.store.db, input).ok;
+	}
+	return false;
+}
+
+function safeRecordMcpRpcRetrieval(
+	ctx: DaemonRpcContext,
+	body: Record<string, unknown>,
+	surface: RetrievalSurface,
+	startedAt: Date,
+	failed: boolean,
+	result?: Record<string, unknown>,
+): boolean {
+	try {
+		const retrieval = failed
+			? { failed: true, memoryIds: [] }
+			: mcpRetrievalResult(surface, result ?? {});
+		const recorded = recordMcpRpcRetrieval(
+			ctx,
+			body,
+			surface,
+			startedAt,
+			new Date(),
+			retrieval.failed,
+			retrieval.memoryIds,
+		);
+		return recorded && !retrieval.failed && retrieval.memoryIds.length > 0;
+	} catch {
+		// MCP results must remain independent from local retrieval diagnostics.
+		return false;
+	}
+}
+
+function handleRetrievalRpc(
+	ctx: DaemonRpcContext,
+	body: Record<string, unknown>,
+	surface: RetrievalSurface | null,
+	retrieve: () => Record<string, unknown>,
+): Record<string, unknown> {
+	if (!surface) return retrieve();
+	const startedAt = new Date();
+	let result: Record<string, unknown>;
+	try {
+		result = retrieve();
+	} catch (error) {
+		safeRecordMcpRpcRetrieval(ctx, body, surface, startedAt, true);
+		throw error;
+	}
+	const hasResults = safeRecordMcpRpcRetrieval(ctx, body, surface, startedAt, false, result);
+	return hasResults
+		? { ...result, retrievalAttemptId: mcpAttemptId(surface, String(body.requestId)) }
+		: result;
+}
+
 function handlePack(ctx: DaemonRpcContext, body: Record<string, unknown>): Record<string, unknown> {
 	const filters = parseMemoryFilters(body.filters);
 	const limit = parseBoundedInteger(body.limit, 8, 1, 50, "limit");
@@ -959,7 +1142,7 @@ function handlePack(ctx: DaemonRpcContext, body: Record<string, unknown>): Recor
 }
 
 const FILE_CONTEXT_ATTEMPT_ID =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FILE_CONTEXT_RETRIEVAL_STATUSES = new Set(["succeeded", "no_results", "skipped", "failed"]);
 
 function repositoryRelativePath(value: unknown): string | null {
@@ -1387,7 +1570,13 @@ export async function dispatchDaemonRpc(
 	try {
 		return {
 			id: request.id,
-			result: await handleMethod(request.method, body, ctx, request.normalized_schema_version),
+			result: await handleMethod(
+				request.method,
+				body,
+				ctx,
+				request.normalized_schema_version,
+				request.native_cli_version,
+			),
 		};
 	} catch (error) {
 		if (error instanceof RpcRequestError) {

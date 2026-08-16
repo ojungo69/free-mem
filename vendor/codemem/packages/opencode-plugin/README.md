@@ -4,22 +4,16 @@ Persistent memory plugin for [OpenCode](https://opencode.ai).
 
 ## Install
 
-Recommended:
+Build the workspace and let the checkout CLI install a local managed wrapper:
 
 ```text
-npx -y codemem setup --opencode-only
+corepack pnpm run build
+node packages/cli/dist/index.js setup --opencode-only
 ```
 
-Manual config also works. Add the package name to your OpenCode config:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@codemem/opencode-plugin"]
-}
-```
-
-OpenCode installs npm plugins automatically with Bun at startup.
+The pre-release setup writes a wrapper pinned to this package's built local entry
+and removes managed npm plugin specs. Published or manually configured package
+installs are not a supported free-mem runtime source.
 
 ## Documentation
 

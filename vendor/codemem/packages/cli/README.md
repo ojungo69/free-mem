@@ -3,30 +3,26 @@
 Persistent memory for AI coding agents — local-first SQLite storage, hybrid retrieval,
 automatic OpenCode injection, and optional peer-to-peer sync.
 
-This is the published npm package for the `codemem` CLI.
+This is the CLI workspace package vendored by free-mem. The current free-mem
+runtime is pre-release and is not published; build and run this checkout directly.
 
 ## Install
 
 ```bash
-npm install -g codemem
-```
-
-Or run without installing:
-
-```bash
-npx -y codemem stats
+corepack pnpm run build
+node packages/cli/dist/index.js stats
 ```
 
 ## Quick commands
 
 ```bash
-codemem --help
-codemem setup --opencode-only
-codemem stats
-codemem search "query"
-codemem distill --limit 10
-codemem serve start
-codemem mcp
+node packages/cli/dist/index.js --help
+node packages/cli/dist/index.js setup --opencode-only
+node packages/cli/dist/index.js stats
+node packages/cli/dist/index.js search "query"
+node packages/cli/dist/index.js distill --limit 10
+node packages/cli/dist/index.js serve start
+node packages/cli/dist/index.js mcp
 ```
 
 ## Documentation

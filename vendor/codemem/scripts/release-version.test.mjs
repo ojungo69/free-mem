@@ -36,7 +36,7 @@ function makeRepo(version = "0.16.0") {
 \t"version": "${version}"
 }
 `);
-	write(join(root, "packages/core/src/index.ts"), `export const VERSION = "${version}";\n`);
+	write(join(root, "packages/core/src/version.ts"), `export const VERSION = "${version}";\n`);
 	write(join(root, "packages/core/src/index.test.ts"), `expect(VERSION).toBe("${version}");\n`);
 	write(
 		join(root, "packages/cli/.opencode/plugins/codemem.js"),
@@ -136,7 +136,7 @@ describe("release-version script", () => {
 			"packages/cli/package.json",
 			"packages/core/package.json",
 			"packages/core/src/index.test.ts",
-			"packages/core/src/index.ts",
+			"packages/core/src/version.ts",
 			"packages/mcp-server/package.json",
 			"packages/opencode-plugin/.opencode/plugins/codemem.js",
 			"packages/opencode-plugin/package.json",

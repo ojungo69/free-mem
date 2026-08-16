@@ -90,6 +90,10 @@ export type TypedRpcError = {
 	error: { code: string; message: string; retryable: boolean };
 };
 
+export function typedError(code: string, message: string, retryable = false): TypedRpcError {
+	return { error: { code, message, retryable } };
+}
+
 export type RpcRequest = {
 	id: string;
 	method: string;
@@ -105,6 +109,16 @@ export type RpcSuccess = {
 	id: string;
 	result: Record<string, unknown>;
 };
+
+export function mapPeerConnectError(error: NodeJS.ErrnoException): TypedRpcError {
+	if (error.code === "EACCES") {
+		return typedError("peer_denied", "Peer is not allowed to connect to the daemon socket.");
+	}
+	if (error.code === "ECONNREFUSED" || error.code === "ENOENT") {
+		return typedError("daemon_unavailable", "Daemon is not running.", true);
+	}
+	return typedError("peer_denied", error.message || "Peer connection failed.");
+}
 
 export function callDaemonRpc(
 	socketPath: string,
@@ -153,7 +167,18 @@ export function callDaemonRpc(
 				finish(error instanceof Error ? error : new Error(String(error)));
 			}
 		});
-		socket.once("error", (error) => finish(error));
+		socket.once("error", (error) => {
+			const peerError = error as NodeJS.ErrnoException;
+			if (
+				peerError.code === "EACCES" ||
+				peerError.code === "ECONNREFUSED" ||
+				peerError.code === "ENOENT"
+			) {
+				finish(undefined, mapPeerConnectError(peerError));
+				return;
+			}
+			finish(peerError);
+		});
 		socket.once("timeout", () => finish(new Error("RPC client timed out")));
 		socket.once("close", () => {
 			if (!settled) finish(new Error("RPC connection closed without a response"));

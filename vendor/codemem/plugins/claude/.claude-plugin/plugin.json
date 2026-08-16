@@ -6,15 +6,5 @@
     "name": "Adam Kunicki"
   },
   "repository": "https://github.com/kunickiaj/codemem",
-  "license": "MIT",
-  "mcpServers": {
-    "codemem": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "codemem",
-        "mcp"
-      ]
-    }
-  }
+  "license": "MIT"
 }

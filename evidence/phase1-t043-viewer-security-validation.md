@@ -6,14 +6,14 @@
 
 ## 結論
 
-viewer は loopback 上の静的 UI、秘密を返さない public health、認証済み read-only RPC relay に限定された。browser process と viewer process は DB handle を持たず、全 data read と認証 state は daemon が所有する。未認証、別 Origin、nonce 再利用、期限切れ session、daemon 再起動、旧 mutation/ingest route、daemon 不在をそれぞれ fail-closed または typed failure で確認した。
+viewer は loopback 上の静的 UI、秘密を返さない public health、認証済み read-only RPC relay に限定された。browser process と viewer process は DB handle を持たず、全 data read と authoritative session registry は daemon が所有する。browser は origin-scoped `sessionStorage` に opaque credential だけを保持する。未認証、別 Origin、nonce 再利用、期限切れ session、daemon 再起動、旧 mutation/ingest route、daemon 不在をそれぞれ fail-closed または typed failure で確認した。
 
 ## 攻撃者と到達性
 
 | 攻撃者 | 到達可能面 | 防御・結果 |
 |---|---|---|
 | 未認証の local process | loopback HTTP data API | Bearer/session なしは 401。誤 credential も 401。public health は liveness metadata のみ |
-| 悪意ある web origin | loopback HTTP、browser cookie | exact viewer Origin 以外は 403。cookie は `HttpOnly; SameSite=Strict`。CSP は `script-src 'self'` |
+| 悪意ある web origin | loopback HTTP、browser session | exact viewer Origin 以外は 403。session は origin-scoped `sessionStorage` に保持し、相対 `/api/` request の `Authorization: Session` だけに付与。CSP は `script-src 'self'` |
 | URL/history/referrer の観測者 | CLI が開く viewer URL | 60秒 one-use nonce だけを fragment に置き、network 前に `history.replaceState` で除去。`Referrer-Policy: no-referrer` |
 | viewer process の侵害/誤実装 | daemon RPC | viewer は DB を開かず、allowlisted read/auth/context RPC だけを使用。旧 mutation/ingest/transport route は未登録で 404 |
 | 別 UID の local process | `control/` と daemon socket | control dir 0700、socket/token/identity/lock 0600。RPC peer credential gate は T037 の same-user 検査を継続使用 |
@@ -25,7 +25,7 @@ viewer は loopback 上の静的 UI、秘密を返さない public health、認�
 | 256-bit bearer | daemon が `control/token` に 32 byte base64url を生成。regular file、owner、0600 を再読込時も検査。比較は constant-time | `P1-T043-09-bearer-file` | pass |
 | nonce | daemon memory 内、60秒、交換時に先に削除 | `P1-T043-03-nonce-single-use-race` | pass |
 | browser session | HMAC署名、12時間、daemon instance binding、上限8、logout、再起動失効 | `P1-T043-04-session-expiry-restart`, `05-session-eviction`, `13-daemon-restart-session` | pass |
-| browser request | exact loopback Origin、bounded auth JSON、httpOnly/SameSite cookie、no-store | `P1-T043-01-browser-auth-401`, `02-origin-403`, `11-loopback-cookie-csp` | pass |
+| browser request | exact loopback Origin、bounded auth JSON、`sessionStorage` + `Authorization: Session`、`credentials: "omit"`、no-store | `P1-T043-01-browser-auth-401`, `02-origin-403`, `11-loopback-cookie-csp` | pass |
 | URL/CSP | nonce を fetch 前に history から除去。remote script/font を削除し `script-src 'self'` | `P1-T043-06-browser-url-privacy`, `11-loopback-cookie-csp` | pass |
 | credential non-disclosure | health は bearer 不要の非秘密 liveness response。CLI/core/plugin probe は未検証 listener に Authorization を送らない | existing core/plugin probe tests + `P1-T043-01-browser-auth-401` | pass |
 | daemon ownership | `GET /v1/view` が daemon-owned store/observer/sweeper を使用。config secret header は daemon 側で `[redacted]` | `P1-T043-10-daemon-auth-rpc`, `12-daemon-view-collections` | pass |
@@ -52,12 +52,12 @@ focused suite は 14 files / 185 tests、OpenCode probe parity は 2 files / 25 
 
 ## 実ブラウザ確認
 
-headed Chromium で一時 daemon + viewer を起動して確認した。`#auth=<nonce>` は初回 network 前に `#feed` へ置換され、httpOnly session 後の projects/runtime/stats/usage/session/raw-events/config/observer-status/observations/summaries はすべて200。Settings は開けるが全 config control と保存操作が disabled、Health/Feed の表示と self-hosted glyph も崩れなし。確認 artifact は checkout から削除した。
+初回 T043 候補は headed Chromium で一時 daemon + viewer を起動し、`#auth=<nonce>` の history 除去、data API、read-only Settings、Health/Feed、自前glyphを確認した。その後、旧 host-scoped cookie が別 loopback port に送信されることを実 Chromium で再現した。現行の cookie 非発行、cookie-only 401、origin-scoped `Session` header、相対 `/api/` 限定は regression tests と built viewer smoke で確認し、現行実装を headed Chromium で再確認したとは主張しない。確認 artifact は checkout から削除した。
 
 通常の並列 full run では、互いに異なる既存 DB/spool concurrency test が各試行で1件ずつ失敗した。両 test は単独再実行で成功し、serial full suite も成功したため、T043 の機能 failure ではなく resource/concurrency flake と分類した。
 
 ## 制約・残リスク
 
 - 実行 UID は 1000 で root 権限がないため、別 UID からの live connection は作れなかった。設計で許容された代替として、T037 の peer credential test と control/socket/token の owner-only permission assertion を使用した。
-- loopback HTTP のため cookie に `Secure` は付けられない。SameSite/Origin/CSP と one-use fragment nonce で補完する。
+- browser credential は cookie に保存しない。別 loopback port へ cookie が送られる旧挙動を実 Chromium で再現し、現行の cookie 非発行・cookie-only 401・origin-scoped Session header で回帰を固定した。
 - 既存 SPA の inline CSS を保持するため CSP の `style-src` は `'unsafe-inline'`。script は self-only で、第三者 runtime code は読み込まない。

@@ -242,7 +242,7 @@ T053 harness は TypeScript AST で alias/deep import、opener、DDL、旧 direc
 |---|---|---|---|---|
 | viewer bearer | `control/token` | daemon が256-bit tokenを0600で永続化。regular file・owner・mode・形式を再読込時も検査し、CLI/plugin probeはheaderにだけ載せる | − | local user |
 | viewer browser auth | `POST /v1/viewer/auth/{nonce,exchange,verify,logout}` | nonce/session stateはdaemon memoryだけが所有。nonce 60秒・one-use、session 12時間・上限8・logout/restart失効 | − | local user |
-| browser credential exchange | URL `#auth=<nonce>` → `/api/auth/exchange` → `codemem_session` | fragmentをnetwork前に`history.replaceState`で除去。exact loopback Origin、httpOnly/SameSite=Strict cookie、no-store、no-referrer | − | local user |
+| browser credential exchange | URL `#auth=<nonce>` → `/api/auth/exchange` → origin-scoped `sessionStorage` | fragmentをnetwork前に`history.replaceState`で除去。exact loopback Origin、相対`/api/`だけへ`Authorization: Session`、cookie非発行、`credentials: "omit"`、no-store、no-referrer | − | local user |
 | viewer read relay | `GET /v1/view` + allowlisted context/health RPC | viewer processのDB handleとmutation/ingest/config-write routeを削除。daemon不在はtyped 503でDB fallbackなし | read | user-authority |
 | viewer public health | `GET /api/health` → `GET /v1/health` | liveness metadataだけを非認証で返す。probeは未検証loopback listenerへBearerを送らない。data APIは引き続き認証必須 | read | − |
 | viewer web policy | loopback HTTP response headers / static bundle | `script-src 'self'`、第三者script/fontなし、frame/object/base/form拒否。既存inline CSSのためstyleのみ`unsafe-inline` | − | − |
@@ -273,7 +273,7 @@ path を受け取って DB を自己 open していた export/import、maintenan
 
 | surface | path | disposition | class | authority |
 |---|---|---|---|---|
-| install target manifest | `control/install-manifest.json` | setup が管理した hook/MCP/runtime file の SHA-256 を owner-only atomic file に記録。部分 setup は他 integration を保持し、選択 integration の消滅 target は除外。cutover 開始前と unlock 直前に再照合し、欠落/symlink/hash drift は中止 | − | local user |
+| install target manifest | `control/install-manifest.json` | setup は source checkout の共通 built CLI/hook を事前検査する。manifest は built CLI と選択 integration の config/installed runtime を記録し、OpenCode は wrapper/plugin source も SHA-256 fingerprint に含める。各 lane は config と manifest を一体で commit/rollbackする。部分 setup は他 integration を保持し、選択 integration の消滅 target は除外。cutover 開始前と unlock 直前に再照合し、欠落/symlink/hash drift は中止 | − | local user |
 | legacy owner handoff | 旧 DB inode + `/proc/*/fd` / trusted absolute `lsof` | transient owner grace後、identity再検証できる旧 codemem processだけへSIGTERM。prepared前とunlock直前に owner set = `{daemonPid}` を要求 | − | daemon内部 |
 | legacy backup/publish | `control/backups/legacy-*.sqlite` → `db/versions/` → `db/current` | daemon EXCLUSIVE保持中のread-only handleからT050 online backupを作成・verify。tombstone・final owner/manifest検査後に判断 #16 journalでpublish | B | daemon内部 |
 | rollback hardlink | `control/legacy-*.legacy-recovery.sqlite` | tombstone前に旧inodeをprivate hardlinkで保持。通常失敗は旧pathへrollbackし、tombstone後のprocess crashは次回起動でexact target + dev/inodeを検証して旧pathを復元。不一致・欠損はfail-closed | − | daemon内部 |

@@ -65,3 +65,9 @@ node --check harness/phase1-runtime-db-open-trace.mjs
 - trust boundary: inherited credentials を渡さない隔離 env、trusted absolute `lsof`、output cap、temporary-root prefix guard、owner-only DB artifacts、PID > 1 / independent PID negative controls を確認した。
 - Codex Security 専用 scan は既知の preflight 設定競合で実行不能のため再試行せず、正式 scan 完了は主張しない。Semgrep、focused tests、runtime negative controls、manual source review で補完した。
 - GitNexus は新規 harness と linked-worktree symbols を解決できず impact は `UNKNOWN`。全 caller の source review と compiler / tests / runtime gate を正本とする。
+
+## 2026-08-16 closure refresh
+
+product-code candidate `01440d5` で self-contained gate を再実行し、7 runtime states × 6 independent surfaces がすべて pass した。stopped daemon の CLI probe は production の `status --json` を外側 timeout 付きで使用し、harness 自身の無期限待機を防ぐ。T037 の socket DAC error は shared `callDaemonRpc` で `EACCES -> peer_denied` へ到達し、unknown/transient socket error は従来どおり reject して hook/MCP の spool fail-over を維持する。
+
+同候補の集約結果は `evidence/phase1-t058-final-validation.md` に記録する。

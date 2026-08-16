@@ -2,16 +2,21 @@
 
 This page covers advanced plugin behavior, environment variables, and stream reliability controls.
 
+This free-mem checkout is pre-release. Build it first with `corepack pnpm run build`
+from `vendor/codemem`, then use `node packages/cli/dist/index.js ...`. Published
+npm packages, global binaries, and remote marketplaces are not supported install
+sources for this checkout.
+
 ## Observer and settings UI
 
 <img src="images/codemem-settings.png" alt="codemem observer settings" width="520" />
 
 ## Running OpenCode with the plugin
 
-1. Start OpenCode inside this repo (or make the plugin global so it globs in everywhere).
+1. Run checkout setup once, then start OpenCode in the target project.
 2. Every tooling session creates memory artifacts in SQLite.
 3. Prompt-time memory injection appends volatile recall output to the latest user message by default, preserving the stable system/history prefix for provider prompt caches.
-4. Use `codemem stats` and `codemem recent` to confirm ingestion.
+4. Use `node packages/cli/dist/index.js stats` and `node packages/cli/dist/index.js recent` from this checkout to confirm ingestion.
 5. Browse the viewer at the printed URL.
 
 OpenCode prompt-time pack construction and prompt-pack ledger transitions use the
@@ -28,42 +33,36 @@ structured Codemem validation errors are terminal. A payload-free profile
 handshake runs before each POST, and Fetch redirects are disabled so prompt-derived
 request bodies are not replayed to another endpoint.
 
-## Claude marketplace install
+## Claude setup
 
-CodeMem's Claude integration is hook-first and distributed through a Claude plugin marketplace source in this repo (`.claude-plugin/marketplace.json`).
-
-In Claude Code, add the marketplace and install the plugin:
+Install MCP and all seven hook groups directly from the built checkout:
 
 ```text
-/plugin marketplace add kunickiaj/codemem
-/plugin install codemem
+node packages/cli/dist/index.js setup --claude-only
 ```
 
-The plugin starts MCP with the TS CLI:
-
-- `codemem mcp`
+Setup writes the absolute built CLI MCP command into
+`$CLAUDE_CONFIG_DIR/.claude.json`, copies the bundled standalone runtime into
+that directory, and merges only codemem-owned hook groups into `settings.json`.
+Without the override it uses `~/.claude.json` for MCP and `~/.claude` for hooks.
+Unrelated MCP servers, state, settings, plugins, and hooks are preserved. A
+malformed config file or unknown custom codemem MCP entry is left untouched.
 
 Claude hooks run the packaged standalone Node runtime. It applies project policy and redaction before sending normalized events to the local daemon RPC socket; when RPC is unavailable, the same redacted event is written to the bounded atomic spool:
 
-- `codemem claude-hook-ingest`
+- `node <CLAUDE_CONFIG_DIR>/codemem-hook-runtime.mjs claude-hook-ingest`
 
 Hook clients never open SQLite. Claude's outer watchdog is 3 seconds; the client uses a shorter RPC cutoff so the spool has a reserved completion window.
 
-You can update an existing marketplace install with:
-
-```text
-/plugin marketplace update codemem-marketplace
-```
-
-The CLI keeps a compatible manual stdin entry point:
+The CLI keeps a compatible manual stdin entry point for development:
 
 ```bash
-printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"sess-1","cwd":"/tmp/demo"}' | codemem claude-hook-ingest
+printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"sess-1","cwd":"/tmp/demo"}' | node packages/cli/dist/index.js claude-hook-ingest
 ```
 
 Prompt-time context and file-context reads use daemon RPC. `UserPromptSubmit` performs recall and event delivery in one hook invocation; `SessionEnd` is delivered through the same RPC-or-spool path as other events.
 
-The packaged template currently registers these hook events in `plugins/claude/hooks/hooks.json`:
+Setup registers these hook events in `settings.json`:
 - `SessionStart`
 - `UserPromptSubmit`
 - `PreToolUse` (`Read` only)
@@ -72,7 +71,7 @@ The packaged template currently registers these hook events in `plugins/claude/h
 - `Stop`
 - `SessionEnd`
 
-`UserPromptSubmit` runs `scripts/hook-runtime.mjs claude-hook-inject`, which requests a context pack over daemon RPC while delivering the normalized prompt event. Failures return a continue response and never block the Claude session.
+`UserPromptSubmit` runs the setup-managed `codemem-hook-runtime.mjs claude-hook-inject`, which requests a context pack over daemon RPC while delivering the normalized prompt event. Failures return a continue response and never block the Claude session.
 
 For Claude hooks, project resolution precedence is:
 
@@ -82,20 +81,27 @@ For Claude hooks, project resolution precedence is:
 
 `PreToolUse:Read` requests the existing per-file observation timeline over daemon RPC. Retrieval attempts and delivery status remain recorded in the daemon-owned retrieval ledger.
 
+The tracked Claude plugin remains a hook-only future release template. Setup
+disables only an enabled `codemem@codemem-marketplace` entry in the selected Claude
+config to prevent duplicate hook delivery. Re-run setup after rebuilding or moving
+the checkout; do not use the marketplace cache as the pre-release runtime.
+
 ## Codex integration (early beta)
 
-Codex support is early beta — functional and dogfooded end-to-end, but not yet promoted to a stable support tier. The Codex plugin uses the same shared raw-event pipeline as Claude and OpenCode. It is packaged under `plugins/codex/` with `.codex-plugin/plugin.json`, bundled `.mcp.json`, and hook scripts under `plugins/codex/scripts/`.
+Codex support is early beta. The tracked plugin is a hook-only future release
+template; the supported pre-release installation path is direct setup from this
+checkout.
 
 Codex hooks use the same standalone runtime, daemon RPC, redaction, and bounded atomic spool as Claude. Hook clients never open SQLite. The Codex outer watchdog is 5 seconds.
 
 ```bash
-printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"codex-1","cwd":"/tmp/demo"}' | codemem codex-hook-ingest
+printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"codex-1","cwd":"/tmp/demo"}' | node packages/cli/dist/index.js codex-hook-ingest
 ```
 
-`UserPromptSubmit` runs `scripts/hook-runtime.mjs codex-hook-inject`, which requests a context pack and delivers the prompt event concurrently over daemon RPC. The injected pack is framed as codemem reference data, not instructions, before it is returned as Codex `additionalContext`. It honors `CODEMEM_INJECT_CONTEXT`, `CODEMEM_INJECT_LIMIT`, `CODEMEM_INJECT_TOKEN_BUDGET`, and `CODEMEM_INJECT_MAX_CHARS`. Hook failures always emit `{"continue": true}` so Codex sessions are never blocked.
+`UserPromptSubmit` runs the setup-managed `codemem-hook-runtime.mjs codex-hook-inject`, which requests a context pack and delivers the prompt event concurrently over daemon RPC. The injected pack is framed as codemem reference data, not instructions, before it is returned as Codex `additionalContext`. It honors `CODEMEM_INJECT_CONTEXT`, `CODEMEM_INJECT_LIMIT`, `CODEMEM_INJECT_TOKEN_BUDGET`, and `CODEMEM_INJECT_MAX_CHARS`. Hook failures always emit `{"continue": true}` so Codex sessions are never blocked.
 
 ```bash
-printf '%s\n' '{"hook_event_name":"UserPromptSubmit","session_id":"codex-1","prompt":"what did we change","cwd":"/tmp/demo"}' | codemem codex-hook-inject
+printf '%s\n' '{"hook_event_name":"UserPromptSubmit","session_id":"codex-1","prompt":"what did we change","cwd":"/tmp/demo"}' | node packages/cli/dist/index.js codex-hook-inject
 ```
 
 For Codex hooks, project resolution precedence matches the Claude hook path:
@@ -108,32 +114,17 @@ For Codex hooks, project resolution precedence matches the Claude hook path:
 
 The packaged Codex template registers `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`, and `SessionEnd` in `plugins/codex/hooks/hooks.json`. Codex support is early beta; see `docs/plans/2026-05-28-codex-first-class-integration.md` for the rollout plan and validation gates.
 
-### Install, update, and uninstall
+### Install and update
 
-Install through Codex's own plugin marketplace — there is no `codemem setup` step:
-
-```bash
-codex plugin marketplace add https://github.com/kunickiaj/codemem.git
-codex plugin add codemem@codemem
-# refresh the marketplace snapshot later:
-codex plugin marketplace upgrade
-# remove:
-codex plugin remove codemem@codemem
-```
-
-The plugin bundles `.mcp.json` (`npx -y codemem mcp`) and `hooks/hooks.json`. Hook scripts call `codemem` from `PATH` and fall back to `npx -y codemem@<plugin version>`, so a global CLI is optional but reduces hook latency. Validated targets: Codex CLI 0.135+ and current Desktop builds.
-
-### Plugin-free install (`codemem setup --codex-only`)
-
-API-key / non-subscription Codex Desktop greys out plugin installation. For that case, configure Codex directly — no marketplace, no plugin:
+Configure Codex directly from the built checkout:
 
 ```bash
-npx -y codemem setup --codex-only   # or, with a global install: codemem setup --codex-only
+node packages/cli/dist/index.js setup --codex-only
 ```
 
 What it does (idempotent; honors `CODEX_HOME`; backs up existing files; `--force` to refresh):
 
-- **MCP:** appends `[mcp_servers.codemem]` (`command = "npx"`, `args = ["-y", "codemem", "mcp"]`) to `<CODEX_HOME>/config.toml` if not already present. The file is never reparsed or reformatted — only appended — so comments and unrelated servers (including secrets) are preserved.
+- **MCP:** writes `[mcp_servers.codemem]` with the absolute Node executable and this checkout's absolute built CLI path in `<CODEX_HOME>/config.toml`, preserving comments and unrelated servers.
 - **Hooks:** installs the bundled runtime as `<CODEX_HOME>/codemem-hook-runtime.mjs` (mode `0600`) and merges `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`, and `SessionEnd` into `<CODEX_HOME>/hooks.json`, preserving unrelated user hooks. `UserPromptSubmit` uses one combined capture/recall hook. Existing legacy codemem hook groups are migrated on a normal rerun.
 
 Hooks loaded from the user config layer require a one-time trust approval in Codex (you'll be prompted on first run; MCP recall needs no trust). Codex setup also runs automatically in a plain `codemem setup` when a Codex home (`~/.codex` or `$CODEX_HOME`) is detected.
@@ -149,15 +140,15 @@ Hooks loaded from the user config layer require a one-time trust approval in Cod
 After restarting OpenCode or the viewer, run this quick check when behavior looks off:
 
 1. Confirm plugin + viewer are talking to the same DB path.
-2. Check backend stats and recent writes (`codemem stats`, `codemem recent`).
+2. Check backend stats and recent writes with the built CLI (`node packages/cli/dist/index.js stats` and `node packages/cli/dist/index.js recent`).
 3. Verify runner mode and source (`CODEMEM_RUNNER`, `CODEMEM_RUNNER_FROM`) match your install strategy.
 4. Confirm injection controls are what you expect (`CODEMEM_INJECT_CONTEXT`, `CODEMEM_INJECT_LIMIT`, `CODEMEM_INJECT_TOKEN_BUDGET`).
-5. If stream mode is enabled, check backlog health (`codemem db raw-events-status`).
+5. If stream mode is enabled, check backlog health (`node packages/cli/dist/index.js db raw-events-status`).
 
 If needed, restart viewer + plugin flow:
 
 ```bash
-codemem serve restart
+node packages/cli/dist/index.js serve restart
 ```
 
 If you override the viewer bind, keep the plugin and viewer aligned on the same target:
@@ -269,13 +260,13 @@ export CODEMEM_RAW_EVENTS_STUCK_BATCH_MS=300000
 To monitor backlog:
 
 ```bash
-codemem db raw-events-status
+node packages/cli/dist/index.js db raw-events-status
 ```
 
 If `raw-events-status` shows `batches=error:N` (legacy label) or `queue=... failed:N` for a stream, retry:
 
 ```bash
-codemem db raw-events-retry <session_stream_id>
+node packages/cli/dist/index.js db raw-events-retry <session_stream_id>
 ```
 
 ## Hook lifecycle and flush boundaries
@@ -296,7 +287,7 @@ Force-flush thresholds (immediate flush):
 Failure semantics:
 - Stream POST failures are backoff-gated in plugin runtime (`CODEMEM_RAW_EVENTS_BACKOFF_MS`).
 - Availability checks are rate-limited (`CODEMEM_RAW_EVENTS_STATUS_CHECK_MS`).
-- Accepted raw-event batches are retried by viewer/store queue workers (`codemem db raw-events-retry`).
+- Accepted raw-event batches are retried by viewer/store queue workers (`node packages/cli/dist/index.js db raw-events-retry`).
 
 ## Project label normalization
 
@@ -317,8 +308,8 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 
 | Env var | Description |
 | --- | --- |
-| `CODEMEM_RUNNER` | Override auto-detected runner: `codemem` (global), `npx`, `node` (repo/dev), or custom binary name. |
-| `CODEMEM_RUNNER_FROM` | Runner source override: npm package spec for `npx` (for example `codemem@0.20.0-alpha.7`), or repo/CLI entry path for `node`. |
+| `CODEMEM_RUNNER` | OpenCode runner override. Pre-release setup pins this to the absolute Node executable in its managed local wrapper. |
+| `CODEMEM_RUNNER_FROM` | OpenCode runner source. Pre-release setup pins this to the absolute built CLI entry. |
 | `CODEMEM_VIEWER` | Set to `0`, `false`, or `off` to disable the viewer entirely. |
 | `CODEMEM_VIEWER_HOST`, `CODEMEM_VIEWER_PORT` | Explicit host/port the plugin-managed viewer should start, probe, stop, and restart. |
 | `CODEMEM_VIEWER_AUTO` | Set to `0`/`false`/`off` to disable auto-start (default on). |
@@ -362,19 +353,14 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 
 ## Compatibility guidance behavior
 
-When the plugin detects CLI/runtime version mismatch, it shows guidance based on runner mode:
-
-- `CODEMEM_RUNNER=codemem`: run `npm install -g codemem`, then restart OpenCode
-- `CODEMEM_RUNNER=npx`: update `CODEMEM_RUNNER_FROM` to a newer package/version (or reinstall plugin), then restart OpenCode
-- `CODEMEM_RUNNER=node`: pull latest repo changes and run `pnpm build`, then restart OpenCode
-- custom/unknown runner: update the underlying `codemem` binary or package source, then restart OpenCode
+When the plugin detects a CLI/runtime version mismatch in this pre-release checkout,
+pull the intended revision, run `corepack pnpm run build`, rerun the matching setup
+command, and restart the editor.
 
 Update policy:
 
 - `CODEMEM_BACKEND_UPDATE_POLICY=notify` (default): show warning toast with suggested action
-- `CODEMEM_BACKEND_UPDATE_POLICY=auto`: try a best-effort auto-update for eligible runners, then warn if still outdated
-  - skipped for `node` dev-mode runners
-  - skipped when `CODEMEM_RUNNER_FROM` is pinned to a fixed package/version
+- `CODEMEM_BACKEND_UPDATE_POLICY=auto`: retained for future releases; checkout-pinned `node` mode is never auto-updated
 - `CODEMEM_BACKEND_UPDATE_POLICY=off`: no compatibility toast (logging still records mismatch)
 
 Compatibility checks do not block plugin startup.

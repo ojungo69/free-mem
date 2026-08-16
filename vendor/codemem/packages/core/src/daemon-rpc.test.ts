@@ -7,6 +7,7 @@ import { attachDaemonRpc } from "./daemon-rpc.js";
 import { connect } from "./db.js";
 import * as core from "./index.js";
 import { openTestMemoryStore } from "./test-utils.js";
+import { ReadOnlyActor } from "./writer-actor.js";
 
 const created: Array<{ stop: () => Promise<void> }> = [];
 const dirs: string[] = [];
@@ -718,7 +719,8 @@ describe("Phase 1 daemon RPC", () => {
 	});
 
 	it("applies search filters to get_many reads", async () => {
-		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		const dataDir = tempDataDir();
+		const handle = await core.startDaemon({ dataDir });
 		created.push(handle);
 		const remember = async (id: string, project: string) => {
 			const response = await core.callDaemonRpc(
@@ -754,6 +756,253 @@ describe("Phase 1 daemon RPC", () => {
 			}),
 		);
 		expect(response).toMatchObject({ result: { items: [{ id: demoId }] } });
+
+		const mcp = (id: string, method: core.RpcMethod, body: Record<string, unknown>) =>
+			core.callDaemonRpc(
+				handle.socketPath,
+				handshake({ id, method, native_cli_version: "mcp-stdio", body }),
+			);
+		const successfulReads: Array<[string, string, core.RpcMethod, Record<string, unknown>]> = [
+			["mcp-get", "mcp_get", "GET /v1/memories/:id", { id: demoId, project: "demo" }],
+			[
+				"mcp-get-many",
+				"mcp_get_observations",
+				"POST /v1/search",
+				{ mode: "get_many", ids: [demoId, otherId], filters: { project: "demo" } },
+			],
+			[
+				"mcp-search",
+				"mcp_search",
+				"POST /v1/search",
+				{ mode: "search", query: "demo", limit: 5, filters: { project: "demo" } },
+			],
+			[
+				"mcp-search-index",
+				"mcp_search_index",
+				"POST /v1/search",
+				{ mode: "search_index", query: "demo", limit: 8, filters: { project: "demo" } },
+			],
+			[
+				"mcp-recent",
+				"mcp_recent",
+				"POST /v1/search",
+				{ mode: "recent", limit: 8, filters: { project: "demo" } },
+			],
+			[
+				"mcp-timeline",
+				"mcp_timeline",
+				"POST /v1/search",
+				{
+					mode: "timeline",
+					memoryId: demoId,
+					depthBefore: 0,
+					depthAfter: 0,
+					filters: { project: "demo" },
+				},
+			],
+			[
+				"mcp-explain",
+				"mcp_explain",
+				"POST /v1/search",
+				{ mode: "explain", query: "demo", limit: 10, filters: { project: "demo" } },
+			],
+			[
+				"mcp-expand",
+				"mcp_expand",
+				"POST /v1/search",
+				{
+					mode: "expand",
+					ids: [demoId],
+					depthBefore: 0,
+					depthAfter: 0,
+					filters: { project: "demo" },
+				},
+			],
+			[
+				"mcp-pack",
+				"mcp_pack",
+				"POST /v1/context/pack",
+				{ context: "demo", limit: 5, filters: { project: "demo" } },
+			],
+		];
+		const successes = await Promise.all(
+			successfulReads.map(([requestId, , method, body]) =>
+				mcp(requestId, method, { requestId, ...body }),
+			),
+		);
+		const attemptIds = successes.map((success) => {
+			if ("error" in success) throw new Error(success.error.code);
+			expect(success.result.retrievalAttemptId).toMatch(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+			);
+			return String(success.result.retrievalAttemptId);
+		});
+		const replay = await mcp("mcp-search", "POST /v1/search", {
+			requestId: "mcp-search",
+			mode: "search",
+			query: "demo",
+			limit: 5,
+			filters: { project: "demo" },
+		});
+		expect(replay).toMatchObject({ result: { retrievalAttemptId: attemptIds[2] } });
+		const activeLayout = core.resolveStorageLayout(dataDir);
+		const activePointer = core.readCurrentDatabasePointer(activeLayout);
+		const pendingReader = ReadOnlyActor.open(resolve(activeLayout.dbDir, activePointer as string));
+		try {
+			expect(
+				pendingReader
+					.prepare("SELECT DISTINCT delivery_status FROM retrieval_attempts WHERE source = 'mcp'")
+					.pluck()
+					.all(),
+			).toEqual(["not_attempted"]);
+		} finally {
+			pendingReader.close();
+		}
+		for (const attemptId of attemptIds) {
+			expect(
+				await mcp(`delivery-${attemptId}`, "POST /v1/retrieval/file-context/delivery", {
+					attemptId,
+					status: "handed_off",
+				}),
+			).toMatchObject({ result: { updated: true } });
+		}
+		const empty = await mcp("mcp-empty", "POST /v1/search", {
+			requestId: "mcp-empty",
+			mode: "search",
+			query: "no-such-retrieval-result",
+			limit: 5,
+			filters: { project: "demo" },
+		});
+		expect(empty).toMatchObject({ result: { items: [] } });
+		const failed = await mcp("mcp-failed", "POST /v1/search", {
+			requestId: "mcp-failed",
+			mode: "explain",
+			limit: 10,
+			filters: { project: "demo" },
+		});
+		expect(failed).toMatchObject({
+			result: { items: { errors: [{ code: "INVALID_ARGUMENT", field: "query" }] } },
+		});
+		const layout = core.resolveStorageLayout(dataDir);
+		const pointer = core.readCurrentDatabasePointer(layout);
+		const faultDb = connect(resolve(layout.dbDir, pointer as string));
+		try {
+			faultDb.exec(`
+				CREATE TRIGGER fail_mcp_retrieval_attempt_insert
+				BEFORE INSERT ON retrieval_attempts
+				BEGIN
+					SELECT RAISE(ABORT, 'injected MCP retrieval ledger failure');
+				END;
+			`);
+		} finally {
+			faultDb.close();
+		}
+		const getWithBrokenLedger = await mcp("mcp-ledger-broken-get", "GET /v1/memories/:id", {
+			id: demoId,
+			requestId: "mcp-ledger-broken-get",
+			project: "demo",
+		});
+		expect(getWithBrokenLedger).toMatchObject({ result: { item: { id: demoId } } });
+		if ("result" in getWithBrokenLedger) {
+			expect(getWithBrokenLedger.result).not.toHaveProperty("retrievalAttemptId");
+		}
+		const searchErrorWithBrokenLedger = await mcp("mcp-ledger-broken-search", "POST /v1/search", {
+			requestId: "mcp-ledger-broken-search",
+			mode: "search",
+		});
+		expect(searchErrorWithBrokenLedger).toMatchObject({
+			error: { code: "invalid_request", message: "query is required for search mode." },
+		});
+
+		await handle.stop();
+		const store = openTestMemoryStore(resolve(layout.dbDir, pointer as string));
+		try {
+			type Attempt = {
+				attempt_id: string;
+				request_id: string;
+				surface: string;
+				retrieval_status: string;
+				delivery_status: string;
+				candidate_count: number;
+				selected_count: number;
+				failure_code: string | null;
+				failure_stage: string | null;
+			};
+			const attempts = store.db
+				.prepare(
+					`SELECT attempt_id, request_id, surface, retrieval_status, delivery_status,
+					        candidate_count, selected_count, failure_code, failure_stage
+					 FROM retrieval_attempts WHERE source = 'mcp' ORDER BY request_id`,
+				)
+				.all() as Attempt[];
+			expect(attempts).toHaveLength(11);
+			expect(
+				attempts.every((attempt) =>
+					/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+						attempt.attempt_id,
+					),
+				),
+			).toBe(true);
+			const byRequest = new Map(attempts.map((attempt) => [attempt.request_id, attempt]));
+			for (const [requestId, surface] of successfulReads) {
+				expect(byRequest.get(requestId)).toMatchObject({
+					surface,
+					retrieval_status: "succeeded",
+					delivery_status: "handed_off",
+					candidate_count: 1,
+					selected_count: 1,
+					failure_code: null,
+					failure_stage: null,
+				});
+			}
+			expect(byRequest.get("mcp-empty")).toMatchObject({
+				surface: "mcp_search",
+				retrieval_status: "no_results",
+				delivery_status: "not_attempted",
+				candidate_count: 0,
+				selected_count: 0,
+				failure_code: null,
+				failure_stage: null,
+			});
+			expect(byRequest.get("mcp-failed")).toMatchObject({
+				surface: "mcp_explain",
+				retrieval_status: "failed",
+				delivery_status: "not_attempted",
+				candidate_count: 0,
+				selected_count: 0,
+				failure_code: "tool_failed",
+				failure_stage: "retrieval",
+			});
+			const exposures = store.db
+				.prepare(
+					`SELECT exposures.memory_id, exposures.disposition, exposures.handoff_status
+					 FROM retrieval_exposures AS exposures
+					 JOIN retrieval_attempts AS attempts USING (attempt_id)
+					 WHERE attempts.source = 'mcp'`,
+				)
+				.all() as Array<{
+				memory_id: number;
+				disposition: string;
+				handoff_status: string;
+			}>;
+			expect(exposures).toHaveLength(9);
+			expect(
+				exposures.every(
+					(exposure) =>
+						exposure.memory_id === demoId &&
+						exposure.disposition === "selected" &&
+						exposure.handoff_status === "handed_off",
+				),
+			).toBe(true);
+			expect(
+				store.db
+					.prepare("SELECT count(*) FROM retrieval_attempts WHERE request_id = 'get-many'")
+					.pluck()
+					.get(),
+			).toBe(0);
+		} finally {
+			store.close();
+		}
 	});
 
 	it("P1-T041-05 records and completes the file-context retrieval ledger in the daemon", async () => {

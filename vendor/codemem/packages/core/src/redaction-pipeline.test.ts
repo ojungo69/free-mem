@@ -241,6 +241,7 @@ tool_field_denylist = ["debug_blob"]
 			expect(result.degraded).toBe(true);
 			expect(result.payload).toEqual({ id: `regex-timeout-${key}` });
 			expect(result.secret_rules_version).toMatch(/:degraded$/);
+			expect(core.warmRedactionWorker()).toBe(true);
 		}
 		const recoveredStarted = performance.now();
 		const recovered = core.preprocessAdapterEvent({ id: "healthy", body: "safe" });

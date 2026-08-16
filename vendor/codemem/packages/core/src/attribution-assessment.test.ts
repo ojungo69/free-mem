@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
 	type AttributionBasis,
 	getAttributionAssessment,
@@ -26,6 +26,7 @@ import {
 	recordOutcomeEvidence,
 	sourceLocationOverlapEvidence,
 } from "./outcome-evidence.js";
+import { warmRedactionWorker } from "./redaction-worker.js";
 import {
 	finalizeRetrievalAttemptRetention,
 	purgeExpiredRetrievalAttempts,
@@ -38,6 +39,10 @@ import { initTestSchema } from "./test-utils.js";
 const NOW = "2026-08-03T12:00:00.000Z";
 const COMPLETED_AT = "2026-08-03T12:00:00.010Z";
 const ASSESSED_AT = "2026-08-03T12:02:00.000Z";
+
+beforeAll(() => {
+	expect(warmRedactionWorker()).toBe(true);
+});
 
 function id(sequence: number): string {
 	return `018f2db4-f9d3-7a22-8d18-${sequence.toString(16).padStart(12, "0")}`;
