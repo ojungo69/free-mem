@@ -93,3 +93,24 @@ test("既存 fixture は capability.schema.json 全体に対して妥当（schem
   }
   assert.ok(checked >= 8, `fixture が見つかっていない (checked=${checked})`);
 });
+
+test("evidenceHash の無い highLevel は real-cli-e2e として刻まない", () => {
+  const noHash = validateFixture(
+    base({ highLevel: { sessionStartInjection: "native" } }),
+    "f.json",
+  ) as CaptureFixture;
+  const cell = assembleFromFixtures([noHash]).capabilities.sessionStartInjection;
+  assert.equal(cell.value, "native");
+  assert.equal(cell.evidenceKind, "source-test");
+  assert.ok(cell.limitations.some((l) => /no evidenceHash/.test(l)));
+  // 自動配送は有効にならない
+  assert.equal(assembleFromFixtures([noHash]).capabilities.resumeDeliveryStrategy, "manual_only");
+
+  const hashed = validateFixture(
+    base({ evidenceHash: "c".repeat(64), highLevel: { sessionStartInjection: "native" } }),
+    "f.json",
+  ) as CaptureFixture;
+  const m = assembleFromFixtures([hashed]).capabilities;
+  assert.equal(m.sessionStartInjection.evidenceKind, "real-cli-e2e");
+  assert.equal(m.resumeDeliveryStrategy, "session_start_full");
+});

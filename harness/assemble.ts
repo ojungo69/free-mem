@@ -273,13 +273,20 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
           };
           continue;
         }
+        // highLevel は fixture の自己申告で、observedEvents のような file 内証跡を伴わない。
+        // hash で transcript に紐付いていないものを real-cli-e2e と刻むのは provenance の
+        // 捏造になるため、hash が無い間は弱い証跡種別に落とす（isProven が false になり、
+        // 自動配送を有効化しない）。Task 2/3 の実 CLI rig が hash を記録したら昇格する
+        const evidenceKind = f.evidenceHash ? "real-cli-e2e" : "source-test";
         capabilities[key] = {
           value: v,
           sourceEvents: [],
           nativeVersion,
-          evidenceKind: "real-cli-e2e",
+          evidenceKind,
           verifiedAt: f.capturedAt,
-          limitations: observedIn,
+          limitations: f.evidenceHash
+            ? observedIn
+            : dedupe([...observedIn, "no evidenceHash: transcript に紐付いていない自己申告"]),
           sourceFixtureId: f.fixtureId,
           evidenceHash: f.evidenceHash ?? null,
         };

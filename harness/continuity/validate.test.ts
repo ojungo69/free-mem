@@ -262,3 +262,31 @@ test("sparse array の hole を JSON 妥当性検査で見逃さない", () => {
   const issues = findNonJsonValues([1, , 3]);
   assert.ok(issues.some((i) => /non-JSON value of type undefined/.test(i.message)));
 });
+
+test("anyOf / oneOf の分岐にある schema 誤記を飲み込まない", () => {
+  // 他の分岐が一致しても、書き間違えた分岐は表に出す
+  const anyOf = validateAgainstSchema("hello", { anyOf: [{ type: "string", multipleOf: 2 }, { type: "string" }] }, ROOT);
+  assert.ok(anyOf.some((i) => /unsupported schema keyword in branch\[0\]: multipleOf/.test(i.message)));
+  // oneOf の不一致メッセージだけになって原因が消えないこと
+  const oneOf = validateAgainstSchema(
+    { kind: "accept", attemptId: "a1" },
+    { oneOf: [{ type: "object", minLenght: 3 }, { type: "number" }] },
+    ROOT,
+  );
+  assert.ok(oneOf.some((i) => /unsupported schema keyword in branch\[0\]: minLenght/.test(i.message)));
+});
+
+test("深すぎるネストは例外でなく issue で返す（信頼境界を落とさない）", () => {
+  let deep: Record<string, unknown> = { n: 1 };
+  for (let i = 0; i < 5000; i++) deep = { n: deep };
+  const issues = validateContractValue("Binding", deep, ROOT, LIMITS);
+  assert.ok(issues.some((i) => /nesting deeper than/.test(i.message)));
+  // findStructuralViolations 単体でも同じ（循環値でスタックを食い潰さない）
+  assert.ok(findStructuralViolations(deep, { ...LIMITS, jsonDepth: 100000 }).some((i) => /nesting deeper than/.test(i.message)));
+});
+
+test("$defs 名にハイフン・ドットを使える", () => {
+  const root: JsonSchemaDocument = { $defs: { "Iso-Timestamp": { type: "string" } } };
+  assert.deepEqual(validateAgainstSchema("x", { $ref: "#/$defs/Iso-Timestamp" }, root), []);
+  assert.equal(validateAgainstSchema(1, { $ref: "#/$defs/Iso-Timestamp" }, root).length, 1);
+});

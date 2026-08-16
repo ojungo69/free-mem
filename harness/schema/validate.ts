@@ -61,6 +61,10 @@ const SUPPORTED_KEYWORDS = new Set([
   "else",
 ]);
 
+// 値を歩く関数の共通の打ち切り深さ。JSON の実用的な深さより十分大きく、
+// スタックオーバーフローよりは十分小さい値
+const MAX_WALK_DEPTH = 200;
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -94,7 +98,7 @@ function typeMatches(actual: string, expected: string): boolean {
 }
 
 function resolveRef(ref: string, root: JsonSchemaDocument): unknown {
-  const m = /^#\/\$defs\/([A-Za-z0-9_]+)$/.exec(ref);
+  const m = /^#\/\$defs\/([A-Za-z0-9_.-]+)$/.exec(ref);
   if (!m) throw new Error(`unsupported $ref form: ${ref}`);
   const defs = root.$defs;
   // `#/$defs/__proto__` は `?.[]` だと Object.prototype を拾い、制約ゼロの schema として通ってしまう
@@ -103,8 +107,19 @@ function resolveRef(ref: string, root: JsonSchemaDocument): unknown {
 }
 
 /** JSON として表現できない値（undefined / NaN / Infinity / function / symbol / bigint / 循環）を弾く。 */
-export function findNonJsonValues(value: unknown, path = "$", seen = new Set<object>()): ValidationIssue[] {
+export function findNonJsonValues(
+  value: unknown,
+  path = "$",
+  seen = new Set<object>(),
+  depth = 1,
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  // 上限を超えた時点で打ち切る。構造上限の検査より先に走るため、ここで落ちると
+  // jsonDepth のエラーに到達できない（信頼境界が例外で死ぬ）
+  if (depth > MAX_WALK_DEPTH) {
+    issues.push({ path, message: `nesting deeper than ${MAX_WALK_DEPTH} (rejected before walking)` });
+    return issues;
+  }
   const t = typeof value;
   if (value === null || t === "string" || t === "boolean") return issues;
   if (t === "number") {
@@ -124,11 +139,11 @@ export function findNonJsonValues(value: unknown, path = "$", seen = new Set<obj
   if (Array.isArray(value)) {
     // forEach は hole を飛ばすが JSON.stringify は null にする。ずれを見逃さないよう添字で歩く
     for (let i = 0; i < value.length; i++) {
-      issues.push(...findNonJsonValues(value[i], `${path}[${i}]`, seen));
+      issues.push(...findNonJsonValues(value[i], `${path}[${i}]`, seen, depth + 1));
     }
   } else if (isDataObject(value)) {
     for (const [k, v] of Object.entries(value)) {
-      issues.push(...findNonJsonValues(v, `${path}.${k}`, seen));
+      issues.push(...findNonJsonValues(v, `${path}.${k}`, seen, depth + 1));
     }
   } else {
     // Date / Map / class instance など。toJSON で通ってしまう型を素通しすると
@@ -154,6 +169,10 @@ export function findStructuralViolations(
   depth = 1,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  if (depth > MAX_WALK_DEPTH) {
+    issues.push({ path, message: `nesting deeper than ${MAX_WALK_DEPTH} (rejected before walking)` });
+    return issues;
+  }
   if (depth > limits.jsonDepth) {
     issues.push({ path, message: `depth ${depth} exceeds jsonDepth ${limits.jsonDepth}` });
     return issues;
@@ -181,6 +200,24 @@ export function findStructuralViolations(
     }
     for (const k of keys) {
       issues.push(...findStructuralViolations(value[k], limits, `${path}.${k}`, depth + 1));
+    }
+  }
+  return issues;
+}
+
+/**
+ * anyOf / oneOf の分岐 schema にある未対応キーワードを、データの合否とは独立に報告する。
+ * 分岐は「一致したか」しか見ないため、書き間違えた分岐は黙って不一致になるか、
+ * 逆に他の分岐が一致して丸ごと飲み込まれる。schema 側の誤りは常に表に出す。
+ */
+function branchSchemaIssues(branches: unknown[], path: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const [i, sub] of branches.entries()) {
+    if (!isPlainObject(sub)) continue;
+    for (const key of Object.keys(sub)) {
+      if (!SUPPORTED_KEYWORDS.has(key)) {
+        issues.push({ path, message: `unsupported schema keyword in branch[${i}]: ${key}` });
+      }
     }
   }
   return issues;
@@ -294,10 +331,12 @@ export function validateAgainstSchema(
     for (const sub of schema.allOf) issues.push(...validateAgainstSchema(value, sub, root, path, refStack));
   }
   if (Array.isArray(schema.anyOf)) {
+    issues.push(...branchSchemaIssues(schema.anyOf, path));
     const ok = schema.anyOf.some((sub) => validateAgainstSchema(value, sub, root, path, refStack).length === 0);
     if (!ok) issues.push({ path, message: "value matches none of anyOf" });
   }
   if (Array.isArray(schema.oneOf)) {
+    issues.push(...branchSchemaIssues(schema.oneOf, path));
     const matched = schema.oneOf.filter(
       (sub) => validateAgainstSchema(value, sub, root, path, refStack).length === 0,
     );

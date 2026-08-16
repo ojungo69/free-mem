@@ -1,7 +1,7 @@
 {
   "cli": "claude",
   "nativeVersion": "2.1.228 (Claude Code)",
-  "generatedAt": "2026-08-16T05:00:23.183Z",
+  "generatedAt": "2026-08-16T05:06:54.200Z",
   "fixtureCount": 5,
   "fixtureIds": [
     "claude/injection-and-subagent",
@@ -174,10 +174,11 @@
       "value": "native",
       "sourceEvents": [],
       "nativeVersion": "2.1.228 (Claude Code)",
-      "evidenceKind": "real-cli-e2e",
+      "evidenceKind": "source-test",
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
-        "observed in claude/injection-and-subagent"
+        "observed in claude/injection-and-subagent",
+        "no evidenceHash: transcript に紐付いていない自己申告"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",
       "evidenceHash": null
@@ -227,10 +228,11 @@
       "value": "native",
       "sourceEvents": [],
       "nativeVersion": "2.1.228 (Claude Code)",
-      "evidenceKind": "real-cli-e2e",
+      "evidenceKind": "source-test",
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
-        "observed in claude/injection-and-subagent"
+        "observed in claude/injection-and-subagent",
+        "no evidenceHash: transcript に紐付いていない自己申告"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",
       "evidenceHash": null
@@ -239,15 +241,16 @@
       "value": "native",
       "sourceEvents": [],
       "nativeVersion": "2.1.228 (Claude Code)",
-      "evidenceKind": "real-cli-e2e",
+      "evidenceKind": "source-test",
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
-        "observed in claude/injection-and-subagent"
+        "observed in claude/injection-and-subagent",
+        "no evidenceHash: transcript に紐付いていない自己申告"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",
       "evidenceHash": null
     },
-    "resumeDeliveryStrategy": "session_start_full",
+    "resumeDeliveryStrategy": "manual_only",
     "capabilityHashInputs": [
       "cli:claude",
       "nativeVersion:2.1.228 (Claude Code)",

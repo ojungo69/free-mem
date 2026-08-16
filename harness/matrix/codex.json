@@ -1,7 +1,7 @@
 {
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "generatedAt": "2026-08-16T05:00:23.265Z",
+  "generatedAt": "2026-08-16T05:06:54.269Z",
   "fixtureCount": 3,
   "fixtureIds": [
     "codex/injection",
@@ -164,10 +164,11 @@
       "value": "native",
       "sourceEvents": [],
       "nativeVersion": "codex-cli 0.147.0",
-      "evidenceKind": "real-cli-e2e",
+      "evidenceKind": "source-test",
       "verifiedAt": "2026-08-12T11:16:08.730Z",
       "limitations": [
         "observed in codex/injection",
+        "no evidenceHash: transcript に紐付いていない自己申告",
         "observed in codex/lifecycle-basic"
       ],
       "sourceFixtureId": "codex/lifecycle-basic",
@@ -234,7 +235,7 @@
         "not observed in Phase 0B"
       ]
     },
-    "resumeDeliveryStrategy": "session_start_full",
+    "resumeDeliveryStrategy": "manual_only",
     "capabilityHashInputs": [
       "cli:codex",
       "nativeVersion:codex-cli 0.147.0",
