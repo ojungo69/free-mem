@@ -56,7 +56,7 @@ Phase 1 の T041–T048 により、hook adapter・CLI・MCP server・viewer は
 |---|---|---|
 | G1 | Phase 1 の sole-writer / auth / redaction / spool 不変条件を維持する | `writer-boundary-v1.md` と `spool-format-v1.md` の各 MUST を Rust prototype に対して再実行。Exit-1b 相当の owner-set 検査を再利用する |
 | G2 | fault injection で data loss / duplicate commit / split brain がない | Phase 1 の T055 シナリオ（daemon kill 中の spool → exactly one commit、replay ×10、lock race、force-kill identity）を Rust prototype に適用 |
-| G3 | adapter から見た RPC contract を変更せずに置換できる | 既存 TS adapter（hook / CLI / MCP / viewer）を無改造で Rust daemon に接続し、`rpc-v1.md` の全 method で応答形状と typed error code が一致すること |
+| G3 | adapter から見た RPC contract を変更せずに置換できる | 既存 TS adapter（hook / CLI / MCP / viewer）を無改造で Rust daemon に接続し、`rpc-v1.md` の全 method で応答形状と typed error codes が一致すること。**method の追加も不可**: `capability_hash` は `RPC_METHODS` 一覧のハッシュなので、method を 1 つ増やすだけで既存 adapter の handshake が `protocol_mismatch` で落ちる（`rpc-v1.md` §1.2）。拡張が要るなら contract version を上げる別の変更として扱う |
 | G4 | Windows を含む process lifecycle が TS 版以上に安定する | 同一の lifecycle シナリオを両実装で実行し、失敗数を比較。TS 版が Linux 専用である事実は「TS 版 = 未対応」として記録し、Rust 側の実測値のみで可否を見る |
 | G5 | clean install に Node / Python 等の Core 実行時依存を要求しない | 素の環境で配布物のみを install し、daemon 起動 → RPC 疎通まで到達すること |
 | G6 | DB migration と rollback を実証できる | Phase 1 の migration + online backup + restore journal 方式を Rust prototype で往復させ、canonical rows と manifest hash が一致すること |
@@ -66,7 +66,7 @@ Phase 1 の T041–T048 により、hook adapter・CLI・MCP server・viewer は
 
 cold start / warm start、idle RSS、event ingest p50 / p95 / p99、concurrent hook burst、forced-kill recovery time、spool replay throughput、DB migration / backup time、packaged artifact size、platform 別 failure count、実装行数とテスト行数の差分。
 
-測定条件は両実装で揃える: 同一マシン、同一 data_dir 構成、同一 fixture 集合、各指標 10 回試行の中央値と p95 を記録し、実行コマンドと commit SHA を evidence に残す。
+測定条件は両実装で揃える: 同一マシン、同一 data_dir 構成、同一 fixture 集合、各指標 10 回試行の中央値と p95 を記録し、実行コマンドと commit SHA を evidence に残す。spool 系（replay throughput / forced-kill recovery / cold start）は **空の spool と滞留 spool の両方**で測る: 0 件、1,000 件、`SPOOL_NORMAL_QUOTA_BYTES`（128 MiB）に迫る水準の 3 段階。滞留時は quarantine 済みファイルを混ぜた状態も 1 水準含める。理由: quota 使用量は永続カウンタではなく、`scanUsage()` が毎回 `tmp/` と `ready/` を走査して算出する（`spool-format-v1.md` §5）。したがって書き込み 1 件のコストが backlog サイズに依存し、空 spool のみの測定では両実装の差が出ない。
 
 ### 判定規則
 

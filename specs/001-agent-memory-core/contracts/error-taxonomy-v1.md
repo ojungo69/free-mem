@@ -54,7 +54,7 @@ Evidence: `packages/core/src/daemon-rpc-contract.ts:97-106`.
 |---|---|---|---|
 | `RPC_MAX_BYTES` | 32 KiB (`32 * 1024`) | Server: accumulated request bytes per connection before the newline is seen | `daemon-rpc-contract.ts:5`, `daemon-rpc.ts:1642-1645` |
 | `RPC_MAX_BYTES` (client) | 32 KiB, when the caller supplies it | `callDaemonRpc` itself has **no built-in default** — it only enforces `maxResponseBytes` when `options.maxResponseBytes !== undefined` (`daemon-rpc-contract.ts:154`); the 32 KiB figure comes from the hook client explicitly passing `RPC_MAX_BYTES` as that option | `daemon-rpc-contract.ts:126,154-157`, `hook-rpc-client.ts:316-317` |
-| Hook `POST /v1/context/pack` response cap | 256 KiB (`HOOK_RPC_RESPONSE_MAX_BYTES`) | Client override of the 32 KiB default, only for this one method | `packages/cli/src/commands/hook-rpc-client.ts:73`, `316-317` |
+| Hook `POST /v1/context/pack` response cap | 256 KiB (`HOOK_RPC_RESPONSE_MAX_BYTES`) | The hook client's own override of the 32 KiB it passes for every other method — not a protocol default | `packages/cli/src/commands/hook-rpc-client.ts:73`, `316-317` |
 | `RPC_DEFAULT_DEADLINE_MS` | 2,000 ms | Per-request deadline for all methods except backup methods | `daemon-rpc-contract.ts:6` |
 | Backup-method deadline | 1,800,000 ms (30 min) | `GET/POST /v1/backup/*` only, via `BACKUP_RPC_METHODS` | `daemon-rpc-contract.ts:7,59-68` |
 | Socket timeout (real enforcement) | `rpcDeadlineForMethod(method)`, reset per request | `net.Socket#setTimeout`; fires `deadline_exceeded` and destroys the connection independent of handler progress | `daemon-rpc.ts:1666`, `1675-1677` |
@@ -135,10 +135,12 @@ Every RPC response is either `{ id, result }` or `{ error: { code, message, retr
 
 These are synthesized locally by `mapPeerConnectError` when the *client* fails to reach the socket — the daemon process never emits them, because if the daemon can't be reached, it can't respond at all.
 
+**The mapping is applied to exactly three `errno` values.** `callDaemonRpc`'s socket `error` handler calls `mapPeerConnectError` only when `error.code` is `EACCES`, `ECONNREFUSED`, or `ENOENT`; every other socket error rejects the promise with the original `Error` and never becomes a `TypedRpcError` (`daemon-rpc-contract.ts:170-181`). `mapPeerConnectError`'s own trailing `peer_denied` fallback (`daemon-rpc-contract.ts:120`) is therefore unreachable from `callDaemonRpc` and only applies to direct calls of the exported function. Concretely: a regular file at the socket path yields `ENOTSOCK`, which surfaces as a thrown error, **not** `peer_denied`.
+
 | Code | Retryable | Trigger | Evidence |
 |---|---|---|---|
-| `peer_denied` | false | `EACCES`, or any other socket error not matched below | `daemon-rpc-contract.ts:114-115`, `120` |
-| `daemon_unavailable` | **true** | `ECONNREFUSED` or `ENOENT` connecting to the socket | `daemon-rpc-contract.ts:117-118` |
+| `peer_denied` | false | `EACCES` (via the handler's three-code allowlist); the function's catch-all branch is unreachable from `callDaemonRpc` | `daemon-rpc-contract.ts:114-115`, `120`, `169-180` |
+| `daemon_unavailable` | **true** | `ECONNREFUSED` or `ENOENT` connecting to the socket | `daemon-rpc-contract.ts:117-118`, `169-180` |
 
 `status.ts` depends on this distinction directly: it treats `health.error.code === "daemon_unavailable"` as "daemon not running" (the default assumption) and *any other* health error code as `daemon: "unavailable"` (a harder failure) — see §6.1.
 
@@ -452,7 +454,7 @@ type ObserverState = "healthy" | "idle" | "backoff" | "failed" | "unconfigured" 
 - The handshake fields and their exact failure code (`protocol_mismatch`) for any mismatch of `local_api_version`, `normalized_schema_version`, or `capability_hash` (§1.2) — including that `capability_hash` is a hash of the exact `RPC_METHODS` list, so any method-set change must be treated as a protocol-breaking change requiring a new contract version.
 - The complete set of 27 `RPC_METHODS` strings and their required-field lists (Table 1.4), including the `GET /v1/checkpoints` empty-array stub (Known gap 8) and the maintenance-blocked method set (§1.5).
 - Every typed error code in §2.1–2.7 and its `retryable` flag, for the exact trigger conditions cited — including the `DaemonJobRequestError` → `"invalid_request"` collapse (Known gap 1) and the `POST /v1/events` vs `POST /v1/events/batch` asymmetry for `idempotency_conflict` (§2.6).
-- `RPC_MAX_BYTES` (32 KiB) as both the server's per-connection request cap and the client's default response cap, and the 256 KiB override for `POST /v1/context/pack` responses (§1.3).
+- `RPC_MAX_BYTES` (32 KiB) as the server's per-connection request cap (§1.3). The response side is **not** part of the wire contract: `callDaemonRpc` has no default `maxResponseBytes`, the MCP client supplies none, and only the hook client chooses a cap (32 KiB, raised to 256 KiB for `POST /v1/context/pack`). A reimplemented client must keep that per-client freedom — imposing 32 KiB as a global default would reject MCP responses the current client accepts.
 - `RPC_DEFAULT_DEADLINE_MS` (2,000 ms) and the 30-minute backup-method deadline, enforced as a real socket-level timeout that can fire independent of handler completion, not merely as a pre-dispatch check (§1.3, Known gap 3).
 - The two-tier operations error surface: raw journal codes via `GET /v1/operations/:id` vs. the 5-code sanitized set via `POST /v1/backup/create|restore` (§4.3).
 - All 28 job kinds, their argument allowlists and bounds, the maintenance (18 kinds) / dry-run-eligible (11 kinds) classifications, `maxAttempts: 1` with no automatic retry, the 512 KiB result-size cap, and the fixed job-failure message string `"Daemon job failed; submit a new job to retry."` (§3, §2.7) for all three `error_code` values (`redaction_degraded`, `job_failed`, `daemon_restarted`) — including the startup-time transition of orphaned `queued`/`running` jobs to `failed`/`daemon_restarted` (§2.7, §3.6).

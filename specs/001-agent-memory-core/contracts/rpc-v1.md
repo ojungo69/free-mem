@@ -7,7 +7,7 @@
 - Authority: **this document** is the authority for Rust reimplementation parity of the daemon's local RPC surface. Where this document and the TypeScript source disagree, re-derive from source; where this document and any other design note disagree, this document wins for the RPC wire contract.
 - Scope: the Unix-domain-socket JSON-line RPC protocol between the daemon (`packages/core/src/daemon-rpc.ts`, `daemon-lifecycle.ts`) and its clients (`packages/mcp-server/src/rpc-client.ts`, `packages/cli/src/commands/hook-rpc-client.ts`). Paths below are relative to `vendor/codemem/` unless stated otherwise.
 
-All normative statements describe **current behavior only**. No proposals, no TODOs. Gaps and inconsistencies found in the source are recorded under [Known gaps](#known-gaps-documented-not-fixed), not fixed. Normative rules are numbered `R1…R56` inline for traceability (`R52`–`R56` were added after the initial freeze and appear in their topically-correct section rather than at the end).
+All normative statements describe **current behavior only**. No proposals, no TODOs. Gaps and inconsistencies found in the source are recorded under [Known gaps](#10-known-gaps-documented-not-fixed), not fixed. Normative rules are numbered `R1…R56` inline for traceability (`R52`–`R56` were added after the initial freeze and appear in their topically-correct section rather than at the end).
 
 ---
 

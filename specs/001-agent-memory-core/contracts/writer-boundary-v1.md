@@ -735,9 +735,14 @@ file as the canonical pointer for the first time (`daemon-canonical.ts:35-42`).
   (immediate success-or-fail) — §4. The specific mechanism (SQLite `BEGIN IMMEDIATE` under rollback-
   journal mode on a dedicated `lock.db`) is one valid implementation; any mechanism that gives the same
   observable guarantees (immediate mutual exclusion per `dataDir`, held for the daemon's lifetime,
-  released deterministically on clean shutdown and on force-kill) satisfies parity. A Rust
-  implementation may use a plain `flock()`/`fcntl()` advisory lock directly instead of routing through
-  SQLite, since the underlying guarantee (§4) is an OS file lock either way.
+  released deterministically on clean shutdown and on force-kill) satisfies parity **only if it
+  contends with the TypeScript daemon's lock**. A plain `flock()` on `lock.db` does **not** qualify:
+  on Linux `flock()` and the POSIX byte-range locks SQLite uses are independent lock spaces, so a
+  TS daemon and a Rust daemon could each believe it is the sole writer and both write the canonical
+  DB. Since cutover and rollback both imply a window where either binary may be started against the
+  same `dataDir`, a reimplementation must either speak the same SQLite locking protocol on `lock.db`
+  or use a mechanism demonstrated by test to block while the TS daemon holds its lock (and vice
+  versa). That cross-runtime lock-race test is a Stage 1 exit condition, not an optional check.
 - **Daemon identity must be re-derivable and comparable the same way**: `pid` + a boot-scoped process
   start-time + a content fingerprint (executable path + full argv) + a per-incarnation random nonce,
   compared with the same two granularities used in TS — a "same incarnation" check (all four fields) and
