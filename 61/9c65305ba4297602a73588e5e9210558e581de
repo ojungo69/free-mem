@@ -1,0 +1,21 @@
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_5cbc4c67c8b3b4::t_b3b26c1836a62f 369
+specs/001-agent-memory-core/contracts/error-taxonomy-v1.md
+  s_5cbc4c67c8b3b4::t_1a8c2a409eebe9 442
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "619c65305ba4297602a73588e5e9210558e581de",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
