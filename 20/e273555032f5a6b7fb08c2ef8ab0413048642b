@@ -1,0 +1,27 @@
+.github/workflows/ci.yml
+  s_5cbc4c67c8b3b4::t_649dc778013a7f 90-96,104
+harness/continuity/capability-manifest.test.ts
+  s_5cbc4c67c8b3b4::t_c1ff63f46043bf 188-193
+harness/continuity/schema-freeze.test.ts
+  s_5cbc4c67c8b3b4::t_e27290a0bf3274 167-199
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_a2b8024786c086 3,475-476,488-490,512,537-578
+harness/schema/continuity.ts
+  s_5cbc4c67c8b3b4::t_b953e1c19ef6b0 22,31,37,41,45,77,80,117,121,125,146,152,174,178,182,186,265,269,375,382,432,439,450,458,554,560,568,573,577,581,586,619,626,667,675,679,684,734,739,743
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "20e273555032f5a6b7fb08c2ef8ab0413048642b",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
