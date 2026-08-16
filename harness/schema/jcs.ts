@@ -163,6 +163,27 @@ function assertNoDuplicateKeys(text: string): void {
   }
 }
 
+/**
+ * 配列の own key を `length` と 0..length-1 の添字だけに限る。件数だけ数えると、穴の分だけ
+ * 空いた枠に別の key（`a.meta`・`Symbol.iterator`）が収まって素通りする。
+ */
+function assertPlainArray(value: unknown[]): void {
+  for (const key of Reflect.ownKeys(value)) {
+    if (key === "length") continue;
+    const index = typeof key === "string" ? Number(key) : Number.NaN;
+    if (!Number.isInteger(index) || String(index) !== key || index < 0 || index >= value.length) {
+      throw new Error(
+        `JCS: 添字と length 以外の own key を持つ配列は canonicalize できない: ${String(key)}`,
+      );
+    }
+  }
+  for (let i = 0; i < value.length; i++) {
+    if (!Object.hasOwn(value, i)) {
+      throw new Error(`JCS: 穴のある配列は canonicalize できない（位置 ${i}）`);
+    }
+  }
+}
+
 /** JCS で canonicalize した JSON 文字列を返す。undefined・NaN・関数は入力として認めない */
 export function canonicalizeJson(value: unknown): string {
   if (value === null) return "null";
@@ -174,14 +195,12 @@ export function canonicalizeJson(value: unknown): string {
   }
   if (typeof value === "string") return encodeString(value);
   if (Array.isArray(value)) {
-    // 添字以外の own property（`a.meta = "x"` や symbol）は JSON に出ないので、
-    // 付いたまま hash すると綺麗な配列と同じ bytes になる。添字 + `length` だけを許す
-    if (Reflect.ownKeys(value).length > value.length + 1) {
-      throw new Error("JCS: 添字以外の property を持つ配列は canonicalize できない");
-    }
-    // `Array.from` は穴を undefined として渡す。`map` だと穴を飛ばして `[,]` のような
-    // JSON でない bytes が出てしまうので、穴は下の「JSON に無い型」で落とす
-    return `[${Array.from(value, (item) => canonicalizeJson(item)).join(",")}]`;
+    assertPlainArray(value);
+    // 添字で回す。`Array.from` や `map` は呼び出し側が差し替えた `Symbol.iterator` を
+    // 使ってしまい、実在しない要素の bytes を出せる
+    const items: string[] = [];
+    for (let i = 0; i < value.length; i++) items.push(canonicalizeJson(value[i]));
+    return `[${items.join(",")}]`;
   }
   if (typeof value === "object") {
     // Date・Map・class instance は enumerable な own property を持たないので、そのまま

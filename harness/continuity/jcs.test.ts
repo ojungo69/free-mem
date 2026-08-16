@@ -109,9 +109,9 @@ test("疎な配列は canonicalize しない（穴は JSON に無い）", () => 
   // `map` は穴を飛ばすので `[,]` のような JSON でない bytes が出る。`JSON.stringify` は
   // 穴を null にするが、JCS の入力として渡された時点で値が確定していないので落とす
   assert.equal(JSON.stringify(Array(2)), "[null,null]");
-  assert.throws(() => canonicalizeJson(Array(2)), /JSON に無い型/);
-  assert.throws(() => canonicalizeJson([1, , 3]), /JSON に無い型/);
-  assert.throws(() => canonicalizeJson({ a: [1, , 3] }), /JSON に無い型/);
+  assert.throws(() => canonicalizeJson(Array(2)), /穴のある配列/);
+  assert.throws(() => canonicalizeJson([1, , 3]), /穴のある配列/);
+  assert.throws(() => canonicalizeJson({ a: [1, , 3] }), /穴のある配列/);
   // 穴でない undefined は配列でも同じ扱い
   assert.throws(() => canonicalizeJson([undefined]), /JSON に無い型/);
 });
@@ -120,10 +120,19 @@ test("添字以外の property を持つ配列は canonicalize しない", () =>
   const tagged: unknown[] & { metadata?: string } = [1];
   tagged.metadata = "lost";
   assert.equal(JSON.stringify(tagged), "[1]"); // 付けた欄は消える
-  assert.throws(() => canonicalizeJson(tagged), /添字以外の property/);
+  assert.throws(() => canonicalizeJson(tagged), /length 以外の own key/);
   const symbolTagged = [1];
   (symbolTagged as unknown as Record<symbol, number>)[Symbol("s")] = 1;
-  assert.throws(() => canonicalizeJson(symbolTagged), /添字以外の property/);
+  assert.throws(() => canonicalizeJson(symbolTagged), /length 以外の own key/);
+
+  // 件数だけ数えると、穴が空けた枠に別の key が収まって素通りする。しかも `Array.from` は
+  // 差し替えられた `Symbol.iterator` を呼ぶので、実在しない要素の bytes まで出せる
+  const forged = Array(1);
+  (forged as unknown as Record<symbol, unknown>)[Symbol.iterator] = function* () {
+    yield 7;
+  };
+  assert.throws(() => canonicalizeJson(forged), /length 以外の own key/);
+
   assert.equal(canonicalizeJson([1, 2]), "[1,2]");
 });
 
