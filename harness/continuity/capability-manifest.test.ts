@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { validateContractValue, type JsonSchemaDocument } from "../schema/validate.ts";
 import * as contract from "../schema/continuity.ts";
+import { canonicalizeJson } from "../schema/jcs.ts";
 
 /**
  * §13 は capability-scenarios.v1.json を「required scenario ID の唯一の権威」と定めているが、
@@ -46,20 +47,21 @@ const evidence = readFileSync(
   "utf8",
 );
 
-/** evidence に書いた正規化規則。scenarios は scenarioId 昇順、キー順も固定、hash 自身は入力外 */
+/**
+ * evidence に書いた正規化規則。値の側は「scenarios を scenarioId 昇順に並べ、hash 自身を
+ * 除く」だけで、符号化は RFC 8785 JCS に任せる（正本 §22.6 が独自 canonical JSON を禁じている）。
+ *
+ * キーを手で並べないので、scenario に欄が増えたときも自動で hash の入力に入る。
+ */
 function computeManifestHash(value: contract.CapabilityScenarioManifestV1): string {
+  const { manifestHash: _excluded, ...rest } = value;
   const canonical = {
-    manifestVersion: value.manifestVersion,
-    scenarios: [...value.scenarios]
-      .sort((a, b) => (a.scenarioId < b.scenarioId ? -1 : a.scenarioId > b.scenarioId ? 1 : 0))
-      .map((s) => ({
-        scenarioId: s.scenarioId,
-        title: s.title,
-        appliesToAgents: s.appliesToAgents,
-        requiredFor: s.requiredFor,
-      })),
+    ...rest,
+    scenarios: [...value.scenarios].sort((a, b) =>
+      a.scenarioId < b.scenarioId ? -1 : a.scenarioId > b.scenarioId ? 1 : 0,
+    ),
   };
-  return createHash("sha256").update(JSON.stringify(canonical), "utf8").digest("hex");
+  return createHash("sha256").update(canonicalizeJson(canonical), "utf8").digest("hex");
 }
 
 /** 版が増えても検査が漏れないように、全ての versioned manifest に同じ検査をかける */

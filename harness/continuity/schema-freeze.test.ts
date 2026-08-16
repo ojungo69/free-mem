@@ -349,6 +349,84 @@ function* walkDefs(): Generator<[string, Record<string, unknown>, boolean]> {
   }
 }
 
+/**
+ * 凍結した `$defs` の名前そのもの。property の形（#31）とは別で、**定義が丸ごと消えても**
+ * 誰も気付かない状態を塞ぐ。参照されていない定義は preflight も歩くだけで、
+ * 消えたことは検出できない（contract-hashes は再生成すれば通る）
+ */
+const FROZEN_DEFS = [
+  "BoundaryEvidence",
+  "BoundaryEvidenceKind",
+  "CanonicalWorkStateV1",
+  "CapabilityScenarioManifestV1",
+  "CapabilityTestDisposition",
+  "CheckpointAnchorV1",
+  "CheckpointDeliveryAttempt",
+  "CheckpointDispositionEvent",
+  "CheckpointDispositionKind",
+  "CheckpointDispositionProjection",
+  "CheckpointMetadataV1",
+  "ContinuationCheckpointV2",
+  "ContinuityCaptureMethod",
+  "ContinuityEventProvenanceV1",
+  "ContinuityIngestAttestationV1",
+  "ContinuityOperationPhase",
+  "ContinuityOperationRefV1",
+  "ContractPreflightState",
+  "ContradictionEvidenceV1",
+  "ContradictionScanRangeV1",
+  "DeliveryAttemptState",
+  "DeliveryCommandV1",
+  "DerivedArtifactDependencyV1",
+  "DerivedArtifactInvalidationEventV1",
+  "DerivedArtifactKind",
+  "DerivedArtifactSourceRefV1",
+  "DerivedArtifactStatus",
+  "DispositionAuthorityContextV1",
+  "EngagementEvaluationContextV1",
+  "EngagementEvidence",
+  "EngagementEvidenceKind",
+  "EvidenceKind",
+  "Freshness",
+  "IsoTimestamp",
+  "JsonPrimitive",
+  "JsonValue",
+  "NormalizedContinuityEvent",
+  "Observed",
+  "ObservedCommand",
+  "ObservedFile",
+  "ObservedTest",
+  "OperationCorrelationV1",
+  "PendingOperation",
+  "RankedResumeCandidateV1",
+  "ReconciliationStatus",
+  "ReplayPolicy",
+  "RepositoryStateSnapshot",
+  "RequiredCapabilityScenarioV1",
+  "ResumeCapsuleV1",
+  "ResumeDecisionAction",
+  "ResumeDeliveryBoundary",
+  "ResumeDeliveryStrategy",
+  "ResumeMode",
+  "ResumeSelectionDecisionV1",
+  "ResumeSuppressionEntryV1",
+  "ResumeThresholdProfileV1",
+  "SemanticResumeNoteV1",
+  "Sensitivity",
+  "SessionTaskBinding",
+  "TaskBindingRole",
+  "TaskBoundaryAuthorityContextV1",
+  "TaskBoundaryDecisionSource",
+  "TaskBoundaryDecisionV1",
+  "TaskBoundaryProposalState",
+  "TaskBoundaryProposalV1",
+  "TurnIdSource",
+] as const;
+
+test("$defs の名前集合は凍結されている", () => {
+  assert.deepEqual(Object.keys(defs).sort(), [...FROZEN_DEFS].sort());
+});
+
 test("continuity.schema.json は schema 側の誤記を持たない", () => {
   // validateContractValue は root を 1 度歩いて schema 側の誤記を throw する（値は通らなくてよい）。
   // $ref から辿れない $defs も対象なので、凍結した 66 定義すべてが検査される

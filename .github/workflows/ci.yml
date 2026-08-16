@@ -63,11 +63,6 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.16.0
-      - name: Capability matrix self-test
-        # PASS 行を必須にする: entry point の起動条件が変わって黙って no-op しても exit 0 になるため
-        run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS
-      - name: Continuity contract tests
-        run: node --experimental-strip-types --test harness/continuity/*.test.ts
       - name: Published manifest versions are immutable
         # §13「Adding or removing a required scenario requires a manifest version bump
         # recorded in the evidence file」。test 側は manifest・hash・evidence の 3 つを
@@ -104,14 +99,24 @@ jobs:
           done < <(grep -E 'capability-scenarios\.v[0-9]+\.json$' /tmp/baseline-schema.txt || true)
           exit $status
 
+
       - name: Contract hashes are regenerated
         # plan Task 4「Emit schema/fixture SHA-256 values for TypeScript/Rust parity」。
         # Rust 側が同じ契約を読んでいることを確かめる手段が版番号しかないと、drift した複製を
-        # 読んでいても気付けない。生バイトの hash なので整形の違いも検出する
+        # 読んでいても気付けない。生バイトの hash なので整形の違いも検出する。
+        #
+        # 凍結・生成物の検査は repo のコードを走らせる前に置く。後段の test や assemble が
+        # 作業ツリーを書き換えると、この比較は「書き換え後どうし」を見ることになる
         run: |
           node harness/contract-hashes.mjs > /tmp/contract-hashes.json
           diff harness/contract-hashes.json /tmp/contract-hashes.json
 
+
+      - name: Capability matrix self-test
+        # PASS 行を必須にする: entry point の起動条件が変わって黙って no-op しても exit 0 になるため
+        run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS
+      - name: Continuity contract tests
+        run: node --experimental-strip-types --test harness/continuity/*.test.ts
       - name: Matrices are regenerated, not hand-edited
         # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
         # generatedAt は実行ごとに変わるので比較から外す

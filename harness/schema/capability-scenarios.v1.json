@@ -1,6 +1,6 @@
 {
   "manifestVersion": "1",
-  "manifestHash": "8b740f26b2ddf732d2817a84d87596588f4757a08245e277d27945fc402345fa",
+  "manifestHash": "86c3e4a42bc9cb160a83fdacbf7db933a7622b0c3c4ec43854565c5308f69a4d",
   "scenarios": [
     {
       "scenarioId": "claimed-prompt-gate-delivery",

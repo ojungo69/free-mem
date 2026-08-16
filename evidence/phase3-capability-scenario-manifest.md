@@ -24,7 +24,7 @@ evidence file」と定めており、本ファイルがその evidence file に�
 | `retry-dedupe` | retry dedupe | `tier_a` |
 | `size-malformed-behavior` | size/malformed behavior | `tier_a` |
 
-manifestHash: `8b740f26b2ddf732d2817a84d87596588f4757a08245e277d27945fc402345fa`
+manifestHash: `86c3e4a42bc9cb160a83fdacbf7db933a7622b0c3c4ec43854565c5308f69a4d`
 
 `appliesToAgents` は 2 つとも `["claude", "codex"]`。Phase 3 の対象 CLI がこの 2 つだけであるため。
 
@@ -56,13 +56,16 @@ transcription ではなく設計判断になるため、書かれているもの
 再計算できない hash は「一致を確認したつもり」を作るだけなので、ここで規則を固定する。
 
 ```
-manifestHash = SHA-256hex( JSON.stringify({ manifestVersion, scenarios }) )
+manifestHash = SHA-256hex( JCS( { …manifest, scenarios: scenarioId 昇順 } ) )
 ```
 
-- `scenarios` は `scenarioId` の昇順
-- 各 scenario のキー順は `scenarioId`, `title`, `appliesToAgents`, `requiredFor`
-- 区切りは `JSON.stringify` の既定（空白なし）
-- `manifestHash` 自身は入力に含めない
+- 符号化は **RFC 8785 JCS**。正本 `agent-memory-final-spec-v6.md` §22.6 が
+  「hash/signature 対象 JSON は RFC 8785 JCS 等の標準 canonicalization を使用し、
+  独自 canonical JSON を実装しない」と定めているため、キー順や空白を自前で決めない
+- 値の側で決めるのは 2 点だけ。`scenarios` を `scenarioId` の昇順に並べること
+  （JCS は配列を並べ替えないので、順序の正規化は値の側の仕事）と、
+  `manifestHash` 自身を入力から除くこと
+- scenario のキーは列挙しない。手で並べた列挙は欄が増えたときに黙って入力から漏れる
 
 この規則は `harness/continuity/capability-manifest.test.ts` が強制する。同 test は
 再計算して `manifestHash` と照合するほか、scenario の各欄を書き換えると hash が必ず変わること
