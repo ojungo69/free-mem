@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { validateContractValue, type JsonSchemaDocument } from "../schema/validate.ts";
 import * as contract from "../schema/continuity.ts";
-import { canonicalizeJson, parseIJson } from "../schema/jcs.ts";
+import { canonicalizeJson, readIJsonFile } from "../schema/jcs.ts";
 
 /**
  * §13 は capability-scenarios.v1.json を「required scenario ID の唯一の権威」と定めているが、
@@ -14,9 +14,7 @@ import { canonicalizeJson, parseIJson } from "../schema/jcs.ts";
  * 正規化規則は evidence/phase3-capability-scenario-manifest.md 側で定義してある。
  * この test はその規則どおりに再計算して照合する（手で埋めた値を宣言のまま放置しない）。
  */
-const root = parseIJson<JsonSchemaDocument>(
-  readFileSync(new URL("../schema/continuity.schema.json", import.meta.url), "utf8"),
-) as JsonSchemaDocument;
+const root = readIJsonFile<JsonSchemaDocument>(new URL("../schema/continuity.schema.json", import.meta.url));
 
 /**
  * 版ごとにファイルが増える運用（§13 の bump は新しいファイルで足す。CI の
@@ -32,9 +30,7 @@ const manifests = manifestFiles.map((file) => ({
   file,
   // 重複 property 名は `JSON.parse` だと後勝ちで潰れ、潰れた後の値からは hash も出てしまう。
   // RFC 8785 §3.1 は canonicalize の入力を I-JSON に限るので、読む段で落とす
-  value: parseIJson<contract.CapabilityScenarioManifestV1>(
-    readFileSync(new URL(file, schemaDir), "utf8"),
-  ),
+  value: readIJsonFile<contract.CapabilityScenarioManifestV1>(new URL(file, schemaDir)),
 }));
 
 test("versioned manifest が 1 つ以上あり、ファイル名と manifestVersion が一致する", () => {
@@ -54,16 +50,27 @@ const evidence = readFileSync(
  * 除く」だけで、符号化は RFC 8785 JCS に任せる（正本 §22.6 が独自 canonical JSON を禁じている）。
  *
  * キーを手で並べないので、scenario に欄が増えたときも自動で hash の入力に入る。
+ *
+ * 「昇順」は **UTF-16 code unit 順**（JCS §3.2.3 が object のキーに使うのと同じ順序）。
+ * scenarioId は正本も schema も `string` としか言っていないので、非 BMP の ID を使うと
+ * Unicode scalar 順（＝ Rust の `str` の既定）と食い違い、同じ manifest から別の hash が出る。
  */
-function computeManifestHash(value: contract.CapabilityScenarioManifestV1): string {
+function canonicalManifestInput(
+  value: contract.CapabilityScenarioManifestV1,
+): Omit<contract.CapabilityScenarioManifestV1, "manifestHash"> {
   const { manifestHash: _excluded, ...rest } = value;
-  const canonical = {
+  return {
     ...rest,
     scenarios: [...value.scenarios].sort((a, b) =>
       a.scenarioId < b.scenarioId ? -1 : a.scenarioId > b.scenarioId ? 1 : 0,
     ),
   };
-  return createHash("sha256").update(canonicalizeJson(canonical), "utf8").digest("hex");
+}
+
+function computeManifestHash(value: contract.CapabilityScenarioManifestV1): string {
+  return createHash("sha256")
+    .update(canonicalizeJson(canonicalManifestInput(value)), "utf8")
+    .digest("hex");
 }
 
 /** 版が増えても検査が漏れないように、全ての versioned manifest に同じ検査をかける */
@@ -217,3 +224,33 @@ test("evidence が版ごとの scenario 集合を固定している（§13 の v
     assert.equal(entry.hash, manifest.manifestHash, file);
     assert.equal(entry.hash, computeManifestHash(manifest), file);
   }));
+
+test("scenarios の並べ替えは UTF-16 code unit 順（言語をまたいで同じ hash にするため）", () => {
+  // U+10384 は UTF-16 では 0xD800,0xDF84 なので U+FB33 より前、Unicode scalar 順では後ろ。
+  // どちらの実装も自然なので、どちらを使うかを test で固定しておく（現行 v1 は ASCII のみ）
+  const scenario = (scenarioId: string): contract.RequiredCapabilityScenarioV1 => ({
+    scenarioId,
+    title: "t",
+    appliesToAgents: ["claude"],
+    requiredFor: ["generic_phase3"],
+  });
+  const manifest: contract.CapabilityScenarioManifestV1 = {
+    manifestVersion: "9",
+    manifestHash: "",
+    scenarios: [scenario("\uFB33"), scenario("\u{10384}")],
+  };
+  assert.ok("\u{10384}" < "\uFB33", "JS の `<` は UTF-16 code unit 比較");
+  assert.ok(
+    "\u{10384}".codePointAt(0)! > "\uFB33".codePointAt(0)!,
+    "code point 順なら逆になる（順序規則を決めないと言語間で hash が割れる）",
+  );
+  // 同じ集合を逆順で渡しても、正規化後の先頭は UTF-16 順の小さい方になる
+  for (const scenarios of [manifest.scenarios, [...manifest.scenarios].reverse()]) {
+    assert.equal(
+      computeManifestHash({ ...manifest, scenarios }),
+      computeManifestHash(manifest),
+    );
+  }
+  // 実際に hash の入力になる並びを見る（test 側で並べ替えを書き直さない）
+  assert.equal(canonicalManifestInput(manifest).scenarios[0]?.scenarioId, "\u{10384}");
+});

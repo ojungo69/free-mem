@@ -14,8 +14,11 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const harnessDir = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
+// `URL.pathname` は Windows で `/C:/...`、空白を含む path で `%20` になる。
+// 実在する path を得るには `fileURLToPath` を通す
+const harnessDir = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
 
 /**
  * 契約として凍結しているもの。`.json`（schema・manifest・組み立て済み fixture）と

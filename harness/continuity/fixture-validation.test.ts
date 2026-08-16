@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { validateFixture, assembleFromFixtures } from "../assemble.ts";
 import type { CaptureFixture } from "../schema/capability.ts";
 import { validateAgainstSchema, type JsonSchemaDocument } from "../schema/validate.ts";
-import { readFileSync, readdirSync } from "node:fs";
-import { parseIJson } from "../schema/jcs.ts";
+import { readdirSync } from "node:fs";
+import { readIJsonFile } from "../schema/jcs.ts";
 
 const VERSION = "1.2.3-test";
 const AT = "2026-08-16T00:00:00.000Z";
@@ -79,15 +79,13 @@ test("synthesized 対は evidenceHash が無ければ manual_only に落ちる",
 });
 
 test("既存 fixture は capability.schema.json 全体に対して妥当（schema と手書き検証の drift 検出）", () => {
-  const schema = parseIJson<JsonSchemaDocument>(
-    readFileSync(new URL("../schema/capability.schema.json", import.meta.url), "utf8"),
-  ) as JsonSchemaDocument;
+  const schema = readIJsonFile<JsonSchemaDocument>(new URL("../schema/capability.schema.json", import.meta.url));
   let checked = 0;
   for (const cli of ["claude", "codex"]) {
     const dir = new URL(`../fixtures/${cli}/`, import.meta.url);
     for (const name of readdirSync(dir)) {
       if (!name.endsWith(".json")) continue;
-      const data = parseIJson(readFileSync(new URL(name, dir), "utf8"));
+      const data = readIJsonFile(new URL(name, dir));
       assert.deepEqual(validateAgainstSchema(data, schema, schema), [], `${cli}/${name}`);
       checked++;
     }
@@ -114,4 +112,19 @@ test("evidenceHash の無い highLevel は real-cli-e2e として刻まない", 
   const m = assembleFromFixtures([hashed]).capabilities;
   assert.equal(m.sessionStartInjection.evidenceKind, "real-cli-e2e");
   assert.equal(m.resumeDeliveryStrategy, "session_start_full");
+});
+
+test("commit された matrix も I-JSON として読める", () => {
+  // CI の「Matrices are regenerated, not hand-edited」は `jq` で読む。`jq` は重複キーを
+  // 後勝ちで潰すので、先頭に偽の値を差し込んで末尾に正規の値を残した matrix でも
+  // diff が通ってしまう（厳格な parser と first-wins parser では別の値が見える）。
+  // 契約データとして読める形であることを、ここで別途縛る
+  const dir = new URL("../matrix/", import.meta.url);
+  let checked = 0;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(".json")) continue;
+    readIJsonFile(new URL(name, dir));
+    checked++;
+  }
+  assert.ok(checked >= 2, `matrix が見つかっていない (checked=${checked})`);
 });

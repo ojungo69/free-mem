@@ -65,11 +65,17 @@ manifestHash = SHA-256hex( JCS( { …manifest, scenarios: scenarioId 昇順 } ) 
 - 値の側で決めるのは 2 点だけ。`scenarios` を `scenarioId` の昇順に並べること
   （JCS は配列を並べ替えないので、順序の正規化は値の側の仕事）と、
   `manifestHash` 自身を入力から除くこと
+- その「昇順」は **UTF-16 code unit 順**（JCS §3.2.3 が object のキーに使うのと同じ順序）。
+  `scenarioId` の形は正本も schema も `string` としか言っていないので、非 BMP の ID を混ぜると
+  Unicode scalar 順（Rust の `str` の既定）と食い違い、同じ manifest から別の hash が出る。
+  現行の v1 は ASCII のみだが、規則を決めないまま増えると後から直せないのでここで固定する
 - scenario のキーは列挙しない。手で並べた列挙は欄が増えたときに黙って入力から漏れる
 - 入力の manifest は **I-JSON**（RFC 7493）であること。RFC 8785 §3.1 が canonicalize の
   入力をそこに限っており、§2.3 は object の重複 property 名を禁じている。`JSON.parse` は
   重複を後勝ちで潰すため、潰れた値からは hash が出てしまい、同じファイルを拒否する準拠実装と
-  食い違う。読み込みは `harness/schema/jcs.ts` の `parseIJson` を通す
+  食い違う。読み込みは `harness/schema/jcs.ts` の `readIJsonFile` を通す（UTF-8 の復号も
+  fatal にする。RFC 7493 §2.1 が UTF-8 を必須にしており、置換文字で読み替えると
+  壊れた bytes から hash が出る）
 
 この規則は `harness/continuity/capability-manifest.test.ts` が強制する。同 test は
 再計算して `manifestHash` と照合するほか、scenario の各欄を書き換えると hash が必ず変わること

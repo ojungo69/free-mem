@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 /**
  * RFC 8785 JSON Canonicalization Scheme (JCS)。
  *
@@ -38,6 +40,19 @@ function encodeString(value: string): string {
 }
 
 /**
+ * I-JSON は UTF-8 を必須にする（RFC 7493 §2.1）。Node の `readFileSync(path, "utf8")` は
+ * 不正な byte 列を U+FFFD に**置換**して返すので、壊れたファイルでも TS 側は hash を出し、
+ * 厳格な decoder を持つ実装は同じ bytes を拒否する。復号の段で落とす。
+ */
+export function decodeUtf8(bytes: Uint8Array, where: string): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error(`I-JSON: ${where} が UTF-8 として不正（置換文字で読み替えない）`);
+  }
+}
+
+/**
  * RFC 8785 §3.1 は canonicalize する入力を I-JSON（RFC 7493）に限る。RFC 7493 §2.3 は
  * object の重複 property 名を禁じるが、`JSON.parse` は**後勝ちで黙って潰す**。潰れた後の
  * 値は canonicalize できてしまうので、TS 側は hash を出し、準拠した実装は同じファイルを
@@ -48,6 +63,11 @@ export function parseIJson<T = unknown>(text: string): T {
   assertNoDuplicateKeys(text);
   assertIJsonStrings(value, "$");
   return value;
+}
+
+/** 契約ファイルを I-JSON として読む。UTF-8 の復号・重複キー・Unicode 制約をまとめて見る */
+export function readIJsonFile<T = unknown>(url: URL | string): T {
+  return parseIJson<T>(decodeUtf8(readFileSync(url), String(url)));
 }
 
 /**

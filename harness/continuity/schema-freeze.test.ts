@@ -3,11 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { validateAgainstSchema, validateContractValue, type JsonSchemaDocument } from "../schema/validate.ts";
 import * as contract from "../schema/continuity.ts";
-import { parseIJson } from "../schema/jcs.ts";
+import { readIJsonFile } from "../schema/jcs.ts";
 
-const root = parseIJson<JsonSchemaDocument>(
-  readFileSync(new URL("../schema/continuity.schema.json", import.meta.url), "utf8"),
-) as JsonSchemaDocument;
+const root = readIJsonFile<JsonSchemaDocument>(new URL("../schema/continuity.schema.json", import.meta.url));
 
 const defs = (root.$defs ?? {}) as Record<string, Record<string, unknown>>;
 
@@ -438,15 +436,53 @@ const SCHEMA_ONLY_DEFS = ["IsoTimestamp"];
  * 上の凍結は schema ↔ 固定表の 2 点しか見ていないので、**TS の宣言だけ消しても**全部通る
  * （参照の無い型は `tsc` も咎めない）。型は実行時に列挙できないため、ソースから
  * `export type` / `export interface` の名前を取って第 3 点にする。
+ *
+ * harness は依存ゼロで走らせるので AST parser を持ち込めない。代わりに
+ * **この file が書ける export の形を 3 つに限定**して、それ以外を落とす。名前を取れない形
+ * （`export type { X }`・`export default interface X`・改行を挟んだ `export type\nX`）を
+ * 素通りさせると、宣言が消えたのに集合が一致したままになる。
  */
+function declaredTypeNames(source: string): string[] {
+  const names: string[] = [];
+  // コメントの中の `export interface X {` を数えると、宣言を丸ごとコメントアウトしても通る
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[^\n]*\/\/[^\n]*$/gm, "");
+  for (const [line] of code.matchAll(/^export\b[^\n]*$/gm)) {
+    const declaration = /^export (?:type|interface) (\w+)[\s<={]/.exec(line);
+    if (declaration) {
+      names.push(declaration[1] as string);
+      continue;
+    }
+    // 値の export（union 定数と CONTINUITY_LIMITS）は型ではないので数えない
+    if (/^export const \w+[\s:=]/.test(line)) continue;
+    assert.fail(`型名を取れない export の形: ${line}`);
+  }
+  return names;
+}
+
 test("$defs の名前集合は continuity.ts の型宣言と一致する", () => {
   const source = readFileSync(new URL("../schema/continuity.ts", import.meta.url), "utf8");
-  const declared = [...source.matchAll(/^export (?:type|interface) (\w+)\b/gm)].map((m) => m[1]);
+  const declared = declaredTypeNames(source);
   assert.equal(new Set(declared).size, declared.length, "同じ名前を 2 度 export している");
   assert.deepEqual(
     declared.sort(),
     FROZEN_DEFS.filter((name) => !SCHEMA_ONLY_DEFS.includes(name)).sort(),
   );
+});
+
+test("名前を取れない export の形は落とす（AST を持たない代わりの縛り）", () => {
+  const valid = "export type A = string;\nexport interface B {\n  x: string;\n}\nexport const C = [1] as const;\n";
+  assert.deepEqual(declaredTypeNames(valid), ["A", "B"]);
+  for (const bad of [
+    "type X = string;\nexport type { X };\n", // 再 export（名前の位置が違う）
+    "export default interface X {}\n",
+    "export type\n  X = string;\n", // 宣言が改行を跨ぐ
+    "export declare type X = string;\n",
+  ]) {
+    assert.throws(() => declaredTypeNames(bad), /型名を取れない export の形/, bad);
+  }
+  // コメントの中の宣言は数えない
+  assert.deepEqual(declaredTypeNames("/*\nexport interface Ghost {}\n*/\nexport type A = string;\n"), ["A"]);
+  assert.deepEqual(declaredTypeNames("// export interface Ghost {}\nexport type A = string;\n"), ["A"]);
 });
 
 test("continuity.schema.json は schema 側の誤記を持たない", () => {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canonicalizeJson, parseIJson } from "../schema/jcs.ts";
+import { canonicalizeJson, decodeUtf8, parseIJson } from "../schema/jcs.ts";
 
 /**
  * JCS そのものを実装している以上、「JCS になっている」ことを見る test が要る。
@@ -169,4 +169,14 @@ test("素の object でない値は canonicalize しない", () => {
   // `{}` と `Object.create(null)` 由来は通る（JSON.parse が返すのはこの 2 つ）
   assert.equal(canonicalizeJson({ a: 1 }), '{"a":1}');
   assert.equal(canonicalizeJson(Object.assign(Object.create(null), { a: 1 })), '{"a":1}');
+});
+
+test("UTF-8 として不正な bytes は置換せずに落とす（RFC 7493 §2.1）", () => {
+  // `Buffer.toString("utf8")` / TextDecoder の既定は不正 byte を U+FFFD に置換する。
+  // 置換された値から hash を出すと、元の bytes を拒否する実装と食い違う
+  const broken = new Uint8Array([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]); // {"a":"\xff"}
+  assert.equal(Buffer.from(broken).toString("utf8"), '{"a":"\ufffd"}');
+  assert.throws(() => decodeUtf8(broken, "t.json"), /UTF-8 として不正/);
+  // 正しい UTF-8 はそのまま
+  assert.equal(decodeUtf8(new TextEncoder().encode('{"a":"é"}'), "t.json"), '{"a":"é"}');
 });
