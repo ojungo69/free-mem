@@ -493,7 +493,9 @@ test("数値の範囲は正本が書いているものだけ", () => {
   // 正本に無い範囲を足すと、正当な値を契約が拒否する（IsoTimestamp の小数秒で実際に起きた）。
   // addendum で数値範囲が書かれているのは `Observed.confidence` の `// 0..1` 1 箇所だけなので、
   // schema 側の minimum/maximum もそこだけであることを固定する
-  const found: string[] = [];
+  // path だけを集めると、`minimum` を -1 にしても `maximum` を消しても同じ集合になる。
+  // 値まで凍結して、唯一の根拠つき範囲が弱められたときにも落ちるようにする
+  const found: { path: string; minimum?: unknown; maximum?: unknown }[] = [];
   const walk = (node: unknown, path: string) => {
     if (Array.isArray(node)) {
       node.forEach((item, i) => walk(item, `${path}[${i}]`));
@@ -501,11 +503,15 @@ test("数値の範囲は正本が書いているものだけ", () => {
     }
     if (node === null || typeof node !== "object") return;
     const obj = node as Record<string, unknown>;
-    if ("minimum" in obj || "maximum" in obj) found.push(path);
+    if ("minimum" in obj || "maximum" in obj) {
+      found.push({ path, minimum: obj.minimum, maximum: obj.maximum });
+    }
     for (const [k, v] of Object.entries(obj)) walk(v, `${path}.${k}`);
   };
   walk(defs, "$defs");
-  assert.deepEqual(found, ["$defs.Observed.properties.confidence"]);
+  assert.deepEqual(found, [
+    { path: "$defs.Observed.properties.confidence", minimum: 0, maximum: 1 },
+  ]);
 });
 
 test("IsoTimestamp は成分の範囲まで見る", () => {

@@ -69,6 +69,51 @@ function forEachManifest(
   for (const { file, value } of manifests) fn(value, file);
 }
 
+/** `requiredFor` に必ず「まだ入っていない値」を 1 つ足すための候補（union の全値） */
+const EXTRA_REQUIRED_FOR: contract.RequiredCapabilityScenarioV1["requiredFor"] = [
+  "generic_phase3",
+  "automatic_strategy",
+  "tier_a",
+];
+
+/**
+ * 「hash を計算している」だけでは、入力に含まれない欄を書き換えても通ってしまう。
+ * §13 が防ぎたいのは scenario 集合の無言の書き換えなので、そこが効くことを見る。
+ *
+ * 変異は必ず元の値と違う形で作る（固定値の代入は、その値を既に持っている manifest で
+ * no-op になる）。
+ */
+function assertHashIsSensitive(
+  manifest: contract.CapabilityScenarioManifestV1,
+  label: string,
+): void {
+  const [first, ...rest] = manifest.scenarios;
+  assert.ok(first, `${label}: manifest が空`);
+  const mutations: contract.CapabilityScenarioManifestV1[] = [
+    { ...manifest, scenarios: [{ ...first, scenarioId: `${first.scenarioId}-x` }, ...rest] },
+    { ...manifest, scenarios: [{ ...first, title: `${first.title} (x)` }, ...rest] },
+    {
+      ...manifest,
+      scenarios: [{ ...first, appliesToAgents: [...first.appliesToAgents, "extra-agent"] }, ...rest],
+    },
+    {
+      ...manifest,
+      scenarios: [{ ...first, requiredFor: [...first.requiredFor, ...EXTRA_REQUIRED_FOR] }, ...rest],
+    },
+    { ...manifest, scenarios: rest },
+    { ...manifest, manifestVersion: `${manifest.manifestVersion}-mutated` },
+  ];
+  for (const mutated of mutations) {
+    assert.notEqual(computeManifestHash(mutated), manifest.manifestHash, label);
+  }
+  // 並べ替えは正規化で吸収される（同じ集合なら同じ hash）
+  assert.equal(
+    computeManifestHash({ ...manifest, scenarios: [...manifest.scenarios].reverse() }),
+    manifest.manifestHash,
+    label,
+  );
+}
+
 test("manifest は CapabilityScenarioManifestV1 を満たす", () =>
   forEachManifest((manifest, file) => {
     assert.deepEqual(
@@ -85,27 +130,29 @@ test("manifestHash は記録した正規化規則で再計算できる（§13）
 
 test("manifestHash は scenario の変更で必ず変わる", () =>
   forEachManifest((manifest, file) => {
-    // 「hash を計算している」だけでは、入力に含まれない欄を書き換えても通ってしまう。
-    // §13 が防ぎたいのは scenario 集合の無言の書き換えなので、そこが効くことを見る
-    const [first, ...rest] = manifest.scenarios;
-    assert.ok(first, `${file}: manifest が空`);
-    const mutations: contract.CapabilityScenarioManifestV1[] = [
-      { ...manifest, scenarios: [{ ...first, scenarioId: `${first.scenarioId}-x` }, ...rest] },
-      { ...manifest, scenarios: [{ ...first, title: `${first.title} (x)` }, ...rest] },
-      { ...manifest, scenarios: [{ ...first, appliesToAgents: ["claude"] }, ...rest] },
-      { ...manifest, scenarios: [{ ...first, requiredFor: ["generic_phase3"] }, ...rest] },
-      { ...manifest, scenarios: rest },
-      { ...manifest, manifestVersion: "2" },
-    ];
-    for (const mutated of mutations) {
-      assert.notEqual(computeManifestHash(mutated), manifest.manifestHash);
-    }
-    // 並べ替えは正規化で吸収される（同じ集合なら同じ hash）
-    assert.equal(
-      computeManifestHash({ ...manifest, scenarios: [...manifest.scenarios].reverse() }),
-      manifest.manifestHash,
-    );
+    assertHashIsSensitive(manifest, file);
   }));
+
+test("hash の感度は manifest の中身に依らない（次の版でも成り立つ）", () => {
+  // 変異に固定値を使っていると、その値を既に持っている manifest では変異が no-op になり
+  // test 自身が偽陽性で落ちる。実データを 1 つ足しただけの合成 v2 でも成立することを見る
+  const base = manifests[0]?.value;
+  assert.ok(base, "manifest が無い");
+  const synthetic: contract.CapabilityScenarioManifestV1 = {
+    manifestVersion: "2",
+    manifestHash: "",
+    scenarios: [
+      ...base.scenarios,
+      {
+        scenarioId: "synthetic-extra",
+        title: "Synthetic extra scenario",
+        appliesToAgents: ["claude", "codex"],
+        requiredFor: ["generic_phase3", "automatic_strategy", "tier_a"],
+      },
+    ],
+  };
+  assertHashIsSensitive({ ...synthetic, manifestHash: computeManifestHash(synthetic) }, "synthetic v2");
+});
 
 test("scenarioId は重複しない（§13 の exact-set 照合が成立する前提）", () =>
   forEachManifest((manifest, file) => {
