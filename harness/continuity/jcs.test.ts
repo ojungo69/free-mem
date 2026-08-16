@@ -116,6 +116,17 @@ test("疎な配列は canonicalize しない（穴は JSON に無い）", () => 
   assert.throws(() => canonicalizeJson([undefined]), /JSON に無い型/);
 });
 
+test("添字以外の property を持つ配列は canonicalize しない", () => {
+  const tagged: unknown[] & { metadata?: string } = [1];
+  tagged.metadata = "lost";
+  assert.equal(JSON.stringify(tagged), "[1]"); // 付けた欄は消える
+  assert.throws(() => canonicalizeJson(tagged), /添字以外の property/);
+  const symbolTagged = [1];
+  (symbolTagged as unknown as Record<symbol, number>)[Symbol("s")] = 1;
+  assert.throws(() => canonicalizeJson(symbolTagged), /添字以外の property/);
+  assert.equal(canonicalizeJson([1, 2]), "[1,2]");
+});
+
 test("I-JSON は代理と noncharacter を文字列に許さない（RFC 7493 §2.1）", () => {
   // `JSON.parse` はどちらも通す
   assert.deepEqual(JSON.parse('{"a":"\uDEAD"}'), { a: "\uDEAD" });

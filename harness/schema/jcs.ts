@@ -173,9 +173,16 @@ export function canonicalizeJson(value: unknown): string {
     return JSON.stringify(Object.is(value, -0) ? 0 : value);
   }
   if (typeof value === "string") return encodeString(value);
-  // `Array.from` は穴を undefined として渡す。`map` だと穴を飛ばして `[,]` のような
-  // JSON でない bytes が出てしまうので、穴は下の「JSON に無い型」で落とす
-  if (Array.isArray(value)) return `[${Array.from(value, (item) => canonicalizeJson(item)).join(",")}]`;
+  if (Array.isArray(value)) {
+    // 添字以外の own property（`a.meta = "x"` や symbol）は JSON に出ないので、
+    // 付いたまま hash すると綺麗な配列と同じ bytes になる。添字 + `length` だけを許す
+    if (Reflect.ownKeys(value).length > value.length + 1) {
+      throw new Error("JCS: 添字以外の property を持つ配列は canonicalize できない");
+    }
+    // `Array.from` は穴を undefined として渡す。`map` だと穴を飛ばして `[,]` のような
+    // JSON でない bytes が出てしまうので、穴は下の「JSON に無い型」で落とす
+    return `[${Array.from(value, (item) => canonicalizeJson(item)).join(",")}]`;
+  }
   if (typeof value === "object") {
     // Date・Map・class instance は enumerable な own property を持たないので、そのまま
     // 通すと `{}` の bytes が出る。値と無関係な hash が出るくらいなら落とす
