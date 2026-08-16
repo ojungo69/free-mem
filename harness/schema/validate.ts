@@ -199,6 +199,15 @@ export function findStructuralViolations(
       issues.push({ path, message: `object with ${keys.length} keys exceeds objectKeys ${limits.objectKeys}` });
     }
     for (const k of keys) {
+      // JSON の property name も文字列。値だけ測ると、長大なキーが 1 本だけの object が
+      // stringUtf8Bytes を素通りする（キー数も 1 なので objectKeys にも掛からない）
+      const keyBytes = Buffer.byteLength(k, "utf8");
+      if (keyBytes > limits.stringUtf8Bytes) {
+        issues.push({
+          path: `${path}.<key ${keyBytes}B>`,
+          message: `key ${keyBytes}B exceeds stringUtf8Bytes ${limits.stringUtf8Bytes}`,
+        });
+      }
       issues.push(...findStructuralViolations(value[k], limits, `${path}.${k}`, depth + 1));
     }
   }
@@ -206,41 +215,69 @@ export function findStructuralViolations(
 }
 
 /**
- * anyOf / oneOf の分岐 schema にある未対応キーワードを、データの合否とは独立に報告する。
- * 分岐は「一致したか」しか見ないため、書き間違えた分岐は黙って不一致になるか、
- * 逆に他の分岐が一致して丸ごと飲み込まれる。schema 側の誤りは常に表に出す。
+ * schema 文書そのものの誤りを、データとは独立に 1 度だけ検査する。
+ *
+ * データを歩きながら未対応キーワードを issue として積むと、anyOf / oneOf の分岐の中では
+ * 「その分岐に一致しなかった」としか扱われず、別の分岐が一致した時点で丸ごと消える。
+ * つまり `anyOf: [{properties:{x:{format:"date-time"}}}, {type:"object"}]` は黙って
+ * 何でも通す schema になる。schema の誤りはデータに依らない欠陥なので throw する。
  */
-function branchSchemaIssues(branches: unknown[], path: string): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  for (const [i, sub] of branches.entries()) {
-    if (!isPlainObject(sub)) continue;
-    for (const key of Object.keys(sub)) {
-      if (!SUPPORTED_KEYWORDS.has(key)) {
-        issues.push({ path, message: `unsupported schema keyword in branch[${i}]: ${key}` });
-      }
+function assertSchemaSupported(
+  schema: unknown,
+  root: JsonSchemaDocument,
+  path: string,
+  seenRefs: Set<string>,
+): void {
+  if (!isPlainObject(schema)) return; // boolean schema と不正な形はデータ側で報告する
+  for (const key of Object.keys(schema)) {
+    if (!SUPPORTED_KEYWORDS.has(key)) {
+      throw new Error(`unsupported schema keyword at ${path}: ${key}`);
     }
   }
-  return issues;
+  // 同じ $ref を 2 度歩かない。循環 schema でも preflight が止まるようにするための打ち切りで、
+  // 循環そのものの検出は validateNode 側（refStack）が受け持つ
+  if (typeof schema.$ref === "string" && !seenRefs.has(schema.$ref)) {
+    seenRefs.add(schema.$ref);
+    assertSchemaSupported(resolveRef(schema.$ref, root), root, schema.$ref, seenRefs);
+  }
+  if (isPlainObject(schema.properties)) {
+    for (const [k, sub] of Object.entries(schema.properties)) {
+      assertSchemaSupported(sub, root, `${path}.properties.${k}`, seenRefs);
+    }
+  }
+  for (const key of ["items", "additionalProperties", "if", "then", "else"] as const) {
+    if (schema[key] !== undefined) assertSchemaSupported(schema[key], root, `${path}.${key}`, seenRefs);
+  }
+  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+    const branches = schema[key];
+    if (!Array.isArray(branches)) continue;
+    branches.forEach((sub, i) => assertSchemaSupported(sub, root, `${path}.${key}[${i}]`, seenRefs));
+  }
 }
 
+/** schema 側を先に検査してから値を検査する。外から呼ぶのはこちら。 */
 export function validateAgainstSchema(
   value: unknown,
   schema: unknown,
   root: JsonSchemaDocument,
   path = "$",
-  refStack: readonly string[] = [],
+): ValidationIssue[] {
+  assertSchemaSupported(schema, root, path, new Set());
+  return validateNode(value, schema, root, path, []);
+}
+
+function validateNode(
+  value: unknown,
+  schema: unknown,
+  root: JsonSchemaDocument,
+  path: string,
+  refStack: readonly string[],
 ): ValidationIssue[] {
   if (schema === true) return [];
   if (schema === false) return [{ path, message: "schema is false (nothing is valid here)" }];
   if (!isPlainObject(schema)) return [{ path, message: "schema must be an object or boolean" }];
 
   const issues: ValidationIssue[] = [];
-
-  for (const key of Object.keys(schema)) {
-    if (!SUPPORTED_KEYWORDS.has(key)) {
-      issues.push({ path, message: `unsupported schema keyword: ${key}` });
-    }
-  }
 
   // draft 2020-12 では $ref に兄弟キーワードを併記できる（`{$ref, maxLength}` など）。
   // ここで return すると併記した制約が黙って落ちるので、参照先を検査してから残りも続ける
@@ -251,7 +288,7 @@ export function validateAgainstSchema(
       throw new Error(`circular $ref: ${[...refStack, schema.$ref].join(" -> ")}`);
     }
     issues.push(
-      ...validateAgainstSchema(value, resolveRef(schema.$ref, root), root, path, [...refStack, schema.$ref]),
+      ...validateNode(value, resolveRef(schema.$ref, root), root, path, [...refStack, schema.$ref]),
     );
   }
 
@@ -306,7 +343,7 @@ export function validateAgainstSchema(
     }
     if (schema.items !== undefined) {
       value.forEach((item, i) =>
-        issues.push(...validateAgainstSchema(item, schema.items, root, `${path}[${i}]`, refStack)),
+        issues.push(...validateNode(item, schema.items, root, `${path}[${i}]`, refStack)),
       );
     }
   }
@@ -318,27 +355,25 @@ export function validateAgainstSchema(
     }
     for (const [k, v] of Object.entries(value)) {
       if (own(props, k)) {
-        issues.push(...validateAgainstSchema(v, props[k], root, `${path}.${k}`, refStack));
+        issues.push(...validateNode(v, props[k], root, `${path}.${k}`, refStack));
       } else if (schema.additionalProperties === false) {
         issues.push({ path, message: `unknown property: ${k}` });
       } else if (schema.additionalProperties !== undefined) {
-        issues.push(...validateAgainstSchema(v, schema.additionalProperties, root, `${path}.${k}`, refStack));
+        issues.push(...validateNode(v, schema.additionalProperties, root, `${path}.${k}`, refStack));
       }
     }
   }
 
   if (Array.isArray(schema.allOf)) {
-    for (const sub of schema.allOf) issues.push(...validateAgainstSchema(value, sub, root, path, refStack));
+    for (const sub of schema.allOf) issues.push(...validateNode(value, sub, root, path, refStack));
   }
   if (Array.isArray(schema.anyOf)) {
-    issues.push(...branchSchemaIssues(schema.anyOf, path));
-    const ok = schema.anyOf.some((sub) => validateAgainstSchema(value, sub, root, path, refStack).length === 0);
+    const ok = schema.anyOf.some((sub) => validateNode(value, sub, root, path, refStack).length === 0);
     if (!ok) issues.push({ path, message: "value matches none of anyOf" });
   }
   if (Array.isArray(schema.oneOf)) {
-    issues.push(...branchSchemaIssues(schema.oneOf, path));
     const matched = schema.oneOf.filter(
-      (sub) => validateAgainstSchema(value, sub, root, path, refStack).length === 0,
+      (sub) => validateNode(value, sub, root, path, refStack).length === 0,
     );
     if (matched.length !== 1) {
       issues.push({ path, message: `expected exactly 1 oneOf match, got ${matched.length}` });
@@ -349,9 +384,9 @@ export function validateAgainstSchema(
   // `if` は「合致するか」の判定にだけ使い、その issue 自体は結果に混ぜない
   if (schema.if !== undefined) {
     const branch =
-      validateAgainstSchema(value, schema.if, root, path, refStack).length === 0 ? schema.then : schema.else;
+      validateNode(value, schema.if, root, path, refStack).length === 0 ? schema.then : schema.else;
     if (branch !== undefined) {
-      issues.push(...validateAgainstSchema(value, branch, root, path, refStack));
+      issues.push(...validateNode(value, branch, root, path, refStack));
     }
   }
 

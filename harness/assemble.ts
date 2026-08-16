@@ -266,9 +266,14 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
           `observed in ${f.fixtureId}`,
         ]);
         if (prev.value !== "unknown" && CAPABILITY_STRENGTH[v] < CAPABILITY_STRENGTH[prev.value]) {
-          // 後の fixture のほうが弱い: 値は据え置き、食い違いは caveat として残す
+          // 後の fixture のほうが弱い。key の欠落（未観測）は上で continue しているので、
+          // ここに来るのは「別の run が明示的に弱い結果を記録した」= 実測どうしの矛盾。
+          // 値は強いほうを残して両方の観測を見えるようにするが、矛盾したまま自動配送を
+          // 有効化しないよう証跡は落とす（isProven が false になる = fail closed）
           capabilities[key] = {
             ...prev,
+            evidenceKind: null,
+            verifiedAt: null,
             limitations: dedupe([...observedIn, `conflicting weaker observation ${v} in ${f.fixtureId}`]),
           };
           continue;
@@ -294,6 +299,32 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       if (hl.compactionRecoveryStrategy) {
         capabilities.compactionRecoveryStrategy = hl.compactionRecoveryStrategy;
       }
+    }
+  }
+
+  // addendum §8 の synthesized tier は「1 つの実測が prompt 経路の両 cell を同時に証明した」
+  // ことを要求する。cell ごとに後勝ちで畳むと、別 fixture の等強度の観測が片側だけ
+  // provenance を差し替え、実在する対が消える（証拠を足したのに tier が下がる）。
+  // 畳んだ後に、対を証明した fixture があればその provenance へ揃え直す。
+  const pairFixture = fixtures.findLast(
+    (f) =>
+      f.evidenceHash &&
+      f.highLevel?.promptAwareInjection === "synthesized" &&
+      f.highLevel?.promptDeliveryBeforeModel === "synthesized",
+  );
+  if (pairFixture) {
+    for (const key of ["promptAwareInjection", "promptDeliveryBeforeModel"] as const) {
+      const cell = capabilities[key];
+      // native に昇格した cell や、矛盾で証跡を落とした cell には触らない
+      if (cell.value !== "synthesized" || cell.evidenceKind === null) continue;
+      capabilities[key] = {
+        ...cell,
+        evidenceKind: "real-cli-e2e",
+        verifiedAt: pairFixture.capturedAt,
+        sourceFixtureId: pairFixture.fixtureId,
+        evidenceHash: pairFixture.evidenceHash ?? null,
+        limitations: dedupe([...cell.limitations, `prompt pair proven together in ${pairFixture.fixtureId}`]),
+      };
     }
   }
 
@@ -457,6 +488,60 @@ async function selfTest(): Promise<void> {
     assert(cap.trueSessionEnd.value === "unknown", "trueSessionEnd unknown");
     assert(cap.subagentCapture.value === "unknown", "subagentCapture unknown");
     assert(cap.stableNativeSessionId.value === "unknown", "stableNativeSessionId unknown");
+
+    const hlBase = {
+      cli: "claude" as const,
+      nativeVersion: v,
+      observedEvents: [],
+      toolFailurePhasesObserved: [],
+      limitations: [],
+      rig: { isolated: true, internalRunMarker: true },
+    };
+
+    // §8: 対で証明した fixture の後に片側だけを重ねて観測しても tier は落ちない
+    const withPair = assembleFromFixtures([
+      {
+        ...hlBase,
+        fixtureId: "claude/prompt-pair",
+        capturedAt: at1,
+        scenario: "prompt pair",
+        evidenceHash: "a".repeat(64),
+        highLevel: { promptAwareInjection: "synthesized", promptDeliveryBeforeModel: "synthesized" },
+      },
+      {
+        ...hlBase,
+        fixtureId: "claude/prompt-echo",
+        capturedAt: at2,
+        scenario: "prompt-aware only",
+        evidenceHash: "b".repeat(64),
+        highLevel: { promptAwareInjection: "synthesized" },
+      },
+    ]).capabilities;
+    assert(withPair.resumeDeliveryStrategy === "next_prompt_synthesized", "corroboration must not demote the tier");
+    assert(withPair.promptAwareInjection.sourceFixtureId === "claude/prompt-pair", "pair provenance retained");
+
+    // 実測どうしが矛盾したら、値は強いほうを残しても証跡は落として自動配送を止める
+    const conflicted = assembleFromFixtures([
+      {
+        ...hlBase,
+        fixtureId: "claude/ss-native",
+        capturedAt: at1,
+        scenario: "session start native",
+        evidenceHash: "c".repeat(64),
+        highLevel: { sessionStartInjection: "native" },
+      },
+      {
+        ...hlBase,
+        fixtureId: "claude/ss-unsupported",
+        capturedAt: at2,
+        scenario: "session start unsupported",
+        evidenceHash: "d".repeat(64),
+        highLevel: { sessionStartInjection: "unsupported" },
+      },
+    ]).capabilities;
+    assert(conflicted.sessionStartInjection.value === "native", "conflict keeps the stronger value");
+    assert(conflicted.sessionStartInjection.evidenceKind === null, "conflict drops the proof");
+    assert(conflicted.resumeDeliveryStrategy === "manual_only", "conflicted evidence must not enable delivery");
 
     console.log("PASS");
   } finally {

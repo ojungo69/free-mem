@@ -305,7 +305,9 @@ function scanSource(file: string, contents: string): { hits: Map<string, Set<str
 			}
 		}
 		if (file === coreIndexPath && ts.isExportDeclaration(node) && !node.isTypeOnly) {
-			if (!node.exportClause && ts.isStringLiteral(node.moduleSpecifier)) {
+			// `export * from "x"` は必ず moduleSpecifier を持つが、型は Expression | undefined。
+			// undefined を渡すと ts.isStringLiteral が .kind 参照で throw するため先に潰す
+			if (!node.exportClause && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
 				if (forbiddenDeepModules.has(moduleStem(node.moduleSpecifier.text))) {
 					fail("public_bypass", node, `wildcard runtime export from ${node.moduleSpecifier.text}`);
 				}

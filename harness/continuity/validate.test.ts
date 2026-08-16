@@ -112,8 +112,10 @@ test("discriminated union はちょうど 1 variant に一致しなければな�
 });
 
 test("未対応の schema キーワードは黙って無視せずエラーにする", () => {
-  const issues = validateAgainstSchema("x", { type: "string", multipleOf: 2 }, ROOT);
-  assert.match(issues[0].message, /unsupported schema keyword: multipleOf/);
+  assert.throws(
+    () => validateAgainstSchema("x", { type: "string", multipleOf: 2 }, ROOT),
+    /unsupported schema keyword at \$: multipleOf/,
+  );
 });
 
 test("dangling $ref は例外にする", () => {
@@ -194,8 +196,10 @@ test("$defs に無い継承名は $ref でも contract 名でも解決されな�
 });
 
 test("format は未対応キーワードとして拒否する（黙って無視しない）", () => {
-  const issues = validateAgainstSchema("not-a-date", { type: "string", format: "date-time" }, ROOT);
-  assert.ok(issues.some((i) => i.message === "unsupported schema keyword: format"));
+  assert.throws(
+    () => validateAgainstSchema("not-a-date", { type: "string", format: "date-time" }, ROOT),
+    /unsupported schema keyword at \$: format/,
+  );
 });
 
 test("$ref に併記した兄弟キーワードも評価する（draft 2020-12）", () => {
@@ -265,15 +269,46 @@ test("sparse array の hole を JSON 妥当性検査で見逃さない", () => {
 
 test("anyOf / oneOf の分岐にある schema 誤記を飲み込まない", () => {
   // 他の分岐が一致しても、書き間違えた分岐は表に出す
-  const anyOf = validateAgainstSchema("hello", { anyOf: [{ type: "string", multipleOf: 2 }, { type: "string" }] }, ROOT);
-  assert.ok(anyOf.some((i) => /unsupported schema keyword in branch\[0\]: multipleOf/.test(i.message)));
-  // oneOf の不一致メッセージだけになって原因が消えないこと
-  const oneOf = validateAgainstSchema(
-    { kind: "accept", attemptId: "a1" },
-    { oneOf: [{ type: "object", minLenght: 3 }, { type: "number" }] },
-    ROOT,
+  assert.throws(
+    () => validateAgainstSchema("hello", { anyOf: [{ type: "string", multipleOf: 2 }, { type: "string" }] }, ROOT),
+    /unsupported schema keyword at \$\.anyOf\[0\]: multipleOf/,
   );
-  assert.ok(oneOf.some((i) => /unsupported schema keyword in branch\[0\]: minLenght/.test(i.message)));
+  // oneOf の不一致メッセージだけになって原因が消えないこと
+  assert.throws(
+    () =>
+      validateAgainstSchema(
+        { kind: "accept", attemptId: "a1" },
+        { oneOf: [{ type: "object", minLenght: 3 }, { type: "number" }] },
+        ROOT,
+      ),
+    /unsupported schema keyword at \$\.oneOf\[0\]: minLenght/,
+  );
+});
+
+test("分岐の奥（properties の下）に隠れた誤記も、データに依らず検出する", () => {
+  // データ次第で分岐が一致すると issue 方式では丸ごと消えるため、schema 検査は値と独立に走らせる
+  const schema = { anyOf: [{ properties: { x: { format: "date-time" } } }, { type: "object" }] };
+  assert.throws(
+    () => validateAgainstSchema({ x: "bad" }, schema, ROOT),
+    /unsupported schema keyword at \$\.anyOf\[0\]\.properties\.x: format/,
+  );
+  // items / additionalProperties / then の下も同じ
+  assert.throws(
+    () => validateAgainstSchema([], { items: { uniqueItems: true } }, ROOT),
+    /unsupported schema keyword at \$\.items: uniqueItems/,
+  );
+  assert.throws(
+    () => validateAgainstSchema({}, { if: { type: "object" }, then: { dependentRequired: {} } }, ROOT),
+    /unsupported schema keyword at \$\.then: dependentRequired/,
+  );
+});
+
+test("object の key も stringUtf8Bytes の対象にする", () => {
+  const longKey = "k".repeat(200);
+  const issues = findStructuralViolations({ [longKey]: 1 }, { ...LIMITS, stringUtf8Bytes: 64 });
+  assert.ok(issues.some((i) => /key 200B exceeds stringUtf8Bytes 64/.test(i.message)));
+  // 値側の判定を壊していないこと
+  assert.deepEqual(findStructuralViolations({ ok: "short" }, { ...LIMITS, stringUtf8Bytes: 64 }), []);
 });
 
 test("深すぎるネストは例外でなく issue で返す（信頼境界を落とさない）", () => {
