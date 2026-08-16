@@ -230,7 +230,7 @@ Reference interfaces:
 ```ts
 projectCheckpointDisposition(events, checkpointLookup, authority): CheckpointDispositionProjection
 claimCheckpointAtomically(input): { attempt; projection }
-transitionDeliveryAttempt(attempt, commandWithoutAccept): CheckpointDeliveryAttempt
+transitionDeliveryAttempt(attempt, projection, commandWithoutAccept): { attempt; projection }
 acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 ```
 
@@ -248,7 +248,8 @@ acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 ### Command CAS
 
 - [ ] Every post-claim command includes and validates `attemptId`, attempt revision, fence, and destination session.
-- [ ] The same transaction CASes against `projection.state === "open"` plus the projection's `activeDeliveryAttemptId`, `activeClaimFence`, and unexpired lease; reclaim terminates the old attempt and rotates both projection fields together, and appending any terminal disposition abandons the active attempt and clears all three fields.
+- [ ] The transition takes the current projection and returns its updated value, so the CAS and any lease change are part of the frozen contract rather than hidden state: the same transaction checks `projection.state === "open"`, `activeDeliveryAttemptId`, `activeClaimFence`, and an unexpired lease, and `renew_lease` returns the projection with `activeLeaseUntil` advanced.
+- [ ] Reclaim terminates the old attempt and rotates the projection's active attempt and fence together. Appending a delivery-invalidating disposition (`superseded`, `expired`, `retracted`) abandons the active attempt and clears the active attempt/fence/lease; acceptance clears the same fields but advances its own attempt to `accepted` (§6.4) instead of abandoning it.
 - [ ] Supersede/expire/retract-between-claim-and-delivery fixture: the delayed `mark_delivered` is `stale_attempt` and no injection happens.
 - [ ] Reclaim-versus-delivery race fixture: a delayed `mark_delivered`/`record_engagement` from the reclaimed attempt is typed `stale_attempt` and changes nothing.
 - [ ] `renew_lease` is a typed post-claim command under the same CAS; heartbeat-versus-reclaim fixture proves a renewal arriving after reclaim cannot extend the stale attempt's lease.
