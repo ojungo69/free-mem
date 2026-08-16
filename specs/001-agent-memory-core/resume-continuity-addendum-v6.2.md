@@ -499,7 +499,6 @@ interface ContradictionScanRangeV1 {
   fromIngestSeq: string;
   toIngestSeq: string;
   scannedAt: string;
-  complete: boolean;
 }
 
 interface EngagementEvaluationContextV1 {
@@ -609,7 +608,7 @@ Acceptance receives attempt, current disposition events/projection, checkpoint m
 
 1. validates command attempt ID/revision/fence/session;
 2. revalidates engagement from normalized source events and anchors;
-3. **re-queries contradictions from the daemon's own event store inside this transaction** — over the destination session and task lineage, from delivery through evaluation end — instead of trusting the caller's `contradictions` array, which is advisory input only. The caller-supplied `contradictionScan` range must cover that window and be `complete`; a narrower, stale, or incomplete range aborts acceptance. Any contradiction found by the daemon blocks acceptance even when the caller omitted it;
+3. **re-queries contradictions from the daemon's own event store inside this transaction**, over the destination session and task lineage, from delivery through a cutoff the daemon reads for itself — the authoritative event-store watermark (highest applied `ingestSeq`) observed inside this transaction. The caller's `contradictions` array and `contradictionScan` range are advisory diagnostics only and never bound the scan, so a caller cannot exclude a late rejection by submitting an earlier `evaluationEndedAt`. If the watermark cannot be read, acceptance fails closed. Any contradiction found by the daemon blocks acceptance even when the caller omitted it;
 4. verifies open checkpoint projection and active attempt identity;
 5. appends accepted disposition linked to the attempt;
 6. advances projection to accepted and clears active claim;
