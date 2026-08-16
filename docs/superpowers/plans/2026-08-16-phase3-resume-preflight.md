@@ -252,6 +252,7 @@ acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 - [ ] Reclaim terminates the old attempt and rotates the projection's active attempt and fence together. Appending a delivery-invalidating disposition (`superseded`, `expired`, `retracted`) abandons the active attempt and clears the active attempt/fence/lease; acceptance clears the same fields but advances its own attempt to `accepted` (§6.4) instead of abandoning it.
 - [ ] Supersede/expire/retract-between-claim-and-delivery fixture: the delayed `mark_delivered` is `stale_attempt` and no injection happens.
 - [ ] Reclaim-versus-delivery race fixture: a delayed `mark_delivered`/`record_engagement` from the reclaimed attempt is typed `stale_attempt` and changes nothing.
+- [ ] `dismiss` and `abandon` clear the projection's active attempt/fence/lease in the same transaction; immediate-reclaim fixture proves the next claim succeeds without waiting for lease expiry.
 - [ ] `renew_lease` is a typed post-claim command under the same CAS; heartbeat-versus-reclaim fixture proves a renewal arriving after reclaim cannot extend the stale attempt's lease.
 - [ ] Mismatched attempt ID/revision/fence/session is typed stale/invalid and causes no state change.
 
@@ -263,7 +264,7 @@ Use fixed weights from the addendum. Tests must revalidate submitted evidence fr
 - [ ] source event exists, belongs to the destination session, and carries `turnId === destinationTurnId` with `turnIdSource != "unavailable"`;
 - [ ] kind and success state match the claimed evidence kind;
 - [ ] event is after delivery and within lease/30-minute window;
-- [ ] anchor belongs to the checkpoint/task lineage;
+- [ ] anchors are resolved from the stored checkpoint inside the transaction (each carries `checkpointId`/`checkpointRevision`/`taskLineageId`); a caller-supplied anchor that is not one of them is ignored, and evidence linked to a foreign anchor scores zero;
 - [ ] duplicate evidence counts once;
 - [ ] failed/unknown/unrelated/out-of-window/fabricated labels score zero;
 - [ ] explicit rejection, confirmed other task, incompatible workspace, or runtime invalidation blocks acceptance — the daemon re-queries contradictions from its own event store inside the acceptance transaction, from delivery through a watermark it reads itself (caller ranges are advisory only), scanning `explicit_rejection` and `new_task_confirmed` session-wide and filtering only `runtime_invalidated` to the resumed lineage; RED: a context that omits an existing rejection still fails to accept, and a rejection stored after the submitted `evaluationEndedAt` but before acceptance still blocks it;

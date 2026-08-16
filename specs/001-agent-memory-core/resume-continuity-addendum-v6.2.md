@@ -474,6 +474,9 @@ type EngagementEvidenceKind =
 
 interface CheckpointAnchorV1 {
   anchorId: string;
+  checkpointId: string;
+  checkpointRevision: string;
+  taskLineageId: string;
   kind: "file" | "symbol" | "command" | "test" | "todo" | "task_lineage";
   valueHash: string;
   sourceEventIds: string[];
@@ -561,6 +564,8 @@ Appending a **delivery-invalidating** terminal disposition (`superseded`, `expir
 
 Either way, a checkpoint that stops being `open` has no attempt that can still pass the CAS, so a delayed `mark_delivered` for a superseded, expired, retracted, or already-accepted checkpoint is `stale_attempt` instead of a late injection. This ordering is a required fixture: supersede/expire/retract between claim and delivery must prevent the delivery.
 
+`dismiss` and `abandon` terminate the attempt **and** clear `activeDeliveryAttemptId`, `activeClaimFence`, and `activeLeaseUntil` in the same transaction, so a dismissed or abandoned attempt never keeps the checkpoint claimed until its lease would have expired. Immediate reclaim after either command is a required fixture: the next claim succeeds without waiting for lease expiry.
+
 Heartbeat renewal is the typed `renew_lease` command, not out-of-band prose: it passes the same attempt/revision/fence/session tuple, runs the same projection CAS, and extends the attempt's `heartbeatUntil`/`leaseUntil` together with the projection's `activeLeaseUntil` in one transaction, so lease state never diverges between attempt and projection. A renewal that arrives after reclaim fails the CAS and cannot extend a stale attempt; the heartbeat-versus-reclaim ordering is a required fixture alongside the delivery race. Lease expiry, reclaim, and replacement are a single transaction that terminates the old attempt (`abandoned`, revision bump) and rotates `activeDeliveryAttemptId`/`activeClaimFence` together. A delayed `mark_delivered`, `record_engagement`, `dismiss`, or `abandon` from a reclaimed attempt therefore fails step 2 or 3, is typed `stale_attempt`, and causes no state change and no delivery. The reclaim-versus-delivery race is a required fixture: a delayed command from the reclaimed attempt must never mark delivery, record engagement, or accept.
 
 ### 6.2 Initial claim CAS
@@ -594,6 +599,7 @@ Contract v1 weights:
 - Duplicate `(kind, sourceEventId)` counts once.
 - Failed/unknown/unrelated events score zero.
 - Evidence labels are not trusted by themselves. The evaluator MUST verify each source event exists in `EngagementEvaluationContextV1`, has the expected kind/success state, occurs after delivery and before evaluation end, and links to a declared anchor.
+- Anchors are immutable properties of the checkpoint, not caller input. They are derived and persisted when the checkpoint is written, each carrying `checkpointId`, `checkpointRevision`, and `taskLineageId`. The evaluator resolves anchors from the stored checkpoint inside the acceptance transaction and ignores any anchor the caller supplies that is not among them, so an unrelated anchor cannot be introduced to satisfy the threshold. Evidence linked to an anchor whose `checkpointId`/`checkpointRevision` does not match the attempt's checkpoint scores zero.
 - Turn scoping is verified from canonical turn identity (§3.1), not from time window plus anchor match: a source event counts only when `event.sessionId` equals the destination session and `event.turnId` equals `destinationTurnId`. An event with `turnIdSource="unavailable"`, a missing `turnId`, or a different `turnId` scores zero.
 - Destination turn provenance is validated **before** scoring, from the evaluation context: `destinationAgentVersion` and `destinationCapabilityHash` must match the active matrix, and `turnIdentityDisposition` must be `proven`. A caller-selected `destinationTurnId` alone never unlocks the automatic path.
 - When the destination Agent/version has no proven turn identity (`turnIdentityDisposition != "proven"` or `destinationTurnIdSource="unavailable"`), automatic acceptance is unavailable for that version even if matching events exist; delivery downgrades to hint/manual and doctor reports the downgrade reason. Explicit user acceptance remains available.
