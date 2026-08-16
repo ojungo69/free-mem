@@ -1,0 +1,21 @@
+evidence/phase3-reference-model.md
+  s_5cbc4c67c8b3b4::t_52b66d052fbf7f 309
+harness/continuity/reference-model.ts
+  s_5cbc4c67c8b3b4::t_7bc9a63adb1607 331-333,456,509-512,1036
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6cb79a766db1cf2dfc5a1570064c8f79cde1882d",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
