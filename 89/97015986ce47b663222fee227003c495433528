@@ -1,0 +1,39 @@
+vendor/codemem/packages/core/src/memory-quality.test.ts
+  s_5cbc4c67c8b3b4::t_feb24e041675e9 4,7-8,571-608
+vendor/codemem/packages/core/src/memory-quality.ts
+  s_5cbc4c67c8b3b4::t_926b0d1ef75aa6 152-169,485,488
+vendor/codemem/packages/core/src/text-trim.test.ts
+  s_5cbc4c67c8b3b4::t_1531bc3cfbfaf0 2,6,16-19
+vendor/codemem/packages/ui/src/tabs/feed/data/body-renderers.ts
+  s_5cbc4c67c8b3b4::t_d8c678d08c332b 39-47,51
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_5cbc4c67c8b3b4::t_9862b7f7f3757a 2884-2898,6225
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_5cbc4c67c8b3b4::t_51009bb620bbdd 2884-2898,6225
+vendor/codemem/packages/cli/src/commands/claude-hook-session-state.ts
+  s_5cbc4c67c8b3b4::t_d68a941d5682ae 266
+vendor/codemem/packages/core/src/index.ts
+  s_5cbc4c67c8b3b4::t_cacbca51e09426 568
+vendor/codemem/packages/core/src/ingest-filters.ts
+  s_5cbc4c67c8b3b4::t_4559ffc8821bd1 28
+vendor/codemem/packages/core/src/maintenance/memory-role-helpers.ts
+  s_5cbc4c67c8b3b4::t_40720ee7e3d2a6 4-11,59-63,66-70
+vendor/codemem/packages/core/src/text-trim.ts
+  s_5cbc4c67c8b3b4::t_db6c899feca960 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8997015986ce47b663222fee227003c495433528",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
