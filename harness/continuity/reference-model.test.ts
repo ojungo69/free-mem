@@ -247,6 +247,31 @@ test("adapterDeliveryId が無い event は canonical fingerprint で重複判�
   assert.equal(again.outcome, "duplicate");
 });
 
+test("adapterDeliveryId に他 event の fingerprint を書いても先取りできない", () => {
+  // v6 §8.2 の導出式は adapterDeliveryId と canonicalFingerprint を同じ keyspace に置く。
+  // adapterDeliveryId は adapter が自由に採番する値なので、被害者の fingerprint を名乗る event を
+  // 先に送ると、本物が診断ゼロの重複として消える
+  const poison = reduceTaskWorkState(
+    emptySnapshot(),
+    startEvent({ eventId: "event-poison", adapterDeliveryId: "fingerprint-victim" }),
+    new Map(),
+  );
+  assert.equal(poison.outcome, "applied");
+  const victim = reduceTaskWorkState(
+    poison.snapshot,
+    startEvent({
+      eventId: "event-victim",
+      adapterDeliveryId: undefined,
+      canonicalFingerprint: "fingerprint-victim",
+      ingestSeq: "13",
+      operation: { ...START_OPERATION, nativeOperationId: "toolu_victim" },
+    }),
+    poison.ledger,
+  );
+  assert.equal(victim.outcome, "applied");
+  assert.equal(victim.snapshot.state.pendingOperations.length, 2);
+});
+
 test("配送 ID が違えば別の論理 event として適用される", () => {
   // §8.2 の第一 authority は adapterDeliveryId。同じ fingerprint でも配送 ID が違えば
   // 「同一論理 event の再送」ではない
@@ -414,6 +439,19 @@ test("caller の ingestAttestation は読まずに intake の受領証で置き�
   const unauthenticated = stampIntakeEvidence(forged, { ...INTAKE, attestation: undefined }).event;
   assert.equal(unauthenticated.provenance.ingestAttestation, undefined);
   assert.equal(unauthenticated.provenance.evidenceKind, "synthesized");
+});
+
+test("capability matrix が無い daemon では native を与えない", () => {
+  // 空文字同士は「一致」ではない。matrix が未整備（activeCapabilityHash が空）の daemon で
+  // caller も空を名乗ると、§3.1 の「active exact-version capability matrix hash と等しいこと」を
+  // 満たしていないのに native が成立してしまう
+  const result = stampIntakeEvidence(
+    startEvent({
+      provenance: { ...startEvent().provenance, capabilityHash: "" },
+    }),
+    { ...INTAKE, activeCapabilityHash: "" },
+  );
+  assert.equal(result.event.provenance.evidenceKind, "synthesized");
 });
 
 test("§3.1 の必須 negative: capability hash を写した native 主張は hook/spool 経路で synthesized になる", () => {
@@ -864,6 +902,26 @@ test("sensitivity は構成要素の最大を取る", () => {
   assert.equal(result.snapshot.state.sensitivity, "secret");
 });
 
+test("語彙外の sensitivity は最上位に倒す", () => {
+  // indexOf の -1 をそのまま順位に使うと最下位（normal）に落ちる = fail open。
+  // 語彙外は「機密度不明」なので、自動 resume を止める側へ倒す
+  const foreign = emptySnapshot({
+    recentCommands: [
+      {
+        operationId: "op-foreign",
+        commandDisplay: "redacted",
+        status: "unknown",
+        sourceEventIds: ["event-x"],
+        observedAt: "2026-08-16T00:00:00Z",
+        evidenceKind: "native",
+        sensitivity: "top-secret" as never,
+      },
+    ],
+  });
+  const result = reduceTaskWorkState(foreign, startEvent(), new Map());
+  assert.equal(result.snapshot.state.sensitivity, "secret");
+});
+
 test("optional が全部無い状態も hash できる", () => {
   // canonicalizeJson は undefined を拒否する。欠けている optional を undefined のまま
   // 載せていないことの確認
@@ -1087,9 +1145,10 @@ test("start が状態に無い terminal は閉じないが、詰まらせず unk
   assert.equal(result.ledger.size, 1);
 });
 
-test("復元後に start を再配送すると権威順序の材料が戻る", () => {
-  // duplicate_operation_start で operationStarts を戻さないと、復元した state では
-  // 以後どの terminal も順序を確認できず unknown 止まりになる
+test("復元後の start 再配送は権威順序の材料を作らない", () => {
+  // §6.4 の ingestSeq は event store が採番する watermark なので、再配送 event が運ぶのは
+  // 再配送時の取り込み位置であって元の start の権威順序ではない。材料が無いまま閉じるより
+  // unknown に倒す（§3.1 の fail closed）。復旧は #35 が本筋
   const started = startedSnapshot();
   const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
   const again = reduceTaskWorkState(restored, startEvent({ ingestSeq: "3" }), new Map());
@@ -1097,9 +1156,13 @@ test("復元後に start を再配送すると権威順序の材料が戻る", (
     again.diagnostics.map((d) => d.code),
     ["duplicate_operation_start"],
   );
-  assert.equal(again.snapshot.operationStarts.size, 1);
+  assert.equal(again.snapshot.operationStarts.size, 0);
   const closed = reduceTaskWorkState(again.snapshot, terminalEvent(), again.ledger);
-  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  assert.deepEqual(
+    closed.diagnostics.map((d) => d.code),
+    ["terminal_order_unverifiable"],
+  );
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "unknown");
 });
 
 test("eventId が変わった再配送 start でも operation を二重に積まない", () => {
@@ -1118,8 +1181,32 @@ test("eventId が変わった再配送 start でも operation を二重に積ま
     ["duplicate_operation_start"],
   );
   assert.equal(redelivered.snapshot.state.pendingOperations.length, 1);
+  // 候補が 1 件に保たれていることが要点。閉じる側は順序材料が無いので unknown（fail closed）
   const closed = reduceTaskWorkState(redelivered.snapshot, terminalEvent(), redelivered.ledger);
-  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  assert.equal(closed.snapshot.state.pendingOperations.length, 1);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "unknown");
+});
+
+test("canonicalInputHash だけが違う再配送 start も隔離する", () => {
+  // matchKey の導出が §4.3 どおりでない adapter だと、入力が違っても matchKey は一致しうる。
+  // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない
+  const started = startedSnapshot();
+  const ledger: IdempotencyLedger = new Map();
+  const forged = reduceTaskWorkState(
+    started,
+    startEvent({
+      eventId: "event-start-rehash",
+      ingestSeq: "3",
+      operation: { ...START_OPERATION, canonicalInputHash: "input-hash-other" },
+    }),
+    ledger,
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(
+    forged.diagnostics.map((d) => d.code),
+    ["start_conflict"],
+  );
+  assert.equal(forged.ledger, ledger);
 });
 
 test("同じ nativeOperationId で matchKey が違う start は隔離する", () => {
@@ -1185,21 +1272,21 @@ test("nativeOperationId が違う 2 回目の呼び出しは別 operation とし
   assert.equal(second.snapshot.state.pendingOperations.length, 2);
 });
 
-test("復元後の start 再配送が terminal より後なら fail closed で unknown に倒す", () => {
-  // 元の start の ingestSeq は失われている（#35）。再配送の ingestSeq を使う以上、
-  // 「元の start より後・再配送より前」の terminal は順序を確かめられない。
-  // 通してしまうより unknown に倒すほうを選ぶ
+test("低い ingestSeq を名乗る偽 start で unknown を succeeded に変えられない", () => {
+  // 復元直後（operationStarts が空）に、被害者の identity を写した start を小さい ingestSeq で
+  // 送ると、wire の値で順序材料を埋める実装では正規の terminal が順序検査を通って succeeded に
+  // 化ける。§14 の zero-tolerance カウンタ `unsafe unknown replay` に直結する
   const started = startedSnapshot();
   const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
-  const late = reduceTaskWorkState(
+  const forged = reduceTaskWorkState(
     restored,
-    startEvent({ eventId: "event-start-retry-1", ingestSeq: "20" }),
+    startEvent({ eventId: "event-start-forged-seq", ingestSeq: "1", sessionId: "session-1" }),
     new Map(),
   );
-  const closed = reduceTaskWorkState(late.snapshot, terminalEvent(), late.ledger);
+  const closed = reduceTaskWorkState(forged.snapshot, terminalEvent(), forged.ledger);
   assert.deepEqual(
     closed.diagnostics.map((d) => d.code),
-    ["terminal_out_of_order"],
+    ["terminal_order_unverifiable"],
   );
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "unknown");
 });
@@ -1212,21 +1299,19 @@ test("再配送された start は既存の順序材料を上書きしない", (
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
 });
 
-test("nativeOperationId を名乗っても matchKey が違えば隔離する", () => {
-  // §4.3「operationMatchKey は Agent・session・lineage・turn・kind・native operation ID・
-  // canonical input hash に対する schema-versioned SHA-256」。rule 1 は nativeOperationId だけで
-  // 選ぶので、matchKey 不一致は「同じ operation ID に別の identity hash」= quarantine 対象
+test("turn をまたいだ terminal は matchKey が違っても rule 1 で閉じる", () => {
+  // §4.3 は matchKey の入力に「turn when present」を含めるので、turn をまたいだ terminal が
+  // start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない（turn 両立は
+  // rule 2 の要件）ので、ここで matchKey 一致を求めると背景実行の完了が永久に閉じない
   const snapshot = startedSnapshot();
-  const forged = terminalEvent({
-    operation: { ...TERMINAL_OPERATION, operationMatchKey: "match-key-other" },
+  const acrossTurn = terminalEvent({
+    turnId: "turn-2",
+    operation: { ...TERMINAL_OPERATION, operationMatchKey: "match-key-turn-2" },
   });
-  const result = reduceTaskWorkState(snapshot, forged, new Map());
-  assert.equal(result.outcome, "quarantined");
-  assert.deepEqual(
-    result.diagnostics.map((d) => d.code),
-    ["terminal_conflict"],
-  );
-  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
+  const result = reduceTaskWorkState(snapshot, acrossTurn, new Map());
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded");
 });
 
 test("tool_failed が successful: true を名乗っても succeeded にしない", () => {
@@ -1255,7 +1340,7 @@ test("terminal 済みの候補に対する identity 衝突も隔離する", () =
       eventId: "event-terminal-forged",
       ingestSeq: "9",
       adapterDeliveryId: "delivery-forged",
-      operation: { ...TERMINAL_OPERATION, operationMatchKey: "match-key-other" },
+      operation: { ...TERMINAL_OPERATION, canonicalInputHash: "input-hash-other" },
     }),
     closed.ledger,
   );

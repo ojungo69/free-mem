@@ -139,6 +139,10 @@ export function stampIntakeEvidence(
     provenance.sourceAgentVersion === context.exactAgentVersion;
   const proven =
     authenticatedVersion &&
+    // 空文字同士は「一致」ではない。capability matrix が未整備の daemon（activeCapabilityHash が
+    // 空）で、caller も空を名乗ると native が成立してしまう。§3.1 は proven を「active exact-version
+    // capability matrix hash と等しいこと」と定義しているので、matrix が無いなら proven も無い
+    context.activeCapabilityHash !== "" &&
     provenance.capabilityHash === context.activeCapabilityHash &&
     provenance.scenarioId !== undefined &&
     context.provenScenarios.some(
@@ -255,6 +259,17 @@ export function idempotencyKeyOf(event: NormalizedContinuityEvent): string {
   return key;
 }
 
+/**
+ * 台帳の内部鍵。v6 §8.2 の導出式は adapterDeliveryId と fingerprint を同じ keyspace に置くので、
+ * `adapterDeliveryId` に他 event の `canonicalFingerprint` を書いた event を先に送ると、本物の
+ * event が診断ゼロの重複として消える（`adapterDeliveryId` は adapter が自由に採番する値）。
+ * wire に出る導出式は正本のままにして、台帳の中だけ authority を分ける。
+ */
+function ledgerKeyOf(event: NormalizedContinuityEvent): string {
+  const key = idempotencyKeyOf(event);
+  return event.adapterDeliveryId === undefined || event.adapterDeliveryId === "" ? `f:${key}` : `d:${key}`;
+}
+
 // --- §4.2 状態と revision ---------------------------------------------------
 
 /**
@@ -367,7 +382,10 @@ function aggregateSensitivity(content: Omit<WorkStateContentV1, "sensitivity">):
     if (value === null || typeof value !== "object") return;
     for (const [key, child] of Object.entries(value)) {
       if (key === "sensitivity" && typeof child === "string") {
-        rank = Math.max(rank, SENSITIVITIES.indexOf(child as Sensitivity));
+        // 未知の語彙を indexOf の -1 のまま流すと最下位（normal）に落ちる = fail open。
+        // §10 の語彙外は「機密度不明」なので最上位に倒す
+        const known = SENSITIVITIES.indexOf(child as Sensitivity);
+        rank = Math.max(rank, known < 0 ? SENSITIVITIES.length - 1 : known);
         continue;
       }
       visit(child);
@@ -408,7 +426,7 @@ function commit(
   const contentHash = contentHashOf(content);
   const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
   const nextLedger = new Map(ledger);
-  nextLedger.set(idempotencyKeyOf(event), event.eventId);
+  nextLedger.set(ledgerKeyOf(event), event.eventId);
   return {
     outcome: "applied",
     snapshot: {
@@ -455,7 +473,7 @@ export function reduceTaskWorkState(
   assertTurnIdentity(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(previous.state, event);
-  const key = idempotencyKeyOf(event);
+  const key = ledgerKeyOf(event);
 
   if (idempotencyLedger.has(key)) {
     const { stateRevision: _ignored, ...content } = previous.state;
@@ -494,13 +512,20 @@ export function reduceTaskWorkState(
               pending.correlation.taskLineageId === previous.state.taskLineageId,
           ));
     // 同じ nativeOperationId を名乗りながら identity が違う start は再配送ではなく corruption。
-    // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない
-    if (existing !== undefined && existing.correlation.operationMatchKey !== operation.operationMatchKey) {
+    // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない。
+    // terminal 側と同じく input hash も直接見る（matchKey の導出が §4.3 どおりでない adapter 対策）
+    const startConflict =
+      existing !== undefined &&
+      (existing.correlation.operationMatchKey !== operation.operationMatchKey ||
+        (existing.correlation.canonicalInputHash !== undefined &&
+          operation.canonicalInputHash !== undefined &&
+          existing.correlation.canonicalInputHash !== operation.canonicalInputHash));
+    if (existing !== undefined && startConflict) {
       return quarantine(previous, idempotencyLedger, [
         {
           code: "start_conflict",
           eventId: event.eventId,
-          detail: `operationId ${existing.operationId} と同じ nativeOperationId で operationMatchKey が違う`,
+          detail: `operationId ${existing.operationId} と同じ nativeOperationId で identity が違う`,
         },
       ]);
     }
@@ -510,15 +535,11 @@ export function reduceTaskWorkState(
         diagnostics: [
           { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${existing.operationId} は既に pending` },
         ],
-        // checkpoint から復元すると pendingOperations だけが戻り operationStarts は空になる（#35）。
-        // 再配送された start で権威順序の材料を戻す。既にある分は上書きしない（後から来た
-        // 再配送の ingestSeq で上書きすると、飛行中の terminal が順序違反に見える）
-        operationStarts: previous.operationStarts.has(existing.operationId)
-          ? previous.operationStarts
-          : new Map(previous.operationStarts).set(existing.operationId, {
-              ingestSeq: event.ingestSeq,
-              turnIdSource: event.turnIdSource,
-            }),
+        // 再配送された start で operationStarts を埋めない。§6.4 の `ingestSeq` は event store が
+        // 採番する watermark なので、再配送 event が運ぶのは再配送時の取り込み位置であって
+        // 元の start の権威順序ではない。埋めると低い値を名乗る偽 start で unknown を succeeded に
+        // 変えられる。復元直後（operationStarts が空）は terminal_order_unverifiable で unknown に
+        // 倒れるのが §3.1 の fail closed どおりで、材料の復旧は #35（状態に持たせる）が本筋
       });
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
@@ -811,13 +832,15 @@ export function correlateTerminalEvent(
   // §4.3「operationMatchKey は Agent・session・lineage・turn・kind・native operation ID・
   // canonical input hash に対する schema-versioned SHA-256」。rule 2 の候補は matchKey 一致で
   // 選んでいるので、これが効くのは rule 1（nativeOperationId だけで選ぶ）の候補
+  // matchKey 同士は比べない。§4.3 は matchKey の入力に「turn when present」を含めるので、
+  // turn をまたいだ terminal は start と違う matchKey を持つのが仕様どおりで、それは衝突ではない。
+  // rule 1 は turn を要求しない（turn 両立は rule 2 の要件）ので、ここで matchKey 一致を
+  // 要求すると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じなくなる
   const conflicting = candidates.find(
     (pending) =>
-      pending.correlation.operationMatchKey !== operation.operationMatchKey ||
-      // matchKey の導出が §4.3 どおりでない adapter に備えて input hash も直接見る
-      (pending.correlation.canonicalInputHash !== undefined &&
-        operation.canonicalInputHash !== undefined &&
-        pending.correlation.canonicalInputHash !== operation.canonicalInputHash),
+      pending.correlation.canonicalInputHash !== undefined &&
+      operation.canonicalInputHash !== undefined &&
+      pending.correlation.canonicalInputHash !== operation.canonicalInputHash,
   );
   if (conflicting !== undefined) {
     return {
@@ -840,14 +863,17 @@ export function correlateTerminalEvent(
   // unavailable のとき rule 2 は適用されず、operation は unknown のままになる。閉じられるのは
   // rule 1 だけ」。§3.1 の不変条件（unavailable のとき turnId は不在）は assertTurnIdentity で
   // 確定させてあるので、turnId の有無がそのまま turn 同一性の有無になる。
+  // turn 種別の比較はここでは行わない。種別は start 側の材料（operationStarts）にしか無く、
+  // 復元直後はそれが空なので、ここで比べると「材料が無い」を「turn 同一性が無い」と報告して
+  // しまう。§3.1 は降格の理由を doctor が報告することを求めているので、原因の取り違えは規範違反。
+  // 材料の有無は下の start 解決で 1 件に絞ってから見る
   const eligible =
     byNativeId.length > 0
       ? open
       : open.filter(
           (pending) =>
             pending.correlation.turnId !== undefined &&
-            pending.correlation.turnId === terminalEvent.turnId &&
-            previous.operationStarts.get(pending.operationId)?.turnIdSource === terminalEvent.turnIdSource,
+            pending.correlation.turnId === terminalEvent.turnId,
         );
   if (eligible.length === 0) {
     return {
@@ -878,6 +904,16 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_order_unverifiable",
       detail: `operation ${matched.operationId} の start が状態に無く、権威順序を確認できない`,
+      unresolvedOperationIds: [matched.operationId],
+    };
+  }
+  // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する」。種別は
+  // start 側にしか無いので、材料が揃ったここで見る。rule 1 は turn を要求しないので対象外
+  if (rule === "match_key" && start.turnIdSource !== terminalEvent.turnIdSource) {
+    return {
+      matched: null,
+      diagnostic: "terminal_unmatched",
+      detail: `turnIdSource が ${start.turnIdSource} と ${terminalEvent.turnIdSource} で違うので rule 2 では閉じられない`,
       unresolvedOperationIds: [matched.operationId],
     };
   }
@@ -918,7 +954,7 @@ export function finalizeAbandonedState(
   assertTurnIdentity(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(state, event);
-  const key = idempotencyKeyOf(event);
+  const key = ledgerKeyOf(event);
   if (idempotencyLedger.has(key)) {
     return { outcome: "duplicate", state, ledger: idempotencyLedger };
   }

@@ -29,9 +29,9 @@
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent`。`nativeOperationId` を名乗った terminal は rule 1 だけで判定する（一致しないときに rule 2 へ落とすと、matchKey の導出が §4.3 どおりでない adapter 相手に別 operation を診断なしで閉じてしまう。wire 越しに導出は検証できない） |
 | terminal は start より後（権威順序）・未適用・hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較 |
 | 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
-| correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。rule 1 は `nativeOperationId` だけで選ぶので、`operationMatchKey` の不一致も衝突として扱う（§4.3 の matchKey は operation identity 全体に対する SHA-256 なので、一致しなければ別 identity が同じ native ID を名乗っている） |
+| correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。判定材料は `canonicalInputHash` の直接比較で、terminal 側では `operationMatchKey` を比べない（§4.3 の matchKey は入力に「turn when present」を含むので、turn をまたいだ terminal が start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない = turn 両立は rule 2 の要件なので、ここで一致を求めると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じない）。start の再配送側は `nativeOperationId` で拾ったうえで `operationMatchKey` と `canonicalInputHash` の両方を見る（同じ native ID は同じ呼び出しなので turn も同じはず） |
 | 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる） |
-| rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する |
+| rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する。照合は候補を 1 件に絞ってから行う（絞る前に種別を比べると、`operationStarts` が空の復元直後に「材料が無い」を「turn 同一性が無い」と報告してしまい、§3.1 が求める降格理由の報告が事実と食い違う） |
 | 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない。放棄するのはその event の session の operation だけ（lineage は session をまたいで続く。§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つので、絞らないと遅れて届いた旧 session の `session_ended` が resume 先の live な operation を潰す） |
 | 閉じられなかった terminal は unmatched evidence として保つ | §4.3 | `unknown` にした候補の `sourceEventIds` にその terminal を足す。状態が変わった理由を状態から辿れるようにする（放棄経路と扱いを揃える） |
 | 状態は lineage ごとに 1 つ | §4 | `assertSameScope` は lineage に加えて `sourceAgent` も束縛する。`OperationCorrelationV1` は Agent を持たず scope が sessionId + taskLineageId だけなので、束縛しないと別 Agent の terminal が同じ session に居る他 Agent の operation を閉じられる |
@@ -74,6 +74,23 @@ capability matrix にも無い。表が来るまでは:
 
 `CanonicalWorkStateV1.sensitivity` は「構成要素の最大」なので、pending operation が 1 件でもあれば
 `private` 以上になる。remote routing を実装する前に #36 を閉じる必要がある。
+
+集約は状態の内容を走査して見つけた `sensitivity` の最大を取る（欄を手で並べると、状態に欄が
+増えたとき集約から漏れるため）。§10 の語彙（`normal` / `private` / `secret`）に無い値を見つけた
+ときは最上位に倒す。`indexOf` の `-1` をそのまま順位に使うと最下位（`normal`）に落ちて fail open
+になるので、「機密度不明」は自動 resume を止める側へ倒す。
+
+同じ向きの既定が 2 つある:
+
+- **capability matrix が空の daemon には native を与えない**。`activeCapabilityHash` が空文字のとき、
+  caller も空文字を名乗れば「一致」してしまう。§3.1 の proven は「active exact-version capability
+  matrix hash と等しいこと」なので、matrix が無いなら proven も無い（`sourceAgent` /
+  `sourceAgentVersion` の空文字ガードと同じ扱い）。
+- **冪等台帳の内部鍵は authority ごとに分ける**。v6 §8.2 の導出式は `adapterDeliveryId` と
+  canonical fingerprint を同じ keyspace に置くが、`adapterDeliveryId` は adapter が自由に採番する
+  値なので、他 event の `canonicalFingerprint` を写した event を先に送ると本物が診断ゼロの重複と
+  して消える。wire に出る導出式（`idempotencyKeyOf`）は正本のままにして、台帳の中だけ
+  `d:` / `f:` で分ける。分離は wire にも hash にも出ないので契約に影響しない。
 
 ### 2.4 `updatedAt` は単調でない
 
@@ -159,17 +176,28 @@ addendum に無い**ので、「必ず残る」とは書けない。退避を状
 `terminal_orphaned` を `terminal_unmatched` と別 code にしたのは、同じ code で `outcome` が
 分かれると doctor が「start 待ちの孤児」と「候補は居るが絞れない」を区別できないため。
 
-復元後に同じ start が再配送された場合は `duplicate_operation_start` の経路で `operationStarts` を
-戻す（既にある分は上書きしない。後から来た再配送の `ingestSeq` で上書きすると、飛行中の
-terminal が順序違反に見える）。これで復元 → start 再配送 → terminal で `succeeded` まで戻る。
+**この隔離は §4.3 の文面からの明示的な乖離**。§4.3 は「zero **or multiple** にマッチした terminal は
+… unmatched evidence として保つ」と書き、隔離は「correlation/hash conflict」に限っている。しかし
+`CanonicalWorkStateV1` には unmatched evidence の置き場が無く（候補が 0 件なので `sourceEventIds` を
+足す相手が居ない）、frozen schema のままでは正本どおりに実装できない。台帳へ入れる側に倒すと
+上記のとおり順序前後の孤児を永久に殺すので隔離を選んだ。Rust 実装が同じ選択をできるよう、
+schema 側の穴として起票する（#39 の配列上限とは別件）。
 
-**この復旧は「状態と冪等台帳を同時にリセットする」運用が前提**（#35 が閉じるまで）。台帳だけが
-残る運用では、再配送された start は `reduceTaskWorkState` の 1 行目の dedupe で `duplicate` になり、
-`operationStarts` を戻す分岐まで進まない。詰まりはしない（terminal は `unknown` に倒れて台帳に
-入る）が、`succeeded` までは戻らない。start の `ingestSeq` を `PendingOperation` が持てば（#35）
-この前提は要らなくなる。
+**復元後に再配送された start で `operationStarts` を埋めない。** §6.4 は `ingestSeq` を
+「authoritative event-store watermark（適用済みの最大 `ingestSeq`）」と定義しており、採番するのは
+daemon の event store である。したがって再配送 event が運ぶ `ingestSeq` は再配送時の取り込み位置で
+あって、元の start の権威順序ではない。埋めると 2 つの意味で壊れる:
 
-逆に**台帳だけを失った復元**では、再配送された start が還元器に届く。再送契約では再配送の
+1. **正しさ**: 再配送の位置を元の start の位置として順序検査に使うことになる
+2. **信頼境界**: 復元直後（`operationStarts` が空）に、被害者の `startEventId` か `nativeOperationId`
+   と `operationMatchKey` を写した start を**小さい `ingestSeq`** で送ると、正規の terminal が順序検査を
+   通って `unknown` ではなく `succeeded` になる。§14 の zero-tolerance カウンタ
+   `unsafe unknown replay` に直結する（材料は §10 の `ResumeCapsuleV1.workState` がそのまま運ぶ）
+
+よって復元後は `terminal_order_unverifiable` で `unknown` に倒れる。これが §3.1 の fail closed どおり
+であり、順序材料の復旧は #35（start の `ingestSeq` を `PendingOperation` に持たせる）が本筋。
+
+**台帳だけを失った復元**では、再配送された start が還元器に届く。再送契約では再配送の
 `eventId` が変わるので、`operationId = SHA-256(JCS({schema, startEventId, operationMatchKey}))` は
 一致しない。そのままだと同じ operation が 2 件積まれ、以後 rule 1 の terminal が候補 2 件で
 何も閉じられなくなる。`nativeOperationId` は本物の呼び出しごとに一意なので、それが一致する
@@ -177,9 +205,10 @@ pending があれば再配送として扱う。`nativeOperationId` を出さな�
 呼び出しと区別できないので、この経路は使わない（§4.3 が rule 1 だけに閉じる権限を与えているのと
 同じ非対称）。
 
-再配送で戻す `ingestSeq` は再配送側のもので、元の start のものではない（失われている: #35）。
-そのため「元の start より後・再配送より前」の terminal は `terminal_out_of_order` になり `unknown`
-に倒れる。通してしまうより fail closed を選んだ結果で、#35 が閉じれば消える。
+同じ `nativeOperationId` を名乗りながら `operationMatchKey` か `canonicalInputHash` が違う start は
+再配送ではなく corruption なので `start_conflict` で隔離する（再配送として台帳に入れると、訂正版が
+同じ配送 ID で来ても重複 no-op になって戻せない）。terminal 側と違って matchKey も比べるのは、
+同じ native ID は同じ呼び出し = 同じ turn のはずで、turn 差で matchKey が変わる余地が無いため。
 
 **`terminal_orphaned` の隔離には期限が無い**。start が後から来る孤児（順序前後）と、start が二度と
 来ない孤児（退避で消えた operation、daemon が実行途中で attach して terminal だけ捕まえた場合）は
@@ -233,6 +262,18 @@ envelope を要求しない（既知の非 operation kind が envelope を持つ
   router のバグなので隔離ではなく例外に倒しているが、`sourceAgent` は event が名乗る値なので、
   scope を event 由来で選ぶ実装だと 1 件の取り違えで stream が止まりうる。daemon 側で
   「state は認証済み peer identity で選ぶ」を守る前提。
+- **`sessionId` を束縛する層が無い**。§4.3 の correlation scope は「same session/task lineage」だが、
+  §3.1 が intake に導出させるのは「認証済み peer identity・ingest channel・`captureMethod`・
+  capability matrix」だけで **session は挙がっていない**。`IntakeContextV1` は `expectedSourceAgent` を
+  束縛するが session は素通しで、`assertSameScope` は状態側に session が無いので照合できない。
+  結果として、同じ Agent・同じ lineage の別 session を名乗る event が rule 1 で他人の operation を
+  閉じられ、安価な start 256 件で他人の実行中 operation を状態から退避させられる（§10 の
+  `arrayItems`）。§3.1 に session 束縛の一文が無いこと自体が正本の穴なので、#41 と並べて起票する。
+- **還元器は event の schema 妥当性を前提にする**。`ingestSeq` は decimal string として検査するが、
+  `occurredAt` の形式・文字列長（§10）・JSON 深さは見ない。壊れた値をそのまま状態に写すので、
+  daemon 側で `reduceTaskWorkState` を呼ぶ前に `NormalizedContinuityEvent` schema での検証を
+  済ませておく前提。同様に `IntakeStampedEventV1` の目印は型だけのもの（`JSON.parse` や spool を
+  跨げば消える）なので、信頼境界ではなく呼び順の lint として扱う。
 - **session 全体を 1 回の fold で流す用途には向かない**。`commit` は event ごとに冪等台帳と
   history を複製するので、fold の長さに対して二乗で伸びる（実測: 1,000 event 61ms、
   5,000 event 1,024ms、20,000 event 23,332ms）。参照実装は「同じ fixture から TS と Rust が
@@ -253,8 +294,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。43 件すべてで 1 件以上が失敗し、
-復元後は 70/70 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。48 件すべてで 1 件以上が失敗し、
+復元後は 74/74 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -274,24 +315,25 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 空 adapterDeliveryId の fallback を外す | 1 |
 | rule 1 の排他を外す | 1 |
 | rule 2 の turn 同一性要求を外す | 2 |
-| turnIdSource 種別の一致要求を外す | 1 |
 | 候補が複数のときの拒否を外す | 1 |
-| matchKey 衝突検査を外す | 2 |
-| canonicalInputHash 衝突検査を外す | 2 |
-| identity 衝突の隔離を外す | 4 |
+| terminal 側に matchKey 一致を要求し直す | 1 |
+| terminal の canonicalInputHash 衝突検査を外す | 3 |
+| identity 衝突の隔離を外す | 3 |
 | kind と successful の矛盾を素通しする | 1 |
 | 矛盾した terminal を succeeded にする | 1 |
-| start 不在の分岐を外す | 1 |
-| terminal の権威順序検査を外す | 3 |
+| start 不在の分岐を外す | 4 |
+| terminal の権威順序検査を外す | 2 |
 | 順序違反で候補を巻き込む | 1 |
 | 候補ゼロの terminal を台帳に入れる | 4 |
-| 順序不明で候補を unknown にしない | 1 |
+| 順序不明で候補を unknown にしない | 4 |
 | 退避で順序材料を刈らない | 1 |
-| 再配送 start を nativeOperationId で拾わない | 3 |
-| 再配送の判定を matchKey にする | 5 |
-| start の identity 衝突検査を外す | 1 |
+| 再配送 start を nativeOperationId で拾わない | 4 |
+| 再配送の判定を matchKey にする | 6 |
+| start の identity 衝突検査を外す | 2 |
+| start の matchKey 衝突検査を外す | 1 |
+| start の canonicalInputHash 衝突検査を外す | 1 |
 | 放棄を session で絞らない | 1 |
-| 候補の unknown 化を外す | 6 |
+| 候補の unknown 化を外す | 8 |
 | unknown 化で証跡を残さない | 2 |
 | sourceEventIds の上限を外す | 1 |
 | pendingOperations の上限を外す | 1 |
@@ -300,7 +342,11 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 退避を黙って行う | 2 |
 | revision ごとの配列分離を外す | 1 |
 | 放棄経路の dedupe を外す | 1 |
-| sensitivity 集約を normal 固定にする | 2 |
+| 台帳の keyspace 分離を外す | 1 |
+| 空の capabilityHash を素通しする | 1 |
+| 未知の sensitivity で fail open する | 1 |
+| rule 2 の turn 種別一致要求を外す | 1 |
+| sensitivity 集約を normal 固定にする | 3 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
