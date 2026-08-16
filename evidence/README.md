@@ -29,6 +29,7 @@
 | no-Agent-blockage validation | phase1-t056-no-agent-blockage-validation.md | T056 |
 | backup/restore smoke validation | phase1-t057-backup-restore-smoke-validation.md | T057 |
 | Phase 1 final candidate validation（machine 25/31 と manual 31/31 を分離） | phase1-t058-final-validation.md | T058 |
+| Rust Local Core 再評価 ADR（#1 Stage 0。ADR-001 の却下理由分解・Go/No-Go 定義） | adr-003-rust-local-core.md | #1 Stage 0 |
 
 pin: codemem 26438e75ce1d0fec6be34981f15045a15c89658b / ai-memory a9e9a24d50f59e970fc01ae48efe647abf20702e / remem cde8bc05504c74794d044ef118f74d8f828adbf5
 clone 元: ~/projects/free-mem-vendor/（ローカル clone のみ・公開 fork なし）

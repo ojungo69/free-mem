@@ -198,9 +198,19 @@ barrier: {T028..T052 全完了} → {T053..T057} → T058
 
 Sonar coverage は source 公開の blocking gate にしない。公開後に Sonar project が自動作成されたため、full-suite 由来 LCOV と CI-based analysis を設定済み。focused test の coverage は全体値として公開しない。
 
+## Runtime barrier — #1 Stage 0（Phase 2 開始条件）
+
+Phase 2 以降の大規模 TS product 実装は、issue #1 Stage 0 の完了まで着手しない。
+runtime-neutral な schema / fixture / harness（Phase 3 preflight, issue #13）は並行可。
+
+- [X] S0-1 Rust Local Core 再評価 ADR（ADR-001 は破棄せず、却下理由 L1–L3 に分解して hybrid での回避度を証拠化）→ `evidence/adr-003-rust-local-core.md`
+- [X] S0-2 Phase 1 の外部接触面を versioned contract として凍結 → `specs/001-agent-memory-core/contracts/{rpc,writer-boundary,spool-format,error-taxonomy}-v1.md`
+- [X] S0-3 Rust prototype の Go / No-Go 必須条件 G1–G7 と比較指標・測定条件を確定 → ADR-003「Go / No-Go gate」
+- [ ] S0-4 Stage 1 narrow prototype（別 branch / worktree、`vendor/codemem` に触れない）→ 実測後に ADR-003 を Accepted / Rejected へ更新
+
 ## Phase 2 — Canonical Identity / Event State Machine（着手時に詳細化）
 
-Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。
+Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。前提: 上記 Runtime barrier の S0-1〜S0-3 完了（S0-4 の結果で実装言語が決まる）。
 
 ## Phase 3 — Continuity State Machine [US1]（着手時に詳細化）
 
