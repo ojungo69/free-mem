@@ -2514,10 +2514,104 @@ test("候補が複数あるとき canonicalInputHash を省いた terminal は�
   );
 });
 
-test("照合不能で unknown に倒すのも turn が両立する候補だけ", () => {
-  // 照合不能は「この terminal がどの候補を指すか決められない」であって、閉じえない候補まで
-  // 巻き込んでよい話ではない。§4.3 の rule 2 で閉じられない turn 非両立の候補は、そもそも
-  // この terminal の candidates ではないので `started` のまま残す
+test("照合不能で unknown に倒すのは付け替え先になりうる候補だけ", () => {
+  // ゲートが発火する形（同じ turn の候補が 2 件以上）を作ったうえで、turn が両立しない open な
+  // 兄弟が巻き込まれないことを見る。閉じえない候補はそもそもこの terminal の candidates ではない
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const template = base.state.pendingOperations[0] as PendingOperation;
+  const openSameTurn: PendingOperation = {
+    ...template,
+    correlation: { ...template.correlation, canonicalInputHash: "hash-a" },
+  };
+  const settledSameTurn: PendingOperation = {
+    ...template,
+    operationId: "op-settled",
+    status: "succeeded",
+    correlation: { ...template.correlation, operationId: "op-settled" },
+  };
+  const openOtherTurn: PendingOperation = {
+    ...template,
+    operationId: "op-other-turn",
+    correlation: { ...template.correlation, operationId: "op-other-turn", turnId: "turn-2" },
+  };
+  const omitsHash = terminalEvent({
+    operation: (({ nativeOperationId, canonicalInputHash, ...rest }) => rest)(TERMINAL_OPERATION) as never,
+  });
+  const result = reduceTaskWorkState(
+    {
+      ...base,
+      state: { ...base.state, pendingOperations: [openSameTurn, settledSameTurn, openOtherTurn] },
+    },
+    omitsHash,
+    new Map(),
+  );
+  assert.deepEqual(result.diagnostics.map((d) => d.code), ["terminal_identity_unverifiable"]);
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((p) => p.status),
+    ["unknown", "succeeded", "started"],
+  );
+});
+
+test("確定済みで別 turn の兄弟は照合不能ゲートを発火させない", () => {
+  // `compatible` を母数にしていたとき、**閉じえない兄弟が健全な照合を潰していた**（実測: 兄弟が
+  // 居なければ診断ゼロで succeeded なのに、確定済み・別 turn の兄弟が 1 件並ぶだけで
+  // terminal_identity_unverifiable になり、open な候補が unknown に倒れて台帳まで消費された）
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const mine = base.state.pendingOperations[0] as PendingOperation;
+  const settledOtherTurn: PendingOperation = {
+    ...mine,
+    operationId: "op-settled",
+    status: "succeeded",
+    correlation: { ...mine.correlation, operationId: "op-settled", turnId: "turn-2" },
+  };
+  const omitsHash = terminalEvent({
+    operation: (({ nativeOperationId, canonicalInputHash, ...rest }) => rest)(TERMINAL_OPERATION) as never,
+  });
+  const withSibling = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [mine, settledOtherTurn] } },
+    omitsHash,
+    new Map(),
+  );
+  assert.deepEqual(withSibling.diagnostics.map((d) => d.code), []);
+  assert.deepEqual(withSibling.snapshot.state.pendingOperations.map((p) => p.status), ["succeeded", "succeeded"]);
+});
+
+test("復元した状態が toolName を持たなくても rule 2 の候補になる", () => {
+  // `toolName` は凍結 schema の required に無い。兄弟の 2 箇所は両方 present ガードを持つのに
+  // 候補の絞り込みだけ素で比べていたので、欠けた状態では候補ゼロ = terminal_orphaned の隔離に
+  // なった。隔離は台帳を消費せず還元器は純関数なので、同じ terminal が毎回同じ隔離で収束しない
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const pending = base.state.pendingOperations[0] as PendingOperation;
+  const withoutToolName: PendingOperation = {
+    ...pending,
+    correlation: (({ toolName, ...rest }) => rest)(pending.correlation) as typeof pending.correlation,
+  };
+  const closed = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [withoutToolName] } },
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  // 締めすぎていない: toolName を持っていて kind が違うなら従来どおり候補にしない
+  const wrongKind: PendingOperation = {
+    ...pending,
+    correlation: { ...pending.correlation, toolName: "Read" },
+  };
+  const orphaned = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [wrongKind] } },
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.equal(orphaned.outcome, "quarantined");
+  assert.deepEqual(orphaned.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+});
+
+test("turn が両立しない兄弟は照合不能ゲートの母数に入らない", () => {
+  // 照合不能ゲートの理由は「terminal が hash を省くことで**別の候補へ付け替えられる**」こと。
+  // §4.3 の rule 2 で閉じられない turn 非両立の候補は、そもそもこの terminal の付け替え先に
+  // なりえないので母数に入れない（入れると、閉じえない兄弟が居るだけで健全な照合が潰れ、
+  // 台帳まで消費される）。当然その候補も巻き込まない
   const prepared = apply(emptySnapshot(), [
     startEvent({ eventId: "start-a", adapterDeliveryId: "d-start-a", canonicalFingerprint: "f-start-a", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
     startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
@@ -2531,8 +2625,9 @@ test("照合不能で unknown に倒すのも turn が両立する候補だけ",
     }),
     prepared.ledger,
   );
-  assert.deepEqual(omitted.diagnostics.map((d) => d.code), ["terminal_identity_unverifiable"]);
-  assert.deepEqual(omitted.snapshot.state.pendingOperations.map((p) => p.status), ["unknown", "started"]);
+  // 付け替え先が居ないので発火せず、rule 2 の「open な候補が 1 件」がそのまま成立する
+  assert.deepEqual(omitted.diagnostics.map((d) => d.code), []);
+  assert.deepEqual(omitted.snapshot.state.pendingOperations.map((p) => p.status), ["succeeded", "started"]);
 });
 
 test("候補が 1 件なら canonicalInputHash の省略は照合を妨げない", () => {

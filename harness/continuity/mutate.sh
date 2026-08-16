@@ -236,8 +236,8 @@ mutate "          (existing.correlation.turnId !== undefined &&
 mutate "          (existing.correlation.turnId !== undefined &&
             event.turnId !== undefined &&
             existing.correlation.turnId !== event.turnId) ||" "          (existing.correlation.turnId !== event.turnId) ||" && run "再配送 start の turn 存在ガードを外す"
-mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.find(identityUnverifiable);" && run "候補 1 件でも照合不能ゲートを発火させる"
-mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 2 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの候補数を 1 件ずらす"
+mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = plausible.find(identityUnverifiable);" && run "候補 1 件でも照合不能ゲートを発火させる"
+mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = plausible.length > 2 ? plausible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの候補数を 1 件ずらす"
 mutate "  if (open.length === 0) {" "  if (open.length === 0 && compatible.find(identityUnverifiable) === undefined) {" && run "照合不能を成否矛盾検査より先に判定する"
 
 mutate "    !isBlank(context.activeCapabilityHash) &&" "    context.activeCapabilityHash !== \"\" &&" && run "空白だけの capability hash を authority にする"
@@ -306,6 +306,9 @@ mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausib
 mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
 mutate "  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSource)) {" "  if (false) {" && run "turnIdSource の語彙検査を外す"
 mutate "      pending.correlation.taskLineageId === snapshot.state.taskLineageId" "      true" && run "側索引の同名判定で別 lineage も数える"
+mutate "            (pending.correlation.toolName === undefined ||
+              pending.correlation.toolName === operation.operationKind)," "            pending.correlation.toolName === operation.operationKind," && run "候補の toolName を素で比べる"
+mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの母数を compatible に戻す"
 mutate "            code: \"delivery_conflict\",
             eventId: event.eventId,
             detail: \`event \${applied.eventId} と同じ配送 ID で source hash が違う\`,

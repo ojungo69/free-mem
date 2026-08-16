@@ -1237,7 +1237,16 @@ export function correlateTerminalEvent(
       : sameScope.filter(
           (pending) =>
             pending.correlation.operationMatchKey === operation.operationMatchKey &&
-            pending.correlation.toolName === operation.operationKind,
+            // `toolName` は凍結 schema の required に無いので、復元した checkpoint や別実装が
+            // 書いた状態では欠けうる。**兄弟の 2 箇所（`startConflictsWith` / `identityConflicts`）は
+            // 両方 present ガードを持つのに、ここだけ素で比べていた**。素で比べると
+            // `undefined === "tool_use"` が false になって候補ゼロ = `terminal_orphaned` の隔離に
+            // なり、隔離は台帳を消費せず還元器は純関数なので**同じ再配送が毎回同じ隔離で
+            // 収束しない**（実測: `toolName` を消すだけで `succeeded` が `terminal_orphaned` に
+            // 変わった）。§4.3 の matchKey は tool 名を入力に含むので、仕様どおりに導出する
+            // adapter では matchKey 一致が既に kind を束縛している
+            (pending.correlation.toolName === undefined ||
+              pending.correlation.toolName === operation.operationKind),
         );
   const rule = byNativeId.length > 0 ? "native_operation_id" : "match_key";
 
@@ -1451,7 +1460,19 @@ export function correlateTerminalEvent(
   // 照合不能の検査は上の成否矛盾検査より後に置く。前に置くと、確定済みの候補に矛盾する
   // terminal が hash を省くだけで隔離（台帳を消費しないので訂正版が後から効く）を回避して
   // 照合不能（台帳を消費する）に化け、訂正版の再配送が重複 no-op として黙って捨てられる
-  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;
+  // **数えるのは `compatible` ではなく `open`**。このゲートの理由は「terminal が hash を省くことで
+  // **別の候補へ付け替えられる**」ことなので、付け替え先になりうる集合＝この terminal が実際に
+  // 掴みうる候補（turn も順序も両立していて、まだ open なもの）で数えなければならない。
+  // `compatible` で数えると、**閉じえない兄弟が健全な照合を潰す**（実測: open な op-A（hash あり）と
+  // 確定済み・**別 turn** の op-B が同じ matchKey で並ぶ状態に、hash を省いた rule 2 terminal が
+  // 届くと、兄弟が居ないときは診断ゼロで `succeeded` になるのに、居るだけで
+  // `terminal_identity_unverifiable` になり op-A が `unknown` に倒れて台帳まで消費された）。
+  // 別 turn の op-B は `sameTurnOf` で落ちるので、この terminal の**再配送先ですらない**。
+  // 母数は `open` でもない: 確定済みでも**同じ turn**の兄弟は「この terminal はそちらの再配送
+  // だった」がありうるので、hash の省略で付け替えが起きる。`plausible`（turn と順序が両立する
+  // 候補。open / 確定済みの切り分け前）がちょうどその集合。rule 1 の候補数を `byNativeId` から
+  // `compatible` へ直したのと同じ「母数の取り違え」
+  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;
   if (unverifiable !== undefined) {
     return {
       matched: null,
