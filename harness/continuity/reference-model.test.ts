@@ -1122,6 +1122,53 @@ test("eventId が変わった再配送 start でも operation を二重に積ま
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
 });
 
+test("同じ nativeOperationId で matchKey が違う start は隔離する", () => {
+  // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない
+  const started = startedSnapshot();
+  const forged = reduceTaskWorkState(
+    started,
+    startEvent({
+      eventId: "event-start-forged",
+      ingestSeq: "3",
+      operation: { ...START_OPERATION, operationMatchKey: "match-key-other" },
+    }),
+    new Map(),
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(
+    forged.diagnostics.map((d) => d.code),
+    ["start_conflict"],
+  );
+  assert.equal(forged.ledger.size, 0);
+  assert.equal(forged.snapshot.state.pendingOperations.length, 1);
+});
+
+test("旧 session の session_ended は resume 先の operation を放棄しない", () => {
+  // lineage は session をまたいで続く（§5 の checkpoint は sourceSessionId と taskLineageId を
+  // 別に持つ）。session を見ないと、遅れて届いた旧 session の放棄が live な operation を潰す
+  const started = startedSnapshot();
+  const resumed = reduceTaskWorkState(
+    started,
+    startEvent({
+      eventId: "event-start-new-session",
+      ingestSeq: "3",
+      sessionId: "session-2",
+      operation: { ...START_OPERATION, nativeOperationId: "toolu_resumed" },
+    }),
+    new Map(),
+  );
+  const result = finalizeAbandonedState(
+    resumed.snapshot.state,
+    startEvent({ eventId: "event-abandon", kind: "session_ended", ingestSeq: "4", operation: undefined }),
+    new Map(),
+  );
+  const bySession = new Map(
+    result.state.pendingOperations.map((p) => [p.correlation.sessionId, p.status]),
+  );
+  assert.equal(bySession.get("session-1"), "unknown");
+  assert.equal(bySession.get("session-2"), "started");
+});
+
 test("nativeOperationId が違う 2 回目の呼び出しは別 operation として積む", () => {
   // 再配送の判定に matchKey を使うと、同じ tool を同じ入力で 2 回呼んだだけで 1 件に潰れる
   const started = startedSnapshot();

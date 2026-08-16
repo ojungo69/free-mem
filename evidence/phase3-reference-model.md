@@ -32,7 +32,7 @@
 | correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。rule 1 は `nativeOperationId` だけで選ぶので、`operationMatchKey` の不一致も衝突として扱う（§4.3 の matchKey は operation identity 全体に対する SHA-256 なので、一致しなければ別 identity が同じ native ID を名乗っている） |
 | 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる） |
 | rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する |
-| 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない |
+| 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない。放棄するのはその event の session の operation だけ（lineage は session をまたいで続く。§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つので、絞らないと遅れて届いた旧 session の `session_ended` が resume 先の live な operation を潰す） |
 | 閉じられなかった terminal は unmatched evidence として保つ | §4.3 | `unknown` にした候補の `sourceEventIds` にその terminal を足す。状態が変わった理由を状態から辿れるようにする（放棄経路と扱いを揃える） |
 | 状態は lineage ごとに 1 つ | §4 | `assertSameScope` は lineage に加えて `sourceAgent` も束縛する。`OperationCorrelationV1` は Agent を持たず scope が sessionId + taskLineageId だけなので、束縛しないと別 Agent の terminal が同じ session に居る他 Agent の operation を閉じられる |
 | seq は safe integer を超える decimal string | v6 §22.6 | `compareIngestSeq` は桁数 → 辞書順の 2 段比較。`Number()` を使わない |
@@ -248,8 +248,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。40 件すべてで 1 件以上が失敗し、
-復元後は 66/66 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。42 件すべてで 1 件以上が失敗し、
+復元後は 68/68 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -281,8 +281,10 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 候補ゼロの terminal を台帳に入れる | 4 |
 | 順序不明で候補を unknown にしない | 1 |
 | 退避で順序材料を刈らない | 1 |
-| 再配送 start を nativeOperationId で拾わない | 2 |
-| 再配送の判定を matchKey にする | 4 |
+| 再配送 start を nativeOperationId で拾わない | 3 |
+| 再配送の判定を matchKey にする | 5 |
+| start の identity 衝突検査を外す | 1 |
+| 放棄を session で絞らない | 1 |
 | 候補の unknown 化を外す | 6 |
 | unknown 化で証跡を残さない | 2 |
 | sourceEventIds の上限を外す | 1 |

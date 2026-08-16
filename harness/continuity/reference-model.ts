@@ -319,6 +319,7 @@ export type ContinuityDiagnosticCode =
   | "terminal_already_applied"
   | "terminal_evidence_contradicts"
   | "duplicate_operation_start"
+  | "start_conflict"
   | "pending_operations_evicted"
   | "source_events_truncated"
   | "turn_identity_downgraded";
@@ -492,6 +493,17 @@ export function reduceTaskWorkState(
               pending.correlation.sessionId === event.sessionId &&
               pending.correlation.taskLineageId === previous.state.taskLineageId,
           ));
+    // 同じ nativeOperationId を名乗りながら identity が違う start は再配送ではなく corruption。
+    // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない
+    if (existing !== undefined && existing.correlation.operationMatchKey !== operation.operationMatchKey) {
+      return quarantine(previous, idempotencyLedger, [
+        {
+          code: "start_conflict",
+          eventId: event.eventId,
+          detail: `operationId ${existing.operationId} と同じ nativeOperationId で operationMatchKey が違う`,
+        },
+      ]);
+    }
     if (existing !== undefined) {
       return commit(previous, event, idempotencyLedger, {
         ...unchanged,
@@ -914,8 +926,11 @@ export function finalizeAbandonedState(
   if (idempotencyLedger.has(key)) {
     return { outcome: "duplicate", state, ledger: idempotencyLedger };
   }
+  // 放棄するのはその event の session の operation だけ。lineage は session をまたいで続く
+  // （§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つ）ので、session を見ないと
+  // 遅れて届いた旧 session の session_ended が、resume 先の live な operation まで unknown にする
   const pendingOperations = state.pendingOperations.map((pending) =>
-    pending.status === "started"
+    pending.status === "started" && pending.correlation.sessionId === event.sessionId
       ? withSourceEvent({ ...pending, status: "unknown" as const }, event.eventId)
       : pending,
   );
