@@ -25,16 +25,8 @@ import { readFileSync } from "node:fs";
  * 「TS では hash が出るが、準拠した Rust 実装は計算を拒否する」状態になる。
  */
 function encodeString(value: string): string {
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i);
-    if (code < 0xd800 || code > 0xdfff) continue;
-    const isHigh = code <= 0xdbff;
-    const next = isHigh ? value.charCodeAt(i + 1) : Number.NaN;
-    if (isHigh && next >= 0xdc00 && next <= 0xdfff) {
-      i++; // 正しい代理対
-      continue;
-    }
-    throw new Error(`JCS: 対になっていない代理を含む文字列は canonicalize できない（位置 ${i}）`);
+  if (!value.isWellFormed()) {
+    throw new Error(`JCS: 対になっていない代理を含む文字列は canonicalize できない: ${JSON.stringify(value)}`);
   }
   return JSON.stringify(value);
 }
