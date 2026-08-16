@@ -107,18 +107,17 @@ test("両 cell が同一実測で synthesized なら next_prompt_synthesized", (
   assert.equal(resolveResumeDeliveryStrategy(caps), "next_prompt_synthesized");
 });
 
-test("両 cell が native なら native_prompt_gate、片方でも synthesized なら降格", () => {
-  const nativeGate = matrixWith({
-    promptAwareInjection: proven("native"),
+test("§8: native_prompt_gate は pre-model 配送 1 cell の実測だけで成立する", () => {
+  // addendum §8 は promptAwareInjection に条件を課していない。実測済みの native は
+  // それ単独で tier を満たす（対で縛るのは synthesized 側の要件）
+  const caps = matrixWith({ promptDeliveryBeforeModel: proven("native") });
+  assert.equal(resolveResumeDeliveryStrategy(caps), "native_prompt_gate");
+  // SessionStart の実測があっても prompt 経路が優先される
+  const withSessionStart = matrixWith({
+    sessionStartInjection: proven("native"),
     promptDeliveryBeforeModel: proven("native"),
   });
-  assert.equal(resolveResumeDeliveryStrategy(nativeGate), "native_prompt_gate");
-
-  const mixed = matrixWith({
-    promptAwareInjection: proven("native"),
-    promptDeliveryBeforeModel: proven("synthesized"),
-  });
-  assert.equal(resolveResumeDeliveryStrategy(mixed), "next_prompt_synthesized");
+  assert.equal(resolveResumeDeliveryStrategy(withSessionStart), "native_prompt_gate");
 });
 
 test("sourceFixtureId が無い cell は prompt 経路の根拠にならない", () => {
@@ -158,20 +157,26 @@ test("evidence hash の無い prompt cell は自動配送を有効化できな�
   assert.equal(resolveResumeDeliveryStrategy(caps), "manual_only");
 });
 
-test("片方だけ evidence hash がある prompt 対も照合できないので採用しない", () => {
+test("片方だけ evidence hash がある synthesized 対は照合できないので採用しない", () => {
   const caps = matrixWith({
-    promptAwareInjection: proven("native"),
-    promptDeliveryBeforeModel: proven("native", { evidenceHash: null }),
+    promptAwareInjection: proven("synthesized"),
+    promptDeliveryBeforeModel: proven("synthesized", { evidenceHash: null }),
   });
   assert.equal(resolveResumeDeliveryStrategy(caps), "manual_only");
 });
 
-test("prompt 対が native と synthesized で割れたら弱いほうへ倒す", () => {
-  const mixed = [
-    { promptAwareInjection: proven("native"), promptDeliveryBeforeModel: proven("synthesized") },
-    { promptAwareInjection: proven("synthesized"), promptDeliveryBeforeModel: proven("native") },
-  ];
-  for (const cells of mixed) {
-    assert.equal(resolveResumeDeliveryStrategy(matrixWith(cells)), "next_prompt_synthesized");
-  }
+test("§8: synthesized tier は「両方 synthesized」が必須なので割れた対は成立しない", () => {
+  // pre-model が synthesized + prompt-aware が native: どちらの tier も満たさない
+  const mixed = matrixWith({
+    promptAwareInjection: proven("native"),
+    promptDeliveryBeforeModel: proven("synthesized"),
+  });
+  assert.equal(resolveResumeDeliveryStrategy(mixed), "manual_only");
+  // SessionStart の実測があればそこまで落ちる
+  const withSessionStart = matrixWith({
+    sessionStartInjection: proven("native"),
+    promptAwareInjection: proven("native"),
+    promptDeliveryBeforeModel: proven("synthesized"),
+  });
+  assert.equal(resolveResumeDeliveryStrategy(withSessionStart), "session_start_full");
 });

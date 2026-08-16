@@ -97,7 +97,7 @@
         },
         "allOf": [
           {
-            "comment": "§7.2: synthesized は根拠 native event の明示が必須",
+            "$comment": "§7.2: synthesized は根拠 native event の明示が必須",
             "if": {
               "properties": {
                 "capability": {

@@ -6,8 +6,20 @@
 //
 // 対応キーワード: $ref, type, enum, const, required, properties, additionalProperties,
 // items, minItems, maxItems, minLength, maxLength, pattern, minimum, maximum,
-// oneOf, anyOf, allOf。これ以外が schema に現れたら「未対応」として *エラーにする*
-// （黙って無視すると、書いたつもりの制約が効いていないことに気付けない）。
+// oneOf, anyOf, allOf, if/then/else。これ以外が schema に現れたら「未対応」として
+// *エラーにする*（黙って無視すると、書いたつもりの制約が効いていないことに気付けない）。
+//
+// schema 自体の書き間違い（dangling / 循環 $ref、不正な pattern）は issue ではなく throw する。
+// データの不正とは層が違い、握り潰すと「制約が無いのに妥当」と誤認するため。
+//
+// ponytail: 自前実装の天井は「draft 2020-12 の一部しか解釈しない」こと。対応キーワードを
+// 増やし続けるくらいなら ajv へ移す（vendor/codemem の lockfile に既に解決済みで、
+// harness/phase1-static-scan.ts が vendor の node_modules を相対 import する前例もある）。
+// 移さない理由は、ajv が vendor の推移的依存でしかなく vendor 更新で消え得ること、
+// jsonDepth / stringUtf8Bytes などの構造上限は JSON Schema の語彙で表現できずどのみち
+// 自前で歩く必要があること、ADR-003 G7 が harness の runtime 非依存を要求していること。
+
+import { isDeepStrictEqual } from "node:util";
 
 export interface ValidationIssue {
   path: string;
@@ -21,8 +33,10 @@ export interface JsonSchemaDocument {
 
 const SUPPORTED_KEYWORDS = new Set([
   "$ref",
+  "$schema",
+  "$id",
+  "$defs",
   "$comment",
-  "comment",
   "title",
   "description",
   "type",
@@ -42,6 +56,9 @@ const SUPPORTED_KEYWORDS = new Set([
   "oneOf",
   "anyOf",
   "allOf",
+  "if",
+  "then",
+  "else",
 ]);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -105,7 +122,10 @@ export function findNonJsonValues(value: unknown, path = "$", seen = new Set<obj
   }
   seen.add(obj);
   if (Array.isArray(value)) {
-    value.forEach((item, i) => issues.push(...findNonJsonValues(item, `${path}[${i}]`, seen)));
+    // forEach は hole を飛ばすが JSON.stringify は null にする。ずれを見逃さないよう添字で歩く
+    for (let i = 0; i < value.length; i++) {
+      issues.push(...findNonJsonValues(value[i], `${path}[${i}]`, seen));
+    }
   } else if (isDataObject(value)) {
     for (const [k, v] of Object.entries(value)) {
       issues.push(...findNonJsonValues(v, `${path}.${k}`, seen));
@@ -149,7 +169,9 @@ export function findStructuralViolations(
     if (value.length > limits.arrayItems) {
       issues.push({ path, message: `array of ${value.length} exceeds arrayItems ${limits.arrayItems}` });
     }
-    value.forEach((item, i) => issues.push(...findStructuralViolations(item, limits, `${path}[${i}]`, depth + 1)));
+    for (let i = 0; i < value.length; i++) {
+      issues.push(...findStructuralViolations(value[i], limits, `${path}[${i}]`, depth + 1));
+    }
     return issues;
   }
   if (isPlainObject(value)) {
@@ -169,6 +191,7 @@ export function validateAgainstSchema(
   schema: unknown,
   root: JsonSchemaDocument,
   path = "$",
+  refStack: readonly string[] = [],
 ): ValidationIssue[] {
   if (schema === true) return [];
   if (schema === false) return [{ path, message: "schema is false (nothing is valid here)" }];
@@ -185,7 +208,14 @@ export function validateAgainstSchema(
   // draft 2020-12 では $ref に兄弟キーワードを併記できる（`{$ref, maxLength}` など）。
   // ここで return すると併記した制約が黙って落ちるので、参照先を検査してから残りも続ける
   if (typeof schema.$ref === "string") {
-    issues.push(...validateAgainstSchema(value, resolveRef(schema.$ref, root), root, path));
+    // 自己参照 schema はスタックオーバーフローになる。この検証器は再帰型を扱わないので
+    // 「未対応の schema」として診断可能なエラーにする
+    if (refStack.includes(schema.$ref)) {
+      throw new Error(`circular $ref: ${[...refStack, schema.$ref].join(" -> ")}`);
+    }
+    issues.push(
+      ...validateAgainstSchema(value, resolveRef(schema.$ref, root), root, path, [...refStack, schema.$ref]),
+    );
   }
 
   const actual = typeOf(value);
@@ -198,10 +228,10 @@ export function validateAgainstSchema(
     }
   }
 
-  if (Array.isArray(schema.enum) && !schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) {
+  if (Array.isArray(schema.enum) && !schema.enum.some((e) => isDeepStrictEqual(e, value))) {
     issues.push({ path, message: `value not in enum: ${JSON.stringify(value)}` });
   }
-  if ("const" in schema && JSON.stringify(schema.const) !== JSON.stringify(value)) {
+  if (own(schema, "const") && !isDeepStrictEqual(schema.const, value)) {
     issues.push({ path, message: `expected const ${JSON.stringify(schema.const)}, got ${JSON.stringify(value)}` });
   }
 
@@ -218,6 +248,10 @@ export function validateAgainstSchema(
   }
 
   if (typeof value === "number") {
+    // NaN は < も > も false になるため、先に弾かないと minimum/maximum を素通りする
+    if (!Number.isFinite(value)) {
+      issues.push({ path, message: `non-finite number: ${String(value)}` });
+    }
     if (typeof schema.minimum === "number" && value < schema.minimum) {
       issues.push({ path, message: `number below minimum ${schema.minimum}` });
     }
@@ -234,7 +268,9 @@ export function validateAgainstSchema(
       issues.push({ path, message: `array longer than maxItems ${schema.maxItems}` });
     }
     if (schema.items !== undefined) {
-      value.forEach((item, i) => issues.push(...validateAgainstSchema(item, schema.items, root, `${path}[${i}]`)));
+      value.forEach((item, i) =>
+        issues.push(...validateAgainstSchema(item, schema.items, root, `${path}[${i}]`, refStack)),
+      );
     }
   }
 
@@ -245,26 +281,38 @@ export function validateAgainstSchema(
     }
     for (const [k, v] of Object.entries(value)) {
       if (own(props, k)) {
-        issues.push(...validateAgainstSchema(v, props[k], root, `${path}.${k}`));
+        issues.push(...validateAgainstSchema(v, props[k], root, `${path}.${k}`, refStack));
       } else if (schema.additionalProperties === false) {
         issues.push({ path, message: `unknown property: ${k}` });
       } else if (schema.additionalProperties !== undefined) {
-        issues.push(...validateAgainstSchema(v, schema.additionalProperties, root, `${path}.${k}`));
+        issues.push(...validateAgainstSchema(v, schema.additionalProperties, root, `${path}.${k}`, refStack));
       }
     }
   }
 
   if (Array.isArray(schema.allOf)) {
-    for (const sub of schema.allOf) issues.push(...validateAgainstSchema(value, sub, root, path));
+    for (const sub of schema.allOf) issues.push(...validateAgainstSchema(value, sub, root, path, refStack));
   }
   if (Array.isArray(schema.anyOf)) {
-    const ok = schema.anyOf.some((sub) => validateAgainstSchema(value, sub, root, path).length === 0);
+    const ok = schema.anyOf.some((sub) => validateAgainstSchema(value, sub, root, path, refStack).length === 0);
     if (!ok) issues.push({ path, message: "value matches none of anyOf" });
   }
   if (Array.isArray(schema.oneOf)) {
-    const matched = schema.oneOf.filter((sub) => validateAgainstSchema(value, sub, root, path).length === 0);
+    const matched = schema.oneOf.filter(
+      (sub) => validateAgainstSchema(value, sub, root, path, refStack).length === 0,
+    );
     if (matched.length !== 1) {
       issues.push({ path, message: `expected exactly 1 oneOf match, got ${matched.length}` });
+    }
+  }
+
+  // if/then/else: capability.schema.json §7.2（synthesized なら sourceEvents 必須）が使う。
+  // `if` は「合致するか」の判定にだけ使い、その issue 自体は結果に混ぜない
+  if (schema.if !== undefined) {
+    const branch =
+      validateAgainstSchema(value, schema.if, root, path, refStack).length === 0 ? schema.then : schema.else;
+    if (branch !== undefined) {
+      issues.push(...validateAgainstSchema(value, branch, root, path, refStack));
     }
   }
 

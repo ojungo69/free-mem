@@ -59,9 +59,18 @@ jobs:
         with:
           node-version: 24.16.0
       - name: Capability matrix self-test
-        run: node --experimental-strip-types harness/assemble.ts --self-test
+        # PASS 行を必須にする: entry point の起動条件が変わって黙って no-op しても exit 0 になるため
+        run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS
       - name: Continuity contract tests
         run: node --experimental-strip-types --test harness/continuity/*.test.ts
+      - name: Matrices are regenerated, not hand-edited
+        # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
+        # generatedAt は実行ごとに変わるので比較から外す
+        run: |
+          for cli in claude codex; do
+            node --experimental-strip-types harness/assemble.ts "harness/fixtures/$cli" "/tmp/$cli.json"
+            diff <(jq 'del(.generatedAt)' "harness/matrix/$cli.json") <(jq 'del(.generatedAt)' "/tmp/$cli.json")
+          done
 
   secrets:
     runs-on: ubuntu-24.04

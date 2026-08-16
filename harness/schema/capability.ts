@@ -12,7 +12,10 @@ export type EventKind =
   | "session_interrupted"
   | "session_ended";
 
-export type Capability = "native" | "synthesized" | "unsupported" | "unknown";
+/** 実測が付いた cell が取り得る値。`Capability` はこれに未観測（unknown）を足したもの。 */
+export type ObservedCapability = "native" | "synthesized" | "unsupported";
+
+export type Capability = ObservedCapability | "unknown";
 
 export interface CapabilityEvidence {
   value: Capability;
@@ -112,14 +115,14 @@ export interface CaptureFixture {
   evidenceHash?: string;
   // 高位 cell の観測結果（観測できた fixture だけが書く。書かなければ unknown のまま）
   highLevel?: Partial<{
-    sessionStartInjection: "native" | "synthesized" | "unsupported";
-    promptAwareInjection: "native" | "synthesized" | "unsupported";
-    promptDeliveryBeforeModel: "native" | "synthesized" | "unsupported";
-    compactSingleDelivery: "native" | "synthesized" | "unsupported";
+    sessionStartInjection: ObservedCapability;
+    promptAwareInjection: ObservedCapability;
+    promptDeliveryBeforeModel: ObservedCapability;
+    compactSingleDelivery: ObservedCapability;
     compactionRecoveryStrategy: CompactionRecoveryStrategy;
-    trueSessionEnd: "native" | "synthesized" | "unsupported";
-    subagentCapture: "native" | "synthesized" | "unsupported";
-    stableNativeSessionId: "native" | "synthesized" | "unsupported";
+    trueSessionEnd: ObservedCapability;
+    subagentCapture: ObservedCapability;
+    stableNativeSessionId: ObservedCapability;
   }>;
 }
 
@@ -198,29 +201,38 @@ function isProven(cell: CapabilityEvidence): boolean {
  */
 function sameEvidenceSource(a: CapabilityEvidence, b: CapabilityEvidence): boolean {
   if (a.nativeVersion !== b.nativeVersion) return false;
-  if (!a.sourceFixtureId || !b.sourceFixtureId) return false;
-  if (a.sourceFixtureId !== b.sourceFixtureId) return false;
-  if (!a.evidenceHash || !b.evidenceHash) return false;
-  if (a.evidenceHash !== b.evidenceHash) return false;
+  if (!a.sourceFixtureId || a.sourceFixtureId !== b.sourceFixtureId) return false;
+  if (!a.evidenceHash || a.evidenceHash !== b.evidenceHash) return false;
   return true;
 }
 
 /**
- * 配送経路を cell から導出する。証明が欠けたら必ず下位の経路へ落ちる（既定 manual_only）。
- * 片方だけ証明された prompt 経路（half-proven）は採用しない。
+ * 配送経路を cell から導出する。addendum §8 の tier 定義をそのまま実装する。
+ * 証明が欠けたら必ず下位の経路へ落ちる（既定 manual_only）。
  *
- * prompt 経路の 2 cell が native と synthesized で割れた場合は、弱いほう
- * （= `next_prompt_synthesized`）に倒す。両方 native のときだけ `native_prompt_gate`。
+ * §8 の 2 つの tier は要求が非対称なので、揃えずに書き分ける:
+ * - `native_prompt_gate` = 「pre-model 配送が native かつ real-CLI 実測済み」。
+ *   promptAwareInjection には条件が無い（合成が要らないため対で縛る意味が無い）。
+ * - `next_prompt_synthesized` = 「pre-model 配送と prompt-aware injection の **両方** が
+ *   synthesized で、かつ同一 exact version の fixture / evidence hash による実測」。
+ *   同条の「half-proven な synthesized 対は無効」がこの縛りの根拠。
+ *
+ * したがって native と synthesized が割れた対はどちらの tier も満たさず、下位へ落ちる。
  */
 export function resolveResumeDeliveryStrategy(caps: AdapterCapabilities): ResumeDeliveryStrategy {
   const prompt = caps.promptAwareInjection;
   const beforeModel = caps.promptDeliveryBeforeModel;
-  const promptPathProven = isProven(prompt) && isProven(beforeModel) && sameEvidenceSource(prompt, beforeModel);
 
-  if (promptPathProven) {
-    if (prompt.value === "native" && beforeModel.value === "native") return "native_prompt_gate";
-    return "next_prompt_synthesized";
-  }
+  if (isProven(beforeModel) && beforeModel.value === "native") return "native_prompt_gate";
+
+  const synthesizedPair =
+    isProven(beforeModel) &&
+    beforeModel.value === "synthesized" &&
+    isProven(prompt) &&
+    prompt.value === "synthesized" &&
+    sameEvidenceSource(prompt, beforeModel);
+  if (synthesizedPair) return "next_prompt_synthesized";
+
   if (isProven(caps.sessionStartInjection)) return "session_start_full";
   return "manual_only";
 }

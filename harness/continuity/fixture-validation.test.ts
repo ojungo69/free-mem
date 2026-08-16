@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validateFixture, assembleFromFixtures } from "../assemble.ts";
 import type { CaptureFixture } from "../schema/capability.ts";
+import { validateAgainstSchema, type JsonSchemaDocument } from "../schema/validate.ts";
+import { readFileSync, readdirSync } from "node:fs";
 
 const VERSION = "1.2.3-test";
 const AT = "2026-08-16T00:00:00.000Z";
@@ -53,10 +55,41 @@ test("正しい highLevel は通り、cell に載る", () => {
   assert.equal(m.capabilities.resumeDeliveryStrategy, "native_prompt_gate");
 });
 
-test("evidenceHash が無ければ実測があっても manual_only に落ちる", () => {
+test("synthesized 対は evidenceHash が無ければ manual_only に落ちる", () => {
+  // §8 の synthesized tier だけが「同一 fixture / evidence hash」を要求する。
+  // native tier（上のテスト）は pre-model 1 cell の実測で成立する
   const f = validateFixture(
-    base({ highLevel: { promptAwareInjection: "native", promptDeliveryBeforeModel: "native" } }),
+    base({ highLevel: { promptAwareInjection: "synthesized", promptDeliveryBeforeModel: "synthesized" } }),
     "f.json",
   ) as CaptureFixture;
   assert.equal(assembleFromFixtures([f]).capabilities.resumeDeliveryStrategy, "manual_only");
+
+  const withHash = validateFixture(
+    base({
+      evidenceHash: "b".repeat(64),
+      highLevel: { promptAwareInjection: "synthesized", promptDeliveryBeforeModel: "synthesized" },
+    }),
+    "f.json",
+  ) as CaptureFixture;
+  assert.equal(
+    assembleFromFixtures([withHash]).capabilities.resumeDeliveryStrategy,
+    "next_prompt_synthesized",
+  );
+});
+
+test("既存 fixture は capability.schema.json 全体に対して妥当（schema と手書き検証の drift 検出）", () => {
+  const schema = JSON.parse(
+    readFileSync(new URL("../schema/capability.schema.json", import.meta.url), "utf8"),
+  ) as JsonSchemaDocument;
+  let checked = 0;
+  for (const cli of ["claude", "codex"]) {
+    const dir = new URL(`../fixtures/${cli}/`, import.meta.url);
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".json")) continue;
+      const data = JSON.parse(readFileSync(new URL(name, dir), "utf8"));
+      assert.deepEqual(validateAgainstSchema(data, schema, schema), [], `${cli}/${name}`);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 8, `fixture が見つかっていない (checked=${checked})`);
 });

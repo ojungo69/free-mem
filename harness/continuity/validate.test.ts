@@ -208,3 +208,57 @@ test("$ref に併記した兄弟キーワードも評価する（draft 2020-12�
   // $ref 側で落ちる場合も両方報告する
   assert.ok(validateAgainstSchema(1, schema, ROOT).some((i) => /expected type string/.test(i.message)));
 });
+
+// --- /code-review の指摘（PR #18）で塞いだ穴の回帰テスト ---
+
+test("__proto__ という名前のデータキーも additionalProperties: false で弾かれる", () => {
+  const schema = { type: "object", additionalProperties: false, properties: { role: { type: "string" } } };
+  const value = JSON.parse('{"role":"primary","__proto__":{"smuggled":"payload"}}');
+  const issues = validateAgainstSchema(value, schema, ROOT);
+  assert.ok(issues.some((i) => i.message === "unknown property: __proto__"));
+});
+
+test("循環 $ref はスタックオーバーフローでなく診断可能なエラーにする", () => {
+  const root: JsonSchemaDocument = { $defs: { Loop: { $ref: "#/$defs/Loop" } } };
+  assert.throws(() => validateAgainstSchema("x", { $ref: "#/$defs/Loop" }, root), /circular \$ref/);
+});
+
+test("NaN は minimum/maximum を素通りしない", () => {
+  const issues = validateAgainstSchema(NaN, { type: "number", minimum: 0, maximum: 1 }, ROOT);
+  assert.ok(issues.some((i) => /non-finite number/.test(i.message)));
+  assert.deepEqual(validateAgainstSchema(0.5, { type: "number", minimum: 0, maximum: 1 }, ROOT), []);
+});
+
+test("const / enum の比較はキー順に依存しない", () => {
+  assert.deepEqual(validateAgainstSchema({ b: 2, a: 1 }, { const: { a: 1, b: 2 } }, ROOT), []);
+  assert.equal(validateAgainstSchema({ a: 1 }, { const: { a: 1, b: 2 } }, ROOT).length, 1);
+  assert.deepEqual(validateAgainstSchema({ b: 2, a: 1 }, { enum: [{ a: 1, b: 2 }] }, ROOT), []);
+});
+
+test("if / then / else を評価する", () => {
+  const schema = {
+    type: "object",
+    properties: { capability: { type: "string" }, sourceEvents: { type: "array" } },
+    if: { required: ["capability"], properties: { capability: { const: "synthesized" } } },
+    then: { required: ["sourceEvents"], properties: { sourceEvents: { minItems: 1 } } },
+    else: { required: ["capability"] },
+  };
+  // if 成立 → then が効く
+  assert.ok(
+    validateAgainstSchema({ capability: "synthesized" }, schema, ROOT).some((i) =>
+      /missing required property: sourceEvents/.test(i.message),
+    ),
+  );
+  assert.deepEqual(
+    validateAgainstSchema({ capability: "synthesized", sourceEvents: ["x"] }, schema, ROOT),
+    [],
+  );
+  // if 不成立 → else が効く。if 自体の不一致は issue にしない
+  assert.ok(validateAgainstSchema({}, schema, ROOT).some((i) => /missing required property: capability/.test(i.message)));
+});
+
+test("sparse array の hole を JSON 妥当性検査で見逃さない", () => {
+  // JSON.stringify は hole を null にするため「検証した形」と「保存する形」がずれる
+  const issues = findNonJsonValues([1, , 3]);
+  assert.ok(issues.some((i) => /non-JSON value of type undefined/.test(i.message)));
+});

@@ -24,6 +24,9 @@ const EVENT_KIND_SET = new Set<string>(EVENT_KINDS);
 const TOOL_FAILURE_PHASE_SET = new Set<string>(TOOL_FAILURE_PHASES);
 const CLI_SET = new Set(["claude", "codex"]);
 
+// 高位 cell の強さ。後勝ちで降格させないための順序（capture[kind] の native>synthesized と同じ考え）
+const CAPABILITY_STRENGTH: Record<string, number> = { unsupported: 0, synthesized: 1, native: 2 };
+
 function fail(msg: string): never {
   console.error(msg);
   process.exit(1);
@@ -112,19 +115,18 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
     errs.push("limitations items must be strings");
   }
 
-  if ("evidenceHash" in data && (typeof data.evidenceHash !== "string" || !/^[a-f0-9]{64}$/.test(data.evidenceHash))) {
-    errs.push("evidenceHash must be a 64-char lowercase hex SHA-256 if present");
-  }
-
-  // highLevel は matrix の cell に直接載る（= 自動配送の判定入力）。schema で enum まで検査する
-  if ("highLevel" in data) {
-    const hlSchema = SCHEMA.properties?.highLevel;
-    if (!hlSchema) {
-      errs.push("capability.schema.json に highLevel の定義が無い");
-    } else {
-      for (const issue of validateAgainstSchema(data.highLevel, hlSchema, SCHEMA, "highLevel")) {
-        errs.push(`${issue.path}: ${issue.message}`);
-      }
+  // この 2 つは schema 側を正本にして検査する。highLevel は matrix の cell に直接載る
+  // （= 自動配送の判定入力）ので enum まで見る必要があり、evidenceHash は同じ正規表現を
+  // 2 箇所に書くと片方だけ古くなるため
+  for (const key of ["evidenceHash", "highLevel"] as const) {
+    if (!(key in data)) continue;
+    const sub = SCHEMA.properties?.[key];
+    if (!sub) {
+      errs.push(`capability.schema.json に ${key} の定義が無い`);
+      continue;
+    }
+    for (const issue of validateAgainstSchema(data[key], sub, SCHEMA, key)) {
+      errs.push(`${issue.path}: ${issue.message}`);
     }
   }
 
@@ -183,6 +185,13 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
 
   const cli = fixtures[0].cli;
   const nativeVersion = fixtures[0].nativeVersion;
+  // fixtureId は cell 間の「同一の実測か」の照合キー（capability.ts sameEvidenceSource）。
+  // 重複したまま通すと別 run 同士を同一実測と誤認する
+  const seenIds = new Set<string>();
+  for (const f of fixtures) {
+    if (seenIds.has(f.fixtureId)) fail(`duplicate fixtureId: ${f.fixtureId}`);
+    seenIds.add(f.fixtureId);
+  }
   for (const f of fixtures) {
     if (f.cli !== cli) {
       fail(`cli mismatch: ${fixtures[0].fixtureId}=${cli} vs ${f.fixtureId}=${f.cli}`);
@@ -243,19 +252,34 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     }
     for (const l of f.limitations ?? []) fixtureLimitations.push(`[${f.fixtureId}] ${l}`);
 
-    // 高位 cell: fixture が観測結果を書いている場合のみ unknown を上書きする
+    // 高位 cell: fixture が観測結果を書いている場合のみ unknown を上書きする。
+    // capture[kind] 側と同じく後勝ちで降格させず、observed in の記録も統合する
+    // （ファイル名の並び順で先の fixture の provenance が消えるのを防ぐ）
     const hl = f.highLevel;
     if (hl) {
       for (const key of HIGH_LEVEL_KEYS) {
         const v = hl[key];
         if (!v) continue;
+        const prev = capabilities[key];
+        const observedIn = dedupe([
+          ...(prev.value === "unknown" ? [] : prev.limitations),
+          `observed in ${f.fixtureId}`,
+        ]);
+        if (prev.value !== "unknown" && CAPABILITY_STRENGTH[v] < CAPABILITY_STRENGTH[prev.value]) {
+          // 後の fixture のほうが弱い: 値は据え置き、食い違いは caveat として残す
+          capabilities[key] = {
+            ...prev,
+            limitations: dedupe([...observedIn, `conflicting weaker observation ${v} in ${f.fixtureId}`]),
+          };
+          continue;
+        }
         capabilities[key] = {
           value: v,
           sourceEvents: [],
           nativeVersion,
           evidenceKind: "real-cli-e2e",
           verifiedAt: f.capturedAt,
-          limitations: [`observed in ${f.fixtureId}`],
+          limitations: observedIn,
           sourceFixtureId: f.fixtureId,
           evidenceHash: f.evidenceHash ?? null,
         };
