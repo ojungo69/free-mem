@@ -2231,6 +2231,53 @@ test("空白だけの intake authority 値は native を成立させない", () 
   assert.equal(stampIntakeEvidence(startEvent(), { ...INTAKE, exactAgentVersion: spaced }).event.provenance.evidenceKind, "native");
 });
 
+// --- round 13: 受領証の identity 欄と scenarioId の空白（#37） ---
+
+test("欄が空白だけの受領証は native authority の根拠にならない", () => {
+  // §3.1 は受領証を「その認証済み取り込みの receipt」と定義し、evidenceKind を「認証済み
+  // peer identity」から導けと言う。認証できない経路を undefined ではなく空の受領証で表す
+  // daemon では、存在だけを見ると誰も名乗っていない受領証で native が成立する
+  for (const blank of ["", " ", "\t", "\u{200B}", "\u{FEFF}"]) {
+    const label = JSON.stringify(blank);
+    const receiptBlank = stampIntakeEvidence(startEvent(), {
+      ...INTAKE,
+      attestation: { ...ATTESTATION, ingestReceiptId: blank },
+    });
+    assert.equal(receiptBlank.event.provenance.evidenceKind, "synthesized", `receiptId ${label}`);
+    // 認証が成立しない以上、その version についての turn identity の証明も適用できない
+    assert.equal(receiptBlank.event.turnIdSource, "unavailable", `receiptId ${label} turn`);
+    const peerBlank = stampIntakeEvidence(startEvent(), {
+      ...INTAKE,
+      attestation: { ...ATTESTATION, peerIdentityId: blank },
+    });
+    assert.equal(peerBlank.event.provenance.evidenceKind, "synthesized", `peerId ${label}`);
+    assert.equal(peerBlank.event.turnIdSource, "unavailable", `peerId ${label} turn`);
+  }
+  // 対照: 欄が埋まっている受領証は従来どおり native
+  assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
+});
+
+test("空白だけの scenarioId は proven な scenario を名指したことにならない", () => {
+  // §3.1 の proven は `scenarioId` が scenario を naming していることを要求する。matrix 側にも
+  // 空白の entry がある daemon で、caller が同じ空白を名乗ると等値で proven が成立してしまう
+  for (const blank of ["", " ", "\t", "\u{200B}", "\u{FEFF}"]) {
+    const stamped = stampIntakeEvidence(
+      { ...startEvent(), provenance: { ...startEvent().provenance, scenarioId: blank } },
+      { ...INTAKE, provenScenarios: [{ scenarioId: blank, captureMethod: "native_event", channel: "rpc" }] },
+    );
+    assert.equal(stamped.event.provenance.evidenceKind, "synthesized", JSON.stringify(blank));
+  }
+  // 対照: 名前が実体を持つなら従来どおり native（空白を含むだけの id は落とさない）
+  const spaced = "tool call lifecycle";
+  assert.equal(
+    stampIntakeEvidence(
+      { ...startEvent(), provenance: { ...startEvent().provenance, scenarioId: spaced } },
+      { ...INTAKE, provenScenarios: [{ scenarioId: spaced, captureMethod: "native_event", channel: "rpc" }] },
+    ).event.provenance.evidenceKind,
+    "native",
+  );
+});
+
 test("直接呼びの correlateTerminalEvent も別 Agent の terminal を拒否する", () => {
   // 候補の絞り込みは session と lineage しか見ない。還元器と同じ検査を入口でしないと、
   // 別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する

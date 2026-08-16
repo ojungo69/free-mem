@@ -63,9 +63,7 @@ mutate "  if (operation === undefined) {
   }" "  if (operation === undefined) {
     return;
   }" && run "envelope 必須を外す"
-mutate "    attestation !== undefined &&
-    // 空文字同士は" "    true &&
-    // 空文字同士は" && run "intake の attestation 必須を外す"
+mutate "    attestation !== undefined &&" "    true &&" && run "intake の attestation 必須を外す"
 mutate "  const { ingestAttestation: _claimed, ...provenance } = event.provenance;" "  const provenance = event.provenance;" && run "caller の attestation を信じる"
 mutate "    event.sourceAgent === context.expectedSourceAgent &&" "    true &&" && run "sourceAgent の束縛を外す"
 mutate "    !isBlank(context.expectedSourceAgent) &&" "    true &&" && run "空の Agent 名を素通しする"
@@ -215,6 +213,11 @@ mutate "          const recorded = previous.operationStarts.get(pending.operatio
           return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return true;" && run "rule 2 の turn 種別の絞り込みを外す"
 mutate "          return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return recorded === terminalEvent.turnIdSource;" && run "turn 種別の材料が無い候補も落とす"
 mutate "      unresolvedOperationIds: sourceMismatch ? sameTurn.map((pending) => pending.operationId) : openIds," "      unresolvedOperationIds: openIds," && run "種別違いの巻き込み範囲を広げる"
+
+mutate "    !isBlank(attestation.ingestReceiptId) &&" "    true &&" && run "受領証 ID が空でも認証済みとする"
+mutate "    !isBlank(attestation.peerIdentityId) &&" "    true &&" && run "peer identity が空でも認証済みとする"
+mutate "    !isBlank(attestation.ingestReceiptId) &&" "    attestation.ingestReceiptId !== \"\" &&" && run "空白だけの受領証 ID を authority にする"
+mutate "    !isBlank(provenance.scenarioId) &&" "    true &&" && run "空白の scenarioId で proven を成立させる"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 | grep -E '^ℹ (pass|fail) '

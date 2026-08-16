@@ -132,6 +132,12 @@ export function stampIntakeEvidence(
   // その認証にあたる。evidence の証明も turn の証明もこの束縛の上に乗る
   const authenticatedVersion =
     attestation !== undefined &&
+    // §3.1 は受領証を「その認証済み取り込みの receipt」と定義し、evidenceKind を「認証済み
+    // peer identity」から導けと言う。受領証が在ることと、それが peer を指していることは別で、
+    // 認証できない経路を `undefined` ではなく欄が空の受領証で表す daemon では、存在だけを
+    // 見ると「誰も名乗っていない受領証」が native authority の根拠になってしまう
+    !isBlank(attestation.ingestReceiptId) &&
+    !isBlank(attestation.peerIdentityId) &&
     // 空文字同士は「一致」ではなく「どちらも名乗っていない」。素通りさせない
     // 「未設定」の表し方は空文字とは限らない。identity 材料と同じ理由（`isBlank`）で、
     // 空白 1 文字・タブ・U+200B で「無い」を表す daemon でも同じ実害が起きる
@@ -148,6 +154,10 @@ export function stampIntakeEvidence(
     !isBlank(context.activeCapabilityHash) &&
     provenance.capabilityHash === context.activeCapabilityHash &&
     provenance.scenarioId !== undefined &&
+    // §3.1 は `scenarioId` が scenario を「naming」していることを要求する。空白は何も
+    // 名指していないので、matrix 側の空白 entry と等しくなっても proven の根拠にならない。
+    // caller 側を非空白に固定すれば、matrix 側が空白の entry は等値にならないので片側で足りる
+    !isBlank(provenance.scenarioId) &&
     context.provenScenarios.some(
       (scenario) =>
         scenario.scenarioId === provenance.scenarioId &&

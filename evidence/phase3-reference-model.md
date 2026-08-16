@@ -15,9 +15,11 @@
 |---|---|---|
 | `evidenceKind` / `ingestAttestation` は intake が割り当て、caller の値を信頼しない | §3.1 | `stampIntakeEvidence` は caller の `ingestAttestation` を読まずに捨て、認証済み経路の受領証（`IntakeContextV1.attestation`）で置き換える |
 | native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない）。**authority 側の値が空なら一致は成立させない**（`activeCapabilityHash` / `expectedSourceAgent` / `exactAgentVersion`）: capability matrix が未整備の daemon で caller が同じ空値を名乗ると native が成立してしまう。「未設定」の表し方は空文字とは限らないので、identity 材料と同じ `isBlank`（空白・タブ・U+200B・U+FEFF まで）で落とす |
+| 受領証は「その認証済み取り込みの receipt」であって、在ることだけでは認証の証拠にならない | §3.1 | `ingestReceiptId` / `peerIdentityId` が空白だけの受領証は `authenticatedVersion` を成立させない。認証できない経路を `undefined` ではなく**欄が空の受領証**で表す daemon では、存在だけを見ると誰も名乗っていない受領証が native authority の根拠になる。§3.1 は kind を「認証済み peer identity」から導けと言うので、peer を指していない受領証は根拠にならない。`channel` は閉じた union（`rpc` / `spool`）なので空白形が存在せず、検査を足していない |
+| `scenarioId` は proven な scenario を **naming** していなければならない | §3.1 | 空白だけの `scenarioId` は proven の根拠にならない。matrix 側にも空白 entry を持つ daemon で caller が同じ空白を名乗ると等値で proven が成立する。caller 側を非空白に固定すれば matrix 側の空白 entry とは等値にならないので、検査は片側で足りる。`captureMethod` は閉じた union なので同様に検査不要 |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | `event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と一致しなければ native にしない。認証済みの adapter が他 Agent 名義で native authority を得られないようにする |
-| `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす。証明は version に紐づくので、受領証・`sourceAgent`・`sourceAgentVersion` の束縛（`authenticatedVersion`）が成り立たない event にも適用しない。`capabilityHash` は capability matrix にまだ turn identity の cell が無い（#40）ため turn の判定には使わない。`synthesized_monotonic` は adapter 由来なので触らない |
+| `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす。証明は version に紐づくので、受領証・`sourceAgent`・`sourceAgentVersion` の束縛（`authenticatedVersion`）が成り立たない event にも適用しない。`capabilityHash` は capability matrix にまだ turn identity の cell が無い（#40）ため turn の判定には使わない。`synthesized_monotonic` は adapter 由来なので触らない。**この帰結として `activeCapabilityHash` または `scenarioId` だけが空白の場合、`evidenceKind` は `synthesized` に落ちるが `turnIdSource` は `native` のまま残る**（降格は `authenticatedVersion` だけに依存する）。turn identity の cell が matrix に入る（#40）まではこの非対称が正しい振る舞いで、回帰ではない |
 | どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ。**turn 種別（`turnIdSource`）の一致は候補の絞り込みで見る**: 種別は start 側の材料（`operationStarts`。凍結 schema の外・#35）にしかないので、以前は候補を 1 件に絞ってから最後に比べていた。それだと「同じ matchKey・同じ turnId で種別だけ違う」候補が 2 件並んだとき、種別で 1 件に決まるはずのものが `terminal_ambiguous` になって**両方 `unknown` に倒れ、配送鍵も消費される**。絞り込み時に見れば rule 2 の「exactly one open candidate」が成立して閉じられる。ただし**材料がある候補だけ**種別で絞る（復元直後は `operationStarts` が空なので、材料が無いことを「種別が違う」と読むと理由を取り違える。§3.1 は降格の理由を doctor が報告することを求めている）。候補ゼロのときの診断も「turn 同一性が無い」と「種別が違う」で書き分け、`unknown` に倒す相手は種別違いならその候補だけにする |
 | turn scoping を要求する規則は unavailable に fail closed になり、downgrade の理由は doctor が報告する | §3.1 | intake の降格は `turn_identity_downgraded` 診断を返す。`stampIntakeEvidence` の戻り値は `{ event, diagnostics }` |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
@@ -31,7 +33,7 @@
 | 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
 | correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。判定材料は `operationKind`（= 保持側の `toolName`）と `canonicalInputHash` の直接比較で、terminal 側では `operationMatchKey` を比べない（§4.3 の matchKey は入力に「turn when present」を含むので、turn をまたいだ terminal が start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない = turn 両立は rule 2 の要件なので、ここで一致を求めると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じない）。kind は matchKey の入力に含まれる identity の一部だが turn と違って start から terminal の間に変わらないので、rule 1 で選んだ候補にも要求できる（**§4.3 の rule 1 の字義は native ID + session/lineage だけなので、kind で絞るのは harness 判断**。identity の一部であること自体は §4.3 の matchKey 導出が担保している）。ただし `toolName` は凍結 schema の `required` に無いので、checkpoint から復元した状態や別実装が書いた状態では schema 妥当なまま欠けうる。素で比べると健全な terminal が永久に隔離され台帳にも入らない（= adapter が無限再送）ため、兄弟の `canonicalInputHash` と同じく**両方 present のときだけ**比べる。start の再配送側は `operationMatchKey` / `operationKind` / `nativeOperationId` / `canonicalInputHash` / `sessionId` / `turnId` を見る（同じ native ID は同じ呼び出しなので turn も同じはず）。`sessionId` を含めるのは、`operationId` が `eventId` + `matchKey` からの導出で session を含まず、`assertSameScope` も lineage と Agent しか束縛せず、状態が session を持たない（lineage は session をまたぐ）ため、ここで比べないと誰も比べないから。`OperationCorrelationV1` の `required` なので任意欄と違って両方 present ガードは要らない。`turnId` も同じく誰も比べていなかった（§4.3 は matchKey の入力に「turn when present」を含むので、正しく導出された matchKey なら turn が違えば matchKey も違うが、導出は wire 越しに検証できない）。記録された turn は rule 2 の候補選び（`eligible`）が使うので、古い turn のまま重複として台帳に入れると、その operation は本来の turn の terminal で閉じられず `terminal_unmatched` で `unknown` に倒れる。`turnId` は `required` に無く `turnIdSource: unavailable` では正当に不在なので、こちらは両方 present のときだけ比べる。start 側の `turnIdSource` は凍結 schema の外（`operationStarts`。#35）にあり、復元直後は空でちょうど必要なときに比べられないので、識別材料には含めない。**隔離するのは候補が全件衝突する場合だけ**にする: §4.3 どおりに matchKey を導出しない adapter では同じ matchKey で input hash が違う pending が並びうるので、identity が衝突する候補は「この terminal のものである可能性」から外すだけにして、他の候補の照合を妨げない。兄弟の identity を根拠に隔離すると live な operation が永久に閉じない。**免除ではなく絞り込みにする**のが要点で、「互換な候補が 1 件でもあれば全体を免除する」形にすると、確定済みの互換候補が囮になって衝突する open な候補に terminal が付く（確定済み A（hash A）＋ open な B（hash B）に A の terminal を再配送すると、B が診断ゼロで `succeeded` になる）。以降の open 選択・確定済み成否の照合はすべて互換な候補だけを見る。**terminal が識別材料を省いた場合は「衝突しない」ではなく「照合できない」**: 両方 present ガードは復元耐性のためにあるが、そのままだと `canonicalInputHash` を省くだけで検査を無効化でき、同じ matchKey の別 operation を閉じられる（省略は wire 側の自由なので攻撃者が選べる経路）。記録側が持つ欄を terminal が省いていたら適用せず、`terminal_identity_unverifiable` で候補を `unknown` に倒す（隔離ではないので台帳には入り、後から届いた本物の terminal がそのまま閉じられる）。`toolName` 側に対称のものが要らないのは、`operationKind` が envelope の必須欄で空も許さないため terminal から省けないから。**ただし発火は互換な候補が 2 件以上あるときに限る**: `canonicalInputHash` は凍結 envelope の任意欄（§3.1）なので省略自体は schema 妥当で、§4.3 が terminal に課すのは「non-conflicting な payload/source hash」＝衝突しないことであって不在は衝突ではない。§4.3 の matchKey は canonical input hash を入力に含むので、仕様どおりに導出する adapter では hash 違いの兄弟はそもそも候補に並ばず、候補が 1 件なら省略で付け替えられる相手が居ない（照合権限は rule 1 = `nativeOperationId`、rule 2 = matchKey + 互換な turn/kind が既に一意に決めている）。素で発火させると「terminal は入力ではなく結果なので hash を載せない」adapter の terminal が 1 通残らず閉じなくなる。候補が 2 件以上並ぶのは matchKey を仕様どおりに導出しない adapter だけで、そこでは hash が唯一の弁別子なので省略された時点で倒す。**判定の位置は成否矛盾検査より後**にする: 前に置くと、確定済みの候補に矛盾する terminal が hash を省くだけで隔離（台帳を消費しないので訂正版が後から効く）を回避して照合不能（台帳を消費する）に化け、訂正版の再配送が重複 no-op として捨てられる |
 | 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる）。矛盾は照合の成否と無関係な event 自身の性質なので、**照合前に判定して全経路（隔離・unmatched・適用）で出す**。照合できた場合しか出さないと、同じ壊れた adapter でも operation が既に閉じているときだけ `terminal_already_applied` に埋もれて見えなくなる |
-| rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する。照合は候補を 1 件に絞ってから行う（絞る前に種別を比べると、`operationStarts` が空の復元直後に「材料が無い」を「turn 同一性が無い」と報告してしまい、§3.1 が求める降格理由の報告が事実と食い違う） |
+| rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する。**照合は候補の絞り込み時に行い、材料がある候補だけを対象にする**（上の行に詳細）。材料が無い候補を落とさないのは、`operationStarts` が空になるのが復元直後だけではないため: 側索引は**退避時にも delete される**ので、live な候補でも `recorded === undefined` になりうる。どちらの経路でも「材料が無いものは種別違いとして落とさない」で一貫しており、材料が無い候補は rule 1 経由なら `terminal_order_unverifiable` に落ちるので誤って閉じることはない |
 | 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない。配送 ID の衝突判定も還元器と同じで、同じ配送 ID で source hash が違う放棄 event は `outcome: "quarantined"` にする（重複として黙って捨てると放棄が落ちて operation が `started` のまま残る）。放棄の kind は還元器の入口でも弾く（`reduceTaskWorkState` に渡すと operation envelope を持たないので汎用 commit に落ち、状態を変えないまま台帳の鍵だけ消費する。その台帳を渡された `finalizeAbandonedState` は重複として捨てるので、放棄が永久に適用されず operation が `started` のまま残る）。放棄するのはその event の session の operation だけ（lineage は session をまたいで続く。§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つので、絞らないと遅れて届いた旧 session の `session_ended` が resume 先の live な operation を潰す）。還元器の terminal 経路と同じく**黙って間引かない**: `sourceEventIds` が上限の operation は status だけ `unknown` に変わって、そう変えた理由の event が状態から落ちるので、`AbandonmentResultV1.diagnostics` に `source_events_truncated` を出す |
 | 閉じられなかった terminal は unmatched evidence として保つ | §4.3 | `unknown` にした候補の `sourceEventIds` にその terminal を足す。状態が変わった理由を状態から辿れるようにする（放棄経路と扱いを揃える） |
 | 状態は lineage ごとに 1 つ | §4 | `assertSameScope` は lineage に加えて `sourceAgent` も束縛する。`OperationCorrelationV1` は Agent を持たず scope が sessionId + taskLineageId だけなので、束縛しないと別 Agent の terminal が同じ session に居る他 Agent の operation を閉じられる |
@@ -372,12 +374,12 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**88 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 88 件（黙って飛ばされた変異ゼロ）、復元後は 108/108 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**92 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 92 件（黙って飛ばされた変異ゼロ）、復元後は 110/110 green。
 
 kill 率より先に**実行件数**を見ること。変異はソース中の文字列アンカーで当てるので、実装を直すと
 `assert old in s` が落ちて `&&` が短絡し、その変異は**出力に何も出ないまま黙って飛ばされる**
-（このラウンドだけで 9 件が外れた）。この突き合わせはスクリプト自身が行うようにした: 末尾で
+（round 12 で 3 件、round 13 で 1 件が外れ、いずれもこの自己検査が検出した）。この突き合わせはスクリプト自身が行うようにした: 末尾で
 `実行 N / 期待 M、生存 K` を出し、**M ≠ N（黙って飛ばされた）か K > 0（生存した）なら非ゼロで
 終わる**ので、kill 率を人が読んで判断する必要がない。期待件数はスクリプト自身の `run` ラベル数
 から数える。変異でソースが壊れて test が 1 つも走らなかった場合も、そのゲートを検証できていない
@@ -401,8 +403,8 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | caller の attestation を信じる | 1 |
 | sourceAgent の束縛を外す | 2 |
 | 空の Agent 名を素通しする | 2 |
-| native turn の証明要求を外す | 3 |
-| turn 証明の version 束縛を外す | 2 |
+| native turn の証明要求を外す | 4 |
+| turn 証明の version 束縛を外す | 3 |
 | turn 降格を黙って行う | 1 |
 | turn 同一性の不変条件を外す | 1 |
 | state への Agent 束縛を外す | 2 |
@@ -461,8 +463,8 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空文字の eventId を素通しする | 2 |
 | sensitivity の下限に直前の集約値を使わない | 1 |
 | 空文字の sessionId を素通しする | 2 |
-| 空白文字を identity 材料として通す | 2 |
-| 書式制御文字だけの identity 材料を通す | 2 |
+| 空白文字を identity 材料として通す | 4 |
+| 書式制御文字だけの identity 材料を通す | 4 |
 | 空の operationMatchKey / operationKind を素通しする | 2 |
 | open の選択を identity 互換に絞らない | 1 |
 | canonicalInputHash の省略を照合可能として扱う | 1 |
@@ -481,6 +483,10 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | rule 2 の turn 種別の絞り込みを外す | 2 |
 | turn 種別の材料が無い候補も落とす | 1 |
 | 種別違いの巻き込み範囲を広げる | 1 |
+| 受領証 ID が空でも認証済みとする | 1 |
+| peer identity が空でも認証済みとする | 1 |
+| 空白だけの受領証 ID を authority にする | 1 |
+| 空白の scenarioId で proven を成立させる | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
