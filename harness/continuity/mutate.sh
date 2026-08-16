@@ -21,13 +21,24 @@ BAK=$(mktemp)
 trap 'cp "$BAK" "$SRC"; rm -f "$BAK"' EXIT
 cp "$SRC" "$BAK"
 
+EXECUTED=0
+SURVIVED=0
+
 run() {
   local label="$1"
   local out
   out=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1)
   local failed
   failed=$(printf '%s' "$out" | grep -E '^# fail |^ℹ fail ' | tail -1)
-  printf '%-46s %s\n' "$label" "$failed"
+  local n
+  n=$(printf '%s' "$failed" | grep -oE '[0-9]+$')
+  printf '%-46s %s\n' "$label" "${failed:-<test が走らなかった>}"
+  EXECUTED=$((EXECUTED + 1))
+  # 件数が取れないのは変異でソースが壊れて test が 1 つも走らなかった場合。
+  # そのゲートを検証できていない点は生存と同じなので同じ扱いにする
+  if [ -z "$n" ] || [ "$n" -eq 0 ]; then
+    SURVIVED=$((SURVIVED + 1))
+  fi
   cp "$BAK" "$SRC"
 }
 
@@ -174,10 +185,6 @@ mutate "    if (contradicted !== undefined) {" "    if (false) {" && run "確定
 mutate "      incoming === \"unknown\" || compatible.some((pending) => pending.status === incoming)" "      false" && run "成否を主張しない terminal も矛盾扱いにする"
 mutate "      incoming === \"unknown\" || compatible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\"" && run "成否が一致する兄弟の検査を外す"
 
-cp "$BAK" "$SRC"
-echo "--- 復元後 ---"
-node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 | grep -E '^ℹ (pass|fail) '
-
 mutate "  if (ABANDONMENT_EVENT_KINDS.has(event.kind)) {" "  if (false) {" && run "放棄 kind を還元器に通す"
 mutate "  if (event.turnId !== undefined && isBlank(event.turnId)) {" "  if (false) {" && run "空文字の turnId を素通しする"
 mutate "  if (isBlank(event.eventId)) {" "  if (false) {" && run "空文字の eventId を素通しする"
@@ -200,3 +207,18 @@ mutate "        (existing.correlation.turnId !== undefined &&
 mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.find(identityUnverifiable);" && run "候補 1 件でも照合不能ゲートを発火させる"
 mutate "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 2 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの候補数を 1 件ずらす"
 mutate "  if (open.length === 0) {" "  if (open.length === 0 && compatible.find(identityUnverifiable) === undefined) {" && run "照合不能を成否矛盾検査より先に判定する"
+
+cp "$BAK" "$SRC"
+echo "--- 復元後 ---"
+node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 | grep -E '^ℹ (pass|fail) '
+
+# 集計は自己申告にしない。生存（fail 0）と、アンカーが外れて `&&` が短絡し黙って飛ばされた変異の
+# 両方を数え、どちらかがあれば非ゼロで終わる。期待件数はこのスクリプト自身の `run` ラベル数から
+# 数える（末尾の grep -v は、この数え方を説明している冒頭のコメント行自身を除くため）。
+echo "--- 集計 ---"
+EXPECTED=$(grep -oP '&& run "\K[^"]+' "$0" | grep -v '^\\K' | wc -l)
+printf '実行 %d / 期待 %d、生存 %d\n' "$EXECUTED" "$EXPECTED" "$SURVIVED"
+if [ "$EXECUTED" -ne "$EXPECTED" ] || [ "$SURVIVED" -ne 0 ]; then
+  echo "変異テスト失敗: 生存した変異か、黙って飛ばされた変異がある" >&2
+  exit 1
+fi
