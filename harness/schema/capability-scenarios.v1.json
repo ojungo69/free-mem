@@ -1,0 +1,83 @@
+{
+  "manifestVersion": "1",
+  "manifestHash": "8b740f26b2ddf732d2817a84d87596588f4757a08245e277d27945fc402345fa",
+  "scenarios": [
+    {
+      "scenarioId": "claimed-prompt-gate-delivery",
+      "title": "claimed prompt-gate delivery",
+      "appliesToAgents": [
+        "claude",
+        "codex"
+      ],
+      "requiredFor": [
+        "tier_a"
+      ]
+    },
+    {
+      "scenarioId": "compact-persistence-fallback",
+      "title": "compact persistence/fallback",
+      "appliesToAgents": [
+        "claude",
+        "codex"
+      ],
+      "requiredFor": [
+        "tier_a"
+      ]
+    },
+    {
+      "scenarioId": "crash-restart-semantics",
+      "title": "crash/restart semantics",
+      "appliesToAgents": [
+        "claude",
+        "codex"
+      ],
+      "requiredFor": [
+        "tier_a"
+      ]
+    },
+    {
+      "scenarioId": "exactly-one-compact-restore",
+      "title": "exactly-one compact restore",
+      "appliesToAgents": [
+        "claude",
+        "codex"
+      ],
+      "requiredFor": [
+        "tier_a"
+      ]
+    },
+    {
+      "scenarioId": "hint-delivery",
+      "title": "hint delivery",
+      "appliesToAgents": [
+        "claude",
+        "codex"
+      ],
+      "requiredFor": [
+        "tier_a"
+      ]
+    },
+    {
+      "scenarioId": "retry-dedupe",
+      "title": "retry dedupe",
+      "appliesToAgents": [
+        "claude",
+        "codex"
+      ],
+      "requiredFor": [
+        "tier_a"
+      ]
+    },
+    {
+      "scenarioId": "size-malformed-behavior",
+      "title": "size/malformed behavior",
+      "appliesToAgents": [
+        "claude",
+        "codex"
+      ],
+      "requiredFor": [
+        "tier_a"
+      ]
+    }
+  ]
+}

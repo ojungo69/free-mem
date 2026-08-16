@@ -1,0 +1,2649 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-memory.local/harness/schema/continuity.schema.json",
+  "$defs": {
+    "IsoTimestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$"
+    },
+    "TaskBindingRole": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "side",
+        "subagent"
+      ]
+    },
+    "BoundaryEvidenceKind": {
+      "type": "string",
+      "enum": [
+        "explicit_user",
+        "native_fork",
+        "accepted_resume",
+        "agent_proposal",
+        "deterministic_shift"
+      ]
+    },
+    "TaskBoundaryProposalState": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "confirmed",
+        "rejected"
+      ]
+    },
+    "BoundaryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sourceEventIds",
+        "proposedAt"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/BoundaryEvidenceKind"
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "proposedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "confidence": {
+          "type": "number"
+        }
+      }
+    },
+    "SessionTaskBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "taskLineageId",
+        "role",
+        "boundAt",
+        "boundaryEvidence",
+        "revision"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "role": {
+          "$ref": "#/$defs/TaskBindingRole"
+        },
+        "boundAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "unboundAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "boundaryEvidence": {
+          "$ref": "#/$defs/BoundaryEvidence"
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "TaskBoundaryProposalV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposalId",
+        "sessionId",
+        "currentTaskLineageId",
+        "proposedTaskLineageId",
+        "proposedRole",
+        "evidence",
+        "state",
+        "revision"
+      ],
+      "properties": {
+        "proposalId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "currentTaskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "proposedTaskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "proposedRole": {
+          "$ref": "#/$defs/TaskBindingRole"
+        },
+        "evidence": {
+          "$ref": "#/$defs/BoundaryEvidence"
+        },
+        "state": {
+          "$ref": "#/$defs/TaskBoundaryProposalState"
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "TaskBoundaryDecisionSource": {
+      "type": "string",
+      "enum": [
+        "user",
+        "native_runtime"
+      ]
+    },
+    "TaskBoundaryDecisionV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "proposalId",
+            "expectedProposalRevision",
+            "expectedBindingRevision",
+            "source",
+            "sourceEventIds"
+          ],
+          "properties": {
+            "kind": {
+              "const": "confirm"
+            },
+            "proposalId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "expectedProposalRevision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "expectedBindingRevision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "source": {
+              "$ref": "#/$defs/TaskBoundaryDecisionSource"
+            },
+            "sourceEventIds": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string",
+                "maxLength": 8192
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "proposalId",
+            "expectedProposalRevision",
+            "expectedBindingRevision",
+            "source",
+            "sourceEventIds"
+          ],
+          "properties": {
+            "kind": {
+              "const": "reject"
+            },
+            "proposalId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "expectedProposalRevision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "expectedBindingRevision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "source": {
+              "$ref": "#/$defs/TaskBoundaryDecisionSource"
+            },
+            "sourceEventIds": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string",
+                "maxLength": 8192
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TaskBoundaryAuthorityContextV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceEvents",
+        "agent",
+        "exactAgentVersion",
+        "capabilityHash",
+        "provenScenarioIds"
+      ],
+      "properties": {
+        "sourceEvents": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/NormalizedContinuityEvent"
+          }
+        },
+        "agent": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "exactAgentVersion": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "capabilityHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "provenScenarioIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "userSurfaceAuthority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "surface",
+            "grantedAt"
+          ],
+          "properties": {
+            "surface": {
+              "type": "string",
+              "enum": [
+                "cli",
+                "viewer",
+                "mcp_user_authority"
+              ]
+            },
+            "grantedAt": {
+              "$ref": "#/$defs/IsoTimestamp"
+            }
+          }
+        }
+      }
+    },
+    "JsonPrimitive": {
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 8192
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/JsonPrimitive"
+        },
+        {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "required": [],
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          }
+        }
+      ]
+    },
+    "EvidenceKind": {
+      "type": "string",
+      "enum": [
+        "native",
+        "synthesized",
+        "derived"
+      ]
+    },
+    "Freshness": {
+      "type": "string",
+      "enum": [
+        "current",
+        "stale",
+        "unknown"
+      ]
+    },
+    "Sensitivity": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "private",
+        "secret"
+      ]
+    },
+    "Observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "sourceEventIds",
+        "ingestSeq",
+        "observedAt",
+        "evidenceKind",
+        "confidence",
+        "freshness",
+        "truncated",
+        "sensitivity"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "ingestSeq": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "evidenceKind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        }
+      }
+    },
+    "ContinuityCaptureMethod": {
+      "type": "string",
+      "enum": [
+        "native_event",
+        "hook",
+        "plugin",
+        "transcript_scan",
+        "user_surface"
+      ]
+    },
+    "ContinuityIngestAttestationV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ingestReceiptId",
+        "peerIdentityId",
+        "channel",
+        "attestedAt"
+      ],
+      "properties": {
+        "ingestReceiptId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "peerIdentityId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "rpc",
+            "spool"
+          ]
+        },
+        "attestedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "ContinuityEventProvenanceV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceAgentVersion",
+        "evidenceKind",
+        "captureMethod"
+      ],
+      "properties": {
+        "sourceAgentVersion": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "evidenceKind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "captureMethod": {
+          "$ref": "#/$defs/ContinuityCaptureMethod"
+        },
+        "capabilityHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "scenarioId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "ingestAttestation": {
+          "$ref": "#/$defs/ContinuityIngestAttestationV1"
+        }
+      }
+    },
+    "TurnIdSource": {
+      "type": "string",
+      "enum": [
+        "native",
+        "synthesized_monotonic",
+        "unavailable"
+      ]
+    },
+    "ContinuityOperationPhase": {
+      "type": "string",
+      "enum": [
+        "start",
+        "progress",
+        "terminal"
+      ]
+    },
+    "ContinuityOperationRefV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "operationMatchKey",
+        "operationKind"
+      ],
+      "properties": {
+        "phase": {
+          "$ref": "#/$defs/ContinuityOperationPhase"
+        },
+        "operationMatchKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "operationKind": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "nativeOperationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "canonicalInputHash": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "NormalizedContinuityEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "canonicalFingerprint",
+        "kind",
+        "ingestSeq",
+        "occurredAt",
+        "sessionId",
+        "turnIdSource",
+        "sourceAgent",
+        "provenance",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "adapterDeliveryId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "canonicalFingerprint": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "kind": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "ingestSeq": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "turnId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "turnIdSource": {
+          "$ref": "#/$defs/TurnIdSource"
+        },
+        "sourceAgent": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "provenance": {
+          "$ref": "#/$defs/ContinuityEventProvenanceV1"
+        },
+        "operation": {
+          "$ref": "#/$defs/ContinuityOperationRefV1"
+        },
+        "payload": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "successful": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ObservedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "role",
+        "existsAtObservation",
+        "sourceEventIds",
+        "observedAt",
+        "freshness",
+        "sensitivity"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "active",
+            "modified",
+            "read",
+            "test",
+            "config",
+            "unknown"
+          ]
+        },
+        "contentHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "existsAtObservation": {
+          "type": "boolean"
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        }
+      }
+    },
+    "ObservedCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "commandDisplay",
+        "status",
+        "sourceEventIds",
+        "observedAt",
+        "evidenceKind",
+        "sensitivity"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "commandDisplay": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "cwd": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "unknown"
+          ]
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "evidenceKind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        }
+      }
+    },
+    "ObservedTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "status",
+        "sourceEventIds",
+        "observedAt",
+        "evidenceKind",
+        "sensitivity"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "commandDisplay": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "partial",
+            "unknown"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "evidenceKind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        }
+      }
+    },
+    "OperationCorrelationV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "startEventId",
+        "operationMatchKey",
+        "sessionId",
+        "taskLineageId"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "startEventId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "nativeOperationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "operationMatchKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "turnId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "toolName": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "canonicalInputHash": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "ReplayPolicy": {
+      "type": "string",
+      "enum": [
+        "never_auto",
+        "verify_first",
+        "safe_idempotent"
+      ]
+    },
+    "PendingOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "correlation",
+        "kind",
+        "description",
+        "status",
+        "replayPolicy",
+        "sourceEventIds",
+        "startedAt",
+        "sensitivity"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "correlation": {
+          "$ref": "#/$defs/OperationCorrelationV1"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "command",
+            "file_mutation",
+            "test",
+            "tool",
+            "migration",
+            "external_side_effect",
+            "other"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "started",
+            "succeeded",
+            "failed",
+            "unknown"
+          ]
+        },
+        "replayPolicy": {
+          "$ref": "#/$defs/ReplayPolicy"
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "startedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "terminalAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "verificationHint": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        }
+      }
+    },
+    "RepositoryStateSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositoryId",
+        "workspaceId",
+        "capturedAt"
+      ],
+      "properties": {
+        "repositoryId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "branchKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "worktreeId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "headSha": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "upstreamSha": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "dirtyTreeFingerprint": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "gitStatusSummary": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "capturedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "SemanticResumeNoteV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "completed",
+        "nextActions",
+        "blockers",
+        "unresolvedQuestions",
+        "providerId",
+        "modelId",
+        "promptHash",
+        "generatedFromIngestSeq",
+        "confidence",
+        "sourceEventIds",
+        "sensitivity"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "goal": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "completed": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "currentState": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "nextActions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "unresolvedQuestions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "providerId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "modelId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "promptHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "generatedFromIngestSeq": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        }
+      }
+    },
+    "CanonicalWorkStateV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "taskLineageId",
+        "projectId",
+        "workspaceId",
+        "sourceAgent",
+        "activeFiles",
+        "modifiedFiles",
+        "recentCommands",
+        "recentTests",
+        "pendingOperations",
+        "repositoryState",
+        "sensitivity",
+        "lastIngestSeq",
+        "stateRevision",
+        "updatedAt"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "projectId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "branchKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sourceAgent": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "latestSubstantivePrompt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Observed"
+            },
+            {
+              "properties": {
+                "value": {
+                  "type": "string",
+                  "maxLength": 8192
+                }
+              }
+            }
+          ]
+        },
+        "lastAssistantConclusion": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Observed"
+            },
+            {
+              "properties": {
+                "value": {
+                  "type": "string",
+                  "maxLength": 8192
+                }
+              }
+            }
+          ]
+        },
+        "nativeTodoState": {
+          "$ref": "#/$defs/Observed"
+        },
+        "activeFiles": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/ObservedFile"
+          }
+        },
+        "modifiedFiles": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/ObservedFile"
+          }
+        },
+        "recentCommands": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/ObservedCommand"
+          }
+        },
+        "recentTests": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/ObservedTest"
+          }
+        },
+        "pendingOperations": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/PendingOperation"
+          }
+        },
+        "repositoryState": {
+          "$ref": "#/$defs/RepositoryStateSnapshot"
+        },
+        "semanticResumeNote": {
+          "$ref": "#/$defs/SemanticResumeNoteV1"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        },
+        "lastIngestSeq": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "stateRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "ContinuationCheckpointV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "schemaVersion",
+        "checkpointRevision",
+        "projectId",
+        "workspaceId",
+        "taskLineageId",
+        "sourceSessionId",
+        "sourceAgent",
+        "kind",
+        "workStateRevision",
+        "canonicalState",
+        "memoryWatermark",
+        "contentHash",
+        "sensitivity",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "schemaVersion": {
+          "const": 2
+        },
+        "checkpointRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "projectId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "branchKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sourceSessionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sourceAgent": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "pre_compact",
+            "session_end",
+            "idle",
+            "manual",
+            "crash_recovery"
+          ]
+        },
+        "parentCheckpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "workStateRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "canonicalState": {
+          "$ref": "#/$defs/CanonicalWorkStateV1"
+        },
+        "memoryWatermark": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "contentHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "CheckpointDispositionKind": {
+      "type": "string",
+      "enum": [
+        "created",
+        "accepted",
+        "superseded",
+        "expired",
+        "reopened",
+        "retracted"
+      ]
+    },
+    "CheckpointDispositionEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "checkpointId",
+        "kind",
+        "expectedProjectionRevision",
+        "resultingProjectionRevision",
+        "reasonCode",
+        "source",
+        "createdAt"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "kind": {
+          "$ref": "#/$defs/CheckpointDispositionKind"
+        },
+        "expectedProjectionRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "resultingProjectionRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "relatedCheckpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "relatedDeliveryAttemptId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "reasonCode": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "daemon",
+            "runtime",
+            "user"
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "CheckpointDispositionProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpointId",
+        "state",
+        "projectionRevision",
+        "latestEventId"
+      ],
+      "properties": {
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "open",
+            "accepted",
+            "superseded",
+            "expired",
+            "retracted"
+          ]
+        },
+        "projectionRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "latestEventId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "activeDeliveryAttemptId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "activeClaimFence": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "activeLeaseUntil": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "CheckpointMetadataV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpointId",
+        "checkpointRevision",
+        "taskLineageId",
+        "kind",
+        "sourceSessionId"
+      ],
+      "properties": {
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "pre_compact",
+            "session_end",
+            "idle",
+            "manual",
+            "crash_recovery"
+          ]
+        },
+        "sourceSessionId": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "DispositionAuthorityContextV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "userAuthorizedCrossLineage",
+        "sourceEventIds"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "daemon",
+            "runtime",
+            "user"
+          ]
+        },
+        "userAuthorizedCrossLineage": {
+          "type": "boolean"
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        }
+      }
+    },
+    "DeliveryAttemptState": {
+      "type": "string",
+      "enum": [
+        "claimed",
+        "delivered",
+        "engaged",
+        "accepted",
+        "dismissed",
+        "abandoned"
+      ]
+    },
+    "EngagementEvidenceKind": {
+      "type": "string",
+      "enum": [
+        "explicit_accept",
+        "explicit_continue_prompt",
+        "related_file_action",
+        "related_command",
+        "related_test",
+        "related_todo_progress",
+        "manual_resume_tool"
+      ]
+    },
+    "CheckpointAnchorV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchorId",
+        "checkpointId",
+        "checkpointRevision",
+        "taskLineageId",
+        "kind",
+        "valueHash",
+        "sourceEventIds"
+      ],
+      "properties": {
+        "anchorId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "file",
+            "symbol",
+            "command",
+            "test",
+            "todo",
+            "task_lineage"
+          ]
+        },
+        "valueHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        }
+      }
+    },
+    "EngagementEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "sourceEventIds",
+        "score",
+        "checkpointAnchorIds",
+        "successful",
+        "observedAt"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EngagementEvidenceKind"
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "checkpointAnchorIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "successful": {
+          "type": "boolean"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "ContradictionEvidenceV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contradictionId",
+        "kind",
+        "sourceEventIds",
+        "observedAt"
+      ],
+      "properties": {
+        "contradictionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "explicit_rejection",
+            "new_task_confirmed",
+            "workspace_incompatible",
+            "runtime_invalidated"
+          ]
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "observedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "ContradictionScanRangeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromIngestSeq",
+        "toIngestSeq",
+        "scannedAt"
+      ],
+      "properties": {
+        "fromIngestSeq": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "toIngestSeq": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "scannedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "EngagementEvaluationContextV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceEvents",
+        "checkpointAnchors",
+        "contradictions",
+        "contradictionScan",
+        "destinationTurnId",
+        "destinationTurnIdSource",
+        "destinationAgentVersion",
+        "destinationCapabilityHash",
+        "turnIdentityDisposition",
+        "evaluationStartedAt",
+        "evaluationEndedAt"
+      ],
+      "properties": {
+        "sourceEvents": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/NormalizedContinuityEvent"
+          }
+        },
+        "checkpointAnchors": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/CheckpointAnchorV1"
+          }
+        },
+        "contradictions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/ContradictionEvidenceV1"
+          }
+        },
+        "contradictionScan": {
+          "$ref": "#/$defs/ContradictionScanRangeV1"
+        },
+        "destinationTurnId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "destinationTurnIdSource": {
+          "$ref": "#/$defs/TurnIdSource"
+        },
+        "destinationAgentVersion": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "destinationCapabilityHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "turnIdentityDisposition": {
+          "$ref": "#/$defs/CapabilityTestDisposition"
+        },
+        "evaluationStartedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "evaluationEndedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "CheckpointDeliveryAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attemptId",
+        "checkpointId",
+        "checkpointRevision",
+        "destinationSessionId",
+        "destinationAgent",
+        "state",
+        "claimFence",
+        "leaseUntil",
+        "heartbeatUntil",
+        "engagementEvidence",
+        "createdAt",
+        "revision"
+      ],
+      "properties": {
+        "attemptId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "destinationSessionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "destinationAgent": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "state": {
+          "$ref": "#/$defs/DeliveryAttemptState"
+        },
+        "claimFence": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "leaseUntil": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "heartbeatUntil": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "injectedContentHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "injectionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "engagementEvidence": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/EngagementEvidence"
+          }
+        },
+        "createdAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "deliveredAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "engagedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "acceptedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "dismissedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "abandonedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "DeliveryCommandV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "attemptId",
+            "revision",
+            "fence",
+            "sessionId",
+            "contentHash"
+          ],
+          "properties": {
+            "kind": {
+              "const": "mark_delivered"
+            },
+            "attemptId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "revision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "fence": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "contentHash": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "attemptId",
+            "revision",
+            "fence",
+            "sessionId",
+            "evidence"
+          ],
+          "properties": {
+            "kind": {
+              "const": "record_engagement"
+            },
+            "attemptId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "revision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "fence": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "evidence": {
+              "$ref": "#/$defs/EngagementEvidence"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "attemptId",
+            "revision",
+            "fence",
+            "sessionId",
+            "projectionRevision"
+          ],
+          "properties": {
+            "kind": {
+              "const": "accept"
+            },
+            "attemptId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "revision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "fence": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "projectionRevision": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "attemptId",
+            "revision",
+            "fence",
+            "sessionId"
+          ],
+          "properties": {
+            "kind": {
+              "const": "dismiss"
+            },
+            "attemptId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "revision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "fence": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "attemptId",
+            "revision",
+            "fence",
+            "sessionId",
+            "reason"
+          ],
+          "properties": {
+            "kind": {
+              "const": "abandon"
+            },
+            "attemptId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "revision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "fence": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "attemptId",
+            "revision",
+            "fence",
+            "sessionId",
+            "requestedLeaseUntil"
+          ],
+          "properties": {
+            "kind": {
+              "const": "renew_lease"
+            },
+            "attemptId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "revision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "fence": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "requestedLeaseUntil": {
+              "$ref": "#/$defs/IsoTimestamp"
+            }
+          }
+        }
+      ]
+    },
+    "ResumeSuppressionEntryV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpointId",
+        "sessionId",
+        "reason",
+        "attemptId",
+        "createdAt"
+      ],
+      "properties": {
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "reason": {
+          "const": "dismissed"
+        },
+        "attemptId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "createdAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "ReconciliationStatus": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "fast_forward_compatible",
+        "stale_but_usable",
+        "requires_verification",
+        "incompatible"
+      ]
+    },
+    "ResumeDeliveryStrategy": {
+      "type": "string",
+      "enum": [
+        "native_prompt_gate",
+        "session_start_full",
+        "next_prompt_synthesized",
+        "manual_only"
+      ]
+    },
+    "ResumeMode": {
+      "type": "string",
+      "enum": [
+        "smart",
+        "always",
+        "hint_only",
+        "compact_only",
+        "off"
+      ]
+    },
+    "ResumeDeliveryBoundary": {
+      "type": "string",
+      "enum": [
+        "session_start",
+        "first_user_prompt",
+        "post_compact",
+        "manual"
+      ]
+    },
+    "ResumeCapsuleV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "injectionId",
+        "checkpointId",
+        "checkpointRevision",
+        "taskLineageId",
+        "sourceAgent",
+        "ageSeconds",
+        "reconciliation",
+        "workState",
+        "selectedMemoryIds",
+        "warnings"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "injectionId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sourceAgent": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "ageSeconds": {
+          "type": "number"
+        },
+        "reconciliation": {
+          "$ref": "#/$defs/ReconciliationStatus"
+        },
+        "workState": {
+          "$ref": "#/$defs/CanonicalWorkStateV1"
+        },
+        "selectedMemoryIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        }
+      }
+    },
+    "ResumeThresholdProfileV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileId",
+        "datasetVersion",
+        "fullResumeMinScore",
+        "hintMinScore",
+        "ambiguityMargin",
+        "maxCandidates"
+      ],
+      "properties": {
+        "profileId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "datasetVersion": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "fullResumeMinScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "hintMinScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ambiguityMargin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maxCandidates": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        }
+      }
+    },
+    "ResumeDecisionAction": {
+      "type": "string",
+      "enum": [
+        "none",
+        "hint",
+        "candidate_list",
+        "verification_capsule",
+        "full_capsule",
+        "manual_only"
+      ]
+    },
+    "RankedResumeCandidateV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rank",
+        "checkpointId",
+        "checkpointRevision",
+        "taskLineageId",
+        "score",
+        "reconciliationStatus",
+        "reasonCodes",
+        "ageSeconds"
+      ],
+      "properties": {
+        "rank": {
+          "type": "number"
+        },
+        "checkpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "checkpointRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "taskLineageId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reconciliationStatus": {
+          "$ref": "#/$defs/ReconciliationStatus"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "ageSeconds": {
+          "type": "number"
+        }
+      }
+    },
+    "ResumeSelectionDecisionV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "boundary",
+        "datasetVersion",
+        "thresholdProfileId",
+        "capabilityHash",
+        "strategy",
+        "mode",
+        "action",
+        "rankedCandidates",
+        "confidenceBand",
+        "decisionReasonCodes"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "boundary": {
+          "$ref": "#/$defs/ResumeDeliveryBoundary"
+        },
+        "datasetVersion": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "thresholdProfileId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "capabilityHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "strategy": {
+          "$ref": "#/$defs/ResumeDeliveryStrategy"
+        },
+        "mode": {
+          "$ref": "#/$defs/ResumeMode"
+        },
+        "action": {
+          "$ref": "#/$defs/ResumeDecisionAction"
+        },
+        "selectedCheckpointId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "rankedCandidates": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/RankedResumeCandidateV1"
+          }
+        },
+        "topScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "topMargin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confidenceBand": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "none"
+          ]
+        },
+        "decisionReasonCodes": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "fallbackReasonCode": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "reconciliationReportHash": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "DerivedArtifactKind": {
+      "type": "string",
+      "enum": [
+        "summary",
+        "semantic_resume_note",
+        "checkpoint_semantic_note",
+        "consolidated_memory",
+        "embedding_item",
+        "context_pack_cache",
+        "cloud_projection"
+      ]
+    },
+    "DerivedArtifactStatus": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "invalidated",
+        "rebuilding"
+      ]
+    },
+    "DerivedArtifactSourceRefV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "memoryId",
+            "memoryRevision",
+            "contentHash"
+          ],
+          "properties": {
+            "kind": {
+              "const": "memory"
+            },
+            "memoryId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "memoryRevision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "contentHash": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "artifactId",
+            "artifactKind",
+            "artifactRevision",
+            "contentHash"
+          ],
+          "properties": {
+            "kind": {
+              "const": "artifact"
+            },
+            "artifactId": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "artifactKind": {
+              "$ref": "#/$defs/DerivedArtifactKind"
+            },
+            "artifactRevision": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "contentHash": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          }
+        }
+      ]
+    },
+    "DerivedArtifactDependencyV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "artifactKind",
+        "artifactRevision",
+        "sources",
+        "baseMemoryClosure",
+        "sourceEventIds"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "artifactKind": {
+          "$ref": "#/$defs/DerivedArtifactKind"
+        },
+        "artifactRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/DerivedArtifactSourceRefV1"
+          }
+        },
+        "baseMemoryClosure": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "memoryId",
+              "memoryRevision",
+              "contentHash"
+            ],
+            "properties": {
+              "memoryId": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "memoryRevision": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "contentHash": {
+                "type": "string",
+                "maxLength": 8192
+              }
+            }
+          }
+        },
+        "sourceEventIds": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "generationId": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      }
+    },
+    "DerivedArtifactInvalidationEventV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "artifactId",
+        "artifactKind",
+        "expectedArtifactRevision",
+        "sourceMemoryId",
+        "invalidatingMemoryRevision",
+        "hopDepth",
+        "reason",
+        "resultingStatus",
+        "idempotencyKey",
+        "createdAt"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "artifactId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "artifactKind": {
+          "$ref": "#/$defs/DerivedArtifactKind"
+        },
+        "expectedArtifactRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "sourceMemoryId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "invalidatingMemoryRevision": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "viaArtifactId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "hopDepth": {
+          "type": "number"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "memory_updated",
+            "memory_superseded",
+            "memory_retracted",
+            "memory_invalidated",
+            "source_artifact_invalidated"
+          ]
+        },
+        "resultingStatus": {
+          "type": "string",
+          "enum": [
+            "stale",
+            "invalidated"
+          ]
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "createdAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        }
+      }
+    },
+    "CapabilityTestDisposition": {
+      "type": "string",
+      "enum": [
+        "not_run",
+        "proven",
+        "unsupported",
+        "unknown_after_test"
+      ]
+    },
+    "ContractPreflightState": {
+      "type": "string",
+      "enum": [
+        "incomplete",
+        "complete"
+      ]
+    },
+    "RequiredCapabilityScenarioV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioId",
+        "title",
+        "appliesToAgents",
+        "requiredFor"
+      ],
+      "properties": {
+        "scenarioId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "appliesToAgents": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "requiredFor": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "enum": [
+              "generic_phase3",
+              "automatic_strategy",
+              "tier_a"
+            ]
+          }
+        }
+      }
+    },
+    "CapabilityScenarioManifestV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestVersion",
+        "manifestHash",
+        "scenarios"
+      ],
+      "properties": {
+        "manifestVersion": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "manifestHash": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "scenarios": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/RequiredCapabilityScenarioV1"
+          }
+        }
+      }
+    }
+  }
+}
