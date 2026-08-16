@@ -2091,3 +2091,32 @@ test("直接呼びの correlateTerminalEvent も envelope の欠落を schema vi
     /operation envelope が無い/,
   );
 });
+
+test("再配送 start が turn を変えたら隔離する", () => {
+  // §4.3 は matchKey の入力に「turn when present」を含むので、正しく導出された matchKey なら
+  // turn が違えば matchKey も違う。導出は wire 越しに検証できないので、記録された turn を
+  // 素通りさせると rule 2 の候補選びが古い turn で絞り、本来の turn の terminal が閉じられない
+  const started = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const moved = reduceTaskWorkState(
+    started,
+    startEvent({ operation: MATCH_KEY_ONLY, turnId: "turn-2", ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.equal(moved.outcome, "quarantined");
+  assert.deepEqual(
+    moved.diagnostics.map((d) => d.code),
+    ["start_conflict"],
+  );
+  assert.equal(moved.snapshot.state.pendingOperations[0]?.correlation.turnId, "turn-1");
+  // `turnId` は OperationCorrelationV1 の required に無く unavailable では正当に不在なので、
+  // 片側だけ持たない再配送は隔離しない（復元で欠けた状態に届いた健全な再配送を殺さない）
+  const unavailable = reduceTaskWorkState(
+    started,
+    startEvent({ operation: MATCH_KEY_ONLY, turnId: undefined, turnIdSource: "unavailable", ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.deepEqual(
+    unavailable.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+});

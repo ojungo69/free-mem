@@ -665,6 +665,16 @@ export function reduceTaskWorkState(
         // 閉じられないまま訂正版も no-op になる。`sessionId` は `OperationCorrelationV1` の
         // required なので、任意欄と違って両方 present ガードは要らない
         existing.correlation.sessionId !== event.sessionId ||
+        // turn も同じ理由で誰も比べていない。§4.3 は matchKey の入力に「turn when present」を
+        // 含むので、正しく導出された matchKey なら turn が違えば上の比較で落ちるが、導出は
+        // wire 越しに検証できない。記録された turn は rule 2 の候補選び（`eligible`）が使うので、
+        // 古い turn のまま重複として台帳に入れると、その operation は本来の turn の terminal で
+        // 閉じられず `terminal_unmatched` で `unknown` に倒れる。`turnId` は
+        // `OperationCorrelationV1` の required に無く、`turnIdSource: unavailable` では正当に
+        // 不在なので、兄弟の任意欄と同じく両方 present のときだけ比べる
+        (existing.correlation.turnId !== undefined &&
+          event.turnId !== undefined &&
+          existing.correlation.turnId !== event.turnId) ||
         // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
         // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない。
         // `toolName` は凍結 schema の required に無いので、checkpoint から復元した状態や
@@ -1055,12 +1065,12 @@ export function correlateTerminalEvent(
   const open = compatible.filter((pending) => pending.status === "started" || pending.status === "unknown");
   // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
   const openIds = open.map((pending) => pending.operationId);
-  const unverifiable = compatible.filter(identityUnverifiable);
-  if (unverifiable.length > 0) {
+  const unverifiable = compatible.find(identityUnverifiable);
+  if (unverifiable !== undefined) {
     return {
       matched: null,
       diagnostic: "terminal_identity_unverifiable",
-      detail: `operation ${(unverifiable[0] as PendingOperation).operationId} は canonicalInputHash を持つのに terminal が省いている`,
+      detail: `operation ${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている`,
       unresolvedOperationIds: openIds,
     };
   }

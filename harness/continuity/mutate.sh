@@ -190,3 +190,9 @@ mutate "    pending.correlation.canonicalInputHash !== undefined && operation.ca
 mutate "        existing.correlation.sessionId !== event.sessionId ||" "        false ||" && run "再配送 start の session 検査を外す"
 mutate "    diagnostics: truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)]," "    diagnostics: []," && run "放棄で落とした証跡を報告しない"
 mutate "  assertOperationEnvelope(terminalEvent);" "" && run "直接呼びの envelope 検査を外す"
+mutate "        (existing.correlation.turnId !== undefined &&
+          event.turnId !== undefined &&
+          existing.correlation.turnId !== event.turnId) ||" "        false ||" && run "再配送 start の turn 検査を外す"
+mutate "        (existing.correlation.turnId !== undefined &&
+          event.turnId !== undefined &&
+          existing.correlation.turnId !== event.turnId) ||" "        (existing.correlation.turnId !== event.turnId) ||" && run "再配送 start の turn 存在ガードを外す"
