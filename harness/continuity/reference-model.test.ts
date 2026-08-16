@@ -1934,3 +1934,160 @@ test("toolName を持たない schema 妥当な pending でも rule 1 の termin
     ["duplicate_operation_start"],
   );
 });
+
+// --- round 9: identity 材料の省略・空白・session（#37） ------------------------
+
+test("identity が一致する確定済み兄弟がいても、衝突する open な候補は閉じない", () => {
+  // rule 2 で matchKey を共有する「確定済み A（hash A）」と「open な B（hash B）」が並ぶとき、
+  // A の terminal を再配送すると「互換な候補が 1 件でもあれば全体を免除する」実装では
+  // B に terminal が付いてしまう。確定済みの互換候補が囮になる形
+  const A = { ...MATCH_KEY_ONLY, canonicalInputHash: "input-hash-A" } as const;
+  const B = { ...MATCH_KEY_ONLY, canonicalInputHash: "input-hash-B" } as const;
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-a", adapterDeliveryId: "d-start-a", canonicalFingerprint: "f-start-a", operation: A, ingestSeq: "11" }),
+    terminalEvent({ eventId: "term-a", adapterDeliveryId: "d-term-a", canonicalFingerprint: "f-term-a", operation: { ...A, phase: "terminal" }, ingestSeq: "12" }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: B, ingestSeq: "13" }),
+  ]);
+  assert.deepEqual(
+    prepared.snapshot.state.pendingOperations.map((p) => p.status),
+    ["succeeded", "started"],
+  );
+  const redelivered = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({ eventId: "term-a2", adapterDeliveryId: "d-term-a2", canonicalFingerprint: "f-term-a2", operation: { ...A, phase: "terminal" }, ingestSeq: "14" }),
+    prepared.ledger,
+  );
+  assert.equal(redelivered.outcome, "applied");
+  assert.deepEqual(
+    redelivered.diagnostics.map((d) => d.code),
+    ["terminal_already_applied"],
+  );
+  // B は起動したまま。囮に引きずられて succeeded にならない
+  assert.deepEqual(
+    redelivered.snapshot.state.pendingOperations.map((p) => p.status),
+    ["succeeded", "started"],
+  );
+});
+
+test("canonicalInputHash を省いた terminal は照合できないものとして扱う", () => {
+  // 両方 present のときだけ比べる衝突検査は復元耐性のためにあるが、そのままだと欄を省くだけで
+  // 検査を無効化できる。省略は wire 側の自由なので、これは攻撃者が選べる経路
+  const started = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const omitted = reduceTaskWorkState(
+    started,
+    terminalEvent({ operation: { ...MATCH_KEY_ONLY, phase: "terminal", canonicalInputHash: undefined } }),
+    new Map(),
+  );
+  assert.equal(omitted.outcome, "applied");
+  assert.deepEqual(
+    omitted.diagnostics.map((d) => d.code),
+    ["terminal_identity_unverifiable"],
+  );
+  // succeeded を名乗られても unknown に倒れる
+  assert.equal(omitted.snapshot.state.pendingOperations[0]?.status, "unknown");
+  // 隔離ではなく台帳に入るので、後から届いた本物の terminal がそのまま閉じられる
+  const real = reduceTaskWorkState(
+    omitted.snapshot,
+    terminalEvent({
+      eventId: "event-fail", adapterDeliveryId: "delivery-fail", canonicalFingerprint: "fingerprint-fail",
+      kind: "tool_failed", successful: false, operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "13",
+    }),
+    omitted.ledger,
+  );
+  assert.deepEqual(real.diagnostics, []);
+  assert.equal(real.snapshot.state.pendingOperations[0]?.status, "failed");
+});
+
+test("記録側も canonicalInputHash を持たないなら省略は照合を妨げない", () => {
+  const noHash = { ...MATCH_KEY_ONLY, canonicalInputHash: undefined } as const;
+  const closed = apply(emptySnapshot(), [
+    startEvent({ operation: noHash }),
+    terminalEvent({ operation: { ...noHash, phase: "terminal" } }),
+  ]);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("空白文字だけの identity 材料は空文字と同じく schema violation", () => {
+  // schema は maxLength しか課さないので、空文字と同じ実害が空白 1 文字でもそのまま起きる。
+  // U+FEFF は JS の `\s` に入るが U+200B は入らないので、書式制御文字も落とす
+  for (const blank of [" ", "\t", "\n", "\u{FEFF}", "\u{200B}"]) {
+    for (const field of ["canonicalFingerprint", "eventId", "sessionId", "turnId"] as const) {
+      assert.throws(
+        () => reduceTaskWorkState(emptySnapshot(), startEvent({ [field]: blank }), new Map()),
+        /§3.1 違反/,
+        `${field} = ${JSON.stringify(blank)}`,
+      );
+    }
+    assert.throws(
+      () => reduceTaskWorkState(emptySnapshot(), startEvent({ operation: { ...START_OPERATION, operationMatchKey: blank } }), new Map()),
+      /§3.1 違反/,
+    );
+  }
+  // 空白を含むだけの値と "0" は identity として妥当なので落とさない
+  assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent({ sessionId: "session 1" }), new Map()).outcome, "applied");
+  assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent({ sessionId: "0" }), new Map()).outcome, "applied");
+  // adapterDeliveryId は「無い」を表せるので落とさず fingerprint に落ちる
+  assert.equal(idempotencyKeyOf(startEvent({ adapterDeliveryId: " " })), "fingerprint-start");
+});
+
+test("再配送 start が session を変えたら隔離する", () => {
+  // operationId は eventId + matchKey から導出するので session を含まない。assertSameScope は
+  // lineage と Agent しか束縛せず、状態は session を持たない。ここで比べないと誰も比べない
+  const started = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const moved = reduceTaskWorkState(
+    started,
+    startEvent({ operation: MATCH_KEY_ONLY, sessionId: "session-2", ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.equal(moved.outcome, "quarantined");
+  assert.deepEqual(
+    moved.diagnostics.map((d) => d.code),
+    ["start_conflict"],
+  );
+  assert.equal(moved.snapshot.state.pendingOperations[0]?.correlation.sessionId, "session-1");
+  // 対照: session が同じ再配送は従来どおり重複
+  const same = reduceTaskWorkState(
+    started,
+    startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.deepEqual(
+    same.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+});
+
+test("放棄で証跡を記録できなかった operation は還元器と同じく報告する", () => {
+  const started = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const pending = started.state.pendingOperations[0];
+  if (pending === undefined) assert.fail("pending が無い");
+  const ended = startEvent({
+    eventId: "event-end", adapterDeliveryId: "delivery-end", canonicalFingerprint: "fingerprint-end",
+    kind: "session_ended", operation: undefined, ingestSeq: "20",
+  });
+  const full = Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, i) => `filler-${i}`);
+  const truncated = finalizeAbandonedState(
+    { ...started.state, pendingOperations: [{ ...pending, sourceEventIds: full }] },
+    ended,
+    new Map(),
+  );
+  assert.equal(truncated.outcome, "applied");
+  assert.equal(truncated.state.pendingOperations[0]?.status, "unknown");
+  assert.deepEqual(
+    truncated.diagnostics.map((d) => d.code),
+    ["source_events_truncated"],
+  );
+  // 対照: 余裕があれば診断は出ず、証跡が入る
+  const recorded = finalizeAbandonedState(started.state, ended, new Map());
+  assert.deepEqual(recorded.diagnostics, []);
+  assert.equal(recorded.state.pendingOperations[0]?.sourceEventIds.includes("event-end"), true);
+});
+
+test("直接呼びの correlateTerminalEvent も envelope の欠落を schema violation にする", () => {
+  // 公開 API なので還元器を経由しない呼び出しがありうる。ここを飛ばすと §3.1 違反が
+  // 「照合できなかっただけ」の terminal_unmatched に化けて、壊れた証跡がそのまま残る
+  assert.throws(
+    () => correlateTerminalEvent(emptySnapshot(), terminalEvent({ operation: undefined })),
+    /operation envelope が無い/,
+  );
+});

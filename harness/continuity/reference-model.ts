@@ -227,14 +227,27 @@ export function assertOperationEnvelope(event: NormalizedContinuityEvent): void 
   assertOperationFields(operation);
 }
 
+/**
+ * identity の材料として「値が無い」と同じもの。schema は `maxLength` しか課さないので、空文字と
+ * 同じ実害が空白 1 文字・タブ・U+FEFF・U+200B でもそのまま起きる（identity が潰れる／「値がある」と
+ * 読まれる）。`unavailable` を空文字で表す adapter は、同じ理由で空白でも表す。
+ * `\s` は U+FEFF まで含むが U+200B 等の書式制御文字は含まないので `\p{Cf}` を足す。
+ */
+function isBlank(value: string): boolean {
+  return /^[\s\p{Cf}]*$/u.test(value);
+}
+
 function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent["operation"]>): void {
-  if (operation.operationMatchKey === "" || operation.operationKind === "") {
+  if (isBlank(operation.operationMatchKey) || isBlank(operation.operationKind)) {
     throw new Error(`§3.1 違反: operation envelope の operationMatchKey / operationKind が空`);
   }
   // schema は任意欄に maxLength しか持たないので空文字が届きうる。空文字を「値がある」と読むと
   // rule 1 が「native ID を持たない operation」同士を全部同じものとして照合してしまう。正規化を
   // 照合側に散らさず、ここで落とす（`undefined` を送れば「無い」と正しく扱われる）
-  if (operation.nativeOperationId === "" || operation.canonicalInputHash === "") {
+  if (
+    (operation.nativeOperationId !== undefined && isBlank(operation.nativeOperationId)) ||
+    (operation.canonicalInputHash !== undefined && isBlank(operation.canonicalInputHash))
+  ) {
     throw new Error(`§3.1 違反: operation envelope の nativeOperationId / canonicalInputHash が空文字`);
   }
 }
@@ -263,13 +276,13 @@ function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent[
  * 無いので schema violation にする。
  */
 function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
-  if (event.canonicalFingerprint === "") {
+  if (isBlank(event.canonicalFingerprint)) {
     throw new Error("§3.1 違反: canonicalFingerprint が空文字（dedupe authority が定まらない）");
   }
-  if (event.eventId === "") {
+  if (isBlank(event.eventId)) {
     throw new Error("§3.1 違反: eventId が空文字（operation identity が導出できない）");
   }
-  if (event.sessionId === "") {
+  if (isBlank(event.sessionId)) {
     throw new Error("§3.1 違反: sessionId が空文字（session scope が定まらない）");
   }
 }
@@ -293,7 +306,7 @@ export function assertTurnIdentity(event: NormalizedContinuityEvent): void {
   // schema は `turnId` に maxLength しか課さないので空文字が届きうる。空文字を「turn がある」と
   // 読むと、§4.3 rule 2 の turn 同一性が空文字同士で成立して無関係な turn の operation を閉じる。
   // すべての unavailable な turn を空文字で表す adapter では、全 operation が 1 つの turn に潰れる
-  if (event.turnId === "") {
+  if (event.turnId !== undefined && isBlank(event.turnId)) {
     throw new Error(
       `§3.1 違反: turnIdSource が ${event.turnIdSource} なのに turnId が空文字（unavailable として送る）`,
     );
@@ -310,8 +323,11 @@ export function assertTurnIdentity(event: NormalizedContinuityEvent): void {
 export function idempotencyKeyOf(event: NormalizedContinuityEvent): string {
   // schema は adapterDeliveryId に minLength を持たないので空文字が届きうる。空文字は
   // 「delivery id が無い」であって「key が空」ではないので、fingerprint へ落とす
-  const delivery = event.adapterDeliveryId === "" ? undefined : event.adapterDeliveryId;
-  const fingerprint = event.canonicalFingerprint === "" ? undefined : event.canonicalFingerprint;
+  const delivery =
+    event.adapterDeliveryId !== undefined && isBlank(event.adapterDeliveryId)
+      ? undefined
+      : event.adapterDeliveryId;
+  const fingerprint = isBlank(event.canonicalFingerprint) ? undefined : event.canonicalFingerprint;
   const key = delivery ?? fingerprint;
   if (key === undefined) {
     throw new Error("idempotency key が無い（adapterDeliveryId も canonicalFingerprint も空）");
@@ -327,7 +343,9 @@ export function idempotencyKeyOf(event: NormalizedContinuityEvent): string {
  */
 function ledgerKeyOf(event: NormalizedContinuityEvent): string {
   const key = idempotencyKeyOf(event);
-  return event.adapterDeliveryId === undefined || event.adapterDeliveryId === "" ? `f:${key}` : `d:${key}`;
+  return event.adapterDeliveryId === undefined || isBlank(event.adapterDeliveryId)
+    ? `f:${key}`
+    : `d:${key}`;
 }
 
 // --- §4.2 状態と revision ---------------------------------------------------
@@ -379,7 +397,7 @@ export interface LedgerEntryV1 {
 }
 
 function sourceHashOf(event: NormalizedContinuityEvent): string | undefined {
-  return event.canonicalFingerprint === "" ? undefined : event.canonicalFingerprint;
+  return isBlank(event.canonicalFingerprint) ? undefined : event.canonicalFingerprint;
 }
 
 function ledgerEntryOf(event: NormalizedContinuityEvent): LedgerEntryV1 {
@@ -411,6 +429,7 @@ export type ContinuityDiagnosticCode =
   | "terminal_conflict"
   | "terminal_out_of_order"
   | "terminal_order_unverifiable"
+  | "terminal_identity_unverifiable"
   | "terminal_already_applied"
   | "terminal_evidence_contradicts"
   | "duplicate_operation_start"
@@ -638,6 +657,14 @@ export function reduceTaskWorkState(
     const startConflict =
       existing !== undefined &&
       (existing.correlation.operationMatchKey !== operation.operationMatchKey ||
+        // 上の検索が operationId 一致（eventId + matchKey から導出）で当たった場合、session は
+        // 一度も比べていない。`assertSameScope` は lineage と Agent しか束縛せず、状態は session を
+        // 持たない（lineage は session をまたぐ）ので、ここで比べないと誰も比べない。
+        // §4.3 の候補選びと放棄はどちらも `correlation.sessionId` で絞るので、別 session を
+        // 名乗る再配送を重複として台帳に入れると、その operation は記録された旧 session でしか
+        // 閉じられないまま訂正版も no-op になる。`sessionId` は `OperationCorrelationV1` の
+        // required なので、任意欄と違って両方 present ガードは要らない
+        existing.correlation.sessionId !== event.sessionId ||
         // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
         // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない。
         // `toolName` は凍結 schema の required に無いので、checkpoint から復元した状態や
@@ -925,6 +952,10 @@ export function correlateTerminalEvent(
   previous: TaskWorkStateSnapshotV1,
   terminalEvent: NormalizedContinuityEvent,
 ): TerminalCorrelationResult {
+  // 公開 API なので還元器を経由しない呼び出しがありうる。envelope の検査を飛ばすと、既知の
+  // terminal kind が envelope 無しで届いたとき §3.1 違反が `terminal_unmatched` という
+  // 「照合できなかっただけ」の結果に化けて、壊れた adapter の証跡がそのまま保存される
+  assertOperationEnvelope(terminalEvent);
   assertTurnIdentity(terminalEvent);
   const operation = terminalEvent.operation;
   if (operation === undefined || operation.phase !== "terminal") {
@@ -959,10 +990,6 @@ export function correlateTerminalEvent(
             pending.correlation.toolName === operation.operationKind,
         );
   const rule = byNativeId.length > 0 ? "native_operation_id" : "match_key";
-
-  const open = candidates.filter((pending) => pending.status === "started" || pending.status === "unknown");
-  // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
-  const openIds = open.map((pending) => pending.operationId);
 
   // 候補が 1 件も無い terminal は「候補はあるが閉じられない」とは別物なので別の code にする。
   // 前者は状態に書ける相手が居ないので隔離、後者は候補を unknown にして台帳へ入れる
@@ -1000,18 +1027,41 @@ export function correlateTerminalEvent(
     (pending.correlation.canonicalInputHash !== undefined &&
       operation.canonicalInputHash !== undefined &&
       pending.correlation.canonicalInputHash !== operation.canonicalInputHash);
+  // 記録側が持つ identity 材料を terminal が省いているのは「衝突しない」ではなく「照合できない」。
+  // 上の両方 present ガードは復元耐性のためにあるが、そのままだと `canonicalInputHash` を
+  // 省くだけで検査を無効化でき、同じ matchKey の別 operation を閉じられる（省略は wire 側の
+  // 自由なので、これは攻撃者が選べる経路）。§4.3 の fail closed どおり、適用せず候補を
+  // `unknown` に倒す。`toolName` 側に対称のものが要らないのは、`operationKind` が envelope の
+  // 必須欄で空も許さない（`assertOperationFields`）ので terminal から省けないため
+  const identityUnverifiable = (pending: PendingOperation): boolean =>
+    pending.correlation.canonicalInputHash !== undefined && operation.canonicalInputHash === undefined;
   // 候補が複数あるとき（§4.3 どおりに matchKey を導出しない adapter では、同じ matchKey で
-  // input hash が違う pending が並びうる）、identity が一致する候補が 1 件でもあれば、この
-  // terminal はその候補のものとして説明がつく。兄弟の identity を根拠に隔離すると、live な
-  // operation が永久に閉じないまま adapter が無限再送する。候補はここでは必ず 1 件以上ある
-  const conflicting = candidates.every(identityConflicts) ? candidates[0] : undefined;
-  if (conflicting !== undefined) {
+  // input hash が違う pending が並びうる）、identity が衝突する候補は「この terminal のもので
+  // ある可能性」から外すだけで、他の候補の照合を妨げない。全件衝突なら隔離、そうでなければ
+  // 以降は互換な候補だけを見る。兄弟の identity を根拠に live な候補まで隔離すると、その
+  // operation が永久に閉じないまま adapter が無限再送する。一方で「互換な兄弟が 1 件でも
+  // あれば全体を免除する」（旧 `every` の後の素通し）だと、確定済みの互換候補が囮になって
+  // 衝突する open な候補に terminal が付く。候補はここでは必ず 1 件以上ある
+  const compatible = candidates.filter((pending) => !identityConflicts(pending));
+  if (compatible.length === 0) {
     return {
       matched: null,
       diagnostic: "terminal_conflict",
-      detail: `operation ${conflicting.operationId} と identity が衝突`,
+      detail: `operation ${(candidates[0] as PendingOperation).operationId} と identity が衝突`,
       // 隔離は状態を一切変えないので、候補も unknown にしない
       unresolvedOperationIds: [],
+    };
+  }
+  const open = compatible.filter((pending) => pending.status === "started" || pending.status === "unknown");
+  // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
+  const openIds = open.map((pending) => pending.operationId);
+  const unverifiable = compatible.filter(identityUnverifiable);
+  if (unverifiable.length > 0) {
+    return {
+      matched: null,
+      diagnostic: "terminal_identity_unverifiable",
+      detail: `operation ${(unverifiable[0] as PendingOperation).operationId} は canonicalInputHash を持つのに terminal が省いている`,
+      unresolvedOperationIds: openIds,
     };
   }
   if (open.length === 0) {
@@ -1028,9 +1078,9 @@ export function correlateTerminalEvent(
     // 一致が無ければどの候補も矛盾している
     const incoming = terminalStatusOf(terminalEvent);
     const contradicted =
-      incoming === "unknown" || candidates.some((pending) => pending.status === incoming)
+      incoming === "unknown" || compatible.some((pending) => pending.status === incoming)
         ? undefined
-        : candidates.find((pending) => pending.status !== incoming);
+        : compatible.find((pending) => pending.status !== incoming);
     if (contradicted !== undefined) {
       return {
         matched: null,
@@ -1122,6 +1172,8 @@ export interface AbandonmentResultV1 {
   outcome: "applied" | "duplicate" | "quarantined";
   state: CanonicalWorkStateV1;
   ledger: IdempotencyLedger;
+  /** 還元器と同じく黙って間引かない。放棄の証跡を記録できなかった operation を出す */
+  diagnostics: readonly ContinuityDiagnosticV1[];
 }
 
 /**
@@ -1161,18 +1213,26 @@ export function finalizeAbandonedState(
     // duplicate と同じだが、outcome を分けて呼び出し側に見えるようにする
     const incoming = sourceHashOf(event);
     if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
-      return { outcome: "quarantined", state, ledger: idempotencyLedger };
+      return { outcome: "quarantined", state, ledger: idempotencyLedger, diagnostics: [] };
     }
-    return { outcome: "duplicate", state, ledger: idempotencyLedger };
+    return { outcome: "duplicate", state, ledger: idempotencyLedger, diagnostics: [] };
   }
   // 放棄するのはその event の session の operation だけ。lineage は session をまたいで続く
   // （§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つ）ので、session を見ないと
   // 遅れて届いた旧 session の session_ended が、resume 先の live な operation まで unknown にする
+  const abandoned = new Set(
+    state.pendingOperations
+      .filter((pending) => pending.status === "started" && pending.correlation.sessionId === event.sessionId)
+      .map((pending) => pending.operationId),
+  );
   const pendingOperations = state.pendingOperations.map((pending) =>
-    pending.status === "started" && pending.correlation.sessionId === event.sessionId
+    abandoned.has(pending.operationId)
       ? withSourceEvent({ ...pending, status: "unknown" as const }, event.eventId)
       : pending,
   );
+  // 還元器の terminal 経路と同じ扱い。`sourceEventIds` が上限の operation は status だけ
+  // `unknown` に変わって、そう変えた理由の event が状態から落ちる。黙って落とさず報告する
+  const truncated = sourceEventsFull(state.pendingOperations, abandoned);
   const content = nextContent(state, event, pendingOperations);
   const next = {
     ...content,
@@ -1182,5 +1242,6 @@ export function finalizeAbandonedState(
     outcome: "applied",
     state: next,
     ledger: new Map(idempotencyLedger).set(key, ledgerEntryOf(event)),
+    diagnostics: truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)],
   };
 }
