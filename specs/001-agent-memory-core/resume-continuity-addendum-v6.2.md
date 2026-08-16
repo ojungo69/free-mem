@@ -97,6 +97,18 @@ type TaskBoundaryDecisionV1 =
       source: TaskBoundaryDecisionSource;
       sourceEventIds: string[];
     };
+
+interface TaskBoundaryAuthorityContextV1 {
+  sourceEvents: NormalizedContinuityEvent[];
+  agent: string;
+  exactAgentVersion: string;
+  capabilityHash: string;
+  provenScenarioIds: string[];
+  userSurfaceAuthority?: {
+    surface: "cli" | "viewer" | "mcp_user_authority";
+    grantedAt: string;
+  };
+}
 ```
 
 ### 2.2 Boundary rules and authority
@@ -107,7 +119,9 @@ type TaskBoundaryDecisionV1 =
 - A **user** may confirm or reject any visible proposal through a user-authoritative surface.
 - `native_runtime` may confirm only a proposal whose evidence kind is `native_fork` or `accepted_resume`, and only when every `sourceEventId` resolves to an exact-version capability-proven native event for that session. It may not confirm `agent_proposal` or `deterministic_shift`.
 - Agent/model output, prompt-derived classifications, semantic similarity, or heuristic goal-shift scores never constitute `native_runtime` confirmation.
-- Confirm validates proposal/session/binding revisions, marks the proposal confirmed, unbinds the old primary, and creates the new primary binding in one daemon transaction.
+- Confirm and reject take `TaskBoundaryAuthorityContextV1`. Decision authority is verified from resolved source events, never from the caller-supplied `source` field. For `source="native_runtime"` the daemon MUST verify, for every `sourceEventId`, that the resolved event exists, belongs to the binding session, and satisfies §3.1 native authority (`evidenceKind="native"`, `capabilityHash` equal to the context hash, `sourceAgentVersion` equal to `exactAgentVersion`, `scenarioId` in `provenScenarioIds`). Any unresolved, fabricated, cross-session, synthesized, or capability-unproven source event rejects the decision with no binding change.
+- For `source="user"` the daemon MUST verify `userSurfaceAuthority` came from a user-authoritative surface; an agent-callable surface cannot supply it.
+- Confirm validates proposal/session/binding revisions, marks the proposal confirmed, and creates the new binding in one daemon transaction. The old primary binding is unbound **only** when `proposedRole = "primary"`. Confirming `side` or `subagent` adds the proposed binding in that role and keeps the existing primary binding intact; it never promotes the proposed lineage to primary.
 - Reject validates the same revisions, marks the proposal rejected, and leaves the old binding unchanged.
 - Stale, competing, cross-session, unsupported-authority, or invalid confirm/reject commands are rejected with no binding change.
 
@@ -132,6 +146,33 @@ interface Observed<T extends JsonValue> {
   sensitivity: Sensitivity;
 }
 
+type ContinuityCaptureMethod =
+  | "native_event"
+  | "hook"
+  | "plugin"
+  | "transcript_scan"
+  | "user_surface";
+
+interface ContinuityEventProvenanceV1 {
+  sourceAgentVersion: string;
+  evidenceKind: EvidenceKind;
+  captureMethod: ContinuityCaptureMethod;
+  capabilityHash?: string;
+  scenarioId?: string;
+}
+
+type TurnIdSource = "native" | "synthesized_monotonic" | "unavailable";
+
+type ContinuityOperationPhase = "start" | "progress" | "terminal";
+
+interface ContinuityOperationRefV1 {
+  phase: ContinuityOperationPhase;
+  operationMatchKey: string;
+  operationKind: string;
+  nativeOperationId?: string;
+  canonicalInputHash?: string;
+}
+
 interface NormalizedContinuityEvent {
   eventId: string;
   adapterDeliveryId?: string;
@@ -141,13 +182,26 @@ interface NormalizedContinuityEvent {
   occurredAt: string;
   sessionId: string;
   taskLineageId?: string;
+  turnId?: string;
+  turnIdSource: TurnIdSource;
   sourceAgent: string;
+  provenance: ContinuityEventProvenanceV1;
+  operation?: ContinuityOperationRefV1;
   payload: JsonValue;
   successful?: boolean;
 }
 ```
 
 Evidence certainty never grants instruction authority. Model output is always `derived` and retains provider/model/prompt/schema/source provenance.
+
+### 3.1 Provenance, turn identity, and operation envelope
+
+- Every adapter MUST populate `provenance`. `sourceAgentVersion` is the exact CLI version recorded at capture; a missing or non-exact version makes the event non-authoritative for every rule that requires native authority.
+- `provenance.evidenceKind = "native"` additionally requires `capabilityHash` equal to the active exact-version capability matrix hash and `scenarioId` naming a scenario whose disposition for that exact version is `proven`. An event that fails either check is treated as `synthesized` regardless of its declared kind.
+- Turn identity is canonical, not a payload convention. `turnIdSource="native"` requires a native turn identifier proven for that exact version; `synthesized_monotonic` is an adapter-assigned monotonic turn counter per `(sessionId, user-prompt boundary)`; `unavailable` means the adapter cannot establish turn identity.
+- `turnId` MUST be present when `turnIdSource` is `native` or `synthesized_monotonic`, and MUST be absent when it is `unavailable`.
+- Every rule that requires turn scoping (engagement destination turn, terminal-correlation turn compatibility) fails closed against `unavailable`: the event cannot satisfy the requirement, the affected automatic path is downgraded, and the reason is reported by doctor.
+- `operation` is REQUIRED for events whose kind is an operation `start`, `progress`, or `terminal`, and is the only frozen source for `operationMatchKey`, `nativeOperationId`, and operation kind. Correlation logic MUST NOT read these values from `payload`; an operation event without a valid `operation` envelope is a schema violation.
 
 ## 4. Canonical task work state
 
@@ -292,11 +346,13 @@ interface CanonicalWorkStateV1 {
 ### 4.3 Pending-operation start and terminal correlation
 
 - A stable start event creates `OperationCorrelationV1` and `PendingOperation(status="started")`.
+- Both start and terminal events carry their correlation values in the frozen `NormalizedContinuityEvent.operation` envelope (§3.1). `OperationCorrelationV1` is populated from that envelope plus the event's `sessionId`, `taskLineageId`, and `turnId`; no correlation value is ever extracted from `payload`.
 - `operationMatchKey` is a schema-versioned SHA-256 over the normalized Agent, native session, task lineage, turn when present, operation/tool kind, stable native operation ID when present, and canonical input hash. Volatile time and delivery-attempt fields are excluded.
 - Terminal matching authority is ordered:
   1. exact `nativeOperationId` + same session/task lineage;
   2. otherwise exact `operationMatchKey` + same session/task lineage + compatible turn/kind, with exactly one open candidate;
   3. otherwise no match.
+- Turn compatibility in rule 2 requires both events to carry a turn identity of the same `turnIdSource` kind. When either side is `unavailable`, rule 2 does not apply and the operation stays `unknown`; only rule 1 can close it.
 - Command text, tool name, timestamp proximity, or cwd alone are never sufficient.
 - A terminal event must occur after the start event in authoritative event order, must not already be applied, and must have a non-conflicting payload/source hash.
 - A terminal event that matches zero or multiple open operations does not close any operation. Preserve it as unmatched evidence, leave candidates `unknown`, and emit a diagnostic. A correlation/hash conflict is quarantined according to the event-conflict contract.
@@ -357,6 +413,7 @@ interface CheckpointDispositionProjection {
   projectionRevision: string;
   latestEventId: string;
   activeDeliveryAttemptId?: string;
+  activeClaimFence?: string;
   activeLeaseUntil?: string;
 }
 
@@ -469,6 +526,16 @@ type DeliveryCommandV1 =
 
 Every post-claim command validates the caller-supplied `attemptId`, attempt revision, fence, and destination session. A mismatched attempt ID is a typed stale/invalid request and causes no state change.
 
+The attempt-local tuple is not sufficient on its own: after lease expiry the reclaimed checkpoint has a new active attempt while the old attempt's own `attemptId`/revision/fence/session remain internally consistent. Therefore every post-claim command additionally CASes against the active projection **inside the same daemon transaction**:
+
+1. load `CheckpointDispositionProjection` by checkpoint ID;
+2. require `projection.activeDeliveryAttemptId === command.attemptId`;
+3. require `projection.activeClaimFence === command.fence`;
+4. require `projection.activeLeaseUntil` to be unexpired at transaction time;
+5. only then apply the attempt-local transition.
+
+Heartbeat renewal extends the attempt's `heartbeatUntil`/`leaseUntil` and the projection's `activeLeaseUntil` in one transaction under the same CAS, so lease state never diverges between attempt and projection. Lease expiry, reclaim, and replacement are a single transaction that terminates the old attempt (`abandoned`, revision bump) and rotates `activeDeliveryAttemptId`/`activeClaimFence` together. A delayed `mark_delivered`, `record_engagement`, `dismiss`, or `abandon` from a reclaimed attempt therefore fails step 2 or 3, is typed `stale_attempt`, and causes no state change and no delivery. The reclaim-versus-delivery race is a required fixture: a delayed command from the reclaimed attempt must never mark delivery, record engagement, or accept.
+
 ### 6.2 Initial claim CAS
 
 The candidate-to-claimed operation is a daemon transaction that:
@@ -500,6 +567,8 @@ Contract v1 weights:
 - Duplicate `(kind, sourceEventId)` counts once.
 - Failed/unknown/unrelated events score zero.
 - Evidence labels are not trusted by themselves. The evaluator MUST verify each source event exists in `EngagementEvaluationContextV1`, has the expected kind/success state, occurs after delivery and before evaluation end, and links to a declared anchor.
+- Turn scoping is verified from canonical turn identity (§3.1), not from time window plus anchor match: a source event counts only when `event.sessionId` equals the destination session and `event.turnId` equals `destinationTurnId`. An event with `turnIdSource="unavailable"`, a missing `turnId`, or a different `turnId` scores zero.
+- When the destination Agent/version has no proven turn identity, automatic acceptance is unavailable for that version; delivery downgrades to hint/manual and doctor reports the downgrade reason. Explicit user acceptance remains available.
 - `engaged`: one valid linked item score `>=0.35`.
 - Automatic `accepted`: cumulative score `>=0.80`, at least two evidence kinds, at least one successful runtime kind, no contradiction.
 - Explicit user/manual acceptance may atomically perform delivered/engaged/accepted at score `1.00`.
@@ -561,6 +630,8 @@ type ResumeDeliveryStrategy =
 - `manual_only`: no reliable automatic path.
 
 A half-proven synthesized pair is invalid. Source declarations/README claims are insufficient.
+
+The capability hash is a schema-versioned SHA-256 over the exact Agent version, the capability-scenario manifest hash (§13), and the recorded scenario dispositions/evidence hashes for that version. It is the value events cite as `provenance.capabilityHash` (§3.1) and decisions cite as authority context; a hash that does not match the active matrix makes the event non-native for every authority rule.
 
 Tier A requires exact-version proof of hint delivery, claimed prompt-gate delivery, compact persistence/fallback, exactly-one compact restore, retry dedupe, crash/restart semantics, and size/malformed behavior.
 
@@ -718,13 +789,27 @@ type DerivedArtifactKind =
 
 type DerivedArtifactStatus = "active" | "stale" | "invalidated" | "rebuilding";
 
+type DerivedArtifactSourceRefV1 =
+  | {
+      kind: "memory";
+      memoryId: string;
+      memoryRevision: string;
+      contentHash: string;
+    }
+  | {
+      kind: "artifact";
+      artifactId: string;
+      artifactKind: DerivedArtifactKind;
+      artifactRevision: string;
+      contentHash: string;
+    };
+
 interface DerivedArtifactDependencyV1 {
   artifactId: string;
   artifactKind: DerivedArtifactKind;
   artifactRevision: string;
-  sourceMemoryId: string;
-  sourceMemoryRevision: string;
-  sourceContentHash: string;
+  sources: DerivedArtifactSourceRefV1[];
+  baseMemoryClosure: Array<{ memoryId: string; memoryRevision: string }>;
   sourceEventIds: string[];
   generationId?: string;
 }
@@ -736,7 +821,14 @@ interface DerivedArtifactInvalidationEventV1 {
   expectedArtifactRevision: string;
   sourceMemoryId: string;
   invalidatingMemoryRevision: string;
-  reason: "memory_updated" | "memory_superseded" | "memory_retracted" | "memory_invalidated";
+  viaArtifactId?: string;
+  hopDepth: number;
+  reason:
+    | "memory_updated"
+    | "memory_superseded"
+    | "memory_retracted"
+    | "memory_invalidated"
+    | "source_artifact_invalidated";
   resultingStatus: "stale" | "invalidated";
   idempotencyKey: string;
   createdAt: string;
@@ -745,9 +837,11 @@ interface DerivedArtifactInvalidationEventV1 {
 
 ### 12.3 Causal invalidation rules
 
-- Every derived artifact records exact source memory revisions/content hashes and source evidence IDs.
-- In the same daemon transaction that commits an UPDATE/SUPERSEDE/RETRACT or temporal invalidation, all known dependent artifacts are marked `stale` or `invalidated` and deterministic rebuild jobs are enqueued. The invalidation idempotency key is derived from `(memoryId, invalidatingRevision, artifactId, reason)`.
-- Query, injection, resume rendering, embedding activation, cloud projection, and cache lookup MUST verify that dependency revisions still match current memory projections. A stale/invalidation job delay or failure therefore cannot make an old artifact eligible.
+- Every derived artifact records exact source revisions/content hashes and source evidence IDs. `sources` holds the artifact's direct edges, which may be memories **or** other derived artifacts (for example a context-pack cache derived from a consolidated memory). `baseMemoryClosure` holds the transitive set of base memory revisions reachable through those edges and is recomputed on every artifact revision.
+- Derived-artifact dependency graphs are acyclic. A dependency write that would create a cycle, or a closure that cannot be resolved because an intermediate dependency is missing, is quarantined and the artifact is excluded rather than treated as current.
+- In the same daemon transaction that commits an UPDATE/SUPERSEDE/RETRACT or temporal invalidation, **every** dependent artifact — direct dependents and all transitive descendants reached through artifact-to-artifact edges — is marked `stale` or `invalidated` and deterministic rebuild jobs are enqueued. Descendant invalidation events record `viaArtifactId` and `hopDepth` and use reason `source_artifact_invalidated`. The invalidation idempotency key is derived from `(memoryId, invalidatingRevision, artifactId, reason)`.
+- Query, injection, resume rendering, embedding activation, cloud projection, and cache lookup MUST verify that every direct `sources` entry **and** every `baseMemoryClosure` entry still matches current projections. Matching an unchanged intermediate artifact revision is not sufficient, so a stale/invalidation job delay or failure cannot make a descendant artifact eligible.
+- A multi-hop fixture (memory → consolidated memory → context-pack cache/embedding) is required: after mutating the base memory, every descendant must be excluded by the eligibility check even before its invalidation job runs.
 - Immutable historical checkpoints are not rewritten. At resume time, affected selected-memory content or semantic notes are omitted/marked stale unless a compatible re-derived artifact exists. Canonical observed checkpoint state remains historical evidence.
 - Embedding eligibility is keyed by `(memoryId, memoryRevision, inputHash, generationId)`; a prior revision vector cannot satisfy current coverage.
 - Summary/consolidated-memory/context-pack artifacts remain excluded until rebuild succeeds. Rebuild creates a new artifact revision and dependency set; it never overwrites historical provenance.
@@ -759,9 +853,26 @@ interface DerivedArtifactInvalidationEventV1 {
 ```ts
 type CapabilityTestDisposition = "not_run" | "proven" | "unsupported" | "unknown_after_test";
 type ContractPreflightState = "incomplete" | "complete";
+
+interface RequiredCapabilityScenarioV1 {
+  scenarioId: string;
+  title: string;
+  appliesToAgents: string[];
+  requiredFor: Array<"generic_phase3" | "automatic_strategy" | "tier_a">;
+}
+
+interface CapabilityScenarioManifestV1 {
+  manifestVersion: string;
+  manifestHash: string;
+  scenarios: RequiredCapabilityScenarioV1[];
+}
 ```
 
-Contract preflight is complete only when all required scenarios are not `not_run`, evidence artifacts exist, matrices are regenerated honestly, all runtime-neutral contract fixtures pass, and #1 Stage 0 fixes runtime direction.
+`harness/schema/capability-scenarios.v1.json` is the versioned, closed manifest of required scenario IDs and is the only authority for completeness. Prose checklists are not inputs.
+
+Contract preflight is complete only when the manifest check passes, evidence artifacts exist, matrices are regenerated honestly, all runtime-neutral contract fixtures pass, and #1 Stage 0 fixes runtime direction.
+
+The manifest check is exact-set equality, evaluated per `(agent, exactVersion)` tuple: the generated report/matrix MUST contain a disposition for **exactly** the manifest's applicable scenario IDs. A missing ID, an unknown extra ID, a duplicate ID, or a `manifestHash` mismatch fails preflight; an omitted scenario can therefore never pass vacuously. Adding or removing a required scenario requires a manifest version bump recorded in the evidence file.
 
 Unsupported/unknown-after-test does not block generic/manual continuity implementation; it forces strategy/Tier downgrade. A particular automatic strategy is enabled only when its required exact-version capability is `proven`. Tier A/Core 1.0 also require release E2E and #8 quality.
 

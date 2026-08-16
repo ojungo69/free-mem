@@ -31,6 +31,7 @@ Modify:
 Create:
 
 - `harness/schema/continuity.{ts,schema.json}`
+- `harness/schema/capability-scenarios.v1.json`
 - `harness/schema/memory-history.{ts,schema.json}`
 - `harness/continuity/{capability-contract,contract,reference-model,memory-history}.test.ts`
 - `harness/continuity/{reference-model,run-preflight}.ts`
@@ -110,9 +111,9 @@ node --experimental-strip-types harness/assemble.ts harness/fixtures/codex harne
 Create `harness/schema/continuity.ts` and a matching closed JSON Schema defining:
 
 - `JsonValue`, `Observed<T>`, `Sensitivity`, `Freshness`
-- `NormalizedContinuityEvent`
+- `NormalizedContinuityEvent` with `turnId`/`turnIdSource`, `ContinuityEventProvenanceV1`, and the `ContinuityOperationRefV1` envelope
 - `CanonicalWorkStateV1`, `OperationCorrelationV1`, `PendingOperation`
-- `SessionTaskBinding`, `TaskBoundaryProposalV1`, `TaskBoundaryDecisionV1`
+- `SessionTaskBinding`, `TaskBoundaryProposalV1`, `TaskBoundaryDecisionV1`, `TaskBoundaryAuthorityContextV1`
 - `ContinuationCheckpointV2`, checkpoint metadata/disposition/projection
 - `CheckpointAnchorV1`, engagement/contradiction/evaluation context
 - `CheckpointDeliveryAttempt`, every `DeliveryCommandV1` variant with `attemptId`
@@ -121,6 +122,8 @@ Create `harness/schema/continuity.ts` and a matching closed JSON Schema defining
 - `ResumeThresholdProfileV1`, ranked candidate, `ResumeSelectionDecisionV1`
 - `ResumeCapsuleV1`, owned injection ledger, capture strip result
 - `ResumeQualityReportV1`, `ContinuityDoctorReportV1`
+- `DerivedArtifactSourceRefV1` and the closure-carrying `DerivedArtifactDependencyV1`
+- `RequiredCapabilityScenarioV1`, `CapabilityScenarioManifestV1`
 
 Shared limits:
 
@@ -156,9 +159,11 @@ reduceTaskWorkState(previous, event, idempotencyLedger): TaskStateReductionResul
 finalizeAbandonedState(state, event): CanonicalWorkStateV1
 correlateTerminalEvent(state, terminalEvent): TerminalCorrelationResult
 proposeTaskBoundary(state, event): TaskBoundaryProposalV1 | null
-confirmTaskBoundaryAtomically(binding, proposal, decision, sourceEvents): BoundaryConfirmResult
-rejectTaskBoundary(binding, proposal, decision, sourceEvents): BoundaryRejectResult
+confirmTaskBoundaryAtomically(binding, proposal, decision, authority): BoundaryConfirmResult
+rejectTaskBoundary(binding, proposal, decision, authority): BoundaryRejectResult
 ```
+
+`authority` is `TaskBoundaryAuthorityContextV1`: resolved source events plus agent, exact version, capability hash, proven scenario IDs, and optional user-surface authority.
 
 ### Event idempotency
 
@@ -168,9 +173,10 @@ rejectTaskBoundary(binding, proposal, decision, sourceEvents): BoundaryRejectRes
 
 ### Pending-operation terminal correlation
 
+- [ ] Correlation values come only from the typed `NormalizedContinuityEvent.operation` envelope; add negative schema fixtures for an operation event missing the envelope, carrying the values only in `payload`, or declaring a mismatched phase.
 - [ ] Start events create `OperationCorrelationV1` with `operationId`, `startEventId`, optional native ID, schema-versioned match key, session, lineage, optional turn/tool/input hash.
 - [ ] Exact native operation ID + same session/lineage is first authority.
-- [ ] Fallback requires exact operation match key + same session/lineage + compatible turn/kind + exactly one open candidate.
+- [ ] Fallback requires exact operation match key + same session/lineage + compatible turn/kind + exactly one open candidate; `turnIdSource="unavailable"` on either side disables the fallback and leaves the operation `unknown`.
 - [ ] Command text, tool name, cwd, or timestamp proximity alone never closes an operation.
 - [ ] Terminal event must occur after the start in authoritative event order, be unapplied, and have no payload/source-hash conflict.
 - [ ] Zero/multiple matches leave all candidates unknown, preserve unmatched evidence, and emit a diagnostic.
@@ -183,8 +189,9 @@ rejectTaskBoundary(binding, proposal, decision, sourceEvents): BoundaryRejectRes
 - [ ] Heuristics create only a proposal; no binding change.
 - [ ] User may confirm/reject any proposal through a user-authoritative surface.
 - [ ] `native_runtime` may confirm only `native_fork` or `accepted_resume` proposals whose source events are exact-version capability-proven native events.
+- [ ] Authority is verified from resolved source events (`evidenceKind`, `capabilityHash`, `sourceAgentVersion`, proven `scenarioId`, session), never from the caller-supplied `source` field. Fixtures cover fabricated, unresolved, cross-session, synthesized, and capability-unproven source events.
 - [ ] Agent/model text, similarity scores, `agent_proposal`, and `deterministic_shift` cannot be runtime-confirmed.
-- [ ] Confirm atomically validates revisions, marks proposal confirmed, unbinds old primary, and creates new binding.
+- [ ] Confirm atomically validates revisions, marks proposal confirmed, and creates the new binding; it unbinds the old primary only for `proposedRole="primary"`. Confirmation fixtures exercise `primary`, `side`, and `subagent` and assert the primary binding survives the latter two.
 - [ ] Reject marks proposal rejected and keeps old binding.
 - [ ] Stale/competing/cross-session/unauthorized commands cause no binding change.
 
@@ -240,13 +247,15 @@ acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 ### Command CAS
 
 - [ ] Every post-claim command includes and validates `attemptId`, attempt revision, fence, and destination session.
+- [ ] The same transaction CASes against the projection's `activeDeliveryAttemptId`, `activeClaimFence`, and unexpired lease; reclaim terminates the old attempt and rotates both projection fields together.
+- [ ] Reclaim-versus-delivery race fixture: a delayed `mark_delivered`/`record_engagement` from the reclaimed attempt is typed `stale_attempt` and changes nothing.
 - [ ] Mismatched attempt ID/revision/fence/session is typed stale/invalid and causes no state change.
 
 ### Engagement and acceptance
 
 Use fixed weights from the addendum. Tests must revalidate submitted evidence from actual `NormalizedContinuityEvent` records and checkpoint anchors:
 
-- [ ] source event exists and belongs to destination session/turn;
+- [ ] source event exists, belongs to the destination session, and carries `turnId === destinationTurnId` with `turnIdSource != "unavailable"`; an unproven turn identity disables automatic acceptance for that exact version;
 - [ ] kind and success state match the claimed evidence kind;
 - [ ] event is after delivery and within lease/30-minute window;
 - [ ] anchor belongs to the checkpoint/task lineage;
@@ -307,8 +316,9 @@ Tests:
 - [ ] Invalidated fact remains historical but is excluded/down-ranked from current retrieval.
 - [ ] Derived observation retains every source memory/event ID; deleting source evidence violates the invariant.
 - [ ] Output dedupe never deletes source records.
-- [ ] UPDATE/SUPERSEDE/RETRACT/temporal invalidation atomically marks every known dependent artifact stale/invalidated and enqueues deterministic rebuild jobs.
-- [ ] Query/injection/resume/embedding/cache/cloud eligibility verifies dependency revision/content hash, so delayed/failed invalidation jobs cannot expose stale artifacts.
+- [ ] UPDATE/SUPERSEDE/RETRACT/temporal invalidation atomically marks every known dependent artifact — direct and transitive through artifact-to-artifact edges — stale/invalidated and enqueues deterministic rebuild jobs.
+- [ ] Query/injection/resume/embedding/cache/cloud eligibility verifies both direct `sources` and `baseMemoryClosure` revisions/content hashes, so delayed/failed invalidation jobs cannot expose stale artifacts.
+- [ ] Multi-hop fixture (memory → consolidated memory → context-pack cache and embedding) proves every descendant is excluded before its invalidation job runs; a dependency cycle or unresolvable closure is quarantined and excluded.
 - [ ] Immutable checkpoint canonical state remains historical; stale selected-memory or semantic-note content is omitted/marked stale until re-derived.
 - [ ] Embedding coverage is keyed by memory ID + revision + input hash + generation ID.
 - [ ] Crash/replay of memory mutation + invalidation converges exactly once.
@@ -336,8 +346,10 @@ cmp /tmp/a.json /tmp/b.json
 
 ## Task 11 — Preflight states, doctor, evidence, tasks, and CI
 
+- [ ] Freeze `harness/schema/capability-scenarios.v1.json`: a versioned closed manifest of required scenario IDs with `appliesToAgents` and `requiredFor`, plus its `manifestHash`.
 - [ ] Record each capability scenario as `not_run | proven | unsupported | unknown_after_test`.
-- [ ] Contract preflight is complete only when no required scenario is `not_run`, artifacts exist, and every runtime-neutral fixture passes.
+- [ ] Contract preflight is complete only when the report/matrix contains exactly the manifest's applicable scenario IDs per `(agent, exactVersion)` — missing, extra, duplicate, or hash-mismatched sets fail — no required scenario is `not_run`, artifacts exist, and every runtime-neutral fixture passes.
+- [ ] RED: dropping one scenario from a generated artifact fails preflight instead of passing vacuously.
 - [ ] Unsupported/unknown permits generic/manual implementation but forces automatic-strategy/Tier downgrade.
 - [ ] Add P3P barriers to `tasks.md`:
 
