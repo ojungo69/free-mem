@@ -251,7 +251,7 @@ function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent[
  * 空文字の `adapterDeliveryId` を「無い」として fingerprint へ落とすのと違い、こちらは落とし先が
  * 無いので schema violation にする。
  */
-export function assertDeliveryIdentity(event: NormalizedContinuityEvent): void {
+function assertDeliveryIdentity(event: NormalizedContinuityEvent): void {
   if (event.canonicalFingerprint === "") {
     throw new Error("§3.1 違反: canonicalFingerprint が空文字（dedupe authority が定まらない）");
   }
@@ -530,6 +530,13 @@ export function reduceTaskWorkState(
   assertDeliveryIdentity(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(previous.state, event);
+  // 放棄の kind をこの入口に渡すと、operation envelope を持たないので下の汎用 commit に落ちて
+  // 状態を何も変えないまま台帳の鍵だけを消費する。その台帳を渡された finalizeAbandonedState は
+  // 重複として捨てるので、放棄が永久に適用されず operation が `started` のまま残る。
+  // finalizeAbandonedState が逆向きに張っているガードと対称にして、経路の取り違えを落とす
+  if (ABANDONMENT_EVENT_KINDS.has(event.kind)) {
+    throw new Error(`放棄を確定する kind は finalizeAbandonedState に渡す: ${event.kind}`);
+  }
   const key = ledgerKeyOf(event);
 
   const applied = idempotencyLedger.get(key);
@@ -656,10 +663,24 @@ export function reduceTaskWorkState(
     });
   }
 
+  // 自己矛盾の証跡は照合の成否とは無関係な event 自身の性質なので、照合前に作って全経路で出す。
+  // 照合できた場合しか出さないと、同じ壊れた adapter でも operation が既に閉じているときだけ
+  // `terminal_already_applied` に埋もれて見えなくなる
+  const contradictionDiagnostics: ContinuityDiagnosticV1[] = terminalEvidenceContradicts(event)
+    ? [
+        {
+          code: "terminal_evidence_contradicts",
+          eventId: event.eventId,
+          detail: `kind ${event.kind} が successful: true を名乗っている`,
+        },
+      ]
+    : [];
+
   const correlation = correlateTerminalEvent(previous, event);
   if (correlation.matched === null) {
     const diagnostics = [
       { code: correlation.diagnostic, eventId: event.eventId, detail: correlation.detail },
+      ...contradictionDiagnostics,
     ];
     // 隔離するのは「状態に記録できる相手が居ない」場合だけにする。
     // - `terminal_conflict`: v6「same op ID + different hash: quarantine corruption」。台帳に
@@ -695,21 +716,8 @@ export function reduceTaskWorkState(
   }
 
   const matchedId = correlation.matched.operationId;
-  // kind が失敗を宣言しているのに `successful: true` を名乗る terminal は自己矛盾している。
-  // schema はどちらも valid なので通ってしまうが、これを `succeeded` にすると壊れた adapter が
-  // 失敗を握り潰せる。§4.3「terminal の証跡が欠けている / 曖昧なときは unknown を確定する」に倒す
-  const contradicts = event.kind === "tool_failed" && event.successful === true;
   const status = terminalStatusOf(event);
   const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([matchedId]));
-  const contradictionDiagnostics: ContinuityDiagnosticV1[] = contradicts
-    ? [
-        {
-          code: "terminal_evidence_contradicts",
-          eventId: event.eventId,
-          detail: `kind ${event.kind} が successful: true を名乗っている`,
-        },
-      ]
-    : [];
   return commit(previous, event, idempotencyLedger, {
     pendingOperations: previous.state.pendingOperations.map((pending) =>
       pending.operationId === matchedId
@@ -843,13 +851,21 @@ export type TerminalCorrelationResult =
     };
 
 /**
- * terminal event が主張する成否。kind が失敗を宣言しているのに `successful: true` を名乗る
- * terminal は自己矛盾しているので `unknown` に倒す（schema はどちらの欄も valid なので通るが、
- * `succeeded` にすると壊れた adapter が失敗を握り潰せる）。`successful` が無い terminal も
- * 成否を主張できないので `unknown`。§4.3「terminal の証跡が欠けている / 曖昧なときは unknown」。
+ * kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾。schema はどちらの欄も
+ * valid なので通ってしまうが、これを `succeeded` として扱うと壊れた adapter が失敗を握り潰せる。
+ * 成否の判定と診断の生成の両方がこの述語を要るので、書き分けて drift しないよう 1 箇所にする。
+ */
+function terminalEvidenceContradicts(event: NormalizedContinuityEvent): boolean {
+  return event.kind === "tool_failed" && event.successful === true;
+}
+
+/**
+ * terminal event が主張する成否。自己矛盾している terminal と `successful` が無い terminal は
+ * どちらも成否を主張できないので `unknown` に倒す。
+ * §4.3「terminal の証跡が欠けている / 曖昧なときは unknown を確定する」。
  */
 function terminalStatusOf(event: NormalizedContinuityEvent): "succeeded" | "failed" | "unknown" {
-  if (event.kind === "tool_failed" && event.successful === true) return "unknown";
+  if (terminalEvidenceContradicts(event)) return "unknown";
   if (event.successful === true) return "succeeded";
   if (event.successful === false) return "failed";
   return "unknown";
@@ -929,21 +945,24 @@ export function correlateTerminalEvent(
   // turn をまたいだ terminal は start と違う matchKey を持つのが仕様どおりで、それは衝突ではない。
   // rule 1 は turn を要求しない（turn 両立は rule 2 の要件）ので、ここで matchKey 一致を
   // 要求すると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じなくなる
-  const conflicting = candidates.find(
-    (pending) =>
-      // kind は §4.3 の matchKey の入力に含まれる identity の一部で、turn と違って start から
-      // terminal の間に変わらない。rule 2 の候補は matchKey 一致で選ぶので kind も揃っているが、
-      // rule 1 は nativeOperationId だけで選ぶので、kind を見ないと別種の operation を閉じられる。
-      // start 側の identity 衝突検査と対称にする。`toolName` は凍結 schema の required に
-      // 無いので、checkpoint から復元した状態や別実装が書いた状態では schema 妥当なまま
-      // 欠けうる。素で比べると健全な terminal が永久に隔離され、台帳にも入らないので
-      // adapter は無限再送になる。兄弟の `canonicalInputHash` と同じく両方 present のときだけ比べる
-      (pending.correlation.toolName !== undefined &&
-        pending.correlation.toolName !== operation.operationKind) ||
-      (pending.correlation.canonicalInputHash !== undefined &&
-        operation.canonicalInputHash !== undefined &&
-        pending.correlation.canonicalInputHash !== operation.canonicalInputHash),
-  );
+  // kind は §4.3 の matchKey の入力に含まれる identity の一部で、turn と違って start から
+  // terminal の間に変わらない。rule 2 の候補は matchKey 一致で選ぶので kind も揃っているが、
+  // rule 1 は nativeOperationId だけで選ぶので、kind を見ないと別種の operation を閉じられる。
+  // start 側の identity 衝突検査と対称にする。`toolName` は凍結 schema の required に
+  // 無いので、checkpoint から復元した状態や別実装が書いた状態では schema 妥当なまま
+  // 欠けうる。素で比べると健全な terminal が永久に隔離され、台帳にも入らないので
+  // adapter は無限再送になる。兄弟の `canonicalInputHash` と同じく両方 present のときだけ比べる
+  const identityConflicts = (pending: PendingOperation): boolean =>
+    (pending.correlation.toolName !== undefined &&
+      pending.correlation.toolName !== operation.operationKind) ||
+    (pending.correlation.canonicalInputHash !== undefined &&
+      operation.canonicalInputHash !== undefined &&
+      pending.correlation.canonicalInputHash !== operation.canonicalInputHash);
+  // 候補が複数あるとき（§4.3 どおりに matchKey を導出しない adapter では、同じ matchKey で
+  // input hash が違う pending が並びうる）、identity が一致する候補が 1 件でもあれば、この
+  // terminal はその候補のものとして説明がつく。兄弟の identity を根拠に隔離すると、live な
+  // operation が永久に閉じないまま adapter が無限再送する。候補はここでは必ず 1 件以上ある
+  const conflicting = candidates.every(identityConflicts) ? candidates[0] : undefined;
   if (conflicting !== undefined) {
     return {
       matched: null,

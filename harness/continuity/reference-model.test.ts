@@ -833,6 +833,108 @@ test("確定済みの成否と矛盾する 2 度目の terminal は隔離する"
   assert.equal(again.ledger, closed.ledger);
 });
 
+test("放棄の kind を reduceTaskWorkState に渡すと落ちる", () => {
+  // operation envelope を持たないので汎用 commit に落ちて状態を変えないまま台帳の鍵だけを
+  // 消費する。その台帳で finalizeAbandonedState を呼ぶと重複として捨てられ、放棄が永久に
+  // 適用されない（operation が started のまま残って状態が嘘をつく）
+  const abandon = startEvent({
+    eventId: "event-abandon",
+    adapterDeliveryId: "delivery-abandon",
+    kind: "session_ended",
+    ingestSeq: "12",
+    operation: undefined,
+  });
+  assert.throws(
+    () => reduceTaskWorkState(startedSnapshot(), abandon, new Map()),
+    /finalizeAbandonedState に渡す/,
+  );
+  // 正しい入口に渡せば放棄は効く
+  const finalized = finalizeAbandonedState(startedSnapshot().state, abandon, new Map());
+  assert.equal(finalized.outcome, "applied");
+  assert.equal(finalized.state.pendingOperations[0]?.status, "unknown");
+});
+
+test("閉じた operation に届いた自己矛盾 terminal も証跡の矛盾を出す", () => {
+  // 矛盾は照合の成否と無関係な event 自身の性質。照合できた場合しか出さないと、同じ壊れた
+  // adapter でも operation が既に閉じているときだけ terminal_already_applied に埋もれる
+  const snapshot = startedSnapshot();
+  const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+  const again = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-2",
+      adapterDeliveryId: "delivery-terminal-2",
+      ingestSeq: "13",
+      kind: "tool_failed",
+      successful: true,
+    }),
+    closed.ledger,
+  );
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["terminal_already_applied", "terminal_evidence_contradicts"],
+  );
+  assert.equal(again.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("identity が一致する兄弟がいれば terminal を隔離しない", () => {
+  // §4.3 どおりに matchKey を導出しない adapter では、同じ matchKey で input hash が違う
+  // pending が並ぶ。兄弟の identity を根拠に隔離すると live な operation が永久に閉じない
+  const first = startEvent({ eventId: "event-start-a", operation: MATCH_KEY_ONLY });
+  const firstTerminal = terminalEvent({
+    eventId: "event-terminal-a",
+    adapterDeliveryId: "delivery-terminal-a",
+    ingestSeq: "12",
+    operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+  });
+  const second = startEvent({
+    eventId: "event-start-b",
+    adapterDeliveryId: "delivery-start-b",
+    ingestSeq: "13",
+    operation: { ...MATCH_KEY_ONLY, canonicalInputHash: "input-hash-2" },
+  });
+  // 1 件目を閉じてから 2 件目を積む。この順なら候補は「確定済み 1 + 未確定 1」になり、
+  // 2 件目の terminal は rule 2 で一意に閉じられる（両方 open だと ambiguous で unknown に倒れる）
+  const both = apply(emptySnapshot(), [first, firstTerminal, second]);
+  assert.deepEqual(
+    both.snapshot.state.pendingOperations.map((pending) => pending.status),
+    ["succeeded", "started"],
+  );
+
+  const closed = reduceTaskWorkState(
+    both.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-b",
+      adapterDeliveryId: "delivery-terminal-b",
+      ingestSeq: "14",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal", canonicalInputHash: "input-hash-2" },
+    }),
+    both.ledger,
+  );
+  assert.deepEqual(
+    closed.snapshot.state.pendingOperations.map((pending) => pending.status),
+    ["succeeded", "succeeded"],
+  );
+  assert.deepEqual(closed.diagnostics, []);
+
+  // どの候補とも identity が合わない terminal は従来どおり隔離する
+  const alien = reduceTaskWorkState(
+    both.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-x",
+      adapterDeliveryId: "delivery-terminal-x",
+      ingestSeq: "15",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal", canonicalInputHash: "input-hash-9" },
+    }),
+    both.ledger,
+  );
+  assert.equal(alien.outcome, "quarantined");
+  assert.deepEqual(
+    alien.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+});
+
 test("同じ成否を名乗る 2 度目の terminal は適用済みとして扱う", () => {
   const snapshot = startedSnapshot();
   const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
