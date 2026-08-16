@@ -2357,12 +2357,146 @@ test("状態側で operationId が衝突していても terminal は 1 件しか
       operationStarts: new Map([[duplicated, { ingestSeq: "11", turnIdSource: "native" as const }]]),
     };
     const result = reduceTaskWorkState(victim, terminalEvent(), new Map());
+    // 動くのは 1 件だけ。しかも `succeeded` ではなく `unknown` になる: `operationStarts` は
+    // `operationId` 鍵なので、id が衝突しているとどちらの兄弟の材料か判別できず、順序を
+    // 確認できない = 閉じられない（`terminal_order_unverifiable`）
     assert.deepEqual(
       result.snapshot.state.pendingOperations.map((p) => p.status),
-      ["succeeded", "started"],
+      ["unknown", "started"],
+      JSON.stringify(duplicated),
+    );
+    assert.deepEqual(
+      result.diagnostics.map((d) => d.code),
+      ["terminal_order_unverifiable"],
       JSON.stringify(duplicated),
     );
   }
+});
+
+test("identity で候補から外れた兄弟は rule 1 の候補数に数えない", () => {
+  // 通す側を測る。`byNativeId` は `identityConflicts` で絞る前の集合なので、そこで数えると
+  // 「native id は同じだが input hash や kind が違う」= 既に候補から外れている兄弟まで数に入り、
+  // 健全な terminal が terminal_ambiguous で unknown に倒れて台帳まで消費される（訂正版が
+  // 重複 no-op になるので隔離より悪い）。この関数の他の判断はすべて `compatible` を見ている
+  const pending = (operationId: string, o: { nativeOperationId?: string; canonicalInputHash?: string; toolName?: string }): PendingOperation =>
+    ({
+      operationId,
+      correlation: {
+        operationId, startEventId: `start-${operationId}`,
+        nativeOperationId: o.nativeOperationId ?? START_OPERATION.nativeOperationId,
+        operationMatchKey: `match-${operationId}`, sessionId: "session-1", taskLineageId: "lineage-1",
+        turnId: "turn-1", toolName: o.toolName ?? "Bash",
+        canonicalInputHash: o.canonicalInputHash ?? START_OPERATION.canonicalInputHash,
+      },
+      kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
+      sourceEventIds: [`start-${operationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+    }) as unknown as PendingOperation;
+  const target = pending("op-target", {});
+  for (const [label, sibling] of [
+    ["input hash が違う", pending("op-sibling", { canonicalInputHash: "other-hash" })],
+    ["kind が違う", pending("op-sibling", { toolName: "Read" })],
+    ["対照: native id が別", pending("op-sibling", { nativeOperationId: "toolu_other" })],
+  ] as const) {
+    const snapshot: TaskWorkStateSnapshotV1 = {
+      state: emptyState({ pendingOperations: [sibling, target] }),
+      history: [],
+      operationStarts: new Map([
+        ["op-sibling", { ingestSeq: "1", turnIdSource: "native" as const }],
+        ["op-target", { ingestSeq: "1", turnIdSource: "native" as const }],
+      ]),
+    };
+    const result = reduceTaskWorkState(snapshot, terminalEvent({ ingestSeq: "50" }), new Map());
+    assert.deepEqual(result.diagnostics.map((d) => d.code), [], label);
+    assert.deepEqual(
+      result.snapshot.state.pendingOperations.map((p) => `${p.operationId}:${p.status}`),
+      ["op-sibling:started", "op-target:succeeded"],
+      label,
+    );
+  }
+});
+
+test("同名 operationId の兄弟の start facts で順序検査をしない", () => {
+  // `operationStarts` は `operationId` 鍵の側索引（#35）なので、同じ id の pending が並ぶ状態では
+  // どちらの兄弟の材料か判別できない。判別せずに引くと、兄弟 B の `ingestSeq` を使って A 宛ての
+  // terminal が権威順序を通り、A が診断ゼロで閉じる（逆向きの値では健全な terminal が弾かれる）
+  const pending = (nativeOperationId: string): PendingOperation =>
+    ({
+      operationId: "dup",
+      correlation: {
+        operationId: "dup", startEventId: `start-${nativeOperationId}`, nativeOperationId,
+        operationMatchKey: `match-${nativeOperationId}`, sessionId: "session-1", taskLineageId: "lineage-1",
+        turnId: "turn-1", toolName: "Bash", canonicalInputHash: `hash-${nativeOperationId}`,
+      },
+      kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
+      sourceEventIds: [`start-${nativeOperationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+    }) as unknown as PendingOperation;
+  // 記録されている材料は B のもの。A 宛ての terminal は、それを通っても弾かれてもいけない
+  for (const [label, ingestSeq] of [["材料より前", "50"], ["材料より後", "150"]] as const) {
+    const victim: TaskWorkStateSnapshotV1 = {
+      state: emptyState({ pendingOperations: [pending("toolu_a"), pending("toolu_b")] }),
+      history: [],
+      operationStarts: new Map([["dup", { ingestSeq: "100", turnIdSource: "native" as const }]]),
+    };
+    const result = reduceTaskWorkState(
+      victim,
+      terminalEvent({
+        ingestSeq,
+        operation: {
+          ...TERMINAL_OPERATION, nativeOperationId: "toolu_a",
+          operationMatchKey: "match-toolu_a", canonicalInputHash: "hash-toolu_a",
+        },
+      }),
+      new Map(),
+    );
+    assert.deepEqual(result.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"], label);
+    assert.deepEqual(result.snapshot.state.pendingOperations.map((p) => p.status), ["unknown", "started"], label);
+  }
+});
+
+test("correlateTerminalEvent は terminal 以外の operation event を受け取らない", () => {
+  // 公開型は phase で判別されないので、start を渡しても `assertOperationEnvelope` は通る。
+  // 経路の取り違えが `terminal_unmatched`（照合できなかっただけの正常な結果）に化けると、
+  // caller は start を「未照合の terminal 証跡」として保存できてしまう
+  // `progress` 相は `OPERATION_EVENT_PHASES` に対応する kind が無いので `assertOperationEnvelope`
+  // が先に落とす。ここで塞ぐのは「kind と phase は整合しているが terminal ではない」形
+  assert.throws(
+    () => correlateTerminalEvent(startedSnapshot(), startEvent()),
+    /terminal 以外の operation event は correlateTerminalEvent に渡さない/,
+  );
+});
+
+test("同じ native id の兄弟が並んでも identity が一致する側への再配送は通る", () => {
+  // 先頭 1 件だけを見ると、その先頭が衝突しているせいで identity が完全に一致する兄弟への
+  // 健全な再配送が永久に隔離される（訂正版も同じ配送鍵なので戻せない）
+  const pending = (operationId: string, suffix: string): PendingOperation =>
+    ({
+      operationId,
+      correlation: {
+        operationId, startEventId: `start-${suffix}`, nativeOperationId: START_OPERATION.nativeOperationId,
+        operationMatchKey: `match-${suffix}`, sessionId: "session-1", taskLineageId: "lineage-1",
+        turnId: "turn-1", toolName: "Bash", canonicalInputHash: `hash-${suffix}`,
+      },
+      kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
+      sourceEventIds: [`start-${suffix}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+    }) as unknown as PendingOperation;
+  const snapshot: TaskWorkStateSnapshotV1 = {
+    state: emptyState({ pendingOperations: [pending("op-1", "one"), pending("op-2", "two")] }),
+    history: [],
+    operationStarts: new Map(),
+  };
+  const redelivered = reduceTaskWorkState(
+    snapshot,
+    startEvent({
+      eventId: "start-again", adapterDeliveryId: "d-start-again", canonicalFingerprint: "f-start-again",
+      ingestSeq: "20",
+      operation: { ...START_OPERATION, operationMatchKey: "match-two", canonicalInputHash: "hash-two" },
+    }),
+    new Map(),
+  );
+  assert.equal(redelivered.outcome, "applied");
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  // 二重に積まない
+  assert.equal(redelivered.snapshot.state.pendingOperations.length, 2);
 });
 
 test("operationId が衝突していても放棄は自 session の operation だけを unknown にする", () => {

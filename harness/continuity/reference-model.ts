@@ -679,72 +679,81 @@ export function reduceTaskWorkState(
     // 二重に積まれ、以後 rule 1 の terminal が候補 2 件で何も閉じられなくなる。
     // `nativeOperationId` は本物の呼び出しごとに一意なので、それが一致する pending があれば
     // 再配送として扱う（持たない start では 2 回目の本物の呼び出しと区別できないので触らない）
-    const existing =
-      previous.state.pendingOperations.find((pending) => pending.operationId === operationId) ??
-      (operation.nativeOperationId === undefined
-        ? undefined
-        : previous.state.pendingOperations.find(
+    const nativeMatches =
+      operation.nativeOperationId === undefined
+        ? []
+        : previous.state.pendingOperations.filter(
             (pending) =>
               pending.correlation.nativeOperationId === operation.nativeOperationId &&
               pending.correlation.sessionId === event.sessionId &&
               pending.correlation.taskLineageId === previous.state.taskLineageId,
-          ));
-    const recordedSource =
-      existing === undefined ? undefined : previous.operationStarts.get(existing.operationId)?.turnIdSource;
+          );
     // 同じ nativeOperationId を名乗りながら identity が違う start は再配送ではなく corruption。
     // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない。
     // terminal 側と同じく input hash も直接見る（matchKey の導出が §4.3 どおりでない adapter 対策）
-    const startConflict =
-      existing !== undefined &&
-      (existing.correlation.operationMatchKey !== operation.operationMatchKey ||
-        // 上の検索が operationId 一致（eventId + matchKey から導出）で当たった場合、session は
-        // 一度も比べていない。`assertSameScope` は lineage と Agent しか束縛せず、状態は session を
-        // 持たない（lineage は session をまたぐ）ので、ここで比べないと誰も比べない。
-        // §4.3 の候補選びと放棄はどちらも `correlation.sessionId` で絞るので、別 session を
-        // 名乗る再配送を重複として台帳に入れると、その operation は記録された旧 session でしか
-        // 閉じられないまま訂正版も no-op になる。`sessionId` は `OperationCorrelationV1` の
-        // required なので、任意欄と違って両方 present ガードは要らない
-        existing.correlation.sessionId !== event.sessionId ||
-        // turn も同じ理由で誰も比べていない。§4.3 は matchKey の入力に「turn when present」を
-        // 含むので、正しく導出された matchKey なら turn が違えば上の比較で落ちるが、導出は
-        // wire 越しに検証できない。記録された turn は rule 2 の候補選び（`eligible`）が使うので、
-        // 古い turn のまま重複として台帳に入れると、その operation は本来の turn の terminal で
-        // 閉じられず `terminal_unmatched` で `unknown` に倒れる。`turnId` は
-        // `OperationCorrelationV1` の required に無く、`turnIdSource: unavailable` では正当に
-        // 不在なので、兄弟の任意欄と同じく両方 present のときだけ比べる
-        (existing.correlation.turnId !== undefined &&
-          event.turnId !== undefined &&
-          existing.correlation.turnId !== event.turnId) ||
-        // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、凍結
-        // `OperationCorrelationV1` の外（`operationStarts`・#35）にしか無いので、上の `turnId` の
-        // 比較では見えない。種別だけ違う再配送を重複として台帳に入れると、記録は元の種別のまま
-        // 残る（再配送された start で `operationStarts` は埋めない）ので、再配送側の種別で来た
-        // terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` になり、
-        // **健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。復元直後は記録が
-        // 無いので、`eligibleOf` と同じく材料があるときだけ比べる。ただし**降格は衝突にしない**:
-        // `unavailable` は intake 自身が作る値（proven でない version の native 主張はここへ落ちる）
-        // なので、同じ start が証明の取れない経路で再配送されれば正当に `unavailable` で届く。
-        // これを隔離すると、証明が復旧するまで健全な再配送が二度と台帳に入らない。塞ぎたいのは
-        // 種別の**すり替え**（native ⇄ synthesized_monotonic）で、そちらは intake が作らない
-        (recordedSource !== undefined &&
-          event.turnIdSource !== "unavailable" &&
-          recordedSource !== event.turnIdSource) ||
-        // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
-        // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない。
-        // `toolName` は凍結 schema の required に無いので、checkpoint から復元した状態や
-        // 別実装が書いた状態では schema 妥当なまま欠けうる。素で比べると健全な再配送が
-        // 永久に隔離されるので、兄弟の 2 つと同じく両方 present のときだけ比べる
-        (existing.correlation.toolName !== undefined &&
-          existing.correlation.toolName !== operation.operationKind) ||
-        // 上の検索が operationId 一致で当たった場合、nativeOperationId は一度も比べていない。
-        // 同じ eventId・matchKey で native ID だけ違う start を重複として台帳に入れると、
-        // 同じく訂正版を戻せなくなる（native ID 一致で当たった場合はここは常に等しい）
-        (existing.correlation.nativeOperationId !== undefined &&
-          operation.nativeOperationId !== undefined &&
-          existing.correlation.nativeOperationId !== operation.nativeOperationId) ||
-        (existing.correlation.canonicalInputHash !== undefined &&
-          operation.canonicalInputHash !== undefined &&
-          existing.correlation.canonicalInputHash !== operation.canonicalInputHash));
+    const startConflictsWith = (existing: PendingOperation): boolean => {
+      const recordedSource = startFactsFor(previous, existing.operationId)?.turnIdSource;
+      return (
+        existing.correlation.operationMatchKey !== operation.operationMatchKey ||
+          // 上の検索が operationId 一致（eventId + matchKey から導出）で当たった場合、session は
+          // 一度も比べていない。`assertSameScope` は lineage と Agent しか束縛せず、状態は session を
+          // 持たない（lineage は session をまたぐ）ので、ここで比べないと誰も比べない。
+          // §4.3 の候補選びと放棄はどちらも `correlation.sessionId` で絞るので、別 session を
+          // 名乗る再配送を重複として台帳に入れると、その operation は記録された旧 session でしか
+          // 閉じられないまま訂正版も no-op になる。`sessionId` は `OperationCorrelationV1` の
+          // required なので、任意欄と違って両方 present ガードは要らない
+          existing.correlation.sessionId !== event.sessionId ||
+          // turn も同じ理由で誰も比べていない。§4.3 は matchKey の入力に「turn when present」を
+          // 含むので、正しく導出された matchKey なら turn が違えば上の比較で落ちるが、導出は
+          // wire 越しに検証できない。記録された turn は rule 2 の候補選び（`eligible`）が使うので、
+          // 古い turn のまま重複として台帳に入れると、その operation は本来の turn の terminal で
+          // 閉じられず `terminal_unmatched` で `unknown` に倒れる。`turnId` は
+          // `OperationCorrelationV1` の required に無く、`turnIdSource: unavailable` では正当に
+          // 不在なので、兄弟の任意欄と同じく両方 present のときだけ比べる
+          (existing.correlation.turnId !== undefined &&
+            event.turnId !== undefined &&
+            existing.correlation.turnId !== event.turnId) ||
+          // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、凍結
+          // `OperationCorrelationV1` の外（`operationStarts`・#35）にしか無いので、上の `turnId` の
+          // 比較では見えない。種別だけ違う再配送を重複として台帳に入れると、記録は元の種別のまま
+          // 残る（再配送された start で `operationStarts` は埋めない）ので、再配送側の種別で来た
+          // terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` になり、
+          // **健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。復元直後は記録が
+          // 無いので、`eligibleOf` と同じく材料があるときだけ比べる。ただし**降格は衝突にしない**:
+          // `unavailable` は intake 自身が作る値（proven でない version の native 主張はここへ落ちる）
+          // なので、同じ start が証明の取れない経路で再配送されれば正当に `unavailable` で届く。
+          // これを隔離すると、証明が復旧するまで健全な再配送が二度と台帳に入らない。塞ぎたいのは
+          // 種別の**すり替え**（native ⇄ synthesized_monotonic）で、そちらは intake が作らない
+          (recordedSource !== undefined &&
+            event.turnIdSource !== "unavailable" &&
+            recordedSource !== event.turnIdSource) ||
+          // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
+          // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない。
+          // `toolName` は凍結 schema の required に無いので、checkpoint から復元した状態や
+          // 別実装が書いた状態では schema 妥当なまま欠けうる。素で比べると健全な再配送が
+          // 永久に隔離されるので、兄弟の 2 つと同じく両方 present のときだけ比べる
+          (existing.correlation.toolName !== undefined &&
+            existing.correlation.toolName !== operation.operationKind) ||
+          // 上の検索が operationId 一致で当たった場合、nativeOperationId は一度も比べていない。
+          // 同じ eventId・matchKey で native ID だけ違う start を重複として台帳に入れると、
+          // 同じく訂正版を戻せなくなる（native ID 一致で当たった場合はここは常に等しい）
+          (existing.correlation.nativeOperationId !== undefined &&
+            operation.nativeOperationId !== undefined &&
+            existing.correlation.nativeOperationId !== operation.nativeOperationId) ||
+          (existing.correlation.canonicalInputHash !== undefined &&
+            operation.canonicalInputHash !== undefined &&
+            existing.correlation.canonicalInputHash !== operation.canonicalInputHash)
+      );
+    };
+    // 同じ native id の兄弟が並ぶとき、先頭 1 件だけを見ると、**その先頭が衝突しているせいで
+    // identity が完全に一致する兄弟への健全な再配送が永久に隔離される**（実測: matchKey も
+    // input hash も一致する op-2 宛ての再配送が、op-1 と比べられて start_conflict になった）。
+    // 互換な兄弟が居るならそれを再配送の相手にし、居ないときだけ先頭を衝突の証拠に使う
+    const existing =
+      previous.state.pendingOperations.find((pending) => pending.operationId === operationId) ??
+      nativeMatches.find((pending) => !startConflictsWith(pending)) ??
+      nativeMatches[0];
+    const startConflict = existing !== undefined && startConflictsWith(existing);
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
         {
@@ -1031,6 +1040,26 @@ function terminalStatusOf(event: NormalizedContinuityEvent): "succeeded" | "fail
 }
 
 /**
+ * `operationStarts` は `operationId` 鍵の側索引（#35。凍結 schema の外）なので、同じ id の
+ * pending が並ぶ状態では**どちらの兄弟の材料かを判別できない**。判別できないまま引くと、片方の
+ * start facts でもう片方の順序と turn 種別が検査される（実測: 兄弟 B の `ingestSeq` 100 を使って
+ * A 宛ての terminal が通り、A が診断ゼロで `succeeded` になった。逆向きの値では健全な terminal が
+ * `terminal_out_of_order` で弾かれた）。曖昧な id は「材料が無い」として扱い、復元直後と同じ
+ * fail closed な経路（`terminal_order_unverifiable`）へ倒す。
+ */
+function startFactsFor(
+  snapshot: TaskWorkStateSnapshotV1,
+  operationId: string,
+): OperationStartFactsV1 | undefined {
+  let seen = 0;
+  for (const pending of snapshot.state.pendingOperations) {
+    if (pending.operationId === operationId) seen += 1;
+    if (seen > 1) return undefined;
+  }
+  return snapshot.operationStarts.get(operationId);
+}
+
+/**
  * §4.3 の terminal 照合。authority は順序付き:
  *   1. `nativeOperationId` 完全一致 + 同一 session / task lineage
  *   2. `operationMatchKey` 完全一致 + 同一 session / task lineage + turn / kind が両立 +
@@ -1046,6 +1075,17 @@ export function correlateTerminalEvent(
   // terminal kind が envelope 無しで届いたとき §3.1 違反が `terminal_unmatched` という
   // 「照合できなかっただけ」の結果に化けて、壊れた adapter の証跡がそのまま保存される
   assertOperationEnvelope(terminalEvent);
+  // envelope の検査は「kind が示す phase と envelope の phase が一致するか」しか見ないので、
+  // start / progress の event を渡しても通ってしまい、**経路の取り違えが
+  // `terminal_unmatched`（= 照合できなかっただけの正常な結果）に化ける**。公開型は phase で
+  // 判別されない `NormalizedContinuityEvent` なので、caller は start を「未照合の terminal 証跡」
+  // として保存してしまえる。`finalizeAbandonedState` が逆向きに張っている kind ガードと対称に、
+  // ここでも terminal 相であることを要求する
+  if (terminalEvent.operation?.phase !== "terminal") {
+    throw new Error(
+      `terminal 以外の operation event は correlateTerminalEvent に渡さない: phase=${String(terminalEvent.operation?.phase)}`,
+    );
+  }
   assertTurnIdentity(terminalEvent);
   // 候補の絞り込みは session と lineage しか見ない（状態は Agent を 1 つしか持たないので、
   // 状態と event の Agent はここで突き合わせるしかない）。還元器は同じ検査を入口でしているが、
@@ -1186,7 +1226,7 @@ export function correlateTerminalEvent(
     byNativeId.length > 0
       ? list
       : list.filter((pending) => {
-          const recorded = previous.operationStarts.get(pending.operationId)?.turnIdSource;
+          const recorded = startFactsFor(previous, pending.operationId)?.turnIdSource;
           return recorded === undefined || recorded === terminalEvent.turnIdSource;
         });
   const isOpen = (pending: PendingOperation): boolean =>
@@ -1309,11 +1349,17 @@ export function correlateTerminalEvent(
   // succeeded と started が並ぶ状態で、確定済み側の terminal 再配送が live 側を掴んだ）。
   // 全件が確定済みの場合は上の `open.length === 0` で `terminal_already_applied` に落ちるので
   // ここには来ない = 再配送の扱いは変わらない
-  if (byNativeId.length > 1) {
+  // 数えるのは `byNativeId` ではなく `compatible`。`byNativeId` は `identityConflicts` で絞る
+  // **前**の集合なので、native id は同じでも input hash や kind が違う——つまり既に候補から
+  // 外れている——兄弟まで数に入り、**健全な terminal が `terminal_ambiguous` で `unknown` に
+  // 倒れて台帳まで消費される**（隔離と違って訂正版が重複 no-op になるので隔離より悪い）。
+  // この関数の他の判断はすべて `compatible` を見ており、「兄弟の identity を根拠に live な候補を
+  // 巻き込まない」はこのファイル自身が絞り込みを導入したときの理由でもある
+  if (rule === "native_operation_id" && compatible.length > 1) {
     return {
       matched: null,
       diagnostic: "terminal_ambiguous",
-      detail: `rule 1 の nativeOperationId ${operation.nativeOperationId} に一致する候補が ${byNativeId.length} 件`,
+      detail: `rule 1 の nativeOperationId ${operation.nativeOperationId} に一致する候補が ${compatible.length} 件`,
       unresolved: open,
     };
   }
@@ -1331,7 +1377,7 @@ export function correlateTerminalEvent(
   }
   const matched = open[0] as PendingOperation;
 
-  const start = previous.operationStarts.get(matched.operationId);
+  const start = startFactsFor(previous, matched.operationId);
   if (start === undefined) {
     // start の ingestSeq が状態に無い（checkpoint から復元した等: #35）。順序を確認できない
     // ので閉じることはできないが、隔離してはいけない: 復元直後は全 terminal がこの分岐に
