@@ -154,3 +154,19 @@ test("binary64 で表せない数を含む JSON は読まない（RFC 7493 §2.2
   // 表せる範囲はそのまま通る
   assert.deepEqual(parseIJson('{"a":1e308,"b":-0,"c":0.1}'), { a: 1e308, b: -0, c: 0.1 });
 });
+
+test("素の object でない値は canonicalize しない", () => {
+  // enumerable な own property が無いので、通すと値と無関係な `{}` の bytes が出る
+  assert.equal(JSON.stringify(new Map([["x", 1]])), "{}");
+  for (const bad of [new Map([["x", 1]]), new Set([1]), new Date(0), Object(1), Object("a")]) {
+    assert.throws(() => canonicalizeJson(bad), /素の object でない/, String(bad));
+  }
+  class Capsule {
+    id = "x";
+  }
+  assert.throws(() => canonicalizeJson(new Capsule()), /できない: Capsule/);
+  assert.throws(() => canonicalizeJson({ a: new Date(0) }), /素の object でない/);
+  // `{}` と `Object.create(null)` 由来は通る（JSON.parse が返すのはこの 2 つ）
+  assert.equal(canonicalizeJson({ a: 1 }), '{"a":1}');
+  assert.equal(canonicalizeJson(Object.assign(Object.create(null), { a: 1 })), '{"a":1}');
+});

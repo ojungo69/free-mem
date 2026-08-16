@@ -157,6 +157,15 @@ export function canonicalizeJson(value: unknown): string {
   // JSON でない bytes が出てしまうので、穴は下の「JSON に無い型」で落とす
   if (Array.isArray(value)) return `[${Array.from(value, (item) => canonicalizeJson(item)).join(",")}]`;
   if (typeof value === "object") {
+    // Date・Map・class instance は enumerable な own property を持たないので、そのまま
+    // 通すと `{}` の bytes が出る。値と無関係な hash が出るくらいなら落とす
+    // （`validate.ts` の isDataObject と同じ判定）
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      throw new Error(
+        `JCS: 素の object でない値は canonicalize できない: ${value.constructor?.name ?? "不明"}`,
+      );
+    }
     // `JSON.stringify` は undefined の property を黙って落とすが、ここでは落とさない。
     // 落とすと `{ a: 1, b: undefined }` が `{ a: 1 }` と同じ hash になり、組み立て損ねた
     // 契約値が「その欄は元々無かった」ものとして通ってしまう。undefined は下で throw する
