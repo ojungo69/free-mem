@@ -16,7 +16,7 @@ import { isOneOf, isWhitespace, trimEndWhere } from "../text-trim.js";
 const CLOSE_BRACKET = isOneOf("]");
 
 /** `/\s*```$/` の置き換え。末尾のフェンスと、その直前の空白だけを落とす。 */
-function stripTrailingFence(value: string): string {
+export function stripTrailingFence(value: string): string {
 	return value.endsWith("```") ? trimEndWhere(value.slice(0, -3), isWhitespace) : value;
 }
 

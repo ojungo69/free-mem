@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { stripTrailingFence } from "./maintenance/ai-structured.js";
+import { FILENAME_LOCATOR, IMPLEMENTATION_LOCATOR_PATTERNS } from "./memory-quality.js";
 import { isOneOf, isSpaceOrPunctuation, isWhitespace, trimEndWhere } from "./text-trim.js";
 
 const SLASH = isOneOf("/");
@@ -43,7 +45,8 @@ describe("trimEndWhere", () => {
 describe("ReDoS を外した正規表現の等価性", () => {
 	it("ファイル名検出は元の正規表現と同じ判定になる", () => {
 		const before = /[\w.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|yaml|yml)\b/;
-		const after = /[\w.-]\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|yaml|yml)\b/;
+		// 出荷している定数そのものを見る。test 内に写すと本番を壊しても緑のままになる
+		const after = FILENAME_LOCATOR;
 		const cases = [
 			"see packages/core/src/store.ts for details",
 			"a.ts",
@@ -59,13 +62,13 @@ describe("ReDoS を外した正規表現の等価性", () => {
 			"_.json",
 		];
 		for (const s of cases) expect(after.test(s)).toBe(before.test(s));
+		// 判定に使われている配列に載っていなければ、この等価性は本番に効いていない
+		expect(IMPLEMENTATION_LOCATOR_PATTERNS).toContain(FILENAME_LOCATOR);
 	});
 
 	it("フェンス剥がしは元の正規表現と同じ結果になる", () => {
-		const strip = (value: string) =>
-			value.endsWith("```") ? trimEndWhere(value.slice(0, -3), isWhitespace) : value;
 		for (const s of ['{"a":1}', '{"a":1}\n```', '{"a":1}```', "```", "  ```", "", "a```b"]) {
-			expect(strip(s)).toBe(s.replace(/\s*```$/, ""));
+			expect(stripTrailingFence(s)).toBe(s.replace(/\s*```$/, ""));
 		}
 	});
 });

@@ -145,7 +145,7 @@ function hasAnyMarker(text: string, markers: string[]): boolean {
 	return markers.some((marker) => text.includes(marker));
 }
 
-function hasAnyPattern(text: string, patterns: RegExp[]): boolean {
+function hasAnyPattern(text: string, patterns: readonly RegExp[]): boolean {
 	return patterns.some((pattern) => pattern.test(text));
 }
 
@@ -160,6 +160,20 @@ const LINE_BREAK = /[\n\r\u2028\u2029]/;
 export function hasSameLineCoOccurrence(text: string, a: RegExp, b: RegExp): boolean {
 	return text.split(LINE_BREAK).some((line) => a.test(line) && b.test(line));
 }
+
+/**
+ * 「実装の在り処」を指す語。末尾の 1 本は元は `[\w.-]+\.(?:ts|...)` で、`[\w.-]+` と
+ * 直後の `\.` が開始位置ごとに走り直すため長い 1 行で二次に効いた。`+` を外しても
+ * 「拡張子の直前に 1 文字以上ある」判定は変わらない（末尾の `\b` が効くため）。
+ */
+export const FILENAME_LOCATOR = /[\w.-]\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|yaml|yml)\b/;
+
+export const IMPLEMENTATION_LOCATOR_PATTERNS: readonly RegExp[] = [
+	/\bpackages\/[\w./-]+/,
+	/\bdocs\/[\w./-]+/,
+	/\bsrc\/[\w./-]+/,
+	FILENAME_LOCATOR,
+];
 
 export const REVIEW_TELEMETRY_SUBJECTS = /\b(?:reviewer|review|re-reviewed|pull request|pr)\b/;
 export const REVIEW_TELEMETRY_OUTCOMES =
@@ -468,12 +482,7 @@ export function classifyMemoryWorthiness(input: InferMemoryRoleInput): MemoryWor
 		return { artifact: "session_summary", action: "store", reasons: ["session_summary_recap"] };
 	}
 
-	const hasImplementationLocator = hasAnyPattern(text, [
-		/\bpackages\/[\w./-]+/,
-		/\bdocs\/[\w./-]+/,
-		/\bsrc\/[\w./-]+/,
-		/[\w.-]\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|yaml|yml)\b/,
-	]);
+	const hasImplementationLocator = hasAnyPattern(text, IMPLEMENTATION_LOCATOR_PATTERNS);
 
 	// 2. Keep-signals win over telemetry/bootstrap/validation (fixes M1-M4).
 	const keepReasons = collectKeepReasons({ kind, text, hasImplementationLocator });
