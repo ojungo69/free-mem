@@ -246,6 +246,11 @@ mutate "      recordable || incoming === \"unknown\" || plausible.some((pending)
 mutate "      detail: \`operation \${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている\`,
       unresolved: open," "      detail: \`operation \${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている\`,
       unresolved: compatible.filter(isOpen)," && run "照合不能で turn 非両立の候補も巻き込む"
+mutate "  if (byNativeId.length > 1) {" "  if (false) {" && run "rule 1 の候補が複数でも 1 件選ぶ"
+mutate "        (recordedSource !== undefined &&
+          event.turnIdSource !== \"unavailable\" &&
+          recordedSource !== event.turnIdSource) ||" "        false ||" && run "再配送 start の turn 種別を見ない"
+mutate "          event.turnIdSource !== \"unavailable\" &&" "          true &&" && run "降格した再配送 start も隔離する"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか

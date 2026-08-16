@@ -689,6 +689,8 @@ export function reduceTaskWorkState(
               pending.correlation.sessionId === event.sessionId &&
               pending.correlation.taskLineageId === previous.state.taskLineageId,
           ));
+    const recordedSource =
+      existing === undefined ? undefined : previous.operationStarts.get(existing.operationId)?.turnIdSource;
     // 同じ nativeOperationId を名乗りながら identity が違う start は再配送ではなく corruption。
     // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない。
     // terminal 側と同じく input hash も直接見る（matchKey の導出が §4.3 どおりでない adapter 対策）
@@ -713,6 +715,20 @@ export function reduceTaskWorkState(
         (existing.correlation.turnId !== undefined &&
           event.turnId !== undefined &&
           existing.correlation.turnId !== event.turnId) ||
+        // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、凍結
+        // `OperationCorrelationV1` の外（`operationStarts`・#35）にしか無いので、上の `turnId` の
+        // 比較では見えない。種別だけ違う再配送を重複として台帳に入れると、記録は元の種別のまま
+        // 残る（再配送された start で `operationStarts` は埋めない）ので、再配送側の種別で来た
+        // terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` になり、
+        // **健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。復元直後は記録が
+        // 無いので、`eligibleOf` と同じく材料があるときだけ比べる。ただし**降格は衝突にしない**:
+        // `unavailable` は intake 自身が作る値（proven でない version の native 主張はここへ落ちる）
+        // なので、同じ start が証明の取れない経路で再配送されれば正当に `unavailable` で届く。
+        // これを隔離すると、証明が復旧するまで健全な再配送が二度と台帳に入らない。塞ぎたいのは
+        // 種別の**すり替え**（native ⇄ synthesized_monotonic）で、そちらは intake が作らない
+        (recordedSource !== undefined &&
+          event.turnIdSource !== "unavailable" &&
+          recordedSource !== event.turnIdSource) ||
         // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
         // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない。
         // `toolName` は凍結 schema の required に無いので、checkpoint から復元した状態や
@@ -1271,6 +1287,22 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_identity_unverifiable",
       detail: `operation ${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている`,
+      unresolved: open,
+    };
+  }
+  // rule 1 は「exact `nativeOperationId` + 同じ session/lineage」で operation を**一意に**指す規則
+  // なので、その条件を満たす候補が 2 件以上あるなら terminal がどちらを指すかは決められない。
+  // 凍結 schema は `nativeOperationId` にも一意性を課さないので、復元した checkpoint や別実装が
+  // 書いた状態では確定済みと live が同じ native id で並びうる。件数を見ずに open だけで選ぶと、
+  // **確定済み operation 宛ての再配送が live な兄弟を閉じる**（実測: 同じ native id の
+  // succeeded と started が並ぶ状態で、確定済み側の terminal 再配送が live 側を掴んだ）。
+  // 全件が確定済みの場合は上の `open.length === 0` で `terminal_already_applied` に落ちるので
+  // ここには来ない = 再配送の扱いは変わらない
+  if (byNativeId.length > 1) {
+    return {
+      matched: null,
+      diagnostic: "terminal_ambiguous",
+      detail: `rule 1 の nativeOperationId ${operation.nativeOperationId} に一致する候補が ${byNativeId.length} 件`,
       unresolved: open,
     };
   }

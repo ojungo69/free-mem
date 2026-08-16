@@ -682,6 +682,66 @@ test("退避した operation の順序材料も落とす", () => {
   assert.equal(result.snapshot.operationStarts.has("op-0"), false);
 });
 
+test("rule 1 の nativeOperationId に複数当たるなら、どれも閉じない", () => {
+  // 凍結 schema は `nativeOperationId` にも一意性を課さないので、復元した checkpoint には
+  // 同じ native id の確定済みと live が並びうる。§4.3 の rule 1 は「exact nativeOperationId +
+  // 同じ session/lineage」で operation を一意に指す規則なので、2 件当たったら指せていない。
+  // 件数を見ずに open だけで選ぶと、確定済み operation 宛ての再配送が live な兄弟を閉じる
+  const pending = (operationId: string, status: "started" | "succeeded"): PendingOperation =>
+    ({
+      operationId,
+      correlation: {
+        operationId, startEventId: `s-${operationId}`, nativeOperationId: START_OPERATION.nativeOperationId,
+        operationMatchKey: START_OPERATION.operationMatchKey, sessionId: "session-1",
+        taskLineageId: "lineage-1", turnId: "turn-1", toolName: "Bash",
+        canonicalInputHash: START_OPERATION.canonicalInputHash,
+      },
+      kind: "tool", description: "Bash", status, replayPolicy: "never_auto",
+      sourceEventIds: [`s-${operationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+    }) as unknown as PendingOperation;
+  const snapshotOf = (...operations: PendingOperation[]): TaskWorkStateSnapshotV1 => ({
+    state: emptyState({ pendingOperations: operations }),
+    history: [],
+    // live 側の start 材料も入れて、順序が確認できる = 閉じられる状態にしておく
+    operationStarts: new Map(operations.map((p) => [p.operationId, { ingestSeq: "1", turnIdSource: "native" as const }])),
+  });
+  const mixed = reduceTaskWorkState(
+    snapshotOf(pending("op-settled", "succeeded"), pending("op-live", "started")),
+    terminalEvent(),
+    new Map(),
+  );
+  assert.deepEqual(mixed.diagnostics.map((d) => d.code), ["terminal_ambiguous"]);
+  // live 側が「閉じられた」ことにならない。§4.3 どおり candidates は unknown まで
+  assert.deepEqual(
+    mixed.snapshot.state.pendingOperations.map((p) => `${p.operationId}:${p.status}`),
+    ["op-settled:succeeded", "op-live:unknown"],
+  );
+  // 通す側も測る: 全件確定済みなら従来どおり「適用済み」で、曖昧扱いに変わらない
+  const settled = reduceTaskWorkState(
+    snapshotOf(pending("op-a", "succeeded"), pending("op-b", "succeeded")),
+    terminalEvent(),
+    new Map(),
+  );
+  assert.deepEqual(settled.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("再配送 start が turn の種別をすり替えたら隔離する", () => {
+  // `turnIdSource` は turn 同一性の一部なのに凍結 `OperationCorrelationV1` の外にしか無いので、
+  // `turnId` の比較では見えない。重複として台帳に入れると記録は元の種別のまま残り、再配送側の
+  // 種別で来た terminal は rule 2 の候補選びで落ちて unknown に倒れる（証跡が失われ鍵も消費済み）
+  const started = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY, turnIdSource: "native" }));
+  const switched = reduceTaskWorkState(
+    started,
+    startEvent({ operation: MATCH_KEY_ONLY, turnIdSource: "synthesized_monotonic", ingestSeq: "13" }),
+    new Map(),
+  );
+  assert.equal(switched.outcome, "quarantined");
+  assert.deepEqual(switched.diagnostics.map((d) => d.code), ["start_conflict"]);
+  assert.equal(switched.snapshot.operationStarts.get(
+    started.state.pendingOperations[0]?.operationId as string,
+  )?.turnIdSource, "native");
+});
+
 /** 上限まで埋めた状態のうち index 1 を index 0 と同名にする（frozen schema は一意性を課さない）。 */
 function collidedFilledSnapshot(): TaskWorkStateSnapshotV1 {
   const snapshot = filledSnapshot(true);
