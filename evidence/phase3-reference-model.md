@@ -27,7 +27,7 @@
 | 重複した論理 event は no-op（同じ state bytes・content hash・revision・history） | §4.2 | 重複経路は入力の snapshot をそのまま返す。ledger も同一参照 |
 | 遅れて届いた event も後続 revision を作り、証跡を書き換えない | §4.2 | 適用は常に新しい revision を作る。既存 `sourceEventIds` は追記のみ |
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent`。`nativeOperationId` を名乗った terminal は rule 1 だけで判定する（一致しないときに rule 2 へ落とすと、matchKey の導出が §4.3 どおりでない adapter 相手に別 operation を診断なしで閉じてしまう。wire 越しに導出は検証できない） |
-| terminal は start より後（権威順序）・未適用・hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較 |
+| terminal は start より後（権威順序）・未適用・payload/source hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較。source hash（`canonicalFingerprint`）の衝突は correlation より前の dedupe で見る。冪等台帳が eventId だけを持つと、同じ配送 ID で内容が違う event が `duplicate` として捨てられて衝突検査が到達不能になるので、台帳は適用時の source hash も保持する（`LedgerEntryV1`）。衝突は `delivery_conflict` で隔離 |
 | 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
 | correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。判定材料は `canonicalInputHash` の直接比較で、terminal 側では `operationMatchKey` を比べない（§4.3 の matchKey は入力に「turn when present」を含むので、turn をまたいだ terminal が start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない = turn 両立は rule 2 の要件なので、ここで一致を求めると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じない）。start の再配送側は `nativeOperationId` で拾ったうえで `operationMatchKey` と `canonicalInputHash` の両方を見る（同じ native ID は同じ呼び出しなので turn も同じはず） |
 | 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる） |
@@ -230,6 +230,18 @@ test は「2 つの和が `EVENT_KINDS` に過不足なく一致する」こと�
 kind を足すと分類を決めるまで CI が落ちる。語彙に無い adapter 固有の kind は未分類として
 envelope を要求しない（既知の非 operation kind が envelope を持つ場合だけ拒否する）。
 
+同じ理由で、**どの kind が放棄を確定するかも正本に無い**。§4.3 は「放棄・復帰時に証跡が無い
+operation は `unknown`」とだけ書く。`finalizeAbandonedState` は export された関数なので、限らないと
+routing の取り違えで届いた `user_prompted` 等が同 session の実行中 operation を全部 `unknown` に
+したうえで冪等キーを消費する。語彙のうち「その session がもう進まない」と言える
+`session_ended` / `session_interrupted` の 2 つに限り、他の kind は throw する。復帰側（resume）は
+event ではなく checkpoint 経路なのでここには含めない。
+
+envelope の任意欄（`nativeOperationId` / `canonicalInputHash`）は schema が `maxLength` しか持たない
+ので空文字が届きうる。空文字を「値がある」と読むと rule 1 が「native ID を持たない operation」
+同士を全部同じものとして照合するため、`assertOperationEnvelope` で schema violation に落とす
+（正規化を照合側の 5 箇所に散らさない）。
+
 ## 3. 限界
 
 - **per-kind の状態投影は未実装**。prompt / file / command / test を `Observed*` へ写す規則が addendum に
@@ -294,12 +306,12 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。48 件すべてで 1 件以上が失敗し、
-復元後は 74/74 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。53 件すべてで 1 件以上が失敗し、
+復元後は 78/78 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
-| dedupe 判定を外す | 3 |
+| dedupe 判定を外す | 4 |
 | lastIngestSeq の max を外す | 1 |
 | ingestSeq を数値比較にする | 1 |
 | envelope 必須を外す | 2 |
@@ -327,9 +339,9 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 候補ゼロの terminal を台帳に入れる | 4 |
 | 順序不明で候補を unknown にしない | 4 |
 | 退避で順序材料を刈らない | 1 |
-| 再配送 start を nativeOperationId で拾わない | 4 |
+| 再配送 start を nativeOperationId で拾わない | 5 |
 | 再配送の判定を matchKey にする | 6 |
-| start の identity 衝突検査を外す | 2 |
+| start の identity 衝突検査を外す | 3 |
 | start の matchKey 衝突検査を外す | 1 |
 | start の canonicalInputHash 衝突検査を外す | 1 |
 | 放棄を session で絞らない | 1 |
@@ -346,6 +358,11 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 空の capabilityHash を素通しする | 1 |
 | 未知の sensitivity で fail open する | 1 |
 | rule 2 の turn 種別一致要求を外す | 1 |
+| 空文字の任意欄を素通しする | 1 |
+| start の operationKind 比較を外す | 1 |
+| 放棄 kind の制限を外す | 1 |
+| 配送 ID 衝突の隔離を外す | 1 |
+| source hash の比較を外す | 1 |
 | sensitivity 集約を normal 固定にする | 3 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、

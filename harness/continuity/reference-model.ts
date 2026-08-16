@@ -220,6 +220,12 @@ export function assertOperationEnvelope(event: NormalizedContinuityEvent): void 
   if (operation.operationMatchKey === "" || operation.operationKind === "") {
     throw new Error(`§3.1 違反: operation envelope の operationMatchKey / operationKind が空`);
   }
+  // schema は任意欄に maxLength しか持たないので空文字が届きうる。空文字を「値がある」と読むと
+  // rule 1 が「native ID を持たない operation」同士を全部同じものとして照合してしまう。正規化を
+  // 照合側に散らさず、ここで落とす（`undefined` を送れば「無い」と正しく扱われる）
+  if (operation.nativeOperationId === "" || operation.canonicalInputHash === "") {
+    throw new Error(`§3.1 違反: operation envelope の nativeOperationId / canonicalInputHash が空文字`);
+  }
 }
 
 /**
@@ -304,8 +310,33 @@ export interface WorkStateRevisionEntryV1 {
   eventId: string;
 }
 
-/** 適用済み idempotency key → 最初に適用した eventId。 */
-export type IdempotencyLedger = ReadonlyMap<string, string>;
+/**
+ * 適用済み idempotency key → 最初に適用した eventId と、その event の source hash。
+ * §4.3「terminal は … payload/source hash が衝突しないこと」を dedupe の時点で見るために
+ * source hash を持つ。持たないと、同じ配送 ID で内容が違う event が correlation へ届く前に
+ * `duplicate` として黙って捨てられ、衝突検査そのものが到達不能になる。
+ */
+export type IdempotencyLedger = ReadonlyMap<string, LedgerEntryV1>;
+
+export interface LedgerEntryV1 {
+  eventId: string;
+  /** `canonicalFingerprint`（v6 §8.2 の source hash）。空文字は「無い」として扱う。 */
+  sourceHash?: string;
+}
+
+function sourceHashOf(event: NormalizedContinuityEvent): string | undefined {
+  return event.canonicalFingerprint === "" ? undefined : event.canonicalFingerprint;
+}
+
+/**
+ * 適用済みの key に対する再配送が、同じ論理 event の再送か corruption かを分ける。
+ * source hash がどちらかに無いときは比較材料が無いので再送として扱う（`adapterDeliveryId` を
+ * 出す adapter が fingerprint を出さない構成があり得る）。
+ */
+function isDeliveryConflict(applied: LedgerEntryV1, event: NormalizedContinuityEvent): boolean {
+  const incoming = sourceHashOf(event);
+  return applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming;
+}
 
 /** start event のうち frozen schema に入らない値（#35）。 */
 export interface OperationStartFactsV1 {
@@ -335,6 +366,7 @@ export type ContinuityDiagnosticCode =
   | "terminal_evidence_contradicts"
   | "duplicate_operation_start"
   | "start_conflict"
+  | "delivery_conflict"
   | "pending_operations_evicted"
   | "source_events_truncated"
   | "turn_identity_downgraded";
@@ -426,7 +458,10 @@ function commit(
   const contentHash = contentHashOf(content);
   const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
   const nextLedger = new Map(ledger);
-  nextLedger.set(ledgerKeyOf(event), event.eventId);
+  nextLedger.set(ledgerKeyOf(event), {
+    eventId: event.eventId,
+    ...(sourceHashOf(event) !== undefined ? { sourceHash: sourceHashOf(event) } : {}),
+  });
   return {
     outcome: "applied",
     snapshot: {
@@ -475,7 +510,20 @@ export function reduceTaskWorkState(
   assertSameScope(previous.state, event);
   const key = ledgerKeyOf(event);
 
-  if (idempotencyLedger.has(key)) {
+  const applied = idempotencyLedger.get(key);
+  if (applied !== undefined) {
+    // §4.3「terminal は … payload/source hash が衝突しないこと」。同じ配送 ID で内容が違う
+    // event は再送ではなく corruption なので、重複として黙って捨てずに隔離する（捨てると
+    // 衝突検査が到達不能になり、訂正版の再配送も同じ鍵で消える）
+    if (isDeliveryConflict(applied, event)) {
+      return quarantine(previous, idempotencyLedger, [
+        {
+          code: "delivery_conflict",
+          eventId: event.eventId,
+          detail: `event ${applied.eventId} と同じ配送 ID で source hash が違う`,
+        },
+      ]);
+    }
     const { stateRevision: _ignored, ...content } = previous.state;
     return {
       outcome: "duplicate",
@@ -517,10 +565,13 @@ export function reduceTaskWorkState(
     const startConflict =
       existing !== undefined &&
       (existing.correlation.operationMatchKey !== operation.operationMatchKey ||
+        // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
+        // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない
+        existing.correlation.toolName !== operation.operationKind ||
         (existing.correlation.canonicalInputHash !== undefined &&
           operation.canonicalInputHash !== undefined &&
           existing.correlation.canonicalInputHash !== operation.canonicalInputHash));
-    if (existing !== undefined && startConflict) {
+    if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
         {
           code: "start_conflict",
@@ -945,6 +996,14 @@ export interface AbandonmentResultV1 {
  * 同じ放棄 event の再配送のたびに stateRevision が変わり、それを CAS token として使う下流
  * （checkpointRevision / expectedProjectionRevision / claimFence）が空振りする。
  */
+/**
+ * §4.3「放棄・復帰時に証跡が無い operation は unknown」。どの kind が放棄を確定するかは正本に
+ * 無いので、harness の語彙（`NON_OPERATION_EVENT_KINDS`）から「その session がもう進まない」と
+ * 言える 2 つを選ぶ。限らないと、routing の取り違えで届いた `user_prompted` 等が同 session の
+ * 実行中 operation を全部 unknown にしたうえで冪等キーを消費してしまう。
+ */
+const ABANDONMENT_EVENT_KINDS: ReadonlySet<string> = new Set(["session_ended", "session_interrupted"]);
+
 export function finalizeAbandonedState(
   state: CanonicalWorkStateV1,
   event: IntakeStampedEventV1,
@@ -954,7 +1013,13 @@ export function finalizeAbandonedState(
   assertTurnIdentity(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(state, event);
+  if (!ABANDONMENT_EVENT_KINDS.has(event.kind)) {
+    throw new Error(`放棄を確定しない kind を finalizeAbandonedState に渡している: ${event.kind}`);
+  }
   const key = ledgerKeyOf(event);
+  // 放棄側では source hash の衝突を見ない。衝突検査が要るのは「捨てると誤った状態が確定する」
+  // terminal 経路で、放棄は同じ session の started を unknown にするだけなので、内容が違う再配送を
+  // 重複として捨てても失うものが無い（AbandonmentResultV1 に隔離の戻り値も無い）
   if (idempotencyLedger.has(key)) {
     return { outcome: "duplicate", state, ledger: idempotencyLedger };
   }
@@ -974,6 +1039,9 @@ export function finalizeAbandonedState(
   return {
     outcome: "applied",
     state: next,
-    ledger: new Map(idempotencyLedger).set(key, event.eventId),
+    ledger: new Map(idempotencyLedger).set(key, {
+      eventId: event.eventId,
+      ...(sourceHashOf(event) !== undefined ? { sourceHash: sourceHashOf(event) } : {}),
+    }),
   };
 }

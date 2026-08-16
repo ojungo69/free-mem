@@ -272,6 +272,31 @@ test("adapterDeliveryId に他 event の fingerprint を書いても先取りで
   assert.equal(victim.snapshot.state.pendingOperations.length, 2);
 });
 
+test("同じ配送 ID で source hash が違う再配送は隔離する", () => {
+  // §4.3「terminal は … payload/source hash が衝突しないこと」。重複として捨てると衝突検査が
+  // 到達不能になり、訂正版の再配送も同じ鍵で消える
+  const first = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
+  assert.equal(first.outcome, "applied");
+  const conflicting = reduceTaskWorkState(
+    first.snapshot,
+    startEvent({ eventId: "event-start-corrupt", ingestSeq: "13", canonicalFingerprint: "fingerprint-other" }),
+    first.ledger,
+  );
+  assert.equal(conflicting.outcome, "quarantined");
+  assert.deepEqual(
+    conflicting.diagnostics.map((d) => d.code),
+    ["delivery_conflict"],
+  );
+  assert.equal(conflicting.ledger, first.ledger);
+  // 同じ内容の再送はこれまでどおり重複 no-op
+  const retry = reduceTaskWorkState(
+    first.snapshot,
+    startEvent({ eventId: "event-start-retry" }),
+    first.ledger,
+  );
+  assert.equal(retry.outcome, "duplicate");
+});
+
 test("配送 ID が違えば別の論理 event として適用される", () => {
   // §8.2 の第一 authority は adapterDeliveryId。同じ fingerprint でも配送 ID が違えば
   // 「同一論理 event の再送」ではない
@@ -359,6 +384,23 @@ test("envelope の必須値が空なら schema violation", () => {
 });
 
 // --- §3.1 turn identity -----------------------------------------------------
+
+test("envelope の任意欄が空文字なら schema violation", () => {
+  // schema は maxLength しか持たないので空文字が届く。空文字を「値がある」と読むと、rule 1 が
+  // native ID を持たない operation 同士を全部同じものとして照合する
+  assert.throws(
+    () => assertOperationEnvelope(startEvent({ operation: { ...START_OPERATION, nativeOperationId: "" } })),
+    /nativeOperationId \/ canonicalInputHash が空文字/,
+  );
+  assert.throws(
+    () => assertOperationEnvelope(startEvent({ operation: { ...START_OPERATION, canonicalInputHash: "" } })),
+    /nativeOperationId \/ canonicalInputHash が空文字/,
+  );
+  // 欄そのものが無いのは正しい形
+  assertOperationEnvelope(
+    startEvent({ operation: { ...START_OPERATION, nativeOperationId: undefined, canonicalInputHash: undefined } }),
+  );
+});
 
 test("turnIdSource と turnId の有無が食い違えば schema violation", () => {
   assert.throws(
@@ -1187,6 +1229,25 @@ test("eventId が変わった再配送 start でも operation を二重に積ま
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "unknown");
 });
 
+test("operationKind だけが違う再配送 start も隔離する", () => {
+  // rule 2 の候補選びが kind の一致を見るのと対称。重複として台帳に入れると訂正版が戻せない
+  const started = startedSnapshot();
+  const forged = reduceTaskWorkState(
+    started,
+    startEvent({
+      eventId: "event-start-rekind",
+      ingestSeq: "3",
+      operation: { ...START_OPERATION, operationKind: "Write" },
+    }),
+    new Map(),
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(
+    forged.diagnostics.map((d) => d.code),
+    ["start_conflict"],
+  );
+});
+
 test("canonicalInputHash だけが違う再配送 start も隔離する", () => {
   // matchKey の導出が §4.3 どおりでない adapter だと、入力が違っても matchKey は一致しうる。
   // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない
@@ -1228,6 +1289,21 @@ test("同じ nativeOperationId で matchKey が違う start は隔離する", ()
   );
   assert.equal(forged.ledger.size, 0);
   assert.equal(forged.snapshot.state.pendingOperations.length, 1);
+});
+
+test("放棄を確定しない kind を finalizeAbandonedState に渡せない", () => {
+  // routing の取り違えで届いた user_prompted が同 session の実行中 operation を全部 unknown に
+  // したうえで冪等キーを消費する事故を、入口で落とす
+  const started = startedSnapshot();
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        started.state,
+        startEvent({ eventId: "event-prompt", kind: "user_prompted", ingestSeq: "4", operation: undefined }),
+        new Map(),
+      ),
+    /放棄を確定しない kind/,
+  );
 });
 
 test("旧 session の session_ended は resume 先の operation を放棄しない", () => {
@@ -1306,7 +1382,7 @@ test("turn をまたいだ terminal は matchKey が違っても rule 1 で閉�
   const snapshot = startedSnapshot();
   const acrossTurn = terminalEvent({
     turnId: "turn-2",
-    operation: { ...TERMINAL_OPERATION, operationMatchKey: "match-key-turn-2" },
+    operation: { ...TERMINAL_OPERATION, operationMatchKey: "match-key-2" },
   });
   const result = reduceTaskWorkState(snapshot, acrossTurn, new Map());
   assert.equal(result.outcome, "applied");
