@@ -25,7 +25,7 @@ SC-1 の初回候補検証は完了した。後続の closure refresh は下記�
 
 ## 2026-08-16 closure refresh
 
-closure refresh は `01440d5` のfull gate bundleと、その後の product-code candidate `a263513`、historical validated head `87195f5`、test-only coverage closure `55323dd` を分けて記録する。
+closure refresh は `01440d5` のfull gate bundleと、その後の product-code candidate `22dfd34`、historical validated head `87195f5`、test-only coverage closure `55323dd` を分けて記録する。
 
 - toolchain は Node `v24.16.0` / Corepack pnpm `11.8.0`。
 
@@ -57,10 +57,20 @@ test-only `55323dd` は既存title内で direct / transient npx / Node checkout 
 
 同headの push run `31915346516` と PR run `31915349208` は full coverage を含む `check` が passした。PR #7 の Sonar new-code coverage は `85.83270535041447%`（lines `617 / 700`、conditions `522 / 627`）。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secretsもpassし、review threadはunresolved 0。
 
+`c1b25e3` は Codex MCP の現行判定を canonical table 全体のexact matchへ変更し、同じ command/argsでも `enabled = false` 等の追加・変更された assignmentを残さずcanonical形へ正常化する。既存title内の回帰testは旧実装で disabled assignment が残るREDを確認し、修正後 setup/config 2 files / 28 tests、関連 6 files / 38 tests、変更2 filesのBiome、`tsc --build`、workspace build、packed artifact、T053 static scan 279 production files / 0 violations、Semgrep `p/security-audit` 22 rules / 0 findings、3 hook bundle SHA-256 `c9ee97876394fba32eb8e7e8adc4327db7f4bc7e0aa315eec222e35440a6cc47`、independent correctness/security/Ponytail review が passした。
+
+同headの push run `31916103054` と PR run `31916105227` は full coverage を含む `check` が passした。PR #7 の Sonar new-code coverage は `85.77912254160363%`（lines `614 / 697`、conditions `520 / 625`）。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secretsもpassし、review threadはunresolved 0。
+
+`721e3e0` は Codex TOML の offset-preserving structure scanner を共有し、comment、single/multiline string、nested array/inline table、CRLFをtable境界から除外した。ambiguous/unsupported layout、Unicode escape key、root/descendant assignment、array table、duplicate table、header/RHS trailing tokenは `--force` を含めmutation前に拒否する。既存title内の回帰testを含む setup 23 / 23、関連 6 files / 38 tests、変更2 filesのBiome、`tsc --build`、workspace build、packed artifact、T053 static scan 279 / 0、Semgrep 22 rules / 0 findings、independent correctness/security/Ponytail review が passした。
+
+`22dfd34` は OpenCode wrapper の import先を re-export `index.js` から実装 `.opencode/plugins/codemem.js` へ直結し、実装本体と唯一のlocal transitive import `.opencode/lib/compat.js` を install manifestへ記録する。旧実装でactual source path期待が失敗するREDを確認し、修正後 setup 23 / 23、manifest/cutoverを含む focused 5 files / 34 tests、変更2 filesのBiome、`tsc --build`、workspace build、packed artifact、T053 static scan 279 / 0、Semgrep 22 rules / 0 findings、3 hook bundle SHA-256 `c9ee97876394fba32eb8e7e8adc4327db7f4bc7e0aa315eec222e35440a6cc47`、independent correctness/security/Ponytail review が passした。Claude `.claude.json` は higher-precedence local MCP entryも同居するため、one-time cutover前のwhole-file fingerprintを意図的なfail-closed境界として維持した。
+
+code/test headの push run `31918904433` と PR run `31918905724` は full coverage を含む `check` が passした。PR #7 の Sonar new-code coverage は `86.63594470046083%`（lines `778 / 877`、conditions `726 / 859`）。Reliability / Security / Maintainability は A、duplication `0.0%`、hotspots reviewed `100%`。CodeQL、Codacy、Semgrep、GitGuardian、Socket、secretsもpassし、review threadはunresolved 0。
+
 - closure production deltaへの Semgrep `p/security-audit` は初回 changed 4 filesと最終 setup targetの各runで22 rules / 0 findings。independent correctness、manual security、T037、selected-lane setup、CodeQL #57 review は blocker-free。Ponytail reviewでは既存 typed-error helperと既存 safe file-descriptor patternを再利用し、追加 abstraction/dependency は作らなかった。
 - immutable machine verifier は evidence-aware matcher の **25 / 31** を維持する。現候補は source/caller/test/evidence/exit-gate の手動 five-layer auditで T027–T057 **31 / 31**。T037 は production socket callerまで再確認済み。
 
-PR #7 の code/test head `a263513` は上記local delta gateとlive checksで再検証済み。`87195f5` のlive coverage/checkはhistorical headの記録として保持する。`main` merge と Sonar long-lived branch移行は、この repository evidence commit 後に実施する external stepとして分離する。
+PR #7 の code/test head `22dfd34` は上記local delta gateとlive checksで再検証済み。`87195f5`、`a263513`、`c1b25e3` のlive coverage/checkはhistorical headの記録として保持する。`main` merge と Sonar long-lived branch移行は、この repository evidence commit 後に実施する external stepとして分離する。
 
 ## Machine verifier と手動照合
 
