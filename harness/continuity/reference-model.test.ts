@@ -2552,6 +2552,47 @@ test("照合不能で unknown に倒すのは付け替え先になりうる候�
   );
 });
 
+test("記録できる候補が 1 件も無い terminal は、兄弟の有無に関わらず鍵を残す", () => {
+  // start より先に terminal が届くのは正常運用（hook と transcript scan の取り込み順、再起動後の
+  // catch-up）。隔離しておけば start が届いた後の再配送で拾い直せるが、commit すると鍵が焼けて
+  // 二度と閉じられない。ところが「隔離するコード」を名前で並べていたので、**確定済みで同じ
+  // matchKey の兄弟が 1 件居るだけで** `terminal_orphaned` ではなく `terminal_unmatched` に落ち、
+  // 候補を 1 件も unknown にしないまま鍵だけ消費していた（実測）
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const template = base.state.pendingOperations[0] as PendingOperation;
+  const settledSibling: PendingOperation = { ...template, status: "succeeded" };
+  const early = terminalEvent({
+    eventId: "term-early",
+    adapterDeliveryId: "delivery-early",
+    canonicalFingerprint: "fingerprint-early",
+    ingestSeq: "20",
+    turnId: "turn-2",
+    operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined },
+  });
+  for (const pendingOperations of [[], [settledSibling]]) {
+    const result = reduceTaskWorkState(
+      { ...base, operationStarts: new Map(), state: { ...base.state, pendingOperations } },
+      early,
+      new Map(),
+    );
+    assert.equal(result.outcome, "quarantined");
+    assert.equal(result.ledger.size, 0);
+  }
+  // 締めすぎていない: 既に閉じた operation への再配送は本当に重複なので鍵を消費する
+  const applied = reduceTaskWorkState(
+    {
+      ...base,
+      operationStarts: new Map(),
+      state: { ...base.state, pendingOperations: [settledSibling] },
+    },
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.equal(applied.outcome, "applied");
+  assert.deepEqual(applied.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+  assert.equal(applied.ledger.size, 1);
+});
+
 test("確定済みで別 turn の兄弟は照合不能ゲートを発火させない", () => {
   // `compatible` を母数にしていたとき、**閉じえない兄弟が健全な照合を潰していた**（実測: 兄弟が
   // 居なければ診断ゼロで succeeded なのに、確定済み・別 turn の兄弟が 1 件並ぶだけで

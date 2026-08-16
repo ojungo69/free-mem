@@ -903,9 +903,20 @@ export function reduceTaskWorkState(
     //   後から start が届いても二度と閉じられない。隔離しておけば再配送で拾い直せる
     // 候補が居る分岐（unmatched / ambiguous / order_unverifiable）は下の commit で unknown に
     // 倒して台帳へ入れる。隔離すると operation が `started` のまま残り、状態が嘘をつく
+    // 判定は**診断コードの列挙ではなく結果**から導く。「記録できる相手が居ない」は
+    // `unresolved` が空であることそのもので、コード名で並べると同じ状態に別のコードで到達する
+    // 経路が漏れる（実測: 確定済みで同じ matchKey の兄弟が 1 件居るだけで、start より先に届いた
+    // terminal が `terminal_orphaned`（隔離・鍵を残す）ではなく `terminal_unmatched`（commit・
+    // 鍵を消費）に落ちた。候補を 1 件も `unknown` にしないので状態には何も残らず、それでいて
+    // 配送鍵は焼けるので、後から start が届いてからの再配送が重複 no-op になり operation は
+    // 永久に `started`。上のコメントが `terminal_orphaned` について書いている失敗そのもの）。
+    // #43 のとおり unmatched evidence の置き場が凍結 schema に無いので、記録先が無い commit は
+    // 状態に何も残さない = 隔離との差は「鍵を焼くかどうか」しかない。
+    // 例外は `terminal_already_applied`——これは「既に閉じた operation の再配送」なので本当に
+    // 重複であり、隔離すると adapter が無限に再送する
     if (
-      correlation.diagnostic === "terminal_conflict" ||
-      correlation.diagnostic === "terminal_orphaned"
+      correlation.unresolved.length === 0 &&
+      correlation.diagnostic !== "terminal_already_applied"
     ) {
       return quarantine(previous, idempotencyLedger, diagnostics);
     }

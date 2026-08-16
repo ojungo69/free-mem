@@ -131,7 +131,7 @@ mutate "      detail: \"terminal が start より後でない\",
       // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
       unresolved: [matched]," "      detail: \"terminal が start より後でない\",
       unresolved: compatible.filter(isOpen)," && run "順序違反で候補を巻き込む"
-mutate "      correlation.diagnostic === \"terminal_orphaned\"" "      false" && run "候補ゼロの terminal を台帳に入れる"
+mutate "      correlation.unresolved.length === 0 &&" "      false &&" && run "候補ゼロの terminal を台帳に入れる"
 mutate "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: [matched]," "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: []," && run "順序不明で候補を unknown にしない"
@@ -308,6 +308,7 @@ mutate "  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSourc
 mutate "      pending.correlation.taskLineageId === snapshot.state.taskLineageId" "      true" && run "側索引の同名判定で別 lineage も数える"
 mutate "            (pending.correlation.toolName === undefined ||
               pending.correlation.toolName === operation.operationKind)," "            pending.correlation.toolName === operation.operationKind," && run "候補の toolName を素で比べる"
+mutate "      correlation.diagnostic !== \"terminal_already_applied\"" "      true" && run "適用済みの再配送も隔離する"
 mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの母数を compatible に戻す"
 mutate "            code: \"delivery_conflict\",
             eventId: event.eventId,
