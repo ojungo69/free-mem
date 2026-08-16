@@ -2145,31 +2145,6 @@ function asObject(value) {
 	return {};
 }
 //#endregion
-//#region ../core/src/text-trim.ts
-function codePointBefore(value, end) {
-	const last = value.charCodeAt(end - 1);
-	if (last >= 56320 && last <= 57343 && end >= 2) {
-		const first = value.charCodeAt(end - 2);
-		if (first >= 55296 && first <= 56319) return value.slice(end - 2, end);
-	}
-	return value[end - 1];
-}
-/** Drop code points matching `drop` from the end of `value`. */
-function trimEndWhere(value, drop) {
-	let end = value.length;
-	while (end > 0) {
-		const char = codePointBefore(value, end);
-		if (!drop(char)) break;
-		end -= char.length;
-	}
-	return value.slice(0, end);
-}
-/** Build a `drop` predicate from a literal character set. */
-function isOneOf(chars) {
-	const set = new Set(chars);
-	return (char) => set.has(char);
-}
-//#endregion
 //#region ../core/src/memory-kinds.ts
 var ALLOWED_MEMORY_KINDS = new Set([
 	"discovery",
@@ -2903,6 +2878,31 @@ function spoolMutation(input, options = {}) {
 	} finally {
 		lock.close();
 	}
+}
+//#endregion
+//#region ../core/src/text-trim.ts
+function codePointBefore(value, end) {
+	const last = value.charCodeAt(end - 1);
+	if (last >= 56320 && last <= 57343 && end >= 2) {
+		const first = value.charCodeAt(end - 2);
+		if (first >= 55296 && first <= 56319) return value.slice(end - 2, end);
+	}
+	return value[end - 1];
+}
+/** Drop code points matching `drop` from the end of `value`. */
+function trimEndWhere(value, drop) {
+	let end = value.length;
+	while (end > 0) {
+		const char = codePointBefore(value, end);
+		if (!drop(char)) break;
+		end -= char.length;
+	}
+	return value.slice(0, end);
+}
+/** Build a `drop` predicate from a literal character set. */
+function isOneOf(chars) {
+	const set = new Set(chars);
+	return (char) => set.has(char);
 }
 //#endregion
 //#region src/hook-core.ts
