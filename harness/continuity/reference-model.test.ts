@@ -725,6 +725,56 @@ test("rule 1 の nativeOperationId に複数当たるなら、どれも閉じな
   assert.deepEqual(settled.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
 });
 
+/** 状態の pending を全部よその lineage のものにする（凍結 schema は state との一致を課さない）。 */
+function foreignLineage(snapshot: TaskWorkStateSnapshotV1): TaskWorkStateSnapshotV1 {
+  return {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      pendingOperations: snapshot.state.pendingOperations.map((pending) => ({
+        ...pending,
+        correlation: { ...pending.correlation, taskLineageId: "lineage-other" },
+      })),
+    },
+  };
+}
+
+test("別 lineage の pending を再配送の相手にしない", () => {
+  // `operationId` は eventId + matchKey からの導出で lineage を含まないので、復元した checkpoint に
+  // 同じ derived id の別 lineage の pending が居ると、現 lineage 宛ての start がそれを「自分の
+  // 再配送」と見なして重複になり、鍵を消費したまま現 lineage には operation が 1 件も残らない
+  const applied = reduceTaskWorkState(
+    foreignLineage(startedSnapshot()),
+    startEvent(),
+    new Map(),
+  );
+  assert.equal(applied.outcome, "applied");
+  assert.deepEqual(applied.diagnostics.map((d) => d.code), []);
+  const mine = applied.snapshot.state.pendingOperations.filter(
+    (pending) => pending.correlation.taskLineageId === applied.snapshot.state.taskLineageId,
+  );
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0]?.status, "started");
+});
+
+test("放棄は自 lineage の operation だけを unknown にする", () => {
+  // `sourceEventIds` は append-only なので、巻き込むと別 lineage の記録にこの session の
+  // `session_ended` が永久に残る。§4.3 の「候補の外へ広げない」と同じ理由
+  const abandon = startEvent({
+    eventId: "event-abandon",
+    adapterDeliveryId: "delivery-abandon",
+    kind: "session_ended",
+    ingestSeq: "12",
+    operation: undefined,
+  });
+  const finalized = finalizeAbandonedState(foreignLineage(startedSnapshot()).state, abandon, new Map());
+  assert.equal(finalized.state.pendingOperations[0]?.status, "started");
+  assert.deepEqual(finalized.state.pendingOperations[0]?.sourceEventIds, ["event-start"]);
+  // 自 lineage なら従来どおり倒れる（締めすぎていないことを通る側でも固定する）
+  const own = finalizeAbandonedState(startedSnapshot().state, abandon, new Map());
+  assert.equal(own.state.pendingOperations[0]?.status, "unknown");
+});
+
 test("再配送 start が turn の種別をすり替えたら隔離する", () => {
   // `turnIdSource` は turn 同一性の一部なのに凍結 `OperationCorrelationV1` の外にしか無いので、
   // `turnId` の比較では見えない。重複として台帳に入れると記録は元の種別のまま残り、再配送側の

@@ -679,14 +679,25 @@ export function reduceTaskWorkState(
     // 二重に積まれ、以後 rule 1 の terminal が候補 2 件で何も閉じられなくなる。
     // `nativeOperationId` は本物の呼び出しごとに一意なので、それが一致する pending があれば
     // 再配送として扱う（持たない start では 2 回目の本物の呼び出しと区別できないので触らない）
+    // **再配送の相手を探す集合は lineage で絞る**。状態は lineage を 1 つしか持たず、`assertSameScope`
+    // が束縛するのも lineage と Agent なので、`correlation.taskLineageId` が違う pending はこの状態の
+    // scope に無い。凍結 schema は `correlation.taskLineageId` と `state.taskLineageId` の一致を課さない
+    // ので、復元した checkpoint や別実装が書いた状態では別 lineage の pending が schema 妥当なまま並ぶ。
+    // `nativeMatches` は最初から lineage で絞っていたのに derived id の検索だけ素通しで、そこに同じ
+    // derived id（= 同じ eventId・同じ matchKey）の別 lineage の pending が居ると、**現 lineage 宛ての
+    // start が重複として台帳に入り、現 lineage には operation が 1 件も残らない**（実測: 状態 lineage-1 /
+    // pending lineage-OTHER で `applied` + `duplicate_operation_start`、鍵は消費済み、pending は
+    // 別 lineage の 1 件のみ）。scope 外を「再配送の相手」として使わない
+    const inLineage = previous.state.pendingOperations.filter(
+      (pending) => pending.correlation.taskLineageId === previous.state.taskLineageId,
+    );
     const nativeMatches =
       operation.nativeOperationId === undefined
         ? []
-        : previous.state.pendingOperations.filter(
+        : inLineage.filter(
             (pending) =>
               pending.correlation.nativeOperationId === operation.nativeOperationId &&
-              pending.correlation.sessionId === event.sessionId &&
-              pending.correlation.taskLineageId === previous.state.taskLineageId,
+              pending.correlation.sessionId === event.sessionId,
           );
     // 同じ nativeOperationId を名乗りながら identity が違う start は再配送ではなく corruption。
     // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない。
@@ -756,7 +767,7 @@ export function reduceTaskWorkState(
     // input hash も一致する op-2 宛ての再配送が、op-1 と比べられて start_conflict になった）。
     // 互換な兄弟が居るならそれを再配送の相手にし、居ないときだけ先頭を衝突の証拠に使う
     const existing =
-      previous.state.pendingOperations.find((pending) => pending.operationId === operationId) ??
+      inLineage.find((pending) => pending.operationId === operationId) ??
       nativeMatches.find((pending) => !startConflictsWith(pending)) ??
       nativeMatches[0];
     const startConflict = existing !== undefined && startConflictsWith(existing);
@@ -1118,11 +1129,14 @@ export function correlateTerminalEvent(
       unresolved: [],
     };
   }
-  const lineage = terminalEvent.taskLineageId ?? previous.state.taskLineageId;
+  // lineage は状態から取る。`assertSameScope` を入口で通しているので `terminalEvent.taskLineageId`
+  // は「不在」か「状態と同じ」のどちらかで、event 側を優先しても値は変わらない。それでも state を
+  // 書くのは、wire が運ぶ値を候補選びの権威に見せないため（読み手が「event の lineage で選べる」と
+  // 誤読すると、入口の検査を外した瞬間に別 lineage の operation を閉じられるようになる）
   const sameScope = previous.state.pendingOperations.filter(
     (pending) =>
       pending.correlation.sessionId === terminalEvent.sessionId &&
-      pending.correlation.taskLineageId === lineage,
+      pending.correlation.taskLineageId === previous.state.taskLineageId,
   );
 
   const byNativeId =
@@ -1480,9 +1494,18 @@ export function finalizeAbandonedState(
   // 対象は `operationId` ではなく object 参照で持つ。状態側で `operationId` が重複していると
   // （凍結 schema は一意性を要求しない）、id で当てた瞬間に上の session 絞り込みが無意味になり、
   // 旧 session の session_ended が別 session の live な operation まで `unknown` にする
+  // **lineage も同じ理由で絞る**。凍結 schema は `correlation.taskLineageId` が
+  // `state.taskLineageId` と一致することを要求しないので、復元した checkpoint や別実装が書いた
+  // 状態には別 lineage の pending が schema 妥当なまま並ぶ。session だけで絞ると、その別 lineage の
+  // operation まで `unknown` になり（実測）、`sourceEventIds` は append-only なので巻き込んだ
+  // `session_ended` の eventId が別 lineage の記録に永久に残る。`assertSameScope` が束縛するのは
+  // lineage と Agent なので、この状態が権威を持つのは自 lineage の operation だけ
   const abandoned = new Set(
     state.pendingOperations.filter(
-      (pending) => pending.status === "started" && pending.correlation.sessionId === event.sessionId,
+      (pending) =>
+        pending.status === "started" &&
+        pending.correlation.sessionId === event.sessionId &&
+        pending.correlation.taskLineageId === state.taskLineageId,
     ),
   );
   const pendingOperations = state.pendingOperations.map((pending) =>

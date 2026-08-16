@@ -113,14 +113,17 @@ mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);"
 mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    const retainedIds = new Set(retained.map((p) => p.operationId));\n    for (const evictedId of evicted) if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" && run "同名が残るなら退避側の順序材料を残す"
 mutate "      operation.nativeOperationId === undefined
         ? []
-        : previous.state.pendingOperations.filter(" "      true
+        : inLineage.filter(" "      true
         ? []
-        : previous.state.pendingOperations.filter(" && run "再配送 start を nativeOperationId で拾わない"
+        : inLineage.filter(" && run "再配送 start を nativeOperationId で拾わない"
 mutate "              pending.correlation.nativeOperationId === operation.nativeOperationId &&" "              pending.correlation.operationMatchKey === operation.operationMatchKey &&" && run "再配送の判定を matchKey にする"
 mutate "    if (startConflict) {" "    if (false) {" && run "start の identity 衝突検査を外す"
 mutate "        existing.correlation.operationMatchKey !== operation.operationMatchKey ||" "        false ||" && run "start の matchKey 衝突検査を外す"
 mutate "            existing.correlation.canonicalInputHash !== operation.canonicalInputHash)" "            false)" && run "start の canonicalInputHash 衝突検査を外す"
-mutate "      (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId," "      (pending) => pending.status === \"started\"," && run "放棄を session で絞らない"
+mutate "      (pending) =>
+        pending.status === \"started\" &&
+        pending.correlation.sessionId === event.sessionId &&
+        pending.correlation.taskLineageId === state.taskLineageId," "      (pending) =>\n        pending.status === \\"started\\" &&\n        pending.correlation.taskLineageId === state.taskLineageId," && run "放棄を session で絞らない"
 mutate "        unresolved.has(pending)
           ? withSourceEvent(" "        false
           ? withSourceEvent(" && run "候補の unknown 化を外す"
@@ -227,12 +230,18 @@ mutate "    if (plausible.length === 0) {" "    if (false) {" && run "turn 両�
 mutate "        : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);" "        : plausible.find((pending) => pending.status !== incoming);" && run "矛盾判定の母数まで turn で絞る"
 mutate "        unresolved.has(pending)" "        [...unresolved].some((c) => c.operationId === pending.operationId)" && run "候補の unknown 化を operationId の等値で当てる"
 mutate "    state.pendingOperations.filter(
-      (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId,
+      (pending) =>
+        pending.status === \"started\" &&
+        pending.correlation.sessionId === event.sessionId &&
+        pending.correlation.taskLineageId === state.taskLineageId,
     ),
   );
   const pendingOperations = state.pendingOperations.map((pending) =>
     abandoned.has(pending)" "    state.pendingOperations.filter(
-      (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId,
+      (pending) =>
+        pending.status === \"started\" &&
+        pending.correlation.sessionId === event.sessionId &&
+        pending.correlation.taskLineageId === state.taskLineageId,
     ).map((pending) => pending.operationId) as unknown as PendingOperation[],
   );
   const pendingOperations = state.pendingOperations.map((pending) =>
@@ -255,6 +264,11 @@ mutate "          (recordedSource !== undefined &&
             recordedSource !== event.turnIdSource) ||" "          false ||" && run "再配送 start の turn 種別を見ない"
 mutate "            event.turnIdSource !== \"unavailable\" &&" "            true &&" && run "降格した再配送 start も隔離する"
 mutate "            recordedSource !== \"unavailable\" &&" "            true &&" && run "記録が降格されていても再配送を隔離する"
+mutate "    const inLineage = previous.state.pendingOperations.filter(
+      (pending) => pending.correlation.taskLineageId === previous.state.taskLineageId,
+    );" "    const inLineage = previous.state.pendingOperations;" && run "別 lineage の pending も再配送の相手にする"
+mutate "        pending.correlation.sessionId === event.sessionId &&
+        pending.correlation.taskLineageId === state.taskLineageId," "        pending.correlation.sessionId === event.sessionId," && run "放棄が別 lineage の operation も倒す"
 mutate "            code: \"delivery_conflict\",
             eventId: event.eventId,
             detail: \`event \${applied.eventId} と同じ配送 ID で source hash が違う\`,
