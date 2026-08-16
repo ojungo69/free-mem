@@ -116,7 +116,7 @@ Create `harness/schema/continuity.ts` and a matching closed JSON Schema defining
 - `SessionTaskBinding`, `TaskBoundaryProposalV1`, `TaskBoundaryDecisionV1`, `TaskBoundaryAuthorityContextV1`
 - `ContinuationCheckpointV2`, checkpoint metadata/disposition/projection
 - `CheckpointAnchorV1`, engagement/contradiction/evaluation context
-- `CheckpointDeliveryAttempt`, every `DeliveryCommandV1` variant with `attemptId`
+- `CheckpointDeliveryAttempt`, every `DeliveryCommandV1` variant with `attemptId`, `ResumeSuppressionEntryV1`
 - `WorkspaceReconciliationReport`
 - `ResumeMode`, `ResumeDeliveryBoundary`, capability disposition/preflight state
 - `ResumeThresholdProfileV1`, ranked candidate, `ResumeSelectionDecisionV1`
@@ -230,7 +230,7 @@ Reference interfaces:
 ```ts
 projectCheckpointDisposition(events, checkpointLookup, authority): CheckpointDispositionProjection
 claimCheckpointAtomically(input): { attempt; projection }
-transitionDeliveryAttempt(attempt, projection, commandWithoutAccept): { attempt; projection }
+transitionDeliveryAttempt(attempt, projection, suppressionLedger, commandWithoutAccept): { attempt; projection; suppression?: ResumeSuppressionEntryV1 }
 acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 ```
 
@@ -252,7 +252,7 @@ acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 - [ ] Reclaim terminates the old attempt and rotates the projection's active attempt and fence together. Appending a delivery-invalidating disposition (`superseded`, `expired`, `retracted`) abandons the active attempt and clears the active attempt/fence/lease; acceptance clears the same fields but advances its own attempt to `accepted` (§6.4) instead of abandoning it.
 - [ ] Supersede/expire/retract-between-claim-and-delivery fixture: the delayed `mark_delivered` is `stale_attempt` and no injection happens.
 - [ ] Reclaim-versus-delivery race fixture: a delayed `mark_delivered`/`record_engagement` from the reclaimed attempt is typed `stale_attempt` and changes nothing.
-- [ ] `dismiss` and `abandon` clear the projection's active attempt/fence/lease in the same transaction; `dismiss` additionally appends a per-`(checkpointId, destinationSessionId)` suppression entry so the rejecting session stops being an eligible destination.
+- [ ] `dismiss` and `abandon` clear the projection's active attempt/fence/lease in the same transaction; `dismiss` additionally returns a `ResumeSuppressionEntryV1` for `(checkpointId, destinationSessionId)` that the same transaction appends to the resume ledger, so the rejecting session stops being an eligible destination and the write is part of the frozen contract rather than a side effect.
 - [ ] Immediate-reclaim fixtures: after `abandon` the same session reclaims without waiting for lease expiry; after `dismiss` a different eligible session reclaims immediately while the dismissing session is rejected as ineligible.
 - [ ] `renew_lease` is a typed post-claim command under the same CAS; heartbeat-versus-reclaim fixture proves a renewal arriving after reclaim cannot extend the stale attempt's lease.
 - [ ] Mismatched attempt ID/revision/fence/session is typed stale/invalid and causes no state change.

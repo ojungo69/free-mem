@@ -547,6 +547,14 @@ type DeliveryCommandV1 =
   | { kind: "dismiss"; attemptId: string; revision: string; fence: string; sessionId: string }
   | { kind: "abandon"; attemptId: string; revision: string; fence: string; sessionId: string; reason: string }
   | { kind: "renew_lease"; attemptId: string; revision: string; fence: string; sessionId: string; requestedLeaseUntil: string };
+
+interface ResumeSuppressionEntryV1 {
+  checkpointId: string;
+  sessionId: string;
+  reason: "dismissed";
+  attemptId: string;
+  createdAt: string;
+}
 ```
 
 Every post-claim command validates the caller-supplied `attemptId`, attempt revision, fence, and destination session. A mismatched attempt ID is a typed stale/invalid request and causes no state change.
@@ -566,7 +574,7 @@ Either way, a checkpoint that stops being `open` has no attempt that can still p
 
 `dismiss` and `abandon` terminate the attempt **and** clear `activeDeliveryAttemptId`, `activeClaimFence`, and `activeLeaseUntil` in the same transaction, so a dismissed or abandoned attempt never keeps the checkpoint claimed until its lease would have expired.
 
-The two differ in what else the transaction records. `dismiss` is an explicit rejection, so it also appends a per-`(checkpointId, destinationSessionId)` suppression entry to the resume ledger in the same transaction (v6.1 §11: dismiss returns the checkpoint to `open` **and** suppresses it for that session). A suppressed session is not an eligible destination for that checkpoint again, so clearing the claim cannot cause repeated injection into the session that just rejected it. `abandon` records no suppression and the same session may reclaim.
+The two differ in what else the transaction records. `dismiss` is an explicit rejection, so it also appends a `ResumeSuppressionEntryV1` per `(checkpointId, destinationSessionId)` to the resume ledger in the same transaction — the entry is part of the transition's output, not a side effect outside the frozen contract (v6.1 §11: dismiss returns the checkpoint to `open` **and** suppresses it for that session). A suppressed session is not an eligible destination for that checkpoint again, so clearing the claim cannot cause repeated injection into the session that just rejected it. `abandon` records no suppression and the same session may reclaim.
 
 Both immediate-reclaim paths are required fixtures: after `abandon`, the same session reclaims without waiting for lease expiry; after `dismiss`, a **different** eligible session reclaims immediately while the dismissing session is rejected as ineligible.
 
