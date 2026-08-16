@@ -1,0 +1,39 @@
+harness/continuity/validate.test.ts
+  s_710bedeaedf8d7::t_5ef37bd2366a79 510-522,527-532
+  s_5cbc4c67c8b3b4::t_8b697f27e46a3a 523-526
+harness/contract-hashes.mjs
+  s_5cbc4c67c8b3b4::t_68155417e2f546 1-20,24-31,33-46
+  s_5cbc4c67c8b3b4::t_3f83c1dda84dc2 21-23,32
+.github/workflows/ci.yml
+  s_5cbc4c67c8b3b4::t_11f05c2d8d825a 103-110
+docs/superpowers/plans/2026-08-16-phase3-resume-preflight.md
+  s_5cbc4c67c8b3b4::t_3b57f770acd5fd 153
+harness/contract-hashes.json
+  s_5cbc4c67c8b3b4::t_00c1dfe77733cd 1-32
+harness/schema/validate.ts
+  s_5cbc4c67c8b3b4::t_5945ad410500c9 34-44,298-308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d681e824ae13edeae4fb1f6b18d91b32f80e5f5b",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_710bedeaedf8d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a009f4-2480-78a3-8503-8958752b8e21",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
