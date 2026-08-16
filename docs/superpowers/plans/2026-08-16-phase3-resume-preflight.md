@@ -47,7 +47,7 @@ Create:
 
 ## Task 1 — Exact-version capability evidence
 
-- [ ] Add `ResumeDeliveryStrategy`:
+- [x] Add `ResumeDeliveryStrategy`:
 
 ```ts
 type ResumeDeliveryStrategy =
@@ -57,7 +57,7 @@ type ResumeDeliveryStrategy =
   | "manual_only";
 ```
 
-- [ ] Add matrix fields:
+- [x] Add matrix fields:
 
 ```ts
 resumeDeliveryStrategy: ResumeDeliveryStrategy;
@@ -66,12 +66,12 @@ compactSingleDelivery: CapabilityEvidence;
 capabilityHashInputs: string[];
 ```
 
-- [ ] RED: empty matrix resolves to `manual_only`; evidence cells are `unknown`.
-- [ ] RED: reject a half-proven synthesized prompt path.
-- [ ] `next_prompt_synthesized` requires both prompt-delivery cells to be synthesized by the same exact-version real-CLI fixture/evidence hash.
-- [ ] `session_start_full` requires native or synthesized SessionStart real-CLI proof.
-- [ ] Mirror closed enums/required fields in JSON Schema.
-- [ ] Regenerate matrices; never manually edit generated JSON.
+- [x] RED: empty matrix resolves to `manual_only`; evidence cells are `unknown`.
+- [x] RED: reject a half-proven synthesized prompt path.
+- [x] `next_prompt_synthesized` requires both prompt-delivery cells to be synthesized by the same exact-version real-CLI fixture/evidence hash.
+- [x] `session_start_full` requires native or synthesized SessionStart real-CLI proof.
+- [x] Mirror closed enums/required fields in JSON Schema.
+- [x] Regenerate matrices; never manually edit generated JSON.
 
 ```bash
 node --experimental-strip-types --test harness/continuity/capability-contract.test.ts

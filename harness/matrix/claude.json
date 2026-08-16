@@ -1,7 +1,7 @@
 {
   "cli": "claude",
   "nativeVersion": "2.1.228 (Claude Code)",
-  "generatedAt": "2026-08-12T12:02:10.158Z",
+  "generatedAt": "2026-08-16T04:21:31.467Z",
   "fixtureCount": 5,
   "fixtureIds": [
     "claude/injection-and-subagent",
@@ -178,9 +178,31 @@
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
         "observed in claude/injection-and-subagent"
-      ]
+      ],
+      "sourceFixtureId": "claude/injection-and-subagent",
+      "evidenceHash": null
     },
     "promptAwareInjection": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "2.1.228 (Claude Code)",
+      "evidenceKind": null,
+      "verifiedAt": null,
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "promptDeliveryBeforeModel": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "2.1.228 (Claude Code)",
+      "evidenceKind": null,
+      "verifiedAt": null,
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "compactSingleDelivery": {
       "value": "unknown",
       "sourceEvents": [],
       "nativeVersion": "2.1.228 (Claude Code)",
@@ -209,7 +231,9 @@
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
         "observed in claude/injection-and-subagent"
-      ]
+      ],
+      "sourceFixtureId": "claude/injection-and-subagent",
+      "evidenceHash": null
     },
     "stableNativeSessionId": {
       "value": "native",
@@ -219,7 +243,19 @@
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
         "observed in claude/injection-and-subagent"
-      ]
-    }
+      ],
+      "sourceFixtureId": "claude/injection-and-subagent",
+      "evidenceHash": null
+    },
+    "resumeDeliveryStrategy": "session_start_full",
+    "capabilityHashInputs": [
+      "cli:claude",
+      "nativeVersion:2.1.228 (Claude Code)",
+      "fixture:claude/injection-and-subagent@no-evidence-hash",
+      "fixture:claude/interrupt-and-hook-timeout@no-evidence-hash",
+      "fixture:claude/lifecycle-basic@no-evidence-hash",
+      "fixture:claude/tool-failed-executed@no-evidence-hash",
+      "fixture:claude/tool-lifecycle@no-evidence-hash"
+    ]
   }
 }

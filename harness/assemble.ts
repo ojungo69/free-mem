@@ -6,6 +6,7 @@ import {
   EVENT_KINDS,
   TOOL_FAILURE_PHASES,
   emptyMatrix,
+  resolveResumeDeliveryStrategy,
   type AdapterCapabilities,
   type CaptureFixture,
   type EventKind,
@@ -109,6 +110,10 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
     errs.push("limitations items must be strings");
   }
 
+  if ("evidenceHash" in data && (typeof data.evidenceHash !== "string" || !/^[a-f0-9]{64}$/.test(data.evidenceHash))) {
+    errs.push("evidenceHash must be a 64-char lowercase hex SHA-256 if present");
+  }
+
   if (!isObject(data.rig)) {
     errs.push("rig must be object");
   } else {
@@ -179,6 +184,8 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   const HIGH_LEVEL_KEYS = [
     "sessionStartInjection",
     "promptAwareInjection",
+    "promptDeliveryBeforeModel",
+    "compactSingleDelivery",
     "trueSessionEnd",
     "subagentCapture",
     "stableNativeSessionId",
@@ -233,6 +240,8 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
           evidenceKind: "real-cli-e2e",
           verifiedAt: f.capturedAt,
           limitations: [`observed in ${f.fixtureId}`],
+          sourceFixtureId: f.fixtureId,
+          evidenceHash: f.evidenceHash ?? null,
         };
       }
       if (hl.compactionRecoveryStrategy) {
@@ -243,6 +252,15 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
 
   capabilities.toolFailurePhases = TOOL_FAILURE_PHASES.filter((p) => phaseSet.has(p));
   capabilities.toolFailurePhasesUntested = TOOL_FAILURE_PHASES.filter((p) => !phaseSet.has(p));
+
+  // capability hash の入力: exact version と、各 fixture の evidence hash。
+  // fixture 順に依らないよう sort する（同じ証拠集合なら同じ入力列になる）
+  capabilities.capabilityHashInputs = [
+    `cli:${cli}`,
+    `nativeVersion:${nativeVersion}`,
+    ...fixtures.map((f) => `fixture:${f.fixtureId}@${f.evidenceHash ?? "no-evidence-hash"}`).sort(),
+  ];
+  capabilities.resumeDeliveryStrategy = resolveResumeDeliveryStrategy(capabilities);
 
   return {
     cli,
@@ -380,6 +398,11 @@ async function selfTest(): Promise<void> {
     );
     assert(cap.sessionStartInjection.value === "unknown", "sessionStartInjection unknown");
     assert(cap.promptAwareInjection.value === "unknown", "promptAwareInjection unknown");
+    assert(cap.promptDeliveryBeforeModel.value === "unknown", "promptDeliveryBeforeModel unknown");
+    assert(cap.compactSingleDelivery.value === "unknown", "compactSingleDelivery unknown");
+    assert(cap.resumeDeliveryStrategy === "manual_only", "no proof ⇒ manual_only");
+    assert(cap.capabilityHashInputs[0] === "cli:claude", "capabilityHashInputs starts with cli");
+    assert(cap.capabilityHashInputs.includes(`nativeVersion:${v}`), "capabilityHashInputs pins version");
     assert(cap.trueSessionEnd.value === "unknown", "trueSessionEnd unknown");
     assert(cap.subagentCapture.value === "unknown", "subagentCapture unknown");
     assert(cap.stableNativeSessionId.value === "unknown", "stableNativeSessionId unknown");

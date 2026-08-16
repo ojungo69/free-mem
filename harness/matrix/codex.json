@@ -1,7 +1,7 @@
 {
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "generatedAt": "2026-08-12T12:00:23.759Z",
+  "generatedAt": "2026-08-16T04:21:31.544Z",
   "fixtureCount": 3,
   "fixtureIds": [
     "codex/injection",
@@ -168,9 +168,31 @@
       "verifiedAt": "2026-08-12T11:16:08.730Z",
       "limitations": [
         "observed in codex/lifecycle-basic"
-      ]
+      ],
+      "sourceFixtureId": "codex/lifecycle-basic",
+      "evidenceHash": null
     },
     "promptAwareInjection": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": null,
+      "verifiedAt": null,
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "promptDeliveryBeforeModel": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": null,
+      "verifiedAt": null,
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "compactSingleDelivery": {
       "value": "unknown",
       "sourceEvents": [],
       "nativeVersion": "codex-cli 0.147.0",
@@ -210,6 +232,14 @@
       "limitations": [
         "not observed in Phase 0B"
       ]
-    }
+    },
+    "resumeDeliveryStrategy": "session_start_full",
+    "capabilityHashInputs": [
+      "cli:codex",
+      "nativeVersion:codex-cli 0.147.0",
+      "fixture:codex/injection@no-evidence-hash",
+      "fixture:codex/lifecycle-basic@no-evidence-hash",
+      "fixture:codex/tool-lifecycle-and-failure@no-evidence-hash"
+    ]
   }
 }

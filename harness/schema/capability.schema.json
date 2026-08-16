@@ -142,6 +142,10 @@
         "type": "string"
       }
     },
+    "evidenceHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "rig": {
       "type": "object",
       "additionalProperties": false,
@@ -172,6 +176,22 @@
           ]
         },
         "promptAwareInjection": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "promptDeliveryBeforeModel": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "compactSingleDelivery": {
           "type": "string",
           "enum": [
             "native",
