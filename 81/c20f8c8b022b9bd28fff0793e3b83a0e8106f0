@@ -1,0 +1,21 @@
+harness/continuity/reference-model.test.ts
+  s_5cbc4c67c8b3b4::t_aa04bb05db6b6c 598-616
+harness/continuity/reference-model.ts
+  s_5cbc4c67c8b3b4::t_31bb1e3e8d9803 192-204,354,609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "81c20f8c8b022b9bd28fff0793e3b83a0e8106f0",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
