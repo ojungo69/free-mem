@@ -58,5 +58,13 @@ issue or test fixture.
 
 ## Licensing
 
-No repository-wide license grant has been made. Third-party material retains its own
-license; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+free-mem is licensed under the Apache License 2.0 — see [`LICENSE`](LICENSE) and
+[`NOTICE`](NOTICE). The reasoning, the dependency license scan, and the per-directory
+material breakdown are in [`evidence/adr-004-licensing.md`](evidence/adr-004-licensing.md).
+
+Third-party material retains its own license. In particular `vendor/codemem/` is a pinned
+MIT snapshot and is **not** relicensed by this repository; see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Contributions are accepted under the same license, with a DCO sign-off — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
