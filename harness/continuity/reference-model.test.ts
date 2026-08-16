@@ -2182,6 +2182,37 @@ test("状態側で operationId が衝突していても terminal は 1 件しか
   }
 });
 
+test("operationId が衝突していても放棄は自 session の operation だけを unknown にする", () => {
+  // `abandoned` を `operationId` の集合で持つと、直前の session 絞り込みが id の重複で無意味に
+  // なり、旧 session の session_ended が resume 先の live な operation まで unknown にする
+  const pending = (operationId: string, sessionId: string, n: string): PendingOperation =>
+    ({
+      operationId,
+      correlation: {
+        operationId, startEventId: `s-${n}`, nativeOperationId: n, operationMatchKey: `m-${n}`,
+        sessionId, taskLineageId: "lineage-1", turnId: "turn-1", toolName: "Bash", canonicalInputHash: "h",
+      },
+      kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
+      sourceEventIds: [`s-${n}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+    }) as unknown as PendingOperation;
+  const ended = {
+    eventId: "end-1", adapterDeliveryId: "d-end", canonicalFingerprint: "f-end", kind: "session_ended",
+    ingestSeq: "20", occurredAt: "2026-08-16T00:00:09Z", sessionId: "session-old", taskLineageId: "lineage-1",
+    turnIdSource: "unavailable", sourceAgent: "claude",
+    provenance: { sourceAgentVersion: VERSION, evidenceKind: "synthesized", captureMethod: "native_event" },
+    payload: {},
+  } as unknown as Parameters<typeof finalizeAbandonedState>[1];
+  const result = finalizeAbandonedState(
+    emptyState({ pendingOperations: [pending("dup", "session-old", "n1"), pending("dup", "session-live", "n2")] }),
+    ended,
+    new Map(),
+  );
+  assert.deepEqual(
+    result.state?.pendingOperations.map((p) => `${p.correlation.sessionId}:${p.status}`),
+    ["session-old:unknown", "session-live:started"],
+  );
+});
+
 test("turn が両立しなくても成否が矛盾する terminal は隔離する", () => {
   // 矛盾の検出は「閉じる権限があるか」ではなく「壊れた証跡か」の判定なので turn 両立は要らない。
   // ここまで絞ると候補が全部落ちたときに `find` が undefined を返し、隔離（台帳を消費しない）が

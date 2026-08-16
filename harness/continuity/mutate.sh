@@ -118,7 +118,7 @@ mutate "              pending.correlation.nativeOperationId === operation.native
 mutate "    if (startConflict) {" "    if (false) {" && run "start の identity 衝突検査を外す"
 mutate "      (existing.correlation.operationMatchKey !== operation.operationMatchKey ||" "      (false ||" && run "start の matchKey 衝突検査を外す"
 mutate "          existing.correlation.canonicalInputHash !== operation.canonicalInputHash));" "          false));" && run "start の canonicalInputHash 衝突検査を外す"
-mutate "      .filter((pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId)" "      .filter((pending) => pending.status === \"started\")" && run "放棄を session で絞らない"
+mutate "      (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId," "      (pending) => pending.status === \"started\"," && run "放棄を session で絞らない"
 mutate "        unresolved.has(pending.operationId)
           ? withSourceEvent(" "        false
           ? withSourceEvent(" && run "候補の unknown 化を外す"
@@ -223,7 +223,18 @@ mutate "  assertIdentityMaterial(terminalEvent);" "" && run "直接呼びの ide
 mutate "  if (isBlank(event.sourceAgent)) {" "  if (false) {" && run "空白の sourceAgent を素通しする"
 mutate "    if (settled.length === 0) {" "    if (false) {" && run "turn 両立ゼロの確定済みを適用済みにする"
 mutate "        : compatible.find((pending) => pending.status !== incoming);" "        : settled.find((pending) => pending.status !== incoming);" && run "矛盾判定の母数まで turn で絞る"
-mutate "      pending === correlation.matched" "      pending.operationId === matchedId" && run "terminal の適用先を operationId の等値で当てる"
+mutate "      pending === correlation.matched" "      pending.operationId === correlation.matched.operationId" && run "terminal の適用先を operationId の等値で当てる"
+mutate "    state.pendingOperations.filter(
+      (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId,
+    ),
+  );
+  const pendingOperations = state.pendingOperations.map((pending) =>
+    abandoned.has(pending)" "    state.pendingOperations.filter(
+      (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId,
+    ).map((pending) => pending.operationId) as unknown as PendingOperation[],
+  );
+  const pendingOperations = state.pendingOperations.map((pending) =>
+    abandoned.has(pending.operationId as unknown as PendingOperation)" && run "放棄の適用先を operationId の等値で当てる"
 mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = compatible;" && run "確定済みの説明に turn 両立を求めない"
 mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = sameTurnOf(compatible);" && run "確定済みの説明で turn 種別だけ見ない"
 cp "$BAK" "$SRC"

@@ -800,8 +800,15 @@ export function reduceTaskWorkState(
     // unknown のままにし、診断を出す」。status は unknown にするが pending には残すので、
     // 後から権威ある証跡（rule 1）が来れば閉じられる。証跡を足さないと、状態が変わった理由が
     // 状態からも history からも辿れない（放棄経路は足しているので扱いも揃わない）
+    // ここだけは `operationId` で当てる。`unresolvedOperationIds` は公開している照合結果の欄
+    // （`string[]`）で、§4.3 も「候補を unknown のままにする」と集合単位で指示している。
+    // 状態側で id が重複していると無関係な operation も `unknown` になるが、`unknown` は
+    // fail-closed 側で rule 1 の terminal が来れば閉じられるので回復できる（#47・Task 6）
     const unresolved = new Set(correlation.unresolvedOperationIds);
-    const truncated = sourceEventsFull(previous.state.pendingOperations, unresolved);
+    const unresolvedPendings = new Set(
+      previous.state.pendingOperations.filter((pending) => unresolved.has(pending.operationId)),
+    );
+    const truncated = sourceEventsFull(previous.state.pendingOperations, unresolvedPendings);
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: previous.state.pendingOperations.map((pending) =>
         unresolved.has(pending.operationId)
@@ -815,9 +822,8 @@ export function reduceTaskWorkState(
     });
   }
 
-  const matchedId = correlation.matched.operationId;
   const status = terminalStatusOf(event);
-  const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([matchedId]));
+  const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([correlation.matched]));
   return commit(previous, event, idempotencyLedger, {
     // 照合された 1 件だけを更新する。`operationId` の等値で当てると、**状態側で
     // `operationId` が衝突している**とき terminal 1 通が複数の operation を診断ゼロで閉じる。
@@ -891,9 +897,14 @@ function withSourceEvent(pending: PendingOperation, eventId: string): PendingOpe
   return { ...pending, sourceEventIds: [...pending.sourceEventIds, eventId] };
 }
 
-function sourceEventsFull(pending: readonly PendingOperation[], ids: ReadonlySet<string>): string[] {
+// 対象は `operationId` ではなく **object 参照**で受け取る。状態側で `operationId` が重複して
+// いるとき（凍結 schema は一意性を要求しない）、id で当てると無関係な operation まで数える
+function sourceEventsFull(
+  pending: readonly PendingOperation[],
+  targets: ReadonlySet<PendingOperation>,
+): string[] {
   return pending
-    .filter((candidate) => ids.has(candidate.operationId))
+    .filter((candidate) => targets.has(candidate))
     .filter((candidate) => candidate.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems)
     .map((candidate) => candidate.operationId);
 }
@@ -1326,13 +1337,16 @@ export function finalizeAbandonedState(
   // 放棄するのはその event の session の operation だけ。lineage は session をまたいで続く
   // （§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つ）ので、session を見ないと
   // 遅れて届いた旧 session の session_ended が、resume 先の live な operation まで unknown にする
+  // 対象は `operationId` ではなく object 参照で持つ。状態側で `operationId` が重複していると
+  // （凍結 schema は一意性を要求しない）、id で当てた瞬間に上の session 絞り込みが無意味になり、
+  // 旧 session の session_ended が別 session の live な operation まで `unknown` にする
   const abandoned = new Set(
-    state.pendingOperations
-      .filter((pending) => pending.status === "started" && pending.correlation.sessionId === event.sessionId)
-      .map((pending) => pending.operationId),
+    state.pendingOperations.filter(
+      (pending) => pending.status === "started" && pending.correlation.sessionId === event.sessionId,
+    ),
   );
   const pendingOperations = state.pendingOperations.map((pending) =>
-    abandoned.has(pending.operationId)
+    abandoned.has(pending)
       ? withSourceEvent({ ...pending, status: "unknown" as const }, event.eventId)
       : pending,
   );
