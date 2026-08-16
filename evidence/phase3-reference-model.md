@@ -306,7 +306,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。53 件すべてで 1 件以上が失敗し、
+各ゲートをわざと壊し、対応する test が落ちることを確認した。52 件すべてで 1 件以上が失敗し、
 復元後は 78/78 green。
 
 | 壊した箇所 | 落ちた test 数 |
@@ -362,7 +362,6 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | start の operationKind 比較を外す | 1 |
 | 放棄 kind の制限を外す | 1 |
 | 配送 ID 衝突の隔離を外す | 1 |
-| source hash の比較を外す | 1 |
 | sensitivity 集約を normal 固定にする | 3 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、

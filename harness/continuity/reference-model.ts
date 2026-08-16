@@ -328,14 +328,9 @@ function sourceHashOf(event: NormalizedContinuityEvent): string | undefined {
   return event.canonicalFingerprint === "" ? undefined : event.canonicalFingerprint;
 }
 
-/**
- * 適用済みの key に対する再配送が、同じ論理 event の再送か corruption かを分ける。
- * source hash がどちらかに無いときは比較材料が無いので再送として扱う（`adapterDeliveryId` を
- * 出す adapter が fingerprint を出さない構成があり得る）。
- */
-function isDeliveryConflict(applied: LedgerEntryV1, event: NormalizedContinuityEvent): boolean {
-  const incoming = sourceHashOf(event);
-  return applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming;
+function ledgerEntryOf(event: NormalizedContinuityEvent): LedgerEntryV1 {
+  const sourceHash = sourceHashOf(event);
+  return { eventId: event.eventId, ...(sourceHash !== undefined ? { sourceHash } : {}) };
 }
 
 /** start event のうち frozen schema に入らない値（#35）。 */
@@ -458,10 +453,7 @@ function commit(
   const contentHash = contentHashOf(content);
   const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
   const nextLedger = new Map(ledger);
-  nextLedger.set(ledgerKeyOf(event), {
-    eventId: event.eventId,
-    ...(sourceHashOf(event) !== undefined ? { sourceHash: sourceHashOf(event) } : {}),
-  });
+  nextLedger.set(ledgerKeyOf(event), ledgerEntryOf(event));
   return {
     outcome: "applied",
     snapshot: {
@@ -514,8 +506,10 @@ export function reduceTaskWorkState(
   if (applied !== undefined) {
     // §4.3「terminal は … payload/source hash が衝突しないこと」。同じ配送 ID で内容が違う
     // event は再送ではなく corruption なので、重複として黙って捨てずに隔離する（捨てると
-    // 衝突検査が到達不能になり、訂正版の再配送も同じ鍵で消える）
-    if (isDeliveryConflict(applied, event)) {
+    // 衝突検査が到達不能になり、訂正版の再配送も同じ鍵で消える）。source hash がどちらかに
+    // 無いときは比較材料が無いので再送として扱う
+    const incoming = sourceHashOf(event);
+    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
       return quarantine(previous, idempotencyLedger, [
         {
           code: "delivery_conflict",
@@ -1039,9 +1033,6 @@ export function finalizeAbandonedState(
   return {
     outcome: "applied",
     state: next,
-    ledger: new Map(idempotencyLedger).set(key, {
-      eventId: event.eventId,
-      ...(sourceHashOf(event) !== undefined ? { sourceHash: sourceHashOf(event) } : {}),
-    }),
+    ledger: new Map(idempotencyLedger).set(key, ledgerEntryOf(event)),
   };
 }
