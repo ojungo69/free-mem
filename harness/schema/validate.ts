@@ -186,8 +186,25 @@ export function findNonJsonValues(
   }
   seen.add(obj);
   if (Array.isArray(value)) {
-    // forEach は hole を飛ばすが JSON.stringify は null にする。ずれを見逃さないよう添字で歩く
+    // 添字と length 以外の own key（`a.meta = 1`・symbol）、穴、getter は JSON に出ない。
+    // object 側を素の data object に限っているのと同じ理由で、配列もここで拒否する
+    for (const key of Reflect.ownKeys(value)) {
+      if (key === "length") continue;
+      const index = typeof key === "string" ? Number(key) : Number.NaN;
+      if (!Number.isInteger(index) || String(index) !== key || index < 0 || index >= value.length) {
+        issues.push({ path, message: `array has non-index own key: ${String(key)}` });
+      }
+    }
     for (let i = 0; i < value.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, i);
+      if (!descriptor) {
+        issues.push({ path: `${path}[${i}]`, message: "array hole" });
+        continue;
+      }
+      if (!("value" in descriptor)) {
+        issues.push({ path: `${path}[${i}]`, message: "array element is a getter/setter" });
+        continue;
+      }
       issues.push(...findNonJsonValues(value[i], `${path}[${i}]`, seen, depth + 1));
     }
   } else if (isDataObject(value)) {

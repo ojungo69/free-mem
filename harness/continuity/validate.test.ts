@@ -349,10 +349,29 @@ test("if / then / else を評価する", () => {
   assert.ok(validateAgainstSchema({}, schema, ROOT).some((i) => /missing required property: capability/.test(i.message)));
 });
 
-test("sparse array の hole を JSON 妥当性検査で見逃さない", () => {
+test("JSON に無い配列の状態を妥当性検査で見逃さない", () => {
   // JSON.stringify は hole を null にするため「検証した形」と「保存する形」がずれる
-  const issues = findNonJsonValues([1, , 3]);
-  assert.ok(issues.some((i) => /non-JSON value of type undefined/.test(i.message)));
+  assert.ok(findNonJsonValues([1, , 3]).some((i) => /array hole/.test(i.message)));
+
+  // 添字以外の own key と getter も JSON に出ない（消えた欄が検証済みとして通る）
+  const tagged: unknown[] & { audit?: unknown } = [1];
+  tagged.audit = { shouldNotDisappear: true };
+  assert.equal(JSON.stringify(tagged), "[1]");
+  assert.ok(findNonJsonValues(tagged).some((i) => /non-index own key: audit/.test(i.message)));
+
+  const accessor: unknown[] = [];
+  Object.defineProperty(accessor, "0", { enumerable: true, get: () => 1 });
+  Object.defineProperty(accessor, "length", { value: 1 });
+  assert.ok(findNonJsonValues(accessor).some((i) => /getter\/setter/.test(i.message)));
+
+  // prototype 側の添字で穴を埋めても own property ではない（値は読めるのに JSON には出ない）
+  const proto: unknown[] = Object.create(Array.prototype) as unknown[];
+  proto[0] = "inherited";
+  const inherited = Object.setPrototypeOf(Array(1), proto) as unknown[];
+  assert.equal(inherited[0], "inherited");
+  assert.ok(findNonJsonValues(inherited).some((i) => /array hole/.test(i.message)));
+
+  assert.deepEqual(findNonJsonValues([1, "a", { b: [2] }]), []);
 });
 
 test("anyOf / oneOf の分岐にある schema 誤記を飲み込まない", () => {

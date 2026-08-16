@@ -133,6 +133,14 @@ test("添字以外の property を持つ配列は canonicalize しない", () =>
   };
   assert.throws(() => canonicalizeJson(forged), /length 以外の own key/);
 
+  // prototype 側の添字で穴を埋めた配列も落とす（own property でない値は JSON に出ない）
+  const proto: unknown[] = Object.create(Array.prototype) as unknown[];
+  proto[0] = "inherited";
+  assert.throws(
+    () => canonicalizeJson(Object.setPrototypeOf(Array(1), proto) as unknown[]),
+    /穴のある配列/,
+  );
+
   assert.equal(canonicalizeJson([1, 2]), "[1,2]");
 });
 

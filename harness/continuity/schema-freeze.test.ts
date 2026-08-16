@@ -442,19 +442,56 @@ const SCHEMA_ONLY_DEFS = ["IsoTimestamp"];
  * （`export type { X }`・`export default interface X`・改行を挟んだ `export type\nX`）を
  * 素通りさせると、宣言が消えたのに集合が一致したままになる。
  */
+/**
+ * コメントと文字列の中身を消す。行ごとに `//` を探すと `"https://x"` の途中で切れ、
+ * `export type Endpoint = "https://x";` が丸ごと消えて宣言を数え損なう。
+ * 改行はそのまま残して行の対応を保つ。
+ */
+function stripCommentsAndStrings(source: string): string {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const two = source.slice(i, i + 2);
+    if (two === "//") {
+      while (i < source.length && source[i] !== "\n") i++;
+      continue;
+    }
+    if (two === "/*") {
+      for (i += 2; i < source.length && source.slice(i, i + 2) !== "*/"; i++) {
+        if (source[i] === "\n") out += "\n";
+      }
+      i += 2;
+      continue;
+    }
+    const quote = source[i];
+    if (quote === '"' || quote === "'" || quote === "`") {
+      for (i++; i < source.length && source[i] !== quote; i += source[i] === "\\" ? 2 : 1) {
+        if (source[i] === "\n") out += "\n";
+      }
+      i++;
+      out += '""'; // 中身は捨てるが、宣言の形は保つ
+      continue;
+    }
+    out += source[i];
+    i++;
+  }
+  return out;
+}
+
 function declaredTypeNames(source: string): string[] {
   const names: string[] = [];
-  // コメントの中の `export interface X {` を数えると、宣言を丸ごとコメントアウトしても通る
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[^\n]*\/\/[^\n]*$/gm, "");
-  for (const [line] of code.matchAll(/^export\b[^\n]*$/gm)) {
-    const declaration = /^export (?:type|interface) (\w+)[\s<={]/.exec(line);
+  const code = stripCommentsAndStrings(source);
+  // 行頭に固定しない。字下げした `  export interface X {}` も有効な TS なので、
+  // 拾わないと「宣言を足したのに凍結ゲートが気付かない」側に倒れる
+  for (const [, line] of code.matchAll(/(?:^|\n)[ \t]*(export\b[^\n]*)/g)) {
+    const declaration = /^export (?:type|interface) (\w+)[\s<={]/.exec(line as string);
     if (declaration) {
       names.push(declaration[1] as string);
       continue;
     }
     // 値の export（union 定数と CONTINUITY_LIMITS）は型ではないので数えない
-    if (/^export const \w+[\s:=]/.test(line)) continue;
-    assert.fail(`型名を取れない export の形: ${line}`);
+    if (/^export const \w+[\s:=]/.test(line as string)) continue;
+    assert.fail(`型名を取れない export の形: ${(line as string).trim()}`);
   }
   return names;
 }
@@ -475,11 +512,18 @@ test("名前を取れない export の形は落とす（AST を持たない代�
   for (const bad of [
     "type X = string;\nexport type { X };\n", // 再 export（名前の位置が違う）
     "export default interface X {}\n",
+    "export default interface X {} // note\n", // 行末コメントで消えない
     "export type\n  X = string;\n", // 宣言が改行を跨ぐ
     "export declare type X = string;\n",
   ]) {
     assert.throws(() => declaredTypeNames(bad), /型名を取れない export の形/, bad);
   }
+  // 字下げした宣言も拾う（拾わないと「型を足したのに凍結ゲートが気付かない」側に倒れる）
+  assert.deepEqual(declaredTypeNames("  export interface Extra {}\n"), ["Extra"]);
+  // 行末コメント・文字列の中の `//` で宣言を消さない
+  assert.deepEqual(declaredTypeNames("export type A = string; // note\n"), ["A"]);
+  assert.deepEqual(declaredTypeNames('export type Endpoint = "https://example.test";\n'), ["Endpoint"]);
+  assert.deepEqual(declaredTypeNames('export type Q = "/* not a comment */";\nexport type B = 1;\n'), ["Q", "B"]);
   // コメントの中の宣言は数えない
   assert.deepEqual(declaredTypeNames("/*\nexport interface Ghost {}\n*/\nexport type A = string;\n"), ["A"]);
   assert.deepEqual(declaredTypeNames("// export interface Ghost {}\nexport type A = string;\n"), ["A"]);
