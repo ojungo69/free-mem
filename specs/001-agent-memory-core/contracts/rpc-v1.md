@@ -53,9 +53,11 @@ The daemon resolves a `StorageLayout` from a data directory root (`packages/core
 |---|---|---|---|
 | `EACCES` | `peer_denied` | `false` | `daemon-rpc-contract.ts:114-116` |
 | `ECONNREFUSED`, `ENOENT` | `daemon_unavailable` | `true` | `daemon-rpc-contract.ts:117-119` |
-| any other code | `peer_denied` (message = `error.message` or a fallback string) | `false` | `daemon-rpc-contract.ts:120` |
+| any other code | **not mapped** — the promise rejects with the original `Error`; no `TypedRpcError` is produced | — | `daemon-rpc-contract.ts:170-181` |
 
 This mapping is purely client-side (invoked from `callDaemonRpc`'s socket `"error"` handler, `daemon-rpc-contract.ts:170-181`); the daemon process never sees or responds to these connection-level failures — they occur before any bytes are exchanged.
+
+The handler applies the mapping to **exactly three** `errno` values: it calls `mapPeerConnectError` only for `EACCES`, `ECONNREFUSED`, and `ENOENT`, and calls `finish(peerError)` for everything else. `mapPeerConnectError`'s own trailing `peer_denied` fallback (`daemon-rpc-contract.ts:120`) is therefore **unreachable from `callDaemonRpc`** and applies only to direct calls of the exported function. Concretely: a regular file at the socket path yields `ENOTSOCK`, which surfaces as a thrown error, not `peer_denied` — a client that maps it to `peer_denied` would produce the wrong status and the wrong fail-open decision.
 
 ### 1.4 Platform preflight
 

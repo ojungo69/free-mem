@@ -274,9 +274,14 @@ else:
   up the RPC context, then calls `stopLive(dataDir)`.
 - **Net effect**: a `stopDaemon` call whose `snapshot.nonce` is stale (daemon restarted since the caller
   last read `identity.json`) is silently ignored by the running daemon; `stopDaemon` then waits out the
-  full `timeoutMs` and falls back to `forceKillDaemon`, which re-validates identity fresh from disk
-  before killing anything (§5.3) — so a stale-nonce stop request cannot force-kill the *wrong* process,
-  it only pays the cost of a full timeout before correctly force-killing the *current* one.
+  full `timeoutMs` and falls back to `forceKillDaemon(dataDir, snapshot)` (`daemon-lifecycle.ts:580`),
+  passing that same stale snapshot as `expected`. `forceKillDaemon` reads the identity file fresh and
+  throws `"Force-kill refused: daemon identity mismatch."` on the very first check
+  (`daemon-lifecycle.ts:514-516`), so the call **rejects and kills nothing** — it does not fall through
+  to killing the current incarnation. A stale-nonce stop request therefore cannot terminate the wrong
+  process at either step: the clean-stop request is ignored and the force-kill is refused. Recovering
+  requires re-reading `identity.json` and issuing a fresh `stopDaemon`/`forceKillDaemon`. A
+  reimplementation must reproduce the refusal, not "kill whatever is currently there".
 - `stopLive(dataDir)` (`daemon-lifecycle.ts:235-240`) removes the `liveDaemons` map entry and calls
   `releaseResources(layout, live)` (`daemon-lifecycle.ts:202-233`), which in order: clears the spool-sweep
   and backup-sweep timers, awaits any in-flight `dailyBackupTask`, closes the RPC server, stops
@@ -723,6 +728,7 @@ file as the canonical pointer for the first time (`daemon-canonical.ts:35-42`).
 | G4 | `/proc`-based owner scanning during legacy cutover (`listOwnersByIdentity`) can only positively identify same-UID processes when `/proc/<pid>/fd` is unreadable for a cross-UID process; it falls back to `lsof`, and if `lsof` is absent the whole scan throws rather than proceeding with a possibly-incomplete owner list. | `legacy-cutover.ts:80-116`, esp. `:110-113` | **Must preserve the fail-closed behavior**: an incomplete owner scan with no trusted fallback must abort cutover, never proceed with a partial owner list. The specific choice of `lsof` as the fallback tool is an implementation detail free to differ (a Rust build could use a different mechanism to enumerate open-file owners), as long as the fail-closed guarantee holds. |
 | G5 | Test-only opener (`openTestMemoryStore` in `test-utils.ts`) is excluded from the static scan by **exact file path**, not by any code-level marker — a new test helper file that also calls `connect()` directly would need its path added to `isTestOnly()`/the exact-path allow-list to avoid breaking the scan, and nothing forces that addition automatically. | `phase1-static-scan.ts:128-135` | **Free to differ** — this is a build-tooling convenience for the TS test suite, not part of the runtime contract a Rust daemon must reproduce. A Rust reimplementation's own test harness can structure its DB-access allow-listing however is idiomatic for Rust; only the *runtime* invariant (production code has exactly one writer) is in scope. |
 | G6 | `CODEMEM_DB_OPEN_TRACE` open-tracing (`recordOpen`/`recordLockOpen`) is dev/test instrumentation gated entirely on an environment variable, writes best-effort with no locking of the trace file itself, and is not part of any documented RPC or CLI surface. | `writer-actor.ts:38-54`, `daemon-lifecycle.ts:77-93` | **Free to differ** — it exists to make Phase 1's own test suite assert "no unexpected DB opens happened"; a Rust reimplementation is not required to reproduce this exact trace format, though it may want an equivalent test hook. |
+| G7 | A stale-snapshot `stopDaemon` has no way to finish: the clean-stop request is ignored (nonce mismatch), and the force-kill fallback is then handed that same stale snapshot as `expected`, so it throws `"Force-kill refused: daemon identity mismatch."` and `stopDaemon` rejects after paying the full `timeoutMs`. Neither step re-reads `identity.json` to retry against the current incarnation; the caller must do that itself. | `daemon-lifecycle.ts:567` (snapshot read once), `:580` (stale snapshot passed as `expected`), `:514-516` (first identity check throws) | **Must preserve the refusal.** Killing "whatever is currently there" after a stale-snapshot stop would defeat the identity guard that exists to stop the wrong process being killed. Whether a reimplementation additionally re-reads the identity file and retries the *clean stop* (not the kill) with the fresh nonce is free to differ, as long as no kill is issued against an identity the caller never observed. |
 
 ---
 
@@ -759,7 +765,9 @@ file as the canonical pointer for the first time (`daemon-canonical.ts:35-42`).
   request always attempts a graceful stop first, tolerates that attempt being ignored (stale nonce,
   daemon already gone, socket refused), always waits out a bounded timeout, and always falls back to the
   full force-kill guard sequence (never a "softer" kill) if the process is still alive after that
-  timeout — §6.
+  timeout — §6. "Falls back to the guard sequence" includes the sequence **refusing**: when the caller's
+  snapshot is stale, the force-kill throws on the identity check and the stop call fails rather than
+  killing the live daemon (§6, G7).
 - **Maintenance-mode gating**: the same job-kind partition (which kinds enter maintenance mode; which
   additionally require a fresh backup first; which are exempt only when internally triggered), the same
   "no job is auto-retried, a new job must be explicitly submitted" rule, and the same "a crash mid-job

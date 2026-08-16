@@ -152,7 +152,7 @@ When the computed sensitivity is `secret`, or the redaction is `redaction_degrad
 
 ### 3.5 Size bound
 
-`SPOOL_FILE_MAX_BYTES = 65536` (64 KiB) (`spool.ts:38`). Enforced on write — `spoolMutation` throws if the canonical serialization exceeds it (`spool.ts:855`) — and on read — `readSpoolFile` rejects any spool file that is not a regular, non-symlink file of at most 64 KiB (`spool.ts:690-696`), also applied to legacy-spool entries (`spool.ts:1138-1140`).
+`SPOOL_FILE_MAX_BYTES = 65536` (64 KiB) (`spool.ts:38`). Enforced on write and on read, but the two paths behave differently. On write, the `throw` at `spool.ts:855` never reaches the caller: it is raised inside `spoolMutation`'s main `try`, whose `catch` (`spool.ts:924-925`) routes it to `resultForIoFailure`, which increments the drop counter, warns `"spool write failed; event was dropped."`, and **returns** `{status: "dropped", quotaClass, reason: "io_error"}` (`spool.ts:795-808`). `reason` is `"io_error"` rather than `"disk_full"` because an oversize entry is not a `capacityError`. A reimplementation must preserve this as a returned drop result — propagating an exception to the hook fallback path would break fail-open and skip the counter update. On read — `readSpoolFile` rejects any spool file that is not a regular, non-symlink file of at most 64 KiB (`spool.ts:690-696`), also applied to legacy-spool entries (`spool.ts:1138-1140`).
 
 ### 3.6 `idempotencyKey` string constraints
 
