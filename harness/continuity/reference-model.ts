@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import { canonicalizeJson } from "../schema/jcs.ts";
 import {
+  CONTINUITY_LIMITS,
   NON_OPERATION_EVENT_KINDS,
   OPERATION_EVENT_PHASES,
   SENSITIVITIES,
@@ -73,6 +74,13 @@ export interface ProvenScenarioV1 {
  * event とは別の引数として渡す。
  */
 export interface IntakeContextV1 {
+  /**
+   * 認証済み peer identity が名乗ることを許された Agent。§3.1 は evidenceKind を
+   * 「認証済み peer identity・channel・captureMethod・capability matrix」から導けと言うので、
+   * caller が申告する `event.sourceAgent` は受領証が指す Agent と一致しなければならない。
+   * 一致を見ないと、認証済みの adapter が他 Agent 名義の event に native authority を得られる。
+   */
+  expectedSourceAgent: string;
   exactAgentVersion: string;
   activeCapabilityHash: string;
   provenScenarios: readonly ProvenScenarioV1[];
@@ -99,6 +107,7 @@ export function stampIntakeEvidence(
   const attestation = context.attestation;
   const proven =
     attestation !== undefined &&
+    event.sourceAgent === context.expectedSourceAgent &&
     provenance.sourceAgentVersion === context.exactAgentVersion &&
     provenance.capabilityHash === context.activeCapabilityHash &&
     provenance.scenarioId !== undefined &&
@@ -237,7 +246,8 @@ export type ContinuityDiagnosticCode =
   | "terminal_conflict"
   | "terminal_out_of_order"
   | "terminal_already_applied"
-  | "duplicate_operation_start";
+  | "duplicate_operation_start"
+  | "pending_operations_overflow";
 
 export interface ContinuityDiagnosticV1 {
   code: ContinuityDiagnosticCode;
@@ -295,12 +305,12 @@ function aggregateSensitivity(content: Omit<WorkStateContentV1, "sensitivity">):
 function nextContent(
   previous: CanonicalWorkStateV1,
   event: NormalizedContinuityEvent,
-  pendingOperations: readonly PendingOperation[],
+  pendingOperations: PendingOperation[],
 ): WorkStateContentV1 {
   const { stateRevision: _ignored, sensitivity: _aggregate, ...rest } = previous;
   const withoutSensitivity = {
     ...rest,
-    pendingOperations: [...pendingOperations],
+    pendingOperations,
     lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
     updatedAt: event.occurredAt,
   };
@@ -312,7 +322,7 @@ function commit(
   event: NormalizedContinuityEvent,
   ledger: IdempotencyLedger,
   applied: {
-    pendingOperations: readonly PendingOperation[];
+    pendingOperations: PendingOperation[];
     diagnostics: readonly ContinuityDiagnosticV1[];
     operationStarts?: ReadonlyMap<string, OperationStartFactsV1>;
   },
@@ -332,6 +342,22 @@ function commit(
     contentHash,
     ledger: nextLedger,
     diagnostics: applied.diagnostics,
+  };
+}
+
+/** 状態にも台帳にも入れずに隔離する。訂正した event を後から入れ直せるようにするため。 */
+function quarantine(
+  previous: TaskWorkStateSnapshotV1,
+  ledger: IdempotencyLedger,
+  diagnostics: readonly ContinuityDiagnosticV1[],
+): TaskStateReductionResult {
+  const { stateRevision: _ignored, ...content } = previous.state;
+  return {
+    outcome: "quarantined",
+    snapshot: previous,
+    contentHash: contentHashOf(content),
+    ledger,
+    diagnostics,
   };
 }
 
@@ -384,8 +410,18 @@ export function reduceTaskWorkState(
       });
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
+    const retained = retainPendingOperations(previous.state.pendingOperations);
+    if (retained === null) {
+      return quarantine(previous, idempotencyLedger, [
+        {
+          code: "pending_operations_overflow",
+          eventId: event.eventId,
+          detail: `pendingOperations が上限 ${CONTINUITY_LIMITS.arrayItems} 件で、落とせる terminal 済みの entry が無い`,
+        },
+      ]);
+    }
     return commit(previous, event, idempotencyLedger, {
-      pendingOperations: [...previous.state.pendingOperations, started],
+      pendingOperations: [...retained, started],
       diagnostics: [],
       operationStarts: new Map(previous.operationStarts).set(operationId, {
         ingestSeq: event.ingestSeq,
@@ -402,21 +438,14 @@ export function reduceTaskWorkState(
     // v6「same op ID + different hash: quarantine corruption」。衝突した event は状態にも
     // 台帳にも入れない（入れると、訂正された再配送が重複 no-op として黙って捨てられる）
     if (correlation.diagnostic === "terminal_conflict") {
-      const { stateRevision: _ignored, ...content } = previous.state;
-      return {
-        outcome: "quarantined",
-        snapshot: previous,
-        contentHash: contentHashOf(content),
-        ledger: idempotencyLedger,
-        diagnostics,
-      };
+      return quarantine(previous, idempotencyLedger, diagnostics);
     }
-    // §4.3「曖昧な terminal は候補を unknown にする」。open のまま残すので、後から
-    // 権威ある証跡が来れば閉じられる
-    const ambiguous = new Set(correlation.ambiguousOperationIds ?? []);
+    // §4.3「zero or multiple にマッチした terminal は候補を unknown のままにする」。status は
+    // unknown にするが pending には残すので、後から権威ある証跡（rule 1）が来れば閉じられる
+    const unresolved = new Set(correlation.unresolvedOperationIds);
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: previous.state.pendingOperations.map((pending) =>
-        ambiguous.has(pending.operationId) && pending.status === "started"
+        unresolved.has(pending.operationId) && pending.status === "started"
           ? { ...pending, status: "unknown" as const }
           : pending,
       ),
@@ -444,6 +473,27 @@ export function reduceTaskWorkState(
     ),
     diagnostics: [],
   });
+}
+
+/**
+ * frozen schema は `pendingOperations` を 256 件（§10 の `arrayItems`）に制限しているのに、
+ * addendum には保持方針が無い（#39）。上限に達したら、もう状態が変わらない succeeded / failed を
+ * 古い順に落として新しい start の場所を空ける。`started` と `unknown` は後から rule 1 で
+ * 閉じられる可能性があるので落とさない。落とせるものが無ければ `null` を返し、呼び出し側は
+ * schema 違反の状態を作らずに隔離する。
+ */
+function retainPendingOperations(pending: PendingOperation[]): PendingOperation[] | null {
+  if (pending.length < CONTINUITY_LIMITS.arrayItems) return pending;
+  const dropCount = pending.length - CONTINUITY_LIMITS.arrayItems + 1;
+  const dropped = new Set<string>();
+  for (const candidate of pending) {
+    if (dropped.size === dropCount) break;
+    if (candidate.status === "succeeded" || candidate.status === "failed") {
+      dropped.add(candidate.operationId);
+    }
+  }
+  if (dropped.size < dropCount) return null;
+  return pending.filter((candidate) => !dropped.has(candidate.operationId));
 }
 
 function startPendingOperation(
@@ -498,8 +548,11 @@ export type TerminalCorrelationResult =
       matched: null;
       diagnostic: ContinuityDiagnosticCode;
       detail: string;
-      /** ambiguous のときだけ、どの open な候補が曖昧なのかを返す。 */
-      ambiguousOperationIds?: readonly string[];
+      /**
+       * §4.3「zero or multiple にマッチした terminal は候補を `unknown` のままにする」。
+       * 閉じられなかった同一 match key の open な候補を返す。
+       */
+      unresolvedOperationIds: readonly string[];
     };
 
 /**
@@ -517,7 +570,12 @@ export function correlateTerminalEvent(
   assertTurnIdentity(terminalEvent);
   const operation = terminalEvent.operation;
   if (operation === undefined || operation.phase !== "terminal") {
-    return { matched: null, diagnostic: "terminal_unmatched", detail: "terminal envelope が無い" };
+    return {
+      matched: null,
+      diagnostic: "terminal_unmatched",
+      detail: "terminal envelope が無い",
+      unresolvedOperationIds: [],
+    };
   }
   const lineage = terminalEvent.taskLineageId ?? previous.state.taskLineageId;
   const sameScope = previous.state.pendingOperations.filter(
@@ -537,40 +595,60 @@ export function correlateTerminalEvent(
       : sameScope.filter(
           (pending) =>
             pending.correlation.operationMatchKey === operation.operationMatchKey &&
-            pending.correlation.toolName === operation.operationKind &&
-            // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する」。
-            // §3.1 の不変条件（unavailable のとき turnId は不在）は assertTurnIdentity で
-            // 確定させてあるので、turnId の有無がそのまま turn 同一性の有無になる。
-            pending.correlation.turnId !== undefined &&
-            pending.correlation.turnId === terminalEvent.turnId &&
-            previous.operationStarts.get(pending.operationId)?.turnIdSource === terminalEvent.turnIdSource,
+            pending.correlation.toolName === operation.operationKind,
         );
   const rule = byNativeId.length > 0 ? "native_operation_id" : "match_key";
+
+  const open = candidates.filter((pending) => pending.status === "started" || pending.status === "unknown");
+  // §4.3「候補を unknown のままにする」の候補集合。閉じられない分岐すべてで同じ集合を使う
+  const unresolvedOperationIds = open.map((pending) => pending.operationId);
 
   if (candidates.length === 0) {
     return {
       matched: null,
       diagnostic: "terminal_unmatched",
       detail: "一致する open な operation が無い",
+      unresolvedOperationIds,
     };
   }
-  const open = candidates.filter((pending) => pending.status === "started" || pending.status === "unknown");
   if (open.length === 0) {
     return {
       matched: null,
       diagnostic: "terminal_already_applied",
       detail: "候補はすべて terminal 済み",
+      unresolvedOperationIds,
     };
   }
-  if (open.length > 1) {
+  // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
+  // unavailable のとき rule 2 は適用されず、operation は unknown のままになる。閉じられるのは
+  // rule 1 だけ」。§3.1 の不変条件（unavailable のとき turnId は不在）は assertTurnIdentity で
+  // 確定させてあるので、turnId の有無がそのまま turn 同一性の有無になる。
+  const eligible =
+    byNativeId.length > 0
+      ? open
+      : open.filter(
+          (pending) =>
+            pending.correlation.turnId !== undefined &&
+            pending.correlation.turnId === terminalEvent.turnId &&
+            previous.operationStarts.get(pending.operationId)?.turnIdSource === terminalEvent.turnIdSource,
+        );
+  if (eligible.length === 0) {
+    return {
+      matched: null,
+      diagnostic: "terminal_unmatched",
+      detail: "turn 同一性が無いので rule 2 では閉じられない",
+      unresolvedOperationIds,
+    };
+  }
+  if (eligible.length > 1) {
     return {
       matched: null,
       diagnostic: "terminal_ambiguous",
-      detail: `open な候補が ${open.length} 件`,
-      ambiguousOperationIds: open.map((pending) => pending.operationId),
+      detail: `open な候補が ${eligible.length} 件`,
+      unresolvedOperationIds,
     };
   }
-  const matched = open[0] as PendingOperation;
+  const matched = eligible[0] as PendingOperation;
 
   const start = previous.operationStarts.get(matched.operationId);
   if (start === undefined || compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
@@ -578,6 +656,7 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_out_of_order",
       detail: "terminal が start より後であることを権威順序で確認できない",
+      unresolvedOperationIds,
     };
   }
   const startHash = matched.correlation.canonicalInputHash;
@@ -590,6 +669,8 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_conflict",
       detail: "canonicalInputHash が start と衝突",
+      // 隔離は状態を一切変えないので、候補も unknown にしない
+      unresolvedOperationIds: [],
     };
   }
   return { matched, rule };

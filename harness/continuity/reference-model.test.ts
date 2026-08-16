@@ -12,6 +12,7 @@ import {
   OPERATION_EVENT_PHASES,
   type CanonicalWorkStateV1,
   type NormalizedContinuityEvent,
+  type PendingOperation,
 } from "../schema/continuity.ts";
 import {
   assertOperationEnvelope,
@@ -53,6 +54,7 @@ const ATTESTATION = {
 } as const;
 
 const INTAKE: IntakeContextV1 = {
+  expectedSourceAgent: "claude",
   exactAgentVersion: VERSION,
   activeCapabilityHash: CAPABILITY_HASH,
   provenScenarios: [
@@ -365,6 +367,8 @@ test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => 
       "sourceAgentVersion が exact でない",
       startEvent({ provenance: { ...startEvent().provenance, sourceAgentVersion: "2.1.228" } }),
     ],
+    // 認証済みの adapter が他 Agent 名義の event を出しても native authority は得られない
+    ["sourceAgent が受領証の Agent と違う", startEvent({ sourceAgent: "codex" })],
   ];
   for (const [label, event] of cases) {
     assert.equal(stampIntakeEvidence(event, INTAKE).provenance.evidenceKind, "synthesized", label);
@@ -493,14 +497,81 @@ test("session が違う terminal は閉じない", () => {
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
 
-test("権威順序で start より前の terminal は閉じない", () => {
+test("権威順序で start より前の terminal は閉じず、候補を unknown にする", () => {
   const snapshot = startedSnapshot();
   const result = reduceTaskWorkState(snapshot, terminalEvent({ ingestSeq: "11" }), new Map());
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
     ["terminal_out_of_order"],
   );
-  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
+  // terminal 証跡が来ている以上「まだ走っている」とは言えない。§4.3 の「閉じられない terminal は
+  // 候補を unknown にする」に倒す（started のままにすると実行中だと主張することになる）
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "unknown");
+});
+
+test("turn 同一性が無い terminal は閉じず、候補を unknown にする", () => {
+  // §4.3「どちらかが unavailable のとき rule 2 は適用されず、operation は unknown のままになる」
+  const snapshot = startedSnapshot();
+  const terminal = terminalEvent({
+    turnIdSource: "unavailable",
+    turnId: undefined,
+    operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined },
+  });
+  const result = reduceTaskWorkState(snapshot, terminal, new Map());
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_unmatched"],
+  );
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "unknown");
+});
+
+test("turn 同一性が無くても rule 1 なら閉じられる", () => {
+  // 上と同じ event で nativeOperationId だけ残す。unknown 化が turn 不一致に効いていることを、
+  // 「閉じられる側」でも確かめる（両方 unknown になるなら gate の意味が無い）
+  const snapshot = startedSnapshot();
+  const result = reduceTaskWorkState(
+    snapshot,
+    terminalEvent({ turnIdSource: "unavailable", turnId: undefined }),
+    new Map(),
+  );
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+/** pendingOperations を schema 上限まで埋めた状態。`resolveFirst` で先頭だけ terminal 済みにする。 */
+function filledSnapshot(resolveFirst: boolean): TaskWorkStateSnapshotV1 {
+  const template = startedSnapshot().state.pendingOperations[0] as PendingOperation;
+  const pendingOperations = Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, index) => ({
+    ...template,
+    operationId: `op-${index}`,
+    correlation: { ...template.correlation, operationId: `op-${index}` },
+    status: resolveFirst && index === 0 ? ("succeeded" as const) : ("started" as const),
+  }));
+  return emptySnapshot({ pendingOperations });
+}
+
+test("pendingOperations が上限のとき terminal 済みを落として新しい start を入れる", () => {
+  const snapshot = filledSnapshot(true);
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  assert.equal(result.snapshot.state.pendingOperations.length, CONTINUITY_LIMITS.arrayItems);
+  // 落ちたのは terminal 済みの op-0 だけ
+  assert.equal(
+    result.snapshot.state.pendingOperations.some((p) => p.operationId === "op-0"),
+    false,
+  );
+});
+
+test("落とせる terminal 済みが無いとき start は隔離する", () => {
+  const snapshot = filledSnapshot(false);
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  // schema 上限を超えた状態を作るくらいなら取り込まない
+  assert.equal(result.outcome, "quarantined");
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["pending_operations_overflow"],
+  );
+  assert.equal(result.snapshot.state.pendingOperations.length, CONTINUITY_LIMITS.arrayItems);
 });
 
 test("canonicalInputHash が食い違う terminal は隔離する", () => {

@@ -16,6 +16,8 @@
 | `evidenceKind` / `ingestAttestation` は intake が割り当て、caller の値を信頼しない | §3.1 | `stampIntakeEvidence` は caller の `ingestAttestation` を読まずに捨て、認証済み経路の受領証（`IntakeContextV1.attestation`）で置き換える |
 | native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない） |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
+| kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | `event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と一致しなければ native にしない。認証済みの adapter が他 Agent 名義で native authority を得られないようにする |
+| どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
 | operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない |
 | dedupe authority は `adapterDeliveryId`、無ければ canonical fingerprint | v6 §8.2 | `idempotencyKeyOf` は `??`（union ではなく fallback。正本の導出式が `??` で書かれている） |
@@ -68,29 +70,52 @@ capability matrix にも無い。表が来るまでは:
 `CanonicalWorkStateV1.sensitivity` は「構成要素の最大」なので、pending operation が 1 件でもあれば
 `private` 以上になる。remote routing を実装する前に #36 を閉じる必要がある。
 
-### 2.4 還元の結果は 3 値
+### 2.4 `updatedAt` は単調でない
+
+`updatedAt` は revision を作った event の `occurredAt` にする。`lastIngestSeq`（単調な
+watermark）と違って遅れて届いた event では後退し得るが、これは「この revision の証跡が
+いつ観測されたか」を指す値なので、最大値へ丸めると嘘になる。順序が要る比較には
+`lastIngestSeq` を使う。
+
+### 2.5 還元の結果は 3 値
 
 `applied` / `duplicate` / `quarantined` を `outcome` として返す。`quarantined` は状態も台帳も
 更新しないので、訂正した event を後から入れ直せる。
 
-### 2.5 intake が付ける kind は native / synthesized の 2 値
+### 2.6 intake が付ける kind は native / synthesized の 2 値
 
 §3.1 は intake の導出元（peer identity・channel・captureMethod・capability matrix）を挙げるが、
 `derived` は AI 由来の派生物に付く種別で、event intake の出力ではない。よって
 `stampIntakeEvidence` は `native` か `synthesized` しか返さない。
 
-### 2.6 別 lineage の event は適用しない
+### 2.7 別 lineage の event は適用しない
 
 状態は lineage ごとに 1 つ（§4）。`taskLineageId` が状態と食い違う event を還元すると、
 境界の確定（§4.4）を経ずに前の task の状態が書き換わるため拒否する。`taskLineageId` を持たない
 event は、還元先の状態の lineage に属するものとして扱う。
 
-### 2.7 成否を主張しない terminal
+### 2.8 成否を主張しない terminal
 
 `successful` が無い terminal は成功とも失敗とも言えないので `unknown` にする
 （§4.3「Missing or ambiguous terminal evidence establishes `unknown`」の同じ扱い）。
 
-### 2.8 event kind の分類（#29）
+### 2.9 pendingOperations の保持方針（#39）
+
+frozen schema は `pendingOperations` を 256 件（§10 の `arrayItems`）に制限しているが、addendum に
+保持・退避の規則が無い。tool 呼び出しの多い session では上限を超えるので:
+
+- 上限に達した状態へ新しい start が来たら、`succeeded` / `failed` を古い順に落として場所を空ける
+- `started` と `unknown` は落とさない（後から rule 1 の terminal で閉じられる可能性がある）
+- 落とせるものが無ければ **状態を作らずに隔離する**（`pending_operations_overflow`）。
+  schema 違反の状態を作るより、取り込まずに診断を出すほうが安全側
+
+### 2.10 権威順序に反する terminal も候補を `unknown` にする
+
+§4.3 は「terminal は start より後」と要求するが、破ったときの扱いを書いていない。terminal の証跡が
+来ている以上「まだ走っている」とは言えないので、閉じずに候補を `unknown` にする。`started` のまま
+残すと、実行中だと状態が主張し続けることになる。
+
+### 2.11 event kind の分類（#29）
 
 `operation` envelope を要求する kind の集合は正本に無い。harness の正規化語彙
 （`harness/schema/capability.ts` の `EventKind`）に対する分類を
@@ -110,7 +135,19 @@ envelope を要求しない（既知の非 operation kind が envelope を持つ
   「forged native event は task boundary を confirm できない」は、confirm 側が入るまで
   「synthesized へ降格する」ところまでしか検証していない。
 - **unmatched terminal evidence は診断として返すだけ**。永続化は daemon の event store の責務で、
-  参照実装は状態を持たない。
+  参照実装は状態を持たない。曖昧な terminal で候補を `unknown` にするときも、その event id を
+  候補の `sourceEventIds` には足さない（どの候補の証跡なのかが決まっていない以上、
+  全候補に紐付けると証跡の捏造になる）。どの event が原因かは診断（`terminal_ambiguous`）が持つ。
+- **`finalizeAbandonedState` は冪等台帳を持たない**。同じ放棄 event を 2 回渡すと、内容の同じ
+  revision がもう 1 つできる。重複判定は event を 1 回だけ流す呼び出し側（daemon の intake）の
+  責務で、`reduceTaskWorkState` と違ってこの関数自身は守らない。
+- **`lastIngestSeq` の意味は正本に無い**（#38）。ここでは単調な watermark として実装している。
+- **session 全体を 1 回の fold で流す用途には向かない**。`commit` は event ごとに冪等台帳と
+  history を複製するので、fold の長さに対して二乗で伸びる（実測: 1,000 event 61ms、
+  5,000 event 1,024ms、20,000 event 23,332ms）。参照実装は「同じ fixture から TS と Rust が
+  同じ値を出すか」を確かめるためのもので、常駐 daemon の還元器はこの複製をしない実装にする。
+  台帳と history を呼び出し側が持つ append-only 構造にすれば線形になるが、それをやると
+  「直前の snapshot は書き換わらない」という比較の前提が崩れるので、ここでは複製のままにした。
 
 ## 4. 再現方法
 
@@ -125,8 +162,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。15 件すべてで 1 件以上が失敗し、
-復元後は 38/38 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。18 件すべてで 1 件以上が失敗し、
+復元後は 43/43 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---|
@@ -136,15 +173,19 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | operation envelope 必須を外す | 2 |
 | intake の attestation 必須を外す | 2 |
 | caller の attestation を信じる | 1 |
+| `sourceAgent` の束縛を外す | 1 |
 | 衝突の隔離を外す | 1 |
-| 曖昧候補の unknown 化を外す | 1 |
+| 候補の unknown 化を外す | 3 |
 | `turnIdSource` 種別の一致要求を外す | 1 |
 | rule 2 の turn 同一性要求を外す | 1 |
 | turn 同一性の不変条件を外す | 1 |
 | terminal の権威順序検査を外す | 1 |
 | 候補が複数のときの拒否を外す | 1 |
+| `pendingOperations` の上限を外す | 1 |
+| open な operation も退避対象にする | 1 |
 | sensitivity 集約を `normal` 固定にする | 2 |
 | `canonicalInputHash` 衝突検査を外す | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
-turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash。
+turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
+rule 1 なら閉じること、上限に達していても terminal 済みがあれば start を取り込むこと。
