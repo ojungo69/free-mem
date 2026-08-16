@@ -1,0 +1,49 @@
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_92266fd9f2f8c2 127-145,149-150
+  s_5cbc4c67c8b3b4::t_ef85cbf33376fc 146-148
+  s_5cbc4c67c8b3b4::t_467c4a5115f5e9 151-178
+harness/schema/validate.ts
+  s_5cbc4c67c8b3b4::t_b71bf4f1080483 271,343,348,350
+  s_5cbc4c67c8b3b4::t_742182fed44449 306-308
+  s_5cbc4c67c8b3b4::t_c7015f35559535 64-91
+  s_5cbc4c67c8b3b4::t_3d6cf50e6a9d90 264-270
+  s_5cbc4c67c8b3b4::t_1f5e00c7b120f9 394,397
+  s_5cbc4c67c8b3b4::t_c556d64bf2fe45 309-314,316-318
+  s_5cbc4c67c8b3b4::t_2c1de132cea52a 383,386,391-393
+  s_5cbc4c67c8b3b4::t_19f91fd2db97b0 344-347,349
+  s_5cbc4c67c8b3b4::t_4b43f5fb3f8bb5 272-279,287-293
+  s_5cbc4c67c8b3b4::t_5b94bb3d5ce83c 332,341,369,427,438,442,448,451,458,470,472
+harness/assemble.ts
+  s_5cbc4c67c8b3b4::t_e18635c8761097 374-378
+  s_5cbc4c67c8b3b4::t_c527cfb5429671 509-514
+  s_5cbc4c67c8b3b4::t_6579bb56f6e7b0 294
+  s_5cbc4c67c8b3b4::t_bad3de467952be 299-311,315-327
+  s_5cbc4c67c8b3b4::t_ec31c2033a80b8 616-661,663,671-690
+  s_5cbc4c67c8b3b4::t_145f4af8186cbf 258-260,264,269,271-275
+  s_5cbc4c67c8b3b4::t_9e01d7a6d05fd9 662,664-670
+  s_5cbc4c67c8b3b4::t_1dd94ed520adcb 361-366
+  s_5cbc4c67c8b3b4::t_8d86c7ff3638d2 224-232,235
+  s_5cbc4c67c8b3b4::t_fe0466ea42144f 13
+  s_5cbc4c67c8b3b4::t_4501626ab9e07e 196-198
+  s_5cbc4c67c8b3b4::t_8226fccc996cc5 261-263
+harness/matrix/claude.json
+  s_5cbc4c67c8b3b4::t_9366bb768453d5 4,30,32-36,44,46-50,58,61-65,73,76-80,88,90-94,103,107-108,110-111,120,123,125-127,165,170-171,173-174,183,186,188-190
+harness/matrix/codex.json
+  s_5cbc4c67c8b3b4::t_052bdb87c87784 4,25,27-31,39,41-45,53,56-60,68,71-75,83,85-89,97,102-103,105-106,115,118,120-122,170,173,175-177,195,201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "357b697bbf38782aba162dab74ff2d83d0fc061a",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
