@@ -1,0 +1,27 @@
+harness/continuity/jcs.test.ts
+  s_5cbc4c67c8b3b4::t_33745e1c313a78 144-146,150-159
+harness/continuity/schema-freeze.test.ts
+  s_5cbc4c67c8b3b4::t_aa963ed7e0cd2b 484-494,500-501,524,528-538
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_afb4d20aa98cdc 354,372,375-396
+harness/schema/jcs.ts
+  s_5cbc4c67c8b3b4::t_e0cf4dab8926aa 2,163-164,173,175-176,179-181,194-198
+harness/schema/validate.ts
+  s_5cbc4c67c8b3b4::t_d0d72bbf009d1f 22,188-193,196-198,206-207,209,212-215,218-234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f003ac945ca9ad33a6bd1f8da31fa1e8c70cb570",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
