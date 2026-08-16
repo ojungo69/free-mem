@@ -29,7 +29,8 @@
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent`。`nativeOperationId` を名乗った terminal は rule 1 だけで判定する（一致しないときに rule 2 へ落とすと、matchKey の導出が §4.3 どおりでない adapter 相手に別 operation を診断なしで閉じてしまう。wire 越しに導出は検証できない） |
 | terminal は start より後（権威順序）・未適用・hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較 |
 | 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
-| correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる） |
+| correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。rule 1 は `nativeOperationId` だけで選ぶので、`operationMatchKey` の不一致も衝突として扱う（§4.3 の matchKey は operation identity 全体に対する SHA-256 なので、一致しなければ別 identity が同じ native ID を名乗っている） |
+| 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる） |
 | rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する |
 | 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない |
 | 閉じられなかった terminal は unmatched evidence として保つ | §4.3 | `unknown` にした候補の `sourceEventIds` にその terminal を足す。状態が変わった理由を状態から辿れるようにする（放棄経路と扱いを揃える） |
@@ -247,8 +248,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。37 件すべてで 1 件以上が失敗し、
-復元後は 63/63 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。40 件すべてで 1 件以上が失敗し、
+復元後は 66/66 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -270,7 +271,10 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | rule 2 の turn 同一性要求を外す | 2 |
 | turnIdSource 種別の一致要求を外す | 1 |
 | 候補が複数のときの拒否を外す | 1 |
+| matchKey 衝突検査を外す | 1 |
 | canonicalInputHash 衝突検査を外す | 2 |
+| kind と successful の矛盾を素通しする | 1 |
+| 矛盾した terminal を succeeded にする | 1 |
 | start 不在の分岐を外す | 1 |
 | terminal の権威順序検査を外す | 3 |
 | 順序違反で候補を巻き込む | 1 |

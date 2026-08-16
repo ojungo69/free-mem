@@ -1165,6 +1165,49 @@ test("再配送された start は既存の順序材料を上書きしない", (
   assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
 });
 
+test("nativeOperationId を名乗っても matchKey が違えば隔離する", () => {
+  // §4.3「operationMatchKey は Agent・session・lineage・turn・kind・native operation ID・
+  // canonical input hash に対する schema-versioned SHA-256」。rule 1 は nativeOperationId だけで
+  // 選ぶので、matchKey 不一致は「同じ operation ID に別の identity hash」= quarantine 対象
+  const snapshot = startedSnapshot();
+  const forged = terminalEvent({
+    operation: { ...TERMINAL_OPERATION, operationMatchKey: "match-key-other" },
+  });
+  const result = reduceTaskWorkState(snapshot, forged, new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
+});
+
+test("tool_failed が successful: true を名乗っても succeeded にしない", () => {
+  // schema はどちらも valid なので通る。succeeded にすると壊れた adapter が失敗を握り潰せる
+  const snapshot = startedSnapshot();
+  const result = reduceTaskWorkState(
+    snapshot,
+    terminalEvent({ kind: "tool_failed", successful: true }),
+    new Map(),
+  );
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_evidence_contradicts"],
+  );
+});
+
+test("tool_failed が successful: false なら矛盾しない", () => {
+  const snapshot = startedSnapshot();
+  const result = reduceTaskWorkState(
+    snapshot,
+    terminalEvent({ kind: "tool_failed", successful: false }),
+    new Map(),
+  );
+  assert.equal(result.snapshot.state.pendingOperations[0]?.status, "failed");
+  assert.deepEqual(result.diagnostics, []);
+});
+
 test("順序が確認できて hash が衝突する terminal は隔離が先に立つ", () => {
   // 権威順序の gate を先に置くと、順序 NG かつ hash 衝突の terminal が台帳へ入り、
   // 訂正版の再配送が重複 no-op として黙って捨てられる

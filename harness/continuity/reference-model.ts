@@ -317,6 +317,7 @@ export type ContinuityDiagnosticCode =
   | "terminal_out_of_order"
   | "terminal_order_unverifiable"
   | "terminal_already_applied"
+  | "terminal_evidence_contradicts"
   | "duplicate_operation_start"
   | "pending_operations_evicted"
   | "source_events_truncated"
@@ -576,20 +577,36 @@ export function reduceTaskWorkState(
   }
 
   const matchedId = correlation.matched.operationId;
-  // §4.3「terminal の証跡が欠けている / 曖昧なときは unknown を確定する」。successful が
-  // 無い terminal は成否を主張できないので unknown に倒す。
+  // kind が失敗を宣言しているのに `successful: true` を名乗る terminal は自己矛盾している。
+  // schema はどちらも valid なので通ってしまうが、これを `succeeded` にすると壊れた adapter が
+  // 失敗を握り潰せる。§4.3「terminal の証跡が欠けている / 曖昧なときは unknown を確定する」に倒す
+  const contradicts = event.kind === "tool_failed" && event.successful === true;
+  // successful が無い terminal も成否を主張できないので unknown。
   const status =
-    event.successful === true ? ("succeeded" as const)
+    contradicts ? ("unknown" as const)
+    : event.successful === true ? ("succeeded" as const)
     : event.successful === false ? ("failed" as const)
     : ("unknown" as const);
   const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([matchedId]));
+  const contradictionDiagnostics: ContinuityDiagnosticV1[] = contradicts
+    ? [
+        {
+          code: "terminal_evidence_contradicts",
+          eventId: event.eventId,
+          detail: `kind ${event.kind} が successful: true を名乗っている`,
+        },
+      ]
+    : [];
   return commit(previous, event, idempotencyLedger, {
     pendingOperations: previous.state.pendingOperations.map((pending) =>
       pending.operationId === matchedId
         ? withSourceEvent({ ...pending, status, terminalAt: event.occurredAt }, event.eventId)
         : pending,
     ),
-    diagnostics: truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)],
+    diagnostics:
+      truncated.length === 0
+        ? contradictionDiagnostics
+        : [...contradictionDiagnostics, truncationDiagnostic(event, truncated)],
   });
 }
 
@@ -816,7 +833,18 @@ export function correlateTerminalEvent(
   const matched = eligible[0] as PendingOperation;
 
   // 衝突検査を権威順序より先に置く。逆順だと「順序不明かつ hash 衝突」の terminal が
-  // 隔離されずに台帳へ入り、訂正版の再配送が重複 no-op として黙って捨てられる
+  // 隔離されずに台帳へ入り、訂正版の再配送が重複 no-op として黙って捨てられる。
+  // §4.3「`operationMatchKey` は Agent・session・lineage・turn・operation kind・native operation ID・
+  // canonical input hash に対する schema-versioned SHA-256」。rule 1 は nativeOperationId だけで
+  // 選ぶので、matchKey が違えば「同じ operation ID に別の identity hash」= v6 の quarantine 対象
+  if (matched.correlation.operationMatchKey !== operation.operationMatchKey) {
+    return {
+      matched: null,
+      diagnostic: "terminal_conflict",
+      detail: "operationMatchKey が start と衝突",
+      unresolvedOperationIds: [],
+    };
+  }
   const startHash = matched.correlation.canonicalInputHash;
   if (
     startHash !== undefined &&
