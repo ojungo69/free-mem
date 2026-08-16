@@ -1,0 +1,37 @@
+harness/continuity/schema-freeze.test.ts
+  s_5cbc4c67c8b3b4::t_39f337d95b1066 439-443,445-461,464,472-485
+  s_5cbc4c67c8b3b4::t_eac154e33062ff 486-487
+  s_5cbc4c67c8b3b4::t_7d1cca10c855c6 6,8
+evidence/phase3-capability-scenario-manifest.md
+  s_5cbc4c67c8b3b4::t_4fafc51da0a3d6 68-71,76-78
+harness/assemble.ts
+  s_5cbc4c67c8b3b4::t_1209730612ee6c 18,21,447
+harness/continuity/capability-manifest.test.ts
+  s_5cbc4c67c8b3b4::t_e04f7caeda03f0 7,17,33,53-56,58-60,62,68-73,227-256
+harness/continuity/fixture-validation.test.ts
+  s_5cbc4c67c8b3b4::t_c9127de674c396 6-7,82,88,116-130
+harness/continuity/jcs.test.ts
+  s_5cbc4c67c8b3b4::t_1cfb76c929ba2e 3,173-182
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_443c7e8d717d5b 12,541
+harness/contract-hashes.mjs
+  s_5cbc4c67c8b3b4::t_82f749097f26ef 17,19-21
+harness/schema/jcs.ts
+  s_5cbc4c67c8b3b4::t_7698c9ad59165c 1-2,42-54,68-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a16e40def15acbdbda09d956195f1ddda59eec38",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
