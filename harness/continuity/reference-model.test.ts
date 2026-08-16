@@ -2080,6 +2080,47 @@ test("確定済みの候補に矛盾する terminal は hash を省いても隔�
   assert.equal(forged.ledger.size, prepared.ledger.size);
 });
 
+test("turn 種別が両立しない兄弟は矛盾する terminal の言い訳にならない", () => {
+  // 確定済みの候補で再配送を説明するときにも「この terminal が閉じえた候補」だけを使う。
+  // 素の候補集合で説明を許すと、種別が両立しない兄弟が囮になって隔離（台帳を消費しない）を
+  // 回避し、`terminal_already_applied` として台帳を消費するので訂正版が重複 no-op になる
+  const failed = { kind: "tool_failed", successful: false } as const;
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ eventId: "start-a", adapterDeliveryId: "d-start-a", canonicalFingerprint: "f-start-a", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
+    terminalEvent({ eventId: "term-a", adapterDeliveryId: "d-term-a", canonicalFingerprint: "f-term-a", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "13", turnIdSource: "native", ...failed }),
+    terminalEvent({ eventId: "term-b", adapterDeliveryId: "d-term-b", canonicalFingerprint: "f-term-b", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "14", turnIdSource: "synthesized_monotonic" }),
+  ]);
+  assert.deepEqual(
+    prepared.snapshot.state.pendingOperations.map((pending) => pending.status),
+    ["failed", "succeeded"],
+  );
+  // native の候補は failed で確定しているので、succeeded を名乗る native の 2 通目は矛盾する。
+  // succeeded の兄弟は synthesized_monotonic なのでこの terminal では閉じえない
+  const forged = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "15",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native",
+    }),
+    prepared.ledger,
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(forged.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.equal(forged.ledger.size, prepared.ledger.size);
+  // 対照: 種別が両立する候補と成否が一致する再配送は従来どおり適用済みとして通る
+  const honest = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-y", adapterDeliveryId: "d-term-y", canonicalFingerprint: "f-term-y", ingestSeq: "16",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native", ...failed,
+    }),
+    prepared.ledger,
+  );
+  assert.equal(honest.outcome, "applied");
+  assert.deepEqual(honest.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
 test("記録側も canonicalInputHash を持たないなら省略は照合を妨げない", () => {
   const noHash = { ...MATCH_KEY_ONLY, canonicalInputHash: undefined } as const;
   const closed = apply(emptySnapshot(), [

@@ -179,8 +179,8 @@ mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && ap
 
 mutate "  if (isBlank(event.canonicalFingerprint)) {" "  if (false) {" && run "空 canonicalFingerprint を素通しする"
 mutate "    if (contradicted !== undefined) {" "    if (false) {" && run "確定済み成否との矛盾検査を外す"
-mutate "      incoming === \"unknown\" || compatible.some((pending) => pending.status === incoming)" "      false" && run "成否を主張しない terminal も矛盾扱いにする"
-mutate "      incoming === \"unknown\" || compatible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\"" && run "成否が一致する兄弟の検査を外す"
+mutate "      incoming === \"unknown\" || settled.some((pending) => pending.status === incoming)" "      false" && run "成否を主張しない terminal も矛盾扱いにする"
+mutate "      incoming === \"unknown\" || settled.some((pending) => pending.status === incoming)" "      incoming === \"unknown\"" && run "成否が一致する兄弟の検査を外す"
 
 mutate "  if (ABANDONMENT_EVENT_KINDS.has(event.kind)) {" "  if (false) {" && run "放棄 kind を還元器に通す"
 mutate "  if (event.turnId !== undefined && isBlank(event.turnId)) {" "  if (false) {" && run "空文字の turnId を素通しする"
@@ -220,6 +220,8 @@ mutate "    !isBlank(attestation.ingestReceiptId) &&" "    attestation.ingestRec
 mutate "    !isBlank(provenance.scenarioId) &&" "    true &&" && run "空白の scenarioId で proven を成立させる"
 mutate "  assertIngestSeq(terminalEvent.ingestSeq);" "" && run "直接呼びの ingestSeq 検査を外す"
 mutate "  assertIdentityMaterial(terminalEvent);" "" && run "直接呼びの identity 材料検査を外す"
+mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = compatible;" && run "確定済みの説明に turn 両立を求めない"
+mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = sameTurnOf(compatible);" && run "確定済みの説明で turn 種別だけ見ない"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 | grep -E '^ℹ (pass|fail) '

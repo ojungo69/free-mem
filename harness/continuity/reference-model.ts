@@ -1101,6 +1101,27 @@ export function correlateTerminalEvent(
       unresolvedOperationIds: [],
     };
   }
+  // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する」。
+  // 「この terminal が閉じえた候補」の定義なので、open な候補を選ぶときだけでなく、
+  // 確定済みの候補で再配送を説明するときにも同じ絞り込みが要る。rule 1 を名乗った terminal は
+  // turn 両立を要求しない（候補は既に `byNativeId` に限定されている）ので絞らない
+  const sameTurnOf = (list: readonly PendingOperation[]): readonly PendingOperation[] =>
+    byNativeId.length > 0
+      ? list
+      : list.filter(
+          (pending) =>
+            pending.correlation.turnId !== undefined &&
+            pending.correlation.turnId === terminalEvent.turnId,
+        );
+  // 種別の材料（`operationStarts`、#35）は復元直後と退避後に空になる。材料が無いことを
+  // 「種別が違う」と読むと理由を取り違えるので、材料がある候補だけ種別で絞る
+  const eligibleOf = (list: readonly PendingOperation[]): readonly PendingOperation[] =>
+    byNativeId.length > 0
+      ? list
+      : list.filter((pending) => {
+          const recorded = previous.operationStarts.get(pending.operationId)?.turnIdSource;
+          return recorded === undefined || recorded === terminalEvent.turnIdSource;
+        });
   const open = compatible.filter((pending) => pending.status === "started" || pending.status === "unknown");
   // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
   const openIds = open.map((pending) => pending.operationId);
@@ -1116,11 +1137,17 @@ export function correlateTerminalEvent(
     // 再配送として説明がつく。兄弟の成否だけを見て隔離すると健全な再配送が台帳に入らず、
     // adapter は無限再送になる。この分岐では候補は全件確定済み（open が空）なので、
     // 一致が無ければどの候補も矛盾している
+    // 説明にも矛盾判定にも「この terminal が閉じえた候補」だけを使う。素の `compatible` で
+    // 説明を許すと、turn 種別が両立しない兄弟が囮になる: native の failed と
+    // synthesized_monotonic の succeeded が同じ matchKey・同じ turnId で並ぶとき、succeeded を
+    // 名乗る native の 2 通目が兄弟に説明されて `terminal_already_applied` になり、隔離
+    // （台帳を消費しない）を回避して台帳を消費するので、後から届く訂正版が重複 no-op になる
+    const settled = eligibleOf(sameTurnOf(compatible));
     const incoming = terminalStatusOf(terminalEvent);
     const contradicted =
-      incoming === "unknown" || compatible.some((pending) => pending.status === incoming)
+      incoming === "unknown" || settled.some((pending) => pending.status === incoming)
         ? undefined
-        : compatible.find((pending) => pending.status !== incoming);
+        : settled.find((pending) => pending.status !== incoming);
     if (contradicted !== undefined) {
       return {
         matched: null,
@@ -1158,21 +1185,8 @@ export function correlateTerminalEvent(
   // **材料がある候補だけ**種別で絞る。材料があるのに種別が違う候補は §4.3 の turn 両立を
   // 満たさないので候補から外す。外した結果 open な候補が 1 件になれば rule 2 の
   // 「exactly one open candidate」が成立して閉じられる
-  const sameTurn =
-    byNativeId.length > 0
-      ? open
-      : open.filter(
-          (pending) =>
-            pending.correlation.turnId !== undefined &&
-            pending.correlation.turnId === terminalEvent.turnId,
-        );
-  const eligible =
-    byNativeId.length > 0
-      ? sameTurn
-      : sameTurn.filter((pending) => {
-          const recorded = previous.operationStarts.get(pending.operationId)?.turnIdSource;
-          return recorded === undefined || recorded === terminalEvent.turnIdSource;
-        });
+  const sameTurn = sameTurnOf(open);
+  const eligible = eligibleOf(sameTurn);
   if (eligible.length === 0) {
     // turn 同一性が無いのか、同一性はあるが種別が違うのかで理由が変わる。§3.1 は降格の理由を
     // doctor が報告することを求めているので取り違えない。`unknown` に倒す相手も、種別違いなら
