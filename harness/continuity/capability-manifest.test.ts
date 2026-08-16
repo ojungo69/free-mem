@@ -88,6 +88,10 @@ test("appliesToAgents は harness が matrix を持つ CLI だけを指す", () 
   const known = new Set(["claude", "codex"]);
   for (const scenario of manifest.scenarios) {
     assert.ok(scenario.appliesToAgents.length > 0, `${scenario.scenarioId}: appliesToAgents が空`);
+    // requiredFor が空だと「manifest に居るがどの preflight/Tier にも必須でない」scenario になり、
+    // §13 の exact-set 照合を通ったまま何も要求しない。schema 側は正本どおり空を許すので
+    // （addendum は `Array<...>` としか書いていない）、manifest のデータとしてここで弾く
+    assert.ok(scenario.requiredFor.length > 0, `${scenario.scenarioId}: requiredFor が空`);
     for (const agent of scenario.appliesToAgents) {
       assert.ok(known.has(agent), `${scenario.scenarioId}: 未知の agent ${agent}`);
     }

@@ -6,7 +6,9 @@ import {
   validateAgainstSchema,
   validateContractValue,
   type JsonSchemaDocument,
+  type StructuralLimits,
 } from "../schema/validate.ts";
+import { CONTINUITY_LIMITS } from "../schema/continuity.ts";
 
 const LIMITS = { jsonDepth: 4, stringUtf8Bytes: 16, arrayItems: 3, objectKeys: 3 };
 
@@ -451,4 +453,57 @@ test("長さ・件数の上下限は非負整数だけ受け付ける", () => {
   }
   // minimum / maximum は負数も小数も正当
   assert.deepEqual(validateAgainstSchema(-0.5, { minimum: -1.5, maximum: 0 }, ROOT), []);
+});
+
+/**
+ * §10 の上限は 12 個あるが、`findStructuralViolations` が測るのは 4 個だけ。
+ * 残りは「addendum の数値を凍結しただけで、まだ誰も検査していない」状態にある。
+ *
+ * 数値を宣言したまま検査を持たないと、その値は黙って守られなくなる。ここで
+ * 「強制済み」と「未強制（追跡先つき）」に分けて全キーを網羅させ、上限を足したのに
+ * どちらにも入れなかった場合に落ちるようにする。
+ */
+test("CONTINUITY_LIMITS のキーは強制済みか、未強制として明示されているかのどちらか", () => {
+  // 型でも縛る。StructuralLimits に欄を足したらここが型エラーになる
+  const enforced: readonly (keyof StructuralLimits & keyof typeof CONTINUITY_LIMITS)[] = [
+    "jsonDepth",
+    "stringUtf8Bytes",
+    "arrayItems",
+    "objectKeys",
+  ];
+  // 未強制。Task 5 の runtime validator で塞ぐ（#32）
+  const deferred = [
+    "hintTokens",
+    "fullCapsuleTokens",
+    "promptMemoryTokens",
+    "combinedTokens",
+    "absoluteTokens",
+    "capsulePayloadBytes",
+    "wrapperBytes",
+    "rankedCandidates",
+  ];
+
+  assert.deepEqual([...enforced, ...deferred].sort(), Object.keys(CONTINUITY_LIMITS).sort());
+  assert.equal(new Set([...enforced, ...deferred]).size, enforced.length + deferred.length);
+
+  // 「強制済み」が名ばかりでないことを、上限超過が実際に issue になることで見る
+  const tiny = { jsonDepth: 2, stringUtf8Bytes: 4, arrayItems: 1, objectKeys: 1 };
+  for (const [value, key] of [
+    [{ a: { b: { c: 1 } } }, "jsonDepth"],
+    ["abcde", "stringUtf8Bytes"],
+    [[1, 2], "arrayItems"],
+    [{ a: 1, b: 2 }, "objectKeys"],
+  ] as const) {
+    const issues = findStructuralViolations(value, tiny);
+    assert.ok(
+      issues.some((i) => i.message.includes(key)),
+      `${key}: ${JSON.stringify(issues)}`,
+    );
+  }
+
+  // 「未強制」も名ばかりでないことを見る。32KiB を超える capsule が素通りする現状を固定し、
+  // #32 を実装したらこの assert が落ちて更新を強制する
+  const oversized = { warnings: Array.from({ length: 5 }, () => "x".repeat(8192)) };
+  assert.ok(Buffer.byteLength(JSON.stringify(oversized), "utf8") > CONTINUITY_LIMITS.capsulePayloadBytes);
+  assert.deepEqual(findStructuralViolations(oversized, CONTINUITY_LIMITS), []);
 });
