@@ -202,13 +202,20 @@ const OPERATION_PHASE_BY_KIND: ReadonlyMap<string, ContinuityOperationPhase> = n
  */
 export function assertOperationEnvelope(event: NormalizedContinuityEvent): void {
   const expectedPhase = OPERATION_PHASE_BY_KIND.get(event.kind);
+  const operation = event.operation;
   if (expectedPhase === undefined) {
-    if (event.operation !== undefined && NON_OPERATION_KIND_SET.has(event.kind)) {
+    if (operation !== undefined && NON_OPERATION_KIND_SET.has(event.kind)) {
       throw new Error(`§3.1 違反: operation 系でない kind ${event.kind} が operation envelope を持つ`);
+    }
+    // adapter 固有の kind は既知の phase を持たないので phase の照合はできないが、envelope を
+    // 持つなら reducer の operation 経路（start / terminal）にそのまま入る。欄の検査を飛ばすと
+    // 空文字の nativeOperationId が rule 1 の照合権威として扱われ、無関係な custom operation
+    // 同士が同一視される
+    if (operation !== undefined) {
+      assertOperationFields(operation);
     }
     return;
   }
-  const operation = event.operation;
   if (operation === undefined) {
     throw new Error(`§3.1 違反: operation event ${event.kind} に operation envelope が無い`);
   }
@@ -217,6 +224,10 @@ export function assertOperationEnvelope(event: NormalizedContinuityEvent): void 
       `§3.1 違反: kind ${event.kind} の phase は ${expectedPhase} だが envelope は ${operation.phase}`,
     );
   }
+  assertOperationFields(operation);
+}
+
+function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent["operation"]>): void {
   if (operation.operationMatchKey === "" || operation.operationKind === "") {
     throw new Error(`§3.1 違反: operation envelope の operationMatchKey / operationKind が空`);
   }
@@ -562,6 +573,12 @@ export function reduceTaskWorkState(
         // rule 2 の候補選びが kind の一致を見るのと対称。kind だけ違う再配送を重複として
         // 台帳に入れると、訂正版が同じ配送 ID で来ても no-op になって戻せない
         existing.correlation.toolName !== operation.operationKind ||
+        // 上の検索が operationId 一致で当たった場合、nativeOperationId は一度も比べていない。
+        // 同じ eventId・matchKey で native ID だけ違う start を重複として台帳に入れると、
+        // 同じく訂正版を戻せなくなる（native ID 一致で当たった場合はここは常に等しい）
+        (existing.correlation.nativeOperationId !== undefined &&
+          operation.nativeOperationId !== undefined &&
+          existing.correlation.nativeOperationId !== operation.nativeOperationId) ||
         (existing.correlation.canonicalInputHash !== undefined &&
           operation.canonicalInputHash !== undefined &&
           existing.correlation.canonicalInputHash !== operation.canonicalInputHash));
@@ -883,9 +900,14 @@ export function correlateTerminalEvent(
   // 要求すると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じなくなる
   const conflicting = candidates.find(
     (pending) =>
-      pending.correlation.canonicalInputHash !== undefined &&
-      operation.canonicalInputHash !== undefined &&
-      pending.correlation.canonicalInputHash !== operation.canonicalInputHash,
+      // kind は §4.3 の matchKey の入力に含まれる identity の一部で、turn と違って start から
+      // terminal の間に変わらない。rule 2 の候補は matchKey 一致で選ぶので kind も揃っているが、
+      // rule 1 は nativeOperationId だけで選ぶので、kind を見ないと別種の operation を閉じられる。
+      // start 側の identity 衝突検査と対称にする（両側とも空文字は schema violation で落ちている）
+      pending.correlation.toolName !== operation.operationKind ||
+      (pending.correlation.canonicalInputHash !== undefined &&
+        operation.canonicalInputHash !== undefined &&
+        pending.correlation.canonicalInputHash !== operation.canonicalInputHash),
   );
   if (conflicting !== undefined) {
     return {
@@ -977,7 +999,7 @@ export function correlateTerminalEvent(
 // --- §4.3 abandonment -------------------------------------------------------
 
 export interface AbandonmentResultV1 {
-  outcome: "applied" | "duplicate";
+  outcome: "applied" | "duplicate" | "quarantined";
   state: CanonicalWorkStateV1;
   ledger: IdempotencyLedger;
 }
@@ -1011,10 +1033,15 @@ export function finalizeAbandonedState(
     throw new Error(`放棄を確定しない kind を finalizeAbandonedState に渡している: ${event.kind}`);
   }
   const key = ledgerKeyOf(event);
-  // 放棄側では source hash の衝突を見ない。衝突検査が要るのは「捨てると誤った状態が確定する」
-  // terminal 経路で、放棄は同じ session の started を unknown にするだけなので、内容が違う再配送を
-  // 重複として捨てても失うものが無い（AbandonmentResultV1 に隔離の戻り値も無い）
-  if (idempotencyLedger.has(key)) {
+  const applied = idempotencyLedger.get(key);
+  if (applied !== undefined) {
+    // reducer 側と同じ判定にする。source hash が違うなら「同じ論理 event の再配送」ではないので、
+    // 重複として黙って捨てると放棄が落ちて operation が started のまま残る。状態を変えない点は
+    // duplicate と同じだが、outcome を分けて呼び出し側に見えるようにする
+    const incoming = sourceHashOf(event);
+    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
+      return { outcome: "quarantined", state, ledger: idempotencyLedger };
+    }
     return { outcome: "duplicate", state, ledger: idempotencyLedger };
   }
   // 放棄するのはその event の session の operation だけ。lineage は session をまたいで続く

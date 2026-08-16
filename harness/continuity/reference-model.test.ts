@@ -1533,3 +1533,91 @@ test("revision ごとに pendingOperations の配列を分ける", () => {
 });
 
 
+
+test("adapter 固有の kind でも envelope の欄は検査する", () => {
+  // 既知の phase が無い kind は phase を照合できないが、envelope を持つなら reducer の
+  // operation 経路にそのまま入る。空文字の native ID が rule 1 の照合権威になると、
+  // 無関係な custom operation 同士が同じものとして畳まれる
+  assert.throws(
+    () =>
+      assertOperationEnvelope(
+        startEvent({
+          kind: "adapter_custom_started",
+          operation: { ...START_OPERATION, nativeOperationId: "" },
+        }),
+      ),
+    /nativeOperationId \/ canonicalInputHash が空文字/,
+  );
+  // 未知の kind そのものは拒否しない（欄が揃っていれば通る）
+  assertOperationEnvelope(startEvent({ kind: "adapter_custom_started" }));
+});
+
+test("operationId 一致で見つけた再配送 start でも native ID の違いは隔離する", () => {
+  // 同じ eventId・matchKey で当たると native ID を一度も比べないまま重複として台帳に入り、
+  // 訂正版が同じ配送 ID で来ても no-op になって戻せない
+  const started = startedSnapshot();
+  const forged = reduceTaskWorkState(
+    started,
+    startEvent({
+      adapterDeliveryId: "delivery-start-2",
+      canonicalFingerprint: "fingerprint-start-2",
+      ingestSeq: "13",
+      operation: { ...START_OPERATION, nativeOperationId: "toolu_other" },
+    }),
+    new Map(),
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(
+    forged.diagnostics.map((d) => d.code),
+    ["start_conflict"],
+  );
+  assert.equal(forged.snapshot.state.pendingOperations.length, 1);
+});
+
+test("operationKind が違う terminal は native ID が一致しても閉じない", () => {
+  // rule 1 は nativeOperationId だけで候補を選ぶので、kind を見ないと Bash の operation を
+  // 別種の terminal で閉じられる。kind は §4.3 の matchKey の入力に含まれる identity の一部
+  const snapshot = startedSnapshot();
+  const forged = reduceTaskWorkState(
+    snapshot,
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, operationKind: "Read" } }),
+    new Map(),
+  );
+  assert.equal(forged.outcome, "quarantined");
+  assert.deepEqual(
+    forged.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+  assert.equal(forged.snapshot.state.pendingOperations[0]?.status, "started");
+});
+
+test("放棄でも同じ配送 ID で source hash が違えば隔離する", () => {
+  // 重複として黙って捨てると放棄が落ちて operation が started のまま残る。reducer 側の
+  // delivery_conflict と判定を揃える
+  const started = startedSnapshot();
+  const abandon = startEvent({
+    eventId: "event-abandon",
+    kind: "session_ended",
+    ingestSeq: "4",
+    operation: undefined,
+    adapterDeliveryId: "delivery-abandon",
+    canonicalFingerprint: "fingerprint-abandon",
+  });
+  const first = finalizeAbandonedState(started.state, abandon, new Map());
+  assert.equal(first.outcome, "applied");
+  const conflicting = finalizeAbandonedState(
+    first.state,
+    startEvent({
+      eventId: "event-abandon-corrupt",
+      kind: "session_ended",
+      ingestSeq: "5",
+      operation: undefined,
+      adapterDeliveryId: "delivery-abandon",
+      canonicalFingerprint: "fingerprint-other",
+    }),
+    first.ledger,
+  );
+  assert.equal(conflicting.outcome, "quarantined");
+  assert.equal(conflicting.state, first.state);
+  assert.equal(conflicting.ledger, first.ledger);
+});

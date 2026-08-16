@@ -29,10 +29,10 @@
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent`。`nativeOperationId` を名乗った terminal は rule 1 だけで判定する（一致しないときに rule 2 へ落とすと、matchKey の導出が §4.3 どおりでない adapter 相手に別 operation を診断なしで閉じてしまう。wire 越しに導出は検証できない） |
 | terminal は start より後（権威順序）・未適用・payload/source hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較。source hash（`canonicalFingerprint`）の衝突は correlation より前の dedupe で見る。冪等台帳が eventId だけを持つと、同じ配送 ID で内容が違う event が `duplicate` として捨てられて衝突検査が到達不能になるので、台帳は適用時の source hash も保持する（`LedgerEntryV1`）。衝突は `delivery_conflict` で隔離 |
 | 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
-| correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。判定材料は `canonicalInputHash` の直接比較で、terminal 側では `operationMatchKey` を比べない（§4.3 の matchKey は入力に「turn when present」を含むので、turn をまたいだ terminal が start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない = turn 両立は rule 2 の要件なので、ここで一致を求めると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じない）。start の再配送側は `nativeOperationId` で拾ったうえで `operationMatchKey` と `canonicalInputHash` の両方を見る（同じ native ID は同じ呼び出しなので turn も同じはず） |
+| correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。判定材料は `operationKind`（= 保持側の `toolName`）と `canonicalInputHash` の直接比較で、terminal 側では `operationMatchKey` を比べない（§4.3 の matchKey は入力に「turn when present」を含むので、turn をまたいだ terminal が start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない = turn 両立は rule 2 の要件なので、ここで一致を求めると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じない）。kind は matchKey の入力に含まれる identity の一部だが turn と違って start から terminal の間に変わらないので、rule 1 で選んだ候補にも要求できる。start の再配送側は `operationMatchKey` / `operationKind` / `nativeOperationId` / `canonicalInputHash` を見る（同じ native ID は同じ呼び出しなので turn も同じはず） |
 | 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる） |
 | rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する | §4.3 | start 側の種別を側索引 `operationStarts` に保持して照合する。照合は候補を 1 件に絞ってから行う（絞る前に種別を比べると、`operationStarts` が空の復元直後に「材料が無い」を「turn 同一性が無い」と報告してしまい、§3.1 が求める降格理由の報告が事実と食い違う） |
-| 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない。放棄するのはその event の session の operation だけ（lineage は session をまたいで続く。§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つので、絞らないと遅れて届いた旧 session の `session_ended` が resume 先の live な operation を潰す） |
+| 放棄・復帰時に証跡が無い operation は `unknown` | §4.3 | `finalizeAbandonedState`。§4.2 の重複 no-op はこの経路にも掛かるので、台帳を受け取り、同じ放棄 event の再配送では revision を採番し直さない。配送 ID の衝突判定も還元器と同じで、同じ配送 ID で source hash が違う放棄 event は `outcome: "quarantined"` にする（重複として黙って捨てると放棄が落ちて operation が `started` のまま残る）。放棄するのはその event の session の operation だけ（lineage は session をまたいで続く。§5 の checkpoint は `sourceSessionId` と `taskLineageId` を別に持つので、絞らないと遅れて届いた旧 session の `session_ended` が resume 先の live な operation を潰す） |
 | 閉じられなかった terminal は unmatched evidence として保つ | §4.3 | `unknown` にした候補の `sourceEventIds` にその terminal を足す。状態が変わった理由を状態から辿れるようにする（放棄経路と扱いを揃える） |
 | 状態は lineage ごとに 1 つ | §4 | `assertSameScope` は lineage に加えて `sourceAgent` も束縛する。`OperationCorrelationV1` は Agent を持たず scope が sessionId + taskLineageId だけなので、束縛しないと別 Agent の terminal が同じ session に居る他 Agent の operation を閉じられる |
 | seq は safe integer を超える decimal string | v6 §22.6 | `compareIngestSeq` は桁数 → 辞書順の 2 段比較。`Number()` を使わない |
@@ -205,10 +205,13 @@ pending があれば再配送として扱う。`nativeOperationId` を出さな�
 呼び出しと区別できないので、この経路は使わない（§4.3 が rule 1 だけに閉じる権限を与えているのと
 同じ非対称）。
 
-同じ `nativeOperationId` を名乗りながら `operationMatchKey` か `canonicalInputHash` が違う start は
-再配送ではなく corruption なので `start_conflict` で隔離する（再配送として台帳に入れると、訂正版が
-同じ配送 ID で来ても重複 no-op になって戻せない）。terminal 側と違って matchKey も比べるのは、
-同じ native ID は同じ呼び出し = 同じ turn のはずで、turn 差で matchKey が変わる余地が無いため。
+同じ `nativeOperationId` を名乗りながら `operationMatchKey` か `operationKind` か `canonicalInputHash`
+が違う start は再配送ではなく corruption なので `start_conflict` で隔離する（再配送として台帳に
+入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない）。terminal 側と違って matchKey も
+比べるのは、同じ native ID は同じ呼び出し = 同じ turn のはずで、turn 差で matchKey が変わる余地が
+無いため。再配送の検索は「導出した `operationId` 一致」→「`nativeOperationId` 一致」の順に当たるので、
+前者で当たった場合は native ID を一度も比べていない。そのため衝突検査は `nativeOperationId` の
+直接比較も持つ（後者で当たった場合は常に等しいので効かない）。
 
 **`terminal_orphaned` の隔離には期限が無い**。start が後から来る孤児（順序前後）と、start が二度と
 来ない孤児（退避で消えた operation、daemon が実行途中で attach して terminal だけ捕まえた場合）は
@@ -240,7 +243,10 @@ event ではなく checkpoint 経路なのでここには含めない。
 envelope の任意欄（`nativeOperationId` / `canonicalInputHash`）は schema が `maxLength` しか持たない
 ので空文字が届きうる。空文字を「値がある」と読むと rule 1 が「native ID を持たない operation」
 同士を全部同じものとして照合するため、`assertOperationEnvelope` で schema violation に落とす
-（正規化を照合側の 5 箇所に散らさない）。
+（正規化を照合側の 5 箇所に散らさない）。この欄の検査は **adapter 固有の kind にも掛ける**。
+既知の phase を持たない kind は phase の照合こそできないが、envelope を持つなら還元器の
+operation 経路（start / terminal）にそのまま入るので、検査を飛ばすと同じ穴が custom kind 経由で
+開いたままになる。
 
 ## 3. 限界
 
@@ -306,8 +312,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。52 件すべてで 1 件以上が失敗し、
-復元後は 78/78 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。56 件すべてで 1 件以上が失敗し、
+復元後は 82/82 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -330,7 +336,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 候補が複数のときの拒否を外す | 1 |
 | terminal 側に matchKey 一致を要求し直す | 1 |
 | terminal の canonicalInputHash 衝突検査を外す | 3 |
-| identity 衝突の隔離を外す | 3 |
+| identity 衝突の隔離を外す | 4 |
 | kind と successful の矛盾を素通しする | 1 |
 | 矛盾した terminal を succeeded にする | 1 |
 | start 不在の分岐を外す | 4 |
@@ -341,7 +347,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 退避で順序材料を刈らない | 1 |
 | 再配送 start を nativeOperationId で拾わない | 5 |
 | 再配送の判定を matchKey にする | 6 |
-| start の identity 衝突検査を外す | 3 |
+| start の identity 衝突検査を外す | 4 |
 | start の matchKey 衝突検査を外す | 1 |
 | start の canonicalInputHash 衝突検査を外す | 1 |
 | 放棄を session で絞らない | 1 |
@@ -353,16 +359,20 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 退避件数の上限を外す | 3 |
 | 退避を黙って行う | 2 |
 | revision ごとの配列分離を外す | 1 |
-| 放棄経路の dedupe を外す | 1 |
+| 放棄経路の dedupe を外す | 2 |
 | 台帳の keyspace 分離を外す | 1 |
 | 空の capabilityHash を素通しする | 1 |
 | 未知の sensitivity で fail open する | 1 |
 | rule 2 の turn 種別一致要求を外す | 1 |
-| 空文字の任意欄を素通しする | 1 |
+| 空文字の任意欄を素通しする | 2 |
 | start の operationKind 比較を外す | 1 |
 | 放棄 kind の制限を外す | 1 |
 | 配送 ID 衝突の隔離を外す | 1 |
 | sensitivity 集約を normal 固定にする | 3 |
+| adapter 固有 kind の欄検査を外す | 1 |
+| start の nativeOperationId 比較を外す | 1 |
+| terminal の operationKind 比較を外す | 1 |
+| 放棄経路の配送 ID 衝突検査を外す | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
