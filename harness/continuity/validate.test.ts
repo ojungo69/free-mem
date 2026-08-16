@@ -227,6 +227,23 @@ test("循環 $ref はスタックオーバーフローでなく診断可能な�
   assert.throws(() => validateAgainstSchema("x", { $ref: "#/$defs/Loop" }, root), /circular \$ref/);
 });
 
+test("再帰 schema（JsonValue）は循環扱いにしない — 1 段ごとに値を消費するため", () => {
+  const root: JsonSchemaDocument = {
+    $defs: {
+      JsonValue: {
+        oneOf: [
+          { type: "string" },
+          { type: "array", items: { $ref: "#/$defs/JsonValue" } },
+          { type: "object", additionalProperties: { $ref: "#/$defs/JsonValue" } },
+        ],
+      },
+    },
+  };
+  const schema = { $ref: "#/$defs/JsonValue" };
+  assert.deepEqual(validateAgainstSchema({ a: ["x", { b: "y" }] }, schema, root), []);
+  assert.ok(validateAgainstSchema({ a: [1] }, schema, root).length > 0, "中身の型違反は拾う");
+});
+
 test("NaN は minimum/maximum を素通りしない", () => {
   const issues = validateAgainstSchema(NaN, { type: "number", minimum: 0, maximum: 1 }, ROOT);
   assert.ok(issues.some((i) => /non-finite number/.test(i.message)));

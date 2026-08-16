@@ -282,8 +282,11 @@ function validateNode(
   // draft 2020-12 では $ref に兄弟キーワードを併記できる（`{$ref, maxLength}` など）。
   // ここで return すると併記した制約が黙って落ちるので、参照先を検査してから残りも続ける
   if (typeof schema.$ref === "string") {
-    // 自己参照 schema はスタックオーバーフローになる。この検証器は再帰型を扱わないので
-    // 「未対応の schema」として診断可能なエラーにする
+    // 同じ値に対して同じ $ref をもう一度たどったら、データを消費しない自己参照
+    // （`Loop: {$ref: "#/$defs/Loop"}`）でスタックを食い潰す。診断可能なエラーにする。
+    // CHILD_REF_STACK: properties / items / additionalProperties で子の値へ降りるときは
+    // refStack を空に畳む。JsonValue のような再帰 schema は 1 段ごとに値を消費するので
+    // 必ず終端し、ここで弾くべき「値が進まない循環」とは別物
     if (refStack.includes(schema.$ref)) {
       throw new Error(`circular $ref: ${[...refStack, schema.$ref].join(" -> ")}`);
     }
@@ -342,9 +345,8 @@ function validateNode(
       issues.push({ path, message: `array longer than maxItems ${schema.maxItems}` });
     }
     if (schema.items !== undefined) {
-      value.forEach((item, i) =>
-        issues.push(...validateNode(item, schema.items, root, `${path}[${i}]`, refStack)),
-      );
+      // 子の値へ降りるので refStack は畳む。詳細は CHILD_REF_STACK の注記
+      value.forEach((item, i) => issues.push(...validateNode(item, schema.items, root, `${path}[${i}]`, [])));
     }
   }
 
@@ -355,11 +357,11 @@ function validateNode(
     }
     for (const [k, v] of Object.entries(value)) {
       if (own(props, k)) {
-        issues.push(...validateNode(v, props[k], root, `${path}.${k}`, refStack));
+        issues.push(...validateNode(v, props[k], root, `${path}.${k}`, []));
       } else if (schema.additionalProperties === false) {
         issues.push({ path, message: `unknown property: ${k}` });
       } else if (schema.additionalProperties !== undefined) {
-        issues.push(...validateNode(v, schema.additionalProperties, root, `${path}.${k}`, refStack));
+        issues.push(...validateNode(v, schema.additionalProperties, root, `${path}.${k}`, []));
       }
     }
   }
