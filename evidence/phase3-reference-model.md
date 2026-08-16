@@ -17,7 +17,7 @@
 | native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない） |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | `event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と一致しなければ native にしない。認証済みの adapter が他 Agent 名義で native authority を得られないようにする |
-| `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす（capability matrix にまだ turn identity の cell が無い: #40）。`synthesized_monotonic` は adapter 由来なので触らない |
+| `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす。証明は version に紐づくので、受領証・`sourceAgent`・`sourceAgentVersion` の束縛（`authenticatedVersion`）が成り立たない event にも適用しない。`capabilityHash` は capability matrix にまだ turn identity の cell が無い（#40）ため turn の判定には使わない。`synthesized_monotonic` は adapter 由来なので触らない |
 | どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
 | operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない |
@@ -169,8 +169,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。20 件すべてで 1 件以上が失敗し、
-復元後は 46/46 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。21 件すべてで 1 件以上が失敗し、
+復元後は 47/47 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---|
@@ -178,14 +178,15 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | `lastIngestSeq` の max を外す | 1 |
 | `ingestSeq` を数値比較にする | 1 |
 | operation envelope 必須を外す | 2 |
-| intake の attestation 必須を外す | 2 |
+| intake の attestation 必須を外す | 3 |
 | caller の attestation を信じる | 1 |
-| `sourceAgent` の束縛を外す | 1 |
-| native turn の証明要求を外す | 1 |
+| `sourceAgent` の束縛を外す | 2 |
+| native turn の証明要求を外す | 2 |
+| turn 証明の version 束縛を外す | 1 |
 | 衝突の隔離を外す | 1 |
 | 候補の unknown 化を外す | 3 |
 | `turnIdSource` 種別の一致要求を外す | 1 |
-| rule 2 の turn 同一性要求を外す | 1 |
+| rule 2 の turn 同一性要求を外す | 2 |
 | turn 同一性の不変条件を外す | 1 |
 | terminal の権威順序検査を外す | 1 |
 | 候補が複数のときの拒否を外す | 1 |
@@ -199,5 +200,6 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
 rule 1 なら閉じること、上限に達していても terminal 済みがあれば start を取り込むこと、上限に
 余裕があれば退避の診断を出さないこと、proven な version の native turn と adapter の
-`synthesized_monotonic` は降格しないこと、negative fixture の `intakeContext` に欠落があれば
+`synthesized_monotonic` は降格しないこと、`capabilityHash` の不一致は evidence だけを降格させて
+turn には触れないこと、negative fixture の `intakeContext` に欠落があれば
 （何をしても synthesized になって intake の case が素通りするので）落ちること。

@@ -111,10 +111,15 @@ export function stampIntakeEvidence(
   // §3.1 が禁じている自己申告の native authority が通ってしまう
   const { ingestAttestation: _claimed, ...provenance } = event.provenance;
   const attestation = context.attestation;
-  const proven =
+  // §3.1 は evidenceKind も turn identity も「認証済み peer identity」から導けと言う。
+  // 受領証があり、かつ caller の名乗る Agent と version が受領証の指すそれと一致することが
+  // その認証にあたる。evidence の証明も turn の証明もこの束縛の上に乗る
+  const authenticatedVersion =
     attestation !== undefined &&
     event.sourceAgent === context.expectedSourceAgent &&
-    provenance.sourceAgentVersion === context.exactAgentVersion &&
+    provenance.sourceAgentVersion === context.exactAgentVersion;
+  const proven =
+    authenticatedVersion &&
     provenance.capabilityHash === context.activeCapabilityHash &&
     provenance.scenarioId !== undefined &&
     context.provenScenarios.some(
@@ -125,8 +130,12 @@ export function stampIntakeEvidence(
     );
   // §3.1「turn identity は payload の慣習ではなく canonical」。proven でない version の native
   // 主張をそのまま通すと、rule 2 の turn 両立を caller が自作した turnId で満たせてしまう。
-  // 証明が無いなら turn 同一性は確立できない = unavailable（turnId は §3.1 の不変条件で不在）
-  const turnDowngraded = event.turnIdSource === "native" && !context.nativeTurnIdentityProven;
+  // 証明が無いなら turn 同一性は確立できない = unavailable（turnId は §3.1 の不変条件で不在）。
+  // 証明は「その exact version について」なので、その version であること自体が認証されて
+  // いなければ証明を適用できない。capabilityHash は capability matrix にまだ turn identity の
+  // cell が無い（#40）ため、ここでは要求しない
+  const turnDowngraded =
+    event.turnIdSource === "native" && !(authenticatedVersion && context.nativeTurnIdentityProven);
   const { turnId: _claimedTurnId, ...withoutTurnId } = event;
   return {
     ...(turnDowngraded ? withoutTurnId : event),

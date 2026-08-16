@@ -596,6 +596,26 @@ test("proven でない version の native turn 主張は unavailable へ降格�
   );
 });
 
+test("証明は version に紐づく: 認証されない名乗りは native turn を保てない", () => {
+  // nativeTurnIdentityProven は「その exact version について」の事実なので、
+  // その version であること自体が認証されていない event には適用できない
+  const cases: ReadonlyArray<readonly [string, NormalizedContinuityEvent, IntakeContextV1]> = [
+    [
+      "version が exact でない",
+      startEvent({ provenance: { ...startEvent().provenance, sourceAgentVersion: "2.1.228" } }),
+      INTAKE,
+    ],
+    ["Agent 名が受領証と違う", startEvent({ sourceAgent: "codex" }), INTAKE],
+    ["受領証を出せない経路", startEvent(), { ...INTAKE, attestation: undefined }],
+  ];
+  for (const [label, event, context] of cases) {
+    const stamped = stampIntakeEvidence(event, context);
+    assert.equal(stamped.turnIdSource, "unavailable", label);
+    assert.equal(stamped.turnId, undefined, label);
+    assertTurnIdentity(stamped);
+  }
+});
+
 test("proven な version の native turn 主張と adapter 側の monotonic turn は触らない", () => {
   // 降格が「native を名乗る全部」を潰していないことを、通るべき側で確かめる
   assert.equal(stampIntakeEvidence(startEvent(), INTAKE).turnIdSource, "native");
@@ -604,6 +624,13 @@ test("proven な version の native turn 主張と adapter 側の monotonic turn
   const unproven: IntakeContextV1 = { ...INTAKE, nativeTurnIdentityProven: false };
   assert.equal(stampIntakeEvidence(monotonic, unproven).turnIdSource, "synthesized_monotonic");
   assert.equal(stampIntakeEvidence(monotonic, unproven).turnId, "turn-7");
+  // capabilityHash の不一致は evidence を降格させるが turn は降格させない。capability matrix に
+  // turn identity の cell が無い（#40）ので、hash は turn について何も語らないため
+  const staleHash = startEvent({
+    provenance: { ...startEvent().provenance, capabilityHash: `sha256:${"5".repeat(64)}` },
+  });
+  assert.equal(stampIntakeEvidence(staleHash, INTAKE).provenance.evidenceKind, "synthesized");
+  assert.equal(stampIntakeEvidence(staleHash, INTAKE).turnIdSource, "native");
 });
 
 test("落とせる terminal 済みが無いとき start は隔離する", () => {
