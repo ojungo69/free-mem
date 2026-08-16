@@ -1,3 +1,5 @@
+import type { EventKind } from "./capability.ts";
+
 /** 継続契約のスキーマ版。 */
 export const CONTINUITY_SCHEMA_VERSION: 1 = 1;
 
@@ -184,6 +186,32 @@ export const CONTINUITY_OPERATION_PHASES = [
   "progress",
   "terminal",
 ] as const satisfies readonly ContinuityOperationPhase[];
+
+/**
+ * §3.1「`operation` は kind が operation の start / progress / terminal である event に必須」を
+ * 判定するための正本（#29）。addendum は operation 系 kind を列挙していないため、harness の
+ * 正規化 event 語彙（`EventKind`）に対する分類をここで固定する。`NormalizedContinuityEvent.kind`
+ * は adapter 固有の値も取り得る開いた文字列であり、この表にも `NON_OPERATION_EVENT_KINDS` にも
+ * 無い kind は未分類として envelope を要求しない。
+ */
+export const OPERATION_EVENT_PHASES = {
+  tool_started: "start",
+  tool_completed: "terminal",
+  tool_failed: "terminal",
+} as const satisfies Partial<Record<EventKind, ContinuityOperationPhase>>;
+
+/** operation 系でないと確定している kind。`OPERATION_EVENT_PHASES` との和が `EVENT_KINDS` に一致する。 */
+export const NON_OPERATION_EVENT_KINDS = [
+  "session_started",
+  "user_prompted",
+  "assistant_completed",
+  "turn_completed",
+  "pre_compact",
+  "post_compact",
+  "session_idle",
+  "session_interrupted",
+  "session_ended",
+] as const satisfies readonly EventKind[];
 
 export interface ContinuityOperationRefV1 {
   phase: ContinuityOperationPhase;
