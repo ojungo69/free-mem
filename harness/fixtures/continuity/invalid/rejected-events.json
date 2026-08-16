@@ -2,7 +2,9 @@
   "fixtureId": "continuity/invalid/rejected-events",
   "description": "§3.1 の negative 群。どの層で落ちるかを rejectedBy に書く: schema = continuity.schema.json が落とす / runtime = schema は通り reference-model が落とす（#29）/ intake = 落とさず synthesized へ降格する。TS と Rust が同じ層で同じ判断をするかの基準。",
   "intakeContext": {
+    "expectedSourceAgent": "claude",
     "exactAgentVersion": "2.1.228 (Claude Code)",
+    "nativeTurnIdentityProven": true,
     "activeCapabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
     "provenScenarios": [
       {

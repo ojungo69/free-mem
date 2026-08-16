@@ -199,4 +199,5 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
 rule 1 なら閉じること、上限に達していても terminal 済みがあれば start を取り込むこと、上限に
 余裕があれば退避の診断を出さないこと、proven な version の native turn と adapter の
-`synthesized_monotonic` は降格しないこと。
+`synthesized_monotonic` は降格しないこと、negative fixture の `intakeContext` に欠落があれば
+（何をしても synthesized になって intake の case が素通りするので）落ちること。

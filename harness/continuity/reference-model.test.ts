@@ -844,6 +844,16 @@ test("negative fixture は宣言した層で落ちる", () => {
     assert.equal(stamped.provenance.evidenceKind, "synthesized", testCase.name);
   }
   assert.deepEqual([...layers].sort(), ["intake", "runtime", "schema"]);
+
+  // fixture の intakeContext に欠落があると、何をしても synthesized になって intake の case が
+  // 素通りする。正当な経路なら native になることを対で確かめる
+  const intakeCase = fixture.cases.find((testCase) => testCase.rejectedBy === "intake");
+  if (intakeCase === undefined) assert.fail("intake の case が無い");
+  const repaired: NormalizedContinuityEvent = {
+    ...intakeCase.event,
+    provenance: { ...intakeCase.event.provenance, captureMethod: "native_event" },
+  };
+  assert.equal(stampIntakeEvidence(repaired, fixture.intakeContext).provenance.evidenceKind, "native");
 });
 
 test("fixture の期待値は参照実装の出力と一致する（TS/Rust parity の基準）", () => {
