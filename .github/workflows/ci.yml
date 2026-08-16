@@ -81,18 +81,36 @@ jobs:
         # branch への push で検査が飛び、その commit が green のまま main に入る。
         # イベントを問わず走らせる。main への push では origin/main == HEAD で空振りになるが、
         # その commit は branch 側の実行で既に検査されている。
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           # 送信先 ref を明示する。`git fetch origin main` だけだと remote の refspec 次第で
           # origin/main が作られず、後続が黙って空振りする
           git fetch --depth=1 origin +refs/heads/main:refs/remotes/origin/main
           git rev-parse --verify origin/main >/dev/null
+          base=origin/main
+          # main への直 push では origin/main も HEAD も push 後の commit を指すので、
+          # 同じものどうしを比べて必ず成功する。ruleset は直 push を禁じていない（#34）ため、
+          # この場合だけ push 前の commit を基準にする
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF_NAME" = "main" ]; then
+            case "$PUSH_BEFORE" in
+              "" | 0000000000000000000000000000000000000000)
+                echo "::error::main への push だが push 前の commit が取れない。基準が無いので検査できない"
+                exit 1
+                ;;
+            esac
+            git fetch --depth=1 origin "$PUSH_BEFORE"
+            base="$PUSH_BEFORE"
+          fi
           # 列挙の失敗を握り潰さない。`|| true` を付けると「基準に 1 件も無い」と
           # 区別が付かず、検査ゼロで成功する
-          git ls-tree -r --name-only origin/main -- harness/schema > /tmp/baseline-schema.txt
+          git ls-tree -r --name-only "$base" -- harness/schema > /tmp/baseline-schema.txt
           status=0
           while read -r f; do
             [ -n "$f" ] || continue
-            git diff --exit-code origin/main HEAD -- "$f" >/dev/null || {
+            git diff --exit-code "$base" HEAD -- "$f" >/dev/null || {
               echo "::error file=$f::公開済みの版を変更・削除している。scenario 集合を変えるなら新しい版のファイルを追加し、evidence に節を足すこと（§13）"
               status=1
             }

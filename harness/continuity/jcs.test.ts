@@ -53,6 +53,20 @@ test("JSON に無い値は受け付けない", () => {
   assert.equal(canonicalizeJson({ a: 1, b: undefined }), '{"a":1}');
 });
 
+test("対になっていない代理は拒否する（RFC 8785 §3.2.2.2）", () => {
+  // `JSON.stringify` は well-formed 化してエスケープを返すだけなので、そのままだと
+  // 「TS では hash が出るが、準拠した実装は計算を拒否する」状態になる
+  assert.equal(JSON.stringify("\ud800"), '"\\ud800"');
+  for (const bad of ["\ud800", "a\udfff", "\ud800a", "\udc00\ud800"]) {
+    assert.throws(() => canonicalizeJson(bad), /代理/, JSON.stringify(bad));
+    assert.throws(() => canonicalizeJson({ [bad]: 1 }), /代理/, `key ${JSON.stringify(bad)}`);
+    assert.throws(() => canonicalizeJson({ a: [bad] }), /代理/, `nested ${JSON.stringify(bad)}`);
+  }
+  // 正しい代理対は通る
+  assert.equal(canonicalizeJson("\u{10384}"), '"\u{10384}"');
+  assert.equal(canonicalizeJson({ "\u{10384}": 1 }), '{"\u{10384}":1}');
+});
+
 test("キー順が違うだけの object は同じ bytes になる", () => {
   const a = { x: 1, y: { p: 1, q: 2 }, z: [1, 2] };
   const b = { z: [1, 2], y: { q: 2, p: 1 }, x: 1 };
