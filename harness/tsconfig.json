@@ -1,0 +1,18 @@
+{
+  "//": "harness は node --experimental-strip-types で直接実行する（型は剥がされるだけで検査されない）。CI がこの設定で型検査する。",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "typeRoots": ["../vendor/codemem/node_modules/@types"]
+  },
+  "include": ["**/*.ts"]
+}

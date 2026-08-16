@@ -35,6 +35,11 @@ jobs:
         run: corepack pnpm run build
       - name: Typecheck and lint
         run: corepack pnpm run tsc && corepack pnpm run lint
+      - name: Typecheck harness
+        # harness は --experimental-strip-types で走る＝型は剥がされるだけで検査されない。
+        # vendor の依存が入っているこの job でだけ tsc をかけられる
+        working-directory: .
+        run: vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
       - name: Test with coverage
         run: CI=true corepack pnpm run test:coverage
       - name: Analyze with SonarQube Cloud
@@ -45,6 +50,32 @@ jobs:
           args: -Dsonar.qualitygate.wait=true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.16.0
+      - name: Capability matrix self-test
+        # PASS 行を必須にする: entry point の起動条件が変わって黙って no-op しても exit 0 になるため
+        run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS
+      - name: Continuity contract tests
+        run: node --experimental-strip-types --test harness/continuity/*.test.ts
+      - name: Matrices are regenerated, not hand-edited
+        # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
+        # generatedAt は実行ごとに変わるので比較から外す
+        run: |
+          for cli in claude codex; do
+            node --experimental-strip-types harness/assemble.ts "harness/fixtures/$cli" "/tmp/$cli.json"
+            diff <(jq 'del(.generatedAt)' "harness/matrix/$cli.json") <(jq 'del(.generatedAt)' "/tmp/$cli.json")
+          done
 
   secrets:
     runs-on: ubuntu-24.04

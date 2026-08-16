@@ -97,7 +97,7 @@
         },
         "allOf": [
           {
-            "comment": "§7.2: synthesized は根拠 native event の明示が必須",
+            "$comment": "§7.2: synthesized は根拠 native event の明示が必須",
             "if": {
               "properties": {
                 "capability": {
@@ -142,6 +142,10 @@
         "type": "string"
       }
     },
+    "evidenceHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "rig": {
       "type": "object",
       "additionalProperties": false,
@@ -172,6 +176,22 @@
           ]
         },
         "promptAwareInjection": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "promptDeliveryBeforeModel": {
+          "type": "string",
+          "enum": [
+            "native",
+            "synthesized",
+            "unsupported"
+          ]
+        },
+        "compactSingleDelivery": {
           "type": "string",
           "enum": [
             "native",

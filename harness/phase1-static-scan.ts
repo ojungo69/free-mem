@@ -175,7 +175,7 @@ function runtimeImportElements(node: ts.ImportDeclaration): Array<{ local: strin
 function textValue(node: ts.Node): string | null {
 	if (ts.isStringLiteralLike(node)) return node.text;
 	if (!ts.isTemplateExpression(node)) return null;
-	return `${node.head.text}${node.templateSpans.map((span) => span.literal.text).join("")}`;
+	return `${node.head.text}${node.templateSpans.map((span: ts.TemplateSpan) => span.literal.text).join("")}`;
 }
 
 function location(source: ts.SourceFile, node: ts.Node): number {
@@ -233,7 +233,7 @@ function scanSource(file: string, contents: string): { hits: Map<string, Set<str
 				!statement.isTypeOnly &&
 				(!elements ||
 					!ts.isNamedExports(elements) ||
-					elements.elements.some((element) => !element.isTypeOnly));
+					elements.elements.some((element: ts.ExportSpecifier) => !element.isTypeOnly));
 			if (hasRuntimeExport) {
 				inspectRuntimeModule(statement, statement.moduleSpecifier.text);
 			}
@@ -305,7 +305,9 @@ function scanSource(file: string, contents: string): { hits: Map<string, Set<str
 			}
 		}
 		if (file === coreIndexPath && ts.isExportDeclaration(node) && !node.isTypeOnly) {
-			if (!node.exportClause && ts.isStringLiteral(node.moduleSpecifier)) {
+			// `export * from "x"` は必ず moduleSpecifier を持つが、型は Expression | undefined。
+			// undefined を渡すと ts.isStringLiteral が .kind 参照で throw するため先に潰す
+			if (!node.exportClause && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
 				if (forbiddenDeepModules.has(moduleStem(node.moduleSpecifier.text))) {
 					fail("public_bypass", node, `wildcard runtime export from ${node.moduleSpecifier.text}`);
 				}

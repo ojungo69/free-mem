@@ -1,7 +1,7 @@
 {
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "generatedAt": "2026-08-12T12:00:23.759Z",
+  "generatedAt": "2026-08-16T06:46:39.886Z",
   "fixtureCount": 3,
   "fixtureIds": [
     "codex/injection",
@@ -22,9 +22,13 @@
           "SessionStart"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
-        "limitations": []
+        "evidenceKind": "source-test",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
+        "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "codex/injection",
+        "evidenceHash": null
       },
       "user_prompted": {
         "value": "native",
@@ -32,9 +36,13 @@
           "UserPromptSubmit"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
-        "limitations": []
+        "evidenceKind": "source-test",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
+        "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "codex/injection",
+        "evidenceHash": null
       },
       "assistant_completed": {
         "value": "synthesized",
@@ -42,11 +50,14 @@
           "Stop"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:16:08.730Z",
         "limitations": [
-          "Stop.last_assistant_message から復元"
-        ]
+          "Stop.last_assistant_message から復元",
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "codex/lifecycle-basic",
+        "evidenceHash": null
       },
       "tool_started": {
         "value": "native",
@@ -54,11 +65,14 @@
           "PreToolUse"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:16:22.570Z",
         "limitations": [
-          "payload に tool_use_id / turn_id / tool_input あり"
-        ]
+          "payload に tool_use_id / turn_id / tool_input あり",
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "codex/tool-lifecycle-and-failure",
+        "evidenceHash": null
       },
       "tool_completed": {
         "value": "native",
@@ -66,9 +80,13 @@
           "PostToolUse"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:16:22.570Z",
-        "limitations": []
+        "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "codex/tool-lifecycle-and-failure",
+        "evidenceHash": null
       },
       "tool_failed": {
         "value": "synthesized",
@@ -76,13 +94,16 @@
           "PostToolUse"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:16:22.570Z",
         "limitations": [
           "**Codex は tool 失敗時も PostToolUse を発火する**（Claude Code とは逆の挙動）。ただし payload に exit code / error フィールドは無く、成功時 tool_response=\"rigtool\\n\" に対し失敗時 tool_response=\"\" という違いしかない",
           "空 tool_response は『失敗』と『出力の無い成功』を区別できないため、失敗判定は transcript 参照か上位層の推定が必要",
-          "failurePhase の直接判別は不可"
+          "failurePhase の直接判別は不可",
+          "no evidenceHash: transcript に紐付いていない自己申告"
         ],
+        "sourceFixtureId": "codex/tool-lifecycle-and-failure",
+        "evidenceHash": null,
         "coverage": 0.5
       },
       "turn_completed": {
@@ -91,11 +112,14 @@
           "Stop"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
+        "evidenceKind": "source-test",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
         "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告",
           "Stop payload に `turn_id` があり turn 境界が native に識別できる。[2026-08-12 訂正: 『Claude 側には無い』は誤り — Claude は UserPromptSubmit/Stop/SessionEnd が同一 `prompt_id` を共有しており turn 対応付けは可能。差は id の名称と、Codex の SessionEnd には turn_id が無い点]"
-        ]
+        ],
+        "sourceFixtureId": "codex/injection",
+        "evidenceHash": null
       },
       "pre_compact": {
         "value": "unknown",
@@ -143,11 +167,14 @@
           "SessionEnd"
         ],
         "nativeVersion": "codex-cli 0.147.0",
-        "evidenceKind": "real-cli-e2e",
-        "verifiedAt": "2026-08-12T11:16:22.570Z",
+        "evidenceKind": "source-test",
+        "verifiedAt": "2026-08-12T11:16:43.112Z",
         "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告",
           "reason は正常終了でも 'other'"
-        ]
+        ],
+        "sourceFixtureId": "codex/injection",
+        "evidenceHash": null
       }
     },
     "toolFailurePhases": [
@@ -164,13 +191,37 @@
       "value": "native",
       "sourceEvents": [],
       "nativeVersion": "codex-cli 0.147.0",
-      "evidenceKind": "real-cli-e2e",
-      "verifiedAt": "2026-08-12T11:16:08.730Z",
+      "evidenceKind": "source-test",
+      "verifiedAt": "2026-08-12T11:16:43.112Z",
       "limitations": [
-        "observed in codex/lifecycle-basic"
-      ]
+        "observed native in codex/injection",
+        "observed native in codex/lifecycle-basic",
+        "no evidenceHash: transcript に紐付いていない自己申告"
+      ],
+      "sourceFixtureId": "codex/injection",
+      "evidenceHash": null
     },
     "promptAwareInjection": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": null,
+      "verifiedAt": null,
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "promptDeliveryBeforeModel": {
+      "value": "unknown",
+      "sourceEvents": [],
+      "nativeVersion": "codex-cli 0.147.0",
+      "evidenceKind": null,
+      "verifiedAt": null,
+      "limitations": [
+        "not observed in Phase 0B"
+      ]
+    },
+    "compactSingleDelivery": {
       "value": "unknown",
       "sourceEvents": [],
       "nativeVersion": "codex-cli 0.147.0",
@@ -210,6 +261,15 @@
       "limitations": [
         "not observed in Phase 0B"
       ]
-    }
+    },
+    "resumeDeliveryStrategy": "manual_only",
+    "capabilityHashInputs": [
+      "cli:codex",
+      "nativeVersion:codex-cli 0.147.0",
+      "fixture:codex/injection@no-evidence-hash",
+      "fixture:codex/lifecycle-basic@no-evidence-hash",
+      "fixture:codex/tool-lifecycle-and-failure@no-evidence-hash",
+      "capabilities:{\"capture\":{\"session_started\":{\"value\":\"native\",\"sourceEvents\":[\"SessionStart\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:43.112Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"codex/injection\",\"evidenceHash\":null},\"user_prompted\":{\"value\":\"native\",\"sourceEvents\":[\"UserPromptSubmit\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:43.112Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"codex/injection\",\"evidenceHash\":null},\"assistant_completed\":{\"value\":\"synthesized\",\"sourceEvents\":[\"Stop\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:08.730Z\",\"limitations\":[\"Stop.last_assistant_message から復元\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"codex/lifecycle-basic\",\"evidenceHash\":null},\"tool_started\":{\"value\":\"native\",\"sourceEvents\":[\"PreToolUse\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:22.570Z\",\"limitations\":[\"payload に tool_use_id / turn_id / tool_input あり\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"codex/tool-lifecycle-and-failure\",\"evidenceHash\":null},\"tool_completed\":{\"value\":\"native\",\"sourceEvents\":[\"PostToolUse\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:22.570Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"codex/tool-lifecycle-and-failure\",\"evidenceHash\":null},\"tool_failed\":{\"value\":\"synthesized\",\"sourceEvents\":[\"PostToolUse\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:22.570Z\",\"limitations\":[\"**Codex は tool 失敗時も PostToolUse を発火する**（Claude Code とは逆の挙動）。ただし payload に exit code / error フィールドは無く、成功時 tool_response=\\\"rigtool\\\\n\\\" に対し失敗時 tool_response=\\\"\\\" という違いしかない\",\"空 tool_response は『失敗』と『出力の無い成功』を区別できないため、失敗判定は transcript 参照か上位層の推定が必要\",\"failurePhase の直接判別は不可\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"codex/tool-lifecycle-and-failure\",\"evidenceHash\":null,\"coverage\":0.5},\"turn_completed\":{\"value\":\"native\",\"sourceEvents\":[\"Stop\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:43.112Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\",\"Stop payload に `turn_id` があり turn 境界が native に識別できる。[2026-08-12 訂正: 『Claude 側には無い』は誤り — Claude は UserPromptSubmit/Stop/SessionEnd が同一 `prompt_id` を共有しており turn 対応付けは可能。差は id の名称と、Codex の SessionEnd には turn_id が無い点]\"],\"sourceFixtureId\":\"codex/injection\",\"evidenceHash\":null},\"pre_compact\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"post_compact\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"session_idle\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"session_interrupted\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"session_ended\":{\"value\":\"native\",\"sourceEvents\":[\"SessionEnd\"],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:43.112Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\",\"reason は正常終了でも 'other'\"],\"sourceFixtureId\":\"codex/injection\",\"evidenceHash\":null}},\"toolFailurePhases\":[\"executed\"],\"toolFailurePhasesUntested\":[\"permission_denied\",\"schema_invalid\",\"unknown_tool\",\"interrupt\",\"unknown\"],\"sessionStartInjection\":{\"value\":\"native\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:16:43.112Z\",\"limitations\":[\"observed native in codex/injection\",\"observed native in codex/lifecycle-basic\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"codex/injection\",\"evidenceHash\":null},\"promptAwareInjection\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"promptDeliveryBeforeModel\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"compactSingleDelivery\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"compactionRecoveryStrategy\":null,\"trueSessionEnd\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"subagentCapture\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"stableNativeSessionId\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"codex-cli 0.147.0\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"resumeDeliveryStrategy\":\"manual_only\"}"
+    ]
   }
 }

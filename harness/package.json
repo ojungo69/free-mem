@@ -1,0 +1,6 @@
+{
+  "//": "依存は追加しない。node --experimental-strip-types と tsc に harness/*.ts が ESM だと伝えるためだけの宣言。",
+  "name": "@free-mem/harness",
+  "private": true,
+  "type": "module"
+}

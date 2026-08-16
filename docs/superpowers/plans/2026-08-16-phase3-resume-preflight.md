@@ -31,9 +31,11 @@ Modify:
 Create:
 
 - `harness/schema/continuity.{ts,schema.json}`
+- `harness/schema/validate.ts`（Task 1 で先行。continuity schema を実行時に検査する土台）
 - `harness/schema/capability-scenarios.v1.json`
 - `harness/schema/memory-history.{ts,schema.json}`
 - `harness/continuity/{capability-contract,contract,reference-model,memory-history}.test.ts`
+- `harness/continuity/{validate,fixture-validation}.test.ts`
 - `harness/continuity/{reference-model,run-preflight}.ts`
 - `harness/phase3-preflight.mjs`
 - `harness/fixtures/continuity/*.json`
@@ -47,7 +49,7 @@ Create:
 
 ## Task 1 — Exact-version capability evidence
 
-- [ ] Add `ResumeDeliveryStrategy`:
+- [x] Add `ResumeDeliveryStrategy`:
 
 ```ts
 type ResumeDeliveryStrategy =
@@ -57,7 +59,7 @@ type ResumeDeliveryStrategy =
   | "manual_only";
 ```
 
-- [ ] Add matrix fields:
+- [x] Add matrix fields:
 
 ```ts
 resumeDeliveryStrategy: ResumeDeliveryStrategy;
@@ -66,12 +68,14 @@ compactSingleDelivery: CapabilityEvidence;
 capabilityHashInputs: string[];
 ```
 
-- [ ] RED: empty matrix resolves to `manual_only`; evidence cells are `unknown`.
-- [ ] RED: reject a half-proven synthesized prompt path.
-- [ ] `next_prompt_synthesized` requires both prompt-delivery cells to be synthesized by the same exact-version real-CLI fixture/evidence hash.
-- [ ] `session_start_full` requires native or synthesized SessionStart real-CLI proof.
-- [ ] Mirror closed enums/required fields in JSON Schema.
-- [ ] Regenerate matrices; never manually edit generated JSON.
+- [x] RED: empty matrix resolves to `manual_only`; evidence cells are `unknown`.
+- [x] RED: reject a half-proven synthesized prompt path.
+- [x] `next_prompt_synthesized` requires both prompt-delivery cells to be synthesized by the same exact-version real-CLI fixture/evidence hash.
+- [x] `session_start_full` requires native or synthesized SessionStart real-CLI proof.
+- [x] Mirror closed enums/required fields in JSON Schema（対象は fixture 入力側の
+      `capability.schema.json`。生成物 `AdapterCapabilities` 側の schema は Task 11 の
+      report schema と一緒に作る。それまでは CI の matrix 再生成 diff で手編集を検出する）
+- [x] Regenerate matrices; never manually edit generated JSON.
 
 ```bash
 node --experimental-strip-types --test harness/continuity/capability-contract.test.ts
