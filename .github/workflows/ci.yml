@@ -78,16 +78,20 @@ jobs:
         # 列挙は **基準側**（origin/main）から行う。作業ツリー側を列挙すると、公開済みの版を
         # 削除・rename したときに旧 path が一度も比較されず素通りする。
         #
-        # push イベントでは fetch 後の origin/main が push 済みの HEAD を指すため diff が
-        # 常に空になる。main は PR 経由でしか進まない（PR 側の実行でこの検査は済んでいる）ので、
-        # 空振りの実行を残さず pull_request に限定する。
-        if: github.event_name == 'pull_request'
+        # 比較は作業ツリーではなく HEAD に対して行う。同じ job の前段が manifest を基準の
+        # 内容へ書き戻すと、merge 対象の commit が変更済みでも作業ツリー比較では空になる。
+        #
+        # main-protection ruleset は required_status_checks だけで PR を必須にしていない
+        # （green な commit を直接 main へ進められる。#34）ため、pull_request に限定すると
+        # branch への push で検査が飛び、その commit が green のまま main に入る。
+        # イベントを問わず走らせる。main への push では origin/main == HEAD で空振りになるが、
+        # その commit は branch 側の実行で既に検査されている。
         run: |
           git fetch --depth=1 origin main
           status=0
           while read -r f; do
             [ -n "$f" ] || continue
-            git diff --exit-code origin/main -- "$f" >/dev/null || {
+            git diff --exit-code origin/main HEAD -- "$f" >/dev/null || {
               echo "::error file=$f::公開済みの版を変更・削除している。scenario 集合を変えるなら新しい版のファイルを追加し、evidence に節を足すこと（§13）"
               status=1
             }
