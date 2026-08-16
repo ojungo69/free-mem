@@ -808,7 +808,10 @@ test("turnIdSource の種別が違えば rule 2 では閉じない", () => {
   );
 });
 
-test("閉じた operation は 2 度目の terminal で書き換わらない", () => {
+test("確定済みの成否と矛盾する 2 度目の terminal は隔離する", () => {
+  // 配送 ID が違う 2 通目は dedupe で内容を比べられず、identity 衝突検査も kind と input hash
+  // しか見ないので、成否だけが逆の terminal が「適用済み」として黙って通っていた。受理済み
+  // terminal の source hash は状態に持っていない（#43）が、確定した status は持っている
   const snapshot = startedSnapshot();
   const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
   const again = reduceTaskWorkState(
@@ -821,11 +824,54 @@ test("閉じた operation は 2 度目の terminal で書き換わらない", ()
     }),
     closed.ledger,
   );
+  assert.equal(again.outcome, "quarantined");
+  assert.deepEqual(
+    again.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+  assert.equal(again.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  assert.equal(again.ledger, closed.ledger);
+});
+
+test("成否を主張しない 2 度目の terminal は矛盾ではない", () => {
+  // unknown は「成否を主張していない」なので、確定済みの succeeded と矛盾しない。
+  // 矛盾扱いにすると、成否を出さない adapter の再送が全部隔離されて無限再送になる
+  const snapshot = startedSnapshot();
+  const closed = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+  const again = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-3",
+      adapterDeliveryId: "delivery-terminal-3",
+      ingestSeq: "13",
+      successful: undefined,
+    }),
+    closed.ledger,
+  );
   assert.deepEqual(
     again.diagnostics.map((d) => d.code),
     ["terminal_already_applied"],
   );
   assert.equal(again.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("空の canonicalFingerprint は schema violation", () => {
+  // dedupe authority は adapterDeliveryId、無ければ canonical fingerprint。空文字を「値がある」と
+  // 読むと、配送 ID を持たない event が全部 1 つの鍵に潰れ、配送 ID を持つ event は台帳に
+  // source hash 無しで載って訂正版が衝突検査を素通りする
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), startEvent({ canonicalFingerprint: "" }), new Map()),
+    /canonicalFingerprint が空文字/,
+  );
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        startedSnapshot().state,
+        startEvent({ eventId: "event-abandon", kind: "session_ended", ingestSeq: "4", operation: undefined, canonicalFingerprint: "" }),
+        new Map(),
+      ),
+    /canonicalFingerprint が空文字/,
+  );
 });
 
 test("成否を主張しない terminal は unknown を確定する", () => {

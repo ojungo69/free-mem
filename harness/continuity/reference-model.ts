@@ -240,6 +240,24 @@ function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent[
 }
 
 /**
+ * `canonicalFingerprint` は schema の `required` に入っているが `maxLength` しか制約が無いので
+ * 空文字が届きうる。v6 §8.2 の dedupe authority は「`adapterDeliveryId`、無ければ canonical
+ * fingerprint」で、空文字を「値がある」と読むと 2 通りに壊れる:
+ *
+ * - 配送 ID を持たない event が全部 `f:` という 1 つの鍵に潰れ、最初の 1 件以外が診断ゼロで消える
+ * - 配送 ID を持つ event は台帳に source hash 無しで載り、同じ配送 ID の訂正版が衝突検査を
+ *   素通りして重複として捨てられる（訂正が永久に届かない）
+ *
+ * 空文字の `adapterDeliveryId` を「無い」として fingerprint へ落とすのと違い、こちらは落とし先が
+ * 無いので schema violation にする。
+ */
+export function assertDeliveryIdentity(event: NormalizedContinuityEvent): void {
+  if (event.canonicalFingerprint === "") {
+    throw new Error("§3.1 違反: canonicalFingerprint が空文字（dedupe authority が定まらない）");
+  }
+}
+
+/**
  * §3.1「`turnId` は `turnIdSource` が native / synthesized_monotonic のとき必須、
  * unavailable のとき不在」。turn 有無で振る舞いが変わる規則（§4.3 の rule 2）が
  * turnId の有無を根拠にできるよう、ここで不変条件を確定させる。
@@ -509,6 +527,7 @@ export function reduceTaskWorkState(
 ): TaskStateReductionResult {
   assertOperationEnvelope(event);
   assertTurnIdentity(event);
+  assertDeliveryIdentity(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(previous.state, event);
   const key = ledgerKeyOf(event);
@@ -680,12 +699,7 @@ export function reduceTaskWorkState(
   // schema はどちらも valid なので通ってしまうが、これを `succeeded` にすると壊れた adapter が
   // 失敗を握り潰せる。§4.3「terminal の証跡が欠けている / 曖昧なときは unknown を確定する」に倒す
   const contradicts = event.kind === "tool_failed" && event.successful === true;
-  // successful が無い terminal も成否を主張できないので unknown。
-  const status =
-    contradicts ? ("unknown" as const)
-    : event.successful === true ? ("succeeded" as const)
-    : event.successful === false ? ("failed" as const)
-    : ("unknown" as const);
+  const status = terminalStatusOf(event);
   const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([matchedId]));
   const contradictionDiagnostics: ContinuityDiagnosticV1[] = contradicts
     ? [
@@ -829,6 +843,19 @@ export type TerminalCorrelationResult =
     };
 
 /**
+ * terminal event が主張する成否。kind が失敗を宣言しているのに `successful: true` を名乗る
+ * terminal は自己矛盾しているので `unknown` に倒す（schema はどちらの欄も valid なので通るが、
+ * `succeeded` にすると壊れた adapter が失敗を握り潰せる）。`successful` が無い terminal も
+ * 成否を主張できないので `unknown`。§4.3「terminal の証跡が欠けている / 曖昧なときは unknown」。
+ */
+function terminalStatusOf(event: NormalizedContinuityEvent): "succeeded" | "failed" | "unknown" {
+  if (event.kind === "tool_failed" && event.successful === true) return "unknown";
+  if (event.successful === true) return "succeeded";
+  if (event.successful === false) return "failed";
+  return "unknown";
+}
+
+/**
  * §4.3 の terminal 照合。authority は順序付き:
  *   1. `nativeOperationId` 完全一致 + 同一 session / task lineage
  *   2. `operationMatchKey` 完全一致 + 同一 session / task lineage + turn / kind が両立 +
@@ -927,6 +954,25 @@ export function correlateTerminalEvent(
     };
   }
   if (open.length === 0) {
+    // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を
+    // 課す。配送 ID が違う 2 通目は dedupe で比べられず、上の identity 衝突検査も kind と
+    // input hash しか見ないので、成否だけが逆の terminal が「適用済み」として黙って通る。
+    // 受理済み terminal の source hash は状態に持っていない（凍結 schema に置き場が無い。#43）が、
+    // 確定済みの status は持っているので、成否の矛盾だけはここで検出できる。
+    // どちらかが unknown のときは「成否を主張していない」ので矛盾ではない
+    const incoming = terminalStatusOf(terminalEvent);
+    const contradicted =
+      incoming === "unknown" ? undefined : (
+        candidates.find((pending) => pending.status !== "unknown" && pending.status !== incoming)
+      );
+    if (contradicted !== undefined) {
+      return {
+        matched: null,
+        diagnostic: "terminal_conflict",
+        detail: `operation ${contradicted.operationId} は ${contradicted.status} で確定済みなのに ${incoming} を名乗る terminal が来た`,
+        unresolvedOperationIds: [],
+      };
+    }
     return {
       matched: null,
       diagnostic: "terminal_already_applied",
@@ -1035,6 +1081,7 @@ export function finalizeAbandonedState(
 ): AbandonmentResultV1 {
   assertOperationEnvelope(event);
   assertTurnIdentity(event);
+  assertDeliveryIdentity(event);
   assertIngestSeq(event.ingestSeq);
   assertSameScope(state, event);
   if (!ABANDONMENT_EVENT_KINDS.has(event.kind)) {

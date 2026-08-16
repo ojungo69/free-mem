@@ -27,7 +27,7 @@
 | 重複した論理 event は no-op（同じ state bytes・content hash・revision・history） | §4.2 | 重複経路は入力の snapshot をそのまま返す。ledger も同一参照 |
 | 遅れて届いた event も後続 revision を作り、証跡を書き換えない | §4.2 | 適用は常に新しい revision を作る。既存 `sourceEventIds` は追記のみ |
 | terminal 照合は 1) `nativeOperationId` 一致 2) `operationMatchKey` + turn/kind 一致かつ open な候補が 1 件 3) それ以外は不一致 | §4.3 | `correlateTerminalEvent`。`nativeOperationId` を名乗った terminal は rule 1 だけで判定する（一致しないときに rule 2 へ落とすと、matchKey の導出が §4.3 どおりでない adapter 相手に別 operation を診断なしで閉じてしまう。wire 越しに導出は検証できない） |
-| terminal は start より後（権威順序）・未適用・payload/source hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較。source hash（`canonicalFingerprint`）の衝突は correlation より前の dedupe で見る。冪等台帳が eventId だけを持つと、同じ配送 ID で内容が違う event が `duplicate` として捨てられて衝突検査が到達不能になるので、台帳は適用時の source hash も保持する（`LedgerEntryV1`）。衝突は `delivery_conflict` で隔離 |
+| terminal は start より後（権威順序）・未適用・payload/source hash 非衝突 | §4.3 | ingestSeq 比較 / status 判定 / `canonicalInputHash` 比較。**「未適用」と「非衝突」は配送 ID が違う 2 通目で同時に問題になる**: dedupe は内容を比べられず、identity 衝突検査は kind と input hash しか見ないので、成否だけが逆の terminal が「適用済み」として黙って通っていた。受理済み terminal の source hash は状態に持っていない（凍結 schema に置き場が無い。#43）が、確定した status は持っているので、**成否の矛盾は `terminal_conflict` で隔離する**（どちらかが `unknown` = 成否を主張していない場合は矛盾ではない）。source hash（`canonicalFingerprint`）の衝突は correlation より前の dedupe で見る。冪等台帳が eventId だけを持つと、同じ配送 ID で内容が違う event が `duplicate` として捨てられて衝突検査が到達不能になるので、台帳は適用時の source hash も保持する（`LedgerEntryV1`）。衝突は `delivery_conflict` で隔離 |
 | 0 件または複数一致の terminal は何も閉じず、診断を出す | §4.3 | `terminal_orphaned`（候補ゼロ）/ `terminal_unmatched` / `terminal_ambiguous` を返す。候補が居る場合は open のまま `unknown` にする |
 | correlation / hash の衝突は隔離する | §4.3・v6「same op ID + different hash: quarantine corruption」 | `outcome: "quarantined"`。状態にも台帳にも入れない（入れると訂正版の再配送が重複 no-op になる）。判定材料は `operationKind`（= 保持側の `toolName`）と `canonicalInputHash` の直接比較で、terminal 側では `operationMatchKey` を比べない（§4.3 の matchKey は入力に「turn when present」を含むので、turn をまたいだ terminal が start と違う matchKey を持つのは仕様どおり。rule 1 は turn を要求しない = turn 両立は rule 2 の要件なので、ここで一致を求めると背景実行の完了や prompt 境界をまたいだ tool が永久に閉じない）。kind は matchKey の入力に含まれる identity の一部だが turn と違って start から terminal の間に変わらないので、rule 1 で選んだ候補にも要求できる（**§4.3 の rule 1 の字義は native ID + session/lineage だけなので、kind で絞るのは harness 判断**。identity の一部であること自体は §4.3 の matchKey 導出が担保している）。ただし `toolName` は凍結 schema の `required` に無いので、checkpoint から復元した状態や別実装が書いた状態では schema 妥当なまま欠けうる。素で比べると健全な terminal が永久に隔離され台帳にも入らない（= adapter が無限再送）ため、兄弟の `canonicalInputHash` と同じく**両方 present のときだけ**比べる。start の再配送側は `operationMatchKey` / `operationKind` / `nativeOperationId` / `canonicalInputHash` を見る（同じ native ID は同じ呼び出しなので turn も同じはず） |
 | 成否が曖昧な terminal は `unknown` を確定する | §4.3 | `successful` が無い場合に加え、kind が失敗を宣言しているのに `successful: true` を名乗る自己矛盾も `unknown` に倒し `terminal_evidence_contradicts` を出す（schema はどちらの欄も valid なので通るが、`succeeded` にすると壊れた adapter が失敗を握り潰せる） |
@@ -240,6 +240,11 @@ routing の取り違えで届いた `user_prompted` 等が同 session の実行�
 `session_ended` / `session_interrupted` の 2 つに限り、他の kind は throw する。復帰側（resume）は
 event ではなく checkpoint 経路なのでここには含めない。
 
+`canonicalFingerprint` は schema の `required` に入っているが `maxLength` しか制約が無いので空文字が届きうる。v6 §8.2 の dedupe authority は「`adapterDeliveryId`、無ければ canonical fingerprint」なので、空文字を「値がある」と読むと
+2 通りに壊れる: 配送 ID を持たない event が全部 1 つの鍵に潰れて最初の 1 件以外が診断ゼロで消える／配送 ID を持つ event は
+台帳に source hash 無しで載り、同じ配送 ID の訂正版が衝突検査を素通りして重複として捨てられる。空文字の
+`adapterDeliveryId` は fingerprint へ落とせるがこちらは落とし先が無いので、`assertDeliveryIdentity` で schema violation にする。
+
 envelope の任意欄（`nativeOperationId` / `canonicalInputHash`）は schema が `maxLength` しか持たない
 ので空文字が届きうる。空文字を「値がある」と読むと rule 1 が「native ID を持たない operation」
 同士を全部同じものとして照合するため、`assertOperationEnvelope` で schema violation に落とす
@@ -312,8 +317,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。58 件すべてで 1 件以上が失敗し、
-復元後は 83/83 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。61 件すべてで 1 件以上が失敗し、
+復元後は 85/85 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -375,6 +380,9 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | terminal の operationKind 比較を外す | 1 |
 | terminal の toolName 存在ガードを外す | 1 |
 | 放棄経路の配送 ID 衝突検査を外す | 1 |
+| 空 canonicalFingerprint を素通しする | 1 |
+| 確定済み成否との矛盾検査を外す | 1 |
+| 成否を主張しない terminal も矛盾扱いにする | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも
