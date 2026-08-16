@@ -1,0 +1,23 @@
+.github/workflows/ci.yml
+  s_5cbc4c67c8b3b4::t_ac3cce7b12edfd 84-87,93-106,109,113
+harness/continuity/jcs.test.ts
+  s_5cbc4c67c8b3b4::t_9ec18ee8eadd44 56-69
+harness/schema/jcs.ts
+  s_5cbc4c67c8b3b4::t_347da2992e2323 19-39,49,55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f66af14649855a70a5097faed6e71aba827e0e90",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
