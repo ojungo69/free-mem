@@ -44,7 +44,7 @@ to invoke it.
 
 | opener | permitted production files | role |
 |---|---|---|
-| `connect()` / `connectReadOnly()` (`db.ts:150`, `db.ts:198`) | `daemon-canonical.ts`, `daemon-jobs.ts` | Opens the canonical DB with standard pragmas (writer) or a private snapshot copy read-only for a comparison job (`connectReadOnly` has zero production callers today) |
+| `connect()` / `connectReadOnly()` (`db.ts:150`, `db.ts:198`) | `daemon-canonical.ts`, `daemon-jobs.ts` | Opens the canonical DB with standard pragmas (writer) or a private snapshot copy read-only for a comparison job (`connectReadOnly` is called in production from `getDaemonMemoryRoleReport`, `daemon-jobs.ts:475`, reached via the live `"report.role-compare"` job kind — registered at `daemon-jobs.ts:77`, arg schema at `daemon-jobs.ts:112`, dispatched at `daemon-jobs.ts:931-943`) |
 | `new MemoryStore(...)` (`store.ts:187`) | `daemon-canonical.ts`, `daemon-jobs.ts` | Wraps an *already-open* `WriterActor`; the constructor takes a connection, never a path — it cannot self-open |
 | `WriterActor.open` / `ReadOnlyActor.open` (`writer-actor.ts:269`, `writer-actor.ts:288`) | `db.ts`, `legacy-cutover.ts`, `online-backup.ts`, `storage.ts` | Audited-wrapper primitive used by cutover, backup verification, and storage-artifact integrity checks |
 | `new BetterSqlite3(...)` (raw driver constructor) | `daemon-lifecycle.ts`, `writer-actor.ts` | `daemon-lifecycle.ts` uses it only for the instance lock (`control/lock.db`, §4); `writer-actor.ts` uses it only inside `WriterActor.open`/`ReadOnlyActor.open` |
@@ -361,7 +361,7 @@ never concurrent within one daemon regardless of maintenance status.
 | `deep_import` (fails the scan) | a **non-core** file importing (statically or dynamically, or via `require`) a specifier whose final path segment (minus extension) is one of `daemon-canonical, daemon-jobs, daemon-lifecycle, db, store, test-utils, writer-actor`, reached either through a `core/src/` path segment or a `@codemem/core/` package specifier | `phase1-static-scan.ts:112-120`, `204-213` |
 | `old_direct_path` (fails) | the identifier `BetterSqliteCoordinatorStore`, `buildLocalPack`, `connectCoordinator`, `directEnqueue`, or `flushBoundaryRawEvents` appearing anywhere; or the literal substring `.codemem.sqlite`/`.opencode-mem.sqlite` appearing in a string/template outside `db.ts` and `legacy-cutover.ts` | `phase1-static-scan.ts:92-98`, `276-278`, `288-296` |
 | `sidecar` (fails) | the identifier or string-literal substring `_buildSidecarCommand`, `_invokeSidecar`, `_callSidecar`, `_buildCodexSidecarCommand`, `_invokeCodexSidecar`, `_callCodexSidecar`, `bypassPermissions`, `claude_sidecar`, or `codex_sidecar` appearing anywhere | `phase1-static-scan.ts:100-110`, `279-286` |
-| `public_bypass` (fails) | `core/src/index.ts` contains a runtime (non-type-only) named export of one of 24 forbidden names, or a wildcard runtime re-export from a forbidden deep module | `phase1-static-scan.ts:64-90`, `307-320` |
+| `public_bypass` (fails) | `core/src/index.ts` contains a runtime (non-type-only) named export of one of 25 forbidden names, or a wildcard runtime re-export from a forbidden deep module | `phase1-static-scan.ts:64-90`, `307-320` |
 
 ### 8.3 Exact-match enforcement (not just "no violations")
 
@@ -399,7 +399,7 @@ bypass (subpath export) that the AST scan of `index.ts` alone wouldn't see.
 ### 8.5 Runtime double-check on top of the static one
 
 `sole-writer-boundary.test.ts:17-45` additionally imports the compiled `core` package's public surface
-(`import * as core from "./index.js"`) and asserts `Reflect.get(core, name)` is `undefined` for all 24
+(`import * as core from "./index.js"`) and asserts `Reflect.get(core, name)` is `undefined` for all 25
 `forbiddenPublicValues` names — a live-object check that a value could not have been re-exported through
 a path the AST scanner missed (e.g. `Object.assign` re-export patterns).
 
