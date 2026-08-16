@@ -24,7 +24,14 @@ evidence file」と定めており、本ファイルがその evidence file に�
 | `retry-dedupe` | retry dedupe | `tier_a` |
 | `size-malformed-behavior` | size/malformed behavior | `tier_a` |
 
+manifestHash: `8b740f26b2ddf732d2817a84d87596588f4757a08245e277d27945fc402345fa`
+
 `appliesToAgents` は 2 つとも `["claude", "codex"]`。Phase 3 の対象 CLI がこの 2 つだけであるため。
+
+上の表とこの hash が、この版の scenario 集合そのものである。集合を変えれば hash が変わるので、
+版を上げずに変更するには**この節を書き換えるしかない**——それが §13 の言う「evidence file に
+記録された version bump」を省いた形であることが diff に残る。新しい版は節を追加して記録する
+（過去の版の節は書き換えない）。
 
 ### `scenarioId` は導出値である
 

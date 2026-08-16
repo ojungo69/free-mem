@@ -94,11 +94,28 @@ test("appliesToAgents は harness が matrix を持つ CLI だけを指す", () 
   }
 });
 
-test("evidence が manifest の中身を記録している（§13 の version bump 要件）", () => {
+/** `## manifestVersion N` の節から、その版に属する scenarioId 集合と記録された hash を取る */
+function evidenceEntry(version: string): { ids: string[]; hash: string | undefined } {
+  const section = evidence
+    .split(/^## /m)
+    .find((s) => s.startsWith(`manifestVersion ${version} `) || s.startsWith(`manifestVersion ${version}\n`));
+  assert.ok(section, `evidence に manifestVersion ${version} の節が無い`);
+  return {
+    ids: [...section.matchAll(/^\| `([a-z0-9-]+)` \|/gm)].map((m) => m[1] as string),
+    hash: /^manifestHash: `([0-9a-f]{64})`$/m.exec(section)?.[1],
+  };
+}
+
+test("evidence が版ごとの scenario 集合を固定している（§13 の version bump 要件）", () => {
   // §13「Adding or removing a required scenario requires a manifest version bump
-  // recorded in the evidence file」— evidence 側に版と scenario が無ければ bump を追えない
-  assert.match(evidence, new RegExp(`manifestVersion ${manifest.manifestVersion}\\b`));
-  for (const scenario of manifest.scenarios) {
-    assert.ok(evidence.includes(scenario.scenarioId), `evidence に ${scenario.scenarioId} が無い`);
-  }
+  // recorded in the evidence file」。ID の出現を数えるだけだと、scenario を 1 つ削って
+  // hash を再計算し、evidence の表も直して version は据え置き——が素通りする。
+  // 版の節を「その版の集合そのもの」として exact-set で照合し、hash も版に紐付ける
+  const entry = evidenceEntry(manifest.manifestVersion);
+  assert.deepEqual(
+    entry.ids.slice().sort(),
+    manifest.scenarios.map((s) => s.scenarioId).sort(),
+  );
+  assert.equal(entry.hash, manifest.manifestHash);
+  assert.equal(entry.hash, computeManifestHash(manifest));
 });
