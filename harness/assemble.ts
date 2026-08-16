@@ -217,10 +217,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     "stableNativeSessionId",
   ] as const;
   type HighLevelObservation = { fixture: CaptureFixture; value: ObservedCapability };
-  const highLevelObs = Object.fromEntries(HIGH_LEVEL_KEYS.map((k) => [k, [] as HighLevelObservation[]])) as Record<
-    (typeof HIGH_LEVEL_KEYS)[number],
-    HighLevelObservation[]
-  >;
+  const highLevelObs: Partial<Record<(typeof HIGH_LEVEL_KEYS)[number], HighLevelObservation[]>> = {};
 
   for (const f of fixtures) {
     for (const ev of f.observedEvents) {
@@ -265,7 +262,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     if (hl) {
       for (const key of HIGH_LEVEL_KEYS) {
         const v = hl[key];
-        if (v) highLevelObs[key].push({ fixture: f, value: v });
+        if (v) (highLevelObs[key] ??= []).push({ fixture: f, value: v });
       }
       if (hl.compactionRecoveryStrategy) {
         capabilities.compactionRecoveryStrategy = hl.compactionRecoveryStrategy;
@@ -275,7 +272,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
 
   for (const key of HIGH_LEVEL_KEYS) {
     const obs = highLevelObs[key];
-    if (obs.length === 0) continue;
+    if (!obs) continue;
     // 「支持あり（native / synthesized）」と「支持なし（unsupported）」が両方観測されたら
     // 実測どうしの矛盾。key の欠落は未観測として無視しているので、unsupported は
     // 「その run では明示的に否定された」という主張になる。矛盾したまま自動配送を
@@ -289,22 +286,20 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     // hash で transcript に紐付いていないものを real-cli-e2e と刻むのは provenance の
     // 捏造になるため、hash が無い間は弱い証跡種別に落とす。
     // Task 2/3 の実 CLI rig が hash を記録したら昇格する
-    const proven = !contradicted && best.fixture.evidenceHash;
+    const hashed = Boolean(best.fixture.evidenceHash);
     capabilities[key] = {
       value: best.value,
       sourceEvents: [],
       nativeVersion,
-      evidenceKind: contradicted ? null : best.fixture.evidenceHash ? "real-cli-e2e" : "source-test",
+      evidenceKind: contradicted ? null : hashed ? "real-cli-e2e" : "source-test",
       verifiedAt: contradicted ? null : best.fixture.capturedAt,
       limitations: dedupe([
         ...obs.map((o) => `observed ${o.value} in ${o.fixture.fixtureId}`),
         ...(contradicted ? ["conflicting observations: evidence dropped"] : []),
-        ...(!contradicted && !best.fixture.evidenceHash
-          ? ["no evidenceHash: transcript に紐付いていない自己申告"]
-          : []),
+        ...(!contradicted && !hashed ? ["no evidenceHash: transcript に紐付いていない自己申告"] : []),
       ]),
       sourceFixtureId: best.fixture.fixtureId,
-      evidenceHash: proven ? best.fixture.evidenceHash : null,
+      evidenceHash: contradicted ? null : best.fixture.evidenceHash ?? null,
     };
   }
 
