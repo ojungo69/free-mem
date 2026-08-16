@@ -123,6 +123,21 @@ export function stampIntakeEvidence(
   event: NormalizedContinuityEvent,
   context: IntakeContextV1,
 ): IntakeStampResultV1 {
+  // 認証済み peer と違う Agent を名乗る event は、降格ではなく**受け取らない**。§3.1 は検査に
+  // 落ちた event を `synthesized` へ降格せよと言うが、それは証跡の質の話で、`sourceAgent` は
+  // 質ではなく **scope selector** として使われる（`assertSameScope` が「どの状態を書き換えて
+  // よいか」をこの値の等値で決める）。降格しても値そのものは残るので、peer=codex として
+  // 認証された event が `sourceAgent: "claude"` を名乗ると、`synthesized` の札を貼られたまま
+  // claude の operation を診断ゼロで閉じられる（実測）。correlation は `evidenceKind` を一度も
+  // 読まないので、札は何も束縛しない。空白の `sourceAgent` を還元器が落とすのと同じ形で、
+  // 他人の名前はそれより悪い（空白は「誰も名乗っていない」、他人の名前は「scope が矛盾する」）。
+  // 認証できない経路（`expectedSourceAgent` が空）は従来どおり降格で扱う。intake は台帳より
+  // 前なので、throw しても配送鍵は消費されず、訂正版の再送はそのまま効く
+  if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== context.expectedSourceAgent) {
+    throw new Error(
+      `§3.1 違反: 認証済み peer は ${context.expectedSourceAgent} なのに event が ${JSON.stringify(event.sourceAgent)} を名乗っている`,
+    );
+  }
   // caller の attestation は読まずに捨てる。読んだ時点で「認証済みだと名乗れる」ことになり、
   // §3.1 が禁じている自己申告の native authority が通ってしまう
   const { ingestAttestation: _claimed, ...provenance } = event.provenance;
@@ -143,7 +158,9 @@ export function stampIntakeEvidence(
     // 空白 1 文字・タブ・U+200B で「無い」を表す daemon でも同じ実害が起きる
     !isBlank(context.expectedSourceAgent) &&
     !isBlank(context.exactAgentVersion) &&
-    event.sourceAgent === context.expectedSourceAgent &&
+    // `event.sourceAgent === context.expectedSourceAgent` はここには書かない。上の throw が
+    // 「`expectedSourceAgent` が非空なら等値」を保証済みで、この行は到達時点で必ず true になる。
+    // 証明済みに死んだ条件を authority 述語に残すと、検査が行われているように読めてしまう
     provenance.sourceAgentVersion === context.exactAgentVersion;
   const proven =
     authenticatedVersion &&

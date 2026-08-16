@@ -448,8 +448,8 @@ test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => 
       "sourceAgentVersion が exact でない",
       startEvent({ provenance: { ...startEvent().provenance, sourceAgentVersion: "2.1.228" } }),
     ],
-    // 認証済みの adapter が他 Agent 名義の event を出しても native authority は得られない
-    ["sourceAgent が受領証の Agent と違う", startEvent({ sourceAgent: "codex" })],
+    // `sourceAgent` の食い違いはここには無い。降格ではなく intake が受け取らないため
+    // （scope selector なので降格では縛れない。→「認証済み peer と違う Agent 名を…」）
   ];
   for (const [label, event] of cases) {
     assert.equal(stampIntakeEvidence(event, INTAKE).event.provenance.evidenceKind, "synthesized", label);
@@ -764,7 +764,9 @@ test("証明は version に紐づく: 認証されない名乗りは native turn
       startEvent({ provenance: { ...startEvent().provenance, sourceAgentVersion: "2.1.228" } }),
       INTAKE,
     ],
-    ["Agent 名が受領証と違う", startEvent({ sourceAgent: "codex" }), INTAKE],
+    // Agent 名の食い違いはここには無い（intake が受け取らないので降格の対象にならない）。
+    // 認証できない経路として残るのは「受領証側が Agent を名乗っていない」形
+    ["受領証が Agent を名乗らない", startEvent(), { ...INTAKE, expectedSourceAgent: "" }],
     ["受領証を出せない経路", startEvent(), { ...INTAKE, attestation: undefined }],
   ];
   for (const [label, event, context] of cases) {
@@ -1850,6 +1852,30 @@ test("Agent 名を名乗らない event 同士で native authority は成立し�
   const stamped = stampIntakeEvidence(anonymous, context).event;
   assert.equal(stamped.provenance.evidenceKind, "synthesized");
   assert.equal(stamped.turnIdSource, "unavailable");
+});
+
+test("認証済み peer と違う Agent 名を名乗る event は intake が受け取らない", () => {
+  // `sourceAgent` は証跡の質ではなく scope selector（`assertSameScope` がこの値の等値で
+  // 「どの状態を書き換えてよいか」を決める）。降格しても値は残るので、降格だけでは
+  // peer=codex の event が claude の operation を診断ゼロで閉じるのを止められない
+  for (const claimed of ["codex", "", " ", "\u{200B}"]) {
+    assert.throws(
+      () => stampIntakeEvidence(startEvent({ sourceAgent: claimed }), INTAKE),
+      /§3.1 違反: 認証済み peer は claude なのに/,
+      JSON.stringify(claimed),
+    );
+  }
+});
+
+test("認証できない経路では Agent 名の食い違いを降格で扱う", () => {
+  // 締めすぎない側も測る。`expectedSourceAgent` が空 = 受領証が peer を名乗っていない経路では
+  // 「違う」と言える相手が居ないので、従来どおり native を落とすだけにする
+  const stamped = stampIntakeEvidence(startEvent({ sourceAgent: "codex" }), {
+    ...INTAKE,
+    expectedSourceAgent: "",
+  });
+  assert.equal(stamped.event.provenance.evidenceKind, "synthesized");
+  assert.equal(stamped.event.sourceAgent, "codex");
 });
 
 test("revision ごとに pendingOperations の配列を分ける", () => {
