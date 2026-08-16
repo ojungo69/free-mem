@@ -1,0 +1,21 @@
+harness/continuity/jcs.test.ts
+  s_5cbc4c67c8b3b4::t_85b3b905150cbc 112-114,123,126-135
+harness/schema/jcs.ts
+  s_5cbc4c67c8b3b4::t_2d3f81c4184a90 166-186,198-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a820683a65fad325645b992e57ed3b6eb4c74de7",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
