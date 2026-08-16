@@ -155,6 +155,12 @@ function decimalParts(token: string): { num: bigint; exp: number } {
 function sameDecimalValue(a: string, b: string): boolean {
   const x = decimalParts(a);
   const y = decimalParts(b);
+  // ゼロは指数に関わらずゼロ。`0e9007199254740993` は JSON として妥当で値は 0 だが、
+  // 指数を実際に掛けようとすると BigInt が溢れる
+  if (x.num === 0n || y.num === 0n) return x.num === y.num;
+  // 桁を揃える前に差を見る。有限の double に読める非ゼロの値なら指数差はトークンの長さ程度に
+  // 収まるので、それを大きく超えるものは同じ値ではない（掛けずに落とす）
+  if (Math.abs(x.exp - y.exp) > 10_000) return false;
   const shift = Math.min(x.exp, y.exp);
   return x.num * 10n ** BigInt(x.exp - shift) === y.num * 10n ** BigInt(y.exp - shift);
 }
