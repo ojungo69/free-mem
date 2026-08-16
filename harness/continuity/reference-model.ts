@@ -800,18 +800,15 @@ export function reduceTaskWorkState(
     // unknown のままにし、診断を出す」。status は unknown にするが pending には残すので、
     // 後から権威ある証跡（rule 1）が来れば閉じられる。証跡を足さないと、状態が変わった理由が
     // 状態からも history からも辿れない（放棄経路は足しているので扱いも揃わない）
-    // ここだけは `operationId` で当てる。`unresolvedOperationIds` は公開している照合結果の欄
-    // （`string[]`）で、§4.3 も「候補を unknown のままにする」と集合単位で指示している。
-    // 状態側で id が重複していると無関係な operation も `unknown` になるが、`unknown` は
-    // fail-closed 側で rule 1 の terminal が来れば閉じられるので回復できる（#47・Task 6）
-    const unresolved = new Set(correlation.unresolvedOperationIds);
-    const unresolvedPendings = new Set(
-      previous.state.pendingOperations.filter((pending) => unresolved.has(pending.operationId)),
-    );
-    const truncated = sourceEventsFull(previous.state.pendingOperations, unresolvedPendings);
+    // 対象は `operationId` ではなく候補そのものの参照で受け取る。id で当てると、状態側で id が
+    // 重複しているとき（凍結 schema は一意性を要求しない）**候補ですらない operation**——
+    // 別 session のものまで——が `unknown` になる。§4.3 が集合単位で指示しているのは
+    // 「candidates を unknown のままにする」であって、候補の外へ広げてよいとは言っていない
+    const unresolved = new Set(correlation.unresolved);
+    const truncated = sourceEventsFull(previous.state.pendingOperations, unresolved);
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: previous.state.pendingOperations.map((pending) =>
-        unresolved.has(pending.operationId)
+        unresolved.has(pending)
           ? withSourceEvent(
               pending.status === "started" ? { ...pending, status: "unknown" as const } : pending,
               event.eventId,
@@ -965,7 +962,7 @@ export type TerminalCorrelationResult =
        * §4.3「zero or multiple にマッチした terminal は候補を `unknown` のままにする」。
        * 閉じられなかった同一 match key の open な候補を返す。
        */
-      unresolvedOperationIds: readonly string[];
+      unresolved: readonly PendingOperation[];
     };
 
 /**
@@ -1028,7 +1025,7 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_unmatched",
       detail: "terminal envelope が無い",
-      unresolvedOperationIds: [],
+      unresolved: [],
     };
   }
   const lineage = terminalEvent.taskLineageId ?? previous.state.taskLineageId;
@@ -1066,7 +1063,7 @@ export function correlateTerminalEvent(
         operation.nativeOperationId === undefined
           ? "一致する operation が無い"
           : `nativeOperationId ${operation.nativeOperationId} に一致する operation が無い`,
-      unresolvedOperationIds: [],
+      unresolved: [],
     };
   }
   // 衝突検査はすべての早期 return より前に置く。後ろに置くと「terminal 済み」「順序不明」で
@@ -1124,7 +1121,7 @@ export function correlateTerminalEvent(
       diagnostic: "terminal_conflict",
       detail: `operation ${(candidates[0] as PendingOperation).operationId} と identity が衝突`,
       // 隔離は状態を一切変えないので、候補も unknown にしない
-      unresolvedOperationIds: [],
+      unresolved: [],
     };
   }
   // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する」。
@@ -1148,9 +1145,15 @@ export function correlateTerminalEvent(
           const recorded = previous.operationStarts.get(pending.operationId)?.turnIdSource;
           return recorded === undefined || recorded === terminalEvent.turnIdSource;
         });
-  const open = compatible.filter((pending) => pending.status === "started" || pending.status === "unknown");
-  // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
-  const openIds = open.map((pending) => pending.operationId);
+  const isOpen = (pending: PendingOperation): boolean =>
+    pending.status === "started" || pending.status === "unknown";
+  // **open / 確定済みの切り分けも、この terminal が閉じえた候補の中で行う**。先に切り分けてから
+  // 絞ると、turn が両立しない open な兄弟が「open が居る」と数えられて確定済み経路が飛ばされ、
+  // 確定済み候補への健全な再配送が `terminal_unmatched` に化けて、その兄弟を `unknown` に倒し
+  // 台帳まで消費する（兄弟はこの terminal では閉じえないので巻き込む理由が無い）
+  const sameTurn = sameTurnOf(compatible);
+  const plausible = eligibleOf(sameTurn);
+  const open = plausible.filter(isOpen);
   if (open.length === 0) {
     // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を
     // 課す。配送 ID が違う 2 通目は dedupe で比べられず、上の identity 衝突検査も kind と
@@ -1174,39 +1177,50 @@ export function correlateTerminalEvent(
     //     input hash まで同じ terminal が確定済みの status と逆を主張しているなら、turn の
     //     導出が §4.3 どおりでない adapter だとしても矛盾は矛盾。ここを絞ると、候補が全部
     //     落ちた場合に `find` が undefined を返して隔離（台帳を消費しない）が
-    //     `terminal_already_applied`（台帳を消費する）に化け、訂正版が重複 no-op になる
-    const settled = eligibleOf(sameTurnOf(compatible));
+    //     `terminal_already_applied`（台帳を消費する）に化け、訂正版が重複 no-op になる。
+    //     ただし**確定済みの候補だけ**を見る: この分岐に来るのは「turn が両立する open な候補が
+    //     無い」場合で、turn が両立しない open な候補は残りうる。`started` は成否を主張して
+    //     いないので、それを矛盾として隔離すると健全な terminal が台帳に入らず無限再送になる
     const incoming = terminalStatusOf(terminalEvent);
     const contradicted =
-      incoming === "unknown" || settled.some((pending) => pending.status === incoming)
+      incoming === "unknown" || plausible.some((pending) => pending.status === incoming)
         ? undefined
-        : compatible.find((pending) => pending.status !== incoming);
+        : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);
     // 隔離は台帳を消費しないので、消費する分岐より必ず先に判定する
     if (contradicted !== undefined) {
       return {
         matched: null,
         diagnostic: "terminal_conflict",
         detail: `operation ${contradicted.operationId} は ${contradicted.status} で確定済みなのに ${incoming} を名乗る terminal が来た`,
-        unresolvedOperationIds: [],
+        unresolved: [],
       };
     }
-    // 矛盾はしていないが turn が両立する候補も無い = 「候補は全件確定済みで、この terminal が
-    // 閉じえたものは 1 件も無い」。再配送では説明できないので `terminal_already_applied` を
-    // 名乗らせない。§4.3 の「zero にマッチした terminal は unmatched evidence として保存する」
-    // どおり `terminal_unmatched`。候補は全件確定済みなので `unknown` に倒す相手は居ない
-    if (settled.length === 0) {
+    // 矛盾はしていないが turn が両立する候補が 1 件も無い。再配送では説明できないので
+    // `terminal_already_applied` を名乗らせず、§4.3 の「zero にマッチした terminal は
+    // unmatched evidence として保存する」どおり `terminal_unmatched` にする。
+    // `unknown` に倒す相手は「この terminal のせいで閉じられなかった open な候補」なので、
+    // turn 同一性はあるが種別が違うならその候補だけ、turn 同一性が無いなら互換な open 全部
+    if (plausible.length === 0) {
+      const sameTurnOpen = sameTurn.filter(isOpen);
+      const compatibleOpen = compatible.filter(isOpen);
+      const sourceMismatch = sameTurnOpen.length > 0;
       return {
         matched: null,
         diagnostic: "terminal_unmatched",
-        detail: "候補はすべて terminal 済みで、turn が両立するものが無い",
-        unresolvedOperationIds: [],
+        detail:
+          compatibleOpen.length === 0
+            ? "候補はすべて terminal 済みで、turn が両立するものが無い"
+            : sourceMismatch
+              ? `turnIdSource が terminal の ${terminalEvent.turnIdSource} と違うので rule 2 では閉じられない`
+              : "turn 同一性が無いので rule 2 では閉じられない",
+        unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen,
       };
     }
     return {
       matched: null,
       diagnostic: "terminal_already_applied",
       detail: "候補はすべて terminal 済み",
-      unresolvedOperationIds: [],
+      unresolved: [],
     };
   }
   // 照合不能の検査は上の成否矛盾検査より後に置く。前に置くと、確定済みの候補に矛盾する
@@ -1218,44 +1232,22 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_identity_unverifiable",
       detail: `operation ${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている`,
-      unresolvedOperationIds: openIds,
+      unresolved: open,
     };
   }
   // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
   // unavailable のとき rule 2 は適用されず、operation は unknown のままになる。閉じられるのは
-  // rule 1 だけ」。§3.1 の不変条件（unavailable のとき turnId は不在）は assertTurnIdentity で
-  // 確定させてあるので、turnId の有無がそのまま turn 同一性の有無になる。
-  // turn 種別は start 側の材料（operationStarts、#35）にしか無く、復元直後はそれが空になる。
-  // 材料が無いことを「種別が違う」と読むと、復元直後の全 terminal が「turn 同一性が無い」に
-  // 化けて理由を取り違える（§3.1 は降格の理由を doctor が報告することを求めている）ので、
-  // **材料がある候補だけ**種別で絞る。材料があるのに種別が違う候補は §4.3 の turn 両立を
-  // 満たさないので候補から外す。外した結果 open な候補が 1 件になれば rule 2 の
-  // 「exactly one open candidate」が成立して閉じられる
-  const sameTurn = sameTurnOf(open);
-  const eligible = eligibleOf(sameTurn);
-  if (eligible.length === 0) {
-    // turn 同一性が無いのか、同一性はあるが種別が違うのかで理由が変わる。§3.1 は降格の理由を
-    // doctor が報告することを求めているので取り違えない。`unknown` に倒す相手も、種別違いなら
-    // その候補だけにして、同じ matchKey の無関係な open を巻き込まない
-    const sourceMismatch = sameTurn.length > 0;
-    return {
-      matched: null,
-      diagnostic: "terminal_unmatched",
-      detail: sourceMismatch
-        ? `turnIdSource が terminal の ${terminalEvent.turnIdSource} と違うので rule 2 では閉じられない`
-        : "turn 同一性が無いので rule 2 では閉じられない",
-      unresolvedOperationIds: sourceMismatch ? sameTurn.map((pending) => pending.operationId) : openIds,
-    };
-  }
-  if (eligible.length > 1) {
+  // rule 1 だけ」。この絞り込みは `open` を作る前（`plausible`）で済ませてあるので、ここに
+  // 残っている open な候補はすべて §4.3 の turn 両立を満たす。あとは件数だけを見る
+  if (open.length > 1) {
     return {
       matched: null,
       diagnostic: "terminal_ambiguous",
-      detail: `open な候補が ${eligible.length} 件`,
-      unresolvedOperationIds: eligible.map((pending) => pending.operationId),
+      detail: `open な候補が ${open.length} 件`,
+      unresolved: open,
     };
   }
-  const matched = eligible[0] as PendingOperation;
+  const matched = open[0] as PendingOperation;
 
   const start = previous.operationStarts.get(matched.operationId);
   if (start === undefined) {
@@ -1268,7 +1260,7 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_order_unverifiable",
       detail: `operation ${matched.operationId} の start が状態に無く、権威順序を確認できない`,
-      unresolvedOperationIds: [matched.operationId],
+      unresolved: [matched],
     };
   }
   if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
@@ -1277,7 +1269,7 @@ export function correlateTerminalEvent(
       diagnostic: "terminal_out_of_order",
       detail: "terminal が start より後でない",
       // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
-      unresolvedOperationIds: [matched.operationId],
+      unresolved: [matched],
     };
   }
   return { matched, rule };

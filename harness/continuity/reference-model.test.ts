@@ -2213,6 +2213,62 @@ test("operationId が衝突していても放棄は自 session の operation だ
   );
 });
 
+test("turn が両立しない open な兄弟は確定済みへの再配送を妨げない", () => {
+  // open / 確定済みの切り分けを turn の絞り込みより先にすると、閉じえない open な兄弟が
+  // 「open が居る」と数えられて確定済み経路が飛ばされ、健全な再配送が `terminal_unmatched` に
+  // 化けて兄弟を `unknown` に倒し、台帳まで消費する
+  const prepared = apply(emptySnapshot(), [
+    startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
+    terminalEvent({ eventId: "term-a", adapterDeliveryId: "d-term-a", canonicalFingerprint: "f-term-a", operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, ingestSeq: "12", turnIdSource: "native" }),
+    startEvent({ eventId: "start-b", adapterDeliveryId: "d-start-b", canonicalFingerprint: "f-start-b", operation: MATCH_KEY_ONLY, ingestSeq: "13", turnIdSource: "synthesized_monotonic" }),
+  ]);
+  assert.deepEqual(prepared.snapshot.state.pendingOperations.map((p) => p.status), ["succeeded", "started"]);
+  const redelivered = reduceTaskWorkState(
+    prepared.snapshot,
+    terminalEvent({
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "14",
+      operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native",
+    }),
+    prepared.ledger,
+  );
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+  // 閉じえない兄弟は巻き込まない
+  assert.deepEqual(redelivered.snapshot.state.pendingOperations.map((p) => p.status), ["succeeded", "started"]);
+});
+
+test("unknown に倒す相手は候補だけで、別 session の同名 operation を巻き込まない", () => {
+  // `unresolvedOperationIds` を id で当てると、状態側で id が重複しているとき候補ですらない
+  // operation——別 session のもの——まで `unknown` になる。§4.3 が集合単位で指示しているのは
+  // 「candidates を unknown のままにする」であって、候補の外へ広げてよいとは言っていない
+  const pending = (sessionId: string, n: string, turnId: string): PendingOperation =>
+    ({
+      operationId: "dup",
+      correlation: {
+        operationId: "dup", startEventId: `s-${n}`, operationMatchKey: START_OPERATION.operationMatchKey,
+        sessionId, taskLineageId: "lineage-1", turnId, toolName: "Bash",
+        canonicalInputHash: START_OPERATION.canonicalInputHash,
+      },
+      kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
+      sourceEventIds: [`s-${n}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+    }) as unknown as PendingOperation;
+  const victim: TaskWorkStateSnapshotV1 = {
+    // 候補側は turn 同一性が無いので rule 2 では閉じられず `unknown` に倒れる
+    state: emptyState({ pendingOperations: [pending("session-1", "n1", "turn-9"), pending("session-other", "n2", "turn-1")] }),
+    history: [],
+    operationStarts: new Map(),
+  };
+  const result = reduceTaskWorkState(
+    victim,
+    terminalEvent({ operation: { ...MATCH_KEY_ONLY, phase: "terminal" } }),
+    new Map(),
+  );
+  assert.deepEqual(result.diagnostics.map((d) => d.code), ["terminal_unmatched"]);
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((p) => `${p.correlation.sessionId}:${p.status}`),
+    ["session-1:unknown", "session-other:started"],
+  );
+});
+
 test("turn が両立しなくても成否が矛盾する terminal は隔離する", () => {
   // 矛盾の検出は「閉じる権限があるか」ではなく「壊れた証跡か」の判定なので turn 両立は要らない。
   // ここまで絞ると候補が全部落ちたときに `find` が undefined を返し、隔離（台帳を消費しない）が
@@ -2553,5 +2609,5 @@ test("turn 種別の材料が無い候補は種別違いとして落とさない
   // 材料が無いので 2 件とも残り、種別違いではなく曖昧として報告する
   if (result.matched !== null) assert.fail("材料が無いのに閉じた");
   assert.equal(result.diagnostic, "terminal_ambiguous");
-  assert.equal(result.unresolvedOperationIds.length, 2);
+  assert.equal(result.unresolved.length, 2);
 });

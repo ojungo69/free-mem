@@ -82,7 +82,7 @@ mutate "    operation.nativeOperationId !== undefined
       ? byNativeId" "    byNativeId.length > 0
       ? byNativeId" && run "rule 1 の排他を外す"
 mutate "            pending.correlation.turnId !== undefined &&" "            true &&" && run "rule 2 の turn 同一性要求を外す"
-mutate "  if (eligible.length > 1) {" "  if (false) {" && run "候補が複数のときの拒否を外す"
+mutate "  if (open.length > 1) {" "  if (false) {" && run "候補が複数のときの拒否を外す"
 mutate "  const identityConflicts = (pending: PendingOperation): boolean =>" "  const identityConflicts = (pending: PendingOperation): boolean =>
     pending.correlation.operationMatchKey !== operation.operationMatchKey ||" && run "terminal 側に matchKey 一致を要求し直す"
 mutate "  const compatible = candidates.filter((pending) => !identityConflicts(pending));" "  const compatible = candidates.some(identityConflicts) ? [] : candidates;" && run "identity 衝突を候補 1 件で判定する"
@@ -102,12 +102,12 @@ mutate "  if (start === undefined) {" "  if (false) {" && run "start 不在の�
 mutate "  if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {" "  if (false) {" && run "terminal の権威順序検査を外す"
 mutate "      detail: \"terminal が start より後でない\",
       // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
-      unresolvedOperationIds: [matched.operationId]," "      detail: \"terminal が start より後でない\",
-      unresolvedOperationIds: openIds," && run "順序違反で候補を巻き込む"
+      unresolved: [matched]," "      detail: \"terminal が start より後でない\",
+      unresolved: compatible.filter(isOpen)," && run "順序違反で候補を巻き込む"
 mutate "      correlation.diagnostic === \"terminal_orphaned\"" "      false" && run "候補ゼロの terminal を台帳に入れる"
 mutate "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
-      unresolvedOperationIds: [matched.operationId]," "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
-      unresolvedOperationIds: []," && run "順序不明で候補を unknown にしない"
+      unresolved: [matched]," "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
+      unresolved: []," && run "順序不明で候補を unknown にしない"
 mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    // eslint-disable-next-line" && run "退避で順序材料を刈らない"
 mutate "      (operation.nativeOperationId === undefined
         ? undefined
@@ -119,7 +119,7 @@ mutate "    if (startConflict) {" "    if (false) {" && run "start の identity 
 mutate "      (existing.correlation.operationMatchKey !== operation.operationMatchKey ||" "      (false ||" && run "start の matchKey 衝突検査を外す"
 mutate "          existing.correlation.canonicalInputHash !== operation.canonicalInputHash));" "          false));" && run "start の canonicalInputHash 衝突検査を外す"
 mutate "      (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId," "      (pending) => pending.status === \"started\"," && run "放棄を session で絞らない"
-mutate "        unresolved.has(pending.operationId)
+mutate "        unresolved.has(pending)
           ? withSourceEvent(" "        false
           ? withSourceEvent(" && run "候補の unknown 化を外す"
 mutate "          ? withSourceEvent(
@@ -179,8 +179,8 @@ mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && ap
 
 mutate "  if (isBlank(event.canonicalFingerprint)) {" "  if (false) {" && run "空 canonicalFingerprint を素通しする"
 mutate "    if (contradicted !== undefined) {" "    if (false) {" && run "確定済み成否との矛盾検査を外す"
-mutate "      incoming === \"unknown\" || settled.some((pending) => pending.status === incoming)" "      false" && run "成否を主張しない terminal も矛盾扱いにする"
-mutate "      incoming === \"unknown\" || settled.some((pending) => pending.status === incoming)" "      incoming === \"unknown\"" && run "成否が一致する兄弟の検査を外す"
+mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      false" && run "成否を主張しない terminal も矛盾扱いにする"
+mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\"" && run "成否が一致する兄弟の検査を外す"
 
 mutate "  if (ABANDONMENT_EVENT_KINDS.has(event.kind)) {" "  if (false) {" && run "放棄 kind を還元器に通す"
 mutate "  if (event.turnId !== undefined && isBlank(event.turnId)) {" "  if (false) {" && run "空文字の turnId を素通しする"
@@ -190,7 +190,7 @@ mutate "  if (isBlank(event.sessionId)) {" "  if (false) {" && run "空文字の
 mutate "  return /^[\\s\\p{Cf}]*\$/u.test(value);" "  return value === \"\";" && run "空白文字を identity 材料として通す"
 mutate "  return /^[\\s\\p{Cf}]*\$/u.test(value);" "  return /^\\s*\$/u.test(value);" && run "書式制御文字だけの identity 材料を通す"
 mutate "  if (isBlank(operation.operationMatchKey) || isBlank(operation.operationKind)) {" "  if (false) {" && run "空の operationMatchKey / operationKind を素通しする"
-mutate "  const open = compatible.filter((pending) => pending.status === \"started\" || pending.status === \"unknown\");" "  const open = candidates.filter((pending) => pending.status === \"started\" || pending.status === \"unknown\");" && run "open の選択を identity 互換に絞らない"
+mutate "  const sameTurn = sameTurnOf(compatible);" "  const sameTurn = sameTurnOf(candidates);" && run "open の選択を identity 互換に絞らない"
 mutate "    pending.correlation.canonicalInputHash !== undefined && operation.canonicalInputHash === undefined;" "    false;" && run "canonicalInputHash の省略を照合可能として扱う"
 mutate "        existing.correlation.sessionId !== event.sessionId ||" "        false ||" && run "再配送 start の session 検査を外す"
 mutate "    diagnostics: truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)]," "    diagnostics: []," && run "放棄で落とした証跡を報告しない"
@@ -212,7 +212,7 @@ mutate "  assertSameScope(previous.state, terminalEvent);" "" && run "直接呼�
 mutate "          const recorded = previous.operationStarts.get(pending.operationId)?.turnIdSource;
           return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return true;" && run "rule 2 の turn 種別の絞り込みを外す"
 mutate "          return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return recorded === terminalEvent.turnIdSource;" && run "turn 種別の材料が無い候補も落とす"
-mutate "      unresolvedOperationIds: sourceMismatch ? sameTurn.map((pending) => pending.operationId) : openIds," "      unresolvedOperationIds: openIds," && run "種別違いの巻き込み範囲を広げる"
+mutate "        unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen," "        unresolved: compatibleOpen," && run "種別違いの巻き込み範囲を広げる"
 
 mutate "    !isBlank(attestation.ingestReceiptId) &&" "    true &&" && run "受領証 ID が空でも認証済みとする"
 mutate "    !isBlank(attestation.peerIdentityId) &&" "    true &&" && run "peer identity が空でも認証済みとする"
@@ -221,8 +221,8 @@ mutate "    !isBlank(provenance.scenarioId) &&" "    true &&" && run "空白の 
 mutate "  assertIngestSeq(terminalEvent.ingestSeq);" "" && run "直接呼びの ingestSeq 検査を外す"
 mutate "  assertIdentityMaterial(terminalEvent);" "" && run "直接呼びの identity 材料検査を外す"
 mutate "  if (isBlank(event.sourceAgent)) {" "  if (false) {" && run "空白の sourceAgent を素通しする"
-mutate "    if (settled.length === 0) {" "    if (false) {" && run "turn 両立ゼロの確定済みを適用済みにする"
-mutate "        : compatible.find((pending) => pending.status !== incoming);" "        : settled.find((pending) => pending.status !== incoming);" && run "矛盾判定の母数まで turn で絞る"
+mutate "    if (plausible.length === 0) {" "    if (false) {" && run "turn 両立ゼロの確定済みを適用済みにする"
+mutate "        : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);" "        : plausible.find((pending) => pending.status !== incoming);" && run "矛盾判定の母数まで turn で絞る"
 mutate "      pending === correlation.matched" "      pending.operationId === correlation.matched.operationId" && run "terminal の適用先を operationId の等値で当てる"
 mutate "    state.pendingOperations.filter(
       (pending) => pending.status === \"started\" && pending.correlation.sessionId === event.sessionId,
@@ -235,11 +235,22 @@ mutate "    state.pendingOperations.filter(
   );
   const pendingOperations = state.pendingOperations.map((pending) =>
     abandoned.has(pending.operationId as unknown as PendingOperation)" && run "放棄の適用先を operationId の等値で当てる"
-mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = compatible;" && run "確定済みの説明に turn 両立を求めない"
-mutate "    const settled = eligibleOf(sameTurnOf(compatible));" "    const settled = sameTurnOf(compatible);" && run "確定済みの説明で turn 種別だけ見ない"
+mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\" || compatible.some((pending) => pending.status === incoming)" && run "確定済みの説明に turn 両立を求めない"
+mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.status === incoming)" "      incoming === \"unknown\" || sameTurn.some((pending) => pending.status === incoming)" && run "確定済みの説明で turn 種別だけ見ない"
+mutate "  const open = plausible.filter(isOpen);" "  const open = compatible.filter(isOpen);" && run "open の切り分けを turn 絞り込みより前にする"
+mutate "        : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);" "        : compatible.find((pending) => pending.status !== incoming);" && run "矛盾判定に open な候補も混ぜる"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
-node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 | grep -E '^ℹ (pass|fail) '
+# 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
+# 立てていないこのスクリプトでは復元後の baseline が赤でも exit 0 になり、「全変異が kill された」
+# だけを見て緑に見えてしまう。件数を取り出して 0 でなければ落とす
+BASELINE=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1)
+printf '%s\n' "$BASELINE" | grep -E '^ℹ (pass|fail) '
+BASELINE_FAIL=$(printf '%s' "$BASELINE" | grep -E '^ℹ fail ' | tail -1 | grep -oE '[0-9]+$')
+if [ -z "$BASELINE_FAIL" ] || [ "$BASELINE_FAIL" -ne 0 ]; then
+  echo "変異テスト失敗: 復元後の baseline が green でない（変異が残ったか test が壊れている）" >&2
+  exit 1
+fi
 
 # 集計は自己申告にしない。生存（fail 0）と、アンカーが外れて `&&` が短絡し黙って飛ばされた変異の
 # 両方を数え、どちらかがあれば非ゼロで終わる。期待件数はこのスクリプト自身の `run` ラベル数から
