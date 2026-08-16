@@ -1,0 +1,53 @@
+specs/001-agent-memory-core/tasks.md
+  s_5cbc4c67c8b3b4::t_5d7835fa0483d5 201-210,213
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_5cbc4c67c8b3b4::t_ac6530aa302942 163
+  s_5cbc4c67c8b3b4::t_47f922a31e6664 10
+  s_5cbc4c67c8b3b4::t_2009fb3b32cbf8 283
+  s_5cbc4c67c8b3b4::t_6043773298b8e5 257
+  s_5cbc4c67c8b3b4::t_b2da798f213c13 1-9,11-162,164-256,258-282,284-405
+specs/001-agent-memory-core/contracts/error-taxonomy-v1.md
+  s_5cbc4c67c8b3b4::t_e92825be80b0ce 56
+  s_5cbc4c67c8b3b4::t_02e9ed4d547d84 387
+  s_5cbc4c67c8b3b4::t_4a7861b23b6ad7 108
+  s_5cbc4c67c8b3b4::t_53e867b5595baa 1-7,9-55,57-107,109-227,229-231,233-386,388-434,436-454,456-467,470
+  s_5cbc4c67c8b3b4::t_7614c5afc3e5a0 228,232
+  s_5cbc4c67c8b3b4::t_3af9cade39571e 468
+  s_5cbc4c67c8b3b4::t_6f6c18d3f112c7 8
+  s_5cbc4c67c8b3b4::t_a6e5b2ceb94fcb 455
+  s_5cbc4c67c8b3b4::t_10821b183744bc 435
+  s_5cbc4c67c8b3b4::t_ab733bd34e7ac0 469
+specs/001-agent-memory-core/contracts/README.md
+  s_5cbc4c67c8b3b4::t_8471e0ab8b8ae6 3-25
+evidence/adr-003-rust-local-core.md
+  s_5cbc4c67c8b3b4::t_8c8aedb664beae 1-83
+evidence/README.md
+  s_5cbc4c67c8b3b4::t_4cb6a1e983af58 32
+specs/001-agent-memory-core/contracts/writer-boundary-v1.md
+  s_5cbc4c67c8b3b4::t_210a60bd32ba67 1-807
+specs/001-agent-memory-core/contracts/spool-format-v1.md
+  s_5cbc4c67c8b3b4::t_9229eb0a008b79 7
+  s_5cbc4c67c8b3b4::t_20d0376a8039a1 400
+  s_5cbc4c67c8b3b4::t_6cb1485b08d2c0 368-371
+  s_5cbc4c67c8b3b4::t_6c0ea0b9199422 260
+  s_5cbc4c67c8b3b4::t_e63b2a95916192 1-6,8-28,30-219,221-259,261-367,372-386,388-399
+  s_5cbc4c67c8b3b4::t_780788d8e3805e 387
+  s_5cbc4c67c8b3b4::t_65c13608a2e56f 220
+  s_5cbc4c67c8b3b4::t_ce26d0c5972896 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "00e35453d2d079125f994988e96fff45149b05af",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
