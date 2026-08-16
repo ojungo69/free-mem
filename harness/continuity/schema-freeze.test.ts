@@ -489,6 +489,25 @@ test("子孫の無効化は viaArtifactId を伴う（§12.3）", () => {
   }
 });
 
+test("数値の範囲は正本が書いているものだけ", () => {
+  // 正本に無い範囲を足すと、正当な値を契約が拒否する（IsoTimestamp の小数秒で実際に起きた）。
+  // addendum で数値範囲が書かれているのは `Observed.confidence` の `// 0..1` 1 箇所だけなので、
+  // schema 側の minimum/maximum もそこだけであることを固定する
+  const found: string[] = [];
+  const walk = (node: unknown, path: string) => {
+    if (Array.isArray(node)) {
+      node.forEach((item, i) => walk(item, `${path}[${i}]`));
+      return;
+    }
+    if (node === null || typeof node !== "object") return;
+    const obj = node as Record<string, unknown>;
+    if ("minimum" in obj || "maximum" in obj) found.push(path);
+    for (const [k, v] of Object.entries(obj)) walk(v, `${path}.${k}`);
+  };
+  walk(defs, "$defs");
+  assert.deepEqual(found, ["$defs.Observed.properties.confidence"]);
+});
+
 test("IsoTimestamp は成分の範囲まで見る", () => {
   const bad = (s: string) => validateAgainstSchema(s, { $ref: "#/$defs/IsoTimestamp" }, root).length > 0;
   assert.equal(bad("2026-08-16T00:00:00Z"), false);

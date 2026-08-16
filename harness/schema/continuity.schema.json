@@ -395,6 +395,7 @@
           "$ref": "#/$defs/EvidenceKind"
         },
         "confidence": {
+          "$comment": "正本が数値範囲を書いている唯一の欄（addendum §7 `confidence: number; // 0..1`）。score / margin / maxCandidates は正本が `number` としか書いていないので範囲を付けない（#30）。",
           "type": "number",
           "minimum": 0,
           "maximum": 1
@@ -1586,9 +1587,7 @@
           }
         },
         "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "type": "number"
         },
         "checkpointAnchorIds": {
           "type": "array",
@@ -2197,24 +2196,16 @@
           "maxLength": 8192
         },
         "fullResumeMinScore": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "type": "number"
         },
         "hintMinScore": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "type": "number"
         },
         "ambiguityMargin": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "type": "number"
         },
         "maxCandidates": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 5
+          "type": "number"
         }
       }
     },
@@ -2259,9 +2250,7 @@
           "maxLength": 8192
         },
         "score": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "type": "number"
         },
         "reconciliationStatus": {
           "$ref": "#/$defs/ReconciliationStatus"
@@ -2335,14 +2324,10 @@
           }
         },
         "topScore": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "type": "number"
         },
         "topMargin": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
+          "type": "number"
         },
         "confidenceBand": {
           "type": "string",
