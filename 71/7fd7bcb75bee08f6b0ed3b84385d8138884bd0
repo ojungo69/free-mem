@@ -1,0 +1,48 @@
+harness/schema/validate.ts
+  s_5cbc4c67c8b3b4::t_562dee9d5532c7 9-20
+  s_5cbc4c67c8b3b4::t_665820830a8b90 21-22,36-38,59-61,125-128,172-174,194,211-218,231,234,251-254,271-273,284,288,294,297,301-303,309-318
+harness/assemble.ts
+  s_5cbc4c67c8b3b4::t_37c2931bc17eb7 255-257,263-275,282
+  s_5cbc4c67c8b3b4::t_9bbf0333733a56 127,188,193
+  s_5cbc4c67c8b3b4::t_ca3d3b397de659 27-29,118-126,128-129,189-192,194
+harness/schema/capability.ts
+  s_5cbc4c67c8b3b4::t_cbe4f70b2fd419 15-17
+  s_5cbc4c67c8b3b4::t_b92c6f6da13e8c 210-218,220,226-234
+  s_5cbc4c67c8b3b4::t_47ebae8e3794dc 18
+  s_5cbc4c67c8b3b4::t_fd97a9b79243e9 235
+  s_5cbc4c67c8b3b4::t_444bc926b22892 118-121,123-125,204-205
+.github/workflows/ci.yml
+  s_5cbc4c67c8b3b4::t_c6e8184336a426 62-63,66-73
+docs/superpowers/plans/2026-08-16-phase3-resume-preflight.md
+  s_5cbc4c67c8b3b4::t_a0c22efa3baef0 34,38,75-77
+harness/README.md
+  s_5cbc4c67c8b3b4::t_9091ecf9efbc17 23-35
+harness/continuity/capability-contract.test.ts
+  s_5cbc4c67c8b3b4::t_dbb5b03c575632 110-117,120,160,162-163,168-181
+harness/continuity/fixture-validation.test.ts
+  s_5cbc4c67c8b3b4::t_4c4bc2b5d3474d 5-6,58-60,62,66-94
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_241c205cfb59eb 211-264
+harness/matrix/claude.json
+  s_5cbc4c67c8b3b4::t_a51d96759e570e 4
+harness/matrix/codex.json
+  s_5cbc4c67c8b3b4::t_66b79b69349b71 4,170
+harness/schema/capability.schema.json
+  s_5cbc4c67c8b3b4::t_63f1f060e3603d 100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "717fd7bcb75bee08f6b0ed3b84385d8138884bd0",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
