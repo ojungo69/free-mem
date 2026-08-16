@@ -192,20 +192,27 @@ test("binary64 で表せない数を含む JSON は読まない（RFC 7493 §2.2
   for (const bad of ['{"a":1e400}', '{"a":-1e400}', '{"a":[1e400]}', '{"a":{"b":1e400}}']) {
     assert.throws(() => parseIJson(bad), /binary64 で表せない/, bad);
   }
-  // safe integer を超える整数も拒否する。`JSON.parse` が黙って丸めるので、ファイルの文字列と
+  // 丸められる整数リテラルも拒否する。`JSON.parse` が黙って値を変えるので、ファイルの文字列と
   // 読んだ値がずれる（正本 §22.6 はこの大きさの値を decimal string で書けと定めている）
   assert.equal(JSON.parse('{"a":9007199254740993}').a, 9007199254740992);
-  for (const bad of ['{"a":9007199254740993}', '{"a":-9007199254740993}', '{"a":[1e30]}']) {
-    assert.throws(() => parseIJson(bad), /safe integer を超えている/, bad);
+  for (const bad of [
+    '{"a":9007199254740993}',
+    '{"a":-9007199254740993}',
+    '{"a":[123456789012345678901234567890]}',
+  ]) {
+    assert.throws(() => parseIJson(bad), /正確に表せない/, bad);
   }
-  // 2**53 以上は指数表記でも整数値なので同じ扱い（`1e30` も丸められた値でしかない）
-  assert.equal(Number.isInteger(1e30), true);
+  // 見るのは**整数として書かれた綴り**だけ。`1e21` は 2**53 より大きいが正確に表せるので通す
+  assert.deepEqual(parseIJson('{"a":1e21}'), { a: 1e21 });
+  assert.deepEqual(parseIJson('{"a":9007199254740992}'), { a: 9007199254740992 });
+  assert.deepEqual(parseIJson('{"a":"9007199254740993"}'), { a: "9007199254740993" }); // 文字列は対象外
   // 正確に表せる範囲はそのまま通る
-  assert.deepEqual(parseIJson('{"a":9007199254740991,"b":-0,"c":0.1,"d":-12}'), {
+  assert.deepEqual(parseIJson('{"a":9007199254740991,"b":-0,"c":0.1,"d":-12,"e":1.0e2}'), {
     a: 9007199254740991,
     b: -0,
     c: 0.1,
     d: -12,
+    e: 100,
   });
 });
 

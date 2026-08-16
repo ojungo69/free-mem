@@ -51,7 +51,7 @@ export function decodeUtf8(bytes: Uint8Array, where: string): string {
  */
 export function parseIJson<T = unknown>(text: string): T {
   const value = JSON.parse(text) as T;
-  assertNoDuplicateKeys(text);
+  assertRawJsonTokens(text);
   assertIJsonStrings(value, "$");
   return value;
 }
@@ -96,18 +96,8 @@ function assertIJsonStrings(value: unknown, path: string): void {
   // RFC 7493 §2.2 は binary64 で表せない数（例として `1E400` を挙げている）を SHOULD NOT と
   // している。`JSON.parse("1e400")` は Infinity になり、そこから先の比較も hash も意味を
   // 失うので、契約ファイルとしては受け取らない
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new Error(`I-JSON: ${path} の数値が binary64 で表せない: ${value}`);
-    }
-    // 正本 §22.6 は「safe integer を超えても壊れない値は decimal string として wire へ出す」と
-    // 定めている。JSON の数値として書かれていると `JSON.parse` が黙って丸めるので
-    // （9007199254740993 → …92）、契約ファイルの文字列と読んだ値がずれる
-    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
-      throw new Error(
-        `I-JSON: ${path} の整数が safe integer を超えている（decimal string で書く）: ${value}`,
-      );
-    }
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new Error(`I-JSON: ${path} の数値が binary64 で表せない: ${value}`);
   }
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertIJsonStrings(item, `${path}[${index}]`));
@@ -121,10 +111,15 @@ function assertIJsonStrings(value: unknown, path: string): void {
 }
 
 /**
- * `JSON.parse` が構文を検査した後の生テキストを走査して、同じ object 内の重複キーを見つける。
- * 構文の妥当性は前段で保証済みなので、文字列の範囲と object/array の入れ子だけ追えばよい。
+ * `JSON.parse` が構文を検査した後の生テキストを走査して、**読んだ値からは分からない**壊れ方を
+ * 見つける。構文の妥当性は前段で保証済みなので、文字列の範囲と入れ子だけ追えばよい。
+ *
+ * - 同じ object 内の重複キー（`JSON.parse` は後勝ちで潰す。RFC 7493 §2.3）
+ * - 丸められた整数リテラル（`9007199254740993` → `…92`）。正本 §22.6 はこの大きさの値を
+ *   decimal string で wire に出すと定めている。**整数として書かれたものだけ**を見る——
+ *   `1e21` のような指数表記は綴りが違うだけで正確に表せることがあり、丸めとは別の話
  */
-function assertNoDuplicateKeys(text: string): void {
+function assertRawJsonTokens(text: string): void {
   const stack: (Set<string> | null)[] = []; // object なら見たキーの集合、array なら null
   let expectKey = false;
   for (let i = 0; i < text.length; i++) {
@@ -146,6 +141,22 @@ function assertNoDuplicateKeys(text: string): void {
     }
     if (ch === ",") {
       expectKey = stack[stack.length - 1] instanceof Set;
+      continue;
+    }
+    if (ch === "-" || (ch >= "0" && ch <= "9")) {
+      const start = i;
+      while (i < text.length && /[-+.\deE]/.test(text[i] as string)) i++;
+      const token = text.slice(start, i);
+      i--; // for 文の増分と合わせる
+      if (/^-?\d+$/.test(token)) {
+        const parsed = Number(token);
+        // 桁あふれ（Infinity）は値の側の検査が受け持つ
+        if (Number.isFinite(parsed) && BigInt(token) !== BigInt(parsed)) {
+          throw new Error(
+            `I-JSON: 整数 ${token} は binary64 で正確に表せない（decimal string で書く）`,
+          );
+        }
+      }
       continue;
     }
     if (ch !== '"') continue;

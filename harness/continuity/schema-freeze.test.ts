@@ -502,7 +502,7 @@ function declaredTypeNames(source: string): string[] {
     // 値の export（union 定数と CONTINUITY_LIMITS）は型ではないので数えない
     if (/^export const \w+[\s:=]/.test(statement)) continue;
     // `export` という名前の property（`interface X { export: string }`）は宣言ではない
-    if (/^export ?\??:/.test(statement)) continue;
+    if (/^export ?\?? ?:/.test(statement)) continue;
     assert.fail(`型名を取れない export の形: ${statement.slice(0, 60)}`);
   }
   return names;
@@ -542,6 +542,10 @@ test("名前を取れない export の形は落とす（AST を持たない代�
   // `export` という名前の property は宣言ではない
   assert.deepEqual(
     declaredTypeNames("export interface HasField {\n  export: string;\n}\n"),
+    ["HasField"],
+  );
+  assert.deepEqual(
+    declaredTypeNames("export interface HasField {\n  export?/**/: string;\n}\n"),
     ["HasField"],
   );
   // 正規表現リテラルは走査の前提外なので素通りさせない
@@ -788,6 +792,8 @@ test("IsoTimestamp は成分の範囲まで見る", () => {
 test("decimal string の pattern は sequence/watermark 全部に付いている（正本 §22.6）", () => {
   // §22.6 は seq / epoch を decimal string として wire に出すと定めている。1 箇所だけ外しても
   // 他の test は通るので、pattern が付いている path の集合そのものを凍結する
+  // `ContinuationCheckpointV2.memoryWatermark` は addendum が `string` としか書いておらず
+  // §22.6 の列挙（server seq / device seq / epoch）にも入らないので、ここには含めない
   const decimal = "^(0|[1-9][0-9]*)$";
   const found: string[] = [];
   for (const [path, node] of walkDefs()) {
@@ -795,7 +801,6 @@ test("decimal string の pattern は sequence/watermark 全部に付いている
   }
   assert.deepEqual(found.sort(), [
     "CanonicalWorkStateV1.properties.lastIngestSeq",
-    "ContinuationCheckpointV2.properties.memoryWatermark",
     "ContradictionScanRangeV1.properties.fromIngestSeq",
     "ContradictionScanRangeV1.properties.toIngestSeq",
     "NormalizedContinuityEvent.properties.ingestSeq",
