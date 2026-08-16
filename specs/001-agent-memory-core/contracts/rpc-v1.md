@@ -366,7 +366,7 @@ POST /v1/jobs
 | `not_found` | `false` | e.g. `DELETE /v1/memories/:id` for a nonexistent id (`RpcRequestError` with explicit code); also a `DaemonOperationRequestError`/`BackupRequestError` code | `daemon-rpc.ts:913`, `daemon-operations.ts:74-84`, `online-backup.ts:60` |
 | `idempotency_conflict` | `false` | `MutationConflictError`'s fixed `code` property; also a `DaemonOperationRequestError` code (export/import operation-id reuse) | `mutation-dispatcher.ts:13-14`, `daemon-operations.ts:74-84,417` |
 | `conflict` | `false` | `DaemonOperationRequestError`/`BackupRequestError` code (e.g. backup-id reuse with different payload, restore vs. active work) | `daemon-operations.ts:74-84,414-419`, `online-backup.ts:60`, `daemon-rpc.ts:516` |
-| `peer_denied` | `false` | client-side connect failure mapping (R8) — never produced by the daemon itself | `daemon-rpc-contract.ts:115,120` |
+| `peer_denied` | `false` | client-side connect failure mapping (R8), `EACCES` only — never produced by the daemon itself | `daemon-rpc-contract.ts:115`, `170-181` |
 | `daemon_unavailable` | **`true`** | client-side connect failure mapping (R8) — never produced by the daemon itself | `daemon-rpc-contract.ts:118` |
 
 **R50**: Because `typedError(error.code, error.message)` is called uniformly for `RpcRequestError`, `BackupRequestError`, `DaemonOperationRequestError`, and `MutationConflictError` (`daemon-rpc.ts:1582-1593`), **all application-level errors caught at the top of `dispatchDaemonRpc` are `retryable: false`**, regardless of whether retrying with the same idempotency key might plausibly succeed later (e.g. `conflict` from a concurrent restore, `daemon-rpc.ts:516`, is not retryable per this contract even though the underlying condition is transient).
