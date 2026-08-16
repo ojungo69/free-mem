@@ -23,6 +23,13 @@ cp "$SRC" "$BAK"
 
 EXECUTED=0
 SURVIVED=0
+# 変異前の test 件数。run() がこれと突き合わせて「変異が test を走らせていない」を検出する
+BASELINE_TESTS=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 \
+  | grep -E '^# tests |^ℹ tests ' | tail -1 | grep -oE '[0-9]+$')
+if [ -z "${BASELINE_TESTS:-}" ]; then
+  echo "変異テスト失敗: baseline の test 件数を取得できない" >&2
+  exit 1
+fi
 
 run() {
   local label="$1"
@@ -32,11 +39,19 @@ run() {
   failed=$(printf '%s' "$out" | grep -E '^# fail |^ℹ fail ' | tail -1)
   local n
   n=$(printf '%s' "$failed" | grep -oE '[0-9]+$')
+  # **走った件数も見る**。変異でソースが parse できないと node:test は「読み込みに失敗した 1 件」を
+  # fail として数えるので、`fail 1` だけを見ていると**ゲートを一度も壊していない変異が kill として
+  # 計上される**（実測: 壊れた module で tests 1 / pass 0 / fail 1）。baseline と件数が違えば、
+  # その変異はゲートの検証になっていないので生存と同じ扱いにする
+  local ran
+  ran=$(printf '%s' "$out" | grep -E '^# tests |^ℹ tests ' | tail -1 | grep -oE '[0-9]+$')
   printf '%-46s %s\n' "$label" "${failed:-<test が走らなかった>}"
   EXECUTED=$((EXECUTED + 1))
-  # 件数が取れないのは変異でソースが壊れて test が 1 つも走らなかった場合。
-  # そのゲートを検証できていない点は生存と同じなので同じ扱いにする
   if [ -z "$n" ] || [ "$n" -eq 0 ]; then
+    SURVIVED=$((SURVIVED + 1))
+  elif [ -z "$ran" ] || [ "$ran" -ne "$BASELINE_TESTS" ]; then
+    printf '  ^ 変異が test を走らせていない（tests %s / baseline %s）。ゲート未検証\n' \
+      "${ran:-?}" "$BASELINE_TESTS"
     SURVIVED=$((SURVIVED + 1))
   fi
   cp "$BAK" "$SRC"
@@ -46,16 +61,27 @@ mutate() { # python replacement
   python3 - "$1" "$2" <<'PY'
 import sys, pathlib
 old, new = sys.argv[1], sys.argv[2]
+# 置換後の文字列に書いた `\n` は改行として扱う。bash の二重引用符は `\n` を展開しないので、
+# 素で渡すと**リテラルのバックスラッシュ n が TS に埋まって module が parse できなくなる**。
+# その状態でも node:test は「読み込み失敗 1 件」を fail として数えるため、ゲートを一度も
+# 壊していない変異が kill として計上されていた（実測で 5 件。run() 側の件数突き合わせと対で塞ぐ）
+new = new.replace("\\n", "\n")
 p = pathlib.Path("harness/continuity/reference-model.ts")
 s = p.read_text()
-assert old in s, f"not found: {old[:60]}"
+# アンカーは**ソース中で一意**でなければならない。2 箇所に出るアンカーだと
+# `replace(old, new, 1)` は必ず先頭を書き換えるので、2 つ目の site を狙ったラベルが
+# 1 つ目を二重に壊すだけになり、狙ったゲートは無検証のまま kill として計上される（実測）
+count = s.count(old)
+assert count == 1, f"anchor must be unique (found {count}): {old[:70]}"
 p.write_text(s.replace(old, new, 1))
 PY
 }
 
 mutate "  const applied = idempotencyLedger.get(key);
-  if (applied !== undefined) {" "  const applied = idempotencyLedger.get(key);
-  if (false) {" && run "dedupe 判定を外す"
+  if (applied !== undefined) {
+    // §4.3「terminal は … payload/source hash が衝突しないこと」。同じ配送 ID で内容が違う" "  const applied = idempotencyLedger.get(key);
+  if (false) {
+    // §4.3「terminal は … payload/source hash が衝突しないこと」。同じ配送 ID で内容が違う" && run "dedupe 判定を外す"
 mutate "  return compareIngestSeq(a, b) >= 0 ? a : b;" "  return b;" && run "lastIngestSeq の max を外す"
 mutate "  if (a.length !== b.length) return a.length < b.length ? -1 : 1;" "  return Number(a) === Number(b) ? 0 : Number(a) < Number(b) ? -1 : 1;\n  // eslint-disable-next-line" && run "ingestSeq を数値比較にする"
 mutate "  if (operation === undefined) {
@@ -123,7 +149,7 @@ mutate "            existing.correlation.canonicalInputHash !== operation.canoni
 mutate "      (pending) =>
         pending.status === \"started\" &&
         pending.correlation.sessionId === event.sessionId &&
-        pending.correlation.taskLineageId === state.taskLineageId," "      (pending) =>\n        pending.status === \\"started\\" &&\n        pending.correlation.taskLineageId === state.taskLineageId," && run "放棄を session で絞らない"
+        pending.correlation.taskLineageId === state.taskLineageId," "      (pending) =>\n        pending.status === \"started\" &&\n        pending.correlation.taskLineageId === state.taskLineageId," && run "放棄を session で絞らない"
 mutate "        unresolved.has(pending)
           ? withSourceEvent(" "        false
           ? withSourceEvent(" && run "候補の unknown 化を外す"
@@ -164,7 +190,9 @@ mutate "          (existing.correlation.toolName !== undefined &&
 mutate "          (existing.correlation.toolName !== undefined &&
             existing.correlation.toolName !== operation.operationKind) ||" "          (existing.correlation.toolName !== operation.operationKind) ||" && run "start の toolName 存在ガードを外す"
 mutate "  if (!ABANDONMENT_EVENT_KINDS.has(event.kind)) {" "  if (false) {" && run "放棄 kind の制限を外す"
-mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {" "    if (false) {" && run "配送 ID 衝突の隔離を外す"
+mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
+      return quarantine(previous, idempotencyLedger, [" "    if (false) {
+      return quarantine(previous, idempotencyLedger, [" && run "配送 ID 衝突の隔離を外す"
 mutate "  visit(content);
   return SENSITIVITIES[rank] as Sensitivity;" "  visit(content);
   return \"normal\";" && run "sensitivity 集約を normal 固定にする"
@@ -180,7 +208,9 @@ mutate "    (pending.correlation.toolName !== undefined &&
       pending.correlation.toolName !== operation.operationKind) ||" "    false ||" && run "terminal の operationKind 比較を外す"
 mutate "    (pending.correlation.toolName !== undefined &&
       pending.correlation.toolName !== operation.operationKind) ||" "    (pending.correlation.toolName !== operation.operationKind) ||" && run "terminal の toolName 存在ガードを外す"
-mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {" "    if (false) {" && run "放棄経路の配送 ID 衝突検査を外す"
+mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
+      // 診断も還元器側と同じものを出す。" "    if (false) {
+      // 診断も還元器側と同じものを出す。" && run "放棄経路の配送 ID 衝突検査を外す"
 
 mutate "  if (isBlank(event.canonicalFingerprint)) {" "  if (false) {" && run "空 canonicalFingerprint を素通しする"
 mutate "    if (contradicted !== undefined) {" "    if (false) {" && run "確定済み成否との矛盾検査を外す"
