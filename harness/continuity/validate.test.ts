@@ -163,3 +163,37 @@ test("validateContractValue は schema 通過後に構造上限も見る", () =>
   );
   assert.ok(issues.some((i) => /exceeds stringUtf8Bytes/.test(i.message)));
 });
+
+// --- プロトタイプ経由のキーを実データと取り違えない（PR #18 レビュー指摘） ---
+
+test("required は継承プロパティを「有る」と数えない", () => {
+  const schema = { type: "object", required: ["constructor"], properties: {} };
+  const issues = validateAgainstSchema({}, schema, ROOT);
+  assert.ok(issues.some((i) => /missing required property: constructor/.test(i.message)));
+});
+
+test("properties に無い継承名のキーは additionalProperties: false で弾かれる", () => {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: { role: { $ref: "#/$defs/Role" } },
+  };
+  for (const key of ["constructor", "toString", "hasOwnProperty"]) {
+    const issues = validateAgainstSchema({ [key]: 1 }, schema, ROOT);
+    assert.ok(issues.some((i) => i.message === `unknown property: ${key}`), key);
+  }
+});
+
+test("$defs に無い継承名は $ref でも contract 名でも解決されない", () => {
+  assert.throws(
+    () => validateAgainstSchema({}, { $ref: "#/$defs/__proto__" }, ROOT),
+    /dangling \$ref/,
+  );
+  const issues = validateContractValue("toString", { any: "thing" }, ROOT, LIMITS);
+  assert.match(issues[0].message, /unknown \$defs entry: toString/);
+});
+
+test("format は未対応キーワードとして拒否する（黙って無視しない）", () => {
+  const issues = validateAgainstSchema("not-a-date", { type: "string", format: "date-time" }, ROOT);
+  assert.ok(issues.some((i) => i.message === "unsupported schema keyword: format"));
+});

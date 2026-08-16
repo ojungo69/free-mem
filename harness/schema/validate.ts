@@ -42,11 +42,19 @@ const SUPPORTED_KEYWORDS = new Set([
   "oneOf",
   "anyOf",
   "allOf",
-  "format",
 ]);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * プロトタイプ経由のキーを実データと取り違えないための own-key 判定。
+ * `"constructor" in {}` は true になるため、`in` で書くと required が素通りし、
+ * schema.properties の探索が `Object.prototype` の関数を schema として拾ってしまう。
+ */
+function own(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
 /** `{}` か `Object.create(null)` 由来のものだけを data object とみなす。 */
@@ -71,9 +79,10 @@ function typeMatches(actual: string, expected: string): boolean {
 function resolveRef(ref: string, root: JsonSchemaDocument): unknown {
   const m = /^#\/\$defs\/([A-Za-z0-9_]+)$/.exec(ref);
   if (!m) throw new Error(`unsupported $ref form: ${ref}`);
-  const def = root.$defs?.[m[1]];
-  if (def === undefined) throw new Error(`dangling $ref: ${ref}`);
-  return def;
+  const defs = root.$defs;
+  // `#/$defs/__proto__` は `?.[]` だと Object.prototype を拾い、制約ゼロの schema として通ってしまう
+  if (!isPlainObject(defs) || !own(defs, m[1])) throw new Error(`dangling $ref: ${ref}`);
+  return defs[m[1]];
 }
 
 /** JSON として表現できない値（undefined / NaN / Infinity / function / symbol / bigint / 循環）を弾く。 */
@@ -230,10 +239,10 @@ export function validateAgainstSchema(
   if (isPlainObject(value)) {
     const props = isPlainObject(schema.properties) ? schema.properties : {};
     for (const req of (schema.required as string[] | undefined) ?? []) {
-      if (!(req in value)) issues.push({ path, message: `missing required property: ${req}` });
+      if (!own(value, req)) issues.push({ path, message: `missing required property: ${req}` });
     }
     for (const [k, v] of Object.entries(value)) {
-      if (k in props) {
+      if (own(props, k)) {
         issues.push(...validateAgainstSchema(v, props[k], root, `${path}.${k}`));
       } else if (schema.additionalProperties === false) {
         issues.push({ path, message: `unknown property: ${k}` });
@@ -269,8 +278,11 @@ export function validateContractValue(
 ): ValidationIssue[] {
   const nonJson = findNonJsonValues(value);
   if (nonJson.length > 0) return nonJson;
-  const def = root.$defs?.[defName];
-  if (def === undefined) return [{ path: "$", message: `unknown $defs entry: ${defName}` }];
+  const defs = root.$defs;
+  if (!isPlainObject(defs) || !own(defs, defName)) {
+    return [{ path: "$", message: `unknown $defs entry: ${defName}` }];
+  }
+  const def = defs[defName];
   return [
     ...validateAgainstSchema(value, def, root, "$"),
     ...findStructuralViolations(value, limits),

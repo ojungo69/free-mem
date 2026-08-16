@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import {
   EVENT_KINDS,
@@ -12,11 +13,12 @@ import {
   type EventKind,
   type ToolFailurePhase,
 } from "./schema/capability.ts";
+import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
 
 // JSON Schema は「置いてあるだけ」にせず、キー集合の正本として実際に読む
 const SCHEMA = JSON.parse(
   readFileSync(new URL("./schema/capability.schema.json", import.meta.url), "utf8"),
-) as { properties?: Record<string, any> };
+) as JsonSchemaDocument & { properties?: Record<string, any> };
 
 const EVENT_KIND_SET = new Set<string>(EVENT_KINDS);
 const TOOL_FAILURE_PHASE_SET = new Set<string>(TOOL_FAILURE_PHASES);
@@ -35,7 +37,7 @@ function isObject(v: unknown): v is Record<string, unknown> {
 export function validateFixture(data: unknown, fileName: string): CaptureFixture {
   const errs: string[] = [];
   if (!isObject(data)) {
-    fail(`${fileName}: not a JSON object`);
+    throw new Error(`${fileName}: not a JSON object`);
   }
 
   const req = [
@@ -114,6 +116,18 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
     errs.push("evidenceHash must be a 64-char lowercase hex SHA-256 if present");
   }
 
+  // highLevel は matrix の cell に直接載る（= 自動配送の判定入力）。schema で enum まで検査する
+  if ("highLevel" in data) {
+    const hlSchema = SCHEMA.properties?.highLevel;
+    if (!hlSchema) {
+      errs.push("capability.schema.json に highLevel の定義が無い");
+    } else {
+      for (const issue of validateAgainstSchema(data.highLevel, hlSchema, SCHEMA, "highLevel")) {
+        errs.push(`${issue.path}: ${issue.message}`);
+      }
+    }
+  }
+
   if (!isObject(data.rig)) {
     errs.push("rig must be object");
   } else {
@@ -139,8 +153,10 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
     }
   }
 
+  // throw にしておく（呼び出し側の loadFixtures が exit へ変換する）。
+  // process.exit だと不正 fixture の棄却をテストから確認できない
   if (errs.length > 0) {
-    fail(`${fileName}: ${errs.join("; ")}`);
+    throw new Error(`${fileName}: ${errs.join("; ")}`);
   }
 
   return data as unknown as CaptureFixture;
@@ -301,7 +317,11 @@ async function loadFixtures(fixturesDir: string): Promise<CaptureFixture[]> {
     } catch (e) {
       fail(`${name}: invalid JSON: ${String(e)}`);
     }
-    fixtures.push(validateFixture(data, name));
+    try {
+      fixtures.push(validateFixture(data, name));
+    } catch (e) {
+      fail(e instanceof Error ? e.message : String(e));
+    }
   }
   return fixtures;
 }
@@ -413,20 +433,24 @@ async function selfTest(): Promise<void> {
   }
 }
 
-const args = process.argv.slice(2);
-if (args[0] === "--self-test") {
-  selfTest().catch((e) => {
-    console.error(String(e));
-    process.exit(1);
-  });
-} else if (args.length === 2) {
-  runAssemble(args[0], args[1]).catch((e) => {
-    console.error(String(e));
-    process.exit(1);
-  });
-} else {
-  fail(
-    "usage: node --experimental-strip-types harness/assemble.ts <fixturesDir> <outFile>\n" +
-      "       node --experimental-strip-types harness/assemble.ts --self-test",
-  );
+// import されたとき（テストから validateFixture を呼ぶ場合）は CLI を起動しない
+const invokedDirectly = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  const args = process.argv.slice(2);
+  if (args[0] === "--self-test") {
+    selfTest().catch((e) => {
+      console.error(String(e));
+      process.exit(1);
+    });
+  } else if (args.length === 2) {
+    runAssemble(args[0], args[1]).catch((e) => {
+      console.error(String(e));
+      process.exit(1);
+    });
+  } else {
+    fail(
+      "usage: node --experimental-strip-types harness/assemble.ts <fixturesDir> <outFile>\n" +
+        "       node --experimental-strip-types harness/assemble.ts --self-test",
+    );
+  }
 }

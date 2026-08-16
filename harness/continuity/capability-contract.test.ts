@@ -121,14 +121,6 @@ test("両 cell が native なら native_prompt_gate、片方でも synthesized �
   assert.equal(resolveResumeDeliveryStrategy(mixed), "next_prompt_synthesized");
 });
 
-test("evidenceHash が未記録でも fixture と version が一致すれば prompt 経路を認める", () => {
-  const caps = matrixWith({
-    promptAwareInjection: proven("synthesized", { evidenceHash: null }),
-    promptDeliveryBeforeModel: proven("synthesized", { evidenceHash: null }),
-  });
-  assert.equal(resolveResumeDeliveryStrategy(caps), "next_prompt_synthesized");
-});
-
 test("sourceFixtureId が無い cell は prompt 経路の根拠にならない", () => {
   const caps = matrixWith({
     promptAwareInjection: proven("synthesized", { sourceFixtureId: undefined }),
@@ -156,4 +148,30 @@ test("prompt 経路が証明されていれば SessionStart より優先する",
 test("compactSingleDelivery は配送経路の判定には影響しない（別 gate の入力）", () => {
   const withCompact = matrixWith({ compactSingleDelivery: proven("native") });
   assert.equal(resolveResumeDeliveryStrategy(withCompact), "manual_only");
+});
+
+test("evidence hash の無い prompt cell は自動配送を有効化できない", () => {
+  const caps = matrixWith({
+    promptAwareInjection: proven("synthesized", { evidenceHash: null }),
+    promptDeliveryBeforeModel: proven("synthesized", { evidenceHash: null }),
+  });
+  assert.equal(resolveResumeDeliveryStrategy(caps), "manual_only");
+});
+
+test("片方だけ evidence hash がある prompt 対も照合できないので採用しない", () => {
+  const caps = matrixWith({
+    promptAwareInjection: proven("native"),
+    promptDeliveryBeforeModel: proven("native", { evidenceHash: null }),
+  });
+  assert.equal(resolveResumeDeliveryStrategy(caps), "manual_only");
+});
+
+test("prompt 対が native と synthesized で割れたら弱いほうへ倒す", () => {
+  const mixed = [
+    { promptAwareInjection: proven("native"), promptDeliveryBeforeModel: proven("synthesized") },
+    { promptAwareInjection: proven("synthesized"), promptDeliveryBeforeModel: proven("native") },
+  ];
+  for (const cells of mixed) {
+    assert.equal(resolveResumeDeliveryStrategy(matrixWith(cells)), "next_prompt_synthesized");
+  }
 });

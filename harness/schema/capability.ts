@@ -191,21 +191,26 @@ function isProven(cell: CapabilityEvidence): boolean {
 }
 
 /**
- * 2 つの cell が「同一の実測」に基づくか。exact version と fixture が一致し、
- * evidence hash が両方にあるならそれも一致することを要求する。
- * 別々の run をつなぎ合わせて経路を主張させないためのゲート。
+ * 2 つの cell が「同一の実測」に基づくか。exact version・fixture・evidence hash の
+ * 3 つすべてが揃って一致することを要求する。別々の run をつなぎ合わせて経路を
+ * 主張させないためのゲートなので、hash が無い cell は「照合できない」= 不合格とする
+ * （transcript hash の無い手書き fixture が自動配送を有効化できてしまうため）。
  */
 function sameEvidenceSource(a: CapabilityEvidence, b: CapabilityEvidence): boolean {
   if (a.nativeVersion !== b.nativeVersion) return false;
   if (!a.sourceFixtureId || !b.sourceFixtureId) return false;
   if (a.sourceFixtureId !== b.sourceFixtureId) return false;
-  if (a.evidenceHash && b.evidenceHash && a.evidenceHash !== b.evidenceHash) return false;
+  if (!a.evidenceHash || !b.evidenceHash) return false;
+  if (a.evidenceHash !== b.evidenceHash) return false;
   return true;
 }
 
 /**
  * 配送経路を cell から導出する。証明が欠けたら必ず下位の経路へ落ちる（既定 manual_only）。
  * 片方だけ証明された prompt 経路（half-proven）は採用しない。
+ *
+ * prompt 経路の 2 cell が native と synthesized で割れた場合は、弱いほう
+ * （= `next_prompt_synthesized`）に倒す。両方 native のときだけ `native_prompt_gate`。
  */
 export function resolveResumeDeliveryStrategy(caps: AdapterCapabilities): ResumeDeliveryStrategy {
   const prompt = caps.promptAwareInjection;
