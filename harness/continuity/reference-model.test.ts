@@ -775,6 +775,29 @@ test("放棄は自 lineage の operation だけを unknown にする", () => {
   assert.equal(own.state.pendingOperations[0]?.status, "unknown");
 });
 
+test("別 lineage の双子が居ると、現 lineage の operation は順序を確認できない側へ倒れる", () => {
+  // lineage で絞ると、別 lineage の双子は再配送の相手にならないので現 lineage 側に新しい pending が
+  // 積まれる。`operationId` は eventId + matchKey からの導出で lineage を含まないため、状態には
+  // **同じ id の pending が 2 件**並ぶ。`operationStarts` の鍵も `operationId` なので、この状態では
+  // どちらの材料かを判別できない。§3.1 の fail closed どおり「材料なし」として扱い、terminal は
+  // `terminal_order_unverifiable` で `unknown` に倒れる（誤って succeeded にはしない）。
+  // 退避で同名の材料を無条件に落としたのと同じ判断で、根治は #35（材料を状態に持たせる）
+  const applied = reduceTaskWorkState(foreignLineage(startedSnapshot()), startEvent(), new Map());
+  assert.equal(new Set(applied.snapshot.state.pendingOperations.map((p) => p.operationId)).size, 1);
+  assert.equal(applied.snapshot.state.pendingOperations.length, 2);
+  const closed = reduceTaskWorkState(applied.snapshot, terminalEvent(), new Map());
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
+  const mine = closed.snapshot.state.pendingOperations.find(
+    (p) => p.correlation.taskLineageId === closed.snapshot.state.taskLineageId,
+  );
+  assert.equal(mine?.status, "unknown");
+  // 別 lineage の双子は候補ですらないので触らない
+  const theirs = closed.snapshot.state.pendingOperations.find(
+    (p) => p.correlation.taskLineageId === "lineage-other",
+  );
+  assert.equal(theirs?.status, "started");
+});
+
 test("再配送 start が turn の種別をすり替えたら隔離する", () => {
   // `turnIdSource` は turn 同一性の一部なのに凍結 `OperationCorrelationV1` の外にしか無いので、
   // `turnId` の比較では見えない。重複として台帳に入れると記録は元の種別のまま残り、再配送側の
