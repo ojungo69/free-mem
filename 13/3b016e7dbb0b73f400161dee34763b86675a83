@@ -1,0 +1,58 @@
+specs/001-agent-memory-core/contracts/writer-boundary-v1.md
+  s_5cbc4c67c8b3b4::t_5cf49481595061 47
+  s_5cbc4c67c8b3b4::t_62c55965db4d79 402
+  s_5cbc4c67c8b3b4::t_5cf2a5c6074f98 364
+specs/001-agent-memory-core/contracts/spool-format-v1.md
+  s_5cbc4c67c8b3b4::t_cd8e215a6bb056 328
+  s_5cbc4c67c8b3b4::t_f389b549234d1e 200-208
+  s_5cbc4c67c8b3b4::t_d77b920eb98425 170-172
+  s_5cbc4c67c8b3b4::t_77cef74437881c 198
+  s_5cbc4c67c8b3b4::t_c68e40ed073d10 83-96
+  s_5cbc4c67c8b3b4::t_72f0c6f7b0c9b8 414-415
+  s_5cbc4c67c8b3b4::t_418fc1add7be46 147
+  s_5cbc4c67c8b3b4::t_e97624d0d59a6c 397
+  s_5cbc4c67c8b3b4::t_b2b117a870518a 394
+  s_5cbc4c67c8b3b4::t_f12082fba09f0c 199
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_5cbc4c67c8b3b4::t_93e9562450d021 109
+  s_5cbc4c67c8b3b4::t_d334d62bb274b6 151
+  s_5cbc4c67c8b3b4::t_44459f4c595cd7 10
+  s_5cbc4c67c8b3b4::t_e0fb7514f0ab7f 277,279,281,283,285
+  s_5cbc4c67c8b3b4::t_fd4f3029e87dff 306
+  s_5cbc4c67c8b3b4::t_a78fb622fc20a7 280
+  s_5cbc4c67c8b3b4::t_1c7c1b0cd05c44 331
+  s_5cbc4c67c8b3b4::t_c6e663ddcf29bb 282
+  s_5cbc4c67c8b3b4::t_50efc31b354d67 418-419
+  s_5cbc4c67c8b3b4::t_8747b63d614f47 284
+  s_5cbc4c67c8b3b4::t_101e64193a2830 278
+  s_5cbc4c67c8b3b4::t_a01f33a338f2b1 79
+  s_5cbc4c67c8b3b4::t_0a40343ebb1a78 98-108,110
+  s_5cbc4c67c8b3b4::t_3ac0ac9abe8b2f 276
+  s_5cbc4c67c8b3b4::t_974f0296f95dea 337
+  s_5cbc4c67c8b3b4::t_51304ede6a4b05 420-421
+specs/001-agent-memory-core/contracts/error-taxonomy-v1.md
+  s_5cbc4c67c8b3b4::t_770abc5a289442 443
+  s_5cbc4c67c8b3b4::t_56a9e53f2179e9 211
+  s_5cbc4c67c8b3b4::t_c9309682bfb592 174
+  s_5cbc4c67c8b3b4::t_f389acc132c459 238
+  s_5cbc4c67c8b3b4::t_a0df5a92b0bfa2 246
+  s_5cbc4c67c8b3b4::t_13239d4f8bc7e4 210
+  s_5cbc4c67c8b3b4::t_da897ee88e33a3 232
+  s_5cbc4c67c8b3b4::t_22656df2e69cc6 458-459
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "133b016e7dbb0b73f400161dee34763b86675a83",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
