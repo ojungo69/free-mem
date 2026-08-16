@@ -54,7 +54,7 @@ passes.
 ## Before you open a pull request
 
 - Run the checks that cover what you touched. For `vendor/codemem/`:
-  `corepack pnpm run tsc && corepack pnpm run lint && corepack pnpm test`.
+  `cd vendor/codemem && corepack pnpm run tsc && corepack pnpm run lint && corepack pnpm test`.
   For the harness: `node --experimental-strip-types harness/assemble.ts --self-test` and
   `node --experimental-strip-types --test harness/continuity/*.test.ts`.
 - Never edit generated files by hand. `harness/matrix/*.json` is produced by `harness/assemble.ts`

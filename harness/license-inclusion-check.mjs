@@ -26,6 +26,8 @@ requireFile("NOTICE", "Apache-2.0 §4(d) attribution");
 requireFile("THIRD_PARTY_NOTICES.md", "third-party attribution");
 requireFile("CONTRIBUTING.md", "inbound contribution terms");
 requireFile("vendor/codemem/LICENSE", "vendored MIT snapshot must keep its own license");
+requireFile("vendor/codemem/package.json", "vendored package metadata (下で license 欄を読む)");
+requireFile("evidence/adr-004-licensing.md", "README と CONTRIBUTING が根拠として指す ADR");
 
 if (failures.length === 0) {
   const license = read("LICENSE");
