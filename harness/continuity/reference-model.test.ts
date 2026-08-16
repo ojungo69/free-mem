@@ -765,9 +765,11 @@ test("状態側で operationId が衝突していても退避は必要な件数�
   assert.equal(survivors[0]?.status, "started");
 });
 
-test("同名の兄弟が残っているなら退避で順序材料を消さない", () => {
-  // `operationStarts` の鍵は `operationId` なので、退避した側の id で消すと生きている
-  // 兄弟の順序材料まで落ち、次の terminal が terminal_order_unverifiable で unknown に倒れる
+test("同名の兄弟が残っていても退避した側の順序材料は落とす", () => {
+  // `operationStarts` の鍵は `operationId` なので、id が衝突しているとどちらの兄弟の材料かを
+  // 原理的に判別できない。「生きている兄弟の材料を消さない」ために残すと、退避した側の材料で
+  // 生存側の順序検査が通り、順序違反の terminal が診断ゼロで適用されて台帳まで消費される。
+  // 材料を落として terminal_order_unverifiable で unknown に倒れるのが §3.1 の fail closed
   const snapshot = collidedFilledSnapshot();
   const seeded: TaskWorkStateSnapshotV1 = {
     ...snapshot,
@@ -778,8 +780,30 @@ test("同名の兄弟が残っているなら退避で順序材料を消さな�
       ]),
     ),
   };
-  const result = reduceTaskWorkState(seeded, startEvent(), new Map());
-  assert.equal(result.snapshot.operationStarts.has("op-0"), true);
+  const evicted = reduceTaskWorkState(seeded, startEvent(), new Map());
+  assert.equal(evicted.snapshot.operationStarts.has("op-0"), false);
+  // 生き残った同名の兄弟は残っている（消えたのは材料だけ）
+  assert.equal(
+    evicted.snapshot.state.pendingOperations.filter((p) => p.operationId === "op-0").length,
+    1,
+  );
+  // その兄弟宛ての terminal は「順序を確認できない」として unknown に倒れる。適用されない
+  const terminal = reduceTaskWorkState(
+    evicted.snapshot,
+    // 生き残ったのは index 1（`collidedFilledSnapshot` が op-0 に改名した started 側）なので、
+    // その nativeOperationId で rule 1 の terminal を当てる
+    terminalEvent({
+      eventId: "term-collided", adapterDeliveryId: "d-term-collided",
+      canonicalFingerprint: "f-term-collided", ingestSeq: "2",
+      operation: { ...TERMINAL_OPERATION, nativeOperationId: "toolu_filled_1" },
+    }),
+    evicted.ledger,
+  );
+  assert.deepEqual(terminal.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
+  assert.equal(
+    terminal.snapshot.state.pendingOperations.find((p) => p.operationId === "op-0")?.status,
+    "unknown",
+  );
 });
 
 test("上限に余裕があるときは退避の診断を出さない", () => {

@@ -109,7 +109,8 @@ mutate "      correlation.diagnostic === \"terminal_orphaned\"" "      false" &&
 mutate "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: [matched]," "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: []," && run "順序不明で候補を unknown にしない"
-mutate "      if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" "      void evictedId;" && run "退避で順序材料を刈らない"
+mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    // eslint-disable-next-line" && run "退避で順序材料を刈らない"
+mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    const retainedIds = new Set(retained.map((p) => p.operationId));\n    for (const evictedId of evicted) if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" && run "同名が残るなら退避側の順序材料を残す"
 mutate "      (operation.nativeOperationId === undefined
         ? undefined
         : previous.state.pendingOperations.find(" "      (true
@@ -241,7 +242,6 @@ mutate "      incoming === \"unknown\" || plausible.some((pending) => pending.st
 mutate "  const open = plausible.filter(isOpen);" "  const open = compatible.filter(isOpen);" && run "open の切り分けを turn 絞り込みより前にする"
 mutate "        : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);" "        : compatible.find((pending) => pending.status !== incoming);" && run "矛盾判定に open な候補も混ぜる"
 mutate "  return pending.filter((candidate) => !dropped.has(candidate));" "  return pending.filter((candidate) => ![...dropped].some((d) => d.operationId === candidate.operationId));" && run "退避の保持判定を operationId の一致に戻す"
-mutate "      if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" "      operationStarts.delete(evictedId);" && run "生存する同名の順序材料も退避で消す"
 mutate "    const contradicted = recordable ? undefined : contradicting;" "    const contradicted = contradicting;" && run "記録できる候補が居ても隔離を優先する"
 mutate "          (contradicting === undefined" "          (true" && run "抑止した矛盾を報告に残さない"
 mutate "      detail: \`operation \${unverifiable.operationId} は canonicalInputHash を持つのに terminal が省いている\`,

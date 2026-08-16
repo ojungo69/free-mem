@@ -776,14 +776,16 @@ export function reduceTaskWorkState(
       .filter((pending) => !kept.has(pending))
       .map((pending) => pending.operationId);
     // 退避した operation の start facts も落とす。残すと pendingOperations が 256 件で頭打ちの
-    // 一方でこの表だけが単調増加する。ただし `operationStarts` の鍵は `operationId` なので、
-    // 同名の兄弟が残っているなら消せない。消すと生きている operation の順序材料が黙って落ち、
-    // 次の terminal が terminal_order_unverifiable で unknown に倒れる
-    const retainedIds = new Set(retained.map((pending) => pending.operationId));
+    // 一方でこの表だけが単調増加する。
+    // **同名の兄弟が残っていても消す**。ここに「生きている operation の順序材料を消さないため」の
+    // 例外を一度入れたが、それは fail open だった: `operationStarts` の鍵は `operationId` なので、
+    // id が衝突していると**どちらの兄弟の材料かを原理的に判別できない**。退避した側の材料を残すと、
+    // 生き残った側の順序検査がその他人の材料で通り、**順序違反の terminal が診断ゼロで適用され
+    // 台帳まで消費される**（実測: 退避側 start=10・生存側の実 start=100 の状態に ingestSeq 50 の
+    // terminal を当てると succeeded になった）。材料を落として `terminal_order_unverifiable` で
+    // `unknown` に倒れるのが §3.1 の fail closed どおりで、材料の復旧は #35（状態に持たせる）が本筋
     const operationStarts = new Map(previous.operationStarts);
-    for (const evictedId of evicted) {
-      if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);
-    }
+    for (const evictedId of evicted) operationStarts.delete(evictedId);
     operationStarts.set(operationId, { ingestSeq: event.ingestSeq, turnIdSource: event.turnIdSource });
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...retained, started],
