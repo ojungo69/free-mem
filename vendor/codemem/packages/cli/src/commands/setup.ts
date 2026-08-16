@@ -92,7 +92,10 @@ export function resolveSetupRuntime(): SetupRuntime {
 		throw new Error("Built CLI runtime not found; run `pnpm run build` before `codemem setup`.");
 	}
 	const hookRuntimePath = resolve(dirname(cliPath), "hook-runtime.js");
-	const opencodePluginPath = resolve(dirname(cliPath), "../../opencode-plugin/index.js");
+	const opencodePluginPath = resolve(
+		dirname(cliPath),
+		"../../opencode-plugin/.opencode/plugins/codemem.js",
+	);
 	if (!regularFile(hookRuntimePath))
 		throw new Error(
 			`Bundled hook runtime not found at ${hookRuntimePath}; run \`pnpm run build\`.`,
@@ -101,10 +104,12 @@ export function resolveSetupRuntime(): SetupRuntime {
 }
 
 function opencodePluginAvailable(runtime: SetupRuntime): boolean {
-	if (regularFile(runtime.opencodePluginPath)) return true;
-	p.log.error(
-		`OpenCode plugin not found at ${runtime.opencodePluginPath}; run \`pnpm run build\`.`,
-	);
+	const missing = [
+		runtime.opencodePluginPath,
+		resolve(dirname(runtime.opencodePluginPath), "../lib/compat.js"),
+	].find((path) => !regularFile(path));
+	if (!missing) return true;
+	p.log.error(`OpenCode plugin artifact not found at ${missing}; run \`pnpm run build\`.`);
 	return false;
 }
 
@@ -1606,6 +1611,10 @@ export const setupCommand = new Command("setup")
 				const targets = [
 					{ id: "opencode-plugin", path: wrapperPath },
 					{ id: "opencode-plugin-source", path: runtime.opencodePluginPath },
+					{
+						id: "opencode-plugin-compat",
+						path: resolve(dirname(runtime.opencodePluginPath), "../lib/compat.js"),
+					},
 					{ id: "opencode-mcp", path: configPath },
 				];
 				const installed = runSetupLaneTransaction(
@@ -1632,6 +1641,7 @@ export const setupCommand = new Command("setup")
 						recordTargets(targets, [
 							"opencode-plugin-mcp",
 							"opencode-plugin",
+							"opencode-plugin-compat",
 							"opencode-plugin-source",
 							"opencode-mcp",
 						]),

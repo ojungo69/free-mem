@@ -9,7 +9,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { acquireSpoolLock, resolveRuntimeDataDir } from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -170,7 +170,7 @@ describe("Codex hook runtime install", () => {
 		const runtime = resolveSetupRuntime();
 		expect(runtime.cliPath).toBe(resolve(import.meta.dirname, "../../dist/index.js"));
 		expect(runtime.opencodePluginPath).toBe(
-			resolve(import.meta.dirname, "../../../opencode-plugin/index.js"),
+			resolve(import.meta.dirname, "../../../opencode-plugin/.opencode/plugins/codemem.js"),
 		);
 
 		const source = join(codexHome, "source runtime.mjs");
@@ -880,10 +880,17 @@ describe("setup command options", () => {
 			"cli-runtime",
 			"opencode-mcp",
 			"opencode-plugin",
+			"opencode-plugin-compat",
 			"opencode-plugin-source",
 		]);
 		expect(manifest.targets.find((target) => target.id === "cli-runtime")?.path).toBe(
 			runtime.cliPath,
+		);
+		expect(manifest.targets.find((target) => target.id === "opencode-plugin-source")?.path).toBe(
+			runtime.opencodePluginPath,
+		);
+		expect(manifest.targets.find((target) => target.id === "opencode-plugin-compat")?.path).toBe(
+			resolve(dirname(runtime.opencodePluginPath), "../lib/compat.js"),
 		);
 		expect(manifest.targets.every((target) => /^[a-f0-9]{64}$/.test(target.fingerprint))).toBe(
 			true,
