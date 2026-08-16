@@ -102,3 +102,42 @@ test("重複していない JSON はそのまま読める", () => {
   assert.deepEqual(parseIJson('{\n  "a" : 1,\n  "b" : [ 1, 2 ]\n}'), { a: 1, b: [1, 2] });
   assert.throws(() => parseIJson('{\n  "a" : 1,\n  "a" : 2\n}'), /property 名が重複/);
 });
+
+test("疎な配列は canonicalize しない（穴は JSON に無い）", () => {
+  // `map` は穴を飛ばすので `[,]` のような JSON でない bytes が出る。`JSON.stringify` は
+  // 穴を null にするが、JCS の入力として渡された時点で値が確定していないので落とす
+  assert.equal(JSON.stringify(Array(2)), "[null,null]");
+  assert.throws(() => canonicalizeJson(Array(2)), /JSON に無い型/);
+  assert.throws(() => canonicalizeJson([1, , 3]), /JSON に無い型/);
+  assert.throws(() => canonicalizeJson({ a: [1, , 3] }), /JSON に無い型/);
+  // 穴でない undefined は配列でも同じ扱い
+  assert.throws(() => canonicalizeJson([undefined]), /JSON に無い型/);
+});
+
+test("I-JSON は代理と noncharacter を文字列に許さない（RFC 7493 §2.1）", () => {
+  // `JSON.parse` はどちらも通す
+  assert.deepEqual(JSON.parse('{"a":"\uDEAD"}'), { a: "\uDEAD" });
+
+  for (const bad of [
+    '{"a":"\uD800"}',
+    '{"a":["\uDEAD"]}',
+    '{"\uDEAD":1}',
+    '["a\uDC00"]',
+  ]) {
+    assert.throws(() => parseIJson(bad), /対になっていない代理/, bad);
+  }
+
+  // noncharacter も I-JSON では不正（面ごとの FFFE/FFFF と FDD0-FDEF）
+  for (const bad of [
+    '{"a":"\uFFFE"}',
+    '{"a":"\uFFFF"}',
+    '{"a":"\uFDD0"}',
+    '{"\uFFFE":1}',
+    '{"a":"\uDBFF\uDFFF"}', // U+10FFFF（代理対としては正しいが noncharacter）
+  ]) {
+    assert.throws(() => parseIJson(bad), /noncharacter/, bad);
+  }
+
+  // 正しい代理対は通る（RFC 7493 §2.1 が legal と書いている例そのもの）
+  assert.deepEqual(parseIJson('{"a":"\uD800\uDEAD"}'), { a: "\uD800\uDEAD" });
+});

@@ -46,7 +46,50 @@ function encodeString(value: string): string {
 export function parseIJson<T = unknown>(text: string): T {
   const value = JSON.parse(text) as T;
   assertNoDuplicateKeys(text);
+  assertIJsonStrings(value, "$");
   return value;
+}
+
+/**
+ * RFC 7493 §2.1:
+ *
+ * > Object member names, and string values in arrays and object members, MUST NOT include
+ * > code points that identify Surrogates or Noncharacters as defined by [UNICODE].
+ *
+ * 直接書いてもエスケープしても同じ扱いで、`"\uDEAD"` は不正・`"𐊭"` は正当。
+ * `JSON.parse` はどちらも通すので、読んだ後に見る。`canonicalizeJson` 側の検査
+ * （JCS §3.2.2.2）は代理だけが対象で noncharacter は見ないため、ここが I-JSON の担当。
+ */
+function assertIJsonString(value: string, where: string): void {
+  for (const ch of value) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp >= 0xd800 && cp <= 0xdfff) {
+      throw new Error(`I-JSON: ${where} に対になっていない代理が入っている: U+${hex(cp)}`);
+    }
+    if ((cp & 0xfffe) === 0xfffe || (cp >= 0xfdd0 && cp <= 0xfdef)) {
+      throw new Error(`I-JSON: ${where} に noncharacter が入っている: U+${hex(cp)}`);
+    }
+  }
+}
+
+function hex(codePoint: number): string {
+  return codePoint.toString(16).toUpperCase().padStart(4, "0");
+}
+
+function assertIJsonStrings(value: unknown, path: string): void {
+  if (typeof value === "string") {
+    assertIJsonString(value, path);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertIJsonStrings(item, `${path}[${index}]`));
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    assertIJsonString(key, `${path} のキー ${JSON.stringify(key)}`);
+    assertIJsonStrings(child, `${path}.${key}`);
+  }
 }
 
 /**
@@ -104,7 +147,9 @@ export function canonicalizeJson(value: unknown): string {
     return JSON.stringify(Object.is(value, -0) ? 0 : value);
   }
   if (typeof value === "string") return encodeString(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalizeJson).join(",")}]`;
+  // `Array.from` は穴を undefined として渡す。`map` だと穴を飛ばして `[,]` のような
+  // JSON でない bytes が出てしまうので、穴は下の「JSON に無い型」で落とす
+  if (Array.isArray(value)) return `[${Array.from(value, (item) => canonicalizeJson(item)).join(",")}]`;
   if (typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([, v]) => v !== undefined)
