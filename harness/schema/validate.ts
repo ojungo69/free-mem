@@ -256,7 +256,12 @@ function assertSchemaSupported(
   path: string,
   seenRefs: Set<string>,
 ): void {
-  if (!isPlainObject(schema)) return; // boolean schema と不正な形はデータ側で報告する
+  if (typeof schema === "boolean") return; // boolean schema は draft 2020-12 で合法
+  if (!isPlainObject(schema)) {
+    // 「データ側で報告する」では駄目。`anyOf: [42, {type:"string"}]` の 42 は分岐が
+    // 一致した時点で issue ごと消え、参照されない $defs のスカラーに至っては誰も見ない
+    throw new Error(`schema at ${path} must be an object or boolean, got ${typeof schema}`);
+  }
   for (const key of Object.keys(schema)) {
     if (!SUPPORTED_KEYWORDS.has(key)) {
       throw new Error(`unsupported schema keyword at ${path}: ${key}`);

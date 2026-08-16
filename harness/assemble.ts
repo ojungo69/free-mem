@@ -239,8 +239,14 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       if (ev.kind === "raw") continue;
       const kind = ev.kind as EventKind;
       const prev = capabilities.capture[kind];
-      // native は synthesized に降格させない（別 fixture で native 観測済みなら維持）
-      const demoting = prev.value === "native" && ev.capability === "synthesized";
+      // native は synthesized に降格させない（別 fixture で native 観測済みなら維持）。
+      // 値が上がらないなら証跡の質でも降格させない: hash 付きの実測を hash 無しの自己申告で
+      // 上書きすると、補強のつもりで足した fixture が file 名順しだいで証跡を消す
+      const evValue = ev.capability ?? "native";
+      const upgrades = (CAPABILITY_STRENGTH[evValue] ?? 0) > (CAPABILITY_STRENGTH[prev.value] ?? -1);
+      const demoting =
+        (prev.value === "native" && evValue === "synthesized") ||
+        (!upgrades && Boolean(prev.evidenceHash) && !f.evidenceHash);
       // limitations / sourceEvents は上書きせず統合する（後勝ちで caveat を消さない）
       const mergedLimits = dedupe([
         ...(prev.value === "unknown" ? [] : prev.limitations),
@@ -259,11 +265,11 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       // 誰も検証していない（fixtures/*/raw/ を読むコードは無い）。rig.isolated の自己申告
       // だけで real-cli-e2e を刻むのは高位 cell で潰した provenance 捏造と同じなので、
       // evidenceHash が付くまでは弱い証跡種別に落とす。
-      // sourceFixtureId / verifiedAt は「その kind を最後に観測した fixture」で、
-      // 高位 cell のような強度順の選抜はしていない（capture cell は tier 判定に入らないため）
+      // sourceFixtureId / verifiedAt は「値か証跡を最後に進めた fixture」で、
+      // 高位 cell のような強度順の選抜まではしていない（capture cell は tier 判定に入らないため）
       const hashed = Boolean(f.evidenceHash);
       capabilities.capture[kind] = {
-        value: ev.capability ?? "native",
+        value: evValue,
         sourceEvents: mergedSources,
         nativeVersion,
         evidenceKind: hashed ? "real-cli-e2e" : "source-test",
@@ -637,6 +643,31 @@ async function selfTest(): Promise<void> {
       const split = assembleFromFixtures([...order]).capabilities;
       assert(split.promptDeliveryBeforeModel.evidenceKind === null, "native/synthesized split drops the proof");
       assert(split.resumeDeliveryStrategy === "manual_only", "split must not reach native_prompt_gate");
+    }
+
+    // capture cell も同じ: hash 付きの実測を hash 無しの観測で上書きしない
+    const capHashed = {
+      ...hlBase,
+      fixtureId: "claude/cap-hashed",
+      capturedAt: at1,
+      scenario: "capture with hash",
+      evidenceHash: "1".repeat(64),
+      observedEvents: [{ kind: "session_started" as const, at: at1 }],
+    };
+    const capPlain = {
+      ...capHashed,
+      fixtureId: "claude/cap-plain",
+      capturedAt: at2,
+      observedEvents: [{ kind: "session_started" as const, at: at2 }],
+    };
+    delete (capPlain as { evidenceHash?: string }).evidenceHash;
+    for (const order of [
+      [capHashed, capPlain],
+      [capPlain, capHashed],
+    ]) {
+      const cap = assembleFromFixtures([...order]).capabilities.capture.session_started;
+      assert(cap.evidenceKind === "real-cli-e2e", "capture keeps the hashed provenance");
+      assert(cap.evidenceHash === "1".repeat(64), "capture keeps the hash");
     }
 
     // 同じ値・同じ強度なら evidenceHash のある観測を採る（並び順で実測の証跡を捨てない）

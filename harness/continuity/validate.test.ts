@@ -157,6 +157,16 @@ test("壊れた pattern は、値が文字列でなくても検出する", () =>
   );
 });
 
+test("schema の位置にスカラーが入っていたら preflight で弾く", () => {
+  // データ側の issue にすると、一致した分岐に飲まれて消える
+  assert.throws(
+    () => validateAgainstSchema("ok", { anyOf: [42, { type: "string" }] }, ROOT),
+    /schema at \$\.anyOf\[0\] must be an object or boolean, got number/,
+  );
+  // boolean schema は合法なので通す
+  assert.deepEqual(validateAgainstSchema("ok", { anyOf: [true, { type: "number" }] }, ROOT), []);
+});
+
 test("$ref から辿れない $defs の誤記も検出する", () => {
   const root: JsonSchemaDocument = {
     $defs: { Used: { type: "string" }, Unused: { type: "string", format: "date-time" } },
