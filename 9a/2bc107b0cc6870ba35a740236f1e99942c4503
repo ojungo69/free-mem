@@ -1,0 +1,38 @@
+.github/pull_request_template.md
+  s_5cbc4c67c8b3b4::t_99b2c6f8e2a687 23-31
+harness/license-inclusion-check.mjs
+  s_5cbc4c67c8b3b4::t_557ba4d040bf97 65-71
+  s_5cbc4c67c8b3b4::t_8409927f3c7d53 1-64,72-81
+README.md
+  s_5cbc4c67c8b3b4::t_f2fceb2e03d894 61-70
+THIRD_PARTY_NOTICES.md
+  s_5cbc4c67c8b3b4::t_cbce04d3f3e48b 14-50
+CONTRIBUTING.md
+  s_5cbc4c67c8b3b4::t_a53044d20cbab1 1-70
+evidence/adr-004-licensing.md
+  s_5cbc4c67c8b3b4::t_ea4a51266135a5 1-131
+NOTICE
+  s_5cbc4c67c8b3b4::t_540d94d870f6c6 1-9
+.github/workflows/ci.yml
+  s_5cbc4c67c8b3b4::t_b848d4273a08f9 80-94
+LICENSE
+  s_5cbc4c67c8b3b4::t_6d80f25008b3bd 1-202
+evidence/README.md
+  s_5cbc4c67c8b3b4::t_87e297746e1376 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9a2bc107b0cc6870ba35a740236f1e99942c4503",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
