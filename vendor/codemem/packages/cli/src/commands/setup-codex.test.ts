@@ -439,6 +439,7 @@ describe("installCodex — non-destructive merge", () => {
 	it("preserves unrelated config.toml content (comments + other MCP servers)", () => {
 		const original = [
 			"# my codex config",
+			'workspace = "C:\\\\Users\\\\jura"',
 			"",
 			"[mcp_servers.other]",
 			'command = "other-cmd"',
@@ -450,6 +451,7 @@ describe("installCodex — non-destructive merge", () => {
 
 		const toml = readConfigToml();
 		expect(toml).toContain("# my codex config");
+		expect(toml).toContain('workspace = "C:\\\\Users\\\\jura"');
 		expect(toml).toContain("[mcp_servers.other]");
 		expect(toml).toContain('command = "other-cmd"');
 		expect(toml).toContain("[mcp_servers.codemem]");
@@ -503,6 +505,36 @@ describe("installCodex — non-destructive merge", () => {
 			expect(readConfigToml()).not.toContain(`${key} =`);
 			expect(readConfigToml()).toContain('[mcp_servers.other]\ncommand = "other-cmd"');
 		}
+
+		const customWithEmbeddedManagedExample = [
+			"[mcp_servers.codemem]",
+			'description = """',
+			`command = ${JSON.stringify(process.execPath)}`,
+			`args = [${JSON.stringify(runtime.cliPath)}, "mcp"]`,
+			'"""',
+			'command = "custom"',
+			'args = ["mcp"]',
+			"",
+		].join("\n");
+		writeFileSync(join(codexHome, "config.toml"), customWithEmbeddedManagedExample, "utf-8");
+		expect(installCodex(false)).toBe(false);
+		expect(readConfigToml()).toBe(customWithEmbeddedManagedExample);
+
+		const managedWithNestedArray = [
+			"[mcp_servers.codemem]",
+			'command = "npx"',
+			'args = ["-y", "codemem", "mcp"]',
+			"metadata = [",
+			'  ["not-a-table"]',
+			"]",
+			"[mcp_servers.other]",
+			'command = "other"',
+			"",
+		].join("\n");
+		writeFileSync(join(codexHome, "config.toml"), managedWithNestedArray, "utf-8");
+		expect(installCodex(true)).toBe(true);
+		expect(readConfigToml()).not.toContain("not-a-table");
+		expect(readConfigToml()).toContain('[mcp_servers.other]\ncommand = "other"');
 	});
 
 	it("preserves an unrelated user SessionStart hook and adds the codemem hook", () => {
@@ -1021,6 +1053,40 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 		expect(toml).toContain("[mcp_servers.codemem-foo]");
 		// Our real block was appended (distinct from the sibling).
 		expect(toml.split("[mcp_servers.codemem]").length - 1).toBe(1);
+
+		for (const embeddedExample of [
+			[
+				'documentation = """',
+				"[mcp_servers.codemem]",
+				'command = "example"',
+				'args = ["mcp"]',
+				'"""',
+			],
+			["documentation = '''", "[mcp_servers.codemem.env]", 'TOKEN = "example"', "'''"],
+		]) {
+			const config = [...embeddedExample, "", "[mcp_servers.other]", 'command = "other"', ""].join(
+				"\n",
+			);
+			writeFileSync(join(codexHome, "config.toml"), config, "utf-8");
+			expect(installCodex(true)).toBe(true);
+			const installed = readConfigToml();
+			expect(installed).toContain(config);
+			expect(installed.lastIndexOf("[mcp_servers.codemem]")).toBeGreaterThan(
+				installed.indexOf("[mcp_servers.other]"),
+			);
+		}
+
+		const dottedAfterNestedArray = [
+			"documentation = [",
+			'  ["not-a-table"]',
+			"]",
+			'mcp_servers.codemem.command = "custom"',
+			'mcp_servers.codemem.args = ["mcp"]',
+			"",
+		].join("\n");
+		writeFileSync(join(codexHome, "config.toml"), dottedAfterNestedArray, "utf-8");
+		expect(installCodex(false)).toBe(false);
+		expect(readConfigToml()).toBe(dottedAfterNestedArray);
 	});
 
 	it('detects a quoted [mcp_servers."codemem"] table and does not append a duplicate', () => {
@@ -1043,12 +1109,27 @@ describe("installCodex — config.toml MCP detection edge cases", () => {
 		}
 		for (const custom of [
 			'mcp_servers.codemem.command = "custom"\nmcp_servers.codemem.args = ["mcp"]\n',
+			"mcp_servers.codemem = {} other = { important = 1 }\n",
 			'mcp_servers = { codemem = { command = "custom", args = ["mcp"] }, other = { command = "other" } }\n',
 			'mcp_servers={codemem={command="custom",args=["mcp"]}}\n',
+			'mcp_servers = { codemem.command = "custom", codemem.args = ["mcp"] }\n',
+			'mcp_servers = { other = { command = "other" } }\n',
+			"mcp_servers = {}\n",
+			"mcp_servers = []\n",
+			'mcp_servers = "custom"\n',
 			'[mcp_servers]\ncodemem = { command = "custom", args = ["mcp"] }\n',
+			'[mcp_servers]\r\ncodemem = { command = "custom", args = ["mcp"] }\r\n',
 			'[mcp_servers]\ncodemem.command = "custom"\ncodemem.args = ["mcp"]\n',
 			'[mcp_servers.codemem.env]\nNODE_OPTIONS = "--require=/tmp/payload.cjs"\n',
 			'[mcp_servers.codemem]\ncommand = "npx"\nargs = ["-y", "codemem", "mcp"]\n\n[mcp_servers.codemem.env]\nNODE_OPTIONS = "--require=/tmp/payload.cjs"\n',
+			'["mcp\\u005fservers"."codemem"]\ncommand = "custom"\nargs = ["mcp"]\n',
+			'[mcp_servers.codemem]\ncommand = "npx"\nargs = ["-y", "codemem", "mcp"]\n\n[mcp_servers."code\\u006dem".env]\nNODE_OPTIONS = "--require=/tmp/payload.cjs"\n',
+			'[mcp_servers]\n"code\\u006dem" = { command = "custom", args = ["mcp"] }\n',
+			'[mcp_servers.codemem] [unrelated]\ncommand = "npx"\nargs = ["-y", "codemem", "mcp"]\n',
+			'[[mcp_servers]]\nname = "custom"\n',
+			'mcp_servers.codemem = """\ncommand = "custom"\nargs = ["mcp"]\n"""\n',
+			'[[mcp_servers.codemem]]\ncommand = "custom"\nargs = ["mcp"]\n',
+			'[mcp_servers.codemem]\ncommand = "custom"\nargs = ["mcp"]\n\n[mcp_servers.codemem]\ncommand = "other"\nargs = ["mcp"]\n',
 		]) {
 			writeFileSync(join(codexHome, "config.toml"), custom, "utf8");
 			expect(installCodex(false)).toBe(false);

@@ -179,9 +179,240 @@ function managedLegacyCommand(command: unknown, args?: unknown): boolean {
 	return false;
 }
 
+// Keep source offsets stable while hiding string/comment data and recording
+// only depth-zero logical lines that can define TOML keys or tables.
+interface TomlStructure {
+	text: string;
+	topLevelLines: number[];
+	tableStarts: number[];
+}
+
+function isTomlTableHeader(header: string): boolean {
+	const arrayTable = header.startsWith("[[");
+	const bodyStart = arrayTable ? 2 : 1;
+	let quote: '"' | "'" | null = null;
+	for (let i = bodyStart; i < header.length; i += 1) {
+		const char = header[i] ?? "";
+		if (quote === '"' && char === "\\") {
+			i += 1;
+			continue;
+		}
+		if (quote !== null) {
+			if (char === quote) quote = null;
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			continue;
+		}
+		if (char !== "]") continue;
+		if (header.slice(bodyStart, i).trim() === "") return false;
+		const end = arrayTable ? i + 2 : i + 1;
+		if (arrayTable && header[i + 1] !== "]") return false;
+		return header.slice(end).trim() === "";
+	}
+	return false;
+}
+
+function scanTomlStructure(source: string): TomlStructure | null {
+	type State = "code" | "comment" | "basic" | "literal" | "multiline-basic" | "multiline-literal";
+	let state: State = "code";
+	let masked = "";
+	let arrayDepth = 0;
+	let inlineTableDepth = 0;
+	let lineStart = 0;
+	let lineHasCode = false;
+	let tableLine = false;
+	const topLevelLines: number[] = [];
+	const tableStarts: number[] = [];
+	const blank = (char: string): string => (char === "\n" || char === "\r" ? char : " ");
+
+	for (let i = 0; i < source.length; ) {
+		const char = source[i] ?? "";
+		const startsLine = !lineHasCode;
+		if (char === "\n") {
+			lineStart = i + 1;
+			lineHasCode = false;
+			tableLine = false;
+		} else if (char !== "\r" && char !== " " && char !== "\t") {
+			lineHasCode = true;
+		}
+		if (state === "comment") {
+			masked += blank(char);
+			if (char === "\n") state = "code";
+			i += 1;
+			continue;
+		}
+		if (state === "multiline-basic" || state === "multiline-literal") {
+			const quote = state === "multiline-basic" ? '"' : "'";
+			let quoteCount = 0;
+			while (source[i + quoteCount] === quote) quoteCount += 1;
+			if (quoteCount >= 3) {
+				if (quoteCount > 5) return null;
+				masked += " ".repeat(quoteCount);
+				i += quoteCount;
+				state = "code";
+				continue;
+			}
+			masked += blank(char);
+			i += 1;
+			if (state === "multiline-basic" && char === "\\" && i < source.length) {
+				const escaped = source[i] ?? "";
+				masked += blank(escaped);
+				if (escaped === "\n") {
+					lineStart = i + 1;
+					lineHasCode = false;
+					tableLine = false;
+				}
+				i += 1;
+			}
+			continue;
+		}
+		if (state === "basic" || state === "literal") {
+			if (char === "\n" || char === "\r") return null;
+			masked += char;
+			i += 1;
+			if (state === "basic" && char === "\\" && i < source.length) {
+				const escaped = source[i] ?? "";
+				if (escaped === "\n" || escaped === "\r") return null;
+				masked += escaped;
+				i += 1;
+			} else if ((state === "basic" && char === '"') || (state === "literal" && char === "'")) {
+				state = "code";
+			}
+			continue;
+		}
+		if (char === "#") {
+			masked += " ";
+			state = "comment";
+			i += 1;
+		} else if (source.startsWith('"""', i) || source.startsWith("'''", i)) {
+			state = source.startsWith('"""', i) ? "multiline-basic" : "multiline-literal";
+			masked += "   ";
+			i += 3;
+		} else {
+			if (
+				startsLine &&
+				char !== "\n" &&
+				char !== "\r" &&
+				char !== " " &&
+				char !== "\t" &&
+				arrayDepth === 0 &&
+				inlineTableDepth === 0
+			) {
+				topLevelLines.push(lineStart);
+				if (char === "[") {
+					tableStarts.push(lineStart);
+					tableLine = true;
+				}
+			}
+			masked += char;
+			if (char === '"') state = "basic";
+			else if (char === "'") state = "literal";
+			else if (!tableLine && char === "[") arrayDepth += 1;
+			else if (!tableLine && char === "]") {
+				if (arrayDepth === 0) return null;
+				arrayDepth -= 1;
+			} else if (!tableLine && char === "{") inlineTableDepth += 1;
+			else if (!tableLine && char === "}") {
+				if (inlineTableDepth === 0) return null;
+				inlineTableDepth -= 1;
+			}
+			i += 1;
+		}
+	}
+
+	if ((state !== "code" && state !== "comment") || arrayDepth !== 0 || inlineTableDepth !== 0) {
+		return null;
+	}
+	for (const start of tableStarts) {
+		const newline = masked.indexOf("\n", start);
+		const header = masked.slice(start, newline < 0 ? masked.length : newline).trim();
+		if (!isTomlTableHeader(header)) return null;
+	}
+	return { text: masked, topLevelLines, tableStarts };
+}
+
+function matchingTomlLines(
+	structure: TomlStructure,
+	pattern: RegExp,
+	starts: number[] = structure.topLevelLines,
+	before = structure.text.length,
+): number[] {
+	return starts.filter((start) => {
+		if (start >= before) return false;
+		return pattern.test(tomlLineAt(structure, start));
+	});
+}
+
+function tomlLineAt(structure: TomlStructure, start: number): string {
+	const newline = structure.text.indexOf("\n", start);
+	const end = newline < 0 ? structure.text.length : newline;
+	const line = structure.text.slice(start, end);
+	return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+function tomlKeyHasBasicEscape(line: string): boolean {
+	const table = line.trimStart().startsWith("[");
+	let quote: '"' | "'" | null = null;
+	for (let i = 0; i < line.length; i += 1) {
+		const char = line[i] ?? "";
+		if (quote === '"' && char === "\\") return true;
+		if (quote !== null) {
+			if (char === quote) quote = null;
+			continue;
+		}
+		if (char === '"' || char === "'") quote = char;
+		else if (!table && char === "=") return false;
+	}
+	return false;
+}
+
+function isSingleInlineTableAssignment(line: string): boolean {
+	let quote: '"' | "'" | null = null;
+	let valueStart = -1;
+	for (let i = 0; i < line.length; i += 1) {
+		const char = line[i] ?? "";
+		if (quote === '"' && char === "\\") {
+			i += 1;
+			continue;
+		}
+		if (quote !== null) {
+			if (char === quote) quote = null;
+			continue;
+		}
+		if (char === '"' || char === "'") quote = char;
+		else if (char === "=") {
+			valueStart = i + 1;
+			break;
+		}
+	}
+	while (line[valueStart] === " " || line[valueStart] === "\t") valueStart += 1;
+	if (valueStart < 0 || line[valueStart] !== "{") return false;
+	let depth = 0;
+	quote = null;
+	for (let i = valueStart; i < line.length; i += 1) {
+		const char = line[i] ?? "";
+		if (quote === '"' && char === "\\") {
+			i += 1;
+			continue;
+		}
+		if (quote !== null) {
+			if (char === quote) quote = null;
+			continue;
+		}
+		if (char === '"' || char === "'") quote = char;
+		else if (char === "{") depth += 1;
+		else if (char === "}" && --depth === 0) return line.slice(i + 1).trim() === "";
+	}
+	return false;
+}
+
 function parseCodexMcpCommand(block: string): { command: string; args: string[] } | null {
-	const commandSource = /^\s*command\s*=\s*("(?:\\.|[^"\\])*")\s*(?:#.*)?$/m.exec(block)?.[1];
-	const argsSource = /^\s*args\s*=\s*\[([\s\S]*?)\]\s*(?:#.*)?$/m.exec(block)?.[1];
+	const structure = scanTomlStructure(block);
+	if (structure === null) return null;
+	const commandSource = /^\s*command\s*=\s*("(?:\\.|[^"\\])*")\s*$/m.exec(structure.text)?.[1];
+	const argsSource = /^\s*args\s*=\s*\[([\s\S]*?)\]\s*$/m.exec(structure.text)?.[1];
 	if (!commandSource || argsSource === undefined) return null;
 	const stringSources = argsSource.match(/"(?:\\.|[^"\\])*"/g) ?? [];
 	if (argsSource.replace(/"(?:\\.|[^"\\])*"/g, "").replace(/[\s,]/g, "") !== "") return null;
@@ -495,48 +726,94 @@ const CODEX_MCP_TABLE_RE =
 	/^[ \t]*\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\]/m;
 const CODEX_MCP_DESCENDANT_TABLE_RE =
 	/^[ \t]*\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\./m;
-const CODEX_MCP_DOTTED_RE = /^[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*=.*$/m;
+const CODEX_MCP_ARRAY_TABLE_RE =
+	/^[ \t]*\[\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2(?:[ \t]*\.|[ \t]*\]\])/m;
+const CODEX_MCP_DOTTED_KEY_RE = /^[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*=/m;
 const CODEX_MCP_DESCENDANT_RE =
 	/^[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\./m;
-const CODEX_MCP_INLINE_PARENT_RE =
-	/^[ \t]*(["']?)mcp_servers\1[ \t]*=[ \t]*\{(?:[ \t]*(["']?)codemem\2[ \t]*=|[^\r\n]*,[ \t]*(["']?)codemem\3[ \t]*=)/m;
+const CODEX_MCP_ROOT_ASSIGNMENT_RE = /^[ \t]*(["']?)mcp_servers\1[ \t]*=/m;
+const CODEX_MCP_PARENT_ARRAY_TABLE_RE = /^[ \t]*\[\[[ \t]*(["']?)mcp_servers\1[ \t]*\]\][ \t]*$/m;
 const CODEX_MCP_PARENT_TABLE_RE = /^[ \t]*\[[ \t]*(["']?)mcp_servers\1[ \t]*\][ \t]*(?:#.*)?$/m;
 const CODEX_MCP_PARENT_CHILD_RE = /^[ \t]*(["']?)codemem\1[ \t]*(?:=|\.)/m;
 
 function hasUnsupportedCodexMcpLayout(existing: string): boolean {
-	if (CODEX_MCP_DESCENDANT_TABLE_RE.test(existing)) return true;
-	const firstTable = existing.search(/^[ \t]*\[[^\r\n]*\][ \t]*(?:#.*)?$/m);
-	const rootAssignments = firstTable < 0 ? existing : existing.slice(0, firstTable);
+	const structure = scanTomlStructure(existing);
+	if (structure === null) return true;
 	if (
-		CODEX_MCP_DESCENDANT_RE.test(rootAssignments) ||
-		CODEX_MCP_INLINE_PARENT_RE.test(rootAssignments)
+		structure.topLevelLines.some((start) => tomlKeyHasBasicEscape(tomlLineAt(structure, start)))
 	) {
 		return true;
 	}
-	const parent = CODEX_MCP_PARENT_TABLE_RE.exec(existing);
-	if (parent?.index === undefined) return false;
-	const bodyStart = parent.index + parent[0].length;
-	const nextTable = existing.slice(bodyStart).search(/^[ \t]*\[/m);
-	const body = existing.slice(bodyStart, nextTable < 0 ? existing.length : bodyStart + nextTable);
-	return CODEX_MCP_PARENT_CHILD_RE.test(body);
+	const tables = matchingTomlLines(structure, CODEX_MCP_TABLE_RE, structure.tableStarts);
+	const firstTable = structure.tableStarts[0] ?? structure.text.length;
+	const dottedKeys = matchingTomlLines(
+		structure,
+		CODEX_MCP_DOTTED_KEY_RE,
+		structure.topLevelLines,
+		firstTable,
+	);
+	if (
+		tables.length > 1 ||
+		dottedKeys.length > 1 ||
+		tables.length + dottedKeys.length > 1 ||
+		matchingTomlLines(structure, CODEX_MCP_DESCENDANT_TABLE_RE, structure.tableStarts).length > 0 ||
+		matchingTomlLines(structure, CODEX_MCP_ARRAY_TABLE_RE, structure.tableStarts).length > 0 ||
+		matchingTomlLines(structure, CODEX_MCP_DESCENDANT_RE, structure.topLevelLines, firstTable)
+			.length > 0 ||
+		matchingTomlLines(structure, CODEX_MCP_ROOT_ASSIGNMENT_RE, structure.topLevelLines, firstTable)
+			.length > 0 ||
+		matchingTomlLines(structure, CODEX_MCP_PARENT_ARRAY_TABLE_RE, structure.tableStarts).length > 0
+	) {
+		return true;
+	}
+	if (dottedKeys.length === 1) {
+		const start = dottedKeys[0] ?? 0;
+		if (!isSingleInlineTableAssignment(tomlLineAt(structure, start))) {
+			return true;
+		}
+	}
+	const parents = matchingTomlLines(structure, CODEX_MCP_PARENT_TABLE_RE, structure.tableStarts);
+	if (parents.length > 1) return true;
+	const parent = parents[0];
+	if (parent === undefined) return false;
+	const nextTable = structure.tableStarts.find((start) => start > parent) ?? structure.text.length;
+	if (
+		matchingTomlLines(
+			structure,
+			CODEX_MCP_PARENT_CHILD_RE,
+			structure.topLevelLines,
+			nextTable,
+		).some((start) => start > parent)
+	) {
+		return true;
+	}
+	return false;
 }
 
 function codexMcpTable(existing: string): { start: number; end: number; block: string } | null {
-	const match = CODEX_MCP_TABLE_RE.exec(existing);
-	if (match?.index !== undefined) {
-		const nextTable = existing.slice(match.index + match[0].length).search(/^[ \t]*\[/m);
-		const end = nextTable < 0 ? existing.length : match.index + match[0].length + nextTable;
-		return { start: match.index, end, block: existing.slice(match.index, end).trim() };
+	const structure = scanTomlStructure(existing);
+	if (structure === null) return null;
+	const table = matchingTomlLines(structure, CODEX_MCP_TABLE_RE, structure.tableStarts)[0];
+	if (table !== undefined) {
+		const end = structure.tableStarts.find((start) => start > table) ?? structure.text.length;
+		return { start: table, end, block: existing.slice(table, end).trim() };
 	}
-	const firstTable = existing.search(/^[ \t]*\[[^\r\n]*\][ \t]*(?:#.*)?$/m);
-	const dotted = CODEX_MCP_DOTTED_RE.exec(
-		firstTable < 0 ? existing : existing.slice(0, firstTable),
-	);
-	if (dotted?.index === undefined) return null;
+	const firstTable = structure.tableStarts[0] ?? structure.text.length;
+	const dotted = matchingTomlLines(
+		structure,
+		CODEX_MCP_DOTTED_KEY_RE,
+		structure.topLevelLines,
+		firstTable,
+	)[0];
+	if (dotted === undefined || !isSingleInlineTableAssignment(tomlLineAt(structure, dotted))) {
+		return null;
+	}
+	const newline = structure.text.indexOf("\n", dotted);
+	const end = newline < 0 ? structure.text.length : newline;
 	return {
-		start: dotted.index,
-		end: dotted.index + dotted[0].length,
-		block: dotted[0].trim(),
+		start: dotted,
+		end,
+		block: existing.slice(dotted, end).trim(),
 	};
 }
 
