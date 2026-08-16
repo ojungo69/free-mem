@@ -388,12 +388,19 @@ export function idempotencyKeyOf(event: NormalizedContinuityEvent): string {
 }
 
 /**
- * 台帳の内部鍵。v6 §8.2 の導出式は adapterDeliveryId と fingerprint を同じ keyspace に置くので、
+ * 台帳の鍵。v6 §8.2 の導出式は adapterDeliveryId と fingerprint を同じ keyspace に置くので、
  * `adapterDeliveryId` に他 event の `canonicalFingerprint` を書いた event を先に送ると、本物の
  * event が診断ゼロの重複として消える（`adapterDeliveryId` は adapter が自由に採番する値）。
  * wire に出る導出式は正本のままにして、台帳の中だけ authority を分ける。
+ *
+ * **`idempotencyKeyOf` ではなくこちらが台帳の鍵**なので export する。`IdempotencyLedger` は
+ * caller が渡して caller に返る = 構築・永続化・復元は caller の責務なのに、公開していたのは
+ * 接頭辞の無い `idempotencyKeyOf` だけだった。公開関数で台帳を組み立て直した daemon は全 entry で
+ * 還元器と食い違い、重複判定が一度も発火しないまま再配送が新規 event として適用される（実測:
+ * 還元器が引くのは `"d:delivery-start"`、公開関数が返すのは `"delivery-start"`）。`d:`/`f:` の
+ * 分割は wire にも hash にも出ない内部詳細なので、caller が自力で再現しようと思う類の知識ではない。
  */
-function ledgerKeyOf(event: NormalizedContinuityEvent): string {
+export function ledgerKeyOf(event: NormalizedContinuityEvent): string {
   const key = idempotencyKeyOf(event);
   return event.adapterDeliveryId === undefined || isBlank(event.adapterDeliveryId)
     ? `f:${key}`
@@ -812,24 +819,27 @@ export function reduceTaskWorkState(
       // 違う turn で届きうる。記録が turn 同一性を持たないときに再配送側の turn を書くと、rule 2 の
       // 照合権限を「元の start に無かった turn」で与えることになる（欠落と違って、これは記録の
       // 意味を変える）。降格された turn の回復は #35 の本筋で扱う
-      const recovered: OperationCorrelationV1 = {
+      // 値が無い欄は**キーごと**落とす。JCS は `undefined` を canonicalize できないので、
+      // `{ nativeOperationId: undefined }` を残すと状態 hash の計算で例外になる
+      const recovered = withoutUndefined<OperationCorrelationV1>({
         ...existing.correlation,
         nativeOperationId: existing.correlation.nativeOperationId ?? operation.nativeOperationId,
         canonicalInputHash: existing.correlation.canonicalInputHash ?? operation.canonicalInputHash,
         toolName: existing.correlation.toolName ?? operation.operationKind,
-      };
-      // 「何を埋めたか」は上の object から導く。埋める欄を別の場所に手で並べると、欄が増えたとき
-      // 片方だけ更新されて緑のまま守らなくなる
-      const filled = (Object.keys(recovered) as (keyof OperationCorrelationV1)[]).some(
-        (field) => existing.correlation[field] !== recovered[field],
-      );
+      });
+      // **原因 event を operation に残す**。この経路は配送鍵を消費して revision も進めるのに、
+      // 状態を変える他の経路（照合できた terminal / `unknown` に倒した候補 / 放棄）が全部
+      // 呼んでいる `withSourceEvent` だけ呼んでいなかった。しかも上で correlation を埋めるように
+      // したので、**状態が変わった理由が状態からも辿れない**（`history` は
+      // `CanonicalWorkStateV1` の欄ではないので永続的な provenance にならない）。
+      // 同じ eventId の再配送（台帳だけ失った復元）では `withSourceEvent` が早期 return するので
+      // 増えない = 増えるのは eventId が変わる本来の再配送契約のときだけ
       return commit(previous, event, idempotencyLedger, {
-        // 埋める材料が無いときは状態を触らない（意味の無い revision 採番を作らない）
-        pendingOperations: filled
-          ? previous.state.pendingOperations.map((pending) =>
-              pending === existing ? { ...pending, correlation: recovered } : pending,
-            )
-          : previous.state.pendingOperations,
+        pendingOperations: previous.state.pendingOperations.map((pending) =>
+          pending === existing
+            ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)
+            : pending,
+        ),
         diagnostics: [
           { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${existing.operationId} は既に pending` },
         ],
@@ -929,7 +939,7 @@ export function reduceTaskWorkState(
     // 別 session のものまで——が `unknown` になる。§4.3 が集合単位で指示しているのは
     // 「candidates を unknown のままにする」であって、候補の外へ広げてよいとは言っていない
     const unresolved = new Set(correlation.unresolved);
-    const truncated = sourceEventsFull(previous.state.pendingOperations, unresolved);
+    const truncated = sourceEventsFull(previous.state.pendingOperations, unresolved, event.eventId);
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: previous.state.pendingOperations.map((pending) =>
         unresolved.has(pending)
@@ -944,7 +954,11 @@ export function reduceTaskWorkState(
   }
 
   const status = terminalStatusOf(event);
-  const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([correlation.matched]));
+  const truncated = sourceEventsFull(
+    previous.state.pendingOperations,
+    new Set([correlation.matched]),
+    event.eventId,
+  );
   return commit(previous, event, idempotencyLedger, {
     // 照合された 1 件だけを更新する。`operationId` の等値で当てると、**状態側で
     // `operationId` が衝突している**とき terminal 1 通が複数の operation を診断ゼロで閉じる。
@@ -1031,6 +1045,17 @@ function retainPendingOperations(
  * 上限で頭打ちにし、超えた分は状態に載せない（記録できなかった事実は診断に出す）。上限を見ずに append すると、
  * 同じ operation に届き続ける terminal で還元器自身が schema 違反の状態を出す。
  */
+/**
+ * 値が `undefined` の欄をキーごと落とす。JCS（§22.6 の canonical form）は `undefined` を
+ * canonicalize できないので、任意欄を `?? ` で埋める形で組み立てた object をそのまま状態へ
+ * 入れると、両方が無いときに hash 計算が例外になる。
+ */
+function withoutUndefined<T extends object>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as T;
+}
+
 function withSourceEvent(pending: PendingOperation, eventId: string): PendingOperation {
   if (pending.sourceEventIds.includes(eventId)) return pending;
   if (pending.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems) return pending;
@@ -1042,9 +1067,15 @@ function withSourceEvent(pending: PendingOperation, eventId: string): PendingOpe
 function sourceEventsFull(
   pending: readonly PendingOperation[],
   targets: ReadonlySet<PendingOperation>,
+  eventId: string,
 ): string[] {
   return pending
     .filter((candidate) => targets.has(candidate))
+    // `withSourceEvent` の判定と揃える。あちらは「既に記録済みなら何もしない」を先に見るので、
+    // 上限に達していても**その event は失われていない**。長さだけで判定すると、何も失って
+    // いないのに `source_events_truncated` が出る（診断文は「この event を記録できない」と
+    // event について断言する形なので、本当に記録できなかった場合と区別がつかなくなる）
+    .filter((candidate) => !candidate.sourceEventIds.includes(eventId))
     .filter((candidate) => candidate.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems)
     .map((candidate) => candidate.operationId);
 }
@@ -1646,7 +1677,7 @@ export function finalizeAbandonedState(
   );
   // 還元器の terminal 経路と同じ扱い。`sourceEventIds` が上限の operation は status だけ
   // `unknown` に変わって、そう変えた理由の event が状態から落ちる。黙って落とさず報告する
-  const truncated = sourceEventsFull(state.pendingOperations, abandoned);
+  const truncated = sourceEventsFull(state.pendingOperations, abandoned, event.eventId);
   const content = nextContent(state, event, pendingOperations);
   const next = {
     ...content,

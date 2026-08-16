@@ -309,6 +309,8 @@ mutate "      pending.correlation.taskLineageId === snapshot.state.taskLineageId
 mutate "            (pending.correlation.toolName === undefined ||
               pending.correlation.toolName === operation.operationKind)," "            pending.correlation.toolName === operation.operationKind," && run "候補の toolName を素で比べる"
 mutate "      correlation.diagnostic !== \"terminal_already_applied\"" "      true" && run "適用済みの再配送も隔離する"
+mutate "    .filter((candidate) => !candidate.sourceEventIds.includes(eventId))" "    .filter(() => true)" && run "記録済みの event でも truncation を出す"
+mutate "            ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)" "            ? { ...pending, correlation: recovered }" && run "再配送 start の原因 event を残さない"
 mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの母数を compatible に戻す"
 mutate "            code: \"delivery_conflict\",
             eventId: event.eventId,

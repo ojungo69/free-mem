@@ -22,11 +22,13 @@ import {
   correlateTerminalEvent,
   finalizeAbandonedState,
   idempotencyKeyOf,
+  ledgerKeyOf,
   reduceTaskWorkState,
   stampIntakeEvidence,
   type IdempotencyLedger,
   type IntakeContextV1,
   type IntakeStampedEventV1,
+  type LedgerEntryV1,
   type TaskWorkStateSnapshotV1,
 } from "./reference-model.ts";
 
@@ -2550,6 +2552,82 @@ test("照合不能で unknown に倒すのは付け替え先になりうる候�
     result.snapshot.state.pendingOperations.map((p) => p.status),
     ["unknown", "succeeded", "started"],
   );
+});
+
+test("公開している鍵関数で台帳を組み立てると重複判定が効く", () => {
+  // `IdempotencyLedger` は caller が渡して caller に返る = 構築・永続化・復元は caller の責務。
+  // なのに公開していたのは接頭辞の無い `idempotencyKeyOf` だけで、還元器が引くのは `d:` / `f:` の
+  // ついた内部鍵だった。公開関数で組み立て直した台帳は全 entry で食い違い、重複判定が発火しない
+  const event = startEvent();
+  const applied = reduceTaskWorkState(emptySnapshot(), event, new Map());
+  assert.deepEqual([...applied.ledger.keys()], [ledgerKeyOf(event)]);
+  // 公開鍵で組み立て直した台帳でも、還元器と同じ entry を指す
+  const rebuilt = new Map([[ledgerKeyOf(event), applied.ledger.get(ledgerKeyOf(event)) as LedgerEntryV1]]);
+  const again = reduceTaskWorkState(applied.snapshot, event, rebuilt);
+  assert.equal(again.outcome, "duplicate");
+  assert.equal(again.snapshot.state.stateRevision, applied.snapshot.state.stateRevision);
+  // 接頭辞の無い鍵で組み立てると重複判定が発火せず、そのまま適用されてしまう（塞ぐ前の挙動）
+  const wrongKey = new Map([[idempotencyKeyOf(event), applied.ledger.get(ledgerKeyOf(event)) as LedgerEntryV1]]);
+  assert.notEqual(reduceTaskWorkState(applied.snapshot, event, wrongKey).outcome, "duplicate");
+  // 台帳の鍵は `idempotencyKeyOf` の戻り値そのものではない（wire の導出式と keyspace を分けている）
+  assert.notEqual(ledgerKeyOf(event), idempotencyKeyOf(event));
+});
+
+test("再配送 start も原因 event を operation に残す", () => {
+  // この経路は配送鍵を消費し revision も進め、記録に欠けている識別材料も埋めるのに、
+  // 状態を変える他の経路が全部呼んでいる `withSourceEvent` だけ呼んでいなかった
+  // 再配送契約は「同じ adapterDeliveryId・違う eventId・違う ingestSeq」なので derived id は
+  // 一致しない。再配送として拾えるのは nativeOperationId が一致する場合（本物の呼び出しごとに一意）
+  const seeded = startedSnapshot();
+  const redelivered = reduceTaskWorkState(
+    seeded,
+    startEvent({
+      eventId: "event-start-2",
+      canonicalFingerprint: "fingerprint-start-2",
+      ingestSeq: "13",
+    }),
+    new Map(),
+  );
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.deepEqual(
+    redelivered.snapshot.state.pendingOperations[0]?.sourceEventIds,
+    ["event-start", "event-start-2"],
+  );
+  // 同じ eventId の再配送（台帳だけ失った復元）では増えない
+  const sameId = reduceTaskWorkState(seeded, startEvent({ ingestSeq: "13" }), new Map());
+  assert.deepEqual(sameId.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.deepEqual(sameId.snapshot.state.pendingOperations[0]?.sourceEventIds, ["event-start"]);
+});
+
+test("既に記録済みの event で source_events_truncated を出さない", () => {
+  // `withSourceEvent` は「既に記録済みなら何もしない」を先に見るので、上限に達していても
+  // その event は失われていない。長さだけで判定すると、何も失っていないのに診断が出る
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const pending = base.state.pendingOperations[0] as PendingOperation;
+  const full: PendingOperation = {
+    ...pending,
+    sourceEventIds: [
+      ...Array.from({ length: CONTINUITY_LIMITS.arrayItems - 1 }, (_, index) => `filler-${index}`),
+      "event-terminal",
+    ],
+  };
+  const closed = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [full] } },
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  // 本当に記録できない場合は従来どおり出る
+  const otherIds: PendingOperation = {
+    ...pending,
+    sourceEventIds: Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, index) => `filler-${index}`),
+  };
+  const truncated = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [otherIds] } },
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(truncated.diagnostics.map((d) => d.code), ["source_events_truncated"]);
 });
 
 test("記録できる候補が 1 件も無い terminal は、兄弟の有無に関わらず鍵を残す", () => {
