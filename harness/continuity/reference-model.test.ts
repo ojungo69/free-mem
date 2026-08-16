@@ -872,6 +872,27 @@ test("空文字の eventId は schema violation", () => {
   );
 });
 
+test("空文字の sessionId は schema violation", () => {
+  // 候補選びも放棄も session で絞るので、空文字だと session を特定できない adapter の event が
+  // 全部同じ scope に入り、別 session の terminal が診断ゼロで operation を閉じる。
+  // 実 ID なら terminal_orphaned で隔離される（control）
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), startEvent({ sessionId: "" }), new Map()),
+    /sessionId が空文字/,
+  );
+  const started = startedSnapshot(startEvent({ sessionId: "session-A" }));
+  const crossSession = reduceTaskWorkState(
+    started,
+    terminalEvent({ sessionId: "session-B" }),
+    new Map(),
+  );
+  assert.equal(crossSession.outcome, "quarantined");
+  assert.deepEqual(
+    crossSession.diagnostics.map((d) => d.code),
+    ["terminal_orphaned"],
+  );
+});
+
 test("構成要素が消えても sensitivity は下がらない", () => {
   // §10「sensitivity は構成要素 event の最大機密度を常に反映する」。集約値を実体に持たせる理由が
   // 「raw event の TTL 後には遡って判定できない」ことなので、構成要素が状態から消えても下げない

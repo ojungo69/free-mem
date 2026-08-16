@@ -254,6 +254,12 @@ event ではなく checkpoint 経路なのでここには含めない。
 rule 2 の start が 2 件とも同じ operationId になり、2 件目が `duplicate_operation_start` として消える
 （以後その operation の terminal は照合できない）。
 
+`sessionId` も同じ族。§4.3 の候補選びと放棄はどちらも session で絞るので、空文字だと session を
+特定できない adapter の event が全部同じ scope に入り、別 session の terminal が診断ゼロで operation を
+閉じ、別 session の `session_ended` がそれを放棄する（実 ID なら `terminal_orphaned` で隔離される）。
+`turnId` と違って「不在」を表す語彙が無いので落とすしかない。これは bot 指摘ではなく、同じ族を
+schema の `required` 側から棚卸しして見つけたもの。
+
 `turnId` も同じ形の穴を持つ。schema は `maxLength` しか課さないので、`turnIdSource` が native /
 synthesized_monotonic のまま空文字が届きうる。空文字を「turn がある」と読むと §4.3 rule 2 の turn 同一性が
 空文字同士で成立し、無関係な turn の operation を閉じる。unavailable な turn を全部空文字で表す adapter では
@@ -332,8 +338,8 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 
 ## 5. 変異テスト（2026-08-17）
 
-各ゲートをわざと壊し、対応する test が落ちることを確認した。68 件すべてで 1 件以上が失敗し、
-復元後は 93/93 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。69 件すべてで 1 件以上が失敗し、
+復元後は 94/94 green。
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
@@ -362,7 +368,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | start 不在の分岐を外す | 4 |
 | terminal の権威順序検査を外す | 2 |
 | 順序違反で候補を巻き込む | 1 |
-| 候補ゼロの terminal を台帳に入れる | 4 |
+| 候補ゼロの terminal を台帳に入れる | 5 |
 | 順序不明で候補を unknown にしない | 4 |
 | 退避で順序材料を刈らない | 1 |
 | 再配送 start を nativeOperationId で拾わない | 5 |
@@ -405,6 +411,7 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 | 空文字の turnId を素通しする | 1 |
 | 空文字の eventId を素通しする | 1 |
 | sensitivity の下限に直前の集約値を使わない | 1 |
+| 空文字の sessionId を素通しする | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

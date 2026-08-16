@@ -254,6 +254,11 @@ function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent[
  * rule 2 の start が 2 件とも同じ operationId になり、2 件目が `duplicate_operation_start` として
  * 消える（以後その operation の terminal は照合できない）。
  *
+ * `sessionId`: §4.3 の候補選びと §4.3 の放棄はどちらも session で絞る。空文字だと、session を
+ * 特定できない adapter の event が全部同じ scope に入り、別 session の terminal が診断ゼロで
+ * operation を閉じ、別 session の `session_ended` がそれを放棄する（実 ID なら
+ * `terminal_orphaned` で隔離される）。`turnId` と違って「不在」を表す語彙が無いので落とすしかない。
+ *
  * 空文字の `adapterDeliveryId` を「無い」として fingerprint へ落とすのと違い、どちらも落とし先が
  * 無いので schema violation にする。
  */
@@ -263,6 +268,9 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   }
   if (event.eventId === "") {
     throw new Error("§3.1 違反: eventId が空文字（operation identity が導出できない）");
+  }
+  if (event.sessionId === "") {
+    throw new Error("§3.1 違反: sessionId が空文字（session scope が定まらない）");
   }
 }
 
