@@ -19,7 +19,7 @@
 // jsonDepth / stringUtf8Bytes などの構造上限は JSON Schema の語彙で表現できずどのみち
 // 自前で歩く必要があること、ADR-003 G7 が harness の runtime 非依存を要求していること。
 
-import { isDeepStrictEqual } from "node:util";
+import { isDeepStrictEqual, types } from "node:util";
 
 export interface ValidationIssue {
   path: string;
@@ -185,31 +185,53 @@ export function findNonJsonValues(
     return issues;
   }
   seen.add(obj);
+  // Proxy は descriptor と実際の読み出しで別の値を返せる。「検証した形」と「保存する形」が
+  // ずれる典型なので、中身を見る前に落とす
+  if (types.isProxy(value)) {
+    issues.push({ path, message: "Proxy is not JSON data" });
+    return issues;
+  }
   if (Array.isArray(value)) {
     // 添字と length 以外の own key（`a.meta = 1`・symbol）、穴、getter は JSON に出ない。
-    // object 側を素の data object に限っているのと同じ理由で、配列もここで拒否する
+    // object 側を素の data object に限っているのと同じ理由で、配列もここで拒否する。
+    // 走査は own key の数に比例させる（穴を 1 つずつ数えると Array(2**32-1) で停止する）
+    let indices = 0;
     for (const key of Reflect.ownKeys(value)) {
       if (key === "length") continue;
       const index = typeof key === "string" ? Number(key) : Number.NaN;
       if (!Number.isInteger(index) || String(index) !== key || index < 0 || index >= value.length) {
         issues.push({ path, message: `array has non-index own key: ${String(key)}` });
+        continue;
       }
+      indices++;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key) as PropertyDescriptor;
+      if (!("value" in descriptor)) {
+        issues.push({ path: `${path}[${index}]`, message: "array element is a getter/setter" });
+        continue;
+      }
+      issues.push(...findNonJsonValues(descriptor.value, `${path}[${index}]`, seen, depth + 1));
     }
-    for (let i = 0; i < value.length; i++) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, i);
-      if (!descriptor) {
-        issues.push({ path: `${path}[${i}]`, message: "array hole" });
+    if (indices !== value.length) {
+      issues.push({ path, message: `array has ${value.length - indices} holes (length ${value.length})` });
+    }
+  } else if (isDataObject(value)) {
+    // getter は呼ばずに descriptor の値を読む。symbol キーと非 enumerable な property は
+    // `Object.entries` が飛ばすので、`Reflect.ownKeys` と突き合わせて明示的に落とす
+    for (const key of Reflect.ownKeys(value)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key) as PropertyDescriptor;
+      if (typeof key === "symbol") {
+        issues.push({ path, message: `object has symbol key: ${String(key)}` });
+        continue;
+      }
+      if (!descriptor.enumerable) {
+        issues.push({ path: `${path}.${key}`, message: "non-enumerable property is not JSON data" });
         continue;
       }
       if (!("value" in descriptor)) {
-        issues.push({ path: `${path}[${i}]`, message: "array element is a getter/setter" });
+        issues.push({ path: `${path}.${key}`, message: "property is a getter/setter" });
         continue;
       }
-      issues.push(...findNonJsonValues(value[i], `${path}[${i}]`, seen, depth + 1));
-    }
-  } else if (isDataObject(value)) {
-    for (const [k, v] of Object.entries(value)) {
-      issues.push(...findNonJsonValues(v, `${path}.${k}`, seen, depth + 1));
+      issues.push(...findNonJsonValues(descriptor.value, `${path}.${key}`, seen, depth + 1));
     }
   } else {
     // Date / Map / class instance など。toJSON で通ってしまう型を素通しすると

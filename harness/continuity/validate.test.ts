@@ -351,7 +351,7 @@ test("if / then / else を評価する", () => {
 
 test("JSON に無い配列の状態を妥当性検査で見逃さない", () => {
   // JSON.stringify は hole を null にするため「検証した形」と「保存する形」がずれる
-  assert.ok(findNonJsonValues([1, , 3]).some((i) => /array hole/.test(i.message)));
+  assert.ok(findNonJsonValues([1, , 3]).some((i) => /1 holes \(length 3\)/.test(i.message)));
 
   // 添字以外の own key と getter も JSON に出ない（消えた欄が検証済みとして通る）
   const tagged: unknown[] & { audit?: unknown } = [1];
@@ -369,9 +369,31 @@ test("JSON に無い配列の状態を妥当性検査で見逃さない", () => 
   proto[0] = "inherited";
   const inherited = Object.setPrototypeOf(Array(1), proto) as unknown[];
   assert.equal(inherited[0], "inherited");
-  assert.ok(findNonJsonValues(inherited).some((i) => /array hole/.test(i.message)));
+  assert.ok(findNonJsonValues(inherited).some((i) => /1 holes \(length 1\)/.test(i.message)));
 
   assert.deepEqual(findNonJsonValues([1, "a", { b: [2] }]), []);
+
+  // 穴は 1 件にまとめる。1 つずつ issue にすると Array(2**32-1) で検証側が停止する
+  assert.equal(findNonJsonValues(Array(500_000)).length, 1);
+
+  // object 側も getter を呼ばず、symbol と非 enumerable を落とす
+  let reads = 0;
+  const changing = Object.defineProperty({}, "a", {
+    enumerable: true,
+    get: () => (++reads <= 1 ? "safe" : "changed"),
+  });
+  assert.ok(findNonJsonValues(changing).some((i) => /getter\/setter/.test(i.message)));
+  assert.equal(reads, 0, "検証は getter を呼ばない");
+  const hidden = Object.defineProperty({}, "hidden", { value: "lost" });
+  assert.equal(JSON.stringify(hidden), "{}");
+  assert.ok(findNonJsonValues(hidden).some((i) => /non-enumerable/.test(i.message)));
+  assert.ok(
+    findNonJsonValues({ [Symbol("s")]: 1 }).some((i) => /symbol key/.test(i.message)),
+  );
+
+  // Proxy は descriptor と実際の読み出しで別の値を返せる
+  const proxy = new Proxy({ a: 0 }, { get: () => Math.floor(1) });
+  assert.ok(findNonJsonValues(proxy).some((i) => /Proxy/.test(i.message)));
 });
 
 test("anyOf / oneOf の分岐にある schema 誤記を飲み込まない", () => {

@@ -481,17 +481,24 @@ function stripCommentsAndStrings(source: string): string {
 function declaredTypeNames(source: string): string[] {
   const names: string[] = [];
   const code = stripCommentsAndStrings(source);
-  // 行頭に固定しない。字下げした `  export interface X {}` も有効な TS なので、
-  // 拾わないと「宣言を足したのに凍結ゲートが気付かない」側に倒れる
-  for (const [, line] of code.matchAll(/(?:^|\n)[ \t]*(export\b[^\n]*)/g)) {
-    const declaration = /^export (?:type|interface) (\w+)[\s<={]/.exec(line as string);
+  // 正規表現リテラルと除算はこの file に無い前提。あると `/*` を誤ってコメント開始と読むので、
+  // 素通りさせず落とす（`export const R = /[/*]/;` で以降の宣言が消えていた）
+  if (code.includes("/")) {
+    assert.fail("continuity.ts に `/` がある（正規表現リテラルや除算は走査の前提外）");
+  }
+  // 行単位ではなく `export` ごとに見る。`export const C = 1; export interface X {}` のように
+  // 1 行に 2 つ書けるため、行の先頭だけを分類すると後ろの宣言を数え落とす
+  for (const match of code.matchAll(/\bexport\b/g)) {
+    // コメントを挟んだ `export /* doc */ interface X {}` も合法なので、空白は 1 つに潰す
+    const statement = code.slice(match.index, match.index + 200).replace(/\s+/g, " ");
+    const declaration = /^export (?:type|interface) (\w+)[\s<={]/.exec(statement);
     if (declaration) {
       names.push(declaration[1] as string);
       continue;
     }
     // 値の export（union 定数と CONTINUITY_LIMITS）は型ではないので数えない
-    if (/^export const \w+[\s:=]/.test(line as string)) continue;
-    assert.fail(`型名を取れない export の形: ${(line as string).trim()}`);
+    if (/^export const \w+[\s:=]/.test(statement)) continue;
+    assert.fail(`型名を取れない export の形: ${statement.slice(0, 60)}`);
   }
   return names;
 }
@@ -513,11 +520,22 @@ test("名前を取れない export の形は落とす（AST を持たない代�
     "type X = string;\nexport type { X };\n", // 再 export（名前の位置が違う）
     "export default interface X {}\n",
     "export default interface X {} // note\n", // 行末コメントで消えない
-    "export type\n  X = string;\n", // 宣言が改行を跨ぐ
     "export declare type X = string;\n",
+    "export const R = 1;\nexport default interface X {}\n", // 1 つでも取れなければ落とす
   ]) {
     assert.throws(() => declaredTypeNames(bad), /型名を取れない export の形/, bad);
   }
+  // 合法な書き方は落とさない（false positive はゲートを外させる圧力になる）
+  assert.deepEqual(declaredTypeNames("export /* documented */ interface Extra {}\n"), ["Extra"]);
+  assert.deepEqual(declaredTypeNames("export type\n  X = string;\n"), ["X"]); // 改行を跨ぐ宣言
+  assert.deepEqual(declaredTypeNames("export interface A<T> {\n  x: T;\n}\n"), ["A"]);
+  // 1 行に 2 つ書いても両方数える
+  assert.deepEqual(declaredTypeNames("export const C = 1; export interface Extra {}\n"), ["Extra"]);
+  // 正規表現リテラルは走査の前提外なので素通りさせない
+  assert.throws(
+    () => declaredTypeNames("export const R = /[/*]/;\nexport interface Extra {}\n"),
+    /正規表現リテラル/,
+  );
   // 字下げした宣言も拾う（拾わないと「型を足したのに凍結ゲートが気付かない」側に倒れる）
   assert.deepEqual(declaredTypeNames("  export interface Extra {}\n"), ["Extra"]);
   // 行末コメント・文字列の中の `//` で宣言を消さない

@@ -141,7 +141,20 @@ test("添字以外の property を持つ配列は canonicalize しない", () =>
     /穴のある配列/,
   );
 
+  // 穴は own key の数で判定する（添字を 1 つずつ見ると Array(2**32-1) で止まらない）
+  assert.throws(() => canonicalizeJson(Array(2 ** 32 - 1)), /穴のある配列/);
+
   assert.equal(canonicalizeJson([1, 2]), "[1,2]");
+});
+
+test("Proxy は canonicalize しない（読むたびに値を変えられる）", () => {
+  let reads = 0;
+  const proxy = new Proxy({ a: 0 }, { get: (t, k, r) => (k === "a" ? ++reads : Reflect.get(t, k, r)) });
+  // descriptor は target のものが見えるので、getter 検査だけでは見抜けない
+  assert.equal("value" in (Object.getOwnPropertyDescriptor(proxy, "a") as PropertyDescriptor), true);
+  assert.throws(() => canonicalizeJson(proxy), /Proxy/);
+  assert.throws(() => canonicalizeJson(new Proxy([1], {})), /Proxy/);
+  assert.equal(reads, 0);
 });
 
 test("I-JSON は代理と noncharacter を文字列に許さない（RFC 7493 §2.1）", () => {

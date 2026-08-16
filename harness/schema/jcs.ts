@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { types } from "node:util";
 
 /**
  * RFC 8785 JSON Canonicalization Scheme (JCS)。
@@ -159,6 +160,8 @@ function assertNoDuplicateKeys(text: string): void {
  * 空いた枠に別の key（`a.meta`・`Symbol.iterator`）が収まって素通りする。
  */
 function assertPlainArray(value: unknown[]): void {
+  // own key の数だけ回す。0..length-1 を回すと `Array(2 ** 32 - 1)` で止まらなくなる
+  let indices = 0;
   for (const key of Reflect.ownKeys(value)) {
     if (key === "length") continue;
     const index = typeof key === "string" ? Number(key) : Number.NaN;
@@ -167,16 +170,14 @@ function assertPlainArray(value: unknown[]): void {
         `JCS: 添字と length 以外の own key を持つ配列は canonicalize できない: ${String(key)}`,
       );
     }
-  }
-  for (let i = 0; i < value.length; i++) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, i);
-    if (!descriptor) {
-      throw new Error(`JCS: 穴のある配列は canonicalize できない（位置 ${i}）`);
-    }
+    indices++;
     // object 側と同じ理由。添字の getter も読むたびに違う値を返せる
-    if (!("value" in descriptor)) {
-      throw new Error(`JCS: getter/setter を持つ配列は canonicalize できない（位置 ${i}）`);
+    if (!("value" in (Object.getOwnPropertyDescriptor(value, key) as PropertyDescriptor))) {
+      throw new Error(`JCS: getter/setter を持つ配列は canonicalize できない（位置 ${index}）`);
     }
+  }
+  if (indices !== value.length) {
+    throw new Error(`JCS: 穴のある配列は canonicalize できない（${value.length - indices} 個）`);
   }
 }
 
@@ -190,6 +191,11 @@ export function canonicalizeJson(value: unknown): string {
     return JSON.stringify(Object.is(value, -0) ? 0 : value);
   }
   if (typeof value === "string") return encodeString(value, "文字列");
+  // Proxy は descriptor 検査を通り抜けて、読むたびに違う値を返せる（同じ object から
+  // 違う hash が出る）。JSON.parse が返す値には現れないので、素直に落とす
+  if (types.isProxy(value)) {
+    throw new Error("JCS: Proxy は canonicalize できない（読むたびに値を変えられる）");
+  }
   if (Array.isArray(value)) {
     assertPlainArray(value);
     // 添字で回す。`Array.from` や `map` は呼び出し側が差し替えた `Symbol.iterator` を
