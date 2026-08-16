@@ -1,19 +1,20 @@
 # Phase 3 Resume Preflight Implementation Plan
 
-> **Execution rule:** use `superpowers:subagent-driven-development` or `superpowers:executing-plans`. Each checkbox is a verification boundary. Do not start Phase 3 product tables/RPC until this contract work and #1 Stage 0 are complete.
+> **Execution rule:** use `superpowers:subagent-driven-development` or `superpowers:executing-plans`. Every checkbox is a verification boundary. Do not start Phase 3 product tables or RPC implementation until this plan and #1 Stage 0 are complete.
 
-**Goal:** Prove exact Claude/Codex delivery capability and freeze one runtime-neutral contract for task state, boundaries, pending side effects, checkpoints, claim/delivery, workspace reconciliation, resume selection, capsule safety, durable-memory history, quality reports, and doctor output.
+**Goal:** Prove exact Claude/Codex delivery capability and freeze one runtime-neutral contract for task state, task boundaries, pending side effects, terminal correlation, checkpoints, claim/delivery, workspace reconciliation, resume selection, capsule safety, durable-memory history, derived-artifact invalidation, quality reports, and doctor output.
 
 **Toolchain:** Node.js 24.16.0, pnpm 11.8.0, TypeScript via Node type stripping, `node:test`, JSON Schema, isolated real-CLI rigs.
 
 ## Constraints
 
-- Preserve all Phase 1 sole-writer, spool, auth, redaction, backup, and fail-open invariants.
-- Use synthetic repos/data and isolated HOME/config directories for real-CLI evidence.
-- Unknown native behavior stays unknown; source inspection cannot promote it.
-- No generation/vector/cloud dependency is required for preflight.
-- TS and Rust must consume identical schemas, fixtures, and report hashes.
-- `off` disables every automatic delivery, including compact.
+- Preserve all Phase 1 sole-writer, spool, peer-auth, redaction, backup, and fail-open invariants.
+- Use only synthetic repositories/data and isolated HOME/config directories for real-CLI evidence.
+- Unknown native behavior remains unknown; source inspection cannot promote it.
+- No generation, vector, cloud, Python, Redis, or Postgres dependency is required for preflight.
+- TypeScript and Rust must consume identical schemas, fixtures, and report hashes.
+- `resume_mode=off` disables every automatic delivery, including compact recovery.
+- Automatic strategy = exact capability proof ∩ selected mode ∩ explicit delivery boundary ∩ selection/reconciliation result.
 
 ## Planned files
 
@@ -31,7 +32,7 @@ Create:
 
 - `harness/schema/continuity.{ts,schema.json}`
 - `harness/schema/memory-history.{ts,schema.json}`
-- `harness/continuity/*.test.ts`
+- `harness/continuity/{capability-contract,contract,reference-model,memory-history}.test.ts`
 - `harness/continuity/{reference-model,run-preflight}.ts`
 - `harness/phase3-preflight.mjs`
 - `harness/fixtures/continuity/*.json`
@@ -43,7 +44,7 @@ Create:
 
 ---
 
-## Task 1 — Extend exact-version capability evidence
+## Task 1 — Exact-version capability evidence
 
 - [ ] Add `ResumeDeliveryStrategy`:
 
@@ -64,14 +65,12 @@ compactSingleDelivery: CapabilityEvidence;
 capabilityHashInputs: string[];
 ```
 
-- [ ] RED test: empty matrix resolves to `manual_only`; new evidence fields are unknown.
-- [ ] RED test: reject half-proven synthesized prompt delivery.
-- [ ] `next_prompt_synthesized` requires both `promptDeliveryBeforeModel` and `promptAwareInjection` to be synthesized by the same exact-version real-CLI fixture/evidence hash.
-- [ ] `session_start_full` allows native or synthesized SessionStart only with real-CLI evidence.
+- [ ] RED: empty matrix resolves to `manual_only`; evidence cells are `unknown`.
+- [ ] RED: reject a half-proven synthesized prompt path.
+- [ ] `next_prompt_synthesized` requires both prompt-delivery cells to be synthesized by the same exact-version real-CLI fixture/evidence hash.
+- [ ] `session_start_full` requires native or synthesized SessionStart real-CLI proof.
 - [ ] Mirror closed enums/required fields in JSON Schema.
-- [ ] Regenerate matrices without manually editing generated JSON.
-
-Commands:
+- [ ] Regenerate matrices; never manually edit generated JSON.
 
 ```bash
 node --experimental-strip-types --test harness/continuity/capability-contract.test.ts
@@ -80,66 +79,48 @@ node --experimental-strip-types harness/assemble.ts harness/fixtures/claude harn
 node --experimental-strip-types harness/assemble.ts harness/fixtures/codex harness/matrix/codex.json
 ```
 
-Expected before Tasks 2–3: no Agent is better than its currently proven SessionStart strategy; compact remains unknown.
+---
+
+## Task 2 — Claude prompt-aware and compact E2E
+
+- [ ] Isolate `HOME`, `CLAUDE_CONFIG_DIR`, repo, hooks, transcript, and data paths.
+- [ ] Use distinct SessionStart hint and first-prompt full tokens.
+- [ ] Prove full context is model-visible before the first assistant/tool action, not merely printed by a hook.
+- [ ] Prove checkpoint evidence precedes compact completion.
+- [ ] Prove exactly one post-compact full delivery and duplicate-hook dedupe.
+- [ ] Prove capture/daemon failure returns empty context without blocking Claude.
+- [ ] Record exact version, command, source events, transcript hash, evidence hash, and disposition: `proven | unsupported | unknown_after_test`.
+- [ ] Regenerate `harness/matrix/claude.json`.
 
 ---
 
-## Task 2 — Capture Claude prompt-aware and compact behavior
+## Task 3 — Codex prompt-aware, compact, and identity E2E
 
-- [ ] Isolate `HOME`, `CLAUDE_CONFIG_DIR`, repo, hooks, transcript, and memory paths.
-- [ ] Prompt-boundary fixture uses different hint/full tokens and proves full context is model-visible before the first assistant/tool action.
-- [ ] Compact fixture proves checkpoint evidence precedes compact completion, restore reaches the model exactly once, and duplicate hook retry does not duplicate it.
-- [ ] Failure path returns empty context without blocking Claude.
-- [ ] Store exact binary version, command, event names, transcript hash, evidence hash, and limitations.
-- [ ] Use dispositions `proven`, `unsupported`, or `unknown_after_test`; never infer support.
-- [ ] Regenerate Claude capability matrix.
-
----
-
-## Task 3 — Capture Codex prompt-aware, compact, and native identity behavior
-
-- [ ] Isolate `CODEX_HOME`, HOME, repo, hooks, transcript, and memory paths.
-- [ ] Prove prompt-boundary visibility before the first assistant/tool action, not hook stdout alone.
-- [ ] Prove compact save/restore/exactly-one delivery or preserve unknown/unsupported.
+- [ ] Isolate `HOME`, `CODEX_HOME`, repo, hooks, transcript, and data paths.
+- [ ] Prove first-prompt model visibility before first assistant/tool action.
+- [ ] Prove compact persistence, exactly-one restore, or retain honest unsupported/unknown disposition.
 - [ ] Run multiple turns plus restart to test usable stable native session identity.
 - [ ] Record exact Codex event names rather than translating them into Claude names.
-- [ ] Regenerate Codex capability matrix.
+- [ ] Regenerate `harness/matrix/codex.json`.
 
 ---
 
-## Task 4 — Freeze continuity types and JSON Schema
+## Task 4 — Freeze the closed continuity schema
 
-Create `harness/schema/continuity.ts` and a closed JSON Schema defining at minimum:
+Create `harness/schema/continuity.ts` and a matching closed JSON Schema defining:
 
-```ts
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-type ResumeMode = "smart" | "always" | "hint_only" | "compact_only" | "off";
-type ResumeDeliveryBoundary = "session_start" | "first_user_prompt" | "post_compact" | "manual";
-type CapabilityTestDisposition = "not_run" | "proven" | "unsupported" | "unknown_after_test";
-type ContractPreflightState = "incomplete" | "complete";
-```
-
-Also define:
-
+- `JsonValue`, `Observed<T>`, `Sensitivity`, `Freshness`
 - `NormalizedContinuityEvent`
-- `Observed<T>` / `CanonicalWorkStateV1` / `PendingOperation`
-- `TaskBoundaryProposalV1` / `TaskBoundaryDecisionV1` / `SessionTaskBinding`
-- `ContinuationCheckpointV2`
-- `CheckpointMetadataV1`
-- `CheckpointDispositionEvent` / `CheckpointDispositionProjection`
-- `DispositionAuthorityContextV1`
-- `CheckpointAnchorV1`
-- `EngagementEvidence` / `ContradictionEvidenceV1` / `EngagementEvaluationContextV1`
-- `CheckpointDeliveryAttempt`
-- every `DeliveryCommandV1` variant with `attemptId`
+- `CanonicalWorkStateV1`, `OperationCorrelationV1`, `PendingOperation`
+- `SessionTaskBinding`, `TaskBoundaryProposalV1`, `TaskBoundaryDecisionV1`
+- `ContinuationCheckpointV2`, checkpoint metadata/disposition/projection
+- `CheckpointAnchorV1`, engagement/contradiction/evaluation context
+- `CheckpointDeliveryAttempt`, every `DeliveryCommandV1` variant with `attemptId`
 - `WorkspaceReconciliationReport`
-- `ResumeThresholdProfileV1`
-- `RankedResumeCandidateV1`
-- `ResumeSelectionDecisionV1` including `boundary`
-- `ResumeCapsuleV1`
-- `OwnedInjectionLedgerEntry` / `CaptureStripResult`
-- `ResumeQualityReportV1`
-- `ContinuityDoctorReportV1`
+- `ResumeMode`, `ResumeDeliveryBoundary`, capability disposition/preflight state
+- `ResumeThresholdProfileV1`, ranked candidate, `ResumeSelectionDecisionV1`
+- `ResumeCapsuleV1`, owned injection ledger, capture strip result
+- `ResumeQualityReportV1`, `ContinuityDoctorReportV1`
 
 Shared limits:
 
@@ -160,59 +141,66 @@ const CONTINUITY_LIMITS = {
 } as const;
 ```
 
-- [ ] Runtime validators reject unknown keys, invalid timestamps/decimals/enums, non-JSON values, excessive depth/size, invalid scores, and version mismatch.
-- [ ] JSON Schema uses the same constants and `additionalProperties:false`.
-- [ ] Contract tests emit schema/fixture SHA-256 values for TS/Rust parity.
+- [ ] Reject unknown keys, non-JSON values, invalid timestamps/decimal strings, invalid scores, excessive structure, and schema-version mismatch.
+- [ ] Use identical limits in runtime validators and JSON Schema.
+- [ ] Emit schema/fixture SHA-256 values for TypeScript/Rust parity.
 
 ---
 
-## Task 5 — Implement task-state, duplicate no-op, and boundary decisions
+## Task 5 — Task state, duplicate no-op, operation correlation, and boundary authority
 
 Reference interfaces:
 
 ```ts
 reduceTaskWorkState(previous, event, idempotencyLedger): TaskStateReductionResult
 finalizeAbandonedState(state, event): CanonicalWorkStateV1
+correlateTerminalEvent(state, terminalEvent): TerminalCorrelationResult
 proposeTaskBoundary(state, event): TaskBoundaryProposalV1 | null
-confirmTaskBoundaryAtomically(binding, proposal, decision): {
-  previousBinding: SessionTaskBinding;
-  newBinding: SessionTaskBinding;
-  proposal: TaskBoundaryProposalV1;
-}
-rejectTaskBoundary(binding, proposal, decision): {
-  binding: SessionTaskBinding;
-  proposal: TaskBoundaryProposalV1;
-}
+confirmTaskBoundaryAtomically(binding, proposal, decision, sourceEvents): BoundaryConfirmResult
+rejectTaskBoundary(binding, proposal, decision, sourceEvents): BoundaryRejectResult
 ```
 
-Fixtures/tests:
+### Event idempotency
 
-- [ ] Crash after operation start => `unknown / verify_first`.
-- [ ] Dangerous/external operations => `never_auto`.
-- [ ] Reapply the same logical event x10 => byte-identical state, same revision/hash/history, one idempotency record. Dedupe occurs before revision allocation.
-- [ ] Late trustworthy terminal event creates a new revision without rewriting the unknown revision.
-- [ ] Heuristic goal shift creates only a proposal.
-- [ ] Confirm validates proposal/session/binding revisions and atomically replaces the primary binding.
-- [ ] Reject keeps the old binding.
-- [ ] Stale confirm/reject, competing proposals, and cross-session decisions leave the old lineage unchanged.
+- [ ] Reapply the same `adapterDeliveryId` or canonical fingerprint x10.
+- [ ] After the first application, state bytes, content hash, revision pointer, history length, and idempotency ledger remain unchanged.
+- [ ] Dedupe occurs before revision allocation.
+
+### Pending-operation terminal correlation
+
+- [ ] Start events create `OperationCorrelationV1` with `operationId`, `startEventId`, optional native ID, schema-versioned match key, session, lineage, optional turn/tool/input hash.
+- [ ] Exact native operation ID + same session/lineage is first authority.
+- [ ] Fallback requires exact operation match key + same session/lineage + compatible turn/kind + exactly one open candidate.
+- [ ] Command text, tool name, cwd, or timestamp proximity alone never closes an operation.
+- [ ] Terminal event must occur after the start in authoritative event order, be unapplied, and have no payload/source-hash conflict.
+- [ ] Zero/multiple matches leave all candidates unknown, preserve unmatched evidence, and emit a diagnostic.
+- [ ] Correlation/hash conflict is quarantined.
+- [ ] A valid late terminal references original `operationId` and `startEventId`, creates a new work-state revision, and changes only that operation.
+- [ ] Crash with no trusted terminal => `unknown / verify_first`; dangerous side effects => `never_auto`.
+
+### Task boundary decisions
+
+- [ ] Heuristics create only a proposal; no binding change.
+- [ ] User may confirm/reject any proposal through a user-authoritative surface.
+- [ ] `native_runtime` may confirm only `native_fork` or `accepted_resume` proposals whose source events are exact-version capability-proven native events.
+- [ ] Agent/model text, similarity scores, `agent_proposal`, and `deterministic_shift` cannot be runtime-confirmed.
+- [ ] Confirm atomically validates revisions, marks proposal confirmed, unbinds old primary, and creates new binding.
+- [ ] Reject marks proposal rejected and keeps old binding.
+- [ ] Stale/competing/cross-session/unauthorized commands cause no binding change.
 
 ---
 
-## Task 6 — Implement fail-closed workspace reconciliation
-
-Reference interface:
+## Task 6 — Fail-closed workspace reconciliation
 
 ```ts
 reconcileWorkspace(checkpoint, currentEvidence): WorkspaceReconciliationReport
 ```
 
-Fixtures cover `exact`, `fast_forward_compatible`, `stale_but_usable`, `requires_verification`, `incompatible`, and incomplete/unknown evidence.
-
-Rules:
+Fixtures cover `exact`, `fast_forward_compatible`, `stale_but_usable`, `requires_verification`, `incompatible`, and unknown/incomplete evidence.
 
 ```text
-repository/workspace mismatch -> incompatible
-unreadable required evidence or unknown ancestry -> requires_verification
+repo/workspace mismatch -> incompatible
+unreadable evidence or unknown ancestry -> requires_verification
 unproven branch/worktree relation -> requires_verification
 diverged HEAD + affected file drift -> requires_verification
 pending migration/external side effect -> requires_verification
@@ -223,65 +211,55 @@ otherwise -> requires_verification
 ```
 
 - [ ] `exact` is never a default/fallthrough.
-- [ ] Stale/verification capsule wording converts imperative actions into verification suggestions.
+- [ ] Stale/verification capsules turn imperative actions into verification suggestions.
 
 ---
 
-## Task 7 — Implement lineage-aware disposition, initial claim, source-verified engagement, and atomic acceptance
+## Task 7 — Lineage-aware disposition, initial claim, source-verified engagement, atomic acceptance
 
 Reference interfaces:
 
 ```ts
-projectCheckpointDisposition(
-  events: CheckpointDispositionEvent[],
-  lookup: (id: string) => CheckpointMetadataV1 | null,
-  authority: DispositionAuthorityContextV1,
-): CheckpointDispositionProjection
-
-claimCheckpointAtomically(input): {
-  attempt: CheckpointDeliveryAttempt;
-  projection: CheckpointDispositionProjection;
-}
-
-transitionDeliveryAttempt(
-  attempt: CheckpointDeliveryAttempt,
-  command: Exclude<DeliveryCommandV1, { kind: "accept" }>,
-): CheckpointDeliveryAttempt
-
-acceptDeliveryAttemptAtomically(input: {
-  attempt: CheckpointDeliveryAttempt;
-  dispositionEvents: CheckpointDispositionEvent[];
-  checkpointLookup: (id: string) => CheckpointMetadataV1 | null;
-  authority: DispositionAuthorityContextV1;
-  command: Extract<DeliveryCommandV1, { kind: "accept" }>;
-  evaluation: EngagementEvaluationContextV1;
-}): {
-  attempt: CheckpointDeliveryAttempt;
-  projection: CheckpointDispositionProjection;
-  appendedEvent: CheckpointDispositionEvent;
-}
+projectCheckpointDisposition(events, checkpointLookup, authority): CheckpointDispositionProjection
+claimCheckpointAtomically(input): { attempt; projection }
+transitionDeliveryAttempt(attempt, commandWithoutAccept): CheckpointDeliveryAttempt
+acceptDeliveryAttemptAtomically(input): { attempt; projection; appendedEvent }
 ```
 
-Required tests:
+### Disposition
 
-- [ ] Daemon/runtime supersede succeeds only when checkpoint metadata proves same lineage.
+- [ ] Daemon/runtime supersede requires metadata proving source and related checkpoints share `taskLineageId`.
 - [ ] Cross-lineage supersede requires explicit user-authoritative context.
-- [ ] Missing related metadata fails closed.
-- [ ] Initial claim validates open projection, no active unexpired attempt, destination session/binding, explicit delivery boundary, mode, capability, selection decision, and reconciliation; attempt+projection commit together.
-- [ ] 100-way claim race produces one winner.
-- [ ] Every post-claim command rejects mismatched `attemptId`, revision, fence, or session.
-- [ ] Engagement weights/anchors are fixed by the addendum.
-- [ ] Evidence is revalidated from actual normalized source events: kind, success, ordering, destination turn, and checkpoint anchor linkage.
-- [ ] Failed, unknown, unrelated, out-of-window, or fabricated labels score zero.
-- [ ] Explicit rejection, confirmed other task, incompatible workspace, and invalidating runtime evidence block acceptance.
-- [ ] Atomic acceptance appends accepted disposition and advances projection+attempt together.
-- [ ] Accepted attempt/open checkpoint projection is impossible.
+- [ ] Missing related-checkpoint metadata fails closed.
+
+### Initial claim
+
+- [ ] One transaction validates open projection, no active unexpired attempt, destination session/binding, explicit delivery boundary, mode, capability, selection decision, and reconciliation; then creates attempt/fence and updates projection.
+- [ ] 100-way race yields exactly one winner.
+
+### Command CAS
+
+- [ ] Every post-claim command includes and validates `attemptId`, attempt revision, fence, and destination session.
+- [ ] Mismatched attempt ID/revision/fence/session is typed stale/invalid and causes no state change.
+
+### Engagement and acceptance
+
+Use fixed weights from the addendum. Tests must revalidate submitted evidence from actual `NormalizedContinuityEvent` records and checkpoint anchors:
+
+- [ ] source event exists and belongs to destination session/turn;
+- [ ] kind and success state match the claimed evidence kind;
+- [ ] event is after delivery and within lease/30-minute window;
+- [ ] anchor belongs to the checkpoint/task lineage;
+- [ ] duplicate evidence counts once;
+- [ ] failed/unknown/unrelated/out-of-window/fabricated labels score zero;
+- [ ] explicit rejection, confirmed other task, incompatible workspace, or runtime invalidation blocks acceptance;
+- [ ] Agent prose alone cannot accept.
+
+Automatic acceptance requires cumulative score ≥0.80, at least two evidence kinds, at least one successful runtime kind, and no contradiction. Atomic acceptance appends accepted disposition and advances projection+attempt together. Accepted attempt/open projection is impossible.
 
 ---
 
-## Task 8 — Implement explicit-boundary selection and capsule lifecycle
-
-Reference interfaces:
+## Task 8 — Explicit-boundary selection and complete capsule lifecycle
 
 ```ts
 selectResumeAction(input): ResumeSelectionDecisionV1
@@ -289,7 +267,7 @@ renderResumeCapsule(capsule, sensitivityPolicy): RenderedCapsule
 parseAndStripOwnedResumeCapsules(text, ownedLedger): CaptureStripResult
 ```
 
-Initial threshold fixture:
+Initial threshold profile:
 
 ```text
 profileId=resume-v1-preflight
@@ -299,47 +277,54 @@ ambiguityMargin=0.08
 maxCandidates=5
 ```
 
-- [ ] Decision includes `boundary`, dataset/profile, mode, strategy, capability hash, ranked candidates, scores/margin, confidence, reasons, selected checkpoint, and fallback.
-- [ ] Cross-product fixtures include each mode × capability × delivery boundary.
-- [ ] The same `compact_only` state yields `none` at `session_start` and possible full only at proven `post_compact`.
+- [ ] Decision includes explicit boundary, dataset/profile, mode, strategy, capability hash, ranked candidates, scores/margin, confidence, reason codes, selected checkpoint, and fallback.
+- [ ] Cross-product fixtures cover every mode × capability × delivery boundary.
+- [ ] Same `compact_only` state => none at SessionStart, possible full only at proven post-compact boundary.
 - [ ] Low score => none; medium => hint/list; close candidates within margin => candidate list; low/unknown confidence => no full; incompatible/manual-only => no full; verification-required => verification capsule at most.
-- [ ] Unknown/unsupported capability never produces automatic full.
-- [ ] `always` and `compact_only` remain capability-gated.
-- [ ] Normal/private/secret selection follows addendum sensitivity rules before hashing/rendering.
-- [ ] Structural limits are enforced; JSON is stable-sorted and `<`, `>`, `&` escaped.
-- [ ] Mode-aware invalid/oversized fallback is tested.
-- [ ] Capture verifies owned ID/hash/bytes/schema and rejects unknown, malformed, nested, mismatched, and unsupported capsules without blocking the Agent.
+- [ ] Unknown/unsupported capability never produces automatic full; `always` and `compact_only` remain capability-gated.
+- [ ] Normal/private/secret selection follows addendum policy before hash/render. Secret never appears; private needs explicit project opt-in + destination eligibility.
+- [ ] Enforce shared structural limits, stable key order, escaping, and mode-aware invalid/oversized fallback.
+- [ ] Capture verifies owned ID/hash/bytes/schema and rejects unknown/malformed/nested/mismatched/unsupported capsules without blocking the Agent.
 - [ ] Render→capture round-trip cannot create a DurableMemory candidate.
 
 ---
 
-## Task 9 — Implement durable-memory history and evidence-preserving dedupe
+## Task 9 — Durable-memory history and causal derived-artifact invalidation
 
-Define append-only ADD/UPDATE/SUPERSEDE/RETRACT revision events, temporal validity/invalidation, source links, and presentation-level consolidation preference.
+Define and schema-test:
+
+- append-only ADD/UPDATE/SUPERSEDE/RETRACT memory revision events;
+- temporal validity/invalidation;
+- source evidence links;
+- presentation-level `preferConsolidated` behavior;
+- `DerivedArtifactDependencyV1` and `DerivedArtifactInvalidationEventV1`.
+
+Derived artifact kinds include summaries, semantic resume notes, checkpoint semantic notes, consolidated memories, embeddings, context-pack caches, and cloud projections.
 
 Tests:
 
-- [ ] Stale expected revision is rejected.
-- [ ] Prior events are immutable.
+- [ ] Stale expected memory revision is rejected; prior events remain immutable.
 - [ ] Invalidated fact remains historical but is excluded/down-ranked from current retrieval.
-- [ ] Derived observation retains all source memory/event IDs.
-- [ ] Removing source evidence violates the reference invariant.
-- [ ] `preferConsolidated=true` suppresses duplicates in output only; source records remain retrievable.
+- [ ] Derived observation retains every source memory/event ID; deleting source evidence violates the invariant.
+- [ ] Output dedupe never deletes source records.
+- [ ] UPDATE/SUPERSEDE/RETRACT/temporal invalidation atomically marks every known dependent artifact stale/invalidated and enqueues deterministic rebuild jobs.
+- [ ] Query/injection/resume/embedding/cache/cloud eligibility verifies dependency revision/content hash, so delayed/failed invalidation jobs cannot expose stale artifacts.
+- [ ] Immutable checkpoint canonical state remains historical; stale selected-memory or semantic-note content is omitted/marked stale until re-derived.
+- [ ] Embedding coverage is keyed by memory ID + revision + input hash + generation ID.
+- [ ] Crash/replay of memory mutation + invalidation converges exactly once.
+- [ ] Rebuild creates a new artifact revision/dependency set; failure leaves the artifact excluded while canonical continuation and FTS fallback remain available.
 
 ---
 
-## Task 10 — Implement one normative quality-report contract
+## Task 10 — One normative quality-report contract
 
 `benchmarks/behavioral/contract.schema.json` is the machine authority for `ResumeQualityReportV1`.
 
-- [ ] Zero-tolerance counters are numeric and complete.
-- [ ] Behavioral metrics are `number | "unsupported"` only where applicability manifest permits.
-- [ ] A required Phase/Release metric marked unsupported fails the gate.
-- [ ] Report includes runtime/commit, capability hash, fixture version, schema hashes, all resume metrics, token counts, task completion, and claude-mem deltas.
-- [ ] Reference, TS, Rust, and public claude-mem adapters consume the same fixture format.
-- [ ] Sorted fixture execution produces byte-identical reports across repeated runs.
-
-Commands:
+- [ ] Numeric zero-tolerance counters include duplicate injection, wrong scope, incompatible auto-resume, unsafe unknown replay, early acceptance, accepted-attempt/open-projection, stale fence, capsule escape, malformed capsule trusted, source evidence deletion, and stale derived artifact use.
+- [ ] Behavioral metrics include wrong resume, unnecessary hint, candidate accuracy, critical-state recall, fabricated/stale state, re-explanation turns/tokens, first useful action, task completion, hint/full tokens, and claude-mem deltas.
+- [ ] `unsupported` is permitted only for declared inapplicable behavioral metrics. A required Phase/Release metric marked unsupported fails the gate.
+- [ ] Reference, TypeScript, Rust, and public claude-mem adapters consume the same fixture format.
+- [ ] Sorted fixture execution produces byte-identical reports.
 
 ```bash
 node --experimental-strip-types harness/continuity/run-preflight.ts --out /tmp/a.json
@@ -349,12 +334,12 @@ cmp /tmp/a.json /tmp/b.json
 
 ---
 
-## Task 11 — Connect preflight states, doctor, evidence, tasks, and CI
+## Task 11 — Preflight states, doctor, evidence, tasks, and CI
 
-- [ ] Record each required capability scenario as `not_run`, `proven`, `unsupported`, or `unknown_after_test`.
+- [ ] Record each capability scenario as `not_run | proven | unsupported | unknown_after_test`.
 - [ ] Contract preflight is complete only when no required scenario is `not_run`, artifacts exist, and every runtime-neutral fixture passes.
 - [ ] Unsupported/unknown permits generic/manual implementation but forces automatic-strategy/Tier downgrade.
-- [ ] Add P3P tasks and barriers to `tasks.md`:
+- [ ] Add P3P barriers to `tasks.md`:
 
 ```text
 #1 Stage 0 + all scenarios dispositioned + contract fixtures green
@@ -367,10 +352,10 @@ release E2E + #8 non-inferiority
   -> Tier A / Core 1.0 claim
 ```
 
-- [ ] Add `doctor continuity --json` fixture with exact version/hash, scenario dispositions, strategy, mode, threshold/dataset, last boundary/selection reasons, reconciliation, active attempt/lease, unknown pending count, preflight/unmet gates, and schema/fixture/report hashes.
-- [ ] Prove doctor omits raw prompts, commands, private/secret values, and capsule content.
-- [ ] Write evidence files with exact commands, versions, commits, hashes, dispositions, failures, and synthetic fixture links.
-- [ ] After ten deterministic runs, add CI for contract tests, report completeness, zero counters, doctor schema, and byte reproducibility.
+- [ ] `doctor continuity --json` reports exact version/hash, dispositions, strategy, mode, threshold/dataset, last delivery boundary/selection reasons, reconciliation, active attempt/lease, unknown pending count, stale/invalidated derived-artifact counts, unmet gates, and schema/fixture/report hashes.
+- [ ] Doctor never emits raw prompts, commands, private/secret values, or capsule content.
+- [ ] Evidence files record exact commands, versions, commits, hashes, dispositions, failures, and synthetic fixture links.
+- [ ] After ten deterministic runs, CI validates every fixture, report completeness, zero counters, doctor schema, and byte reproducibility.
 
 ## Final verification
 
