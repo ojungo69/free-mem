@@ -1,0 +1,32 @@
+harness/continuity/reference-model.ts
+  s_5cbc4c67c8b3b4::t_1ce7988edbedd3 538-542
+  s_5cbc4c67c8b3b4::t_483858dcf3b730 910-919
+  s_5cbc4c67c8b3b4::t_f4216b567d5f02 515-523,528
+  s_5cbc4c67c8b3b4::t_d6c2822a4cf406 262-268,270-272
+  s_5cbc4c67c8b3b4::t_5bcb28b4e68de2 269
+  s_5cbc4c67c8b3b4::t_7c0c6d6efcba0f 866-869,876
+  s_5cbc4c67c8b3b4::t_9b9009bf31370b 835-838,841-843
+  s_5cbc4c67c8b3b4::t_f2d650299e16e1 142-145,385-388,429,476,957
+harness/continuity/reference-model.test.ts
+  s_5cbc4c67c8b3b4::t_162475adab7b54 263,272,448,1148-1151,1159,1161-1165,1184,1186,1190-1191,1194,1197,1206,1208-1209,1286,1303,1305,1308-1309
+  s_5cbc4c67c8b3b4::t_79509a2f877db5 905-924
+  s_5cbc4c67c8b3b4::t_f8d71ffafc47b0 250-262,264-271,273-274,444-447,449-456,1187-1189,1192-1193,1195-1196,1198-1205,1207,1275-1278,1281,1283,1289,1302,1304,1307,1311-1314,1343
+evidence/phase3-reference-model.md
+  s_5cbc4c67c8b3b4::t_dbe9d333f07764 32,34,78-94,179-195,197-198,200,208-211,265-276,297-298,319-321,324-325,328,330-334,336,345-349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bc0c0bb0f4a773eded17731a19345d06780ae39d",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
