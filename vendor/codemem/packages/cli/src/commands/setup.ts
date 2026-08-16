@@ -800,7 +800,13 @@ function codexMcpTable(existing: string): { start: number; end: number; block: s
 	if (structure === null) return null;
 	const table = matchingTomlLines(structure, CODEX_MCP_TABLE_RE, structure.tableStarts)[0];
 	if (table !== undefined) {
-		const end = structure.tableStarts.find((start) => start > table) ?? structure.text.length;
+		const nextTable = structure.tableStarts.find((start) => start > table) ?? structure.text.length;
+		let end = table;
+		for (const match of existing.slice(table, nextTable).matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g)) {
+			const line = match[0];
+			if (line.length === 0 || /^[ \t]*(?:#.*)?(?:\r\n|\r|\n)?$/.test(line)) continue;
+			end = table + match.index + line.length;
+		}
 		return { start: table, end, block: existing.slice(table, end).trim() };
 	}
 	const firstTable = structure.tableStarts[0] ?? structure.text.length;
@@ -985,9 +991,7 @@ function installCodexMcp(codexHome: string, force: boolean, runtime: SetupRuntim
 			p.log.error(`Refusing to replace a custom codemem MCP entry in ${configPath}; use --force.`);
 			return false;
 		}
-		next = `${existing.slice(0, currentTable.start)}${block}\n${existing
-			.slice(currentTable.end)
-			.replace(/^\n+/, "\n")}`;
+		next = `${existing.slice(0, currentTable.start)}${block}\n${existing.slice(currentTable.end)}`;
 	} else {
 		if (next.length > 0 && !next.endsWith("\n\n")) {
 			next += next.endsWith("\n") ? "\n" : "\n\n";
