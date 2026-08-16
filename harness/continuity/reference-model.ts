@@ -98,6 +98,22 @@ export interface IntakeContextV1 {
   attestation?: ContinuityIngestAttestationV1;
 }
 
+declare const INTAKE_STAMP: unique symbol;
+
+/**
+ * intake を通った event。実体は `NormalizedContinuityEvent` そのもので、この目印は型だけに
+ * 存在する（wire にも hash 対象にも現れない）。§3.1 の「evidenceKind は intake 層が割り当てる」は、
+ * 還元器が生の event を受け取れてしまうと 1 経路の呼び忘れで丸ごと迂回されるので、
+ * `reduceTaskWorkState` の入口をこの型に限定して呼び順を型で固定する。
+ */
+export type IntakeStampedEventV1 = NormalizedContinuityEvent & { readonly [INTAKE_STAMP]: true };
+
+export interface IntakeStampResultV1 {
+  event: IntakeStampedEventV1;
+  /** §3.1「downgrade の理由は doctor が報告する」。降格を黙って行わないための報告経路 */
+  diagnostics: readonly ContinuityDiagnosticV1[];
+}
+
 /**
  * §3.1「`evidenceKind` と `ingestAttestation` は daemon intake 層が割り当て、caller の値を
  * 信頼しない」。native の条件を 1 つでも満たさない event は、caller が何を送っていても
@@ -106,7 +122,7 @@ export interface IntakeContextV1 {
 export function stampIntakeEvidence(
   event: NormalizedContinuityEvent,
   context: IntakeContextV1,
-): NormalizedContinuityEvent {
+): IntakeStampResultV1 {
   // caller の attestation は読まずに捨てる。読んだ時点で「認証済みだと名乗れる」ことになり、
   // §3.1 が禁じている自己申告の native authority が通ってしまう
   const { ingestAttestation: _claimed, ...provenance } = event.provenance;
@@ -116,6 +132,9 @@ export function stampIntakeEvidence(
   // その認証にあたる。evidence の証明も turn の証明もこの束縛の上に乗る
   const authenticatedVersion =
     attestation !== undefined &&
+    // 空文字同士は「一致」ではなく「どちらも名乗っていない」。素通りさせない
+    context.expectedSourceAgent !== "" &&
+    context.exactAgentVersion !== "" &&
     event.sourceAgent === context.expectedSourceAgent &&
     provenance.sourceAgentVersion === context.exactAgentVersion;
   const proven =
@@ -137,7 +156,7 @@ export function stampIntakeEvidence(
   const turnDowngraded =
     event.turnIdSource === "native" && !(authenticatedVersion && context.nativeTurnIdentityProven);
   const { turnId: _claimedTurnId, ...withoutTurnId } = event;
-  return {
+  const stamped = {
     ...(turnDowngraded ? withoutTurnId : event),
     ...(turnDowngraded ? { turnIdSource: "unavailable" as const } : {}),
     provenance: {
@@ -145,6 +164,21 @@ export function stampIntakeEvidence(
       evidenceKind: proven ? "native" : "synthesized",
       ...(attestation !== undefined ? { ingestAttestation: attestation } : {}),
     },
+  } as IntakeStampedEventV1;
+  return {
+    event: stamped,
+    // §3.1「turn scoping を要求する規則は unavailable に対して fail closed になり、影響を受けた
+    // 自動経路は downgrade され、その理由は doctor が報告する」。降格した事実を残さないと、
+    // 「何も correlate しない」だけが観測されて理由が辿れない
+    diagnostics: turnDowngraded
+      ? [
+          {
+            code: "turn_identity_downgraded" as const,
+            eventId: event.eventId,
+            detail: `native turn identity が ${provenance.sourceAgentVersion} について証明されていないので unavailable へ降格した`,
+          },
+        ]
+      : [],
   };
 }
 
@@ -210,9 +244,13 @@ export function assertTurnIdentity(event: NormalizedContinuityEvent): void {
  * 導出式ではなく優先順位（第一 authority は adapterDeliveryId）だけを実装する。
  */
 export function idempotencyKeyOf(event: NormalizedContinuityEvent): string {
-  const key = event.adapterDeliveryId ?? event.canonicalFingerprint;
-  if (key === "") {
-    throw new Error("idempotency key が空（adapterDeliveryId も canonicalFingerprint も無い）");
+  // schema は adapterDeliveryId に minLength を持たないので空文字が届きうる。空文字は
+  // 「delivery id が無い」であって「key が空」ではないので、fingerprint へ落とす
+  const delivery = event.adapterDeliveryId === "" ? undefined : event.adapterDeliveryId;
+  const fingerprint = event.canonicalFingerprint === "" ? undefined : event.canonicalFingerprint;
+  const key = delivery ?? fingerprint;
+  if (key === undefined) {
+    throw new Error("idempotency key が無い（adapterDeliveryId も canonicalFingerprint も空）");
   }
   return key;
 }
@@ -221,13 +259,23 @@ export function idempotencyKeyOf(event: NormalizedContinuityEvent): string {
 
 /**
  * 状態は lineage ごとに 1 つ（§4）。別 lineage の event を黙って取り込むと、境界の確定
- * （§4.4）を経ずに前の task の状態が書き換わる。lineage を持たない event は、還元先の
+ * （§2.2）を経ずに前の task の状態が書き換わる。lineage を持たない event は、還元先の
  * 状態が属する lineage のものとして扱う。
+ *
+ * Agent も同じ理由で束縛する。`CanonicalWorkStateV1.sourceAgent` は状態の持ち主で、
+ * `OperationCorrelationV1` は Agent を持たない（scope は sessionId + taskLineageId だけ）。
+ * intake の受領証束縛は event と受領証を結ぶだけなので、ここで結ばないと、別 Agent の
+ * terminal が同じ session/lineage に居る他 Agent の operation を閉じられる。
  */
-function assertSameLineage(state: CanonicalWorkStateV1, event: NormalizedContinuityEvent): void {
+function assertSameScope(state: CanonicalWorkStateV1, event: NormalizedContinuityEvent): void {
   if (event.taskLineageId !== undefined && event.taskLineageId !== state.taskLineageId) {
     throw new Error(
       `別 lineage の event は適用しない: 状態 ${state.taskLineageId} / event ${event.taskLineageId}`,
+    );
+  }
+  if (event.sourceAgent !== state.sourceAgent) {
+    throw new Error(
+      `別 Agent の event は適用しない: 状態 ${state.sourceAgent} / event ${event.sourceAgent}`,
     );
   }
 }
@@ -266,10 +314,12 @@ export type ContinuityDiagnosticCode =
   | "terminal_ambiguous"
   | "terminal_conflict"
   | "terminal_out_of_order"
+  | "terminal_order_unverifiable"
   | "terminal_already_applied"
   | "duplicate_operation_start"
-  | "pending_operations_overflow"
-  | "pending_operations_evicted";
+  | "pending_operations_evicted"
+  | "source_events_truncated"
+  | "turn_identity_downgraded";
 
 export interface ContinuityDiagnosticV1 {
   code: ContinuityDiagnosticCode;
@@ -332,7 +382,9 @@ function nextContent(
   const { stateRevision: _ignored, sensitivity: _aggregate, ...rest } = previous;
   const withoutSensitivity = {
     ...rest,
-    pendingOperations,
+    // revision ごとに配列を分ける。`CanonicalWorkStateV1.pendingOperations` は readonly でないので、
+    // 共有すると新 revision への変更が過去の snapshot にも見える（§4.2 の immutable revision 違反）
+    pendingOperations: [...pendingOperations],
     lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
     updatedAt: event.occurredAt,
   };
@@ -393,13 +445,13 @@ function quarantine(
  */
 export function reduceTaskWorkState(
   previous: TaskWorkStateSnapshotV1,
-  event: NormalizedContinuityEvent,
+  event: IntakeStampedEventV1,
   idempotencyLedger: IdempotencyLedger,
 ): TaskStateReductionResult {
   assertOperationEnvelope(event);
   assertTurnIdentity(event);
   assertIngestSeq(event.ingestSeq);
-  assertSameLineage(previous.state, event);
+  assertSameScope(previous.state, event);
   const key = idempotencyKeyOf(event);
 
   if (idempotencyLedger.has(key)) {
@@ -433,15 +485,6 @@ export function reduceTaskWorkState(
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
     const retained = retainPendingOperations(previous.state.pendingOperations);
-    if (retained === null) {
-      return quarantine(previous, idempotencyLedger, [
-        {
-          code: "pending_operations_overflow",
-          eventId: event.eventId,
-          detail: `pendingOperations が上限 ${CONTINUITY_LIMITS.arrayItems} 件で、落とせる terminal 済みの entry が無い`,
-        },
-      ]);
-    }
     // 黙って間引かない。退避した operation の event 自体は event store に残るが、状態からは
     // 消えるので、どれを落としたかを診断に出す
     const kept = new Set(retained.map((pending) => pending.operationId));
@@ -457,7 +500,7 @@ export function reduceTaskWorkState(
               {
                 code: "pending_operations_evicted",
                 eventId: event.eventId,
-                detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため terminal 済みを退避: ${evicted.join(", ")}`,
+                detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため退避: ${evicted.join(", ")}`,
               },
             ],
       operationStarts: new Map(previous.operationStarts).set(operationId, {
@@ -473,20 +516,31 @@ export function reduceTaskWorkState(
       { code: correlation.diagnostic, eventId: event.eventId, detail: correlation.detail },
     ];
     // v6「same op ID + different hash: quarantine corruption」。衝突した event は状態にも
-    // 台帳にも入れない（入れると、訂正された再配送が重複 no-op として黙って捨てられる）
-    if (correlation.diagnostic === "terminal_conflict") {
+    // 台帳にも入れない（入れると、訂正された再配送が重複 no-op として黙って捨てられる）。
+    // 権威順序を確認できない terminal も同じ扱いにする。健全な terminal を「順序違反」として
+    // 台帳に入れると、start を取り込み直しても二度と閉じられなくなる
+    if (
+      correlation.diagnostic === "terminal_conflict" ||
+      correlation.diagnostic === "terminal_order_unverifiable"
+    ) {
       return quarantine(previous, idempotencyLedger, diagnostics);
     }
-    // §4.3「zero or multiple にマッチした terminal は候補を unknown のままにする」。status は
-    // unknown にするが pending には残すので、後から権威ある証跡（rule 1）が来れば閉じられる
+    // §4.3「zero or multiple にマッチした terminal は unmatched evidence として保ち、候補を
+    // unknown のままにし、診断を出す」。status は unknown にするが pending には残すので、
+    // 後から権威ある証跡（rule 1）が来れば閉じられる。証跡を足さないと、状態が変わった理由が
+    // 状態からも history からも辿れない（放棄経路は足しているので扱いも揃わない）
     const unresolved = new Set(correlation.unresolvedOperationIds);
+    const truncated = sourceEventsFull(previous.state.pendingOperations, unresolved);
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: previous.state.pendingOperations.map((pending) =>
-        unresolved.has(pending.operationId) && pending.status === "started"
-          ? { ...pending, status: "unknown" as const }
+        unresolved.has(pending.operationId)
+          ? withSourceEvent(
+              pending.status === "started" ? { ...pending, status: "unknown" as const } : pending,
+              event.eventId,
+            )
           : pending,
       ),
-      diagnostics,
+      diagnostics: truncated.length === 0 ? diagnostics : [...diagnostics, truncationDiagnostic(event, truncated)],
     });
   }
 
@@ -497,40 +551,74 @@ export function reduceTaskWorkState(
     event.successful === true ? ("succeeded" as const)
     : event.successful === false ? ("failed" as const)
     : ("unknown" as const);
+  const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([matchedId]));
   return commit(previous, event, idempotencyLedger, {
     pendingOperations: previous.state.pendingOperations.map((pending) =>
       pending.operationId === matchedId
-        ? {
-            ...pending,
-            status,
-            sourceEventIds: [...pending.sourceEventIds, event.eventId],
-            terminalAt: event.occurredAt,
-          }
+        ? withSourceEvent({ ...pending, status, terminalAt: event.occurredAt }, event.eventId)
         : pending,
     ),
-    diagnostics: [],
+    diagnostics: truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)],
   });
+}
+
+function truncationDiagnostic(
+  event: NormalizedContinuityEvent,
+  operationIds: readonly string[],
+): ContinuityDiagnosticV1 {
+  return {
+    code: "source_events_truncated",
+    eventId: event.eventId,
+    detail: `sourceEventIds が上限 ${CONTINUITY_LIMITS.arrayItems} 件で、この event を記録できない operation: ${operationIds.join(", ")}`,
+  };
 }
 
 /**
  * frozen schema は `pendingOperations` を 256 件（§10 の `arrayItems`）に制限しているのに、
- * addendum には保持方針が無い（#39）。上限に達したら、もう状態が変わらない succeeded / failed を
- * 古い順に落として新しい start の場所を空ける。`started` と `unknown` は後から rule 1 で
- * 閉じられる可能性があるので落とさない。落とせるものが無ければ `null` を返し、呼び出し側は
- * schema 違反の状態を作らずに隔離する。
+ * addendum には保持方針が無い（#39）。上限に達したら、失って影響の小さい順に古いものから
+ * 落として新しい start の場所を空ける。
+ *
+ * 「落とせるものが無ければ取り込まない」にはできない。`unknown` を消す経路が他に無いので、
+ * 枠が `started` / `unknown` で埋まると以後すべての start が入らなくなり、訂正版の存在しない
+ * 隔離を adapter が永久に再送し続ける（回復経路が無い）。落とした事実は診断に出し、event
+ * 自体は event store に残る（§6.4）。
  */
-function retainPendingOperations(pending: PendingOperation[]): PendingOperation[] | null {
+const EVICTION_ORDER: readonly PendingOperation["status"][] = [
+  "succeeded",
+  "failed",
+  "unknown",
+  "started",
+];
+
+function retainPendingOperations(pending: PendingOperation[]): PendingOperation[] {
   if (pending.length < CONTINUITY_LIMITS.arrayItems) return pending;
   const dropCount = pending.length - CONTINUITY_LIMITS.arrayItems + 1;
   const dropped = new Set<string>();
-  for (const candidate of pending) {
-    if (dropped.size === dropCount) break;
-    if (candidate.status === "succeeded" || candidate.status === "failed") {
-      dropped.add(candidate.operationId);
+  for (const status of EVICTION_ORDER) {
+    for (const candidate of pending) {
+      if (dropped.size === dropCount) break;
+      if (candidate.status === status) dropped.add(candidate.operationId);
     }
   }
-  if (dropped.size < dropCount) return null;
   return pending.filter((candidate) => !dropped.has(candidate.operationId));
+}
+
+/**
+ * frozen schema は `sourceEventIds` も 256 件（§10 の `arrayItems`）に制限する。projection は
+ * 上限で頭打ちにし、超えた分は event store 側だけに残す（§6.4）。上限を見ずに append すると、
+ * 同じ operation に届き続ける terminal で還元器自身が schema 違反の状態を出す。
+ */
+function withSourceEvent(pending: PendingOperation, eventId: string): PendingOperation {
+  if (pending.sourceEventIds.includes(eventId)) return pending;
+  if (pending.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems) return pending;
+  return { ...pending, sourceEventIds: [...pending.sourceEventIds, eventId] };
+}
+
+function sourceEventsFull(pending: readonly PendingOperation[], ids: ReadonlySet<string>): string[] {
+  return pending
+    .filter((candidate) => ids.has(candidate.operationId))
+    .filter((candidate) => candidate.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems)
+    .map((candidate) => candidate.operationId);
 }
 
 function startPendingOperation(
@@ -569,7 +657,7 @@ function startPendingOperation(
     replayPolicy: "never_auto",
     sourceEventIds: [event.eventId],
     startedAt: event.occurredAt,
-    // §12.3 の分類器が無い間、内容を見ずに normal と申告しない（#36）。
+    // 分類器が正本に無い間、内容を見ずに normal と申告しない（#36）。
     sensitivity: "private",
     ...(operation.nativeOperationId !== undefined
       ? { idempotencyKey: operation.nativeOperationId }
@@ -626,8 +714,11 @@ export function correlateTerminalEvent(
       ? []
       : sameScope.filter((pending) => pending.correlation.nativeOperationId === operation.nativeOperationId);
 
+  // rule 1 を名乗った terminal は rule 1 だけで判定する。§4.3 の matchKey は nativeOperationId を
+  // 含むので、正しく導出された matchKey なら rule 2 でも一致しない。導出は wire 越しには
+  // 検証できないので、「native id はあるが一致しない」を「native id が無い」と同じに扱わない
   const candidates =
-    byNativeId.length > 0
+    operation.nativeOperationId !== undefined
       ? byNativeId
       : sameScope.filter(
           (pending) =>
@@ -637,15 +728,18 @@ export function correlateTerminalEvent(
   const rule = byNativeId.length > 0 ? "native_operation_id" : "match_key";
 
   const open = candidates.filter((pending) => pending.status === "started" || pending.status === "unknown");
-  // §4.3「候補を unknown のままにする」の候補集合。閉じられない分岐すべてで同じ集合を使う
-  const unresolvedOperationIds = open.map((pending) => pending.operationId);
+  // §4.3「候補を unknown のままにする」。候補が無い分岐では unknown にする相手も無い
+  const openIds = open.map((pending) => pending.operationId);
 
   if (candidates.length === 0) {
     return {
       matched: null,
       diagnostic: "terminal_unmatched",
-      detail: "一致する open な operation が無い",
-      unresolvedOperationIds,
+      detail:
+        operation.nativeOperationId === undefined
+          ? "一致する operation が無い"
+          : `nativeOperationId ${operation.nativeOperationId} に一致する operation が無い`,
+      unresolvedOperationIds: [],
     };
   }
   if (open.length === 0) {
@@ -653,7 +747,7 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_already_applied",
       detail: "候補はすべて terminal 済み",
-      unresolvedOperationIds,
+      unresolvedOperationIds: [],
     };
   }
   // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
@@ -674,7 +768,7 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_unmatched",
       detail: "turn 同一性が無いので rule 2 では閉じられない",
-      unresolvedOperationIds,
+      unresolvedOperationIds: openIds,
     };
   }
   if (eligible.length > 1) {
@@ -682,20 +776,13 @@ export function correlateTerminalEvent(
       matched: null,
       diagnostic: "terminal_ambiguous",
       detail: `open な候補が ${eligible.length} 件`,
-      unresolvedOperationIds,
+      unresolvedOperationIds: eligible.map((pending) => pending.operationId),
     };
   }
   const matched = eligible[0] as PendingOperation;
 
-  const start = previous.operationStarts.get(matched.operationId);
-  if (start === undefined || compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
-    return {
-      matched: null,
-      diagnostic: "terminal_out_of_order",
-      detail: "terminal が start より後であることを権威順序で確認できない",
-      unresolvedOperationIds,
-    };
-  }
+  // 衝突検査を権威順序より先に置く。逆順だと「順序不明かつ hash 衝突」の terminal が
+  // 隔離されずに台帳へ入り、訂正版の再配送が重複 no-op として黙って捨てられる
   const startHash = matched.correlation.canonicalInputHash;
   if (
     startHash !== undefined &&
@@ -710,29 +797,72 @@ export function correlateTerminalEvent(
       unresolvedOperationIds: [],
     };
   }
+  const start = previous.operationStarts.get(matched.operationId);
+  if (start === undefined) {
+    // start の ingestSeq が状態に無い（checkpoint から復元した等: #35）。順序を確認できない
+    // だけで、terminal 自体は健全なので、状態も台帳も変えずに隔離する。start を取り込み直せば
+    // 同じ terminal を再配送して閉じられる
+    return {
+      matched: null,
+      diagnostic: "terminal_order_unverifiable",
+      detail: `operation ${matched.operationId} の start が状態に無く、権威順序を確認できない`,
+      unresolvedOperationIds: [],
+    };
+  }
+  if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
+    return {
+      matched: null,
+      diagnostic: "terminal_out_of_order",
+      detail: "terminal が start より後でない",
+      // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
+      unresolvedOperationIds: [matched.operationId],
+    };
+  }
   return { matched, rule };
 }
 
 // --- §4.3 abandonment -------------------------------------------------------
 
+export interface AbandonmentResultV1 {
+  outcome: "applied" | "duplicate";
+  state: CanonicalWorkStateV1;
+  ledger: IdempotencyLedger;
+}
+
 /**
  * §4.3「terminal の証跡が無い、または曖昧なまま放棄・復帰したときは unknown を確定する」。
  * 状態は不変なので、新しい revision を持つ別の状態を返す。
+ *
+ * §4.2 の「重複した論理 event は no-op」はこの経路にも掛かる。台帳を見ずに revision を採番すると、
+ * 同じ放棄 event の再配送のたびに stateRevision が変わり、それを CAS token として使う下流
+ * （checkpointRevision / expectedProjectionRevision / claimFence）が空振りする。
  */
 export function finalizeAbandonedState(
   state: CanonicalWorkStateV1,
-  event: NormalizedContinuityEvent,
-): CanonicalWorkStateV1 {
+  event: IntakeStampedEventV1,
+  idempotencyLedger: IdempotencyLedger,
+): AbandonmentResultV1 {
+  assertOperationEnvelope(event);
+  assertTurnIdentity(event);
   assertIngestSeq(event.ingestSeq);
-  assertSameLineage(state, event);
+  assertSameScope(state, event);
+  const key = idempotencyKeyOf(event);
+  if (idempotencyLedger.has(key)) {
+    return { outcome: "duplicate", state, ledger: idempotencyLedger };
+  }
   const pendingOperations = state.pendingOperations.map((pending) =>
     pending.status === "started"
-      ? { ...pending, status: "unknown" as const, sourceEventIds: [...pending.sourceEventIds, event.eventId] }
+      ? withSourceEvent({ ...pending, status: "unknown" as const }, event.eventId)
       : pending,
   );
   const content = nextContent(state, event, pendingOperations);
-  return {
+  const next = {
     ...content,
     stateRevision: deriveRevision(state.stateRevision, event.eventId, contentHashOf(content)),
+  };
+  return {
+    outcome: "applied",
+    state: next,
+    ledger: new Map(idempotencyLedger).set(key, event.eventId),
   };
 }
