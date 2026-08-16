@@ -1,0 +1,33 @@
+harness/schema/jcs.ts
+  s_5cbc4c67c8b3b4::t_c327c2f8b1bdf7 40-96
+harness/continuity/jcs.test.ts
+  s_5cbc4c67c8b3b4::t_34288aa00d1559 3
+  s_5cbc4c67c8b3b4::t_b0d510a284f0a8 77-104
+harness/continuity/capability-manifest.test.ts
+  s_5cbc4c67c8b3b4::t_40932fd37a2b1f 33-35,37
+harness/continuity/schema-freeze.test.ts
+  s_5cbc4c67c8b3b4::t_d94b3773ef7ef8 431-451
+  s_5cbc4c67c8b3b4::t_680fa28966e163 6,8
+harness/assemble.ts
+  s_5cbc4c67c8b3b4::t_c1c5d8a8153b5d 19,22,456
+harness/continuity/fixture-validation.test.ts
+  s_5cbc4c67c8b3b4::t_20fd6c2a9402ce 7,82,90
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_1416659496b1dd 13,542
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c343d54a8064a3b8818fabef760eaa8b666791a5",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
