@@ -71,6 +71,10 @@ import * as schema from "./schema.js";
 import { classifySessionForInjection, shouldSuppressSummaryOnlyOutput } from "./session-policy.js";
 import type { MemoryStore } from "./store.js";
 import { deriveTags } from "./tags.js";
+import { isOneOf, trimEndWhere } from "./text-trim.js";
+
+const TRAILING_SLASH = isOneOf("/");
+
 import { storeVectors } from "./vectors.js";
 
 // ---------------------------------------------------------------------------
@@ -95,7 +99,7 @@ function normalizePath(path: string, repoRoot: string | null): string {
 	if (!path) return "";
 	const cleaned = path.trim();
 	if (!repoRoot) return cleaned;
-	const root = repoRoot.replace(/\/+$/, "");
+	const root = trimEndWhere(repoRoot, TRAILING_SLASH);
 	if (cleaned === root) return ".";
 	if (cleaned.startsWith(`${root}/`)) return cleaned.slice(root.length + 1);
 	return cleaned;

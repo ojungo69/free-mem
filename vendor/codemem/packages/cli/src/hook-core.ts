@@ -37,3 +37,5 @@ export {
 	resolveRuntimeDataDir,
 	resolveStorageLayout,
 } from "../../core/src/storage-layout.js";
+// 依存ゼロの文字列ユーティリティ。hook 側でも `/x+$/` の二次挙動を避けるために要る
+export { isOneOf, trimEndWhere } from "../../core/src/text-trim.js";

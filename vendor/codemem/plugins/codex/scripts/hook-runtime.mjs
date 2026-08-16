@@ -2880,6 +2880,46 @@ function spoolMutation(input, options = {}) {
 	}
 }
 //#endregion
+//#region ../core/src/text-trim.ts
+/**
+* Linear-time edge trimming.
+*
+* `s.replace(/x+$/, "")` looks harmless but is quadratic in the length of a run of `x`:
+* the engine retries the greedy `x+` from every start position and each attempt walks to
+* the end before `$` fails. A 32k run of `/` costs ~530ms; 128k costs ~8s. These helpers
+* run once over the affected edge instead, and every call site takes text that arrives
+* from a transcript, a hook payload, an import file, or a model response.
+*
+* Leading trims of the same shape (`/^x+/`) are already linear — the anchor pins the start
+* position — so they stay as regexes at their call sites and have no helper here.
+*
+* Predicates receive whole code points, not UTF-16 code units, so `\p{P}` and friends keep
+* behaving the way the `u`-flagged regexes they replace did.
+*/
+function codePointBefore(value, end) {
+	const last = value.charCodeAt(end - 1);
+	if (last >= 56320 && last <= 57343 && end >= 2) {
+		const first = value.charCodeAt(end - 2);
+		if (first >= 55296 && first <= 56319) return value.slice(end - 2, end);
+	}
+	return value[end - 1];
+}
+/** Drop code points matching `drop` from the end of `value`. */
+function trimEndWhere(value, drop) {
+	let end = value.length;
+	while (end > 0) {
+		const char = codePointBefore(value, end);
+		if (!drop(char)) break;
+		end -= char.length;
+	}
+	return value.slice(0, end);
+}
+/** Build a `drop` predicate from a literal character set. */
+function isOneOf(chars) {
+	const set = new Set(chars);
+	return (char) => set.has(char);
+}
+//#endregion
 //#region src/hook-core.ts
 var VERSION = "0.40.2";
 //#endregion
@@ -5988,6 +6028,8 @@ function logHookEvent(message) {
 * can build a query richer than the bare current prompt and so that
 * file-locality boosts can target files the user just edited.
 */
+var HYPHEN = isOneOf("-");
+var TRAILING_SLASH = isOneOf("/");
 var MAX_FILES_MODIFIED = 64;
 var MAX_QUERY_CHARS = 500;
 var SESSION_FILE_LABEL_CHARS = 24;
@@ -6020,7 +6062,7 @@ function contextDir() {
 function sessionFileStem(sessionId) {
 	const trimmed = sessionId.trim();
 	if (!trimmed) return "session-state";
-	return `${trimmed.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, SESSION_FILE_LABEL_CHARS) || "session"}-${stableSessionSuffix(trimmed)}`;
+	return `${trimEndWhere(trimmed.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+/, ""), HYPHEN).slice(0, SESSION_FILE_LABEL_CHARS) || "session"}-${stableSessionSuffix(trimmed)}`;
 }
 function statePathForSession(sessionId) {
 	return join(contextDir(), `${sessionFileStem(sessionId)}.json`);
@@ -6180,7 +6222,7 @@ function trackHookSessionState(payload, sanitizedPrompt, sanitizedModifiedPaths)
 	return state;
 }
 function pathBasename(value) {
-	const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+	const normalized = trimEndWhere(value.replaceAll("\\", "/"), TRAILING_SLASH);
 	if (!normalized) return "";
 	const parts = normalized.split("/");
 	return parts[parts.length - 1] ?? "";

@@ -11,6 +11,14 @@ import {
 import { loadObserverConfig, ObserverClient } from "../observer-client.js";
 import { SecretScanner } from "../secret-scanner.js";
 import { isSummaryLikeMemory } from "../summary-memory.js";
+import { isOneOf, isWhitespace, trimEndWhere } from "../text-trim.js";
+
+const CLOSE_BRACKET = isOneOf("]");
+
+/** `/\s*```$/` の置き換え。末尾のフェンスと、その直前の空白だけを落とす。 */
+export function stripTrailingFence(value: string): string {
+	return value.endsWith("```") ? trimEndWhere(value.slice(0, -3), isWhitespace) : value;
+}
 
 const AI_BACKFILL_KINDS = [
 	"change",
@@ -195,7 +203,8 @@ ${row.body_text}`;
 function sanitizeNarrative(value: string | null): string | null {
 	if (!value) return null;
 	let text = value.trim();
-	text = text.replace(/^\[+/, "").replace(/\]+$/, "").trim();
+	// 末尾側の `\]+$` だけが二次。先頭側の `^\[+` は anchor が効くので regex のまま
+	text = trimEndWhere(text.replace(/^\[+/, ""), CLOSE_BRACKET).trim();
 	if (!text) return null;
 
 	// If the model trails off without sentence punctuation, trim to the last
@@ -225,7 +234,7 @@ function parseStructuredBackfillResponse(raw: string | null): ParsedStructuredBa
 	if (!raw) throw new Error("observer returned empty response");
 	const trimmed = raw.trim();
 	const cleaned = trimmed.startsWith("```")
-		? trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+		? stripTrailingFence(trimmed.replace(/^```(?:json)?\s*/i, ""))
 		: trimmed;
 	const parsed = JSON.parse(cleaned) as Record<string, unknown>;
 	if (

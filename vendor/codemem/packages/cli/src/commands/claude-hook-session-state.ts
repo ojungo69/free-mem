@@ -10,7 +10,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { extractApplyPatchPaths, MUTATING_TOOL_NAMES } from "@codemem/core";
+import { extractApplyPatchPaths, isOneOf, MUTATING_TOOL_NAMES, trimEndWhere } from "@codemem/core";
+
+const HYPHEN = isOneOf("-");
+const TRAILING_SLASH = isOneOf("/");
 
 export type SessionState = {
 	first_prompt: string;
@@ -58,11 +61,15 @@ export function contextDir(): string {
 function sessionFileStem(sessionId: string): string {
 	const trimmed = sessionId.trim();
 	if (!trimmed) return "session-state";
-	const label = trimmed
-		.toLowerCase()
-		.replace(/[^a-z0-9._-]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, SESSION_FILE_LABEL_CHARS);
+	// 末尾側の `-+$` は入力長に対して二次に走る。sessionId は hook payload から来るので
+	// helper に置き換える。先頭側の `^-+` は anchor が効いていて線形なのでそのまま
+	const label = trimEndWhere(
+		trimmed
+			.toLowerCase()
+			.replace(/[^a-z0-9._-]+/g, "-")
+			.replace(/^-+/, ""),
+		HYPHEN,
+	).slice(0, SESSION_FILE_LABEL_CHARS);
 	return `${label || "session"}-${stableSessionSuffix(trimmed)}`;
 }
 
@@ -256,7 +263,7 @@ export function trackHookSessionState(
 }
 
 function pathBasename(value: string): string {
-	const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+	const normalized = trimEndWhere(value.replaceAll("\\", "/"), TRAILING_SLASH);
 	if (!normalized) return "";
 	const parts = normalized.split("/");
 	return parts[parts.length - 1] ?? "";

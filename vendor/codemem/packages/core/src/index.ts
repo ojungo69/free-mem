@@ -565,6 +565,7 @@ export {
 	insertTestSession,
 	seedMixedScopeFixture,
 } from "./test-utils.js";
+export { isOneOf, trimEndWhere } from "./text-trim.js";
 export type {
 	Artifact,
 	ExplainError,

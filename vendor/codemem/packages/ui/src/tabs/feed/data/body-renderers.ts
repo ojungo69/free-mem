@@ -36,10 +36,19 @@ export function renderSummarySections(summary: FeedSummary) {
 		.filter(Boolean);
 }
 
+/**
+ * `label: value` の形をしているか。元は `/.+?:\s+.+/` だったが、`.+?` と `.+` が
+ * 開始位置ごとに走り直すため長い 1 行で二次に効く。`.` が除外する 4 文字をそのまま
+ * 除外した文字クラスに置き換えてある（判定は変わらない）。
+ */
+export function isLabeledFact(fact: string): boolean {
+	return /[^\n\r\u2028\u2029]:\s+[^\n\r\u2028\u2029]/.test(fact);
+}
+
 export function renderFactsContent(facts: unknown[]) {
 	const trimmed = facts.map((f) => String(f || "").trim()).filter(Boolean);
 	if (!trimmed.length) return null;
-	const labeledFacts = trimmed.every((f) => /.+?:\s+.+/.test(f));
+	const labeledFacts = trimmed.every(isLabeledFact);
 	if (labeledFacts) {
 		const rows = trimmed
 			.map((fact, index) => {
