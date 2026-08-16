@@ -10,6 +10,7 @@ import {
   resolveResumeDeliveryStrategy,
   type AdapterCapabilities,
   type CaptureFixture,
+  type CompactionRecoveryStrategy,
   type EventKind,
   type ObservedCapability,
   type ToolFailurePhase,
@@ -192,7 +193,9 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   // 重複したまま通すと別 run 同士を同一実測と誤認する
   const seenIds = new Set<string>();
   for (const f of fixtures) {
-    if (seenIds.has(f.fixtureId)) fail(`duplicate fixtureId: ${f.fixtureId}`);
+    // validateFixture と同じ理由で throw。process.exit だとテストから確認できず、
+    // --test 実行中に踏むとスイート全体が途中で死ぬ
+    if (seenIds.has(f.fixtureId)) throw new Error(`duplicate fixtureId: ${f.fixtureId}`);
     seenIds.add(f.fixtureId);
   }
   for (const f of fixtures) {
@@ -218,8 +221,18 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     "subagentCapture",
     "stableNativeSessionId",
   ] as const;
+  // schema に cell を足して HIGH_LEVEL_KEYS に足し忘れると、fixture 検証は通るのに
+  // matrix では unknown のまま黙って落ちる。top-level / observedEvents と同じ drift 検査を掛ける
+  const schemaHighLevelKeys = Object.keys(SCHEMA.properties?.highLevel?.properties ?? {});
+  const foldedKeys = new Set<string>([...HIGH_LEVEL_KEYS, "compactionRecoveryStrategy"]);
+  const unfolded = schemaHighLevelKeys.filter((k) => !foldedKeys.has(k));
+  if (unfolded.length > 0) {
+    throw new Error(`highLevel key not folded into the matrix (HIGH_LEVEL_KEYS 未登録): ${unfolded.join(", ")}`);
+  }
+
   type HighLevelObservation = { fixture: CaptureFixture; value: ObservedCapability };
   const highLevelObs: Partial<Record<(typeof HIGH_LEVEL_KEYS)[number], HighLevelObservation[]>> = {};
+  const compactionObs: { fixtureId: string; value: CompactionRecoveryStrategy }[] = [];
 
   for (const f of fixtures) {
     for (const ev of f.observedEvents) {
@@ -242,13 +255,24 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
         continue;
       }
       const coverage = ev.coverage ?? (prev.value !== "unknown" ? prev.coverage : undefined);
+      // observedEvents も highLevel と同じ手書き JSON で、raw transcript との対応は
+      // 誰も検証していない（fixtures/*/raw/ を読むコードは無い）。rig.isolated の自己申告
+      // だけで real-cli-e2e を刻むのは高位 cell で潰した provenance 捏造と同じなので、
+      // evidenceHash が付くまでは弱い証跡種別に落とす。
+      // sourceFixtureId / verifiedAt は「その kind を最後に観測した fixture」で、
+      // 高位 cell のような強度順の選抜はしていない（capture cell は tier 判定に入らないため）
+      const hashed = Boolean(f.evidenceHash);
       capabilities.capture[kind] = {
         value: ev.capability ?? "native",
         sourceEvents: mergedSources,
         nativeVersion,
-        evidenceKind: "real-cli-e2e",
+        evidenceKind: hashed ? "real-cli-e2e" : "source-test",
         verifiedAt: f.capturedAt,
-        limitations: mergedLimits,
+        limitations: hashed
+          ? mergedLimits
+          : dedupe([...mergedLimits, "no evidenceHash: transcript に紐付いていない自己申告"]),
+        sourceFixtureId: f.fixtureId,
+        evidenceHash: f.evidenceHash ?? null,
         ...(coverage !== undefined ? { coverage } : {}),
       };
     }
@@ -267,24 +291,40 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
         if (v) (highLevelObs[key] ??= []).push({ fixture: f, value: v });
       }
       if (hl.compactionRecoveryStrategy) {
-        capabilities.compactionRecoveryStrategy = hl.compactionRecoveryStrategy;
+        compactionObs.push({ fixtureId: f.fixtureId, value: hl.compactionRecoveryStrategy });
       }
     }
+  }
+
+  // compactionRecoveryStrategy は capability cell ではなく単独の enum なので強度順が無い。
+  // 割れたまま片方を採ると並び順で結果が変わるため、割れたら「不明」に落として理由を残す
+  const compactionValues = dedupe(compactionObs.map((o) => o.value));
+  if (compactionValues.length === 1) {
+    capabilities.compactionRecoveryStrategy = compactionObs[0].value;
+  } else if (compactionValues.length > 1) {
+    fixtureLimitations.push(
+      `compactionRecoveryStrategy: conflicting observations (${compactionObs
+        .map((o) => `${o.fixtureId}=${o.value}`)
+        .join(", ")}) — left null`,
+    );
   }
 
   for (const key of HIGH_LEVEL_KEYS) {
     const obs = highLevelObs[key];
     if (!obs) continue;
-    // 「支持あり（native / synthesized）」と「支持なし（unsupported）」が両方観測されたら
-    // 実測どうしの矛盾。key の欠落は未観測として無視しているので、unsupported は
-    // 「その run では明示的に否定された」という主張になる。矛盾したまま自動配送を
-    // 有効化しないよう証跡を落とす（isProven が false = fail closed）。
-    // native と synthesized の食い違いは達成手段の差で、支持の有無は割れていないため矛盾としない
-    const contradicted =
-      obs.some((o) => o.value === "unsupported") && obs.some((o) => o.value !== "unsupported");
-    // 値は最も強い観測を採る。同強度なら後の fixture（並び順の影響は下の pairFixture が均す）
-    const best = obs.reduce((a, b) => (CAPABILITY_STRENGTH[b.value] >= CAPABILITY_STRENGTH[a.value] ? b : a));
-    // highLevel は fixture の自己申告で、observedEvents のような file 内証跡を伴わない。
+    // 実測どうしが割れたら、どちらが正しいか harness には決められない。矛盾したまま
+    // 自動配送を有効化しないよう証跡を落とす（isProven が false = fail closed）。
+    // native と synthesized の食い違いも矛盾に含める: 同一 exact version について
+    // 「CLI 自前で起きた」と「こちらで合成した」は両立せず、しかもこの割れは §8 の
+    // native_prompt_gate の成立条件そのもの（値だけ native を採って証跡を残すと、
+    // synthesized と実測した run があるのに最上位 tier が通る）
+    const contradicted = obs.some((o) => o.value !== obs[0].value);
+    // 値は最も強い観測を採る。同強度なら evidenceHash のある方を優先する
+    // （並び順で hash 無しが hash 付きの証跡を捨てるのを防ぐ）
+    const rank = (o: HighLevelObservation): number =>
+      CAPABILITY_STRENGTH[o.value] * 2 + (o.fixture.evidenceHash ? 1 : 0);
+    const best = obs.reduce((a, b) => (rank(b) > rank(a) ? b : a));
+    // highLevel は fixture の自己申告で、raw transcript との対応は誰も検証していない。
     // hash で transcript に紐付いていないものを real-cli-e2e と刻むのは provenance の
     // 捏造になるため、hash が無い間は弱い証跡種別に落とす。
     // Task 2/3 の実 CLI rig が hash を記録したら昇格する
@@ -318,7 +358,12 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   if (pairFixture) {
     for (const key of ["promptAwareInjection", "promptDeliveryBeforeModel"] as const) {
       const cell = capabilities[key];
-      // native に昇格した cell や、矛盾で証跡を落とした cell には触らない
+      // native に昇格した cell や、矛盾で証跡を落とした cell には触らない。
+      // ponytail: 片側だけ別 fixture で native になると、対を証明した fixture が残っていても
+      // §8 の synthesized 対は成立せず tier が下がる（下がる向きなので fail closed）。
+      // 直すには matrix に「この run が対を証明した」機械可読な欄を足すか、§8 の
+      // 「両方 synthesized」を「native は上位互換」と読み替えるかで、どちらも凍結済み
+      // contract の変更。現行 fixture では両 cell とも unknown で到達しない → issue #19
       if (cell.value !== "synthesized" || cell.evidenceKind === null) continue;
       capabilities[key] = {
         ...cell,
@@ -326,7 +371,11 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
         verifiedAt: pairFixture.capturedAt,
         sourceFixtureId: pairFixture.fixtureId,
         evidenceHash: pairFixture.evidenceHash ?? null,
-        limitations: dedupe([...cell.limitations, `prompt pair proven together in ${pairFixture.fixtureId}`]),
+        // hash 付きの証跡へ差し替えたので「hash が無い」caveat は残さない（残すと記録が自己矛盾する）
+        limitations: dedupe([
+          ...cell.limitations.filter((l) => !l.startsWith("no evidenceHash:")),
+          `prompt pair proven together in ${pairFixture.fixtureId}`,
+        ]),
       };
     }
   }
@@ -457,7 +506,12 @@ async function selfTest(): Promise<void> {
     for (const kind of ["session_started", "user_prompted"] as EventKind[]) {
       assert(cap.capture[kind].value === "native", `${kind} native`);
       assert(cap.capture[kind].verifiedAt === at1, `${kind} verifiedAt`);
-      assert(cap.capture[kind].evidenceKind === "real-cli-e2e", `${kind} evidenceKind`);
+      // hash が無い capture は高位 cell と同じ扱い: 値は載せるが real-cli-e2e とは刻まない
+      assert(cap.capture[kind].evidenceKind === "source-test", `${kind} evidenceKind`);
+      assert(
+        cap.capture[kind].limitations.some((l) => l.startsWith("no evidenceHash:")),
+        `${kind} caveat`,
+      );
       assert(cap.capture[kind].nativeVersion === v, `${kind} nativeVersion`);
     }
     for (const kind of ["tool_started", "tool_completed", "tool_failed"] as EventKind[]) {
@@ -558,6 +612,81 @@ async function selfTest(): Promise<void> {
       { ...ssNative, fixtureId: "claude/ss-native-2", capturedAt: at2 },
     ]).capabilities;
     assert(reasserted.sessionStartInjection.evidenceKind === null, "contradiction is sticky");
+
+    // native と synthesized の割れも矛盾として扱う（§8 native_prompt_gate の成立条件そのもの）
+    const pdNative = {
+      ...hlBase,
+      fixtureId: "claude/pd-native",
+      capturedAt: at1,
+      scenario: "pre-model delivery native",
+      evidenceHash: "e".repeat(64),
+      highLevel: { promptDeliveryBeforeModel: "native" as const },
+    };
+    const pdSynth = {
+      ...hlBase,
+      fixtureId: "claude/pd-synth",
+      capturedAt: at2,
+      scenario: "pre-model delivery synthesized",
+      evidenceHash: "f".repeat(64),
+      highLevel: { promptDeliveryBeforeModel: "synthesized" as const },
+    };
+    for (const order of [
+      [pdNative, pdSynth],
+      [pdSynth, pdNative],
+    ]) {
+      const split = assembleFromFixtures([...order]).capabilities;
+      assert(split.promptDeliveryBeforeModel.evidenceKind === null, "native/synthesized split drops the proof");
+      assert(split.resumeDeliveryStrategy === "manual_only", "split must not reach native_prompt_gate");
+    }
+
+    // 同じ値・同じ強度なら evidenceHash のある観測を採る（並び順で実測の証跡を捨てない）
+    const ssNoHash = {
+      ...hlBase,
+      fixtureId: "claude/ss-nohash",
+      capturedAt: at2,
+      scenario: "session start native, self-declared",
+      highLevel: { sessionStartInjection: "native" as const },
+    };
+    delete (ssNoHash as { evidenceHash?: string }).evidenceHash;
+    for (const order of [
+      [ssNative, ssNoHash],
+      [ssNoHash, ssNative],
+    ]) {
+      const tie = assembleFromFixtures([...order]).capabilities;
+      assert(tie.sessionStartInjection.sourceFixtureId === "claude/ss-native", "hashed evidence wins the tie");
+      assert(tie.sessionStartInjection.evidenceKind === "real-cli-e2e", "hashed evidence keeps the proof");
+      assert(tie.resumeDeliveryStrategy === "session_start_full", "tie must not lose the tier to file order");
+    }
+
+    // compactionRecoveryStrategy が割れたら、片方を採らず null にして理由を残す
+    const crBase = {
+      ...hlBase,
+      fixtureId: "claude/cr-native",
+      capturedAt: at1,
+      scenario: "compaction recovery native",
+      highLevel: { compactionRecoveryStrategy: "native_pre_and_post" as const },
+    };
+    const crOther = {
+      ...crBase,
+      fixtureId: "claude/cr-other",
+      capturedAt: at2,
+      highLevel: { compactionRecoveryStrategy: "unsupported" as const },
+    };
+    for (const order of [
+      [crBase, crOther],
+      [crOther, crBase],
+    ]) {
+      const cr = assembleFromFixtures([...order]);
+      assert(cr.capabilities.compactionRecoveryStrategy === null, "conflicting compaction strategy left null");
+      assert(
+        cr.fixtureLimitations.some((l) => l.startsWith("compactionRecoveryStrategy: conflicting")),
+        "conflict recorded",
+      );
+    }
+    assert(
+      assembleFromFixtures([crBase]).capabilities.compactionRecoveryStrategy === "native_pre_and_post",
+      "single observation still lands",
+    );
 
     console.log("PASS");
   } finally {

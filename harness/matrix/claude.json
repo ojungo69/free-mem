@@ -1,7 +1,7 @@
 {
   "cli": "claude",
   "nativeVersion": "2.1.228 (Claude Code)",
-  "generatedAt": "2026-08-16T05:31:14.804Z",
+  "generatedAt": "2026-08-16T05:58:30.028Z",
   "fixtureCount": 5,
   "fixtureIds": [
     "claude/injection-and-subagent",
@@ -27,9 +27,13 @@
           "SessionStart"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:09:59.044Z",
-        "limitations": []
+        "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "claude/tool-lifecycle",
+        "evidenceHash": null
       },
       "user_prompted": {
         "value": "native",
@@ -37,9 +41,13 @@
           "UserPromptSubmit"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:09:59.044Z",
-        "limitations": []
+        "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "claude/tool-lifecycle",
+        "evidenceHash": null
       },
       "assistant_completed": {
         "value": "synthesized",
@@ -47,11 +55,14 @@
           "Stop"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:07:44.644Z",
         "limitations": [
-          "Stop payload の last_assistant_message から復元。native な assistant_completed hook は無い"
-        ]
+          "Stop payload の last_assistant_message から復元。native な assistant_completed hook は無い",
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "claude/lifecycle-basic",
+        "evidenceHash": null
       },
       "tool_started": {
         "value": "native",
@@ -59,11 +70,14 @@
           "PreToolUse"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:09:59.044Z",
         "limitations": [
-          "subagent 起動も親側 PreToolUse として観測される。**tool_name は `Agent`**（`Task` ではない — 生 capture で確認）。同 run には ToolSearch も現れる"
-        ]
+          "subagent 起動も親側 PreToolUse として観測される。**tool_name は `Agent`**（`Task` ではない — 生 capture で確認）。同 run には ToolSearch も現れる",
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "claude/tool-lifecycle",
+        "evidenceHash": null
       },
       "tool_completed": {
         "value": "native",
@@ -71,9 +85,13 @@
           "PostToolUse"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:09:59.044Z",
-        "limitations": []
+        "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告"
+        ],
+        "sourceFixtureId": "claude/tool-lifecycle",
+        "evidenceHash": null
       },
       "tool_failed": {
         "value": "synthesized",
@@ -82,12 +100,15 @@
           "Stop"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:10:03.724Z",
         "limitations": [
           "**PostToolUse は tool 失敗時に発火しない**（2 回実行で決定的に再現: PreToolUse のみ、PostToolUse 無し）。失敗の検出は PreToolUse の未完了 + Stop の last_assistant_message からの合成に依存する",
-          "failurePhase の直接判別は不可。executed failure と他 phase を hook 単体では区別できない"
+          "failurePhase の直接判別は不可。executed failure と他 phase を hook 単体では区別できない",
+          "no evidenceHash: transcript に紐付いていない自己申告"
         ],
+        "sourceFixtureId": "claude/tool-failed-executed",
+        "evidenceHash": null,
         "coverage": 0.5
       },
       "turn_completed": {
@@ -96,11 +117,14 @@
           "Stop"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:09:59.044Z",
         "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告",
           "Stop = turn 終端として扱う。turn 専用の native event は無いが、UserPromptSubmit / Stop / SessionEnd が同一 `prompt_id` を共有するため turn の対応付け自体は native に可能（生 capture で 3 event 共有を確認）"
-        ]
+        ],
+        "sourceFixtureId": "claude/tool-lifecycle",
+        "evidenceHash": null
       },
       "pre_compact": {
         "value": "unknown",
@@ -138,13 +162,16 @@
           "SessionEnd"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:13:16.911Z",
         "limitations": [
           "SIGINT 中断時は **Stop が発火せず** SessionEnd のみ届く（interrupt2/3/4 の 3 回で再現。raw/claude-interrupt{2,3,4}.jsonl）。ただし SessionEnd.reason は正常終了時と同じ 'other' で、中断と正常終了を payload だけでは区別できない",
           "区別には『Stop 無しで SessionEnd』というパターン合成が必要（本 fixture の根拠）",
-          "raw/claude-interrupt.jsonl は deadline 前に完走した run で Stop を含む。中断形の証跡は interrupt2/3/4 の 3 本"
+          "raw/claude-interrupt.jsonl は deadline 前に完走した run で Stop を含む。中断形の証跡は interrupt2/3/4 の 3 本",
+          "no evidenceHash: transcript に紐付いていない自己申告"
         ],
+        "sourceFixtureId": "claude/interrupt-and-hook-timeout",
+        "evidenceHash": null,
         "coverage": 0.75
       },
       "session_ended": {
@@ -153,11 +180,14 @@
           "SessionEnd"
         ],
         "nativeVersion": "2.1.228 (Claude Code)",
-        "evidenceKind": "real-cli-e2e",
+        "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:09:59.044Z",
         "limitations": [
+          "no evidenceHash: transcript に紐付いていない自己申告",
           "reason は headless 正常終了でも 'other'。終了理由の判別には使えない"
-        ]
+        ],
+        "sourceFixtureId": "claude/tool-lifecycle",
+        "evidenceHash": null
       }
     },
     "toolFailurePhases": [

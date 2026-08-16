@@ -124,6 +124,58 @@ test("未対応の schema キーワードは黙って無視せずエラーにす
   );
 });
 
+test("キーワードの値の型違いも検出する（制約が黙って無効化される）", () => {
+  assert.throws(
+    () => validateAgainstSchema("a", { type: "string", minLength: "3" }, ROOT),
+    /schema keyword minLength at \$ must be a number/,
+  );
+  // required: "kind" は文字列を 1 文字ずつ必須プロパティ名として読み、無関係な issue を出す
+  assert.throws(
+    () => validateAgainstSchema({}, { type: "object", required: "kind" }, ROOT),
+    /schema keyword required at \$ must be an array of strings/,
+  );
+});
+
+test("再帰 schema でも深い値でスタックを割らずに issue で返す", () => {
+  // 子降下で refStack を畳むため、再帰 schema では値の深さが唯一の歯止めになる
+  const root: JsonSchemaDocument = {
+    $defs: { J: { anyOf: [{ type: "string" }, { type: "object", additionalProperties: { $ref: "#/$defs/J" } }] } },
+  };
+  let deep: unknown = "leaf";
+  for (let i = 0; i < 3000; i++) deep = { a: deep };
+  assert.throws(() => validateAgainstSchema(deep, { $ref: "#/$defs/J" }, root), /value nesting deeper than 200/);
+  // 信頼境界では JSON 妥当性検査が先に同じ深さで弾くので、例外は外まで出ない
+  assert.match(validateContractValue("J", deep, root, LIMITS)[0].message, /nesting deeper than 200/);
+});
+
+test("壊れた pattern は、値が文字列でなくても検出する", () => {
+  // pattern の評価は値が文字列のときだけ走る。schema の誤りは値に依らない欠陥なので
+  // 「たまたま数値だったから素通り」を許さない
+  assert.throws(
+    () => validateAgainstSchema(1, { type: "number", pattern: "[" }, ROOT),
+    /invalid pattern at \$: \[/,
+  );
+});
+
+test("$ref から辿れない $defs の誤記も検出する", () => {
+  const root: JsonSchemaDocument = {
+    $defs: { Used: { type: "string" }, Unused: { type: "string", format: "date-time" } },
+  };
+  assert.throws(
+    () => validateAgainstSchema("x", root, root),
+    /unsupported schema keyword at \$\.\$defs\.Unused: format/,
+  );
+});
+
+test("minLength / maxLength は Unicode code point で数える", () => {
+  // "😀".length は UTF-16 code unit 数で 2。code point では 1 文字
+  assert.deepEqual(validateAgainstSchema("😀", { type: "string", maxLength: 1 }, ROOT), []);
+  assert.match(
+    validateAgainstSchema("😀😀", { type: "string", maxLength: 1 }, ROOT)[0].message,
+    /longer than maxLength 1/,
+  );
+});
+
 test("dangling $ref は例外にする", () => {
   assert.throws(() => validateAgainstSchema({}, { $ref: "#/$defs/Nope" }, ROOT), /dangling \$ref/);
 });

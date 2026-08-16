@@ -61,6 +61,34 @@ const SUPPORTED_KEYWORDS = new Set([
   "else",
 ]);
 
+// 対応キーワードが取る値の形。名前が合っていても型が違えば制約は効かないので、
+// 名前の集合と同じ場所で押さえる（未掲載のキーワードは形を問わない）
+const isNumber = (v: unknown): boolean => typeof v === "number";
+const isSchemaLike = (v: unknown): boolean => isPlainObject(v) || typeof v === "boolean";
+const KEYWORD_VALUE_KIND: Record<string, { name: string; check: (v: unknown) => boolean }> = {
+  type: { name: "a string or array of strings", check: (v) => typeof v === "string" || Array.isArray(v) },
+  enum: { name: "an array", check: Array.isArray },
+  required: { name: "an array of strings", check: (v) => Array.isArray(v) && v.every((x) => typeof x === "string") },
+  properties: { name: "an object", check: isPlainObject },
+  $defs: { name: "an object", check: isPlainObject },
+  additionalProperties: { name: "a schema", check: isSchemaLike },
+  items: { name: "a schema", check: isSchemaLike },
+  if: { name: "a schema", check: isSchemaLike },
+  then: { name: "a schema", check: isSchemaLike },
+  else: { name: "a schema", check: isSchemaLike },
+  oneOf: { name: "an array of schemas", check: Array.isArray },
+  anyOf: { name: "an array of schemas", check: Array.isArray },
+  allOf: { name: "an array of schemas", check: Array.isArray },
+  minItems: { name: "a number", check: isNumber },
+  maxItems: { name: "a number", check: isNumber },
+  minLength: { name: "a number", check: isNumber },
+  maxLength: { name: "a number", check: isNumber },
+  minimum: { name: "a number", check: isNumber },
+  maximum: { name: "a number", check: isNumber },
+  pattern: { name: "a string", check: (v) => typeof v === "string" },
+  $ref: { name: "a string", check: (v) => typeof v === "string" },
+};
+
 // 値を歩く関数の共通の打ち切り深さ。JSON の実用的な深さより十分大きく、
 // スタックオーバーフローよりは十分小さい値
 const MAX_WALK_DEPTH = 200;
@@ -233,6 +261,22 @@ function assertSchemaSupported(
     if (!SUPPORTED_KEYWORDS.has(key)) {
       throw new Error(`unsupported schema keyword at ${path}: ${key}`);
     }
+    // 名前だけ合っていて型が違うキーワードは、制約が黙って無効化される
+    // （`minLength: "3"` は数値比較に載らず素通り、`required: "kind"` は文字列を 1 文字ずつ
+    //  必須プロパティ名として読む）。名前の誤記と同じくデータに依らない欠陥なので throw する
+    const expected = KEYWORD_VALUE_KIND[key];
+    if (expected && !expected.check(schema[key])) {
+      throw new Error(`schema keyword ${key} at ${path} must be ${expected.name}`);
+    }
+  }
+  // pattern は値が文字列のときしか評価されない。`{type:"number", pattern:"["}` のような
+  // 壊れた schema が「その値が文字列ではなかった」というだけで素通りするのを防ぐ
+  if (typeof schema.pattern === "string") {
+    try {
+      new RegExp(schema.pattern);
+    } catch {
+      throw new Error(`invalid pattern at ${path}: ${schema.pattern}`);
+    }
   }
   // 同じ $ref を 2 度歩かない。循環 schema でも preflight が止まるようにするための打ち切りで、
   // 循環そのものの検出は validateNode 側（refStack）が受け持つ
@@ -240,9 +284,13 @@ function assertSchemaSupported(
     seenRefs.add(schema.$ref);
     assertSchemaSupported(resolveRef(schema.$ref, root), root, schema.$ref, seenRefs);
   }
-  if (isPlainObject(schema.properties)) {
-    for (const [k, sub] of Object.entries(schema.properties)) {
-      assertSchemaSupported(sub, root, `${path}.properties.${k}`, seenRefs);
+  // $defs も歩く。$ref から辿れる定義しか見ないと、参照が外れた定義の誤記だけが
+  // 検査を免れ、「どの契約を検証したか」で schema の正しさが変わってしまう
+  for (const key of ["properties", "$defs"] as const) {
+    const map = schema[key];
+    if (!isPlainObject(map)) continue;
+    for (const [k, sub] of Object.entries(map)) {
+      assertSchemaSupported(sub, root, `${path}.${key}.${k}`, seenRefs);
     }
   }
   for (const key of ["items", "additionalProperties", "if", "then", "else"] as const) {
@@ -255,8 +303,19 @@ function assertSchemaSupported(
   }
 }
 
+/** JSON Schema の文字列長は Unicode code point 数。String#length は UTF-16 code unit 数で絵文字を 2 と数える */
+const codePointLength = (s: string): number => Array.from(s).length;
+
+// JSON 上 -0 と 0 は同じ数（JSON.stringify(-0) === "0"）だが JSON.parse("-0") は -0 を返し、
+// isDeepStrictEqual は別物と見る。放置すると `expected const 0, got 0` という読めない issue になる。
+// ponytail: const object の奥に埋もれた -0 までは畳まない。契約に現れたら深い正規化へ
+const jsonEqual = (a: unknown, b: unknown): boolean =>
+  isDeepStrictEqual(Object.is(a, -0) ? 0 : a, Object.is(b, -0) ? 0 : b);
+
 // 一度歩いた schema object は覚えておく。schema は repo 内の静的 JSON で、同じ object を
-// 値ごとに歩き直しても結論は変わらない。root ごとに覚えるのは、$ref の解決先が root 依存のため
+// 値ごとに歩き直しても結論は変わらない。root ごとに覚えるのは、$ref の解決先が root 依存のため。
+// 前提: 検査後に schema object を書き換えないこと（object 同一性で覚えるので、後から
+// キーを足しても再検査されない）。この repo の schema は JSON.parse したまま凍結して使う
 const schemaChecked = new WeakMap<object, JsonSchemaDocument>();
 
 /** schema 側を先に検査してから値を検査する。外から呼ぶのはこちら。 */
@@ -270,7 +329,7 @@ export function validateAgainstSchema(
     assertSchemaSupported(schema, root, path, new Set());
     if (isPlainObject(schema)) schemaChecked.set(schema, root);
   }
-  return validateNode(value, schema, root, path, []);
+  return validateNode(value, schema, root, path, [], 0);
 }
 
 function validateNode(
@@ -279,7 +338,16 @@ function validateNode(
   root: JsonSchemaDocument,
   path: string,
   refStack: readonly string[],
+  depth: number,
 ): ValidationIssue[] {
+  // 再帰 schema（JsonValue など）では refStack が子降下で畳まれるため、値が深いだけで
+  // 際限なく降りられる。RangeError で落ちる前に打ち切る。
+  // issue ではなく throw にするのは、anyOf / oneOf の中では issue が「その分岐に一致しなかった」
+  // に化けて原因が消えるため（circular $ref と同じ理由）。信頼境界の validateContractValue は
+  // findNonJsonValues が同じ深さで先に弾いて早期 return するので、ここに深い値は到達しない
+  if (depth > MAX_WALK_DEPTH) {
+    throw new Error(`value nesting deeper than ${MAX_WALK_DEPTH} at ${path}`);
+  }
   if (schema === true) return [];
   if (schema === false) return [{ path, message: "schema is false (nothing is valid here)" }];
   if (!isPlainObject(schema)) return [{ path, message: "schema must be an object or boolean" }];
@@ -298,7 +366,7 @@ function validateNode(
       throw new Error(`circular $ref: ${[...refStack, schema.$ref].join(" -> ")}`);
     }
     issues.push(
-      ...validateNode(value, resolveRef(schema.$ref, root), root, path, [...refStack, schema.$ref]),
+      ...validateNode(value, resolveRef(schema.$ref, root), root, path, [...refStack, schema.$ref], depth),
     );
   }
 
@@ -312,18 +380,21 @@ function validateNode(
     }
   }
 
-  if (Array.isArray(schema.enum) && !schema.enum.some((e) => isDeepStrictEqual(e, value))) {
+  if (Array.isArray(schema.enum) && !schema.enum.some((e) => jsonEqual(e, value))) {
     issues.push({ path, message: `value not in enum: ${JSON.stringify(value)}` });
   }
-  if (own(schema, "const") && !isDeepStrictEqual(schema.const, value)) {
+  if (own(schema, "const") && !jsonEqual(schema.const, value)) {
     issues.push({ path, message: `expected const ${JSON.stringify(schema.const)}, got ${JSON.stringify(value)}` });
   }
 
   if (typeof value === "string") {
-    if (typeof schema.minLength === "number" && value.length < schema.minLength) {
+    // ponytail: pattern は毎回コンパイルし、backtracking にも上限が無い。schema は repo 内の
+    // 凍結された JSON でレビューを通るため今は許容している。外部由来の schema を受けるなら
+    // pattern の事前検査（安全な部分集合への制限）か worker での実行が要る
+    if (typeof schema.minLength === "number" && codePointLength(value) < schema.minLength) {
       issues.push({ path, message: `string shorter than minLength ${schema.minLength}` });
     }
-    if (typeof schema.maxLength === "number" && value.length > schema.maxLength) {
+    if (typeof schema.maxLength === "number" && codePointLength(value) > schema.maxLength) {
       issues.push({ path, message: `string longer than maxLength ${schema.maxLength}` });
     }
     if (typeof schema.pattern === "string" && !new RegExp(schema.pattern).test(value)) {
@@ -353,7 +424,7 @@ function validateNode(
     }
     if (schema.items !== undefined) {
       // 子の値へ降りるので refStack は畳む。詳細は CHILD_REF_STACK の注記
-      value.forEach((item, i) => issues.push(...validateNode(item, schema.items, root, `${path}[${i}]`, [])));
+      value.forEach((item, i) => issues.push(...validateNode(item, schema.items, root, `${path}[${i}]`, [], depth + 1)));
     }
   }
 
@@ -364,27 +435,27 @@ function validateNode(
     }
     for (const [k, v] of Object.entries(value)) {
       if (own(props, k)) {
-        issues.push(...validateNode(v, props[k], root, `${path}.${k}`, []));
+        issues.push(...validateNode(v, props[k], root, `${path}.${k}`, [], depth + 1));
       } else if (schema.additionalProperties === false) {
         issues.push({ path, message: `unknown property: ${k}` });
       } else if (schema.additionalProperties !== undefined) {
-        issues.push(...validateNode(v, schema.additionalProperties, root, `${path}.${k}`, []));
+        issues.push(...validateNode(v, schema.additionalProperties, root, `${path}.${k}`, [], depth + 1));
       }
     }
   }
 
   if (Array.isArray(schema.allOf)) {
-    for (const sub of schema.allOf) issues.push(...validateNode(value, sub, root, path, refStack));
+    for (const sub of schema.allOf) issues.push(...validateNode(value, sub, root, path, refStack, depth));
   }
   if (Array.isArray(schema.anyOf)) {
-    const ok = schema.anyOf.some((sub) => validateNode(value, sub, root, path, refStack).length === 0);
+    const ok = schema.anyOf.some((sub) => validateNode(value, sub, root, path, refStack, depth).length === 0);
     if (!ok) issues.push({ path, message: "value matches none of anyOf" });
   }
   if (Array.isArray(schema.oneOf)) {
     // 2 件一致した時点で結果は確定する。variant の多い判別共用体で残りを回さない
     let matched = 0;
     for (const sub of schema.oneOf) {
-      if (validateNode(value, sub, root, path, refStack).length === 0 && ++matched === 2) break;
+      if (validateNode(value, sub, root, path, refStack, depth).length === 0 && ++matched === 2) break;
     }
     if (matched !== 1) {
       const got = matched === 2 ? "2 or more" : String(matched);
@@ -396,9 +467,9 @@ function validateNode(
   // `if` は「合致するか」の判定にだけ使い、その issue 自体は結果に混ぜない
   if (schema.if !== undefined) {
     const branch =
-      validateNode(value, schema.if, root, path, refStack).length === 0 ? schema.then : schema.else;
+      validateNode(value, schema.if, root, path, refStack, depth).length === 0 ? schema.then : schema.else;
     if (branch !== undefined) {
-      issues.push(...validateNode(value, branch, root, path, refStack));
+      issues.push(...validateNode(value, branch, root, path, refStack, depth));
     }
   }
 
