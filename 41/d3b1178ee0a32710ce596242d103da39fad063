@@ -1,0 +1,21 @@
+harness/continuity/capability-manifest.test.ts
+  s_5cbc4c67c8b3b4::t_7b4de8ca3c6e21 91-94
+harness/continuity/validate.test.ts
+  s_5cbc4c67c8b3b4::t_8aba57baf1309b 9,11,457-509
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "41d3b1178ee0a32710ce596242d103da39fad063",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
