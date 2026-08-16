@@ -1,0 +1,28 @@
+harness/continuity/capability-manifest.test.ts
+  s_aae0332a907f07::t_94c08d9cdbbefd 74-79,81-84,86-108,110-130,132,146-161
+  s_5cbc4c67c8b3b4::t_85b5ac16f41571 4,20-42,65-70,72-73,162-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fe48d4514b2193c4554e228534f9b65deb10ef08",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_aae0332a907f07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a009c3-230b-7a63-a6d3-acbbd3f7b8de",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
