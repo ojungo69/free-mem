@@ -23,7 +23,7 @@
 | どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolvedOperationIds` として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ。**turn 種別（`turnIdSource`）の一致は候補の絞り込みで見る**: 種別は start 側の材料（`operationStarts`。凍結 schema の外・#35）にしかないので、以前は候補を 1 件に絞ってから最後に比べていた。それだと「同じ matchKey・同じ turnId で種別だけ違う」候補が 2 件並んだとき、種別で 1 件に決まるはずのものが `terminal_ambiguous` になって**両方 `unknown` に倒れ、配送鍵も消費される**。絞り込み時に見れば rule 2 の「exactly one open candidate」が成立して閉じられる。ただし**材料がある候補だけ**種別で絞る（復元直後は `operationStarts` が空なので、材料が無いことを「種別が違う」と読むと理由を取り違える。§3.1 は降格の理由を doctor が報告することを求めている）。候補ゼロのときの診断も「turn 同一性が無い」と「種別が違う」で書き分け、`unknown` に倒す相手は種別違いならその候補だけにする |
 | turn scoping を要求する規則は unavailable に fail closed になり、downgrade の理由は doctor が報告する | §3.1 | intake の降格は `turn_identity_downgraded` 診断を返す。`stampIntakeEvidence` の戻り値は `{ event, diagnostics }` |
 | `turnId` は native / synthesized_monotonic のとき必須、unavailable のとき不在 | §3.1 | `assertTurnIdentity`（schema 側にも if/then があり二重に守る） |
-| operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない。公開している `correlateTerminalEvent` も入口で同じ検査を行う（還元器を経由しない呼び出しで飛ばすと、既知の terminal kind が envelope 無しで届いたとき §3.1 違反が「照合できなかっただけ」の `terminal_unmatched` に化けて、壊れた adapter の証跡がそのまま保存される）。同じ理由で `assertSameScope` も入口で行う: 候補の絞り込みは session と lineage しか見ず、状態は Agent を 1 つしか持たないので、ここで比べないと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する |
+| operation event は `operation` envelope 必須。correlation 値を `payload` から読まない | §3.1 | `assertOperationEnvelope`。correlation 関数は `payload` を参照しない。公開している `correlateTerminalEvent` も入口で同じ検査を行う（還元器を経由しない呼び出しで飛ばすと、既知の terminal kind が envelope 無しで届いたとき §3.1 違反が「照合できなかっただけ」の `terminal_unmatched` に化けて、壊れた adapter の証跡がそのまま保存される）。同じ理由で `assertSameScope` も入口で行う: 候補の絞り込みは session と lineage しか見ず、状態は Agent を 1 つしか持たないので、ここで比べないと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する。**§22.6 の `ingestSeq` decimal string 制約も同じ理由で入口に置く**: `compareIngestSeq` は start を選んだ後の順序比較でしか走らないので、候補ゼロ・適用済み・曖昧・照合不能で早期 return する経路では検査されず、還元器が入口で落とす入力を直接呼びだけが `terminal_orphaned` として返していた。公開入口で守る不変条件は envelope・turn 同一性・scope・`ingestSeq` の 4 つで、還元器と同じ集合になる |
 | dedupe authority は `adapterDeliveryId`、無ければ canonical fingerprint | v6 §8.2 | `idempotencyKeyOf` は fallback（union ではない。正本の導出式が `??` で書かれている）。schema が `adapterDeliveryId` に minLength を持たないので、空文字は「無い」として fingerprint へ落とす |
 | dedupe は revision 採番の**前** | §4.2 | `reduceTaskWorkState` は ledger 照合を最初に行い、重複なら何も採番しない |
 | 重複した論理 event は no-op（同じ state bytes・content hash・revision・history） | §4.2 | 重複経路は入力の snapshot をそのまま返す。ledger も同一参照 |
@@ -374,8 +374,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**92 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 92 件（黙って飛ばされた変異ゼロ）、復元後は 110/110 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**93 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 93 件（黙って飛ばされた変異ゼロ）、復元後は 111/111 green。
 
 kill 率より先に**実行件数**を見ること。変異はソース中の文字列アンカーで当てるので、実装を直すと
 `assert old in s` が落ちて `&&` が短絡し、その変異は**出力に何も出ないまま黙って飛ばされる**
@@ -487,6 +487,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | peer identity が空でも認証済みとする | 1 |
 | 空白だけの受領証 ID を authority にする | 1 |
 | 空白の scenarioId で proven を成立させる | 1 |
+| 直接呼びの ingestSeq 検査を外す | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

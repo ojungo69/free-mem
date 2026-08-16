@@ -2278,6 +2278,23 @@ test("空白だけの scenarioId は proven な scenario を名指したこと�
   );
 });
 
+test("直接呼びの correlateTerminalEvent も decimal string でない ingestSeq を拒否する", () => {
+  // §22.6 の制約は `compareIngestSeq` が start を選んだ後にしか走らないので、候補ゼロで
+  // 早期 return する経路では検査されない。還元器は入口で落とすのに直接呼びだけが
+  // `terminal_orphaned` を返すと、§22.6 違反が正常な結果に化けて壊れた順序証跡が残る
+  for (const bad of ["", " ", "007", "1e3", "-1", "1.0", "abc"]) {
+    assert.throws(
+      () => correlateTerminalEvent(emptySnapshot(), terminalEvent({ ingestSeq: bad })),
+      /ingestSeq が decimal string でない/,
+      JSON.stringify(bad),
+    );
+  }
+  // 対照: 妥当な decimal string は従来どおり照合の結果（ここでは候補ゼロ）を返す
+  const ok = correlateTerminalEvent(emptySnapshot(), terminalEvent({ ingestSeq: "12" }));
+  if (ok.matched !== null) assert.fail("候補が無いのに閉じた");
+  assert.equal(ok.diagnostic, "terminal_orphaned");
+});
+
 test("直接呼びの correlateTerminalEvent も別 Agent の terminal を拒否する", () => {
   // 候補の絞り込みは session と lineage しか見ない。還元器と同じ検査を入口でしないと、
   // 別 Agent の terminal が「権威ある一致」として返り、consumer がそれを適用する

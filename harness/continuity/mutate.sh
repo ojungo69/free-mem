@@ -218,6 +218,7 @@ mutate "    !isBlank(attestation.ingestReceiptId) &&" "    true &&" && run "受�
 mutate "    !isBlank(attestation.peerIdentityId) &&" "    true &&" && run "peer identity が空でも認証済みとする"
 mutate "    !isBlank(attestation.ingestReceiptId) &&" "    attestation.ingestReceiptId !== \"\" &&" && run "空白だけの受領証 ID を authority にする"
 mutate "    !isBlank(provenance.scenarioId) &&" "    true &&" && run "空白の scenarioId で proven を成立させる"
+mutate "  assertIngestSeq(terminalEvent.ingestSeq);" "" && run "直接呼びの ingestSeq 検査を外す"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 | grep -E '^ℹ (pass|fail) '

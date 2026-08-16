@@ -985,6 +985,11 @@ export function correlateTerminalEvent(
   // 直接呼びで飛ばすと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを
   // 適用してしまう
   assertSameScope(previous.state, terminalEvent);
+  // §22.6 の decimal string 制約も入口で見る。`compareIngestSeq` は start を選んだ後の順序比較
+  // でしか走らないので、候補ゼロ・適用済み・曖昧・照合不能で早期 return する経路では検査され
+  // ない。還元器は入口で落とすのに直接呼びだけが `terminal_orphaned` という「照合できなかった
+  // だけ」の診断を返すと、§22.6 違反が正常な結果に化けて、caller が壊れた順序証跡を保持する
+  assertIngestSeq(terminalEvent.ingestSeq);
   const operation = terminalEvent.operation;
   if (operation === undefined || operation.phase !== "terminal") {
     return {
