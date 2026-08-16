@@ -162,6 +162,23 @@ addendum に無い**ので、「必ず残る」とは書けない。退避を状
 戻す（既にある分は上書きしない。後から来た再配送の `ingestSeq` で上書きすると、飛行中の
 terminal が順序違反に見える）。これで復元 → start 再配送 → terminal で `succeeded` まで戻る。
 
+**この復旧は「状態と冪等台帳を同時にリセットする」運用が前提**（#35 が閉じるまで）。台帳だけが
+残る運用では、再配送された start が最上流の dedupe で `duplicate` になって還元器まで届かず、
+`operationStarts` は空のままになる。詰まりはしない（terminal は `unknown` に倒れて台帳に入る）が、
+`succeeded` までは戻らない。start の `ingestSeq` を `PendingOperation` が持てば（#35）この前提は
+要らなくなる。
+
+**`terminal_orphaned` の隔離には期限が無い**。start が後から来る孤児（順序前後）と、start が二度と
+来ない孤児（退避で消えた operation、daemon が実行途中で attach して terminal だけ捕まえた場合）は
+還元器の中では区別できない。台帳に入れる側に倒すと前者を永久に殺すので隔離を選んだが、後者は
+adapter が再送を続けることになる。
+
+**打ち切りは呼び出し側の責務**とする。`quarantined` + `terminal_orphaned` を受けた delivery 層は、
+同じ冪等キーの再送を「その session の `lastIngestSeq` が孤児 terminal の `ingestSeq` を十分に
+追い越すまで」に限り、それを過ぎたら unmatched evidence として doctor に出して捨てる。還元器側に
+期限を持たせないのは、時刻も試行回数も状態に入れられない（決定的でなくなる・frozen schema に
+置き場が無い）ため。退避された operation を状態に残す場所ができれば（#39）この分岐の後者は消える。
+
 ### 2.11 event kind の分類（#29）
 
 `operation` envelope を要求する kind の集合は正本に無い。harness の正規化語彙
