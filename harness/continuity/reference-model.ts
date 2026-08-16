@@ -1235,12 +1235,17 @@ export function correlateTerminalEvent(
     //     純関数なので再送は毎回同じ隔離になる**——`started` を矛盾集合から外した理由（無限再送）と
     //     同型の失敗が、確定済みの兄弟経由で残っていた。記録できる候補が 1 件でも居るなら、
     //     台帳を消費してでも candidates を `unknown` にするほうが §4.3 の終状態に合う
+    //     ただし**抑止するのは行動だけで、報告は残す**。§3.1 は棄却・降格の理由を doctor が
+    //     報告できることを求めていて、(ii) は「壊れた証跡か」の判定なので、隔離しない場合でも
+    //     矛盾していた事実自体は消えない。そのため矛盾の検出は行動ガードと独立に走らせ、
+    //     `recordable` は「隔離するか」だけを決める
     const incoming = terminalStatusOf(terminalEvent);
-    const recordable = plausible.length === 0 && compatible.some(isOpen);
-    const contradicted =
-      recordable || incoming === "unknown" || plausible.some((pending) => pending.status === incoming)
+    const contradicting =
+      incoming === "unknown" || plausible.some((pending) => pending.status === incoming)
         ? undefined
         : compatible.filter((pending) => !isOpen(pending)).find((pending) => pending.status !== incoming);
+    const recordable = plausible.length === 0 && compatible.some(isOpen);
+    const contradicted = recordable ? undefined : contradicting;
     // 隔離は台帳を消費しないので、消費する分岐より必ず先に判定する
     if (contradicted !== undefined) {
       return {
@@ -1263,11 +1268,15 @@ export function correlateTerminalEvent(
         matched: null,
         diagnostic: "terminal_unmatched",
         detail:
-          compatibleOpen.length === 0
+          (compatibleOpen.length === 0
             ? "候補はすべて terminal 済みで、turn が両立するものが無い"
             : sourceMismatch
               ? `turnIdSource が terminal の ${terminalEvent.turnIdSource} と違うので rule 2 では閉じられない`
-              : "turn 同一性が無いので rule 2 では閉じられない",
+              : "turn 同一性が無いので rule 2 では閉じられない") +
+          // 隔離しなかった場合でも、矛盾していた事実は doctor に届ける
+          (contradicting === undefined
+            ? ""
+            : `（なお operation ${contradicting.operationId} は ${contradicting.status} で確定済みなのに ${incoming} を名乗っている。閉じえた候補ではないので隔離はしない）`),
         unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen,
       };
     }
@@ -1393,7 +1402,21 @@ export function finalizeAbandonedState(
     // duplicate と同じだが、outcome を分けて呼び出し側に見えるようにする
     const incoming = sourceHashOf(event);
     if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
-      return { outcome: "quarantined", state, ledger: idempotencyLedger, diagnostics: [] };
+      // 診断も還元器側と同じものを出す。outcome だけで区別できると考えて空で返していたが、
+      // §3.1 が求めるのは doctor が理由を報告できることで、doctor が受け取るのは診断の側。
+      // 空で返すと「なぜ放棄が落ちたか」が経路ごとに違う形でしか分からない
+      return {
+        outcome: "quarantined",
+        state,
+        ledger: idempotencyLedger,
+        diagnostics: [
+          {
+            code: "delivery_conflict",
+            eventId: event.eventId,
+            detail: `event ${applied.eventId} と同じ配送 ID で source hash が違う`,
+          },
+        ],
+      };
     }
     return { outcome: "duplicate", state, ledger: idempotencyLedger, diagnostics: [] };
   }

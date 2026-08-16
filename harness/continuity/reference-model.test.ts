@@ -1395,7 +1395,7 @@ interface RejectionFixture {
   intakeContext: IntakeContextV1;
   cases: Array<{
     name: string;
-    rejectedBy: "schema" | "runtime" | "intake";
+    rejectedBy: "schema" | "runtime" | "intake" | "intake-reject";
     reason: string;
     intakeOverride?: Partial<IntakeContextV1>;
     event: NormalizedContinuityEvent;
@@ -1431,13 +1431,21 @@ test("negative fixture は宣言した層で落ちる", () => {
       );
       continue;
     }
-    const stamped = stampIntakeEvidence(testCase.event, {
-      ...fixture.intakeContext,
-      ...testCase.intakeOverride,
-    }).event;
-    assert.equal(stamped.provenance.evidenceKind, "synthesized", testCase.name);
+    const context = { ...fixture.intakeContext, ...testCase.intakeOverride };
+    // intake は 2 通りの落とし方をする。降格（証跡の質が足りない）と、受け取らない
+    // （名乗っている identity が認証済み peer と矛盾する）。fixture でこの 2 つを区別しないと、
+    // 降格しか実装しない移植でも fixture が緑になる
+    if (testCase.rejectedBy === "intake-reject") {
+      assert.throws(() => stampIntakeEvidence(testCase.event, context), /§3.1 違反/, testCase.name);
+      continue;
+    }
+    assert.equal(
+      stampIntakeEvidence(testCase.event, context).event.provenance.evidenceKind,
+      "synthesized",
+      testCase.name,
+    );
   }
-  assert.deepEqual([...layers].sort(), ["intake", "runtime", "schema"]);
+  assert.deepEqual([...layers].sort(), ["intake", "intake-reject", "runtime", "schema"]);
 
   // fixture の intakeContext に欠落があると、何をしても synthesized になって intake の case が
   // 素通りする。正当な経路なら native になることを対で確かめる
@@ -2046,6 +2054,10 @@ test("放棄でも同じ配送 ID で source hash が違えば隔離する", () 
   assert.equal(conflicting.outcome, "quarantined");
   assert.equal(conflicting.state, first.state);
   assert.equal(conflicting.ledger, first.ledger);
+  // 診断も還元器側と同じものを出す。doctor が受け取るのは outcome ではなく診断の側なので、
+  // 空で返すと「なぜ放棄が落ちたか」が経路ごとに違う形でしか分からない
+  assert.deepEqual(conflicting.diagnostics.map((d) => d.code), ["delivery_conflict"]);
+  assert.equal(conflicting.diagnostics[0]?.eventId, "event-abandon-corrupt");
 });
 
 test("toolName を持たない schema 妥当な pending でも rule 1 の terminal は閉じる", () => {
@@ -2384,7 +2396,7 @@ test("turn が両立しない open な兄弟は確定済みへの再配送を妨
 });
 
 test("unknown に倒す相手は候補だけで、別 session の同名 operation を巻き込まない", () => {
-  // `unresolvedOperationIds` を id で当てると、状態側で id が重複しているとき候補ですらない
+  // 閉じられなかった候補を id で当てると、状態側で id が重複しているとき候補ですらない
   // operation——別 session のもの——まで `unknown` になる。§4.3 が集合単位で指示しているのは
   // 「candidates を unknown のままにする」であって、候補の外へ広げてよいとは言っていない
   const pending = (sessionId: string, n: string, turnId: string): PendingOperation =>
@@ -2481,6 +2493,9 @@ test("記録できる open な候補が居るなら、確定済みとの矛盾�
   assert.deepEqual(orphaned.diagnostics.map((d) => d.code), ["terminal_unmatched"]);
   assert.deepEqual(orphaned.snapshot.state.pendingOperations.map((p) => p.status), ["unknown", "succeeded"]);
   assert.equal(orphaned.snapshot.history.length, prepared.snapshot.history.length + 1);
+  // 抑止するのは隔離という行動だけで、矛盾していた事実は doctor に届ける（§3.1 は棄却・降格の
+  // 理由を報告できることを求めている）
+  assert.match(orphaned.diagnostics[0]?.detail ?? "", /succeeded で確定済みなのに failed を名乗っている/);
 });
 
 test("矛盾の診断は確定済みの候補を名指しする", () => {
