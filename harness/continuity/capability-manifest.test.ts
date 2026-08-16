@@ -114,7 +114,10 @@ test("evidence が版ごとの scenario 集合を固定している（§13 の v
   // §13「Adding or removing a required scenario requires a manifest version bump
   // recorded in the evidence file」。ID の出現を数えるだけだと、scenario を 1 つ削って
   // hash を再計算し、evidence の表も直して version は据え置き——が素通りする。
-  // 版の節を「その版の集合そのもの」として exact-set で照合し、hash も版に紐付ける
+  // 版の節を「その版の集合そのもの」として exact-set で照合し、hash も版に紐付ける。
+  // ただし manifest・hash・evidence は同じ変更の中で一緒に書き換えられるので、この test
+  // だけでは版の据え置きを塞げない。「公開済みの版のファイルは変更しない」は CI の
+  // Published manifest versions are immutable が origin/main を基準に見る
   const entry = evidenceEntry(manifest.manifestVersion);
   assert.deepEqual(
     entry.ids.slice().sort(),

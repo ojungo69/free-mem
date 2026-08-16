@@ -28,10 +28,14 @@ manifestHash: `8b740f26b2ddf732d2817a84d87596588f4757a08245e277d27945fc402345fa`
 
 `appliesToAgents` は 2 つとも `["claude", "codex"]`。Phase 3 の対象 CLI がこの 2 つだけであるため。
 
-上の表とこの hash が、この版の scenario 集合そのものである。集合を変えれば hash が変わるので、
-版を上げずに変更するには**この節を書き換えるしかない**——それが §13 の言う「evidence file に
-記録された version bump」を省いた形であることが diff に残る。新しい版は節を追加して記録する
-（過去の版の節は書き換えない）。
+上の表とこの hash が、この版の scenario 集合そのものである。新しい版は節を追加して記録し、
+過去の版の節は書き換えない。
+
+これを機械的に強制しているのは 2 つ。`harness/continuity/capability-manifest.test.ts` が
+表・hash・manifest の三者を照合し、CI の **Published manifest versions are immutable** が
+`origin/main` に既に載っている `capability-scenarios.v*.json` の変更を拒否する。後者が無いと、
+manifest と hash と evidence を同じ変更の中で一緒に書き換えれば版を据え置いたまま通ってしまう。
+集合を変えるときは新しい版のファイルを追加すること。
 
 ### `scenarioId` は導出値である
 

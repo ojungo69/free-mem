@@ -4,8 +4,8 @@
   "$defs": {
     "IsoTimestamp": {
       "type": "string",
-      "$comment": "各成分の範囲まで絞る。暦としての実在（2 月 30 日・閏年）は pattern では表せないので、そこは Task 5 の runtime validator が受け持つ（#27）。",
-      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{3})?Z$"
+      "$comment": "正本は「timestamps は UTC RFC3339」（agent-memory-final-spec-v6.md §22.6）。小数秒は RFC3339 の `time-secfrac = \".\" 1*DIGIT` に合わせて桁数を固定しない。各成分の範囲までは絞るが、暦としての実在（2 月 30 日・閏年）は pattern では表せないので、そこは Task 5 の runtime validator が受け持つ（#27）。",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?Z$"
     },
     "TaskBindingRole": {
       "type": "string",

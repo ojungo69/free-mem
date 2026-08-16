@@ -68,6 +68,22 @@ jobs:
         run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS
       - name: Continuity contract tests
         run: node --experimental-strip-types --test harness/continuity/*.test.ts
+      - name: Published manifest versions are immutable
+        # §13「Adding or removing a required scenario requires a manifest version bump
+        # recorded in the evidence file」。test 側は manifest・hash・evidence の 3 つを
+        # 突き合わせるが、その 3 つは同じ変更の中で一緒に書き換えられるため、版を据え置いた
+        # まま集合を変える経路を塞げない。origin/main に既に載っている版のファイルを
+        # 不変の基準として扱い、変更を CI で拒否する（新しい版は新しいファイルで足す）
+        run: |
+          git fetch --depth=1 origin main
+          for f in harness/schema/capability-scenarios.v*.json; do
+            git cat-file -e "origin/main:$f" 2>/dev/null || continue
+            git diff --exit-code origin/main -- "$f" || {
+              echo "::error file=$f::公開済みの版を書き換えている。scenario 集合を変えるなら新しい版のファイルを追加し、evidence に節を足すこと（§13）"
+              exit 1
+            }
+          done
+
       - name: Matrices are regenerated, not hand-edited
         # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
         # generatedAt は実行ごとに変わるので比較から外す

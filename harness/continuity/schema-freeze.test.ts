@@ -493,6 +493,13 @@ test("IsoTimestamp は成分の範囲まで見る", () => {
   const bad = (s: string) => validateAgainstSchema(s, { $ref: "#/$defs/IsoTimestamp" }, root).length > 0;
   assert.equal(bad("2026-08-16T00:00:00Z"), false);
   assert.equal(bad("2026-08-16T23:59:59.999Z"), false);
+  // 正本は RFC3339（`time-secfrac = "." 1*DIGIT`）。小数秒の桁数を 3 に固定すると、
+  // マイクロ秒で出す実装の正当な timestamp を契約が拒否してしまう
+  for (const s of ["2026-08-16T00:00:00.1Z", "2026-08-16T00:00:00.123456Z"]) {
+    assert.equal(bad(s), false, s);
+  }
+  // 小数点だけ・桁ゼロは RFC3339 でも不正
+  assert.equal(bad("2026-08-16T00:00:00.Z"), true);
   for (const s of [
     "2026-99-99T99:99:99Z",
     "2026-00-16T00:00:00Z",
