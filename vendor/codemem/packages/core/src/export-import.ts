@@ -7,6 +7,9 @@ import { projectColumnClause, resolveProject as resolveProjectName } from "./pro
 import * as schema from "./schema.js";
 import { LOCAL_DEFAULT_SCOPE_ID } from "./scope-resolution.js";
 import { resolveSessionScopeId } from "./scope-stamping.js";
+import { isOneOf, trimEndWhere } from "./text-trim.js";
+
+const TRAILING_SLASH = isOneOf("/");
 
 type JsonObject = Record<string, unknown>;
 type MemoryInsert = typeof schema.memoryItems.$inferInsert;
@@ -208,7 +211,7 @@ function normalizeImportedProject(project: unknown): string | null {
 	const trimmed = project.trim();
 	if (!trimmed) return null;
 	if (/[\\/]/.test(trimmed)) {
-		const normalized = trimmed.replaceAll("\\", "/").replace(/\/+$/, "");
+		const normalized = trimEndWhere(trimmed.replaceAll("\\", "/"), TRAILING_SLASH);
 		const parts = normalized.split("/");
 		return parts[parts.length - 1] || null;
 	}

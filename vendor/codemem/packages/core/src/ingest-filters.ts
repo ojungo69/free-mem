@@ -25,7 +25,7 @@ const LOW_SIGNAL_OBSERVATION_PATTERNS: RegExp[] = [
 	/\bconsisted\s+entirely\s+of\s+capturing\b/i,
 	/\bno\s+fully\s+resolved\s+deliverable\b/i,
 	/\beffort\s+focused\s+on\s+clarifying\b/i,
-	/\bno\s+code\s*,?\s+configuration\s*,?\s+or\s+documentation\s+changes?\s+(?:were|was)\s+made\b/i,
+	/\bno\s+code[\s,]+configuration[\s,]+or\s+documentation\s+changes?\s+(?:were|was)\s+made\b/i,
 	/\bwork\s+consisted\s+entirely\s+of\s+capturing\s+the\s+current\s+state\b/i,
 	/\bprimary\s+user\s+request\s+details\s+were\s+absent\b/i,
 ];

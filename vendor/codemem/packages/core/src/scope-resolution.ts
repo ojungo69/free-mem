@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import type { Database } from "better-sqlite3";
+import { isOneOf, trimEndWhere } from "./text-trim.js";
+
+const TRAILING_SLASH = isOneOf("/");
 
 export const LOCAL_DEFAULT_SCOPE_ID = "local-default";
 
@@ -85,7 +88,7 @@ function clean(value: string | null | undefined): string | null {
 }
 
 function normalizeSlash(value: string): string {
-	const normalized = value.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+	const normalized = trimEndWhere(value.trim().replaceAll("\\", "/"), TRAILING_SLASH);
 	return normalized || value.trim();
 }
 

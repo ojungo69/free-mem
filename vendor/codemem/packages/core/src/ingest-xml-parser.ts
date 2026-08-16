@@ -10,6 +10,9 @@
 
 import { isLowSignalObservation } from "./ingest-filters.js";
 import type { ParsedObservation, ParsedOutput, ParsedSummary } from "./ingest-types.js";
+import { isOneOf, trimEndWhere } from "./text-trim.js";
+
+const SENTENCE_PUNCTUATION = isOneOf(".!?");
 
 // ---------------------------------------------------------------------------
 // Regex patterns
@@ -1328,7 +1331,7 @@ function observationsAreGroundedInPlainProse(
 function isGroundedProsePhrase(value: string, prose: string): boolean {
 	const normalized = normalizeRecoverableText(value).toLowerCase();
 	if (!normalized) return false;
-	const comparable = normalized.replace(/[.!?]+$/, "");
+	const comparable = trimEndWhere(normalized, SENTENCE_PUNCTUATION);
 	for (const segment of prose
 		.split(/(?:[!?;]+|\.(?=\s|$)|\s+[—–]\s+)/)
 		.map((part) => part.trim())) {
@@ -1400,9 +1403,7 @@ function summaryIsGroundedInPlainProse(
 	}
 	if (!requireFullCoverage) return true;
 	const normalizedValues = scalarValues.map((value) =>
-		normalizeRecoverableText(value)
-			.toLowerCase()
-			.replace(/[.!?]+$/, ""),
+		trimEndWhere(normalizeRecoverableText(value).toLowerCase(), SENTENCE_PUNCTUATION),
 	);
 	return prose
 		.split(/(?:[!?;]+|\.(?=\s|$)|\s+[—–]\s+)/)
@@ -1424,7 +1425,7 @@ function plainProseSource(initialRaw: string | null | undefined): string | null 
 }
 
 function proseLooksLowSignal(prose: string): boolean {
-	const normalized = prose.replace(/[.!?]+$/, "").trim();
+	const normalized = trimEndWhere(prose, SENTENCE_PUNCTUATION).trim();
 	return (
 		isLowSignalObservation(prose) ||
 		/^(?:ok|okay|yes|no|thanks|thank you|got it|understood|approved|sounds good|sure)$/.test(

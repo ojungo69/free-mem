@@ -39,7 +39,7 @@ export function renderSummarySections(summary: FeedSummary) {
 export function renderFactsContent(facts: unknown[]) {
 	const trimmed = facts.map((f) => String(f || "").trim()).filter(Boolean);
 	if (!trimmed.length) return null;
-	const labeledFacts = trimmed.every((f) => /.+?:\s+.+/.test(f));
+	const labeledFacts = trimmed.every((f) => /[^\n]:\s+[^\n]/.test(f));
 	if (labeledFacts) {
 		const rows = trimmed
 			.map((fact, index) => {

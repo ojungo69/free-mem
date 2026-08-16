@@ -454,7 +454,7 @@ export function classifyMemoryWorthiness(input: InferMemoryRoleInput): MemoryWor
 		/\bpackages\/[\w./-]+/,
 		/\bdocs\/[\w./-]+/,
 		/\bsrc\/[\w./-]+/,
-		/[\w.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|yaml|yml)\b/,
+		/[\w.-]\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|yaml|yml)\b/,
 	]);
 
 	// 2. Keep-signals win over telemetry/bootstrap/validation (fixes M1-M4).

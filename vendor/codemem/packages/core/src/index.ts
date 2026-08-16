@@ -565,6 +565,14 @@ export {
 	insertTestSession,
 	seedMixedScopeFixture,
 } from "./test-utils.js";
+export {
+	isOneOf,
+	isSpaceOrPunctuation,
+	isWhitespace,
+	trimEndWhere,
+	trimStartWhere,
+	trimWhere,
+} from "./text-trim.js";
 export type {
 	Artifact,
 	ExplainError,

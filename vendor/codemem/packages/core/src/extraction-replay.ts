@@ -53,13 +53,17 @@ import {
 } from "./observer-client.js";
 import { resolveProject } from "./project.js";
 import { buildSessionContext } from "./raw-event-flush.js";
+import { isOneOf, trimEndWhere } from "./text-trim.js";
+
+const TRAILING_SLASH = isOneOf("/");
+
 import type { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 function normalizePath(path: string, repoRoot: string | null): string {
 	if (!path) return "";
 	const cleaned = path.trim();
 	if (!repoRoot) return cleaned;
-	const root = repoRoot.replace(/\/+$/, "");
+	const root = trimEndWhere(repoRoot, TRAILING_SLASH);
 	if (cleaned === root) return ".";
 	if (cleaned.startsWith(`${root}/`)) return cleaned.slice(root.length + 1);
 	return cleaned;
