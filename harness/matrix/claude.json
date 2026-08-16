@@ -1,7 +1,7 @@
 {
   "cli": "claude",
   "nativeVersion": "2.1.228 (Claude Code)",
-  "generatedAt": "2026-08-16T05:06:54.200Z",
+  "generatedAt": "2026-08-16T05:31:14.804Z",
   "fixtureCount": 5,
   "fixtureIds": [
     "claude/injection-and-subagent",
@@ -177,7 +177,7 @@
       "evidenceKind": "source-test",
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
-        "observed in claude/injection-and-subagent",
+        "observed native in claude/injection-and-subagent",
         "no evidenceHash: transcript に紐付いていない自己申告"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",
@@ -231,7 +231,7 @@
       "evidenceKind": "source-test",
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
-        "observed in claude/injection-and-subagent",
+        "observed native in claude/injection-and-subagent",
         "no evidenceHash: transcript に紐付いていない自己申告"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",
@@ -244,7 +244,7 @@
       "evidenceKind": "source-test",
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
-        "observed in claude/injection-and-subagent",
+        "observed native in claude/injection-and-subagent",
         "no evidenceHash: transcript に紐付いていない自己申告"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",

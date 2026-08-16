@@ -11,6 +11,7 @@ import {
   type AdapterCapabilities,
   type CaptureFixture,
   type EventKind,
+  type ObservedCapability,
   type ToolFailurePhase,
 } from "./schema/capability.ts";
 import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
@@ -215,6 +216,11 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     "subagentCapture",
     "stableNativeSessionId",
   ] as const;
+  type HighLevelObservation = { fixture: CaptureFixture; value: ObservedCapability };
+  const highLevelObs = Object.fromEntries(HIGH_LEVEL_KEYS.map((k) => [k, [] as HighLevelObservation[]])) as Record<
+    (typeof HIGH_LEVEL_KEYS)[number],
+    HighLevelObservation[]
+  >;
 
   for (const f of fixtures) {
     for (const ev of f.observedEvents) {
@@ -252,54 +258,54 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     }
     for (const l of f.limitations ?? []) fixtureLimitations.push(`[${f.fixtureId}] ${l}`);
 
-    // 高位 cell: fixture が観測結果を書いている場合のみ unknown を上書きする。
-    // capture[kind] 側と同じく後勝ちで降格させず、observed in の記録も統合する
-    // （ファイル名の並び順で先の fixture の provenance が消えるのを防ぐ）
+    // 高位 cell は観測を集めるだけにして、畳むのは全 fixture を読んだ後（下の 1 パス）。
+    // cell ごとに後勝ちで畳むと fixture の並び順で結果が変わる:
+    // 補強証拠を足すと prompt 経路の対が壊れ、否定的な実測は先に来たか後に来たかで消える
     const hl = f.highLevel;
     if (hl) {
       for (const key of HIGH_LEVEL_KEYS) {
         const v = hl[key];
-        if (!v) continue;
-        const prev = capabilities[key];
-        const observedIn = dedupe([
-          ...(prev.value === "unknown" ? [] : prev.limitations),
-          `observed in ${f.fixtureId}`,
-        ]);
-        if (prev.value !== "unknown" && CAPABILITY_STRENGTH[v] < CAPABILITY_STRENGTH[prev.value]) {
-          // 後の fixture のほうが弱い。key の欠落（未観測）は上で continue しているので、
-          // ここに来るのは「別の run が明示的に弱い結果を記録した」= 実測どうしの矛盾。
-          // 値は強いほうを残して両方の観測を見えるようにするが、矛盾したまま自動配送を
-          // 有効化しないよう証跡は落とす（isProven が false になる = fail closed）
-          capabilities[key] = {
-            ...prev,
-            evidenceKind: null,
-            verifiedAt: null,
-            limitations: dedupe([...observedIn, `conflicting weaker observation ${v} in ${f.fixtureId}`]),
-          };
-          continue;
-        }
-        // highLevel は fixture の自己申告で、observedEvents のような file 内証跡を伴わない。
-        // hash で transcript に紐付いていないものを real-cli-e2e と刻むのは provenance の
-        // 捏造になるため、hash が無い間は弱い証跡種別に落とす（isProven が false になり、
-        // 自動配送を有効化しない）。Task 2/3 の実 CLI rig が hash を記録したら昇格する
-        const evidenceKind = f.evidenceHash ? "real-cli-e2e" : "source-test";
-        capabilities[key] = {
-          value: v,
-          sourceEvents: [],
-          nativeVersion,
-          evidenceKind,
-          verifiedAt: f.capturedAt,
-          limitations: f.evidenceHash
-            ? observedIn
-            : dedupe([...observedIn, "no evidenceHash: transcript に紐付いていない自己申告"]),
-          sourceFixtureId: f.fixtureId,
-          evidenceHash: f.evidenceHash ?? null,
-        };
+        if (v) highLevelObs[key].push({ fixture: f, value: v });
       }
       if (hl.compactionRecoveryStrategy) {
         capabilities.compactionRecoveryStrategy = hl.compactionRecoveryStrategy;
       }
     }
+  }
+
+  for (const key of HIGH_LEVEL_KEYS) {
+    const obs = highLevelObs[key];
+    if (obs.length === 0) continue;
+    // 「支持あり（native / synthesized）」と「支持なし（unsupported）」が両方観測されたら
+    // 実測どうしの矛盾。key の欠落は未観測として無視しているので、unsupported は
+    // 「その run では明示的に否定された」という主張になる。矛盾したまま自動配送を
+    // 有効化しないよう証跡を落とす（isProven が false = fail closed）。
+    // native と synthesized の食い違いは達成手段の差で、支持の有無は割れていないため矛盾としない
+    const contradicted =
+      obs.some((o) => o.value === "unsupported") && obs.some((o) => o.value !== "unsupported");
+    // 値は最も強い観測を採る。同強度なら後の fixture（並び順の影響は下の pairFixture が均す）
+    const best = obs.reduce((a, b) => (CAPABILITY_STRENGTH[b.value] >= CAPABILITY_STRENGTH[a.value] ? b : a));
+    // highLevel は fixture の自己申告で、observedEvents のような file 内証跡を伴わない。
+    // hash で transcript に紐付いていないものを real-cli-e2e と刻むのは provenance の
+    // 捏造になるため、hash が無い間は弱い証跡種別に落とす。
+    // Task 2/3 の実 CLI rig が hash を記録したら昇格する
+    const proven = !contradicted && best.fixture.evidenceHash;
+    capabilities[key] = {
+      value: best.value,
+      sourceEvents: [],
+      nativeVersion,
+      evidenceKind: contradicted ? null : best.fixture.evidenceHash ? "real-cli-e2e" : "source-test",
+      verifiedAt: contradicted ? null : best.fixture.capturedAt,
+      limitations: dedupe([
+        ...obs.map((o) => `observed ${o.value} in ${o.fixture.fixtureId}`),
+        ...(contradicted ? ["conflicting observations: evidence dropped"] : []),
+        ...(!contradicted && !best.fixture.evidenceHash
+          ? ["no evidenceHash: transcript に紐付いていない自己申告"]
+          : []),
+      ]),
+      sourceFixtureId: best.fixture.fixtureId,
+      evidenceHash: proven ? best.fixture.evidenceHash : null,
+    };
   }
 
   // addendum §8 の synthesized tier は「1 つの実測が prompt 経路の両 cell を同時に証明した」
@@ -520,28 +526,41 @@ async function selfTest(): Promise<void> {
     assert(withPair.resumeDeliveryStrategy === "next_prompt_synthesized", "corroboration must not demote the tier");
     assert(withPair.promptAwareInjection.sourceFixtureId === "claude/prompt-pair", "pair provenance retained");
 
-    // 実測どうしが矛盾したら、値は強いほうを残しても証跡は落として自動配送を止める
-    const conflicted = assembleFromFixtures([
-      {
-        ...hlBase,
-        fixtureId: "claude/ss-native",
-        capturedAt: at1,
-        scenario: "session start native",
-        evidenceHash: "c".repeat(64),
-        highLevel: { sessionStartInjection: "native" },
-      },
-      {
-        ...hlBase,
-        fixtureId: "claude/ss-unsupported",
-        capturedAt: at2,
-        scenario: "session start unsupported",
-        evidenceHash: "d".repeat(64),
-        highLevel: { sessionStartInjection: "unsupported" },
-      },
+    // 実測どうしが矛盾したら、値は強いほうを残しても証跡は落として自動配送を止める。
+    // 並び順で結果が変わらないこと（否定的な観測が先でも後でも同じ）まで確認する
+    const ssNative = {
+      ...hlBase,
+      fixtureId: "claude/ss-native",
+      capturedAt: at1,
+      scenario: "session start native",
+      evidenceHash: "c".repeat(64),
+      highLevel: { sessionStartInjection: "native" as const },
+    };
+    const ssUnsupported = {
+      ...hlBase,
+      fixtureId: "claude/ss-unsupported",
+      capturedAt: at2,
+      scenario: "session start unsupported",
+      evidenceHash: "d".repeat(64),
+      highLevel: { sessionStartInjection: "unsupported" as const },
+    };
+    for (const [label, order] of [
+      ["positive first", [ssNative, ssUnsupported]],
+      ["negative first", [ssUnsupported, ssNative]],
+    ] as const) {
+      const conflicted = assembleFromFixtures([...order]).capabilities;
+      assert(conflicted.sessionStartInjection.value === "native", `${label}: keeps the stronger value`);
+      assert(conflicted.sessionStartInjection.evidenceKind === null, `${label}: drops the proof`);
+      assert(conflicted.resumeDeliveryStrategy === "manual_only", `${label}: must not enable delivery`);
+    }
+
+    // 3 つ目の肯定的な観測で証跡が復活しない（矛盾は打ち消せない）
+    const reasserted = assembleFromFixtures([
+      ssUnsupported,
+      ssNative,
+      { ...ssNative, fixtureId: "claude/ss-native-2", capturedAt: at2 },
     ]).capabilities;
-    assert(conflicted.sessionStartInjection.value === "native", "conflict keeps the stronger value");
-    assert(conflicted.sessionStartInjection.evidenceKind === null, "conflict drops the proof");
-    assert(conflicted.resumeDeliveryStrategy === "manual_only", "conflicted evidence must not enable delivery");
+    assert(reasserted.sessionStartInjection.evidenceKind === null, "contradiction is sticky");
 
     console.log("PASS");
   } finally {
