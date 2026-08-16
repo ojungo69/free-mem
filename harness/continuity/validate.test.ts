@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   findNonJsonValues,
   findStructuralViolations,
@@ -471,6 +472,8 @@ test("CONTINUITY_LIMITS のキーは強制済みか、未強制として明示�
     "arrayItems",
     "objectKeys",
   ];
+  // schema 側の制約として書かれているもの（構造の walk ではなく JSON Schema が見る）
+  const enforcedBySchema = ["rankedCandidates"];
   // 未強制。Task 5 の runtime validator で塞ぐ（#32）
   const deferred = [
     "hintTokens",
@@ -480,11 +483,11 @@ test("CONTINUITY_LIMITS のキーは強制済みか、未強制として明示�
     "absoluteTokens",
     "capsulePayloadBytes",
     "wrapperBytes",
-    "rankedCandidates",
   ];
 
-  assert.deepEqual([...enforced, ...deferred].sort(), Object.keys(CONTINUITY_LIMITS).sort());
-  assert.equal(new Set([...enforced, ...deferred]).size, enforced.length + deferred.length);
+  const all = [...enforced, ...enforcedBySchema, ...deferred];
+  assert.deepEqual([...all].sort(), Object.keys(CONTINUITY_LIMITS).sort());
+  assert.equal(new Set(all).size, all.length);
 
   // 「強制済み」が名ばかりでないことを、上限超過が実際に issue になることで見る
   const tiny = { jsonDepth: 2, stringUtf8Bytes: 4, arrayItems: 1, objectKeys: 1 };
@@ -506,6 +509,7 @@ test("CONTINUITY_LIMITS のキーは強制済みか、未強制として明示�
   const oversized = { warnings: Array.from({ length: 5 }, () => "x".repeat(8192)) };
   assert.ok(Buffer.byteLength(JSON.stringify(oversized), "utf8") > CONTINUITY_LIMITS.capsulePayloadBytes);
   assert.deepEqual(findStructuralViolations(oversized, CONTINUITY_LIMITS), []);
+
 });
 
 test("schema の type 名の誤記は preflight で落とす（#23）", () => {
@@ -529,4 +533,46 @@ test("schema の type 名の誤記は preflight で落とす（#23）", () => {
     assert.doesNotThrow(() => validateAgainstSchema(null, { type: ok }, ROOT), ok);
   }
   assert.doesNotThrow(() => validateAgainstSchema("x", { type: ["string", "null"] }, ROOT));
+});
+
+test("rankedCandidates は schema 側で強制されていて、上限は定数と一致する", () => {
+  // §10 の「candidates 5」は ResumeSelectionDecisionV1.rankedCandidates の maxItems として
+  // 書かれている。リテラルで書いてあるだけだと定数と黙ってずれるので、両者を突き合わせる
+  const root = JSON.parse(
+    readFileSync(new URL("../schema/continuity.schema.json", import.meta.url), "utf8"),
+  ) as JsonSchemaDocument;
+  const defs = (root.$defs ?? {}) as Record<string, Record<string, unknown>>;
+  const decision = defs.ResumeSelectionDecisionV1 as { properties: Record<string, { maxItems?: number }> };
+  assert.equal(decision.properties.rankedCandidates?.maxItems, CONTINUITY_LIMITS.rankedCandidates);
+
+  // 名ばかりでないことを、上限ちょうどと 1 つ超過で見る
+  const candidate = {
+    checkpointId: "c1",
+    checkpointRevision: "r1",
+    taskLineageId: "t1",
+    score: 0.5,
+    reasonCodes: [],
+  };
+  const decisionValue = (count: number) => ({
+    schemaVersion: 1,
+    decisionId: "d1",
+    sessionId: "s1",
+    boundary: "session_start",
+    mode: "smart",
+    strategy: "automatic",
+    datasetVersion: "v1",
+    profileId: "p1",
+    capabilityHash: "h1",
+    action: "none",
+    reasonCodes: [],
+    rankedCandidates: Array.from({ length: count }, () => candidate),
+    confidenceBand: "none",
+    decidedAt: "2026-08-16T00:00:00Z",
+  });
+  const issuesAt = (count: number) =>
+    validateContractValue("ResumeSelectionDecisionV1", decisionValue(count), root, CONTINUITY_LIMITS)
+      .map((i) => `${i.path} ${i.message}`)
+      .filter((m) => /rankedCandidates/.test(m) && /maxItems|array of/.test(m));
+  assert.deepEqual(issuesAt(CONTINUITY_LIMITS.rankedCandidates), []);
+  assert.equal(issuesAt(CONTINUITY_LIMITS.rankedCandidates + 1).length > 0, true);
 });

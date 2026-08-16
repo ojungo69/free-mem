@@ -19,7 +19,7 @@ export const CONTINUITY_LIMITS = {
 
 export type TaskBindingRole = "primary" | "side" | "subagent";
 
-export const TASK_BINDING_ROLES: readonly TaskBindingRole[] = ["primary", "side", "subagent"] as const;
+export const TASK_BINDING_ROLES = ["primary", "side", "subagent"] as const satisfies readonly TaskBindingRole[];
 
 export type BoundaryEvidenceKind =
   | "explicit_user"
@@ -28,21 +28,21 @@ export type BoundaryEvidenceKind =
   | "agent_proposal"
   | "deterministic_shift";
 
-export const BOUNDARY_EVIDENCE_KINDS: readonly BoundaryEvidenceKind[] = [
+export const BOUNDARY_EVIDENCE_KINDS = [
   "explicit_user",
   "native_fork",
   "accepted_resume",
   "agent_proposal",
   "deterministic_shift",
-] as const;
+] as const satisfies readonly BoundaryEvidenceKind[];
 
 export type TaskBoundaryProposalState = "proposed" | "confirmed" | "rejected";
 
-export const TASK_BOUNDARY_PROPOSAL_STATES: readonly TaskBoundaryProposalState[] = [
+export const TASK_BOUNDARY_PROPOSAL_STATES = [
   "proposed",
   "confirmed",
   "rejected",
-] as const;
+] as const satisfies readonly TaskBoundaryProposalState[];
 
 export interface BoundaryEvidence {
   kind: BoundaryEvidenceKind;
@@ -74,10 +74,10 @@ export interface TaskBoundaryProposalV1 {
 
 export type TaskBoundaryDecisionSource = "user" | "native_runtime";
 
-export const TASK_BOUNDARY_DECISION_SOURCES: readonly TaskBoundaryDecisionSource[] = [
+export const TASK_BOUNDARY_DECISION_SOURCES = [
   "user",
   "native_runtime",
-] as const;
+] as const satisfies readonly TaskBoundaryDecisionSource[];
 
 export type TaskBoundaryDecisionV1 =
   | {
@@ -114,15 +114,15 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type EvidenceKind = "native" | "synthesized" | "derived";
 
-export const EVIDENCE_KINDS: readonly EvidenceKind[] = ["native", "synthesized", "derived"] as const;
+export const EVIDENCE_KINDS = ["native", "synthesized", "derived"] as const satisfies readonly EvidenceKind[];
 
 export type Freshness = "current" | "stale" | "unknown";
 
-export const FRESHNESS_VALUES: readonly Freshness[] = ["current", "stale", "unknown"] as const;
+export const FRESHNESS_VALUES = ["current", "stale", "unknown"] as const satisfies readonly Freshness[];
 
 export type Sensitivity = "normal" | "private" | "secret";
 
-export const SENSITIVITIES: readonly Sensitivity[] = ["normal", "private", "secret"] as const;
+export const SENSITIVITIES = ["normal", "private", "secret"] as const satisfies readonly Sensitivity[];
 
 export interface Observed<T extends JsonValue> {
   value: T;
@@ -143,13 +143,13 @@ export type ContinuityCaptureMethod =
   | "transcript_scan"
   | "user_surface";
 
-export const CONTINUITY_CAPTURE_METHODS: readonly ContinuityCaptureMethod[] = [
+export const CONTINUITY_CAPTURE_METHODS = [
   "native_event",
   "hook",
   "plugin",
   "transcript_scan",
   "user_surface",
-] as const;
+] as const satisfies readonly ContinuityCaptureMethod[];
 
 export interface ContinuityIngestAttestationV1 {
   ingestReceiptId: string;
@@ -171,19 +171,19 @@ export interface ContinuityEventProvenanceV1 {
 
 export type TurnIdSource = "native" | "synthesized_monotonic" | "unavailable";
 
-export const TURN_ID_SOURCES: readonly TurnIdSource[] = [
+export const TURN_ID_SOURCES = [
   "native",
   "synthesized_monotonic",
   "unavailable",
-] as const;
+] as const satisfies readonly TurnIdSource[];
 
 export type ContinuityOperationPhase = "start" | "progress" | "terminal";
 
-export const CONTINUITY_OPERATION_PHASES: readonly ContinuityOperationPhase[] = [
+export const CONTINUITY_OPERATION_PHASES = [
   "start",
   "progress",
   "terminal",
-] as const;
+] as const satisfies readonly ContinuityOperationPhase[];
 
 export interface ContinuityOperationRefV1 {
   phase: ContinuityOperationPhase;
@@ -262,11 +262,11 @@ export interface OperationCorrelationV1 {
 
 export type ReplayPolicy = "never_auto" | "verify_first" | "safe_idempotent";
 
-export const REPLAY_POLICIES: readonly ReplayPolicy[] = [
+export const REPLAY_POLICIES = [
   "never_auto",
   "verify_first",
   "safe_idempotent",
-] as const;
+] as const satisfies readonly ReplayPolicy[];
 
 export interface PendingOperation {
   operationId: string;
@@ -372,14 +372,14 @@ export type CheckpointDispositionKind =
   | "reopened"
   | "retracted";
 
-export const CHECKPOINT_DISPOSITION_KINDS: readonly CheckpointDispositionKind[] = [
+export const CHECKPOINT_DISPOSITION_KINDS = [
   "created",
   "accepted",
   "superseded",
   "expired",
   "reopened",
   "retracted",
-] as const;
+] as const satisfies readonly CheckpointDispositionKind[];
 
 export interface CheckpointDispositionEvent {
   eventId: string;
@@ -429,14 +429,14 @@ export type DeliveryAttemptState =
   | "dismissed"
   | "abandoned";
 
-export const DELIVERY_ATTEMPT_STATES: readonly DeliveryAttemptState[] = [
+export const DELIVERY_ATTEMPT_STATES = [
   "claimed",
   "delivered",
   "engaged",
   "accepted",
   "dismissed",
   "abandoned",
-] as const;
+] as const satisfies readonly DeliveryAttemptState[];
 
 export type EngagementEvidenceKind =
   | "explicit_accept"
@@ -447,7 +447,7 @@ export type EngagementEvidenceKind =
   | "related_todo_progress"
   | "manual_resume_tool";
 
-export const ENGAGEMENT_EVIDENCE_KINDS: readonly EngagementEvidenceKind[] = [
+export const ENGAGEMENT_EVIDENCE_KINDS = [
   "explicit_accept",
   "explicit_continue_prompt",
   "related_file_action",
@@ -455,7 +455,7 @@ export const ENGAGEMENT_EVIDENCE_KINDS: readonly EngagementEvidenceKind[] = [
   "related_test",
   "related_todo_progress",
   "manual_resume_tool",
-] as const;
+] as const satisfies readonly EngagementEvidenceKind[];
 
 export interface CheckpointAnchorV1 {
   anchorId: string;
@@ -551,13 +551,13 @@ export type ReconciliationStatus =
   | "requires_verification"
   | "incompatible";
 
-export const RECONCILIATION_STATUSES: readonly ReconciliationStatus[] = [
+export const RECONCILIATION_STATUSES = [
   "exact",
   "fast_forward_compatible",
   "stale_but_usable",
   "requires_verification",
   "incompatible",
-] as const;
+] as const satisfies readonly ReconciliationStatus[];
 
 export type ResumeDeliveryStrategy =
   | "native_prompt_gate"
@@ -565,25 +565,25 @@ export type ResumeDeliveryStrategy =
   | "next_prompt_synthesized"
   | "manual_only";
 
-export const RESUME_DELIVERY_STRATEGIES: readonly ResumeDeliveryStrategy[] = [
+export const RESUME_DELIVERY_STRATEGIES = [
   "native_prompt_gate",
   "session_start_full",
   "next_prompt_synthesized",
   "manual_only",
-] as const;
+] as const satisfies readonly ResumeDeliveryStrategy[];
 
 export type ResumeMode = "smart" | "always" | "hint_only" | "compact_only" | "off";
 
-export const RESUME_MODES: readonly ResumeMode[] = ["smart", "always", "hint_only", "compact_only", "off"] as const;
+export const RESUME_MODES = ["smart", "always", "hint_only", "compact_only", "off"] as const satisfies readonly ResumeMode[];
 
 export type ResumeDeliveryBoundary = "session_start" | "first_user_prompt" | "post_compact" | "manual";
 
-export const RESUME_DELIVERY_BOUNDARIES: readonly ResumeDeliveryBoundary[] = [
+export const RESUME_DELIVERY_BOUNDARIES = [
   "session_start",
   "first_user_prompt",
   "post_compact",
   "manual",
-] as const;
+] as const satisfies readonly ResumeDeliveryBoundary[];
 
 export interface ResumeCapsuleV1 {
   schemaVersion: 1;
@@ -616,14 +616,14 @@ export type ResumeDecisionAction =
   | "full_capsule"
   | "manual_only";
 
-export const RESUME_DECISION_ACTIONS: readonly ResumeDecisionAction[] = [
+export const RESUME_DECISION_ACTIONS = [
   "none",
   "hint",
   "candidate_list",
   "verification_capsule",
   "full_capsule",
   "manual_only",
-] as const;
+] as const satisfies readonly ResumeDecisionAction[];
 
 export interface RankedResumeCandidateV1 {
   rank: number;
@@ -664,7 +664,7 @@ export type DerivedArtifactKind =
   | "context_pack_cache"
   | "cloud_projection";
 
-export const DERIVED_ARTIFACT_KINDS: readonly DerivedArtifactKind[] = [
+export const DERIVED_ARTIFACT_KINDS = [
   "summary",
   "semantic_resume_note",
   "checkpoint_semantic_note",
@@ -672,16 +672,16 @@ export const DERIVED_ARTIFACT_KINDS: readonly DerivedArtifactKind[] = [
   "embedding_item",
   "context_pack_cache",
   "cloud_projection",
-] as const;
+] as const satisfies readonly DerivedArtifactKind[];
 
 export type DerivedArtifactStatus = "active" | "stale" | "invalidated" | "rebuilding";
 
-export const DERIVED_ARTIFACT_STATUSES: readonly DerivedArtifactStatus[] = [
+export const DERIVED_ARTIFACT_STATUSES = [
   "active",
   "stale",
   "invalidated",
   "rebuilding",
-] as const;
+] as const satisfies readonly DerivedArtifactStatus[];
 
 export type DerivedArtifactSourceRefV1 =
   | {
@@ -731,16 +731,16 @@ export interface DerivedArtifactInvalidationEventV1 {
 
 export type CapabilityTestDisposition = "not_run" | "proven" | "unsupported" | "unknown_after_test";
 
-export const CAPABILITY_TEST_DISPOSITIONS: readonly CapabilityTestDisposition[] = [
+export const CAPABILITY_TEST_DISPOSITIONS = [
   "not_run",
   "proven",
   "unsupported",
   "unknown_after_test",
-] as const;
+] as const satisfies readonly CapabilityTestDisposition[];
 
 export type ContractPreflightState = "incomplete" | "complete";
 
-export const CONTRACT_PREFLIGHT_STATES: readonly ContractPreflightState[] = ["incomplete", "complete"] as const;
+export const CONTRACT_PREFLIGHT_STATES = ["incomplete", "complete"] as const satisfies readonly ContractPreflightState[];
 
 export interface RequiredCapabilityScenarioV1 {
   scenarioId: string;

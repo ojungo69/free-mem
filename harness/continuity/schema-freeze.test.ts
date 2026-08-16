@@ -164,6 +164,39 @@ type ConstsUnder<P extends string> = {
   [K in keyof typeof INLINE_CONSTS]: K extends `${P}${string}` ? (typeof INLINE_CONSTS)[K] : never;
 }[keyof typeof INLINE_CONSTS];
 
+/**
+ * 名前付き union も型として突き合わせる。定数は `as const satisfies readonly T[]` なので
+ * `typeof CONST[number]` はリテラルの union になり、片側包含では通らない。
+ *
+ * 注釈を `readonly T[]` にしていたときは、union にだけ値を足しても配列は部分集合として
+ * 成立し、schema も定数も無傷なので全 test が通った（TS が許す値を schema が拒否する）。
+ */
+type _NamedEnumsMatchContract = [
+  Assert<SameSet<contract.TaskBindingRole, (typeof contract.TASK_BINDING_ROLES)[number]>>,
+  Assert<SameSet<contract.BoundaryEvidenceKind, (typeof contract.BOUNDARY_EVIDENCE_KINDS)[number]>>,
+  Assert<SameSet<contract.TaskBoundaryProposalState, (typeof contract.TASK_BOUNDARY_PROPOSAL_STATES)[number]>>,
+  Assert<SameSet<contract.TaskBoundaryDecisionSource, (typeof contract.TASK_BOUNDARY_DECISION_SOURCES)[number]>>,
+  Assert<SameSet<contract.EvidenceKind, (typeof contract.EVIDENCE_KINDS)[number]>>,
+  Assert<SameSet<contract.Freshness, (typeof contract.FRESHNESS_VALUES)[number]>>,
+  Assert<SameSet<contract.Sensitivity, (typeof contract.SENSITIVITIES)[number]>>,
+  Assert<SameSet<contract.ContinuityCaptureMethod, (typeof contract.CONTINUITY_CAPTURE_METHODS)[number]>>,
+  Assert<SameSet<contract.TurnIdSource, (typeof contract.TURN_ID_SOURCES)[number]>>,
+  Assert<SameSet<contract.ContinuityOperationPhase, (typeof contract.CONTINUITY_OPERATION_PHASES)[number]>>,
+  Assert<SameSet<contract.ReplayPolicy, (typeof contract.REPLAY_POLICIES)[number]>>,
+  Assert<SameSet<contract.CheckpointDispositionKind, (typeof contract.CHECKPOINT_DISPOSITION_KINDS)[number]>>,
+  Assert<SameSet<contract.DeliveryAttemptState, (typeof contract.DELIVERY_ATTEMPT_STATES)[number]>>,
+  Assert<SameSet<contract.EngagementEvidenceKind, (typeof contract.ENGAGEMENT_EVIDENCE_KINDS)[number]>>,
+  Assert<SameSet<contract.ReconciliationStatus, (typeof contract.RECONCILIATION_STATUSES)[number]>>,
+  Assert<SameSet<contract.ResumeDeliveryStrategy, (typeof contract.RESUME_DELIVERY_STRATEGIES)[number]>>,
+  Assert<SameSet<contract.ResumeMode, (typeof contract.RESUME_MODES)[number]>>,
+  Assert<SameSet<contract.ResumeDeliveryBoundary, (typeof contract.RESUME_DELIVERY_BOUNDARIES)[number]>>,
+  Assert<SameSet<contract.ResumeDecisionAction, (typeof contract.RESUME_DECISION_ACTIONS)[number]>>,
+  Assert<SameSet<contract.DerivedArtifactKind, (typeof contract.DERIVED_ARTIFACT_KINDS)[number]>>,
+  Assert<SameSet<contract.DerivedArtifactStatus, (typeof contract.DERIVED_ARTIFACT_STATUSES)[number]>>,
+  Assert<SameSet<contract.CapabilityTestDisposition, (typeof contract.CAPABILITY_TEST_DISPOSITIONS)[number]>>,
+  Assert<SameSet<contract.ContractPreflightState, (typeof contract.CONTRACT_PREFLIGHT_STATES)[number]>>,
+];
+
 type _InlineEnumsMatchContract = [
   Assert<
     SameSet<

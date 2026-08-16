@@ -185,7 +185,12 @@ function evidenceEntry(version: string): { ids: string[]; hash: string | undefin
     .find((s) => s.startsWith(`manifestVersion ${version} `) || s.startsWith(`manifestVersion ${version}\n`));
   assert.ok(section, `evidence に manifestVersion ${version} の節が無い`);
   return {
-    ids: [...section.matchAll(/^\| `([a-z0-9-]+)` \|/gm)].map((m) => m[1] as string),
+    // ID の形は正本も schema も `string` としか言っていない。表の 1 列目の backtick の
+    // 中身をそのまま取る（kebab-case を暗黙の契約にすると、正当な ID で偽陽性になる）。
+    // 区切り行より後ろだけを見る——見出し行の 1 列目も `scenarioId` という backtick なので
+    ids: [...(section.split(/^\|[-|\s]+\|$/m)[1] ?? "").matchAll(/^\| `([^`]+)` \|/gm)].map(
+      (m) => m[1] as string,
+    ),
     hash: /^manifestHash: `([0-9a-f]{64})`$/m.exec(section)?.[1],
   };
 }
