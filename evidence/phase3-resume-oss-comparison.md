@@ -6,234 +6,212 @@ Related: #1, #8, #13
 
 ## Purpose
 
-This document compares public behavior, public documentation, and public source from memory and agent-runtime projects that directly inform reliable work resumption. It does not attempt to reproduce private prompts, private services, or undocumented implementation details.
+This document compares public behavior, documentation, and source from memory and agent-runtime projects that directly inform reliable coding-task resumption. It does not reproduce private prompts, private services, or undocumented implementation details.
 
-The comparison is driven by nine concrete gaps found in the current `free-mem` v6.1 continuity design:
+The research was triggered by concrete gaps in v6.1:
 
-1. exact Claude/Codex prompt-aware and compact injection capability is not yet proven by the repository's real-CLI matrix;
-2. `ContinuationCheckpoint.canonicalStateJson` is untyped;
-3. one mutable `SessionWorkState` can mix unrelated tasks;
-4. checkpoint delivery is accepted after the first successful turn even when the resume was wrong;
-5. in-flight commands and tools lack a first-class `unknown result` representation;
-6. checkpoint state is not reconciled precisely enough against the current workspace;
-7. resume mode semantics conflict around `off` and compact recovery;
-8. the injection envelope lacks a normative safe serialization contract;
-9. v6.1 and #8 disagree on whether claude-mem non-inferiority blocks Core 1.0.
+- prompt-aware and compact injection were assumed but not proven in the repository's exact-version real-CLI matrix;
+- canonical work state was untyped and session-scoped;
+- in-flight side effects had no safe `unknown result` contract;
+- checkpoint delivery, acceptance, and lifecycle were mixed;
+- current workspace drift was not reconciled precisely enough;
+- resume-mode, capsule, sensitivity, and selection fallback contracts were incomplete;
+- memory update/invalidation/source-history behavior lacked conformance fixtures;
+- v6.1 and #8 disagreed on Core 1.0 quality authority.
 
-## Sources and reproducibility
+## Source manifest and reproducibility
 
-| Project | Public source inspected | What was evaluated |
-|---|---|---|
-| claude-mem | `thedotmack/claude-mem`, public source around commit `d768ba364302d12b76e69e4f021f0bb1d2d50ed6`; `src/cli/handlers/context.ts`; `src/services/context/ContextBuilder.ts`; `src/servers/mcp-server.ts`; public hook architecture docs | SessionStart injection, timeline/summary construction, fail-open behavior, progressive disclosure |
-| LangGraph | official persistence/checkpointer/time-travel documentation; `langchain-ai/langgraph` around commit `644815f9e5bc52ad8f7a5227a456227e9c3e639b` | thread checkpoints, task-level pending writes, replay, immutable fork, long-term store separation |
-| Letta | official memory-block, archival-memory, context-hierarchy, and stateful-agent documentation | bounded always-visible working memory, archival retrieval, persistent messages, shared block behavior |
-| Graphiti | official Graphiti/Zep docs and `getzep/graphiti` public source | temporal validity, invalidation rather than deletion, episode provenance, hybrid retrieval |
-| Mem0 | official memory lifecycle, add/search, history, and async-memory documentation | additive extraction, scope isolation, explicit mutation, old/new change history |
-| Hindsight | official retain/recall/observation documentation and `vectorize-io/hindsight` public docs around commit `396f63aafc9b618f04d446e2465cac95aa1cb426` | evidence-grounded observations, source-fact linkage, presentation-level dedupe, RRF and token budgets |
-| Cline | official task-management/checkpoint documentation and public checkpoint manager source around commit `8bbdde2a5c1f972864fe1b954f639c21fac61a40` | resumable tasks, conversation/workspace checkpoint separation, shadow Git, restore and drift warning UX |
+Retrieval date for live documentation: **2026-08-16 (Asia/Tokyo)**.
 
-External documentation changes over time. The implementation phase must pin exact source commits or documentation captures in a benchmark manifest before using any behavior as a release claim.
+| Project | Pinned public source | Exact pages/files inspected | Status for design evidence |
+|---|---|---|---|
+| claude-mem | [`thedotmack/claude-mem@d768ba364302d12b76e69e4f021f0bb1d2d50ed6`](https://github.com/thedotmack/claude-mem/commit/d768ba364302d12b76e69e4f021f0bb1d2d50ed6) | [`src/cli/handlers/context.ts`](https://github.com/thedotmack/claude-mem/blob/d768ba364302d12b76e69e4f021f0bb1d2d50ed6/src/cli/handlers/context.ts), [`src/services/context/ContextBuilder.ts`](https://github.com/thedotmack/claude-mem/blob/d768ba364302d12b76e69e4f021f0bb1d2d50ed6/src/services/context/ContextBuilder.ts), [`src/servers/mcp-server.ts`](https://github.com/thedotmack/claude-mem/blob/d768ba364302d12b76e69e4f021f0bb1d2d50ed6/src/servers/mcp-server.ts), [`docs/public/architecture/hooks.mdx`](https://github.com/thedotmack/claude-mem/blob/d768ba364302d12b76e69e4f021f0bb1d2d50ed6/docs/public/architecture/hooks.mdx) | **Pinned/reproducible** |
+| LangGraph | [`langchain-ai/langgraph@644815f9e5bc52ad8f7a5227a456227e9c3e639b`](https://github.com/langchain-ai/langgraph/commit/644815f9e5bc52ad8f7a5227a456227e9c3e639b) | Official persistence docs: [`docs.langchain.com/oss/python/langgraph/persistence`](https://docs.langchain.com/oss/python/langgraph/persistence) | Source commit pinned; live docs **provisional until B0 capture/hash** |
+| Letta | [`letta-ai/letta@56ba9c25552605eec89de8ed3dc6394b625c1993`](https://github.com/letta-ai/letta/commit/56ba9c25552605eec89de8ed3dc6394b625c1993) | [`Memory blocks`](https://docs.letta.com/guides/core-concepts/memory/memory-blocks), [`Context hierarchy`](https://docs.letta.com/guides/core-concepts/memory/context-hierarchy), [`Attaching/detaching blocks`](https://docs.letta.com/tutorials/attaching-detaching-blocks/) | Source commit pinned; live docs **provisional until B0 capture/hash** |
+| Graphiti | [`getzep/graphiti@203b792af462be6973373986f08f3a5cdebca430`](https://github.com/getzep/graphiti/commit/203b792af462be6973373986f08f3a5cdebca430) | Pinned [`README.md`](https://github.com/getzep/graphiti/blob/203b792af462be6973373986f08f3a5cdebca430/README.md), [`Episodes`](https://help.getzep.com/episodes), [`Searching the graph`](https://help.getzep.com/searching-the-graph) | README pinned; live product docs **provisional until B0 capture/hash** |
+| Mem0 | [`mem0ai/mem0@001c235229be8795e3834520467bd0d661ed8f34`](https://github.com/mem0ai/mem0/commit/001c235229be8795e3834520467bd0d661ed8f34) | [`Memory history`](https://docs.mem0.ai/api-reference/memory/history-memory), [`Update memory`](https://docs.mem0.ai/api-reference/memory/update-memory), [`Delete memory`](https://docs.mem0.ai/core-concepts/memory-operations/delete), [`Entity-scoped memory`](https://docs.mem0.ai/platform/features/entity-scoped-memory) | Source commit pinned; live docs **provisional until B0 capture/hash** |
+| Hindsight | [`vectorize-io/hindsight@396f63aafc9b618f04d446e2465cac95aa1cb426`](https://github.com/vectorize-io/hindsight/commit/396f63aafc9b618f04d446e2465cac95aa1cb426) | [`recall.mdx`](https://github.com/vectorize-io/hindsight/blob/396f63aafc9b618f04d446e2465cac95aa1cb426/hindsight-docs/docs/developer/api/recall.mdx), generated client/OpenAPI at the same commit, public tests around observation enrichment | **Pinned/reproducible** |
+| Cline | [`cline/cline@8bbdde2a5c1f972864fe1b954f639c21fac61a40`](https://github.com/cline/cline/commit/8bbdde2a5c1f972864fe1b954f639c21fac61a40) | [`Checkpoints`](https://docs.cline.bot/core-workflows/checkpoints), [`IDE restore modes`](https://docs.cline.bot/usage/ide), [`Auto Compact`](https://docs.cline.bot/features/auto-compact) | Source commit pinned; live docs **provisional until B0 capture/hash** |
+
+### Evidence freeze rule
+
+Before any benchmark result or release claim depends on a provisional page, B0 MUST store:
+
+- exact URL;
+- retrieval timestamp;
+- response/content SHA-256;
+- relevant excerpt location or normalized JSON fact record;
+- project version/commit when available;
+- license/provenance classification.
+
+A later page change does not retroactively change the frozen contract. Re-baselining requires a new evidence manifest and comparison report.
 
 ## Comparison matrix
 
 | Concern | claude-mem | LangGraph | Letta | Graphiti | Mem0 | Hindsight | Cline | free-mem decision |
 |---|---|---|---|---|---|---|---|---|
-| Immediate resume UX | silent SessionStart `additionalContext` | resume thread checkpoint | core blocks always visible | retrieval-driven | application calls search | application calls recall | reopen task with full history | retain silent bounded hint; full resume only after capability/relevance gate |
-| Working state vs durable memory | observations/summaries are mixed into context timeline | checkpointer vs Store are separate | memory blocks vs archival memory | episodes vs derived facts | memory rows vs source input/history | facts vs observations | task history vs workspace snapshot | task-scoped work state, checkpoint, and DurableMemory remain separate |
-| In-flight work | no public typed pending-operation contract found | task/node pending writes are durable | messages/tools persist, but not a coding-specific replay policy | episode provenance, not execution continuation | async operation status/history | async retain/consolidation operations | task and file checkpoints | first-class `PendingOperation` with `never_auto`, `verify_first`, or `safe_idempotent` |
-| History/fork | session timeline | immutable checkpoint history and fork | persistent messages/blocks; shared block update can be LWW | temporal fact history | ADD/UPDATE/DELETE history with old/new | source facts remain behind observations | checkpoint history and restore options | immutable checkpoint revisions and separate delivery attempts; no silent overwrite |
-| Stale facts | recent timeline but no explicit validity window in the inspected resume path | user updates state by creating a new checkpoint | blocks are current mutable state | `valid_at` / `invalid_at`, superseded facts retained | explicit update/delete and history | observations refine from source evidence | compare/restore workspace snapshot | reconciliation status plus temporal validity and source-event lineage |
-| Concurrency | local worker/session behavior | checkpoint namespace, task writes, fork | shared blocks warn about last-write-wins | graph updates preserve temporal history | scoped operations/history | bank isolation and evidence links | task-scoped checkpoint manager | CAS/fence delivery attempt; task lineage; no LWW for canonical state |
-| Workspace state | project name/worktree context in recent versions | application-defined state | external state can be mirrored in blocks | not coding-workspace specific | metadata filters | tags/scopes | shadow Git checkpoint with file/task/both restore | deterministic reconciliation in Core 1.0; optional snapshot provider later |
-| Injection safety | hook output + bounded context settings | application owns prompt rendering | XML-like blocks | application owns rendering | application owns rendering | application owns rendering | native task UI | schema-validated JSON capsule, escaped wrapper, hash/length/version/provenance |
-| Retrieval duplication | timeline + summary may overlap | application-defined | hierarchy avoids loading archival by default | hybrid graph retrieval | dedup during extraction/search | `prefer_observations` hides source duplicates without deleting them | not a memory retrieval engine | preserve raw evidence and derived observations; suppress duplicates at pack time |
+| Immediate resume UX | silent SessionStart `additionalContext`, fail-open empty output | resume a thread checkpoint | bounded core blocks are always visible | retrieval-driven context | application-driven search | application-driven recall | reopen persistent task | bounded silent hint; full only after exact capability/relevance/reconciliation |
+| Work state vs durable memory | timeline of observations/summaries | checkpointer vs Store | memory blocks vs archival memory | episodes vs derived facts | memory rows/history | facts vs observations | task history vs workspace snapshot | task-scoped state, checkpoint, and DurableMemory remain separate |
+| In-flight work | no inspected typed replay contract | task writes/pending writes persist | messages/tool history persist | episode provenance, not execution continuation | async/history operations | async retain/consolidate | task/file checkpoints | typed `PendingOperation` with `never_auto`, `verify_first`, `safe_idempotent` |
+| History/fork | session timeline | immutable checkpoint history/fork | persistent mutable blocks | temporal fact history | ADD/UPDATE/DELETE history | observations retain source facts | checkpoint history/restore | immutable state/checkpoint revisions + append-only disposition events |
+| Stale facts | recent context; no inspected validity window in resume path | application creates new state | mutable current blocks | valid/invalid/expired temporal windows | explicit update/delete history | source evidence behind observations | compare/restore workspace | temporal history + fail-closed workspace reconciliation |
+| Concurrency | local session/worker behavior | checkpoint namespaces/task writes | shared block LWW risk | temporal graph updates | scoped operations/history | bank isolation/evidence links | task-scoped checkpoint manager | initial claim CAS + fenced delivery attempts + no LWW canonical state |
+| Workspace state | project/recent context | application-defined | external state can be mirrored | not coding-workspace-specific | metadata filters | tags/scopes | shadow Git, task/files/both restore | deterministic reconciliation now; optional snapshot provider later |
+| Injection safety | bounded hook output | application-owned rendering | XML-like block rendering | application-owned | application-owned | application-owned | native task UI | canonical JSON, fixed limits, sensitivity filtering, escaped wrapper, owned-ledger verification |
+| Retrieval duplication | summary/timeline may overlap | application-defined | archival hierarchy | graph hybrid retrieval | extraction/search dedupe | consolidated observation preference | not a memory engine | presentation-level dedupe without source deletion |
 
-## Detailed findings and adoption decisions
+## Findings and adoption decisions
 
-### 1. claude-mem: copy the smoothness, not the ambiguity
+### 1. claude-mem: adopt smooth delivery, not task ambiguity
 
-The inspected hook handler returns prior context through `hookSpecificOutput.additionalContext`, and returns an empty context when the worker path fails. `ContextBuilder` composes a bounded timeline from recent observations and session summaries, with optional full observations and previous messages.
-
-This is the strongest immediately useful UX pattern:
-
-- context arrives silently before the model works;
-- memory failure does not block the coding agent;
-- the user does not need to call a manual search tool for ordinary continuation;
-- timeline, recent summary, and selected full observations support progressive disclosure.
-
-However, the inspected path primarily selects by project/recent observations. It does not provide a coding-specific typed checkpoint that proves the current prompt continues the same task, nor a normative workspace reconciliation state machine.
+Inspected code returns prior context through `hookSpecificOutput.additionalContext`, fails open to empty context, and builds a bounded timeline from observations and summaries.
 
 **Adopt**
 
-- silent `additionalContext` injection;
-- empty-context fail-open result;
-- a very small SessionStart hint;
-- timeline/search/get progressive disclosure;
-- per-platform output-size handling.
-
-**Do not adopt**
-
-- treating recent project context as proof of task continuation;
-- direct reader-side SQLite access;
-- automatically injecting a large previous timeline before seeing the new prompt.
-
-### 2. LangGraph: checkpoint execution state separately from long-term memory
-
-LangGraph explicitly separates a thread-scoped checkpointer from a cross-thread Store. A checkpoint is a state snapshot at a super-step boundary; individual task writes can be persisted before the whole step finishes. A prior checkpoint can be replayed, or `update_state` can create a fork without overwriting the original history.
-
-This directly closes three free-mem gaps:
-
-- DurableMemory must not substitute for execution continuation;
-- successful and unfinished operations must be distinguishable after a crash;
-- correcting a resume state must create a new revision/fork, not mutate historical evidence.
-
-**Adopt**
-
-- immutable checkpoint IDs and history;
-- task-scoped checkpoint namespace;
-- durable task/pending-operation records;
-- explicit replay policy rather than automatic command replay;
-- corrections as new revisions/forks.
-
-### 3. Letta: use a bounded working-state capsule
-
-Letta's memory blocks are named, purpose-described, bounded pieces of context that remain visible, while archival memory is retrieved only when needed. All messages remain persisted even after context eviction.
-
-The useful lesson is not agent-editable memory itself; it is the hierarchy:
-
-- the smallest critical current state is always easy to inject;
-- large historical memory stays out of the prompt until queried;
-- each working block has a clear purpose and size limit.
-
-**Adopt**
-
-- a bounded resume capsule with an explicit purpose;
-- strict separation between current task state and archival DurableMemory;
-- persistent evidence even after compact/eviction.
+- silent pre-model context delivery;
+- empty-context fail-open behavior;
+- bounded timeline/search/get progressive disclosure;
+- platform-specific output limits.
 
 **Reject**
 
-- agent-writable canonical observed state;
-- last-write-wins shared state. Canonical state remains daemon-owned and evidence-derived.
+- treating recent project context as proof of task continuation;
+- direct reader-side SQLite access;
+- injecting a large timeline before evaluating the new prompt.
 
-### 4. Graphiti: make staleness and supersession explicit
+### 2. LangGraph: separate execution checkpoints from long-term memory
 
-Graphiti keeps temporal validity windows and traces derived facts to source episodes. When a fact changes, the old fact is invalidated rather than erased.
-
-For coding continuity, the equivalent is:
-
-- a file, test result, decision, or next action was valid at checkpoint time;
-- current repository evidence may make it stale or incompatible;
-- the historical record remains inspectable;
-- the injected capsule must say which fields require verification.
+LangGraph separates thread-scoped checkpoint state from a cross-thread Store, persists task-level writes, and creates new checkpoint forks instead of rewriting prior state.
 
 **Adopt**
 
-- `validFrom`, `invalidatedAt`, and superseding revision links where applicable;
-- source-event lineage for every derived semantic note;
-- reconciliation categories instead of a binary match/no-match;
+- immutable checkpoint IDs/history;
+- task-scoped namespace;
+- explicit pending-operation records;
+- replay policy instead of automatic command replay;
+- corrections as new revisions/forks.
+
+### 3. Letta: keep the always-visible state small
+
+Letta's memory blocks are bounded, named, purpose-described context, while larger memory is retrieved through archival/external mechanisms.
+
+**Adopt**
+
+- a small typed resume capsule with explicit purpose/limits;
+- separation of current task state from archival DurableMemory;
+- persistent evidence after context eviction.
+
+**Reject**
+
+- Agent-writable canonical observed state;
+- last-write-wins shared canonical state.
+
+### 4. Graphiti: preserve temporal truth and source episodes
+
+Graphiti models validity windows and keeps raw episodes behind derived facts.
+
+**Adopt**
+
+- validity/invalidation/supersession history;
+- source-event links for derived notes;
+- `exact / stale / requires verification / incompatible` reconciliation instead of binary match;
 - point-in-time diagnostics.
 
-### 5. Mem0: preserve mutation history and make correction explicit
+### 5. Mem0: make mutation/history explicit
 
-Mem0 exposes memory history with ADD/UPDATE/DELETE events and old/new values. Its additive path can add new facts without silently rewriting old ones; explicit update/delete operations remain available.
+Mem0 exposes change-history entries and explicit update/delete operations with scope filters.
 
 **Adopt**
 
-- append-only work-state/checkpoint revision history;
-- explicit supersede/dismiss/retract operations;
-- old/new/source metadata for audit and debugging;
+- append-only revision history;
+- explicit supersede/retract operations;
+- old/new/source metadata;
 - strong scope filters.
 
-**Do not adopt blindly**
+**Reject**
 
-- generic LLM extraction as authority for current repository state;
-- vector retrieval as the sole source of truth.
+- generic model extraction as authority for current repository state;
+- vector search as sole truth.
 
-### 6. Hindsight: derive observations without deleting evidence
+### 6. Hindsight: preserve facts behind observations
 
-Hindsight's observations are evidence-grounded consolidations that retain references to source facts. Retrieval may prefer an observation and hide duplicate source facts in the returned pack while keeping both in storage. Its retrieval uses several strategies, RRF, reranking, and token budgets.
+Hindsight observations remain linked to source facts and retrieval can prefer consolidated output while keeping evidence stored.
 
 **Adopt**
 
-- semantic resume notes and consolidated memories must list source event/fact IDs;
-- refinement never deletes raw evidence;
-- pack-time `prefer_consolidated` dedupe rather than storage-time destruction;
-- token-budget-first output selection;
-- retain RRF rather than adding incomparable raw scores.
+- source IDs on semantic resume notes and consolidated memory;
+- no raw-evidence deletion during refinement;
+- output-time `prefer_consolidated` dedupe;
+- token-budget-first selection;
+- RRF rather than adding incomparable raw scores.
 
-### 7. Cline: reconcile task context and workspace state independently
+### 7. Cline: task and workspace are different restore domains
 
-Cline persists tasks across sessions and uses a separate shadow Git repository for project-file checkpoints. Users can restore task context, workspace files, or both; task-only restore can warn when files changed after the checkpoint.
-
-The important design boundary is that conversational/task state and filesystem state are separate artifacts.
+Cline keeps task history and workspace checkpoints separate and exposes task-only, workspace-only, or combined restoration.
 
 **Adopt now**
 
-- independent task-state and workspace-state reconciliation;
-- explicit drift warnings;
-- future interfaces that permit `task`, `workspace`, or `both` restore authority;
-- compare-before-restore UX.
+- independent task/workspace reconciliation;
+- compare-before-restore and drift warnings;
+- future `task / workspace / both` restore interfaces.
 
 **Defer**
 
-- mandatory shadow Git after every tool action. Core 1.0 only records repository identity, HEAD, dirty fingerprint, affected-file evidence, and pending operations. A `WorkspaceSnapshotProvider` can be evaluated after measured demand and security review.
+- mandatory shadow Git after every tool use. Core 1.0 records HEAD, dirty fingerprint, affected-file evidence, and pending operations. A future `WorkspaceSnapshotProvider` needs separate security/storage/UX proof.
 
 ## Resulting free-mem architecture
 
 ```text
 NormalizedEvent stream
         │
-        ├── immutable evidence / event history
-        │
-        ├── TaskWorkState (one canonical state per taskLineageId)
-        │       ├── Observed<T> provenance
+        ├── immutable evidence + event idempotency ledger
+        ├── TaskWorkState revision (one current pointer per taskLineageId)
+        │       ├── Observed<T> provenance/freshness/sensitivity
         │       ├── PendingOperation[]
         │       └── RepositoryStateSnapshot
-        │
-        ├── ContinuationCheckpoint revision
-        │       └── immutable task-state snapshot
-        │
-        ├── CheckpointDeliveryAttempt
-        │       └── claim / lease / fence / engagement / acceptance
-        │
-        └── DurableMemory / derived observations
+        ├── immutable ContinuationCheckpoint revision
+        ├── append-only CheckpointDispositionEvent projection
+        ├── fenced CheckpointDeliveryAttempt
+        └── DurableMemory revisions / derived observations
                 ├── source evidence links
                 ├── temporal validity / supersession
-                └── search-time consolidation preference
+                └── presentation-level consolidated preference
 ```
 
-Before full injection:
+Before automatic full injection:
 
 ```text
-exact-version capability strategy
-        +
-current prompt relevance
-        +
-workspace reconciliation
-        +
-CAS delivery claim
-        ↓
-typed, bounded, safely serialized resume capsule
+exact-version capability
+  + mode
+  + dataset-versioned selection decision
+  + workspace reconciliation
+  + sensitivity policy
+  + atomic claim
+  -> typed bounded capsule
+  -> owned-ledger verified capture stripping
+  -> deterministic engagement
+  -> atomic accepted disposition + attempt
 ```
 
-## Decisions that supersede v6.1 continuity details
+## Normative choices that supersede v6.1 continuity details
 
-The normative addendum `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md` supersedes v6.1 only for the following continuity details:
+The addendum supersedes v6.1 only for:
 
-- session-scoped work state becomes task-lineage scoped;
-- `canonicalStateJson: unknown` is not a release contract;
-- delivery state is separated from immutable checkpoint content;
-- acceptance requires engagement evidence;
-- workspace reconciliation precedes automatic full injection;
-- exact CLI capability determines the resume strategy;
-- `off` disables every automatic hint/injection, including compact;
-- the SessionStart hint budget is reduced;
-- safe JSON capsule rendering is mandatory;
-- #8 non-inferiority is a Core 1.0 blocking gate.
+- task-lineage-scoped state instead of one state per session;
+- typed state instead of `canonicalStateJson: unknown`;
+- duplicate logical events as explicit revision no-ops;
+- immutable checkpoint content + append-only disposition projection;
+- separate initial claim CAS and delivery-attempt lifecycle;
+- deterministic engagement evidence before atomic acceptance;
+- fail-closed workspace reconciliation;
+- exact capability × mode delivery;
+- dataset-versioned candidate-selection wire contract;
+- bounded sensitivity-aware JSON capsule and capture verification;
+- durable-memory revision/temporal/source-history fixtures;
+- #8 non-inferiority as Core 1.0 authority.
 
 All Phase 1 safety invariants remain unchanged.
 
 ## Licensing and provenance
 
-This document adopts architectural patterns, public behavior, and interface ideas only. It does not copy implementation code. Any future code-level port must identify the exact source file, commit, license, and copied/derived range, then pass #10 before merge.
+This document adopts architectural patterns, public behavior, and interface ideas only. It copies no implementation code. Any future code-level port must identify exact source path, commit, license, copied/derived range, and pass #10 before merge.
