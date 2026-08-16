@@ -112,6 +112,30 @@ const INLINE_ENUMS: Record<string, readonly string[]> = {
   ],
 };
 
+/**
+ * property に直接書かれた `const`。`oneOf` の判別子（`kind`）と `schemaVersion` が大半で、
+ * enum と同じく片方だけ書き換えると TS と schema が食い違う。値が 1 つの enum と同じ扱いにする。
+ */
+const INLINE_CONSTS: Record<string, string | number> = {
+  "TaskBoundaryDecisionV1.oneOf[0].properties.kind": "confirm",
+  "TaskBoundaryDecisionV1.oneOf[1].properties.kind": "reject",
+  "NormalizedContinuityEvent.allOf[0].if.properties.turnIdSource": "unavailable",
+  "SemanticResumeNoteV1.properties.schemaVersion": 1,
+  "CanonicalWorkStateV1.properties.schemaVersion": 1,
+  "ContinuationCheckpointV2.properties.schemaVersion": 2,
+  "DeliveryCommandV1.oneOf[0].properties.kind": "mark_delivered",
+  "DeliveryCommandV1.oneOf[1].properties.kind": "record_engagement",
+  "DeliveryCommandV1.oneOf[2].properties.kind": "accept",
+  "DeliveryCommandV1.oneOf[3].properties.kind": "dismiss",
+  "DeliveryCommandV1.oneOf[4].properties.kind": "abandon",
+  "DeliveryCommandV1.oneOf[5].properties.kind": "renew_lease",
+  "ResumeSuppressionEntryV1.properties.reason": "dismissed",
+  "ResumeCapsuleV1.properties.schemaVersion": 1,
+  "ResumeSelectionDecisionV1.properties.schemaVersion": 1,
+  "DerivedArtifactSourceRefV1.oneOf[0].properties.kind": "memory",
+  "DerivedArtifactSourceRefV1.oneOf[1].properties.kind": "artifact",
+};
+
 /** `additionalProperties` が schema（false 以外）でよい唯一の定義。任意の JSON を受ける再帰型。 */
 const OPEN_OBJECT_ALLOWLIST = new Set(["JsonValue.oneOf[2]"]);
 
@@ -177,6 +201,17 @@ test("property の中に直接書かれた enum も凍結する", () => {
     found[path] = node.enum as string[];
   }
   assert.deepEqual(found, INLINE_ENUMS);
+});
+
+test("property の中に直接書かれた const も凍結する", () => {
+  // oneOf の判別子は値が 1 つの enum と同じ。片方だけ書き換えると、TS の
+  // `{ kind: "mark_delivered" }` を満たす値が runtime 検証で落ちる
+  const found: Record<string, unknown> = {};
+  for (const [path, node, isTopLevel] of walkDefs()) {
+    if (isTopLevel || !Object.hasOwn(node, "const")) continue;
+    found[path] = node.const;
+  }
+  assert.deepEqual(found, INLINE_CONSTS);
 });
 
 test("turnId は turnIdSource と対で成立する（§3.1）", () => {
