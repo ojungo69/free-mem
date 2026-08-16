@@ -189,6 +189,19 @@ export function idempotencyKeyOf(event: NormalizedContinuityEvent): string {
 
 // --- §4.2 状態と revision ---------------------------------------------------
 
+/**
+ * 状態は lineage ごとに 1 つ（§4）。別 lineage の event を黙って取り込むと、境界の確定
+ * （§4.4）を経ずに前の task の状態が書き換わる。lineage を持たない event は、還元先の
+ * 状態が属する lineage のものとして扱う。
+ */
+function assertSameLineage(state: CanonicalWorkStateV1, event: NormalizedContinuityEvent): void {
+  if (event.taskLineageId !== undefined && event.taskLineageId !== state.taskLineageId) {
+    throw new Error(
+      `別 lineage の event は適用しない: 状態 ${state.taskLineageId} / event ${event.taskLineageId}`,
+    );
+  }
+}
+
 /** hash 対象は「stateRevision を除いた状態」。除外は列挙ではなく型と構築で担保する。 */
 export type WorkStateContentV1 = Omit<CanonicalWorkStateV1, "stateRevision">;
 
@@ -338,13 +351,7 @@ export function reduceTaskWorkState(
   assertOperationEnvelope(event);
   assertTurnIdentity(event);
   assertIngestSeq(event.ingestSeq);
-  // 状態は lineage ごとに 1 つ（§4）。別 lineage の event を黙って取り込むと、境界の確定
-  // （§4.4）を経ずに前の task の状態が書き換わる
-  if (event.taskLineageId !== undefined && event.taskLineageId !== previous.state.taskLineageId) {
-    throw new Error(
-      `別 lineage の event は適用しない: 状態 ${previous.state.taskLineageId} / event ${event.taskLineageId}`,
-    );
-  }
+  assertSameLineage(previous.state, event);
   const key = idempotencyKeyOf(event);
 
   if (idempotencyLedger.has(key)) {
@@ -599,6 +606,7 @@ export function finalizeAbandonedState(
   event: NormalizedContinuityEvent,
 ): CanonicalWorkStateV1 {
   assertIngestSeq(event.ingestSeq);
+  assertSameLineage(state, event);
   const pendingOperations = state.pendingOperations.map((pending) =>
     pending.status === "started"
       ? { ...pending, status: "unknown" as const, sourceEventIds: [...pending.sourceEventIds, event.eventId] }

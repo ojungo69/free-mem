@@ -595,6 +595,25 @@ test("放棄時に開いていた operation は unknown になり、元の状態
   assert.equal(finalized.lastIngestSeq, "20");
 });
 
+test("別 lineage の event では放棄を確定しない", () => {
+  const snapshot = startedSnapshot();
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        snapshot.state,
+        terminalEvent({
+          eventId: "event-session-ended",
+          kind: "session_ended",
+          taskLineageId: "lineage-2",
+          ingestSeq: "20",
+          operation: undefined,
+          successful: undefined,
+        }),
+      ),
+    /別 lineage の event は適用しない/,
+  );
+});
+
 test("放棄後に届いた terminal は元の operation を閉じる", () => {
   const snapshot = startedSnapshot();
   const abandoned = finalizeAbandonedState(snapshot.state, terminalEvent({
