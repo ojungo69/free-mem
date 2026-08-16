@@ -1,0 +1,26 @@
+specs/001-agent-memory-core/contracts/spool-format-v1.md
+  s_5cbc4c67c8b3b4::t_ffd275e6908294 155
+specs/001-agent-memory-core/contracts/writer-boundary-v1.md
+  s_5cbc4c67c8b3b4::t_c1018656013bfa 277-284
+  s_5cbc4c67c8b3b4::t_df07db60df0846 768-770
+  s_5cbc4c67c8b3b4::t_9eaceb732b283c 731
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_5cbc4c67c8b3b4::t_afd5f9a8a2e60f 56,60
+  s_5cbc4c67c8b3b4::t_daafa5aab061f1 61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3bb3cc2650e74b3593f7ab3c7f3dc3e7c545500e",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
