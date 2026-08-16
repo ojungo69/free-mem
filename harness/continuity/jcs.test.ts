@@ -143,3 +143,14 @@ test("I-JSON は代理と noncharacter を文字列に許さない（RFC 7493 §
   // 正しい代理対は通る（RFC 7493 §2.1 が legal と書いている例そのもの）
   assert.deepEqual(parseIJson('{"a":"\uD800\uDEAD"}'), { a: "\uD800\uDEAD" });
 });
+
+test("binary64 で表せない数を含む JSON は読まない（RFC 7493 §2.2）", () => {
+  // `JSON.parse` は範囲外の数を Infinity にする。そこから先は比較も hash も意味を失う
+  assert.equal(JSON.parse('{"a":1e400}').a, Number.POSITIVE_INFINITY);
+
+  for (const bad of ['{"a":1e400}', '{"a":-1e400}', '{"a":[1e400]}', '{"a":{"b":1e400}}']) {
+    assert.throws(() => parseIJson(bad), /binary64 で表せない/, bad);
+  }
+  // 表せる範囲はそのまま通る
+  assert.deepEqual(parseIJson('{"a":1e308,"b":-0,"c":0.1}'), { a: 1e308, b: -0, c: 0.1 });
+});

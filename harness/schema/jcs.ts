@@ -81,6 +81,12 @@ function assertIJsonStrings(value: unknown, path: string): void {
     assertIJsonString(value, path);
     return;
   }
+  // RFC 7493 §2.2 は binary64 で表せない数（例として `1E400` を挙げている）を SHOULD NOT と
+  // している。`JSON.parse("1e400")` は Infinity になり、そこから先の比較も hash も意味を
+  // 失うので、契約ファイルとしては受け取らない
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new Error(`I-JSON: ${path} の数値が binary64 で表せない: ${value}`);
+  }
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertIJsonStrings(item, `${path}[${index}]`));
     return;
