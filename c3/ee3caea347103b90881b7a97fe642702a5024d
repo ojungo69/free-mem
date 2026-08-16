@@ -1,0 +1,23 @@
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_5cbc4c67c8b3b4::t_d6595b419e4ab3 2148-2172,6016-6017,6050,6210
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_5cbc4c67c8b3b4::t_f6bf65712a9189 2148-2172,6016-6017,6050,6210
+vendor/codemem/packages/cli/src/hook-core.ts
+  s_5cbc4c67c8b3b4::t_208632b7de40f2 33-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c3ee3caea347103b90881b7a97fe642702a5024d",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
