@@ -53,9 +53,12 @@ manifestHash = SHA-256hex( JSON.stringify({ manifestVersion, scenarios }) )
 - 区切りは `JSON.stringify` の既定（空白なし）
 - `manifestHash` 自身は入力に含めない
 
-ponytail: 現時点でこの規則を強制する checker は無い（値は手で計算して埋めた）。§13 の
-preflight predicate を実装する Task 5 で、この規則どおりに再計算して照合するゲートを入れる。
-それまでこの hash は「宣言」であって「検証済み」ではない。
+この規則は `harness/continuity/capability-manifest.test.ts` が強制する。同 test は
+再計算して `manifestHash` と照合するほか、scenario の各欄を書き換えると hash が必ず変わること
+（＝入力から落ちている欄が無いこと）と、並べ替えでは変わらないことも確認する。
+
+§13 の残りの半分——生成された report / matrix の disposition 集合が manifest と exact-set で
+一致すること——はまだゲートが無い。Task 5 の preflight predicate で実装する。
 
 ## disposition はここに書かない
 

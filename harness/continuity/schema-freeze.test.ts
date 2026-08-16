@@ -46,7 +46,7 @@ const NAMED_ENUMS: Record<string, keyof typeof contract> = {
  * inline union なので名前で参照できず、上の対応表には載らない。凍結した値をここに写して
  * 変更を検出する（addendum が inline で書いているものを `$defs` に切り出すと転記が正本から離れる）。
  */
-const INLINE_ENUMS: Record<string, readonly string[]> = {
+const INLINE_ENUMS = {
   "TaskBoundaryAuthorityContextV1.properties.userSurfaceAuthority.properties.surface": [
     "cli",
     "viewer",
@@ -110,15 +110,16 @@ const INLINE_ENUMS: Record<string, readonly string[]> = {
     "automatic_strategy",
     "tier_a",
   ],
-};
+} as const;
 
 /**
  * property に直接書かれた `const`。`oneOf` の判別子（`kind`）と `schemaVersion` が大半で、
  * enum と同じく片方だけ書き換えると TS と schema が食い違う。値が 1 つの enum と同じ扱いにする。
  */
-const INLINE_CONSTS: Record<string, string | number> = {
+const INLINE_CONSTS = {
   "TaskBoundaryDecisionV1.oneOf[0].properties.kind": "confirm",
   "TaskBoundaryDecisionV1.oneOf[1].properties.kind": "reject",
+  "ContinuityEventProvenanceV1.allOf[0].if.properties.evidenceKind": "native",
   "NormalizedContinuityEvent.allOf[0].if.properties.turnIdSource": "unavailable",
   "SemanticResumeNoteV1.properties.schemaVersion": 1,
   "CanonicalWorkStateV1.properties.schemaVersion": 1,
@@ -134,7 +135,165 @@ const INLINE_CONSTS: Record<string, string | number> = {
   "ResumeSelectionDecisionV1.properties.schemaVersion": 1,
   "DerivedArtifactSourceRefV1.oneOf[0].properties.kind": "memory",
   "DerivedArtifactSourceRefV1.oneOf[1].properties.kind": "artifact",
-};
+  "DerivedArtifactInvalidationEventV1.allOf[0].if.properties.reason": "source_artifact_invalidated",
+} as const;
+
+/* -------------------------------------------------------------------------
+ * 上の 2 つの表を TS 型に結び直す。
+ *
+ * NAMED_ENUMS は TS の runtime 定数と schema を突き合わせるので TS 側の変更で落ちるが、
+ * INLINE_ENUMS / INLINE_CONSTS の値は「schema をそのまま写したもの」でしかない。
+ * TS の inline union だけを書き換えると、schema も表も揃ったまま素通りする（#25 レビュー指摘）。
+ *
+ * そこで表の値を `as const` で保ち、TS 型と一致することを **型として** 主張する。
+ * schema ↔ 表は実行時の deepEqual、表 ↔ TS 型はここの型検査（CI の
+ * `tsc -p harness/tsconfig.json`）が見るので、3 者のどれか 1 つだけを書き換えると落ちる。
+ * ------------------------------------------------------------------------- */
+
+type Assert<T extends true> = T;
+/** 双方向の包含。union どうしを集合として比較する（片側包含だと欠落を見逃す） */
+type SameSet<A extends string | number, B extends string | number> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : false
+  : false;
+type EnumAt<K extends keyof typeof INLINE_ENUMS> = (typeof INLINE_ENUMS)[K][number];
+type ConstAt<K extends keyof typeof INLINE_CONSTS> = (typeof INLINE_CONSTS)[K];
+/** 同じ `$defs` に属する複数の `const`（`oneOf` の判別子）をまとめて 1 つの union にする */
+type ConstsUnder<P extends string> = {
+  [K in keyof typeof INLINE_CONSTS]: K extends `${P}${string}` ? (typeof INLINE_CONSTS)[K] : never;
+}[keyof typeof INLINE_CONSTS];
+
+type _InlineEnumsMatchContract = [
+  Assert<
+    SameSet<
+      NonNullable<contract.TaskBoundaryAuthorityContextV1["userSurfaceAuthority"]>["surface"],
+      EnumAt<"TaskBoundaryAuthorityContextV1.properties.userSurfaceAuthority.properties.surface">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.ContinuityIngestAttestationV1["channel"],
+      EnumAt<"ContinuityIngestAttestationV1.properties.channel">
+    >
+  >,
+  Assert<SameSet<contract.ObservedFile["role"], EnumAt<"ObservedFile.properties.role">>>,
+  Assert<SameSet<contract.ObservedCommand["status"], EnumAt<"ObservedCommand.properties.status">>>,
+  Assert<SameSet<contract.ObservedTest["status"], EnumAt<"ObservedTest.properties.status">>>,
+  Assert<SameSet<contract.PendingOperation["kind"], EnumAt<"PendingOperation.properties.kind">>>,
+  Assert<SameSet<contract.PendingOperation["status"], EnumAt<"PendingOperation.properties.status">>>,
+  Assert<
+    SameSet<
+      contract.ContinuationCheckpointV2["kind"],
+      EnumAt<"ContinuationCheckpointV2.properties.kind">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.CheckpointDispositionEvent["source"],
+      EnumAt<"CheckpointDispositionEvent.properties.source">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.CheckpointDispositionProjection["state"],
+      EnumAt<"CheckpointDispositionProjection.properties.state">
+    >
+  >,
+  Assert<
+    SameSet<contract.CheckpointMetadataV1["kind"], EnumAt<"CheckpointMetadataV1.properties.kind">>
+  >,
+  Assert<
+    SameSet<
+      contract.DispositionAuthorityContextV1["source"],
+      EnumAt<"DispositionAuthorityContextV1.properties.source">
+    >
+  >,
+  Assert<SameSet<contract.CheckpointAnchorV1["kind"], EnumAt<"CheckpointAnchorV1.properties.kind">>>,
+  Assert<
+    SameSet<contract.ContradictionEvidenceV1["kind"], EnumAt<"ContradictionEvidenceV1.properties.kind">>
+  >,
+  Assert<
+    SameSet<
+      contract.ResumeSelectionDecisionV1["confidenceBand"],
+      EnumAt<"ResumeSelectionDecisionV1.properties.confidenceBand">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.DerivedArtifactInvalidationEventV1["reason"],
+      EnumAt<"DerivedArtifactInvalidationEventV1.properties.reason">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.DerivedArtifactInvalidationEventV1["resultingStatus"],
+      EnumAt<"DerivedArtifactInvalidationEventV1.properties.resultingStatus">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.RequiredCapabilityScenarioV1["requiredFor"][number],
+      EnumAt<"RequiredCapabilityScenarioV1.properties.requiredFor.items">
+    >
+  >,
+];
+
+type _InlineConstsMatchContract = [
+  // oneOf の判別子: schema の全 branch をまとめて TS の union と突き合わせる
+  Assert<SameSet<contract.TaskBoundaryDecisionV1["kind"], ConstsUnder<"TaskBoundaryDecisionV1.oneOf">>>,
+  Assert<SameSet<contract.DeliveryCommandV1["kind"], ConstsUnder<"DeliveryCommandV1.oneOf">>>,
+  Assert<
+    SameSet<contract.DerivedArtifactSourceRefV1["kind"], ConstsUnder<"DerivedArtifactSourceRefV1.oneOf">>
+  >,
+  // 単一 property の const
+  Assert<
+    SameSet<contract.ResumeSuppressionEntryV1["reason"], ConstAt<"ResumeSuppressionEntryV1.properties.reason">>
+  >,
+  Assert<
+    SameSet<
+      contract.SemanticResumeNoteV1["schemaVersion"],
+      ConstAt<"SemanticResumeNoteV1.properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.CanonicalWorkStateV1["schemaVersion"],
+      ConstAt<"CanonicalWorkStateV1.properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.ContinuationCheckpointV2["schemaVersion"],
+      ConstAt<"ContinuationCheckpointV2.properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameSet<contract.ResumeCapsuleV1["schemaVersion"], ConstAt<"ResumeCapsuleV1.properties.schemaVersion">>
+  >,
+  Assert<
+    SameSet<
+      contract.ResumeSelectionDecisionV1["schemaVersion"],
+      ConstAt<"ResumeSelectionDecisionV1.properties.schemaVersion">
+    >
+  >,
+  // if/then の判別値: TS 側の union の要素であること（集合そのものではない）
+  Assert<
+    ConstAt<"NormalizedContinuityEvent.allOf[0].if.properties.turnIdSource"> extends contract.TurnIdSource
+      ? true
+      : false
+  >,
+  Assert<
+    ConstAt<"ContinuityEventProvenanceV1.allOf[0].if.properties.evidenceKind"> extends contract.EvidenceKind
+      ? true
+      : false
+  >,
+  Assert<
+    ConstAt<"DerivedArtifactInvalidationEventV1.allOf[0].if.properties.reason"> extends contract.DerivedArtifactInvalidationEventV1["reason"]
+      ? true
+      : false
+  >,
+];
 
 /** `additionalProperties` が schema（false 以外）でよい唯一の定義。任意の JSON を受ける再帰型。 */
 const OPEN_OBJECT_ALLOWLIST = new Set(["JsonValue.oneOf[2]"]);
@@ -215,16 +374,23 @@ test("property の中に直接書かれた const も凍結する", () => {
 });
 
 test("turnId は turnIdSource と対で成立する（§3.1）", () => {
-  const base = {
+  // turnId 以外は契約を満たす形にしておく。ここが崩れていると turnId の可否ではなく
+  // 別の違反を数えていても気付けない（下の assert で全体が 0 件であることも見る）
+  const base: contract.NormalizedContinuityEvent = {
     eventId: "e1",
     canonicalFingerprint: "f1",
     kind: "prompt",
-    ingestSeq: 1,
+    ingestSeq: "1",
     occurredAt: "2026-08-16T00:00:00Z",
     sessionId: "s1",
-    sourceAgent: { cli: "claude", version: "1.0.0" },
-    provenance: {},
+    sourceAgent: "claude@1.0.0",
+    provenance: {
+      sourceAgentVersion: "1.0.0",
+      evidenceKind: "synthesized",
+      captureMethod: "hook",
+    },
     payload: {},
+    turnIdSource: "unavailable",
   };
   const ev = (turnIdSource: string, turnId?: string) => ({
     ...base,
@@ -232,8 +398,12 @@ test("turnId は turnIdSource と対で成立する（§3.1）", () => {
     ...(turnId === undefined ? {} : { turnId }),
   });
   const schema = { $ref: "#/$defs/NormalizedContinuityEvent" };
+  const issues = (value: unknown) => validateAgainstSchema(value, schema, root);
   const violates = (value: unknown) =>
-    validateAgainstSchema(value, schema, root).some((i) => /turnId/.test(`${i.path} ${i.message}`));
+    issues(value).some((i) => /turnId/.test(`${i.path} ${i.message}`));
+
+  // 土台そのものは 1 件も違反しない
+  assert.deepEqual(issues(ev("unavailable")), []);
 
   // unavailable のときは turnId を持ってはいけない
   assert.equal(violates(ev("unavailable")), false);
