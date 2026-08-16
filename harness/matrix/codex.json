@@ -1,7 +1,7 @@
 {
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "generatedAt": "2026-08-16T06:26:30.792Z",
+  "generatedAt": "2026-08-16T06:31:23.980Z",
   "fixtureCount": 3,
   "fixtureIds": [
     "codex/injection",
@@ -268,7 +268,28 @@
       "nativeVersion:codex-cli 0.147.0",
       "fixture:codex/injection@no-evidence-hash",
       "fixture:codex/lifecycle-basic@no-evidence-hash",
-      "fixture:codex/tool-lifecycle-and-failure@no-evidence-hash"
+      "fixture:codex/tool-lifecycle-and-failure@no-evidence-hash",
+      "highLevel:sessionStartInjection=native/source-test",
+      "highLevel:promptAwareInjection=unknown/none",
+      "highLevel:promptDeliveryBeforeModel=unknown/none",
+      "highLevel:compactSingleDelivery=unknown/none",
+      "highLevel:trueSessionEnd=unknown/none",
+      "highLevel:subagentCapture=unknown/none",
+      "highLevel:stableNativeSessionId=unknown/none",
+      "compactionRecoveryStrategy:unknown",
+      "capture:assistant_completed=synthesized/source-test",
+      "capture:post_compact=unknown/none",
+      "capture:pre_compact=unknown/none",
+      "capture:session_ended=native/source-test",
+      "capture:session_idle=unknown/none",
+      "capture:session_interrupted=unknown/none",
+      "capture:session_started=native/source-test",
+      "capture:tool_completed=native/source-test",
+      "capture:tool_failed=synthesized/source-test",
+      "capture:tool_started=native/source-test",
+      "capture:turn_completed=native/source-test",
+      "capture:user_prompted=native/source-test",
+      "toolFailurePhases:executed"
     ]
   }
 }

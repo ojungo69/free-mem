@@ -64,6 +64,9 @@ const SUPPORTED_KEYWORDS = new Set([
 // 対応キーワードが取る値の形。名前が合っていても型が違えば制約は効かないので、
 // 名前の集合と同じ場所で押さえる（未掲載のキーワードは形を問わない）
 const isNumber = (v: unknown): boolean => typeof v === "number";
+// 長さ・件数の上下限は JSON Schema 上「非負整数」。`minLength: -1` は常に真の no-op、
+// `maxItems: 1.5` は 1 として振る舞う。どちらもデータに依らない誤記なので弾く
+const isCount = (v: unknown): boolean => typeof v === "number" && Number.isInteger(v) && v >= 0;
 const isSchemaLike = (v: unknown): boolean => isPlainObject(v) || typeof v === "boolean";
 const KEYWORD_VALUE_KIND: Record<string, { name: string; check: (v: unknown) => boolean }> = {
   // 空配列や非文字列の要素も弾く。`type: []` / `enum: []` は何にも一致しない schema で、
@@ -86,10 +89,10 @@ const KEYWORD_VALUE_KIND: Record<string, { name: string; check: (v: unknown) => 
   oneOf: { name: "a non-empty array of schemas", check: (v) => Array.isArray(v) && v.length > 0 },
   anyOf: { name: "a non-empty array of schemas", check: (v) => Array.isArray(v) && v.length > 0 },
   allOf: { name: "an array of schemas", check: Array.isArray },
-  minItems: { name: "a number", check: isNumber },
-  maxItems: { name: "a number", check: isNumber },
-  minLength: { name: "a number", check: isNumber },
-  maxLength: { name: "a number", check: isNumber },
+  minItems: { name: "a non-negative integer", check: isCount },
+  maxItems: { name: "a non-negative integer", check: isCount },
+  minLength: { name: "a non-negative integer", check: isCount },
+  maxLength: { name: "a non-negative integer", check: isCount },
   minimum: { name: "a number", check: isNumber },
   maximum: { name: "a number", check: isNumber },
   pattern: { name: "a string", check: (v) => typeof v === "string" },

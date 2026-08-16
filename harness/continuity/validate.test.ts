@@ -127,7 +127,7 @@ test("未対応の schema キーワードは黙って無視せずエラーにす
 test("キーワードの値の型違いも検出する（制約が黙って無効化される）", () => {
   assert.throws(
     () => validateAgainstSchema("a", { type: "string", minLength: "3" }, ROOT),
-    /schema keyword minLength at \$ must be a number/,
+    /schema keyword minLength at \$ must be a non-negative integer/,
   );
   // required: "kind" は文字列を 1 文字ずつ必須プロパティ名として読み、無関係な issue を出す
   assert.throws(
@@ -442,4 +442,13 @@ test("長さ制限の検査は文字列長に比例した確保をしない", ()
   assert.equal(validateAgainstSchema("😀😀", { type: "string", maxLength: 2 }, ROOT).length, 0);
   assert.equal(validateAgainstSchema("😀😀", { type: "string", maxLength: 1 }, ROOT).length, 1);
   assert.equal(validateAgainstSchema("😀😀", { type: "string", minLength: 3 }, ROOT).length, 1);
+});
+
+test("長さ・件数の上下限は非負整数だけ受け付ける", () => {
+  // `minLength: -1` は常に真の no-op、`maxItems: 1.5` は 1 として振る舞う
+  for (const bad of [{ minLength: -1 }, { maxLength: 1.5 }, { minItems: -1 }, { maxItems: 1.5 }]) {
+    assert.throws(() => validateAgainstSchema("x", bad, ROOT), /must be a non-negative integer/);
+  }
+  // minimum / maximum は負数も小数も正当
+  assert.deepEqual(validateAgainstSchema(-0.5, { minimum: -1.5, maximum: 0 }, ROOT), []);
 });

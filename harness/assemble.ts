@@ -398,12 +398,24 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   capabilities.toolFailurePhases = TOOL_FAILURE_PHASES.filter((p) => phaseSet.has(p));
   capabilities.toolFailurePhasesUntested = TOOL_FAILURE_PHASES.filter((p) => !phaseSet.has(p));
 
-  // capability hash の入力: exact version と、各 fixture の evidence hash。
-  // fixture 順に依らないよう sort する（同じ証拠集合なら同じ入力列になる）
+  // capability hash の入力。addendum §8 は「exact version + §13 の manifest hash +
+  // 記録された scenario disposition / evidence hash」の SHA-256 と定めている。
+  // fixture の同一性だけでは、disposition が変わっても入力列が変わらない
+  // （evidenceHash を持たない現行 fixture では disposition に完全に無反応になる）。
+  // fixture 順に依らないよう sort する（同じ証拠集合なら同じ入力列になる）。
+  // ponytail: §13 の manifest hash はまだ無い（Task 5 で入る）。入る場所はこの配列
   capabilities.capabilityHashInputs = [
     `cli:${cli}`,
     `nativeVersion:${nativeVersion}`,
     ...fixtures.map((f) => `fixture:${f.fixtureId}@${f.evidenceHash ?? "no-evidence-hash"}`).sort(),
+    ...HIGH_LEVEL_KEYS.map(
+      (k) => `highLevel:${k}=${capabilities[k].value}/${capabilities[k].evidenceKind ?? "none"}`,
+    ),
+    `compactionRecoveryStrategy:${capabilities.compactionRecoveryStrategy ?? "unknown"}`,
+    ...Object.entries(capabilities.capture)
+      .map(([k, c]) => `capture:${k}=${c.value}/${c.evidenceKind ?? "none"}`)
+      .sort(),
+    `toolFailurePhases:${capabilities.toolFailurePhases.join(",")}`,
   ];
   capabilities.resumeDeliveryStrategy = resolveResumeDeliveryStrategy(capabilities);
 
@@ -699,6 +711,27 @@ async function selfTest(): Promise<void> {
       const cap = assembleFromFixtures([...order]).capabilities.capture.session_started;
       assert(cap.sourceFixtureId === "claude/cap-hashed", "同格な観測は fixtureId 順で決める");
       assert(cap.evidenceHash === "1".repeat(64), "証跡の出どころが並び順で入れ替わらない");
+    }
+
+    // fixtureId も evidenceHash も同じまま disposition だけ変えたら、capability hash の
+    // 入力列も変わること（fixture の同一性だけを並べると、hash 無し fixture では無反応になる）
+    {
+      const base = {
+        ...hlBase,
+        fixtureId: "claude/hash-inputs",
+        capturedAt: at1,
+        scenario: "disposition sensitivity",
+        highLevel: { sessionStartInjection: "native" as const },
+      };
+      delete (base as { evidenceHash?: string }).evidenceHash;
+      const flipped = { ...base, highLevel: { sessionStartInjection: "unsupported" as const } };
+      const a = assembleFromFixtures([base]).capabilities.capabilityHashInputs;
+      const b = assembleFromFixtures([flipped]).capabilities.capabilityHashInputs;
+      assert(
+        a.filter((s) => s.startsWith("fixture:")).join() === b.filter((s) => s.startsWith("fixture:")).join(),
+        "fixture の同一性は変えていない",
+      );
+      assert(a.join() !== b.join(), "disposition が変われば capability hash の入力も変わる");
     }
 
     // 同じ値・同じ強度なら evidenceHash のある観測を採る（並び順で実測の証跡を捨てない）

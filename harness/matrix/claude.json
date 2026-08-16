@@ -1,7 +1,7 @@
 {
   "cli": "claude",
   "nativeVersion": "2.1.228 (Claude Code)",
-  "generatedAt": "2026-08-16T06:26:30.722Z",
+  "generatedAt": "2026-08-16T06:31:23.912Z",
   "fixtureCount": 5,
   "fixtureIds": [
     "claude/injection-and-subagent",
@@ -288,7 +288,28 @@
       "fixture:claude/interrupt-and-hook-timeout@no-evidence-hash",
       "fixture:claude/lifecycle-basic@no-evidence-hash",
       "fixture:claude/tool-failed-executed@no-evidence-hash",
-      "fixture:claude/tool-lifecycle@no-evidence-hash"
+      "fixture:claude/tool-lifecycle@no-evidence-hash",
+      "highLevel:sessionStartInjection=native/source-test",
+      "highLevel:promptAwareInjection=unknown/none",
+      "highLevel:promptDeliveryBeforeModel=unknown/none",
+      "highLevel:compactSingleDelivery=unknown/none",
+      "highLevel:trueSessionEnd=unknown/none",
+      "highLevel:subagentCapture=native/source-test",
+      "highLevel:stableNativeSessionId=native/source-test",
+      "compactionRecoveryStrategy:unknown",
+      "capture:assistant_completed=synthesized/source-test",
+      "capture:post_compact=unknown/none",
+      "capture:pre_compact=unknown/none",
+      "capture:session_ended=native/source-test",
+      "capture:session_idle=unknown/none",
+      "capture:session_interrupted=synthesized/source-test",
+      "capture:session_started=native/source-test",
+      "capture:tool_completed=native/source-test",
+      "capture:tool_failed=synthesized/source-test",
+      "capture:tool_started=native/source-test",
+      "capture:turn_completed=synthesized/source-test",
+      "capture:user_prompted=native/source-test",
+      "toolFailurePhases:executed"
     ]
   }
 }
