@@ -1,0 +1,20 @@
+harness/continuity/schema-freeze.test.ts
+  s_5cbc4c67c8b3b4::t_84ab68d8057fde 206-216
+  s_5cbc4c67c8b3b4::t_1f8d1d15452b11 115-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8f9dd0d791d0576b19118ff2204d5223e143b697",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
