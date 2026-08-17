@@ -1,0 +1,21 @@
+specs/002-continuity-state-evidence/checklists/requirements.md
+  s_2d059b4f795bca::t_fb4abbb7fa3c4d 1-53
+specs/002-continuity-state-evidence/spec.md
+  s_2d059b4f795bca::t_51786840a82697 1-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c37fc3e16236567901c2ced6a4060351139ba51b",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
