@@ -108,20 +108,14 @@ export interface IntakeContextV1 {
    */
   expectedSourceAgent: string;
   /**
-   * 認証済み peer identity が名乗ることを許された native session。§3.1 が intake に導出させる
-   * 材料は「認証済み peer identity・channel・captureMethod・capability matrix」の 4 つで
-   * session が挙がっていないため、束縛できる層が存在しなかった（#42）。
+   * 認証済み peer identity が名乗ることを許された native session。`expectedSourceAgent` と同じく
+   * **scope selector なので、不一致は降格ではなく拒否**する（還元器は `evidenceKind` を読まないので
+   * 降格では止まらない）。session を特定できない経路（spool 等）は空にしておけば従来どおり素通し。
    *
-   * 状態側（`CanonicalWorkStateV1`）は session を持たないので `assertSameScope` でも照合できず、
-   * §4.3 の correlation scope が言う「same session/task lineage」の session 側だけが誰にも
-   * 検証されない。その結果、同じ Agent・同じ lineage の**別 session を名乗る event** が
-   * rule 1（`nativeOperationId` 一致 + same session）で他人の operation を閉じられ、安価な
-   * start を上限件数だけ送るだけで他人の実行中 operation を退避させられる（どちらも実測）。
-   * どちらも `evidenceKind` の判定を通す必要が無い——還元器は `evidenceKind` を読まないので、
-   * 降格では止まらない。
-   *
-   * `expectedSourceAgent` と同じく **scope selector なので降格ではなく拒否**する。
-   * session を特定できない経路（spool 等）は空にしておけば従来どおり素通しになる。
+   * なぜ intake が束縛するのか、束縛が無いと何ができたのかは 1 箇所にまとめてある:
+   * 規範は addendum v6.2 §3.1（intake also derives the session binding）、実測と残る境界は
+   * `evidence/phase3-reference-model.md` の同名の限界節（#42）。ここで causal chain を
+   * 書き直すと 3 面に同じ事実が載り、実際に上限件数の書き方が食い違った。
    */
   expectedSessionId: string;
   exactAgentVersion: string;

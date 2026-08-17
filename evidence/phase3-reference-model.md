@@ -356,8 +356,8 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
   「認証済み peer identity・ingest channel・`captureMethod`・capability matrix」だけで **session が
   入っていなかった**。`IntakeContextV1` は `expectedSourceAgent` しか束縛せず session は素通しで、
   `assertSameScope` は状態側に session が無いので照合できない——結果として、同じ Agent・同じ
-  lineage の別 session を名乗る event が rule 1 で他人の operation を閉じられ、安価な start 256 件で
-  他人の実行中 operation を退避させられた（§10 の `arrayItems`）。
+  lineage の別 session を名乗る event が rule 1 で他人の operation を閉じられ、安価な start を `CONTINUITY_LIMITS.arrayItems` 件だけ送って
+  他人の実行中 operation を退避させられた（§10 の上限。件数を doc に写すと定数の変更で黙って古くなる）。
   現在は `IntakeContextV1.expectedSessionId` を足し、**降格ではなく intake が受け取らない**
   （`sourceAgent` と同じ理由: session は証跡の質ではなく scope selector なので、降格しても値は残り
   他人の operation を選べてしまう）。正本にも §3.1 の一文として書いた。**残る境界**は `sourceAgent`
