@@ -185,17 +185,25 @@ start の材料は要素の 2 欄（`startIngestSeq` / `startTurnIdSource`）に
 候補を `unknown` のままにし、診断を出す」と要求するが、`outcome` と冪等台帳の扱いは書いていない。
 **状態に記録できる相手が居るかどうか**で分けた。
 
-**隔離する（状態にも台帳にも入れない）**:
+**隔離する（= 配送鍵を消費しない。台帳には入れない）**。ただし**状態を変えるかどうかは分かれる**:
+
+*状態も台帳も動かさない（event 自身の corruption）*:
 
 - `terminal_conflict`（v6「same op ID + different hash: quarantine corruption」）。台帳に入れると
-  訂正版の再配送が重複 no-op として黙って捨てられる
+  訂正版の再配送が重複 no-op として黙って捨てられる。live な集合から落ちた証跡は無いので記録もしない
+
+*`droppedEvidence` に記録し、revision と history は進める（`quarantineWithRecord`）*:
+
 - `terminal_orphaned`（候補が 1 件も無い）。start より先に terminal が届く順序前後は正常運用で
   起きる（hook と transcript scan の取り込み順、再起動後の catch-up）。台帳に入れると、後から
   start が届いても同じ terminal は重複 no-op になり二度と閉じられない。隔離しておけば再配送で
-  拾い直せるし、閉じられない operation が状態に残るわけでもない
+  拾い直せる
 - `terminal_unmatched` のうち**開いた候補が 1 件も無いもの**（候補は matchKey で拾えるが全員
   確定済みで、turn が両立するものも無い）。`unknown` に倒す相手が居ないので台帳へ入れる形は
-  取れない。隔離したうえで**状態にも記録する**（下記）
+  取れない
+
+後者 2 つは隔離でありながら**返る状態は前の状態ではない**（記録・revision・history が進む）。
+状態を捨てて「隔離だから不変」と読む移植は記録を落とす。
 
 `terminal_orphaned` と、開いた候補ゼロの `terminal_unmatched` は、隔離に加えて
 `droppedEvidence` へ `orphaned_terminal` として記録する。前者は候補ゼロ、後者は候補はあるが
