@@ -216,7 +216,13 @@ export function stampIntakeEvidence(
   // §3.1 は evidenceKind も turn identity も「認証済み peer identity」から導けと言う。
   // 受領証があり、かつ caller の名乗る Agent と version が受領証の指すそれと一致することが
   // その認証にあたる。evidence の証明も turn の証明もこの束縛の上に乗る
-  const authenticatedVersion =
+  // **経路が認証済みか**と**その version に authority があるか**を分ける。前者は「受領証が
+  // peer を指していて、caller の名乗る Agent がその peer と一致する」まで。後者はそこに
+  // exact version の一致を足したもの。`synthesized_monotonic` は adapter が自分で数える連番
+  // なので version の証明を要さず、認証済み経路かどうかだけが問われる（下の診断）。
+  // 一緒にすると、**CLI を上げた直後の version drift が「未認証」として報告される**——
+  // native authority が消えるのは正しいが、認証済みの経路を未認証と呼ぶのは別の話
+  const authenticatedPeer =
     attestation !== undefined &&
     // §3.1 は受領証を「その認証済み取り込みの receipt」と定義し、evidenceKind を「認証済み
     // peer identity」から導けと言う。受領証が在ることと、それが peer を指していることは別で、
@@ -231,7 +237,9 @@ export function stampIntakeEvidence(
     // 空文字同士は「一致」ではなく「どちらも名乗っていない」。素通りさせない
     // 「未設定」の表し方は空文字とは限らない。identity 材料と同じ理由（`isBlank`）で、
     // 空白 1 文字・タブ・U+200B で「無い」を表す daemon でも同じ実害が起きる
-    !isBlank(context.expectedSourceAgent) &&
+    !isBlank(context.expectedSourceAgent);
+  const authenticatedVersion =
+    authenticatedPeer &&
     !isBlank(context.exactAgentVersion) &&
     // `event.sourceAgent === context.expectedSourceAgent` はここには書かない。上の throw が
     // 「`expectedSourceAgent` が非空なら等値」を保証済みで、この行は到達時点で必ず true になる。
@@ -290,7 +298,7 @@ export function stampIntakeEvidence(
       detail: `native turn identity が ${provenance.sourceAgentVersion} について証明されていないので unavailable へ降格した`,
     });
   }
-  if (event.turnIdSource === "synthesized_monotonic" && !authenticatedVersion) {
+  if (event.turnIdSource === "synthesized_monotonic" && !authenticatedPeer) {
     diagnostics.push({
       code: "turn_identity_unauthenticated",
       eventId: event.eventId,

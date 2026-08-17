@@ -94,8 +94,12 @@ mutate "  const { ingestAttestation: _claimed, ...provenance } = event.provenanc
 mutate "  if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== context.expectedSourceAgent) {" "  if (false) {" && run "sourceAgent の束縛を外す"
 mutate "  if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== context.expectedSourceAgent) {" "  if (event.sourceAgent !== context.expectedSourceAgent) {" && run "認証できない経路でも Agent 名で落とす"
 mutate "  if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {" "  if (false) {" && run "session の束縛を外す"
-mutate "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedVersion) {" "  if (false) {" && run "未認証の synthesized_monotonic を診断に出さない"
-mutate "    !isBlank(context.expectedSourceAgent) &&" "    true &&" && run "空の Agent 名を素通しする"
+mutate "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedPeer) {" "  if (false) {" && run "未認証の synthesized_monotonic を診断に出さない"
+mutate "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedPeer) {" "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedVersion) {" && run "未認証の判定に version 一致まで求める"
+mutate "  const authenticatedVersion =
+    authenticatedPeer &&" "  const authenticatedVersion =
+    true &&" && run "version authority が経路の認証を前提にしない"
+mutate "    !isBlank(context.expectedSourceAgent);" "    true;" && run "空の Agent 名を素通しする"
 mutate "    event.turnIdSource === \"native\" && !(authenticatedVersion && context.nativeTurnIdentityProven);" "    false;" && run "native turn の証明要求を外す"
 mutate "!(authenticatedVersion && context.nativeTurnIdentityProven)" "!context.nativeTurnIdentityProven" && run "turn 証明の version 束縛を外す"
 mutate "  if (turnDowngraded) {" "  if (false) {" && run "turn 降格を黙って行う"
@@ -242,7 +246,7 @@ mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnv
 mutate "  if (open.length === 0) {" "  if (open.length === 0 && compatible.find(identityUnverifiable) === undefined) {" && run "照合不能を成否矛盾検査より先に判定する"
 
 mutate "    !isBlank(context.activeCapabilityHash) &&" "    context.activeCapabilityHash !== \"\" &&" && run "空白だけの capability hash を authority にする"
-mutate "    !isBlank(context.expectedSourceAgent) &&" "    context.expectedSourceAgent !== \"\" &&" && run "空白だけの Agent 名を authority にする"
+mutate "    !isBlank(context.expectedSourceAgent);" "    context.expectedSourceAgent !== \"\";" && run "空白だけの Agent 名を authority にする"
 mutate "    !isBlank(context.exactAgentVersion) &&" "    context.exactAgentVersion !== \"\" &&" && run "空白だけの exact version を authority にする"
 mutate "  assertSameScope(previous.state, terminalEvent);" "" && run "直接呼びの Agent 検査を外す"
 mutate "          const recorded = startFactsFor(previous, pending.operationId)?.turnIdSource;

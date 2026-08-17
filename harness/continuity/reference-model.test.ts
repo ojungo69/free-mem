@@ -2529,6 +2529,18 @@ test("認証できない経路の synthesized_monotonic は通すが診断に出
   );
   // 認証できていれば診断は出ない（偽陽性を出さない側も測る）
   assert.deepEqual(stampIntakeEvidence(claimed, INTAKE).diagnostics, []);
+  // **version drift は「未認証」ではない**。CLI を上げた直後は exact version が一致しないので
+  // native authority は消えるが、受領証も peer も Agent も一致しているので経路は認証済み。
+  // 両者を同じ述語で見ると、通常の version 更新が未認証として観測に混ざる
+  const drifted = stampIntakeEvidence(claimed, { ...INTAKE, exactAgentVersion: "9.9.9 (Claude Code)" });
+  assert.deepEqual(drifted.diagnostics.map((d) => d.code), []);
+  // authority のほうは正しく消える（緩めていないことを対で見る）
+  assert.equal(drifted.event.provenance.evidenceKind, "synthesized");
+  assert.equal(
+    stampIntakeEvidence(startEvent(), { ...INTAKE, exactAgentVersion: "9.9.9 (Claude Code)" }).event
+      .turnIdSource,
+    "unavailable",
+  );
   // native の降格経路とは独立。認証できない native 主張は従来どおり降格の診断だけが出る
   assert.deepEqual(
     stampIntakeEvidence(startEvent(), { ...INTAKE, attestation: undefined }).diagnostics.map((d) => d.code),

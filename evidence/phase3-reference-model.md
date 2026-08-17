@@ -351,13 +351,19 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
   router のバグなので隔離ではなく例外に倒しているが、`sourceAgent` は event が名乗る値なので、
   scope を event 由来で選ぶ実装だと 1 件の取り違えで stream が止まりうる。daemon 側で
   「state は認証済み peer identity で選ぶ」を守る前提。
-- **`sessionId` を束縛する層が無い**。§4.3 の correlation scope は「same session/task lineage」だが、
-  §3.1 が intake に導出させるのは「認証済み peer identity・ingest channel・`captureMethod`・
-  capability matrix」だけで **session は挙がっていない**。`IntakeContextV1` は `expectedSourceAgent` を
-  束縛するが session は素通しで、`assertSameScope` は状態側に session が無いので照合できない。
-  結果として、同じ Agent・同じ lineage の別 session を名乗る event が rule 1 で他人の operation を
-  閉じられ、安価な start 256 件で他人の実行中 operation を状態から退避させられる（§10 の
-  `arrayItems`）。§3.1 に session 束縛の一文が無いこと自体が正本の穴なので、#41 と並べて起票する。
+- **`sessionId` は intake が束縛する（#42 で解消済み。以前はここが穴だった）**。§4.3 の correlation
+  scope は「same session/task lineage」なのに、§3.1 が intake に導出させるものとして挙げていたのは
+  「認証済み peer identity・ingest channel・`captureMethod`・capability matrix」だけで **session が
+  入っていなかった**。`IntakeContextV1` は `expectedSourceAgent` しか束縛せず session は素通しで、
+  `assertSameScope` は状態側に session が無いので照合できない——結果として、同じ Agent・同じ
+  lineage の別 session を名乗る event が rule 1 で他人の operation を閉じられ、安価な start 256 件で
+  他人の実行中 operation を退避させられた（§10 の `arrayItems`）。
+  現在は `IntakeContextV1.expectedSessionId` を足し、**降格ではなく intake が受け取らない**
+  （`sourceAgent` と同じ理由: session は証跡の質ではなく scope selector なので、降格しても値は残り
+  他人の operation を選べてしまう）。正本にも §3.1 の一文として書いた。**残る境界**は `sourceAgent`
+  と同じで、intake を経由せず還元器を直接呼ぶ経路と、`expectedSessionId` を空で渡す
+  （= 権限のある session を名乗れない）ingest 経路。後者は従来どおり素通しで、締めると認証できない
+  経路が全滅するため。
 - **還元器は event の schema 妥当性を前提にする**。`ingestSeq` は decimal string として検査するが、
   `occurredAt` の形式・文字列長（§10）・JSON 深さは見ない。壊れた値をそのまま状態に写すので、
   daemon 側で `reduceTaskWorkState` を呼ぶ前に `NormalizedContinuityEvent` schema での検証を
@@ -385,9 +391,9 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**158 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 158 件（黙って飛ばされた変異ゼロ）、復元後は 179/179 green
-（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 284/284）。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**162 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 162 件（黙って飛ばされた変異ゼロ）、復元後は 181/181 green
+（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 286/286）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
 したら、次で突き合わせてから doc を直す。CI は `mutate.sh` を走らせるが doc は見ないので、
@@ -439,14 +445,18 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | lastIngestSeq の max を外す | 1 |
 | ingestSeq を数値比較にする | 1 |
 | envelope 必須を外す | 3 |
-| intake の attestation 必須を外す | 3 |
+| intake の attestation 必須を外す | 4 |
 | caller の attestation を信じる | 1 |
 | sourceAgent の束縛を外す | 2 |
-| 認証できない経路でも Agent 名で落とす | 2 |
+| 認証できない経路でも Agent 名で落とす | 3 |
 | 空の Agent 名を素通しする | 4 |
-| native turn の証明要求を外す | 6 |
-| turn 証明の version 束縛を外す | 3 |
-| turn 降格を黙って行う | 1 |
+| session の束縛を外す | 2 |
+| 未認証の synthesized_monotonic を診断に出さない | 1 |
+| 未認証の判定に version 一致まで求める | 1 |
+| version authority が経路の認証を前提にしない | 9 |
+| native turn の証明要求を外す | 7 |
+| turn 証明の version 束縛を外す | 4 |
+| turn 降格を黙って行う | 2 |
 | turn 同一性の不変条件を外す | 5 |
 | state への Agent 束縛を外す | 3 |
 | 空 adapterDeliveryId の fallback を外す | 2 |
