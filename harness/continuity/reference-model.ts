@@ -903,7 +903,14 @@ function commit(
 
 /**
  * 台帳に入れずに隔離する。訂正した event を後から入れ直せるようにするため。
- * 状態も変えない（証跡を残す隔離は下の `quarantineWithRecord`）。
+ * 状態も変えない。
+ *
+ * **その隔離が live な集合から証跡を落とすなら、こちらではなく `quarantineWithRecord` を使う**。
+ * #39 の不変条件は「状態から消えた証跡は状態に見えること」で、どちらを呼ぶかでしか区別が
+ * ついていない（引数で強制すると、記録するものが無い 3 箇所が空の引数を書くだけになる）。
+ * 判断基準: この event が**状態に居た何か**を落とすなら記録する。落とすものが event 自身の
+ * corruption（`terminal_conflict` / `delivery_conflict` / `start_conflict`）なら記録しない——
+ * それは live な集合から落ちた証跡ではなく、そもそも状態に入っていない（#43 の語彙に無い）。
  */
 function quarantine(
   previous: TaskWorkStateSnapshotV1,

@@ -402,6 +402,33 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
   daemon 側で `reduceTaskWorkState` を呼ぶ前に `NormalizedContinuityEvent` schema での検証を
   済ませておく前提。同様に `IntakeStampedEventV1` の目印は型だけのもの（`JSON.parse` や spool を
   跨げば消える）なので、信頼境界ではなく呼び順の lint として扱う。
+- **状態は権威として扱い、還元器は検証しない**（#35 / #43 で欄が増えたので明示する）。
+  `startIngestSeq` のように**比較に使う**値だけは綴りを見て、合わなければ「名乗っていない」に
+  倒す（合わない値をそのまま `compareIngestSeq` に渡すと throw し、壊れた要素を狙っていない
+  terminal まで巻き添えで落ちるため）。それ以外——低い `startIngestSeq` を持つ状態、`evicted` に
+  `eventId` を載せた記録、上限を超えた `droppedEvidence`——は素通しする。**同じ状態を書ける相手は
+  `status: "succeeded"` を直接書ける**ので、ここで検査を足しても守れるものが増えない。
+  checkpoint の出どころを保証するのは daemon 側の責任。以下は実測で確かめた具体的な境界:
+  - **上限超えの `droppedEvidence` を repair するのは start 経路だけ**。そこは
+    `recordDroppedEvidence` を通るので刈った事実が `dropped_evidence_overflowed` に出る。
+    terminal や放棄の経路は `nextContent` を通るだけで、診断の出口が無い。**黙って間引かない**
+    ほうを優先し、次の start まで上限超えのまま運ぶ（凍結 schema の `maxItems` に反する状態を
+    その間だけ出しうる）。
+  - **`DroppedEvidenceEntryV1` の欄の組み合わせは誰も検査しない**。`reason` ごとに書く欄は
+    還元器が決めているが、schema は `oneOf` を持たず（別言語の validator で挙動差が出るため）、
+    runtime にも検査は無い。読む側は `reason` で分岐すること。
+  - **孤児 terminal の記録は上限をまたぐと再び足されうる**。重複判定は live な
+    `droppedEvidence` だけを見るので、その記録が 256 件の枠から押し出された後に同じ terminal が
+    再送されると、もう一度記録して `stateRevision` が動く。隔離は配送鍵を消費しない設計
+    （後から start が届けば閉じられる）なので再送自体は止まらない。**枠の中では収束する**——
+    churn には 1 つの lineage で 1 件の孤児と 256 件以上の脱落が要る。`history` を見れば
+    厳密に判定できるが、それは上限の無い走査になるので採らなかった。
+  - **退避された operation の `terminalFingerprint` は記録に残らない**（`DroppedEvidenceEntryV1` は
+    識別と分類だけを持つ）。ただし退避された operation 宛ての terminal は #44 の前から
+    候補ゼロで孤児隔離になっていたので、この欄が消えることによる差は無い。
+  - **`history` の `eventId` は一意でない**（実測）。配送鍵は `adapterDeliveryId` を含むので、
+    同じ `eventId` を違う配送 ID で 2 回送ると 2 回とも適用され、行が 2 つ積まれる。
+    `history` を `eventId` で引く消費者は書けない。
 - **session 全体を 1 回の fold で流す用途には向かない**。`commit` は event ごとに冪等台帳と
   history を複製するので、fold の長さに対して二乗で伸びる（実測: 1,000 event 61ms、
   5,000 event 1,024ms、20,000 event 23,332ms）。参照実装は「同じ fixture から TS と Rust が
