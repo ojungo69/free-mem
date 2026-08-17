@@ -165,14 +165,23 @@ start より小さい連番の terminal を与えて隔離されること。外�
 
 ### Tests for User Story 3
 
-- [ ] T030 [P] [US3] `harness/continuity/reference-model.test.ts` に FR-010/FR-011 の回帰を足す — 確定時に `terminalFingerprint` が書かれ、同じ成否・違う指紋・違う配送 ID の 2 通目が衝突として隔離され、**状態が変わらない**こと（spec Acceptance 1）
-- [ ] T031 [P] [US3] `harness/continuity/reference-model.test.ts` に「同じ指紋なら隔離しない」回帰を足す — 別の配送 ID でも指紋が同じなら適用済みの再配送として扱われること（spec Acceptance 2）
-- [ ] T032 [P] [US3] `harness/continuity/reference-model.test.ts` に FR-012 の回帰を足す — `terminalFingerprint` を持たない旧い状態では新しい検査が**発動せず**、従来どおり `terminal_already_applied` になること（spec Acceptance 3）
+- [X] T030 [P] [US3] `harness/continuity/reference-model.test.ts` に FR-010/FR-011 の回帰を足す — 確定時に `terminalFingerprint` が書かれ、同じ成否・違う指紋・違う配送 ID の 2 通目が衝突として隔離され、**状態が変わらない**こと（spec Acceptance 1）
+- [X] T031 [P] [US3] `harness/continuity/reference-model.test.ts` に「同じ指紋なら隔離しない」回帰を足す — 別の配送 ID でも指紋が同じなら適用済みの再配送として扱われること（spec Acceptance 2）
+- [X] T032 [P] [US3] `harness/continuity/reference-model.test.ts` に FR-012 の回帰を足す — `terminalFingerprint` を持たない旧い状態では新しい検査が**発動せず**、従来どおり `terminal_already_applied` になること（spec Acceptance 3）
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] `harness/continuity/reference-model.ts` の terminal 受理経路で、`status` を `succeeded` / `failed` に変えるときに `terminalFingerprint` へ event の `canonicalFingerprint` を**そのまま**入れる。**計算し直さない**。`unknown` へ倒す経路では書かない（受理していない）
-- [ ] T034 [US3] `harness/continuity/reference-model.ts` の再配送判定に指紋比較を足す — 確定済み operation に `terminalFingerprint` があり、届いた terminal の `canonicalFingerprint` が違えば衝突。欄が無ければ従来どおり `terminal_already_applied`
+- [X] T033 [US3] `harness/continuity/reference-model.ts` の terminal 受理経路で、`status` を `succeeded` / `failed` に変えるときに `terminalFingerprint` へ event の `canonicalFingerprint` を**そのまま**入れる。**計算し直さない**。`unknown` へ倒す経路では書かない（受理していない）
+- [X] T034 [US3] `harness/continuity/reference-model.ts` の再配送判定に指紋比較を足す — 確定済み operation に `terminalFingerprint` があり、届いた terminal の `canonicalFingerprint` が違えば衝突。欄が無ければ従来どおり `terminal_already_applied`
+
+**Phase 5 で分かったこと（tasks.md に無かった論点）**:
+
+- **`unknown` に倒した operation には指紋を書かない**。`unknown` は「成否を主張できなかった」= terminal を受理していないので、書くと後から届いた本物の terminal が指紋違いの衝突として隔離され、その operation は永久に閉じられない。変異と test で固定した
+- **届く側の空白は考えなくてよい**。`canonicalFingerprint` は必須の identity 材料で、`assertIdentityMaterial` が空白を先に落とす（この検査には届かない）。空白がありうるのは**状態側**の `terminalFingerprint`（任意欄）だけなので、そちらを `declared()` で読む
+- **既存 test 5 件の再配送に別々の指紋を振っていた**のを、受理済みの terminal と同じ指紋に揃えた。別値だったのは event を区別するための便宜で、「同じ論理 event の再配送」は canonical fingerprint も同じ（§8.2 が配送 ID 不在時の dedupe authority に使えるのはそのため）。期待値は 1 件も変えていない
+- **新しい門が既存の門を隠した**: 成否矛盾ゲートを壊す変異 2 件が生存した。壊しても指紋ゲートが同じ `terminal_conflict` で塞いでいたため。該当 test の指紋を受理済みと同じにして、塞げるのが成否矛盾ゲートだけになるようにして kill した
+
+**実測（Phase 5 完了時）**: tsc clean / 306 tests（+5）/ 変異 実行 179・期待 179・生存 0（#44 の変異 5 件を追加）/ `contract-hashes.json` は parity fixture の 1 行だけが動いた（`PendingOperation` に指紋が 1 欄増えたので hash が動く。診断・status・outcome は不変）
 
 **Checkpoint**: 3 つの story がすべて単独で成立
 

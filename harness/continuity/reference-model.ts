@@ -1415,7 +1415,23 @@ export function reduceTaskWorkState(
     // この配列の要素そのもの = 参照で当てれば重複があっても 1 件に限定できる
     pendingOperations: previous.state.pendingOperations.map((pending) =>
       pending === correlation.matched
-        ? withSourceEvent({ ...pending, status, terminalAt: event.occurredAt }, event.eventId)
+        ? withSourceEvent(
+            {
+              ...pending,
+              status,
+              terminalAt: event.occurredAt,
+              // 受理した terminal の指紋を残す（#44）。配送 ID が違う 2 通目は dedupe で
+              // 比べられず、成否が同じなら成否矛盾ゲートも素通りするので、これが無いと
+              // §4.3 の「payload/source hash が衝突しないこと」を確認する材料が状態に無い。
+              // event が名乗った値を**そのまま**入れる（計算し直すと adapter の導出規則と
+              // ずれ、健全な再配送が毎回衝突になる）。
+              // **`unknown` では書かない**。`unknown` は「成否を主張できなかった」= terminal を
+              // 受理していないので、指紋を残すと後から届いた本物の terminal が指紋違いの
+              // 衝突として隔離され、その operation は永久に閉じられない
+              ...(status === "unknown" ? {} : { terminalFingerprint: event.canonicalFingerprint }),
+            },
+            event.eventId,
+          )
         : pending,
     ),
     diagnostics:
@@ -1963,6 +1979,30 @@ export function correlateTerminalEvent(
             ? ""
             : `（なお operation ${contradicting.operationId} は ${contradicting.status} で確定済みなのに ${incoming} を名乗っている。閉じえた候補ではないので隔離はしない）`),
         unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen,
+      };
+    }
+    // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の
+    // **両方**を課す。ここに来るのは前者に引っかかった 2 通目だが、配送 ID が違うので dedupe は
+    // 比べておらず、成否が同じなら上の矛盾ゲートも素通りしている。受理した指紋を状態に残した
+    // 今（#44）、後者をここで見られる。
+    // **指紋が一致する候補が 1 件でもあれば隔離しない**。rule 2 の候補は同じ matchKey の兄弟を
+    // まとめて拾うので、一致する相手が居るならこの terminal はその再配送として説明がつく。
+    // 兄弟の指紋だけを見て隔離すると健全な再配送が台帳に入らず、adapter は無限再送になる。
+    // 記録側の空白は「指紋を名乗っていない」であって「違う指紋」ではないので `declared()` で
+    // 見る（届く側は `assertIdentityMaterial` が空白を先に落とすので、比べる時点で必ず具体値）
+    const incomingFingerprint = terminalEvent.canonicalFingerprint;
+    const fingerprintExplained = plausible.some(
+      (pending) => declared(pending.terminalFingerprint) === incomingFingerprint,
+    );
+    const fingerprintConflict = fingerprintExplained
+      ? undefined
+      : plausible.find((pending) => declared(pending.terminalFingerprint) !== undefined);
+    if (fingerprintConflict !== undefined) {
+      return {
+        matched: null,
+        diagnostic: "terminal_conflict",
+        detail: `operation ${fingerprintConflict.operationId} は指紋 ${fingerprintConflict.terminalFingerprint} で確定済みなのに、別の配送 ID の terminal が ${incomingFingerprint} を名乗る`,
+        unresolved: [],
       };
     }
     return {

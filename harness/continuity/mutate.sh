@@ -411,6 +411,13 @@ mutate "                sensitivity: \"private\"," "                sensitivity:
 mutate "        (entry) => entry.reason === \"orphaned_terminal\" && entry.eventId === event.eventId," "        () => false," && run "孤児の記録を再送のたびに足す"
 mutate "      if (correlation.diagnostic === \"terminal_orphaned\" && !alreadyRecorded) {" "      if (false) {" && run "孤児 terminal を状態に記録しない"
 mutate "      ...(evicted.length === 0 ? {} : { droppedEvidence: recorded.droppedEvidence })," "" && run "退避を状態に記録しない"
+
+# --- #44: 受理した terminal の指紋 ------------------------------------------
+mutate "              ...(status === \"unknown\" ? {} : { terminalFingerprint: event.canonicalFingerprint })," "" && run "受理した terminal の指紋を残さない（FR-010）"
+mutate "              ...(status === \"unknown\" ? {} : { terminalFingerprint: event.canonicalFingerprint })," "              terminalFingerprint: event.canonicalFingerprint," && run "unknown に倒した operation にも指紋を残す"
+mutate "    if (fingerprintConflict !== undefined) {" "    if (false) {" && run "指紋の衝突検査を外す（FR-011）"
+mutate "      (pending) => declared(pending.terminalFingerprint) === incomingFingerprint," "      () => false," && run "指紋が一致しても再配送として説明しない"
+mutate "      : plausible.find((pending) => declared(pending.terminalFingerprint) !== undefined);" "      : plausible.at(0);" && run "指紋を持たない旧い状態も衝突にする（FR-012）"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか

@@ -1570,6 +1570,107 @@ test("記録が上限のときは配列の先頭から落とす（#43 FR-008 / F
   ]);
 });
 
+// --- #44: 受理した terminal の指紋 -----------------------------------------
+
+test("確定時に terminalFingerprint を残し、違う指紋の 2 通目を隔離する（#44 FR-010/FR-011）", () => {
+  // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を
+  // 課すが、配送 ID が違う 2 通目は dedupe で比べられない。成否が同じなら成否矛盾ゲートも
+  // 素通りするので、受理した指紋を残さない限り**中身の違う 2 通目が黙って適用済み扱いになる**
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.terminalFingerprint, "fingerprint-terminal");
+
+  const second = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-2",
+      adapterDeliveryId: "delivery-terminal-2",
+      canonicalFingerprint: "fingerprint-terminal-OTHER",
+    }),
+    closed.ledger,
+  );
+  assert.equal(second.outcome, "quarantined");
+  assert.deepEqual(second.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  // 隔離なので状態は動かない（訂正版を後から入れ直せる）
+  assert.equal(second.snapshot.state.stateRevision, closed.snapshot.state.stateRevision);
+  assert.equal(second.ledger.size, closed.ledger.size);
+});
+
+test("指紋が同じなら別の配送 ID でも適用済みの再配送（#44 Acceptance 2）", () => {
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  const resent = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({ eventId: "event-terminal-2", adapterDeliveryId: "delivery-terminal-2" }),
+    closed.ledger,
+  );
+  assert.equal(resent.outcome, "applied");
+  assert.deepEqual(resent.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("指紋を持たない旧い状態では新しい検査が発動しない（#44 FR-012）", () => {
+  // 材料が無いことを「衝突」と読むと、この版より前に閉じた operation 宛ての正当な再配送が
+  // 全部隔離される。隔離は鍵を消費せず還元器は純関数なので、adapter は無限に再送する
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  const old = {
+    ...closed.snapshot,
+    state: {
+      ...closed.snapshot.state,
+      pendingOperations: closed.snapshot.state.pendingOperations.map(
+        ({ terminalFingerprint: _fingerprint, ...rest }) => rest,
+      ),
+    },
+  };
+  const second = reduceTaskWorkState(
+    old,
+    terminalEvent({
+      eventId: "event-terminal-2",
+      adapterDeliveryId: "delivery-terminal-2",
+      canonicalFingerprint: "fingerprint-terminal-OTHER",
+    }),
+    closed.ledger,
+  );
+  assert.equal(second.outcome, "applied");
+  assert.deepEqual(second.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("unknown に倒した operation には指紋を残さない（#44 FR-010）", () => {
+  // `unknown` は「成否を主張できなかった」なので terminal を受理していない。ここで指紋を残すと、
+  // 後から本物の terminal が届いたときに指紋違いの衝突として隔離され、永久に閉じられない
+  const started = startedSnapshot();
+  const ambiguous = reduceTaskWorkState(started, terminalEvent({ successful: undefined }), new Map());
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.terminalFingerprint, undefined);
+});
+
+test("記録側の空白の指紋は「無い」として読む（#44 FR-012）", () => {
+  // 届く側の `canonicalFingerprint` は必須の identity 材料なので、空白は
+  // `assertIdentityMaterial` が先に落とす（この検査には届かない）。空白がありうるのは
+  // **状態側**——`terminalFingerprint` は任意欄で、別実装が空白を書きうる。空白を
+  // 「違う指紋」と読むと、その operation 宛ての正当な再配送が毎回隔離されて収束しない
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  for (const blank of ["", "   ", "​"]) {
+    const blanked = {
+      ...closed.snapshot,
+      state: {
+        ...closed.snapshot.state,
+        pendingOperations: closed.snapshot.state.pendingOperations.map((pending) => ({
+          ...pending,
+          terminalFingerprint: blank,
+        })),
+      },
+    };
+    const second = reduceTaskWorkState(
+      blanked,
+      terminalEvent({
+        eventId: "event-terminal-2",
+        adapterDeliveryId: "delivery-terminal-2",
+        canonicalFingerprint: "fingerprint-terminal-OTHER",
+      }),
+      closed.ledger,
+    );
+    assert.deepEqual(second.diagnostics.map((d) => d.code), ["terminal_already_applied"], JSON.stringify(blank));
+  }
+});
+
 test("droppedEvidence を持たない状態も読めて、必要になったら欄が生える（#43 FR-013/FR-014）", () => {
   // 任意欄なので、この版より前の checkpoint と別実装の状態には無い。無いことを
   // 「記録できない」と読むと、退避が黙って消える側に倒れる
@@ -3048,7 +3149,7 @@ test("identity が一致する確定済み兄弟がいても、衝突する open
   );
   const redelivered = reduceTaskWorkState(
     prepared.snapshot,
-    terminalEvent({ eventId: "term-a2", adapterDeliveryId: "d-term-a2", canonicalFingerprint: "f-term-a2", operation: { ...A, phase: "terminal" }, ingestSeq: "14" }),
+    terminalEvent({ eventId: "term-a2", adapterDeliveryId: "d-term-a2", canonicalFingerprint: "f-term-a", operation: { ...A, phase: "terminal" }, ingestSeq: "14" }),
     prepared.ledger,
   );
   assert.equal(redelivered.outcome, "applied");
@@ -3433,7 +3534,11 @@ test("turn 種別が両立しない兄弟は矛盾する terminal の言い訳�
   const forged = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "15",
+      // 指紋は A が受理したものと**同じ**にする。違う指紋にすると #44 の衝突検査でも
+      // `terminal_conflict` になり、この test が成否矛盾ゲートを見ているのか指紋ゲートを
+      // 見ているのか区別できない（実測: そちらが先に塞ぐので、成否矛盾ゲートを壊す変異が
+      // 生存した）。同じ指紋なら塞げるのは成否矛盾ゲートだけ
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-a", ingestSeq: "15",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native",
     }),
     prepared.ledger,
@@ -3445,7 +3550,7 @@ test("turn 種別が両立しない兄弟は矛盾する terminal の言い訳�
   const honest = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-y", adapterDeliveryId: "d-term-y", canonicalFingerprint: "f-term-y", ingestSeq: "16",
+      eventId: "term-y", adapterDeliveryId: "d-term-y", canonicalFingerprint: "f-term-a", ingestSeq: "16",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native", ...failed,
     }),
     prepared.ledger,
@@ -3477,7 +3582,7 @@ test("turn が両立する確定済み候補が 1 件も無いなら適用済み
   const same = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-same", adapterDeliveryId: "d-same", canonicalFingerprint: "f-same", ingestSeq: "14",
+      eventId: "term-same", adapterDeliveryId: "d-same", canonicalFingerprint: "f-term-b", ingestSeq: "14",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "synthesized_monotonic",
     }),
     prepared.ledger,
@@ -3699,7 +3804,7 @@ test("turn が両立しない open な兄弟は確定済みへの再配送を妨
   const redelivered = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "14",
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-a", ingestSeq: "14",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native",
     }),
     prepared.ledger,
