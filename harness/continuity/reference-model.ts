@@ -713,7 +713,16 @@ export interface ContinuityDiagnosticV1 {
 }
 
 export interface TaskStateReductionResult {
-  /** applied = 状態に入った / duplicate = 重複で no-op / quarantined = 衝突として隔離 */
+  /**
+   * applied = event が状態に入った / duplicate = 重複で no-op / quarantined = 衝突として隔離。
+   *
+   * **`quarantined` でも `snapshot` を捨ててはいけない**。隔離が意味するのは「**配送鍵を
+   * 消費しない**（訂正版が後から効く）」ことだけで、状態が動かないことではない。孤児 terminal は
+   * 隔離しつつ `droppedEvidence` に記録を残す（#39）ので、revision も `history` も進む。
+   * 捨てると記録が失われて #39 の目的（「黙って消えた」と「そもそも来なかった」の区別）が
+   * 壊れ、呼び出し側は還元器と食い違う `stateRevision` を持ったまま次の CAS に落ちる。
+   * どの outcome でも返ってきた `snapshot` を採る、が呼び出し側の規則。
+   */
   outcome: "applied" | "duplicate" | "quarantined";
   snapshot: TaskWorkStateSnapshotV1;
   contentHash: string;
@@ -1360,10 +1369,14 @@ export function reduceTaskWorkState(
       // 同じ terminal は再送され続け、素で足すと記録が再送のたびに伸びて 256 件の枠を食う。
       // 落とす理由は `terminal_conflict` にも要るが、あちらは corruption であって
       // 「live な集合から落ちた証跡」ではない（#43 の語彙に無い）ので記録しない
-      const alreadyRecorded = (previous.state.droppedEvidence ?? []).some(
-        (entry) => entry.reason === "orphaned_terminal" && entry.eventId === event.eventId,
-      );
-      if (correlation.diagnostic === "terminal_orphaned" && !alreadyRecorded) {
+      // 走査は理由の判定より**後**に置く。孤児以外の隔離（`terminal_conflict` など）でも
+      // 毎回最大 256 件を舐めることになり、値は捨てられる
+      if (
+        correlation.diagnostic === "terminal_orphaned" &&
+        !(previous.state.droppedEvidence ?? []).some(
+          (entry) => entry.reason === "orphaned_terminal" && entry.eventId === event.eventId,
+        )
+      ) {
         return quarantineWithRecord(
           previous,
           event,

@@ -408,7 +408,7 @@ mutate "      ...(overflowed.length === 0
 mutate "        sensitivity: pending.sensitivity," "        sensitivity: \"normal\" as const," && run "退避の記録で機密度を引き継がない"
 mutate "                sensitivity: \"private\"," "                sensitivity: \"normal\"," && run "孤児の記録を normal で残す"
 mutate "        (entry) => entry.reason === \"orphaned_terminal\" && entry.eventId === event.eventId," "        () => false," && run "孤児の記録を再送のたびに足す"
-mutate "      if (correlation.diagnostic === \"terminal_orphaned\" && !alreadyRecorded) {" "      if (false) {" && run "孤児 terminal を状態に記録しない"
+mutate "        correlation.diagnostic === \"terminal_orphaned\" &&" "        false &&" && run "孤児 terminal を状態に記録しない"
 mutate "      ],
       droppedEvidence: recorded.droppedEvidence," "      ]," && run "退避を状態に記録しない"
 mutate "        ...recorded.diagnostics,
