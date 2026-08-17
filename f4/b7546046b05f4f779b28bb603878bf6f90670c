@@ -1,0 +1,23 @@
+harness/continuity/mutate.sh
+  s_5cbc4c67c8b3b4::t_797924d6fbdc4d 274-276
+harness/continuity/reference-model.test.ts
+  s_5cbc4c67c8b3b4::t_eb35e0845911e7 778-845
+harness/continuity/reference-model.ts
+  s_5cbc4c67c8b3b4::t_2899769355ec93 789-811,813-818,1313-1327,1329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f4b7546046b05f4f779b28bb603878bf6f90670c",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}

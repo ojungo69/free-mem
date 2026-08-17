@@ -1,0 +1,29 @@
+harness/continuity/mutate.sh
+  s_5cbc4c67c8b3b4::t_818acd683717a4 11
+  s_5cbc4c67c8b3b4::t_3defa2aa555f2e 14
+  s_5cbc4c67c8b3b4::t_92b34daa7684f5 200-202
+harness/continuity/reference-model.test.ts
+  s_5cbc4c67c8b3b4::t_705f2cfd7e7510 1972,1974-1982,1984-1989,1996-2000,2006,2011-2062
+evidence/phase3-reference-model.md
+  s_5cbc4c67c8b3b4::t_9965f672206149 32
+  s_5cbc4c67c8b3b4::t_8cd5f19f71de21 375-376,403,446,464-466
+harness/continuity/reference-model.ts
+  s_5cbc4c67c8b3b4::t_d063766989ee5a 1110-1121
+  s_5cbc4c67c8b3b4::t_3e74b917db07e2 1048-1057
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5449d86c2f2c6548c74649af98fd4b9c9acc7d35",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}

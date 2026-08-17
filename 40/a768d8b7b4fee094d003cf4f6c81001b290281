@@ -1,0 +1,20 @@
+.gitleaksignore
+  s_5cbc4c67c8b3b4::t_e0df3589077162 1-3,7,12
+  s_5cbc4c67c8b3b4::t_bbb5374d24f5a1 4-6,8-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "40a768d8b7b4fee094d003cf4f6c81001b290281",
+  "prompts": {},
+  "sessions": {
+    "s_5cbc4c67c8b3b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e9a87cf-1ba8-4adb-8aa1-be349dd16ad1",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
