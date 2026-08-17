@@ -199,6 +199,7 @@
         {
           "eventId": "event-start",
           "outcome": "applied",
+          "contentHash": "acac3a418a26dc66b72cf19c460d1c4ec6d898ee61c02c077db1c3197f54a645",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -264,6 +265,7 @@
         {
           "eventId": "event-start-redelivered",
           "outcome": "duplicate",
+          "contentHash": "acac3a418a26dc66b72cf19c460d1c4ec6d898ee61c02c077db1c3197f54a645",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -329,6 +331,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "656cb86ce6ac558bae8916f5f370780f01960cbe73f0699cf8b3a40bd8408ea9",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -406,6 +409,7 @@
         {
           "eventId": "event-terminal-orphan",
           "outcome": "quarantined",
+          "contentHash": "656cb86ce6ac558bae8916f5f370780f01960cbe73f0699cf8b3a40bd8408ea9",
           "diagnostics": [
             {
               "code": "terminal_orphaned",
@@ -579,6 +583,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [
             {
               "code": "terminal_order_unverifiable",
@@ -738,6 +743,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "0d9f90d94f738791bd8e6bfd86044ab56fd69de2ec62d32da238e8c816ef12d1",
           "diagnostics": [
             {
               "code": "terminal_order_unverifiable",
@@ -935,6 +941,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [
             {
               "code": "terminal_order_unverifiable",
@@ -1006,6 +1013,7 @@
         {
           "eventId": "event-terminal-again",
           "outcome": "duplicate",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -1160,6 +1168,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [
             {
               "code": "terminal_order_unverifiable",
@@ -1313,6 +1322,7 @@
         {
           "eventId": "event-assistant",
           "outcome": "applied",
+          "contentHash": "36d08d352b4496951d54bd8532477ed2a30ff260f9fb8a0d65b8d4522e40a04c",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -1371,6 +1381,160 @@
               "key": "d:delivery-assistant",
               "eventId": "event-assistant",
               "sourceHash": "fingerprint-assistant"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "restored-adapter-progress",
+      "description": "adapter 固有の kind が `phase: \"progress\"` の operation envelope を持って届く。既知の phase 表にも非 operation 表にも無い kind なので envelope の欄検査だけを通り、start でも terminal でもない経路に入る（`operation === undefined` と同じ分岐の片割れ）",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [
+          {
+            "operationId": "op-restored",
+            "correlation": {
+              "operationId": "op-restored",
+              "startEventId": "event-start-before-restore",
+              "nativeOperationId": "toolu_1",
+              "operationMatchKey": "match-key-1",
+              "sessionId": "session-1",
+              "taskLineageId": "lineage-1",
+              "turnId": "turn-1",
+              "toolName": "Bash",
+              "canonicalInputHash": "input-hash-1"
+            },
+            "kind": "tool",
+            "description": "restored pending operation",
+            "status": "started",
+            "replayPolicy": "never_auto",
+            "sourceEventIds": [
+              "event-start-before-restore"
+            ],
+            "startedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        ],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-adapter-progress",
+          "adapterDeliveryId": "delivery-adapter-progress",
+          "canonicalFingerprint": "fingerprint-adapter-progress",
+          "kind": "adapter_progress",
+          "ingestSeq": "9007199254740998",
+          "occurredAt": "2026-08-16T00:00:01Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-1",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:01Z"
+            }
+          },
+          "operation": {
+            "phase": "progress",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_name": "Bash"
+          }
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-adapter-progress",
+          "outcome": "applied",
+          "contentHash": "b63cd8ad23061c27c33c395942f035f1cca186580d31d3b09fa2d7be5c44cfcc",
+          "diagnostics": [],
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "nativeOperationId": "toolu_1",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "started",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740998",
+            "updatedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal",
+            "stateRevision": "590dec4190a371a479d3e3bafbcf60dc834839a5051162430bdfca217c5227c4"
+          },
+          "history": [
+            {
+              "revision": "590dec4190a371a479d3e3bafbcf60dc834839a5051162430bdfca217c5227c4",
+              "contentHash": "b63cd8ad23061c27c33c395942f035f1cca186580d31d3b09fa2d7be5c44cfcc",
+              "eventId": "event-adapter-progress"
+            }
+          ],
+          "ledger": [
+            {
+              "key": "d:delivery-adapter-progress",
+              "eventId": "event-adapter-progress",
+              "sourceHash": "fingerprint-adapter-progress"
             }
           ]
         }
@@ -1478,6 +1642,7 @@
         {
           "eventId": "event-terminal-orphan",
           "outcome": "quarantined",
+          "contentHash": "a895db39f5d5d10c80de70b7ad08dc211b47ce3eea16bb70e312714f93c8d2f8",
           "diagnostics": [
             {
               "code": "terminal_orphaned",
@@ -1512,6 +1677,7 @@
         {
           "eventId": "event-terminal-orphan-again",
           "outcome": "quarantined",
+          "contentHash": "a895db39f5d5d10c80de70b7ad08dc211b47ce3eea16bb70e312714f93c8d2f8",
           "diagnostics": [
             {
               "code": "terminal_orphaned",
@@ -1796,6 +1962,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "697c4177f4aa283a845e179c12b72cad0734fff15d8b0294656b135d211a26e4",
           "diagnostics": [
             {
               "code": "terminal_order_unverifiable",
@@ -7842,6 +8009,7 @@
         {
           "eventId": "event-start",
           "outcome": "applied",
+          "contentHash": "4a972ad30b26d860c7b78f40dc462c446f42e8348ea5b5d38daf3981932f94b5",
           "diagnostics": [
             {
               "code": "pending_operations_evicted",
@@ -13904,6 +14072,7 @@
         {
           "eventId": "event-start",
           "outcome": "applied",
+          "contentHash": "f3ba66a4ceb7cdfa283174615c1e73b3035c9b1922223f4c987baf2898d8110f",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -13992,6 +14161,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "a47057ac8750630a201e8bd2c9a1a270945600d86e38a9d4a0871f7033d73edb",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -14181,6 +14351,7 @@
         {
           "eventId": "event-start-after-restore",
           "outcome": "applied",
+          "contentHash": "f8266c27b5f9245e314f7730958fc402898cdf7a425e2b9c8cfc4c2b142a1677",
           "diagnostics": [
             {
               "code": "duplicate_operation_start",
@@ -14341,6 +14512,7 @@
         {
           "eventId": "event-start-corrupt",
           "outcome": "quarantined",
+          "contentHash": "5a01e8bf95927cf2d02d59f94b2353fb9ae94475ef5a231099520daa2cfd58e5",
           "diagnostics": [
             {
               "code": "start_conflict",
@@ -14526,6 +14698,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [
             {
               "code": "terminal_order_unverifiable",
@@ -14597,6 +14770,7 @@
         {
           "eventId": "event-terminal-different-source",
           "outcome": "quarantined",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [
             {
               "code": "delivery_conflict",
@@ -14793,6 +14967,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [
             {
               "code": "terminal_order_unverifiable",
@@ -14864,6 +15039,7 @@
         {
           "eventId": "event-terminal-no-delivery-again",
           "outcome": "duplicate",
+          "contentHash": "419a1a4ac6af35ca3b92a533181cd1344c684fe7049f2020a92b3ea1d53fa5db",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -15042,6 +15218,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "fbd3917e8c68af801d1f4dc19eb5383b9973a4213647d28028fd3964f9f841cf",
           "diagnostics": [
             {
               "code": "terminal_ambiguous",
@@ -15227,6 +15404,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "quarantined",
+          "contentHash": "5a01e8bf95927cf2d02d59f94b2353fb9ae94475ef5a231099520daa2cfd58e5",
           "diagnostics": [
             {
               "code": "terminal_orphaned",
@@ -15387,6 +15565,7 @@
         {
           "eventId": "event-start",
           "outcome": "applied",
+          "contentHash": "acac3a418a26dc66b72cf19c460d1c4ec6d898ee61c02c077db1c3197f54a645",
           "diagnostics": [],
           "state": {
             "schemaVersion": 1,
@@ -15452,6 +15631,7 @@
         {
           "eventId": "event-terminal",
           "outcome": "applied",
+          "contentHash": "89c87b065fbcd6049d254aa9d7631272c8c555912d83be54543bf7f093245626",
           "diagnostics": [
             {
               "code": "terminal_out_of_order",
@@ -15624,6 +15804,7 @@
         {
           "eventId": "event-terminal-second",
           "outcome": "applied",
+          "contentHash": "1472829ceb7ce9ccfb4fbebb674148958ed84dfb91c0c93e6d5a5e331d422ab1",
           "diagnostics": [
             {
               "code": "terminal_already_applied",

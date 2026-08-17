@@ -454,6 +454,7 @@ mutate "    storedFingerprint !== undefined &&" "    rule === \"native_operation
 restore_all
 # --- 旧形 parity の門（SC-003）--------------------------------------------
 # 比較面を緩める / corpus を実際より広く見せる、の 2 方向を潰す
+mutate "    contentHash: step.contentHash," "    contentHash: undefined," "$PROJECTION" && run "旧形 parity の比較面から還元結果の hash を落とす"
 mutate "    diagnostics: step.diagnostics," "    diagnostics: []," "$PROJECTION" && run "旧形 parity の比較面から診断を落とす"
 mutate "    diagnostics: step.diagnostics," "    diagnostics: step.diagnostics.map((d) => ({ code: d.code }))," "$PROJECTION" && run "旧形 parity の診断を code だけに縮める"
 mutate "    state: step.state," "    state: {}," "$PROJECTION" && run "旧形 parity の比較面から状態を落とす"

@@ -166,6 +166,24 @@ const CASES = [
     ],
   },
   {
+    name: "restored-adapter-progress",
+    description:
+      "adapter 固有の kind が `phase: \"progress\"` の operation envelope を持って届く。" +
+      "既知の phase 表にも非 operation 表にも無い kind なので envelope の欄検査だけを通り、" +
+      "start でも terminal でもない経路に入る（`operation === undefined` と同じ分岐の片割れ）",
+    initialState: restoredState([oldShapePending()]),
+    events: [
+      event(startTemplate, {
+        eventId: "event-adapter-progress",
+        adapterDeliveryId: "delivery-adapter-progress",
+        canonicalFingerprint: "fingerprint-adapter-progress",
+        kind: "adapter_progress",
+        ingestSeq: "9007199254740998",
+        operation: { phase: "progress" },
+      }),
+    ],
+  },
+  {
     name: "restored-orphan-terminal-redelivered",
     description:
       "相手の居ない terminal が同じ配送 ID で 2 度届く。**隔離は配送鍵を消費しない**ので" +
@@ -393,6 +411,7 @@ try {
         eventId: stamped.eventId,
         ...projectOldShape({
           outcome: result.outcome,
+          contentHash: result.contentHash,
           diagnostics: result.diagnostics,
           state,
           history,

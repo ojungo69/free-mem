@@ -26,9 +26,6 @@ import { diffPaths, projectOldShape, valueAtPath, type OldShapeOutcomeV1 } from 
  * **SC-003 の主張はこの corpus の範囲に閉じる**（黙って間引かない）。corpus が届いていない経路と、
  * その理由は次のとおり。ここに挙がっていない経路の証拠は `reference-model.test.ts` と `mutate.sh` が持つ。
  *
- * - `operation.phase === "progress"`: `OPERATION_EVENT_PHASES`（`harness/schema/continuity.ts`）は
- *   `tool_started` / `tool_completed` / `tool_failed` の 3 つしか写像していない。`progress` を持つ
- *   event を作れる kind が語彙に無いので、**旧形かどうかに関わらず到達できない**。
  * - 同じ session 内で `operationId` が衝突する 2 件を作る経路: start の再配送判定が derived id と
  *   native id の両方を見るので、同名を作ろうとすると `duplicate_operation_start` か `start_conflict`
  *   のどちらかに倒れる。状態側の衝突（復元）は `restored-collided-siblings-*` が通す。
@@ -52,8 +49,8 @@ interface ParityFixture {
 }
 
 /** corpus が黙って縮まないための実数。case を消したら件数で落ちる */
-const EXPECTED_CASES = 19;
-const EXPECTED_STEPS = 28;
+const EXPECTED_CASES = 20;
+const EXPECTED_STEPS = 29;
 
 interface AllowedDelta {
   /** case 名 */
@@ -77,6 +74,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35",
     why: "start の権威順序と turn 種別を状態に載せた。状態だけを渡された実装でも §4.3 の順序検査ができる。状態が動くので revision と contentHash も動く",
     values: {
+      "contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].revision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
       "state.pendingOperations[0].startIngestSeq": "9007199254740994",
@@ -90,6 +88,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35",
     why: "再配送そのものは状態を変えない。直前の start が書いた欄と hash がそのまま見えているだけ",
     values: {
+      "contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].revision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
       "state.pendingOperations[0].startIngestSeq": "9007199254740994",
@@ -103,6 +102,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35 / #44",
     why: "閉じた terminal の指紋を残す。あとから届く別指紋の terminal を衝突として弾くため",
     values: {
+      "contentHash": "6c959ab5a07b0fb5e911a85976cc8907f431ce5f561a8411090432756cd056de",
       "history[0].contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].revision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
       "history[1].contentHash": "6c959ab5a07b0fb5e911a85976cc8907f431ce5f561a8411090432756cd056de",
@@ -119,6 +119,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35 / #43 / #44",
     why: "相手の居ない terminal を状態に記録する。隔離は配送鍵を消費しないので、状態の記録が唯一の証跡",
     values: {
+      "contentHash": "a001443e9cf26b0921e3a2ac2a81deec1f1060798fd7755736f9327150d4bb65",
       "diagnostics[1]": {"code": "dropped_evidence_recorded", "eventId": "event-terminal-orphan", "detail": "状態から落ちた証跡を記録: orphaned_terminal:event-terminal-orphan"},
       "history[0].contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].revision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
@@ -139,6 +140,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#43",
     why: "同じ記録を、復元直後（pending が 1 件も無い状態）でも残す",
     values: {
+      "contentHash": "f2b703e435e3c3fb29b65534c82ca2b3cda4f5144365f5c27a520753659d6384",
       "diagnostics[1]": {"code": "dropped_evidence_recorded", "eventId": "event-terminal-orphan", "detail": "状態から落ちた証跡を記録: orphaned_terminal:event-terminal-orphan"},
       "history[0]": {"revision": "7c42ad7216a30235af599dbe48356e33de438e37acb910e39efbb2130dc81dca", "contentHash": "f2b703e435e3c3fb29b65534c82ca2b3cda4f5144365f5c27a520753659d6384", "eventId": "event-terminal-orphan"},
       "state.droppedEvidence": [{"reason": "orphaned_terminal", "eventId": "event-terminal-orphan", "terminalFingerprint": "fingerprint-terminal-orphan", "adapterDeliveryId": "delivery-terminal-orphan", "recordedAt": "2026-08-16T00:00:04Z", "sensitivity": "private"}],
@@ -153,6 +155,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#39",
     why: "再起動で台帳が空に戻っても記録は 1 件のまま。2 件に増えないことをこの値で固定する",
     values: {
+      "contentHash": "f2b703e435e3c3fb29b65534c82ca2b3cda4f5144365f5c27a520753659d6384",
       "history[0]": {"revision": "7c42ad7216a30235af599dbe48356e33de438e37acb910e39efbb2130dc81dca", "contentHash": "f2b703e435e3c3fb29b65534c82ca2b3cda4f5144365f5c27a520753659d6384", "eventId": "event-terminal-orphan"},
       "state.droppedEvidence": [{"reason": "orphaned_terminal", "eventId": "event-terminal-orphan", "terminalFingerprint": "fingerprint-terminal-orphan", "adapterDeliveryId": "delivery-terminal-orphan", "recordedAt": "2026-08-16T00:00:04Z", "sensitivity": "private"}],
       "state.sensitivity": "private",
@@ -166,6 +169,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35 / #43",
     why: "上限退避で落ちた要素を記録する。同名の兄弟が並んでいても落ちるのは 1 件で、生き残った側の材料は消えない（T019 の 2 行目・3 行目）",
     values: {
+      "contentHash": "dfa0910a26f78cc544d96688e68eced3f3ae7553e15b4d28ef147b7a741207fa",
       "diagnostics[1]": {"code": "dropped_evidence_recorded", "eventId": "event-start", "detail": "状態から落ちた証跡を記録: evicted:op-filled-0"},
       "history[0].contentHash": "dfa0910a26f78cc544d96688e68eced3f3ae7553e15b4d28ef147b7a741207fa",
       "history[0].revision": "c3699b501c82596a1411d6c3f5e208ef61aad0cce0781ace4c486622e1bcbc94",
@@ -181,6 +185,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35",
     why: "別 lineage に同名の双子が居ても、材料は自分の要素に載るので帰属が曖昧にならない",
     values: {
+      "contentHash": "7321655bb2a65e6c60cbc5a34b82480772a2e74516eaaf2c3dfd11c8f1b06f02",
       "history[0].contentHash": "7321655bb2a65e6c60cbc5a34b82480772a2e74516eaaf2c3dfd11c8f1b06f02",
       "history[0].revision": "fca1c6af0cd964447cedd7826301a554be22bbe60963dbfdf9ca5a167d2775ca",
       "state.pendingOperations[1].startIngestSeq": "9007199254740994",
@@ -194,6 +199,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35 / #44",
     why: "同上。閉じた側に指紋も残る",
     values: {
+      "contentHash": "882d74c742b6b0eecf0505bc510624736627239e607393e0f2b860c3bcdb9c99",
       "history[0].contentHash": "7321655bb2a65e6c60cbc5a34b82480772a2e74516eaaf2c3dfd11c8f1b06f02",
       "history[0].revision": "fca1c6af0cd964447cedd7826301a554be22bbe60963dbfdf9ca5a167d2775ca",
       "history[1].contentHash": "882d74c742b6b0eecf0505bc510624736627239e607393e0f2b860c3bcdb9c99",
@@ -219,6 +225,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#43",
     why: "名乗った native ID の相手が居ない terminal も記録する。記録しないと隔離のたびに証跡が消える",
     values: {
+      "contentHash": "fd198fffcb2c04d1ca8ec994091388fc3829b8ed830f9fa91562e24e18d5a7ca",
       "diagnostics[1]": {"code": "dropped_evidence_recorded", "eventId": "event-terminal", "detail": "状態から落ちた証跡を記録: orphaned_terminal:event-terminal"},
       "history[0]": {"revision": "0fce61e636389ffe596012e104753c29fc515cb51f6ea9bd05cbeec5bbd88b65", "contentHash": "fd198fffcb2c04d1ca8ec994091388fc3829b8ed830f9fa91562e24e18d5a7ca", "eventId": "event-terminal"},
       "state.droppedEvidence": [{"reason": "orphaned_terminal", "eventId": "event-terminal", "terminalFingerprint": "fingerprint-terminal", "adapterDeliveryId": "delivery-terminal", "recordedAt": "2026-08-16T00:00:03Z", "sensitivity": "private"}],
@@ -233,6 +240,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35",
     why: "同じ session の start が材料を要素に書く",
     values: {
+      "contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].revision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
       "state.pendingOperations[0].startIngestSeq": "9007199254740994",
@@ -246,6 +254,7 @@ const ALLOWED_DELTAS: readonly AllowedDelta[] = [
     issue: "#35",
     why: "その材料で順序を検査する。旧実装は側索引の同じ材料で同じ判定をしていた",
     values: {
+      "contentHash": "151c2d29254fab853788b94e5c95d008f79ba1362388e9394a6c1a9df68a3c8a",
       "history[0].contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
       "history[0].revision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
       "history[1].contentHash": "151c2d29254fab853788b94e5c95d008f79ba1362388e9394a6c1a9df68a3c8a",
@@ -285,6 +294,7 @@ test("旧形の入力に対する振る舞いは、許可した差分以外は�
         eventId: event.eventId,
         ...projectOldShape({
           outcome: result.outcome,
+          contentHash: result.contentHash,
           diagnostics: result.diagnostics,
           state: result.snapshot.state as unknown as Record<string, unknown>,
           history: result.snapshot.history,

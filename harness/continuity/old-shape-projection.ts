@@ -18,9 +18,11 @@ import type {
  * `terminal_order_unverifiable` の `detail` を壊しても全 test が緑のままだった）。ここは
  * 素通しにしておき、何が変わってよいかは呼び出し側の許可表だけで決める。
  *
- * hash も比較面に**残す**: 状態の `stateRevision` と `history` 各行の `contentHash` は、
- * 状態が動いた step では当然食い違うので許可表に実測値で載る。逆に**状態が動かない step では
- * 一致しなければならず**、そこが「旧形入力では何も変わっていない」の一番強い証拠になる。
+ * hash も比較面に**残す**: 還元結果そのものが返す `contentHash`、状態の `stateRevision`、
+ * `history` 各行の `contentHash` の 3 つ。状態が動いた step では当然食い違うので許可表に
+ * 実測値で載る。逆に**状態が動かない step では一致しなければならず**、そこが「旧形入力では
+ * 何も変わっていない」の一番強い証拠になる。返り値の `contentHash` を落としていた間は、
+ * 隔離が返す `contentHash` を壊しても全 test が緑のままだった。
  */
 export interface OldShapeLedgerRowV1 extends LedgerEntryV1 {
   /** 台帳の鍵（idempotency key）。`Map` の並びは挿入順なので、比較のために鍵で整列する */
@@ -29,6 +31,8 @@ export interface OldShapeLedgerRowV1 extends LedgerEntryV1 {
 
 export interface OldShapeOutcomeV1 {
   outcome: string;
+  /** 還元結果が返す hash。`finalizeAbandonedState` は返さないので任意 */
+  contentHash?: string;
   diagnostics: readonly ContinuityDiagnosticV1[];
   /** 状態そのもの。`stateRevision` も新しい任意欄も差分として見えるよう残す */
   state: Record<string, unknown>;
@@ -38,6 +42,7 @@ export interface OldShapeOutcomeV1 {
 
 export interface OldShapeStepInput {
   outcome: string;
+  contentHash?: string;
   diagnostics: readonly ContinuityDiagnosticV1[];
   state: Record<string, unknown>;
   history: readonly WorkStateRevisionEntryV1[];
@@ -47,6 +52,7 @@ export interface OldShapeStepInput {
 export function projectOldShape(step: OldShapeStepInput): OldShapeOutcomeV1 {
   return {
     outcome: step.outcome,
+    contentHash: step.contentHash,
     diagnostics: step.diagnostics,
     state: step.state,
     history: step.history,

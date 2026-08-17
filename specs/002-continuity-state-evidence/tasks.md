@@ -389,7 +389,7 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
   分岐点 `d517a8b` の実装に通した結果を baseline として commit する。`harness/continuity/old-shape-parity.test.ts`
   が同じ corpus をこの実装に通し、食い違う JSON path を許可表と突き合わせる
 
-**T049 の結果**: corpus **19 case / 28 step**。差分が出たのは **13 step** で、残り **15 step は
+**T049 の結果**: corpus **20 case / 29 step**。差分が出たのは **13 step** で、残り **16 step は
 変更前と完全に一致**した。許可表は case 名・event・path・**値**・issue 番号を持ち、表に無い差分でも、
 表にあるのに出ない差分でも落ちる。実測した差分は次のとおり:
 
@@ -409,9 +409,6 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
 
 **corpus が届いていない経路**（黙って間引かない。`old-shape-parity.test.ts` の冒頭に同じ列挙がある）:
 
-- `operation.phase === "progress"`: `OPERATION_EVENT_PHASES` は `tool_started` / `tool_completed` /
-  `tool_failed` の 3 つしか写像していないので、`progress` を持つ event を作れる kind が語彙に無い。
-  旧形かどうかに関わらず到達できない
 - 同じ session 内で `operationId` が衝突する 2 件を作る経路: start の再配送判定が derived id と
   native id の両方を見るので、`duplicate_operation_start` か `start_conflict` のどちらかに倒れる。
   状態側の衝突（復元）は corpus が通す

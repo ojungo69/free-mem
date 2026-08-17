@@ -551,7 +551,7 @@ node harness/continuity/old-shape-baseline.mjs                    # §4.1 の ba
 
 「新しい欄を持たない状態への挙動は、4 件の欠陥是正以外変わらない」を、**変更前の実装との
 突き合わせ**で判定する。`harness/fixtures/continuity/old-shape-parity.json` は旧形の corpus
-（19 case / 28 step）と、それを分岐点 `d517a8b` の実装に通した結果を両方持つ committed artifact で、
+（20 case / 29 step）と、それを分岐点 `d517a8b` の実装に通した結果を両方持つ committed artifact で、
 `old-shape-parity.test.ts` が同じ corpus をこの実装に通して食い違う JSON path を許可表と照合する。
 
 決め方の要点:
@@ -574,23 +574,25 @@ node harness/continuity/old-shape-baseline.mjs                    # §4.1 の ba
   contract hash を作り直せば test は緑のまま通る（test が見るのは基準 sha の自己申告と件数だけ）。
   CI は基準 commit から `--output` で作業ツリー外へ生成し直し、committed fixture と `diff` する
   （`fetch-depth: 0` が要る）。残る穴は「比較面そのものを狭める改変」で、再生成も同じ狭い比較面を
-  使うので byte 一致で通る。そこは §5 の変異（比較面を縮める 6 件）とレビューが見る。
+  使うので byte 一致で通る。そこは §5 の変異（比較面を縮める 7 件）とレビューが見る。
 
-実測: 差分が出たのは 28 step 中 **13 step**、**15 step は完全一致**。差分の内訳は #35 / #39 /
+実測: 差分が出たのは 29 step 中 **13 step**、**16 step は完全一致**。差分の内訳は #35 / #39 /
 #43 / #44 と、それに従属する hash。1 件だけ**比較面を広げて初めて見えた差分**がある——
 `restored-start-redelivery-ledger-miss` の重複判定で `diagnostics[0].detail` の文面だけが変わり、
 判断・状態・台帳・hash はすべて一致していた。
 
-**corpus が届いていない経路**（黙って間引かない）: `operation.phase === "progress"`（語彙に
-`progress` を持つ kind が無く到達不能）、同じ session 内で `operationId` が衝突する 2 件を作る経路
-（start の再配送判定が先に倒す）、`assertSameScope` が投げる入力（例外は還元結果を返さない）。
-上限 256 件の退避（§2.9）は generator が組み立てる corpus に入ったので、ここからは外れた。
+**corpus が届いていない経路**（黙って間引かない）: 同じ session 内で `operationId` が衝突する
+2 件を作る経路（start の再配送判定が先に倒す）、`assertSameScope` が投げる入力（例外は還元結果を
+返さない）。上限 256 件の退避（§2.9）は generator が組み立てる corpus に入ったので、ここからは
+外れた。`operation.phase === "progress"` も**到達不能ではなかった**——`kind` は開いた文字列で、
+既知の phase 表にも非 operation 表にも無い adapter 固有 kind は envelope の欄検査だけを通って
+還元器に入る。`restored-adapter-progress` として corpus に入れた（旧新は完全一致）。
 
 ## 5. 変異テスト（2026-08-18）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**213 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 213 件（黙って飛ばされた変異ゼロ）、復元後は 219/219 green
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**214 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 214 件（黙って飛ばされた変異ゼロ）、復元後は 219/219 green
 （`mutate.sh` が回すのは `reference-model.test.ts` と `old-shape-parity.test.ts` の 2 本。
 `harness/continuity/*.test.ts` 全体は 329/329）。
 
@@ -853,6 +855,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | unknown に倒れる terminal でも指紋の食い違いで隔離する | 1 |
 | 指紋の衝突判定を順序材料がある場合だけにする | 1 |
 | 指紋の衝突判定を rule 1 の terminal だけにする | 1 |
+| 旧形 parity の比較面から還元結果の hash を落とす | 1 |
 | 旧形 parity の比較面から診断を落とす | 1 |
 | 旧形 parity の診断を code だけに縮める | 1 |
 | 旧形 parity の比較面から状態を落とす | 1 |
