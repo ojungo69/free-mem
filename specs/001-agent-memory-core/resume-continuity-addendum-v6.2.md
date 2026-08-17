@@ -422,8 +422,12 @@ properties block that reading:
 
 - v6.1 §8.3 assigns `ingest_seq` transactionally **per session**, while a task lineage continues
   across sessions. Values from two sessions are drawn from unrelated sequences, so comparing them
-  is meaningless — a resumed session's first revision can carry a smaller value than the previous
-  session's last one, or a larger one, with no relation to which is newer.
+  is meaningless. A resumed session's first event can carry an `ingestSeq` far below the previous
+  session's last one — the previous session ended at 100, the resumed one starts at 1 — with no
+  relation to which is newer. The monotone rule still holds on the state: that event leaves the
+  watermark at 100 and produces a later revision. The consequence is that the watermark of a
+  lineage that has spanned sessions is a maximum over values drawn from unrelated sequences, and
+  therefore does not identify which session, or which event, it came from.
 - Even inside one session, a late event produces a later revision while leaving the watermark
   unchanged (above). Equal watermarks therefore do not imply equal states.
 - `stateRevision` is a hash chain over the previous revision, the event, and the content. It
