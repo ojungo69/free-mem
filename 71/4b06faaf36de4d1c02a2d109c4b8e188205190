@@ -1,0 +1,25 @@
+specs/002-continuity-state-evidence/quickstart.md
+  s_2d059b4f795bca::t_546fd9e5cac6f2 1-67
+specs/002-continuity-state-evidence/data-model.md
+  s_2d059b4f795bca::t_bc66dc25c82673 1-144
+specs/002-continuity-state-evidence/research.md
+  s_2d059b4f795bca::t_691831c080cea4 1-142
+specs/002-continuity-state-evidence/plan.md
+  s_2d059b4f795bca::t_6876380f37778b 1-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "714b06faaf36de4d1c02a2d109c4b8e188205190",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
