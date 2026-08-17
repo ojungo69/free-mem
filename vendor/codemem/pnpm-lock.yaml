@@ -126,6 +126,9 @@ importers:
       '@types/omelette':
         specifier: ^0.4.5
         version: 0.4.5
+      rollup-plugin-license:
+        specifier: 'catalog:'
+        version: 3.7.1(picomatch@4.0.4)(rollup@4.62.4)
       tsx:
         specifier: 'catalog:'
         version: 4.22.3
@@ -194,6 +197,9 @@ importers:
       '@types/node':
         specifier: ^24.12.4
         version: 24.12.4
+      rollup-plugin-license:
+        specifier: 'catalog:'
+        version: 3.7.1(picomatch@4.0.4)(rollup@4.62.4)
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -289,6 +295,9 @@ importers:
       better-sqlite3:
         specifier: 12.8.0
         version: 12.8.0
+      rollup-plugin-license:
+        specifier: 'catalog:'
+        version: 3.7.1(picomatch@4.0.4)(rollup@4.62.4)
       sqlite-vec:
         specifier: 0.1.9
         version: 0.1.9

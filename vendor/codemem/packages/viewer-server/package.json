@@ -30,6 +30,7 @@
 		"@types/better-sqlite3": "catalog:",
 		"@types/node": "^24.12.4",
 		"better-sqlite3": "12.8.0",
+		"rollup-plugin-license": "catalog:",
 		"sqlite-vec": "0.1.9",
 		"typescript": "catalog:",
 		"vite": "catalog:",

@@ -33,6 +33,7 @@
 	"devDependencies": {
 		"@types/node": "^24.12.4",
 		"@types/omelette": "^0.4.5",
+		"rollup-plugin-license": "catalog:",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",

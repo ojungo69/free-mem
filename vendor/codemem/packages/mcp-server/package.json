@@ -33,6 +33,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^24.12.4",
+		"rollup-plugin-license": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"
