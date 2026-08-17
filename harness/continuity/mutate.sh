@@ -302,9 +302,10 @@ mutate "    const inLineage = previous.state.pendingOperations.filter(
     );" "    const inLineage = previous.state.pendingOperations;" && run "別 lineage の pending も再配送の相手にする"
 mutate "        pending.correlation.sessionId === event.sessionId &&
         pending.correlation.taskLineageId === state.taskLineageId," "        pending.correlation.sessionId === event.sessionId," && run "放棄が別 lineage の operation も倒す"
-# 「derived id の兄弟は先頭 1 件で決める」は削除。候補選びを 1 回の preferCompatible に統合して
-# 集合ごとに別の選び方をする変異が書けなくなった。互換優先の軸は下の「互換な候補を選ばない」が
-# 両集合まとめて覆い、集合をまたげるかの軸は「再配送の相手を集合ごとに選ぶ」が別に見る
+# 「derived id の兄弟は先頭 1 件で決める」は削除。候補選びを 1 箇所に統合して集合ごとに別の
+# 選び方をする変異が書けなくなった。互換優先の軸は下の「互換な候補を選ばない」が両集合まとめて
+# 覆い、集合をまたげるかの軸は「再配送の相手を集合ごとに選ぶ」が、互換な兄弟が複数居るときの
+# 選び方は「native id を名乗る兄弟を優先しない」が、それぞれ別に見る
 mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId," "    () => false," && run "退避で lineage 外を優先しない"
 mutate "    for (const candidate of pending) {" "    for (const candidate of [...pending].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) {" && run "群の中を配列位置でなく startedAt で退避する"
 mutate "        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? operation.nativeOperationId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
@@ -331,8 +332,9 @@ mutate "            code: \"delivery_conflict\",
       };" && run "放棄の配送衝突を診断に出さない"
 mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を引く"
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
-mutate "      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];" "      candidates[0];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
-mutate "    const existing = preferCompatible(siblings);" "    const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" && run "再配送の相手を集合ごとに選ぶ"
+mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible: readonly PendingOperation[] = [];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
+mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible = idMatches.filter((pending) => !startConflictsWith(pending));" && run "再配送の相手を集合ごとに選ぶ"
+mutate "      compatible.find((pending) => declared(pending.correlation.nativeOperationId) !== undefined) ??" "" && run "native id を名乗る兄弟を優先しない"
 mutate "    const siblings = [...new Set([...idMatches, ...nativeMatches])];" "    const siblings = [...new Set([...nativeMatches, ...idMatches])];" && run "兄弟の連結順を入れ替える"
 mutate "    new Set([correlation.matched])," "    new Set(previous.state.pendingOperations)," && run "truncation の対象を照合相手の外へ広げる"
 mutate "      const truncated = sourceEventLost(existing, event.eventId) ? [existing.operationId] : [];" "      const truncated = previous.state.pendingOperations.map((p) => p.operationId);" && run "再配送 start の truncation 対象を全 pending にする"

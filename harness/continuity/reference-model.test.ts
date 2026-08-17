@@ -3959,6 +3959,48 @@ for (const blank of ["", " "]) {
   });
 }
 
+test("空白の native ID を埋める前に、既に名乗っている兄弟を再配送の相手にする", () => {
+  // 復元した checkpoint に (1) derived id が一致するが native ID が空白の pending と
+  // (2) 届いた native ID を既に名乗る別の pending が並ぶ。両方とも identity は互換なので、
+  // 空白の側を選ぶと下の復元がそこへ native ID を書き、**同じ native ID の pending が 2 件**に
+  // なる。rule 1 は候補 2 件を曖昧と見るので、後続の terminal はどちらも閉じられない
+  const blankNative = pendingWithBlank("nativeOperationId", "");
+  const derived = blankNative.state.pendingOperations[0] as PendingOperation;
+  const alreadyNamed: PendingOperation = {
+    ...derived,
+    operationId: "op-already-named",
+    correlation: { ...derived.correlation, nativeOperationId: START_OPERATION.nativeOperationId },
+  };
+  const snapshot = {
+    ...blankNative,
+    state: { ...blankNative.state, pendingOperations: [derived, alreadyNamed] },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+  const naming = result.snapshot.state.pendingOperations.filter(
+    (pending) => pending.correlation.nativeOperationId === START_OPERATION.nativeOperationId,
+  );
+  assert.deepEqual(
+    naming.map((pending) => pending.operationId),
+    ["op-already-named"],
+    "空白側にも native ID が書かれて 2 件になった",
+  );
+  // 曖昧にならないことまで見る。復元が重複を作っていたら rule 1 の候補が 2 件になり、terminal は
+  // 曖昧としてどちらも閉じられない。ここで残る `terminal_order_unverifiable` は別の欠落
+  // （組み立てた pending には start の取り込み連番が無い = #35）で、候補の一意性とは無関係
+  const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied");
+  assert.deepEqual(
+    closed.diagnostics.map((d) => d.code),
+    ["terminal_order_unverifiable"],
+    "rule 1 の候補が 1 件に定まっていない",
+  );
+});
+
 test("空白でない任意欄の食い違いは今までどおり衝突として落とす", () => {
   // 締めすぎの逆方向。空白を通す変更が「任意欄の検査そのもの」を殺していないことを固定する
   const snapshot = pendingWithBlank("canonicalInputHash", "input-hash-OTHER");

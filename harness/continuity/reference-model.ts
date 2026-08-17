@@ -911,21 +911,28 @@ export function reduceTaskWorkState(
     // `duplicate_operation_start`）。隔離は鍵を消費せず還元器は純関数なので、前者は同じ再配送が
     // 永久に収束しない。選ぶ側を 1 箇所直したらもう 1 箇所の選ぶ側が残っていた形
     const idMatches = inLineage.filter((pending) => pending.operationId === operationId);
-    const preferCompatible = (candidates: readonly PendingOperation[]): PendingOperation | undefined =>
-      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];
-    // **2 つの集合をまたいで選ぶ**。集合ごとに `preferCompatible` を掛けて `??` で繋ぐと、
-    // `preferCompatible` は非空配列に必ず値を返す（互換が無ければ先頭）ので、`idMatches` が
-    // 非空でありさえすれば中身が全件衝突していても `nativeMatches` が評価されない。derived id
-    // 側に衝突する兄弟、native id 側に identity 完全一致の兄弟が並ぶ状態では、健全な再配送が
-    // `start_conflict` で隔離される。隔離は鍵を消費せず還元器は純関数なので永久に収束しない。
+    // **2 つの集合をまたいで選ぶ**。集合ごとに互換な相手を探して `??` で繋ぐと、非空配列には
+    // 必ず値が返る（互換が無ければ先頭）ので、`idMatches` が非空でありさえすれば中身が全件
+    // 衝突していても `nativeMatches` が評価されない。derived id 側に衝突する兄弟、native id 側に
+    // identity 完全一致の兄弟が並ぶ状態では、健全な再配送が `start_conflict` で隔離される。
+    // 隔離は鍵を消費せず還元器は純関数なので永久に収束しない。
     // 連結順は `idMatches` を先にして、両集合とも全件衝突のときの衝突の証拠を従来と揃える。
     // **`Set` で重複を落とす**。derived id と native id の両方で当たる兄弟は 2 つの集合に入るので、
-    // 素で連結すると `preferCompatible` がその要素に対して `startConflictsWith` を 2 回走らせる。
-    // `startConflictsWith` は `startFactsFor`（`pendingOperations` の線形走査）を呼ぶので、
-    // 両集合が上限 256 件のとき無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので
-    // 上で決めた連結順はそのまま残る
+    // 素で連結すると `startConflictsWith` がその要素に対して 2 回走る。`startConflictsWith` は
+    // `startFactsFor`（`pendingOperations` の線形走査）を呼ぶので、両集合が上限 256 件のとき
+    // 無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので上で決めた連結順はそのまま残る
     const siblings = [...new Set([...idMatches, ...nativeMatches])];
-    const existing = preferCompatible(siblings);
+    const compatible = siblings.filter((pending) => !startConflictsWith(pending));
+    // 互換な兄弟が複数居るときは、**native ID を既に名乗っている側**を再配送の相手にする。
+    // 互換の定義上、名乗っているならその値は届いた start のものと一致している（上の比較）。
+    // 名乗っていない側を選ぶと下の復元がその欄を書き、**同じ native ID の pending が 2 件**になる。
+    // rule 1 は候補が 2 件になった時点で曖昧と判断するので、後続の terminal はどちらも閉じられず、
+    // 2 件とも `started` のまま残る。届いた start が native ID を持たないときは書く値が無いので
+    // この優先は働かない（`nativeMatches` が空）
+    const existing =
+      compatible.find((pending) => declared(pending.correlation.nativeOperationId) !== undefined) ??
+      compatible[0] ??
+      siblings[0];
     const startConflict = existing !== undefined && startConflictsWith(existing);
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
