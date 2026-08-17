@@ -9,4 +9,8 @@
 # (3.577820) を超えたもの。秘密情報ではない。
 # HEAD ではリテラルを改名済みだが、pull_request のスキャンは PR のコミット範囲
 # 全体を対象にするため、導入元のコミットを名指しで除外する。
-bc0c0bb0f4a773eded17731a19345d06780ae39d:harness/continuity/reference-model.test.ts:generic-api-key:1309
+#
+# フィンガープリントは commit SHA を含むので、この branch を rebase すると抑止が外れて
+# secrets job が落ちる。rebase したら該当コミットの新しい SHA へ貼り替えること
+# （squash merge 後は行ごと不要になる。#48）。
+3dfaaac9b41c2642b41c856e7d50dac9ae926b80:harness/continuity/reference-model.test.ts:generic-api-key:1309
