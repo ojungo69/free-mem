@@ -97,7 +97,7 @@ function emptyState(overrides: Partial<CanonicalWorkStateV1> = {}): CanonicalWor
 }
 
 function emptySnapshot(overrides: Partial<CanonicalWorkStateV1> = {}): TaskWorkStateSnapshotV1 {
-  return { state: emptyState(overrides), history: [], operationStarts: new Map() };
+  return { state: emptyState(overrides), history: [] };
 }
 
 /**
@@ -569,6 +569,140 @@ function startedSnapshot(event = startEvent()): TaskWorkStateSnapshotV1 {
   return reduceTaskWorkState(emptySnapshot(), event, new Map()).snapshot;
 }
 
+/**
+ * 順序材料（#35 の `startIngestSeq` / `startTurnIdSource`）を持たない状態。この版より前に
+ * 書かれた checkpoint と、2 欄を書かない別実装の状態がこの形になる。どちらも凍結 schema 的には
+ * 妥当なので、還元器は「材料が無い」経路を保ち続ける必要がある。
+ */
+function withoutStartFacts(snapshot: TaskWorkStateSnapshotV1): TaskWorkStateSnapshotV1 {
+  return {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      pendingOperations: snapshot.state.pendingOperations.map(
+        ({ startIngestSeq: _seq, startTurnIdSource: _source, ...rest }) => rest,
+      ),
+    },
+  };
+}
+
+// --- #35: 権威順序と turn 種別の材料を要素に載せる --------------------------
+
+test("start を受理すると順序材料が PendingOperation に書かれる（#35 FR-001/FR-002）", () => {
+  const started = startedSnapshot().state.pendingOperations[0];
+  assert.equal(started?.startIngestSeq, "11");
+  assert.equal(started?.startTurnIdSource, "native");
+});
+
+test("再配送 start は順序材料を書き換えない（#35 FR-003）", () => {
+  // 遅れて届いた再配送が運ぶのは**再配送時の取り込み位置**であって元の start の権威順序ではない。
+  // 上書きすると、低い値を名乗る偽 start で順序違反の terminal を通せる。逆に高い値で上書き
+  // されると、正当な terminal が `terminal_out_of_order` で落ちて `unknown` に倒れる
+  const first = startedSnapshot();
+  const resent = startEvent({ adapterDeliveryId: "delivery-start-resent", ingestSeq: "99" });
+  const again = reduceTaskWorkState(first, resent, new Map());
+  assert.equal(again.outcome, "applied");
+  const pending = again.snapshot.state.pendingOperations[0];
+  assert.equal(pending?.startIngestSeq, "11");
+  assert.equal(pending?.startTurnIdSource, "native");
+
+  // 再配送の後でも、元の start より後の terminal は普通に閉じる
+  const closed = reduceTaskWorkState(again.snapshot, terminalEvent({ ingestSeq: "12" }), new Map());
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  assert.deepEqual(closed.diagnostics, []);
+});
+
+test("順序材料を持たない pending は terminal を閉じずに unknown へ倒す（#35 FR-004）", () => {
+  // この版より前に書かれた checkpoint と、別実装が書いた状態。材料が無いことを
+  // 「順序を確認できた」と読み替えると、start より前の terminal が診断ゼロで通る
+  const started = startedSnapshot();
+  const old = started.state.pendingOperations.map(({ startIngestSeq: _s, startTurnIdSource: _t, ...rest }) => rest);
+  const restored: TaskWorkStateSnapshotV1 = {
+    ...started,
+    state: { ...started.state, pendingOperations: old },
+  };
+  const correlation = correlateTerminalEvent(restored, terminalEvent());
+  assert.equal(correlation.matched, null);
+  if (correlation.matched !== null) return;
+  assert.equal(correlation.diagnostic, "terminal_order_unverifiable");
+
+  // 隔離ではなく unknown で閉じる。隔離は配送鍵を消費せず還元器は純関数なので、
+  // 復元直後の全 terminal が永久に再送され続ける
+  const closed = reduceTaskWorkState(restored, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied");
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "unknown");
+});
+
+test("空白の順序材料は「無い」として読む（#35 FR-004）", () => {
+  // JSON を経由した状態では欄が空文字で来うる。素の `!== undefined` で見ると空文字が
+  // 材料として通り、`compareIngestSeq` が空文字を相手に順序を判定する
+  const started = startedSnapshot();
+  const blanked = started.state.pendingOperations.map((pending) => ({
+    ...pending,
+    startIngestSeq: "  ",
+    startTurnIdSource: "" as PendingOperation["startTurnIdSource"],
+  }));
+  const restored: TaskWorkStateSnapshotV1 = {
+    ...started,
+    state: { ...started.state, pendingOperations: blanked },
+  };
+  const correlation = correlateTerminalEvent(restored, terminalEvent());
+  assert.equal(correlation.matched, null);
+  if (correlation.matched !== null) return;
+  assert.equal(correlation.diagnostic, "terminal_order_unverifiable");
+});
+
+test("空白の turn 種別は候補を落とさない（#35 FR-004）", () => {
+  // 空白を値として読むと、`eligibleOf` が `"" !== "native"` で候補を落とし、健全な rule 2 の
+  // terminal が `terminal_unmatched` になって operation は `unknown` のまま鍵だけ消費される。
+  // 上の順序材料の test は `startIngestSeq` の空白しか観測しないので、種別側は別に固定する
+  const start = startEvent({ operation: MATCH_KEY_ONLY });
+  const base = startedSnapshot(start);
+  const blanked: TaskWorkStateSnapshotV1 = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: base.state.pendingOperations.map((pending) => ({
+        ...pending,
+        // 順序は確認できる状態にしたまま、種別だけ空白にする
+        startTurnIdSource: " " as PendingOperation["startTurnIdSource"],
+      })),
+    },
+  };
+  const terminal = terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } });
+  const closed = reduceTaskWorkState(blanked, terminal, new Map());
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("材料が要素に載れば、同じ id の兄弟でも取り違えない（#35 SC-001）", () => {
+  // 側索引の鍵は `operationId` だったので、id が衝突する状態では**どちらの兄弟の材料かを
+  // 原理的に判別できず**、材料なしに倒すしか無かった（実測: 兄弟 B の ingestSeq 100 を使って
+  // A 宛ての terminal が通り、A が診断ゼロで succeeded になった）。要素に載せると鍵が要らない
+  const shared = { ...START_OPERATION, nativeOperationId: undefined } as const;
+  const base = startedSnapshot(startEvent({ operation: shared }));
+  const twin = base.state.pendingOperations[0] as PendingOperation;
+  const snapshot: TaskWorkStateSnapshotV1 = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [
+        { ...twin, startIngestSeq: "100" },
+        { ...twin, operationId: `${twin.operationId}`, startIngestSeq: "11" },
+      ],
+    },
+  };
+  // ingestSeq 50 は「100 の側は閉じえない / 11 の側は閉じえる」。候補が 1 件に絞れるので
+  // ambiguous にもならず、正しい側が閉じる
+  const terminal = terminalEvent({
+    ingestSeq: "50",
+    operation: { phase: "terminal", operationMatchKey: shared.operationMatchKey, operationKind: shared.operationKind },
+  });
+  const correlation = correlateTerminalEvent(snapshot, terminal);
+  if (correlation.matched === null) assert.fail(`照合されなかった: ${correlation.detail}`);
+  assert.equal(correlation.matched.startIngestSeq, "11");
+});
+
 test("nativeOperationId 一致で terminal が閉じる", () => {
   const snapshot = startedSnapshot();
   const correlation = correlateTerminalEvent(snapshot, terminalEvent());
@@ -736,22 +870,30 @@ test("同じ群の退避順は配列位置で決まる（startedAt では決め�
   assert.equal(surviving.has(`op-${CONTINUITY_LIMITS.arrayItems - 1}`), true);
 });
 
-test("退避した operation の順序材料も落とす", () => {
-  // pendingOperations が 256 件で頭打ちの一方、operationStarts だけ単調増加すると
-  // 権威順序の判定表がメモリを食い続ける
+test("退避した operation の順序材料も落ちる（#35）", () => {
+  // 側索引だった頃は、pendingOperations が 256 件で頭打ちの一方で表だけが単調増加しないよう、
+  // 退避のたびに鍵を消す同期が要った。材料を要素に載せた今は operation と同じ寿命になるので、
+  // 同期は不要になった代わりに「退避された側の材料が残っていない」ことは依然として要件
+  // （残ると生存側の順序検査が他人の材料で通りうる）
   const snapshot = filledSnapshot(true);
   const seeded: TaskWorkStateSnapshotV1 = {
     ...snapshot,
-    operationStarts: new Map(
-      snapshot.state.pendingOperations.map((pending) => [
-        pending.operationId,
-        { ingestSeq: "1", turnIdSource: "native" as const },
-      ]),
-    ),
+    state: {
+      ...snapshot.state,
+      pendingOperations: snapshot.state.pendingOperations.map((pending) => ({
+        ...pending,
+        startIngestSeq: "1",
+        startTurnIdSource: "native" as const,
+      })),
+    },
   };
   const result = reduceTaskWorkState(seeded, startEvent(), new Map());
-  assert.equal(result.snapshot.operationStarts.size, CONTINUITY_LIMITS.arrayItems);
-  assert.equal(result.snapshot.operationStarts.has("op-0"), false);
+  const survivors = result.snapshot.state.pendingOperations;
+  assert.equal(survivors.length, CONTINUITY_LIMITS.arrayItems);
+  assert.equal(
+    survivors.some((pending) => pending.operationId === "op-0"),
+    false,
+  );
 });
 
 test("rule 1 の nativeOperationId に複数当たるなら、どれも閉じない", () => {
@@ -770,12 +912,12 @@ test("rule 1 の nativeOperationId に複数当たるなら、どれも閉じな
       },
       kind: "tool", description: "Bash", status, replayPolicy: "never_auto",
       sourceEventIds: [`s-${operationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      // 順序が確認できる = 閉じられる状態にしておく
+      startIngestSeq: "1", startTurnIdSource: "native",
     }) as unknown as PendingOperation;
   const snapshotOf = (...operations: PendingOperation[]): TaskWorkStateSnapshotV1 => ({
     state: emptyState({ pendingOperations: operations }),
     history: [],
-    // live 側の start 材料も入れて、順序が確認できる = 閉じられる状態にしておく
-    operationStarts: new Map(operations.map((p) => [p.operationId, { ingestSeq: "1", turnIdSource: "native" as const }])),
   });
   const mixed = reduceTaskWorkState(
     snapshotOf(pending("op-settled", "succeeded"), pending("op-live", "started")),
@@ -869,15 +1011,14 @@ test("turn scoped な欄は再配送で埋めない", () => {
   const unproven: IntakeContextV1 = { ...INTAKE, nativeTurnIdentityProven: false };
   const downgraded = stampIntakeEvidence(startEvent({ operation: MATCH_KEY_ONLY }), unproven).event;
   const seeded = startedSnapshot(downgraded);
-  const operationId = seeded.state.pendingOperations[0]?.operationId as string;
-  assert.equal(seeded.operationStarts.get(operationId)?.turnIdSource, "unavailable");
+  assert.equal(seeded.state.pendingOperations[0]?.startTurnIdSource, "unavailable");
   const redelivered = reduceTaskWorkState(
     seeded,
     startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "13" }),
     new Map(),
   );
   assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
-  assert.equal(redelivered.snapshot.operationStarts.get(operationId)?.turnIdSource, "unavailable");
+  assert.equal(redelivered.snapshot.state.pendingOperations[0]?.startTurnIdSource, "unavailable");
   assert.equal(redelivered.snapshot.state.pendingOperations[0]?.correlation.turnId, undefined);
 });
 
@@ -947,7 +1088,6 @@ test("同名 operationId の兄弟でも、配列順で再配送の結果が変�
   for (const order of [[conflicting, compatible], [compatible, conflicting]]) {
     const snapshot: TaskWorkStateSnapshotV1 = {
       ...base,
-      operationStarts: new Map(),
       state: { ...base.state, pendingOperations: [...order] },
     };
     const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
@@ -979,7 +1119,6 @@ test("再配送の相手は derived id と native id の集合をまたいで選
   };
   const snapshot: TaskWorkStateSnapshotV1 = {
     ...base,
-    operationStarts: new Map(),
     state: { ...base.state, pendingOperations: [conflicting, compatible] },
   };
   const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
@@ -1051,7 +1190,7 @@ test("再配送 start も provenance を記録できなかったことを診断�
     canonicalFingerprint: "fingerprint-redeliver",
   });
   const result = reduceTaskWorkState(
-    { ...base, operationStarts: new Map(), state: { ...base.state, pendingOperations: [full] } },
+    { ...base, state: { ...base.state, pendingOperations: [full] } },
     redelivery,
     new Map(),
   );
@@ -1063,7 +1202,7 @@ test("再配送 start も provenance を記録できなかったことを診断�
 
   // 通す側: 上限未満なら truncation は出ず、eventId は実際に記録される
   const room = reduceTaskWorkState(
-    { ...base, operationStarts: new Map() },
+    base,
     redelivery,
     new Map(),
   );
@@ -1096,7 +1235,6 @@ test("上限退避は別 lineage の要素を自 lineage の証跡より先に�
   }));
   const full: TaskWorkStateSnapshotV1 = {
     ...base,
-    operationStarts: new Map(),
     state: { ...base.state, pendingOperations: [mine, ...theirs] },
   };
   const result = reduceTaskWorkState(
@@ -1120,12 +1258,10 @@ test("上限退避は別 lineage の要素を自 lineage の証跡より先に�
 test("別 lineage の双子は順序材料の帰属を曖昧にしない", () => {
   // lineage で絞ると、別 lineage の双子は再配送の相手にならないので現 lineage 側に新しい pending が
   // 積まれる。`operationId` は eventId + matchKey からの導出で lineage を含まないため、状態には
-  // **同じ id の pending が 2 件**並ぶ。ここで一度「どちらの材料か判別できない」として材料なしに
-  // 倒したが、**それは誤りだったので撤回する**（外部のコードレビューが指摘し、実測で確認した）。
-  // `operationStarts` は凍結 schema の外にあるので checkpoint から復元されることが無く、entry を
-  // 書けるのは `assertSameScope` を通った自 lineage の start だけ。よって別 lineage の双子は帰属を
-  // 曖昧にしない。数に入れると「曖昧でないものを曖昧と読む」ことになり、fail closed に見えて
-  // **`turnIdSource` のすり替え検査まで無効化する fail open** を作っていた（下の test で固定）
+  // **同じ id の pending が 2 件**並ぶ。材料を要素に載せた今（#35）は、双子がそれぞれ自分の
+  // `startIngestSeq` を持つので帰属が曖昧になりようがない。側索引だった頃は鍵が `operationId` で、
+  // 「どちらの材料か判別できない」として材料なしに倒す分岐が要り、その分岐が広すぎると
+  // `turnIdSource` のすり替え検査まで無効化する fail open を作っていた（下の test で固定）
   const applied = reduceTaskWorkState(foreignLineage(startedSnapshot()), startEvent(), new Map());
   assert.equal(new Set(applied.snapshot.state.pendingOperations.map((p) => p.operationId)).size, 1);
   assert.equal(applied.snapshot.state.pendingOperations.length, 2);
@@ -1143,8 +1279,9 @@ test("別 lineage の双子は順序材料の帰属を曖昧にしない", () =>
 });
 
 test("別 lineage の双子は turn 種別のすり替え検査を無効化しない", () => {
-  // `startFactsFor` が別 lineage の同名 pending まで数えていたとき、`recordedSource !== undefined`
-  // 節が常に false になり、すり替えた再配送が隔離されず**配送鍵まで消費した**（実測）
+  // 側索引を引く関数が別 lineage の同名 pending まで数えていたとき、`recordedSource !== undefined`
+  // 節が常に false になり、すり替えた再配送が隔離されず**配送鍵まで消費した**（実測）。
+  // 材料が要素に載った今は再配送の相手そのものから読むので、同名の他人が居ても影響しない
   const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY, turnIdSource: "native" }));
   const own = base.state.pendingOperations[0] as PendingOperation;
   const twin: PendingOperation = {
@@ -1165,12 +1302,13 @@ test("別 lineage の双子は turn 種別のすり替え検査を無効化し�
   assert.equal(switched.ledger.size, 0);
 });
 
-test("自 lineage で id が衝突しているときは材料なしに倒す", () => {
-  // 帰属を判別できないのはこちらだけ。`operationStarts` の鍵は `operationId` なので、同じ lineage に
-  // 同名の pending が並ぶと、退避した側や別の兄弟の材料で順序検査が通ってしまう
+test("自 lineage で id が衝突していても、それぞれの材料で判定する（#35）", () => {
+  // 側索引の鍵は `operationId` だったので、同じ lineage に同名の pending が並ぶと帰属を判別できず、
+  // 材料なしに倒す（`terminal_order_unverifiable`）しか無かった。要素に載せた今は、同名でも
+  // 各 pending が自分の `startIngestSeq` を持つので、健全な terminal は普通に閉じる
   const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
   const own = base.state.pendingOperations[0] as PendingOperation;
-  // 同名だが確定済みの兄弟。open は 1 件のままなので候補選びは曖昧にならず、材料の帰属だけが曖昧になる
+  // 同名だが確定済みの兄弟。open は 1 件のままなので候補選びは曖昧にならない
   const settled: PendingOperation = { ...own, status: "succeeded" };
   const collided: TaskWorkStateSnapshotV1 = {
     ...base,
@@ -1181,7 +1319,22 @@ test("自 lineage で id が衝突しているときは材料なしに倒す", (
     terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
     new Map(),
   );
-  assert.deepEqual(closed.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  // 材料を持たない側だけは従来どおり倒れる（材料の有無で分かれ、id の衝突では分かれない）
+  const stripped: TaskWorkStateSnapshotV1 = {
+    ...collided,
+    state: {
+      ...collided.state,
+      pendingOperations: [withoutStartFacts(collided).state.pendingOperations[0] as PendingOperation, settled],
+    },
+  };
+  const unverifiable = reduceTaskWorkState(
+    stripped,
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(unverifiable.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
 });
 
 test("再配送 start が turn の種別をすり替えたら隔離する", () => {
@@ -1196,9 +1349,7 @@ test("再配送 start が turn の種別をすり替えたら隔離する", () =
   );
   assert.equal(switched.outcome, "quarantined");
   assert.deepEqual(switched.diagnostics.map((d) => d.code), ["start_conflict"]);
-  assert.equal(switched.snapshot.operationStarts.get(
-    started.state.pendingOperations[0]?.operationId as string,
-  )?.turnIdSource, "native");
+  assert.equal(switched.snapshot.state.pendingOperations[0]?.startTurnIdSource, "native");
 });
 
 test("記録が降格されていても、証明が戻った再配送を隔離しない", () => {
@@ -1215,10 +1366,8 @@ test("記録が降格されていても、証明が戻った再配送を隔離�
     new Map(),
   );
   assert.deepEqual(recovered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
-  // 免除しても記録は汚れない。再配送は `operationStarts` を書かないので降格された種別のまま残る
-  assert.equal(recovered.snapshot.operationStarts.get(
-    downgraded.state.pendingOperations[0]?.operationId as string,
-  )?.turnIdSource, "unavailable");
+  // 免除しても記録は汚れない。再配送は `startTurnIdSource` を書き換えないので降格された種別のまま残る
+  assert.equal(recovered.snapshot.state.pendingOperations[0]?.startTurnIdSource, "unavailable");
 });
 
 /** 上限まで埋めた状態のうち index 1 を index 0 と同名にする（frozen schema は一意性を課さない）。 */
@@ -1244,29 +1393,28 @@ test("状態側で operationId が衝突していても退避は必要な件数�
   assert.equal(survivors[0]?.status, "started");
 });
 
-test("同名の兄弟が残っていても退避した側の順序材料は落とす", () => {
-  // `operationStarts` の鍵は `operationId` なので、id が衝突しているとどちらの兄弟の材料かを
-  // 原理的に判別できない。「生きている兄弟の材料を消さない」ために残すと、退避した側の材料で
-  // 生存側の順序検査が通り、順序違反の terminal が診断ゼロで適用されて台帳まで消費される。
-  // 材料を落として terminal_order_unverifiable で unknown に倒れるのが §3.1 の fail closed
+test("同名の兄弟が退避されても、生き残った側は自分の材料で閉じられる（#35）", () => {
+  // 側索引だった頃は、鍵が `operationId` なので id が衝突しているとどちらの兄弟の材料か判別できず、
+  // 退避のたびに同名の材料をまとめて消すしか無かった。その結果、**生き残った側まで
+  // `terminal_order_unverifiable` で `unknown` に倒れていた**（証跡は失われ、鍵は消費済み）。
+  // 材料を要素に載せた今は、退避された側の材料だけがその要素と一緒に消える
   const snapshot = collidedFilledSnapshot();
   const seeded: TaskWorkStateSnapshotV1 = {
     ...snapshot,
-    operationStarts: new Map(
-      snapshot.state.pendingOperations.map((pending) => [
-        pending.operationId,
-        { ingestSeq: "1", turnIdSource: "native" as const },
-      ]),
-    ),
+    state: {
+      ...snapshot.state,
+      pendingOperations: snapshot.state.pendingOperations.map((pending) => ({
+        ...pending,
+        startIngestSeq: "1",
+        startTurnIdSource: "native" as const,
+      })),
+    },
   };
   const evicted = reduceTaskWorkState(seeded, startEvent(), new Map());
-  assert.equal(evicted.snapshot.operationStarts.has("op-0"), false);
-  // 生き残った同名の兄弟は残っている（消えたのは材料だけ）
-  assert.equal(
-    evicted.snapshot.state.pendingOperations.filter((p) => p.operationId === "op-0").length,
-    1,
-  );
-  // その兄弟宛ての terminal は「順序を確認できない」として unknown に倒れる。適用されない
+  // 生き残った同名の兄弟は 1 件で、材料も持ったまま
+  const survivors = evicted.snapshot.state.pendingOperations.filter((p) => p.operationId === "op-0");
+  assert.equal(survivors.length, 1);
+  assert.equal(survivors[0]?.startIngestSeq, "1");
   const terminal = reduceTaskWorkState(
     evicted.snapshot,
     // 生き残ったのは index 1（`collidedFilledSnapshot` が op-0 に改名した started 側）なので、
@@ -1278,10 +1426,10 @@ test("同名の兄弟が残っていても退避した側の順序材料は落�
     }),
     evicted.ledger,
   );
-  assert.deepEqual(terminal.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
+  assert.deepEqual(terminal.diagnostics.map((d) => d.code), []);
   assert.equal(
     terminal.snapshot.state.pendingOperations.find((p) => p.operationId === "op-0")?.status,
-    "unknown",
+    "succeeded",
   );
 });
 
@@ -2038,7 +2186,6 @@ test("fixture の期待値は参照実装の出力と一致する（TS/Rust pari
   let snapshot: TaskWorkStateSnapshotV1 = {
     state: fixture.initialState,
     history: [],
-    operationStarts: new Map(),
   };
   let ledger: IdempotencyLedger = new Map();
   const actual = fixture.events.map((raw) => {
@@ -2154,11 +2301,11 @@ test("start より先に届いた terminal は台帳に入れない（後から 
 });
 
 test("start が状態に無い terminal は閉じないが、詰まらせず unknown に倒す", () => {
-  // checkpoint から復元すると operationStarts が空になる（#35）。ここで隔離すると復元後は
-  // 全 terminal が隔離され、operation が started のまま二度と閉じられない（resume capsule が
+  // この版より前に書かれた checkpoint には順序材料が無い（#35 の 2 欄は任意）。ここで隔離すると
+  // 復元後は全 terminal が隔離され、operation が started のまま二度と閉じられない（resume capsule が
   // 「まだ実行中」と偽る）。閉じずに unknown へ倒し、台帳には入れる
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const result = reduceTaskWorkState(restored, terminalEvent(), new Map());
   assert.equal(result.outcome, "applied");
   assert.deepEqual(
@@ -2173,15 +2320,15 @@ test("start が状態に無い terminal は閉じないが、詰まらせず unk
 test("復元後の start 再配送は権威順序の材料を作らない", () => {
   // §6.4 の ingestSeq は event store が採番する watermark なので、再配送 event が運ぶのは
   // 再配送時の取り込み位置であって元の start の権威順序ではない。材料が無いまま閉じるより
-  // unknown に倒す（§3.1 の fail closed）。復旧は #35 が本筋
+  // unknown に倒す（§3.1 の fail closed）
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const again = reduceTaskWorkState(restored, startEvent({ ingestSeq: "3" }), new Map());
   assert.deepEqual(
     again.diagnostics.map((d) => d.code),
     ["duplicate_operation_start"],
   );
-  assert.equal(again.snapshot.operationStarts.size, 0);
+  assert.equal(again.snapshot.state.pendingOperations[0]?.startIngestSeq, undefined);
   const closed = reduceTaskWorkState(again.snapshot, terminalEvent(), again.ledger);
   assert.deepEqual(
     closed.diagnostics.map((d) => d.code),
@@ -2195,7 +2342,7 @@ test("eventId が変わった再配送 start でも operation を二重に積ま
   // 導出 operationId が一致しないので、nativeOperationId で拾わないと同じ operation が 2 件になり、
   // rule 1 の terminal が候補 2 件で何も閉じられなくなる
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const redelivered = reduceTaskWorkState(
     restored,
     startEvent({ eventId: "event-start-retry-0", ingestSeq: "3" }),
@@ -2332,11 +2479,11 @@ test("nativeOperationId が違う 2 回目の呼び出しは別 operation とし
 });
 
 test("低い ingestSeq を名乗る偽 start で unknown を succeeded に変えられない", () => {
-  // 復元直後（operationStarts が空）に、被害者の identity を写した start を小さい ingestSeq で
+  // 順序材料を持たない状態（#35）に、被害者の identity を写した start を小さい ingestSeq で
   // 送ると、wire の値で順序材料を埋める実装では正規の terminal が順序検査を通って succeeded に
   // 化ける。§14 の zero-tolerance カウンタ `unsafe unknown replay` に直結する
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const forged = reduceTaskWorkState(
     restored,
     startEvent({ eventId: "event-start-forged-seq", ingestSeq: "1", sessionId: "session-1" }),
@@ -2976,7 +3123,7 @@ test("記録できる候補が 1 件も無い terminal は、兄弟の有無に�
   });
   for (const pendingOperations of [[], [settledSibling]]) {
     const result = reduceTaskWorkState(
-      { ...base, operationStarts: new Map(), state: { ...base.state, pendingOperations } },
+      { ...base, state: { ...base.state, pendingOperations } },
       early,
       new Map(),
     );
@@ -2987,7 +3134,6 @@ test("記録できる候補が 1 件も無い terminal は、兄弟の有無に�
   const applied = reduceTaskWorkState(
     {
       ...base,
-      operationStarts: new Map(),
       state: { ...base.state, pendingOperations: [settledSibling] },
     },
     terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
@@ -3210,27 +3356,22 @@ test("状態側で operationId が衝突していても terminal は 1 件しか
       },
       kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
       sourceEventIds: [`start-${nativeOperationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      // 順序材料はそれぞれの要素に載る（#35）。id が衝突していても取り違えは起きない
+      startIngestSeq: "11", startTurnIdSource: "native",
     }) as unknown as PendingOperation;
   for (const duplicated of ["", "op-dup"]) {
     const victim: TaskWorkStateSnapshotV1 = {
       state: emptyState({ pendingOperations: [pending(duplicated, "toolu_1"), pending(duplicated, "toolu_2")] }),
       history: [],
-      operationStarts: new Map([[duplicated, { ingestSeq: "11", turnIdSource: "native" as const }]]),
     };
     const result = reduceTaskWorkState(victim, terminalEvent(), new Map());
-    // 動くのは 1 件だけ。しかも `succeeded` ではなく `unknown` になる: `operationStarts` は
-    // `operationId` 鍵なので、id が衝突しているとどちらの兄弟の材料か判別できず、順序を
-    // 確認できない = 閉じられない（`terminal_order_unverifiable`）
+    // 動くのは rule 1 が指した 1 件だけ。もう 1 件は同じ id でも触られない
     assert.deepEqual(
       result.snapshot.state.pendingOperations.map((p) => p.status),
-      ["unknown", "started"],
+      ["succeeded", "started"],
       JSON.stringify(duplicated),
     );
-    assert.deepEqual(
-      result.diagnostics.map((d) => d.code),
-      ["terminal_order_unverifiable"],
-      JSON.stringify(duplicated),
-    );
+    assert.deepEqual(result.diagnostics.map((d) => d.code), [], JSON.stringify(duplicated));
   }
 });
 
@@ -3251,6 +3392,7 @@ test("identity で候補から外れた兄弟は rule 1 の候補数に数えな
       },
       kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
       sourceEventIds: [`start-${operationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      startIngestSeq: "1", startTurnIdSource: "native",
     }) as unknown as PendingOperation;
   const target = pending("op-target", {});
   for (const [label, sibling] of [
@@ -3261,10 +3403,6 @@ test("identity で候補から外れた兄弟は rule 1 の候補数に数えな
     const snapshot: TaskWorkStateSnapshotV1 = {
       state: emptyState({ pendingOperations: [sibling, target] }),
       history: [],
-      operationStarts: new Map([
-        ["op-sibling", { ingestSeq: "1", turnIdSource: "native" as const }],
-        ["op-target", { ingestSeq: "1", turnIdSource: "native" as const }],
-      ]),
     };
     const result = reduceTaskWorkState(snapshot, terminalEvent({ ingestSeq: "50" }), new Map());
     assert.deepEqual(result.diagnostics.map((d) => d.code), [], label);
@@ -3276,11 +3414,12 @@ test("identity で候補から外れた兄弟は rule 1 の候補数に数えな
   }
 });
 
-test("同名 operationId の兄弟の start facts で順序検査をしない", () => {
-  // `operationStarts` は `operationId` 鍵の側索引（#35）なので、同じ id の pending が並ぶ状態では
-  // どちらの兄弟の材料か判別できない。判別せずに引くと、兄弟 B の `ingestSeq` を使って A 宛ての
-  // terminal が権威順序を通り、A が診断ゼロで閉じる（逆向きの値では健全な terminal が弾かれる）
-  const pending = (nativeOperationId: string): PendingOperation =>
+test("同名 operationId の兄弟でも、順序検査は自分の材料で行う（#35）", () => {
+  // 側索引の鍵は `operationId` だったので、同じ id の pending が並ぶ状態では**どちらの兄弟の材料か
+  // 判別できず**、判別せずに引くと兄弟 B の `ingestSeq` で A 宛ての terminal が権威順序を通った
+  // （逆向きの値では健全な terminal が弾かれた）。当時は両方まとめて `terminal_order_unverifiable` に
+  // 倒すしか無かったが、材料を要素に載せた今は A の材料で A を判定できる
+  const pending = (nativeOperationId: string, startIngestSeq: string): PendingOperation =>
     ({
       operationId: "dup",
       correlation: {
@@ -3290,13 +3429,16 @@ test("同名 operationId の兄弟の start facts で順序検査をしない", 
       },
       kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
       sourceEventIds: [`start-${nativeOperationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      startIngestSeq, startTurnIdSource: "native",
     }) as unknown as PendingOperation;
-  // 記録されている材料は B のもの。A 宛ての terminal は、それを通っても弾かれてもいけない
-  for (const [label, ingestSeq] of [["材料より前", "50"], ["材料より後", "150"]] as const) {
+  // A の start は 100、B の start は 10。A 宛ての terminal は **A の 100** とだけ比べる
+  for (const [label, ingestSeq, expected] of [
+    ["A の材料より前", "50", "terminal_out_of_order"],
+    ["A の材料より後", "150", undefined],
+  ] as const) {
     const victim: TaskWorkStateSnapshotV1 = {
-      state: emptyState({ pendingOperations: [pending("toolu_a"), pending("toolu_b")] }),
+      state: emptyState({ pendingOperations: [pending("toolu_a", "100"), pending("toolu_b", "10")] }),
       history: [],
-      operationStarts: new Map([["dup", { ingestSeq: "100", turnIdSource: "native" as const }]]),
     };
     const result = reduceTaskWorkState(
       victim,
@@ -3309,8 +3451,16 @@ test("同名 operationId の兄弟の start facts で順序検査をしない", 
       }),
       new Map(),
     );
-    assert.deepEqual(result.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"], label);
-    assert.deepEqual(result.snapshot.state.pendingOperations.map((p) => p.status), ["unknown", "started"], label);
+    assert.deepEqual(
+      result.diagnostics.map((d) => d.code),
+      expected === undefined ? [] : [expected],
+      label,
+    );
+    assert.deepEqual(
+      result.snapshot.state.pendingOperations.map((p) => p.status),
+      [expected === undefined ? "succeeded" : "unknown", "started"],
+      label,
+    );
   }
 });
 
@@ -3343,7 +3493,6 @@ test("同じ native id の兄弟が並んでも identity が一致する側へ�
   const snapshot: TaskWorkStateSnapshotV1 = {
     state: emptyState({ pendingOperations: [pending("op-1", "one"), pending("op-2", "two")] }),
     history: [],
-    operationStarts: new Map(),
   };
   const redelivered = reduceTaskWorkState(
     snapshot,
@@ -3436,7 +3585,6 @@ test("unknown に倒す相手は候補だけで、別 session の同名 operatio
     // 候補側は turn 同一性が無いので rule 2 では閉じられず `unknown` に倒れる
     state: emptyState({ pendingOperations: [pending("session-1", "n1", "turn-9"), pending("session-other", "n2", "turn-1")] }),
     history: [],
-    operationStarts: new Map(),
   };
   const result = reduceTaskWorkState(
     victim,
@@ -3563,7 +3711,7 @@ test("空白文字だけの identity 材料は空文字と同じく schema viola
     assert.throws(
       () =>
         reduceTaskWorkState(
-          { state: emptyState({ sourceAgent: blank }), history: [], operationStarts: new Map() },
+          { state: emptyState({ sourceAgent: blank }), history: [] },
           startEvent({ sourceAgent: blank }),
           new Map(),
         ),
@@ -4049,13 +4197,13 @@ test("turn 種別が違う候補は rule 2 の候補から外す", () => {
 });
 
 test("turn 種別の材料が無い候補は種別違いとして落とさない", () => {
-  // 種別は start 側の材料（operationStarts、#35）にしかなく、復元直後は空。材料が無いことを
+  // 種別は start 側の材料（`startTurnIdSource`、#35）にしかなく、復元した古い状態では欠ける。材料が無いことを
   // 「種別が違う」と読むと、復元直後の全 terminal が理由を取り違えた診断になる
   const prepared = apply(emptySnapshot(), [
     startEvent({ eventId: "start-a", adapterDeliveryId: "d-sa", canonicalFingerprint: "f-sa", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
     startEvent({ eventId: "start-b", adapterDeliveryId: "d-sb", canonicalFingerprint: "f-sb", operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
   ]);
-  const restored = { state: prepared.snapshot.state, history: [], operationStarts: new Map() };
+  const restored = withoutStartFacts({ state: prepared.snapshot.state, history: [] });
   const result = correlateTerminalEvent(
     restored,
     terminalEvent({ operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native" }),
@@ -4207,15 +4355,11 @@ test("名乗っている兄弟が互換でも、空白の native ID を埋めな
     "空白側にも native ID が書かれて 2 件になった",
   );
   // 曖昧にならないことまで見る。復元が重複を作っていたら rule 1 の候補が 2 件になり、terminal は
-  // 曖昧としてどちらも閉じられない。ここで残る `terminal_order_unverifiable` は別の欠落
-  // （組み立てた pending には start の取り込み連番が無い = #35）で、候補の一意性とは無関係
+  // 曖昧としてどちらも閉じられない。組み立てた pending は元の start の取り込み連番を持つ（#35）ので、
+  // 候補が一意なら診断ゼロで閉じる
   const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
   assert.equal(closed.outcome, "applied");
-  assert.deepEqual(
-    closed.diagnostics.map((d) => d.code),
-    ["terminal_order_unverifiable"],
-    "rule 1 の候補が 1 件に定まっていない",
-  );
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), [], "rule 1 の候補が 1 件に定まっていない");
 });
 
 test("別 session の名乗り手は埋め戻しを止めない（rule 1 の候補集合と同じ絞り方）", () => {
@@ -4313,9 +4457,7 @@ test("名乗っている兄弟が非互換なら、空白の native ID を埋め
     closed.snapshot.state.pendingOperations.map((pending) => [pending.operationId, pending.status]),
     [
       [derived.operationId, "started"],
-      // `succeeded` でなく `unknown`。組み立てた pending には start の取り込み連番が無いので
-      // 権威順序を確認できない（#35 の欠落）。閉じる先の話とは別軸
-      ["op-native-claimer", "unknown"],
+      ["op-native-claimer", "succeeded"],
     ],
     "閉じる先が入れ替わった",
   );

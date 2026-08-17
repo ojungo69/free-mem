@@ -679,21 +679,9 @@ function ledgerEntryOf(event: NormalizedContinuityEvent): LedgerEntryV1 {
   return { eventId: event.eventId, ...(sourceHash !== undefined ? { sourceHash } : {}) };
 }
 
-/** start event のうち frozen schema に入らない値（#35）。 */
-export interface OperationStartFactsV1 {
-  ingestSeq: string;
-  turnIdSource: TurnIdSource;
-}
-
 export interface TaskWorkStateSnapshotV1 {
   state: CanonicalWorkStateV1;
   history: readonly WorkStateRevisionEntryV1[];
-  /**
-   * operationId → start event の権威順序と turn 同一性の種別。§4.3 の「terminal は start より
-   * 後」「rule 2 は同じ `turnIdSource` 種別を要求する」を判定するために持つ。
-   * `PendingOperation` / `OperationCorrelationV1` はどちらも持てないので frozen schema の外に置く。
-   */
-  operationStarts: ReadonlyMap<string, OperationStartFactsV1>;
 }
 
 export type ContinuityDiagnosticCode =
@@ -812,7 +800,6 @@ function commit(
   applied: {
     pendingOperations: PendingOperation[];
     diagnostics: readonly ContinuityDiagnosticV1[];
-    operationStarts?: ReadonlyMap<string, OperationStartFactsV1>;
   },
 ): TaskStateReductionResult {
   const content = nextContent(previous.state, event, applied.pendingOperations);
@@ -825,7 +812,6 @@ function commit(
     snapshot: {
       state: { ...content, stateRevision: revision },
       history: [...previous.history, { revision, contentHash, eventId: event.eventId }],
-      operationStarts: applied.operationStarts ?? previous.operationStarts,
     },
     contentHash,
     ledger: nextLedger,
@@ -941,7 +927,7 @@ export function reduceTaskWorkState(
     // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない。
     // terminal 側と同じく input hash も直接見る（matchKey の導出が §4.3 どおりでない adapter 対策）
     const startConflictsWith = (existing: PendingOperation): boolean => {
-      const recordedSource = startFactsFor(previous, existing.operationId)?.turnIdSource;
+      const recordedSource = startTurnIdSourceOf(existing);
       return (
         existing.correlation.operationMatchKey !== operation.operationMatchKey ||
           // 上の検索が operationId 一致（eventId + matchKey から導出）で当たった場合、session は
@@ -962,21 +948,21 @@ export function reduceTaskWorkState(
           (declared(existing.correlation.turnId) !== undefined &&
             declared(event.turnId) !== undefined &&
             existing.correlation.turnId !== event.turnId) ||
-          // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、凍結
-          // `OperationCorrelationV1` の外（`operationStarts`・#35）にしか無いので、上の `turnId` の
-          // 比較では見えない。種別だけ違う再配送を重複として台帳に入れると、記録は元の種別のまま
-          // 残る（再配送された start で `operationStarts` は埋めない）ので、再配送側の種別で来た
-          // terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` になり、
-          // **健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。復元直後は記録が
-          // 無いので、`eligibleOf` と同じく材料があるときだけ比べる。**矛盾と言えるのは双方が
+          // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、`OperationCorrelationV1`
+          // には無い（#35 で `PendingOperation.startTurnIdSource` として別の欄に載せた）ので、
+          // 上の `turnId` の比較では見えない。種別だけ違う再配送を重複として台帳に入れると、
+          // 記録は元の種別のまま残る（再配送は `startTurnIdSource` を書き換えない）ので、再配送側の
+          // 種別で来た terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` に
+          // なり、**健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。欄を持たない
+          // 状態では記録が無いので、`eligibleOf` と同じく材料があるときだけ比べる。**矛盾と言えるのは双方が
           // 具体的な turn 同一性を主張している場合だけ**にする: `unavailable` は「turn 同一性を
           // 主張していない」という表明で、§4.3 もどちらかが `unavailable` なら rule 2 を適用しないと
           // 言うだけで矛盾とは言わない。片側でも `unavailable` を衝突にすると、intake が降格した
           // start（proven でない version の native 主張はここへ落ちる）と、証明が回復した後の
           // 同じ start の再配送とが噛み合わず、**還元器は純関数なので毎回同じ隔離になる
           // = 決定論的な永久隔離と無限再送**になる（`started` を矛盾集合から外した理由と同型）。
-          // 免除しても記録は汚れない: 再配送は `operationStarts` を書かないので、記録された種別は
-          // どちらの経路でも元のまま残る。塞ぐのは種別の**すり替え**（native ⇄
+          // 免除しても記録は汚れない: 再配送は `startTurnIdSource` を書き換えないので、記録された
+          // 種別はどちらの経路でも元のまま残る。塞ぐのは種別の**すり替え**（native ⇄
           // synthesized_monotonic）だけで、そこは 2 つの具体的な主張が食い違っている
           (recordedSource !== undefined &&
             recordedSource !== "unavailable" &&
@@ -1017,9 +1003,9 @@ export function reduceTaskWorkState(
     // 隔離は鍵を消費せず還元器は純関数なので永久に収束しない。
     // 連結順は `idMatches` を先にして、両集合とも全件衝突のときの衝突の証拠を従来と揃える。
     // **`Set` で重複を落とす**。derived id と native id の両方で当たる兄弟は 2 つの集合に入るので、
-    // 素で連結すると `startConflictsWith` がその要素に対して 2 回走る。`startConflictsWith` は
-    // `startFactsFor`（`pendingOperations` の線形走査）を呼ぶので、両集合が上限 256 件のとき
-    // 無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので上で決めた連結順はそのまま残る
+    // 素で連結すると同じ要素が 2 度並ぶ。下の `conflictingSiblings` は `siblings` と `compatible` の
+    // 集合差で作るので、重複した衝突兄弟は診断で**同じ operationId を 2 回名乗る**ことになる。
+    // `Set` は挿入順を保つので上で決めた連結順はそのまま残る
     const siblings = [...new Set([...idMatches, ...nativeMatches])];
     const compatible = siblings.filter((pending) => !startConflictsWith(pending));
     // 互換な兄弟が複数居るときは、**届いた native ID を既に名乗っている側**を再配送の相手にする。
@@ -1047,8 +1033,7 @@ export function reduceTaskWorkState(
       siblings.at(0);
     // `existing` の衝突判定は上の filter で確定している。`compatible` から取ったなら構成上
     // 非衝突、空だったから `siblings.at(0)` に落ちたならその要素は filter で衝突と判定済み。
-    // もう一度述語を呼ぶと、兄弟 1 件という最も普通の経路で `startFactsFor`（`pendingOperations`
-    // の線形走査）が 1 回から 2 回に増えるだけで、新しい情報は出ない
+    // もう一度述語を呼んでも新しい情報は出ない
     // `existing !== undefined` は残す。下の隔離が `existing.operationId` を読むので、型の上でも
     // 定義済みへ絞る必要がある（この形なら `siblings.length > 0` は含意される）
     const startConflict = existing !== undefined && compatible.length === 0;
@@ -1125,10 +1110,8 @@ export function reduceTaskWorkState(
       // 消費せず還元器は純関数なので永久に収束しない）が、そのままだと**衝突していた兄弟が
       // 誰にも報告されずに枠を占め続ける**。この状態はコード自身が「再配送ではなく corruption」と
       // 呼んでいるもので、黙って間引かない規則どおり診断に出す
-      // 判定は上の `compatible` で全兄弟について済んでいるので、**集合差**で取る。述語を
-      // 呼び直すと `startFactsFor`（線形走査）が兄弟の数だけ増え、互換な兄弟 256 件の再配送で
-      // 走査が 256 回から 512 回になる（実測。`compatible` の絞り込み自体が 256 回使うので、
-      // ここで消えるのは上乗せぶんの 256 回。ゼロにはならない）。`pending !== existing` は落とす: ここへ来た時点で
+      // 判定は上の `compatible` で全兄弟について済んでいるので、**集合差**で取る（述語を
+      // 呼び直しても同じ答えしか出ない）。`pending !== existing` は落とす: ここへ来た時点で
       // `compatible` は非空（空なら上の隔離で return 済み）なので `existing` は必ず `compatible`
       // の要素で、集合差には最初から入らない
       const compatibleSet = new Set(compatible);
@@ -1141,6 +1124,14 @@ export function reduceTaskWorkState(
         detail: `operationId ${existing.operationId} は既に pending`,
       };
       return commit(previous, event, idempotencyLedger, {
+        // **`startIngestSeq` / `startTurnIdSource` は書き換えない**（#35 FR-003）。correlation の
+        // 欠落は埋めるのに順序材料は埋めないのは、性質が違うから: 欠落した native ID を埋めるのは
+        // 「同じ operation の別名を記録する」だが、§6.4 の `ingestSeq` は event store が採番する
+        // watermark なので、再配送 event が運ぶのは**再配送時の取り込み位置**であって元の start の
+        // 権威順序ではない。埋めると低い値を名乗る偽 start で unknown を succeeded に変えられ、
+        // 高い値なら正当な terminal が `terminal_out_of_order` で落ちる。欄を持たない状態
+        // （この版より前の checkpoint）は `terminal_order_unverifiable` で unknown に倒れるのが
+        // §3.1 の fail closed どおり。spread がこの 2 欄をそのまま運ぶ
         pendingOperations: previous.state.pendingOperations.map((pending) =>
           pending === existing
             ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)
@@ -1159,11 +1150,6 @@ export function reduceTaskWorkState(
               ]),
           ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)]),
         ],
-        // 再配送された start で operationStarts を埋めない。§6.4 の `ingestSeq` は event store が
-        // 採番する watermark なので、再配送 event が運ぶのは再配送時の取り込み位置であって
-        // 元の start の権威順序ではない。埋めると低い値を名乗る偽 start で unknown を succeeded に
-        // 変えられる。復元直後（operationStarts が空）は terminal_order_unverifiable で unknown に
-        // 倒れるのが §3.1 の fail closed どおりで、材料の復旧は #35（状態に持たせる）が本筋
       });
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
@@ -1174,18 +1160,11 @@ export function reduceTaskWorkState(
     const evicted = previous.state.pendingOperations
       .filter((pending) => !kept.has(pending))
       .map((pending) => pending.operationId);
-    // 退避した operation の start facts も落とす。残すと pendingOperations が 256 件で頭打ちの
-    // 一方でこの表だけが単調増加する。
-    // **同名の兄弟が残っていても消す**。ここに「生きている operation の順序材料を消さないため」の
-    // 例外を一度入れたが、それは fail open だった: `operationStarts` の鍵は `operationId` なので、
-    // id が衝突していると**どちらの兄弟の材料かを原理的に判別できない**。退避した側の材料を残すと、
-    // 生き残った側の順序検査がその他人の材料で通り、**順序違反の terminal が診断ゼロで適用され
-    // 台帳まで消費される**（実測: 退避側 start=10・生存側の実 start=100 の状態に ingestSeq 50 の
-    // terminal を当てると succeeded になった）。材料を落として `terminal_order_unverifiable` で
-    // `unknown` に倒れるのが §3.1 の fail closed どおりで、材料の復旧は #35（状態に持たせる）が本筋
-    const operationStarts = new Map(previous.operationStarts);
-    for (const evictedId of evicted) operationStarts.delete(evictedId);
-    operationStarts.set(operationId, { ingestSeq: event.ingestSeq, turnIdSource: event.turnIdSource });
+    // 退避で順序材料を刈る処理は要らない。材料は要素に載っている（#35）ので、退避した
+    // operation と一緒に状態から消え、生き残った側の材料はそのまま残る。側索引だった頃は
+    // 鍵が operationId で、id が衝突していると**どちらの兄弟の材料か原理的に判別できず**、
+    // 退避側の材料を残すと生存側の順序検査がその他人の材料で通っていた（実測: 退避側
+    // start=10・生存側の実 start=100 の状態に ingestSeq 50 の terminal を当てると succeeded）
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...retained, started],
       diagnostics:
@@ -1198,7 +1177,6 @@ export function reduceTaskWorkState(
                 detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため退避: ${evicted.join(", ")}`,
               },
             ],
-      operationStarts,
     });
   }
 
@@ -1453,6 +1431,14 @@ function startPendingOperation(
     startedAt: event.occurredAt,
     // 分類器が正本に無い間、内容を見ずに normal と申告しない（#36）。
     sensitivity: "private",
+    // §4.3 の「terminal は start より後」「rule 2 は同じ `turnIdSource` 種別を要求する」を
+    // 判定する材料（#35）。**要素そのものに載せる**。以前は operationId 鍵の側索引に置いていたが、
+    // 凍結 schema は operationId の一意性を課さないので、同じ id の pending が並ぶ状態では
+    // どちらの兄弟の材料か判別できず、判別できないまま引くと片方の材料でもう片方が検査された
+    // （実測: 兄弟 B の ingestSeq 100 で A 宛ての terminal が通り、A が診断ゼロで succeeded に
+    // なった）。要素に載せれば鍵が要らず、退避・復元でも operation と同じ寿命になる
+    startIngestSeq: event.ingestSeq,
+    startTurnIdSource: event.turnIdSource,
     ...(operation.nativeOperationId !== undefined
       ? { idempotencyKey: operation.nativeOperationId }
       : {}),
@@ -1496,38 +1482,22 @@ function terminalStatusOf(event: NormalizedContinuityEvent): "succeeded" | "fail
 }
 
 /**
- * `operationStarts` は `operationId` 鍵の側索引（#35。凍結 schema の外）なので、同じ id の
- * pending が並ぶ状態では**どちらの兄弟の材料かを判別できない**。判別できないまま引くと、片方の
- * start facts でもう片方の順序と turn 種別が検査される（実測: 兄弟 B の `ingestSeq` 100 を使って
- * A 宛ての terminal が通り、A が診断ゼロで `succeeded` になった。逆向きの値では健全な terminal が
- * `terminal_out_of_order` で弾かれた）。曖昧な id は「材料が無い」として扱い、復元直後と同じ
- * fail closed な経路（`terminal_order_unverifiable`）へ倒す。
+ * §4.3 の順序検査が使う start 側の `ingestSeq`（#35）。凍結 schema では任意欄なので、
+ * この版より前に書かれた checkpoint と別実装が書いた状態では欠けうる。**空白は「名乗って
+ * いない」であって値ではない**ので、他の任意欄と同じく `declared()` で見る（素で見ると空文字が
+ * `compareIngestSeq` に渡り、順序を確認できていないのに確認できたことになる）。
  */
-function startFactsFor(
-  snapshot: TaskWorkStateSnapshotV1,
-  operationId: string,
-): OperationStartFactsV1 | undefined {
-  let seen = 0;
-  for (const pending of snapshot.state.pendingOperations) {
-    // **数えるのは自 lineage の pending だけ**。`operationStarts` は凍結 schema の外にあるので
-    // checkpoint から復元されることが無く、entry を書けるのは `assertSameScope` を通った
-    // 自 lineage の start だけ（この関数が読む側、書く側とも 1 箇所）。よって別 lineage の同名
-    // pending は entry の帰属を曖昧にしない。数に入れると**曖昧でないものを曖昧と読む**ことになり、
-    // 材料なし扱いが 2 方向に効いてしまう: 健全な operation が `terminal_order_unverifiable` で
-    // `unknown` に倒れるだけでなく、`startConflictsWith` の `recordedSource !== undefined` 節が
-    // 常に false になって **`turnIdSource` のすり替え検査が無効化される**（実測: 別 lineage の
-    // 双子を 1 件置くと、native → synthesized_monotonic にすり替えた再配送が `start_conflict` から
-    // `duplicate_operation_start` に変わり配送鍵まで消費した = fail open）。
-    // 自 lineage で id が衝突している場合だけは帰属を判別できないので、従来どおり材料なしに倒す
-    if (
-      pending.operationId === operationId &&
-      pending.correlation.taskLineageId === snapshot.state.taskLineageId
-    ) {
-      seen += 1;
-    }
-    if (seen > 1) return undefined;
-  }
-  return snapshot.operationStarts.get(operationId);
+function startIngestSeqOf(pending: PendingOperation): string | undefined {
+  return declared(pending.startIngestSeq);
+}
+
+/**
+ * §4.3 rule 2 の turn 両立が見る start 側の種別（#35）。欠落と空白の扱いは
+ * `startIngestSeqOf` と同じ。語彙の外の値は「材料あり」として扱う——読み替えて素通りさせるより、
+ * 種別が一致しない候補として落ちるほうが fail closed になる。
+ */
+function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
+  return declared(pending.startTurnIdSource);
 }
 
 /**
@@ -1725,13 +1695,14 @@ export function correlateTerminalEvent(
             declared(pending.correlation.turnId) !== undefined &&
             pending.correlation.turnId === terminalEvent.turnId,
         );
-  // 種別の材料（`operationStarts`、#35）は復元直後と退避後に空になる。材料が無いことを
-  // 「種別が違う」と読むと理由を取り違えるので、材料がある候補だけ種別で絞る
+  // 種別の材料（`startTurnIdSource`、#35）は任意欄なので、この版より前に書かれた checkpoint と
+  // 別実装の状態では欠ける。材料が無いことを「種別が違う」と読むと理由を取り違えるので、
+  // 材料がある候補だけ種別で絞る
   const eligibleOf = (list: readonly PendingOperation[]): readonly PendingOperation[] =>
     byNativeId.length > 0
       ? list
       : list.filter((pending) => {
-          const recorded = startFactsFor(previous, pending.operationId)?.turnIdSource;
+          const recorded = startTurnIdSourceOf(pending);
           return recorded === undefined || recorded === terminalEvent.turnIdSource;
         });
   const isOpen = (pending: PendingOperation): boolean =>
@@ -1750,8 +1721,8 @@ export function correlateTerminalEvent(
   const orderableOf = (list: readonly PendingOperation[]): readonly PendingOperation[] => {
     if (byNativeId.length > 0) return list;
     const orderable = list.filter((pending) => {
-      const start = startFactsFor(previous, pending.operationId);
-      return start === undefined || compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) > 0;
+      const startIngestSeq = startIngestSeqOf(pending);
+      return startIngestSeq === undefined || compareIngestSeq(terminalEvent.ingestSeq, startIngestSeq) > 0;
     });
     return orderable.length === 0 ? list : orderable;
   };
@@ -1909,9 +1880,9 @@ export function correlateTerminalEvent(
   }
   const matched = open[0] as PendingOperation;
 
-  const start = startFactsFor(previous, matched.operationId);
-  if (start === undefined) {
-    // start の ingestSeq が状態に無い（checkpoint から復元した等: #35）。順序を確認できない
+  const startIngestSeq = startIngestSeqOf(matched);
+  if (startIngestSeq === undefined) {
+    // start の ingestSeq が状態に無い（この版より前の checkpoint・別実装の状態: #35）。順序を確認できない
     // ので閉じることはできないが、隔離してはいけない: 復元直後は全 terminal がこの分岐に
     // 落ちるため、隔離すると operation が `started` のまま二度と閉じられず、resume capsule が
     // 「まだ実行中」と偽る。§3.1 の fail closed（自動経路を降格し理由を doctor に出す）どおり
@@ -1923,7 +1894,7 @@ export function correlateTerminalEvent(
       unresolved: [matched],
     };
   }
-  if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
+  if (compareIngestSeq(terminalEvent.ingestSeq, startIngestSeq) <= 0) {
     return {
       matched: null,
       diagnostic: "terminal_out_of_order",

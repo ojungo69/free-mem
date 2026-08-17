@@ -131,8 +131,14 @@ mutate "  return event.kind === \"tool_failed\" && event.successful === true;" "
 mutate "      ...contradictionDiagnostics,
     ];" "    ];" && run "矛盾診断を照合済み経路だけに戻す"
 mutate "  if (terminalEvidenceContradicts(event)) return \"unknown\";" "  if (false) return \"unknown\";" && run "矛盾した terminal を succeeded にする"
-mutate "  if (start === undefined) {" "  if (false) {" && run "start 不在の分岐を外す"
-mutate "  if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {" "  if (false) {" && run "terminal の権威順序検査を外す"
+mutate "  if (startIngestSeq === undefined) {" "  if (false) {" && run "start 不在の分岐を外す"
+mutate "  if (compareIngestSeq(terminalEvent.ingestSeq, startIngestSeq) <= 0) {" "  if (false) {" && run "terminal の権威順序検査を外す"
+mutate "function startIngestSeqOf(pending: PendingOperation): string | undefined {
+  return declared(pending.startIngestSeq);" "function startIngestSeqOf(pending: PendingOperation): string | undefined {
+  return pending.startIngestSeq;" && run "空白の順序材料を値として読む"
+mutate "function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
+  return declared(pending.startTurnIdSource);" "function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
+  return pending.startTurnIdSource;" && run "空白の turn 種別を値として読む"
 mutate "      detail: \"terminal が start より後でない\",
       // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
       unresolved: [matched]," "      detail: \"terminal が start より後でない\",
@@ -141,8 +147,17 @@ mutate "      correlation.unresolved.length === 0 &&" "      false &&" && run "�
 mutate "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: [matched]," "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: []," && run "順序不明で候補を unknown にしない"
-mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    // eslint-disable-next-line" && run "退避で順序材料を刈らない"
-mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    const retainedIds = new Set(retained.map((p) => p.operationId));\n    for (const evictedId of evicted) if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" && run "同名が残るなら退避側の順序材料を残す"
+mutate "    startIngestSeq: event.ingestSeq,
+    startTurnIdSource: event.turnIdSource," "    startTurnIdSource: event.turnIdSource," && run "start の取り込み連番を記録しない"
+mutate "    startIngestSeq: event.ingestSeq,
+    startTurnIdSource: event.turnIdSource," "    startIngestSeq: event.ingestSeq," && run "start の turn 種別を記録しない"
+mutate "        pendingOperations: previous.state.pendingOperations.map((pending) =>
+          pending === existing
+            ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)
+            : pending," "        pendingOperations: previous.state.pendingOperations.map((pending) =>
+          pending === existing
+            ? withSourceEvent({ ...pending, correlation: recovered, startIngestSeq: event.ingestSeq }, event.eventId)
+            : pending," && run "再配送 start でも順序材料を書く"
 mutate "      operation.nativeOperationId === undefined
         ? []
         : inLineage.filter(" "      true
@@ -251,7 +266,7 @@ mutate "    !isBlank(context.activeCapabilityHash) &&" "    context.activeCapabi
 mutate "    !isBlank(context.expectedSourceAgent);" "    context.expectedSourceAgent !== \"\";" && run "空白だけの Agent 名を authority にする"
 mutate "    !isBlank(context.exactAgentVersion) &&" "    context.exactAgentVersion !== \"\" &&" && run "空白だけの exact version を authority にする"
 mutate "  assertSameScope(previous.state, terminalEvent);" "" && run "直接呼びの Agent 検査を外す"
-mutate "          const recorded = startFactsFor(previous, pending.operationId)?.turnIdSource;
+mutate "          const recorded = startTurnIdSourceOf(pending);
           return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return true;" && run "rule 2 の turn 種別の絞り込みを外す"
 mutate "          return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return recorded === terminalEvent.turnIdSource;" && run "turn 種別の材料が無い候補も落とす"
 mutate "        unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen," "        unresolved: compatibleOpen," && run "種別違いの巻き込み範囲を広げる"
@@ -323,7 +338,6 @@ mutate "        incomingNativeId !== undefined && nativeMatches.some((pending) =
 mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
 mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
 mutate "  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSource)) {" "  if (false) {" && run "turnIdSource の語彙検査を外す"
-mutate "      pending.correlation.taskLineageId === snapshot.state.taskLineageId" "      true" && run "側索引の同名判定で別 lineage も数える"
 mutate "            (declared(pending.correlation.toolName) === undefined ||
               pending.correlation.toolName === operation.operationKind)," "            pending.correlation.toolName === operation.operationKind," && run "候補の toolName を素で比べる"
 mutate "      correlation.diagnostic !== \"terminal_already_applied\"" "      true" && run "適用済みの再配送も隔離する"
@@ -343,7 +357,6 @@ mutate "            code: \"delivery_conflict\",
           },
         ].slice(0, 0),
       };" && run "放棄の配送衝突を診断に出さない"
-mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を引く"
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible: readonly PendingOperation[] = [];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible = idMatches.filter((pending) => !startConflictsWith(pending));" && run "再配送の相手を集合ごとに選ぶ"

@@ -84,19 +84,33 @@ start より小さい連番の terminal を与えて隔離されること。外�
 
 > 実装より先に書き、**落ちること**を確認してから T014 へ進む
 
-- [ ] T010 [P] [US1] `harness/continuity/reference-model.test.ts` に FR-001/FR-002 の回帰を足す — start 受理時に `startIngestSeq` と `startTurnIdSource` が `PendingOperation` に書かれること（spec Acceptance 1・2 に対応）
-- [ ] T011 [P] [US1] `harness/continuity/reference-model.test.ts` に FR-003 の回帰を足す — 同じ operation への**再配送 start** で 2 欄が**変わらない**こと（spec Acceptance 4）。遅れて届いた再配送の後、正当な terminal が順序違反で落ちないことまで見る
-- [ ] T012 [P] [US1] `harness/continuity/reference-model.test.ts` に FR-004 の回帰を足す — 2 欄を**持たない** `PendingOperation`（復元直後・旧い状態）に terminal を与えると `terminal_order_unverifiable` → `unknown` に落ちること。**材料が無いことを合格に読み替えない**
-- [ ] T013 [P] [US1] `harness/continuity/reference-model.test.ts` に SC-001 の回帰を足す — 索引を渡した場合と渡さない場合で、同じ状態・同じ event 列から**同じ判断・同じ状態**が出ること（spec Acceptance 3）
+- [X] T010 [P] [US1] `harness/continuity/reference-model.test.ts` に FR-001/FR-002 の回帰を足す — start 受理時に `startIngestSeq` と `startTurnIdSource` が `PendingOperation` に書かれること（spec Acceptance 1・2 に対応）
+- [X] T011 [P] [US1] `harness/continuity/reference-model.test.ts` に FR-003 の回帰を足す — 同じ operation への**再配送 start** で 2 欄が**変わらない**こと（spec Acceptance 4）。遅れて届いた再配送の後、正当な terminal が順序違反で落ちないことまで見る
+- [X] T012 [P] [US1] `harness/continuity/reference-model.test.ts` に FR-004 の回帰を足す — 2 欄を**持たない** `PendingOperation`（復元直後・旧い状態）に terminal を与えると `terminal_order_unverifiable` → `unknown` に落ちること。**材料が無いことを合格に読み替えない**
+- [X] T013 [P] [US1] `harness/continuity/reference-model.test.ts` に SC-001 の回帰を足す — 索引を渡した場合と渡さない場合で、同じ状態・同じ event 列から**同じ判断・同じ状態**が出ること（spec Acceptance 3）。**書き換え**: T018 で索引そのものが消えるので「渡した場合」は書けない。SC-001 の主張を「同じ id の兄弟が並ぶ状態でも、各 pending が自分の材料で判定される」として固定した（側索引の頃はここが**原理的に判別できず**、両方 `terminal_order_unverifiable` に倒すしか無かった箇所）
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] `harness/continuity/reference-model.ts` の start 受理経路で `startIngestSeq` / `startTurnIdSource` を書く。**新規 pending を作るときだけ**書き、既存 pending への再配送では触らない（FR-003）
-- [ ] T015 [US1] `harness/continuity/reference-model.ts` の §4.3 rule 1（権威順序）を `PendingOperation.startIngestSeq` から読むように付け替える。欄が無ければ従来どおり `terminal_order_unverifiable`
-- [ ] T016 [US1] `harness/continuity/reference-model.ts` の §4.3 rule 2（turn 種別の両立）を `PendingOperation.startTurnIdSource` から読むように付け替える。欄が無ければ従来どおり検査を免除
-- [ ] T017 [US1] `harness/continuity/reference-model.ts` から `startFactsFor()` を削除する。同名 pending を数えて曖昧なら材料なしに倒す分岐は、材料が要素に載った時点で発生しえない（research R-001）。**`terminal_order_unverifiable` へ倒す経路そのものは残す**（欄が無い状態のため）
-- [ ] T018 [US1] `harness/continuity/reference-model.ts` から `OperationStartFactsV1` 型と `TaskWorkStateSnapshotV1.operationStarts` を削除し、`reduceTaskWorkState` / `correlateTerminalEvent` / `finalizeAbandonedState` の引数から索引を落とす。退避時の索引同期（`operationStarts.delete(...)`）も一緒に消える
-- [ ] T019 [US1] 索引を渡していた既存の呼び出し側（テストの `new Map()` 引数を含む）を新しい signature に合わせる。**既存テストの期待値は 1 件も書き換えない**（SC-003）。書き換えが要るなら T014〜T018 のどこかで挙動を変えている
+- [X] T014 [US1] `harness/continuity/reference-model.ts` の start 受理経路で `startIngestSeq` / `startTurnIdSource` を書く。**新規 pending を作るときだけ**書き、既存 pending への再配送では触らない（FR-003）
+- [X] T015 [US1] `harness/continuity/reference-model.ts` の §4.3 rule 1（権威順序）を `PendingOperation.startIngestSeq` から読むように付け替える。欄が無ければ従来どおり `terminal_order_unverifiable`
+- [X] T016 [US1] `harness/continuity/reference-model.ts` の §4.3 rule 2（turn 種別の両立）を `PendingOperation.startTurnIdSource` から読むように付け替える。欄が無ければ従来どおり検査を免除
+- [X] T017 [US1] `harness/continuity/reference-model.ts` から `startFactsFor()` を削除する。同名 pending を数えて曖昧なら材料なしに倒す分岐は、材料が要素に載った時点で発生しえない（research R-001）。**`terminal_order_unverifiable` へ倒す経路そのものは残す**（欄が無い状態のため）
+- [X] T018 [US1] `harness/continuity/reference-model.ts` から `OperationStartFactsV1` 型と `TaskWorkStateSnapshotV1.operationStarts` を削除し、`reduceTaskWorkState` / `correlateTerminalEvent` / `finalizeAbandonedState` の引数から索引を落とす。退避時の索引同期（`operationStarts.delete(...)`）も一緒に消える
+- [X] T019 [US1] 索引を渡していた既存の呼び出し側（テストの `new Map()` 引数を含む）を新しい signature に合わせる。**既存テストの期待値は 1 件も書き換えない**（SC-003）。書き換えが要るなら T014〜T018 のどこかで挙動を変えている
+
+**T019 の逸脱（SC-003 を満たしていない 5 件）**: 「期待値を 1 件も書き換えない」は達成できなかった。書き換えたのはすべて**側索引の欠陥そのものを仕様として固定していた test** で、その欠陥を消すのが US1 の目的なので、挙動を意図せず変えた結果ではない。内訳:
+
+| test | 旧 | 新 | なぜ変わるのが正しいか |
+|---|---|---|---|
+| 自 lineage で id が衝突しているとき | `terminal_order_unverifiable` | 診断ゼロで `succeeded` | 鍵が `operationId` だったので帰属を判別できず材料なしに倒していた。要素に載れば判別が要らない |
+| 同名の兄弟が退避されたとき | 生存側も `unknown` | 生存側は `succeeded` | 退避のたび同名の材料をまとめて消していたので、**生き残った側の証跡まで失われていた** |
+| 状態側で operationId が衝突 | `["unknown","started"]` | `["succeeded","started"]` | 同上。「1 件しか閉じない」という本来の主張は保っている |
+| 同名兄弟の start facts で順序検査 | 両方 `terminal_order_unverifiable` | A の材料で A を判定（前なら `terminal_out_of_order`、後なら `succeeded`） | test 名どおり「他人の材料で検査しない」が、材料が要素に載れば**自分の材料で検査できる** |
+| 名乗っている兄弟の 2 件（互換・非互換） | 末尾で `terminal_order_unverifiable` | 診断ゼロ | 旧 test のコメント自身が「これは #35 の欠落で、この test の主題とは無関係」と書いていた残渣 |
+
+**実測（Phase 3 完了時）**: tsc clean / 294 tests（+6）/ 変異 実行 165・期待 165・生存 0 / `contract-hashes.json` は parity fixture の 1 行だけが動いた（還元器の出力が変わったので当然。**判断・診断・status は 1 件も変わらず hash だけが動いた**ことを diff で確認済み）/ `reference-model.ts` は 62 insertions・91 deletions で **29 行純減**
+
+**変異ゲートの付け替え（data-model.md §7 の先決めどおり）**: 消えた機構の変異 3 件（退避の索引同期 2 件・側索引の曖昧判定 2 件のうち生き残る形に付け替えた分）を削り、#35 の規則を守る変異 4 件（start の連番を記録しない / turn 種別を記録しない / 再配送でも順序材料を書く = FR-003 / 空白を値として読む × 2）を足した。「空白の turn 種別を値として読む」は最初 fail 0 で生存したので、rule 2 の候補が空白で落ちないことを見る test を追加して kill した
 
 **Checkpoint**: US1 が単独で成立。`tsc` / 全テスト / `mutate.sh` が緑で、**実装の行数が着手前より減っている**
 
