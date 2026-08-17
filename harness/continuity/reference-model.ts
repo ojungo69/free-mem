@@ -1361,10 +1361,15 @@ export function reduceTaskWorkState(
         // 還元器が同名の兄弟が並ぶ状態を明示的に支えているのはそのため）。id と status だけを
         // 書くと、同名・同 status の兄弟が並んでいたとき「どちらが live な集合から落ちたか」を
         // 記録から判別できず、FR-005 の監査記録がその状態でだけ意味を失う。start の event id で
-        // 区別する（`eventId` は「この記録を名指す event」の欄で、孤児では terminal の id が入る）
-        ...(declared(pending.sourceEventIds.at(0)) === undefined
+        // 区別する（`eventId` は「この記録を名指す event」の欄で、孤児では terminal の id が入る）。
+        // **start を名指すのは `correlation.startEventId`**（凍結 schema の必須欄）であって
+        // `sourceEventIds[0]` ではない。後者は append-only の provenance 配列で、schema は
+        // 先頭が start であることも順序も保証しない（実測: `startEventId` が "actual-start" でも
+        // `sourceEventIds` が ["later-event", "actual-start"] の復元状態では別の event を start
+        // として記録していた）
+        ...(declared(pending.correlation.startEventId) === undefined
           ? {}
-          : { eventId: pending.sourceEventIds[0] }),
+          : { eventId: pending.correlation.startEventId }),
         recordedAt: event.occurredAt,
         sensitivity: pending.sensitivity,
       })),

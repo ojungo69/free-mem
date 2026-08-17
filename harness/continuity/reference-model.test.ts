@@ -1487,7 +1487,11 @@ test("同名 operationId の兄弟が並んでも、落ちた側を記録から�
     ...(dropped as PendingOperation),
     // 同じ id・同じ status の兄弟。start だけが違う
     sourceEventIds: ["event-start-twin"],
-    correlation: { ...(dropped as PendingOperation).correlation, nativeOperationId: "toolu_twin" },
+    correlation: {
+      ...(dropped as PendingOperation).correlation,
+      startEventId: "event-start-twin",
+      nativeOperationId: "toolu_twin",
+    },
   };
   const snapshot = {
     ...base,
@@ -1502,7 +1506,23 @@ test("同名 operationId の兄弟が並んでも、落ちた側を記録から�
   assert.equal(record?.operationId, "op-0");
   // 生き残った双子と同じ値では特定にならない
   assert.equal(record?.eventId, "event-start");
-  assert.notEqual(record?.eventId, twin.sourceEventIds[0]);
+  assert.notEqual(record?.eventId, twin.correlation.startEventId);
+
+  // **start を名指すのは `correlation.startEventId`**。`sourceEventIds` は append-only の
+  // provenance 配列で、schema は先頭が start であることも順序も保証しない。並べ替えた状態でも
+  // 専用欄を読むこと（先頭を読むと、後から積まれた event を start として記録してしまう）
+  const reordered = {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      pendingOperations: [
+        { ...(dropped as PendingOperation), sourceEventIds: ["later-event", "event-start"] },
+        ...snapshot.state.pendingOperations.slice(1),
+      ],
+    },
+  };
+  const fromDedicated = reduceTaskWorkState(reordered, startEvent(), new Map());
+  assert.equal(fromDedicated.snapshot.state.droppedEvidence?.[0]?.eventId, "event-start");
 });
 
 test("上限超えの復元配列は、記録が重複でも刈って報告する（#43 FR-015）", () => {
@@ -1541,6 +1561,47 @@ test("上限超えの復元配列は、記録が重複でも刈って報告す�
   // 2 度目は上限に収まっているので差分ゼロ。刈りが毎回 revision を動かすと収束しない
   const again = reduceTaskWorkState(result.snapshot, terminalEvent(), result.ledger);
   assert.equal(again.snapshot.state.stateRevision, result.snapshot.state.stateRevision);
+});
+
+test("刈りで自分の記録が落ちた孤児は積み直され、収束は 2 revision かかる（#43）", () => {
+  // 上の test は重複対象を配列の**末尾**に置いている。**先頭**にあると、front trim で落ちるのは
+  // その孤児自身の記録なので、次の再送は重複ではなくなって積み直される。収束はするが 1 revision
+  // ではない——正本と evidence にはこの上限で書く（「1 度刈れば以後 no-op」は成り立たない）
+  const filler = withDroppedEvidence(emptySnapshot(), CONTINUITY_LIMITS.arrayItems);
+  const front = {
+    ...filler,
+    state: {
+      ...filler.state,
+      droppedEvidence: [
+        {
+          reason: "orphaned_terminal" as const,
+          eventId: "event-terminal",
+          terminalFingerprint: "fingerprint-terminal",
+          adapterDeliveryId: "delivery-terminal",
+          recordedAt: "2026-08-16T00:00:02Z",
+          sensitivity: "private" as const,
+        },
+        ...(filler.state.droppedEvidence ?? []),
+      ],
+    },
+  };
+  // 1 回目: 上限超えを刈る。落ちるのは先頭 = この孤児自身の記録
+  const first = reduceTaskWorkState(front, terminalEvent(), new Map());
+  assert.equal(first.snapshot.state.droppedEvidence?.length, CONTINUITY_LIMITS.arrayItems);
+  assert.equal(
+    first.snapshot.state.droppedEvidence?.some((e) => e.reason === "orphaned_terminal"),
+    false,
+  );
+  // 2 回目: 記録が無くなっているので積み直す
+  const second = reduceTaskWorkState(first.snapshot, terminalEvent(), first.ledger);
+  assert.equal(
+    second.snapshot.state.droppedEvidence?.filter((e) => e.reason === "orphaned_terminal").length,
+    1,
+  );
+  assert.notEqual(second.snapshot.state.stateRevision, first.snapshot.state.stateRevision);
+  // 3 回目でようやく差分ゼロ
+  const third = reduceTaskWorkState(second.snapshot, terminalEvent(), second.ledger);
+  assert.equal(third.snapshot.state.stateRevision, second.snapshot.state.stateRevision);
 });
 
 test("退避した operation は droppedEvidence に残る（#43 FR-005）", () => {

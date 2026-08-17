@@ -308,6 +308,8 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
 | P2-7 | data-model が「組み合わせの妥当性は runtime で検査する」と書いているが、そんな層は無い（schema の `$comment` は「検査しない」と書いている） | した | **採用（文面）**。移植先が検査を足すと参照実装が運ぶ状態を移植先だけが拒否して parity が崩れる、という理由まで書いた |
 | C-blocking-3 | 配送鍵を第一 authority にした結果、**同一配送鍵・指紋違い**の 2 通目が黙って重複扱いになり、`delivery_conflict` が消えた | した（診断は `terminal_orphaned` のみ、保存指紋は初回値のまま） | **採用**。件数が 1 に収束することは満たしていたが、整合性検査まで消していた。記録済みの鍵から指紋も引ける形にし、鍵一致・指紋違いは記録も状態も鍵も動かさず `delivery_conflict` を出す。どちらかが指紋を名乗っていなければ発動しない（FR-012 と同じ） |
 | C-advisory-4 | data-model の欄表に `terminalFingerprint` / `adapterDeliveryId` が無く、`reason` ごとの説明も古い | した | **採用（文面）**。2 つの鍵・§8.2 の優先順位と keyspace 分離・corruption の扱いまで書いた |
+| C-blocking-4 | 退避記録の start を `sourceEventIds[0]` から取っているが、start を名指す正本は `correlation.startEventId`（凍結 schema の必須欄） | した（`startEventId="actual-start"`・`sourceEventIds=["later-event","actual-start"]` の復元状態で別 event を start として記録） | **採用**。`sourceEventIds` は append-only の provenance 配列で、schema は先頭が start であることも順序も保証しない。**自分が追加した test も `sourceEventIds` しか変えておらず、誤った authority を固定していた**（`correlation.startEventId` も変える形に直し、並べ替えた状態で専用欄を読むことを別途固定した） |
+| C-advisory-5 | 上限修復の収束は、重複孤児が配列**先頭**にあると 1 revision では終わらない | した（1 回目が孤児ごと刈り、2 回目が再記録、3 回目で差分ゼロ） | **採用（文面 + 回帰）**。正本と evidence を「最大 2 revision で収束」に狭め、先頭配置の回帰 test を足した。既知の「上限をまたぐと再び足されうる」と同じ境界 |
 
 `ponytail-review`: 実装差分は条件 1 つとコメントのみで削るものなし。test 側の 300 周ループは
 「鍵の選択による増幅ではない」ことを示すのに 256 件の飽和を跨ぐ必要があるので残す。
