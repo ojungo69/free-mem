@@ -924,7 +924,8 @@ export function reduceTaskWorkState(
     // `startConflictsWith` は `startFactsFor`（`pendingOperations` の線形走査）を呼ぶので、
     // 両集合が上限 256 件のとき無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので
     // 上で決めた連結順はそのまま残る
-    const existing = preferCompatible([...new Set([...idMatches, ...nativeMatches])]);
+    const siblings = [...new Set([...idMatches, ...nativeMatches])];
+    const existing = preferCompatible(siblings);
     const startConflict = existing !== undefined && startConflictsWith(existing);
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
@@ -978,7 +979,7 @@ export function reduceTaskWorkState(
       // 消費せず還元器は純関数なので永久に収束しない）が、そのままだと**衝突していた兄弟が
       // 誰にも報告されずに枠を占め続ける**。この状態はコード自身が「再配送ではなく corruption」と
       // 呼んでいるもので、黙って間引かない規則どおり診断に出す
-      const conflictingSiblings = [...new Set([...idMatches, ...nativeMatches])]
+      const conflictingSiblings = siblings
         .filter((pending) => pending !== existing && startConflictsWith(pending))
         .map((pending) => pending.operationId);
       const duplicateDiagnostic: ContinuityDiagnosticV1 = {
