@@ -277,6 +277,25 @@ function isBlank(value: string): boolean {
 }
 
 /**
+ * 凍結 `OperationCorrelationV1` の任意欄は `maxLength` しか課さないので、**復元した checkpoint や
+ * 別実装が書いた状態は schema 妥当なまま空白の欄を持ちうる**。任意欄に対して空白は `isBlank` の
+ * docstring どおり「値が無い」と同じなので、両方 present ガードは空白を「主張していない」として
+ * 読む。素で `!== undefined` を見ると空白が「present で、しかも食い違う値」になり、健全な
+ * terminal / 再配送が**毎回同じ隔離に落ちる**（還元器は純関数なので決定論的な無限再送。実測:
+ * `toolName: ""` の pending は `terminal_orphaned`、`canonicalInputHash: ""` は `terminal_conflict`、
+ * 再配送 start は `start_conflict`。いずれも配送鍵を消費しないので訂正版も届かない）。
+ *
+ * **event 側の任意欄には空白が来ない**（`assertOperationFields` と `assertTurnIdentity` が落とす）。
+ * それでも両側に適用するのは、どちらが状態側かを呼び出しごとに覚えなくてよくするため。
+ *
+ * required 欄には使わない。そちらは空白を**拒否**する（`assertIdentityMaterial` / `assertSameScope`）。
+ * 「主張していない」で通すと scope が定まらないまま照合が進むので、扱いが逆になる。
+ */
+function declared(value: string | undefined): string | undefined {
+  return value === undefined || isBlank(value) ? undefined : value;
+}
+
+/**
  * `IsoTimestamp` の pattern は成分の範囲（月 01-12・日 01-31・秒 00-59・`Z` 固定）までしか
  * 書けず、**暦としての実在**は表せない。`2026-02-30T00:00:00Z` も `2027-02-29T00:00:00Z` も
  * 通り、`new Date()` は例外を投げずに翌月へ繰り上げる（#27）。
@@ -286,6 +305,12 @@ function isBlank(value: string): boolean {
  * そのまま入る欄なので、綴りとして受理した以上は指す瞬間も一意でなければならない。
  *
  * `toISOString()` と秒までを突き合わせるのは、繰り上がりが必ず綴りを変えるため。
+ *
+ * **切り落とす幅が 19 なのは移植性のため**で、挙動の差ではない。pattern を先に当てているので
+ * 時分秒は既に範囲内（`HH` は 23 まで）で、繰り上がるのは日付だけ。よって `slice(0, 10)` にしても
+ * **どの入力でも結果は変わらず、変異として test では区別できない**。それでも 19 にするのは、
+ * `slice(0, 19) + "Z"` が ECMA-262 の date-time 形式そのものなのに対し、`slice(0, 10) + "Z"` は
+ * 仕様に無い綴りで parse が実装依存になるため（小数秒の桁数と同じ理由）。
  *
  * **秒精度に切り落としてから parse する**。ECMA-262 が定める書式の小数部は 3 桁ちょうどで、
  * それより多い桁の扱いは実装依存（V8 は切り捨てるが仕様上の保証ではない）。値をそのまま
@@ -364,8 +389,18 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   if (isBlank(event.sourceAgent)) {
     throw new Error("§3.1 違反: sourceAgent が空文字（Agent scope が定まらない）");
   }
-  if (!isRealInstant(event.occurredAt)) {
-    throw new Error(`§22.6 違反: occurredAt が暦として実在しない: ${event.occurredAt}`);
+  // 凍結 schema の `IsoTimestamp` は `$comment` で「暦としての実在は runtime validator が
+  // 受け持つ」と**型そのものに対して**約束しており、その `$def` は 20 近い欄から参照されている。
+  // event が持ち込む `IsoTimestamp` 値は `occurredAt` と受領証の `attestedAt` の 2 つなので、
+  // 両方見る。`occurredAt` だけだと約束が型より狭くなり、schema は凍結済みで `$comment` を
+  // 直せないので、狭いほうを広げる
+  for (const [field, value] of [
+    ["occurredAt", event.occurredAt],
+    ["provenance.ingestAttestation.attestedAt", event.provenance?.ingestAttestation?.attestedAt],
+  ] as const) {
+    if (value !== undefined && !isRealInstant(value)) {
+      throw new Error(`§22.6 違反: ${field} が暦として実在しない: ${value}`);
+    }
   }
 }
 
@@ -469,6 +504,16 @@ function assertSameScope(state: CanonicalWorkStateV1, event: NormalizedContinuit
   // 素通りすると無関係な task の operation が同じ scope に潰れ、terminal が他人の operation を
   // 閉じ、`session_ended` がそれを放棄できる。`turnId` と違って lineage には「不在」を表す
   // 語彙が無いので、空白は「名乗っていない」であって「同じ lineage」ではない。
+  //
+  // **状態側は throw で、隔離ではない**。同名 `operationId` の汚染を「状態全体を throw で弾く」形に
+  // しなかったのと矛盾して見えるが、壊れているものが違う: あちらは**多数ある pending の 1 件**が
+  // 汚染されていて、他の pending は健全に還元できた（1 件のために lineage 全体を殺すのが過剰
+  // だった）。こちらは **scope そのもの**が定まらない。どの event も安全に適用できないので、
+  // 残せるものが無い。隔離に倒すと「blank == blank を同じ lineage と見なす」しかなくなり、それは
+  // 無関係な task を同じ状態へ潰す fail open になる。
+  //
+  // ただし還元器は状態を作り直せないので、この throw は**復旧経路を持たない**。本来は
+  // checkpoint を読み込む境界で拒否すべきで、そこにはまだ検査点が無い（#56）。
   if (isBlank(state.taskLineageId)) {
     throw new Error("§3.1 違反: 状態の taskLineageId が空文字（lineage scope が定まらない）");
   }
@@ -547,6 +592,7 @@ export type ContinuityDiagnosticCode =
   | "terminal_already_applied"
   | "terminal_evidence_contradicts"
   | "duplicate_operation_start"
+  | "start_sibling_conflict"
   | "start_conflict"
   | "delivery_conflict"
   | "pending_operations_evicted"
@@ -797,8 +843,8 @@ export function reduceTaskWorkState(
           // 閉じられず `terminal_unmatched` で `unknown` に倒れる。`turnId` は
           // `OperationCorrelationV1` の required に無く、`turnIdSource: unavailable` では正当に
           // 不在なので、兄弟の任意欄と同じく両方 present のときだけ比べる
-          (existing.correlation.turnId !== undefined &&
-            event.turnId !== undefined &&
+          (declared(existing.correlation.turnId) !== undefined &&
+            declared(event.turnId) !== undefined &&
             existing.correlation.turnId !== event.turnId) ||
           // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、凍結
           // `OperationCorrelationV1` の外（`operationStarts`・#35）にしか無いので、上の `turnId` の
@@ -825,16 +871,16 @@ export function reduceTaskWorkState(
           // `toolName` は凍結 schema の required に無いので、checkpoint から復元した状態や
           // 別実装が書いた状態では schema 妥当なまま欠けうる。素で比べると健全な再配送が
           // 永久に隔離されるので、兄弟の 2 つと同じく両方 present のときだけ比べる
-          (existing.correlation.toolName !== undefined &&
+          (declared(existing.correlation.toolName) !== undefined &&
             existing.correlation.toolName !== operation.operationKind) ||
           // 上の検索が operationId 一致で当たった場合、nativeOperationId は一度も比べていない。
           // 同じ eventId・matchKey で native ID だけ違う start を重複として台帳に入れると、
           // 同じく訂正版を戻せなくなる（native ID 一致で当たった場合はここは常に等しい）
-          (existing.correlation.nativeOperationId !== undefined &&
-            operation.nativeOperationId !== undefined &&
+          (declared(existing.correlation.nativeOperationId) !== undefined &&
+            declared(operation.nativeOperationId) !== undefined &&
             existing.correlation.nativeOperationId !== operation.nativeOperationId) ||
-          (existing.correlation.canonicalInputHash !== undefined &&
-            operation.canonicalInputHash !== undefined &&
+          (declared(existing.correlation.canonicalInputHash) !== undefined &&
+            declared(operation.canonicalInputHash) !== undefined &&
             existing.correlation.canonicalInputHash !== operation.canonicalInputHash)
       );
     };
@@ -855,8 +901,13 @@ export function reduceTaskWorkState(
     // 非空でありさえすれば中身が全件衝突していても `nativeMatches` が評価されない。derived id
     // 側に衝突する兄弟、native id 側に identity 完全一致の兄弟が並ぶ状態では、健全な再配送が
     // `start_conflict` で隔離される。隔離は鍵を消費せず還元器は純関数なので永久に収束しない。
-    // 連結順は `idMatches` を先にして、両集合とも全件衝突のときの衝突の証拠を従来と揃える
-    const existing = preferCompatible([...idMatches, ...nativeMatches]);
+    // 連結順は `idMatches` を先にして、両集合とも全件衝突のときの衝突の証拠を従来と揃える。
+    // **`Set` で重複を落とす**。derived id と native id の両方で当たる兄弟は 2 つの集合に入るので、
+    // 素で連結すると `preferCompatible` がその要素に対して `startConflictsWith` を 2 回走らせる。
+    // `startConflictsWith` は `startFactsFor`（`pendingOperations` の線形走査）を呼ぶので、
+    // 両集合が上限 256 件のとき無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので
+    // 上で決めた連結順はそのまま残る
+    const existing = preferCompatible([...new Set([...idMatches, ...nativeMatches])]);
     const startConflict = existing !== undefined && startConflictsWith(existing);
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
@@ -884,9 +935,12 @@ export function reduceTaskWorkState(
       // `{ nativeOperationId: undefined }` を残すと状態 hash の計算で例外になる
       const recovered = withoutUndefined<OperationCorrelationV1>({
         ...existing.correlation,
-        nativeOperationId: existing.correlation.nativeOperationId ?? operation.nativeOperationId,
-        canonicalInputHash: existing.correlation.canonicalInputHash ?? operation.canonicalInputHash,
-        toolName: existing.correlation.toolName ?? operation.operationKind,
+        // `??` でなく `declared()` で見る。空白の任意欄は「値が無い」なので埋める対象だが、
+        // `"" ?? x` は `""` のままで一生埋まらない（実測: 空白の nativeOperationId を持つ pending は
+        // 埋め直されず、その native id を名乗る terminal が rule 1 で候補ゼロになり続けた）
+        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? operation.nativeOperationId,
+        canonicalInputHash: declared(existing.correlation.canonicalInputHash) ?? operation.canonicalInputHash,
+        toolName: declared(existing.correlation.toolName) ?? operation.operationKind,
       });
       // **原因 event を operation に残す**。この経路は配送鍵を消費して revision も進めるのに、
       // 状態を変える他の経路（照合できた terminal / `unknown` に倒した候補 / 放棄）が全部
@@ -898,7 +952,18 @@ export function reduceTaskWorkState(
       // 達している**場合は本当に記録できないので、他の 3 経路（照合できた terminal /
       // `unknown` に倒した候補 / 放棄）と同じく診断に出す。この経路だけ対を付けておらず、
       // revision と配送鍵は消費されるのに「provenance は残らなかった」が呼び出し側に届かなかった
-      const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([existing]), event.eventId);
+      // 相手は 1 件しか無いので、`pendingOperations` を走査して集合で絞り直さない。
+      // 走査すると計算量が増えるだけでなく、**対象集合を広げる変異が test をすり抜ける**
+      // （実測: 全 pending を対象にしても緑のままだった。この event が書きに行っていない
+      // operation について provenance の欠落を報告する = 嘘の診断）
+      const truncated = sourceEventLost(existing, event.eventId) ? [existing.operationId] : [];
+      // **飛ばした衝突兄弟を名乗る**。互換な相手が居るなら隔離しないのが正しい（隔離は鍵を
+      // 消費せず還元器は純関数なので永久に収束しない）が、そのままだと**衝突していた兄弟が
+      // 誰にも報告されずに枠を占め続ける**。この状態はコード自身が「再配送ではなく corruption」と
+      // 呼んでいるもので、黙って間引かない規則どおり診断に出す
+      const conflictingSiblings = [...new Set([...idMatches, ...nativeMatches])]
+        .filter((pending) => pending !== existing && startConflictsWith(pending))
+        .map((pending) => pending.operationId);
       const duplicateDiagnostic: ContinuityDiagnosticV1 = {
         code: "duplicate_operation_start",
         eventId: event.eventId,
@@ -910,10 +975,19 @@ export function reduceTaskWorkState(
             ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)
             : pending,
         ),
-        diagnostics:
-          truncated.length === 0
-            ? [duplicateDiagnostic]
-            : [duplicateDiagnostic, truncationDiagnostic(event, truncated)],
+        diagnostics: [
+          duplicateDiagnostic,
+          ...(conflictingSiblings.length === 0
+            ? []
+            : [
+                {
+                  code: "start_sibling_conflict" as const,
+                  eventId: event.eventId,
+                  detail: `同じ identity を名乗るが内容が食い違う兄弟を飛ばした: ${conflictingSiblings.join(", ")}`,
+                },
+              ]),
+          ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)]),
+        ],
         // 再配送された start で operationStarts を埋めない。§6.4 の `ingestSeq` は event store が
         // 採番する watermark なので、再配送 event が運ぶのは再配送時の取り込み位置であって
         // 元の start の権威順序ではない。埋めると低い値を名乗る偽 start で unknown を succeeded に
@@ -1133,6 +1207,22 @@ function withSourceEvent(pending: PendingOperation, eventId: string): PendingOpe
   return { ...pending, sourceEventIds: [...pending.sourceEventIds, eventId] };
 }
 
+/**
+ * `withSourceEvent` が**記録できなかった**か。あちらは「既に記録済みなら何もしない」を先に
+ * 見るので、上限に達していても**その event は失われていない**。長さだけで判定すると、何も
+ * 失っていないのに `source_events_truncated` が出る（診断文は「この event を記録できない」と
+ * event について断言する形なので、本当に記録できなかった場合と区別がつかなくなる）。
+ *
+ * `withSourceEvent` と**同じ 2 条件を 1 箇所に置く**。片方だけ直す形は一度やっていて、
+ * 記録済みの再配送に truncation を報告していた
+ */
+function sourceEventLost(pending: PendingOperation, eventId: string): boolean {
+  return (
+    !pending.sourceEventIds.includes(eventId) &&
+    pending.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems
+  );
+}
+
 // 対象は `operationId` ではなく **object 参照**で受け取る。状態側で `operationId` が重複して
 // いるとき（凍結 schema は一意性を要求しない）、id で当てると無関係な operation まで数える
 function sourceEventsFull(
@@ -1141,13 +1231,7 @@ function sourceEventsFull(
   eventId: string,
 ): string[] {
   return pending
-    .filter((candidate) => targets.has(candidate))
-    // `withSourceEvent` の判定と揃える。あちらは「既に記録済みなら何もしない」を先に見るので、
-    // 上限に達していても**その event は失われていない**。長さだけで判定すると、何も失って
-    // いないのに `source_events_truncated` が出る（診断文は「この event を記録できない」と
-    // event について断言する形なので、本当に記録できなかった場合と区別がつかなくなる）
-    .filter((candidate) => !candidate.sourceEventIds.includes(eventId))
-    .filter((candidate) => candidate.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems)
+    .filter((candidate) => targets.has(candidate) && sourceEventLost(candidate, eventId))
     .map((candidate) => candidate.operationId);
 }
 
@@ -1301,17 +1385,23 @@ export function correlateTerminalEvent(
     );
   }
   assertTurnIdentity(terminalEvent);
-  // 候補の絞り込みは session と lineage しか見ない（状態は Agent を 1 つしか持たないので、
-  // 状態と event の Agent はここで突き合わせるしかない）。還元器は同じ検査を入口でしているが、
-  // 直接呼びで飛ばすと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを
-  // 適用してしまう
-  assertSameScope(previous.state, terminalEvent);
+  // **3 つの入口で検査順を揃える**（envelope → turn → identity 材料 → ingestSeq → scope）。
+  // 揃っていないと、複数の違反を同時に持つ 1 つの event が入口ごとに違う節で落ちる（実測:
+  // 空白 lineage と実在しない occurredAt を両方持つ event は、還元器と放棄では §22.6、
+  // 直接呼びでは §3.1 と報告されていた）。`rejected-events.json` は case ごとに 1 つの節を
+  // 宣言して TS / Rust のパリティ基準にしているので、順序が割れると移植側は同じ fixture を
+  // 満たしたまま違う分類をする
   // identity 材料も入口で見る。`assertSameScope` は lineage と Agent しか束縛せず、候補の
   // 絞り込みは `sessionId` の等値だけを見るので、空白の `sessionId` を持つ terminal は
   // 同じく空白の `sessionId` を持つ pending（復元した checkpoint や別実装が書いた状態。
   // 凍結 schema に minLength は無い）と一致してしまう。空白同士は「同じ session」ではなく
   // 「どちらも session を名乗っていない」なので、event 側をここで落とす
   assertIdentityMaterial(terminalEvent);
+  // 候補の絞り込みは session と lineage しか見ない（状態は Agent を 1 つしか持たないので、
+  // 状態と event の Agent はここで突き合わせるしかない）。還元器は同じ検査を入口でしているが、
+  // 直接呼びで飛ばすと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを
+  // 適用してしまう
+  assertSameScope(previous.state, terminalEvent);
   // §22.6 の decimal string 制約も入口で見る。`compareIngestSeq` は start を選んだ後の順序比較
   // でしか走らないので、候補ゼロ・適用済み・曖昧・照合不能で早期 return する経路では検査され
   // ない。還元器は入口で落とすのに直接呼びだけが `terminal_orphaned` という「照合できなかった
@@ -1358,7 +1448,7 @@ export function correlateTerminalEvent(
             // 収束しない**（実測: `toolName` を消すだけで `succeeded` が `terminal_orphaned` に
             // 変わった）。§4.3 の matchKey は tool 名を入力に含むので、仕様どおりに導出する
             // adapter では matchKey 一致が既に kind を束縛している
-            (pending.correlation.toolName === undefined ||
+            (declared(pending.correlation.toolName) === undefined ||
               pending.correlation.toolName === operation.operationKind),
         );
   const rule = byNativeId.length > 0 ? "native_operation_id" : "match_key";
@@ -1394,10 +1484,10 @@ export function correlateTerminalEvent(
   // 欠けうる。素で比べると健全な terminal が永久に隔離され、台帳にも入らないので
   // adapter は無限再送になる。兄弟の `canonicalInputHash` と同じく両方 present のときだけ比べる
   const identityConflicts = (pending: PendingOperation): boolean =>
-    (pending.correlation.toolName !== undefined &&
+    (declared(pending.correlation.toolName) !== undefined &&
       pending.correlation.toolName !== operation.operationKind) ||
-    (pending.correlation.canonicalInputHash !== undefined &&
-      operation.canonicalInputHash !== undefined &&
+    (declared(pending.correlation.canonicalInputHash) !== undefined &&
+      declared(operation.canonicalInputHash) !== undefined &&
       pending.correlation.canonicalInputHash !== operation.canonicalInputHash);
   // 記録側が持つ identity 材料を terminal が省いているのは「衝突しない」ではなく「照合できない」。
   // 上の両方 present ガードは復元耐性のためにあるが、そのままだと `canonicalInputHash` を
@@ -1406,7 +1496,8 @@ export function correlateTerminalEvent(
   // `unknown` に倒す。`toolName` 側に対称のものが要らないのは、`operationKind` が envelope の
   // 必須欄で空も許さない（`assertOperationFields`）ので terminal から省けないため
   const identityUnverifiable = (pending: PendingOperation): boolean =>
-    pending.correlation.canonicalInputHash !== undefined && operation.canonicalInputHash === undefined;
+    declared(pending.correlation.canonicalInputHash) !== undefined &&
+    declared(operation.canonicalInputHash) === undefined;
   // ただしこれが実害になるのは、この terminal が付きうる候補が 2 件以上あるときだけ。
   // 1 件しか残っていないなら省略で付け替えられる相手が居ないので、§4.3 の照合権限
   // （rule 1 = nativeOperationId、rule 2 = matchKey + 互換な turn/kind）が既に相手を

@@ -882,7 +882,11 @@ test("同名 operationId の兄弟でも、配列順で再配送の結果が変�
     };
     const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
     assert.equal(result.outcome, "applied");
-    assert.deepEqual(result.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+    // 飛ばした衝突兄弟は診断に出る。隔離しないのが正しいが、黙って枠を占めさせない
+    assert.deepEqual(result.diagnostics.map((d) => d.code), [
+      "duplicate_operation_start",
+      "start_sibling_conflict",
+    ]);
   }
 });
 
@@ -910,30 +914,54 @@ test("再配送の相手は derived id と native id の集合をまたいで選
   };
   const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
   assert.equal(result.outcome, "applied");
-  assert.deepEqual(result.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
-  // 埋まったのは互換な兄弟のほう。衝突する兄弟は触られない
+  assert.deepEqual(result.diagnostics.map((d) => d.code), [
+    "duplicate_operation_start",
+    "start_sibling_conflict",
+  ]);
+  // 埋まったのは互換な兄弟のほう。衝突する兄弟は触られないが、名指しで診断に出る
   assert.equal(
     result.diagnostics[0]?.detail?.includes("op-native-twin"),
     true,
     JSON.stringify(result.diagnostics),
   );
+  assert.equal(
+    result.diagnostics[1]?.detail?.includes(conflicting.operationId),
+    true,
+    JSON.stringify(result.diagnostics),
+  );
 
-  // 締めすぎていないことを保持側でも固定する。両集合とも全件衝突なら従来どおり隔離し、
-  // 衝突の証拠は derived id 側の先頭を名乗る（連結順を idMatches 先頭にしている理由）
+  // 締めすぎていないことを保持側でも固定する。両集合とも全件衝突なら従来どおり隔離する。
+  // **連結順が効く配置にする**: native id 側の先頭を derived id の兄弟と別要素にしておくと、
+  // `[...idMatches, ...nativeMatches]` は derived 側を、`[...nativeMatches, ...idMatches]` は
+  // native 側を衝突の証拠に選ぶ。両方の集合で先頭が同じ要素だと、どちらの順でも同じ答えになり
+  // **連結順を入れ替える変異が生き残る**（実測で生存を確認してからこの配置に直した）
+  const nativeOnlyConflicting: PendingOperation = {
+    ...template,
+    operationId: "op-native-only",
+    correlation: {
+      ...template.correlation,
+      operationId: "op-native-only",
+      canonicalInputHash: "input-hash-ALSO-OTHER",
+    },
+  };
   const bothConflict: TaskWorkStateSnapshotV1 = {
     ...snapshot,
-    state: {
-      ...base.state,
-      pendingOperations: [
-        conflicting,
-        { ...compatible, correlation: { ...compatible.correlation, canonicalInputHash: "input-hash-ALSO-OTHER" } },
-      ],
-    },
+    // 配列は native 専用の兄弟が先頭。derived id で当たるのは 2 番目の `conflicting` だけ
+    state: { ...base.state, pendingOperations: [nativeOnlyConflicting, conflicting] },
   };
   const quarantined = reduceTaskWorkState(bothConflict, startEvent(), new Map());
   assert.equal(quarantined.outcome, "quarantined");
   assert.deepEqual(quarantined.diagnostics.map((d) => d.code), ["start_conflict"]);
-  assert.equal(quarantined.diagnostics[0]?.detail?.includes(conflicting.operationId), true);
+  assert.equal(
+    quarantined.diagnostics[0]?.detail?.includes(conflicting.operationId),
+    true,
+    `derived id 側を証拠に選んでいない: ${quarantined.diagnostics[0]?.detail}`,
+  );
+  assert.equal(
+    quarantined.diagnostics[0]?.detail?.includes("op-native-only"),
+    false,
+    "native id 側を証拠に選んでいる（連結順が逆）",
+  );
 });
 
 test("再配送 start も provenance を記録できなかったことを診断に出す", () => {
@@ -1861,11 +1889,16 @@ test("negative fixture は宣言した層で落ちる", () => {
     assert.deepEqual(issues, [], testCase.name);
     if (testCase.rejectedBy === "runtime") {
       // runtime 層が受け持つ不変条件は §3.1（identity / envelope）と §22.6（timestamp の実在、#27）の
-      // 2 節にまたがる。どちらの節かまで見るのは、「throw さえすれば緑」で別の理由の失敗を
-      // 取り違えないため
+      // 2 節にまたがる。**節は case ごとに fixture の `reason` から取る**。全 case へ和集合の
+      // `/§(3\.1|22\.6) 違反/` を当てると、どの case もどちらの節でも緑になり、fixture が case ごとに
+      // 節を宣言している唯一の場所（`reason`）を test が一度も読まない。実測でそうなっていた:
+      // §22.6 の case の occurredAt を実在する日付に戻して別の理由で落ちるようにしても緑のままで、
+      // §22.6 の runtime 強制が negative fixture の被覆から丸ごと消えていた
+      const section = /^§([\d.]+)/.exec(testCase.reason)?.[1];
+      assert.notEqual(section, undefined, `fixture の reason が節で始まっていない: ${testCase.name}`);
       assert.throws(
         () => reduceTaskWorkState(emptySnapshot(), asStamped(testCase.event), new Map()),
-        /§(3\.1|22\.6) 違反/,
+        new RegExp(`§${section?.replace(".", "\\.")} 違反`),
         testCase.name,
       );
       continue;
@@ -2721,6 +2754,31 @@ test("既に記録済みの event で source_events_truncated を出さない", 
     new Map(),
   );
   assert.deepEqual(truncated.diagnostics.map((d) => d.code), ["source_events_truncated"]);
+  // **この event が書きに行っていない operation を巻き込まない**。上限に達した無関係な
+  // pending を 1 件足しても、診断が名乗るのは照合された相手だけ。1 件しか置かない fixture だと
+  // 対象集合を「全 pending」へ広げる変異が緑のまま通る（実測で確認してからこの 1 件を足した）
+  const bystander: PendingOperation = {
+    ...pending,
+    operationId: "op-bystander",
+    correlation: {
+      ...pending.correlation,
+      operationId: "op-bystander",
+      operationMatchKey: "match-key-bystander",
+      nativeOperationId: "toolu_bystander",
+    },
+    sourceEventIds: Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, index) => `other-${index}`),
+  };
+  const withBystander = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [otherIds, bystander] } },
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(withBystander.diagnostics.map((d) => d.code), ["source_events_truncated"]);
+  assert.equal(
+    withBystander.diagnostics[0]?.detail?.includes("op-bystander"),
+    false,
+    `書きに行っていない operation を名乗っている: ${withBystander.diagnostics[0]?.detail}`,
+  );
 });
 
 test("記録できる候補が 1 件も無い terminal は、兄弟の有無に関わらず鍵を残す", () => {
@@ -3121,7 +3179,10 @@ test("同じ native id の兄弟が並んでも identity が一致する側へ�
     new Map(),
   );
   assert.equal(redelivered.outcome, "applied");
-  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), [
+    "duplicate_operation_start",
+    "start_sibling_conflict",
+  ]);
   // 二重に積まない
   assert.equal(redelivered.snapshot.state.pendingOperations.length, 2);
 });
@@ -3766,4 +3827,106 @@ test("turn 種別の材料が無い候補は種別違いとして落とさない
   if (result.matched !== null) assert.fail("材料が無いのに閉じた");
   assert.equal(result.diagnostic, "terminal_ambiguous");
   assert.equal(result.unresolved.length, 2);
+});
+
+/**
+ * 凍結 `OperationCorrelationV1` の任意欄は `maxLength` しか課さないので、復元した checkpoint や
+ * 別実装が書いた状態は schema 妥当なまま空白の欄を持ちうる。空白を「present で食い違う値」と
+ * 読むと、還元器は純関数なので**毎回同じ隔離**になり、しかも配送鍵を消費しないので訂正版も
+ * 届かない（決定論的な無限再送）。任意欄の空白は「主張していない」として扱う。
+ */
+function pendingWithBlank(field: "toolName" | "canonicalInputHash" | "nativeOperationId" | "turnId", blank: string) {
+  const base = startedSnapshot();
+  const pending = base.state.pendingOperations[0] as PendingOperation;
+  return {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [{ ...pending, correlation: { ...pending.correlation, [field]: blank } }],
+    },
+  };
+}
+
+for (const blank of ["", " "]) {
+  test(`空白の toolName を持つ pending でも rule 2 の terminal が閉じる（${JSON.stringify(blank)}）`, () => {
+    const start = startEvent({ operation: { phase: "start", operationMatchKey: "match-key-1", operationKind: "Bash" } });
+    const base = startedSnapshot(start);
+    const pending = base.state.pendingOperations[0] as PendingOperation;
+    const snapshot = {
+      ...base,
+      state: {
+        ...base.state,
+        pendingOperations: [{ ...pending, correlation: { ...pending.correlation, toolName: blank } }],
+      },
+    };
+    const terminal = terminalEvent({
+      operation: { phase: "terminal", operationMatchKey: "match-key-1", operationKind: "Bash" },
+    });
+    const result = reduceTaskWorkState(snapshot, terminal, new Map());
+    assert.equal(result.outcome, "applied");
+    assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  });
+
+  test(`空白の canonicalInputHash を持つ pending は terminal_conflict にしない（${JSON.stringify(blank)}）`, () => {
+    const snapshot = pendingWithBlank("canonicalInputHash", blank);
+    const result = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+    assert.equal(result.outcome, "applied");
+    assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded");
+    assert.deepEqual(result.diagnostics, []);
+  });
+
+  test(`空白の任意欄を持つ pending への再配送 start は隔離せず埋め直す（${JSON.stringify(blank)}）`, () => {
+    // 台帳だけ失った復元。`"" ?? x` は `""` のままなので、`??` で埋めていると一生埋まらない
+    for (const field of ["nativeOperationId", "canonicalInputHash", "toolName"] as const) {
+      const snapshot = pendingWithBlank(field, blank);
+      const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+      assert.equal(result.outcome, "applied", `${field}: ${result.outcome}`);
+      assert.deepEqual(
+        result.diagnostics.map((d) => d.code),
+        ["duplicate_operation_start"],
+        field,
+      );
+      const filled = result.snapshot.state.pendingOperations[0]?.correlation;
+      assert.notEqual(filled?.[field], blank, `${field} が空白のまま残った`);
+    }
+  });
+
+  test(`空白の turnId を持つ pending への再配送 start は start_conflict にしない（${JSON.stringify(blank)}）`, () => {
+    const snapshot = pendingWithBlank("turnId", blank);
+    const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+    assert.equal(result.outcome, "applied");
+    assert.deepEqual(
+      result.diagnostics.map((d) => d.code),
+      ["duplicate_operation_start"],
+    );
+  });
+}
+
+test("空白でない任意欄の食い違いは今までどおり衝突として落とす", () => {
+  // 締めすぎの逆方向。空白を通す変更が「任意欄の検査そのもの」を殺していないことを固定する
+  const snapshot = pendingWithBlank("canonicalInputHash", "input-hash-OTHER");
+  const result = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+});
+
+test("受領証の attestedAt も暦検査を受ける（凍結 $comment は IsoTimestamp 型に対する約束）", () => {
+  // 凍結 schema の `IsoTimestamp` の `$comment` は「暦としての実在は runtime validator が
+  // 受け持つ」と型そのものに対して書いており、`$def` は 20 近い欄から参照されている。
+  // event が持ち込む IsoTimestamp は occurredAt と attestedAt の 2 つ
+  const bad = startEvent({
+    provenance: {
+      ...startEvent().provenance,
+      ingestAttestation: { ...ATTESTATION, attestedAt: "2026-02-30T00:00:00Z" },
+    },
+  });
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), bad, new Map()),
+    /attestedAt が暦として実在しない/,
+  );
+  // 締めすぎていないことも固定する
+  assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent(), new Map()).outcome, "applied");
 });

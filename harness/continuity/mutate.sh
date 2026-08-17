@@ -185,9 +185,9 @@ mutate "  if (
     (operation.nativeOperationId !== undefined && isBlank(operation.nativeOperationId)) ||
     (operation.canonicalInputHash !== undefined && isBlank(operation.canonicalInputHash))
   ) {" "  if (false) {" && run "空文字の任意欄を素通しする"
-mutate "          (existing.correlation.toolName !== undefined &&
+mutate "          (declared(existing.correlation.toolName) !== undefined &&
             existing.correlation.toolName !== operation.operationKind) ||" "          false ||" && run "start の operationKind 比較を外す"
-mutate "          (existing.correlation.toolName !== undefined &&
+mutate "          (declared(existing.correlation.toolName) !== undefined &&
             existing.correlation.toolName !== operation.operationKind) ||" "          (existing.correlation.toolName !== operation.operationKind) ||" && run "start の toolName 存在ガードを外す"
 mutate "  if (!ABANDONMENT_EVENT_KINDS.has(event.kind)) {" "  if (false) {" && run "放棄 kind の制限を外す"
 mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
@@ -201,12 +201,12 @@ mutate "    if (operation !== undefined) {
       assertOperationFields(operation);
     }
     return;" "    return;" && run "adapter 固有 kind の欄検査を外す"
-mutate "          (existing.correlation.nativeOperationId !== undefined &&
-            operation.nativeOperationId !== undefined &&
+mutate "          (declared(existing.correlation.nativeOperationId) !== undefined &&
+            declared(operation.nativeOperationId) !== undefined &&
             existing.correlation.nativeOperationId !== operation.nativeOperationId) ||" "          false ||" && run "start の nativeOperationId 比較を外す"
-mutate "    (pending.correlation.toolName !== undefined &&
+mutate "    (declared(pending.correlation.toolName) !== undefined &&
       pending.correlation.toolName !== operation.operationKind) ||" "    false ||" && run "terminal の operationKind 比較を外す"
-mutate "    (pending.correlation.toolName !== undefined &&
+mutate "    (declared(pending.correlation.toolName) !== undefined &&
       pending.correlation.toolName !== operation.operationKind) ||" "    (pending.correlation.toolName !== operation.operationKind) ||" && run "terminal の toolName 存在ガードを外す"
 mutate "    if (applied.sourceHash !== undefined && incoming !== undefined && applied.sourceHash !== incoming) {
       // 診断も還元器側と同じものを出す。" "    if (false) {
@@ -226,15 +226,16 @@ mutate "  return /^[\\s\\p{Cf}]*\$/u.test(value);" "  return value === \"\";" &&
 mutate "  return /^[\\s\\p{Cf}]*\$/u.test(value);" "  return /^\\s*\$/u.test(value);" && run "書式制御文字だけの identity 材料を通す"
 mutate "  if (isBlank(operation.operationMatchKey) || isBlank(operation.operationKind)) {" "  if (false) {" && run "空の operationMatchKey / operationKind を素通しする"
 mutate "  const sameTurn = sameTurnOf(compatible);" "  const sameTurn = sameTurnOf(candidates);" && run "open の選択を identity 互換に絞らない"
-mutate "    pending.correlation.canonicalInputHash !== undefined && operation.canonicalInputHash === undefined;" "    false;" && run "canonicalInputHash の省略を照合可能として扱う"
+mutate "    declared(pending.correlation.canonicalInputHash) !== undefined &&
+    declared(operation.canonicalInputHash) === undefined;" "    false;" && run "canonicalInputHash の省略を照合可能として扱う"
 mutate "        existing.correlation.sessionId !== event.sessionId ||" "        false ||" && run "再配送 start の session 検査を外す"
 mutate "    diagnostics: truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)]," "    diagnostics: []," && run "放棄で落とした証跡を報告しない"
 mutate "  assertOperationEnvelope(terminalEvent);" "" && run "直接呼びの envelope 検査を外す"
-mutate "          (existing.correlation.turnId !== undefined &&
-            event.turnId !== undefined &&
+mutate "          (declared(existing.correlation.turnId) !== undefined &&
+            declared(event.turnId) !== undefined &&
             existing.correlation.turnId !== event.turnId) ||" "          false ||" && run "再配送 start の turn 検査を外す"
-mutate "          (existing.correlation.turnId !== undefined &&
-            event.turnId !== undefined &&
+mutate "          (declared(existing.correlation.turnId) !== undefined &&
+            declared(event.turnId) !== undefined &&
             existing.correlation.turnId !== event.turnId) ||" "          (existing.correlation.turnId !== event.turnId) ||" && run "再配送 start の turn 存在ガードを外す"
 mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = plausible.find(identityUnverifiable);" && run "候補 1 件でも照合不能ゲートを発火させる"
 mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = plausible.length > 2 ? plausible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの候補数を 1 件ずらす"
@@ -303,15 +304,15 @@ mutate "        pending.correlation.sessionId === event.sessionId &&
 # 集合ごとに別の選び方をする変異が書けなくなった。互換優先の軸は下の「互換な候補を選ばない」が
 # 両集合まとめて覆い、集合をまたげるかの軸は「再配送の相手を集合ごとに選ぶ」が別に見る
 mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId," "    () => false," && run "退避で lineage 外を優先しない"
-mutate "        nativeOperationId: existing.correlation.nativeOperationId ?? operation.nativeOperationId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
+mutate "        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? operation.nativeOperationId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
 mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
 mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
 mutate "  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSource)) {" "  if (false) {" && run "turnIdSource の語彙検査を外す"
 mutate "      pending.correlation.taskLineageId === snapshot.state.taskLineageId" "      true" && run "側索引の同名判定で別 lineage も数える"
-mutate "            (pending.correlation.toolName === undefined ||
+mutate "            (declared(pending.correlation.toolName) === undefined ||
               pending.correlation.toolName === operation.operationKind)," "            pending.correlation.toolName === operation.operationKind," && run "候補の toolName を素で比べる"
 mutate "      correlation.diagnostic !== \"terminal_already_applied\"" "      true" && run "適用済みの再配送も隔離する"
-mutate "    .filter((candidate) => !candidate.sourceEventIds.includes(eventId))" "    .filter(() => true)" && run "記録済みの event でも truncation を出す"
+mutate "    !pending.sourceEventIds.includes(eventId) &&" "    true &&" && run "記録済みの event でも truncation を出す"
 mutate "            ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)" "            ? { ...pending, correlation: recovered }" && run "再配送 start の原因 event を残さない"
 mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの母数を compatible に戻す"
 mutate "            code: \"delivery_conflict\",
@@ -328,15 +329,18 @@ mutate "            code: \"delivery_conflict\",
 mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を引く"
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
 mutate "      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];" "      candidates[0];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
-mutate "  const existing = preferCompatible([...idMatches, ...nativeMatches]);" "  const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" && run "再配送の相手を集合ごとに選ぶ"
-mutate "  if (!isRealInstant(event.occurredAt)) {" "  if (false) {" && run "occurredAt の暦検査を外す"
+mutate "    const existing = preferCompatible([...new Set([...idMatches, ...nativeMatches])]);" "    const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" && run "再配送の相手を集合ごとに選ぶ"
+mutate "    const existing = preferCompatible([...new Set([...idMatches, ...nativeMatches])]);" "    const existing = preferCompatible([...new Set([...nativeMatches, ...idMatches])]);" && run "兄弟の連結順を入れ替える"
+mutate "    new Set([correlation.matched])," "    new Set(previous.state.pendingOperations)," && run "truncation の対象を照合相手の外へ広げる"
+mutate "      const truncated = sourceEventLost(existing, event.eventId) ? [existing.operationId] : [];" "      const truncated = previous.state.pendingOperations.map((p) => p.operationId);" && run "再配送 start の truncation 対象を全 pending にする"
+mutate "    if (value !== undefined && !isRealInstant(value)) {" "    if (false) {" && run "IsoTimestamp の暦検査を外す"
+mutate "    [\"provenance.ingestAttestation.attestedAt\", event.provenance?.ingestAttestation?.attestedAt]," "    [\"occurredAt\", event.occurredAt]," && run "受領証の時刻を暦検査から外す"
 mutate "  if (!ISO_TIMESTAMP_PATTERN.test(value)) return false;" "" && run "暦検査の前に綴りを当てない"
+mutate "  return value === undefined || isBlank(value) ? undefined : value;" "  return value;" && run "任意欄の空白を present として読む"
 mutate "  if (isBlank(state.taskLineageId)) {" "  if (false) {" && run "状態側の空白 lineage を通す"
 mutate "  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {" "  if (false) {" && run "event 側の空白 lineage を通す"
-mutate "        diagnostics:
-          truncated.length === 0
-            ? [duplicateDiagnostic]
-            : [duplicateDiagnostic, truncationDiagnostic(event, truncated)]," "        diagnostics: [duplicateDiagnostic]," && run "再配送 start の truncation 診断を落とす"
+mutate "          ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)])," "" && run "再配送 start の truncation 診断を落とす"
+mutate "        .filter((pending) => pending !== existing && startConflictsWith(pending))" "        .filter(() => false)" && run "飛ばした衝突兄弟を報告しない"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
