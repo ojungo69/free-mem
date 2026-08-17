@@ -61,6 +61,7 @@ const ATTESTATION = {
 
 const INTAKE: IntakeContextV1 = {
   expectedSourceAgent: "claude",
+  expectedSessionId: "session-1",
   exactAgentVersion: VERSION,
   nativeTurnIdentityProven: true,
   activeCapabilityHash: CAPABILITY_HASH,
@@ -1928,8 +1929,13 @@ interface RejectionFixture {
   intakeContext: IntakeContextV1;
   cases: Array<{
     name: string;
-    rejectedBy: "schema" | "runtime" | "intake" | "intake-reject";
+    // `intake-diagnostic` は**棄却しない層**。intake は event をそのまま通し、診断だけを出す。
+    // 参照実装の parity 検査（`tool-lifecycle-reduction.json`）は intake の返り値のうち `event` しか
+    // 使わないので、診断だけを出す規則は fixture に置かないと**移植が一度も実装せずに全 fixture を
+    // 満たせる**（#42 の session 束縛で同じ穴を塞いだのと同じ形）
+    rejectedBy: "schema" | "runtime" | "intake" | "intake-reject" | "intake-diagnostic";
     reason: string;
+    expectedDiagnostics?: string[];
     intakeOverride?: Partial<IntakeContextV1>;
     event: NormalizedContinuityEvent;
   }>;
@@ -1940,6 +1946,13 @@ test("negative fixture は宣言した層で落ちる", () => {
     new URL("../fixtures/continuity/invalid/rejected-events.json", import.meta.url),
   );
   assert.equal(fixture.cases.length > 0, true);
+  // fixture の `intakeContext` は JSON なので型検査を受けない。必須欄が欠けると `undefined` が
+  // 入り、`isBlank(undefined)` は文字列 "undefined" を検査して **false** を返すので、束縛が
+  // 「実在する値」として有効になり全 event が落ちる。落ち方は `§3.1 違反: … は undefined なのに`
+  // という config でなく event を名指しするエラーなので、欠落そのものを先に見る
+  for (const field of ["expectedSourceAgent", "expectedSessionId", "exactAgentVersion"] as const) {
+    assert.equal(typeof fixture.intakeContext[field], "string", `intakeContext.${field} が無い`);
+  }
   const layers = new Set<string>();
   for (const testCase of fixture.cases) {
     layers.add(testCase.rejectedBy);
@@ -1986,13 +1999,26 @@ test("negative fixture は宣言した層で落ちる", () => {
       assert.throws(() => stampIntakeEvidence(testCase.event, context), violates, testCase.name);
       continue;
     }
+    if (testCase.rejectedBy === "intake-diagnostic") {
+      const stamped = stampIntakeEvidence(testCase.event, context);
+      // 通すこと（種別も turn も書き換えないこと）と、診断の**コード名**の両方を見る。
+      // コード名まで見ないと、移植が別の名前で出しても緑になる
+      assert.equal(stamped.event.turnIdSource, testCase.event.turnIdSource, testCase.name);
+      assert.equal(stamped.event.turnId, testCase.event.turnId, testCase.name);
+      assert.deepEqual(
+        stamped.diagnostics.map((diagnostic) => diagnostic.code),
+        testCase.expectedDiagnostics ?? [],
+        testCase.name,
+      );
+      continue;
+    }
     assert.equal(
       stampIntakeEvidence(testCase.event, context).event.provenance.evidenceKind,
       "synthesized",
       testCase.name,
     );
   }
-  assert.deepEqual([...layers].sort(), ["intake", "intake-reject", "runtime", "schema"]);
+  assert.deepEqual([...layers].sort(), ["intake", "intake-diagnostic", "intake-reject", "runtime", "schema"]);
 
   // fixture の intakeContext に欠落があると、何をしても synthesized になって intake の case が
   // 素通りする。正当な経路なら native になることを対で確かめる
@@ -2480,6 +2506,81 @@ test("認証済み peer と違う Agent 名を名乗る event は intake が受�
       JSON.stringify(claimed),
     );
   }
+});
+
+test("認証済み peer と違う session を名乗る event は intake が受け取らない（#42）", () => {
+  // §4.3 の correlation scope は「same session/task lineage」だが、状態は session を持たないので
+  // `assertSameScope` では照合できない。intake が束縛しないと誰も束縛しないので、同じ Agent・
+  // 同じ lineage の別 session を名乗る event が rule 1 で他人の operation を閉じられる
+  for (const claimed of ["session-other", "", " ", "\u{200B}"]) {
+    assert.throws(
+      () => stampIntakeEvidence(startEvent({ sessionId: claimed }), INTAKE),
+      /§3\.1 違反: 束縛された session は session-1 なのに/,
+      JSON.stringify(claimed),
+    );
+  }
+  // 降格では止まらないことを、この門が無い場合の実害として固定する。session の食い違いは
+  // evidenceKind の判定に一切入らないので、別 session を名乗る event に **native の札がそのまま
+  // 貼られる**。しかも還元器は evidenceKind を読まないので、札が何であれ照合は成立する
+  const unbound = { ...INTAKE, expectedSessionId: "" };
+  const foreign = stampIntakeEvidence(startEvent({ sessionId: "session-other" }), unbound).event;
+  assert.equal(foreign.provenance.evidenceKind, "native");
+  assert.equal(foreign.sessionId, "session-other");
+
+  // 締めすぎていないことを通す側でも測る。session を特定できない経路（spool 等）は
+  // `expectedSessionId` が空なので従来どおり素通しになる
+  assert.equal(stampIntakeEvidence(startEvent(), unbound).event.sessionId, "session-1");
+  // 一致していれば当然通り、native authority も従来どおり成立する
+  assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
+});
+
+test("認証できない経路の synthesized_monotonic は通すが診断に出す（#41）", () => {
+  // Q2 の判断は「まず警告だけ出す」。`synthesized_monotonic` は adapter が自分で数える連番なので
+  // capability の証明を要さず、正本も認証条件を課していない。ただし rule 2 の turn 両立は
+  // この種別でも成立するので照合力としては native と同じ重みを持つ。締める前に観測できるようにする
+  const claimed = startEvent({ turnIdSource: "synthesized_monotonic", turnId: "turn-1" });
+  // 4 項の連言なので、全部同時に倒すと**どの項が効いているか**は測れない。ここは「全部欠けた
+  // 経路」を見て、個々の項は下の 2 つ（受領証は在るが Agent 束縛が無い / version drift）で分ける。
+  // `expectedSessionId` は倒さない（`startEvent()` の session は INTAKE の束縛と一致していて、
+  // 倒しても倒さなくても結果が変わらない = 何も測らない override だった）
+  const unauthenticated = stampIntakeEvidence(claimed, {
+    ...INTAKE,
+    expectedSourceAgent: "",
+    attestation: undefined,
+  });
+  // 通す: 種別も turnId も落とさない（降格でも拒否でもない）
+  assert.equal(unauthenticated.event.turnIdSource, "synthesized_monotonic");
+  assert.equal(unauthenticated.event.turnId, "turn-1");
+  assert.deepEqual(
+    unauthenticated.diagnostics.map((d) => d.code),
+    ["turn_identity_unauthenticated"],
+  );
+  // 認証できていれば診断は出ない（偽陽性を出さない側も測る）
+  assert.deepEqual(stampIntakeEvidence(claimed, INTAKE).diagnostics, []);
+  // **受領証が在っても Agent 束縛が無ければ「経路を認証できない」側**。受領証は peer を
+  // 指しているが、`expectedSourceAgent` が空だと caller の名乗る Agent をその peer に結び付け
+  // られない——`assertSameScope` は event の `sourceAgent` でどの状態を書くか決めるので、
+  // 結び付けられない経路の turn 主張は rule 2 の照合力として信用できない。診断の文面も
+  // 「認証できない経路」ではなく「peer に結び付けられない経路」と書く
+  const unboundAgent = stampIntakeEvidence(claimed, { ...INTAKE, expectedSourceAgent: "" });
+  assert.deepEqual(unboundAgent.diagnostics.map((d) => d.code), ["turn_identity_unauthenticated"]);
+  // **version drift は「未認証」ではない**。CLI を上げた直後は exact version が一致しないので
+  // native authority は消えるが、受領証も peer も Agent も一致しているので経路は認証済み。
+  // 両者を同じ述語で見ると、通常の version 更新が未認証として観測に混ざる
+  const drifted = stampIntakeEvidence(claimed, { ...INTAKE, exactAgentVersion: "9.9.9 (Claude Code)" });
+  assert.deepEqual(drifted.diagnostics.map((d) => d.code), []);
+  // authority のほうは正しく消える（緩めていないことを対で見る）
+  assert.equal(drifted.event.provenance.evidenceKind, "synthesized");
+  assert.equal(
+    stampIntakeEvidence(startEvent(), { ...INTAKE, exactAgentVersion: "9.9.9 (Claude Code)" }).event
+      .turnIdSource,
+    "unavailable",
+  );
+  // native の降格経路とは独立。認証できない native 主張は従来どおり降格の診断だけが出る
+  assert.deepEqual(
+    stampIntakeEvidence(startEvent(), { ...INTAKE, attestation: undefined }).diagnostics.map((d) => d.code),
+    ["turn_identity_downgraded"],
+  );
 });
 
 test("認証できない経路では Agent 名の食い違いを降格で扱う", () => {
@@ -3787,7 +3888,29 @@ test("空白だけの intake authority 値は native を成立させない", () 
       { ...INTAKE, exactAgentVersion: blank },
     );
     assert.equal(versionBlank.event.provenance.evidenceKind, "synthesized", `version ${label}`);
+    // **session だけは向きが逆**。`expectedSessionId` の空白は「権限のある session を名乗れない
+    // 経路」を表すので、authority を消すのではなく**束縛を張らない**（張ると認証できない経路の
+    // event が全部落ちる）。空白の表し方が違っても同じに扱われることを固定する: `isBlank` を
+    // `!== ""` に狭めると、空白 1 文字の束縛が「実在する session 名」として有効になり、
+    // その経路の event が丸ごと `§3.1 違反` で落ちる
+    assert.doesNotThrow(
+      () =>
+        stampIntakeEvidence(
+          { ...startEvent(), sessionId: "session-INTRUDER" },
+          { ...INTAKE, expectedSessionId: blank },
+        ),
+      `expectedSessionId ${label}`,
+    );
   }
+  // 対照: 空白でない束縛は従来どおり効く（緩めていない側も見る）
+  assert.throws(
+    () =>
+      stampIntakeEvidence(
+        { ...startEvent(), sessionId: "session-INTRUDER" },
+        { ...INTAKE, expectedSessionId: "session-1" },
+      ),
+    /§3\.1 違反: 束縛された session/,
+  );
   // 対照: 空白を含むが空白だけではない値は従来どおり native
   const spaced = "2.1.228 (Claude Code)";
   assert.equal(stampIntakeEvidence(startEvent(), { ...INTAKE, exactAgentVersion: spaced }).event.provenance.evidenceKind, "native");

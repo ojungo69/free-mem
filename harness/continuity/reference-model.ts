@@ -107,6 +107,17 @@ export interface IntakeContextV1 {
    * 一致を見ないと、認証済みの adapter が他 Agent 名義の event に native authority を得られる。
    */
   expectedSourceAgent: string;
+  /**
+   * 認証済み peer identity が名乗ることを許された native session。`expectedSourceAgent` と同じく
+   * **scope selector なので、不一致は降格ではなく拒否**する（還元器は `evidenceKind` を読まないので
+   * 降格では止まらない）。session を特定できない経路（spool 等）は空にしておけば従来どおり素通し。
+   *
+   * なぜ intake が束縛するのか、束縛が無いと何ができたのかは 1 箇所にまとめてある:
+   * 規範は addendum v6.2 §3.1（intake also derives the session binding）、実測と残る境界は
+   * `evidence/phase3-reference-model.md` の同名の限界節（#42）。ここで causal chain を
+   * 書き直すと 3 面に同じ事実が載り、実際に上限件数の書き方が食い違った。
+   */
+  expectedSessionId: string;
   exactAgentVersion: string;
   /**
    * §3.1「`turnIdSource="native"` は、その exact version について proven な native turn
@@ -164,6 +175,12 @@ export function stampIntakeEvidence(
       `§3.1 違反: 認証済み peer は ${context.expectedSourceAgent} なのに event が ${JSON.stringify(event.sourceAgent)} を名乗っている`,
     );
   }
+  // session も scope selector なので同じく受け取らない。理由は `expectedSessionId` の定義側（#42）
+  if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {
+    throw new Error(
+      `§3.1 違反: 束縛された session は ${context.expectedSessionId} なのに event が ${JSON.stringify(event.sessionId)} を名乗っている`,
+    );
+  }
   // **`provenance` 不在はここで落とす**。下の destructure が素で deref するので、intake は
   // 生の adapter 出力に最初に触る層でありながら、節を名乗らない `TypeError` で死んでいた。
   // 還元器側の同じガード（`assertIdentityMaterial`）は intake を通らない caller にしか効かない。
@@ -175,7 +192,11 @@ export function stampIntakeEvidence(
   // caller の attestation は読まずに捨てる。読んだ時点で「認証済みだと名乗れる」ことになり、
   // §3.1 が禁じている自己申告の native authority が通ってしまう
   const { ingestAttestation: _claimed, ...provenance } = event.provenance;
-  const attestation = context.attestation;
+  // `null` も「受領証が無い」として読む。以降の判定はすべて `!== undefined` なので、`null` を
+  // 素通しすると `attestation.ingestReceiptId` で節を名乗らない `TypeError` になる。JSON で
+  // 「無い」を表す手段は `null` しか無いので、fixture や別実装から届く形として実在する
+  // （negative fixture に「認証できない経路」の case を足したときに実際に踏んだ）
+  const attestation = context.attestation ?? undefined;
   // **書く層で検査する**。`attestedAt` の暦検査は読む層（`assertIdentityMaterial`）にもあるが、
   // その値は caller 由来ではない——上の destructure が caller の受領証を捨て、ここで daemon 自身の
   // `context.attestation` を刻印する。書く層が検査しないと、受領証の時刻を 1 つ間違えた daemon は
@@ -186,14 +207,24 @@ export function stampIntakeEvidence(
   // **空白は「暦として実在しない」ではなく「時刻を名乗っていない」**。この関数自身が下で
   // 「認証できない経路を `undefined` ではなく**欄が空の受領証**で表す daemon」を前提にしている
   // ので、空白を暦違反として落とすと**その daemon の event が 100% 落ち、しかもエラーは
-  // 認証の欠落ではなく timestamp を名指しする**（実測）。空白は下の `authenticatedVersion` が
-  // 「名乗っていない」として降格で扱う。任意欄の空白を不在として読むのは `declared()` と同じ原則で、
+  // 認証の欠落ではなく timestamp を名指しする**（実測）。空白は下の `authenticatedPeer` が
+  // 「名乗っていない」として扱い、そこから `authenticatedVersion` も落ちる（さらに
+  // `turn_identity_unauthenticated` の診断も出る——分離した述語の両方に効く）。任意欄の空白を不在として読むのは `declared()` と同じ原則で、
   // 必須欄（`occurredAt`）を空白で通さないのと対になる
   assertRealInstant("受領証の attestedAt", declared(attestation?.attestedAt));
   // §3.1 は evidenceKind も turn identity も「認証済み peer identity」から導けと言う。
   // 受領証があり、かつ caller の名乗る Agent と version が受領証の指すそれと一致することが
   // その認証にあたる。evidence の証明も turn の証明もこの束縛の上に乗る
-  const authenticatedVersion =
+  // **経路が認証済みか**と**その version に authority があるか**を分ける。前者は「受領証が
+  // peer を指していて、caller の名乗る Agent がその peer と一致する」まで。後者はそこに
+  // exact version の一致を足したもの。`synthesized_monotonic` は adapter が自分で数える連番
+  // なので version の証明を要さず、認証済み経路かどうかだけが問われる（下の診断）。
+  // 一緒にすると、**CLI を上げた直後の version drift が「未認証」として報告される**——
+  // native authority が消えるのは正しいが、認証済みの経路を未認証と呼ぶのは別の話
+  // 名前どおり「peer を認証できたか」だが、**受領証が在るだけでは足りない**。`expectedSourceAgent`
+  // が空だと caller の名乗る Agent を受領証の peer に結び付けられず、`assertSameScope` は event の
+  // `sourceAgent` でどの状態を書くか決めるので、結び付けられない経路の主張は信用できない
+  const authenticatedPeer =
     attestation !== undefined &&
     // §3.1 は受領証を「その認証済み取り込みの receipt」と定義し、evidenceKind を「認証済み
     // peer identity」から導けと言う。受領証が在ることと、それが peer を指していることは別で、
@@ -208,7 +239,9 @@ export function stampIntakeEvidence(
     // 空文字同士は「一致」ではなく「どちらも名乗っていない」。素通りさせない
     // 「未設定」の表し方は空文字とは限らない。identity 材料と同じ理由（`isBlank`）で、
     // 空白 1 文字・タブ・U+200B で「無い」を表す daemon でも同じ実害が起きる
-    !isBlank(context.expectedSourceAgent) &&
+    !isBlank(context.expectedSourceAgent);
+  const authenticatedVersion =
+    authenticatedPeer &&
     !isBlank(context.exactAgentVersion) &&
     // `event.sourceAgent === context.expectedSourceAgent` はここには書かない。上の throw が
     // 「`expectedSourceAgent` が非空なら等値」を保証済みで、この行は到達時点で必ず true になる。
@@ -251,21 +284,34 @@ export function stampIntakeEvidence(
       ...(attestation !== undefined ? { ingestAttestation: attestation } : {}),
     },
   } as IntakeStampedEventV1;
-  return {
-    event: stamped,
-    // §3.1「turn scoping を要求する規則は unavailable に対して fail closed になり、影響を受けた
-    // 自動経路は downgrade され、その理由は doctor が報告する」。降格した事実を残さないと、
-    // 「何も correlate しない」だけが観測されて理由が辿れない
-    diagnostics: turnDowngraded
-      ? [
-          {
-            code: "turn_identity_downgraded" as const,
-            eventId: event.eventId,
-            detail: `native turn identity が ${provenance.sourceAgentVersion} について証明されていないので unavailable へ降格した`,
-          },
-        ]
-      : [],
-  };
+  // `synthesized_monotonic` は adapter が自分で数える連番なので capability の証明を要さず、
+  // §3.1 も認証条件を課していない。したがって**認証できない経路から名乗られてもそのまま通る**
+  // が、rule 2 の turn 両立はこの種別でも成立するので、照合力としては native と同じ重みを持つ
+  // （#41）。締めるかどうかは既存の未認証連携を壊す判断なので、まず観測できるようにする。
+  // 診断を出すだけで降格も拒否もしない
+  // 今日この配列に 2 件入ることは無い（下の 2 つは `turnIdSource` が `native` か
+  // `synthesized_monotonic` かで排他）。それでも配列にするのは、intake の診断が増えるたびに
+  // 三項の入れ子を書き換えるより足す側が短いから。多重診断の機能があるとは読まないこと
+  const diagnostics: ContinuityDiagnosticV1[] = [];
+  // §3.1「turn scoping を要求する規則は unavailable に対して fail closed になり、影響を受けた
+  // 自動経路は downgrade され、その理由は doctor が報告する」。降格した事実を残さないと、
+  // 「何も correlate しない」だけが観測されて理由が辿れない
+  if (turnDowngraded) {
+    diagnostics.push({
+      code: "turn_identity_downgraded",
+      eventId: event.eventId,
+      detail: `native turn identity が ${provenance.sourceAgentVersion} について証明されていないので unavailable へ降格した`,
+    });
+  }
+  if (event.turnIdSource === "synthesized_monotonic" && !authenticatedPeer) {
+    diagnostics.push({
+      code: "turn_identity_unauthenticated",
+      eventId: event.eventId,
+      detail:
+        "peer identity に結び付けられない経路から synthesized_monotonic の turn identity を名乗っている（現状は通すが rule 2 の照合力を持つ）",
+    });
+  }
+  return { event: stamped, diagnostics };
 }
 
 // --- §3.1 operation envelope（#29） -----------------------------------------
@@ -465,7 +511,7 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   // 2 つの欄で空白の扱いが違う。`occurredAt` は required なので空白は**綴り違反として落とす**
   // （`isRealInstant` が pattern を先に当てる）。受領証の `attestedAt` は「認証できない経路を
   // 欄が空の受領証で表す」idiom があるので、空白は**時刻を名乗っていない**であって暦違反ではない
-  // （intake 側と同じ判断。空白の受領証は `authenticatedVersion` が降格で扱う）
+  // （intake 側と同じ判断。空白の受領証は `authenticatedPeer` が「名乗っていない」として扱う）
   assertRealInstant("occurredAt", event.occurredAt);
   assertRealInstant(
     "provenance.ingestAttestation.attestedAt",
@@ -666,7 +712,8 @@ export type ContinuityDiagnosticCode =
   | "delivery_conflict"
   | "pending_operations_evicted"
   | "source_events_truncated"
-  | "turn_identity_downgraded";
+  | "turn_identity_downgraded"
+  | "turn_identity_unauthenticated";
 
 export interface ContinuityDiagnosticV1 {
   code: ContinuityDiagnosticCode;

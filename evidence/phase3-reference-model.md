@@ -15,12 +15,13 @@
 |---|---|---|
 | `evidenceKind` / `ingestAttestation` は intake が割り当て、caller の値を信頼しない | §3.1 | `stampIntakeEvidence` は caller の `ingestAttestation` を読まずに捨て、認証済み経路の受領証（`IntakeContextV1.attestation`）で置き換える |
 | native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない）。**authority 側の値が空なら一致は成立させない**（`activeCapabilityHash` / `expectedSourceAgent` / `exactAgentVersion`）: capability matrix が未整備の daemon で caller が同じ空値を名乗ると native が成立してしまう。「未設定」の表し方は空文字とは限らないので、identity 材料と同じ `isBlank`（空白・タブ・U+200B・U+FEFF まで）で落とす |
-| 受領証は「その認証済み取り込みの receipt」であって、在ることだけでは認証の証拠にならない | §3.1 | `ingestReceiptId` / `peerIdentityId` が空白だけの受領証は `authenticatedVersion` を成立させない。認証できない経路を `undefined` ではなく**欄が空の受領証**で表す daemon では、存在だけを見ると誰も名乗っていない受領証が native authority の根拠になる。§3.1 は kind を「認証済み peer identity」から導けと言うので、peer を指していない受領証は根拠にならない。`channel` は閉じた union（`rpc` / `spool`）なので空白形が存在せず、検査を足していない。**検査を足す欄と足さない欄は schema で決まる**: 凍結 schema で `ingestReceiptId` / `peerIdentityId` / `scenarioId` は `type: string` + `maxLength` だけ = 空白が schema 妥当なので検査が要り、`channel` / `captureMethod` は enum なので閉じている（下記「還元器は event の schema 妥当性を前提にする」と同じ原則）。理由は欄ごとに違う: `channel` は authority 対 authority で caller が触れず、`captureMethod` は caller 側の値だが enum で閉じている |
+| 受領証は「その認証済み取り込みの receipt」であって、在ることだけでは認証の証拠にならない | §3.1 | `ingestReceiptId` / `peerIdentityId` が空白だけの受領証は `authenticatedPeer` を成立させず、その上に乗る `authenticatedVersion` も成立しない（**経路の認証**と **version の authority** は述語を分けてある。前者は `turn_identity_unauthenticated` の診断も直接ゲートする）。認証できない経路を `undefined` ではなく**欄が空の受領証**で表す daemon では、存在だけを見ると誰も名乗っていない受領証が native authority の根拠になる。§3.1 は kind を「認証済み peer identity」から導けと言うので、peer を指していない受領証は根拠にならない。`channel` は閉じた union（`rpc` / `spool`）なので空白形が存在せず、検査を足していない。**検査を足す欄と足さない欄は schema で決まる**: 凍結 schema で `ingestReceiptId` / `peerIdentityId` / `scenarioId` は `type: string` + `maxLength` だけ = 空白が schema 妥当なので検査が要り、`channel` / `captureMethod` は enum なので閉じている（下記「還元器は event の schema 妥当性を前提にする」と同じ原則）。理由は欄ごとに違う: `channel` は authority 対 authority で caller が触れず、`captureMethod` は caller 側の値だが enum で閉じている |
 | `IsoTimestamp` の暦検査は**書く層にも置く** | §22.6 | `attestedAt` の値は caller 由来ではない。intake は caller の受領証を destructure で捨て、daemon 自身の `context.attestation` を刻印する。読む層（`assertIdentityMaterial`）にしか検査が無いと、**受領証の時刻を 1 つ間違えた daemon は全 event を落としながら、エラーは受領証ではなく event を名指しする**（実測: `2026-02-30T00:00:00Z` の受領証は intake を診断ゼロで通り、直後に 3 つの入口すべてが `§22.6 違反: provenance.ingestAttestation.attestedAt が暦として実在しない` を投げた）。intake は台帳より前なので、throw しても配送鍵は消費されない。**ただし空白は暦違反にしない**（外部のコードレビューが指摘し、実測で再現した）: この関数自身が「認証できない経路を `undefined` ではなく欄が空の受領証で表す daemon」を前提にしているので、空白を落とすと**その daemon の event が 100% 消え、しかもエラーは認証の欠落ではなく timestamp を名指しする**。空白は「時刻を名乗っていない」であって暦違反ではないので、`declared()` で不在として読み、`authenticatedVersion` が降格で扱う——ただし通すようにした以上、**時刻を名乗らない受領証を authority にしない**条件（`!isBlank(attestation.attestedAt)`）を対で足す必要があり、足さないと緩めた側から native authority が漏れる。読む層も同じ判断にする（intake で降格した event はその受領証を持ったまま還元器へ来るので、ここで落とすと降格が意味を失う）。必須欄の `occurredAt` は逆で、空白は綴り違反として落とす。締めすぎていないことも同じ test で見る。**negative fixture の節導出も直した**: `intake-reject` の分岐だけ `/§3.1 違反/` を固定で書いていたので、§22.6 を名乗る intake の case が原理的に書けず、書く層の検査が parity の被覆から外れていた（`runtime` の分岐と同じく `reason` から節を取る形へ統一し、`daemon-receipt-attested-at-not-real` を追加） |
 | `provenance` 不在は節を名乗って落とす | §3.1 | 暦検査のループが `event.provenance.ingestAttestation?.attestedAt` を読むので、optional chain は `ingestAttestation` からしか効かない。`provenance` を持たない event は**節を名乗らない `TypeError`** になり、`rejected-events.json` が case ごとに 1 つの節を宣言して TS/Rust パリティの基準にしている分類契約から外れる（外部のコードレビューが指摘し、実測で確認した）。`?.` で黙って通すのは §3.1「Every adapter MUST populate `provenance`」と逆向きなので、`assertIdentityMaterial` の入口で §3.1 として落とす。**intake にも同じガードを置く**: `stampIntakeEvidence` は 1 行目で `event.provenance` を素で destructure するので、生の adapter 出力に最初に触る層が節を名乗らない `TypeError` で死んでいた（還元器側のガードは intake を通らない caller にしか効かない）。`attestedAt` の暦検査を「書く層にも置く」と決めたのと同じ形。**暦検査自体は helper（`assertRealInstant`）に寄せた**: 2 層で同じ規則を手書きすると 2 通りの文面が 1 つの規則を主張することになり、Rust 側はどちらに合わせても片方と食い違う。比較は型を外して行う（型の上では常に定義済みなので、素の比較は「不要な条件」として静的解析に落ちる） |
 | `scenarioId` は proven な scenario を **naming** していなければならない | §3.1 | 空白だけの `scenarioId` は proven の根拠にならない。matrix 側にも空白 entry を持つ daemon で caller が同じ空白を名乗ると等値で proven が成立する。caller 側を非空白に固定すれば matrix 側の空白 entry とは等値にならないので、検査は片側で足りる。`captureMethod` は閉じた union なので同様に検査不要 |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | **`event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と食い違う event は、降格ではなく intake が受け取らない**（throw）。§3.1 は検査に落ちた event を `synthesized` へ降格せよと言うが、それは**証跡の質**の規定で、`sourceAgent` は質ではなく **scope selector** として使われる: `assertSameScope` が「どの状態を書き換えてよいか」をこの値の等値だけで決める。降格しても値そのものは残るので、外部のセキュリティレビューが指摘したとおり、peer=codex として認証された event が `sourceAgent: "claude"` を名乗ると `synthesized` の札を貼られたまま **claude の operation を診断ゼロで `succeeded` にできた**（実測）。correlation は `evidenceKind` を一度も読まないので、札は何も束縛しない——**wire が運ぶ値を authority にしない**という同じ原則の適用漏れだった。空白の `sourceAgent` を還元器が落とすのと同じ形で、他人の名前はそれより悪い（空白は「誰も名乗っていない」、他人の名前は「scope が矛盾する」）。認証できない経路（`expectedSourceAgent` が空 = 受領証が peer を名乗っていない）は「違う」と言える相手が居ないので従来どおり降格で扱い、締めすぎていないことも test と変異の両方向で固定した。intake は台帳より前なので throw しても配送鍵は消費されず、訂正版の再送はそのまま効く。**この棄却形は fixture 側にも持たせた**: `rejected-events.json` の `rejectedBy` に `intake-reject` を足し、降格（`intake`）と区別する。区別しないと、降格しか実装しない移植でも negative fixture が緑になり、TS/Rust parity の基準がこの規則を守らせない。この結果 `authenticatedVersion` の中の `event.sourceAgent === context.expectedSourceAgent` は到達時点で必ず true になるため削除した（証明済みに死んだ条件を authority 述語に残すと、検査が行われているように読める）。**境界**: intake を経由せず `reduceTaskWorkState` を直接呼ぶ経路では、状態と一致する `sourceAgent` を詐称した event を止められない。参照模型は認証済み peer を知らないので、そこは daemon の trust boundary であり、還元器側に検査を二重化はしない |
+| intake は `sessionId` も束縛する | §3.1 | `IntakeContextV1.expectedSessionId` を足し、event が違う session を名乗ったら**降格ではなく受け取らない**（`sourceAgent` と同じ理由: session は証跡の質ではなく scope selector で、§4.3 の候補選びと放棄がこの値で絞る。降格しても値は残るので他人の operation を選べる）。状態が持つ session は `PendingOperation.correlation.sessionId` だけで、それは**以前の event の自称をそのまま写した値**なので照合の基準にならない——start を偽った相手が比較対象も書いている。event の外を見られるのは intake だけなので、束縛できる層は intake しか無い。session を名乗れない経路（`expectedSessionId` が空白）は従来どおり素通しで、`sourceAgent` と違い evidence の質は落とさない。intake は台帳より前なので throw しても配送鍵は消費されない。negative fixture は `foreign-session` |
 | `turnIdSource="native"` は exact version について proven な native turn identifier を要求する | §3.1 | `IntakeContextV1.nativeTurnIdentityProven` が false なら caller の native 主張を `unavailable` へ降格し `turnId` を落とす。証明は version に紐づくので、受領証・`sourceAgent`・`sourceAgentVersion` の束縛（`authenticatedVersion`）が成り立たない event にも適用しない。`capabilityHash` は capability matrix にまだ turn identity の cell が無い（#40）ため turn の判定には使わない。`synthesized_monotonic` は adapter 由来なので触らない。**この帰結として `activeCapabilityHash` または `scenarioId` だけが空白の場合、`evidenceKind` は `synthesized` に落ちるが `turnIdSource` は `native` のまま残る**（降格は `authenticatedVersion` だけに依存する）。turn identity の cell が matrix に入る（#40）まではこの非対称が正しい振る舞いで、回帰ではない |
 | どちらかの turn が unavailable なら rule 2 は適用されず operation は `unknown` になる | §4.3 | 同じ match key の open な候補を `unresolved`（候補の参照）として返し、還元側で `unknown` にする。閉じられるのは rule 1 だけ。**turn 種別（`turnIdSource`）の一致は候補の絞り込みで見る**: 種別は start 側の材料（`operationStarts`。凍結 schema の外・#35）にしかないので、以前は候補を 1 件に絞ってから最後に比べていた。それだと「同じ matchKey・同じ turnId で種別だけ違う」候補が 2 件並んだとき、種別で 1 件に決まるはずのものが `terminal_ambiguous` になって**両方 `unknown` に倒れ、配送鍵も消費される**。絞り込み時に見れば rule 2 の「exactly one open candidate」が成立して閉じられる。ただし**材料がある候補だけ**種別で絞る（復元直後は `operationStarts` が空なので、材料が無いことを「種別が違う」と読むと理由を取り違える。§3.1 は降格の理由を doctor が報告することを求めている）。候補ゼロのときの診断も「turn 同一性が無い」と「種別が違う」で書き分け、`unknown` に倒す相手は種別違いならその候補だけにする。**open / 確定済みの切り分けもこの絞り込みの後で行う**: 先に切り分けると、turn が両立しない open な兄弟が「open が居る」と数えられて確定済み経路が飛ばされ、確定済み候補への健全な再配送が `terminal_unmatched` に化けて、その兄弟を `unknown` に倒し台帳まで消費する（兄弟はこの terminal では閉じえないので巻き込む理由が無い）。ただしその結果、確定済み経路には turn が両立しない **open な**候補が残りうるので、成否の矛盾判定は**確定済みの候補だけ**を見る（`started` は成否を主張していないので、それを矛盾として隔離すると健全な terminal が台帳に入らず無限再送になる）。**§4.3 の順序要件も同じく絞り込みで見る**。start より後の terminal だけがその operation を閉じられるという要件は、これまで候補を 1 件に決めたあとの検査だった。それだと start が 10 と 20 の候補が並ぶとき、`ingestSeq` 15 の terminal は「10 の側しか閉じえない」のに両方が候補として数えられ、`terminal_ambiguous` で**両方 `unknown` に倒れて台帳まで消費される**（実測。隔離と違って訂正版が重複 no-op になるので隔離より悪い）。`turnIdSource` と同じく材料がある候補だけを対象にし、rule 1 を名乗った terminal は絞らない。**全件が順序不適合なら絞らない**——そこで空にすると、候補 1 件が順序違反というだけの場合に `terminal_out_of_order`（何が起きたかを名指しする診断）が `terminal_unmatched` に化ける。通す側も test で固定した。**同じ絞り込みは、確定済みの候補で再配送を説明するときにも要る**（open な候補を選ぶときだけではない）: これは「この terminal が閉じえた候補」の定義なので、素の候補集合で説明を許すと、`native` の failed と `synthesized_monotonic` の succeeded が同じ matchKey・同じ turnId で並ぶとき、succeeded を名乗る `native` の 2 通目が**兄弟に説明されて** `terminal_already_applied` になる。隔離（台帳を消費しない）を回避して台帳を消費するので、後から届く訂正版が重複 no-op として捨てられる。絞り込みは `sameTurnOf` / `eligibleOf` の 2 つに切り出して、確定済みの説明・open な候補選びの両方で同じものを使う（rule 1 を名乗った terminal は turn 両立を要求しないので、どちらも `byNativeId` があれば素通しする）。**ただし絞るのは「説明がつくか」だけで、「成否が矛盾しているか」は絞らない**: この分岐は性質の違う 2 つの問いを続けて解いていて、(i)「この terminal は候補の再配送として説明がつくか」は閉じえた候補だけが説明役になれるので turn 両立が要るが、(ii)「確定済みの候補と成否が矛盾していないか」は**閉じる権限ではなく壊れた証跡かの判定**なので turn 両立は要らない。matchKey・kind・input hash まで同じ terminal が確定済みの status と逆を主張しているなら、turn の導出が §4.3 どおりでない adapter だとしても矛盾は矛盾。(ii) まで絞ると候補が全部落ちた場合に `find` が undefined を返し、隔離（台帳を消費しない）が `terminal_already_applied`（台帳を消費する）に化けて訂正版が重複 no-op になる。**判定の順序は原則として隔離が先**（台帳を消費しない分岐を、消費する分岐より先に置く）。**ただし「記録できる open な候補が居るか」がそれより優先する**。§4.3:368 は「zero か複数の open にマッチした terminal は何も閉じず、unmatched な証跡として保存し candidates を `unknown` にする」と終状態まで名指ししているので、記録できる候補が 1 件でも居るなら台帳を消費してでもそちらに従う。この優先順位は最初から在ったものではなく、隔離ゲートの優先度を `terminal_already_applied` に対してだけ決めていたところへ、open / 確定済みの切り分けを turn 絞り込みの後ろへ移して `open.length === 0` の到達範囲を広げたときに、`terminal_unmatched` に対して決め直していなかった穴を塞いだもの（**門を足すと隣に順序依存が生まれる**の実例で、外部レビューが実測で指摘した）。塞がないと「確定済みの兄弟が居て、turn が両立しない open な候補も居る」形が隔離に落ち、open な候補は `started` のまま残って状態が嘘をつく。しかも `turnIdSource` の食い違いは adapter の捕捉経路という**定常的な性質**なので「訂正版」が存在せず、還元器は純関数なので再送は毎回同じ隔離になる——`started` を矛盾集合から外した理由（無限再送）と同型の失敗が、確定済みの兄弟経由で残っていた。逆に、その terminal が**閉じえた**確定済み候補（turn 両立する候補）と成否が矛盾している場合は、記録できる open が居ても隔離のままにする（訂正版が存在しうる形なので、台帳を消費しないほうが回復に効く）。矛盾もしておらず記録できる候補も居ない場合だけ `unresolved` が空の `terminal_unmatched` になる。**照合不能（`terminal_identity_unverifiable`）で `unknown` に倒す相手も turn 両立する候補だけ**にする: 照合不能は「どの候補を指すか決められない」であって、rule 2 で閉じえない候補まで巻き込んでよい話ではない。rule 1 では `sameTurnOf` / `eligibleOf` が素通しなので `settled` が空になるのは rule 2 だけ |
 | `turnIdSource` は凍結 schema の語彙（`native` / `synthesized_monotonic` / `unavailable`）だけを受ける | §3.1 | `assertTurnIdentity` の先頭で `TURN_ID_SOURCES` と突き合わせて落とす（語彙は手で並べず schema 側の定数から引く）。参照模型は event が schema 検証を通ってから届くとは限らない（intake も還元器も生の値を読む）ので、**語彙外の綴りは `unavailable` の分岐にも intake の `native` 証明要求にも当たらず、降格を丸ごと迂回して自称 `turnId` を保持できた**（実測: `"Native"` / `"NATIVE"` / 末尾空白の `"native "` / キリル а の同形異字 / `"bogus"` がいずれも診断ゼロで通り、`turnId` は `"turn-FORGED"` のまま残った。外部のコードレビューが指摘した）。そのまま §4.3 rule 2 に入ると `sameTurnOf` は `turnId` の等値、`eligibleOf` は記録と event の**自己一致**で通るので、捏造した turn 同一性で turn scope がまるごと成立する。空白の identity 材料に実行時ガードを置きながら、identity 上いちばん効くこの欄だけ素通しだった。還元器・correlate・放棄の 3 入口すべてで落ちることを test で固定した |
@@ -340,24 +341,37 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
   無い。`tool_failed` は名前が失敗を宣言しているので `successful: true` を矛盾として扱うが、
   `tool_completed` が成功まで主張するかは決められないので `successful: false` は矛盾扱いしない
   （`failed` のまま記録する）。語彙側で決めるべき宿題。
-- **turn identity の降格を誰が行うかは正本が決めていない**（#41）。§3.1 が intake に与えている
-  権限は `evidenceKind` と `ingestAttestation` で、`turnIdSource` の書き換えは明示されていない
-  （§14 は未証明時の措置を `turnIdentityDisposition` による delivery 層の downgrade として書く）。
-  ここでは fail closed の向きに合わせて intake が `unavailable` へ倒している。
-  同じ節で `synthesized_monotonic` は「adapter-assigned monotonic turn counter」とだけ定義され、
-  `native` の「proven for that exact version」に相当する認証条件が無い。正本が無言なので
-  monotonic は認証されていなくても降格しない実装にしてある。これも #41 で決める。
+- **turn identity の降格は intake が行う（#41 は addendum §3.1 で決着済み。ここは限界ではなく
+  規定の記録）**。証明されていない `native` 主張は intake が `unavailable` へ倒し、
+  `turn_identity_downgraded` を出す。**delivery 層では降格しない**。
+  `synthesized_monotonic` は認証条件を持たないので**未認証経路でも降格せず**、代わりに
+  `turn_identity_unauthenticated` を出す（判定は**経路の認証** = `authenticatedPeer` だけを見る。
+  version の authority と一緒にすると、CLI を上げた直後の version drift が「未認証」として
+  観測に混ざる）。残る露出——未認証経路の event が rule 2 の turn 両立を満たしうる——も正本に明記した。
+  parity fixture は `unauthenticated-synthesized-turn`（`rejectedBy: intake-diagnostic`）。
+  経緯: 正本は §3.1 で intake に `evidenceKind` と `ingestAttestation` の権限しか与えておらず、
+  `turnIdSource` の書き換えは明示されていなかった（§14 は未証明時の措置を
+  `turnIdentityDisposition` による delivery 層の downgrade として書く）。参照実装が fail closed の
+  向きで intake に倒していたのを、正本の側を書いて追認した形。§6.3 の
+  `turnIdentityDisposition` は destination 側を見る補完で、**そちらは未実装**（schema の欄はあるが
+  読む実装が無い）なので、この complementarity は今日は片側しか動かせない。
 - **`assertSameScope` の不一致は throw する**。別 Agent / 別 lineage の event を状態に渡すのは
   router のバグなので隔離ではなく例外に倒しているが、`sourceAgent` は event が名乗る値なので、
   scope を event 由来で選ぶ実装だと 1 件の取り違えで stream が止まりうる。daemon 側で
   「state は認証済み peer identity で選ぶ」を守る前提。
-- **`sessionId` を束縛する層が無い**。§4.3 の correlation scope は「same session/task lineage」だが、
-  §3.1 が intake に導出させるのは「認証済み peer identity・ingest channel・`captureMethod`・
-  capability matrix」だけで **session は挙がっていない**。`IntakeContextV1` は `expectedSourceAgent` を
-  束縛するが session は素通しで、`assertSameScope` は状態側に session が無いので照合できない。
-  結果として、同じ Agent・同じ lineage の別 session を名乗る event が rule 1 で他人の operation を
-  閉じられ、安価な start 256 件で他人の実行中 operation を状態から退避させられる（§10 の
-  `arrayItems`）。§3.1 に session 束縛の一文が無いこと自体が正本の穴なので、#41 と並べて起票する。
+- **`sessionId` は intake が束縛する（#42 で解消済み。以前はここが穴だった）**。§4.3 の correlation
+  scope は「same session/task lineage」なのに、§3.1 が intake に導出させるものとして挙げていたのは
+  「認証済み peer identity・ingest channel・`captureMethod`・capability matrix」だけで **session が
+  入っていなかった**。`IntakeContextV1` は `expectedSourceAgent` しか束縛せず session は素通しで、
+  `assertSameScope` は状態側に session が無いので照合できない——結果として、同じ Agent・同じ
+  lineage の別 session を名乗る event が rule 1 で他人の operation を閉じられ、安価な start を `CONTINUITY_LIMITS.arrayItems` 件だけ送って
+  他人の実行中 operation を退避させられた（§10 の上限。件数を doc に写すと定数の変更で黙って古くなる）。
+  現在は `IntakeContextV1.expectedSessionId` を足し、**降格ではなく intake が受け取らない**
+  （`sourceAgent` と同じ理由: session は証跡の質ではなく scope selector なので、降格しても値は残り
+  他人の operation を選べてしまう）。正本にも §3.1 の一文として書いた。**残る境界**は `sourceAgent`
+  と同じで、intake を経由せず還元器を直接呼ぶ経路と、`expectedSessionId` を空で渡す
+  （= 権限のある session を名乗れない）ingest 経路。後者は従来どおり素通しで、締めると認証できない
+  経路が全滅するため。
 - **還元器は event の schema 妥当性を前提にする**。`ingestSeq` は decimal string として検査するが、
   `occurredAt` の形式・文字列長（§10）・JSON 深さは見ない。壊れた値をそのまま状態に写すので、
   daemon 側で `reduceTaskWorkState` を呼ぶ前に `NormalizedContinuityEvent` schema での検証を
@@ -385,9 +399,9 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**158 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 158 件（黙って飛ばされた変異ゼロ）、復元後は 179/179 green
-（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 284/284）。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**164 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 164 件（黙って飛ばされた変異ゼロ）、復元後は 181/181 green
+（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 286/286）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
 したら、次で突き合わせてから doc を直す。CI は `mutate.sh` を走らせるが doc は見ないので、
@@ -439,14 +453,20 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | lastIngestSeq の max を外す | 1 |
 | ingestSeq を数値比較にする | 1 |
 | envelope 必須を外す | 3 |
-| intake の attestation 必須を外す | 3 |
+| intake の attestation 必須を外す | 5 |
 | caller の attestation を信じる | 1 |
 | sourceAgent の束縛を外す | 2 |
-| 認証できない経路でも Agent 名で落とす | 2 |
-| 空の Agent 名を素通しする | 4 |
-| native turn の証明要求を外す | 6 |
-| turn 証明の version 束縛を外す | 3 |
-| turn 降格を黙って行う | 1 |
+| 認証できない経路でも Agent 名で落とす | 4 |
+| 空の Agent 名を素通しする | 5 |
+| session の束縛を外す | 3 |
+| 空白の session 束縛を実在する名前として扱う | 1 |
+| session を名乗れない経路でも session 名で落とす | 3 |
+| 未認証の synthesized_monotonic を診断に出さない | 2 |
+| 未認証の判定に version 一致まで求める | 1 |
+| version authority が経路の認証を前提にしない | 10 |
+| native turn の証明要求を外す | 7 |
+| turn 証明の version 束縛を外す | 4 |
+| turn 降格を黙って行う | 2 |
 | turn 同一性の不変条件を外す | 5 |
 | state への Agent 束縛を外す | 3 |
 | 空 adapterDeliveryId の fallback を外す | 2 |
