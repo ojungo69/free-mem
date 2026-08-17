@@ -239,12 +239,15 @@ start → 同じ配送鍵で F2 を再送すると `applied` / 診断ゼロ / op
 `terminal_orphaned` を `terminal_unmatched` と別 code にしたのは、同じ code で `outcome` が
 分かれると doctor が「start 待ちの孤児」と「候補は居るが絞れない」を区別できないため。
 
-**この隔離は §4.3 の文面からの明示的な乖離**。§4.3 は「zero **or multiple** にマッチした terminal は
-… unmatched evidence として保つ」と書き、隔離は「correlation/hash conflict」に限っている。しかし
-`CanonicalWorkStateV1` には unmatched evidence の置き場が無く（候補が 0 件なので `sourceEventIds` を
-足す相手が居ない）、frozen schema のままでは正本どおりに実装できない。台帳へ入れる側に倒すと
-上記のとおり順序前後の孤児を永久に殺すので隔離を選んだ。Rust 実装が同じ選択をできるよう、
-schema 側の穴として起票する（#39 の配列上限とは別件）。
+**（この段落は #43 で解消済み。経緯として残す）** かつてこの隔離は §4.3 の文面からの明示的な
+乖離だった。§4.3 は「zero **or multiple** にマッチした terminal は … unmatched evidence として
+保つ」と書き、隔離は「correlation/hash conflict」に限っているのに、当時の `CanonicalWorkStateV1`
+には unmatched evidence の置き場が無く（候補が 0 件なので `sourceEventIds` を足す相手が居ない）、
+frozen schema のままでは正本どおりに実装できなかった。台帳へ入れる側に倒すと上記のとおり
+順序前後の孤児を永久に殺すので、当時は隔離を選んで schema 側の穴として #43 に起票した。
+**現在は `droppedEvidence` がその置き場**で、孤児 terminal は `orphaned_terminal` として状態に
+記録される（隔離という判断はそのままで、記録が伴うようになった）。移植する実装はこの段落では
+なく §2.10 と正本 §4.3 に従うこと——記録を省くと状態も revision hash も一致しない。
 
 **復元後に再配送された start で start 材料の 2 欄を埋めない。** §6.4 は `ingestSeq` を
 「authoritative event-store watermark（適用済みの最大 `ingestSeq`）」と定義しており、採番するのは
