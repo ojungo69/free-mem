@@ -135,6 +135,13 @@ jobs:
         run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS
       - name: Continuity contract tests
         run: node --experimental-strip-types --test harness/continuity/*.test.ts
+      - name: Continuity mutation gates
+        # test が「ゲートを壊しても落ちない」状態に腐るのを防ぐ。人が手で叩いたときしか
+        # 走らないと、アンカー外れ（実装を直すと変異が黙って飛ばされる）も、変異が module を
+        # 壊して test を 1 件も走らせない形も、次のラウンドまで見つからない。
+        # スクリプト自身が「実行件数 == 期待件数」「生存 0」「変異が baseline と同じ件数の
+        # test を走らせた」を検査して非ゼロで終了する
+        run: bash harness/continuity/mutate.sh
       - name: Matrices are regenerated, not hand-edited
         # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
         # generatedAt は実行ごとに変わるので比較から外す
