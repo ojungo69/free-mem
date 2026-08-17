@@ -35,6 +35,17 @@ function requireFile(path, why) {
   if (!existsSync(join(root, path))) failures.push(`missing ${path} (${why})`);
 }
 
+// attribution は本文が中身であって、ファイル名ではない。空にされても存在検査は通るので、
+// 中身が消えたら落ちるだけの錨を置く。digest で固定しないのは、依存が変われば
+// THIRD_PARTY_NOTICES.md が正当に変わるため（lockfile 更新のたびに再スキャンする運用）。
+function requireContains(path, needles, why) {
+  if (!existsSync(join(root, path))) return;
+  const text = read(path);
+  for (const needle of needles) {
+    if (!text.includes(needle)) failures.push(`${path}: lost ${JSON.stringify(needle)} (${why})`);
+  }
+}
+
 requireFile("LICENSE", "repository-wide grant");
 requireFile("NOTICE", "Apache-2.0 §4(d) attribution");
 requireFile("THIRD_PARTY_NOTICES.md", "third-party attribution");
@@ -42,6 +53,17 @@ requireFile("CONTRIBUTING.md", "inbound contribution terms");
 requireFile("vendor/codemem/LICENSE", "vendored MIT snapshot must keep its own license");
 requireFile("vendor/codemem/package.json", "vendored package metadata (下で license 欄を読む)");
 requireFile("evidence/adr-004-licensing.md", "README と CONTRIBUTING が根拠として指す ADR");
+
+requireContains(
+  "NOTICE",
+  ["Copyright", "The free-mem Authors", "THIRD_PARTY_NOTICES.md"],
+  "Apache-2.0 §4(d) の attribution 本文",
+);
+requireContains(
+  "THIRD_PARTY_NOTICES.md",
+  ["## codemem", "## Dependency licenses", "Production only"],
+  "vendored snapshot と依存スキャンの記載",
+);
 
 if (failures.length === 0) {
   const license = read("LICENSE");
