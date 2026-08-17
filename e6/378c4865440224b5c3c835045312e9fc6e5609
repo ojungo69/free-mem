@@ -1,0 +1,26 @@
+specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md
+  s_2d059b4f795bca::t_815f40f3b61cef 387-397
+  s_2d059b4f795bca::t_3e98dc3a9a0280 426-471
+  s_2d059b4f795bca::t_07ba046817b430 27-40
+  s_2d059b4f795bca::t_c68c2616d24247 4
+  s_2d059b4f795bca::t_714d78700180a5 145-169
+  s_2d059b4f795bca::t_7f724a77a0959f 472-478
+harness/continuity/schema-freeze.test.ts
+  s_2d059b4f795bca::t_ea84f7a62bc2fc 785-794
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e6378c4865440224b5c3c835045312e9fc6e5609",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
