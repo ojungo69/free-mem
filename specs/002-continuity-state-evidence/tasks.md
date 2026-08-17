@@ -217,8 +217,49 @@ CI だけが落ちる。
 
 **新しい欄が無い経路の挙動を変えたものはゼロ**: 欄を持たない状態は 5 分類のどれでも従来どおり（`terminal_order_unverifiable` / rule 2 の免除 / `terminal_already_applied`）で、それぞれ test と変異で固定してある。SC-003 の文言が想定していなかったのは「消す対象の欠陥そのものを固定している test」の存在で、そこは表で明示する形にした
 
-- [ ] T045 `/code-review`（正しさ）→ `ponytail-review`（過剰実装）の 2 本立てを通す。この feature は Constitution III と `rules/security.md` の対象範囲（入力検証・fail-closed の境界）なので、**外部 CLI へ委譲せず Claude Code が実装しレビューする**
-- [ ] T046 `speckit-verify-tasks` を 1 回通し、`[X]` に実装が伴っているかを確認してから PR を作る
+- [X] T045 `/code-review`（正しさ）→ `ponytail-review`（過剰実装）の 2 本立てを通す。この feature は Constitution III と `rules/security.md` の対象範囲（入力検証・fail-closed の境界）なので、**外部 CLI へ委譲せず Claude Code が実装しレビューする**
+
+**T045 の結果**: `/code-review` が 14 件、並走レビューが 6 件を出した。重複を除いた 15 件を、
+`review-routing` の批判的評価にかけて採否を決めた（**盲目的に採用しない**）。**再現できたものだけを
+「実害」とした**——9 件は probe で実際に落として直し、5 件は性質としては正しいが実害が無いか
+設計判断なので限界節へ書き、1 件は反証した。
+
+| # | 指摘 | 検証 | 採否 |
+|---|---|---|---|
+| 1 | 指紋ゲートが兄弟の材料で判定し、混在状態で健全な再配送を隔離する（FR-012 違反・無限再送） | 再現（`terminal_conflict` / 鍵未消費） | **修正**（候補集合の判定に変更 + test + 変異 3 件） |
+| 2 | `startIngestSeq` の綴り違いで還元器が throw し、無関係な terminal も巻き添え | 再現（`"007"` / `"-1"` / `"1 "` / `"12a"` の 4 形すべて） | **修正**（不在扱い + test + 変異 2 件） |
+| 3 | 記録だけの隔離が §4.1 の watermark を進める | 再現（10 → 500・`ledger.size` 0） | **修正**（+ test + 変異 2 件） |
+| 4 | `finalizeAbandonedState` が `droppedEvidence` の配列を過去 revision と共有（§4.2） | 再現（object 同一） | **修正**（`nextContent` に正規化を集約 + test + 変異） |
+| 5 | 復元状態の空配列がそのまま残り、同じ意味の状態で hash が割れる | 再現（contentHash 不一致） | **修正**（同上 + test + 変異） |
+| 6 | 上限超えの復元状態を刈った診断を start 経路が捨てている | 再現 | **修正**（+ test + 変異） |
+| 7 | `DroppedEvidenceEntryV1` の `$comment` が存在しない runtime 検査を約束 | 目視（該当コード無し） | **修正**（文言を実態に合わせた） |
+| 8 | status の語彙が 6 箇所に複製され、片方だけ増える変更が緑のまま通る | 目視（凍結 test は各コピーを個別に縛るだけ） | **修正**（凍結 test でコピー間を突き合わせ。schema は insert-only 制約のため $ref 化しない） |
+| 9 | `outcome: "quarantined"` の doc が「状態も変えない」しか書いておらず、snapshot を捨てる移植が書ける | 目視 | **修正**（契約 doc に明記） |
+| 10 | 孤児の重複判定の走査が分岐の外にあり、非孤児でも 256 件を舐める | 目視 | **修正**（分岐の内側へ） |
+| 11 | 上限超えの復元配列を terminal 経路が運び続ける | 再現 | **限界へ**（`nextContent` に診断の出口が無く、黙って刈るのは「黙って間引かない」に反する） |
+| 12 | 孤児の記録が上限をまたぐと再び足され revision が動く | 再現 | **限界へ**（`history` を見れば厳密だが上限の無い走査になる。枠の中では収束する） |
+| 13 | 復元状態の順序材料を検証していない（偽の `startIngestSeq` が通る） | 再現 | **限界へ + test で固定**（同じ状態を書ける相手は `status` を直接書ける。daemon 側の信頼境界） |
+| 14 | `DroppedEvidenceEntryV1` の欄の組み合わせが無検査 | 目視 | **限界へ**（`oneOf` は別言語の validator で挙動差。読む側が `reason` で分岐する） |
+| 15 | 退避された operation の指紋が記録に残らない | 目視 | **限界へ**（#44 の前から候補ゼロで孤児隔離だったので差が無い） |
+| — | `nextContent` の配列複製が冗長 | 反証（複製は §4.2 の guard 本体。実害は `finalizeAbandonedState` 側の**欠落**） | **却下**（#4 として逆向きに採用） |
+
+**ponytail-review**: `startIngestSeqOf` から重複した `declared()` を落とし（pattern 検査が空白も
+弾くため）、`quarantineWithRecord` の事前複製を削除、test helper の手写しを `withoutStartFacts` に
+寄せた。過剰な抽象の新設は無し。
+
+**semgrep / codex-review mode=security / codex:adversarial-review**: 下の T047 で実施。
+
+- [X] T046 `speckit-verify-tasks` を 1 回通し、`[X]` に実装が伴っているかを確認してから PR を作る
+
+**T046 の結果**: `specs/002-continuity-state-evidence/verify-tasks-report.md`（41 VERIFIED /
+2 PARTIAL / 1 SKIPPED）。レポートは `speckit-verify-tasks` の immutability 規則どおり
+**生成時のまま**にしてある。生成時点は commit `cdebef8` で、その後の `0d6b4cd` 以降が
+数字を動かしている（変異 179 → **187**、tests 307 → **315**、実装は上の T045 表のとおり）。
+PARTIAL 2 件（T019 / T029）の walkthrough は**ユーザーの選択待ち**で、まだ処理していない。
+
+- [ ] T047 `rules/security.md` の必須ツールを通す — semgrep CLI・`/codex-review mode=security`・
+  `/codex:adversarial-review`。この feature は入力検証と信頼境界（復元状態の扱い）に触るので
+  対象範囲に入る。指摘は同じく批判的評価で採否を決める
 
 ---
 
