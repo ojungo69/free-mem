@@ -1,0 +1,20 @@
+harness/license-inclusion-check.mjs
+  s_4a01f8d26254e9::t_90d725df5fc2fd 57-67
+  s_4a01f8d26254e9::t_1b8db8c2030943 38-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7fd29720fd24cfe8438892e059fc3ced30e861b1",
+  "prompts": {},
+  "sessions": {
+    "s_4a01f8d26254e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42f9369d-0ce2-46d4-8426-ca6a2227f397",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
