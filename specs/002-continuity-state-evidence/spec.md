@@ -66,6 +66,11 @@ event store も外部索引も渡さずに、その operation が閉じずに `u
    同じ受理・隔離の判断に到達し、同じ状態と同じ内容 hash を出す
 4. **Given** すでに pending にある operation へ **再配送の start** が届く、**When** それを適用する、
    **Then** 順序の材料は**最初に受理した start のまま変わらない**（再配送で上書きされない）
+5. **Given** 順序の材料（`startIngestSeq`）だけを持ち turn 種別の材料を持たない復元状態、
+   **When** `nativeOperationId` を名乗らない terminal を渡す、**Then** その operation は閉じず、
+   `terminal_turn_unverifiable` の診断とともに `unknown` へ倒れる。terminal が名乗る
+   `turnIdSource` は照合の片側でしかないので、状態側に材料が無い以上「一致した」とは言えない。
+   同じ状態でも rule 1（`nativeOperationId` 一致）の terminal は turn 両立を要求しないので閉じる
 
 ---
 
