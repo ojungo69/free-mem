@@ -330,6 +330,7 @@ mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) 
 mutate "      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];" "      candidates[0];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
 mutate "  const existing = preferCompatible([...idMatches, ...nativeMatches]);" "  const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" && run "再配送の相手を集合ごとに選ぶ"
 mutate "  if (!isRealInstant(event.occurredAt)) {" "  if (false) {" && run "occurredAt の暦検査を外す"
+mutate "  if (!ISO_TIMESTAMP_PATTERN.test(value)) return false;" "" && run "暦検査の前に綴りを当てない"
 mutate "  if (isBlank(state.taskLineageId)) {" "  if (false) {" && run "状態側の空白 lineage を通す"
 mutate "  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {" "  if (false) {" && run "event 側の空白 lineage を通す"
 mutate "        diagnostics:

@@ -28,6 +28,14 @@ import {
 
 const INGEST_SEQ_PATTERN = /^(0|[1-9][0-9]*)$/;
 
+/**
+ * `continuity.schema.json` の `IsoTimestamp` と同じ綴り（§22.6 + §3 の canonical profile）。
+ * `INGEST_SEQ_PATTERN` と同じ理由でここに写しを持つ: 参照模型は event が schema 検証を通って
+ * から届くとは限らず、`validateContractValue` は test からしか呼ばれない。
+ */
+const ISO_TIMESTAMP_PATTERN =
+  /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?Z$/;
+
 /** revision 導出の schema 版。導出式を変えるときはここを上げる。 */
 const REVISION_SCHEMA_ID = "free-mem/work-state-revision/v1";
 
@@ -283,8 +291,15 @@ function isBlank(value: string): boolean {
  * それより多い桁の扱いは実装依存（V8 は切り捨てるが仕様上の保証ではない）。値をそのまま
  * parse すると、丸め上がる実装では正当な `…:59.9999Z` が翌秒に化けて誤拒否になる。
  * 暦の実在を見るのに小数秒は要らないので、実装依存の入る余地ごと落とす。
+ *
+ * **綴りを先に当てる**。切り落とす前の値を pattern に通さないと、この関数は先頭 19 文字しか
+ * 見ないので `2026-08-16T00:00:01+09:00`（申告と 9 時間ずれる）も `…:01ZZZGARBAGE`（下流の
+ * `toISOString()` が投げる）も `"2026"`（`slice` が短い文字列をそのまま返し、`Date.parse` も
+ * `startsWith` も通る）も受理してしまう。どれも「綴りとして受理した以上は指す瞬間も一意」と
+ * いう上の主張が成り立たない値で、しかも還元器が**凍結 schema に適合しない状態を出す**。
  */
 function isRealInstant(value: string): boolean {
+  if (!ISO_TIMESTAMP_PATTERN.test(value)) return false;
   const seconds = value.slice(0, 19);
   const parsed = Date.parse(`${seconds}Z`);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(seconds);

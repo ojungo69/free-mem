@@ -3408,6 +3408,39 @@ test("空白だけの taskLineageId は lineage scope として認めない", ()
   assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent(), new Map()).outcome, "applied");
 });
 
+test("occurredAt の綴りが凍結 IsoTimestamp から外れていたら落ちる（#27）", () => {
+  // 暦検査は先頭 19 文字しか見ないので、綴りを先に当てないと「指す瞬間が一意」の主張が
+  // 成り立たない値を通す。schema 検証を通ってから届く保証は無い（`validateContractValue` は
+  // test からしか呼ばれない）ので、還元器が自分で当てる
+  const misspelled = [
+    "2026-08-16T00:00:01+09:00", // 数値 offset。19 文字目までは妥当だが指す瞬間は 9 時間ずれる
+    "2026-08-16T00:00:01-00:00",
+    "2026-08-16T00:00:01", // offset 無し。下流が local time として読む
+    "2026-08-16T00:00:01ZZZGARBAGE", // 末尾ゴミ。下流の toISOString() が投げる
+    "2026-08-16", // 短い。slice がそのまま返し Date.parse も startsWith も通ってしまう
+    "2026",
+    "2026-08-16t00:00:01z", // 小文字
+  ];
+  for (const occurredAt of misspelled) {
+    // 綴りの話であることを先に固定する（schema 側でも落ちる値であること）
+    assert.notEqual(
+      validateContractValue("IsoTimestamp", occurredAt, SCHEMA_ROOT, CONTINUITY_LIMITS).length,
+      0,
+      occurredAt,
+    );
+    assert.throws(
+      () => reduceTaskWorkState(emptySnapshot(), startEvent({ occurredAt }), new Map()),
+      /occurredAt が暦として実在しない/,
+      `reduce: ${occurredAt}`,
+    );
+    assert.throws(
+      () => correlateTerminalEvent(startedSnapshot(), terminalEvent({ occurredAt })),
+      /occurredAt が暦として実在しない/,
+      `correlate: ${occurredAt}`,
+    );
+  }
+});
+
 test("暦として実在しない occurredAt は 3 つの入口すべてで落ちる（#27）", () => {
   // pattern は成分の範囲までしか書けないので schema は通る。`new Date()` は例外を投げずに
   // 翌月へ繰り上げるため、素通しにすると状態の updatedAt / startedAt / terminalAt が
