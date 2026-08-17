@@ -1,0 +1,51 @@
+specs/002-continuity-state-evidence/spec.md
+  s_2d059b4f795bca::t_4b7b4e49d77482 212-214
+harness/continuity/old-shape-projection.ts
+  s_2d059b4f795bca::t_1716cb0d1f9809 1-7,13-14,16-19,21-23,25-29,32-33,35-36,41,43-44,50-55
+harness/continuity/old-shape-baseline.mjs
+  s_2d059b4f795bca::t_e96eb6bb0f07fc 430,432
+  s_2d059b4f795bca::t_1570d5d8f0857f 38,97-118
+  s_2d059b4f795bca::t_053b68a9158a0c 193-356
+  s_2d059b4f795bca::t_d701a5eff42394 21-22
+  s_2d059b4f795bca::t_27cf6551fd67d4 13
+  s_2d059b4f795bca::t_847bf498b383d8 398-399,412-413
+  s_2d059b4f795bca::t_cfc6221d240d00 37,39-40
+harness/continuity/old-shape-parity.test.ts
+  s_2d059b4f795bca::t_893a74373f4203 365-372
+  s_2d059b4f795bca::t_6505fb8221c6b4 26-36
+  s_2d059b4f795bca::t_19624f3ca44e9e 55-56,78,80-81,84,91,93-94,97,106-109,113,122-127,132,142-143,146,156,159,163-257,290-291,305-306
+evidence/phase3-reference-model.md
+  s_2d059b4f795bca::t_6584f38b8d62bd 554,561-567,573-587
+  s_2d059b4f795bca::t_0e1099ad26f588 592-593,600-604,653,673,684,692-695,697,702,704-705,708,715,761,767,771,787,789,793-795,800,829,838-839,849,857,859-861,864
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_f5b16b304b277b 457-462,467-473
+.github/workflows/ci.yml
+  s_2d059b4f795bca::t_0a24082e2947c5 136-149
+  s_2d059b4f795bca::t_65f5b04d6125f8 62-64
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_4d2bdf5ce2d27d 392-394,400,402-423
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_14ecbc2d4720ce 29
+specs/002-continuity-state-evidence/plan.md
+  s_2d059b4f795bca::t_4a576aa3600e5e 131,134-135
+specs/002-continuity-state-evidence/quickstart.md
+  s_2d059b4f795bca::t_f1b5a071211613 12,34-37,53
+harness/fixtures/continuity/old-shape-parity.json
+  s_2d059b4f795bca::t_fb27d1d061e81b 246-262,311-327,378-404,410-414,461-487,583-587,632-648,742-746,790-806,939-943,988-1004,1053-1069,1164-1168,1213-1229,1359-1375,1482-1486,1506,1508-1510,1516-1520,1540,1542-1544,1674-1743,1746-15692
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f2bdb771f239f2f8261df1152856acbf36516464",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
