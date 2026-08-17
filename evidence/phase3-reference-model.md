@@ -163,8 +163,14 @@ frozen schema は `pendingOperations` も `sourceEventIds` も 256 件（§10 �
 (#39)」として正本に採用された**ので、現在は harness 独自の判断ではなく正本の写しである（残って
 いる harness 側の判断は `unknown` の失効規則が無いことだけ）。移植する実装は正本に従うこと:
 
-- 上限に達した状態へ新しい start が来たら、`succeeded` → `failed` → `unknown` → `started` の順に
-  古いものから落として場所を空ける。落とした `operationId` は `pending_operations_evicted` に並べる
+- 上限に達した状態へ新しい start が来たら、**`correlation.taskLineageId` が状態の lineage と違う
+  もの** → `succeeded` → `failed` → `unknown` → `started` の **5 群**の順に落として場所を空ける。
+  lineage 外を先頭に置くのは、その要素が照合・放棄のどの経路からも候補にならないから——容量の
+  判断だからこそ価値の低いものから落とす（絞らずに落とすと、別 lineage の要素で自 lineage の
+  確定済み証跡を押し出せる）。**群内の順序は `pendingOperations` の配列位置だけ**で、先頭側から
+  落とす。`startedAt` で並べ替え**ない**: 時刻は event を出す側が寄越す値なので、並べ替えると誰を
+  残すか adapter が選べる（`droppedEvidence` の並びと同じ規則・同じ理由）。落とした
+  `operationId` は `pending_operations_evicted` に並べる
 - **落とせるものが無いから取り込まない、にはしない**。`unknown` を状態から消す経路が他に無いので、
   枠が open な operation で埋まると以後すべての start が入らなくなる。訂正版の存在しない隔離を
   adapter が再送し続けるだけで、回復経路が無い（詰まった session は以後どの tool 呼び出しも
