@@ -308,6 +308,88 @@
         }
       },
       "rejectedBy": "runtime"
+    },
+    {
+      "name": "attested-at-not-a-real-date",
+      "reason": "§22.6 受領証の attestedAt が暦として実在しない（2 月 30 日）。IsoTimestamp の $comment は型そのものに対する約束なので、event が運ぶ 2 つ目の IsoTimestamp も同じ検査を受ける",
+      "event": {
+        "eventId": "invalid-attested-at",
+        "adapterDeliveryId": "delivery-start",
+        "canonicalFingerprint": "fingerprint-start",
+        "kind": "tool_started",
+        "ingestSeq": "9007199254740994",
+        "occurredAt": "2026-08-16T00:00:01Z",
+        "sessionId": "session-1",
+        "taskLineageId": "lineage-1",
+        "turnId": "turn-1",
+        "turnIdSource": "native",
+        "sourceAgent": "claude",
+        "provenance": {
+          "sourceAgentVersion": "2.1.228 (Claude Code)",
+          "evidenceKind": "native",
+          "captureMethod": "native_event",
+          "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+          "scenarioId": "tool-call-lifecycle",
+          "ingestAttestation": {
+            "ingestReceiptId": "receipt-1",
+            "peerIdentityId": "peer-1",
+            "channel": "rpc",
+            "attestedAt": "2026-02-30T00:00:00Z"
+          }
+        },
+        "operation": {
+          "phase": "start",
+          "operationMatchKey": "match-key-1",
+          "operationKind": "Bash",
+          "nativeOperationId": "toolu_1",
+          "canonicalInputHash": "input-hash-1"
+        },
+        "payload": {
+          "tool_name": "Bash"
+        }
+      },
+      "rejectedBy": "runtime"
+    },
+    {
+      "name": "blank-task-lineage-id",
+      "reason": "§3.1 event の taskLineageId が空白（lineage scope が定まらない）。凍結 schema は maxLength しか課さないので、空白は schema 妥当なまま届く",
+      "event": {
+        "eventId": "invalid-blank-lineage",
+        "adapterDeliveryId": "delivery-start",
+        "canonicalFingerprint": "fingerprint-start",
+        "kind": "tool_started",
+        "ingestSeq": "9007199254740994",
+        "occurredAt": "2026-08-16T00:00:01Z",
+        "sessionId": "session-1",
+        "taskLineageId": " ",
+        "turnId": "turn-1",
+        "turnIdSource": "native",
+        "sourceAgent": "claude",
+        "provenance": {
+          "sourceAgentVersion": "2.1.228 (Claude Code)",
+          "evidenceKind": "native",
+          "captureMethod": "native_event",
+          "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+          "scenarioId": "tool-call-lifecycle",
+          "ingestAttestation": {
+            "ingestReceiptId": "receipt-1",
+            "peerIdentityId": "peer-1",
+            "channel": "rpc",
+            "attestedAt": "2026-08-16T00:00:01Z"
+          }
+        },
+        "operation": {
+          "phase": "start",
+          "operationMatchKey": "match-key-1",
+          "operationKind": "Bash",
+          "nativeOperationId": "toolu_1",
+          "canonicalInputHash": "input-hash-1"
+        },
+        "payload": {
+          "tool_name": "Bash"
+        }
+      },
+      "rejectedBy": "runtime"
     }
   ]
 }

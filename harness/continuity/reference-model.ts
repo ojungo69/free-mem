@@ -168,6 +168,18 @@ export function stampIntakeEvidence(
   // §3.1 が禁じている自己申告の native authority が通ってしまう
   const { ingestAttestation: _claimed, ...provenance } = event.provenance;
   const attestation = context.attestation;
+  // **書く層で検査する**。`attestedAt` の暦検査は読む層（`assertIdentityMaterial`）にもあるが、
+  // その値は caller 由来ではない——上の destructure が caller の受領証を捨て、ここで daemon 自身の
+  // `context.attestation` を刻印する。書く層が検査しないと、受領証の時刻を 1 つ間違えた daemon は
+  // 全 event を落としながら、エラーは daemon の受領証ではなく**event を名指しする**（実測:
+  // `2026-02-30T00:00:00Z` の受領証は intake を診断ゼロで通り、直後に 3 つの入口すべてが
+  // `§22.6 違反: provenance.ingestAttestation.attestedAt が暦として実在しない` を投げる）。
+  // intake は台帳より前なので、throw しても配送鍵は消費されない
+  if (attestation !== undefined && !isRealInstant(attestation.attestedAt)) {
+    throw new Error(
+      `§22.6 違反: 受領証の attestedAt が暦として実在しない: ${attestation.attestedAt}`,
+    );
+  }
   // §3.1 は evidenceKind も turn identity も「認証済み peer identity」から導けと言う。
   // 受領証があり、かつ caller の名乗る Agent と version が受領証の指すそれと一致することが
   // その認証にあたる。evidence の証明も turn の証明もこの束縛の上に乗る
@@ -405,6 +417,16 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   // 縛らないので、ここで落とさないと誰も落とさない
   if (isBlank(event.sourceAgent)) {
     throw new Error("§3.1 違反: sourceAgent が空文字（Agent scope が定まらない）");
+  }
+  // `provenance` は下の暦検査が素で deref する。型では必須だが、この関数は「schema 検証を
+  // 通ってから届くとは限らない」前提で書かれた検査群の入口なので、無い event を渡されると
+  // 節を名乗らない `TypeError` になる。`rejected-events.json` は case ごとに 1 つの節を宣言して
+  // TS/Rust パリティの基準にしているので、その分類契約から外れる。`?.` で黙って通すのは
+  // §3.1「Every adapter MUST populate provenance」と逆向きなので、ここで落とす。
+  // 比較は型を外して行う（型の上では常に定義済みなので、素の比較は「不要な条件」になる）
+  const provenance: unknown = event.provenance;
+  if (provenance === undefined || provenance === null) {
+    throw new Error("§3.1 違反: provenance が無い（evidenceKind と受領証の出どころが定まらない）");
   }
   // 凍結 schema の `IsoTimestamp` は `$comment` で「暦としての実在は runtime validator が
   // 受け持つ」と**型そのものに対して**約束しており、その `$def` は 20 近い欄から参照されている。
@@ -923,29 +945,23 @@ export function reduceTaskWorkState(
     // 無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので上で決めた連結順はそのまま残る
     const siblings = [...new Set([...idMatches, ...nativeMatches])];
     const compatible = siblings.filter((pending) => !startConflictsWith(pending));
-    // 互換な兄弟が複数居るときは、**native ID を既に名乗っている側**を再配送の相手にする。
-    // 名乗っていない側を選ぶと下の復元がその欄を書き、**同じ native ID の pending が 2 件**になる。
-    // rule 1 は候補が 2 件になった時点で曖昧と判断するので、後続の terminal はどちらも閉じられず、
-    // 2 件とも `started` のまま残る。
-    // **届いた start が native ID を持つときだけ働かせる**。優先してよい根拠は「互換の定義上、
-    // 名乗っている値は届いたものと一致している」だが、`startConflictsWith` の native ID 比較は
-    // **両方が declared のときだけ**走るので、届いた側が持たないなら一致は一度も確かめていない。
-    // 根拠が無いまま選び先を変えると、`operationId` が重複する状態（凍結 schema は一意性を課さない）で
-    // 配列順とは違う相手が選ばれ、**空白の native ID がどちらの兄弟から落ちるかが変わる**。
-    // 書く値が無い側では従来どおり配列順で決める
+    // 相手は配列順で決める。「native ID を既に名乗っている兄弟を優先する」形も書いたが、
+    // **下の `nativeIdTaken` が同じ不変条件（同じ native ID の pending は 1 件）をより広く
+    // 守る**ので消した。優先は `compatible` の中しか見られず、名乗り手が非互換なときに空振り
+    // する（そこが本当の穴だった）。両方置くと、優先の有無で結果が変わる入力が無くなり、
+    // 変異が生存する = 検証できない分岐になる
     // 添字でなく `at()` で取る。`noUncheckedIndexedAccess` を入れていないので `compatible[0]` は
     // 空配列でも `PendingOperation` 型になり、**下の `existing !== undefined` が型の上では常に真**に
     // なる（実行時には undefined が来る）。`at()` は設定に関係なく `| undefined` を返すので、
     // 空集合の分岐が型に残る
-    const existing =
-      compatible.find(
-        (pending) =>
-          declared(operation.nativeOperationId) !== undefined &&
-          declared(pending.correlation.nativeOperationId) !== undefined,
-      ) ??
-      compatible.at(0) ??
-      siblings.at(0);
-    const startConflict = existing !== undefined && startConflictsWith(existing);
+    const existing = compatible.at(0) ?? siblings.at(0);
+    // `existing` の衝突判定は上の filter で確定している。`compatible` から取ったなら構成上
+    // 非衝突、空だったから `siblings.at(0)` に落ちたならその要素は filter で衝突と判定済み。
+    // もう一度述語を呼ぶと、兄弟 1 件という最も普通の経路で `startFactsFor`（`pendingOperations`
+    // の線形走査）が 1 回から 2 回に増えるだけで、新しい情報は出ない
+    // `existing !== undefined` は残す。下の隔離が `existing.operationId` を読むので、型の上でも
+    // 定義済みへ絞る必要がある（この形なら `siblings.length > 0` は含意される）
+    const startConflict = existing !== undefined && compatible.length === 0;
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
         {
@@ -970,12 +986,28 @@ export function reduceTaskWorkState(
       // 意味を変える）。降格された turn の回復は #35 の本筋で扱う
       // 値が無い欄は**キーごと**落とす。JCS は `undefined` を canonicalize できないので、
       // `{ nativeOperationId: undefined }` を残すと状態 hash の計算で例外になる
+      // **既に名乗っている兄弟が居るなら native ID は埋めない**。上の優先は `compatible` の中しか
+      // 見ないので、名乗っている側が**非互換**（identity が食い違う corruption）だと空振りし、
+      // ここが 2 件目を作る。実測: `operationMatchKey` だけ違う op-native-claimer が `toolu_1` を
+      // 名乗る状態に `toolu_1` の start を再配送すると、互換な derived id 兄弟に `toolu_1` が
+      // 書かれ、後続の terminal は rule 1 で候補 2 件 = `terminal_ambiguous` になり、どちらも
+      // `unknown` で閉じられないまま配送鍵だけ消費される。埋めない側の代償は「その pending が
+      // native ID を持たないまま」だが、その native ID を名乗る terminal は既に名乗っている側で
+      // 一意に閉じられるので、照合が成立しない形（上のコメントの `terminal_orphaned`）にはならない
+      const nativeIdTaken =
+        declared(operation.nativeOperationId) !== undefined &&
+        siblings.some(
+          (pending) =>
+            pending !== existing &&
+            declared(pending.correlation.nativeOperationId) === declared(operation.nativeOperationId),
+        );
+      const fillableNativeId = nativeIdTaken ? undefined : operation.nativeOperationId;
       const recovered = withoutUndefined<OperationCorrelationV1>({
         ...existing.correlation,
         // `??` でなく `declared()` で見る。空白の任意欄は「値が無い」なので埋める対象だが、
         // `"" ?? x` は `""` のままで一生埋まらない（実測: 空白の nativeOperationId を持つ pending は
         // 埋め直されず、その native id を名乗る terminal が rule 1 で候補ゼロになり続けた）
-        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? operation.nativeOperationId,
+        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? fillableNativeId,
         canonicalInputHash: declared(existing.correlation.canonicalInputHash) ?? operation.canonicalInputHash,
         toolName: declared(existing.correlation.toolName) ?? operation.operationKind,
       });
@@ -998,8 +1030,14 @@ export function reduceTaskWorkState(
       // 消費せず還元器は純関数なので永久に収束しない）が、そのままだと**衝突していた兄弟が
       // 誰にも報告されずに枠を占め続ける**。この状態はコード自身が「再配送ではなく corruption」と
       // 呼んでいるもので、黙って間引かない規則どおり診断に出す
+      // 判定は上の `compatible` で全兄弟について済んでいるので、**集合差**で取る。述語を
+      // 呼び直すと `startFactsFor`（線形走査）が兄弟の数だけ増え、互換な兄弟 256 件の再配送で
+      // 走査が 2 回から 512 回になる（実測）。`pending !== existing` は落とす: ここへ来た時点で
+      // `compatible` は非空（空なら上の隔離で return 済み）なので `existing` は必ず `compatible`
+      // の要素で、集合差には最初から入らない
+      const compatibleSet = new Set(compatible);
       const conflictingSiblings = siblings
-        .filter((pending) => pending !== existing && startConflictsWith(pending))
+        .filter((pending) => !compatibleSet.has(pending))
         .map((pending) => pending.operationId);
       const duplicateDiagnostic: ContinuityDiagnosticV1 = {
         code: "duplicate_operation_start",
@@ -1240,7 +1278,12 @@ function withoutUndefined<T extends object>(value: T): T {
 
 function withSourceEvent(pending: PendingOperation, eventId: string): PendingOperation {
   if (pending.sourceEventIds.includes(eventId)) return pending;
-  if (pending.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems) return pending;
+  // 2 条件目は `sourceEventLost` から借りる。あちらの docstring が「同じ 2 条件を 1 箇所に置く」と
+  // 宣言しているのに、こちらが上限比較を直書きしたままだと**実際には 2 箇所**で、上限の値・
+  // 比較演算子・3 つ目の条件のどれかを片方だけ変えた瞬間に「記録できたか」の判定が割れる
+  // （2 つは別経路から呼ばれるので一致を強制する test が無い）。ここに来た時点で `includes` は
+  // 必ず false なので、呼び出しは長さ検査に縮退する
+  if (sourceEventLost(pending, eventId)) return pending;
   return { ...pending, sourceEventIds: [...pending.sourceEventIds, eventId] };
 }
 
@@ -1415,7 +1458,12 @@ export function correlateTerminalEvent(
   // `terminal_unmatched`（= 照合できなかっただけの正常な結果）に化ける**。公開型は phase で
   // 判別されない `NormalizedContinuityEvent` なので、caller は start を「未照合の terminal 証跡」
   // として保存してしまえる。`finalizeAbandonedState` が逆向きに張っている kind ガードと対称に、
-  // ここでも terminal 相であることを要求する
+  // ここでも terminal 相であることを要求する。
+  // **この phase ガードは下で順序を揃えた 5 つ（envelope → turn → identity → ingestSeq → scope）の
+  // 外側**で、位置も入口ごとに違ってよい。5 つは「届いた event が規則に照らして妥当か」を見る
+  // ので分類が入口間で割れると `rejected-events.json` の節宣言と食い違うが、これは
+  // 「caller が経路を取り違えた」という**呼び出し側の誤り**で、event の分類ではない
+  // （fixture は `reduceTaskWorkState` しか駆動しないので、この判断は fixture では固定できない）
   if (terminalEvent.operation?.phase !== "terminal") {
     throw new Error(
       `terminal 以外の operation event は correlateTerminalEvent に渡さない: phase=${String(terminalEvent.operation?.phase)}`,
@@ -1569,9 +1617,12 @@ export function correlateTerminalEvent(
   const sameTurnOf = (list: readonly PendingOperation[]): readonly PendingOperation[] =>
     byNativeId.length > 0
       ? list
+      // 他の 12 箇所と同じく `declared()` で見る。今日は `assertTurnIdentity` が event 側の空白を
+      // 落とすので素の比較でも結果は同じだが、この関数を「双方が turn を名乗っていないなら
+      // 同じ turn」と読む形に変えた瞬間、素の比較は blank==blank の潰しを黙って復活させる
       : list.filter(
           (pending) =>
-            pending.correlation.turnId !== undefined &&
+            declared(pending.correlation.turnId) !== undefined &&
             pending.correlation.turnId === terminalEvent.turnId,
         );
   // 種別の材料（`operationStarts`、#35）は復元直後と退避後に空になる。材料が無いことを

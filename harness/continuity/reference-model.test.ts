@@ -431,6 +431,22 @@ test("native の条件を満たす event は native のまま", () => {
   assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
 });
 
+test("受領証の attestedAt は書く層（intake）で暦検査を受ける", () => {
+  // この値は caller 由来ではない（caller の受領証は destructure で捨てられ、daemon 自身の
+  // `context.attestation` が刻印される）。書く層が検査しないと、受領証の時刻を 1 つ間違えた
+  // daemon は全 event を落としながら、エラーは受領証ではなく event を名指しする
+  const broken: IntakeContextV1 = {
+    ...INTAKE,
+    attestation: { ...ATTESTATION, attestedAt: "2026-02-30T00:00:00Z" },
+  };
+  assert.throws(
+    () => stampIntakeEvidence(startEvent(), broken),
+    /§22.6 違反: 受領証の attestedAt が暦として実在しない/,
+  );
+  // 実在する日付は通す（締めすぎていないことも見る）
+  assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
+});
+
 test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => {
   const cases: Array<[string, NormalizedContinuityEvent]> = [
 
@@ -1916,7 +1932,10 @@ test("negative fixture は宣言した層で落ちる", () => {
       assert.notEqual(section, undefined, `fixture の reason が節で始まっていない: ${testCase.name}`);
       assert.throws(
         () => reduceTaskWorkState(emptySnapshot(), asStamped(testCase.event), new Map()),
-        new RegExp(`§${section?.replace(".", "\\.")} 違反`),
+        // `replace` は String 引数だと**先頭 1 件しか置換しない**。`3.1.2` のような節が来ると
+        // 2 つ目のドットが素のワイルドカードのまま残り、`§3.1X2 違反` にも一致する——上の
+        // コメントが実測で見つけた過剰マッチそのものが戻る
+        new RegExp(`§${section?.replaceAll(".", "\\.")} 違反`),
         testCase.name,
       );
       continue;
@@ -3959,11 +3978,12 @@ for (const blank of ["", " "]) {
   });
 }
 
-test("空白の native ID を埋める前に、既に名乗っている兄弟を再配送の相手にする", () => {
+test("名乗っている兄弟が互換でも、空白の native ID を埋めない（2 件目を作らない）", () => {
   // 復元した checkpoint に (1) derived id が一致するが native ID が空白の pending と
-  // (2) 届いた native ID を既に名乗る別の pending が並ぶ。両方とも identity は互換なので、
-  // 空白の側を選ぶと下の復元がそこへ native ID を書き、**同じ native ID の pending が 2 件**に
-  // なる。rule 1 は候補 2 件を曖昧と見るので、後続の terminal はどちらも閉じられない
+  // (2) 届いた native ID を既に名乗る別の pending が並ぶ。両方とも identity は互換。
+  // 空白の側へ native ID を書くと**同じ native ID の pending が 2 件**になり、rule 1 は候補 2 件を
+  // 曖昧と見るので後続の terminal はどちらも閉じられない。非互換の名乗り手を並べた下の test と
+  // 対にして、`nativeIdTaken` が互換・非互換の両方を覆うことを固定する
   const blankNative = pendingWithBlank("nativeOperationId", "");
   const derived = blankNative.state.pendingOperations[0] as PendingOperation;
   const alreadyNamed: PendingOperation = {
@@ -3998,6 +4018,64 @@ test("空白の native ID を埋める前に、既に名乗っている兄弟を
     closed.diagnostics.map((d) => d.code),
     ["terminal_order_unverifiable"],
     "rule 1 の候補が 1 件に定まっていない",
+  );
+});
+
+test("名乗っている兄弟が非互換なら、空白の native ID を埋めない（2 件目を作らない）", () => {
+  // 上の優先は `compatible` の中しか見ないので、名乗っている側が**非互換**（identity が
+  // 食い違う corruption）だと空振りする。そのまま埋めると同じ native ID の pending が 2 件になり、
+  // 後続の terminal は rule 1 で候補 2 件 = 曖昧になってどちらも閉じられない
+  const base = startedSnapshot();
+  const derived = base.state.pendingOperations[0] as PendingOperation;
+  const compatible: PendingOperation = {
+    ...derived,
+    correlation: { ...derived.correlation, nativeOperationId: "" },
+  };
+  // matchKey が違うので `startConflictsWith` が真 = 互換な候補には入らない。それでも
+  // native ID が一致するので兄弟ではある
+  const claimer: PendingOperation = {
+    ...derived,
+    operationId: "op-native-claimer",
+    correlation: {
+      ...derived.correlation,
+      operationMatchKey: "match-key-OTHER",
+      nativeOperationId: START_OPERATION.nativeOperationId,
+    },
+  };
+  const snapshot = {
+    ...base,
+    state: { ...base.state, pendingOperations: [compatible, claimer] },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  const naming = result.snapshot.state.pendingOperations.filter(
+    (pending) => pending.correlation.nativeOperationId === START_OPERATION.nativeOperationId,
+  );
+  assert.deepEqual(
+    naming.map((pending) => pending.operationId),
+    ["op-native-claimer"],
+    "非互換な名乗り手が居るのに空白側へ書いて 2 件になった",
+  );
+  // 曖昧にならないことまで見る。2 件になっていれば rule 1 は候補 2 件で `terminal_ambiguous` に
+  // なり、どちらも `unknown` のまま閉じられない（配送鍵だけ消費される）
+  const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied");
+  assert.ok(
+    !closed.diagnostics.some((d) => d.code === "terminal_ambiguous"),
+    "rule 1 の候補が 2 件になっている",
+  );
+});
+
+test("provenance が無い event は TypeError でなく §3.1 で落ちる", () => {
+  // この経路の他の検査はすべて `§3.1 違反:` / `§22.6 違反:` の形で投げ、`rejected-events.json` は
+  // case ごとに 1 つの節を宣言して TS/Rust パリティの基準にしている。節を名乗らない TypeError は
+  // その分類契約から外れる
+  const withoutProvenance = { ...startEvent(), provenance: undefined } as unknown as Parameters<
+    typeof reduceTaskWorkState
+  >[1];
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), withoutProvenance, new Map()),
+    /§3.1 違反: provenance が無い/,
   );
 });
 

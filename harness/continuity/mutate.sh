@@ -108,7 +108,7 @@ mutate "  const delivery =
 mutate "    operation.nativeOperationId !== undefined
       ? byNativeId" "    byNativeId.length > 0
       ? byNativeId" && run "rule 1 の排他を外す"
-mutate "            pending.correlation.turnId !== undefined &&" "            true &&" && run "rule 2 の turn 同一性要求を外す"
+mutate "            declared(pending.correlation.turnId) !== undefined &&" "            true &&" && run "rule 2 の turn 同一性要求を外す"
 mutate "  if (open.length > 1) {" "  if (false) {" && run "候補が複数のときの拒否を外す"
 mutate "  const identityConflicts = (pending: PendingOperation): boolean =>" "  const identityConflicts = (pending: PendingOperation): boolean =>
     pending.correlation.operationMatchKey !== operation.operationMatchKey ||" && run "terminal 側に matchKey 一致を要求し直す"
@@ -157,7 +157,7 @@ mutate "          ? withSourceEvent(
               pending.status === \"started\" ? { ...pending, status: \"unknown\" as const } : pending,
               event.eventId,
             )" "          ? (pending.status === \"started\" ? { ...pending, status: \"unknown\" as const } : pending)" && run "unknown 化で証跡を残さない"
-mutate "  if (pending.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems) return pending;" "  // eslint-disable-next-line" && run "sourceEventIds の上限を外す"
+mutate "  if (sourceEventLost(pending, eventId)) return pending;" "  // eslint-disable-next-line" && run "sourceEventIds の上限を外す"
 mutate "  if (pending.length < CONTINUITY_LIMITS.arrayItems) return pending;" "  return pending;\n  // eslint-disable-next-line" && run "pendingOperations の上限を外す"
 mutate "const EVICTION_ORDER: readonly PendingOperation[\"status\"][] = [
   \"succeeded\",
@@ -304,11 +304,14 @@ mutate "        pending.correlation.sessionId === event.sessionId &&
         pending.correlation.taskLineageId === state.taskLineageId," "        pending.correlation.sessionId === event.sessionId," && run "放棄が別 lineage の operation も倒す"
 # 「derived id の兄弟は先頭 1 件で決める」は削除。候補選びを 1 箇所に統合して集合ごとに別の
 # 選び方をする変異が書けなくなった。互換優先の軸は下の「互換な候補を選ばない」が両集合まとめて
-# 覆い、集合をまたげるかの軸は「再配送の相手を集合ごとに選ぶ」が、互換な兄弟が複数居るときの
-# 選び方は「native id を名乗る兄弟を優先しない」が、それぞれ別に見る
+# 覆い、集合をまたげるかの軸は「再配送の相手を集合ごとに選ぶ」が、それぞれ別に見る。
+# 「互換な兄弟が複数居るときに native id を名乗る側を優先する」も削除。同じ不変条件（同じ
+# native ID の pending は 1 件）は「名乗っている兄弟が非互換でも空白へ埋める」がより広く覆い、
+# 両方置くと優先の有無で結果が変わる入力が無くなって変異が生存した
 mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId," "    () => false," && run "退避で lineage 外を優先しない"
 mutate "    for (const candidate of pending) {" "    for (const candidate of [...pending].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) {" && run "群の中を配列位置でなく startedAt で退避する"
-mutate "        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? operation.nativeOperationId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
+mutate "        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? fillableNativeId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
+mutate "      const fillableNativeId = nativeIdTaken ? undefined : operation.nativeOperationId;" "      const fillableNativeId = operation.nativeOperationId;" && run "名乗っている兄弟が非互換でも空白へ埋める"
 mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
 mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
 mutate "  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSource)) {" "  if (false) {" && run "turnIdSource の語彙検査を外す"
@@ -334,20 +337,14 @@ mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible: readonly PendingOperation[] = [];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible = idMatches.filter((pending) => !startConflictsWith(pending));" && run "再配送の相手を集合ごとに選ぶ"
-mutate "      compatible.find(
-        (pending) =>
-          declared(operation.nativeOperationId) !== undefined &&
-          declared(pending.correlation.nativeOperationId) !== undefined,
-      ) ??" "" && run "native id を名乗る兄弟を優先しない"
-mutate "          declared(operation.nativeOperationId) !== undefined &&
-          declared(pending.correlation.nativeOperationId) !== undefined," "          declared(pending.correlation.nativeOperationId) !== undefined," && run "届いた start が native id を持たなくても名乗る兄弟を優先する"
-mutate "      compatible.at(0) ??
-      siblings.at(0);" "      compatible.at(0);" && run "全件衝突のとき衝突の証拠を持たない"
+mutate "    const existing = compatible.at(0) ?? siblings.at(0);" "    const existing = compatible.at(0);" && run "全件衝突のとき衝突の証拠を持たない"
 mutate "    const siblings = [...new Set([...idMatches, ...nativeMatches])];" "    const siblings = [...new Set([...nativeMatches, ...idMatches])];" && run "兄弟の連結順を入れ替える"
 mutate "    new Set([correlation.matched])," "    new Set(previous.state.pendingOperations)," && run "truncation の対象を照合相手の外へ広げる"
 mutate "      const truncated = sourceEventLost(existing, event.eventId) ? [existing.operationId] : [];" "      const truncated = previous.state.pendingOperations.map((p) => p.operationId);" && run "再配送 start の truncation 対象を全 pending にする"
 mutate "    if (value !== undefined && !isRealInstant(value)) {" "    if (false) {" && run "IsoTimestamp の暦検査を外す"
 mutate "    [\"provenance.ingestAttestation.attestedAt\", event.provenance.ingestAttestation?.attestedAt]," "    [\"occurredAt\", event.occurredAt]," && run "受領証の時刻を暦検査から外す"
+mutate "  if (provenance === undefined || provenance === null) {" "  if (false) {" && run "provenance 不在を節で落とさない"
+mutate "  if (attestation !== undefined && !isRealInstant(attestation.attestedAt)) {" "  if (false) {" && run "書く層で受領証の時刻を検査しない"
 mutate "  if (!isCanonicalTimestamp(value)) return false;" "" && run "暦検査の前に綴りを当てない"
 mutate "  if (!value.endsWith(\"Z\")) return false;" "  if (false) return false;" && run "offset の Z 固定を外す"
 mutate "    (fraction === \"\" || ISO_SECFRAC_PATTERN.test(fraction))" "    true" && run "小数部の綴りを見ない"
@@ -355,7 +352,7 @@ mutate "  return value === undefined || isBlank(value) ? undefined : value;" "  
 mutate "  if (isBlank(state.taskLineageId)) {" "  if (false) {" && run "状態側の空白 lineage を通す"
 mutate "  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {" "  if (false) {" && run "event 側の空白 lineage を通す"
 mutate "          ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)])," "" && run "再配送 start の truncation 診断を落とす"
-mutate "        .filter((pending) => pending !== existing && startConflictsWith(pending))" "        .filter(() => false)" && run "飛ばした衝突兄弟を報告しない"
+mutate "        .filter((pending) => !compatibleSet.has(pending))" "        .filter(() => false)" && run "飛ばした衝突兄弟を報告しない"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
