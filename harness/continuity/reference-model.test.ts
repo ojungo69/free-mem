@@ -666,6 +666,24 @@ test("pendingOperations が上限のとき terminal 済みを落として新し�
   assert.match(result.diagnostics[0]?.detail ?? "", /op-0/);
 });
 
+test("同じ群の退避順は配列位置で決まる（startedAt では決めない）", () => {
+  // `startedAt` は adapter が寄越した `occurredAt` の写しなので到着順と一致せず、event を出す側が
+  // 動かせる。ここで startedAt 順に落とす実装に替えると、同じ event 列から別の状態・別の
+  // stateRevision・別の hash が出る。配列位置が権威であることを固定する。
+  const filled = filledSnapshot(false);
+  const reversed = filled.state.pendingOperations.map((pending, index) => ({
+    ...pending,
+    status: "succeeded" as const,
+    // 配列の先頭ほど新しい startedAt。startedAt 順に落とすなら末尾の op-255 が最初に落ちる
+    startedAt: `2026-08-16T00:${String(59 - Math.floor(index / 60)).padStart(2, "0")}:${String(59 - (index % 60)).padStart(2, "0")}Z`,
+  }));
+  const result = reduceTaskWorkState(emptySnapshot({ pendingOperations: reversed }), startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  const surviving = new Set(result.snapshot.state.pendingOperations.map((p) => p.operationId));
+  assert.equal(surviving.has("op-0"), false);
+  assert.equal(surviving.has(`op-${CONTINUITY_LIMITS.arrayItems - 1}`), true);
+});
+
 test("退避した operation の順序材料も落とす", () => {
   // pendingOperations が 256 件で頭打ちの一方、operationStarts だけ単調増加すると
   // 権威順序の判定表がメモリを食い続ける

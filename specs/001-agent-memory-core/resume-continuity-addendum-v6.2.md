@@ -37,9 +37,9 @@ behaviour the reference implementation had already chosen, or introduces a new r
 | 2026-08-17 | §0 authority scope extended to v6.1 §22.6 timestamp encoding, so §3 may narrow it | #33 | New rule |
 | 2026-08-17 | §3 canonical timestamp profile: UTC RFC3339 restricted to `Z` offset and seconds `00`-`59`, with the residual fractional-second ambiguity stated | #33 | Ratifies existing behaviour |
 | 2026-08-17 | §3 `confidence` range applies to `Observed<T>` only; other `confidence` fields stay unbounded | #30 | Ratifies existing behaviour |
-| 2026-08-17 | §4.1 `lastIngestSeq` defined as a monotone watermark bounding coverage within one session, explicitly **not** a state ordering key | #38 | New rule (the field previously had no definition) |
+| 2026-08-17 | §4.1 `lastIngestSeq` defined as a monotone watermark, explicitly **not** a state ordering key and **not** a claim of contiguous coverage | #38 | New rule (the field previously had no definition) |
 | 2026-08-17 | §4.3 operation-class table location, unmapped-kind defaults, and the sensitivity migration condition | #36 | New rule |
-| 2026-08-17 | §4.3 retention and eviction policy for `pendingOperations` at the §10 `arrayItems` limit | #39 | Ratifies existing behaviour |
+| 2026-08-17 | §4.3 retention and eviction policy for `pendingOperations` at the §10 `arrayItems` limit, with array position (not `startedAt`) as the within-group order | #39 | Ratifies existing behaviour |
 
 ## 1. Separation of concerns
 
@@ -417,10 +417,16 @@ properties block that reading:
 
 Consumers MUST NOT decide "which state is newer" from `lastIngestSeq`, and MUST NOT use
 `updatedAt` for it either (it is adapter-supplied, non-monotone, and attacker-influenceable through
-`occurredAt`). Within one session, `lastIngestSeq` bounds coverage: a state whose watermark is at
-least `n` has seen every event up to `n` in that session's sequence. Ordering across sessions of a
-lineage needs a lineage-global mechanism that this schema does not yet define (#53); it MUST be
-settled before any consumer implements last-writer-wins over task states.
+`occurredAt`). Ordering across sessions of a lineage needs a lineage-global mechanism that this
+schema does not yet define (#53); it MUST be settled before any consumer implements
+last-writer-wins over task states.
+
+**`lastIngestSeq` also says nothing about contiguous coverage.** It is the maximum applied value,
+not a high-water mark of a gap-free prefix. Applying sequence 10 before sequence 9 leaves the
+watermark at 10 while 9 is still unseen, and the session's sequence carries events for every
+lineage in that session, not only this one. A consumer MUST NOT use it to decide that replay or
+reconciliation can be skipped. Tracking which events are still missing requires a separate
+mechanism that this schema does not define (#53).
 
 The §6.4 event-store watermark is a different quantity — it covers the whole session and lives
 inside the daemon, not in the wire contract — and the two MUST NOT be compared or substituted for
@@ -480,13 +486,21 @@ tool stays permanently outside the remote-send gate.
 
 **Retention and eviction (#39).** `pendingOperations` is bounded by the §10 `arrayItems` limit.
 When a new start arrives at a full array, implementations MUST evict rather than reject the start,
-and MUST evict in this order, oldest first within each group:
+and MUST evict in this group order:
 
 1. entries whose `correlation.taskLineageId` differs from the state's `taskLineageId`;
 2. `succeeded`;
 3. `failed`;
 4. `unknown`;
 5. `started`.
+
+Within a group, the authoritative order is the **position of the entry in `pendingOperations`**:
+the earliest surviving array index is evicted first, and the array index is the sole tie-breaker.
+Implementations MUST NOT sort by `startedAt`. `startedAt` is copied from the adapter-supplied
+`occurredAt`, so it is neither monotone with arrival nor outside an event submitter's influence; a
+late event carries an early `startedAt` while occupying a late array slot. Two conforming runtimes
+that disagree here evict different entries and therefore produce different states, `stateRevision`
+chains, and content hashes from the same event sequence.
 
 Out-of-lineage entries go first because they are outside the §4.3 correlation scope and the
 abandonment scope, so nothing can ever reach them again; keeping them while discarding in-lineage
