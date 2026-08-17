@@ -1462,8 +1462,9 @@ export function reduceTaskWorkState(
     // 鍵を消費）に落ちた。候補を 1 件も `unknown` にしないので状態には何も残らず、それでいて
     // 配送鍵は焼けるので、後から start が届いてからの再配送が重複 no-op になり operation は
     // 永久に `started`。上のコメントが `terminal_orphaned` について書いている失敗そのもの）。
-    // #43 のとおり unmatched evidence の置き場が凍結 schema に無いので、記録先が無い commit は
-    // 状態に何も残さない = 隔離との差は「鍵を焼くかどうか」しかない。
+    // commit 側が状態に何も残さないのは、候補を 1 件も `unknown` にしないから（`unresolved` が
+    // 空であることそのもの）。**隔離する側は何も残さないという意味ではない**: 証跡の置き場は
+    // #43 で状態に出来たので、下の分岐は `droppedEvidence` に記録したうえで隔離する。
     // 例外は `terminal_already_applied`——これは「既に閉じた operation の再配送」なので本当に
     // 重複であり、隔離すると adapter が無限に再送する
     if (
@@ -1471,9 +1472,9 @@ export function reduceTaskWorkState(
       correlation.diagnostic !== "terminal_already_applied"
     ) {
       // 相手の見つからなかった terminal は、隔離したうえで**状態にも記録する**（#39 / FR-006）。
-      // 上のコメントが書いていた「記録先が無いので隔離との差は鍵を焼くかどうかしかない」は
-      // `droppedEvidence` ができた今は当たらない。記録は隔離の代わりではないので、鍵は
-      // 消費しないまま（後から start が届けば同じ terminal の再配送で閉じられる）。
+      // 記録は隔離の代わりではないので、鍵は消費しないまま（後から start が届けば同じ terminal の
+      // 再配送で閉じられる）。記録するぶん**返る状態は前の状態ではない**（revision と history が
+      // 進む）ので、「隔離だから不変」と読んで戻り値を捨てる移植は記録を落とす。
       // 落とす理由は `terminal_conflict` にも要るが、あちらは corruption であって
       // 「live な集合から落ちた証跡」ではない（#43 の語彙に無い）ので記録しない。
       // **同じ terminal の再送で記録が伸びないための重複判定は `recordDroppedEvidence` が持つ**
