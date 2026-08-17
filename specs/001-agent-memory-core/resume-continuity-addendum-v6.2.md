@@ -16,6 +16,8 @@ When this addendum conflicts with v6.1, it takes precedence only for:
 - §10 SessionWorkState / task-state ownership;
 - §11 ContinuationCheckpoint, task boundaries, claim, delivery, acceptance, and resume-mode semantics;
 - §17 resume hint, selection, full-resume injection, sensitivity, and serialization;
+- §22.6 timestamp encoding, for the continuity contracts defined here (§3 narrows the accepted
+  spelling; it does not change which instants are representable);
 - §27 Phase 3 / Phase 4 / Core 1.0 continuity quality gates.
 
 All Phase 1 sole-writer, fail-open, spool, redaction, peer-auth, backup, and user-authority invariants remain unchanged.
@@ -32,9 +34,10 @@ behaviour the reference implementation had already chosen, or introduces a new r
 
 | Date | Change | Issue | Kind |
 |---|---|---|---|
-| 2026-08-17 | §3 canonical timestamp profile: UTC RFC3339 restricted to `Z` offset and seconds `00`-`59` | #33 | Ratifies existing behaviour |
+| 2026-08-17 | §0 authority scope extended to v6.1 §22.6 timestamp encoding, so §3 may narrow it | #33 | New rule |
+| 2026-08-17 | §3 canonical timestamp profile: UTC RFC3339 restricted to `Z` offset and seconds `00`-`59`, with the residual fractional-second ambiguity stated | #33 | Ratifies existing behaviour |
 | 2026-08-17 | §3 `confidence` range applies to `Observed<T>` only; other `confidence` fields stay unbounded | #30 | Ratifies existing behaviour |
-| 2026-08-17 | §4.1 `lastIngestSeq` defined as a monotone watermark, scoped to the task state | #38 | New rule (the field previously had no definition) |
+| 2026-08-17 | §4.1 `lastIngestSeq` defined as a monotone watermark bounding coverage within one session, explicitly **not** a state ordering key | #38 | New rule (the field previously had no definition) |
 | 2026-08-17 | §4.3 operation-class table location, unmapped-kind defaults, and the sensitivity migration condition | #36 | New rule |
 | 2026-08-17 | §4.3 retention and eviction policy for `pendingOperations` at the §10 `arrayItems` limit | #39 | Ratifies existing behaviour |
 
@@ -143,7 +146,7 @@ interface TaskBoundaryAuthorityContextV1 {
 ## 3. Shared evidence types
 
 **Canonical timestamp profile.** Every field typed as an ISO timestamp in this addendum is UTC
-RFC3339 as required by v6.1 §22.6, narrowed to a single spelling per instant:
+RFC3339 as required by v6.1 §22.6, narrowed by removing two sources of alternative spellings:
 
 - the offset MUST be the literal `Z`; numeric zero offsets such as `+00:00` are rejected;
 - the seconds component MUST be `00`-`59`; the RFC3339 leap-second spelling `:60` is rejected;
@@ -154,6 +157,15 @@ content hash. Two spellings of the same instant produce two hashes, which splits
 the v6.1 §22.8 dedupe decision while every value still validates. Neither rejected spelling is
 produced by `Date.prototype.toISOString()` or by the Rust `chrono` defaults, so the cost of
 rejecting them is bounded to adapters that deliberately emit them; those MUST normalize at intake.
+
+**This profile does not make the encoding fully canonical.** The fractional part is deliberately
+left variable, because fixing the digit count at three would reject the valid microsecond
+timestamps that some runtimes emit. `2026-08-16T00:00:00Z` and `2026-08-16T00:00:00.000Z` therefore
+remain two spellings of one instant and still split the hash. Closing that requires either fixing
+the precision (rejecting values that are valid today) or normalizing before hashing; both are
+deferred and tracked in #54. Until then, a single adapter MUST be self-consistent in whether it
+emits a fractional part, and implementations MUST NOT rely on hash equality to decide that two
+states describe the same instant.
 
 The profile is expressible as a pattern and is enforced by the frozen schema. **Calendar existence
 is not** — `2026-02-30T00:00:00Z` and `2027-02-29T00:00:00Z` satisfy the pattern. Implementations
@@ -388,12 +400,31 @@ interface CanonicalWorkStateV1 {
 task state. It never moves backwards, so applying a late-arriving event whose `ingestSeq` is lower
 than the current value leaves the field unchanged while still producing a later revision (§4.2).
 `updatedAt` is not monotone — it records the `occurredAt` of the event that produced the revision,
-which is adapter-supplied and may move backwards for the same reason. Ordering comparisons between
-states MUST use `lastIngestSeq`; `updatedAt` is for display only.
+which is adapter-supplied and may move backwards for the same reason.
 
-This field is scoped to one task state. The §6.4 event-store watermark is a different quantity —
-it covers the whole session and lives inside the daemon, not in the wire contract — and the two
-MUST NOT be compared or substituted for each other.
+**`lastIngestSeq` is not a state ordering key, and neither is anything else in this schema.** Three
+properties block that reading:
+
+- v6.1 §8.3 assigns `ingest_seq` transactionally **per session**, while a task lineage continues
+  across sessions. Values from two sessions are drawn from unrelated sequences, so comparing them
+  is meaningless — a resumed session's first revision can carry a smaller value than the previous
+  session's last one, or a larger one, with no relation to which is newer.
+- Even inside one session, a late event produces a later revision while leaving the watermark
+  unchanged (above). Equal watermarks therefore do not imply equal states.
+- `stateRevision` is a hash chain over the previous revision, the event, and the content. It
+  establishes **ancestry** — a consumer holding both revisions can prove one descends from the
+  other by replay — but two revisions are not comparable without that replay.
+
+Consumers MUST NOT decide "which state is newer" from `lastIngestSeq`, and MUST NOT use
+`updatedAt` for it either (it is adapter-supplied, non-monotone, and attacker-influenceable through
+`occurredAt`). Within one session, `lastIngestSeq` bounds coverage: a state whose watermark is at
+least `n` has seen every event up to `n` in that session's sequence. Ordering across sessions of a
+lineage needs a lineage-global mechanism that this schema does not yet define (#53); it MUST be
+settled before any consumer implements last-writer-wins over task states.
+
+The §6.4 event-store watermark is a different quantity — it covers the whole session and lives
+inside the daemon, not in the wire contract — and the two MUST NOT be compared or substituted for
+each other.
 
 ### 4.2 Immutable revisions and duplicate no-op
 
