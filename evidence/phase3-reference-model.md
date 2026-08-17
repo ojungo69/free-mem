@@ -506,6 +506,22 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
     作る）ので現時点で観測できる不整合は無く、これは `droppedEvidence` に固有でもない
     （`pendingOperations` が以前から同じ形）。閉じるには状態グラフ全体を `readonly` にするか
     revision ごとに deep clone する必要があり、どちらもこの cluster の範囲外
+- **保持先が満杯だと terminal の identity が状態から消える**（#68）。`droppedEvidence` に落とす
+  判定は「この terminal を保持できる**相手が居るか**」で、「実際に保持**できたか**」ではない。
+  open な候補の `sourceEventIds` が既に 256 件だと `unresolved` は空でないので記録の分岐に
+  入らず、後段の append は上限で拒まれる。実測: 候補は `unknown` に倒れ、診断は
+  `[terminal_out_of_order, source_events_truncated]`、`droppedEvidence` は空、**台帳は 1**
+  （鍵は消費されるので adapter は再送しない）。status は残るが `eventId` も指紋も配送 ID も
+  残らない。#43 が塞いだ穴と同じ形が別の軸に残っている——判定を「保持できたか」へ移す必要が
+  あり、それは correlate と apply の間で truncation の結果を戻す構造変更になるのでここでは
+  やらない。
+- **event 由来の文字列の長さを検査していない**（#69）。凍結 schema は `maxLength: 8192` を
+  課すが、還元器は event の文字列長を見ないまま状態へ写す。実測: 8193 文字の
+  `canonicalFingerprint` を持つ孤児 terminal で状態が schema 違反 2 件、8193 文字の `eventId`
+  を持つ start で 4 件。**後者はこの変更の前から同じ**（`sourceEventIds` は前から `eventId` を
+  そのまま写している）ので、新しい欄が穴を作ったのではなく既存の穴が広がった形。識別子は
+  配列と違って**切り詰められない**（切り詰めると別の値になり `orphanKeyOf` と台帳が誤って
+  一致する）ので、入口で fail closed に倒す設計判断が要る。
 - **session 全体を 1 回の fold で流す用途には向かない**。`commit` は event ごとに冪等台帳と
   history を複製するので、fold の長さに対して二乗で伸びる（実測: 1,000 event 61ms、
   5,000 event 1,024ms、20,000 event 23,332ms）。参照実装は「同じ fixture から TS と Rust が

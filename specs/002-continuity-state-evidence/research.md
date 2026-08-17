@@ -123,7 +123,11 @@ drift の検出は版番号ではなく **`harness/contract-hashes.json`** が�
 ## R-005: 記録に何を入れないか
 
 **Decision**: payload・引数・出力・自由文の `description` を**入れない**。識別（`eventId` /
-`operationId`）、分類（`reason` / `status`）、時刻（`recordedAt`）に限る。
+`operationId` と、重複判定の鍵になる `terminalFingerprint` / `adapterDeliveryId`）、分類
+（`reason` / `status`）、時刻（`recordedAt`）、機密度（`sensitivity`）に限る。指紋と配送 ID は
+**同一性の材料であって内容ではない**——どちらも adapter が算出・採番した識別子で、payload の
+中身は復元できない。`sensitivity` は退避元から引き継ぐ値で、記録側で内容を見て決め直すもの
+ではない（Constitution III）。
 
 **Rationale**: 記録は「あった」ことを示すためのもので、内容の保管庫ではない。内容を持ち込むと
 `sensitivity` の判定を記録側でもう一度やる必要が生じ（Constitution III のプライバシー境界）、

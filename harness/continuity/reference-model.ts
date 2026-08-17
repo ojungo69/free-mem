@@ -822,21 +822,6 @@ function nextContent(
 }
 
 /**
- * §10 `arrayItems` を上限に、live な集合から落ちた証跡を記録する（#43 / #39）。
- *
- * 追加は**末尾**、上限に達していたら**配列の先頭から** 1 件落としてから足す。`recordedAt` で
- * 並べ替えない: `recordedAt` は adapter が寄越した `occurredAt` の写しなので、時刻で並べると
- * event を出す側がどれを残すか選べる（`pendingOperations` の退避と同じ規則・同じ理由）。
- *
- * 追加も脱落も診断に出す。記録そのものが「黙って消さない」ための仕組みなので、記録が
- * 溢れて消えるところで黙ると入れ子で同じ穴が開く。
- *
- * **再送の重複判定もここで行う**（呼び出し側に置かない）。孤児 terminal の隔離は配送鍵を
- * 消費しないので同じ terminal が届き続ける。判定を呼び出し側の条件式に書くと、次に記録を
- * 足す経路がそれを持たずに書けてしまい、その経路だけが再送のたびに配列と revision を伸ばす。
- * `added` が空なら呼び出し側は状態を変えない隔離に倒す。
- */
-/**
  * 記録した孤児 terminal の同一性。§8.2 の優先順位（第一 authority は `adapterDeliveryId`、
  * 無ければ canonical fingerprint）を記録側でも取り、keyspace は台帳と同じく分ける。
  *
@@ -877,6 +862,21 @@ function recordedOrphanFingerprints(
   return recorded;
 }
 
+/**
+ * §10 `arrayItems` を上限に、live な集合から落ちた証跡を記録する（#43 / #39）。
+ *
+ * 追加は**末尾**、上限に達していたら**配列の先頭から** 1 件落としてから足す。`recordedAt` で
+ * 並べ替えない: `recordedAt` は adapter が寄越した `occurredAt` の写しなので、時刻で並べると
+ * event を出す側がどれを残すか選べる（`pendingOperations` の退避と同じ規則・同じ理由）。
+ *
+ * 追加も脱落も診断に出す。記録そのものが「黙って消さない」ための仕組みなので、記録が
+ * 溢れて消えるところで黙ると入れ子で同じ穴が開く。
+ *
+ * **再送の重複判定もここで行う**（呼び出し側に置かない）。孤児 terminal の隔離は配送鍵を
+ * 消費しないので同じ terminal が届き続ける。判定を呼び出し側の条件式に書くと、次に記録を
+ * 足す経路がそれを持たずに書けてしまい、その経路だけが再送のたびに配列と revision を伸ばす。
+ * `added` が空なら呼び出し側は状態を変えない隔離に倒す。
+ */
 function recordDroppedEvidence(
   previous: readonly DroppedEvidenceEntryV1[] | undefined,
   requested: readonly DroppedEvidenceEntryV1[],

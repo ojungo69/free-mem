@@ -90,6 +90,9 @@ harness/
 │   ├── reference-model.ts          # 参照実装（書き込み・読み取り・記録・退避）
 │   ├── reference-model.test.ts     # FR ごとの回帰
 │   ├── schema-freeze.test.ts       # 新しい欄・$def の凍結
+│   ├── old-shape-projection.ts     # 旧形入力の比較面（SC-003）
+│   ├── old-shape-baseline.mjs      # 分岐点の実装で baseline を生成する
+│   ├── old-shape-parity.test.ts    # 旧形入力の差分ゲート
 │   └── mutate.sh                   # 規則ごとの変異ゲート
 ├── fixtures/continuity/            # 新旧どちらの形の状態も残す
 └── contract-hashes.json            # 再生成する（手で書かない）
@@ -125,7 +128,7 @@ evidence/
 
 | リスク | 兆候 | 先回り |
 |---|---|---|
-| 変異のアンカーが実装変更で黙って外れる | `mutate.sh` の 実行 < 期待 | 2 と 6 を同じ commit にせず、6 の直前で必ず 5 本のゲートを通す。ずれたら `comm -23` で特定 |
+| 変異のアンカーが実装変更で黙って外れる | `mutate.sh` の 実行 < 期待 | 2 と 6 を同じ commit にせず、6 の直前で必ず 6 本のゲートを通す。ずれたら `comm -23` で特定 |
 | fixture を変えて hash を再生成し忘れる | ローカル緑・CI だけ赤 | quickstart の順序（hash 差分をテストより先）を守る |
 | 「欄が無い」経路の回帰が漏れる | 旧 fixture が緑のまま意味が変わる | FR-004 / FR-012 / FR-014 を**変更前の実装との突き合わせ**で示す（SC-003 / T049 の差分ゲート）。書き換えた期待値の行数は判定に使わない |
 | 記録の追加で状態が単調増加する | `droppedEvidence` が 256 を超える | FR-015 の変異（上限検査を外す）を必ず入れる |
