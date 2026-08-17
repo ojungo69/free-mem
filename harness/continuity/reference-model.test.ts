@@ -675,27 +675,83 @@ test("語彙の外の startIngestSeq は還元器を落とさず「無い」に�
   }
 });
 
-test("空白の turn 種別は候補を落とさない（#35 FR-004）", () => {
-  // 空白を値として読むと、`eligibleOf` が `"" !== "native"` で候補を落とし、健全な rule 2 の
-  // terminal が `terminal_unmatched` になって operation は `unknown` のまま鍵だけ消費される。
-  // 上の順序材料の test は `startIngestSeq` の空白しか観測しないので、種別側は別に固定する
+test("turn 種別の材料が無い rule 2 は閉じずに unknown へ倒れる（#35 FR-004）", () => {
+  // `eligibleOf` は材料が無い候補を落とさない（落とすと帰属を取り違える）。落とさないことと
+  // **合格にすること**は別で、後者にすると「材料が無い＝検査を素通り」になる。この test は
+  // 2 方向を固定する: 材料が無ければ理由つきで unknown、あって一致すれば普通に閉じる。
+  //
+  // 空白は「名乗っていない」であって値ではない。値として読むと `eligibleOf` が `"" !== "native"`
+  // で候補ごと落とし、`terminal_unmatched`（何が起きたか名指ししない診断）に化けるので、
+  // 欠落と空白は同じ `terminal_turn_unverifiable` に倒れなければならない
   const start = startEvent({ operation: MATCH_KEY_ONLY });
   const base = startedSnapshot(start);
-  const blanked: TaskWorkStateSnapshotV1 = {
+  const terminal = terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } });
+  // 順序は確認できる状態にしたまま、種別だけを欠落・空白にする
+  for (const label of ["欠落", "空白"] as const) {
+    const restored: TaskWorkStateSnapshotV1 = {
+      ...base,
+      state: {
+        ...base.state,
+        // 欠落は**欄そのものを消す**（`undefined` を値として置くと JCS が canonicalize できない）
+        pendingOperations: base.state.pendingOperations.map(({ startTurnIdSource: _source, ...rest }) =>
+          label === "欠落" ? rest : { ...rest, startTurnIdSource: " " as PendingOperation["startTurnIdSource"] },
+        ),
+      },
+    };
+    const correlation = correlateTerminalEvent(restored, terminal);
+    assert.equal(correlation.matched, null, label);
+    if (correlation.matched !== null) return;
+    assert.equal(correlation.diagnostic, "terminal_turn_unverifiable", label);
+    // 隔離ではなく unknown で台帳へ入る（隔離すると復元した状態は二度と閉じられない）
+    const reduced = reduceTaskWorkState(restored, terminal, new Map());
+    assert.equal(reduced.outcome, "applied", label);
+    assert.deepEqual(reduced.diagnostics.map((d) => d.code), ["terminal_turn_unverifiable"], label);
+    assert.equal(reduced.snapshot.state.pendingOperations[0]?.status, "unknown", label);
+  }
+  // 逆向き 1: 材料があって terminal と一致するなら、この検査は何も邪魔しない
+  const closed = reduceTaskWorkState(base, terminal, new Map());
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  // 逆向き 2: rule 1 は turn 両立を要求しない（§4.3）ので、種別が無くても止めてはいけない。
+  // ここを固定しないと「材料が無ければ常に降格」に締めすぎた実装が緑のまま通る
+  const native = startedSnapshot();
+  const nativeRestored: TaskWorkStateSnapshotV1 = {
+    ...native,
+    state: {
+      ...native.state,
+      pendingOperations: native.state.pendingOperations.map(({ startTurnIdSource: _source, ...rest }) => rest),
+    },
+  };
+  const byNativeId = reduceTaskWorkState(nativeRestored, terminalEvent(), new Map());
+  assert.deepEqual(byNativeId.diagnostics.map((d) => d.code), []);
+  assert.equal(byNativeId.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("復元状態の欠けた turn 種別を terminal 側の主張で埋めない（#35 FR-004・信頼境界）", () => {
+  // 上の test と同じ穴を、**悪用の形**で固定する。schema 通りの復元状態が `startIngestSeq` だけを
+  // 持つとき（順序は確認できる）、`nativeOperationId` を名乗らない terminal が
+  // `turnIdSource: "synthesized_monotonic"` を主張すると、照合の材料は terminal 側にしか無い。
+  // 状態が種別を持たないので「一致した」とは言えないのに、修正前は診断ゼロで `succeeded` が
+  // 確定した（実測）。wire が運ぶ値を権威にしない = 欠けた材料は terminal の主張で埋めない
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const restored: TaskWorkStateSnapshotV1 = {
     ...base,
     state: {
       ...base.state,
-      pendingOperations: base.state.pendingOperations.map((pending) => ({
-        ...pending,
-        // 順序は確認できる状態にしたまま、種別だけ空白にする
-        startTurnIdSource: " " as PendingOperation["startTurnIdSource"],
+      pendingOperations: base.state.pendingOperations.map(({ startTurnIdSource: _source, ...rest }) => ({
+        ...rest,
+        startIngestSeq: "9007199254740990",
       })),
     },
   };
-  const terminal = terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } });
-  const closed = reduceTaskWorkState(blanked, terminal, new Map());
-  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
-  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  const forged = terminalEvent({
+    operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined },
+    ingestSeq: "9007199254740991",
+    turnIdSource: "synthesized_monotonic",
+  });
+  const reduced = reduceTaskWorkState(restored, forged, new Map());
+  assert.equal(reduced.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.ok(reduced.diagnostics.some((d) => d.code === "terminal_turn_unverifiable"));
 });
 
 test("材料が要素に載れば、同じ id の兄弟でも取り違えない（#35 SC-001）", () => {

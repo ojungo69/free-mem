@@ -144,6 +144,10 @@ event store も外部索引も渡さずに、その operation が閉じずに `u
   同じ operation への再配送 start から上書きしてはならない（MUST NOT）。
 - **FR-004**: 順序の材料を持たない operation に対しては、現行の fail-closed 経路と同じ扱いを
   しなければならない（MUST）。材料が無いことを検査合格として扱ってはならない（MUST NOT）。
+  turn 種別の材料（`startTurnIdSource`）が無い場合、その候補を rule 2 の候補集合から除外しては
+  ならない（MUST NOT。帰属を取り違えるため）が、rule 2 で閉じてもならない（MUST NOT）。
+  operation は理由を名指しする診断とともに `unknown` に倒す（MUST）。閉じられるのは turn 両立を
+  要求しない rule 1 だけである。
 
 **消えた証跡の記録（#43 / #39）**
 

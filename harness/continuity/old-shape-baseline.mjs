@@ -375,17 +375,16 @@ const CASES = [
 ];
 
 // --- 変更前の実装を読み込む -------------------------------------------------
-// 相対 import (`../schema/*.ts`) が解決するよう、同じディレクトリに置いて読む。
-// schema 側の runtime 値はこの PR では追加しかしていないので、旧実装はそのまま動く。
+// **基準 commit の `harness/` を丸ごと取り出して、その中から読む**。還元器のソースだけを
+// 作業ツリーの隣に置くと、相対 import (`../schema/*.ts`) が **HEAD 側**の schema を解決する。
+// 「基準 commit の実装」と名乗りながら中身は旧還元器 + 新 schema の混成になり、正規化・上限・
+// kind 語彙・phase 表を後から変えたときに、固定したはずの基準が黙って動く。
 const scratch = mkdtempSync(join(tmpdir(), "old-shape-baseline-"));
-const oldModulePath = join(HERE, ".old-shape-baseline-reducer.ts");
 try {
-  const source = execFileSync("git", ["show", `${sourceCommit}:harness/continuity/reference-model.ts`], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  writeFileSync(oldModulePath, source);
+  const archivePath = join(scratch, "pinned.tar");
+  execFileSync("git", ["archive", "--output", archivePath, sourceCommit, "harness"], { cwd: REPO_ROOT });
+  execFileSync("tar", ["-xf", archivePath, "-C", scratch]);
+  const oldModulePath = join(scratch, "harness", "continuity", "reference-model.ts");
   const old = await import(pathToFileURL(oldModulePath).href);
   const { projectOldShape } = await import(pathToFileURL(join(HERE, "old-shape-projection.ts")).href);
 
@@ -450,6 +449,5 @@ try {
   const events = cases.reduce((sum, testCase) => sum + testCase.baseline.length, 0);
   console.log(`${outputPath} を生成した: ${cases.length} case / ${events} step（基準 ${sourceCommit}）`);
 } finally {
-  rmSync(oldModulePath, { force: true });
   rmSync(scratch, { recursive: true, force: true });
 }

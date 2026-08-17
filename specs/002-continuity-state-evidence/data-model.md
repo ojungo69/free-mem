@@ -45,7 +45,7 @@ R-001〜R-005 の決定を、凍結 schema への具体的な差分に落とす�
 | 欄が無い | 現行の挙動 | 変更後 |
 |---|---|---|
 | `startIngestSeq` | `terminal_order_unverifiable` → `unknown` | 同じ |
-| `startTurnIdSource` | rule 2 の種別検査を免除（材料なし扱い） | 同じ |
+| `startTurnIdSource` | rule 2 の種別検査を免除（材料なし扱い） | 免除は**候補選びだけ**。検査は未実施なので rule 2 では閉じず `terminal_turn_unverifiable` → `unknown`（rule 1 は影響なし） |
 | `terminalFingerprint` | `terminal_already_applied` として台帳に入れる | 同じ |
 
 **材料が無いことを「検査に合格した」と読み替えない**（FR-004 / FR-012）。復元直後・旧い状態・
@@ -158,6 +158,7 @@ R-001 の帰結として、凍結 schema の外の索引がまるごと不要に
 |---|---|---|
 | FR-003 | 再配送 start でも `startIngestSeq` を書く | 遅れて届いた再配送の後、正当な terminal が順序違反で落ちないこと |
 | FR-004 | 欄が無いときに検査を素通りさせる | 復元直後の terminal が `terminal_order_unverifiable` になること |
+| FR-004 | turn 種別が無い候補を rule 2 で閉じる／逆に rule 1 まで止める | `startIngestSeq` だけを持つ状態が `terminal_turn_unverifiable` → `unknown` になり、rule 1 の terminal は普通に閉じること |
 | FR-008 | 記録を `recordedAt` 昇順で落とす | 配列先頭が落ちて末尾が残ること |
 | FR-009 | 脱落の診断を出さない | 診断コードの集合 |
 | FR-012 | 指紋が無いときも衝突扱いにする | 旧い状態で `terminal_already_applied` のままであること |

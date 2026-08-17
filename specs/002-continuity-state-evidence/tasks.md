@@ -426,6 +426,24 @@ T049 の差分ゲートが出す（レポートを書き換えて合否を移し
 `.codacy.yml` の `include_paths` は `harness/**` を含んでいないので、そもそも範囲外のはずの
 経路が解析されている。必須チェックではないため PR にはこの判断を記録し、設定側の話は #64 に分けた。
 
+**独立最終レビュー 第 2 波（`4ff531d` に対する新規セッション。blocking 4 件）**: 2 件を採用、1 件を実測で却下、
+1 件は文書の古さとして採用した。
+
+| # | 指摘 | 再現 | 採否 |
+|---|---|---|---|
+| G-1 | `startIngestSeq` だけを持つ schema 通りの復元状態に、`nativeOperationId` を名乗らない terminal が `turnIdSource: "synthesized_monotonic"` を主張すると、状態側に照合材料が無いまま rule 2 が閉じる | した（`applied` / 診断ゼロ / `succeeded`） | **採用**。`eligibleOf` が「材料が無い候補を落とさない」のは帰属を取り違えないためで正しいが、絞り込みを抜けた候補には「一致した」と「確認できなかった」が混ざる。**閉じる直前で分ける**新しい門を足し、後者は `terminal_turn_unverifiable` で `unknown` に倒す（順序側の `terminal_order_unverifiable` と対称）。順序の 2 分岐より**後**に置いたので、2 欄とも欠く復元直後の状態はこれまでどおり順序側の診断で観測される。正本 §4.3 の「exemption は候補選びを支配するのであって判定ではない」を明文化し revision 行を足した。PR 本文の見出し「Absent material is never a passed check」が偽だった箇所そのもの |
+| G-2 | `--test-isolation=none` 無しでは各 test file が 1 件として数えられるため、変異ゲートの実行件数照合が成立しない | **しなかった** | **却下（実測）**。CI と同じ Node v24.16.0 で `node --experimental-strip-types --test harness/continuity/*.test.ts` は `tests 330 / pass 330`、`--test-isolation=none` を付けても同じ 330。`mutate.sh` の baseline も 2 file で 220 を報告しており、file 単位の 2 ではない。ゲートは baseline と実行数を**同じコマンド**で取るので、仮に報告単位が変わっても両方が同じだけ動く |
+| G-3 | 正本 §4.3 の退避方針が「退避された証跡をどこに残すかは schema 次第で #43 / #44 で追跡中」と書いたままで、同じ §4.3 が定めた `droppedEvidence` の契約と矛盾する | した（段落を目視） | **採用（文面）**。置き場は決着済みとして `droppedEvidence` を指し、開いたままなのは `unknown` の失効だけに絞った。revision 行を足した |
+| G-4 | evidence が「受理済み terminal の source hash は状態に持っていない（#43）」「退避された operation を状態に残す場所ができれば（#39）」と、この PR より前の設計で書かれている | した（実装と突き合わせ） | **採用（文面）**。`terminalFingerprint` / `droppedEvidence` が現在の置き場であることに直した。**同じ文が実装のコメントにも残っていた**ので合わせて直した（文書だけ直すと次の読者はコードを正本として読む） |
+
+**生成器の provenance（`4ff531d` への bot 指摘）**: 旧形 baseline の生成器は、基準 commit の還元器**だけ**を
+作業ツリーの隣に書き出して import していたので、相対 import（`../schema/*.ts`）が **HEAD 側**の schema を
+解決していた。「基準 commit の実装」と名乗りながら中身は旧還元器 + 新 schema の混成で、正規化・上限・
+kind 語彙を後から変えると固定したはずの基準が黙って動く。`git archive` で基準 commit の `harness/` を
+丸ごと一時ディレクトリへ展開し、その中から import する形に直した（未使用のまま作っていた一時
+ディレクトリはこれで使い道ができた）。**修正後に再生成した fixture は byte 一致**——今回に限れば混成でも
+出力は同じだったが、それは測って初めて言えることで、経路としては塞いだ。
+
 ---
 
 ## Dependencies & Execution Order

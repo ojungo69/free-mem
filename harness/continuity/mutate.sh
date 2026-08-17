@@ -276,6 +276,14 @@ mutate "          const recorded = startTurnIdSourceOf(pending);
           return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return true;" && run "rule 2 の turn 種別の絞り込みを外す"
 mutate "          return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return recorded === terminalEvent.turnIdSource;" && run "turn 種別の材料が無い候補も落とす"
 mutate "        unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen," "        unresolved: compatibleOpen," && run "種別違いの巻き込み範囲を広げる"
+# 絞り込みを抜けた候補には「種別が一致した」と「確認できなかった」が混ざる。閉じる直前の門で
+# 両方向を潰す: 外して合格させる / 締めすぎて健全な terminal を止める
+mutate "  if (rule === \"match_key\" && startTurnIdSourceOf(matched) === undefined) {" "  if (false) {" && run "turn 種別が無いまま rule 2 を閉じさせる（FR-004）"
+mutate "  if (rule === \"match_key\" && startTurnIdSourceOf(matched) === undefined) {" "  if (startTurnIdSourceOf(matched) === undefined) {" && run "turn を要求しない rule 1 まで種別で止める"
+mutate "  if (rule === \"match_key\" && startTurnIdSourceOf(matched) === undefined) {" "  if (rule === \"match_key\" && matched.startTurnIdSource === undefined) {" && run "空白だけの turn 種別を材料として通す"
+mutate '      detail: `operation ${matched.operationId} の start が turn 種別を持たず、rule 2 の turn 両立を確認できない`,
+      unresolved: [matched],' '      detail: "unverifiable",
+      unresolved: [],' && run "turn 種別が無い候補を unknown に倒さず据え置く"
 
 mutate "    !isBlank(attestation.ingestReceiptId) &&" "    true &&" && run "受領証 ID が空でも認証済みとする"
 mutate "    !isBlank(attestation.peerIdentityId) &&" "    true &&" && run "peer identity が空でも認証済みとする"

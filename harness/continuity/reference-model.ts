@@ -692,6 +692,7 @@ export type ContinuityDiagnosticCode =
   | "terminal_conflict"
   | "terminal_out_of_order"
   | "terminal_order_unverifiable"
+  | "terminal_turn_unverifiable"
   | "terminal_identity_unverifiable"
   | "terminal_already_applied"
   | "terminal_evidence_contradicts"
@@ -2049,8 +2050,9 @@ export function correlateTerminalEvent(
     // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を
     // 課す。配送 ID が違う 2 通目は dedupe で比べられず、上の identity 衝突検査も kind と
     // input hash しか見ないので、成否だけが逆の terminal が「適用済み」として黙って通る。
-    // 受理済み terminal の source hash は状態に持っていない（凍結 schema に置き場が無い。#43）が、
-    // 確定済みの status は持っているので、成否の矛盾だけはここで検出できる。
+    // 受理済み terminal の指紋は `terminalFingerprint` に載った（#44）ので上の指紋検査で直接見るが、
+    // 欄は任意で、この版より前に書かれた状態と別実装の状態には無い。そこでも確定済みの status は
+    // 持っているので、成否の矛盾だけはここで検出できる。
     // どちらかが unknown のときは「成否を主張していない」ので矛盾ではない。
     // rule 2 の候補は同じ matchKey の兄弟をまとめて拾う（同じ turn で同じ tool を同じ入力で
     // 2 回など）ので、成否が一致する候補が 1 件でもあれば、この terminal はその候補の
@@ -2273,6 +2275,26 @@ export function correlateTerminalEvent(
       diagnostic: "terminal_out_of_order",
       detail: "terminal が start より後でない",
       // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
+      unresolved: [matched],
+    };
+  }
+  // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
+  // unavailable のとき rule 2 は適用されず、operation は unknown のままになる」。`eligibleOf` は
+  // 材料が無い候補を**落とさない**（落とすと帰属を取り違える。上のコメント参照）ので、あの
+  // 絞り込みを抜けた時点では「種別が一致した」と「種別を確認できなかった」が混ざっている。
+  // ここで分けないと後者が**合格として閉じる**: `startIngestSeq` だけを持つ schema 通りの復元
+  // 状態に `nativeOperationId` を名乗らない terminal が `turnIdSource: "synthesized_monotonic"` で
+  // 来ると、診断ゼロで `succeeded` が確定した（実測）。順序側に `terminal_order_unverifiable` が
+  // あるのと対称に、材料が無い turn も unknown へ倒して理由を出す（隔離はしない: 復元した状態は
+  // この欄を欠きうるので、隔離すると operation が二度と閉じられない）。
+  // **順序の 2 分岐より後に置く**: 復元直後の状態は 2 欄とも欠くので、先に置くと既存の
+  // `terminal_order_unverifiable` が名前だけ変わって観測される。最後に置けば新しい診断は
+  // 「順序は確認できるのに種別が無い」= この穴そのものだけで鳴る
+  if (rule === "match_key" && startTurnIdSourceOf(matched) === undefined) {
+    return {
+      matched: null,
+      diagnostic: "terminal_turn_unverifiable",
+      detail: `operation ${matched.operationId} の start が turn 種別を持たず、rule 2 の turn 両立を確認できない`,
       unresolved: [matched],
     };
   }
