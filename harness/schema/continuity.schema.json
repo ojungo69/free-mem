@@ -935,6 +935,73 @@
         },
         "sensitivity": {
           "$ref": "#/$defs/Sensitivity"
+        },
+        "startIngestSeq": {
+          "type": "string",
+          "maxLength": 8192,
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "$comment": "#35: §4.3 の権威順序検査（terminal の ingestSeq が start のそれより後か）を状態だけで判定するための材料。索引を還元器の外に置くと鍵が operationId になり、凍結 schema が一意性を課さない以上どちらの兄弟の材料か判別できず、復元と退避で黙って空になる。要素に載せれば operation と同じ寿命になり鍵の衝突も起きない。制約は lastIngestSeq と同一。任意欄なのは復元した checkpoint や別実装の状態には無いことがあるため——無ければ順序を確認できないので terminal_order_unverifiable に倒す。"
+        },
+        "startTurnIdSource": {
+          "$ref": "#/$defs/TurnIdSource",
+          "$comment": "#35: rule 2 の turn 両立が「記録された start の turn 種別」を見るための材料。語彙は複製せず TurnIdSource を $ref する（複製すると片方だけ増えた語が黙って通る）。"
+        },
+        "terminalFingerprint": {
+          "type": "string",
+          "maxLength": 8192,
+          "$comment": "#44: §4.3「terminal は … payload/source hash が衝突しないこと」を配送 ID をまたいで比べるための材料。閉じた operation に、それを閉じた terminal の canonicalFingerprint を残す。started の operation には存在しないので任意欄。"
+        }
+      }
+    },
+    "DroppedEvidenceEntryV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "#43 / #39: 状態から落とした証跡の記録。理由が 2 つ（上限退避と孤児 terminal）あり入る欄も違う——`evicted` は operationId + status + eventId（start の event id。**`operationId` は一意ではない**ので、同名の兄弟が並ぶ状態では id と status だけでは落ちた側を特定できない）、`orphaned_terminal` は eventId（terminal の event id）+ adapterDeliveryId + terminalFingerprint（相手が居ないので operationId / status は書けない）。`eventId` はどちらでも「この記録を名指す event」で、理由によって指す先が違う。それでも oneOf で分岐させず、共通の必須欄だけを required にして理由ごとの欄は任意にする: oneOf と additionalProperties: false の組み合わせは別言語の validator で挙動差が出やすく、contract hash が同じでも判断が割れうる。**組み合わせの妥当性を検査する層は無い**: この配列を書くのは還元器だけで、理由ごとに書く欄はそこで決まっている。別実装が書いた状態が `evicted` に `eventId` を載せていても、schema も還元器も落とさない（読む側は `reason` で分岐すること）。",
+      "required": [
+        "reason",
+        "recordedAt",
+        "sensitivity"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "evicted",
+            "orphaned_terminal"
+          ]
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        },
+        "eventId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "operationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "started",
+            "succeeded",
+            "failed",
+            "unknown"
+          ]
+        },
+        "terminalFingerprint": {
+          "type": "string",
+          "maxLength": 8192,
+          "$comment": "#39: 記録した孤児 terminal の canonicalFingerprint。**再送で記録が増えないようにするための鍵**であって、監査用の識別子ではない（それは eventId）。隔離は配送鍵を消費しないので同じ terminal は届き続けるが、再配送は eventId・ingestSeq・occurredAt が変わりうる（台帳の鍵が adapterDeliveryId であって eventId ではないのと同じ理由）。eventId で重複を見ると同じ terminal が何度でも記録され、そのたびに stateRevision が動く（実測: 同一 adapterDeliveryId・同一 fingerprint の 300 再送で 300 revision）。§4.3 が terminal の同一性に使うのは payload/source hash なのでこの欄を持つが、**単独では鍵にしない**——第一 authority は adapterDeliveryId で、この欄はそれを名乗らない記録の fallback（§8.2 と同じ優先順位）。"
+        },
+        "adapterDeliveryId": {
+          "type": "string",
+          "maxLength": 8192,
+          "$comment": "#39: 記録した孤児 terminal の配送鍵。**重複判定の第一 authority**で、§8.2 の `idempotencyKey = adapterDeliveryId ?? canonical fingerprint` と同じ優先順位を記録側でも取る。指紋だけを鍵にすると、配送鍵も相関材料も違う 300 件の terminal が同じ指紋を名乗るだけで 1 件に潰れる（実測: history 1 / 記録 1 / 台帳 0、299 件が診断も無く消えた）。`canonicalFingerprint` は adapter が算出して wire で運ぶ値なので、それだけを同一性の権威にはできない。keyspace は還元器の台帳と同じく分ける（配送鍵を名乗る記録と指紋しか持たない記録は別扱い）。この欄が無い記録——この版より前の checkpoint、配送鍵を持たない adapter——は従来どおり指紋で判定する。"
         }
       }
     },
@@ -1190,6 +1257,14 @@
           "items": {
             "$ref": "#/$defs/PendingOperation"
           }
+        },
+        "droppedEvidence": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/DroppedEvidenceEntryV1"
+          },
+          "$comment": "#43 / #39: 上限で退避した operation と、相手の見つからなかった terminal の記録。状態に残さないと「静かに消えた」と「そもそも来なかった」が区別できず、復元した側は落ちた証跡の存在に気付けない。上限は pendingOperations と同じ 256（§10 の `arrayItems`）。追加は末尾で、上限に達していたら**配列の先頭から** 1 件落としてから追加する（時刻で並べ替えない。pendingOperations の退避と同じ規則）。落ちたことは配列にもう 1 行積むのではなく診断 `dropped_evidence_overflowed` に出す。任意欄なのは、何も落ちていない状態で空配列を書かせないため。"
         },
         "repositoryState": {
           "$ref": "#/$defs/RepositoryStateSnapshot"

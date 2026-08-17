@@ -19,6 +19,7 @@ import {
   type ContinuityCaptureMethod,
   type ContinuityIngestAttestationV1,
   type ContinuityOperationPhase,
+  type DroppedEvidenceEntryV1,
   type NormalizedContinuityEvent,
   type OperationCorrelationV1,
   type PendingOperation,
@@ -679,21 +680,9 @@ function ledgerEntryOf(event: NormalizedContinuityEvent): LedgerEntryV1 {
   return { eventId: event.eventId, ...(sourceHash !== undefined ? { sourceHash } : {}) };
 }
 
-/** start event のうち frozen schema に入らない値（#35）。 */
-export interface OperationStartFactsV1 {
-  ingestSeq: string;
-  turnIdSource: TurnIdSource;
-}
-
 export interface TaskWorkStateSnapshotV1 {
   state: CanonicalWorkStateV1;
   history: readonly WorkStateRevisionEntryV1[];
-  /**
-   * operationId → start event の権威順序と turn 同一性の種別。§4.3 の「terminal は start より
-   * 後」「rule 2 は同じ `turnIdSource` 種別を要求する」を判定するために持つ。
-   * `PendingOperation` / `OperationCorrelationV1` はどちらも持てないので frozen schema の外に置く。
-   */
-  operationStarts: ReadonlyMap<string, OperationStartFactsV1>;
 }
 
 export type ContinuityDiagnosticCode =
@@ -703,6 +692,7 @@ export type ContinuityDiagnosticCode =
   | "terminal_conflict"
   | "terminal_out_of_order"
   | "terminal_order_unverifiable"
+  | "terminal_turn_unverifiable"
   | "terminal_identity_unverifiable"
   | "terminal_already_applied"
   | "terminal_evidence_contradicts"
@@ -711,6 +701,8 @@ export type ContinuityDiagnosticCode =
   | "start_conflict"
   | "delivery_conflict"
   | "pending_operations_evicted"
+  | "dropped_evidence_recorded"
+  | "dropped_evidence_overflowed"
   | "source_events_truncated"
   | "turn_identity_downgraded"
   | "turn_identity_unauthenticated";
@@ -722,7 +714,16 @@ export interface ContinuityDiagnosticV1 {
 }
 
 export interface TaskStateReductionResult {
-  /** applied = 状態に入った / duplicate = 重複で no-op / quarantined = 衝突として隔離 */
+  /**
+   * applied = event が状態に入った / duplicate = 重複で no-op / quarantined = 衝突として隔離。
+   *
+   * **`quarantined` でも `snapshot` を捨ててはいけない**。隔離が意味するのは「**配送鍵を
+   * 消費しない**（訂正版が後から効く）」ことだけで、状態が動かないことではない。孤児 terminal は
+   * 隔離しつつ `droppedEvidence` に記録を残す（#39）ので、revision も `history` も進む。
+   * 捨てると記録が失われて #39 の目的（「黙って消えた」と「そもそも来なかった」の区別）が
+   * 壊れ、呼び出し側は還元器と食い違う `stateRevision` を持ったまま次の CAS に落ちる。
+   * どの outcome でも返ってきた `snapshot` を採る、が呼び出し側の規則。
+   */
   outcome: "applied" | "duplicate" | "quarantined";
   snapshot: TaskWorkStateSnapshotV1;
   contentHash: string;
@@ -789,19 +790,148 @@ function nextContent(
   previous: CanonicalWorkStateV1,
   event: NormalizedContinuityEvent,
   pendingOperations: PendingOperation[],
+  droppedEvidence?: DroppedEvidenceEntryV1[],
+  // §4.1 の watermark は「**適用された** event の最大 `ingestSeq`」。証跡だけを記録して event 自体は
+  // 適用しない経路（`quarantineWithRecord`）は、進めずに前の値を渡す。進めると、配送鍵が未消費で
+  // 後から適用されうる event の位置を watermark が先に名乗ることになる
+  lastIngestSeq?: string,
 ): WorkStateContentV1 {
-  const { stateRevision: _ignored, sensitivity: _aggregate, ...rest } = previous;
+  const { stateRevision: _ignored, sensitivity: _aggregate, droppedEvidence: _carried, ...rest } = previous;
+  // 呼び出し側が渡さなければ前の revision の記録を引き継ぐ。**引き継ぐ場合も必ずここを通す**:
+  // `...rest` で素通しすると (a) 配列 object を過去の revision と共有し、(b) 復元した状態が
+  // 書いてきた空配列がそのまま残る。どちらも下の 2 つの規則に穴を開ける
+  const carried = droppedEvidence ?? previous.droppedEvidence;
   const withoutSensitivity = {
     ...rest,
     // revision ごとに配列を分ける。`CanonicalWorkStateV1.pendingOperations` は readonly でないので、
     // 共有すると新 revision への変更が過去の snapshot にも見える（§4.2 の immutable revision 違反）
     pendingOperations: [...pendingOperations],
-    lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
+    // 記録が 1 件も無いときは**欄ごと作らない**。空配列を書くと、同じ意味（何も落ちていない）の
+    // 状態が「欄なし」と「空配列」の 2 通りの綴りを持ち、canonical hash と §22.8 の dedupe が割れる
+    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: [...carried] }),
+    lastIngestSeq: lastIngestSeq ?? maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
+    // `updatedAt` は「revision を作った event の `occurredAt`」（§4.1）なので、こちらは進める。
+    // 記録も revision を作るので、その event が最後に状態を動かしたのは事実
     updatedAt: event.occurredAt,
   };
   return {
     ...withoutSensitivity,
+    // `droppedEvidence[].sensitivity` もここで集約に入る（走査は欄名で拾うので手で並べない）。
+    // 退避元が secret なら、その記録を持つ状態も secret になる
     sensitivity: aggregateSensitivity(withoutSensitivity, previous.sensitivity),
+  };
+}
+
+/**
+ * 記録した孤児 terminal の同一性。§8.2 の優先順位（第一 authority は `adapterDeliveryId`、
+ * 無ければ canonical fingerprint）を記録側でも取り、keyspace は台帳と同じく分ける。
+ *
+ * **指紋だけで見てはいけない**。`canonicalFingerprint` は adapter が算出して wire で運ぶ値なので、
+ * 配送鍵も相関材料も違う terminal が同じ指紋を名乗れる。実測: 別々の `adapterDeliveryId` と
+ * 別々の `operationMatchKey` を持つ 300 件の孤児が同じ指紋を名乗るだけで記録 1 件に潰れ、
+ * 299 件が診断も無く消えた。「配送 ID が違えば同じ指紋でも別の論理 event」は §8.2 の規則で、
+ * 還元器の他の経路（台帳）は既にそう振る舞っている。
+ *
+ * 逆に、同じ配送鍵の再送は指紋が変わっても 1 件に収束する。隔離は配送鍵を消費しないので
+ * 再送は止まらず、ここが収束しないと記録が飽和した後も revision と history が伸び続ける。
+ */
+function orphanKeyOf(entry: DroppedEvidenceEntryV1): string | undefined {
+  const delivery = declared(entry.adapterDeliveryId);
+  if (delivery !== undefined) return `d:${delivery}`;
+  const fingerprint = declared(entry.terminalFingerprint);
+  return fingerprint === undefined ? undefined : `f:${fingerprint}`;
+}
+
+/**
+ * 記録済みの孤児を「鍵 → その記録が名乗る指紋」で引ける形にする。**還元器の入口と記録側の
+ * 両方が同じ表を要る**: 入口は「この配送鍵で別の指紋が既に記録されていないか」を、記録側は
+ * 「この孤児は記録済みか」を見る。片方だけが持つと、start が届いた後の再送が照合経路へ
+ * 進んで衝突検査を素通りする（実測: 孤児 F1 を記録 → start → 同じ配送鍵で F2 を再送すると
+ * `applied` / 診断ゼロ / operation は succeeded / 指紋は F2 になった）。
+ */
+function recordedOrphanFingerprints(
+  previous: readonly DroppedEvidenceEntryV1[] | undefined,
+): Map<string, string | undefined> {
+  const recorded = new Map<string, string | undefined>();
+  for (const entry of previous ?? []) {
+    if (entry.reason !== "orphaned_terminal") continue;
+    const key = orphanKeyOf(entry);
+    if (key !== undefined && !recorded.has(key)) {
+      recorded.set(key, declared(entry.terminalFingerprint));
+    }
+  }
+  return recorded;
+}
+
+/**
+ * §10 `arrayItems` を上限に、live な集合から落ちた証跡を記録する（#43 / #39）。
+ *
+ * 追加は**末尾**、上限に達していたら**配列の先頭から** 1 件落としてから足す。`recordedAt` で
+ * 並べ替えない: `recordedAt` は adapter が寄越した `occurredAt` の写しなので、時刻で並べると
+ * event を出す側がどれを残すか選べる（`pendingOperations` の退避と同じ規則・同じ理由）。
+ *
+ * 追加も脱落も診断に出す。記録そのものが「黙って消さない」ための仕組みなので、記録が
+ * 溢れて消えるところで黙ると入れ子で同じ穴が開く。
+ *
+ * **再送の重複判定もここで行う**（呼び出し側に置かない）。孤児 terminal の隔離は配送鍵を
+ * 消費しないので同じ terminal が届き続ける。判定を呼び出し側の条件式に書くと、次に記録を
+ * 足す経路がそれを持たずに書けてしまい、その経路だけが再送のたびに配列と revision を伸ばす。
+ * `added` が空なら呼び出し側は状態を変えない隔離に倒す。
+ */
+function recordDroppedEvidence(
+  previous: readonly DroppedEvidenceEntryV1[] | undefined,
+  requested: readonly DroppedEvidenceEntryV1[],
+  eventId: string,
+): {
+  droppedEvidence: DroppedEvidenceEntryV1[];
+  diagnostics: ContinuityDiagnosticV1[];
+  added: readonly DroppedEvidenceEntryV1[];
+} {
+  // 鍵は §8.2 の優先順位そのまま。`eventId` は封筒の値なので再配送で変わりうる（台帳の鍵が
+  // `adapterDeliveryId` であって `eventId` でないのと同じ）。
+  // 退避（`evicted`）は同一性の材料を持たないので、この重複判定の対象にしない
+  // 鍵だけでなく**記録した指紋も引ける形**で持つ。鍵が一致しても指紋が食い違うなら、それは
+  // 再送ではなく「同じ配送 ID で内容が違う」= §4.3 の corruption で、適用済み経路は同じ条件を
+  // `delivery_conflict` にしている。Set にすると孤児経路だけがその検査を失い、2 通目が
+  // 通常の重複と区別できないまま黙って消える
+  const recordedOrphans = recordedOrphanFingerprints(previous);
+  const additions = requested.filter((entry) => {
+    if (entry.reason !== "orphaned_terminal") return true;
+    const key = orphanKeyOf(entry);
+    // 同一性の材料をどちらも名乗らない記録は重複判定に参加できない。event 経路では
+    // `idempotencyKeyOf` が先に落とすので、ここに来るのは直接 helper を叩いた場合だけ。
+    // **鍵が一致していて指紋が食い違う場合は還元器の入口が先に隔離している**ので、ここへは
+    // 来ない（同じ規則を 2 か所に置くと、片方だけが直る）
+    return key === undefined || !recordedOrphans.has(key);
+  });
+  const kept = [...(previous ?? []), ...additions];
+  // 上限を超えたぶんだけ先頭から取る。追加が単独で上限を超える場合も、古い追加から落ちる
+  const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));
+  const label = (entry: DroppedEvidenceEntryV1): string =>
+    `${entry.reason}:${entry.operationId ?? entry.eventId ?? "?"}`;
+  return {
+    droppedEvidence: kept,
+    diagnostics: [
+      ...(additions.length === 0
+        ? []
+        : [
+            {
+              code: "dropped_evidence_recorded" as const,
+              eventId,
+              detail: `状態から落ちた証跡を記録: ${additions.map(label).join(", ")}`,
+            },
+          ]),
+      ...(overflowed.length === 0
+        ? []
+        : [
+            {
+              code: "dropped_evidence_overflowed" as const,
+              eventId,
+              detail: `記録が上限 ${CONTINUITY_LIMITS.arrayItems} 件のため先頭から脱落: ${overflowed.map(label).join(", ")}`,
+            },
+          ]),
+    ],
+    added: additions,
   };
 }
 
@@ -812,10 +942,18 @@ function commit(
   applied: {
     pendingOperations: PendingOperation[];
     diagnostics: readonly ContinuityDiagnosticV1[];
-    operationStarts?: ReadonlyMap<string, OperationStartFactsV1>;
+    droppedEvidence?: DroppedEvidenceEntryV1[];
+    /** §4.1 の watermark を据え置く値。event を適用しない経路だけが渡す */
+    lastIngestSeq?: string;
   },
 ): TaskStateReductionResult {
-  const content = nextContent(previous.state, event, applied.pendingOperations);
+  const content = nextContent(
+    previous.state,
+    event,
+    applied.pendingOperations,
+    applied.droppedEvidence,
+    applied.lastIngestSeq,
+  );
   const contentHash = contentHashOf(content);
   const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
   const nextLedger = new Map(ledger);
@@ -825,7 +963,6 @@ function commit(
     snapshot: {
       state: { ...content, stateRevision: revision },
       history: [...previous.history, { revision, contentHash, eventId: event.eventId }],
-      operationStarts: applied.operationStarts ?? previous.operationStarts,
     },
     contentHash,
     ledger: nextLedger,
@@ -833,7 +970,17 @@ function commit(
   };
 }
 
-/** 状態にも台帳にも入れずに隔離する。訂正した event を後から入れ直せるようにするため。 */
+/**
+ * 台帳に入れずに隔離する。訂正した event を後から入れ直せるようにするため。
+ * 状態も変えない。
+ *
+ * **その隔離が live な集合から証跡を落とすなら、こちらではなく `quarantineWithRecord` を使う**。
+ * #39 の不変条件は「状態から消えた証跡は状態に見えること」で、どちらを呼ぶかでしか区別が
+ * ついていない（引数で強制すると、記録するものが無い 3 箇所が空の引数を書くだけになる）。
+ * 判断基準: この event が**状態に居た何か**を落とすなら記録する。落とすものが event 自身の
+ * corruption（`terminal_conflict` / `delivery_conflict` / `start_conflict`）なら記録しない——
+ * それは live な集合から落ちた証跡ではなく、そもそも状態に入っていない（#43 の語彙に無い）。
+ */
 function quarantine(
   previous: TaskWorkStateSnapshotV1,
   ledger: IdempotencyLedger,
@@ -846,6 +993,41 @@ function quarantine(
     contentHash: contentHashOf(content),
     ledger,
     diagnostics,
+  };
+}
+
+/**
+ * 隔離しつつ、落とした証跡だけは状態に残す（#39）。**配送鍵は消費しない**ので、後から start が
+ * 届けば同じ terminal の再配送で閉じられる——隔離の判断そのものは変えていない。
+ *
+ * 状態が変わる以上、revision は採番し直し、`history` にも 1 件積む。片方だけ動かすと、状態の
+ * revision が自分の履歴の末尾に無いことになる。
+ *
+ * `outcome` は `quarantined` のまま。呼び出し側で「隔離なら snapshot を捨てる」と読む経路は
+ * harness に存在しない（`outcome === "quarantined"` で分岐する消費者はゼロ）ことを確認済み。
+ */
+function quarantineWithRecord(
+  previous: TaskWorkStateSnapshotV1,
+  event: NormalizedContinuityEvent,
+  ledger: IdempotencyLedger,
+  diagnostics: readonly ContinuityDiagnosticV1[],
+  recorded: { droppedEvidence: DroppedEvidenceEntryV1[]; diagnostics: ContinuityDiagnosticV1[] },
+): TaskStateReductionResult {
+  // 状態の作り方は `commit` と同じ（content / hash / revision / history）。違うのは
+  // **配送鍵を消費しないことと、§4.1 の watermark を進めないこと**だけなので、書き写さずに
+  // `commit` の結果から差し替える。写すと、revision の採番規則を変えたときに片方だけ直る
+  return {
+    ...commit(previous, event, ledger, {
+      // 複製しない。§4.2 の immutable revision 用の複製は `nextContent` が行う
+      pendingOperations: previous.state.pendingOperations,
+      diagnostics: [...diagnostics, ...recorded.diagnostics],
+      droppedEvidence: recorded.droppedEvidence,
+      // event は適用していない（鍵が未消費なので後から適用されうる）。watermark を先に
+      // 進めると、まだ入っていない位置を「適用済みの最大」として名乗ることになる
+      lastIngestSeq: previous.state.lastIngestSeq,
+    }),
+    outcome: "quarantined",
+    ledger,
   };
 }
 
@@ -902,6 +1084,26 @@ export function reduceTaskWorkState(
     };
   }
 
+  // 台帳に entry が無くても、**記録した孤児は同じ配送鍵の指紋を覚えている**。隔離は鍵を
+  // 消費しないので、孤児を記録した後に start が届くと、同じ配送鍵の再送は照合経路へ進んで
+  // 上の衝突検査に一度も当たらない。ここで見ないと「1 つの配送 ID が別の event を運んだ」
+  // という corruption が、start の到着順しだいで検出されたりされなかったりする
+  const recordedFingerprint = recordedOrphanFingerprints(previous.state.droppedEvidence).get(key);
+  const incomingFingerprint = declared(event.canonicalFingerprint);
+  if (
+    recordedFingerprint !== undefined &&
+    incomingFingerprint !== undefined &&
+    recordedFingerprint !== incomingFingerprint
+  ) {
+    return quarantine(previous, idempotencyLedger, [
+      {
+        code: "delivery_conflict",
+        eventId: event.eventId,
+        detail: "同じ配送 ID で記録済みの孤児 terminal と指紋が食い違う",
+      },
+    ]);
+  }
+
   const operation = event.operation;
   const unchanged = { pendingOperations: previous.state.pendingOperations, diagnostics: [] };
 
@@ -941,7 +1143,7 @@ export function reduceTaskWorkState(
     // 再配送として台帳に入れると、訂正版が同じ配送 ID で来ても重複 no-op になって戻せない。
     // terminal 側と同じく input hash も直接見る（matchKey の導出が §4.3 どおりでない adapter 対策）
     const startConflictsWith = (existing: PendingOperation): boolean => {
-      const recordedSource = startFactsFor(previous, existing.operationId)?.turnIdSource;
+      const recordedSource = startTurnIdSourceOf(existing);
       return (
         existing.correlation.operationMatchKey !== operation.operationMatchKey ||
           // 上の検索が operationId 一致（eventId + matchKey から導出）で当たった場合、session は
@@ -962,21 +1164,21 @@ export function reduceTaskWorkState(
           (declared(existing.correlation.turnId) !== undefined &&
             declared(event.turnId) !== undefined &&
             existing.correlation.turnId !== event.turnId) ||
-          // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、凍結
-          // `OperationCorrelationV1` の外（`operationStarts`・#35）にしか無いので、上の `turnId` の
-          // 比較では見えない。種別だけ違う再配送を重複として台帳に入れると、記録は元の種別のまま
-          // 残る（再配送された start で `operationStarts` は埋めない）ので、再配送側の種別で来た
-          // terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` になり、
-          // **健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。復元直後は記録が
-          // 無いので、`eligibleOf` と同じく材料があるときだけ比べる。**矛盾と言えるのは双方が
+          // `turnIdSource` は `turnId` と対になる turn 同一性の一部なのに、`OperationCorrelationV1`
+          // には無い（#35 で `PendingOperation.startTurnIdSource` として別の欄に載せた）ので、
+          // 上の `turnId` の比較では見えない。種別だけ違う再配送を重複として台帳に入れると、
+          // 記録は元の種別のまま残る（再配送は `startTurnIdSource` を書き換えない）ので、再配送側の
+          // 種別で来た terminal は rule 2 の候補選び（`eligibleOf`）で落ちて `terminal_unmatched` に
+          // なり、**健全な証跡が `unknown` に倒れたうえに配送鍵まで消費済み**になる。欄を持たない
+          // 状態では記録が無いので、`eligibleOf` と同じく材料があるときだけ比べる。**矛盾と言えるのは双方が
           // 具体的な turn 同一性を主張している場合だけ**にする: `unavailable` は「turn 同一性を
           // 主張していない」という表明で、§4.3 もどちらかが `unavailable` なら rule 2 を適用しないと
           // 言うだけで矛盾とは言わない。片側でも `unavailable` を衝突にすると、intake が降格した
           // start（proven でない version の native 主張はここへ落ちる）と、証明が回復した後の
           // 同じ start の再配送とが噛み合わず、**還元器は純関数なので毎回同じ隔離になる
           // = 決定論的な永久隔離と無限再送**になる（`started` を矛盾集合から外した理由と同型）。
-          // 免除しても記録は汚れない: 再配送は `operationStarts` を書かないので、記録された種別は
-          // どちらの経路でも元のまま残る。塞ぐのは種別の**すり替え**（native ⇄
+          // 免除しても記録は汚れない: 再配送は `startTurnIdSource` を書き換えないので、記録された
+          // 種別はどちらの経路でも元のまま残る。塞ぐのは種別の**すり替え**（native ⇄
           // synthesized_monotonic）だけで、そこは 2 つの具体的な主張が食い違っている
           (recordedSource !== undefined &&
             recordedSource !== "unavailable" &&
@@ -1017,9 +1219,9 @@ export function reduceTaskWorkState(
     // 隔離は鍵を消費せず還元器は純関数なので永久に収束しない。
     // 連結順は `idMatches` を先にして、両集合とも全件衝突のときの衝突の証拠を従来と揃える。
     // **`Set` で重複を落とす**。derived id と native id の両方で当たる兄弟は 2 つの集合に入るので、
-    // 素で連結すると `startConflictsWith` がその要素に対して 2 回走る。`startConflictsWith` は
-    // `startFactsFor`（`pendingOperations` の線形走査）を呼ぶので、両集合が上限 256 件のとき
-    // 無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので上で決めた連結順はそのまま残る
+    // 素で連結すると同じ要素が 2 度並ぶ。下の `conflictingSiblings` は `siblings` と `compatible` の
+    // 集合差で作るので、重複した衝突兄弟は診断で**同じ operationId を 2 回名乗る**ことになる。
+    // `Set` は挿入順を保つので上で決めた連結順はそのまま残る
     const siblings = [...new Set([...idMatches, ...nativeMatches])];
     const compatible = siblings.filter((pending) => !startConflictsWith(pending));
     // 互換な兄弟が複数居るときは、**届いた native ID を既に名乗っている側**を再配送の相手にする。
@@ -1047,8 +1249,7 @@ export function reduceTaskWorkState(
       siblings.at(0);
     // `existing` の衝突判定は上の filter で確定している。`compatible` から取ったなら構成上
     // 非衝突、空だったから `siblings.at(0)` に落ちたならその要素は filter で衝突と判定済み。
-    // もう一度述語を呼ぶと、兄弟 1 件という最も普通の経路で `startFactsFor`（`pendingOperations`
-    // の線形走査）が 1 回から 2 回に増えるだけで、新しい情報は出ない
+    // もう一度述語を呼んでも新しい情報は出ない
     // `existing !== undefined` は残す。下の隔離が `existing.operationId` を読むので、型の上でも
     // 定義済みへ絞る必要がある（この形なら `siblings.length > 0` は含意される）
     const startConflict = existing !== undefined && compatible.length === 0;
@@ -1125,10 +1326,8 @@ export function reduceTaskWorkState(
       // 消費せず還元器は純関数なので永久に収束しない）が、そのままだと**衝突していた兄弟が
       // 誰にも報告されずに枠を占め続ける**。この状態はコード自身が「再配送ではなく corruption」と
       // 呼んでいるもので、黙って間引かない規則どおり診断に出す
-      // 判定は上の `compatible` で全兄弟について済んでいるので、**集合差**で取る。述語を
-      // 呼び直すと `startFactsFor`（線形走査）が兄弟の数だけ増え、互換な兄弟 256 件の再配送で
-      // 走査が 256 回から 512 回になる（実測。`compatible` の絞り込み自体が 256 回使うので、
-      // ここで消えるのは上乗せぶんの 256 回。ゼロにはならない）。`pending !== existing` は落とす: ここへ来た時点で
+      // 判定は上の `compatible` で全兄弟について済んでいるので、**集合差**で取る（述語を
+      // 呼び直しても同じ答えしか出ない）。`pending !== existing` は落とす: ここへ来た時点で
       // `compatible` は非空（空なら上の隔離で return 済み）なので `existing` は必ず `compatible`
       // の要素で、集合差には最初から入らない
       const compatibleSet = new Set(compatible);
@@ -1138,9 +1337,19 @@ export function reduceTaskWorkState(
       const duplicateDiagnostic: ContinuityDiagnosticV1 = {
         code: "duplicate_operation_start",
         eventId: event.eventId,
-        detail: `operationId ${existing.operationId} は既に pending`,
+        // 相手が確定済みのこともある（同じ identity の start が terminal の後に再配送される）。
+        // 「既に pending」と決め打つと、閉じた operation を追っている読み手を実行中だと誤誘導する
+        detail: `operationId ${existing.operationId} は既に記録済み（status: ${existing.status}）`,
       };
       return commit(previous, event, idempotencyLedger, {
+        // **`startIngestSeq` / `startTurnIdSource` は書き換えない**（#35 FR-003）。correlation の
+        // 欠落は埋めるのに順序材料は埋めないのは、性質が違うから: 欠落した native ID を埋めるのは
+        // 「同じ operation の別名を記録する」だが、§6.4 の `ingestSeq` は event store が採番する
+        // watermark なので、再配送 event が運ぶのは**再配送時の取り込み位置**であって元の start の
+        // 権威順序ではない。埋めると低い値を名乗る偽 start で unknown を succeeded に変えられ、
+        // 高い値なら正当な terminal が `terminal_out_of_order` で落ちる。欄を持たない状態
+        // （この版より前の checkpoint）は `terminal_order_unverifiable` で unknown に倒れるのが
+        // §3.1 の fail closed どおり。spread がこの 2 欄をそのまま運ぶ
         pendingOperations: previous.state.pendingOperations.map((pending) =>
           pending === existing
             ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)
@@ -1159,11 +1368,6 @@ export function reduceTaskWorkState(
               ]),
           ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)]),
         ],
-        // 再配送された start で operationStarts を埋めない。§6.4 の `ingestSeq` は event store が
-        // 採番する watermark なので、再配送 event が運ぶのは再配送時の取り込み位置であって
-        // 元の start の権威順序ではない。埋めると低い値を名乗る偽 start で unknown を succeeded に
-        // 変えられる。復元直後（operationStarts が空）は terminal_order_unverifiable で unknown に
-        // 倒れるのが §3.1 の fail closed どおりで、材料の復旧は #35（状態に持たせる）が本筋
       });
     }
     const started = startPendingOperation(event, operation, operationId, previous.state.taskLineageId);
@@ -1171,34 +1375,56 @@ export function reduceTaskWorkState(
     // 黙って間引かない。退避した operation の event 自体は event store に残るが、状態からは
     // 消えるので、どれを落としたかを診断に出す
     const kept = new Set(retained);
-    const evicted = previous.state.pendingOperations
-      .filter((pending) => !kept.has(pending))
-      .map((pending) => pending.operationId);
-    // 退避した operation の start facts も落とす。残すと pendingOperations が 256 件で頭打ちの
-    // 一方でこの表だけが単調増加する。
-    // **同名の兄弟が残っていても消す**。ここに「生きている operation の順序材料を消さないため」の
-    // 例外を一度入れたが、それは fail open だった: `operationStarts` の鍵は `operationId` なので、
-    // id が衝突していると**どちらの兄弟の材料かを原理的に判別できない**。退避した側の材料を残すと、
-    // 生き残った側の順序検査がその他人の材料で通り、**順序違反の terminal が診断ゼロで適用され
-    // 台帳まで消費される**（実測: 退避側 start=10・生存側の実 start=100 の状態に ingestSeq 50 の
-    // terminal を当てると succeeded になった）。材料を落として `terminal_order_unverifiable` で
-    // `unknown` に倒れるのが §3.1 の fail closed どおりで、材料の復旧は #35（状態に持たせる）が本筋
-    const operationStarts = new Map(previous.operationStarts);
-    for (const evictedId of evicted) operationStarts.delete(evictedId);
-    operationStarts.set(operationId, { ingestSeq: event.ingestSeq, turnIdSource: event.turnIdSource });
+    const evictedOperations = previous.state.pendingOperations.filter((pending) => !kept.has(pending));
+    const evicted = evictedOperations.map((pending) => pending.operationId);
+    // 退避された operation を状態にも残す（#43）。診断は状態の外なので、状態を受け取った側には
+    // 届かない。`sensitivity` は**退避元から引き継ぐ**（記録側で内容を見て決め直さない: Constitution III）
+    const recorded = recordDroppedEvidence(
+      previous.state.droppedEvidence,
+      evictedOperations.map((pending) => ({
+        reason: "evicted" as const,
+        operationId: pending.operationId,
+        status: pending.status,
+        // **`operationId` は一意ではない**（凍結 schema は `maxLength` しか課さない。この
+        // 還元器が同名の兄弟が並ぶ状態を明示的に支えているのはそのため）。id と status だけを
+        // 書くと、同名・同 status の兄弟が並んでいたとき「どちらが live な集合から落ちたか」を
+        // 記録から判別できず、FR-005 の監査記録がその状態でだけ意味を失う。start の event id で
+        // 区別する（`eventId` は「この記録を名指す event」の欄で、孤児では terminal の id が入る）。
+        // **start を名指すのは `correlation.startEventId`**（凍結 schema の必須欄）であって
+        // `sourceEventIds[0]` ではない。後者は append-only の provenance 配列で、schema は
+        // 先頭が start であることも順序も保証しない（実測: `startEventId` が "actual-start" でも
+        // `sourceEventIds` が ["later-event", "actual-start"] の復元状態では別の event を start
+        // として記録していた）
+        ...(declared(pending.correlation.startEventId) === undefined
+          ? {}
+          : { eventId: pending.correlation.startEventId }),
+        recordedAt: event.occurredAt,
+        sensitivity: pending.sensitivity,
+      })),
+      event.eventId,
+    );
+    // 退避で順序材料を刈る処理は要らない。材料は要素に載っている（#35）ので、退避した
+    // operation と一緒に状態から消え、生き残った側の材料はそのまま残る。側索引だった頃は
+    // 鍵が operationId で、id が衝突していると**どちらの兄弟の材料か原理的に判別できず**、
+    // 退避側の材料を残すと生存側の順序検査がその他人の材料で通っていた（実測: 退避側
+    // start=10・生存側の実 start=100 の状態に ingestSeq 50 の terminal を当てると succeeded）
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...retained, started],
-      diagnostics:
-        evicted.length === 0
+      diagnostics: [
+        ...(evicted.length === 0
           ? []
           : [
               {
-                code: "pending_operations_evicted",
+                code: "pending_operations_evicted" as const,
                 eventId: event.eventId,
                 detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため退避: ${evicted.join(", ")}`,
               },
-            ],
-      operationStarts,
+            ]),
+        // 退避が無くても捨てない。復元した状態が既に上限超えなら、ここで刈った事実を doctor に
+        // 出す必要がある（`recordDroppedEvidence` は追加も脱落も無ければ空を返す）
+        ...recorded.diagnostics,
+      ],
+      droppedEvidence: recorded.droppedEvidence,
     });
   }
 
@@ -1236,14 +1462,61 @@ export function reduceTaskWorkState(
     // 鍵を消費）に落ちた。候補を 1 件も `unknown` にしないので状態には何も残らず、それでいて
     // 配送鍵は焼けるので、後から start が届いてからの再配送が重複 no-op になり operation は
     // 永久に `started`。上のコメントが `terminal_orphaned` について書いている失敗そのもの）。
-    // #43 のとおり unmatched evidence の置き場が凍結 schema に無いので、記録先が無い commit は
-    // 状態に何も残さない = 隔離との差は「鍵を焼くかどうか」しかない。
+    // commit 側が状態に何も残さないのは、候補を 1 件も `unknown` にしないから（`unresolved` が
+    // 空であることそのもの）。**隔離する側は何も残さないという意味ではない**: 証跡の置き場は
+    // #43 で状態に出来たので、下の分岐は `droppedEvidence` に記録したうえで隔離する。
     // 例外は `terminal_already_applied`——これは「既に閉じた operation の再配送」なので本当に
     // 重複であり、隔離すると adapter が無限に再送する
     if (
       correlation.unresolved.length === 0 &&
       correlation.diagnostic !== "terminal_already_applied"
     ) {
+      // 相手の見つからなかった terminal は、隔離したうえで**状態にも記録する**（#39 / FR-006）。
+      // 記録は隔離の代わりではないので、鍵は消費しないまま（後から start が届けば同じ terminal の
+      // 再配送で閉じられる）。記録するぶん**返る状態は前の状態ではない**（revision と history が
+      // 進む）ので、「隔離だから不変」と読んで戻り値を捨てる移植は記録を落とす。
+      // 落とす理由は `terminal_conflict` にも要るが、あちらは corruption であって
+      // 「live な集合から落ちた証跡」ではない（#43 の語彙に無い）ので記録しない。
+      // **同じ terminal の再送で記録が伸びないための重複判定は `recordDroppedEvidence` が持つ**
+      // （呼び出し側の条件式に置くと、次に記録を足す経路がそれを持たずに書ける）。ここでは
+      // 「実際に足せたか」だけを見て、足せていないなら状態を変えない隔離に倒す
+      // `terminal_unmatched` も記録する。候補が 1 件も無いのが `terminal_orphaned`、候補は
+      // 居るが**開いているものが 1 件も無い**のが `terminal_unmatched` で、状態から見れば
+      // どちらも「この terminal を保持する相手が居ない」。確定済みの兄弟しか居ない terminal を
+      // 診断だけで流すと、後から start が届く見込みも無いまま状態から消える（#43 が塞ぐ損失
+      // そのもの）。`unresolved` が空でない場合はここに来ない——開いた候補が `unknown` として
+      // この terminal の事実を持つので、状態から消えてはいない
+      if (
+        correlation.diagnostic === "terminal_orphaned" ||
+        correlation.diagnostic === "terminal_unmatched"
+      ) {
+        const recorded = recordDroppedEvidence(
+          previous.state.droppedEvidence,
+          [
+            {
+              reason: "orphaned_terminal",
+              eventId: event.eventId,
+              // 再送で記録が増えないための鍵は `orphanKeyOf` が §8.2 の順で組む。`eventId` は
+              // 監査用（どの配送を記録したか）で、同一性の判定には使えない
+              terminalFingerprint: event.canonicalFingerprint,
+              ...(declared(event.adapterDeliveryId) === undefined
+                ? {}
+                : { adapterDeliveryId: event.adapterDeliveryId }),
+              recordedAt: event.occurredAt,
+              // 相手が居ないので機密度を引き継げない。§3.1 の fail closed どおり既定に倒す
+              sensitivity: "private",
+            },
+          ],
+          event.eventId,
+        );
+        // 記録を足せた場合だけでなく、**上限超えの復元配列を刈った場合も**修復した状態を返す。
+        // 重複だからと素の隔離に倒すと、刈った結果ごと捨てて凍結 schema に反する状態を
+        // 返し続ける（実測: 257 件の状態へ同じ孤児を再送すると 257 件のまま診断も出ない）。
+        // 刈りは 1 度で上限に収まるので、そこから先の再送は差分ゼロで収束する
+        if (recorded.diagnostics.length > 0) {
+          return quarantineWithRecord(previous, event, idempotencyLedger, diagnostics, recorded);
+        }
+      }
       return quarantine(previous, idempotencyLedger, diagnostics);
     }
     // §4.3「zero or multiple にマッチした terminal は unmatched evidence として保ち、候補を
@@ -1285,7 +1558,23 @@ export function reduceTaskWorkState(
     // この配列の要素そのもの = 参照で当てれば重複があっても 1 件に限定できる
     pendingOperations: previous.state.pendingOperations.map((pending) =>
       pending === correlation.matched
-        ? withSourceEvent({ ...pending, status, terminalAt: event.occurredAt }, event.eventId)
+        ? withSourceEvent(
+            {
+              ...pending,
+              status,
+              terminalAt: event.occurredAt,
+              // 受理した terminal の指紋を残す（#44）。配送 ID が違う 2 通目は dedupe で
+              // 比べられず、成否が同じなら成否矛盾ゲートも素通りするので、これが無いと
+              // §4.3 の「payload/source hash が衝突しないこと」を確認する材料が状態に無い。
+              // event が名乗った値を**そのまま**入れる（計算し直すと adapter の導出規則と
+              // ずれ、健全な再配送が毎回衝突になる）。
+              // **`unknown` では書かない**。`unknown` は「成否を主張できなかった」= terminal を
+              // 受理していないので、指紋を残すと後から届いた本物の terminal が指紋違いの
+              // 衝突として隔離され、その operation は永久に閉じられない
+              ...(status === "unknown" ? {} : { terminalFingerprint: event.canonicalFingerprint }),
+            },
+            event.eventId,
+          )
         : pending,
     ),
     diagnostics:
@@ -1453,6 +1742,14 @@ function startPendingOperation(
     startedAt: event.occurredAt,
     // 分類器が正本に無い間、内容を見ずに normal と申告しない（#36）。
     sensitivity: "private",
+    // §4.3 の「terminal は start より後」「rule 2 は同じ `turnIdSource` 種別を要求する」を
+    // 判定する材料（#35）。**要素そのものに載せる**。以前は operationId 鍵の側索引に置いていたが、
+    // 凍結 schema は operationId の一意性を課さないので、同じ id の pending が並ぶ状態では
+    // どちらの兄弟の材料か判別できず、判別できないまま引くと片方の材料でもう片方が検査された
+    // （実測: 兄弟 B の ingestSeq 100 で A 宛ての terminal が通り、A が診断ゼロで succeeded に
+    // なった）。要素に載せれば鍵が要らず、退避・復元でも operation と同じ寿命になる
+    startIngestSeq: event.ingestSeq,
+    startTurnIdSource: event.turnIdSource,
     ...(operation.nativeOperationId !== undefined
       ? { idempotencyKey: operation.nativeOperationId }
       : {}),
@@ -1496,38 +1793,29 @@ function terminalStatusOf(event: NormalizedContinuityEvent): "succeeded" | "fail
 }
 
 /**
- * `operationStarts` は `operationId` 鍵の側索引（#35。凍結 schema の外）なので、同じ id の
- * pending が並ぶ状態では**どちらの兄弟の材料かを判別できない**。判別できないまま引くと、片方の
- * start facts でもう片方の順序と turn 種別が検査される（実測: 兄弟 B の `ingestSeq` 100 を使って
- * A 宛ての terminal が通り、A が診断ゼロで `succeeded` になった。逆向きの値では健全な terminal が
- * `terminal_out_of_order` で弾かれた）。曖昧な id は「材料が無い」として扱い、復元直後と同じ
- * fail closed な経路（`terminal_order_unverifiable`）へ倒す。
+ * §4.3 の順序検査が使う start 側の `ingestSeq`（#35）。凍結 schema では任意欄なので、
+ * この版より前に書かれた checkpoint と別実装が書いた状態では欠けうる。
+ *
+ * ここは他の任意欄の `declared()` より狭く、**`ingestSeq` の綴りそのもの**で見る。この欄は
+ * 復元した状態と別実装が書ける値で、schema の pattern を通っている保証は無い。一方この値は
+ * 等値比較でなく `compareIngestSeq` に渡るので、空白（`"  "`）も語彙の外（`"007"` / `"-1"`）も
+ * そのままでは throw する。しかも比較は候補集合を走査するため、**壊れた要素を狙っていない
+ * terminal まで巻き添えで落ちる**。綴りが合わない値は「名乗っていない」に倒し、既存の
+ * 「材料が無い」経路（`terminal_order_unverifiable`）へ流す。倒す先がある任意欄だから
+ * できることで、必須欄（`lastIngestSeq`）は倒す先が無いので従来どおり throw のまま。
  */
-function startFactsFor(
-  snapshot: TaskWorkStateSnapshotV1,
-  operationId: string,
-): OperationStartFactsV1 | undefined {
-  let seen = 0;
-  for (const pending of snapshot.state.pendingOperations) {
-    // **数えるのは自 lineage の pending だけ**。`operationStarts` は凍結 schema の外にあるので
-    // checkpoint から復元されることが無く、entry を書けるのは `assertSameScope` を通った
-    // 自 lineage の start だけ（この関数が読む側、書く側とも 1 箇所）。よって別 lineage の同名
-    // pending は entry の帰属を曖昧にしない。数に入れると**曖昧でないものを曖昧と読む**ことになり、
-    // 材料なし扱いが 2 方向に効いてしまう: 健全な operation が `terminal_order_unverifiable` で
-    // `unknown` に倒れるだけでなく、`startConflictsWith` の `recordedSource !== undefined` 節が
-    // 常に false になって **`turnIdSource` のすり替え検査が無効化される**（実測: 別 lineage の
-    // 双子を 1 件置くと、native → synthesized_monotonic にすり替えた再配送が `start_conflict` から
-    // `duplicate_operation_start` に変わり配送鍵まで消費した = fail open）。
-    // 自 lineage で id が衝突している場合だけは帰属を判別できないので、従来どおり材料なしに倒す
-    if (
-      pending.operationId === operationId &&
-      pending.correlation.taskLineageId === snapshot.state.taskLineageId
-    ) {
-      seen += 1;
-    }
-    if (seen > 1) return undefined;
-  }
-  return snapshot.operationStarts.get(operationId);
+function startIngestSeqOf(pending: PendingOperation): string | undefined {
+  const seq = pending.startIngestSeq;
+  return seq !== undefined && INGEST_SEQ_PATTERN.test(seq) ? seq : undefined;
+}
+
+/**
+ * §4.3 rule 2 の turn 両立が見る start 側の種別（#35）。欠落と空白の扱いは
+ * `startIngestSeqOf` と同じ。語彙の外の値は「材料あり」として扱う——読み替えて素通りさせるより、
+ * 種別が一致しない候補として落ちるほうが fail closed になる。
+ */
+function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
+  return declared(pending.startTurnIdSource);
 }
 
 /**
@@ -1725,13 +2013,14 @@ export function correlateTerminalEvent(
             declared(pending.correlation.turnId) !== undefined &&
             pending.correlation.turnId === terminalEvent.turnId,
         );
-  // 種別の材料（`operationStarts`、#35）は復元直後と退避後に空になる。材料が無いことを
-  // 「種別が違う」と読むと理由を取り違えるので、材料がある候補だけ種別で絞る
+  // 種別の材料（`startTurnIdSource`、#35）は任意欄なので、この版より前に書かれた checkpoint と
+  // 別実装の状態では欠ける。材料が無いことを「種別が違う」と読むと理由を取り違えるので、
+  // 材料がある候補だけ種別で絞る
   const eligibleOf = (list: readonly PendingOperation[]): readonly PendingOperation[] =>
     byNativeId.length > 0
       ? list
       : list.filter((pending) => {
-          const recorded = startFactsFor(previous, pending.operationId)?.turnIdSource;
+          const recorded = startTurnIdSourceOf(pending);
           return recorded === undefined || recorded === terminalEvent.turnIdSource;
         });
   const isOpen = (pending: PendingOperation): boolean =>
@@ -1750,8 +2039,8 @@ export function correlateTerminalEvent(
   const orderableOf = (list: readonly PendingOperation[]): readonly PendingOperation[] => {
     if (byNativeId.length > 0) return list;
     const orderable = list.filter((pending) => {
-      const start = startFactsFor(previous, pending.operationId);
-      return start === undefined || compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) > 0;
+      const startIngestSeq = startIngestSeqOf(pending);
+      return startIngestSeq === undefined || compareIngestSeq(terminalEvent.ingestSeq, startIngestSeq) > 0;
     });
     return orderable.length === 0 ? list : orderable;
   };
@@ -1762,8 +2051,9 @@ export function correlateTerminalEvent(
     // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を
     // 課す。配送 ID が違う 2 通目は dedupe で比べられず、上の identity 衝突検査も kind と
     // input hash しか見ないので、成否だけが逆の terminal が「適用済み」として黙って通る。
-    // 受理済み terminal の source hash は状態に持っていない（凍結 schema に置き場が無い。#43）が、
-    // 確定済みの status は持っているので、成否の矛盾だけはここで検出できる。
+    // 受理済み terminal の指紋は `terminalFingerprint` に載った（#44）ので上の指紋検査で直接見るが、
+    // 欄は任意で、この版より前に書かれた状態と別実装の状態には無い。そこでも確定済みの status は
+    // 持っているので、成否の矛盾だけはここで検出できる。
     // どちらかが unknown のときは「成否を主張していない」ので矛盾ではない。
     // rule 2 の候補は同じ matchKey の兄弟をまとめて拾う（同じ turn で同じ tool を同じ入力で
     // 2 回など）ので、成否が一致する候補が 1 件でもあれば、この terminal はその候補の
@@ -1842,6 +2132,34 @@ export function correlateTerminalEvent(
         unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen,
       };
     }
+    // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の
+    // **両方**を課す。ここに来るのは前者に引っかかった 2 通目だが、配送 ID が違うので dedupe は
+    // 比べておらず、成否が同じなら上の矛盾ゲートも素通りしている。受理した指紋を状態に残した
+    // 今（#44）、後者をここで見られる。
+    // **説明がつく候補が 1 件でもあれば隔離しない**。rule 2 の候補は同じ matchKey の兄弟を
+    // まとめて拾うだけで、この terminal がどの兄弟のものかは分からない。説明がつくのは
+    // (a) 指紋が一致する兄弟が居る（その再配送）か、(b) **指紋を名乗っていない兄弟が居る**
+    // （この版より前に閉じた兄弟。FR-012 どおり新しい検査は材料が無ければ発動しない）。
+    // 混在した状態で材料を持つ兄弟だけを見て隔離すると、指紋なしの兄弟宛ての健全な再配送が
+    // 台帳に入らず、adapter は無限再送になる。だから隔離は「**全員**が指紋を名乗っていて、
+    // **どれとも一致しない**」ときだけ。
+    // 記録側の空白は「指紋を名乗っていない」であって「違う指紋」ではないので `declared()` で
+    // 見る（届く側は `assertIdentityMaterial` が空白を先に落とすので、比べる時点で必ず具体値）
+    const incomingFingerprint = terminalEvent.canonicalFingerprint;
+    const fingerprintUnexplained = plausible.every((pending) => {
+      const stored = declared(pending.terminalFingerprint);
+      return stored !== undefined && stored !== incomingFingerprint;
+    });
+    // `plausible` は上の early return で空でないことが確定している
+    const fingerprintConflict = fingerprintUnexplained ? (plausible[0] as PendingOperation) : undefined;
+    if (fingerprintConflict !== undefined) {
+      return {
+        matched: null,
+        diagnostic: "terminal_conflict",
+        detail: `operation ${fingerprintConflict.operationId} は指紋 ${fingerprintConflict.terminalFingerprint} で確定済みなのに、別の配送 ID の terminal が ${incomingFingerprint} を名乗る`,
+        unresolved: [],
+      };
+    }
     return {
       matched: null,
       diagnostic: "terminal_already_applied",
@@ -1898,7 +2216,10 @@ export function correlateTerminalEvent(
   // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
   // unavailable のとき rule 2 は適用されず、operation は unknown のままになる。閉じられるのは
   // rule 1 だけ」。この絞り込みは `open` を作る前（`plausible`）で済ませてあるので、ここに
-  // 残っている open な候補はすべて §4.3 の turn 両立を満たす。あとは件数だけを見る
+  // 残っている open な候補から**種別が具体的に食い違うもの**は既に落ちている。あとは件数だけを見る。
+  // ただし `eligibleOf` は**材料が無い候補を落とさない**（落とすと帰属を取り違える）ので、
+  // 「種別が一致した」と「種別を確認できなかった」はまだ混ざったまま。後者はこの関数の
+  // 最後の門（`terminal_turn_unverifiable`）で分ける
   if (open.length > 1) {
     return {
       matched: null,
@@ -1909,9 +2230,38 @@ export function correlateTerminalEvent(
   }
   const matched = open[0] as PendingOperation;
 
-  const start = startFactsFor(previous, matched.operationId);
-  if (start === undefined) {
-    // start の ingestSeq が状態に無い（checkpoint から復元した等: #35）。順序を確認できない
+  // 受理済みの指紋を持つ候補に、違う指紋の terminal が付こうとしている。閉じる経路は指紋を
+  // **無条件に上書き**するので、ここで見ないと「一度書いた欄は上書きしない。食い違いは衝突」
+  // （data-model）が open な候補についてだけ破れる。還元器が自分で書いた指紋は確定済みの
+  // operation にしか付かないが、凍結 schema は `started` / `unknown` の要素が指紋を持つことを
+  // 妨げないので、復元した checkpoint や別実装が書いた状態では open な候補が指紋を持ちうる。
+  // 確定済みの候補には同じ検査が上（`open.length === 0` の分岐）にあり、そちらは兄弟の
+  // どれとも一致しないことを要求するが、ここは候補が 1 件に確定している（`open.length > 1` は
+  // 上で `terminal_ambiguous`）ので、上書きする相手そのものだけを見れば足りる。
+  // **台帳を消費する 2 つの順序分岐より先に置く**。隔離は配送鍵を消費しないので、後ろに置くと
+  // 指紋が食い違う terminal が順序の穴を通って `unknown` に化け、訂正版の再配送が重複 no-op で
+  // 消える。§4.3 も「terminal の identity / 指紋の衝突は隔離、記録はしない」と書き分けている。
+  // **入ってくる側が `unknown` に倒れる場合は発火させない**: その経路は指紋を書かないので
+  // 上書きが起きず、しかも `terminalEvidenceContradicts` は event 自身の性質なので隔離すると
+  // 同じ event が毎回同じ判定で戻り、還元器が純関数である以上その operation は永久に閉じない
+  const storedFingerprint = declared(matched.terminalFingerprint);
+  if (
+    storedFingerprint !== undefined &&
+    storedFingerprint !== terminalEvent.canonicalFingerprint &&
+    terminalStatusOf(terminalEvent) !== "unknown"
+  ) {
+    return {
+      matched: null,
+      diagnostic: "terminal_conflict",
+      detail: `operation ${matched.operationId} は指紋 ${storedFingerprint} の terminal を受理済みなのに、違う指紋 ${terminalEvent.canonicalFingerprint} の terminal が来た`,
+      // 隔離は状態を一切変えないので、候補も unknown にしない
+      unresolved: [],
+    };
+  }
+
+  const startIngestSeq = startIngestSeqOf(matched);
+  if (startIngestSeq === undefined) {
+    // start の ingestSeq が状態に無い（この版より前の checkpoint・別実装の状態: #35）。順序を確認できない
     // ので閉じることはできないが、隔離してはいけない: 復元直後は全 terminal がこの分岐に
     // 落ちるため、隔離すると operation が `started` のまま二度と閉じられず、resume capsule が
     // 「まだ実行中」と偽る。§3.1 の fail closed（自動経路を降格し理由を doctor に出す）どおり
@@ -1923,12 +2273,32 @@ export function correlateTerminalEvent(
       unresolved: [matched],
     };
   }
-  if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {
+  if (compareIngestSeq(terminalEvent.ingestSeq, startIngestSeq) <= 0) {
     return {
       matched: null,
       diagnostic: "terminal_out_of_order",
       detail: "terminal が start より後でない",
       // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
+      unresolved: [matched],
+    };
+  }
+  // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
+  // unavailable のとき rule 2 は適用されず、operation は unknown のままになる」。`eligibleOf` は
+  // 材料が無い候補を**落とさない**（落とすと帰属を取り違える。上のコメント参照）ので、あの
+  // 絞り込みを抜けた時点では「種別が一致した」と「種別を確認できなかった」が混ざっている。
+  // ここで分けないと後者が**合格として閉じる**: `startIngestSeq` だけを持つ schema 通りの復元
+  // 状態に `nativeOperationId` を名乗らない terminal が `turnIdSource: "synthesized_monotonic"` で
+  // 来ると、診断ゼロで `succeeded` が確定した（実測）。順序側に `terminal_order_unverifiable` が
+  // あるのと対称に、材料が無い turn も unknown へ倒して理由を出す（隔離はしない: 復元した状態は
+  // この欄を欠きうるので、隔離すると operation が二度と閉じられない）。
+  // **順序の 2 分岐より後に置く**: 復元直後の状態は 2 欄とも欠くので、先に置くと既存の
+  // `terminal_order_unverifiable` が名前だけ変わって観測される。最後に置けば新しい診断は
+  // 「順序は確認できるのに種別が無い」= この穴そのものだけで鳴る
+  if (rule === "match_key" && startTurnIdSourceOf(matched) === undefined) {
+    return {
+      matched: null,
+      diagnostic: "terminal_turn_unverifiable",
+      detail: `operation ${matched.operationId} の start が turn 種別を持たず、rule 2 の turn 両立を確認できない`,
       unresolved: [matched],
     };
   }

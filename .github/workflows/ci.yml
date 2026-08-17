@@ -59,6 +59,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # 旧形 parity の baseline を分岐点の commit から再生成するので、その commit まで
+          # 履歴が要る（既定の depth 1 では `git show <sha>:...` が引けない）
+          fetch-depth: 0
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -128,6 +131,20 @@ jobs:
         run: |
           node harness/contract-hashes.mjs > /tmp/contract-hashes.json
           diff harness/contract-hashes.json /tmp/contract-hashes.json
+
+
+      - name: Old-shape parity baseline is regenerated from the pinned commit
+        # SC-003 の門は「変更前の実装の出力」を committed fixture として持つ。fixture 自体は
+        # ただの JSON なので、手で書き換えて contract hash を作り直せば test は緑のまま通る
+        # （基準 sha の自己申告と件数しか見ていない）。基準の commit から生成し直して
+        # committed fixture と突き合わせ、**生成物であることを CI 側で確かめる**。
+        #
+        # 出力先を `--output` で作業ツリーの外へ逃がす。committed fixture を上書きしてから
+        # 比較すると、書き換わっていても常に一致する
+        run: |
+          node --experimental-strip-types harness/continuity/old-shape-baseline.mjs \
+            --output "${RUNNER_TEMP}/old-shape-parity.json"
+          diff harness/fixtures/continuity/old-shape-parity.json "${RUNNER_TEMP}/old-shape-parity.json"
 
 
       - name: Capability matrix self-test

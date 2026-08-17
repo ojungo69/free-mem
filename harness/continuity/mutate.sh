@@ -13,18 +13,25 @@
 #   comm -23 /tmp/want.txt /tmp/got.txt   # 空でなければ黙って飛ばされている
 # （このコメント行自体が 1 行目の grep に引っかかるので `grep -v '^\K'` で落とす）
 #
-# 中断すると変異が残るので、その場合は `git checkout harness/continuity/reference-model.ts`。
+# 中断すると変異が残るので、その場合は `git checkout harness/continuity/ harness/fixtures/continuity/`。
 set -u
 cd "$(dirname "$0")/../.."
 SRC=harness/continuity/reference-model.ts
-BAK=$(mktemp)
-trap 'cp "$BAK" "$SRC"; rm -f "$BAK"' EXIT
-cp "$SRC" "$BAK"
+# 旧形 parity の門は、還元器ではなく**比較面と corpus**を壊して検証する（門の assert 自体を
+# 壊す変異は、その門でしか検出できないので kill できない = 変異の対象にならない）
+PROJECTION=harness/continuity/old-shape-projection.ts
+CORPUS=harness/fixtures/continuity/old-shape-parity.json
+MUTABLE=("$SRC" "$PROJECTION" "$CORPUS")
+TESTS=(harness/continuity/reference-model.test.ts harness/continuity/old-shape-parity.test.ts)
+BAKDIR=$(mktemp -d)
+restore_all() { for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$(basename "$f")" "$f"; done; }
+trap 'restore_all; rm -rf "$BAKDIR"' EXIT
+for f in "${MUTABLE[@]}"; do cp "$f" "$BAKDIR/$(basename "$f")"; done
 
 EXECUTED=0
 SURVIVED=0
 # 変異前の test 件数。run() がこれと突き合わせて「変異が test を走らせていない」を検出する
-BASELINE_TESTS=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 \
+BASELINE_TESTS=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1 \
   | grep -E '^# tests |^ℹ tests ' | tail -1 | grep -oE '[0-9]+$')
 if [ -z "${BASELINE_TESTS:-}" ]; then
   echo "変異テスト失敗: baseline の test 件数を取得できない" >&2
@@ -34,7 +41,7 @@ fi
 run() {
   local label="$1"
   local out
-  out=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1)
+  out=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1)
   local failed
   failed=$(printf '%s' "$out" | grep -E '^# fail |^ℹ fail ' | tail -1)
   local n
@@ -54,19 +61,20 @@ run() {
       "${ran:-?}" "$BASELINE_TESTS"
     SURVIVED=$((SURVIVED + 1))
   fi
-  cp "$BAK" "$SRC"
+  restore_all
 }
 
-mutate() { # python replacement
-  python3 - "$1" "$2" <<'PY'
+# 既定の対象は還元器。第 3 引数で別ファイルを狙う
+mutate() { # python replacement [file]
+  python3 - "$1" "$2" "${3:-$SRC}" <<'PY'
 import sys, pathlib
-old, new = sys.argv[1], sys.argv[2]
+old, new, target = sys.argv[1], sys.argv[2], sys.argv[3]
 # 置換後の文字列に書いた `\n` は改行として扱う。bash の二重引用符は `\n` を展開しないので、
 # 素で渡すと**リテラルのバックスラッシュ n が TS に埋まって module が parse できなくなる**。
 # その状態でも node:test は「読み込み失敗 1 件」を fail として数えるため、ゲートを一度も
 # 壊していない変異が kill として計上されていた（実測で 5 件。run() 側の件数突き合わせと対で塞ぐ）
 new = new.replace("\\n", "\n")
-p = pathlib.Path("harness/continuity/reference-model.ts")
+p = pathlib.Path(target)
 s = p.read_text()
 # アンカーは**ソース中で一意**でなければならない。2 箇所に出るアンカーだと
 # `replace(old, new, 1)` は必ず先頭を書き換えるので、2 つ目の site を狙ったラベルが
@@ -131,8 +139,12 @@ mutate "  return event.kind === \"tool_failed\" && event.successful === true;" "
 mutate "      ...contradictionDiagnostics,
     ];" "    ];" && run "矛盾診断を照合済み経路だけに戻す"
 mutate "  if (terminalEvidenceContradicts(event)) return \"unknown\";" "  if (false) return \"unknown\";" && run "矛盾した terminal を succeeded にする"
-mutate "  if (start === undefined) {" "  if (false) {" && run "start 不在の分岐を外す"
-mutate "  if (compareIngestSeq(terminalEvent.ingestSeq, start.ingestSeq) <= 0) {" "  if (false) {" && run "terminal の権威順序検査を外す"
+mutate "  if (startIngestSeq === undefined) {" "  if (false) {" && run "start 不在の分岐を外す"
+mutate "  if (compareIngestSeq(terminalEvent.ingestSeq, startIngestSeq) <= 0) {" "  if (false) {" && run "terminal の権威順序検査を外す"
+mutate "  return seq !== undefined && INGEST_SEQ_PATTERN.test(seq) ? seq : undefined;" "  return seq;" && run "綴りの合わない順序材料を値として読む（空白・語彙外）"
+mutate "function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
+  return declared(pending.startTurnIdSource);" "function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
+  return pending.startTurnIdSource;" && run "空白の turn 種別を値として読む"
 mutate "      detail: \"terminal が start より後でない\",
       // 一致した 1 件だけが unknown。同じ matchKey の無関係な open を巻き込まない
       unresolved: [matched]," "      detail: \"terminal が start より後でない\",
@@ -141,8 +153,17 @@ mutate "      correlation.unresolved.length === 0 &&" "      false &&" && run "�
 mutate "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: [matched]," "      detail: \`operation \${matched.operationId} の start が状態に無く、権威順序を確認できない\`,
       unresolved: []," && run "順序不明で候補を unknown にしない"
-mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    // eslint-disable-next-line" && run "退避で順序材料を刈らない"
-mutate "    for (const evictedId of evicted) operationStarts.delete(evictedId);" "    const retainedIds = new Set(retained.map((p) => p.operationId));\n    for (const evictedId of evicted) if (!retainedIds.has(evictedId)) operationStarts.delete(evictedId);" && run "同名が残るなら退避側の順序材料を残す"
+mutate "    startIngestSeq: event.ingestSeq,
+    startTurnIdSource: event.turnIdSource," "    startTurnIdSource: event.turnIdSource," && run "start の取り込み連番を記録しない"
+mutate "    startIngestSeq: event.ingestSeq,
+    startTurnIdSource: event.turnIdSource," "    startIngestSeq: event.ingestSeq," && run "start の turn 種別を記録しない"
+mutate "        pendingOperations: previous.state.pendingOperations.map((pending) =>
+          pending === existing
+            ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)
+            : pending," "        pendingOperations: previous.state.pendingOperations.map((pending) =>
+          pending === existing
+            ? withSourceEvent({ ...pending, correlation: recovered, startIngestSeq: event.ingestSeq }, event.eventId)
+            : pending," && run "再配送 start でも順序材料を書く"
 mutate "      operation.nativeOperationId === undefined
         ? []
         : inLineage.filter(" "      true
@@ -172,8 +193,8 @@ mutate "const EVICTION_ORDER: readonly PendingOperation[\"status\"][] = [
   \"started\",
 ];" "const EVICTION_ORDER: readonly PendingOperation[\"status\"][] = [\"succeeded\", \"failed\"];" && run "退避対象から open を外す（詰まる）"
 mutate "      if (dropped.size === dropCount) break;" "      if (false) break;" && run "退避件数の上限を外す"
-mutate "        evicted.length === 0
-          ? []" "        true
+mutate "        ...(evicted.length === 0
+          ? []" "        ...(true
           ? []" && run "退避を黙って行う"
 mutate "    pendingOperations: [...pendingOperations]," "    pendingOperations," && run "revision ごとの配列分離を外す"
 mutate "  const applied = idempotencyLedger.get(key);
@@ -251,10 +272,18 @@ mutate "    !isBlank(context.activeCapabilityHash) &&" "    context.activeCapabi
 mutate "    !isBlank(context.expectedSourceAgent);" "    context.expectedSourceAgent !== \"\";" && run "空白だけの Agent 名を authority にする"
 mutate "    !isBlank(context.exactAgentVersion) &&" "    context.exactAgentVersion !== \"\" &&" && run "空白だけの exact version を authority にする"
 mutate "  assertSameScope(previous.state, terminalEvent);" "" && run "直接呼びの Agent 検査を外す"
-mutate "          const recorded = startFactsFor(previous, pending.operationId)?.turnIdSource;
+mutate "          const recorded = startTurnIdSourceOf(pending);
           return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return true;" && run "rule 2 の turn 種別の絞り込みを外す"
 mutate "          return recorded === undefined || recorded === terminalEvent.turnIdSource;" "          return recorded === terminalEvent.turnIdSource;" && run "turn 種別の材料が無い候補も落とす"
 mutate "        unresolved: sourceMismatch ? sameTurnOpen : compatibleOpen," "        unresolved: compatibleOpen," && run "種別違いの巻き込み範囲を広げる"
+# 絞り込みを抜けた候補には「種別が一致した」と「確認できなかった」が混ざる。閉じる直前の門で
+# 両方向を潰す: 外して合格させる / 締めすぎて健全な terminal を止める
+mutate "  if (rule === \"match_key\" && startTurnIdSourceOf(matched) === undefined) {" "  if (false) {" && run "turn 種別が無いまま rule 2 を閉じさせる（FR-004）"
+mutate "  if (rule === \"match_key\" && startTurnIdSourceOf(matched) === undefined) {" "  if (startTurnIdSourceOf(matched) === undefined) {" && run "turn を要求しない rule 1 まで種別で止める"
+mutate "  if (rule === \"match_key\" && startTurnIdSourceOf(matched) === undefined) {" "  if (rule === \"match_key\" && matched.startTurnIdSource === undefined) {" && run "空白だけの turn 種別を材料として通す"
+mutate '      detail: `operation ${matched.operationId} の start が turn 種別を持たず、rule 2 の turn 両立を確認できない`,
+      unresolved: [matched],' '      detail: "unverifiable",
+      unresolved: [],' && run "turn 種別が無い候補を unknown に倒さず据え置く"
 
 mutate "    !isBlank(attestation.ingestReceiptId) &&" "    true &&" && run "受領証 ID が空でも認証済みとする"
 mutate "    !isBlank(attestation.peerIdentityId) &&" "    true &&" && run "peer identity が空でも認証済みとする"
@@ -323,7 +352,6 @@ mutate "        incomingNativeId !== undefined && nativeMatches.some((pending) =
 mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
 mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
 mutate "  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSource)) {" "  if (false) {" && run "turnIdSource の語彙検査を外す"
-mutate "      pending.correlation.taskLineageId === snapshot.state.taskLineageId" "      true" && run "側索引の同名判定で別 lineage も数える"
 mutate "            (declared(pending.correlation.toolName) === undefined ||
               pending.correlation.toolName === operation.operationKind)," "            pending.correlation.toolName === operation.operationKind," && run "候補の toolName を素で比べる"
 mutate "      correlation.diagnostic !== \"terminal_already_applied\"" "      true" && run "適用済みの再配送も隔離する"
@@ -343,7 +371,6 @@ mutate "            code: \"delivery_conflict\",
           },
         ].slice(0, 0),
       };" && run "放棄の配送衝突を診断に出さない"
-mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を引く"
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible: readonly PendingOperation[] = [];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible = idMatches.filter((pending) => !startConflictsWith(pending));" && run "再配送の相手を集合ごとに選ぶ"
@@ -379,16 +406,86 @@ mutate "  if (!isCanonicalTimestamp(value)) return false;" "" && run "暦検査�
 mutate "  if (!value.endsWith(\"Z\")) return false;" "  if (false) return false;" && run "offset の Z 固定を外す"
 mutate "    (fraction === \"\" || ISO_SECFRAC_PATTERN.test(fraction))" "    true" && run "小数部の綴りを見ない"
 mutate "  return value === undefined || isBlank(value) ? undefined : value;" "  return value;" && run "任意欄の空白を present として読む"
+mutate "  return seq !== undefined && INGEST_SEQ_PATTERN.test(seq) ? seq : undefined;" "  return seq !== undefined && !isBlank(seq) ? seq : undefined;" && run "空白だけ弾いて語彙外は比較へ渡す（#35 FR-004）"
 mutate "  if (isBlank(state.taskLineageId)) {" "  if (false) {" && run "状態側の空白 lineage を通す"
 mutate "  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {" "  if (false) {" && run "event 側の空白 lineage を通す"
 mutate "          ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)])," "" && run "再配送 start の truncation 診断を落とす"
 mutate "        .filter((pending) => !compatibleSet.has(pending))" "        .filter(() => false)" && run "飛ばした衝突兄弟を報告しない"
-cp "$BAK" "$SRC"
+
+# --- #43 / #39: 消えた証跡の記録 --------------------------------------------
+mutate "  const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));" "  const overflowed = kept.splice(Math.min(kept.length, CONTINUITY_LIMITS.arrayItems));" && run "記録を末尾から落とす（FR-008）"
+mutate "  const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));" "  const overflowed: DroppedEvidenceEntryV1[] = [];" && run "記録の上限検査を外す（FR-015）"
+mutate "              code: \"dropped_evidence_recorded\" as const," "              code: \"pending_operations_evicted\" as const," && run "記録の追加を別の診断で報告する（FR-009）"
+mutate "      ...(overflowed.length === 0
+        ? []
+        : [" "      ...(true
+        ? []
+        : [" && run "記録の脱落を診断に出さない（FR-009）"
+mutate "        sensitivity: pending.sensitivity," "        sensitivity: \"normal\" as const," && run "退避の記録で機密度を引き継がない"
+mutate "              sensitivity: \"private\"," "              sensitivity: \"normal\"," && run "孤児の記録を normal で残す"
+mutate "    return key === undefined || !recordedOrphans.has(key);" "    return true;" && run "孤児の記録を再送のたびに足す"
+mutate "  const delivery = declared(entry.adapterDeliveryId);" "  const delivery = entry.eventId;" && run "孤児の重複判定を eventId で行う（再送 DoS）"
+mutate "  if (delivery !== undefined) return \`d:\${delivery}\`;" "" && run "重複判定で配送鍵を見ず指紋だけにする（§8.2 の順を崩す）"
+mutate "  return fingerprint === undefined ? undefined : \`f:\${fingerprint}\`;" "  return undefined;" && run "配送鍵の無い記録を同一性なしにする"
+mutate "                : { adapterDeliveryId: event.adapterDeliveryId })," "                : {})," && run "孤児の記録に配送鍵を残さない"
+mutate "          : { eventId: pending.correlation.startEventId })," "          : {})," && run "退避の記録に兄弟を判別できる識別子を残さない"
+mutate "          : { eventId: pending.correlation.startEventId })," "          : { eventId: pending.sourceEventIds[0] })," && run "start を provenance 配列の先頭から取る"
+mutate "        if (recorded.diagnostics.length > 0) {" "        if (recorded.added.length > 0) {" && run "刈っただけの修復を捨てる（FR-015）"
+mutate "        if (recorded.diagnostics.length > 0) {" "        if (true) {" && run "足せていなくても状態を進める"
+mutate "  const recordedFingerprint = recordedOrphanFingerprints(previous.state.droppedEvidence).get(key);" "  const recordedFingerprint = undefined;" && run "同じ配送鍵の指紋食い違いを黙って重複にする"
+mutate "    recordedFingerprint !== undefined &&" "    true &&" && run "材料が欠けていても指紋の食い違いにする"
+mutate "              terminalFingerprint: event.canonicalFingerprint," "" && run "孤児の記録に同一性の鍵を残さない"
+mutate "        correlation.diagnostic === \"terminal_orphaned\" ||" "        false ||" && run "候補ゼロの terminal を状態に記録しない"
+mutate "        correlation.diagnostic === \"terminal_unmatched\"" "        false" && run "開いた候補ゼロの unmatched を状態に記録しない"
+mutate "      ],
+      droppedEvidence: recorded.droppedEvidence," "      ]," && run "退避を状態に記録しない"
+mutate "        ...recorded.diagnostics,
+      ]," "      ]," && run "上限超えの復元状態を刈った事実を黙る（FR-015）"
+mutate "  const carried = droppedEvidence ?? previous.droppedEvidence;" "  const carried = droppedEvidence;" && run "記録に触らない経路で記録を落とす"
+mutate "    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: [...carried] })," "    ...(carried === undefined ? {} : { droppedEvidence: [...carried] })," && run "復元状態の空配列をそのまま残す（FR-013）"
+mutate "    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: [...carried] })," "    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: carried })," && run "記録の配列を revision 間で共有する（§4.2）"
+mutate "      lastIngestSeq: previous.state.lastIngestSeq," "" && run "記録だけの隔離で watermark を進める（§4.1）"
+mutate "    lastIngestSeq: lastIngestSeq ?? maxIngestSeq(previous.lastIngestSeq, event.ingestSeq)," "    lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq)," && run "呼び出し側が渡した watermark を無視する"
+
+# --- #44: 受理した terminal の指紋 ------------------------------------------
+mutate "              ...(status === \"unknown\" ? {} : { terminalFingerprint: event.canonicalFingerprint })," "" && run "受理した terminal の指紋を残さない（FR-010）"
+mutate "              ...(status === \"unknown\" ? {} : { terminalFingerprint: event.canonicalFingerprint })," "              terminalFingerprint: event.canonicalFingerprint," && run "unknown に倒した operation にも指紋を残す"
+mutate "    if (fingerprintConflict !== undefined) {" "    if (false) {" && run "指紋の衝突検査を外す（FR-011）"
+mutate "      return stored !== undefined && stored !== incomingFingerprint;" "      return stored !== undefined;" && run "指紋が一致しても再配送として説明しない"
+mutate "      return stored !== undefined && stored !== incomingFingerprint;" "      return stored !== incomingFingerprint;" && run "指紋を持たない旧い状態も衝突にする（FR-012）"
+mutate "    const fingerprintUnexplained = plausible.every((pending) => {" "    const fingerprintUnexplained = plausible.some((pending) => {" && run "兄弟の 1 件が名乗っていれば全員分の衝突にする（FR-012 混在）"
+mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  const storedFingerprint: string | undefined = undefined;" && run "open な候補の指紋の食い違いを見ない（FR-011）"
+mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  const storedFingerprint = matched.terminalFingerprint;" && run "open な候補の空白の指紋を「違う指紋」と読む（FR-012）"
+mutate "    terminalStatusOf(terminalEvent) !== \"unknown\"" "    true" && run "unknown に倒れる terminal でも指紋の食い違いで隔離する"
+mutate "    storedFingerprint !== undefined &&" "    startIngestSeqOf(matched) !== undefined &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を順序材料がある場合だけにする"
+mutate "    storedFingerprint !== undefined &&" "    rule === \"native_operation_id\" &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を rule 1 の terminal だけにする"
+restore_all
+# --- 旧形 parity の門（SC-003）--------------------------------------------
+# 比較面を緩める / corpus を実際より広く見せる、の 2 方向を潰す
+mutate "    contentHash: step.contentHash," "    contentHash: undefined," "$PROJECTION" && run "旧形 parity の比較面から還元結果の hash を落とす"
+mutate "    diagnostics: step.diagnostics," "    diagnostics: []," "$PROJECTION" && run "旧形 parity の比較面から診断を落とす"
+mutate "    diagnostics: step.diagnostics," "    diagnostics: step.diagnostics.map((d) => ({ code: d.code }))," "$PROJECTION" && run "旧形 parity の診断を code だけに縮める"
+mutate "    state: step.state," "    state: {}," "$PROJECTION" && run "旧形 parity の比較面から状態を落とす"
+mutate "    state: step.state," "    state: (({ stateRevision: _dropped, ...rest }) => rest)(step.state)," "$PROJECTION" && run "旧形 parity の比較面から stateRevision を外す"
+mutate "    history: step.history," "    history: []," "$PROJECTION" && run "旧形 parity の比較面から履歴を落とす"
+mutate "      .map(([key, entry]) => ({ key, ...entry }))" "      .map(([key]) => ({ key }))" "$PROJECTION" && run "旧形 parity の台帳を鍵だけに縮める"
+mutate "      \"name\": \"restored-orphan-terminal-redelivered\"," "      \"name\": \"restored-orphan-terminal-renamed\"," "$CORPUS" && run "旧形 corpus の case 名を許可表から外す"
+mutate "          \"eventId\": \"event-terminal-orphan-again\",
+          \"adapterDeliveryId\": \"delivery-terminal-orphan\"," "          \"eventId\": \"event-terminal-orphan-again\",
+          \"adapterDeliveryId\": \"delivery-terminal-orphan-2\"," "$CORPUS" && run "旧形 corpus の再送を別の配送にすり替える"
+mutate "            \"operationId\": \"op-filled-0\",
+            \"correlation\": {
+              \"operationId\": \"op-filled-0\",
+              \"startEventId\": \"event-filled-1\"," "            \"operationId\": \"op-filled-1\",
+            \"correlation\": {
+              \"operationId\": \"op-filled-1\",
+              \"startEventId\": \"event-filled-1\"," "$CORPUS" && run "旧形 corpus の退避 case から同名の兄弟を消す"
+
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
 # 立てていないこのスクリプトでは復元後の baseline が赤でも exit 0 になり、「全変異が kill された」
 # だけを見て緑に見えてしまう。件数を取り出して 0 でなければ落とす
-BASELINE=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1)
+BASELINE=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1)
 printf '%s\n' "$BASELINE" | grep -E '^ℹ (pass|fail) '
 BASELINE_FAIL=$(printf '%s' "$BASELINE" | grep -E '^ℹ fail ' | tail -1 | grep -oE '[0-9]+$')
 if [ -z "$BASELINE_FAIL" ] || [ "$BASELINE_FAIL" -ne 0 ]; then

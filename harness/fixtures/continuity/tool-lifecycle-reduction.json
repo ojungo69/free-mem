@@ -194,50 +194,57 @@
       "eventId": "event-start",
       "evidenceKind": "native",
       "outcome": "applied",
-      "contentHash": "acac3a418a26dc66b72cf19c460d1c4ec6d898ee61c02c077db1c3197f54a645",
-      "stateRevision": "03ef3d78bc72988bfff9f25b69cc15a68df8350d139e3d844af8ee903730cf28",
+      "contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
+      "stateRevision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
       "historyLength": 1,
       "pendingStatuses": [
         "started"
       ],
+      "droppedEvidenceReasons": [],
       "diagnostics": []
     },
     {
       "eventId": "event-start-redelivered",
       "evidenceKind": "native",
       "outcome": "duplicate",
-      "contentHash": "acac3a418a26dc66b72cf19c460d1c4ec6d898ee61c02c077db1c3197f54a645",
-      "stateRevision": "03ef3d78bc72988bfff9f25b69cc15a68df8350d139e3d844af8ee903730cf28",
+      "contentHash": "1ef4ce39ea87a829ff7caa7d14cd66a217fd6ba8ae1ccfc27275f7307dd348c1",
+      "stateRevision": "bf7064b02573e0fa0d7743ab7fc9e166bb06c99f269cdb597193943b7a2c0eee",
       "historyLength": 1,
       "pendingStatuses": [
         "started"
       ],
+      "droppedEvidenceReasons": [],
       "diagnostics": []
     },
     {
       "eventId": "event-terminal",
       "evidenceKind": "native",
       "outcome": "applied",
-      "contentHash": "656cb86ce6ac558bae8916f5f370780f01960cbe73f0699cf8b3a40bd8408ea9",
-      "stateRevision": "d58c75ff3f87bf2da159db84745a3cea91e5dc96e8275630f12e45a8a9a01b51",
+      "contentHash": "6c959ab5a07b0fb5e911a85976cc8907f431ce5f561a8411090432756cd056de",
+      "stateRevision": "fa42ded6a0bec3bd6a1146a777a421f0cd4f5a56178b0db8d2ad036c172571a5",
       "historyLength": 2,
       "pendingStatuses": [
         "succeeded"
       ],
+      "droppedEvidenceReasons": [],
       "diagnostics": []
     },
     {
       "eventId": "event-terminal-orphan",
       "evidenceKind": "native",
       "outcome": "quarantined",
-      "contentHash": "656cb86ce6ac558bae8916f5f370780f01960cbe73f0699cf8b3a40bd8408ea9",
-      "stateRevision": "d58c75ff3f87bf2da159db84745a3cea91e5dc96e8275630f12e45a8a9a01b51",
-      "historyLength": 2,
+      "contentHash": "a001443e9cf26b0921e3a2ac2a81deec1f1060798fd7755736f9327150d4bb65",
+      "stateRevision": "ca8acd10fed885f68c801e17d01077f45e565cd923da4d599ef69dda034ed24b",
+      "historyLength": 3,
       "pendingStatuses": [
         "succeeded"
       ],
+      "droppedEvidenceReasons": [
+        "orphaned_terminal"
+      ],
       "diagnostics": [
-        "terminal_orphaned"
+        "terminal_orphaned",
+        "dropped_evidence_recorded"
       ]
     }
   ]

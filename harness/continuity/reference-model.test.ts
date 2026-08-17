@@ -11,6 +11,7 @@ import {
   NON_OPERATION_EVENT_KINDS,
   OPERATION_EVENT_PHASES,
   type CanonicalWorkStateV1,
+  type DroppedEvidenceEntryV1,
   type NormalizedContinuityEvent,
   type PendingOperation,
 } from "../schema/continuity.ts";
@@ -97,7 +98,7 @@ function emptyState(overrides: Partial<CanonicalWorkStateV1> = {}): CanonicalWor
 }
 
 function emptySnapshot(overrides: Partial<CanonicalWorkStateV1> = {}): TaskWorkStateSnapshotV1 {
-  return { state: emptyState(overrides), history: [], operationStarts: new Map() };
+  return { state: emptyState(overrides), history: [] };
 }
 
 /**
@@ -569,6 +570,218 @@ function startedSnapshot(event = startEvent()): TaskWorkStateSnapshotV1 {
   return reduceTaskWorkState(emptySnapshot(), event, new Map()).snapshot;
 }
 
+/**
+ * 順序材料（#35 の `startIngestSeq` / `startTurnIdSource`）を持たない状態。この版より前に
+ * 書かれた checkpoint と、2 欄を書かない別実装の状態がこの形になる。どちらも凍結 schema 的には
+ * 妥当なので、還元器は「材料が無い」経路を保ち続ける必要がある。
+ */
+function withoutStartFacts(snapshot: TaskWorkStateSnapshotV1): TaskWorkStateSnapshotV1 {
+  return {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      pendingOperations: snapshot.state.pendingOperations.map(
+        ({ startIngestSeq: _seq, startTurnIdSource: _source, ...rest }) => rest,
+      ),
+    },
+  };
+}
+
+// --- #35: 権威順序と turn 種別の材料を要素に載せる --------------------------
+
+test("start を受理すると順序材料が PendingOperation に書かれる（#35 FR-001/FR-002）", () => {
+  const started = startedSnapshot().state.pendingOperations[0];
+  assert.equal(started?.startIngestSeq, "11");
+  assert.equal(started?.startTurnIdSource, "native");
+});
+
+test("再配送 start は順序材料を書き換えない（#35 FR-003）", () => {
+  // 遅れて届いた再配送が運ぶのは**再配送時の取り込み位置**であって元の start の権威順序ではない。
+  // 上書きすると、低い値を名乗る偽 start で順序違反の terminal を通せる。逆に高い値で上書き
+  // されると、正当な terminal が `terminal_out_of_order` で落ちて `unknown` に倒れる
+  const first = startedSnapshot();
+  const resent = startEvent({ adapterDeliveryId: "delivery-start-resent", ingestSeq: "99" });
+  const again = reduceTaskWorkState(first, resent, new Map());
+  assert.equal(again.outcome, "applied");
+  const pending = again.snapshot.state.pendingOperations[0];
+  assert.equal(pending?.startIngestSeq, "11");
+  assert.equal(pending?.startTurnIdSource, "native");
+
+  // 再配送の後でも、元の start より後の terminal は普通に閉じる
+  const closed = reduceTaskWorkState(again.snapshot, terminalEvent({ ingestSeq: "12" }), new Map());
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  assert.deepEqual(closed.diagnostics, []);
+});
+
+test("順序材料を持たない pending は terminal を閉じずに unknown へ倒す（#35 FR-004）", () => {
+  // この版より前に書かれた checkpoint と、別実装が書いた状態。材料が無いことを
+  // 「順序を確認できた」と読み替えると、start より前の terminal が診断ゼロで通る
+  const restored = withoutStartFacts(startedSnapshot());
+  const correlation = correlateTerminalEvent(restored, terminalEvent());
+  assert.equal(correlation.matched, null);
+  if (correlation.matched !== null) return;
+  assert.equal(correlation.diagnostic, "terminal_order_unverifiable");
+
+  // 隔離ではなく unknown で閉じる。隔離は配送鍵を消費せず還元器は純関数なので、
+  // 復元直後の全 terminal が永久に再送され続ける
+  const closed = reduceTaskWorkState(restored, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied");
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "unknown");
+});
+
+test("空白の順序材料は「無い」として読む（#35 FR-004）", () => {
+  // JSON を経由した状態では欄が空文字で来うる。素の `!== undefined` で見ると空文字が
+  // 材料として通り、`compareIngestSeq` が空文字を相手に順序を判定する
+  const started = startedSnapshot();
+  const blanked = started.state.pendingOperations.map((pending) => ({
+    ...pending,
+    startIngestSeq: "  ",
+    startTurnIdSource: "" as PendingOperation["startTurnIdSource"],
+  }));
+  const restored: TaskWorkStateSnapshotV1 = {
+    ...started,
+    state: { ...started.state, pendingOperations: blanked },
+  };
+  const correlation = correlateTerminalEvent(restored, terminalEvent());
+  assert.equal(correlation.matched, null);
+  if (correlation.matched !== null) return;
+  assert.equal(correlation.diagnostic, "terminal_order_unverifiable");
+});
+
+test("語彙の外の startIngestSeq は還元器を落とさず「無い」に倒れる（#35 FR-004）", () => {
+  // `startIngestSeq` は復元した状態と別実装が書ける任意欄で、schema の pattern を通っている
+  // 保証は無い。素で `compareIngestSeq` に渡すと throw し、**壊れた要素を狙っていない terminal
+  // まで巻き添えで落ちる**（候補集合を走査するため）。空白と同じく「名乗っていない」に倒す
+  const started = startedSnapshot();
+  for (const malformed of ["007", "-1", "1 ", "12a"]) {
+    const restored: TaskWorkStateSnapshotV1 = {
+      ...started,
+      state: {
+        ...started.state,
+        pendingOperations: started.state.pendingOperations.map((pending) => ({
+          ...pending,
+          startIngestSeq: malformed,
+        })),
+      },
+    };
+    const correlation = correlateTerminalEvent(restored, terminalEvent());
+    assert.equal(correlation.matched, null, malformed);
+    if (correlation.matched !== null) return;
+    assert.equal(correlation.diagnostic, "terminal_order_unverifiable", malformed);
+    // 還元器まで通しても throw しない（隔離ではなく unknown で台帳へ入る）
+    const reduced = reduceTaskWorkState(restored, terminalEvent(), new Map());
+    assert.equal(reduced.outcome, "applied", malformed);
+    assert.equal(reduced.snapshot.state.pendingOperations[0]?.status, "unknown", malformed);
+  }
+});
+
+test("turn 種別の材料が無い rule 2 は閉じずに unknown へ倒れる（#35 FR-004）", () => {
+  // `eligibleOf` は材料が無い候補を落とさない（落とすと帰属を取り違える）。落とさないことと
+  // **合格にすること**は別で、後者にすると「材料が無い＝検査を素通り」になる。この test は
+  // 2 方向を固定する: 材料が無ければ理由つきで unknown、あって一致すれば普通に閉じる。
+  //
+  // 空白は「名乗っていない」であって値ではない。値として読むと `eligibleOf` が `"" !== "native"`
+  // で候補ごと落とし、`terminal_unmatched`（何が起きたか名指ししない診断）に化けるので、
+  // 欠落と空白は同じ `terminal_turn_unverifiable` に倒れなければならない
+  const start = startEvent({ operation: MATCH_KEY_ONLY });
+  const base = startedSnapshot(start);
+  const terminal = terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } });
+  // 順序は確認できる状態にしたまま、種別だけを欠落・空白にする
+  for (const label of ["欠落", "空白"] as const) {
+    const restored: TaskWorkStateSnapshotV1 = {
+      ...base,
+      state: {
+        ...base.state,
+        // 欠落は**欄そのものを消す**（`undefined` を値として置くと JCS が canonicalize できない）
+        pendingOperations: base.state.pendingOperations.map(({ startTurnIdSource: _source, ...rest }) =>
+          label === "欠落" ? rest : { ...rest, startTurnIdSource: " " as PendingOperation["startTurnIdSource"] },
+        ),
+      },
+    };
+    const correlation = correlateTerminalEvent(restored, terminal);
+    assert.equal(correlation.matched, null, label);
+    if (correlation.matched !== null) return;
+    assert.equal(correlation.diagnostic, "terminal_turn_unverifiable", label);
+    // 隔離ではなく unknown で台帳へ入る（隔離すると復元した状態は二度と閉じられない）
+    const reduced = reduceTaskWorkState(restored, terminal, new Map());
+    assert.equal(reduced.outcome, "applied", label);
+    assert.deepEqual(reduced.diagnostics.map((d) => d.code), ["terminal_turn_unverifiable"], label);
+    assert.equal(reduced.snapshot.state.pendingOperations[0]?.status, "unknown", label);
+  }
+  // 逆向き 1: 材料があって terminal と一致するなら、この検査は何も邪魔しない
+  const closed = reduceTaskWorkState(base, terminal, new Map());
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  // 逆向き 2: rule 1 は turn 両立を要求しない（§4.3）ので、種別が無くても止めてはいけない。
+  // ここを固定しないと「材料が無ければ常に降格」に締めすぎた実装が緑のまま通る
+  const native = startedSnapshot();
+  const nativeRestored: TaskWorkStateSnapshotV1 = {
+    ...native,
+    state: {
+      ...native.state,
+      pendingOperations: native.state.pendingOperations.map(({ startTurnIdSource: _source, ...rest }) => rest),
+    },
+  };
+  const byNativeId = reduceTaskWorkState(nativeRestored, terminalEvent(), new Map());
+  assert.deepEqual(byNativeId.diagnostics.map((d) => d.code), []);
+  assert.equal(byNativeId.snapshot.state.pendingOperations[0]?.status, "succeeded");
+});
+
+test("復元状態の欠けた turn 種別を terminal 側の主張で埋めない（#35 FR-004・信頼境界）", () => {
+  // 上の test と同じ穴を、**悪用の形**で固定する。schema 通りの復元状態が `startIngestSeq` だけを
+  // 持つとき（順序は確認できる）、`nativeOperationId` を名乗らない terminal が
+  // `turnIdSource: "synthesized_monotonic"` を主張すると、照合の材料は terminal 側にしか無い。
+  // 状態が種別を持たないので「一致した」とは言えないのに、修正前は診断ゼロで `succeeded` が
+  // 確定した（実測）。wire が運ぶ値を権威にしない = 欠けた材料は terminal の主張で埋めない
+  const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
+  const restored: TaskWorkStateSnapshotV1 = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: base.state.pendingOperations.map(({ startTurnIdSource: _source, ...rest }) => ({
+        ...rest,
+        startIngestSeq: "9007199254740990",
+      })),
+    },
+  };
+  const forged = terminalEvent({
+    operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined },
+    ingestSeq: "9007199254740991",
+    turnIdSource: "synthesized_monotonic",
+  });
+  const reduced = reduceTaskWorkState(restored, forged, new Map());
+  assert.equal(reduced.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.ok(reduced.diagnostics.some((d) => d.code === "terminal_turn_unverifiable"));
+});
+
+test("材料が要素に載れば、同じ id の兄弟でも取り違えない（#35 SC-001）", () => {
+  // 側索引の鍵は `operationId` だったので、id が衝突する状態では**どちらの兄弟の材料かを
+  // 原理的に判別できず**、材料なしに倒すしか無かった（実測: 兄弟 B の ingestSeq 100 を使って
+  // A 宛ての terminal が通り、A が診断ゼロで succeeded になった）。要素に載せると鍵が要らない
+  const shared = { ...START_OPERATION, nativeOperationId: undefined } as const;
+  const base = startedSnapshot(startEvent({ operation: shared }));
+  const twin = base.state.pendingOperations[0] as PendingOperation;
+  const snapshot: TaskWorkStateSnapshotV1 = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [
+        { ...twin, startIngestSeq: "100" },
+        { ...twin, operationId: `${twin.operationId}`, startIngestSeq: "11" },
+      ],
+    },
+  };
+  // ingestSeq 50 は「100 の側は閉じえない / 11 の側は閉じえる」。候補が 1 件に絞れるので
+  // ambiguous にもならず、正しい側が閉じる
+  const terminal = terminalEvent({
+    ingestSeq: "50",
+    operation: { phase: "terminal", operationMatchKey: shared.operationMatchKey, operationKind: shared.operationKind },
+  });
+  const correlation = correlateTerminalEvent(snapshot, terminal);
+  if (correlation.matched === null) assert.fail(`照合されなかった: ${correlation.detail}`);
+  assert.equal(correlation.matched.startIngestSeq, "11");
+});
+
 test("nativeOperationId 一致で terminal が閉じる", () => {
   const snapshot = startedSnapshot();
   const correlation = correlateTerminalEvent(snapshot, terminalEvent());
@@ -641,7 +854,7 @@ test("session が違う terminal は閉じない", () => {
   assert.equal(result.outcome, "quarantined");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
@@ -713,7 +926,7 @@ test("pendingOperations が上限のとき terminal 済みを落として新し�
   // 黙って落とさない
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["pending_operations_evicted"],
+    ["pending_operations_evicted", "dropped_evidence_recorded"],
   );
   assert.match(result.diagnostics[0]?.detail ?? "", /op-0/);
 });
@@ -736,22 +949,30 @@ test("同じ群の退避順は配列位置で決まる（startedAt では決め�
   assert.equal(surviving.has(`op-${CONTINUITY_LIMITS.arrayItems - 1}`), true);
 });
 
-test("退避した operation の順序材料も落とす", () => {
-  // pendingOperations が 256 件で頭打ちの一方、operationStarts だけ単調増加すると
-  // 権威順序の判定表がメモリを食い続ける
+test("退避した operation の順序材料も落ちる（#35）", () => {
+  // 側索引だった頃は、pendingOperations が 256 件で頭打ちの一方で表だけが単調増加しないよう、
+  // 退避のたびに鍵を消す同期が要った。材料を要素に載せた今は operation と同じ寿命になるので、
+  // 同期は不要になった代わりに「退避された側の材料が残っていない」ことは依然として要件
+  // （残ると生存側の順序検査が他人の材料で通りうる）
   const snapshot = filledSnapshot(true);
   const seeded: TaskWorkStateSnapshotV1 = {
     ...snapshot,
-    operationStarts: new Map(
-      snapshot.state.pendingOperations.map((pending) => [
-        pending.operationId,
-        { ingestSeq: "1", turnIdSource: "native" as const },
-      ]),
-    ),
+    state: {
+      ...snapshot.state,
+      pendingOperations: snapshot.state.pendingOperations.map((pending) => ({
+        ...pending,
+        startIngestSeq: "1",
+        startTurnIdSource: "native" as const,
+      })),
+    },
   };
   const result = reduceTaskWorkState(seeded, startEvent(), new Map());
-  assert.equal(result.snapshot.operationStarts.size, CONTINUITY_LIMITS.arrayItems);
-  assert.equal(result.snapshot.operationStarts.has("op-0"), false);
+  const survivors = result.snapshot.state.pendingOperations;
+  assert.equal(survivors.length, CONTINUITY_LIMITS.arrayItems);
+  assert.equal(
+    survivors.some((pending) => pending.operationId === "op-0"),
+    false,
+  );
 });
 
 test("rule 1 の nativeOperationId に複数当たるなら、どれも閉じない", () => {
@@ -770,12 +991,12 @@ test("rule 1 の nativeOperationId に複数当たるなら、どれも閉じな
       },
       kind: "tool", description: "Bash", status, replayPolicy: "never_auto",
       sourceEventIds: [`s-${operationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      // 順序が確認できる = 閉じられる状態にしておく
+      startIngestSeq: "1", startTurnIdSource: "native",
     }) as unknown as PendingOperation;
   const snapshotOf = (...operations: PendingOperation[]): TaskWorkStateSnapshotV1 => ({
     state: emptyState({ pendingOperations: operations }),
     history: [],
-    // live 側の start 材料も入れて、順序が確認できる = 閉じられる状態にしておく
-    operationStarts: new Map(operations.map((p) => [p.operationId, { ingestSeq: "1", turnIdSource: "native" as const }])),
   });
   const mixed = reduceTaskWorkState(
     snapshotOf(pending("op-settled", "succeeded"), pending("op-live", "started")),
@@ -869,15 +1090,14 @@ test("turn scoped な欄は再配送で埋めない", () => {
   const unproven: IntakeContextV1 = { ...INTAKE, nativeTurnIdentityProven: false };
   const downgraded = stampIntakeEvidence(startEvent({ operation: MATCH_KEY_ONLY }), unproven).event;
   const seeded = startedSnapshot(downgraded);
-  const operationId = seeded.state.pendingOperations[0]?.operationId as string;
-  assert.equal(seeded.operationStarts.get(operationId)?.turnIdSource, "unavailable");
+  assert.equal(seeded.state.pendingOperations[0]?.startTurnIdSource, "unavailable");
   const redelivered = reduceTaskWorkState(
     seeded,
     startEvent({ operation: MATCH_KEY_ONLY, ingestSeq: "13" }),
     new Map(),
   );
   assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
-  assert.equal(redelivered.snapshot.operationStarts.get(operationId)?.turnIdSource, "unavailable");
+  assert.equal(redelivered.snapshot.state.pendingOperations[0]?.startTurnIdSource, "unavailable");
   assert.equal(redelivered.snapshot.state.pendingOperations[0]?.correlation.turnId, undefined);
 });
 
@@ -947,7 +1167,6 @@ test("同名 operationId の兄弟でも、配列順で再配送の結果が変�
   for (const order of [[conflicting, compatible], [compatible, conflicting]]) {
     const snapshot: TaskWorkStateSnapshotV1 = {
       ...base,
-      operationStarts: new Map(),
       state: { ...base.state, pendingOperations: [...order] },
     };
     const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
@@ -979,7 +1198,6 @@ test("再配送の相手は derived id と native id の集合をまたいで選
   };
   const snapshot: TaskWorkStateSnapshotV1 = {
     ...base,
-    operationStarts: new Map(),
     state: { ...base.state, pendingOperations: [conflicting, compatible] },
   };
   const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
@@ -1051,7 +1269,7 @@ test("再配送 start も provenance を記録できなかったことを診断�
     canonicalFingerprint: "fingerprint-redeliver",
   });
   const result = reduceTaskWorkState(
-    { ...base, operationStarts: new Map(), state: { ...base.state, pendingOperations: [full] } },
+    { ...base, state: { ...base.state, pendingOperations: [full] } },
     redelivery,
     new Map(),
   );
@@ -1063,7 +1281,7 @@ test("再配送 start も provenance を記録できなかったことを診断�
 
   // 通す側: 上限未満なら truncation は出ず、eventId は実際に記録される
   const room = reduceTaskWorkState(
-    { ...base, operationStarts: new Map() },
+    base,
     redelivery,
     new Map(),
   );
@@ -1096,7 +1314,6 @@ test("上限退避は別 lineage の要素を自 lineage の証跡より先に�
   }));
   const full: TaskWorkStateSnapshotV1 = {
     ...base,
-    operationStarts: new Map(),
     state: { ...base.state, pendingOperations: [mine, ...theirs] },
   };
   const result = reduceTaskWorkState(
@@ -1120,12 +1337,10 @@ test("上限退避は別 lineage の要素を自 lineage の証跡より先に�
 test("別 lineage の双子は順序材料の帰属を曖昧にしない", () => {
   // lineage で絞ると、別 lineage の双子は再配送の相手にならないので現 lineage 側に新しい pending が
   // 積まれる。`operationId` は eventId + matchKey からの導出で lineage を含まないため、状態には
-  // **同じ id の pending が 2 件**並ぶ。ここで一度「どちらの材料か判別できない」として材料なしに
-  // 倒したが、**それは誤りだったので撤回する**（外部のコードレビューが指摘し、実測で確認した）。
-  // `operationStarts` は凍結 schema の外にあるので checkpoint から復元されることが無く、entry を
-  // 書けるのは `assertSameScope` を通った自 lineage の start だけ。よって別 lineage の双子は帰属を
-  // 曖昧にしない。数に入れると「曖昧でないものを曖昧と読む」ことになり、fail closed に見えて
-  // **`turnIdSource` のすり替え検査まで無効化する fail open** を作っていた（下の test で固定）
+  // **同じ id の pending が 2 件**並ぶ。材料を要素に載せた今（#35）は、双子がそれぞれ自分の
+  // `startIngestSeq` を持つので帰属が曖昧になりようがない。側索引だった頃は鍵が `operationId` で、
+  // 「どちらの材料か判別できない」として材料なしに倒す分岐が要り、その分岐が広すぎると
+  // `turnIdSource` のすり替え検査まで無効化する fail open を作っていた（下の test で固定）
   const applied = reduceTaskWorkState(foreignLineage(startedSnapshot()), startEvent(), new Map());
   assert.equal(new Set(applied.snapshot.state.pendingOperations.map((p) => p.operationId)).size, 1);
   assert.equal(applied.snapshot.state.pendingOperations.length, 2);
@@ -1143,8 +1358,9 @@ test("別 lineage の双子は順序材料の帰属を曖昧にしない", () =>
 });
 
 test("別 lineage の双子は turn 種別のすり替え検査を無効化しない", () => {
-  // `startFactsFor` が別 lineage の同名 pending まで数えていたとき、`recordedSource !== undefined`
-  // 節が常に false になり、すり替えた再配送が隔離されず**配送鍵まで消費した**（実測）
+  // 側索引を引く関数が別 lineage の同名 pending まで数えていたとき、`recordedSource !== undefined`
+  // 節が常に false になり、すり替えた再配送が隔離されず**配送鍵まで消費した**（実測）。
+  // 材料が要素に載った今は再配送の相手そのものから読むので、同名の他人が居ても影響しない
   const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY, turnIdSource: "native" }));
   const own = base.state.pendingOperations[0] as PendingOperation;
   const twin: PendingOperation = {
@@ -1165,12 +1381,13 @@ test("別 lineage の双子は turn 種別のすり替え検査を無効化し�
   assert.equal(switched.ledger.size, 0);
 });
 
-test("自 lineage で id が衝突しているときは材料なしに倒す", () => {
-  // 帰属を判別できないのはこちらだけ。`operationStarts` の鍵は `operationId` なので、同じ lineage に
-  // 同名の pending が並ぶと、退避した側や別の兄弟の材料で順序検査が通ってしまう
+test("自 lineage で id が衝突していても、それぞれの材料で判定する（#35）", () => {
+  // 側索引の鍵は `operationId` だったので、同じ lineage に同名の pending が並ぶと帰属を判別できず、
+  // 材料なしに倒す（`terminal_order_unverifiable`）しか無かった。要素に載せた今は、同名でも
+  // 各 pending が自分の `startIngestSeq` を持つので、健全な terminal は普通に閉じる
   const base = startedSnapshot(startEvent({ operation: MATCH_KEY_ONLY }));
   const own = base.state.pendingOperations[0] as PendingOperation;
-  // 同名だが確定済みの兄弟。open は 1 件のままなので候補選びは曖昧にならず、材料の帰属だけが曖昧になる
+  // 同名だが確定済みの兄弟。open は 1 件のままなので候補選びは曖昧にならない
   const settled: PendingOperation = { ...own, status: "succeeded" };
   const collided: TaskWorkStateSnapshotV1 = {
     ...base,
@@ -1181,7 +1398,22 @@ test("自 lineage で id が衝突しているときは材料なしに倒す", (
     terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
     new Map(),
   );
-  assert.deepEqual(closed.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  // 材料を持たない側だけは従来どおり倒れる（材料の有無で分かれ、id の衝突では分かれない）
+  const stripped: TaskWorkStateSnapshotV1 = {
+    ...collided,
+    state: {
+      ...collided.state,
+      pendingOperations: [withoutStartFacts(collided).state.pendingOperations[0] as PendingOperation, settled],
+    },
+  };
+  const unverifiable = reduceTaskWorkState(
+    stripped,
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(unverifiable.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
 });
 
 test("再配送 start が turn の種別をすり替えたら隔離する", () => {
@@ -1196,9 +1428,7 @@ test("再配送 start が turn の種別をすり替えたら隔離する", () =
   );
   assert.equal(switched.outcome, "quarantined");
   assert.deepEqual(switched.diagnostics.map((d) => d.code), ["start_conflict"]);
-  assert.equal(switched.snapshot.operationStarts.get(
-    started.state.pendingOperations[0]?.operationId as string,
-  )?.turnIdSource, "native");
+  assert.equal(switched.snapshot.state.pendingOperations[0]?.startTurnIdSource, "native");
 });
 
 test("記録が降格されていても、証明が戻った再配送を隔離しない", () => {
@@ -1215,10 +1445,8 @@ test("記録が降格されていても、証明が戻った再配送を隔離�
     new Map(),
   );
   assert.deepEqual(recovered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
-  // 免除しても記録は汚れない。再配送は `operationStarts` を書かないので降格された種別のまま残る
-  assert.equal(recovered.snapshot.operationStarts.get(
-    downgraded.state.pendingOperations[0]?.operationId as string,
-  )?.turnIdSource, "unavailable");
+  // 免除しても記録は汚れない。再配送は `startTurnIdSource` を書き換えないので降格された種別のまま残る
+  assert.equal(recovered.snapshot.state.pendingOperations[0]?.startTurnIdSource, "unavailable");
 });
 
 /** 上限まで埋めた状態のうち index 1 を index 0 と同名にする（frozen schema は一意性を課さない）。 */
@@ -1244,29 +1472,28 @@ test("状態側で operationId が衝突していても退避は必要な件数�
   assert.equal(survivors[0]?.status, "started");
 });
 
-test("同名の兄弟が残っていても退避した側の順序材料は落とす", () => {
-  // `operationStarts` の鍵は `operationId` なので、id が衝突しているとどちらの兄弟の材料かを
-  // 原理的に判別できない。「生きている兄弟の材料を消さない」ために残すと、退避した側の材料で
-  // 生存側の順序検査が通り、順序違反の terminal が診断ゼロで適用されて台帳まで消費される。
-  // 材料を落として terminal_order_unverifiable で unknown に倒れるのが §3.1 の fail closed
+test("同名の兄弟が退避されても、生き残った側は自分の材料で閉じられる（#35）", () => {
+  // 側索引だった頃は、鍵が `operationId` なので id が衝突しているとどちらの兄弟の材料か判別できず、
+  // 退避のたびに同名の材料をまとめて消すしか無かった。その結果、**生き残った側まで
+  // `terminal_order_unverifiable` で `unknown` に倒れていた**（証跡は失われ、鍵は消費済み）。
+  // 材料を要素に載せた今は、退避された側の材料だけがその要素と一緒に消える
   const snapshot = collidedFilledSnapshot();
   const seeded: TaskWorkStateSnapshotV1 = {
     ...snapshot,
-    operationStarts: new Map(
-      snapshot.state.pendingOperations.map((pending) => [
-        pending.operationId,
-        { ingestSeq: "1", turnIdSource: "native" as const },
-      ]),
-    ),
+    state: {
+      ...snapshot.state,
+      pendingOperations: snapshot.state.pendingOperations.map((pending) => ({
+        ...pending,
+        startIngestSeq: "1",
+        startTurnIdSource: "native" as const,
+      })),
+    },
   };
   const evicted = reduceTaskWorkState(seeded, startEvent(), new Map());
-  assert.equal(evicted.snapshot.operationStarts.has("op-0"), false);
-  // 生き残った同名の兄弟は残っている（消えたのは材料だけ）
-  assert.equal(
-    evicted.snapshot.state.pendingOperations.filter((p) => p.operationId === "op-0").length,
-    1,
-  );
-  // その兄弟宛ての terminal は「順序を確認できない」として unknown に倒れる。適用されない
+  // 生き残った同名の兄弟は 1 件で、材料も持ったまま
+  const survivors = evicted.snapshot.state.pendingOperations.filter((p) => p.operationId === "op-0");
+  assert.equal(survivors.length, 1);
+  assert.equal(survivors[0]?.startIngestSeq, "1");
   const terminal = reduceTaskWorkState(
     evicted.snapshot,
     // 生き残ったのは index 1（`collidedFilledSnapshot` が op-0 に改名した started 側）なので、
@@ -1278,10 +1505,10 @@ test("同名の兄弟が残っていても退避した側の順序材料は落�
     }),
     evicted.ledger,
   );
-  assert.deepEqual(terminal.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"]);
+  assert.deepEqual(terminal.diagnostics.map((d) => d.code), []);
   assert.equal(
     terminal.snapshot.state.pendingOperations.find((p) => p.operationId === "op-0")?.status,
-    "unknown",
+    "succeeded",
   );
 });
 
@@ -1289,6 +1516,916 @@ test("上限に余裕があるときは退避の診断を出さない", () => {
   const result = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.snapshot.state.pendingOperations.length, 1);
+});
+
+// --- #43 / #39: 状態から消えた証跡を状態に残す ------------------------------
+
+/** `droppedEvidence` を `n` 件だけ持つ状態。`recordedAt` は**降順**（時刻で並べ替えたら落ちる）。 */
+function withDroppedEvidence(snapshot: TaskWorkStateSnapshotV1, n: number): TaskWorkStateSnapshotV1 {
+  const droppedEvidence: DroppedEvidenceEntryV1[] = Array.from({ length: n }, (_, index) => ({
+    reason: "evicted",
+    operationId: `dropped-${index}`,
+    status: "unknown",
+    // 先頭ほど**新しい**時刻。`recordedAt` 昇順で落とすと末尾の古い側が消える
+    recordedAt: `2026-08-15T00:00:${String(59 - (index % 60)).padStart(2, "0")}Z`,
+    sensitivity: "normal",
+  }));
+  return { ...snapshot, state: { ...snapshot.state, droppedEvidence } };
+}
+
+test("同名 operationId の兄弟が並んでも、落ちた側を記録から特定できる（#43 FR-005）", () => {
+  // 凍結 schema は `operationId` に一意性を課さない（`maxLength` だけ）。この還元器は同名の
+  // 兄弟が並ぶ状態を明示的に支えているので、記録が id と status だけだと**その状態でだけ**
+  // 「どちらが live な集合から落ちたか」が分からなくなる
+  const base = filledSnapshot(true);
+  const [dropped, ...rest] = base.state.pendingOperations;
+  const twin: PendingOperation = {
+    ...(dropped as PendingOperation),
+    // 同じ id・同じ status の兄弟。start だけが違う
+    sourceEventIds: ["event-start-twin"],
+    correlation: {
+      ...(dropped as PendingOperation).correlation,
+      startEventId: "event-start-twin",
+      nativeOperationId: "toolu_twin",
+    },
+  };
+  const snapshot = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [dropped as PendingOperation, twin, ...rest.slice(1)],
+    },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  const record = result.snapshot.state.droppedEvidence?.[0];
+  assert.equal(record?.reason, "evicted");
+  assert.equal(record?.operationId, "op-0");
+  // 生き残った双子と同じ値では特定にならない
+  assert.equal(record?.eventId, "event-start");
+  assert.notEqual(record?.eventId, twin.correlation.startEventId);
+
+  // **start を名指すのは `correlation.startEventId`**。`sourceEventIds` は append-only の
+  // provenance 配列で、schema は先頭が start であることも順序も保証しない。並べ替えた状態でも
+  // 専用欄を読むこと（先頭を読むと、後から積まれた event を start として記録してしまう）
+  const reordered = {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      pendingOperations: [
+        { ...(dropped as PendingOperation), sourceEventIds: ["later-event", "event-start"] },
+        ...snapshot.state.pendingOperations.slice(1),
+      ],
+    },
+  };
+  const fromDedicated = reduceTaskWorkState(reordered, startEvent(), new Map());
+  assert.equal(fromDedicated.snapshot.state.droppedEvidence?.[0]?.eventId, "event-start");
+});
+
+test("上限超えの復元配列は、記録が重複でも刈って報告する（#43 FR-015）", () => {
+  // 重複の再送は「状態を変えない隔離」に倒す設計だが、刈った結果ごと捨てると凍結 schema に
+  // 反する状態（257 件）を返し続けることになる。刈りは 1 度で上限に収まるので収束する
+  const over = withDroppedEvidence(emptySnapshot(), CONTINUITY_LIMITS.arrayItems + 1);
+  const already = {
+    ...over,
+    state: {
+      ...over.state,
+      droppedEvidence: [
+        ...(over.state.droppedEvidence ?? []),
+        {
+          reason: "orphaned_terminal" as const,
+          eventId: "event-terminal",
+          terminalFingerprint: "fingerprint-terminal",
+          adapterDeliveryId: "delivery-terminal",
+          recordedAt: "2026-08-16T00:00:02Z",
+          sensitivity: "private" as const,
+        },
+      ],
+    },
+  };
+  const result = reduceTaskWorkState(already, terminalEvent(), new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.equal(result.snapshot.state.droppedEvidence?.length, CONTINUITY_LIMITS.arrayItems);
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_orphaned", "dropped_evidence_overflowed"],
+  );
+  // 記録は増えていない（重複判定は効いている）
+  assert.equal(
+    result.snapshot.state.droppedEvidence?.filter((e) => e.reason === "orphaned_terminal").length,
+    1,
+  );
+  // 2 度目は上限に収まっているので差分ゼロ。刈りが毎回 revision を動かすと収束しない
+  const again = reduceTaskWorkState(result.snapshot, terminalEvent(), result.ledger);
+  assert.equal(again.snapshot.state.stateRevision, result.snapshot.state.stateRevision);
+});
+
+test("刈りで自分の記録が落ちた孤児は積み直され、収束は 2 revision かかる（#43）", () => {
+  // 上の test は重複対象を配列の**末尾**に置いている。**先頭**にあると、front trim で落ちるのは
+  // その孤児自身の記録なので、次の再送は重複ではなくなって積み直される。収束はするが 1 revision
+  // ではない——正本と evidence にはこの上限で書く（「1 度刈れば以後 no-op」は成り立たない）
+  const filler = withDroppedEvidence(emptySnapshot(), CONTINUITY_LIMITS.arrayItems);
+  const front = {
+    ...filler,
+    state: {
+      ...filler.state,
+      droppedEvidence: [
+        {
+          reason: "orphaned_terminal" as const,
+          eventId: "event-terminal",
+          terminalFingerprint: "fingerprint-terminal",
+          adapterDeliveryId: "delivery-terminal",
+          recordedAt: "2026-08-16T00:00:02Z",
+          sensitivity: "private" as const,
+        },
+        ...(filler.state.droppedEvidence ?? []),
+      ],
+    },
+  };
+  // 1 回目: 上限超えを刈る。落ちるのは先頭 = この孤児自身の記録
+  const first = reduceTaskWorkState(front, terminalEvent(), new Map());
+  assert.equal(first.snapshot.state.droppedEvidence?.length, CONTINUITY_LIMITS.arrayItems);
+  assert.equal(
+    first.snapshot.state.droppedEvidence?.some((e) => e.reason === "orphaned_terminal"),
+    false,
+  );
+  // 2 回目: 記録が無くなっているので積み直す
+  const second = reduceTaskWorkState(first.snapshot, terminalEvent(), first.ledger);
+  assert.equal(
+    second.snapshot.state.droppedEvidence?.filter((e) => e.reason === "orphaned_terminal").length,
+    1,
+  );
+  assert.notEqual(second.snapshot.state.stateRevision, first.snapshot.state.stateRevision);
+  // 3 回目でようやく差分ゼロ
+  const third = reduceTaskWorkState(second.snapshot, terminalEvent(), second.ledger);
+  assert.equal(third.snapshot.state.stateRevision, second.snapshot.state.stateRevision);
+});
+
+test("退避した operation は droppedEvidence に残る（#43 FR-005）", () => {
+  const snapshot = filledSnapshot(true);
+  // 退避元の機密度を引き継ぐことまで見る（記録側で内容を見て決め直さない: Constitution III）
+  const secret = snapshot.state.pendingOperations.map((pending) =>
+    pending.operationId === "op-0" ? { ...pending, sensitivity: "secret" as const } : pending,
+  );
+  const result = reduceTaskWorkState(
+    { ...snapshot, state: { ...snapshot.state, pendingOperations: secret } },
+    startEvent(),
+    new Map(),
+  );
+  assert.deepEqual(result.snapshot.state.droppedEvidence, [
+    {
+      reason: "evicted",
+      operationId: "op-0",
+      status: "succeeded",
+      // 同名 `operationId` の兄弟が並んだときに「どちらが落ちたか」を判別できる識別子
+      eventId: "event-start",
+      recordedAt: "2026-08-16T00:00:01Z",
+      sensitivity: "secret",
+    },
+  ]);
+  // 記録自体が機密なので、状態の集約機密度も上がる
+  assert.equal(result.snapshot.state.sensitivity, "secret");
+});
+
+test("孤児 terminal は droppedEvidence に残るが、鍵は消費しない（#39 FR-006）", () => {
+  // 隔離の判断は変えない。start が後から届く順序前後は正常運用なので、台帳に入れると
+  // 二度と閉じられなくなる。記録は隔離の代わりではなく、隔離した事実を状態にも残すもの
+  const orphan = terminalEvent();
+  const result = reduceTaskWorkState(emptySnapshot(), orphan, new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.equal(result.ledger.size, 0);
+  assert.deepEqual(result.snapshot.state.droppedEvidence, [
+    {
+      reason: "orphaned_terminal",
+      eventId: "event-terminal",
+      // 再送の重複判定に使う鍵。§8.2 の順で配送鍵が第一 authority、指紋はその fallback
+      terminalFingerprint: "fingerprint-terminal",
+      adapterDeliveryId: "delivery-terminal",
+      recordedAt: "2026-08-16T00:00:02Z",
+      // 相手が居ないので機密度を引き継げない。fail-closed の既定に倒す
+      sensitivity: "private",
+    },
+  ]);
+  assert.deepEqual(result.diagnostics.map((d) => d.code).sort(), [
+    "dropped_evidence_recorded",
+    "terminal_orphaned",
+  ]);
+  // 記録は state に入ったので revision も history も進む（revision だけ動いて履歴が
+  // 追いつかないと、状態の revision が自分の履歴の末尾に無いことになる）
+  assert.notEqual(result.snapshot.state.stateRevision, emptySnapshot().state.stateRevision);
+  assert.equal(result.snapshot.history.at(-1)?.revision, result.snapshot.state.stateRevision);
+});
+
+test("孤児の再配送は eventId が変わっても収束する（#39 DoS 回帰）", () => {
+  // **再配送は eventId / ingestSeq / occurredAt が変わりうる**（台帳の鍵が adapterDeliveryId で
+  // あって eventId ではないのと同じ理由）。重複判定を eventId で行うと同じ terminal が何度でも
+  // 記録され、記録が 256 件で頭打ちになった後も `stateRevision` と `history` が伸び続ける。
+  // 隔離は鍵を消費しないので再送は止まらず、これは収束しない
+  // （実測: 修正前は同一 adapterDeliveryId・同一 fingerprint の 300 再送で 300 revision /
+  // history 300 / 台帳 0。CAS token を持つ下流が全部空振りし、履歴だけが伸びる）
+  let snapshot = emptySnapshot();
+  let ledger: IdempotencyLedger = new Map();
+  const revisions = new Set<string>();
+  for (let i = 0; i < 300; i += 1) {
+    const redelivered = terminalEvent({
+      eventId: `event-terminal-redelivery-${i}`,
+      ingestSeq: String(1000 + i),
+      occurredAt: `2026-08-16T01:${String(i % 60).padStart(2, "0")}:00Z`,
+    });
+    const result = reduceTaskWorkState(snapshot, redelivered, ledger);
+    assert.equal(result.outcome, "quarantined");
+    snapshot = result.snapshot;
+    ledger = result.ledger;
+    revisions.add(snapshot.state.stateRevision);
+  }
+  assert.equal(revisions.size, 1);
+  assert.equal(snapshot.history.length, 1);
+  assert.equal(snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(ledger.size, 0);
+});
+
+test("同じ孤児 terminal の再配送は記録を増やさない（収束する）", () => {
+  // 隔離は鍵を消費せず還元器は純関数なので、同じ terminal は再送され続ける。重複を
+  // 落とさないと、記録が再送のたびに 1 件ずつ伸びて 256 件の枠を食い潰す
+  const orphan = terminalEvent();
+  const first = reduceTaskWorkState(emptySnapshot(), orphan, new Map());
+  const again = reduceTaskWorkState(first.snapshot, orphan, first.ledger);
+  assert.equal(again.outcome, "quarantined");
+  assert.equal(again.snapshot.state.droppedEvidence?.length, 1);
+  // 2 度目は状態が動かない。revision が変わると CAS token として使う下流が空振りする
+  assert.equal(again.snapshot.state.stateRevision, first.snapshot.state.stateRevision);
+  assert.equal(again.snapshot.history.length, first.snapshot.history.length);
+  // 記録していないので `dropped_evidence_recorded` も出さない
+  assert.deepEqual(again.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+
+  // **指紋が違えば別の terminal**なので記録する（訂正版が黙って落ちない）
+  const corrected = reduceTaskWorkState(
+    again.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-corrected",
+      adapterDeliveryId: "delivery-terminal-corrected",
+      canonicalFingerprint: "fingerprint-terminal-CORRECTED",
+    }),
+    again.ledger,
+  );
+  assert.equal(corrected.snapshot.state.droppedEvidence?.length, 2);
+});
+
+test("記録の重複判定は §8.2 の順（配送鍵が第一 authority、指紋は fallback）", () => {
+  // 鍵をどちらか一方にすると、**両方向のうち片方が必ず壊れる**。実測で 2 つとも確認した:
+  //
+  // - 指紋だけを鍵にすると、配送鍵も `operationMatchKey` も違う 300 件の孤児が、同じ指紋を
+  //   名乗るだけで記録 1 件に潰れた（history 1 / 記録 1 / 台帳 0、299 件が診断も無く消える）。
+  //   `canonicalFingerprint` は adapter が算出して wire で運ぶ値なので、単独では同一性の
+  //   権威にならない。「配送 ID が違えば同じ指紋でも別の論理 event」は §8.2 の規則で、
+  //   台帳側は以前からそう振る舞っている
+  // - `eventId` を鍵にすると、同一配送の再送が毎回別物として記録された（1 → 300 revision）。
+  //   再配送は「同じ配送鍵・違う eventId・違う ingestSeq」という契約なので、これは**正直な
+  //   adapter** が引き起こす
+  //
+  // 台帳と同じ優先順位（配送鍵 → 指紋）にすると両方が閉じる。keyspace も台帳と同じく分ける
+  const measure = (
+    label: string,
+    vary: (i: number) => Partial<NormalizedContinuityEvent>,
+  ) => {
+    let snapshot = emptySnapshot();
+    let ledger: IdempotencyLedger = new Map();
+    const revisions = new Set<string>();
+    for (let i = 0; i < 300; i += 1) {
+      const result = reduceTaskWorkState(
+        snapshot,
+        terminalEvent({ eventId: `event-terminal-${label}-${i}`, ingestSeq: String(1000 + i), ...vary(i) }),
+        ledger,
+      );
+      snapshot = result.snapshot;
+      ledger = result.ledger;
+      revisions.add(snapshot.state.stateRevision);
+    }
+    return {
+      revisions: revisions.size,
+      history: snapshot.history.length,
+      dropped: snapshot.state.droppedEvidence?.length ?? 0,
+      ledger: ledger.size,
+    };
+  };
+
+  // 同じ配送鍵の再送は、指紋が変わっても 1 件に収束する。隔離は配送鍵を消費しないので
+  // 再送は止まらず、ここが収束しないと記録が飽和した後も revision と history が伸び続ける
+  assert.deepEqual(
+    measure("same-delivery", (i) => ({ canonicalFingerprint: `fingerprint-${i}` })),
+    { revisions: 1, history: 1, dropped: 1, ledger: 0 },
+  );
+
+  // 配送鍵が違えば別の論理 event。指紋が同じでも、相関材料が違えば別々に記録する
+  assert.deepEqual(
+    measure("cross-delivery", (i) => ({
+      adapterDeliveryId: `delivery-${i}`,
+      canonicalFingerprint: "same-fingerprint",
+      operation: {
+        ...TERMINAL_OPERATION,
+        operationMatchKey: `match-${i}`,
+        nativeOperationId: `toolu_${i}`,
+        canonicalInputHash: `input-${i}`,
+      },
+    })),
+    { revisions: 300, history: 300, dropped: 256, ledger: 0 },
+  );
+
+  // 同じ配送鍵で指紋が食い違うのは再送ではなく corruption。件数が 1 に収束するだけでは
+  // 足りない——適用済み経路は同じ条件を `delivery_conflict` にしているので、孤児経路だけが
+  // 黙って重複に倒すと source hash の食い違いが通常の再送と区別できなくなる
+  const recorded = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
+  const corrupted = reduceTaskWorkState(
+    recorded.snapshot,
+    terminalEvent({ eventId: "event-terminal-corrupt", canonicalFingerprint: "fingerprint-OTHER" }),
+    recorded.ledger,
+  );
+  assert.equal(corrupted.outcome, "quarantined");
+  // 照合より前に落とす（台帳の衝突検査と同じ扱い）。start が届いた後の再送も同じ経路を通る
+  assert.deepEqual(corrupted.diagnostics.map((d) => d.code), ["delivery_conflict"]);
+  // corruption は「live な集合から落ちた証跡」ではないので記録も状態も動かさない
+  assert.equal(corrupted.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(corrupted.snapshot.state.droppedEvidence?.[0]?.terminalFingerprint, "fingerprint-terminal");
+  assert.equal(corrupted.snapshot.state.stateRevision, recorded.snapshot.state.stateRevision);
+  assert.equal(corrupted.ledger.size, recorded.ledger.size);
+
+  // **start が届いた後の再送も同じ検査に当たる**。隔離は配送鍵を消費しないので、孤児を記録した
+  // 後に start が来ると、同じ配送鍵の再送は照合経路へ進む。入口で見ないと corruption の検出が
+  // start の到着順しだいになる（実測: 見ないと `applied` / 診断ゼロ / operation は succeeded）
+  const afterStart = apply(emptySnapshot(), [terminalEvent({ canonicalFingerprint: "F1" })]);
+  const started = reduceTaskWorkState(afterStart.snapshot, startEvent(), afterStart.ledger);
+  const conflicting = reduceTaskWorkState(
+    started.snapshot,
+    terminalEvent({ eventId: "event-terminal-f2", canonicalFingerprint: "F2", ingestSeq: "13" }),
+    started.ledger,
+  );
+  assert.equal(conflicting.outcome, "quarantined");
+  assert.deepEqual(conflicting.diagnostics.map((d) => d.code), ["delivery_conflict"]);
+  assert.equal(conflicting.snapshot.state.pendingOperations[0]?.status, "started");
+  assert.equal(conflicting.ledger.size, started.ledger.size);
+  // 対照: 同じ配送鍵でも**同じ指紋**なら再送なので、そのまま閉じられる
+  const honest = reduceTaskWorkState(
+    started.snapshot,
+    terminalEvent({ eventId: "event-terminal-f1", canonicalFingerprint: "F1", ingestSeq: "13" }),
+    started.ledger,
+  );
+  assert.equal(honest.outcome, "applied");
+  assert.equal(honest.snapshot.state.pendingOperations[0]?.status, "succeeded");
+
+  // 材料が欠けている側は「違う」と言えない。指紋を持たない記録（この版より前の checkpoint）に
+  // 指紋つきの再送が来ても corruption ではなく重複（FR-012 と同じで、検査は材料が無ければ発動しない）
+  const noFingerprint = emptySnapshot({
+    droppedEvidence: [{
+      reason: "orphaned_terminal",
+      eventId: "event-old",
+      adapterDeliveryId: "delivery-terminal",
+      recordedAt: "2026-08-16T00:00:00Z",
+      sensitivity: "private",
+    }],
+  });
+  const resent = reduceTaskWorkState(noFingerprint, terminalEvent(), new Map());
+  assert.deepEqual(resent.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+  assert.equal(resent.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(resent.snapshot.state.stateRevision, noFingerprint.state.stateRevision);
+
+  // 配送鍵を名乗らない記録どうしは指紋で判定する（この版より前の checkpoint・配送鍵を持たない
+  // adapter）。`ledgerKeyOf` の `d:`/`f:` と同じ分割なので、両者が混ざっても衝突しない
+  const legacy = emptySnapshot({
+    droppedEvidence: [{
+      reason: "orphaned_terminal",
+      eventId: "event-old",
+      terminalFingerprint: "fingerprint-terminal",
+      recordedAt: "2026-08-16T00:00:00Z",
+      sensitivity: "private",
+    }],
+  });
+  const blankDelivery = reduceTaskWorkState(
+    legacy,
+    terminalEvent({ eventId: "event-terminal-blank", adapterDeliveryId: undefined }),
+    new Map(),
+  );
+  assert.equal(blankDelivery.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(blankDelivery.snapshot.state.stateRevision, legacy.state.stateRevision);
+});
+
+test("開いた候補が 1 件も無い unmatched な terminal も記録する（#43）", () => {
+  // 候補ゼロ（`terminal_orphaned`）だけを記録すると、「候補は居るが全員確定済みで turn も
+  // 両立しない」terminal が診断だけで消える。開いた候補が居ないので `unknown` として事実を
+  // 持つ相手も無く、後から start が届く見込みも無い——状態から静かに落ちる、#43 が塞ぐ損失
+  const settled = apply(emptySnapshot(), [
+    startEvent({
+      eventId: "start-native", adapterDeliveryId: "d-start-native",
+      canonicalFingerprint: "f-start-native", operation: MATCH_KEY_ONLY,
+      ingestSeq: "11", turnIdSource: "native",
+    }),
+    terminalEvent({
+      eventId: "term-native", adapterDeliveryId: "d-term-native",
+      canonicalFingerprint: "f-term-native", operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+      ingestSeq: "12", turnIdSource: "native",
+    }),
+  ]);
+  const unmatched = reduceTaskWorkState(
+    settled.snapshot,
+    terminalEvent({
+      eventId: "term-synth", adapterDeliveryId: "d-term-synth",
+      canonicalFingerprint: "f-term-synth", operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+      ingestSeq: "13", turnIdSource: "synthesized_monotonic",
+    }),
+    settled.ledger,
+  );
+  assert.equal(unmatched.outcome, "quarantined");
+  assert.ok(unmatched.diagnostics.some((d) => d.code === "terminal_unmatched"));
+  const recorded = unmatched.snapshot.state.droppedEvidence ?? [];
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0]?.reason, "orphaned_terminal");
+  assert.equal(recorded[0]?.terminalFingerprint, "f-term-synth");
+  // 隔離は配送鍵を消費しない（後から説明のつく start が届けば同じ terminal で閉じられる）
+  assert.equal(unmatched.ledger.size, settled.ledger.size);
+  // 再送しても記録は増えない（重複判定は指紋）
+  const again = reduceTaskWorkState(
+    unmatched.snapshot,
+    terminalEvent({
+      eventId: "term-synth-2", adapterDeliveryId: "d-term-synth",
+      canonicalFingerprint: "f-term-synth", operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+      ingestSeq: "14", turnIdSource: "synthesized_monotonic",
+    }),
+    unmatched.ledger,
+  );
+  assert.equal(again.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(again.snapshot.state.stateRevision, unmatched.snapshot.state.stateRevision);
+});
+
+test("記録だけの隔離は §4.1 の watermark を進めない", () => {
+  // §4.1 は `lastIngestSeq` を「**適用された** event の最大 `ingestSeq`」と定義する。孤児は
+  // 隔離で配送鍵を消費しないので、後から start が届けば同じ event が適用されうる。ここで
+  // watermark を先に進めると、まだ状態に入っていない位置を「適用済みの最大」として名乗る
+  const before = emptySnapshot();
+  const orphan = terminalEvent({ ingestSeq: "500" });
+  const result = reduceTaskWorkState(before, orphan, new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.equal(result.snapshot.state.lastIngestSeq, before.state.lastIngestSeq);
+  // `updatedAt` は「revision を作った event の occurredAt」なので、こちらは進む
+  assert.equal(result.snapshot.state.updatedAt, orphan.occurredAt);
+  // 記録自体は入っている（進めないのは watermark だけ）
+  assert.equal(result.snapshot.state.droppedEvidence?.length, 1);
+});
+
+test("復元した状態の順序材料は、そのまま権威として使われる（信頼境界）", () => {
+  // #35 で材料を凍結 schema に載せた結果、**復元した状態が材料を運べるようになった**。
+  // それが目的（状態だけを渡された実装が §4.3 を満たせる）だが、裏返すと還元器は状態側の値を
+  // 検証しない。低い `startIngestSeq` を持つ状態を渡せば、順序違反の terminal が診断ゼロで通る。
+  // これは #35 が作った穴ではない: 同じ状態を書ける相手は `status: "succeeded"` を直接書ける
+  // （もっと強い）。ここで固定するのは「状態は権威である」という前提そのもので、
+  // daemon 側が checkpoint の出どころを保証する責任を負う
+  const started = startedSnapshot();
+  const forged: TaskWorkStateSnapshotV1 = {
+    ...started,
+    state: {
+      ...started.state,
+      pendingOperations: started.state.pendingOperations.map((pending) => ({
+        ...pending,
+        startIngestSeq: "1",
+      })),
+    },
+  };
+  // 本来の start は ingestSeq 11 なので、10 の terminal は順序違反。偽の 1 なら通ってしまう
+  const closed = reduceTaskWorkState(forged, terminalEvent({ ingestSeq: "10" }), new Map());
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), []);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  // 対照: 材料が本物なら同じ terminal は落ちる
+  const honest = reduceTaskWorkState(started, terminalEvent({ ingestSeq: "10" }), new Map());
+  assert.deepEqual(honest.diagnostics.map((d) => d.code), ["terminal_out_of_order"]);
+});
+
+test("孤児の記録は、後から start が届いて閉じても消えない", () => {
+  // 記録は「その時点で相手が居なかった」という履歴。閉じたときに消すのは、どの FR も
+  // 求めていない規則を足すことになる（消すなら「いつ消すか」を別に決める必要がある）
+  const orphan = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
+  const started = reduceTaskWorkState(orphan.snapshot, startEvent(), orphan.ledger);
+  const closed = reduceTaskWorkState(started.snapshot, terminalEvent(), started.ledger);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  assert.equal(closed.snapshot.state.droppedEvidence?.length, 1);
+});
+
+test("記録は識別と分類だけを持つ（#43 FR-007）", () => {
+  // payload・引数・出力・description を入れると、状態から落とした証跡が**落とす前より
+  // 詳しい**ことになる。schema の additionalProperties: false は「知らない欄」を止めるだけで、
+  // 既知の欄に中身を詰めるのは止められないので、欄集合そのものを固定する
+  const evicted = reduceTaskWorkState(filledSnapshot(true), startEvent(), new Map());
+  const orphaned = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
+  assert.deepEqual(Object.keys(evicted.snapshot.state.droppedEvidence?.[0] ?? {}).sort(), [
+    "eventId",
+    "operationId",
+    "reason",
+    "recordedAt",
+    "sensitivity",
+    "status",
+  ]);
+  // `terminalFingerprint` と `adapterDeliveryId` は識別（どの terminal のどの配送か）であって
+  // 内容ではない。event が名乗った値をそのまま写すだけで、payload は入らない
+  assert.deepEqual(Object.keys(orphaned.snapshot.state.droppedEvidence?.[0] ?? {}).sort(), [
+    "adapterDeliveryId",
+    "eventId",
+    "reason",
+    "recordedAt",
+    "sensitivity",
+    "terminalFingerprint",
+  ]);
+});
+
+test("記録が上限のときは配列の先頭から落とす（#43 FR-008 / FR-015）", () => {
+  // `recordedAt` は adapter が寄越した `occurredAt` の写しなので、時刻で並べ替えると
+  // event を出す側がどれを残すか選べる。`pendingOperations` の退避と同じ規則にする
+  const full = withDroppedEvidence(filledSnapshot(true), CONTINUITY_LIMITS.arrayItems);
+  const result = reduceTaskWorkState(full, startEvent(), new Map());
+  const recorded = result.snapshot.state.droppedEvidence ?? [];
+  assert.equal(recorded.length, CONTINUITY_LIMITS.arrayItems);
+  // 落ちたのは先頭（`recordedAt` 昇順なら末尾の dropped-255 が落ちるので、そこで分かれる）
+  assert.equal(recorded.some((entry) => entry.operationId === "dropped-0"), false);
+  assert.equal(recorded.some((entry) => entry.operationId === "dropped-255"), true);
+  assert.equal(recorded.at(-1)?.operationId, "op-0");
+  // 黙って消さない
+  assert.deepEqual(result.diagnostics.map((d) => d.code).sort(), [
+    "dropped_evidence_overflowed",
+    "dropped_evidence_recorded",
+    "pending_operations_evicted",
+  ]);
+});
+
+test("上限を超えた復元状態は、退避が無くても刈られて診断が出る（#43 FR-015）", () => {
+  // 上限は「この還元器が作る状態」だけでなく**状態そのもの**の性質（凍結 schema の maxItems）。
+  // 別実装や上限導入前の writer が上限超えの記録を書いた状態を素通しすると、還元器が自分の
+  // 凍結 schema に反する状態を出し続ける。しかも刈った事実を黙ると doctor が気づけない
+  const over = withDroppedEvidence(startedSnapshot(), CONTINUITY_LIMITS.arrayItems + 44);
+  const result = reduceTaskWorkState(over, startEvent({
+    eventId: "event-start-2",
+    adapterDeliveryId: "delivery-start-2",
+    ingestSeq: "12",
+    operation: { ...START_OPERATION, operationMatchKey: "match-key-2", nativeOperationId: "toolu_2" },
+  }), new Map());
+  // 退避は起きていない（`pendingOperations` は 2 件で上限に遠い）
+  assert.equal(result.snapshot.state.pendingOperations.length, 2);
+  assert.equal(result.snapshot.state.droppedEvidence?.length, CONTINUITY_LIMITS.arrayItems);
+  assert.deepEqual(result.diagnostics.map((d) => d.code), ["dropped_evidence_overflowed"]);
+  // 落ちたのは先頭側
+  assert.equal(result.snapshot.state.droppedEvidence?.[0]?.operationId, "dropped-44");
+});
+
+test("復元状態の空配列は「欄なし」と同じ状態になる（#43 FR-013）", () => {
+  // 空配列と欄なしは同じ意味（何も落ちていない）。2 通りの綴りを許すと canonical hash が割れ、
+  // 同じ event 列を還元した 2 ノードの `stateRevision` が永久に一致しない。空配列を書く writer は
+  // 珍しくない（Rust/Go の marshaller は非 nil の空 slice を `[]` にする）
+  const omitted = startedSnapshot();
+  assert.equal(omitted.state.droppedEvidence, undefined);
+  const spelled: TaskWorkStateSnapshotV1 = {
+    ...omitted,
+    state: { ...omitted.state, droppedEvidence: [] },
+  };
+  const fromOmitted = reduceTaskWorkState(omitted, terminalEvent(), new Map());
+  const fromSpelled = reduceTaskWorkState(spelled, terminalEvent(), new Map());
+  assert.equal(fromSpelled.snapshot.state.droppedEvidence, undefined);
+  assert.equal(fromSpelled.contentHash, fromOmitted.contentHash);
+});
+
+test("revision をまたいで droppedEvidence の配列を共有しない（§4.2）", () => {
+  // §4.2 の immutable revision は値の一致ではなく **object を分ける**ことで守る。共有したまま
+  // どちらかを in-place で触ると（Rust/Go 移植では自然な書き方）、過去の revision の中身が
+  // 変わって、保存済みの `contentHash` が自分の中身と合わなくなる
+  const seeded = reduceTaskWorkState(withDroppedEvidence(filledSnapshot(true), 4), startEvent(), new Map());
+  const carried = seeded.snapshot.state.droppedEvidence;
+  assert.notEqual(carried, undefined);
+
+  // 記録に触らない経路（terminal）でも配列は分かれる
+  const closed = reduceTaskWorkState(seeded.snapshot, terminalEvent(), seeded.ledger);
+  assert.deepEqual(closed.snapshot.state.droppedEvidence, carried);
+  assert.notEqual(closed.snapshot.state.droppedEvidence, carried);
+
+  // `commit` を通らない放棄の確定も同じ
+  const abandoned = finalizeAbandonedState(
+    seeded.snapshot.state,
+    startEvent({
+      eventId: "event-abandon-share",
+      adapterDeliveryId: "delivery-abandon-share",
+      kind: "session_ended",
+      ingestSeq: "13",
+      operation: undefined,
+    }),
+    new Map(),
+  );
+  assert.deepEqual(abandoned.state.droppedEvidence, carried);
+  assert.notEqual(abandoned.state.droppedEvidence, carried);
+});
+
+// --- #44: 受理した terminal の指紋 -----------------------------------------
+
+test("確定時に terminalFingerprint を残し、違う指紋の 2 通目を隔離する（#44 FR-010/FR-011）", () => {
+  // §4.3 は terminal に「未適用であること」と「payload/source hash が衝突しないこと」の両方を
+  // 課すが、配送 ID が違う 2 通目は dedupe で比べられない。成否が同じなら成否矛盾ゲートも
+  // 素通りするので、受理した指紋を残さない限り**中身の違う 2 通目が黙って適用済み扱いになる**
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.terminalFingerprint, "fingerprint-terminal");
+
+  const second = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-2",
+      adapterDeliveryId: "delivery-terminal-2",
+      canonicalFingerprint: "fingerprint-terminal-OTHER",
+    }),
+    closed.ledger,
+  );
+  assert.equal(second.outcome, "quarantined");
+  assert.deepEqual(second.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  // 隔離なので状態は動かない（訂正版を後から入れ直せる）
+  assert.equal(second.snapshot.state.stateRevision, closed.snapshot.state.stateRevision);
+  assert.equal(second.ledger.size, closed.ledger.size);
+});
+
+test("指紋が同じなら別の配送 ID でも適用済みの再配送（#44 Acceptance 2）", () => {
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  const resent = reduceTaskWorkState(
+    closed.snapshot,
+    terminalEvent({ eventId: "event-terminal-2", adapterDeliveryId: "delivery-terminal-2" }),
+    closed.ledger,
+  );
+  assert.equal(resent.outcome, "applied");
+  assert.deepEqual(resent.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("指紋を持たない旧い状態では新しい検査が発動しない（#44 FR-012）", () => {
+  // 材料が無いことを「衝突」と読むと、この版より前に閉じた operation 宛ての正当な再配送が
+  // 全部隔離される。隔離は鍵を消費せず還元器は純関数なので、adapter は無限に再送する
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  const old = {
+    ...closed.snapshot,
+    state: {
+      ...closed.snapshot.state,
+      pendingOperations: closed.snapshot.state.pendingOperations.map(
+        ({ terminalFingerprint: _fingerprint, ...rest }) => rest,
+      ),
+    },
+  };
+  const second = reduceTaskWorkState(
+    old,
+    terminalEvent({
+      eventId: "event-terminal-2",
+      adapterDeliveryId: "delivery-terminal-2",
+      canonicalFingerprint: "fingerprint-terminal-OTHER",
+    }),
+    closed.ledger,
+  );
+  assert.equal(second.outcome, "applied");
+  assert.deepEqual(second.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("兄弟の一方だけが指紋を持つ状態でも新しい検査は発動しない（#44 FR-012）", () => {
+  // 上の test は**全員**が材料を持たない状態しか観測しない。実際に起きるのは混在
+  // ——この版より前に閉じた兄弟（指紋なし）と、この版で閉じた兄弟（指紋あり）が同じ
+  // matchKey に並ぶ状態。材料を持つ兄弟を先に見つけて衝突にすると、**指紋なしの兄弟宛ての
+  // 正当な再配送**が隔離される。隔離は鍵を消費しないので adapter は無限再送になる
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  const withFingerprint = closed.snapshot.state.pendingOperations[0] as PendingOperation;
+  assert.notEqual(withFingerprint.terminalFingerprint, undefined);
+  const { terminalFingerprint: _dropped, ...withoutFingerprint } = withFingerprint;
+  const mixed: TaskWorkStateSnapshotV1 = {
+    ...closed.snapshot,
+    state: {
+      ...closed.snapshot.state,
+      // 指紋を持つ兄弟が先に並ぶ順序にする（`find` は先頭から見るので、この順序が最悪）
+      pendingOperations: [
+        withFingerprint,
+        { ...withoutFingerprint, operationId: `${withFingerprint.operationId}-old` },
+      ],
+    },
+  };
+  const redelivered = reduceTaskWorkState(
+    mixed,
+    terminalEvent({
+      eventId: "event-terminal-mixed",
+      adapterDeliveryId: "delivery-terminal-mixed",
+      canonicalFingerprint: "fingerprint-terminal-OTHER",
+    }),
+    closed.ledger,
+  );
+  assert.equal(redelivered.outcome, "applied");
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("指紋を持たない確定済み候補は event 経路からは作れない（#44 FR-012 の前提）", () => {
+  // FR-012 のせいで「指紋を名乗らない候補が 1 件でもあれば衝突検査が発動しない」ので、
+  // **囮を 1 件置けば集合全体の検査を無効化できる**という指摘がありうる。前提が成り立つのは
+  // 囮を作れる場合だけなので、作れる経路を数える。
+  //
+  // 還元器が terminal で閉じるときは必ず指紋を書く。書かないのは `unknown` に倒したときだけで、
+  // その `unknown` は `isOpen` が **open として数える**——つまり候補集合に open が残るので、
+  // 衝突検査がある「候補が全部確定済み」の分岐にはそもそも入らない。
+  // 残るのは**状態を書ける相手**（この版より前の checkpoint・別実装・欄を落とす reader）だけで、
+  // その相手は囮を置くより先に `status` や `terminalFingerprint` を直接書ける。囮は新しい能力を
+  // 与えないので、可用性（無限再送は永久に収束しない）を優先する FR-012 の選択を変えない
+  const ambiguous = reduceTaskWorkState(startedSnapshot(), terminalEvent({ successful: undefined }), new Map());
+  const pending = ambiguous.snapshot.state.pendingOperations[0] as PendingOperation;
+  assert.equal(pending.status, "unknown");
+  assert.equal(pending.terminalFingerprint, undefined);
+
+  // 指紋なしのこの候補が居ても、確定済み経路（terminal_already_applied / terminal_conflict）
+  // には落ちない。open として扱われるので、衝突検査そのものに到達しない
+  const next = reduceTaskWorkState(
+    ambiguous.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-after-unknown",
+      adapterDeliveryId: "delivery-terminal-after-unknown",
+      canonicalFingerprint: "fingerprint-terminal-OTHER",
+    }),
+    ambiguous.ledger,
+  );
+  assert.equal(
+    next.diagnostics.some((d) => d.code === "terminal_already_applied" || d.code === "terminal_conflict"),
+    false,
+  );
+});
+
+test("unknown に倒した operation には指紋を残さない（#44 FR-010）", () => {
+  // `unknown` は「成否を主張できなかった」なので terminal を受理していない。ここで指紋を残すと、
+  // 後から本物の terminal が届いたときに指紋違いの衝突として隔離され、永久に閉じられない
+  const started = startedSnapshot();
+  const ambiguous = reduceTaskWorkState(started, terminalEvent({ successful: undefined }), new Map());
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.terminalFingerprint, undefined);
+});
+
+test("記録側の空白の指紋は「無い」として読む（#44 FR-012）", () => {
+  // 届く側の `canonicalFingerprint` は必須の identity 材料なので、空白は
+  // `assertIdentityMaterial` が先に落とす（この検査には届かない）。空白がありうるのは
+  // **状態側**——`terminalFingerprint` は任意欄で、別実装が空白を書きうる。空白を
+  // 「違う指紋」と読むと、その operation 宛ての正当な再配送が毎回隔離されて収束しない
+  const closed = reduceTaskWorkState(startedSnapshot(), terminalEvent(), new Map());
+  for (const blank of ["", "   ", "​"]) {
+    const blanked = {
+      ...closed.snapshot,
+      state: {
+        ...closed.snapshot.state,
+        pendingOperations: closed.snapshot.state.pendingOperations.map((pending) => ({
+          ...pending,
+          terminalFingerprint: blank,
+        })),
+      },
+    };
+    const second = reduceTaskWorkState(
+      blanked,
+      terminalEvent({
+        eventId: "event-terminal-2",
+        adapterDeliveryId: "delivery-terminal-2",
+        canonicalFingerprint: "fingerprint-terminal-OTHER",
+      }),
+      closed.ledger,
+    );
+    assert.deepEqual(second.diagnostics.map((d) => d.code), ["terminal_already_applied"], JSON.stringify(blank));
+  }
+});
+
+/** rule 2（matchKey 照合）の terminal。`nativeOperationId` を名乗らない adapter の形 */
+function matchKeyTerminal(overrides: Partial<NormalizedContinuityEvent> = {}): IntakeStampedEventV1 {
+  return terminalEvent({
+    operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined },
+    ...overrides,
+  });
+}
+
+/** 復元状態にだけありうる形: open なまま指紋を持つ pending。還元器は自分では作らない */
+function openWithFingerprint(
+  fingerprint: string,
+  status: "started" | "unknown" = "started",
+  start = startEvent(),
+) {
+  const started = startedSnapshot(start);
+  return {
+    ...started,
+    state: {
+      ...started.state,
+      pendingOperations: started.state.pendingOperations.map((pending) => ({
+        ...pending,
+        status,
+        terminalFingerprint: fingerprint,
+      })),
+    },
+  };
+}
+
+test("open な候補が持つ指紋は上書きせず衝突にする（#44 FR-010/FR-011）", () => {
+  // 閉じる経路は指紋を無条件に上書きする。確定済みの候補には衝突検査があるが、**open な
+  // 候補には無かった**（実測: `started` + 指紋 F1 の復元状態に F2 の terminal を渡すと
+  // `applied` / 診断ゼロ / `succeeded` / 指紋は F2 に化け、F1 の証跡は状態から消えた）。
+  // 凍結 schema は open な要素が指紋を持つことを妨げないので、復元状態では必ず起きうる形
+  for (const status of ["started", "unknown"] as const) {
+    const restored = openWithFingerprint("F1", status);
+    const conflicting = reduceTaskWorkState(
+      restored,
+      terminalEvent({ canonicalFingerprint: "F2" }),
+      new Map(),
+    );
+    assert.equal(conflicting.outcome, "quarantined", status);
+    assert.deepEqual(conflicting.diagnostics.map((d) => d.code), ["terminal_conflict"], status);
+    // 隔離なので状態は動かず、証跡も残る（訂正版を後から入れ直せる）
+    assert.equal(conflicting.snapshot.state.pendingOperations[0]?.status, status);
+    assert.equal(conflicting.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+    assert.equal(conflicting.snapshot.state.stateRevision, restored.state.stateRevision);
+    assert.equal(conflicting.ledger.size, 0);
+  }
+
+  // **rule 2 でも同じこと**。既定の fixture は `nativeOperationId` を持つので rule 1 しか通らず、
+  // 検査を rule 1 に限定しても test は全件通ってしまう（外部レビューが変異で実測した）。
+  // matchKey 照合の adapter は `nativeOperationId` を名乗らないので、そちらでも固定する
+  const byMatchKey = reduceTaskWorkState(
+    openWithFingerprint("F1", "started", startEvent({ operation: MATCH_KEY_ONLY })),
+    matchKeyTerminal({ canonicalFingerprint: "F2" }),
+    new Map(),
+  );
+  assert.equal(byMatchKey.outcome, "quarantined");
+  assert.deepEqual(byMatchKey.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.equal(byMatchKey.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+  assert.equal(byMatchKey.ledger.size, 0);
+});
+
+test("指紋の衝突は台帳を消費する順序分岐より先に判定する（#44）", () => {
+  // 隔離は配送鍵を消費しないが、順序の 2 分岐（`terminal_order_unverifiable` /
+  // `terminal_out_of_order`）は消費する。後ろに置くと、指紋が食い違う terminal が順序の穴を
+  // 通って `unknown` に化け、訂正版の再配送が重複 no-op として黙って捨てられる
+  const unverifiable = reduceTaskWorkState(
+    withoutStartFacts(openWithFingerprint("F1")),
+    terminalEvent({ canonicalFingerprint: "F2" }),
+    new Map(),
+  );
+  assert.deepEqual(unverifiable.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.equal(unverifiable.ledger.size, 0);
+
+  const outOfOrder = reduceTaskWorkState(
+    openWithFingerprint("F1"),
+    terminalEvent({ canonicalFingerprint: "F2", ingestSeq: "1" }),
+    new Map(),
+  );
+  assert.deepEqual(outOfOrder.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.equal(outOfOrder.ledger.size, 0);
+});
+
+test("open な候補の指紋検査は、材料が揃って初めて発動する（#44 FR-012）", () => {
+  // 通す側も固定する。締めすぎると健全な terminal が台帳に入らず adapter は無限再送になる
+  const sameFingerprint = reduceTaskWorkState(
+    openWithFingerprint("fingerprint-terminal"),
+    terminalEvent(),
+    new Map(),
+  );
+  assert.equal(sameFingerprint.outcome, "applied");
+  assert.equal(sameFingerprint.snapshot.state.pendingOperations[0]?.status, "succeeded");
+
+  for (const blank of ["", "   ", "​"]) {
+    const blanked = reduceTaskWorkState(
+      openWithFingerprint(blank),
+      terminalEvent({ canonicalFingerprint: "F2" }),
+      new Map(),
+    );
+    assert.equal(blanked.outcome, "applied", JSON.stringify(blank));
+    assert.equal(blanked.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F2");
+  }
+
+  // 入ってくる側が `unknown` に倒れる経路では指紋を書かないので上書きも起きない。ここで
+  // 隔離すると、`terminalEvidenceContradicts` は event 自身の性質で還元器は純関数なので、
+  // 同じ event が毎回同じ判定で戻り、その operation は永久に閉じられない
+  const ambiguous = reduceTaskWorkState(
+    openWithFingerprint("F1"),
+    terminalEvent({ canonicalFingerprint: "F2", successful: undefined }),
+    new Map(),
+  );
+  assert.equal(ambiguous.outcome, "applied");
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+
+  // 通す側も非発火側も rule 2 で固定する（rule 1 限定の変異はここでも落ちる）
+  const matchKeyStart = startEvent({ operation: MATCH_KEY_ONLY });
+  const sameByMatchKey = reduceTaskWorkState(
+    openWithFingerprint("fingerprint-terminal", "started", matchKeyStart),
+    matchKeyTerminal(),
+    new Map(),
+  );
+  assert.equal(sameByMatchKey.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  const ambiguousByMatchKey = reduceTaskWorkState(
+    openWithFingerprint("F1", "started", matchKeyStart),
+    matchKeyTerminal({ canonicalFingerprint: "F2", successful: undefined }),
+    new Map(),
+  );
+  assert.equal(ambiguousByMatchKey.outcome, "applied");
+  assert.equal(ambiguousByMatchKey.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.equal(ambiguousByMatchKey.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+});
+
+test("droppedEvidence を持たない状態も読めて、必要になったら欄が生える（#43 FR-013/FR-014）", () => {
+  // 任意欄なので、この版より前の checkpoint と別実装の状態には無い。無いことを
+  // 「記録できない」と読むと、退避が黙って消える側に倒れる
+  const old = filledSnapshot(true);
+  assert.equal(old.state.droppedEvidence, undefined);
+  const result = reduceTaskWorkState(old, startEvent(), new Map());
+  assert.equal(result.snapshot.state.droppedEvidence?.length, 1);
+  // 何も落ちていないなら空配列も作らない（空配列と欄なしが同じ意味の欄を 2 通り書かない）
+  const quiet = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
+  assert.equal(quiet.snapshot.state.droppedEvidence, undefined);
 });
 
 test("語彙外の turnIdSource は turn 同一性の検査で落とす", () => {
@@ -1396,7 +2533,7 @@ test("terminal 済みが無くても start は取り込む（枠が埋まって�
   assert.equal(result.outcome, "applied");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["pending_operations_evicted"],
+    ["pending_operations_evicted", "dropped_evidence_recorded"],
   );
   assert.equal(result.snapshot.state.pendingOperations.length, CONTINUITY_LIMITS.arrayItems);
   // 落とすのは最古の 1 件だけで、新しい start は必ず入る
@@ -1543,7 +2680,7 @@ test("空文字の sessionId は schema violation", () => {
   assert.equal(crossSession.outcome, "quarantined");
   assert.deepEqual(
     crossSession.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
 });
 
@@ -1921,6 +3058,7 @@ interface ReductionFixture {
     stateRevision: string;
     historyLength: number;
     pendingStatuses: string[];
+    droppedEvidenceReasons: string[];
     diagnostics: string[];
   }>;
 }
@@ -2031,35 +3169,44 @@ test("negative fixture は宣言した層で落ちる", () => {
   assert.equal(stampIntakeEvidence(repaired, fixture.intakeContext).event.provenance.evidenceKind, "native");
 });
 
-test("fixture の期待値は参照実装の出力と一致する（TS/Rust parity の基準）", () => {
-  const fixture = readIJsonFile<ReductionFixture>(
-    new URL("../fixtures/continuity/tool-lifecycle-reduction.json", import.meta.url),
-  );
-  let snapshot: TaskWorkStateSnapshotV1 = {
-    state: fixture.initialState,
-    history: [],
-    operationStarts: new Map(),
-  };
-  let ledger: IdempotencyLedger = new Map();
-  const actual = fixture.events.map((raw) => {
-    const event = stampIntakeEvidence(raw, fixture.intakeContext).event;
-    const result = reduceTaskWorkState(snapshot, event, ledger);
-    snapshot = result.snapshot;
-    ledger = result.ledger;
-    return {
-      eventId: event.eventId,
-      evidenceKind: event.provenance.evidenceKind,
-      outcome: result.outcome,
-      contentHash: result.contentHash,
-      stateRevision: result.snapshot.state.stateRevision,
-      historyLength: result.snapshot.history.length,
-      pendingStatuses: result.snapshot.state.pendingOperations.map((p) => p.status),
-      diagnostics: result.diagnostics.map((d) => d.code),
+/**
+ * parity fixture は 2 本ある。**旧い形（新しい欄を持たない状態）を消さない**のが要件で
+ * （FR-013/FR-014 の証拠がそこにある）、新しい欄を**読む**側は別 fixture で見る。
+ * 1 本にまとめると、移植が新しい欄を無視しても片方の hash が合ってしまう。
+ */
+for (const fixtureId of ["tool-lifecycle-reduction", "restored-state-reduction"]) {
+  test(`fixture ${fixtureId} の期待値は参照実装の出力と一致する（TS/Rust parity の基準）`, () => {
+    const fixture = readIJsonFile<ReductionFixture>(
+      new URL(`../fixtures/continuity/${fixtureId}.json`, import.meta.url),
+    );
+    let snapshot: TaskWorkStateSnapshotV1 = {
+      state: fixture.initialState,
+      history: [],
     };
+    let ledger: IdempotencyLedger = new Map();
+    const actual = fixture.events.map((raw) => {
+      const event = stampIntakeEvidence(raw, fixture.intakeContext).event;
+      const result = reduceTaskWorkState(snapshot, event, ledger);
+      snapshot = result.snapshot;
+      ledger = result.ledger;
+      return {
+        eventId: event.eventId,
+        evidenceKind: event.provenance.evidenceKind,
+        outcome: result.outcome,
+        contentHash: result.contentHash,
+        stateRevision: result.snapshot.state.stateRevision,
+        historyLength: result.snapshot.history.length,
+        pendingStatuses: result.snapshot.state.pendingOperations.map((p) => p.status),
+        // hash に含まれてはいるが、合わなかったときにどこが違うかを移植側に見せる
+        // （`pendingStatuses` と同じ役割）
+        droppedEvidenceReasons: (result.snapshot.state.droppedEvidence ?? []).map((e) => e.reason),
+        diagnostics: result.diagnostics.map((d) => d.code),
+      };
+    });
+    assert.deepEqual(actual, fixture.expected);
+    assert.equal(fixture.expected.length > 0, true);
   });
-  assert.deepEqual(actual, fixture.expected);
-  assert.equal(fixture.expected.length > 0, true);
-});
+}
 
 // --- code-review 指摘の回帰（51a339c で実測された経路） ----------------------
 
@@ -2130,7 +3277,7 @@ test("一致しない nativeOperationId を名乗る terminal は matchKey へ�
   assert.equal(result.outcome, "quarantined");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
@@ -2143,7 +3290,7 @@ test("start より先に届いた terminal は台帳に入れない（後から 
   assert.equal(early.outcome, "quarantined");
   assert.deepEqual(
     early.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
   assert.equal(early.ledger.size, 0);
   // start が届いてから同じ terminal を再配送すれば閉じられる
@@ -2154,11 +3301,11 @@ test("start より先に届いた terminal は台帳に入れない（後から 
 });
 
 test("start が状態に無い terminal は閉じないが、詰まらせず unknown に倒す", () => {
-  // checkpoint から復元すると operationStarts が空になる（#35）。ここで隔離すると復元後は
-  // 全 terminal が隔離され、operation が started のまま二度と閉じられない（resume capsule が
+  // この版より前に書かれた checkpoint には順序材料が無い（#35 の 2 欄は任意）。ここで隔離すると
+  // 復元後は全 terminal が隔離され、operation が started のまま二度と閉じられない（resume capsule が
   // 「まだ実行中」と偽る）。閉じずに unknown へ倒し、台帳には入れる
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const result = reduceTaskWorkState(restored, terminalEvent(), new Map());
   assert.equal(result.outcome, "applied");
   assert.deepEqual(
@@ -2173,15 +3320,15 @@ test("start が状態に無い terminal は閉じないが、詰まらせず unk
 test("復元後の start 再配送は権威順序の材料を作らない", () => {
   // §6.4 の ingestSeq は event store が採番する watermark なので、再配送 event が運ぶのは
   // 再配送時の取り込み位置であって元の start の権威順序ではない。材料が無いまま閉じるより
-  // unknown に倒す（§3.1 の fail closed）。復旧は #35 が本筋
+  // unknown に倒す（§3.1 の fail closed）
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const again = reduceTaskWorkState(restored, startEvent({ ingestSeq: "3" }), new Map());
   assert.deepEqual(
     again.diagnostics.map((d) => d.code),
     ["duplicate_operation_start"],
   );
-  assert.equal(again.snapshot.operationStarts.size, 0);
+  assert.equal(again.snapshot.state.pendingOperations[0]?.startIngestSeq, undefined);
   const closed = reduceTaskWorkState(again.snapshot, terminalEvent(), again.ledger);
   assert.deepEqual(
     closed.diagnostics.map((d) => d.code),
@@ -2195,7 +3342,7 @@ test("eventId が変わった再配送 start でも operation を二重に積ま
   // 導出 operationId が一致しないので、nativeOperationId で拾わないと同じ operation が 2 件になり、
   // rule 1 の terminal が候補 2 件で何も閉じられなくなる
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const redelivered = reduceTaskWorkState(
     restored,
     startEvent({ eventId: "event-start-retry-0", ingestSeq: "3" }),
@@ -2332,11 +3479,11 @@ test("nativeOperationId が違う 2 回目の呼び出しは別 operation とし
 });
 
 test("低い ingestSeq を名乗る偽 start で unknown を succeeded に変えられない", () => {
-  // 復元直後（operationStarts が空）に、被害者の identity を写した start を小さい ingestSeq で
+  // 順序材料を持たない状態（#35）に、被害者の identity を写した start を小さい ingestSeq で
   // 送ると、wire の値で順序材料を埋める実装では正規の terminal が順序検査を通って succeeded に
   // 化ける。§14 の zero-tolerance カウンタ `unsafe unknown replay` に直結する
   const started = startedSnapshot();
-  const restored: TaskWorkStateSnapshotV1 = { ...started, operationStarts: new Map() };
+  const restored: TaskWorkStateSnapshotV1 = withoutStartFacts(started);
   const forged = reduceTaskWorkState(
     restored,
     startEvent({ eventId: "event-start-forged-seq", ingestSeq: "1", sessionId: "session-1" }),
@@ -2758,7 +3905,7 @@ test("identity が一致する確定済み兄弟がいても、衝突する open
   );
   const redelivered = reduceTaskWorkState(
     prepared.snapshot,
-    terminalEvent({ eventId: "term-a2", adapterDeliveryId: "d-term-a2", canonicalFingerprint: "f-term-a2", operation: { ...A, phase: "terminal" }, ingestSeq: "14" }),
+    terminalEvent({ eventId: "term-a2", adapterDeliveryId: "d-term-a2", canonicalFingerprint: "f-term-a", operation: { ...A, phase: "terminal" }, ingestSeq: "14" }),
     prepared.ledger,
   );
   assert.equal(redelivered.outcome, "applied");
@@ -2976,7 +4123,7 @@ test("記録できる候補が 1 件も無い terminal は、兄弟の有無に�
   });
   for (const pendingOperations of [[], [settledSibling]]) {
     const result = reduceTaskWorkState(
-      { ...base, operationStarts: new Map(), state: { ...base.state, pendingOperations } },
+      { ...base, state: { ...base.state, pendingOperations } },
       early,
       new Map(),
     );
@@ -2987,7 +4134,6 @@ test("記録できる候補が 1 件も無い terminal は、兄弟の有無に�
   const applied = reduceTaskWorkState(
     {
       ...base,
-      operationStarts: new Map(),
       state: { ...base.state, pendingOperations: [settledSibling] },
     },
     terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
@@ -3050,7 +4196,7 @@ test("復元した状態が toolName を持たなくても rule 2 の候補に�
     new Map(),
   );
   assert.equal(orphaned.outcome, "quarantined");
-  assert.deepEqual(orphaned.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+  assert.deepEqual(orphaned.diagnostics.map((d) => d.code), ["terminal_orphaned", "dropped_evidence_recorded"]);
 });
 
 test("turn が両立しない兄弟は照合不能ゲートの母数に入らない", () => {
@@ -3144,7 +4290,11 @@ test("turn 種別が両立しない兄弟は矛盾する terminal の言い訳�
   const forged = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "15",
+      // 指紋は A が受理したものと**同じ**にする。違う指紋にすると #44 の衝突検査でも
+      // `terminal_conflict` になり、この test が成否矛盾ゲートを見ているのか指紋ゲートを
+      // 見ているのか区別できない（実測: そちらが先に塞ぐので、成否矛盾ゲートを壊す変異が
+      // 生存した）。同じ指紋なら塞げるのは成否矛盾ゲートだけ
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-a", ingestSeq: "15",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native",
     }),
     prepared.ledger,
@@ -3156,7 +4306,7 @@ test("turn 種別が両立しない兄弟は矛盾する terminal の言い訳�
   const honest = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-y", adapterDeliveryId: "d-term-y", canonicalFingerprint: "f-term-y", ingestSeq: "16",
+      eventId: "term-y", adapterDeliveryId: "d-term-y", canonicalFingerprint: "f-term-a", ingestSeq: "16",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native", ...failed,
     }),
     prepared.ledger,
@@ -3181,14 +4331,19 @@ test("turn が両立する確定済み候補が 1 件も無いなら適用済み
     }),
     prepared.ledger,
   );
-  assert.deepEqual(agreeing.diagnostics.map((d) => d.code), ["terminal_unmatched"]);
+  // 保持する相手が居ないので状態にも記録する（#43）。診断だけで流すと terminal が消える
+  assert.deepEqual(
+    agreeing.diagnostics.map((d) => d.code),
+    ["terminal_unmatched", "dropped_evidence_recorded"],
+  );
+  assert.equal(agreeing.snapshot.state.droppedEvidence?.length, 1);
   // 候補は確定済みなので `unknown` に倒す相手は居ない
   assert.equal(agreeing.snapshot.state.pendingOperations[0]?.status, "succeeded");
   // 対照: turn が両立する候補があれば従来どおり適用済みとして通る
   const same = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-same", adapterDeliveryId: "d-same", canonicalFingerprint: "f-same", ingestSeq: "14",
+      eventId: "term-same", adapterDeliveryId: "d-same", canonicalFingerprint: "f-term-b", ingestSeq: "14",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "synthesized_monotonic",
     }),
     prepared.ledger,
@@ -3210,27 +4365,22 @@ test("状態側で operationId が衝突していても terminal は 1 件しか
       },
       kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
       sourceEventIds: [`start-${nativeOperationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      // 順序材料はそれぞれの要素に載る（#35）。id が衝突していても取り違えは起きない
+      startIngestSeq: "11", startTurnIdSource: "native",
     }) as unknown as PendingOperation;
   for (const duplicated of ["", "op-dup"]) {
     const victim: TaskWorkStateSnapshotV1 = {
       state: emptyState({ pendingOperations: [pending(duplicated, "toolu_1"), pending(duplicated, "toolu_2")] }),
       history: [],
-      operationStarts: new Map([[duplicated, { ingestSeq: "11", turnIdSource: "native" as const }]]),
     };
     const result = reduceTaskWorkState(victim, terminalEvent(), new Map());
-    // 動くのは 1 件だけ。しかも `succeeded` ではなく `unknown` になる: `operationStarts` は
-    // `operationId` 鍵なので、id が衝突しているとどちらの兄弟の材料か判別できず、順序を
-    // 確認できない = 閉じられない（`terminal_order_unverifiable`）
+    // 動くのは rule 1 が指した 1 件だけ。もう 1 件は同じ id でも触られない
     assert.deepEqual(
       result.snapshot.state.pendingOperations.map((p) => p.status),
-      ["unknown", "started"],
+      ["succeeded", "started"],
       JSON.stringify(duplicated),
     );
-    assert.deepEqual(
-      result.diagnostics.map((d) => d.code),
-      ["terminal_order_unverifiable"],
-      JSON.stringify(duplicated),
-    );
+    assert.deepEqual(result.diagnostics.map((d) => d.code), [], JSON.stringify(duplicated));
   }
 });
 
@@ -3251,6 +4401,7 @@ test("identity で候補から外れた兄弟は rule 1 の候補数に数えな
       },
       kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
       sourceEventIds: [`start-${operationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      startIngestSeq: "1", startTurnIdSource: "native",
     }) as unknown as PendingOperation;
   const target = pending("op-target", {});
   for (const [label, sibling] of [
@@ -3261,10 +4412,6 @@ test("identity で候補から外れた兄弟は rule 1 の候補数に数えな
     const snapshot: TaskWorkStateSnapshotV1 = {
       state: emptyState({ pendingOperations: [sibling, target] }),
       history: [],
-      operationStarts: new Map([
-        ["op-sibling", { ingestSeq: "1", turnIdSource: "native" as const }],
-        ["op-target", { ingestSeq: "1", turnIdSource: "native" as const }],
-      ]),
     };
     const result = reduceTaskWorkState(snapshot, terminalEvent({ ingestSeq: "50" }), new Map());
     assert.deepEqual(result.diagnostics.map((d) => d.code), [], label);
@@ -3276,11 +4423,12 @@ test("identity で候補から外れた兄弟は rule 1 の候補数に数えな
   }
 });
 
-test("同名 operationId の兄弟の start facts で順序検査をしない", () => {
-  // `operationStarts` は `operationId` 鍵の側索引（#35）なので、同じ id の pending が並ぶ状態では
-  // どちらの兄弟の材料か判別できない。判別せずに引くと、兄弟 B の `ingestSeq` を使って A 宛ての
-  // terminal が権威順序を通り、A が診断ゼロで閉じる（逆向きの値では健全な terminal が弾かれる）
-  const pending = (nativeOperationId: string): PendingOperation =>
+test("同名 operationId の兄弟でも、順序検査は自分の材料で行う（#35）", () => {
+  // 側索引の鍵は `operationId` だったので、同じ id の pending が並ぶ状態では**どちらの兄弟の材料か
+  // 判別できず**、判別せずに引くと兄弟 B の `ingestSeq` で A 宛ての terminal が権威順序を通った
+  // （逆向きの値では健全な terminal が弾かれた）。当時は両方まとめて `terminal_order_unverifiable` に
+  // 倒すしか無かったが、材料を要素に載せた今は A の材料で A を判定できる
+  const pending = (nativeOperationId: string, startIngestSeq: string): PendingOperation =>
     ({
       operationId: "dup",
       correlation: {
@@ -3290,13 +4438,16 @@ test("同名 operationId の兄弟の start facts で順序検査をしない", 
       },
       kind: "tool", description: "Bash", status: "started", replayPolicy: "never_auto",
       sourceEventIds: [`start-${nativeOperationId}`], startedAt: "2026-08-16T00:00:01Z", sensitivity: "normal",
+      startIngestSeq, startTurnIdSource: "native",
     }) as unknown as PendingOperation;
-  // 記録されている材料は B のもの。A 宛ての terminal は、それを通っても弾かれてもいけない
-  for (const [label, ingestSeq] of [["材料より前", "50"], ["材料より後", "150"]] as const) {
+  // A の start は 100、B の start は 10。A 宛ての terminal は **A の 100** とだけ比べる
+  for (const [label, ingestSeq, expected] of [
+    ["A の材料より前", "50", "terminal_out_of_order"],
+    ["A の材料より後", "150", undefined],
+  ] as const) {
     const victim: TaskWorkStateSnapshotV1 = {
-      state: emptyState({ pendingOperations: [pending("toolu_a"), pending("toolu_b")] }),
+      state: emptyState({ pendingOperations: [pending("toolu_a", "100"), pending("toolu_b", "10")] }),
       history: [],
-      operationStarts: new Map([["dup", { ingestSeq: "100", turnIdSource: "native" as const }]]),
     };
     const result = reduceTaskWorkState(
       victim,
@@ -3309,8 +4460,16 @@ test("同名 operationId の兄弟の start facts で順序検査をしない", 
       }),
       new Map(),
     );
-    assert.deepEqual(result.diagnostics.map((d) => d.code), ["terminal_order_unverifiable"], label);
-    assert.deepEqual(result.snapshot.state.pendingOperations.map((p) => p.status), ["unknown", "started"], label);
+    assert.deepEqual(
+      result.diagnostics.map((d) => d.code),
+      expected === undefined ? [] : [expected],
+      label,
+    );
+    assert.deepEqual(
+      result.snapshot.state.pendingOperations.map((p) => p.status),
+      [expected === undefined ? "succeeded" : "unknown", "started"],
+      label,
+    );
   }
 });
 
@@ -3343,7 +4502,6 @@ test("同じ native id の兄弟が並んでも identity が一致する側へ�
   const snapshot: TaskWorkStateSnapshotV1 = {
     state: emptyState({ pendingOperations: [pending("op-1", "one"), pending("op-2", "two")] }),
     history: [],
-    operationStarts: new Map(),
   };
   const redelivered = reduceTaskWorkState(
     snapshot,
@@ -3407,7 +4565,7 @@ test("turn が両立しない open な兄弟は確定済みへの再配送を妨
   const redelivered = reduceTaskWorkState(
     prepared.snapshot,
     terminalEvent({
-      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-x", ingestSeq: "14",
+      eventId: "term-x", adapterDeliveryId: "d-term-x", canonicalFingerprint: "f-term-a", ingestSeq: "14",
       operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native",
     }),
     prepared.ledger,
@@ -3436,7 +4594,6 @@ test("unknown に倒す相手は候補だけで、別 session の同名 operatio
     // 候補側は turn 同一性が無いので rule 2 では閉じられず `unknown` に倒れる
     state: emptyState({ pendingOperations: [pending("session-1", "n1", "turn-9"), pending("session-other", "n2", "turn-1")] }),
     history: [],
-    operationStarts: new Map(),
   };
   const result = reduceTaskWorkState(
     victim,
@@ -3563,7 +4720,7 @@ test("空白文字だけの identity 材料は空文字と同じく schema viola
     assert.throws(
       () =>
         reduceTaskWorkState(
-          { state: emptyState({ sourceAgent: blank }), history: [], operationStarts: new Map() },
+          { state: emptyState({ sourceAgent: blank }), history: [] },
           startEvent({ sourceAgent: blank }),
           new Map(),
         ),
@@ -4049,13 +5206,13 @@ test("turn 種別が違う候補は rule 2 の候補から外す", () => {
 });
 
 test("turn 種別の材料が無い候補は種別違いとして落とさない", () => {
-  // 種別は start 側の材料（operationStarts、#35）にしかなく、復元直後は空。材料が無いことを
+  // 種別は start 側の材料（`startTurnIdSource`、#35）にしかなく、復元した古い状態では欠ける。材料が無いことを
   // 「種別が違う」と読むと、復元直後の全 terminal が理由を取り違えた診断になる
   const prepared = apply(emptySnapshot(), [
     startEvent({ eventId: "start-a", adapterDeliveryId: "d-sa", canonicalFingerprint: "f-sa", operation: MATCH_KEY_ONLY, ingestSeq: "11", turnIdSource: "native" }),
     startEvent({ eventId: "start-b", adapterDeliveryId: "d-sb", canonicalFingerprint: "f-sb", operation: MATCH_KEY_ONLY, ingestSeq: "12", turnIdSource: "synthesized_monotonic" }),
   ]);
-  const restored = { state: prepared.snapshot.state, history: [], operationStarts: new Map() };
+  const restored = withoutStartFacts({ state: prepared.snapshot.state, history: [] });
   const result = correlateTerminalEvent(
     restored,
     terminalEvent({ operation: { ...MATCH_KEY_ONLY, phase: "terminal" }, turnIdSource: "native" }),
@@ -4207,15 +5364,11 @@ test("名乗っている兄弟が互換でも、空白の native ID を埋めな
     "空白側にも native ID が書かれて 2 件になった",
   );
   // 曖昧にならないことまで見る。復元が重複を作っていたら rule 1 の候補が 2 件になり、terminal は
-  // 曖昧としてどちらも閉じられない。ここで残る `terminal_order_unverifiable` は別の欠落
-  // （組み立てた pending には start の取り込み連番が無い = #35）で、候補の一意性とは無関係
+  // 曖昧としてどちらも閉じられない。組み立てた pending は元の start の取り込み連番を持つ（#35）ので、
+  // 候補が一意なら診断ゼロで閉じる
   const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
   assert.equal(closed.outcome, "applied");
-  assert.deepEqual(
-    closed.diagnostics.map((d) => d.code),
-    ["terminal_order_unverifiable"],
-    "rule 1 の候補が 1 件に定まっていない",
-  );
+  assert.deepEqual(closed.diagnostics.map((d) => d.code), [], "rule 1 の候補が 1 件に定まっていない");
 });
 
 test("別 session の名乗り手は埋め戻しを止めない（rule 1 の候補集合と同じ絞り方）", () => {
@@ -4313,9 +5466,7 @@ test("名乗っている兄弟が非互換なら、空白の native ID を埋め
     closed.snapshot.state.pendingOperations.map((pending) => [pending.operationId, pending.status]),
     [
       [derived.operationId, "started"],
-      // `succeeded` でなく `unknown`。組み立てた pending には start の取り込み連番が無いので
-      // 権威順序を確認できない（#35 の欠落）。閉じる先の話とは別軸
-      ["op-native-claimer", "unknown"],
+      ["op-native-claimer", "succeeded"],
     ],
     "閉じる先が入れ替わった",
   );

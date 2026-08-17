@@ -65,6 +65,8 @@ const INLINE_ENUMS = {
     "other",
   ],
   "PendingOperation.properties.status": ["started", "succeeded", "failed", "unknown"],
+  "DroppedEvidenceEntryV1.properties.reason": ["evicted", "orphaned_terminal"],
+  "DroppedEvidenceEntryV1.properties.status": ["started", "succeeded", "failed", "unknown"],
   "ContinuationCheckpointV2.properties.kind": [
     "pre_compact",
     "session_end",
@@ -214,6 +216,15 @@ type _InlineEnumsMatchContract = [
   Assert<SameSet<contract.ObservedTest["status"], EnumAt<"ObservedTest.properties.status">>>,
   Assert<SameSet<contract.PendingOperation["kind"], EnumAt<"PendingOperation.properties.kind">>>,
   Assert<SameSet<contract.PendingOperation["status"], EnumAt<"PendingOperation.properties.status">>>,
+  Assert<
+    SameSet<contract.DroppedEvidenceEntryV1["reason"], EnumAt<"DroppedEvidenceEntryV1.properties.reason">>
+  >,
+  Assert<
+    SameSet<
+      NonNullable<contract.DroppedEvidenceEntryV1["status"]>,
+      EnumAt<"DroppedEvidenceEntryV1.properties.status">
+    >
+  >,
   Assert<
     SameSet<
       contract.ContinuationCheckpointV2["kind"],
@@ -382,6 +393,7 @@ const FROZEN_DEFS = [
   "DerivedArtifactSourceRefV1",
   "DerivedArtifactStatus",
   "DispositionAuthorityContextV1",
+  "DroppedEvidenceEntryV1",
   "EngagementEvaluationContextV1",
   "EngagementEvidence",
   "EngagementEvidenceKind",
@@ -566,7 +578,7 @@ test("名前を取れない export の形は落とす（AST を持たない代�
 
 test("continuity.schema.json は schema 側の誤記を持たない", () => {
   // validateContractValue は root を 1 度歩いて schema 側の誤記を throw する（値は通らなくてよい）。
-  // $ref から辿れない $defs も対象なので、凍結した 66 定義すべてが検査される
+  // $ref から辿れない $defs も対象なので、凍結した 67 定義すべてが検査される
   assert.doesNotThrow(() =>
     validateContractValue(Object.keys(defs)[0], undefined, root, contract.CONTINUITY_LIMITS),
   );
@@ -608,6 +620,17 @@ test("property の中に直接書かれた enum も凍結する", () => {
     found[path] = node.enum as string[];
   }
   assert.deepEqual(found, INLINE_ENUMS);
+});
+
+test("同じ語彙を複製している inline enum どうしも突き合わせる", () => {
+  // 上の test は 1 つずつ「今の綴り」に縛るだけなので、**複製した片方だけを増やす**変更は
+  // 素通りする（両方の行を更新すれば緑のまま）。`DroppedEvidenceEntryV1.status` は退避した
+  // `PendingOperation` の status をそのまま写す欄なので、語彙が割れたら記録できない状態が出る。
+  // 凍結 schema なので $ref への差し替え（= 既存 node の削除）はできない。ここで縛る
+  assert.deepEqual(
+    INLINE_ENUMS["DroppedEvidenceEntryV1.properties.status"],
+    INLINE_ENUMS["PendingOperation.properties.status"],
+  );
 });
 
 test("property の中に直接書かれた const も凍結する", () => {
@@ -818,6 +841,144 @@ test("decimal string の pattern は sequence/watermark 全部に付いている
     "ContradictionScanRangeV1.properties.toIngestSeq",
     "NormalizedContinuityEvent.properties.ingestSeq",
     "Observed.properties.ingestSeq",
+    "PendingOperation.properties.startIngestSeq",
     "SemanticResumeNoteV1.properties.generatedFromIngestSeq",
   ]);
+});
+
+test("PendingOperation に足した 3 欄は任意のまま（#35 / #44）", () => {
+  // 凍結後に足す欄を `required` に入れると、**この版より前に書かれた checkpoint** が
+  // 復元時に丸ごと落ちる。欄そのものの有無ではなく「required に入っていないこと」を固定する
+  const base: contract.PendingOperation = {
+    operationId: "op1",
+    correlation: {
+      operationId: "op1",
+      startEventId: "e1",
+      operationMatchKey: "mk1",
+      sessionId: "s1",
+      taskLineageId: "l1",
+    },
+    kind: "command",
+    description: "d",
+    status: "started",
+    replayPolicy: "never_auto",
+    sourceEventIds: ["e1"],
+    startedAt: "2026-08-16T00:00:00Z",
+    sensitivity: "normal",
+  };
+  const schema = { $ref: "#/$defs/PendingOperation" };
+  const issues = (value: unknown) => validateAgainstSchema(value, schema, root);
+
+  assert.deepEqual(issues(base), []);
+  assert.deepEqual(
+    issues({
+      ...base,
+      startIngestSeq: "7",
+      startTurnIdSource: "native",
+      terminalFingerprint: "f1",
+    }),
+    [],
+  );
+
+  // 形は効いている（任意 = 何でも入る、ではない）
+  for (const [field, bad] of [
+    ["startIngestSeq", "007"],
+    ["startIngestSeq", "not-a-decimal"],
+    ["startTurnIdSource", "guessed"],
+    ["terminalFingerprint", 1],
+  ] as const) {
+    const found = issues({ ...base, [field]: bad });
+    assert.ok(found.length > 0, `${field}=${JSON.stringify(bad)} が素通りした`);
+  }
+});
+
+test("droppedEvidence は共通欄だけを必須にする（#43 / #39）", () => {
+  const entry: contract.DroppedEvidenceEntryV1 = {
+    reason: "evicted",
+    recordedAt: "2026-08-16T00:00:00Z",
+    sensitivity: "normal",
+  };
+  const schema = { $ref: "#/$defs/DroppedEvidenceEntryV1" };
+  const issues = (value: unknown) => validateAgainstSchema(value, schema, root);
+
+  // 理由ごとの欄は任意。退避は operation を、孤児 terminal は event を名指しできるが、
+  // どちらの形も同じ 1 定義で通る（oneOf で分岐させると理由が増えるたび移植が割れる）
+  assert.deepEqual(issues(entry), []);
+  assert.deepEqual(issues({ ...entry, operationId: "op1", status: "started" }), []);
+  assert.deepEqual(issues({ ...entry, reason: "orphaned_terminal", eventId: "e1" }), []);
+
+  // #39 の重複判定の鍵は文字列で、上限も他の識別子と揃っている。欄名の突き合わせは
+  // 「欄が在るか」しか見ないので、型と上限だけが drift すると素通りする
+  assert.deepEqual(issues({ ...entry, reason: "orphaned_terminal", terminalFingerprint: "f1" }), []);
+  assert.ok(issues({ ...entry, terminalFingerprint: 1 }).length > 0);
+  assert.ok(issues({ ...entry, terminalFingerprint: "x".repeat(8193) }).length > 0);
+
+  for (const missing of ["reason", "recordedAt", "sensitivity"]) {
+    const partial = Object.fromEntries(Object.entries(entry).filter(([field]) => field !== missing));
+    const found = issues(partial);
+    assert.ok(
+      found.some((i) => `${i.path} ${i.message}`.includes(missing)),
+      `${missing} の欠落が見逃された: ${JSON.stringify(found)}`,
+    );
+  }
+  // 語彙の外と、知らない欄は落とす
+  assert.ok(issues({ ...entry, reason: "trimmed" }).length > 0);
+  assert.ok(issues({ ...entry, droppedBecause: "x" }).length > 0);
+
+  // 上限を落とすと、退避の記録そのものが状態を無限に膨らませる（落とした証跡が本体より重くなる）
+  const stateDef = defs.CanonicalWorkStateV1;
+  assert.ok(stateDef, "$defs.CanonicalWorkStateV1 が無い");
+  const state = stateDef.properties as Record<string, { maxItems?: number } | undefined>;
+  assert.equal(state.droppedEvidence?.maxItems, contract.CONTINUITY_LIMITS.arrayItems);
+  assert.equal(state.droppedEvidence?.maxItems, state.pendingOperations?.maxItems);
+});
+
+/**
+ * 上の test 群は schema の側しか縛らない。TS 型は object literal の注釈として出てくるだけで、
+ * 値は `unknown` 経由で validator に渡るため**余剰プロパティ検査が働かず**、schema にだけ欄を
+ * 足しても素通りする（実測: `DroppedEvidenceEntryV1.terminalFingerprint` を TS 側から消しても
+ * 凍結 test 17 件が全部 green のままだった）。TS mirror が schema と同じ形であることは
+ * TS/Rust parity の前提そのものなので、欄名の集合を型と runtime の両方で突き合わせる。
+ *
+ * `Record<keyof T, true>` にしているのは、**両方向**を型で縛るため。TS から欄が消えれば
+ * 余剰プロパティとして、TS に欄が増えれば不足として、どちらも `tsc` が落ちる。
+ */
+const DROPPED_EVIDENCE_FIELDS: Record<keyof contract.DroppedEvidenceEntryV1, true> = {
+  reason: true,
+  recordedAt: true,
+  sensitivity: true,
+  eventId: true,
+  operationId: true,
+  status: true,
+  terminalFingerprint: true,
+  adapterDeliveryId: true,
+};
+
+/** 相互代入可能性。片側だけの `extends` は広がりを見逃す */
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+
+test("DroppedEvidenceEntryV1 の欄集合は schema と TS で一致する（#43 / #39）", () => {
+  const entryDef = defs.DroppedEvidenceEntryV1;
+  assert.ok(entryDef, "$defs.DroppedEvidenceEntryV1 が無い");
+  const properties = entryDef.properties as Record<string, unknown>;
+  assert.deepEqual(Object.keys(properties).sort(), Object.keys(DROPPED_EVIDENCE_FIELDS).sort());
+});
+
+test("重複判定の鍵は schema でも TS でも string（#39）", () => {
+  // 欄名の集合しか見ていないと**値型の drift が残る**。`terminalFingerprint` を
+  // `string | number` に広げても、`Record<keyof ...>` も validator の test も既存の string 代入も
+  // 全部通る（実測）。鍵は同一性を決める欄なので、型と上限を両方向で tsc に見せる
+  const exact: {
+    terminalFingerprint: Exact<contract.DroppedEvidenceEntryV1["terminalFingerprint"], string | undefined>;
+    adapterDeliveryId: Exact<contract.DroppedEvidenceEntryV1["adapterDeliveryId"], string | undefined>;
+  } = { terminalFingerprint: true, adapterDeliveryId: true };
+  assert.deepEqual(Object.values(exact), [true, true]);
+
+  const entryDef = defs.DroppedEvidenceEntryV1;
+  assert.ok(entryDef, "$defs.DroppedEvidenceEntryV1 が無い");
+  const properties = entryDef.properties as Record<string, { type?: string; maxLength?: number }>;
+  for (const field of ["terminalFingerprint", "adapterDeliveryId"] as const) {
+    assert.equal(properties[field]?.type, "string", `${field} の type`);
+    assert.equal(properties[field]?.maxLength, 8192, `${field} の maxLength`);
+  }
 });
