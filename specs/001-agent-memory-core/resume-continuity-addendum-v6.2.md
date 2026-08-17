@@ -1,6 +1,7 @@
 # Resume Continuity Addendum v6.2
 
 Date: 2026-08-16  
+Amended: 2026-08-17 (see §0.1)  
 Status: **Normative pre-implementation contract**  
 Related: #1, #8, #13  
 Research basis: [`evidence/phase3-resume-oss-comparison.md`](../../evidence/phase3-resume-oss-comparison.md)
@@ -15,6 +16,9 @@ When this addendum conflicts with v6.1, it takes precedence only for:
 - §10 SessionWorkState / task-state ownership;
 - §11 ContinuationCheckpoint, task boundaries, claim, delivery, acceptance, and resume-mode semantics;
 - §17 resume hint, selection, full-resume injection, sensitivity, and serialization;
+- §22.6 timestamp encoding, for the continuity contracts defined here. §3 narrows both the accepted
+  spelling and, for leap seconds, the set of representable instants; that narrowing is authorized
+  here and its consequence is stated in §3;
 - §27 Phase 3 / Phase 4 / Core 1.0 continuity quality gates.
 
 All Phase 1 sole-writer, fail-open, spool, redaction, peer-auth, backup, and user-authority invariants remain unchanged.
@@ -22,6 +26,21 @@ All Phase 1 sole-writer, fail-open, spool, redaction, peer-auth, backup, and use
 The contract is runtime-language neutral. The TypeScript reference and Rust candidate MUST implement the same schemas, transition semantics, fixtures, hashes, and reports.
 
 Core 1.0 may claim smooth automatic continuation only for an exact Agent/native-CLI/capability-hash tuple that passes §8, the completed preflight in §13, and the release gates in §14.
+
+### 0.1 Revision log
+
+The document name and section numbering are stable; amendments are recorded here rather than by
+renaming the file, so existing references stay valid. Every amendment states whether it ratifies
+behaviour the reference implementation had already chosen, or introduces a new rule.
+
+| Date | Change | Issue | Kind |
+|---|---|---|---|
+| 2026-08-17 | §0 authority scope extended to v6.1 §22.6 timestamp encoding, so §3 may narrow it — including the leap-second instants it makes unrepresentable | #33 | New rule |
+| 2026-08-17 | §3 canonical timestamp profile: UTC RFC3339 restricted to `Z` offset and seconds `00`-`59`, with the residual fractional-second ambiguity, the `chrono` offset default, and the leap-second loss all stated | #33 | Ratifies existing behaviour |
+| 2026-08-17 | §3 `confidence` range applies to `Observed<T>` only; other `confidence` fields stay unbounded | #30 | Ratifies existing behaviour |
+| 2026-08-17 | §4.1 `lastIngestSeq` defined as a monotone watermark, explicitly **not** a state ordering key and **not** a claim of contiguous coverage | #38 | New rule (the field previously had no definition) |
+| 2026-08-17 | §4.3 operation-class table location, unmapped-kind defaults, and the sensitivity migration condition | #36 | New rule |
+| 2026-08-17 | §4.3 retention and eviction policy for `pendingOperations` at the §10 `arrayItems` limit, with array position (not `startedAt`) as the within-group order | #39 | Ratifies existing behaviour |
 
 ## 1. Separation of concerns
 
@@ -126,6 +145,54 @@ interface TaskBoundaryAuthorityContextV1 {
 - Stale, competing, cross-session, unsupported-authority, or invalid confirm/reject commands are rejected with no binding change.
 
 ## 3. Shared evidence types
+
+**Canonical timestamp profile.** Every field typed as an ISO timestamp in this addendum is UTC
+RFC3339 as required by v6.1 §22.6, narrowed by removing two sources of alternative spellings:
+
+- the offset MUST be the literal `Z`; numeric zero offsets such as `+00:00` are rejected;
+- the seconds component MUST be `00`-`59`; the RFC3339 leap-second spelling `:60` is rejected;
+- the fractional part is optional and its digit count is not fixed (RFC3339 `time-secfrac`).
+
+The narrowing exists because `updatedAt` and the other timestamp fields are inputs to the canonical
+content hash. Two spellings of the same instant produce two hashes, which splits both the hash and
+the v6.1 §22.8 dedupe decision while every value still validates.
+
+**The offset narrowing is not free, and the common formatter defaults are on both sides of it.**
+`Date.prototype.toISOString()` emits `Z` and needs nothing. Rust `chrono`'s `to_rfc3339()` emits a
+**numeric** offset — its own documentation gives `1996-12-19T16:39:57-08:00`, and a `DateTime<Utc>`
+accordingly renders `+00:00`, which this profile rejects. A `chrono` adapter MUST therefore use
+`to_rfc3339_opts(secform, /* use_z */ true)`, or normalize the offset before the value reaches the
+contract. Any other formatter MUST be checked against this profile rather than assumed compatible.
+
+**The leap-second narrowing removes instants, not just spellings.** RFC3339 `:60` is the only way to
+write a leap second, so rejecting it means an event captured during one has no representation that
+denotes the same instant; the nearest accepted values name the adjacent second. This is authorized
+in §0 rather than being an accident of the pattern. The trade is deliberate: the leap-second
+spelling would otherwise reach the content hash, where two runtimes that disagree about whether to
+fold `:60` into the next second would produce two hashes for what they each believe is one instant.
+Adapters that receive a `:60` value MUST reject it at intake and MUST NOT silently rewrite it,
+because rewriting relabels the instant without recording that it happened.
+
+**This profile does not make the encoding fully canonical.** The fractional part is deliberately
+left variable, because fixing the digit count at three would reject the valid microsecond
+timestamps that some runtimes emit. `2026-08-16T00:00:00Z` and `2026-08-16T00:00:00.000Z` therefore
+remain two spellings of one instant and still split the hash. Closing that requires either fixing
+the precision (rejecting values that are valid today) or normalizing before hashing; both are
+deferred and tracked in #54. Until then, a single adapter MUST be self-consistent in whether it
+emits a fractional part, and implementations MUST NOT rely on hash equality to decide that two
+states describe the same instant.
+
+The profile is expressible as a pattern and is enforced by the frozen schema. **Calendar existence
+is not** — `2026-02-30T00:00:00Z` and `2027-02-29T00:00:00Z` satisfy the pattern. Implementations
+MUST reject non-existent instants at the runtime validation layer, before the value reaches the
+reducer (#27); a JavaScript `Date` silently rolls such a value into the following month rather than
+raising.
+
+**Numeric ranges.** `Observed<T>.confidence` is the only confidence field with a defined range
+(`0..1`). `BoundaryEvidence.confidence` and `SemanticResumeNoteV1.confidence` are deliberately left
+unbounded: no rule in this addendum or in v6.1 branches on their magnitude, and inventing a range
+here would make the frozen schema stricter than the contract it encodes (#30). Implementations MUST
+NOT reject values outside `0..1` for those two fields.
 
 ```ts
 type JsonPrimitive = string | number | boolean | null;
@@ -344,6 +411,46 @@ interface CanonicalWorkStateV1 {
 }
 ```
 
+`lastIngestSeq` is a **monotone watermark**: the highest `ingestSeq` of any event applied to this
+task state. It never moves backwards, so applying a late-arriving event whose `ingestSeq` is lower
+than the current value leaves the field unchanged while still producing a later revision (§4.2).
+`updatedAt` is not monotone — it records the `occurredAt` of the event that produced the revision,
+which is adapter-supplied and may move backwards for the same reason.
+
+**`lastIngestSeq` is not a state ordering key, and neither is anything else in this schema.** Three
+properties block that reading:
+
+- v6.1 §8.3 assigns `ingest_seq` transactionally **per session**, while a task lineage continues
+  across sessions. Values from two sessions are drawn from unrelated sequences, so comparing them
+  is meaningless. A resumed session's first event can carry an `ingestSeq` far below the previous
+  session's last one — the previous session ended at 100, the resumed one starts at 1 — with no
+  relation to which is newer. The monotone rule still holds on the state: that event leaves the
+  watermark at 100 and produces a later revision. The consequence is that the watermark of a
+  lineage that has spanned sessions is a maximum over values drawn from unrelated sequences, and
+  therefore does not identify which session, or which event, it came from.
+- Even inside one session, a late event produces a later revision while leaving the watermark
+  unchanged (above). Equal watermarks therefore do not imply equal states.
+- `stateRevision` is a hash chain over the previous revision, the event, and the content. It
+  establishes **ancestry** — a consumer holding both revisions can prove one descends from the
+  other by replay — but two revisions are not comparable without that replay.
+
+Consumers MUST NOT decide "which state is newer" from `lastIngestSeq`, and MUST NOT use
+`updatedAt` for it either (it is adapter-supplied, non-monotone, and attacker-influenceable through
+`occurredAt`). Ordering across sessions of a lineage needs a lineage-global mechanism that this
+schema does not yet define (#53); it MUST be settled before any consumer implements
+last-writer-wins over task states.
+
+**`lastIngestSeq` also says nothing about contiguous coverage.** It is the maximum applied value,
+not a high-water mark of a gap-free prefix. Applying sequence 10 before sequence 9 leaves the
+watermark at 10 while 9 is still unseen, and the session's sequence carries events for every
+lineage in that session, not only this one. A consumer MUST NOT use it to decide that replay or
+reconciliation can be skipped. Tracking which events are still missing requires a separate
+mechanism that this schema does not define (#53).
+
+The §6.4 event-store watermark is a different quantity — it covers the whole session and lives
+inside the daemon, not in the wire contract — and the two MUST NOT be compared or substituted for
+each other.
+
 ### 4.2 Immutable revisions and duplicate no-op
 
 - Work-state revisions are immutable; one pointer selects the current revision per lineage.
@@ -371,6 +478,67 @@ interface CanonicalWorkStateV1 {
 - Unknown renders as `result unknown; verify current state before retry`.
 - Shell commands default to `verify_first`; migrations/deploys/publishing/destructive/external/credential operations default to `never_auto`.
 - `safe_idempotent` requires an explicit idempotency contract and matching capability evidence.
+
+**Operation-class table (#36).** The defaults above are stated in terms of operation classes
+(shell, migration, destructive, external, credential), but the value an event carries is
+`ContinuityOperationRefV1.operationKind`, an adapter-specific free string (`Bash`, `Edit`, and
+whatever a future adapter emits). The mapping from `operationKind` to operation class is normative
+and **belongs in this addendum**, not in the capability matrix: the matrix records behaviour proven
+by actually running a CLI, whereas this mapping is a static judgement about what a tool name means,
+and no capture can prove it.
+
+The table is not populated yet. Until it is, implementations MUST use the fail-closed defaults for
+every `operationKind`:
+
+| Field | Default while unmapped |
+|---|---|
+| `PendingOperation.kind` | `tool` |
+| `PendingOperation.replayPolicy` | `never_auto` |
+| `PendingOperation.sensitivity` | `private` |
+
+Populating the table is a prerequisite for §9.2 remote routing and MUST NOT be deferred past it.
+It also carries a migration condition: `CanonicalWorkStateV1.sensitivity` is the maximum over its
+components and is therefore monotone non-decreasing across revisions, so a lineage that has ever
+held a pending operation is pinned at `private` or above. Introducing a real classifier MUST come
+with a path that re-derives (or migrates) the aggregate, otherwise every lineage that ever used a
+tool stays permanently outside the remote-send gate.
+
+**Retention and eviction (#39).** `pendingOperations` is bounded by the §10 `arrayItems` limit.
+When a new start arrives at a full array, implementations MUST evict rather than reject the start,
+and MUST evict in this group order:
+
+1. entries whose `correlation.taskLineageId` differs from the state's `taskLineageId`;
+2. `succeeded`;
+3. `failed`;
+4. `unknown`;
+5. `started`.
+
+Within a group, the authoritative order is the **position of the entry in `pendingOperations`**:
+the earliest surviving array index is evicted first, and the array index is the sole tie-breaker.
+Implementations MUST NOT sort by `startedAt`. `startedAt` is copied from the adapter-supplied
+`occurredAt`, so it is neither monotone with arrival nor outside an event submitter's influence; a
+late event carries an early `startedAt` while occupying a late array slot. Two conforming runtimes
+that disagree here evict different entries and therefore produce different states, `stateRevision`
+chains, and content hashes from the same event sequence.
+
+Out-of-lineage entries go first because they are outside the §4.3 correlation scope and the
+abandonment scope, so nothing can ever reach them again; keeping them while discarding in-lineage
+settled evidence lets a caller push out real evidence by injecting foreign entries. Rejecting the
+start instead of evicting is **not** permitted: no other path removes an `unknown` entry, so a
+lineage whose slots fill with open operations would refuse every subsequent start with no recovery
+path, and a quarantined start has no corrected version for the adapter to send. Every eviction MUST
+be reported as a diagnostic; silent truncation is not permitted. If no entry can be evicted, the
+state is not produced and the event is quarantined.
+
+Where the evicted evidence is persisted, and whether `unknown` entries expire, depend on whether
+the frozen state schema gains a place to record them; both are tracked in #43 and #44.
+
+This policy decides **what** is evicted, not **who** may cause an eviction. Anyone able to submit
+events can fill the array with cheap starts and drive eviction at will (#45). Bounding that is the
+intake layer's job — the correlation reducer is a pure function of the state and one event, and has
+no notion of who sent it — and it is not closed by this section. In particular, until intake binds
+`sessionId` to the authenticated peer (#42), an event may claim a foreign session inside the same
+Agent and lineage, which reaches this eviction path.
 
 ## 5. Immutable checkpoints and disposition history
 

@@ -247,8 +247,12 @@ pending があれば再配送として扱う。`nativeOperationId` を出さな�
 adapter が再送を続けることになる。
 
 **打ち切りは呼び出し側の責務**とする。`quarantined` + `terminal_orphaned` を受けた delivery 層は、
-同じ冪等キーの再送を「その session の `lastIngestSeq` が孤児 terminal の `ingestSeq` を十分に
-追い越すまで」に限り、それを過ぎたら unmatched evidence として doctor に出して捨てる。還元器側に
+同じ冪等キーの再送を「その session の取り込み連番が孤児 terminal の `ingestSeq` を十分に
+追い越すまで」に限り、それを過ぎたら unmatched evidence として doctor に出して捨てる。ここで見る
+のは delivery 層が持つ session 側の連番であって、状態の `lastIngestSeq` ではない。状態の watermark
+は**この lineage に適用した event の最大値**なので、同じ session の別 lineage の event ぶんだけ
+session の連番より遅れる。しかも watermark は連続被覆を主張しない（addendum §4.1）ので、これを
+「start はもう来ない」の根拠にはできない。還元器側に
 期限を持たせないのは、時刻も試行回数も状態に入れられない（決定的でなくなる・frozen schema に
 置き場が無い）ため。退避された operation を状態に残す場所ができれば（#39）この分岐の後者は消える。
 
@@ -379,8 +383,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**145 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 145 件（黙って飛ばされた変異ゼロ）、復元後は 168/168 green。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**146 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 146 件（黙って飛ばされた変異ゼロ）、復元後は 169/169 green。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
 したら、次で突き合わせてから doc を直す。CI は `mutate.sh` を走らせるが doc は見ないので、
@@ -537,6 +541,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 別 lineage の pending も再配送の相手にする | 1 |
 | 放棄が別 lineage の operation も倒す | 1 |
 | 退避で lineage 外を優先しない | 1 |
+| 群の中を配列位置でなく startedAt で退避する | 1 |
 | 再配送が持つ native id を記録に埋めない | 1 |
 | 候補を start の順序で絞らない | 1 |
 | 全件順序不適合でも空に絞る | 1 |

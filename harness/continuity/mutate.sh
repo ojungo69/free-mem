@@ -304,6 +304,7 @@ mutate "        pending.correlation.sessionId === event.sessionId &&
 # 集合ごとに別の選び方をする変異が書けなくなった。互換優先の軸は下の「互換な候補を選ばない」が
 # 両集合まとめて覆い、集合をまたげるかの軸は「再配送の相手を集合ごとに選ぶ」が別に見る
 mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId," "    () => false," && run "退避で lineage 外を優先しない"
+mutate "    for (const candidate of pending) {" "    for (const candidate of [...pending].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) {" && run "群の中を配列位置でなく startedAt で退避する"
 mutate "        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? operation.nativeOperationId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
 mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
 mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
