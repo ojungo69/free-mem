@@ -935,6 +935,63 @@
         },
         "sensitivity": {
           "$ref": "#/$defs/Sensitivity"
+        },
+        "startIngestSeq": {
+          "type": "string",
+          "maxLength": 8192,
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "$comment": "#35: §4.3 の権威順序検査（terminal の ingestSeq が start のそれより後か）を状態だけで判定するための材料。索引を還元器の外に置くと鍵が operationId になり、凍結 schema が一意性を課さない以上どちらの兄弟の材料か判別できず、復元と退避で黙って空になる。要素に載せれば operation と同じ寿命になり鍵の衝突も起きない。制約は lastIngestSeq と同一。任意欄なのは復元した checkpoint や別実装の状態には無いことがあるため——無ければ順序を確認できないので terminal_order_unverifiable に倒す。"
+        },
+        "startTurnIdSource": {
+          "$ref": "#/$defs/TurnIdSource",
+          "$comment": "#35: rule 2 の turn 両立が「記録された start の turn 種別」を見るための材料。語彙は複製せず TurnIdSource を $ref する（複製すると片方だけ増えた語が黙って通る）。"
+        },
+        "terminalFingerprint": {
+          "type": "string",
+          "maxLength": 8192,
+          "$comment": "#44: §4.3「terminal は … payload/source hash が衝突しないこと」を配送 ID をまたいで比べるための材料。閉じた operation に、それを閉じた terminal の canonicalFingerprint を残す。started の operation には存在しないので任意欄。"
+        }
+      }
+    },
+    "DroppedEvidenceEntryV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "#43 / #39: 状態から落とした証跡の記録。理由が 2 つ（上限退避と孤児 terminal）あり欄の有無も違うが、oneOf で分岐させない——凍結後に理由が増えるたび分岐が増え、既存の移植が新しい分岐を知らないまま additionalProperties: false に当たって落ちる。共通の必須欄だけを required にし、理由ごとの欄は任意にする。",
+      "required": [
+        "reason",
+        "recordedAt",
+        "sensitivity"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "evicted",
+            "orphaned_terminal"
+          ]
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/IsoTimestamp"
+        },
+        "sensitivity": {
+          "$ref": "#/$defs/Sensitivity"
+        },
+        "eventId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "operationId": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "started",
+            "succeeded",
+            "failed",
+            "unknown"
+          ]
         }
       }
     },
@@ -1190,6 +1247,14 @@
           "items": {
             "$ref": "#/$defs/PendingOperation"
           }
+        },
+        "droppedEvidence": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/DroppedEvidenceEntryV1"
+          },
+          "$comment": "#43 / #39: 上限で退避した operation と、相手の見つからなかった terminal の記録。状態に残さないと「静かに消えた」と「そもそも来なかった」が区別できず、復元した側は落ちた証跡の存在に気付けない。上限は pendingOperations と同じ 256 で、この配列自体が溢れたら古い行から落とす（落ちたことをさらに記録すると際限が無くなるので記録しない）。任意欄なのは、何も落ちていない状態で空配列を書かせないため。"
         },
         "repositoryState": {
           "$ref": "#/$defs/RepositoryStateSnapshot"

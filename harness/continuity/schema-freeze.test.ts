@@ -65,6 +65,8 @@ const INLINE_ENUMS = {
     "other",
   ],
   "PendingOperation.properties.status": ["started", "succeeded", "failed", "unknown"],
+  "DroppedEvidenceEntryV1.properties.reason": ["evicted", "orphaned_terminal"],
+  "DroppedEvidenceEntryV1.properties.status": ["started", "succeeded", "failed", "unknown"],
   "ContinuationCheckpointV2.properties.kind": [
     "pre_compact",
     "session_end",
@@ -214,6 +216,15 @@ type _InlineEnumsMatchContract = [
   Assert<SameSet<contract.ObservedTest["status"], EnumAt<"ObservedTest.properties.status">>>,
   Assert<SameSet<contract.PendingOperation["kind"], EnumAt<"PendingOperation.properties.kind">>>,
   Assert<SameSet<contract.PendingOperation["status"], EnumAt<"PendingOperation.properties.status">>>,
+  Assert<
+    SameSet<contract.DroppedEvidenceEntryV1["reason"], EnumAt<"DroppedEvidenceEntryV1.properties.reason">>
+  >,
+  Assert<
+    SameSet<
+      NonNullable<contract.DroppedEvidenceEntryV1["status"]>,
+      EnumAt<"DroppedEvidenceEntryV1.properties.status">
+    >
+  >,
   Assert<
     SameSet<
       contract.ContinuationCheckpointV2["kind"],
@@ -382,6 +393,7 @@ const FROZEN_DEFS = [
   "DerivedArtifactSourceRefV1",
   "DerivedArtifactStatus",
   "DispositionAuthorityContextV1",
+  "DroppedEvidenceEntryV1",
   "EngagementEvaluationContextV1",
   "EngagementEvidence",
   "EngagementEvidenceKind",
@@ -566,7 +578,7 @@ test("名前を取れない export の形は落とす（AST を持たない代�
 
 test("continuity.schema.json は schema 側の誤記を持たない", () => {
   // validateContractValue は root を 1 度歩いて schema 側の誤記を throw する（値は通らなくてよい）。
-  // $ref から辿れない $defs も対象なので、凍結した 66 定義すべてが検査される
+  // $ref から辿れない $defs も対象なので、凍結した 67 定義すべてが検査される
   assert.doesNotThrow(() =>
     validateContractValue(Object.keys(defs)[0], undefined, root, contract.CONTINUITY_LIMITS),
   );
@@ -818,6 +830,87 @@ test("decimal string の pattern は sequence/watermark 全部に付いている
     "ContradictionScanRangeV1.properties.toIngestSeq",
     "NormalizedContinuityEvent.properties.ingestSeq",
     "Observed.properties.ingestSeq",
+    "PendingOperation.properties.startIngestSeq",
     "SemanticResumeNoteV1.properties.generatedFromIngestSeq",
   ]);
+});
+
+test("PendingOperation に足した 3 欄は任意のまま（#35 / #44）", () => {
+  // 凍結後に足す欄を `required` に入れると、**この版より前に書かれた checkpoint** が
+  // 復元時に丸ごと落ちる。欄そのものの有無ではなく「required に入っていないこと」を固定する
+  const base: contract.PendingOperation = {
+    operationId: "op1",
+    correlation: {
+      operationId: "op1",
+      startEventId: "e1",
+      operationMatchKey: "mk1",
+      sessionId: "s1",
+      taskLineageId: "l1",
+    },
+    kind: "command",
+    description: "d",
+    status: "started",
+    replayPolicy: "never_auto",
+    sourceEventIds: ["e1"],
+    startedAt: "2026-08-16T00:00:00Z",
+    sensitivity: "normal",
+  };
+  const schema = { $ref: "#/$defs/PendingOperation" };
+  const issues = (value: unknown) => validateAgainstSchema(value, schema, root);
+
+  assert.deepEqual(issues(base), []);
+  assert.deepEqual(
+    issues({
+      ...base,
+      startIngestSeq: "7",
+      startTurnIdSource: "native",
+      terminalFingerprint: "f1",
+    }),
+    [],
+  );
+
+  // 形は効いている（任意 = 何でも入る、ではない）
+  for (const [field, bad] of [
+    ["startIngestSeq", "007"],
+    ["startIngestSeq", "not-a-decimal"],
+    ["startTurnIdSource", "guessed"],
+    ["terminalFingerprint", 1],
+  ] as const) {
+    const found = issues({ ...base, [field]: bad });
+    assert.ok(found.length > 0, `${field}=${JSON.stringify(bad)} が素通りした`);
+  }
+});
+
+test("droppedEvidence は共通欄だけを必須にする（#43 / #39）", () => {
+  const entry: contract.DroppedEvidenceEntryV1 = {
+    reason: "evicted",
+    recordedAt: "2026-08-16T00:00:00Z",
+    sensitivity: "normal",
+  };
+  const schema = { $ref: "#/$defs/DroppedEvidenceEntryV1" };
+  const issues = (value: unknown) => validateAgainstSchema(value, schema, root);
+
+  // 理由ごとの欄は任意。退避は operation を、孤児 terminal は event を名指しできるが、
+  // どちらの形も同じ 1 定義で通る（oneOf で分岐させると理由が増えるたび移植が割れる）
+  assert.deepEqual(issues(entry), []);
+  assert.deepEqual(issues({ ...entry, operationId: "op1", status: "started" }), []);
+  assert.deepEqual(issues({ ...entry, reason: "orphaned_terminal", eventId: "e1" }), []);
+
+  for (const missing of ["reason", "recordedAt", "sensitivity"]) {
+    const partial: Record<string, unknown> = { ...entry };
+    delete partial[missing];
+    const found = issues(partial);
+    assert.ok(
+      found.some((i) => `${i.path} ${i.message}`.includes(missing)),
+      `${missing} の欠落が見逃された: ${JSON.stringify(found)}`,
+    );
+  }
+  // 語彙の外と、知らない欄は落とす
+  assert.ok(issues({ ...entry, reason: "trimmed" }).length > 0);
+  assert.ok(issues({ ...entry, droppedBecause: "x" }).length > 0);
+
+  // 上限を落とすと、退避の記録そのものが状態を無限に膨らませる（落とした証跡が本体より重くなる）
+  const state = defs.CanonicalWorkStateV1?.properties as Record<string, { maxItems?: number }>;
+  assert.equal(state.droppedEvidence?.maxItems, contract.CONTINUITY_LIMITS.arrayItems);
+  assert.equal(state.droppedEvidence?.maxItems, state.pendingOperations?.maxItems);
 });

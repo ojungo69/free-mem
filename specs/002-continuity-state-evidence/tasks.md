@@ -59,14 +59,16 @@ cp /tmp/contract-hashes.json harness/contract-hashes.json     # 更新すると�
 
 **⚠️ CRITICAL**: T004〜T009 が終わるまで、どの user story も着手できない
 
-- [ ] T004 `harness/schema/continuity.schema.json` の `PendingOperation` に任意欄 3 つを足す — `startIngestSeq`（`pattern: ^(0|[1-9][0-9]*)$` / `maxLength: 8192`、`lastIngestSeq` と同一制約）、`startTurnIdSource`（`$ref: "#/$defs/TurnIdSource"`）、`terminalFingerprint`（`type: string` / `maxLength: 8192`）。3 欄とも `required` に入れない。`additionalProperties: false` を維持する（data-model.md §1）
-- [ ] T005 `harness/schema/continuity.schema.json` に `$defs.DroppedEvidenceEntryV1` を足す — `reason`（`enum: ["evicted", "orphaned_terminal"]`・必須）/ `recordedAt`（`$ref: IsoTimestamp`・必須）/ `sensitivity`（`$ref: Sensitivity`・必須）/ `eventId`・`operationId`（`type: string` / `maxLength: 8192`・任意）/ `status`（`enum: ["started","succeeded","failed","unknown"]`・任意）。`additionalProperties: false`。**`oneOf` で分岐させない**（data-model.md §3 の理由）
-- [ ] T006 `harness/schema/continuity.schema.json` の `CanonicalWorkStateV1` に `droppedEvidence`（`type: array` / `items: {$ref: DroppedEvidenceEntryV1}` / `maxItems: 256`・任意）を足す（data-model.md §2）
-- [ ] T007 `harness/schema/continuity.ts` に T004〜T006 と同じ形を TypeScript で足す — `PendingOperation` の 3 欄は `?:`、`CanonicalWorkStateV1.droppedEvidence?: readonly DroppedEvidenceEntryV1[]`、`DroppedEvidenceEntryV1` 型を新設。**JSON 側と欄名・任意性・語彙が 1 文字でも違わないこと**
-- [ ] T008 `harness/continuity/schema-freeze.test.ts` に新しい欄と `$def` の凍結を足す — 存在すること、`required` に**入っていない**こと、`additionalProperties: false` であること、`maxItems` が 256 であること、`startTurnIdSource` が `TurnIdSource` を `$ref` していること（語彙の複製が入ったら落ちる）
-- [ ] T009 契約 hash を再生成して差分を確認する（`node harness/contract-hashes.mjs > /tmp/contract-hashes.json` → `diff harness/contract-hashes.json /tmp/contract-hashes.json` → 一致させる）。**schema の hash だけが動き、fixture の hash は動かないこと**。fixture の hash まで動いたら T004〜T007 で意図しない場所を触っている
+- [X] T004 `harness/schema/continuity.schema.json` の `PendingOperation` に任意欄 3 つを足す — `startIngestSeq`（`pattern: ^(0|[1-9][0-9]*)$` / `maxLength: 8192`、`lastIngestSeq` と同一制約）、`startTurnIdSource`（`$ref: "#/$defs/TurnIdSource"`）、`terminalFingerprint`（`type: string` / `maxLength: 8192`）。3 欄とも `required` に入れない。`additionalProperties: false` を維持する（data-model.md §1）
+- [X] T005 `harness/schema/continuity.schema.json` に `$defs.DroppedEvidenceEntryV1` を足す — `reason`（`enum: ["evicted", "orphaned_terminal"]`・必須）/ `recordedAt`（`$ref: IsoTimestamp`・必須）/ `sensitivity`（`$ref: Sensitivity`・必須）/ `eventId`・`operationId`（`type: string` / `maxLength: 8192`・任意）/ `status`（`enum: ["started","succeeded","failed","unknown"]`・任意）。`additionalProperties: false`。**`oneOf` で分岐させない**（data-model.md §3 の理由）
+- [X] T006 `harness/schema/continuity.schema.json` の `CanonicalWorkStateV1` に `droppedEvidence`（`type: array` / `items: {$ref: DroppedEvidenceEntryV1}` / `maxItems: 256`・任意）を足す（data-model.md §2）
+- [X] T007 `harness/schema/continuity.ts` に T004〜T006 と同じ形を TypeScript で足す — `PendingOperation` の 3 欄は `?:`、`CanonicalWorkStateV1.droppedEvidence?: readonly DroppedEvidenceEntryV1[]`、`DroppedEvidenceEntryV1` 型を新設。**JSON 側と欄名・任意性・語彙が 1 文字でも違わないこと**。**逸脱**: `readonly` を付けず `droppedEvidence?: DroppedEvidenceEntryV1[]` にした。この file の配列欄は `pendingOperations: PendingOperation[]` を含め 1 つも `readonly` を使っておらず、ここだけ付けると新しい欄が別の規約で書かれたように読める
+- [X] T008 `harness/continuity/schema-freeze.test.ts` に新しい欄と `$def` の凍結を足す — 存在すること、`required` に**入っていない**こと、`additionalProperties: false` であること、`maxItems` が 256 であること、`startTurnIdSource` が `TurnIdSource` を `$ref` していること（語彙の複製が入ったら落ちる）。既存ゲートが担う分は足していない: `additionalProperties: false` は「object はすべて closed」が、`$ref` の複製は「property の中に直接書かれた enum も凍結する」が拾う（inline enum に置き換えると凍結表と食い違って落ちる）
+- [X] T009 契約 hash を再生成して差分を確認する（`node harness/contract-hashes.mjs > /tmp/contract-hashes.json` → `diff harness/contract-hashes.json /tmp/contract-hashes.json` → 一致させる）。**schema の hash だけが動き、fixture の hash は動かないこと**。fixture の hash まで動いたら T004〜T007 で意図しない場所を触っている
 
 **Checkpoint**: 契約が固定された。`tsc` とテストが緑。この時点で実装はまだ 0 行
+
+**実測（Phase 2 完了時）**: tsc clean / 288 tests（+2、いずれも schema-freeze）/ 変異 実行 164・期待 164・生存 0（還元器は未変更なので baseline と同数）/ `contract-hashes.json` は `schema/continuity.schema.json` の 1 行だけが動いた。schema への差分は挿入のみ（65 insertions / 0 deletions）— 凍結 schema は**生バイトが TS/Rust parity の signal** なので、JSON の round-trip で整形し直すと無関係な行まで hash が動く
 
 ---
 

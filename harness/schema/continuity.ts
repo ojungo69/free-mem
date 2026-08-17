@@ -317,6 +317,20 @@ export interface PendingOperation {
   idempotencyKey?: string;
   verificationHint?: string;
   sensitivity: Sensitivity;
+  // §4.3 の権威順序・turn 両立を状態だけで判定するための start 側の材料（#35）
+  startIngestSeq?: string;
+  startTurnIdSource?: TurnIdSource;
+  // §4.3 の衝突検査に使う、この operation を閉じた terminal の指紋（#44）
+  terminalFingerprint?: string;
+}
+
+export interface DroppedEvidenceEntryV1 {
+  reason: "evicted" | "orphaned_terminal";
+  recordedAt: string;
+  sensitivity: Sensitivity;
+  eventId?: string;
+  operationId?: string;
+  status?: "started" | "succeeded" | "failed" | "unknown";
 }
 
 export interface RepositoryStateSnapshot {
@@ -363,6 +377,8 @@ export interface CanonicalWorkStateV1 {
   recentCommands: ObservedCommand[];
   recentTests: ObservedTest[];
   pendingOperations: PendingOperation[];
+  // 退避した operation と相手の見つからなかった terminal の記録（#43 / #39）
+  droppedEvidence?: DroppedEvidenceEntryV1[];
   repositoryState: RepositoryStateSnapshot;
   semanticResumeNote?: SemanticResumeNoteV1;
   sensitivity: Sensitivity;
