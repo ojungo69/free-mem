@@ -189,10 +189,7 @@ export function stampIntakeEvidence(
   // 認証の欠落ではなく timestamp を名指しする**（実測）。空白は下の `authenticatedVersion` が
   // 「名乗っていない」として降格で扱う。任意欄の空白を不在として読むのは `declared()` と同じ原則で、
   // 必須欄（`occurredAt`）を空白で通さないのと対になる
-  const receiptAttestedAt = declared(attestation?.attestedAt);
-  if (receiptAttestedAt !== undefined && !isRealInstant(receiptAttestedAt)) {
-    throw new Error(`§22.6 違反: 受領証の attestedAt が暦として実在しない: ${receiptAttestedAt}`);
-  }
+  assertRealInstant("受領証の attestedAt", declared(attestation?.attestedAt));
   // §3.1 は evidenceKind も turn identity も「認証済み peer identity」から導けと言う。
   // 受領証があり、かつ caller の名乗る Agent と version が受領証の指すそれと一致することが
   // その認証にあたる。evidence の証明も turn の証明もこの束縛の上に乗る
@@ -337,6 +334,21 @@ function isBlank(value: string): boolean {
  * required 欄には使わない。そちらは空白を**拒否**する（`assertIdentityMaterial` / `assertSameScope`）。
  * 「主張していない」で通すと scope が定まらないまま照合が進むので、扱いが逆になる。
  */
+/**
+ * §22.6 の暦検査を**1 箇所に置く**。読む層（`assertIdentityMaterial`）と書く層
+ * （`stampIntakeEvidence`）の両方が同じ規則を強制するので、それぞれで述語と文面を手書きすると、
+ * 2 つの言い回しが 1 つの規則を主張する状態になる（Rust 側はどちらに合わせても片方と食い違い、
+ * 3 つ目の `IsoTimestamp` 欄が増えたときの着地点も無い）。
+ *
+ * `undefined` は素通し。呼び出し側が「不在」と「空白」の区別を先に決めてから渡す
+ * （required な `occurredAt` は生値、任意の `attestedAt` は `declared()` 経由）。
+ */
+function assertRealInstant(field: string, value: string | undefined): void {
+  if (value !== undefined && !isRealInstant(value)) {
+    throw new Error(`§22.6 違反: ${field} が暦として実在しない: ${value}`);
+  }
+}
+
 function declared(value: string | undefined): string | undefined {
   return value === undefined || isBlank(value) ? undefined : value;
 }
@@ -454,17 +466,11 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   // （`isRealInstant` が pattern を先に当てる）。受領証の `attestedAt` は「認証できない経路を
   // 欄が空の受領証で表す」idiom があるので、空白は**時刻を名乗っていない**であって暦違反ではない
   // （intake 側と同じ判断。空白の受領証は `authenticatedVersion` が降格で扱う）
-  for (const [field, value] of [
-    ["occurredAt", event.occurredAt],
-    [
-      "provenance.ingestAttestation.attestedAt",
-      declared(event.provenance.ingestAttestation?.attestedAt),
-    ],
-  ] as const) {
-    if (value !== undefined && !isRealInstant(value)) {
-      throw new Error(`§22.6 違反: ${field} が暦として実在しない: ${value}`);
-    }
-  }
+  assertRealInstant("occurredAt", event.occurredAt);
+  assertRealInstant(
+    "provenance.ingestAttestation.attestedAt",
+    declared(event.provenance.ingestAttestation?.attestedAt),
+  );
 }
 
 /**
@@ -1031,13 +1037,18 @@ export function reduceTaskWorkState(
       // `unknown` で閉じられないまま配送鍵だけ消費される。埋めない側の代償は「その pending が
       // native ID を持たないまま」だが、その native ID を名乗る terminal は既に名乗っている側で
       // 一意に閉じられるので、照合が成立しない形（上のコメントの `terminal_orphaned`）にはならない
+      // 走査するのは `siblings` ではなく **`nativeMatches`**（lineage と session で絞り済み）。
+      // `siblings` は `idMatches` を含み、そちらは session で絞っていないので、**別 session の
+      // 名乗り手が埋め戻しを止める**。rule 1 の候補は session で絞られるのでその名乗り手は候補に
+      // 入らず、埋めなかった側も native ID を持たないから候補ゼロ = `terminal_orphaned` の隔離に
+      // なる。隔離は鍵を消費せず還元器は純関数なので、**同じ terminal が永久に隔離され続ける**
+      // （実測: 状態 lineage-1 に session-1 の空白 pending と session-OTHER の `toolu_1` 名乗り手を
+      // 並べ、`toolu_1` の start を再配送してから session-1 の terminal を送ると毎回 quarantined）。
+      // 抑止の集合と rule 1 の候補集合は同じ絞り方でなければならない
+      // `incomingNativeId` を使い回す。同じ概念を 2 つの式で読むと、declared の定義を変えたときに
+      // 片方だけ直る（帰属優先と埋め戻し抑止は 3 ラウンドかけて分離した 2 つの機構）
       const nativeIdTaken =
-        declared(operation.nativeOperationId) !== undefined &&
-        siblings.some(
-          (pending) =>
-            pending !== existing &&
-            declared(pending.correlation.nativeOperationId) === declared(operation.nativeOperationId),
-        );
+        incomingNativeId !== undefined && nativeMatches.some((pending) => pending !== existing);
       const fillableNativeId = nativeIdTaken ? undefined : operation.nativeOperationId;
       const recovered = withoutUndefined<OperationCorrelationV1>({
         ...existing.correlation,
@@ -1069,7 +1080,8 @@ export function reduceTaskWorkState(
       // 呼んでいるもので、黙って間引かない規則どおり診断に出す
       // 判定は上の `compatible` で全兄弟について済んでいるので、**集合差**で取る。述語を
       // 呼び直すと `startFactsFor`（線形走査）が兄弟の数だけ増え、互換な兄弟 256 件の再配送で
-      // 走査が 2 回から 512 回になる（実測）。`pending !== existing` は落とす: ここへ来た時点で
+      // 走査が 256 回から 512 回になる（実測。`compatible` の絞り込み自体が 256 回使うので、
+      // ここで消えるのは上乗せぶんの 256 回。ゼロにはならない）。`pending !== existing` は落とす: ここへ来た時点で
       // `compatible` は非空（空なら上の隔離で return 済み）なので `existing` は必ず `compatible`
       // の要素で、集合差には最初から入らない
       const compatibleSet = new Set(compatible);
@@ -1334,9 +1346,13 @@ function withSourceEvent(pending: PendingOperation, eventId: string): PendingOpe
  * 記録済みの再配送に truncation を報告していた
  */
 function sourceEventLost(pending: PendingOperation, eventId: string): boolean {
+  // **O(1) の長さ検査を先に置く**。`withSourceEvent` は自分で `includes` を見てからここを呼ぶので、
+  // `includes` を先に評価すると同じ配列（最大 256 件）を 2 周する。`finalizeAbandonedState` は
+  // これを最大 256 件の pending に対して map で回すので、1 通の `session_ended` で走査が倍になる。
+  // 条件の意味は変わらない（両方が真のときだけ真）
   return (
-    !pending.sourceEventIds.includes(eventId) &&
-    pending.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems
+    pending.sourceEventIds.length >= CONTINUITY_LIMITS.arrayItems &&
+    !pending.sourceEventIds.includes(eventId)
   );
 }
 

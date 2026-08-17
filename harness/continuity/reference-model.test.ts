@@ -441,10 +441,9 @@ test("受領証の attestedAt は書く層（intake）で暦検査を受ける",
   };
   assert.throws(
     () => stampIntakeEvidence(startEvent(), broken),
-    /§22.6 違反: 受領証の attestedAt が暦として実在しない/,
+    /§22\.6 違反: 受領証の attestedAt が暦として実在しない/,
   );
-  // 実在する日付は通す（締めすぎていないことも見る）
-  assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
+  // 正当な受領証が通ることは直上の test（native の条件を満たす event は native のまま）が見る。
   // **空白は暦違反ではない**。この関数自身が「認証できない経路を欄が空の受領証で表す daemon」を
   // 前提にしているので、空白を落とすとその daemon の event が 100% 消え、しかもエラーは認証の
   // 欠落ではなく timestamp を名指しする（実測でそうなっていた）。降格で扱う
@@ -4094,6 +4093,44 @@ test("名乗っている兄弟が互換でも、空白の native ID を埋めな
     ["terminal_order_unverifiable"],
     "rule 1 の候補が 1 件に定まっていない",
   );
+});
+
+test("別 session の名乗り手は埋め戻しを止めない（rule 1 の候補集合と同じ絞り方）", () => {
+  // 抑止の走査集合が session で絞られていないと、rule 1 の候補に入らない名乗り手が埋め戻しを
+  // 止める。埋めなかった側も native ID を持たないので、その session の terminal は候補ゼロ =
+  // `terminal_orphaned` で隔離される。隔離は鍵を消費せず還元器は純関数なので永久に収束しない
+  const base = startedSnapshot();
+  const derived = base.state.pendingOperations[0] as PendingOperation;
+  const mine: PendingOperation = {
+    ...derived,
+    correlation: { ...derived.correlation, nativeOperationId: "" },
+  };
+  // **`operationId` は derived と同じにする**。`idMatches` は session で絞っていないので、
+  // 別 session の pending が兄弟に入るのはこの経路（derived id 一致）だけ。別の id にすると
+  // そもそも兄弟にならず、走査集合の広さを測れない
+  const otherSession: PendingOperation = {
+    ...derived,
+    correlation: {
+      ...derived.correlation,
+      sessionId: "session-OTHER",
+      nativeOperationId: START_OPERATION.nativeOperationId,
+    },
+  };
+  const result = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [mine, otherSession] } },
+    startEvent(),
+    new Map(),
+  );
+  assert.equal(result.outcome, "applied");
+  assert.equal(
+    result.snapshot.state.pendingOperations[0]?.correlation.nativeOperationId,
+    START_OPERATION.nativeOperationId,
+    "別 session の名乗り手が埋め戻しを止めた",
+  );
+  // 埋まっていれば自 session の terminal は閉じられる。止まっていると候補ゼロで隔離され、
+  // 同じ terminal が何度来ても同じ隔離になる
+  const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied", "自 session の terminal が隔離された");
 });
 
 test("名乗っている兄弟が非互換なら、空白の native ID を埋めない（2 件目を作らない）", () => {

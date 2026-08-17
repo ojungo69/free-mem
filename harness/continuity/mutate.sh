@@ -313,6 +313,7 @@ mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId
 mutate "    for (const candidate of pending) {" "    for (const candidate of [...pending].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) {" && run "群の中を配列位置でなく startedAt で退避する"
 mutate "        nativeOperationId: declared(existing.correlation.nativeOperationId) ?? fillableNativeId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
 mutate "      const fillableNativeId = nativeIdTaken ? undefined : operation.nativeOperationId;" "      const fillableNativeId = operation.nativeOperationId;" && run "名乗っている兄弟が非互換でも空白へ埋める"
+mutate "        incomingNativeId !== undefined && nativeMatches.some((pending) => pending !== existing);" "        incomingNativeId !== undefined && siblings.some((pending) => pending !== existing);" && run "抑止の走査集合を session で絞らない"
 mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
 mutate "    return orderable.length === 0 ? list : orderable;" "    return orderable;" && run "全件順序不適合でも空に絞る"
 mutate "  if (!(TURN_ID_SOURCES as readonly string[]).includes(event.turnIdSource)) {" "  if (false) {" && run "turnIdSource の語彙検査を外す"
@@ -320,7 +321,9 @@ mutate "      pending.correlation.taskLineageId === snapshot.state.taskLineageId
 mutate "            (declared(pending.correlation.toolName) === undefined ||
               pending.correlation.toolName === operation.operationKind)," "            pending.correlation.toolName === operation.operationKind," && run "候補の toolName を素で比べる"
 mutate "      correlation.diagnostic !== \"terminal_already_applied\"" "      true" && run "適用済みの再配送も隔離する"
-mutate "    !pending.sourceEventIds.includes(eventId) &&" "    true &&" && run "記録済みの event でも truncation を出す"
+mutate "    !pending.sourceEventIds.includes(eventId)
+  );" "    true
+  );" && run "記録済みの event でも truncation を出す"
 mutate "            ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)" "            ? { ...pending, correlation: recovered }" && run "再配送 start の原因 event を残さない"
 mutate "  const unverifiable = plausible.length > 1 ? plausible.find(identityUnverifiable) : undefined;" "  const unverifiable = compatible.length > 1 ? compatible.find(identityUnverifiable) : undefined;" && run "照合不能ゲートの母数を compatible に戻す"
 mutate "            code: \"delivery_conflict\",
@@ -353,17 +356,19 @@ mutate "      (incomingNativeId === undefined
 mutate "    const siblings = [...new Set([...idMatches, ...nativeMatches])];" "    const siblings = [...new Set([...nativeMatches, ...idMatches])];" && run "兄弟の連結順を入れ替える"
 mutate "    new Set([correlation.matched])," "    new Set(previous.state.pendingOperations)," && run "truncation の対象を照合相手の外へ広げる"
 mutate "      const truncated = sourceEventLost(existing, event.eventId) ? [existing.operationId] : [];" "      const truncated = previous.state.pendingOperations.map((p) => p.operationId);" && run "再配送 start の truncation 対象を全 pending にする"
-mutate "    if (value !== undefined && !isRealInstant(value)) {" "    if (false) {" && run "IsoTimestamp の暦検査を外す"
-mutate "    [
-      \"provenance.ingestAttestation.attestedAt\",
-      declared(event.provenance.ingestAttestation?.attestedAt),
-    ]," "    [\"occurredAt\", event.occurredAt]," && run "受領証の時刻を暦検査から外す"
+mutate "  if (value !== undefined && !isRealInstant(value)) {" "  if (false) {" && run "IsoTimestamp の暦検査を外す"
+mutate "  assertRealInstant(
+    \"provenance.ingestAttestation.attestedAt\",
+    declared(event.provenance.ingestAttestation?.attestedAt),
+  );" "" && run "受領証の時刻を暦検査から外す"
 mutate "  if (provenance === undefined || provenance === null) {" "  if (false) {" && run "provenance 不在を節で落とさない"
 mutate "  if (declaredProvenance === undefined || declaredProvenance === null) {" "  if (false) {" && run "書く層で provenance 不在を落とさない"
-mutate "  if (receiptAttestedAt !== undefined && !isRealInstant(receiptAttestedAt)) {" "  if (false) {" && run "書く層で受領証の時刻を検査しない"
-mutate "  const receiptAttestedAt = declared(attestation?.attestedAt);" "  const receiptAttestedAt = attestation?.attestedAt;" && run "空白の受領証時刻を暦違反として落とす"
+mutate "  assertRealInstant(\"受領証の attestedAt\", declared(attestation?.attestedAt));" "" && run "書く層で受領証の時刻を検査しない"
+mutate "  assertRealInstant(\"受領証の attestedAt\", declared(attestation?.attestedAt));" "  assertRealInstant(\"受領証の attestedAt\", attestation?.attestedAt);" && run "空白の受領証時刻を暦違反として落とす"
 mutate "    !isBlank(attestation.attestedAt) &&" "    true &&" && run "時刻を名乗らない受領証を authority にする"
-mutate "      declared(event.provenance.ingestAttestation?.attestedAt)," "      event.provenance.ingestAttestation?.attestedAt," && run "読む層で空白の受領証時刻を暦違反にする"
+mutate "    declared(event.provenance.ingestAttestation?.attestedAt),
+  );" "    event.provenance.ingestAttestation?.attestedAt,
+  );" && run "読む層で空白の受領証時刻を暦違反にする"
 mutate "  if (!isCanonicalTimestamp(value)) return false;" "" && run "暦検査の前に綴りを当てない"
 mutate "  if (!value.endsWith(\"Z\")) return false;" "  if (false) return false;" && run "offset の Z 固定を外す"
 mutate "    (fraction === \"\" || ISO_SECFRAC_PATTERN.test(fraction))" "    true" && run "小数部の綴りを見ない"
