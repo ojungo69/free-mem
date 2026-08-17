@@ -1,6 +1,7 @@
 # Resume Continuity Addendum v6.2
 
 Date: 2026-08-16  
+Amended: 2026-08-17 (see §0.1)  
 Status: **Normative pre-implementation contract**  
 Related: #1, #8, #13  
 Research basis: [`evidence/phase3-resume-oss-comparison.md`](../../evidence/phase3-resume-oss-comparison.md)
@@ -22,6 +23,20 @@ All Phase 1 sole-writer, fail-open, spool, redaction, peer-auth, backup, and use
 The contract is runtime-language neutral. The TypeScript reference and Rust candidate MUST implement the same schemas, transition semantics, fixtures, hashes, and reports.
 
 Core 1.0 may claim smooth automatic continuation only for an exact Agent/native-CLI/capability-hash tuple that passes §8, the completed preflight in §13, and the release gates in §14.
+
+### 0.1 Revision log
+
+The document name and section numbering are stable; amendments are recorded here rather than by
+renaming the file, so existing references stay valid. Every amendment states whether it ratifies
+behaviour the reference implementation had already chosen, or introduces a new rule.
+
+| Date | Change | Issue | Kind |
+|---|---|---|---|
+| 2026-08-17 | §3 canonical timestamp profile: UTC RFC3339 restricted to `Z` offset and seconds `00`-`59` | #33 | Ratifies existing behaviour |
+| 2026-08-17 | §3 `confidence` range applies to `Observed<T>` only; other `confidence` fields stay unbounded | #30 | Ratifies existing behaviour |
+| 2026-08-17 | §4.1 `lastIngestSeq` defined as a monotone watermark, scoped to the task state | #38 | New rule (the field previously had no definition) |
+| 2026-08-17 | §4.3 operation-class table location, unmapped-kind defaults, and the sensitivity migration condition | #36 | New rule |
+| 2026-08-17 | §4.3 retention and eviction policy for `pendingOperations` at the §10 `arrayItems` limit | #39 | Ratifies existing behaviour |
 
 ## 1. Separation of concerns
 
@@ -126,6 +141,31 @@ interface TaskBoundaryAuthorityContextV1 {
 - Stale, competing, cross-session, unsupported-authority, or invalid confirm/reject commands are rejected with no binding change.
 
 ## 3. Shared evidence types
+
+**Canonical timestamp profile.** Every field typed as an ISO timestamp in this addendum is UTC
+RFC3339 as required by v6.1 §22.6, narrowed to a single spelling per instant:
+
+- the offset MUST be the literal `Z`; numeric zero offsets such as `+00:00` are rejected;
+- the seconds component MUST be `00`-`59`; the RFC3339 leap-second spelling `:60` is rejected;
+- the fractional part is optional and its digit count is not fixed (RFC3339 `time-secfrac`).
+
+The narrowing exists because `updatedAt` and the other timestamp fields are inputs to the canonical
+content hash. Two spellings of the same instant produce two hashes, which splits both the hash and
+the v6.1 §22.8 dedupe decision while every value still validates. Neither rejected spelling is
+produced by `Date.prototype.toISOString()` or by the Rust `chrono` defaults, so the cost of
+rejecting them is bounded to adapters that deliberately emit them; those MUST normalize at intake.
+
+The profile is expressible as a pattern and is enforced by the frozen schema. **Calendar existence
+is not** — `2026-02-30T00:00:00Z` and `2027-02-29T00:00:00Z` satisfy the pattern. Implementations
+MUST reject non-existent instants at the runtime validation layer, before the value reaches the
+reducer (#27); a JavaScript `Date` silently rolls such a value into the following month rather than
+raising.
+
+**Numeric ranges.** `Observed<T>.confidence` is the only confidence field with a defined range
+(`0..1`). `BoundaryEvidence.confidence` and `SemanticResumeNoteV1.confidence` are deliberately left
+unbounded: no rule in this addendum or in v6.1 branches on their magnitude, and inventing a range
+here would make the frozen schema stricter than the contract it encodes (#30). Implementations MUST
+NOT reject values outside `0..1` for those two fields.
 
 ```ts
 type JsonPrimitive = string | number | boolean | null;
@@ -344,6 +384,17 @@ interface CanonicalWorkStateV1 {
 }
 ```
 
+`lastIngestSeq` is a **monotone watermark**: the highest `ingestSeq` of any event applied to this
+task state. It never moves backwards, so applying a late-arriving event whose `ingestSeq` is lower
+than the current value leaves the field unchanged while still producing a later revision (§4.2).
+`updatedAt` is not monotone — it records the `occurredAt` of the event that produced the revision,
+which is adapter-supplied and may move backwards for the same reason. Ordering comparisons between
+states MUST use `lastIngestSeq`; `updatedAt` is for display only.
+
+This field is scoped to one task state. The §6.4 event-store watermark is a different quantity —
+it covers the whole session and lives inside the daemon, not in the wire contract — and the two
+MUST NOT be compared or substituted for each other.
+
 ### 4.2 Immutable revisions and duplicate no-op
 
 - Work-state revisions are immutable; one pointer selects the current revision per lineage.
@@ -371,6 +422,59 @@ interface CanonicalWorkStateV1 {
 - Unknown renders as `result unknown; verify current state before retry`.
 - Shell commands default to `verify_first`; migrations/deploys/publishing/destructive/external/credential operations default to `never_auto`.
 - `safe_idempotent` requires an explicit idempotency contract and matching capability evidence.
+
+**Operation-class table (#36).** The defaults above are stated in terms of operation classes
+(shell, migration, destructive, external, credential), but the value an event carries is
+`ContinuityOperationRefV1.operationKind`, an adapter-specific free string (`Bash`, `Edit`, and
+whatever a future adapter emits). The mapping from `operationKind` to operation class is normative
+and **belongs in this addendum**, not in the capability matrix: the matrix records behaviour proven
+by actually running a CLI, whereas this mapping is a static judgement about what a tool name means,
+and no capture can prove it.
+
+The table is not populated yet. Until it is, implementations MUST use the fail-closed defaults for
+every `operationKind`:
+
+| Field | Default while unmapped |
+|---|---|
+| `PendingOperation.kind` | `tool` |
+| `PendingOperation.replayPolicy` | `never_auto` |
+| `PendingOperation.sensitivity` | `private` |
+
+Populating the table is a prerequisite for §9.2 remote routing and MUST NOT be deferred past it.
+It also carries a migration condition: `CanonicalWorkStateV1.sensitivity` is the maximum over its
+components and is therefore monotone non-decreasing across revisions, so a lineage that has ever
+held a pending operation is pinned at `private` or above. Introducing a real classifier MUST come
+with a path that re-derives (or migrates) the aggregate, otherwise every lineage that ever used a
+tool stays permanently outside the remote-send gate.
+
+**Retention and eviction (#39).** `pendingOperations` is bounded by the §10 `arrayItems` limit.
+When a new start arrives at a full array, implementations MUST evict rather than reject the start,
+and MUST evict in this order, oldest first within each group:
+
+1. entries whose `correlation.taskLineageId` differs from the state's `taskLineageId`;
+2. `succeeded`;
+3. `failed`;
+4. `unknown`;
+5. `started`.
+
+Out-of-lineage entries go first because they are outside the §4.3 correlation scope and the
+abandonment scope, so nothing can ever reach them again; keeping them while discarding in-lineage
+settled evidence lets a caller push out real evidence by injecting foreign entries. Rejecting the
+start instead of evicting is **not** permitted: no other path removes an `unknown` entry, so a
+lineage whose slots fill with open operations would refuse every subsequent start with no recovery
+path, and a quarantined start has no corrected version for the adapter to send. Every eviction MUST
+be reported as a diagnostic; silent truncation is not permitted. If no entry can be evicted, the
+state is not produced and the event is quarantined.
+
+Where the evicted evidence is persisted, and whether `unknown` entries expire, depend on whether
+the frozen state schema gains a place to record them; both are tracked in #43 and #44.
+
+This policy decides **what** is evicted, not **who** may cause an eviction. Anyone able to submit
+events can fill the array with cheap starts and drive eviction at will (#45). Bounding that is the
+intake layer's job — the correlation reducer is a pure function of the state and one event, and has
+no notion of who sent it — and it is not closed by this section. In particular, until intake binds
+`sessionId` to the authenticated peer (#42), an event may claim a foreign session inside the same
+Agent and lineage, which reaches this eviction path.
 
 ## 5. Immutable checkpoints and disposition history
 
