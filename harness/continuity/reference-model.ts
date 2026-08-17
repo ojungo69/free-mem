@@ -32,9 +32,26 @@ const INGEST_SEQ_PATTERN = /^(0|[1-9][0-9]*)$/;
  * `continuity.schema.json` の `IsoTimestamp` と同じ綴り（§22.6 + §3 の canonical profile）。
  * `INGEST_SEQ_PATTERN` と同じ理由でここに写しを持つ: 参照模型は event が schema 検証を通って
  * から届くとは限らず、`validateContractValue` は test からしか呼ばれない。
+ *
+ * schema 側の 1 本の pattern を**秒までと小数部の 2 本に割っている**。言語は同じだが、
+ * 1 本にすると小数部が `(...)?` の中の `+` になり、star height 2 として ReDoS 検査に
+ * 引っかかる（`{0,1}` は破滅的後退を起こさないので偽陽性だが、抑止コメントを置くより
+ * 分けるほうが短い）。割ったことで `isRealInstant` が使う 19 文字境界も式に現れる。
  */
-const ISO_TIMESTAMP_PATTERN =
-  /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?Z$/;
+const ISO_DATE_TIME_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
+const ISO_SECFRAC_PATTERN = /^\.\d+$/;
+/** 秒までの綴りは固定長。`isRealInstant` の切り落とし幅と同じ値であることを型でなく式で示す */
+const ISO_SECONDS_LENGTH = 19;
+
+function isCanonicalTimestamp(value: string): boolean {
+  if (!value.endsWith("Z")) return false;
+  const body = value.slice(0, -1);
+  const fraction = body.slice(ISO_SECONDS_LENGTH);
+  return (
+    ISO_DATE_TIME_PATTERN.test(body.slice(0, ISO_SECONDS_LENGTH)) &&
+    (fraction === "" || ISO_SECFRAC_PATTERN.test(fraction))
+  );
+}
 
 /** revision 導出の schema 版。導出式を変えるときはここを上げる。 */
 const REVISION_SCHEMA_ID = "free-mem/work-state-revision/v1";
@@ -324,8 +341,8 @@ function declared(value: string | undefined): string | undefined {
  * いう上の主張が成り立たない値で、しかも還元器が**凍結 schema に適合しない状態を出す**。
  */
 function isRealInstant(value: string): boolean {
-  if (!ISO_TIMESTAMP_PATTERN.test(value)) return false;
-  const seconds = value.slice(0, 19);
+  if (!isCanonicalTimestamp(value)) return false;
+  const seconds = value.slice(0, ISO_SECONDS_LENGTH);
   const parsed = Date.parse(`${seconds}Z`);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(seconds);
 }
@@ -396,7 +413,7 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   // 直せないので、狭いほうを広げる
   for (const [field, value] of [
     ["occurredAt", event.occurredAt],
-    ["provenance.ingestAttestation.attestedAt", event.provenance?.ingestAttestation?.attestedAt],
+    ["provenance.ingestAttestation.attestedAt", event.provenance.ingestAttestation?.attestedAt],
   ] as const) {
     if (value !== undefined && !isRealInstant(value)) {
       throw new Error(`§22.6 違反: ${field} が暦として実在しない: ${value}`);
