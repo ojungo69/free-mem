@@ -1,0 +1,41 @@
+harness/continuity/reference-model.test.ts
+  s_2d059b4f795bca::t_8763e2859ed80e 889-978
+  s_2d059b4f795bca::t_a4de58bb2c2835 1863-1865,1868
+  s_2d059b4f795bca::t_91a871a13305fd 3348-3410
+  s_2d059b4f795bca::t_0a17270619a474 3411-3464
+harness/fixtures/continuity/invalid/rejected-events.json
+  s_2d059b4f795bca::t_d168266faab9b9 270-310
+  s_2d059b4f795bca::t_1e563b414b0b88 3
+harness/continuity/schema-freeze.test.ts
+  s_2d059b4f795bca::t_05d324e5ab5111 788-791
+harness/continuity/reference-model.ts
+  s_2d059b4f795bca::t_0f6fc05b63d4a3 347-349
+  s_2d059b4f795bca::t_613493fd684ebd 325-327
+  s_2d059b4f795bca::t_a28b2b647ed8cb 876-880
+  s_2d059b4f795bca::t_f457b281d037f8 881-886,893-896
+  s_2d059b4f795bca::t_127e83f98c82a4 446-457
+  s_2d059b4f795bca::t_aa011a9d956621 271-287
+  s_2d059b4f795bca::t_c5ee4439b40714 833-839
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_5280696a937387 330
+  s_2d059b4f795bca::t_57ba31a31a828f 302-304
+  s_2d059b4f795bca::t_10c9061e26042f 331-338
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_30bfdf69d91a36 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a5e785da2ab822a5dd8f1777abbdf567bc83c02d",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
