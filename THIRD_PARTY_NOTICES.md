@@ -46,5 +46,19 @@ Findings that need a recorded decision or correction:
 
 No copyleft-only package is present in the production dependency tree.
 
+## Known gap: notices for code bundled into `@codemem/server`
+
+`@codemem/ui` is private and never published, but its Vite build writes the production bundle to
+`vendor/codemem/packages/viewer-server/static/`, and `@codemem/server` lists `static/` in its
+`files`. That bundle inlines `preact`, `@preact/signals`, `@radix-ui/*`, and `dompurify`, whose
+licenses require their notices to travel with redistributed copies. A published tarball would carry
+only the codemem MIT `LICENSE`, so those notices would be missing.
+
+Nothing is published today — no tag, package, or release exists — so no redistribution has happened.
+Shipping a bundled-dependency notice artifact and verifying it in the tarball is a blocker for the
+first `npm publish`, tracked in [#50](https://github.com/ojungo69/free-mem/issues/50).
+`harness/license-inclusion-check.mjs` does not cover this and does not claim to: it checks
+package-level `LICENSE` files only.
+
 Re-run the scan whenever the lockfile changes; `evidence/adr-004-licensing.md` records how these
 findings feed the license decision.
