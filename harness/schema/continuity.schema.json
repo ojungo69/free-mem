@@ -956,7 +956,7 @@
     "DroppedEvidenceEntryV1": {
       "type": "object",
       "additionalProperties": false,
-      "$comment": "#43 / #39: 状態から落とした証跡の記録。理由が 2 つ（上限退避と孤児 terminal）あり欄の有無も違うが、oneOf で分岐させない——凍結後に理由が増えるたび分岐が増え、既存の移植が新しい分岐を知らないまま additionalProperties: false に当たって落ちる。共通の必須欄だけを required にし、理由ごとの欄は任意にする。",
+      "$comment": "#43 / #39: 状態から落とした証跡の記録。理由が 2 つ（上限退避と孤児 terminal）あり入る欄も違う——`evicted` は operationId + status、`orphaned_terminal` は eventId（相手が居ないので operationId / status は書けない）。それでも oneOf で分岐させず、共通の必須欄だけを required にして理由ごとの欄は任意にする: oneOf と additionalProperties: false の組み合わせは別言語の validator で挙動差が出やすく、contract hash が同じでも判断が割れうる。組み合わせの妥当性は runtime 側で検査する。",
       "required": [
         "reason",
         "recordedAt",
@@ -1254,7 +1254,7 @@
           "items": {
             "$ref": "#/$defs/DroppedEvidenceEntryV1"
           },
-          "$comment": "#43 / #39: 上限で退避した operation と、相手の見つからなかった terminal の記録。状態に残さないと「静かに消えた」と「そもそも来なかった」が区別できず、復元した側は落ちた証跡の存在に気付けない。上限は pendingOperations と同じ 256 で、この配列自体が溢れたら古い行から落とす（落ちたことをさらに記録すると際限が無くなるので記録しない）。任意欄なのは、何も落ちていない状態で空配列を書かせないため。"
+          "$comment": "#43 / #39: 上限で退避した operation と、相手の見つからなかった terminal の記録。状態に残さないと「静かに消えた」と「そもそも来なかった」が区別できず、復元した側は落ちた証跡の存在に気付けない。上限は pendingOperations と同じ 256（§10 の `arrayItems`）。追加は末尾で、上限に達していたら**配列の先頭から** 1 件落としてから追加する（時刻で並べ替えない。pendingOperations の退避と同じ規則）。落ちたことは配列にもう 1 行積むのではなく診断 `dropped_evidence_overflowed` に出す。任意欄なのは、何も落ちていない状態で空配列を書かせないため。"
         },
         "repositoryState": {
           "$ref": "#/$defs/RepositoryStateSnapshot"
