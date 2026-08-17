@@ -1,0 +1,21 @@
+evidence/adr-004-licensing.md
+  s_4a01f8d26254e9::t_54158717e56b2d 131-135
+THIRD_PARTY_NOTICES.md
+  s_4a01f8d26254e9::t_aa8c60de06e7be 49,51-64,67-68,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3be937441db9082ab07c3b7a3dcc7aeea2f47243",
+  "prompts": {},
+  "sessions": {
+    "s_4a01f8d26254e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42f9369d-0ce2-46d4-8426-ca6a2227f397",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
