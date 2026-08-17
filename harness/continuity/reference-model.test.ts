@@ -61,6 +61,7 @@ const ATTESTATION = {
 
 const INTAKE: IntakeContextV1 = {
   expectedSourceAgent: "claude",
+  expectedSessionId: "session-1",
   exactAgentVersion: VERSION,
   nativeTurnIdentityProven: true,
   activeCapabilityHash: CAPABILITY_HASH,
@@ -2480,6 +2481,59 @@ test("認証済み peer と違う Agent 名を名乗る event は intake が受�
       JSON.stringify(claimed),
     );
   }
+});
+
+test("認証済み peer と違う session を名乗る event は intake が受け取らない（#42）", () => {
+  // §4.3 の correlation scope は「same session/task lineage」だが、状態は session を持たないので
+  // `assertSameScope` では照合できない。intake が束縛しないと誰も束縛しないので、同じ Agent・
+  // 同じ lineage の別 session を名乗る event が rule 1 で他人の operation を閉じられる
+  for (const claimed of ["session-other", "", " ", "\u{200B}"]) {
+    assert.throws(
+      () => stampIntakeEvidence(startEvent({ sessionId: claimed }), INTAKE),
+      /§3.1 違反: 認証済み peer の session は session-1 なのに/,
+      JSON.stringify(claimed),
+    );
+  }
+  // 降格では止まらないことを、この門が無い場合の実害として固定する。session の食い違いは
+  // evidenceKind の判定に一切入らないので、別 session を名乗る event に **native の札がそのまま
+  // 貼られる**。しかも還元器は evidenceKind を読まないので、札が何であれ照合は成立する
+  const unbound = { ...INTAKE, expectedSessionId: "" };
+  const foreign = stampIntakeEvidence(startEvent({ sessionId: "session-other" }), unbound).event;
+  assert.equal(foreign.provenance.evidenceKind, "native");
+  assert.equal(foreign.sessionId, "session-other");
+
+  // 締めすぎていないことを通す側でも測る。session を特定できない経路（spool 等）は
+  // `expectedSessionId` が空なので従来どおり素通しになる
+  assert.equal(stampIntakeEvidence(startEvent(), unbound).event.sessionId, "session-1");
+  // 一致していれば当然通り、native authority も従来どおり成立する
+  assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
+});
+
+test("認証できない経路の synthesized_monotonic は通すが診断に出す（#41）", () => {
+  // Q2 の判断は「まず警告だけ出す」。`synthesized_monotonic` は adapter が自分で数える連番なので
+  // capability の証明を要さず、正本も認証条件を課していない。ただし rule 2 の turn 両立は
+  // この種別でも成立するので照合力としては native と同じ重みを持つ。締める前に観測できるようにする
+  const claimed = startEvent({ turnIdSource: "synthesized_monotonic", turnId: "turn-1" });
+  const unauthenticated = stampIntakeEvidence(claimed, {
+    ...INTAKE,
+    expectedSourceAgent: "",
+    expectedSessionId: "",
+    attestation: undefined,
+  });
+  // 通す: 種別も turnId も落とさない（降格でも拒否でもない）
+  assert.equal(unauthenticated.event.turnIdSource, "synthesized_monotonic");
+  assert.equal(unauthenticated.event.turnId, "turn-1");
+  assert.deepEqual(
+    unauthenticated.diagnostics.map((d) => d.code),
+    ["turn_identity_unauthenticated"],
+  );
+  // 認証できていれば診断は出ない（偽陽性を出さない側も測る）
+  assert.deepEqual(stampIntakeEvidence(claimed, INTAKE).diagnostics, []);
+  // native の降格経路とは独立。認証できない native 主張は従来どおり降格の診断だけが出る
+  assert.deepEqual(
+    stampIntakeEvidence(startEvent(), { ...INTAKE, attestation: undefined }).diagnostics.map((d) => d.code),
+    ["turn_identity_downgraded"],
+  );
 });
 
 test("認証できない経路では Agent 名の食い違いを降格で扱う", () => {

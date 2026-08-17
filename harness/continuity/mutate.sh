@@ -93,12 +93,12 @@ mutate "    attestation !== undefined &&" "    true &&" && run "intake の attes
 mutate "  const { ingestAttestation: _claimed, ...provenance } = event.provenance;" "  const provenance = event.provenance;" && run "caller の attestation を信じる"
 mutate "  if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== context.expectedSourceAgent) {" "  if (false) {" && run "sourceAgent の束縛を外す"
 mutate "  if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== context.expectedSourceAgent) {" "  if (event.sourceAgent !== context.expectedSourceAgent) {" && run "認証できない経路でも Agent 名で落とす"
+mutate "  if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {" "  if (false) {" && run "session の束縛を外す"
+mutate "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedVersion) {" "  if (false) {" && run "未認証の synthesized_monotonic を診断に出さない"
 mutate "    !isBlank(context.expectedSourceAgent) &&" "    true &&" && run "空の Agent 名を素通しする"
 mutate "    event.turnIdSource === \"native\" && !(authenticatedVersion && context.nativeTurnIdentityProven);" "    false;" && run "native turn の証明要求を外す"
 mutate "!(authenticatedVersion && context.nativeTurnIdentityProven)" "!context.nativeTurnIdentityProven" && run "turn 証明の version 束縛を外す"
-mutate "    diagnostics: turnDowngraded
-      ? [" "    diagnostics: false
-      ? [" && run "turn 降格を黙って行う"
+mutate "  if (turnDowngraded) {" "  if (false) {" && run "turn 降格を黙って行う"
 mutate "export function assertTurnIdentity(event: NormalizedContinuityEvent): void {" "export function assertTurnIdentity(event: NormalizedContinuityEvent): void {\n  if (event) return;" && run "turn 同一性の不変条件を外す"
 mutate "  if (event.sourceAgent !== state.sourceAgent) {" "  if (false) {" && run "state への Agent 束縛を外す"
 mutate "  const delivery =

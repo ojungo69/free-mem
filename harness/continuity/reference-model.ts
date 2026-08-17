@@ -107,6 +107,23 @@ export interface IntakeContextV1 {
    * 一致を見ないと、認証済みの adapter が他 Agent 名義の event に native authority を得られる。
    */
   expectedSourceAgent: string;
+  /**
+   * 認証済み peer identity が名乗ることを許された native session。§3.1 が intake に導出させる
+   * 材料は「認証済み peer identity・channel・captureMethod・capability matrix」の 4 つで
+   * session が挙がっていないため、束縛できる層が存在しなかった（#42）。
+   *
+   * 状態側（`CanonicalWorkStateV1`）は session を持たないので `assertSameScope` でも照合できず、
+   * §4.3 の correlation scope が言う「same session/task lineage」の session 側だけが誰にも
+   * 検証されない。その結果、同じ Agent・同じ lineage の**別 session を名乗る event** が
+   * rule 1（`nativeOperationId` 一致 + same session）で他人の operation を閉じられ、安価な
+   * start を上限件数だけ送るだけで他人の実行中 operation を退避させられる（どちらも実測）。
+   * どちらも `evidenceKind` の判定を通す必要が無い——還元器は `evidenceKind` を読まないので、
+   * 降格では止まらない。
+   *
+   * `expectedSourceAgent` と同じく **scope selector なので降格ではなく拒否**する。
+   * session を特定できない経路（spool 等）は空にしておけば従来どおり素通しになる。
+   */
+  expectedSessionId: string;
   exactAgentVersion: string;
   /**
    * §3.1「`turnIdSource="native"` は、その exact version について proven な native turn
@@ -162,6 +179,12 @@ export function stampIntakeEvidence(
   if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== context.expectedSourceAgent) {
     throw new Error(
       `§3.1 違反: 認証済み peer は ${context.expectedSourceAgent} なのに event が ${JSON.stringify(event.sourceAgent)} を名乗っている`,
+    );
+  }
+  // session も scope selector なので同じく受け取らない。理由は `expectedSessionId` の定義側（#42）
+  if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {
+    throw new Error(
+      `§3.1 違反: 認証済み peer の session は ${context.expectedSessionId} なのに event が ${JSON.stringify(event.sessionId)} を名乗っている`,
     );
   }
   // **`provenance` 不在はここで落とす**。下の destructure が素で deref するので、intake は
@@ -251,21 +274,30 @@ export function stampIntakeEvidence(
       ...(attestation !== undefined ? { ingestAttestation: attestation } : {}),
     },
   } as IntakeStampedEventV1;
-  return {
-    event: stamped,
-    // §3.1「turn scoping を要求する規則は unavailable に対して fail closed になり、影響を受けた
-    // 自動経路は downgrade され、その理由は doctor が報告する」。降格した事実を残さないと、
-    // 「何も correlate しない」だけが観測されて理由が辿れない
-    diagnostics: turnDowngraded
-      ? [
-          {
-            code: "turn_identity_downgraded" as const,
-            eventId: event.eventId,
-            detail: `native turn identity が ${provenance.sourceAgentVersion} について証明されていないので unavailable へ降格した`,
-          },
-        ]
-      : [],
-  };
+  // `synthesized_monotonic` は adapter が自分で数える連番なので capability の証明を要さず、
+  // §3.1 も認証条件を課していない。したがって**認証できない経路から名乗られてもそのまま通る**
+  // が、rule 2 の turn 両立はこの種別でも成立するので、照合力としては native と同じ重みを持つ
+  // （#41）。締めるかどうかは既存の未認証連携を壊す判断なので、まず観測できるようにする。
+  // 診断を出すだけで降格も拒否もしない
+  const diagnostics: ContinuityDiagnosticV1[] = [];
+  // §3.1「turn scoping を要求する規則は unavailable に対して fail closed になり、影響を受けた
+  // 自動経路は downgrade され、その理由は doctor が報告する」。降格した事実を残さないと、
+  // 「何も correlate しない」だけが観測されて理由が辿れない
+  if (turnDowngraded) {
+    diagnostics.push({
+      code: "turn_identity_downgraded",
+      eventId: event.eventId,
+      detail: `native turn identity が ${provenance.sourceAgentVersion} について証明されていないので unavailable へ降格した`,
+    });
+  }
+  if (event.turnIdSource === "synthesized_monotonic" && !authenticatedVersion) {
+    diagnostics.push({
+      code: "turn_identity_unauthenticated",
+      eventId: event.eventId,
+      detail: "認証できない経路から synthesized_monotonic の turn identity を名乗っている（現状は通すが rule 2 の照合力を持つ）",
+    });
+  }
+  return { event: stamped, diagnostics };
 }
 
 // --- §3.1 operation envelope（#29） -----------------------------------------
@@ -666,7 +698,8 @@ export type ContinuityDiagnosticCode =
   | "delivery_conflict"
   | "pending_operations_evicted"
   | "source_events_truncated"
-  | "turn_identity_downgraded";
+  | "turn_identity_downgraded"
+  | "turn_identity_unauthenticated";
 
 export interface ContinuityDiagnosticV1 {
   code: ContinuityDiagnosticCode;

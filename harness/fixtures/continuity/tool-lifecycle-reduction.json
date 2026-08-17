@@ -3,6 +3,7 @@
   "description": "§4.2 の重複 no-op と §4.3 の terminal 照合を、TS と Rust が同じ入力から同じ hash を出すか比べるための固定入力。expected は harness/continuity/reference-model.ts の出力。",
   "intakeContext": {
     "expectedSourceAgent": "claude",
+    "expectedSessionId": "session-1",
     "exactAgentVersion": "2.1.228 (Claude Code)",
     "nativeTurnIdentityProven": true,
     "activeCapabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
