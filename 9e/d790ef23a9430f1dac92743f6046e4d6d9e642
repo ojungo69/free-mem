@@ -1,0 +1,25 @@
+vendor/codemem/packages/cli/package.json
+  s_2d059b4f795bca::t_2b9fed253700d4 36
+vendor/codemem/packages/mcp-server/package.json
+  s_2d059b4f795bca::t_660b02865bf03a 36
+vendor/codemem/packages/viewer-server/package.json
+  s_2d059b4f795bca::t_c643b1d889223c 33
+vendor/codemem/pnpm-lock.yaml
+  s_2d059b4f795bca::t_48e17fd0dd4cb6 129-131,200-202,298-300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9ed790ef23a9430f1dac92743f6046e4d6d9e642",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
