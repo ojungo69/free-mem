@@ -1,0 +1,57 @@
+harness/continuity/reference-model.test.ts
+  s_2d059b4f795bca::t_478e641b2e241c 572-588
+  s_2d059b4f795bca::t_3e6d53c4d7ee11 1261-1264
+  s_2d059b4f795bca::t_0c2753fa5963f1 655-677
+  s_2d059b4f795bca::t_40851c1be89da2 1396-1400,1404-1411,1414-1417,1429,1432
+  s_2d059b4f795bca::t_2bbb93646b3de4 3359-3360,3368,3371,3374
+  s_2d059b4f795bca::t_e5bf024493c31d 3395
+  s_2d059b4f795bca::t_429ca6acfd3716 873-877,881-888,891-896
+  s_2d059b4f795bca::t_5c509784be0cdd 915-916
+  s_2d059b4f795bca::t_191449dda9efbf 1305-1308,1311,1322-1337
+  s_2d059b4f795bca::t_c2c8edba7831d1 3417-3422,3432,3434-3438,3440,3454-3463
+  s_2d059b4f795bca::t_96a72926586301 589-654,678-705
+  s_2d059b4f795bca::t_e98212c1ad2c63 1282-1284
+  s_2d059b4f795bca::t_55b8b2a6e46584 100,1014,1021,1193,1205,1352,1369-1370,2304-2305,2308,2323,2325,2331,2345,2482,2486,3126,3714,4200,4206,4358-4359,4362,4460
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_24c20bf53f13c5 90
+  s_2d059b4f795bca::t_885e18cfd0a618 101-113
+  s_2d059b4f795bca::t_8daa2dd01bf6e9 87-89
+  s_2d059b4f795bca::t_9d0d341613e286 98-100
+harness/continuity/reference-model.ts
+  s_2d059b4f795bca::t_4a4ff2e99a355f 951-957
+  s_2d059b4f795bca::t_a1b9d57d2cfb4a 1163-1167
+  s_2d059b4f795bca::t_9d5ddb660a008b 1434-1441
+  s_2d059b4f795bca::t_cc53722648f975 1883-1885
+  s_2d059b4f795bca::t_04f85b99d21170 1113-1114
+  s_2d059b4f795bca::t_50f82ebd0424c4 1724-1725
+  s_2d059b4f795bca::t_f44702e382e194 1485-1488,1490-1500
+  s_2d059b4f795bca::t_ee5a2419e7f2ae 930
+  s_2d059b4f795bca::t_f9a4b3df10bb72 1698-1700,1705
+  s_2d059b4f795bca::t_63522f0dda9359 964-965
+  s_2d059b4f795bca::t_dbf0354630028b 1127-1134
+  s_2d059b4f795bca::t_1209f1219cde1d 1897
+  s_2d059b4f795bca::t_804dc9dc572802 1036
+  s_2d059b4f795bca::t_290b468b138602 1006-1008
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_d62edcff5a485c 134-141,150-160,269
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_418ef968471f3e 29
+harness/fixtures/continuity/tool-lifecycle-reduction.json
+  s_2d059b4f795bca::t_45274b62c60566 197-198,209-210,221-222,233-234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a27ceb8c5fe0a5f38e0ce39a08282a53c3a8bb9c",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
