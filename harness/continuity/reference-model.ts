@@ -268,6 +268,23 @@ function isBlank(value: string): boolean {
   return /^[\s\p{Cf}]*$/u.test(value);
 }
 
+/**
+ * `IsoTimestamp` の pattern は成分の範囲（月 01-12・日 01-31・秒 00-59・`Z` 固定）までしか
+ * 書けず、**暦としての実在**は表せない。`2026-02-30T00:00:00Z` も `2027-02-29T00:00:00Z` も
+ * 通り、`new Date()` は例外を投げずに翌月へ繰り上げる（#27）。
+ *
+ * 繰り上がった値は状態の `updatedAt` / `startedAt` / `terminalAt` にそのまま載るので、
+ * 下流が `new Date()` で読んだ瞬間に**申告と別の時刻**になる。lease や expiry の判断に
+ * そのまま入る欄なので、綴りとして受理した以上は指す瞬間も一意でなければならない。
+ *
+ * `toISOString()` と秒までを突き合わせるのは、繰り上がりが必ず綴りを変えるため。小数秒は
+ * 桁数が固定されていない（`(\.\d+)?`）ので比較対象から外す。
+ */
+function isRealInstant(value: string): boolean {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(value.slice(0, 19));
+}
+
 function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent["operation"]>): void {
   if (isBlank(operation.operationMatchKey) || isBlank(operation.operationKind)) {
     throw new Error(`§3.1 違反: operation envelope の operationMatchKey / operationKind が空`);
@@ -305,6 +322,9 @@ function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent[
  *
  * 空文字の `adapterDeliveryId` を「無い」として fingerprint へ落とすのと違い、どちらも落とし先が
  * 無いので schema violation にする。
+ *
+ * `occurredAt` の暦検査（#27）もここに置く。3 つの入口（還元器・terminal 相関・放棄の確定）が
+ * 揃って呼ぶのはこの関数だけなので、別の入口で呼び忘れる形にならない。
  */
 function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   if (isBlank(event.canonicalFingerprint)) {
@@ -323,6 +343,9 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   // 縛らないので、ここで落とさないと誰も落とさない
   if (isBlank(event.sourceAgent)) {
     throw new Error("§3.1 違反: sourceAgent が空文字（Agent scope が定まらない）");
+  }
+  if (!isRealInstant(event.occurredAt)) {
+    throw new Error(`§22.6 違反: occurredAt が暦として実在しない: ${event.occurredAt}`);
   }
 }
 
@@ -420,6 +443,18 @@ export function ledgerKeyOf(event: NormalizedContinuityEvent): string {
  * terminal が同じ session/lineage に居る他 Agent の operation を閉じられる。
  */
 function assertSameScope(state: CanonicalWorkStateV1, event: NormalizedContinuityEvent): void {
+  // `sourceAgent` と同じ理由で空白を落とす（`assertIdentityMaterial` 参照）。凍結 schema は
+  // `taskLineageId` にも `maxLength` しか課さないので、lineage が空白の状態と lineage を省いた
+  // event が組み合わさると下の等値検査を素通りする（`undefined !== ""` の比較に到達しない）。
+  // 素通りすると無関係な task の operation が同じ scope に潰れ、terminal が他人の operation を
+  // 閉じ、`session_ended` がそれを放棄できる。`turnId` と違って lineage には「不在」を表す
+  // 語彙が無いので、空白は「名乗っていない」であって「同じ lineage」ではない。
+  if (isBlank(state.taskLineageId)) {
+    throw new Error("§3.1 違反: 状態の taskLineageId が空文字（lineage scope が定まらない）");
+  }
+  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {
+    throw new Error("§3.1 違反: event の taskLineageId が空文字（lineage scope が定まらない）");
+  }
   if (event.taskLineageId !== undefined && event.taskLineageId !== state.taskLineageId) {
     throw new Error(
       `別 lineage の event は適用しない: 状態 ${state.taskLineageId} / event ${event.taskLineageId}`,
@@ -795,7 +830,13 @@ export function reduceTaskWorkState(
     const idMatches = inLineage.filter((pending) => pending.operationId === operationId);
     const preferCompatible = (candidates: readonly PendingOperation[]): PendingOperation | undefined =>
       candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];
-    const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);
+    // **2 つの集合をまたいで選ぶ**。集合ごとに `preferCompatible` を掛けて `??` で繋ぐと、
+    // `preferCompatible` は非空配列に必ず値を返す（互換が無ければ先頭）ので、`idMatches` が
+    // 非空でありさえすれば中身が全件衝突していても `nativeMatches` が評価されない。derived id
+    // 側に衝突する兄弟、native id 側に identity 完全一致の兄弟が並ぶ状態では、健全な再配送が
+    // `start_conflict` で隔離される。隔離は鍵を消費せず還元器は純関数なので永久に収束しない。
+    // 連結順は `idMatches` を先にして、両集合とも全件衝突のときの衝突の証拠を従来と揃える
+    const existing = preferCompatible([...idMatches, ...nativeMatches]);
     const startConflict = existing !== undefined && startConflictsWith(existing);
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [
@@ -832,17 +873,27 @@ export function reduceTaskWorkState(
       // 呼んでいる `withSourceEvent` だけ呼んでいなかった。しかも上で correlation を埋めるように
       // したので、**状態が変わった理由が状態からも辿れない**（`history` は
       // `CanonicalWorkStateV1` の欄ではないので永続的な provenance にならない）。
-      // 同じ eventId の再配送（台帳だけ失った復元）では `withSourceEvent` が早期 return するので
-      // 増えない = 増えるのは eventId が変わる本来の再配送契約のときだけ
+      // `withSourceEvent` が早期 return する条件は 2 つあり、意味が違う。**同じ eventId の
+      // 再配送**（台帳だけ失った復元）は既に記録済みなので何も失っていない。**上限 256 件に
+      // 達している**場合は本当に記録できないので、他の 3 経路（照合できた terminal /
+      // `unknown` に倒した候補 / 放棄）と同じく診断に出す。この経路だけ対を付けておらず、
+      // revision と配送鍵は消費されるのに「provenance は残らなかった」が呼び出し側に届かなかった
+      const truncated = sourceEventsFull(previous.state.pendingOperations, new Set([existing]), event.eventId);
+      const duplicateDiagnostic: ContinuityDiagnosticV1 = {
+        code: "duplicate_operation_start",
+        eventId: event.eventId,
+        detail: `operationId ${existing.operationId} は既に pending`,
+      };
       return commit(previous, event, idempotencyLedger, {
         pendingOperations: previous.state.pendingOperations.map((pending) =>
           pending === existing
             ? withSourceEvent({ ...pending, correlation: recovered }, event.eventId)
             : pending,
         ),
-        diagnostics: [
-          { code: "duplicate_operation_start", eventId: event.eventId, detail: `operationId ${existing.operationId} は既に pending` },
-        ],
+        diagnostics:
+          truncated.length === 0
+            ? [duplicateDiagnostic]
+            : [duplicateDiagnostic, truncationDiagnostic(event, truncated)],
         // 再配送された start で operationStarts を埋めない。§6.4 の `ingestSeq` は event store が
         // 採番する watermark なので、再配送 event が運ぶのは再配送時の取り込み位置であって
         // 元の start の権威順序ではない。埋めると低い値を名乗る偽 start で unknown を succeeded に

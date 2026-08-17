@@ -886,6 +886,96 @@ test("同名 operationId の兄弟でも、配列順で再配送の結果が変�
   }
 });
 
+test("再配送の相手は derived id と native id の集合をまたいで選ぶ", () => {
+  // 集合ごとに preferCompatible を掛けて `??` で繋ぐと、preferCompatible は非空配列に必ず値を
+  // 返す（互換が無ければ先頭）ので、derived id 側が非空でありさえすれば全件衝突していても
+  // native id 側が評価されない。隔離は鍵を消費せず還元器は純関数なので永久に収束しない
+  const base = startedSnapshot();
+  const template = base.state.pendingOperations[0] as PendingOperation;
+  // derived id が一致する（= 同じ eventId・matchKey）が、input hash が違うので衝突する兄弟
+  const conflicting: PendingOperation = {
+    ...template,
+    correlation: { ...template.correlation, canonicalInputHash: "input-hash-OTHER" },
+  };
+  // derived id は違うが native id と identity が完全に一致する兄弟
+  const compatible: PendingOperation = {
+    ...template,
+    operationId: "op-native-twin",
+    correlation: { ...template.correlation, operationId: "op-native-twin" },
+  };
+  const snapshot: TaskWorkStateSnapshotV1 = {
+    ...base,
+    operationStarts: new Map(),
+    state: { ...base.state, pendingOperations: [conflicting, compatible] },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(result.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  // 埋まったのは互換な兄弟のほう。衝突する兄弟は触られない
+  assert.equal(
+    result.diagnostics[0]?.detail?.includes("op-native-twin"),
+    true,
+    JSON.stringify(result.diagnostics),
+  );
+
+  // 締めすぎていないことを保持側でも固定する。両集合とも全件衝突なら従来どおり隔離し、
+  // 衝突の証拠は derived id 側の先頭を名乗る（連結順を idMatches 先頭にしている理由）
+  const bothConflict: TaskWorkStateSnapshotV1 = {
+    ...snapshot,
+    state: {
+      ...base.state,
+      pendingOperations: [
+        conflicting,
+        { ...compatible, correlation: { ...compatible.correlation, canonicalInputHash: "input-hash-ALSO-OTHER" } },
+      ],
+    },
+  };
+  const quarantined = reduceTaskWorkState(bothConflict, startEvent(), new Map());
+  assert.equal(quarantined.outcome, "quarantined");
+  assert.deepEqual(quarantined.diagnostics.map((d) => d.code), ["start_conflict"]);
+  assert.equal(quarantined.diagnostics[0]?.detail?.includes(conflicting.operationId), true);
+});
+
+test("再配送 start も provenance を記録できなかったことを診断に出す", () => {
+  // withSourceEvent は上限に達すると黙って早期 return するのに、この経路だけ
+  // sourceEventsFull + truncationDiagnostic の対を付けていなかった。revision と配送鍵は
+  // 消費されるので、呼び出し側からは「記録された」と区別が付かない
+  const base = startedSnapshot();
+  const template = base.state.pendingOperations[0] as PendingOperation;
+  const full: PendingOperation = {
+    ...template,
+    sourceEventIds: Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, index) => `filler-${index}`),
+  };
+  // eventId が変わる本来の再配送契約。derived id は変わるので native id 側で当たる
+  const redelivery = startEvent({
+    eventId: "event-redeliver",
+    adapterDeliveryId: "delivery-redeliver",
+    canonicalFingerprint: "fingerprint-redeliver",
+  });
+  const result = reduceTaskWorkState(
+    { ...base, operationStarts: new Map(), state: { ...base.state, pendingOperations: [full] } },
+    redelivery,
+    new Map(),
+  );
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(result.diagnostics.map((d) => d.code), [
+    "duplicate_operation_start",
+    "source_events_truncated",
+  ]);
+
+  // 通す側: 上限未満なら truncation は出ず、eventId は実際に記録される
+  const room = reduceTaskWorkState(
+    { ...base, operationStarts: new Map() },
+    redelivery,
+    new Map(),
+  );
+  assert.deepEqual(room.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.equal(
+    room.snapshot.state.pendingOperations[0]?.sourceEventIds.includes("event-redeliver"),
+    true,
+  );
+});
+
 test("上限退避は別 lineage の要素を自 lineage の証跡より先に落とす", () => {
   // 「上限は容量の判断なので lineage を見ない」としていたが、それだと別 lineage の要素を注入して
   // 自 lineage の確定済み証跡を押し出せた（実測: 自 lineage の succeeded 1 件 + 別 lineage の
@@ -1770,9 +1860,12 @@ test("negative fixture は宣言した層で落ちる", () => {
     // 要らなくなるので、その事実ごと壊れるべき
     assert.deepEqual(issues, [], testCase.name);
     if (testCase.rejectedBy === "runtime") {
+      // runtime 層が受け持つ不変条件は §3.1（identity / envelope）と §22.6（timestamp の実在、#27）の
+      // 2 節にまたがる。どちらの節かまで見るのは、「throw さえすれば緑」で別の理由の失敗を
+      // 取り違えないため
       assert.throws(
         () => reduceTaskWorkState(emptySnapshot(), asStamped(testCase.event), new Map()),
-        /§3.1 違反/,
+        /§(3\.1|22\.6) 違反/,
         testCase.name,
       );
       continue;
@@ -3250,6 +3343,123 @@ test("空白文字だけの identity 材料は空文字と同じく schema viola
   assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent({ sessionId: "0" }), new Map()).outcome, "applied");
   // adapterDeliveryId は「無い」を表せるので落とさず fingerprint に落ちる
   assert.equal(idempotencyKeyOf(startEvent({ adapterDeliveryId: " " })), "fingerprint-start");
+});
+
+test("空白だけの taskLineageId は lineage scope として認めない", () => {
+  // `sourceAgent` と同じ形。凍結 schema は `taskLineageId` にも maxLength しか課さないので、
+  // lineage が空白の状態と lineage を省いた event が組み合わさると等値検査に到達せず素通りする。
+  // 素通りすると無関係な task の operation が同じ scope に潰れ、terminal が他人の operation を
+  // 閉じ、`session_ended` がそれを放棄できる
+  for (const blank of ["", " ", "\t", "\u{FEFF}", "\u{200B}"]) {
+    // 状態側が空白 + event が lineage を省く（等値比較に到達しない経路）
+    assert.throws(
+      () =>
+        reduceTaskWorkState(
+          emptySnapshot({ taskLineageId: blank }),
+          startEvent({ taskLineageId: undefined }),
+          new Map(),
+        ),
+      /状態の taskLineageId が空文字/,
+      `state = ${JSON.stringify(blank)}`,
+    );
+    // 状態側も event 側も空白（`"" !== ""` が false になる経路）
+    assert.throws(
+      () =>
+        reduceTaskWorkState(
+          emptySnapshot({ taskLineageId: blank }),
+          startEvent({ taskLineageId: blank }),
+          new Map(),
+        ),
+      /taskLineageId が空文字/,
+      `both = ${JSON.stringify(blank)}`,
+    );
+    // event 側だけ空白。今は等値比較でも落ちるが、空白を「不在」と読む実装でも落ちることを固定する
+    assert.throws(
+      () => reduceTaskWorkState(emptySnapshot(), startEvent({ taskLineageId: blank }), new Map()),
+      /event の taskLineageId が空文字/,
+      `event = ${JSON.stringify(blank)}`,
+    );
+  }
+  // 3 つの入口すべてに効く（`assertSameScope` を全入口が呼ぶことをここで固定する）
+  const started = startedSnapshot();
+  const blankState = { ...started, state: { ...started.state, taskLineageId: " " } };
+  assert.throws(
+    () => correlateTerminalEvent(blankState, terminalEvent({ taskLineageId: undefined })),
+    /状態の taskLineageId が空文字/,
+  );
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        blankState.state,
+        startEvent({ kind: "session_ended", ingestSeq: "12", operation: undefined, taskLineageId: undefined }),
+        new Map(),
+      ),
+    /状態の taskLineageId が空文字/,
+  );
+  // 締めすぎていないことを通る側でも固定する。空白を含むだけの lineage は妥当
+  assert.equal(
+    reduceTaskWorkState(
+      emptySnapshot({ taskLineageId: "lineage 1" }),
+      startEvent({ taskLineageId: "lineage 1" }),
+      new Map(),
+    ).outcome,
+    "applied",
+  );
+  assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent(), new Map()).outcome, "applied");
+});
+
+test("暦として実在しない occurredAt は 3 つの入口すべてで落ちる（#27）", () => {
+  // pattern は成分の範囲までしか書けないので schema は通る。`new Date()` は例外を投げずに
+  // 翌月へ繰り上げるため、素通しにすると状態の updatedAt / startedAt / terminalAt が
+  // 申告と別の瞬間を指す
+  const impossible = [
+    "2026-02-30T00:00:00Z", // 2 月に 30 日は無い
+    "2026-04-31T00:00:00Z", // 4 月は 30 日まで
+    "2027-02-29T00:00:00Z", // 2027 年は閏年ではない
+    "2100-02-29T00:00:00Z", // 100 で割れて 400 で割れない年は閏年ではない
+  ];
+  for (const occurredAt of impossible) {
+    // schema としては妥当であることを先に固定する（この test が pattern の話に化けないように）
+    assert.equal(
+      validateContractValue("IsoTimestamp", occurredAt, SCHEMA_ROOT, CONTINUITY_LIMITS).length,
+      0,
+      occurredAt,
+    );
+    assert.throws(
+      () => reduceTaskWorkState(emptySnapshot(), startEvent({ occurredAt }), new Map()),
+      /occurredAt が暦として実在しない/,
+      `reduce: ${occurredAt}`,
+    );
+    assert.throws(
+      () => correlateTerminalEvent(startedSnapshot(), terminalEvent({ occurredAt })),
+      /occurredAt が暦として実在しない/,
+      `correlate: ${occurredAt}`,
+    );
+    assert.throws(
+      () =>
+        finalizeAbandonedState(
+          startedSnapshot().state,
+          startEvent({ occurredAt, kind: "session_ended", ingestSeq: "12", operation: undefined }),
+          new Map(),
+        ),
+      /occurredAt が暦として実在しない/,
+      `abandon: ${occurredAt}`,
+    );
+  }
+  // 締めすぎていないことを通る側でも固定する。実在する日付・閏日・小数秒・秒 59 は落とさない
+  for (const occurredAt of [
+    "2026-08-16T00:00:01Z",
+    "2028-02-29T00:00:00Z", // 2028 年は閏年
+    "2000-02-29T00:00:00Z", // 400 で割れる年は閏年
+    "2026-08-16T23:59:59.999999Z",
+    "2026-01-31T00:00:00Z",
+  ]) {
+    assert.equal(
+      reduceTaskWorkState(emptySnapshot(), startEvent({ occurredAt }), new Map()).outcome,
+      "applied",
+      occurredAt,
+    );
+  }
 });
 
 test("再配送 start が session を変えたら隔離する", () => {

@@ -299,7 +299,9 @@ mutate "    const inLineage = previous.state.pendingOperations.filter(
     );" "    const inLineage = previous.state.pendingOperations;" && run "別 lineage の pending も再配送の相手にする"
 mutate "        pending.correlation.sessionId === event.sessionId &&
         pending.correlation.taskLineageId === state.taskLineageId," "        pending.correlation.sessionId === event.sessionId," && run "放棄が別 lineage の operation も倒す"
-mutate "    const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" "    const existing = idMatches[0] ?? preferCompatible(nativeMatches);" && run "derived id の兄弟は先頭 1 件で決める"
+# 「derived id の兄弟は先頭 1 件で決める」は削除。候補選びを 1 回の preferCompatible に統合して
+# 集合ごとに別の選び方をする変異が書けなくなった。互換優先の軸は下の「互換な候補を選ばない」が
+# 両集合まとめて覆い、集合をまたげるかの軸は「再配送の相手を集合ごとに選ぶ」が別に見る
 mutate "    (candidate) => candidate.correlation.taskLineageId !== taskLineageId," "    () => false," && run "退避で lineage 外を優先しない"
 mutate "        nativeOperationId: existing.correlation.nativeOperationId ?? operation.nativeOperationId," "        nativeOperationId: existing.correlation.nativeOperationId," && run "再配送が持つ native id を記録に埋めない"
 mutate "  const plausible = orderableOf(eligibleOf(sameTurn));" "  const plausible = eligibleOf(sameTurn);" && run "候補を start の順序で絞らない"
@@ -325,7 +327,15 @@ mutate "            code: \"delivery_conflict\",
       };" && run "放棄の配送衝突を診断に出さない"
 mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を引く"
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
-mutate "      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];" "      candidates[0];" && run "native id の兄弟から互換な候補を選ばない"
+mutate "      candidates.find((pending) => !startConflictsWith(pending)) ?? candidates[0];" "      candidates[0];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
+mutate "  const existing = preferCompatible([...idMatches, ...nativeMatches]);" "  const existing = preferCompatible(idMatches) ?? preferCompatible(nativeMatches);" && run "再配送の相手を集合ごとに選ぶ"
+mutate "  if (!isRealInstant(event.occurredAt)) {" "  if (false) {" && run "occurredAt の暦検査を外す"
+mutate "  if (isBlank(state.taskLineageId)) {" "  if (false) {" && run "状態側の空白 lineage を通す"
+mutate "  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {" "  if (false) {" && run "event 側の空白 lineage を通す"
+mutate "        diagnostics:
+          truncated.length === 0
+            ? [duplicateDiagnostic]
+            : [duplicateDiagnostic, truncationDiagnostic(event, truncated)]," "        diagnostics: [duplicateDiagnostic]," && run "再配送 start の truncation 診断を落とす"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
