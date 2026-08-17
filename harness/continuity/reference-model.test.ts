@@ -3978,6 +3978,39 @@ for (const blank of ["", " "]) {
   });
 }
 
+test("互換な兄弟が複数居るとき、届いた native ID を名乗る側に再配送を帰属させる", () => {
+  // `nativeIdTaken` は「2 件目を作らない」だけで帰属は動かさない。相手を配列順で決めると、
+  // `withSourceEvent` も truncation 判定も**その native ID を持たないほう**に当たり、再配送の
+  // provenance が本来の operation に残らない
+  const base = startedSnapshot();
+  const derived = base.state.pendingOperations[0] as PendingOperation;
+  // 両方とも原因 event を未記録にしておく。記録済みだと `withSourceEvent` が早期 return して
+  // どちらを選んでも差が出ない
+  const blank: PendingOperation = {
+    ...derived,
+    sourceEventIds: [],
+    correlation: { ...derived.correlation, nativeOperationId: "" },
+  };
+  const named: PendingOperation = {
+    ...derived,
+    operationId: "op-already-named",
+    sourceEventIds: [],
+    correlation: { ...derived.correlation, nativeOperationId: START_OPERATION.nativeOperationId },
+  };
+  const start = startEvent();
+  const result = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [blank, named] } },
+    start,
+    new Map(),
+  );
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((pending) => pending.sourceEventIds),
+    [[], [start.eventId]],
+    "native ID を持たないほうに再配送が帰属した",
+  );
+});
+
 test("名乗っている兄弟が互換でも、空白の native ID を埋めない（2 件目を作らない）", () => {
   // 復元した checkpoint に (1) derived id が一致するが native ID が空白の pending と
   // (2) 届いた native ID を既に名乗る別の pending が並ぶ。両方とも identity は互換。
@@ -4087,25 +4120,31 @@ test("届いた start が native ID を持たないときは、名乗る兄弟�
   // 兄弟から落ちるかが変わる**
   const start = startEvent({ operation: MATCH_KEY_ONLY });
   const base = startedSnapshot(start);
-  const pending = base.state.pendingOperations[0] as PendingOperation;
+  const pending = { ...(base.state.pendingOperations[0] as PendingOperation), sourceEventIds: [] };
+  // **名乗っている側を先頭に置く**。後ろに置くと、届いた native ID が無いときの `find` は
+  // 「native ID を持たない兄弟」を拾って結果が配列順と一致してしまい、ガードの有無を区別できない
   const snapshot = {
     ...base,
     state: {
       ...base.state,
       pendingOperations: [
-        { ...pending, correlation: { ...pending.correlation, nativeOperationId: "" } },
         { ...pending, correlation: { ...pending.correlation, nativeOperationId: "toolu_other" } },
+        { ...pending, correlation: { ...pending.correlation, nativeOperationId: "" } },
       ],
     },
   };
   const result = reduceTaskWorkState(snapshot, start, new Map());
   assert.equal(result.outcome, "applied");
-  // 届いた start に書く値が無いので、選ばれた側は空白がキーごと落ちるだけ。選ばれなかった側は
-  // そのまま残る。優先を無条件に働かせると 2 件目が選ばれ、1 件目の空白が残る
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((entry) => entry.sourceEventIds),
+    [[start.eventId], []],
+    "配列順でなく native ID の有無で帰属先が決まった",
+  );
+  // 届いた start に書く値が無いので、選ばれた側の欄は動かない。空白側も選ばれていないので残る
   assert.deepEqual(
     result.snapshot.state.pendingOperations.map((entry) => entry.correlation.nativeOperationId),
-    [undefined, "toolu_other"],
-    "配列順でなく native ID を名乗る側が選ばれた",
+    ["toolu_other", ""],
+    "選んでいないほうの空白まで正規化した",
   );
 });
 

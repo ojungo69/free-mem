@@ -945,16 +945,28 @@ export function reduceTaskWorkState(
     // 無駄な走査が最大 256 回ぶん増える。`Set` は挿入順を保つので上で決めた連結順はそのまま残る
     const siblings = [...new Set([...idMatches, ...nativeMatches])];
     const compatible = siblings.filter((pending) => !startConflictsWith(pending));
-    // 相手は配列順で決める。「native ID を既に名乗っている兄弟を優先する」形も書いたが、
-    // **下の `nativeIdTaken` が同じ不変条件（同じ native ID の pending は 1 件）をより広く
-    // 守る**ので消した。優先は `compatible` の中しか見られず、名乗り手が非互換なときに空振り
-    // する（そこが本当の穴だった）。両方置くと、優先の有無で結果が変わる入力が無くなり、
-    // 変異が生存する = 検証できない分岐になる
+    // 互換な兄弟が複数居るときは、**届いた native ID を既に名乗っている側**を再配送の相手にする。
+    // 下の `nativeIdTaken` は「同じ native ID の pending を 2 件作らない」を守るだけで、
+    // **帰属は動かさない**: 相手を配列順で決めると、`recovered` も `withSourceEvent` も truncation
+    // 判定も**その native ID を持たないほうの operation**に当たる。再配送の provenance が
+    // 本来の operation に残らず、無関係な兄弟が上限に達していれば `source_events_truncated` を
+    // 偽って出す。
+    // 比較は**値の一致**で行い、届いた start が native ID を持つときだけ働かせる。「何かを
+    // 名乗っていれば優先」だと、互換の定義（`startConflictsWith` の native ID 比較は両方が
+    // declared のときだけ走る）では一致が確かめられていない相手を選ぶことになる
     // 添字でなく `at()` で取る。`noUncheckedIndexedAccess` を入れていないので `compatible[0]` は
     // 空配列でも `PendingOperation` 型になり、**下の `existing !== undefined` が型の上では常に真**に
     // なる（実行時には undefined が来る）。`at()` は設定に関係なく `| undefined` を返すので、
     // 空集合の分岐が型に残る
-    const existing = compatible.at(0) ?? siblings.at(0);
+    const incomingNativeId = declared(operation.nativeOperationId);
+    const existing =
+      (incomingNativeId === undefined
+        ? undefined
+        : compatible.find(
+            (pending) => declared(pending.correlation.nativeOperationId) === incomingNativeId,
+          )) ??
+      compatible.at(0) ??
+      siblings.at(0);
     // `existing` の衝突判定は上の filter で確定している。`compatible` から取ったなら構成上
     // 非衝突、空だったから `siblings.at(0)` に落ちたならその要素は filter で衝突と判定済み。
     // もう一度述語を呼ぶと、兄弟 1 件という最も普通の経路で `startFactsFor`（`pendingOperations`
