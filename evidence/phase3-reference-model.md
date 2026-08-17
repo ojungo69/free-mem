@@ -341,18 +341,20 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
   無い。`tool_failed` は名前が失敗を宣言しているので `successful: true` を矛盾として扱うが、
   `tool_completed` が成功まで主張するかは決められないので `successful: false` は矛盾扱いしない
   （`failed` のまま記録する）。語彙側で決めるべき宿題。
-- **turn identity の降格を誰が行うかは正本が決めていない**（#41）。§3.1 が intake に与えている
-  権限は `evidenceKind` と `ingestAttestation` で、`turnIdSource` の書き換えは明示されていない
-  （§14 は未証明時の措置を `turnIdentityDisposition` による delivery 層の downgrade として書く）。
-  ここでは fail closed の向きに合わせて intake が `unavailable` へ倒している。
-  同じ節で `synthesized_monotonic` は「adapter-assigned monotonic turn counter」とだけ定義され、
-  `native` の「proven for that exact version」に相当する認証条件が無かった。
-  **#41 は addendum §3.1 で決着した**（正本が無言だった間の暫定ではなくなった）: 降格の権限は
-  intake にあり、`synthesized_monotonic` は認証条件を持たないので未認証経路でも降格せず、
-  代わりに `turn_identity_unauthenticated` の診断を出す。`native` の降格は
-  `turn_identity_downgraded`。残る露出（未認証の event が rule 2 の turn 両立を満たしうる）も
-  正本に明記した。判定は**経路の認証**（`authenticatedPeer`）だけを見る——version の authority と
-  一緒にすると、CLI を上げた直後の version drift が「未認証」として観測に混ざる。
+- **turn identity の降格は intake が行う（#41 は addendum §3.1 で決着済み。ここは限界ではなく
+  規定の記録）**。証明されていない `native` 主張は intake が `unavailable` へ倒し、
+  `turn_identity_downgraded` を出す。**delivery 層では降格しない**。
+  `synthesized_monotonic` は認証条件を持たないので**未認証経路でも降格せず**、代わりに
+  `turn_identity_unauthenticated` を出す（判定は**経路の認証** = `authenticatedPeer` だけを見る。
+  version の authority と一緒にすると、CLI を上げた直後の version drift が「未認証」として
+  観測に混ざる）。残る露出——未認証経路の event が rule 2 の turn 両立を満たしうる——も正本に明記した。
+  parity fixture は `unauthenticated-synthesized-turn`（`rejectedBy: intake-diagnostic`）。
+  経緯: 正本は §3.1 で intake に `evidenceKind` と `ingestAttestation` の権限しか与えておらず、
+  `turnIdSource` の書き換えは明示されていなかった（§14 は未証明時の措置を
+  `turnIdentityDisposition` による delivery 層の downgrade として書く）。参照実装が fail closed の
+  向きで intake に倒していたのを、正本の側を書いて追認した形。§6.3 の
+  `turnIdentityDisposition` は destination 側を見る補完で、**そちらは未実装**（schema の欄はあるが
+  読む実装が無い）なので、この complementarity は今日は片側しか動かせない。
 - **`assertSameScope` の不一致は throw する**。別 Agent / 別 lineage の event を状態に渡すのは
   router のバグなので隔離ではなく例外に倒しているが、`sourceAgent` は event が名乗る値なので、
   scope を event 由来で選ぶ実装だと 1 件の取り違えで stream が止まりうる。daemon 側で
