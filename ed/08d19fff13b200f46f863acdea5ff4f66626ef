@@ -1,0 +1,39 @@
+harness/continuity/reference-model.test.ts
+  s_2d059b4f795bca::t_8004665f6f2a12 14
+  s_2d059b4f795bca::t_e6305f02329023 1443-1584
+  s_2d059b4f795bca::t_b22681f0869882 779,851,1690,1837,2423,2436,3342
+harness/continuity/reference-model.ts
+  s_2d059b4f795bca::t_c74b85bcb53099 703-704
+  s_2d059b4f795bca::t_a8cdfd4f674bcb 887-890,906-939
+  s_2d059b4f795bca::t_c49b9d04ebdc21 1296,1298-1299
+  s_2d059b4f795bca::t_2ce0584521c87a 22
+  s_2d059b4f795bca::t_d9d3f357d48cbb 783,791-793,799-800,805-851
+  s_2d059b4f795bca::t_e1a294cec32178 862,865-870
+  s_2d059b4f795bca::t_b9da5641452e06 1265-1279
+  s_2d059b4f795bca::t_71de8caf252c7c 1345-1376
+  s_2d059b4f795bca::t_e01c4c261ffeac 852-854,940-942
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_8608bebd0210c1 399-413
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_70b2f7f0b35631 29
+harness/fixtures/continuity/tool-lifecycle-reduction.json
+  s_2d059b4f795bca::t_6a3d7d4f4b0a24 233-235,240-241
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_dc27b1ce110a0d 128-133,137-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ed08d19fff13b200f46f863acdea5ff4f66626ef",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
