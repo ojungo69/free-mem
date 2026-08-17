@@ -1921,21 +1921,24 @@ test("negative fixture は宣言した層で落ちる", () => {
     // #29 の前提: 残りは schema では落ちない。落ちるようになったら runtime 側の検査が
     // 要らなくなるので、その事実ごと壊れるべき
     assert.deepEqual(issues, [], testCase.name);
+    // runtime 層も intake 層も、受け持つ不変条件は §3.1（identity / envelope）と
+    // §22.6（timestamp の実在、#27）の 2 節にまたがる。**節は case ごとに fixture の `reason` から
+    // 取る**。節を固定で書くと、fixture が case ごとに節を宣言している唯一の場所（`reason`）を
+    // test が一度も読まない。実測でそうなっていた: 和集合の `/§(3\.1|22\.6) 違反/` を全 case へ
+    // 当てていたときは、§22.6 の case の occurredAt を実在する日付に戻しても緑のままで、
+    // §22.6 の強制が negative fixture の被覆から丸ごと消えていた。
+    // **`intake-reject` 側も同じ導出にする**。こちらだけ `/§3.1 違反/` を固定で書いていたので、
+    // §22.6 を名乗る intake の case（受領証の attestedAt）は fixture として書けず、書く層の検査が
+    // parity の被覆から外れていた
+    const section = /^§([\d.]+)/.exec(testCase.reason)?.[1];
+    assert.notEqual(section, undefined, `fixture の reason が節で始まっていない: ${testCase.name}`);
+    // `replace` は String 引数だと**先頭 1 件しか置換しない**。`3.1.2` のような節が来ると
+    // 2 つ目のドットが素のワイルドカードのまま残り、`§3.1X2 違反` にも一致する
+    const violates = new RegExp(`§${section?.replaceAll(".", "\\.")} 違反`);
     if (testCase.rejectedBy === "runtime") {
-      // runtime 層が受け持つ不変条件は §3.1（identity / envelope）と §22.6（timestamp の実在、#27）の
-      // 2 節にまたがる。**節は case ごとに fixture の `reason` から取る**。全 case へ和集合の
-      // `/§(3\.1|22\.6) 違反/` を当てると、どの case もどちらの節でも緑になり、fixture が case ごとに
-      // 節を宣言している唯一の場所（`reason`）を test が一度も読まない。実測でそうなっていた:
-      // §22.6 の case の occurredAt を実在する日付に戻して別の理由で落ちるようにしても緑のままで、
-      // §22.6 の runtime 強制が negative fixture の被覆から丸ごと消えていた
-      const section = /^§([\d.]+)/.exec(testCase.reason)?.[1];
-      assert.notEqual(section, undefined, `fixture の reason が節で始まっていない: ${testCase.name}`);
       assert.throws(
         () => reduceTaskWorkState(emptySnapshot(), asStamped(testCase.event), new Map()),
-        // `replace` は String 引数だと**先頭 1 件しか置換しない**。`3.1.2` のような節が来ると
-        // 2 つ目のドットが素のワイルドカードのまま残り、`§3.1X2 違反` にも一致する——上の
-        // コメントが実測で見つけた過剰マッチそのものが戻る
-        new RegExp(`§${section?.replaceAll(".", "\\.")} 違反`),
+        violates,
         testCase.name,
       );
       continue;
@@ -1945,7 +1948,7 @@ test("negative fixture は宣言した層で落ちる", () => {
     // （名乗っている identity が認証済み peer と矛盾する）。fixture でこの 2 つを区別しないと、
     // 降格しか実装しない移植でも fixture が緑になる
     if (testCase.rejectedBy === "intake-reject") {
-      assert.throws(() => stampIntakeEvidence(testCase.event, context), /§3.1 違反/, testCase.name);
+      assert.throws(() => stampIntakeEvidence(testCase.event, context), violates, testCase.name);
       continue;
     }
     assert.equal(
@@ -4089,14 +4092,41 @@ test("名乗っている兄弟が非互換なら、空白の native ID を埋め
     ["op-native-claimer"],
     "非互換な名乗り手が居るのに空白側へ書いて 2 件になった",
   );
-  // 曖昧にならないことまで見る。2 件になっていれば rule 1 は候補 2 件で `terminal_ambiguous` に
-  // なり、どちらも `unknown` のまま閉じられない（配送鍵だけ消費される）
+  // 衝突していた兄弟は診断で名指しする（黙って飛ばさない）
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code).sort(),
+    ["duplicate_operation_start", "start_sibling_conflict"],
+  );
+  // **どちらが閉じるかまで固定する**。曖昧にならないことだけを見ると、閉じる先が入れ替わる
+  // 退行が緑のまま通る。この状態で rule 1 が見るのは native ID なので、閉じるのは**名乗って
+  // いる側**（`op-native-claimer`）で、再配送の provenance を受け取った側ではない。
+  // **既知の残渣**（#58）: 直前に corruption として名指しした兄弟のほうが閉じ、真の相手は
+  // `started` のまま退避まで残る。ここで別の選び方をすると収束しない形（隔離は鍵を消費せず
+  // 還元器は純関数）か、同じ native ID の pending 2 件（rule 1 が曖昧）のどちらかになるので、
+  // 状態が壊れている以上どれかは失う。失う先を固定して観測できるようにするのが今の選択
   const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
   assert.equal(closed.outcome, "applied");
   assert.ok(
     !closed.diagnostics.some((d) => d.code === "terminal_ambiguous"),
     "rule 1 の候補が 2 件になっている",
   );
+  assert.deepEqual(
+    closed.snapshot.state.pendingOperations.map((pending) => [pending.operationId, pending.status]),
+    [
+      [derived.operationId, "started"],
+      // `succeeded` でなく `unknown`。組み立てた pending には start の取り込み連番が無いので
+      // 権威順序を確認できない（#35 の欠落）。閉じる先の話とは別軸
+      ["op-native-claimer", "unknown"],
+    ],
+    "閉じる先が入れ替わった",
+  );
+});
+
+test("provenance が無い event は intake でも §3.1 で落ちる（書く層にも置く）", () => {
+  // intake は生の adapter 出力に最初に触る層。`event.provenance` を素で destructure するので、
+  // 還元器側のガードだけだと、通常の経路（intake → reduce）では節を名乗らない TypeError で死ぬ
+  const withoutProvenance = { ...startEvent(), provenance: undefined } as unknown as NormalizedContinuityEvent;
+  assert.throws(() => stampIntakeEvidence(withoutProvenance, INTAKE), /§3.1 違反: provenance が無い/);
 });
 
 test("provenance が無い event は TypeError でなく §3.1 で落ちる", () => {

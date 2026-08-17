@@ -356,6 +356,7 @@ mutate "      const truncated = sourceEventLost(existing, event.eventId) ? [exis
 mutate "    if (value !== undefined && !isRealInstant(value)) {" "    if (false) {" && run "IsoTimestamp の暦検査を外す"
 mutate "    [\"provenance.ingestAttestation.attestedAt\", event.provenance.ingestAttestation?.attestedAt]," "    [\"occurredAt\", event.occurredAt]," && run "受領証の時刻を暦検査から外す"
 mutate "  if (provenance === undefined || provenance === null) {" "  if (false) {" && run "provenance 不在を節で落とさない"
+mutate "  if (declaredProvenance === undefined || declaredProvenance === null) {" "  if (false) {" && run "書く層で provenance 不在を落とさない"
 mutate "  if (attestation !== undefined && !isRealInstant(attestation.attestedAt)) {" "  if (false) {" && run "書く層で受領証の時刻を検査しない"
 mutate "  if (!isCanonicalTimestamp(value)) return false;" "" && run "暦検査の前に綴りを当てない"
 mutate "  if (!value.endsWith(\"Z\")) return false;" "  if (false) return false;" && run "offset の Z 固定を外す"

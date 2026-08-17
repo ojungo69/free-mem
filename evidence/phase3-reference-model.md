@@ -16,8 +16,8 @@
 | `evidenceKind` / `ingestAttestation` は intake が割り当て、caller の値を信頼しない | §3.1 | `stampIntakeEvidence` は caller の `ingestAttestation` を読まずに捨て、認証済み経路の受領証（`IntakeContextV1.attestation`）で置き換える |
 | native は attestation・active capability hash 一致・`(scenarioId, captureMethod, channel)` が proven の 4 条件 | §3.1 | 1 つでも欠ければ `synthesized`。channel は受領証側の値を使う（caller の主張は使わない）。**authority 側の値が空なら一致は成立させない**（`activeCapabilityHash` / `expectedSourceAgent` / `exactAgentVersion`）: capability matrix が未整備の daemon で caller が同じ空値を名乗ると native が成立してしまう。「未設定」の表し方は空文字とは限らないので、identity 材料と同じ `isBlank`（空白・タブ・U+200B・U+FEFF まで）で落とす |
 | 受領証は「その認証済み取り込みの receipt」であって、在ることだけでは認証の証拠にならない | §3.1 | `ingestReceiptId` / `peerIdentityId` が空白だけの受領証は `authenticatedVersion` を成立させない。認証できない経路を `undefined` ではなく**欄が空の受領証**で表す daemon では、存在だけを見ると誰も名乗っていない受領証が native authority の根拠になる。§3.1 は kind を「認証済み peer identity」から導けと言うので、peer を指していない受領証は根拠にならない。`channel` は閉じた union（`rpc` / `spool`）なので空白形が存在せず、検査を足していない。**検査を足す欄と足さない欄は schema で決まる**: 凍結 schema で `ingestReceiptId` / `peerIdentityId` / `scenarioId` は `type: string` + `maxLength` だけ = 空白が schema 妥当なので検査が要り、`channel` / `captureMethod` は enum なので閉じている（下記「還元器は event の schema 妥当性を前提にする」と同じ原則）。理由は欄ごとに違う: `channel` は authority 対 authority で caller が触れず、`captureMethod` は caller 側の値だが enum で閉じている |
-| `IsoTimestamp` の暦検査は**書く層にも置く** | §22.6 | `attestedAt` の値は caller 由来ではない。intake は caller の受領証を destructure で捨て、daemon 自身の `context.attestation` を刻印する。読む層（`assertIdentityMaterial`）にしか検査が無いと、**受領証の時刻を 1 つ間違えた daemon は全 event を落としながら、エラーは受領証ではなく event を名指しする**（実測: `2026-02-30T00:00:00Z` の受領証は intake を診断ゼロで通り、直後に 3 つの入口すべてが `§22.6 違反: provenance.ingestAttestation.attestedAt が暦として実在しない` を投げた）。intake は台帳より前なので、throw しても配送鍵は消費されない。締めすぎていないことも同じ test で見る |
-| `provenance` 不在は節を名乗って落とす | §3.1 | 暦検査のループが `event.provenance.ingestAttestation?.attestedAt` を読むので、optional chain は `ingestAttestation` からしか効かない。`provenance` を持たない event は**節を名乗らない `TypeError`** になり、`rejected-events.json` が case ごとに 1 つの節を宣言して TS/Rust パリティの基準にしている分類契約から外れる（外部のコードレビューが指摘し、実測で確認した）。`?.` で黙って通すのは §3.1「Every adapter MUST populate `provenance`」と逆向きなので、`assertIdentityMaterial` の入口で §3.1 として落とす。比較は型を外して行う（型の上では常に定義済みなので、素の比較は「不要な条件」として静的解析に落ちる） |
+| `IsoTimestamp` の暦検査は**書く層にも置く** | §22.6 | `attestedAt` の値は caller 由来ではない。intake は caller の受領証を destructure で捨て、daemon 自身の `context.attestation` を刻印する。読む層（`assertIdentityMaterial`）にしか検査が無いと、**受領証の時刻を 1 つ間違えた daemon は全 event を落としながら、エラーは受領証ではなく event を名指しする**（実測: `2026-02-30T00:00:00Z` の受領証は intake を診断ゼロで通り、直後に 3 つの入口すべてが `§22.6 違反: provenance.ingestAttestation.attestedAt が暦として実在しない` を投げた）。intake は台帳より前なので、throw しても配送鍵は消費されない。締めすぎていないことも同じ test で見る。**negative fixture の節導出も直した**: `intake-reject` の分岐だけ `/§3.1 違反/` を固定で書いていたので、§22.6 を名乗る intake の case が原理的に書けず、書く層の検査が parity の被覆から外れていた（`runtime` の分岐と同じく `reason` から節を取る形へ統一し、`daemon-receipt-attested-at-not-real` を追加） |
+| `provenance` 不在は節を名乗って落とす | §3.1 | 暦検査のループが `event.provenance.ingestAttestation?.attestedAt` を読むので、optional chain は `ingestAttestation` からしか効かない。`provenance` を持たない event は**節を名乗らない `TypeError`** になり、`rejected-events.json` が case ごとに 1 つの節を宣言して TS/Rust パリティの基準にしている分類契約から外れる（外部のコードレビューが指摘し、実測で確認した）。`?.` で黙って通すのは §3.1「Every adapter MUST populate `provenance`」と逆向きなので、`assertIdentityMaterial` の入口で §3.1 として落とす。**intake にも同じガードを置く**: `stampIntakeEvidence` は 1 行目で `event.provenance` を素で destructure するので、生の adapter 出力に最初に触る層が節を名乗らない `TypeError` で死んでいた（還元器側のガードは intake を通らない caller にしか効かない）。`attestedAt` の暦検査を「書く層にも置く」と決めたのと同じ形。比較は型を外して行う（型の上では常に定義済みなので、素の比較は「不要な条件」として静的解析に落ちる） |
 | `scenarioId` は proven な scenario を **naming** していなければならない | §3.1 | 空白だけの `scenarioId` は proven の根拠にならない。matrix 側にも空白 entry を持つ daemon で caller が同じ空白を名乗ると等値で proven が成立する。caller 側を非空白に固定すれば matrix 側の空白 entry とは等値にならないので、検査は片側で足りる。`captureMethod` は閉じた union なので同様に検査不要 |
 | exact version でない `sourceAgentVersion` は native authority を失う | §3.1 | `IntakeContextV1.exactAgentVersion` との一致を要求 |
 | kind は「認証済み peer identity・channel・captureMethod・capability matrix」から導く | §3.1 | **`event.sourceAgent` が受領証の Agent（`expectedSourceAgent`）と食い違う event は、降格ではなく intake が受け取らない**（throw）。§3.1 は検査に落ちた event を `synthesized` へ降格せよと言うが、それは**証跡の質**の規定で、`sourceAgent` は質ではなく **scope selector** として使われる: `assertSameScope` が「どの状態を書き換えてよいか」をこの値の等値だけで決める。降格しても値そのものは残るので、外部のセキュリティレビューが指摘したとおり、peer=codex として認証された event が `sourceAgent: "claude"` を名乗ると `synthesized` の札を貼られたまま **claude の operation を診断ゼロで `succeeded` にできた**（実測）。correlation は `evidenceKind` を一度も読まないので、札は何も束縛しない——**wire が運ぶ値を authority にしない**という同じ原則の適用漏れだった。空白の `sourceAgent` を還元器が落とすのと同じ形で、他人の名前はそれより悪い（空白は「誰も名乗っていない」、他人の名前は「scope が矛盾する」）。認証できない経路（`expectedSourceAgent` が空 = 受領証が peer を名乗っていない）は「違う」と言える相手が居ないので従来どおり降格で扱い、締めすぎていないことも test と変異の両方向で固定した。intake は台帳より前なので throw しても配送鍵は消費されず、訂正版の再送はそのまま効く。**この棄却形は fixture 側にも持たせた**: `rejected-events.json` の `rejectedBy` に `intake-reject` を足し、降格（`intake`）と区別する。区別しないと、降格しか実装しない移植でも negative fixture が緑になり、TS/Rust parity の基準がこの規則を守らせない。この結果 `authenticatedVersion` の中の `event.sourceAgent === context.expectedSourceAgent` は到達時点で必ず true になるため削除した（証明済みに死んだ条件を authority 述語に残すと、検査が行われているように読める）。**境界**: intake を経由せず `reduceTaskWorkState` を直接呼ぶ経路では、状態と一致する `sourceAgent` を詐称した event を止められない。参照模型は認証済み peer を知らないので、そこは daemon の trust boundary であり、還元器側に検査を二重化はしない |
@@ -385,8 +385,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**153 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 153 件（黙って飛ばされた変異ゼロ）、復元後は 176/176 green
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**154 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 154 件（黙って飛ばされた変異ゼロ）、復元後は 177/177 green
 （`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 280/280）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
@@ -470,10 +470,10 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 再配送 start を nativeOperationId で拾わない | 12 |
 | 再配送の判定を matchKey にする | 11 |
 | start の identity 衝突検査を外す | 9 |
-| start の matchKey 衝突検査を外す | 1 |
+| start の matchKey 衝突検査を外す | 2 |
 | start の canonicalInputHash 衝突検査を外す | 2 |
 | 放棄を session で絞らない | 2 |
-| 候補の unknown 化を外す | 17 |
+| 候補の unknown 化を外す | 18 |
 | unknown 化で証跡を残さない | 2 |
 | sourceEventIds の上限を外す | 1 |
 | pendingOperations の上限を外す | 7 |
@@ -534,6 +534,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 全件衝突のとき衝突の証拠を持たない | 9 |
 | 直接呼びの identity 材料検査を外す | 3 |
 | provenance 不在を節で落とさない | 1 |
+| 書く層で provenance 不在を落とさない | 1 |
 | 空白の sourceAgent を素通しする | 1 |
 | turn 両立ゼロの確定済みを適用済みにする | 8 |
 | 矛盾判定の母数まで turn で絞る | 2 |
@@ -566,12 +567,12 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | event 側の空白 lineage を通す | 2 |
 | IsoTimestamp の暦検査を外す | 4 |
 | 受領証の時刻を暦検査から外す | 2 |
-| 書く層で受領証の時刻を検査しない | 1 |
+| 書く層で受領証の時刻を検査しない | 2 |
 | 暦検査の前に綴りを当てない | 1 |
 | offset の Z 固定を外す | 1 |
 | 小数部の綴りを見ない | 1 |
 | 再配送 start の truncation 診断を落とす | 1 |
-| 再配送 start の truncation 対象を全 pending にする | 19 |
+| 再配送 start の truncation 対象を全 pending にする | 20 |
 | truncation の対象を照合相手の外へ広げる | 1 |
 | 任意欄の空白を present として読む | 10 |
 | 候補の toolName を素で比べる | 3 |
@@ -587,7 +588,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | native id が一致する兄弟へ帰属させない | 1 |
 | 届いた start が native id を持たなくても帰属を動かす | 1 |
 | 兄弟の連結順を入れ替える | 1 |
-| 飛ばした衝突兄弟を報告しない | 3 |
+| 飛ばした衝突兄弟を報告しない | 4 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

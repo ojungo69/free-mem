@@ -164,6 +164,14 @@ export function stampIntakeEvidence(
       `§3.1 違反: 認証済み peer は ${context.expectedSourceAgent} なのに event が ${JSON.stringify(event.sourceAgent)} を名乗っている`,
     );
   }
+  // **`provenance` 不在はここで落とす**。下の destructure が素で deref するので、intake は
+  // 生の adapter 出力に最初に触る層でありながら、節を名乗らない `TypeError` で死んでいた。
+  // 還元器側の同じガード（`assertIdentityMaterial`）は intake を通らない caller にしか効かない。
+  // `attestedAt` の暦検査を「書く層にも置く」と決めたのと同じ理由で、こちらも両層に置く
+  const declaredProvenance: unknown = event.provenance;
+  if (declaredProvenance === undefined || declaredProvenance === null) {
+    throw new Error("§3.1 違反: provenance が無い（evidenceKind と受領証の出どころが定まらない）");
+  }
   // caller の attestation は読まずに捨てる。読んだ時点で「認証済みだと名乗れる」ことになり、
   // §3.1 が禁じている自己申告の native authority が通ってしまう
   const { ingestAttestation: _claimed, ...provenance } = event.provenance;

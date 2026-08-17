@@ -390,6 +390,55 @@
         }
       },
       "rejectedBy": "runtime"
+    },
+    {
+      "name": "daemon-receipt-attested-at-not-real",
+      "reason": "§22.6 daemon 自身の受領証の attestedAt が暦として実在しない。intake は caller の受領証を捨てて context の受領証を刻印するので、書く層が検査しないと daemon の誤りが event を名指しするエラーになる",
+      "event": {
+        "eventId": "invalid-daemon-attested-at",
+        "adapterDeliveryId": "delivery-start",
+        "canonicalFingerprint": "fingerprint-start",
+        "kind": "tool_started",
+        "ingestSeq": "9007199254740994",
+        "occurredAt": "2026-08-16T00:00:01Z",
+        "sessionId": "session-1",
+        "taskLineageId": "lineage-1",
+        "turnId": "turn-1",
+        "turnIdSource": "native",
+        "sourceAgent": "claude",
+        "provenance": {
+          "sourceAgentVersion": "2.1.228 (Claude Code)",
+          "evidenceKind": "native",
+          "captureMethod": "native_event",
+          "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+          "scenarioId": "tool-call-lifecycle",
+          "ingestAttestation": {
+            "ingestReceiptId": "receipt-1",
+            "peerIdentityId": "peer-1",
+            "channel": "rpc",
+            "attestedAt": "2026-08-16T00:00:01Z"
+          }
+        },
+        "operation": {
+          "phase": "start",
+          "operationMatchKey": "match-key-1",
+          "operationKind": "Bash",
+          "nativeOperationId": "toolu_1",
+          "canonicalInputHash": "input-hash-1"
+        },
+        "payload": {
+          "tool_name": "Bash"
+        }
+      },
+      "rejectedBy": "intake-reject",
+      "intakeOverride": {
+        "attestation": {
+          "ingestReceiptId": "receipt-1",
+          "peerIdentityId": "peer-1",
+          "channel": "rpc",
+          "attestedAt": "2026-02-30T00:00:00Z"
+        }
+      }
     }
   ]
 }
