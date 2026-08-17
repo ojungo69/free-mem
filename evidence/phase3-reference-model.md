@@ -391,8 +391,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**162 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 162 件（黙って飛ばされた変異ゼロ）、復元後は 181/181 green
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**163 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 163 件（黙って飛ばされた変異ゼロ）、復元後は 181/181 green
 （`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 286/286）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
@@ -449,8 +449,9 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | caller の attestation を信じる | 1 |
 | sourceAgent の束縛を外す | 2 |
 | 認証できない経路でも Agent 名で落とす | 3 |
-| 空の Agent 名を素通しする | 4 |
-| session の束縛を外す | 2 |
+| 空の Agent 名を素通しする | 5 |
+| session の束縛を外す | 3 |
+| 空白の session 束縛を実在する名前として扱う | 1 |
 | 未認証の synthesized_monotonic を診断に出さない | 1 |
 | 未認証の判定に version 一致まで求める | 1 |
 | version authority が経路の認証を前提にしない | 9 |

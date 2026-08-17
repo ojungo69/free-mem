@@ -1,6 +1,6 @@
 {
   "fixtureId": "continuity/invalid/rejected-events",
-  "description": "§3.1 と §22.6 の negative 群。どの層で落ちるかを rejectedBy に書く: schema = continuity.schema.json が落とす / runtime = schema は通り reference-model が落とす（envelope は #29、timestamp の暦としての実在は #27）/ intake = 落とさず synthesized へ降格する / intake-reject = intake が受け取らない。TS と Rust が同じ層で同じ判断をするかの基準。",
+  "description": "§3.1 と §22.6 の negative 群。どの層で落ちるかを rejectedBy に書く: schema = continuity.schema.json が落とす / runtime = schema は通り reference-model が落とす（envelope は #29、timestamp の暦としての実在は #27）/ intake = 落とさず synthesized へ降格する / intake-reject = intake が受け取らない。TS と Rust が同じ層で同じ判断をするかの基準。**intakeContext は expectedSourceAgent / expectedSessionId を束縛しているので、intake より後ろの層を狙う case は event の sourceAgent / sessionId をこの束縛に合わせる**（合わせないと §3.1 の scope 検査が先に落として、宣言した層に届かない。reason から節を導く test が regex 不一致で気づく）。",
   "intakeContext": {
     "expectedSourceAgent": "claude",
     "expectedSessionId": "session-1",

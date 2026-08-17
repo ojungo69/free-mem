@@ -2529,6 +2529,13 @@ test("認証できない経路の synthesized_monotonic は通すが診断に出
   );
   // 認証できていれば診断は出ない（偽陽性を出さない側も測る）
   assert.deepEqual(stampIntakeEvidence(claimed, INTAKE).diagnostics, []);
+  // **受領証が在っても Agent 束縛が無ければ「経路を認証できない」側**。受領証は peer を
+  // 指しているが、`expectedSourceAgent` が空だと caller の名乗る Agent をその peer に結び付け
+  // られない——`assertSameScope` は event の `sourceAgent` でどの状態を書くか決めるので、
+  // 結び付けられない経路の turn 主張は rule 2 の照合力として信用できない。診断の文面も
+  // 「認証できない経路」ではなく「peer に結び付けられない経路」と書く
+  const unboundAgent = stampIntakeEvidence(claimed, { ...INTAKE, expectedSourceAgent: "" });
+  assert.deepEqual(unboundAgent.diagnostics.map((d) => d.code), ["turn_identity_unauthenticated"]);
   // **version drift は「未認証」ではない**。CLI を上げた直後は exact version が一致しないので
   // native authority は消えるが、受領証も peer も Agent も一致しているので経路は認証済み。
   // 両者を同じ述語で見ると、通常の version 更新が未認証として観測に混ざる
@@ -3853,7 +3860,29 @@ test("空白だけの intake authority 値は native を成立させない", () 
       { ...INTAKE, exactAgentVersion: blank },
     );
     assert.equal(versionBlank.event.provenance.evidenceKind, "synthesized", `version ${label}`);
+    // **session だけは向きが逆**。`expectedSessionId` の空白は「権限のある session を名乗れない
+    // 経路」を表すので、authority を消すのではなく**束縛を張らない**（張ると認証できない経路の
+    // event が全部落ちる）。空白の表し方が違っても同じに扱われることを固定する: `isBlank` を
+    // `!== ""` に狭めると、空白 1 文字の束縛が「実在する session 名」として有効になり、
+    // その経路の event が丸ごと `§3.1 違反` で落ちる
+    assert.doesNotThrow(
+      () =>
+        stampIntakeEvidence(
+          { ...startEvent(), sessionId: "session-INTRUDER" },
+          { ...INTAKE, expectedSessionId: blank },
+        ),
+      `expectedSessionId ${label}`,
+    );
   }
+  // 対照: 空白でない束縛は従来どおり効く（緩めていない側も見る）
+  assert.throws(
+    () =>
+      stampIntakeEvidence(
+        { ...startEvent(), sessionId: "session-INTRUDER" },
+        { ...INTAKE, expectedSessionId: "session-1" },
+      ),
+    /§3\.1 違反: 認証済み peer の session/,
+  );
   // 対照: 空白を含むが空白だけではない値は従来どおり native
   const spaced = "2.1.228 (Claude Code)";
   assert.equal(stampIntakeEvidence(startEvent(), { ...INTAKE, exactAgentVersion: spaced }).event.provenance.evidenceKind, "native");

@@ -216,6 +216,9 @@ export function stampIntakeEvidence(
   // なので version の証明を要さず、認証済み経路かどうかだけが問われる（下の診断）。
   // 一緒にすると、**CLI を上げた直後の version drift が「未認証」として報告される**——
   // native authority が消えるのは正しいが、認証済みの経路を未認証と呼ぶのは別の話
+  // 名前どおり「peer を認証できたか」だが、**受領証が在るだけでは足りない**。`expectedSourceAgent`
+  // が空だと caller の名乗る Agent を受領証の peer に結び付けられず、`assertSameScope` は event の
+  // `sourceAgent` でどの状態を書くか決めるので、結び付けられない経路の主張は信用できない
   const authenticatedPeer =
     attestation !== undefined &&
     // §3.1 は受領証を「その認証済み取り込みの receipt」と定義し、evidenceKind を「認証済み
@@ -296,7 +299,8 @@ export function stampIntakeEvidence(
     diagnostics.push({
       code: "turn_identity_unauthenticated",
       eventId: event.eventId,
-      detail: "認証できない経路から synthesized_monotonic の turn identity を名乗っている（現状は通すが rule 2 の照合力を持つ）",
+      detail:
+        "peer identity に結び付けられない経路から synthesized_monotonic の turn identity を名乗っている（現状は通すが rule 2 の照合力を持つ）",
     });
   }
   return { event: stamped, diagnostics };
