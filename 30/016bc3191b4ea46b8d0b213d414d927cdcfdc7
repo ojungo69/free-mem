@@ -1,0 +1,21 @@
+evidence/phase3-reference-model.md
+  s_2d059b4f795bca::t_19e259fa1efff6 188-190,193-196,200,203-206
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_709d7e1a1a80e5 446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "30016bc3191b4ea46b8d0b213d414d927cdcfdc7",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
