@@ -183,10 +183,15 @@ export function stampIntakeEvidence(
   // `2026-02-30T00:00:00Z` の受領証は intake を診断ゼロで通り、直後に 3 つの入口すべてが
   // `§22.6 違反: provenance.ingestAttestation.attestedAt が暦として実在しない` を投げる）。
   // intake は台帳より前なので、throw しても配送鍵は消費されない
-  if (attestation !== undefined && !isRealInstant(attestation.attestedAt)) {
-    throw new Error(
-      `§22.6 違反: 受領証の attestedAt が暦として実在しない: ${attestation.attestedAt}`,
-    );
+  // **空白は「暦として実在しない」ではなく「時刻を名乗っていない」**。この関数自身が下で
+  // 「認証できない経路を `undefined` ではなく**欄が空の受領証**で表す daemon」を前提にしている
+  // ので、空白を暦違反として落とすと**その daemon の event が 100% 落ち、しかもエラーは
+  // 認証の欠落ではなく timestamp を名指しする**（実測）。空白は下の `authenticatedVersion` が
+  // 「名乗っていない」として降格で扱う。任意欄の空白を不在として読むのは `declared()` と同じ原則で、
+  // 必須欄（`occurredAt`）を空白で通さないのと対になる
+  const receiptAttestedAt = declared(attestation?.attestedAt);
+  if (receiptAttestedAt !== undefined && !isRealInstant(receiptAttestedAt)) {
+    throw new Error(`§22.6 違反: 受領証の attestedAt が暦として実在しない: ${receiptAttestedAt}`);
   }
   // §3.1 は evidenceKind も turn identity も「認証済み peer identity」から導けと言う。
   // 受領証があり、かつ caller の名乗る Agent と version が受領証の指すそれと一致することが
@@ -199,6 +204,10 @@ export function stampIntakeEvidence(
     // 見ると「誰も名乗っていない受領証」が native authority の根拠になってしまう
     !isBlank(attestation.ingestReceiptId) &&
     !isBlank(attestation.peerIdentityId) &&
+    // 時刻も同じ。空白の `attestedAt` を上の暦検査が「不在」として通すようにしたので、ここで
+    // 見ないと**時刻を名乗らない受領証が native authority の根拠になる**。受領証は「その認証済み
+    // 取り込みの receipt」なので、いつ取り込んだかを名乗らないものは receipt として成立しない
+    !isBlank(attestation.attestedAt) &&
     // 空文字同士は「一致」ではなく「どちらも名乗っていない」。素通りさせない
     // 「未設定」の表し方は空文字とは限らない。identity 材料と同じ理由（`isBlank`）で、
     // 空白 1 文字・タブ・U+200B で「無い」を表す daemon でも同じ実害が起きる
@@ -441,9 +450,16 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   // event が持ち込む `IsoTimestamp` 値は `occurredAt` と受領証の `attestedAt` の 2 つなので、
   // 両方見る。`occurredAt` だけだと約束が型より狭くなり、schema は凍結済みで `$comment` を
   // 直せないので、狭いほうを広げる
+  // 2 つの欄で空白の扱いが違う。`occurredAt` は required なので空白は**綴り違反として落とす**
+  // （`isRealInstant` が pattern を先に当てる）。受領証の `attestedAt` は「認証できない経路を
+  // 欄が空の受領証で表す」idiom があるので、空白は**時刻を名乗っていない**であって暦違反ではない
+  // （intake 側と同じ判断。空白の受領証は `authenticatedVersion` が降格で扱う）
   for (const [field, value] of [
     ["occurredAt", event.occurredAt],
-    ["provenance.ingestAttestation.attestedAt", event.provenance.ingestAttestation?.attestedAt],
+    [
+      "provenance.ingestAttestation.attestedAt",
+      declared(event.provenance.ingestAttestation?.attestedAt),
+    ],
   ] as const) {
     if (value !== undefined && !isRealInstant(value)) {
       throw new Error(`§22.6 違反: ${field} が暦として実在しない: ${value}`);
@@ -959,9 +975,10 @@ export function reduceTaskWorkState(
     // 判定も**その native ID を持たないほうの operation**に当たる。再配送の provenance が
     // 本来の operation に残らず、無関係な兄弟が上限に達していれば `source_events_truncated` を
     // 偽って出す。
-    // 比較は**値の一致**で行い、届いた start が native ID を持つときだけ働かせる。「何かを
-    // 名乗っていれば優先」だと、互換の定義（`startConflictsWith` の native ID 比較は両方が
-    // declared のときだけ走る）では一致が確かめられていない相手を選ぶことになる
+    // 比較は**値の一致**で行う。「declared な native ID を持つ兄弟」と書いても**選ぶ要素は同じ**
+    // （互換の定義上、両方 declared なら値は一致している）。同値なので挙動の修正ではなく、
+    // その含意を読み手の頭の中で持ち回らせないための書き方。届いた start が native ID を
+    // 持たないときは働かせない——書く値が無い側で帰属を動かす根拠が無い
     // 添字でなく `at()` で取る。`noUncheckedIndexedAccess` を入れていないので `compatible[0]` は
     // 空配列でも `PendingOperation` 型になり、**下の `existing !== undefined` が型の上では常に真**に
     // なる（実行時には undefined が来る）。`at()` は設定に関係なく `| undefined` を返すので、

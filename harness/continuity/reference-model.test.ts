@@ -445,6 +445,42 @@ test("受領証の attestedAt は書く層（intake）で暦検査を受ける",
   );
   // 実在する日付は通す（締めすぎていないことも見る）
   assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
+  // **空白は暦違反ではない**。この関数自身が「認証できない経路を欄が空の受領証で表す daemon」を
+  // 前提にしているので、空白を落とすとその daemon の event が 100% 消え、しかもエラーは認証の
+  // 欠落ではなく timestamp を名指しする（実測でそうなっていた）。降格で扱う
+  for (const blank of ["", " "]) {
+    const emptyReceipt: IntakeContextV1 = {
+      ...INTAKE,
+      attestation: { ingestReceiptId: blank, peerIdentityId: blank, channel: "rpc", attestedAt: blank },
+    };
+    assert.equal(
+      stampIntakeEvidence(startEvent(), emptyReceipt).event.provenance.evidenceKind,
+      "synthesized",
+      `空白の受領証（${JSON.stringify(blank)}）`,
+    );
+  }
+  // ただし**時刻だけ空白の受領証**は authority にしない。上で空白を「不在」として通すように
+  // したので、ここで見ないと時刻を名乗らない受領証が native authority の根拠になる
+  const timeless: IntakeContextV1 = {
+    ...INTAKE,
+    attestation: { ...ATTESTATION, attestedAt: " " },
+  };
+  assert.equal(
+    stampIntakeEvidence(startEvent(), timeless).event.provenance.evidenceKind,
+    "synthesized",
+  );
+});
+
+test("空白の attestedAt を持つ event は還元器でも暦違反にしない", () => {
+  // 読む層も同じ判断にする。intake で降格した event はその受領証を持ったまま還元器へ来るので、
+  // ここで落とすと降格の意味が無くなる（結局その daemon の event は 1 つも適用できない）
+  const event = startEvent({
+    provenance: {
+      ...startEvent().provenance,
+      ingestAttestation: { ingestReceiptId: "", peerIdentityId: "", channel: "rpc", attestedAt: "" },
+    },
+  });
+  assert.equal(reduceTaskWorkState(emptySnapshot(), event, new Map()).outcome, "applied");
 });
 
 test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => {
@@ -4018,8 +4054,11 @@ test("名乗っている兄弟が互換でも、空白の native ID を埋めな
   // 復元した checkpoint に (1) derived id が一致するが native ID が空白の pending と
   // (2) 届いた native ID を既に名乗る別の pending が並ぶ。両方とも identity は互換。
   // 空白の側へ native ID を書くと**同じ native ID の pending が 2 件**になり、rule 1 は候補 2 件を
-  // 曖昧と見るので後続の terminal はどちらも閉じられない。非互換の名乗り手を並べた下の test と
-  // 対にして、`nativeIdTaken` が互換・非互換の両方を覆うことを固定する
+  // 曖昧と見るので後続の terminal はどちらも閉じられない。
+  // **この経路を守っているのは `nativeIdTaken` ではなく上の帰属優先**: 名乗り手が互換なら
+  // `existing` はその名乗り手になり、埋める先が空白でなくなるので `nativeIdTaken` は参照されない
+  // （実測: `nativeIdTaken` を消してもこの test は緑のまま。落ちるのは非互換の名乗り手の test）。
+  // 互換・非互換で守り手が違うので、2 つの test は別のゲートを固定している
   const blankNative = pendingWithBlank("nativeOperationId", "");
   const derived = blankNative.state.pendingOperations[0] as PendingOperation;
   const alreadyNamed: PendingOperation = {
@@ -4126,7 +4165,7 @@ test("provenance が無い event は intake でも §3.1 で落ちる（書く�
   // intake は生の adapter 出力に最初に触る層。`event.provenance` を素で destructure するので、
   // 還元器側のガードだけだと、通常の経路（intake → reduce）では節を名乗らない TypeError で死ぬ
   const withoutProvenance = { ...startEvent(), provenance: undefined } as unknown as NormalizedContinuityEvent;
-  assert.throws(() => stampIntakeEvidence(withoutProvenance, INTAKE), /§3.1 違反: provenance が無い/);
+  assert.throws(() => stampIntakeEvidence(withoutProvenance, INTAKE), /§3\.1 違反: provenance が無い/);
 });
 
 test("provenance が無い event は TypeError でなく §3.1 で落ちる", () => {
@@ -4138,7 +4177,7 @@ test("provenance が無い event は TypeError でなく §3.1 で落ちる", ()
   >[1];
   assert.throws(
     () => reduceTaskWorkState(emptySnapshot(), withoutProvenance, new Map()),
-    /§3.1 違反: provenance が無い/,
+    /§3\.1 違反: provenance が無い/,
   );
 });
 

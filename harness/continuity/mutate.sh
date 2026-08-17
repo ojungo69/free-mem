@@ -354,10 +354,16 @@ mutate "    const siblings = [...new Set([...idMatches, ...nativeMatches])];" " 
 mutate "    new Set([correlation.matched])," "    new Set(previous.state.pendingOperations)," && run "truncation の対象を照合相手の外へ広げる"
 mutate "      const truncated = sourceEventLost(existing, event.eventId) ? [existing.operationId] : [];" "      const truncated = previous.state.pendingOperations.map((p) => p.operationId);" && run "再配送 start の truncation 対象を全 pending にする"
 mutate "    if (value !== undefined && !isRealInstant(value)) {" "    if (false) {" && run "IsoTimestamp の暦検査を外す"
-mutate "    [\"provenance.ingestAttestation.attestedAt\", event.provenance.ingestAttestation?.attestedAt]," "    [\"occurredAt\", event.occurredAt]," && run "受領証の時刻を暦検査から外す"
+mutate "    [
+      \"provenance.ingestAttestation.attestedAt\",
+      declared(event.provenance.ingestAttestation?.attestedAt),
+    ]," "    [\"occurredAt\", event.occurredAt]," && run "受領証の時刻を暦検査から外す"
 mutate "  if (provenance === undefined || provenance === null) {" "  if (false) {" && run "provenance 不在を節で落とさない"
 mutate "  if (declaredProvenance === undefined || declaredProvenance === null) {" "  if (false) {" && run "書く層で provenance 不在を落とさない"
-mutate "  if (attestation !== undefined && !isRealInstant(attestation.attestedAt)) {" "  if (false) {" && run "書く層で受領証の時刻を検査しない"
+mutate "  if (receiptAttestedAt !== undefined && !isRealInstant(receiptAttestedAt)) {" "  if (false) {" && run "書く層で受領証の時刻を検査しない"
+mutate "  const receiptAttestedAt = declared(attestation?.attestedAt);" "  const receiptAttestedAt = attestation?.attestedAt;" && run "空白の受領証時刻を暦違反として落とす"
+mutate "    !isBlank(attestation.attestedAt) &&" "    true &&" && run "時刻を名乗らない受領証を authority にする"
+mutate "      declared(event.provenance.ingestAttestation?.attestedAt)," "      event.provenance.ingestAttestation?.attestedAt," && run "読む層で空白の受領証時刻を暦違反にする"
 mutate "  if (!isCanonicalTimestamp(value)) return false;" "" && run "暦検査の前に綴りを当てない"
 mutate "  if (!value.endsWith(\"Z\")) return false;" "  if (false) return false;" && run "offset の Z 固定を外す"
 mutate "    (fraction === \"\" || ISO_SECFRAC_PATTERN.test(fraction))" "    true" && run "小数部の綴りを見ない"
