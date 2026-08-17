@@ -2215,7 +2215,10 @@ export function correlateTerminalEvent(
   // §4.3「rule 2 は双方が同じ `turnIdSource` 種別の turn 同一性を持つことを要求する。どちらかが
   // unavailable のとき rule 2 は適用されず、operation は unknown のままになる。閉じられるのは
   // rule 1 だけ」。この絞り込みは `open` を作る前（`plausible`）で済ませてあるので、ここに
-  // 残っている open な候補はすべて §4.3 の turn 両立を満たす。あとは件数だけを見る
+  // 残っている open な候補から**種別が具体的に食い違うもの**は既に落ちている。あとは件数だけを見る。
+  // ただし `eligibleOf` は**材料が無い候補を落とさない**（落とすと帰属を取り違える）ので、
+  // 「種別が一致した」と「種別を確認できなかった」はまだ混ざったまま。後者はこの関数の
+  // 最後の門（`terminal_turn_unverifiable`）で分ける
   if (open.length > 1) {
     return {
       matched: null,
