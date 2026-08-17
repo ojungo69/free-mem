@@ -6,8 +6,17 @@ MAIN_REF="origin/${EXPECTED_BRANCH}"
 TARGET_COMMIT="${RELEASE_TAG_COMMIT:-${GITHUB_SHA:-HEAD}}"
 NOTICE_REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# CI を経ない手動 publish でも、実際の tarball に notice が無ければ tag 前に止める。
-node "${NOTICE_REPOSITORY_ROOT}/harness/notice-inclusion-check.mjs"
+# CI を経ない手動 publish でも、実際の tarball に notice が無ければ tag を打たせない。
+#
+# 呼ぶのは tag の到達性が確定した後だけにする。ゲートは install と build を行う＝候補 commit の
+# build script を実行するので、判定より先に走らせると、release workflow の preflight job
+# (contents: write) の中で未検証のコードが動くことになる。成功で抜ける経路は下の 3 箇所しか
+# 無いので、そのすべてをこの関数に集約する。
+finish_pass() {
+	node "${NOTICE_REPOSITORY_ROOT}/harness/notice-inclusion-check.mjs"
+	echo "$1"
+	exit 0
+}
 
 git fetch origin "${EXPECTED_BRANCH}" --quiet
 git fetch origin 'refs/heads/release/*:refs/remotes/origin/release/*' --quiet || true
@@ -47,12 +56,10 @@ if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
 		exit 1
 	fi
 	if [[ "${qualified_branch}" == "${EXPECTED_BRANCH}" && "${tag_commit}" != "${main_commit}" ]]; then
-		echo "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
-		exit 0
+		finish_pass "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
 	fi
 	if [[ "${qualified_branch}" != "${EXPECTED_BRANCH}" ]]; then
-		echo "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
-		exit 0
+		finish_pass "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
 	fi
 	if [[ "${tag_commit}" != "${main_commit}" ]]; then
 		echo "Release tag preflight failed: local tag target is not origin/${EXPECTED_BRANCH} HEAD." >&2
@@ -84,4 +91,4 @@ if [[ -z "${GITHUB_ACTIONS:-}" && "${RELEASE_SKIP_LOCAL_GUARDS:-0}" != "1" ]]; t
 	fi
 fi
 
-echo "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch:-${EXPECTED_BRANCH}}."
+finish_pass "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch:-${EXPECTED_BRANCH}}."

@@ -155,6 +155,17 @@ function main() {
 
   try {
     run("corepack", ["pnpm", "install", "--frozen-lockfile"], vendorRoot);
+
+    // build 前に検査対象の notice を消す。viewer-server/static は emptyOutDir: false なので、
+    // 生成が止まっても前回のファイルが残り、古い内容をこの検査が受理してしまう——塞ごうとしている
+    // fail-open そのものが検査側に生える。消してから build すれば、生成が止まった回は missing で落ちる。
+    // clean checkout の CI では起きないが、同じ作業ツリーで繰り返す release preflight では起きる。
+    for (const packageSpec of PACKAGES) {
+      for (const notice of packageSpec.notices) {
+        rmSync(join(vendorRoot, packageSpec.directory, ...notice.path.split("/")), { force: true });
+      }
+    }
+
     run("corepack", ["pnpm", "-r", "run", "build"], vendorRoot);
 
     for (const packageSpec of PACKAGES) {
@@ -183,4 +194,4 @@ function main() {
   console.log("third-party notice inclusion check OK");
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (import.meta.main) main();
