@@ -61,9 +61,10 @@ requireContains(
 );
 requireContains(
   "THIRD_PARTY_NOTICES.md",
-  ["## codemem", "## Dependency licenses", "Production only"],
-  "vendored snapshot と依存スキャンの記載",
+  ["## Dependency licenses", "Production only"],
+  "依存スキャンの記載",
 );
+requireFile("vendor/codemem/VENDOR.md", "vendored snapshot の provenance（下で pin を読む）");
 
 if (failures.length === 0) {
   const license = read("LICENSE");
@@ -80,6 +81,25 @@ if (failures.length === 0) {
     failures.push(
       `vendor/codemem/LICENSE is not the upstream MIT text (sha256 ${vendorDigest}, expected ${CANONICAL_LICENSE_SHA256["vendor/codemem/LICENSE"]})`,
     );
+  }
+
+  // 手で並べた錨は、その錨だけを貼った stub でも通る（検査が自分の literal を検査する形）。
+  // vendored snapshot の記載は一次情報から導いて突き合わせる: 著作権者は MIT 本文から、
+  // pin は VENDOR.md から取り、THIRD_PARTY_NOTICES.md が同じものを載せているか見る。
+  const notices = read("THIRD_PARTY_NOTICES.md");
+
+  const holder = /^Copyright \(c\) \d{4} (.+)$/m.exec(vendorLicense)?.[1]?.trim();
+  if (!holder) {
+    failures.push("vendor/codemem/LICENSE has no copyright line to attribute");
+  } else if (!notices.includes(holder)) {
+    failures.push(`THIRD_PARTY_NOTICES.md no longer credits ${holder} (vendor/codemem/LICENSE の著作権者)`);
+  }
+
+  const pin = /`([0-9a-f]{40})`/.exec(read("vendor/codemem/VENDOR.md"))?.[1];
+  if (!pin) {
+    failures.push("vendor/codemem/VENDOR.md records no 40-hex snapshot commit");
+  } else if (!notices.includes(pin)) {
+    failures.push(`THIRD_PARTY_NOTICES.md no longer records the vendored snapshot commit ${pin}`);
   }
 
   const readme = read("README.md");
