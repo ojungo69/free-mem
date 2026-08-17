@@ -334,7 +334,13 @@ mutate "  let seen = 0;" "  let seen = -9;" && run "同名 id でも側索引を
 mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) {" && run "correlate の入口で terminal 相を要求しない"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible: readonly PendingOperation[] = [];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible = idMatches.filter((pending) => !startConflictsWith(pending));" && run "再配送の相手を集合ごとに選ぶ"
-mutate "      compatible.find((pending) => declared(pending.correlation.nativeOperationId) !== undefined) ??" "" && run "native id を名乗る兄弟を優先しない"
+mutate "      compatible.find(
+        (pending) =>
+          declared(operation.nativeOperationId) !== undefined &&
+          declared(pending.correlation.nativeOperationId) !== undefined,
+      ) ??" "" && run "native id を名乗る兄弟を優先しない"
+mutate "          declared(operation.nativeOperationId) !== undefined &&
+          declared(pending.correlation.nativeOperationId) !== undefined," "          declared(pending.correlation.nativeOperationId) !== undefined," && run "届いた start が native id を持たなくても名乗る兄弟を優先する"
 mutate "      compatible.at(0) ??
       siblings.at(0);" "      compatible.at(0);" && run "全件衝突のとき衝突の証拠を持たない"
 mutate "    const siblings = [...new Set([...idMatches, ...nativeMatches])];" "    const siblings = [...new Set([...nativeMatches, ...idMatches])];" && run "兄弟の連結順を入れ替える"

@@ -4001,6 +4001,36 @@ test("空白の native ID を埋める前に、既に名乗っている兄弟を
   );
 });
 
+test("届いた start が native ID を持たないときは、名乗る兄弟を優先せず配列順で選ぶ", () => {
+  // 優先してよい根拠は「互換の定義上、名乗っている値は届いたものと一致している」だが、
+  // `startConflictsWith` の native ID 比較は両方が declared のときだけ走る。届いた側が持たない
+  // なら一致は一度も確かめていないので、優先の根拠が無い。根拠が無いまま選び先を変えると、
+  // `operationId` が重複する状態で配列順とは違う相手が選ばれ、**空白の native ID がどちらの
+  // 兄弟から落ちるかが変わる**
+  const start = startEvent({ operation: MATCH_KEY_ONLY });
+  const base = startedSnapshot(start);
+  const pending = base.state.pendingOperations[0] as PendingOperation;
+  const snapshot = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [
+        { ...pending, correlation: { ...pending.correlation, nativeOperationId: "" } },
+        { ...pending, correlation: { ...pending.correlation, nativeOperationId: "toolu_other" } },
+      ],
+    },
+  };
+  const result = reduceTaskWorkState(snapshot, start, new Map());
+  assert.equal(result.outcome, "applied");
+  // 届いた start に書く値が無いので、選ばれた側は空白がキーごと落ちるだけ。選ばれなかった側は
+  // そのまま残る。優先を無条件に働かせると 2 件目が選ばれ、1 件目の空白が残る
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((entry) => entry.correlation.nativeOperationId),
+    [undefined, "toolu_other"],
+    "配列順でなく native ID を名乗る側が選ばれた",
+  );
+});
+
 test("空白でない任意欄の食い違いは今までどおり衝突として落とす", () => {
   // 締めすぎの逆方向。空白を通す変更が「任意欄の検査そのもの」を殺していないことを固定する
   const snapshot = pendingWithBlank("canonicalInputHash", "input-hash-OTHER");

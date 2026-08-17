@@ -924,17 +924,25 @@ export function reduceTaskWorkState(
     const siblings = [...new Set([...idMatches, ...nativeMatches])];
     const compatible = siblings.filter((pending) => !startConflictsWith(pending));
     // 互換な兄弟が複数居るときは、**native ID を既に名乗っている側**を再配送の相手にする。
-    // 互換の定義上、名乗っているならその値は届いた start のものと一致している（上の比較）。
     // 名乗っていない側を選ぶと下の復元がその欄を書き、**同じ native ID の pending が 2 件**になる。
     // rule 1 は候補が 2 件になった時点で曖昧と判断するので、後続の terminal はどちらも閉じられず、
-    // 2 件とも `started` のまま残る。届いた start が native ID を持たないときは書く値が無いので
-    // この優先は働かない（`nativeMatches` が空）
+    // 2 件とも `started` のまま残る。
+    // **届いた start が native ID を持つときだけ働かせる**。優先してよい根拠は「互換の定義上、
+    // 名乗っている値は届いたものと一致している」だが、`startConflictsWith` の native ID 比較は
+    // **両方が declared のときだけ**走るので、届いた側が持たないなら一致は一度も確かめていない。
+    // 根拠が無いまま選び先を変えると、`operationId` が重複する状態（凍結 schema は一意性を課さない）で
+    // 配列順とは違う相手が選ばれ、**空白の native ID がどちらの兄弟から落ちるかが変わる**。
+    // 書く値が無い側では従来どおり配列順で決める
     // 添字でなく `at()` で取る。`noUncheckedIndexedAccess` を入れていないので `compatible[0]` は
     // 空配列でも `PendingOperation` 型になり、**下の `existing !== undefined` が型の上では常に真**に
     // なる（実行時には undefined が来る）。`at()` は設定に関係なく `| undefined` を返すので、
     // 空集合の分岐が型に残る
     const existing =
-      compatible.find((pending) => declared(pending.correlation.nativeOperationId) !== undefined) ??
+      compatible.find(
+        (pending) =>
+          declared(operation.nativeOperationId) !== undefined &&
+          declared(pending.correlation.nativeOperationId) !== undefined,
+      ) ??
       compatible.at(0) ??
       siblings.at(0);
     const startConflict = existing !== undefined && startConflictsWith(existing);
