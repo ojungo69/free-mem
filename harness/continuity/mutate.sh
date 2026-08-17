@@ -396,6 +396,21 @@ mutate "  if (isBlank(state.taskLineageId)) {" "  if (false) {" && run "状態�
 mutate "  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {" "  if (false) {" && run "event 側の空白 lineage を通す"
 mutate "          ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)])," "" && run "再配送 start の truncation 診断を落とす"
 mutate "        .filter((pending) => !compatibleSet.has(pending))" "        .filter(() => false)" && run "飛ばした衝突兄弟を報告しない"
+
+# --- #43 / #39: 消えた証跡の記録 --------------------------------------------
+mutate "      overflowed.push(kept.shift() as DroppedEvidenceEntryV1);" "      overflowed.push(kept.pop() as DroppedEvidenceEntryV1);" && run "記録を末尾から落とす（FR-008）"
+mutate "    while (kept.length >= CONTINUITY_LIMITS.arrayItems) {" "    while (false) {" && run "記録の上限検査を外す（FR-015）"
+mutate "              code: \"dropped_evidence_recorded\" as const," "              code: \"pending_operations_evicted\" as const," && run "記録の追加を別の診断で報告する（FR-009）"
+mutate "      ...(overflowed.length === 0
+        ? []
+        : [" "      ...(true
+        ? []
+        : [" && run "記録の脱落を診断に出さない（FR-009）"
+mutate "        sensitivity: pending.sensitivity," "        sensitivity: \"normal\" as const," && run "退避の記録で機密度を引き継がない"
+mutate "                sensitivity: \"private\"," "                sensitivity: \"normal\"," && run "孤児の記録を normal で残す"
+mutate "        (entry) => entry.reason === \"orphaned_terminal\" && entry.eventId === event.eventId," "        () => false," && run "孤児の記録を再送のたびに足す"
+mutate "      if (correlation.diagnostic === \"terminal_orphaned\" && !alreadyRecorded) {" "      if (false) {" && run "孤児 terminal を状態に記録しない"
+mutate "      ...(evicted.length === 0 ? {} : { droppedEvidence: recorded.droppedEvidence })," "" && run "退避を状態に記録しない"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか

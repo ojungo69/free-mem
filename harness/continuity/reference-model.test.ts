@@ -11,6 +11,7 @@ import {
   NON_OPERATION_EVENT_KINDS,
   OPERATION_EVENT_PHASES,
   type CanonicalWorkStateV1,
+  type DroppedEvidenceEntryV1,
   type NormalizedContinuityEvent,
   type PendingOperation,
 } from "../schema/continuity.ts";
@@ -775,7 +776,7 @@ test("session が違う terminal は閉じない", () => {
   assert.equal(result.outcome, "quarantined");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
@@ -847,7 +848,7 @@ test("pendingOperations が上限のとき terminal 済みを落として新し�
   // 黙って落とさない
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["pending_operations_evicted"],
+    ["pending_operations_evicted", "dropped_evidence_recorded"],
   );
   assert.match(result.diagnostics[0]?.detail ?? "", /op-0/);
 });
@@ -1439,6 +1440,148 @@ test("上限に余裕があるときは退避の診断を出さない", () => {
   assert.equal(result.snapshot.state.pendingOperations.length, 1);
 });
 
+// --- #43 / #39: 状態から消えた証跡を状態に残す ------------------------------
+
+/** `droppedEvidence` を `n` 件だけ持つ状態。`recordedAt` は**降順**（時刻で並べ替えたら落ちる）。 */
+function withDroppedEvidence(snapshot: TaskWorkStateSnapshotV1, n: number): TaskWorkStateSnapshotV1 {
+  const droppedEvidence: DroppedEvidenceEntryV1[] = Array.from({ length: n }, (_, index) => ({
+    reason: "evicted",
+    operationId: `dropped-${index}`,
+    status: "unknown",
+    // 先頭ほど**新しい**時刻。`recordedAt` 昇順で落とすと末尾の古い側が消える
+    recordedAt: `2026-08-15T00:00:${String(59 - (index % 60)).padStart(2, "0")}Z`,
+    sensitivity: "normal",
+  }));
+  return { ...snapshot, state: { ...snapshot.state, droppedEvidence } };
+}
+
+test("退避した operation は droppedEvidence に残る（#43 FR-005）", () => {
+  const snapshot = filledSnapshot(true);
+  // 退避元の機密度を引き継ぐことまで見る（記録側で内容を見て決め直さない: Constitution III）
+  const secret = snapshot.state.pendingOperations.map((pending) =>
+    pending.operationId === "op-0" ? { ...pending, sensitivity: "secret" as const } : pending,
+  );
+  const result = reduceTaskWorkState(
+    { ...snapshot, state: { ...snapshot.state, pendingOperations: secret } },
+    startEvent(),
+    new Map(),
+  );
+  assert.deepEqual(result.snapshot.state.droppedEvidence, [
+    {
+      reason: "evicted",
+      operationId: "op-0",
+      status: "succeeded",
+      recordedAt: "2026-08-16T00:00:01Z",
+      sensitivity: "secret",
+    },
+  ]);
+  // 記録自体が機密なので、状態の集約機密度も上がる
+  assert.equal(result.snapshot.state.sensitivity, "secret");
+});
+
+test("孤児 terminal は droppedEvidence に残るが、鍵は消費しない（#39 FR-006）", () => {
+  // 隔離の判断は変えない。start が後から届く順序前後は正常運用なので、台帳に入れると
+  // 二度と閉じられなくなる。記録は隔離の代わりではなく、隔離した事実を状態にも残すもの
+  const orphan = terminalEvent();
+  const result = reduceTaskWorkState(emptySnapshot(), orphan, new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.equal(result.ledger.size, 0);
+  assert.deepEqual(result.snapshot.state.droppedEvidence, [
+    {
+      reason: "orphaned_terminal",
+      eventId: "event-terminal",
+      recordedAt: "2026-08-16T00:00:02Z",
+      // 相手が居ないので機密度を引き継げない。fail-closed の既定に倒す
+      sensitivity: "private",
+    },
+  ]);
+  assert.deepEqual(result.diagnostics.map((d) => d.code).sort(), [
+    "dropped_evidence_recorded",
+    "terminal_orphaned",
+  ]);
+  // 記録は state に入ったので revision も history も進む（revision だけ動いて履歴が
+  // 追いつかないと、状態の revision が自分の履歴の末尾に無いことになる）
+  assert.notEqual(result.snapshot.state.stateRevision, emptySnapshot().state.stateRevision);
+  assert.equal(result.snapshot.history.at(-1)?.revision, result.snapshot.state.stateRevision);
+});
+
+test("同じ孤児 terminal の再配送は記録を増やさない（収束する）", () => {
+  // 隔離は鍵を消費せず還元器は純関数なので、同じ terminal は再送され続ける。eventId で
+  // 重複を落とさないと、記録が再送のたびに 1 件ずつ伸びて 256 件の枠を食い潰す
+  const orphan = terminalEvent();
+  const first = reduceTaskWorkState(emptySnapshot(), orphan, new Map());
+  const again = reduceTaskWorkState(first.snapshot, orphan, first.ledger);
+  assert.equal(again.outcome, "quarantined");
+  assert.equal(again.snapshot.state.droppedEvidence?.length, 1);
+  // 2 度目は状態が動かない。revision が変わると CAS token として使う下流が空振りする
+  assert.equal(again.snapshot.state.stateRevision, first.snapshot.state.stateRevision);
+  assert.equal(again.snapshot.history.length, first.snapshot.history.length);
+  // 記録していないので `dropped_evidence_recorded` も出さない
+  assert.deepEqual(again.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+});
+
+test("孤児の記録は、後から start が届いて閉じても消えない", () => {
+  // 記録は「その時点で相手が居なかった」という履歴。閉じたときに消すのは、どの FR も
+  // 求めていない規則を足すことになる（消すなら「いつ消すか」を別に決める必要がある）
+  const orphan = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
+  const started = reduceTaskWorkState(orphan.snapshot, startEvent(), orphan.ledger);
+  const closed = reduceTaskWorkState(started.snapshot, terminalEvent(), started.ledger);
+  assert.equal(closed.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  assert.equal(closed.snapshot.state.droppedEvidence?.length, 1);
+});
+
+test("記録は識別と分類だけを持つ（#43 FR-007）", () => {
+  // payload・引数・出力・description を入れると、状態から落とした証跡が**落とす前より
+  // 詳しい**ことになる。schema の additionalProperties: false は「知らない欄」を止めるだけで、
+  // 既知の欄に中身を詰めるのは止められないので、欄集合そのものを固定する
+  const evicted = reduceTaskWorkState(filledSnapshot(true), startEvent(), new Map());
+  const orphaned = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
+  assert.deepEqual(Object.keys(evicted.snapshot.state.droppedEvidence?.[0] ?? {}).sort(), [
+    "operationId",
+    "reason",
+    "recordedAt",
+    "sensitivity",
+    "status",
+  ]);
+  assert.deepEqual(Object.keys(orphaned.snapshot.state.droppedEvidence?.[0] ?? {}).sort(), [
+    "eventId",
+    "reason",
+    "recordedAt",
+    "sensitivity",
+  ]);
+});
+
+test("記録が上限のときは配列の先頭から落とす（#43 FR-008 / FR-015）", () => {
+  // `recordedAt` は adapter が寄越した `occurredAt` の写しなので、時刻で並べ替えると
+  // event を出す側がどれを残すか選べる。`pendingOperations` の退避と同じ規則にする
+  const full = withDroppedEvidence(filledSnapshot(true), CONTINUITY_LIMITS.arrayItems);
+  const result = reduceTaskWorkState(full, startEvent(), new Map());
+  const recorded = result.snapshot.state.droppedEvidence ?? [];
+  assert.equal(recorded.length, CONTINUITY_LIMITS.arrayItems);
+  // 落ちたのは先頭（`recordedAt` 昇順なら末尾の dropped-255 が落ちるので、そこで分かれる）
+  assert.equal(recorded.some((entry) => entry.operationId === "dropped-0"), false);
+  assert.equal(recorded.some((entry) => entry.operationId === "dropped-255"), true);
+  assert.equal(recorded.at(-1)?.operationId, "op-0");
+  // 黙って消さない
+  assert.deepEqual(result.diagnostics.map((d) => d.code).sort(), [
+    "dropped_evidence_overflowed",
+    "dropped_evidence_recorded",
+    "pending_operations_evicted",
+  ]);
+});
+
+test("droppedEvidence を持たない状態も読めて、必要になったら欄が生える（#43 FR-013/FR-014）", () => {
+  // 任意欄なので、この版より前の checkpoint と別実装の状態には無い。無いことを
+  // 「記録できない」と読むと、退避が黙って消える側に倒れる
+  const old = filledSnapshot(true);
+  assert.equal(old.state.droppedEvidence, undefined);
+  const result = reduceTaskWorkState(old, startEvent(), new Map());
+  assert.equal(result.snapshot.state.droppedEvidence?.length, 1);
+  // 何も落ちていないなら空配列も作らない（空配列と欄なしが同じ意味の欄を 2 通り書かない）
+  const quiet = reduceTaskWorkState(emptySnapshot(), startEvent(), new Map());
+  assert.equal(quiet.snapshot.state.droppedEvidence, undefined);
+});
+
 test("語彙外の turnIdSource は turn 同一性の検査で落とす", () => {
   // 語彙は凍結 schema にしかなく、参照模型は event が schema 検証を通ってから届くとは限らない。
   // 語彙外の綴りは `unavailable` の分岐にも intake の `native` 証明要求にも当たらないので、
@@ -1544,7 +1687,7 @@ test("terminal 済みが無くても start は取り込む（枠が埋まって�
   assert.equal(result.outcome, "applied");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["pending_operations_evicted"],
+    ["pending_operations_evicted", "dropped_evidence_recorded"],
   );
   assert.equal(result.snapshot.state.pendingOperations.length, CONTINUITY_LIMITS.arrayItems);
   // 落とすのは最古の 1 件だけで、新しい start は必ず入る
@@ -1691,7 +1834,7 @@ test("空文字の sessionId は schema violation", () => {
   assert.equal(crossSession.outcome, "quarantined");
   assert.deepEqual(
     crossSession.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
 });
 
@@ -2277,7 +2420,7 @@ test("一致しない nativeOperationId を名乗る terminal は matchKey へ�
   assert.equal(result.outcome, "quarantined");
   assert.deepEqual(
     result.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
   assert.equal(result.snapshot.state.pendingOperations[0]?.status, "started");
 });
@@ -2290,7 +2433,7 @@ test("start より先に届いた terminal は台帳に入れない（後から 
   assert.equal(early.outcome, "quarantined");
   assert.deepEqual(
     early.diagnostics.map((d) => d.code),
-    ["terminal_orphaned"],
+    ["terminal_orphaned", "dropped_evidence_recorded"],
   );
   assert.equal(early.ledger.size, 0);
   // start が届いてから同じ terminal を再配送すれば閉じられる
@@ -3196,7 +3339,7 @@ test("復元した状態が toolName を持たなくても rule 2 の候補に�
     new Map(),
   );
   assert.equal(orphaned.outcome, "quarantined");
-  assert.deepEqual(orphaned.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+  assert.deepEqual(orphaned.diagnostics.map((d) => d.code), ["terminal_orphaned", "dropped_evidence_recorded"]);
 });
 
 test("turn が両立しない兄弟は照合不能ゲートの母数に入らない", () => {

@@ -230,14 +230,15 @@
       "eventId": "event-terminal-orphan",
       "evidenceKind": "native",
       "outcome": "quarantined",
-      "contentHash": "d6a0bf9d3e41c4364415c1fbc7b38e3279006b651e905891cdb5fc2832a3c11f",
-      "stateRevision": "0fc86bdace7ead212d819e4933dc1181a9e37ffa26b2270fe76721ab52e182f3",
-      "historyLength": 2,
+      "contentHash": "13df36d94f09a65822933c98317cbd3381613819eee5197c71fb0acda4ba1783",
+      "stateRevision": "f129bd012d68cdc104c262001eababbc1e605f9528ba4ff6d1e0b4474e4fff0e",
+      "historyLength": 3,
       "pendingStatuses": [
         "succeeded"
       ],
       "diagnostics": [
-        "terminal_orphaned"
+        "terminal_orphaned",
+        "dropped_evidence_recorded"
       ]
     }
   ]

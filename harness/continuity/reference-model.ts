@@ -19,6 +19,7 @@ import {
   type ContinuityCaptureMethod,
   type ContinuityIngestAttestationV1,
   type ContinuityOperationPhase,
+  type DroppedEvidenceEntryV1,
   type NormalizedContinuityEvent,
   type OperationCorrelationV1,
   type PendingOperation,
@@ -699,6 +700,8 @@ export type ContinuityDiagnosticCode =
   | "start_conflict"
   | "delivery_conflict"
   | "pending_operations_evicted"
+  | "dropped_evidence_recorded"
+  | "dropped_evidence_overflowed"
   | "source_events_truncated"
   | "turn_identity_downgraded"
   | "turn_identity_unauthenticated";
@@ -777,6 +780,7 @@ function nextContent(
   previous: CanonicalWorkStateV1,
   event: NormalizedContinuityEvent,
   pendingOperations: PendingOperation[],
+  droppedEvidence?: DroppedEvidenceEntryV1[],
 ): WorkStateContentV1 {
   const { stateRevision: _ignored, sensitivity: _aggregate, ...rest } = previous;
   const withoutSensitivity = {
@@ -784,12 +788,67 @@ function nextContent(
     // revision ごとに配列を分ける。`CanonicalWorkStateV1.pendingOperations` は readonly でないので、
     // 共有すると新 revision への変更が過去の snapshot にも見える（§4.2 の immutable revision 違反）
     pendingOperations: [...pendingOperations],
+    // 記録が 1 件も無いときは**欄ごと作らない**。空配列を書くと、同じ意味（何も落ちていない）の
+    // 状態が「欄なし」と「空配列」の 2 通りの綴りを持ち、canonical hash と §22.8 の dedupe が割れる
+    ...(droppedEvidence === undefined ? {} : { droppedEvidence: [...droppedEvidence] }),
     lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
     updatedAt: event.occurredAt,
   };
   return {
     ...withoutSensitivity,
+    // `droppedEvidence[].sensitivity` もここで集約に入る（走査は欄名で拾うので手で並べない）。
+    // 退避元が secret なら、その記録を持つ状態も secret になる
     sensitivity: aggregateSensitivity(withoutSensitivity, previous.sensitivity),
+  };
+}
+
+/**
+ * §10 `arrayItems` を上限に、live な集合から落ちた証跡を記録する（#43 / #39）。
+ *
+ * 追加は**末尾**、上限に達していたら**配列の先頭から** 1 件落としてから足す。`recordedAt` で
+ * 並べ替えない: `recordedAt` は adapter が寄越した `occurredAt` の写しなので、時刻で並べると
+ * event を出す側がどれを残すか選べる（`pendingOperations` の退避と同じ規則・同じ理由）。
+ *
+ * 追加も脱落も診断に出す。記録そのものが「黙って消さない」ための仕組みなので、記録が
+ * 溢れて消えるところで黙ると入れ子で同じ穴が開く。
+ */
+function recordDroppedEvidence(
+  previous: readonly DroppedEvidenceEntryV1[] | undefined,
+  additions: readonly DroppedEvidenceEntryV1[],
+  eventId: string,
+): { droppedEvidence: DroppedEvidenceEntryV1[]; diagnostics: ContinuityDiagnosticV1[] } {
+  const kept = [...(previous ?? [])];
+  const overflowed: DroppedEvidenceEntryV1[] = [];
+  for (const entry of additions) {
+    while (kept.length >= CONTINUITY_LIMITS.arrayItems) {
+      overflowed.push(kept.shift() as DroppedEvidenceEntryV1);
+    }
+    kept.push(entry);
+  }
+  const label = (entry: DroppedEvidenceEntryV1): string =>
+    `${entry.reason}:${entry.operationId ?? entry.eventId ?? "?"}`;
+  return {
+    droppedEvidence: kept,
+    diagnostics: [
+      ...(additions.length === 0
+        ? []
+        : [
+            {
+              code: "dropped_evidence_recorded" as const,
+              eventId,
+              detail: `状態から落ちた証跡を記録: ${additions.map(label).join(", ")}`,
+            },
+          ]),
+      ...(overflowed.length === 0
+        ? []
+        : [
+            {
+              code: "dropped_evidence_overflowed" as const,
+              eventId,
+              detail: `記録が上限 ${CONTINUITY_LIMITS.arrayItems} 件のため先頭から脱落: ${overflowed.map(label).join(", ")}`,
+            },
+          ]),
+    ],
   };
 }
 
@@ -800,9 +859,15 @@ function commit(
   applied: {
     pendingOperations: PendingOperation[];
     diagnostics: readonly ContinuityDiagnosticV1[];
+    droppedEvidence?: DroppedEvidenceEntryV1[];
   },
 ): TaskStateReductionResult {
-  const content = nextContent(previous.state, event, applied.pendingOperations);
+  const content = nextContent(
+    previous.state,
+    event,
+    applied.pendingOperations,
+    applied.droppedEvidence ?? previous.state.droppedEvidence,
+  );
   const contentHash = contentHashOf(content);
   const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
   const nextLedger = new Map(ledger);
@@ -819,7 +884,10 @@ function commit(
   };
 }
 
-/** 状態にも台帳にも入れずに隔離する。訂正した event を後から入れ直せるようにするため。 */
+/**
+ * 台帳に入れずに隔離する。訂正した event を後から入れ直せるようにするため。
+ * 状態も変えない（証跡を残す隔離は下の `quarantineWithRecord`）。
+ */
 function quarantine(
   previous: TaskWorkStateSnapshotV1,
   ledger: IdempotencyLedger,
@@ -832,6 +900,43 @@ function quarantine(
     contentHash: contentHashOf(content),
     ledger,
     diagnostics,
+  };
+}
+
+/**
+ * 隔離しつつ、落とした証跡だけは状態に残す（#39）。**配送鍵は消費しない**ので、後から start が
+ * 届けば同じ terminal の再配送で閉じられる——隔離の判断そのものは変えていない。
+ *
+ * 状態が変わる以上、revision は採番し直し、`history` にも 1 件積む。片方だけ動かすと、状態の
+ * revision が自分の履歴の末尾に無いことになる。
+ *
+ * `outcome` は `quarantined` のまま。呼び出し側で「隔離なら snapshot を捨てる」と読む経路は
+ * harness に存在しない（`outcome === "quarantined"` で分岐する消費者はゼロ）ことを確認済み。
+ */
+function quarantineWithRecord(
+  previous: TaskWorkStateSnapshotV1,
+  event: NormalizedContinuityEvent,
+  ledger: IdempotencyLedger,
+  diagnostics: readonly ContinuityDiagnosticV1[],
+  recorded: { droppedEvidence: DroppedEvidenceEntryV1[]; diagnostics: ContinuityDiagnosticV1[] },
+): TaskStateReductionResult {
+  const content = nextContent(
+    previous.state,
+    event,
+    previous.state.pendingOperations,
+    recorded.droppedEvidence,
+  );
+  const contentHash = contentHashOf(content);
+  const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
+  return {
+    outcome: "quarantined",
+    snapshot: {
+      state: { ...content, stateRevision: revision },
+      history: [...previous.history, { revision, contentHash, eventId: event.eventId }],
+    },
+    contentHash,
+    ledger,
+    diagnostics: [...diagnostics, ...recorded.diagnostics],
   };
 }
 
@@ -1157,9 +1262,21 @@ export function reduceTaskWorkState(
     // 黙って間引かない。退避した operation の event 自体は event store に残るが、状態からは
     // 消えるので、どれを落としたかを診断に出す
     const kept = new Set(retained);
-    const evicted = previous.state.pendingOperations
-      .filter((pending) => !kept.has(pending))
-      .map((pending) => pending.operationId);
+    const evictedOperations = previous.state.pendingOperations.filter((pending) => !kept.has(pending));
+    const evicted = evictedOperations.map((pending) => pending.operationId);
+    // 退避された operation を状態にも残す（#43）。診断は状態の外なので、状態を受け取った側には
+    // 届かない。`sensitivity` は**退避元から引き継ぐ**（記録側で内容を見て決め直さない: Constitution III）
+    const recorded = recordDroppedEvidence(
+      previous.state.droppedEvidence,
+      evictedOperations.map((pending) => ({
+        reason: "evicted" as const,
+        operationId: pending.operationId,
+        status: pending.status,
+        recordedAt: event.occurredAt,
+        sensitivity: pending.sensitivity,
+      })),
+      event.eventId,
+    );
     // 退避で順序材料を刈る処理は要らない。材料は要素に載っている（#35）ので、退避した
     // operation と一緒に状態から消え、生き残った側の材料はそのまま残る。側索引だった頃は
     // 鍵が operationId で、id が衝突していると**どちらの兄弟の材料か原理的に判別できず**、
@@ -1176,7 +1293,10 @@ export function reduceTaskWorkState(
                 eventId: event.eventId,
                 detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため退避: ${evicted.join(", ")}`,
               },
+              ...recorded.diagnostics,
             ],
+      // 何も退避していないなら欄に触らない（`undefined` を渡すと commit が既存の値を保つ）
+      ...(evicted.length === 0 ? {} : { droppedEvidence: recorded.droppedEvidence }),
     });
   }
 
@@ -1222,6 +1342,38 @@ export function reduceTaskWorkState(
       correlation.unresolved.length === 0 &&
       correlation.diagnostic !== "terminal_already_applied"
     ) {
+      // 相手の見つからなかった terminal は、隔離したうえで**状態にも記録する**（#39 / FR-006）。
+      // 上のコメントが書いていた「記録先が無いので隔離との差は鍵を焼くかどうかしかない」は
+      // `droppedEvidence` ができた今は当たらない。記録は隔離の代わりではないので、鍵は
+      // 消費しないまま（後から start が届けば同じ terminal の再配送で閉じられる）。
+      // **同じ eventId の記録が既にあるなら足さない**。隔離は鍵を消費せず還元器は純関数なので
+      // 同じ terminal は再送され続け、素で足すと記録が再送のたびに伸びて 256 件の枠を食う。
+      // 落とす理由は `terminal_conflict` にも要るが、あちらは corruption であって
+      // 「live な集合から落ちた証跡」ではない（#43 の語彙に無い）ので記録しない
+      const alreadyRecorded = (previous.state.droppedEvidence ?? []).some(
+        (entry) => entry.reason === "orphaned_terminal" && entry.eventId === event.eventId,
+      );
+      if (correlation.diagnostic === "terminal_orphaned" && !alreadyRecorded) {
+        return quarantineWithRecord(
+          previous,
+          event,
+          idempotencyLedger,
+          diagnostics,
+          recordDroppedEvidence(
+            previous.state.droppedEvidence,
+            [
+              {
+                reason: "orphaned_terminal",
+                eventId: event.eventId,
+                recordedAt: event.occurredAt,
+                // 相手が居ないので機密度を引き継げない。§3.1 の fail closed どおり既定に倒す
+                sensitivity: "private",
+              },
+            ],
+            event.eventId,
+          ),
+        );
+      }
       return quarantine(previous, idempotencyLedger, diagnostics);
     }
     // §4.3「zero or multiple にマッチした terminal は unmatched evidence として保ち、候補を

@@ -125,19 +125,31 @@ start より小さい連番の terminal を与えて隔離されること。外�
 
 ### Tests for User Story 2
 
-- [ ] T020 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-005 の回帰を足す — 退避で `{reason: "evicted", operationId, status, recordedAt, sensitivity}` が 1 件足され、`sensitivity` が**退避元から引き継がれる**こと（spec Acceptance 1）
-- [ ] T021 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-006 の回帰を足す — 候補 0 件の terminal で `{reason: "orphaned_terminal", eventId, recordedAt, sensitivity: "private"}` が足されること。孤児は相手が居ないので fail-closed の `private`（spec Acceptance 2）
-- [ ] T022 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-007 の回帰を足す — 記録に payload・引数・出力・`description` が**入らない**こと。`DroppedEvidenceEntryV1` の欄集合そのものを固定する
-- [ ] T023 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-008 の回帰を足す — 記録が 256 件のとき、**配列の先頭**が落ちて末尾に足されること。`recordedAt` で並べ替えると落ちるように、`recordedAt` を降順に仕込んだ fixture を使う
-- [ ] T024 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-009 の回帰を足す — 追加で `dropped_evidence_recorded`、脱落で `dropped_evidence_overflowed` が診断に出ること
-- [ ] T025 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-013/FR-014 の回帰を足す — `droppedEvidence` を**持たない**状態を読めて、退避が起きたら欄が新設されること（spec Acceptance 4）
+- [X] T020 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-005 の回帰を足す — 退避で `{reason: "evicted", operationId, status, recordedAt, sensitivity}` が 1 件足され、`sensitivity` が**退避元から引き継がれる**こと（spec Acceptance 1）
+- [X] T021 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-006 の回帰を足す — 候補 0 件の terminal で `{reason: "orphaned_terminal", eventId, recordedAt, sensitivity: "private"}` が足されること。孤児は相手が居ないので fail-closed の `private`（spec Acceptance 2）
+- [X] T022 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-007 の回帰を足す — 記録に payload・引数・出力・`description` が**入らない**こと。`DroppedEvidenceEntryV1` の欄集合そのものを固定する
+- [X] T023 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-008 の回帰を足す — 記録が 256 件のとき、**配列の先頭**が落ちて末尾に足されること。`recordedAt` で並べ替えると落ちるように、`recordedAt` を降順に仕込んだ fixture を使う
+- [X] T024 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-009 の回帰を足す — 追加で `dropped_evidence_recorded`、脱落で `dropped_evidence_overflowed` が診断に出ること
+- [X] T025 [P] [US2] `harness/continuity/reference-model.test.ts` に FR-013/FR-014 の回帰を足す — `droppedEvidence` を**持たない**状態を読めて、退避が起きたら欄が新設されること（spec Acceptance 4）
 
 ### Implementation for User Story 2
 
-- [ ] T026 [US2] `harness/continuity/reference-model.ts` に `DiagnosticCode` の 2 値 `dropped_evidence_recorded` / `dropped_evidence_overflowed` を足す
-- [ ] T027 [US2] `harness/continuity/reference-model.ts` に記録の追加関数を 1 つ足す — 末尾に足し、`maxItems` に達していたら**先頭から 1 件落としてから**足す。落としたら `dropped_evidence_overflowed`、足したら `dropped_evidence_recorded`。`pendingOperations` の退避と**同じ規則**を使い、時刻で並べ替えない
-- [ ] T028 [US2] `harness/continuity/reference-model.ts` の退避経路（`retainPendingOperations`）から T027 を呼び、退避された各 operation を `reason: "evicted"` で記録する。`sensitivity` は退避元から引き継ぐ
-- [ ] T029 [US2] `harness/continuity/reference-model.ts` の孤児 terminal 経路（`terminal_orphaned`）から T027 を呼び、`reason: "orphaned_terminal"` で記録する。**隔離の判断自体は変えない**（記録は隔離の代わりではない）
+- [X] T026 [US2] `harness/continuity/reference-model.ts` に `DiagnosticCode` の 2 値 `dropped_evidence_recorded` / `dropped_evidence_overflowed` を足す
+- [X] T027 [US2] `harness/continuity/reference-model.ts` に記録の追加関数を 1 つ足す — 末尾に足し、`maxItems` に達していたら**先頭から 1 件落としてから**足す。落としたら `dropped_evidence_overflowed`、足したら `dropped_evidence_recorded`。`pendingOperations` の退避と**同じ規則**を使い、時刻で並べ替えない
+- [X] T028 [US2] `harness/continuity/reference-model.ts` の退避経路（`retainPendingOperations`）から T027 を呼び、退避された各 operation を `reason: "evicted"` で記録する。`sensitivity` は退避元から引き継ぐ
+- [X] T029 [US2] `harness/continuity/reference-model.ts` の孤児 terminal 経路（`terminal_orphaned`）から T027 を呼び、`reason: "orphaned_terminal"` で記録する。**隔離の判断自体は変えない**（記録は隔離の代わりではない）
+
+**T029 の設計判断（tasks.md に無かった論点）**: 孤児 terminal の経路は **quarantine**（状態にも台帳にも入れない）だったので、「記録に残す」と「隔離の判断を変えない」は素直には両立しない。解いた形:
+
+- **配送鍵は消費しないまま、記録だけ状態に入れる**専用の経路（`quarantineWithRecord`）を足した。`outcome` は `quarantined` のまま（`outcome === "quarantined"` で分岐して snapshot を捨てる消費者が harness にゼロであることを確認済み）
+- 状態が変わる以上 **revision を採番し、`history` にも 1 件積む**。片方だけ動かすと、状態の revision が自分の履歴の末尾に無いことになる
+- **同じ eventId の記録があれば足さない**。隔離は鍵を消費せず還元器は純関数なので同じ terminal は再送され続け、素で足すと記録が再送のたびに伸びて 256 件の枠を食い潰す（この repo の典型的な非収束）。重複時は既存の `quarantine` にそのまま落ち、**`dropped_evidence_recorded` も出さない**（記録していないので）
+- 記録は operation が後から閉じても**消さない**。「その時点で相手が居なかった」という履歴であり、消す規則はどの FR も求めていない
+- `terminal_conflict` では記録しない。あれは corruption であって「live な集合から落ちた証跡」ではない（#43 の語彙に無い）
+
+**実測（Phase 4 完了時）**: tsc clean / 301 tests（+7）/ 変異 実行 174・期待 174・生存 0（#43 / #39 の変異を 9 件追加）/ `contract-hashes.json` は parity fixture の 1 行だけが動いた。**Phase 3 と違い、fixture は hash だけでなく診断と履歴長も変わっている**（孤児の行に `dropped_evidence_recorded` が付き、`historyLength` が 2 → 3）。これは FR-009 が着地した結果で、drift ではない
+
+**既存の期待値の更新（7 件）**: 退避・孤児を通る既存 test は診断を網羅列挙していたので、`dropped_evidence_recorded` を足した。判断・status・outcome は 1 件も変えていない
 
 **Checkpoint**: US1 と US2 が両方とも単独で成立。状態のサイズが上限で頭打ちになる（SC-005）
 
