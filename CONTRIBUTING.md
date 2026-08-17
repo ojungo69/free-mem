@@ -1,0 +1,70 @@
+# Contributing to free-mem
+
+Thanks for taking the time to look at this project. Please read this page before opening a pull
+request — a few of the rules here are unusual, and they exist because of how this repository is built.
+
+## License of your contribution
+
+free-mem is licensed under the Apache License 2.0 (see [`LICENSE`](LICENSE)). Contributions are
+accepted under the same license — **inbound = outbound**. You keep the copyright in what you write;
+we do not ask you to assign it, and there is no CLA.
+
+The rationale for the license choice, the dependency license scan behind it, and the
+material-by-material breakdown are recorded in
+[`evidence/adr-004-licensing.md`](evidence/adr-004-licensing.md).
+
+## Sign your commits (DCO)
+
+Every commit must carry a `Signed-off-by:` line, which certifies that you have the right to submit
+the work under the project's license. Git adds it for you:
+
+```bash
+git commit -s -m "your message"
+```
+
+The full text you are certifying is the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
+
+## Declaring AI-assisted work
+
+Much of this repository was written with AI coding agents, so AI assistance is expected rather than
+discouraged. What we ask is that it be visible: if an agent wrote or substantially shaped your patch,
+say so in the pull request, name the tool, and confirm you have reviewed the output and that it does
+not reproduce third-party code.
+
+## Bringing in third-party code
+
+Do not paste code from another project into this repository without recording where it came from.
+If your change vendors, copies, or adapts third-party material:
+
+1. Record the upstream URL, the exact commit, and the license in the same pull request.
+2. Add or update the entry in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+3. Keep the upstream license file intact. Do not add free-mem headers to vendored files.
+
+`vendor/codemem/` is a pinned MIT snapshot of an upstream project and stays under its own license.
+Changes there follow [`vendor/codemem/VENDOR.md`](vendor/codemem/VENDOR.md).
+
+## Never put real data in fixtures
+
+Test fixtures, capability captures, benchmark inputs, and issue reports must not contain real
+credentials, private memory content, or local filesystem paths from your machine. Use synthetic
+repositories and isolated HOME/config directories — the capture rigs under `harness/rig/` are set up
+for exactly this. A fixture that encodes a machine-specific layout will be rejected even if the test
+passes.
+
+## Before you open a pull request
+
+- Run the checks that cover what you touched. For `vendor/codemem/`:
+  `cd vendor/codemem && corepack pnpm run tsc && corepack pnpm run lint && corepack pnpm test`.
+  For the harness: `node --experimental-strip-types harness/assemble.ts --self-test` and
+  `node --experimental-strip-types --test harness/continuity/*.test.ts`.
+- Never edit generated files by hand. `harness/matrix/*.json` is produced by `harness/assemble.ts`
+  from the fixtures; change the fixture and regenerate.
+- If you change observable behavior of the Phase 1 daemon, update the matching frozen contract in
+  `specs/001-agent-memory-core/contracts/*-v1.md` in the same pull request. Those documents describe
+  what the implementation actually does, and a silent drift between them is treated as a defect.
+- Do not weaken a CI gate to make a check pass. If a gate is wrong, say so in the pull request and
+  fix the gate deliberately, in its own change.
+
+## Security issues
+
+Do not open a public issue for a vulnerability. Follow [`SECURITY.md`](SECURITY.md).

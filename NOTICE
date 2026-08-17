@@ -1,0 +1,9 @@
+free-mem
+Copyright 2026 The free-mem Authors
+
+This product includes software developed by third parties.
+Their copyright notices and license terms are listed in THIRD_PARTY_NOTICES.md.
+
+The vendored snapshot under vendor/codemem/ is derived from kunickiaj/codemem
+and remains licensed under the MIT License. Its license text is retained at
+vendor/codemem/LICENSE and is not superseded by the license of this repository.
