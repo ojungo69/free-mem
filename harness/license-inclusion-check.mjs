@@ -6,12 +6,26 @@
 //
 // usage: node harness/license-inclusion-check.mjs [repoRoot]
 
+import { createHash } from "node:crypto";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
+
+// 見出しだけを見ると、本文を削ったファイルが検査を通ってしまう（許諾条項が消えても
+// "Apache License / Version 2.0" の 2 行は残る）。全文の digest で固定する。
+// LICENSE は apache.org の LICENSE-2.0.txt そのもの、vendor/codemem/LICENSE は
+// upstream codemem の MIT 本文。意図して差し替えるときは、差分を確認してから更新する。
+const CANONICAL_LICENSE_SHA256 = {
+  LICENSE: "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+  "vendor/codemem/LICENSE": "ff32e354e7a84ddeda6b2cd2c43da707ce60a06eba568f54701aa25e225421da",
+};
+
+function sha256(text) {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
 
 function read(path) {
   return readFileSync(join(root, path), "utf8");
@@ -31,13 +45,19 @@ requireFile("evidence/adr-004-licensing.md", "README と CONTRIBUTING が根拠�
 
 if (failures.length === 0) {
   const license = read("LICENSE");
-  if (!/Apache License\s+Version 2\.0/.test(license)) {
-    failures.push("LICENSE is not the Apache-2.0 text (README and ADR-004 claim Apache-2.0)");
+  const licenseDigest = sha256(license);
+  if (licenseDigest !== CANONICAL_LICENSE_SHA256.LICENSE) {
+    failures.push(
+      `LICENSE is not the canonical Apache-2.0 text (sha256 ${licenseDigest}, expected ${CANONICAL_LICENSE_SHA256.LICENSE})`,
+    );
   }
 
   const vendorLicense = read("vendor/codemem/LICENSE");
-  if (!/MIT License/i.test(vendorLicense)) {
-    failures.push("vendor/codemem/LICENSE is no longer the upstream MIT text");
+  const vendorDigest = sha256(vendorLicense);
+  if (vendorDigest !== CANONICAL_LICENSE_SHA256["vendor/codemem/LICENSE"]) {
+    failures.push(
+      `vendor/codemem/LICENSE is not the upstream MIT text (sha256 ${vendorDigest}, expected ${CANONICAL_LICENSE_SHA256["vendor/codemem/LICENSE"]})`,
+    );
   }
 
   const readme = read("README.md");
