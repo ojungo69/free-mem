@@ -1,0 +1,52 @@
+harness/continuity/reference-model.test.ts
+  s_2d059b4f795bca::t_8763e2859ed80e 963-986,992-996,1002,1017-1018,1021-1024,1035-1076
+  s_2d059b4f795bca::t_91a871a13305fd 3538-3600
+  s_2d059b4f795bca::t_0a17270619a474 3673-3715,3719,3721-3730
+  s_2d059b4f795bca::t_99f5c3520c4289 3716-3718,3720
+  s_2d059b4f795bca::t_3137af1641dbaf 2497-2499,2502
+  s_2d059b4f795bca::t_871c3a05e99b78 64
+  s_2d059b4f795bca::t_9ad54ab3a46258 2486-2496,2500-2501,2503-2538
+harness/fixtures/continuity/invalid/rejected-events.json
+  s_2d059b4f795bca::t_d168266faab9b9 271-311
+  s_2d059b4f795bca::t_1e563b414b0b88 3
+  s_2d059b4f795bca::t_aeda8884e31ac5 6
+harness/continuity/schema-freeze.test.ts
+  s_2d059b4f795bca::t_05d324e5ab5111 798-801
+harness/continuity/reference-model.ts
+  s_2d059b4f795bca::t_0f6fc05b63d4a3 491
+  s_2d059b4f795bca::t_613493fd684ebd 460-462
+  s_2d059b4f795bca::t_a28b2b647ed8cb 1100-1104
+  s_2d059b4f795bca::t_f457b281d037f8 1124-1128
+  s_2d059b4f795bca::t_127e83f98c82a4 602-607,618-623
+  s_2d059b4f795bca::t_aa011a9d956621 388-396,415-416,421-422
+  s_2d059b4f795bca::t_81d20dafbc22a3 397-398,405-408,419-420
+  s_2d059b4f795bca::t_96dae950cd95c7 277-281
+  s_2d059b4f795bca::t_e1c3041e87e10d 184
+  s_2d059b4f795bca::t_918e7437a87c16 701-702
+  s_2d059b4f795bca::t_a25de055125fbc 110-126
+  s_2d059b4f795bca::t_6c4a21a186bf47 185-189
+  s_2d059b4f795bca::t_9e6233d6425c19 282-300
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_10c9061e26042f 376-377
+  s_2d059b4f795bca::t_3a60784fbb9acd 96-97,101
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_174f254e45bad0 29
+harness/fixtures/continuity/tool-lifecycle-reduction.json
+  s_2d059b4f795bca::t_9671ad38ba8a09 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e421f734b0638481f2f5d0c01f9fe6f014819bbb",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
