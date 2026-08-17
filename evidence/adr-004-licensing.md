@@ -1,7 +1,7 @@
 # ADR-004: free-mem のライセンスと inbound contribution 方針
 
-- Status: **Proposed**（採用には repository owner の決定が必要。ライセンス付与は事後に取り消せない）
-- Date: 2026-08-16
+- Status: **Accepted**（2026-08-17 に repository owner が決定。ライセンス付与は事後に取り消せない）
+- Date: 2026-08-16（決定: 2026-08-17）
 - 関連: issue #10（Governance）、#9（namespace 移行と upstream attribution）、#12（Personal Cloud BYOC）
 - 前提: ADR-001（vendored codemem を base にする決定）、`THIRD_PARTY_NOTICES.md`
 
@@ -11,9 +11,9 @@ repository は public だが、README が明示するとおり **repository 全�
 この状態は source-available ではあっても、第三者が利用・改変・再配布・contribute できる状態ではない。
 Core 1.0 の package / tag / release を作る前、または外部 contribution を本格的に受け入れる前に確定する必要がある。
 
-本 ADR は候補を証拠付きで比較し、1 つを推奨する。**採用の可否は owner が決める**。
+本 ADR は候補を証拠付きで比較し、1 つを推奨した。owner は 2026-08-17 に推奨どおり採用を決定した。
 
-## 決定（提案）
+## 決定
 
 1. free-mem 独自コードの outbound license を **Apache-2.0** とする。
 2. `vendor/codemem/` の MIT 表示は維持し、上書きしない。
@@ -114,18 +114,23 @@ CI ゲート（本 PR で追加）: `harness/license-inclusion-check.mjs` が
 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` / `vendor/codemem/LICENSE` の存在、
 README の SPDX 表記と `LICENSE` の一致、`vendor/codemem` 配下 package.json の `license` 維持を検査する。
 
-## 未決事項（owner の判断が要る）
+## owner の決定（2026-08-17）
 
-1. **著作権者の表記**。本 ADR は `The free-mem Authors` を使う。個人名・法人名にする場合は
-   `NOTICE` と本 ADR を差し替える。
-2. **Apache-2.0 か MIT か**。上記の比較は Apache-2.0 を推すが、決めるのは owner。
-3. **license 付与は取り消せない**。一度公開した version に対する grant は撤回できず、
-   後から変更する場合は以降の version にのみ効く。
+1. **outbound license は Apache-2.0**。MIT との比較は上記のとおりで、特許条項を理由に採用。
+2. **著作権者の表記は `The free-mem Authors`**。個人名・法人名は使わない。
+3. **CLA は求めず DCO のみ**。inbound = outbound を維持する。
+
+license 付与は取り消せない。一度公開した version に対する grant は撤回できず、
+後から変更する場合は以降の version にのみ効く。この前提を踏まえた上での決定である。
+
+## 残る未決事項
+
+- release 前の専門家確認（本 ADR は法的助言の代替ではない）。
+- DCO は `CONTRIBUTING.md` と PR template に規定しているが、CI では強制していない。
+  外部 contribution を受け入れ始める時点で自動検査を入れるか判断する。
 
 ## 帰結
 
-- 採用されれば、第三者は Core 1.0 を明確な条件で利用・改変・再配布できる。
+- 第三者は Core 1.0 を明確な条件で利用・改変・再配布できる。
 - vendored codemem の MIT 表示と権利関係は分離されたまま維持される。
 - 外部 contribution は DCO を通り、provenance が PR に残る。
-- 却下または別 license を選ぶ場合、本 ADR は Rejected に更新し、決定内容だけを差し替える
-  （依存スキャンと material 分類は license の選択に依らないため再利用できる）。
