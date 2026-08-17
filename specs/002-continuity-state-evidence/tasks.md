@@ -47,9 +47,9 @@ cp /tmp/contract-hashes.json harness/contract-hashes.json     # 更新すると�
 
 **Purpose**: 着手可能な状態かを機械的に確かめる。ここで赤なら実装に入らない。
 
-- [ ] T001 `main` に PR #51・#52・#55 が入っていることを確認する（`git -C /home/jura/projects/free-mem-wt/cluster-c fetch origin && git log origin/main --oneline | head -20`）。3 本とも `harness/continuity/` と `harness/contract-hashes.json` を触るので、未マージなら着手しない
-- [ ] T002 作業ブランチを `origin/main` に載せ直す（`git -C /home/jura/projects/free-mem-wt/cluster-c rebase origin/main`）。plan までの成果物は `specs/` しか触っていないので衝突しないはず。衝突したら内容を確認してから解決する
-- [ ] T003 vendor の依存を入れてから着手前のベースラインを取る（`tsc` / テスト / `mutate.sh` / `contract-hashes.json` 差分空）。**4 つとも緑でない状態から実装を始めない**。この時点のテスト件数と変異の 実行/期待 件数を記録し、T036 の比較に使う。**先に `cd vendor/codemem && npm ci`**: `tsc` は `vendor/codemem/node_modules/.bin/tsc` にしか無く、worktree を作った直後は存在しない。入れずに走らせると ENOENT で落ち、**実装の赤と区別が付かない**
+- [X] T001 `main` に PR #51・#52・#55 が入っていることを確認する（`git -C /home/jura/projects/free-mem-wt/cluster-c fetch origin && git log origin/main --oneline | head -20`）。3 本とも `harness/continuity/` と `harness/contract-hashes.json` を触るので、未マージなら着手しない
+- [X] T002 作業ブランチを `origin/main` に載せ直す（`git -C /home/jura/projects/free-mem-wt/cluster-c rebase origin/main`）。plan までの成果物は `specs/` しか触っていないので衝突しないはず。衝突したら内容を確認してから解決する
+- [X] T003 vendor の依存を入れてから着手前のベースラインを取る（`tsc` / テスト / `mutate.sh` / `contract-hashes.json` 差分空）。**4 つとも緑でない状態から実装を始めない**。この時点のテスト件数と変異の 実行/期待 件数を記録し、T036 の比較に使う。**実測（2026-08-17、main = d517a8b）: tsc clean / 286 tests / 変異 実行 164・期待 164・生存 0 / contract-hashes 差分なし**。**先に `cd vendor/codemem && corepack pnpm install --frozen-lockfile`**（CI と同じ。`npm ci` は lockfile が無いので失敗する）: `tsc` は `vendor/codemem/node_modules/.bin/tsc` にしか無く、worktree を作った直後は存在しない。入れずに走らせると ENOENT で落ち、**実装の赤と区別が付かない**
 
 ---
 
