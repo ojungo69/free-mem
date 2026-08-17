@@ -929,10 +929,14 @@ export function reduceTaskWorkState(
     // rule 1 は候補が 2 件になった時点で曖昧と判断するので、後続の terminal はどちらも閉じられず、
     // 2 件とも `started` のまま残る。届いた start が native ID を持たないときは書く値が無いので
     // この優先は働かない（`nativeMatches` が空）
+    // 添字でなく `at()` で取る。`noUncheckedIndexedAccess` を入れていないので `compatible[0]` は
+    // 空配列でも `PendingOperation` 型になり、**下の `existing !== undefined` が型の上では常に真**に
+    // なる（実行時には undefined が来る）。`at()` は設定に関係なく `| undefined` を返すので、
+    // 空集合の分岐が型に残る
     const existing =
       compatible.find((pending) => declared(pending.correlation.nativeOperationId) !== undefined) ??
-      compatible[0] ??
-      siblings[0];
+      compatible.at(0) ??
+      siblings.at(0);
     const startConflict = existing !== undefined && startConflictsWith(existing);
     if (startConflict) {
       return quarantine(previous, idempotencyLedger, [

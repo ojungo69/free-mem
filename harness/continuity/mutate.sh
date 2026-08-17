@@ -335,6 +335,8 @@ mutate "  if (terminalEvent.operation?.phase !== \"terminal\") {" "  if (false) 
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible: readonly PendingOperation[] = [];" && run "兄弟から互換な候補を選ばない（derived id / native id 両方）"
 mutate "    const compatible = siblings.filter((pending) => !startConflictsWith(pending));" "    const compatible = idMatches.filter((pending) => !startConflictsWith(pending));" && run "再配送の相手を集合ごとに選ぶ"
 mutate "      compatible.find((pending) => declared(pending.correlation.nativeOperationId) !== undefined) ??" "" && run "native id を名乗る兄弟を優先しない"
+mutate "      compatible.at(0) ??
+      siblings.at(0);" "      compatible.at(0);" && run "全件衝突のとき衝突の証拠を持たない"
 mutate "    const siblings = [...new Set([...idMatches, ...nativeMatches])];" "    const siblings = [...new Set([...nativeMatches, ...idMatches])];" && run "兄弟の連結順を入れ替える"
 mutate "    new Set([correlation.matched])," "    new Set(previous.state.pendingOperations)," && run "truncation の対象を照合相手の外へ広げる"
 mutate "      const truncated = sourceEventLost(existing, event.eventId) ? [existing.operationId] : [];" "      const truncated = previous.state.pendingOperations.map((p) => p.operationId);" && run "再配送 start の truncation 対象を全 pending にする"
