@@ -406,11 +406,12 @@ mutate "      ...(overflowed.length === 0
         ? []
         : [" && run "記録の脱落を診断に出さない（FR-009）"
 mutate "        sensitivity: pending.sensitivity," "        sensitivity: \"normal\" as const," && run "退避の記録で機密度を引き継がない"
-mutate "                sensitivity: \"private\"," "                sensitivity: \"normal\"," && run "孤児の記録を normal で残す"
-mutate "            declared(entry.terminalFingerprint) === event.canonicalFingerprint," "            false," && run "孤児の記録を再送のたびに足す"
-mutate "            declared(entry.terminalFingerprint) === event.canonicalFingerprint," "            entry.eventId === event.eventId," && run "孤児の重複判定を eventId で行う（再送 DoS）"
-mutate "                terminalFingerprint: event.canonicalFingerprint," "" && run "孤児の記録に同一性の鍵を残さない"
-mutate "        correlation.diagnostic === \"terminal_orphaned\" &&" "        false &&" && run "孤児 terminal を状態に記録しない"
+mutate "              sensitivity: \"private\"," "              sensitivity: \"normal\"," && run "孤児の記録を normal で残す"
+mutate "      !recordedOrphans.has(declared(entry.terminalFingerprint) ?? \"\")," "      true," && run "孤児の記録を再送のたびに足す"
+mutate "      .map((entry) => declared(entry.terminalFingerprint))" "      .map((entry) => entry.eventId)" && run "孤児の重複判定を eventId で行う（再送 DoS）"
+mutate "        if (recorded.added.length > 0) {" "        if (true) {" && run "足せていなくても状態を進める"
+mutate "              terminalFingerprint: event.canonicalFingerprint," "" && run "孤児の記録に同一性の鍵を残さない"
+mutate "      if (correlation.diagnostic === \"terminal_orphaned\") {" "      if (false) {" && run "孤児 terminal を状態に記録しない"
 mutate "      ],
       droppedEvidence: recorded.droppedEvidence," "      ]," && run "退避を状態に記録しない"
 mutate "        ...recorded.diagnostics,

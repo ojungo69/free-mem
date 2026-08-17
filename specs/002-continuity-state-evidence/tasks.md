@@ -275,6 +275,13 @@ blocking 4 / advisory 2。重複を除くと 6 件。**実行して再現でき�
 | S5 | 識別子と指紋が生値で状態に入り機密度が `private` 固定。診断も値を出す | 目視（**以前から**。`Observed*.sourceEventIds` が同じ値を同じ機密度で保持している） | **限界へ + issue #62**。#43/#44 が作った露出ではなく、閉じるには event 表面全体の規約が要る |
 | S6 | `DroppedEvidenceEntryV1` の欄の組み合わせが無検査 | 目視 | **限界へ**（T045 #14 と同じ。`$comment` に明記済み） |
 
+**PR bot（Sourcery）の 2 件**:
+
+| 指摘 | 判定 |
+|---|---|
+| 孤児の重複判定が `reduceTaskWorkState` の条件式に直書きされていて、次に記録を足す経路がそれを持たずに書ける。`recordDroppedEvidence` に寄せるべき | **採用**。判定を helper に移し、`added` を返して呼び出し側は「実際に足せたか」だけを見る形にした（足せていなければ状態を変えない隔離に倒す）。T045 #9 と `codex:adversarial-review` も同じ構造を指摘しており、3 者一致 |
+| `DroppedEvidenceEntryV1` の `(reason, eventId, operationId, status)` の組み合わせを runtime で検査すべき | **却下**。新しい行を書くのは還元器だけで、理由ごとに書く欄はそこで決まっている（構成で満たしていて、表明で確かめる対象が無い）。検査したい相手は**復元した状態**だが、それは還元器が検証しない側（T047 S5 と同じ信頼境界）。重複判定を helper に寄せた結果、理由ごとの扱いを知っている場所も 1 箇所になった |
+
 **S1 の副産物**: 凍結 test が schema と TS mirror の**欄集合を突き合わせていなかった**ことが判明した
 （TS 側から `terminalFingerprint` を消しても凍結 test 17 件が全部 green のまま）。TS 型は object
 literal の注釈としてしか出てこず、値は `unknown` 経由で validator に渡るため余剰プロパティ検査が

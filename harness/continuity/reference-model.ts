@@ -830,12 +830,35 @@ function nextContent(
  *
  * 追加も脱落も診断に出す。記録そのものが「黙って消さない」ための仕組みなので、記録が
  * 溢れて消えるところで黙ると入れ子で同じ穴が開く。
+ *
+ * **再送の重複判定もここで行う**（呼び出し側に置かない）。孤児 terminal の隔離は配送鍵を
+ * 消費しないので同じ terminal が届き続ける。判定を呼び出し側の条件式に書くと、次に記録を
+ * 足す経路がそれを持たずに書けてしまい、その経路だけが再送のたびに配列と revision を伸ばす。
+ * `added` が空なら呼び出し側は状態を変えない隔離に倒す。
  */
 function recordDroppedEvidence(
   previous: readonly DroppedEvidenceEntryV1[] | undefined,
-  additions: readonly DroppedEvidenceEntryV1[],
+  requested: readonly DroppedEvidenceEntryV1[],
   eventId: string,
-): { droppedEvidence: DroppedEvidenceEntryV1[]; diagnostics: ContinuityDiagnosticV1[] } {
+): {
+  droppedEvidence: DroppedEvidenceEntryV1[];
+  diagnostics: ContinuityDiagnosticV1[];
+  added: readonly DroppedEvidenceEntryV1[];
+} {
+  // 鍵は §4.3 が terminal の同一性に使う `canonicalFingerprint`。`eventId` は封筒の値なので
+  // 再配送で変わりうる（台帳の鍵が `adapterDeliveryId` であって `eventId` でないのと同じ）。
+  // 退避（`evicted`）は指紋を持たないので、この重複判定の対象にしない
+  const recordedOrphans = new Set(
+    (previous ?? [])
+      .filter((entry) => entry.reason === "orphaned_terminal")
+      .map((entry) => declared(entry.terminalFingerprint))
+      .filter((fingerprint): fingerprint is string => fingerprint !== undefined),
+  );
+  const additions = requested.filter(
+    (entry) =>
+      entry.reason !== "orphaned_terminal" ||
+      !recordedOrphans.has(declared(entry.terminalFingerprint) ?? ""),
+  );
   const kept = [...(previous ?? []), ...additions];
   // 上限を超えたぶんだけ先頭から取る。追加が単独で上限を超える場合も、古い追加から落ちる
   const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));
@@ -863,6 +886,7 @@ function recordDroppedEvidence(
             },
           ]),
     ],
+    added: additions,
   };
 }
 
@@ -1372,48 +1396,31 @@ export function reduceTaskWorkState(
       // 上のコメントが書いていた「記録先が無いので隔離との差は鍵を焼くかどうかしかない」は
       // `droppedEvidence` ができた今は当たらない。記録は隔離の代わりではないので、鍵は
       // 消費しないまま（後から start が届けば同じ terminal の再配送で閉じられる）。
-      // **同じ terminal の記録が既にあるなら足さない**。隔離は鍵を消費せず還元器は純関数なので
-      // 同じ terminal は再送され続け、素で足すと記録が再送のたびに伸びる。
-      // **鍵は `canonicalFingerprint`（§4.3 が terminal の同一性に使う値）で、`eventId` ではない**。
-      // 台帳の鍵が `adapterDeliveryId` であって `eventId` でないのと同じ理由で、再配送は
-      // `eventId` / `ingestSeq` / `occurredAt` が変わりうる。`eventId` で見ると同じ terminal が
-      // 何度でも記録され、記録が 256 件で頭打ちになった後も **`stateRevision` と `history` が
-      // 再送のたびに動き続ける**（実測: 同一 adapterDeliveryId・同一 fingerprint の 300 再送で
-      // 300 revision / history 300 / 台帳 0）。これは配送鍵を消費しない設計と組むと収束しない。
       // 落とす理由は `terminal_conflict` にも要るが、あちらは corruption であって
-      // 「live な集合から落ちた証跡」ではない（#43 の語彙に無い）ので記録しない
-      // 走査は理由の判定より**後**に置く。孤児以外の隔離（`terminal_conflict` など）でも
-      // 毎回最大 256 件を舐めることになり、値は捨てられる
-      if (
-        correlation.diagnostic === "terminal_orphaned" &&
-        !(previous.state.droppedEvidence ?? []).some(
-          (entry) =>
-            entry.reason === "orphaned_terminal" &&
-            declared(entry.terminalFingerprint) === event.canonicalFingerprint,
-        )
-      ) {
-        return quarantineWithRecord(
-          previous,
-          event,
-          idempotencyLedger,
-          diagnostics,
-          recordDroppedEvidence(
-            previous.state.droppedEvidence,
-            [
-              {
-                reason: "orphaned_terminal",
-                eventId: event.eventId,
-                // 再送で記録が増えないための鍵。`eventId` は監査用（どの配送を記録したか）で、
-                // 同一性の判定には使えない
-                terminalFingerprint: event.canonicalFingerprint,
-                recordedAt: event.occurredAt,
-                // 相手が居ないので機密度を引き継げない。§3.1 の fail closed どおり既定に倒す
-                sensitivity: "private",
-              },
-            ],
-            event.eventId,
-          ),
+      // 「live な集合から落ちた証跡」ではない（#43 の語彙に無い）ので記録しない。
+      // **同じ terminal の再送で記録が伸びないための重複判定は `recordDroppedEvidence` が持つ**
+      // （呼び出し側の条件式に置くと、次に記録を足す経路がそれを持たずに書ける）。ここでは
+      // 「実際に足せたか」だけを見て、足せていないなら状態を変えない隔離に倒す
+      if (correlation.diagnostic === "terminal_orphaned") {
+        const recorded = recordDroppedEvidence(
+          previous.state.droppedEvidence,
+          [
+            {
+              reason: "orphaned_terminal",
+              eventId: event.eventId,
+              // 再送で記録が増えないための鍵。`eventId` は監査用（どの配送を記録したか）で、
+              // 同一性の判定には使えない
+              terminalFingerprint: event.canonicalFingerprint,
+              recordedAt: event.occurredAt,
+              // 相手が居ないので機密度を引き継げない。§3.1 の fail closed どおり既定に倒す
+              sensitivity: "private",
+            },
+          ],
+          event.eventId,
         );
+        if (recorded.added.length > 0) {
+          return quarantineWithRecord(previous, event, idempotencyLedger, diagnostics, recorded);
+        }
       }
       return quarantine(previous, idempotencyLedger, diagnostics);
     }
