@@ -1929,8 +1929,13 @@ interface RejectionFixture {
   intakeContext: IntakeContextV1;
   cases: Array<{
     name: string;
-    rejectedBy: "schema" | "runtime" | "intake" | "intake-reject";
+    // `intake-diagnostic` は**棄却しない層**。intake は event をそのまま通し、診断だけを出す。
+    // 参照実装の parity 検査（`tool-lifecycle-reduction.json`）は intake の返り値のうち `event` しか
+    // 使わないので、診断だけを出す規則は fixture に置かないと**移植が一度も実装せずに全 fixture を
+    // 満たせる**（#42 の session 束縛で同じ穴を塞いだのと同じ形）
+    rejectedBy: "schema" | "runtime" | "intake" | "intake-reject" | "intake-diagnostic";
     reason: string;
+    expectedDiagnostics?: string[];
     intakeOverride?: Partial<IntakeContextV1>;
     event: NormalizedContinuityEvent;
   }>;
@@ -1941,6 +1946,13 @@ test("negative fixture は宣言した層で落ちる", () => {
     new URL("../fixtures/continuity/invalid/rejected-events.json", import.meta.url),
   );
   assert.equal(fixture.cases.length > 0, true);
+  // fixture の `intakeContext` は JSON なので型検査を受けない。必須欄が欠けると `undefined` が
+  // 入り、`isBlank(undefined)` は文字列 "undefined" を検査して **false** を返すので、束縛が
+  // 「実在する値」として有効になり全 event が落ちる。落ち方は `§3.1 違反: … は undefined なのに`
+  // という config でなく event を名指しするエラーなので、欠落そのものを先に見る
+  for (const field of ["expectedSourceAgent", "expectedSessionId", "exactAgentVersion"] as const) {
+    assert.equal(typeof fixture.intakeContext[field], "string", `intakeContext.${field} が無い`);
+  }
   const layers = new Set<string>();
   for (const testCase of fixture.cases) {
     layers.add(testCase.rejectedBy);
@@ -1987,13 +1999,26 @@ test("negative fixture は宣言した層で落ちる", () => {
       assert.throws(() => stampIntakeEvidence(testCase.event, context), violates, testCase.name);
       continue;
     }
+    if (testCase.rejectedBy === "intake-diagnostic") {
+      const stamped = stampIntakeEvidence(testCase.event, context);
+      // 通すこと（種別も turn も書き換えないこと）と、診断の**コード名**の両方を見る。
+      // コード名まで見ないと、移植が別の名前で出しても緑になる
+      assert.equal(stamped.event.turnIdSource, testCase.event.turnIdSource, testCase.name);
+      assert.equal(stamped.event.turnId, testCase.event.turnId, testCase.name);
+      assert.deepEqual(
+        stamped.diagnostics.map((diagnostic) => diagnostic.code),
+        testCase.expectedDiagnostics ?? [],
+        testCase.name,
+      );
+      continue;
+    }
     assert.equal(
       stampIntakeEvidence(testCase.event, context).event.provenance.evidenceKind,
       "synthesized",
       testCase.name,
     );
   }
-  assert.deepEqual([...layers].sort(), ["intake", "intake-reject", "runtime", "schema"]);
+  assert.deepEqual([...layers].sort(), ["intake", "intake-diagnostic", "intake-reject", "runtime", "schema"]);
 
   // fixture の intakeContext に欠落があると、何をしても synthesized になって intake の case が
   // 素通りする。正当な経路なら native になることを対で確かめる
@@ -2490,7 +2515,7 @@ test("認証済み peer と違う session を名乗る event は intake が受�
   for (const claimed of ["session-other", "", " ", "\u{200B}"]) {
     assert.throws(
       () => stampIntakeEvidence(startEvent({ sessionId: claimed }), INTAKE),
-      /§3.1 違反: 認証済み peer の session は session-1 なのに/,
+      /§3\.1 違反: 束縛された session は session-1 なのに/,
       JSON.stringify(claimed),
     );
   }
@@ -2514,10 +2539,13 @@ test("認証できない経路の synthesized_monotonic は通すが診断に出
   // capability の証明を要さず、正本も認証条件を課していない。ただし rule 2 の turn 両立は
   // この種別でも成立するので照合力としては native と同じ重みを持つ。締める前に観測できるようにする
   const claimed = startEvent({ turnIdSource: "synthesized_monotonic", turnId: "turn-1" });
+  // 4 項の連言なので、全部同時に倒すと**どの項が効いているか**は測れない。ここは「全部欠けた
+  // 経路」を見て、個々の項は下の 2 つ（受領証は在るが Agent 束縛が無い / version drift）で分ける。
+  // `expectedSessionId` は倒さない（`startEvent()` の session は INTAKE の束縛と一致していて、
+  // 倒しても倒さなくても結果が変わらない = 何も測らない override だった）
   const unauthenticated = stampIntakeEvidence(claimed, {
     ...INTAKE,
     expectedSourceAgent: "",
-    expectedSessionId: "",
     attestation: undefined,
   });
   // 通す: 種別も turnId も落とさない（降格でも拒否でもない）
@@ -3881,7 +3909,7 @@ test("空白だけの intake authority 値は native を成立させない", () 
         { ...startEvent(), sessionId: "session-INTRUDER" },
         { ...INTAKE, expectedSessionId: "session-1" },
       ),
-    /§3\.1 違反: 認証済み peer の session/,
+    /§3\.1 違反: 束縛された session/,
   );
   // 対照: 空白を含むが空白だけではない値は従来どおり native
   const spaced = "2.1.228 (Claude Code)";

@@ -95,6 +95,7 @@ mutate "  if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== con
 mutate "  if (!isBlank(context.expectedSourceAgent) && event.sourceAgent !== context.expectedSourceAgent) {" "  if (event.sourceAgent !== context.expectedSourceAgent) {" && run "認証できない経路でも Agent 名で落とす"
 mutate "  if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {" "  if (false) {" && run "session の束縛を外す"
 mutate "  if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {" "  if (context.expectedSessionId !== \"\" && event.sessionId !== context.expectedSessionId) {" && run "空白の session 束縛を実在する名前として扱う"
+mutate "  if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {" "  if (event.sessionId !== context.expectedSessionId) {" && run "session を名乗れない経路でも session 名で落とす"
 mutate "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedPeer) {" "  if (false) {" && run "未認証の synthesized_monotonic を診断に出さない"
 mutate "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedPeer) {" "  if (event.turnIdSource === \"synthesized_monotonic\" && !authenticatedVersion) {" && run "未認証の判定に version 一致まで求める"
 mutate "  const authenticatedVersion =

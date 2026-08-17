@@ -178,7 +178,7 @@ export function stampIntakeEvidence(
   // session も scope selector なので同じく受け取らない。理由は `expectedSessionId` の定義側（#42）
   if (!isBlank(context.expectedSessionId) && event.sessionId !== context.expectedSessionId) {
     throw new Error(
-      `§3.1 違反: 認証済み peer の session は ${context.expectedSessionId} なのに event が ${JSON.stringify(event.sessionId)} を名乗っている`,
+      `§3.1 違反: 束縛された session は ${context.expectedSessionId} なのに event が ${JSON.stringify(event.sessionId)} を名乗っている`,
     );
   }
   // **`provenance` 不在はここで落とす**。下の destructure が素で deref するので、intake は
@@ -192,7 +192,11 @@ export function stampIntakeEvidence(
   // caller の attestation は読まずに捨てる。読んだ時点で「認証済みだと名乗れる」ことになり、
   // §3.1 が禁じている自己申告の native authority が通ってしまう
   const { ingestAttestation: _claimed, ...provenance } = event.provenance;
-  const attestation = context.attestation;
+  // `null` も「受領証が無い」として読む。以降の判定はすべて `!== undefined` なので、`null` を
+  // 素通しすると `attestation.ingestReceiptId` で節を名乗らない `TypeError` になる。JSON で
+  // 「無い」を表す手段は `null` しか無いので、fixture や別実装から届く形として実在する
+  // （negative fixture に「認証できない経路」の case を足したときに実際に踏んだ）
+  const attestation = context.attestation ?? undefined;
   // **書く層で検査する**。`attestedAt` の暦検査は読む層（`assertIdentityMaterial`）にもあるが、
   // その値は caller 由来ではない——上の destructure が caller の受領証を捨て、ここで daemon 自身の
   // `context.attestation` を刻印する。書く層が検査しないと、受領証の時刻を 1 つ間違えた daemon は
@@ -203,8 +207,9 @@ export function stampIntakeEvidence(
   // **空白は「暦として実在しない」ではなく「時刻を名乗っていない」**。この関数自身が下で
   // 「認証できない経路を `undefined` ではなく**欄が空の受領証**で表す daemon」を前提にしている
   // ので、空白を暦違反として落とすと**その daemon の event が 100% 落ち、しかもエラーは
-  // 認証の欠落ではなく timestamp を名指しする**（実測）。空白は下の `authenticatedVersion` が
-  // 「名乗っていない」として降格で扱う。任意欄の空白を不在として読むのは `declared()` と同じ原則で、
+  // 認証の欠落ではなく timestamp を名指しする**（実測）。空白は下の `authenticatedPeer` が
+  // 「名乗っていない」として扱い、そこから `authenticatedVersion` も落ちる（さらに
+  // `turn_identity_unauthenticated` の診断も出る——分離した述語の両方に効く）。任意欄の空白を不在として読むのは `declared()` と同じ原則で、
   // 必須欄（`occurredAt`）を空白で通さないのと対になる
   assertRealInstant("受領証の attestedAt", declared(attestation?.attestedAt));
   // §3.1 は evidenceKind も turn identity も「認証済み peer identity」から導けと言う。
@@ -284,6 +289,9 @@ export function stampIntakeEvidence(
   // が、rule 2 の turn 両立はこの種別でも成立するので、照合力としては native と同じ重みを持つ
   // （#41）。締めるかどうかは既存の未認証連携を壊す判断なので、まず観測できるようにする。
   // 診断を出すだけで降格も拒否もしない
+  // 今日この配列に 2 件入ることは無い（下の 2 つは `turnIdSource` が `native` か
+  // `synthesized_monotonic` かで排他）。それでも配列にするのは、intake の診断が増えるたびに
+  // 三項の入れ子を書き換えるより足す側が短いから。多重診断の機能があるとは読まないこと
   const diagnostics: ContinuityDiagnosticV1[] = [];
   // §3.1「turn scoping を要求する規則は unavailable に対して fail closed になり、影響を受けた
   // 自動経路は downgrade され、その理由は doctor が報告する」。降格した事実を残さないと、
@@ -503,7 +511,7 @@ function assertIdentityMaterial(event: NormalizedContinuityEvent): void {
   // 2 つの欄で空白の扱いが違う。`occurredAt` は required なので空白は**綴り違反として落とす**
   // （`isRealInstant` が pattern を先に当てる）。受領証の `attestedAt` は「認証できない経路を
   // 欄が空の受領証で表す」idiom があるので、空白は**時刻を名乗っていない**であって暦違反ではない
-  // （intake 側と同じ判断。空白の受領証は `authenticatedVersion` が降格で扱う）
+  // （intake 側と同じ判断。空白の受領証は `authenticatedPeer` が「名乗っていない」として扱う）
   assertRealInstant("occurredAt", event.occurredAt);
   assertRealInstant(
     "provenance.ingestAttestation.attestedAt",
