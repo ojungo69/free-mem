@@ -8,9 +8,11 @@
  * 「main と比べる」門が自分で自分を無効化するため。基準は sha で固定する。
  *
  * 使い方:
- *   node harness/continuity/old-shape-baseline.mjs            # 固定 sha で再生成
- *   node harness/continuity/old-shape-baseline.mjs --source <sha>   # 基準を変える（差分に出る）
+ *   node harness/continuity/old-shape-baseline.mjs                  # 固定 sha で再生成
  *   node harness/continuity/old-shape-baseline.mjs --output <path>  # 別の場所へ出す（CI の再生成検査）
+ *
+ * 基準を動かすときは下の `PINNED_SOURCE_COMMIT` を書き換える（flag にしない: 基準の変更が
+ * commit の差分に出ることそのものが狙いなので、実行時に差し替えられる口は要らない）。
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
@@ -27,12 +29,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 const FIXTURE_PATH = join(REPO_ROOT, "harness", "fixtures", "continuity", "tool-lifecycle-reduction.json");
 const OUTPUT_PATH = join(REPO_ROOT, "harness", "fixtures", "continuity", "old-shape-parity.json");
-
-const sourceIndex = process.argv.indexOf("--source");
-const sourceCommit = sourceIndex === -1 ? PINNED_SOURCE_COMMIT : process.argv[sourceIndex + 1];
-if (sourceCommit !== PINNED_SOURCE_COMMIT) {
-  console.warn(`⚠ 基準 sha を ${PINNED_SOURCE_COMMIT} から ${sourceCommit} に変えて生成する`);
-}
 
 // CI の再生成検査は committed fixture を書き換えずに突き合わせたいので、出力先を移せるようにする
 const outputIndex = process.argv.indexOf("--output");
@@ -382,7 +378,7 @@ const CASES = [
 const scratch = mkdtempSync(join(tmpdir(), "old-shape-baseline-"));
 try {
   const archivePath = join(scratch, "pinned.tar");
-  execFileSync("git", ["archive", "--output", archivePath, sourceCommit, "harness"], { cwd: REPO_ROOT });
+  execFileSync("git", ["archive", "--output", archivePath, PINNED_SOURCE_COMMIT, "harness"], { cwd: REPO_ROOT });
   execFileSync("tar", ["-xf", archivePath, "-C", scratch]);
   const oldModulePath = join(scratch, "harness", "continuity", "reference-model.ts");
   const old = await import(pathToFileURL(oldModulePath).href);
@@ -440,14 +436,14 @@ try {
     description:
       "旧形（新しい任意欄を持たない）状態と event を、この branch の変更前の実装に通した結果。" +
       "SC-003 の「旧形入力に対する振る舞いは 4 件の是正以外変わらない」を機械的に検証するための基準。",
-    sourceCommit,
+    sourceCommit: PINNED_SOURCE_COMMIT,
     generatedBy: "harness/continuity/old-shape-baseline.mjs",
     intakeContext,
     cases,
   };
   writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
   const events = cases.reduce((sum, testCase) => sum + testCase.baseline.length, 0);
-  console.log(`${outputPath} を生成した: ${cases.length} case / ${events} step（基準 ${sourceCommit}）`);
+  console.log(`${outputPath} を生成した: ${cases.length} case / ${events} step（基準 ${PINNED_SOURCE_COMMIT}）`);
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

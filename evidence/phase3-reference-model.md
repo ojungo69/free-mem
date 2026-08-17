@@ -132,8 +132,11 @@ watermark）と違って遅れて届いた event では後退し得るが、こ�
 
 ### 2.5 還元の結果は 3 値
 
-`applied` / `duplicate` / `quarantined` を `outcome` として返す。`quarantined` は状態も台帳も
-更新しないので、訂正した event を後から入れ直せる。
+`applied` / `duplicate` / `quarantined` を `outcome` として返す。`quarantined` が言っているのは
+**配送鍵を消費しない**ことだけで、だから訂正した event を後から入れ直せる。**状態を変えない
+という意味ではない**: `quarantineWithRecord` を通る隔離（孤児 terminal の記録）は
+`droppedEvidence` を足し、revision と history を進める（§2.10 の分類を参照）。呼び出し側は
+`outcome` によらず**返った状態を取る**——`quarantined` を見て前の状態を使い回すと記録が落ちる。
 
 ### 2.6 intake が付ける kind は native / synthesized の 2 値
 
@@ -155,7 +158,10 @@ event は、還元先の状態の lineage に属するものとして扱う。
 ### 2.9 配列上限の保持方針（#39）
 
 frozen schema は `pendingOperations` も `sourceEventIds` も 256 件（§10 の `arrayItems`）に制限して
-いるが、addendum に保持・退避の規則が無い。tool 呼び出しの多い session では上限を超えるので:
+いるが、当初は addendum に保持・退避の規則が無かった。tool 呼び出しの多い session では上限を
+超えるので、harness 側で下記を決めた。**この規則はその後 addendum §4.3「Retention and eviction
+(#39)」として正本に採用された**ので、現在は harness 独自の判断ではなく正本の写しである（残って
+いる harness 側の判断は `unknown` の失効規則が無いことだけ）。移植する実装は正本に従うこと:
 
 - 上限に達した状態へ新しい start が来たら、`succeeded` → `failed` → `unknown` → `started` の順に
   古いものから落として場所を空ける。落とした `operationId` は `pending_operations_evicted` に並べる
@@ -169,10 +175,13 @@ frozen schema は `pendingOperations` も `sourceEventIds` も 256 件（§10 �
 
 状態は projection なので、退避した operation の event 自体は daemon の event store 側に残りうる
 （§6.4 は acceptance transaction の中で event store を再照会する）。ただし **event の保持期間は
-addendum に無い**ので、「必ず残る」とは書けない。退避を状態に記録する場所も frozen schema には
-無く、`started` を落とした場合その operation は状態から痕跡ごと消える（診断には出るが、診断は
-永続化されない）。完了した operation の永続的な置き場は per-kind projection（§3 の未実装項目）で、
-そこが入るまでは上限に達した長い session で相関の履歴が短くなる。この扱いも #39 で決める。
+addendum に無い**ので、「必ず残る」とは書けない。**退避を状態に記録する場所は #43 で出来た**:
+落とした要素は `droppedEvidence` に `reason: "evicted"` として積まれるので、`started` を落としても
+その operation が存在したことは状態に残る（`operationId`・確定 status・start の eventId・時刻。
+以前ここには「痕跡ごと消える」と書いてあったが、それは記録先ができる前の話）。**残る限界は
+2 つ**——記録は operation の中身全体ではなく識別材料だけで、記録自体も同じ 256 件で有界なので
+先頭から落ちる。完了した operation の永続的な置き場は per-kind projection（§3 の未実装項目）で、
+そこが入るまでは上限に達した長い session で相関の履歴が短くなる。
 
 start の材料は要素の 2 欄（`startIngestSeq` / `startTurnIdSource`）にあるので、退避で要素ごと
 落ちる。**別の表を削り忘れる余地が無い**のがこの置き場を選んだ理由の 1 つで、側索引方式では
