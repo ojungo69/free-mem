@@ -992,6 +992,11 @@
             "failed",
             "unknown"
           ]
+        },
+        "terminalFingerprint": {
+          "type": "string",
+          "maxLength": 8192,
+          "$comment": "#39: 記録した孤児 terminal の canonicalFingerprint。**再送で記録が増えないようにするための鍵**であって、監査用の識別子ではない（それは eventId）。隔離は配送鍵を消費しないので同じ terminal は届き続けるが、再配送は eventId・ingestSeq・occurredAt が変わりうる（台帳の鍵が adapterDeliveryId であって eventId ではないのと同じ理由）。eventId で重複を見ると同じ terminal が何度でも記録され、そのたびに stateRevision が動く（実測: 同一 adapterDeliveryId・同一 fingerprint の 300 再送で 300 revision）。§4.3 が terminal の同一性に使うのは payload/source hash なので、こちらを鍵にする。"
         }
       }
     },

@@ -1512,6 +1512,8 @@ test("孤児 terminal は droppedEvidence に残るが、鍵は消費しない�
     {
       reason: "orphaned_terminal",
       eventId: "event-terminal",
+      // 再送の重複判定に使う鍵。§4.3 が terminal の同一性に使う値と同じ
+      terminalFingerprint: "fingerprint-terminal",
       recordedAt: "2026-08-16T00:00:02Z",
       // 相手が居ないので機密度を引き継げない。fail-closed の既定に倒す
       sensitivity: "private",
@@ -1527,9 +1529,37 @@ test("孤児 terminal は droppedEvidence に残るが、鍵は消費しない�
   assert.equal(result.snapshot.history.at(-1)?.revision, result.snapshot.state.stateRevision);
 });
 
+test("孤児の再配送は eventId が変わっても収束する（#39 DoS 回帰）", () => {
+  // **再配送は eventId / ingestSeq / occurredAt が変わりうる**（台帳の鍵が adapterDeliveryId で
+  // あって eventId ではないのと同じ理由）。重複判定を eventId で行うと同じ terminal が何度でも
+  // 記録され、記録が 256 件で頭打ちになった後も `stateRevision` と `history` が伸び続ける。
+  // 隔離は鍵を消費しないので再送は止まらず、これは収束しない
+  // （実測: 修正前は同一 adapterDeliveryId・同一 fingerprint の 300 再送で 300 revision /
+  // history 300 / 台帳 0。CAS token を持つ下流が全部空振りし、履歴だけが伸びる）
+  let snapshot = emptySnapshot();
+  let ledger: IdempotencyLedger = new Map();
+  const revisions = new Set<string>();
+  for (let i = 0; i < 300; i += 1) {
+    const redelivered = terminalEvent({
+      eventId: `event-terminal-redelivery-${i}`,
+      ingestSeq: String(1000 + i),
+      occurredAt: `2026-08-16T01:${String(i % 60).padStart(2, "0")}:00Z`,
+    });
+    const result = reduceTaskWorkState(snapshot, redelivered, ledger);
+    assert.equal(result.outcome, "quarantined");
+    snapshot = result.snapshot;
+    ledger = result.ledger;
+    revisions.add(snapshot.state.stateRevision);
+  }
+  assert.equal(revisions.size, 1);
+  assert.equal(snapshot.history.length, 1);
+  assert.equal(snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(ledger.size, 0);
+});
+
 test("同じ孤児 terminal の再配送は記録を増やさない（収束する）", () => {
-  // 隔離は鍵を消費せず還元器は純関数なので、同じ terminal は再送され続ける。eventId で
-  // 重複を落とさないと、記録が再送のたびに 1 件ずつ伸びて 256 件の枠を食い潰す
+  // 隔離は鍵を消費せず還元器は純関数なので、同じ terminal は再送され続ける。重複を
+  // 落とさないと、記録が再送のたびに 1 件ずつ伸びて 256 件の枠を食い潰す
   const orphan = terminalEvent();
   const first = reduceTaskWorkState(emptySnapshot(), orphan, new Map());
   const again = reduceTaskWorkState(first.snapshot, orphan, first.ledger);
@@ -1540,6 +1570,18 @@ test("同じ孤児 terminal の再配送は記録を増やさない（収束す�
   assert.equal(again.snapshot.history.length, first.snapshot.history.length);
   // 記録していないので `dropped_evidence_recorded` も出さない
   assert.deepEqual(again.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+
+  // **指紋が違えば別の terminal**なので記録する（訂正版が黙って落ちない）
+  const corrected = reduceTaskWorkState(
+    again.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-corrected",
+      adapterDeliveryId: "delivery-terminal-corrected",
+      canonicalFingerprint: "fingerprint-terminal-CORRECTED",
+    }),
+    again.ledger,
+  );
+  assert.equal(corrected.snapshot.state.droppedEvidence?.length, 2);
 });
 
 test("記録だけの隔離は §4.1 の watermark を進めない", () => {
@@ -1607,11 +1649,14 @@ test("記録は識別と分類だけを持つ（#43 FR-007）", () => {
     "sensitivity",
     "status",
   ]);
+  // `terminalFingerprint` は識別（どの terminal か）であって内容ではない。event が名乗った
+  // hash をそのまま写すだけで、payload は入らない
   assert.deepEqual(Object.keys(orphaned.snapshot.state.droppedEvidence?.[0] ?? {}).sort(), [
     "eventId",
     "reason",
     "recordedAt",
     "sensitivity",
+    "terminalFingerprint",
   ]);
 });
 
@@ -1791,6 +1836,39 @@ test("兄弟の一方だけが指紋を持つ状態でも新しい検査は発�
   );
   assert.equal(redelivered.outcome, "applied");
   assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["terminal_already_applied"]);
+});
+
+test("指紋を持たない確定済み候補は event 経路からは作れない（#44 FR-012 の前提）", () => {
+  // FR-012 のせいで「指紋を名乗らない候補が 1 件でもあれば衝突検査が発動しない」ので、
+  // **囮を 1 件置けば集合全体の検査を無効化できる**という指摘がありうる。前提が成り立つのは
+  // 囮を作れる場合だけなので、作れる経路を数える。
+  //
+  // 還元器が terminal で閉じるときは必ず指紋を書く。書かないのは `unknown` に倒したときだけで、
+  // その `unknown` は `isOpen` が **open として数える**——つまり候補集合に open が残るので、
+  // 衝突検査がある「候補が全部確定済み」の分岐にはそもそも入らない。
+  // 残るのは**状態を書ける相手**（この版より前の checkpoint・別実装・欄を落とす reader）だけで、
+  // その相手は囮を置くより先に `status` や `terminalFingerprint` を直接書ける。囮は新しい能力を
+  // 与えないので、可用性（無限再送は永久に収束しない）を優先する FR-012 の選択を変えない
+  const ambiguous = reduceTaskWorkState(startedSnapshot(), terminalEvent({ successful: undefined }), new Map());
+  const pending = ambiguous.snapshot.state.pendingOperations[0] as PendingOperation;
+  assert.equal(pending.status, "unknown");
+  assert.equal(pending.terminalFingerprint, undefined);
+
+  // 指紋なしのこの候補が居ても、確定済み経路（terminal_already_applied / terminal_conflict）
+  // には落ちない。open として扱われるので、衝突検査そのものに到達しない
+  const next = reduceTaskWorkState(
+    ambiguous.snapshot,
+    terminalEvent({
+      eventId: "event-terminal-after-unknown",
+      adapterDeliveryId: "delivery-terminal-after-unknown",
+      canonicalFingerprint: "fingerprint-terminal-OTHER",
+    }),
+    ambiguous.ledger,
+  );
+  assert.equal(
+    next.diagnostics.some((d) => d.code === "terminal_already_applied" || d.code === "terminal_conflict"),
+    false,
+  );
 });
 
 test("unknown に倒した operation には指紋を残さない（#44 FR-010）", () => {

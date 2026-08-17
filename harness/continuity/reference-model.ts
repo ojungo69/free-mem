@@ -1372,8 +1372,14 @@ export function reduceTaskWorkState(
       // 上のコメントが書いていた「記録先が無いので隔離との差は鍵を焼くかどうかしかない」は
       // `droppedEvidence` ができた今は当たらない。記録は隔離の代わりではないので、鍵は
       // 消費しないまま（後から start が届けば同じ terminal の再配送で閉じられる）。
-      // **同じ eventId の記録が既にあるなら足さない**。隔離は鍵を消費せず還元器は純関数なので
-      // 同じ terminal は再送され続け、素で足すと記録が再送のたびに伸びて 256 件の枠を食う。
+      // **同じ terminal の記録が既にあるなら足さない**。隔離は鍵を消費せず還元器は純関数なので
+      // 同じ terminal は再送され続け、素で足すと記録が再送のたびに伸びる。
+      // **鍵は `canonicalFingerprint`（§4.3 が terminal の同一性に使う値）で、`eventId` ではない**。
+      // 台帳の鍵が `adapterDeliveryId` であって `eventId` でないのと同じ理由で、再配送は
+      // `eventId` / `ingestSeq` / `occurredAt` が変わりうる。`eventId` で見ると同じ terminal が
+      // 何度でも記録され、記録が 256 件で頭打ちになった後も **`stateRevision` と `history` が
+      // 再送のたびに動き続ける**（実測: 同一 adapterDeliveryId・同一 fingerprint の 300 再送で
+      // 300 revision / history 300 / 台帳 0）。これは配送鍵を消費しない設計と組むと収束しない。
       // 落とす理由は `terminal_conflict` にも要るが、あちらは corruption であって
       // 「live な集合から落ちた証跡」ではない（#43 の語彙に無い）ので記録しない
       // 走査は理由の判定より**後**に置く。孤児以外の隔離（`terminal_conflict` など）でも
@@ -1381,7 +1387,9 @@ export function reduceTaskWorkState(
       if (
         correlation.diagnostic === "terminal_orphaned" &&
         !(previous.state.droppedEvidence ?? []).some(
-          (entry) => entry.reason === "orphaned_terminal" && entry.eventId === event.eventId,
+          (entry) =>
+            entry.reason === "orphaned_terminal" &&
+            declared(entry.terminalFingerprint) === event.canonicalFingerprint,
         )
       ) {
         return quarantineWithRecord(
@@ -1395,6 +1403,9 @@ export function reduceTaskWorkState(
               {
                 reason: "orphaned_terminal",
                 eventId: event.eventId,
+                // 再送で記録が増えないための鍵。`eventId` は監査用（どの配送を記録したか）で、
+                // 同一性の判定には使えない
+                terminalFingerprint: event.canonicalFingerprint,
                 recordedAt: event.occurredAt,
                 // 相手が居ないので機密度を引き継げない。§3.1 の fail closed どおり既定に倒す
                 sensitivity: "private",

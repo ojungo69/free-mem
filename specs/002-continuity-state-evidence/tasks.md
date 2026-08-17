@@ -257,9 +257,28 @@ CI だけが落ちる。
 数字を動かしている（変異 179 → **187**、tests 307 → **315**、実装は上の T045 表のとおり）。
 PARTIAL 2 件（T019 / T029）の walkthrough は**ユーザーの選択待ち**で、まだ処理していない。
 
-- [ ] T047 `rules/security.md` の必須ツールを通す — semgrep CLI・`/codex-review mode=security`・
+- [X] T047 `rules/security.md` の必須ツールを通す — semgrep CLI・`/codex-review mode=security`・
   `/codex:adversarial-review`。この feature は入力検証と信頼境界（復元状態の扱い）に触るので
   対象範囲に入る。指摘は同じく批判的評価で採否を決める
+
+**T047 の結果**: semgrep 2 件（どちらも本ブランチが触っていない `harness/schema/validate.ts` の
+`detect-non-literal-regexp`。対象は repo 自身の凍結 schema の pattern なので攻撃者制御ではない → 却下）。
+`codex-review mode=security` が `ok: false`（high 1 / medium 1）、`codex:adversarial-review` が
+blocking 4 / advisory 2。重複を除くと 6 件。**実行して再現できたものだけを実害とした**。
+
+| # | 指摘 | 検証 | 採否 |
+|---|---|---|---|
+| S1 | 孤児の重複判定が `eventId` — 再配送は eventId が変わるので同じ terminal が何度でも記録され、記録が上限で頭打ちになった後も revision と history が伸び続ける（配送鍵未消費なので再送は止まらない = DoS） | **再現**（同一 adapterDeliveryId・同一 fingerprint の 300 再送 → 300 revision / history 300 / 台帳 0） | **修正**（鍵を `canonicalFingerprint` に変更。凍結 schema へ任意欄 1 つ追加。300 再送 → 1 revision に収束。回帰 test + 変異 3 件） |
+| S2 | `quarantined` が 2 通りの状態挙動を持つのに契約が 1 つしか書いていない | 目視（消費者は harness 内ゼロだが型は export 済み） | **修正**（addendum §4.1 に「outcome は配送鍵の話であって状態の話ではない。どの outcome でも返った状態を採る」を MUST として明記。新しい outcome 値の追加は export union の破壊なので採らない） |
+| S3 | 指紋を持たない候補が 1 件あれば集合全体の衝突検査が無効化される（囮攻撃） | **反証**（囮を作れる経路を数えた） | **却下 + test で固定**。還元器は閉じるとき必ず指紋を書く。書かないのは `unknown` だけで、`unknown` は `isOpen` が open として数えるので衝突検査の分岐に到達しない。残るのは**状態を書ける相手**だけで、その相手は囮を置くより先に `status` を直接書ける（新しい能力を与えない）。可用性側の失敗（無限再送）は永久に収束しないので FR-012 の選択を変えない |
+| S4 | 記録が上限で押し出されたことが状態だけを読む側に分からない。退避と孤児が同じ FIFO なので片方の洪水でもう片方の証跡を消せる | 目視（設計どおり） | **限界へ + issue #61**。閉じるには状態側の scalar が要り、canonical hash の面を変えるので別に切る |
+| S5 | 識別子と指紋が生値で状態に入り機密度が `private` 固定。診断も値を出す | 目視（**以前から**。`Observed*.sourceEventIds` が同じ値を同じ機密度で保持している） | **限界へ + issue #62**。#43/#44 が作った露出ではなく、閉じるには event 表面全体の規約が要る |
+| S6 | `DroppedEvidenceEntryV1` の欄の組み合わせが無検査 | 目視 | **限界へ**（T045 #14 と同じ。`$comment` に明記済み） |
+
+**S1 の副産物**: 凍結 test が schema と TS mirror の**欄集合を突き合わせていなかった**ことが判明した
+（TS 側から `terminalFingerprint` を消しても凍結 test 17 件が全部 green のまま）。TS 型は object
+literal の注釈としてしか出てこず、値は `unknown` 経由で validator に渡るため余剰プロパティ検査が
+働かない。`SameSet` の型表明と欄名比較の test を足して塞いだ（tsc がゲート）。
 
 ---
 

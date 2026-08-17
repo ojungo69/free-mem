@@ -925,3 +925,28 @@ test("droppedEvidence は共通欄だけを必須にする（#43 / #39）", () =
   assert.equal(state.droppedEvidence?.maxItems, contract.CONTINUITY_LIMITS.arrayItems);
   assert.equal(state.droppedEvidence?.maxItems, state.pendingOperations?.maxItems);
 });
+
+/**
+ * 上の test 群は schema の側しか縛らない。TS 型は object literal の注釈として出てくるだけで、
+ * 値は `unknown` 経由で validator に渡るため**余剰プロパティ検査が働かず**、schema にだけ欄を
+ * 足しても素通りする（実測: `DroppedEvidenceEntryV1.terminalFingerprint` を TS 側から消しても
+ * 凍結 test 17 件が全部 green のままだった）。TS mirror が schema と同じ形であることは
+ * TS/Rust parity の前提そのものなので、欄名の集合を型と runtime の両方で突き合わせる。
+ */
+const DROPPED_EVIDENCE_FIELDS = [
+  "reason",
+  "recordedAt",
+  "sensitivity",
+  "eventId",
+  "operationId",
+  "status",
+  "terminalFingerprint",
+] as const;
+type _DroppedEvidenceFieldsMatchTs = Assert<
+  SameSet<keyof contract.DroppedEvidenceEntryV1, (typeof DROPPED_EVIDENCE_FIELDS)[number]>
+>;
+
+test("DroppedEvidenceEntryV1 の欄集合は schema と TS で一致する（#43 / #39）", () => {
+  const properties = defs.DroppedEvidenceEntryV1?.properties as Record<string, unknown>;
+  assert.deepEqual(Object.keys(properties).sort(), [...DROPPED_EVIDENCE_FIELDS].sort());
+});
