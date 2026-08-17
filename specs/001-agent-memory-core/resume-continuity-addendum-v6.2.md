@@ -16,8 +16,9 @@ When this addendum conflicts with v6.1, it takes precedence only for:
 - §10 SessionWorkState / task-state ownership;
 - §11 ContinuationCheckpoint, task boundaries, claim, delivery, acceptance, and resume-mode semantics;
 - §17 resume hint, selection, full-resume injection, sensitivity, and serialization;
-- §22.6 timestamp encoding, for the continuity contracts defined here (§3 narrows the accepted
-  spelling; it does not change which instants are representable);
+- §22.6 timestamp encoding, for the continuity contracts defined here. §3 narrows both the accepted
+  spelling and, for leap seconds, the set of representable instants; that narrowing is authorized
+  here and its consequence is stated in §3;
 - §27 Phase 3 / Phase 4 / Core 1.0 continuity quality gates.
 
 All Phase 1 sole-writer, fail-open, spool, redaction, peer-auth, backup, and user-authority invariants remain unchanged.
@@ -34,8 +35,8 @@ behaviour the reference implementation had already chosen, or introduces a new r
 
 | Date | Change | Issue | Kind |
 |---|---|---|---|
-| 2026-08-17 | §0 authority scope extended to v6.1 §22.6 timestamp encoding, so §3 may narrow it | #33 | New rule |
-| 2026-08-17 | §3 canonical timestamp profile: UTC RFC3339 restricted to `Z` offset and seconds `00`-`59`, with the residual fractional-second ambiguity stated | #33 | Ratifies existing behaviour |
+| 2026-08-17 | §0 authority scope extended to v6.1 §22.6 timestamp encoding, so §3 may narrow it — including the leap-second instants it makes unrepresentable | #33 | New rule |
+| 2026-08-17 | §3 canonical timestamp profile: UTC RFC3339 restricted to `Z` offset and seconds `00`-`59`, with the residual fractional-second ambiguity, the `chrono` offset default, and the leap-second loss all stated | #33 | Ratifies existing behaviour |
 | 2026-08-17 | §3 `confidence` range applies to `Observed<T>` only; other `confidence` fields stay unbounded | #30 | Ratifies existing behaviour |
 | 2026-08-17 | §4.1 `lastIngestSeq` defined as a monotone watermark, explicitly **not** a state ordering key and **not** a claim of contiguous coverage | #38 | New rule (the field previously had no definition) |
 | 2026-08-17 | §4.3 operation-class table location, unmapped-kind defaults, and the sensitivity migration condition | #36 | New rule |
@@ -154,9 +155,23 @@ RFC3339 as required by v6.1 §22.6, narrowed by removing two sources of alternat
 
 The narrowing exists because `updatedAt` and the other timestamp fields are inputs to the canonical
 content hash. Two spellings of the same instant produce two hashes, which splits both the hash and
-the v6.1 §22.8 dedupe decision while every value still validates. Neither rejected spelling is
-produced by `Date.prototype.toISOString()` or by the Rust `chrono` defaults, so the cost of
-rejecting them is bounded to adapters that deliberately emit them; those MUST normalize at intake.
+the v6.1 §22.8 dedupe decision while every value still validates.
+
+**The offset narrowing is not free, and the common formatter defaults are on both sides of it.**
+`Date.prototype.toISOString()` emits `Z` and needs nothing. Rust `chrono`'s `to_rfc3339()` emits a
+**numeric** offset — its own documentation gives `1996-12-19T16:39:57-08:00`, and a `DateTime<Utc>`
+accordingly renders `+00:00`, which this profile rejects. A `chrono` adapter MUST therefore use
+`to_rfc3339_opts(secform, /* use_z */ true)`, or normalize the offset before the value reaches the
+contract. Any other formatter MUST be checked against this profile rather than assumed compatible.
+
+**The leap-second narrowing removes instants, not just spellings.** RFC3339 `:60` is the only way to
+write a leap second, so rejecting it means an event captured during one has no representation that
+denotes the same instant; the nearest accepted values name the adjacent second. This is authorized
+in §0 rather than being an accident of the pattern. The trade is deliberate: the leap-second
+spelling would otherwise reach the content hash, where two runtimes that disagree about whether to
+fold `:60` into the next second would produce two hashes for what they each believe is one instant.
+Adapters that receive a `:60` value MUST reject it at intake and MUST NOT silently rewrite it,
+because rewriting relabels the instant without recording that it happened.
 
 **This profile does not make the encoding fully canonical.** The fractional part is deliberately
 left variable, because fixing the digit count at three would reject the valid microsecond
