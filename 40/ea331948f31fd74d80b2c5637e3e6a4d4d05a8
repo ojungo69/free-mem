@@ -1,0 +1,34 @@
+specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md
+  s_2d059b4f795bca::t_a957729f3ee3b3 480,482
+  s_2d059b4f795bca::t_308c990a1268c8 44-45
+harness/fixtures/continuity/restored-state-reduction.json
+  s_2d059b4f795bca::t_b056a8a538edd1 1-222
+  s_2d059b4f795bca::t_90aa6f25e9cd3b 223-277
+evidence/phase3-reference-model.md
+  s_2d059b4f795bca::t_3b42da308e9bff 327-354
+harness/continuity/reference-model.test.ts
+  s_2d059b4f795bca::t_c5f843dd7cb87d 2316
+  s_2d059b4f795bca::t_ecc79574257ad6 2427-2439,2441-2462,2464
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_c3bb8d220fb581 29-30
+harness/fixtures/continuity/tool-lifecycle-reduction.json
+  s_2d059b4f795bca::t_c8dfc6ea3fe90f 203,216,229,242-244
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_c332addd98691c 198-219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "40ea331948f31fd74d80b2c5637e3e6a4d4d05a8",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
