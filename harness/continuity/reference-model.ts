@@ -1415,16 +1415,16 @@ export function correlateTerminalEvent(
   // 凍結 schema に minLength は無い）と一致してしまう。空白同士は「同じ session」ではなく
   // 「どちらも session を名乗っていない」なので、event 側をここで落とす
   assertIdentityMaterial(terminalEvent);
-  // 候補の絞り込みは session と lineage しか見ない（状態は Agent を 1 つしか持たないので、
-  // 状態と event の Agent はここで突き合わせるしかない）。還元器は同じ検査を入口でしているが、
-  // 直接呼びで飛ばすと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを
-  // 適用してしまう
-  assertSameScope(previous.state, terminalEvent);
   // §22.6 の decimal string 制約も入口で見る。`compareIngestSeq` は start を選んだ後の順序比較
   // でしか走らないので、候補ゼロ・適用済み・曖昧・照合不能で早期 return する経路では検査され
   // ない。還元器は入口で落とすのに直接呼びだけが `terminal_orphaned` という「照合できなかった
   // だけ」の診断を返すと、§22.6 違反が正常な結果に化けて、caller が壊れた順序証跡を保持する
   assertIngestSeq(terminalEvent.ingestSeq);
+  // 候補の絞り込みは session と lineage しか見ない（状態は Agent を 1 つしか持たないので、
+  // 状態と event の Agent はここで突き合わせるしかない）。還元器は同じ検査を入口でしているが、
+  // 直接呼びで飛ばすと別 Agent の terminal が「権威ある一致」として返り、consumer がそれを
+  // 適用してしまう
+  assertSameScope(previous.state, terminalEvent);
   const operation = terminalEvent.operation;
   if (operation === undefined || operation.phase !== "terminal") {
     return {

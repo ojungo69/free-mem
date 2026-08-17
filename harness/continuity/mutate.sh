@@ -255,6 +255,8 @@ mutate "    !isBlank(attestation.peerIdentityId) &&" "    true &&" && run "peer 
 mutate "    !isBlank(attestation.ingestReceiptId) &&" "    attestation.ingestReceiptId !== \"\" &&" && run "空白だけの受領証 ID を authority にする"
 mutate "    !isBlank(provenance.scenarioId) &&" "    true &&" && run "空白の scenarioId で proven を成立させる"
 mutate "  assertIngestSeq(terminalEvent.ingestSeq);" "" && run "直接呼びの ingestSeq 検査を外す"
+mutate "  assertIngestSeq(terminalEvent.ingestSeq);" "  assertSameScope(previous.state, terminalEvent);
+  assertIngestSeq(terminalEvent.ingestSeq);" && run "直接呼びだけ scope を ingestSeq より先に見る"
 mutate "  assertIdentityMaterial(terminalEvent);" "" && run "直接呼びの identity 材料検査を外す"
 mutate "  if (isBlank(event.sourceAgent)) {" "  if (false) {" && run "空白の sourceAgent を素通しする"
 mutate "    if (plausible.length === 0) {" "    if (false) {" && run "turn 両立ゼロの確定済みを適用済みにする"

@@ -3487,6 +3487,43 @@ test("空白だけの taskLineageId は lineage scope として認めない", ()
   assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent(), new Map()).outcome, "applied");
 });
 
+test("ingestSeq と scope を両方破った event は 3 つの入口すべてで §22.6 を名乗る", () => {
+  // 入口の検査順（envelope → turn → identity → ingestSeq → scope）を**通る側でなく落ちる側**で
+  // 固定する。順序が入口ごとに違うと、同じ壊れた event が還元器では §22.6、直接呼びでは
+  // 「別 Agent」と報告される。`rejected-events.json` は case ごとに 1 つの節を宣言して
+  // TS / Rust のパリティ基準にしているので、分類が割れると移植側は同じ fixture を満たしたまま
+  // 違う節を返す
+  const broken = { ingestSeq: "01", sourceAgent: "codex" } as const; // 先頭 0 は decimal string でない
+  const started = startedSnapshot();
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), startEvent(broken), new Map()),
+    /ingestSeq が decimal string でない/,
+    "reduce",
+  );
+  assert.throws(
+    () => correlateTerminalEvent(started, terminalEvent(broken)),
+    /ingestSeq が decimal string でない/,
+    "correlate",
+  );
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        started.state,
+        startEvent({ ...broken, kind: "session_ended", operation: undefined }),
+        new Map(),
+      ),
+    /ingestSeq が decimal string でない/,
+    "abandon",
+  );
+  // scope だけを破った event は今までどおり scope で落ちる（ingestSeq 検査が scope 検査を
+  // 飲み込んでいないことを固定する）
+  assert.throws(
+    () => correlateTerminalEvent(started, terminalEvent({ sourceAgent: "codex" })),
+    /別 Agent の event は適用しない/,
+    "correlate: scope のみ",
+  );
+});
+
 test("occurredAt の綴りが凍結 IsoTimestamp から外れていたら落ちる（#27）", () => {
   // 暦検査は先頭 19 文字しか見ないので、綴りを先に当てないと「指す瞬間が一意」の主張が
   // 成り立たない値を通す。schema 検証を通ってから届く保証は無い（`validateContractValue` は
