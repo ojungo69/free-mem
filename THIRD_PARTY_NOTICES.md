@@ -46,19 +46,28 @@ Findings that need a recorded decision or correction:
 
 No copyleft-only package is present in the production dependency tree.
 
-## Known gap: notices for code bundled into `@codemem/server`
+## Known gap: notices for code bundled into the publishable packages
 
-`@codemem/ui` is private and never published, but its Vite build writes the production bundle to
-`vendor/codemem/packages/viewer-server/static/`, and `@codemem/server` lists `static/` in its
-`files`. That bundle inlines `preact`, `@preact/signals`, `@radix-ui/*`, and `dompurify`, whose
-licenses require their notices to travel with redistributed copies. A published tarball would carry
-only the codemem MIT `LICENSE`, so those notices would be missing.
+Each publishable package is built with Vite, and whatever its `rollupOptions.external` does not
+cover is inlined into the shipped output. Measured on 2026-08-17 by building the vendored tree and
+reading the emitted source maps:
+
+| Package | Bundled third-party code |
+|---|---|
+| `codemem` (cli) | `@clack/prompts`, `@clack/core`, `omelette`, `sisteransi`, `fast-string-width`, `fast-string-truncated-width`, `fast-wrap-ansi` |
+| `@codemem/core` | `hono` (18 modules) |
+| `@codemem/mcp` | none — its `external` list covers every dependency |
+| `@codemem/server` | `@hono/node-server` (2 modules), plus `static/app.js` built from the private `@codemem/ui` package: `preact`, `@preact/signals`, `@radix-ui/*`, `dompurify` |
+
+`static/app.js` emits no source map, so it was checked by identifier; it contains no license or
+copyright text at all. Those licenses require their notices to travel with redistributed copies, and
+a published tarball would carry only codemem's MIT `LICENSE`.
 
 Nothing is published today — no tag, package, or release exists — so no redistribution has happened.
-Shipping a bundled-dependency notice artifact and verifying it in the tarball is a blocker for the
-first `npm publish`, tracked in [#50](https://github.com/ojungo69/free-mem/issues/50).
+Shipping a bundled-dependency notice artifact and verifying it in the packed tarball is a blocker for
+the first `npm publish`, tracked in [#50](https://github.com/ojungo69/free-mem/issues/50).
 `harness/license-inclusion-check.mjs` does not cover this and does not claim to: it checks
-package-level `LICENSE` files only.
+package-level `LICENSE` files, not build output.
 
 Re-run the scan whenever the lockfile changes; `evidence/adr-004-licensing.md` records how these
 findings feed the license decision.

@@ -128,9 +128,11 @@ license 付与は取り消せない。一度公開した version に対する gr
 - release 前の専門家確認（本 ADR は法的助言の代替ではない）。
 - DCO は `CONTRIBUTING.md` と PR template に規定しているが、CI では強制していない。
   外部 contribution を受け入れ始める時点で自動検査を入れるか判断する。
-- `@codemem/server` の tarball に、viewer bundle へ取り込まれた依存（preact / @radix-ui / dompurify）の
-  notice が載らない（issue #50）。publish していない現状では配布が無いため義務も発生していないが、
-  初回 `npm publish` のブロッカーとして扱う。`THIRD_PARTY_NOTICES.md` の「Known gap」節に記録した。
+- 公開 package の tarball に、bundle された依存の notice が載らない（issue #50）。実測では
+  `codemem`（@clack/prompts ほか）、`@codemem/core`（hono）、`@codemem/server`（@hono/node-server と
+  viewer の preact / @radix-ui / dompurify）が該当し、`@codemem/mcp` だけが該当しない。publish して
+  いない現状では配布が無いため義務も発生していないが、初回 `npm publish` のブロッカーとして扱う。
+  `THIRD_PARTY_NOTICES.md` の「Known gap」節に実測表を記録した。
 
 ## 帰結
 
