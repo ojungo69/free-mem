@@ -908,8 +908,7 @@ test("droppedEvidence は共通欄だけを必須にする（#43 / #39）", () =
   assert.deepEqual(issues({ ...entry, reason: "orphaned_terminal", eventId: "e1" }), []);
 
   for (const missing of ["reason", "recordedAt", "sensitivity"]) {
-    const partial: Record<string, unknown> = { ...entry };
-    delete partial[missing];
+    const partial = Object.fromEntries(Object.entries(entry).filter(([field]) => field !== missing));
     const found = issues(partial);
     assert.ok(
       found.some((i) => `${i.path} ${i.message}`.includes(missing)),
@@ -921,7 +920,9 @@ test("droppedEvidence は共通欄だけを必須にする（#43 / #39）", () =
   assert.ok(issues({ ...entry, droppedBecause: "x" }).length > 0);
 
   // 上限を落とすと、退避の記録そのものが状態を無限に膨らませる（落とした証跡が本体より重くなる）
-  const state = defs.CanonicalWorkStateV1?.properties as Record<string, { maxItems?: number }>;
+  const stateDef = defs.CanonicalWorkStateV1;
+  assert.ok(stateDef, "$defs.CanonicalWorkStateV1 が無い");
+  const state = stateDef.properties as Record<string, { maxItems?: number } | undefined>;
   assert.equal(state.droppedEvidence?.maxItems, contract.CONTINUITY_LIMITS.arrayItems);
   assert.equal(state.droppedEvidence?.maxItems, state.pendingOperations?.maxItems);
 });
@@ -932,21 +933,23 @@ test("droppedEvidence は共通欄だけを必須にする（#43 / #39）", () =
  * 足しても素通りする（実測: `DroppedEvidenceEntryV1.terminalFingerprint` を TS 側から消しても
  * 凍結 test 17 件が全部 green のままだった）。TS mirror が schema と同じ形であることは
  * TS/Rust parity の前提そのものなので、欄名の集合を型と runtime の両方で突き合わせる。
+ *
+ * `Record<keyof T, true>` にしているのは、**両方向**を型で縛るため。TS から欄が消えれば
+ * 余剰プロパティとして、TS に欄が増えれば不足として、どちらも `tsc` が落ちる。
  */
-const DROPPED_EVIDENCE_FIELDS = [
-  "reason",
-  "recordedAt",
-  "sensitivity",
-  "eventId",
-  "operationId",
-  "status",
-  "terminalFingerprint",
-] as const;
-type _DroppedEvidenceFieldsMatchTs = Assert<
-  SameSet<keyof contract.DroppedEvidenceEntryV1, (typeof DROPPED_EVIDENCE_FIELDS)[number]>
->;
+const DROPPED_EVIDENCE_FIELDS: Record<keyof contract.DroppedEvidenceEntryV1, true> = {
+  reason: true,
+  recordedAt: true,
+  sensitivity: true,
+  eventId: true,
+  operationId: true,
+  status: true,
+  terminalFingerprint: true,
+};
 
 test("DroppedEvidenceEntryV1 の欄集合は schema と TS で一致する（#43 / #39）", () => {
-  const properties = defs.DroppedEvidenceEntryV1?.properties as Record<string, unknown>;
-  assert.deepEqual(Object.keys(properties).sort(), [...DROPPED_EVIDENCE_FIELDS].sort());
+  const entryDef = defs.DroppedEvidenceEntryV1;
+  assert.ok(entryDef, "$defs.DroppedEvidenceEntryV1 が無い");
+  const properties = entryDef.properties as Record<string, unknown>;
+  assert.deepEqual(Object.keys(properties).sort(), Object.keys(DROPPED_EVIDENCE_FIELDS).sort());
 });
