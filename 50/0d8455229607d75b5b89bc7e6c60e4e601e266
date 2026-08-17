@@ -1,0 +1,22 @@
+harness/notice-inclusion-check.mjs
+  s_2d059b4f795bca::t_436b8f31a4d8ca 197
+  s_2d059b4f795bca::t_bd70efdd8cd8e5 158-168
+vendor/codemem/scripts/release-tag-preflight.sh
+  s_2d059b4f795bca::t_9bbffd16781f67 9-19,59,62,94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "500d8455229607d75b5b89bc7e6c60e4e601e266",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
