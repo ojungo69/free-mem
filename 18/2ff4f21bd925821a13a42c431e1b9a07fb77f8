@@ -1,0 +1,61 @@
+harness/notice-inclusion-check.mjs
+  s_2d059b4f795bca::t_45201a17889b48 161
+  s_65c0a24148ce2d::t_50591d393c564c 1-44,48-87,90-160,162-186
+  s_2d059b4f795bca::t_27d6fa1af3116e 45-47
+  s_65c0a24148ce2d::t_d1185678abec11 88-89
+evidence/adr-004-licensing.md
+  s_2d059b4f795bca::t_f766185152128c 138-141
+  s_2d059b4f795bca::t_e101639b034109 112-114,119-137,142-163
+  s_2d059b4f795bca::t_77184f1774f2fc 93-96
+  s_2d059b4f795bca::t_4f12d06417eac9 179-188
+  s_2d059b4f795bca::t_b6637dc9a5ad1a 87-88
+harness/notice-inclusion-check.test.mjs
+  s_65c0a24148ce2d::t_d1185678abec11 4,32
+  s_2d059b4f795bca::t_f6bf31257e0804 109
+  s_2d059b4f795bca::t_c76d0ddcae3a34 110-138
+  s_65c0a24148ce2d::t_50591d393c564c 1-3,5-31,33-108,139
+.github/workflows/ci.yml
+  s_65c0a24148ce2d::t_8a7840fd0269cc 186-206
+THIRD_PARTY_NOTICES.md
+  s_2d059b4f795bca::t_1ee91bf9ae2101 49,52-95
+vendor/codemem/packages/cli/vite.config.ts
+  s_2d059b4f795bca::t_0da96c62e2d66f 5-6,46-50
+vendor/codemem/packages/cli/vite.hook.config.ts
+  s_2d059b4f795bca::t_954b7bff10f60d 6-7,32-38
+vendor/codemem/packages/core/vite.config.ts
+  s_2d059b4f795bca::t_bfea0e020bb39b 4-5,25-26
+vendor/codemem/packages/mcp-server/vite.config.ts
+  s_2d059b4f795bca::t_590466d9966fe4 4-5,31-35
+vendor/codemem/packages/ui/vite.config.ts
+  s_2d059b4f795bca::t_72696d036d776e 8-9,85-86
+vendor/codemem/packages/viewer-server/vite.config.ts
+  s_2d059b4f795bca::t_86409b4eb09371 4-5,23-27
+vendor/codemem/scripts/license-notice-plugin.mjs
+  s_2d059b4f795bca::t_cf4a3077e17e9c 1-66
+vendor/codemem/scripts/release-tag-preflight.sh
+  s_2d059b4f795bca::t_4cc461dfe52765 7-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "182ff4f21bd925821a13a42c431e1b9a07fb77f8",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_65c0a24148ce2d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a011f9-4ec2-7f01-9b45-495b231ff3c5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
