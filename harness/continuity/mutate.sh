@@ -13,18 +13,25 @@
 #   comm -23 /tmp/want.txt /tmp/got.txt   # 空でなければ黙って飛ばされている
 # （このコメント行自体が 1 行目の grep に引っかかるので `grep -v '^\K'` で落とす）
 #
-# 中断すると変異が残るので、その場合は `git checkout harness/continuity/reference-model.ts`。
+# 中断すると変異が残るので、その場合は `git checkout harness/continuity/ harness/fixtures/continuity/`。
 set -u
 cd "$(dirname "$0")/../.."
 SRC=harness/continuity/reference-model.ts
-BAK=$(mktemp)
-trap 'cp "$BAK" "$SRC"; rm -f "$BAK"' EXIT
-cp "$SRC" "$BAK"
+# 旧形 parity の門は、還元器ではなく**比較面と corpus**を壊して検証する（門の assert 自体を
+# 壊す変異は、その門でしか検出できないので kill できない = 変異の対象にならない）
+PROJECTION=harness/continuity/old-shape-projection.ts
+CORPUS=harness/fixtures/continuity/old-shape-parity.json
+MUTABLE=("$SRC" "$PROJECTION" "$CORPUS")
+TESTS=(harness/continuity/reference-model.test.ts harness/continuity/old-shape-parity.test.ts)
+BAKDIR=$(mktemp -d)
+restore_all() { for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$(basename "$f")" "$f"; done; }
+trap 'restore_all; rm -rf "$BAKDIR"' EXIT
+for f in "${MUTABLE[@]}"; do cp "$f" "$BAKDIR/$(basename "$f")"; done
 
 EXECUTED=0
 SURVIVED=0
 # 変異前の test 件数。run() がこれと突き合わせて「変異が test を走らせていない」を検出する
-BASELINE_TESTS=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1 \
+BASELINE_TESTS=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1 \
   | grep -E '^# tests |^ℹ tests ' | tail -1 | grep -oE '[0-9]+$')
 if [ -z "${BASELINE_TESTS:-}" ]; then
   echo "変異テスト失敗: baseline の test 件数を取得できない" >&2
@@ -34,7 +41,7 @@ fi
 run() {
   local label="$1"
   local out
-  out=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1)
+  out=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1)
   local failed
   failed=$(printf '%s' "$out" | grep -E '^# fail |^ℹ fail ' | tail -1)
   local n
@@ -54,19 +61,20 @@ run() {
       "${ran:-?}" "$BASELINE_TESTS"
     SURVIVED=$((SURVIVED + 1))
   fi
-  cp "$BAK" "$SRC"
+  restore_all
 }
 
-mutate() { # python replacement
-  python3 - "$1" "$2" <<'PY'
+# 既定の対象は還元器。第 3 引数で別ファイルを狙う
+mutate() { # python replacement [file]
+  python3 - "$1" "$2" "${3:-$SRC}" <<'PY'
 import sys, pathlib
-old, new = sys.argv[1], sys.argv[2]
+old, new, target = sys.argv[1], sys.argv[2], sys.argv[3]
 # 置換後の文字列に書いた `\n` は改行として扱う。bash の二重引用符は `\n` を展開しないので、
 # 素で渡すと**リテラルのバックスラッシュ n が TS に埋まって module が parse できなくなる**。
 # その状態でも node:test は「読み込み失敗 1 件」を fail として数えるため、ゲートを一度も
 # 壊していない変異が kill として計上されていた（実測で 5 件。run() 側の件数突き合わせと対で塞ぐ）
 new = new.replace("\\n", "\n")
-p = pathlib.Path("harness/continuity/reference-model.ts")
+p = pathlib.Path(target)
 s = p.read_text()
 # アンカーは**ソース中で一意**でなければならない。2 箇所に出るアンカーだと
 # `replace(old, new, 1)` は必ず先頭を書き換えるので、2 つ目の site を狙ったラベルが
@@ -443,12 +451,25 @@ mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  c
 mutate "    terminalStatusOf(terminalEvent) !== \"unknown\"" "    true" && run "unknown に倒れる terminal でも指紋の食い違いで隔離する"
 mutate "    storedFingerprint !== undefined &&" "    startIngestSeqOf(matched) !== undefined &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を順序材料がある場合だけにする"
 mutate "    storedFingerprint !== undefined &&" "    rule === \"native_operation_id\" &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を rule 1 の terminal だけにする"
-cp "$BAK" "$SRC"
+restore_all
+# --- 旧形 parity の門（SC-003）--------------------------------------------
+# 比較面を緩める / corpus を実際より広く見せる、の 2 方向を潰す
+mutate "    diagnostics: step.diagnostics.map((d) => d.code)," "    diagnostics: []," "$PROJECTION" && run "旧形 parity の比較面から診断を落とす"
+mutate "    state,
+  };
+}" "    state: {},
+  };
+}" "$PROJECTION" && run "旧形 parity の比較面から状態を落とす"
+mutate "      \"name\": \"restored-orphan-terminal-redelivered\"," "      \"name\": \"restored-orphan-terminal-renamed\"," "$CORPUS" && run "旧形 corpus の case 名を許可表から外す"
+mutate "          \"eventId\": \"event-terminal-orphan-again\",
+          \"adapterDeliveryId\": \"delivery-terminal-orphan\"," "          \"eventId\": \"event-terminal-orphan-again\",
+          \"adapterDeliveryId\": \"delivery-terminal-orphan-2\"," "$CORPUS" && run "旧形 corpus の再送を別の配送にすり替える"
+
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
 # 立てていないこのスクリプトでは復元後の baseline が赤でも exit 0 になり、「全変異が kill された」
 # だけを見て緑に見えてしまう。件数を取り出して 0 でなければ落とす
-BASELINE=$(node --experimental-strip-types --test harness/continuity/reference-model.test.ts 2>&1)
+BASELINE=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1)
 printf '%s\n' "$BASELINE" | grep -E '^ℹ (pass|fail) '
 BASELINE_FAIL=$(printf '%s' "$BASELINE" | grep -E '^ℹ fail ' | tail -1 | grep -oE '[0-9]+$')
 if [ -z "$BASELINE_FAIL" ] || [ "$BASELINE_FAIL" -ne 0 ]; then

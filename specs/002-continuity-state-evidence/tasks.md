@@ -9,8 +9,9 @@ description: "Task list for 継続状態に証跡の置き場を作る（Cluster
 
 **Prerequisites**: plan.md / spec.md / research.md / data-model.md / quickstart.md（すべて作成済み）
 
-**Tests**: **必要**。spec の SC-003（既存テストが 1 件も書き換わらない）と SC-004（規則ごとの変異が
-生存 0）はテストと変異ゲートでしか示せない。テスト作成は任意ではなく要件。
+**Tests**: **必要**。spec の SC-003（旧形入力への挙動が変更前と一致する — 判定は T049 の差分
+ゲート）と SC-004（規則ごとの変異が生存 0）はテストと変異ゲートでしか示せない。テスト作成は
+任意ではなく要件。
 
 **Organization**: user story ごとに phase を分ける。ただし **phase の順序は入れ替えられない**
 （plan.md「実装順序」）。凍結 schema を先に固定しないと、どの story も「何を書いてよいか」を
@@ -215,7 +216,10 @@ CI だけが落ちる。
 | parity fixture を 2 本に一般化（loop 化） | 2 | いいえ（構造変更） |
 | #44 で再配送の指紋を受理済みと揃えた | 5 | いいえ（**入力**の変更。期待値は不変） |
 
-**新しい欄が無い経路の挙動を変えたものはゼロ**: 欄を持たない状態は 5 分類のどれでも従来どおり（`terminal_order_unverifiable` / rule 2 の免除 / `terminal_already_applied`）で、それぞれ test と変異で固定してある。SC-003 の文言が想定していなかったのは「消す対象の欠陥そのものを固定している test」の存在で、そこは表で明示する形にした
+**この数え方では SC-003 を判定できない**（T049 で置き換えた）。書き換えた期待値の行を数えても、
+「新しい経路が**新たに作る**状態」も「新しい test が初めて覆う挙動」も行として現れないので、
+数え落としたまま緑にできる。上の表は「どの期待値になぜ触れたか」の記録としては残すが、
+SC-003 の合否はここでは出さない。合否は T049 の差分ゲートが出す。
 
 - [X] T045 `/code-review`（正しさ）→ `ponytail-review`（過剰実装）の 2 本立てを通す。この feature は Constitution III と `rules/security.md` の対象範囲（入力検証・fail-closed の境界）なので、**外部 CLI へ委譲せず Claude Code が実装しレビューする**
 
@@ -255,7 +259,10 @@ CI だけが落ちる。
 2 PARTIAL / 1 SKIPPED）。レポートは `speckit-verify-tasks` の immutability 規則どおり
 **生成時のまま**にしてある。生成時点は commit `cdebef8` で、その後の `0d6b4cd` 以降が
 数字を動かしている（変異 179 → **187**、tests 307 → **315**、実装は上の T045 表のとおり）。
-PARTIAL 2 件（T019 / T029）の walkthrough は**ユーザーの選択待ち**で、まだ処理していない。
+PARTIAL 2 件（T019 / T029）の walkthrough は**実施済み**で、どちらも調査（investigate）の
+うえ判定は **PARTIAL のまま**にしてある（レポート本体の再採点は immutability 規則で禁じられて
+いるため）。処置は同レポートの `## Walkthrough Log` に追記した。T019 が根拠にしていた
+「期待値の書き換え行数」は SC-003 の判定材料としては T049 の差分ゲートが引き継いでいる。
 
 - [X] T047 `rules/security.md` の必須ツールを通す — semgrep CLI・`/codex-review mode=security`・
   `/codex:adversarial-review`。この feature は入力検証と信頼境界（復元状態の扱い）に触るので
@@ -363,6 +370,35 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
   index access が常に present に見えるだけで、実際には欠けうる。`?.` を外すと**欄が無いときに
   TypeError で落ちて**、この test が名指ししたい「どの欄の何が違うか」が出なくなる。fail closed の
   読み方を優先して残す。
+
+- [X] T049 SC-003 を機械的に判定できる形にする — 旧形（新しい任意欄を 1 つも持たない）状態と
+  event の corpus を `harness/fixtures/continuity/old-shape-parity.json` に置き、この branch の
+  分岐点 `d517a8b` の実装に通した結果を baseline として commit する。`harness/continuity/old-shape-parity.test.ts`
+  が同じ corpus をこの実装に通し、食い違う JSON path を許可表と突き合わせる
+
+**T049 の結果**: corpus 8 case / 13 step。差分が出たのは **6 step**（tool-lifecycle の 4 step と、
+孤児 terminal の再送 case の 2 step）で、残り 7 step は変更前と**完全に一致**した。許可表は
+case 名・event・path・**値**・issue 番号を持ち、表に無い差分でも、表にあるのに出ない差分でも
+落ちる。実測した差分は次のとおり:
+
+| 差分 | issue | 中身 |
+|---|---|---|
+| `pendingOperations[].startIngestSeq` / `startTurnIdSource` | #35 | start が権威順序と turn 種別を状態に載せる |
+| `pendingOperations[].terminalFingerprint` | #44 | 閉じた terminal の指紋が状態に残る |
+| `droppedEvidence` / `diagnostics` / `historyLength` / `updatedAt` / `sensitivity` | #43 | 孤児 terminal を状態に記録する（記録は機密度の下限を上げる） |
+| 再送後も `droppedEvidence` が 1 件のまま | #39 | 再起動で台帳が空に戻っても記録側の鍵が 2 件目を止める |
+
+**復元した旧形の状態そのものについては差分ゼロ**（rule 1 / rule 2 の terminal、`successful` の無い
+terminal、terminal の再送、非 operation event、放棄の 7 step）。順序材料を持たない状態では、
+変更前も変更後も `terminal_order_unverifiable` で `unknown` に倒れる。
+
+**門が見ていない経路**（黙って間引かない）: `pendingOperations` が上限 256 件に達したときの退避。
+corpus に 256 件の pending を commit する必要があるため入れていない。この経路の証拠は
+`reference-model.test.ts` の退避 test 群と `mutate.sh` の該当変異が持つ。
+
+**`verify-tasks-report.md` との関係**: 同レポートは `speckit-verify-tasks` の immutability 規則で
+**生成時点のまま**であり、T019 の PARTIAL 判定もその時点の記録として残す。SC-003 の現在の合否は
+T049 の差分ゲートが出す（レポートを書き換えて合否を移し替えることはしない）。
 
 `.codacy.yml` の `include_paths` は `harness/**` を含んでいないので、そもそも範囲外のはずの
 経路が解析されている。必須チェックではないため PR にはこの判断を記録し、設定側の話は #64 に分けた。

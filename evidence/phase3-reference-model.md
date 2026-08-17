@@ -519,6 +519,7 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
 node --experimental-strip-types --test harness/continuity/reference-model.test.ts
 node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を足したら再生成
 bash harness/continuity/mutate.sh                                 # §5 の変異テスト
+node harness/continuity/old-shape-baseline.mjs                    # §4.1 の baseline を再生成
 ```
 
 `harness/fixtures/continuity/tool-lifecycle-reduction.json` と `restored-state-reduction.json` の
@@ -530,12 +531,46 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 新しい欄はすべて任意なので、1 本にまとめると「欄を書きはするが読まない」移植でも hash が合う。
 旧い形の fixture を消さないのも同じ理由で、欄を持たない状態が読めること自体が要件（FR-013/FR-014）。
 
+### 4.1 旧形入力の差分ゲート（SC-003）
+
+「新しい欄を持たない状態への挙動は、4 件の欠陥是正以外変わらない」を、**変更前の実装との
+突き合わせ**で判定する。`harness/fixtures/continuity/old-shape-parity.json` は旧形の corpus
+（8 case / 13 step）と、それを分岐点 `d517a8b` の実装に通した結果を両方持つ committed artifact で、
+`old-shape-parity.test.ts` が同じ corpus をこの実装に通して食い違う JSON path を許可表と照合する。
+
+決め方の要点:
+
+- **基準は sha で固定する**。実行時に `origin/main` を引くと、この変更が main に入った時点で
+  比較対象が変更後の実装になり、門が自分で自分を無効化する。
+- **比較面は構造から導く**。還元結果の全体から `contentHash` と `stateRevision`（内容が変われば
+  必ず変わる hash）だけを外し、残りを丸ごと比べる。hash を残すと旧形入力でも全 step が差分に
+  なり、許可表が「全部許す」に退化する。hash 自体の再現性は `contract-hashes.json` と
+  parity fixture が別に見ている。
+- **許可表は path だけでなく値まで固定する**。path だけを許すと「ここは何が起きてもよい」に
+  なり、記録が 2 件に増える退行（#39 が塞いだ形）を素通しする。表に無い差分が出ても、表に
+  あるのに差分が出なくなっても落ちる。
+- **corpus は件数で縛る**。case 数・step 数を test 側の定数と突き合わせ、case が黙って
+  減っても落ちるようにする。
+
+実測: 差分が出たのは 13 step 中 **6 step** で、いずれも #35 / #39 / #43 / #44。
+**復元した旧形の状態そのものは 7 step すべてで完全一致**した——順序材料を持たない状態では
+変更前も変更後も `terminal_order_unverifiable` で `unknown` に倒れる。
+
+見ていない経路は上限 256 件の退避（§2.9）で、corpus に 256 件の pending を commit する必要が
+あるため入れていない。この経路の証拠は退避 test 群と §5 の該当変異が持つ。
+
 ## 5. 変異テスト（2026-08-18）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**204 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 204 件（黙って飛ばされた変異ゼロ）、復元後は 217/217 green
-（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 327/327）。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**208 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 208 件（黙って飛ばされた変異ゼロ）、復元後は 219/219 green
+（`mutate.sh` が回すのは `reference-model.test.ts` と `old-shape-parity.test.ts` の 2 本。
+`harness/continuity/*.test.ts` 全体は 329/329）。
+
+**壊す対象は還元器だけではない**。§4.1 の差分ゲートは、還元器ではなく**比較面（`old-shape-projection.ts`）
+と corpus（`old-shape-parity.json`）**を壊して検証する。門そのものの assert を壊す変異は、その門でしか
+検出できないので kill できない——つまり変異の対象にならない。緩める方向（比較面から診断・状態を落とす）と、
+corpus を実際より広く見せる方向（case を許可表から切り離す・再送を別の配送にすり替える）の両方を入れてある。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
 したら、次で突き合わせてから doc を直す。CI は `mutate.sh` を走らせるが doc は見ないので、
@@ -583,7 +618,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 
 | 壊した箇所 | 落ちた test 数 |
 |---|---:|
-| dedupe 判定を外す | 5 |
+| dedupe 判定を外す | 6 |
 | lastIngestSeq の max を外す | 1 |
 | ingestSeq を数値比較にする | 2 |
 | envelope 必須を外す | 3 |
@@ -614,15 +649,15 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | kind と successful の矛盾を素通しする | 2 |
 | 矛盾診断を照合済み経路だけに戻す | 1 |
 | 矛盾した terminal を succeeded にする | 1 |
-| start 不在の分岐を外す | 8 |
+| start 不在の分岐を外す | 9 |
 | terminal の権威順序検査を外す | 5 |
 | 綴りの合わない順序材料を値として読む（空白・語彙外） | 2 |
 | 空白の turn 種別を値として読む | 1 |
 | 順序違反で候補を巻き込む | 1 |
-| 候補ゼロの terminal を台帳に入れる | 33 |
-| 順序不明で候補を unknown にしない | 6 |
-| start の取り込み連番を記録しない | 62 |
-| start の turn 種別を記録しない | 16 |
+| 候補ゼロの terminal を台帳に入れる | 34 |
+| 順序不明で候補を unknown にしない | 7 |
+| start の取り込み連番を記録しない | 63 |
+| start の turn 種別を記録しない | 17 |
 | 再配送 start でも順序材料を書く | 6 |
 | 再配送 start を nativeOperationId で拾わない | 12 |
 | 再配送の判定を matchKey にする | 17 |
@@ -630,8 +665,8 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | start の matchKey 衝突検査を外す | 2 |
 | start の canonicalInputHash 衝突検査を外す | 2 |
 | 放棄を session で絞らない | 2 |
-| 候補の unknown 化を外す | 17 |
-| unknown 化で証跡を残さない | 2 |
+| 候補の unknown 化を外す | 18 |
+| unknown 化で証跡を残さない | 3 |
 | sourceEventIds の上限を外す | 1 |
 | pendingOperations の上限を外す | 12 |
 | 退避対象から open を外す（詰まる） | 1 |
@@ -647,7 +682,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | start の toolName 存在ガードを外す | 3 |
 | 放棄 kind の制限を外す | 1 |
 | 配送 ID 衝突の隔離を外す | 1 |
-| sensitivity 集約を normal 固定にする | 6 |
+| sensitivity 集約を normal 固定にする | 7 |
 | adapter 固有 kind の欄検査を外す | 1 |
 | start の nativeOperationId 比較を外す | 1 |
 | terminal の operationKind 比較を外す | 2 |
@@ -680,7 +715,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空白だけの exact version を authority にする | 1 |
 | 直接呼びの Agent 検査を外す | 3 |
 | rule 2 の turn 種別の絞り込みを外す | 9 |
-| turn 種別の材料が無い候補も落とす | 3 |
+| turn 種別の材料が無い候補も落とす | 4 |
 | 種別違いの巻き込み範囲を広げる | 1 |
 | 受領証 ID が空でも認証済みとする | 1 |
 | peer identity が空でも認証済みとする | 1 |
@@ -751,32 +786,32 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 飛ばした衝突兄弟を報告しない | 4 |
 | 記録を末尾から落とす（FR-008） | 4 |
 | 記録の上限検査を外す（FR-015） | 5 |
-| 記録の追加を別の診断で報告する（FR-009） | 12 |
+| 記録の追加を別の診断で報告する（FR-009） | 13 |
 | 記録の脱落を診断に出さない（FR-009） | 4 |
 | 退避の記録で機密度を引き継がない | 1 |
-| 孤児の記録を normal で残す | 3 |
-| 孤児の記録を再送のたびに足す | 6 |
-| 孤児の重複判定を eventId で行う（再送 DoS） | 3 |
+| 孤児の記録を normal で残す | 4 |
+| 孤児の記録を再送のたびに足す | 7 |
+| 孤児の重複判定を eventId で行う（再送 DoS） | 4 |
 | 重複判定で配送鍵を見ず指紋だけにする（§8.2 の順を崩す） | 1 |
 | 配送鍵の無い記録を同一性なしにする | 1 |
-| 孤児の記録に配送鍵を残さない | 7 |
+| 孤児の記録に配送鍵を残さない | 8 |
 | 退避の記録に兄弟を判別できる識別子を残さない | 3 |
 | start を provenance 配列の先頭から取る | 1 |
 | 刈っただけの修復を捨てる（FR-015） | 2 |
-| 足せていなくても状態を進める | 6 |
+| 足せていなくても状態を進める | 7 |
 | 同じ配送鍵の指紋食い違いを黙って重複にする | 1 |
-| 材料が欠けていても指紋の食い違いにする | 166 |
-| 孤児の記録に同一性の鍵を残さない | 6 |
-| 候補ゼロの terminal を状態に記録しない | 16 |
+| 材料が欠けていても指紋の食い違いにする | 167 |
+| 孤児の記録に同一性の鍵を残さない | 7 |
+| 候補ゼロの terminal を状態に記録しない | 17 |
 | 開いた候補ゼロの unmatched を状態に記録しない | 2 |
 | 退避を状態に記録しない | 6 |
 | 上限超えの復元状態を刈った事実を黙る（FR-015） | 4 |
 | 記録に触らない経路で記録を落とす | 3 |
-| 復元状態の空配列をそのまま残す（FR-013） | 3 |
+| 復元状態の空配列をそのまま残す（FR-013） | 4 |
 | 記録の配列を revision 間で共有する（§4.2） | 1 |
-| 記録だけの隔離で watermark を進める（§4.1） | 3 |
-| 呼び出し側が渡した watermark を無視する | 3 |
-| 受理した terminal の指紋を残さない（FR-010） | 5 |
+| 記録だけの隔離で watermark を進める（§4.1） | 4 |
+| 呼び出し側が渡した watermark を無視する | 4 |
+| 受理した terminal の指紋を残さない（FR-010） | 6 |
 | unknown に倒した operation にも指紋を残す | 3 |
 | 指紋の衝突検査を外す（FR-011） | 2 |
 | 指紋が一致しても再配送として説明しない | 10 |
@@ -787,6 +822,10 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | unknown に倒れる terminal でも指紋の食い違いで隔離する | 1 |
 | 指紋の衝突判定を順序材料がある場合だけにする | 1 |
 | 指紋の衝突判定を rule 1 の terminal だけにする | 1 |
+| 旧形 parity の比較面から診断を落とす | 1 |
+| 旧形 parity の比較面から状態を落とす | 1 |
+| 旧形 corpus の case 名を許可表から外す | 1 |
+| 旧形 corpus の再送を別の配送にすり替える | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

@@ -1,0 +1,1502 @@
+{
+  "fixtureId": "old-shape-parity",
+  "description": "旧形（新しい任意欄を持たない）状態と event を、この branch の変更前の実装に通した結果。SC-003 の「旧形入力に対する振る舞いは 4 件の是正以外変わらない」を機械的に検証するための基準。",
+  "sourceCommit": "d517a8b49988b1109d56c1868edd8e0f5a1c85b5",
+  "generatedBy": "harness/continuity/old-shape-baseline.mjs",
+  "intakeContext": {
+    "expectedSourceAgent": "claude",
+    "expectedSessionId": "session-1",
+    "exactAgentVersion": "2.1.228 (Claude Code)",
+    "nativeTurnIdentityProven": true,
+    "activeCapabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+    "provenScenarios": [
+      {
+        "scenarioId": "tool-call-lifecycle",
+        "captureMethod": "native_event",
+        "channel": "rpc"
+      }
+    ],
+    "attestation": {
+      "ingestReceiptId": "receipt-intake",
+      "peerIdentityId": "peer-1",
+      "channel": "rpc",
+      "attestedAt": "2026-08-16T00:00:00Z"
+    }
+  },
+  "cases": [
+    {
+      "name": "tool-lifecycle",
+      "description": "変更前から committed だった parity fixture の入力そのもの（start / 再配送 / terminal / 孤児 terminal）",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-start",
+          "adapterDeliveryId": "delivery-start",
+          "canonicalFingerprint": "fingerprint-start",
+          "kind": "tool_started",
+          "ingestSeq": "9007199254740994",
+          "occurredAt": "2026-08-16T00:00:01Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-1",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:01Z"
+            }
+          },
+          "operation": {
+            "phase": "start",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_name": "Bash"
+          }
+        },
+        {
+          "eventId": "event-start-redelivered",
+          "adapterDeliveryId": "delivery-start",
+          "canonicalFingerprint": "fingerprint-start",
+          "kind": "tool_started",
+          "ingestSeq": "9007199254740995",
+          "occurredAt": "2026-08-16T00:00:02Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-2",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:02Z"
+            }
+          },
+          "operation": {
+            "phase": "start",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_name": "Bash"
+          }
+        },
+        {
+          "eventId": "event-terminal",
+          "adapterDeliveryId": "delivery-terminal",
+          "canonicalFingerprint": "fingerprint-terminal",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740996",
+          "occurredAt": "2026-08-16T00:00:03Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-3",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:03Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_response": "ok"
+          },
+          "successful": true
+        },
+        {
+          "eventId": "event-terminal-orphan",
+          "adapterDeliveryId": "delivery-terminal-orphan",
+          "canonicalFingerprint": "fingerprint-terminal-orphan",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740997",
+          "occurredAt": "2026-08-16T00:00:04Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-4",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:04Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-unknown",
+            "operationKind": "Bash",
+            "canonicalInputHash": "input-hash-2"
+          },
+          "payload": {
+            "tool_response": ""
+          },
+          "successful": false
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-start",
+          "outcome": "applied",
+          "diagnostics": [],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                "correlation": {
+                  "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                  "startEventId": "event-start",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "toolName": "Bash",
+                  "nativeOperationId": "toolu_1",
+                  "turnId": "turn-1",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "Bash",
+                "status": "started",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "private",
+                "idempotencyKey": "toolu_1"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740994",
+            "updatedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "private"
+          }
+        },
+        {
+          "eventId": "event-start-redelivered",
+          "outcome": "duplicate",
+          "diagnostics": [],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                "correlation": {
+                  "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                  "startEventId": "event-start",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "toolName": "Bash",
+                  "nativeOperationId": "toolu_1",
+                  "turnId": "turn-1",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "Bash",
+                "status": "started",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "private",
+                "idempotencyKey": "toolu_1"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740994",
+            "updatedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "private"
+          }
+        },
+        {
+          "eventId": "event-terminal",
+          "outcome": "applied",
+          "diagnostics": [],
+          "historyLength": 2,
+          "ledgerSize": 2,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                "correlation": {
+                  "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                  "startEventId": "event-start",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "toolName": "Bash",
+                  "nativeOperationId": "toolu_1",
+                  "turnId": "turn-1",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "Bash",
+                "status": "succeeded",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start",
+                  "event-terminal"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "private",
+                "idempotencyKey": "toolu_1",
+                "terminalAt": "2026-08-16T00:00:03Z"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740996",
+            "updatedAt": "2026-08-16T00:00:03Z",
+            "sensitivity": "private"
+          }
+        },
+        {
+          "eventId": "event-terminal-orphan",
+          "outcome": "quarantined",
+          "diagnostics": [
+            "terminal_orphaned"
+          ],
+          "historyLength": 2,
+          "ledgerSize": 2,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                "correlation": {
+                  "operationId": "c4b07f39968439ad8c7ba864cdd55a2faff6645b6fd16851a2d57e1983af84a3",
+                  "startEventId": "event-start",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "toolName": "Bash",
+                  "nativeOperationId": "toolu_1",
+                  "turnId": "turn-1",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "Bash",
+                "status": "succeeded",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start",
+                  "event-terminal"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "private",
+                "idempotencyKey": "toolu_1",
+                "terminalAt": "2026-08-16T00:00:03Z"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740996",
+            "updatedAt": "2026-08-16T00:00:03Z",
+            "sensitivity": "private"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restored-native-id-terminal",
+      "description": "復元した旧形 pending（順序材料なし）に rule 1 の terminal が届く",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [
+          {
+            "operationId": "op-restored",
+            "correlation": {
+              "operationId": "op-restored",
+              "startEventId": "event-start-before-restore",
+              "nativeOperationId": "toolu_1",
+              "operationMatchKey": "match-key-1",
+              "sessionId": "session-1",
+              "taskLineageId": "lineage-1",
+              "turnId": "turn-1",
+              "toolName": "Bash",
+              "canonicalInputHash": "input-hash-1"
+            },
+            "kind": "tool",
+            "description": "restored pending operation",
+            "status": "started",
+            "replayPolicy": "never_auto",
+            "sourceEventIds": [
+              "event-start-before-restore"
+            ],
+            "startedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        ],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-terminal",
+          "adapterDeliveryId": "delivery-terminal",
+          "canonicalFingerprint": "fingerprint-terminal",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740996",
+          "occurredAt": "2026-08-16T00:00:03Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-3",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:03Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_response": "ok"
+          },
+          "successful": true
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-terminal",
+          "outcome": "applied",
+          "diagnostics": [
+            "terminal_order_unverifiable"
+          ],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "nativeOperationId": "toolu_1",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "unknown",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore",
+                  "event-terminal"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740996",
+            "updatedAt": "2026-08-16T00:00:03Z",
+            "sensitivity": "normal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restored-match-key-terminal",
+      "description": "同じ形を rule 2（matchKey 照合）で閉じる。nativeOperationId を名乗らない adapter",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [
+          {
+            "operationId": "op-restored",
+            "correlation": {
+              "operationId": "op-restored",
+              "startEventId": "event-start-before-restore",
+              "operationMatchKey": "match-key-1",
+              "sessionId": "session-1",
+              "taskLineageId": "lineage-1",
+              "turnId": "turn-1",
+              "toolName": "Bash",
+              "canonicalInputHash": "input-hash-1"
+            },
+            "kind": "tool",
+            "description": "restored pending operation",
+            "status": "started",
+            "replayPolicy": "never_auto",
+            "sourceEventIds": [
+              "event-start-before-restore"
+            ],
+            "startedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        ],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-terminal",
+          "adapterDeliveryId": "delivery-terminal",
+          "canonicalFingerprint": "fingerprint-terminal",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740996",
+          "occurredAt": "2026-08-16T00:00:03Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-3",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:03Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_response": "ok"
+          },
+          "successful": true
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-terminal",
+          "outcome": "applied",
+          "diagnostics": [
+            "terminal_order_unverifiable"
+          ],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "unknown",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore",
+                  "event-terminal"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740996",
+            "updatedAt": "2026-08-16T00:00:03Z",
+            "sensitivity": "normal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restored-terminal-redelivered",
+      "description": "旧形 pending を閉じた terminal が同じ配送 ID で再送される",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [
+          {
+            "operationId": "op-restored",
+            "correlation": {
+              "operationId": "op-restored",
+              "startEventId": "event-start-before-restore",
+              "nativeOperationId": "toolu_1",
+              "operationMatchKey": "match-key-1",
+              "sessionId": "session-1",
+              "taskLineageId": "lineage-1",
+              "turnId": "turn-1",
+              "toolName": "Bash",
+              "canonicalInputHash": "input-hash-1"
+            },
+            "kind": "tool",
+            "description": "restored pending operation",
+            "status": "started",
+            "replayPolicy": "never_auto",
+            "sourceEventIds": [
+              "event-start-before-restore"
+            ],
+            "startedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        ],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-terminal",
+          "adapterDeliveryId": "delivery-terminal",
+          "canonicalFingerprint": "fingerprint-terminal",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740996",
+          "occurredAt": "2026-08-16T00:00:03Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-3",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:03Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_response": "ok"
+          },
+          "successful": true
+        },
+        {
+          "eventId": "event-terminal-again",
+          "adapterDeliveryId": "delivery-terminal",
+          "canonicalFingerprint": "fingerprint-terminal",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740998",
+          "occurredAt": "2026-08-16T00:00:03Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-3",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:03Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_response": "ok"
+          },
+          "successful": true
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-terminal",
+          "outcome": "applied",
+          "diagnostics": [
+            "terminal_order_unverifiable"
+          ],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "nativeOperationId": "toolu_1",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "unknown",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore",
+                  "event-terminal"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740996",
+            "updatedAt": "2026-08-16T00:00:03Z",
+            "sensitivity": "normal"
+          }
+        },
+        {
+          "eventId": "event-terminal-again",
+          "outcome": "duplicate",
+          "diagnostics": [],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "nativeOperationId": "toolu_1",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "unknown",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore",
+                  "event-terminal"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740996",
+            "updatedAt": "2026-08-16T00:00:03Z",
+            "sensitivity": "normal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restored-unknown-terminal",
+      "description": "旧形 pending に successful を持たない terminal が届き unknown に倒れる",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [
+          {
+            "operationId": "op-restored",
+            "correlation": {
+              "operationId": "op-restored",
+              "startEventId": "event-start-before-restore",
+              "nativeOperationId": "toolu_1",
+              "operationMatchKey": "match-key-1",
+              "sessionId": "session-1",
+              "taskLineageId": "lineage-1",
+              "turnId": "turn-1",
+              "toolName": "Bash",
+              "canonicalInputHash": "input-hash-1"
+            },
+            "kind": "tool",
+            "description": "restored pending operation",
+            "status": "started",
+            "replayPolicy": "never_auto",
+            "sourceEventIds": [
+              "event-start-before-restore"
+            ],
+            "startedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        ],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-terminal",
+          "adapterDeliveryId": "delivery-terminal",
+          "canonicalFingerprint": "fingerprint-terminal",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740996",
+          "occurredAt": "2026-08-16T00:00:03Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-3",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:03Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-1",
+            "operationKind": "Bash",
+            "nativeOperationId": "toolu_1",
+            "canonicalInputHash": "input-hash-1"
+          },
+          "payload": {
+            "tool_response": "ok"
+          }
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-terminal",
+          "outcome": "applied",
+          "diagnostics": [
+            "terminal_order_unverifiable"
+          ],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "nativeOperationId": "toolu_1",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "unknown",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore",
+                  "event-terminal"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740996",
+            "updatedAt": "2026-08-16T00:00:03Z",
+            "sensitivity": "normal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restored-non-operation-event",
+      "description": "旧形 pending を抱えたまま operation 系でない event が届く",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [
+          {
+            "operationId": "op-restored",
+            "correlation": {
+              "operationId": "op-restored",
+              "startEventId": "event-start-before-restore",
+              "nativeOperationId": "toolu_1",
+              "operationMatchKey": "match-key-1",
+              "sessionId": "session-1",
+              "taskLineageId": "lineage-1",
+              "turnId": "turn-1",
+              "toolName": "Bash",
+              "canonicalInputHash": "input-hash-1"
+            },
+            "kind": "tool",
+            "description": "restored pending operation",
+            "status": "started",
+            "replayPolicy": "never_auto",
+            "sourceEventIds": [
+              "event-start-before-restore"
+            ],
+            "startedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        ],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-assistant",
+          "adapterDeliveryId": "delivery-assistant",
+          "canonicalFingerprint": "fingerprint-assistant",
+          "kind": "assistant_completed",
+          "ingestSeq": "9007199254740999",
+          "occurredAt": "2026-08-16T00:00:01Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-1",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:01Z"
+            }
+          },
+          "payload": {
+            "tool_name": "Bash"
+          }
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-assistant",
+          "outcome": "applied",
+          "diagnostics": [],
+          "historyLength": 1,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "nativeOperationId": "toolu_1",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "started",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254740999",
+            "updatedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restored-orphan-terminal-redelivered",
+      "description": "相手の居ない terminal が同じ配送 ID で 2 度届く。**隔離は配送鍵を消費しない**ので台帳は 2 通目を止めない。止められるのは記録側の鍵だけ（#39）",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [
+        {
+          "eventId": "event-terminal-orphan",
+          "adapterDeliveryId": "delivery-terminal-orphan",
+          "canonicalFingerprint": "fingerprint-terminal-orphan",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740997",
+          "occurredAt": "2026-08-16T00:00:04Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-4",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:04Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-unknown",
+            "operationKind": "Bash",
+            "canonicalInputHash": "input-hash-2"
+          },
+          "payload": {
+            "tool_response": ""
+          },
+          "successful": false
+        },
+        {
+          "eventId": "event-terminal-orphan-again",
+          "adapterDeliveryId": "delivery-terminal-orphan",
+          "canonicalFingerprint": "fingerprint-terminal-orphan",
+          "kind": "tool_completed",
+          "ingestSeq": "9007199254740997",
+          "occurredAt": "2026-08-16T00:00:04Z",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "turnIdSource": "native",
+          "sourceAgent": "claude",
+          "provenance": {
+            "sourceAgentVersion": "2.1.228 (Claude Code)",
+            "evidenceKind": "native",
+            "captureMethod": "native_event",
+            "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+            "scenarioId": "tool-call-lifecycle",
+            "ingestAttestation": {
+              "ingestReceiptId": "receipt-4",
+              "peerIdentityId": "peer-1",
+              "channel": "rpc",
+              "attestedAt": "2026-08-16T00:00:04Z"
+            }
+          },
+          "operation": {
+            "phase": "terminal",
+            "operationMatchKey": "match-key-unknown",
+            "operationKind": "Bash",
+            "canonicalInputHash": "input-hash-2"
+          },
+          "payload": {
+            "tool_response": ""
+          },
+          "successful": false
+        }
+      ],
+      "baseline": [
+        {
+          "eventId": "event-terminal-orphan",
+          "outcome": "quarantined",
+          "diagnostics": [
+            "terminal_orphaned"
+          ],
+          "historyLength": 0,
+          "ledgerSize": 0,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "sensitivity": "normal",
+            "lastIngestSeq": "9007199254740993",
+            "updatedAt": "2026-08-16T00:00:00Z"
+          }
+        },
+        {
+          "eventId": "event-terminal-orphan-again",
+          "outcome": "quarantined",
+          "diagnostics": [
+            "terminal_orphaned"
+          ],
+          "historyLength": 0,
+          "ledgerSize": 0,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "sensitivity": "normal",
+            "lastIngestSeq": "9007199254740993",
+            "updatedAt": "2026-08-16T00:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "name": "restored-abandonment",
+      "description": "旧形 pending を抱えた状態で session が終わる（放棄経路）",
+      "initialState": {
+        "schemaVersion": 1,
+        "taskLineageId": "lineage-1",
+        "projectId": "project-1",
+        "workspaceId": "workspace-1",
+        "sourceAgent": "claude",
+        "activeFiles": [],
+        "modifiedFiles": [],
+        "recentCommands": [],
+        "recentTests": [],
+        "pendingOperations": [
+          {
+            "operationId": "op-restored",
+            "correlation": {
+              "operationId": "op-restored",
+              "startEventId": "event-start-before-restore",
+              "nativeOperationId": "toolu_1",
+              "operationMatchKey": "match-key-1",
+              "sessionId": "session-1",
+              "taskLineageId": "lineage-1",
+              "turnId": "turn-1",
+              "toolName": "Bash",
+              "canonicalInputHash": "input-hash-1"
+            },
+            "kind": "tool",
+            "description": "restored pending operation",
+            "status": "started",
+            "replayPolicy": "never_auto",
+            "sourceEventIds": [
+              "event-start-before-restore"
+            ],
+            "startedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        ],
+        "repositoryState": {
+          "repositoryId": "repo-1",
+          "workspaceId": "workspace-1",
+          "capturedAt": "2026-08-16T00:00:00Z"
+        },
+        "sensitivity": "normal",
+        "lastIngestSeq": "9007199254740993",
+        "stateRevision": "genesis",
+        "updatedAt": "2026-08-16T00:00:00Z"
+      },
+      "events": [],
+      "abandonEvent": {
+        "eventId": "event-abandon",
+        "adapterDeliveryId": "delivery-abandon",
+        "canonicalFingerprint": "fingerprint-abandon",
+        "kind": "session_ended",
+        "ingestSeq": "9007199254741000",
+        "occurredAt": "2026-08-16T00:00:01Z",
+        "sessionId": "session-1",
+        "taskLineageId": "lineage-1",
+        "turnId": "turn-1",
+        "turnIdSource": "native",
+        "sourceAgent": "claude",
+        "provenance": {
+          "sourceAgentVersion": "2.1.228 (Claude Code)",
+          "evidenceKind": "native",
+          "captureMethod": "native_event",
+          "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+          "scenarioId": "tool-call-lifecycle",
+          "ingestAttestation": {
+            "ingestReceiptId": "receipt-1",
+            "peerIdentityId": "peer-1",
+            "channel": "rpc",
+            "attestedAt": "2026-08-16T00:00:01Z"
+          }
+        },
+        "payload": {
+          "tool_name": "Bash"
+        }
+      },
+      "baseline": [
+        {
+          "eventId": "event-abandon#abandon",
+          "outcome": "applied",
+          "diagnostics": [],
+          "historyLength": 0,
+          "ledgerSize": 1,
+          "state": {
+            "schemaVersion": 1,
+            "taskLineageId": "lineage-1",
+            "projectId": "project-1",
+            "workspaceId": "workspace-1",
+            "sourceAgent": "claude",
+            "activeFiles": [],
+            "modifiedFiles": [],
+            "recentCommands": [],
+            "recentTests": [],
+            "pendingOperations": [
+              {
+                "operationId": "op-restored",
+                "correlation": {
+                  "operationId": "op-restored",
+                  "startEventId": "event-start-before-restore",
+                  "nativeOperationId": "toolu_1",
+                  "operationMatchKey": "match-key-1",
+                  "sessionId": "session-1",
+                  "taskLineageId": "lineage-1",
+                  "turnId": "turn-1",
+                  "toolName": "Bash",
+                  "canonicalInputHash": "input-hash-1"
+                },
+                "kind": "tool",
+                "description": "restored pending operation",
+                "status": "unknown",
+                "replayPolicy": "never_auto",
+                "sourceEventIds": [
+                  "event-start-before-restore",
+                  "event-abandon"
+                ],
+                "startedAt": "2026-08-16T00:00:01Z",
+                "sensitivity": "normal"
+              }
+            ],
+            "repositoryState": {
+              "repositoryId": "repo-1",
+              "workspaceId": "workspace-1",
+              "capturedAt": "2026-08-16T00:00:00Z"
+            },
+            "lastIngestSeq": "9007199254741000",
+            "updatedAt": "2026-08-16T00:00:01Z",
+            "sensitivity": "normal"
+          }
+        }
+      ]
+    }
+  ]
+}
