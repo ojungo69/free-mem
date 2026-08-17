@@ -795,7 +795,10 @@ test("IsoTimestamp は成分の範囲まで見る", () => {
   ]) {
     assert.equal(bad(s), true, s);
   }
-  // 暦としての実在は pattern では表せない。ここは通ってしまう（#27）
+  // 暦としての実在は pattern では表せないので schema では通る。落とすのは runtime 層で、
+  // `reference-model.ts` の `assertIdentityMaterial` が `occurredAt` を検査する（#27）。
+  // ここを「落ちる」に変えたくなったら、pattern で暦を書けるようになったということなので、
+  // runtime 側の検査が要らなくなる。その事実ごと壊れるべきなので schema 側の挙動を固定する
   assert.equal(bad("2026-02-30T00:00:00Z"), false);
 });
 

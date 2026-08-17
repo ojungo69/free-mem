@@ -431,6 +431,57 @@ test("native の条件を満たす event は native のまま", () => {
   assert.equal(stampIntakeEvidence(startEvent(), INTAKE).event.provenance.evidenceKind, "native");
 });
 
+test("受領証の attestedAt は書く層（intake）で暦検査を受ける", () => {
+  // この値は caller 由来ではない（caller の受領証は destructure で捨てられ、daemon 自身の
+  // `context.attestation` が刻印される）。書く層が検査しないと、受領証の時刻を 1 つ間違えた
+  // daemon は全 event を落としながら、エラーは受領証ではなく event を名指しする
+  const broken: IntakeContextV1 = {
+    ...INTAKE,
+    attestation: { ...ATTESTATION, attestedAt: "2026-02-30T00:00:00Z" },
+  };
+  assert.throws(
+    () => stampIntakeEvidence(startEvent(), broken),
+    /§22\.6 違反: 受領証の attestedAt が暦として実在しない/,
+  );
+  // 正当な受領証が通ることは直上の test（native の条件を満たす event は native のまま）が見る。
+  // **空白は暦違反ではない**。この関数自身が「認証できない経路を欄が空の受領証で表す daemon」を
+  // 前提にしているので、空白を落とすとその daemon の event が 100% 消え、しかもエラーは認証の
+  // 欠落ではなく timestamp を名指しする（実測でそうなっていた）。降格で扱う
+  for (const blank of ["", " "]) {
+    const emptyReceipt: IntakeContextV1 = {
+      ...INTAKE,
+      attestation: { ingestReceiptId: blank, peerIdentityId: blank, channel: "rpc", attestedAt: blank },
+    };
+    assert.equal(
+      stampIntakeEvidence(startEvent(), emptyReceipt).event.provenance.evidenceKind,
+      "synthesized",
+      `空白の受領証（${JSON.stringify(blank)}）`,
+    );
+  }
+  // ただし**時刻だけ空白の受領証**は authority にしない。上で空白を「不在」として通すように
+  // したので、ここで見ないと時刻を名乗らない受領証が native authority の根拠になる
+  const timeless: IntakeContextV1 = {
+    ...INTAKE,
+    attestation: { ...ATTESTATION, attestedAt: " " },
+  };
+  assert.equal(
+    stampIntakeEvidence(startEvent(), timeless).event.provenance.evidenceKind,
+    "synthesized",
+  );
+});
+
+test("空白の attestedAt を持つ event は還元器でも暦違反にしない", () => {
+  // 読む層も同じ判断にする。intake で降格した event はその受領証を持ったまま還元器へ来るので、
+  // ここで落とすと降格の意味が無くなる（結局その daemon の event は 1 つも適用できない）
+  const event = startEvent({
+    provenance: {
+      ...startEvent().provenance,
+      ingestAttestation: { ingestReceiptId: "", peerIdentityId: "", channel: "rpc", attestedAt: "" },
+    },
+  });
+  assert.equal(reduceTaskWorkState(emptySnapshot(), event, new Map()).outcome, "applied");
+});
+
 test("native の条件を 1 つでも欠けば synthesized へ落ちる", () => {
   const cases: Array<[string, NormalizedContinuityEvent]> = [
 
@@ -900,8 +951,126 @@ test("同名 operationId の兄弟でも、配列順で再配送の結果が変�
     };
     const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
     assert.equal(result.outcome, "applied");
-    assert.deepEqual(result.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+    // 飛ばした衝突兄弟は診断に出る。隔離しないのが正しいが、黙って枠を占めさせない
+    assert.deepEqual(result.diagnostics.map((d) => d.code), [
+      "duplicate_operation_start",
+      "start_sibling_conflict",
+    ]);
   }
+});
+
+test("再配送の相手は derived id と native id の集合をまたいで選ぶ", () => {
+  // 集合ごとに preferCompatible を掛けて `??` で繋ぐと、preferCompatible は非空配列に必ず値を
+  // 返す（互換が無ければ先頭）ので、derived id 側が非空でありさえすれば全件衝突していても
+  // native id 側が評価されない。隔離は鍵を消費せず還元器は純関数なので永久に収束しない
+  const base = startedSnapshot();
+  const template = base.state.pendingOperations[0] as PendingOperation;
+  // derived id が一致する（= 同じ eventId・matchKey）が、input hash が違うので衝突する兄弟
+  const conflicting: PendingOperation = {
+    ...template,
+    correlation: { ...template.correlation, canonicalInputHash: "input-hash-OTHER" },
+  };
+  // derived id は違うが native id と identity が完全に一致する兄弟
+  const compatible: PendingOperation = {
+    ...template,
+    operationId: "op-native-twin",
+    correlation: { ...template.correlation, operationId: "op-native-twin" },
+  };
+  const snapshot: TaskWorkStateSnapshotV1 = {
+    ...base,
+    operationStarts: new Map(),
+    state: { ...base.state, pendingOperations: [conflicting, compatible] },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(result.diagnostics.map((d) => d.code), [
+    "duplicate_operation_start",
+    "start_sibling_conflict",
+  ]);
+  // 埋まったのは互換な兄弟のほう。衝突する兄弟は触られないが、名指しで診断に出る
+  assert.equal(
+    result.diagnostics[0]?.detail?.includes("op-native-twin"),
+    true,
+    JSON.stringify(result.diagnostics),
+  );
+  assert.equal(
+    result.diagnostics[1]?.detail?.includes(conflicting.operationId),
+    true,
+    JSON.stringify(result.diagnostics),
+  );
+
+  // 締めすぎていないことを保持側でも固定する。両集合とも全件衝突なら従来どおり隔離する。
+  // **連結順が効く配置にする**: native id 側の先頭を derived id の兄弟と別要素にしておくと、
+  // `[...idMatches, ...nativeMatches]` は derived 側を、`[...nativeMatches, ...idMatches]` は
+  // native 側を衝突の証拠に選ぶ。両方の集合で先頭が同じ要素だと、どちらの順でも同じ答えになり
+  // **連結順を入れ替える変異が生き残る**（実測で生存を確認してからこの配置に直した）
+  const nativeOnlyConflicting: PendingOperation = {
+    ...template,
+    operationId: "op-native-only",
+    correlation: {
+      ...template.correlation,
+      operationId: "op-native-only",
+      canonicalInputHash: "input-hash-ALSO-OTHER",
+    },
+  };
+  const bothConflict: TaskWorkStateSnapshotV1 = {
+    ...snapshot,
+    // 配列は native 専用の兄弟が先頭。derived id で当たるのは 2 番目の `conflicting` だけ
+    state: { ...base.state, pendingOperations: [nativeOnlyConflicting, conflicting] },
+  };
+  const quarantined = reduceTaskWorkState(bothConflict, startEvent(), new Map());
+  assert.equal(quarantined.outcome, "quarantined");
+  assert.deepEqual(quarantined.diagnostics.map((d) => d.code), ["start_conflict"]);
+  assert.equal(
+    quarantined.diagnostics[0]?.detail?.includes(conflicting.operationId),
+    true,
+    `derived id 側を証拠に選んでいない: ${quarantined.diagnostics[0]?.detail}`,
+  );
+  assert.equal(
+    quarantined.diagnostics[0]?.detail?.includes("op-native-only"),
+    false,
+    "native id 側を証拠に選んでいる（連結順が逆）",
+  );
+});
+
+test("再配送 start も provenance を記録できなかったことを診断に出す", () => {
+  // withSourceEvent は上限に達すると黙って早期 return するのに、この経路だけ
+  // sourceEventsFull + truncationDiagnostic の対を付けていなかった。revision と配送鍵は
+  // 消費されるので、呼び出し側からは「記録された」と区別が付かない
+  const base = startedSnapshot();
+  const template = base.state.pendingOperations[0] as PendingOperation;
+  const full: PendingOperation = {
+    ...template,
+    sourceEventIds: Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, index) => `filler-${index}`),
+  };
+  // eventId が変わる本来の再配送契約。derived id は変わるので native id 側で当たる
+  const redelivery = startEvent({
+    eventId: "event-redeliver",
+    adapterDeliveryId: "delivery-redeliver",
+    canonicalFingerprint: "fingerprint-redeliver",
+  });
+  const result = reduceTaskWorkState(
+    { ...base, operationStarts: new Map(), state: { ...base.state, pendingOperations: [full] } },
+    redelivery,
+    new Map(),
+  );
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(result.diagnostics.map((d) => d.code), [
+    "duplicate_operation_start",
+    "source_events_truncated",
+  ]);
+
+  // 通す側: 上限未満なら truncation は出ず、eventId は実際に記録される
+  const room = reduceTaskWorkState(
+    { ...base, operationStarts: new Map() },
+    redelivery,
+    new Map(),
+  );
+  assert.deepEqual(room.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.equal(
+    room.snapshot.state.pendingOperations[0]?.sourceEventIds.includes("event-redeliver"),
+    true,
+  );
 });
 
 test("上限退避は別 lineage の要素を自 lineage の証跡より先に落とす", () => {
@@ -1787,10 +1956,24 @@ test("negative fixture は宣言した層で落ちる", () => {
     // #29 の前提: 残りは schema では落ちない。落ちるようになったら runtime 側の検査が
     // 要らなくなるので、その事実ごと壊れるべき
     assert.deepEqual(issues, [], testCase.name);
+    // runtime 層も intake 層も、受け持つ不変条件は §3.1（identity / envelope）と
+    // §22.6（timestamp の実在、#27）の 2 節にまたがる。**節は case ごとに fixture の `reason` から
+    // 取る**。節を固定で書くと、fixture が case ごとに節を宣言している唯一の場所（`reason`）を
+    // test が一度も読まない。実測でそうなっていた: 和集合の `/§(3\.1|22\.6) 違反/` を全 case へ
+    // 当てていたときは、§22.6 の case の occurredAt を実在する日付に戻しても緑のままで、
+    // §22.6 の強制が negative fixture の被覆から丸ごと消えていた。
+    // **`intake-reject` 側も同じ導出にする**。こちらだけ `/§3.1 違反/` を固定で書いていたので、
+    // §22.6 を名乗る intake の case（受領証の attestedAt）は fixture として書けず、書く層の検査が
+    // parity の被覆から外れていた
+    const section = /^§([\d.]+)/.exec(testCase.reason)?.[1];
+    assert.notEqual(section, undefined, `fixture の reason が節で始まっていない: ${testCase.name}`);
+    // `replace` は String 引数だと**先頭 1 件しか置換しない**。`3.1.2` のような節が来ると
+    // 2 つ目のドットが素のワイルドカードのまま残り、`§3.1X2 違反` にも一致する
+    const violates = new RegExp(`§${section?.replaceAll(".", "\\.")} 違反`);
     if (testCase.rejectedBy === "runtime") {
       assert.throws(
         () => reduceTaskWorkState(emptySnapshot(), asStamped(testCase.event), new Map()),
-        /§3.1 違反/,
+        violates,
         testCase.name,
       );
       continue;
@@ -1800,7 +1983,7 @@ test("negative fixture は宣言した層で落ちる", () => {
     // （名乗っている identity が認証済み peer と矛盾する）。fixture でこの 2 つを区別しないと、
     // 降格しか実装しない移植でも fixture が緑になる
     if (testCase.rejectedBy === "intake-reject") {
-      assert.throws(() => stampIntakeEvidence(testCase.event, context), /§3.1 違反/, testCase.name);
+      assert.throws(() => stampIntakeEvidence(testCase.event, context), violates, testCase.name);
       continue;
     }
     assert.equal(
@@ -2646,6 +2829,31 @@ test("既に記録済みの event で source_events_truncated を出さない", 
     new Map(),
   );
   assert.deepEqual(truncated.diagnostics.map((d) => d.code), ["source_events_truncated"]);
+  // **この event が書きに行っていない operation を巻き込まない**。上限に達した無関係な
+  // pending を 1 件足しても、診断が名乗るのは照合された相手だけ。1 件しか置かない fixture だと
+  // 対象集合を「全 pending」へ広げる変異が緑のまま通る（実測で確認してからこの 1 件を足した）
+  const bystander: PendingOperation = {
+    ...pending,
+    operationId: "op-bystander",
+    correlation: {
+      ...pending.correlation,
+      operationId: "op-bystander",
+      operationMatchKey: "match-key-bystander",
+      nativeOperationId: "toolu_bystander",
+    },
+    sourceEventIds: Array.from({ length: CONTINUITY_LIMITS.arrayItems }, (_, index) => `other-${index}`),
+  };
+  const withBystander = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [otherIds, bystander] } },
+    terminalEvent({ operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined } }),
+    new Map(),
+  );
+  assert.deepEqual(withBystander.diagnostics.map((d) => d.code), ["source_events_truncated"]);
+  assert.equal(
+    withBystander.diagnostics[0]?.detail?.includes("op-bystander"),
+    false,
+    `書きに行っていない operation を名乗っている: ${withBystander.diagnostics[0]?.detail}`,
+  );
 });
 
 test("記録できる候補が 1 件も無い terminal は、兄弟の有無に関わらず鍵を残す", () => {
@@ -3046,7 +3254,10 @@ test("同じ native id の兄弟が並んでも identity が一致する側へ�
     new Map(),
   );
   assert.equal(redelivered.outcome, "applied");
-  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), ["duplicate_operation_start"]);
+  assert.deepEqual(redelivered.diagnostics.map((d) => d.code), [
+    "duplicate_operation_start",
+    "start_sibling_conflict",
+  ]);
   // 二重に積まない
   assert.equal(redelivered.snapshot.state.pendingOperations.length, 2);
 });
@@ -3268,6 +3479,199 @@ test("空白文字だけの identity 材料は空文字と同じく schema viola
   assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent({ sessionId: "0" }), new Map()).outcome, "applied");
   // adapterDeliveryId は「無い」を表せるので落とさず fingerprint に落ちる
   assert.equal(idempotencyKeyOf(startEvent({ adapterDeliveryId: " " })), "fingerprint-start");
+});
+
+test("空白だけの taskLineageId は lineage scope として認めない", () => {
+  // `sourceAgent` と同じ形。凍結 schema は `taskLineageId` にも maxLength しか課さないので、
+  // lineage が空白の状態と lineage を省いた event が組み合わさると等値検査に到達せず素通りする。
+  // 素通りすると無関係な task の operation が同じ scope に潰れ、terminal が他人の operation を
+  // 閉じ、`session_ended` がそれを放棄できる
+  for (const blank of ["", " ", "\t", "\u{FEFF}", "\u{200B}"]) {
+    // 状態側が空白 + event が lineage を省く（等値比較に到達しない経路）
+    assert.throws(
+      () =>
+        reduceTaskWorkState(
+          emptySnapshot({ taskLineageId: blank }),
+          startEvent({ taskLineageId: undefined }),
+          new Map(),
+        ),
+      /状態の taskLineageId が空文字/,
+      `state = ${JSON.stringify(blank)}`,
+    );
+    // 状態側も event 側も空白（`"" !== ""` が false になる経路）
+    assert.throws(
+      () =>
+        reduceTaskWorkState(
+          emptySnapshot({ taskLineageId: blank }),
+          startEvent({ taskLineageId: blank }),
+          new Map(),
+        ),
+      /taskLineageId が空文字/,
+      `both = ${JSON.stringify(blank)}`,
+    );
+    // event 側だけ空白。今は等値比較でも落ちるが、空白を「不在」と読む実装でも落ちることを固定する
+    assert.throws(
+      () => reduceTaskWorkState(emptySnapshot(), startEvent({ taskLineageId: blank }), new Map()),
+      /event の taskLineageId が空文字/,
+      `event = ${JSON.stringify(blank)}`,
+    );
+  }
+  // 3 つの入口すべてに効く（`assertSameScope` を全入口が呼ぶことをここで固定する）
+  const started = startedSnapshot();
+  const blankState = { ...started, state: { ...started.state, taskLineageId: " " } };
+  assert.throws(
+    () => correlateTerminalEvent(blankState, terminalEvent({ taskLineageId: undefined })),
+    /状態の taskLineageId が空文字/,
+  );
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        blankState.state,
+        startEvent({ kind: "session_ended", ingestSeq: "12", operation: undefined, taskLineageId: undefined }),
+        new Map(),
+      ),
+    /状態の taskLineageId が空文字/,
+  );
+  // 締めすぎていないことを通る側でも固定する。空白を含むだけの lineage は妥当
+  assert.equal(
+    reduceTaskWorkState(
+      emptySnapshot({ taskLineageId: "lineage 1" }),
+      startEvent({ taskLineageId: "lineage 1" }),
+      new Map(),
+    ).outcome,
+    "applied",
+  );
+  assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent(), new Map()).outcome, "applied");
+});
+
+test("ingestSeq と scope を両方破った event は 3 つの入口すべてで §22.6 を名乗る", () => {
+  // 入口の検査順（envelope → turn → identity → ingestSeq → scope）を**通る側でなく落ちる側**で
+  // 固定する。順序が入口ごとに違うと、同じ壊れた event が還元器では §22.6、直接呼びでは
+  // 「別 Agent」と報告される。`rejected-events.json` は case ごとに 1 つの節を宣言して
+  // TS / Rust のパリティ基準にしているので、分類が割れると移植側は同じ fixture を満たしたまま
+  // 違う節を返す
+  const broken = { ingestSeq: "01", sourceAgent: "codex" } as const; // 先頭 0 は decimal string でない
+  const started = startedSnapshot();
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), startEvent(broken), new Map()),
+    /ingestSeq が decimal string でない/,
+    "reduce",
+  );
+  assert.throws(
+    () => correlateTerminalEvent(started, terminalEvent(broken)),
+    /ingestSeq が decimal string でない/,
+    "correlate",
+  );
+  assert.throws(
+    () =>
+      finalizeAbandonedState(
+        started.state,
+        startEvent({ ...broken, kind: "session_ended", operation: undefined }),
+        new Map(),
+      ),
+    /ingestSeq が decimal string でない/,
+    "abandon",
+  );
+  // scope だけを破った event は今までどおり scope で落ちる（ingestSeq 検査が scope 検査を
+  // 飲み込んでいないことを固定する）
+  assert.throws(
+    () => correlateTerminalEvent(started, terminalEvent({ sourceAgent: "codex" })),
+    /別 Agent の event は適用しない/,
+    "correlate: scope のみ",
+  );
+});
+
+test("occurredAt の綴りが凍結 IsoTimestamp から外れていたら落ちる（#27）", () => {
+  // 暦検査は先頭 19 文字しか見ないので、綴りを先に当てないと「指す瞬間が一意」の主張が
+  // 成り立たない値を通す。schema 検証を通ってから届く保証は無い（`validateContractValue` は
+  // test からしか呼ばれない）ので、還元器が自分で当てる
+  const misspelled = [
+    "2026-08-16T00:00:01+09:00", // 数値 offset。19 文字目までは妥当だが指す瞬間は 9 時間ずれる
+    "2026-08-16T00:00:01-00:00",
+    "2026-08-16T00:00:01", // offset 無し。下流が local time として読む
+    "2026-08-16T00:00:01ZZZGARBAGE", // 末尾ゴミ。下流の toISOString() が投げる
+    "2026-08-16T00:00:01X", // 末尾 1 文字だけ違う（Z 固定を外す変異はここだけで死ぬ）
+    "2026-08-16T00:00:01xyzZ", // Z で終わるが小数部の位置がゴミ（小数部の綴り検査はここだけで死ぬ）
+    "2026-08-16", // 短い。slice がそのまま返し Date.parse も startsWith も通ってしまう
+    "2026",
+    "2026-08-16t00:00:01z", // 小文字
+  ];
+  for (const occurredAt of misspelled) {
+    // 綴りの話であることを先に固定する（schema 側でも落ちる値であること）
+    assert.notEqual(
+      validateContractValue("IsoTimestamp", occurredAt, SCHEMA_ROOT, CONTINUITY_LIMITS).length,
+      0,
+      occurredAt,
+    );
+    assert.throws(
+      () => reduceTaskWorkState(emptySnapshot(), startEvent({ occurredAt }), new Map()),
+      /occurredAt が暦として実在しない/,
+      `reduce: ${occurredAt}`,
+    );
+    assert.throws(
+      () => correlateTerminalEvent(startedSnapshot(), terminalEvent({ occurredAt })),
+      /occurredAt が暦として実在しない/,
+      `correlate: ${occurredAt}`,
+    );
+  }
+});
+
+test("暦として実在しない occurredAt は 3 つの入口すべてで落ちる（#27）", () => {
+  // pattern は成分の範囲までしか書けないので schema は通る。`new Date()` は例外を投げずに
+  // 翌月へ繰り上げるため、素通しにすると状態の updatedAt / startedAt / terminalAt が
+  // 申告と別の瞬間を指す
+  const impossible = [
+    "2026-02-30T00:00:00Z", // 2 月に 30 日は無い
+    "2026-04-31T00:00:00Z", // 4 月は 30 日まで
+    "2027-02-29T00:00:00Z", // 2027 年は閏年ではない
+    "2100-02-29T00:00:00Z", // 100 で割れて 400 で割れない年は閏年ではない
+  ];
+  for (const occurredAt of impossible) {
+    // schema としては妥当であることを先に固定する（この test が pattern の話に化けないように）
+    assert.equal(
+      validateContractValue("IsoTimestamp", occurredAt, SCHEMA_ROOT, CONTINUITY_LIMITS).length,
+      0,
+      occurredAt,
+    );
+    assert.throws(
+      () => reduceTaskWorkState(emptySnapshot(), startEvent({ occurredAt }), new Map()),
+      /occurredAt が暦として実在しない/,
+      `reduce: ${occurredAt}`,
+    );
+    assert.throws(
+      () => correlateTerminalEvent(startedSnapshot(), terminalEvent({ occurredAt })),
+      /occurredAt が暦として実在しない/,
+      `correlate: ${occurredAt}`,
+    );
+    assert.throws(
+      () =>
+        finalizeAbandonedState(
+          startedSnapshot().state,
+          startEvent({ occurredAt, kind: "session_ended", ingestSeq: "12", operation: undefined }),
+          new Map(),
+        ),
+      /occurredAt が暦として実在しない/,
+      `abandon: ${occurredAt}`,
+    );
+  }
+  // 締めすぎていないことを通る側でも固定する。実在する日付・閏日・小数秒・秒 59 は落とさない
+  for (const occurredAt of [
+    "2026-08-16T00:00:01Z",
+    "2028-02-29T00:00:00Z", // 2028 年は閏年
+    "2000-02-29T00:00:00Z", // 400 で割れる年は閏年
+    // 小数秒は暦の判定に使わないので桁数を問わない。ECMA-262 の書式は 3 桁ちょうどで、
+    // それ以上の扱いは実装依存（丸め上がる実装だと秒 59 が翌秒に化けて誤拒否になりうる）
+    "2026-08-16T23:59:59.999Z",
+    "2026-08-16T23:59:59.999999Z",
+    "2026-08-16T23:59:59.999999999999Z",
+    "2026-01-31T00:00:00Z",
+  ]) {
+    assert.equal(
+      reduceTaskWorkState(emptySnapshot(), startEvent({ occurredAt }), new Map()).outcome,
+      "applied",
+      occurredAt,
+    );
+  }
 });
 
 test("再配送 start が session を変えたら隔離する", () => {
@@ -3537,4 +3941,344 @@ test("turn 種別の材料が無い候補は種別違いとして落とさない
   if (result.matched !== null) assert.fail("材料が無いのに閉じた");
   assert.equal(result.diagnostic, "terminal_ambiguous");
   assert.equal(result.unresolved.length, 2);
+});
+
+/**
+ * 凍結 `OperationCorrelationV1` の任意欄は `maxLength` しか課さないので、復元した checkpoint や
+ * 別実装が書いた状態は schema 妥当なまま空白の欄を持ちうる。空白を「present で食い違う値」と
+ * 読むと、還元器は純関数なので**毎回同じ隔離**になり、しかも配送鍵を消費しないので訂正版も
+ * 届かない（決定論的な無限再送）。任意欄の空白は「主張していない」として扱う。
+ */
+function pendingWithBlank(field: "toolName" | "canonicalInputHash" | "nativeOperationId" | "turnId", blank: string) {
+  const base = startedSnapshot();
+  const pending = base.state.pendingOperations[0] as PendingOperation;
+  return {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [{ ...pending, correlation: { ...pending.correlation, [field]: blank } }],
+    },
+  };
+}
+
+for (const blank of ["", " "]) {
+  test(`空白の toolName を持つ pending でも rule 2 の terminal が閉じる（${JSON.stringify(blank)}）`, () => {
+    const start = startEvent({ operation: { phase: "start", operationMatchKey: "match-key-1", operationKind: "Bash" } });
+    const base = startedSnapshot(start);
+    const pending = base.state.pendingOperations[0] as PendingOperation;
+    const snapshot = {
+      ...base,
+      state: {
+        ...base.state,
+        pendingOperations: [{ ...pending, correlation: { ...pending.correlation, toolName: blank } }],
+      },
+    };
+    const terminal = terminalEvent({
+      operation: { phase: "terminal", operationMatchKey: "match-key-1", operationKind: "Bash" },
+    });
+    const result = reduceTaskWorkState(snapshot, terminal, new Map());
+    assert.equal(result.outcome, "applied");
+    assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  });
+
+  test(`空白の canonicalInputHash を持つ pending は terminal_conflict にしない（${JSON.stringify(blank)}）`, () => {
+    const snapshot = pendingWithBlank("canonicalInputHash", blank);
+    const result = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+    assert.equal(result.outcome, "applied");
+    assert.equal(result.snapshot.state.pendingOperations[0]?.status, "succeeded");
+    assert.deepEqual(result.diagnostics, []);
+  });
+
+  test(`空白の任意欄を持つ pending への再配送 start は隔離せず埋め直す（${JSON.stringify(blank)}）`, () => {
+    // 台帳だけ失った復元。`"" ?? x` は `""` のままなので、`??` で埋めていると一生埋まらない
+    for (const field of ["nativeOperationId", "canonicalInputHash", "toolName"] as const) {
+      const snapshot = pendingWithBlank(field, blank);
+      const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+      assert.equal(result.outcome, "applied", `${field}: ${result.outcome}`);
+      assert.deepEqual(
+        result.diagnostics.map((d) => d.code),
+        ["duplicate_operation_start"],
+        field,
+      );
+      const filled = result.snapshot.state.pendingOperations[0]?.correlation;
+      assert.notEqual(filled?.[field], blank, `${field} が空白のまま残った`);
+    }
+  });
+
+  test(`空白の turnId を持つ pending への再配送 start は start_conflict にしない（${JSON.stringify(blank)}）`, () => {
+    const snapshot = pendingWithBlank("turnId", blank);
+    const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+    assert.equal(result.outcome, "applied");
+    assert.deepEqual(
+      result.diagnostics.map((d) => d.code),
+      ["duplicate_operation_start"],
+    );
+  });
+}
+
+test("互換な兄弟が複数居るとき、届いた native ID を名乗る側に再配送を帰属させる", () => {
+  // `nativeIdTaken` は「2 件目を作らない」だけで帰属は動かさない。相手を配列順で決めると、
+  // `withSourceEvent` も truncation 判定も**その native ID を持たないほう**に当たり、再配送の
+  // provenance が本来の operation に残らない
+  const base = startedSnapshot();
+  const derived = base.state.pendingOperations[0] as PendingOperation;
+  // 両方とも原因 event を未記録にしておく。記録済みだと `withSourceEvent` が早期 return して
+  // どちらを選んでも差が出ない
+  const blank: PendingOperation = {
+    ...derived,
+    sourceEventIds: [],
+    correlation: { ...derived.correlation, nativeOperationId: "" },
+  };
+  const named: PendingOperation = {
+    ...derived,
+    operationId: "op-already-named",
+    sourceEventIds: [],
+    correlation: { ...derived.correlation, nativeOperationId: START_OPERATION.nativeOperationId },
+  };
+  const start = startEvent();
+  const result = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [blank, named] } },
+    start,
+    new Map(),
+  );
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((pending) => pending.sourceEventIds),
+    [[], [start.eventId]],
+    "native ID を持たないほうに再配送が帰属した",
+  );
+});
+
+test("名乗っている兄弟が互換でも、空白の native ID を埋めない（2 件目を作らない）", () => {
+  // 復元した checkpoint に (1) derived id が一致するが native ID が空白の pending と
+  // (2) 届いた native ID を既に名乗る別の pending が並ぶ。両方とも identity は互換。
+  // 空白の側へ native ID を書くと**同じ native ID の pending が 2 件**になり、rule 1 は候補 2 件を
+  // 曖昧と見るので後続の terminal はどちらも閉じられない。
+  // **この経路を守っているのは `nativeIdTaken` ではなく上の帰属優先**: 名乗り手が互換なら
+  // `existing` はその名乗り手になり、埋める先が空白でなくなるので `nativeIdTaken` は参照されない
+  // （実測: `nativeIdTaken` を消してもこの test は緑のまま。落ちるのは非互換の名乗り手の test）。
+  // 互換・非互換で守り手が違うので、2 つの test は別のゲートを固定している
+  const blankNative = pendingWithBlank("nativeOperationId", "");
+  const derived = blankNative.state.pendingOperations[0] as PendingOperation;
+  const alreadyNamed: PendingOperation = {
+    ...derived,
+    operationId: "op-already-named",
+    correlation: { ...derived.correlation, nativeOperationId: START_OPERATION.nativeOperationId },
+  };
+  const snapshot = {
+    ...blankNative,
+    state: { ...blankNative.state, pendingOperations: [derived, alreadyNamed] },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["duplicate_operation_start"],
+  );
+  const naming = result.snapshot.state.pendingOperations.filter(
+    (pending) => pending.correlation.nativeOperationId === START_OPERATION.nativeOperationId,
+  );
+  assert.deepEqual(
+    naming.map((pending) => pending.operationId),
+    ["op-already-named"],
+    "空白側にも native ID が書かれて 2 件になった",
+  );
+  // 曖昧にならないことまで見る。復元が重複を作っていたら rule 1 の候補が 2 件になり、terminal は
+  // 曖昧としてどちらも閉じられない。ここで残る `terminal_order_unverifiable` は別の欠落
+  // （組み立てた pending には start の取り込み連番が無い = #35）で、候補の一意性とは無関係
+  const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied");
+  assert.deepEqual(
+    closed.diagnostics.map((d) => d.code),
+    ["terminal_order_unverifiable"],
+    "rule 1 の候補が 1 件に定まっていない",
+  );
+});
+
+test("別 session の名乗り手は埋め戻しを止めない（rule 1 の候補集合と同じ絞り方）", () => {
+  // 抑止の走査集合が session で絞られていないと、rule 1 の候補に入らない名乗り手が埋め戻しを
+  // 止める。埋めなかった側も native ID を持たないので、その session の terminal は候補ゼロ =
+  // `terminal_orphaned` で隔離される。隔離は鍵を消費せず還元器は純関数なので永久に収束しない
+  const base = startedSnapshot();
+  const derived = base.state.pendingOperations[0] as PendingOperation;
+  const mine: PendingOperation = {
+    ...derived,
+    correlation: { ...derived.correlation, nativeOperationId: "" },
+  };
+  // **`operationId` は derived と同じにする**。`idMatches` は session で絞っていないので、
+  // 別 session の pending が兄弟に入るのはこの経路（derived id 一致）だけ。別の id にすると
+  // そもそも兄弟にならず、走査集合の広さを測れない
+  const otherSession: PendingOperation = {
+    ...derived,
+    correlation: {
+      ...derived.correlation,
+      sessionId: "session-OTHER",
+      nativeOperationId: START_OPERATION.nativeOperationId,
+    },
+  };
+  const result = reduceTaskWorkState(
+    { ...base, state: { ...base.state, pendingOperations: [mine, otherSession] } },
+    startEvent(),
+    new Map(),
+  );
+  assert.equal(result.outcome, "applied");
+  assert.equal(
+    result.snapshot.state.pendingOperations[0]?.correlation.nativeOperationId,
+    START_OPERATION.nativeOperationId,
+    "別 session の名乗り手が埋め戻しを止めた",
+  );
+  // 埋まっていれば自 session の terminal は閉じられる。止まっていると候補ゼロで隔離され、
+  // 同じ terminal が何度来ても同じ隔離になる
+  const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied", "自 session の terminal が隔離された");
+});
+
+test("名乗っている兄弟が非互換なら、空白の native ID を埋めない（2 件目を作らない）", () => {
+  // 上の優先は `compatible` の中しか見ないので、名乗っている側が**非互換**（identity が
+  // 食い違う corruption）だと空振りする。そのまま埋めると同じ native ID の pending が 2 件になり、
+  // 後続の terminal は rule 1 で候補 2 件 = 曖昧になってどちらも閉じられない
+  const base = startedSnapshot();
+  const derived = base.state.pendingOperations[0] as PendingOperation;
+  const compatible: PendingOperation = {
+    ...derived,
+    correlation: { ...derived.correlation, nativeOperationId: "" },
+  };
+  // matchKey が違うので `startConflictsWith` が真 = 互換な候補には入らない。それでも
+  // native ID が一致するので兄弟ではある
+  const claimer: PendingOperation = {
+    ...derived,
+    operationId: "op-native-claimer",
+    correlation: {
+      ...derived.correlation,
+      operationMatchKey: "match-key-OTHER",
+      nativeOperationId: START_OPERATION.nativeOperationId,
+    },
+  };
+  const snapshot = {
+    ...base,
+    state: { ...base.state, pendingOperations: [compatible, claimer] },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  assert.equal(result.outcome, "applied");
+  const naming = result.snapshot.state.pendingOperations.filter(
+    (pending) => pending.correlation.nativeOperationId === START_OPERATION.nativeOperationId,
+  );
+  assert.deepEqual(
+    naming.map((pending) => pending.operationId),
+    ["op-native-claimer"],
+    "非互換な名乗り手が居るのに空白側へ書いて 2 件になった",
+  );
+  // 衝突していた兄弟は診断で名指しする（黙って飛ばさない）
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code).sort(),
+    ["duplicate_operation_start", "start_sibling_conflict"],
+  );
+  // **どちらが閉じるかまで固定する**。曖昧にならないことだけを見ると、閉じる先が入れ替わる
+  // 退行が緑のまま通る。この状態で rule 1 が見るのは native ID なので、閉じるのは**名乗って
+  // いる側**（`op-native-claimer`）で、再配送の provenance を受け取った側ではない。
+  // **既知の残渣**（#58）: 直前に corruption として名指しした兄弟のほうが閉じ、真の相手は
+  // `started` のまま退避まで残る。ここで別の選び方をすると収束しない形（隔離は鍵を消費せず
+  // 還元器は純関数）か、同じ native ID の pending 2 件（rule 1 が曖昧）のどちらかになるので、
+  // 状態が壊れている以上どれかは失う。失う先を固定して観測できるようにするのが今の選択
+  const closed = reduceTaskWorkState(result.snapshot, terminalEvent(), new Map());
+  assert.equal(closed.outcome, "applied");
+  assert.ok(
+    !closed.diagnostics.some((d) => d.code === "terminal_ambiguous"),
+    "rule 1 の候補が 2 件になっている",
+  );
+  assert.deepEqual(
+    closed.snapshot.state.pendingOperations.map((pending) => [pending.operationId, pending.status]),
+    [
+      [derived.operationId, "started"],
+      // `succeeded` でなく `unknown`。組み立てた pending には start の取り込み連番が無いので
+      // 権威順序を確認できない（#35 の欠落）。閉じる先の話とは別軸
+      ["op-native-claimer", "unknown"],
+    ],
+    "閉じる先が入れ替わった",
+  );
+});
+
+test("provenance が無い event は intake でも §3.1 で落ちる（書く層にも置く）", () => {
+  // intake は生の adapter 出力に最初に触る層。`event.provenance` を素で destructure するので、
+  // 還元器側のガードだけだと、通常の経路（intake → reduce）では節を名乗らない TypeError で死ぬ
+  const withoutProvenance = { ...startEvent(), provenance: undefined } as unknown as NormalizedContinuityEvent;
+  assert.throws(() => stampIntakeEvidence(withoutProvenance, INTAKE), /§3\.1 違反: provenance が無い/);
+});
+
+test("provenance が無い event は TypeError でなく §3.1 で落ちる", () => {
+  // この経路の他の検査はすべて `§3.1 違反:` / `§22.6 違反:` の形で投げ、`rejected-events.json` は
+  // case ごとに 1 つの節を宣言して TS/Rust パリティの基準にしている。節を名乗らない TypeError は
+  // その分類契約から外れる
+  const withoutProvenance = { ...startEvent(), provenance: undefined } as unknown as Parameters<
+    typeof reduceTaskWorkState
+  >[1];
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), withoutProvenance, new Map()),
+    /§3\.1 違反: provenance が無い/,
+  );
+});
+
+test("届いた start が native ID を持たないときは、名乗る兄弟を優先せず配列順で選ぶ", () => {
+  // 優先してよい根拠は「互換の定義上、名乗っている値は届いたものと一致している」だが、
+  // `startConflictsWith` の native ID 比較は両方が declared のときだけ走る。届いた側が持たない
+  // なら一致は一度も確かめていないので、優先の根拠が無い。根拠が無いまま選び先を変えると、
+  // `operationId` が重複する状態で配列順とは違う相手が選ばれ、**空白の native ID がどちらの
+  // 兄弟から落ちるかが変わる**
+  const start = startEvent({ operation: MATCH_KEY_ONLY });
+  const base = startedSnapshot(start);
+  const pending = { ...(base.state.pendingOperations[0] as PendingOperation), sourceEventIds: [] };
+  // **名乗っている側を先頭に置く**。後ろに置くと、届いた native ID が無いときの `find` は
+  // 「native ID を持たない兄弟」を拾って結果が配列順と一致してしまい、ガードの有無を区別できない
+  const snapshot = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [
+        { ...pending, correlation: { ...pending.correlation, nativeOperationId: "toolu_other" } },
+        { ...pending, correlation: { ...pending.correlation, nativeOperationId: "" } },
+      ],
+    },
+  };
+  const result = reduceTaskWorkState(snapshot, start, new Map());
+  assert.equal(result.outcome, "applied");
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((entry) => entry.sourceEventIds),
+    [[start.eventId], []],
+    "配列順でなく native ID の有無で帰属先が決まった",
+  );
+  // 届いた start に書く値が無いので、選ばれた側の欄は動かない。空白側も選ばれていないので残る
+  assert.deepEqual(
+    result.snapshot.state.pendingOperations.map((entry) => entry.correlation.nativeOperationId),
+    ["toolu_other", ""],
+    "選んでいないほうの空白まで正規化した",
+  );
+});
+
+test("空白でない任意欄の食い違いは今までどおり衝突として落とす", () => {
+  // 締めすぎの逆方向。空白を通す変更が「任意欄の検査そのもの」を殺していないことを固定する
+  const snapshot = pendingWithBlank("canonicalInputHash", "input-hash-OTHER");
+  const result = reduceTaskWorkState(snapshot, terminalEvent(), new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_conflict"],
+  );
+});
+
+test("受領証の attestedAt も暦検査を受ける（凍結 $comment は IsoTimestamp 型に対する約束）", () => {
+  // 凍結 schema の `IsoTimestamp` の `$comment` は「暦としての実在は runtime validator が
+  // 受け持つ」と型そのものに対して書いており、`$def` は 20 近い欄から参照されている。
+  // event が持ち込む IsoTimestamp は occurredAt と attestedAt の 2 つ
+  const bad = startEvent({
+    provenance: {
+      ...startEvent().provenance,
+      ingestAttestation: { ...ATTESTATION, attestedAt: "2026-02-30T00:00:00Z" },
+    },
+  });
+  assert.throws(
+    () => reduceTaskWorkState(emptySnapshot(), bad, new Map()),
+    /attestedAt が暦として実在しない/,
+  );
+  // 締めすぎていないことも固定する
+  assert.equal(reduceTaskWorkState(emptySnapshot(), startEvent(), new Map()).outcome, "applied");
 });
