@@ -1,0 +1,44 @@
+harness/continuity/reference-model.test.ts
+  s_4dfb49b8115668::t_be787547bc297b 1506,1544,1562-1563,1716-1751,1878
+  s_2d059b4f795bca::t_1dd9f3467f2f65 1480-1505,1507-1543,1545
+evidence/phase3-reference-model.md
+  s_2d059b4f795bca::t_b54db73b5a37a1 213-218,374-377,469-475,510-512,596,602,610,726-728,730,733-735,737-739,742,744-745
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_2b2e5b6c9987c0 33
+harness/schema/continuity.schema.json
+  s_2d059b4f795bca::t_b24b61e30d059f 959
+specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md
+  s_2d059b4f795bca::t_fcb30f4bad75e1 51-52,508,510,512
+specs/002-continuity-state-evidence/data-model.md
+  s_2d059b4f795bca::t_5cd454eb97ff60 65,68-69,76-93
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_25e71a406a9452 305-310
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_17b111be444e3c 410-411,415-419
+harness/continuity/reference-model.ts
+  s_2d059b4f795bca::t_012d192a22c33d 867-868,873-885,891-896,926,1360-1367,1478-1495
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0186590d5beae3f53ee8bd0eb5e54b47866d8000",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_4dfb49b8115668": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01077-6ca1-7110-9155-d379f84f50e1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
