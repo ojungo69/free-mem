@@ -26,10 +26,10 @@
     "fixtures/codex/raw/codex-tool-ok.jsonl": "1aaefa4f701901b10fd8ecadcdc4112ef45179e21693a116e4134bd3dd589cd4",
     "fixtures/codex/tool-lifecycle-and-failure.json": "0e7f25f0c63e78a9aaa0a12ef67ad948c1059f5d30b0c2a8f6d29ac929f70488",
     "fixtures/continuity/invalid/rejected-events.json": "b19265a42d0038a9b0f33b2da699c4370519f8fd4d30f9795c2f7892d6ab1ce0",
-    "fixtures/continuity/restored-state-reduction.json": "571f638a3cafc95c1493d8240e320fa382a3b93d3611a46f1c76bac85a659e68",
-    "fixtures/continuity/tool-lifecycle-reduction.json": "9d4c30b1234984d4763b837ea594357a76bebe518639ff899cc61e0fb653dfee",
+    "fixtures/continuity/restored-state-reduction.json": "7aaa26e843ec4f1cc3e63f138221b4f73fed7b6dfc832bdbc5286ddcecae650e",
+    "fixtures/continuity/tool-lifecycle-reduction.json": "656aedfac4770998e006d0639e8b4ef0d5075c1e9c9fae0176b30b7d71da58a5",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
     "schema/capability.schema.json": "e3c62825f8364ca7879bb0d803ab139dd9bd16d031290d06592cbe6b8d6aef23",
-    "schema/continuity.schema.json": "c0161c9f4b72b91524c08ee8f8e763546a826bc446b32a5f1cfe32ad8bdd59c8"
+    "schema/continuity.schema.json": "7b4e3321e1322764fbcf19e8dd2492e910c4bd4ec5687633a4e313e6e511772c"
   }
 }

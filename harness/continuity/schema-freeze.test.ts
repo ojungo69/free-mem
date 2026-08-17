@@ -622,6 +622,17 @@ test("property の中に直接書かれた enum も凍結する", () => {
   assert.deepEqual(found, INLINE_ENUMS);
 });
 
+test("同じ語彙を複製している inline enum どうしも突き合わせる", () => {
+  // 上の test は 1 つずつ「今の綴り」に縛るだけなので、**複製した片方だけを増やす**変更は
+  // 素通りする（両方の行を更新すれば緑のまま）。`DroppedEvidenceEntryV1.status` は退避した
+  // `PendingOperation` の status をそのまま写す欄なので、語彙が割れたら記録できない状態が出る。
+  // 凍結 schema なので $ref への差し替え（= 既存 node の削除）はできない。ここで縛る
+  assert.deepEqual(
+    INLINE_ENUMS["DroppedEvidenceEntryV1.properties.status"],
+    INLINE_ENUMS["PendingOperation.properties.status"],
+  );
+});
+
 test("property の中に直接書かれた const も凍結する", () => {
   // oneOf の判別子は値が 1 つの enum と同じ。片方だけ書き換えると、TS の
   // `{ kind: "mark_delivered" }` を満たす値が runtime 検証で落ちる

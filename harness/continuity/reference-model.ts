@@ -781,8 +781,16 @@ function nextContent(
   event: NormalizedContinuityEvent,
   pendingOperations: PendingOperation[],
   droppedEvidence?: DroppedEvidenceEntryV1[],
+  // §4.1 の watermark は「**適用された** event の最大 `ingestSeq`」。証跡だけを記録して event 自体は
+  // 適用しない経路（`quarantineWithRecord`）は、進めずに前の値を渡す。進めると、配送鍵が未消費で
+  // 後から適用されうる event の位置を watermark が先に名乗ることになる
+  lastIngestSeq?: string,
 ): WorkStateContentV1 {
-  const { stateRevision: _ignored, sensitivity: _aggregate, ...rest } = previous;
+  const { stateRevision: _ignored, sensitivity: _aggregate, droppedEvidence: _carried, ...rest } = previous;
+  // 呼び出し側が渡さなければ前の revision の記録を引き継ぐ。**引き継ぐ場合も必ずここを通す**:
+  // `...rest` で素通しすると (a) 配列 object を過去の revision と共有し、(b) 復元した状態が
+  // 書いてきた空配列がそのまま残る。どちらも下の 2 つの規則に穴を開ける
+  const carried = droppedEvidence ?? previous.droppedEvidence;
   const withoutSensitivity = {
     ...rest,
     // revision ごとに配列を分ける。`CanonicalWorkStateV1.pendingOperations` は readonly でないので、
@@ -790,8 +798,10 @@ function nextContent(
     pendingOperations: [...pendingOperations],
     // 記録が 1 件も無いときは**欄ごと作らない**。空配列を書くと、同じ意味（何も落ちていない）の
     // 状態が「欄なし」と「空配列」の 2 通りの綴りを持ち、canonical hash と §22.8 の dedupe が割れる
-    ...(droppedEvidence === undefined ? {} : { droppedEvidence: [...droppedEvidence] }),
-    lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
+    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: [...carried] }),
+    lastIngestSeq: lastIngestSeq ?? maxIngestSeq(previous.lastIngestSeq, event.ingestSeq),
+    // `updatedAt` は「revision を作った event の `occurredAt`」（§4.1）なので、こちらは進める。
+    // 記録も revision を作るので、その event が最後に状態を動かしたのは事実
     updatedAt: event.occurredAt,
   };
   return {
@@ -855,13 +865,16 @@ function commit(
     pendingOperations: PendingOperation[];
     diagnostics: readonly ContinuityDiagnosticV1[];
     droppedEvidence?: DroppedEvidenceEntryV1[];
+    /** §4.1 の watermark を据え置く値。event を適用しない経路だけが渡す */
+    lastIngestSeq?: string;
   },
 ): TaskStateReductionResult {
   const content = nextContent(
     previous.state,
     event,
     applied.pendingOperations,
-    applied.droppedEvidence ?? previous.state.droppedEvidence,
+    applied.droppedEvidence,
+    applied.lastIngestSeq,
   );
   const contentHash = contentHashOf(content);
   const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
@@ -916,13 +929,17 @@ function quarantineWithRecord(
   recorded: { droppedEvidence: DroppedEvidenceEntryV1[]; diagnostics: ContinuityDiagnosticV1[] },
 ): TaskStateReductionResult {
   // 状態の作り方は `commit` と同じ（content / hash / revision / history）。違うのは
-  // **配送鍵を消費しない**ことだけなので、書き写さずに `commit` の結果から 2 欄を差し替える。
-  // 写すと、revision の採番規則を変えたときに片方だけ直る
+  // **配送鍵を消費しないことと、§4.1 の watermark を進めないこと**だけなので、書き写さずに
+  // `commit` の結果から差し替える。写すと、revision の採番規則を変えたときに片方だけ直る
   return {
     ...commit(previous, event, ledger, {
-      pendingOperations: [...previous.state.pendingOperations],
+      // 複製しない。§4.2 の immutable revision 用の複製は `nextContent` が行う
+      pendingOperations: previous.state.pendingOperations,
       diagnostics: [...diagnostics, ...recorded.diagnostics],
       droppedEvidence: recorded.droppedEvidence,
+      // event は適用していない（鍵が未消費なので後から適用されうる）。watermark を先に
+      // 進めると、まだ入っていない位置を「適用済みの最大」として名乗ることになる
+      lastIngestSeq: previous.state.lastIngestSeq,
     }),
     outcome: "quarantined",
     ledger,
@@ -1215,7 +1232,9 @@ export function reduceTaskWorkState(
       const duplicateDiagnostic: ContinuityDiagnosticV1 = {
         code: "duplicate_operation_start",
         eventId: event.eventId,
-        detail: `operationId ${existing.operationId} は既に pending`,
+        // 相手が確定済みのこともある（同じ identity の start が terminal の後に再配送される）。
+        // 「既に pending」と決め打つと、閉じた operation を追っている読み手を実行中だと誤誘導する
+        detail: `operationId ${existing.operationId} は既に記録済み（status: ${existing.status}）`,
       };
       return commit(previous, event, idempotencyLedger, {
         // **`startIngestSeq` / `startTurnIdSource` は書き換えない**（#35 FR-003）。correlation の
@@ -1273,19 +1292,21 @@ export function reduceTaskWorkState(
     // start=10・生存側の実 start=100 の状態に ingestSeq 50 の terminal を当てると succeeded）
     return commit(previous, event, idempotencyLedger, {
       pendingOperations: [...retained, started],
-      diagnostics:
-        evicted.length === 0
+      diagnostics: [
+        ...(evicted.length === 0
           ? []
           : [
               {
-                code: "pending_operations_evicted",
+                code: "pending_operations_evicted" as const,
                 eventId: event.eventId,
                 detail: `上限 ${CONTINUITY_LIMITS.arrayItems} 件のため退避: ${evicted.join(", ")}`,
               },
-              ...recorded.diagnostics,
-            ],
-      // 何も退避していないなら欄に触らない（`undefined` を渡すと commit が既存の値を保つ）
-      ...(evicted.length === 0 ? {} : { droppedEvidence: recorded.droppedEvidence }),
+            ]),
+        // 退避が無くても捨てない。復元した状態が既に上限超えなら、ここで刈った事実を doctor に
+        // 出す必要がある（`recordDroppedEvidence` は追加も脱落も無ければ空を返す）
+        ...recorded.diagnostics,
+      ],
+      droppedEvidence: recorded.droppedEvidence,
     });
   }
 
@@ -1640,12 +1661,19 @@ function terminalStatusOf(event: NormalizedContinuityEvent): "succeeded" | "fail
 
 /**
  * §4.3 の順序検査が使う start 側の `ingestSeq`（#35）。凍結 schema では任意欄なので、
- * この版より前に書かれた checkpoint と別実装が書いた状態では欠けうる。**空白は「名乗って
- * いない」であって値ではない**ので、他の任意欄と同じく `declared()` で見る（素で見ると空文字が
- * `compareIngestSeq` に渡り、順序を確認できていないのに確認できたことになる）。
+ * この版より前に書かれた checkpoint と別実装が書いた状態では欠けうる。
+ *
+ * ここは他の任意欄の `declared()` より狭く、**`ingestSeq` の綴りそのもの**で見る。この欄は
+ * 復元した状態と別実装が書ける値で、schema の pattern を通っている保証は無い。一方この値は
+ * 等値比較でなく `compareIngestSeq` に渡るので、空白（`"  "`）も語彙の外（`"007"` / `"-1"`）も
+ * そのままでは throw する。しかも比較は候補集合を走査するため、**壊れた要素を狙っていない
+ * terminal まで巻き添えで落ちる**。綴りが合わない値は「名乗っていない」に倒し、既存の
+ * 「材料が無い」経路（`terminal_order_unverifiable`）へ流す。倒す先がある任意欄だから
+ * できることで、必須欄（`lastIngestSeq`）は倒す先が無いので従来どおり throw のまま。
  */
 function startIngestSeqOf(pending: PendingOperation): string | undefined {
-  return declared(pending.startIngestSeq);
+  const seq = pending.startIngestSeq;
+  return seq !== undefined && INGEST_SEQ_PATTERN.test(seq) ? seq : undefined;
 }
 
 /**
@@ -1974,18 +2002,22 @@ export function correlateTerminalEvent(
     // **両方**を課す。ここに来るのは前者に引っかかった 2 通目だが、配送 ID が違うので dedupe は
     // 比べておらず、成否が同じなら上の矛盾ゲートも素通りしている。受理した指紋を状態に残した
     // 今（#44）、後者をここで見られる。
-    // **指紋が一致する候補が 1 件でもあれば隔離しない**。rule 2 の候補は同じ matchKey の兄弟を
-    // まとめて拾うので、一致する相手が居るならこの terminal はその再配送として説明がつく。
-    // 兄弟の指紋だけを見て隔離すると健全な再配送が台帳に入らず、adapter は無限再送になる。
+    // **説明がつく候補が 1 件でもあれば隔離しない**。rule 2 の候補は同じ matchKey の兄弟を
+    // まとめて拾うだけで、この terminal がどの兄弟のものかは分からない。説明がつくのは
+    // (a) 指紋が一致する兄弟が居る（その再配送）か、(b) **指紋を名乗っていない兄弟が居る**
+    // （この版より前に閉じた兄弟。FR-012 どおり新しい検査は材料が無ければ発動しない）。
+    // 混在した状態で材料を持つ兄弟だけを見て隔離すると、指紋なしの兄弟宛ての健全な再配送が
+    // 台帳に入らず、adapter は無限再送になる。だから隔離は「**全員**が指紋を名乗っていて、
+    // **どれとも一致しない**」ときだけ。
     // 記録側の空白は「指紋を名乗っていない」であって「違う指紋」ではないので `declared()` で
     // 見る（届く側は `assertIdentityMaterial` が空白を先に落とすので、比べる時点で必ず具体値）
     const incomingFingerprint = terminalEvent.canonicalFingerprint;
-    const fingerprintExplained = plausible.some(
-      (pending) => declared(pending.terminalFingerprint) === incomingFingerprint,
-    );
-    const fingerprintConflict = fingerprintExplained
-      ? undefined
-      : plausible.find((pending) => declared(pending.terminalFingerprint) !== undefined);
+    const fingerprintUnexplained = plausible.every((pending) => {
+      const stored = declared(pending.terminalFingerprint);
+      return stored !== undefined && stored !== incomingFingerprint;
+    });
+    // `plausible` は上の early return で空でないことが確定している
+    const fingerprintConflict = fingerprintUnexplained ? (plausible[0] as PendingOperation) : undefined;
     if (fingerprintConflict !== undefined) {
       return {
         matched: null,

@@ -133,9 +133,7 @@ mutate "      ...contradictionDiagnostics,
 mutate "  if (terminalEvidenceContradicts(event)) return \"unknown\";" "  if (false) return \"unknown\";" && run "矛盾した terminal を succeeded にする"
 mutate "  if (startIngestSeq === undefined) {" "  if (false) {" && run "start 不在の分岐を外す"
 mutate "  if (compareIngestSeq(terminalEvent.ingestSeq, startIngestSeq) <= 0) {" "  if (false) {" && run "terminal の権威順序検査を外す"
-mutate "function startIngestSeqOf(pending: PendingOperation): string | undefined {
-  return declared(pending.startIngestSeq);" "function startIngestSeqOf(pending: PendingOperation): string | undefined {
-  return pending.startIngestSeq;" && run "空白の順序材料を値として読む"
+mutate "  return seq !== undefined && INGEST_SEQ_PATTERN.test(seq) ? seq : undefined;" "  return seq;" && run "綴りの合わない順序材料を値として読む（空白・語彙外）"
 mutate "function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
   return declared(pending.startTurnIdSource);" "function startTurnIdSourceOf(pending: PendingOperation): string | undefined {
   return pending.startTurnIdSource;" && run "空白の turn 種別を値として読む"
@@ -187,8 +185,8 @@ mutate "const EVICTION_ORDER: readonly PendingOperation[\"status\"][] = [
   \"started\",
 ];" "const EVICTION_ORDER: readonly PendingOperation[\"status\"][] = [\"succeeded\", \"failed\"];" && run "退避対象から open を外す（詰まる）"
 mutate "      if (dropped.size === dropCount) break;" "      if (false) break;" && run "退避件数の上限を外す"
-mutate "        evicted.length === 0
-          ? []" "        true
+mutate "        ...(evicted.length === 0
+          ? []" "        ...(true
           ? []" && run "退避を黙って行う"
 mutate "    pendingOperations: [...pendingOperations]," "    pendingOperations," && run "revision ごとの配列分離を外す"
 mutate "  const applied = idempotencyLedger.get(key);
@@ -392,6 +390,7 @@ mutate "  if (!isCanonicalTimestamp(value)) return false;" "" && run "暦検査�
 mutate "  if (!value.endsWith(\"Z\")) return false;" "  if (false) return false;" && run "offset の Z 固定を外す"
 mutate "    (fraction === \"\" || ISO_SECFRAC_PATTERN.test(fraction))" "    true" && run "小数部の綴りを見ない"
 mutate "  return value === undefined || isBlank(value) ? undefined : value;" "  return value;" && run "任意欄の空白を present として読む"
+mutate "  return seq !== undefined && INGEST_SEQ_PATTERN.test(seq) ? seq : undefined;" "  return seq !== undefined && !isBlank(seq) ? seq : undefined;" && run "空白だけ弾いて語彙外は比較へ渡す（#35 FR-004）"
 mutate "  if (isBlank(state.taskLineageId)) {" "  if (false) {" && run "状態側の空白 lineage を通す"
 mutate "  if (event.taskLineageId !== undefined && isBlank(event.taskLineageId)) {" "  if (false) {" && run "event 側の空白 lineage を通す"
 mutate "          ...(truncated.length === 0 ? [] : [truncationDiagnostic(event, truncated)])," "" && run "再配送 start の truncation 診断を落とす"
@@ -410,14 +409,23 @@ mutate "        sensitivity: pending.sensitivity," "        sensitivity: \"norma
 mutate "                sensitivity: \"private\"," "                sensitivity: \"normal\"," && run "孤児の記録を normal で残す"
 mutate "        (entry) => entry.reason === \"orphaned_terminal\" && entry.eventId === event.eventId," "        () => false," && run "孤児の記録を再送のたびに足す"
 mutate "      if (correlation.diagnostic === \"terminal_orphaned\" && !alreadyRecorded) {" "      if (false) {" && run "孤児 terminal を状態に記録しない"
-mutate "      ...(evicted.length === 0 ? {} : { droppedEvidence: recorded.droppedEvidence })," "" && run "退避を状態に記録しない"
+mutate "      ],
+      droppedEvidence: recorded.droppedEvidence," "      ]," && run "退避を状態に記録しない"
+mutate "        ...recorded.diagnostics,
+      ]," "      ]," && run "上限超えの復元状態を刈った事実を黙る（FR-015）"
+mutate "  const carried = droppedEvidence ?? previous.droppedEvidence;" "  const carried = droppedEvidence;" && run "記録に触らない経路で記録を落とす"
+mutate "    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: [...carried] })," "    ...(carried === undefined ? {} : { droppedEvidence: [...carried] })," && run "復元状態の空配列をそのまま残す（FR-013）"
+mutate "    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: [...carried] })," "    ...(carried === undefined || carried.length === 0 ? {} : { droppedEvidence: carried })," && run "記録の配列を revision 間で共有する（§4.2）"
+mutate "      lastIngestSeq: previous.state.lastIngestSeq," "" && run "記録だけの隔離で watermark を進める（§4.1）"
+mutate "    lastIngestSeq: lastIngestSeq ?? maxIngestSeq(previous.lastIngestSeq, event.ingestSeq)," "    lastIngestSeq: maxIngestSeq(previous.lastIngestSeq, event.ingestSeq)," && run "呼び出し側が渡した watermark を無視する"
 
 # --- #44: 受理した terminal の指紋 ------------------------------------------
 mutate "              ...(status === \"unknown\" ? {} : { terminalFingerprint: event.canonicalFingerprint })," "" && run "受理した terminal の指紋を残さない（FR-010）"
 mutate "              ...(status === \"unknown\" ? {} : { terminalFingerprint: event.canonicalFingerprint })," "              terminalFingerprint: event.canonicalFingerprint," && run "unknown に倒した operation にも指紋を残す"
 mutate "    if (fingerprintConflict !== undefined) {" "    if (false) {" && run "指紋の衝突検査を外す（FR-011）"
-mutate "      (pending) => declared(pending.terminalFingerprint) === incomingFingerprint," "      () => false," && run "指紋が一致しても再配送として説明しない"
-mutate "      : plausible.find((pending) => declared(pending.terminalFingerprint) !== undefined);" "      : plausible.at(0);" && run "指紋を持たない旧い状態も衝突にする（FR-012）"
+mutate "      return stored !== undefined && stored !== incomingFingerprint;" "      return stored !== undefined;" && run "指紋が一致しても再配送として説明しない"
+mutate "      return stored !== undefined && stored !== incomingFingerprint;" "      return stored !== incomingFingerprint;" && run "指紋を持たない旧い状態も衝突にする（FR-012）"
+mutate "    const fingerprintUnexplained = plausible.every((pending) => {" "    const fingerprintUnexplained = plausible.some((pending) => {" && run "兄弟の 1 件が名乗っていれば全員分の衝突にする（FR-012 混在）"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか
