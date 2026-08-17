@@ -5,14 +5,14 @@ CI（`.github/workflows/ci.yml` の `harness` job）と同じ検査をローカ�
 
 ## 前提
 
-- 作業ディレクトリ: `/home/jura/projects/free-mem-wt/cluster-c`（ブランチ
-  `feat/continuity-state-schema-v2`）
+- 作業ディレクトリ: この feature 用の worktree（ブランチ `feat/continuity-state-schema-v2` を
+  `git worktree add` で切り出した専用チェックアウト）
 - Node.js は repo の設定に従う。`tsc` は vendor 済みのものを使う（追加インストール不要）
 
 ## 6 本のゲート
 
 ```bash
-cd /home/jura/projects/free-mem-wt/cluster-c
+cd "$WT"   # この feature の worktree のパスを入れておく
 
 # 1. 型
 vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
