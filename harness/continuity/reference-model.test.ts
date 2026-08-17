@@ -1784,15 +1784,36 @@ test("記録の重複判定は §8.2 の順（配送鍵が第一 authority、指
     recorded.ledger,
   );
   assert.equal(corrupted.outcome, "quarantined");
-  assert.deepEqual(
-    corrupted.diagnostics.map((d) => d.code),
-    ["terminal_orphaned", "delivery_conflict"],
-  );
+  // 照合より前に落とす（台帳の衝突検査と同じ扱い）。start が届いた後の再送も同じ経路を通る
+  assert.deepEqual(corrupted.diagnostics.map((d) => d.code), ["delivery_conflict"]);
   // corruption は「live な集合から落ちた証跡」ではないので記録も状態も動かさない
   assert.equal(corrupted.snapshot.state.droppedEvidence?.length, 1);
   assert.equal(corrupted.snapshot.state.droppedEvidence?.[0]?.terminalFingerprint, "fingerprint-terminal");
   assert.equal(corrupted.snapshot.state.stateRevision, recorded.snapshot.state.stateRevision);
   assert.equal(corrupted.ledger.size, recorded.ledger.size);
+
+  // **start が届いた後の再送も同じ検査に当たる**。隔離は配送鍵を消費しないので、孤児を記録した
+  // 後に start が来ると、同じ配送鍵の再送は照合経路へ進む。入口で見ないと corruption の検出が
+  // start の到着順しだいになる（実測: 見ないと `applied` / 診断ゼロ / operation は succeeded）
+  const afterStart = apply(emptySnapshot(), [terminalEvent({ canonicalFingerprint: "F1" })]);
+  const started = reduceTaskWorkState(afterStart.snapshot, startEvent(), afterStart.ledger);
+  const conflicting = reduceTaskWorkState(
+    started.snapshot,
+    terminalEvent({ eventId: "event-terminal-f2", canonicalFingerprint: "F2", ingestSeq: "13" }),
+    started.ledger,
+  );
+  assert.equal(conflicting.outcome, "quarantined");
+  assert.deepEqual(conflicting.diagnostics.map((d) => d.code), ["delivery_conflict"]);
+  assert.equal(conflicting.snapshot.state.pendingOperations[0]?.status, "started");
+  assert.equal(conflicting.ledger.size, started.ledger.size);
+  // 対照: 同じ配送鍵でも**同じ指紋**なら再送なので、そのまま閉じられる
+  const honest = reduceTaskWorkState(
+    started.snapshot,
+    terminalEvent({ eventId: "event-terminal-f1", canonicalFingerprint: "F1", ingestSeq: "13" }),
+    started.ledger,
+  );
+  assert.equal(honest.outcome, "applied");
+  assert.equal(honest.snapshot.state.pendingOperations[0]?.status, "succeeded");
 
   // 材料が欠けている側は「違う」と言えない。指紋を持たない記録（この版より前の checkpoint）に
   // 指紋つきの再送が来ても corruption ではなく重複（FR-012 と同じで、検査は材料が無ければ発動しない）

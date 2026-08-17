@@ -856,6 +856,27 @@ function orphanKeyOf(entry: DroppedEvidenceEntryV1): string | undefined {
   return fingerprint === undefined ? undefined : `f:${fingerprint}`;
 }
 
+/**
+ * 記録済みの孤児を「鍵 → その記録が名乗る指紋」で引ける形にする。**還元器の入口と記録側の
+ * 両方が同じ表を要る**: 入口は「この配送鍵で別の指紋が既に記録されていないか」を、記録側は
+ * 「この孤児は記録済みか」を見る。片方だけが持つと、start が届いた後の再送が照合経路へ
+ * 進んで衝突検査を素通りする（実測: 孤児 F1 を記録 → start → 同じ配送鍵で F2 を再送すると
+ * `applied` / 診断ゼロ / operation は succeeded / 指紋は F2 になった）。
+ */
+function recordedOrphanFingerprints(
+  previous: readonly DroppedEvidenceEntryV1[] | undefined,
+): Map<string, string | undefined> {
+  const recorded = new Map<string, string | undefined>();
+  for (const entry of previous ?? []) {
+    if (entry.reason !== "orphaned_terminal") continue;
+    const key = orphanKeyOf(entry);
+    if (key !== undefined && !recorded.has(key)) {
+      recorded.set(key, declared(entry.terminalFingerprint));
+    }
+  }
+  return recorded;
+}
+
 function recordDroppedEvidence(
   previous: readonly DroppedEvidenceEntryV1[] | undefined,
   requested: readonly DroppedEvidenceEntryV1[],
@@ -864,8 +885,6 @@ function recordDroppedEvidence(
   droppedEvidence: DroppedEvidenceEntryV1[];
   diagnostics: ContinuityDiagnosticV1[];
   added: readonly DroppedEvidenceEntryV1[];
-  /** 同じ鍵で指紋が食い違った記録。重複ではなく corruption なので、呼び出し側が隔離する */
-  conflicted: readonly DroppedEvidenceEntryV1[];
 } {
   // 鍵は §8.2 の優先順位そのまま。`eventId` は封筒の値なので再配送で変わりうる（台帳の鍵が
   // `adapterDeliveryId` であって `eventId` でないのと同じ）。
@@ -874,26 +893,15 @@ function recordDroppedEvidence(
   // 再送ではなく「同じ配送 ID で内容が違う」= §4.3 の corruption で、適用済み経路は同じ条件を
   // `delivery_conflict` にしている。Set にすると孤児経路だけがその検査を失い、2 通目が
   // 通常の重複と区別できないまま黙って消える
-  const recordedOrphans = new Map<string, string | undefined>();
-  for (const entry of previous ?? []) {
-    if (entry.reason !== "orphaned_terminal") continue;
-    const key = orphanKeyOf(entry);
-    if (key !== undefined && !recordedOrphans.has(key)) {
-      recordedOrphans.set(key, declared(entry.terminalFingerprint));
-    }
-  }
-  const conflicted: DroppedEvidenceEntryV1[] = [];
+  const recordedOrphans = recordedOrphanFingerprints(previous);
   const additions = requested.filter((entry) => {
     if (entry.reason !== "orphaned_terminal") return true;
     const key = orphanKeyOf(entry);
     // 同一性の材料をどちらも名乗らない記録は重複判定に参加できない。event 経路では
-    // `idempotencyKeyOf` が先に落とすので、ここに来るのは直接 helper を叩いた場合だけ
-    if (key === undefined || !recordedOrphans.has(key)) return true;
-    const stored = recordedOrphans.get(key);
-    const incoming = declared(entry.terminalFingerprint);
-    // 材料が欠けている側は「違う」と言えない（FR-012 と同じ: 検査は材料が無ければ発動しない）
-    if (stored !== undefined && incoming !== undefined && stored !== incoming) conflicted.push(entry);
-    return false;
+    // `idempotencyKeyOf` が先に落とすので、ここに来るのは直接 helper を叩いた場合だけ。
+    // **鍵が一致していて指紋が食い違う場合は還元器の入口が先に隔離している**ので、ここへは
+    // 来ない（同じ規則を 2 か所に置くと、片方だけが直る）
+    return key === undefined || !recordedOrphans.has(key);
   });
   const kept = [...(previous ?? []), ...additions];
   // 上限を超えたぶんだけ先頭から取る。追加が単独で上限を超える場合も、古い追加から落ちる
@@ -923,7 +931,6 @@ function recordDroppedEvidence(
           ]),
     ],
     added: additions,
-    conflicted,
   };
 }
 
@@ -1074,6 +1081,26 @@ export function reduceTaskWorkState(
       ledger: idempotencyLedger,
       diagnostics: [],
     };
+  }
+
+  // 台帳に entry が無くても、**記録した孤児は同じ配送鍵の指紋を覚えている**。隔離は鍵を
+  // 消費しないので、孤児を記録した後に start が届くと、同じ配送鍵の再送は照合経路へ進んで
+  // 上の衝突検査に一度も当たらない。ここで見ないと「1 つの配送 ID が別の event を運んだ」
+  // という corruption が、start の到着順しだいで検出されたりされなかったりする
+  const recordedFingerprint = recordedOrphanFingerprints(previous.state.droppedEvidence).get(key);
+  const incomingFingerprint = declared(event.canonicalFingerprint);
+  if (
+    recordedFingerprint !== undefined &&
+    incomingFingerprint !== undefined &&
+    recordedFingerprint !== incomingFingerprint
+  ) {
+    return quarantine(previous, idempotencyLedger, [
+      {
+        code: "delivery_conflict",
+        eventId: event.eventId,
+        detail: "同じ配送 ID で記録済みの孤児 terminal と指紋が食い違う",
+      },
+    ]);
   }
 
   const operation = event.operation;
@@ -1480,19 +1507,6 @@ export function reduceTaskWorkState(
           ],
           event.eventId,
         );
-        // 同じ配送鍵で指紋が食い違うなら、それは再送ではなく corruption。台帳経路が
-        // `delivery_conflict` で隔離するのと同じ条件なので、記録も状態も動かさずに診断だけ出す
-        // （corruption は「live な集合から落ちた証跡」ではないので `droppedEvidence` に入れない）
-        if (recorded.conflicted.length > 0) {
-          return quarantine(previous, idempotencyLedger, [
-            ...diagnostics,
-            {
-              code: "delivery_conflict",
-              eventId: event.eventId,
-              detail: "同じ配送 ID で記録済みの孤児 terminal と指紋が食い違う",
-            },
-          ]);
-        }
         // 記録を足せた場合だけでなく、**上限超えの復元配列を刈った場合も**修復した状態を返す。
         // 重複だからと素の隔離に倒すと、刈った結果ごと捨てて凍結 schema に反する状態を
         // 返し続ける（実測: 257 件の状態へ同じ孤児を再送すると 257 件のまま診断も出ない）。

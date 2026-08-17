@@ -311,6 +311,14 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
 | C-blocking-4 | 退避記録の start を `sourceEventIds[0]` から取っているが、start を名指す正本は `correlation.startEventId`（凍結 schema の必須欄） | した（`startEventId="actual-start"`・`sourceEventIds=["later-event","actual-start"]` の復元状態で別 event を start として記録） | **採用**。`sourceEventIds` は append-only の provenance 配列で、schema は先頭が start であることも順序も保証しない。**自分が追加した test も `sourceEventIds` しか変えておらず、誤った authority を固定していた**（`correlation.startEventId` も変える形に直し、並べ替えた状態で専用欄を読むことを別途固定した） |
 | C-advisory-5 | 上限修復の収束は、重複孤児が配列**先頭**にあると 1 revision では終わらない | した（1 回目が孤児ごと刈り、2 回目が再記録、3 回目で差分ゼロ） | **採用（文面 + 回帰）**。正本と evidence を「最大 2 revision で収束」に狭め、先頭配置の回帰 test を足した。既知の「上限をまたぐと再び足されうる」と同じ境界 |
 
+**独立最終レビュー（新規セッション。resume は追認バイアスがかかるため別セッションで実施）**: blocking 3 件。
+
+| # | 指摘 | 再現 | 採否 |
+|---|---|---|---|
+| F-1 | 孤児 F1 を記録した後に start が届くと、同じ配送鍵の F2 再送が照合経路へ進んで衝突検査を素通りする | した（`applied` / 診断ゼロ / operation は succeeded / 指紋は F2、記録は F1 のまま） | **採用**。隔離は配送鍵を消費しないので、この経路は start の到着順しだいで検出されたりされなかったりしていた。記録済み孤児の指紋を還元器の**入口**で引く形にした（台帳の衝突検査と同じ位置）。**副産物**: 記録側に置いていた同じ検査が到達不能になったので畳んだ（同じ規則が 2 か所にあると片方だけ直る） |
+| F-2 | Node 24.16 では `node --test <file>` が file 全体を 1 test として報告するので、変異ゲートの「test を走らせていない変異」検査が機能せず、evidence の 214/214 も再現しない | **しなかった** | **却下（実測）**。同じ Node v24.16.0 で `node --test` は 214 件、`--test-isolation=none` 付きも 214 件で一致した（`--experimental-strip-types` の有無も結果を変えない。24.16 は型注釈を素で剥がす）。指摘者が見た 1 件は load 失敗そのもので、まさにこの検査が拾う形。ゲートは baseline と実行数を同じコマンドで突き合わせるので、報告方法が変わっても両方が同じだけ動く |
+| F-3 | 正本の型ブロックに新しい任意欄・`DroppedEvidenceEntryV1`・`droppedEvidence` が無く、正本だけから移植すると §4.3 の三検査が実装不能 | した（ブロックを目視） | **採用**。§4.1 のブロックに JSON schema と同じ形で足した。FR-017 が求めているのはまさにこの一致 |
+
 `ponytail-review`: 実装差分は条件 1 つとコメントのみで削るものなし。test 側の 300 周ループは
 「鍵の選択による増幅ではない」ことを示すのに 256 件の飽和を跨ぐ必要があるので残す。
 

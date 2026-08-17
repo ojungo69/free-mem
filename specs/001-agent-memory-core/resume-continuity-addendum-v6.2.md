@@ -48,6 +48,7 @@ behaviour the reference implementation had already chosen, or introduces a new r
 | 2026-08-18 | §4.1 a caller MUST take the returned state whatever the outcome; "quarantined" bounds the delivery key, not the state | #39 | Clarifies the #39 rule (recording made one outcome cover two state behaviours) |
 | 2026-08-18 | §4.3 an orphan record is deduplicated by `canonicalFingerprint`, not by `eventId`, because a redelivery is a fresh envelope | #39 | Corrects the #39 rule (the `eventId` key does not converge, measured) |
 | 2026-08-18 | §4.3 a terminal whose matched candidates are all settled and none turn-compatible is recorded too; "matched no candidate at all" was too narrow, and the wider rule is "no operation could retain it" | #43 | Corrects the #43 rule (the narrow reading let a terminal leave the state unrecorded) |
+| 2026-08-18 | §4.1 the versioned schema block now carries the three optional `PendingOperation` fields, `DroppedEvidenceEntryV1`, and the optional `droppedEvidence` array, matching the machine-readable schema | #35, #43, #44 | Corrects the block (a port reading only this document could not store the material §4.3 requires) |
 | 2026-08-18 | §4.3 an orphan whose delivery id matches a record but whose fingerprint differs is reported as `delivery_conflict` rather than suppressed as a duplicate | #39 | Clarifies the same-day key rule (the delivery-first key would otherwise hide the corruption the ledger path already names) |
 | 2026-08-18 | §4.3 an evicted record also carries the evicted operation's start event id, because `operationId` is not unique and id-plus-status cannot say which sibling left the live set | #43 | Corrects the #43 rule (the audit record was ambiguous exactly in the duplicate-id states the reducer supports) |
 | 2026-08-18 | §4.3 the orphan record's duplicate key follows §8.2's order — delivery id first, fingerprint as fallback, separate keyspaces — because the fingerprint alone collapsed 300 distinct deliveries into one record and the delivery id alone stops the honest resend loop converging | #39 | Corrects the same-day `canonicalFingerprint` rule (both single-value keys lose one direction, measured) |
@@ -370,6 +371,23 @@ interface PendingOperation {
   idempotencyKey?: string;
   verificationHint?: string;
   sensitivity: Sensitivity;
+  // §4.3 の三検査を状態だけで行うための材料。すべて任意で、不在は「検証不能」であって合格ではない
+  startIngestSeq?: string;
+  startTurnIdSource?: TurnIdSource;
+  terminalFingerprint?: string;
+}
+
+interface DroppedEvidenceEntryV1 {
+  reason: "evicted" | "orphaned_terminal";
+  recordedAt: string;
+  sensitivity: Sensitivity;
+  // この記録を名指す event。孤児は terminal、退避は operation の start
+  eventId?: string;
+  operationId?: string;
+  status?: "started" | "succeeded" | "failed" | "unknown";
+  // 孤児の重複判定の鍵。優先順位は §8.2 と同じ（配送鍵 → 指紋）
+  terminalFingerprint?: string;
+  adapterDeliveryId?: string;
 }
 
 interface RepositoryStateSnapshot {
@@ -416,6 +434,8 @@ interface CanonicalWorkStateV1 {
   recentCommands: ObservedCommand[];
   recentTests: ObservedTest[];
   pendingOperations: PendingOperation[];
+  // live な集合から落ちた証跡。`pendingOperations` と同じ §10 `arrayItems` で有界
+  droppedEvidence?: DroppedEvidenceEntryV1[];
   repositoryState: RepositoryStateSnapshot;
   semanticResumeNote?: SemanticResumeNoteV1;
   sensitivity: Sensitivity;
