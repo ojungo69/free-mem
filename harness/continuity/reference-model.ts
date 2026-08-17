@@ -817,14 +817,9 @@ function recordDroppedEvidence(
   additions: readonly DroppedEvidenceEntryV1[],
   eventId: string,
 ): { droppedEvidence: DroppedEvidenceEntryV1[]; diagnostics: ContinuityDiagnosticV1[] } {
-  const kept = [...(previous ?? [])];
-  const overflowed: DroppedEvidenceEntryV1[] = [];
-  for (const entry of additions) {
-    while (kept.length >= CONTINUITY_LIMITS.arrayItems) {
-      overflowed.push(kept.shift() as DroppedEvidenceEntryV1);
-    }
-    kept.push(entry);
-  }
+  const kept = [...(previous ?? []), ...additions];
+  // 上限を超えたぶんだけ先頭から取る。追加が単独で上限を超える場合も、古い追加から落ちる
+  const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));
   const label = (entry: DroppedEvidenceEntryV1): string =>
     `${entry.reason}:${entry.operationId ?? entry.eventId ?? "?"}`;
   return {
@@ -920,23 +915,17 @@ function quarantineWithRecord(
   diagnostics: readonly ContinuityDiagnosticV1[],
   recorded: { droppedEvidence: DroppedEvidenceEntryV1[]; diagnostics: ContinuityDiagnosticV1[] },
 ): TaskStateReductionResult {
-  const content = nextContent(
-    previous.state,
-    event,
-    previous.state.pendingOperations,
-    recorded.droppedEvidence,
-  );
-  const contentHash = contentHashOf(content);
-  const revision = deriveRevision(previous.state.stateRevision, event.eventId, contentHash);
+  // 状態の作り方は `commit` と同じ（content / hash / revision / history）。違うのは
+  // **配送鍵を消費しない**ことだけなので、書き写さずに `commit` の結果から 2 欄を差し替える。
+  // 写すと、revision の採番規則を変えたときに片方だけ直る
   return {
+    ...commit(previous, event, ledger, {
+      pendingOperations: [...previous.state.pendingOperations],
+      diagnostics: [...diagnostics, ...recorded.diagnostics],
+      droppedEvidence: recorded.droppedEvidence,
+    }),
     outcome: "quarantined",
-    snapshot: {
-      state: { ...content, stateRevision: revision },
-      history: [...previous.history, { revision, contentHash, eventId: event.eventId }],
-    },
-    contentHash,
     ledger,
-    diagnostics: [...diagnostics, ...recorded.diagnostics],
   };
 }
 

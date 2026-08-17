@@ -398,8 +398,8 @@ mutate "          ...(truncated.length === 0 ? [] : [truncationDiagnostic(event,
 mutate "        .filter((pending) => !compatibleSet.has(pending))" "        .filter(() => false)" && run "飛ばした衝突兄弟を報告しない"
 
 # --- #43 / #39: 消えた証跡の記録 --------------------------------------------
-mutate "      overflowed.push(kept.shift() as DroppedEvidenceEntryV1);" "      overflowed.push(kept.pop() as DroppedEvidenceEntryV1);" && run "記録を末尾から落とす（FR-008）"
-mutate "    while (kept.length >= CONTINUITY_LIMITS.arrayItems) {" "    while (false) {" && run "記録の上限検査を外す（FR-015）"
+mutate "  const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));" "  const overflowed = kept.splice(Math.min(kept.length, CONTINUITY_LIMITS.arrayItems));" && run "記録を末尾から落とす（FR-008）"
+mutate "  const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));" "  const overflowed: DroppedEvidenceEntryV1[] = [];" && run "記録の上限検査を外す（FR-015）"
 mutate "              code: \"dropped_evidence_recorded\" as const," "              code: \"pending_operations_evicted\" as const," && run "記録の追加を別の診断で報告する（FR-009）"
 mutate "      ...(overflowed.length === 0
         ? []
