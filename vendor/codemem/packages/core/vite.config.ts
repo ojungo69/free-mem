@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import license from "rollup-plugin-license";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -18,6 +19,16 @@ export default defineConfig({
 				"drizzle-orm",
 				/^drizzle-orm\//,
 				/^node:/,
+			],
+			plugins: [
+				license({
+					thirdParty: {
+						includePrivate: false,
+						output: {
+							file: resolve(import.meta.dirname, "dist/THIRD_PARTY_NOTICES.md"),
+						},
+					},
+				}),
 			],
 		},
 		outDir: "dist",

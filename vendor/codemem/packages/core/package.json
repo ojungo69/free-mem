@@ -21,6 +21,7 @@
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "catalog:",
+		"rollup-plugin-license": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"
