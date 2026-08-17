@@ -277,12 +277,17 @@ function isBlank(value: string): boolean {
  * 下流が `new Date()` で読んだ瞬間に**申告と別の時刻**になる。lease や expiry の判断に
  * そのまま入る欄なので、綴りとして受理した以上は指す瞬間も一意でなければならない。
  *
- * `toISOString()` と秒までを突き合わせるのは、繰り上がりが必ず綴りを変えるため。小数秒は
- * 桁数が固定されていない（`(\.\d+)?`）ので比較対象から外す。
+ * `toISOString()` と秒までを突き合わせるのは、繰り上がりが必ず綴りを変えるため。
+ *
+ * **秒精度に切り落としてから parse する**。ECMA-262 が定める書式の小数部は 3 桁ちょうどで、
+ * それより多い桁の扱いは実装依存（V8 は切り捨てるが仕様上の保証ではない）。値をそのまま
+ * parse すると、丸め上がる実装では正当な `…:59.9999Z` が翌秒に化けて誤拒否になる。
+ * 暦の実在を見るのに小数秒は要らないので、実装依存の入る余地ごと落とす。
  */
 function isRealInstant(value: string): boolean {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(value.slice(0, 19));
+  const seconds = value.slice(0, 19);
+  const parsed = Date.parse(`${seconds}Z`);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(seconds);
 }
 
 function assertOperationFields(operation: NonNullable<NormalizedContinuityEvent["operation"]>): void {
