@@ -530,8 +530,8 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-18）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**203 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 203 件（黙って飛ばされた変異ゼロ）、復元後は 217/217 green
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**204 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 204 件（黙って飛ばされた変異ゼロ）、復元後は 217/217 green
 （`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 327/327）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
@@ -783,6 +783,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | open な候補の空白の指紋を「違う指紋」と読む（FR-012） | 1 |
 | unknown に倒れる terminal でも指紋の食い違いで隔離する | 1 |
 | 指紋の衝突判定を順序材料がある場合だけにする | 1 |
+| 指紋の衝突判定を rule 1 の terminal だけにする | 1 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

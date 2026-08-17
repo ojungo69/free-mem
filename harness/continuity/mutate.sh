@@ -442,6 +442,7 @@ mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  c
 mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  const storedFingerprint = matched.terminalFingerprint;" && run "open な候補の空白の指紋を「違う指紋」と読む（FR-012）"
 mutate "    terminalStatusOf(terminalEvent) !== \"unknown\"" "    true" && run "unknown に倒れる terminal でも指紋の食い違いで隔離する"
 mutate "    storedFingerprint !== undefined &&" "    startIngestSeqOf(matched) !== undefined &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を順序材料がある場合だけにする"
+mutate "    storedFingerprint !== undefined &&" "    rule === \"native_operation_id\" &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を rule 1 の terminal だけにする"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか

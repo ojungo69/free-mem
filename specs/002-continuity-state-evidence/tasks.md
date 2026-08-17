@@ -335,11 +335,27 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
 | B-5 | evidence 冒頭の実装対応表が、`turnIdSource` を側索引 `TaskWorkStateSnapshotV1.operationStarts` に持ち退避時に delete せよと今も指示している。この PR は索引も型も消したので、表に従うと非直列化の設計を作り直して復元後のパリティを失う | した（`operationStarts` は harness に 1 箇所も残っていない） | **採用（文面）**。指示になっている行（対応表・退避の説明・`terminal_order_unverifiable` の条件・再配送の規則・信頼境界）を要素の 2 欄に直した。§3 の「索引方式をやめた理由」は経緯として残し、当時の設計を語る箇所はそうと分かる書き方にした |
 | B-6 | spec.md の受入シナリオが「連番 50 の terminal は順序違反として隔離される」と書いているが、還元器は `terminal_out_of_order` で `unknown` に倒し配送鍵を消費する | した（コードと正本の両方を確認） | **採用（文面）**。**正本を先に読んで権威を決めた**: §4.3 が隔離を課すのは correlation / hash の衝突で、順序違反は「zero か複数の open にマッチした terminal は何も閉じず候補を `unknown` にして診断を出す」側に落ちる。連番の前後は event と状態だけで決まる定常的な性質なので、隔離すると鍵が消費されず無限再送になる。よって**古かったのは spec.md** で、正本の改訂は不要 |
 
+**`80aa222` の再レビュー（`/codex-review` resume）**: `ok: true`、blocking ゼロ、advisory 2 件。どちらも採用した。
+
+| # | 指摘 | 再現 | 採否 |
+|---|---|---|---|
+| A-1 | 追加した 3 test は既定 fixture（`nativeOperationId` あり）しか使っておらず rule 1 しか通らない。衝突条件を `rule === "native_operation_id"` に限定しても 217 test 全件が通り、rule 2 だけ検査を失う変異が現ゲートを生存する | **レビュアーが変異で実測**（隔離 archive） | **採用**。`MATCH_KEY_ONLY` から作った rule 2 の組で発火・同指紋の通過・`unknown` 非発火を固定し、rule 1 限定にする変異を `mutate.sh` に足した。**自分の変異ゲートが自分の新分岐の半分を測っていなかった**——[[surviving-mutation-means-narrow-test]] の裏返しで、生存しない変異しか書いていなかった |
+| A-2 | spec.md の FR-010 / FR-011 は「確定した operation」の指紋だけを規定しているのに、正本・data-model・実装は復元された `started` / `unknown` にも要素単位の規則を足した。新 test の FR ラベルと feature spec の追跡関係が食い違う | した（文面を突き合わせ） | **採用（文面）**。FR-011a として、open な候補が 1 件に決まる場面の衝突と、`unknown` に倒れる terminal では発動しないことを spec.md に足した |
+
 `ponytail-review`: 実装差分は条件 1 つとコメントのみで削るものなし。test 側の 300 周ループは
 「鍵の選択による増幅ではない」ことを示すのに 256 件の飽和を跨ぐ必要があるので残す。
 
 **Codacy**: 12 件のうち 8 件を反映（うち 1 件は欄集合の縛りを両方向にする改善になった）。残る
-4 件は `node:test` の `test(...)` の floating promise で、このリポジトリの約 220 箇所すべてが同じ形。
+指摘は `80aa222` 時点で 9 件あり、すべて `schema-freeze.test.ts` の同じ 3 種類:
+
+- `node:test` の `test(...)` の floating promise（5 件）。このリポジトリの約 220 箇所すべてが同じ形。
+- `Generic Object Injection Sink`（2 件）。`properties[field]` は test 内のリテラル 2 語の配列を
+  回しているだけで、外部入力は入らない。
+- `Unnecessary optional chain on a non-nullish value`（2 件）。型の上では `Record<string, T>` の
+  index access が常に present に見えるだけで、実際には欠けうる。`?.` を外すと**欄が無いときに
+  TypeError で落ちて**、この test が名指ししたい「どの欄の何が違うか」が出なくなる。fail closed の
+  読み方を優先して残す。
+
 `.codacy.yml` の `include_paths` は `harness/**` を含んでいないので、そもそも範囲外のはずの
 経路が解析されている。必須チェックではないため PR にはこの判断を記録し、設定側の話は #64 に分けた。
 

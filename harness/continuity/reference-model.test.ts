@@ -2226,9 +2226,21 @@ test("記録側の空白の指紋は「無い」として読む（#44 FR-012）"
   }
 });
 
+/** rule 2（matchKey 照合）の terminal。`nativeOperationId` を名乗らない adapter の形 */
+function matchKeyTerminal(overrides: Partial<NormalizedContinuityEvent> = {}): IntakeStampedEventV1 {
+  return terminalEvent({
+    operation: { ...TERMINAL_OPERATION, nativeOperationId: undefined },
+    ...overrides,
+  });
+}
+
 /** 復元状態にだけありうる形: open なまま指紋を持つ pending。還元器は自分では作らない */
-function openWithFingerprint(fingerprint: string, status: "started" | "unknown" = "started") {
-  const started = startedSnapshot();
+function openWithFingerprint(
+  fingerprint: string,
+  status: "started" | "unknown" = "started",
+  start = startEvent(),
+) {
+  const started = startedSnapshot(start);
   return {
     ...started,
     state: {
@@ -2262,6 +2274,19 @@ test("open な候補が持つ指紋は上書きせず衝突にする（#44 FR-01
     assert.equal(conflicting.snapshot.state.stateRevision, restored.state.stateRevision);
     assert.equal(conflicting.ledger.size, 0);
   }
+
+  // **rule 2 でも同じこと**。既定の fixture は `nativeOperationId` を持つので rule 1 しか通らず、
+  // 検査を rule 1 に限定しても test は全件通ってしまう（外部レビューが変異で実測した）。
+  // matchKey 照合の adapter は `nativeOperationId` を名乗らないので、そちらでも固定する
+  const byMatchKey = reduceTaskWorkState(
+    openWithFingerprint("F1", "started", startEvent({ operation: MATCH_KEY_ONLY })),
+    matchKeyTerminal({ canonicalFingerprint: "F2" }),
+    new Map(),
+  );
+  assert.equal(byMatchKey.outcome, "quarantined");
+  assert.deepEqual(byMatchKey.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.equal(byMatchKey.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+  assert.equal(byMatchKey.ledger.size, 0);
 });
 
 test("指紋の衝突は台帳を消費する順序分岐より先に判定する（#44）", () => {
@@ -2316,6 +2341,23 @@ test("open な候補の指紋検査は、材料が揃って初めて発動する
   assert.equal(ambiguous.outcome, "applied");
   assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.status, "unknown");
   assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+
+  // 通す側も非発火側も rule 2 で固定する（rule 1 限定の変異はここでも落ちる）
+  const matchKeyStart = startEvent({ operation: MATCH_KEY_ONLY });
+  const sameByMatchKey = reduceTaskWorkState(
+    openWithFingerprint("fingerprint-terminal", "started", matchKeyStart),
+    matchKeyTerminal(),
+    new Map(),
+  );
+  assert.equal(sameByMatchKey.snapshot.state.pendingOperations[0]?.status, "succeeded");
+  const ambiguousByMatchKey = reduceTaskWorkState(
+    openWithFingerprint("F1", "started", matchKeyStart),
+    matchKeyTerminal({ canonicalFingerprint: "F2", successful: undefined }),
+    new Map(),
+  );
+  assert.equal(ambiguousByMatchKey.outcome, "applied");
+  assert.equal(ambiguousByMatchKey.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.equal(ambiguousByMatchKey.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
 });
 
 test("droppedEvidence を持たない状態も読めて、必要になったら欄が生える（#43 FR-013/FR-014）", () => {
