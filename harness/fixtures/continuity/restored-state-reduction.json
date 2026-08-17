@@ -1,0 +1,277 @@
+{
+  "fixtureId": "continuity/restored-state-reduction",
+  "description": "復元した状態を入力にしたときの §4.3。tool-lifecycle-reduction が空の状態から始めるのに対し、こちらは **新しい欄を持つ状態を読む**（#35 の startIngestSeq / startTurnIdSource、#43 の droppedEvidence、#44 の terminalFingerprint）。expected は harness/continuity/reference-model.ts の出力。",
+  "intakeContext": {
+    "expectedSourceAgent": "claude",
+    "expectedSessionId": "session-1",
+    "exactAgentVersion": "2.1.228 (Claude Code)",
+    "nativeTurnIdentityProven": true,
+    "activeCapabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+    "provenScenarios": [
+      {
+        "scenarioId": "tool-call-lifecycle",
+        "captureMethod": "native_event",
+        "channel": "rpc"
+      }
+    ],
+    "attestation": {
+      "ingestReceiptId": "receipt-intake",
+      "peerIdentityId": "peer-1",
+      "channel": "rpc",
+      "attestedAt": "2026-08-16T00:00:00Z"
+    }
+  },
+  "initialState": {
+    "schemaVersion": 1,
+    "taskLineageId": "lineage-1",
+    "projectId": "project-1",
+    "workspaceId": "workspace-1",
+    "sourceAgent": "claude",
+    "activeFiles": [],
+    "modifiedFiles": [],
+    "recentCommands": [],
+    "recentTests": [],
+    "pendingOperations": [
+      {
+        "operationId": "op-restored-open",
+        "correlation": {
+          "operationId": "op-restored-open",
+          "startEventId": "event-start-restored",
+          "operationMatchKey": "match-key-1",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "toolName": "Bash",
+          "nativeOperationId": "toolu_restored",
+          "canonicalInputHash": "input-hash-1"
+        },
+        "kind": "tool",
+        "description": "Bash",
+        "status": "started",
+        "replayPolicy": "never_auto",
+        "sourceEventIds": [
+          "event-start-restored"
+        ],
+        "startedAt": "2026-08-16T00:00:01Z",
+        "sensitivity": "private",
+        "startIngestSeq": "9007199254740994",
+        "startTurnIdSource": "native"
+      },
+      {
+        "operationId": "op-restored-settled",
+        "correlation": {
+          "operationId": "op-restored-settled",
+          "startEventId": "event-start-settled",
+          "operationMatchKey": "match-key-2",
+          "sessionId": "session-1",
+          "taskLineageId": "lineage-1",
+          "turnId": "turn-1",
+          "toolName": "Bash",
+          "nativeOperationId": "toolu_settled",
+          "canonicalInputHash": "input-hash-2"
+        },
+        "kind": "tool",
+        "description": "Bash",
+        "status": "succeeded",
+        "replayPolicy": "never_auto",
+        "sourceEventIds": [
+          "event-start-settled",
+          "event-terminal-settled"
+        ],
+        "startedAt": "2026-08-16T00:00:01Z",
+        "terminalAt": "2026-08-16T00:00:02Z",
+        "sensitivity": "private",
+        "startIngestSeq": "9007199254740994",
+        "startTurnIdSource": "native",
+        "terminalFingerprint": "fingerprint-terminal-settled"
+      }
+    ],
+    "droppedEvidence": [
+      {
+        "reason": "evicted",
+        "operationId": "op-dropped-earlier",
+        "status": "unknown",
+        "recordedAt": "2026-08-15T00:00:00Z",
+        "sensitivity": "normal"
+      }
+    ],
+    "repositoryState": {
+      "repositoryId": "repo-1",
+      "workspaceId": "workspace-1",
+      "capturedAt": "2026-08-16T00:00:00Z"
+    },
+    "sensitivity": "private",
+    "lastIngestSeq": "9007199254740995",
+    "stateRevision": "restored-genesis",
+    "updatedAt": "2026-08-16T00:00:02Z"
+  },
+  "events": [
+    {
+      "eventId": "event-terminal-restored",
+      "adapterDeliveryId": "delivery-terminal-restored",
+      "canonicalFingerprint": "fingerprint-terminal-restored",
+      "kind": "tool_completed",
+      "ingestSeq": "9007199254740996",
+      "occurredAt": "2026-08-16T00:00:03Z",
+      "sessionId": "session-1",
+      "taskLineageId": "lineage-1",
+      "turnId": "turn-1",
+      "turnIdSource": "native",
+      "sourceAgent": "claude",
+      "provenance": {
+        "sourceAgentVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "native",
+        "captureMethod": "native_event",
+        "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+        "scenarioId": "tool-call-lifecycle",
+        "ingestAttestation": {
+          "ingestReceiptId": "receipt-r1",
+          "peerIdentityId": "peer-1",
+          "channel": "rpc",
+          "attestedAt": "2026-08-16T00:00:03Z"
+        }
+      },
+      "operation": {
+        "phase": "terminal",
+        "operationMatchKey": "match-key-1",
+        "operationKind": "Bash",
+        "nativeOperationId": "toolu_restored",
+        "canonicalInputHash": "input-hash-1"
+      },
+      "payload": {
+        "tool_response": "ok"
+      },
+      "successful": true
+    },
+    {
+      "eventId": "event-terminal-settled-again",
+      "adapterDeliveryId": "delivery-terminal-settled-again",
+      "canonicalFingerprint": "fingerprint-terminal-settled-OTHER",
+      "kind": "tool_completed",
+      "ingestSeq": "9007199254740997",
+      "occurredAt": "2026-08-16T00:00:04Z",
+      "sessionId": "session-1",
+      "taskLineageId": "lineage-1",
+      "turnId": "turn-1",
+      "turnIdSource": "native",
+      "sourceAgent": "claude",
+      "provenance": {
+        "sourceAgentVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "native",
+        "captureMethod": "native_event",
+        "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+        "scenarioId": "tool-call-lifecycle",
+        "ingestAttestation": {
+          "ingestReceiptId": "receipt-r2",
+          "peerIdentityId": "peer-1",
+          "channel": "rpc",
+          "attestedAt": "2026-08-16T00:00:04Z"
+        }
+      },
+      "operation": {
+        "phase": "terminal",
+        "operationMatchKey": "match-key-2",
+        "operationKind": "Bash",
+        "nativeOperationId": "toolu_settled",
+        "canonicalInputHash": "input-hash-2"
+      },
+      "payload": {
+        "tool_response": "ok"
+      },
+      "successful": true
+    },
+    {
+      "eventId": "event-terminal-orphan-restored",
+      "adapterDeliveryId": "delivery-terminal-orphan-restored",
+      "canonicalFingerprint": "fingerprint-terminal-orphan-restored",
+      "kind": "tool_completed",
+      "ingestSeq": "9007199254740998",
+      "occurredAt": "2026-08-16T00:00:05Z",
+      "sessionId": "session-1",
+      "taskLineageId": "lineage-1",
+      "turnId": "turn-1",
+      "turnIdSource": "native",
+      "sourceAgent": "claude",
+      "provenance": {
+        "sourceAgentVersion": "2.1.228 (Claude Code)",
+        "evidenceKind": "native",
+        "captureMethod": "native_event",
+        "capabilityHash": "b1946ac92492d2347c6235b4d2611184e2f4a1d94d4b3f7d3b5c3f9d0c6e8a11",
+        "scenarioId": "tool-call-lifecycle",
+        "ingestAttestation": {
+          "ingestReceiptId": "receipt-r3",
+          "peerIdentityId": "peer-1",
+          "channel": "rpc",
+          "attestedAt": "2026-08-16T00:00:05Z"
+        }
+      },
+      "operation": {
+        "phase": "terminal",
+        "operationMatchKey": "match-key-absent",
+        "operationKind": "Bash",
+        "nativeOperationId": "toolu_absent",
+        "canonicalInputHash": "input-hash-absent"
+      },
+      "payload": {
+        "tool_response": "ok"
+      },
+      "successful": true
+    }
+  ],
+  "expected": [
+    {
+      "eventId": "event-terminal-restored",
+      "evidenceKind": "native",
+      "outcome": "applied",
+      "contentHash": "d37c2b72de39ab20eafc2b255aacd45e7799699f96d28241509c90b178f72acc",
+      "stateRevision": "8db92d885a84d17487bb9865eeb6341d91ff8596e014d7260d37e106a874b36b",
+      "historyLength": 1,
+      "pendingStatuses": [
+        "succeeded",
+        "succeeded"
+      ],
+      "droppedEvidenceReasons": [
+        "evicted"
+      ],
+      "diagnostics": []
+    },
+    {
+      "eventId": "event-terminal-settled-again",
+      "evidenceKind": "native",
+      "outcome": "quarantined",
+      "contentHash": "d37c2b72de39ab20eafc2b255aacd45e7799699f96d28241509c90b178f72acc",
+      "stateRevision": "8db92d885a84d17487bb9865eeb6341d91ff8596e014d7260d37e106a874b36b",
+      "historyLength": 1,
+      "pendingStatuses": [
+        "succeeded",
+        "succeeded"
+      ],
+      "droppedEvidenceReasons": [
+        "evicted"
+      ],
+      "diagnostics": [
+        "terminal_conflict"
+      ]
+    },
+    {
+      "eventId": "event-terminal-orphan-restored",
+      "evidenceKind": "native",
+      "outcome": "quarantined",
+      "contentHash": "3fa838e32ca5ed23a102bf0f96aa4d82b3b1a049cbb779c785dfef8b6c4af65a",
+      "stateRevision": "32f8fce387b664fc37bb7b87beef32d8871a8ca649512327d4b3858bea2b08f8",
+      "historyLength": 2,
+      "pendingStatuses": [
+        "succeeded",
+        "succeeded"
+      ],
+      "droppedEvidenceReasons": [
+        "evicted",
+        "orphaned_terminal"
+      ],
+      "diagnostics": [
+        "terminal_orphaned",
+        "dropped_evidence_recorded"
+      ]
+    }
+  ]
+}

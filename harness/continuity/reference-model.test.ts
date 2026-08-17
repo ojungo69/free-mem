@@ -2313,6 +2313,7 @@ interface ReductionFixture {
     stateRevision: string;
     historyLength: number;
     pendingStatuses: string[];
+    droppedEvidenceReasons: string[];
     diagnostics: string[];
   }>;
 }
@@ -2423,34 +2424,44 @@ test("negative fixture は宣言した層で落ちる", () => {
   assert.equal(stampIntakeEvidence(repaired, fixture.intakeContext).event.provenance.evidenceKind, "native");
 });
 
-test("fixture の期待値は参照実装の出力と一致する（TS/Rust parity の基準）", () => {
-  const fixture = readIJsonFile<ReductionFixture>(
-    new URL("../fixtures/continuity/tool-lifecycle-reduction.json", import.meta.url),
-  );
-  let snapshot: TaskWorkStateSnapshotV1 = {
-    state: fixture.initialState,
-    history: [],
-  };
-  let ledger: IdempotencyLedger = new Map();
-  const actual = fixture.events.map((raw) => {
-    const event = stampIntakeEvidence(raw, fixture.intakeContext).event;
-    const result = reduceTaskWorkState(snapshot, event, ledger);
-    snapshot = result.snapshot;
-    ledger = result.ledger;
-    return {
-      eventId: event.eventId,
-      evidenceKind: event.provenance.evidenceKind,
-      outcome: result.outcome,
-      contentHash: result.contentHash,
-      stateRevision: result.snapshot.state.stateRevision,
-      historyLength: result.snapshot.history.length,
-      pendingStatuses: result.snapshot.state.pendingOperations.map((p) => p.status),
-      diagnostics: result.diagnostics.map((d) => d.code),
+/**
+ * parity fixture は 2 本ある。**旧い形（新しい欄を持たない状態）を消さない**のが要件で
+ * （FR-013/FR-014 の証拠がそこにある）、新しい欄を**読む**側は別 fixture で見る。
+ * 1 本にまとめると、移植が新しい欄を無視しても片方の hash が合ってしまう。
+ */
+for (const fixtureId of ["tool-lifecycle-reduction", "restored-state-reduction"]) {
+  test(`fixture ${fixtureId} の期待値は参照実装の出力と一致する（TS/Rust parity の基準）`, () => {
+    const fixture = readIJsonFile<ReductionFixture>(
+      new URL(`../fixtures/continuity/${fixtureId}.json`, import.meta.url),
+    );
+    let snapshot: TaskWorkStateSnapshotV1 = {
+      state: fixture.initialState,
+      history: [],
     };
+    let ledger: IdempotencyLedger = new Map();
+    const actual = fixture.events.map((raw) => {
+      const event = stampIntakeEvidence(raw, fixture.intakeContext).event;
+      const result = reduceTaskWorkState(snapshot, event, ledger);
+      snapshot = result.snapshot;
+      ledger = result.ledger;
+      return {
+        eventId: event.eventId,
+        evidenceKind: event.provenance.evidenceKind,
+        outcome: result.outcome,
+        contentHash: result.contentHash,
+        stateRevision: result.snapshot.state.stateRevision,
+        historyLength: result.snapshot.history.length,
+        pendingStatuses: result.snapshot.state.pendingOperations.map((p) => p.status),
+        // hash に含まれてはいるが、合わなかったときにどこが違うかを移植側に見せる
+        // （`pendingStatuses` と同じ役割）
+        droppedEvidenceReasons: (result.snapshot.state.droppedEvidence ?? []).map((e) => e.reason),
+        diagnostics: result.diagnostics.map((d) => d.code),
+      };
+    });
+    assert.deepEqual(actual, fixture.expected);
+    assert.equal(fixture.expected.length > 0, true);
   });
-  assert.deepEqual(actual, fixture.expected);
-  assert.equal(fixture.expected.length > 0, true);
-});
+}
 
 // --- code-review 指摘の回帰（51a339c で実測された経路） ----------------------
 

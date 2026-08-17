@@ -200,6 +200,7 @@
       "pendingStatuses": [
         "started"
       ],
+      "droppedEvidenceReasons": [],
       "diagnostics": []
     },
     {
@@ -212,6 +213,7 @@
       "pendingStatuses": [
         "started"
       ],
+      "droppedEvidenceReasons": [],
       "diagnostics": []
     },
     {
@@ -224,6 +226,7 @@
       "pendingStatuses": [
         "succeeded"
       ],
+      "droppedEvidenceReasons": [],
       "diagnostics": []
     },
     {
@@ -235,6 +238,9 @@
       "historyLength": 3,
       "pendingStatuses": [
         "succeeded"
+      ],
+      "droppedEvidenceReasons": [
+        "orphaned_terminal"
       ],
       "diagnostics": [
         "terminal_orphaned",

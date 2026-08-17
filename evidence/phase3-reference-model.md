@@ -324,9 +324,34 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
 
 - **per-kind の状態投影は未実装**。prompt / file / command / test を `Observed*` へ写す規則が addendum に
   無いため、還元は bookkeeping（watermark・revision・pendingOperations）だけを行う。
-- **§4.3 の権威順序と turn 種別の検査は状態の外の索引に依存する**（#35）。`PendingOperation` /
-  `OperationCorrelationV1` は start の `ingestSeq` も `turnIdSource` も持たないので、
-  `TaskWorkStateSnapshotV1.operationStarts` を frozen schema の外に置いた。
+- **§4.3 の 3 つの検査は状態だけで実施できる（#35 / #44 で解消済み。以前はここが穴だった）**。
+  権威順序（terminal は start より後）・rule 2 の turn 種別・payload/source hash の衝突は、いずれも
+  `PendingOperation` に載せた任意欄（`startIngestSeq` / `startTurnIdSource` / `terminalFingerprint`）
+  から読む。**索引方式をやめた理由**: 最初は `TaskWorkStateSnapshotV1.operationStarts` を
+  凍結 schema の外に置いていたが、鍵が `operationId` である以上、**凍結 schema は `operationId` に
+  一意性を課さない**（`maxLength` だけ）ので、同じ id の pending が並ぶ状態では**どちらの兄弟の
+  材料か原理的に判別できない**。判別せずに引くと片方の材料でもう片方が検査され、実測で兄弟 B の
+  `ingestSeq` 100 を使って A 宛ての terminal が診断ゼロで通った（逆向きの値では健全な terminal が
+  弾かれた）。当時は「曖昧なら材料なし」に倒して塞いだが、それは**生き残った側の証跡まで
+  `unknown` に落とす**代償を払っていた（退避で同名の材料をまとめて消す規則も同じ理由で必要だった）。
+  要素に載せると鍵が要らず、材料は operation と同じ寿命になり、退避・復元でも取り違えが起きない。
+  索引・`OperationStartFactsV1`・`startFactsFor`・退避時の索引同期はすべて削除した（実装は 29 行純減）。
+  **残る境界**: 3 欄はいずれも任意なので、この版より前に書かれた checkpoint と、欄を書かない別実装の
+  状態には無い。**材料が無いことは検査合格ではない**——順序は `terminal_order_unverifiable` で
+  `unknown` に倒し、turn 種別は候補を落とさず免除し、指紋は従来どおり適用済み扱いにする。
+  空白も「無い」として読む（素で見ると空文字が `compareIngestSeq` に渡り、確認できていない順序が
+  確認できたことになる）。
+- **状態から消えた証跡は状態に残る（#43 / #39 で解消済み）**。上限で退避された operation と、
+  候補が 1 件も無かった terminal を `CanonicalWorkStateV1.droppedEvidence` に有界に記録する。
+  以前は「記録先が凍結 schema に無いので、隔離と commit の差は配送鍵を焼くかどうかしかない」と
+  書いていた箇所で、状態を受け取った側には「静かに消えた」と「そもそも来なかった」の区別が
+  届いていなかった。**孤児の記録は隔離の代わりではない**: 配送鍵は消費しないまま記録だけ足すので、
+  後から start が届けば同じ terminal の再配送で閉じられる。記録が状態を変える以上 revision を
+  採番し history にも積む（片方だけ動かすと状態の revision が自分の履歴の末尾に無くなる）。
+  同じ eventId は 2 度足さない——隔離は鍵を消費せず還元器は純関数なので、素で足すと記録が再送の
+  たびに伸びて 256 件の枠を食い潰す。**残る境界**: 記録が 256 件を超えたら先頭から落ちるので、
+  古い孤児の行が落ちた後に同じ terminal が再送されると 1 行だけ積み直される。打ち切りは
+  delivery 層の責務（evidence §2.10）で、還元器の側では止められない。
 - **boundary authority（§2.2）は未実装**。§3.1 の必須 negative の後半
   「forged native event は task boundary を confirm できない」は、confirm 側が入るまで
   「synthesized へ降格する」ところまでしか検証していない。
@@ -392,16 +417,21 @@ node harness/contract-hashes.mjs > harness/contract-hashes.json   # fixture を�
 bash harness/continuity/mutate.sh                                 # §5 の変異テスト
 ```
 
-`harness/fixtures/continuity/tool-lifecycle-reduction.json` の `expected` は参照実装の出力そのもの。
-導出（2.1）を変えたら test が期待値との差分で落ちるので、意図した変更であることを確認してから
-`expected` を書き直す。
+`harness/fixtures/continuity/tool-lifecycle-reduction.json` と `restored-state-reduction.json` の
+`expected` は参照実装の出力そのもの。導出（2.1）を変えたら test が期待値との差分で落ちるので、
+意図した変更であることを確認してから `expected` を書き直す。
+
+**2 本ある理由**: 前者は**空の状態**から始め、後者は**新しい欄を持つ状態を読む**（#35 の
+`startIngestSeq` / `startTurnIdSource`、#43 の `droppedEvidence`、#44 の `terminalFingerprint`）。
+新しい欄はすべて任意なので、1 本にまとめると「欄を書きはするが読まない」移植でも hash が合う。
+旧い形の fixture を消さないのも同じ理由で、欄を持たない状態が読めること自体が要件（FR-013/FR-014）。
 
 ## 5. 変異テスト（2026-08-17）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**164 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 164 件（黙って飛ばされた変異ゼロ）、復元後は 181/181 green
-（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 286/286）。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**179 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 179 件（黙って飛ばされた変異ゼロ）、復元後は 200/200 green
+（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 307/307）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
 したら、次で突き合わせてから doc を直す。CI は `mutate.sh` を走らせるが doc は見ないので、
@@ -451,7 +481,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 |---|---:|
 | dedupe 判定を外す | 5 |
 | lastIngestSeq の max を外す | 1 |
-| ingestSeq を数値比較にする | 1 |
+| ingestSeq を数値比較にする | 3 |
 | envelope 必須を外す | 3 |
 | intake の attestation 必須を外す | 5 |
 | caller の attestation を信じる | 1 |
@@ -480,26 +510,24 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | kind と successful の矛盾を素通しする | 2 |
 | 矛盾診断を照合済み経路だけに戻す | 1 |
 | 矛盾した terminal を succeeded にする | 1 |
-| start 不在の分岐を外す | 11 |
-| terminal の権威順序検査を外す | 3 |
+| start 不在の分岐を外す | 7 |
+| terminal の権威順序検査を外す | 4 |
 | 順序違反で候補を巻き込む | 1 |
-| 候補ゼロの terminal を台帳に入れる | 18 |
-| 順序不明で候補を unknown にしない | 10 |
-| 退避で順序材料を刈らない | 2 |
-| 同名が残るなら退避側の順序材料を残す | 1 |
+| 候補ゼロの terminal を台帳に入れる | 24 |
+| 順序不明で候補を unknown にしない | 5 |
 | 再配送 start を nativeOperationId で拾わない | 12 |
-| 再配送の判定を matchKey にする | 11 |
+| 再配送の判定を matchKey にする | 15 |
 | start の identity 衝突検査を外す | 9 |
 | start の matchKey 衝突検査を外す | 2 |
 | start の canonicalInputHash 衝突検査を外す | 2 |
 | 放棄を session で絞らない | 2 |
-| 候補の unknown 化を外す | 18 |
+| 候補の unknown 化を外す | 16 |
 | unknown 化で証跡を残さない | 2 |
 | sourceEventIds の上限を外す | 1 |
-| pendingOperations の上限を外す | 7 |
+| pendingOperations の上限を外す | 11 |
 | 退避対象から open を外す（詰まる） | 1 |
-| 退避件数の上限を外す | 7 |
-| 退避を黙って行う | 2 |
+| 退避件数の上限を外す | 10 |
+| 退避を黙って行う | 3 |
 | revision ごとの配列分離を外す | 1 |
 | 放棄経路の dedupe を外す | 2 |
 | 台帳の keyspace 分離を外す | 2 |
@@ -510,14 +538,14 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | start の toolName 存在ガードを外す | 3 |
 | 放棄 kind の制限を外す | 1 |
 | 配送 ID 衝突の隔離を外す | 1 |
-| sensitivity 集約を normal 固定にする | 4 |
+| sensitivity 集約を normal 固定にする | 6 |
 | adapter 固有 kind の欄検査を外す | 1 |
 | start の nativeOperationId 比較を外す | 1 |
 | terminal の operationKind 比較を外す | 2 |
 | terminal の toolName 存在ガードを外す | 4 |
 | 放棄経路の配送 ID 衝突検査を外す | 1 |
 | 空 canonicalFingerprint を素通しする | 2 |
-| 確定済み成否との矛盾検査を外す | 5 |
+| 確定済み成否との矛盾検査を外す | 4 |
 | 成否を主張しない terminal も矛盾扱いにする | 4 |
 | 成否が一致する兄弟の検査を外す | 2 |
 | 放棄 kind を還元器に通す | 1 |
@@ -525,8 +553,8 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空文字の eventId を素通しする | 2 |
 | sensitivity の下限に直前の集約値を使わない | 1 |
 | 空文字の sessionId を素通しする | 3 |
-| 空白文字を identity 材料として通す | 12 |
-| 書式制御文字だけの identity 材料を通す | 6 |
+| 空白文字を identity 材料として通す | 15 |
+| 書式制御文字だけの identity 材料を通す | 7 |
 | 空の operationMatchKey / operationKind を素通しする | 2 |
 | open の選択を identity 互換に絞らない | 2 |
 | canonicalInputHash の省略を照合可能として扱う | 2 |
@@ -535,7 +563,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 直接呼びの envelope 検査を外す | 1 |
 | 再配送 start の turn 検査を外す | 1 |
 | 再配送 start の turn 存在ガードを外す | 5 |
-| 候補 1 件でも照合不能ゲートを発火させる | 3 |
+| 候補 1 件でも照合不能ゲートを発火させる | 4 |
 | 照合不能ゲートの候補数を 1 件ずらす | 2 |
 | 照合不能を成否矛盾検査より先に判定する | 1 |
 | 空白だけの capability hash を authority にする | 1 |
@@ -543,7 +571,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空白だけの exact version を authority にする | 1 |
 | 直接呼びの Agent 検査を外す | 3 |
 | rule 2 の turn 種別の絞り込みを外す | 8 |
-| turn 種別の材料が無い候補も落とす | 4 |
+| turn 種別の材料が無い候補も落とす | 3 |
 | 種別違いの巻き込み範囲を広げる | 1 |
 | 受領証 ID が空でも認証済みとする | 1 |
 | peer identity が空でも認証済みとする | 1 |
@@ -558,11 +586,11 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空白の sourceAgent を素通しする | 1 |
 | turn 両立ゼロの確定済みを適用済みにする | 8 |
 | 矛盾判定の母数まで turn で絞る | 2 |
-| 候補の unknown 化を operationId の等値で当てる | 3 |
+| 候補の unknown 化を operationId の等値で当てる | 2 |
 | 放棄の適用先を operationId の等値で当てる | 2 |
 | 確定済みの説明に turn 両立を求めない | 1 |
 | 確定済みの説明で turn 種別だけ見ない | 1 |
-| open の切り分けを turn 絞り込みより前にする | 15 |
+| open の切り分けを turn 絞り込みより前にする | 16 |
 | 矛盾判定に open な候補も混ぜる | 2 |
 | 退避の保持判定を operationId の一致に戻す | 2 |
 | 記録できる候補が居ても隔離を優先する | 1 |
@@ -580,10 +608,9 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 再配送が持つ native id を記録に埋めない | 4 |
 | 名乗っている兄弟が非互換でも空白へ埋める | 1 |
 | 抑止の走査集合を session で絞らない | 1 |
-| 候補を start の順序で絞らない | 1 |
+| 候補を start の順序で絞らない | 2 |
 | 全件順序不適合でも空に絞る | 2 |
 | turnIdSource の語彙検査を外す | 2 |
-| 側索引の同名判定で別 lineage も数える | 2 |
 | 状態側の空白 lineage を通す | 1 |
 | event 側の空白 lineage を通す | 2 |
 | IsoTimestamp の暦検査を外す | 5 |
@@ -598,21 +625,39 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 再配送 start の truncation 診断を落とす | 1 |
 | 再配送 start の truncation 対象を全 pending にする | 20 |
 | truncation の対象を照合相手の外へ広げる | 1 |
-| 任意欄の空白を present として読む | 13 |
+| 任意欄の空白を present として読む | 16 |
 | 候補の toolName を素で比べる | 3 |
-| 照合不能ゲートの母数を compatible に戻す | 2 |
-| 適用済みの再配送も隔離する | 4 |
+| 照合不能ゲートの母数を compatible に戻す | 3 |
+| 適用済みの再配送も隔離する | 6 |
 | 記録済みの event でも truncation を出す | 1 |
 | 再配送 start の原因 event を残さない | 4 |
 | 放棄の配送衝突を診断に出さない | 1 |
-| 同名 id でも側索引を引く | 3 |
 | correlate の入口で terminal 相を要求しない | 1 |
-| 兄弟から互換な候補を選ばない（derived id / native id 両方） | 23 |
+| 兄弟から互換な候補を選ばない（derived id / native id 両方） | 24 |
 | 再配送の相手を集合ごとに選ぶ | 7 |
 | native id が一致する兄弟へ帰属させない | 1 |
 | 届いた start が native id を持たなくても帰属を動かす | 1 |
 | 兄弟の連結順を入れ替える | 1 |
 | 飛ばした衝突兄弟を報告しない | 4 |
+| start の turn 種別を記録しない | 15 |
+| start の取り込み連番を記録しない | 57 |
+| unknown に倒した operation にも指紋を残す | 1 |
+| 再配送 start でも順序材料を書く | 6 |
+| 受理した terminal の指紋を残さない（FR-010） | 3 |
+| 孤児 terminal を状態に記録しない | 11 |
+| 孤児の記録を normal で残す | 3 |
+| 孤児の記録を再送のたびに足す | 1 |
+| 指紋が一致しても再配送として説明しない | 10 |
+| 指紋の衝突検査を外す（FR-011） | 2 |
+| 指紋を持たない旧い状態も衝突にする（FR-012） | 4 |
+| 空白の turn 種別を値として読む | 1 |
+| 空白の順序材料を値として読む | 1 |
+| 記録の上限検査を外す（FR-015） | 1 |
+| 記録の脱落を診断に出さない（FR-009） | 1 |
+| 記録の追加を別の診断で報告する（FR-009） | 11 |
+| 記録を末尾から落とす（FR-008） | 1 |
+| 退避の記録で機密度を引き継がない | 1 |
+| 退避を状態に記録しない | 4 |
 
 「通るべきものが通る」側も対で置いている: 語彙外 kind の envelope、非 operation kind の envelope 無し、
 turn 同一性の 3 通りの正しい組み合わせ、optional が全部無い状態の hash、turn が unavailable でも

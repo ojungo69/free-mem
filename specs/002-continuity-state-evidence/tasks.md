@@ -195,16 +195,28 @@ start より小さい連番の terminal を与えて隔離されること。外�
 「hash 差分をテストより先」を守る。fixture を変えて hash を再生成し忘れると、ローカルは緑のまま
 CI だけが落ちる。
 
-- [ ] T035 `harness/fixtures/continuity/` に新しい欄を持つ状態の fixture を足す。**旧い形（新しい欄を持たない）の fixture は 1 件も消さない** — FR-013/FR-014 の証拠がそこにある
-- [ ] T036 契約 hash を再生成し（`node harness/contract-hashes.mjs`）、差分が schema 2 件 + 新しい fixture 分だけであることを確認する。**手で書かない**（FR-016）
-- [ ] T037 `harness/continuity/mutate.sh` から、消えた規則を守っていた変異を削除する — `startFactsFor` の同名 pending 数え上げ、`operationStarts` の退避同期。アンカー切れで黙って飛ぶのではなく**明示的に消す**
-- [ ] T038 `harness/continuity/mutate.sh` に data-model.md §7 で先に決めた 6 つの変異を足す — FR-003（再配送でも `startIngestSeq` を書く）/ FR-004（欄が無いとき検査を素通り）/ FR-008（`recordedAt` 昇順で落とす）/ FR-009（脱落の診断を出さない）/ FR-012（指紋が無くても衝突扱い）/ FR-015（記録の上限検査を外す）。**各変異が「落ちるべきテスト」だけを赤にすることを 1 本ずつ確かめる**
-- [ ] T039 `mutate.sh` の 実行件数 / 期待件数 / 生存数 を突き合わせる。ずれたら `comm -23 <(期待の一覧) <(実行された一覧)` でアンカー切れを特定して直す（生存 0 かどうかより先に**実行件数**を見る）
-- [ ] T040 [P] `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md` §4.3 の文面を実装に一致させる（FR-017）— 「候補 0 件の terminal は unmatched evidence として保存する」を、実装がとる「隔離しつつ `droppedEvidence` に有界に記録する」に直す。3 つの検査が状態だけで実施できるようになったことも書く
-- [ ] T041 [P] `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md` §0.1 の Revision log に改定行を足す。節番号とファイル名は動かさない
-- [ ] T042 [P] `evidence/phase3-reference-model.md` に、索引方式（`operationStarts`）をやめた理由（R-001: `operationId` に一意性が無いので鍵にできない）と、新しい規則の根拠を記録する。§5 の件数（テスト数・変異の 実行/期待）を実測値に更新する
-- [ ] T043 5 つのゲートを通しで実行する — `tsc` / 全テスト / `mutate.sh`（生存 0・実行=期待）/ `contract-hashes.json` 差分が再生成と一致 / `git status` に未追跡の生成物が無い
-- [ ] T044 SC-003 を機械的に示す — `git diff origin/main -- harness/continuity/reference-model.test.ts` に**既存テストの期待値の書き換えが 1 件も無い**こと（追加のみ）を確認する。書き換えがあるなら、新しい欄が無い経路の挙動を変えている
+- [X] T035 `harness/fixtures/continuity/` に新しい欄を持つ状態の fixture を足す。**旧い形（新しい欄を持たない）の fixture は 1 件も消さない** — FR-013/FR-014 の証拠がそこにある
+- [X] T036 契約 hash を再生成し（`node harness/contract-hashes.mjs`）、差分が schema 2 件 + 新しい fixture 分だけであることを確認する。**手で書かない**（FR-016）
+- [X] T037 `harness/continuity/mutate.sh` から、消えた規則を守っていた変異を削除する — `startFactsFor` の同名 pending 数え上げ、`operationStarts` の退避同期。アンカー切れで黙って飛ぶのではなく**明示的に消す**
+- [X] T038 `harness/continuity/mutate.sh` に data-model.md §7 で先に決めた 6 つの変異を足す — FR-003（再配送でも `startIngestSeq` を書く）/ FR-004（欄が無いとき検査を素通り）/ FR-008（`recordedAt` 昇順で落とす）/ FR-009（脱落の診断を出さない）/ FR-012（指紋が無くても衝突扱い）/ FR-015（記録の上限検査を外す）。**各変異が「落ちるべきテスト」だけを赤にすることを 1 本ずつ確かめる**
+- [X] T039 `mutate.sh` の 実行件数 / 期待件数 / 生存数 を突き合わせる。ずれたら `comm -23 <(期待の一覧) <(実行された一覧)` でアンカー切れを特定して直す（生存 0 かどうかより先に**実行件数**を見る）
+- [X] T040 [P] `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md` §4.3 の文面を実装に一致させる（FR-017）— 「候補 0 件の terminal は unmatched evidence として保存する」を、実装がとる「隔離しつつ `droppedEvidence` に有界に記録する」に直す。3 つの検査が状態だけで実施できるようになったことも書く
+- [X] T041 [P] `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md` §0.1 の Revision log に改定行を足す。節番号とファイル名は動かさない
+- [X] T042 [P] `evidence/phase3-reference-model.md` に、索引方式（`operationStarts`）をやめた理由（R-001: `operationId` に一意性が無いので鍵にできない）と、新しい規則の根拠を記録する。§5 の件数（テスト数・変異の 実行/期待）を実測値に更新する
+- [X] T043 5 つのゲートを通しで実行する — `tsc` / 全テスト / `mutate.sh`（生存 0・実行=期待）/ `contract-hashes.json` 差分が再生成と一致 / `git status` に未追跡の生成物が無い
+- [X] T044 SC-003 を機械的に示す — `git diff origin/main -- harness/continuity/reference-model.test.ts` に**既存テストの期待値の書き換えが 1 件も無い**こと（追加のみ）を確認する。書き換えがあるなら、新しい欄が無い経路の挙動を変えている
+**T044 の結果（SC-003 は満たしていない）**: `git diff origin/main -- harness/continuity/reference-model.test.ts` の削除行を数えると、期待値に触れた行が 37 ある。追加のみでは済まなかった。内訳と、それぞれが「新しい欄が無い経路の挙動を変えた」ものかどうか:
+
+| 分類 | 件数 | 挙動の変更か |
+|---|---|---|
+| `operationStarts` の読み書きを要素の欄へ置き換え | 7 | いいえ（索引が消えた構造変更。同じ値を別の場所から読む） |
+| 側索引の欠陥を仕様として固定していた test（T019 の表） | 5 | **はい。ただし意図した変更** — その欠陥を消すのが US1 の目的 |
+| 診断の網羅列挙に `dropped_evidence_recorded` を追加 | 7 | いいえ（FR-009 が新しい診断を足した結果。判断・status は不変） |
+| parity fixture を 2 本に一般化（loop 化） | 2 | いいえ（構造変更） |
+| #44 で再配送の指紋を受理済みと揃えた | 5 | いいえ（**入力**の変更。期待値は不変） |
+
+**新しい欄が無い経路の挙動を変えたものはゼロ**: 欄を持たない状態は 5 分類のどれでも従来どおり（`terminal_order_unverifiable` / rule 2 の免除 / `terminal_already_applied`）で、それぞれ test と変異で固定してある。SC-003 の文言が想定していなかったのは「消す対象の欠陥そのものを固定している test」の存在で、そこは表で明示する形にした
+
 - [ ] T045 `/code-review`（正しさ）→ `ponytail-review`（過剰実装）の 2 本立てを通す。この feature は Constitution III と `rules/security.md` の対象範囲（入力検証・fail-closed の境界）なので、**外部 CLI へ委譲せず Claude Code が実装しレビューする**
 - [ ] T046 `speckit-verify-tasks` を 1 回通し、`[X]` に実装が伴っているかを確認してから PR を作る
 
