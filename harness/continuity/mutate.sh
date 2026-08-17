@@ -411,7 +411,8 @@ mutate "      !recordedOrphans.has(declared(entry.terminalFingerprint) ?? \"\"),
 mutate "      .map((entry) => declared(entry.terminalFingerprint))" "      .map((entry) => entry.eventId)" && run "孤児の重複判定を eventId で行う（再送 DoS）"
 mutate "        if (recorded.added.length > 0) {" "        if (true) {" && run "足せていなくても状態を進める"
 mutate "              terminalFingerprint: event.canonicalFingerprint," "" && run "孤児の記録に同一性の鍵を残さない"
-mutate "      if (correlation.diagnostic === \"terminal_orphaned\") {" "      if (false) {" && run "孤児 terminal を状態に記録しない"
+mutate "        correlation.diagnostic === \"terminal_orphaned\" ||" "        false ||" && run "候補ゼロの terminal を状態に記録しない"
+mutate "        correlation.diagnostic === \"terminal_unmatched\"" "        false" && run "開いた候補ゼロの unmatched を状態に記録しない"
 mutate "      ],
       droppedEvidence: recorded.droppedEvidence," "      ]," && run "退避を状態に記録しない"
 mutate "        ...recorded.diagnostics,

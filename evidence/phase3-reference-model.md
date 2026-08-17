@@ -192,10 +192,19 @@ addendum に無い**ので、「必ず残る」とは書けない。退避を状
   起きる（hook と transcript scan の取り込み順、再起動後の catch-up）。台帳に入れると、後から
   start が届いても同じ terminal は重複 no-op になり二度と閉じられない。隔離しておけば再配送で
   拾い直せるし、閉じられない operation が状態に残るわけでもない
+- `terminal_unmatched` のうち**開いた候補が 1 件も無いもの**（候補は matchKey で拾えるが全員
+  確定済みで、turn が両立するものも無い）。`unknown` に倒す相手が居ないので台帳へ入れる形は
+  取れない。隔離したうえで**状態にも記録する**（下記）
+
+`terminal_orphaned` と、開いた候補ゼロの `terminal_unmatched` は、隔離に加えて
+`droppedEvidence` へ `orphaned_terminal` として記録する。前者は候補ゼロ、後者は候補はあるが
+開いているものがゼロで、**どちらも「この terminal を保持する相手が居ない」**——診断だけで
+流すと状態から消える。逆に開いた候補が 1 件でもあれば記録しない（その候補が `unknown` として
+event の効果を持つので、live な集合から落ちていない）。
 
 **候補を `unknown` に倒して台帳へ入れる**:
 
-- `terminal_unmatched`（候補は居るが turn 両立などで 1 件に絞れない）/ `terminal_ambiguous`
+- `terminal_unmatched`（**開いた候補が居て**、turn 両立などで 1 件に絞れない）/ `terminal_ambiguous`
 - `terminal_out_of_order`（start の `ingestSeq` が状態にあり、terminal がそれ以前）。terminal の
   証跡が来ている以上「まだ走っている」とは言えない。`unknown` にするのは一致した 1 件だけで、
   同じ match key の無関係な open は巻き込まない
@@ -441,6 +450,20 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
     `private` として checkpoint と診断に残る。**この露出は #43/#44 が作ったものではない**：
     `Observed*.sourceEventIds` が同じ値を同じ機密度で以前から保持している。閉じるには intake で
     識別子の不透明性を強制する必要があり、event 表面全体に及ぶので #62 として切り出した
+  - **上限超えの復元配列を刈るのは記録経路だけ**。刈りは `recordDroppedEvidence` の中にあるので、
+    start と「保持されない terminal として記録された terminal」は通るが、operation を閉じる
+    terminal と放棄はそこを通らず、上限超えの配列をそのまま次の revision へ運ぶ。刈る側の
+    経路では**何も足さない event でも刈る**（上限は append の性質ではなく状態の性質で、運ぶと
+    自分の凍結 schema に反する状態を revision ごとに出し続けることになる）。全経路で揃えるには
+    刈りを revision の構築側へ移す必要があり、FR-015 が求めているのは schema 側の上限なので
+    ここでは移していない
+  - **revision ごとの複製は配列 1 段だけ**。`pendingOperations` も `droppedEvidence` も
+    `[...arr]` で配列だけを分け、要素 object は過去の revision と共有している。凍結 schema の
+    欄は `readonly` ではないので、要素を書き換える caller が現れれば `contentHash` を採った後の
+    過去 revision も一緒に変わる。**還元器自身は要素を書き換えない**（どの経路も新しい object を
+    作る）ので現時点で観測できる不整合は無く、これは `droppedEvidence` に固有でもない
+    （`pendingOperations` が以前から同じ形）。閉じるには状態グラフ全体を `readonly` にするか
+    revision ごとに deep clone する必要があり、どちらもこの cluster の範囲外
 - **session 全体を 1 回の fold で流す用途には向かない**。`commit` は event ごとに冪等台帳と
   history を複製するので、fold の長さに対して二乗で伸びる（実測: 1,000 event 61ms、
   5,000 event 1,024ms、20,000 event 23,332ms）。参照実装は「同じ fixture から TS と Rust が
@@ -465,12 +488,12 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 新しい欄はすべて任意なので、1 本にまとめると「欄を書きはするが読まない」移植でも hash が合う。
 旧い形の fixture を消さないのも同じ理由で、欄を持たない状態が読めること自体が要件（FR-013/FR-014）。
 
-## 5. 変異テスト（2026-08-17）
+## 5. 変異テスト（2026-08-18）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**190 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 190 件（黙って飛ばされた変異ゼロ）、復元後は 209/209 green
-（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 318/318）。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**191 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 191 件（黙って飛ばされた変異ゼロ）、復元後は 211/211 green
+（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 320/320）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
 したら、次で突き合わせてから doc を直す。CI は `mutate.sh` を走らせるが doc は見ないので、
@@ -554,10 +577,10 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 綴りの合わない順序材料を値として読む（空白・語彙外） | 2 |
 | 空白の turn 種別を値として読む | 1 |
 | 順序違反で候補を巻き込む | 1 |
-| 候補ゼロの terminal を台帳に入れる | 26 |
+| 候補ゼロの terminal を台帳に入れる | 29 |
 | 順序不明で候補を unknown にしない | 6 |
-| start の取り込み連番を記録しない | 59 |
-| start の turn 種別を記録しない | 15 |
+| start の取り込み連番を記録しない | 60 |
+| start の turn 種別を記録しない | 16 |
 | 再配送 start でも順序材料を書く | 6 |
 | 再配送 start を nativeOperationId で拾わない | 12 |
 | 再配送の判定を matchKey にする | 16 |
@@ -614,7 +637,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 空白だけの Agent 名を authority にする | 1 |
 | 空白だけの exact version を authority にする | 1 |
 | 直接呼びの Agent 検査を外す | 3 |
-| rule 2 の turn 種別の絞り込みを外す | 8 |
+| rule 2 の turn 種別の絞り込みを外す | 9 |
 | turn 種別の材料が無い候補も落とす | 3 |
 | 種別違いの巻き込み範囲を広げる | 1 |
 | 受領証 ID が空でも認証済みとする | 1 |
@@ -625,7 +648,7 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 直接呼びだけ scope を ingestSeq より先に見る | 1 |
 | 直接呼びの identity 材料検査を外す | 3 |
 | 空白の sourceAgent を素通しする | 1 |
-| turn 両立ゼロの確定済みを適用済みにする | 8 |
+| turn 両立ゼロの確定済みを適用済みにする | 9 |
 | 矛盾判定の母数まで turn で絞る | 2 |
 | 候補の unknown 化を operationId の等値で当てる | 2 |
 | 放棄の適用先を operationId の等値で当てる | 2 |
@@ -685,16 +708,17 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 再配送 start の truncation 診断を落とす | 1 |
 | 飛ばした衝突兄弟を報告しない | 4 |
 | 記録を末尾から落とす（FR-008） | 2 |
-| 記録の上限検査を外す（FR-015） | 2 |
-| 記録の追加を別の診断で報告する（FR-009） | 11 |
+| 記録の上限検査を外す（FR-015） | 3 |
+| 記録の追加を別の診断で報告する（FR-009） | 12 |
 | 記録の脱落を診断に出さない（FR-009） | 2 |
 | 退避の記録で機密度を引き継がない | 1 |
 | 孤児の記録を normal で残す | 3 |
-| 孤児の記録を再送のたびに足す | 2 |
-| 孤児の重複判定を eventId で行う（再送 DoS） | 2 |
-| 足せていなくても状態を進める | 2 |
-| 孤児の記録に同一性の鍵を残さない | 6 |
-| 孤児 terminal を状態に記録しない | 13 |
+| 孤児の記録を再送のたびに足す | 4 |
+| 孤児の重複判定を eventId で行う（再送 DoS） | 4 |
+| 足せていなくても状態を進める | 4 |
+| 孤児の記録に同一性の鍵を残さない | 8 |
+| 候補ゼロの terminal を状態に記録しない | 14 |
+| 開いた候補ゼロの unmatched を状態に記録しない | 2 |
 | 退避を状態に記録しない | 5 |
 | 上限超えの復元状態を刈った事実を黙る（FR-015） | 4 |
 | 記録に触らない経路で記録を落とす | 3 |

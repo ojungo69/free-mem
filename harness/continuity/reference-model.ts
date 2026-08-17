@@ -1401,7 +1401,16 @@ export function reduceTaskWorkState(
       // **同じ terminal の再送で記録が伸びないための重複判定は `recordDroppedEvidence` が持つ**
       // （呼び出し側の条件式に置くと、次に記録を足す経路がそれを持たずに書ける）。ここでは
       // 「実際に足せたか」だけを見て、足せていないなら状態を変えない隔離に倒す
-      if (correlation.diagnostic === "terminal_orphaned") {
+      // `terminal_unmatched` も記録する。候補が 1 件も無いのが `terminal_orphaned`、候補は
+      // 居るが**開いているものが 1 件も無い**のが `terminal_unmatched` で、状態から見れば
+      // どちらも「この terminal を保持する相手が居ない」。確定済みの兄弟しか居ない terminal を
+      // 診断だけで流すと、後から start が届く見込みも無いまま状態から消える（#43 が塞ぐ損失
+      // そのもの）。`unresolved` が空でない場合はここに来ない——開いた候補が `unknown` として
+      // この terminal の事実を持つので、状態から消えてはいない
+      if (
+        correlation.diagnostic === "terminal_orphaned" ||
+        correlation.diagnostic === "terminal_unmatched"
+      ) {
         const recorded = recordDroppedEvidence(
           previous.state.droppedEvidence,
           [

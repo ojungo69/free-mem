@@ -1584,6 +1584,106 @@ test("同じ孤児 terminal の再配送は記録を増やさない（収束す�
   assert.equal(corrected.snapshot.state.droppedEvidence?.length, 2);
 });
 
+test("指紋を変える再送は配送鍵を変える再送と同じコストにしかならない（鍵選択の根拠）", () => {
+  // security review が「同一 `adapterDeliveryId` のまま `canonicalFingerprint` を変えれば
+  // #39 の DoS が再現する」と指摘した。再現はする。**が、配送鍵ごと変えた場合と完全に
+  // 同じコストにしかならない**ので、鍵の選択による増幅ではない。
+  //
+  // `eventId` を鍵にしていたときの欠陥とはここが違う。あれは**正直な adapter** が引き起こした
+  // ——再配送は同じ配送鍵・違う `eventId` という契約なので、同じ terminal を再送するだけで
+  // 1 revision が 300 revision になった。`canonicalFingerprint` は payload/source から導く値
+  // なので、同じ配送のまま指紋だけ変えるには event を捏造するしかなく、それは配送鍵ごと
+  // 捏造するのと同じ手間で同じ結果になる。記録の伸びは「相異なる terminal の数」に比例
+  // していて、そこは記録という機能そのもののコストである。
+  const measure = (varyDeliveryId: boolean) => {
+    let snapshot = emptySnapshot();
+    let ledger: IdempotencyLedger = new Map();
+    const revisions = new Set<string>();
+    for (let i = 0; i < 300; i += 1) {
+      const result = reduceTaskWorkState(
+        snapshot,
+        terminalEvent({
+          eventId: `event-terminal-${i}`,
+          ingestSeq: String(1000 + i),
+          canonicalFingerprint: `fingerprint-terminal-${i}`,
+          ...(varyDeliveryId ? { adapterDeliveryId: `delivery-terminal-${i}` } : {}),
+        }),
+        ledger,
+      );
+      snapshot = result.snapshot;
+      ledger = result.ledger;
+      revisions.add(snapshot.state.stateRevision);
+    }
+    return {
+      revisions: revisions.size,
+      history: snapshot.history.length,
+      dropped: snapshot.state.droppedEvidence?.length ?? 0,
+      ledger: ledger.size,
+    };
+  };
+  const expected = { revisions: 300, history: 300, dropped: 256, ledger: 0 };
+  assert.deepEqual(measure(false), expected);
+  assert.deepEqual(measure(true), expected);
+
+  // 逆向き: 配送鍵が違っても指紋が同じなら 1 件。§4.3 が terminal の同一性に使うのは
+  // payload/source hash なので、同じ指紋は同じ terminal であり、2 件目を落とすのが仕様
+  const first = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
+  const other = reduceTaskWorkState(
+    first.snapshot,
+    terminalEvent({ eventId: "event-terminal-other", adapterDeliveryId: "delivery-other" }),
+    first.ledger,
+  );
+  assert.equal(other.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(other.snapshot.state.stateRevision, first.snapshot.state.stateRevision);
+});
+
+test("開いた候補が 1 件も無い unmatched な terminal も記録する（#43）", () => {
+  // 候補ゼロ（`terminal_orphaned`）だけを記録すると、「候補は居るが全員確定済みで turn も
+  // 両立しない」terminal が診断だけで消える。開いた候補が居ないので `unknown` として事実を
+  // 持つ相手も無く、後から start が届く見込みも無い——状態から静かに落ちる、#43 が塞ぐ損失
+  const settled = apply(emptySnapshot(), [
+    startEvent({
+      eventId: "start-native", adapterDeliveryId: "d-start-native",
+      canonicalFingerprint: "f-start-native", operation: MATCH_KEY_ONLY,
+      ingestSeq: "11", turnIdSource: "native",
+    }),
+    terminalEvent({
+      eventId: "term-native", adapterDeliveryId: "d-term-native",
+      canonicalFingerprint: "f-term-native", operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+      ingestSeq: "12", turnIdSource: "native",
+    }),
+  ]);
+  const unmatched = reduceTaskWorkState(
+    settled.snapshot,
+    terminalEvent({
+      eventId: "term-synth", adapterDeliveryId: "d-term-synth",
+      canonicalFingerprint: "f-term-synth", operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+      ingestSeq: "13", turnIdSource: "synthesized_monotonic",
+    }),
+    settled.ledger,
+  );
+  assert.equal(unmatched.outcome, "quarantined");
+  assert.ok(unmatched.diagnostics.some((d) => d.code === "terminal_unmatched"));
+  const recorded = unmatched.snapshot.state.droppedEvidence ?? [];
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0]?.reason, "orphaned_terminal");
+  assert.equal(recorded[0]?.terminalFingerprint, "f-term-synth");
+  // 隔離は配送鍵を消費しない（後から説明のつく start が届けば同じ terminal で閉じられる）
+  assert.equal(unmatched.ledger.size, settled.ledger.size);
+  // 再送しても記録は増えない（重複判定は指紋）
+  const again = reduceTaskWorkState(
+    unmatched.snapshot,
+    terminalEvent({
+      eventId: "term-synth-2", adapterDeliveryId: "d-term-synth",
+      canonicalFingerprint: "f-term-synth", operation: { ...MATCH_KEY_ONLY, phase: "terminal" },
+      ingestSeq: "14", turnIdSource: "synthesized_monotonic",
+    }),
+    unmatched.ledger,
+  );
+  assert.equal(again.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(again.snapshot.state.stateRevision, unmatched.snapshot.state.stateRevision);
+});
+
 test("記録だけの隔離は §4.1 の watermark を進めない", () => {
   // §4.1 は `lastIngestSeq` を「**適用された** event の最大 `ingestSeq`」と定義する。孤児は
   // 隔離で配送鍵を消費しないので、後から start が届けば同じ event が適用されうる。ここで
@@ -3825,7 +3925,12 @@ test("turn が両立する確定済み候補が 1 件も無いなら適用済み
     }),
     prepared.ledger,
   );
-  assert.deepEqual(agreeing.diagnostics.map((d) => d.code), ["terminal_unmatched"]);
+  // 保持する相手が居ないので状態にも記録する（#43）。診断だけで流すと terminal が消える
+  assert.deepEqual(
+    agreeing.diagnostics.map((d) => d.code),
+    ["terminal_unmatched", "dropped_evidence_recorded"],
+  );
+  assert.equal(agreeing.snapshot.state.droppedEvidence?.length, 1);
   // 候補は確定済みなので `unknown` に倒す相手は居ない
   assert.equal(agreeing.snapshot.state.pendingOperations[0]?.status, "succeeded");
   // 対照: turn が両立する候補があれば従来どおり適用済みとして通る

@@ -907,6 +907,12 @@ test("droppedEvidence は共通欄だけを必須にする（#43 / #39）", () =
   assert.deepEqual(issues({ ...entry, operationId: "op1", status: "started" }), []);
   assert.deepEqual(issues({ ...entry, reason: "orphaned_terminal", eventId: "e1" }), []);
 
+  // #39 の重複判定の鍵は文字列で、上限も他の識別子と揃っている。欄名の突き合わせは
+  // 「欄が在るか」しか見ないので、型と上限だけが drift すると素通りする
+  assert.deepEqual(issues({ ...entry, reason: "orphaned_terminal", terminalFingerprint: "f1" }), []);
+  assert.ok(issues({ ...entry, terminalFingerprint: 1 }).length > 0);
+  assert.ok(issues({ ...entry, terminalFingerprint: "x".repeat(8193) }).length > 0);
+
   for (const missing of ["reason", "recordedAt", "sensitivity"]) {
     const partial = Object.fromEntries(Object.entries(entry).filter(([field]) => field !== missing));
     const found = issues(partial);
