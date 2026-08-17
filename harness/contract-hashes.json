@@ -30,6 +30,6 @@
     "fixtures/continuity/tool-lifecycle-reduction.json": "beefef9cd5fc61784d6057464e45f26d37497819f2428a73d1c3f2b55a75c755",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
     "schema/capability.schema.json": "e3c62825f8364ca7879bb0d803ab139dd9bd16d031290d06592cbe6b8d6aef23",
-    "schema/continuity.schema.json": "c7a507df4acd16e9eb11e843dfd4baa22584f5e2df29cd354f3a1b7d1991cc4b"
+    "schema/continuity.schema.json": "95000c4671e71b12ba3a49a86dcaa51be81bf75acde8ab0533ba8f0f3fec8972"
   }
 }

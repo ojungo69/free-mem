@@ -1477,6 +1477,72 @@ function withDroppedEvidence(snapshot: TaskWorkStateSnapshotV1, n: number): Task
   return { ...snapshot, state: { ...snapshot.state, droppedEvidence } };
 }
 
+test("同名 operationId の兄弟が並んでも、落ちた側を記録から特定できる（#43 FR-005）", () => {
+  // 凍結 schema は `operationId` に一意性を課さない（`maxLength` だけ）。この還元器は同名の
+  // 兄弟が並ぶ状態を明示的に支えているので、記録が id と status だけだと**その状態でだけ**
+  // 「どちらが live な集合から落ちたか」が分からなくなる
+  const base = filledSnapshot(true);
+  const [dropped, ...rest] = base.state.pendingOperations;
+  const twin: PendingOperation = {
+    ...(dropped as PendingOperation),
+    // 同じ id・同じ status の兄弟。start だけが違う
+    sourceEventIds: ["event-start-twin"],
+    correlation: { ...(dropped as PendingOperation).correlation, nativeOperationId: "toolu_twin" },
+  };
+  const snapshot = {
+    ...base,
+    state: {
+      ...base.state,
+      pendingOperations: [dropped as PendingOperation, twin, ...rest.slice(1)],
+    },
+  };
+  const result = reduceTaskWorkState(snapshot, startEvent(), new Map());
+  const record = result.snapshot.state.droppedEvidence?.[0];
+  assert.equal(record?.reason, "evicted");
+  assert.equal(record?.operationId, "op-0");
+  // 生き残った双子と同じ値では特定にならない
+  assert.equal(record?.eventId, "event-start");
+  assert.notEqual(record?.eventId, twin.sourceEventIds[0]);
+});
+
+test("上限超えの復元配列は、記録が重複でも刈って報告する（#43 FR-015）", () => {
+  // 重複の再送は「状態を変えない隔離」に倒す設計だが、刈った結果ごと捨てると凍結 schema に
+  // 反する状態（257 件）を返し続けることになる。刈りは 1 度で上限に収まるので収束する
+  const over = withDroppedEvidence(emptySnapshot(), CONTINUITY_LIMITS.arrayItems + 1);
+  const already = {
+    ...over,
+    state: {
+      ...over.state,
+      droppedEvidence: [
+        ...(over.state.droppedEvidence ?? []),
+        {
+          reason: "orphaned_terminal" as const,
+          eventId: "event-terminal",
+          terminalFingerprint: "fingerprint-terminal",
+          adapterDeliveryId: "delivery-terminal",
+          recordedAt: "2026-08-16T00:00:02Z",
+          sensitivity: "private" as const,
+        },
+      ],
+    },
+  };
+  const result = reduceTaskWorkState(already, terminalEvent(), new Map());
+  assert.equal(result.outcome, "quarantined");
+  assert.equal(result.snapshot.state.droppedEvidence?.length, CONTINUITY_LIMITS.arrayItems);
+  assert.deepEqual(
+    result.diagnostics.map((d) => d.code),
+    ["terminal_orphaned", "dropped_evidence_overflowed"],
+  );
+  // 記録は増えていない（重複判定は効いている）
+  assert.equal(
+    result.snapshot.state.droppedEvidence?.filter((e) => e.reason === "orphaned_terminal").length,
+    1,
+  );
+  // 2 度目は上限に収まっているので差分ゼロ。刈りが毎回 revision を動かすと収束しない
+  const again = reduceTaskWorkState(result.snapshot, terminalEvent(), result.ledger);
+  assert.equal(again.snapshot.state.stateRevision, result.snapshot.state.stateRevision);
+});
+
 test("退避した operation は droppedEvidence に残る（#43 FR-005）", () => {
   const snapshot = filledSnapshot(true);
   // 退避元の機密度を引き継ぐことまで見る（記録側で内容を見て決め直さない: Constitution III）
@@ -1493,6 +1559,8 @@ test("退避した operation は droppedEvidence に残る（#43 FR-005）", () 
       reason: "evicted",
       operationId: "op-0",
       status: "succeeded",
+      // 同名 `operationId` の兄弟が並んだときに「どちらが落ちたか」を判別できる識別子
+      eventId: "event-start",
       recordedAt: "2026-08-16T00:00:01Z",
       sensitivity: "secret",
     },
@@ -1645,6 +1713,42 @@ test("記録の重複判定は §8.2 の順（配送鍵が第一 authority、指
     { revisions: 300, history: 300, dropped: 256, ledger: 0 },
   );
 
+  // 同じ配送鍵で指紋が食い違うのは再送ではなく corruption。件数が 1 に収束するだけでは
+  // 足りない——適用済み経路は同じ条件を `delivery_conflict` にしているので、孤児経路だけが
+  // 黙って重複に倒すと source hash の食い違いが通常の再送と区別できなくなる
+  const recorded = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
+  const corrupted = reduceTaskWorkState(
+    recorded.snapshot,
+    terminalEvent({ eventId: "event-terminal-corrupt", canonicalFingerprint: "fingerprint-OTHER" }),
+    recorded.ledger,
+  );
+  assert.equal(corrupted.outcome, "quarantined");
+  assert.deepEqual(
+    corrupted.diagnostics.map((d) => d.code),
+    ["terminal_orphaned", "delivery_conflict"],
+  );
+  // corruption は「live な集合から落ちた証跡」ではないので記録も状態も動かさない
+  assert.equal(corrupted.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(corrupted.snapshot.state.droppedEvidence?.[0]?.terminalFingerprint, "fingerprint-terminal");
+  assert.equal(corrupted.snapshot.state.stateRevision, recorded.snapshot.state.stateRevision);
+  assert.equal(corrupted.ledger.size, recorded.ledger.size);
+
+  // 材料が欠けている側は「違う」と言えない。指紋を持たない記録（この版より前の checkpoint）に
+  // 指紋つきの再送が来ても corruption ではなく重複（FR-012 と同じで、検査は材料が無ければ発動しない）
+  const noFingerprint = emptySnapshot({
+    droppedEvidence: [{
+      reason: "orphaned_terminal",
+      eventId: "event-old",
+      adapterDeliveryId: "delivery-terminal",
+      recordedAt: "2026-08-16T00:00:00Z",
+      sensitivity: "private",
+    }],
+  });
+  const resent = reduceTaskWorkState(noFingerprint, terminalEvent(), new Map());
+  assert.deepEqual(resent.diagnostics.map((d) => d.code), ["terminal_orphaned"]);
+  assert.equal(resent.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(resent.snapshot.state.stateRevision, noFingerprint.state.stateRevision);
+
   // 配送鍵を名乗らない記録どうしは指紋で判定する（この版より前の checkpoint・配送鍵を持たない
   // adapter）。`ledgerKeyOf` の `d:`/`f:` と同じ分割なので、両者が混ざっても衝突しない
   const legacy = emptySnapshot({
@@ -1771,6 +1875,7 @@ test("記録は識別と分類だけを持つ（#43 FR-007）", () => {
   const evicted = reduceTaskWorkState(filledSnapshot(true), startEvent(), new Map());
   const orphaned = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
   assert.deepEqual(Object.keys(evicted.snapshot.state.droppedEvidence?.[0] ?? {}).sort(), [
+    "eventId",
     "operationId",
     "reason",
     "recordedAt",

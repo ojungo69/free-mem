@@ -956,7 +956,7 @@
     "DroppedEvidenceEntryV1": {
       "type": "object",
       "additionalProperties": false,
-      "$comment": "#43 / #39: 状態から落とした証跡の記録。理由が 2 つ（上限退避と孤児 terminal）あり入る欄も違う——`evicted` は operationId + status、`orphaned_terminal` は eventId（相手が居ないので operationId / status は書けない）。それでも oneOf で分岐させず、共通の必須欄だけを required にして理由ごとの欄は任意にする: oneOf と additionalProperties: false の組み合わせは別言語の validator で挙動差が出やすく、contract hash が同じでも判断が割れうる。**組み合わせの妥当性を検査する層は無い**: この配列を書くのは還元器だけで、理由ごとに書く欄はそこで決まっている。別実装が書いた状態が `evicted` に `eventId` を載せていても、schema も還元器も落とさない（読む側は `reason` で分岐すること）。",
+      "$comment": "#43 / #39: 状態から落とした証跡の記録。理由が 2 つ（上限退避と孤児 terminal）あり入る欄も違う——`evicted` は operationId + status + eventId（start の event id。**`operationId` は一意ではない**ので、同名の兄弟が並ぶ状態では id と status だけでは落ちた側を特定できない）、`orphaned_terminal` は eventId（terminal の event id）+ adapterDeliveryId + terminalFingerprint（相手が居ないので operationId / status は書けない）。`eventId` はどちらでも「この記録を名指す event」で、理由によって指す先が違う。それでも oneOf で分岐させず、共通の必須欄だけを required にして理由ごとの欄は任意にする: oneOf と additionalProperties: false の組み合わせは別言語の validator で挙動差が出やすく、contract hash が同じでも判断が割れうる。**組み合わせの妥当性を検査する層は無い**: この配列を書くのは還元器だけで、理由ごとに書く欄はそこで決まっている。別実装が書いた状態が `evicted` に `eventId` を載せていても、schema も還元器も落とさない（読む側は `reason` で分岐すること）。",
       "required": [
         "reason",
         "recordedAt",

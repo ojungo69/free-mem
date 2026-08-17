@@ -62,21 +62,35 @@ live な集合（`pendingOperations`）から外れたものの有界な記録�
 |---|---|---|---|
 | `reason` | `"evicted"` \| `"orphaned_terminal"` | ✓ | なぜ live から外れたか |
 | `recordedAt` | `IsoTimestamp` | ✓ | 記録した event の `occurredAt` |
-| `eventId` | string (maxLength 8192) | | 孤児 terminal の event 識別 |
+| `eventId` | string (maxLength 8192) | | この記録を名指す event。孤児は terminal、退避は start |
 | `operationId` | string (maxLength 8192) | | 退避された operation の識別 |
 | `status` | `"started"`\|`"succeeded"`\|`"failed"`\|`"unknown"` | | 退避時点の状態 |
+| `terminalFingerprint` | string (maxLength 8192) | | 孤児 terminal の `canonicalFingerprint` |
+| `adapterDeliveryId` | string (maxLength 8192) | | 孤児 terminal の配送鍵 |
 | `sensitivity` | `#/$defs/Sensitivity` | ✓ | 記録自体の機密度 |
 
 `additionalProperties: false`。**payload・引数・出力・`description` を持たない**（R-005 / FR-007）。
 
 ### `reason` ごとに何が入るか
 
-- `evicted`: `operationId` + `status` + `recordedAt`。`eventId` は入れない（退避は event ではなく
-  容量が起こす）。
-- `orphaned_terminal`: `eventId` + `recordedAt`。`operationId` / `status` は入れない
-  （相手が居ないので書けるものが無い）。
+- `evicted`: `operationId` + `status` + `recordedAt` + `eventId`（退避された operation の start の
+  event id）。**`operationId` は凍結 schema で一意ではない**ので、同名の兄弟が並ぶ状態では
+  id と status だけでは「どちらが落ちたか」を特定できない。
+- `orphaned_terminal`: `eventId`（terminal の event id）+ `recordedAt` + `terminalFingerprint` +
+  `adapterDeliveryId`。`operationId` / `status` は入れない（相手が居ないので書けるものが無い）。
 
-schema では両方を任意にし、組み合わせの妥当性は runtime 側で検査する。`oneOf` で分岐させると
+**重複判定の鍵は後ろ 2 欄で、優先順位は §8.2 と同じ**（`adapterDeliveryId`、無ければ
+`canonicalFingerprint`。keyspace は台帳の `ledgerKeyOf` と同じく `d:` / `f:` で分ける）。
+指紋だけを鍵にすると、配送鍵も相関材料も違う terminal が同じ指紋を名乗るだけで 1 件に潰れる。
+`eventId` を鍵にすると、封筒の値なので再配送のたびに足してしまう。鍵が一致していても指紋が
+食い違う場合は再送ではなく corruption なので、記録も状態も動かさず `delivery_conflict` を出す
+（台帳経路が同じ条件でそうしているのに合わせる）。
+
+schema では両方を任意にし、**組み合わせの妥当性を検査する層は置かない**。この配列を書くのは
+還元器だけで、理由ごとに書く欄はそこで決まっている。別実装が書いた状態が `evicted` に想定外の
+組み合わせを載せていても、schema も還元器も落とさない（読む側は `reason` で分岐すること）。
+移植先が runtime 検査を足すと、参照実装が運ぶ状態を移植先だけが拒否して parity が崩れる。
+`oneOf` で分岐させると
 `additionalProperties: false` との組み合わせで別言語の validator の挙動差が出やすく、
 contract hash が同じでも判断が割れうる（この repo が避けている形）。
 
