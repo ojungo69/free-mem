@@ -1,0 +1,39 @@
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_a50b1853370ddd 65-67,71
+  s_2d059b4f795bca::t_4fef91cf69e622 62-64
+  s_2d059b4f795bca::t_322f621e53704b 72
+harness/schema/continuity.schema.json
+  s_2d059b4f795bca::t_81e1cacc5d1a8b 1257
+  s_2d059b4f795bca::t_9ec3ac898cde1e 938-994
+  s_2d059b4f795bca::t_c3e628102d04e5 1251-1256,1258
+harness/continuity/schema-freeze.test.ts
+  s_2d059b4f795bca::t_93a3f363f2ff17 833
+  s_2d059b4f795bca::t_348131d1232701 837-842,850-910,916
+  s_2d059b4f795bca::t_c2c0c18ca9b176 843-849
+  s_2d059b4f795bca::t_bc20fc6385f0f1 219-227
+  s_2d059b4f795bca::t_e9a90567fc3187 68-69
+  s_2d059b4f795bca::t_850edf55d2c896 581
+  s_2d059b4f795bca::t_f8404dd947590c 911-915
+  s_2d059b4f795bca::t_92fda3fabd477e 396
+harness/schema/continuity.ts
+  s_2d059b4f795bca::t_2f54ee5df46108 320-333
+  s_2d059b4f795bca::t_d29196b99a00bf 380-381
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_623a1eb52a74b5 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "be9165fb79e9764f3cdfafc51ef7e7504ebb4440",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
