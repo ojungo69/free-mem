@@ -389,25 +389,38 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
   分岐点 `d517a8b` の実装に通した結果を baseline として commit する。`harness/continuity/old-shape-parity.test.ts`
   が同じ corpus をこの実装に通し、食い違う JSON path を許可表と突き合わせる
 
-**T049 の結果**: corpus 8 case / 13 step。差分が出たのは **6 step**（tool-lifecycle の 4 step と、
-孤児 terminal の再送 case の 2 step）で、残り 7 step は変更前と**完全に一致**した。許可表は
-case 名・event・path・**値**・issue 番号を持ち、表に無い差分でも、表にあるのに出ない差分でも
-落ちる。実測した差分は次のとおり:
+**T049 の結果**: corpus **19 case / 28 step**。差分が出たのは **13 step** で、残り **15 step は
+変更前と完全に一致**した。許可表は case 名・event・path・**値**・issue 番号を持ち、表に無い差分でも、
+表にあるのに出ない差分でも落ちる。実測した差分は次のとおり:
 
 | 差分 | issue | 中身 |
 |---|---|---|
 | `pendingOperations[].startIngestSeq` / `startTurnIdSource` | #35 | start が権威順序と turn 種別を状態に載せる |
 | `pendingOperations[].terminalFingerprint` | #44 | 閉じた terminal の指紋が状態に残る |
-| `droppedEvidence` / `diagnostics` / `historyLength` / `updatedAt` / `sensitivity` | #43 | 孤児 terminal を状態に記録する（記録は機密度の下限を上げる） |
+| `droppedEvidence` / `diagnostics` / `updatedAt` / `sensitivity` | #43 | 孤児 terminal と退避を状態に記録する（記録は機密度の下限を上げる） |
 | 再送後も `droppedEvidence` が 1 件のまま | #39 | 再起動で台帳が空に戻っても記録側の鍵が 2 件目を止める |
+| `state.stateRevision` / `history[].revision` / `history[].contentHash` | 上記の従属 | 状態が動いた step では hash も動く。**状態が動かない step では hash も一致している** |
+| `diagnostics[0].detail` のみ（`restored-start-redelivery-ledger-miss`） | #35 | 重複と判定した根拠の文面が、側索引を指す表現から状態の要素を指す表現に変わった。判断・状態・台帳・hash はすべて一致 |
 
-**復元した旧形の状態そのものについては差分ゼロ**（rule 1 / rule 2 の terminal、`successful` の無い
-terminal、terminal の再送、非 operation event、放棄の 7 step）。順序材料を持たない状態では、
-変更前も変更後も `terminal_order_unverifiable` で `unknown` に倒れる。
+最後の 1 行は**比較面を広げて初めて見えた差分**である。以前の比較面は診断を `code` だけに縮約して
+いたので、`detail` の変化は差分として現れなかった（codex のレビューが隔離環境で
+`terminal_order_unverifiable` の `detail` を壊しても全 test が緑のままだと実証した）。いまの比較面は
+還元結果を素通しし、形を変えるのは台帳（`Map`）を鍵で整列した配列に直す 1 か所だけにしてある。
 
-**門が見ていない経路**（黙って間引かない）: `pendingOperations` が上限 256 件に達したときの退避。
-corpus に 256 件の pending を commit する必要があるため入れていない。この経路の証拠は
-`reference-model.test.ts` の退避 test 群と `mutate.sh` の該当変異が持つ。
+**corpus が届いていない経路**（黙って間引かない。`old-shape-parity.test.ts` の冒頭に同じ列挙がある）:
+
+- `operation.phase === "progress"`: `OPERATION_EVENT_PHASES` は `tool_started` / `tool_completed` /
+  `tool_failed` の 3 つしか写像していないので、`progress` を持つ event を作れる kind が語彙に無い。
+  旧形かどうかに関わらず到達できない
+- 同じ session 内で `operationId` が衝突する 2 件を作る経路: start の再配送判定が derived id と
+  native id の両方を見るので、`duplicate_operation_start` か `start_conflict` のどちらかに倒れる。
+  状態側の衝突（復元）は corpus が通す
+- `assertSameScope` が投げる入力: 例外は還元結果を返さないので、この比較面では旧新を区別できない
+
+**T019 が名指しした 5 件との対応**: 「同名の兄弟」経路は `restored-collided-siblings-terminal` /
+`restored-collided-siblings-eviction` / `restored-cross-lineage-twin` の 3 case が通す。上限 256 件の
+退避（#43 の reason `evicted`）は 2 番目の case が通すようになったので、以前ここに書いていた
+「corpus が届いていない」は解消した（256 件は generator が組み立てる。手で JSON に書かない）。
 
 **`verify-tasks-report.md` との関係**: 同レポートは `speckit-verify-tasks` の immutability 規則で
 **生成時点のまま**であり、T019 の PARTIAL 判定もその時点の記録として残す。SC-003 の現在の合否は

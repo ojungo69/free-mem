@@ -10,12 +10,15 @@
  * 使い方:
  *   node harness/continuity/old-shape-baseline.mjs            # 固定 sha で再生成
  *   node harness/continuity/old-shape-baseline.mjs --source <sha>   # 基準を変える（差分に出る）
+ *   node harness/continuity/old-shape-baseline.mjs --output <path>  # 別の場所へ出す（CI の再生成検査）
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { CONTINUITY_LIMITS } from "../schema/continuity.ts";
 
 /** この branch と origin/main の merge-base。「変更前の実装」の定義であり、勝手に動かさない */
 const PINNED_SOURCE_COMMIT = "d517a8b49988b1109d56c1868edd8e0f5a1c85b5";
@@ -30,6 +33,10 @@ const sourceCommit = sourceIndex === -1 ? PINNED_SOURCE_COMMIT : process.argv[so
 if (sourceCommit !== PINNED_SOURCE_COMMIT) {
   console.warn(`⚠ 基準 sha を ${PINNED_SOURCE_COMMIT} から ${sourceCommit} に変えて生成する`);
 }
+
+// CI の再生成検査は committed fixture を書き換えずに突き合わせたいので、出力先を移せるようにする
+const outputIndex = process.argv.indexOf("--output");
+const outputPath = outputIndex === -1 ? OUTPUT_PATH : process.argv[outputIndex + 1];
 
 // --- 旧形 corpus -----------------------------------------------------------
 // 「旧形」= 新しい任意欄（startIngestSeq / startTurnIdSource / terminalFingerprint /
@@ -85,6 +92,28 @@ function event(template, overrides = {}) {
     merged.provenance = { ...template.provenance, ...provenanceOverrides };
   }
   return merged;
+}
+
+/**
+ * 上限（§10 `arrayItems`）まで埋まった旧形の状態。手で 256 件を JSON に書かずに組み立てる。
+ * index 0 は確定済み（退避の相手）、index 1 は index 0 と `operationId` が衝突する started。
+ * 凍結 schema は `operationId` に一意性を課さないので、復元した状態はこの形を取り得る。
+ */
+function filledOldShapePendings(limit) {
+  return Array.from({ length: limit }, (_, index) => {
+    const id = index === 1 ? "op-filled-0" : `op-filled-${index}`;
+    return oldShapePending({
+      operationId: id,
+      status: index === 0 ? "succeeded" : "started",
+      sourceEventIds: [`event-filled-${index}`],
+      correlation: {
+        operationId: id,
+        startEventId: `event-filled-${index}`,
+        // native ID は本物の呼び出しごとに一意（同じ値を並べると再配送に見える）
+        nativeOperationId: `toolu_filled_${index}`,
+      },
+    });
+  });
 }
 
 const CASES = [
@@ -161,6 +190,170 @@ const CASES = [
       operation: undefined,
     }),
   },
+
+  // --- 同名 operationId の兄弟（T019 の 5 件が名指しした欠陥の経路） ------------
+  // 旧実装は順序材料を `operationId` を鍵にした側索引で持っていたので、同名の兄弟が
+  // 並ぶと帰属を判別できなかった。復元された状態は側索引を持たないので、旧形入力で
+  // その欠陥がどこまで観測できるかを実測するのがこの群。
+
+  {
+    name: "restored-collided-siblings-terminal",
+    description:
+      "復元した状態に `operationId` が衝突する兄弟が並ぶ（open 1 件・確定済み 1 件）。" +
+      "凍結 schema は一意性を課さないので、この形は schema 妥当なまま復元されうる",
+    initialState: restoredState([
+      oldShapePending({
+        operationId: "op-collide",
+        correlation: { operationId: "op-collide", nativeOperationId: undefined },
+      }),
+      oldShapePending({
+        operationId: "op-collide",
+        status: "succeeded",
+        correlation: { operationId: "op-collide", nativeOperationId: undefined },
+      }),
+    ]),
+    events: [event(terminalTemplate, { operation: { nativeOperationId: undefined } })],
+  },
+  {
+    name: "restored-collided-siblings-eviction",
+    description:
+      "上限まで埋まった旧形の状態に新しい start が届く。退避（#43 の reason `evicted`）と、" +
+      "同名の兄弟をまとめて落とさないこと（T019 の 2 行目・3 行目）を同時に通す",
+    initialState: restoredState(filledOldShapePendings(CONTINUITY_LIMITS.arrayItems)),
+    events: [startTemplate],
+  },
+  {
+    name: "restored-cross-lineage-twin",
+    description:
+      "別 lineage に同名の双子が居る状態で start と terminal が届く。旧実装の側索引は " +
+      "lineage で絞らない `operationId` 鍵だったので、双子が材料の帰属を曖昧にしうる",
+    initialState: restoredState([
+      oldShapePending({
+        operationId: "op-twin",
+        correlation: {
+          operationId: "op-twin",
+          taskLineageId: "lineage-OTHER",
+          nativeOperationId: "toolu_twin",
+          startEventId: "event-twin",
+        },
+        sourceEventIds: ["event-twin"],
+      }),
+    ]),
+    events: [startTemplate, terminalTemplate],
+  },
+
+  // --- 台帳と隔離の分岐（早期 return / commit / quarantine） -------------------
+
+  {
+    name: "restored-start-redelivery-ledger-miss",
+    description:
+      "復元で台帳だけが空に戻った状態へ start が再配送される。台帳では止まらず、" +
+      "状態側の identity 照合で重複と判定される経路",
+    initialState: restoredState([
+      oldShapePending({
+        operationId: "op-restored",
+        correlation: { operationId: "op-restored", startEventId: "event-start" },
+      }),
+    ]),
+    events: [event(startTemplate, { eventId: "event-start-after-restore", ingestSeq: "9007199254741001" })],
+  },
+  {
+    name: "restored-start-conflict",
+    description:
+      "同じ native ID を名乗りながら入力 hash が違う start。再配送ではなく corruption として" +
+      "隔離する（隔離は配送鍵を消費しないので訂正版が後から効く）",
+    initialState: restoredState([oldShapePending()]),
+    events: [
+      event(startTemplate, {
+        eventId: "event-start-corrupt",
+        ingestSeq: "9007199254741002",
+        operation: { canonicalInputHash: "input-hash-CORRUPT" },
+      }),
+    ],
+  },
+  {
+    name: "restored-delivery-conflict",
+    description:
+      "同じ配送 ID で source hash が違う event。台帳の重複判定より衝突検査が先に立つ（§4.3）",
+    initialState: restoredState([oldShapePending()]),
+    events: [
+      terminalTemplate,
+      event(terminalTemplate, {
+        eventId: "event-terminal-different-source",
+        canonicalFingerprint: "fingerprint-terminal-DIFFERENT",
+        ingestSeq: "9007199254741003",
+      }),
+    ],
+  },
+  {
+    name: "restored-fingerprint-fallback",
+    description:
+      "配送 ID を持たない adapter。§8.2 の第二 authority（canonical fingerprint）が鍵になり、" +
+      "同じ指紋の 2 通目が重複として止まる",
+    initialState: restoredState([oldShapePending()]),
+    events: [
+      event(terminalTemplate, { adapterDeliveryId: undefined }),
+      event(terminalTemplate, {
+        eventId: "event-terminal-no-delivery-again",
+        adapterDeliveryId: undefined,
+        ingestSeq: "9007199254741004",
+      }),
+    ],
+  },
+
+  // --- 候補選びが割れる経路 ---------------------------------------------------
+
+  {
+    name: "restored-ambiguous-terminal",
+    description: "同じ native ID の open な兄弟が 2 件。rule 1 の候補が割れるのでどちらも閉じない",
+    initialState: restoredState([
+      oldShapePending({
+        operationId: "op-ambiguous-a",
+        correlation: { operationId: "op-ambiguous-a", startEventId: "event-ambiguous-a" },
+        sourceEventIds: ["event-ambiguous-a"],
+      }),
+      oldShapePending({
+        operationId: "op-ambiguous-b",
+        correlation: { operationId: "op-ambiguous-b", startEventId: "event-ambiguous-b" },
+        sourceEventIds: ["event-ambiguous-b"],
+      }),
+    ]),
+    events: [terminalTemplate],
+  },
+  {
+    name: "restored-unmatched-terminal",
+    description:
+      "一致しない native ID を名乗る terminal。名乗っている以上 matchKey へは落ちず、" +
+      "相手が居ないまま unmatched に倒れる",
+    initialState: restoredState([oldShapePending()]),
+    events: [event(terminalTemplate, { operation: { nativeOperationId: "toolu_OTHER" } })],
+  },
+  {
+    name: "restored-out-of-order-terminal",
+    description:
+      "同じ session で start を受けたあと、その start より前の連番の terminal が届く。" +
+      "旧実装は側索引の材料で、この実装は要素の材料で同じ検査をする",
+    initialState: fixture.initialState,
+    events: [
+      event(startTemplate, { ingestSeq: "9007199254740994" }),
+      event(terminalTemplate, { ingestSeq: "9007199254740990" }),
+    ],
+  },
+  {
+    name: "restored-settled-sibling-fingerprint",
+    description:
+      "確定済みの pending へ別の指紋の terminal が届く。旧形の状態は `terminalFingerprint` を" +
+      "持たないので #44 の衝突検査は発動しない（FR-012 の fail-closed でない側の確認）",
+    initialState: restoredState([oldShapePending({ status: "succeeded" })]),
+    events: [
+      event(terminalTemplate, {
+        eventId: "event-terminal-second",
+        adapterDeliveryId: "delivery-terminal-second",
+        canonicalFingerprint: "fingerprint-terminal-second",
+        ingestSeq: "9007199254741005",
+      }),
+    ],
+  },
 ];
 
 // --- 変更前の実装を読み込む -------------------------------------------------
@@ -202,8 +395,8 @@ try {
           outcome: result.outcome,
           diagnostics: result.diagnostics,
           state,
-          historyLength: history.length,
-          ledgerSize: ledger.size,
+          history,
+          ledger,
         }),
       });
     }
@@ -216,8 +409,8 @@ try {
           outcome: result.outcome,
           diagnostics: result.diagnostics,
           state: result.state,
-          historyLength: history.length,
-          ledgerSize: result.ledger.size,
+          history,
+          ledger: result.ledger,
         }),
       });
     }
@@ -234,9 +427,9 @@ try {
     intakeContext,
     cases,
   };
-  writeFileSync(OUTPUT_PATH, `${JSON.stringify(output, null, 2)}\n`);
+  writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
   const events = cases.reduce((sum, testCase) => sum + testCase.baseline.length, 0);
-  console.log(`${OUTPUT_PATH} を生成した: ${cases.length} case / ${events} step（基準 ${sourceCommit}）`);
+  console.log(`${outputPath} を生成した: ${cases.length} case / ${events} step（基準 ${sourceCommit}）`);
 } finally {
   rmSync(oldModulePath, { force: true });
   rmSync(scratch, { recursive: true, force: true });

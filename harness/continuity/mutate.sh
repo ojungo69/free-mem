@@ -454,16 +454,23 @@ mutate "    storedFingerprint !== undefined &&" "    rule === \"native_operation
 restore_all
 # --- 旧形 parity の門（SC-003）--------------------------------------------
 # 比較面を緩める / corpus を実際より広く見せる、の 2 方向を潰す
-mutate "    diagnostics: step.diagnostics.map((d) => d.code)," "    diagnostics: []," "$PROJECTION" && run "旧形 parity の比較面から診断を落とす"
-mutate "    state,
-  };
-}" "    state: {},
-  };
-}" "$PROJECTION" && run "旧形 parity の比較面から状態を落とす"
+mutate "    diagnostics: step.diagnostics," "    diagnostics: []," "$PROJECTION" && run "旧形 parity の比較面から診断を落とす"
+mutate "    diagnostics: step.diagnostics," "    diagnostics: step.diagnostics.map((d) => ({ code: d.code }))," "$PROJECTION" && run "旧形 parity の診断を code だけに縮める"
+mutate "    state: step.state," "    state: {}," "$PROJECTION" && run "旧形 parity の比較面から状態を落とす"
+mutate "    state: step.state," "    state: (({ stateRevision: _dropped, ...rest }) => rest)(step.state)," "$PROJECTION" && run "旧形 parity の比較面から stateRevision を外す"
+mutate "    history: step.history," "    history: []," "$PROJECTION" && run "旧形 parity の比較面から履歴を落とす"
+mutate "      .map(([key, entry]) => ({ key, ...entry }))" "      .map(([key]) => ({ key }))" "$PROJECTION" && run "旧形 parity の台帳を鍵だけに縮める"
 mutate "      \"name\": \"restored-orphan-terminal-redelivered\"," "      \"name\": \"restored-orphan-terminal-renamed\"," "$CORPUS" && run "旧形 corpus の case 名を許可表から外す"
 mutate "          \"eventId\": \"event-terminal-orphan-again\",
           \"adapterDeliveryId\": \"delivery-terminal-orphan\"," "          \"eventId\": \"event-terminal-orphan-again\",
           \"adapterDeliveryId\": \"delivery-terminal-orphan-2\"," "$CORPUS" && run "旧形 corpus の再送を別の配送にすり替える"
+mutate "            \"operationId\": \"op-filled-0\",
+            \"correlation\": {
+              \"operationId\": \"op-filled-0\",
+              \"startEventId\": \"event-filled-1\"," "            \"operationId\": \"op-filled-1\",
+            \"correlation\": {
+              \"operationId\": \"op-filled-1\",
+              \"startEventId\": \"event-filled-1\"," "$CORPUS" && run "旧形 corpus の退避 case から同名の兄弟を消す"
 
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか

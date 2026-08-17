@@ -9,7 +9,7 @@ CI（`.github/workflows/ci.yml` の `harness` job）と同じ検査をローカ�
   `git worktree add` で切り出した専用チェックアウト）
 - Node.js は repo の設定に従う。`tsc` は vendor 済みのものを使う（追加インストール不要）
 
-## 6 本のゲート
+## 7 本のゲート
 
 ```bash
 cd "$WT"   # この feature の worktree のパスを入れておく
@@ -31,6 +31,10 @@ bash harness/continuity/mutate.sh
 
 # 6. license / notice
 node harness/license-inclusion-check.mjs
+
+# 7. 旧形 parity の baseline が生成物であること（手で書き換えていないこと）
+node --experimental-strip-types harness/continuity/old-shape-baseline.mjs --output /tmp/osp.json \
+  && diff harness/fixtures/continuity/old-shape-parity.json /tmp/osp.json
 ```
 
 **2 は 4 より先に走らせる。** 順序を入れ替えると、テストが作業ツリーを書き換えた後の状態どうしを
@@ -46,6 +50,7 @@ node harness/license-inclusion-check.mjs
 | 4 | `fail 0`。件数は現行 259 から増える（FR ごとの回帰を足すため） |
 | 5 | `実行 N / 期待 N、生存 0` |
 | 6 | `license inclusion check OK` |
+| 7 | 差分なし |
 
 ## 受け入れシナリオの手動確認
 

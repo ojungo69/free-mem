@@ -1,44 +1,58 @@
+import type {
+  ContinuityDiagnosticV1,
+  IdempotencyLedger,
+  LedgerEntryV1,
+  WorkStateRevisionEntryV1,
+} from "./reference-model.ts";
+
 /**
  * 旧形入力（新しい任意欄を 1 つも持たない状態と event）に対する**振る舞い**の比較面。
  *
  * SC-003 は「旧形の入力に対する結果は #35 / #39 / #43 / #44 の是正以外変わらない」と言うが、
  * 「変わらない」を行数や issue 番号で語ると検証できない主張になる（測ってから書く）。ここでは
- * 比較面を構造から導く: 還元結果の**全体**から、内容が変われば必ず変わる hash 2 つ
- * （`contentHash` と `stateRevision`）だけを外し、残りを丸ごと突き合わせる。
+ * 比較面を構造から導く: 還元結果の**全体**をそのまま通し、比較のために形を変えるのは
+ * 台帳（`Map`）を鍵で整列した配列に直す 1 か所だけにする。
  *
- * hash を外す理由は、#35 が `startIngestSeq` を、#43 が `droppedEvidence` を状態に書くため、
- * hash は**旧形入力でも全 event で必ず食い違う**から。両者を比較面に残すと差分が全件になり、
- * allowlist が「全部許す」に退化して門にならない。hash 自体の再現性は
- * `harness/contract-hashes.json` と parity fixture が別に見ている。
+ * **欄を選び直さない**のが要点。`diagnostics` を `code` だけに、`history` と台帳を件数だけに
+ * 縮約すると、`detail` の作り替えや台帳の中身の入れ替えが差分として見えなくなる（実際に
+ * `terminal_order_unverifiable` の `detail` を壊しても全 test が緑のままだった）。ここは
+ * 素通しにしておき、何が変わってよいかは呼び出し側の許可表だけで決める。
  *
- * 逆に、新しい任意欄そのものは比較面に**残す**。欄が現れたことを差分として見せ、
- * どの case のどの event でどの path が増えたかを allowlist に列挙させるのが門の目的。
+ * hash も比較面に**残す**: 状態の `stateRevision` と `history` 各行の `contentHash` は、
+ * 状態が動いた step では当然食い違うので許可表に実測値で載る。逆に**状態が動かない step では
+ * 一致しなければならず**、そこが「旧形入力では何も変わっていない」の一番強い証拠になる。
  */
+export interface OldShapeLedgerRowV1 extends LedgerEntryV1 {
+  /** 台帳の鍵（idempotency key）。`Map` の並びは挿入順なので、比較のために鍵で整列する */
+  key: string;
+}
+
 export interface OldShapeOutcomeV1 {
   outcome: string;
-  diagnostics: readonly string[];
-  historyLength: number;
-  ledgerSize: number;
-  /** `stateRevision` を除いた状態そのもの。新しい任意欄は差分として見えるよう残す */
+  diagnostics: readonly ContinuityDiagnosticV1[];
+  /** 状態そのもの。`stateRevision` も新しい任意欄も差分として見えるよう残す */
   state: Record<string, unknown>;
+  history: readonly WorkStateRevisionEntryV1[];
+  ledger: readonly OldShapeLedgerRowV1[];
 }
 
 export interface OldShapeStepInput {
   outcome: string;
-  diagnostics: readonly { readonly code: string }[];
+  diagnostics: readonly ContinuityDiagnosticV1[];
   state: Record<string, unknown>;
-  historyLength: number;
-  ledgerSize: number;
+  history: readonly WorkStateRevisionEntryV1[];
+  ledger: IdempotencyLedger;
 }
 
 export function projectOldShape(step: OldShapeStepInput): OldShapeOutcomeV1 {
-  const { stateRevision: _dropped, ...state } = step.state;
   return {
     outcome: step.outcome,
-    diagnostics: step.diagnostics.map((d) => d.code),
-    historyLength: step.historyLength,
-    ledgerSize: step.ledgerSize,
-    state,
+    diagnostics: step.diagnostics,
+    state: step.state,
+    history: step.history,
+    ledger: [...step.ledger]
+      .map(([key, entry]) => ({ key, ...entry }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
   };
 }
 
