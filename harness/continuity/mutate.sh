@@ -438,6 +438,10 @@ mutate "    if (fingerprintConflict !== undefined) {" "    if (false) {" && run 
 mutate "      return stored !== undefined && stored !== incomingFingerprint;" "      return stored !== undefined;" && run "指紋が一致しても再配送として説明しない"
 mutate "      return stored !== undefined && stored !== incomingFingerprint;" "      return stored !== incomingFingerprint;" && run "指紋を持たない旧い状態も衝突にする（FR-012）"
 mutate "    const fingerprintUnexplained = plausible.every((pending) => {" "    const fingerprintUnexplained = plausible.some((pending) => {" && run "兄弟の 1 件が名乗っていれば全員分の衝突にする（FR-012 混在）"
+mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  const storedFingerprint: string | undefined = undefined;" && run "open な候補の指紋の食い違いを見ない（FR-011）"
+mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  const storedFingerprint = matched.terminalFingerprint;" && run "open な候補の空白の指紋を「違う指紋」と読む（FR-012）"
+mutate "    terminalStatusOf(terminalEvent) !== \"unknown\"" "    true" && run "unknown に倒れる terminal でも指紋の食い違いで隔離する"
+mutate "    storedFingerprint !== undefined &&" "    startIngestSeqOf(matched) !== undefined &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を順序材料がある場合だけにする"
 cp "$BAK" "$SRC"
 echo "--- 復元後 ---"
 # 出力を目視するだけにしない。`node ... | grep` は grep の終了状態を返すので、`set -u` しか

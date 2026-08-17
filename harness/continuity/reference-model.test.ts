@@ -2226,6 +2226,98 @@ test("記録側の空白の指紋は「無い」として読む（#44 FR-012）"
   }
 });
 
+/** 復元状態にだけありうる形: open なまま指紋を持つ pending。還元器は自分では作らない */
+function openWithFingerprint(fingerprint: string, status: "started" | "unknown" = "started") {
+  const started = startedSnapshot();
+  return {
+    ...started,
+    state: {
+      ...started.state,
+      pendingOperations: started.state.pendingOperations.map((pending) => ({
+        ...pending,
+        status,
+        terminalFingerprint: fingerprint,
+      })),
+    },
+  };
+}
+
+test("open な候補が持つ指紋は上書きせず衝突にする（#44 FR-010/FR-011）", () => {
+  // 閉じる経路は指紋を無条件に上書きする。確定済みの候補には衝突検査があるが、**open な
+  // 候補には無かった**（実測: `started` + 指紋 F1 の復元状態に F2 の terminal を渡すと
+  // `applied` / 診断ゼロ / `succeeded` / 指紋は F2 に化け、F1 の証跡は状態から消えた）。
+  // 凍結 schema は open な要素が指紋を持つことを妨げないので、復元状態では必ず起きうる形
+  for (const status of ["started", "unknown"] as const) {
+    const restored = openWithFingerprint("F1", status);
+    const conflicting = reduceTaskWorkState(
+      restored,
+      terminalEvent({ canonicalFingerprint: "F2" }),
+      new Map(),
+    );
+    assert.equal(conflicting.outcome, "quarantined", status);
+    assert.deepEqual(conflicting.diagnostics.map((d) => d.code), ["terminal_conflict"], status);
+    // 隔離なので状態は動かず、証跡も残る（訂正版を後から入れ直せる）
+    assert.equal(conflicting.snapshot.state.pendingOperations[0]?.status, status);
+    assert.equal(conflicting.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+    assert.equal(conflicting.snapshot.state.stateRevision, restored.state.stateRevision);
+    assert.equal(conflicting.ledger.size, 0);
+  }
+});
+
+test("指紋の衝突は台帳を消費する順序分岐より先に判定する（#44）", () => {
+  // 隔離は配送鍵を消費しないが、順序の 2 分岐（`terminal_order_unverifiable` /
+  // `terminal_out_of_order`）は消費する。後ろに置くと、指紋が食い違う terminal が順序の穴を
+  // 通って `unknown` に化け、訂正版の再配送が重複 no-op として黙って捨てられる
+  const unverifiable = reduceTaskWorkState(
+    withoutStartFacts(openWithFingerprint("F1")),
+    terminalEvent({ canonicalFingerprint: "F2" }),
+    new Map(),
+  );
+  assert.deepEqual(unverifiable.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.equal(unverifiable.ledger.size, 0);
+
+  const outOfOrder = reduceTaskWorkState(
+    openWithFingerprint("F1"),
+    terminalEvent({ canonicalFingerprint: "F2", ingestSeq: "1" }),
+    new Map(),
+  );
+  assert.deepEqual(outOfOrder.diagnostics.map((d) => d.code), ["terminal_conflict"]);
+  assert.equal(outOfOrder.ledger.size, 0);
+});
+
+test("open な候補の指紋検査は、材料が揃って初めて発動する（#44 FR-012）", () => {
+  // 通す側も固定する。締めすぎると健全な terminal が台帳に入らず adapter は無限再送になる
+  const sameFingerprint = reduceTaskWorkState(
+    openWithFingerprint("fingerprint-terminal"),
+    terminalEvent(),
+    new Map(),
+  );
+  assert.equal(sameFingerprint.outcome, "applied");
+  assert.equal(sameFingerprint.snapshot.state.pendingOperations[0]?.status, "succeeded");
+
+  for (const blank of ["", "   ", "​"]) {
+    const blanked = reduceTaskWorkState(
+      openWithFingerprint(blank),
+      terminalEvent({ canonicalFingerprint: "F2" }),
+      new Map(),
+    );
+    assert.equal(blanked.outcome, "applied", JSON.stringify(blank));
+    assert.equal(blanked.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F2");
+  }
+
+  // 入ってくる側が `unknown` に倒れる経路では指紋を書かないので上書きも起きない。ここで
+  // 隔離すると、`terminalEvidenceContradicts` は event 自身の性質で還元器は純関数なので、
+  // 同じ event が毎回同じ判定で戻り、その operation は永久に閉じられない
+  const ambiguous = reduceTaskWorkState(
+    openWithFingerprint("F1"),
+    terminalEvent({ canonicalFingerprint: "F2", successful: undefined }),
+    new Map(),
+  );
+  assert.equal(ambiguous.outcome, "applied");
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.status, "unknown");
+  assert.equal(ambiguous.snapshot.state.pendingOperations[0]?.terminalFingerprint, "F1");
+});
+
 test("droppedEvidence を持たない状態も読めて、必要になったら欄が生える（#43 FR-013/FR-014）", () => {
   // 任意欄なので、この版より前の checkpoint と別実装の状態には無い。無いことを
   // 「記録できない」と読むと、退避が黙って消える側に倒れる

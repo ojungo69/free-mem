@@ -49,12 +49,18 @@ start がどの取り込み連番で来たかが状態に無いため、権威�
 かかっている。
 
 **Independent Test**: 状態と event だけを渡す経路に、start より前の連番を持つ terminal を与える。
-event store も外部索引も渡さずに隔離されれば合格。
+event store も外部索引も渡さずに、その operation が閉じずに `unknown` へ倒れ、順序違反の診断が
+出れば合格。
 
 **Acceptance Scenarios**:
 
 1. **Given** start が連番 100 で受理された operation を含む状態、**When** 連番 50 の terminal を
-   状態だけを持つ実装に渡す、**Then** その operation は閉じず、順序違反として隔離される
+   状態だけを持つ実装に渡す、**Then** その operation は閉じず、`terminal_out_of_order` の診断とともに
+   `unknown` へ倒れる（配送鍵は消費される）。**隔離ではない**: 正本 §4.3 が隔離を課すのは
+   correlation / hash の衝突で、順序違反は「閉じられない」側の規則（「zero か複数の open に
+   マッチした terminal は何も閉じず、候補を `unknown` にして診断を出す」）に落ちる。連番の
+   前後関係は event と状態だけで決まる定常的な性質なので、隔離すると配送鍵が消費されないまま
+   同じ判定が毎回返り、adapter は無限に再送する
 2. **Given** 同じ状態、**When** 連番 150 の terminal を渡す、**Then** operation が閉じる
 3. **Given** daemon（索引あり）と状態だけの実装に同じ状態・同じ event 列を渡す、**Then** 両者が
    同じ受理・隔離の判断に到達し、同じ状態と同じ内容 hash を出す

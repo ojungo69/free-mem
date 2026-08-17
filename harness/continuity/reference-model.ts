@@ -2224,6 +2224,35 @@ export function correlateTerminalEvent(
   }
   const matched = open[0] as PendingOperation;
 
+  // 受理済みの指紋を持つ候補に、違う指紋の terminal が付こうとしている。閉じる経路は指紋を
+  // **無条件に上書き**するので、ここで見ないと「一度書いた欄は上書きしない。食い違いは衝突」
+  // （data-model）が open な候補についてだけ破れる。還元器が自分で書いた指紋は確定済みの
+  // operation にしか付かないが、凍結 schema は `started` / `unknown` の要素が指紋を持つことを
+  // 妨げないので、復元した checkpoint や別実装が書いた状態では open な候補が指紋を持ちうる。
+  // 確定済みの候補には同じ検査が上（`open.length === 0` の分岐）にあり、そちらは兄弟の
+  // どれとも一致しないことを要求するが、ここは候補が 1 件に確定している（`open.length > 1` は
+  // 上で `terminal_ambiguous`）ので、上書きする相手そのものだけを見れば足りる。
+  // **台帳を消費する 2 つの順序分岐より先に置く**。隔離は配送鍵を消費しないので、後ろに置くと
+  // 指紋が食い違う terminal が順序の穴を通って `unknown` に化け、訂正版の再配送が重複 no-op で
+  // 消える。§4.3 も「terminal の identity / 指紋の衝突は隔離、記録はしない」と書き分けている。
+  // **入ってくる側が `unknown` に倒れる場合は発火させない**: その経路は指紋を書かないので
+  // 上書きが起きず、しかも `terminalEvidenceContradicts` は event 自身の性質なので隔離すると
+  // 同じ event が毎回同じ判定で戻り、還元器が純関数である以上その operation は永久に閉じない
+  const storedFingerprint = declared(matched.terminalFingerprint);
+  if (
+    storedFingerprint !== undefined &&
+    storedFingerprint !== terminalEvent.canonicalFingerprint &&
+    terminalStatusOf(terminalEvent) !== "unknown"
+  ) {
+    return {
+      matched: null,
+      diagnostic: "terminal_conflict",
+      detail: `operation ${matched.operationId} は指紋 ${storedFingerprint} の terminal を受理済みなのに、違う指紋 ${terminalEvent.canonicalFingerprint} の terminal が来た`,
+      // 隔離は状態を一切変えないので、候補も unknown にしない
+      unresolved: [],
+    };
+  }
+
   const startIngestSeq = startIngestSeqOf(matched);
   if (startIngestSeq === undefined) {
     // start の ingestSeq が状態に無い（この版より前の checkpoint・別実装の状態: #35）。順序を確認できない

@@ -326,6 +326,15 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
 | B-1 | 記録側の衝突検査は terminal が未照合のあいだしか走らないので、孤児から照合済みへ移ると `delivery_conflict` を素通りして operation を閉じ、配送鍵まで消費する | **しなかった（対象が古い）** | **却下（済み）**。`original_commit_id` が `e3fdd31` で、これは `92d01ec` が直した内容そのもの。現在の検査は phase 分岐より**前**（`reduceTaskWorkState` 入口、台帳検査の直後）にあるので、照合されうる terminal も同じ検査を通る。回帰: 孤児 F1 → start → 同じ配送鍵で F2 → `quarantined` / `["delivery_conflict"]` / operation は `started` のまま / 台帳サイズ不変。対照として同じ指紋の F1 は `applied` / `succeeded` |
 | B-2 | `OperationCorrelationV1.startEventId` は schema に `minLength` が無いので空文字が届きうる。`declared()` がそれを「名乗っていない」と扱うため、退避の記録が `eventId` を持たず、同名の兄弟が並ぶと落ちた側を特定できない | した（材料が無いので当然そうなる） | **却下（限界として明記）**。代替の識別子が無い: `sourceEventIds[0]` は C-blocking-4 で差し戻した誤った authority そのもの、`nativeOperationId` は任意欄で記録側に置き場も無い。復元状態を検査して弾くのも取らない——「状態は権威であって検査しない」がこの還元器の立場で、`startIngestSeq` の綴り検査を**例外として**明示しているのと同じ理由（`startEventId` を空白で書ける実装は `status` も直接書ける）。evidence の限界に追記した |
 
+**`92d01ec` への bot 指摘 第 2 波（同じく chatgpt-codex-connector、4 件。すべて `92d01ec` 起点）**:
+
+| # | 指摘 | 再現 | 採否 |
+|---|---|---|---|
+| B-3 | 復元状態の open な候補（`started` / `unknown`）が既に `terminalFingerprint` を持つとき、違う指紋の terminal がその候補を閉じながら指紋を黙って上書きする。data-model の「一度書いた欄は上書きしない、食い違いは衝突」に反し、先の terminal の唯一の証跡が消える | した（`applied` / 診断ゼロ / `succeeded` / 指紋は F2 に化け、F1 は状態から消えた） | **採用**。確定済みの候補には同じ検査があったが、**open な候補には無かった**——[[defect-shape-closure-needs-second-axis]] の形そのもの。照合が候補を 1 件に決めた直後（`open.length > 1` は既に `terminal_ambiguous`）に、上書きする相手そのものだけを見る検査を足した。**台帳を消費する 2 つの順序分岐より先**に置く（後ろだと順序の穴を通って `unknown` に化け、訂正版が重複 no-op で消える）。入ってくる側が `unknown` に倒れる経路では発動しない（指紋を書かないので上書きが起きず、判定は event 自身の性質なので隔離すると永久に閉じない）。正本 §4.3 に「候補が 1 件に決まる場面では要素単位で判定する」を追記し revision 行を足した |
+| B-4 | evidence の限界が「上限超えの `droppedEvidence` を repair するのは start 経路だけ」と書いているが、記録を生む terminal も `recordDroppedEvidence` を通り、記録が重複でも刈った状態を返す | した（文面と実装を突き合わせ） | **採用（文面）**。正本 §4.3 は既に「repair はそれを行う経路（every start, every recorded terminal）で述べる」に直っており、**evidence だけが古かった**。記録を生む terminal と operation を閉じるだけの terminal を書き分けた |
+| B-5 | evidence 冒頭の実装対応表が、`turnIdSource` を側索引 `TaskWorkStateSnapshotV1.operationStarts` に持ち退避時に delete せよと今も指示している。この PR は索引も型も消したので、表に従うと非直列化の設計を作り直して復元後のパリティを失う | した（`operationStarts` は harness に 1 箇所も残っていない） | **採用（文面）**。指示になっている行（対応表・退避の説明・`terminal_order_unverifiable` の条件・再配送の規則・信頼境界）を要素の 2 欄に直した。§3 の「索引方式をやめた理由」は経緯として残し、当時の設計を語る箇所はそうと分かる書き方にした |
+| B-6 | spec.md の受入シナリオが「連番 50 の terminal は順序違反として隔離される」と書いているが、還元器は `terminal_out_of_order` で `unknown` に倒し配送鍵を消費する | した（コードと正本の両方を確認） | **採用（文面）**。**正本を先に読んで権威を決めた**: §4.3 が隔離を課すのは correlation / hash の衝突で、順序違反は「zero か複数の open にマッチした terminal は何も閉じず候補を `unknown` にして診断を出す」側に落ちる。連番の前後は event と状態だけで決まる定常的な性質なので、隔離すると鍵が消費されず無限再送になる。よって**古かったのは spec.md** で、正本の改訂は不要 |
+
 `ponytail-review`: 実装差分は条件 1 つとコメントのみで削るものなし。test 側の 300 周ループは
 「鍵の選択による増幅ではない」ことを示すのに 256 件の飽和を跨ぐ必要があるので残す。
 
