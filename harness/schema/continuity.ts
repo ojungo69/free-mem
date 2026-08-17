@@ -331,8 +331,10 @@ export interface DroppedEvidenceEntryV1 {
   eventId?: string;
   operationId?: string;
   status?: "started" | "succeeded" | "failed" | "unknown";
-  // 再送で記録が増えないようにするための鍵（#39）。監査用の識別子は eventId のほう
+  // 再送で記録が増えないようにするための鍵（#39）。監査用の識別子は eventId のほう。
+  // 第一 authority は adapterDeliveryId で、指紋はそれを名乗らない記録の fallback（§8.2 と同じ順）
   terminalFingerprint?: string;
+  adapterDeliveryId?: string;
 }
 
 export interface RepositoryStateSnapshot {

@@ -951,11 +951,34 @@ const DROPPED_EVIDENCE_FIELDS: Record<keyof contract.DroppedEvidenceEntryV1, tru
   operationId: true,
   status: true,
   terminalFingerprint: true,
+  adapterDeliveryId: true,
 };
+
+/** 相互代入可能性。片側だけの `extends` は広がりを見逃す */
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 
 test("DroppedEvidenceEntryV1 の欄集合は schema と TS で一致する（#43 / #39）", () => {
   const entryDef = defs.DroppedEvidenceEntryV1;
   assert.ok(entryDef, "$defs.DroppedEvidenceEntryV1 が無い");
   const properties = entryDef.properties as Record<string, unknown>;
   assert.deepEqual(Object.keys(properties).sort(), Object.keys(DROPPED_EVIDENCE_FIELDS).sort());
+});
+
+test("重複判定の鍵は schema でも TS でも string（#39）", () => {
+  // 欄名の集合しか見ていないと**値型の drift が残る**。`terminalFingerprint` を
+  // `string | number` に広げても、`Record<keyof ...>` も validator の test も既存の string 代入も
+  // 全部通る（実測）。鍵は同一性を決める欄なので、型と上限を両方向で tsc に見せる
+  const exact: {
+    terminalFingerprint: Exact<contract.DroppedEvidenceEntryV1["terminalFingerprint"], string | undefined>;
+    adapterDeliveryId: Exact<contract.DroppedEvidenceEntryV1["adapterDeliveryId"], string | undefined>;
+  } = { terminalFingerprint: true, adapterDeliveryId: true };
+  assert.deepEqual(Object.values(exact), [true, true]);
+
+  const entryDef = defs.DroppedEvidenceEntryV1;
+  assert.ok(entryDef, "$defs.DroppedEvidenceEntryV1 が無い");
+  const properties = entryDef.properties as Record<string, { type?: string; maxLength?: number }>;
+  for (const field of ["terminalFingerprint", "adapterDeliveryId"] as const) {
+    assert.equal(properties[field]?.type, "string", `${field} の type`);
+    assert.equal(properties[field]?.maxLength, 8192, `${field} の maxLength`);
+  }
 });

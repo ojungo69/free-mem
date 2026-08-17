@@ -202,6 +202,14 @@ addendum に無い**ので、「必ず残る」とは書けない。退避を状
 流すと状態から消える。逆に開いた候補が 1 件でもあれば記録しない（その候補が `unknown` として
 event の効果を持つので、live な集合から落ちていない）。
 
+**重複判定の鍵は §8.2 の順**（`adapterDeliveryId` → `canonicalFingerprint`。keyspace は台帳と
+同じく `d:` / `f:` で分ける）。片側だけの鍵はどちらかの向きを必ず落とすことを両方測った:
+指紋だけにすると、配送鍵も `operationMatchKey` も違う 300 件の孤児が同じ指紋を名乗るだけで
+記録 1 件に潰れた（history 1 / 記録 1 / 台帳 0、299 件が診断も無く消える）。`eventId` だけに
+すると、同一配送の再送が毎回別物として記録された（1 → 300 revision）。前者は adapter が
+算出して wire で運ぶ値を単独の権威にしたための穴、後者は再配送契約（同じ配送鍵・違う
+`eventId`）を無視したための穴で、**正直な adapter でも起きるのは後者**。
+
 **候補を `unknown` に倒して台帳へ入れる**:
 
 - `terminal_unmatched`（**開いた候補が居て**、turn 両立などで 1 件に絞れない）/ `terminal_ambiguous`
@@ -450,13 +458,14 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
     `private` として checkpoint と診断に残る。**この露出は #43/#44 が作ったものではない**：
     `Observed*.sourceEventIds` が同じ値を同じ機密度で以前から保持している。閉じるには intake で
     識別子の不透明性を強制する必要があり、event 表面全体に及ぶので #62 として切り出した
-  - **上限超えの復元配列を刈るのは記録経路だけ**。刈りは `recordDroppedEvidence` の中にあるので、
-    start と「保持されない terminal として記録された terminal」は通るが、operation を閉じる
-    terminal と放棄はそこを通らず、上限超えの配列をそのまま次の revision へ運ぶ。刈る側の
-    経路では**何も足さない event でも刈る**（上限は append の性質ではなく状態の性質で、運ぶと
-    自分の凍結 schema に反する状態を revision ごとに出し続けることになる）。全経路で揃えるには
-    刈りを revision の構築側へ移す必要があり、FR-015 が求めているのは schema 側の上限なので
-    ここでは移していない
+  - **上限超えの復元配列を刈るのは、記録経路から revision を作ったときだけ**。刈りは
+    `recordDroppedEvidence` の中にある。start は**何も足さない event でも刈る**（上限は append の
+    性質ではなく状態の性質で、運ぶと自分の凍結 schema に反する状態を revision ごとに出し続ける
+    ことになる）。terminal は**実際に記録を足したときだけ**——重複だった再送は「状態を変えない
+    隔離」に倒す設計なので、刈った結果ごと捨てられる（実測: 257 件の記録を持つ状態へ同じ孤児を
+    再送すると 257 件・同一 snapshot・診断なしのまま）。operation を閉じる terminal と放棄は
+    そもそも記録経路を通らず、そのまま次の revision へ運ぶ。全経路で揃えるには刈りを revision の
+    構築側へ移す必要があり、FR-015 が求めているのは schema 側の上限なのでここでは移していない
   - **revision ごとの複製は配列 1 段だけ**。`pendingOperations` も `droppedEvidence` も
     `[...arr]` で配列だけを分け、要素 object は過去の revision と共有している。凍結 schema の
     欄は `readonly` ではないので、要素を書き換える caller が現れれば `contentHash` を採った後の
@@ -491,9 +500,9 @@ bash harness/continuity/mutate.sh                                 # §5 の変�
 ## 5. 変異テスト（2026-08-18）
 
 スクリプトは `harness/continuity/mutate.sh`（`bash harness/continuity/mutate.sh` で再現できる）。
-各ゲートをわざと壊し、対応する test が落ちることを確認した。**191 件すべてで 1 件以上が失敗**し、
-生存はゼロ、実行件数も期待どおり 191 件（黙って飛ばされた変異ゼロ）、復元後は 211/211 green
-（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 320/320）。
+各ゲートをわざと壊し、対応する test が落ちることを確認した。**194 件すべてで 1 件以上が失敗**し、
+生存はゼロ、実行件数も期待どおり 194 件（黙って飛ばされた変異ゼロ）、復元後は 211/211 green
+（`mutate.sh` が回すのは `reference-model.test.ts` 単体。`harness/continuity/*.test.ts` 全体は 321/321）。
 
 **下の表は `mutate.sh` の出力から作る**（同スクリプトの header がそう宣言している）。ラベルを足し引き
 したら、次で突き合わせてから doc を直す。CI は `mutate.sh` を走らせるが doc は見ないので、
@@ -716,7 +725,10 @@ kill 率より先に**実行件数**を見ること。変異はソース中の�
 | 孤児の記録を再送のたびに足す | 4 |
 | 孤児の重複判定を eventId で行う（再送 DoS） | 4 |
 | 足せていなくても状態を進める | 4 |
-| 孤児の記録に同一性の鍵を残さない | 8 |
+| 孤児の記録に同一性の鍵を残さない | 6 |
+| 孤児の記録に配送鍵を残さない | 5 |
+| 重複判定で配送鍵を見ず指紋だけにする（§8.2 の順を崩す） | 1 |
+| 配送鍵の無い記録を同一性なしにする | 1 |
 | 候補ゼロの terminal を状態に記録しない | 14 |
 | 開いた候補ゼロの unmatched を状態に記録しない | 2 |
 | 退避を状態に記録しない | 5 |

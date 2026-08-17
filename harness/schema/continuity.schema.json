@@ -996,7 +996,12 @@
         "terminalFingerprint": {
           "type": "string",
           "maxLength": 8192,
-          "$comment": "#39: 記録した孤児 terminal の canonicalFingerprint。**再送で記録が増えないようにするための鍵**であって、監査用の識別子ではない（それは eventId）。隔離は配送鍵を消費しないので同じ terminal は届き続けるが、再配送は eventId・ingestSeq・occurredAt が変わりうる（台帳の鍵が adapterDeliveryId であって eventId ではないのと同じ理由）。eventId で重複を見ると同じ terminal が何度でも記録され、そのたびに stateRevision が動く（実測: 同一 adapterDeliveryId・同一 fingerprint の 300 再送で 300 revision）。§4.3 が terminal の同一性に使うのは payload/source hash なので、こちらを鍵にする。"
+          "$comment": "#39: 記録した孤児 terminal の canonicalFingerprint。**再送で記録が増えないようにするための鍵**であって、監査用の識別子ではない（それは eventId）。隔離は配送鍵を消費しないので同じ terminal は届き続けるが、再配送は eventId・ingestSeq・occurredAt が変わりうる（台帳の鍵が adapterDeliveryId であって eventId ではないのと同じ理由）。eventId で重複を見ると同じ terminal が何度でも記録され、そのたびに stateRevision が動く（実測: 同一 adapterDeliveryId・同一 fingerprint の 300 再送で 300 revision）。§4.3 が terminal の同一性に使うのは payload/source hash なのでこの欄を持つが、**単独では鍵にしない**——第一 authority は adapterDeliveryId で、この欄はそれを名乗らない記録の fallback（§8.2 と同じ優先順位）。"
+        },
+        "adapterDeliveryId": {
+          "type": "string",
+          "maxLength": 8192,
+          "$comment": "#39: 記録した孤児 terminal の配送鍵。**重複判定の第一 authority**で、§8.2 の `idempotencyKey = adapterDeliveryId ?? canonical fingerprint` と同じ優先順位を記録側でも取る。指紋だけを鍵にすると、配送鍵も相関材料も違う 300 件の terminal が同じ指紋を名乗るだけで 1 件に潰れる（実測: history 1 / 記録 1 / 台帳 0、299 件が診断も無く消えた）。`canonicalFingerprint` は adapter が算出して wire で運ぶ値なので、それだけを同一性の権威にはできない。keyspace は還元器の台帳と同じく分ける（配送鍵を名乗る記録と指紋しか持たない記録は別扱い）。この欄が無い記録——この版より前の checkpoint、配送鍵を持たない adapter——は従来どおり指紋で判定する。"
         }
       }
     },

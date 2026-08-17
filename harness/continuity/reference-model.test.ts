@@ -1512,8 +1512,9 @@ test("孤児 terminal は droppedEvidence に残るが、鍵は消費しない�
     {
       reason: "orphaned_terminal",
       eventId: "event-terminal",
-      // 再送の重複判定に使う鍵。§4.3 が terminal の同一性に使う値と同じ
+      // 再送の重複判定に使う鍵。§8.2 の順で配送鍵が第一 authority、指紋はその fallback
       terminalFingerprint: "fingerprint-terminal",
+      adapterDeliveryId: "delivery-terminal",
       recordedAt: "2026-08-16T00:00:02Z",
       // 相手が居ないので機密度を引き継げない。fail-closed の既定に倒す
       sensitivity: "private",
@@ -1584,30 +1585,30 @@ test("同じ孤児 terminal の再配送は記録を増やさない（収束す�
   assert.equal(corrected.snapshot.state.droppedEvidence?.length, 2);
 });
 
-test("指紋を変える再送は配送鍵を変える再送と同じコストにしかならない（鍵選択の根拠）", () => {
-  // security review が「同一 `adapterDeliveryId` のまま `canonicalFingerprint` を変えれば
-  // #39 の DoS が再現する」と指摘した。再現はする。**が、配送鍵ごと変えた場合と完全に
-  // 同じコストにしかならない**ので、鍵の選択による増幅ではない。
+test("記録の重複判定は §8.2 の順（配送鍵が第一 authority、指紋は fallback）", () => {
+  // 鍵をどちらか一方にすると、**両方向のうち片方が必ず壊れる**。実測で 2 つとも確認した:
   //
-  // `eventId` を鍵にしていたときの欠陥とはここが違う。あれは**正直な adapter** が引き起こした
-  // ——再配送は同じ配送鍵・違う `eventId` という契約なので、同じ terminal を再送するだけで
-  // 1 revision が 300 revision になった。`canonicalFingerprint` は payload/source から導く値
-  // なので、同じ配送のまま指紋だけ変えるには event を捏造するしかなく、それは配送鍵ごと
-  // 捏造するのと同じ手間で同じ結果になる。記録の伸びは「相異なる terminal の数」に比例
-  // していて、そこは記録という機能そのもののコストである。
-  const measure = (varyDeliveryId: boolean) => {
+  // - 指紋だけを鍵にすると、配送鍵も `operationMatchKey` も違う 300 件の孤児が、同じ指紋を
+  //   名乗るだけで記録 1 件に潰れた（history 1 / 記録 1 / 台帳 0、299 件が診断も無く消える）。
+  //   `canonicalFingerprint` は adapter が算出して wire で運ぶ値なので、単独では同一性の
+  //   権威にならない。「配送 ID が違えば同じ指紋でも別の論理 event」は §8.2 の規則で、
+  //   台帳側は以前からそう振る舞っている
+  // - `eventId` を鍵にすると、同一配送の再送が毎回別物として記録された（1 → 300 revision）。
+  //   再配送は「同じ配送鍵・違う eventId・違う ingestSeq」という契約なので、これは**正直な
+  //   adapter** が引き起こす
+  //
+  // 台帳と同じ優先順位（配送鍵 → 指紋）にすると両方が閉じる。keyspace も台帳と同じく分ける
+  const measure = (
+    label: string,
+    vary: (i: number) => Partial<NormalizedContinuityEvent>,
+  ) => {
     let snapshot = emptySnapshot();
     let ledger: IdempotencyLedger = new Map();
     const revisions = new Set<string>();
     for (let i = 0; i < 300; i += 1) {
       const result = reduceTaskWorkState(
         snapshot,
-        terminalEvent({
-          eventId: `event-terminal-${i}`,
-          ingestSeq: String(1000 + i),
-          canonicalFingerprint: `fingerprint-terminal-${i}`,
-          ...(varyDeliveryId ? { adapterDeliveryId: `delivery-terminal-${i}` } : {}),
-        }),
+        terminalEvent({ eventId: `event-terminal-${label}-${i}`, ingestSeq: String(1000 + i), ...vary(i) }),
         ledger,
       );
       snapshot = result.snapshot;
@@ -1621,20 +1622,47 @@ test("指紋を変える再送は配送鍵を変える再送と同じコスト�
       ledger: ledger.size,
     };
   };
-  const expected = { revisions: 300, history: 300, dropped: 256, ledger: 0 };
-  assert.deepEqual(measure(false), expected);
-  assert.deepEqual(measure(true), expected);
 
-  // 逆向き: 配送鍵が違っても指紋が同じなら 1 件。§4.3 が terminal の同一性に使うのは
-  // payload/source hash なので、同じ指紋は同じ terminal であり、2 件目を落とすのが仕様
-  const first = reduceTaskWorkState(emptySnapshot(), terminalEvent(), new Map());
-  const other = reduceTaskWorkState(
-    first.snapshot,
-    terminalEvent({ eventId: "event-terminal-other", adapterDeliveryId: "delivery-other" }),
-    first.ledger,
+  // 同じ配送鍵の再送は、指紋が変わっても 1 件に収束する。隔離は配送鍵を消費しないので
+  // 再送は止まらず、ここが収束しないと記録が飽和した後も revision と history が伸び続ける
+  assert.deepEqual(
+    measure("same-delivery", (i) => ({ canonicalFingerprint: `fingerprint-${i}` })),
+    { revisions: 1, history: 1, dropped: 1, ledger: 0 },
   );
-  assert.equal(other.snapshot.state.droppedEvidence?.length, 1);
-  assert.equal(other.snapshot.state.stateRevision, first.snapshot.state.stateRevision);
+
+  // 配送鍵が違えば別の論理 event。指紋が同じでも、相関材料が違えば別々に記録する
+  assert.deepEqual(
+    measure("cross-delivery", (i) => ({
+      adapterDeliveryId: `delivery-${i}`,
+      canonicalFingerprint: "same-fingerprint",
+      operation: {
+        ...TERMINAL_OPERATION,
+        operationMatchKey: `match-${i}`,
+        nativeOperationId: `toolu_${i}`,
+        canonicalInputHash: `input-${i}`,
+      },
+    })),
+    { revisions: 300, history: 300, dropped: 256, ledger: 0 },
+  );
+
+  // 配送鍵を名乗らない記録どうしは指紋で判定する（この版より前の checkpoint・配送鍵を持たない
+  // adapter）。`ledgerKeyOf` の `d:`/`f:` と同じ分割なので、両者が混ざっても衝突しない
+  const legacy = emptySnapshot({
+    droppedEvidence: [{
+      reason: "orphaned_terminal",
+      eventId: "event-old",
+      terminalFingerprint: "fingerprint-terminal",
+      recordedAt: "2026-08-16T00:00:00Z",
+      sensitivity: "private",
+    }],
+  });
+  const blankDelivery = reduceTaskWorkState(
+    legacy,
+    terminalEvent({ eventId: "event-terminal-blank", adapterDeliveryId: undefined }),
+    new Map(),
+  );
+  assert.equal(blankDelivery.snapshot.state.droppedEvidence?.length, 1);
+  assert.equal(blankDelivery.snapshot.state.stateRevision, legacy.state.stateRevision);
 });
 
 test("開いた候補が 1 件も無い unmatched な terminal も記録する（#43）", () => {
@@ -1749,9 +1777,10 @@ test("記録は識別と分類だけを持つ（#43 FR-007）", () => {
     "sensitivity",
     "status",
   ]);
-  // `terminalFingerprint` は識別（どの terminal か）であって内容ではない。event が名乗った
-  // hash をそのまま写すだけで、payload は入らない
+  // `terminalFingerprint` と `adapterDeliveryId` は識別（どの terminal のどの配送か）であって
+  // 内容ではない。event が名乗った値をそのまま写すだけで、payload は入らない
   assert.deepEqual(Object.keys(orphaned.snapshot.state.droppedEvidence?.[0] ?? {}).sort(), [
+    "adapterDeliveryId",
     "eventId",
     "reason",
     "recordedAt",

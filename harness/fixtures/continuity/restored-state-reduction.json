@@ -257,8 +257,8 @@
       "eventId": "event-terminal-orphan-restored",
       "evidenceKind": "native",
       "outcome": "quarantined",
-      "contentHash": "17548cf0451974d41d237e5dbfeabc8afb87e823ed1aa2ead742d044913dc6f4",
-      "stateRevision": "dd813bbff70fc74705fbef8942100a55ad917b0c5e9779d287c2ce893b5fbbbd",
+      "contentHash": "ac5c59c766cd63044d3286986a1ab92339c74b09fe226c54626ea3c5856e3dc1",
+      "stateRevision": "647e26e9cde6e93450d6d14cf668ca4fa0cad6e06500e27d18e0f5a05c0e2934",
       "historyLength": 2,
       "pendingStatuses": [
         "succeeded",

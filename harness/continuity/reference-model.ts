@@ -836,6 +836,26 @@ function nextContent(
  * 足す経路がそれを持たずに書けてしまい、その経路だけが再送のたびに配列と revision を伸ばす。
  * `added` が空なら呼び出し側は状態を変えない隔離に倒す。
  */
+/**
+ * 記録した孤児 terminal の同一性。§8.2 の優先順位（第一 authority は `adapterDeliveryId`、
+ * 無ければ canonical fingerprint）を記録側でも取り、keyspace は台帳と同じく分ける。
+ *
+ * **指紋だけで見てはいけない**。`canonicalFingerprint` は adapter が算出して wire で運ぶ値なので、
+ * 配送鍵も相関材料も違う terminal が同じ指紋を名乗れる。実測: 別々の `adapterDeliveryId` と
+ * 別々の `operationMatchKey` を持つ 300 件の孤児が同じ指紋を名乗るだけで記録 1 件に潰れ、
+ * 299 件が診断も無く消えた。「配送 ID が違えば同じ指紋でも別の論理 event」は §8.2 の規則で、
+ * 還元器の他の経路（台帳）は既にそう振る舞っている。
+ *
+ * 逆に、同じ配送鍵の再送は指紋が変わっても 1 件に収束する。隔離は配送鍵を消費しないので
+ * 再送は止まらず、ここが収束しないと記録が飽和した後も revision と history が伸び続ける。
+ */
+function orphanKeyOf(entry: DroppedEvidenceEntryV1): string | undefined {
+  const delivery = declared(entry.adapterDeliveryId);
+  if (delivery !== undefined) return `d:${delivery}`;
+  const fingerprint = declared(entry.terminalFingerprint);
+  return fingerprint === undefined ? undefined : `f:${fingerprint}`;
+}
+
 function recordDroppedEvidence(
   previous: readonly DroppedEvidenceEntryV1[] | undefined,
   requested: readonly DroppedEvidenceEntryV1[],
@@ -845,20 +865,22 @@ function recordDroppedEvidence(
   diagnostics: ContinuityDiagnosticV1[];
   added: readonly DroppedEvidenceEntryV1[];
 } {
-  // 鍵は §4.3 が terminal の同一性に使う `canonicalFingerprint`。`eventId` は封筒の値なので
-  // 再配送で変わりうる（台帳の鍵が `adapterDeliveryId` であって `eventId` でないのと同じ）。
-  // 退避（`evicted`）は指紋を持たないので、この重複判定の対象にしない
+  // 鍵は §8.2 の優先順位そのまま。`eventId` は封筒の値なので再配送で変わりうる（台帳の鍵が
+  // `adapterDeliveryId` であって `eventId` でないのと同じ）。
+  // 退避（`evicted`）は同一性の材料を持たないので、この重複判定の対象にしない
   const recordedOrphans = new Set(
     (previous ?? [])
       .filter((entry) => entry.reason === "orphaned_terminal")
-      .map((entry) => declared(entry.terminalFingerprint))
-      .filter((fingerprint): fingerprint is string => fingerprint !== undefined),
+      .map(orphanKeyOf)
+      .filter((key): key is string => key !== undefined),
   );
-  const additions = requested.filter(
-    (entry) =>
-      entry.reason !== "orphaned_terminal" ||
-      !recordedOrphans.has(declared(entry.terminalFingerprint) ?? ""),
-  );
+  const additions = requested.filter((entry) => {
+    if (entry.reason !== "orphaned_terminal") return true;
+    const key = orphanKeyOf(entry);
+    // 同一性の材料をどちらも名乗らない記録は重複判定に参加できない。event 経路では
+    // `idempotencyKeyOf` が先に落とすので、ここに来るのは直接 helper を叩いた場合だけ
+    return key === undefined || !recordedOrphans.has(key);
+  });
   const kept = [...(previous ?? []), ...additions];
   // 上限を超えたぶんだけ先頭から取る。追加が単独で上限を超える場合も、古い追加から落ちる
   const overflowed = kept.splice(0, Math.max(0, kept.length - CONTINUITY_LIMITS.arrayItems));
@@ -1417,9 +1439,12 @@ export function reduceTaskWorkState(
             {
               reason: "orphaned_terminal",
               eventId: event.eventId,
-              // 再送で記録が増えないための鍵。`eventId` は監査用（どの配送を記録したか）で、
-              // 同一性の判定には使えない
+              // 再送で記録が増えないための鍵は `orphanKeyOf` が §8.2 の順で組む。`eventId` は
+              // 監査用（どの配送を記録したか）で、同一性の判定には使えない
               terminalFingerprint: event.canonicalFingerprint,
+              ...(declared(event.adapterDeliveryId) === undefined
+                ? {}
+                : { adapterDeliveryId: event.adapterDeliveryId }),
               recordedAt: event.occurredAt,
               // 相手が居ないので機密度を引き継げない。§3.1 の fail closed どおり既定に倒す
               sensitivity: "private",
