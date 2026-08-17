@@ -84,10 +84,15 @@ corepack pnpm licenses list --json --prod   # 配布に載る範囲
 | 仕様・設計文書 | `specs/`、`docs/`、`agent-memory-*.md` | Apache-2.0 | The free-mem Authors |
 | evidence / 検証レポート | `evidence/` | Apache-2.0 | The free-mem Authors |
 | capability fixture・golden matrix | `harness/fixtures/`、`harness/matrix/` | Apache-2.0 | The free-mem Authors |
-| 第三者 dependency | `node_modules/`（配布しない） | 各 package の license | 各権利者 |
+| 第三者 dependency（install 時に解決される分） | `node_modules/` | 各 package の license | 各権利者 |
+| 第三者 dependency（build 出力に inline される分） | `packages/*/dist/`、`packages/viewer-server/static/`、`plugins/*/scripts/hook-runtime.mjs` | 各 package の license | 各権利者 |
 | creative asset（logo 等） | 現時点で無し | 追加時に本表へ追記する | — |
 
 `vendor/codemem/` 配下のファイルに free-mem の header を付けない。分類の境界はディレクトリで判定できる状態を保つ。
+
+以前この表には「第三者 dependency は `node_modules/`（配布しない）」の 1 行しか無かったが、
+それは install 時に解決される分だけを見た記述だった。bundler が build 出力に inline する分は
+**配布物そのものに入る**（実測は下の「配布面のチェック」を参照）。2 行に分けたのはそのため。
 
 ## inbound contribution 方針
 
@@ -104,15 +109,58 @@ corepack pnpm licenses list --json --prod   # 配布に載る範囲
 
 現時点で package / tag / release を作っていないため、ここは「作るときに満たすべき条件」として定義する。
 
-- GitHub source archive: `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` が root にあること（本 PR で満たす）
-- npm package: `license` フィールドと `LICENSE` の同梱。`vendor/codemem` 由来 package は MIT のまま
+- GitHub source archive: `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` が root にあること（満たしている）
+- npm package: `license` フィールドと `LICENSE` の同梱。`vendor/codemem` 由来 package は MIT のまま。
+  **加えて、build 出力に inline された第三者コードの notice を同梱する**（下記）
 - Rust crate / binary archive: `license` フィールド + `LICENSE` + `NOTICE` の同梱
 - SBOM / checksum bundle: release evidence に license scan の結果を含める
 - documentation site: footer に license 表記
 
-CI ゲート（本 PR で追加）: `harness/license-inclusion-check.mjs` が
-`LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` / `vendor/codemem/LICENSE` の存在、
-README の SPDX 表記と `LICENSE` の一致、`vendor/codemem` 配下 package.json の `license` 維持を検査する。
+### bundle された依存の notice（issue #50、2026-08-18 に解消）
+
+各 package の vite build に `rollup-plugin-license` を入れ、**bundler の module graph**を入力に
+`THIRD_PARTY_NOTICES.md` を成果物へ出す。生成は `vendor/codemem/scripts/license-notice-plugin.mjs`
+に 1 箇所化してある。
+
+| 公開 package | notice の場所 | 収録数（2026-08-18 実測） |
+|---|---|---|
+| `codemem` | `dist/THIRD_PARTY_NOTICES.md` | 0（`--ssr` build で依存は external） |
+| `codemem` | `dist/THIRD_PARTY_NOTICES.hook-runtime.md` | 2（`commander`、`@codemem/core`） |
+| `@codemem/core` | `dist/THIRD_PARTY_NOTICES.md` | 1（`hono`） |
+| `@codemem/mcp` | `dist/THIRD_PARTY_NOTICES.md` | 0 |
+| `@codemem/server` | `dist/THIRD_PARTY_NOTICES.md` | 0 |
+| `@codemem/server` | `static/THIRD_PARTY_NOTICES.md` | 47（`preact` / `@radix-ui/*` / `dompurify` ほか） |
+
+`package.json` の `files` は変更していない。`dist/` と `static/` のディレクトリ指定が配下を含むため。
+
+**方式の選択理由**: 成果物を後から測る方式（sourcemap の `sources` を集計する、識別子を grep する）は
+採らなかった。sourcemap を出さない成果物を黙って 0 件として通すためで、実際 issue #50 の当初の実測表は
+この穴で `hook-runtime.js`（`commander`）を対象から落とし、`static/app.js` については
+`@floating-ui/*`・`@preact/signals-core`・`marked`・`tslib`・`aria-hidden`・`get-nonce`・
+`react-remove-scroll` 系・`react-style-singleton`・`use-callback-ref`・`use-sidecar` の 14 件を
+取り落としていた。
+
+**「bundle せず external にする」を選ばなかった理由**: `static/app.js` はブラウザ向けで external 化が
+原理的に不可能なため、notice 生成の工程は結局必要になる。node 側の 2 件（`hono`・`commander`）だけを
+external 化しても工程は減らず、cli は `sync-hook-runtime.mjs` と `test:packed-artifact` が bundle 形状に
+依存している疑いがあるぶんリスクだけ増える。`@codemem/mcp` は結果的にこの形になっているが、
+意図して選んだ設計ではない。
+
+**恒久的な死角**: `@codemem/opencode-plugin` は rollup build を通らない（成果物が git に commit 済み）ため、
+module graph 方式では原理的に覆えない。2026-08-18 の実測では第三者コードを含まず、import も外部のみ。
+この 1 件のために別の機構は作らず、残余として記録するに留める。
+
+CI ゲート:
+
+- `harness/license-inclusion-check.mjs` — `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` /
+  `vendor/codemem/LICENSE` の存在、README の SPDX 表記と `LICENSE` の一致、`vendor/codemem` 配下
+  package.json の `license` 維持を検査する。**build 出力は見ない**
+- `harness/notice-inclusion-check.mjs` — 自分で install と build を行い、公開 package を `pnpm pack` して
+  展開し、tarball の中身を検査する。「build 済みなら検査する」形にしていないのは、build 順序に依存して
+  黙って素通りするのを避けるため。検査は存在と非空だけでなく、実測で判っている依存名
+  （`commander` / `hono` / `preact` / `@radix-ui/react-dialog` / `dompurify` / `tslib`）を名指しで要求する。
+  `tslib` を入れているのは、0BSD = notice 保持義務が無い唯一の license が生成側で特別扱いされて
+  黙って消えていないことの確認になるため。CI の独立 job と `release-tag-preflight.sh` の両方から走る
 
 ## owner の決定（2026-08-17）
 
@@ -128,11 +176,16 @@ license 付与は取り消せない。一度公開した version に対する gr
 - release 前の専門家確認（本 ADR は法的助言の代替ではない）。
 - DCO は `CONTRIBUTING.md` と PR template に規定しているが、CI では強制していない。
   外部 contribution を受け入れ始める時点で自動検査を入れるか判断する。
-- 公開 package の tarball に、bundle された依存の notice が載らない（issue #50）。実測では
-  `codemem`（@clack/prompts ほか）、`@codemem/core`（hono）、`@codemem/server`（@hono/node-server と
-  viewer の preact / @radix-ui / dompurify）が該当し、`@codemem/mcp` だけが該当しない。publish して
-  いない現状では配布が無いため義務も発生していないが、初回 `npm publish` のブロッカーとして扱う。
-  `THIRD_PARTY_NOTICES.md` の「Known gap」節に実測表を記録した。
+- ~~公開 package の tarball に bundle された依存の notice が載らない（issue #50）~~ →
+  **2026-08-18 に解消**。上の「bundle された依存の notice」節を参照。当初この項に書いていた実測
+  （`codemem` が `@clack/prompts` ほかを bundle する / `@codemem/server` が `@hono/node-server` を
+  bundle する）は再実測で否定された。どちらも `--ssr` build のため依存は external のままで、
+  代わりに `hook-runtime.js` と `static/app.js` に漏れがあった。
+- `plugins/{claude,codex}/scripts/hook-runtime.mjs` は git に commit された bundle で、`commander` の
+  コードを含むが copyright 表示を持たない。npm package には載らないので tarball ゲートの対象外だが、
+  **GitHub source archive では再配布される**。この経路は root の `THIRD_PARTY_NOTICES.md` が担う
+  （同ファイルに記載済み）。ファイルの隣に notice を置く形にはしていない——生成物を追跡対象に増やす
+  わりに、source archive では root の 1 ファイルで条件を満たすため。
 
 ## 帰結
 

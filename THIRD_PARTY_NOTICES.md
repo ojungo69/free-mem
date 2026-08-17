@@ -46,28 +46,53 @@ Findings that need a recorded decision or correction:
 
 No copyleft-only package is present in the production dependency tree.
 
-## Known gap: notices for code bundled into the publishable packages
+## Notices for code bundled into the publishable packages
 
 Each publishable package is built with Vite, and whatever its `rollupOptions.external` does not
-cover is inlined into the shipped output. Measured on 2026-08-17 by building the vendored tree and
-reading the emitted source maps:
+cover is inlined into the shipped output. Every build now emits a `THIRD_PARTY_NOTICES.md` next to
+that output, generated from the **bundler's module graph** rather than from the build artifact, so
+it stays correct for outputs that carry no source map. Generation lives in one place,
+`vendor/codemem/scripts/license-notice-plugin.mjs`.
 
-| Package | Bundled third-party code |
-|---|---|
-| `codemem` (cli) | `@clack/prompts`, `@clack/core`, `omelette`, `sisteransi`, `fast-string-width`, `fast-string-truncated-width`, `fast-wrap-ansi` |
-| `@codemem/core` | `hono` (18 modules) |
-| `@codemem/mcp` | none — its `external` list covers every dependency |
-| `@codemem/server` | `@hono/node-server` (2 modules), plus `static/app.js` built from the private `@codemem/ui` package: `preact`, `@preact/signals`, `@radix-ui/*`, `dompurify` |
+Measured on 2026-08-18 against `origin/main`:
 
-`static/app.js` emits no source map, so it was checked by identifier; it contains no license or
-copyright text at all. Those licenses require their notices to travel with redistributed copies, and
-a published tarball would carry only codemem's MIT `LICENSE`.
+| Package | Notice location | Bundled third-party code |
+|---|---|---|
+| `codemem` (cli) | `dist/THIRD_PARTY_NOTICES.md` | none — the `--ssr` build keeps dependencies external |
+| `codemem` (cli) | `dist/THIRD_PARTY_NOTICES.hook-runtime.md` | `commander`, `@codemem/core` |
+| `@codemem/core` | `dist/THIRD_PARTY_NOTICES.md` | `hono` |
+| `@codemem/mcp` | `dist/THIRD_PARTY_NOTICES.md` | none |
+| `@codemem/server` | `dist/THIRD_PARTY_NOTICES.md` | none |
+| `@codemem/server` | `static/THIRD_PARTY_NOTICES.md` | 47 packages — `preact`, `@preact/signals(-core)`, 21 × `@radix-ui/*`, 4 × `@floating-ui/*`, `dompurify`, `marked`, `tslib`, `aria-hidden`, `get-nonce`, `react-remove-scroll(-bar)`, `react-style-singleton`, `use-callback-ref`, `use-sidecar` |
 
-Nothing is published today — no tag, package, or release exists — so no redistribution has happened.
-Shipping a bundled-dependency notice artifact and verifying it in the packed tarball is a blocker for
-the first `npm publish`, tracked in [#50](https://github.com/ojungo69/free-mem/issues/50).
-`harness/license-inclusion-check.mjs` does not cover this and does not claim to: it checks
-package-level `LICENSE` files, not build output.
+A package that bundles nothing still ships a notice file saying so. The absence of a file is treated
+as a failure, not as "zero dependencies" — otherwise a broken generator would be indistinguishable
+from an artifact that genuinely bundles nothing.
+
+Eleven of the 47 packages in `static/THIRD_PARTY_NOTICES.md` ship no license file of their own
+(several `@radix-ui/*` sub-packages among them). Their entries record the SPDX identifier declared in
+`package.json` and state explicitly that upstream ships no license file, rather than omitting the
+entry.
+
+`harness/notice-inclusion-check.mjs` enforces this. It runs the install and the build itself, packs
+each publishable package with `pnpm pack`, extracts the tarball, and checks the notices inside it —
+existence, non-emptiness, one license-text field per entry, and the presence of specific dependency
+names known to be bundled. It runs as its own CI job and from `scripts/release-tag-preflight.sh`, so
+a manual `npm publish` cannot bypass it. `harness/license-inclusion-check.mjs` remains separate and
+still does not look at build output: it checks package-level `LICENSE` files.
+
+### Bundled code outside the npm packages
+
+`vendor/codemem/plugins/claude/scripts/hook-runtime.mjs` and its `plugins/codex/` counterpart are
+committed copies of the `hook-runtime` bundle, produced by `packages/cli/scripts/sync-hook-runtime.mjs`.
+They contain `commander` (MIT, Copyright (c) 2011 TJ Holowaychuk) and carry no copyright text of
+their own. They are not part of any npm package's `files`, so the tarball gate does not cover them;
+they are redistributed through the GitHub source archive, and this file is the notice that travels
+with that archive.
+
+`@codemem/opencode-plugin` is a permanent blind spot for the module-graph approach: its shipped
+artifacts are committed to git rather than produced by a rollup build. Measured on 2026-08-18 it
+bundles no third-party code — every import is external — so no notice is generated for it.
 
 Re-run the scan whenever the lockfile changes; `evidence/adr-004-licensing.md` records how these
 findings feed the license decision.

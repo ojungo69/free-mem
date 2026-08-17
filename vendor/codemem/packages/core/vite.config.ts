@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
-import license from "rollup-plugin-license";
 import { defineConfig } from "vitest/config";
+
+import licenseNoticePlugin from "../../scripts/license-notice-plugin.mjs";
 
 export default defineConfig({
 	build: {
@@ -21,13 +22,8 @@ export default defineConfig({
 				/^node:/,
 			],
 			plugins: [
-				license({
-					thirdParty: {
-						includePrivate: false,
-						output: {
-							file: resolve(import.meta.dirname, "dist/THIRD_PARTY_NOTICES.md"),
-						},
-					},
+				licenseNoticePlugin({
+					outFile: resolve(import.meta.dirname, "dist/THIRD_PARTY_NOTICES.md"),
 				}),
 			],
 		},

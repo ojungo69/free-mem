@@ -4,6 +4,10 @@ set -euo pipefail
 EXPECTED_BRANCH="${RELEASE_EXPECTED_BRANCH:-main}"
 MAIN_REF="origin/${EXPECTED_BRANCH}"
 TARGET_COMMIT="${RELEASE_TAG_COMMIT:-${GITHUB_SHA:-HEAD}}"
+NOTICE_REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+# CI を経ない手動 publish でも、実際の tarball に notice が無ければ tag 前に止める。
+node "${NOTICE_REPOSITORY_ROOT}/harness/notice-inclusion-check.mjs"
 
 git fetch origin "${EXPECTED_BRANCH}" --quiet
 git fetch origin 'refs/heads/release/*:refs/remotes/origin/release/*' --quiet || true
