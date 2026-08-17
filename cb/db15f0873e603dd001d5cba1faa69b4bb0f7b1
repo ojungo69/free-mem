@@ -1,0 +1,34 @@
+harness/fixtures/continuity/invalid/rejected-events.json
+  s_2d059b4f795bca::t_aeda8884e31ac5 6
+harness/continuity/reference-model.ts
+  s_2d059b4f795bca::t_a25de055125fbc 85-101
+  s_2d059b4f795bca::t_6c4a21a186bf47 159-167
+  s_2d059b4f795bca::t_96dae950cd95c7 229-235,241-261
+  s_2d059b4f795bca::t_918e7437a87c16 584-585
+harness/continuity/reference-model.test.ts
+  s_2d059b4f795bca::t_9ad54ab3a46258 2378-2388,2392-2393,2395-2430
+  s_2d059b4f795bca::t_871c3a05e99b78 64
+  s_2d059b4f795bca::t_3137af1641dbaf 2389-2391,2394
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_3a60784fbb9acd 96-97,101
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_174f254e45bad0 28-29
+harness/fixtures/continuity/tool-lifecycle-reduction.json
+  s_2d059b4f795bca::t_9671ad38ba8a09 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "cbdb15f0873e603dd001d5cba1faa69b4bb0f7b1",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
