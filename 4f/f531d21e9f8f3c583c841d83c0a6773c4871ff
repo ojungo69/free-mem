@@ -1,0 +1,34 @@
+harness/continuity/old-shape-projection.ts
+  s_2d059b4f795bca::t_b7526790204a4d 21-25
+  s_2d059b4f795bca::t_169bcdc1cdfd8f 34-35,45,55
+evidence/phase3-reference-model.md
+  s_2d059b4f795bca::t_8f7d13ba7923a7 554,577,579,584-589,594-595,858
+harness/continuity/mutate.sh
+  s_2d059b4f795bca::t_a6244174b76568 457
+harness/continuity/old-shape-baseline.mjs
+  s_2d059b4f795bca::t_3ef135586ca30b 168-185,414
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_edf65a7b7f3b34 29
+harness/fixtures/continuity/old-shape-parity.json
+  s_2d059b4f795bca::t_04f59ad4e4a0b3 202,268,334,412,586,746,944,1016,1171,1325,1389-1542,1645,1680,1965,8012,14075,14164,14354,14515,14701,14773,14970,15042,15221,15407,15568,15634,15807
+specs/002-continuity-state-evidence/tasks.md
+  s_2d059b4f795bca::t_de86cb6f966d5a 392
+harness/continuity/old-shape-parity.test.ts
+  s_2d059b4f795bca::t_ceb23ccbf462dd 52-53,77,91,105,122,143,158,172,188,202,228,243,257,297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4ff531d21e9f8f3c583c841d83c0a6773c4871ff",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
