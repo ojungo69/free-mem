@@ -1,0 +1,29 @@
+vendor/codemem/packages/core/package.json
+  s_2d059b4f795bca::t_7c6802e4f991af 24
+vendor/codemem/packages/ui/package.json
+  s_2d059b4f795bca::t_f9cf7f28bf7f7b 29
+vendor/codemem/packages/ui/vite.config.ts
+  s_2d059b4f795bca::t_bf8367bd616e57 6,80-93
+vendor/codemem/pnpm-lock.yaml
+  s_2d059b4f795bca::t_cb2aa49d9b0bd1 30-32,169-171,251,255-257,1091-1097,1639-1776,1889-1892,2047-2049,2687-2689,2759-2761,2851-2854,2999-3009,3125-3145,4098-4100,4121,4127,4507,4512-4588,4745-4746,4899-4900,5496-5497,5554-5555,5649-5650,5811-5856,6002-6028
+vendor/codemem/pnpm-workspace.yaml
+  s_2d059b4f795bca::t_7c1ac742f08c8f 32
+vendor/codemem/packages/core/vite.config.ts
+  s_2d059b4f795bca::t_18d97e0d267836 2,23-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ce8411e3c9b0632702e9134bfeef846480513128",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
