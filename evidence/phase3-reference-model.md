@@ -247,8 +247,12 @@ pending があれば再配送として扱う。`nativeOperationId` を出さな�
 adapter が再送を続けることになる。
 
 **打ち切りは呼び出し側の責務**とする。`quarantined` + `terminal_orphaned` を受けた delivery 層は、
-同じ冪等キーの再送を「その session の `lastIngestSeq` が孤児 terminal の `ingestSeq` を十分に
-追い越すまで」に限り、それを過ぎたら unmatched evidence として doctor に出して捨てる。還元器側に
+同じ冪等キーの再送を「その session の取り込み連番が孤児 terminal の `ingestSeq` を十分に
+追い越すまで」に限り、それを過ぎたら unmatched evidence として doctor に出して捨てる。ここで見る
+のは delivery 層が持つ session 側の連番であって、状態の `lastIngestSeq` ではない。状態の watermark
+は**この lineage に適用した event の最大値**なので、同じ session の別 lineage の event ぶんだけ
+session の連番より遅れる。しかも watermark は連続被覆を主張しない（addendum §4.1）ので、これを
+「start はもう来ない」の根拠にはできない。還元器側に
 期限を持たせないのは、時刻も試行回数も状態に入れられない（決定的でなくなる・frozen schema に
 置き場が無い）ため。退避された operation を状態に残す場所ができれば（#39）この分岐の後者は消える。
 
