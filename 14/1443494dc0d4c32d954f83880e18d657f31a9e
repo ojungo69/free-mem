@@ -1,0 +1,23 @@
+specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md
+  s_2d059b4f795bca::t_4de5cf04b76998 19-20
+  s_2d059b4f795bca::t_c0ad7cb993df96 403-427
+  s_2d059b4f795bca::t_9e99b49ed9cb73 37-38,40
+  s_2d059b4f795bca::t_d46d2bf7781ebe 149,161-168
+  s_2d059b4f795bca::t_90b1dd09e697e2 169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "141443494dc0d4c32d954f83880e18d657f31a9e",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
