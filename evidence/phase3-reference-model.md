@@ -483,6 +483,16 @@ anchor があるぶん構造的に冗長で、唯一残る失敗形「state 側�
     3 回目で差分ゼロ）。これは下の「上限をまたぐと再び足されうる」と同じ境界。**operation を閉じる terminal と放棄は記録経路を通らない**ので、
     上限超えの配列をそのまま次の revision へ運ぶ。全経路で揃えるには刈りを revision の構築側へ
     移す必要があり、FR-015 が求めているのは schema 側の上限なのでここでは移していない
+  - **復元状態が `startEventId` を空白で書いていると、退避の記録は兄弟を判別できない**。
+    凍結 schema は `OperationCorrelationV1.startEventId` を必須にしているが `minLength` は
+    持たないので、空文字が届きうる。`declared()` はそれを「名乗っていない」として扱うため、
+    記録は `eventId` を持たず、同名・同 status の兄弟が並ぶ状態では落ちた側を特定できない
+    （欄を持つ状態に戻る）。**代わりの識別子を捏造しない**: `sourceEventIds[0]` は順序が
+    保証されない append-only の配列で、そこから start を推測するのは 1 度やって差し戻した
+    誤りそのもの。`nativeOperationId` は任意欄で、記録側に置き場も無い。**復元状態を検査して
+    弾くこともしない**——「状態は権威であって検査しない」がこの還元器の立場で、`startIngestSeq`
+    の綴り検査を例外として明示しているのと同じ理由（`startEventId` を空白で書ける実装は
+    `status` も直接書ける）。材料が無いことは「特定できない」であって、記録側の欠陥ではない。
   - **revision ごとの複製は配列 1 段だけ**。`pendingOperations` も `droppedEvidence` も
     `[...arr]` で配列だけを分け、要素 object は過去の revision と共有している。凍結 schema の
     欄は `readonly` ではないので、要素を書き換える caller が現れれば `contentHash` を採った後の

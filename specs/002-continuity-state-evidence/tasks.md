@@ -319,6 +319,13 @@ advisory 1 件。**還元器を実際に走らせて再現したものだけを�
 | F-2 | Node 24.16 では `node --test <file>` が file 全体を 1 test として報告するので、変異ゲートの「test を走らせていない変異」検査が機能せず、evidence の 214/214 も再現しない | **しなかった** | **却下（実測）**。同じ Node v24.16.0 で `node --test` は 214 件、`--test-isolation=none` 付きも 214 件で一致した（`--experimental-strip-types` の有無も結果を変えない。24.16 は型注釈を素で剥がす）。指摘者が見た 1 件は load 失敗そのもので、まさにこの検査が拾う形。ゲートは baseline と実行数を同じコマンドで突き合わせるので、報告方法が変わっても両方が同じだけ動く |
 | F-3 | 正本の型ブロックに新しい任意欄・`DroppedEvidenceEntryV1`・`droppedEvidence` が無く、正本だけから移植すると §4.3 の三検査が実装不能 | した（ブロックを目視） | **採用**。§4.1 のブロックに JSON schema と同じ形で足した。FR-017 が求めているのはまさにこの一致 |
 
+**`92d01ec` への bot 指摘（chatgpt-codex-connector、2 件）**:
+
+| # | 指摘 | 再現 | 採否 |
+|---|---|---|---|
+| B-1 | 記録側の衝突検査は terminal が未照合のあいだしか走らないので、孤児から照合済みへ移ると `delivery_conflict` を素通りして operation を閉じ、配送鍵まで消費する | **しなかった（対象が古い）** | **却下（済み）**。`original_commit_id` が `e3fdd31` で、これは `92d01ec` が直した内容そのもの。現在の検査は phase 分岐より**前**（`reduceTaskWorkState` 入口、台帳検査の直後）にあるので、照合されうる terminal も同じ検査を通る。回帰: 孤児 F1 → start → 同じ配送鍵で F2 → `quarantined` / `["delivery_conflict"]` / operation は `started` のまま / 台帳サイズ不変。対照として同じ指紋の F1 は `applied` / `succeeded` |
+| B-2 | `OperationCorrelationV1.startEventId` は schema に `minLength` が無いので空文字が届きうる。`declared()` がそれを「名乗っていない」と扱うため、退避の記録が `eventId` を持たず、同名の兄弟が並ぶと落ちた側を特定できない | した（材料が無いので当然そうなる） | **却下（限界として明記）**。代替の識別子が無い: `sourceEventIds[0]` は C-blocking-4 で差し戻した誤った authority そのもの、`nativeOperationId` は任意欄で記録側に置き場も無い。復元状態を検査して弾くのも取らない——「状態は権威であって検査しない」がこの還元器の立場で、`startIngestSeq` の綴り検査を**例外として**明示しているのと同じ理由（`startEventId` を空白で書ける実装は `status` も直接書ける）。evidence の限界に追記した |
+
 `ponytail-review`: 実装差分は条件 1 つとコメントのみで削るものなし。test 側の 300 周ループは
 「鍵の選択による増幅ではない」ことを示すのに 256 件の飽和を跨ぐ必要があるので残す。
 
