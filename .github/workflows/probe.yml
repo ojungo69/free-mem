@@ -1,0 +1,17 @@
+# issue #59 の検証用。同名 check の評価規則を実測する。merge しない。
+name: Probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fake:
+    name: notices
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # 本物の notices より後に終わらせる。「最後の 1 件を見る」規則なら、これが勝つ。
+      - run: sleep 420
