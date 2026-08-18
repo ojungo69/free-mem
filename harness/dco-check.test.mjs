@@ -91,11 +91,19 @@ test("bot を名乗る author email でも署名があれば通す", () => {
 // ゲートの「形」は unit test が届かない層（workflow の trigger と job 名）で決まっているので、
 // そこが崩れたら落ちるものをここに 1 つ置く。security control ではなく、後から自分で壊さない
 // ための回帰検査。
+// YAML scalar のうち、この検査に効く綴りだけを外す: 引用符と、引用されていない行末コメント。
+function scalarValue(raw) {
+  const quoted = raw.match(/^(["'])(.*)\1/);
+  return quoted ? quoted[2] : raw.replace(/\s+#.*$/, "").trim();
+}
+
 // GitHub が required status check を照合する名前は job の `name`、無ければ job id。
-// どちらの綴りでも `dco` という check 名を作れるので、両方を数える。
+// どちらの綴りでも `dco` という check 名を作れるので、両方を数える。indent は 2 space に決め打ち
+// せず、最初の job から読み取る（YAML は 4 space でも valid で、それも同じ check 名を作る）。
 function checkNames(workflow) {
   const names = [];
   let inJobs = false;
+  let jobIndent = null;
   let current = null;
   for (const line of workflow.split("\n")) {
     if (/^jobs:\s*$/.test(line)) {
@@ -103,14 +111,17 @@ function checkNames(workflow) {
       continue;
     }
     if (!inJobs) continue;
-    const jobId = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/);
-    if (jobId) {
-      current = { name: jobId[1] };
+    const jobId = line.match(/^( +)([A-Za-z0-9_-]+):\s*$/);
+    if (jobId && (jobIndent === null || jobId[1].length === jobIndent)) {
+      jobIndent = jobId[1].length;
+      current = { name: jobId[2] };
       names.push(current);
       continue;
     }
-    const jobName = line.match(/^ {4}name:\s*(.+?)\s*$/);
-    if (jobName && current) current.name = jobName[1].replaceAll(/^["']|["']$/g, "");
+    const jobName = line.match(/^( +)name:\s*(\S.*?)\s*$/);
+    if (jobName && current && jobName[1].length === jobIndent + 2) {
+      current.name = scalarValue(jobName[2]);
+    }
   }
   return names.map((job) => job.name);
 }
@@ -126,7 +137,7 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
 
   const workflow = readFileSync(join(workflowDir, "dco.yml"), "utf8");
   // PR 側の tree から実行すると、PR が自分を検査する workflow と checker を書き換えられる。
-  assert.match(workflow, /^ {2}pull_request_target:$/m);
+  assert.match(workflow, /^ +pull_request_target:$/m);
   // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
   assert.doesNotMatch(workflow, /^\s+ref:/m);
   assert.match(workflow, /node harness\/dco-check\.mjs/);
