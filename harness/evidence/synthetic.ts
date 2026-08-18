@@ -84,6 +84,11 @@ export function subagentRun(session: string): CaptureLine[] {
   ];
 }
 
+/** 記録の時刻を差し替える。1 つの fixture が複数の run を束ねる形を組むのに使う */
+export function atTime(lines: CaptureLine[], at: string): CaptureLine[] {
+  return lines.map((l) => ({ ...l, at }));
+}
+
 export interface PutOptions {
   /** manifest を書くか。書かないと legacy 証拠になり real-cli-e2e の根拠にならない */
   manifest?: boolean;
@@ -118,7 +123,9 @@ export function putEvidence(
     cli: opts.cli ?? "claude",
     cliVersion: opts.cliVersion ?? "1.2.3-test",
     scenarioId: opts.scenarioId ?? "self.test",
-    capturedAt: AT,
+    // rig と同じく記録の 1 行目から取る。定数を書くと、検証側が記録ではなく
+    // fixture に縛っていても positive control が通ってしまう
+    capturedAt: lines[0]?.at ?? AT,
     isolated: true,
     internalRunMarker: true,
     exitStatus: 0,

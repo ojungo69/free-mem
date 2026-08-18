@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { assembleFromFixtures } from "../assemble.ts";
-import { assembleWithRoot, fixtureBase, lifecycle, newRoot, putEvidence } from "./synthetic.ts";
+import { assembleWithRoot, atTime, fixtureBase, lifecycle, newRoot, putEvidence, subagentRun } from "./synthetic.ts";
 
 const AT = "2026-08-12T00:00:00.000Z";
 
@@ -66,4 +66,75 @@ test("manifest internalRunMarker must be true, not merely equal to the fixture",
     /manifest internalRunMarker/,
   );
   assert.throws(() => build({ internalRunMarker: false }), /manifest internalRunMarker/);
+});
+
+// 1 つの fixture は複数の run を束ねる（claude/interrupt-and-hook-timeout は 5 本参照する）。
+// capturedAt を fixture 単位で縛ると、2 本目以降の manifest が構造的に通らなくなる
+test("a fixture that references two runs carries a manifest for each", () => {
+  const root = newRoot();
+  const first = putEvidence(root, "run-1", lifecycle("s1", "p1"), { manifest: true });
+  const second = putEvidence(root, "run-2", atTime(lifecycle("s2", "p2"), "2026-08-13T09:30:00.000Z"), {
+    manifest: true,
+  });
+  const m = assembleWithRoot(
+    [
+      fixtureBase({
+        fixtureId: "claude/two-runs",
+        observedEvents: [{ kind: "session_started", at: AT, capability: "native", sourceEvents: ["SessionStart"] }],
+        evidence: [first, second],
+      }),
+    ],
+    root,
+  );
+  assert.equal(m.capabilities.capture.session_started.evidenceKind, "real-cli-e2e");
+  // 公開する時刻は fixture の申告ではなく、根拠になった記録の側から来る
+  assert.equal(m.capabilities.capture.session_started.verifiedAt, "2026-08-13T09:30:00.000Z");
+});
+
+test("manifest capturedAt must come from the capture, not from the fixture", () => {
+  const root = newRoot();
+  const ref = putEvidence(root, "late", atTime(lifecycle("s1", "p1"), "2026-08-13T09:30:00.000Z"), {
+    manifest: true,
+    manifestOverrides: { capturedAt: AT },
+  });
+  assert.throws(
+    () =>
+      assembleWithRoot(
+        [
+          fixtureBase({
+            fixtureId: "claude/late",
+            observedEvents: [{ kind: "session_started", at: AT, capability: "native", sourceEvents: ["SessionStart"] }],
+            evidence: [ref],
+          }),
+        ],
+        root,
+      ),
+    (e: unknown) => String(e).includes("manifest capturedAt"),
+  );
+});
+
+// 申告した hook 名が「どれかの記録に在る」だけでは足りない。裏付けのある 1 本が
+// 値も導き、申告した hook 名も全部持っていること
+test("a claimed source event that lives only in an unbacked capture does not promote", () => {
+  const root = newRoot();
+  const backed = putEvidence(root, "backed", lifecycle("s1", "p1"), { manifest: true });
+  const legacy = putEvidence(root, "legacy", subagentRun("s2"));
+  const m = assembleWithRoot(
+    [
+      fixtureBase({
+        fixtureId: "claude/split",
+        observedEvents: [
+          {
+            kind: "session_started",
+            at: AT,
+            capability: "native",
+            sourceEvents: ["SessionStart", "SubagentStop"],
+          },
+        ],
+        evidence: [backed, legacy],
+      }),
+    ],
+    root,
+  );
+  assert.equal(m.capabilities.capture.session_started.evidenceKind, "source-test");
 });

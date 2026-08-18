@@ -474,10 +474,12 @@ function validateNode(
   }
 
   if (Array.isArray(schema.enum) && !schema.enum.some((e) => jsonEqual(e, value))) {
-    issues.push({ path, message: `value not in enum: ${JSON.stringify(value)}` });
+    // 棄却した値そのものは出さない。診断は stderr から CI ログへ流れるので、
+    // ここで echo すると fixture の中身を外へ出す経路になる（隣の検査が避けているのと同じ理由）
+    issues.push({ path, message: "value not in enum" });
   }
   if (own(schema, "const") && !jsonEqual(schema.const, value)) {
-    issues.push({ path, message: `expected const ${JSON.stringify(schema.const)}, got ${JSON.stringify(value)}` });
+    issues.push({ path, message: `expected const ${JSON.stringify(schema.const)}` });
   }
 
   if (typeof value === "string") {

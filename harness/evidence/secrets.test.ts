@@ -20,6 +20,7 @@ const CWD = "CANARY-CWD-3a7e5b1f2d8c0114";
 const MSG = "CANARY-MSG-6d4c2a9f1b3e0227";
 const EVENT = "CANARY-EVENT-1e9b7d3f5a2c";
 const SCENARIO = "CANARY-SCENARIO-4b8e0c6a2f91";
+const CODE = "CANARY-CODE-7f1a3e9d5b2c";
 
 const node = (args: string[]) =>
   spawnSync(process.execPath, ["--experimental-strip-types", ...args], { encoding: "utf8" });
@@ -105,6 +106,23 @@ test("failure messages carry neither capture contents nor absolute paths", () =>
   assert.match(said, new RegExp(RAW), "どの記録かは basename で言う");
   assert.ok(!said.includes(tmp), "失敗の説明に絶対 path が出た");
   for (const canary of [PROSE, EVENT, SCENARIO, CWD, MSG]) assert.ok(!said.includes(canary), "失敗の説明に記録の中身が出た");
+});
+
+// 棄却の診断も漏洩経路。schema が値を弾くとき、その値を message に載せると
+// stderr から CI ログへ流れる（隣の fixtureId 検査が生値を避けているのと同じ理由）
+test("schema diagnostics do not echo the rejected value", () => {
+  const { tmp } = plantedTree();
+  const dir = join(tmp, "harness", "fixtures", "claude");
+  const file = join(dir, readdirSync(dir).filter((n) => n.endsWith(".json"))[0] as string);
+  const fixture = JSON.parse(readFileSync(file, "utf8"));
+  fixture.limitationCodes = [`${CODE}`];
+  writeFileSync(file, JSON.stringify(fixture, null, 2));
+
+  const run = node([join(tmp, "harness", "assemble.ts"), dir, join(tmp, "o.json")]);
+  assert.notEqual(run.status, 0, "enum 外の値で組み立てが成功した");
+  const said = `${run.stdout}\n${run.stderr}`;
+  assert.ok(said.includes("value not in enum"), `enum の棄却が出ていない: ${said}`);
+  assert.ok(!said.includes(CODE), "棄却した値そのものが診断に出た");
 });
 
 // --- 警報そのものを直接見る ---

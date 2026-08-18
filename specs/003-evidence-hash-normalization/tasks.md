@@ -290,6 +290,11 @@ done
 | M58 | `harness/assemble.ts` 診断への生値混入 | `promotion.test.ts::fixtureId must be attributed to the cli that produced the capture` | T045 |
 | M59 | `harness/evidence/verify.ts` `turn_id` の在不在 | `promotion.test.ts::a claude capture that carries turn_id does not derive a synthesized turn` | T045 |
 | M60 | `harness/evidence/normalize.ts` 空の識別子 | `promotion.test.ts::empty identifiers do not correlate` | T045 |
+| M61 | `harness/evidence/verify.ts` 記録の時刻を fixture 単位で縛る | `manifest.test.ts::a fixture that references two runs carries a manifest for each` | T047 |
+| M62 | `harness/evidence/verify.ts` 時刻を記録から導かない | `manifest.test.ts::manifest capturedAt must come from the capture, not from the fixture` | T047 |
+| M63 | `harness/assemble.ts` 申告 hook 名を持たない記録での昇格 | `manifest.test.ts::a claimed source event that lives only in an unbacked capture does not promote` | T047 |
+| M64 | `harness/assemble.ts` 公開する時刻の出どころ | `manifest.test.ts::a fixture that references two runs carries a manifest for each` | T047 |
+| M65 | `harness/schema/validate.ts` 棄却した値の診断への露出 | `secrets.test.ts::schema diagnostics do not echo the rejected value` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 

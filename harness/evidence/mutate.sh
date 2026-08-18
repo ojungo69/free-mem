@@ -17,10 +17,11 @@ VERIFY=harness/evidence/verify.ts
 NORMALIZE=harness/evidence/normalize.ts
 SCHEMA=harness/schema/capability.schema.json
 IMPORT=harness/rig/import-evidence.mjs
+SCHEMAV=harness/schema/validate.ts
 HASHES=harness/contract-hashes.json
 TASKS=specs/003-evidence-hash-normalization/tasks.md
 
-MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$IMPORT" "$HASHES")
+MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$SCHEMAV" "$IMPORT" "$HASHES")
 TESTS=(
   harness/evidence/hash-inputs.test.ts
   harness/evidence/killswitch.test.ts
@@ -46,8 +47,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 62:
-    bad.append(f"変異表の行が {len(table)} 件（62 件でない）")
+if len(table) != 67:
+    bad.append(f"変異表の行が {len(table)} 件（67 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -183,7 +184,7 @@ mutate $NORMALIZE '  const out = Object.create(null) as { [k: string]: JsonValue
 mutate $VERIFY '  "cwd",
   "transcript_path",' '  "transcript_path",' && run 'M24: 警報の材料から cwd を外す'
 mutate $ASSEMBLE 'const supporting = refs.filter((r) => derive(r) === declared);' 'const supporting = refs.slice();' && run 'M26: 申告値と導出値の照合を外す'
-mutate $ASSEMBLE 'if (!derivable || refs.length === 0) return { evidenceKind: "source-test", evidenceRefs: [] };' 'if (refs.length === 0) return { evidenceKind: "source-test", evidenceRefs: [] };' && run 'M27: 導けない主張にも導出を求める'
+mutate $ASSEMBLE '    if (!derivable || refs.length === 0) {' '    if (refs.length === 0) {' && run 'M27: 導けない主張にも導出を求める'
 mutate $ASSEMBLE 'evidenceKind: backed.length > 0 ? "real-cli-e2e" : "source-test",' 'evidenceKind: "real-cli-e2e",' && run 'M28: manifest 無しでも real-cli-e2e にする'
 mutate $VERIFY '    if (captureRawHash !== ref.captureRawHash) {' '    if (false) {' && run 'M29: captureRawHash の照合を外す'
 mutate $NORMALIZE '  for (const key of Object.keys(payload).sort(byUtf16)) {' '  for (const key of Object.keys(payload)) {' && run 'M30: payload の走査を整列前の書き順にする'
@@ -200,7 +201,7 @@ mutate $ASSEMBLE 'for (const c of f.limitationCodes ?? []) fixtureLimitations.pu
 mutate $VERIFY '    const captureRawHash = digestRaw(bytes);
     if (captureRawHash !== ref.captureRawHash) {' '    const captureRawHash = digestRaw(bytes);
     if (ref.manifest !== undefined && captureRawHash !== ref.captureRawHash) {' && run 'M34: legacy ref では生 byte を照合しない'
-mutate $ASSEMBLE 'const backed = supporting.filter((r) => r.manifestBacked);' 'const backed = refs.filter((r) => r.manifestBacked);' && run 'M35: 支持しない記録の manifest でも昇格させる'
+mutate $ASSEMBLE '    const backed = supporting.filter(' '    const backed = refs.filter(' && run 'M35: 支持しない記録の manifest でも昇格させる'
 mutate $ASSEMBLE 'const supporting = refs.filter((r) => derive(r) === declared);' 'const supporting = refs.every((r) => derive(r) === declared) ? refs.slice() : [];' && run 'M36: 全 ref の一致を要求する'
 mutate $VERIFY '  if (cli === "codex") {
     if (shares("turn_id")) capture.turn_completed = "native";' '  if (false) {
@@ -226,8 +227,8 @@ mutate $SCHEMA '  "title": "CaptureFixture",' '  "title": "CaptureFixture",
   "maxProperties": 500,' && run 'M44: validate.ts が解釈しない keyword を足す'
 mutate $VERIFY '    const captureRawHash = digestRaw(bytes);' '    const captureRawHash = ref.captureRawHash;' && run 'M45: 生 byte の digest を申告値で代用する'
 mutate $VERIFY '  if (digestRaw(bytes) !== ref.manifestHash) {' '  if (false) {' && run 'M46: manifest を parse する前の照合を外す'
-mutate $ASSEMBLE 'if (!derivable || refs.length === 0) return { evidenceKind: "source-test", evidenceRefs: [] };' 'if (refs.length === 0) return { evidenceKind: "source-test", evidenceRefs: [] };
-    if (!derivable) throw new Error("underivable claim");' && run 'M47: 導けない主張で組み立てを落とす'
+mutate $ASSEMBLE '    if (!derivable || refs.length === 0) {' '    if (!derivable) throw new Error("underivable claim");
+    if (refs.length === 0) {' && run 'M47: 導けない主張で組み立てを落とす'
 mutate $NORMALIZE 'realRoot = realpathSync(root ?? defaultEvidenceRoot(cli));' 'realRoot = realpathSync(defaultEvidenceRoot(cli));' && run 'M48: root の差し替え口を無視する'
 mutate $ASSEMBLE '  const assembled = assembleFromFixtures(fixtures);' '  const assembled = assembleFromFixtures(fixtures, { evidenceRoot: process.env.EVIDENCE_ROOT });' && run 'M49: 組み立ての入口で root を環境変数から取る'
 mutate $ASSEMBLE '  for (const issue of validateAgainstSchema(data, SCHEMA, SCHEMA)) {' '  for (const issue of validateAgainstSchema(data.observedEvents ?? [], SCHEMA.properties?.observedEvents, SCHEMA, "observedEvents")) {' && run 'M50: fixture 全体ではなく欄を選んで検査する'
@@ -241,6 +242,11 @@ mutate $VERIFY '    if (seenPaths.has(ref.path)) reject(f.fixtureId, `evidence n
 mutate $ASSEMBLE '    if (!data.fixtureId.startsWith(`${data.cli}/`)) errs.push("fixtureId must be prefixed with its own cli");' '    if (false) errs.push("fixtureId must be prefixed with its own cli");' && run 'M55: fixtureId の帰属を確かめない'
 mutate $ASSEMBLE '    if (typeof value === "string" && !isRealInstant(value)) {' '    if (false) {' && run 'M52: 暦の検査を外す'
 mutate $VERIFY '  if (sessionTokens.length >= 2 && new Set(sessionTokens).size === 1 && sessionTokens[0] !== undefined) {' '  if (new Set(sessionTokens.filter((t) => t !== undefined)).size === 1) {' && run 'M51: 欄の無い行を除いてから安定性を見る'
+mutate $VERIFY '    ["capturedAt", manifest.capturedAt === computed.capturedAt],' '    ["capturedAt", manifest.capturedAt === f.capturedAt],' && run 'M61: 記録の時刻を fixture 単位で縛る'
+mutate $VERIFY '    const capturedAt = captureCapturedAt(bytes);' '    const capturedAt = (ref as unknown as { capturedAt: string }).capturedAt ?? f.capturedAt;' && run 'M62: 時刻を記録から導かず申告から取る'
+mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' '      (r) => r.manifestBacked,' && run 'M63: 申告 hook 名を持たない記録で昇格させる'
+mutate $ASSEMBLE '        verifiedAt: promotion.verifiedAt ?? f.capturedAt,' '        verifiedAt: f.capturedAt,' && run 'M64: 公開する時刻を fixture の申告から取る'
+mutate $SCHEMAV '    issues.push({ path, message: "value not in enum" });' '    issues.push({ path, message: `value not in enum: ${JSON.stringify(value)}` });' && run 'M65: 棄却した値を診断へ戻す'
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
   && run_custom 'M25: 契約 hash の入力名を書き換える' check_hashes
 

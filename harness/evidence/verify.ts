@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import {
   NORMALIZATION_VERSION,
+  captureCapturedAt,
   digestCapture,
   digestRaw,
   normalizeCapture,
@@ -65,6 +66,8 @@ export interface VerifiedRef {
   source: EvidenceSource;
   /** この記録に実在した hook 名。申告された sourceEvents の実在検査に使う */
   events: string[];
+  /** この記録の 1 行目の `at`。昇格した cell の verifiedAt はここから来る */
+  capturedAt: string;
   /**
    * この記録の秘密欄にあった 16 文字以上の文字列。**成果物へ出す前の警報にだけ使う**。
    * 診断にも出力にも載せない（載せたら検査そのものが漏洩経路になる）。
@@ -212,7 +215,7 @@ function verifyManifest(
   f: CaptureFixture,
   ref: EvidenceRef,
   ctx: EvidenceContext | undefined,
-  computed: { evidenceHash: string; captureRawHash: string },
+  computed: { evidenceHash: string; captureRawHash: string; capturedAt: string },
 ): RunManifest {
   const manifestPath = resolveEvidencePath(f.cli, ref.manifest as string, ctx?.evidenceRoot);
   let bytes: Uint8Array;
@@ -242,8 +245,10 @@ function verifyManifest(
     ["cli", manifest.cli === f.cli],
     ["cliVersion", manifest.cliVersion === f.nativeVersion],
     ["scenarioId", manifest.scenarioId === f.scenarioId],
-    // verifiedAt としてそのまま公開されるので、記録に縛られた値だけを通す
-    ["capturedAt", manifest.capturedAt === f.capturedAt],
+    // 記録の 1 行目から導いた時刻に縛る。**fixture の capturedAt とは比べない**:
+    // 1 つの fixture は複数の run を束ねるので、fixture 単位で縛ると 2 本目以降の
+    // manifest が構造的に通らなくなる（claude/interrupt-and-hook-timeout は 5 本参照する）
+    ["capturedAt", manifest.capturedAt === computed.capturedAt],
     ["capture", manifest.capture === ref.path],
     ["captureRawHash", manifest.captureRawHash === computed.captureRawHash],
     ["captureHash", manifest.captureHash === computed.evidenceHash],
@@ -310,13 +315,15 @@ export function verifyEvidence(f: CaptureFixture, ctx?: EvidenceContext): Verifi
       reject(f.fixtureId, `evidenceHash mismatch for ${ref.path}`);
     }
 
+    const capturedAt = captureCapturedAt(bytes);
     const manifestBacked = ref.manifest !== undefined;
-    if (manifestBacked) verifyManifest(f, ref, ctx, { evidenceHash, captureRawHash });
+    if (manifestBacked) verifyManifest(f, ref, ctx, { evidenceHash, captureRawHash, capturedAt });
 
     return {
       index,
       path: ref.path,
       manifestBacked,
+      capturedAt,
       source: {
         fixtureId: f.fixtureId,
         path: ref.path,

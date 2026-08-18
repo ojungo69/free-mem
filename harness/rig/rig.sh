@@ -93,7 +93,9 @@ claude_run() {
   with_lock
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/claude-$label.jsonl"
-  : > "$capture"
+  # 記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の manifest の
+  # recorderErrors に載り、正しい証拠が棄却される
+  : > "$capture"; rm -f "$capture.errors"
   stage_credentials claude
   { "$CLAUDE_BIN" --version; } > "$RIG_BASE/capture/claude-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
@@ -111,7 +113,7 @@ codex_run() {
   with_lock
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/codex-$label.jsonl"
-  : > "$capture"
+  : > "$capture"; rm -f "$capture.errors"
   stage_credentials codex
   { "$CODEX_BIN" --version; } > "$RIG_BASE/capture/codex-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
@@ -128,6 +130,8 @@ codex_run() {
 # 持ち込みで内容が変わっても気づけない
 import_evidence() {
   local cli="$1" label="$2" scenario="$3"
+  # 記録中に読むと、途中までで一貫した prefix を掴んで正しく見える manifest を作る
+  with_lock
   node --experimental-strip-types "$DIR/import-evidence.mjs" \
     --cli "$cli" --label "$label" --scenario-id "$scenario" --from "$RIG_BASE/capture"
 }

@@ -256,18 +256,19 @@ const SECRET_WINDOW = 16;
  */
 export function assertNoSecretSubstrings(artifact: unknown, secrets: string[]): void {
   if (secrets.length === 0) return;
+  // 窓は**成果物の側**から作る。秘密の側から作ると、記録に置いた 1 本の長大な値が
+  // そのまま Set の大きさになり、検査自体を落とせる（成果物の大きさはこちらが決める）。
+  // 16 文字以上の共通部分文字列があれば、必ずどこかで長さ 16 の窓が両側で一致する
   const windows = new Set<string>();
-  for (const secret of secrets) {
-    for (let i = 0; i + SECRET_WINDOW <= secret.length; i++) {
-      windows.add(secret.slice(i, i + SECRET_WINDOW));
-    }
-  }
-  if (windows.size === 0) return;
   const strings: string[] = [];
   collectStrings(artifact, strings);
   for (const s of strings) {
-    for (let i = 0; i + SECRET_WINDOW <= s.length; i++) {
-      if (windows.has(s.slice(i, i + SECRET_WINDOW))) {
+    for (let i = 0; i + SECRET_WINDOW <= s.length; i++) windows.add(s.slice(i, i + SECRET_WINDOW));
+  }
+  if (windows.size === 0) return;
+  for (const secret of secrets) {
+    for (let i = 0; i + SECRET_WINDOW <= secret.length; i++) {
+      if (windows.has(secret.slice(i, i + SECRET_WINDOW))) {
         throw new Error(
           "generated output carries a 16+ character substring of a referenced capture's secret field " +
             "(the free-text path into the matrix is open again — see data-model.md §5.3)",
@@ -356,6 +357,8 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
   interface Promotion {
     evidenceKind: "real-cli-e2e" | "source-test";
     evidenceRefs: number[];
+    /** 昇格したときだけ、根拠になった記録の時刻。昇格していなければ null */
+    verifiedAt: string | null;
   }
   const UNVERIFIED = "unverified: no manifest-backed evidence";
 
@@ -370,16 +373,24 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
     derive: (r: VerifiedRef) => ObservedCapability | undefined,
     declared: ObservedCapability,
     label: string,
+    claimedEvents: readonly string[] = [],
   ): Promotion => {
     const refs = verifiedByFixture.get(f.fixtureId) ?? [];
-    if (!derivable || refs.length === 0) return { evidenceKind: "source-test", evidenceRefs: [] };
+    if (!derivable || refs.length === 0) {
+      return { evidenceKind: "source-test", evidenceRefs: [], verifiedAt: null };
+    }
     // fixture は複数の run の和集合を表す。どれか 1 件が同じ値を導けば成立する
     // （全 ref が全主張を支持することは要求しない。要求すると既存 fixture が全件落ちる）
     const supporting = refs.filter((r) => derive(r) === declared);
     if (supporting.length === 0) {
       throw new Error(`${f.fixtureId}: ${label} claims "${declared}" but no referenced capture derives it`);
     }
-    const backed = supporting.filter((r) => r.manifestBacked);
+    // 昇格の根拠は「値も導き、申告した hook 名も全部持つ」1 本であること。
+    // fixture 全体の和集合で足りるとすると、申告した hook が別の run にしか無い
+    // 組み合わせが real-cli-e2e として通る（和集合の検査は別に残してある）
+    const backed = supporting.filter(
+      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),
+    );
     const chosen = backed.length > 0 ? backed : supporting;
     return {
       // manifest を伴わない legacy 証拠だけなら source-test に留める。
@@ -387,6 +398,8 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       // 取得側が書いた manifest でしか裏付けられない
       evidenceKind: backed.length > 0 ? "real-cli-e2e" : "source-test",
       evidenceRefs: chosen.map((r) => sourceIndex.get(sourceKey(r.source)) ?? -1).sort((a, b) => a - b),
+      // 公開する時刻も記録側から取る。fixture の自己申告を verifiedAt に載せない
+      verifiedAt: backed.length > 0 ? backed.map((r) => r.capturedAt).sort().at(-1) ?? null : null,
     };
   };
 
@@ -426,7 +439,14 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       // 後勝ちにしない（勝者は入り口で正規化した fixtureId 順で決まる）
       const evValue = ev.capability ?? "native";
       const upgrades = (CAPABILITY_STRENGTH[evValue] ?? 0) > (CAPABILITY_STRENGTH[prev.value] ?? -1);
-      const promotion = promoteCell(f, DERIVABLE_CAPTURE_KINDS.has(kind), (r) => r.capture[kind], evValue, kind);
+      const promotion = promoteCell(
+        f,
+        DERIVABLE_CAPTURE_KINDS.has(kind),
+        (r) => r.capture[kind],
+        evValue,
+        kind,
+        ev.sourceEvents ?? [],
+      );
       // 廃止した欄を読むと常に false になり、証跡の優劣が黙って消える。再計算の結果で比べる
       const improvesEvidence =
         promotion.evidenceKind === "real-cli-e2e" && prev.evidenceKind !== "real-cli-e2e";
@@ -457,7 +477,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
         sourceEvents: mergedSources,
         nativeVersion,
         evidenceKind: promotion.evidenceKind,
-        verifiedAt: f.capturedAt,
+        verifiedAt: promotion.verifiedAt ?? f.capturedAt,
         // 裏付けの無い状態で一度書いた caveat は、裏付いた時点で消す
         // （残すと「実測に紐付いた」と「自己申告」を同じ cell が同時に主張する）
         limitations: verified
@@ -529,7 +549,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       sourceEvents: [],
       nativeVersion,
       evidenceKind: contradicted ? null : promotion.evidenceKind,
-      verifiedAt: contradicted ? null : best.fixture.capturedAt,
+      verifiedAt: contradicted ? null : (promotion.verifiedAt ?? best.fixture.capturedAt),
       limitations: dedupe([
         ...obs.map((o) => `observed ${o.value} in ${o.fixture.fixtureId}`),
         ...(contradicted ? ["conflicting observations: evidence dropped"] : []),
@@ -587,7 +607,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       capabilities[key] = {
         ...cell,
         evidenceKind: "real-cli-e2e",
-        verifiedAt: pairFixture.capturedAt,
+        verifiedAt: pairPromotion.verifiedAt ?? pairFixture.capturedAt,
         sourceFixtureId: pairFixture.fixtureId,
         evidenceRefs: pairPromotion.evidenceRefs,
         // 裏付いた証跡へ差し替えたので「裏付けが無い」caveat は残さない（残すと記録が自己矛盾する）

@@ -7,8 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { decodeUtf8, parseIJson } from "../schema/jcs.ts";
-import { NORMALIZATION_VERSION, digestCapture, digestRaw } from "../evidence/normalize.ts";
+import { NORMALIZATION_VERSION, captureCapturedAt, digestCapture, digestRaw } from "../evidence/normalize.ts";
 import { MANIFEST_VERSION } from "../evidence/verify.ts";
 
 const KNOWN_CLIS = new Set(["claude", "codex"]);
@@ -75,24 +74,30 @@ const dest = join(destDir, `${stem}.jsonl`);
 const manifestPath = join(destDir, `${stem}.manifest.json`);
 
 if (!existsSync(source)) die(`no capture at ${stem}.jsonl`);
+
+// **置き換える前に**検証する。先に複製すると、後段の検査で落ちたときには既に
+// 前の正しい証拠を壊しており、その manifest は別の byte を指したまま残る
+const sourceBytes = readFileSync(source);
+const sourceRawHash = digestRaw(sourceBytes);
+const sourceHash = digestCapture(sourceBytes);
+
 mkdirSync(destDir, { recursive: true });
 copyFileSync(source, dest);
-if (!readFileSync(source).equals(readFileSync(dest))) die("the copy is not byte-identical to the capture");
 
 const bytes = readFileSync(dest);
+if (!sourceBytes.equals(bytes)) die("the copy is not byte-identical to the capture");
 // capturedAt は rig が別に持つ時刻ではなく、記録の 1 行目の at。こうすると
-// captureRawHash がこの値まで縛る（fixture 側の申告と照合して verifiedAt に使う）
-// 読み方は検証側と揃える。JSON.parse だと重複キーや不正 UTF-8 の扱いが境界ごとに変わる
+// captureRawHash がこの値まで縛る。**検証側と同じ関数**を通す（別実装にすると片方だけ緩む）
 let capturedAt;
 try {
-  const firstLine = decodeUtf8(bytes, "capture").split("\n").find((l) => l.trim() !== "");
-  capturedAt = parseIJson(firstLine).at;
-} catch {
-  die("the capture has no readable first line");
+  capturedAt = captureCapturedAt(bytes);
+} catch (e) {
+  die(`the capture has no usable first line (${e.message})`);
 }
-if (typeof capturedAt !== "string") die("the first capture line has no string \"at\"");
+// 複製の側からも取り直して突き合わせる（byte 比較と digest の両方が一致して初めて同一）
 const captureRawHash = digestRaw(bytes);
 const captureHash = digestCapture(bytes);
+if (captureRawHash !== sourceRawHash || captureHash !== sourceHash) die("the copy does not digest to the capture");
 
 const errorsFile = `${source}.errors`;
 const recorderErrors = existsSync(errorsFile)

@@ -193,6 +193,30 @@ export function normalizeCapture(bytes: Uint8Array): string {
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * 記録が始まった時刻。**1 行目の `at` であって、rig が別に持つ値ではない**。
+ * こうすると captureRawHash がこの時刻まで縛る。取り込み側と検証側で二重実装すると
+ * 片方だけ緩むので、両者ともこの 1 本を通す。
+ */
+export function captureCapturedAt(bytes: Uint8Array): string {
+  let text: string;
+  try {
+    text = decodeUtf8(bytes, "capture");
+  } catch {
+    fail(`capture is not valid UTF-8 (first invalid byte at offset ${firstInvalidUtf8Offset(bytes)})`);
+  }
+  const first = text.split("\n").find((l) => l.trim() !== "");
+  if (first === undefined) fail("capture has 0 usable lines");
+  let parsed: unknown;
+  try {
+    parsed = parseIJson(first);
+  } catch {
+    fail("capture line 1 is not I-JSON (duplicate key, or not JSON)");
+  }
+  if (!isDataObject(parsed) || typeof parsed.at !== "string") fail('capture line 1 has no string "at"');
+  return parsed.at;
+}
+
 const sha256 = (data: Uint8Array | string): string =>
   createHash("sha256").update(data).digest("hex");
 

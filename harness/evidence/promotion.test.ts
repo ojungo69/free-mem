@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { assembleFromFixtures, shareRef, validateFixture } from "../assemble.ts";
-import { NORMALIZATION_VERSION, digestRaw } from "./normalize.ts";
+import { NORMALIZATION_VERSION } from "./normalize.ts";
 import {
   assembleWithRoot,
   codexLifecycle,
