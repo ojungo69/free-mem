@@ -157,10 +157,15 @@ CI ゲート:
   package.json の `license` 維持を検査する。**build 出力は見ない**
 - `harness/notice-inclusion-check.mjs` — 自分で install と build を行い、公開 package を `pnpm pack` して
   展開し、tarball の中身を検査する。「build 済みなら検査する」形にしていないのは、build 順序に依存して
-  黙って素通りするのを避けるため。検査は存在と非空だけでなく、実測で判っている依存名
-  （`commander` / `hono` / `preact` / `@radix-ui/react-dialog` / `dompurify` / `tslib`）を名指しで要求する。
-  `tslib` を入れているのは、0BSD = notice 保持義務が無い唯一の license が生成側で特別扱いされて
-  黙って消えていないことの確認になるため。CI の独立 job と `release-tag-preflight.sh` の両方から走る
+  黙って素通りするのを避けるため。build の前に検査対象の notice を削除するのは、`emptyOutDir: false` の
+  成果物で古いファイルが残り、生成が止まっても受理されるのを防ぐため。
+  CI の独立 job と `release-tag-preflight.sh` の両方から走る
+
+  期待する依存名は `harness/notice-baseline.json` に**完全な集合として**固定する。当初は代表的な
+  数件を名指しする形だったが、独立レビューが「名指ししていない `marked` を 1 件落としても通る」ことを
+  実測したため切り替えた。notice ファイルの集合そのものも baseline と突き合わせるので、増えた場合も
+  消えた場合も落ちる。依存が正当に増減したときは `--write-baseline` で再生成し、その差分を commit に
+  載せてレビューする（`harness/contract-hashes.json` と同じ運用）
 
 ## owner の決定（2026-08-17）
 
@@ -181,6 +186,11 @@ license 付与は取り消せない。一度公開した version に対する gr
   （`codemem` が `@clack/prompts` ほかを bundle する / `@codemem/server` が `@hono/node-server` を
   bundle する）は再実測で否定された。どちらも `--ssr` build のため依存は external のままで、
   代わりに `hook-runtime.js` と `static/app.js` に漏れがあった。
+- **license ファイルを同梱していない依存の扱い**。`static/` の 47 件中 11 件（`@radix-ui/*` の一部など）は
+  npm tarball に license ファイルを持たない。現在の notice はその旨と package.json の SPDX 宣言を記録する
+  だけで、MIT の許諾条項本文と copyright 表示は載らない。upstream が出していないものを代わりに書くと
+  権利者の表示を創作することになるため、現状は「無いことを明示する」に留めている。これで MIT の
+  条件を満たすと言い切れるかは**専門家確認の対象**（下の 1 項目目に含む）。issue #81 で追跡する。
 - `plugins/{claude,codex}/scripts/hook-runtime.mjs` は git に commit された bundle で、`commander` の
   コードを含むが copyright 表示を持たない。npm package には載らないので tarball ゲートの対象外だが、
   **GitHub source archive では再配布される**。この経路は root の `THIRD_PARTY_NOTICES.md` が担う

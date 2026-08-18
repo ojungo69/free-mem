@@ -72,14 +72,20 @@ from an artifact that genuinely bundles nothing.
 Eleven of the 47 packages in `static/THIRD_PARTY_NOTICES.md` ship no license file of their own
 (several `@radix-ui/*` sub-packages among them). Their entries record the SPDX identifier declared in
 `package.json` and state explicitly that upstream ships no license file, rather than omitting the
-entry.
+entry. Whether recording the SPDX identifier is sufficient where upstream ships neither a license file
+nor a copyright line — as opposed to supplying the canonical license text under a copyright holder we
+would have to infer — is an open question, tracked in
+[#81](https://github.com/ojungo69/free-mem/issues/81).
 
 `harness/notice-inclusion-check.mjs` enforces this. It runs the install and the build itself, packs
-each publishable package with `pnpm pack`, extracts the tarball, and checks the notices inside it —
-existence, non-emptiness, one license-text field per entry, and the presence of specific dependency
-names known to be bundled. It runs as its own CI job and from `scripts/release-tag-preflight.sh`, so
-a manual `npm publish` cannot bypass it. `harness/license-inclusion-check.mjs` remains separate and
-still does not look at build output: it checks package-level `LICENSE` files.
+each publishable package with `pnpm pack`, extracts the tarball, and checks the notices inside it.
+The expected dependency names are pinned as a **complete set** in `harness/notice-baseline.json`, and
+the set of notice files is compared too, so a missing dependency, a missing file, and an unexpected
+addition all fail. Regenerate with `--write-baseline` when dependencies legitimately change; the diff
+is then part of the commit under review, the same arrangement as `harness/contract-hashes.json`. It
+runs as its own CI job and from `scripts/release-tag-preflight.sh`, so a manual `npm publish` cannot
+bypass it. `harness/license-inclusion-check.mjs` remains separate and still does not look at build
+output: it checks package-level `LICENSE` files.
 
 ### Bundled code outside the npm packages
 

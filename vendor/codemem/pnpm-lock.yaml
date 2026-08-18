@@ -80,6 +80,9 @@ importers:
       lint-staged:
         specifier: ^16.4.0
         version: 16.4.0
+      rollup-plugin-license:
+        specifier: 'catalog:'
+        version: 3.7.1(picomatch@4.0.4)(rollup@4.62.4)
       tsx:
         specifier: 'catalog:'
         version: 4.22.3

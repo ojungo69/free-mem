@@ -1,11 +1,42 @@
+// notice ゲート自身のテスト。通す側だけでなく落とす側も測る——締めすぎた検査は自分のテストからは
+// 漏れるし、緩すぎる検査は「通った」ことしか報告しないので、両方向を固定しないと意味が無い。
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
-import { inspectPackageDirectory, isDirectInvocation } from "./notice-inclusion-check.mjs";
+import {
+  dependencyNames,
+  inspectPackageDirectory,
+  isDirectInvocation,
+} from "./notice-inclusion-check.mjs";
+
+// 実物の static notice は 47 件。件数そのものではなく「baseline と完全に一致すること」を
+// 見る設計なので、fixture は代表的な数件で足りる。
+const SERVER_STATIC = ["preact", "@radix-ui/react-dialog", "dompurify", "tslib", "marked"];
+
+const BASELINE = {
+  codemem: {
+    "dist/THIRD_PARTY_NOTICES.md": [],
+    "dist/THIRD_PARTY_NOTICES.hook-runtime.md": ["@codemem/core", "commander"],
+  },
+  "@codemem/core": { "dist/THIRD_PARTY_NOTICES.md": ["hono"] },
+  "@codemem/mcp": { "dist/THIRD_PARTY_NOTICES.md": [] },
+  "@codemem/server": {
+    "dist/THIRD_PARTY_NOTICES.md": [],
+    "static/THIRD_PARTY_NOTICES.md": [...SERVER_STATIC].sort(),
+  },
+};
 
 function notice(dependencies) {
   if (dependencies.length === 0) {
@@ -34,14 +65,6 @@ function writeNotice(packageDirectory, path, dependencies) {
   writeFileSync(file, notice(dependencies));
 }
 
-// static/ の notice には件数の下限（40）が掛かっている。名指しの 4 件だけの fixture では
-// 正常系まで落ちてしまうので、実測の 47 件に近い数を埋める。
-const SERVER_STATIC_SENTINELS = ["preact", "@radix-ui/react-dialog", "dompurify", "tslib"];
-const SERVER_STATIC_DEPENDENCIES = [
-  ...SERVER_STATIC_SENTINELS,
-  ...Array.from({ length: 43 }, (_unused, index) => `filler-dependency-${index}`),
-];
-
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "notice-inclusion-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -51,19 +74,17 @@ function fixture(t) {
     "@codemem/mcp": join(root, "mcp"),
     "@codemem/server": join(root, "server"),
   };
-
-  writeNotice(packages.codemem, "dist/THIRD_PARTY_NOTICES.md", []);
-  writeNotice(packages.codemem, "dist/THIRD_PARTY_NOTICES.hook-runtime.md", ["commander"]);
-  writeNotice(packages["@codemem/core"], "dist/THIRD_PARTY_NOTICES.md", ["hono"]);
-  writeNotice(packages["@codemem/mcp"], "dist/THIRD_PARTY_NOTICES.md", []);
-  writeNotice(packages["@codemem/server"], "dist/THIRD_PARTY_NOTICES.md", []);
-  writeNotice(packages["@codemem/server"], "static/THIRD_PARTY_NOTICES.md", SERVER_STATIC_DEPENDENCIES);
+  for (const [name, directory] of Object.entries(packages)) {
+    for (const [path, dependencies] of Object.entries(BASELINE[name])) {
+      writeNotice(directory, path, dependencies);
+    }
+  }
   return packages;
 }
 
 function inspectAll(packages) {
-  return Object.entries(packages).flatMap(([name, directory]) =>
-    inspectPackageDirectory(name, directory).failures,
+  return Object.entries(packages).flatMap(
+    ([name, directory]) => inspectPackageDirectory(name, directory, BASELINE).failures,
   );
 }
 
@@ -83,21 +104,46 @@ test("空の notice を拒否する", (t) => {
   assert.ok(inspectAll(packages).some((failure) => failure.includes("is empty")));
 });
 
-test("server notice から preact が欠ければ拒否する", (t) => {
+// baseline と完全一致を見る理由がこの 2 件。名指しの数件だけを要求する形だと、名指ししていない
+// 依存（`marked` など）が生成から落ちても通ってしまう。実測でその素通りを確認して切り替えた。
+test("名指ししていない依存 1 件が欠けても拒否する", (t) => {
   const packages = fixture(t);
   writeNotice(
     packages["@codemem/server"],
     "static/THIRD_PARTY_NOTICES.md",
-    SERVER_STATIC_DEPENDENCIES.filter((dependency) => dependency !== "preact"),
+    SERVER_STATIC.filter((dependency) => dependency !== "marked"),
   );
-  assert.ok(inspectAll(packages).some((failure) => failure.endsWith("missing bundled dependency preact")));
+  assert.ok(
+    inspectAll(packages).some((failure) => failure.includes("missing bundled dependencies: marked")),
+  );
 });
 
-test("server notice から tslib の name 行だけ欠ければ拒否する", (t) => {
+test("hook-runtime notice から @codemem/core が欠ければ拒否する", (t) => {
   const packages = fixture(t);
-  const file = join(packages["@codemem/server"], "static/THIRD_PARTY_NOTICES.md");
-  writeFileSync(file, readFileSync(file, "utf8").replace("- Name: `tslib`", "- Name: `removed`"));
-  assert.ok(inspectAll(packages).some((failure) => failure.endsWith("missing bundled dependency tslib")));
+  writeNotice(packages.codemem, "dist/THIRD_PARTY_NOTICES.hook-runtime.md", ["commander"]);
+  assert.ok(
+    inspectAll(packages).some((failure) =>
+      failure.includes("missing bundled dependencies: @codemem/core"),
+    ),
+  );
+});
+
+test("baseline に無い依存が増えたら拒否する", (t) => {
+  const packages = fixture(t);
+  writeNotice(packages["@codemem/core"], "dist/THIRD_PARTY_NOTICES.md", ["hono", "surprise-dep"]);
+  assert.ok(
+    inspectAll(packages).some((failure) => failure.includes("not in the baseline: surprise-dep")),
+  );
+});
+
+test("baseline に無い notice ファイルが増えたら拒否する", (t) => {
+  const packages = fixture(t);
+  writeNotice(packages["@codemem/core"], "dist/THIRD_PARTY_NOTICES.extra.md", ["hono"]);
+  assert.ok(
+    inspectAll(packages).some((failure) =>
+      failure.includes("unexpected notice file dist/THIRD_PARTY_NOTICES.extra.md"),
+    ),
+  );
 });
 
 test("entry に license 本文欄が無ければ拒否する", (t) => {
@@ -107,13 +153,16 @@ test("entry に license 本文欄が無ければ拒否する", (t) => {
   assert.ok(inspectAll(packages).some((failure) => failure.includes("entries but 0 license text fields")));
 });
 
-test("0 件 package でも notice ファイルが無ければ拒否する", (t) => {
+test("license 本文欄はあるが中身が空なら拒否する", (t) => {
   const packages = fixture(t);
-  unlinkSync(join(packages["@codemem/mcp"], "dist/THIRD_PARTY_NOTICES.md"));
-  assert.ok(inspectAll(packages).some((failure) => failure.startsWith("@codemem/mcp: missing")));
+  const file = join(packages["@codemem/core"], "dist/THIRD_PARTY_NOTICES.md");
+  writeFileSync(file, readFileSync(file, "utf8").replace("License for hono\n", ""));
+  assert.ok(
+    inspectAll(packages).some((failure) => failure.includes("missing or empty license text body")),
+  );
 });
 
-// 以下 3 件は「0 件だと宣言している側」の分岐。ここが効いていないと、生成が壊れて中身が
+// 以下 2 件は「0 件だと宣言している側」の分岐。ここが効いていないと、生成が壊れて中身が
 // 別物になった notice を 0 件として通してしまう（ファイルが空でさえなければ素通りする）。
 
 test("0 件 package の notice が 0 件である旨を述べていなければ拒否する", (t) => {
@@ -130,25 +179,24 @@ test("0 件 package の notice が 0 件である旨を述べていなければ�
 test("0 件のはずの package に entry が現れたら拒否する", (t) => {
   const packages = fixture(t);
   writeNotice(packages["@codemem/mcp"], "dist/THIRD_PARTY_NOTICES.md", ["hono"]);
-  assert.ok(inspectAll(packages).some((failure) => failure.includes("should have 0 entries, got 1")));
+  assert.ok(inspectAll(packages).some((failure) => failure.includes("not in the baseline: hono")));
 });
 
-test("license 本文欄はあるが中身が空なら拒否する", (t) => {
+test("baseline に項目が無い package を拒否する", (t) => {
   const packages = fixture(t);
-  const file = join(packages["@codemem/core"], "dist/THIRD_PARTY_NOTICES.md");
-  writeFileSync(file, readFileSync(file, "utf8").replace("License for hono\n", ""));
   assert.ok(
-    inspectAll(packages).some((failure) => failure.includes("missing or empty license text body")),
+    inspectPackageDirectory("@codemem/unknown", packages.codemem, BASELINE).failures.some((failure) =>
+      failure.includes("no baseline entry"),
+    ),
   );
 });
 
-// 生成が部分的に退行して一部の依存だけ落ちる場合、名指しの sentinel だけでは通ってしまう。
-test("server static notice の件数が下限を割れば拒否する", (t) => {
-  const packages = fixture(t);
-  writeNotice(packages["@codemem/server"], "static/THIRD_PARTY_NOTICES.md", SERVER_STATIC_SENTINELS);
-  assert.ok(
-    inspectAll(packages).some((failure) => failure.includes("expected at least 40")),
-  );
+test("依存名の抽出は Name 行だけを見る", () => {
+  assert.deepEqual(dependencyNames(notice(["preact", "@radix-ui/react-dialog"])), [
+    "@radix-ui/react-dialog",
+    "preact",
+  ]);
+  assert.deepEqual(dependencyNames("見出しも本文も Name 行ではない\n## preact@1.0.0\n"), []);
 });
 
 // 起動経路の綴りが違うだけで main() が呼ばれないと、ゲートは「何も検査しなかった」ことを
