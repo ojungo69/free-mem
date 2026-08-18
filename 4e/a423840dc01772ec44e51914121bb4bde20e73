@@ -1,0 +1,37 @@
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_a842fc3459529b 33,35
+harness/evidence/mutate.sh
+  s_2d059b4f795bca::t_20ca5833201c0a 49-50,234
+harness/evidence/promotion.test.ts
+  s_2d059b4f795bca::t_0fd37818f035c1 535-556
+harness/evidence/secrets.test.ts
+  s_2d059b4f795bca::t_e7c56794e60dc1 115-117,119-120
+harness/evidence/verify.ts
+  s_2d059b4f795bca::t_9ef13819389330 193-195
+harness/matrix/claude.json
+  s_2d059b4f795bca::t_9b20a5e2ce7263 4
+harness/matrix/codex.json
+  s_2d059b4f795bca::t_5547d30c60c309 4
+harness/schema/capability.schema.json
+  s_2d059b4f795bca::t_7b595a179e778b 36-37
+harness/schema/evidence-manifest.schema.json
+  s_2d059b4f795bca::t_fcc62ed8fef23c 37,40
+specs/003-evidence-hash-normalization/tasks.md
+  s_2d059b4f795bca::t_f7e453b7ef7de3 198-199,291,311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4ea423840dc01772ec44e51914121bb4bde20e73",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
