@@ -114,6 +114,29 @@ test("verifiedAt picks the later instant, not the larger string", () => {
   assert.equal(m.capabilities.capture.session_started.verifiedAt, "2026-08-13T09:30:00.1Z");
 });
 
+// `Date.parse` はミリ秒より細かい桁を捨てる。捨てられる桁を schema が許すと、別々の
+// 瞬間として書かれた 2 本が同じ epoch になり、どちらが後かは ref の並び順で決まる
+test("a timestamp finer than a millisecond is not accepted at all", () => {
+  const root = newRoot();
+  const ref = putEvidence(root, "sub-ms", atTime(lifecycle("s1", "p1"), "2026-08-13T09:30:00.0001Z"), {
+    manifest: true,
+  });
+  assert.throws(
+    () =>
+      assembleWithRoot(
+        [
+          fixtureBase({
+            fixtureId: "claude/sub-ms",
+            observedEvents: [{ kind: "session_started", at: AT, capability: "native", sourceEvents: ["SessionStart"] }],
+            evidence: [ref],
+          }),
+        ],
+        root,
+      ),
+    /schema/,
+  );
+});
+
 test("manifest capturedAt must come from the capture, not from the fixture", () => {
   const root = newRoot();
   const ref = putEvidence(root, "late", atTime(lifecycle("s1", "p1"), "2026-08-13T09:30:00.000Z"), {
@@ -165,7 +188,9 @@ test("a claimed source event that lives only in an unbacked capture does not pro
 // 証拠を持たない fixture は「申告した hook 名が記録に実在するか」の検査を素通りする
 // （refs が空なので飛ばされる）。cell の統合でその名前を足すと、real-cli-e2e の cell が
 // どの記録にも無い hook 名を主張する
-test("an unbacked fixture cannot add a source event to a promoted cell", () => {
+// 統合は「先に見たほう」と「後から来たほう」の 2 経路あり、裏付けの無い側は
+// どちらから来ても落とす。片方向だけ試すと、もう片方の filter を外しても緑のままになる
+const promotedSourceEvents = (backedId: string, claimId: string): readonly string[] => {
   const root = newRoot();
   const ref = putEvidence(root, "backed", lifecycle("s1", "p1"), { manifest: true });
   const event = (sourceEvents: string[]) => ({
@@ -176,18 +201,24 @@ test("an unbacked fixture cannot add a source event to a promoted cell", () => {
   });
   const m = assembleWithRoot(
     [
-      fixtureBase({
-        fixtureId: "claude/a-backed",
-        observedEvents: [event(["SessionStart"])],
-        evidence: [ref],
-      }),
-      fixtureBase({ fixtureId: "claude/b-claim", observedEvents: [event(["SessionStart", "SubagentStop"])] }),
+      fixtureBase({ fixtureId: backedId, observedEvents: [event(["SessionStart"])], evidence: [ref] }),
+      fixtureBase({ fixtureId: claimId, observedEvents: [event(["SessionStart", "SubagentStop"])] }),
     ],
     root,
   );
   const cell = m.capabilities.capture.session_started;
   assert.equal(cell.evidenceKind, "real-cli-e2e");
-  assert.deepEqual(cell.sourceEvents, ["SessionStart"]);
+  return cell.sourceEvents;
+};
+
+test("an unbacked fixture cannot add a source event to a promoted cell", () => {
+  // 裏付けのある側が先（統合では保持側になる）
+  assert.deepEqual(promotedSourceEvents("claude/a-backed", "claude/b-claim"), ["SessionStart"]);
+});
+
+test("an unbacked fixture seen before the backed one cannot add a source event either", () => {
+  // 裏付けの無い側が先。ここが漏れると、同じ欠陥が「先に読まれた fixture」の側に残る
+  assert.deepEqual(promotedSourceEvents("claude/b-backed", "claude/a-claim"), ["SessionStart"]);
 });
 
 // 「記録に在る」で足りると、値を導いた hook とは別の hook を出どころとして申告できる。

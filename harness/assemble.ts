@@ -15,7 +15,7 @@ import {
   type ObservedCapability,
   type ToolFailurePhase,
 } from "./schema/capability.ts";
-import { safeKey, validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
+import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
 import { canonicalizeJson, decodeUtf8, parseIJson, readIJsonFile } from "./schema/jcs.ts";
 import { NORMALIZATION_VERSION, digestCapture, digestRaw, isRealInstant } from "./evidence/normalize.ts";
 import {
@@ -188,15 +188,16 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
     }
   }
 
-  // JSON Schema と手書き検証の drift 防止: schema が知らないキーは弾く
-  for (const k of Object.keys(data)) {
-    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key (capability.schema.json 未定義): ${safeKey(k)}`);
+  // JSON Schema と手書き検証の drift 防止: schema が知らないキーは弾く。
+  // key 名は fixture の中身なので診断へ載せない（何番目か、だけで場所は足りる）
+  for (const [n, k] of Object.keys(data).entries()) {
+    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key #${n + 1} (capability.schema.json 未定義)`);
   }
   if (Array.isArray(data.observedEvents)) {
     for (const [i, ev] of data.observedEvents.entries()) {
       if (!isObject(ev)) continue;
-      for (const k of Object.keys(ev)) {
-        if (!KNOWN_EVENT_KEYS.has(k)) errs.push(`observedEvents[${i}]: unknown key (schema 未定義): ${safeKey(k)}`);
+      for (const [n, k] of Object.keys(ev).entries()) {
+        if (!KNOWN_EVENT_KEYS.has(k)) errs.push(`observedEvents[${i}]: unknown key #${n + 1} (schema 未定義)`);
       }
     }
   }
@@ -545,7 +546,10 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
     const promotionOf = (o: HighLevelObservation): Promotion =>
       promoteCell(
         o.fixture,
-        derivable,
+        // 申告値まで見る。この 2 cell の述語は `native` しか出さない（deriveClaims 参照）ので、
+        // key だけで「導ける」と決めると、synthesized や unsupported という**正当な**観測が、
+        // 証拠を足した途端に「導けるのに支持が無い」と読まれて組み立てを落とす
+        derivable && o.value === "native",
         (r) => ({ value: r.highLevel[key as DerivableHighLevelKey], sources: [] }),
         o.value,
         key,

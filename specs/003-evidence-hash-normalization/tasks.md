@@ -195,8 +195,8 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 
 - [X] T039 [P] research.md R6 が挙げた 5 箇所の古い記述を退役させる。`harness/matrix/README.md` の `evidenceKind` の説明を実態（digest が裏付ける範囲・legacy 証拠・導けない主張）へ合わせる。**節ごとに掃除する**（変更前の設計は別の語で書かれた節に残る）
 - [X] T040 [P] `harness/contract-hashes.json` を再生成する（`node harness/contract-hashes.mjs > harness/contract-hashes.json`）。`capability.schema.json` と fixture がその入力なので、Phase 2 と Phase 5 の変更で必ず動く
-- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表 62 件を並べる。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
-- [X] T042 変異の網羅を機械的に確認する。`M0`〜`M60` と `M8b` の 62 件すべてが (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
+- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 89 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
+- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 89 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
 - [X] T043 `.github/workflows/ci.yml` の `harness` job へ 2 step 足す（`node --experimental-strip-types --test harness/evidence/*.test.ts` と `bash harness/evidence/mutate.sh`）。既存 step は緩めない
 - [X] T044 `specs/003-evidence-hash-normalization/quickstart.md` を実際に上から実行し、書いてあるコマンドがそのまま通ることを確認する。通らない箇所は quickstart 側を直す
 - [X] T045 セキュリティ関連の必須ゲートを通す。`semgrep scan`（CLI）→ `/codex-review mode=security` → `/codex:adversarial-review`。指摘は `review-routing` の批判的評価にかけ、採否の理由を残す
@@ -221,7 +221,7 @@ done
 
 ---
 
-## 変異の割り当て（data-model.md §6 の全 51 件）
+## 変異の割り当て（現在 89 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
 
 各行の「殺す test」は、その変異を入れたときに**必ず落ちる** test。`harness/evidence/mutate.sh`
 （T041）はこの表を実行可能な形にしたもので、T042 が両者の一致を機械的に確認する。
@@ -230,8 +230,8 @@ done
 |---|---|---|---|
 | M0 | `harness/assemble.ts` `improvesEvidence` | `promotion.test.ts::verified fixture outranks unverified for the same cell` | T019 |
 | M1 | `harness/assemble.ts` 昇格条件 | `promotion.test.ts::nonexistent evidence path is rejected` | T015 |
-| M2 | `harness/assemble.ts` 不一致の扱い | `promotion.test.ts::digest mismatch fails the build` | T015 |
-| M3 | `harness/assemble.ts` 版の照合 | `promotion.test.ts::unknown normalization version fails the build` | T015 |
+| M2 | `harness/evidence/verify.ts` digest の照合 | `promotion.test.ts::digest mismatch fails the build` | T015 |
+| M3 | `harness/evidence/verify.ts` 正規化版の照合 | `promotion.test.ts::unknown normalization version fails the build` | T015 |
 | M4 | `harness/evidence/verify.ts` `DERIVABLE_HIGH_LEVEL_KEYS` | `promotion.test.ts::prompt pair requires a shared supporting ref` | T018 |
 | M5 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::相対 path の .. は棄却される` | T007 |
 | M6 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::置き場の外へ出る symlink は棄却される` | T007 |
@@ -243,11 +243,11 @@ done
 | M11 | `harness/evidence/normalize.ts` array | `normalize.test.ts::配列の長さは保たれる` | T005 |
 | M12 | `harness/evidence/normalize.ts` 行数検査 | `normalize.test.ts::空の観測記録は棄却される` | T006 |
 | M13 | `harness/schema/capability.schema.json` | `schema.test.ts::fixture with evidence is rejected when the schema lacks it` | T012 |
-| M14 | `harness/assemble.ts` 失敗メッセージ | `secrets.test.ts::failure messages carry neither capture contents nor absolute paths` | T030 |
+| M14 | `harness/evidence/verify.ts` 失敗メッセージ | `secrets.test.ts::failure messages carry neither capture contents nor absolute paths` | T030 |
 | M15 | schema の `minItems` と assemble の非空検査 | `schema.test.ts::empty evidence array is rejected` + `promotion.test.ts::empty evidence array fails the build` | T012 / T015 |
 | M16 | `harness/evidence/normalize.ts` 相関 token | `normalize.test.ts::session 識別子が継続するかどうかは digest に現れる` | T006 |
 | M17 | `harness/evidence/normalize.ts` token の scope | `normalize.test.ts::token の番号はファイル単位で、id と path で別の空間を持つ` | T006 |
-| M18 | `harness/evidence/verify.ts` `sourceEvents` 検査 | `promotion.test.ts::claimed hook absent from the capture is rejected` | T016 |
+| M18 | `harness/assemble.ts` `sourceEvents` の実在検査 | `promotion.test.ts::claimed hook absent from the capture is rejected` | T016 |
 | M19 | `harness/assemble.ts` `shareRef` | `promotion.test.ts::shared-ref predicate requires an actual common index` | T018 |
 | M20 | `harness/evidence/verify.ts` manifest 照合表 | `manifest.test.ts::manifest captureHash that disagrees is rejected` | T037 |
 | M21 | `harness/evidence/normalize.ts` 読み取り | `normalize.test.ts::重複したキーを持つ行は棄却される` + `normalize.test.ts::不正な UTF-8 は棄却される` | T006 |
@@ -255,7 +255,7 @@ done
 | M23 | `harness/evidence/normalize.ts` 中間 object | `normalize.test.ts::__proto__ 欄の有無は保たれる` | T006 |
 | M24 | `harness/evidence/verify.ts` `SECRET_KEYS` | `secrets.test.ts::collectSecrets covers every secret-bearing field` | T029 |
 | M25 | `harness/contract-hashes.json` | custom: `node harness/contract-hashes.mjs` との diff | T040 |
-| M26 | `harness/evidence/verify.ts` claim 導出 | `promotion.test.ts::claimed cell value the capture does not derive is rejected` | T016 |
+| M26 | `harness/assemble.ts` 申告値と導出値の照合 | `promotion.test.ts::claimed cell value the capture does not derive is rejected` | T016 |
 | M27 | `harness/assemble.ts` 種別の判定 | `promotion.test.ts::underivable claims stay source-test` | T017 |
 | M28 | `harness/assemble.ts` manifest 要求 | `promotion.test.ts::legacy-only evidence stays source-test` | T017 |
 | M29 | `harness/evidence/verify.ts` `captureRawHash` | `promotion.test.ts::normalization-collision swap is rejected by captureRawHash` | T015 |
@@ -265,7 +265,7 @@ done
 | M33 | `harness/assemble.ts` 出力（自由文 `scenario`） | `secrets.test.ts::planted canaries never reach the matrix, stdout, or stderr` | T027 |
 | M34 | `harness/evidence/verify.ts` legacy ref | `promotion.test.ts::legacy ref still verifies captureRawHash` | T015 |
 | M35 | `harness/assemble.ts` `manifestBacked` の粒度 | `promotion.test.ts::mixed fixture does not promote legacy-backed cells` | T017 |
-| M36 | `harness/evidence/verify.ts` 複数 ref の集約 | `promotion.test.ts::a claim is supported by any one ref (5-ref fixture)` | T016 |
+| M36 | `harness/assemble.ts` 複数 ref の集約 | `promotion.test.ts::a claim is supported by any one ref (5-ref fixture)` | T016 |
 | M37 | `harness/evidence/verify.ts` `turn_completed` 導出 | `promotion.test.ts::codex turn_completed derives as native` | T016 |
 | M38 | `harness/evidence/verify.ts` `internalRunMarker` | `manifest.test.ts::manifest internalRunMarker must be true, not merely equal to the fixture` | T037 |
 | M39 | `harness/rig/import-evidence.mjs` `cliVersion` | `rig-manifest.test.mjs::a CLI that prints more than one version line is rejected` | T035 |
@@ -301,12 +301,22 @@ done
 | M69 | `harness/assemble.ts` 裏付けの無い fixture の hook 名を統合する | `manifest.test.ts::an unbacked fixture cannot add a source event to a promoted cell` | T047 |
 | M70 | `harness/rig/import-evidence.mjs` 検証より先に保存済みの記録を置き換える | `rig-manifest.test.mjs::a capture is not replaced when a later input fails validation` | T047 |
 | M71 | `harness/rig/rig.sh` claude の run で前回の終了コードを残す | `rig-manifest.test.mjs::a rerun does not start with the previous run's exit status in place` | T047 |
-| M72 | `harness/rig/rig.sh` codex の run で前回の終了コードを残す | `rig-manifest.test.mjs::every run initialisation clears the previous exit status` | T047 |
+| M72 | `harness/rig/rig.sh` codex の run で前回の終了コードを残す | `rig-manifest.test.mjs::every run initialisation clears the exit status file the run itself writes` | T047 |
 | M73 | `harness/assemble.ts` 出どころを「記録に在る」だけで認める | `manifest.test.ts::a source event that did not derive the value does not back the promotion` | T047 |
 | M74 | `harness/assemble.ts` 手書き検証が棄却した値を診断へ戻す | `secrets.test.ts::hand-written fixture validation does not echo the rejected value either` | T047 |
-| M75 | `harness/schema/validate.ts` 未知 key 名を無検査で診断へ載せる | `secrets.test.ts::hand-written fixture validation does not echo the rejected value either` | T047 |
+| M75 | `harness/schema/validate.ts` schema 検証が未知 key 名を診断へ載せる | `secrets.test.ts::hand-written fixture validation does not echo the rejected value either` | T047 |
 | M76 | 出荷 matrix の `real-cli-e2e` を Unicode escape で綴る | `killswitch.test.ts::no shipped matrix cell claims real-cli-e2e while the recorder is forgeable (#90)` | T047 |
 | M77 | 出荷 matrix へ重複キーを紛れ込ませる | `matrix-drift.test.ts::the shipped claude matrix is what the fixtures assemble to` | T047 |
+| M78 | `harness/assemble.ts` 手書き検証が未知 key 名を診断へ載せる | `secrets.test.ts::hand-written fixture validation does not echo the rejected value either` | T047 |
+| M79 | 出荷 matrix の生成時刻を別の値に差し替える | `matrix-drift.test.ts::the shipped claude matrix is what the fixtures assemble to` | T047 |
+| M80 | `harness/rig/rig.sh` claude の run が lock の fd を測定対象へ渡す | `rig-manifest.test.mjs::a run does not hand its lock to a process the CLI leaves behind` | T047 |
+| M81 | `harness/rig/rig.sh` codex の run が lock の fd を測定対象へ渡す | `rig-manifest.test.mjs::every run initialisation clears the exit status file the run itself writes` | T047 |
+| M82 | `harness/rig/import-evidence.mjs` schema を満たさない manifest でも記録を置き換える | `rig-manifest.test.mjs::a CLI version the manifest schema rejects does not replace the stored evidence` | T047 |
+| M83 | `harness/rig/import-evidence.mjs` 記録器のエラーが残ったまま持ち込む | `rig-manifest.test.mjs::an import that would write an unusable manifest replaces nothing` | T047 |
+| M84 | `harness/assemble.ts` 先に見た側の裏付け無し hook 名を統合する | `manifest.test.ts::an unbacked fixture seen before the backed one cannot add a source event either` | T047 |
+| M85 | `harness/assemble.ts` 高位 cell の導出可否を key だけで決める | `promotion.test.ts::a synthesized high-level claim is not invalidated by attaching evidence` | T047 |
+| M86 | `harness/schema/evidence-manifest.schema.json` 時刻に ms より細かい桁を許す | `manifest.test.ts::a timestamp finer than a millisecond is not accepted at all` | T047 |
+| M87 | `harness/rig/import-evidence.mjs` 桁数を見ずに終了コードを読む | `rig-manifest.test.mjs::an exit status too large to be one is rejected` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 
@@ -318,15 +328,16 @@ done
   canonical に直列化しているので、どちらか一方を外しても出力 byte は変わらない（過剰決定）。
   M10 は実際に壊せる性質（末尾 LF の framing）へ振り直した
 - **契約 hash は node:test では殺せない。** `run_custom` で再生成との diff を門にする
-- **#90 の歯止め（`killswitch.test.ts`）に対応する変異は置いていない。** 実装のゲートではなく
-  「成果物に何を commit しないか」の検査で、消せば test ごと消える種類のもの。#90 を閉じたら
-  この test ごと削除する
+- **#90 の歯止め（`killswitch.test.ts`）は実装ではなく成果物の側を変異させる。** 消せば test ごと
+  消える種類のゲートなので、実装を壊す変異では鳴らない。代わりに出荷 matrix そのものを変異
+  対象に入れ（M76 / M77 / M79）、Unicode escape・重複キー・生成時刻の差し替えで鳴ることを見る。
+  #90 を閉じたらこの test ごと削除する
 
 **割当の確認**（T042 が自動化する。手で確かめるときはこれ）:
 
 ```bash
-# 表に 53 件そろっているか
-grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 62
+# 表に 89 件そろっているか
+grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 89
 ```
 
 ---

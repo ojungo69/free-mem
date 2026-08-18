@@ -114,13 +114,6 @@ const KEYWORD_VALUE_KIND: Record<string, { name: string; check: (v: unknown) => 
 // スタックオーバーフローよりは十分小さい値
 const MAX_WALK_DEPTH = 200;
 
-/**
- * 診断へ載せる key 名の形を縛る。**値は載せない**（棄却した値をそのまま返すと fixture の
- * 中身が stderr 経由で CI ログへ出る）が、key 名は場所を特定するのに要る。改行での偽ログ行と
- * 長い payload の同乗だけを潰す
- */
-export const safeKey = (key: string): string => (/^[A-Za-z0-9_.:-]{1,64}$/.test(key) ? key : "<key redacted>");
-
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -541,11 +534,16 @@ function validateNode(
     for (const req of (schema.required as string[] | undefined) ?? []) {
       if (!own(value, req)) issues.push({ path, message: `missing required property: ${req}` });
     }
+    // key 名そのものが fixture の中身なので診断へ載せない。綴りを検査して「安全な形なら
+    // 出す」でも足りない: 英数字だけの key 名に秘密を入れれば素通りする。場所は親 path と
+    // その object の中での順番だけで示す
+    let ordinal = 0;
     for (const [k, v] of Object.entries(value)) {
+      ordinal += 1;
       if (own(props, k)) {
         issues.push(...validateNode(v, props[k], root, `${path}.${k}`, [], depth + 1));
       } else if (schema.additionalProperties === false) {
-        issues.push({ path, message: `unknown property: ${safeKey(k)}` });
+        issues.push({ path, message: `unknown property #${ordinal}` });
       } else if (schema.additionalProperties !== undefined) {
         issues.push(...validateNode(v, schema.additionalProperties, root, `${path}.${k}`, [], depth + 1));
       }

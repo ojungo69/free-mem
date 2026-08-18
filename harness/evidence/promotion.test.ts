@@ -259,6 +259,28 @@ test("underivable claim does not fail the build", () => {
   );
 });
 
+// 高位 2 cell の述語は native しか出さない。key だけで導出可否を決めると、この 2 値の
+// 申告が「導けるのに支持が無い」と読まれ、証拠を足しただけで組み立てが落ちる
+const highLevelWithEvidence = (value: "synthesized" | "unsupported"): unknown => {
+  const root = newRoot();
+  const ref = putEvidence(root, `hl-${value}`, lifecycle("s1", "p1"), { manifest: true });
+  return assemble([fixtureBase({ highLevel: { subagentCapture: value }, evidence: [ref] })], root)
+    .capabilities.subagentCapture;
+};
+
+test("a synthesized high-level claim is not invalidated by attaching evidence", () => {
+  const cell = highLevelWithEvidence("synthesized") as { value: string; evidenceKind: string | null };
+  assert.equal(cell.value, "synthesized");
+  assert.equal(cell.evidenceKind, "source-test");
+});
+
+test("an unsupported high-level claim is not invalidated by attaching evidence", () => {
+  // 記録は「起きたこと」しか言わないので、起きなかったことの証拠にはならない
+  const cell = highLevelWithEvidence("unsupported") as { value: string; evidenceKind: string | null };
+  assert.equal(cell.value, "unsupported");
+  assert.equal(cell.evidenceKind, "source-test");
+});
+
 // --- 集約と粒度 ---
 
 test("a claim is supported by any one ref (5-ref fixture)", () => {

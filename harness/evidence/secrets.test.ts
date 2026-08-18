@@ -21,6 +21,8 @@ const MSG = "CANARY-MSG-6d4c2a9f1b3e0227";
 const EVENT = "CANARY-EVENT-1e9b7d3f5a2c";
 const SCENARIO = "CANARY-SCENARIO-4b8e0c6a2f91";
 const CODE = "CANARY-CODE-7f1a3e9d5b2c";
+/** 綴りの検査を通ってしまう形。key 名に秘密を入れる経路はこちらが本命 */
+const PLAIN_CODE = "CANARYCODE7f1a3e9d5b2c";
 
 const node = (args: string[]) =>
   spawnSync(process.execPath, ["--experimental-strip-types", ...args], { encoding: "utf8" });
@@ -132,10 +134,12 @@ test("hand-written fixture validation does not echo the rejected value either", 
   const dir = join(tmp, "harness", "fixtures", "claude");
   const file = join(dir, readdirSync(dir).filter((n) => n.endsWith(".json"))[0] as string);
   const fixture = JSON.parse(readFileSync(file, "utf8"));
-  // 値の側（kind / phase）と、key 名の側（改行を仕込んだ未知キー）の両方
+  // 値の側（kind / phase）と、key 名の側の両方。key 名は**英数字だけ**の綴りで置く:
+  // 「形が安全なら出す」という直し方はこれを素通しする（key 名そのものが fixture の中身）
   fixture.observedEvents[0].kind = CODE;
   fixture.toolFailurePhasesObserved = [CODE];
-  fixture[`x\n${CODE}`] = 1;
+  fixture[PLAIN_CODE] = 1;
+  fixture.observedEvents[0][`x\n${CODE}`] = 1;
   writeFileSync(file, JSON.stringify(fixture, null, 2));
 
   const run = node([join(tmp, "harness", "assemble.ts"), dir, join(tmp, "o.json")]);
@@ -143,6 +147,7 @@ test("hand-written fixture validation does not echo the rejected value either", 
   const said = `${run.stdout}\n${run.stderr}`;
   assert.ok(said.includes("capability.schema.json"), `手書き検証の説明が出ていない: ${said}`);
   assert.ok(!said.includes(CODE), "棄却した値または key 名が診断に出た");
+  assert.ok(!said.includes(PLAIN_CODE), "英数字だけの未知 key 名が診断に出た");
 });
 
 // --- 警報そのものを直接見る ---

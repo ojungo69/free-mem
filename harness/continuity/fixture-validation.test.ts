@@ -37,10 +37,11 @@ test("highLevel の値は schema の enum で検査する", () => {
     () => validateFixture(base({ highLevel: { promptAwareInjection: "natvie" } }), "f.json"),
     /value not in enum/,
   );
-  // highLevel 自体の未知キー
+  // highLevel 自体の未知キー。key 名は診断へ出さない（fixture の中身なので）ため、
+  // 場所（どの object の何番目か）だけで確かめる
   assert.throws(
     () => validateFixture(base({ highLevel: { promptAwareInjecton: "native" } }), "f.json"),
-    /unknown property: promptAwareInjecton/,
+    /\$\.highLevel: unknown property #1/,
   );
 });
 

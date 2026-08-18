@@ -16,6 +16,7 @@ ASSEMBLE=harness/assemble.ts
 VERIFY=harness/evidence/verify.ts
 NORMALIZE=harness/evidence/normalize.ts
 SCHEMA=harness/schema/capability.schema.json
+MSCHEMA=harness/schema/evidence-manifest.schema.json
 IMPORT=harness/rig/import-evidence.mjs
 RIG=harness/rig/rig.sh
 SCHEMAV=harness/schema/validate.ts
@@ -27,7 +28,7 @@ TASKS=specs/003-evidence-hash-normalization/tasks.md
 # 出荷 matrix。kill switch と drift 検査が「復号した値」で見ているかを確かめる
 MATRIX=harness/matrix/claude.json
 
-MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$SCHEMAV" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE" "$MATRIX")
+MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$MSCHEMA" "$SCHEMAV" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE" "$MATRIX")
 TESTS=(
   harness/evidence/hash-inputs.test.ts
   harness/evidence/killswitch.test.ts
@@ -54,8 +55,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 79:
-    bad.append(f"変異表の行が {len(table)} 件（79 件でない）")
+if len(table) != 89:
+    bad.append(f"変異表の行が {len(table)} 件（89 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -259,15 +260,17 @@ mutate $ASSEMBLE '        ...backedOnly(promotion.evidenceKind === "real-cli-e2e
 mutate $IMPORT 'const sourceBytes = readFileSync(source);' 'mkdirSync(destDir, { recursive: true });
 copyFileSync(source, dest);
 const sourceBytes = readFileSync(source);' && run 'M70: 検証より先に保存済みの記録を置き換える'
-mutate $RIG '  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く
-  : > "$capture"; rm -f "$capture.errors" "$capture.exit"' '  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く
+mutate $RIG '  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
   : > "$capture"; rm -f "$capture.errors"' && run 'M71: claude の run で前回の終了コードを残す'
-mutate $RIG '  local capture="$RIG_BASE/capture/codex-$label.jsonl"
-  : > "$capture"; rm -f "$capture.errors" "$capture.exit"' '  local capture="$RIG_BASE/capture/codex-$label.jsonl"
+mutate $RIG '  local stem="$RIG_BASE/capture/codex-$label"
+  local capture="$stem.jsonl"
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  local stem="$RIG_BASE/capture/codex-$label"
+  local capture="$stem.jsonl"
   : > "$capture"; rm -f "$capture.errors"' && run 'M72: codex の run で前回の終了コードを残す'
 mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => derive(r).sources.includes(n)),' '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' && run 'M73: 出どころを「記録に在る」だけで認める'
 mutate $ASSEMBLE '        errs.push(`observedEvents[${i}].kind is not one of the kinds capability.schema.json lists`);' '        errs.push(`observedEvents[${i}].kind invalid: ${ev.kind}`);' && run 'M74: 手書き検証が棄却した値を診断へ戻す'
-mutate $SCHEMAV '        issues.push({ path, message: `unknown property: ${safeKey(k)}` });' '        issues.push({ path, message: `unknown property: ${k}` });' && run 'M75: 未知 key 名を無検査で診断へ載せる'
+mutate $SCHEMAV '        issues.push({ path, message: `unknown property #${ordinal}` });' '        issues.push({ path, message: `unknown property: ${k}` });' && run 'M75: schema 検証が未知 key 名を診断へ載せる'
 mutate $MATRIX '  "generatedAt"' '  "smuggled": "real-cli-\\u0065\\u0032e",
   "generatedAt"' && run 'M76: 出荷 matrix の real-cli-e2e を escape で綴る'
 mutate $MATRIX '  "fixtureCount"' '  "cli": "smuggled",
@@ -276,6 +279,32 @@ mutate $FIXTURE '      "normalizationVersion": 1' '      "normalizationVersion":
       "manifest": "anything.json",
       "manifestHash": "0000000000000000000000000000000000000000000000000000000000000000"' && run 'M66: 出荷 fixture から manifest を名指しする'
 mutate $SCHEMAV '    issues.push({ path, message: "value not in enum" });' '    issues.push({ path, message: `value not in enum: ${JSON.stringify(value)}` });' && run 'M65: 棄却した値を診断へ戻す'
+mutate $ASSEMBLE '    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key #${n + 1} (capability.schema.json 未定義)`);' '    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key ${k} (capability.schema.json 未定義)`);' && run 'M78: 手書き検証が未知 key 名を診断へ載せる'
+mutate $MATRIX '"generatedAt": "' '"generatedAt": "/home/private/CANARY", "notGeneratedAt": "' && run 'M79: 出荷 matrix の生成時刻を別の値に差し替える'
+mutate $RIG '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
+  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) || rc=$?
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
+  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+codex_run' && run 'M80: claude の run が lock の fd を測定対象へ渡す'
+mutate $RIG '      --dangerously-bypass-hook-trust "$@" "$prompt" \
+      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?' '      --dangerously-bypass-hook-trust "$@" "$prompt" \
+      > "$stem.stdout" 2> "$stem.stderr" ) || rc=$?' && run 'M81: codex の run が lock の fd を測定対象へ渡す'
+mutate $IMPORT 'if (issues.length > 0) die(' 'if (false && issues.length > 0) die(' && run 'M82: schema を満たさない manifest でも記録を置き換える'
+mutate $IMPORT 'if (manifest.recorderErrors !== 0) die(' 'if (false && manifest.recorderErrors !== 0) die(' && run 'M83: 記録器のエラーが残ったまま持ち込む'
+mutate $ASSEMBLE '        ...backedOnly(prev.evidenceKind === "real-cli-e2e", prev.value === "unknown" ? [] : prev.sourceEvents),' '        ...(prev.value === "unknown" ? [] : prev.sourceEvents),' && run 'M84: 先に見た側の裏付け無し hook 名を統合する'
+mutate $ASSEMBLE '        derivable && o.value === "native",' '        derivable,' && run 'M85: 高位 cell の導出可否を key だけで決める'
+mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時刻に ms より細かい桁を許す'
+mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 桁数を見ずに終了コードを読む'
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
   && run_custom 'M25: 契約 hash の入力名を書き換える' check_hashes
 

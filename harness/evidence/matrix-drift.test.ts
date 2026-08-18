@@ -6,21 +6,34 @@
 // ここでは repo の I-JSON parser で読むので、重複キーはその場で棄却される。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { canonicalizeJson, readIJsonFile } from "../schema/jcs.ts";
+import { decodeUtf8, parseIJson } from "../schema/jcs.ts";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const CLIS = ["claude", "codex"] as const;
 
-/** generatedAt は実行ごとに変わるので比較から外す。それ以外は 1 byte も動かさない */
-const withoutGeneratedAt = (m: unknown): string => {
-  const { generatedAt: _dropped, ...rest } = m as Record<string, unknown>;
-  return canonicalizeJson(rest);
-};
+/**
+ * 生成時刻だけは実行ごとに変わるので値の比較から外す。ただし**外すなら検査する**:
+ * 丸ごと落として比べると、この欄に絶対 path でも秘密でも入れた matrix がゲートを通る。
+ * `new Date().toISOString()` が出す形（UTC・小数 3 桁）に固定し、往復で正準性を見る
+ */
+function assertGeneratedAt(value: unknown, cli: string): string {
+  assert.equal(typeof value, "string", `${cli}: generatedAt が文字列でない`);
+  const at = value as string;
+  assert.match(at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, `${cli}: generatedAt の形が違う`);
+  assert.equal(new Date(at).toISOString(), at, `${cli}: generatedAt が正準な UTC 表記でない`);
+  return at;
+}
+
+/** 出荷物は byte で比べる。構造だけ比べると、書き方の違いに何かを隠せる */
+function readMatrixText(path: string, cli: string): { text: string; value: Record<string, unknown> } {
+  const text = decodeUtf8(readFileSync(path), path);
+  return { text, value: parseIJson<Record<string, unknown>>(text) };
+}
 
 const assertNoDrift = (cli: (typeof CLIS)[number]): void => {
   const out = join(mkdtempSync(join(tmpdir(), "matrix-drift-")), `${cli}.json`);
@@ -35,9 +48,17 @@ const assertNoDrift = (cli: (typeof CLIS)[number]): void => {
     { encoding: "utf8" },
   );
   assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+
+  const shipped = readMatrixText(join(repoRoot, "harness", "matrix", `${cli}.json`), cli);
+  const fresh = readMatrixText(out, cli);
+  const shippedAt = assertGeneratedAt(shipped.value.generatedAt, cli);
+  assertGeneratedAt(fresh.value.generatedAt, cli);
+
+  // 出荷側の時刻を組み立て直後の結果へ移してから、書き出しと同じ形へ直して byte で比べる
+  fresh.value.generatedAt = shippedAt;
   assert.equal(
-    withoutGeneratedAt(readIJsonFile(new URL(`../matrix/${cli}.json`, import.meta.url))),
-    withoutGeneratedAt(readIJsonFile(out)),
+    `${JSON.stringify(fresh.value, null, 2)}\n`,
+    shipped.text,
     `${cli}: 出荷している matrix が fixture から導けない（手で編集された）`,
   );
 };

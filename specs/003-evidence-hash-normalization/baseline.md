@@ -53,4 +53,3 @@ normalizer を伏せ字にしても消えない（data-model.md §5.3）。
 
 `grep -rn evidenceHash harness/` は **95 件**（うち `harness/matrix/` の生成物が 44 件）。
 T019 の完了時に、残るのは意図した形だけになる。
-

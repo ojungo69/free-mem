@@ -9,7 +9,10 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NORMALIZATION_VERSION, captureCapturedAt, digestCapture, digestRaw } from "../evidence/normalize.ts";
 import { MANIFEST_VERSION } from "../evidence/verify.ts";
+import { readIJsonFile } from "../schema/jcs.ts";
+import { validateAgainstSchema } from "../schema/validate.ts";
 
+const MANIFEST_SCHEMA = readIJsonFile(new URL("../schema/evidence-manifest.schema.json", import.meta.url));
 const KNOWN_CLIS = new Set(["claude", "codex"]);
 const SCENARIO_ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
 const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -41,7 +44,9 @@ function readExitStatus(path) {
   } catch {
     die("the run did not record an exit status");
   }
-  if (!/^\d+$/.test(text)) die("the recorded exit status is not a non-negative integer");
+  // 桁数も縛る。`^\d+$` だけだと 30 桁が Number で丸められ、schema の integer は通るのに
+  // 元の綴りと違う値が manifest へ載る
+  if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");
   return Number(text);
 }
 
@@ -108,6 +113,15 @@ const manifest = {
   captureHash: sourceHash,
   normalizationVersion: NORMALIZATION_VERSION,
 };
+
+// 組み上げた manifest が**検証側の要求を満たすことまで**先に見る。ここを後回しにすると、
+// 検証側が必ず棄却する manifest（schema 違反・記録器のエラーあり）を書くために、
+// 前の正しい記録と manifest の対を壊してから失敗する
+const issues = validateAgainstSchema(manifest, MANIFEST_SCHEMA, MANIFEST_SCHEMA);
+// 診断は場所だけ。schema が棄却した値をそのまま出すと、その値が CI ログへ出る
+if (issues.length > 0) die(`the manifest does not match the schema at: ${issues.map((i) => i.path).join(", ")}`);
+// 検証側は recorderErrors === 0 を要求する。0 でない記録は証拠にならないので持ち込まない
+if (manifest.recorderErrors !== 0) die("the recorder logged errors during this run; it cannot back a promotion");
 
 // ここから先だけが書き込み。記録を先に置き、manifest を後に置く。途中で落ちても
 // 新しい記録と古い manifest は digest が食い違うので検証は fail closed になる

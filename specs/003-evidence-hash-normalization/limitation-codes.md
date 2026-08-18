@@ -75,4 +75,3 @@ matrix 側の `CapabilityEvidence.limitations` には、この表で決めたコ
 | `codex/tool-lifecycle-and-failure` | `observedEvents.tool_failed.limitations[0]` | `4a7f5d30` | `post-tool-use-fires-on-failure-without-status` | **Codex は tool 失敗時も PostToolUse を発火する**（Claude Code とは逆の挙動）。ただし payload に exit code / error フィールドは無く、成功時 tool_response="rigtool\n" に対し失敗時 tool_response="" という違いしかない |
 | `codex/tool-lifecycle-and-failure` | `observedEvents.tool_failed.limitations[1]` | `fa5295d6` | `empty-tool-response-ambiguous` | 空 tool_response は『失敗』と『出力の無い成功』を区別できないため、失敗判定は transcript 参照か上位層の推定が必要 |
 | `codex/tool-lifecycle-and-failure` | `observedEvents.tool_failed.limitations[2]` | `c1dd4f66` | `failure-phase-not-directly-observable` | failurePhase の直接判別は不可 |
-

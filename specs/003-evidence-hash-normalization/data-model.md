@@ -574,16 +574,16 @@ canonical 化する**。`harness/schema/jcs.ts` の `canonicalizeJson` を使う
 ```ts
 capabilityHashInputs = [
   canonicalizeJson({ cli, nativeVersion }),
-  // evidenceSources と同じ並び（fixtureId → path の昇順）
-  canonicalizeJson(evidenceSources.map((e) => [
-    e.fixtureId, e.path, e.evidenceHash, e.normalizationVersion, e.manifestHash,
-  ])),
+  // evidenceSources を**丸ごと**。欄を手で並べると、後から足した欄が黙って hash の外に残る
+  canonicalizeJson(evidenceSources),
   canonicalizeJson(folded),   // 畳んだ capabilities（capabilityHashInputs 自身を除く）
 ];
 ```
 
-manifest hash がこの tuple に入る。`assemble.ts` の `promoteCell` のコメントが
-「§13 の manifest hash はまだ無い（Task 5 で入る）。入る場所はこの配列」と書いているとおり。
+`evidenceSources` の欄を数え上げる形は採らない。実装の途中で実際に `cliVersion` と
+`scenarioId` が抜け、公開する provenance を書き換えても capability hash が動かない状態に
+なった。manifest hash を含む全欄が hash の入力に入るのは、この「丸ごと canonical 化」の
+結果であって、列挙を維持した結果ではない。
 入力の列挙は欄を数え上げるのではなく畳んだ結果から導く（既存の `folded` の扱いを踏襲）。
 exact な byte 列と並び順を contract test で固定する。
 

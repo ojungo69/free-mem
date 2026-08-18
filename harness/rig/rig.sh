@@ -92,20 +92,26 @@ claude_run() {
   local label="$1" prompt="$2" rc=0; shift 2
   with_lock
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
-  local capture="$RIG_BASE/capture/claude-$label.jsonl"
+  # 付属物は import-evidence.mjs と同じ stem で並べる。記録だけ拡張子付きの別名にすると、
+  # 「消す名前」と「書く名前」がずれても誰も気づかない（.exit が実際にずれていた）
+  local stem="$RIG_BASE/capture/claude-$label"
+  local capture="$stem.jsonl"
   # 記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の manifest の
   # recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で先に消す:
-  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く
-  : > "$capture"; rm -f "$capture.errors" "$capture.exit"
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials claude
-  { "$CLAUDE_BIN" --version; } > "$RIG_BASE/capture/claude-$label.version" 2>&1
+  { "$CLAUDE_BIN" --version; } > "$stem.version" 2>&1
+  # 9>&- で lock の fd を測定対象へ渡さない。渡すと、CLI が残した daemon が終わるまで
+  # kernel の flock が解放されず、以後の run と import が「別の run が掴んでいる」で止まる
   ( cd "$RIG_BASE/workspace" && \
     run_env claude "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
       --model haiku --output-format json --max-turns 4 "$@" \
-      > "$RIG_BASE/capture/claude-$label.stdout" 2> "$RIG_BASE/capture/claude-$label.stderr" ) || rc=$?
+      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
-  printf '%s\n' "$rc" > "$RIG_BASE/capture/claude-$label.exit"
-  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$RIG_BASE/capture/claude-$label.stderr"
+  printf '%s\n' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
   echo "captured: $capture ($(wc -l < "$capture") events)"
 }
 
@@ -113,17 +119,18 @@ codex_run() {
   local label="$1" prompt="$2" rc=0; shift 2
   with_lock
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
-  local capture="$RIG_BASE/capture/codex-$label.jsonl"
-  : > "$capture"; rm -f "$capture.errors" "$capture.exit"
+  local stem="$RIG_BASE/capture/codex-$label"
+  local capture="$stem.jsonl"
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials codex
-  { "$CODEX_BIN" --version; } > "$RIG_BASE/capture/codex-$label.version" 2>&1
+  { "$CODEX_BIN" --version; } > "$stem.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
     run_env codex "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
       --dangerously-bypass-hook-trust "$@" "$prompt" \
-      > "$RIG_BASE/capture/codex-$label.stdout" 2> "$RIG_BASE/capture/codex-$label.stderr" ) || rc=$?
+      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
-  printf '%s\n' "$rc" > "$RIG_BASE/capture/codex-$label.exit"
-  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$RIG_BASE/capture/codex-$label.stderr"
+  printf '%s\n' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
   echo "captured: $capture ($(wc -l < "$capture") events)"
 }
 
