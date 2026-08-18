@@ -200,7 +200,7 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 - [X] T043 `.github/workflows/ci.yml` の `harness` job へ 2 step 足す（`node --experimental-strip-types --test harness/evidence/*.test.ts` と `bash harness/evidence/mutate.sh`）。既存 step は緩めない
 - [X] T044 `specs/003-evidence-hash-normalization/quickstart.md` を実際に上から実行し、書いてあるコマンドがそのまま通ることを確認する。通らない箇所は quickstart 側を直す
 - [X] T045 セキュリティ関連の必須ゲートを通す。`semgrep scan`（CLI）→ `/codex-review mode=security` → `/codex:adversarial-review`。指摘は `review-routing` の批判的評価にかけ、採否の理由を残す
-- [ ] T046 `/code-review`（正しさ）で `ok: true` を得た直後に `ponytail-review`（過剰実装）を通す。2 本立てを省略しない
+- [X] T046 `/code-review`（正しさ）で `ok: true` を得た直後に `ponytail-review`（過剰実装）を通す。2 本立てを省略しない
 - [ ] T047 PR を作成し、`pr-merge-gate` スキルの 7 項目を通す。PR 本文に「昇格 0 件・降格 0 件」「digest が証明しないこと」「実装者の逸脱」を書く
 
 **完了条件**（CI と同じコマンドをローカルで全部通す）:

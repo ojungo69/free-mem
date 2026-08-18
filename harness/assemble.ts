@@ -706,16 +706,12 @@ async function selfTest(): Promise<void> {
       { event: "Stop", at: at1, payload: { hook_event_name: "Stop", session_id: session, prompt_id: prompt, last_assistant_message: "hi", cwd: "/w" } },
       { event: "SessionEnd", at: at1, payload: { hook_event_name: "SessionEnd", session_id: session, prompt_id: prompt, reason: "other", cwd: "/w" } },
     ];
-    const toolRun = (session: string): Line[] => [
-      { event: "PreToolUse", at: at2, payload: { hook_event_name: "PreToolUse", session_id: session, tool_name: "Bash", tool_use_id: "t1", cwd: "/w" } },
-      { event: "PostToolUse", at: at2, payload: { hook_event_name: "PostToolUse", session_id: session, tool_name: "Bash", tool_use_id: "t1", cwd: "/w" } },
-    ];
 
     /** 観測記録（と任意で manifest）を置き場へ書き、fixture が名指しする ref を返す */
     const putEvidence = async (
       label: string,
       lines: Line[],
-      opts: { manifest?: boolean; cli?: "claude" | "codex"; scenarioId?: string; overrides?: Record<string, unknown> } = {},
+      opts: { manifest?: boolean; scenarioId?: string } = {},
     ) => {
       const bytes = Buffer.from(lines.map((l) => JSON.stringify(l)).join("\n") + "\n", "utf8");
       await writeFile(join(root, `${label}.jsonl`), bytes);
@@ -728,7 +724,7 @@ async function selfTest(): Promise<void> {
       if (!opts.manifest) return ref;
       const manifest = {
         manifestVersion: 1,
-        cli: opts.cli ?? "claude",
+        cli: "claude",
         cliVersion: v,
         scenarioId: opts.scenarioId ?? "self.test",
         capturedAt: at1,
@@ -740,7 +736,6 @@ async function selfTest(): Promise<void> {
         captureRawHash: digestRaw(bytes),
         captureHash: digestCapture(bytes),
         normalizationVersion: NORMALIZATION_VERSION,
-        ...(opts.overrides ?? {}),
       };
       const mBytes = Buffer.from(JSON.stringify(manifest), "utf8");
       await writeFile(join(root, `${label}.manifest.json`), mBytes);
@@ -845,6 +840,10 @@ async function selfTest(): Promise<void> {
     assert(cap.subagentCapture.value === "unknown", "subagentCapture unknown");
     assert(cap.stableNativeSessionId.value === "unknown", "stableNativeSessionId unknown");
 
+    // self-test は entry point が動いていることの門なので、決定的な 2 件だけ置く。
+    // 個々の棄却規則は harness/evidence/promotion.test.ts が網羅していて、変異ゲート
+    // （harness/evidence/mutate.sh）の 54 件もそちらで殺している
+
     // --- 作り物の hash では昇格しない（本 issue が塞ぐ経路そのもの） ---
     const forged = {
       ...base,
@@ -869,25 +868,6 @@ async function selfTest(): Promise<void> {
       rejected = true;
     }
     assert(rejected, "実在しない観測記録を指す 64 桁 hex は棄却される");
-
-    // --- legacy 証拠（manifest 無し）は digest を照合するが昇格させない ---
-    const legacyRef = await putEvidence("legacy", lifecycle("S1", "P1"));
-    const legacy = {
-      ...base,
-      fixtureId: "claude/legacy",
-      capturedAt: at1,
-      scenario: "legacy evidence",
-      scenarioId: "self.legacy",
-      observedEvents: [{ kind: "session_started" as const, at: at1 }],
-      evidence: [legacyRef],
-    } as unknown as CaptureFixture;
-    const legacyOut = assembleFromFixtures([legacy], ctx);
-    assert(
-      legacyOut.capabilities.capture.session_started.evidenceKind === "source-test",
-      "manifest の無い証拠だけでは real-cli-e2e にしない",
-    );
-    assert(legacyOut.evidenceSources.length === 1, "legacy でも証拠の表には載る");
-    assert(legacyOut.evidenceSources[0].manifestHash === null, "legacy の manifestHash は null");
 
     // --- manifest 付きなら昇格する（positive control） ---
     const backedRef = await putEvidence("backed", lifecycle("S2", "P2"), { manifest: true, scenarioId: "self.backed" });
@@ -920,87 +900,6 @@ async function selfTest(): Promise<void> {
       !backedOut.capabilities.capture.session_started.limitations.some((l) => l.startsWith("unverified:")),
       "裏付いた cell に自己申告の caveat は残さない",
     );
-
-    // --- 記録から導けない値を申告したら棄却する ---
-    const lying = {
-      ...backed,
-      fixtureId: "claude/lying",
-      observedEvents: [{ kind: "tool_started" as const, at: at1 }],
-    } as unknown as CaptureFixture;
-    let lyingRejected = false;
-    try {
-      assembleFromFixtures([lying], ctx);
-    } catch {
-      lyingRejected = true;
-    }
-    assert(lyingRejected, "正しい記録と digest のまま cell 値を書き換えた fixture は棄却される");
-
-    // --- 導けない主張は証拠があっても source-test に留まり、組み立ては落ちない ---
-    const underivable = {
-      ...backed,
-      fixtureId: "claude/underivable",
-      observedEvents: [{ kind: "session_started" as const, at: at1 }],
-      highLevel: { sessionStartInjection: "native" as const },
-    } as unknown as CaptureFixture;
-    const underivableOut = assembleFromFixtures([underivable], ctx).capabilities;
-    assert(
-      underivableOut.sessionStartInjection.evidenceKind === "source-test",
-      "本文に依存する主張は証拠があっても昇格させない",
-    );
-    assert(underivableOut.resumeDeliveryStrategy === "manual_only", "導けない主張で tier を上げない");
-
-    // --- 証跡の優劣: 裏付いた観測を裏付けの無い観測で潰さない ---
-    const plain = {
-      ...base,
-      fixtureId: "claude/plain",
-      capturedAt: at2,
-      scenario: "self-declared only",
-      scenarioId: "self.plain",
-      observedEvents: [{ kind: "session_started" as const, at: at2 }],
-    } as unknown as CaptureFixture;
-    for (const order of [
-      [backed, plain],
-      [plain, backed],
-    ]) {
-      const cell = assembleFromFixtures([...order], ctx).capabilities.capture.session_started;
-      assert(cell.evidenceKind === "real-cli-e2e", "裏付いた証跡が自己申告で消えない");
-      assert(cell.sourceFixtureId === "claude/backed", "証跡の出どころが並び順で入れ替わらない");
-    }
-
-    // --- 高位 cell: 導ける主張（subagentCapture）は昇格し、同強度なら裏付けのある方を採る ---
-    const subRef = await putEvidence(
-      "subagent",
-      [
-        ...lifecycle("S3", "P3"),
-        { event: "SubagentStop", at: at1, payload: { hook_event_name: "SubagentStop", session_id: "S3", agent_id: "A1", agent_type: "general-purpose" } },
-      ],
-      { manifest: true, scenarioId: "self.subagent" },
-    );
-    const subFixture = {
-      ...base,
-      fixtureId: "claude/subagent",
-      capturedAt: at1,
-      scenario: "subagent",
-      scenarioId: "self.subagent",
-      evidence: [subRef],
-      highLevel: { subagentCapture: "native" as const },
-    } as unknown as CaptureFixture;
-    const subDeclared = {
-      ...base,
-      fixtureId: "claude/subagent-declared",
-      capturedAt: at2,
-      scenario: "subagent, self-declared",
-      scenarioId: "self.subagent-declared",
-      highLevel: { subagentCapture: "native" as const },
-    } as unknown as CaptureFixture;
-    for (const order of [
-      [subFixture, subDeclared],
-      [subDeclared, subFixture],
-    ]) {
-      const hl = assembleFromFixtures([...order], ctx).capabilities.subagentCapture;
-      assert(hl.evidenceKind === "real-cli-e2e", "裏付いた高位 cell は昇格する");
-      assert(hl.sourceFixtureId === "claude/subagent", "裏付けのある観測が同強度の tie を取る");
-    }
 
     // 実測どうしが矛盾したら、値は強いほうを残しても証跡は落として自動配送を止める。
     // 並び順で結果が変わらないこと（否定的な観測が先でも後でも同じ）まで確認する
