@@ -42,7 +42,7 @@ const JSON_SCHEMA_TYPES = new Set([
   "null",
 ]);
 
-const SUPPORTED_KEYWORDS = new Set([
+export const SUPPORTED_KEYWORDS = new Set([
   "$ref",
   "$schema",
   "$id",

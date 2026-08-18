@@ -151,7 +151,7 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   // これらは schema 側を正本にして検査する。highLevel は matrix の cell に直接載る
   // （= 自動配送の判定入力）ので enum まで見る必要があり、evidence / limitationCodes /
   // scenarioId は同じ正規表現や enum を 2 箇所に書くと片方だけ古くなるため
-  for (const key of ["evidence", "highLevel", "limitationCodes", "scenarioId"] as const) {
+  for (const key of ["evidence", "highLevel", "limitationCodes", "observedEvents", "scenarioId"] as const) {
     if (!(key in data)) continue;
     const sub = SCHEMA.properties?.[key];
     if (!sub) {
@@ -592,7 +592,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
     canonicalizeJson(
       evidenceSources.map((e) => [e.fixtureId, e.path, e.evidenceHash, e.normalizationVersion, e.manifestHash]),
     ),
-    canonicalizeJson(JSON.parse(JSON.stringify(folded))),
+    canonicalizeJson(folded),
   ];
 
   // 設計側の閉じ方は「自由文を成果物へ出さない」こと（散文の limitations と scenario を

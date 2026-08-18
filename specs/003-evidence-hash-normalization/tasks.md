@@ -80,18 +80,18 @@ issue #20 の実装順序は task 2 を Codex CLI へ割り当てているが、
 
 ### 段 2: normalizer（`harness/evidence/normalize.ts`）
 
-- [ ] T005 先に落ちる test を書く。`harness/evidence/normalize.test.ts` を新規作成し、data-model.md §1 の canonical 形に対する assertion を並べる（この時点では module が無いので全件落ちる）
-- [ ] T006 `harness/evidence/normalize.ts` を新規作成し、`NORMALIZATION_VERSION` / `normalizeCapture(bytes)` / `digestCapture(bytes)` / `digestRaw(bytes)` を実装する。読み取りは `harness/schema/jcs.ts` の `decodeUtf8` + `parseIJson` を再利用する（`readFileSync(..., "utf8")` + `JSON.parse` を書かない）。中間 object は `Object.create(null)` で作る
-- [ ] T007 `harness/evidence/normalize.ts` に `resolveEvidencePath(cli, relPath, root?)` を実装する。data-model.md §3 の 8 段（`cli` の既知値確認 → 絶対 path 拒否 → `..` 拒否 → root の realpath → candidate の realpath → root + 区切りの前方一致 → 通常ファイル判定 → 読み取り）をこの順で置く。`root` は test 専用の差し替え口で、production 経路は必ず省略する。例外は安全な理由コードへ変換し、絶対 path を伝播させない
-- [ ] T008 `harness/evidence/normalize.ts` に CLI 表面を足す（`node --experimental-strip-types harness/evidence/normalize.ts <capture-file>` が `{"evidenceHash","captureRawHash","normalizationVersion"}` を 1 行、`--raw <file>` が `{"rawHash"}` を 1 行）。失敗は終了コード 2 で、行番号までは出すが行の中身と絶対 path は出さない
+- [X] T005 先に落ちる test を書く。`harness/evidence/normalize.test.ts` を新規作成し、data-model.md §1 の canonical 形に対する assertion を並べる（この時点では module が無いので全件落ちる）
+- [X] T006 `harness/evidence/normalize.ts` を新規作成し、`NORMALIZATION_VERSION` / `normalizeCapture(bytes)` / `digestCapture(bytes)` / `digestRaw(bytes)` を実装する。読み取りは `harness/schema/jcs.ts` の `decodeUtf8` + `parseIJson` を再利用する（`readFileSync(..., "utf8")` + `JSON.parse` を書かない）。中間 object は `Object.create(null)` で作る
+- [X] T007 `harness/evidence/normalize.ts` に `resolveEvidencePath(cli, relPath, root?)` を実装する。data-model.md §3 の 8 段（`cli` の既知値確認 → 絶対 path 拒否 → `..` 拒否 → root の realpath → candidate の realpath → root + 区切りの前方一致 → 通常ファイル判定 → 読み取り）をこの順で置く。`root` は test 専用の差し替え口で、production 経路は必ず省略する。例外は安全な理由コードへ変換し、絶対 path を伝播させない
+- [X] T008 `harness/evidence/normalize.ts` に CLI 表面を足す（`node --experimental-strip-types harness/evidence/normalize.ts <capture-file>` が `{"evidenceHash","captureRawHash","normalizationVersion"}` を 1 行、`--raw <file>` が `{"rawHash"}` を 1 行）。失敗は終了コード 2 で、行番号までは出すが行の中身と絶対 path は出さない
 
 ### 段 3: schema と型
 
-- [ ] T009 `harness/schema/capability.schema.json` を更新する。`evidence`（`minItems: 1`・`additionalProperties: false`・T001 で確かめた `allOf` + `if`/`then` の manifest 対）、`scenarioId`（`pattern: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"`・`required`）、`limitationCodes`（T003 の closed enum）を追加し、top-level `evidenceHash` を削除する。既存の無制約 string にも制約を掛ける（`fixtureId` の pattern、`sourceEvents[]` を T002 の enum、`nativeVersion` に `^[\x20-\x7e]+$`）
-- [ ] T010 `harness/schema/evidence-manifest.schema.json` を新規作成する。data-model.md §2.5 の 12 欄を `additionalProperties: false` の closed schema にし、`exitStatus` / `recorderErrors` を非負整数に閉じる
-- [ ] T011 `harness/schema/capability.ts` を更新する。`EvidenceRef` / `RunManifest` の型を足し、`CaptureFixture.evidenceHash` を廃止し、`CapabilityEvidence` へ `evidenceRefs?: number[]`、matrix 直下へ `evidenceSources` を足す。`capability.ts:44` の「その capture の raw transcript の SHA-256」というコメントは owner が不採用とした案なので書き換える
-- [ ] T012 `harness/evidence/schema.test.ts` を新規作成し、schema 側の検査を固定する（対応済み keyword だけで書けている / `evidence: []` の棄却 / `manifest` と `manifestHash` の対 / enum 外の `limitationCodes` の棄却 / fixture だけ先に `evidence` を足した状態が `unknown top-level key` で落ちる）
-- [ ] T013 `harness/fixtures/continuity/*.json` が `capability.schema.json` の変更に影響されないことを回帰で確認する（別種の fixture で検証対象外）。`harness/continuity/validate.test.ts` と `harness/continuity/schema-freeze.test.ts` が通ることを見る
+- [X] T009 `harness/schema/capability.schema.json` を更新する。`evidence`（`minItems: 1`・`additionalProperties: false`・T001 で確かめた `allOf` + `if`/`then` の manifest 対）、`scenarioId`（`pattern: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"`・`required`）、`limitationCodes`（T003 の closed enum）を追加し、top-level `evidenceHash` を削除する。既存の無制約 string にも制約を掛ける（`fixtureId` の pattern、`sourceEvents[]` を T002 の enum、`nativeVersion` に `^[\x20-\x7e]+$`）
+- [X] T010 `harness/schema/evidence-manifest.schema.json` を新規作成する。data-model.md §2.5 の 12 欄を `additionalProperties: false` の closed schema にし、`exitStatus` / `recorderErrors` を非負整数に閉じる
+- [X] T011 `harness/schema/capability.ts` を更新する。`EvidenceRef` / `RunManifest` の型を足し、`CaptureFixture.evidenceHash` を廃止し、`CapabilityEvidence` へ `evidenceRefs?: number[]`、matrix 直下へ `evidenceSources` を足す。`capability.ts:44` の「その capture の raw transcript の SHA-256」というコメントは owner が不採用とした案なので書き換える
+- [X] T012 `harness/evidence/schema.test.ts` を新規作成し、schema 側の検査を固定する（対応済み keyword だけで書けている / `evidence: []` の棄却 / `manifest` と `manifestHash` の対 / enum 外の `limitationCodes` の棄却 / fixture だけ先に `evidence` を足した状態が `unknown top-level key` で落ちる）
+- [X] T013 `harness/fixtures/continuity/*.json` が `capability.schema.json` の変更に影響されないことを回帰で確認する（別種の fixture で検証対象外）。`harness/continuity/validate.test.ts` と `harness/continuity/schema-freeze.test.ts` が通ることを見る
 
 **完了条件**（この phase の終わりに全部通す）:
 
@@ -111,15 +111,15 @@ vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
 **Independent Test**: 実在しない観測記録を指す fixture と、記録はあるが digest が食い違う fixture を
 用意し、どちらも `real-cli-e2e` にならず組み立てが失敗する
 
-- [ ] T014 [US1] `harness/evidence/promotion.test.ts` を新規作成し、先に落ちる test を並べる。攻撃側（実在しない path / 別物の path / 未知の版 / 空配列 / 実在しない hook の申告 / 導出値と申告値の食い違い）と、synthetic な観測記録・manifest・fixture を `mkdtemp` へ作って組み立てる positive control を両方書く
-- [ ] T015 [US1] `harness/assemble.ts` に検証器を実装する。data-model.md §4.1 の順で ref ごとに検査する（版 → path 解決 → 読み取り → `captureRawHash` → 正規化 → `evidenceHash` → manifest があれば `manifestHash` を **parse の前に** 照合 → closed schema → §2.5 の 11 項目）。いずれの失敗も組み立て全体の失敗にし、cell を黙って `source-test` へ落として続行しない
-- [ ] T016 [US1] `harness/assemble.ts` に `VerifiedClaims` の導出を実装する（data-model.md §4.3）。導ける主張（`session_started` / `user_prompted` / `session_ended` / `tool_started` / `tool_completed` / `assistant_completed` / `turn_completed`（Claude と Codex で規則が違う）/ `session_interrupted` / `subagentCapture` / `stableNativeSessionId`）は記録から値を導いて申告値と照合する。複数 ref は和集合で、いずれか 1 件以上が同じ値を導出すれば成立させる
-- [ ] T017 [US1] `harness/assemble.ts` の昇格判定を data-model.md §4.2 の順序で実装する。**種別の判定を先に置く**（導けない主張 → `source-test`、導ける主張 → supporting を求め、空なら失敗、manifest 付きが無ければ `source-test`、あれば `real-cli-e2e`）。順序を逆にすると既存 fixture で組み立てが落ちる
-- [ ] T018 [US1] 昇格を刻む 3 経路すべてを `verified` を見る形へ変える（`harness/assemble.ts:280` capture cell / `:349` highLevel cell / `:383` prompt 対の再刻印）。`:367` の `pairFixture` 抽出条件も `f.evidenceHash` から `verified` へ変える。prompt 対は**両 cell を支持する ref 集合に同じ 1 件が含まれるときだけ**成立させる
-- [ ] T019 [US1] `evidenceHash` を読んでいる残りの箇所を全件処理する（plan.md の棚卸し表）。`harness/assemble.ts:125`（schema キーの検証ループ）・`:252` `improvesEvidence`・`:285-286` / `:354` / `:389`（caveat 文言）・`:288` / `:357` / `:386`（出力欄）・`:338`（tie-break スコア）・`:414`（capability hash 入力）。`grep -rn evidenceHash harness/` の残りが意図した形だけになることを確認する
-- [ ] T020 [US1] `harness/assemble.ts` の in-file self-test（`:535` と `:588-758`）の**意味を反転させる**。現在は `"a".repeat(64)` のような作り物 hash で昇格することを確認しているので、作り物 hash では昇格しないことを確認する形へ書き換える。コンパイルが通るだけの機械的置換にしない
-- [ ] T021 [US1] `harness/continuity/fixture-validation.test.ts`（`evidenceHash` 参照 7 件）と `harness/continuity/capability-contract.test.ts`（同 5 件）を、新しい契約を守る形へ書き換える。これらは「hash があれば `real-cli-e2e`」という**現在の仕様を encode している**ので、古い仕様を守る test が残らないようにする
-- [ ] T022 [US1] `harness/assemble.ts` の `assembleFromFixtures` へ `EvidenceContext { evidenceRoot?: string }` を配線する。production の入口 `runAssemble` は `ctx` を取らず、内部で固定 root を作る。CLI 引数・fixture の値・環境変数のどれからも root が動かないことを test で固定する
+- [X] T014 [US1] `harness/evidence/promotion.test.ts` を新規作成し、先に落ちる test を並べる。攻撃側（実在しない path / 別物の path / 未知の版 / 空配列 / 実在しない hook の申告 / 導出値と申告値の食い違い）と、synthetic な観測記録・manifest・fixture を `mkdtemp` へ作って組み立てる positive control を両方書く
+- [X] T015 [US1] `harness/assemble.ts` に検証器を実装する。data-model.md §4.1 の順で ref ごとに検査する（版 → path 解決 → 読み取り → `captureRawHash` → 正規化 → `evidenceHash` → manifest があれば `manifestHash` を **parse の前に** 照合 → closed schema → §2.5 の 11 項目）。いずれの失敗も組み立て全体の失敗にし、cell を黙って `source-test` へ落として続行しない
+- [X] T016 [US1] `harness/assemble.ts` に `VerifiedClaims` の導出を実装する（data-model.md §4.3）。導ける主張（`session_started` / `user_prompted` / `session_ended` / `tool_started` / `tool_completed` / `assistant_completed` / `turn_completed`（Claude と Codex で規則が違う）/ `session_interrupted` / `subagentCapture` / `stableNativeSessionId`）は記録から値を導いて申告値と照合する。複数 ref は和集合で、いずれか 1 件以上が同じ値を導出すれば成立させる
+- [X] T017 [US1] `harness/assemble.ts` の昇格判定を data-model.md §4.2 の順序で実装する。**種別の判定を先に置く**（導けない主張 → `source-test`、導ける主張 → supporting を求め、空なら失敗、manifest 付きが無ければ `source-test`、あれば `real-cli-e2e`）。順序を逆にすると既存 fixture で組み立てが落ちる
+- [X] T018 [US1] 昇格を刻む 3 経路すべてを `verified` を見る形へ変える（`harness/assemble.ts:280` capture cell / `:349` highLevel cell / `:383` prompt 対の再刻印）。`:367` の `pairFixture` 抽出条件も `f.evidenceHash` から `verified` へ変える。prompt 対は**両 cell を支持する ref 集合に同じ 1 件が含まれるときだけ**成立させる
+- [X] T019 [US1] `evidenceHash` を読んでいる残りの箇所を全件処理する（plan.md の棚卸し表）。`harness/assemble.ts:125`（schema キーの検証ループ）・`:252` `improvesEvidence`・`:285-286` / `:354` / `:389`（caveat 文言）・`:288` / `:357` / `:386`（出力欄）・`:338`（tie-break スコア）・`:414`（capability hash 入力）。`grep -rn evidenceHash harness/` の残りが意図した形だけになることを確認する
+- [X] T020 [US1] `harness/assemble.ts` の in-file self-test（`:535` と `:588-758`）の**意味を反転させる**。現在は `"a".repeat(64)` のような作り物 hash で昇格することを確認しているので、作り物 hash では昇格しないことを確認する形へ書き換える。コンパイルが通るだけの機械的置換にしない
+- [X] T021 [US1] `harness/continuity/fixture-validation.test.ts`（`evidenceHash` 参照 7 件）と `harness/continuity/capability-contract.test.ts`（同 5 件）を、新しい契約を守る形へ書き換える。これらは「hash があれば `real-cli-e2e`」という**現在の仕様を encode している**ので、古い仕様を守る test が残らないようにする
+- [X] T022 [US1] `harness/assemble.ts` の `assembleFromFixtures` へ `EvidenceContext { evidenceRoot?: string }` を配線する。production の入口 `runAssemble` は `ctx` を取らず、内部で固定 root を作る。CLI 引数・fixture の値・環境変数のどれからも root が動かないことを test で固定する
 
 **完了条件**:
 
@@ -138,10 +138,10 @@ vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
 **Independent Test**: committed 済みの観測記録 16 件だけで、同一 scenario の 2 回の取得が同じ digest に
 なり、別 scenario が別 digest になることを確認できる
 
-- [ ] T023 [P] [US2] `harness/evidence/normalize.test.ts` へ通過側の test を足す。`raw/claude-interrupt3.jsonl` と `raw/claude-interrupt4.jsonl` の digest が一致する（許容した環境差だけが違う再取得）
-- [ ] T024 [P] [US2] `harness/evidence/normalize.test.ts` へ過剰正規化側の test を足す。`raw/claude-tool-denied.jsonl` と `raw/claude-tool-ok.jsonl` の digest が異なる（`prompt` を verbatim から外すと衝突する）。識別子の相関だけが違う 2 記録の digest が異なる
-- [ ] T025 [P] [US2] `harness/evidence/normalize.test.ts` へ既知の正しい衝突を固定する。`raw/claude-hook-timeout.jsonl` と `raw/claude-lifecycle-basic.jsonl` は digest が一致する（hook の timeout は hook event 列に現れないので観測が本当に同一）。この一致が「取り違えても通る」を意味しないことは、fixture が自分の記録を名指しし `captureRawHash` で結び付けることで担保する
-- [ ] T026 [US2] committed raw 16 件の digest 分布（distinct 14 種・衝突 2 組）を回帰として固定する。`harness/evidence/normalize.test.ts` から 16 件すべての digest を計算し、期待集合と突き合わせる
+- [X] T023 [P] [US2] `harness/evidence/normalize.test.ts` へ通過側の test を足す。`raw/claude-interrupt3.jsonl` と `raw/claude-interrupt4.jsonl` の digest が一致する（許容した環境差だけが違う再取得）
+- [X] T024 [P] [US2] `harness/evidence/normalize.test.ts` へ過剰正規化側の test を足す。`raw/claude-tool-denied.jsonl` と `raw/claude-tool-ok.jsonl` の digest が異なる（`prompt` を verbatim から外すと衝突する）。識別子の相関だけが違う 2 記録の digest が異なる
+- [X] T025 [P] [US2] `harness/evidence/normalize.test.ts` へ既知の正しい衝突を固定する。`raw/claude-hook-timeout.jsonl` と `raw/claude-lifecycle-basic.jsonl` は digest が一致する（hook の timeout は hook event 列に現れないので観測が本当に同一）。この一致が「取り違えても通る」を意味しないことは、fixture が自分の記録を名指しし `captureRawHash` で結び付けることで担保する
+- [X] T026 [US2] committed raw 16 件の digest 分布（distinct 14 種・衝突 2 組）を回帰として固定する。`harness/evidence/normalize.test.ts` から 16 件すべての digest を計算し、期待集合と突き合わせる
 
 **完了条件**: `node --experimental-strip-types --test harness/evidence/normalize.test.ts` が通り、16 件の digest 分布が計画の実測（distinct 14 / 衝突 2 組）と一致する
 
@@ -155,14 +155,14 @@ vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
 **Independent Test**: canary を仕込んだ fixture と raw で組み立て、matrix・stdout・stderr のいずれにも
 canary が現れない
 
-- [ ] T027 [US3] `harness/assemble.ts` に `evidenceSources`（matrix 直下・`fixtureId` → `path` の昇順で一意化）と cell 側の `evidenceRefs?: number[]` を実装する（data-model.md §5.1）。自由文の `scenario` は matrix へ出さず `scenarioId` を出す。成果物へ出す path は `^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$` に制約する
-- [ ] T028 [US3] `harness/assemble.ts:414` の `capabilityHashInputs` を構造化し、`harness/schema/jcs.ts` の `canonicalizeJson` で canonical 化する（data-model.md §5.2）。入力の列挙は欄を数え上げず畳んだ結果から導く。exact な byte 列と並び順を contract test で固定する
-- [ ] T029 [US3] `harness/assemble.ts` に自由文の runtime 検査を足す。成果物へ出る全文字列を対象に、参照 raw の秘密欄（`prompt` / `last_assistant_message` / `cwd` / `transcript_path` / 入れ子の `tool_input`・`tool_response`）から取った 16 文字以上の部分文字列を含んだら組み立てを失敗させる。**これは信頼境界ではなく警報**であることをコメントに書く
+- [X] T027 [US3] `harness/assemble.ts` に `evidenceSources`（matrix 直下・`fixtureId` → `path` の昇順で一意化）と cell 側の `evidenceRefs?: number[]` を実装する（data-model.md §5.1）。自由文の `scenario` は matrix へ出さず `scenarioId` を出す。成果物へ出す path は `^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$` に制約する
+- [X] T028 [US3] `harness/assemble.ts:414` の `capabilityHashInputs` を構造化し、`harness/schema/jcs.ts` の `canonicalizeJson` で canonical 化する（data-model.md §5.2）。入力の列挙は欄を数え上げず畳んだ結果から導く。exact な byte 列と並び順を contract test で固定する
+- [X] T029 [US3] `harness/assemble.ts` に自由文の runtime 検査を足す。成果物へ出る全文字列を対象に、参照 raw の秘密欄（`prompt` / `last_assistant_message` / `cwd` / `transcript_path` / 入れ子の `tool_input`・`tool_response`）から取った 16 文字以上の部分文字列を含んだら組み立てを失敗させる。**これは信頼境界ではなく警報**であることをコメントに書く
 - [ ] T030 [US3] `harness/evidence/secrets.test.ts` を新規作成する。canary を (a) fixture の散文 `limitations`、(b) raw の秘密欄、の各経路へ 1 つずつ仕込み、組み立てを**子プロセスとして起動**して matrix・stdout・stderr のいずれにも canary が出ないことを見る。失敗メッセージに観測記録の中身と絶対 path が出ないことも同じ file で見る
-- [ ] T031 [P] [US3] `harness/fixtures/claude/*.json` 5 件へ `evidence[]`（`path` / `evidenceHash` / `captureRawHash` / `normalizationVersion`。manifest は付けない = legacy 証拠）・`scenarioId`・`limitationCodes` を埋める。digest は T008 の CLI から得る（手で計算しない）。`interrupt-and-hook-timeout` は raw 5 本を配列で持つ
-- [ ] T032 [P] [US3] `harness/fixtures/codex/*.json` 3 件へ同じ形で `evidence[]`・`scenarioId`・`limitationCodes` を埋める
-- [ ] T033 [US3] matrix を再生成し、証拠強度が変化した cell が 0 件（昇格 0・降格 0）であることを T004 の baseline と突き合わせる。生成コマンドは `node --experimental-strip-types harness/assemble.ts harness/fixtures/<cli> harness/matrix/<cli>.json`
-- [ ] T034 [US3] 観測記録を 1 byte 変えると組み立てが失敗することを実測で確認する（`raw/*.jsonl` の 1 件へ空行を足して組み立て、失敗を見てから戻す）。この確認自体を `harness/evidence/promotion.test.ts` の test としても置く
+- [X] T031 [P] [US3] `harness/fixtures/claude/*.json` 5 件へ `evidence[]`（`path` / `evidenceHash` / `captureRawHash` / `normalizationVersion`。manifest は付けない = legacy 証拠）・`scenarioId`・`limitationCodes` を埋める。digest は T008 の CLI から得る（手で計算しない）。`interrupt-and-hook-timeout` は raw 5 本を配列で持つ
+- [X] T032 [P] [US3] `harness/fixtures/codex/*.json` 3 件へ同じ形で `evidence[]`・`scenarioId`・`limitationCodes` を埋める
+- [X] T033 [US3] matrix を再生成し、証拠強度が変化した cell が 0 件（昇格 0・降格 0）であることを T004 の baseline と突き合わせる。生成コマンドは `node --experimental-strip-types harness/assemble.ts harness/fixtures/<cli> harness/matrix/<cli>.json`
+- [X] T034 [US3] 観測記録を 1 byte 変えると組み立てが失敗することを実測で確認する（`raw/*.jsonl` の 1 件へ空行を足して組み立て、失敗を見てから戻す）。この確認自体を `harness/evidence/promotion.test.ts` の test としても置く
 
 **完了条件**:
 

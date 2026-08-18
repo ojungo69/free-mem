@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assembleFromFixtures, validateFixture } from "../assemble.ts";
@@ -206,14 +206,16 @@ test("claimed hook absent from the capture is rejected", () => {
         [
           fixtureBase({
             observedEvents: [
-              { kind: "session_started", at: AT, capability: "synthesized", sourceEvents: ["PreCompact"] },
+              // enum 内だが lifecycle() の観測記録には出ない hook を選ぶ。enum 外を書くと
+              // schema 側が先に落とし、導出の検査に届かない
+              { kind: "session_started", at: AT, capability: "synthesized", sourceEvents: ["SubagentStop"] },
             ],
             evidence: [ref],
           }),
         ],
         root,
       ),
-    /sourceEvents names PreCompact/,
+    /sourceEvents names SubagentStop/,
   );
 });
 
@@ -415,17 +417,9 @@ test("committed fixtures bind every raw by digest and promote nothing", () => {
 });
 
 function loadCommitted(cli: "claude" | "codex"): CaptureFixture[] {
+  // 名前を手で並べない。並べると 9 個目の fixture が「昇格 0 件」の検査から黙って抜ける
   const dir = new URL(`../fixtures/${cli}/`, import.meta.url);
-  const names = ["injection-and-subagent", "interrupt-and-hook-timeout", "lifecycle-basic", "tool-failed-executed", "tool-lifecycle", "injection", "tool-lifecycle-and-failure"];
-  const out: CaptureFixture[] = [];
-  for (const name of names) {
-    let raw: string;
-    try {
-      raw = readFileSync(new URL(`${name}.json`, dir), "utf8");
-    } catch {
-      continue;
-    }
-    out.push(validateFixture(JSON.parse(raw), `${name}.json`));
-  }
-  return out;
+  const names = readdirSync(dir).filter((n) => n.endsWith(".json")).sort();
+  assert.ok(names.length > 0, `${cli} の fixture が 1 件も見つからない`);
+  return names.map((name) => validateFixture(JSON.parse(readFileSync(new URL(name, dir), "utf8")), name));
 }
