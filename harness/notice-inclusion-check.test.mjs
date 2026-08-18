@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
-import { inspectPackageDirectory } from "./notice-inclusion-check.mjs";
+import { inspectPackageDirectory, isDirectInvocation } from "./notice-inclusion-check.mjs";
 
 function notice(dependencies) {
   if (dependencies.length === 0) {
@@ -33,6 +34,14 @@ function writeNotice(packageDirectory, path, dependencies) {
   writeFileSync(file, notice(dependencies));
 }
 
+// static/ の notice には件数の下限（40）が掛かっている。名指しの 4 件だけの fixture では
+// 正常系まで落ちてしまうので、実測の 47 件に近い数を埋める。
+const SERVER_STATIC_SENTINELS = ["preact", "@radix-ui/react-dialog", "dompurify", "tslib"];
+const SERVER_STATIC_DEPENDENCIES = [
+  ...SERVER_STATIC_SENTINELS,
+  ...Array.from({ length: 43 }, (_unused, index) => `filler-dependency-${index}`),
+];
+
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "notice-inclusion-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -48,12 +57,7 @@ function fixture(t) {
   writeNotice(packages["@codemem/core"], "dist/THIRD_PARTY_NOTICES.md", ["hono"]);
   writeNotice(packages["@codemem/mcp"], "dist/THIRD_PARTY_NOTICES.md", []);
   writeNotice(packages["@codemem/server"], "dist/THIRD_PARTY_NOTICES.md", []);
-  writeNotice(packages["@codemem/server"], "static/THIRD_PARTY_NOTICES.md", [
-    "preact",
-    "@radix-ui/react-dialog",
-    "dompurify",
-    "tslib",
-  ]);
+  writeNotice(packages["@codemem/server"], "static/THIRD_PARTY_NOTICES.md", SERVER_STATIC_DEPENDENCIES);
   return packages;
 }
 
@@ -81,11 +85,11 @@ test("空の notice を拒否する", (t) => {
 
 test("server notice から preact が欠ければ拒否する", (t) => {
   const packages = fixture(t);
-  writeNotice(packages["@codemem/server"], "static/THIRD_PARTY_NOTICES.md", [
-    "@radix-ui/react-dialog",
-    "dompurify",
-    "tslib",
-  ]);
+  writeNotice(
+    packages["@codemem/server"],
+    "static/THIRD_PARTY_NOTICES.md",
+    SERVER_STATIC_DEPENDENCIES.filter((dependency) => dependency !== "preact"),
+  );
   assert.ok(inspectAll(packages).some((failure) => failure.endsWith("missing bundled dependency preact")));
 });
 
@@ -136,4 +140,29 @@ test("license 本文欄はあるが中身が空なら拒否する", (t) => {
   assert.ok(
     inspectAll(packages).some((failure) => failure.includes("missing or empty license text body")),
   );
+});
+
+// 生成が部分的に退行して一部の依存だけ落ちる場合、名指しの sentinel だけでは通ってしまう。
+test("server static notice の件数が下限を割れば拒否する", (t) => {
+  const packages = fixture(t);
+  writeNotice(packages["@codemem/server"], "static/THIRD_PARTY_NOTICES.md", SERVER_STATIC_SENTINELS);
+  assert.ok(
+    inspectAll(packages).some((failure) => failure.includes("expected at least 40")),
+  );
+});
+
+// 起動経路の綴りが違うだけで main() が呼ばれないと、ゲートは「何も検査しなかった」ことを
+// 成功として返す。symlink 経由でも直接起動と判定できることを固定する。
+test("symlink 経由の起動でも直接起動と判定する", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "notice-entrypoint-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const real = join(root, "real.mjs");
+  const link = join(root, "link.mjs");
+  writeFileSync(real, "export default 0;\n");
+  symlinkSync(real, link);
+
+  assert.equal(isDirectInvocation(link, pathToFileURL(real).href), true);
+  assert.equal(isDirectInvocation(real, pathToFileURL(real).href), true);
+  assert.equal(isDirectInvocation(join(root, "other.mjs"), pathToFileURL(real).href), false);
+  assert.equal(isDirectInvocation(undefined, pathToFileURL(real).href), false);
 });

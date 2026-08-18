@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 // build 前提の存在確認では生成停止を見逃すため、自分で build と pack を行い、公開 tarball を検査する。
 
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -39,6 +47,10 @@ const PACKAGES = [
       {
         path: "static/THIRD_PARTY_NOTICES.md",
         dependencies: ["preact", "@radix-ui/react-dialog", "dompurify", "tslib"],
+        // 名指しの 4 件だけでは、生成が途中で退行して残りが落ちても通ってしまう。実測 47 件に対する
+        // 下限を置いて部分的な欠落も落とす。完全な 47 件を正本として固定しないのは、依存の正当な
+        // 増減のたびに CI が落ち、その圧力が「検査を緩める」方向に働くため。
+        minEntries: 40,
       },
     ],
   },
@@ -97,6 +109,12 @@ export function inspectPackageDirectory(packageName, packageDirectory) {
     }
     if (bodies.length !== licenseCount || bodies.some((body) => body === "")) {
       failures.push(`${packageName}: ${notice.path} has a missing or empty license text body`);
+    }
+
+    if (notice.minEntries !== undefined && entryCount < notice.minEntries) {
+      failures.push(
+        `${packageName}: ${notice.path} has ${entryCount} entries, expected at least ${notice.minEntries}`,
+      );
     }
 
     if (notice.empty) {
@@ -194,8 +212,21 @@ function main() {
   console.log("third-party notice inclusion check OK");
 }
 
-// `import.meta.main` に置き換えないこと。あれは Node 24.2 で入ったので、engines の `>=24` を
-// 満たす 24.0 / 24.1 では undefined になり、main() を一度も呼ばないまま exit 0 で終わる。
-// release preflight は setup-node を挟まず ambient node で走るため、そこで黙って素通りする——
-// ゲートが「検査した」と「検査しなかった」を区別できなくなる形で fail-open する。
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+// 直接起動されたかどうかの判定。両側を realpath に落としてから比べる: `import.meta.url` は Node が
+// 実体パスへ正規化するのに対し `process.argv[1]` は起動時の綴りのままなので、symlink を挟んだ経路で
+// 起動すると一致せず、main() を呼ばないまま exit 0 で終わる。
+//
+// `import.meta.main` にも置き換えないこと。あれは Node 24.2 で入ったので、engines の `>=24` を
+// 満たす 24.0 / 24.1 では undefined になり、同じく main() を呼ばない。
+//
+// どちらの取り違えも「検査した」と「検査しなかった」の区別を消す = ゲートとしては fail-open。
+export function isDirectInvocation(argv1, moduleUrl) {
+  if (!argv1) return false;
+  try {
+    return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation(process.argv[1], import.meta.url)) main();
