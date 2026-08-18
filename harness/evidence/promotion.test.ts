@@ -554,3 +554,28 @@ test("a claude capture that carries turn_id does not derive a synthesized turn",
     /turn_completed claims "synthesized" but no referenced capture derives it/,
   );
 });
+
+test("empty identifiers do not correlate", () => {
+  const root = newRoot();
+  // 空文字の session_id / prompt_id に token を振ると、実体の無い ID どうしが
+  // 「run を通して同じ」の根拠になる
+  const lines = lifecycle("s1", "p1").map((l) => ({
+    ...l,
+    payload: { ...l.payload, session_id: "", ...("prompt_id" in l.payload ? { prompt_id: "" } : {}) },
+  }));
+  const ref = putEvidence(root, "emptyid", lines, { manifest: true });
+  for (const [key, kind] of [
+    ["stableNativeSessionId", "highLevel"],
+    ["turn_completed", "capture"],
+  ] as const) {
+    const fixture =
+      kind === "highLevel"
+        ? fixtureBase({ fixtureId: "claude/emptyid", highLevel: { [key]: "native" }, evidence: [ref] })
+        : fixtureBase({
+            fixtureId: "claude/emptyid",
+            observedEvents: [{ kind: key, at: AT, capability: "synthesized", sourceEvents: ["Stop"] }],
+            evidence: [ref],
+          });
+    assert.throws(() => assemble([fixture], root), new RegExp(`${key} claims`), key);
+  }
+});

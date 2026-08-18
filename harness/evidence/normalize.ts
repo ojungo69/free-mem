@@ -103,7 +103,9 @@ function normalizePayload(
     const value = payload[key] as JsonValue;
     // verbatim と token は string のときだけ。位置だけで決めると、
     // payload.reason に object を置いて本文を通せる
-    if (typeof value === "string") {
+    // 空文字は識別子として扱わない。token を振ると、実体の無い空 ID どうしが
+    // 「run を通して同じ」「turn を共有した」の根拠になる
+    if (typeof value === "string" && value !== "") {
       if (VERBATIM_PAYLOAD_KEYS.has(key)) {
         out[key] = verbatim(value);
         continue;
