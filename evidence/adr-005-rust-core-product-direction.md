@@ -16,7 +16,8 @@
 Stage 1 narrow prototype の役割は、以後次のように再定義する。
 
 1. Rust を採用するか否かをゼロから決めるのではない。
-2. **Core 1.0 から Rust を default runtime にできるか**、または一部 cutover を後続 release へ分ける必要があるかを実測する。
+2. **Stage 1 が決めるのは roadmap を進めてよいかと候補 scope の評価までである。実際の Core 1.0 の cutover scope と時期は、Cutover gate 1–10 と #84 の完了後に確定する**。Stage 1 が実測するのは、Core 1.0 から Rust を default runtime にできる見込みがあるか、
+   一部 cutover を後続 release へ分ける必要があるかである。
 3. Rust 実装が既存の安全契約を満たさない場合は、切替時期・slice・実装方法を見直す。
 4. Rust という言語だけを理由に、G1–G7、migration、rollback、behavioral quality gateを免除しない。
 5. 戦略自体を撤回する場合は、ADR-003 の defer 記録だけではなく、代替 runtime が長期目標をより良く満たす証拠を伴う新しい owner ADR を要求する。
@@ -152,10 +153,11 @@ defer = G1-G7 に 1 つでも欠けがある
   -> Core 1.0 の default は TypeScript のまま据え置く
 ```
 
-`pass` は default 切替の十分条件ではない。実際に Rust を default runtime にするには、これに加えて
-下の **Cutover gate 1–10**（behavioral gate、fault injection、migration / rollback、clean install、
-fail-open、signed artifacts / SBOM、`doctor` など）をすべて満たし、かつ #84 の正本連鎖の改訂が
-完了している必要がある。Stage 1 の実測が答えるのは「roadmap を進めてよいか」だけである。
+`pass` = G1–G7 をすべて満たす——これが唯一の条件で、ADR-003 の判定規則と同一。性能差の大きさは追加の gate ではない。
+
+`pass` は default 切替の十分条件ではない。**default 切替の条件は Cutover gate 1–10 をすべて満たし、かつ #84 の正本連鎖の改訂が完了していること**。Cutover gate 1–10 は下に列挙する
+（behavioral gate、fault injection、migration / rollback、clean install、fail-open、
+signed artifacts / SBOM、`doctor` など）。
 
 `defer` の下でできることは次の 4 つに限る。
 

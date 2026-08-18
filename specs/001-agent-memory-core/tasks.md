@@ -206,11 +206,11 @@ runtime-neutral な schema / fixture / harness（Phase 3 preflight, issue #13）
 - [X] S0-1 Rust Local Core 再評価 ADR（ADR-001 は破棄せず、却下理由 L1–L3 に分解して hybrid での回避度を証拠化）→ `evidence/adr-003-rust-local-core.md`
 - [X] S0-2 Phase 1 の外部接触面を versioned contract として凍結 → `specs/001-agent-memory-core/contracts/{rpc,writer-boundary,spool-format,error-taxonomy}-v1.md`
 - [X] S0-3 Rust prototype の cutover 必須条件 G1–G7 と比較指標・測定条件を確定 → ADR-003「Cutover gate」
-- [ ] S0-4 Stage 1 narrow prototype（別 branch / worktree、`vendor/codemem` に触れない）→ 実測後に「Core 1.0 でどこまで cutover するか」を確定する。**採否そのものは ADR-005 で決着済み**（Rust を標準実行基盤とする方向で段階移行）。G1–G7 未達は言語選択の再考ではなく、default 切替の延期と TS reference の暫定継続を意味する → [`evidence/adr-005-rust-core-product-direction.md`](../../evidence/adr-005-rust-core-product-direction.md)
+- [ ] S0-4 Stage 1 narrow prototype（別 branch / worktree、`vendor/codemem` に触れない）→ Stage 1 が決めるのは roadmap を進めてよいかと候補 scope の評価までである。実際の Core 1.0 の cutover scope と時期は、Cutover gate 1–10 と #84 の完了後に確定する。**採否そのものは ADR-005 で決着済み**（Rust を標準実行基盤とする方向で段階移行）。G1–G7 未達は言語選択の再考ではなく、default 切替の延期と TS reference の暫定継続を意味する → [`evidence/adr-005-rust-core-product-direction.md`](../../evidence/adr-005-rust-core-product-direction.md)
 
 ## Phase 2 — Canonical Identity / Event State Machine（着手時に詳細化）
 
-Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。前提: 上記 Runtime barrier の S0-1〜S0-3 完了（S0-4 の結果で決まるのは実装言語ではなく、Core 1.0 で cutover する範囲。ADR-005）。
+Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。前提: 上記 Runtime barrier の S0-1〜S0-3 完了（S0-4 が決めるのは実装言語ではなく roadmap の進行可否と候補 scope。実際の cutover scope と時期は ADR-005 の Cutover gate 1–10 と #84 の完了後）。
 
 ## Phase 3 — Continuity State Machine [US1]（着手時に詳細化）
 

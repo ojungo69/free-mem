@@ -2,7 +2,7 @@
 
 - Status: **Accepted**（測定・cutover contract として。contract freeze、G1–G7、比較指標、shadow / rollback 方針は有効）
 - Superseded in part: 「Rust へ移行するか自体を Stage 1 で決める」という判断範囲だけが
-  [ADR-005](adr-005-rust-core-product-direction.md) に置き換わった。Stage 1 が判定するのは cutover の可否と時期であり、
+  [ADR-005](adr-005-rust-core-product-direction.md) に置き換わった。Stage 1 が決めるのは roadmap を進めてよいかと候補 scope の評価までである。実際の Core 1.0 の cutover scope と時期は、Cutover gate 1–10 と #84 の完了後に確定する。
   この ADR が Rejected になる経路は無い
 - Date: 2026-08-16
 - Related: [ADR-001](adr-001-base.md)（実装ベース = codemem pinned vendor snapshot）、[phase-1-design.md](../specs/001-agent-memory-core/phase-1-design.md) ADR-002（peer auth = Unix DAC）、GitHub issue #1 / #8 / #13
@@ -16,7 +16,7 @@
    - [`writer-boundary-v1.md`](../specs/001-agent-memory-core/contracts/writer-boundary-v1.md) — sole-writer 不変条件
    - [`spool-format-v1.md`](../specs/001-agent-memory-core/contracts/spool-format-v1.md) — spool on-disk format
    - [`error-taxonomy-v1.md`](../specs/001-agent-memory-core/contracts/error-taxonomy-v1.md) — typed error と fail-open 契約
-3. Stage 1 narrow prototype の実測が決めるのは、**Core 1.0 でどこまで cutover するか**である。本 ADR では
+3. **Stage 1 が決めるのは roadmap を進めてよいかと候補 scope の評価までである。実際の Core 1.0 の cutover scope と時期は、Cutover gate 1–10 と #84 の完了後に確定する**。本 ADR では
    その測定方法と閾値（G1–G7）だけを固定する（後述）。移行するか自体は [ADR-005](adr-005-rust-core-product-direction.md) で
    決着しており、この ADR の実測結果はそれを覆さない。
 4. Stage 0 完了までは **Phase 2 以降の大規模 TS product 実装を増やさない**（issue #1 の制約）。runtime-neutral な schema / fixture / harness（Phase 3 preflight、issue #13）は並行して進めてよい。
@@ -75,12 +75,14 @@ cold start / warm start、idle RSS、event ingest p50 / p95 / p99、concurrent h
 
 ### 判定規則
 
-判定するのは cutover の可否と時期であり、言語の採否ではない。語も分ける: **pass**（cutover roadmap へ
-進める）と **defer**（見送る）を使い、Go / No-Go とは呼ばない。pass は default 切替の十分条件ではない
-——実際に切り替えられるかは [ADR-005](adr-005-rust-core-product-direction.md) の Cutover gate 1–10 が決める。
+判定するのは roadmap を進めてよいかであり、言語の採否ではない。語も分ける: **pass**（cutover roadmap へ
+進める）と **defer**（見送る）を使い、Go / No-Go とは呼ばない。
 
-- 必須条件 G1–G7 をすべて満たした場合のみ pass を検討できる。
-- 性能差が小さくても、**運用安定性・配布容易性・依存削減**のいずれかが明確に改善するなら pass としてよい（issue #1 の方針）。
+- **`pass` = G1–G7 をすべて満たす**。これが唯一の pass 条件で、[ADR-005](adr-005-rust-core-product-direction.md) の
+  「Stage 1 の再定義」と同一。
+- 性能差の大きさは追加の gate ではない。G1–G7 を満たしていれば、性能差が小さくても
+  **運用安定性・配布容易性・依存削減**のいずれかが改善していれば pass を妨げない（issue #1 の方針）。
+- pass は default 切替の十分条件ではない。**default 切替の条件は Cutover gate 1–10 をすべて満たし、かつ #84 の正本連鎖の改訂が完了していること**。
 - pass の場合、Stage 2 以降を子 Issue に分割し、Phase 2 以降の roadmap を Rust 中心に再編する。
   Stage 2 の shadow 期間中の canonical writer は上記「決定 1」のとおり TS 側に置いたままにする。
 - defer の場合、**言語選択を差し戻すのではなく**、Core 1.0 での default 切替を延期し TS reference を暫定継続する
