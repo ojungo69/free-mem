@@ -42,10 +42,11 @@ const PACKAGES = [
   { name: "@codemem/core", directory: "packages/core" },
   { name: "@codemem/mcp", directory: "packages/mcp-server" },
   { name: "@codemem/server", directory: "packages/viewer-server" },
-  // rollup build を通らない（成果物が git に commit 済み）ため、module graph 由来の notice を
-  // 作れない。実測では第三者コードを含まないので検査対象は無いが、「検討して対象外にした」ことを
-  // 残すために一覧には置く。詳細は evidence/adr-004-licensing.md。
-  { name: "@codemem/opencode-plugin", directory: "packages/opencode-plugin", exempt: true },
+  // rollup build を通らない（出荷する JS が生成物ではなく commit 済みの原本）ため、module graph
+  // 由来の notice を作れない。代わりに「何も bundle していない」と述べる notice を package 内に
+  // 置いて同梱し、他と同じように tarball を検査する。原本が変わればその diff がレビューに載る
+  // ので、bundle され始めた場合はそこで気付ける。詳細は evidence/adr-004-licensing.md。
+  { name: "@codemem/opencode-plugin", directory: "packages/opencode-plugin" },
 ];
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -67,21 +68,26 @@ function licenseBodies(text) {
   return bodies;
 }
 
-// 依存名と、その license 本文の digest を対にして返す。名前だけを見る形にしないのは、本文が
-// 壊れても・別物に差し替わっても「非空である」以上のことを言えないため（notice の中身が
+// `name@version` と、その license 本文の digest を対にして返す。名前だけを見る形にしないのは、
+// 本文が壊れても・別物に差し替わっても「非空である」以上のことを言えないため（notice の中身が
 // 正しいことがこのゲートの目的なので、形だけ合っていても意味が無い）。
+//
+// 鍵に version を入れるのは、rollup-plugin-license の dedupe 鍵に合わせるため。生成側で
+// `multipleVersions: true` を指定すると同名・異 version が別 entry になるので、こちらも
+// 名前だけを鍵にすると 2 件が 1 件へ潰れ、片方の欠落が見えなくなる。
 export function dependencyDigests(text) {
   const entries = text.split(ENTRY_MARKER).slice(1);
   const result = {};
   for (const entry of entries) {
     const name = entry.match(/^- Name: `([^`]+)`$/m)?.[1];
-    if (!name) continue;
+    const version = entry.match(/^- Version: `([^`]+)`$/m)?.[1];
+    if (!name || !version) continue;
     const start = entry.indexOf(LICENSE_MARKER);
     const end = entry.indexOf(LICENSE_END_MARKER);
     const bodyStart = start === -1 ? -1 : entry.indexOf("\n\n", start + LICENSE_MARKER.length);
     const body =
       bodyStart === -1 || end === -1 || bodyStart >= end ? "" : entry.slice(bodyStart + 2, end).trim();
-    result[name] = createHash("sha256").update(body, "utf8").digest("hex");
+    result[`${name}@${version}`] = createHash("sha256").update(body, "utf8").digest("hex");
   }
   return Object.fromEntries(Object.entries(result).sort(([left], [right]) => (left < right ? -1 : 1)));
 }
@@ -110,6 +116,16 @@ export function inspectPackageDirectory(packageName, packageDirectory, baseline)
   const counts = [];
   const found = findNoticeFiles(packageDirectory);
   const expectedPaths = Object.keys(expected).sort();
+
+  // 両側が空だと以下の比較は 1 件も回らず、「検査して通った」と「検査対象が無かった」の区別が
+  // 消える。生成が全滅した状態で --write-baseline を回すとその空 baseline が固定されてしまうので、
+  // 公開する package は必ず notice を 1 件以上同梱する、を明示の不変条件にする。
+  if (expectedPaths.length === 0) {
+    failures.push(
+      `${packageName}: baseline lists no notice file (regenerate the baseline from a working build)`,
+    );
+  }
+  if (found.length === 0) failures.push(`${packageName}: the tarball ships no notice file`);
 
   for (const path of expectedPaths) {
     if (!found.includes(path)) failures.push(`${packageName}: missing ${path}`);
@@ -209,41 +225,25 @@ function pack(packageSpec, temporaryRoot) {
   return packageDirectory;
 }
 
-function buildAndPack(temporaryRoot, baseline) {
+function buildAndPack(temporaryRoot) {
   run("corepack", ["pnpm", "install", "--frozen-lockfile"], vendorRoot);
 
-  // build 前に検査対象の notice を消す。viewer-server/static は emptyOutDir: false なので、
-  // 生成が止まっても前回のファイルが残り、古い内容をこの検査が受理してしまう——塞ごうとしている
-  // fail-open そのものが検査側に生える。消してから build すれば、生成が止まった回は missing で落ちる。
-  // clean checkout の CI では起きないが、同じ作業ツリーで繰り返す release preflight では起きる。
-  for (const packageSpec of PACKAGES) {
-    for (const path of Object.keys(baseline[packageSpec.name] ?? {})) {
-      rmSync(join(vendorRoot, packageSpec.directory, ...path.split("/")), { force: true });
-    }
-  }
+  // build 前に生成先を空にする。viewer-server/static も cli の dist も emptyOutDir: false なので、
+  // 生成が止まったり対象から外れたりしても前回のファイルが残り、古い bundle と古い notice を
+  // この検査が受理してしまう——塞ごうとしている fail-open そのものが検査側に生える。notice だけを
+  // 消す形では、notice に載らない古い JS が tarball に残る経路が閉じない。clean checkout の CI では
+  // 起きないが、同じ作業ツリーで繰り返す release preflight と prepublishOnly では起きる。
+  run("corepack", ["pnpm", "run", "clean"], vendorRoot);
 
   run("corepack", ["pnpm", "-r", "run", "build"], vendorRoot);
 
-  const packed = [];
-  for (const packageSpec of PACKAGES) {
-    if (packageSpec.exempt) continue;
-    packed.push({ spec: packageSpec, directory: pack(packageSpec, temporaryRoot) });
-  }
-  return packed;
+  return PACKAGES.map((spec) => ({ spec, directory: pack(spec, temporaryRoot) }));
 }
 
 function writeBaseline() {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "codemem-notices-"));
   try {
-    // 存在確認してから読む形にしない（check-then-use になり、CodeQL の js/file-system-race に当たる）。
-    // 初回生成時は baseline がまだ無いので、読めなければ空で進める——build 前に消す対象が無いだけ。
-    let current = {};
-    try {
-      current = JSON.parse(readFileSync(baselinePath, "utf8"));
-    } catch {
-      current = {};
-    }
-    const packed = buildAndPack(temporaryRoot, current);
+    const packed = buildAndPack(temporaryRoot);
     const baseline = {};
     for (const { spec, directory } of packed) {
       baseline[spec.name] = {};
@@ -261,6 +261,17 @@ function writeBaseline() {
 }
 
 function main() {
+  // 綴り間違いを黙って「通常の検査」として扱わない。ここが最初に走ることで、`--help` のような
+  // 未知の引数で起動するだけで「main() に到達したか」を build 抜きで確かめられる（末尾の
+  // 起動判定が壊れると exit 0・無出力になるので、test はその差を見ている）。
+  const unknown = process.argv.slice(2).filter((argument) => argument !== "--write-baseline");
+  if (unknown.length > 0) {
+    console.error(`unknown option: ${unknown.join(" ")}`);
+    console.error("usage: notice-inclusion-check.mjs [--write-baseline]");
+    process.exitCode = 2;
+    return;
+  }
+
   if (process.argv.includes("--write-baseline")) {
     writeBaseline();
     return;
@@ -273,11 +284,10 @@ function main() {
   try {
     const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
     for (const packageSpec of PACKAGES) {
-      if (packageSpec.exempt) continue;
       if (!baseline[packageSpec.name]) failures.push(`${packageSpec.name}: no baseline entry`);
     }
 
-    for (const { spec, directory } of buildAndPack(temporaryRoot, baseline)) {
+    for (const { spec, directory } of buildAndPack(temporaryRoot)) {
       const result = inspectPackageDirectory(spec.name, directory, baseline);
       failures.push(...result.failures);
       counts.push(...result.counts);

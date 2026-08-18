@@ -57,6 +57,10 @@ export default function licenseNoticePlugin({ outFile }) {
 	return license({
 		thirdParty: {
 			includePrivate: false,
+			// 既定の dedupe 鍵は package 名だけなので、同名・異 version が bundle されると 1 件しか
+			// notice へ出ない。落ちた方の license 本文と version が黙って消えるため、鍵に version を
+			// 含める（harness/notice-inclusion-check.mjs の baseline も `name@version` で持つ）。
+			multipleVersions: true,
 			output: {
 				file: outFile,
 				template: formatNotice,

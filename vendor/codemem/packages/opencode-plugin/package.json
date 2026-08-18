@@ -13,6 +13,7 @@
 		"index.js",
 		"README.md",
 		"LICENSE",
+		"THIRD_PARTY_NOTICES.md",
 		".opencode/package.json",
 		".opencode/plugins/",
 		".opencode/lib/"

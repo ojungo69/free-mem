@@ -54,12 +54,15 @@ corepack pnpm licenses list --json          # 全体
 corepack pnpm licenses list --json --prod   # 配布に載る範囲
 ```
 
-実測日 2026-08-16、pnpm 11.8.0、lockfile 固定。
+実測日 2026-08-18、pnpm 11.8.0、lockfile 固定。notice 生成のために `rollup-plugin-license` と
+その依存を dev 側へ追加したので、2026-08-16 の実測（全体 455）から dev 側だけが増えている。
 
 | 範囲 | package 数 | 内訳 |
 |---|---|---|
-| 全体（dev 含む） | 455 | MIT 366 / Apache-2.0 22 / BSD-3-Clause 20 / ISC 20 / BSD-2-Clause 9 / その他 18 |
+| 全体（dev 含む） | 471 | MIT 378 / Apache-2.0 22 / BSD-3-Clause 20 / ISC 20 / BSD-2-Clause 9 / その他 22 |
 | prod のみ | 261 | MIT 208 / Apache-2.0 17 / BSD-3-Clause 14 / ISC 12 / その他 10 |
+
+prod の 261 件は 2026-08-16 と同一（増えた分はすべて build 時のみ）。据え置きではなく再実測した値。
 
 判断に関わる個別の事実:
 
@@ -146,9 +149,13 @@ external 化しても工程は減らず、cli は `sync-hook-runtime.mjs` と `t
 依存している疑いがあるぶんリスクだけ増える。`@codemem/mcp` は結果的にこの形になっているが、
 意図して選んだ設計ではない。
 
-**恒久的な死角**: `@codemem/opencode-plugin` は rollup build を通らない（成果物が git に commit 済み）ため、
-module graph 方式では原理的に覆えない。2026-08-18 の実測では第三者コードを含まず、import も外部のみ。
-この 1 件のために別の機構は作らず、残余として記録するに留める。
+**module graph 方式が届かない 1 件**: `@codemem/opencode-plugin` は rollup build を通らない
+（出荷する JS が生成物ではなく commit 済みの原本）ため、module graph からは notice を作れない。
+2026-08-18 の実測では第三者コードを含まず、import も外部のみ。生成の代わりに「何も bundle していない」と
+述べる notice を package 内に置いて同梱し、tarball 検査そのものは他の 4 package と同じように通す。
+原本が変われば diff がレビューに載るので、bundle され始めた場合はそこで気付ける。
+当初はこの package を検査対象から外していたが、独立レビューが「`prepublishOnly` を持つのに自分自身は
+一度も検査されない」ことを指摘したため、対象へ戻した。
 
 CI ゲート:
 
@@ -157,19 +164,26 @@ CI ゲート:
   package.json の `license` 維持を検査する。**build 出力は見ない**
 - `harness/notice-inclusion-check.mjs` — 自分で install と build を行い、公開 package を `pnpm pack` して
   展開し、tarball の中身を検査する。「build 済みなら検査する」形にしていないのは、build 順序に依存して
-  黙って素通りするのを避けるため。build の前に検査対象の notice を削除するのは、`emptyOutDir: false` の
-  成果物で古いファイルが残り、生成が止まっても受理されるのを防ぐため。
-  走る場所は 3 つ: CI の独立 job、`release-tag-preflight.sh`（release workflow が tag 前に呼ぶ）、
-  各公開 package の `prepublishOnly`。**`npm publish --ignore-scripts` と、release workflow を
-  経由しない publish は覆えない**。publish 権限を保護された workflow に限定する件は issue #83
+  黙って素通りするのを避けるため。build の前に `pnpm run clean` で生成先を空にするのは、
+  `emptyOutDir: false` の成果物で古いファイルが残り、生成が止まっても受理されるのを防ぐため。
+  notice だけを消す形では、notice に載らない古い JS が tarball に残る経路が閉じない。
 
-  期待する依存名と、その license 本文の SHA-256 digest は `harness/notice-baseline.json` に
+  **実際に走る経路は 2 つ**: CI の `notices` job（PR と push の両方）と、各公開 package の
+  `prepublishOnly`（`npm publish` / `pnpm publish` で起動）。`scripts/release-tag-preflight.sh` も
+  ゲートを呼ぶが、これは `pnpm run release:preflight-tag` を人が実行したときにだけ走る。
+  `vendor/codemem/.github/workflows/release.yml` は GitHub Actions が読む位置（repo 直下の
+  `.github/workflows/`）に無いため、この repo では起動しない。**`npm publish --ignore-scripts` は
+  覆えない**。publish 権限を保護された workflow に限定する件は issue #83
+
+  期待する `name@version` と、その license 本文の SHA-256 digest は `harness/notice-baseline.json` に
   **完全な集合として**固定する。本文を digest で固定するのは、非空かどうかしか見ないと本文が
-  別物に差し替わっても通るため。当初は代表的な
-  数件を名指しする形だったが、独立レビューが「名指ししていない `marked` を 1 件落としても通る」ことを
-  実測したため切り替えた。notice ファイルの集合そのものも baseline と突き合わせるので、増えた場合も
-  消えた場合も落ちる。依存が正当に増減したときは `--write-baseline` で再生成し、その差分を commit に
-  載せてレビューする（`harness/contract-hashes.json` と同じ運用）
+  別物に差し替わっても通るため。鍵に version を入れるのは、生成側の `multipleVersions: true` に
+  合わせるため——名前だけを鍵にすると同名・異 version の 2 件が 1 件へ潰れ、片方の欠落が見えない。
+  当初は代表的な数件を名指しする形だったが、独立レビューが「名指ししていない `marked` を 1 件落としても
+  通る」ことを実測したため切り替えた。notice ファイルの集合そのものも baseline と突き合わせるので、
+  増えた場合も消えた場合も落ちる。両側が空だと比較が 1 件も回らないので、公開 package は notice を
+  1 件以上同梱すること自体を条件にしている。依存が正当に増減したときは `--write-baseline` で再生成し、
+  その差分を commit に載せてレビューする（`harness/contract-hashes.json` と同じ運用）
 
 ## owner の決定（2026-08-17）
 
