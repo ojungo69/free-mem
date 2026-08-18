@@ -221,9 +221,14 @@ license 付与は取り消せない。一度公開した version に対する gr
   条件を満たすと言い切れるかは**専門家確認の対象**（下の 1 項目目に含む）。issue #81 で追跡する。
 - `plugins/{claude,codex}/scripts/hook-runtime.mjs` は git に commit された bundle で、`commander` の
   コードを含むが copyright 表示を持たない。npm package には載らないので tarball ゲートの対象外だが、
-  **GitHub source archive では再配布される**。この経路は root の `THIRD_PARTY_NOTICES.md` が担う
-  （同ファイルに記載済み）。ファイルの隣に notice を置く形にはしていない——生成物を追跡対象に増やす
-  わりに、source archive では root の 1 ファイルで条件を満たすため。
+  **GitHub source archive では再配布される**。当初は root の `THIRD_PARTY_NOTICES.md` に名前と
+  権利者を書くだけで足りると判断していたが、これは誤り。MIT が求めるのは複製に copyright 行と
+  許諾文そのものを同梱することで、名前の列挙はそれに当たらない。`sync-hook-runtime.mjs` が bundle と
+  一緒に生成済みの `THIRD_PARTY_NOTICES.hook-runtime.md` を複製先へ置く形へ改めた。生成物を追跡対象に
+  増やすことにはなるが、build 出力の複製なので bundle の中身が変われば notice も追従し、
+  commit 済みの複製が build 出力と一致していることは CI と preflight が検査する。
+  **この 2 ファイルを消さないこと**——commander の許諾文を実際に配布側へ届けているのはこれで、
+  root の `THIRD_PARTY_NOTICES.md` は経路の説明を担うに留まる。
 
 ## 帰結
 
