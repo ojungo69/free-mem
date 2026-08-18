@@ -94,9 +94,13 @@ with_lock() { # 並行 run を禁止する。同じ RIG_BASE を共有すると�
 # 生きているうちに次の run が始まり、その run が置いた**別 provider の資格情報**を、
 # 残った process が同じ UID で読める。fd を渡しておけば残骸が lock を握り続け、次の run は
 # 止まる。一方で握らせたままだと daemon 1 つで rig が使えなくなるので、run の終わりに
-# group ごと畳んで普通の残骸は片付ける。`setsid` で group を抜けた process は畳めないが、
-# その場合は lock が残って次の run が止まる側に倒れる（fail closed）。
-# 資格情報の分離が UID で取れるようになるまでは、この倒し方を優先する
+# group ごと畳んで普通の残骸は片付ける。
+#
+# ここで成り立つのは 2 つまで。事故で残った daemon は畳める。group を抜けたが fd を握った
+# ままの process がいれば次の run は止まる（fail closed）。**抜けたうえで自分で fd 9 を
+# 閉じた process には効かない** —— lock は協調的な仕組みなので、協調しない相手は止められない。
+# 同一 UID で走らせる限りこれは閉じない（#95）。#90 と同じで、rig は敵対的な測定対象に
+# 対する信頼境界ではない
 # `timeout` は既定で対象を**自分の** process group へ移すので、そのままだと下の
 # `kill -- -<pid>` が測定対象へ届かない。`--foreground` で group を作らせず、畳むのは
 # こちらの group 1 つに統一する（timeout 自身の group kill を失うが、後段で group ごと
@@ -121,7 +125,9 @@ claude_run() {
   # 次の run が lock で止まる。実際にこの経路だけ監督から漏れていた）
   local ver_pid=0 run_pid=0
   set -m
-  { "$CLAUDE_BIN" --version; } > "$stem.version" 2>&1 & ver_pid=$!
+  # 版の問い合わせも測定対象の起動なので、隔離した環境で行う。ここだけ直に起動していると、
+  # その 1 回だけ実 HOME・実設定・実 plugin を見た状態で測定対象が動く
+  run_env claude "$capture" "$CLAUDE_BIN" --version > "$stem.version" 2>&1 & ver_pid=$!
   set +m
   wait "$ver_pid" || true
   reap_group "$ver_pid"
@@ -149,7 +155,9 @@ codex_run() {
   stage_credentials codex
   local ver_pid=0 run_pid=0
   set -m
-  { "$CODEX_BIN" --version; } > "$stem.version" 2>&1 & ver_pid=$!
+  # 版の問い合わせも測定対象の起動なので、隔離した環境で行う。ここだけ直に起動していると、
+  # その 1 回だけ実 HOME・実設定・実 plugin を見た状態で測定対象が動く
+  run_env codex "$capture" "$CODEX_BIN" --version > "$stem.version" 2>&1 & ver_pid=$!
   set +m
   wait "$ver_pid" || true
   reap_group "$ver_pid"

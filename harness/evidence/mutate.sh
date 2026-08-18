@@ -57,8 +57,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 94:
-    bad.append(f"変異表の行が {len(table)} 件（94 件でない）")
+if len(table) != 95:
+    bad.append(f"変異表の行が {len(table)} 件（95 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -368,6 +368,7 @@ codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
 }
 
 codex_run' && run 'M89: lock の fd を測定対象へ渡さない'
+mutate $RIG '  run_env claude "$capture" "$CLAUDE_BIN" --version > "$stem.version" 2>&1 & ver_pid=$!' '  { "$CLAUDE_BIN" --version; } > "$stem.version" 2>&1 & ver_pid=$!' && run 'M93: 版の問い合わせを隔離の外で行う'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'

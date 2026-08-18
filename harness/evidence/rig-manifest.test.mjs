@@ -18,8 +18,10 @@ const VERSION = "9.9.9-stub (Stub Code)";
 // 別名を消していても常に「無い」と読めてしまい、検査が空振りする
 const stub = (extra = "", versionExtra = "") => `#!/usr/bin/env bash
 set -eu
-# --version は run_env の外から呼ばれるので CAPTURE_FILE が無い。STEM はその後で作る
+# --version も run_env 経由なので CAPTURE_FILE がある。隔離が効いているかをここで書き出す
+# （run_env の外から呼ぶ変異では CAPTURE_FILE が無くなる）。STEM は記録本体を書く段で作る
 if [ "\${1:-}" = --version ]; then
+{ echo "HOME=\$HOME"; echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR:-<unset>}"; echo "INTERNAL=\${AGENT_MEMORY_INTERNAL_RUN:-<unset>}"; } > "\${CAPTURE_FILE:-/dev/null}.version-env"
 ${versionExtra}
 printf '%s\\n' '${VERSION}'; exit 0; fi
 STEM="\${CAPTURE_FILE%.jsonl}"
@@ -238,10 +240,12 @@ test("the version probe is supervised like the run itself", () => {
   assert.equal(again.status, 0, `2 回目の run が lock で止まった: ${again.stderr}`);
 });
 
-test("a process that escapes the group keeps the lock, so no credential is staged next to it", () => {
-  // `setsid` で group を抜けた process は畳めない。そこで次の run を通してしまうと、
-  // その run が置く**別 provider の**資格情報を、残った process が同じ UID で読める。
-  // 畳めなかったときは lock が残って次の run が止まる側へ倒れることを見る
+test("a process that escapes the group is not released from the lock by the rig", () => {
+  // `setsid` で group を抜けた process は畳めない。rig 側から fd を外さないので lock は
+  // 握られたままになり、次の run は止まる。
+  // **保証はここまで**: 残った process が自分で fd 9 を閉じれば次の run は始まり、
+  // その run が置く別 provider の資格情報を同じ UID で読める（#95）。同一 UID で走らせる
+  // 限りこれは閉じない
   // detach し切る前に run が終わると group kill が間に合ってしまうので、抜けたことを
   // 待ってから stub を終える（race のまま置くと test が気まぐれに緑になる）
   const escape =
@@ -310,4 +314,14 @@ test("a failure while staging leaves both stored files untouched", () => {
   assert.notEqual(again.status, 0, "書き込みに失敗したのに持ち込みが成功した");
   assert.deepEqual(readFileSync(stored), before.capture, "書き込みに失敗したのに記録が置き換わった");
   assert.deepEqual(readFileSync(storedManifest), before.manifest, "書き込みに失敗したのに manifest が置き換わった");
+});
+
+test("the version probe runs in the isolated environment, not the caller's", () => {
+  // 隔離の約束は「実 HOME・実設定・実 plugin を継承しない」。--version を直に起動していると、
+  // その 1 回だけ約束の外で測定対象が動く（実際に外れていた）
+  const { base } = rigRun({ skipImport: true });
+  const seen = readFileSync(join(base, "capture", `claude-${LABEL}.jsonl.version-env`), "utf8");
+  assert.match(seen, new RegExp(`HOME=${base}/home\n`), `版の問い合わせが隔離 HOME で走っていない: ${seen}`);
+  assert.match(seen, new RegExp(`CLAUDE_CONFIG_DIR=${base}/claude-config\n`), seen);
+  assert.match(seen, /INTERNAL=1\n/, seen);
 });

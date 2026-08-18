@@ -195,8 +195,8 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 
 - [X] T039 [P] research.md R6 が挙げた 5 箇所の古い記述を退役させる。`harness/matrix/README.md` の `evidenceKind` の説明を実態（digest が裏付ける範囲・legacy 証拠・導けない主張）へ合わせる。**節ごとに掃除する**（変更前の設計は別の語で書かれた節に残る）
 - [X] T040 [P] `harness/contract-hashes.json` を再生成する（`node harness/contract-hashes.mjs > harness/contract-hashes.json`）。`capability.schema.json` と fixture がその入力なので、Phase 2 と Phase 5 の変更で必ず動く
-- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 94 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
-- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 94 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
+- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 95 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
+- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 95 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
 - [X] T043 `.github/workflows/ci.yml` の `harness` job へ 2 step 足す（`node --experimental-strip-types --test harness/evidence/*.test.ts` と `bash harness/evidence/mutate.sh`）。既存 step は緩めない
 - [X] T044 `specs/003-evidence-hash-normalization/quickstart.md` を実際に上から実行し、書いてあるコマンドがそのまま通ることを確認する。通らない箇所は quickstart 側を直す
 - [X] T045 セキュリティ関連の必須ゲートを通す。`semgrep scan`（CLI）→ `/codex-review mode=security` → `/codex:adversarial-review`。指摘は `review-routing` の批判的評価にかけ、採否の理由を残す
@@ -221,7 +221,7 @@ done
 
 ---
 
-## 変異の割り当て（現在 94 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
+## 変異の割り当て（現在 95 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
 
 各行の「殺す test」は、その変異を入れたときに**必ず落ちる** test。`harness/evidence/mutate.sh`
 （T041）はこの表を実行可能な形にしたもので、T042 が両者の一致を機械的に確認する。
@@ -318,10 +318,11 @@ done
 | M86 | `harness/schema/evidence-manifest.schema.json` 時刻に ms より細かい桁を許す | `manifest.test.ts::a timestamp finer than a millisecond is not accepted at all` | T047 |
 | M87 | `harness/rig/import-evidence.mjs` 桁数を見ずに終了コードを読む | `rig-manifest.test.mjs::an exit status too large to be one is rejected` | T047 |
 | M88 | `harness/rig/rig.sh` 版の問い合わせが残した子を畳まない | `rig-manifest.test.mjs::the version probe is supervised like the run itself` | T047 |
-| M89 | `harness/rig/rig.sh` lock の fd を測定対象へ渡さない | `rig-manifest.test.mjs::a process that escapes the group keeps the lock, so no credential is staged next to it` | T047 |
+| M89 | `harness/rig/rig.sh` lock の fd を測定対象へ渡さない | `rig-manifest.test.mjs::a process that escapes the group is not released from the lock by the rig` | T047 |
 | M90 | `harness/rig/rig.sh` timeout に別の process group を作らせる | `rig-manifest.test.mjs::a run reaps the processes the CLI leaves behind` | T047 |
 | M91 | `harness/rig/import-evidence.mjs` 一時 file を経ずに置き場を直接触る | `rig-manifest.test.mjs::a failure while staging leaves both stored files untouched` | T047 |
 | M92 | `.github/workflows/ci.yml` 秘密走査に範囲を持ち込む | `secrets.test.ts::the secrets gate does not let an action pick which commits to scan` | T047 |
+| M93 | `harness/rig/rig.sh` 版の問い合わせを隔離の外で行う | `rig-manifest.test.mjs::the version probe runs in the isolated environment, not the caller's` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 
@@ -341,8 +342,8 @@ done
 **割当の確認**（T042 が自動化する。手で確かめるときはこれ）:
 
 ```bash
-# 表に 94 件そろっているか
-grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 94
+# 表に 95 件そろっているか
+grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 95
 ```
 
 ---
