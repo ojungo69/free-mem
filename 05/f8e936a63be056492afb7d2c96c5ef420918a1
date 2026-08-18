@@ -1,0 +1,31 @@
+specs/003-evidence-hash-normalization/checklists/requirements.md
+  s_2d059b4f795bca::t_1708eb16ad8d24 1-51
+specs/003-evidence-hash-normalization/contracts/evidence-normalizer.md
+  s_2d059b4f795bca::t_451f4e08a15cdb 1-69
+specs/003-evidence-hash-normalization/data-model.md
+  s_2d059b4f795bca::t_c063acdec7f1cf 1-209
+specs/003-evidence-hash-normalization/plan.md
+  s_2d059b4f795bca::t_ea4c41f8a733fc 1-172
+specs/003-evidence-hash-normalization/quickstart.md
+  s_2d059b4f795bca::t_251dfdc58e3233 1-64
+specs/003-evidence-hash-normalization/research.md
+  s_2d059b4f795bca::t_90f01f1229804f 1-183
+specs/003-evidence-hash-normalization/spec.md
+  s_2d059b4f795bca::t_e9a5d8e3543441 1-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "05f8e936a63be056492afb7d2c96c5ef420918a1",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
