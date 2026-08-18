@@ -94,8 +94,9 @@ claude_run() {
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/claude-$label.jsonl"
   # 記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の manifest の
-  # recorderErrors に載り、正しい証拠が棄却される
-  : > "$capture"; rm -f "$capture.errors"
+  # recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で先に消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く
+  : > "$capture"; rm -f "$capture.errors" "$capture.exit"
   stage_credentials claude
   { "$CLAUDE_BIN" --version; } > "$RIG_BASE/capture/claude-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
@@ -113,7 +114,7 @@ codex_run() {
   with_lock
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/codex-$label.jsonl"
-  : > "$capture"; rm -f "$capture.errors"
+  : > "$capture"; rm -f "$capture.errors" "$capture.exit"
   stage_credentials codex
   { "$CODEX_BIN" --version; } > "$RIG_BASE/capture/codex-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \

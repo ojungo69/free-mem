@@ -214,7 +214,17 @@ export function captureCapturedAt(bytes: Uint8Array): string {
     fail("capture line 1 is not I-JSON (duplicate key, or not JSON)");
   }
   if (!isDataObject(parsed) || typeof parsed.at !== "string") fail('capture line 1 has no string "at"');
+  // 暦として実在する瞬間かをここで見る。manifest 側の pattern は綴りしか当てないので、
+  // 2026-02-30 のような値がそのまま verifiedAt として成果物へ出る
+  if (!isRealInstant(parsed.at)) fail('capture line 1 "at" is not a real instant on the calendar');
   return parsed.at;
+}
+
+/** 綴りは schema の pattern が当てる。ここは「その日付が実在するか」だけを見る */
+export function isRealInstant(value: string): boolean {
+  const seconds = value.slice(0, 19);
+  const parsed = Date.parse(`${seconds}Z`);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(seconds);
 }
 
 const sha256 = (data: Uint8Array | string): string =>

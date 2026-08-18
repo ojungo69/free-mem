@@ -161,3 +161,31 @@ test("a claimed source event that lives only in an unbacked capture does not pro
   );
   assert.equal(m.capabilities.capture.session_started.evidenceKind, "source-test");
 });
+
+// 証拠を持たない fixture は「申告した hook 名が記録に実在するか」の検査を素通りする
+// （refs が空なので飛ばされる）。cell の統合でその名前を足すと、real-cli-e2e の cell が
+// どの記録にも無い hook 名を主張する
+test("an unbacked fixture cannot add a source event to a promoted cell", () => {
+  const root = newRoot();
+  const ref = putEvidence(root, "backed", lifecycle("s1", "p1"), { manifest: true });
+  const event = (sourceEvents: string[]) => ({
+    kind: "session_started",
+    at: AT,
+    capability: "native",
+    sourceEvents,
+  });
+  const m = assembleWithRoot(
+    [
+      fixtureBase({
+        fixtureId: "claude/a-backed",
+        observedEvents: [event(["SessionStart"])],
+        evidence: [ref],
+      }),
+      fixtureBase({ fixtureId: "claude/b-claim", observedEvents: [event(["SessionStart", "SubagentStop"])] }),
+    ],
+    root,
+  );
+  const cell = m.capabilities.capture.session_started;
+  assert.equal(cell.evidenceKind, "real-cli-e2e");
+  assert.deepEqual(cell.sourceEvents, ["SessionStart"]);
+});

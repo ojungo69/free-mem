@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   NORMALIZATION_VERSION,
+  captureCapturedAt,
   digestCapture,
   digestRaw,
   normalizeCapture,
@@ -332,4 +333,15 @@ test("失敗の説明に絶対 path は出ない", () => {
   })();
   assert.ok(err);
   assert.doesNotMatch(err.message, /\/home\/|\/tmp\//);
+});
+
+// manifest の pattern は綴りしか当てないので、暦に無い日付はそのまま通り、
+// verifiedAt として成果物へ出る。導出の側で落とす
+test("a capture whose first line names a date that does not exist is rejected", () => {
+  const line = (at: string) =>
+    capture(JSON.stringify({ event: "SessionStart", at, payload: { hook_event_name: "SessionStart" } }));
+  assert.equal(captureCapturedAt(line("2026-02-28T00:00:00.000Z")), "2026-02-28T00:00:00.000Z");
+  for (const at of ["2026-02-30T00:00:00Z", "2026-04-31T00:00:00.000Z", "2027-02-29T00:00:00Z"]) {
+    assert.throws(() => captureCapturedAt(line(at)), /not a real instant/, `${at} が通った`);
+  }
 });

@@ -75,30 +75,19 @@ const manifestPath = join(destDir, `${stem}.manifest.json`);
 
 if (!existsSync(source)) die(`no capture at ${stem}.jsonl`);
 
-// **置き換える前に**検証する。先に複製すると、後段の検査で落ちたときには既に
-// 前の正しい証拠を壊しており、その manifest は別の byte を指したまま残る
+// **置き換える前に**入力を全部検証し、manifest まで組み立てる。1 つでも後段に残すと、
+// そこで落ちたときには既に前の正しい証拠を壊しており、古い manifest が別の byte を指したまま残る
 const sourceBytes = readFileSync(source);
 const sourceRawHash = digestRaw(sourceBytes);
 const sourceHash = digestCapture(sourceBytes);
-
-mkdirSync(destDir, { recursive: true });
-copyFileSync(source, dest);
-
-const bytes = readFileSync(dest);
-if (!sourceBytes.equals(bytes)) die("the copy is not byte-identical to the capture");
 // capturedAt は rig が別に持つ時刻ではなく、記録の 1 行目の at。こうすると
 // captureRawHash がこの値まで縛る。**検証側と同じ関数**を通す（別実装にすると片方だけ緩む）
 let capturedAt;
 try {
-  capturedAt = captureCapturedAt(bytes);
+  capturedAt = captureCapturedAt(sourceBytes);
 } catch (e) {
   die(`the capture has no usable first line (${e.message})`);
 }
-// 複製の側からも取り直して突き合わせる（byte 比較と digest の両方が一致して初めて同一）
-const captureRawHash = digestRaw(bytes);
-const captureHash = digestCapture(bytes);
-if (captureRawHash !== sourceRawHash || captureHash !== sourceHash) die("the copy does not digest to the capture");
-
 const errorsFile = `${source}.errors`;
 const recorderErrors = existsSync(errorsFile)
   ? readFileSync(errorsFile, "utf8").split("\n").filter((l) => l.trim() !== "").length
@@ -115,10 +104,22 @@ const manifest = {
   exitStatus: readExitStatus(join(args.from, `${stem}.exit`)),
   recorderErrors,
   capture: basename(dest),
-  captureRawHash,
-  captureHash,
+  captureRawHash: sourceRawHash,
+  captureHash: sourceHash,
   normalizationVersion: NORMALIZATION_VERSION,
 };
+
+// ここから先だけが書き込み。記録を先に置き、manifest を後に置く。途中で落ちても
+// 新しい記録と古い manifest は digest が食い違うので検証は fail closed になる
+mkdirSync(destDir, { recursive: true });
+copyFileSync(source, dest);
+
+const bytes = readFileSync(dest);
+if (!sourceBytes.equals(bytes)) die("the copy is not byte-identical to the capture");
+// 複製の側からも取り直して突き合わせる（byte 比較と digest の両方が一致して初めて同一）
+const captureRawHash = digestRaw(bytes);
+const captureHash = digestCapture(bytes);
+if (captureRawHash !== sourceRawHash || captureHash !== sourceHash) die("the copy does not digest to the capture");
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 // fixture の evidence[] へそのまま貼れる形で出す（digest を手で写させない）

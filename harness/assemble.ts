@@ -17,7 +17,7 @@ import {
 } from "./schema/capability.ts";
 import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
 import { canonicalizeJson, decodeUtf8, parseIJson, readIJsonFile } from "./schema/jcs.ts";
-import { NORMALIZATION_VERSION, digestCapture, digestRaw } from "./evidence/normalize.ts";
+import { NORMALIZATION_VERSION, digestCapture, digestRaw, isRealInstant } from "./evidence/normalize.ts";
 import {
   DERIVABLE_CAPTURE_KINDS,
   DERIVABLE_HIGH_LEVEL_KEYS,
@@ -51,13 +51,6 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 /** Minimal CaptureFixture validation (no ajv; required keys + enum checks). */
-/** 綴りは schema の pattern が当てる。ここは「その日付が実在するか」だけを見る */
-function isRealInstant(value: string): boolean {
-  const seconds = value.slice(0, 19);
-  const parsed = Date.parse(`${seconds}Z`);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(seconds);
-}
-
 export function validateFixture(data: unknown, fileName: string): CaptureFixture {
   const errs: string[] = [];
   if (!isObject(data)) {
@@ -466,9 +459,16 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
         ...(prev.value === "unknown" ? [] : prev.limitations),
         ...(ev.limitationCodes ?? []),
       ]);
+      // real-cli-e2e の cell には、**自分の昇格が real-cli-e2e だった側**の hook 名だけを載せる。
+      // 証拠を持たない fixture は上の実在検査（refs.length === 0 で skip）を通らないので、
+      // ここで足すとどの記録にも無い hook 名を実測済み cell が主張する。保持側・選択側の
+      // 両方に効かせる（片方だけだと同じ欠陥が逆向きに残る）
+      const finalKind = keepPrev ? prev.evidenceKind : promotion.evidenceKind;
+      const backedOnly = (backed: boolean, names: readonly string[]): readonly string[] =>
+        finalKind === "real-cli-e2e" && !backed ? [] : names;
       const mergedSources = dedupe([
-        ...(prev.value === "unknown" ? [] : prev.sourceEvents),
-        ...(ev.sourceEvents ?? []),
+        ...backedOnly(prev.evidenceKind === "real-cli-e2e", prev.value === "unknown" ? [] : prev.sourceEvents),
+        ...backedOnly(promotion.evidenceKind === "real-cli-e2e", ev.sourceEvents ?? []),
       ]);
       if (keepPrev) {
         capabilities.capture[kind] = { ...prev, limitations: mergedLimits, sourceEvents: mergedSources };

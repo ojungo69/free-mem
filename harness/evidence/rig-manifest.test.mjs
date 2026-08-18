@@ -3,7 +3,7 @@
 // harness ごと複製して走らせるので、既定の証拠置き場（module からの相対）も複製側を指す。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -17,6 +17,8 @@ const VERSION = "9.9.9-stub (Stub Code)";
 const STUB = `#!/usr/bin/env bash
 set -eu
 if [ "\${1:-}" = --version ]; then printf '%s\\n' '${VERSION}'; exit 0; fi
+# 前の run の終了コードが残ったまま今回の run が始まっていないか。run 中にしか観測できない
+if [ -e "$CAPTURE_FILE.exit" ]; then printf 'stale\\n' > "$CAPTURE_FILE.stale-exit"; fi
 emit() { printf '{"event":"%s","at":"2026-01-01T00:00:00.000Z","payload":%s}\\n' "$1" "$2" >> "$CAPTURE_FILE"; }
 emit SessionStart '{"hook_event_name":"SessionStart","source":"startup","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
 emit UserPromptSubmit '{"hook_event_name":"UserPromptSubmit","prompt_id":"p-stub","prompt":"hello","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
@@ -129,4 +131,41 @@ test("a CLI that prints more than one version line is rejected", () => {
   const again = sh("import", "claude", LABEL, "self.stub");
   assert.notEqual(again.status, 0, "複数行の版で持ち込みが成功した");
   assert.match(again.stderr, /more than one line/);
+});
+
+test("a rerun does not start with the previous run's exit status in place", () => {
+  // SIGKILL などで新しい .exit が書かれないまま終わると、前回の成功が途中で切れた記録に付く。
+  // stub は run 中に .exit を見つけたら痕跡を残すので、消し忘れはここで鳴る
+  const { base, sh } = rigRun();
+  assert.ok(existsSync(join(base, "capture", `claude-${LABEL}.exit`)), "1 回目で .exit が書かれていない");
+  const again = sh("claude-run", LABEL, "hello");
+  assert.equal(again.status, 0, again.stderr);
+  assert.ok(
+    !existsSync(join(base, "capture", `claude-${LABEL}.jsonl.stale-exit`)),
+    "前の run の .exit を持ったまま次の run が始まった",
+  );
+});
+
+test("a capture is not replaced when a later input fails validation", () => {
+  const { base, sh, rawDir } = rigRun();
+  const stored = join(rawDir, `claude-${LABEL}.jsonl`);
+  const before = readFileSync(stored);
+  // 取り込み側の入力を 1 つ壊し、記録のほうは別物にする。検証を複製の後に置いていると、
+  // 落ちた時点で保存済みの証拠は上書き済みで、古い manifest が別の byte を指したまま残る
+  const capture = join(base, "capture", `claude-${LABEL}.jsonl`);
+  writeFileSync(capture, `${readFileSync(capture, "utf8")}{"event":"Stop","at":"2026-01-02T00:00:00.000Z","payload":{"hook_event_name":"Stop"}}\n`);
+  writeFileSync(join(base, "capture", `claude-${LABEL}.version`), "9.9.9-stub (Stub Code)\nwarning\n");
+  const again = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(again.status, 0, "壊れた入力で持ち込みが成功した");
+  assert.deepEqual(readFileSync(stored), before, "検証で落ちたのに保存済みの記録が置き換わった");
+});
+
+test("every run initialisation clears the previous exit status", () => {
+  // stub で走らせるのは claude 経路だけなので、codex 経路はここで形として見る
+  // （片方だけ直すと、同じ欠陥が別の識別子で残る）
+  const lines = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8")
+    .split("\n")
+    .filter((l) => l.includes(': > "$capture"'));
+  assert.equal(lines.length, 2, "run 初期化の箇所数が変わった");
+  for (const line of lines) assert.match(line, /rm -f [^\n]*\$capture\.exit/, line);
 });

@@ -297,6 +297,11 @@ done
 | M65 | `harness/schema/validate.ts` 棄却した値の診断への露出 | `secrets.test.ts::schema diagnostics do not echo the rejected value` | T047 |
 | M66 | 出荷 fixture が manifest を名指しする（#90 の歯止め） | `killswitch.test.ts::no committed fixture names a manifest while the recorder is forgeable (#90)` | T047 |
 | M67 | `harness/assemble.ts` 遅いほうの判定を文字列比較へ戻す | `manifest.test.ts::verifiedAt picks the later instant, not the larger string` | T047 |
+| M68 | `harness/evidence/normalize.ts` 暦に無い日付を記録の時刻として通す | `normalize.test.ts::a capture whose first line names a date that does not exist is rejected` | T047 |
+| M69 | `harness/assemble.ts` 裏付けの無い fixture の hook 名を統合する | `manifest.test.ts::an unbacked fixture cannot add a source event to a promoted cell` | T047 |
+| M70 | `harness/rig/import-evidence.mjs` 検証より先に保存済みの記録を置き換える | `rig-manifest.test.mjs::a capture is not replaced when a later input fails validation` | T047 |
+| M71 | `harness/rig/rig.sh` claude の run で前回の終了コードを残す | `rig-manifest.test.mjs::a rerun does not start with the previous run's exit status in place` | T047 |
+| M72 | `harness/rig/rig.sh` codex の run で前回の終了コードを残す | `rig-manifest.test.mjs::every run initialisation clears the previous exit status` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 
