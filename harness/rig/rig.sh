@@ -33,9 +33,14 @@ purge_credentials() {
 trap purge_credentials EXIT INT TERM
 
 # 資格情報は「その 1 回の子 CLI 実行の間だけ」置く（trap で必ず消える）。
-stage_credentials() {
-  [ -f "$HOME/.claude/.credentials.json" ] && install -m 600 "$HOME/.claude/.credentials.json" "$RIG_BASE/claude-config/.credentials.json"
-  [ -f "$HOME/.codex/auth.json" ] && install -m 600 "$HOME/.codex/auth.json" "$RIG_BASE/codex-home/auth.json"
+stage_credentials() { # $1 = claude | codex
+  # **実行する CLI の分だけ**置く。両方置くと、測定対象の CLI が動かす tool から
+  # もう一方の資格情報を同じ UID で読める（read-only sandbox は読み取りを防がない）
+  case "$1" in
+    claude) [ -f "$HOME/.claude/.credentials.json" ] && install -m 600 "$HOME/.claude/.credentials.json" "$RIG_BASE/claude-config/.credentials.json" ;;
+    codex)  [ -f "$HOME/.codex/auth.json" ] && install -m 600 "$HOME/.codex/auth.json" "$RIG_BASE/codex-home/auth.json" ;;
+    *) echo "stage_credentials: unknown cli $1" >&2; return 1 ;;
+  esac
   return 0
 }
 
@@ -73,7 +78,7 @@ claude_run() {
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/claude-$label.jsonl"
   : > "$capture"
-  stage_credentials
+  stage_credentials claude
   { "$CLAUDE_BIN" --version; } > "$RIG_BASE/capture/claude-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
     run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
@@ -90,7 +95,7 @@ codex_run() {
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/codex-$label.jsonl"
   : > "$capture"
-  stage_credentials
+  stage_credentials codex
   { "$CODEX_BIN" --version; } > "$RIG_BASE/capture/codex-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
     run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \

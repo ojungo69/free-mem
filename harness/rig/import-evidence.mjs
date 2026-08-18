@@ -64,6 +64,9 @@ if (!LABEL.test(label ?? "")) die("--label must be a plain file-name token");
 if (!SCENARIO_ID.test(scenarioId ?? "")) die("--scenario-id does not match the schema pattern");
 if (!args.from) die("--from is required");
 
+// fs や正規化の未捕捉例外は絶対 path 入りの stack を出す。分類済みの理由へ寄せる
+process.on("uncaughtException", (e) => die(`import failed: ${e?.constructor?.name ?? "Error"}`));
+
 const stem = `${cli}-${label}`;
 const source = join(args.from, `${stem}.jsonl`);
 // 置き場は module からの相対で固定する。差し替え口は作らない（test は harness ごと複製する）

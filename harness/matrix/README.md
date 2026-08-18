@@ -32,6 +32,22 @@
 digest が裏付けるのは「その記録である」「事象の並びがそうである」「識別子の相関がそうである」
 までで、モデルが書いた自由文の中身は正規化で伏せるため裏付けの対象にならない。
 
+### 記録の取得側に残っている限界
+
+`real-cli-e2e` が言えるのは「隔離 rig の下で run が起き、その記録が申告どおりである」ところまでで、
+**「測定対象の CLI が記録を捏造していない」ことは言えない**。hook は測定対象 CLI の子として動き、
+記録先の file に同じ UID で書けるので、CLI や CLI が動かした tool は hook 風の行を自分で追記できる。
+`harness/evidence/rig-manifest.test.mjs` の stub CLI が実際にその方法で記録を作っている（test では
+意図した使い方だが、同じことを本物の CLI もできる、という意味でもある）。
+
+閉じるには記録を測定対象から書けない場所へ移す必要がある（別 UID の recorder・監督プロセス・
+隔離した IPC）。設計変更なので別 issue に切り出した。**現時点でこの経路の証拠は 1 件も
+committed されていない**（既存 16 件はすべて manifest 制度より前の legacy 証拠）ので、
+出荷済みの matrix には影響しない。
+
+同じ理由で、manifest の `isolated` と `internalRunMarker` は rig が「そう起動したつもり」を書いた
+値であって、実効状態から導いた値ではない。
+
 ## capture cell 対照
 
 | EventKind | Claude | Codex | 備考 |

@@ -465,3 +465,60 @@ test("stableNativeSessionId needs a session id on every observed line", () => {
     /stableNativeSessionId claims "native" but no referenced capture derives it/,
   );
 });
+
+test("a numeric identifier is not a correlation token", () => {
+  const root = newRoot();
+  // 数値の session_id は正規化で <number> になる。型だけ見ると別々の ID が同じ token として
+  // 等値になり、run 全体で安定していたことにできる
+  const lines = lifecycle("s1", "p1").map((l, i) => ({
+    ...l,
+    payload: { ...l.payload, session_id: 100 + i },
+  }));
+  const ref = putEvidence(root, "numeric", lines, { manifest: true });
+  assert.throws(
+    () =>
+      assemble(
+        [fixtureBase({ fixtureId: "claude/numeric", highLevel: { stableNativeSessionId: "native" }, evidence: [ref] })],
+        root,
+      ),
+    /stableNativeSessionId claims "native" but no referenced capture derives it/,
+  );
+});
+
+test("a null completion field does not derive assistant_completed", () => {
+  const root = newRoot();
+  const lines = lifecycle("s1", "p1").map((l) =>
+    l.event === "Stop" ? { ...l, payload: { ...l.payload, last_assistant_message: null } } : l,
+  );
+  const ref = putEvidence(root, "nullmsg", lines, { manifest: true });
+  assert.throws(
+    () =>
+      assemble(
+        [
+          fixtureBase({
+            fixtureId: "claude/nullmsg",
+            observedEvents: [{ kind: "assistant_completed", at: AT, capability: "synthesized", sourceEvents: ["Stop"] }],
+            evidence: [ref],
+          }),
+        ],
+        root,
+      ),
+    /assistant_completed claims "synthesized" but no referenced capture derives it/,
+  );
+});
+
+test("the same capture cannot be named twice in one fixture", () => {
+  const root = newRoot();
+  // 昇格は manifest 付きの ref で決まる一方、公開する evidenceSources は後勝ちで legacy 側になる
+  const backed = putEvidence(root, "twice", lifecycle("s1", "p1"), { manifest: true });
+  const legacy = { path: backed.path, evidenceHash: backed.evidenceHash, captureRawHash: backed.captureRawHash, normalizationVersion: backed.normalizationVersion };
+  assert.throws(
+    () => assemble([fixtureBase({ fixtureId: "claude/twice", evidence: [backed, legacy] })], root),
+    /names twice\.jsonl more than once/,
+  );
+});
+
+test("fixtureId must be attributed to the cli that produced the capture", () => {
+  // 正しい記録と manifest を、別 CLI の fixture ID へ付け替えられないようにする
+  assert.throws(() => validateFixture(fixtureBase({ fixtureId: "codex/spoof" }), "f.json"), /must start with "claude\/"/);
+});

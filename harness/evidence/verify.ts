@@ -111,7 +111,15 @@ function readNormalized(text: string): NormalizedLine[] {
   return lines;
 }
 
-const has = (line: NormalizedLine, key: string): boolean => Object.hasOwn(line.payload, key);
+/**
+ * 「欄が在る」の判定。値が null の欄を「在る」と読むと、`last_assistant_message: null` の
+ * Stop から assistant_completed が導ける。正規化は string を伏せ字にするので、
+ * 伏せ字の綴りであることまで見る
+ */
+const has = (line: NormalizedLine, key: string): boolean => {
+  const v = line.payload[key];
+  return typeof v === "string" && v !== "";
+};
 
 /** 成果物へ出てはいけない値の出どころ。入れ子も辿る */
 const SECRET_KEYS = new Set([
@@ -139,9 +147,14 @@ function collectSecrets(value: unknown, inSubtree: boolean, out: Set<string>): v
     collectSecrets(v, secret, out);
   }
 }
+/**
+ * 相関 token だけを返す。数値の session_id は正規化で `<number>` になるため、
+ * 型だけ見ると別々の ID が同じ token として等値になる（run 全体で安定に見える）
+ */
+const CORRELATION_TOKEN = /^<(?:id|path):\d+>$/;
 const tokenOf = (line: NormalizedLine, key: string): string | undefined => {
   const v = line.payload[key];
-  return typeof v === "string" ? v : undefined;
+  return typeof v === "string" && CORRELATION_TOKEN.test(v) ? v : undefined;
 };
 
 /**
@@ -261,6 +274,14 @@ export function verifyEvidence(f: CaptureFixture, ctx?: EvidenceContext): Verifi
   // schema の minItems: 1 と二重にする。schema を通さない経路が増えたときの穴を残さない
   if (!Array.isArray(refs) || refs.length === 0) {
     reject(f.fixtureId, "evidence must not be empty (an empty list is not 'all refs verified')");
+  }
+
+  // 同じ記録を 2 度名指しできると、昇格は manifest 付きの ref で決まる一方、公開する
+  // evidenceSources は後勝ちで legacy 側になる（最高位 cell が manifest 無しの source を指す）
+  const seenPaths = new Set<string>();
+  for (const ref of refs) {
+    if (seenPaths.has(ref.path)) reject(f.fixtureId, `evidence names ${ref.path} more than once`);
+    seenPaths.add(ref.path);
   }
 
   return refs.map((ref, index) => {

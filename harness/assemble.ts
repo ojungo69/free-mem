@@ -165,6 +165,12 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   // pattern は桁数しか見ない。`2026-99-99T99:99:99Z` は範囲を絞っても 2 月 30 日が残るので、
   // 暦として実在する瞬間かを別に確かめる（continuity 側 reference-model.ts の isRealInstant と同型。
   // 部分系どうしを import で結ばないぶん、この 3 行は意図的な重複）
+  // fixtureId は公開 matrix の帰属（fixtureIds / sourceFixtureId / evidenceSources）になる。
+  // 書式だけ見ていると cli:"claude" の観測を codex/... へ付け替えられる
+  if (typeof data.fixtureId === "string" && typeof data.cli === "string" && !data.fixtureId.startsWith(`${data.cli}/`)) {
+    errs.push(`fixtureId must start with "${data.cli}/"`);
+  }
+
   const instants: Array<[string, unknown]> = [["capturedAt", data.capturedAt]];
   if (Array.isArray(data.observedEvents)) {
     data.observedEvents.forEach((ev, i) => {

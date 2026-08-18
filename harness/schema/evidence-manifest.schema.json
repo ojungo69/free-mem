@@ -34,10 +34,11 @@
       ]
     },
     "cliVersion": {
-      "$comment": ".version を単一行として読み、末尾の CRLF か LF を 1 つだけ取り除いた値",
+      "$comment": "公開 matrix と version-pin エラーへそのまま出る。長さを閉じて自由文の器にしない",
       "type": "string",
       "minLength": 1,
-      "pattern": "^[\\x20-\\x7e]+$"
+      "pattern": "^[\\x20-\\x7e]+$",
+      "maxLength": 64
     },
     "scenarioId": {
       "type": "string",

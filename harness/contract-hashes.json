@@ -30,8 +30,8 @@
     "fixtures/continuity/restored-state-reduction.json": "ddb1ec22f1d37dfa980ea6870e883ed32977f42ec732ce7e89f3f6e689fadaa2",
     "fixtures/continuity/tool-lifecycle-reduction.json": "beefef9cd5fc61784d6057464e45f26d37497819f2428a73d1c3f2b55a75c755",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
-    "schema/capability.schema.json": "32b8429dbc897d3959b502d4efd1b8c9c1db5dbc811d6cc14eacd72fcc08fc16",
+    "schema/capability.schema.json": "77164ba0c6cdbf55c41db3716c6b251114be544d38c481d4e1878d9dce9294f6",
     "schema/continuity.schema.json": "95000c4671e71b12ba3a49a86dcaa51be81bf75acde8ab0533ba8f0f3fec8972",
-    "schema/evidence-manifest.schema.json": "82315bc9c40fdda86ad62e526ee8a9672ab75f126c3a0935125931dc217d4892"
+    "schema/evidence-manifest.schema.json": "d88d5fda9253c61b209d6cfea928cf40c7300f2665e66a138b3908ee5e5b0840"
   }
 }
