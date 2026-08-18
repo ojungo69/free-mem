@@ -94,22 +94,30 @@ test("bot を名乗る author email でも署名があれば通す", () => {
 //
 // GitHub が required status check を照合する名前は job の `name`、無ければ job id。どちらの
 // 綴りでも `dco` という check を作れるので両方拾う。indent は固定しない（4 space でも valid）。
-const DCO_CHECK_NAME = /^\s+(?:dco:|name:\s*["']?dco["']?)\s*(?:#.*)?$/m;
+const DCO_CHECK_NAME = /^\s+(?:dco:|name:\s*["']?dco["']?)\s*(?:#.*)?$/gm;
 
 test("dco check は 1 経路だけで、base branch 側から走る", () => {
   const workflowDir = fileURLToPath(new URL("../.github/workflows", import.meta.url));
-  const declaring = readdirSync(workflowDir)
+  const producers = readdirSync(workflowDir)
     .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
-    .filter((name) => DCO_CHECK_NAME.test(readFileSync(join(workflowDir, name), "utf8")));
+    .flatMap((name) =>
+      [...readFileSync(join(workflowDir, name), "utf8").matchAll(DCO_CHECK_NAME)].map(() => name),
+    );
 
-  // 同名 check の生産者が 2 つあると、skip された側が成功として使われる。
-  assert.deepEqual(declaring, ["dco.yml"]);
+  // ファイル数ではなく producer 数を数える。同名 check の生産者が 2 つあると、skip された側が
+  // 成功として使われるので、同じ file の中に 2 つあっても等しく駄目。
+  assert.deepEqual(producers, ["dco.yml"]);
 
   const workflow = readFileSync(join(workflowDir, "dco.yml"), "utf8");
   // PR 側の tree から実行すると、PR が自分を検査する workflow と checker を書き換えられる。
   assert.match(workflow, /^ +pull_request_target:$/m);
+  assert.doesNotMatch(workflow, /^ +pull_request:$/m);
   // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
   assert.doesNotMatch(workflow, /^\s+ref:/m);
+  // job を skip させれば、検査せずに成功した check が出る。
+  assert.doesNotMatch(workflow, /^\s+(?:if|continue-on-error):/m);
+  // retarget (edited) を落とすと、main へ向いた PR が検査されないまま残る。
+  assert.match(workflow, /types:.*edited/);
   assert.match(workflow, /node harness\/dco-check\.mjs/);
 });
 

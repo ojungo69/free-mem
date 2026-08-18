@@ -8,6 +8,9 @@ name: DCO
 on:
   pull_request_target:
     branches: [main]
+    # 既定は opened / synchronize / reopened だけ。別 branch 宛の PR を commit 追加なしで main へ
+    # 付け替える操作は edited なので、これが無いと検査されない PR が main へ向く。
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read

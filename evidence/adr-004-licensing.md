@@ -135,6 +135,21 @@ PR が自分を検査するコードを書き換えられないこと、およ�
 
 required status check への登録と、未署名 PR が実際に落ちることの確認は issue #59 で追跡する。
 
+**この形でも塞ぎきれていない経路が 1 つある。** GitHub は required status check を名前で照合し、
+skip された job も成功として扱う。したがって PR は自分の `ci.yml` に `name: dco` かつ `if: false`
+の job を足すことで、trusted な `dco` と区別のつかない成功 check を作れる。どちらも GitHub Actions
+App が出すので、ruleset 側で source を固定しても区別できない。閉じ方の候補は 2 つで、どちらを取るかは
+#59 で決める。
+
+1. 同名の check が複数あるとき GitHub が全件成功を要求するのか、最後の 1 件だけを見るのかを実測する。
+   全件要求なら trusted な `dco` の失敗が残るのでこの経路は成立しない。
+2. 成立するなら、check の生産者を GitHub Actions から専用 App（DCO App 等）へ移し、ruleset の
+   required check に `integration_id` を付けて source ごと固定する。PR は他の App の名前で
+   check を作れない。
+
+それまでの間、この経路は「PR の差分に CI 設定の緩和が混ざっていないかを人が見る」運用に依存する。
+repository の contribution 規則にも同じことが書いてある。
+
 ## 配布面のチェック
 
 現時点で package / tag / release を作っていないため、ここは「作るときに満たすべき条件」として定義する。
@@ -254,4 +269,4 @@ license 付与は取り消せない。一度公開した version に対する gr
 
 - 第三者は Core 1.0 を明確な条件で利用・改変・再配布できる。
 - vendored codemem の MIT 表示と権利関係は分離されたまま維持される。
-- 外部 contribution は DCO を通り、provenance が PR に残る。
+- `dco` を required status check へ登録した後は、外部 contribution が DCO を通り、provenance が PR に残る。

@@ -119,7 +119,9 @@ function isDirectInvocation(argv1, moduleUrl) {
   try {
     return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl));
   } catch {
-    return false;
+    // path を解決できないなら「起動されていない」と断定しない。import 側で余計に main() が
+    // 動けば usage を出して exit 2 になり、そこで気づける。検査しないまま exit 0 で終わるほうが悪い。
+    return true;
   }
 }
 
