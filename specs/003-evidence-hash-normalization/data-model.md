@@ -244,9 +244,9 @@ version-pin（`assemble.ts:207`）に引っかかる。これは別の変更に�
   | 欄 | 現状 | 変更後 |
   |---|---|---|
   | `fixtureId` | `{type: string, minLength: 1}` | `pattern: "^(claude\|codex)/[a-z0-9]+(?:-[a-z0-9]+)*$"`。matrix の `fixtureIds` / `sourceFixtureId` / `evidenceSources` / 生成 limitations に出る |
-  | `observedEvents[].sourceEvents[]` | `{type: string}` | 既知の hook 名の `enum` に閉じる。matrix の cell へそのまま載る。**値は手で並べず、既存 fixture と観測記録から機械的に導く**（実測すると raw に現れる event は `SessionStart` / `UserPromptSubmit` / `Stop` / `SessionEnd` / `PreToolUse` / `PostToolUse` / `SubagentStop` の 7 種で、`PreCompact` は 1 件も無い。手で並べると実在しない値が混ざる） |
+  | `observedEvents[].sourceEvents[]` | `{type: string}` | 既知の hook 名の `enum` に閉じる。matrix の cell へそのまま載る。**値は手で並べず、既存 fixture と観測記録から機械的に導いた**（T002 で実測。raw に現れる event は `PostToolUse` / `PreToolUse` / `SessionEnd` / `SessionStart` / `Stop` / `SubagentStop` / `UserPromptSubmit` の 7 種。fixture の `sourceEvents` はこのうち 6 種で、`SubagentStop` は raw にのみ現れる。`PreCompact` は 1 件も無く、手で並べたときに書いていた） |
   | `nativeVersion` | `{type: string, minLength: 1}` | 制御文字を禁じる `pattern` を足す（`^[\x20-\x7e]+$`） |
-  | `limitationCodes[]` | 新設 | closed enum（§5.3） |
+  | `limitationCodes[]` | 新設 | closed enum（§5.3）。値は `limitation-codes.md` の 22 種。`limitations` と**同じ場所に同じ長さで位置対応**させる |
 
   `fixtureId` へ prompt をコピーすれば matrix の 4 経路へ漏れる。
   「生成側の文字列は fixture id と enum しか含まないので安全」という前提は、
@@ -596,8 +596,13 @@ normalizer を伏せ字にしても直らない。
 assemble が生成する文字列（`observed <value> in <fixtureId>` など）は、
 `fixtureId` と cell 名と enum 値しか含まない（E4 の制約により fixtureId も安全な形になる）。
 
-**enum の全値**: 現行 27 種の散文に 1 対 1 で対応させる。対応表は実装時に
-`capability.schema.json` へ凍結し、fixture の散文と並べて確認できるようにする。
+**enum の全値**: 現行 27 種の散文（top-level 11 / event ごと 16。実測）へ 1 つずつ割り当てた
+**22 種**。対応表は `specs/003-evidence-hash-normalization/limitation-codes.md`（T003 の成果物。
+散文の SHA-256 先頭 8 桁を key にしてあるので、散文を書き換えると対応が崩れたことが分かる）。
+同じ観測事実を述べた散文には同じコードを当てている。
+
+**配置は `limitations` と同じ場所・同じ長さ・位置対応**にする。散文を足してコードを足し忘れた
+状態を検査で落とすため（コードを dedupe すると対応が消えるので dedupe しない）。
 コード名は「観測できなかったこと」を表す kebab-case にする
 （例: `stop-not-fired-on-sigint` / `session-end-reason-always-other` /
 `post-tool-use-absent-on-failure` / `failure-phase-not-directly-observable` /

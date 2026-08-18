@@ -48,12 +48,27 @@ issue #20 の実装順序は task 2 を Codex CLI へ割り当てているが、
 **Purpose**: 計画中に 2 度間違えた「実行すれば数秒で分かる事実」を、コードを書く前に実行で確定させる。
 この phase の 3 件は**書く前に走らせる**。結果が計画と食い違ったら計画側を直してから進む。
 
-- [ ] T001 起草した schema 片が `harness/schema/validate.ts` の `SUPPORTED_KEYWORDS` だけで書けているかを実行で確かめる。`capability.schema.json` の `evidence` 定義（`allOf` + 2 つの `if`/`then`）と新規 `harness/schema/evidence-manifest.schema.json` の草案を一時ファイルへ書き、`validateAgainstSchema` へ通して `unsupported schema keyword` が出ないことを確認する。`dependentRequired` / `maxProperties` / `not` は使えない（`harness/schema/validate.ts:327` が throw する）
-- [ ] T002 [P] `observedEvents[].sourceEvents[]` の enum 値を手で並べず、`jq` で `harness/fixtures/{claude,codex}/*.json` と `harness/fixtures/{claude,codex}/raw/*.jsonl` から機械的に導く。導いた集合を T009 の schema へそのまま入れる（手で並べたとき、raw に 1 件も無い `PreCompact` を書いていた）
-- [ ] T003 [P] `limitationCodes` の enum を、現行の散文 `limitations`（fixture 8 件の top-level と `observedEvents[]`）から機械的に列挙して 1 対 1 の対応表を作る。対応表は `specs/003-evidence-hash-normalization/limitation-codes.md` へ置き、T009 で `capability.schema.json` へ凍結する
-- [ ] T004 [P] 変更前の baseline を計測して `specs/003-evidence-hash-normalization/baseline.md` へ記録する。(a) `harness/matrix/{claude,codex}.json` の `evidenceKind` 内訳、(b) 成果物に現れる raw 由来の実値（`RIG_INJECT_5f3a9` 等）のヒット件数、(c) raw 16 件の digest 分布。SC-005 / SC-008 は変更後にこれと突き合わせて判定する
+- [X] T001 起草した schema 片が `harness/schema/validate.ts` の `SUPPORTED_KEYWORDS` だけで書けているかを実行で確かめる。`capability.schema.json` の `evidence` 定義（`allOf` + 2 つの `if`/`then`）と新規 `harness/schema/evidence-manifest.schema.json` の草案を一時ファイルへ書き、`validateAgainstSchema` へ通して `unsupported schema keyword` が出ないことを確認する。`dependentRequired` / `maxProperties` / `not` は使えない（`harness/schema/validate.ts:327` が throw する）
+- [X] T002 [P] `observedEvents[].sourceEvents[]` の enum 値を手で並べず、`jq` で `harness/fixtures/{claude,codex}/*.json` と `harness/fixtures/{claude,codex}/raw/*.jsonl` から機械的に導く。導いた集合を T009 の schema へそのまま入れる（手で並べたとき、raw に 1 件も無い `PreCompact` を書いていた）
+- [X] T003 [P] `limitationCodes` の enum を、現行の散文 `limitations`（fixture 8 件の top-level と `observedEvents[]`）から機械的に列挙して 1 対 1 の対応表を作る。対応表は `specs/003-evidence-hash-normalization/limitation-codes.md` へ置き、T009 で `capability.schema.json` へ凍結する
+- [X] T004 [P] 変更前の baseline を計測して `specs/003-evidence-hash-normalization/baseline.md` へ記録する。(a) `harness/matrix/{claude,codex}.json` の `evidenceKind` 内訳、(b) 成果物に現れる raw 由来の実値（`RIG_INJECT_5f3a9` 等）のヒット件数、(c) raw 16 件の digest 分布。SC-005 / SC-008 は変更後にこれと突き合わせて判定する
 
 **完了条件**: T001 が「使う keyword はすべて対応済み」を実行で示している。T002 / T003 の集合が実データ由来である
+
+**Phase 1 の実測結果**:
+
+- T001: 起草した `evidence` 定義（`allOf` + 2 つの `if`/`then`）と manifest schema を
+  `validateAgainstSchema` へ通し、10 ケースすべてが期待どおり（`unsupported schema keyword` の
+  throw なし。`manifest` 片方だけ・空配列・未知の欄・絶対 path・負の `recorderErrors`・
+  `cliVersion` の改行がすべて棄却された）
+- T002: raw に現れる event は 7 種（`PostToolUse` / `PreToolUse` / `SessionEnd` / `SessionStart` /
+  `Stop` / `SubagentStop` / `UserPromptSubmit`）。fixture の `sourceEvents` はこのうち 6 種。
+  **`PreCompact` は 1 件も無い**（手で並べたときは書いていた）
+- T003: 散文 27 件（top-level 11 / event ごと 16）へ 22 種のコードを割り当て、
+  `limitation-codes.md` へ出力した
+- T004: `baseline.md` へ記録。`real-cli-e2e` の cell は **0 件**（claude 12 / codex 9 がすべて
+  `source-test`）。秘密の出現は matrix に 3 件。raw 16 件の生 byte SHA-256 も取ってある
+  （backfill の `captureRawHash` はこれを使う）
 
 ---
 
