@@ -1,0 +1,57 @@
+harness/assemble.ts
+  s_2d059b4f795bca::t_67ddc5a09744dd 1,14,19-28,66,70,92-94,118-124,143-149,151-154,205-206,214-264,297-363,400-403,407,410,421-425,430,432-436,438,445-446,486-490,492,494-497,502,507,510-512,520-538,540,549-557,563-564,566,588-589,591-595,598-605,613,666-670,677-679,681-731,733,736,740-754,758,760-762,764,766,773,780,786,789,820-821,826-841,843-849,851-981,985,991,999,1006,1017,1026,1034,1041,1046-1048,1050,1052-1053,1056-1058,1060,1064-1065,1067-1068,1071,1073,1078,1081-1084,1089,1095-1096,1103-1106,1115,1122,1129,1137,1141-1143
+harness/continuity/capability-contract.test.ts
+  s_2d059b4f795bca::t_083dd5e67f56e2 25,60-62,64,66,152,154-155,160,163,168-176
+harness/continuity/fixture-validation.test.ts
+  s_2d059b4f795bca::t_2696d0b13e82bf 19,23,47,49,54-57,60-63,86-87,91,94,96-97,99-110,113-117
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_9f2fb689439fb8 4-6,19-22,27,33-35
+harness/evidence/promotion.test.ts
+  s_2d059b4f795bca::t_f22da1d46f3718 1-431
+harness/evidence/synthetic.ts
+  s_2d059b4f795bca::t_69bd12749deebd 1-156
+harness/evidence/verify.ts
+  s_2d059b4f795bca::t_d50f4260911a9a 1-308
+harness/fixtures/claude/injection-and-subagent.json
+  s_2d059b4f795bca::t_f0c535b6265db6 7,31-33,64-68,77-91
+harness/fixtures/claude/interrupt-and-hook-timeout.json
+  s_2d059b4f795bca::t_8df1b806592b39 7,34-38,54-57,61-93
+harness/fixtures/claude/lifecycle-basic.json
+  s_2d059b4f795bca::t_19d9db95a3366b 7,33-35,46-48,59-61,69-71,75-83
+harness/fixtures/claude/tool-failed-executed.json
+  s_2d059b4f795bca::t_1dc335854fc909 7,41-44,68-70,74-88
+harness/fixtures/claude/tool-lifecycle.json
+  s_2d059b4f795bca::t_234096c5f730fb 7,54,58-72
+harness/fixtures/codex/injection.json
+  s_2d059b4f795bca::t_949a0c411506c7 7,42-44,51-59
+harness/fixtures/codex/lifecycle-basic.json
+  s_2d059b4f795bca::t_2ec28e08d4691c 7,31-33,44-46,57-59,68-71,78-86
+harness/fixtures/codex/tool-lifecycle-and-failure.json
+  s_2d059b4f795bca::t_460ce09a5a2d6e 7,31-33,54-58,82-84,88-102
+harness/matrix/claude.json
+  s_2d059b4f795bca::t_653c6d33201658 4,14-130,143,146-149,160,163-166,177-178,181-183,194-195,198-200,211,214-216,228-230,244-245,248-251,292-295,298-302,314-315,318-321,342,344,395,398-400,410,413-416,420-422
+harness/matrix/codex.json
+  s_2d059b4f795bca::t_32c4e66fbc53bc 4,12-53,66,69-71,82,85-87,98-99,102-104,115-116,119-122,133,136-139,150-153,167-168,171-173,224-225,228-230,252,254,319-321
+harness/schema/capability.schema.json
+  s_2d059b4f795bca::t_91cd80cfdcc6e6 13,17,22,24,35-36,87-96,109-139,277-380
+harness/schema/capability.ts
+  s_2d059b4f795bca::t_5d7ef9a08836ab 35-95,158-159,169-170,173-174,176-178,260-262,267-271
+harness/schema/evidence-manifest.schema.json
+  s_2d059b4f795bca::t_52d3d63eae6edd 1-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e5c64f7eae22340e3d1cfb282573ff174e8e6717",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
