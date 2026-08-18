@@ -89,6 +89,12 @@ prod の 261 件は 2026-08-16 と同一（増えた分はすべて build 時の
 | capability fixture・golden matrix | `harness/fixtures/`、`harness/matrix/` | Apache-2.0 | The free-mem Authors |
 | 第三者 dependency（install 時に解決される分） | `node_modules/` | 各 package の license | 各権利者 |
 | 第三者 dependency（build 出力に inline される分） | `packages/*/dist/`、`packages/viewer-server/static/`、`plugins/*/scripts/hook-runtime.mjs` | 各 package の license | 各権利者 |
+
+`plugins/*/scripts/hook-runtime.mjs` は npm package の `files` に入らず GitHub の source archive
+でだけ配布される。名前と権利者を `THIRD_PARTY_NOTICES.md` に書くだけでは MIT の要求（複製に
+copyright 行と許諾文を同梱する）を満たさないので、`sync-hook-runtime.mjs` が bundle と一緒に
+生成済みの `THIRD_PARTY_NOTICES.hook-runtime.md` を複製先へ置く。手書きではなく build 出力の
+複製なので、bundle の中身が変われば notice も追従する。
 | creative asset（logo 等） | 現時点で無し | 追加時に本表へ追記する | — |
 
 `vendor/codemem/` 配下のファイルに free-mem の header を付けない。分類の境界はディレクトリで判定できる状態を保つ。

@@ -4,6 +4,10 @@ set -euo pipefail
 EXPECTED_BRANCH="${RELEASE_EXPECTED_BRANCH:-main}"
 MAIN_REF="origin/${EXPECTED_BRANCH}"
 TARGET_COMMIT="${RELEASE_TAG_COMMIT:-${GITHUB_SHA:-HEAD}}"
+# ゲートは vendor snapshot の外（free-mem 側の harness/）にある。snapshot 単体を repository
+# root として取り出した木では解決できず node がそこで失敗するが、それが正しい: 見つからないから
+# といって検査を飛ばせば、このゲートが塞いでいる素通り経路が復活する。VENDOR.md のとおり
+# snapshot は free-mem の中でだけ使う前提なので、この参照は満たされる。
 NOTICE_REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 # CI を経ない手動 publish でも、実際の tarball に notice が無ければ tag を打たせない。

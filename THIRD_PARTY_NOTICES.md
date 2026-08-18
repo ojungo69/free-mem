@@ -119,10 +119,13 @@ output: it checks package-level `LICENSE` files.
 
 `vendor/codemem/plugins/claude/scripts/hook-runtime.mjs` and its `plugins/codex/` counterpart are
 committed copies of the `hook-runtime` bundle, produced by `packages/cli/scripts/sync-hook-runtime.mjs`.
-They contain `commander` (MIT, Copyright (c) 2011 TJ Holowaychuk) and carry no copyright text of
-their own. They are not part of any npm package's `files`, so the tarball gate does not cover them;
-they are redistributed through the GitHub source archive, and this file is the notice that travels
-with that archive.
+They contain `commander` (MIT) and carry no copyright text of their own, so the same script copies the
+generated `THIRD_PARTY_NOTICES.hook-runtime.md` next to each of them — MIT requires the copyright line
+and the permission notice to accompany copies, and naming the license here is not the same as shipping
+its terms alongside the copy. These files are not part of any npm package's `files`, so the tarball
+gate does not cover them; they are redistributed through the GitHub source archive, and the copied
+notice travels with them. Because the notice is copied from the build rather than written by hand, it
+follows whatever the bundle actually contains.
 
 Re-run the scan whenever the lockfile changes; `evidence/adr-004-licensing.md` records how these
 findings feed the license decision.
