@@ -1,0 +1,43 @@
+harness/assemble.ts
+  s_2d059b4f795bca::t_625af870cb2af7 168-173
+harness/contract-hashes.json
+  s_2d059b4f795bca::t_abbe4a51ef1b3c 33,35
+harness/evidence/mutate.sh
+  s_2d059b4f795bca::t_94d614330ee7b6 48-49,233-235
+harness/evidence/promotion.test.ts
+  s_2d059b4f795bca::t_d238c36ed31240 468-524
+harness/evidence/verify.ts
+  s_2d059b4f795bca::t_b4cef4c8ed51cc 114-122,150-154,157,279-286
+harness/matrix/README.md
+  s_2d059b4f795bca::t_de03002146f669 35-50
+harness/matrix/claude.json
+  s_2d059b4f795bca::t_f7bcb74596df9f 4
+harness/matrix/codex.json
+  s_2d059b4f795bca::t_9ad8758e137dab 4
+harness/rig/import-evidence.mjs
+  s_2d059b4f795bca::t_daba67c04f80c1 67-69
+harness/rig/rig.sh
+  s_2d059b4f795bca::t_cd7a07125e0191 36-43,81,98
+harness/schema/capability.schema.json
+  s_2d059b4f795bca::t_01c707c033806c 36-38
+harness/schema/evidence-manifest.schema.json
+  s_2d059b4f795bca::t_6722115ed13052 37,40-41
+specs/003-evidence-hash-normalization/tasks.md
+  s_2d059b4f795bca::t_d45772cc664409 198-199,285-287,304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0e717ea7deb518b0d7c00364e808900baca83dab",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
