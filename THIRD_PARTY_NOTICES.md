@@ -104,13 +104,14 @@ omission. A package with no notice file at all is a failure rather than a silent
 with `--write-baseline` when dependencies legitimately change; the diff is then part of the commit
 under review, the same arrangement as `harness/contract-hashes.json`.
 
-Two paths actually run it: the `notices` CI job (on every pull request and push), and each
-publishable package's `prepublishOnly` script (on `npm publish` / `pnpm publish`).
-`vendor/codemem/scripts/release-tag-preflight.sh` also calls it, but only when someone runs
-`pnpm run release:preflight-tag` by hand — the release workflow that would call it lives at
-`vendor/codemem/.github/workflows/release.yml`, which is not where GitHub Actions looks, so it does
-not run in this repository. `npm publish --ignore-scripts` is not covered. Restricting publish rights
-to a protected workflow is tracked in [#83](https://github.com/ojungo69/free-mem/issues/83).
+Two paths enforce it automatically: the `notices` CI job (on every pull request and push), and each
+publishable package's `prepublishOnly` script (on `npm publish` / `pnpm publish`). A third path is
+available but optional — `vendor/codemem/scripts/release-tag-preflight.sh` calls the gate, and that
+script only runs when someone invokes `pnpm run release:preflight-tag`. The release workflow that
+would call it lives at `vendor/codemem/.github/workflows/release.yml`, which is not where GitHub
+Actions looks, so it does not run in this repository. `npm publish --ignore-scripts` is not covered.
+Restricting publish rights to a protected workflow is tracked in
+[#83](https://github.com/ojungo69/free-mem/issues/83).
 
 `harness/license-inclusion-check.mjs` remains separate and still does not look at build
 output: it checks package-level `LICENSE` files.

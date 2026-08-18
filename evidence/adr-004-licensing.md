@@ -174,9 +174,10 @@ CI ゲート:
   `emptyOutDir: false` の成果物で古いファイルが残り、生成が止まっても受理されるのを防ぐため。
   notice だけを消す形では、notice に載らない古い JS が tarball に残る経路が閉じない。
 
-  **実際に走る経路は 2 つ**: CI の `notices` job（PR と push の両方）と、各公開 package の
-  `prepublishOnly`（`npm publish` / `pnpm publish` で起動）。`scripts/release-tag-preflight.sh` も
-  ゲートを呼ぶが、これは `pnpm run release:preflight-tag` を人が実行したときにだけ走る。
+  **自動的に強制される経路は 2 つ**: CI の `notices` job（PR と push の両方）と、各公開 package の
+  `prepublishOnly`（`npm publish` / `pnpm publish` で起動）。3 つ目として任意実行の
+  `scripts/release-tag-preflight.sh` もゲートを呼ぶが、これは `pnpm run release:preflight-tag` を
+  人が実行したときにだけ走るので、強制力は無い。
   `vendor/codemem/.github/workflows/release.yml` は GitHub Actions が読む位置（repo 直下の
   `.github/workflows/`）に無いため、この repo では起動しない。**`npm publish --ignore-scripts` は
   覆えない**。publish 権限を保護された workflow に限定する件は issue #83

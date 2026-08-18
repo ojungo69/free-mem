@@ -203,9 +203,25 @@ jobs:
           corepack enable pnpm
           test "$(pnpm --version)" = "11.8.0"
       - name: Build, pack, and verify third-party notices
-        run: node harness/notice-inclusion-check.mjs
+        # ゲートは build 前に生成先を空にする（`emptyOutDir: false` の成果物に前回のファイルが
+        # 残ると、新しい notice に載らない古い bundle が tarball へ入る）。その掃除を消しても
+        # clean checkout の CI では症状が出ないので、古い成果物をここで置いてから走らせ、
+        # 消えていることを確かめる。notice 以外のファイルはゲート本体の検査対象ではないため、
+        # この後始末の確認が唯一の firing test になる。
+        run: |
+          mkdir -p vendor/codemem/packages/viewer-server/static
+          echo "// stale bundle from an earlier build" \
+            > vendor/codemem/packages/viewer-server/static/stale-bundle.js
+          node harness/notice-inclusion-check.mjs
+          if [ -e vendor/codemem/packages/viewer-server/static/stale-bundle.js ]; then
+            echo "::error::build 前の掃除が効いていない。notice に載らない古い成果物が tarball に残る"
+            exit 1
+          fi
       - name: Test the third-party notice gate
         run: node --test harness/notice-inclusion-check.test.mjs
+      - name: Test the notice generator
+        # rollup を実際に回すので vendor の node_modules が要る。上のゲートが install 済みにする
+        run: node --test harness/license-notice-plugin.test.mjs
 
   secrets:
     runs-on: ubuntu-24.04
