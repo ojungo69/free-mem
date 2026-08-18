@@ -5,6 +5,7 @@
 // SHA-256 は harness/evidence/normalize.ts の実装だけを使う（sha256sum を別に呼ばない）。
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NORMALIZATION_VERSION, digestCapture, digestRaw } from "../evidence/normalize.ts";
 import { MANIFEST_VERSION } from "../evidence/verify.ts";
@@ -18,16 +19,6 @@ const die = (msg) => {
   console.error(`import-evidence: ${msg}`);
   process.exit(2);
 };
-
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i += 2) {
-    const key = argv[i];
-    if (!key?.startsWith("--") || argv[i + 1] === undefined) die(`bad argument: ${key}`);
-    out[key.slice(2)] = argv[i + 1];
-  }
-  return out;
-}
 
 /** `.version` は単一行として読む。複数行を返す CLI は黙って 1 行目を採らずに失敗させる */
 function readCliVersion(path) {
@@ -54,7 +45,16 @@ function readExitStatus(path) {
   return Number(text);
 }
 
-const args = parseArgs(process.argv.slice(2));
+// 未知の option は parseArgs 自身が弾く。素の例外は stack を吐くので die へ寄せる
+let args;
+try {
+  ({ values: args } = parseArgs({
+    args: process.argv.slice(2),
+    options: { cli: { type: "string" }, label: { type: "string" }, "scenario-id": { type: "string" }, from: { type: "string" } },
+  }));
+} catch {
+  die("usage: --cli <claude|codex> --label <label> --scenario-id <id> --from <capture-dir>");
+}
 const cli = args.cli;
 const label = args.label;
 const scenarioId = args["scenario-id"];
@@ -76,6 +76,16 @@ copyFileSync(source, dest);
 if (!readFileSync(source).equals(readFileSync(dest))) die("the copy is not byte-identical to the capture");
 
 const bytes = readFileSync(dest);
+// capturedAt は rig が別に持つ時刻ではなく、記録の 1 行目の at。こうすると
+// captureRawHash がこの値まで縛る（fixture 側の申告と照合して verifiedAt に使う）
+const firstLine = bytes.toString("utf8").split("\n").find((l) => l.trim() !== "");
+let capturedAt;
+try {
+  capturedAt = JSON.parse(firstLine).at;
+} catch {
+  die("the capture has no readable first line");
+}
+if (typeof capturedAt !== "string") die("the first capture line has no string \"at\"");
 const captureRawHash = digestRaw(bytes);
 const captureHash = digestCapture(bytes);
 
@@ -89,6 +99,7 @@ const manifest = {
   cli,
   cliVersion: readCliVersion(join(args.from, `${stem}.version`)),
   scenarioId,
+  capturedAt,
   isolated: true,
   internalRunMarker: true,
   exitStatus: readExitStatus(join(args.from, `${stem}.exit`)),

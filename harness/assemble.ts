@@ -148,19 +148,12 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
     );
   }
 
-  // これらは schema 側を正本にして検査する。highLevel は matrix の cell に直接載る
-  // （= 自動配送の判定入力）ので enum まで見る必要があり、evidence / limitationCodes /
-  // scenarioId は同じ正規表現や enum を 2 箇所に書くと片方だけ古くなるため
-  for (const key of ["evidence", "highLevel", "limitationCodes", "observedEvents", "scenarioId"] as const) {
-    if (!(key in data)) continue;
-    const sub = SCHEMA.properties?.[key];
-    if (!sub) {
-      errs.push(`capability.schema.json に ${key} の定義が無い`);
-      continue;
-    }
-    for (const issue of validateAgainstSchema(data[key], sub, SCHEMA, key)) {
-      errs.push(`${issue.path}: ${issue.message}`);
-    }
+  // schema 側を正本にして **fixture 全体**を検査する。欄を選んで委譲すると、選ばれなかった
+  // 欄の制約が誰にも読まれないまま残る（fixtureId / nativeVersion / capturedAt の pattern が
+  // 実際にそうなっていた: schema には書いたのに検査に載らず、制御文字と任意の自由文が
+  // sourceFixtureId・verifiedAt として公開 matrix へ出せた）
+  for (const issue of validateAgainstSchema(data, SCHEMA, SCHEMA)) {
+    errs.push(`${issue.path}: ${issue.message}`);
   }
 
   if (!isObject(data.rig)) {

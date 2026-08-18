@@ -71,6 +71,8 @@ export interface RunManifest {
   /** `.version` を単一行として読み、末尾の CRLF か LF を 1 つだけ取り除いた値 */
   cliVersion: string;
   scenarioId: string;
+  /** 観測記録の 1 行目の at。captureRawHash が縛るので fixture の申告と照合できる */
+  capturedAt: string;
   isolated: boolean;
   internalRunMarker: boolean;
   exitStatus: number;

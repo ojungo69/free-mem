@@ -1,7 +1,7 @@
 {
   "cli": "codex",
   "nativeVersion": "codex-cli 0.147.0",
-  "generatedAt": "2026-08-18T09:31:43.887Z",
+  "generatedAt": "2026-08-18T10:42:33.771Z",
   "fixtureCount": 3,
   "fixtureIds": [
     "codex/injection",

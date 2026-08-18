@@ -96,3 +96,18 @@ test("unknown limitation code is rejected", () => {
 test("empty evidence array is rejected", () => {
   assert.throws(() => validateFixture(fixtureBase({ evidence: [] }), "f.json"), /minItems|少なく|at least/);
 });
+
+test("provenance fields that reach the matrix are pattern-constrained", () => {
+  // schema に pattern を書いても、検査が欄を選んで委譲していれば誰も読まない。
+  // fixtureId は sourceFixtureId・evidenceSources へ、nativeVersion と capturedAt は
+  // matrix と cell の verifiedAt へそのまま出るので、自由文と制御文字を通さない
+  validateFixture(fixtureBase(), "f.json");
+  for (const [label, override] of [
+    ["制御文字入りの版", { nativeVersion: `1.0${String.fromCharCode(27)}[31m` }],
+    ["絶対 path 風の fixtureId", { fixtureId: "/home/someone/secret/x" }],
+    ["自由文の capturedAt", { capturedAt: "きのう" }],
+    ["曆として不正な capturedAt の形", { capturedAt: "2026-08-12 11:00:00" }],
+  ] as const) {
+    assert.throws(() => validateFixture(fixtureBase(override), "f.json"), /does not match pattern/, label);
+  }
+});

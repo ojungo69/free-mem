@@ -39,6 +39,7 @@ const INVERSIONS: Array<[string, string, Record<string, unknown>]> = [
   ["manifest cli that disagrees is rejected", "cli", { cli: "codex" }],
   ["manifest cliVersion that disagrees is rejected", "cliVersion", { cliVersion: "0.0.0-other" }],
   ["manifest scenarioId that disagrees is rejected", "scenarioId", { scenarioId: "other.scenario" }],
+  ["manifest capturedAt that disagrees is rejected", "capturedAt", { capturedAt: "2026-01-01T00:00:00.000Z" }],
   ["manifest capture that disagrees is rejected", "capture", { capture: "somewhere-else.jsonl" }],
   ["manifest captureRawHash that disagrees is rejected", "captureRawHash", { captureRawHash: "b".repeat(64) }],
   ["manifest captureHash that disagrees is rejected", "captureHash", { captureHash: "c".repeat(64) }],

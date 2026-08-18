@@ -118,6 +118,7 @@ export function putEvidence(
     cli: opts.cli ?? "claude",
     cliVersion: opts.cliVersion ?? "1.2.3-test",
     scenarioId: opts.scenarioId ?? "self.test",
+    capturedAt: AT,
     isolated: true,
     internalRunMarker: true,
     exitStatus: 0,

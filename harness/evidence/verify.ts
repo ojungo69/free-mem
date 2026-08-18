@@ -186,9 +186,12 @@ function deriveClaims(
 
   if (seen("SubagentStop")) highLevel.subagentCapture = "native";
 
-  // 相関 token のおかげで「run を通して同一か」が値を出さずに判定できる
-  const sessionTokens = new Set(lines.map((l) => tokenOf(l, "session_id")).filter((t) => t !== undefined));
-  if (sessionTokens.size === 1) highLevel.stableNativeSessionId = "native";
+  // 相関 token のおかげで「run を通して同一か」が値を出さずに判定できる。
+  // 欄が無い行を先に除くと、1 行だけ id を持つ記録が「run 全体で安定」と判定される
+  const sessionTokens = lines.map((l) => tokenOf(l, "session_id"));
+  if (sessionTokens.length >= 2 && new Set(sessionTokens).size === 1 && sessionTokens[0] !== undefined) {
+    highLevel.stableNativeSessionId = "native";
+  }
 
   return { events: [...new Set(events)].sort(), capture, highLevel };
 }
@@ -227,6 +230,8 @@ function verifyManifest(
     ["cli", manifest.cli === f.cli],
     ["cliVersion", manifest.cliVersion === f.nativeVersion],
     ["scenarioId", manifest.scenarioId === f.scenarioId],
+    // verifiedAt としてそのまま公開されるので、記録に縛られた値だけを通す
+    ["capturedAt", manifest.capturedAt === f.capturedAt],
     ["capture", manifest.capture === ref.path],
     ["captureRawHash", manifest.captureRawHash === computed.captureRawHash],
     ["captureHash", manifest.captureHash === computed.evidenceHash],

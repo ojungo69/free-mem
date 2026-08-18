@@ -448,3 +448,20 @@ test("the assemble entrypoint ignores EVIDENCE_ROOT from the environment", () =>
   assert.notEqual(run.status, 0, "環境変数で置き場が動いた");
   assert.match(`${run.stdout}\n${run.stderr}`, /cannot be resolved/);
 });
+
+test("stableNativeSessionId needs a session id on every observed line", () => {
+  const root = newRoot();
+  // 1 行だけ id を持ち、残りに欄が無い記録。欄の無い行を先に除くと「run 全体で安定」に見える
+  const lines = lifecycle("s1", "p1").map((l, i) =>
+    i === 0 ? l : { ...l, payload: Object.fromEntries(Object.entries(l.payload).filter(([k]) => k !== "session_id")) },
+  );
+  const ref = putEvidence(root, "sparse", lines, { manifest: true });
+  assert.throws(
+    () =>
+      assemble(
+        [fixtureBase({ fixtureId: "claude/sparse", highLevel: { stableNativeSessionId: "native" }, evidence: [ref] })],
+        root,
+      ),
+    /stableNativeSessionId claims "native" but no referenced capture derives it/,
+  );
+});
