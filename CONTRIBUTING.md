@@ -46,12 +46,9 @@ The check runs from the target branch, not from the pull request: both the workf
 pull request head is only read as git history. A pull request that edits either file is still checked
 by the version already on `main`, so it cannot weaken the checker that gates it.
 
-One route is still open: required checks are matched by name, and a skipped job counts as a pass, so a
-pull request that adds a second job named `dco` to another workflow can produce a check that is hard to
-tell apart from the real one. Until that is closed, `dco` is not registered as a required check, which
-means it reports its result but does not by itself block a merge. A pull request that changes CI
-configuration is reviewed for exactly this, and changes that loosen a gate are rejected. Issue #59
-tracks closing the route and making the check required.
+Adding a second job named `dco` elsewhere does not help either: a required check is satisfied only when
+every check run carrying that name passed, so the trusted job's failure still stands. `dco` is a
+required status check on `main`, so a pull request whose commits are not signed off cannot be merged.
 
 The full text you are certifying is the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
 

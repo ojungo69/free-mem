@@ -1,8 +1,9 @@
 # DCO ゲートを CI 本体から分けて `pull_request_target` で走らせる。workflow も checker も base
 # branch 側から読むため、PR は自分を検査するコードを変更できない。PR head は git object として
 # 取得するだけで checkout も実行もしない（`pull_request_target` の危険はそこにある）。
-# `dco` という check 名の生産者をここ 1 つに保つのも要件。理由と背景は CONTRIBUTING.md と
-# evidence/adr-004-licensing.md に書いてある。
+# `dco` という check 名の生産者はここ 1 つに保つ。required status check は同じ名前の check run を
+# 全件見るので、生産者が増えると、そちらが失敗・取り消しになるだけで merge が止まる。どの run が
+# 判定したのかも辿れなくなる。理由と背景は CONTRIBUTING.md と evidence/adr-004-licensing.md に。
 name: DCO
 
 on:
@@ -15,11 +16,10 @@ on:
 permissions:
   contents: read
 
-# edited は title / body の編集でも起動するので、放っておくと同じ PR に対する run が積み重なる。
-# required check は最後の結論で決まるため、古い run を取り消してもゲートは緩まない。
-concurrency:
-  group: dco-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# 同じ理由で concurrency も置かない。取り消された run は required check を満たさないので、1 つ
+# 取り消されるだけで merge が止まる（PR #88 で実測: `dco` が [success, cancelled] になり BLOCKED）。
+# `cancel-in-progress: false` でも、3 つめが来たときに待機中の run が取り消されるので同じ。
+# run が重複する分の CI 時間より、ゲートが理由の分からない BLOCKED を出さないことを優先する。
 
 jobs:
   dco:

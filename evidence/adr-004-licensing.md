@@ -121,38 +121,42 @@ DCO の**検査機構**は issue #59 の変更（2026-08-18、`main` へ squash 
 検査する集合は、`main` を base とする PR の merge-base より後から head までの commit であり、
 稼働時点までに `main` にある既存 history は遡って不合格にしない。
 
-**merge を止める意味での「強制」の開始点は、まだこの日付ではない。** 開始条件は次の 3 つで、
-これを満たした日時と commit を確認後にここへ記録する。
+**merge を止める意味での「強制」は 2026-08-18 に開始した。** 開始条件として置いた 3 つは
+次のとおり満たした。
 
-1. 下記の残存経路を実測で否定するか、専用 App へ移して閉じる
-2. `dco` を `main-protection` の required status check へ登録する
-3. 未署名 PR が実際に merge を止められることを確認する
+1. 下記の残存経路を実測で否定した（PR #86）
+2. `dco` を `main-protection`（ruleset 20850916）の required status check へ登録した
+3. 未署名 PR が実際に merge を止められることを確認した（PR #87）
 
 強制の機構は `dco` という単一の check である。workflow（`.github/workflows/dco.yml`）も checker
 （`harness/dco-check.mjs`）も `main` 側から読み、PR の head は git history としてしか読まない。
-PR が自分を検査するコードを書き換えられないこと、および `dco` という名前の check を出す経路を 1 つに
-保つこと（skip された同名 check は GitHub が成功として扱うため）が、この形を選んだ理由である。
+この形を選んだ理由は、PR が自分を検査するコードを書き換えられないことにある。あわせて `dco` という
+名前の check を出す経路は 1 つに保つ。下記のとおり required status check は同じ名前の check run を
+全件見るので、生産者が増えると、そちらが失敗・取り消しになるだけで merge が止まり、どの run が判定
+したのかも辿れなくなる。
 
 **免除は置かない。bot も同じく検査する。** author email は commit する側が `git commit --author` で
 自由に名乗れるので、email 一致による免除は誰でも騙れる。免除が必要になった場合の拡張先は、email では
 なく GitHub が認証した actor login に紐付ける形である。
 
-required status check への登録と、未署名 PR が実際に落ちることの確認は issue #59 で追跡する。
+**同名 check による迂回は成立しない。** 「PR が自分の `ci.yml` に `name: dco` の job を足せば、
+trusted な `dco` と区別のつかない成功 check を作れるのではないか」という指摘があったので実測した
+（PR #86、2026-08-18）。
 
-**この形でも塞ぎきれていない経路が 1 つある。** GitHub は required status check を名前で照合し、
-skip された job も成功として扱う。したがって PR は自分の `ci.yml` に `name: dco` かつ `if: false`
-の job を足すことで、trusted な `dco` と区別のつかない成功 check を作れる。どちらも GitHub Actions
-App が出すので、ruleset 側で source を固定しても区別できない。閉じ方の候補は 2 つで、どちらを取るかは
-#59 で決める。
+required status check の `notices` を対象に、本物の job を落としたうえで、`name: notices` の偽 job を
+7 分後に成功させた。他の required check はすべて成功、未解決の conversation は 0 件。この状態で
+merge state は BLOCKED だった。偽 job を残したまま本物だけ直すと CLEAN になったので、BLOCKED の原因は
+`notices` である。
 
-1. 同名の check が複数あるとき GitHub が全件成功を要求するのか、最後の 1 件だけを見るのかを実測する。
-   全件要求なら trusted な `dco` の失敗が残るのでこの経路は成立しない。
-2. 成立するなら、check の生産者を GitHub Actions から専用 App（DCO App 等）へ移し、ruleset の
-   required check に `integration_id` を付けて source ごと固定する。PR は他の App の名前で
-   check を作れない。
+つまり GitHub は required の名前を持つ check run を**全件**見ており、後から成功した同名 check が
+先の失敗を上書きすることはない。
 
-それまでの間、この経路は「PR の差分に CI 設定の緩和が混ざっていないかを人が見る」運用に依存する。
-repository の contribution 規則にも同じことが書いてある。
+この性質は迂回を塞ぐ一方で、`dco` workflow に `concurrency` を置けないことも意味する。取り消された
+run は required check を満たさないので、run が 1 つ取り消されるだけで merge が止まる（PR #88 で
+`dco` が `[success, cancelled]` になり BLOCKED を実測した）。`cancel-in-progress: false` にしても、
+3 つめの run が来たときに待機中の run が取り消されるため同じことが起きる。PR は base branch 側の `dco` を止められないので、未署名 PR に対する
+その失敗は必ず残る。専用 App へ移して `integration_id` で source を固定する案は、この実測により
+不要と判断した。
 
 ## 配布面のチェック
 
@@ -244,9 +248,8 @@ license 付与は取り消せない。一度公開した version に対する gr
 ## 残る未決事項
 
 - release 前の専門家確認（本 ADR は法的助言の代替ではない）。
-- **DCO は文書に規定しているが CI では強制していない** → 2026-08-18 に検査機構が着地した
-  （上の「inbound contribution 方針」の開始点・検査集合・機構を参照）。ただし `dco` を
-  上の 3 つの開始条件を満たすまでは「強制している」とは書かない。issue #59 で追跡する。
+- ~~DCO は文書に規定しているが CI では強制していない（issue #59）~~ → **2026-08-18 に解消**。
+  上の「inbound contribution 方針」の開始点・検査集合・機構・同名 check の実測を参照。
 - ~~公開 package の tarball に bundle された依存の notice が載らない（issue #50）~~ →
   **2026-08-18 に解消**。上の「bundle された依存の notice」節を参照。当初この項に書いていた実測
   （`codemem` が `@clack/prompts` ほかを bundle する / `@codemem/server` が `@hono/node-server` を
@@ -272,4 +275,4 @@ license 付与は取り消せない。一度公開した version に対する gr
 
 - 第三者は Core 1.0 を明確な条件で利用・改変・再配布できる。
 - vendored codemem の MIT 表示と権利関係は分離されたまま維持される。
-- 上の残存経路を閉じ、`dco` を required status check へ登録した後は、外部 contribution が DCO を通り、provenance が PR に残る。
+- 外部 contribution は DCO を通り、provenance が PR に残る。
