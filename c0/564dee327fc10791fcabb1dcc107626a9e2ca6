@@ -1,0 +1,41 @@
+harness/dco-check.test.mjs
+  s_a916254a4f2647::t_3d4a8c329e32a9 1-194
+harness/dco-check.mjs
+  s_a916254a4f2647::t_1003b3827f3af6 4,6-16,18-27,29-46,48,51,54-56,58-59,61-79,81-88,90-91,93-130
+  s_a916254a4f2647::t_5801b340944f92 1-2,28
+  s_a916254a4f2647::t_44ed2cbde3a308 3,5,17,47,49-50,52-53,57,60,80,89,92,131
+  s_2d059b4f795bca::t_74eee76ff0763a 132-133
+CONTRIBUTING.md
+  s_a916254a4f2647::t_4b8c21035d803a 25-31,34-37
+  s_a916254a4f2647::t_3d3f60aae0b78e 18-19,32-33
+evidence/adr-004-licensing.md
+  s_a916254a4f2647::t_3d3f60aae0b78e 121-122
+  s_a916254a4f2647::t_4b8c21035d803a 120,123-125,216-217
+.github/workflows/ci.yml
+  s_a916254a4f2647::t_4b8c21035d803a 195-224
+  s_2d059b4f795bca::t_3ede0c2321c908 181-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c0564dee327fc10791fcabb1dcc107626a9e2ca6",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_a916254a4f2647": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01301-a457-7aa0-86a3-80929cbb7e53",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
