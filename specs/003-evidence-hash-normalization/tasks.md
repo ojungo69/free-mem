@@ -195,8 +195,8 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 
 - [X] T039 [P] research.md R6 が挙げた 5 箇所の古い記述を退役させる。`harness/matrix/README.md` の `evidenceKind` の説明を実態（digest が裏付ける範囲・legacy 証拠・導けない主張）へ合わせる。**節ごとに掃除する**（変更前の設計は別の語で書かれた節に残る）
 - [X] T040 [P] `harness/contract-hashes.json` を再生成する（`node harness/contract-hashes.mjs > harness/contract-hashes.json`）。`capability.schema.json` と fixture がその入力なので、Phase 2 と Phase 5 の変更で必ず動く
-- [ ] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表 51 件を並べる。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
-- [ ] T042 変異の網羅を機械的に確認する。`M0`〜`M49` と `M8b` の 51 件すべてが (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
+- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表 51 件を並べる。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
+- [X] T042 変異の網羅を機械的に確認する。`M0`〜`M49` と `M8b` の 51 件すべてが (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
 - [ ] T043 `.github/workflows/ci.yml` の `harness` job へ 2 step 足す（`node --experimental-strip-types --test harness/evidence/*.test.ts` と `bash harness/evidence/mutate.sh`）。既存 step は緩めない
 - [ ] T044 `specs/003-evidence-hash-normalization/quickstart.md` を実際に上から実行し、書いてあるコマンドがそのまま通ることを確認する。通らない箇所は quickstart 側を直す
 - [ ] T045 セキュリティ関連の必須ゲートを通す。`semgrep scan`（CLI）→ `/codex-review mode=security` → `/codex:adversarial-review`。指摘は `review-routing` の批判的評価にかけ、採否の理由を残す
@@ -232,14 +232,14 @@ done
 | M1 | `harness/assemble.ts` 昇格条件 | `promotion.test.ts::nonexistent evidence path is rejected` | T015 |
 | M2 | `harness/assemble.ts` 不一致の扱い | `promotion.test.ts::digest mismatch fails the build` | T015 |
 | M3 | `harness/assemble.ts` 版の照合 | `promotion.test.ts::unknown normalization version fails the build` | T015 |
-| M4 | `harness/assemble.ts` 昇格 3 経路 | `promotion.test.ts::all three promotion sites require verification` | T018 |
+| M4 | `harness/evidence/verify.ts` `DERIVABLE_HIGH_LEVEL_KEYS` | `promotion.test.ts::prompt pair requires a shared supporting ref` | T018 |
 | M5 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::相対 path の .. は棄却される` | T007 |
 | M6 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::置き場の外へ出る symlink は棄却される` | T007 |
 | M7 | `harness/evidence/normalize.ts` verbatim 集合 | `normalize.test.ts::投入した指示が違う 2 記録は別の digest になる` | T024 |
 | M8 | `harness/evidence/normalize.ts` 伏せ字 | `normalize.test.ts::同一 scenario の再取得は同じ digest になる` | T023 |
 | M8b | `harness/evidence/normalize.ts` verbatim の深さ | `normalize.test.ts::入れ子の tool_input.prompt が違っても digest は変わらない` | T006 |
 | M9 | `harness/evidence/normalize.ts` キー保持 | `normalize.test.ts::欄の有無は digest を変える` | T005 |
-| M10 | `harness/evidence/normalize.ts` 直列化 | `normalize.test.ts::キーの書き順は digest を変えない` | T006 |
+| M10 | `harness/evidence/normalize.ts` 直列化 | `normalize.test.ts::直列化は LF 区切りで最終行の後にも LF が付く` | T006 |
 | M11 | `harness/evidence/normalize.ts` array | `normalize.test.ts::配列の長さは保たれる` | T005 |
 | M12 | `harness/evidence/normalize.ts` 行数検査 | `normalize.test.ts::空の観測記録は棄却される` | T006 |
 | M13 | `harness/schema/capability.schema.json` | `schema.test.ts::fixture with evidence is rejected when the schema lacks it` | T012 |
@@ -248,7 +248,7 @@ done
 | M16 | `harness/evidence/normalize.ts` 相関 token | `normalize.test.ts::session 識別子が継続するかどうかは digest に現れる` | T006 |
 | M17 | `harness/evidence/normalize.ts` token の scope | `normalize.test.ts::token の番号はファイル単位で、id と path で別の空間を持つ` | T006 |
 | M18 | `harness/evidence/verify.ts` `sourceEvents` 検査 | `promotion.test.ts::claimed hook absent from the capture is rejected` | T016 |
-| M19 | `harness/assemble.ts` prompt 対の拘束 | `promotion.test.ts::prompt pair requires a shared supporting ref` | T018 |
+| M19 | `harness/assemble.ts` `shareRef` | `promotion.test.ts::shared-ref predicate requires an actual common index` | T018 |
 | M20 | `harness/evidence/verify.ts` manifest 照合表 | `manifest.test.ts::manifest captureHash that disagrees is rejected` | T037 |
 | M21 | `harness/evidence/normalize.ts` 読み取り | `normalize.test.ts::重複したキーを持つ行は棄却される` + `normalize.test.ts::不正な UTF-8 は棄却される` | T006 |
 | M22 | `harness/evidence/normalize.ts` `unparsed` | `normalize.test.ts::payload.unparsed を持つ行は棄却される` | T006 |
@@ -278,7 +278,18 @@ done
 | M46 | `harness/evidence/verify.ts` `manifestHash` の照合位置 | `promotion.test.ts::corrupt manifest is rejected before parsing` | T015 |
 | M47 | `harness/assemble.ts` 判定の順序 | `promotion.test.ts::underivable claim does not fail the build` | T017 |
 | M48 | `harness/evidence/normalize.ts` root 差し替え口 | `promotion.test.ts::synthetic manifest-backed fixture promotes end-to-end` | T014 / T022 |
-| M49 | `harness/assemble.ts` `runAssemble` | `promotion.test.ts::evidence root cannot be set from CLI args, fixture values, or env` | T022 |
+| M49 | `harness/assemble.ts` `runAssemble` | `promotion.test.ts::the assemble entrypoint ignores EVIDENCE_ROOT from the environment` | T022 |
+
+**変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
+
+- **prompt 対の再刻印は現在到達しない。** 対の 2 cell は導けない主張なので `promoteCell` が
+  `evidenceRefs: []` を返し、`pairFixture` が常に `undefined` になる。したがって「対の再刻印の中で
+  裏付けを求める」変異は原理的に殺せない。門そのもの（共有 ref の述語）を `shareRef` として
+  切り出し、直接 test で固定した。経路が復活したとき門が黙って緩まないようにするため
+- **「キーの書き順は digest を変えない」は 1 つの変異では壊せない。** 整列した順で挿入し、さらに
+  canonical に直列化しているので、どちらか一方を外しても出力 byte は変わらない（過剰決定）。
+  M10 は実際に壊せる性質（末尾 LF の framing）へ振り直した
+- **契約 hash は node:test では殺せない。** `run_custom` で再生成との diff を門にする
 
 **割当の確認**（T042 が自動化する。手で確かめるときはこれ）:
 

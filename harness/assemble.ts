@@ -261,6 +261,13 @@ export function assertNoSecretSubstrings(artifact: unknown, secrets: string[]): 
  * `ctx` は evidence root の差し替え口で、**test 専用**。production の入口 `runAssemble` は
  * これを受け取らないので、CLI 引数・fixture の値・環境変数のどれからも root は動かない。
  */
+/**
+ * 対が成立する条件。「同じ fixture」では足りない（1 つの fixture が複数の run を束ねる）。
+ * 両 cell を裏付けた記録に同じものが 1 件でもあることを要求する。
+ * 呼び出し側の経路は現在到達しないので、述語そのものを直接 test で固定する
+ */
+export const shareRef = (a: number[], b: number[]): boolean => a.some((i) => b.includes(i));
+
 export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceContext): AssembledMatrix {
   // この関数のガードは fail ではなく throw にする。process.exit だとテストから確認できず、
   // --test 実行中に踏むとスイート全体が途中で死ぬ。CLI 側は catch して同じ終了コードを返す
@@ -534,7 +541,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       ).evidenceRefs;
     const a = refsFor("promptAwareInjection");
     const b = refsFor("promptDeliveryBeforeModel");
-    return a.some((i) => b.includes(i));
+    return shareRef(a, b);
   });
   if (pairFixture) {
     for (const key of pairKeys) {

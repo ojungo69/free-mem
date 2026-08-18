@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { assembleFromFixtures, validateFixture } from "../assemble.ts";
+import { assembleFromFixtures, shareRef, validateFixture } from "../assemble.ts";
 import { NORMALIZATION_VERSION, digestRaw } from "./normalize.ts";
 import {
   assembleWithRoot,
@@ -333,22 +335,21 @@ test("codex turn_completed derives as native", () => {
 test("verified fixture outranks unverified for the same cell", () => {
   const root = newRoot();
   const ref = putEvidence(root, "backed", lifecycle("s1", "p1"), { manifest: true });
-  const backed = fixtureBase({
-    fixtureId: "claude/backed",
-    observedEvents: [{ kind: "session_started", at: AT }],
-    evidence: [ref],
-  });
-  const declared = fixtureBase({
-    fixtureId: "claude/declared",
-    observedEvents: [{ kind: "session_started", at: AT }],
-  });
-  for (const order of [
-    [backed, declared],
-    [declared, backed],
+  // 組み立ては fixtureId で整列するので、渡す順ではなく **id の順** を変えて両方向を見る。
+  // 裏付けの無い側が先に処理される向きが、証跡の優劣が効いているかを決める
+  for (const [backedId, declaredId] of [
+    ["claude/z-backed", "claude/a-declared"],
+    ["claude/a-backed", "claude/z-declared"],
   ]) {
-    const cell = assemble(order, root).capabilities.capture.session_started;
-    assert.equal(cell.evidenceKind, "real-cli-e2e");
-    assert.equal(cell.sourceFixtureId, "claude/backed");
+    const cell = assemble(
+      [
+        fixtureBase({ fixtureId: backedId, observedEvents: [{ kind: "session_started", at: AT }], evidence: [ref] }),
+        fixtureBase({ fixtureId: declaredId, observedEvents: [{ kind: "session_started", at: AT }] }),
+      ],
+      root,
+    ).capabilities.capture.session_started;
+    assert.equal(cell.evidenceKind, "real-cli-e2e", `${backedId} が先か後かで結果が変わる`);
+    assert.equal(cell.sourceFixtureId, backedId);
   }
 });
 
@@ -419,3 +420,31 @@ function loadCommitted(cli: "claude" | "codex"): CaptureFixture[] {
   assert.ok(names.length > 0, `${cli} の fixture が 1 件も見つからない`);
   return names.map((name) => validateFixture(JSON.parse(readFileSync(new URL(name, dir), "utf8")), name));
 }
+
+test("shared-ref predicate requires an actual common index", () => {
+  // 対の再刻印はこの述語だけが門になる。呼び出し側は導けない主張のせいで現在到達しないので、
+  // 述語そのものを固定する（到達しない経路の門は、経路が復活したときに黙って緩む）
+  assert.equal(shareRef([0, 1], [1, 2]), true);
+  assert.equal(shareRef([0, 1], [2, 3]), false, "共有が無いのに成立させている");
+  assert.equal(shareRef([], []), false, "空どうしは対の証明にならない");
+  assert.equal(shareRef([0], []), false);
+});
+
+test("the assemble entrypoint ignores EVIDENCE_ROOT from the environment", () => {
+  // 同一プロセスで assembleFromFixtures を呼ぶ test は entrypoint を通らない。
+  // 置き場を環境変数から取る実装に変えられても気づけないので、子プロセスで見る
+  const root = newRoot();
+  const ref = putEvidence(root, "cap", lifecycle("s1", "p1"), { manifest: true });
+  const fixturesDir = mkdtempSync(join(tmpdir(), "evfix-"));
+  writeFileSync(
+    join(fixturesDir, "f.json"),
+    JSON.stringify(fixtureBase({ fixtureId: "claude/env", observedEvents: [{ kind: "session_started", at: AT }], evidence: [ref] })),
+  );
+  const run = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", fileURLToPath(new URL("../assemble.ts", import.meta.url)), fixturesDir, join(fixturesDir, "out.json")],
+    { encoding: "utf8", env: { ...process.env, EVIDENCE_ROOT: root } },
+  );
+  assert.notEqual(run.status, 0, "環境変数で置き場が動いた");
+  assert.match(`${run.stdout}\n${run.stderr}`, /cannot be resolved/);
+});
