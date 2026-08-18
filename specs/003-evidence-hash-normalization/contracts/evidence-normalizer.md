@@ -50,6 +50,22 @@ schema が上流で検証しているが、path の一部になる値の検査�
 `harness/fixtures/<cli>/raw/` を使う。production の CLI 経路は必ず省略する
 （fixture の値・引数・環境変数から root が動かないことを test で固定する）。
 
+**assemble まで配線する。** `resolveEvidencePath` にだけ引数を足しても、
+`assembleFromFixtures` から渡せなければ positive control は end-to-end で走らない。
+
+```ts
+interface EvidenceContext { evidenceRoot?: string }
+
+// 内部 API。selfTest だけが mkdtemp の root を渡す
+export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceContext): Matrix;
+
+// production の入口。ctx を受け取らず、内部で固定 root の context を作る
+async function runAssemble(fixturesDir: string, outFile: string): Promise<void>;
+```
+
+`runAssemble` は `EvidenceContext` を引数に取らない。CLI 引数・fixture の値・環境変数の
+どれからも root が動かないことを test で固定する。
+
 ---
 
 ## CLI としての表面
@@ -58,7 +74,17 @@ schema が上流で検証しているが、path の一部になる値の検査�
 node --experimental-strip-types harness/evidence/normalize.ts <capture-file>
 ```
 
-- 標準出力へ `{"evidenceHash":"<64 hex>","normalizationVersion":<n>}` を 1 行
+- 標準出力へ `{"evidenceHash":"<64 hex>","captureRawHash":"<64 hex>","normalizationVersion":<n>}` を 1 行
+
+  `captureRawHash` を含める。含めないと、rig と backfill が `EvidenceRef.captureRawHash` を
+  唯一の共有実装から得られず、`sha256sum` を別に呼ぶ二重実装になる。
+
+- 任意ファイルの生 byte digest が要るとき（manifest の `manifestHash`）は `--raw` を使う
+
+  ```
+  node --experimental-strip-types harness/evidence/normalize.ts --raw <file>
+  # => {"rawHash":"<64 hex>"}
+  ```
 - 成功で終了コード 0
 - 失敗（引数不足・引数過多・読めない・解釈できない）で終了コード 2 と、
   標準エラーへ理由。**観測記録の中身と絶対 path は出さない**

@@ -208,14 +208,36 @@ version-pin（`assemble.ts:207`）に引っかかる。これは別の変更に�
 
 - `properties.evidence` を追加。`type: "array"`、**`minItems: 1`**、`additionalProperties: false`
   - 要素の `required` は `path` / `evidenceHash` / `captureRawHash` / `normalizationVersion` の 4 つ
-  - `manifest` と `manifestHash` は **両方あるか両方無いか**。`oneOf` で表す
-    （`{required: [manifest, manifestHash]}` / `{not: {anyOf: [...]}}` ではなく、
-    「両方 required」と「両方 `maxProperties` 側で現れない」の 2 択を `oneOf` で書く）。
-    **`dependentRequired` は使えない**: `harness/schema/validate.ts` の対応 keyword 表に無く、
+  - `manifest` と `manifestHash` は **両方あるか両方無いか**。対応済み keyword だけで書く。
+
+    ```jsonc
+    "allOf": [
+      { "if": { "required": ["manifest"] },     "then": { "required": ["manifestHash"] } },
+      { "if": { "required": ["manifestHash"] }, "then": { "required": ["manifest"] } }
+    ]
+    ```
+
+    **`dependentRequired` も `maxProperties` も `not` も使えない**:
+    `harness/schema/validate.ts` の `SUPPORTED_KEYWORDS` に無く、
     `validate.ts:327` が `unsupported schema keyword` で throw する。
-    `oneOf` / `anyOf` / `allOf` / `if` / `then` / `else` は対応済み
+    使えるのは `$ref` / `$defs` / `type` / `enum` / `const` / `required` / `properties` /
+    `additionalProperties` / `items` / `minItems` / `maxItems` / `minLength` / `maxLength` /
+    `pattern` / `minimum` / `maximum` / `oneOf` / `anyOf` / `allOf` / `if` / `then` / `else`
 - `properties.scenarioId` を追加。`type: "string"`、`pattern: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"`。
   `required` に加える（すべての capture fixture が持つ。matrix へ出る唯一の識別子のため）
+- **成果物へ出る既存の string にも制約を掛ける。** 自由文を止めても、制約の無い string が
+  残っていればそこから漏れる。現状は次が無制約:
+
+  | 欄 | 現状 | 変更後 |
+  |---|---|---|
+  | `fixtureId` | `{type: string, minLength: 1}` | `pattern: "^(claude\|codex)/[a-z0-9]+(?:-[a-z0-9]+)*$"`。matrix の `fixtureIds` / `sourceFixtureId` / `evidenceSources` / 生成 limitations に出る |
+  | `observedEvents[].sourceEvents[]` | `{type: string}` | 既知の hook 名の `enum` に閉じる（`SessionStart` / `UserPromptSubmit` / `Stop` / `SessionEnd` / `PreToolUse` / `PostToolUse` / `SubagentStop` / `PreCompact`）。matrix の cell へそのまま載る |
+  | `nativeVersion` | `{type: string, minLength: 1}` | 制御文字を禁じる `pattern` を足す（`^[\x20-\x7e]+$`） |
+  | `limitationCodes[]` | 新設 | closed enum（§5.3） |
+
+  `fixtureId` へ prompt をコピーすれば matrix の 4 経路へ漏れる。
+  「生成側の文字列は fixture id と enum しか含まないので安全」という前提は、
+  fixture id 自体が無制約なら成立しない
 - `properties.evidenceHash`（top-level）を削除
 - `evidence` は `required` に加えない。`official-doc` / `source-test` 由来の fixture は
   観測記録を持たない
@@ -254,7 +276,7 @@ rig は run のたびに manifest を 1 件書き、証拠置き場へ observati
 {
   "manifestVersion": 1,
   "cli": "claude",                              // "claude" | "codex" の enum
-  "cliVersion": "2.1.228 (Claude Code)",        // .version の中身をそのまま
+  "cliVersion": "2.1.228 (Claude Code)",        // .version を単一行として読み末尾 LF を除いた値
   "scenarioId": "claude.lifecycle-basic",       // §5.3 の制約付き識別子。自由文ではない
   "isolated": true,                             // rig が書く。fixture の自己申告ではない
   "internalRunMarker": true,
@@ -546,13 +568,29 @@ normalizer を伏せ字にしても直らない。
 
 **設計**
 
-- fixture に `limitationCodes: string[]` を新設する。値は schema の closed enum
-  （`capability.schema.json` に列挙）。現行の 27 種の散文に 1 対 1 で対応するコードを作る
-  （例: `stop-not-fired-on-sigint`、`session-end-reason-always-other`、
-  `post-tool-use-absent-on-failure`、`failure-phase-not-directly-observable`）
+**配置**: 散文 `limitations` は fixture の **top-level** と **`observedEvents[]` ごと**の
+2 箇所にある（現行 27 種の内訳: top-level 側と event 側の両方）。cell 固有の caveat との
+対応を失わないよう、`limitationCodes` も**同じ 2 箇所**に置く。
+
+| 場所 | 散文（残す） | コード（新設・matrix へ出る） |
+|---|---|---|
+| fixture top-level | `limitations: string[]` | `limitationCodes: string[]` |
+| `observedEvents[]` | `limitations: string[]` | `limitationCodes: string[]` |
+| `highLevel` の cell | （現状なし） | （現状なし） |
+
+**matrix 側は既存契約の `CapabilityEvidence.limitations: string[]` をそのまま使い、
+中身をコードにする。** 新しい欄を作ると凍結済みの型と食い違う。
+assemble が生成する文字列（`observed <value> in <fixtureId>` など）は、
+`fixtureId` と cell 名と enum 値しか含まない（E4 の制約により fixtureId も安全な形になる）。
+
+**enum の全値**: 現行 27 種の散文に 1 対 1 で対応させる。対応表は実装時に
+`capability.schema.json` へ凍結し、fixture の散文と並べて確認できるようにする。
+コード名は「観測できなかったこと」を表す kebab-case にする
+（例: `stop-not-fired-on-sigint` / `session-end-reason-always-other` /
+`post-tool-use-absent-on-failure` / `failure-phase-not-directly-observable` /
+`headless-only-no-tty` / `subagent-internals-not-visible-to-parent`）。
+
 - 既存の散文 `limitations` は fixture 内に残す（repo 内の読み手向け）。**matrix へは出さない**
-- assemble が matrix へ書くのは `limitationCodes` と、assemble 自身が生成する文字列だけ。
-  生成側の文字列は fixture id・cell 名・enum 値しか含まないので自由文ではない
 - `scenario` も §5.1 のとおり `scenarioId` へ置き換えて matrix から外す
 
 **補助検査として部分文字列の照合を残す**
