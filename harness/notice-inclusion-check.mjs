@@ -194,4 +194,8 @@ function main() {
   console.log("third-party notice inclusion check OK");
 }
 
-if (import.meta.main) main();
+// `import.meta.main` に置き換えないこと。あれは Node 24.2 で入ったので、engines の `>=24` を
+// 満たす 24.0 / 24.1 では undefined になり、main() を一度も呼ばないまま exit 0 で終わる。
+// release preflight は setup-node を挟まず ambient node で走るため、そこで黙って素通りする——
+// ゲートが「検査した」と「検査しなかった」を区別できなくなる形で fail-open する。
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
