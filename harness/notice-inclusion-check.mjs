@@ -206,7 +206,14 @@ function buildAndPack(temporaryRoot, baseline) {
 function writeBaseline() {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "codemem-notices-"));
   try {
-    const current = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, "utf8")) : {};
+    // 存在確認してから読む形にしない（check-then-use になり、CodeQL の js/file-system-race に当たる）。
+    // 初回生成時は baseline がまだ無いので、読めなければ空で進める——build 前に消す対象が無いだけ。
+    let current = {};
+    try {
+      current = JSON.parse(readFileSync(baselinePath, "utf8"));
+    } catch {
+      current = {};
+    }
     const packed = buildAndPack(temporaryRoot, current);
     const baseline = {};
     for (const { spec, directory } of packed) {
