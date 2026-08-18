@@ -91,46 +91,16 @@ test("bot を名乗る author email でも署名があれば通す", () => {
 // ゲートの「形」は unit test が届かない層（workflow の trigger と job 名）で決まっているので、
 // そこが崩れたら落ちるものをここに 1 つ置く。security control ではなく、後から自分で壊さない
 // ための回帰検査。
-// YAML scalar のうち、この検査に効く綴りだけを外す: 引用符と、引用されていない行末コメント。
-function scalarValue(raw) {
-  const quoted = raw.match(/^(["'])(.*)\1/);
-  return quoted ? quoted[2] : raw.replace(/\s+#.*$/, "").trim();
-}
-
-// GitHub が required status check を照合する名前は job の `name`、無ければ job id。
-// どちらの綴りでも `dco` という check 名を作れるので、両方を数える。indent は 2 space に決め打ち
-// せず、最初の job から読み取る（YAML は 4 space でも valid で、それも同じ check 名を作る）。
-function checkNames(workflow) {
-  const names = [];
-  let inJobs = false;
-  let jobIndent = null;
-  let current = null;
-  for (const line of workflow.split("\n")) {
-    if (/^jobs:\s*$/.test(line)) {
-      inJobs = true;
-      continue;
-    }
-    if (!inJobs) continue;
-    const jobId = line.match(/^( +)([A-Za-z0-9_-]+):\s*$/);
-    if (jobId && (jobIndent === null || jobId[1].length === jobIndent)) {
-      jobIndent = jobId[1].length;
-      current = { name: jobId[2] };
-      names.push(current);
-      continue;
-    }
-    const jobName = line.match(/^( +)name:\s*(\S.*?)\s*$/);
-    if (jobName && current && jobName[1].length === jobIndent + 2) {
-      current.name = scalarValue(jobName[2]);
-    }
-  }
-  return names.map((job) => job.name);
-}
+//
+// GitHub が required status check を照合する名前は job の `name`、無ければ job id。どちらの
+// 綴りでも `dco` という check を作れるので両方拾う。indent は固定しない（4 space でも valid）。
+const DCO_CHECK_NAME = /^\s+(?:dco:|name:\s*["']?dco["']?)\s*(?:#.*)?$/m;
 
 test("dco check は 1 経路だけで、base branch 側から走る", () => {
   const workflowDir = fileURLToPath(new URL("../.github/workflows", import.meta.url));
   const declaring = readdirSync(workflowDir)
     .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
-    .filter((name) => checkNames(readFileSync(join(workflowDir, name), "utf8")).includes("dco"));
+    .filter((name) => DCO_CHECK_NAME.test(readFileSync(join(workflowDir, name), "utf8")));
 
   // 同名 check の生産者が 2 つあると、skip された側が成功として使われる。
   assert.deepEqual(declaring, ["dco.yml"]);
@@ -181,19 +151,10 @@ function repository(t) {
   return root;
 }
 
-function commitFile(root, name, message, { signOff = true } = {}) {
+function commitFile(root, name, message, { addSignOff = true } = {}) {
   writeFileSync(join(root, name), `${name}\n`);
   git(root, ["add", name]);
-  git(root, ["commit", "-q", ...(signOff ? ["-s"] : []), "-m", message]);
-}
-
-// `git commit -s` は trailer らしくない最終段落の後に空行を足してから sign-off を付ける。
-// agent や人が message 全体を書くときはその空行が入らず、`Refs #59` の直下に sign-off が並ぶ。
-// 落ちるのはこちらの形なので、テストはこちらを作る。
-function commitWithRawMessage(root, name, message) {
-  writeFileSync(join(root, name), `${name}\n`);
-  git(root, ["add", name]);
-  git(root, ["commit", "-q", "-m", message]);
+  git(root, ["commit", "-q", ...(addSignOff ? ["-s"] : []), "-m", message]);
 }
 
 test("実スクリプト: PR の commit が全部署名済みなら通る", (t) => {
@@ -202,11 +163,14 @@ test("実スクリプト: PR の commit が全部署名済みなら通る", (t) 
   const base = git(root, ["rev-parse", "HEAD"]);
   git(root, ["checkout", "-q", "-b", "feature"]);
   commitFile(root, "a.txt", "signed commit");
-  // この repo の慣習: 末尾段落に `Refs #59` と sign-off が空行なしで並ぶ
-  commitWithRawMessage(
+  // `git commit -s` は trailer らしくない最終段落の後に空行を足すので、この形にはならない。
+  // agent や人が message 全体を書くときにだけ `Refs #59` の直下に sign-off が並び、そちらが
+  // 落ちていた。message をそのまま渡して再現する。
+  commitFile(
     root,
     "b.txt",
     "refs style commit\n\nRefs #59\nSigned-off-by: Alice Example <alice@example.com>\n",
+    { addSignOff: false },
   );
 
   const result = run(root, [base, "HEAD"]);
@@ -220,7 +184,7 @@ test("実スクリプト: 未署名 commit が 1 件でもあれば落ちる", (
   const base = git(root, ["rev-parse", "HEAD"]);
   git(root, ["checkout", "-q", "-b", "feature"]);
   commitFile(root, "a.txt", "signed commit");
-  commitFile(root, "b.txt", "unsigned commit", { signOff: false });
+  commitFile(root, "b.txt", "unsigned commit", { addSignOff: false });
 
   const result = run(root, [base, "HEAD"]);
   assert.equal(result.status, 1);

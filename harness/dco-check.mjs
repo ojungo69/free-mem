@@ -114,7 +114,7 @@ async function main() {
 // 満たす 24.0 / 24.1 では undefined になり、同じく main() を呼ばない。
 //
 // どちらの取り違えも「検査した」と「検査しなかった」の区別を消す = ゲートとしては fail-open。
-export function isDirectInvocation(argv1, moduleUrl) {
+function isDirectInvocation(argv1, moduleUrl) {
   if (!argv1) return false;
   try {
     return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl));

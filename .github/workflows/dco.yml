@@ -1,16 +1,8 @@
-# DCO ゲートを CI 本体から分けて `pull_request_target` で走らせる。理由は 2 つある。
-#
-# 1. `pull_request` は workflow も checker も PR 側の tree から実行するため、未署名 commit を含む
-#    PR 自身が dco job を `if: false` にしたり checker を exit 0 に書き換えたりして緑を作れる。
-#    `pull_request_target` は workflow も checkout も base branch 側なので、PR は自分を検査する
-#    コードを変更できない。
-# 2. `dco` という check 名の生産者を 1 つに保つ。CI 本体は push でも起動するので、そちらに job を
-#    置くと push 実行時に skipped の `dco` が出る。GitHub は required status check を名前で照合し
-#    skipped を成功として扱うため、同名の生産者が 2 つあると「検査した」と「検査しなかった」の
-#    区別が消える。
-#
-# `pull_request_target` の危険は PR の内容を checkout して実行することにある。ここでは head を
-# git object として取得するだけで、checkout も実行もしない。secret は使わず token は read-only。
+# DCO ゲートを CI 本体から分けて `pull_request_target` で走らせる。workflow も checker も base
+# branch 側から読むため、PR は自分を検査するコードを変更できない。PR head は git object として
+# 取得するだけで checkout も実行もしない（`pull_request_target` の危険はそこにある）。
+# `dco` という check 名の生産者をここ 1 つに保つのも要件。理由と背景は CONTRIBUTING.md と
+# evidence/adr-004-licensing.md に書いてある。
 name: DCO
 
 on:
