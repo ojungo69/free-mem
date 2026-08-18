@@ -108,7 +108,7 @@ issue #20 の H0〜H3 を、この repo での作業単位へ落としたもの�
 | 1 | 正規化規則の凍結（H0） | spec.md / research.md / data-model.md / contracts | 実測に基づく規則が文書として確定している（**本 plan の時点で完了**） |
 | 2 | normalizer の実装（H0/H1） | `harness/evidence/normalize.mjs` + test | data-model.md §6 の M5〜M12 が kill される |
 | 3 | schema と型（H1） | `capability.ts` / `capability.schema.json` | M13 が kill される。continuity fixture が壊れない |
-| 4 | 昇格判定（H2） | `assemble.ts` の 3 箇所 | M1〜M4 が kill される |
+| 4 | 昇格判定と欄の退役（H2） | `assemble.ts` ほか。下の「`evidenceHash` の全参照」を全件処理 | M0〜M4 が kill される。`grep -rn evidenceHash harness/` の残りが意図した形だけになる |
 | 5 | 移行 backfill（H2） | fixture 8 件 + matrix 再生成 | 21 cell が昇格し、降格 0 件 |
 | 6 | rig の持ち込みと digest（H2） | `rig.sh` | capture が置き場へ byte 同一で入り、digest が出る |
 | 7 | provenance と退役（H3） | `matrix/README.md` ほか research.md R6 の 5 箇所 | 古い記述が残っていない。M14 が kill される |
@@ -128,6 +128,31 @@ issue #20 の H0〜H3 を、この repo での作業単位へ落としたもの�
 `assemble.ts:280`（capture cell）、`:349`（highLevel cell）、`:383`（prompt 対の再刻印）。
 `:383` は `pairFixture` の抽出条件が `f.evidenceHash` を見ているので、
 そこも `verified` を見る形へ変える。1 箇所でも残すと別識別子で同じ欠陥が生き残る。
+
+### `evidenceHash` の全参照を棚卸ししてから変える
+
+top-level の `fixture.evidenceHash` を廃止する以上、**それを読んでいる箇所すべて**が対象になる。
+昇格の 3 箇所だけを直すと、残りは廃止された欄を読み続けて黙って `undefined` になる。
+`grep -rn evidenceHash harness/` の 95 件は次の内訳（`matrix/*.json` の 44 件は再生成される出力）。
+
+| 箇所 | 現在の役割 | 扱い |
+|---|---|---|
+| `assemble.ts:125` | schema キーの正規表現検証ループに `evidenceHash` を含む | `evidence[]` の検証へ置き換える |
+| `assemble.ts:252` `improvesEvidence` | 同値の cell を「hash 付きの観測」で上書きしてよいかの判定 | `verified` を見る形へ。**廃止した欄を読むと常に false になり、証跡の優劣が黙って消える**（M0） |
+| `assemble.ts:275` / `:344` `hashed` | 昇格判定 | `verified` へ |
+| `assemble.ts:285-286` / `:354` / `:389` | `no evidenceHash:` caveat の付与と除去 | 文言を「再計算で裏付けられていない」意味へ改める |
+| `assemble.ts:288` / `:357` / `:386` | 出力 cell の `evidenceHash` 欄への書き込み | 再計算した digest を書く |
+| `assemble.ts:338` | highLevel の同値 tie-break スコアに `evidenceHash ? 1 : 0` | `verified ? 1 : 0` へ |
+| `assemble.ts:367` `pairFixture` | prompt 対を証明した fixture の抽出条件 | `verified` へ |
+| `assemble.ts:414` | **capability hash の入力**に `fixture:<id>@<evidenceHash>` を含む | 入力の形が変わる。hash は再生成が要る（`fixture-change-needs-hash-regen`）。入力の列挙が構造から導かれているかも合わせて確認する |
+| `assemble.ts:535` / `:588-758` | ファイル内の自己 test。`"a".repeat(64)` 等の作り物 hash で昇格を確認している | **意味を反転させる**。作り物 hash では昇格しないことを確認する形へ書き換える。コンパイルが通るだけの機械的置換にしない |
+| `continuity/fixture-validation.test.ts`（7 件） | fixture 検証の test | 同上 |
+| `continuity/capability-contract.test.ts`（5 件） | contract の test | 同上 |
+| `schema/capability.ts`（3 件） | 型定義とコメント | 型は `evidence[]` へ。コメント「raw transcript の SHA-256」は owner が不採用とした案なので書き換える |
+| `schema/capability.schema.json`（1 件） | top-level `evidenceHash` の定義 | 削除し `evidence` を追加 |
+
+test 群は「hash があれば `real-cli-e2e`」という**現在の仕様を encode している**。
+コンパイルを通すだけの置換では、古い仕様を守る test が残る。
 
 ### 証拠参照は配列
 

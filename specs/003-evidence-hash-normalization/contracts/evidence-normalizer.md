@@ -38,6 +38,9 @@ export function resolveEvidencePath(cli: string, relPath: string): string;
 `resolveEvidencePath` の置き場は `harness/fixtures/<cli>/raw/`。基点はモジュール自身の位置から
 解決する（呼び出し側の cwd に依存しない）。
 
+`cli` は既知の値（`"claude"` / `"codex"`）であることを関数内で確認してから path へ結合する。
+schema が上流で検証しているが、path の一部になる値の検査を呼び出し側任せにしない。
+
 ---
 
 ## CLI としての表面

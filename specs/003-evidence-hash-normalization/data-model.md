@@ -31,28 +31,36 @@ top-level の `at` は落とす。それ以外の top-level キーが現れた�
 | `null` | `null` |
 | boolean | そのまま |
 | number | `"<number>"` |
-| string、かつ `key` が verbatim キー | marker 置換を適用した文字列 |
+| string、かつ `key` が verbatim キーで**かつ深さ条件を満たす** | marker 置換を適用した文字列 |
 | string、かつ空文字列 | `"<string:empty>"` |
 | string、その他 | `"<string>"` |
 | array | 要素ごとに `normalizeValue(要素, undefined)`。**長さを保持する** |
 | object | キーを全保持し、キーごとに `normalizeValue(値, キー名)` |
 
-**verbatim キー（8 種）**
+**verbatim になる位置（深さで限定する。キー名だけでは決まらない）**
 
-`event` / `hook_event_name` / `tool_name` / `source` / `reason` / `permission_mode` /
-`agent_type` / `prompt`
+| 位置 | 対象 |
+|---|---|
+| top-level | `event` |
+| `payload` の**直下** | `hook_event_name` / `tool_name` / `source` / `reason` / `permission_mode` / `agent_type` / `prompt` |
 
-選定根拠は research.md R1/R2 の実測。この 8 種はどれも、
+**それより深い階層に同じ名前が現れても verbatim にしない。** 実測で
+`payload.tool_input.prompt`（2 件）と `payload.tool_response.prompt`（1 件）が存在し、
+これは Agent tool へモデルが組み立てた引数とその echo で、`description` と同じくモデルが書く
+自由文にあたる。キー名だけで一致させると `claude-subagent` の digest が再取得で不安定になる。
+
+選定根拠は research.md R1/R2 の実測。この 7 キー（+ top-level `event`）はどれも、
 (a) 同一 scenario の再取得で変わらず、(b) 値が違えば観測として別物になる。
 `prompt` を外すと許可拒否と成功実行が同一 digest になることを実測済み。
+
+`payload` 以外の top-level キー（現状は存在しない）は、出現しても全体を伏せ字側で処理する。
 
 **marker 置換**: verbatim キーの値に対してのみ、`RIG_INJECT_[A-Za-z0-9_]+` を
 `RIG_INJECT_<marker>` へ置換する。rig の呼び出し側が `INJECT_MARKER` で渡す値であり、
 run ごとに変わり得るため。
 
-**array の要素にキー名は渡さない。** 配列の中の文字列は常に伏せ字になる。
-配列要素にキー名相当の文脈は無く、渡す規則を作ると「N 番目の要素だけ verbatim」という
-位置依存の規則になって不安定。
+**配列の中は常に伏せ字。** 深さ条件により、配列要素とその中のオブジェクトはすべて
+伏せ字側で処理される。配列要素にキー名相当の文脈は無く、位置で verbatim を決める規則は不安定。
 
 ### 1.4 直列化
 
@@ -193,6 +201,7 @@ digest 自体は正規化抜粋のハッシュであり、原文を復元でき�
 
 | # | 変異 | 落ちるべき test |
 |---|---|---|
+| M0 | `improvesEvidence`（`assemble.ts:252` 付近の証跡優劣判定）を廃止した欄のまま残す | 証跡の優劣で cell が入れ替わる経路の test。廃止した欄を読むと常に false になり、優劣が黙って消える |
 | M1 | 昇格条件を `Boolean(fixture.evidence)` へ戻す（再計算しない） | 実在しない path を指す 64 桁 hex fixture が棄却されること |
 | M2 | digest 不一致を「失敗」から「`source-test` へ降格して続行」へ変える | 不一致 fixture で組み立てが失敗すること |
 | M3 | `normalizationVersion` の照合を消す | 未知の版を申告した fixture で失敗すること |
@@ -201,6 +210,7 @@ digest 自体は正規化抜粋のハッシュであり、原文を復元でき�
 | M6 | path 解決の realpath 前方一致を消す | 置き場内から外へ出る symlink が拒否されること |
 | M7 | 正規化の verbatim キーから `prompt` を落とす | `claude-tool-denied` と `claude-tool-ok` の digest が異なること |
 | M8 | 正規化で伏せ字にせず値を verbatim にする | 同一 scenario の再取得 `claude-interrupt3` / `claude-interrupt4` の digest が一致すること |
+| M8b | verbatim の判定を深さ無視のキー名一致へ変える | `payload.tool_input.prompt` だけが違う 2 記録の digest が一致すること（`claude-subagent` 系の再取得安定性） |
 | M9 | 正規化でキーを落とす（値が伏せ字なら欄ごと省く） | 欄の有無だけが違う 2 記録の digest が異なること |
 | M10 | 直列化のキー整列を消す | 同じ内容でキー順が違う 2 記録の digest が一致すること |
 | M11 | array の長さを保持しない（空配列と 1 要素配列を同一視） | 長さだけが違う 2 記録の digest が異なること |

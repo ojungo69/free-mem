@@ -49,6 +49,13 @@ committed fixture で `evidenceHash` を申告しているものは 0 件、現�
 唯一の例外は注入 scenario の `RIG_INJECT_<token>` で、これは rig の呼び出し側が `INJECT_MARKER`
 環境変数で渡す値（`harness/rig/rig.sh:65`）。
 
+**verbatim は位置で決まる。キー名だけでは決まらない。** 実測すると `prompt` は
+`payload` の直下（16 件）だけでなく `payload.tool_input.prompt`（2 件）と
+`payload.tool_response.prompt`（1 件）にも現れる。後者は Agent tool へモデルが組み立てた
+引数とその echo で、モデルが書く自由文にあたる。キー名だけで一致させると `claude-subagent` の
+digest が再取得で不安定になり、SC-003 を静かに破る。**verbatim にするのは top-level の `event` と
+`payload` 直下の 7 キーのみ**とし、それより深い同名キーは伏せ字にする。
+
 **Decision**:
 - 除外は「キー名を列挙して落とす」ではなく **「値を伏せ字に置き換え、キーは必ず残す」** とする。
   キーを落とすと、新しい欄が増えたり消えたりしたことが digest に現れなくなる（FR-010）。
@@ -69,8 +76,9 @@ committed fixture で `evidenceHash` を申告しているものは 0 件、現�
 ## R2. 提案規則を 16 件へ当てた結果（測定）
 
 規則: 各行を `{event, payload}` にし `at` を落とす / object はキーを全保持して codepoint 順に整列 /
-`null` と boolean は verbatim / number は `<number>` / string は上記 8 キーのみ verbatim（marker 置換あり）で
-それ以外は `<string>` か `<string:empty>` / array は要素ごとに再帰し長さを保持 / LF 区切りの NDJSON。
+`null` と boolean は verbatim / number は `<number>` / string は top-level `event` と `payload` 直下の
+7 キーのみ verbatim（marker 置換あり）でそれ以外は `<string>` か `<string:empty>` /
+array は要素ごとに再帰し長さを保持 / LF 区切りの NDJSON。
 
 結果は **16 件で 14 種の digest**。一致したのは 2 組だけ。
 
@@ -87,6 +95,10 @@ committed fixture で `evidenceHash` を申告しているものは 0 件、現�
 | `claude-inject` vs `claude-lifecycle-basic` | `44fd86a7…` vs `24a74e6c…` | 注入 scenario と最小 run を取り違えない |
 | `claude-tool-fail` vs `claude-tool-fail2` | `67d11705…` vs `bb2efa68…` | prompt が実際に違う（「the single command: false」と「exactly: false 」）ので別物として正しい |
 | `codex-tool-ok` vs `codex-tool-fail` | `49454289…` vs `94f87d4a…` | `tool_response` が非空文字列と空文字列で分かれる |
+
+**深さ条件を入れる前と後の差**: 変わったのは `claude-subagent` の digest 1 件だけ
+（`6da41456…` → `11ae2138…`）。distinct 14 種・衝突 2 組は変わらない。
+深い階層の `prompt` を伏せ字にしても、観測の区別能力は落ちていない。
 
 **`prompt` を verbatim から外した場合の測定**: 衝突が 5 組へ増え、`claude-tool-denied` と
 `claude-tool-ok` が同一 digest になった。許可拒否と成功実行の取り違えは substantive な誤りなので、
