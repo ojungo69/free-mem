@@ -1,0 +1,33 @@
+THIRD_PARTY_NOTICES.md
+  s_2d059b4f795bca::t_7f9d9d4ce7e13c 21,33,36-39,55-59,70-71,77-83,85,92-98,101-114
+evidence/adr-004-licensing.md
+  s_2d059b4f795bca::t_581c879cd255ad 57-58,62,65-66,152-158,167-178,180-186
+harness/notice-baseline.json
+  s_2d059b4f795bca::t_aa386d4eb740b5 4-5,11,20-66,68-70
+harness/notice-inclusion-check.mjs
+  s_2d059b4f795bca::t_fde67e2c1c20fa 45-49,71-72,74-77,83-84,90,120-129,228,231-236,240,246,264-274,290
+harness/notice-inclusion-check.test.mjs
+  s_2d059b4f795bca::t_457baaea3297e5 4,17,25-26,31-33,35-36,38-39,41-42,46-59,61-62,68-76,95,113-115,134-136,145,154,178,201,213-232,234-235,240-248,253,255,274-292
+vendor/codemem/packages/opencode-plugin/THIRD_PARTY_NOTICES.md
+  s_2d059b4f795bca::t_1cd6361cb9a58b 1-10
+vendor/codemem/packages/opencode-plugin/package.json
+  s_2d059b4f795bca::t_f041836bc332ae 16
+vendor/codemem/scripts/license-notice-plugin.mjs
+  s_2d059b4f795bca::t_48bcaea97d387b 60-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a0509b71069445ef98f1f85241e9d6b86c3c1355",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
