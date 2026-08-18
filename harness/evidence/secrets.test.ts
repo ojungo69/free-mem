@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { assertNoSecretSubstrings } from "../assemble.ts";
+import { collectSecretsOf } from "./verify.ts";
 
 const HARNESS = fileURLToPath(new URL("../", import.meta.url));
 const RAW = "claude-lifecycle-basic.jsonl";
@@ -17,6 +19,7 @@ const PROSE = "CANARY-PROSE-8f2b1c4d9e7a";
 const CWD = "CANARY-CWD-3a7e5b1f2d8c0114";
 const MSG = "CANARY-MSG-6d4c2a9f1b3e0227";
 const EVENT = "CANARY-EVENT-1e9b7d3f5a2c";
+const SCENARIO = "CANARY-SCENARIO-4b8e0c6a2f91";
 
 const node = (args: string[]) =>
   spawnSync(process.execPath, ["--experimental-strip-types", ...args], { encoding: "utf8" });
@@ -54,6 +57,7 @@ function plantedTree(): { tmp: string; rawPath: string } {
       ref.evidenceHash = evidenceHash;
       ref.captureRawHash = captureRawHash;
     }
+    fixture.scenario = `${fixture.scenario} ${SCENARIO}`;
     // (a) fixture の散文へ仕込む。散文は成果物へ出ず、対応する code だけが出る
     if (!prosePlanted && fixture.limitations?.length) {
       fixture.limitations[0] = `${fixture.limitations[0]} ${PROSE}`;
@@ -81,7 +85,7 @@ test("planted canaries never reach the matrix, stdout, or stderr", () => {
   const matrix = readFileSync(outFile, "utf8");
   // 仕込みが効いていることを先に見る（記録側に無ければ、この test は何も守らない）
   assert.match(readFileSync(join(tmp, "harness", "fixtures", "claude", "raw", RAW), "utf8"), new RegExp(CWD));
-  for (const [label, canary] of [["prose", PROSE], ["event", EVENT], ["cwd", CWD], ["message", MSG]] as const) {
+  for (const [label, canary] of [["prose", PROSE], ["event", EVENT], ["scenario", SCENARIO], ["cwd", CWD], ["message", MSG]] as const) {
     assert.ok(!matrix.includes(canary), `${label} canary が matrix に出た`);
     assert.ok(!run.stdout.includes(canary), `${label} canary が stdout に出た`);
     assert.ok(!run.stderr.includes(canary), `${label} canary が stderr に出た`);
@@ -100,5 +104,41 @@ test("failure messages carry neither capture contents nor absolute paths", () =>
   assert.match(said, /captureRawHash mismatch/);
   assert.match(said, new RegExp(RAW), "どの記録かは basename で言う");
   assert.ok(!said.includes(tmp), "失敗の説明に絶対 path が出た");
-  for (const canary of [PROSE, EVENT, CWD, MSG]) assert.ok(!said.includes(canary), "失敗の説明に記録の中身が出た");
+  for (const canary of [PROSE, EVENT, SCENARIO, CWD, MSG]) assert.ok(!said.includes(canary), "失敗の説明に記録の中身が出た");
+});
+
+// --- 警報そのものを直接見る ---
+// 正しい実装では秘密が成果物へ届く経路が無いので、上の canary test は警報を殺しても落ちない。
+// 警報は「他の防御が破れたとき最後に鳴るもの」なので、単体で鳴ることを別に確かめる。
+
+test("a 16+ char secret substring in a generated string fails the build", () => {
+  const secret = "0123456789abcdefghij";
+  assert.throws(() => assertNoSecretSubstrings({ cell: { note: `xx${secret.slice(0, 16)}yy` } }, [secret]), /16\+ character/);
+  // 15 文字までは通す。窓を縮めると偽陽性で正常な組み立てが落ちる
+  assert.doesNotThrow(() => assertNoSecretSubstrings({ cell: { note: `xx${secret.slice(0, 15)}yy` } }, [secret]));
+  assert.doesNotThrow(() => assertNoSecretSubstrings({ cell: { note: secret } }, []));
+});
+
+test("collectSecrets covers every secret-bearing field", () => {
+  const long = (tag: string) => `${tag}-0123456789abcdef`;
+  const line = {
+    event: "PreToolUse",
+    at: "2026-01-01T00:00:00.000Z",
+    payload: {
+      prompt: long("prompt"),
+      last_assistant_message: long("msg"),
+      cwd: long("cwd"),
+      transcript_path: long("transcript"),
+      agent_transcript_path: long("agent-transcript"),
+      tool_input: { command: long("command"), nested: [{ deep: long("deep-input") }] },
+      tool_response: { stdout: long("stdout") },
+      hook_event_name: long("not-a-secret"),
+    },
+  };
+  const found = collectSecretsOf(Buffer.from(`${JSON.stringify(line)}\n`, "utf8"));
+  for (const tag of ["prompt", "msg", "cwd", "transcript", "agent-transcript", "command", "deep-input", "stdout"]) {
+    assert.ok(found.has(long(tag)), `${tag} が警報の材料に入っていない`);
+  }
+  // 秘密でない欄まで材料にすると、正常な組み立てが偽陽性で落ちる
+  assert.ok(!found.has(long("not-a-secret")));
 });

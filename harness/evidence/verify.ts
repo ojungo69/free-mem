@@ -86,7 +86,7 @@ function reject(fixtureId: string, message: string): never {
 }
 
 /** 生の記録から秘密欄の文字列を拾う。正規化後には残らないのでここで取る */
-function collectSecretsOf(bytes: Uint8Array): Set<string> {
+export function collectSecretsOf(bytes: Uint8Array): Set<string> {
   const out = new Set<string>();
   for (const line of decodeUtf8(bytes, "capture").split("\n")) {
     if (line.trim() === "") continue;

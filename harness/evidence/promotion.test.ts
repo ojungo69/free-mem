@@ -6,9 +6,11 @@ import { join } from "node:path";
 import { assembleFromFixtures, validateFixture } from "../assemble.ts";
 import { NORMALIZATION_VERSION, digestRaw } from "./normalize.ts";
 import {
+  assembleWithRoot,
   codexLifecycle,
   fixtureBase,
   lifecycle,
+  newRoot,
   putEvidence,
   subagentRun,
   toolRun,
@@ -16,16 +18,10 @@ import {
 } from "./synthetic.ts";
 import type { CaptureFixture } from "../schema/capability.ts";
 
-const newRoot = (): string => mkdtempSync(join(tmpdir(), "evroot-"));
 const asFixture = (o: Record<string, unknown>): CaptureFixture => o as unknown as CaptureFixture;
 const AT = "2026-08-12T00:00:00.000Z";
 
-/** schema と手書き検証も通してから組み立てる（fixture だけ先に変える経路を作らない） */
-const assemble = (fixtures: Record<string, unknown>[], root: string) =>
-  assembleFromFixtures(
-    fixtures.map((f, i) => validateFixture(JSON.parse(JSON.stringify(f)), `f${i}.json`)),
-    { evidenceRoot: root },
-  );
+const assemble = assembleWithRoot;
 
 // --- positive control ---
 

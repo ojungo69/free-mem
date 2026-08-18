@@ -232,50 +232,50 @@ done
 | M1 | `harness/assemble.ts` 昇格条件 | `promotion.test.ts::nonexistent evidence path is rejected` | T015 |
 | M2 | `harness/assemble.ts` 不一致の扱い | `promotion.test.ts::digest mismatch fails the build` | T015 |
 | M3 | `harness/assemble.ts` 版の照合 | `promotion.test.ts::unknown normalization version fails the build` | T015 |
-| M4 | `harness/assemble.ts:383` | `promotion.test.ts::all three promotion sites require verification` | T018 |
-| M5 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::rejects .. in the relative path` | T007 |
-| M6 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::rejects a symlink escaping the evidence root` | T007 |
-| M7 | `harness/evidence/normalize.ts` verbatim 集合 | `normalize.test.ts::tool-denied and tool-ok digests differ` | T024 |
-| M8 | `harness/evidence/normalize.ts` 伏せ字 | `normalize.test.ts::interrupt3 and interrupt4 digests match` | T023 |
-| M8b | `harness/evidence/normalize.ts` verbatim の深さ | `normalize.test.ts::nested tool_input.prompt does not change the digest` | T006 |
-| M9 | `harness/evidence/normalize.ts` キー保持 | `normalize.test.ts::field presence changes the digest` | T005 |
-| M10 | `harness/evidence/normalize.ts` 直列化 | `normalize.test.ts::key order does not change the digest` | T006 |
-| M11 | `harness/evidence/normalize.ts` array | `normalize.test.ts::array length changes the digest` | T005 |
-| M12 | `harness/evidence/normalize.ts` 行数検査 | `normalize.test.ts::empty capture is rejected` | T006 |
+| M4 | `harness/assemble.ts` 昇格 3 経路 | `promotion.test.ts::all three promotion sites require verification` | T018 |
+| M5 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::相対 path の .. は棄却される` | T007 |
+| M6 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::置き場の外へ出る symlink は棄却される` | T007 |
+| M7 | `harness/evidence/normalize.ts` verbatim 集合 | `normalize.test.ts::投入した指示が違う 2 記録は別の digest になる` | T024 |
+| M8 | `harness/evidence/normalize.ts` 伏せ字 | `normalize.test.ts::同一 scenario の再取得は同じ digest になる` | T023 |
+| M8b | `harness/evidence/normalize.ts` verbatim の深さ | `normalize.test.ts::入れ子の tool_input.prompt が違っても digest は変わらない` | T006 |
+| M9 | `harness/evidence/normalize.ts` キー保持 | `normalize.test.ts::欄の有無は digest を変える` | T005 |
+| M10 | `harness/evidence/normalize.ts` 直列化 | `normalize.test.ts::キーの書き順は digest を変えない` | T006 |
+| M11 | `harness/evidence/normalize.ts` array | `normalize.test.ts::配列の長さは保たれる` | T005 |
+| M12 | `harness/evidence/normalize.ts` 行数検査 | `normalize.test.ts::空の観測記録は棄却される` | T006 |
 | M13 | `harness/schema/capability.schema.json` | `schema.test.ts::fixture with evidence is rejected when the schema lacks it` | T012 |
-| M14 | `harness/assemble.ts` 失敗メッセージ | `secrets.test.ts::failure messages contain no capture content or absolute path` | T030 |
+| M14 | `harness/assemble.ts` 失敗メッセージ | `secrets.test.ts::failure messages carry neither capture contents nor absolute paths` | T030 |
 | M15 | schema の `minItems` と assemble の非空検査 | `schema.test.ts::empty evidence array is rejected` + `promotion.test.ts::empty evidence array fails the build` | T012 / T015 |
-| M16 | `harness/evidence/normalize.ts` 相関 token | `normalize.test.ts::session id continuity changes the digest` | T006 |
-| M17 | `harness/evidence/normalize.ts` token の scope | `normalize.test.ts::token numbering is per file` | T006 |
-| M18 | `harness/assemble.ts` `sourceEvents` 検査 | `promotion.test.ts::claimed hook absent from the capture is rejected` | T016 |
-| M19 | `harness/assemble.ts:383` 対の拘束 | `promotion.test.ts::prompt pair requires a shared supporting ref` | T018 |
-| M20 | `harness/assemble.ts` manifest 照合 | `manifest.test.ts::each of the 11 manifest checks rejects when inverted` | T037 |
-| M21 | `harness/evidence/normalize.ts` 読み取り | `normalize.test.ts::duplicate keys are rejected` + `normalize.test.ts::invalid UTF-8 is rejected` | T006 |
-| M22 | `harness/evidence/normalize.ts` `unparsed` | `normalize.test.ts::a line with payload.unparsed is rejected` | T006 |
-| M23 | `harness/evidence/normalize.ts` 中間 object | `normalize.test.ts::__proto__ field presence is preserved` | T006 |
-| M24 | fixture backfill の `limitations` | `secrets.test.ts::real fixtures leak no raw secret values into artifacts` | T031 / T032 |
-| M25 | `harness/contract-hashes.json` | CI step `Contract hashes are regenerated`（`node harness/contract-hashes.mjs` との diff） | T040 |
-| M26 | `harness/assemble.ts` claim 導出 | `promotion.test.ts::claimed cell value the capture does not derive is rejected` | T016 |
+| M16 | `harness/evidence/normalize.ts` 相関 token | `normalize.test.ts::session 識別子が継続するかどうかは digest に現れる` | T006 |
+| M17 | `harness/evidence/normalize.ts` token の scope | `normalize.test.ts::token の番号はファイル単位で、id と path で別の空間を持つ` | T006 |
+| M18 | `harness/evidence/verify.ts` `sourceEvents` 検査 | `promotion.test.ts::claimed hook absent from the capture is rejected` | T016 |
+| M19 | `harness/assemble.ts` prompt 対の拘束 | `promotion.test.ts::prompt pair requires a shared supporting ref` | T018 |
+| M20 | `harness/evidence/verify.ts` manifest 照合表 | `manifest.test.ts::manifest captureHash that disagrees is rejected` | T037 |
+| M21 | `harness/evidence/normalize.ts` 読み取り | `normalize.test.ts::重複したキーを持つ行は棄却される` + `normalize.test.ts::不正な UTF-8 は棄却される` | T006 |
+| M22 | `harness/evidence/normalize.ts` `unparsed` | `normalize.test.ts::payload.unparsed を持つ行は棄却される` | T006 |
+| M23 | `harness/evidence/normalize.ts` 中間 object | `normalize.test.ts::__proto__ 欄の有無は保たれる` | T006 |
+| M24 | `harness/evidence/verify.ts` `SECRET_KEYS` | `secrets.test.ts::collectSecrets covers every secret-bearing field` | T029 |
+| M25 | `harness/contract-hashes.json` | custom: `node harness/contract-hashes.mjs` との diff | T040 |
+| M26 | `harness/evidence/verify.ts` claim 導出 | `promotion.test.ts::claimed cell value the capture does not derive is rejected` | T016 |
 | M27 | `harness/assemble.ts` 種別の判定 | `promotion.test.ts::underivable claims stay source-test` | T017 |
 | M28 | `harness/assemble.ts` manifest 要求 | `promotion.test.ts::legacy-only evidence stays source-test` | T017 |
-| M29 | `harness/assemble.ts` `captureRawHash` | `promotion.test.ts::normalization-collision swap is rejected by captureRawHash` | T015 |
-| M30 | `harness/evidence/normalize.ts` token 走査順 | `normalize.test.ts::key order does not change correlation tokens` | T006 |
-| M31 | `harness/evidence/normalize.ts` 公開 API | `normalize.test.ts::normalizeCapture takes bytes and rejects a string` | T006 |
-| M32 | `harness/assemble.ts:414` | `capability-contract.test.ts::capabilityHashInputs distinguish field boundaries` | T028 |
-| M33 | `harness/assemble.ts` 出力 | `secrets.test.ts::matrix carries scenarioId only, never the free-text scenario` | T027 |
-| M34 | `harness/assemble.ts` legacy ref | `promotion.test.ts::legacy ref still verifies captureRawHash` | T015 |
+| M29 | `harness/evidence/verify.ts` `captureRawHash` | `promotion.test.ts::normalization-collision swap is rejected by captureRawHash` | T015 |
+| M30 | `harness/evidence/normalize.ts` token 走査順 | `normalize.test.ts::キーの書き順は相関 token の番号も変えない` | T006 |
+| M31 | `harness/evidence/normalize.ts` 公開 API | `normalize.test.ts::normalizeCapture は byte 列を受け取り、string を拒否する` | T006 |
+| M32 | `harness/assemble.ts` `capabilityHashInputs` | `hash-inputs.test.ts::capabilityHashInputs stay three canonical blobs that react to every input` | T028 |
+| M33 | `harness/assemble.ts` 出力（自由文 `scenario`） | `secrets.test.ts::planted canaries never reach the matrix, stdout, or stderr` | T027 |
+| M34 | `harness/evidence/verify.ts` legacy ref | `promotion.test.ts::legacy ref still verifies captureRawHash` | T015 |
 | M35 | `harness/assemble.ts` `manifestBacked` の粒度 | `promotion.test.ts::mixed fixture does not promote legacy-backed cells` | T017 |
-| M36 | `harness/assemble.ts` 複数 ref の集約 | `promotion.test.ts::a claim is supported by any one ref (5-ref fixture)` | T016 |
-| M37 | `harness/assemble.ts` `turn_completed` 導出 | `promotion.test.ts::codex turn_completed derives as native` | T016 |
-| M38 | `harness/assemble.ts` `internalRunMarker` | `manifest.test.ts::internalRunMarker must be true, not merely equal` | T037 |
-| M39 | `harness/rig/rig.sh` `cliVersion` | `manifest.test.ts::cliVersion trailing newline is stripped canonically` | T035 |
+| M36 | `harness/evidence/verify.ts` 複数 ref の集約 | `promotion.test.ts::a claim is supported by any one ref (5-ref fixture)` | T016 |
+| M37 | `harness/evidence/verify.ts` `turn_completed` 導出 | `promotion.test.ts::codex turn_completed derives as native` | T016 |
+| M38 | `harness/evidence/verify.ts` `internalRunMarker` | `manifest.test.ts::manifest internalRunMarker must be true, not merely equal to the fixture` | T037 |
+| M39 | `harness/rig/import-evidence.mjs` `cliVersion` | `rig-manifest.test.mjs::a CLI that prints more than one version line is rejected` | T035 |
 | M40 | `harness/schema/capability.schema.json` manifest 対 | `schema.test.ts::manifest and manifestHash must appear together` | T012 |
-| M41 | `harness/assemble.ts` runtime 検査 | `secrets.test.ts::a 16+ char secret substring in a generated string fails the build` | T029 |
-| M42 | `harness/assemble.ts` `limitations` の転記 | `secrets.test.ts::prose limitations are not copied to the matrix (canary)` | T030 |
+| M41 | `harness/assemble.ts` 16-gram 警報 | `secrets.test.ts::a 16+ char secret substring in a generated string fails the build` | T029 |
+| M42 | `harness/assemble.ts` `limitations` の転記 | `secrets.test.ts::planted canaries never reach the matrix, stdout, or stderr` | T030 |
 | M43 | `harness/schema/capability.schema.json` `limitationCodes` | `schema.test.ts::unknown limitation code is rejected` | T012 |
 | M44 | `harness/schema/capability.schema.json` keyword | `schema.test.ts::capability schema uses only supported keywords` | T012 |
-| M45 | `harness/assemble.ts` `captureRawHash` 再計算 | `promotion.test.ts::raw byte change fails even when the normalized digest is unchanged` | T034 |
-| M46 | `harness/assemble.ts` `manifestHash` の照合位置 | `promotion.test.ts::corrupt manifest is rejected before parsing` | T015 |
+| M45 | `harness/evidence/verify.ts` `captureRawHash` 再計算 | `promotion.test.ts::raw byte change fails even when the normalized digest is unchanged` | T034 |
+| M46 | `harness/evidence/verify.ts` `manifestHash` の照合位置 | `promotion.test.ts::corrupt manifest is rejected before parsing` | T015 |
 | M47 | `harness/assemble.ts` 判定の順序 | `promotion.test.ts::underivable claim does not fail the build` | T017 |
 | M48 | `harness/evidence/normalize.ts` root 差し替え口 | `promotion.test.ts::synthetic manifest-backed fixture promotes end-to-end` | T014 / T022 |
 | M49 | `harness/assemble.ts` `runAssemble` | `promotion.test.ts::evidence root cannot be set from CLI args, fixture values, or env` | T022 |

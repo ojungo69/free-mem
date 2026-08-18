@@ -232,7 +232,7 @@ const SECRET_WINDOW = 16;
  * 参照した観測記録の秘密欄から取った 16 文字以上の部分文字列が成果物に現れたら失敗させる。
  * **一致した文字列そのものは診断に出さない**（出したら検査が漏洩経路になる）。
  */
-function assertNoSecretSubstrings(artifact: unknown, secrets: string[]): void {
+export function assertNoSecretSubstrings(artifact: unknown, secrets: string[]): void {
   if (secrets.length === 0) return;
   const windows = new Set<string>();
   for (const secret of secrets) {

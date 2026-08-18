@@ -6,8 +6,10 @@
  * 常に source-test を返す壊れた実装でも負例と移行結果は全部通ってしまうため、
  * positive control をここで組み立てる。
  */
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { assembleFromFixtures, validateFixture } from "../assemble.ts";
 import { digestCapture, digestRaw, NORMALIZATION_VERSION } from "./normalize.ts";
 import type { EvidenceRef } from "../schema/capability.ts";
 
@@ -154,3 +156,16 @@ export function fixtureBase(overrides: Record<string, unknown> = {}): Record<str
     ...overrides,
   };
 }
+
+/** test 用の空の証拠置き場 */
+export const newRoot = (): string => mkdtempSync(join(tmpdir(), "evroot-"));
+
+/**
+ * schema と手書き検証も通してから組み立てる。fixture だけ先に変える経路を作らない。
+ * 呼び手ごとに書くと、片方だけ validateFixture を飛ばした test が混ざる。
+ */
+export const assembleWithRoot = (fixtures: Record<string, unknown>[], root: string) =>
+  assembleFromFixtures(
+    fixtures.map((f, i) => validateFixture(JSON.parse(JSON.stringify(f)), `f${i}.json`)),
+    { evidenceRoot: root },
+  );

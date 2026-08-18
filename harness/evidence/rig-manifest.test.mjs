@@ -46,6 +46,8 @@ function rigRun() {
   const rawDir = join(tmp, "harness", "fixtures", "claude", "raw");
   return {
     tmp,
+    base,
+    sh,
     rawDir,
     ref: JSON.parse(imported.stdout),
     capture: join(base, "capture", `claude-${LABEL}.jsonl`),
@@ -118,4 +120,13 @@ test("a rig-produced manifest promotes the cell to real-cli-e2e", () => {
   }
   // 昇格した cell に「manifest が無い」の caveat が残らない
   assert.ok(!JSON.stringify(matrix.capabilities.capture).includes("no manifest-backed evidence"));
+});
+
+test("a CLI that prints more than one version line is rejected", () => {
+  const { base, sh } = rigRun();
+  // 複数行を返す CLI で黙って 1 行目を採ると、manifest の cliVersion が本当の版と食い違う
+  writeFileSync(join(base, "capture", `claude-${LABEL}.version`), "9.9.9-stub (Stub Code)\nwarning: update available\n");
+  const again = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(again.status, 0, "複数行の版で持ち込みが成功した");
+  assert.match(again.stderr, /more than one line/);
 });

@@ -1,16 +1,12 @@
 // manifest と fixture・観測記録の照合表（data-model.md §2.5）を 1 項目ずつ反転する。
 // 表の 1 行を落としても他の 10 行が通るので、まとめて 1 件の test にすると穴が見えない。
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import { assembleFromFixtures, validateFixture } from "../assemble.ts";
+import type { assembleFromFixtures } from "../assemble.ts";
 import type { CaptureFixture } from "../schema/capability.ts";
-import { fixtureBase, lifecycle, putEvidence } from "./synthetic.ts";
+import { assembleWithRoot, fixtureBase, lifecycle, newRoot, putEvidence } from "./synthetic.ts";
 
 const AT = "2026-08-12T00:00:00.000Z";
-const newRoot = (): string => mkdtempSync(join(tmpdir(), "manifest-"));
 
 /**
  * manifest 付きの証拠 1 件で組み立てる。`manifestOverrides` は manifest 側だけを、
@@ -28,7 +24,7 @@ function build(
     evidence: [ref],
     ...fixtureOverrides,
   });
-  return assembleFromFixtures([validateFixture(fixture, "f.json") as CaptureFixture], { evidenceRoot: root });
+  return assembleWithRoot([fixture], root);
 }
 
 test("an unmodified rig manifest promotes the cell", () => {
@@ -36,23 +32,24 @@ test("an unmodified rig manifest promotes the cell", () => {
   assert.equal(m.capabilities.capture.session_started?.evidenceKind, "real-cli-e2e");
 });
 
-// 表の 11 項目。どれか 1 つでも照合を落とすと、その行の test だけが通ってしまう
-const INVERSIONS: Array<[string, Record<string, unknown>, Record<string, unknown>?]> = [
-  ["manifestVersion", { manifestVersion: 2 }],
-  ["cli", { cli: "codex" }],
-  ["cliVersion", { cliVersion: "0.0.0-other" }],
-  ["scenarioId", { scenarioId: "other.scenario" }],
-  ["capture", { capture: "somewhere-else.jsonl" }],
-  ["captureRawHash", { captureRawHash: "b".repeat(64) }],
-  ["captureHash", { captureHash: "c".repeat(64) }],
-  ["normalizationVersion", { normalizationVersion: 2 }],
-  ["isolated", { isolated: false }],
-  ["recorderErrors", { recorderErrors: 1 }],
+// 表の 11 項目。どれか 1 つでも照合を落とすと、その行の test だけが通ってしまう。
+// test 名は literal で並べる（変異表との突き合わせが grep で効く形にするため）
+const INVERSIONS: Array<[string, string, Record<string, unknown>]> = [
+  ["manifest manifestVersion that disagrees is rejected", "manifestVersion", { manifestVersion: 2 }],
+  ["manifest cli that disagrees is rejected", "cli", { cli: "codex" }],
+  ["manifest cliVersion that disagrees is rejected", "cliVersion", { cliVersion: "0.0.0-other" }],
+  ["manifest scenarioId that disagrees is rejected", "scenarioId", { scenarioId: "other.scenario" }],
+  ["manifest capture that disagrees is rejected", "capture", { capture: "somewhere-else.jsonl" }],
+  ["manifest captureRawHash that disagrees is rejected", "captureRawHash", { captureRawHash: "b".repeat(64) }],
+  ["manifest captureHash that disagrees is rejected", "captureHash", { captureHash: "c".repeat(64) }],
+  ["manifest normalizationVersion that disagrees is rejected", "normalizationVersion", { normalizationVersion: 2 }],
+  ["manifest isolated that disagrees is rejected", "isolated", { isolated: false }],
+  ["manifest recorderErrors that disagrees is rejected", "recorderErrors", { recorderErrors: 1 }],
 ];
 
-for (const [name, manifestOverrides] of INVERSIONS) {
-  test(`manifest ${name} that disagrees is rejected`, () => {
-    assert.throws(() => build(manifestOverrides), new RegExp(`manifest ${name}`));
+for (const [testName, field, manifestOverrides] of INVERSIONS) {
+  test(testName, () => {
+    assert.throws(() => build(manifestOverrides), new RegExp(`manifest ${field}`));
   });
 }
 
