@@ -15,12 +15,25 @@ material-by-material breakdown are recorded in
 
 ## Sign your commits (DCO)
 
-Every commit must carry a `Signed-off-by:` line, which certifies that you have the right to submit
-the work under the project's license. Git adds it for you:
+Every non-exempt commit must carry a `Signed-off-by:` line, which certifies that you have the right
+to submit the work under the project's license. Git adds it for you:
 
 ```bash
 git commit -s -m "your message"
 ```
+
+The DCO CI job checks the commits in each pull request, from the merge base with the target branch
+through the pull request head. A commit passes when a `Signed-off-by: Name <email>` trailer matches
+its author or committer email (case-insensitively). Commits authored by the explicitly allowed
+Dependabot and GitHub Actions bot addresses are exempt; similar addresses are not.
+
+This repository squash-merges pull requests, so the generated commit on `main` does not retain each
+trailer. The sign-off record remains on the pull request commits, which can be reached from the
+squash commit's `(#N)` reference. Commits already on `main` before this check was introduced are
+grandfathered and are not checked retroactively.
+
+When Claude Code or Codex CLI creates a commit, include `git commit -s` in its instructions; agent
+commits are checked in the same way.
 
 The full text you are certifying is the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
 

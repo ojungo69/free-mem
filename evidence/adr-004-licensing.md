@@ -117,6 +117,12 @@ copyright 行と許諾文を同梱する）を満たさないので、`sync-hook
 - **fixture に実データを入れない**（実 credential・私的な memory 内容・ローカル固有パス）。既存の repo 規則と同じ。
 - license 確定前に来た外部 PR は、確定後に改めて DCO 付きで出し直してもらう。
 
+DCO の自動強制は issue #59 の変更（2026-08-18、`main` へ squash された commit）から開始する。CI が検査する
+集合は、PR の base と head の merge-base より後から head までの commit であり、開始時点までに
+`main` にある既存 history は遡って不合格にしない。author email が `dependabot[bot]@users.noreply.github.com`、
+`49699333+dependabot[bot]@users.noreply.github.com`、`github-actions[bot]@users.noreply.github.com`
+のいずれかと完全一致する bot commit だけを免除する。
+
 ## 配布面のチェック
 
 現時点で package / tag / release を作っていないため、ここは「作るときに満たすべき条件」として定義する。
@@ -207,8 +213,8 @@ license 付与は取り消せない。一度公開した version に対する gr
 ## 残る未決事項
 
 - release 前の専門家確認（本 ADR は法的助言の代替ではない）。
-- DCO は `CONTRIBUTING.md` と PR template に規定しているが、CI では強制していない。
-  外部 contribution を受け入れ始める時点で自動検査を入れるか判断する。
+- ~~DCO は文書に規定しているが CI では強制していない~~ → **2026-08-18 に解消**。
+  上の「inbound contribution 方針」の開始点・検査集合・免除を参照。
 - ~~公開 package の tarball に bundle された依存の notice が載らない（issue #50）~~ →
   **2026-08-18 に解消**。上の「bundle された依存の notice」節を参照。当初この項に書いていた実測
   （`codemem` が `@clack/prompts` ほかを bundle する / `@codemem/server` が `@hono/node-server` を
