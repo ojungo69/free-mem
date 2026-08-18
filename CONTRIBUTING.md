@@ -22,8 +22,9 @@ the work under the project's license. Git adds it for you:
 git commit -s -m "your message"
 ```
 
-The `dco` check runs on every pull request and checks the commits from the merge base with the target
-branch through the pull request head. A commit passes when a `Signed-off-by: Name <email>` trailer
+The `dco` check runs on every pull request targeting `main`, and checks the commits from the merge
+base with `main` through the pull request head. A pull request into some other branch is checked when
+its work reaches `main`. A commit passes when a `Signed-off-by: Name <email>` trailer
 matches its author or committer email (case-insensitively).
 
 There are no exemptions, including for bots. An author email alone is not proof of who made a commit

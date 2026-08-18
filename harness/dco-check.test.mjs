@@ -91,11 +91,35 @@ test("bot を名乗る author email でも署名があれば通す", () => {
 // ゲートの「形」は unit test が届かない層（workflow の trigger と job 名）で決まっているので、
 // そこが崩れたら落ちるものをここに 1 つ置く。security control ではなく、後から自分で壊さない
 // ための回帰検査。
+// GitHub が required status check を照合する名前は job の `name`、無ければ job id。
+// どちらの綴りでも `dco` という check 名を作れるので、両方を数える。
+function checkNames(workflow) {
+  const names = [];
+  let inJobs = false;
+  let current = null;
+  for (const line of workflow.split("\n")) {
+    if (/^jobs:\s*$/.test(line)) {
+      inJobs = true;
+      continue;
+    }
+    if (!inJobs) continue;
+    const jobId = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/);
+    if (jobId) {
+      current = { name: jobId[1] };
+      names.push(current);
+      continue;
+    }
+    const jobName = line.match(/^ {4}name:\s*(.+?)\s*$/);
+    if (jobName && current) current.name = jobName[1].replaceAll(/^["']|["']$/g, "");
+  }
+  return names.map((job) => job.name);
+}
+
 test("dco check は 1 経路だけで、base branch 側から走る", () => {
   const workflowDir = fileURLToPath(new URL("../.github/workflows", import.meta.url));
   const declaring = readdirSync(workflowDir)
     .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
-    .filter((name) => /^ {2}dco:$/m.test(readFileSync(join(workflowDir, name), "utf8")));
+    .filter((name) => checkNames(readFileSync(join(workflowDir, name), "utf8")).includes("dco"));
 
   // 同名 check の生産者が 2 つあると、skip された側が成功として使われる。
   assert.deepEqual(declaring, ["dco.yml"]);

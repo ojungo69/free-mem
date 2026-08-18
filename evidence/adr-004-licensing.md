@@ -117,9 +117,12 @@ copyright 行と許諾文を同梱する）を満たさないので、`sync-hook
 - **fixture に実データを入れない**（実 credential・私的な memory 内容・ローカル固有パス）。既存の repo 規則と同じ。
 - license 確定前に来た外部 PR は、確定後に改めて DCO 付きで出し直してもらう。
 
-DCO の自動強制は issue #59 の変更（2026-08-18、`main` へ squash された commit）から開始する。検査する
-集合は、PR の base と head の merge-base より後から head までの commit であり、開始時点までに
-`main` にある既存 history は遡って不合格にしない。
+DCO の**検査機構**は issue #59 の変更（2026-08-18、`main` へ squash された commit）から稼働する。
+検査する集合は、`main` を base とする PR の merge-base より後から head までの commit であり、
+稼働時点までに `main` にある既存 history は遡って不合格にしない。
+
+**merge を止める意味での「強制」の開始点は、まだこの日付ではない。** `dco` を required status check
+へ登録し、未署名 PR が実際に止まることを確認した日時と commit を、確認後にここへ記録する。
 
 強制の機構は `dco` という単一の check である。workflow（`.github/workflows/dco.yml`）も checker
 （`harness/dco-check.mjs`）も `main` 側から読み、PR の head は git history としてしか読まない。
