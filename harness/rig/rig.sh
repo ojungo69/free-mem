@@ -14,6 +14,7 @@
 #   rig.sh setup                     # RIG_BASE を作る (env RIG_BASE で場所指定可)
 #   rig.sh claude-run <label> <prompt> [claude 追加引数...]
 #   rig.sh codex-run  <label> <prompt> [codex exec 追加引数...]
+#   rig.sh import <cli> <label> <scenario-id>   # 証拠置き場へ持ち込み manifest を書く
 #   rig.sh teardown                  # RIG_BASE を完全削除 (資格情報コピー含む)
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,7 +69,7 @@ run_env() { # 最小環境で子 CLI を起動する共通部
 }
 
 claude_run() {
-  local label="$1" prompt="$2"; shift 2
+  local label="$1" prompt="$2" rc=0; shift 2
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/claude-$label.jsonl"
   : > "$capture"
@@ -77,13 +78,15 @@ claude_run() {
   ( cd "$RIG_BASE/workspace" && \
     run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
       --model haiku --output-format json --max-turns 4 "$@" \
-      > "$RIG_BASE/capture/claude-$label.stdout" 2> "$RIG_BASE/capture/claude-$label.stderr" ) || \
-    echo "exit=$? (recorded)" >> "$RIG_BASE/capture/claude-$label.stderr"
+      > "$RIG_BASE/capture/claude-$label.stdout" 2> "$RIG_BASE/capture/claude-$label.stderr" ) || rc=$?
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '%s\n' "$rc" > "$RIG_BASE/capture/claude-$label.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$RIG_BASE/capture/claude-$label.stderr"
   echo "captured: $capture ($(wc -l < "$capture") events)"
 }
 
 codex_run() {
-  local label="$1" prompt="$2"; shift 2
+  local label="$1" prompt="$2" rc=0; shift 2
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/codex-$label.jsonl"
   : > "$capture"
@@ -92,15 +95,26 @@ codex_run() {
   ( cd "$RIG_BASE/workspace" && \
     run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
       --dangerously-bypass-hook-trust "$@" "$prompt" \
-      > "$RIG_BASE/capture/codex-$label.stdout" 2> "$RIG_BASE/capture/codex-$label.stderr" ) || \
-    echo "exit=$? (recorded)" >> "$RIG_BASE/capture/codex-$label.stderr"
+      > "$RIG_BASE/capture/codex-$label.stdout" 2> "$RIG_BASE/capture/codex-$label.stderr" ) || rc=$?
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '%s\n' "$rc" > "$RIG_BASE/capture/codex-$label.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$RIG_BASE/capture/codex-$label.stderr"
   echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+# 証拠置き場へ byte 同一で持ち込んでから digest を取る。持ち込む前に取ると、
+# 持ち込みで内容が変わっても気づけない
+import_evidence() {
+  local cli="$1" label="$2" scenario="$3"
+  node --experimental-strip-types "$DIR/import-evidence.mjs" \
+    --cli "$cli" --label "$label" --scenario-id "$scenario" --from "$RIG_BASE/capture"
 }
 
 case "${1:-}" in
   setup) setup ;;
   claude-run) shift; claude_run "$@" ;;
   codex-run) shift; codex_run "$@" ;;
+  import) shift; import_evidence "$@" ;;
   teardown) rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
-  *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|teardown" >&2; exit 2 ;;
+  *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|import <cli> <label> <scenario-id>|teardown" >&2; exit 2 ;;
 esac

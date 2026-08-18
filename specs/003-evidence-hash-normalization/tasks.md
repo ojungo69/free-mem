@@ -182,10 +182,10 @@ grep -rn 'RIG_INJECT_5f3a9\|aa16b2026df287771' harness/matrix/ ; test $? -eq 1
 **Goal**: これ以降の取得では、rig が run の素性を manifest として書き、観測記録と一緒に証拠置き場へ
 byte 同一で持ち込む。既存 16 件は legacy のままで、この phase では昇格しない
 
-- [ ] T035 [US1] `harness/rig/rig.sh` を変更し、run ごとに manifest を 1 件書く（data-model.md §2.5 の 12 欄）。`cliVersion` は `.version` を UTF-8 の単一行として読み、末尾の CRLF か LF を 1 つだけ取り除く。複数行が返る CLI では失敗させる（黙って 1 行目を採らない）
-- [ ] T036 [US1] `harness/rig/rig.sh` に、観測記録と manifest を証拠置き場 `harness/fixtures/<cli>/raw/` へ **byte 同一で持ち込んでから** digest を出す工程を足す。持ち込み前に digest を出すと、持ち込みで内容が変わっても気づけない。digest は `harness/evidence/normalize.ts` の CLI から得る（`sha256sum` を別に呼ぶ二重実装にしない）
-- [ ] T037 [US1] `harness/evidence/manifest.test.ts` を新規作成し、§2.5 の照合表 11 項目を 1 つずつ反転する table-driven test を置く。`internalRunMarker` は「fixture と一致」ではなく「`true` であること」を見る（双方 `false` の組み合わせを棄却する）
-- [ ] T038 [US1] rig の manifest 生成部を stub CLI で起動できる形にし、`harness/evidence/rig-manifest.test.mjs` で「manifest が書かれる」「観測記録と manifest が置き場へ byte 同一で入る」を実 CLI 無しで検証する。CLI 実体を環境変数で受け取れない形なら、受け取れるようにしてから test を書く
+- [X] T035 [US1] `harness/rig/rig.sh` を変更し、run ごとに manifest を 1 件書く（data-model.md §2.5 の 12 欄）。`cliVersion` は `.version` を UTF-8 の単一行として読み、末尾の CRLF か LF を 1 つだけ取り除く。複数行が返る CLI では失敗させる（黙って 1 行目を採らない）
+- [X] T036 [US1] `harness/rig/rig.sh` に、観測記録と manifest を証拠置き場 `harness/fixtures/<cli>/raw/` へ **byte 同一で持ち込んでから** digest を出す工程を足す。持ち込み前に digest を出すと、持ち込みで内容が変わっても気づけない。digest は `harness/evidence/normalize.ts` の CLI から得る（`sha256sum` を別に呼ぶ二重実装にしない）
+- [X] T037 [US1] `harness/evidence/manifest.test.ts` を新規作成し、§2.5 の照合表 11 項目を 1 つずつ反転する table-driven test を置く。`internalRunMarker` は「fixture と一致」ではなく「`true` であること」を見る（双方 `false` の組み合わせを棄却する）
+- [X] T038 [US1] rig の manifest 生成部を stub CLI で起動できる形にし、`harness/evidence/rig-manifest.test.mjs` で「manifest が書かれる」「観測記録と manifest が置き場へ byte 同一で入る」を実 CLI 無しで検証する。CLI 実体を環境変数で受け取れない形なら、受け取れるようにしてから test を書く
 
 **完了条件**: `node --experimental-strip-types --test harness/evidence/*.test.ts` と `node --test harness/evidence/rig-manifest.test.mjs` が通る。実 CLI を要求する test を CI へ入れない
 
