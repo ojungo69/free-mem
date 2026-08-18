@@ -94,15 +94,15 @@ test("bot を名乗る author email でも署名があれば通す", () => {
 //
 // GitHub が required status check を照合する名前は job の `name`、無ければ job id。どちらの
 // 綴りでも `dco` という check を作れるので両方拾う。indent は固定しない（4 space でも valid）。
-const DCO_CHECK_NAME = /^\s+(?:["']?dco["']?:|name:\s*["']?dco["']?)\s*(?:#.*)?$/gm;
+const DCO_CHECK_NAME = /^\s+(?:["']?dco["']?\s*:|name\s*:\s*["']?dco["']?)\s*(?:#.*)?$/gm;
 // job 名を式で組み立てられると、静的には `dco` を作る job を数え切れない。保守的に拒否する。
-const DYNAMIC_JOB_NAME = /^\s+name:.*\$\{\{/gm;
+const DYNAMIC_JOB_NAME = /^\s+name\s*:.*\$\{\{/gm;
 
 // `  dco:` から、同じ indent の次の key までを 1 job の本文として切り出す。job を跨いだ検査は
 // 「checker はどこかにある」「skip 制御はどこにも無い」を別々に見てしまい、checker を別 job へ
 // 移して `dco` を空の job に差し替える変異を通す。
 function jobBlock(workflow, jobId) {
-  const header = workflow.match(new RegExp(`^( +)["']?${jobId}["']?:\\s*$`, "m"));
+  const header = workflow.match(new RegExp(`^( +)["']?${jobId}["']?\\s*:\\s*$`, "m"));
   if (header === null) return null;
   const from = header.index + header[0].length;
   const rest = workflow.slice(from);
@@ -130,24 +130,24 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
 
   const [, workflow] = workflows.find(([name]) => name === "dco.yml");
   // PR 側の tree から実行すると、PR が自分を検査する workflow と checker を書き換えられる。
-  assert.match(workflow, /^ +pull_request_target:$/m);
-  assert.doesNotMatch(workflow, /^ +pull_request:$/m);
+  assert.match(workflow, /^ +pull_request_target\s*:\s*$/m);
+  assert.doesNotMatch(workflow, /^ +pull_request\s*:\s*$/m);
   // retarget (edited) を落とすと、main へ向いた PR が検査されないまま残る。
-  assert.match(workflow, /types:.*edited/);
+  assert.match(workflow, /types\s*:.*edited/);
   // 取り消された run は required check を満たさないので、concurrency は merge を止めてしまう。
   // workflow 直下でも job の中でも同じなので、indent と引用符を許して両方を拒否する。
-  assert.doesNotMatch(workflow, /^\s*["']?concurrency["']?:/m);
+  assert.doesNotMatch(workflow, /^\s*["']?concurrency["']?\s*:/m);
 
   const dco = jobBlock(workflow, "dco");
   assert.ok(dco, "dco job が見つからない");
   // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
-  assert.doesNotMatch(dco, /^\s+["']?ref["']?:/m);
+  assert.doesNotMatch(dco, /^\s+["']?ref["']?\s*:/m);
   // job を skip させれば、検査せずに成功した check が出る。`needs` も同じで、依存先が失敗すると
   // この job は skip され、required check としては成功と同じ扱いになる。`defaults` / `shell` /
   // `working-directory` は run step の実行そのものを差し替えられる（`shell: "true {0}"` など）。
   assert.doesNotMatch(
     dco,
-    /^\s+["']?(?:if|continue-on-error|needs|defaults|shell|working-directory)["']?:/m,
+    /^\s+["']?(?:if|continue-on-error|needs|defaults|shell|working-directory)["']?\s*:/m,
   );
   // 行全体で固定する。`run: echo node harness/dco-check.mjs ...` でも部分一致は通ってしまう。
   assert.match(dco, /^ +run: node harness\/dco-check\.mjs "\$BASE_REF" "\$HEAD_REF"$/m);
