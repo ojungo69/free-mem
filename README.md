@@ -10,9 +10,10 @@ context compaction, crashes, and Agent switches. Its target is not only to retri
 related history, but to determine whether a previous task can be resumed safely in the
 current workspace.
 
-The initial supported continuity path is Claude Code and Codex. Broader Agent and MCP
-support is planned through thin, capability-tested adapters rather than client-specific
-copies of the memory store.
+The first continuity path targeted for Core 1.0 is Claude Code and Codex; neither is
+supported yet, because there is no release artifact. Broader Agent and MCP support is
+planned through thin, capability-tested adapters rather than client-specific copies of
+the memory store.
 
 ## Product hypothesis
 
@@ -122,7 +123,9 @@ blocking evidence includes:
 - fault injection with no data loss, duplicate commit, split brain, or Agent blockage;
 - deterministic same-Agent and Claude Code ↔ Codex continuation;
 - wrong-project/workspace resume and unsafe unknown-operation replay count of zero;
-- reproducible behavioral comparison against pinned public baselines;
+- a reproducible behavioral comparison report against pinned public baselines — the report
+  is required, while the pass/fail condition is #8's frozen claude-mem non-inferiority gate
+  plus whatever issue #79's manifest declares `releaseBlocking=true` in advance;
 - clean install, update, migration, rollback, doctor, backup/restore, and uninstall;
 - signed artifacts, checksums, SBOM, and documented support dispositions.
 

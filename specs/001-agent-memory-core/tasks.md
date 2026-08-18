@@ -205,7 +205,7 @@ runtime-neutral な schema / fixture / harness（Phase 3 preflight, issue #13）
 
 - [X] S0-1 Rust Local Core 再評価 ADR（ADR-001 は破棄せず、却下理由 L1–L3 に分解して hybrid での回避度を証拠化）→ `evidence/adr-003-rust-local-core.md`
 - [X] S0-2 Phase 1 の外部接触面を versioned contract として凍結 → `specs/001-agent-memory-core/contracts/{rpc,writer-boundary,spool-format,error-taxonomy}-v1.md`
-- [X] S0-3 Rust prototype の Go / No-Go 必須条件 G1–G7 と比較指標・測定条件を確定 → ADR-003「Go / No-Go gate」
+- [X] S0-3 Rust prototype の cutover 必須条件 G1–G7 と比較指標・測定条件を確定 → ADR-003「Cutover gate」
 - [ ] S0-4 Stage 1 narrow prototype（別 branch / worktree、`vendor/codemem` に触れない）→ 実測後に「Core 1.0 でどこまで cutover するか」を確定する。**採否そのものは ADR-005 で決着済み**（Rust を標準実行基盤とする方向で段階移行）。G1–G7 未達は言語選択の再考ではなく、default 切替の延期と TS reference の暫定継続を意味する → [`evidence/adr-005-rust-core-product-direction.md`](../../evidence/adr-005-rust-core-product-direction.md)
 
 ## Phase 2 — Canonical Identity / Event State Machine（着手時に詳細化）

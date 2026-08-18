@@ -19,7 +19,24 @@ Stage 1 narrow prototype の役割は、以後次のように再定義する。
 2. **Core 1.0 から Rust を default runtime にできるか**、または一部 cutover を後続 release へ分ける必要があるかを実測する。
 3. Rust 実装が既存の安全契約を満たさない場合は、切替時期・slice・実装方法を見直す。
 4. Rust という言語だけを理由に、G1–G7、migration、rollback、behavioral quality gateを免除しない。
-5. 戦略自体を撤回する場合は、ADR-003 の No-Go 記録だけではなく、代替 runtime が長期目標をより良く満たす証拠を伴う新しい owner ADR を要求する。
+5. 戦略自体を撤回する場合は、ADR-003 の defer 記録だけではなく、代替 runtime が長期目標をより良く満たす証拠を伴う新しい owner ADR を要求する。
+
+## この ADR が変えないもの
+
+要件・スキーマ・ゲートの基礎正本は `agent-memory-final-spec-v6.md`（v6.1）であり、優先関係は
+`specs/001-agent-memory-core/spec.md` の冒頭が定めている。本 ADR はその連鎖を書き換えない。したがって
+**この ADR だけでは Core 1.0 が何の上に出荷されるかは変わらない**:
+
+- v6.1 は Runtime を「TypeScript/Node 維持」とし、rewrite 条件（measured runtime bottleneck、
+  cross-platform packaging blocker、process instability、上流追従より rewrite が小さい）を列挙している
+- [ADR-001](adr-001-base.md) は Accepted のまま、Core 1.0 の実装ベースを codemem pinned vendor snapshot としている
+- `specs/001-agent-memory-core/plan.md` の Language/Version も TypeScript / Node のままである
+
+これらを書き換えないと、Core 1.0 の runtime authority が本 ADR と正本の 2 つになる。**正本が勝つ**。
+本 ADR が確定させたのは戦略目標と Stage 1 の役割であって、Core 1.0 の出荷基盤ではない。Rust が
+Core 1.0 の default になるのは、Stage 1 が pass に達し、かつ v6.1 §4.3 の手続きで v6.1 / spec.md /
+plan.md / ADR-001 を owner が明示的に改訂した後である。その改訂は
+[#84](https://github.com/ojungo69/free-mem/issues/84) で追跡する。
 
 ## 目標アーキテクチャ
 
@@ -183,7 +200,9 @@ Rustをdefault runtimeへ切り替える前に、最低限次を満たす。
 4. migration、rollback、再migrationを実証する。
 5. Linux / WSL / Windows native / macOSのsupport dispositionを実測する。
 6. Core実行時にNode / Python等を要求しないclean installを証明する。
-7. #8のbehavioral benchmarkでTS referenceおよび公開baselineに対する劣化がない。
+7. #8のbehavioral benchmarkを公開baselineに対して実行し、レポートを残す。合否を決めるのは
+   #8のfrozen claude-mem non-inferiority gateと、#79のmanifestで事前に`releaseBlocking=true`と
+   宣言された項目だけである（レポートの作成は必須、全baselineへの非劣性は合否条件ではない）。
 8. Rust runtime停止時にもAgent本体がfail-openする。
 9. signed artifacts、checksums、SBOM、ownership manifestを提供する。
 10. `doctor`からruntime、schema、DB、spool、adapter、migration状態を説明できる。

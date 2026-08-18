@@ -1,7 +1,9 @@
 # ADR-003: Local Core の Rust 段階移行を評価可能にする（#1 Stage 0）
 
-- Status: **Proposed**（判断条件の確定。採否そのものは [ADR-005](adr-005-rust-core-product-direction.md) が決着させた）
-- Superseded in part: 「Rust へ移行するか自体を Stage 1 で決める」という判断範囲は ADR-005 に置き換わった。本 ADR の contract freeze、G1–G7、比較指標、shadow / rollback 方針はそのまま有効
+- Status: **Accepted**（測定・cutover contract として。contract freeze、G1–G7、比較指標、shadow / rollback 方針は有効）
+- Superseded in part: 「Rust へ移行するか自体を Stage 1 で決める」という判断範囲だけが
+  [ADR-005](adr-005-rust-core-product-direction.md) に置き換わった。Stage 1 が判定するのは cutover の可否と時期であり、
+  この ADR が Rejected になる経路は無い
 - Date: 2026-08-16
 - Related: [ADR-001](adr-001-base.md)（実装ベース = codemem pinned vendor snapshot）、[phase-1-design.md](../specs/001-agent-memory-core/phase-1-design.md) ADR-002（peer auth = Unix DAC）、GitHub issue #1 / #8 / #13
 - Supersedes: なし。ADR-001 は破棄しない
@@ -14,7 +16,9 @@
    - [`writer-boundary-v1.md`](../specs/001-agent-memory-core/contracts/writer-boundary-v1.md) — sole-writer 不変条件
    - [`spool-format-v1.md`](../specs/001-agent-memory-core/contracts/spool-format-v1.md) — spool on-disk format
    - [`error-taxonomy-v1.md`](../specs/001-agent-memory-core/contracts/error-taxonomy-v1.md) — typed error と fail-open 契約
-3. Rust 移行の可否は **Stage 1 narrow prototype の実測**でのみ判断する。本 ADR では Go / No-Go の測定方法と閾値だけを固定する（後述）。
+3. Stage 1 narrow prototype の実測が決めるのは、**Core 1.0 でどこまで cutover するか**である。本 ADR では
+   その測定方法と閾値（G1–G7）だけを固定する（後述）。移行するか自体は [ADR-005](adr-005-rust-core-product-direction.md) で
+   決着しており、この ADR の実測結果はそれを覆さない。
 4. Stage 0 完了までは **Phase 2 以降の大規模 TS product 実装を増やさない**（issue #1 の制約）。runtime-neutral な schema / fixture / harness（Phase 3 preflight、issue #13）は並行して進めてよい。
 
 ## 背景 — ADR-001 が Rust を却下した理由の分解
@@ -45,13 +49,13 @@ Phase 1 の T041–T048 により、hook adapter・CLI・MCP server・viewer は
 
 ## 現行 TS 実装で観測された、移行判断に効く事実
 
-- **Local Core は現時点で Linux 専用**である（`assertSupportedStoragePlatform()` が linux 以外で throw する。`vendor/codemem/packages/core/src/storage-platform.ts:23-27`）。Windows / macOS 対応は TS 版でも未着手であり、「Rust なら Windows が動く」ではなく「どちらの実装でも新規作業」である点を Go / No-Go の比較で公平に扱う。
+- **Local Core は現時点で Linux 専用**である（`assertSupportedStoragePlatform()` が linux 以外で throw する。`vendor/codemem/packages/core/src/storage-platform.ts:23-27`）。Windows / macOS 対応は TS 版でも未着手であり、「Rust なら Windows が動く」ではなく「どちらの実装でも新規作業」である点を cutover の比較で公平に扱う。
 - **peer auth は暗号的な peer 認証ではなくファイルシステム DAC** である（0700 control dir + 0600 socket、`daemon-rpc.ts` の `mapPeerConnectError` は connect(2) の errno を typed error に写像するだけ）。Rust 側も同じ前提で実装すれば等価になる。ADR-002 の決定どおり。
 - **handshake は完全一致判定**で、`RPC_CAPABILITY_HASH` は RPC method 一覧の SHA-256 である。method の増減で hash が変わるため、Rust 実装は method 集合を 1 件でも変えると既存 client と handshake できない。これは互換性の強い保証であると同時に、Rust 側の自由度を狭める制約でもある。
 
-## Go / No-Go gate（Stage 1 完了時に判定）
+## Cutover gate（Stage 1 完了時に判定。旧称 Go / No-Go gate）
 
-### 必須条件（1 つでも欠けたら No-Go）
+### 必須条件（1 つでも欠けたら defer）
 
 | ID | 条件 | 測定方法 |
 |---|---|---|
@@ -61,9 +65,9 @@ Phase 1 の T041–T048 により、hook adapter・CLI・MCP server・viewer は
 | G4 | Windows を含む process lifecycle が TS 版以上に安定する | 同一の lifecycle シナリオを両実装で実行し、失敗数を比較。TS 版が Linux 専用である事実は「TS 版 = 未対応」として記録し、Rust 側の実測値のみで可否を見る |
 | G5 | clean install に Node / Python 等の Core 実行時依存を要求しない | 素の環境で配布物のみを install し、daemon 起動 → RPC 疎通まで到達すること |
 | G6 | DB migration と rollback を実証できる | Phase 1 の migration + online backup + restore journal 方式を Rust prototype で往復させ、canonical rows と manifest hash が一致すること |
-| G7 | 現 harness / golden matrix を再利用できる | `harness/` の fixture を改変せずに Rust prototype へ適用できること。改変が必要なら、その差分を No-Go 材料として記録する |
+| G7 | 現 harness / golden matrix を再利用できる | `harness/` の fixture を改変せずに Rust prototype へ適用できること。改変が必要なら、その差分を defer 材料として記録する |
 
-### 比較指標（数値は記録必須、単独では Go / No-Go を決めない）
+### 比較指標（数値は記録必須、単独では判定しない）
 
 cold start / warm start、idle RSS、event ingest p50 / p95 / p99、concurrent hook burst、forced-kill recovery time、spool replay throughput、DB migration / backup time、packaged artifact size、platform 別 failure count、実装行数とテスト行数の差分。
 
@@ -71,14 +75,19 @@ cold start / warm start、idle RSS、event ingest p50 / p95 / p99、concurrent h
 
 ### 判定規則
 
-- 必須条件 G1–G7 をすべて満たした場合のみ Go を検討できる。
-- 性能差が小さくても、**運用安定性・配布容易性・依存削減**のいずれかが明確に改善するなら Go としてよい（issue #1 の方針）。
-- Go の場合のみ Stage 2 以降を子 Issue に分割し、Phase 2 以降の roadmap を Rust 中心に再編する。
-- G1–G7 未達の場合、**言語選択を差し戻すのではなく**、Core 1.0 での default 切替を延期し TS reference を暫定継続する（ADR-005 の該当節）。この ADR を Rejected にはしない——採否の判断範囲は ADR-005 へ移っている。凍結した 4 contract は延期時も破棄しない（Phase 2 以降の adapter 追加と #8 parity benchmark に使う）。
+判定するのは cutover の可否と時期であり、言語の採否ではない。語も分ける: **pass**（Core 1.0 で
+default を Rust へ切り替えられる）と **defer**（切り替えを見送る）を使い、Go / No-Go とは呼ばない。
+
+- 必須条件 G1–G7 をすべて満たした場合のみ pass を検討できる。
+- 性能差が小さくても、**運用安定性・配布容易性・依存削減**のいずれかが明確に改善するなら pass としてよい（issue #1 の方針）。
+- pass の場合、Stage 2 以降を子 Issue に分割し、Phase 2 以降の roadmap を Rust 中心に再編する。
+- defer の場合、**言語選択を差し戻すのではなく**、Core 1.0 での default 切替を延期し TS reference を暫定継続する
+  （[ADR-005](adr-005-rust-core-product-direction.md)「Stage 1 の再定義」）。この ADR を Rejected にはしない。
+  凍結した 4 contract は defer 時も破棄しない（Phase 2 以降の adapter 追加と #8 parity benchmark に使う）。
 
 ## 帰結
 
-- Stage 0 完了 = 本 ADR + 4 contract 文書 + Go / No-Go 定義が揃った状態。これをもって Phase 2 の barrier を解除できる。
+- Stage 0 完了 = 本 ADR + 4 contract 文書 + cutover gate の定義が揃った状態。これをもって Phase 2 の barrier を解除できる。
 - Stage 1 の Rust prototype は独立した branch / worktree で行い、`vendor/codemem` の TS 実装には触れない。
 - contract 文書は「現状の記述」であり改善提案を含まない。実装のギャップは各文書の Known gaps に記録し、Rust 側が再現すべきか否かを明示する。
-- 別リポジトリでの `claude-mem-rs` 新規開発は、本 ADR が Accepted / Rejected として確定するまで開始しない。
+- 別リポジトリでの `claude-mem-rs` 新規開発は、Stage 1 が pass に達するまで開始しない。
