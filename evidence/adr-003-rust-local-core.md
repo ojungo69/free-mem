@@ -1,6 +1,7 @@
 # ADR-003: Local Core の Rust 段階移行を評価可能にする（#1 Stage 0）
 
-- Status: **Proposed**（採否は Stage 1 の Go / No-Go で確定。本 ADR は判断そのものではなく判断条件を確定する）
+- Status: **Proposed**（判断条件の確定。採否そのものは [ADR-005](adr-005-rust-core-product-direction.md) が決着させた）
+- Superseded in part: 「Rust へ移行するか自体を Stage 1 で決める」という判断範囲は ADR-005 に置き換わった。本 ADR の contract freeze、G1–G7、比較指標、shadow / rollback 方針はそのまま有効
 - Date: 2026-08-16
 - Related: [ADR-001](adr-001-base.md)（実装ベース = codemem pinned vendor snapshot）、[phase-1-design.md](../specs/001-agent-memory-core/phase-1-design.md) ADR-002（peer auth = Unix DAC）、GitHub issue #1 / #8 / #13
 - Supersedes: なし。ADR-001 は破棄しない
@@ -73,7 +74,7 @@ cold start / warm start、idle RSS、event ingest p50 / p95 / p99、concurrent h
 - 必須条件 G1–G7 をすべて満たした場合のみ Go を検討できる。
 - 性能差が小さくても、**運用安定性・配布容易性・依存削減**のいずれかが明確に改善するなら Go としてよい（issue #1 の方針）。
 - Go の場合のみ Stage 2 以降を子 Issue に分割し、Phase 2 以降の roadmap を Rust 中心に再編する。
-- No-Go の場合、本 ADR を Rejected に更新し、TS 版のまま Phase 2 を進める。凍結した 4 contract は No-Go でも破棄しない（Phase 2 以降の adapter 追加と #8 parity benchmark に使う）。
+- G1–G7 未達の場合、**言語選択を差し戻すのではなく**、Core 1.0 での default 切替を延期し TS reference を暫定継続する（ADR-005 の該当節）。この ADR を Rejected にはしない——採否の判断範囲は ADR-005 へ移っている。凍結した 4 contract は延期時も破棄しない（Phase 2 以降の adapter 追加と #8 parity benchmark に使う）。
 
 ## 帰結
 

@@ -174,6 +174,14 @@ These elements are individually comparable to ideas in other systems. The differ
 
 Issue #8 currently centers claude-mem. The benchmark must use role-specific direct baselines instead of one universal ranking.
 
+**This document does not move the release gate.** The canonical Core 1.0 criterion is SC-8 in
+`specs/001-agent-memory-core/spec.md`, restated in `resume-continuity-addendum-v6.2.md` §14: major public
+resume scenarios must meet #8's frozen claude-mem non-inferiority gate, or carry a reviewed exception ADR.
+That remains the only blocking baseline today. The table below is the target shape of the expanded
+benchmark; each row becomes blocking only when #8's frozen gate is extended to it, which is tracked in
+[#79](https://github.com/ojungo69/free-mem/issues/79). Treating these as blocking before that extension
+would leave two disagreeing authorities, and the canonical one would win.
+
 | Product quality | Required public baseline |
 |---|---|
 | automatic memory UX / progressive disclosure | claude-mem |
@@ -189,11 +197,23 @@ The following are free-mem release properties even when a competitor does not su
 
 - wrong-project or wrong-workspace automatic resume: **0**
 - automatic replay of an unknown unsafe operation: **0**
-- duplicate full-checkpoint delivery: **0**
+- concurrent active delivery attempts for one checkpoint on a single device: **0**
 - checkpoint accepted before engagement evidence: **0**
 - fabricated canonical work-state field: **0**
 - data loss / duplicate commit / split brain under required fault cases: **0**
 - Agent blockage caused by optional memory/provider failure: **0**
+
+The delivery gate is scoped deliberately, matching `agent-memory-final-spec-v6.md` §22.4 / §27.7. Two
+things that look like duplicate delivery are permitted by the contract and are not failures:
+
+- **A later attempt on the same checkpoint after the previous one ended.** `abandon` and lease expiry
+  clear the claim so the checkpoint becomes eligible again; re-claiming it is a required fixture
+  (`resume-continuity-addendum-v6.2.md` §6.1). What must never happen is two attempts holding the claim
+  at once — the CAS on `checkpoint id + revision + claimFence + destination session` is what enforces it.
+- **Cross-device duplication in local-first mode.** Delivery state is not synced, so two partitioned
+  devices can claim the same checkpoint; the spec calls this permitted behaviour and keeps both results
+  as fork lineage. Requiring zero there is a Personal Cloud decision with a server-authoritative claim
+  authority, not a Core 1.0 property.
 
 ### Comparative metrics
 
