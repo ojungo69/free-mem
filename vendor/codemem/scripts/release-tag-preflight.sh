@@ -18,6 +18,28 @@ NOTICE_REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 # 無いので、そのすべてをこの関数に集約する。
 finish_pass() {
 	node "${NOTICE_REPOSITORY_ROOT}/harness/notice-inclusion-check.mjs"
+
+	# ゲートは build を行う＝`plugins/{claude,codex}/scripts/` の複製を作業ツリー上で作り直す。
+	# HEAD 側が古い・欠けていてもここまでは通ってしまい、tag を打った source archive にだけ
+	# 古い notice が残る。CI の check job と同じ検査をここでも行う。列挙の正本は
+	# packages/cli/scripts/sync-hook-runtime.mjs の複製先。
+	#
+	# 作業ツリー全体ではなく対象 4 ファイルだけを見る。全体 clean の確認は下の local guard に
+	# あるが、release branch から抜ける経路はそこを通らないため、ここで全体を見ると
+	# 無関係な未コミット変更で落ちる。
+	local drift
+	drift="$(git -C "${NOTICE_REPOSITORY_ROOT}" status --porcelain --untracked-files=all -- \
+		vendor/codemem/plugins/claude/scripts/hook-runtime.mjs \
+		vendor/codemem/plugins/codex/scripts/hook-runtime.mjs \
+		vendor/codemem/plugins/claude/scripts/THIRD_PARTY_NOTICES.hook-runtime.md \
+		vendor/codemem/plugins/codex/scripts/THIRD_PARTY_NOTICES.hook-runtime.md)"
+	if [[ -n "${drift}" ]]; then
+		echo "Release tag preflight failed: committed hook-runtime copies do not match the build." >&2
+		echo "${drift}" >&2
+		echo "Run the build and commit the regenerated copies before tagging." >&2
+		exit 1
+	fi
+
 	echo "$1"
 	exit 0
 }

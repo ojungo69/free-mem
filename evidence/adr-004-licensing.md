@@ -96,8 +96,9 @@ prod の 261 件は 2026-08-16 と同一（増えた分はすべて build 時の
 copyright 行と許諾文を同梱する）を満たさないので、`sync-hook-runtime.mjs` が bundle と一緒に
 生成済みの `THIRD_PARTY_NOTICES.hook-runtime.md` を複製先へ置く。手書きではなく build 出力の
 複製なので、bundle の中身が変われば notice も追従する。commit 済みの複製が build 出力と
-一致していることは CI の `check` job が build 直後に検査する——runner 上で作り直せてしまう以上、
-HEAD 側が古いままでも他のゲートは全て通り、source archive にだけ誤りが残る。
+一致していることは CI の `check` job が build 直後に検査し、`release-tag-preflight.sh` も
+ゲートの直後に同じ検査を行う——runner や作業ツリー上では作り直せてしまう以上、HEAD 側が
+古いままでも他のゲートは全て通り、source archive にだけ誤りが残る。
 
 `vendor/codemem/` 配下のファイルに free-mem の header を付けない。分類の境界はディレクトリで判定できる状態を保つ。
 
