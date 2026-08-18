@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 
+import licenseNoticePlugin from "../../scripts/license-notice-plugin.mjs";
+
 export default defineConfig({
 	resolve: {
 		alias: {
@@ -25,6 +27,11 @@ export default defineConfig({
 				/^express(?:\/.*)?$/,
 				"zod",
 				"better-sqlite3",
+			],
+			plugins: [
+				licenseNoticePlugin({
+					outFile: resolve(import.meta.dirname, "dist/THIRD_PARTY_NOTICES.md"),
+				}),
 			],
 		},
 		outDir: "dist",

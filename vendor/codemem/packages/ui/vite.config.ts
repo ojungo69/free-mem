@@ -5,6 +5,8 @@ import preact from "@preact/preset-vite";
 import type { OutputChunk, OutputOptions } from "rollup";
 import { defineConfig } from "vitest/config";
 
+import licenseNoticePlugin from "../../scripts/license-notice-plugin.mjs";
+
 function isOutputChunk(value: unknown): value is OutputChunk {
 	return (
 		Boolean(value) &&
@@ -76,6 +78,15 @@ export default defineConfig(({ command, mode }) => {
 					},
 					sourcemap: mode === "development",
 					minify: "esbuild",
+					rollupOptions: {
+						// app.js はブラウザ向けなので依存を external に出せない。bundle した分の
+						// notice を app.js と同じ static/ に出し、@codemem/server の files で配布する。
+						plugins: [
+							licenseNoticePlugin({
+								outFile: resolve(__dirname, "../viewer-server/static/THIRD_PARTY_NOTICES.md"),
+							}),
+						],
+					},
 				},
 		plugins: [
 			preact(),

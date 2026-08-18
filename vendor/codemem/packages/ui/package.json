@@ -26,6 +26,7 @@
 	"devDependencies": {
 		"@preact/preset-vite": "^2.10.5",
 		"jsdom": "^27.4.0",
+		"rollup-plugin-license": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:"
 	}

@@ -4,6 +4,45 @@ set -euo pipefail
 EXPECTED_BRANCH="${RELEASE_EXPECTED_BRANCH:-main}"
 MAIN_REF="origin/${EXPECTED_BRANCH}"
 TARGET_COMMIT="${RELEASE_TAG_COMMIT:-${GITHUB_SHA:-HEAD}}"
+# ゲートは vendor snapshot の外（free-mem 側の harness/）にある。snapshot 単体を repository
+# root として取り出した木では解決できず node がそこで失敗するが、それが正しい: 見つからないから
+# といって検査を飛ばせば、このゲートが塞いでいる素通り経路が復活する。VENDOR.md のとおり
+# snapshot は free-mem の中でだけ使う前提なので、この参照は満たされる。
+NOTICE_REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+# CI を経ない手動 publish でも、実際の tarball に notice が無ければ tag を打たせない。
+#
+# 呼ぶのは tag の到達性が確定した後だけにする。ゲートは install と build を行う＝候補 commit の
+# build script を実行するので、判定より先に走らせると、release workflow の preflight job
+# (contents: write) の中で未検証のコードが動くことになる。成功で抜ける経路は下の 3 箇所しか
+# 無いので、そのすべてをこの関数に集約する。
+finish_pass() {
+	node "${NOTICE_REPOSITORY_ROOT}/harness/notice-inclusion-check.mjs"
+
+	# ゲートは build を行う＝`plugins/{claude,codex}/scripts/` の複製を作業ツリー上で作り直す。
+	# HEAD 側が古い・欠けていてもここまでは通ってしまい、tag を打った source archive にだけ
+	# 古い notice が残る。CI の check job と同じ検査をここでも行う。列挙の正本は
+	# packages/cli/scripts/sync-hook-runtime.mjs の複製先。
+	#
+	# 作業ツリー全体ではなく対象 4 ファイルだけを見る。全体 clean の確認は下の local guard に
+	# あるが、release branch から抜ける経路はそこを通らないため、ここで全体を見ると
+	# 無関係な未コミット変更で落ちる。
+	local drift
+	drift="$(git -C "${NOTICE_REPOSITORY_ROOT}" status --porcelain --untracked-files=all -- \
+		vendor/codemem/plugins/claude/scripts/hook-runtime.mjs \
+		vendor/codemem/plugins/codex/scripts/hook-runtime.mjs \
+		vendor/codemem/plugins/claude/scripts/THIRD_PARTY_NOTICES.hook-runtime.md \
+		vendor/codemem/plugins/codex/scripts/THIRD_PARTY_NOTICES.hook-runtime.md)"
+	if [[ -n "${drift}" ]]; then
+		echo "Release tag preflight failed: committed hook-runtime copies do not match the build." >&2
+		echo "${drift}" >&2
+		echo "Run the build and commit the regenerated copies before tagging." >&2
+		exit 1
+	fi
+
+	echo "$1"
+	exit 0
+}
 
 git fetch origin "${EXPECTED_BRANCH}" --quiet
 git fetch origin 'refs/heads/release/*:refs/remotes/origin/release/*' --quiet || true
@@ -43,12 +82,10 @@ if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
 		exit 1
 	fi
 	if [[ "${qualified_branch}" == "${EXPECTED_BRANCH}" && "${tag_commit}" != "${main_commit}" ]]; then
-		echo "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
-		exit 0
+		finish_pass "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
 	fi
 	if [[ "${qualified_branch}" != "${EXPECTED_BRANCH}" ]]; then
-		echo "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
-		exit 0
+		finish_pass "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch}."
 	fi
 	if [[ "${tag_commit}" != "${main_commit}" ]]; then
 		echo "Release tag preflight failed: local tag target is not origin/${EXPECTED_BRANCH} HEAD." >&2
@@ -80,4 +117,4 @@ if [[ -z "${GITHUB_ACTIONS:-}" && "${RELEASE_SKIP_LOCAL_GUARDS:-0}" != "1" ]]; t
 	fi
 fi
 
-echo "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch:-${EXPECTED_BRANCH}}."
+finish_pass "Release tag preflight passed for commit ${tag_commit} on ${qualified_branch:-${EXPECTED_BRANCH}}."

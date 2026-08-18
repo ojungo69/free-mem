@@ -13,11 +13,13 @@
 		"index.js",
 		"README.md",
 		"LICENSE",
+		"THIRD_PARTY_NOTICES.md",
 		".opencode/package.json",
 		".opencode/plugins/",
 		".opencode/lib/"
 	],
 	"scripts": {
+		"prepublishOnly": "node ../../../../harness/notice-inclusion-check.mjs",
 		"test:packed-artifact": "node ./scripts/packed-artifact-smoke.mjs"
 	},
 	"dependencies": {
