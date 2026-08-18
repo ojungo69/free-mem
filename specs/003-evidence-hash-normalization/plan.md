@@ -84,8 +84,10 @@ harness/
 │   └── normalize.test.ts       # 新規: 正規化と path 解決の test
 ├── assemble.ts                 # 変更: 3 箇所の昇格判定を再計算の一致へ
 ├── schema/
-│   ├── capability.ts           # 変更: evidence[] 追加 / top-level evidenceHash 廃止
-│   └── capability.schema.json  # 変更: 同上
+│   ├── capability.ts           # 変更: evidence[] / scenarioId / limitationCodes、top-level evidenceHash 廃止
+│   ├── capability.schema.json  # 変更: 同上。oneOf で manifest 対を表す（dependentRequired は validator 非対応）
+│   ├── evidence-manifest.schema.json  # 新規: RunManifest の closed schema
+│   └── capability.ts の RunManifest 型 # 新規: schema と 1 対 1 の型
 ├── fixtures/
 │   ├── claude/*.json           # 変更: evidence[] を埋める（5 件）
 │   ├── codex/*.json            # 変更: evidence[] を埋める（3 件）
@@ -118,12 +120,12 @@ issue #20 の H0〜H3 を、この repo での作業単位へ落としたもの�
 | 段 | 内容 | 対応 | 完了条件 |
 |---|---|---|---|
 | 1 | 正規化規則の凍結（H0） | spec.md / research.md / data-model.md / contracts | 実測に基づく規則が文書として確定している（**本 plan の時点で完了**） |
-| 2 | normalizer の実装（H0/H1） | `harness/evidence/normalize.ts` + test | data-model.md §6 の M5〜M12・M16・M17・M21〜M23・M30・M31 が kill される |
-| 3 | schema と型（H1） | `capability.ts` / `capability.schema.json` | M13・M15 が kill される。continuity fixture が壊れない |
+| 2 | normalizer の実装（H0/H1） | `harness/evidence/normalize.ts` + test | M5〜M12・M16・M17・M21〜M23・M30・M31・M48・M49 |
+| 3 | schema と型（H1） | `capability.ts` / `capability.schema.json` / `harness/schema/evidence-manifest.schema.json`（新規） | M13・M15・M40・M43・M44。continuity fixture が壊れない |
 | 4 | 昇格判定と欄の退役（H2） | `assemble.ts` ほか。下の「`evidenceHash` の全参照」を全件処理 | M0〜M4 が kill される。`grep -rn evidenceHash harness/` の残りが意図した形だけになる |
-| 5 | 移行 backfill（H2） | fixture 8 件（`evidence[]` / `scenarioId` / 自由文の無害化）+ matrix 再生成 | 昇格 0 件・降格 0 件。全 raw が digest で結び付き、差し替えると落ちる。M24・M33 が kill される |
-| 6 | rig の manifest と持ち込み（H2/H3） | `rig.sh` + manifest 形式 | manifest が書かれ、capture と一緒に置き場へ byte 同一で入る。M20 が kill される |
-| 7 | provenance と退役（H3） | `matrix/README.md` ほか research.md R6 の 5 箇所、`contract-hashes.json` 再生成 | 古い記述が残っていない。M14 / M24 / M25 が kill される |
+| 5 | 移行 backfill（H2） | fixture 8 件（`evidence[]` / `scenarioId` / `limitationCodes`）+ matrix 再生成 | 昇格 0 件・降格 0 件。全 raw が digest で結び付き、差し替えると落ちる。M24・M33・M42 |
+| 6 | rig の manifest と持ち込み（H2/H3） | `rig.sh` + `evidence-manifest.schema.json` | manifest が書かれ、capture と一緒に置き場へ byte 同一で入る。M20・M38・M39 |
+| 7 | provenance と退役（H3） | `matrix/README.md` ほか research.md R6 の 5 箇所、`contract-hashes.json` 再生成 | 古い記述が残っていない。M14・M25・M41 |
 
 段 2〜4 は先に失敗する test を書いてから実装する。段 5 は段 4 が通ってからでないと
 「昇格した」ことを確認できない。段 5 の backfill には fixture の `limitations` の無害化を含める
@@ -271,7 +273,7 @@ constitution III を既定で破る向きなので採らない。
 | 秘密 | matrix・stdout・stderr に raw の実値（`RIG_INJECT_5f3a9` 等）が現れない |
 | 方向拘束 | fixture だけ先に `evidence` を足した状態 → schema の未知キー拒否で落ちる |
 
-変異と kill 対応表は data-model.md §6（M1〜M14）。
+変異と kill 対応表は data-model.md §6（M0〜M49）。
 
 ## Complexity Tracking
 

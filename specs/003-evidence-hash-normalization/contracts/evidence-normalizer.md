@@ -37,7 +37,7 @@ export function digestRaw(bytes: Uint8Array): string;
  * @returns 解決済みの絶対 path
  * @throws 絶対 path / ".." を含む / 存在しない / 実体解決後に置き場の外
  */
-export function resolveEvidencePath(cli: string, relPath: string): string;
+export function resolveEvidencePath(cli: string, relPath: string, root?: string): string;
 ```
 
 `resolveEvidencePath` の置き場は `harness/fixtures/<cli>/raw/`。基点はモジュール自身の位置から
@@ -45,6 +45,10 @@ export function resolveEvidencePath(cli: string, relPath: string): string;
 
 `cli` は既知の値（`"claude"` / `"codex"`）であることを関数内で確認してから path へ結合する。
 schema が上流で検証しているが、path の一部になる値の検査を呼び出し側任せにしない。
+
+`root` は **test 専用の差し替え口**。省略時は module 位置から導いた
+`harness/fixtures/<cli>/raw/` を使う。production の CLI 経路は必ず省略する
+（fixture の値・引数・環境変数から root が動かないことを test で固定する）。
 
 ---
 

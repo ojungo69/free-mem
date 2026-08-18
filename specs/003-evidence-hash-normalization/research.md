@@ -227,9 +227,12 @@ rig は既に材料を出している。
 | 隔離設定 | `rig.sh` の `run_env`（`HOME` / `CLAUDE_CONFIG_DIR` / `CODEX_HOME` の差し替え） |
 
 **Decision**: rig が run ごとに manifest を 1 件書き、observation と一緒に置き場へ持ち込む。
-assemble は manifest の digest を照合し、`isolated !== true` / `recorderErrors > 0` /
-`captureHash` 不一致 / `cliVersion` と fixture の `nativeVersion` の不一致で失敗させる。
-形式は data-model.md §2.5。
+assemble は manifest の**生 byte**から digest を再計算して `ref.manifestHash` と照合し
+（parse の前に行う）、closed schema で検証したうえで §2.5 の照合表 **11 項目**を全件見る。
+`internalRunMarker` は fixture との一致ではなく `true` そのものを要求する
+（双方 `false` にすれば通ってしまうため）。`cliVersion` は `--version` の出力に末尾 LF が
+付く（実測）ので、末尾の CRLF か LF を 1 つだけ取り除いてから比較する。
+形式と照合表は data-model.md §2.5。
 
 `assemble.ts:402` のコメントが「§13 の manifest hash はまだ無い（Task 5 で入る）。
 入る場所はこの配列」と書いているとおり、`capabilityHashInputs` に入れる場所が既にある。
@@ -267,9 +270,19 @@ digest に混ぜてはいけない。
 fixture の `limitations` 自由文が matrix へ逐語転記されるため、normalizer を伏せ字にしても
 消えない。quickstart の `grep -r "RIG_INJECT_" harness/matrix/` は現時点で失敗する。
 
-**Decision**: backfill の際に 8 fixture の `limitations` から実値・token・識別子・絶対 path を
-取り除く。加えて、観測記録 16 件から実値を機械抽出して matrix・stdout・stderr に完全一致が
-無いことを検査する（自由文へ新しい実値が混ざったときに固定文字列の grep では捕まらないため）。
+**Decision**: **自由文を matrix へコピーしない**。部分文字列の照合は下限より短い秘密を
+原理的に取りこぼすので、取りこぼす検査を FR-015 の MUST の担保にはできない。
+
+- fixture へ `limitationCodes: string[]`（schema の closed enum）を新設し、matrix へはコードだけ出す
+- 散文 `limitations` は fixture 内に残す（repo 内の読み手向け）
+- 自由文の `scenario` も `scenarioId` へ置き換えて matrix から外す
+- 部分文字列の照合（参照 raw の秘密欄由来の 16 文字以上）は**設計が破れたときの警報**として残す。
+  信頼境界は「自由文を出さない」設計側
+- 漏洩 test は canary 方式。散文 `limitations` と raw の秘密欄の各経路へ仕込み、
+  子プロセスで組み立てて matrix・stdout・stderr に出ないことを見る
+
+現行の散文は 27 種で、`RIG_INJECT_5f3a9` や subagent の `agent_id`（`aa16b2026df287771`）を
+含んでいる。コード化は 1 対 1 の機械的な作業になる。
 
 ---
 

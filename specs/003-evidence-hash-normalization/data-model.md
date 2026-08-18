@@ -208,8 +208,12 @@ version-pin（`assemble.ts:207`）に引っかかる。これは別の変更に�
 
 - `properties.evidence` を追加。`type: "array"`、**`minItems: 1`**、`additionalProperties: false`
   - 要素の `required` は `path` / `evidenceHash` / `captureRawHash` / `normalizationVersion` の 4 つ
-  - `manifest` と `manifestHash` は **両方あるか両方無いか**（`dependentRequired` で相互に要求する）。
-    片方だけの ref は schema で弾く
+  - `manifest` と `manifestHash` は **両方あるか両方無いか**。`oneOf` で表す
+    （`{required: [manifest, manifestHash]}` / `{not: {anyOf: [...]}}` ではなく、
+    「両方 required」と「両方 `maxProperties` 側で現れない」の 2 択を `oneOf` で書く）。
+    **`dependentRequired` は使えない**: `harness/schema/validate.ts` の対応 keyword 表に無く、
+    `validate.ts:327` が `unsupported schema keyword` で throw する。
+    `oneOf` / `anyOf` / `allOf` / `if` / `then` / `else` は対応済み
 - `properties.scenarioId` を追加。`type: "string"`、`pattern: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"`。
   `required` に加える（すべての capture fixture が持つ。matrix へ出る唯一の識別子のため）
 - `properties.evidenceHash`（top-level）を削除
@@ -316,6 +320,12 @@ resolveEvidencePath(cli, relPath):
   8. candidate を読む
 ```
 
+**root の差し替え口**: `resolveEvidencePath` は module 位置から root を導くので、
+一時ディレクトリへ置いた synthetic な証拠を end-to-end で組み立てられない
+（positive control が成立しない）。内部関数へ **root を明示的に渡せる引数**を設け、
+production の CLI 経路は固定 root を渡す。fixture の値や環境変数から root を変えられない
+ことも test で固定する（差し替え口が production 入力から届いたら、置き場の制約が消える）。
+
 - 4 と 5 の両方で realpath を取る。root 側を解決しないと、root 自体が symlink のときに
   6 の前方一致が常に失敗する
 - 6 は「root で始まる」ではなく「root + 区切り で始まる」で判定する。
@@ -337,11 +347,17 @@ resolveEvidencePath(cli, relPath):
 evidence が無い          → この fixture の cell は real-cli-e2e にしない（source-test 止まり）
 evidence が空配列        → 失敗（空虚真の遮断）
 evidence がある          → 各 ref について:
-    normalizationVersion が harness の実装版と違う  → 失敗
-    path 解決が拒否された                            → 失敗
-    ファイルが読めない / 解釈できない                → 失敗
-    再計算した digest が ref.evidenceHash と違う     → 失敗
-    manifest がある場合は §2.5 の照合表を全件      → 1 つでも違えば失敗
+    normalizationVersion が harness の実装版と違う      → 失敗
+    path 解決が拒否された                                → 失敗
+    観測記録の byte が読めない                           → 失敗
+    digestRaw(captureBytes) !== ref.captureRawHash       → 失敗
+    normalizeCapture(captureBytes) が解釈できない        → 失敗
+    digestCapture(captureBytes) !== ref.evidenceHash     → 失敗
+    manifest がある場合:
+      manifest の byte が読めない                        → 失敗
+      digestRaw(manifestBytes) !== ref.manifestHash      → 失敗   ← parse の前に照合する
+      closed schema に合わない                           → 失敗
+      §2.5 の照合表 11 項目のいずれかが違う              → 失敗
   全 ref が通ったとき refVerified = true
 ```
 
@@ -357,14 +373,21 @@ evidence がある          → 各 ref について:
 
 **昇格は cell ごとに、その cell を支持する ref を見て決める**
 
+**判定の順序が効く。** 種別の判定を先に置く。
+
 ```
 cell ごと:
-  supporting = fixture の ref のうち、§4.3 の導出値が fixture の申告値と一致するもの
-  supporting が空                            → 失敗（申告を支持する記録が 1 件も無い）
-  主張が §4.3 で「導けない」種類              → source-test
-  supporting に manifest 付きの ref が無い    → source-test（legacy 証拠だけ）
-  それ以外                                    → real-cli-e2e。evidenceRefs には supporting を載せる
+  主張が §4.3 で「導けない」種類  → source-test（supporting は求めない）
+  導ける種類:
+    supporting = fixture の ref のうち、§4.3 の導出値が申告値と一致するもの
+    supporting が空                          → 失敗（申告を支持する記録が 1 件も無い）
+    supporting に manifest 付きの ref が無い  → source-test（legacy 証拠だけ）
+    それ以外                                  → real-cli-e2e。evidenceRefs に supporting を載せる
 ```
+
+順序を逆にすると（supporting を先に求めて空なら失敗）、導出値が存在しない「導けない」主張は
+supporting が必ず空になり、`sessionStartInjection` や `tool_failed` を持つ既存 fixture が
+`source-test` に留まらず**組み立て全体を失敗させる**。
 
 **fixture 単位の `manifestBacked` を使わない理由**: legacy ref A がその cell を支持し、
 同じ fixture に無関係な manifest 付き ref B があるとき、fixture 単位の boolean だと
@@ -423,7 +446,7 @@ interface VerifiedClaims {
 | `assistant_completed` = synthesized | `Stop` の payload に `last_assistant_message` **欄**が存在する（値は伏せ字でよい） | **導ける** |
 | `turn_completed`（Claude）= synthesized | `UserPromptSubmit` と `Stop` が同じ `prompt_id` token を共有し、`turn_id` 欄が無い | **導ける**（相関 token のおかげ） |
 | `turn_completed`（Codex）= native | `UserPromptSubmit` と `Stop` が同じ `turn_id` token を共有する | **導ける**。Codex fixture 3 件は実際に `native` を申告しており、Claude と同じ規則にすると全件落ちる |
-| `session_interrupted` | `Stop` が無く `SessionEnd` がある | **導ける** |
+| `session_interrupted` = synthesized | `Stop` が無く `SessionEnd` がある | **導ける** |
 | `subagentCapture` = native | `SubagentStop` が実在する | **導ける** |
 | `stableNativeSessionId` = native | 全 event の `session_id` が同じ token | **導ける**（相関 token のおかげ） |
 | `tool_failed` = native / `toolFailurePhasesObserved` | 失敗か成功かは `tool_response` の**中身**にしかない | **導けない** |
@@ -517,37 +540,38 @@ normalizer を伏せ字にしても直らない。
 
 対処:
 
-**手作業の無害化だけでは将来の経路を塞げない。** backfill で既存 8 fixture を直しても、
-次に自由文へ実値を書いた fixture は素通りする。組み立て時に機械的に弾く規則を置く。
+**自由文を matrix へコピーしない。** これが唯一の完全な閉じ方になる。
+部分文字列の照合は、下限より短い秘密（token の断片、短い prompt）を原理的に取りこぼす。
+取りこぼす検査を FR-015 の MUST の担保にはできない。
 
-**runtime 規則**: 成果物へ出す自由文は、その fixture が参照する観測記録の秘密欄
-（`prompt` / `last_assistant_message` / `cwd` / `transcript_path` / 入れ子の `tool_input`・
-`tool_response` の値）から取った **16 文字以上の部分文字列**を含んでいたら、組み立てを
-**失敗**させる。含んでいる箇所は理由コードと欄名まで示し、中身は出さない。
+**設計**
 
-16 文字という下限は、`OK` や `done` のような短い一般文字列の偽陽性を避けるため。
-下限より短い秘密は原理的に捕まらないので、これは「取りこぼしのある検査」であって
-信頼境界ではない。信頼境界は下の設計側にある。
+- fixture に `limitationCodes: string[]` を新設する。値は schema の closed enum
+  （`capability.schema.json` に列挙）。現行の 27 種の散文に 1 対 1 で対応するコードを作る
+  （例: `stop-not-fired-on-sigint`、`session-end-reason-always-other`、
+  `post-tool-use-absent-on-failure`、`failure-phase-not-directly-observable`）
+- 既存の散文 `limitations` は fixture 内に残す（repo 内の読み手向け）。**matrix へは出さない**
+- assemble が matrix へ書くのは `limitationCodes` と、assemble 自身が生成する文字列だけ。
+  生成側の文字列は fixture id・cell 名・enum 値しか含まないので自由文ではない
+- `scenario` も §5.1 のとおり `scenarioId` へ置き換えて matrix から外す
 
-**より強い形（将来）**: 公開用 limitations を固定コードか allowlist された構造にし、
-原文は fixture 内だけに残す。自由文を matrix へ一切コピーしない設計。
-本 issue では runtime 規則までにして、構造化は別 issue へ切り出す。
+**補助検査として部分文字列の照合を残す**
 
-- **成果物へ出る自由文をすべて対象にする。** `limitations`（fixture / event の両方）が対象。
-  `scenario` は §5.1 のとおり `scenarioId` へ置き換えて matrix から外す
-- backfill の際に 8 fixture の自由文から、実値・token・識別子・絶対 path を取り除く
-- 成果物へ出す path は置き場からの相対 path のみ（`claude-interrupt3.jsonl` のようなラベル）で、
-  `^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$` に制約する
+閉じ方は上の設計側にある。そのうえで、将来 assemble が新しい経路で文字列を出したときに
+気づけるよう、成果物へ出る全文字列を対象に、参照 raw の秘密欄（`prompt` /
+`last_assistant_message` / `cwd` / `transcript_path` / 入れ子の `tool_input`・`tool_response`）
+から取った 16 文字以上の部分文字列を含んだら組み立てを失敗させる。
+**これは信頼境界ではなく、設計が破れたときの警報。**
 
-**漏洩 test は canary で行う。** 既存 raw の実値を全部 grep する形は 2 つ問題がある。
-`OK` や `done` のような短い一般文字列は偽陽性を出し、逆に新しく混ざった実値は捕まらない。
+**漏洩 test は canary で行う**
 
-1. 一意な canary 文字列を、fixture の自由文・raw の `prompt` / `last_assistant_message` /
-   `cwd` / 入れ子の `tool_input` `tool_response` の各経路へ 1 つずつ仕込む
+1. 一意な canary 文字列を、fixture の散文 `limitations` と raw の秘密欄の各経路へ 1 つずつ仕込む
 2. 組み立てを子プロセスで走らせ、matrix・stdout・stderr のいずれにも canary が出ないことを見る
-3. 既存 raw に対する検査は、対象欄を明示し、最小長（16 文字以上）で絞る
+3. 散文 `limitations` へ入れた canary が出ないことが、「自由文を matrix へ出さない」の確認になる
 
----
+- backfill の際に 8 fixture へ `limitationCodes` を付ける
+- 成果物へ出す path は置き場からの相対 path のみで、
+  `^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$` に制約する
 
 ## 6. 先に決めた変異（実装が満たすべき kill 条件）
 
@@ -596,3 +620,11 @@ normalizer を伏せ字にしても直らない。
 | **M39** | `cliVersion` の末尾改行を取り除かない | 正当な manifest が `nativeVersion` と一致すること |
 | **M40** | schema の `manifest` / `manifestHash` を片方だけ必須にする | legacy fixture 8 件が通り、片方だけの ref が弾かれること |
 | **M41** | 自由文の runtime 検査を外す | 参照 raw の秘密欄由来の 16 文字以上を含む自由文が棄却されること |
+| **M42** | 散文 `limitations` を matrix へコピーする | 散文へ仕込んだ canary が matrix へ出ないこと |
+| **M43** | `limitationCodes` の enum を開いた文字列にする | enum 外のコードを持つ fixture が棄却されること |
+| **M44** | schema の `oneOf` を `dependentRequired` にする | fixture 検証が `unsupported schema keyword` で throw せずに走ること |
+| **M45** | `captureRawHash` の再計算を消す | 正規化が伏せる差だけを変えた記録が棄却されること |
+| **M46** | `manifestHash` の照合を parse の後に回す | 壊れた manifest を parse する前に棄却されること |
+| **M47** | 判定順を逆にして supporting を先に求める | 導けない主張を持つ既存 fixture が `source-test` に留まり、組み立てが失敗しないこと |
+| **M48** | evidence root を test から差し替えられなくする | positive control が end-to-end で走ること |
+| **M49** | production 入力から evidence root を変えられるようにする | fixture の値で root が動かないこと |
