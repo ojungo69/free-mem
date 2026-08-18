@@ -133,6 +133,8 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
   assert.doesNotMatch(workflow, /^ +pull_request:$/m);
   // retarget (edited) を落とすと、main へ向いた PR が検査されないまま残る。
   assert.match(workflow, /types:.*edited/);
+  // 取り消された run は required check を満たさないので、concurrency は merge を止めてしまう。
+  assert.doesNotMatch(workflow, /^concurrency:/m);
 
   const dco = jobBlock(workflow, "dco");
   assert.ok(dco, "dco job が見つからない");

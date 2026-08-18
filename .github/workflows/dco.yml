@@ -15,11 +15,11 @@ on:
 permissions:
   contents: read
 
-# edited は title / body の編集でも起動するので、放っておくと同じ PR に対する run が積み重なる。
-# required check は最後の結論で決まるため、古い run を取り消してもゲートは緩まない。
-concurrency:
-  group: dco-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# concurrency は置かない。required status check は同じ名前の check run を全件見るので、
+# 取り消された run が 1 つ残るだけで merge が止まる（PR #88 で実測: `dco` が
+# [success, cancelled] になり BLOCKED）。`cancel-in-progress: false` でも、3 つめが来たときに
+# 待機中の run が取り消されるので同じことが起きる。run が重複する分の CI 時間より、ゲートが
+# 理由の分からない BLOCKED を出さないことを優先する。
 
 jobs:
   dco:

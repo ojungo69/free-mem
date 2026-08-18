@@ -137,8 +137,6 @@ PR が自分を検査するコードを書き換えられないこと、およ�
 自由に名乗れるので、email 一致による免除は誰でも騙れる。免除が必要になった場合の拡張先は、email では
 なく GitHub が認証した actor login に紐付ける形である。
 
-required status check への登録と、未署名 PR が実際に落ちることの確認は issue #59 で追跡する。
-
 **同名 check による迂回は成立しない。** 「PR が自分の `ci.yml` に `name: dco` の job を足せば、
 trusted な `dco` と区別のつかない成功 check を作れるのではないか」という指摘があったので実測した
 （PR #86、2026-08-18）。
@@ -149,7 +147,12 @@ merge state は BLOCKED だった。偽 job を残したまま本物だけ直す
 `notices` である。
 
 つまり GitHub は required の名前を持つ check run を**全件**見ており、後から成功した同名 check が
-先の失敗を上書きすることはない。PR は base branch 側の `dco` を止められないので、未署名 PR に対する
+先の失敗を上書きすることはない。
+
+この性質は迂回を塞ぐ一方で、`dco` workflow に `concurrency` を置けないことも意味する。取り消された
+run は required check を満たさないので、run が 1 つ取り消されるだけで merge が止まる（PR #88 で
+`dco` が `[success, cancelled]` になり BLOCKED を実測した）。`cancel-in-progress: false` にしても、
+3 つめの run が来たときに待機中の run が取り消されるため同じことが起きる。PR は base branch 側の `dco` を止められないので、未署名 PR に対する
 その失敗は必ず残る。専用 App へ移して `integration_id` で source を固定する案は、この実測により
 不要と判断した。
 
@@ -243,9 +246,8 @@ license 付与は取り消せない。一度公開した version に対する gr
 ## 残る未決事項
 
 - release 前の専門家確認（本 ADR は法的助言の代替ではない）。
-- **DCO は文書に規定しているが CI では強制していない** → 2026-08-18 に検査機構が着地した
-  （上の「inbound contribution 方針」の開始点・検査集合・機構を参照）。ただし `dco` を
-  上の 3 つの開始条件を満たすまでは「強制している」とは書かない。issue #59 で追跡する。
+- ~~DCO は文書に規定しているが CI では強制していない（issue #59）~~ → **2026-08-18 に解消**。
+  上の「inbound contribution 方針」の開始点・検査集合・機構・同名 check の実測を参照。
 - ~~公開 package の tarball に bundle された依存の notice が載らない（issue #50）~~ →
   **2026-08-18 に解消**。上の「bundle された依存の notice」節を参照。当初この項に書いていた実測
   （`codemem` が `@clack/prompts` ほかを bundle する / `@codemem/server` が `@hono/node-server` を
@@ -271,4 +273,4 @@ license 付与は取り消せない。一度公開した version に対する gr
 
 - 第三者は Core 1.0 を明確な条件で利用・改変・再配布できる。
 - vendored codemem の MIT 表示と権利関係は分離されたまま維持される。
-- 上の残存経路を閉じ、`dco` を required status check へ登録した後は、外部 contribution が DCO を通り、provenance が PR に残る。
+- 外部 contribution は DCO を通り、provenance が PR に残る。
