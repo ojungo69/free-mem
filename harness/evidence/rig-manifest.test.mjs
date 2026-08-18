@@ -19,6 +19,8 @@ set -eu
 if [ "\${1:-}" = --version ]; then printf '%s\\n' '${VERSION}'; exit 0; fi
 # 前の run の終了コードが残ったまま今回の run が始まっていないか。run 中にしか観測できない
 if [ -e "$CAPTURE_FILE.exit" ]; then printf 'stale\\n' > "$CAPTURE_FILE.stale-exit"; fi
+# 資格情報が置かれるのは run の最中だけ（trap で消える）ので、ここでしか観測できない
+if [ -e "\${CLAUDE_CONFIG_DIR:-/nonexistent}/.credentials.json" ]; then printf 'staged\\n' > "$CAPTURE_FILE.staged-credential"; fi
 emit() { printf '{"event":"%s","at":"2026-01-01T00:00:00.000Z","payload":%s}\\n' "$1" "$2" >> "$CAPTURE_FILE"; }
 emit SessionStart '{"hook_event_name":"SessionStart","source":"startup","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
 emit UserPromptSubmit '{"hook_event_name":"UserPromptSubmit","prompt_id":"p-stub","prompt":"hello","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
@@ -35,7 +37,9 @@ function rigRun() {
 
   const rig = join(tmp, "harness", "rig", "rig.sh");
   const base = join(tmp, "rig-base");
-  const env = { ...process.env, RIG_BASE: base, CLAUDE_BIN: stub };
+  // HOME は差し替える。実 HOME のままだと rig が開発者の Claude 資格情報を
+  // 一時 rig へ複製する（trap で消えるが、SIGKILL で落ちれば残る）
+  const env = { ...process.env, HOME: join(tmp, "home"), RIG_BASE: base, CLAUDE_BIN: stub };
   const sh = (...args) => spawnSync("bash", [rig, ...args], { encoding: "utf8", env });
 
   const setup = sh("setup");
@@ -168,4 +172,13 @@ test("every run initialisation clears the previous exit status", () => {
     .filter((l) => l.includes(': > "$capture"'));
   assert.equal(lines.length, 2, "run 初期化の箇所数が変わった");
   for (const line of lines) assert.match(line, /rm -f [^\n]*\$capture\.exit/, line);
+});
+
+test("the rig stages no credential when the test runs", () => {
+  // run が終われば trap が消すので、外から見ても常に無い。stub に run 中を見させる
+  const { base } = rigRun();
+  assert.ok(
+    !existsSync(join(base, "capture", `claude-${LABEL}.jsonl.staged-credential`)),
+    "test の run が実 HOME の資格情報を一時 rig へ複製した",
+  );
 });

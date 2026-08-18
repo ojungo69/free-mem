@@ -15,7 +15,7 @@ import {
   type ObservedCapability,
   type ToolFailurePhase,
 } from "./schema/capability.ts";
-import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
+import { safeKey, validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
 import { canonicalizeJson, decodeUtf8, parseIJson, readIJsonFile } from "./schema/jcs.ts";
 import { NORMALIZATION_VERSION, digestCapture, digestRaw, isRealInstant } from "./evidence/normalize.ts";
 import {
@@ -104,7 +104,7 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
       if (typeof ev.kind !== "string") {
         errs.push(`observedEvents[${i}].kind must be string`);
       } else if (ev.kind !== "raw" && !EVENT_KIND_SET.has(ev.kind)) {
-        errs.push(`observedEvents[${i}].kind invalid: ${ev.kind}`);
+        errs.push(`observedEvents[${i}].kind is not one of the kinds capability.schema.json lists`);
       }
       if ("at" in ev && typeof ev.at !== "string") {
         errs.push(`observedEvents[${i}].at must be string if present`);
@@ -130,7 +130,7 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   } else {
     data.toolFailurePhasesObserved.forEach((p, i) => {
       if (typeof p !== "string" || !TOOL_FAILURE_PHASE_SET.has(p)) {
-        errs.push(`toolFailurePhasesObserved[${i}] invalid: ${String(p)}`);
+        errs.push(`toolFailurePhasesObserved[${i}] is not one of the phases capability.schema.json lists`);
       }
     });
   }
@@ -190,13 +190,13 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
 
   // JSON Schema と手書き検証の drift 防止: schema が知らないキーは弾く
   for (const k of Object.keys(data)) {
-    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key (capability.schema.json 未定義): ${k}`);
+    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key (capability.schema.json 未定義): ${safeKey(k)}`);
   }
   if (Array.isArray(data.observedEvents)) {
     for (const [i, ev] of data.observedEvents.entries()) {
       if (!isObject(ev)) continue;
       for (const k of Object.keys(ev)) {
-        if (!KNOWN_EVENT_KEYS.has(k)) errs.push(`observedEvents[${i}]: unknown key (schema 未定義): ${k}`);
+        if (!KNOWN_EVENT_KEYS.has(k)) errs.push(`observedEvents[${i}]: unknown key (schema 未定義): ${safeKey(k)}`);
       }
     }
   }
@@ -370,7 +370,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
   const promoteCell = (
     f: CaptureFixture,
     derivable: boolean,
-    derive: (r: VerifiedRef) => ObservedCapability | undefined,
+    derive: (r: VerifiedRef) => { value: ObservedCapability | undefined; sources: readonly string[] },
     declared: ObservedCapability,
     label: string,
     claimedEvents: readonly string[] = [],
@@ -381,15 +381,16 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
     }
     // fixture は複数の run の和集合を表す。どれか 1 件が同じ値を導けば成立する
     // （全 ref が全主張を支持することは要求しない。要求すると既存 fixture が全件落ちる）
-    const supporting = refs.filter((r) => derive(r) === declared);
+    const supporting = refs.filter((r) => derive(r).value === declared);
     if (supporting.length === 0) {
       throw new Error(`${f.fixtureId}: ${label} claims "${declared}" but no referenced capture derives it`);
     }
-    // 昇格の根拠は「値も導き、申告した hook 名も全部持つ」1 本であること。
-    // fixture 全体の和集合で足りるとすると、申告した hook が別の run にしか無い
-    // 組み合わせが real-cli-e2e として通る（和集合の検査は別に残してある）
+    // 昇格の根拠は「値を導き、申告した hook 名がその導出に**実際に使われた**」1 本であること。
+    // 「記録に在る」で足りるとすると、assistant_completed を SessionStart 由来と書くような
+    // 出どころの偽装が通る。fixture 全体の和集合で足りるとすると、申告した hook が別の run に
+    // しか無い組み合わせが通る（和集合の実在検査は別に残してある）
     const backed = supporting.filter(
-      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),
+      (r) => r.manifestBacked && claimedEvents.every((n) => derive(r).sources.includes(n)),
     );
     const chosen = backed.length > 0 ? backed : supporting;
     return {
@@ -443,7 +444,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       const promotion = promoteCell(
         f,
         DERIVABLE_CAPTURE_KINDS.has(kind),
-        (r) => r.capture[kind],
+        (r) => ({ value: r.capture[kind], sources: r.captureSources[kind] ?? [] }),
         evValue,
         kind,
         ev.sourceEvents ?? [],
@@ -542,7 +543,13 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
     const contradicted = obs.some((o) => o.value !== obs[0].value);
     const derivable = DERIVABLE_HIGH_LEVEL_KEYS.has(key);
     const promotionOf = (o: HighLevelObservation): Promotion =>
-      promoteCell(o.fixture, derivable, (r) => r.highLevel[key as DerivableHighLevelKey], o.value, key);
+      promoteCell(
+        o.fixture,
+        derivable,
+        (r) => ({ value: r.highLevel[key as DerivableHighLevelKey], sources: [] }),
+        o.value,
+        key,
+      );
     // 値は最も強い観測を採る。同強度なら裏付けのある方を優先する
     // （並び順で自己申告が実測の証跡を捨てるのを防ぐ）
     const rank = (o: HighLevelObservation): number =>
@@ -585,7 +592,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       promoteCell(
         f,
         DERIVABLE_HIGH_LEVEL_KEYS.has(key),
-        (r) => r.highLevel[key as DerivableHighLevelKey],
+        (r) => ({ value: r.highLevel[key as DerivableHighLevelKey], sources: [] }),
         "synthesized",
         key,
       ).evidenceRefs;
@@ -606,7 +613,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       const pairPromotion = promoteCell(
         pairFixture,
         DERIVABLE_HIGH_LEVEL_KEYS.has(key),
-        (r) => r.highLevel[key as DerivableHighLevelKey],
+        (r) => ({ value: r.highLevel[key as DerivableHighLevelKey], sources: [] }),
         "synthesized",
         key,
       );

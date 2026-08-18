@@ -8,8 +8,18 @@ description = "Synthetic credential shapes required by redaction tests."
 targetRules = ["generic-api-key", "gcp-api-key", "jwt"]
 paths = [
   '''^harness/phase1-no-agent-blockage\.mjs$''',
-  '''^harness/evidence/secrets\.test\.ts$''',
   '''^vendor/codemem/packages/cli/src/commands/hook-thin-client\.test\.ts$''',
   '''^vendor/codemem/packages/core/src/secret-scanner\.test\.ts$''',
   '''^vendor/codemem/packages/core/src/sync-replication\.test\.ts$''',
 ]
+
+# 除外は「ファイル」ではなく「その 1 件」に当てる。path だけで 3 ルールを外すと、
+# 本物の GCP key や JWT をこのファイルへ貼っても検出されなくなる。
+# 対象はこの branch の履歴に残る合成リテラル 1 つだけ（735eb90。現在の tree では
+# 変数名を変えたので鳴らない）。squash merge 後の main には載らないので、そこで消せる。
+[[allowlists]]
+description = "One synthetic 20-char literal left in this branch history."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^harness/evidence/secrets\.test\.ts$''']
+regexes = ['''^0123456789abcdefghij$''']

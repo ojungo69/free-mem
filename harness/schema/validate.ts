@@ -114,6 +114,13 @@ const KEYWORD_VALUE_KIND: Record<string, { name: string; check: (v: unknown) => 
 // スタックオーバーフローよりは十分小さい値
 const MAX_WALK_DEPTH = 200;
 
+/**
+ * 診断へ載せる key 名の形を縛る。**値は載せない**（棄却した値をそのまま返すと fixture の
+ * 中身が stderr 経由で CI ログへ出る）が、key 名は場所を特定するのに要る。改行での偽ログ行と
+ * 長い payload の同乗だけを潰す
+ */
+export const safeKey = (key: string): string => (/^[A-Za-z0-9_.:-]{1,64}$/.test(key) ? key : "<key redacted>");
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -538,7 +545,7 @@ function validateNode(
       if (own(props, k)) {
         issues.push(...validateNode(v, props[k], root, `${path}.${k}`, [], depth + 1));
       } else if (schema.additionalProperties === false) {
-        issues.push({ path, message: `unknown property: ${k}` });
+        issues.push({ path, message: `unknown property: ${safeKey(k)}` });
       } else if (schema.additionalProperties !== undefined) {
         issues.push(...validateNode(v, schema.additionalProperties, root, `${path}.${k}`, [], depth + 1));
       }

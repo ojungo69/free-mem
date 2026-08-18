@@ -24,12 +24,15 @@ SCHEMAV=harness/schema/validate.ts
 FIXTURE=harness/fixtures/claude/lifecycle-basic.json
 HASHES=harness/contract-hashes.json
 TASKS=specs/003-evidence-hash-normalization/tasks.md
+# 出荷 matrix。kill switch と drift 検査が「復号した値」で見ているかを確かめる
+MATRIX=harness/matrix/claude.json
 
-MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$SCHEMAV" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE")
+MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$SCHEMAV" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE" "$MATRIX")
 TESTS=(
   harness/evidence/hash-inputs.test.ts
   harness/evidence/killswitch.test.ts
   harness/evidence/manifest.test.ts
+  harness/evidence/matrix-drift.test.ts
   harness/evidence/normalize.test.ts
   harness/evidence/promotion.test.ts
   harness/evidence/schema.test.ts
@@ -51,8 +54,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 74:
-    bad.append(f"変異表の行が {len(table)} 件（74 件でない）")
+if len(table) != 79:
+    bad.append(f"変異表の行が {len(table)} 件（79 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -187,7 +190,7 @@ mutate $NORMALIZE '  const out = Object.create(null) as { [k: string]: JsonValue
   // 整列した後の順で走る' && run 'M23: 中間 object を素の {} で作る'
 mutate $VERIFY '  "cwd",
   "transcript_path",' '  "transcript_path",' && run 'M24: 警報の材料から cwd を外す'
-mutate $ASSEMBLE 'const supporting = refs.filter((r) => derive(r) === declared);' 'const supporting = refs.slice();' && run 'M26: 申告値と導出値の照合を外す'
+mutate $ASSEMBLE 'const supporting = refs.filter((r) => derive(r).value === declared);' 'const supporting = refs.slice();' && run 'M26: 申告値と導出値の照合を外す'
 mutate $ASSEMBLE '    if (!derivable || refs.length === 0) {' '    if (refs.length === 0) {' && run 'M27: 導けない主張にも導出を求める'
 mutate $ASSEMBLE 'evidenceKind: backed.length > 0 ? "real-cli-e2e" : "source-test",' 'evidenceKind: "real-cli-e2e",' && run 'M28: manifest 無しでも real-cli-e2e にする'
 mutate $VERIFY '    if (captureRawHash !== ref.captureRawHash) {' '    if (false) {' && run 'M29: captureRawHash の照合を外す'
@@ -206,10 +209,10 @@ mutate $VERIFY '    const captureRawHash = digestRaw(bytes);
     if (captureRawHash !== ref.captureRawHash) {' '    const captureRawHash = digestRaw(bytes);
     if (ref.manifest !== undefined && captureRawHash !== ref.captureRawHash) {' && run 'M34: legacy ref では生 byte を照合しない'
 mutate $ASSEMBLE '    const backed = supporting.filter(' '    const backed = refs.filter(' && run 'M35: 支持しない記録の manifest でも昇格させる'
-mutate $ASSEMBLE 'const supporting = refs.filter((r) => derive(r) === declared);' 'const supporting = refs.every((r) => derive(r) === declared) ? refs.slice() : [];' && run 'M36: 全 ref の一致を要求する'
+mutate $ASSEMBLE 'const supporting = refs.filter((r) => derive(r).value === declared);' 'const supporting = refs.every((r) => derive(r).value === declared) ? refs.slice() : [];' && run 'M36: 全 ref の一致を要求する'
 mutate $VERIFY '  if (cli === "codex") {
-    if (shares("turn_id")) capture.turn_completed = "native";' '  if (false) {
-    if (shares("turn_id")) capture.turn_completed = "native";' && run 'M37: Codex の turn 規則を捨てる'
+    if (shares("turn_id")) derived("turn_completed", "native", ["UserPromptSubmit", "Stop"]);' '  if (false) {
+    if (shares("turn_id")) derived("turn_completed", "native", ["UserPromptSubmit", "Stop"]);' && run 'M37: Codex の turn 規則を捨てる'
 mutate $VERIFY '["internalRunMarker", manifest.internalRunMarker === true],' '["internalRunMarker", manifest.internalRunMarker === f.rig.internalRunMarker],' && run 'M38: internalRunMarker を fixture との一致で見る'
 mutate $IMPORT 'die("the CLI printed more than one line for --version");' 'void 0;' && run 'M39: 複数行の CLI 版を黙って受け取る'
 mutate $SCHEMA '            "then": {
@@ -248,7 +251,7 @@ mutate $ASSEMBLE '    if (typeof value === "string" && !isRealInstant(value)) {'
 mutate $VERIFY '  if (sessionTokens.length >= 2 && new Set(sessionTokens).size === 1 && sessionTokens[0] !== undefined) {' '  if (new Set(sessionTokens.filter((t) => t !== undefined)).size === 1) {' && run 'M51: 欄の無い行を除いてから安定性を見る'
 mutate $VERIFY '    ["capturedAt", manifest.capturedAt === computed.capturedAt],' '    ["capturedAt", manifest.capturedAt === f.capturedAt],' && run 'M61: 記録の時刻を fixture 単位で縛る'
 mutate $VERIFY '    const capturedAt = captureCapturedAt(bytes);' '    const capturedAt = (ref as unknown as { capturedAt: string }).capturedAt ?? f.capturedAt;' && run 'M62: 時刻を記録から導かず申告から取る'
-mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' '      (r) => r.manifestBacked,' && run 'M63: 申告 hook 名を持たない記録で昇格させる'
+mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => derive(r).sources.includes(n)),' '      (r) => r.manifestBacked,' && run 'M63: 申告 hook 名を持たない記録で昇格させる'
 mutate $ASSEMBLE '        verifiedAt: promotion.verifiedAt ?? f.capturedAt,' '        verifiedAt: f.capturedAt,' && run 'M64: 公開する時刻を fixture の申告から取る'
 mutate $ASSEMBLE '    return x >= y ? a : b;' '    return a > b ? a : b;' && run 'M67: 遅いほうの判定を文字列比較へ戻す'
 mutate $NORMALIZE '  if (!isRealInstant(parsed.at)) fail(' '  if (false && !isRealInstant(parsed.at)) fail(' && run 'M68: 暦に無い日付を記録の時刻として通す'
@@ -262,6 +265,13 @@ mutate $RIG '  # run が SIGKILL で落ちると前回の成功が残り、途�
 mutate $RIG '  local capture="$RIG_BASE/capture/codex-$label.jsonl"
   : > "$capture"; rm -f "$capture.errors" "$capture.exit"' '  local capture="$RIG_BASE/capture/codex-$label.jsonl"
   : > "$capture"; rm -f "$capture.errors"' && run 'M72: codex の run で前回の終了コードを残す'
+mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => derive(r).sources.includes(n)),' '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' && run 'M73: 出どころを「記録に在る」だけで認める'
+mutate $ASSEMBLE '        errs.push(`observedEvents[${i}].kind is not one of the kinds capability.schema.json lists`);' '        errs.push(`observedEvents[${i}].kind invalid: ${ev.kind}`);' && run 'M74: 手書き検証が棄却した値を診断へ戻す'
+mutate $SCHEMAV '        issues.push({ path, message: `unknown property: ${safeKey(k)}` });' '        issues.push({ path, message: `unknown property: ${k}` });' && run 'M75: 未知 key 名を無検査で診断へ載せる'
+mutate $MATRIX '  "generatedAt"' '  "smuggled": "real-cli-\\u0065\\u0032e",
+  "generatedAt"' && run 'M76: 出荷 matrix の real-cli-e2e を escape で綴る'
+mutate $MATRIX '  "fixtureCount"' '  "cli": "smuggled",
+  "fixtureCount"' && run 'M77: 出荷 matrix へ重複キーを紛れ込ませる'
 mutate $FIXTURE '      "normalizationVersion": 1' '      "normalizationVersion": 1,
       "manifest": "anything.json",
       "manifestHash": "0000000000000000000000000000000000000000000000000000000000000000"' && run 'M66: 出荷 fixture から manifest を名指しする'

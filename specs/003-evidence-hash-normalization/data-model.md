@@ -183,7 +183,7 @@ interface EvidenceRef {
 
 再取得も同 PR では成立しない。claude CLI は現在 2.1.234 で、fixture の pin は 2.1.228。
 取り直すと 5 つの claude fixture すべての `nativeVersion` が変わり、
-version-pin（`assemble.ts:207`）に引っかかる。これは別の変更になる。
+version-pin（`assemble.ts` の `version-pin violation`）に引っかかる。これは別の変更になる。
 
 **Decision**: manifest を持たない ref を「legacy 証拠」として受け入れる。ただし
 
@@ -291,6 +291,7 @@ rig は run のたびに manifest を 1 件書き、証拠置き場へ observati
   "cli": "claude",                              // "claude" | "codex" の enum
   "cliVersion": "2.1.228 (Claude Code)",        // .version を単一行として読み末尾 LF を除いた値
   "scenarioId": "claude.lifecycle-basic",       // §5.3 の制約付き識別子。自由文ではない
+  "capturedAt": "2026-08-12T00:00:00.000Z",     // 観測記録の 1 行目の at。rig が別に持つ時刻ではない
   "isolated": true,                             // rig が書く。fixture の自己申告ではない
   "internalRunMarker": true,
   "exitStatus": 0,                              // 非負整数
@@ -312,6 +313,10 @@ rig は run のたびに manifest を 1 件書き、証拠置き場へ observati
 - `manifestVersion` が harness の実装版と違えば **失敗**（未知の版を推測で読まない）
 - `exitStatus` / `recorderErrors` は非負整数。負数・非整数・欠落はすべて失敗
 - `manifestHash` は **manifest ファイルの生 byte の SHA-256**。正規化は掛けない
+- `capturedAt` は取り込み側も検証側も `captureCapturedAt`（`normalize.ts`）1 本を通す。
+  綴りは schema の pattern が当てるが、暦に実在しない日付（`2026-02-30`）は pattern を
+  通るので、同じ関数の中で `isRealInstant` にも掛ける。ここを緩めると、公開する
+  `verifiedAt` に実在しない瞬間が載る
 
 **照合する項目（§4.1 の一覧に入る）**
 
@@ -321,6 +326,7 @@ rig は run のたびに manifest を 1 件書き、証拠置き場へ observati
 | `cli` | fixture の `cli` |
 | `cliVersion` | fixture の `nativeVersion`（下の canonical 規則を適用してから比較） |
 | `scenarioId` | fixture の `scenarioId`（§5.3 で fixture 側にも足す） |
+| `capturedAt` | 観測記録の 1 行目の `at`（`captureCapturedAt` が導く）。**fixture の `capturedAt` とは比べない**——1 つの fixture が複数の run を束ねるので、fixture 単位で縛ると 2 本目以降の manifest が構造的に通らなくなる |
 | `capture` | `EvidenceRef.path` |
 | `captureRawHash` | 観測記録の生 byte から再計算した値 |
 | `captureHash` | 観測記録の正規化抜粋から再計算した値 |
@@ -392,7 +398,7 @@ evidence がある          → 各 ref について:
       manifest の byte が読めない                        → 失敗
       digestRaw(manifestBytes) !== ref.manifestHash      → 失敗   ← parse の前に照合する
       closed schema に合わない                           → 失敗
-      §2.5 の照合表 11 項目のいずれかが違う              → 失敗
+      §2.5 の照合表 12 項目のいずれかが違う              → 失敗
   全 ref が通ったとき refVerified = true
 ```
 
@@ -403,8 +409,9 @@ evidence がある          → 各 ref について:
 
 ### 4.2 昇格箇所
 
-`assemble.ts:280`（capture cell）、`:349`（highLevel cell）、`:383`（prompt 対の再刻印）の
-3 箇所すべてが `verified` を見る。`Boolean(f.evidenceHash)` を見る経路を 1 つも残さない。
+`assemble.ts` の 3 箇所——capture cell・highLevel cell・prompt 対の再刻印——すべてが
+`promoteCell` の結果を見る。`Boolean(f.evidenceHash)` を見る経路を 1 つも残さない。
+（行番号では書かない。実装が動くと文書だけが古い場所を指したまま残る）
 
 **昇格は cell ごとに、その cell を支持する ref を見て決める**
 
@@ -416,9 +423,26 @@ cell ごと:
   導ける種類:
     supporting = fixture の ref のうち、§4.3 の導出値が申告値と一致するもの
     supporting が空                          → 失敗（申告を支持する記録が 1 件も無い）
-    supporting に manifest 付きの ref が無い  → source-test（legacy 証拠だけ）
-    それ以外                                  → real-cli-e2e。evidenceRefs に supporting を載せる
+    backed = supporting のうち、manifest 付きで、かつ申告した sourceEvents を
+             **その値の導出に実際に使った** hook として全部持つもの
+    backed が空                               → source-test（legacy 証拠だけ、または出どころの申告が合わない）
+    それ以外                                  → real-cli-e2e。evidenceRefs に backed を載せ、
+                                                verifiedAt は backed の capturedAt のうち最も遅い瞬間
 ```
+
+**`backed` を fixture の和集合で決めない。** 1 つの fixture は複数の run を束ねるので、
+和集合で足りるとすると「値を導いた run」と「申告した hook を持つ run」が別々でも通る。
+
+**「記録に在る」ではなく「導出に使った」で見る。** §4.3 の導出は cell ごとに使う hook が
+決まっている（`assistant_completed` は `Stop`、`session_started` は `SessionStart`）。
+在るかどうかだけを見ると、`assistant_completed` の出どころを `SessionStart` と申告しても
+通る——記録も digest も manifest も本物のまま、公開する provenance だけが偽になる。
+`deriveClaims` は値と一緒に `captureSources` を返し、照合はそちらに対して行う。
+
+**cell の統合でも同じ規則を保つ。** 複数 fixture が同じ cell を主張したとき、
+`sourceEvents` は「自分の昇格が `real-cli-e2e` だった側」からしか取らない。証拠を持たない
+fixture は `sourceEvents` の実在検査そのものを飛ばされる（ref が 0 件）ので、統合で足すと
+実測済み cell がどの記録にも無い hook 名を主張する。
 
 順序を逆にすると（supporting を先に求めて空なら失敗）、導出値が存在しない「導けない」主張は
 supporting が必ず空になり、`sessionStartInjection` や `tool_failed` を持つ既存 fixture が
@@ -431,7 +455,7 @@ B の manifest で A の主張が昇格してしまう。混在 fixture を使�
 `source-test` へ留めるのは異常ではない（証拠が弱いという正当な状態）。**失敗**させるのは
 digest 不一致・manifest 不整合・導出値と申告値の食い違い・支持 ref ゼロ・空配列・未知の版。
 
-**prompt 対の同一 run 拘束**: `:383` は「1 つの実測が対を同時に証明した」ことを要求する。
+**prompt 対の同一 run 拘束**: prompt 対の再刻印は「1 つの実測が対を同時に証明した」ことを要求する。
 1 つの fixture が複数 run を束ねられるようになった以上、fixture が同じことは同一 run の
 証明にならない。**両 cell を支持する ref 集合に同じ 1 件が含まれるときだけ**対を成立させる。
 なお両 cell は §4.3 の表で「導けない」側なので、現状この経路は到達しない。
@@ -543,7 +567,7 @@ evidenceSources: Array<{
 
 ### 5.2 `capabilityHashInputs`
 
-現在は `fixture:<id>@<evidenceHash>` という ad-hoc 文字列を並べている（`assemble.ts:414`）。
+現在は `fixture:<id>@<evidenceHash>` という ad-hoc 文字列を並べている（`assemble.ts` の contract hash 入力）。
 欄が増えると連結の曖昧さで別の入力が同じ文字列になり得るので、**構造化して JCS で
 canonical 化する**。`harness/schema/jcs.ts` の `canonicalizeJson` を使う。
 
@@ -558,7 +582,7 @@ capabilityHashInputs = [
 ];
 ```
 
-manifest hash がこの tuple に入る。`assemble.ts:402` のコメントが
+manifest hash がこの tuple に入る。`assemble.ts` の `promoteCell` のコメントが
 「§13 の manifest hash はまだ無い（Task 5 で入る）。入る場所はこの配列」と書いているとおり。
 入力の列挙は欄を数え上げるのではなく畳んだ結果から導く（既存の `folded` の扱いを踏襲）。
 exact な byte 列と並び順を contract test で固定する。
@@ -633,11 +657,11 @@ assemble が生成する文字列（`observed <value> in <fixtureId>` など）�
 
 | # | 変異 | 落ちるべき test |
 |---|---|---|
-| M0 | `improvesEvidence`（`assemble.ts:252`）を廃止した欄のまま残す | 証跡の優劣で cell が入れ替わる経路。廃止欄を読むと常に false になり優劣が黙って消える |
+| M0 | `improvesEvidence`（`assemble.ts`）を廃止した欄のまま残す | 証跡の優劣で cell が入れ替わる経路。廃止欄を読むと常に false になり優劣が黙って消える |
 | M1 | 昇格条件を `Boolean(fixture.evidence)` へ戻す（再計算しない） | 実在しない path を指す fixture が棄却されること |
 | M2 | digest 不一致を「失敗」から「降格して続行」へ変える | 不一致 fixture で組み立てが失敗すること |
 | M3 | `normalizationVersion` の照合を消す | 未知の版を申告した fixture で失敗すること |
-| M4 | 3 箇所のうち 1 箇所だけ検査を外す（`:383` を素通し） | 3 経路それぞれの棄却 test |
+| M4 | 3 箇所のうち 1 箇所だけ検査を外す（prompt 対の再刻印を素通し） | 3 経路それぞれの棄却 test |
 | M5 | path 解決の `..` 検査を消す | `../../../etc/passwd` 形の ref が拒否されること |
 | M6 | path 解決の realpath 前方一致を消す | 置き場内から外へ出る symlink が拒否されること |
 | M7 | verbatim キーから `prompt` を落とす | `claude-tool-denied` と `claude-tool-ok` の digest が異なること |

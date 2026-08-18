@@ -194,12 +194,10 @@ jobs:
         run: node --test harness/dco-check.test.mjs
       - name: Matrices are regenerated, not hand-edited
         # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
-        # generatedAt は実行ごとに変わるので比較から外す
-        run: |
-          for cli in claude codex; do
-            node --experimental-strip-types harness/assemble.ts "harness/fixtures/$cli" "/tmp/$cli.json"
-            diff <(jq 'del(.generatedAt)' "harness/matrix/$cli.json") <(jq 'del(.generatedAt)' "/tmp/$cli.json")
-          done
+        # 判定は test 側に置いてある。`diff <(jq …) <(jq …)` でやっていた頃は 2 つ素通しした:
+        # jq が object の重複キーを後勝ちで潰すので潰れる側は比較に出ず、process substitution の
+        # 中で jq が落ちても終了状態は diff のものしか返らない
+        run: node --experimental-strip-types --test harness/evidence/matrix-drift.test.ts
 
   license:
     runs-on: ubuntu-24.04

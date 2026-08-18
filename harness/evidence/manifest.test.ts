@@ -189,3 +189,26 @@ test("an unbacked fixture cannot add a source event to a promoted cell", () => {
   assert.equal(cell.evidenceKind, "real-cli-e2e");
   assert.deepEqual(cell.sourceEvents, ["SessionStart"]);
 });
+
+// 「記録に在る」で足りると、値を導いた hook とは別の hook を出どころとして申告できる。
+// 記録・digest・manifest はすべて本物のまま、公開する provenance だけが偽になる経路
+test("a source event that did not derive the value does not back the promotion", () => {
+  const root = newRoot();
+  const ref = putEvidence(root, "backed", lifecycle("s1", "p1"), { manifest: true });
+  const claim = (sourceEvents: string[]) =>
+    assembleWithRoot(
+      [
+        fixtureBase({
+          fixtureId: "claude/misattributed",
+          observedEvents: [
+            { kind: "assistant_completed", at: AT, capability: "synthesized", sourceEvents },
+          ],
+          evidence: [ref],
+        }),
+      ],
+      root,
+    ).capabilities.capture.assistant_completed;
+  // Stop から導いた値。SessionStart は同じ記録に在るが、この値は導いていない
+  assert.equal(claim(["Stop"]).evidenceKind, "real-cli-e2e");
+  assert.equal(claim(["Stop", "SessionStart"]).evidenceKind, "source-test");
+});

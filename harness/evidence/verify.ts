@@ -66,6 +66,11 @@ export interface VerifiedRef {
   source: EvidenceSource;
   /** この記録に実在した hook 名。申告された sourceEvents の実在検査に使う */
   events: string[];
+  /**
+   * cell ごとに、**その値を実際に導いた** hook 名。`events` は記録に在るかしか言わないので、
+   * 別の hook 由来だと申告しても通ってしまう（assistant_completed を SessionStart 由来と書く等）
+   */
+  captureSources: Partial<Record<EventKind, string[]>>;
   /** この記録の 1 行目の `at`。昇格した cell の verifiedAt はここから来る */
   capturedAt: string;
   /**
@@ -164,24 +169,30 @@ const tokenOf = (line: NormalizedLine, key: string): string | undefined => {
 function deriveClaims(
   cli: "claude" | "codex",
   lines: NormalizedLine[],
-): Pick<VerifiedRef, "events" | "capture" | "highLevel"> {
+): Pick<VerifiedRef, "events" | "capture" | "captureSources" | "highLevel"> {
   const events = lines.map((l) => l.event);
   const seen = (name: string): boolean => events.includes(name);
   const capture: Partial<Record<EventKind, ObservedCapability>> = {};
+  const captureSources: Partial<Record<EventKind, string[]>> = {};
   const highLevel: Partial<Record<DerivableHighLevelKey, ObservedCapability>> = {};
+  /** 値とその出どころを同時に置く。片方だけ書くと申告の照合が緩む */
+  const derived = (kind: EventKind, value: ObservedCapability, from: string[]): void => {
+    capture[kind] = value;
+    captureSources[kind] = from;
+  };
 
-  if (seen("SessionStart")) capture.session_started = "native";
-  if (seen("UserPromptSubmit")) capture.user_prompted = "native";
-  if (seen("SessionEnd")) capture.session_ended = "native";
-  if (seen("PreToolUse")) capture.tool_started = "native";
-  if (seen("PostToolUse")) capture.tool_completed = "native";
+  if (seen("SessionStart")) derived("session_started", "native", ["SessionStart"]);
+  if (seen("UserPromptSubmit")) derived("user_prompted", "native", ["UserPromptSubmit"]);
+  if (seen("SessionEnd")) derived("session_ended", "native", ["SessionEnd"]);
+  if (seen("PreToolUse")) derived("tool_started", "native", ["PreToolUse"]);
+  if (seen("PostToolUse")) derived("tool_completed", "native", ["PostToolUse"]);
 
   const stops = lines.filter((l) => l.event === "Stop");
   // 値は伏せ字でよい。欄が在ることが「Stop から復元できる」の根拠
-  if (stops.some((l) => has(l, "last_assistant_message"))) capture.assistant_completed = "synthesized";
+  if (stops.some((l) => has(l, "last_assistant_message"))) derived("assistant_completed", "synthesized", ["Stop"]);
 
   // Stop が無く SessionEnd がある = 中断。値ではなく並びから導く
-  if (stops.length === 0 && seen("SessionEnd")) capture.session_interrupted = "synthesized";
+  if (stops.length === 0 && seen("SessionEnd")) derived("session_interrupted", "synthesized", ["SessionEnd"]);
 
   // turn の対応付けは CLI で規則が違う。Claude は prompt_id の共有（turn_id は無い）、
   // Codex は turn_id の共有。Claude 規則へ統一すると Codex fixture 3 件が落ちる
@@ -192,11 +203,11 @@ function deriveClaims(
     return a.length > 0 && b.length > 0 && a.some((t) => b.includes(t));
   };
   if (cli === "codex") {
-    if (shares("turn_id")) capture.turn_completed = "native";
+    if (shares("turn_id")) derived("turn_completed", "native", ["UserPromptSubmit", "Stop"]);
     // 識別子の「在る」は has() ではなく相関 token で見る。has() は非空文字列の伏せ字
     // （`<string>`）だけを認めるので、`<id:N>` になる turn_id には当たらない
   } else if (shares("prompt_id") && !lines.some((l) => tokenOf(l, "turn_id") !== undefined)) {
-    capture.turn_completed = "synthesized";
+    derived("turn_completed", "synthesized", ["UserPromptSubmit", "Stop"]);
   }
 
   if (seen("SubagentStop")) highLevel.subagentCapture = "native";
@@ -208,7 +219,7 @@ function deriveClaims(
     highLevel.stableNativeSessionId = "native";
   }
 
-  return { events: [...new Set(events)].sort(), capture, highLevel };
+  return { events: [...new Set(events)].sort(), capture, captureSources, highLevel };
 }
 
 function verifyManifest(

@@ -298,6 +298,9 @@ test("mixed fixture does not promote legacy-backed cells", () => {
       fixtureBase({
         observedEvents: [
           { kind: "session_interrupted", at: AT, capability: "synthesized", sourceEvents: ["SessionEnd"] },
+          // sourceEvents を書かない主張。出どころの照合が効かないので、支持の照合だけが
+          // 「manifest 付きだが別の主張を支持する ref」を弾く
+          { kind: "session_started", at: AT },
           { kind: "tool_started", at: AT },
         ],
         evidence: [legacyInterrupt, backedTools],
@@ -306,6 +309,7 @@ test("mixed fixture does not promote legacy-backed cells", () => {
     root,
   ).capabilities;
   assert.equal(m.capture.session_interrupted.evidenceKind, "source-test", "legacy が支持した cell は上がらない");
+  assert.equal(m.capture.session_started.evidenceKind, "source-test", "支持しない manifest で上がった");
   assert.equal(m.capture.tool_started.evidenceKind, "real-cli-e2e", "manifest 付きが支持した cell は上がる");
 });
 
@@ -401,6 +405,15 @@ test("committed fixtures bind every raw by digest and promote nothing", () => {
     claude: assembleFromFixtures(loadCommitted("claude")),
     codex: assembleFromFixtures(loadCommitted("codex")),
   };
+  // 件数だけを見ると、1 つの raw を 2 つの fixture が参照して別の raw が孤立しても
+  // 合計は変わらない。置き場にある名前の集合と突き合わせる
+  for (const [cli, assembled] of Object.entries(m)) {
+    const onDisk = readdirSync(new URL(`../fixtures/${cli}/raw/`, import.meta.url))
+      .filter((n) => n.endsWith(".jsonl"))
+      .sort();
+    const referenced = [...new Set(assembled.evidenceSources.map((s) => s.path))].sort();
+    assert.deepEqual(referenced, onDisk, `${cli}: 置き場の raw と結び付いた raw が食い違う`);
+  }
   assert.equal(m.claude.evidenceSources.length + m.codex.evidenceSources.length, 16, "raw 16 件が結び付く");
   for (const assembled of Object.values(m)) {
     for (const source of assembled.evidenceSources) {

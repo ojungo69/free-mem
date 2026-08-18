@@ -302,6 +302,11 @@ done
 | M70 | `harness/rig/import-evidence.mjs` 検証より先に保存済みの記録を置き換える | `rig-manifest.test.mjs::a capture is not replaced when a later input fails validation` | T047 |
 | M71 | `harness/rig/rig.sh` claude の run で前回の終了コードを残す | `rig-manifest.test.mjs::a rerun does not start with the previous run's exit status in place` | T047 |
 | M72 | `harness/rig/rig.sh` codex の run で前回の終了コードを残す | `rig-manifest.test.mjs::every run initialisation clears the previous exit status` | T047 |
+| M73 | `harness/assemble.ts` 出どころを「記録に在る」だけで認める | `manifest.test.ts::a source event that did not derive the value does not back the promotion` | T047 |
+| M74 | `harness/assemble.ts` 手書き検証が棄却した値を診断へ戻す | `secrets.test.ts::hand-written fixture validation does not echo the rejected value either` | T047 |
+| M75 | `harness/schema/validate.ts` 未知 key 名を無検査で診断へ載せる | `secrets.test.ts::hand-written fixture validation does not echo the rejected value either` | T047 |
+| M76 | 出荷 matrix の `real-cli-e2e` を Unicode escape で綴る | `killswitch.test.ts::no shipped matrix cell claims real-cli-e2e while the recorder is forgeable (#90)` | T047 |
+| M77 | 出荷 matrix へ重複キーを紛れ込ませる | `matrix-drift.test.ts::the shipped claude matrix is what the fixtures assemble to` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 

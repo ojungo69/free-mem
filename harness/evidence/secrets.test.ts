@@ -125,6 +125,26 @@ test("schema diagnostics do not echo the rejected value", () => {
   assert.ok(!said.includes(CODE), "棄却した値そのものが診断に出た");
 });
 
+// schema より前に手書きの検証が走る欄がある。schema 側だけ直しても、そちらが
+// 値をそのまま返していれば同じ漏洩が別の識別子で残る
+test("hand-written fixture validation does not echo the rejected value either", () => {
+  const { tmp } = plantedTree();
+  const dir = join(tmp, "harness", "fixtures", "claude");
+  const file = join(dir, readdirSync(dir).filter((n) => n.endsWith(".json"))[0] as string);
+  const fixture = JSON.parse(readFileSync(file, "utf8"));
+  // 値の側（kind / phase）と、key 名の側（改行を仕込んだ未知キー）の両方
+  fixture.observedEvents[0].kind = CODE;
+  fixture.toolFailurePhasesObserved = [CODE];
+  fixture[`x\n${CODE}`] = 1;
+  writeFileSync(file, JSON.stringify(fixture, null, 2));
+
+  const run = node([join(tmp, "harness", "assemble.ts"), dir, join(tmp, "o.json")]);
+  assert.notEqual(run.status, 0, "不正な kind で組み立てが成功した");
+  const said = `${run.stdout}\n${run.stderr}`;
+  assert.ok(said.includes("capability.schema.json"), `手書き検証の説明が出ていない: ${said}`);
+  assert.ok(!said.includes(CODE), "棄却した値または key 名が診断に出た");
+});
+
 // --- 警報そのものを直接見る ---
 // 正しい実装では秘密が成果物へ届く経路が無いので、上の canary test は警報を殺しても落ちない。
 // 警報は「他の防御が破れたとき最後に鳴るもの」なので、単体で鳴ることを別に確かめる。
