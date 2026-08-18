@@ -1,0 +1,21 @@
+evidence/README.md
+  s_2d059b4f795bca::t_70b167fdcfefa7 32,34-35
+evidence/adr-005-rust-core-product-direction.md
+  s_2d059b4f795bca::t_1f91f5878ef116 37-40,144-145,147-149,151-152,155-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7d03228cb1c6f9eb046be2dabaeeae8707edbbb3",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
