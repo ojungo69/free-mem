@@ -228,7 +228,7 @@ rig は既に材料を出している。
 
 **Decision**: rig が run ごとに manifest を 1 件書き、observation と一緒に置き場へ持ち込む。
 assemble は manifest の**生 byte**から digest を再計算して `ref.manifestHash` と照合し
-（parse の前に行う）、closed schema で検証したうえで §2.5 の照合表 **11 項目**を全件見る。
+（parse の前に行う）、closed schema で検証したうえで §2.5 の照合表 **12 項目**を全件見る。
 `internalRunMarker` は fixture との一致ではなく `true` そのものを要求する
 （双方 `false` にすれば通ってしまうため）。`cliVersion` は `--version` の出力に末尾 LF が
 付く（実測）ので、末尾の CRLF か LF を 1 つだけ取り除いてから比較する。

@@ -266,10 +266,21 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+      - name: Scan every commit for secrets
+        # gitleaks-action は `pulls/:n/commits` を pagination なしで呼び、返ってきた 1 ページ
+        # （既定 30 件）の先頭と末尾を走査範囲にする。commit が 30 を超える PR では**新しい側**が
+        # 丸ごと範囲外になる。この PR (#92) は 35 commit で、required check が実際に見た範囲は
+        # `05f8e93^..d4b251e` の 30 件だった（job log で確認）。
+        # 範囲の選び方を持ち込まず、clone にある commit を全部走査する。この repo なら 3 秒で終わる
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "false"
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
           GITLEAKS_VERSION: "8.30.1"
+          # gitleaks_8.30.1_checksums.txt の linux_x64 の値
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/gitleaks.tar.gz" -C "${RUNNER_TEMP}" gitleaks
+          "${RUNNER_TEMP}/gitleaks" version
+          "${RUNNER_TEMP}/gitleaks" detect --no-banner --redact --exit-code 1 \
+            --source . --config .gitleaks.toml

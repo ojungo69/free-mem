@@ -3,7 +3,7 @@
 // harness ごと複製して走らせるので、既定の証拠置き場（module からの相対）も複製側を指す。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,9 +16,12 @@ const VERSION = "9.9.9-stub (Stub Code)";
 // 実 CLI の代わり。--version は 1 行返し、それ以外では hook 相当の観測記録を書く。
 // 付属物は rig と同じ stem（.jsonl を外した形）で見る。記録側の名前で見ると、rig が
 // 別名を消していても常に「無い」と読めてしまい、検査が空振りする
-const stub = (extra = "") => `#!/usr/bin/env bash
+const stub = (extra = "", versionExtra = "") => `#!/usr/bin/env bash
 set -eu
-if [ "\${1:-}" = --version ]; then printf '%s\\n' '${VERSION}'; exit 0; fi
+# --version は run_env の外から呼ばれるので CAPTURE_FILE が無い。STEM はその後で作る
+if [ "\${1:-}" = --version ]; then
+${versionExtra}
+printf '%s\\n' '${VERSION}'; exit 0; fi
 STEM="\${CAPTURE_FILE%.jsonl}"
 # 前の run の終了コードが残ったまま今回の run が始まっていないか。run 中にしか観測できない
 if [ -e "$STEM.exit" ]; then printf 'stale\\n' > "$STEM.stale-exit"; fi
@@ -32,11 +35,11 @@ emit Stop '{"hook_event_name":"Stop","prompt_id":"p-stub","last_assistant_messag
 emit SessionEnd '{"hook_event_name":"SessionEnd","prompt_id":"p-stub","reason":"other","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
 `;
 
-function rigRun({ stubExtra = "", skipImport = false } = {}) {
+function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), "rig-manifest-"));
   cpSync(HARNESS, join(tmp, "harness"), { recursive: true });
   const stubPath = join(tmp, "stub-cli");
-  writeFileSync(stubPath, stub(stubExtra));
+  writeFileSync(stubPath, stub(stubExtra, stubVersionExtra));
   chmodSync(stubPath, 0o755);
 
   const rig = join(tmp, "harness", "rig", "rig.sh");
@@ -170,8 +173,7 @@ test("a capture is not replaced when a later input fails validation", () => {
 });
 
 test("every run initialisation clears the exit status file the run itself writes", () => {
-  // stub で走らせるのは claude 経路だけなので、codex 経路はここで形として見る
-  // （片方だけ直すと、同じ欠陥が別の識別子で残る）。綴りを固定するのではなく、
+  // 綴りを固定するのではなく、
   // **書く path と消す path が同じ**ことを突き合わせる: 綴りだけ見る検査は、両方が
   // 揃って間違っている状態（実際にそうなっていた）を素通しする
   const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
@@ -188,8 +190,26 @@ test("every run initialisation clears the exit status file the run itself writes
       `${name}_run が書く ${written[0]} を消している行が無い`,
     );
     assert.equal(body.split("\n").filter((l) => l.includes(': > "$capture"')).length, 1, `${name}_run の初期化が無い`);
-    // lock の fd を測定対象へ渡していないこと。渡すと daemon が残る限り以後の run が止まる
-    assert.match(body, /\) 9>&- \|\| rc=\$\?/, `${name}_run が lock の fd を CLI へ渡している`);
+  }
+});
+
+test("every measured launch is supervised and keeps the lock descriptor", () => {
+  // stub で走らせるのは claude 経路だけなので、codex 経路はここで形として見る。
+  // 測定対象の起動は 2 つ（--version と本実行）あり、どちらも group ごと畳む。
+  // 片方だけ漏れると、その経路の残骸が lock を握って以後の run が止まる
+  const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
+  const blocks = [...rig.matchAll(/^(claude|codex)_run\(\) \{$([\s\S]*?)^\}$/gm)];
+  assert.equal(blocks.length, 2, "run 関数の数が変わった");
+  for (const [, name, body] of blocks) {
+    assert.equal(
+      [...body.matchAll(/reap_group "\$(ver|run)_pid"/g)].length,
+      2,
+      `${name}_run の起動のうち監督されていないものがある`,
+    );
+    // fd を渡さないほうが lock は解放されるが、残骸の隣に次の provider の資格情報が置かれる
+    assert.ok(!body.includes("9>&-"), `${name}_run が lock の fd を子から外している`);
+    // `timeout` は既定で対象を自分の group へ移すので、これが無いと畳む先が空になる
+    assert.match(body, /timeout --foreground/, `${name}_run の timeout が group を分けている`);
   }
 });
 
@@ -202,15 +222,35 @@ test("the rig stages no credential when the test runs", () => {
   );
 });
 
-test("a run does not hand its lock to a process the CLI leaves behind", () => {
-  // 測定対象が daemon を残すのは普通のこと。lock の fd を継承させていると、その daemon が
-  // 終わるまで kernel の flock が解放されず、以後の run と import が全部止まる
-  const { sh } = rigRun({
-    stubExtra: 'setsid sleep 20 </dev/null >/dev/null 2>&1 &',
-    skipImport: true,
-  });
+test("a run reaps the processes the CLI leaves behind", () => {
+  // 測定対象が子を残すのは普通のこと。残骸は lock の fd を持っているので、畳まないと
+  // 以後の run と import が全部「別の run が掴んでいる」で止まる
+  const { sh } = rigRun({ stubExtra: "sleep 20 </dev/null >/dev/null 2>&1 &", skipImport: true });
   const again = sh("claude-run", LABEL, "hello");
   assert.equal(again.status, 0, `2 回目の run が lock で止まった: ${again.stderr}`);
+});
+
+test("the version probe is supervised like the run itself", () => {
+  // --version も測定対象の起動なので、そこで残った子も畳む。監督から漏れると、
+  // その子が lock の fd を持ったまま残り、以後の run が全部止まる
+  const { sh } = rigRun({ stubVersionExtra: "sleep 20 </dev/null >/dev/null 2>&1 &", skipImport: true });
+  const again = sh("claude-run", LABEL, "hello");
+  assert.equal(again.status, 0, `2 回目の run が lock で止まった: ${again.stderr}`);
+});
+
+test("a process that escapes the group keeps the lock, so no credential is staged next to it", () => {
+  // `setsid` で group を抜けた process は畳めない。そこで次の run を通してしまうと、
+  // その run が置く**別 provider の**資格情報を、残った process が同じ UID で読める。
+  // 畳めなかったときは lock が残って次の run が止まる側へ倒れることを見る
+  // detach し切る前に run が終わると group kill が間に合ってしまうので、抜けたことを
+  // 待ってから stub を終える（race のまま置くと test が気まぐれに緑になる）
+  const escape =
+    'setsid sh -c \'printf x > "$STEM.detached"; sleep 20\' </dev/null >/dev/null 2>&1 &\n' +
+    'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.detached" ] && break; sleep 0.2; done';
+  const { sh } = rigRun({ stubExtra: escape, skipImport: true });
+  const again = sh("claude-run", LABEL, "hello");
+  assert.notEqual(again.status, 0, "group を抜けた残骸がいるのに次の run が始まった");
+  assert.match(again.stderr, /another rig run holds/);
 });
 
 test("an import that would write an unusable manifest replaces nothing", () => {
@@ -249,4 +289,25 @@ test("an exit status too large to be one is rejected", () => {
   const again = sh("import", "claude", LABEL, "self.stub");
   assert.notEqual(again.status, 0, "終了コードでない数で持ち込みが成功した");
   assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
+});
+
+test("a failure while staging leaves both stored files untouched", () => {
+  // 検証を全部通ったあとでも書き込みは落ちうる（disk full・権限・race）。置き場を直接
+  // 触っていると、そこで落ちた時点で前の対は失われている。manifest の一時 file の場所を
+  // directory で塞いで、書き込み側だけを確実に失敗させる
+  const { base, sh, rawDir } = rigRun();
+  const stored = join(rawDir, `claude-${LABEL}.jsonl`);
+  const storedManifest = join(rawDir, `claude-${LABEL}.manifest.json`);
+  const before = { capture: readFileSync(stored), manifest: readFileSync(storedManifest) };
+  mkdirSync(`${storedManifest}.tmp`);
+  // 記録のほうは別物にしておく（置き換わったかどうかが byte で分かる形にする）
+  const capture = join(base, "capture", `claude-${LABEL}.jsonl`);
+  writeFileSync(
+    capture,
+    `${readFileSync(capture, "utf8")}{"event":"Stop","at":"2026-01-02T00:00:00.000Z","payload":{"hook_event_name":"Stop"}}\n`,
+  );
+  const again = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(again.status, 0, "書き込みに失敗したのに持ち込みが成功した");
+  assert.deepEqual(readFileSync(stored), before.capture, "書き込みに失敗したのに記録が置き換わった");
+  assert.deepEqual(readFileSync(storedManifest), before.manifest, "書き込みに失敗したのに manifest が置き換わった");
 });

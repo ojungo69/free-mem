@@ -3,7 +3,7 @@
 // digest は持ち込んだ**後**の byte から取る。持ち込む前に取ると、持ち込みで内容が変わっても
 // 気づけない。byte 同一そのものは複製直後の突き合わせで別に見る。
 // SHA-256 は harness/evidence/normalize.ts の実装だけを使う（sha256sum を別に呼ばない）。
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -123,18 +123,31 @@ if (issues.length > 0) die(`the manifest does not match the schema at: ${issues.
 // 検証側は recorderErrors === 0 を要求する。0 でない記録は証拠にならないので持ち込まない
 if (manifest.recorderErrors !== 0) die("the recorder logged errors during this run; it cannot back a promotion");
 
-// ここから先だけが書き込み。記録を先に置き、manifest を後に置く。途中で落ちても
-// 新しい記録と古い manifest は digest が食い違うので検証は fail closed になる
+// 置き場と同じ directory の一時 file へ両方そろえてから、rename 2 回で差し替える。
+// dest を直接触ると、複製後の読み直しや manifest の書き込みで落ちたときに前の対が残らない。
+// rename の間で落ちた場合だけは対が食い違うが、その形は digest が合わないので検証は
+// fail closed になる
 mkdirSync(destDir, { recursive: true });
-copyFileSync(source, dest);
+const stagedCapture = `${dest}.tmp`;
+const stagedManifest = `${manifestPath}.tmp`;
+/** 一時 file を残さずに落ちる。`die` は process.exit なので finally では片付かない */
+const dieStaged = (msg) => {
+  for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true });
+  die(msg);
+};
 
-const bytes = readFileSync(dest);
-if (!sourceBytes.equals(bytes)) die("the copy is not byte-identical to the capture");
+copyFileSync(source, stagedCapture);
+const bytes = readFileSync(stagedCapture);
+if (!sourceBytes.equals(bytes)) dieStaged("the copy is not byte-identical to the capture");
 // 複製の側からも取り直して突き合わせる（byte 比較と digest の両方が一致して初めて同一）
 const captureRawHash = digestRaw(bytes);
 const captureHash = digestCapture(bytes);
-if (captureRawHash !== sourceRawHash || captureHash !== sourceHash) die("the copy does not digest to the capture");
-writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+if (captureRawHash !== sourceRawHash || captureHash !== sourceHash) {
+  dieStaged("the copy does not digest to the capture");
+}
+writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+renameSync(stagedCapture, dest);
+renameSync(stagedManifest, manifestPath);
 
 // fixture の evidence[] へそのまま貼れる形で出す（digest を手で写させない）
 process.stdout.write(

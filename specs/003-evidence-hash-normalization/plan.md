@@ -124,7 +124,7 @@ issue #20 の H0〜H3 を、この repo での作業単位へ落としたもの�
 | 3 | schema と型（H1） | `capability.ts` / `capability.schema.json` / `harness/schema/evidence-manifest.schema.json`（新規） | M13・M15・M40・M43・M44。continuity fixture が壊れない |
 | 4 | 昇格判定と欄の退役（H2） | `assemble.ts` ほか。下の「`evidenceHash` の全参照」を全件処理 | M0〜M4・M18・M19・M26〜M29・M32・M34〜M37・M45〜M47。`grep -rn evidenceHash harness/` の残りが意図した形だけになる |
 | 5 | 移行 backfill（H2） | fixture 8 件（`evidence[]` / `scenarioId` / `limitationCodes`）+ matrix 再生成 | 昇格 0 件・降格 0 件。全 raw が digest で結び付き、差し替えると落ちる。M24・M33・M42 |
-| 6 | rig の manifest と持ち込み（H2/H3） | `rig.sh` + `evidence-manifest.schema.json` | manifest が書かれ、capture と一緒に置き場へ byte 同一で入る。M20・M38・M39。§2.5 の照合表 11 項目を 1 つずつ反転する table-driven test を置く |
+| 6 | rig の manifest と持ち込み（H2/H3） | `rig.sh` + `evidence-manifest.schema.json` | manifest が書かれ、capture と一緒に置き場へ byte 同一で入る。M20・M38・M39。§2.5 の照合表 12 項目を 1 つずつ反転する table-driven test を置く |
 | 7 | provenance と退役（H3） | `matrix/README.md` ほか research.md R6 の 5 箇所、`contract-hashes.json` 再生成 | 古い記述が残っていない。M14・M25・M41 |
 
 段 2〜4 は先に失敗する test を書いてから実装する。段 5 は段 4 が通ってからでないと

@@ -27,8 +27,9 @@ HASHES=harness/contract-hashes.json
 TASKS=specs/003-evidence-hash-normalization/tasks.md
 # 出荷 matrix。kill switch と drift 検査が「復号した値」で見ているかを確かめる
 MATRIX=harness/matrix/claude.json
+CI=.github/workflows/ci.yml
 
-MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$MSCHEMA" "$SCHEMAV" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE" "$MATRIX")
+MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$MSCHEMA" "$SCHEMAV" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE" "$MATRIX" "$CI")
 TESTS=(
   harness/evidence/hash-inputs.test.ts
   harness/evidence/killswitch.test.ts
@@ -48,15 +49,16 @@ for f in "${MUTABLE[@]}"; do cp "$f" "$BAKDIR/$(basename "$f")"; done
 # --- 変異表との突き合わせ（T042）。長い実行に入る前に済ませる ---
 # 表の M 番号がこのスクリプトに実在するか、表が挙げた test 名が本当に存在するかの両方を見る。
 # 名前だけ書いて test を書いていない行は、これでしか塞げない
-python3 - "$0" "$TASKS" <<'COVERAGE' || exit 1
+KILLERS="$BAKDIR/killers.tsv"
+python3 - "$0" "$TASKS" "$KILLERS" <<'COVERAGE' || exit 1
 import pathlib, re, sys
 script, tasks = pathlib.Path(sys.argv[1]).read_text(), pathlib.Path(sys.argv[2]).read_text()
 rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 89:
-    bad.append(f"変異表の行が {len(table)} 件（89 件でない）")
+if len(table) != 94:
+    bad.append(f"変異表の行が {len(table)} 件（94 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -78,6 +80,12 @@ if bad:
     for b in bad:
         print(f"  - {b}", file=sys.stderr)
     raise SystemExit(1)
+# 各変異が「表で名指しした test」を落としたかを run() が照合できるように書き出す。
+# suite 全体で何かが落ちたことしか見ないと、別の test が落ちただけの変異が kill に計上される
+with open(sys.argv[3], "w") as fh:
+    for mid, cell in rows:
+        for _f, name in re.findall(r"`([\w.-]+\.test\.(?:ts|mjs))::([^`]+)`", cell):
+            fh.write(f"{mid}\t{name}\n")
 print(f"変異表 {len(table)} 件と mutate.sh の実変異が一致し、挙げた test 名もすべて実在する")
 COVERAGE
 
@@ -91,7 +99,7 @@ if [ -z "${BASELINE_TESTS:-}" ]; then
 fi
 
 run() {
-  local label="$1" out failed n ran
+  local label="$1" out failed n ran mid killed=1
   out=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1)
   failed=$(printf '%s' "$out" | grep -E '^# fail |^ℹ fail ' | tail -1)
   n=$(printf '%s' "$failed" | grep -oE '[0-9]+$')
@@ -101,11 +109,23 @@ run() {
   printf '%-52s %s\n' "$label" "${failed:-<test が走らなかった>}"
   EXECUTED=$((EXECUTED + 1))
   if [ -z "$n" ] || [ "$n" -eq 0 ]; then
-    SURVIVED=$((SURVIVED + 1))
+    killed=0
   elif [ -z "$ran" ] || [ "$ran" -ne "$BASELINE_TESTS" ]; then
     printf '  ^ 変異が test を走らせていない（tests %s / baseline %s）。ゲート未検証\n' "${ran:-?}" "$BASELINE_TESTS"
-    SURVIVED=$((SURVIVED + 1))
+    killed=0
+  else
+    # 「suite の何かが落ちた」では足りない。表が名指しした test 自身が落ちたことを見る。
+    # そうしないと、別の test が落ちただけの変異が kill として計上され、表の割当が嘘になる
+    mid=${label%%:*}
+    while IFS=$'\t' read -r row_mid name; do
+      [ "$row_mid" = "$mid" ] || continue
+      if ! printf '%s' "$out" | grep -Fq "✖ $name ("; then
+        printf '  ^ 表が名指しした test が落ちていない: %s\n' "$name"
+        killed=0
+      fi
+    done < "$KILLERS"
   fi
+  [ "$killed" -eq 1 ] || SURVIVED=$((SURVIVED + 1))
   restore_all
 }
 
@@ -271,7 +291,7 @@ mutate $RIG '  local stem="$RIG_BASE/capture/codex-$label"
 mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => derive(r).sources.includes(n)),' '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' && run 'M73: 出どころを「記録に在る」だけで認める'
 mutate $ASSEMBLE '        errs.push(`observedEvents[${i}].kind is not one of the kinds capability.schema.json lists`);' '        errs.push(`observedEvents[${i}].kind invalid: ${ev.kind}`);' && run 'M74: 手書き検証が棄却した値を診断へ戻す'
 mutate $SCHEMAV '        issues.push({ path, message: `unknown property #${ordinal}` });' '        issues.push({ path, message: `unknown property: ${k}` });' && run 'M75: schema 検証が未知 key 名を診断へ載せる'
-mutate $MATRIX '  "generatedAt"' '  "smuggled": "real-cli-\\u0065\\u0032e",
+mutate $MATRIX '  "generatedAt"' '  "smuggled": "real-cli-\u0065\u0032e",
   "generatedAt"' && run 'M76: 出荷 matrix の real-cli-e2e を escape で綴る'
 mutate $MATRIX '  "fixtureCount"' '  "cli": "smuggled",
   "fixtureCount"' && run 'M77: 出荷 matrix へ重複キーを紛れ込ませる'
@@ -281,30 +301,77 @@ mutate $FIXTURE '      "normalizationVersion": 1' '      "normalizationVersion":
 mutate $SCHEMAV '    issues.push({ path, message: "value not in enum" });' '    issues.push({ path, message: `value not in enum: ${JSON.stringify(value)}` });' && run 'M65: 棄却した値を診断へ戻す'
 mutate $ASSEMBLE '    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key #${n + 1} (capability.schema.json 未定義)`);' '    if (!KNOWN_KEYS.has(k)) errs.push(`unknown top-level key ${k} (capability.schema.json 未定義)`);' && run 'M78: 手書き検証が未知 key 名を診断へ載せる'
 mutate $MATRIX '"generatedAt": "' '"generatedAt": "/home/private/CANARY", "notGeneratedAt": "' && run 'M79: 出荷 matrix の生成時刻を別の値に差し替える'
-mutate $RIG '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?
+mutate $RIG '  wait "$run_pid" || rc=$?
+  reap_group "$run_pid"
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
   echo "captured: $capture ($(wc -l < "$capture") events)"
 }
 
-codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) || rc=$?
+codex_run' '  wait "$run_pid" || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
   echo "captured: $capture ($(wc -l < "$capture") events)"
 }
 
-codex_run' && run 'M80: claude の run が lock の fd を測定対象へ渡す'
-mutate $RIG '      --dangerously-bypass-hook-trust "$@" "$prompt" \
-      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?' '      --dangerously-bypass-hook-trust "$@" "$prompt" \
-      > "$stem.stdout" 2> "$stem.stderr" ) || rc=$?' && run 'M81: codex の run が lock の fd を測定対象へ渡す'
+codex_run' && run 'M80: claude の run が残した子を畳まない'
+mutate $RIG '  wait "$run_pid" || rc=$?
+  reap_group "$run_pid"
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
+  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+# 証拠置き場へ' '  wait "$run_pid" || rc=$?
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
+  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+# 証拠置き場へ' && run 'M81: codex の run が残した子を畳まない'
 mutate $IMPORT 'if (issues.length > 0) die(' 'if (false && issues.length > 0) die(' && run 'M82: schema を満たさない manifest でも記録を置き換える'
 mutate $IMPORT 'if (manifest.recorderErrors !== 0) die(' 'if (false && manifest.recorderErrors !== 0) die(' && run 'M83: 記録器のエラーが残ったまま持ち込む'
 mutate $ASSEMBLE '        ...backedOnly(prev.evidenceKind === "real-cli-e2e", prev.value === "unknown" ? [] : prev.sourceEvents),' '        ...(prev.value === "unknown" ? [] : prev.sourceEvents),' && run 'M84: 先に見た側の裏付け無し hook 名を統合する'
 mutate $ASSEMBLE '        derivable && o.value === "native",' '        derivable,' && run 'M85: 高位 cell の導出可否を key だけで決める'
 mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時刻に ms より細かい桁を許す'
 mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 桁数を見ずに終了コードを読む'
+mutate $RIG '  wait "$ver_pid" || true
+  reap_group "$ver_pid"
+  set -m
+  ( cd "$RIG_BASE/workspace" && \
+    run_env claude' '  wait "$ver_pid" || true
+  set -m
+  ( cd "$RIG_BASE/workspace" && \
+    run_env claude' && run 'M88: 版の問い合わせが残した子を畳まない'
+mutate $RIG '      > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
+  set +m
+  wait "$run_pid" || rc=$?
+  reap_group "$run_pid"
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
+  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
+  set +m
+  wait "$run_pid" || rc=$?
+  reap_group "$run_pid"
+  # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
+  printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
+  [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
+  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+codex_run' && run 'M89: lock の fd を測定対象へ渡さない'
+mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
+mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
+copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'
+mutate $CI '            --source . --config .gitleaks.toml' '            --source . --config .gitleaks.toml --log-opts=HEAD~1..HEAD' && run 'M92: 秘密走査に範囲を持ち込む'
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
   && run_custom 'M25: 契約 hash の入力名を書き換える' check_hashes
 

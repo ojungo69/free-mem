@@ -112,7 +112,7 @@ vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
 用意し、どちらも `real-cli-e2e` にならず組み立てが失敗する
 
 - [X] T014 [US1] `harness/evidence/promotion.test.ts` を新規作成し、先に落ちる test を並べる。攻撃側（実在しない path / 別物の path / 未知の版 / 空配列 / 実在しない hook の申告 / 導出値と申告値の食い違い）と、synthetic な観測記録・manifest・fixture を `mkdtemp` へ作って組み立てる positive control を両方書く
-- [X] T015 [US1] `harness/assemble.ts` に検証器を実装する。data-model.md §4.1 の順で ref ごとに検査する（版 → path 解決 → 読み取り → `captureRawHash` → 正規化 → `evidenceHash` → manifest があれば `manifestHash` を **parse の前に** 照合 → closed schema → §2.5 の 11 項目）。いずれの失敗も組み立て全体の失敗にし、cell を黙って `source-test` へ落として続行しない
+- [X] T015 [US1] `harness/assemble.ts` に検証器を実装する。data-model.md §4.1 の順で ref ごとに検査する（版 → path 解決 → 読み取り → `captureRawHash` → 正規化 → `evidenceHash` → manifest があれば `manifestHash` を **parse の前に** 照合 → closed schema → §2.5 の 12 項目）。いずれの失敗も組み立て全体の失敗にし、cell を黙って `source-test` へ落として続行しない
 - [X] T016 [US1] `harness/assemble.ts` に `VerifiedClaims` の導出を実装する（data-model.md §4.3）。導ける主張（`session_started` / `user_prompted` / `session_ended` / `tool_started` / `tool_completed` / `assistant_completed` / `turn_completed`（Claude と Codex で規則が違う）/ `session_interrupted` / `subagentCapture` / `stableNativeSessionId`）は記録から値を導いて申告値と照合する。複数 ref は和集合で、いずれか 1 件以上が同じ値を導出すれば成立させる
 - [X] T017 [US1] `harness/assemble.ts` の昇格判定を data-model.md §4.2 の順序で実装する。**種別の判定を先に置く**（導けない主張 → `source-test`、導ける主張 → supporting を求め、空なら失敗、manifest 付きが無ければ `source-test`、あれば `real-cli-e2e`）。順序を逆にすると既存 fixture で組み立てが落ちる
 - [X] T018 [US1] 昇格を刻む 3 経路すべてを `verified` を見る形へ変える（`harness/assemble.ts:280` capture cell / `:349` highLevel cell / `:383` prompt 対の再刻印）。`:367` の `pairFixture` 抽出条件も `f.evidenceHash` から `verified` へ変える。prompt 対は**両 cell を支持する ref 集合に同じ 1 件が含まれるときだけ**成立させる
@@ -184,7 +184,7 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 
 - [X] T035 [US1] `harness/rig/rig.sh` を変更し、run ごとに manifest を 1 件書く（data-model.md §2.5 の 12 欄）。`cliVersion` は `.version` を UTF-8 の単一行として読み、末尾の CRLF か LF を 1 つだけ取り除く。複数行が返る CLI では失敗させる（黙って 1 行目を採らない）
 - [X] T036 [US1] `harness/rig/rig.sh` に、観測記録と manifest を証拠置き場 `harness/fixtures/<cli>/raw/` へ **byte 同一で持ち込んでから** digest を出す工程を足す。持ち込み前に digest を出すと、持ち込みで内容が変わっても気づけない。digest は `harness/evidence/normalize.ts` の CLI から得る（`sha256sum` を別に呼ぶ二重実装にしない）
-- [X] T037 [US1] `harness/evidence/manifest.test.ts` を新規作成し、§2.5 の照合表 11 項目を 1 つずつ反転する table-driven test を置く。`internalRunMarker` は「fixture と一致」ではなく「`true` であること」を見る（双方 `false` の組み合わせを棄却する）
+- [X] T037 [US1] `harness/evidence/manifest.test.ts` を新規作成し、§2.5 の照合表 12 項目を 1 つずつ反転する table-driven test を置く。`internalRunMarker` は「fixture と一致」ではなく「`true` であること」を見る（双方 `false` の組み合わせを棄却する）
 - [X] T038 [US1] rig の manifest 生成部を stub CLI で起動できる形にし、`harness/evidence/rig-manifest.test.mjs` で「manifest が書かれる」「観測記録と manifest が置き場へ byte 同一で入る」を実 CLI 無しで検証する。CLI 実体を環境変数で受け取れない形なら、受け取れるようにしてから test を書く
 
 **完了条件**: `node --experimental-strip-types --test harness/evidence/*.test.ts` と `node --test harness/evidence/rig-manifest.test.mjs` が通る。実 CLI を要求する test を CI へ入れない
@@ -195,8 +195,8 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 
 - [X] T039 [P] research.md R6 が挙げた 5 箇所の古い記述を退役させる。`harness/matrix/README.md` の `evidenceKind` の説明を実態（digest が裏付ける範囲・legacy 証拠・導けない主張）へ合わせる。**節ごとに掃除する**（変更前の設計は別の語で書かれた節に残る）
 - [X] T040 [P] `harness/contract-hashes.json` を再生成する（`node harness/contract-hashes.mjs > harness/contract-hashes.json`）。`capability.schema.json` と fixture がその入力なので、Phase 2 と Phase 5 の変更で必ず動く
-- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 89 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
-- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 89 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
+- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 94 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
+- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 94 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
 - [X] T043 `.github/workflows/ci.yml` の `harness` job へ 2 step 足す（`node --experimental-strip-types --test harness/evidence/*.test.ts` と `bash harness/evidence/mutate.sh`）。既存 step は緩めない
 - [X] T044 `specs/003-evidence-hash-normalization/quickstart.md` を実際に上から実行し、書いてあるコマンドがそのまま通ることを確認する。通らない箇所は quickstart 側を直す
 - [X] T045 セキュリティ関連の必須ゲートを通す。`semgrep scan`（CLI）→ `/codex-review mode=security` → `/codex:adversarial-review`。指摘は `review-routing` の批判的評価にかけ、採否の理由を残す
@@ -221,7 +221,7 @@ done
 
 ---
 
-## 変異の割り当て（現在 89 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
+## 変異の割り当て（現在 94 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
 
 各行の「殺す test」は、その変異を入れたときに**必ず落ちる** test。`harness/evidence/mutate.sh`
 （T041）はこの表を実行可能な形にしたもので、T042 が両者の一致を機械的に確認する。
@@ -234,9 +234,9 @@ done
 | M3 | `harness/evidence/verify.ts` 正規化版の照合 | `promotion.test.ts::unknown normalization version fails the build` | T015 |
 | M4 | `harness/evidence/verify.ts` `DERIVABLE_HIGH_LEVEL_KEYS` | `promotion.test.ts::prompt pair requires a shared supporting ref` | T018 |
 | M5 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::相対 path の .. は棄却される` | T007 |
-| M6 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::置き場の外へ出る symlink は棄却される` | T007 |
+| M6 | `harness/evidence/normalize.ts` path 解決 | `normalize.test.ts::兄弟ディレクトリは前方一致で通り抜けない` | T007 |
 | M7 | `harness/evidence/normalize.ts` verbatim 集合 | `normalize.test.ts::投入した指示が違う 2 記録は別の digest になる` | T024 |
-| M8 | `harness/evidence/normalize.ts` 伏せ字 | `normalize.test.ts::同一 scenario の再取得は同じ digest になる` | T023 |
+| M8 | `harness/evidence/normalize.ts` 時刻の除去 | `normalize.test.ts::at は落ちるが、それ以外の未知の top-level キーは伏せ字で残る` | T023 |
 | M8b | `harness/evidence/normalize.ts` verbatim の深さ | `normalize.test.ts::入れ子の tool_input.prompt が違っても digest は変わらない` | T006 |
 | M9 | `harness/evidence/normalize.ts` キー保持 | `normalize.test.ts::欄の有無は digest を変える` | T005 |
 | M10 | `harness/evidence/normalize.ts` 直列化 | `normalize.test.ts::直列化は LF 区切りで最終行の後にも LF が付く` | T006 |
@@ -250,7 +250,7 @@ done
 | M18 | `harness/assemble.ts` `sourceEvents` の実在検査 | `promotion.test.ts::claimed hook absent from the capture is rejected` | T016 |
 | M19 | `harness/assemble.ts` `shareRef` | `promotion.test.ts::shared-ref predicate requires an actual common index` | T018 |
 | M20 | `harness/evidence/verify.ts` manifest 照合表 | `manifest.test.ts::manifest captureHash that disagrees is rejected` | T037 |
-| M21 | `harness/evidence/normalize.ts` 読み取り | `normalize.test.ts::重複したキーを持つ行は棄却される` + `normalize.test.ts::不正な UTF-8 は棄却される` | T006 |
+| M21 | `harness/evidence/normalize.ts` 読み取り | `normalize.test.ts::重複したキーを持つ行は棄却される` | T006 |
 | M22 | `harness/evidence/normalize.ts` `unparsed` | `normalize.test.ts::payload.unparsed を持つ行は棄却される` | T006 |
 | M23 | `harness/evidence/normalize.ts` 中間 object | `normalize.test.ts::__proto__ 欄の有無は保たれる` | T006 |
 | M24 | `harness/evidence/verify.ts` `SECRET_KEYS` | `secrets.test.ts::collectSecrets covers every secret-bearing field` | T029 |
@@ -309,14 +309,19 @@ done
 | M77 | 出荷 matrix へ重複キーを紛れ込ませる | `matrix-drift.test.ts::the shipped claude matrix is what the fixtures assemble to` | T047 |
 | M78 | `harness/assemble.ts` 手書き検証が未知 key 名を診断へ載せる | `secrets.test.ts::hand-written fixture validation does not echo the rejected value either` | T047 |
 | M79 | 出荷 matrix の生成時刻を別の値に差し替える | `matrix-drift.test.ts::the shipped claude matrix is what the fixtures assemble to` | T047 |
-| M80 | `harness/rig/rig.sh` claude の run が lock の fd を測定対象へ渡す | `rig-manifest.test.mjs::a run does not hand its lock to a process the CLI leaves behind` | T047 |
-| M81 | `harness/rig/rig.sh` codex の run が lock の fd を測定対象へ渡す | `rig-manifest.test.mjs::every run initialisation clears the exit status file the run itself writes` | T047 |
+| M80 | `harness/rig/rig.sh` claude の run が残した子を畳まない | `rig-manifest.test.mjs::a run reaps the processes the CLI leaves behind` | T047 |
+| M81 | `harness/rig/rig.sh` codex の run が残した子を畳まない | `rig-manifest.test.mjs::every measured launch is supervised and keeps the lock descriptor` | T047 |
 | M82 | `harness/rig/import-evidence.mjs` schema を満たさない manifest でも記録を置き換える | `rig-manifest.test.mjs::a CLI version the manifest schema rejects does not replace the stored evidence` | T047 |
 | M83 | `harness/rig/import-evidence.mjs` 記録器のエラーが残ったまま持ち込む | `rig-manifest.test.mjs::an import that would write an unusable manifest replaces nothing` | T047 |
 | M84 | `harness/assemble.ts` 先に見た側の裏付け無し hook 名を統合する | `manifest.test.ts::an unbacked fixture seen before the backed one cannot add a source event either` | T047 |
 | M85 | `harness/assemble.ts` 高位 cell の導出可否を key だけで決める | `promotion.test.ts::a synthesized high-level claim is not invalidated by attaching evidence` | T047 |
 | M86 | `harness/schema/evidence-manifest.schema.json` 時刻に ms より細かい桁を許す | `manifest.test.ts::a timestamp finer than a millisecond is not accepted at all` | T047 |
 | M87 | `harness/rig/import-evidence.mjs` 桁数を見ずに終了コードを読む | `rig-manifest.test.mjs::an exit status too large to be one is rejected` | T047 |
+| M88 | `harness/rig/rig.sh` 版の問い合わせが残した子を畳まない | `rig-manifest.test.mjs::the version probe is supervised like the run itself` | T047 |
+| M89 | `harness/rig/rig.sh` lock の fd を測定対象へ渡さない | `rig-manifest.test.mjs::a process that escapes the group keeps the lock, so no credential is staged next to it` | T047 |
+| M90 | `harness/rig/rig.sh` timeout に別の process group を作らせる | `rig-manifest.test.mjs::a run reaps the processes the CLI leaves behind` | T047 |
+| M91 | `harness/rig/import-evidence.mjs` 一時 file を経ずに置き場を直接触る | `rig-manifest.test.mjs::a failure while staging leaves both stored files untouched` | T047 |
+| M92 | `.github/workflows/ci.yml` 秘密走査に範囲を持ち込む | `secrets.test.ts::the secrets gate does not let an action pick which commits to scan` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 
@@ -336,8 +341,8 @@ done
 **割当の確認**（T042 が自動化する。手で確かめるときはこれ）:
 
 ```bash
-# 表に 89 件そろっているか
-grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 89
+# 表に 94 件そろっているか
+grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 94
 ```
 
 ---

@@ -88,6 +88,21 @@ with_lock() { # 並行 run を禁止する。同じ RIG_BASE を共有すると�
   flock -n 9 || { echo "another rig run holds $RIG_BASE" >&2; exit 4; }
 }
 
+# 測定対象を独自の process group で起動し、終わったら group ごと畳む。
+#
+# lock の fd を子へ渡さない形（`9>&-`）は採らない。渡さないと、CLI が残した process が
+# 生きているうちに次の run が始まり、その run が置いた**別 provider の資格情報**を、
+# 残った process が同じ UID で読める。fd を渡しておけば残骸が lock を握り続け、次の run は
+# 止まる。一方で握らせたままだと daemon 1 つで rig が使えなくなるので、run の終わりに
+# group ごと畳んで普通の残骸は片付ける。`setsid` で group を抜けた process は畳めないが、
+# その場合は lock が残って次の run が止まる側に倒れる（fail closed）。
+# 資格情報の分離が UID で取れるようになるまでは、この倒し方を優先する
+# `timeout` は既定で対象を**自分の** process group へ移すので、そのままだと下の
+# `kill -- -<pid>` が測定対象へ届かない。`--foreground` で group を作らせず、畳むのは
+# こちらの group 1 つに統一する（timeout 自身の group kill を失うが、後段で group ごと
+# 畳むので取りこぼしは増えない）
+reap_group() { kill -- "-$1" 2>/dev/null || true; }
+
 claude_run() {
   local label="$1" prompt="$2" rc=0; shift 2
   with_lock
@@ -102,13 +117,22 @@ claude_run() {
   # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
   : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials claude
-  { "$CLAUDE_BIN" --version; } > "$stem.version" 2>&1
-  # 9>&- で lock の fd を測定対象へ渡さない。渡すと、CLI が残した daemon が終わるまで
-  # kernel の flock が解放されず、以後の run と import が「別の run が掴んでいる」で止まる
+  # --version も測定対象の起動なので、本実行と同じ扱いにする（ここだけ残骸が残ると
+  # 次の run が lock で止まる。実際にこの経路だけ監督から漏れていた）
+  local ver_pid=0 run_pid=0
+  set -m
+  { "$CLAUDE_BIN" --version; } > "$stem.version" 2>&1 & ver_pid=$!
+  set +m
+  wait "$ver_pid" || true
+  reap_group "$ver_pid"
+  set -m
   ( cd "$RIG_BASE/workspace" && \
-    run_env claude "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
+    run_env claude "$capture" timeout --foreground ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
       --model haiku --output-format json --max-turns 4 "$@" \
-      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?
+      > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
+  set +m
+  wait "$run_pid" || rc=$?
+  reap_group "$run_pid"
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '%s\n' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
@@ -123,11 +147,20 @@ codex_run() {
   local capture="$stem.jsonl"
   : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials codex
-  { "$CODEX_BIN" --version; } > "$stem.version" 2>&1
+  local ver_pid=0 run_pid=0
+  set -m
+  { "$CODEX_BIN" --version; } > "$stem.version" 2>&1 & ver_pid=$!
+  set +m
+  wait "$ver_pid" || true
+  reap_group "$ver_pid"
+  set -m
   ( cd "$RIG_BASE/workspace" && \
-    run_env codex "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
+    run_env codex "$capture" timeout --foreground ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
       --dangerously-bypass-hook-trust "$@" "$prompt" \
-      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- || rc=$?
+      > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
+  set +m
+  wait "$run_pid" || rc=$?
+  reap_group "$run_pid"
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '%s\n' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"

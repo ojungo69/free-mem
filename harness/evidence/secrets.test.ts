@@ -186,3 +186,20 @@ test("collectSecrets covers every secret-bearing field", () => {
   // 秘密でない欄まで材料にすると、正常な組み立てが偽陽性で落ちる
   assert.ok(!found.has(long("not-a-secret")));
 });
+
+// --- 秘密走査ゲートの「形」 ---
+// 実際に走査が効くかは gitleaks を動かさないと分からないので、ここは best-effort。
+// 見るのは「走査範囲を他人に選ばせていないか」だけ（信頼境界は full scan そのもの）
+
+test("the secrets gate does not let an action pick which commits to scan", () => {
+  const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const job = ci.slice(ci.indexOf("\n  secrets:"));
+  // gitleaks-action は pulls/:n/commits を pagination なしで呼び、その 1 ページ目の
+  // 先頭と末尾だけを範囲にする。30 commit を超える PR では新しい側が丸ごと外れる
+  // 綴りではなく **action として使っているか** を見る。ci.yml 側の説明文にも同じ語が出るので、
+  // 語の有無で見ると自分の説明に引っかかる
+  assert.ok(!/uses: gitleaks\//.test(job), "走査範囲を選ぶ action へ戻っている");
+  assert.ok(!job.includes("--log-opts"), "走査範囲を絞る指定が入っている");
+  assert.match(job, /gitleaks" detect .*--source \./s, "全履歴を走査していない");
+  assert.match(job, /sha256sum -c -/, "取得した binary を検証していない");
+});
