@@ -72,7 +72,10 @@ jobs:
 
   harness:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # 変異ゲートは変異 1 件ごとに test 一式を回すので、変異表が伸びるとこの job だけ線形に
+    # 伸びる。79 件で 7m25s（2026-08-18 実測、10 分枠の 74%）。上限に当たると検査の verdict が
+    # 出ないまま赤になるので、枠を広げて「走り切って落ちる」側に寄せる
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
