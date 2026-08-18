@@ -171,6 +171,14 @@ jobs:
         run: node --experimental-strip-types harness/assemble.ts --self-test | tee /dev/stderr | grep -qx PASS
       - name: Continuity contract tests
         run: node --experimental-strip-types --test harness/continuity/*.test.ts
+      - name: Evidence verification tests
+        # rig-manifest.test.mjs は .mjs なので glob に入らない。別に並べる
+        # （glob だけにすると、rig の manifest 生成が誰にも検査されないまま緑になる）
+        run: node --experimental-strip-types --test harness/evidence/*.test.ts harness/evidence/rig-manifest.test.mjs
+      - name: Evidence mutation gates
+        # 変異表（specs/003-evidence-hash-normalization/tasks.md）との突き合わせもこの中で走る。
+        # 表に書いた test が実在するかまで見るので、名前だけ書いて test を書かない形を塞ぐ
+        run: bash harness/evidence/mutate.sh
       - name: Continuity mutation gates
         # test が「ゲートを壊しても落ちない」状態に腐るのを防ぐ。人が手で叩いたときしか
         # 走らないと、アンカー外れ（実装を直すと変異が黙って飛ばされる）も、変異が module を

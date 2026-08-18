@@ -12,7 +12,7 @@ node --version   # 24.16.0 系
 
 ```bash
 node --experimental-strip-types harness/evidence/normalize.ts harness/fixtures/claude/raw/claude-lifecycle-basic.jsonl
-# => {"evidenceHash":"1a6bab46...","normalizationVersion":1}
+# => {"evidenceHash":"1a6bab46...","captureRawHash":"7f3a47b1...","normalizationVersion":1}
 ```
 
 ## 1a. 昇格するのは synthetic な証拠だけ（positive control）
@@ -64,7 +64,8 @@ git diff harness/matrix/
 ## 5. 攻撃側を確認する（SC-001 / SC-007）
 
 ```bash
-node --experimental-strip-types --test harness/evidence/normalize.test.ts
+node --experimental-strip-types --test harness/evidence/*.test.ts harness/evidence/rig-manifest.test.mjs
+bash harness/evidence/mutate.sh
 node --experimental-strip-types harness/assemble.ts --self-test
 node --experimental-strip-types --test harness/continuity/*.test.ts
 vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
@@ -86,9 +87,9 @@ test が確認すること:
 
 ## 6. 秘密が漏れていないことを確認する（SC-005）
 
-**この検査は現在すでに失敗する。** `harness/matrix/{claude,codex}.json` に
-`RIG_INJECT_5f3a9` がそのまま載っている（fixture の `limitations` 自由文が逐語転記されるため）。
-backfill で fixture 側を無害化してから通す。
+移行前は失敗した。`harness/matrix/{claude,codex}.json` に `RIG_INJECT_5f3a9` がそのまま載って
+いた（fixture の `limitations` 自由文が逐語転記されるため）。散文ではなく `limitationCodes` を
+載せる形へ変えて解消した。
 
 ```bash
 grep -r "/tmp/free-mem-rig" harness/matrix/ && echo "NG" || echo "OK"
