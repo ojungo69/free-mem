@@ -33,6 +33,25 @@ jobs:
         run: corepack pnpm install --frozen-lockfile
       - name: Build
         run: corepack pnpm run build
+      - name: Committed hook-runtime copies match the build
+        # `plugins/{claude,codex}/scripts/` の bundle と notice は build 出力を git に commit した
+        # 複製。build すれば runner 上では正しい内容に直るので、HEAD 側が古い・欠けていても
+        # 他のゲートは全て通る。誤りが残るのは GitHub の source archive だけ——つまり、
+        # bundle した第三者コードの許諾文が実際の配布物から欠ける形になる。
+        # build 直後の作業ツリーが綺麗であることを、その唯一の検査にする。
+        working-directory: .
+        run: |
+          git status --porcelain --untracked-files=all -- \
+            vendor/codemem/plugins/claude/scripts/hook-runtime.mjs \
+            vendor/codemem/plugins/codex/scripts/hook-runtime.mjs \
+            vendor/codemem/plugins/claude/scripts/THIRD_PARTY_NOTICES.hook-runtime.md \
+            vendor/codemem/plugins/codex/scripts/THIRD_PARTY_NOTICES.hook-runtime.md \
+            > "${RUNNER_TEMP}/hook-runtime-drift.txt"
+          if [ -s "${RUNNER_TEMP}/hook-runtime-drift.txt" ]; then
+            cat "${RUNNER_TEMP}/hook-runtime-drift.txt"
+            echo "::error::commit 済みの hook-runtime 複製が build 出力と一致しない。build して差分を commit すること"
+            exit 1
+          fi
       - name: Typecheck and lint
         run: corepack pnpm run tsc && corepack pnpm run lint
       - name: Typecheck harness
