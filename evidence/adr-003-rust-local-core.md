@@ -75,12 +75,14 @@ cold start / warm start、idle RSS、event ingest p50 / p95 / p99、concurrent h
 
 ### 判定規則
 
-判定するのは cutover の可否と時期であり、言語の採否ではない。語も分ける: **pass**（Core 1.0 で
-default を Rust へ切り替えられる）と **defer**（切り替えを見送る）を使い、Go / No-Go とは呼ばない。
+判定するのは cutover の可否と時期であり、言語の採否ではない。語も分ける: **pass**（cutover roadmap へ
+進める）と **defer**（見送る）を使い、Go / No-Go とは呼ばない。pass は default 切替の十分条件ではない
+——実際に切り替えられるかは [ADR-005](adr-005-rust-core-product-direction.md) の Cutover gate 1–10 が決める。
 
 - 必須条件 G1–G7 をすべて満たした場合のみ pass を検討できる。
 - 性能差が小さくても、**運用安定性・配布容易性・依存削減**のいずれかが明確に改善するなら pass としてよい（issue #1 の方針）。
 - pass の場合、Stage 2 以降を子 Issue に分割し、Phase 2 以降の roadmap を Rust 中心に再編する。
+  Stage 2 の shadow 期間中の canonical writer は上記「決定 1」のとおり TS 側に置いたままにする。
 - defer の場合、**言語選択を差し戻すのではなく**、Core 1.0 での default 切替を延期し TS reference を暫定継続する
   （[ADR-005](adr-005-rust-core-product-direction.md)「Stage 1 の再定義」）。この ADR を Rejected にはしない。
   凍結した 4 contract は defer 時も破棄しない（Phase 2 以降の adapter 追加と #8 parity benchmark に使う）。

@@ -146,22 +146,29 @@ Stage 1 が成功したら Rust 移行を Go
 
 ```text
 pass  = G1-G7 をすべて満たす
-  -> Core 1.0 の default を Rust へ切り替える（正本連鎖の改訂が完了していること。#84）
+  -> cutover roadmap へ進む資格を得る（default 切替そのものではない）
 
 defer = G1-G7 に 1 つでも欠けがある
   -> Core 1.0 の default は TypeScript のまま据え置く
 ```
 
-`defer` の下でできることを明示しておく。
+`pass` は default 切替の十分条件ではない。実際に Rust を default runtime にするには、これに加えて
+下の **Cutover gate 1–10**（behavioral gate、fault injection、migration / rollback、clean install、
+fail-open、signed artifacts / SBOM、`doctor` など）をすべて満たし、かつ #84 の正本連鎖の改訂が
+完了している必要がある。Stage 1 の実測が答えるのは「roadmap を進めてよいか」だけである。
+
+`defer` の下でできることは次の 4 つに限る。
 
 - 不合格の原因を直して再測定する
 - Stage 1 の対象 slice を縮小して測り直す
-- Rust 実装を shadow として動かし続ける（default にはしない）
+- Rust 実装を shadow として動かし続ける（canonical writer は TS のまま。ADR-003 の決定 1）
 - cutover を後続 release へ送る
 
-`defer` 中に**個別 slice を本番へ cutover することはできる**が、条件はその slice 単体で
-G1–G7 を満たすことである。全体が defer だからといって、未達の slice を「部分合格」として
-本番へ出すことはしない。
+**本番 cutover は含まない。** G1–G7 は Stage 1 prototype と default runtime の全体に対する gate で、
+slice 単位で適用する規則を持たない（G3 は全 RPC method と全 TS adapter、G5 は clean install した
+Core 全体、G7 は現行 harness 全体を対象にする）。部分 cutover を認めるなら、slice ごとの gate、
+全体との composition 条件、canonical writer と rollback の境界、正本改訂の条件を別に定義し、
+ADR-003 側も同じ per-slice contract へ改訂する必要がある。それは本 ADR の範囲外。
 
 長期方向としての Rust Core を撤回するには、`defer` の記録ではなく別の owner ADR が要る。
 
