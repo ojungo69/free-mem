@@ -95,32 +95,54 @@ test("bot を名乗る author email でも署名があれば通す", () => {
 // GitHub が required status check を照合する名前は job の `name`、無ければ job id。どちらの
 // 綴りでも `dco` という check を作れるので両方拾う。indent は固定しない（4 space でも valid）。
 const DCO_CHECK_NAME = /^\s+(?:["']?dco["']?:|name:\s*["']?dco["']?)\s*(?:#.*)?$/gm;
+// job 名を式で組み立てられると、静的には `dco` を作る job を数え切れない。保守的に拒否する。
+const DYNAMIC_JOB_NAME = /^\s+name:.*\$\{\{/gm;
+
+// `  dco:` から、同じ indent の次の key までを 1 job の本文として切り出す。job を跨いだ検査は
+// 「checker はどこかにある」「skip 制御はどこにも無い」を別々に見てしまい、checker を別 job へ
+// 移して `dco` を空の job に差し替える変異を通す。
+function jobBlock(workflow, jobId) {
+  const header = workflow.match(new RegExp(`^( +)["']?${jobId}["']?:\\s*$`, "m"));
+  if (header === null) return null;
+  const from = header.index + header[0].length;
+  const rest = workflow.slice(from);
+  const next = rest.match(new RegExp(`^ {0,${header[1].length}}\\S`, "m"));
+  return next === null ? rest : rest.slice(0, next.index);
+}
 
 test("dco check は 1 経路だけで、base branch 側から走る", () => {
   const workflowDir = fileURLToPath(new URL("../.github/workflows", import.meta.url));
-  const producers = readdirSync(workflowDir)
+  const workflows = readdirSync(workflowDir)
     .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
-    .flatMap((name) =>
-      [...readFileSync(join(workflowDir, name), "utf8").matchAll(DCO_CHECK_NAME)].map(() => name),
-    );
+    .map((name) => [name, readFileSync(join(workflowDir, name), "utf8")]);
 
   // ファイル数ではなく producer 数を数える。同名 check の生産者が 2 つあると、skip された側が
   // 成功として使われるので、同じ file の中に 2 つあっても等しく駄目。
+  const producers = workflows.flatMap(([name, text]) =>
+    [...text.matchAll(DCO_CHECK_NAME)].map(() => name),
+  );
   assert.deepEqual(producers, ["dco.yml"]);
+  assert.deepEqual(
+    workflows.flatMap(([name, text]) => [...text.matchAll(DYNAMIC_JOB_NAME)].map(() => name)),
+    [],
+  );
 
-  const workflow = readFileSync(join(workflowDir, "dco.yml"), "utf8");
+  const [, workflow] = workflows.find(([name]) => name === "dco.yml");
   // PR 側の tree から実行すると、PR が自分を検査する workflow と checker を書き換えられる。
   assert.match(workflow, /^ +pull_request_target:$/m);
   assert.doesNotMatch(workflow, /^ +pull_request:$/m);
-  // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
-  assert.doesNotMatch(workflow, /^\s+ref:/m);
-  // job を skip させれば、検査せずに成功した check が出る。`needs` も同じで、依存先が失敗すると
-  // この job は skip され、required check としては成功と同じ扱いになる。
-  assert.doesNotMatch(workflow, /^\s+(?:if|continue-on-error|needs):/m);
   // retarget (edited) を落とすと、main へ向いた PR が検査されないまま残る。
   assert.match(workflow, /types:.*edited/);
+
+  const dco = jobBlock(workflow, "dco");
+  assert.ok(dco, "dco job が見つからない");
+  // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
+  assert.doesNotMatch(dco, /^\s+["']?ref["']?:/m);
+  // job を skip させれば、検査せずに成功した check が出る。`needs` も同じで、依存先が失敗すると
+  // この job は skip され、required check としては成功と同じ扱いになる。
+  assert.doesNotMatch(dco, /^\s+["']?(?:if|continue-on-error|needs)["']?:/m);
   // 行全体で固定する。`run: echo node harness/dco-check.mjs ...` でも部分一致は通ってしまう。
-  assert.match(workflow, /^ +run: node harness\/dco-check\.mjs "\$BASE_REF" "\$HEAD_REF"$/m);
+  assert.match(dco, /^ +run: node harness\/dco-check\.mjs "\$BASE_REF" "\$HEAD_REF"$/m);
 });
 
 test("本文中の引用や行途中にある Signed-off-by は trailer として扱わない", () => {

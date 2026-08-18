@@ -48,8 +48,10 @@ by the version already on `main`, so it cannot weaken the checker that gates it.
 
 One route is still open: required checks are matched by name, and a skipped job counts as a pass, so a
 pull request that adds a second job named `dco` to another workflow can produce a check that is hard to
-tell apart from the real one. Until that is closed (tracked in issue #59), a pull request that changes
-CI configuration is reviewed for exactly this, and changes that loosen a gate are rejected.
+tell apart from the real one. Until that is closed, `dco` is not registered as a required check, which
+means it reports its result but does not by itself block a merge. A pull request that changes CI
+configuration is reviewed for exactly this, and changes that loosen a gate are rejected. Issue #59
+tracks closing the route and making the check required.
 
 The full text you are certifying is the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
 

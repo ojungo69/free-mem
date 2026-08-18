@@ -121,8 +121,12 @@ DCO の**検査機構**は issue #59 の変更（2026-08-18、`main` へ squash 
 検査する集合は、`main` を base とする PR の merge-base より後から head までの commit であり、
 稼働時点までに `main` にある既存 history は遡って不合格にしない。
 
-**merge を止める意味での「強制」の開始点は、まだこの日付ではない。** `dco` を required status check
-へ登録し、未署名 PR が実際に止まることを確認した日時と commit を、確認後にここへ記録する。
+**merge を止める意味での「強制」の開始点は、まだこの日付ではない。** 開始条件は次の 3 つで、
+これを満たした日時と commit を確認後にここへ記録する。
+
+1. 下記の残存経路を実測で否定するか、専用 App へ移して閉じる
+2. `dco` を `main-protection` の required status check へ登録する
+3. 未署名 PR が実際に merge を止められることを確認する
 
 強制の機構は `dco` という単一の check である。workflow（`.github/workflows/dco.yml`）も checker
 （`harness/dco-check.mjs`）も `main` 側から読み、PR の head は git history としてしか読まない。
@@ -242,8 +246,7 @@ license 付与は取り消せない。一度公開した version に対する gr
 - release 前の専門家確認（本 ADR は法的助言の代替ではない）。
 - **DCO は文書に規定しているが CI では強制していない** → 2026-08-18 に検査機構が着地した
   （上の「inbound contribution 方針」の開始点・検査集合・機構を参照）。ただし `dco` を
-  `main-protection` の required status check へ登録し、未署名 PR が実際に merge を止められることを
-  確認するまでは「強制している」とは書かない。issue #59 で追跡する。
+  上の 3 つの開始条件を満たすまでは「強制している」とは書かない。issue #59 で追跡する。
 - ~~公開 package の tarball に bundle された依存の notice が載らない（issue #50）~~ →
   **2026-08-18 に解消**。上の「bundle された依存の notice」節を参照。当初この項に書いていた実測
   （`codemem` が `@clack/prompts` ほかを bundle する / `@codemem/server` が `@hono/node-server` を
