@@ -130,8 +130,10 @@ DCO の**検査機構**は issue #59 の変更（2026-08-18、`main` へ squash 
 
 強制の機構は `dco` という単一の check である。workflow（`.github/workflows/dco.yml`）も checker
 （`harness/dco-check.mjs`）も `main` 側から読み、PR の head は git history としてしか読まない。
-PR が自分を検査するコードを書き換えられないこと、および `dco` という名前の check を出す経路を 1 つに
-保つこと（skip された同名 check は GitHub が成功として扱うため）が、この形を選んだ理由である。
+この形を選んだ理由は、PR が自分を検査するコードを書き換えられないことにある。あわせて `dco` という
+名前の check を出す経路は 1 つに保つ。下記のとおり required status check は同じ名前の check run を
+全件見るので、生産者が増えると、そちらが失敗・取り消しになるだけで merge が止まり、どの run が判定
+したのかも辿れなくなる。
 
 **免除は置かない。bot も同じく検査する。** author email は commit する側が `git commit --author` で
 自由に名乗れるので、email 一致による免除は誰でも騙れる。免除が必要になった場合の拡張先は、email では

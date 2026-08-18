@@ -116,8 +116,9 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
     .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
     .map((name) => [name, readFileSync(join(workflowDir, name), "utf8")]);
 
-  // ファイル数ではなく producer 数を数える。同名 check の生産者が 2 つあると、skip された側が
-  // 成功として使われるので、同じ file の中に 2 つあっても等しく駄目。
+  // ファイル数ではなく producer 数を数える。required check は同じ名前の check run を全件見るので、
+  // 生産者が増えると、そちらが失敗・取り消しになるだけで merge が止まる。どの run が判定したのかも
+  // 辿れなくなる。同じ file の中に 2 つあっても等しく駄目。
   const producers = workflows.flatMap(([name, text]) =>
     [...text.matchAll(DCO_CHECK_NAME)].map(() => name),
   );
@@ -134,7 +135,8 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
   // retarget (edited) を落とすと、main へ向いた PR が検査されないまま残る。
   assert.match(workflow, /types:.*edited/);
   // 取り消された run は required check を満たさないので、concurrency は merge を止めてしまう。
-  assert.doesNotMatch(workflow, /^concurrency:/m);
+  // workflow 直下でも job の中でも同じなので、indent と引用符を許して両方を拒否する。
+  assert.doesNotMatch(workflow, /^\s*["']?concurrency["']?:/m);
 
   const dco = jobBlock(workflow, "dco");
   assert.ok(dco, "dco job が見つからない");
