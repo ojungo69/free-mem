@@ -194,6 +194,19 @@ version-pin（`assemble.ts:207`）に引っかかる。これは別の変更に�
 結果として、この変更で昇格する cell は **0 件**になる。塞ぐのが目的であって、
 昇格させるのが目的ではない（issue 本文「実 CLI capture rig を有効化する前に塞ぐ」）。
 
+**owner の不採用事項との関係**: issue #20 は「生 transcript ファイル全体の SHA-256 を
+`evidenceHash` にする」を不採用としている。`captureRawHash` は生ファイルの SHA-256 だが、
+不採用の対象ではない。不採用だったのは**再現性を担う digest として生ファイルの hash を使う**
+ことで、それだと同じ scenario を取り直すたびに不一致になる。役割を 2 つに分けている。
+
+| 欄 | 役割 | 再取得で |
+|---|---|---|
+| `evidenceHash`（正規化抜粋） | 「同じ観測か」を判定する。owner が採用した形 | 変わらない |
+| `captureRawHash`（生 byte） | 「この記録そのものか」を結び付ける | 変わる |
+
+`evidenceHash` の役割は owner 決定のまま。`captureRawHash` はそこへ足した別の役割で、
+置き換えではない。
+
 **単数欄にしない理由**: `claude/interrupt-and-hook-timeout` が 5 本の観測記録を根拠にしている。
 単数欄だと 4 本が検査対象から外れ、この fixture の主張の中心である中断の証跡が裏取り無しで残る。
 
@@ -231,7 +244,7 @@ version-pin（`assemble.ts:207`）に引っかかる。これは別の変更に�
   | 欄 | 現状 | 変更後 |
   |---|---|---|
   | `fixtureId` | `{type: string, minLength: 1}` | `pattern: "^(claude\|codex)/[a-z0-9]+(?:-[a-z0-9]+)*$"`。matrix の `fixtureIds` / `sourceFixtureId` / `evidenceSources` / 生成 limitations に出る |
-  | `observedEvents[].sourceEvents[]` | `{type: string}` | 既知の hook 名の `enum` に閉じる（`SessionStart` / `UserPromptSubmit` / `Stop` / `SessionEnd` / `PreToolUse` / `PostToolUse` / `SubagentStop` / `PreCompact`）。matrix の cell へそのまま載る |
+  | `observedEvents[].sourceEvents[]` | `{type: string}` | 既知の hook 名の `enum` に閉じる。matrix の cell へそのまま載る。**値は手で並べず、既存 fixture と観測記録から機械的に導く**（実測すると raw に現れる event は `SessionStart` / `UserPromptSubmit` / `Stop` / `SessionEnd` / `PreToolUse` / `PostToolUse` / `SubagentStop` の 7 種で、`PreCompact` は 1 件も無い。手で並べると実在しない値が混ざる） |
   | `nativeVersion` | `{type: string, minLength: 1}` | 制御文字を禁じる `pattern` を足す（`^[\x20-\x7e]+$`） |
   | `limitationCodes[]` | 新設 | closed enum（§5.3） |
 

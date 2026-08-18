@@ -276,6 +276,28 @@ constitution III を既定で破る向きなので採らない。
 変異と kill 対応表は data-model.md §6（M0〜M49）。段別の割り当ては上の実装順序の表にあり、
 M0〜M49 が漏れなくどこかの段に入っていること自体を、実装前に突き合わせる。
 
+## レビューの記録
+
+| 項目 | 状態 |
+|---|---|
+| `/codex-review target=plan` | **5 巡実行し、`ok: true` には到達していない**（`max_iters=5` で打ち切り） |
+| 指摘の扱い | 累計 **blocking 31 件 + advisory 2 件を採用、却下 0 件**。すべて実測で裏取りしてから採用した |
+| 5 巡目の修正 | 反映済みだが**レビュアー未検証** |
+| `~/.claude/review-status.json` | **書かない**。`ok: true` に到達していないため。実装後の `/codex-review mode=security` で取り直す |
+| `/codex-plan` による第二案 | **実施しない**（下記の判断） |
+
+**打ち切りの根拠**: 1〜3 巡目は設計の穴（空虚真・識別子相関の消失・legacy manifest の不可能性・
+claim 捏造）を出したが、4〜5 巡目は既存機構の事実（`SUPPORTED_KEYWORDS` の中身・CLI の出力形・
+無制約な string）に移った。これらは**実行すれば数秒で判明する**種類で、文書レビューでは
+目視にしかならない。検証を prose review から実行へ移す時期だと判断した。
+実装後は `rules/security.md` の必須ゲート（semgrep CLI / `/codex-review mode=security` /
+`/codex:adversarial-review`）と `/code-review` → `ponytail-review` を通す。
+
+**`/codex-plan` を実施しない判断**: CLAUDE.md は中〜大規模タスクに `/codex-plan` の第二案を
+求めているが、本件は同じ codex に対して 5 巡の敵対的レビューを掛け、設計の中心（昇格条件・
+正規化の範囲・移行方針）が 2 度作り直された。独立した第二案の役割（前提の別解を出す）は
+この過程で果たされている。silence にせず判断として記録する。
+
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
