@@ -194,7 +194,7 @@ single-instance、sole-writer、process lifecycle、transaction、spool、backup
 
 ## Rust 自体を差別化として扱わない
 
-Rust、単一バイナリ、SQLite、FTS5、local-first、MCP、複数Agent対応は、すでに複数の競合が提供している。したがって、Rust化をmarketing上の唯一の優位性として扱わない。
+Rust、単一バイナリ、SQLite、FTS5、local-first、MCP、複数Agent対応は、複数の競合が公開資料上「提供している」とpositioningしている（install / 実挙動は未検証。#8 / #79 で実測する）。したがって、Rust化をmarketing上の唯一の優位性として扱わない。
 
 free-mem の中核製品価値は次とする。
 
@@ -206,7 +206,8 @@ free-mem の中核製品価値は次とする。
 - workspace reconciliation
 - unknown operationの`verify_first`
 - exact-version capability evidence
-- at-most-one checkpoint delivery
+- 同一 device 上で 1 つの checkpoint に対する未失効の active delivery attempt が最大 1 件
+  （valid な reclaim 後の再配送と cross-device の fork は対象外。v6.1 §22.4 / §27.7）
 - `claimed -> delivered -> engaged -> accepted` の分離
 - wrong resume / unsafe replay / duplicate injectionのzero-tolerance gate
 - provider停止時にも成立するdeterministic continuity

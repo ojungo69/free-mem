@@ -75,8 +75,8 @@ continue using their native toolchains.
 Rust, a single binary, SQLite, local-first operation, MCP, and multi-Agent support are not
 sufficient differentiation by themselves. free-mem must demonstrate its advantage through
 reproducible continuity scenarios: wrong-resume prevention, workspace reconciliation,
-unknown-operation safety, at-most-one delivery, reduced re-explanation, and faster first
-useful action.
+unknown-operation safety, at most one live delivery attempt per checkpoint on a device,
+reduced re-explanation, and faster first useful action.
 
 ## Repository layout
 

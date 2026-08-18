@@ -1,8 +1,8 @@
 # Direct competitor positioning snapshot
 
-Date: **2026-08-18 (Asia/Tokyo)**  
-Scope: coding-agent memory / continuity products that compete directly with `free-mem`  
-Purpose: separate architectural novelty from product-market differentiation and define honest comparison targets.
+- Date: **2026-08-18 (Asia/Tokyo)**
+- Scope: coding-agent memory / continuity products that compete directly with `free-mem`
+- Purpose: separate architectural novelty from product-market differentiation and define honest comparison targets.
 
 ## Evidence rule
 
@@ -39,7 +39,9 @@ The following are useful requirements but are **not sufficient differentiation**
 - cloud or cross-machine sync
 - provider selection
 
-At least one direct competitor publicly provides each of these, and several combine many of them.
+At least one direct competitor's pinned public materials claim each of these, and several claim many
+of them together. Per the evidence rule above, that is a positioning claim, not a verified capability —
+install and behaviour are measured through #8.
 
 ## Competitor strengths to treat as baselines
 

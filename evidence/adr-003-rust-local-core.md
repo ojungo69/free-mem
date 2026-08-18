@@ -42,7 +42,14 @@ Phase 1 の TS suite（現行 114 files / 1,851 passed + 3 todo）は TS 実装�
 - `harness/`（Phase 0B）の capability fixture / golden matrix — 実 CLI 由来の JSON fixture であり実装言語に依存しない
 - Phase 3 preflight（#13 / PR #14）の runtime-neutral contract fixture — 「TypeScript と Rust が同一の schema・fixture・report hash を消費する」ことを計画の制約として明記済み
 
-したがって L2 は「4,000 件のテストを Rust に移植する」ではなく「contract fixture を両実装に適用する」問題に変換できる。**ただし現時点で contract fixture はまだ存在しない**（Phase 3 preflight Task 4–10 が未実装）。この変換が成立するかどうかは Stage 1 の実測項目に含める。
+したがって L2 は「4,000 件のテストを Rust に移植する」ではなく「contract fixture を両実装に適用する」問題に変換できる。
+
+本 ADR 作成時点（2026-08-16）では contract fixture がまだ無く、それを未確定要素として記録していた。
+2026-08-18 現在は runtime-neutral な基礎——`harness/schema/continuity.schema.json`、
+`harness/fixtures/continuity/`、`harness/continuity/reference-model.ts` と契約テスト——が存在する。
+**ただし Phase 3 preflight の Task 4–10 が全部通ったわけではない**（#13）。「fixture が無い」ことと
+「preflight の全ゲートが未完了」であることは別で、現在地は後者。この変換が成立するかどうかは
+引き続き Stage 1 の実測項目に含める。
 
 **L3（adapter / viewer / MCP の再実装）— Phase 1 の成果で構造的に回避済み。**
 Phase 1 の T041–T048 により、hook adapter・CLI・MCP server・viewer はすべて daemon RPC のクライアントになり、daemon 外の DB handle はゼロになった（T048、Exit-1a/1b で機械検証済み）。RPC contract を凍結すれば、daemon 実装の言語は adapter から観測できない。よって L3 は「RPC contract v1 を Rust が忠実に再実装できるか」という 1 点に縮約される。凍結文書はそのために作成する。
