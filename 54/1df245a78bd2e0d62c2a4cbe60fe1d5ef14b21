@@ -1,0 +1,23 @@
+evidence/adr-003-rust-local-core.md
+  s_2d059b4f795bca::t_0b60c7349b2c59 5,19,78-79,81-85
+evidence/adr-005-rust-core-product-direction.md
+  s_2d059b4f795bca::t_28ad14fdeb4d73 19-20,156-160
+specs/001-agent-memory-core/tasks.md
+  s_2d059b4f795bca::t_e844b40de0d42a 209,213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "541df245a78bd2e0d62c2a4cbe60fe1d5ef14b21",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
