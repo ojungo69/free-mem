@@ -53,17 +53,21 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const vendorRoot = join(repositoryRoot, "vendor", "codemem");
 const baselinePath = join(repositoryRoot, "harness", "notice-baseline.json");
 
+// license 本文がどこにあるかの定義はここ 1 箇所。digest を取る側と形の検査をする側で別々に
+// 切り出していると、片方だけ直したときに「digest は一致するのに本文が空」のような食い違いが出る。
+function licenseBody(text, from = 0) {
+  const start = text.indexOf(LICENSE_MARKER, from);
+  if (start === -1) return null;
+  const bodyStart = text.indexOf("\n\n", start + LICENSE_MARKER.length);
+  const end = text.indexOf(LICENSE_END_MARKER, start + LICENSE_MARKER.length);
+  if (bodyStart === -1 || end === -1 || bodyStart >= end) return null;
+  return { body: text.slice(bodyStart + 2, end).trim(), next: end + LICENSE_END_MARKER.length };
+}
+
 function licenseBodies(text) {
   const bodies = [];
-  let cursor = 0;
-  while (true) {
-    const start = text.indexOf(LICENSE_MARKER, cursor);
-    if (start === -1) break;
-    const bodyStart = text.indexOf("\n\n", start + LICENSE_MARKER.length);
-    const end = text.indexOf(LICENSE_END_MARKER, start + LICENSE_MARKER.length);
-    if (bodyStart === -1 || end === -1 || bodyStart >= end) break;
-    bodies.push(text.slice(bodyStart + 2, end).trim());
-    cursor = end + LICENSE_END_MARKER.length;
+  for (let found = licenseBody(text); found; found = licenseBody(text, found.next)) {
+    bodies.push(found.body);
   }
   return bodies;
 }
@@ -82,11 +86,7 @@ export function dependencyDigests(text) {
     const name = entry.match(/^- Name: `([^`]+)`$/m)?.[1];
     const version = entry.match(/^- Version: `([^`]+)`$/m)?.[1];
     if (!name || !version) continue;
-    const start = entry.indexOf(LICENSE_MARKER);
-    const end = entry.indexOf(LICENSE_END_MARKER);
-    const bodyStart = start === -1 ? -1 : entry.indexOf("\n\n", start + LICENSE_MARKER.length);
-    const body =
-      bodyStart === -1 || end === -1 || bodyStart >= end ? "" : entry.slice(bodyStart + 2, end).trim();
+    const body = licenseBody(entry)?.body ?? "";
     result[`${name}@${version}`] = createHash("sha256").update(body, "utf8").digest("hex");
   }
   return Object.fromEntries(Object.entries(result).sort(([left], [right]) => (left < right ? -1 : 1)));
