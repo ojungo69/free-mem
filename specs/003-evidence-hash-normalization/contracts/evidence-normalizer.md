@@ -3,7 +3,7 @@
 正規化と digest の唯一の実装。取得側（`harness/rig/rig.sh`）と検証側（`harness/assemble.ts`）が
 同じものを使う。二重実装を作らない。
 
-配置: `harness/evidence/normalize.mjs`
+配置: `harness/evidence/normalize.ts`（`.mjs` にしない。harness/tsconfig.json は `include: ["**/*.ts"]` で `allowJs` が無く、`.mjs` を import すると implicit any になる）
 
 ---
 
@@ -46,7 +46,7 @@ schema が上流で検証しているが、path の一部になる値の検査�
 ## CLI としての表面
 
 ```
-node harness/evidence/normalize.mjs <capture-file>
+node --experimental-strip-types harness/evidence/normalize.ts <capture-file>
 ```
 
 - 標準出力へ `{"evidenceHash":"<64 hex>","normalizationVersion":<n>}` を 1 行
@@ -68,5 +68,23 @@ node harness/evidence/normalize.mjs <capture-file>
 | 空行以外が解釈できない | 2 | 行番号 |
 | 解釈できた行が 0 件 | 2 | 件数 0 |
 | `event` / `payload` を欠く行 | 2 | 行番号と欠けたキー名 |
+| 重複 property を含む行（`parseIJson` が拒否） | 2 | 行番号 |
+| 不正な UTF-8（`decodeUtf8` が拒否） | 2 | byte 位置 |
+| `payload.unparsed` を持つ行 | 2 | 行番号 |
 
 **行の中身は出さない。** 行番号までにする。
+**path も出さない。** 例外は安全な理由コードへ変換し、渡された path は basename までにする。
+
+---
+
+## 読み取りは既存実装を使う
+
+`harness/schema/jcs.ts` の `decodeUtf8` と `parseIJson` を再利用する。自前で
+`readFileSync(..., "utf8")` + `JSON.parse` を書かない。
+
+- Node の既定 UTF-8 読み取りは不正 byte を U+FFFD へ黙って置換する。壊れた記録が
+  正常な記録として digest を得る
+- `JSON.parse` は重複 property を後勝ちで潰す。`{"a":1,"a":2}` と `{"a":2}` が同じ digest になる
+
+正規化の中間オブジェクトは `Object.create(null)` で作る。通常の `{}` へ `__proto__` を
+代入すると欄が消える。

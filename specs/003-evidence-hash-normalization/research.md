@@ -89,22 +89,64 @@ array は要素ごとに再帰し長さを保持 / LF 区切りの NDJSON。
 
 一致しなかった重要な組:
 
-| 組 | digest | 意味 |
-|---|---|---|
-| `claude-tool-denied` vs `claude-tool-ok` | `1ac174c9…` vs `89a8fe38…` | 許可拒否と成功実行を取り違えない |
-| `claude-inject` vs `claude-lifecycle-basic` | `44fd86a7…` vs `24a74e6c…` | 注入 scenario と最小 run を取り違えない |
-| `claude-tool-fail` vs `claude-tool-fail2` | `67d11705…` vs `bb2efa68…` | prompt が実際に違う（「the single command: false」と「exactly: false 」）ので別物として正しい |
-| `codex-tool-ok` vs `codex-tool-fail` | `49454289…` vs `94f87d4a…` | `tool_response` が非空文字列と空文字列で分かれる |
+| 組 | 意味 |
+|---|---|
+| `claude-tool-denied` vs `claude-tool-ok` | 別 digest。投入した指示が違う |
+| `claude-inject` vs `claude-lifecycle-basic` | 別 digest。注入 scenario と最小 run を取り違えない |
+| `claude-tool-fail` vs `claude-tool-fail2` | 別 digest。prompt が実際に違う（「the single command: false」と「exactly: false 」）ので別物として正しい |
+| `codex-tool-ok` vs `codex-tool-fail` | 別 digest。`tool_response` が非空文字列と空文字列で分かれる |
 
-**深さ条件を入れる前と後の差**: 変わったのは `claude-subagent` の digest 1 件だけ
-（`6da41456…` → `11ae2138…`）。distinct 14 種・衝突 2 組は変わらない。
-深い階層の `prompt` を伏せ字にしても、観測の区別能力は落ちていない。
+digest の実値は実装時に生成して fixture へ埋める。ここに書き写すと、規則を 1 つ調整するたびに
+文書側の値が古くなる（実際に本 research の推敲中だけで 3 回変わった）。
+検査対象は「何と何が一致し、何と何が一致しないか」であって値そのものではない。
+
+**規則を調整したときの測定履歴**（distinct と衝突の組は 3 回とも同じ）
+
+| 版 | 変更点 | distinct | 衝突 |
+|---|---|---|---|
+| 初版 | キー名だけで verbatim を判定 | 14 | `hook-timeout`≡`lifecycle-basic`、`interrupt3`≡`interrupt4` |
+| 深さ限定 | verbatim を `payload` 直下に限定 | 14 | 同じ（変わったのは `claude-subagent` の値だけ） |
+| 相関 token | 識別子を `<id:N>` / `<path:N>` へ | 14 | 同じ（全件の値が変わる） |
+
+**`claude-tool-denied` は実際には拒否を観測していない**。`stdout` が `blocked`、
+`last_assistant_message` が `blocked` なので、Bash tool は実行されている。
+`permission_denied` を記録している fixture が 1 件も無いのはそのため。
+この scenario は「拒否を観測しようとして観測できなかった」記録として扱う。
 
 **`prompt` を verbatim から外した場合の測定**: 衝突が 5 組へ増え、`claude-tool-denied` と
 `claude-tool-ok` が同一 digest になった。許可拒否と成功実行の取り違えは substantive な誤りなので、
 `prompt` は verbatim 側に必須。
 
-**Decision**: 上記の規則をそのまま `normalizationVersion: 1` として凍結する。
+### 識別子の等値関係を残す（レビュー指摘を受けた修正）
+
+上記の規則は揮発する識別子をすべて同じ `<string>` にしていた。これだと等値関係が消え、
+`stableNativeSessionId`（session 識別子が run を通して同一か）が原理的に裏付けられなくなる。
+証拠を要求したのに証拠から導けない cell が生まれるのは設計の誤り。
+
+`session_id` / `prompt_id` / `turn_id` / `tool_use_id` / `agent_id` は `<id:N>`、
+`transcript_path` / `agent_transcript_path` / `cwd` は `<path:N>` へ、**ファイル単位・
+初出順**で置き換える。値の中身は出さないので絶対 path も識別子も漏れない。
+
+**測定**: 16 件へ当て直した結果、**distinct 14 種・衝突 2 組**は変わらない。
+2 組の内訳（`hook-timeout` ≡ `lifecycle-basic`、`interrupt3` ≡ `interrupt4`）も同じ。
+等値関係を残しても区別能力は落ちず、逆に消していた情報が戻る。
+
+**Decision**: 相関 token を含めた規則を `normalizationVersion: 1` として凍結する。
+
+### digest が証明しないこと
+
+同じ event 列・同じ欄構成なら、`tool_response` の中身が成功文でも拒否文でも同じ
+`<string>` になる。注入 token が応答へ echo されたかも digest には現れない。
+**記録の本文に依存する主張は digest では裏付けられない。** これは正規化の欠陥ではなく、
+「再取得で同じ digest になる」ことと本質的にトレードオフの関係にある
+（本文を含めれば再取得で必ず変わる）。
+
+対処は 2 つに分ける。
+
+1. **run の素性**（実 CLI か、どの版か、隔離されていたか、記録が失敗していないか）は
+   digest ではなく rig が書く manifest で裏付ける（R7）
+2. **cell ごとの本文依存の主張**は、raw から値を導く述語が要る。本 issue の範囲を超えるので
+   残る穴として明記し、`real-cli-e2e` の定義を実態へ合わせる（data-model.md §0・§4.3）
 
 ---
 
@@ -166,6 +208,78 @@ rig は `$RIG_BASE/capture/{claude,codex}-<label>.jsonl` へ書く（`harness/ri
 
 **Decision**: 8 fixture すべてに証拠配列と digest を埋める。これにより 21 cell が
 `source-test` から `real-cli-e2e` へ**昇格**する。降格は 1 件も発生しない。
+
+---
+
+## R7. run の素性は manifest で裏付ける（レビュー指摘）
+
+SHA-256 の一致はファイル内容の整合性しか証明しない。「実 CLI を隔離 rig で動かした記録だ」は
+別の裏付けが要る。現状 `nativeVersion` と `rig.isolated` は fixture の自己申告のまま。
+
+rig は既に材料を出している。
+
+| 材料 | 出どころ |
+|---|---|
+| CLI の exact version | `$RIG_BASE/capture/<cli>-<label>.version`（`rig.sh:76`, `:88`） |
+| recorder の失敗 | `<capture>.errors`（`capture-hook.sh:23`。**無い**ことが正常） |
+| run の終了状態 | `<cli>-<label>.stderr` の `exit=N (recorded)` |
+| 隔離設定 | `rig.sh` の `run_env`（`HOME` / `CLAUDE_CONFIG_DIR` / `CODEX_HOME` の差し替え） |
+
+**Decision**: rig が run ごとに manifest を 1 件書き、observation と一緒に置き場へ持ち込む。
+assemble は manifest の digest を照合し、`isolated !== true` / `recorderErrors > 0` /
+`captureHash` 不一致 / `cliVersion` と fixture の `nativeVersion` の不一致で失敗させる。
+形式は data-model.md §2.5。
+
+`assemble.ts:402` のコメントが「§13 の manifest hash はまだ無い（Task 5 で入る）。
+入る場所はこの配列」と書いているとおり、`capabilityHashInputs` に入れる場所が既にある。
+
+**残る境界**: manifest は rig が書くので、rig を動かす人を信頼する境界は残る。
+checkout を信頼するのと同じ水準として §0 に明記する。署名や外部 attestation は
+ローカル完結（constitution I / VI）と釣り合わない。
+
+---
+
+## R8. 読み取りの頑健性は既存実装を使う（レビュー指摘）
+
+`harness/schema/jcs.ts` に `decodeUtf8`（不正 UTF-8 を拒否）と `parseIJson`（重複 property を
+拒否）が既にある。`harness/continuity/jcs.test.ts:91` が重複キー拒否を確認している。
+
+自前で `readFileSync(..., "utf8")` + `JSON.parse` を書くと 2 つ穴が開く。
+
+- Node の既定 UTF-8 読み取りは不正 byte を U+FFFD へ黙って置換する。壊れた記録が
+  正常な記録として digest を得る
+- `JSON.parse` は重複 property を後勝ちで潰す。`{"a":1,"a":2}` と `{"a":2}` が同じ digest になる
+
+さらに `harness/rig/capture-hook.sh:15` は hook の stdin を解釈できなかったとき
+`payload = {unparsed: raw}` に包む。これは「取れなかった観測」なので正常な payload として
+digest に混ぜてはいけない。
+
+**Decision**: 読み取りは `decodeUtf8` + `parseIJson` を再利用する。`payload.unparsed` を
+持つ行は失敗にする。正規化の中間オブジェクトは `Object.create(null)` で作る
+（通常の `{}` へ `__proto__` を代入すると欄が消え、`__proto__` の有無が digest に現れない）。
+
+---
+
+## R9. 秘密は既に成果物へ出ている（レビュー指摘・実測）
+
+`harness/matrix/{claude,codex}.json` に `RIG_INJECT_5f3a9` がそのまま載っている。
+fixture の `limitations` 自由文が matrix へ逐語転記されるため、normalizer を伏せ字にしても
+消えない。quickstart の `grep -r "RIG_INJECT_" harness/matrix/` は現時点で失敗する。
+
+**Decision**: backfill の際に 8 fixture の `limitations` から実値・token・識別子・絶対 path を
+取り除く。加えて、観測記録 16 件から実値を機械抽出して matrix・stdout・stderr に完全一致が
+無いことを検査する（自由文へ新しい実値が混ざったときに固定文字列の grep では捕まらないため）。
+
+---
+
+## R10. ビルドと CI の前提（レビュー指摘・実測）
+
+| 前提 | 実測 |
+|---|---|
+| `harness/tsconfig.json` は `include: ["**/*.ts"]`、`allowJs` / `checkJs` 無し | `.mjs` を import すると implicit any になる。新規モジュールは `.ts` にする |
+| `erasableSyntaxOnly` / `verbatimModuleSyntax` が有効 | enum など実行時に効く構文は使えない |
+| `harness/package.json` に `scripts` が無い | `npm run harness:assemble` は存在しない。実コマンドを使う |
+| CI が `node harness/contract-hashes.mjs` の出力と `harness/contract-hashes.json` を diff（`ci.yml:151-152`） | `capability.schema.json` と fixture を変えたら再生成が必要 |
 
 ---
 
