@@ -79,12 +79,17 @@ would have to infer — is an open question, tracked in
 
 `harness/notice-inclusion-check.mjs` enforces this. It runs the install and the build itself, packs
 each publishable package with `pnpm pack`, extracts the tarball, and checks the notices inside it.
-The expected dependency names are pinned as a **complete set** in `harness/notice-baseline.json`, and
-the set of notice files is compared too, so a missing dependency, a missing file, and an unexpected
-addition all fail. Regenerate with `--write-baseline` when dependencies legitimately change; the diff
+The expected dependency names — and a SHA-256 digest of each license body — are pinned as a
+**complete set** in `harness/notice-baseline.json`, and the set of notice files is compared too, so a
+missing dependency, a missing file, an unexpected addition, and a license text that no longer matches
+all fail. Regenerate with `--write-baseline` when dependencies legitimately change; the diff
 is then part of the commit under review, the same arrangement as `harness/contract-hashes.json`. It
-runs as its own CI job and from `scripts/release-tag-preflight.sh`, so a manual `npm publish` cannot
-bypass it. `harness/license-inclusion-check.mjs` remains separate and still does not look at build
+runs from three places: its own CI job, `scripts/release-tag-preflight.sh` (which the release
+workflow calls before tagging), and each publishable package's `prepublishOnly` script. It does not
+cover `npm publish --ignore-scripts`, nor a publish made outside the release workflow — restricting
+publish rights to the protected workflow is tracked in
+[#83](https://github.com/ojungo69/free-mem/issues/83).
+`harness/license-inclusion-check.mjs` remains separate and still does not look at build
 output: it checks package-level `LICENSE` files.
 
 ### Bundled code outside the npm packages

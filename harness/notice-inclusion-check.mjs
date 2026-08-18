@@ -4,11 +4,12 @@
 // build 済みかどうかで分岐しない。自分で install と build と pack を行い、実際の tarball の
 // 中身だけを見る。「build 済みなら検査する」形にすると、build 順序に依存して黙って素通りする。
 //
-// 期待する依存名は harness/notice-baseline.json に**完全な集合として**固定してある。名指しの
-// 数件だけを要求する形は採らない: 生成が部分的に退行して他が落ちても通ってしまうため（実測で
-// `marked` 1 件の欠落が素通りすることを確認済み）。依存が正当に増減したときは
-// `--write-baseline` で再生成し、その差分を commit に載せてレビューする
-// （harness/contract-hashes.json と同じ運用）。
+// 期待する依存名と、その license 本文の digest は harness/notice-baseline.json に
+// **完全な集合として**固定してある。名指しの数件だけを要求する形は採らない: 生成が部分的に
+// 退行して他が落ちても通ってしまうため（実測で `marked` 1 件の欠落が素通りすることを確認済み）。
+// 本文を digest で固定するのは、非空かどうかしか見ないと本文が別物に差し替わっても通るため。
+// 依存が正当に増減したとき・license 本文が変わったときは `--write-baseline` で再生成し、
+// その差分を commit に載せてレビューする（harness/contract-hashes.json と同じ運用）。
 //
 // usage:
 //   node harness/notice-inclusion-check.mjs                  # 検査
@@ -26,6 +27,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -65,8 +67,23 @@ function licenseBodies(text) {
   return bodies;
 }
 
-export function dependencyNames(text) {
-  return [...text.matchAll(/^- Name: `([^`]+)`$/gm)].map((match) => match[1]).sort();
+// 依存名と、その license 本文の digest を対にして返す。名前だけを見る形にしないのは、本文が
+// 壊れても・別物に差し替わっても「非空である」以上のことを言えないため（notice の中身が
+// 正しいことがこのゲートの目的なので、形だけ合っていても意味が無い）。
+export function dependencyDigests(text) {
+  const entries = text.split(ENTRY_MARKER).slice(1);
+  const result = {};
+  for (const entry of entries) {
+    const name = entry.match(/^- Name: `([^`]+)`$/m)?.[1];
+    if (!name) continue;
+    const start = entry.indexOf(LICENSE_MARKER);
+    const end = entry.indexOf(LICENSE_END_MARKER);
+    const bodyStart = start === -1 ? -1 : entry.indexOf("\n\n", start + LICENSE_MARKER.length);
+    const body =
+      bodyStart === -1 || end === -1 || bodyStart >= end ? "" : entry.slice(bodyStart + 2, end).trim();
+    result[name] = createHash("sha256").update(body, "utf8").digest("hex");
+  }
+  return Object.fromEntries(Object.entries(result).sort(([left], [right]) => (left < right ? -1 : 1)));
 }
 
 // tarball を展開したディレクトリから notice ファイルを見つける。baseline との突き合わせで
@@ -127,13 +144,15 @@ export function inspectPackageDirectory(packageName, packageDirectory, baseline)
 
     // 0 件の成果物にもファイルを出し、「bundle されていない」と明記させる。ファイルが無いことを
     // 0 件と読む形にすると、生成が壊れた場合と区別できない。
-    if (expected[path].length === 0 && !text.includes(NO_BUNDLED_DEPENDENCIES)) {
+    if (Object.keys(expected[path]).length === 0 && !text.includes(NO_BUNDLED_DEPENDENCIES)) {
       failures.push(`${packageName}: ${path} does not state that no third-party code is bundled`);
     }
 
-    const actual = dependencyNames(text);
-    const missing = expected[path].filter((name) => !actual.includes(name));
-    const added = actual.filter((name) => !expected[path].includes(name));
+    const actual = dependencyDigests(text);
+    const actualNames = Object.keys(actual);
+    const expectedNames = Object.keys(expected[path]);
+    const missing = expectedNames.filter((name) => !actualNames.includes(name));
+    const added = actualNames.filter((name) => !expectedNames.includes(name));
     if (missing.length > 0) {
       failures.push(`${packageName}: ${path} is missing bundled dependencies: ${missing.join(", ")}`);
     }
@@ -142,8 +161,18 @@ export function inspectPackageDirectory(packageName, packageDirectory, baseline)
         `${packageName}: ${path} has dependencies not in the baseline: ${added.join(", ")} (regenerate the baseline)`,
       );
     }
-    if (actual.length !== entryCount) {
-      failures.push(`${packageName}: ${path} has ${entryCount} entries but ${actual.length} name fields`);
+    const changed = expectedNames.filter(
+      (name) => actual[name] !== undefined && actual[name] !== expected[path][name],
+    );
+    if (changed.length > 0) {
+      failures.push(
+        `${packageName}: ${path} has changed license text for: ${changed.join(", ")} (regenerate the baseline after reviewing the new text)`,
+      );
+    }
+    if (actualNames.length !== entryCount) {
+      failures.push(
+        `${packageName}: ${path} has ${entryCount} entries but ${actualNames.length} name fields`,
+      );
     }
   }
 
@@ -219,7 +248,7 @@ function writeBaseline() {
     for (const { spec, directory } of packed) {
       baseline[spec.name] = {};
       for (const path of findNoticeFiles(directory)) {
-        baseline[spec.name][path] = dependencyNames(
+        baseline[spec.name][path] = dependencyDigests(
           readFileSync(join(directory, ...path.split("/")), "utf8"),
         );
       }

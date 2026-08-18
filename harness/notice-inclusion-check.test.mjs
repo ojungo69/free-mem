@@ -16,7 +16,7 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 
 import {
-  dependencyNames,
+  dependencyDigests,
   inspectPackageDirectory,
   isDirectInvocation,
 } from "./notice-inclusion-check.mjs";
@@ -25,16 +25,20 @@ import {
 // 見る設計なので、fixture は代表的な数件で足りる。
 const SERVER_STATIC = ["preact", "@radix-ui/react-dialog", "dompurify", "tslib", "marked"];
 
+// baseline は「依存名 → license 本文の digest」。fixture の本文は notice() が作るので、
+// 期待値も同じ関数から導く（手で並べた列挙は緑のまま守らなくなる）。
+const digestsOf = (dependencies) => dependencyDigests(notice(dependencies));
+
 const BASELINE = {
   codemem: {
-    "dist/THIRD_PARTY_NOTICES.md": [],
-    "dist/THIRD_PARTY_NOTICES.hook-runtime.md": ["@codemem/core", "commander"],
+    "dist/THIRD_PARTY_NOTICES.md": {},
+    "dist/THIRD_PARTY_NOTICES.hook-runtime.md": digestsOf(["@codemem/core", "commander"]),
   },
-  "@codemem/core": { "dist/THIRD_PARTY_NOTICES.md": ["hono"] },
-  "@codemem/mcp": { "dist/THIRD_PARTY_NOTICES.md": [] },
+  "@codemem/core": { "dist/THIRD_PARTY_NOTICES.md": digestsOf(["hono"]) },
+  "@codemem/mcp": { "dist/THIRD_PARTY_NOTICES.md": {} },
   "@codemem/server": {
-    "dist/THIRD_PARTY_NOTICES.md": [],
-    "static/THIRD_PARTY_NOTICES.md": [...SERVER_STATIC].sort(),
+    "dist/THIRD_PARTY_NOTICES.md": {},
+    "static/THIRD_PARTY_NOTICES.md": digestsOf(SERVER_STATIC),
   },
 };
 
@@ -75,8 +79,8 @@ function fixture(t) {
     "@codemem/server": join(root, "server"),
   };
   for (const [name, directory] of Object.entries(packages)) {
-    for (const [path, dependencies] of Object.entries(BASELINE[name])) {
-      writeNotice(directory, path, dependencies);
+    for (const [path, digests] of Object.entries(BASELINE[name])) {
+      writeNotice(directory, path, Object.keys(digests));
     }
   }
   return packages;
@@ -192,11 +196,21 @@ test("baseline に項目が無い package を拒否する", (t) => {
 });
 
 test("依存名の抽出は Name 行だけを見る", () => {
-  assert.deepEqual(dependencyNames(notice(["preact", "@radix-ui/react-dialog"])), [
+  assert.deepEqual(Object.keys(dependencyDigests(notice(["preact", "@radix-ui/react-dialog"]))), [
     "@radix-ui/react-dialog",
     "preact",
   ]);
-  assert.deepEqual(dependencyNames("見出しも本文も Name 行ではない\n## preact@1.0.0\n"), []);
+  assert.deepEqual(dependencyDigests("見出しも本文も Name 行ではない\n## preact@1.0.0\n"), {});
+});
+
+// 本文が別物に差し替わっても名前と形が揃っていれば通る、という穴を塞いだことの確認。
+test("license 本文が baseline と違えば拒否する", (t) => {
+  const packages = fixture(t);
+  const file = join(packages["@codemem/core"], "dist/THIRD_PARTY_NOTICES.md");
+  writeFileSync(file, readFileSync(file, "utf8").replace("License for hono", "まったく別の本文"));
+  assert.ok(
+    inspectAll(packages).some((failure) => failure.includes("changed license text for: hono")),
+  );
 });
 
 // 起動経路の綴りが違うだけで main() が呼ばれないと、ゲートは「何も検査しなかった」ことを

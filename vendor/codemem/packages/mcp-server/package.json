@@ -22,8 +22,9 @@
 		"dist/"
 	],
 	"scripts": {
-		"clean": "rm -rf dist tsconfig.tsbuildinfo",
 		"build": "pnpm exec vite build && pnpm exec tsc --build --force",
+		"clean": "rm -rf dist tsconfig.tsbuildinfo",
+		"prepublishOnly": "node ../../../../harness/notice-inclusion-check.mjs",
 		"typecheck": "pnpm exec tsc --noEmit"
 	},
 	"dependencies": {

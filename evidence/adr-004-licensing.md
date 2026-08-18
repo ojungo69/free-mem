@@ -159,9 +159,13 @@ CI ゲート:
   展開し、tarball の中身を検査する。「build 済みなら検査する」形にしていないのは、build 順序に依存して
   黙って素通りするのを避けるため。build の前に検査対象の notice を削除するのは、`emptyOutDir: false` の
   成果物で古いファイルが残り、生成が止まっても受理されるのを防ぐため。
-  CI の独立 job と `release-tag-preflight.sh` の両方から走る
+  走る場所は 3 つ: CI の独立 job、`release-tag-preflight.sh`（release workflow が tag 前に呼ぶ）、
+  各公開 package の `prepublishOnly`。**`npm publish --ignore-scripts` と、release workflow を
+  経由しない publish は覆えない**。publish 権限を保護された workflow に限定する件は issue #83
 
-  期待する依存名は `harness/notice-baseline.json` に**完全な集合として**固定する。当初は代表的な
+  期待する依存名と、その license 本文の SHA-256 digest は `harness/notice-baseline.json` に
+  **完全な集合として**固定する。本文を digest で固定するのは、非空かどうかしか見ないと本文が
+  別物に差し替わっても通るため。当初は代表的な
   数件を名指しする形だったが、独立レビューが「名指ししていない `marked` を 1 件落としても通る」ことを
   実測したため切り替えた。notice ファイルの集合そのものも baseline と突き合わせるので、増えた場合も
   消えた場合も落ちる。依存が正当に増減したときは `--write-baseline` で再生成し、その差分を commit に

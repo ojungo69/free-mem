@@ -14,10 +14,11 @@
 		"dist/"
 	],
 	"scripts": {
-		"clean": "rm -rf dist tsconfig.tsbuildinfo",
 		"build": "pnpm exec vite build && pnpm exec tsc --build --force",
-		"typecheck": "pnpm exec tsc --noEmit",
-		"generate:test-schema": "pnpm exec tsx scripts/generate-test-schema.ts"
+		"clean": "rm -rf dist tsconfig.tsbuildinfo",
+		"generate:test-schema": "pnpm exec tsx scripts/generate-test-schema.ts",
+		"prepublishOnly": "node ../../../../harness/notice-inclusion-check.mjs",
+		"typecheck": "pnpm exec tsc --noEmit"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "catalog:",

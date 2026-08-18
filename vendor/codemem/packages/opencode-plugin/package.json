@@ -18,6 +18,7 @@
 		".opencode/lib/"
 	],
 	"scripts": {
+		"prepublishOnly": "node ../../../../harness/notice-inclusion-check.mjs",
 		"test:packed-artifact": "node ./scripts/packed-artifact-smoke.mjs"
 	},
 	"dependencies": {
