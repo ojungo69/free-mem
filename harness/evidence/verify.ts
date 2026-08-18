@@ -112,14 +112,11 @@ function readNormalized(text: string): NormalizedLine[] {
 }
 
 /**
- * 「欄が在る」の判定。値が null の欄を「在る」と読むと、`last_assistant_message: null` の
- * Stop から assistant_completed が導ける。正規化は string を伏せ字にするので、
- * 伏せ字の綴りであることまで見る
+ * 「欄が在る」の判定。正規化後の**非空文字列の伏せ字**だけを認める。型を緩めると、
+ * `last_assistant_message: null`（伏せ字 `null`）も `: 123`（伏せ字 `<number>`）も
+ * 「応答があった」の根拠になる
  */
-const has = (line: NormalizedLine, key: string): boolean => {
-  const v = line.payload[key];
-  return typeof v === "string" && v !== "";
-};
+const has = (line: NormalizedLine, key: string): boolean => line.payload[key] === "<string>";
 
 /** 成果物へ出てはいけない値の出どころ。入れ子も辿る */
 const SECRET_KEYS = new Set([

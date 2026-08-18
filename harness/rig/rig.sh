@@ -34,6 +34,9 @@ trap purge_credentials EXIT INT TERM
 
 # 資格情報は「その 1 回の子 CLI 実行の間だけ」置く（trap で必ず消える）。
 stage_credentials() { # $1 = claude | codex
+  # 置く前に必ず消す。SIGKILL で trap が走らなかった前回の残りと、もう一方の provider の
+  # 分がここに残っていると、測定対象の tool から同じ UID で読める
+  purge_credentials
   # **実行する CLI の分だけ**置く。両方置くと、測定対象の CLI が動かす tool から
   # もう一方の資格情報を同じ UID で読める（read-only sandbox は読み取りを防がない）
   case "$1" in
@@ -58,14 +61,20 @@ setup() {
   echo "rig ready: $RIG_BASE"
 }
 
-run_env() { # 最小環境で子 CLI を起動する共通部
-  local capture="$1"; shift
+run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | codex
+  local cli="$1" capture="$2"; shift 2
+  # 対象 provider の設定だけ渡す。両方渡すと、測定対象がもう一方の config directory を
+  # 辿れる（資格情報を消していても、設定そのものが観測の対象外の情報になる）
+  local cfg=()
+  case "$cli" in
+    claude) cfg=(CLAUDE_CONFIG_DIR="$RIG_BASE/claude-config") ;;
+    codex)  cfg=(CODEX_HOME="$RIG_BASE/codex-home") ;;
+  esac
   env -i \
     PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" \
     HOME="$RIG_BASE/home" \
     TERM=dumb \
-    CLAUDE_CONFIG_DIR="$RIG_BASE/claude-config" \
-    CODEX_HOME="$RIG_BASE/codex-home" \
+    "${cfg[@]}" \
     AGENT_MEMORY_INTERNAL_RUN=1 \
     CAPTURE_FILE="$capture" \
     ${INJECT_MARKER:+INJECT_MARKER="$INJECT_MARKER"} \
@@ -73,15 +82,22 @@ run_env() { # 最小環境で子 CLI を起動する共通部
     "$@"
 }
 
+with_lock() { # 並行 run を禁止する。同じ RIG_BASE を共有すると、片方の credential を
+  # もう片方の測定対象が同じ UID で読める
+  exec 9>"$RIG_BASE/.lock"
+  flock -n 9 || { echo "another rig run holds $RIG_BASE" >&2; exit 4; }
+}
+
 claude_run() {
   local label="$1" prompt="$2" rc=0; shift 2
+  with_lock
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/claude-$label.jsonl"
   : > "$capture"
   stage_credentials claude
   { "$CLAUDE_BIN" --version; } > "$RIG_BASE/capture/claude-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
-    run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
+    run_env claude "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
       --model haiku --output-format json --max-turns 4 "$@" \
       > "$RIG_BASE/capture/claude-$label.stdout" 2> "$RIG_BASE/capture/claude-$label.stderr" ) || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
@@ -92,13 +108,14 @@ claude_run() {
 
 codex_run() {
   local label="$1" prompt="$2" rc=0; shift 2
+  with_lock
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local capture="$RIG_BASE/capture/codex-$label.jsonl"
   : > "$capture"
   stage_credentials codex
   { "$CODEX_BIN" --version; } > "$RIG_BASE/capture/codex-$label.version" 2>&1
   ( cd "$RIG_BASE/workspace" && \
-    run_env "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
+    run_env codex "$capture" timeout ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
       --dangerously-bypass-hook-trust "$@" "$prompt" \
       > "$RIG_BASE/capture/codex-$label.stdout" 2> "$RIG_BASE/capture/codex-$label.stderr" ) || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む

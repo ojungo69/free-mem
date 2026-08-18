@@ -40,7 +40,10 @@ test("capabilityHashInputs stay three canonical blobs that react to every input"
   }
   assert.equal(inputs[0], '{"cli":"claude","nativeVersion":"1.2.3-test"}');
   // 証拠の素性が入る塊。manifestHash まで含む
-  assert.match(inputs[1], /"claude\/backed","backed\.jsonl"/);
+  assert.match(inputs[1], /"fixtureId":"claude\/backed"/);
+  // 欄を数え上げると落ちる。scenarioId と cliVersion まで入ることを見る
+  assert.match(inputs[1], /"scenarioId":/);
+  assert.match(inputs[1], /"cliVersion":/);
   // 畳んだ結果には capabilityHashInputs 自身が入らない（入れると自己参照で決まらない）
   assert.ok(!inputs[2].includes("capabilityHashInputs"));
 

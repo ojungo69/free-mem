@@ -520,5 +520,15 @@ test("the same capture cannot be named twice in one fixture", () => {
 
 test("fixtureId must be attributed to the cli that produced the capture", () => {
   // 正しい記録と manifest を、別 CLI の fixture ID へ付け替えられないようにする
-  assert.throws(() => validateFixture(fixtureBase({ fixtureId: "codex/spoof" }), "f.json"), /must start with "claude\/"/);
+  assert.throws(() => validateFixture(fixtureBase({ fixtureId: "codex/spoof" }), "f.json"), /must be prefixed with its own cli/);
+  // 診断へ cli の生値を出さない（schema を通る前の値なので改行で CI log を偽装できる）
+  const raised = (() => {
+    try {
+      validateFixture(fixtureBase({ fixtureId: "codex/spoof" }), "f.json");
+    } catch (e) {
+      return String(e);
+    }
+    return "";
+  })();
+  assert.ok(!raised.includes("codex/spoof"), "診断に fixture の値が出た");
 });

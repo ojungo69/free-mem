@@ -167,8 +167,10 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   // 部分系どうしを import で結ばないぶん、この 3 行は意図的な重複）
   // fixtureId は公開 matrix の帰属（fixtureIds / sourceFixtureId / evidenceSources）になる。
   // 書式だけ見ていると cli:"claude" の観測を codex/... へ付け替えられる
-  if (typeof data.fixtureId === "string" && typeof data.cli === "string" && !data.fixtureId.startsWith(`${data.cli}/`)) {
-    errs.push(`fixtureId must start with "${data.cli}/"`);
+  // 診断に data.cli の生値を混ぜない。schema を通る前の値なので改行を入れて CI log の
+  // 行を偽装でき、fixture に紛れた秘密も stderr へ出る
+  if (typeof data.fixtureId === "string" && typeof data.cli === "string" && CLI_SET.has(data.cli)) {
+    if (!data.fixtureId.startsWith(`${data.cli}/`)) errs.push("fixtureId must be prefixed with its own cli");
   }
 
   const instants: Array<[string, unknown]> = [["capturedAt", data.capturedAt]];
@@ -616,9 +618,9 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
   // 曖昧になり、別の入力が同じ文字列になる（`a@b` と `a` + `@b` が区別できない）
   capabilities.capabilityHashInputs = [
     canonicalizeJson({ cli, nativeVersion }),
-    canonicalizeJson(
-      evidenceSources.map((e) => [e.fixtureId, e.path, e.evidenceHash, e.normalizationVersion, e.manifestHash]),
-    ),
+    // 欄を数え上げると取りこぼす（scenarioId と cliVersion が実際に落ちていて、
+    // 公開 provenance を書き換えても capability hash が動かなかった）。丸ごと canonical 化する
+    canonicalizeJson(evidenceSources),
     canonicalizeJson(folded),
   ];
 

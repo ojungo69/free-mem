@@ -23,6 +23,7 @@ TASKS=specs/003-evidence-hash-normalization/tasks.md
 MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$IMPORT" "$HASHES")
 TESTS=(
   harness/evidence/hash-inputs.test.ts
+  harness/evidence/killswitch.test.ts
   harness/evidence/manifest.test.ts
   harness/evidence/normalize.test.ts
   harness/evidence/promotion.test.ts
@@ -45,8 +46,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 57:
-    bad.append(f"変異表の行が {len(table)} 件（57 件でない）")
+if len(table) != 60:
+    bad.append(f"変異表の行が {len(table)} 件（60 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -230,9 +231,12 @@ mutate $ASSEMBLE 'if (!derivable || refs.length === 0) return { evidenceKind: "s
 mutate $NORMALIZE 'realRoot = realpathSync(root ?? defaultEvidenceRoot(cli));' 'realRoot = realpathSync(defaultEvidenceRoot(cli));' && run 'M48: root の差し替え口を無視する'
 mutate $ASSEMBLE '  const assembled = assembleFromFixtures(fixtures);' '  const assembled = assembleFromFixtures(fixtures, { evidenceRoot: process.env.EVIDENCE_ROOT });' && run 'M49: 組み立ての入口で root を環境変数から取る'
 mutate $ASSEMBLE '  for (const issue of validateAgainstSchema(data, SCHEMA, SCHEMA)) {' '  for (const issue of validateAgainstSchema(data.observedEvents ?? [], SCHEMA.properties?.observedEvents, SCHEMA, "observedEvents")) {' && run 'M50: fixture 全体ではなく欄を選んで検査する'
+mutate $VERIFY 'const has = (line: NormalizedLine, key: string): boolean => line.payload[key] === "<string>";' 'const has = (line: NormalizedLine, key: string): boolean => Object.hasOwn(line.payload, key);' && run 'M56: 欄の有無を型を見ずに判定する'
+mutate $ASSEMBLE '    canonicalizeJson(evidenceSources),' '    canonicalizeJson(evidenceSources.map((e) => [e.fixtureId, e.path, e.evidenceHash])),' && run 'M57: hash の入力で欄を数え上げる'
+mutate $ASSEMBLE '    if (!data.fixtureId.startsWith(`${data.cli}/`)) errs.push("fixtureId must be prefixed with its own cli");' '    if (!data.fixtureId.startsWith(`${data.cli}/`)) errs.push(`fixtureId must be prefixed with ${data.fixtureId}`);' && run 'M58: 診断へ fixture の生値を混ぜる'
 mutate $VERIFY '  return typeof v === "string" && CORRELATION_TOKEN.test(v) ? v : undefined;' '  return typeof v === "string" ? v : undefined;' && run 'M53: 伏せ字の綴りを相関 token として受け取る'
 mutate $VERIFY '    if (seenPaths.has(ref.path)) reject(f.fixtureId, `evidence names ${ref.path} more than once`);' '    if (false) reject(f.fixtureId, `evidence names ${ref.path} more than once`);' && run 'M54: 同じ記録の重複を通す'
-mutate $ASSEMBLE '  if (typeof data.fixtureId === "string" && typeof data.cli === "string" && !data.fixtureId.startsWith(`${data.cli}/`)) {' '  if (false) {' && run 'M55: fixtureId の帰属を確かめない'
+mutate $ASSEMBLE '    if (!data.fixtureId.startsWith(`${data.cli}/`)) errs.push("fixtureId must be prefixed with its own cli");' '    if (false) errs.push("fixtureId must be prefixed with its own cli");' && run 'M55: fixtureId の帰属を確かめない'
 mutate $ASSEMBLE '    if (typeof value === "string" && !isRealInstant(value)) {' '    if (false) {' && run 'M52: 暦の検査を外す'
 mutate $VERIFY '  if (sessionTokens.length >= 2 && new Set(sessionTokens).size === 1 && sessionTokens[0] !== undefined) {' '  if (new Set(sessionTokens.filter((t) => t !== undefined)).size === 1) {' && run 'M51: 欄の無い行を除いてから安定性を見る'
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
