@@ -1,0 +1,27 @@
+README.md
+  s_2d059b4f795bca::t_12d7ee8bb8a734 78-79
+evidence/adr-003-rust-local-core.md
+  s_2d059b4f795bca::t_de64d58ab68d36 45-52
+evidence/adr-005-rust-core-product-direction.md
+  s_2d059b4f795bca::t_c6377e998b08ee 197,209-210
+evidence/direct-competitor-positioning-2026-08-18.md
+  s_2d059b4f795bca::t_212055ba16eb94 3-5,42-44
+specs/001-agent-memory-core/spec.md
+  s_2d059b4f795bca::t_a566ecb44bf492 167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "54a226cb2620a2e5c0a63f932586a1a876f58b4c",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
