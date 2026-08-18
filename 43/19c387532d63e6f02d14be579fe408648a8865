@@ -1,0 +1,21 @@
+specs/003-evidence-hash-normalization/data-model.md
+  s_2d059b4f795bca::t_4f5f5e7c0dee30 197-209,247
+specs/003-evidence-hash-normalization/plan.md
+  s_2d059b4f795bca::t_349f005f7fbd8f 279-300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4319c387532d63e6f02d14be579fe408648a8865",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
