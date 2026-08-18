@@ -196,6 +196,9 @@ jobs:
         with:
           node-version: 24.16.0
       - name: Enable and verify pnpm
+        # packageManager 欄は vendor/codemem/package.json にあるので、そこを cwd にしないと
+        # corepack が最新版を落としてきてこの検証が落ちる（ゲート本体は cwd を自分で指定する）。
+        working-directory: vendor/codemem
         run: |
           corepack enable pnpm
           test "$(pnpm --version)" = "11.8.0"
