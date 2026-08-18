@@ -2,6 +2,8 @@ import { chmodSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 
+import licenseNoticePlugin from "../../scripts/license-notice-plugin.mjs";
+
 function executableOutput() {
 	return {
 		name: "executable-output",
@@ -41,6 +43,11 @@ export default defineConfig({
 		},
 		rollupOptions: {
 			external: [/^@codemem\//, /^@hono\//, /^node:/, "commander", "chalk", "hono"],
+			plugins: [
+				licenseNoticePlugin({
+					outFile: resolve(import.meta.dirname, "dist/THIRD_PARTY_NOTICES.md"),
+				}),
+			],
 		},
 		outDir: "dist",
 		sourcemap: true,

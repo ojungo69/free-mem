@@ -12,8 +12,9 @@
 		"LICENSE"
 	],
 	"scripts": {
-		"clean": "rm -rf dist",
 		"build": "pnpm exec vite build --ssr src/index.ts --outDir dist && pnpm exec vite build --config vite.hook.config.ts && node scripts/sync-hook-runtime.mjs",
+		"clean": "rm -rf dist",
+		"prepublishOnly": "node ../../../../harness/notice-inclusion-check.mjs",
 		"test": "pnpm exec vitest run",
 		"test:packed-artifact": "node ./scripts/packed-artifact-smoke.mjs",
 		"test:plugin": "pnpm exec vitest run --config .opencode/vitest.config.ts",
@@ -33,6 +34,7 @@
 	"devDependencies": {
 		"@types/node": "^24.12.4",
 		"@types/omelette": "^0.4.5",
+		"rollup-plugin-license": "catalog:",
 		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",

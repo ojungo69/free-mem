@@ -33,6 +33,25 @@ jobs:
         run: corepack pnpm install --frozen-lockfile
       - name: Build
         run: corepack pnpm run build
+      - name: Committed hook-runtime copies match the build
+        # `plugins/{claude,codex}/scripts/` の bundle と notice は build 出力を git に commit した
+        # 複製。build すれば runner 上では正しい内容に直るので、HEAD 側が古い・欠けていても
+        # 他のゲートは全て通る。誤りが残るのは GitHub の source archive だけ——つまり、
+        # bundle した第三者コードの許諾文が実際の配布物から欠ける形になる。
+        # build 直後の作業ツリーが綺麗であることを、その唯一の検査にする。
+        working-directory: .
+        run: |
+          git status --porcelain --untracked-files=all -- \
+            vendor/codemem/plugins/claude/scripts/hook-runtime.mjs \
+            vendor/codemem/plugins/codex/scripts/hook-runtime.mjs \
+            vendor/codemem/plugins/claude/scripts/THIRD_PARTY_NOTICES.hook-runtime.md \
+            vendor/codemem/plugins/codex/scripts/THIRD_PARTY_NOTICES.hook-runtime.md \
+            > "${RUNNER_TEMP}/hook-runtime-drift.txt"
+          if [ -s "${RUNNER_TEMP}/hook-runtime-drift.txt" ]; then
+            cat "${RUNNER_TEMP}/hook-runtime-drift.txt"
+            echo "::error::commit 済みの hook-runtime 複製が build 出力と一致しない。build して差分を commit すること"
+            exit 1
+          fi
       - name: Typecheck and lint
         run: corepack pnpm run tsc && corepack pnpm run lint
       - name: Typecheck harness
@@ -182,6 +201,46 @@ jobs:
           node-version: 24.16.0
       - name: License and notice inclusion
         run: node harness/license-inclusion-check.mjs
+
+  notices:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.16.0
+      - name: Enable and verify pnpm
+        # packageManager 欄は vendor/codemem/package.json にあるので、そこを cwd にしないと
+        # corepack が最新版を落としてきてこの検証が落ちる（ゲート本体は cwd を自分で指定する）。
+        working-directory: vendor/codemem
+        run: |
+          corepack enable pnpm
+          test "$(pnpm --version)" = "11.8.0"
+      - name: Build, pack, and verify third-party notices
+        # ゲートは build 前に生成先を空にする（`emptyOutDir: false` の成果物に前回のファイルが
+        # 残ると、新しい notice に載らない古い bundle が tarball へ入る）。その掃除を消しても
+        # clean checkout の CI では症状が出ないので、古い成果物をここで置いてから走らせ、
+        # 消えていることを確かめる。notice 以外のファイルはゲート本体の検査対象ではないため、
+        # この後始末の確認が唯一の firing test になる。
+        run: |
+          mkdir -p vendor/codemem/packages/viewer-server/static
+          echo "// stale bundle from an earlier build" \
+            > vendor/codemem/packages/viewer-server/static/stale-bundle.js
+          node harness/notice-inclusion-check.mjs
+          if [ -e vendor/codemem/packages/viewer-server/static/stale-bundle.js ]; then
+            echo "::error::build 前の掃除が効いていない。notice に載らない古い成果物が tarball に残る"
+            exit 1
+          fi
+      - name: Test the third-party notice gate
+        run: node --test harness/notice-inclusion-check.test.mjs
+      - name: Test the notice generator
+        # rollup を実際に回すので vendor の node_modules が要る。上のゲートが install 済みにする
+        run: node --test harness/license-notice-plugin.test.mjs
 
   secrets:
     runs-on: ubuntu-24.04

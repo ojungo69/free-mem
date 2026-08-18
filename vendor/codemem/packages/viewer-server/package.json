@@ -15,8 +15,9 @@
 		"static/"
 	],
 	"scripts": {
-		"clean": "rm -rf dist tsconfig.tsbuildinfo",
 		"build": "pnpm exec vite build --ssr src/index.ts --outDir dist && pnpm exec tsc --build --force",
+		"clean": "rm -rf dist tsconfig.tsbuildinfo",
+		"prepublishOnly": "node ../../../../harness/notice-inclusion-check.mjs",
 		"typecheck": "pnpm exec tsc --noEmit"
 	},
 	"dependencies": {
@@ -30,6 +31,7 @@
 		"@types/better-sqlite3": "catalog:",
 		"@types/node": "^24.12.4",
 		"better-sqlite3": "12.8.0",
+		"rollup-plugin-license": "catalog:",
 		"sqlite-vec": "0.1.9",
 		"typescript": "catalog:",
 		"vite": "catalog:",
