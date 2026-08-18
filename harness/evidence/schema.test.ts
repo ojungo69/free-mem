@@ -106,8 +106,34 @@ test("provenance fields that reach the matrix are pattern-constrained", () => {
     ["制御文字入りの版", { nativeVersion: `1.0${String.fromCharCode(27)}[31m` }],
     ["絶対 path 風の fixtureId", { fixtureId: "/home/someone/secret/x" }],
     ["自由文の capturedAt", { capturedAt: "きのう" }],
-    ["曆として不正な capturedAt の形", { capturedAt: "2026-08-12 11:00:00" }],
+    ["区切りが違う capturedAt", { capturedAt: "2026-08-12 11:00:00" }],
+    ["13 月", { capturedAt: "2026-13-01T00:00:00.000Z" }],
+    ["24 時", { capturedAt: "2026-08-12T24:00:00.000Z" }],
+    ["60 分", { capturedAt: "2026-08-12T11:60:00.000Z" }],
+    ["うるう秒", { capturedAt: "2026-08-12T11:00:60.000Z" }],
   ] as const) {
     assert.throws(() => validateFixture(fixtureBase(override), "f.json"), /does not match pattern/, label);
   }
+});
+
+test("timestamps that pass the pattern but do not exist on the calendar are rejected", () => {
+  // pattern は桁数と範囲しか見ない。2 月 30 日と 4 月 31 日は綴りとしては通る
+  for (const bad of ["2026-02-30T00:00:00.000Z", "2026-04-31T00:00:00.000Z", "2025-02-29T00:00:00.000Z"]) {
+    assert.throws(() => validateFixture(fixtureBase({ capturedAt: bad }), "f.json"), /not a real instant/, bad);
+  }
+  // 事象側の at も同じ検査に載る（cell の verifiedAt へは出ないが、同じ自由文の経路）
+  assert.throws(
+    () =>
+      validateFixture(
+        fixtureBase({
+          observedEvents: [
+            { kind: "session_started", at: "2026-02-30T00:00:00.000Z", capability: "native", sourceEvents: ["SessionStart"] },
+          ],
+        }),
+        "f.json",
+      ),
+    /not a real instant/,
+  );
+  // 通す側: うるう年の 2 月 29 日は実在する
+  validateFixture(fixtureBase({ capturedAt: "2024-02-29T00:00:00.000Z" }), "f.json");
 });

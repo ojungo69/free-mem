@@ -7,6 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
+import { decodeUtf8, parseIJson } from "../schema/jcs.ts";
 import { NORMALIZATION_VERSION, digestCapture, digestRaw } from "../evidence/normalize.ts";
 import { MANIFEST_VERSION } from "../evidence/verify.ts";
 
@@ -78,10 +79,11 @@ if (!readFileSync(source).equals(readFileSync(dest))) die("the copy is not byte-
 const bytes = readFileSync(dest);
 // capturedAt は rig が別に持つ時刻ではなく、記録の 1 行目の at。こうすると
 // captureRawHash がこの値まで縛る（fixture 側の申告と照合して verifiedAt に使う）
-const firstLine = bytes.toString("utf8").split("\n").find((l) => l.trim() !== "");
+// 読み方は検証側と揃える。JSON.parse だと重複キーや不正 UTF-8 の扱いが境界ごとに変わる
 let capturedAt;
 try {
-  capturedAt = JSON.parse(firstLine).at;
+  const firstLine = decodeUtf8(bytes, "capture").split("\n").find((l) => l.trim() !== "");
+  capturedAt = parseIJson(firstLine).at;
 } catch {
   die("the capture has no readable first line");
 }

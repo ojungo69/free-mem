@@ -45,8 +45,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 53:
-    bad.append(f"変異表の行が {len(table)} 件（53 件でない）")
+if len(table) != 54:
+    bad.append(f"変異表の行が {len(table)} 件（54 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -230,6 +230,7 @@ mutate $ASSEMBLE 'if (!derivable || refs.length === 0) return { evidenceKind: "s
 mutate $NORMALIZE 'realRoot = realpathSync(root ?? defaultEvidenceRoot(cli));' 'realRoot = realpathSync(defaultEvidenceRoot(cli));' && run 'M48: root の差し替え口を無視する'
 mutate $ASSEMBLE '  const assembled = assembleFromFixtures(fixtures);' '  const assembled = assembleFromFixtures(fixtures, { evidenceRoot: process.env.EVIDENCE_ROOT });' && run 'M49: 組み立ての入口で root を環境変数から取る'
 mutate $ASSEMBLE '  for (const issue of validateAgainstSchema(data, SCHEMA, SCHEMA)) {' '  for (const issue of validateAgainstSchema(data.observedEvents ?? [], SCHEMA.properties?.observedEvents, SCHEMA, "observedEvents")) {' && run 'M50: fixture 全体ではなく欄を選んで検査する'
+mutate $ASSEMBLE '    if (typeof value === "string" && !isRealInstant(value)) {' '    if (false) {' && run 'M52: 暦の検査を外す'
 mutate $VERIFY '  if (sessionTokens.length >= 2 && new Set(sessionTokens).size === 1 && sessionTokens[0] !== undefined) {' '  if (new Set(sessionTokens.filter((t) => t !== undefined)).size === 1) {' && run 'M51: 欄の無い行を除いてから安定性を見る'
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
   && run_custom 'M25: 契約 hash の入力名を書き換える' check_hashes

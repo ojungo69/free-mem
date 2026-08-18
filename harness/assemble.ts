@@ -51,6 +51,13 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 /** Minimal CaptureFixture validation (no ajv; required keys + enum checks). */
+/** 綴りは schema の pattern が当てる。ここは「その日付が実在するか」だけを見る */
+function isRealInstant(value: string): boolean {
+  const seconds = value.slice(0, 19);
+  const parsed = Date.parse(`${seconds}Z`);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(seconds);
+}
+
 export function validateFixture(data: unknown, fileName: string): CaptureFixture {
   const errs: string[] = [];
   if (!isObject(data)) {
@@ -154,6 +161,20 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   // sourceFixtureId・verifiedAt として公開 matrix へ出せた）
   for (const issue of validateAgainstSchema(data, SCHEMA, SCHEMA)) {
     errs.push(`${issue.path}: ${issue.message}`);
+  }
+  // pattern は桁数しか見ない。`2026-99-99T99:99:99Z` は範囲を絞っても 2 月 30 日が残るので、
+  // 暦として実在する瞬間かを別に確かめる（continuity 側 reference-model.ts の isRealInstant と同型。
+  // 部分系どうしを import で結ばないぶん、この 3 行は意図的な重複）
+  const instants: Array<[string, unknown]> = [["capturedAt", data.capturedAt]];
+  if (Array.isArray(data.observedEvents)) {
+    data.observedEvents.forEach((ev, i) => {
+      if (isObject(ev)) instants.push([`observedEvents[${i}].at`, ev.at]);
+    });
+  }
+  for (const [label, value] of instants) {
+    if (typeof value === "string" && !isRealInstant(value)) {
+      errs.push(`${label}: not a real instant on the calendar`);
+    }
   }
 
   if (!isObject(data.rig)) {
@@ -710,6 +731,7 @@ async function selfTest(): Promise<void> {
         cli: opts.cli ?? "claude",
         cliVersion: v,
         scenarioId: opts.scenarioId ?? "self.test",
+        capturedAt: at1,
         isolated: true,
         internalRunMarker: true,
         exitStatus: 0,
