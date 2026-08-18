@@ -139,8 +139,12 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
   // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
   assert.doesNotMatch(dco, /^\s+["']?ref["']?:/m);
   // job を skip させれば、検査せずに成功した check が出る。`needs` も同じで、依存先が失敗すると
-  // この job は skip され、required check としては成功と同じ扱いになる。
-  assert.doesNotMatch(dco, /^\s+["']?(?:if|continue-on-error|needs)["']?:/m);
+  // この job は skip され、required check としては成功と同じ扱いになる。`defaults` / `shell` /
+  // `working-directory` は run step の実行そのものを差し替えられる（`shell: "true {0}"` など）。
+  assert.doesNotMatch(
+    dco,
+    /^\s+["']?(?:if|continue-on-error|needs|defaults|shell|working-directory)["']?:/m,
+  );
   // 行全体で固定する。`run: echo node harness/dco-check.mjs ...` でも部分一致は通ってしまう。
   assert.match(dco, /^ +run: node harness\/dco-check\.mjs "\$BASE_REF" "\$HEAD_REF"$/m);
 });
