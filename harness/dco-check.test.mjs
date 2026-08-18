@@ -167,12 +167,17 @@ test("本文中の引用や行途中にある Signed-off-by は trailer とし�
 // 起動し、通す側・落とす側・fail-closed の 3 方向を固定する。
 const script = fileURLToPath(new URL("./dco-check.mjs", import.meta.url));
 
+// 実行者の global / system config を継承すると、`commit.template` や `core.hooksPath` で
+// message や commit そのものが変わり、test の結果が実行環境に依存する。checker が中で呼ぶ
+// `git log` にも同じ隔離が要るので、子プロセス両方へ渡す。
+const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" };
+
 function run(cwd, args) {
-  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8" });
+  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8", env: GIT_ENV });
 }
 
 function git(cwd, args) {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", env: GIT_ENV });
   assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
   return result.stdout.trim();
 }

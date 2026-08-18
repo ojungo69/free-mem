@@ -15,6 +15,12 @@ on:
 permissions:
   contents: read
 
+# edited は title / body の編集でも起動するので、放っておくと同じ PR に対する run が積み重なる。
+# required check は最後の結論で決まるため、古い run を取り消してもゲートは緩まない。
+concurrency:
+  group: dco-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   dco:
     runs-on: ubuntu-24.04

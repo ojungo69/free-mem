@@ -41,7 +41,12 @@ export function findUnsignedCommits(commits) {
 
 async function git(args) {
   try {
-    const { stdout } = await execGit("git", args, { encoding: "utf8" });
+    // 既定の maxBuffer は 1 MiB。`%B` は全 commit の本文を出すので、commit 数の多い PR では
+    // 超える。超えると git が殺されて exit 2 になり、「検査できなかった」と区別が付かなくなる。
+    const { stdout } = await execGit("git", args, {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
     return stdout;
   } catch (error) {
     const detail = error?.stderr?.toString().trim() || error?.message;
