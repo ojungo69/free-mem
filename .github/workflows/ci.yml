@@ -179,9 +179,10 @@ jobs:
         # test を走らせた」を検査して非ゼロで終了する
         run: bash harness/continuity/mutate.sh
       - name: DCO gate self-test
-        # ゲート本体は pull_request でしか走らないので、その正しさはこの job で担保する。
-        # 純関数だけの test は、CLI 経路が `Refs #59` + sign-off を落としていても全件通った
-        # （実測）。実物を子プロセスとして起動する test を含めてここで回す。
+        # ゲート本体（dco.yml）は base branch 側の checker を走らせるので、PR 側の変更は
+        # そこには載らない。checker を直す PR の正しさはこの job で担保する。純関数だけの test は
+        # CLI 経路が `Refs #59` + sign-off を落としていても全件通った（実測）。実物を子プロセスと
+        # して起動する test を含めてここで回す。
         run: node --test harness/dco-check.test.mjs
       - name: Matrices are regenerated, not hand-edited
         # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
@@ -191,36 +192,6 @@ jobs:
             node --experimental-strip-types harness/assemble.ts "harness/fixtures/$cli" "/tmp/$cli.json"
             diff <(jq 'del(.generatedAt)' "harness/matrix/$cli.json") <(jq 'del(.generatedAt)' "/tmp/$cli.json")
           done
-
-  dco:
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # merge-base までの履歴が無いと検査対象を確定できないため、shallow checkout にしない。
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24.16.0
-      - name: Fetch base branch
-        # checkout の取得形状に依存せず origin/<base> を必ず作る。ref 名は env から引用して渡し、
-        # workflow 式を shell script へ直接埋め込まない。
-        env:
-          BASE_BRANCH: ${{ github.base_ref }}
-        run: git fetch --no-tags origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
-      - name: Verify DCO sign-offs
-        # squash 後の main commit ではなく、PR の merge-base から head までを検査する。
-        env:
-          BASE_REF: origin/${{ github.base_ref }}
-          HEAD_REF: ${{ github.event.pull_request.head.sha }}
-        run: node harness/dco-check.mjs "$BASE_REF" "$HEAD_REF"
 
   license:
     runs-on: ubuntu-24.04

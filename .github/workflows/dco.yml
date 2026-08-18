@@ -1,0 +1,55 @@
+# DCO ゲートを CI 本体から分けて `pull_request_target` で走らせる。理由は 2 つある。
+#
+# 1. `pull_request` は workflow も checker も PR 側の tree から実行するため、未署名 commit を含む
+#    PR 自身が dco job を `if: false` にしたり checker を exit 0 に書き換えたりして緑を作れる。
+#    `pull_request_target` は workflow も checkout も base branch 側なので、PR は自分を検査する
+#    コードを変更できない。
+# 2. `dco` という check 名の生産者を 1 つに保つ。CI 本体は push でも起動するので、そちらに job を
+#    置くと push 実行時に skipped の `dco` が出る。GitHub は required status check を名前で照合し
+#    skipped を成功として扱うため、同名の生産者が 2 つあると「検査した」と「検査しなかった」の
+#    区別が消える。
+#
+# `pull_request_target` の危険は PR の内容を checkout して実行することにある。ここでは head を
+# git object として取得するだけで、checkout も実行もしない。secret は使わず token は read-only。
+name: DCO
+
+on:
+  pull_request_target:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out base branch
+        # pull_request_target なので checkout されるのは base branch 側の tree。
+        # ここで取れる harness/dco-check.mjs が検査の正本になる。
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.16.0
+      - name: Fetch base branch and PR head
+        # fork PR でも base repo に refs/pull/<N>/head があるので、同じ経路で取得できる。
+        # ref 名は env から引用して渡し、workflow 式を shell script へ直接埋め込まない。
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+          git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/${PR_NUMBER}/head"
+      - name: Verify DCO sign-offs
+        # squash 後の main commit ではなく、PR の merge-base から head までを検査する。
+        # head は event が渡した SHA を使う。fetch 後に force-push されて SHA が消えていれば
+        # merge-base が失敗して exit 2 になる（fail-closed）。
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha }}
+        run: node harness/dco-check.mjs "$BASE_REF" "$HEAD_REF"

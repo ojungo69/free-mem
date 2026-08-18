@@ -1,7 +1,7 @@
 // DCO ゲートの純粋な判定を、通す側と落とす側の両方で固定する。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -65,7 +65,8 @@ test("複数の sign-off のうち 1 つが committer email と一致すれば�
   assert.deepEqual(findUnsignedCommits([signed]), []);
 });
 
-test("明示した bot の author email は未署名でも通す", () => {
+test("bot を名乗る author email でも未署名なら落とす", () => {
+  // `git commit --author` で誰でも名乗れる綴りなので、bot 名は免除の根拠にならない。
   const botEmails = [
     "dependabot[bot]@users.noreply.github.com",
     "49699333+dependabot[bot]@users.noreply.github.com",
@@ -75,13 +76,36 @@ test("明示した bot の author email は未署名でも通す", () => {
     commit({ sha: String(index + 1).repeat(40), authorEmail, body: "依存更新\n" }),
   );
 
-  assert.deepEqual(findUnsignedCommits(commits), []);
+  assert.deepEqual(findUnsignedCommits(commits), commits);
 });
 
-test("免除リストに無い似た bot email は通さない", () => {
-  const unsigned = commit({ authorEmail: "dependabot@example.com", body: "依存更新\n" });
+test("bot を名乗る author email でも署名があれば通す", () => {
+  const signed = commit({
+    authorEmail: "dependabot[bot]@users.noreply.github.com",
+    body: "依存更新\n\nSigned-off-by: Dependabot <dependabot[bot]@users.noreply.github.com>\n",
+  });
 
-  assert.deepEqual(findUnsignedCommits([unsigned]), [unsigned]);
+  assert.deepEqual(findUnsignedCommits([signed]), []);
+});
+
+// ゲートの「形」は unit test が届かない層（workflow の trigger と job 名）で決まっているので、
+// そこが崩れたら落ちるものをここに 1 つ置く。security control ではなく、後から自分で壊さない
+// ための回帰検査。
+test("dco check は 1 経路だけで、base branch 側から走る", () => {
+  const workflowDir = fileURLToPath(new URL("../.github/workflows", import.meta.url));
+  const declaring = readdirSync(workflowDir)
+    .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
+    .filter((name) => /^ {2}dco:$/m.test(readFileSync(join(workflowDir, name), "utf8")));
+
+  // 同名 check の生産者が 2 つあると、skip された側が成功として使われる。
+  assert.deepEqual(declaring, ["dco.yml"]);
+
+  const workflow = readFileSync(join(workflowDir, "dco.yml"), "utf8");
+  // PR 側の tree から実行すると、PR が自分を検査する workflow と checker を書き換えられる。
+  assert.match(workflow, /^ {2}pull_request_target:$/m);
+  // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
+  assert.doesNotMatch(workflow, /^\s+ref:/m);
+  assert.match(workflow, /node harness\/dco-check\.mjs/);
 });
 
 test("本文中の引用や行途中にある Signed-off-by は trailer として扱わない", () => {

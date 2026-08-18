@@ -15,17 +15,22 @@ material-by-material breakdown are recorded in
 
 ## Sign your commits (DCO)
 
-Every non-exempt commit must carry a `Signed-off-by:` line, which certifies that you have the right
-to submit the work under the project's license. Git adds it for you:
+Every commit must carry a `Signed-off-by:` line, which certifies that you have the right to submit
+the work under the project's license. Git adds it for you:
 
 ```bash
 git commit -s -m "your message"
 ```
 
-The DCO CI job checks the commits in each pull request, from the merge base with the target branch
-through the pull request head. A commit passes when a `Signed-off-by: Name <email>` trailer matches
-its author or committer email (case-insensitively). Commits authored by the explicitly allowed
-Dependabot and GitHub Actions bot addresses are exempt; similar addresses are not.
+The `dco` check runs on every pull request and checks the commits from the merge base with the target
+branch through the pull request head. A commit passes when a `Signed-off-by: Name <email>` trailer
+matches its author or committer email (case-insensitively).
+
+There are no exemptions, including for bots. An author email alone is not proof of who made a commit
+— anyone can pass `git commit --author` — so exempting an address would let any contributor claim it.
+Pull requests opened by Dependabot or another bot are therefore checked like everyone else: if their
+commits are not signed off, land the change on your own branch with `git commit -s` instead of
+merging the bot's branch.
 
 This repository squash-merges pull requests, so the generated commit on `main` does not retain each
 trailer. The sign-off record remains on the pull request commits, which can be reached from the
@@ -34,6 +39,11 @@ grandfathered and are not checked retroactively.
 
 When Claude Code or Codex CLI creates a commit, include `git commit -s` in its instructions; agent
 commits are checked in the same way.
+
+The check runs from the target branch, not from the pull request: both the workflow
+(`.github/workflows/dco.yml`) and the checker (`harness/dco-check.mjs`) are read from `main`, and the
+pull request head is only read as git history. A pull request that edits either file is still checked
+by the version already on `main`, so it cannot weaken the check that gates it.
 
 The full text you are certifying is the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
 

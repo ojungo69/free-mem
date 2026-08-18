@@ -5,13 +5,6 @@ import { realpathSync } from "node:fs";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
-// bot の免除は author email の完全一致だけに限定する。似た名前や別 domain へ広げない。
-const BOT_AUTHOR_EMAILS = [
-  "dependabot[bot]@users.noreply.github.com",
-  "49699333+dependabot[bot]@users.noreply.github.com",
-  "github-actions[bot]@users.noreply.github.com",
-];
-
 const TRAILER_LINE = /^[A-Za-z0-9][A-Za-z0-9-]*:\s+\S.*$/;
 const SIGN_OFF_LINE = /^Signed-off-by:\s+(.+?)\s+<([^<>\s]+)>\s*$/i;
 const execGit = promisify(execFile);
@@ -39,11 +32,11 @@ function hasMatchingSignOff(commit) {
   });
 }
 
+// bot 用の免除は置かない。author email は commit する側が `--author` で自由に名乗れるので、
+// email 一致だけで免除すると誰でも bot を騙って未署名 commit を通せる。免除が必要になったら、
+// email ではなく pull_request_target が渡す actor login（GitHub 側が認証した値）に紐付ける。
 export function findUnsignedCommits(commits) {
-  return commits.filter(
-    (commit) =>
-      !BOT_AUTHOR_EMAILS.includes(commit.authorEmail) && !hasMatchingSignOff(commit),
-  );
+  return commits.filter((commit) => !hasMatchingSignOff(commit));
 }
 
 async function git(args) {
