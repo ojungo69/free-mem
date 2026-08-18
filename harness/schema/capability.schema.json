@@ -33,9 +33,8 @@
     "nativeVersion": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^[\\x20-\\x7e]+$",
-      "maxLength": 64,
-      "$comment": "公開 matrix と version-pin エラーへそのまま出る。長さを閉じて自由文の器にしない"
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,63}$",
+      "$comment": "公開 matrix と診断へそのまま出る。path 区切りと記号を落として自由文の器にしない"
     },
     "capturedAt": {
       "$comment": "manifest 付きの証拠では manifest 側と照合する。verifiedAt としてそのまま成果物へ出るため、自由文を通さない",

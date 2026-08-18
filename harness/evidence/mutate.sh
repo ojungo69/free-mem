@@ -46,8 +46,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 60:
-    bad.append(f"変異表の行が {len(table)} 件（60 件でない）")
+if len(table) != 61:
+    bad.append(f"変異表の行が {len(table)} 件（61 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -231,6 +231,7 @@ mutate $ASSEMBLE 'if (!derivable || refs.length === 0) return { evidenceKind: "s
 mutate $NORMALIZE 'realRoot = realpathSync(root ?? defaultEvidenceRoot(cli));' 'realRoot = realpathSync(defaultEvidenceRoot(cli));' && run 'M48: root の差し替え口を無視する'
 mutate $ASSEMBLE '  const assembled = assembleFromFixtures(fixtures);' '  const assembled = assembleFromFixtures(fixtures, { evidenceRoot: process.env.EVIDENCE_ROOT });' && run 'M49: 組み立ての入口で root を環境変数から取る'
 mutate $ASSEMBLE '  for (const issue of validateAgainstSchema(data, SCHEMA, SCHEMA)) {' '  for (const issue of validateAgainstSchema(data.observedEvents ?? [], SCHEMA.properties?.observedEvents, SCHEMA, "observedEvents")) {' && run 'M50: fixture 全体ではなく欄を選んで検査する'
+mutate $VERIFY '  } else if (shares("prompt_id") && !lines.some((l) => tokenOf(l, "turn_id") !== undefined)) {' '  } else if (shares("prompt_id") && !lines.some((l) => has(l, "turn_id"))) {' && run 'M59: turn_id の在不在を伏せ字の綴りで見る'
 mutate $VERIFY 'const has = (line: NormalizedLine, key: string): boolean => line.payload[key] === "<string>";' 'const has = (line: NormalizedLine, key: string): boolean => Object.hasOwn(line.payload, key);' && run 'M56: 欄の有無を型を見ずに判定する'
 mutate $ASSEMBLE '    canonicalizeJson(evidenceSources),' '    canonicalizeJson(evidenceSources.map((e) => [e.fixtureId, e.path, e.evidenceHash])),' && run 'M57: hash の入力で欄を数え上げる'
 mutate $ASSEMBLE '    if (!data.fixtureId.startsWith(`${data.cli}/`)) errs.push("fixtureId must be prefixed with its own cli");' '    if (!data.fixtureId.startsWith(`${data.cli}/`)) errs.push(`fixtureId must be prefixed with ${data.fixtureId}`);' && run 'M58: 診断へ fixture の生値を混ぜる'

@@ -532,3 +532,25 @@ test("fixtureId must be attributed to the cli that produced the capture", () => 
   })();
   assert.ok(!raised.includes("codex/spoof"), "診断に fixture の値が出た");
 });
+
+test("a claude capture that carries turn_id does not derive a synthesized turn", () => {
+  const root = newRoot();
+  // Claude 規則は「prompt_id を共有し、turn_id が無い」。識別子の在不在を伏せ字の綴りで
+  // 判定すると、turn_id があっても「無い」と読める
+  const lines = lifecycle("s1", "p1").map((l) => ({ ...l, payload: { ...l.payload, turn_id: "t1" } }));
+  const ref = putEvidence(root, "withturn", lines, { manifest: true });
+  assert.throws(
+    () =>
+      assemble(
+        [
+          fixtureBase({
+            fixtureId: "claude/withturn",
+            observedEvents: [{ kind: "turn_completed", at: AT, capability: "synthesized", sourceEvents: ["Stop"] }],
+            evidence: [ref],
+          }),
+        ],
+        root,
+      ),
+    /turn_completed claims "synthesized" but no referenced capture derives it/,
+  );
+});

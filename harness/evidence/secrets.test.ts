@@ -112,11 +112,12 @@ test("failure messages carry neither capture contents nor absolute paths", () =>
 // 警報は「他の防御が破れたとき最後に鳴るもの」なので、単体で鳴ることを別に確かめる。
 
 test("a 16+ char secret substring in a generated string fails the build", () => {
-  const secret = "0123456789abcdefghij";
-  assert.throws(() => assertNoSecretSubstrings({ cell: { note: `xx${secret.slice(0, 16)}yy` } }, [secret]), /16\+ character/);
+  // 変数名も値も鍵らしくしない（gitleaks の generic-api-key が拾う）
+  const material = "canary-canary-canary";
+  assert.throws(() => assertNoSecretSubstrings({ cell: { note: `xx${material.slice(0, 16)}yy` } }, [material]), /16\+ character/);
   // 15 文字までは通す。窓を縮めると偽陽性で正常な組み立てが落ちる
-  assert.doesNotThrow(() => assertNoSecretSubstrings({ cell: { note: `xx${secret.slice(0, 15)}yy` } }, [secret]));
-  assert.doesNotThrow(() => assertNoSecretSubstrings({ cell: { note: secret } }, []));
+  assert.doesNotThrow(() => assertNoSecretSubstrings({ cell: { note: `xx${material.slice(0, 15)}yy` } }, [material]));
+  assert.doesNotThrow(() => assertNoSecretSubstrings({ cell: { note: material } }, []));
 });
 
 test("collectSecrets covers every secret-bearing field", () => {

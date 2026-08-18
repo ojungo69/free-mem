@@ -190,7 +190,9 @@ function deriveClaims(
   };
   if (cli === "codex") {
     if (shares("turn_id")) capture.turn_completed = "native";
-  } else if (shares("prompt_id") && !lines.some((l) => has(l, "turn_id"))) {
+    // 識別子の「在る」は has() ではなく相関 token で見る。has() は非空文字列の伏せ字
+    // （`<string>`）だけを認めるので、`<id:N>` になる turn_id には当たらない
+  } else if (shares("prompt_id") && !lines.some((l) => tokenOf(l, "turn_id") !== undefined)) {
     capture.turn_completed = "synthesized";
   }
 
