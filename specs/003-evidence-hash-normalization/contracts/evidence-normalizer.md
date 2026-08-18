@@ -14,16 +14,21 @@
 export const NORMALIZATION_VERSION: number;
 
 /**
- * 観測記録の本文から正規化抜粋を作る。
- * @param text 観測記録ファイルの中身（UTF-8 文字列）
+ * 観測記録の byte 列から正規化抜粋を作る。
+ * 入力を string にしない: 呼び出し側が readFileSync(..., "utf8") で先に復号でき、
+ * 不正 UTF-8 の検出を迂回できるため。復号はこの関数の内側に閉じる。
+ * @param bytes 観測記録ファイルの生 byte
  * @returns LF 区切りの NDJSON。最終行の後にも LF が付く
  * @throws 空行以外に解釈できない行がある / 解釈できた行が 0 件 /
  *         行が event か payload を欠く
  */
-export function normalizeCapture(text: string): string;
+export function normalizeCapture(bytes: Uint8Array): string;
 
 /** normalizeCapture の出力の SHA-256（小文字 hex 64 桁） */
-export function digestCapture(text: string): string;
+export function digestCapture(bytes: Uint8Array): string;
+
+/** 生 byte そのものの SHA-256。manifest の captureRawHash に使う */
+export function digestRaw(bytes: Uint8Array): string;
 
 /**
  * 証拠置き場の中だけを解決する。

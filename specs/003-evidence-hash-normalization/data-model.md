@@ -19,8 +19,10 @@
 - 記録の**本文**（モデルの出力、tool の標準出力）が特定の内容だったこと。
   これらは伏せ字になるため digest には現れない
 - したがって「textual outcome に依存する主張」（例: 注入した token が応答へ echo された、
-  tool が特定の文言で失敗した）は digest だけでは裏付けられない。
-  そうした cell は §4.3 の claim 導出で個別に裏付けるか、`real-cli-e2e` を名乗らない
+  tool が特定の文言で失敗した）は digest だけでは裏付けられない
+
+**この境界から出る帰結（§4.3 で機械化する）**: 裏付けられない主張を持つ cell は
+`real-cli-e2e` を名乗らない。「穴があると説明文に書いておく」ことで昇格を許さない。
 
 ---
 
@@ -31,6 +33,9 @@
 - 入力は 1 件の観測記録ファイル。1 行 1 JSON の NDJSON
 - 抽出範囲は **ファイル全体**。rig が scenario 1 件につき 1 ファイルを書くため、
   ファイル境界がそのまま scenario 境界になる
+- **公開 API の入力は `Uint8Array`（byte 列）にする。** `string` を受け取る形にすると
+  呼び出し側が `readFileSync(..., "utf8")` で先に復号でき、不正 UTF-8 の検出を迂回できる。
+  復号は関数の内側で 1 箇所に閉じる
 - **読み取りは既存の `harness/schema/jcs.ts` を再利用する**
   - byte 列 → 文字列は `decodeUtf8`。Node の既定 UTF-8 読み取りは不正 byte を U+FFFD へ
     黙って置換するため、そのままでは壊れた記録が「正常な記録」として digest を得る
@@ -83,6 +88,17 @@ verbatim 値には `RIG_INJECT_[A-Za-z0-9_]+` → `RIG_INJECT_<marker>` の置�
 
 token 表は**ファイル単位**で、`id` と `path` で別の番号空間を持つ。同じ値が再び現れたら
 同じ token を返す。
+
+**走査順を canonical 側に固定する。** 番号は「初出順」だが、その「順」を入力の property
+挿入順で決めてはいけない。同じ JSON 値でも property の書き順が違えば番号がずれ、
+digest が変わる（§1.4 でキーを整列するので M10 が破れる）。走査順は次で固定する。
+
+1. 行は**ファイル内の出現順**
+2. 各行の中は `event` → `payload` の順
+3. object は**キーを UTF-16 コードユニット昇順に整列した後の順**
+4. array は要素の順
+
+つまり token の割り当ては §1.4 の直列化と同じ順序で走る。
 
 **この扱いが必要な理由**: すべて同じ `<string>` にすると等値関係が消える。
 `stableNativeSessionId` は「session 識別子が run を通して同一か」という主張であり、
@@ -138,12 +154,36 @@ interface EvidenceRef {
   evidenceHash: string;
   /** 生成に用いた正規化規則の版 */
   normalizationVersion: number;
-  /** 同じ run の manifest（§2.5）。置き場からの相対 path */
-  manifest: string;
-  /** manifest の SHA-256 */
-  manifestHash: string;
+  /**
+   * 同じ run の manifest（§2.5）。置き場からの相対 path。
+   * **無い ref は `real-cli-e2e` の根拠にならない**（§2.6 の legacy 証拠）。
+   * digest の照合は manifest の有無に関わらず必ず行う。
+   */
+  manifest?: string;
+  /** manifest ファイルの生 byte の SHA-256。`manifest` があるとき必須 */
+  manifestHash?: string;
 }
 ```
+
+### 2.1a legacy 証拠（manifest を持たない ref）
+
+既存の観測記録 16 件は 2026-08-12 に取得されたもので、当時の rig 一時領域
+（`/tmp/free-mem-rig-jura/capture/`）は既に存在しない。`.version` も `.errors` も stderr も
+残っていないため、**真正な manifest を後から作ることはできない**。
+手で書いた manifest は fixture の自己申告そのもので、FR-003b を満たさない。
+
+再取得も同 PR では成立しない。claude CLI は現在 2.1.234 で、fixture の pin は 2.1.228。
+取り直すと 5 つの claude fixture すべての `nativeVersion` が変わり、
+version-pin（`assemble.ts:207`）に引っかかる。これは別の変更になる。
+
+**Decision**: manifest を持たない ref を「legacy 証拠」として受け入れる。ただし
+
+- digest の照合は行う（記録を差し替えたら組み立てが落ちる。今より厳しくなる）
+- **その ref だけを根拠とする cell は `source-test` のまま**。`real-cli-e2e` へは上げない
+- `real-cli-e2e` を名乗るには manifest 付きの ref が要る
+
+結果として、この変更で昇格する cell は **0 件**になる。塞ぐのが目的であって、
+昇格させるのが目的ではない（issue 本文「実 CLI capture rig を有効化する前に塞ぐ」）。
 
 **単数欄にしない理由**: `claude/interrupt-and-hook-timeout` が 5 本の観測記録を根拠にしている。
 単数欄だと 4 本が検査対象から外れ、この fixture の主張の中心である中断の証跡が裏取り無しで残る。
@@ -193,22 +233,46 @@ rig は run のたびに manifest を 1 件書き、証拠置き場へ observati
 ```jsonc
 {
   "manifestVersion": 1,
-  "cli": "claude",
-  "cliVersion": "2.1.228 (Claude Code)",   // .version の中身
-  "scenario": "claude/lifecycle-basic",     // scenario 識別子
-  "isolated": true,                          // rig が自分で書く。fixture の自己申告ではない
+  "cli": "claude",                              // "claude" | "codex" の enum
+  "cliVersion": "2.1.228 (Claude Code)",        // .version の中身をそのまま
+  "scenarioId": "claude.lifecycle-basic",       // §5.3 の制約付き識別子。自由文ではない
+  "isolated": true,                             // rig が書く。fixture の自己申告ではない
   "internalRunMarker": true,
-  "exitStatus": 0,
-  "recorderErrors": 0,                       // .errors が無い / 空なら 0
-  "capture": "claude-lifecycle-basic.jsonl",
+  "exitStatus": 0,                              // 非負整数
+  "recorderErrors": 0,                          // .errors が無い / 空なら 0。非負整数
+  "capture": "claude-lifecycle-basic.jsonl",    // 置き場からの相対 path
+  "captureRawHash": "<観測記録ファイルの生 byte の SHA-256>",
   "captureHash": "<正規化抜粋の SHA-256>",
   "normalizationVersion": 1
 }
 ```
 
-assemble は manifest の digest を照合し、`isolated !== true`、`recorderErrors > 0`、
-`captureHash` が observation の再計算値と食い違う、のいずれでも **失敗**させる。
-`nativeVersion` は fixture の自己申告と manifest の `cliVersion` の一致も要求する。
+**`captureRawHash` を別に持つ理由**: `captureHash` は正規化後の digest なので、
+既知の正規化衝突（例: `hook-timeout` と `lifecycle-basic`）を持つ別の記録と manifest を
+組み合わせられる。生 byte の digest を併記すると、manifest が指す記録は 1 つに定まる。
+
+**manifest の型と検証**
+
+- TypeScript の `RunManifest` 型と、`additionalProperties: false` の JSON Schema を置く
+- `manifestVersion` が harness の実装版と違えば **失敗**（未知の版を推測で読まない）
+- `exitStatus` / `recorderErrors` は非負整数。負数・非整数・欠落はすべて失敗
+- `manifestHash` は **manifest ファイルの生 byte の SHA-256**。正規化は掛けない
+
+**照合する項目（§4.1 の一覧に入る）**
+
+| manifest 側 | 突き合わせる相手 |
+|---|---|
+| `manifestVersion` | harness の実装版 |
+| `cli` | fixture の `cli` |
+| `cliVersion` | fixture の `nativeVersion` |
+| `scenarioId` | fixture の `scenarioId`（§5.3 で fixture 側にも足す） |
+| `capture` | `EvidenceRef.path` |
+| `captureRawHash` | 観測記録の生 byte から再計算した値 |
+| `captureHash` | 観測記録の正規化抜粋から再計算した値 |
+| `normalizationVersion` | `EvidenceRef.normalizationVersion` と harness の実装版 |
+| `isolated` | `true` であること |
+| `internalRunMarker` | fixture の `rig.internalRunMarker` |
+| `recorderErrors` | `0` であること |
 
 **scope の限界**: manifest は rig が書くので、rig を動かす人を信頼する境界は残る。
 これは repository の checkout を信頼するのと同じ水準で、`real-cli-e2e` の定義に
@@ -255,12 +319,9 @@ evidence がある          → 各 ref について:
     path 解決が拒否された                            → 失敗
     ファイルが読めない / 解釈できない                → 失敗
     再計算した digest が ref.evidenceHash と違う     → 失敗
-    manifest の digest が ref.manifestHash と違う    → 失敗
-    manifest.isolated !== true                       → 失敗
-    manifest.recorderErrors > 0                      → 失敗
-    manifest.captureHash が再計算値と違う            → 失敗
-    manifest.cliVersion が fixture.nativeVersion と違う → 失敗
-  全 ref が通ったとき verified = true
+    manifest がある場合は §2.5 の照合表を全件      → 1 つでも違えば失敗
+  全 ref が通ったとき refVerified = true
+  manifest 付きの ref が 1 件以上あるとき manifestBacked = true
 ```
 
 「失敗」は組み立て全体の失敗。当該 cell だけ黙って `source-test` へ落として続行しない。
@@ -271,32 +332,72 @@ evidence がある          → 各 ref について:
 `assemble.ts:280`（capture cell）、`:349`（highLevel cell）、`:383`（prompt 対の再刻印）の
 3 箇所すべてが `verified` を見る。`Boolean(f.evidenceHash)` を見る経路を 1 つも残さない。
 
+**昇格の条件は 3 つ揃ったとき**
+
+1. `refVerified`（全 ref の digest と manifest 照合が通っている）
+2. `manifestBacked`（その cell を支持する ref が manifest 付き）
+3. その cell の主張が §4.3 で導ける種類であり、導出値と申告値が一致している
+
+1 つでも欠ければ `source-test` に留める（組み立ては失敗させない。「証拠が弱い」は
+正当な状態であって異常ではない）。異常として **失敗**させるのは、
+digest 不一致・manifest 不整合・導出値と申告値の食い違い・空配列・未知の版。
+
 **prompt 対の同一 run 拘束**: `:383` は「1 つの実測が対を同時に証明した」ことを要求する。
 1 つの fixture が複数 run を束ねられるようになった以上、fixture が同じことは同一 run の
-証明にならない。**両 cell が同じ `EvidenceRef`（同じ path・同じ digest）から導かれたときだけ**
-対を成立させる。
+証明にならない。**両 cell を支持する ref 集合に同じ 1 件が含まれるときだけ**対を成立させる。
+なお両 cell は §4.3 の表で「導けない」側なので、現状この経路は到達しない。
 
-### 4.3 claim と観測記録の結び付け
+### 4.3 claim を観測記録から導く
 
-digest 一致は「記録が改竄されていない」ことしか言わない。正しい記録と digest を流用して、
-fixture へ根拠のない cell 主張を書き足す経路が残る。
+digest 一致は「記録が改竄されていない」ことしか言わない。正しい記録と digest を流用して
+根拠のない cell 主張を書き足す経路は、**主張の値そのものを記録から導く**ことでしか塞げない。
+「穴があると説明文に書く」では塞がらない。
 
-**この版で入れる検査（機械的に導ける範囲）**
+#### VerifiedClaims — 検証器の出力
 
-- `observedEvents[].sourceEvents` に挙げた hook 名が、参照している観測記録のいずれかに
-  `event` として実在すること。実在しない主張は失敗
-- `toolFailurePhasesObserved` に `executed` 等を挙げるなら、対応する `PostToolUse` が
-  観測記録に実在すること
-- `highLevel` の各 cell についても、その cell が根拠とする hook 名が実在すること
+検証器は各 `EvidenceRef` から、その記録が支持する主張を機械的に生成する。
 
-**この版で入れない検査（残る穴として明記する）**
+```ts
+interface VerifiedClaims {
+  /** この ref の由来。manifest が無ければ real-cli-e2e の根拠にならない */
+  refIndex: number;
+  manifestBacked: boolean;
+  /** この記録から導けた capture cell の値 */
+  capture: Partial<Record<EventKind, ObservedCapability>>;
+  /** この記録から導けた highLevel cell の値 */
+  highLevel: Partial<Record<HighLevelKey, ObservedCapability>>;
+}
+```
 
-観測記録の**本文**に依存する主張（注入 token の echo、tool 出力の内容、
-`assistant_completed` の復元可否）は、§0 のとおり digest に現れないので導けない。
-これらは正しい記録を持っていれば主張の値を書き換えられる。
-**cell ごとの claim 述語**を定義して raw から値そのものを導く設計が本来の解で、
-本 issue の範囲を超える。別 issue へ切り出し、`real-cli-e2e` の定義に
-「event 構造と識別子相関までを裏付ける」と書いて意味を実態へ合わせる。
+fixture の申告は「この記録がこの値を支持する」と一致しなければならない。
+一致しない主張は **失敗**（黙って値を差し替えない）。
+
+#### 導ける主張と、導けない主張
+
+正規化後に残る情報は「event の種類と並び」「欄の有無」「識別子の等値関係」「boolean 値」。
+主張がこの範囲の関数として書けるかどうかで分ける。
+
+| 主張 | 導出 | 判定 |
+|---|---|---|
+| `session_started` / `user_prompted` / `session_ended` = native | 対応 hook（`SessionStart` / `UserPromptSubmit` / `SessionEnd`）が実在する | **導ける** |
+| `tool_started` / `tool_completed` = native | `PreToolUse` / `PostToolUse` が実在する | **導ける** |
+| `assistant_completed` = synthesized | `Stop` の payload に `last_assistant_message` **欄**が存在する（値は伏せ字でよい） | **導ける** |
+| `turn_completed` = synthesized | `UserPromptSubmit` / `Stop` / `SessionEnd` が同じ `prompt_id` token を共有する | **導ける**（相関 token のおかげ） |
+| `session_interrupted` | `Stop` が無く `SessionEnd` がある | **導ける** |
+| `subagentCapture` = native | `SubagentStop` が実在する | **導ける** |
+| `stableNativeSessionId` = native | 全 event の `session_id` が同じ token | **導ける**（相関 token のおかげ） |
+| `tool_failed` = native / `toolFailurePhasesObserved` | 失敗か成功かは `tool_response` の**中身**にしかない | **導けない** |
+| `sessionStartInjection` / `promptAwareInjection` / `promptDeliveryBeforeModel` | 注入が効いたことは応答**本文**への echo でしか分からない | **導けない** |
+| `compactSingleDelivery` / `trueSessionEnd` / `pre_compact` / `post_compact` | 現行 16 件に該当 event が無く、導出規則を実測で決められない | **導けない** |
+
+#### 導けない主張の扱い
+
+**`real-cli-e2e` を名乗らせない。** 該当 cell は `source-test` に留める。
+これらを裏付けるには「注入 token が応答に現れたか」のような本文由来の述語が要り、
+それは正規化が伏せる情報なので、**digest を再取得安定にする設計と本質的に両立しない**。
+
+別の証拠形式（例: rig が「注入 token が応答へ含まれていたか」を boolean として manifest へ
+記録する）で扱うのが筋で、本 issue の範囲を超える。別 issue へ切り出す。
 
 ---
 
@@ -320,30 +421,45 @@ matrix 直下に表を 1 つ置き、cell からは添字で参照する。
 /** fixtureId + path の昇順で一意化した配列。cell からは添字で参照する */
 evidenceSources: Array<{
   fixtureId: string;
-  path: string;              // 置き場からの相対 path。絶対 path は入らない
+  path: string;                  // 置き場からの相対 path。絶対 path は入らない
   evidenceHash: string;
   normalizationVersion: number;
-  manifestHash: string;
+  manifestHash: string | null;   // legacy 証拠は null
   cliVersion: string;
-  scenario: string;
+  scenarioId: string;            // 制約付き識別子。自由文の scenario は出さない
 }>;
 ```
 
 これで SC-006（どの記録を・どの版で・どの digest で・どの CLI 版で判定したかを成果物だけで追える）
 が複数 ref でも成り立つ。並びは `fixtureId` → `path` の昇順で一意に決める。
 
+**`scenario` の自由文を成果物へ出さない。** 現行の `scenario` 欄は
+「Bash tool 成功実行（allowedTools 明示）で PreToolUse/PostToolUse の対を観測」のような
+自由文で、投入した指示や command 由来の文言が混ざり得る。`scenarioId` を fixture へ
+新設し、`^[a-z0-9]+(?:[.-][a-z0-9]+)*$` に制約する（例: `claude.tool-lifecycle`）。
+自由文の `scenario` は fixture 内の説明として残すが、matrix へは出さない。
+
 ### 5.2 `capabilityHashInputs`
 
-現在は `fixture:<id>@<evidenceHash>` を並べている（`assemble.ts:414`）。
-欄が配列になるので入力の形も変える。
+現在は `fixture:<id>@<evidenceHash>` という ad-hoc 文字列を並べている（`assemble.ts:414`）。
+欄が増えると連結の曖昧さで別の入力が同じ文字列になり得るので、**構造化して JCS で
+canonical 化する**。`harness/schema/jcs.ts` の `canonicalizeJson` を使う。
 
-```
-`fixture:<fixtureId>@<evidenceSources のうちこの fixture 由来のものの digest を昇順で連結>`
+```ts
+capabilityHashInputs = [
+  canonicalizeJson({ cli, nativeVersion }),
+  // evidenceSources と同じ並び（fixtureId → path の昇順）
+  canonicalizeJson(evidenceSources.map((e) => [
+    e.fixtureId, e.path, e.evidenceHash, e.normalizationVersion, e.manifestHash,
+  ])),
+  canonicalizeJson(folded),   // 畳んだ capabilities（capabilityHashInputs 自身を除く）
+];
 ```
 
-`assemble.ts` のコメントが「§13 の manifest hash はまだ無い（Task 5 で入る）。入る場所は
-この配列」と書いているとおり、manifest hash もここへ入れる。
+manifest hash がこの tuple に入る。`assemble.ts:402` のコメントが
+「§13 の manifest hash はまだ無い（Task 5 で入る）。入る場所はこの配列」と書いているとおり。
 入力の列挙は欄を数え上げるのではなく畳んだ結果から導く（既存の `folded` の扱いを踏襲）。
+exact な byte 列と並び順を contract test で固定する。
 
 **`harness/contract-hashes.json` の再生成が必要になる。** `capability.schema.json` と
 fixture がその入力で、CI が `node harness/contract-hashes.mjs` の出力との差分を見ている
@@ -357,11 +473,19 @@ normalizer を伏せ字にしても直らない。
 
 対処:
 
-- backfill の際に 8 fixture の `limitations` から、実値・token・識別子・絶対 path を取り除く
-- 観測記録 16 件から `prompt` / `last_assistant_message` / `cwd` / `transcript_path` /
-  入れ子の `tool_input` `tool_response` の値を抽出し、matrix・stdout・stderr・CI log に
-  完全一致が無いことを機械検査する
-- 成果物へ出す path は置き場からの相対 path のみ（`claude-interrupt3.jsonl` のようなラベル）
+- **成果物へ出る自由文をすべて対象にする。** `limitations`（fixture / event の両方）と
+  `scenario` が対象。`scenario` は §5.1 のとおり `scenarioId` へ置き換えて matrix から外す
+- backfill の際に 8 fixture の自由文から、実値・token・識別子・絶対 path を取り除く
+- 成果物へ出す path は置き場からの相対 path のみ（`claude-interrupt3.jsonl` のようなラベル）で、
+  `^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$` に制約する
+
+**漏洩 test は canary で行う。** 既存 raw の実値を全部 grep する形は 2 つ問題がある。
+`OK` や `done` のような短い一般文字列は偽陽性を出し、逆に新しく混ざった実値は捕まらない。
+
+1. 一意な canary 文字列を、fixture の自由文・raw の `prompt` / `last_assistant_message` /
+   `cwd` / 入れ子の `tool_input` `tool_response` の各経路へ 1 つずつ仕込む
+2. 組み立てを子プロセスで走らせ、matrix・stdout・stderr のいずれにも canary が出ないことを見る
+3. 既存 raw に対する検査は、対象欄を明示し、最小長（16 文字以上）で絞る
 
 ---
 
@@ -396,3 +520,11 @@ normalizer を伏せ字にしても直らない。
 | **M23** | 正規化の中間オブジェクトを `{}` にする | `__proto__` 欄の有無が digest に現れること |
 | **M24** | fixture の `limitations` を無害化せずに backfill する | matrix・stdout・stderr に raw の実値が現れないこと |
 | **M25** | `contract-hashes.json` を再生成しない | CI の contract hash 差分検査が落ちること |
+| **M26** | claim 導出をやめて fixture の申告値をそのまま使う | 正しい raw と digest のまま cell 値を書き換えた fixture が棄却されること |
+| **M27** | 導けない主張（`sessionStartInjection` 等）も昇格対象にする | 該当 cell が `source-test` に留まること |
+| **M28** | manifest 無しの ref でも昇格させる | legacy 証拠だけの cell が `source-test` に留まること |
+| **M29** | `captureRawHash` の照合を外す | 正規化衝突する別の記録と manifest を組み合わせた fixture が棄却されること |
+| **M30** | 相関 token の走査順を入力の property 順にする | キー順だけを入れ替えた 2 記録の digest が一致すること |
+| **M31** | 公開 API の入力を `string` にする | 不正 UTF-8 の記録が呼び出し側の復号で素通りしないこと |
+| **M32** | `capabilityHashInputs` を ad-hoc 連結へ戻す | 欄の境界が曖昧な 2 つの入力が同じ hash にならないこと |
+| **M33** | `scenarioId` をやめて自由文 `scenario` を matrix へ出す | canary が matrix へ出ないこと |

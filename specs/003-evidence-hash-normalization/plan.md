@@ -15,8 +15,12 @@
 これにより「同一 scenario の再取得で同じ digest」と「未知の欄の中身が成果物へ漏れない」を
 同時に満たす。
 
-移行では 8 fixture すべてに証拠配列と digest を埋め、21 cell が `source-test` から
-`real-cli-e2e` へ昇格する。降格は 1 件も発生しない。
+移行では 8 fixture すべてに証拠配列と digest を埋める。**昇格する cell は 0 件**、
+降格も 0 件になる。既存 16 件の観測記録は 2026-08-12 の取得で、当時の rig 一時領域が
+既に消えており真正な manifest を作れないためで、これは意図した結果になる。
+issue 本文が「実 CLI capture rig を有効化する前に塞ぐ」と書いているとおり、
+目的は昇格させることではなく、証拠を伴わない昇格経路を閉じること。
+digest の照合自体は legacy 証拠にも掛かるので、記録を差し替えれば組み立てが落ちる。
 
 ## Technical Context
 
@@ -114,10 +118,10 @@ issue #20 の H0〜H3 を、この repo での作業単位へ落としたもの�
 | 段 | 内容 | 対応 | 完了条件 |
 |---|---|---|---|
 | 1 | 正規化規則の凍結（H0） | spec.md / research.md / data-model.md / contracts | 実測に基づく規則が文書として確定している（**本 plan の時点で完了**） |
-| 2 | normalizer の実装（H0/H1） | `harness/evidence/normalize.mjs` + test | data-model.md §6 の M5〜M12 が kill される |
-| 3 | schema と型（H1） | `capability.ts` / `capability.schema.json` | M13 が kill される。continuity fixture が壊れない |
+| 2 | normalizer の実装（H0/H1） | `harness/evidence/normalize.ts` + test | data-model.md §6 の M5〜M12・M16・M17・M21〜M23・M30・M31 が kill される |
+| 3 | schema と型（H1） | `capability.ts` / `capability.schema.json` | M13・M15 が kill される。continuity fixture が壊れない |
 | 4 | 昇格判定と欄の退役（H2） | `assemble.ts` ほか。下の「`evidenceHash` の全参照」を全件処理 | M0〜M4 が kill される。`grep -rn evidenceHash harness/` の残りが意図した形だけになる |
-| 5 | 移行 backfill（H2） | fixture 8 件 + matrix 再生成 | 21 cell が昇格し、降格 0 件 |
+| 5 | 移行 backfill（H2） | fixture 8 件（`evidence[]` / `scenarioId` / 自由文の無害化）+ matrix 再生成 | 昇格 0 件・降格 0 件。全 raw が digest で結び付き、差し替えると落ちる。M24・M33 が kill される |
 | 6 | rig の manifest と持ち込み（H2/H3） | `rig.sh` + manifest 形式 | manifest が書かれ、capture と一緒に置き場へ byte 同一で入る。M20 が kill される |
 | 7 | provenance と退役（H3） | `matrix/README.md` ほか research.md R6 の 5 箇所、`contract-hashes.json` 再生成 | 古い記述が残っていない。M14 / M24 / M25 が kill される |
 
@@ -130,11 +134,16 @@ normalizer を直すだけでは消えない）。
 
 ```bash
 node --experimental-strip-types --test harness/evidence/normalize.test.ts
-npx tsc -p harness/tsconfig.json                    # strict 型検査
+node --experimental-strip-types harness/assemble.ts --self-test
+node --experimental-strip-types --test harness/continuity/*.test.ts
+vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json    # CI と同じ pinned compiler
 node harness/contract-hashes.mjs > /tmp/ch.json && diff harness/contract-hashes.json /tmp/ch.json
 ```
 
-matrix の生成コマンドは `harness/matrix/README.md` の記載に従う。
+`npx tsc` は使わない。CI（`.github/workflows/ci.yml:61`）は
+`vendor/codemem/node_modules/.bin/tsc` を使っており、`npx` は環境次第で別の package を
+取りに行く。`assemble.ts` は `--test` ではなく `--self-test`（`assemble.ts:809`）。
+matrix の生成コマンドは実装時に `assemble.ts` の usage（`:822` 付近）から確定させる。
 
 ## 主要な設計判断
 
@@ -142,6 +151,25 @@ matrix の生成コマンドは `harness/matrix/README.md` の記載に従う。
 
 取得側は shell、検証側は TypeScript。shell から TS の関数を呼ぶ手段が無いため、
 同じファイルを `import` と `node <file>` の両方から使う。二重実装は必ず drift する。
+
+### 既存 16 件は昇格させない（manifest を作れないため）
+
+`/tmp/free-mem-rig-jura/capture/` は既に存在せず、`.version` も `.errors` も stderr も
+残っていない。手書きの遡及 manifest は fixture の自己申告そのもので、FR-003b を満たさない。
+再取得も同 PR では成立しない（claude CLI は現在 2.1.234、fixture の pin は 2.1.228 で、
+取り直すと 5 fixture の `nativeVersion` が変わり version-pin に引っかかる）。
+
+manifest を持たない ref を「legacy 証拠」として受け入れ、digest の照合は掛けるが
+`real-cli-e2e` の根拠にはしない。実 CLI rig が manifest 付きで走った時点で初めて昇格する。
+
+### 導けない主張は昇格させない
+
+「穴があると説明文に書く」では塞がらない。cell の主張が正規化後に残る情報
+（event の種類と並び・欄の有無・識別子の等値関係・boolean）の関数として書けるかで分ける。
+書ける主張（`session_started` / `assistant_completed` / `turn_completed` /
+`stableNativeSessionId` / `subagentCapture` ほか）は記録から値を導いて申告値と照合する。
+書けない主張（`sessionStartInjection` / `tool_failed` の phase など、本文に依存するもの）は
+`source-test` に留める。対応表は data-model.md §4.3。
 
 ### digest が証明しないことを先に書く
 
@@ -242,5 +270,5 @@ constitution III を既定で破る向きなので採らない。
 |-----------|------------|-------------------------------------|
 | constitution VI（push / PR 禁止）との食い違い | 本 repo は既に GitHub で PR 運用しており、本 feature だけ運用を変えられない | 原則側の改訂は issue #74 が扱う。本 feature で先に決めると、未決事項を別 issue へ分離した意味が消える |
 | issue #20 の実装順序（task 2 を Codex CLI へ）からの逸脱 | 完全性 digest・path traversal 拒否・入力検証はセキュリティ関連にあたり、constitution III が外部 CLI への委譲を禁じている（MUST） | 委譲して事後レビューする案は、原則が「委譲しない」と書いている以上、レビューの有無で置き換えられない |
-| cell ごとの claim 述語を実装しない | 正しい観測記録と digest を持っていれば、本文に依存する cell 主張（注入 token の echo、tool 出力の内容）は書き換えられる。これを塞ぐには cell ごとに raw から値を導く述語が要り、本 issue の範囲を大きく超える | 「範囲を超えるから無視する」は採らない。data-model.md §0 と §4.3 に残る穴として明記し、`real-cli-e2e` の定義を「event 構造と識別子相関までを裏付ける」へ合わせ、別 issue へ切り出す |
+| 本文に依存する主張の述語を実装しない | 注入が効いたことは応答本文への echo でしか分からず、正規化はそれを伏せる。裏付けと再取得安定性が本質的に両立しない | 「説明文に書いて許容する」は採らない。該当 cell を `real-cli-e2e` から外して `source-test` に留める。別の証拠形式（rig が boolean として manifest へ記録する等）は別 issue |
 | rig 運用者への信頼が残る | manifest は rig が書くため、rig を動かす人を信頼する境界が残る | 署名や外部 attestation はローカル完結（constitution I / VI）と釣り合わない。checkout を信頼するのと同じ水準として §0 に明記する |

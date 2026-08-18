@@ -37,21 +37,22 @@ for f in tool-denied tool-ok; do node --experimental-strip-types harness/evidenc
 `harness/package.json` に scripts は無い。`harness/matrix/README.md` 記載の実コマンドを使う。
 
 ```bash
-# matrix 生成（実コマンドは harness/matrix/README.md に従う）
-node --experimental-strip-types harness/assemble.ts ...
+# matrix 生成（usage は node --experimental-strip-types harness/assemble.ts で出る）
+node --experimental-strip-types harness/assemble.ts --self-test
 # contract hash の再生成（CI が差分を見ている）
 node harness/contract-hashes.mjs > /tmp/ch.json && diff harness/contract-hashes.json /tmp/ch.json
 git diff harness/matrix/
-# => evidenceKind が source-test から real-cli-e2e へ変わる cell が 21 件
-# => 逆向き（real-cli-e2e から下がる）変化は 0 件
+# => evidenceKind の変化は 0 件（既存 16 件は manifest が無いので昇格しない）
+# => evidenceSources 表が増え、各 cell が添字で参照する
 ```
 
 ## 5. 攻撃側を確認する（SC-001 / SC-007）
 
 ```bash
 node --experimental-strip-types --test harness/evidence/normalize.test.ts
-node --experimental-strip-types --test harness/assemble.ts
-npx tsc -p harness/tsconfig.json
+node --experimental-strip-types harness/assemble.ts --self-test
+node --experimental-strip-types --test harness/continuity/*.test.ts
+vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
 ```
 
 test が確認すること:
@@ -61,7 +62,9 @@ test が確認すること:
 - 未知の `normalizationVersion` → 組み立てが失敗する
 - `evidence: []` → 組み立てが失敗する
 - `..` を含む path、絶対 path、置き場の外へ出る symlink → いずれも拒否される
-- 正しい raw と digest のまま、実在しない hook を `sourceEvents` に挙げた fixture → 棄却される
+- 正しい raw と digest のまま cell の値を書き換えた fixture → 棄却される
+- manifest 無しの ref だけを持つ cell → `source-test` に留まる（昇格しない）
+- 本文に依存する主張（`sessionStartInjection` 等）→ `source-test` に留まる
 - manifest の `isolated !== true` / `recorderErrors > 0` / `cliVersion` 不一致 → 棄却される
 - 重複キー・不正 UTF-8・`payload.unparsed` を含む記録 → 棄却される
 - 3 つの昇格箇所すべてで棄却される
@@ -77,5 +80,6 @@ grep -r "/tmp/free-mem-rig" harness/matrix/ && echo "NG" || echo "OK"
 grep -r "RIG_INJECT_" harness/matrix/ && echo "NG" || echo "OK"
 ```
 
-観測記録から実値を機械抽出して突き合わせる形も置く（自由文へ新しい実値が混ざったときに
-上の 2 つの grep では捕まらないため）。
+固定文字列の grep では、新しく混ざった実値も、`OK` のような短い一般文字列の偽陽性も扱えない。
+本番の検査は canary で行う（data-model.md §5.3）。fixture の自由文と raw の各経路へ
+一意な canary を仕込み、子プロセスで組み立てて matrix・stdout・stderr に出ないことを見る。
