@@ -117,6 +117,43 @@ copyright 行と許諾文を同梱する）を満たさないので、`sync-hook
 - **fixture に実データを入れない**（実 credential・私的な memory 内容・ローカル固有パス）。既存の repo 規則と同じ。
 - license 確定前に来た外部 PR は、確定後に改めて DCO 付きで出し直してもらう。
 
+DCO の**検査機構**は issue #59 の変更（2026-08-18、`main` へ squash された commit）から稼働する。
+検査する集合は、`main` を base とする PR の merge-base より後から head までの commit であり、
+稼働時点までに `main` にある既存 history は遡って不合格にしない。
+
+**merge を止める意味での「強制」の開始点は、まだこの日付ではない。** 開始条件は次の 3 つで、
+これを満たした日時と commit を確認後にここへ記録する。
+
+1. 下記の残存経路を実測で否定するか、専用 App へ移して閉じる
+2. `dco` を `main-protection` の required status check へ登録する
+3. 未署名 PR が実際に merge を止められることを確認する
+
+強制の機構は `dco` という単一の check である。workflow（`.github/workflows/dco.yml`）も checker
+（`harness/dco-check.mjs`）も `main` 側から読み、PR の head は git history としてしか読まない。
+PR が自分を検査するコードを書き換えられないこと、および `dco` という名前の check を出す経路を 1 つに
+保つこと（skip された同名 check は GitHub が成功として扱うため）が、この形を選んだ理由である。
+
+**免除は置かない。bot も同じく検査する。** author email は commit する側が `git commit --author` で
+自由に名乗れるので、email 一致による免除は誰でも騙れる。免除が必要になった場合の拡張先は、email では
+なく GitHub が認証した actor login に紐付ける形である。
+
+required status check への登録と、未署名 PR が実際に落ちることの確認は issue #59 で追跡する。
+
+**この形でも塞ぎきれていない経路が 1 つある。** GitHub は required status check を名前で照合し、
+skip された job も成功として扱う。したがって PR は自分の `ci.yml` に `name: dco` かつ `if: false`
+の job を足すことで、trusted な `dco` と区別のつかない成功 check を作れる。どちらも GitHub Actions
+App が出すので、ruleset 側で source を固定しても区別できない。閉じ方の候補は 2 つで、どちらを取るかは
+#59 で決める。
+
+1. 同名の check が複数あるとき GitHub が全件成功を要求するのか、最後の 1 件だけを見るのかを実測する。
+   全件要求なら trusted な `dco` の失敗が残るのでこの経路は成立しない。
+2. 成立するなら、check の生産者を GitHub Actions から専用 App（DCO App 等）へ移し、ruleset の
+   required check に `integration_id` を付けて source ごと固定する。PR は他の App の名前で
+   check を作れない。
+
+それまでの間、この経路は「PR の差分に CI 設定の緩和が混ざっていないかを人が見る」運用に依存する。
+repository の contribution 規則にも同じことが書いてある。
+
 ## 配布面のチェック
 
 現時点で package / tag / release を作っていないため、ここは「作るときに満たすべき条件」として定義する。
@@ -207,8 +244,9 @@ license 付与は取り消せない。一度公開した version に対する gr
 ## 残る未決事項
 
 - release 前の専門家確認（本 ADR は法的助言の代替ではない）。
-- DCO は `CONTRIBUTING.md` と PR template に規定しているが、CI では強制していない。
-  外部 contribution を受け入れ始める時点で自動検査を入れるか判断する。
+- **DCO は文書に規定しているが CI では強制していない** → 2026-08-18 に検査機構が着地した
+  （上の「inbound contribution 方針」の開始点・検査集合・機構を参照）。ただし `dco` を
+  上の 3 つの開始条件を満たすまでは「強制している」とは書かない。issue #59 で追跡する。
 - ~~公開 package の tarball に bundle された依存の notice が載らない（issue #50）~~ →
   **2026-08-18 に解消**。上の「bundle された依存の notice」節を参照。当初この項に書いていた実測
   （`codemem` が `@clack/prompts` ほかを bundle する / `@codemem/server` が `@hono/node-server` を
@@ -234,4 +272,4 @@ license 付与は取り消せない。一度公開した version に対する gr
 
 - 第三者は Core 1.0 を明確な条件で利用・改変・再配布できる。
 - vendored codemem の MIT 表示と権利関係は分離されたまま維持される。
-- 外部 contribution は DCO を通り、provenance が PR に残る。
+- 上の残存経路を閉じ、`dco` を required status check へ登録した後は、外部 contribution が DCO を通り、provenance が PR に残る。

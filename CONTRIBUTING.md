@@ -22,6 +22,37 @@ the work under the project's license. Git adds it for you:
 git commit -s -m "your message"
 ```
 
+The `dco` check runs on every pull request targeting `main`, and checks the commits from the merge
+base with `main` through the pull request head. A pull request into some other branch is checked when
+its work reaches `main`. A commit passes when a `Signed-off-by: Name <email>` trailer
+matches its author or committer email (case-insensitively).
+
+There are no exemptions, including for bots. An author email alone is not proof of who made a commit
+— anyone can pass `git commit --author` — so exempting an address would let any contributor claim it.
+Pull requests opened by Dependabot or another bot are therefore checked like everyone else: if their
+commits are not signed off, land the change on your own branch with `git commit -s` instead of
+merging the bot's branch.
+
+This repository squash-merges pull requests, so the generated commit on `main` does not retain each
+trailer. The sign-off record remains on the pull request commits, which can be reached from the
+squash commit's `(#N)` reference. Commits already on `main` before this check was introduced are
+grandfathered and are not checked retroactively.
+
+When Claude Code or Codex CLI creates a commit, include `git commit -s` in its instructions; agent
+commits are checked in the same way.
+
+The check runs from the target branch, not from the pull request: both the workflow
+(`.github/workflows/dco.yml`) and the checker (`harness/dco-check.mjs`) are read from `main`, and the
+pull request head is only read as git history. A pull request that edits either file is still checked
+by the version already on `main`, so it cannot weaken the checker that gates it.
+
+One route is still open: required checks are matched by name, and a skipped job counts as a pass, so a
+pull request that adds a second job named `dco` to another workflow can produce a check that is hard to
+tell apart from the real one. Until that is closed, `dco` is not registered as a required check, which
+means it reports its result but does not by itself block a merge. A pull request that changes CI
+configuration is reviewed for exactly this, and changes that loosen a gate are rejected. Issue #59
+tracks closing the route and making the check required.
+
 The full text you are certifying is the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
 
 ## Declaring AI-assisted work

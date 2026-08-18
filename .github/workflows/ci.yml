@@ -178,6 +178,12 @@ jobs:
         # スクリプト自身が「実行件数 == 期待件数」「生存 0」「変異が baseline と同じ件数の
         # test を走らせた」を検査して非ゼロで終了する
         run: bash harness/continuity/mutate.sh
+      - name: DCO gate self-test
+        # ゲート本体（dco.yml）は base branch 側の checker を走らせるので、PR 側の変更は
+        # そこには載らない。checker を直す PR の正しさはこの job で担保する。純関数だけの test は
+        # CLI 経路が `Refs #59` + sign-off を落としていても全件通った（実測）。実物を子プロセスと
+        # して起動する test を含めてここで回す。
+        run: node --test harness/dco-check.test.mjs
       - name: Matrices are regenerated, not hand-edited
         # plan の「Regenerate matrices; never manually edit generated JSON」を CI で強制する。
         # generatedAt は実行ごとに変わるので比較から外す
