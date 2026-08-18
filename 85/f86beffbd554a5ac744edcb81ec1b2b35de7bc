@@ -1,0 +1,21 @@
+harness/matrix/README.md
+  s_2d059b4f795bca::t_c470328e5348ae 13-33,56-58
+specs/003-evidence-hash-normalization/tasks.md
+  s_2d059b4f795bca::t_bd48305b4941a5 196-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "85f86beffbd554a5ac744edcb81ec1b2b35de7bc",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
