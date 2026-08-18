@@ -34,9 +34,10 @@ Stage 1 narrow prototype の役割は、以後次のように再定義する。
 
 これらを書き換えないと、Core 1.0 の runtime authority が本 ADR と正本の 2 つになる。**正本が勝つ**。
 本 ADR が確定させたのは戦略目標と Stage 1 の役割であって、Core 1.0 の出荷基盤ではない。Rust が
-Core 1.0 の default になるのは、Stage 1 が pass に達し、かつ v6.1 §4.3 の手続きで v6.1 / spec.md /
-plan.md / ADR-001 を owner が明示的に改訂した後である。その改訂は
-[#84](https://github.com/ojungo69/free-mem/issues/84) で追跡する。
+Core 1.0 の default になるには、Stage 1 が pass に達することと、正本連鎖の改訂が完了していることの
+両方が要る。**その改訂をどの手続きで、どの時期に行うかは本 ADR では決めない**——
+[#84](https://github.com/ojungo69/free-mem/issues/84) の決定に委ねる。v6.1 §4.3 は Phase 0A の
+base gate と再審議トリガーを定めるだけで、正本連鎖の改訂手続きは定義していない。
 
 ## 目標アーキテクチャ
 
@@ -140,17 +141,29 @@ Stage 1 が成功したら Rust 移行を Go
 
 ### 新判定
 
+判定は ADR-003 の cutover gate と同じ 2 値にする。3 値にすると、同じ実測結果から違う結論を
+導ける余地が残る。
+
 ```text
-Stage 1 が成功
-  -> Rust Core cutoverを予定どおり進める
+pass  = G1-G7 をすべて満たす
+  -> Core 1.0 の default を Rust へ切り替える（正本連鎖の改訂が完了していること。#84）
 
-Stage 1 が一部不合格
-  -> 不合格sliceを修正・縮小・延期し、合格sliceから移行する
-
-Stage 1 が重大不合格
-  -> Core 1.0 default切替を延期し、TS referenceを暫定継続する
-     ただしRust Coreという長期方向の撤回には別ADRが必要
+defer = G1-G7 に 1 つでも欠けがある
+  -> Core 1.0 の default は TypeScript のまま据え置く
 ```
+
+`defer` の下でできることを明示しておく。
+
+- 不合格の原因を直して再測定する
+- Stage 1 の対象 slice を縮小して測り直す
+- Rust 実装を shadow として動かし続ける（default にはしない）
+- cutover を後続 release へ送る
+
+`defer` 中に**個別 slice を本番へ cutover することはできる**が、条件はその slice 単体で
+G1–G7 を満たすことである。全体が defer だからといって、未達の slice を「部分合格」として
+本番へ出すことはしない。
+
+長期方向としての Rust Core を撤回するには、`defer` の記録ではなく別の owner ADR が要る。
 
 ## 採用理由
 
