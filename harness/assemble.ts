@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -11,11 +11,21 @@ import {
   type CaptureFixture,
   type CompactionRecoveryStrategy,
   type EventKind,
+  type EvidenceSource,
   type ObservedCapability,
   type ToolFailurePhase,
 } from "./schema/capability.ts";
 import { validateAgainstSchema, type JsonSchemaDocument } from "./schema/validate.ts";
-import { decodeUtf8, parseIJson, readIJsonFile } from "./schema/jcs.ts";
+import { canonicalizeJson, decodeUtf8, parseIJson, readIJsonFile } from "./schema/jcs.ts";
+import { NORMALIZATION_VERSION, digestCapture, digestRaw } from "./evidence/normalize.ts";
+import {
+  DERIVABLE_CAPTURE_KINDS,
+  DERIVABLE_HIGH_LEVEL_KEYS,
+  verifyEvidence,
+  type DerivableHighLevelKey,
+  type EvidenceContext,
+  type VerifiedRef,
+} from "./evidence/verify.ts";
 
 // JSON Schema は「置いてあるだけ」にせず、キー集合の正本として実際に読む
 const SCHEMA = readIJsonFile(new URL("./schema/capability.schema.json", import.meta.url)) as JsonSchemaDocument & { properties?: Record<string, any> };
@@ -53,9 +63,11 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
     "nativeVersion",
     "capturedAt",
     "scenario",
+    "scenarioId",
     "observedEvents",
     "toolFailurePhasesObserved",
     "limitations",
+    "limitationCodes",
     "rig",
   ] as const;
   for (const k of req) {
@@ -76,6 +88,9 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   }
   if (typeof data.scenario !== "string" || data.scenario.length === 0) {
     errs.push("scenario must be non-empty string");
+  }
+  if (typeof data.scenarioId !== "string" || data.scenarioId.length === 0) {
+    errs.push("scenarioId must be non-empty string");
   }
 
   if (!Array.isArray(data.observedEvents)) {
@@ -100,6 +115,13 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
       if (ev.capability === "synthesized" && (!Array.isArray(ev.sourceEvents) || ev.sourceEvents.length === 0)) {
         errs.push(`observedEvents[${i}]: synthesized requires non-empty sourceEvents (§7.2)`);
       }
+      // 散文とコードを位置対応させる。散文を足してコードを足し忘れた状態をここで落とす
+      // （成果物へ出るのはコードだけなので、対応が崩れると caveat が黙って消える）
+      const proseCount = Array.isArray(ev.limitations) ? ev.limitations.length : 0;
+      const codeCount = Array.isArray(ev.limitationCodes) ? ev.limitationCodes.length : 0;
+      if (proseCount !== codeCount) {
+        errs.push(`observedEvents[${i}]: limitationCodes must line up 1:1 with limitations (${proseCount} vs ${codeCount})`);
+      }
     });
   }
 
@@ -118,11 +140,18 @@ export function validateFixture(data: unknown, fileName: string): CaptureFixture
   } else if (!data.limitations.every((x) => typeof x === "string")) {
     errs.push("limitations items must be strings");
   }
+  if (!Array.isArray(data.limitationCodes)) {
+    errs.push("limitationCodes must be array");
+  } else if (Array.isArray(data.limitations) && data.limitationCodes.length !== data.limitations.length) {
+    errs.push(
+      `limitationCodes must line up 1:1 with limitations (${data.limitations.length} vs ${data.limitationCodes.length})`,
+    );
+  }
 
-  // この 2 つは schema 側を正本にして検査する。highLevel は matrix の cell に直接載る
-  // （= 自動配送の判定入力）ので enum まで見る必要があり、evidenceHash は同じ正規表現を
-  // 2 箇所に書くと片方だけ古くなるため
-  for (const key of ["evidenceHash", "highLevel"] as const) {
+  // これらは schema 側を正本にして検査する。highLevel は matrix の cell に直接載る
+  // （= 自動配送の判定入力）ので enum まで見る必要があり、evidence / limitationCodes /
+  // scenarioId は同じ正規表現や enum を 2 箇所に書くと片方だけ古くなるため
+  for (const key of ["evidence", "highLevel", "limitationCodes", "scenarioId"] as const) {
     if (!(key in data)) continue;
     const sub = SCHEMA.properties?.[key];
     if (!sub) {
@@ -173,6 +202,8 @@ export interface AssembledMatrix {
   fixtureCount: number;
   fixtureIds: string[];
   fixtureLimitations: string[]; // fixture 単位の caveat（cell に紐づかないもの）
+  // どの観測記録が cell を裏付けたか。cell 側は evidenceRefs で添字を持つ
+  evidenceSources: EvidenceSource[];
   capabilities: AdapterCapabilities;
 }
 
@@ -180,7 +211,57 @@ function dedupe(xs: string[]): string[] {
   return [...new Set(xs)];
 }
 
-export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatrix {
+/** 成果物に現れる全文字列を集める（キー名は生成側が決めるので値だけ見る） */
+function collectStrings(value: unknown, out: string[]): void {
+  if (typeof value === "string") {
+    out.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectStrings(item, out);
+    return;
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const v of Object.values(value)) collectStrings(v, out);
+  }
+}
+
+const SECRET_WINDOW = 16;
+
+/**
+ * 参照した観測記録の秘密欄から取った 16 文字以上の部分文字列が成果物に現れたら失敗させる。
+ * **一致した文字列そのものは診断に出さない**（出したら検査が漏洩経路になる）。
+ */
+function assertNoSecretSubstrings(artifact: unknown, secrets: string[]): void {
+  if (secrets.length === 0) return;
+  const windows = new Set<string>();
+  for (const secret of secrets) {
+    for (let i = 0; i + SECRET_WINDOW <= secret.length; i++) {
+      windows.add(secret.slice(i, i + SECRET_WINDOW));
+    }
+  }
+  if (windows.size === 0) return;
+  const strings: string[] = [];
+  collectStrings(artifact, strings);
+  for (const s of strings) {
+    for (let i = 0; i + SECRET_WINDOW <= s.length; i++) {
+      if (windows.has(s.slice(i, i + SECRET_WINDOW))) {
+        throw new Error(
+          "generated output carries a 16+ character substring of a referenced capture's secret field " +
+            "(the free-text path into the matrix is open again — see data-model.md §5.3)",
+        );
+      }
+    }
+  }
+}
+
+/**
+ * 組み立ての本体。
+ *
+ * `ctx` は evidence root の差し替え口で、**test 専用**。production の入口 `runAssemble` は
+ * これを受け取らないので、CLI 引数・fixture の値・環境変数のどれからも root は動かない。
+ */
+export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceContext): AssembledMatrix {
   // この関数のガードは fail ではなく throw にする。process.exit だとテストから確認できず、
   // --test 実行中に踏むとスイート全体が途中で死ぬ。CLI 側は catch して同じ終了コードを返す
   if (fixtures.length === 0) {
@@ -212,6 +293,73 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       );
     }
   }
+
+  // 名指しされた観測記録を全件読み直して digest を再計算する。fixture の申告値は信用しない。
+  // 1 件でも通らなければここで throw する（当該 cell を黙って source-test へ落とさない）
+  const verifiedByFixture = new Map<string, VerifiedRef[]>();
+  for (const f of fixtures) verifiedByFixture.set(f.fixtureId, verifyEvidence(f, ctx));
+
+  // 申告した hook 名が観測記録に実在するか。正しい raw と digest のまま主張だけ足す経路を塞ぐ
+  for (const f of fixtures) {
+    const refs = verifiedByFixture.get(f.fixtureId) ?? [];
+    if (refs.length === 0) continue;
+    const observed = new Set(refs.flatMap((r) => r.events));
+    for (const [i, ev] of f.observedEvents.entries()) {
+      for (const name of ev.sourceEvents ?? []) {
+        if (!observed.has(name)) {
+          throw new Error(`${f.fixtureId}: observedEvents[${i}].sourceEvents names ${name}, which no referenced capture contains`);
+        }
+      }
+    }
+  }
+
+  // 証拠の表は fixtureId → path の昇順で一意化する。cell からは添字で参照する
+  const sourceKey = (s: EvidenceSource): string => `${s.fixtureId}\u0000${s.path}`;
+  const sourceMap = new Map<string, EvidenceSource>();
+  for (const refs of verifiedByFixture.values()) {
+    for (const r of refs) sourceMap.set(sourceKey(r.source), r.source);
+  }
+  const evidenceSources = [...sourceMap.values()].sort((a, b) =>
+    sourceKey(a) < sourceKey(b) ? -1 : sourceKey(a) > sourceKey(b) ? 1 : 0,
+  );
+  const sourceIndex = new Map(evidenceSources.map((s, i) => [sourceKey(s), i]));
+
+  interface Promotion {
+    evidenceKind: "real-cli-e2e" | "source-test";
+    evidenceRefs: number[];
+  }
+  const UNVERIFIED = "unverified: no manifest-backed evidence";
+
+  /**
+   * cell ごとの昇格判定（data-model.md §4.2）。**判定の順序が効く**:
+   * 種別（導けるか）を先に見ないと、導出値が存在しない主張は supporting が必ず空になり、
+   * source-test に留まるべき既存 fixture が組み立て全体を落とす。
+   */
+  const promoteCell = (
+    f: CaptureFixture,
+    derivable: boolean,
+    derive: (r: VerifiedRef) => ObservedCapability | undefined,
+    declared: ObservedCapability,
+    label: string,
+  ): Promotion => {
+    const refs = verifiedByFixture.get(f.fixtureId) ?? [];
+    if (!derivable || refs.length === 0) return { evidenceKind: "source-test", evidenceRefs: [] };
+    // fixture は複数の run の和集合を表す。どれか 1 件が同じ値を導けば成立する
+    // （全 ref が全主張を支持することは要求しない。要求すると既存 fixture が全件落ちる）
+    const supporting = refs.filter((r) => derive(r) === declared);
+    if (supporting.length === 0) {
+      throw new Error(`${f.fixtureId}: ${label} claims "${declared}" but no referenced capture derives it`);
+    }
+    const backed = supporting.filter((r) => r.manifestBacked);
+    const chosen = backed.length > 0 ? backed : supporting;
+    return {
+      // manifest を伴わない legacy 証拠だけなら source-test に留める。
+      // digest は「記録が申告どおりか」しか言わず、「実 CLI を隔離 rig で動かした」は
+      // 取得側が書いた manifest でしか裏付けられない
+      evidenceKind: backed.length > 0 ? "real-cli-e2e" : "source-test",
+      evidenceRefs: chosen.map((r) => sourceIndex.get(sourceKey(r.source)) ?? -1).sort((a, b) => a - b),
+    };
+  };
 
   const capabilities = emptyMatrix(nativeVersion);
   const phaseSet = new Set<ToolFailurePhase>();
@@ -249,13 +397,17 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       // 後勝ちにしない（勝者は入り口で正規化した fixtureId 順で決まる）
       const evValue = ev.capability ?? "native";
       const upgrades = (CAPABILITY_STRENGTH[evValue] ?? 0) > (CAPABILITY_STRENGTH[prev.value] ?? -1);
-      const improvesEvidence = Boolean(f.evidenceHash) && !prev.evidenceHash;
+      const promotion = promoteCell(f, DERIVABLE_CAPTURE_KINDS.has(kind), (r) => r.capture[kind], evValue, kind);
+      // 廃止した欄を読むと常に false になり、証跡の優劣が黙って消える。再計算の結果で比べる
+      const improvesEvidence =
+        promotion.evidenceKind === "real-cli-e2e" && prev.evidenceKind !== "real-cli-e2e";
       const keepPrev =
         (prev.value === "native" && evValue === "synthesized") || (!upgrades && !improvesEvidence);
       // limitations / sourceEvents は上書きせず統合する（後勝ちで caveat を消さない）
+      // 散文ではなくコードを載せる。自由文を matrix へ転記すると raw の実値が漏れる
       const mergedLimits = dedupe([
         ...(prev.value === "unknown" ? [] : prev.limitations),
-        ...(ev.limitations ?? []),
+        ...(ev.limitationCodes ?? []),
       ]);
       const mergedSources = dedupe([
         ...(prev.value === "unknown" ? [] : prev.sourceEvents),
@@ -266,33 +418,32 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
         continue;
       }
       const coverage = ev.coverage ?? (prev.value !== "unknown" ? prev.coverage : undefined);
-      // observedEvents も highLevel と同じ手書き JSON で、raw transcript との対応は
-      // 誰も検証していない（fixtures/*/raw/ を読むコードは無い）。rig.isolated の自己申告
-      // だけで real-cli-e2e を刻むのは高位 cell で潰した provenance 捏造と同じなので、
-      // evidenceHash が付くまでは弱い証跡種別に落とす。
-      // sourceFixtureId / verifiedAt は「値か証跡を最後に進めた fixture」で、
-      // 高位 cell のような強度順の選抜まではしていない（capture cell は tier 判定に入らないため）
-      const hashed = Boolean(f.evidenceHash);
+      // 証拠強度は再計算の結果で決まる（promoteCell）。fixture の申告や rig.isolated の
+      // 自己申告では上がらない。sourceFixtureId / verifiedAt は「値か証跡を最後に進めた
+      // fixture」で、高位 cell のような強度順の選抜まではしていない
+      // （capture cell は tier 判定に入らないため）
+      const verified = promotion.evidenceKind === "real-cli-e2e";
       capabilities.capture[kind] = {
         value: evValue,
         sourceEvents: mergedSources,
         nativeVersion,
-        evidenceKind: hashed ? "real-cli-e2e" : "source-test",
+        evidenceKind: promotion.evidenceKind,
         verifiedAt: f.capturedAt,
-        // hash 無しで一度書いた caveat は、hash 付きに差し替えた時点で消す
-        // （残すと「transcript に紐付いた実測」と「自己申告」を同じ cell が同時に主張する）
-        limitations: hashed
-          ? mergedLimits.filter((l) => !l.startsWith("no evidenceHash:"))
-          : dedupe([...mergedLimits, "no evidenceHash: transcript に紐付いていない自己申告"]),
+        // 裏付けの無い状態で一度書いた caveat は、裏付いた時点で消す
+        // （残すと「実測に紐付いた」と「自己申告」を同じ cell が同時に主張する）
+        limitations: verified
+          ? mergedLimits.filter((l) => l !== UNVERIFIED)
+          : dedupe([...mergedLimits, UNVERIFIED]),
         sourceFixtureId: f.fixtureId,
-        evidenceHash: f.evidenceHash ?? null,
+        ...(promotion.evidenceRefs.length > 0 ? { evidenceRefs: promotion.evidenceRefs } : {}),
         ...(coverage !== undefined ? { coverage } : {}),
       };
     }
     for (const p of f.toolFailurePhasesObserved) {
       phaseSet.add(p);
     }
-    for (const l of f.limitations ?? []) fixtureLimitations.push(`[${f.fixtureId}] ${l}`);
+    // 散文ではなくコードを載せる（§5.3）。fixtureId は schema の pattern で閉じてある
+    for (const c of f.limitationCodes ?? []) fixtureLimitations.push(`[${f.fixtureId}] ${c}`);
 
     // 高位 cell は観測を集めるだけにして、畳むのは全 fixture を読んだ後（下の 1 パス）。
     // cell ごとに後勝ちで畳むと fixture の並び順で結果が変わる:
@@ -332,29 +483,33 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     // native_prompt_gate の成立条件そのもの（値だけ native を採って証跡を残すと、
     // synthesized と実測した run があるのに最上位 tier が通る）
     const contradicted = obs.some((o) => o.value !== obs[0].value);
-    // 値は最も強い観測を採る。同強度なら evidenceHash のある方を優先する
-    // （並び順で hash 無しが hash 付きの証跡を捨てるのを防ぐ）
+    const derivable = DERIVABLE_HIGH_LEVEL_KEYS.has(key);
+    const promotionOf = (o: HighLevelObservation): Promotion =>
+      promoteCell(o.fixture, derivable, (r) => r.highLevel[key as DerivableHighLevelKey], o.value, key);
+    // 値は最も強い観測を採る。同強度なら裏付けのある方を優先する
+    // （並び順で自己申告が実測の証跡を捨てるのを防ぐ）
     const rank = (o: HighLevelObservation): number =>
-      CAPABILITY_STRENGTH[o.value] * 2 + (o.fixture.evidenceHash ? 1 : 0);
+      CAPABILITY_STRENGTH[o.value] * 2 + (promotionOf(o).evidenceKind === "real-cli-e2e" ? 1 : 0);
     const best = obs.reduce((a, b) => (rank(b) > rank(a) ? b : a));
-    // highLevel は fixture の自己申告で、raw transcript との対応は誰も検証していない。
-    // hash で transcript に紐付いていないものを real-cli-e2e と刻むのは provenance の
-    // 捏造になるため、hash が無い間は弱い証跡種別に落とす。
-    // Task 2/3 の実 CLI rig が hash を記録したら昇格する
-    const hashed = Boolean(best.fixture.evidenceHash);
+    // 導けない主張（本文に依存するもの）は証拠があっても real-cli-e2e を名乗らせない。
+    // 「穴があると説明文に書く」では塞がらないため（FR-006c）
+    const promotion = promotionOf(best);
+    const verified = !contradicted && promotion.evidenceKind === "real-cli-e2e";
     capabilities[key] = {
       value: best.value,
       sourceEvents: [],
       nativeVersion,
-      evidenceKind: contradicted ? null : hashed ? "real-cli-e2e" : "source-test",
+      evidenceKind: contradicted ? null : promotion.evidenceKind,
       verifiedAt: contradicted ? null : best.fixture.capturedAt,
       limitations: dedupe([
         ...obs.map((o) => `observed ${o.value} in ${o.fixture.fixtureId}`),
         ...(contradicted ? ["conflicting observations: evidence dropped"] : []),
-        ...(!contradicted && !hashed ? ["no evidenceHash: transcript に紐付いていない自己申告"] : []),
+        ...(!contradicted && !verified ? [UNVERIFIED] : []),
       ]),
       sourceFixtureId: best.fixture.fixtureId,
-      evidenceHash: contradicted ? null : best.fixture.evidenceHash ?? null,
+      ...(!contradicted && promotion.evidenceRefs.length > 0
+        ? { evidenceRefs: promotion.evidenceRefs }
+        : {}),
     };
   }
 
@@ -362,14 +517,27 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   // ことを要求する。cell ごとに後勝ちで畳むと、別 fixture の等強度の観測が片側だけ
   // provenance を差し替え、実在する対が消える（証拠を足したのに tier が下がる）。
   // 畳んだ後に、対を証明した fixture があればその provenance へ揃え直す。
-  const pairFixture = fixtures.findLast(
-    (f) =>
-      f.evidenceHash &&
-      f.highLevel?.promptAwareInjection === "synthesized" &&
-      f.highLevel?.promptDeliveryBeforeModel === "synthesized",
-  );
+  // 「1 つの実測が対を同時に証明した」の拘束は、fixture が同じことでは満たされない
+  // （1 つの fixture が複数の run を束ねられるため）。**両 cell を裏付けた記録に
+  // 同じものが 1 件でもある**ことを要求する
+  const pairKeys = ["promptAwareInjection", "promptDeliveryBeforeModel"] as const;
+  const pairFixture = fixtures.findLast((f) => {
+    if (f.highLevel?.promptAwareInjection !== "synthesized") return false;
+    if (f.highLevel?.promptDeliveryBeforeModel !== "synthesized") return false;
+    const refsFor = (key: (typeof pairKeys)[number]): number[] =>
+      promoteCell(
+        f,
+        DERIVABLE_HIGH_LEVEL_KEYS.has(key),
+        (r) => r.highLevel[key as DerivableHighLevelKey],
+        "synthesized",
+        key,
+      ).evidenceRefs;
+    const a = refsFor("promptAwareInjection");
+    const b = refsFor("promptDeliveryBeforeModel");
+    return a.some((i) => b.includes(i));
+  });
   if (pairFixture) {
-    for (const key of ["promptAwareInjection", "promptDeliveryBeforeModel"] as const) {
+    for (const key of pairKeys) {
       const cell = capabilities[key];
       // native に昇格した cell や、矛盾で証跡を落とした cell には触らない。
       // ponytail: 片側だけ別 fixture で native になると、対を証明した fixture が残っていても
@@ -378,15 +546,24 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
       // 「両方 synthesized」を「native は上位互換」と読み替えるかで、どちらも凍結済み
       // contract の変更。現行 fixture では両 cell とも unknown で到達しない → issue #19
       if (cell.value !== "synthesized" || cell.evidenceKind === null) continue;
+      const pairPromotion = promoteCell(
+        pairFixture,
+        DERIVABLE_HIGH_LEVEL_KEYS.has(key),
+        (r) => r.highLevel[key as DerivableHighLevelKey],
+        "synthesized",
+        key,
+      );
+      // 対を証明した記録が manifest を伴わなければ、ここでも real-cli-e2e にはしない
+      if (pairPromotion.evidenceKind !== "real-cli-e2e") continue;
       capabilities[key] = {
         ...cell,
         evidenceKind: "real-cli-e2e",
         verifiedAt: pairFixture.capturedAt,
         sourceFixtureId: pairFixture.fixtureId,
-        evidenceHash: pairFixture.evidenceHash ?? null,
-        // hash 付きの証跡へ差し替えたので「hash が無い」caveat は残さない（残すと記録が自己矛盾する）
+        evidenceRefs: pairPromotion.evidenceRefs,
+        // 裏付いた証跡へ差し替えたので「裏付けが無い」caveat は残さない（残すと記録が自己矛盾する）
         limitations: dedupe([
-          ...cell.limitations.filter((l) => !l.startsWith("no evidenceHash:")),
+          ...cell.limitations.filter((l) => l !== UNVERIFIED),
           `prompt pair proven together in ${pairFixture.fixtureId}`,
         ]),
       };
@@ -408,12 +585,23 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
   // resumeDeliveryStrategy を先に代入するのは、tier そのものも入力に含めるため
   // （cell の値が同じでも「1 つの run が対を証明したか」で tier は変わる = §8 の区別）
   const { capabilityHashInputs: _unused, ...folded } = capabilities;
+  // ad-hoc な文字列連結をやめて JCS で canonical 化する。欄が増えると連結の区切りが
+  // 曖昧になり、別の入力が同じ文字列になる（`a@b` と `a` + `@b` が区別できない）
   capabilities.capabilityHashInputs = [
-    `cli:${cli}`,
-    `nativeVersion:${nativeVersion}`,
-    ...fixtures.map((f) => `fixture:${f.fixtureId}@${f.evidenceHash ?? "no-evidence-hash"}`).sort(),
-    `capabilities:${JSON.stringify(folded)}`,
+    canonicalizeJson({ cli, nativeVersion }),
+    canonicalizeJson(
+      evidenceSources.map((e) => [e.fixtureId, e.path, e.evidenceHash, e.normalizationVersion, e.manifestHash]),
+    ),
+    canonicalizeJson(JSON.parse(JSON.stringify(folded))),
   ];
+
+  // 設計側の閉じ方は「自由文を成果物へ出さない」こと（散文の limitations と scenario を
+  // matrix へ載せない）。これはその設計が破れたときの**警報**で、信頼境界ではない。
+  // 部分文字列の照合は下限より短い秘密を原理的に取りこぼすため、MUST の担保にはできない
+  assertNoSecretSubstrings(
+    { fixtureIds: fixtures.map((f) => f.fixtureId), fixtureLimitations, evidenceSources, capabilities },
+    [...verifiedByFixture.values()].flatMap((refs) => refs.flatMap((r) => r.secrets)),
+  );
 
   return {
     cli,
@@ -422,6 +610,7 @@ export function assembleFromFixtures(fixtures: CaptureFixture[]): AssembledMatri
     fixtureCount: fixtures.length,
     fixtureIds: fixtures.map((f) => f.fixtureId),
     fixtureLimitations,
+    evidenceSources,
     capabilities,
   };
 }
@@ -474,65 +663,130 @@ function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(`assert failed: ${msg}`);
 }
 
+/**
+ * 自己 test。**作り物の hash では昇格しない**ことと、本物の観測記録 + manifest では
+ * 昇格することの両方を見る。証拠は mkdtemp した置き場へ実際に書き、
+ * `evidenceRoot`（test 専用の差し替え口）を渡して end-to-end で組み立てる。
+ */
 async function selfTest(): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "harness-self-test-"));
   try {
     const v = "1.2.3-test";
     const at1 = "2026-08-12T00:00:00.000Z";
     const at2 = "2026-08-12T01:00:00.000Z";
+    const root = join(dir, "raw");
+    await mkdir(root);
+    const ctx = { evidenceRoot: root };
 
-    const f1: CaptureFixture = {
-      fixtureId: "claude/lifecycle-basic",
-      cli: "claude",
+    type Line = { event: string; at: string; payload: Record<string, unknown> };
+    const lifecycle = (session: string, prompt: string): Line[] => [
+      { event: "SessionStart", at: at1, payload: { hook_event_name: "SessionStart", session_id: session, source: "startup", cwd: "/w" } },
+      { event: "UserPromptSubmit", at: at1, payload: { hook_event_name: "UserPromptSubmit", session_id: session, prompt_id: prompt, prompt: "hello", cwd: "/w" } },
+      { event: "Stop", at: at1, payload: { hook_event_name: "Stop", session_id: session, prompt_id: prompt, last_assistant_message: "hi", cwd: "/w" } },
+      { event: "SessionEnd", at: at1, payload: { hook_event_name: "SessionEnd", session_id: session, prompt_id: prompt, reason: "other", cwd: "/w" } },
+    ];
+    const toolRun = (session: string): Line[] => [
+      { event: "PreToolUse", at: at2, payload: { hook_event_name: "PreToolUse", session_id: session, tool_name: "Bash", tool_use_id: "t1", cwd: "/w" } },
+      { event: "PostToolUse", at: at2, payload: { hook_event_name: "PostToolUse", session_id: session, tool_name: "Bash", tool_use_id: "t1", cwd: "/w" } },
+    ];
+
+    /** 観測記録（と任意で manifest）を置き場へ書き、fixture が名指しする ref を返す */
+    const putEvidence = async (
+      label: string,
+      lines: Line[],
+      opts: { manifest?: boolean; cli?: "claude" | "codex"; scenarioId?: string; overrides?: Record<string, unknown> } = {},
+    ) => {
+      const bytes = Buffer.from(lines.map((l) => JSON.stringify(l)).join("\n") + "\n", "utf8");
+      await writeFile(join(root, `${label}.jsonl`), bytes);
+      const ref: Record<string, unknown> = {
+        path: `${label}.jsonl`,
+        evidenceHash: digestCapture(bytes),
+        captureRawHash: digestRaw(bytes),
+        normalizationVersion: NORMALIZATION_VERSION,
+      };
+      if (!opts.manifest) return ref;
+      const manifest = {
+        manifestVersion: 1,
+        cli: opts.cli ?? "claude",
+        cliVersion: v,
+        scenarioId: opts.scenarioId ?? "self.test",
+        isolated: true,
+        internalRunMarker: true,
+        exitStatus: 0,
+        recorderErrors: 0,
+        capture: `${label}.jsonl`,
+        captureRawHash: digestRaw(bytes),
+        captureHash: digestCapture(bytes),
+        normalizationVersion: NORMALIZATION_VERSION,
+        ...(opts.overrides ?? {}),
+      };
+      const mBytes = Buffer.from(JSON.stringify(manifest), "utf8");
+      await writeFile(join(root, `${label}.manifest.json`), mBytes);
+      ref.manifest = `${label}.manifest.json`;
+      ref.manifestHash = digestRaw(mBytes);
+      return ref;
+    };
+
+    const base = {
+      cli: "claude" as const,
       nativeVersion: v,
-      capturedAt: at1,
-      scenario: "session start + prompt",
-      observedEvents: [
-        { kind: "session_started", at: at1 },
-        { kind: "user_prompted", at: at1 },
-        { kind: "raw", raw: { note: "ignored" } },
-      ],
+      observedEvents: [],
       toolFailurePhasesObserved: [],
       limitations: [],
+      limitationCodes: [],
       rig: { isolated: true, internalRunMarker: true },
     };
 
-    const f2: CaptureFixture = {
+    // --- 証拠を持たない fixture は値だけ載り、証拠強度は上がらない ---
+    const f1 = {
+      ...base,
+      fixtureId: "claude/lifecycle-basic",
+      capturedAt: at1,
+      scenario: "session start + prompt",
+      scenarioId: "self.lifecycle-basic",
+      observedEvents: [
+        { kind: "session_started" as const, at: at1 },
+        { kind: "user_prompted" as const, at: at1 },
+        { kind: "raw" as const, raw: { note: "ignored" } },
+      ],
+    };
+    const f2 = {
+      ...base,
       fixtureId: "claude/tool-fail",
-      cli: "claude",
-      nativeVersion: v,
       capturedAt: at2,
       scenario: "tool lifecycle + executed fail",
+      scenarioId: "self.tool-fail",
       observedEvents: [
-        { kind: "tool_started", at: at2 },
-        { kind: "tool_completed", at: at2 },
-        { kind: "tool_failed", at: at2 },
+        { kind: "tool_started" as const, at: at2 },
+        { kind: "tool_completed" as const, at: at2 },
+        { kind: "tool_failed" as const, at: at2 },
       ],
-      toolFailurePhasesObserved: ["executed", "permission_denied"],
+      toolFailurePhasesObserved: ["executed" as const, "permission_denied" as const],
       limitations: ["schema_invalid not observed"],
-      rig: { isolated: true, internalRunMarker: true },
+      limitationCodes: ["failure-phases-not-reached"],
     };
 
     await writeFile(join(dir, "lifecycle-basic.json"), JSON.stringify(f1), "utf8");
     await writeFile(join(dir, "tool-fail.json"), JSON.stringify(f2), "utf8");
 
     const fixtures = await loadFixtures(dir);
-    const assembled = assembleFromFixtures(fixtures);
+    const assembled = assembleFromFixtures(fixtures, ctx);
 
     assert(assembled.cli === "claude", "cli");
     assert(assembled.nativeVersion === v, "nativeVersion");
     assert(assembled.fixtureCount === 2, "fixtureCount");
     assert(assembled.fixtureIds.includes("claude/lifecycle-basic"), "id1");
     assert(assembled.fixtureIds.includes("claude/tool-fail"), "id2");
+    assert(assembled.evidenceSources.length === 0, "証拠を名指ししていないので表は空");
 
     const cap = assembled.capabilities;
     for (const kind of ["session_started", "user_prompted"] as EventKind[]) {
       assert(cap.capture[kind].value === "native", `${kind} native`);
       assert(cap.capture[kind].verifiedAt === at1, `${kind} verifiedAt`);
-      // hash が無い capture は高位 cell と同じ扱い: 値は載せるが real-cli-e2e とは刻まない
+      // 証拠を名指ししていない capture は値だけ載せ、real-cli-e2e とは刻まない
       assert(cap.capture[kind].evidenceKind === "source-test", `${kind} evidenceKind`);
       assert(
-        cap.capture[kind].limitations.some((l) => l.startsWith("no evidenceHash:")),
+        cap.capture[kind].limitations.some((l) => l.startsWith("unverified:")),
         `${kind} caveat`,
       );
       assert(cap.capture[kind].nativeVersion === v, `${kind} nativeVersion`);
@@ -563,51 +817,178 @@ async function selfTest(): Promise<void> {
     assert(cap.promptDeliveryBeforeModel.value === "unknown", "promptDeliveryBeforeModel unknown");
     assert(cap.compactSingleDelivery.value === "unknown", "compactSingleDelivery unknown");
     assert(cap.resumeDeliveryStrategy === "manual_only", "no proof ⇒ manual_only");
-    assert(cap.capabilityHashInputs[0] === "cli:claude", "capabilityHashInputs starts with cli");
-    assert(cap.capabilityHashInputs.includes(`nativeVersion:${v}`), "capabilityHashInputs pins version");
+    assert(cap.capabilityHashInputs.length === 3, "capabilityHashInputs は 3 つの canonical な塊");
+    assert(cap.capabilityHashInputs[0] === `{"cli":"claude","nativeVersion":"${v}"}`, "cli と version が先頭");
     assert(cap.trueSessionEnd.value === "unknown", "trueSessionEnd unknown");
     assert(cap.subagentCapture.value === "unknown", "subagentCapture unknown");
     assert(cap.stableNativeSessionId.value === "unknown", "stableNativeSessionId unknown");
 
-    const hlBase = {
-      cli: "claude" as const,
-      nativeVersion: v,
-      observedEvents: [],
-      toolFailurePhasesObserved: [],
-      limitations: [],
-      rig: { isolated: true, internalRunMarker: true },
+    // --- 作り物の hash では昇格しない（本 issue が塞ぐ経路そのもの） ---
+    const forged = {
+      ...base,
+      fixtureId: "claude/forged",
+      capturedAt: at1,
+      scenario: "forged evidence",
+      scenarioId: "self.forged",
+      observedEvents: [{ kind: "session_started" as const, at: at1 }],
+      evidence: [
+        {
+          path: "no-such-capture.jsonl",
+          evidenceHash: "a".repeat(64),
+          captureRawHash: "b".repeat(64),
+          normalizationVersion: NORMALIZATION_VERSION,
+        },
+      ],
     };
+    let rejected = false;
+    try {
+      assembleFromFixtures([forged as unknown as CaptureFixture], ctx);
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, "実在しない観測記録を指す 64 桁 hex は棄却される");
 
-    // §8: 対で証明した fixture の後に片側だけを重ねて観測しても tier は落ちない
-    const withPair = assembleFromFixtures([
-      {
-        ...hlBase,
-        fixtureId: "claude/prompt-pair",
-        capturedAt: at1,
-        scenario: "prompt pair",
-        evidenceHash: "a".repeat(64),
-        highLevel: { promptAwareInjection: "synthesized", promptDeliveryBeforeModel: "synthesized" },
-      },
-      {
-        ...hlBase,
-        fixtureId: "claude/prompt-echo",
-        capturedAt: at2,
-        scenario: "prompt-aware only",
-        evidenceHash: "b".repeat(64),
-        highLevel: { promptAwareInjection: "synthesized" },
-      },
-    ]).capabilities;
-    assert(withPair.resumeDeliveryStrategy === "next_prompt_synthesized", "corroboration must not demote the tier");
-    assert(withPair.promptAwareInjection.sourceFixtureId === "claude/prompt-pair", "pair provenance retained");
+    // --- legacy 証拠（manifest 無し）は digest を照合するが昇格させない ---
+    const legacyRef = await putEvidence("legacy", lifecycle("S1", "P1"));
+    const legacy = {
+      ...base,
+      fixtureId: "claude/legacy",
+      capturedAt: at1,
+      scenario: "legacy evidence",
+      scenarioId: "self.legacy",
+      observedEvents: [{ kind: "session_started" as const, at: at1 }],
+      evidence: [legacyRef],
+    } as unknown as CaptureFixture;
+    const legacyOut = assembleFromFixtures([legacy], ctx);
+    assert(
+      legacyOut.capabilities.capture.session_started.evidenceKind === "source-test",
+      "manifest の無い証拠だけでは real-cli-e2e にしない",
+    );
+    assert(legacyOut.evidenceSources.length === 1, "legacy でも証拠の表には載る");
+    assert(legacyOut.evidenceSources[0].manifestHash === null, "legacy の manifestHash は null");
+
+    // --- manifest 付きなら昇格する（positive control） ---
+    const backedRef = await putEvidence("backed", lifecycle("S2", "P2"), { manifest: true, scenarioId: "self.backed" });
+    const backed = {
+      ...base,
+      fixtureId: "claude/backed",
+      capturedAt: at1,
+      scenario: "manifest backed",
+      scenarioId: "self.backed",
+      observedEvents: [
+        { kind: "session_started" as const, at: at1 },
+        { kind: "assistant_completed" as const, at: at1, capability: "synthesized" as const, sourceEvents: ["Stop"] },
+      ],
+      evidence: [backedRef],
+    } as unknown as CaptureFixture;
+    const backedOut = assembleFromFixtures([backed], ctx);
+    assert(
+      backedOut.capabilities.capture.session_started.evidenceKind === "real-cli-e2e",
+      "manifest 付きの証拠から再計算が通れば real-cli-e2e",
+    );
+    assert(
+      backedOut.capabilities.capture.assistant_completed.evidenceKind === "real-cli-e2e",
+      "Stop の欄から導いた synthesized も昇格する",
+    );
+    assert(
+      JSON.stringify(backedOut.capabilities.capture.session_started.evidenceRefs) === "[0]",
+      "cell は裏付けた記録を添字で指す",
+    );
+    assert(
+      !backedOut.capabilities.capture.session_started.limitations.some((l) => l.startsWith("unverified:")),
+      "裏付いた cell に自己申告の caveat は残さない",
+    );
+
+    // --- 記録から導けない値を申告したら棄却する ---
+    const lying = {
+      ...backed,
+      fixtureId: "claude/lying",
+      observedEvents: [{ kind: "tool_started" as const, at: at1 }],
+    } as unknown as CaptureFixture;
+    let lyingRejected = false;
+    try {
+      assembleFromFixtures([lying], ctx);
+    } catch {
+      lyingRejected = true;
+    }
+    assert(lyingRejected, "正しい記録と digest のまま cell 値を書き換えた fixture は棄却される");
+
+    // --- 導けない主張は証拠があっても source-test に留まり、組み立ては落ちない ---
+    const underivable = {
+      ...backed,
+      fixtureId: "claude/underivable",
+      observedEvents: [{ kind: "session_started" as const, at: at1 }],
+      highLevel: { sessionStartInjection: "native" as const },
+    } as unknown as CaptureFixture;
+    const underivableOut = assembleFromFixtures([underivable], ctx).capabilities;
+    assert(
+      underivableOut.sessionStartInjection.evidenceKind === "source-test",
+      "本文に依存する主張は証拠があっても昇格させない",
+    );
+    assert(underivableOut.resumeDeliveryStrategy === "manual_only", "導けない主張で tier を上げない");
+
+    // --- 証跡の優劣: 裏付いた観測を裏付けの無い観測で潰さない ---
+    const plain = {
+      ...base,
+      fixtureId: "claude/plain",
+      capturedAt: at2,
+      scenario: "self-declared only",
+      scenarioId: "self.plain",
+      observedEvents: [{ kind: "session_started" as const, at: at2 }],
+    } as unknown as CaptureFixture;
+    for (const order of [
+      [backed, plain],
+      [plain, backed],
+    ]) {
+      const cell = assembleFromFixtures([...order], ctx).capabilities.capture.session_started;
+      assert(cell.evidenceKind === "real-cli-e2e", "裏付いた証跡が自己申告で消えない");
+      assert(cell.sourceFixtureId === "claude/backed", "証跡の出どころが並び順で入れ替わらない");
+    }
+
+    // --- 高位 cell: 導ける主張（subagentCapture）は昇格し、同強度なら裏付けのある方を採る ---
+    const subRef = await putEvidence(
+      "subagent",
+      [
+        ...lifecycle("S3", "P3"),
+        { event: "SubagentStop", at: at1, payload: { hook_event_name: "SubagentStop", session_id: "S3", agent_id: "A1", agent_type: "general-purpose" } },
+      ],
+      { manifest: true, scenarioId: "self.subagent" },
+    );
+    const subFixture = {
+      ...base,
+      fixtureId: "claude/subagent",
+      capturedAt: at1,
+      scenario: "subagent",
+      scenarioId: "self.subagent",
+      evidence: [subRef],
+      highLevel: { subagentCapture: "native" as const },
+    } as unknown as CaptureFixture;
+    const subDeclared = {
+      ...base,
+      fixtureId: "claude/subagent-declared",
+      capturedAt: at2,
+      scenario: "subagent, self-declared",
+      scenarioId: "self.subagent-declared",
+      highLevel: { subagentCapture: "native" as const },
+    } as unknown as CaptureFixture;
+    for (const order of [
+      [subFixture, subDeclared],
+      [subDeclared, subFixture],
+    ]) {
+      const hl = assembleFromFixtures([...order], ctx).capabilities.subagentCapture;
+      assert(hl.evidenceKind === "real-cli-e2e", "裏付いた高位 cell は昇格する");
+      assert(hl.sourceFixtureId === "claude/subagent", "裏付けのある観測が同強度の tie を取る");
+    }
 
     // 実測どうしが矛盾したら、値は強いほうを残しても証跡は落として自動配送を止める。
     // 並び順で結果が変わらないこと（否定的な観測が先でも後でも同じ）まで確認する
+    const hlBase = { ...base };
     const ssNative = {
       ...hlBase,
       fixtureId: "claude/ss-native",
       capturedAt: at1,
       scenario: "session start native",
-      evidenceHash: "c".repeat(64),
+      scenarioId: "self.ss-native",
       highLevel: { sessionStartInjection: "native" as const },
     };
     const ssUnsupported = {
@@ -615,14 +996,14 @@ async function selfTest(): Promise<void> {
       fixtureId: "claude/ss-unsupported",
       capturedAt: at2,
       scenario: "session start unsupported",
-      evidenceHash: "d".repeat(64),
+      scenarioId: "self.ss-unsupported",
       highLevel: { sessionStartInjection: "unsupported" as const },
     };
     for (const [label, order] of [
       ["positive first", [ssNative, ssUnsupported]],
       ["negative first", [ssUnsupported, ssNative]],
     ] as const) {
-      const conflicted = assembleFromFixtures([...order]).capabilities;
+      const conflicted = assembleFromFixtures([...order], ctx).capabilities;
       assert(conflicted.sessionStartInjection.value === "native", `${label}: keeps the stronger value`);
       assert(conflicted.sessionStartInjection.evidenceKind === null, `${label}: drops the proof`);
       assert(conflicted.resumeDeliveryStrategy === "manual_only", `${label}: must not enable delivery`);
@@ -633,7 +1014,7 @@ async function selfTest(): Promise<void> {
       ssUnsupported,
       ssNative,
       { ...ssNative, fixtureId: "claude/ss-native-2", capturedAt: at2 },
-    ]).capabilities;
+    ], ctx).capabilities;
     assert(reasserted.sessionStartInjection.evidenceKind === null, "contradiction is sticky");
 
     // native と synthesized の割れも矛盾として扱う（§8 native_prompt_gate の成立条件そのもの）
@@ -642,7 +1023,7 @@ async function selfTest(): Promise<void> {
       fixtureId: "claude/pd-native",
       capturedAt: at1,
       scenario: "pre-model delivery native",
-      evidenceHash: "e".repeat(64),
+      scenarioId: "self.pd-native",
       highLevel: { promptDeliveryBeforeModel: "native" as const },
     };
     const pdSynth = {
@@ -650,120 +1031,79 @@ async function selfTest(): Promise<void> {
       fixtureId: "claude/pd-synth",
       capturedAt: at2,
       scenario: "pre-model delivery synthesized",
-      evidenceHash: "f".repeat(64),
+      scenarioId: "self.pd-synth",
       highLevel: { promptDeliveryBeforeModel: "synthesized" as const },
     };
     for (const order of [
       [pdNative, pdSynth],
       [pdSynth, pdNative],
     ]) {
-      const split = assembleFromFixtures([...order]).capabilities;
+      const split = assembleFromFixtures([...order], ctx).capabilities;
       assert(split.promptDeliveryBeforeModel.evidenceKind === null, "native/synthesized split drops the proof");
       assert(split.resumeDeliveryStrategy === "manual_only", "split must not reach native_prompt_gate");
     }
 
-    // capture cell も同じ: hash 付きの実測を hash 無しの観測で上書きしない
-    const capHashed = {
+    // 同格な観測（同じ値・どちらも裏付け無し）なら fixtureId 順で決める。
+    // 後勝ちだと「どの run がこの cell を証明したか」が file 名で入れ替わる
+    const capA = {
       ...hlBase,
-      fixtureId: "claude/cap-hashed",
+      fixtureId: "claude/cap-a",
       capturedAt: at1,
-      scenario: "capture with hash",
-      evidenceHash: "1".repeat(64),
+      scenario: "capture a",
+      scenarioId: "self.cap-a",
       observedEvents: [{ kind: "session_started" as const, at: at1 }],
     };
-    const capPlain = {
-      ...capHashed,
-      fixtureId: "claude/cap-plain",
+    const capB = {
+      ...capA,
+      fixtureId: "claude/cap-b",
       capturedAt: at2,
-      observedEvents: [{ kind: "session_started" as const, at: at2 }],
-    };
-    delete (capPlain as { evidenceHash?: string }).evidenceHash;
-    for (const order of [
-      [capHashed, capPlain],
-      [capPlain, capHashed],
-    ]) {
-      const cap = assembleFromFixtures([...order]).capabilities.capture.session_started;
-      assert(cap.evidenceKind === "real-cli-e2e", "capture keeps the hashed provenance");
-      assert(cap.evidenceHash === "1".repeat(64), "capture keeps the hash");
-      assert(
-        !cap.limitations.some((l) => l.startsWith("no evidenceHash:")),
-        "hash 付きに差し替えたら自己申告の caveat は残さない",
-      );
-    }
-
-    // 完全に同格（同じ値・どちらも hash 付き）なら先に読んだ方を残す。
-    // 後勝ちだと「どの run がこの cell を証明したか」が file 名で入れ替わる
-    const capHashed2 = {
-      ...capHashed,
-      fixtureId: "claude/cap-hashed-2",
-      capturedAt: at2,
-      evidenceHash: "2".repeat(64),
+      scenarioId: "self.cap-b",
       observedEvents: [{ kind: "session_started" as const, at: at2 }],
     };
     for (const order of [
-      [capHashed, capHashed2],
-      [capHashed2, capHashed],
+      [capA, capB],
+      [capB, capA],
     ]) {
-      const cap = assembleFromFixtures([...order]).capabilities.capture.session_started;
-      assert(cap.sourceFixtureId === "claude/cap-hashed", "同格な観測は fixtureId 順で決める");
-      assert(cap.evidenceHash === "1".repeat(64), "証跡の出どころが並び順で入れ替わらない");
+      const cell = assembleFromFixtures([...order], ctx).capabilities.capture.session_started;
+      assert(cell.sourceFixtureId === "claude/cap-a", "同格な観測は fixtureId 順で決める");
     }
 
-    // fixtureId も evidenceHash も同じまま disposition だけ変えたら、capability hash の
-    // 入力列も変わること（fixture の同一性だけを並べると、hash 無し fixture では無反応になる）
+    // disposition だけ変えたら capability hash の入力列も変わること
     {
-      const base = {
+      const hashBase = {
         ...hlBase,
         fixtureId: "claude/hash-inputs",
         capturedAt: at1,
         scenario: "disposition sensitivity",
+        scenarioId: "self.hash-inputs",
         highLevel: { sessionStartInjection: "native" as const },
       };
-      delete (base as { evidenceHash?: string }).evidenceHash;
-      const flipped = { ...base, highLevel: { sessionStartInjection: "unsupported" as const } };
-      const a = assembleFromFixtures([base]).capabilities.capabilityHashInputs;
-      const b = assembleFromFixtures([flipped]).capabilities.capabilityHashInputs;
-      assert(
-        a.filter((s) => s.startsWith("fixture:")).join() === b.filter((s) => s.startsWith("fixture:")).join(),
-        "fixture の同一性は変えていない",
-      );
+      const flipped = { ...hashBase, highLevel: { sessionStartInjection: "unsupported" as const } };
+      const a = assembleFromFixtures([hashBase], ctx).capabilities.capabilityHashInputs;
+      const b = assembleFromFixtures([flipped], ctx).capabilities.capabilityHashInputs;
+      assert(a[1] === b[1], "証拠の同一性は変えていない");
       assert(a.join() !== b.join(), "disposition が変われば capability hash の入力も変わる");
       // 欄の数え上げで落としやすいもの: coverage（出荷済み matrix に実在する）と、
       // cell の値が同じでも変わりうる tier
       const cov = {
-        ...base,
+        ...hashBase,
         highLevel: undefined,
         observedEvents: [{ kind: "session_started" as const, at: at1, coverage: 0.5 }],
       };
       const cov9 = { ...cov, observedEvents: [{ kind: "session_started" as const, at: at1, coverage: 0.9 }] };
       assert(
-        assembleFromFixtures([cov]).capabilities.capabilityHashInputs.join() !==
-          assembleFromFixtures([cov9]).capabilities.capabilityHashInputs.join(),
+        assembleFromFixtures([cov], ctx).capabilities.capabilityHashInputs.join() !==
+          assembleFromFixtures([cov9], ctx).capabilities.capabilityHashInputs.join(),
         "coverage が変われば capability hash の入力も変わる",
       );
       assert(
         a.some((s) => s.includes('"resumeDeliveryStrategy"')),
         "tier そのものも capability hash の入力に含める",
       );
-    }
-
-    // 同じ値・同じ強度なら evidenceHash のある観測を採る（並び順で実測の証跡を捨てない）
-    const ssNoHash = {
-      ...hlBase,
-      fixtureId: "claude/ss-nohash",
-      capturedAt: at2,
-      scenario: "session start native, self-declared",
-      highLevel: { sessionStartInjection: "native" as const },
-    };
-    delete (ssNoHash as { evidenceHash?: string }).evidenceHash;
-    for (const order of [
-      [ssNative, ssNoHash],
-      [ssNoHash, ssNative],
-    ]) {
-      const tie = assembleFromFixtures([...order]).capabilities;
-      assert(tie.sessionStartInjection.sourceFixtureId === "claude/ss-native", "hashed evidence wins the tie");
-      assert(tie.sessionStartInjection.evidenceKind === "real-cli-e2e", "hashed evidence keeps the proof");
-      assert(tie.resumeDeliveryStrategy === "session_start_full", "tie must not lose the tier to file order");
+      // 証拠が変われば入力も変わる（欄の境界は JCS が決めるので連結の曖昧さが無い）
+      const withEvidence = assembleFromFixtures([backed], ctx).capabilities.capabilityHashInputs;
+      assert(withEvidence[1] !== a[1], "証拠の集合が変われば入力も変わる");
+      assert(withEvidence[1].includes(backedRef.evidenceHash as string), "manifest hash と digest が入力に入る");
     }
 
     // compactionRecoveryStrategy が割れたら、片方を採らず null にして理由を残す
@@ -772,19 +1112,21 @@ async function selfTest(): Promise<void> {
       fixtureId: "claude/cr-native",
       capturedAt: at1,
       scenario: "compaction recovery native",
+      scenarioId: "self.cr-native",
       highLevel: { compactionRecoveryStrategy: "native_pre_and_post" as const },
     };
     const crOther = {
       ...crBase,
       fixtureId: "claude/cr-other",
       capturedAt: at2,
+      scenarioId: "self.cr-other",
       highLevel: { compactionRecoveryStrategy: "unsupported" as const },
     };
     for (const order of [
       [crBase, crOther],
       [crOther, crBase],
     ]) {
-      const cr = assembleFromFixtures([...order]);
+      const cr = assembleFromFixtures([...order], ctx);
       assert(cr.capabilities.compactionRecoveryStrategy === null, "conflicting compaction strategy left null");
       assert(
         cr.fixtureLimitations.some((l) => l.startsWith("compactionRecoveryStrategy: conflicting")),
@@ -792,9 +1134,12 @@ async function selfTest(): Promise<void> {
       );
     }
     assert(
-      assembleFromFixtures([crBase]).capabilities.compactionRecoveryStrategy === "native_pre_and_post",
+      assembleFromFixtures([crBase], ctx).capabilities.compactionRecoveryStrategy === "native_pre_and_post",
       "single observation still lands",
     );
+
+    // production の入口は evidence root を受け取らない（fixture の値や引数で置き場を動かせない）
+    assert(runAssemble.length === 2, "runAssemble は fixturesDir と outFile だけを取る");
 
     console.log("PASS");
   } finally {

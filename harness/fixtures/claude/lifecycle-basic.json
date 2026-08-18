@@ -4,6 +4,7 @@
   "nativeVersion": "2.1.228 (Claude Code)",
   "capturedAt": "2026-08-12T11:07:44.644Z",
   "scenario": "最小 headless run（-p / haiku）で session 開始〜終了の hook lifecycle を観測",
+  "scenarioId": "claude.lifecycle-basic",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -29,6 +30,9 @@
       ],
       "limitations": [
         "Stop payload の last_assistant_message から復元。native な assistant_completed hook は無い"
+      ],
+      "limitationCodes": [
+        "assistant-completion-synthesized-from-stop"
       ]
     },
     {
@@ -39,6 +43,9 @@
       ],
       "limitations": [
         "Stop = turn 終端として扱う。turn 専用の native event は無いが、UserPromptSubmit / Stop / SessionEnd が同一 `prompt_id` を共有するため turn の対応付け自体は native に可能（生 capture で 3 event 共有を確認）"
+      ],
+      "limitationCodes": [
+        "turn-boundary-via-shared-prompt-id"
       ]
     },
     {
@@ -49,6 +56,9 @@
       ],
       "limitations": [
         "reason は headless 正常終了でも 'other'。終了理由の判別には使えない"
+      ],
+      "limitationCodes": [
+        "session-end-reason-always-other"
       ]
     }
   ],
@@ -56,8 +66,19 @@
   "limitations": [
     "headless (-p) run のみ。対話 TTY セッションは未観測"
   ],
+  "limitationCodes": [
+    "headless-only-no-tty"
+  ],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
-  }
+  },
+  "evidence": [
+    {
+      "path": "claude-lifecycle-basic.jsonl",
+      "evidenceHash": "1a6bab46f7bdc783e0348d0346ee7c418d63acc448a429634e930c60612cf5ab",
+      "captureRawHash": "7f3a47b1e27e54bbf2157b8facfcc050a1dbd6d77439337760ed8471c8c5202e",
+      "normalizationVersion": 1
+    }
+  ]
 }

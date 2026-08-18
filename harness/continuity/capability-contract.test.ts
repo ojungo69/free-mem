@@ -9,8 +9,6 @@ import {
 
 const VERSION = "1.2.3-test";
 const AT = "2026-08-16T00:00:00.000Z";
-const HASH_A = "a".repeat(64);
-const HASH_B = "b".repeat(64);
 
 function proven(
   value: "native" | "synthesized",
@@ -24,7 +22,7 @@ function proven(
     verifiedAt: AT,
     limitations: [],
     sourceFixtureId: "claude/prompt-aware",
-    evidenceHash: HASH_A,
+    evidenceRefs: [0],
     ...overrides,
   };
 }
@@ -59,11 +57,13 @@ test("prompt 経路は同一 fixture の実測でなければ採用しない", (
   });
   assert.equal(resolveResumeDeliveryStrategy(differentFixture), "manual_only");
 
-  const differentHash = matrixWith({
+  // 同じ fixture でも、裏付けた観測記録が別なら「1 つの実測が対を証明した」ことにならない
+  // （1 つの fixture が複数の run を束ねられるため）
+  const differentRecord = matrixWith({
     promptAwareInjection: proven("synthesized"),
-    promptDeliveryBeforeModel: proven("synthesized", { evidenceHash: HASH_B }),
+    promptDeliveryBeforeModel: proven("synthesized", { evidenceRefs: [1] }),
   });
-  assert.equal(resolveResumeDeliveryStrategy(differentHash), "manual_only");
+  assert.equal(resolveResumeDeliveryStrategy(differentRecord), "manual_only");
 
   const differentVersion = matrixWith({
     promptAwareInjection: proven("synthesized"),
@@ -149,20 +149,29 @@ test("compactSingleDelivery は配送経路の判定には影響しない（別 
   assert.equal(resolveResumeDeliveryStrategy(withCompact), "manual_only");
 });
 
-test("evidence hash の無い prompt cell は自動配送を有効化できない", () => {
+test("裏付けた記録を持たない prompt cell は自動配送を有効化できない", () => {
   const caps = matrixWith({
-    promptAwareInjection: proven("synthesized", { evidenceHash: null }),
-    promptDeliveryBeforeModel: proven("synthesized", { evidenceHash: null }),
+    promptAwareInjection: proven("synthesized", { evidenceRefs: [] }),
+    promptDeliveryBeforeModel: proven("synthesized", { evidenceRefs: [] }),
   });
   assert.equal(resolveResumeDeliveryStrategy(caps), "manual_only");
 });
 
-test("片方だけ evidence hash がある synthesized 対は照合できないので採用しない", () => {
+test("片方だけ裏付けのある synthesized 対は照合できないので採用しない", () => {
   const caps = matrixWith({
     promptAwareInjection: proven("synthesized"),
-    promptDeliveryBeforeModel: proven("synthesized", { evidenceHash: null }),
+    promptDeliveryBeforeModel: proven("synthesized", { evidenceRefs: [] }),
   });
   assert.equal(resolveResumeDeliveryStrategy(caps), "manual_only");
+});
+
+test("複数の記録を束ねた cell でも、共有する記録が 1 件あれば対が成立する", () => {
+  // fixture は複数 run の和集合。交わりがあることを要求し、集合の一致までは求めない
+  const caps = matrixWith({
+    promptAwareInjection: proven("synthesized", { evidenceRefs: [0, 2] }),
+    promptDeliveryBeforeModel: proven("synthesized", { evidenceRefs: [2, 3] }),
+  });
+  assert.equal(resolveResumeDeliveryStrategy(caps), "next_prompt_synthesized");
 });
 
 test("§8: synthesized tier は「両方 synthesized」が必須なので割れた対は成立しない", () => {

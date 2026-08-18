@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-memory.local/harness/schema/evidence-manifest.schema.json",
+  "title": "RunManifest",
+  "$comment": "rig が run ごとに書く素性の記録。fixture の自己申告ではないことが real-cli-e2e の根拠になる（data-model.md §2.5）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "cli",
+    "cliVersion",
+    "scenarioId",
+    "isolated",
+    "internalRunMarker",
+    "exitStatus",
+    "recorderErrors",
+    "capture",
+    "captureRawHash",
+    "captureHash",
+    "normalizationVersion"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "$comment": "harness の実装版と違えば失敗する。未知の版を推測で読まない",
+      "type": "integer",
+      "minimum": 1
+    },
+    "cli": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "cliVersion": {
+      "$comment": ".version を単一行として読み、末尾の CRLF か LF を 1 つだけ取り除いた値",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[\\x20-\\x7e]+$"
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+    },
+    "isolated": {
+      "$comment": "rig が書く。fixture の自己申告ではない",
+      "type": "boolean"
+    },
+    "internalRunMarker": {
+      "type": "boolean"
+    },
+    "exitStatus": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "recorderErrors": {
+      "$comment": "capture-hook.sh の .errors が無い / 空なら 0",
+      "type": "integer",
+      "minimum": 0
+    },
+    "capture": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.jsonl$"
+    },
+    "captureRawHash": {
+      "$comment": "観測記録の生 byte の SHA-256。既知の正規化衝突を持つ別の記録と組み合わせられないようにする",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "captureHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "normalizationVersion": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

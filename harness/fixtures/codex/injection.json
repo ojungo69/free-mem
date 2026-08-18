@@ -4,6 +4,7 @@
   "nativeVersion": "codex-cli 0.147.0",
   "capturedAt": "2026-08-12T11:16:43.112Z",
   "scenario": "SessionStart / UserPromptSubmit hook の stdout による context 注入を実証",
+  "scenarioId": "codex.injection",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -38,11 +39,22 @@
   "limitations": [
     "注入実証: hook stdout の token `RIG_INJECT_5f3a9` を子セッションが逐語で復唱（real-cli-e2e 証跡）。Claude Code と同じく session 開始時点の注入が届く"
   ],
+  "limitationCodes": [
+    "session-start-injection-echoed"
+  ],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
   },
   "highLevel": {
     "sessionStartInjection": "native"
-  }
+  },
+  "evidence": [
+    {
+      "path": "codex-inject.jsonl",
+      "evidenceHash": "c35d9239468257d91d29a864b3cb14ffdeefa43ad11ba6122588498fc2318a1a",
+      "captureRawHash": "e48bc3310c295a865b14a424cc7892a63b775d3afa0f9524124bd6a26b13ca80",
+      "normalizationVersion": 1
+    }
+  ]
 }

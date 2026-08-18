@@ -4,6 +4,7 @@
   "nativeVersion": "2.1.228 (Claude Code)",
   "capturedAt": "2026-08-12T11:10:03.724Z",
   "scenario": "Bash tool が非ゼロ終了（`false`）— executed failure。2 回実行して同一結果を確認",
+  "scenarioId": "claude.tool-failed-executed",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -37,6 +38,10 @@
       "limitations": [
         "**PostToolUse は tool 失敗時に発火しない**（2 回実行で決定的に再現: PreToolUse のみ、PostToolUse 無し）。失敗の検出は PreToolUse の未完了 + Stop の last_assistant_message からの合成に依存する",
         "failurePhase の直接判別は不可。executed failure と他 phase を hook 単体では区別できない"
+      ],
+      "limitationCodes": [
+        "post-tool-use-absent-on-failure",
+        "failure-phase-not-directly-observable"
       ]
     },
     {
@@ -60,8 +65,25 @@
   "limitations": [
     "permission_denied / schema_invalid / unknown_tool phase は本 fixture では未観測（tool-denied 実行では Claude が許可済み範囲に収まり deny 分岐に到達せず）"
   ],
+  "limitationCodes": [
+    "failure-phases-not-reached"
+  ],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
-  }
+  },
+  "evidence": [
+    {
+      "path": "claude-tool-fail.jsonl",
+      "evidenceHash": "727181f0a7964edc6341b6571245627b1af4ab99babd9c1203ae299f9b3222fd",
+      "captureRawHash": "99dc2d63ede38499e16369978666153754e9a9ae0d1ef6a17347989392d08e16",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "claude-tool-fail2.jsonl",
+      "evidenceHash": "b0dbc6cc179bea9e2cd6b036c77ac6974392828f31baf27edf257b8b391e73a2",
+      "captureRawHash": "5f168b009d0a109861725af13e95ecff32ce52f8444ffd61f6700920b4b9809b",
+      "normalizationVersion": 1
+    }
+  ]
 }

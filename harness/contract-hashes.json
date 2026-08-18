@@ -1,9 +1,9 @@
 {
   "algorithm": "sha256",
   "files": {
-    "fixtures/claude/injection-and-subagent.json": "c61f04baf3d4094650b84a0911932ce88de4c2fabb4effee10c39398a099ef58",
-    "fixtures/claude/interrupt-and-hook-timeout.json": "9424afe9a53ffa783044f5da1ae016f3f14a6e988fa665d5ce89172c8c3764de",
-    "fixtures/claude/lifecycle-basic.json": "21451509b311fbea1927b00f9ae8779a365cc248d1497edd1984ad207b27b0ff",
+    "fixtures/claude/injection-and-subagent.json": "bca4f3e6ca62ac8e78cc16b0c440018b68e5fd4253e6ec763b44ef094dbd7505",
+    "fixtures/claude/interrupt-and-hook-timeout.json": "0fbd9d1d40ef81e2101ac732f1edc36b11ab32817bea02e83279cf9beb792a7b",
+    "fixtures/claude/lifecycle-basic.json": "96327b74583448b9e28cde7438f503fa1c2d8b3e2bcfb80c248b4c63b84ad3ed",
     "fixtures/claude/raw/claude-hook-timeout.jsonl": "c09c0fea350ce06b0ecd7aa98db4b42459def6164130d7a3d84502781d8a9d87",
     "fixtures/claude/raw/claude-inject.jsonl": "00c71abe7e54d2560026cce5722cf39e203cf30e21576f1b370022b1840e7213",
     "fixtures/claude/raw/claude-interrupt.jsonl": "5cade0369306b5bbbf15c679e777ddf1211621ff9dca8dee131f5020ce04d1cf",
@@ -16,21 +16,22 @@
     "fixtures/claude/raw/claude-tool-fail.jsonl": "99dc2d63ede38499e16369978666153754e9a9ae0d1ef6a17347989392d08e16",
     "fixtures/claude/raw/claude-tool-fail2.jsonl": "5f168b009d0a109861725af13e95ecff32ce52f8444ffd61f6700920b4b9809b",
     "fixtures/claude/raw/claude-tool-ok.jsonl": "ea8485c3cb9586930570c5e4bafc2214065a4a6733e01a75082db002189d4cdc",
-    "fixtures/claude/tool-failed-executed.json": "b5397e9b80c99a6daea19d7aa3459571b27f1c2220035f0e4b63b32b4bd926ad",
-    "fixtures/claude/tool-lifecycle.json": "2991f14a9b92497dca38de4973f82d8843650e5f649bbc96993b2462a08d84d5",
-    "fixtures/codex/injection.json": "d7ab8cc79faf3a4d40460820b925c2098a3dea5c52b00b1062ecb257e3439c9d",
-    "fixtures/codex/lifecycle-basic.json": "ae77df03a66f1b152732f4e449c99d8f6e96946f62686168c5991963a1aa58de",
+    "fixtures/claude/tool-failed-executed.json": "cc5c7d77a41d517db76a9d2a1154f64731c79407059928a5234f74ae3e670b34",
+    "fixtures/claude/tool-lifecycle.json": "c965d52f8e8c34573d0be85b1b9294d85b273c7aa218af93e0662928f8eab0c2",
+    "fixtures/codex/injection.json": "a711e3763986ce134135557227c33e959ed3e49e7571f7af2b169b8635471804",
+    "fixtures/codex/lifecycle-basic.json": "8ebe11e53decd7d3d1c623387a9f08bf6b3794538ca831921e7b07839bcf4c28",
     "fixtures/codex/raw/codex-inject.jsonl": "e48bc3310c295a865b14a424cc7892a63b775d3afa0f9524124bd6a26b13ca80",
     "fixtures/codex/raw/codex-lifecycle-basic.jsonl": "09a006b93306daae568e2ba77b8660b9ac6f385077bf9bd789007b1219fe5ef0",
     "fixtures/codex/raw/codex-tool-fail.jsonl": "067269f7de6d1bc31eb7f909dec71380426229211095e534a973e7c2653a4b55",
     "fixtures/codex/raw/codex-tool-ok.jsonl": "1aaefa4f701901b10fd8ecadcdc4112ef45179e21693a116e4134bd3dd589cd4",
-    "fixtures/codex/tool-lifecycle-and-failure.json": "0e7f25f0c63e78a9aaa0a12ef67ad948c1059f5d30b0c2a8f6d29ac929f70488",
+    "fixtures/codex/tool-lifecycle-and-failure.json": "39e0de7e5c7151d08bbccefa1c6bb00e2caf1ad149f0058fdf999f09deea1dd0",
     "fixtures/continuity/invalid/rejected-events.json": "b19265a42d0038a9b0f33b2da699c4370519f8fd4d30f9795c2f7892d6ab1ce0",
     "fixtures/continuity/old-shape-parity.json": "0f6924a4d3e45c3c88336f4f08184d78ebaedd88ad3fbfed194677199c59949a",
     "fixtures/continuity/restored-state-reduction.json": "ddb1ec22f1d37dfa980ea6870e883ed32977f42ec732ce7e89f3f6e689fadaa2",
     "fixtures/continuity/tool-lifecycle-reduction.json": "beefef9cd5fc61784d6057464e45f26d37497819f2428a73d1c3f2b55a75c755",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
-    "schema/capability.schema.json": "e3c62825f8364ca7879bb0d803ab139dd9bd16d031290d06592cbe6b8d6aef23",
-    "schema/continuity.schema.json": "95000c4671e71b12ba3a49a86dcaa51be81bf75acde8ab0533ba8f0f3fec8972"
+    "schema/capability.schema.json": "b521fc1e234778349d303a52834daafbf29887b6d75cac2488d4c6f023930fb8",
+    "schema/continuity.schema.json": "95000c4671e71b12ba3a49a86dcaa51be81bf75acde8ab0533ba8f0f3fec8972",
+    "schema/evidence-manifest.schema.json": "bf6fcb95c6ed8df3ec91528f60223a15f388356dd4749bebd2695076a0f78580"
   }
 }

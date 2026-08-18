@@ -32,9 +32,67 @@ export interface CapabilityEvidence {
   // どの capture fixture が根拠か。cell 間で「同一の実測に基づくか」を比較するために持つ
   // （limitations の自由文から fixture 名を読み取るのは照合として弱い）
   sourceFixtureId?: string;
-  // その capture の raw transcript の SHA-256。Task 2/3 の実 CLI rig が埋める。
-  // 実測がまだ無い cell では null。
-  evidenceHash?: string | null;
+  // どの観測記録がこの cell を裏付けたか。matrix 直下 `evidenceSources` への添字。
+  // 単数の digest 欄にしない: 1 つの fixture が複数の run を束ねるため
+  // （claude/interrupt-and-hook-timeout は 5 本の記録を根拠にしている）。
+  // 空でない配列を持つ cell だけが real-cli-e2e を名乗れる。
+  evidenceRefs?: number[];
+}
+
+/**
+ * fixture が名指しする観測記録。`harness/fixtures/<cli>/raw/` からの相対 path で指す。
+ *
+ * digest を 2 つ持つのは役割が違うため（data-model.md §2.1a）:
+ * - `evidenceHash` は正規化抜粋の SHA-256 で、同じ scenario を取り直しても変わらない
+ * - `captureRawHash` は生 byte の SHA-256 で、「この記録そのものか」を結び付ける
+ *   （正規化が伏せる差だけを変えた記録を通さない）
+ */
+export interface EvidenceRef {
+  path: string;
+  evidenceHash: string;
+  captureRawHash: string;
+  normalizationVersion: number;
+  /**
+   * 同じ run の manifest。**無い ref は real-cli-e2e の根拠にならない**（legacy 証拠）。
+   * digest の照合は manifest の有無に関わらず必ず行う。
+   */
+  manifest?: string;
+  /** manifest ファイルの生 byte の SHA-256。`manifest` があるとき必須 */
+  manifestHash?: string;
+}
+
+/**
+ * rig が run ごとに書く素性の記録。fixture の自己申告ではないことが real-cli-e2e の根拠になる。
+ * schema は harness/schema/evidence-manifest.schema.json（1 対 1）。
+ */
+export interface RunManifest {
+  manifestVersion: number;
+  cli: "claude" | "codex";
+  /** `.version` を単一行として読み、末尾の CRLF か LF を 1 つだけ取り除いた値 */
+  cliVersion: string;
+  scenarioId: string;
+  isolated: boolean;
+  internalRunMarker: boolean;
+  exitStatus: number;
+  recorderErrors: number;
+  capture: string;
+  captureRawHash: string;
+  captureHash: string;
+  normalizationVersion: number;
+}
+
+/** matrix 直下に置く証拠の表。cell からは添字で参照する（fixtureId → path の昇順） */
+export interface EvidenceSource {
+  fixtureId: string;
+  /** 置き場からの相対 path。絶対 path は入らない */
+  path: string;
+  evidenceHash: string;
+  normalizationVersion: number;
+  /** legacy 証拠（manifest を持たない ref）は null */
+  manifestHash: string | null;
+  cliVersion: string;
+  /** 制約付き識別子。自由文の scenario は成果物へ出さない */
+  scenarioId: string;
 }
 
 /**
@@ -97,7 +155,8 @@ export interface CaptureFixture {
   cli: "claude" | "codex";
   nativeVersion: string; // capture 時点の exact `--version` 出力
   capturedAt: string; // ISO 8601
-  scenario: string; // 何を観測したか 1 行
+  scenario: string; // 何を観測したか 1 行。**fixture 内の説明であって成果物へは出さない**
+  scenarioId: string; // 成果物へ出る識別子。^[a-z0-9]+(?:[.-][a-z0-9]+)*$
   // capability 既定 "native"。Stop→turn_completed 等の合成は "synthesized" + sourceEvents（§7.2）。
   observedEvents: Array<{
     kind: EventKind | "raw";
@@ -107,12 +166,16 @@ export interface CaptureFixture {
     sourceEvents?: string[];
     coverage?: number;
     limitations?: string[];
+    // limitations と同じ長さで位置対応する closed enum。成果物へ出るのはこちら
+    limitationCodes?: string[];
   }>;
   toolFailurePhasesObserved: ToolFailurePhase[];
-  limitations: string[];
+  limitations: string[]; // 散文。**fixture 内の説明であって成果物へは出さない**
+  limitationCodes: string[]; // limitations と同じ長さで位置対応する closed enum
   rig: { isolated: boolean; internalRunMarker: boolean }; // 隔離 rig 下で取ったか
-  // raw transcript の SHA-256（64 hex）。実 CLI rig が記録する
-  evidenceHash?: string;
+  // 実 CLI 観測の根拠。組み立て側が各記録から digest を再計算して照合する。
+  // official-doc / source-test 由来の fixture は持たない（required にしない理由）
+  evidence?: EvidenceRef[];
   // 高位 cell の観測結果（観測できた fixture だけが書く。書かなければ unknown のまま）
   highLevel?: Partial<{
     sessionStartInjection: ObservedCapability;
@@ -194,16 +257,18 @@ function isProven(cell: CapabilityEvidence): boolean {
 }
 
 /**
- * 2 つの cell が「同一の実測」に基づくか。exact version・fixture・evidence hash の
- * 3 つすべてが揃って一致することを要求する。別々の run をつなぎ合わせて経路を
- * 主張させないためのゲートなので、hash が無い cell は「照合できない」= 不合格とする
- * （transcript hash の無い手書き fixture が自動配送を有効化できてしまうため）。
+ * 2 つの cell が「同一の実測」に基づくか。exact version・fixture・**裏付けた観測記録**の
+ * 3 つが揃って一致することを要求する。別々の run をつなぎ合わせて経路を主張させないための
+ * ゲートなので、裏付けの無い cell は「照合できない」= 不合格とする。
  */
 function sameEvidenceSource(a: CapabilityEvidence, b: CapabilityEvidence): boolean {
   if (a.nativeVersion !== b.nativeVersion) return false;
   if (!a.sourceFixtureId || a.sourceFixtureId !== b.sourceFixtureId) return false;
-  if (!a.evidenceHash || a.evidenceHash !== b.evidenceHash) return false;
-  return true;
+  // 同じ fixture であることは同一実測の証明にならない。1 つの fixture が複数の run を
+  // 束ねられる以上、**両 cell を裏付けた記録に同じものが 1 件でもある**ことを要求する
+  const refsA = a.evidenceRefs ?? [];
+  const refsB = b.evidenceRefs ?? [];
+  return refsA.some((r) => refsB.includes(r));
 }
 
 /**

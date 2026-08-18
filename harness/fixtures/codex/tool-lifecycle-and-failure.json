@@ -4,6 +4,7 @@
   "nativeVersion": "codex-cli 0.147.0",
   "capturedAt": "2026-08-12T11:16:22.570Z",
   "scenario": "shell tool の成功実行と非ゼロ終了（`false`）を別 run で観測し、PostToolUse payload を比較",
+  "scenarioId": "codex.tool-lifecycle-and-failure",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -27,6 +28,9 @@
       ],
       "limitations": [
         "payload に tool_use_id / turn_id / tool_input あり"
+      ],
+      "limitationCodes": [
+        "tool-start-payload-carries-ids"
       ]
     },
     {
@@ -47,6 +51,11 @@
         "**Codex は tool 失敗時も PostToolUse を発火する**（Claude Code とは逆の挙動）。ただし payload に exit code / error フィールドは無く、成功時 tool_response=\"rigtool\\n\" に対し失敗時 tool_response=\"\" という違いしかない",
         "空 tool_response は『失敗』と『出力の無い成功』を区別できないため、失敗判定は transcript 参照か上位層の推定が必要",
         "failurePhase の直接判別は不可"
+      ],
+      "limitationCodes": [
+        "post-tool-use-fires-on-failure-without-status",
+        "empty-tool-response-ambiguous",
+        "failure-phase-not-directly-observable"
       ]
     },
     {
@@ -70,8 +79,25 @@
   "limitations": [
     "permission_denied / schema_invalid / unknown_tool は未観測（rig は approval_policy=never / sandbox 指定で deny 分岐に到達しない）"
   ],
+  "limitationCodes": [
+    "failure-phases-not-reached"
+  ],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
-  }
+  },
+  "evidence": [
+    {
+      "path": "codex-tool-ok.jsonl",
+      "evidenceHash": "e0d34de90274fe04c085affe3062b323d1a96f6d12a3ce1c8cfde288474dcb80",
+      "captureRawHash": "1aaefa4f701901b10fd8ecadcdc4112ef45179e21693a116e4134bd3dd589cd4",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "codex-tool-fail.jsonl",
+      "evidenceHash": "5bccac1d974924148fbee817a67ac24e2b2f42b4ec85fc2d9004907ccfc15102",
+      "captureRawHash": "067269f7de6d1bc31eb7f909dec71380426229211095e534a973e7c2653a4b55",
+      "normalizationVersion": 1
+    }
+  ]
 }

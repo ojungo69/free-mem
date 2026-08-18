@@ -4,6 +4,7 @@
   "nativeVersion": "2.1.228 (Claude Code)",
   "capturedAt": "2026-08-12T11:13:16.911Z",
   "scenario": "SIGINT による中断（8s deadline / 長文生成中）と、hook 自身が 15s ブロックした場合の挙動",
+  "scenarioId": "claude.interrupt-and-hook-timeout",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -30,6 +31,11 @@
         "SIGINT 中断時は **Stop が発火せず** SessionEnd のみ届く（interrupt2/3/4 の 3 回で再現。raw/claude-interrupt{2,3,4}.jsonl）。ただし SessionEnd.reason は正常終了時と同じ 'other' で、中断と正常終了を payload だけでは区別できない",
         "区別には『Stop 無しで SessionEnd』というパターン合成が必要（本 fixture の根拠）",
         "raw/claude-interrupt.jsonl は deadline 前に完走した run で Stop を含む。中断形の証跡は interrupt2/3/4 の 3 本"
+      ],
+      "limitationCodes": [
+        "stop-not-fired-on-sigint",
+        "interrupt-requires-pattern-synthesis",
+        "interrupt-evidence-in-subset-of-captures"
       ]
     },
     {
@@ -45,8 +51,44 @@
     "hook timeout: settings の timeout=10 に対し hook を 15s ブロックさせても、捕捉 event 数・session 完了は正常時と同一（4 events）。hook の遅延は session を壊さないが、hook 側の timeout 超過は payload に現れない",
     "interrupt fixture は timeout(1) 由来の SIGINT。ユーザーの Ctrl-C 経路（TTY）は未観測"
   ],
+  "limitationCodes": [
+    "hook-timeout-not-observable",
+    "interrupt-observed-via-signal-only"
+  ],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
-  }
+  },
+  "evidence": [
+    {
+      "path": "claude-interrupt.jsonl",
+      "evidenceHash": "bff1ecb8a7d2a882c4dc201a2ba7906a09fb6e9cddb7e429621245fedf4ac226",
+      "captureRawHash": "5cade0369306b5bbbf15c679e777ddf1211621ff9dca8dee131f5020ce04d1cf",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "claude-interrupt2.jsonl",
+      "evidenceHash": "da592fe7e1347d6e08113fa114025e93e4213ade4761bd0f5a5d8c1c95305aff",
+      "captureRawHash": "acf7f52855aa7cea9fa42d88c30b08a7983f8fb187e201b91c79682c11f402be",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "claude-interrupt3.jsonl",
+      "evidenceHash": "ae3dd7c891c4fce1f559fa82fe19b7fc9bb98319a82a0ef2fda5341f596d68c3",
+      "captureRawHash": "35cf5d6cd90e5347f074249d3a5df8f8f39f1a2fb6fcb150cba75a2aeb1da417",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "claude-interrupt4.jsonl",
+      "evidenceHash": "ae3dd7c891c4fce1f559fa82fe19b7fc9bb98319a82a0ef2fda5341f596d68c3",
+      "captureRawHash": "0b6e936b7fc0ff05549be53e990451e677a07ab94408e1e190a73ca280259ae5",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "claude-hook-timeout.jsonl",
+      "evidenceHash": "1a6bab46f7bdc783e0348d0346ee7c418d63acc448a429634e930c60612cf5ab",
+      "captureRawHash": "c09c0fea350ce06b0ecd7aa98db4b42459def6164130d7a3d84502781d8a9d87",
+      "normalizationVersion": 1
+    }
+  ]
 }

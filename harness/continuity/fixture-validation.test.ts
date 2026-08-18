@@ -16,9 +16,11 @@ function base(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     nativeVersion: VERSION,
     capturedAt: AT,
     scenario: "prompt delivery",
+    scenarioId: "test.prompt-delivery",
     observedEvents: [{ kind: "session_started", at: AT }],
     toolFailurePhasesObserved: [],
     limitations: [],
+    limitationCodes: [],
     rig: { isolated: true, internalRunMarker: true },
     ...overrides,
   };
@@ -42,40 +44,28 @@ test("highLevel の値は schema の enum で検査する", () => {
   );
 });
 
-test("正しい highLevel は通り、cell に載る", () => {
+test("正しい highLevel は通り、値だけが cell に載る", () => {
   const f = validateFixture(
-    base({
-      evidenceHash: "a".repeat(64),
-      highLevel: { promptAwareInjection: "native", promptDeliveryBeforeModel: "native" },
-    }),
+    base({ highLevel: { promptAwareInjection: "native", promptDeliveryBeforeModel: "native" } }),
     "f.json",
   ) as CaptureFixture;
   const m = assembleFromFixtures([f]);
   assert.equal(m.capabilities.promptAwareInjection.value, "native");
-  assert.equal(m.capabilities.promptAwareInjection.evidenceHash, "a".repeat(64));
-  assert.equal(m.capabilities.resumeDeliveryStrategy, "native_prompt_gate");
+  // 注入が効いたことは応答本文への echo でしか分からず、正規化はそれを伏せる。
+  // 導けない主張なので、証拠の有無に関わらず real-cli-e2e にはならない（FR-006c）
+  assert.equal(m.capabilities.promptAwareInjection.evidenceKind, "source-test");
+  assert.equal(m.capabilities.resumeDeliveryStrategy, "manual_only");
 });
 
-test("synthesized 対は evidenceHash が無ければ manual_only に落ちる", () => {
-  // §8 の synthesized tier だけが「同一 fixture / evidence hash」を要求する。
-  // native tier（上のテスト）は pre-model 1 cell の実測で成立する
+test("prompt 対は導けない主張なので tier が上がらない", () => {
+  // §8 の synthesized tier は「1 つの実測が対を同時に証明した」ことを要求するが、
+  // 対の両 cell は本文に依存する主張で、digest からは導けない。
+  // 証拠を足しても tier は上がらない（証拠形式そのものを変える別 issue の担当）
   const f = validateFixture(
     base({ highLevel: { promptAwareInjection: "synthesized", promptDeliveryBeforeModel: "synthesized" } }),
     "f.json",
   ) as CaptureFixture;
   assert.equal(assembleFromFixtures([f]).capabilities.resumeDeliveryStrategy, "manual_only");
-
-  const withHash = validateFixture(
-    base({
-      evidenceHash: "b".repeat(64),
-      highLevel: { promptAwareInjection: "synthesized", promptDeliveryBeforeModel: "synthesized" },
-    }),
-    "f.json",
-  ) as CaptureFixture;
-  assert.equal(
-    assembleFromFixtures([withHash]).capabilities.resumeDeliveryStrategy,
-    "next_prompt_synthesized",
-  );
 });
 
 test("既存 fixture は capability.schema.json 全体に対して妥当（schema と手書き検証の drift 検出）", () => {
@@ -93,25 +83,38 @@ test("既存 fixture は capability.schema.json 全体に対して妥当（schem
   assert.ok(checked >= 8, `fixture が見つかっていない (checked=${checked})`);
 });
 
-test("evidenceHash の無い highLevel は real-cli-e2e として刻まない", () => {
-  const noHash = validateFixture(
+test("証拠を名指ししていない highLevel は real-cli-e2e として刻まない", () => {
+  const declared = validateFixture(
     base({ highLevel: { sessionStartInjection: "native" } }),
     "f.json",
   ) as CaptureFixture;
-  const cell = assembleFromFixtures([noHash]).capabilities.sessionStartInjection;
+  const cell = assembleFromFixtures([declared]).capabilities.sessionStartInjection;
   assert.equal(cell.value, "native");
   assert.equal(cell.evidenceKind, "source-test");
-  assert.ok(cell.limitations.some((l) => /no evidenceHash/.test(l)));
+  assert.ok(cell.limitations.some((l) => /^unverified:/.test(l)));
   // 自動配送は有効にならない
-  assert.equal(assembleFromFixtures([noHash]).capabilities.resumeDeliveryStrategy, "manual_only");
+  assert.equal(assembleFromFixtures([declared]).capabilities.resumeDeliveryStrategy, "manual_only");
+});
 
-  const hashed = validateFixture(
-    base({ evidenceHash: "c".repeat(64), highLevel: { sessionStartInjection: "native" } }),
+test("形式は正しい 64 桁 hex でも、実在しない記録を指す fixture は組み立てを落とす", () => {
+  const forged = validateFixture(
+    base({
+      evidence: [
+        {
+          path: "no-such-capture.jsonl",
+          evidenceHash: "a".repeat(64),
+          captureRawHash: "b".repeat(64),
+          normalizationVersion: 1,
+        },
+      ],
+    }),
     "f.json",
   ) as CaptureFixture;
-  const m = assembleFromFixtures([hashed]).capabilities;
-  assert.equal(m.sessionStartInjection.evidenceKind, "real-cli-e2e");
-  assert.equal(m.resumeDeliveryStrategy, "session_start_full");
+  assert.throws(() => assembleFromFixtures([forged]), /cannot be resolved|does not exist/);
+});
+
+test("evidence が空配列の fixture は schema でも組み立てでも棄却される", () => {
+  assert.throws(() => validateFixture(base({ evidence: [] }), "f.json"), /minItems/);
 });
 
 test("commit された matrix も I-JSON として読める", () => {
