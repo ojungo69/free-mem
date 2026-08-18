@@ -206,8 +206,9 @@ rig は `$RIG_BASE/capture/{claude,codex}-<label>.jsonl` へ書く（`harness/ri
 記録なので、`claude/tool-lifecycle` の証拠配列へ含める（同一 scenario 系列の観測であり、
 含めても cell の値は変わらない）。
 
-**Decision**: 8 fixture すべてに証拠配列と digest を埋める。これにより 21 cell が
-`source-test` から `real-cli-e2e` へ**昇格**する。降格は 1 件も発生しない。
+**Decision**: 8 fixture すべてに証拠配列と digest（正規化抜粋と生 byte の両方）を埋める。
+**昇格は 0 件**になる（R7 のとおり真正な manifest を作れないため）。降格も 0 件。
+埋める意味は、記録を差し替えたら組み立てが落ちるようになること。
 
 ---
 
@@ -291,7 +292,7 @@ fixture の `limitations` 自由文が matrix へ逐語転記されるため、n
 |---|---|---|
 | `harness/schema/capability.ts:44` | 「その capture の raw transcript の SHA-256」 | **書き換える**。owner が不採用とした「生ファイル全体の SHA-256」そのものなので、正規化抜粋の digest である旨へ改める |
 | `harness/assemble.ts:270-273` | 「evidenceHash が付くまでは弱い証跡種別に落とす」 | **書き換える**。hash の存在ではなく再計算の一致が条件になる |
-| `harness/assemble.ts:341-344` | 「Task 2/3 の実 CLI rig が hash を記録したら昇格する」 | **書き換える**。記録するだけでは昇格しない |
+| `harness/assemble.ts:341-344` | 「Task 2/3 の実 CLI rig が hash を記録したら昇格する」 | **書き換える**。記録するだけでは昇格しない。digest の一致・run 素性の記録・主張の導出一致の 3 つが揃って初めて上がる |
 | `harness/matrix/README.md:13` | 「evidenceKind: 全 cell `real-cli-e2e`（隔離 rig 下の実 CLI 実行）」 | **書き換える**。現在の matrix は `source-test` 21 件で、この行は既に事実と違う。移行後の実際の値へ合わせる |
 | `agent-memory-final-spec-v6.md:521` | 証拠強度の語彙定義 | **変えない**。語彙は据え置き、判定条件だけを足す |
 

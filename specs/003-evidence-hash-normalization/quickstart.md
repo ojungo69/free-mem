@@ -15,6 +15,20 @@ node --experimental-strip-types harness/evidence/normalize.ts harness/fixtures/c
 # => {"evidenceHash":"1a6bab46...","normalizationVersion":1}
 ```
 
+## 1a. 昇格するのは synthetic な証拠だけ（positive control）
+
+既存 16 件はすべて legacy 証拠（manifest が無い）なので、**この repo のデータだけでは
+昇格の成功経路を確認できない**。常に `source-test` を返す壊れた実装でも移行結果と負例は
+全部通ってしまう。synthetic な観測記録・manifest・fixture を一時ディレクトリへ作って確認する
+（`assemble.ts` の `selfTest` が既に `mkdtemp` を使っている）。
+
+```bash
+node --experimental-strip-types harness/assemble.ts --self-test
+# => synthetic fixture の capture cell と導出可能な highLevel cell が real-cli-e2e になる
+# => 同じ fixture から manifest / claim 一致 / captureRawHash / internalRunMarker を
+#    1 条件ずつ外すと、いずれも real-cli-e2e にならない
+```
+
 ## 2. 再取得が同じ digest になることを確認する（SC-003）
 
 `claude-interrupt3` と `claude-interrupt4` は同一 prompt・同一 event 列で、
@@ -22,7 +36,7 @@ session id・時刻・transcript path だけが違う 2 回の取得。
 
 ```bash
 for f in 3 4; do node --experimental-strip-types harness/evidence/normalize.ts harness/fixtures/claude/raw/claude-interrupt$f.jsonl; done
-# => 2 行が完全に一致する
+# => evidenceHash が一致する（生 byte は違うので captureRawHash は一致しない）
 ```
 
 ## 3. 別の観測が別の digest になることを確認する（SC-004）
@@ -37,9 +51,10 @@ for f in tool-denied tool-ok; do node --experimental-strip-types harness/evidenc
 `harness/package.json` に scripts は無い。`harness/matrix/README.md` 記載の実コマンドを使う。
 
 ```bash
-# matrix 生成（usage は node --experimental-strip-types harness/assemble.ts で出る）
-node --experimental-strip-types harness/assemble.ts --self-test
-# contract hash の再生成（CI が差分を見ている）
+node --experimental-strip-types harness/assemble.ts harness/fixtures/claude harness/matrix/claude.json
+node --experimental-strip-types harness/assemble.ts harness/fixtures/codex  harness/matrix/codex.json
+# contract hash: 更新してから、CI と同じ差分検証を通す
+node harness/contract-hashes.mjs > harness/contract-hashes.json
 node harness/contract-hashes.mjs > /tmp/ch.json && diff harness/contract-hashes.json /tmp/ch.json
 git diff harness/matrix/
 # => evidenceKind の変化は 0 件（既存 16 件は manifest が無いので昇格しない）

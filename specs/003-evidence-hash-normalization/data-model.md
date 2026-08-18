@@ -9,7 +9,9 @@
 
 **証明する**
 
-- 名指しされた観測記録が、fixture が申告した digest のとおりの内容であること
+- 名指しされた観測記録が、fixture が申告した **生 byte の digest**（`captureRawHash`）と
+  **正規化抜粋の digest**（`evidenceHash`）の両方のとおりであること。
+  生 byte 側があるので、正規化が伏せる差（時刻・空行）を含めて 1 byte の差し替えも検出する
 - その記録の event 列・欄の構成・識別子の等値関係（どの event が同じ session / turn /
   tool 呼び出しに属するか）が、申告時点から変わっていないこと
 - 記録が隔離 rig の 1 回の run から出たものであること（§2.5 の manifest による）
@@ -150,8 +152,15 @@ evidence?: EvidenceRef[];
 interface EvidenceRef {
   /** 証拠置き場からの相対 path。絶対 path と `..` は拒否 */
   path: string;
-  /** 正規化抜粋の SHA-256（小文字 hex 64 桁） */
+  /** 正規化抜粋の SHA-256（小文字 hex 64 桁）。再取得しても変わらない側 */
   evidenceHash: string;
+  /**
+   * 観測記録ファイルの生 byte の SHA-256。
+   * `evidenceHash` だけだと、正規化が伏せる差（時刻・空行・伏せ字対象の値）を変えても
+   * 同じ digest になる。「この記録そのもの」への結び付けはこちらが担う。
+   * legacy 証拠にも必須。
+   */
+  captureRawHash: string;
   /** 生成に用いた正規化規則の版 */
   normalizationVersion: number;
   /**
@@ -197,11 +206,18 @@ version-pin（`assemble.ts:207`）に引っかかる。これは別の変更に�
 
 ### 2.3 `capability.schema.json`
 
-- `properties.evidence` を追加。`type: "array"`、**`minItems: 1`**、
-  要素は `path` / `evidenceHash` / `normalizationVersion` / `manifest` / `manifestHash` を
-  required とする object、`additionalProperties: false`
+- `properties.evidence` を追加。`type: "array"`、**`minItems: 1`**、`additionalProperties: false`
+  - 要素の `required` は `path` / `evidenceHash` / `captureRawHash` / `normalizationVersion` の 4 つ
+  - `manifest` と `manifestHash` は **両方あるか両方無いか**（`dependentRequired` で相互に要求する）。
+    片方だけの ref は schema で弾く
+- `properties.scenarioId` を追加。`type: "string"`、`pattern: "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"`。
+  `required` に加える（すべての capture fixture が持つ。matrix へ出る唯一の識別子のため）
 - `properties.evidenceHash`（top-level）を削除
-- `required` には加えない。`official-doc` / `source-test` 由来の fixture は観測記録を持たない
+- `evidence` は `required` に加えない。`official-doc` / `source-test` 由来の fixture は
+  観測記録を持たない
+
+**`manifest` を optional にしつつ schema で required にしない理由**: legacy 証拠 8 fixture が
+全件落ちる。型と schema の食い違いを残すと、片方だけ直したときに気づけない。
 
 **`minItems: 1` が要る理由**: 「全 ref が一致」を `every` で実装すると空配列は空虚真になり、
 `evidence: []` を書くだけで観測記録を 1 件も読まずに昇格できる。schema と assemble の両方で
@@ -264,15 +280,21 @@ rig は run のたびに manifest を 1 件書き、証拠置き場へ observati
 |---|---|
 | `manifestVersion` | harness の実装版 |
 | `cli` | fixture の `cli` |
-| `cliVersion` | fixture の `nativeVersion` |
+| `cliVersion` | fixture の `nativeVersion`（下の canonical 規則を適用してから比較） |
 | `scenarioId` | fixture の `scenarioId`（§5.3 で fixture 側にも足す） |
 | `capture` | `EvidenceRef.path` |
 | `captureRawHash` | 観測記録の生 byte から再計算した値 |
 | `captureHash` | 観測記録の正規化抜粋から再計算した値 |
 | `normalizationVersion` | `EvidenceRef.normalizationVersion` と harness の実装版 |
 | `isolated` | `true` であること |
-| `internalRunMarker` | fixture の `rig.internalRunMarker` |
+| `internalRunMarker` | **`true` であること**。fixture との一致だけを見ると、双方を `false` にすれば通る |
 | `recorderErrors` | `0` であること |
+
+**`cliVersion` の canonical 規則**: rig は `{ "$CLAUDE_BIN" --version; } > <label>.version` で
+保存する。`--version` の出力は末尾に LF が付く（実測: `... Code)\x0a`）。fixture の
+`nativeVersion` は改行を含まないので、そのまま比較すると正当な manifest が不一致になる。
+manifest へ書く時点で **UTF-8 の単一行として読み、末尾の CRLF か LF を 1 つだけ取り除く**。
+複数行が返る CLI が現れたら失敗させる（黙って 1 行目を採らない）。
 
 **scope の限界**: manifest は rig が書くので、rig を動かす人を信頼する境界は残る。
 これは repository の checkout を信頼するのと同じ水準で、`real-cli-e2e` の定義に
@@ -321,8 +343,9 @@ evidence がある          → 各 ref について:
     再計算した digest が ref.evidenceHash と違う     → 失敗
     manifest がある場合は §2.5 の照合表を全件      → 1 つでも違えば失敗
   全 ref が通ったとき refVerified = true
-  manifest 付きの ref が 1 件以上あるとき manifestBacked = true
 ```
+
+`manifestBacked` は **ref ごとの属性**であって fixture の属性ではない（§4.2）。
 
 「失敗」は組み立て全体の失敗。当該 cell だけ黙って `source-test` へ落として続行しない。
 落として続行すると、証拠の差し替えを忘れた状態が緑のまま残る。
@@ -332,15 +355,23 @@ evidence がある          → 各 ref について:
 `assemble.ts:280`（capture cell）、`:349`（highLevel cell）、`:383`（prompt 対の再刻印）の
 3 箇所すべてが `verified` を見る。`Boolean(f.evidenceHash)` を見る経路を 1 つも残さない。
 
-**昇格の条件は 3 つ揃ったとき**
+**昇格は cell ごとに、その cell を支持する ref を見て決める**
 
-1. `refVerified`（全 ref の digest と manifest 照合が通っている）
-2. `manifestBacked`（その cell を支持する ref が manifest 付き）
-3. その cell の主張が §4.3 で導ける種類であり、導出値と申告値が一致している
+```
+cell ごと:
+  supporting = fixture の ref のうち、§4.3 の導出値が fixture の申告値と一致するもの
+  supporting が空                            → 失敗（申告を支持する記録が 1 件も無い）
+  主張が §4.3 で「導けない」種類              → source-test
+  supporting に manifest 付きの ref が無い    → source-test（legacy 証拠だけ）
+  それ以外                                    → real-cli-e2e。evidenceRefs には supporting を載せる
+```
 
-1 つでも欠ければ `source-test` に留める（組み立ては失敗させない。「証拠が弱い」は
-正当な状態であって異常ではない）。異常として **失敗**させるのは、
-digest 不一致・manifest 不整合・導出値と申告値の食い違い・空配列・未知の版。
+**fixture 単位の `manifestBacked` を使わない理由**: legacy ref A がその cell を支持し、
+同じ fixture に無関係な manifest 付き ref B があるとき、fixture 単位の boolean だと
+B の manifest で A の主張が昇格してしまう。混在 fixture を使った回帰 test を置く。
+
+`source-test` へ留めるのは異常ではない（証拠が弱いという正当な状態）。**失敗**させるのは
+digest 不一致・manifest 不整合・導出値と申告値の食い違い・支持 ref ゼロ・空配列・未知の版。
 
 **prompt 対の同一 run 拘束**: `:383` は「1 つの実測が対を同時に証明した」ことを要求する。
 1 つの fixture が複数 run を束ねられるようになった以上、fixture が同じことは同一 run の
@@ -369,8 +400,16 @@ interface VerifiedClaims {
 }
 ```
 
-fixture の申告は「この記録がこの値を支持する」と一致しなければならない。
-一致しない主張は **失敗**（黙って値を差し替えない）。
+#### 複数 ref の集約
+
+既存 fixture は複数 run の**和集合**を表す。`claude/interrupt-and-hook-timeout` の 5 本は
+それぞれ別の観測で、どの 1 本も fixture の全主張を支持しない。したがって
+
+- fixture の 1 つの主張は、**いずれか 1 件以上の ref が同じ値を導出**すれば成立する
+- 成立させた ref だけを、その cell の `evidenceRefs` へ載せる
+- どの ref も導出しない主張は **失敗**（黙って値を差し替えない）
+
+「全 ref が全主張を支持する」ことは要求しない。要求すると既存 fixture が全件落ちる。
 
 #### 導ける主張と、導けない主張
 
@@ -382,7 +421,8 @@ fixture の申告は「この記録がこの値を支持する」と一致しな
 | `session_started` / `user_prompted` / `session_ended` = native | 対応 hook（`SessionStart` / `UserPromptSubmit` / `SessionEnd`）が実在する | **導ける** |
 | `tool_started` / `tool_completed` = native | `PreToolUse` / `PostToolUse` が実在する | **導ける** |
 | `assistant_completed` = synthesized | `Stop` の payload に `last_assistant_message` **欄**が存在する（値は伏せ字でよい） | **導ける** |
-| `turn_completed` = synthesized | `UserPromptSubmit` / `Stop` / `SessionEnd` が同じ `prompt_id` token を共有する | **導ける**（相関 token のおかげ） |
+| `turn_completed`（Claude）= synthesized | `UserPromptSubmit` と `Stop` が同じ `prompt_id` token を共有し、`turn_id` 欄が無い | **導ける**（相関 token のおかげ） |
+| `turn_completed`（Codex）= native | `UserPromptSubmit` と `Stop` が同じ `turn_id` token を共有する | **導ける**。Codex fixture 3 件は実際に `native` を申告しており、Claude と同じ規則にすると全件落ちる |
 | `session_interrupted` | `Stop` が無く `SessionEnd` がある | **導ける** |
 | `subagentCapture` = native | `SubagentStop` が実在する | **導ける** |
 | `stableNativeSessionId` = native | 全 event の `session_id` が同じ token | **導ける**（相関 token のおかげ） |
@@ -393,6 +433,10 @@ fixture の申告は「この記録がこの値を支持する」と一致しな
 #### 導けない主張の扱い
 
 **`real-cli-e2e` を名乗らせない。** 該当 cell は `source-test` に留める。
+これらの cell については、fixture の申告値を導出値と照合しない（導出値が無いため）。
+申告のままの値を載せるが、証拠強度は上げない。
+
+
 これらを裏付けるには「注入 token が応答に現れたか」のような本文由来の述語が要り、
 それは正規化が伏せる情報なので、**digest を再取得安定にする設計と本質的に両立しない**。
 
@@ -473,8 +517,24 @@ normalizer を伏せ字にしても直らない。
 
 対処:
 
-- **成果物へ出る自由文をすべて対象にする。** `limitations`（fixture / event の両方）と
-  `scenario` が対象。`scenario` は §5.1 のとおり `scenarioId` へ置き換えて matrix から外す
+**手作業の無害化だけでは将来の経路を塞げない。** backfill で既存 8 fixture を直しても、
+次に自由文へ実値を書いた fixture は素通りする。組み立て時に機械的に弾く規則を置く。
+
+**runtime 規則**: 成果物へ出す自由文は、その fixture が参照する観測記録の秘密欄
+（`prompt` / `last_assistant_message` / `cwd` / `transcript_path` / 入れ子の `tool_input`・
+`tool_response` の値）から取った **16 文字以上の部分文字列**を含んでいたら、組み立てを
+**失敗**させる。含んでいる箇所は理由コードと欄名まで示し、中身は出さない。
+
+16 文字という下限は、`OK` や `done` のような短い一般文字列の偽陽性を避けるため。
+下限より短い秘密は原理的に捕まらないので、これは「取りこぼしのある検査」であって
+信頼境界ではない。信頼境界は下の設計側にある。
+
+**より強い形（将来）**: 公開用 limitations を固定コードか allowlist された構造にし、
+原文は fixture 内だけに残す。自由文を matrix へ一切コピーしない設計。
+本 issue では runtime 規則までにして、構造化は別 issue へ切り出す。
+
+- **成果物へ出る自由文をすべて対象にする。** `limitations`（fixture / event の両方）が対象。
+  `scenario` は §5.1 のとおり `scenarioId` へ置き換えて matrix から外す
 - backfill の際に 8 fixture の自由文から、実値・token・識別子・絶対 path を取り除く
 - 成果物へ出す path は置き場からの相対 path のみ（`claude-interrupt3.jsonl` のようなラベル）で、
   `^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$` に制約する
@@ -528,3 +588,11 @@ normalizer を伏せ字にしても直らない。
 | **M31** | 公開 API の入力を `string` にする | 不正 UTF-8 の記録が呼び出し側の復号で素通りしないこと |
 | **M32** | `capabilityHashInputs` を ad-hoc 連結へ戻す | 欄の境界が曖昧な 2 つの入力が同じ hash にならないこと |
 | **M33** | `scenarioId` をやめて自由文 `scenario` を matrix へ出す | canary が matrix へ出ないこと |
+| **M34** | legacy ref から `captureRawHash` の照合を外す | 正規化が伏せる差（空行追加・時刻変更）だけを変えた記録が棄却されること |
+| **M35** | `manifestBacked` を fixture 単位にする | legacy ref が支持する cell と manifest 付き ref が同居する fixture で、その cell が昇格しないこと |
+| **M36** | 複数 ref の集約を「全 ref が支持」にする | 5 本を参照する `claude/interrupt-and-hook-timeout` が通ること |
+| **M37** | `turn_completed` の導出を Claude 規則へ統一する | Codex fixture 3 件の `native` 申告が通ること |
+| **M38** | `manifest.internalRunMarker` の検査を fixture との一致だけにする | manifest と fixture の双方が `false` の組み合わせが棄却されること |
+| **M39** | `cliVersion` の末尾改行を取り除かない | 正当な manifest が `nativeVersion` と一致すること |
+| **M40** | schema の `manifest` / `manifestHash` を片方だけ必須にする | legacy fixture 8 件が通り、片方だけの ref が弾かれること |
+| **M41** | 自由文の runtime 検査を外す | 参照 raw の秘密欄由来の 16 文字以上を含む自由文が棄却されること |

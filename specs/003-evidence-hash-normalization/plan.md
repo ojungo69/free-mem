@@ -137,7 +137,14 @@ node --experimental-strip-types --test harness/evidence/normalize.test.ts
 node --experimental-strip-types harness/assemble.ts --self-test
 node --experimental-strip-types --test harness/continuity/*.test.ts
 vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json    # CI と同じ pinned compiler
-node harness/contract-hashes.mjs > /tmp/ch.json && diff harness/contract-hashes.json /tmp/ch.json
+
+# matrix の生成（usage: assemble.ts <fixturesDir> <outFile>）
+node --experimental-strip-types harness/assemble.ts harness/fixtures/claude harness/matrix/claude.json
+node --experimental-strip-types harness/assemble.ts harness/fixtures/codex  harness/matrix/codex.json
+
+# contract hash: 更新と、CI と同じ差分検証
+node harness/contract-hashes.mjs > harness/contract-hashes.json          # 更新
+node harness/contract-hashes.mjs > /tmp/ch.json && diff harness/contract-hashes.json /tmp/ch.json  # 検証
 ```
 
 `npx tsc` は使わない。CI（`.github/workflows/ci.yml:61`）は
@@ -254,7 +261,9 @@ constitution III を既定で破る向きなので採らない。
 | 向き | 内容 |
 |---|---|
 | 攻撃側 | 形式は正しい 64 桁 hex + 実在しない path / 別物の path / 未知の版 → いずれも棄却。`..`・絶対 path・脱出 symlink → 拒否 |
-| 通過側 | 許容した環境差だけが違う再取得（`claude-interrupt3` / `claude-interrupt4`）→ 同じ digest で昇格が成功する |
+| 通過側（正規化） | 許容した環境差だけが違う再取得（`claude-interrupt3` / `claude-interrupt4`）→ 同じ `evidenceHash` になる（昇格の話ではない。legacy 証拠なので昇格しない） |
+| 通過側（昇格） | **synthetic な観測記録・manifest・fixture を作って昇格を確認する。** 既存 16 件はすべて legacy なので、現行データだけでは「正しい証拠が本当に `real-cli-e2e` へ上がる」ことを確かめられない。常に `source-test` を返す壊れた実装でも負例と移行結果は全部通ってしまう。`assemble.ts` の `selfTest` が既に `mkdtemp` で一時ディレクトリを作っているので、そこへ置く |
+| 昇格条件の分解 | 上の synthetic fixture から manifest・claim 一致・`captureRawHash`・`internalRunMarker` などを 1 条件ずつ外す table-driven な負例 |
 | 過剰正規化側 | substantive に違う 2 記録（`claude-tool-denied` / `claude-tool-ok`）→ digest が異なる。識別子の相関だけが違う 2 記録 → digest が異なる |
 | 主張の捏造 | 正しい raw と digest のまま、実在しない hook を `sourceEvents` に挙げた fixture → 棄却 |
 | 空虚真 | `evidence: []` → 棄却 |
