@@ -1,0 +1,25 @@
+specs/003-evidence-hash-normalization/contracts/evidence-normalizer.md
+  s_2d059b4f795bca::t_24265657d619b4 40,49-52
+specs/003-evidence-hash-normalization/data-model.md
+  s_2d059b4f795bca::t_e60d38c9fbd350 211-216,323-328,350-360,376-377,380-385,388-391,449,543-545,547,549-556,558,560-564,566,568,570,572-574,623-630
+specs/003-evidence-hash-normalization/plan.md
+  s_2d059b4f795bca::t_20d251ee367385 87-90,123-124,126-128
+specs/003-evidence-hash-normalization/research.md
+  s_2d059b4f795bca::t_f1a6b5e28fba47 230-235,273-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "23ebd01f54d3dce7315c71f74df6c137f55a5600",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
