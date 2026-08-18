@@ -3,7 +3,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { assembleFromFixtures } from "../assemble.ts";
-import type { CaptureFixture } from "../schema/capability.ts";
 import { assembleWithRoot, fixtureBase, lifecycle, newRoot, putEvidence } from "./synthetic.ts";
 
 const AT = "2026-08-12T00:00:00.000Z";
@@ -29,7 +28,7 @@ function build(
 
 test("an unmodified rig manifest promotes the cell", () => {
   const m = build();
-  assert.equal(m.capabilities.capture.session_started?.evidenceKind, "real-cli-e2e");
+  assert.equal(m.capabilities.capture.session_started.evidenceKind, "real-cli-e2e");
 });
 
 // 表の 11 項目。どれか 1 つでも照合を落とすと、その行の test だけが通ってしまう。
@@ -50,7 +49,12 @@ const INVERSIONS: Array<[string, string, Record<string, unknown>]> = [
 
 for (const [testName, field, manifestOverrides] of INVERSIONS) {
   test(testName, () => {
-    assert.throws(() => build(manifestOverrides), new RegExp(`manifest ${field}`));
+    // 動的な RegExp を作らずに部分一致で見る（静的解析が RegExp の非リテラル引数を拾う）
+    assert.throws(
+      () => build(manifestOverrides),
+      (e: unknown) => String(e).includes(`manifest ${field}`),
+      `manifest ${field} の照合が効いていない`,
+    );
   });
 }
 
