@@ -1,0 +1,21 @@
+evidence/adr-003-rust-local-core.md
+  s_2d059b4f795bca::t_013c9abad581ec 78-80,85
+evidence/adr-005-rust-core-product-direction.md
+  s_2d059b4f795bca::t_484453a12be2fd 149,155-160,164,167-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4cfa50ff12ce8860314e0d020e0b8d444c7bef42",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
