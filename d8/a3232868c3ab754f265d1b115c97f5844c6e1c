@@ -1,0 +1,23 @@
+.github/workflows/dco.yml
+  s_2d059b4f795bca::t_ef0bc261479a76 18-22
+evidence/adr-004-licensing.md
+  s_2d059b4f795bca::t_fd2b372dd1229f 150-155,249-250,276
+harness/dco-check.test.mjs
+  s_2d059b4f795bca::t_3c71b1063c69eb 136-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d8a3232868c3ab754f265d1b115c97f5844c6e1c",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
