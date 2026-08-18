@@ -5,7 +5,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { findUnsignedCommits } from "./dco-check.mjs";
 
@@ -94,7 +94,7 @@ test("bot を名乗る author email でも署名があれば通す", () => {
 //
 // GitHub が required status check を照合する名前は job の `name`、無ければ job id。どちらの
 // 綴りでも `dco` という check を作れるので両方拾う。indent は固定しない（4 space でも valid）。
-const DCO_CHECK_NAME = /^\s+(?:dco:|name:\s*["']?dco["']?)\s*(?:#.*)?$/gm;
+const DCO_CHECK_NAME = /^\s+(?:["']?dco["']?:|name:\s*["']?dco["']?)\s*(?:#.*)?$/gm;
 
 test("dco check は 1 経路だけで、base branch 側から走る", () => {
   const workflowDir = fileURLToPath(new URL("../.github/workflows", import.meta.url));
@@ -114,11 +114,13 @@ test("dco check は 1 経路だけで、base branch 側から走る", () => {
   assert.doesNotMatch(workflow, /^ +pull_request:$/m);
   // checkout に ref を渡すと base ではなく PR head を取り出してしまう。
   assert.doesNotMatch(workflow, /^\s+ref:/m);
-  // job を skip させれば、検査せずに成功した check が出る。
-  assert.doesNotMatch(workflow, /^\s+(?:if|continue-on-error):/m);
+  // job を skip させれば、検査せずに成功した check が出る。`needs` も同じで、依存先が失敗すると
+  // この job は skip され、required check としては成功と同じ扱いになる。
+  assert.doesNotMatch(workflow, /^\s+(?:if|continue-on-error|needs):/m);
   // retarget (edited) を落とすと、main へ向いた PR が検査されないまま残る。
   assert.match(workflow, /types:.*edited/);
-  assert.match(workflow, /node harness\/dco-check\.mjs/);
+  // 行全体で固定する。`run: echo node harness/dco-check.mjs ...` でも部分一致は通ってしまう。
+  assert.match(workflow, /^ +run: node harness\/dco-check\.mjs "\$BASE_REF" "\$HEAD_REF"$/m);
 });
 
 test("本文中の引用や行途中にある Signed-off-by は trailer として扱わない", () => {
@@ -210,6 +212,22 @@ test("実スクリプト: 検査対象を確定できない場合は fail-closed
   assert.equal(run(root, ["HEAD", "HEAD", "extra"]).status, 2, "余分な引数");
   assert.equal(run(root, ["does-not-exist", "HEAD"]).status, 2, "解決できない ref");
   assert.equal(run(root, ["HEAD", "HEAD"]).status, 2, "範囲が空");
+});
+
+// 起動判定が path を解決できないとき、`false` を返すと検査せず exit 0 で終わる。argv[1] を
+// 存在しない path にして import し、握り潰さず main() へ届くことを固定する。
+test("実スクリプト: 起動判定が path を解決できなくても main() に到達する", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "dco-check-argv-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const source = `process.argv[1] = ${JSON.stringify(join(root, "missing.mjs"))};
+await import(${JSON.stringify(pathToFileURL(script).href)});`;
+
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", source], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /usage: dco-check\.mjs/);
 });
 
 // 起動判定が壊れると、ゲートは何も検査せず exit 0 で終わる。symlink 経由でも main() に届くこと。

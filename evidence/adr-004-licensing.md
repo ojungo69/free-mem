@@ -269,4 +269,4 @@ license 付与は取り消せない。一度公開した version に対する gr
 
 - 第三者は Core 1.0 を明確な条件で利用・改変・再配布できる。
 - vendored codemem の MIT 表示と権利関係は分離されたまま維持される。
-- `dco` を required status check へ登録した後は、外部 contribution が DCO を通り、provenance が PR に残る。
+- 上の残存経路を閉じ、`dco` を required status check へ登録した後は、外部 contribution が DCO を通り、provenance が PR に残る。
