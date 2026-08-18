@@ -164,7 +164,8 @@ Behavioral metricは`number | "unsupported"`。ただし該当Phase/Releaseが�
 
 - Phase順序はv6.1 §30を基礎とするが、FR-3P / SC-3PをPhase 3 product実装前のblocking barrierとして挿入する。
 - Contract preflightの`complete`はaddendum §13と同一predicate: required scenario manifestとのexact-set一致（missing / extra / duplicate / manifest hash mismatch は fail）+ 全scenario disposition済み + evidence artifact存在 + matrix再生成 + runtime-neutral contract green。capabilityがunsupported/unknown_after_testでもgeneric/manual implementationは可能だが、automatic strategy/Tierはproven時のみ。
-- #1 Stage 0/1がcutover roadmapの進行可否と候補scopeを確定するまで、大規模なPhase 2以降のTS product codeを増やさない。schema/fixture/harnessはruntime-neutralなので並行可能。**Core 1.0の現行runtime authorityはTypeScript/Nodeのまま**（v6.1 / ADR-001）で、Rustへのdefault切替はADR-005のCutover gate 1–10と#84の正本連鎖改訂が完了した後に成立する。Rustを標準実行基盤とする戦略目標自体はADR-005で決着済み。
+- 大規模なPhase 2以降のTS product codeは**#1 Stage 0の完了まで**増やさない（Stage 0完了 = ADR-003 + 凍結した4 contract + cutover gate定義。ADR-003「帰結」、tasks.md「Runtime barrier」）。schema/fixture/harnessはruntime-neutralなので並行可能。
+- Stage 1が決めるのはroadmapを進めてよいかと候補scopeの評価までである。実際のCore 1.0のcutover scopeと時期は、Cutover gate 1–10と#84の完了後に確定する。**Core 1.0の現行runtime authorityはTypeScript/Nodeのまま**（v6.1 / ADR-001）で、Rustを標準実行基盤とする戦略目標自体はADR-005で決着済み。
 - Phase 9〜11は後続feature。
 - public sourceはCore 1.0 releaseを意味せず、Phase 8までtag/package/release禁止。
 - `resume_mode=off`はcompactを含む全automatic contextを無効化する。
