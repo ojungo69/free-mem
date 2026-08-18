@@ -91,6 +91,29 @@ test("a fixture that references two runs carries a manifest for each", () => {
   assert.equal(m.capabilities.capture.session_started.verifiedAt, "2026-08-13T09:30:00.000Z");
 });
 
+// 遅いほうを選ぶ判定は「文字列の大小」ではない。小数秒の桁数が違うと
+// `…:00.1Z` < `…:00Z` になり、文字列比較は早いほうを選んでしまう
+test("verifiedAt picks the later instant, not the larger string", () => {
+  const root = newRoot();
+  const late = putEvidence(root, "run-late", atTime(lifecycle("s1", "p1"), "2026-08-13T09:30:00.1Z"), {
+    manifest: true,
+  });
+  const early = putEvidence(root, "run-early", atTime(lifecycle("s2", "p2"), "2026-08-13T09:30:00Z"), {
+    manifest: true,
+  });
+  const m = assembleWithRoot(
+    [
+      fixtureBase({
+        fixtureId: "claude/fractional",
+        observedEvents: [{ kind: "session_started", at: AT, capability: "native", sourceEvents: ["SessionStart"] }],
+        evidence: [late, early],
+      }),
+    ],
+    root,
+  );
+  assert.equal(m.capabilities.capture.session_started.verifiedAt, "2026-08-13T09:30:00.1Z");
+});
+
 test("manifest capturedAt must come from the capture, not from the fixture", () => {
   const root = newRoot();
   const ref = putEvidence(root, "late", atTime(lifecycle("s1", "p1"), "2026-08-13T09:30:00.000Z"), {

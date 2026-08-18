@@ -11,6 +11,22 @@ import test from "node:test";
 
 const CLIS = ["claude", "codex"] as const;
 
+test("no committed fixture names a manifest while the recorder is forgeable (#90)", () => {
+  // 名前の規約ではなく**昇格の入力**で見る。`.manifest.json` という綴りは verification が
+  // 要求していないので、suffix だけを見る検査は別名の manifest を素通しする
+  for (const cli of CLIS) {
+    const dir = new URL(`../fixtures/${cli}/`, import.meta.url);
+    for (const name of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
+      const fixture = JSON.parse(readFileSync(new URL(name, dir), "utf8")) as {
+        evidence?: Array<{ manifest?: unknown }>;
+      };
+      for (const ref of fixture.evidence ?? []) {
+        assert.equal(ref.manifest, undefined, `${cli}/${name}: #90 が閉じるまで manifest は名指ししない`);
+      }
+    }
+  }
+});
+
 test("no rig-written manifest is committed while the recorder is forgeable (#90)", () => {
   for (const cli of CLIS) {
     const dir = new URL(`../fixtures/${cli}/raw/`, import.meta.url);

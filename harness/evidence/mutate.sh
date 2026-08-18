@@ -18,10 +18,13 @@ NORMALIZE=harness/evidence/normalize.ts
 SCHEMA=harness/schema/capability.schema.json
 IMPORT=harness/rig/import-evidence.mjs
 SCHEMAV=harness/schema/validate.ts
+# 出荷データ側。kill switch (#90) は実装ではなく commit 済みの成果物を見るので、
+# 実装の変異では触れない。fixture 1 件を変異対象に入れて歯止めが本当に鳴るかを見る
+FIXTURE=harness/fixtures/claude/lifecycle-basic.json
 HASHES=harness/contract-hashes.json
 TASKS=specs/003-evidence-hash-normalization/tasks.md
 
-MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$SCHEMAV" "$IMPORT" "$HASHES")
+MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$SCHEMAV" "$IMPORT" "$HASHES" "$FIXTURE")
 TESTS=(
   harness/evidence/hash-inputs.test.ts
   harness/evidence/killswitch.test.ts
@@ -47,8 +50,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 67:
-    bad.append(f"変異表の行が {len(table)} 件（67 件でない）")
+if len(table) != 69:
+    bad.append(f"変異表の行が {len(table)} 件（69 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -246,6 +249,10 @@ mutate $VERIFY '    ["capturedAt", manifest.capturedAt === computed.capturedAt],
 mutate $VERIFY '    const capturedAt = captureCapturedAt(bytes);' '    const capturedAt = (ref as unknown as { capturedAt: string }).capturedAt ?? f.capturedAt;' && run 'M62: 時刻を記録から導かず申告から取る'
 mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' '      (r) => r.manifestBacked,' && run 'M63: 申告 hook 名を持たない記録で昇格させる'
 mutate $ASSEMBLE '        verifiedAt: promotion.verifiedAt ?? f.capturedAt,' '        verifiedAt: f.capturedAt,' && run 'M64: 公開する時刻を fixture の申告から取る'
+mutate $ASSEMBLE '    return x >= y ? a : b;' '    return a > b ? a : b;' && run 'M67: 遅いほうの判定を文字列比較へ戻す'
+mutate $FIXTURE '      "normalizationVersion": 1' '      "normalizationVersion": 1,
+      "manifest": "anything.json",
+      "manifestHash": "0000000000000000000000000000000000000000000000000000000000000000"' && run 'M66: 出荷 fixture から manifest を名指しする'
 mutate $SCHEMAV '    issues.push({ path, message: "value not in enum" });' '    issues.push({ path, message: `value not in enum: ${JSON.stringify(value)}` });' && run 'M65: 棄却した値を診断へ戻す'
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
   && run_custom 'M25: 契約 hash の入力名を書き換える' check_hashes

@@ -295,6 +295,8 @@ done
 | M63 | `harness/assemble.ts` 申告 hook 名を持たない記録での昇格 | `manifest.test.ts::a claimed source event that lives only in an unbacked capture does not promote` | T047 |
 | M64 | `harness/assemble.ts` 公開する時刻の出どころ | `manifest.test.ts::a fixture that references two runs carries a manifest for each` | T047 |
 | M65 | `harness/schema/validate.ts` 棄却した値の診断への露出 | `secrets.test.ts::schema diagnostics do not echo the rejected value` | T047 |
+| M66 | 出荷 fixture が manifest を名指しする（#90 の歯止め） | `killswitch.test.ts::no committed fixture names a manifest while the recorder is forgeable (#90)` | T047 |
+| M67 | `harness/assemble.ts` 遅いほうの判定を文字列比較へ戻す | `manifest.test.ts::verifiedAt picks the later instant, not the larger string` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 
