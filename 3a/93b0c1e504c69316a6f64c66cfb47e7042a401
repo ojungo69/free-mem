@@ -1,0 +1,29 @@
+harness/evidence/mutate.sh
+  s_2d059b4f795bca::t_d2f4552bb1e90e 49-50,234
+harness/evidence/normalize.ts
+  s_2d059b4f795bca::t_3bc01c60f808dd 106-108
+harness/evidence/promotion.test.ts
+  s_2d059b4f795bca::t_8803351ccf4877 557-581
+harness/matrix/claude.json
+  s_2d059b4f795bca::t_27d7b4a439ca88 4
+harness/matrix/codex.json
+  s_2d059b4f795bca::t_8de6eb2579404b 4
+specs/003-evidence-hash-normalization/tasks.md
+  s_2d059b4f795bca::t_b195176d0c92eb 198-199,292,312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3a93b0c1e504c69316a6f64c66cfb47e7042a401",
+  "prompts": {},
+  "sessions": {
+    "s_2d059b4f795bca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d245af99-f436-45c3-8c15-73c77275a656",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
