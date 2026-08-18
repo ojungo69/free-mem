@@ -354,6 +354,13 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
   );
   const sourceIndex = new Map(evidenceSources.map((s, i) => [sourceKey(s), i]));
 
+  /** 遅いほうの時刻。読めない値が来たら文字列比較に落とす（判定を止めない） */
+  const laterInstant = (a: string, b: string): string => {
+    const [x, y] = [Date.parse(a), Date.parse(b)];
+    if (Number.isNaN(x) || Number.isNaN(y)) return a > b ? a : b;
+    return x >= y ? a : b;
+  };
+
   interface Promotion {
     evidenceKind: "real-cli-e2e" | "source-test";
     evidenceRefs: number[];
@@ -398,8 +405,9 @@ export function assembleFromFixtures(fixtures: CaptureFixture[], ctx?: EvidenceC
       // 取得側が書いた manifest でしか裏付けられない
       evidenceKind: backed.length > 0 ? "real-cli-e2e" : "source-test",
       evidenceRefs: chosen.map((r) => sourceIndex.get(sourceKey(r.source)) ?? -1).sort((a, b) => a - b),
-      // 公開する時刻も記録側から取る。fixture の自己申告を verifiedAt に載せない
-      verifiedAt: backed.length > 0 ? backed.map((r) => r.capturedAt).sort().at(-1) ?? null : null,
+      // 公開する時刻も記録側から取る。fixture の自己申告を verifiedAt に載せない。
+      // 文字列比較では並ばない（小数秒の桁数が違うと `.1Z` < `Z` になる）ので時刻で比べる
+      verifiedAt: backed.length > 0 ? backed.map((r) => r.capturedAt).reduce(laterInstant) : null,
     };
   };
 
