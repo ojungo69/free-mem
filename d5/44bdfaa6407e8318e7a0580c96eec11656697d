@@ -1,0 +1,33 @@
+evidence/phase1-test-retire-list.md
+  s_e5710cbcbed85b::t_0a8df3d43918fd 41-44,169-171
+harness/phase1-test-set-compare.mjs
+  s_e5710cbcbed85b::t_9ea60fc7c5913d 10-12,14
+specs/001-agent-memory-core/contracts/spool-format-v1.md
+  s_e5710cbcbed85b::t_ade5f84c27034d 30-35,37,41,58,72-74,77-78,87-92,103,118,131,133-134,140-141,143,145,147,149,151,155,159,164,178-179,187-194,196-197,202,204-206,214-217,235,237,241,245-249,251,253,257,263,265-266,268-269,275-276,278,286,297,299,303,305,307,310-314,316,322-326,328,349,355,363,369,385,388,391,394
+vendor/codemem/packages/core/src/spool.test.ts
+  s_e5710cbcbed85b::t_82d0c3b7b6566a 48-50,84-104,129-131,482-542
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_e5710cbcbed85b::t_ab90762640732d 2434-2440,2453-2457,2492-2497
+  s_e5710cbcbed85b::t_560b944aae4305 2499
+vendor/codemem/packages/core/src/spool.ts
+  s_e5710cbcbed85b::t_ea34655095d2c3 2,256-264,278-285,326-335,341
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_e5710cbcbed85b::t_8d85ebe04f2654 2434-2440,2453-2457,2492-2497
+  s_e5710cbcbed85b::t_2618d9ee92bc67 2499
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d544bdfaa6407e8318e7a0580c96eec11656697d",
+  "prompts": {},
+  "sessions": {
+    "s_e5710cbcbed85b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65d44c5d-e71b-42bd-8ee1-dcf5092c5d47",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
