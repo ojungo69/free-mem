@@ -24,7 +24,7 @@ if [ "\${1:-}" = --version ]; then
 { echo "HOME=\$HOME"; echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR:-<unset>}"; echo "INTERNAL=\${AGENT_MEMORY_INTERNAL_RUN:-<unset>}"; echo "PWD=\$PWD"; echo "CAPTURE=\${CAPTURE_FILE:-<unset>}"; } > "\${CAPTURE_FILE:-/dev/null}.version-env"
 ${versionExtra}
 printf '%s\\n' '${VERSION}'; exit 0; fi
-STEM="\${CAPTURE_FILE%.jsonl}"
+STEM="\${CAPTURE_FILE%.jsonl}"; export STEM  # 子 shell から見えないと、目印を書かせる test が空振りする
 # 前の run の終了コードが残ったまま今回の run が始まっていないか。run 中にしか観測できない
 if [ -e "$STEM.exit" ]; then printf 'stale\\n' > "$STEM.stale-exit"; fi
 # 資格情報が置かれるのは run の最中だけ（trap で消える）ので、ここでしか観測できない
@@ -37,7 +37,7 @@ emit Stop '{"hook_event_name":"Stop","prompt_id":"p-stub","last_assistant_messag
 emit SessionEnd '{"hook_event_name":"SessionEnd","prompt_id":"p-stub","reason":"other","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
 `;
 
-function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false, expectRunFailure = false } = {}) {
+function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false, skipRun = false, expectRunFailure = false, env: extraEnv = {} } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), "rig-manifest-"));
   cpSync(HARNESS, join(tmp, "harness"), { recursive: true });
   const stubPath = join(tmp, "stub-cli");
@@ -48,11 +48,12 @@ function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false, exp
   const base = join(tmp, "rig-base");
   // HOME は差し替える。実 HOME のままだと rig が開発者の Claude 資格情報を
   // 一時 rig へ複製する（trap で消えるが、SIGKILL で落ちれば残る）
-  const env = { ...process.env, HOME: join(tmp, "home"), RIG_BASE: base, CLAUDE_BIN: stubPath };
+  const env = { ...process.env, HOME: join(tmp, "home"), RIG_BASE: base, CLAUDE_BIN: stubPath, ...extraEnv };
   const sh = (...args) => spawnSync("bash", [rig, ...args], { encoding: "utf8", env });
 
   const setup = sh("setup");
   assert.equal(setup.status, 0, setup.stderr);
+  if (skipRun) return { tmp, base, sh, rawDir: join(tmp, "harness", "fixtures", "claude", "raw") };
   const run = sh("claude-run", LABEL, "hello");
   if (!expectRunFailure) assert.equal(run.status, 0, run.stderr);
   const rawDir = join(tmp, "harness", "fixtures", "claude", "raw");
@@ -260,8 +261,15 @@ test("a process that escapes the group is not released from the lock by the rig"
 test("a child that ignores SIGTERM does not wedge the rig", () => {
   // group に残った子が SIGTERM を無視すると lock を握ったままになり、以後の run が全部
   // 止まる。畳めるはずの残骸で可用性を失う形なので、猶予のあとに SIGKILL まで上げる
-  const stubborn = 'sh -c \'trap "" TERM; sleep 20\' </dev/null >/dev/null 2>&1 &';
-  const { sh } = rigRun({ stubExtra: stubborn, skipImport: true });
+  const stubborn =
+    'sh -c \'trap "" TERM; printf x > "$STEM.stubborn"; sleep 60\' </dev/null >/dev/null 2>&1 &\n' +
+    'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.stubborn" ] && break; sleep 0.2; done';
+  const { sh, base } = rigRun({ stubExtra: stubborn, skipImport: true });
+  // 起動を待たずに次の run を試すと、子が居ない状態を測って検査が空振りする
+  assert.ok(
+    existsSync(join(base, "capture", `claude-${LABEL}.stubborn`)),
+    "SIGTERM を無視する子が起動していない（検査が空振りする）",
+  );
   const again = sh("claude-run", LABEL, "hello");
   assert.equal(again.status, 0, `SIGTERM を無視する残骸で次の run が止まった: ${again.stderr}`);
 });
@@ -346,10 +354,48 @@ test("the version probe runs in the isolated environment, not the caller's", () 
   // 作業場所も見る: CLI は cwd から上へ設定を探すので、呼び出し元に居るだけで実設定に届く
   const { base } = rigRun({ skipImport: true });
   const seen = readFileSync(join(base, "capture", `claude-${LABEL}.version-probe.jsonl.version-env`), "utf8");
-  assert.match(seen, new RegExp(`HOME=${base}/home\n`), `版の問い合わせが隔離 HOME で走っていない: ${seen}`);
-  assert.match(seen, new RegExp(`CLAUDE_CONFIG_DIR=${base}/claude-config\n`), seen);
+  assert.match(seen, new RegExp(`HOME=${base}/version-state/home\n`), `版の問い合わせが隔離 HOME で走っていない: ${seen}`);
+  assert.match(seen, new RegExp(`CLAUDE_CONFIG_DIR=${base}/version-state/claude-config\n`), seen);
   assert.match(seen, /INTERNAL=1\n/, seen);
-  assert.match(seen, new RegExp(`PWD=${base}/workspace\n`), `版の問い合わせが呼び出し元の作業場所で走っている: ${seen}`);
+  assert.match(seen, new RegExp(`PWD=${base}/version-state/workspace\n`), `版の問い合わせが呼び出し元の作業場所で走っている: ${seen}`);
+  // 使い捨ての state を本実行と共有しない。共有すると、初回起動で設定を書く CLI が
+  // 本実行を 2 回目の起動にしてしまう
+  assert.ok(!existsSync(join(base, "version-state")), "問い合わせ用の state が残っている");
+});
+
+test("a version probe that never returns does not hold the rig", () => {
+  // 更新待ちなどで --version が固まると、時間制限が無ければ lock と資格情報を握ったまま
+  // 帰らず、以後の run・import・teardown が全部止まる
+  const { sh, run } = rigRun({
+    stubVersionExtra: "sleep 30",
+    skipImport: true,
+    expectRunFailure: true,
+    env: { VERSION_TIMEOUT: "1" },
+  });
+  assert.notEqual(run.status, 0, "固まった問い合わせのまま run が成功した");
+  assert.match(run.stderr, /claude --version failed/, run.stderr);
+  const again = sh("teardown");
+  assert.equal(again.status, 0, `固まった問い合わせのあとで rig が握られたままになった: ${again.stderr}`);
+});
+
+test("a run that cannot take the lock leaves the holder's credentials alone", () => {
+  // lock を取れずに降りる process まで資格情報を消すと、走っている run の認証を横から壊す
+  const escape =
+    'setsid sh -c \'printf x > "$STEM.detached"; sleep 20\' </dev/null >/dev/null 2>&1 &\n' +
+    'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.detached" ] && break; sleep 0.2; done';
+  const { sh, base } = rigRun({ stubExtra: escape, skipImport: true });
+  const staged = join(base, "claude-config", ".credentials.json");
+  writeFileSync(staged, '{"token":"held-by-the-running-rig"}');
+  const blocked = sh("claude-run", LABEL, "hello");
+  assert.notEqual(blocked.status, 0, "lock を握られているのに次の run が始まった");
+  assert.ok(existsSync(staged), "lock を取れなかった run が、握っている側の資格情報を消した");
+});
+
+test("setup leaves the lock file in place", () => {
+  // teardown 側で「あれば取る」にすると、無い瞬間を見た直後に run が作って握る隙間ができる。
+  // run を通してはいけない（`with_lock` が作ってしまい、setup 側の検査にならない）
+  const { base } = rigRun({ skipRun: true });
+  assert.ok(existsSync(join(base, ".lock")), "setup が lock file を作っていない");
 });
 
 test("what the version probe records never reaches the scenario's capture", () => {

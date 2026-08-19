@@ -30,12 +30,18 @@ NODE_DIR="$(dirname "$NODE_BIN")"
 purge_credentials() {
   rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json" 2>/dev/null || true
 }
-trap purge_credentials EXIT INT TERM
+# **置いた本人だけが消す**。lock を取れずに exit 4 で降りる process までここを通ると、
+# 走っている run のために置いてある資格情報を横から消し、その run の認証を壊す
+STAGED=0
+purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }
+trap purge_own_credentials EXIT INT TERM
 
 # 資格情報は「その 1 回の子 CLI 実行の間だけ」置く（trap で必ず消える）。
 stage_credentials() { # $1 = claude | codex
   # 置く前に必ず消す。SIGKILL で trap が走らなかった前回の残りと、もう一方の provider の
-  # 分がここに残っていると、測定対象の tool から同じ UID で読める
+  # 分がここに残っていると、測定対象の tool から同じ UID で読める。
+  # ここを通った時点で「置いた本人」になる（lock は既に握っている）
+  STAGED=1
   purge_credentials
   # **実行する CLI の分だけ**置く。両方置くと、測定対象の CLI が動かす tool から
   # もう一方の資格情報を同じ UID で読める（read-only sandbox は読み取りを防がない）
@@ -50,6 +56,9 @@ stage_credentials() { # $1 = claude | codex
 setup() {
   mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"
   mkdir -p "$RIG_BASE"/{home,claude-config,codex-home,workspace,capture}
+  # lock file は setup で作る。teardown 側で「あれば取る」にすると、無い瞬間を見た直後に
+  # run が作って握る隙間ができる（その run の下から base を消せてしまう）
+  : > "$RIG_BASE/.lock"
   sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json" > "$RIG_BASE/claude-config/settings.json"
   sed "s|__HOOK__|$HOOK|g" "$DIR/codex-config-template.toml" > "$RIG_BASE/codex-home/config.toml"
   if [ ! -d "$RIG_BASE/workspace/.git" ]; then
@@ -140,15 +149,23 @@ claude_run() {
   # 記録先も分ける。問い合わせが hook を起こしたとき、その event が scenario の記録に
   # 混ざって同じ manifest と digest に入るのを防ぐ
   local ver_capture="$stem.version-probe.jsonl"
+  # 問い合わせは**使い捨ての state** で行う。同じ scratch を使うと、初回起動で設定を書く claude が
+  # 本実行を「2 回目の起動」にしてしまい、その差が scenario の記録として残る
+  local ver_state="$RIG_BASE/version-state"
+  rm -rf "$ver_state"; mkdir -p "$ver_state"/{home,claude-config,codex-home,workspace}
   set -m
-  ( cd "$RIG_BASE/workspace" && run_env claude "$ver_capture" "$CLAUDE_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
+  # 問い合わせにも時間制限を掛ける。掛けないと、更新待ちなどで固まった --version が lock と
+  # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる
+  ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env claude "$ver_capture" \
+      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
   # 畳むのが先。ここで抜けるときも残骸を置いていかない
   wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
-  # 問い合わせの記録は持ち込みの対象にしない。中身も残さない
+  # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
+  rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
@@ -180,15 +197,23 @@ codex_run() {
   # 記録先も分ける。問い合わせが hook を起こしたとき、その event が scenario の記録に
   # 混ざって同じ manifest と digest に入るのを防ぐ
   local ver_capture="$stem.version-probe.jsonl"
+  # 問い合わせは**使い捨ての state** で行う。同じ scratch を使うと、初回起動で設定を書く codex が
+  # 本実行を「2 回目の起動」にしてしまい、その差が scenario の記録として残る
+  local ver_state="$RIG_BASE/version-state"
+  rm -rf "$ver_state"; mkdir -p "$ver_state"/{home,claude-config,codex-home,workspace}
   set -m
-  ( cd "$RIG_BASE/workspace" && run_env codex "$ver_capture" "$CODEX_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
+  # 問い合わせにも時間制限を掛ける。掛けないと、更新待ちなどで固まった --version が lock と
+  # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる
+  ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env codex "$ver_capture" \
+      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CODEX_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
   # 畳むのが先。ここで抜けるときも残骸を置いていかない
   wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
-  # 問い合わせの記録は持ち込みの対象にしない。中身も残さない
+  # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
+  rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
@@ -222,6 +247,6 @@ case "${1:-}" in
   import) shift; import_evidence "$@" ;;
   # teardown も lock を取る。走っている run の下で消すと、setup が新しい .lock inode を作り、
   # 生きた測定対象の隣へ次の run が資格情報を置ける（直列化と資格情報の分離が両方外れる）
-  teardown) [ -e "$RIG_BASE/.lock" ] && with_lock; rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
+  teardown) [ -d "$RIG_BASE" ] && with_lock; rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
   *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|import <cli> <label> <scenario-id>|teardown" >&2; exit 2 ;;
 esac
