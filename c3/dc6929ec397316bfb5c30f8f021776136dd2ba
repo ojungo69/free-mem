@@ -1,0 +1,38 @@
+harness/evidence/rig-manifest.test.mjs
+  s_6d4e7666029e61::t_d99fd2ea40bae3 107-115,550
+  s_e5710cbcbed85b::t_fe460712a5e7ae 116-137,547-548
+harness/rig/rig.sh
+  s_6d4e7666029e61::t_d99fd2ea40bae3 340
+  s_e5710cbcbed85b::t_5e28b790131f6e 196,269
+harness/evidence/schema.test.ts
+  s_6d4e7666029e61::t_184aa1a4b6c7c2 9-10,61-74,129
+  s_e5710cbcbed85b::t_512a531e8efb43 75-128,130-139
+harness/schema/capability.schema.json
+  s_6d4e7666029e61::t_cff66c7a830d9f 4-36,147,292
+harness/contract-hashes.json
+  s_6d4e7666029e61::t_d3d61508493063 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c3dc6929ec397316bfb5c30f8f021776136dd2ba",
+  "prompts": {},
+  "sessions": {
+    "s_6d4e7666029e61": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01b3d-585c-7212-a2aa-161f83e40880",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_e5710cbcbed85b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65d44c5d-e71b-42bd-8ee1-dcf5092c5d47",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
