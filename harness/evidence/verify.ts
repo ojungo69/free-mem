@@ -132,14 +132,19 @@ const has = (line: NormalizedLine, key: string): boolean => line.payload[key] ==
  * 集合から payload を組ませると、欄を**外した**変異まで test が一緒に縮んで気づけない
  * （変異 M24 が実際に生き残った）ので、比較する形にしてある
  */
-export const SECRET_KEYS: ReadonlySet<string> = new Set([
+const SECRET_KEY_SET = new Set([
   "prompt",
   "last_assistant_message",
   "cwd",
   "transcript_path",
   "agent_transcript_path",
 ]);
-export const SECRET_SUBTREES: ReadonlySet<string> = new Set(["tool_input", "tool_response"]);
+const SECRET_SUBTREE_SET = new Set(["tool_input", "tool_response"]);
+// 収集が見るのは上の集合で、export するのはその複製。`ReadonlySet` は型の上の約束でしかなく、
+// 型は実行前に剥がされるので、export した Set は同じ process の別 module が `delete` できる
+// ——警報の対象を実行時に減らせると、その欄の値が成果物へ出ても誰も気づかない
+export const SECRET_KEYS: readonly string[] = [...SECRET_KEY_SET];
+export const SECRET_SUBTREES: readonly string[] = [...SECRET_SUBTREE_SET];
 
 /** 警報用の材料を **正規化前の** 記録から集める（正規化は伏せてしまうため） */
 function collectSecrets(value: unknown, inSubtree: boolean, out: Set<string>): void {
@@ -153,7 +158,7 @@ function collectSecrets(value: unknown, inSubtree: boolean, out: Set<string>): v
   }
   if (typeof value !== "object" || value === null) return;
   for (const [key, v] of Object.entries(value)) {
-    const secret = inSubtree || SECRET_KEYS.has(key) || SECRET_SUBTREES.has(key);
+    const secret = inSubtree || SECRET_KEY_SET.has(key) || SECRET_SUBTREE_SET.has(key);
     collectSecrets(v, secret, out);
   }
 }

@@ -26,6 +26,14 @@ NODE_BIN="$(command -v node || true)"
 [ -n "$NODE_BIN" ] || { echo "node not found on PATH — refusing to run (PATH に '.' が混ざる事故を防ぐ)" >&2; exit 3; }
 NODE_DIR="$(dirname "$NODE_BIN")"
 
+require_rig_base() { # 消す・権限を変える前に、そこが rig の置き場だと確かめる
+  # RIG_BASE を決めるのは呼んだ側で、teardown は中身ごと消す。既にある directory をそのまま
+  # 扱う形だと、打ち間違い 1 つで無関係な木を消し、権限まで変える。setup が置いた marker が
+  # ある場所と、まだ何も無い場所だけを扱う
+  [ ! -e "$RIG_BASE" ] || [ -f "$RIG_BASE/.rig-base" ] || {
+    echo "the given base was not created by the rig — refusing to touch it" >&2; exit 5; }
+}
+
 # 資格情報コピーは必ず消す。teardown を呼び忘れても、異常終了しても残さない。
 purge_credentials() {
   rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json" 2>/dev/null || true
@@ -54,7 +62,9 @@ stage_credentials() { # $1 = claude | codex
 }
 
 setup() {
+  require_rig_base
   mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"
+  : > "$RIG_BASE/.rig-base"
   mkdir -p "$RIG_BASE"/{home,claude-config,codex-home,workspace,capture}
   # 設定を書き換えるのは、走っている run の足元。取らずに書くと、測定対象が hook の無い
   # settings.json を読んだ記録が撮れてしまい、それでも digest は合うので証拠として通る。
@@ -309,6 +319,6 @@ case "${1:-}" in
   # 「あれば取る」にはしない。無い瞬間を見た直後に run が作った base を、lock を取らないまま
   # 消せてしまう。取るために作ってから取る（消すだけの回で作り直す形になるが、空の base を
   # 1 度作って消すだけで、握れなければそこで降りる）
-  teardown) mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
+  teardown) require_rig_base; mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
   *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|import <cli> <label> <scenario-id>|teardown" >&2; exit 2 ;;
 esac

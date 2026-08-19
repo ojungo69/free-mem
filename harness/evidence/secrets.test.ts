@@ -167,6 +167,30 @@ test("a 16+ char secret substring in a generated string fails the build", () => 
   assert.doesNotThrow(() => assertNoSecretSubstrings({ cell: { note: material } }, []));
 });
 
+test("the fields the alarm watches cannot be narrowed at run time", () => {
+  // export している一覧は複製。収集が見る集合は module の中にあるので、ここから消しても
+  // 警報の材料は減らない（減らせると、その欄の値が成果物へ出ても誰も気づかない）
+  const keys = SECRET_KEYS as string[];
+  const subtrees = SECRET_SUBTREES as string[];
+  const before = { keys: [...keys], subtrees: [...subtrees] };
+  keys.splice(keys.indexOf("cwd"), 1);
+  subtrees.splice(subtrees.indexOf("tool_input"), 1);
+  try {
+    const long = (tag: string) => `${tag}-0123456789abcdef`;
+    const line = {
+      event: "PreToolUse",
+      at: "2026-01-01T00:00:00.000Z",
+      payload: { cwd: long("cwd"), tool_input: { field: long("tool-input") } },
+    };
+    const found = collectSecretsOf(Buffer.from(`${JSON.stringify(line)}\n`, "utf8"));
+    assert.ok(found.has(long("cwd")), "export した一覧から消しただけで欄が警報の材料から外れた");
+    assert.ok(found.has(long("tool-input")), "export した一覧から消しただけで部分木が警報の材料から外れた");
+  } finally {
+    keys.splice(0, keys.length, ...before.keys);
+    subtrees.splice(0, subtrees.length, ...before.subtrees);
+  }
+});
+
 test("collectSecrets covers every secret-bearing field", () => {
   // 集合そのものから payload を組むと、欄を**外した**変異まで test が一緒に縮んで気づけない
   // （実測: 変異 M24「材料から cwd を外す」が生き残った）。そこで綴りはここに固定し、

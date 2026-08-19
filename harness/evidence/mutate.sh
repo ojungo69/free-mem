@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 132:
-    bad.append(f"変異表の行が {len(table)} 件（132 件でない）")
+if len(table) != 136:
+    bad.append(f"変異表の行が {len(table)} 件（136 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -428,7 +428,7 @@ mutate $RIG 'reap_group() {
 }
 ' 'reap_group() { kill -- "-$1" 2>/dev/null || true; }
 ' && run 'M99: SIGTERM を無視する残骸を畳み切らない'
-mutate $RIG '  teardown) mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f' '  teardown) rm -f' && run 'M100: teardown が lock を取らない'
+mutate $RIG '  teardown) require_rig_base; mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f' '  teardown) require_rig_base; rm -f' && run 'M100: teardown が lock を取らない'
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' '"$CLAUDE_BIN" --version' && run 'M101: 版の問い合わせに時間制限を掛けない'
 mutate $RIG 'RIG_BASE="$ver_state" run_env claude' 'run_env claude' && run 'M102: 版の問い合わせを本実行と同じ state で行う'
 mutate $RIG 'purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }' 'purge_own_credentials() { purge_credentials; return 0; }' && run 'M103: lock を取れなかった process も資格情報を消す'
@@ -447,7 +447,7 @@ mutate $CI '            --source . --config .gitleaks.toml' '            --sourc
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
   && run_custom 'M25: 契約 hash の入力名を書き換える' check_hashes
 
-mutate $RIG '  teardown) mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f' '  teardown) [ -d "$RIG_BASE" ] && with_lock; rm -f' && run 'M113: teardown が「あれば取る」で lock を飛ばす'
+mutate $RIG '  teardown) require_rig_base; mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f' '  teardown) require_rig_base; [ -d "$RIG_BASE" ] && with_lock; rm -f' && run 'M113: teardown が「あれば取る」で lock を飛ばす'
 mutate $RIG '  echo "rig ready"' '  echo "rig ready: $RIG_BASE"' && run 'M114: setup の報告に実行環境の絶対 path を出す'
 mutate $RIG '  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
@@ -497,6 +497,14 @@ mutate $RIG '  env -i \
 mutate $RIG '${RUN_SIGNAL:+--signal="$RUN_SIGNAL"} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' '${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' && run 'M132: signal knob の引用を外す'
 mutate $IMPORT 'if (!/^(?:0|[1-9]\d*)\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d{1,3}\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M133: 3 桁に収まる 0 詰めを通す'
 mutate $IMPORT 'if (!/^(?:0|[1-9]\d*)\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\s*(?:0|[1-9]\d{0,2})\s*$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M134: 綴りを畳んでから見る'
+
+mutate $VERIFY '    const secret = inSubtree || SECRET_KEY_SET.has(key) || SECRET_SUBTREE_SET.has(key);' '    const secret = inSubtree || SECRET_KEYS.includes(key) || SECRET_SUBTREES.includes(key);' && run 'M135: 警報の対象に実行時に広げられる一覧を使う'
+mutate $RIG '  teardown) require_rig_base; mkdir -p "$RIG_BASE"' '  teardown) mkdir -p "$RIG_BASE"' && run 'M136: teardown が置き場の出どころを確かめない'
+mutate $RIG 'setup() {
+  require_rig_base' 'setup() {' && run 'M137: setup が置き場の出どころを確かめない'
+mutate $IMPORT 'if (existsSync(`${dest}.prev`)) {
+  die("a previous record is still set aside for recovery; resolve it before importing again");
+}' ':' && run 'M138: 復旧待ちの退避があっても持ち込みを始める'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす

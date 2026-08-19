@@ -3,7 +3,7 @@
 // harness ごと複製して走らせるので、既定の証拠置き場（module からの相対）も複製側を指す。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
@@ -702,6 +702,46 @@ test("the measured workspace carries none of git's default hooks", () => {
   const { base } = rigRun({ skipRun: true });
   const dir = join(base, "workspace", ".git", "hooks");
   assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], [], "測定用 workspace の .git に hook が並んだ");
+});
+
+test("neither setup nor teardown touches a base the rig did not create", () => {
+  // RIG_BASE を決めるのは呼んだ側で、teardown は中身ごと消す。既にある directory をそのまま
+  // 扱うと、打ち間違い 1 つで無関係な木が消え、権限まで変わる
+  const tmp = mkdtempSync(join(tmpdir(), "rig-foreign-"));
+  SCRATCH.push(tmp);
+  const foreign = join(tmp, "not-a-rig");
+  mkdirSync(foreign);
+  writeFileSync(join(foreign, "keep"), "mine\n");
+  chmodSync(foreign, 0o755);
+  const rigCmd = (cmd) =>
+    spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), cmd], {
+      encoding: "utf8",
+      env: { ...process.env, RIG_BASE: foreign },
+    });
+  const down = rigCmd("teardown");
+  assert.notEqual(down.status, 0, "rig が作っていない置き場を teardown が消したと報告した");
+  assert.ok(existsSync(join(foreign, "keep")), "rig が作っていない置き場の中身が消えた");
+  const up = rigCmd("setup");
+  assert.notEqual(up.status, 0, "rig が作っていない置き場を setup が使った");
+  assert.equal(statSync(foreign).mode & 0o777, 0o755, "rig が作っていない置き場の権限を変えた");
+});
+
+test("an import does not start while a previous record is set aside", () => {
+  // 退避が残っている = 前回が戻せずに落ちた。そのまま始めると、唯一残った前の対を上書きする
+  const { sh, rawDir } = rigRun();
+  const stored = join(rawDir, `claude-${LABEL}.jsonl`);
+  const storedManifest = join(rawDir, `claude-${LABEL}.manifest.json`);
+  const before = { capture: readFileSync(stored), manifest: readFileSync(storedManifest) };
+  writeFileSync(`${stored}.prev`, "the last good capture\n");
+  const again = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(again.status, 0, "復旧待ちの退避があるのに持ち込みが始まった");
+  assert.equal(
+    readFileSync(`${stored}.prev`, "utf8"),
+    "the last good capture\n",
+    "復旧待ちの退避を上書きした",
+  );
+  assert.deepEqual(readFileSync(stored), before.capture, "退避が残っているのに記録が置き換わった");
+  assert.deepEqual(readFileSync(storedManifest), before.manifest, "退避が残っているのに manifest が置き換わった");
 });
 
 test("a label the importer would refuse never starts a measured run", () => {

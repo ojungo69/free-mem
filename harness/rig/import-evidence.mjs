@@ -144,6 +144,11 @@ if (manifest.recorderErrors !== 0) die("the recorder logged errors during this r
 // 置き場を跨いで直列化するには置き場側の lock が要るが、この rig は 1 人が順に回す道具なので
 // 取っていない
 mkdirSync(destDir, { recursive: true });
+// 退避が残っている = 前回の持ち込みが戻せずに落ちた。そのまま始めると下の rename が
+// **唯一残った前の対**を上書きする。人が中身を確かめて片付けるまで、ここで止まる
+if (existsSync(`${dest}.prev`)) {
+  die("a previous record is still set aside for recovery; resolve it before importing again");
+}
 const stagedCapture = `${dest}.tmp`;
 const stagedManifest = `${manifestPath}.tmp`;
 const removeStaged = () => {
