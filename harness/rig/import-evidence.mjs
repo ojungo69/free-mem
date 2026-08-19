@@ -40,17 +40,18 @@ function readCliVersion(path) {
 function readExitStatus(path) {
   let text;
   try {
-    text = readFileSync(path, "utf8").trim();
+    text = readFileSync(path, "utf8");
   } catch {
     die("the run did not record an exit status");
   }
-  // 縛るのは**綴り**。記録は `printf '%s\n' "$rc"` なので 0 詰め（`042`）も 4 桁もありえない
+  // 縛るのは**綴り**そのもの。記録は `printf '%s\n' "$rc"` の 1 行なので、0 詰め（`042`）も
+  // 4 桁も前後の空白もありえない。trim してから見ると、それらが正規の綴りへ畳まれて通る
   // （来たなら書いたのは rig ではない）。`^\d+$` だけだと 30 桁が Number で丸められ、元の綴りと
   // 違う値が manifest へ載る。
   // **値の範囲**（`$?` は下位 8 bit しか持てない）は manifest schema の `maximum: 255` が見る。
   // ここへ同じ検査を置いても、この値は必ず schema 検証を通ってから書かれるので何も止めない
   // ——手で書いた manifest は取り込みを通らないので、範囲の門は検証側にしか置けない
-  if (!/^(?:0|[1-9]\d{0,2})$/.test(text)) die("the recorded exit status is not a plausible exit code");
+  if (!/^(?:0|[1-9]\d{0,2})\n$/.test(text)) die("the recorded exit status is not a plausible exit code");
   return Number(text);
 }
 

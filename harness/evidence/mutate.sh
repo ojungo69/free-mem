@@ -360,7 +360,7 @@ mutate $IMPORT 'if (manifest.recorderErrors !== 0) die(' 'if (false && manifest.
 mutate $ASSEMBLE '        ...backedOnly(prev.evidenceKind === "real-cli-e2e", prev.value === "unknown" ? [] : prev.sourceEvents),' '        ...(prev.value === "unknown" ? [] : prev.sourceEvents),' && run 'M84: 先に見た側の裏付け無し hook 名を統合する'
 mutate $ASSEMBLE '        derivable && o.value === "native",' '        derivable,' && run 'M85: 高位 cell の導出可否を key だけで決める'
 mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時刻に ms より細かい桁を許す'
-mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 終了コードの綴りを見ずに読む'
+mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 終了コードの綴りを見ずに読む'
 mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
   # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
@@ -469,8 +469,7 @@ mutate $MSCHEMA '      "minimum": 0,
 mutate $RIG '    *) echo "run_env: unknown cli" >&2; exit 2 ;;' '    *) : ;;' && run 'M118: 知らない cli を隔離設定なしで起動する'
 
 mutate $VERIFY '      if (line.payload["hook_event_name"] !== line.event) {' '      if (false) {' && run 'M119: hook の名乗りを CLI の payload で裏取りしない'
-mutate $RIG '    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null' '    :' && run 'M120: workspace を実環境の git 設定で作る'
-mutate $RIG '    git -C "$RIG_BASE/workspace" init -q --template=' '    git -C "$RIG_BASE/workspace" init -q' && run 'M121: workspace の作成に実環境の template を許す'
+mutate $RIG '    git_iso init -q --template=' '    git_iso init -q' && run 'M121: workspace の作成に git の既定 template を許す'
 mutate $RIG '  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "label must be a plain file-name token" >&2; exit 2; }' '  :' && run 'M122: label の綴りを見ない'
 mutate $RIG '  require_label "$label"
   with_lock
@@ -491,11 +490,14 @@ mutate $IMPORT '  for (const f of [stagedCapture, stagedManifest]) rmSync(f, { f
   rmSync(`${dest}.prev`, { force: true, recursive: true });' && run 'M129: 復元に失敗した経路で退避まで消す'
 mutate $SCHEMAV '    if (!SUPPORTED_KEYWORD_SET.has(key)) {' '    if (!SUPPORTED_KEYWORDS.includes(key)) {' && run 'M130: 検証が実行時に広げられる一覧を見る'
 
-mutate $RIG '    unset GIT_CONFIG_COUNT GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE
-    # 設定を外しても $GIT_TEMPLATE_DIR は残るので、template は空を明示する' '    # 設定を外しても $GIT_TEMPLATE_DIR は残るので、template は空を明示する' && run 'M131: 環境変数で渡した git 設定を測定用 workspace へ通す'
+mutate $RIG '  env -i \
+    PATH="${git_bin%/*}:/usr/bin:/bin" \
+    HOME="$RIG_BASE/home" \
+    GIT_CONFIG_NOSYSTEM=1 \
+    "$git_bin" -C "$RIG_BASE/workspace" "$@"' '  git -C "$RIG_BASE/workspace" "$@"' && run 'M131: 測定用 workspace の git を実環境の環境ごと走らせる'
 mutate $RIG '${RUN_SIGNAL:+--signal="$RUN_SIGNAL"} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' '${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' && run 'M132: signal knob の引用を外す'
-mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M133: 3 桁に収まる 0 詰めを通す'
+mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d{1,3}\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M133: 3 桁に収まる 0 詰めを通す'
+mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\s*(?:0|[1-9]\d{0,2})\s*$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M134: 綴りを畳んでから見る'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす

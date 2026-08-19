@@ -347,8 +347,7 @@ done
 | M117 | `harness/schema/evidence-manifest.schema.json` 終了コードに上限を求めない | `manifest.test.ts::a manifest exit status no shell could have reported is rejected` | T047 |
 | M118 | `harness/rig/rig.sh` 知らない cli を隔離設定なしで起動する | `rig-manifest.test.mjs::run_env refuses a CLI it has no isolated config for` | T047 |
 | M119 | `harness/evidence/verify.ts` hook の名乗りを CLI の payload で裏取りしない | `promotion.test.ts::a capture the CLI payload does not confirm fails the build` | T047 |
-| M120 | `harness/rig/rig.sh` workspace を実環境の git 設定で作る | `rig-manifest.test.mjs::the measured workspace does not run the operator's git hooks` | T047 |
-| M121 | `harness/rig/rig.sh` workspace の作成に実環境の template を許す | `rig-manifest.test.mjs::the measured workspace is not built from the operator's git templates` | T047 |
+| M121 | `harness/rig/rig.sh` workspace の作成に git の既定 template を許す | `rig-manifest.test.mjs::the measured workspace carries none of git's default hooks` | T047 |
 | M122 | `harness/rig/rig.sh` label の綴りを見ない | `rig-manifest.test.mjs::a label the importer would refuse never starts a measured run` | T047 |
 | M123 | `harness/rig/rig.sh` codex の run だけ label を見ない | `rig-manifest.test.mjs::both runs check the label before starting a measured run` | T047 |
 | M124 | `harness/rig/rig.sh` 版の問い合わせの timeout に別の process group を作らせる | `rig-manifest.test.mjs::every measured launch is supervised and keeps the lock descriptor` | T047 |
@@ -358,9 +357,10 @@ done
 | M128 | `harness/rig/rig.sh` 誰のものでもない資格情報を setup で消さない | `rig-manifest.test.mjs::setup removes a credential no run owns any more` | T047 |
 | M129 | `harness/rig/import-evidence.mjs` 復元に失敗した経路で退避まで消す | `rig-manifest.test.mjs::a restore that fails keeps the previous record beside the store` | T047 |
 | M130 | `harness/schema/validate.ts` 検証が実行時に広げられる一覧を見る | `schema.test.ts::the accepted keywords cannot be widened at run time` | T047 |
-| M131 | `harness/rig/rig.sh` 環境変数で渡した git 設定を測定用 workspace へ通す | `rig-manifest.test.mjs::the measured workspace ignores git configuration passed through the environment` | T047 |
+| M131 | `harness/rig/rig.sh` 測定用 workspace の git を実環境の環境ごと走らせる | `rig-manifest.test.mjs::the measured workspace is built without the operator's environment` | T047 |
 | M132 | `harness/rig/rig.sh` signal knob の引用を外す | `rig-manifest.test.mjs::a signal knob with spaces does not turn into another command` | T047 |
 | M133 | `harness/rig/import-evidence.mjs` 3 桁に収まる 0 詰めを通す | `rig-manifest.test.mjs::an exit status the rig could not have written is rejected` | T047 |
+| M134 | `harness/rig/import-evidence.mjs` 綴りを畳んでから見る | `rig-manifest.test.mjs::an exit status the rig could not have written is rejected` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 

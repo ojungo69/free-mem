@@ -70,25 +70,30 @@ setup() {
   sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json" > "$RIG_BASE/claude-config/settings.json"
   sed "s|__HOOK__|$HOOK|g" "$DIR/codex-config-template.toml" > "$RIG_BASE/codex-home/config.toml"
   if [ ! -d "$RIG_BASE/workspace/.git" ]; then
-    # 実環境の git 設定を持ち込まない。global に init.templateDir があると、その hook ごと
-    # workspace の .git へ複製され、隔離したはずの測定の中で走る（それでも manifest は
-    # isolated: true を書く）。gpg 署名の既定も同じで、operator の設定で setup が落ちる。
-    # この process は setup を実行して終わるので export でよい
-    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-    # 設定 file の path を潰しても、git は環境変数からも読む。GIT_CONFIG_COUNT/KEY_n/VALUE_n は
-    # command-scope の設定を注入でき（`core.hooksPath` なら下の commit で operator の hook が走る）、
-    # GIT_DIR 以下は repository の位置そのものなので、init も commit も rig の外へ向く
-    unset GIT_CONFIG_COUNT GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE
-    # 設定を外しても $GIT_TEMPLATE_DIR は残るので、template は空を明示する
-    git -C "$RIG_BASE/workspace" init -q --template=
+    # git の既定 template（`/usr/share/git-core/templates`）も複製させない。空を明示しないと
+    # その hook が測定用 workspace の .git に並ぶ
+    git_iso init -q --template=
     echo "rig workspace" > "$RIG_BASE/workspace/README.md"
-    git -C "$RIG_BASE/workspace" add -A
-    git -C "$RIG_BASE/workspace" -c user.email=rig@local -c user.name=rig commit -qm init
+    git_iso add -A
+    git_iso -c user.email=rig@local -c user.name=rig commit -qm init
   fi
   # 置き場を報告に書かない。FR-015 は診断出力に実行環境の絶対 path を載せることを禁じており、
   # どこに作るかを決めたのは呼んだ側なので、書いても分かることは増えない
   echo "rig ready"
+}
+
+git_iso() { # 測定用 workspace の git を実環境から切り離して走らせる
+  # 実環境の設定が入ると、隔離したはずの測定の中で operator の hook が走る（それでも manifest は
+  # isolated: true を書く）。設定の入口は file だけではない: GIT_CONFIG_COUNT / GIT_CONFIG_PARAMETERS は
+  # command-scope の設定を注入でき、GIT_DIR 以下は repository の位置そのもの、GIT_EXEC_PATH は git が
+  # 呼ぶ実行 file の在り処を指す。外す変数を列挙する形は、次に増えた入口が黙って通る側へ回るので、
+  # run_env と同じく渡すものだけを決める。`env -i` は /etc/gitconfig を止めないので明示する
+  local git_bin; git_bin=$(command -v git) || { echo "git not found" >&2; exit 1; }
+  env -i \
+    PATH="${git_bin%/*}:/usr/bin:/bin" \
+    HOME="$RIG_BASE/home" \
+    GIT_CONFIG_NOSYSTEM=1 \
+    "$git_bin" -C "$RIG_BASE/workspace" "$@"
 }
 
 run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | codex

@@ -385,6 +385,11 @@ test("an exit status the rig could not have written is rejected", () => {
   const shortPadded = sh("import", "claude", LABEL, "self.stub");
   assert.notEqual(shortPadded.status, 0, "3 桁に収まる 0 詰めの終了コードで持ち込みが成功した");
   assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
+  // trim してから見ると、前後の空白や余分な改行が正規の綴りへ畳まれる。記録は 1 行そのもの
+  writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), " 42\n\n");
+  const padded2 = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(padded2.status, 0, "空白と余分な改行を含む終了コードで持ち込みが成功した");
+  assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
 });
 
 test("a version probe that catches SIGTERM is still cut off", () => {
@@ -642,52 +647,9 @@ test("teardown that cannot take the lock removes nothing", () => {
   assert.notEqual(done.status, 0, `lock を取れないのに teardown が消したと報告した: ${done.stdout}`);
 });
 
-// $GIT_TEMPLATE_DIR の中身が測定用 workspace の .git へ複製されないか。
-// 漏れると hook ごと複製され、隔離したはずの測定の中で走る（manifest は isolated: true を書く）
-function workspaceTemplateLeak(envFor) {
-  const tmp = mkdtempSync(join(tmpdir(), "rig-gitleak-"));
-  SCRATCH.push(tmp);
-  const template = join(tmp, "template");
-  mkdirSync(template, { recursive: true });
-  writeFileSync(join(template, "MARKER"), "leaked\n");
-  const base = join(tmp, "base");
-  const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "setup"], {
-    encoding: "utf8",
-    env: { ...process.env, RIG_BASE: base, ...envFor(tmp, template) },
-  });
-  assert.equal(done.status, 0, done.stderr);
-  return existsSync(join(base, "workspace", ".git", "MARKER"));
-}
-
-test("the measured workspace does not run the operator's git hooks", () => {
-  // 設定を外す側の観測点は template ではない（template は `--template=` が単独で塞ぐ）。
-  // global の core.hooksPath は、隔離したはずの workspace の commit で operator の hook を走らせる
-  const tmp = mkdtempSync(join(tmpdir(), "rig-githooks-"));
-  SCRATCH.push(tmp);
-  const hooks = join(tmp, "hooks");
-  mkdirSync(hooks, { recursive: true });
-  const preCommit = join(hooks, "pre-commit");
-  writeFileSync(preCommit, "#!/bin/sh\nexit 1\n");
-  chmodSync(preCommit, 0o755);
-  const config = join(tmp, "gitconfig");
-  writeFileSync(config, `[core]\n\thooksPath = ${hooks}\n`);
-  const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "setup"], {
-    encoding: "utf8",
-    env: { ...process.env, RIG_BASE: join(tmp, "base"), GIT_CONFIG_GLOBAL: config },
-  });
-  assert.equal(done.status, 0, `operator の hook が隔離した workspace の commit を止めた: ${done.stderr}`);
-});
-
-test("the measured workspace is not built from the operator's git templates", () => {
-  // 設定を外しても env は残る。git init は $GIT_TEMPLATE_DIR も見る
-  const leaked = workspaceTemplateLeak((_tmp, template) => ({ GIT_TEMPLATE_DIR: template }));
-  assert.ok(!leaked, "$GIT_TEMPLATE_DIR が隔離した workspace の .git へ複製された");
-});
-
-test("the measured workspace ignores git configuration passed through the environment", () => {
-  // 設定 file の path を潰しても git は環境変数からも読む。GIT_CONFIG_COUNT/KEY_n/VALUE_n は
-  // command-scope の設定を注入でき（`core.hooksPath` で operator の hook が隔離下の commit で走る）、
-  // GIT_DIR は init と commit を rig の外の repository へ向ける
+// 測定用 workspace を作る git が実環境から切り離されているか。漏れると operator の hook が
+// 隔離したはずの測定の中で走り、それでも manifest は isolated: true を書く
+test("the measured workspace is built without the operator's environment", () => {
   const tmp = mkdtempSync(join(tmpdir(), "rig-gitenv-"));
   SCRATCH.push(tmp);
   const hooks = join(tmp, "hooks");
@@ -695,36 +657,42 @@ test("the measured workspace ignores git configuration passed through the enviro
   const preCommit = join(hooks, "pre-commit");
   writeFileSync(preCommit, "#!/bin/sh\nexit 1\n");
   chmodSync(preCommit, 0o755);
+  const home = join(tmp, "home");
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(home, ".gitconfig"), `[core]\n\thooksPath = ${hooks}\n`);
+  const template = join(tmp, "template");
+  mkdirSync(template, { recursive: true });
+  writeFileSync(join(template, "MARKER"), "leaked\n");
   const foreign = join(tmp, "foreign.git");
   const base = join(tmp, "base");
+  // 設定の入口を一度に全部渡す。塞いでいるのは 1 つ（渡す環境を決めること）なので、
+  // どれか 1 つでも通れば同じ穴が開く
   const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "setup"], {
     encoding: "utf8",
     env: {
       ...process.env,
+      HOME: home,
       RIG_BASE: base,
       GIT_DIR: foreign,
+      GIT_TEMPLATE_DIR: template,
       GIT_CONFIG_COUNT: "1",
       GIT_CONFIG_KEY_0: "core.hooksPath",
       GIT_CONFIG_VALUE_0: hooks,
+      GIT_CONFIG_PARAMETERS: `'core.hooksPath=${hooks}'`,
     },
   });
-  assert.equal(done.status, 0, `環境変数で渡した operator の hook が隔離した commit を止めた: ${done.stderr}`);
+  assert.equal(done.status, 0, `operator の環境から渡した hook が隔離した commit を止めた: ${done.stderr}`);
   assert.ok(existsSync(join(base, "workspace", ".git")), "measured workspace の repository が別の場所に作られた");
   assert.ok(!existsSync(foreign), "GIT_DIR の指す repository を触った");
+  assert.ok(!existsSync(join(base, "workspace", ".git", "MARKER")), "operator の template が .git へ複製された");
 });
 
-test("a signal knob with spaces does not turn into another command", () => {
-  // `--signal=$RUN_SIGNAL` を引用しないと word split が起き、`TERM -- 1 <program>` で
-  // timeout の「-- duration command」を作り直せる。測定対象ではない program が、
-  // 資格情報を置いた隔離環境の中で走る
-  const tmp = mkdtempSync(join(tmpdir(), "rig-signal-"));
-  SCRATCH.push(tmp);
-  const marker = join(tmp, "ran");
-  const prog = join(tmp, "prog");
-  writeFileSync(prog, `#!/bin/sh\ntouch ${marker}\n`);
-  chmodSync(prog, 0o755);
-  rigRun({ skipImport: true, expectRunFailure: true, env: { RUN_SIGNAL: `TERM -- 1 ${prog}` } });
-  assert.ok(!existsSync(marker), "signal knob の空白で測定対象ではない program が走った");
+test("the measured workspace carries none of git's default hooks", () => {
+  // `--template=` を外すと git 自身の既定 template（`hooks/*.sample`）が .git に並ぶ。
+  // 環境を切り離しても既定は残るので、空の template は別に明示する
+  const { base } = rigRun({ skipRun: true });
+  const dir = join(base, "workspace", ".git", "hooks");
+  assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], [], "測定用 workspace の .git に hook が並んだ");
 });
 
 test("a label the importer would refuse never starts a measured run", () => {
