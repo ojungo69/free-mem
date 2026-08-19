@@ -42,7 +42,10 @@ const JSON_SCHEMA_TYPES = new Set([
   "null",
 ]);
 
-export const SUPPORTED_KEYWORDS = new Set([
+// 可変の Set を export しない。同じ process 内の別 module が `add` すると、検証が見る
+// keyword の集合を実行時に広げられる（未知の keyword は「対応していない」で落とす設計なので、
+// 足された側は素通りする）
+export const SUPPORTED_KEYWORDS: ReadonlySet<string> = new Set([
   "$ref",
   "$schema",
   "$id",

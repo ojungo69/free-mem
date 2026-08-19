@@ -6,10 +6,16 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const HARNESS = fileURLToPath(new URL("../", import.meta.url));
+// rig を実 process として走らせる test は harness ごと複製する（1 回あたり数 MB）。変異ゲートは
+// この file を 113 回回すので、置きっぱなしにすると CI の /tmp が数 GB 単位で埋まる
+const SCRATCH = [];
+after(() => {
+  for (const dir of SCRATCH) rmSync(dir, { recursive: true, force: true });
+});
 const LABEL = "rig-stub";
 const VERSION = "9.9.9-stub (Stub Code)";
 
@@ -46,6 +52,7 @@ const ESCAPED_CHILD =
 
 function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false, skipRun = false, expectRunFailure = false, env: extraEnv = {} } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), "rig-manifest-"));
+  SCRATCH.push(tmp);
   cpSync(HARNESS, join(tmp, "harness"), { recursive: true });
   const stubPath = join(tmp, "stub-cli");
   writeFileSync(stubPath, stub(stubExtra, stubVersionExtra));
@@ -60,11 +67,11 @@ function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false, ski
 
   const setup = sh("setup");
   assert.equal(setup.status, 0, setup.stderr);
-  if (skipRun) return { tmp, base, sh, rawDir: join(tmp, "harness", "fixtures", "claude", "raw") };
+  if (skipRun) return { tmp, base, sh, setup, rawDir: join(tmp, "harness", "fixtures", "claude", "raw") };
   const run = sh("claude-run", LABEL, "hello");
   if (!expectRunFailure) assert.equal(run.status, 0, run.stderr);
   const rawDir = join(tmp, "harness", "fixtures", "claude", "raw");
-  if (skipImport) return { tmp, base, sh, rawDir, run };
+  if (skipImport) return { tmp, base, sh, setup, rawDir, run };
   const imported = sh("import", "claude", LABEL, "self.stub");
   assert.equal(imported.status, 0, imported.stderr);
 
@@ -524,4 +531,52 @@ test("a version probe that fails is not accepted as the version behind the evide
     !existsSync(join(base, "capture", `claude-${LABEL}.exit`)),
     "版の問い合わせが失敗したのに測定を続けた",
   );
+});
+
+test("the rig does not print where it lives", () => {
+  // FR-015 は診断出力に実行環境の絶対 path を載せることを禁じている。置き場を決めたのは
+  // 呼んだ側なので、成功の報告に絶対 path を書いても分かることは増えない。
+  // 失敗側（lock 競合・持ち込みの失敗）は別の test で見ているので、ここは成功側だけを見る
+  const { setup, run, base } = rigRun({ skipImport: true });
+  assert.ok(!setup.stdout.includes(base), `setup の報告に絶対 path が出た: ${setup.stdout}`);
+  assert.ok(!run.stdout.includes(base), `run の報告に絶対 path が出た: ${run.stdout}`);
+});
+
+test("both runs report the capture by name, not by where it lives", () => {
+  // stub で走らせるのは claude 経路だけなので、codex 経路はここで形として見る。
+  // 2 つの run は同じ形で報告する。片方だけ絶対 path へ戻す変更が入ると、実行しない側の
+  // FR-015 違反は誰も見ないまま出荷される
+  const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
+  const blocks = [...rig.matchAll(/^(claude|codex)_run\(\) \{$([\s\S]*?)^\}$/gm)];
+  assert.equal(blocks.length, 2, "run 関数の数が変わった");
+  for (const [, name, body] of blocks) {
+    assert.match(body, /echo "captured: \$\{capture##\*\/\}/, `${name}_run の報告が名前だけになっていない`);
+  }
+});
+
+test("teardown that cannot take the lock removes nothing", () => {
+  // 「あれば取る」にすると、無い瞬間を見た直後に run が作った base を lock 無しで消せる。
+  // その順序は race なので直接は再現できない。**lock を取れないなら成功を報告しない**ほうを
+  // 固定する: 置き場を作れなければ lock も取れないので、そこで降りる
+  const tmp = mkdtempSync(join(tmpdir(), "rig-teardown-"));
+  const parent = join(tmp, "sealed");
+  mkdirSync(parent);
+  chmodSync(parent, 0o500);
+  const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "teardown"], {
+    encoding: "utf8",
+    env: { ...process.env, RIG_BASE: join(parent, "rig-base") },
+  });
+  chmodSync(parent, 0o700);
+  rmSync(tmp, { recursive: true, force: true });
+  assert.notEqual(done.status, 0, `lock を取れないのに teardown が消したと報告した: ${done.stdout}`);
+});
+
+test("run_env refuses a CLI it has no isolated config for", () => {
+  // 設定 dir を渡さずに起動すると、測定対象は既定の場所（= 実環境）を見に行く。隔離の外で
+  // 測ったのに、記録も manifest も同じ形で残る。rig.sh の外から run_env だけを呼ぶ口は
+  // 無いので、ここは形として見る
+  const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
+  const body = rig.match(/^run_env\(\) \{[\s\S]*?^\}$/m)?.[0];
+  assert.ok(body, "run_env が見つからない");
+  assert.match(body, /\*\)[^\n]*exit 2/, "run_env に既定分岐が無い（知らない cli を隔離無しで起動する）");
 });

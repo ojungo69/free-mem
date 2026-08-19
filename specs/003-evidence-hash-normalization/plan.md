@@ -43,7 +43,7 @@ digest の照合自体は legacy 証拠にも掛かるので、記録を差し�
 - `harness/assemble.ts:147` の未知キー拒否があるため schema・型・fixture は同一 commit で動かす
 - 成果物・診断出力・CI ログへ観測記録の本文・投入指示・モデル出力・絶対 path を出さない
 
-**Scale/Scope**: 観測記録 16 件、capture fixture 8 件、matrix cell 38 件（Claude 19 / Codex 19）
+**Scale/Scope**: 観測記録 16 件、capture fixture 8 件、matrix cell 38 件（Claude 19 / Codex 19。うち `evidenceKind` に値が入っているのは 21 件 = Claude 12 / Codex 9 で、`baseline.md` の内訳表はこの 21 件を数えている。残りは未観測の `evidenceKind: null`）
 
 ## Constitution Check
 

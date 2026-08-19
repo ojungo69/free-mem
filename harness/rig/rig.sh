@@ -72,7 +72,9 @@ setup() {
     git -C "$RIG_BASE/workspace" add -A
     git -C "$RIG_BASE/workspace" -c user.email=rig@local -c user.name=rig commit -qm init
   fi
-  echo "rig ready: $RIG_BASE"
+  # 置き場を報告に書かない。FR-015 は診断出力に実行環境の絶対 path を載せることを禁じており、
+  # どこに作るかを決めたのは呼んだ側なので、書いても分かることは増えない
+  echo "rig ready"
 }
 
 run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | codex
@@ -83,6 +85,9 @@ run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | co
   case "$cli" in
     claude) cfg=(CLAUDE_CONFIG_DIR="$RIG_BASE/claude-config") ;;
     codex)  cfg=(CODEX_HOME="$RIG_BASE/codex-home") ;;
+    # 知らない名前で呼ばれたら降りる。設定 dir を渡さずに起動すると、測定対象は既定の場所
+    # （= 実環境）を見に行く。隔離の外で測ったのに、記録も manifest も同じ形で残る
+    *) echo "run_env: unknown cli" >&2; exit 2 ;;
   esac
   env -i \
     PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" \
@@ -195,7 +200,7 @@ claude_run() {
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '%s\n' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 codex_run() {
@@ -252,7 +257,7 @@ codex_run() {
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '%s\n' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 # 証拠置き場へ byte 同一で持ち込んでから digest を取る。持ち込む前に取ると、
@@ -271,7 +276,10 @@ case "${1:-}" in
   codex-run) shift; codex_run "$@" ;;
   import) shift; import_evidence "$@" ;;
   # teardown も lock を取る。走っている run の下で消すと、setup が新しい .lock inode を作り、
-  # 生きた測定対象の隣へ次の run が資格情報を置ける（直列化と資格情報の分離が両方外れる）
-  teardown) [ -d "$RIG_BASE" ] && with_lock; rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
+  # 生きた測定対象の隣へ次の run が資格情報を置ける（直列化と資格情報の分離が両方外れる）。
+  # 「あれば取る」にはしない。無い瞬間を見た直後に run が作った base を、lock を取らないまま
+  # 消せてしまう。取るために作ってから取る（消すだけの回で作り直す形になるが、空の base を
+  # 1 度作って消すだけで、握れなければそこで降りる）
+  teardown) mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
   *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|import <cli> <label> <scenario-id>|teardown" >&2; exit 2 ;;
 esac

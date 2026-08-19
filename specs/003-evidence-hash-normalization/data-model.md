@@ -280,7 +280,7 @@ digest はファイルの整合性しか証明しない。「これは実 CLI �
 |---|---|
 | CLI の exact version | `$RIG_BASE/capture/<cli>-<label>.version`（`rig.sh:76,88`） |
 | recorder の失敗 | `<capture>.errors`（`capture-hook.sh:23`。**無い**ことが正常） |
-| run の終了状態 | `<cli>-<label>.stderr` に `exit=N (recorded)` として記録 |
+| run の終了状態 | `<cli>-<label>.exit`（`rig.sh` が `printf '%s\n' "$rc"` で書き、manifest の `exitStatus` はここから読む。`<cli>-<label>.stderr` の `exit=N (recorded)` は人向けの控え） |
 | 隔離設定 | `rig.sh` の `run_env`（`HOME` / `CLAUDE_CONFIG_DIR` / `CODEX_HOME` の差し替え） |
 
 rig は run のたびに manifest を 1 件書き、証拠置き場へ observation と一緒に持ち込む。

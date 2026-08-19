@@ -56,8 +56,10 @@
       "type": "boolean"
     },
     "exitStatus": {
+      "$comment": "shell の $? は下位 8 bit しか持てない。取り込み側と同じ範囲をここでも要求する（手で書いた manifest は取り込みを通らないので、範囲を見るのはここだけ）",
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 255
     },
     "recorderErrors": {
       "$comment": "capture-hook.sh の .errors が無い / 空なら 0",

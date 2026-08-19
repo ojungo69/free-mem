@@ -1,6 +1,6 @@
 # Phase 0 Research: 証拠 digest による real-cli-e2e 昇格の裏付け
 
-すべて `origin/main` 5bbf292 を基点とする worktree `/home/jura/projects/free-mem-wt/evidence-hash`
+すべて `origin/main` 5bbf292 を基点とする worktree（`feat/evidence-hash-normalization`）
 での実測に基づく。推測で書いた項目は無い。
 
 ---

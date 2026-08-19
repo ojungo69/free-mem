@@ -32,6 +32,6 @@
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
     "schema/capability.schema.json": "7c87c2b719c33bc32609ff7a16a2e08a6d6e79fffe720b6707d35739ed1f2580",
     "schema/continuity.schema.json": "95000c4671e71b12ba3a49a86dcaa51be81bf75acde8ab0533ba8f0f3fec8972",
-    "schema/evidence-manifest.schema.json": "81d9243e5005e598859790c3ad99269b662444f8e45edfbf68c36e717af3ab72"
+    "schema/evidence-manifest.schema.json": "2fc0949ba97f91ba6a258a387cb5ff12727595028815a47b98bcf5c8ad5680aa"
   }
 }

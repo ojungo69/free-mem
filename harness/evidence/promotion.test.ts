@@ -449,6 +449,8 @@ test("committed fixtures bind every raw by digest and promote nothing", () => {
     const kinds = JSON.stringify(assembled.capabilities)
       .match(/"evidenceKind":"[a-z-]+"/g)
       ?.map((s) => s.split(":")[1]) ?? [];
+    // 件数も主張する。0 件だと `!includes` が必ず真になり、正規表現が構造変更で外れても緑になる
+    assert.ok(kinds.length > 0, "証跡種別が 1 件も読めていない（検査が空振りする）");
     assert.ok(!kinds.includes('"real-cli-e2e"'), "この変更で昇格する cell は 0 件");
   }
 });

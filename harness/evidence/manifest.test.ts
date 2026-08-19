@@ -68,6 +68,13 @@ test("manifest internalRunMarker must be true, not merely equal to the fixture",
   assert.throws(() => build({ internalRunMarker: false }), /manifest internalRunMarker/);
 });
 
+test("a manifest exit status no shell could have reported is rejected", () => {
+  // 取り込み側は綴りと値の両方を見るが、**手で書いた manifest は取り込みを通らない**。
+  // 検証側が同じ範囲を要求していないと、hash を取り直しただけの manifest が照合を全部通って
+  // 昇格する。11 項目の照合に exitStatus は無い（突き合わせる相手が無い）ので、範囲がここの唯一の門
+  assert.throws(() => build({ exitStatus: 300 }), /schema/);
+});
+
 // 1 つの fixture は複数の run を束ねる（claude/interrupt-and-hook-timeout は 5 本参照する）。
 // capturedAt を fixture 単位で縛ると、2 本目以降の manifest が構造的に通らなくなる
 test("a fixture that references two runs carries a manifest for each", () => {

@@ -61,8 +61,11 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 113:
-    bad.append(f"変異表の行が {len(table)} 件（113 件でない）")
+# 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
+# **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
+# 減った件数がそのまま新しい正解になる
+if len(table) != 118:
+    bad.append(f"変異表の行が {len(table)} 件（118 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -95,10 +98,18 @@ COVERAGE
 
 EXECUTED=0
 SURVIVED=0
-BASELINE_TESTS=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1 \
-  | grep -E '^# tests |^ℹ tests ' | tail -1 | grep -oE '[0-9]+$')
+BASELINE_OUT=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1)
+BASELINE_TESTS=$(printf '%s\n' "$BASELINE_OUT" | grep -E '^# tests |^ℹ tests ' | tail -1 | grep -oE '[0-9]+$')
 if [ -z "${BASELINE_TESTS:-}" ]; then
   echo "変異テスト失敗: baseline の test 件数を取得できない" >&2
+  exit 1
+fi
+# **当てる前に** green を要求する。赤い状態から始めると、どの変異でも fail > 0 になって
+# 全件が「殺した」に化ける——1 つも検査していないのにゲートだけが緑になる。
+# CI は step の順序で守られているが、この script は単体でも回す（先頭の使い方参照）
+BASELINE_FAIL_BEFORE=$(printf '%s\n' "$BASELINE_OUT" | grep -E '^# fail |^ℹ fail ' | tail -1 | grep -oE '[0-9]+$')
+if [ -z "${BASELINE_FAIL_BEFORE:-}" ] || [ "$BASELINE_FAIL_BEFORE" -ne 0 ]; then
+  echo "変異テスト失敗: 変異を当てる前の baseline が green でない（この状態では全変異が kill に化ける）" >&2
   exit 1
 fi
 
@@ -317,14 +328,14 @@ mutate $RIG '  wait "$run_pid" || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 codex_run' '  wait "$run_pid" || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 codex_run' && run 'M80: claude の run が残した子を畳まない'
@@ -333,14 +344,14 @@ mutate $RIG '  wait "$run_pid" || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 # 証拠置き場へ' '  wait "$run_pid" || rc=$?
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 # 証拠置き場へ' && run 'M81: codex の run が残した子を畳まない'
@@ -371,7 +382,7 @@ mutate $RIG '      > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
@@ -381,7 +392,7 @@ codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
   # 終了コードは数値で別に残す。manifest の exitStatus はここから読む
   printf '"'"'%s\n'"'"' "$rc" > "$stem.exit"
   [ "$rc" -eq 0 ] || echo "exit=$rc (recorded)" >> "$stem.stderr"
-  echo "captured: $capture ($(wc -l < "$capture") events)"
+  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 }
 
 codex_run' && run 'M89: lock の fd を測定対象へ渡さない'
@@ -418,7 +429,7 @@ mutate $RIG 'reap_group() {
 }
 ' 'reap_group() { kill -- "-$1" 2>/dev/null || true; }
 ' && run 'M99: SIGTERM を無視する残骸を畳み切らない'
-mutate $RIG '  teardown) [ -d "$RIG_BASE" ] && with_lock; rm -f' '  teardown) rm -f' && run 'M100: teardown が lock を取らない'
+mutate $RIG '  teardown) mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f' '  teardown) rm -f' && run 'M100: teardown が lock を取らない'
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' '"$CLAUDE_BIN" --version' && run 'M101: 版の問い合わせに時間制限を掛けない'
 mutate $RIG 'RIG_BASE="$ver_state" run_env claude' 'run_env claude' && run 'M102: 版の問い合わせを本実行と同じ state で行う'
 mutate $RIG 'purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }' 'purge_own_credentials() { purge_credentials; return 0; }' && run 'M103: lock を取れなかった process も資格情報を消す'
@@ -426,7 +437,6 @@ mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err"'
 mutate $IMPORT '  if (previous) renameSync(previous, dest);' '  if (previous) rmSync(previous, { force: true });' && run 'M106: 置き換えに失敗しても古い記録を戻さない'
 mutate $IMPORT 'dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);' 'dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);' && run 'M107: 持ち込みの失敗に file system の説明をそのまま出す'
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' 'timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' && run 'M108: 時間切れの問い合わせに止めの signal を送らない'
-mutate $IMPORT '  if (status > 255) die("the recorded exit status is not a plausible exit code");' '  if (false) die("the recorded exit status is not a plausible exit code");' && run 'M109: 255 を超える終了コードを通す'
 mutate $RIG 'run_env claude "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}"' 'run_env claude "$capture" timeout --foreground' && run 'M110: 測定の時間切れに止めの signal を送らない'
 mutate $RIG 'echo "another rig run holds the lock" >&2' 'echo "another rig run holds $RIG_BASE" >&2' && run 'M111: lock 競合の説明に実行環境の絶対 path を出す'
 mutate $RIG '  with_lock
@@ -437,6 +447,26 @@ copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置�
 mutate $CI '            --source . --config .gitleaks.toml' '            --source . --config .gitleaks.toml --log-opts=HEAD~1..HEAD' && run 'M92: 秘密走査に範囲を持ち込む'
 mutate "$HASHES" '"schema/capability.schema.json"' '"schema/capability.schema.json.moved"' \
   && run_custom 'M25: 契約 hash の入力名を書き換える' check_hashes
+
+mutate $RIG '  teardown) mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"; with_lock; rm -f' '  teardown) [ -d "$RIG_BASE" ] && with_lock; rm -f' && run 'M113: teardown が「あれば取る」で lock を飛ばす'
+mutate $RIG '  echo "rig ready"' '  echo "rig ready: $RIG_BASE"' && run 'M114: setup の報告に実行環境の絶対 path を出す'
+mutate $RIG '  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
+}
+
+codex_run' '  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+codex_run' && run 'M115: claude の run の報告に絶対 path を出す'
+mutate $RIG '  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
+}
+
+# 証拠置き場へ byte 同一で持ち込んでから' '  echo "captured: $capture ($(wc -l < "$capture") events)"
+}
+
+# 証拠置き場へ byte 同一で持ち込んでから' && run 'M116: codex の run の報告に絶対 path を出す'
+mutate $MSCHEMA '      "minimum": 0,
+      "maximum": 255' '      "minimum": 0' && run 'M117: manifest の終了コードに上限を求めない'
+mutate $RIG '    *) echo "run_env: unknown cli" >&2; exit 2 ;;' '    *) : ;;' && run 'M118: 知らない cli を隔離設定なしで起動する'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす

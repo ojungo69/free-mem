@@ -31,9 +31,8 @@
 
 ## Notes
 
-- **検証 2 巡目で背景節を全面的に書き直した。** 1 巡目の実測を shared checkout
-  `/home/jura/projects/free-mem`（ローカル main、origin/main とは unrelated histories の別物）へ
-  当てていたため、「`evidenceHash` は存在しない」「無条件で `real-cli-e2e` を刻む」「既に 21 cell が
+- **検証 2 巡目で背景節を全面的に書き直した。** 1 巡目の実測を shared checkout の
+  ローカル main（origin/main とは unrelated histories の別物）へ当てていたため、「`evidenceHash` は存在しない」「無条件で `real-cli-e2e` を刻む」「既に 21 cell が
   `real-cli-e2e`」がすべて誤りだった。origin/main 5bbf292 を基点とする worktree で測り直した結果、
   issue #20 の状況記述は正確であり、昇格箇所は 2 箇所ではなく 3 箇所（`assemble.ts:280`/`:349`/`:383`）、
   現在の matrix は `real-cli-e2e` 0 件・`source-test` 21 件だった。FR-017 と SC-008 も

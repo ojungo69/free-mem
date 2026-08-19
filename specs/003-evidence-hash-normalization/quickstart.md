@@ -1,6 +1,6 @@
 # Quickstart: 証拠 digest の検証
 
-作業ディレクトリ `/home/jura/projects/free-mem-wt/evidence-hash`。
+作業ディレクトリは `feat/evidence-hash-normalization` の worktree（`origin/main` を基点に `git worktree add` で作る。場所は実行者が決める）。
 
 ## 前提
 
@@ -92,8 +92,10 @@ test が確認すること:
 載せる形へ変えて解消した。
 
 ```bash
-grep -r "/tmp/free-mem-rig" harness/matrix/ && echo "NG" || echo "OK"
-grep -r "RIG_INJECT_" harness/matrix/ && echo "NG" || echo "OK"
+# `&& echo NG || echo OK` の形にしない。見つかっても grep の非ゼロが `||` に吸われ、
+# 検出したまま 0 で終わる（検査として成立しない）
+! grep -r "/tmp/free-mem-rig" harness/matrix/
+! grep -r "RIG_INJECT_" harness/matrix/
 ```
 
 固定文字列の grep では、新しく混ざった実値も、`OK` のような短い一般文字列の偽陽性も扱えない。
