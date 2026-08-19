@@ -283,7 +283,10 @@ jobs:
           # gitleaks_8.30.1_checksums.txt の linux_x64 の値
           GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
         run: |
-          curl -fsSL --retry 3 -o "${RUNNER_TEMP}/gitleaks.tar.gz" \
+          # --retry は接続失敗と 5xx にしか効かない。接続できたまま細く流れ続ける相手には
+          # 時間の上限が要る。--max-time は試行ごとにリセットされるので、総時間は
+          # --retry-max-time で別に縛る（job の timeout-minutes: 10 より内側に収める）
+          curl -fsSL --retry 3 --max-time 60 --retry-max-time 180 -o "${RUNNER_TEMP}/gitleaks.tar.gz" \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  ${RUNNER_TEMP}/gitleaks.tar.gz" | sha256sum -c -
           tar -xzf "${RUNNER_TEMP}/gitleaks.tar.gz" -C "${RUNNER_TEMP}" gitleaks
