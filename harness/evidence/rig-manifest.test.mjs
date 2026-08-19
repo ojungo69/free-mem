@@ -3,7 +3,7 @@
 // harness ごと複製して走らせるので、既定の証拠置き場（module からの相対）も複製側を指す。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -346,6 +346,46 @@ test("a failure while staging leaves both stored files untouched", () => {
   assert.deepEqual(readFileSync(storedManifest), before.manifest, "書き込みに失敗したのに manifest が置き換わった");
   // 落ちた経路でも一時 file を証拠置き場へ残さない（次の持ち込みが古い複製の隣で始まる）
   assert.ok(!existsSync(`${stored}.tmp`), "書き込みに失敗した run が一時 file を証拠置き場へ残した");
+});
+
+test("a diagnostic on stderr is not recorded as the version", () => {
+  // stdout に何も出さず stderr に 1 行だけ出して 0 で帰る CLI がある。混ぜて記録していると、
+  // その診断文が単一行として通り、cliVersion になる
+  const { sh, base } = rigRun({
+    stubVersionExtra: `printf 'warning: migrated your config\\n' >&2; exit 0`,
+    skipImport: true,
+  });
+  const imported = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(imported.status, 0, `stderr の 1 行が版として通った: ${imported.stdout}`);
+  assert.equal(readFileSync(join(base, "capture", `claude-${LABEL}.version`), "utf8"), "");
+  assert.match(
+    readFileSync(join(base, "capture", `claude-${LABEL}.version.err`), "utf8"),
+    /warning: migrated your config/,
+  );
+});
+
+test("a manifest that cannot be replaced puts the previous capture back", () => {
+  // rename 2 回は 1 つの操作にできない。1 回目が通って 2 回目が落ちると、退避が無ければ
+  // 「新しい記録と古い manifest」で終わり、その前にあった正しい対は戻せない
+  const { base, sh, rawDir } = rigRun();
+  const stored = join(rawDir, `claude-${LABEL}.jsonl`);
+  const storedManifest = join(rawDir, `claude-${LABEL}.manifest.json`);
+  const before = readFileSync(stored);
+  rmSync(storedManifest);
+  mkdirSync(storedManifest); // rename の宛先を directory で塞ぐ（2 回目だけ確実に落ちる）
+  const capture = join(base, "capture", `claude-${LABEL}.jsonl`);
+  writeFileSync(
+    capture,
+    `${readFileSync(capture, "utf8")}{"event":"Stop","at":"2026-01-02T00:00:00.000Z","payload":{"hook_event_name":"Stop"}}\n`,
+  );
+  const again = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(again.status, 0, "manifest を置き換えられないのに持ち込みが成功した");
+  assert.deepEqual(readFileSync(stored), before, "manifest の置き換えに失敗したのに記録だけ入れ替わった");
+  assert.ok(!existsSync(`${stored}.prev`), "退避が証拠置き場に残った");
+  assert.ok(!existsSync(`${stored}.tmp`), "一時 file が証拠置き場に残った");
+  // 失敗の説明に実行環境の path を出さない（file system の error message は絶対 path を含む）
+  assert.ok(!again.stderr.includes(base), `失敗の説明に絶対 path が出た: ${again.stderr}`);
+  assert.ok(!again.stderr.includes(rawDir), `失敗の説明に絶対 path が出た: ${again.stderr}`);
 });
 
 test("the version probe runs in the isolated environment, not the caller's", () => {

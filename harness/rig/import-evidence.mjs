@@ -139,6 +139,8 @@ const stagedManifest = `${manifestPath}.tmp`;
 const dieStaged = (msg) => {
   // 塞がれた側が directory のこともある（そこで落ちると片付け自体が二次障害になる）
   for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true, recursive: true });
+  // 退避は呼び出し側が戻したあとに来る。戻せていない場合に備えて名前は残さない
+  rmSync(`${dest}.prev`, { force: true, recursive: true });
   die(msg);
 };
 
@@ -151,14 +153,23 @@ const captureHash = digestCapture(bytes);
 if (captureRawHash !== sourceRawHash || captureHash !== sourceHash) {
   dieStaged("the copy does not digest to the capture");
 }
-// 置き換えそのものが失敗したときも、一時 file を証拠置き場へ残さない
+// 置き換えそのものが失敗したときも、一時 file を証拠置き場へ残さない。
+// 2 回の rename は 1 つの操作にできないので、先に古い記録を退避しておく。片方だけ入れ替わった
+// 状態（新しい記録と古い manifest）で終わると、対としては digest が合わず検証で落ちるが、
+// **その前にあった正しい対まで失われる**。退避があれば元へ戻せる
+const previous = existsSync(dest) ? `${dest}.prev` : null;
+if (previous) renameSync(dest, previous);
 try {
   writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
   renameSync(stagedCapture, dest);
   renameSync(stagedManifest, manifestPath);
 } catch (e) {
-  dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);
+  if (previous) renameSync(previous, dest);
+  // 失敗の説明に絶対 path を出さない。file system の error message は source と destination の
+  // 絶対 path を含むので、そのまま出すと CI log へ実行環境の path が流れる
+  dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);
 }
+if (previous) rmSync(previous, { force: true });
 
 // fixture の evidence[] へそのまま貼れる形で出す（digest を手で写させない）
 process.stdout.write(

@@ -128,8 +128,9 @@ const has = (line: NormalizedLine, key: string): boolean => line.payload[key] ==
 
 /**
  * 成果物へ出てはいけない値の出どころ。入れ子も辿る。
- * export しているのは網羅 test がこの集合そのものから payload を組むため
- * （手で並べ直すと、欄を足した日に test だけ古いまま緑になる）
+ * export しているのは、網羅 test が固定した綴りの一覧とこの集合を突き合わせるため。
+ * 集合から payload を組ませると、欄を**外した**変異まで test が一緒に縮んで気づけない
+ * （変異 M24 が実際に生き残った）ので、比較する形にしてある
  */
 export const SECRET_KEYS: ReadonlySet<string> = new Set([
   "prompt",

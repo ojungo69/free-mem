@@ -61,8 +61,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 106:
-    bad.append(f"変異表の行が {len(table)} 件（106 件でない）")
+if len(table) != 109:
+    bad.append(f"変異表の行が {len(table)} 件（109 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -352,6 +352,8 @@ mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時�
 mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 桁数を見ずに終了コードを読む'
 mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
+  # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
+  # 終了 0 で帰る CLI で、その診断文が cliVersion として証拠に載る
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
@@ -359,6 +361,8 @@ mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   set -m
   ( cd "$RIG_BASE/workspace" && \
     run_env claude' '  wait "$ver_pid" || ver_rc=$?
+  # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
+  # 終了 0 で帰る CLI で、その診断文が cliVersion として証拠に載る
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
@@ -397,10 +401,15 @@ mutate $IMPORT 'try {
   renameSync(stagedCapture, dest);
   renameSync(stagedManifest, manifestPath);
 } catch (e) {
-  dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);
-}' 'writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+  if (previous) renameSync(previous, dest);
+  // 失敗の説明に絶対 path を出さない。file system の error message は source と destination の
+  // 絶対 path を含むので、そのまま出すと CI log へ実行環境の path が流れる
+  dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);
+}
+' 'writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
 renameSync(stagedCapture, dest);
-renameSync(stagedManifest, manifestPath);' && run 'M96: 置き換えで落ちても一時 file を片付けない'
+renameSync(stagedManifest, manifestPath);
+' && run 'M96: 置き換えで落ちても一時 file を片付けない'
 mutate $RIG '( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env claude' '( RIG_BASE="$ver_state" run_env claude' && run 'M97: 版の問い合わせを呼び出し元の作業場所で行う'
 mutate $RIG 'run_env claude "$ver_capture" \
       timeout' 'run_env claude "$capture" \
@@ -420,6 +429,9 @@ mutate $RIG 'timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --versi
 mutate $RIG 'RIG_BASE="$ver_state" run_env claude' 'run_env claude' && run 'M102: 版の問い合わせを本実行と同じ state で行う'
 mutate $RIG 'purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }' 'purge_own_credentials() { purge_credentials; return 0; }' && run 'M103: lock を取れなかった process も資格情報を消す'
 mutate $RIG '  : > "$RIG_BASE/.lock"' '  :' && run 'M104: setup が lock file を作らない'
+mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err"' '"$CLAUDE_BIN" --version ) > "$stem.version" 2>&1' && run 'M105: 版の問い合わせの stderr を版として記録する'
+mutate $IMPORT '  if (previous) renameSync(previous, dest);' '  if (previous) rmSync(previous, { force: true });' && run 'M106: 置き換えに失敗しても古い記録を戻さない'
+mutate $IMPORT 'dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);' 'dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);' && run 'M107: 持ち込みの失敗に file system の説明をそのまま出す'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'

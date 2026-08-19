@@ -157,13 +157,15 @@ claude_run() {
   # 問い合わせにも時間制限を掛ける。掛けないと、更新待ちなどで固まった --version が lock と
   # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる
   ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env claude "$ver_capture" \
-      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
+      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
   # 畳むのが先。ここで抜けるときも残骸を置いていかない
   wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
+  # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
+  # 終了 0 で帰る CLI で、その診断文が cliVersion として証拠に載る
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
@@ -205,13 +207,15 @@ codex_run() {
   # 問い合わせにも時間制限を掛ける。掛けないと、更新待ちなどで固まった --version が lock と
   # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる
   ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env codex "$ver_capture" \
-      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CODEX_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
+      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CODEX_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
   # 畳むのが先。ここで抜けるときも残骸を置いていかない
   wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
+  # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
+  # 終了 0 で帰る CLI で、その診断文が cliVersion として証拠に載る
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
