@@ -1,0 +1,25 @@
+harness/evidence/mutate.sh
+  s_a2a364145ca286::t_cedbdfe8142cc6 67-68,498-499
+harness/evidence/rig-manifest.test.mjs
+  s_a2a364145ca286::t_301eeedc799422 380,392-393
+harness/rig/import-evidence.mjs
+  s_a2a364145ca286::t_e3f90c8fdf66c7 48-49,51-54
+specs/003-evidence-hash-normalization/tasks.md
+  s_a2a364145ca286::t_c3c6b19159ecbd 198-199,224,382-383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "08fcac4f40222a73271dddb8b11a85704c80ed34",
+  "prompts": {},
+  "sessions": {
+    "s_a2a364145ca286": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e31bc79c-cfbd-44ea-bed7-1dc47ff616ae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
