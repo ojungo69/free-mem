@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 const EXPECTED = {
 	baseline: 4_037,
 	retired: 2_376,
-	additions: 193,
-	final: 1_854,
-	passed: 1_851,
+	additions: 196,
+	final: 1_857,
+	passed: 1_854,
 	todo: 3,
-	tokens: 83,
+	tokens: 86,
 };
 
 const reportArgument = process.argv[2];

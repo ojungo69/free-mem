@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Stats } from "node:fs";
 import {
 	closeSync,
 	existsSync,
@@ -252,7 +253,15 @@ function removeStaleLock(lockPath: string): boolean {
 	if (owner && lockOwnerAlive(owner)) return false;
 	if (!owner && Date.now() - info.mtimeMs <= LOCK_INITIALIZATION_GRACE_MS) return false;
 
-	const currentInfo = lstatSync(lockPath);
+	let currentInfo: Stats;
+	try {
+		currentInfo = lstatSync(lockPath);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		// A competing writer removed the lock between the two stats. It is already gone, so
+		// report the same outcome as the first stat's guard above.
+		return true;
+	}
 	if (currentInfo.dev !== info.dev || currentInfo.ino !== info.ino) return false;
 	const currentOwner = readLockOwner(lockPath);
 	if (owner ? !sameLockOwner(currentOwner, owner) : currentOwner !== null) return false;
@@ -264,6 +273,14 @@ function removeStaleLock(lockPath: string): boolean {
 	}
 	fsyncPath(dirname(lockPath));
 	return true;
+}
+
+function lockReplaced(): never {
+	const collision = new Error(
+		"Spool lock was replaced during initialization.",
+	) as NodeJS.ErrnoException;
+	collision.code = "EEXIST";
+	throw collision;
 }
 
 function sleepForLock(milliseconds: number): void {
@@ -306,17 +323,22 @@ export function acquireSpoolLock(
 					offset += written;
 				}
 				fsyncSync(descriptor);
-				const published = lstatSync(layout.lockPath);
+				let published: Stats;
+				try {
+					published = lstatSync(layout.lockPath);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+					// The path is gone because a waiting writer reclaimed our still-uninitialized
+					// lock. That is the same situation as the replaced-lock check below, so raise
+					// the shape the retry loop already understands instead of a bare fs error.
+					lockReplaced();
+				}
 				if (
 					published.dev !== lockIdentity.dev ||
 					published.ino !== lockIdentity.ino ||
 					!sameLockOwner(readLockOwner(layout.lockPath), owner)
 				) {
-					const collision = new Error(
-						"Spool lock was replaced during initialization.",
-					) as NodeJS.ErrnoException;
-					collision.code = "EEXIST";
-					throw collision;
+					lockReplaced();
 				}
 				fsyncPath(layout.rootDir);
 				let open = true;

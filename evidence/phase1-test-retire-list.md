@@ -38,6 +38,10 @@ post-T048: `/tmp/free-mem-phase1-post-t048-serial.json` (SHA-256 `e7367709111ae5
 | T048 daemon-handle replacement | 2 |
 | T048 登録済み追加 | 1 |
 | post-T048 | 1,828 |
+| #89 lock 競合修正 登録済み追加 | 3 |
+| post-#89 | 1,831 |
+
+実測の注記（#89、2026-08-20）: `CI=true pnpm run test:coverage` の実測は total 1,865 / passed 1,862 / todo 3 で、`harness/phase1-test-set-compare.mjs` の `EXPECTED.final = 1,857` より 8 多い。うち 3 件はこの変更で足した `P1-T039-05/06/07` で、上の表と EXPECTED にはその 3 件ぶんだけを反映した。残る 5 件は本変更より前から台帳に載っていない差分で、出所を特定していないため吸収せずここに残す。
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -162,6 +166,9 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T039-02-concurrent-writers` | T039 | 並行 writer で破損・重複・無期限待機が起きる |
 | `P1-T039-03-disk-full-temp` | T039 | disk full/tmp 残骸/両枠満杯で bounded fail-open しない |
 | `P1-T039-04-old-format-drain` | T039 | 旧 spool 残量を drain できない |
+| `P1-T039-05-lock-publish-missing-retries` | T039 | lock 公開直後の stat が消えた path を競合として再試行しない |
+| `P1-T039-06-stale-lock-restat-missing-retries` | T039 | stale lock 除去中の再 stat が消えた path を競合として扱わない |
+| `P1-T039-07-lock-publish-io-error-surfaces` | T039 | 本物の device error を競合として握りつぶし lock_timeout に化ける |
 | `P1-T040-01-commit-before-delete` | T040 | receipt commit 前に spool file を消す |
 | `P1-T040-02-import-exactly-once` | T040 | 再起動/再読込で event を二重適用する |
 | `P1-T040-03-import-conflict` | T040 | 同一 key・異 payload を quarantine しない |

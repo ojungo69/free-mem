@@ -2431,7 +2431,13 @@ function removeStaleLock(lockPath) {
 	const owner = readLockOwner(lockPath);
 	if (owner && lockOwnerAlive(owner)) return false;
 	if (!owner && Date.now() - info.mtimeMs <= LOCK_INITIALIZATION_GRACE_MS) return false;
-	const currentInfo = lstatSync(lockPath);
+	let currentInfo;
+	try {
+		currentInfo = lstatSync(lockPath);
+	} catch (error) {
+		if (error.code !== "ENOENT") throw error;
+		return true;
+	}
 	if (currentInfo.dev !== info.dev || currentInfo.ino !== info.ino) return false;
 	const currentOwner = readLockOwner(lockPath);
 	if (owner ? !sameLockOwner(currentOwner, owner) : currentOwner !== null) return false;
@@ -2443,6 +2449,11 @@ function removeStaleLock(lockPath) {
 	}
 	fsyncPath(dirname(lockPath));
 	return true;
+}
+function lockReplaced() {
+	const collision = /* @__PURE__ */ new Error("Spool lock was replaced during initialization.");
+	collision.code = "EEXIST";
+	throw collision;
 }
 function sleepForLock(milliseconds) {
 	Atomics.wait(LOCK_WAIT_ARRAY, 0, 0, milliseconds);
@@ -2478,12 +2489,14 @@ function acquireSpoolLock(dataDir, deadlineMs = 100) {
 				offset += written;
 			}
 			fsyncSync(descriptor);
-			const published = lstatSync(layout.lockPath);
-			if (published.dev !== lockIdentity.dev || published.ino !== lockIdentity.ino || !sameLockOwner(readLockOwner(layout.lockPath), owner)) {
-				const collision = /* @__PURE__ */ new Error("Spool lock was replaced during initialization.");
-				collision.code = "EEXIST";
-				throw collision;
+			let published;
+			try {
+				published = lstatSync(layout.lockPath);
+			} catch (error) {
+				if (error.code !== "ENOENT") throw error;
+				lockReplaced();
 			}
+			if (published.dev !== lockIdentity.dev || published.ino !== lockIdentity.ino || !sameLockOwner(readLockOwner(layout.lockPath), owner)) lockReplaced();
 			fsyncPath(layout.rootDir);
 			let open = true;
 			return { close() {
