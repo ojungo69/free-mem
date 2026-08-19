@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { validateFixture } from "../assemble.ts";
-import { SUPPORTED_KEYWORDS } from "../schema/validate.ts";
+import { SUPPORTED_KEYWORDS, validateAgainstSchema } from "../schema/validate.ts";
 import { fixtureBase } from "./synthetic.ts";
 
 const HEX = "a".repeat(64);
@@ -51,9 +51,27 @@ test("capability schema uses only supported keywords", () => {
   }
   // 走査自体が空振りしていないことを先に見る（歩き方を壊すと全件 pass になる）
   assert.ok(found.size > 15, `keyword が ${found.size} 件しか集まっていない`);
-  assert.ok(SUPPORTED_KEYWORDS.size > 15, "SUPPORTED_KEYWORDS の取り込みに失敗している");
-  const unsupported = [...found].filter((k) => !SUPPORTED_KEYWORDS.has(k)).sort();
+  assert.ok(SUPPORTED_KEYWORDS.length > 15, "SUPPORTED_KEYWORDS の取り込みに失敗している");
+  const unsupported = [...found].filter((k) => !SUPPORTED_KEYWORDS.includes(k)).sort();
   assert.deepEqual(unsupported, [], `validate.ts が解釈しない keyword: ${unsupported.join(", ")}`);
+});
+
+test("the accepted keywords cannot be widened at run time", () => {
+  // export しているのは複製で、検証が見る集合は module の中にある。型の `readonly` は実行前に
+  // 剥がされるので、同じ process の別 module は export された配列を書き換えられる——それでも
+  // 「対応していない keyword」は落ち続ける（広がると、その keyword の制約が黙って無効になる）
+  const widened = SUPPORTED_KEYWORDS as string[];
+  widened.push("unevaluatedProperties");
+  try {
+    const schema = { type: "object", unevaluatedProperties: false };
+    assert.throws(
+      () => validateAgainstSchema({}, schema, schema as never),
+      /unsupported schema keyword/,
+      "export した一覧へ足しただけで、検証が受け付ける keyword が広がった",
+    );
+  } finally {
+    widened.pop();
+  }
 });
 
 test("fixture with evidence is rejected when the schema lacks it", () => {

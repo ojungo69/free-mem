@@ -232,6 +232,8 @@ test("every measured launch is supervised and keeps the lock descriptor", () => 
       2,
       `${name}_run の起動のうち timeout が group を分けているものがある`,
     );
+    // 引用を外すと word split が起き、`TERM -- 1 <program>` で timeout の引数を作り直せる
+    assert.match(body, /--signal="\$RUN_SIGNAL"/, `${name}_run の signal knob が引用されていない`);
   }
 });
 
@@ -378,6 +380,11 @@ test("an exit status the rig could not have written is rejected", () => {
   const padded = sh("import", "claude", LABEL, "self.stub");
   assert.notEqual(padded.status, 0, "0 詰めの終了コードで持ち込みが成功した");
   assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
+  // 桁数の上限だけでは 3 桁に収まる 0 詰めが残る（`042` は値としては 42 でも rig は書かない）
+  writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), "042\n");
+  const shortPadded = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(shortPadded.status, 0, "3 桁に収まる 0 詰めの終了コードで持ち込みが成功した");
+  assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
 });
 
 test("a version probe that catches SIGTERM is still cut off", () => {
@@ -461,6 +468,29 @@ test("a manifest that cannot be replaced puts the previous capture back", () => 
   // 失敗の説明に実行環境の path を出さない（file system の error message は絶対 path を含む）
   assert.ok(!again.stderr.includes(base), `失敗の説明に絶対 path が出た: ${again.stderr}`);
   assert.ok(!again.stderr.includes(rawDir), `失敗の説明に絶対 path が出た: ${again.stderr}`);
+});
+
+test("a restore that fails keeps the previous record beside the store", () => {
+  // 退避を戻せなかった瞬間だけ、前の対は `.prev` にしか残っていない（`dest` は既に手放している）。
+  // 片付けがそこまで消すと、手で戻す余地ごと消える。戻せた経路では退避に名前が無いので、
+  // 消す対象が残っているのは常に「戻せなかった」ときだけ
+  const { base, sh, rawDir } = rigRun();
+  const stored = join(rawDir, `claude-${LABEL}.jsonl`);
+  const storedManifest = join(rawDir, `claude-${LABEL}.manifest.json`);
+  // 記録の側を directory にして、戻す rename（directory → 新しい記録の file）を確実に落とす
+  rmSync(stored);
+  mkdirSync(stored);
+  writeFileSync(join(stored, "keep"), "previous\n");
+  rmSync(storedManifest);
+  mkdirSync(storedManifest); // 2 回目の rename を落として catch へ入れる
+  const again = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(again.status, 0, "戻せなかったのに持ち込みが成功した");
+  assert.equal(
+    readFileSync(join(`${stored}.prev`, "keep"), "utf8"),
+    "previous\n",
+    "戻せなかった退避まで片付けが消した",
+  );
+  assert.ok(!again.stderr.includes(base), `失敗の説明に絶対 path が出た: ${again.stderr}`);
 });
 
 test("the version probe runs in the isolated environment, not the caller's", () => {
@@ -652,6 +682,49 @@ test("the measured workspace is not built from the operator's git templates", ()
   // 設定を外しても env は残る。git init は $GIT_TEMPLATE_DIR も見る
   const leaked = workspaceTemplateLeak((_tmp, template) => ({ GIT_TEMPLATE_DIR: template }));
   assert.ok(!leaked, "$GIT_TEMPLATE_DIR が隔離した workspace の .git へ複製された");
+});
+
+test("the measured workspace ignores git configuration passed through the environment", () => {
+  // 設定 file の path を潰しても git は環境変数からも読む。GIT_CONFIG_COUNT/KEY_n/VALUE_n は
+  // command-scope の設定を注入でき（`core.hooksPath` で operator の hook が隔離下の commit で走る）、
+  // GIT_DIR は init と commit を rig の外の repository へ向ける
+  const tmp = mkdtempSync(join(tmpdir(), "rig-gitenv-"));
+  SCRATCH.push(tmp);
+  const hooks = join(tmp, "hooks");
+  mkdirSync(hooks, { recursive: true });
+  const preCommit = join(hooks, "pre-commit");
+  writeFileSync(preCommit, "#!/bin/sh\nexit 1\n");
+  chmodSync(preCommit, 0o755);
+  const foreign = join(tmp, "foreign.git");
+  const base = join(tmp, "base");
+  const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "setup"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      RIG_BASE: base,
+      GIT_DIR: foreign,
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_VALUE_0: hooks,
+    },
+  });
+  assert.equal(done.status, 0, `環境変数で渡した operator の hook が隔離した commit を止めた: ${done.stderr}`);
+  assert.ok(existsSync(join(base, "workspace", ".git")), "measured workspace の repository が別の場所に作られた");
+  assert.ok(!existsSync(foreign), "GIT_DIR の指す repository を触った");
+});
+
+test("a signal knob with spaces does not turn into another command", () => {
+  // `--signal=$RUN_SIGNAL` を引用しないと word split が起き、`TERM -- 1 <program>` で
+  // timeout の「-- duration command」を作り直せる。測定対象ではない program が、
+  // 資格情報を置いた隔離環境の中で走る
+  const tmp = mkdtempSync(join(tmpdir(), "rig-signal-"));
+  SCRATCH.push(tmp);
+  const marker = join(tmp, "ran");
+  const prog = join(tmp, "prog");
+  writeFileSync(prog, `#!/bin/sh\ntouch ${marker}\n`);
+  chmodSync(prog, 0o755);
+  rigRun({ skipImport: true, expectRunFailure: true, env: { RUN_SIGNAL: `TERM -- 1 ${prog}` } });
+  assert.ok(!existsSync(marker), "signal knob の空白で測定対象ではない program が走った");
 });
 
 test("a label the importer would refuse never starts a measured run", () => {

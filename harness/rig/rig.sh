@@ -75,6 +75,11 @@ setup() {
     # isolated: true を書く）。gpg 署名の既定も同じで、operator の設定で setup が落ちる。
     # この process は setup を実行して終わるので export でよい
     export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+    # 設定 file の path を潰しても、git は環境変数からも読む。GIT_CONFIG_COUNT/KEY_n/VALUE_n は
+    # command-scope の設定を注入でき（`core.hooksPath` なら下の commit で operator の hook が走る）、
+    # GIT_DIR 以下は repository の位置そのものなので、init も commit も rig の外へ向く
+    unset GIT_CONFIG_COUNT GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE
     # 設定を外しても $GIT_TEMPLATE_DIR は残るので、template は空を明示する
     git -C "$RIG_BASE/workspace" init -q --template=
     echo "rig workspace" > "$RIG_BASE/workspace/README.md"
@@ -209,7 +214,7 @@ claude_run() {
   # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる
   set -m
   ( cd "$RIG_BASE/workspace" && \
-    run_env claude "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}" ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
+    run_env claude "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}" ${RUN_SIGNAL:+--signal="$RUN_SIGNAL"} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
       --model haiku --output-format json --max-turns 4 "$@" \
       > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
   set +m
@@ -267,7 +272,7 @@ codex_run() {
   # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる
   set -m
   ( cd "$RIG_BASE/workspace" && \
-    run_env codex "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}" ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
+    run_env codex "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}" ${RUN_SIGNAL:+--signal="$RUN_SIGNAL"} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
       --dangerously-bypass-hook-trust "$@" "$prompt" \
       > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
   set +m

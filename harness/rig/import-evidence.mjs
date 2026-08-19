@@ -44,13 +44,13 @@ function readExitStatus(path) {
   } catch {
     die("the run did not record an exit status");
   }
-  // 縛るのは**綴り**。記録は `printf '%s\n' "$rc"` なので 0 詰めも 4 桁もありえない
+  // 縛るのは**綴り**。記録は `printf '%s\n' "$rc"` なので 0 詰め（`042`）も 4 桁もありえない
   // （来たなら書いたのは rig ではない）。`^\d+$` だけだと 30 桁が Number で丸められ、元の綴りと
   // 違う値が manifest へ載る。
   // **値の範囲**（`$?` は下位 8 bit しか持てない）は manifest schema の `maximum: 255` が見る。
   // ここへ同じ検査を置いても、この値は必ず schema 検証を通ってから書かれるので何も止めない
   // ——手で書いた manifest は取り込みを通らないので、範囲の門は検証側にしか置けない
-  if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");
+  if (!/^(?:0|[1-9]\d{0,2})$/.test(text)) die("the recorded exit status is not a plausible exit code");
   return Number(text);
 }
 
@@ -148,8 +148,8 @@ const stagedManifest = `${manifestPath}.tmp`;
 const removeStaged = () => {
   // 塞がれた側が directory のこともある（そこで落ちると片付け自体が二次障害になる）
   for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true, recursive: true });
-  // 退避は呼び出し側が戻したあとに来る。戻せていない場合に備えて名前は残さない
-  rmSync(`${dest}.prev`, { force: true, recursive: true });
+  // 退避（`.prev`）はここでは消さない。戻せた経路では既に名前が無いので、消す対象が残っているのは
+  // **戻せなかった**ときだけで、その瞬間 `dest` は空か新しい記録で、前の対はその退避にしか無い
 };
 // 分類済みの理由で落ちる経路と、未捕捉例外の経路で同じ片付けを通す
 cleanupStaged = removeStaged;

@@ -42,10 +42,11 @@ const JSON_SCHEMA_TYPES = new Set([
   "null",
 ]);
 
-// 可変の Set を export しない。同じ process 内の別 module が `add` すると、検証が見る
-// keyword の集合を実行時に広げられる（未知の keyword は「対応していない」で落とす設計なので、
-// 足された側は素通りする）
-export const SUPPORTED_KEYWORDS: ReadonlySet<string> = new Set([
+// 検証が見る集合は module の中に閉じる。export した Set は同じ process 内の別 module が `add`
+// できるので、それを直接見ていると検証が受け付ける keyword を実行時に広げられる（未知の keyword は
+// 「対応していない」で落とす設計なので、足された側は素通りする）。`ReadonlySet` は型の上の約束で
+// しかなく、harness は型を剥がして走る
+const SUPPORTED_KEYWORD_SET = new Set([
   "$ref",
   "$schema",
   "$id",
@@ -74,6 +75,9 @@ export const SUPPORTED_KEYWORDS: ReadonlySet<string> = new Set([
   "then",
   "else",
 ]);
+
+/** 検査の対象一覧。検証が見るのは上の集合なので、ここへ足しても受け付ける keyword は増えない */
+export const SUPPORTED_KEYWORDS: readonly string[] = [...SUPPORTED_KEYWORD_SET];
 
 // 対応キーワードが取る値の形。名前が合っていても型が違えば制約は効かないので、
 // 名前の集合と同じ場所で押さえる（未掲載のキーワードは形を問わない）
@@ -326,7 +330,7 @@ function assertSchemaSupported(
     throw new Error(`schema at ${path} must be an object or boolean, got ${typeof schema}`);
   }
   for (const key of Object.keys(schema)) {
-    if (!SUPPORTED_KEYWORDS.has(key)) {
+    if (!SUPPORTED_KEYWORD_SET.has(key)) {
       throw new Error(`unsupported schema keyword at ${path}: ${key}`);
     }
     // 名前だけ合っていて型が違うキーワードは、制約が黙って無効化される

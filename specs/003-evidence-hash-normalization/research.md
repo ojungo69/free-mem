@@ -223,7 +223,7 @@ rig は既に材料を出している。
 |---|---|
 | CLI の exact version | `$RIG_BASE/capture/<cli>-<label>.version`（`rig.sh:76`, `:88`） |
 | recorder の失敗 | `<capture>.errors`（`capture-hook.sh:23`。**無い**ことが正常） |
-| run の終了状態 | `<cli>-<label>.stderr` の `exit=N (recorded)` |
+| run の終了状態 | `<cli>-<label>.exit`（`rig.sh:219`, `:277`。0 以外なら `.stderr` にも `exit=N (recorded)` が残るが、manifest が読むのは `.exit`） |
 | 隔離設定 | `rig.sh` の `run_env`（`HOME` / `CLAUDE_CONFIG_DIR` / `CODEX_HOME` の差し替え） |
 
 **Decision**: rig が run ごとに manifest を 1 件書き、observation と一緒に置き場へ持ち込む。

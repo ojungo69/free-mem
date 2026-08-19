@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 128:
-    bad.append(f"変異表の行が {len(table)} 件（128 件でない）")
+if len(table) != 133:
+    bad.append(f"変異表の行が {len(table)} 件（133 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -360,7 +360,7 @@ mutate $IMPORT 'if (manifest.recorderErrors !== 0) die(' 'if (false && manifest.
 mutate $ASSEMBLE '        ...backedOnly(prev.evidenceKind === "real-cli-e2e", prev.value === "unknown" ? [] : prev.sourceEvents),' '        ...(prev.value === "unknown" ? [] : prev.sourceEvents),' && run 'M84: 先に見た側の裏付け無し hook 名を統合する'
 mutate $ASSEMBLE '        derivable && o.value === "native",' '        derivable,' && run 'M85: 高位 cell の導出可否を key だけで決める'
 mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時刻に ms より細かい桁を許す'
-mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 終了コードの綴りを見ずに読む'
+mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 終了コードの綴りを見ずに読む'
 mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
   # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
@@ -486,6 +486,16 @@ mutate $RIG '    AGENT_MEMORY_INTERNAL_RUN=1 \
     GIT_CONFIG_NOSYSTEM=1 \' '    AGENT_MEMORY_INTERNAL_RUN=1 \' && run 'M127: 測定対象の環境で system の git 設定を遮断しない'
 mutate $RIG '  purge_credentials
   sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' '  sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' && run 'M128: 誰のものでもない資格情報を setup で消さない'
+
+mutate $IMPORT '  for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true, recursive: true });' '  for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true, recursive: true });
+  rmSync(`${dest}.prev`, { force: true, recursive: true });' && run 'M129: 復元に失敗した経路で退避まで消す'
+mutate $SCHEMAV '    if (!SUPPORTED_KEYWORD_SET.has(key)) {' '    if (!SUPPORTED_KEYWORDS.includes(key)) {' && run 'M130: 検証が実行時に広げられる一覧を見る'
+
+mutate $RIG '    unset GIT_CONFIG_COUNT GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE
+    # 設定を外しても $GIT_TEMPLATE_DIR は残るので、template は空を明示する' '    # 設定を外しても $GIT_TEMPLATE_DIR は残るので、template は空を明示する' && run 'M131: 環境変数で渡した git 設定を測定用 workspace へ通す'
+mutate $RIG '${RUN_SIGNAL:+--signal="$RUN_SIGNAL"} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' '${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' && run 'M132: signal knob の引用を外す'
+mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M133: 3 桁に収まる 0 詰めを通す'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす
