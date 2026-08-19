@@ -17,7 +17,10 @@ test("no committed fixture names a manifest while the recorder is forgeable (#90
   // 要求していないので、suffix だけを見る検査は別名の manifest を素通しする
   for (const cli of CLIS) {
     const dir = new URL(`../fixtures/${cli}/`, import.meta.url);
-    for (const name of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
+    const names = readdirSync(dir).filter((n) => n.endsWith(".json"));
+    // 件数も主張する。0 件だと内側の assert が 1 度も呼ばれず、歯止めが空振りしたまま緑になる
+    assert.ok(names.length > 0, `${cli}: 検査対象の fixture が 1 件も無い`);
+    for (const name of names) {
       const fixture = readIJsonFile<{ evidence?: Array<{ manifest?: unknown }> }>(new URL(name, dir));
       for (const ref of fixture.evidence ?? []) {
         assert.equal(ref.manifest, undefined, `${cli}/${name}: #90 が閉じるまで manifest は名指ししない`);

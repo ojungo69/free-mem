@@ -260,7 +260,10 @@ function isProven(cell: CapabilityEvidence): boolean {
     cell.verifiedAt.length > 0 &&
     // 種別と時刻は cell が自分で名乗る値なので、裏付けた記録の実在もここで要求する。
     // 組み立てを通った matrix なら real-cli-e2e は必ず ref を持つが、この関数は
-    // 出来合いの matrix にも掛かる。名乗りだけで単独 cell の tier を通さない
+    // 出来合いの matrix にも掛かる。名乗りだけで単独 cell の tier を通さない。
+    // **ここで見えるのは「番号が付いているか」まで**。番号が `evidenceSources` の範囲に
+    // あるか・その記録が本当に裏付けているかは、番号を振った組み立て側でしか照合できない
+    // （この関数は cell しか受け取らない）。手書きの matrix を信用してよい根拠にはならない
     Array.isArray(cell.evidenceRefs) &&
     cell.evidenceRefs.length > 0
   );

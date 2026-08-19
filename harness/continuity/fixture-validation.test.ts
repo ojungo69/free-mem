@@ -111,7 +111,9 @@ test("形式は正しい 64 桁 hex でも、実在しない記録を指す fixt
     }),
     "f.json",
   ) as CaptureFixture;
-  assert.throws(() => assembleFromFixtures([forged]), /cannot be resolved|does not exist/);
+  // `does not exist` は証拠置き場そのものが解決できないときの別経路。ここで許すと、
+  // 個別の forge を拒めなくなっても「root が無い」で落ちて test が緑のままになる
+  assert.throws(() => assembleFromFixtures([forged]), /cannot be resolved/);
 });
 
 test("evidence が空配列の fixture は schema でも組み立てでも棄却される", () => {

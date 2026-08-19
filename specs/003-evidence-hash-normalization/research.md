@@ -75,7 +75,7 @@ digest が再取得で不安定になり、SC-003 を静かに破る。**verbati
 
 ## R2. 提案規則を 16 件へ当てた結果（測定）
 
-規則: 各行を `{event, payload}` にし `at` を落とす / object はキーを全保持して codepoint 順に整列 /
+規則: 各行を `{event, payload}` にし `at` を落とす / object はキーを全保持して UTF-16 code unit 順に整列 /
 `null` と boolean は verbatim / number は `<number>` / string は top-level `event` と `payload` 直下の
 7 キーのみ verbatim（marker 置換あり）でそれ以外は `<string>` か `<string:empty>` /
 array は要素ごとに再帰し長さを保持 / LF 区切りの NDJSON。

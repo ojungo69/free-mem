@@ -124,16 +124,22 @@ claude_run() {
   # --version も測定対象の起動なので、本実行と同じ扱いにする（ここだけ残骸が残ると
   # 次の run が lock で止まる。実際にこの経路だけ監督から漏れていた）
   local ver_pid=0 run_pid=0 ver_rc=0
+  # 版の問い合わせも測定対象の起動なので、本実行と同じ隔離で行う。ここだけ素で起動していると、
+  # その 1 回だけ実 HOME・実設定・実 plugin を見た状態で測定対象が動く。作業場所も分ける:
+  # claude は cwd から上へ設定を探すので、呼び出し元の repository に居るだけで実設定に届く。
+  # 記録先も分ける。問い合わせが hook を起こしたとき、その event が scenario の記録に
+  # 混ざって同じ manifest と digest に入るのを防ぐ
+  local ver_capture="$stem.version-probe.jsonl"
   set -m
-  # 版の問い合わせも測定対象の起動なので、隔離した環境で行う。ここだけ直に起動していると、
-  # その 1 回だけ実 HOME・実設定・実 plugin を見た状態で測定対象が動く
-  run_env claude "$capture" "$CLAUDE_BIN" --version > "$stem.version" 2>&1 & ver_pid=$!
+  ( cd "$RIG_BASE/workspace" && run_env claude "$ver_capture" "$CLAUDE_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
   # 畳むのが先。ここで抜けるときも残骸を置いていかない
   wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
+  # 問い合わせの記録は持ち込みの対象にしない。中身も残さない
+  rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
   ( cd "$RIG_BASE/workspace" && \
@@ -158,16 +164,22 @@ codex_run() {
   : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials codex
   local ver_pid=0 run_pid=0 ver_rc=0
+  # 版の問い合わせも測定対象の起動なので、本実行と同じ隔離で行う。ここだけ素で起動していると、
+  # その 1 回だけ実 HOME・実設定・実 plugin を見た状態で測定対象が動く。作業場所も分ける:
+  # codex は cwd から上へ設定を探すので、呼び出し元の repository に居るだけで実設定に届く。
+  # 記録先も分ける。問い合わせが hook を起こしたとき、その event が scenario の記録に
+  # 混ざって同じ manifest と digest に入るのを防ぐ
+  local ver_capture="$stem.version-probe.jsonl"
   set -m
-  # 版の問い合わせも測定対象の起動なので、隔離した環境で行う。ここだけ直に起動していると、
-  # その 1 回だけ実 HOME・実設定・実 plugin を見た状態で測定対象が動く
-  run_env codex "$capture" "$CODEX_BIN" --version > "$stem.version" 2>&1 & ver_pid=$!
+  ( cd "$RIG_BASE/workspace" && run_env codex "$ver_capture" "$CODEX_BIN" --version ) > "$stem.version" 2>&1 & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
   # 畳むのが先。ここで抜けるときも残骸を置いていかない
   wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
+  # 問い合わせの記録は持ち込みの対象にしない。中身も残さない
+  rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
   ( cd "$RIG_BASE/workspace" && \

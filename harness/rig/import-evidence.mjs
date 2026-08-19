@@ -132,7 +132,8 @@ const stagedCapture = `${dest}.tmp`;
 const stagedManifest = `${manifestPath}.tmp`;
 /** 一時 file を残さずに落ちる。`die` は process.exit なので finally では片付かない */
 const dieStaged = (msg) => {
-  for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true });
+  // 塞がれた側が directory のこともある（そこで落ちると片付け自体が二次障害になる）
+  for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true, recursive: true });
   die(msg);
 };
 
@@ -145,9 +146,14 @@ const captureHash = digestCapture(bytes);
 if (captureRawHash !== sourceRawHash || captureHash !== sourceHash) {
   dieStaged("the copy does not digest to the capture");
 }
-writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
-renameSync(stagedCapture, dest);
-renameSync(stagedManifest, manifestPath);
+// 置き換えそのものが失敗したときも、一時 file を証拠置き場へ残さない
+try {
+  writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+  renameSync(stagedCapture, dest);
+  renameSync(stagedManifest, manifestPath);
+} catch (e) {
+  dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);
+}
 
 // fixture の evidence[] へそのまま貼れる形で出す（digest を手で写させない）
 process.stdout.write(

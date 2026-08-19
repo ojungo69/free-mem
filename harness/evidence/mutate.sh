@@ -43,9 +43,12 @@ TESTS=(
   harness/evidence/rig-manifest.test.mjs
 )
 BAKDIR=$(mktemp -d)
-restore_all() { for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$(basename "$f")" "$f"; done; }
+# 鍵は path から作る。basename だと別 directory の同名 file を足した日に、退避が上書きされて
+# 復元が**別の file の中身**を書き戻す（ゲートの中で黙って repo を壊す形になる）
+bak_key() { printf '%s' "${1//\//_}"; }
+restore_all() { for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$(bak_key "$f")" "$f"; done; }
 trap 'restore_all; rm -rf "$BAKDIR"' EXIT
-for f in "${MUTABLE[@]}"; do cp "$f" "$BAKDIR/$(basename "$f")"; done
+for f in "${MUTABLE[@]}"; do cp "$f" "$BAKDIR/$(bak_key "$f")"; done
 
 # --- 変異表との突き合わせ（T042）。長い実行に入る前に済ませる ---
 # 表の M 番号がこのスクリプトに実在するか、表が挙げた test 名が本当に存在するかの両方を見る。
@@ -58,8 +61,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 97:
-    bad.append(f"変異表の行が {len(table)} 件（97 件でない）")
+if len(table) != 100:
+    bad.append(f"変異表の行が {len(table)} 件（100 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -342,10 +345,14 @@ mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時�
 mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 桁数を見ずに終了コードを読む'
 mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
+  # 問い合わせの記録は持ち込みの対象にしない。中身も残さない
+  rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
   ( cd "$RIG_BASE/workspace" && \
     run_env claude' '  wait "$ver_pid" || ver_rc=$?
+  # 問い合わせの記録は持ち込みの対象にしない。中身も残さない
+  rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
   ( cd "$RIG_BASE/workspace" && \
@@ -371,10 +378,21 @@ codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
 }
 
 codex_run' && run 'M89: lock の fd を測定対象へ渡さない'
-mutate $RIG '  run_env claude "$capture" "$CLAUDE_BIN" --version > "$stem.version" 2>&1 & ver_pid=$!' '  { "$CLAUDE_BIN" --version; } > "$stem.version" 2>&1 & ver_pid=$!' && run 'M93: 版の問い合わせを隔離の外で行う'
+mutate $RIG '( cd "$RIG_BASE/workspace" && run_env claude "$ver_capture" "$CLAUDE_BIN" --version )' '( { "$CLAUDE_BIN" --version; } )' && run 'M93: 版の問い合わせを隔離の外で行う'
 mutate $RIG '[ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' '[ "$ver_rc" -eq 0 ] || true' && run 'M94: 失敗した版の問い合わせでも測定を続ける'
 mutate $CAP '    Array.isArray(cell.evidenceRefs) &&
     cell.evidenceRefs.length > 0' '    true' && run 'M95: 裏付けた記録が無くても証明済みとする'
+mutate $IMPORT 'try {
+  writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+  renameSync(stagedCapture, dest);
+  renameSync(stagedManifest, manifestPath);
+} catch (e) {
+  dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);
+}' 'writeFileSync(stagedManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+renameSync(stagedCapture, dest);
+renameSync(stagedManifest, manifestPath);' && run 'M96: 置き換えで落ちても一時 file を片付けない'
+mutate $RIG '( cd "$RIG_BASE/workspace" && run_env claude "$ver_capture"' '( run_env claude "$ver_capture"' && run 'M97: 版の問い合わせを呼び出し元の作業場所で行う'
+mutate $RIG 'run_env claude "$ver_capture" "$CLAUDE_BIN" --version' 'run_env claude "$capture" "$CLAUDE_BIN" --version' && run 'M98: 版の問い合わせと本実行で記録先を共有する'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'

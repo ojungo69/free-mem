@@ -21,7 +21,7 @@ set -eu
 # --version も run_env 経由なので CAPTURE_FILE がある。隔離が効いているかをここで書き出す
 # （run_env の外から呼ぶ変異では CAPTURE_FILE が無くなる）。STEM は記録本体を書く段で作る
 if [ "\${1:-}" = --version ]; then
-{ echo "HOME=\$HOME"; echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR:-<unset>}"; echo "INTERNAL=\${AGENT_MEMORY_INTERNAL_RUN:-<unset>}"; } > "\${CAPTURE_FILE:-/dev/null}.version-env"
+{ echo "HOME=\$HOME"; echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR:-<unset>}"; echo "INTERNAL=\${AGENT_MEMORY_INTERNAL_RUN:-<unset>}"; echo "PWD=\$PWD"; echo "CAPTURE=\${CAPTURE_FILE:-<unset>}"; } > "\${CAPTURE_FILE:-/dev/null}.version-env"
 ${versionExtra}
 printf '%s\\n' '${VERSION}'; exit 0; fi
 STEM="\${CAPTURE_FILE%.jsonl}"
@@ -314,16 +314,34 @@ test("a failure while staging leaves both stored files untouched", () => {
   assert.notEqual(again.status, 0, "書き込みに失敗したのに持ち込みが成功した");
   assert.deepEqual(readFileSync(stored), before.capture, "書き込みに失敗したのに記録が置き換わった");
   assert.deepEqual(readFileSync(storedManifest), before.manifest, "書き込みに失敗したのに manifest が置き換わった");
+  // 落ちた経路でも一時 file を証拠置き場へ残さない（次の持ち込みが古い複製の隣で始まる）
+  assert.ok(!existsSync(`${stored}.tmp`), "書き込みに失敗した run が一時 file を証拠置き場へ残した");
 });
 
 test("the version probe runs in the isolated environment, not the caller's", () => {
-  // 隔離の約束は「実 HOME・実設定・実 plugin を継承しない」。--version を直に起動していると、
-  // その 1 回だけ約束の外で測定対象が動く（実際に外れていた）
+  // 隔離の約束は「実 HOME・実設定・実 plugin・実 repository を継承しない」。--version を
+  // 素で起動していると、その 1 回だけ約束の外で測定対象が動く（実際に外れていた）。
+  // 作業場所も見る: CLI は cwd から上へ設定を探すので、呼び出し元に居るだけで実設定に届く
   const { base } = rigRun({ skipImport: true });
-  const seen = readFileSync(join(base, "capture", `claude-${LABEL}.jsonl.version-env`), "utf8");
+  const seen = readFileSync(join(base, "capture", `claude-${LABEL}.version-probe.jsonl.version-env`), "utf8");
   assert.match(seen, new RegExp(`HOME=${base}/home\n`), `版の問い合わせが隔離 HOME で走っていない: ${seen}`);
   assert.match(seen, new RegExp(`CLAUDE_CONFIG_DIR=${base}/claude-config\n`), seen);
   assert.match(seen, /INTERNAL=1\n/, seen);
+  assert.match(seen, new RegExp(`PWD=${base}/workspace\n`), `版の問い合わせが呼び出し元の作業場所で走っている: ${seen}`);
+});
+
+test("what the version probe records never reaches the scenario's capture", () => {
+  // 問い合わせも測定対象の起動なので、hook が動きうる。同じ記録先を使っていると、その event が
+  // scenario の記録として持ち込まれ、同じ manifest と digest に入る
+  const { capture, rawDir } = rigRun({
+    stubVersionExtra: `printf '%s\\n' '{"event":"SessionStart","at":"2026-01-01T00:00:00.000Z","payload":{"hook_event_name":"SessionStart","forged":"version-probe"}}' >> "$CAPTURE_FILE"`,
+  });
+  assert.ok(
+    !readFileSync(capture, "utf8").includes("version-probe"),
+    "版の問い合わせが書いた行が scenario の記録に混ざった",
+  );
+  const imported = readFileSync(join(rawDir, `claude-${LABEL}.jsonl`), "utf8");
+  assert.ok(!imported.includes("version-probe"), "版の問い合わせが書いた行を証拠として持ち込んだ");
 });
 
 test("a version probe that fails is not accepted as the version behind the evidence", () => {

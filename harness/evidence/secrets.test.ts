@@ -3,13 +3,13 @@
 // stdout / stderr を見られない（entrypoint の起動判定も含めて経路が違う）。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, cpSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { assertNoSecretSubstrings } from "../assemble.ts";
-import { collectSecretsOf } from "./verify.ts";
+import { SECRET_KEYS, SECRET_SUBTREES, collectSecretsOf } from "./verify.ts";
 
 const HARNESS = fileURLToPath(new URL("../", import.meta.url));
 const RAW = "claude-lifecycle-basic.jsonl";
@@ -27,9 +27,13 @@ const PLAIN_CODE = "CANARYCODE7f1a3e9d5b2c";
 const node = (args: string[]) =>
   spawnSync(process.execPath, ["--experimental-strip-types", ...args], { encoding: "utf8" });
 
-/** harness ごと複製する。証拠置き場は module からの相対なので、複製と一緒に動く */
-function plantedTree(): { tmp: string; rawPath: string } {
+/**
+ * harness ごと複製する。証拠置き場は module からの相対なので、複製と一緒に動く。
+ * 複製は 2MB を超えるうえ、変異ゲートは test 一式を 98 回回すので、test ごとに片付ける
+ */
+function plantedTree(t: TestContext): { tmp: string; rawPath: string } {
   const tmp = mkdtempSync(join(tmpdir(), "evidence-secrets-"));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
   cpSync(HARNESS, join(tmp, "harness"), { recursive: true });
   const fixturesDir = join(tmp, "harness", "fixtures", "claude");
   const rawPath = join(fixturesDir, "raw", RAW);
@@ -79,8 +83,8 @@ function plantedTree(): { tmp: string; rawPath: string } {
   return { tmp, rawPath };
 }
 
-test("planted canaries never reach the matrix, stdout, or stderr", () => {
-  const { tmp } = plantedTree();
+test("planted canaries never reach the matrix, stdout, or stderr", (t) => {
+  const { tmp } = plantedTree(t);
   const outFile = join(tmp, "out.json");
   const run = node([join(tmp, "harness", "assemble.ts"), join(tmp, "harness", "fixtures", "claude"), outFile]);
   assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
@@ -97,8 +101,8 @@ test("planted canaries never reach the matrix, stdout, or stderr", () => {
   assert.match(matrix, /"evidenceKind"/);
 });
 
-test("failure messages carry neither capture contents nor absolute paths", () => {
-  const { tmp, rawPath } = plantedTree();
+test("failure messages carry neither capture contents nor absolute paths", (t) => {
+  const { tmp, rawPath } = plantedTree(t);
   appendFileSync(rawPath, "\n");
 
   const run = node([join(tmp, "harness", "assemble.ts"), join(tmp, "harness", "fixtures", "claude"), join(tmp, "o.json")]);
@@ -112,8 +116,8 @@ test("failure messages carry neither capture contents nor absolute paths", () =>
 
 // 棄却の診断も漏洩経路。schema が値を弾くとき、その値を message に載せると
 // stderr から CI ログへ流れる（隣の fixtureId 検査が生値を避けているのと同じ理由）
-test("schema diagnostics do not echo the rejected value", () => {
-  const { tmp } = plantedTree();
+test("schema diagnostics do not echo the rejected value", (t) => {
+  const { tmp } = plantedTree(t);
   const dir = join(tmp, "harness", "fixtures", "claude");
   const file = join(dir, readdirSync(dir).filter((n) => n.endsWith(".json"))[0] as string);
   const fixture = JSON.parse(readFileSync(file, "utf8"));
@@ -129,8 +133,8 @@ test("schema diagnostics do not echo the rejected value", () => {
 
 // schema より前に手書きの検証が走る欄がある。schema 側だけ直しても、そちらが
 // 値をそのまま返していれば同じ漏洩が別の識別子で残る
-test("hand-written fixture validation does not echo the rejected value either", () => {
-  const { tmp } = plantedTree();
+test("hand-written fixture validation does not echo the rejected value either", (t) => {
+  const { tmp } = plantedTree(t);
   const dir = join(tmp, "harness", "fixtures", "claude");
   const file = join(dir, readdirSync(dir).filter((n) => n.endsWith(".json"))[0] as string);
   const fixture = JSON.parse(readFileSync(file, "utf8"));
@@ -164,24 +168,30 @@ test("a 16+ char secret substring in a generated string fails the build", () => 
 });
 
 test("collectSecrets covers every secret-bearing field", () => {
+  // 集合そのものから payload を組むと、欄を**外した**変異まで test が一緒に縮んで気づけない
+  // （実測: 変異 M24「材料から cwd を外す」が生き残った）。そこで綴りはここに固定し、
+  // 固定した並びと実装の集合が一致することを先に主張する。これで両方向が閉じる:
+  // 欄を外せば下の deepEqual が落ち、欄を足せばここが落ちて test の更新を強制する
+  const SECRET_FIELDS = ["prompt", "last_assistant_message", "cwd", "transcript_path", "agent_transcript_path"];
+  const SUBTREE_FIELDS = ["tool_input", "tool_response"];
+  assert.deepEqual([...SECRET_KEYS].sort(), [...SECRET_FIELDS].sort(), "秘密欄の集合が test の並びと違う");
+  assert.deepEqual([...SECRET_SUBTREES].sort(), [...SUBTREE_FIELDS].sort(), "秘密部分木の集合が test の並びと違う");
+
   const long = (tag: string) => `${tag}-0123456789abcdef`;
-  const line = {
-    event: "PreToolUse",
-    at: "2026-01-01T00:00:00.000Z",
-    payload: {
-      prompt: long("prompt"),
-      last_assistant_message: long("msg"),
-      cwd: long("cwd"),
-      transcript_path: long("transcript"),
-      agent_transcript_path: long("agent-transcript"),
-      tool_input: { command: long("command"), nested: [{ deep: long("deep-input") }] },
-      tool_response: { stdout: long("stdout") },
-      hook_event_name: long("not-a-secret"),
-    },
-  };
+  const payload: Record<string, unknown> = { hook_event_name: long("not-a-secret") };
+  for (const key of SECRET_FIELDS) payload[key] = long(key);
+  // 部分木は入れ子も配列の中まで辿ることを見る
+  for (const key of SUBTREE_FIELDS) {
+    payload[key] = { field: long(`${key}-field`), nested: [{ deep: long(`${key}-deep`) }] };
+  }
+  const line = { event: "PreToolUse", at: "2026-01-01T00:00:00.000Z", payload };
   const found = collectSecretsOf(Buffer.from(`${JSON.stringify(line)}\n`, "utf8"));
-  for (const tag of ["prompt", "msg", "cwd", "transcript", "agent-transcript", "command", "deep-input", "stdout"]) {
-    assert.ok(found.has(long(tag)), `${tag} が警報の材料に入っていない`);
+  for (const key of SECRET_FIELDS) {
+    assert.ok(found.has(long(key)), `${key} が警報の材料に入っていない`);
+  }
+  for (const key of SUBTREE_FIELDS) {
+    assert.ok(found.has(long(`${key}-field`)), `${key} 直下が警報の材料に入っていない`);
+    assert.ok(found.has(long(`${key}-deep`)), `${key} の入れ子が警報の材料に入っていない`);
   }
   // 秘密でない欄まで材料にすると、正常な組み立てが偽陽性で落ちる
   assert.ok(!found.has(long("not-a-secret")));
@@ -193,7 +203,13 @@ test("collectSecrets covers every secret-bearing field", () => {
 
 test("the secrets gate does not let an action pick which commits to scan", () => {
   const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
-  const job = ci.slice(ci.indexOf("\n  secrets:"));
+  const start = ci.indexOf("\n  secrets:");
+  // job が消えた・改名された場合に「走査していない」と誤診断しない。切り出しは次の job
+  // 見出しまでで止める（後ろに job が増えると、その中身をこの job のせいにしてしまう）
+  assert.notEqual(start, -1, "ci.yml に secrets job が無い");
+  const rest = ci.slice(start + 1);
+  const next = rest.slice(1).search(/\n {2}\S+:/);
+  const job = next === -1 ? rest : rest.slice(0, next + 1);
   // gitleaks-action は pulls/:n/commits を pagination なしで呼び、その 1 ページ目の
   // 先頭と末尾だけを範囲にする。30 commit を超える PR では新しい側が丸ごと外れる
   // 綴りではなく **action として使っているか** を見る。ci.yml 側の説明文にも同じ語が出るので、

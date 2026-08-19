@@ -126,15 +126,19 @@ function readNormalized(text: string): NormalizedLine[] {
  */
 const has = (line: NormalizedLine, key: string): boolean => line.payload[key] === "<string>";
 
-/** 成果物へ出てはいけない値の出どころ。入れ子も辿る */
-const SECRET_KEYS = new Set([
+/**
+ * 成果物へ出てはいけない値の出どころ。入れ子も辿る。
+ * export しているのは網羅 test がこの集合そのものから payload を組むため
+ * （手で並べ直すと、欄を足した日に test だけ古いまま緑になる）
+ */
+export const SECRET_KEYS: ReadonlySet<string> = new Set([
   "prompt",
   "last_assistant_message",
   "cwd",
   "transcript_path",
   "agent_transcript_path",
 ]);
-const SECRET_SUBTREES = new Set(["tool_input", "tool_response"]);
+export const SECRET_SUBTREES: ReadonlySet<string> = new Set(["tool_input", "tool_response"]);
 
 /** 警報用の材料を **正規化前の** 記録から集める（正規化は伏せてしまうため） */
 function collectSecrets(value: unknown, inSubtree: boolean, out: Set<string>): void {
