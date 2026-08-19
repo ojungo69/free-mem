@@ -37,7 +37,7 @@ emit Stop '{"hook_event_name":"Stop","prompt_id":"p-stub","last_assistant_messag
 emit SessionEnd '{"hook_event_name":"SessionEnd","prompt_id":"p-stub","reason":"other","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
 `;
 
-function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false } = {}) {
+function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false, expectRunFailure = false } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), "rig-manifest-"));
   cpSync(HARNESS, join(tmp, "harness"), { recursive: true });
   const stubPath = join(tmp, "stub-cli");
@@ -54,9 +54,9 @@ function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false } = 
   const setup = sh("setup");
   assert.equal(setup.status, 0, setup.stderr);
   const run = sh("claude-run", LABEL, "hello");
-  assert.equal(run.status, 0, run.stderr);
+  if (!expectRunFailure) assert.equal(run.status, 0, run.stderr);
   const rawDir = join(tmp, "harness", "fixtures", "claude", "raw");
-  if (skipImport) return { tmp, base, sh, rawDir };
+  if (skipImport) return { tmp, base, sh, rawDir, run };
   const imported = sh("import", "claude", LABEL, "self.stub");
   assert.equal(imported.status, 0, imported.stderr);
 
@@ -324,4 +324,20 @@ test("the version probe runs in the isolated environment, not the caller's", () 
   assert.match(seen, new RegExp(`HOME=${base}/home\n`), `版の問い合わせが隔離 HOME で走っていない: ${seen}`);
   assert.match(seen, new RegExp(`CLAUDE_CONFIG_DIR=${base}/claude-config\n`), seen);
   assert.match(seen, /INTERNAL=1\n/, seen);
+});
+
+test("a version probe that fails is not accepted as the version behind the evidence", () => {
+  // 非ゼロで終えた問い合わせでも、1 行だけ吐けば版として schema を通る。run を続けると
+  // そのエラー行が cliVersion に載り、証拠が「この版で測った」と読める
+  const { run, base } = rigRun({
+    stubVersionExtra: `printf '%s\\n' '${VERSION}'; exit 7`,
+    skipImport: true,
+    expectRunFailure: true,
+  });
+  assert.notEqual(run.status, 0, `版の問い合わせが失敗したのに run が成功した: ${run.stdout}`);
+  assert.match(run.stderr, /claude --version failed \(exit=7\)/, run.stderr);
+  assert.ok(
+    !existsSync(join(base, "capture", `claude-${LABEL}.exit`)),
+    "版の問い合わせが失敗したのに測定を続けた",
+  );
 });

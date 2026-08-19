@@ -292,7 +292,7 @@ const USAGE =
 function main(argv: string[]): number {
   const rawMode = argv[0] === "--raw";
   const args = rawMode ? argv.slice(1) : argv;
-  if (args.length !== 1 || args[0] === undefined || args[0].startsWith("--")) {
+  if (args.length !== 1 || args[0].startsWith("--")) {
     process.stderr.write(`${USAGE}\n`);
     return 2;
   }

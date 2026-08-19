@@ -20,6 +20,7 @@ MSCHEMA=harness/schema/evidence-manifest.schema.json
 IMPORT=harness/rig/import-evidence.mjs
 RIG=harness/rig/rig.sh
 SCHEMAV=harness/schema/validate.ts
+CAP=harness/schema/capability.ts
 # 出荷データ側。kill switch (#90) は実装ではなく commit 済みの成果物を見るので、
 # 実装の変異では触れない。fixture 1 件を変異対象に入れて歯止めが本当に鳴るかを見る
 FIXTURE=harness/fixtures/claude/lifecycle-basic.json
@@ -29,7 +30,7 @@ TASKS=specs/003-evidence-hash-normalization/tasks.md
 MATRIX=harness/matrix/claude.json
 CI=.github/workflows/ci.yml
 
-MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$MSCHEMA" "$SCHEMAV" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE" "$MATRIX" "$CI")
+MUTABLE=("$ASSEMBLE" "$VERIFY" "$NORMALIZE" "$SCHEMA" "$MSCHEMA" "$SCHEMAV" "$CAP" "$IMPORT" "$RIG" "$HASHES" "$FIXTURE" "$MATRIX" "$CI")
 TESTS=(
   harness/evidence/hash-inputs.test.ts
   harness/evidence/killswitch.test.ts
@@ -57,8 +58,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 95:
-    bad.append(f"変異表の行が {len(table)} 件（95 件でない）")
+if len(table) != 97:
+    bad.append(f"変異表の行が {len(table)} 件（97 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -339,11 +340,13 @@ mutate $ASSEMBLE '        ...backedOnly(prev.evidenceKind === "real-cli-e2e", pr
 mutate $ASSEMBLE '        derivable && o.value === "native",' '        derivable,' && run 'M85: 高位 cell の導出可否を key だけで決める'
 mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時刻に ms より細かい桁を許す'
 mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 桁数を見ずに終了コードを読む'
-mutate $RIG '  wait "$ver_pid" || true
+mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
+  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
   ( cd "$RIG_BASE/workspace" && \
-    run_env claude' '  wait "$ver_pid" || true
+    run_env claude' '  wait "$ver_pid" || ver_rc=$?
+  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
   set -m
   ( cd "$RIG_BASE/workspace" && \
     run_env claude' && run 'M88: 版の問い合わせが残した子を畳まない'
@@ -369,6 +372,9 @@ codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
 
 codex_run' && run 'M89: lock の fd を測定対象へ渡さない'
 mutate $RIG '  run_env claude "$capture" "$CLAUDE_BIN" --version > "$stem.version" 2>&1 & ver_pid=$!' '  { "$CLAUDE_BIN" --version; } > "$stem.version" 2>&1 & ver_pid=$!' && run 'M93: 版の問い合わせを隔離の外で行う'
+mutate $RIG '[ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' '[ "$ver_rc" -eq 0 ] || true' && run 'M94: 失敗した版の問い合わせでも測定を続ける'
+mutate $CAP '    Array.isArray(cell.evidenceRefs) &&
+    cell.evidenceRefs.length > 0' '    true' && run 'M95: 裏付けた記録が無くても証明済みとする'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'

@@ -32,10 +32,13 @@ export interface CapabilityEvidence {
   // どの capture fixture が根拠か。cell 間で「同一の実測に基づくか」を比較するために持つ
   // （limitations の自由文から fixture 名を読み取るのは照合として弱い）
   sourceFixtureId?: string;
-  // どの観測記録がこの cell を裏付けたか。matrix 直下 `evidenceSources` への添字。
+  // 申告値を**導いた**観測記録。matrix 直下 `evidenceSources` への添字。
   // 単数の digest 欄にしない: 1 つの fixture が複数の run を束ねるため
   // （claude/interrupt-and-hook-timeout は 5 本の記録を根拠にしている）。
-  // 空でない配列を持つ cell だけが real-cli-e2e を名乗れる。
+  // 含意は片方向だけ: real-cli-e2e の cell は必ず空でない配列を持つ（`isProven` が要求する）。
+  // 逆は成り立たない —— source-test の cell も、値を導いた legacy 記録（manifest 無し）を
+  // ここに載せる。したがって「refs がある」は裏付けの証明にならないので、
+  // 種別を見ずにこの欄で判断しない。
   evidenceRefs?: number[];
 }
 
@@ -254,7 +257,12 @@ function isProven(cell: CapabilityEvidence): boolean {
     (cell.value === "native" || cell.value === "synthesized") &&
     cell.evidenceKind === "real-cli-e2e" &&
     typeof cell.verifiedAt === "string" &&
-    cell.verifiedAt.length > 0
+    cell.verifiedAt.length > 0 &&
+    // 種別と時刻は cell が自分で名乗る値なので、裏付けた記録の実在もここで要求する。
+    // 組み立てを通った matrix なら real-cli-e2e は必ず ref を持つが、この関数は
+    // 出来合いの matrix にも掛かる。名乗りだけで単独 cell の tier を通さない
+    Array.isArray(cell.evidenceRefs) &&
+    cell.evidenceRefs.length > 0
   );
 }
 

@@ -18,7 +18,12 @@ import {
   toolRun,
   type CaptureLine,
 } from "./synthetic.ts";
-import type { CaptureFixture } from "../schema/capability.ts";
+import {
+  emptyMatrix,
+  resolveResumeDeliveryStrategy,
+  type CapabilityEvidence,
+  type CaptureFixture,
+} from "../schema/capability.ts";
 
 const asFixture = (o: Record<string, unknown>): CaptureFixture => o as unknown as CaptureFixture;
 const AT = "2026-08-12T00:00:00.000Z";
@@ -613,4 +618,25 @@ test("empty identifiers do not correlate", () => {
           });
     assert.throws(() => assemble([fixture], root), new RegExp(`${key} claims`), key);
   }
+});
+
+test("a cell that names no record does not open the native delivery tier", () => {
+  // tier の判定は「実 CLI で測った」ことを要求する。種別も時刻も cell の自己申告なので、
+  // 裏付けた記録の実在まで見ないと、欄を 3 つ書くだけで単独 cell が最上位経路を開ける
+  const proven: CapabilityEvidence = {
+    value: "native",
+    sourceEvents: [],
+    nativeVersion: "9.9.9",
+    evidenceKind: "real-cli-e2e",
+    verifiedAt: AT,
+    evidenceRefs: [0],
+    limitations: [],
+  };
+  const withRefs = emptyMatrix("9.9.9");
+  withRefs.promptDeliveryBeforeModel = proven;
+  assert.equal(resolveResumeDeliveryStrategy(withRefs), "native_prompt_gate");
+
+  const withoutRefs = emptyMatrix("9.9.9");
+  withoutRefs.promptDeliveryBeforeModel = { ...proven, evidenceRefs: [] };
+  assert.equal(resolveResumeDeliveryStrategy(withoutRefs), "manual_only");
 });
