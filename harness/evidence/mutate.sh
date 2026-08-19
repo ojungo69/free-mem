@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 118:
-    bad.append(f"変異表の行が {len(table)} 件（118 件でない）")
+if len(table) != 123:
+    bad.append(f"変異表の行が {len(table)} 件（123 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -467,6 +467,15 @@ mutate $RIG '  echo "captured: ${capture##*/} ($(wc -l < "$capture") events)"
 mutate $MSCHEMA '      "minimum": 0,
       "maximum": 255' '      "minimum": 0' && run 'M117: manifest の終了コードに上限を求めない'
 mutate $RIG '    *) echo "run_env: unknown cli" >&2; exit 2 ;;' '    *) : ;;' && run 'M118: 知らない cli を隔離設定なしで起動する'
+
+mutate $VERIFY '      if (line.payload["hook_event_name"] !== line.event) {' '      if (false) {' && run 'M119: hook の名乗りを CLI の payload で裏取りしない'
+mutate $RIG '    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null' '    :' && run 'M120: workspace を実環境の git 設定で作る'
+mutate $RIG '    git -C "$RIG_BASE/workspace" init -q --template=' '    git -C "$RIG_BASE/workspace" init -q' && run 'M121: workspace の作成に実環境の template を許す'
+mutate $RIG '  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "label must be a plain file-name token" >&2; exit 2; }' '  :' && run 'M122: label の綴りを見ない'
+mutate $RIG '  require_label "$label"
+  with_lock
+  [ -n "$CODEX_BIN" ]' '  with_lock
+  [ -n "$CODEX_BIN" ]' && run 'M123: codex の run だけ label を見ない'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす

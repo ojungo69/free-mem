@@ -3,7 +3,7 @@
 // harness ごと複製して走らせるので、既定の証拠置き場（module からの相対）も複製側を指す。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const HARNESS = fileURLToPath(new URL("../", import.meta.url));
 // rig を実 process として走らせる test は harness ごと複製する（1 回あたり数 MB）。変異ゲートは
-// この file を 113 回回すので、置きっぱなしにすると CI の /tmp が数 GB 単位で埋まる
+// 変異 1 件ごとにこの file を回すので、置きっぱなしにすると CI の /tmp が数 GB 単位で埋まる
 const SCRATCH = [];
 after(() => {
   for (const dir of SCRATCH) rmSync(dir, { recursive: true, force: true });
@@ -569,6 +569,56 @@ test("teardown that cannot take the lock removes nothing", () => {
   chmodSync(parent, 0o700);
   rmSync(tmp, { recursive: true, force: true });
   assert.notEqual(done.status, 0, `lock を取れないのに teardown が消したと報告した: ${done.stdout}`);
+});
+
+// 測定用の workspace を、operator の git 設定・template から切り離して作れているか。
+// 漏れると hook ごと .git へ複製され、隔離したはずの測定の中で走る（manifest は isolated: true）
+function workspaceTemplateLeak(envFor) {
+  const tmp = mkdtempSync(join(tmpdir(), "rig-gitleak-"));
+  SCRATCH.push(tmp);
+  const template = join(tmp, "template");
+  mkdirSync(template, { recursive: true });
+  writeFileSync(join(template, "MARKER"), "leaked\n");
+  const base = join(tmp, "base");
+  const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "setup"], {
+    encoding: "utf8",
+    env: { ...process.env, RIG_BASE: base, ...envFor(tmp, template) },
+  });
+  assert.equal(done.status, 0, done.stderr);
+  return existsSync(join(base, "workspace", ".git", "MARKER"));
+}
+
+test("the measured workspace is not built from the operator's git configuration", () => {
+  const leaked = workspaceTemplateLeak((tmp, template) => {
+    const config = join(tmp, "gitconfig");
+    writeFileSync(config, `[init]\n\ttemplateDir = ${template}\n`);
+    return { GIT_CONFIG_GLOBAL: config };
+  });
+  assert.ok(!leaked, "global の init.templateDir が隔離した workspace の .git へ複製された");
+});
+
+test("the measured workspace is not built from the operator's git templates", () => {
+  // 設定を外しても env は残る。git init は $GIT_TEMPLATE_DIR も見る
+  const leaked = workspaceTemplateLeak((_tmp, template) => ({ GIT_TEMPLATE_DIR: template }));
+  assert.ok(!leaked, "$GIT_TEMPLATE_DIR が隔離した workspace の .git へ複製された");
+});
+
+test("a label the importer would refuse never starts a measured run", () => {
+  // 取り込みが必ず落とす綴りで測定を始めると、CLI の起動 1 回分がまるごと捨てになる
+  const { base, sh } = rigRun({ skipRun: true });
+  const bad = sh("claude-run", "my run", "hello");
+  assert.notEqual(bad.status, 0, `import が落とす label で測定が走った: ${bad.stdout}`);
+  assert.deepEqual(readdirSync(join(base, "capture")), [], "捨てるしかない記録が残った");
+});
+
+test("both runs check the label before starting a measured run", () => {
+  // stub で走らせるのは claude 経路だけなので、codex 経路はここで形として見る
+  const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
+  const blocks = [...rig.matchAll(/^(claude|codex)_run\(\) \{$([\s\S]*?)^\}$/gm)];
+  assert.equal(blocks.length, 2, "run 関数の数が変わった");
+  for (const [, name, body] of blocks) {
+    assert.match(body, /require_label "\$label"/, `${name}_run が label を検査していない`);
+  }
 });
 
 test("run_env refuses a CLI it has no isolated config for", () => {

@@ -67,7 +67,13 @@ setup() {
   sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json" > "$RIG_BASE/claude-config/settings.json"
   sed "s|__HOOK__|$HOOK|g" "$DIR/codex-config-template.toml" > "$RIG_BASE/codex-home/config.toml"
   if [ ! -d "$RIG_BASE/workspace/.git" ]; then
-    git -C "$RIG_BASE/workspace" init -q
+    # 実環境の git 設定を持ち込まない。global に init.templateDir があると、その hook ごと
+    # workspace の .git へ複製され、隔離したはずの測定の中で走る（それでも manifest は
+    # isolated: true を書く）。gpg 署名の既定も同じで、operator の設定で setup が落ちる。
+    # この process は setup を実行して終わるので export でよい
+    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+    # 設定を外しても $GIT_TEMPLATE_DIR は残るので、template は空を明示する
+    git -C "$RIG_BASE/workspace" init -q --template=
     echo "rig workspace" > "$RIG_BASE/workspace/README.md"
     git -C "$RIG_BASE/workspace" add -A
     git -C "$RIG_BASE/workspace" -c user.email=rig@local -c user.name=rig commit -qm init
@@ -129,6 +135,13 @@ with_lock() { # 並行 run を禁止する。同じ RIG_BASE を共有すると�
 # SIGTERM だけでは足りない。無視する子が group に残ると lock を握ったままになり、以後の run が
 # 全部止まる（畳めるはずの残骸で可用性を失う）。猶予のあとに生き残りを確かめて SIGKILL する。
 # group を抜けた process には届かないままなので、逃げた側の fail closed は変わらない
+# 取り込み側と同じ綴りを、測定を始める前に要求する。合わない label で撮った記録は import が
+# 必ず落とすので、走らせた分の CLI 起動が丸ごと無駄になる。`/` を含む label なら capture/ の
+# 外へ書ける
+require_label() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "label must be a plain file-name token" >&2; exit 2; }
+}
+
 reap_group() {
   kill -- "-$1" 2>/dev/null || true
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -140,6 +153,7 @@ reap_group() {
 
 claude_run() {
   local label="$1" prompt="$2" rc=0; shift 2
+  require_label "$label"
   with_lock
   [ -n "$CLAUDE_BIN" ] || { echo "claude not found" >&2; exit 1; }
   # 付属物は import-evidence.mjs と同じ stem で並べる。記録だけ拡張子付きの別名にすると、
@@ -205,6 +219,7 @@ claude_run() {
 
 codex_run() {
   local label="$1" prompt="$2" rc=0; shift 2
+  require_label "$label"
   with_lock
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local stem="$RIG_BASE/capture/codex-$label"

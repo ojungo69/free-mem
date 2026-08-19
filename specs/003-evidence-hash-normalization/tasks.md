@@ -195,8 +195,8 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 
 - [X] T039 [P] research.md R6 が挙げた 5 箇所の古い記述を退役させる。`harness/matrix/README.md` の `evidenceKind` の説明を実態（digest が裏付ける範囲・legacy 証拠・導けない主張）へ合わせる。**節ごとに掃除する**（変更前の設計は別の語で書かれた節に残る）
 - [X] T040 [P] `harness/contract-hashes.json` を再生成する（`node harness/contract-hashes.mjs > harness/contract-hashes.json`）。`capability.schema.json` と fixture がその入力なので、Phase 2 と Phase 5 の変更で必ず動く
-- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 118 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
-- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 118 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
+- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 123 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
+- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 123 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
 - [X] T043 `.github/workflows/ci.yml` の `harness` job へ 2 step 足す（`node --experimental-strip-types --test harness/evidence/*.test.ts` と `bash harness/evidence/mutate.sh`）。既存 step は緩めない
 - [X] T044 `specs/003-evidence-hash-normalization/quickstart.md` を実際に上から実行し、書いてあるコマンドがそのまま通ることを確認する。通らない箇所は quickstart 側を直す
 - [X] T045 セキュリティ関連の必須ゲートを通す。`semgrep scan`（CLI）→ `/codex-review mode=security` → `/codex:adversarial-review`。指摘は `review-routing` の批判的評価にかけ、採否の理由を残す
@@ -221,7 +221,7 @@ done
 
 ---
 
-## 変異の割り当て（現在 118 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
+## 変異の割り当て（現在 123 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
 
 各行の「殺す test」は、その変異を入れたときに**必ず落ちる** test。`harness/evidence/mutate.sh`
 （T041）はこの表を実行可能な形にしたもので、T042 が両者の一致を機械的に確認する。
@@ -346,6 +346,11 @@ done
 | M116 | `harness/rig/rig.sh` codex の run の報告に絶対 path を出す | `rig-manifest.test.mjs::both runs report the capture by name, not by where it lives` | T047 |
 | M117 | `harness/schema/evidence-manifest.schema.json` 終了コードに上限を求めない | `manifest.test.ts::a manifest exit status no shell could have reported is rejected` | T047 |
 | M118 | `harness/rig/rig.sh` 知らない cli を隔離設定なしで起動する | `rig-manifest.test.mjs::run_env refuses a CLI it has no isolated config for` | T047 |
+| M119 | `harness/evidence/verify.ts` hook の名乗りを CLI の payload で裏取りしない | `promotion.test.ts::a capture the CLI payload does not confirm fails the build` | T047 |
+| M120 | `harness/rig/rig.sh` workspace を実環境の git 設定で作る | `rig-manifest.test.mjs::the measured workspace is not built from the operator's git configuration` | T047 |
+| M121 | `harness/rig/rig.sh` workspace の作成に実環境の template を許す | `rig-manifest.test.mjs::the measured workspace is not built from the operator's git templates` | T047 |
+| M122 | `harness/rig/rig.sh` label の綴りを見ない | `rig-manifest.test.mjs::a label the importer would refuse never starts a measured run` | T047 |
+| M123 | `harness/rig/rig.sh` codex の run だけ label を見ない | `rig-manifest.test.mjs::both runs check the label before starting a measured run` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 
@@ -365,8 +370,8 @@ done
 **割当の確認**（T042 が自動化する。手で確かめるときはこれ）:
 
 ```bash
-# 表に 118 件そろっているか
-grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 118
+# 表に 123 件そろっているか
+grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 123
 ```
 
 ---

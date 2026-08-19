@@ -331,6 +331,17 @@ export function verifyEvidence(f: CaptureFixture, ctx?: EvidenceContext): Verifi
       reject(f.fixtureId, `evidenceHash mismatch for ${ref.path}`);
     }
 
+    // hook が名乗った event 名は settings.json の配線（= 我々が hook へ渡した argv）であって、
+    // CLI の言い分ではない。配線を間違えると、CLI が送っていない event を「native で観測した」と
+    // 名乗れる。payload の hook_event_name は CLI 自身が書くので、両方が一致した記録だけを根拠にする。
+    // 失敗の説明に記録側の文字列は出さない（記録の中身で FR-015 を破れる）
+    const lines = readNormalized(normalized);
+    for (const [i, line] of lines.entries()) {
+      if (line.payload["hook_event_name"] !== line.event) {
+        reject(f.fixtureId, `capture ${ref.path} line ${i + 1}: the CLI payload does not confirm the recorded hook event`);
+      }
+    }
+
     const capturedAt = captureCapturedAt(bytes);
     const manifestBacked = ref.manifest !== undefined;
     if (manifestBacked) verifyManifest(f, ref, ctx, { evidenceHash, captureRawHash, capturedAt });
@@ -350,7 +361,7 @@ export function verifyEvidence(f: CaptureFixture, ctx?: EvidenceContext): Verifi
         scenarioId: f.scenarioId,
       },
       secrets: [...collectSecretsOf(bytes)],
-      ...deriveClaims(f.cli, readNormalized(normalized)),
+      ...deriveClaims(f.cli, lines),
     };
   });
 }

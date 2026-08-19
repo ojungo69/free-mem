@@ -126,6 +126,38 @@ test("digest mismatch fails the build", () => {
   );
 });
 
+test("a capture the CLI payload does not confirm fails the build", () => {
+  const root = newRoot();
+  // hook の配線を間違えた形: 記録側は SessionStart と名乗るが、CLI の payload は Stop と言っている。
+  // event 名は我々が hook へ渡した argv なので、これを単独で信じると CLI が送っていない
+  // event を native で観測したことにできる
+  const miswired = lifecycle("s1", "p1").map((l, i) =>
+    i === 0 ? { ...l, payload: { ...l.payload, hook_event_name: "Stop" } } : l,
+  );
+  assert.throws(
+    () =>
+      assemble(
+        [fixtureBase({ evidence: [putEvidence(root, "miswired", miswired, { manifest: true })] })],
+        root,
+      ),
+    /does not confirm the recorded hook event/,
+  );
+  // 名乗りが欠けた記録も同じ扱い（CLI が確かめていないことに変わりはない）
+  const silent = lifecycle("s2", "p2").map((l, i) => {
+    if (i !== 0) return l;
+    const { hook_event_name: _dropped, ...rest } = l.payload;
+    return { ...l, payload: rest };
+  });
+  assert.throws(
+    () =>
+      assemble(
+        [fixtureBase({ evidence: [putEvidence(root, "silent", silent, { manifest: true })] })],
+        root,
+      ),
+    /does not confirm the recorded hook event/,
+  );
+});
+
 test("unknown normalization version fails the build", () => {
   const root = newRoot();
   const ref = putEvidence(root, "cap", lifecycle("s1", "p1"));
