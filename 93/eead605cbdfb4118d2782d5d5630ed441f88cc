@@ -1,0 +1,29 @@
+harness/evidence/mutate.sh
+  s_a2a364145ca286::t_0670b9fe1d613a 64-65,355-356,364-365,404-409,411-412,432-434
+harness/evidence/rig-manifest.test.mjs
+  s_a2a364145ca286::t_7413cd9a2c47cf 6,351-390
+specs/003-evidence-hash-normalization/tasks.md
+  s_a2a364145ca286::t_ff9a31f266e444 198-199,224,337-339,359-360
+harness/evidence/verify.ts
+  s_a2a364145ca286::t_a9147a507f6d86 131-133
+harness/rig/import-evidence.mjs
+  s_a2a364145ca286::t_adb4fad5af2737 142-143,156-161,167-170,172
+harness/rig/rig.sh
+  s_a2a364145ca286::t_5e83327b9a8356 160,167-168,210,217-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "93eead605cbdfb4118d2782d5d5630ed441f88cc",
+  "prompts": {},
+  "sessions": {
+    "s_a2a364145ca286": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e31bc79c-cfbd-44ea-bed7-1dc47ff616ae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
