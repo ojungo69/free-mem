@@ -61,8 +61,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 111:
-    bad.append(f"変異表の行が {len(table)} 件（111 件でない）")
+if len(table) != 113:
+    bad.append(f"変異表の行が {len(table)} 件（113 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -357,19 +357,13 @@ mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
-  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
-  set -m
-  ( cd "$RIG_BASE/workspace" && \
-    run_env claude' '  wait "$ver_pid" || ver_rc=$?
+  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed' '  wait "$ver_pid" || ver_rc=$?
   # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
   # 終了 0 で帰る CLI で、その診断文が cliVersion として証拠に載る
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
-  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
-  set -m
-  ( cd "$RIG_BASE/workspace" && \
-    run_env claude' && run 'M88: 版の問い合わせが残した子を畳まない'
+  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed' && run 'M88: 版の問い合わせが残した子を畳まない'
 mutate $RIG '      > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
   set +m
   wait "$run_pid" || rc=$?
@@ -434,6 +428,8 @@ mutate $IMPORT '  if (previous) renameSync(previous, dest);' '  if (previous) rm
 mutate $IMPORT 'dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);' 'dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);' && run 'M107: 持ち込みの失敗に file system の説明をそのまま出す'
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' 'timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' && run 'M108: 時間切れの問い合わせに止めの signal を送らない'
 mutate $IMPORT '  if (status > 255) die("the recorded exit status is not a plausible exit code");' '  if (false) die("the recorded exit status is not a plausible exit code");' && run 'M109: 255 を超える終了コードを通す'
+mutate $RIG 'run_env claude "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}"' 'run_env claude "$capture" timeout --foreground' && run 'M110: 測定の時間切れに止めの signal を送らない'
+mutate $RIG 'echo "another rig run holds the lock" >&2' 'echo "another rig run holds $RIG_BASE" >&2' && run 'M111: lock 競合の説明に実行環境の絶対 path を出す'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'

@@ -345,7 +345,7 @@ test("a version probe that catches SIGTERM is still cut off", () => {
     stubVersionExtra: 'trap "" TERM; sleep 30',
     skipImport: true,
     expectRunFailure: true,
-    env: { VERSION_TIMEOUT: "1", VERSION_KILL_AFTER: "1s" },
+    env: { VERSION_TIMEOUT: "0.5", VERSION_KILL_AFTER: "0.5s" },
   });
   const elapsed = Date.now() - started;
   assert.notEqual(run.status, 0, "SIGTERM を無視する問い合わせのまま run が成功した");
@@ -458,6 +458,26 @@ test("a run that cannot take the lock leaves the holder's credentials alone", ()
   const blocked = sh("claude-run", LABEL, "hello");
   assert.notEqual(blocked.status, 0, "lock を握られているのに次の run が始まった");
   assert.ok(existsSync(staged), "lock を取れなかった run が、握っている側の資格情報を消した");
+  // 競合の説明に実行環境の絶対 path を出さない（FR-015）。置き場を決めたのは呼んだ側なので、
+  // path を書いても分かることは増えない
+  assert.match(blocked.stderr, /another rig run holds/);
+  assert.ok(!blocked.stderr.includes(base), `lock 競合の説明に絶対 path が出た: ${blocked.stderr}`);
+});
+
+test("a measured run that catches SIGTERM is still cut off", () => {
+  // 版問い合わせと同じ穴が測定側にもある。SIGTERM を捕まえる・無視する測定対象だと timeout は
+  // 最初の signal のあと待ち続け、`wait` が帰らないので reap_group まで届かない——lock と
+  // staged な資格情報を握ったまま rig が止まる。ここでも観測点は掛かった時間だけ
+  const started = Date.now();
+  const { sh } = rigRun({
+    stubExtra: 'trap "" TERM; sleep 30',
+    skipImport: true,
+    env: { RUN_TIMEOUT: "0.5", RUN_KILL_AFTER: "0.5s" },
+  });
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 15_000, `測定の時間制限のあとに止めの signal が飛んでいない (${elapsed}ms)`);
+  const removed = sh("teardown");
+  assert.equal(removed.status, 0, `測定が lock を握ったままになった: ${removed.stderr}`);
 });
 
 test("setup leaves the lock file in place", () => {

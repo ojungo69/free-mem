@@ -94,7 +94,9 @@ run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | co
 with_lock() { # 並行 run を禁止する。同じ RIG_BASE を共有すると、片方の credential を
   # もう片方の測定対象が同じ UID で読める
   exec 9>"$RIG_BASE/.lock"
-  flock -n 9 || { echo "another rig run holds $RIG_BASE" >&2; exit 4; }
+  # 失敗の説明に $RIG_BASE を出さない。FR-015 は診断出力に実行環境の絶対 path を載せることを
+  # 禁じており、置き場を決めたのは呼んだ側なので、path を書いても分かることは増えない
+  flock -n 9 || { echo "another rig run holds the lock" >&2; exit 4; }
 }
 
 # 測定対象を独自の process group で起動し、終わったら group ごと畳む。
@@ -174,9 +176,12 @@ claude_run() {
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # 測定にも止めの signal の締め切りを付ける。SIGTERM を捕まえる・無視する測定対象だと
+  # timeout は最初の signal のあと待ち続け、`wait` が帰らないので reap_group まで届かない
+  # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる
   set -m
   ( cd "$RIG_BASE/workspace" && \
-    run_env claude "$capture" timeout --foreground ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
+    run_env claude "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}" ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN" -p "$prompt" \
       --model haiku --output-format json --max-turns 4 "$@" \
       > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
   set +m
@@ -228,9 +233,12 @@ codex_run() {
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
   [ "$ver_rc" -eq 0 ] || { echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # 測定にも止めの signal の締め切りを付ける。SIGTERM を捕まえる・無視する測定対象だと
+  # timeout は最初の signal のあと待ち続け、`wait` が帰らないので reap_group まで届かない
+  # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる
   set -m
   ( cd "$RIG_BASE/workspace" && \
-    run_env codex "$capture" timeout --foreground ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
+    run_env codex "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}" ${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CODEX_BIN" exec --json --skip-git-repo-check \
       --dangerously-bypass-hook-trust "$@" "$prompt" \
       > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
   set +m
