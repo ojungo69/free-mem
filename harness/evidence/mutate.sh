@@ -163,7 +163,14 @@ PY
 }
 
 # contract-hashes の変異は node:test では殺せない。再生成との diff で殺す
-check_hashes() { diff <(node harness/contract-hashes.mjs) "$HASHES"; }
+# 生成が落ちた場合を「差分あり」と同じ非ゼロで返さない。run_custom は非ゼロを kill と数えるので、
+# node の異常終了がそのまま「変異を殺した」になり、検査していないのに緑になる
+check_hashes() {
+  local out
+  out=$(node harness/contract-hashes.mjs) || return 0
+  # `$( )` は末尾改行を落とすので書き戻す（落としたままだと常に「差分あり」になる）
+  printf '%s\n' "$out" | diff - "$HASHES"
+}
 
 mutate $ASSEMBLE 'promotion.evidenceKind === "real-cli-e2e" && prev.evidenceKind !== "real-cli-e2e";' 'false;' && run 'M0: 証跡の優劣を無視する'
 mutate $ASSEMBLE 'for (const f of fixtures) verifiedByFixture.set(f.fixtureId, verifyEvidence(f, ctx));' 'for (const f of fixtures) verifiedByFixture.set(f.fixtureId, []);' && run 'M1: 証拠の検証を丸ごと飛ばす'
@@ -415,7 +422,7 @@ echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす
 BASELINE=$(node --experimental-strip-types --test "${TESTS[@]}" 2>&1)
 printf '%s\n' "$BASELINE" | grep -E '^ℹ (pass|fail) '
-BASELINE_FAIL=$(printf '%s' "$BASELINE" | grep -E '^ℹ fail ' | tail -1 | grep -oE '[0-9]+$')
+BASELINE_FAIL=$(printf '%s' "$BASELINE" | grep -E '^# fail |^ℹ fail ' | tail -1 | grep -oE '[0-9]+$')
 if [ -z "$BASELINE_FAIL" ] || [ "$BASELINE_FAIL" -ne 0 ]; then
   echo "変異テスト失敗: 復元後の baseline が green でない（変異が残ったか test が壊れている）" >&2
   exit 1
