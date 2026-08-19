@@ -85,7 +85,7 @@ harness/
 ├── assemble.ts                 # 変更: 3 箇所の昇格判定を再計算の一致へ
 ├── schema/
 │   ├── capability.ts           # 変更: evidence[] / scenarioId / limitationCodes、top-level evidenceHash 廃止
-│   ├── capability.schema.json  # 変更: 同上。oneOf で manifest 対を表す（dependentRequired は validator 非対応）
+│   ├── capability.schema.json  # 変更: 同上。conditional allOf 2 本で manifest 対を表す（dependentRequired は validator 非対応）
 │   ├── evidence-manifest.schema.json  # 新規: RunManifest の closed schema
 │   └── capability.ts の RunManifest 型 # 新規: schema と 1 対 1 の型
 ├── fixtures/

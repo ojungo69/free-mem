@@ -225,9 +225,37 @@ test("every measured launch is supervised and keeps the lock descriptor", () => 
     );
     // fd を渡さないほうが lock は解放されるが、残骸の隣に次の provider の資格情報が置かれる
     assert.ok(!body.includes("9>&-"), `${name}_run が lock の fd を子から外している`);
-    // `timeout` は既定で対象を自分の group へ移すので、これが無いと畳む先が空になる
-    assert.match(body, /timeout --foreground/, `${name}_run の timeout が group を分けている`);
+    // `timeout` は既定で対象を自分の group へ移すので、これが無いと畳む先が空になる。
+    // 起動は 2 つ（--version と本実行）あり、`assert.match` は最初の 1 つしか見ない
+    assert.equal(
+      [...body.matchAll(/timeout --foreground/g)].length,
+      2,
+      `${name}_run の起動のうち timeout が group を分けているものがある`,
+    );
   }
+});
+
+test("an uncaught failure leaves no staged file in the evidence store", () => {
+  // 複製と読み直しは try の外にあるので、ここで落ちると分類済みの片付けを通らない。
+  // 置き場に同名の directory を置くと copyFileSync は EISDIR で落ちる
+  const { sh, rawDir } = rigRun({ skipImport: true });
+  const staged = join(rawDir, `claude-${LABEL}.jsonl.tmp`);
+  mkdirSync(staged, { recursive: true });
+  writeFileSync(join(staged, "leftover"), "x");
+  const failed = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(failed.status, 0, "落ちるはずの取り込みが成功した");
+  assert.ok(!existsSync(staged), "一時 file が証拠置き場に残った");
+});
+
+test("a knob with a space does not turn into another command", () => {
+  // 値を 1 語に保っているのは `${VAR:+VAR="$VAR"}` の**内側の引用**。外すと word split が
+  // 起き、env は分割後の 2 語目を起動する command と読むので、測定対象ではない program が走る
+  const { base, run } = rigRun({ skipImport: true, env: { INJECT_MARKER: "two words" } });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(
+    existsSync(join(base, "capture", `claude-${LABEL}.jsonl`)),
+    "knob に空白を入れただけで測定が撮れなくなった",
+  );
 });
 
 test("the rig stages no credential when the test runs", () => {

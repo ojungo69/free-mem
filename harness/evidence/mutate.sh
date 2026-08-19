@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 123:
-    bad.append(f"変異表の行が {len(table)} 件（123 件でない）")
+if len(table) != 126:
+    bad.append(f"変異表の行が {len(table)} 件（126 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -476,6 +476,11 @@ mutate $RIG '  require_label "$label"
   with_lock
   [ -n "$CODEX_BIN" ]' '  with_lock
   [ -n "$CODEX_BIN" ]' && run 'M123: codex の run だけ label を見ない'
+
+mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' 'timeout --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' && run 'M124: 版の問い合わせの timeout に別の process group を作らせる'
+mutate $IMPORT 'process.on("uncaughtException", (e) => {
+  cleanupStaged();' 'process.on("uncaughtException", (e) => {' && run 'M125: 未捕捉例外の経路が一時 file を証拠置き場に残す'
+mutate $RIG '    ${INJECT_MARKER:+INJECT_MARKER="$INJECT_MARKER"} \' '    ${INJECT_MARKER:+INJECT_MARKER=$INJECT_MARKER} \' && run 'M126: knob の値の引用を外す'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす

@@ -72,8 +72,14 @@ if (!LABEL.test(label ?? "")) die("--label must be a plain file-name token");
 if (!SCENARIO_ID.test(scenarioId ?? "")) die("--scenario-id does not match the schema pattern");
 if (!args.from) die("--from is required");
 
-// fs や正規化の未捕捉例外は絶対 path 入りの stack を出す。分類済みの理由へ寄せる
-process.on("uncaughtException", (e) => die(`import failed: ${e?.constructor?.name ?? "Error"}`));
+// fs や正規化の未捕捉例外は絶対 path 入りの stack を出す。分類済みの理由へ寄せる。
+// 一時 file の名前が決まったあとに落ちることもある（複製と読み直しは try の外にあり、
+// そこで落ちると途中まで書かれた .tmp が証拠置き場に残る）ので、片付けも通す
+let cleanupStaged = () => {};
+process.on("uncaughtException", (e) => {
+  cleanupStaged();
+  die(`import failed: ${e?.constructor?.name ?? "Error"}`);
+});
 
 const stem = `${cli}-${label}`;
 const source = join(args.from, `${stem}.jsonl`);
@@ -139,12 +145,17 @@ if (manifest.recorderErrors !== 0) die("the recorder logged errors during this r
 mkdirSync(destDir, { recursive: true });
 const stagedCapture = `${dest}.tmp`;
 const stagedManifest = `${manifestPath}.tmp`;
-/** 一時 file を残さずに落ちる。`die` は process.exit なので finally では片付かない */
-const dieStaged = (msg) => {
+const removeStaged = () => {
   // 塞がれた側が directory のこともある（そこで落ちると片付け自体が二次障害になる）
   for (const f of [stagedCapture, stagedManifest]) rmSync(f, { force: true, recursive: true });
   // 退避は呼び出し側が戻したあとに来る。戻せていない場合に備えて名前は残さない
   rmSync(`${dest}.prev`, { force: true, recursive: true });
+};
+// 分類済みの理由で落ちる経路と、未捕捉例外の経路で同じ片付けを通す
+cleanupStaged = removeStaged;
+/** 一時 file を残さずに落ちる。`die` は process.exit なので finally では片付かない */
+const dieStaged = (msg) => {
+  removeStaged();
   die(msg);
 };
 
