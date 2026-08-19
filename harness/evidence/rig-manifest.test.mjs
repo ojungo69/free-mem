@@ -588,20 +588,6 @@ test("setup leaves the lock file in place", () => {
   assert.ok(existsSync(join(base, ".lock")), "setup が lock file を作っていない");
 });
 
-test("what the version probe records never reaches the scenario's capture", () => {
-  // 問い合わせも測定対象の起動なので、hook が動きうる。同じ記録先を使っていると、その event が
-  // scenario の記録として持ち込まれ、同じ manifest と digest に入る
-  const { capture, rawDir } = rigRun({
-    stubVersionExtra: `printf '%s\\n' '{"event":"SessionStart","at":"2026-01-01T00:00:00.000Z","payload":{"hook_event_name":"SessionStart","forged":"version-probe"}}' >> "$CAPTURE_FILE"`,
-  });
-  assert.ok(
-    !readFileSync(capture, "utf8").includes("version-probe"),
-    "版の問い合わせが書いた行が scenario の記録に混ざった",
-  );
-  const imported = readFileSync(join(rawDir, `claude-${LABEL}.jsonl`), "utf8");
-  assert.ok(!imported.includes("version-probe"), "版の問い合わせが書いた行を証拠として持ち込んだ");
-});
-
 test("a version probe that fails is not accepted as the version behind the evidence", () => {
   // 非ゼロで終えた問い合わせでも、1 行だけ吐けば版として schema を通る。run を続けると
   // そのエラー行が cliVersion に載り、証拠が「この版で測った」と読める
@@ -792,8 +778,12 @@ test("a failed version probe leaves the previous capture in place", () => {
   // 始まってもいない測定のために、取り込み前の記録が復旧不能に失われる
   const { base, sh } = rigRun({
     skipImport: true,
-    // 問い合わせの CAPTURE_FILE は記録置き場の中にあるので、そこに目印を置いて 2 回目だけ落とす
+    // 問い合わせも測定対象の起動なので hook が動きうる。記録先を本実行と共有していると、
+    // その行が**前の run の記録**へ書き足される——落ちる問い合わせでは消す段まで進まないので、
+    // 取り込み前の記録がそのまま汚れて残る。ここが分離を観測できる唯一の入力
     stubVersionExtra:
+      `printf '%s\\n' '{"event":"SessionStart","at":"2026-01-01T00:00:00.000Z","payload":{"hook_event_name":"SessionStart","forged":"version-probe"}}' >> "$CAPTURE_FILE"
+` +
       'if [ -e "$(dirname "${CAPTURE_FILE}")/fail-version" ]; then echo boom >&2; exit 3; fi',
   });
   const stem = join(base, "capture", `claude-${LABEL}`);
@@ -806,6 +796,7 @@ test("a failed version probe leaves the previous capture in place", () => {
 
   assert.notEqual(second.status, 0, "落ちた問い合わせで run が成功している");
   assert.deepEqual(readFileSync(`${stem}.jsonl`), before, "前の記録が失われた");
+  assert.ok(!readFileSync(`${stem}.jsonl`, "utf8").includes("version-probe"), "問い合わせが書いた行が前の記録に混ざった");
   assert.ok(existsSync(`${stem}.exit`), "前の run の終了コードが消えた");
   assert.equal(readFileSync(`${stem}.version`, "utf8"), version, "前の版が上書きされた");
 });

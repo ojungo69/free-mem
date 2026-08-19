@@ -326,7 +326,7 @@ done
 | M95 | `harness/schema/capability.ts` 裏付けた記録が無くても証明済みとする | `promotion.test.ts::a cell that names no record does not open the native delivery tier` | T047 |
 | M96 | `harness/rig/import-evidence.mjs` 置き換えで落ちても一時 file を片付けない | `rig-manifest.test.mjs::a failure while staging leaves both stored files untouched` | T047 |
 | M97 | `harness/rig/rig.sh` 版の問い合わせを呼び出し元の作業場所で行う | `rig-manifest.test.mjs::the version probe runs in the isolated environment, not the caller's` | T047 |
-| M98 | `harness/rig/rig.sh` 版の問い合わせと本実行で記録先を共有する | `rig-manifest.test.mjs::what the version probe records never reaches the scenario's capture` | T047 |
+| M98 | `harness/rig/rig.sh` 版の問い合わせと本実行で記録先を共有する | `rig-manifest.test.mjs::a failed version probe leaves the previous capture in place` | T047 |
 | M99 | `harness/rig/rig.sh` SIGTERM を無視する残骸を畳み切らない | `rig-manifest.test.mjs::a child that ignores SIGTERM does not wedge the rig` | T047 |
 | M100 | `harness/rig/rig.sh` teardown が lock を取らない | `rig-manifest.test.mjs::teardown does not pull the lock out from under a live run` | T047 |
 | M101 | `harness/rig/rig.sh` 版の問い合わせに時間制限を掛けない | `rig-manifest.test.mjs::a version probe that never returns does not hold the rig` | T047 |
