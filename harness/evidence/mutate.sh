@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 139:
-    bad.append(f"変異表の行が {len(table)} 件（139 件でない）")
+if len(table) != 144:
+    bad.append(f"変異表の行が {len(table)} 件（144 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -316,26 +316,34 @@ mutate $RIG '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version
   # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
   # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
   # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
   : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
   # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
   # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
   # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
   # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
   : > "$capture"; rm -f "$capture.errors"' && run 'M71: claude の run で前回の終了コードを残す'
 mutate $RIG '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
   # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
   # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
   # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
   # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
   : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
   # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
   # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
   # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
   # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
   : > "$capture"; rm -f "$capture.errors"' && run 'M72: codex の run で前回の終了コードを残す'
 mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => derive(r).sources.includes(n)),' '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' && run 'M73: 出どころを「記録に在る」だけで認める'
 mutate $ASSEMBLE '        errs.push(`observedEvents[${i}].kind is not one of the kinds capability.schema.json lists`);' '        errs.push(`observedEvents[${i}].kind invalid: ${ev.kind}`);' && run 'M74: 手書き検証が棄却した値を診断へ戻す'
@@ -463,7 +471,7 @@ mutate $RIG '  teardown) require_rig_base; mkdir -p "$RIG_BASE"; chmod 700 "$RIG
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' '"$CLAUDE_BIN" --version' && run 'M101: 版の問い合わせに時間制限を掛けない'
 mutate $RIG 'RIG_BASE="$ver_state" run_env claude' 'run_env claude' && run 'M102: 版の問い合わせを本実行と同じ state で行う'
 mutate $RIG 'purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }' 'purge_own_credentials() { purge_credentials; return 0; }' && run 'M103: lock を取れなかった process も資格情報を消す'
-mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version.new" 2> "$stem.version.err.new"' '"$CLAUDE_BIN" --version ) > "$stem.version.new" 2>&1' && run 'M105: 版の問い合わせの stderr を版として記録する'
+mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version.new" 2> "$stem.version.err.new"' '"$CLAUDE_BIN" --version 2>&1 ) > "$stem.version.new" 2> "$stem.version.err.new"' && run 'M105: 版の問い合わせの stderr を版として記録する'
 mutate $IMPORT '  if (previous) renameSync(previous, dest);' '  if (previous) rmSync(previous, { force: true });' && run 'M106: 置き換えに失敗しても古い記録を戻さない'
 mutate $IMPORT 'dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);' 'dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);' && run 'M107: 持ち込みの失敗に file system の説明をそのまま出す'
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' 'timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' && run 'M108: 時間切れの問い合わせに止めの signal を送らない'
@@ -520,7 +528,9 @@ mutate $IMPORT '  for (const f of [stagedCapture, stagedManifest]) rmSync(f, { f
   rmSync(`${dest}.prev`, { force: true, recursive: true });' && run 'M129: 復元に失敗した経路で退避まで消す'
 mutate $SCHEMAV '    if (!SUPPORTED_KEYWORD_SET.has(key)) {' '    if (!SUPPORTED_KEYWORDS.includes(key)) {' && run 'M130: 検証が実行時に広げられる一覧を見る'
 
-mutate $RIG '  env -i \
+mutate $RIG '  local git_bin; git_bin=$(PATH="$TRUSTED_PATH" type -P git) \
+    || { echo "git not found in the trusted path" >&2; exit 1; }
+  "$ENV_BIN" -i \
     PATH="${git_bin%/*}:/usr/bin:/bin" \
     HOME="$RIG_BASE/home" \
     GIT_CONFIG_NOSYSTEM=1 \
@@ -537,10 +547,45 @@ mutate $IMPORT 'if (existsSync(`${dest}.prev`)) {
   die("a previous record is still set aside for recovery; resolve it before importing again");
 }' 'existsSync(`${dest}.prev`);' && run 'M138: 復旧待ちの退避があっても持ち込みを始める'
 
-mutate $RIG 'PATH=/usr/local/bin:/usr/bin:/bin command -v git' 'command -v git' && run 'M139: 隔離用の git を呼び出し元の PATH から選ぶ'
+mutate $RIG 'PATH="$TRUSTED_PATH" type -P git' 'command -v git' && run 'M139: 隔離用の git を呼び出し元の PATH から選ぶ'
 mutate $RIG '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' '  [ "$ver_rc" -eq 0 ] || { : > "$capture"; rm -f "$capture.errors" "$stem.exit"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' && run 'M140: 落ちた版の問い合わせでも前の記録を消す'
 mutate $RIG '  stage_credentials codex' '  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials codex' && run 'M141: codex の run が問い合わせより先に前の記録を消す'
+
+mutate $RIG 'while read -r _ _ fn; do unset -f "$fn"; done < <(declare -F)' ':' && run 'M142: 呼び出し元が export した関数を外さない'
+mutate $RIG '  local git_bin; git_bin=$(PATH="$TRUSTED_PATH" type -P git) \
+    || { echo "git not found in the trusted path" >&2; exit 1; }
+  "$ENV_BIN" -i \
+' '  local git_bin; git_bin=$(PATH="$TRUSTED_PATH" type -P git) \
+    || { echo "git not found in the trusted path" >&2; exit 1; }
+  env -i \
+' && run 'M143: workspace を作る env を呼び出し元の PATH から選ぶ'
+mutate $RIG '  "$ENV_BIN" -i \
+    PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" \
+' '  env -i \
+    PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" \
+' && run 'M144: 測定対象を起動する env を呼び出し元の PATH から選ぶ'
+mutate $RIG '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"' '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"' && run 'M145: 前の記録を無効にする前に新しい版を公開する'
+
+mutate $RIG '"$git_bin" -C "$RIG_BASE/workspace" "$@" 9>&-' '"$git_bin" -C "$RIG_BASE/workspace" "$@"' && run 'M146: workspace を作る git に lock の fd を渡す'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす

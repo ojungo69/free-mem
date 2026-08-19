@@ -17,6 +17,14 @@
 #   rig.sh import <cli> <label> <scenario-id>   # 証拠置き場へ持ち込み manifest を書く
 #   rig.sh teardown                  # RIG_BASE を完全削除 (資格情報コピー含む)
 set -euo pipefail
+# 呼び出し元が export した shell function は環境から引き継がれ、**PATH より先に**選ばれる
+# （`export -f git` を 1 つ置くだけで `command -v git` は path ではなく `git` を返す）。
+# 隔離を作る側の command がそれだと、`env -i` も `git` も呼び出し元の code になり、それでも
+# manifest は isolated: true を書く。自分の関数を定義する前に、継いだものを全部外す
+while read -r _ _ fn; do unset -f "$fn"; done < <(declare -F)
+# 隔離の境界で使う実行 file は、呼び出し元の PATH からも探さない
+TRUSTED_PATH=/usr/local/bin:/usr/bin:/bin
+ENV_BIN=$(PATH="$TRUSTED_PATH" type -P env) || { echo "env not found in the trusted path" >&2; exit 3; }
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RIG_BASE="${RIG_BASE:-/tmp/free-mem-rig-$USER}"
 HOOK="$DIR/capture-hook.sh"
@@ -101,13 +109,13 @@ git_iso() { # 測定用 workspace の git を実環境から切り離して走�
   # 探す場所も呼び出し元から取らない。`command -v git` は**環境を畳む前**の PATH で解決するので、
   # 先頭に `.` や wrapper を置いた呼び出し元は、隔離したはずの workspace を自分の program に
   # 作らせられる（それでも manifest は isolated: true を書く）
-  local git_bin; git_bin=$(PATH=/usr/local/bin:/usr/bin:/bin command -v git) \
+  local git_bin; git_bin=$(PATH="$TRUSTED_PATH" type -P git) \
     || { echo "git not found in the trusted path" >&2; exit 1; }
-  env -i \
+  "$ENV_BIN" -i \
     PATH="${git_bin%/*}:/usr/bin:/bin" \
     HOME="$RIG_BASE/home" \
     GIT_CONFIG_NOSYSTEM=1 \
-    "$git_bin" -C "$RIG_BASE/workspace" "$@"
+    "$git_bin" -C "$RIG_BASE/workspace" "$@" 9>&-
 }
 
 run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | codex
@@ -122,7 +130,7 @@ run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | co
     # （= 実環境）を見に行く。隔離の外で測ったのに、記録も manifest も同じ形で残る
     *) echo "run_env: unknown cli" >&2; exit 2 ;;
   esac
-  env -i \
+  "$ENV_BIN" -i \
     PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" \
     HOME="$RIG_BASE/home" \
     TERM=dumb \
@@ -144,6 +152,11 @@ with_lock() { # 並行 run を禁止する。同じ RIG_BASE を共有すると�
 }
 
 # 測定対象を独自の process group で起動し、終わったら group ごと畳む。
+#
+# **これは測定対象の話**。rig 自身の道具（workspace を作る git）には逆で、`git_iso` は fd を
+# 閉じて渡す。git は commit のあと維持作業を daemon として切り離すことがあり、その子が lock を
+# 握ったまま残ると、次の run が「別の run が走っている」と言って止まる——測定対象の残骸と違って
+# 止めても守るものが無く、operator の rig が理由も分からず使えなくなるだけ。
 #
 # lock の fd を子へ渡さない形（`9>&-`）は採らない。渡さないと、CLI が残した process が
 # 生きているうちに次の run が始まり、その run が置いた**別 provider の資格情報**を、
@@ -229,8 +242,11 @@ claude_run() {
   # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
   # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
   # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
   : > "$capture"; rm -f "$capture.errors" "$stem.exit"
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
   # 測定にも止めの signal の締め切りを付ける。SIGTERM を捕まえる・無視する測定対象だと
   # timeout は最初の signal のあと待ち続け、`wait` が帰らないので reap_group まで届かない
   # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる
@@ -294,8 +310,11 @@ codex_run() {
   # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
   # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
   # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  # 消すのが先、公開が後。逆にすると、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、
+  # 取り込みが**前の run の記録を新しい版で測ったこと**にできる。この順なら、途中で落ちても
+  # 記録が空で終了コードも無い＝取り込みが必ず断る
   : > "$capture"; rm -f "$capture.errors" "$stem.exit"
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
   # 測定にも止めの signal の締め切りを付ける。SIGTERM を捕まえる・無視する測定対象だと
   # timeout は最初の signal のあと待ち続け、`wait` が帰らないので reap_group まで届かない
   # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる

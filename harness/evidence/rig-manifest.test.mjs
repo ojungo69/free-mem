@@ -822,3 +822,71 @@ test("both runs replace the previous capture only after the version probe", () =
     assert.ok(wipe > probe, `${name}_run が問い合わせより先に前の記録を消している`);
   }
 });
+
+test("the rig does not run shell functions the caller exported", () => {
+  // export した関数は環境で引き継がれ、PATH より先に選ばれる。隔離を作る側の command が
+  // それだと、workspace を作る git も環境を畳む env も呼び出し元の code になる
+  const tmp = mkdtempSync(join(tmpdir(), "rig-fn-"));
+  SCRATCH.push(tmp);
+  const marker = join(tmp, "ran");
+  const body = `() { printf x > ${JSON.stringify(marker)}; }`;
+  const base = join(tmp, "base");
+  const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "setup"], {
+    encoding: "utf8",
+    // 隔離を作る側が使う command を一度に全部差し替える（塞いでいるのは 1 つなので、
+    // どれか 1 つでも通れば同じ穴が開く）
+    env: {
+      ...process.env,
+      HOME: join(tmp, "home"),
+      RIG_BASE: base,
+      "BASH_FUNC_git%%": body,
+      "BASH_FUNC_env%%": body,
+      "BASH_FUNC_sed%%": body,
+    },
+  });
+
+  assert.equal(done.status, 0, done.stderr);
+  assert.equal(existsSync(marker), false, "呼び出し元が export した関数が rig の中で走った");
+  assert.ok(existsSync(join(base, "workspace", ".git")), "workspace が git repository になっていない");
+});
+
+test("the env that folds the environment away does not come from the caller's path", () => {
+  // `env -i` は環境を畳む側そのもの。これを呼び出し元の PATH から取ると、畳んだつもりの
+  // 起動が呼び出し元の program になる（それでも manifest は isolated: true を書く）
+  const fake = mkdtempSync(join(tmpdir(), "rig-fakeenv-"));
+  SCRATCH.push(fake);
+  const marker = join(fake, "used");
+  // 目印を置いてから本物へ渡す。置き換えたことだけが観測でき、rig は普段どおり動く
+  writeFileSync(join(fake, "env"), `#!/bin/bash\nprintf x >> ${JSON.stringify(marker)}\nexec /usr/bin/env "$@"\n`);
+  chmodSync(join(fake, "env"), 0o755);
+
+  // setup（workspace を作る git）と run（測定対象）の両方を通す
+  rigRun({ skipImport: true, env: { PATH: `${fake}:${process.env.PATH}` } });
+
+  assert.equal(existsSync(marker), false, "呼び出し元の PATH に置いた env が使われた");
+});
+
+test("both runs invalidate the previous capture before publishing the new version", () => {
+  // stub で走らせるのは claude 経路だけなので、codex 経路はここで形として見る。
+  // 逆順だと、その間に落ちた瞬間だけ「前の記録 + 新しい版」が揃い、取り込みが前の run の
+  // 記録を新しい版で測ったことにできる
+  const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
+  const blocks = [...rig.matchAll(/^(claude|codex)_run\(\) \{$([\s\S]*?)^\}$/gm)];
+  assert.equal(blocks.length, 2, "run 関数の数が変わった");
+  for (const [, name, body] of blocks) {
+    const wipe = body.indexOf(': > "$capture"');
+    const publish = body.indexOf('mv "$stem.version.new"');
+    assert.ok(wipe >= 0 && publish >= 0, `${name}_run の記録の初期化か版の公開が見つからない`);
+    assert.ok(wipe < publish, `${name}_run が前の記録を無効にする前に新しい版を公開している`);
+  }
+});
+
+test("the workspace's git is not handed the coordination lock", () => {
+  // 測定対象には fd を渡す（残骸が lock を握って次の run を止めるのが望ましい）が、rig 自身の
+  // 道具は別。git は commit のあと維持作業を切り離すことがあり、その子が握ったまま残ると、
+  // setup の直後の run が理由の分からない「別の run が走っている」で止まる
+  const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
+  const body = rig.match(/^git_iso\(\) \{[\s\S]*?^\}$/m)?.[0];
+  assert.ok(body, "git_iso が見つからない");
+  assert.match(body, /9>&-/, "workspace を作る git に lock の fd を渡している");
+});
