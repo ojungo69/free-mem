@@ -56,9 +56,14 @@ stage_credentials() { # $1 = claude | codex
 setup() {
   mkdir -p "$RIG_BASE"; chmod 700 "$RIG_BASE"
   mkdir -p "$RIG_BASE"/{home,claude-config,codex-home,workspace,capture}
-  # lock file は setup で作る。teardown 側で「あれば取る」にすると、無い瞬間を見た直後に
-  # run が作って握る隙間ができる（その run の下から base を消せてしまう）
-  : > "$RIG_BASE/.lock"
+  # 設定を書き換えるのは、走っている run の足元。取らずに書くと、測定対象が hook の無い
+  # settings.json を読んだ記録が撮れてしまい、それでも digest は合うので証拠として通る。
+  #
+  # lock file を置くのもここ（`exec 9>` が無ければ作る）。teardown 側で「あれば取る」に
+  # すると、無い瞬間を見た直後に run が作って握る隙間ができる（その run の下から base を
+  # 消せてしまう）。既にあれば truncate されるだけで inode は変わらないので、握っている
+  # 側の lock は落ちない
+  with_lock
   sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json" > "$RIG_BASE/claude-config/settings.json"
   sed "s|__HOOK__|$HOOK|g" "$DIR/codex-config-template.toml" > "$RIG_BASE/codex-home/config.toml"
   if [ ! -d "$RIG_BASE/workspace/.git" ]; then

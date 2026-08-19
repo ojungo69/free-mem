@@ -37,6 +37,13 @@ emit Stop '{"hook_event_name":"Stop","prompt_id":"p-stub","last_assistant_messag
 emit SessionEnd '{"hook_event_name":"SessionEnd","prompt_id":"p-stub","reason":"other","session_id":"s-stub","cwd":"/w","transcript_path":"/w/t.jsonl"}'
 `;
 
+// group を抜けて lock の fd を握ったまま生き残る子。detach し切る前に run が終わると
+// group kill が間に合ってしまうので、抜けたことを待ってから stub を終える（race のまま
+// 置くと test が気まぐれに緑になる）
+const ESCAPED_CHILD =
+  'setsid sh -c \'printf x > "$STEM.detached"; sleep 20\' </dev/null >/dev/null 2>&1 &\n' +
+  'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.detached" ] && break; sleep 0.2; done';
+
 function rigRun({ stubExtra = "", stubVersionExtra = "", skipImport = false, skipRun = false, expectRunFailure = false, env: extraEnv = {} } = {}) {
   const tmp = mkdtempSync(join(tmpdir(), "rig-manifest-"));
   cpSync(HARNESS, join(tmp, "harness"), { recursive: true });
@@ -249,10 +256,7 @@ test("a process that escapes the group is not released from the lock by the rig"
   // 限りこれは閉じない
   // detach し切る前に run が終わると group kill が間に合ってしまうので、抜けたことを
   // 待ってから stub を終える（race のまま置くと test が気まぐれに緑になる）
-  const escape =
-    'setsid sh -c \'printf x > "$STEM.detached"; sleep 20\' </dev/null >/dev/null 2>&1 &\n' +
-    'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.detached" ] && break; sleep 0.2; done';
-  const { sh } = rigRun({ stubExtra: escape, skipImport: true });
+  const { sh } = rigRun({ stubExtra: ESCAPED_CHILD, skipImport: true });
   const again = sh("claude-run", LABEL, "hello");
   assert.notEqual(again.status, 0, "group を抜けた残骸がいるのに次の run が始まった");
   assert.match(again.stderr, /another rig run holds/);
@@ -277,10 +281,7 @@ test("a child that ignores SIGTERM does not wedge the rig", () => {
 test("teardown does not pull the lock out from under a live run", () => {
   // teardown が lock を無視して消すと、setup が新しい .lock inode を作り、生きた測定対象の
   // 隣へ次の run が資格情報を置ける。直列化と資格情報の分離が同時に外れる
-  const escape =
-    'setsid sh -c \'printf x > "$STEM.detached"; sleep 20\' </dev/null >/dev/null 2>&1 &\n' +
-    'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.detached" ] && break; sleep 0.2; done';
-  const { sh, base } = rigRun({ stubExtra: escape, skipImport: true });
+  const { sh, base } = rigRun({ stubExtra: ESCAPED_CHILD, skipImport: true });
   const removed = sh("teardown");
   assert.notEqual(removed.status, 0, "lock を握られたまま rig を消した");
   assert.match(removed.stderr, /another rig run holds/);
@@ -449,10 +450,7 @@ test("a version probe that never returns does not hold the rig", () => {
 
 test("a run that cannot take the lock leaves the holder's credentials alone", () => {
   // lock を取れずに降りる process まで資格情報を消すと、走っている run の認証を横から壊す
-  const escape =
-    'setsid sh -c \'printf x > "$STEM.detached"; sleep 20\' </dev/null >/dev/null 2>&1 &\n' +
-    'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.detached" ] && break; sleep 0.2; done';
-  const { sh, base } = rigRun({ stubExtra: escape, skipImport: true });
+  const { sh, base } = rigRun({ stubExtra: ESCAPED_CHILD, skipImport: true });
   const staged = join(base, "claude-config", ".credentials.json");
   writeFileSync(staged, '{"token":"held-by-the-running-rig"}');
   const blocked = sh("claude-run", LABEL, "hello");
@@ -480,9 +478,20 @@ test("a measured run that catches SIGTERM is still cut off", () => {
   assert.equal(removed.status, 0, `測定が lock を握ったままになった: ${removed.stderr}`);
 });
 
+test("setup refuses to rewrite the rig's state under a held lock", () => {
+  // setup だけが lock を取らずに provider の設定を書き換えていた。走っている測定の足元で
+  // hook の無い settings.json に差し替わっても、その記録の digest は合うので証拠として通る
+  const { sh, base } = rigRun({ stubExtra: ESCAPED_CHILD, skipImport: true });
+  const settings = join(base, "claude-config", "settings.json");
+  writeFileSync(settings, '{"marker":"written-by-the-running-rig"}');
+  const again = sh("setup");
+  assert.notEqual(again.status, 0, "lock を握られているのに setup が通った");
+  assert.match(readFileSync(settings, "utf8"), /written-by-the-running-rig/, "setup が走っている run の設定を書き換えた");
+});
+
 test("setup leaves the lock file in place", () => {
   // teardown 側で「あれば取る」にすると、無い瞬間を見た直後に run が作って握る隙間ができる。
-  // run を通してはいけない（`with_lock` が作ってしまい、setup 側の検査にならない）
+  // run を通さずに setup だけで見る（run が作った file を見ても setup の検査にならない）
   const { base } = rigRun({ skipRun: true });
   assert.ok(existsSync(join(base, ".lock")), "setup が lock file を作っていない");
 });

@@ -422,7 +422,6 @@ mutate $RIG '  teardown) [ -d "$RIG_BASE" ] && with_lock; rm -f' '  teardown) rm
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' '"$CLAUDE_BIN" --version' && run 'M101: 版の問い合わせに時間制限を掛けない'
 mutate $RIG 'RIG_BASE="$ver_state" run_env claude' 'run_env claude' && run 'M102: 版の問い合わせを本実行と同じ state で行う'
 mutate $RIG 'purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }' 'purge_own_credentials() { purge_credentials; return 0; }' && run 'M103: lock を取れなかった process も資格情報を消す'
-mutate $RIG '  : > "$RIG_BASE/.lock"' '  :' && run 'M104: setup が lock file を作らない'
 mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err"' '"$CLAUDE_BIN" --version ) > "$stem.version" 2>&1' && run 'M105: 版の問い合わせの stderr を版として記録する'
 mutate $IMPORT '  if (previous) renameSync(previous, dest);' '  if (previous) rmSync(previous, { force: true });' && run 'M106: 置き換えに失敗しても古い記録を戻さない'
 mutate $IMPORT 'dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);' 'dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);' && run 'M107: 持ち込みの失敗に file system の説明をそのまま出す'
@@ -430,6 +429,8 @@ mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VE
 mutate $IMPORT '  if (status > 255) die("the recorded exit status is not a plausible exit code");' '  if (false) die("the recorded exit status is not a plausible exit code");' && run 'M109: 255 を超える終了コードを通す'
 mutate $RIG 'run_env claude "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}"' 'run_env claude "$capture" timeout --foreground' && run 'M110: 測定の時間切れに止めの signal を送らない'
 mutate $RIG 'echo "another rig run holds the lock" >&2' 'echo "another rig run holds $RIG_BASE" >&2' && run 'M111: lock 競合の説明に実行環境の絶対 path を出す'
+mutate $RIG '  with_lock
+  sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' '  sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' && run 'M112: setup が lock を取らずに state を書き換える'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'

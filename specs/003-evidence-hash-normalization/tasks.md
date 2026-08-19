@@ -333,7 +333,6 @@ done
 | M101 | `harness/rig/rig.sh` 版の問い合わせに時間制限を掛けない | `rig-manifest.test.mjs::a version probe that never returns does not hold the rig` | T047 |
 | M102 | `harness/rig/rig.sh` 版の問い合わせを本実行と同じ state で行う | `rig-manifest.test.mjs::the version probe runs in the isolated environment, not the caller's` | T047 |
 | M103 | `harness/rig/rig.sh` lock を取れなかった process も資格情報を消す | `rig-manifest.test.mjs::a run that cannot take the lock leaves the holder's credentials alone` | T047 |
-| M104 | `harness/rig/rig.sh` setup が lock file を作らない | `rig-manifest.test.mjs::setup leaves the lock file in place` | T047 |
 | M105 | `harness/rig/rig.sh` 版の問い合わせの stderr を版として記録する | `rig-manifest.test.mjs::a diagnostic on stderr is not recorded as the version` | T047 |
 | M106 | `harness/rig/import-evidence.mjs` 置き換えに失敗しても古い記録を戻さない | `rig-manifest.test.mjs::a manifest that cannot be replaced puts the previous capture back` | T047 |
 | M107 | `harness/rig/import-evidence.mjs` 持ち込みの失敗に file system の説明をそのまま出す | `rig-manifest.test.mjs::a manifest that cannot be replaced puts the previous capture back` | T047 |
@@ -341,6 +340,7 @@ done
 | M109 | `harness/rig/import-evidence.mjs` 255 を超える終了コードを通す | `rig-manifest.test.mjs::an exit status the rig could not have written is rejected` | T047 |
 | M110 | `harness/rig/rig.sh` 測定の時間切れに止めの signal を送らない | `rig-manifest.test.mjs::a measured run that catches SIGTERM is still cut off` | T047 |
 | M111 | `harness/rig/rig.sh` lock 競合の説明に実行環境の絶対 path を出す | `rig-manifest.test.mjs::a run that cannot take the lock leaves the holder's credentials alone` | T047 |
+| M112 | `harness/rig/rig.sh` setup が lock を取らずに state を書き換える | `rig-manifest.test.mjs::setup refuses to rewrite the rig's state under a held lock` | T047 |
 
 **変異表を実行可能にする過程で分かったこと**（表は実測に合わせて直した。詳細は PR 本文）:
 
