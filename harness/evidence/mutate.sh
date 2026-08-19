@@ -8,7 +8,9 @@
 # 実行件数も必ず突き合わせる。アンカーが実装の変更で外れると `assert count == 1` が落ちて
 # `&&` が短絡し、その変異は出力に何も出ないまま黙って飛ばされる。
 #
-# 中断すると変異が残る。その場合は `git checkout harness/`。
+# 中断すると変異が残る。その場合は `git checkout harness/ .github/workflows/ci.yml`。
+# **`harness/` だけでは足りない**: MUTABLE には .github/workflows/ci.yml も入っていて、
+# CI の段を落とす変異を受ける。逆に specs/003-…/tasks.md は読むだけなので戻す必要はない
 set -u
 cd "$(dirname "$0")/../.."
 
@@ -42,13 +44,23 @@ TESTS=(
   harness/evidence/secrets.test.ts
   harness/evidence/rig-manifest.test.mjs
 )
-BAKDIR=$(mktemp -d)
-# 鍵は path から作る。basename だと別 directory の同名 file を足した日に、退避が上書きされて
-# 復元が**別の file の中身**を書き戻す（ゲートの中で黙って repo を壊す形になる）
-bak_key() { printf '%s' "${1//\//_}"; }
-restore_all() { for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$(bak_key "$f")" "$f"; done; }
-trap 'restore_all; rm -rf "$BAKDIR"' EXIT
-for f in "${MUTABLE[@]}"; do cp "$f" "$BAKDIR/$(bak_key "$f")"; done
+BAKDIR=$(mktemp -d) || { echo "変異テスト失敗: 退避用の一時 directory を作れない" >&2; exit 1; }
+restore_all() {
+  local f rc=0
+  for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$f" "$f" || rc=1; done
+  [ "$rc" -eq 0 ] || echo "変異テスト失敗: 変異を戻せない。退避 $BAKDIR は消さずに残す" >&2
+  return "$rc"
+}
+# 復元に失敗した経路で退避まで消すと、変異が乗った source を戻す手立てが `git checkout` しか
+# 無くなり、同じ作業ツリーに同居している未 commit の変更まで巻き添えで消える
+trap 'restore_all && rm -rf "$BAKDIR"' EXIT
+# 退避は path ごと持つ。basename で平潰しにすると、別 directory の同名 file を MUTABLE に
+# 足した日に退避が上書きされ、復元が**別の file の中身**を書き戻す（ゲートの中で黙って repo を
+# 壊す形になる）。退避が 1 つでも作れなかったら、変異を当てる前に降りる。復元できない状態で
+# 144 件の変異を実 source に積み上げると、出口が `git checkout` しかなくなる
+for f in "${MUTABLE[@]}"; do
+  cp --parents "$f" "$BAKDIR" || { echo "変異テスト失敗: $f を退避できない（cp --parents は GNU coreutils 拡張）" >&2; exit 1; }
+done
 
 # --- 変異表との突き合わせ（T042）。長い実行に入る前に済ませる ---
 # 表の M 番号がこのスクリプトに実在するか、表が挙げた test 名が本当に存在するかの両方を見る。
@@ -141,7 +153,7 @@ run() {
     done < "$KILLERS"
   fi
   [ "$killed" -eq 1 ] || SURVIVED=$((SURVIVED + 1))
-  restore_all
+  restore_all || exit 1
 }
 
 # node:test では殺せない変異のための口。殺すのは別のコマンドの終了状態
@@ -154,7 +166,7 @@ run_custom() {
   else
     printf '%-52s ℹ fail 1 (custom)\n' "$label"
   fi
-  restore_all
+  restore_all || exit 1
 }
 
 mutate() { # file old new
@@ -171,6 +183,8 @@ count = s.count(old)
 assert count == 1, f"anchor must be unique in {target} (found {count}): {old[:70]}"
 p.write_text(s.replace(old, new, 1))
 PY
+  local py_rc=$?
+  [ "$py_rc" -eq 0 ] || return "$py_rc"
   # 当てた後の file が言語として読めることを確かめる。構文を壊す変異は「保護を外した」ではなく
   # 「file を壊した」で、落ちるのは保護を迂回できたからではない。test が子 process として起動する
   # 対象（.mjs / .sh）では node:test の件数照合が働かないので、ここで見るしかない

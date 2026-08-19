@@ -23,10 +23,22 @@ PROJECTION=harness/continuity/old-shape-projection.ts
 CORPUS=harness/fixtures/continuity/old-shape-parity.json
 MUTABLE=("$SRC" "$PROJECTION" "$CORPUS")
 TESTS=(harness/continuity/reference-model.test.ts harness/continuity/old-shape-parity.test.ts)
-BAKDIR=$(mktemp -d)
-restore_all() { for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$(basename "$f")" "$f"; done; }
-trap 'restore_all; rm -rf "$BAKDIR"' EXIT
-for f in "${MUTABLE[@]}"; do cp "$f" "$BAKDIR/$(basename "$f")"; done
+BAKDIR=$(mktemp -d) || { echo "変異テスト失敗: 退避用の一時 directory を作れない" >&2; exit 1; }
+restore_all() {
+  local f rc=0
+  for f in "${MUTABLE[@]}"; do cp "$BAKDIR/$f" "$f" || rc=1; done
+  [ "$rc" -eq 0 ] || echo "変異テスト失敗: 変異を戻せない。退避 $BAKDIR は消さずに残す" >&2
+  return "$rc"
+}
+# 復元に失敗した経路で退避まで消すと、変異が乗った source を戻す手立てが `git checkout` しか
+# 無くなり、同じ作業ツリーに同居している未 commit の変更まで巻き添えで消える
+trap 'restore_all && rm -rf "$BAKDIR"' EXIT
+# 退避は path ごと持つ。basename で平潰しにすると、別 directory の同名 file を MUTABLE に
+# 足した日に退避が上書きされ、復元が**別の file の中身**を書き戻す。退避が 1 つでも作れなかったら
+# 変異を当てる前に降りる（復元できないまま変異を積むと、出口が `git checkout` しかなくなる）
+for f in "${MUTABLE[@]}"; do
+  cp --parents "$f" "$BAKDIR" || { echo "変異テスト失敗: $f を退避できない（cp --parents は GNU coreutils 拡張）" >&2; exit 1; }
+done
 
 EXECUTED=0
 SURVIVED=0
@@ -61,7 +73,7 @@ run() {
       "${ran:-?}" "$BASELINE_TESTS"
     SURVIVED=$((SURVIVED + 1))
   fi
-  restore_all
+  restore_all || exit 1
 }
 
 # 既定の対象は還元器。第 3 引数で別ファイルを狙う
@@ -459,7 +471,7 @@ mutate "  const storedFingerprint = declared(matched.terminalFingerprint);" "  c
 mutate "    terminalStatusOf(terminalEvent) !== \"unknown\"" "    true" && run "unknown に倒れる terminal でも指紋の食い違いで隔離する"
 mutate "    storedFingerprint !== undefined &&" "    startIngestSeqOf(matched) !== undefined &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を順序材料がある場合だけにする"
 mutate "    storedFingerprint !== undefined &&" "    rule === \"native_operation_id\" &&\n    storedFingerprint !== undefined &&" && run "指紋の衝突判定を rule 1 の terminal だけにする"
-restore_all
+restore_all || exit 1
 # --- 旧形 parity の門（SC-003）--------------------------------------------
 # 比較面を緩める / corpus を実際より広く見せる、の 2 方向を潰す
 mutate "    contentHash: step.contentHash," "    contentHash: undefined," "$PROJECTION" && run "旧形 parity の比較面から還元結果の hash を落とす"
