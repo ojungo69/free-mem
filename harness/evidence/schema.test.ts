@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { validateFixture } from "../assemble.ts";
+import * as capabilityModule from "../schema/capability.ts";
+import { EVENT_KINDS, TOOL_FAILURE_PHASES } from "../schema/capability.ts";
 import { SUPPORTED_KEYWORDS, validateAgainstSchema } from "../schema/validate.ts";
 import { fixtureBase } from "./synthetic.ts";
 
@@ -54,6 +56,85 @@ test("capability schema uses only supported keywords", () => {
   assert.ok(SUPPORTED_KEYWORDS.length > 15, "SUPPORTED_KEYWORDS の取り込みに失敗している");
   const unsupported = [...found].filter((k) => !SUPPORTED_KEYWORDS.includes(k)).sort();
   assert.deepEqual(unsupported, [], `validate.ts が解釈しない keyword: ${unsupported.join(", ")}`);
+});
+
+// assemble.ts は schema と別に自前の集合を持ち、弾いたときの文言では schema を権威として
+// 名指しする（assemble.ts:106 の「capability.schema.json lists」）。その 2 つがずれると、
+// schema が載せている値を「schema に無い」と言って弾く／その逆が起きる。
+// 対象は **実行時に成果物を左右する定数だけ**にする。読み手のいない定数を schema の写しと
+// 突き合わせても、両側を一緒に書き換える編集は素通りする
+// `raw` は schema の kind enum にだけあり、assemble.ts:106 が `ev.kind !== "raw"` で
+// 集合の外に出して受ける sentinel。TS 側の EventKind には入れない、という取り決めをここに書く
+const SCHEMA_ONLY_KINDS = ["raw"] as const;
+const SCHEMA_ENUM_MIRRORS = [
+  {
+    // TS 側の出どころ。下の「登録漏れ」test がこの名前で capability.ts の export と照合する
+    constants: ["EVENT_KINDS"],
+    values: [...EVENT_KINDS, ...SCHEMA_ONLY_KINDS],
+    path: "properties.observedEvents.items.properties.kind.enum",
+  },
+  {
+    constants: ["TOOL_FAILURE_PHASES"],
+    values: TOOL_FAILURE_PHASES,
+    path: "properties.toolFailurePhasesObserved.items.enum",
+  },
+] as const;
+
+// path は文字列で持って歩く。`(s: any) => s.properties.…` の picker は、schema の形が変わった
+// ときに undefined を読んだ TypeError か静かな undefined しか残さず、**どの段で外れたか**を
+// 言わない。外れた segment を名指しできれば、直す側は schema を読み直さずに済む
+function enumAt(schema: unknown, path: string): readonly string[] {
+  let node: unknown = schema;
+  const walked: string[] = [];
+  for (const key of path.split(".")) {
+    const here = walked.join(".") || "(root)";
+    assert.ok(
+      typeof node === "object" && node !== null && !Array.isArray(node) && key in node,
+      `schema の ${here} に ${key} が無い（path: ${path}）`,
+    );
+    node = (node as Record<string, unknown>)[key];
+    walked.push(key);
+  }
+  assert.ok(Array.isArray(node), `${path} が配列ではない`);
+  return node as readonly string[];
+}
+
+test("assemble が使う定数と schema の enum が一致する", () => {
+  const schema = readSchema("capability.schema.json");
+  const sorted = (xs: readonly string[]) => [...xs].sort();
+  for (const { constants, values, path } of SCHEMA_ENUM_MIRRORS) {
+    assert.deepEqual(sorted(values), sorted(enumAt(schema, path)), constants.join(" + "));
+  }
+});
+
+test("capability.ts の定数に、schema と突き合わせていないものが無い", () => {
+  // 対象を手で並べると、次に定数が増えた日に黙って漏れる（hash-inputs-derive-from-structure）。
+  // module の export から導いて、登録されていない文字列定数を名指しで落とす。
+  // 突き合わせないと決めた定数がいずれ出たら、ここに理由を書いて除外する
+  const exported = Object.entries(capabilityModule)
+    .filter(([, value]) => Array.isArray(value) && value.every((x) => typeof x === "string"))
+    .map(([name]) => name);
+  assert.ok(exported.length > 0, "capability.ts から文字列定数を取り込めていない");
+  const registered = new Set(SCHEMA_ENUM_MIRRORS.flatMap((m) => m.constants as readonly string[]));
+  const missing = exported.filter((name) => !registered.has(name));
+  assert.deepEqual(missing, [], `SCHEMA_ENUM_MIRRORS に登録されていない: ${missing.join(", ")}`);
+});
+
+test("unknown source event is rejected", () => {
+  // sourceEvents の enum は「閉じている」ことだけが値で、TS 側に読み手が無い。
+  // 定数の写しではなく、未知の値が実際に弾かれることで縛る
+  assert.throws(
+    () =>
+      validateFixture(
+        fixtureBase({
+          observedEvents: [
+            { kind: "session_started", at: "2026-01-01T00:00:00.000Z", capability: "native", sourceEvents: ["Nope"] },
+          ],
+        }),
+        "f.json",
+      ),
+    /enum/,
+  );
 });
 
 test("the accepted keywords cannot be widened at run time", () => {
