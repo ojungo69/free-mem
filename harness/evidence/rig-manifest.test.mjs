@@ -771,3 +771,54 @@ test("run_env refuses a CLI it has no isolated config for", () => {
   assert.ok(body, "run_env が見つからない");
   assert.match(body, /\*\)[^\n]*exit 2/, "run_env に既定分岐が無い（知らない cli を隔離無しで起動する）");
 });
+
+test("the workspace's git does not come from the caller's path", () => {
+  // 隔離は環境を畳むが、畳む**前**の PATH で git を探していると、呼び出し元が先頭に置いた
+  // program が「隔離した」workspace を作る。それでも manifest は isolated: true を書く
+  const fake = mkdtempSync(join(tmpdir(), "rig-fakegit-"));
+  SCRATCH.push(fake);
+  const marker = join(fake, "used");
+  writeFileSync(join(fake, "git"), `#!/usr/bin/env bash\nprintf x > ${JSON.stringify(marker)}\nexit 0\n`);
+  chmodSync(join(fake, "git"), 0o755);
+
+  const { base } = rigRun({ skipRun: true, env: { PATH: `${fake}:${process.env.PATH}` } });
+
+  assert.equal(existsSync(marker), false, "呼び出し元の PATH に置いた git が使われた");
+  assert.ok(existsSync(join(base, "workspace", ".git")), "workspace が git repository になっていない");
+});
+
+test("a failed version probe leaves the previous capture in place", () => {
+  // 版の問い合わせは測定の**前**に落ちうる。そこで前の run の記録を消していると、
+  // 始まってもいない測定のために、取り込み前の記録が復旧不能に失われる
+  const { base, sh } = rigRun({
+    skipImport: true,
+    // 問い合わせの CAPTURE_FILE は記録置き場の中にあるので、そこに目印を置いて 2 回目だけ落とす
+    stubVersionExtra:
+      'if [ -e "$(dirname "${CAPTURE_FILE}")/fail-version" ]; then echo boom >&2; exit 3; fi',
+  });
+  const stem = join(base, "capture", `claude-${LABEL}`);
+  const before = readFileSync(`${stem}.jsonl`);
+  assert.ok(before.length > 0, "1 回目の記録が空");
+  const version = readFileSync(`${stem}.version`, "utf8");
+
+  writeFileSync(join(base, "capture", "fail-version"), "");
+  const second = sh("claude-run", LABEL, "hello");
+
+  assert.notEqual(second.status, 0, "落ちた問い合わせで run が成功している");
+  assert.deepEqual(readFileSync(`${stem}.jsonl`), before, "前の記録が失われた");
+  assert.ok(existsSync(`${stem}.exit`), "前の run の終了コードが消えた");
+  assert.equal(readFileSync(`${stem}.version`, "utf8"), version, "前の版が上書きされた");
+});
+
+test("both runs replace the previous capture only after the version probe", () => {
+  // stub で走らせるのは claude 経路だけなので、codex 経路はここで形として見る
+  const rig = readFileSync(join(HARNESS, "rig", "rig.sh"), "utf8");
+  const blocks = [...rig.matchAll(/^(claude|codex)_run\(\) \{$([\s\S]*?)^\}$/gm)];
+  assert.equal(blocks.length, 2, "run 関数の数が変わった");
+  for (const [, name, body] of blocks) {
+    const probe = body.indexOf('[ "$ver_rc" -eq 0 ]');
+    const wipe = body.indexOf(': > "$capture"');
+    assert.ok(probe >= 0 && wipe >= 0, `${name}_run の問い合わせか記録の初期化が見つからない`);
+    assert.ok(wipe > probe, `${name}_run が問い合わせより先に前の記録を消している`);
+  }
+});

@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 136:
-    bad.append(f"変異表の行が {len(table)} 件（136 件でない）")
+if len(table) != 139:
+    bad.append(f"変異表の行が {len(table)} 件（139 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -311,13 +311,31 @@ mutate $ASSEMBLE '        ...backedOnly(promotion.evidenceKind === "real-cli-e2e
 mutate $IMPORT 'const sourceBytes = readFileSync(source);' 'mkdirSync(destDir, { recursive: true });
 copyFileSync(source, dest);
 const sourceBytes = readFileSync(source);' && run 'M70: 検証より先に保存済みの記録を置き換える'
-mutate $RIG '  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+mutate $RIG '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
   : > "$capture"; rm -f "$capture.errors"' && run 'M71: claude の run で前回の終了コードを残す'
-mutate $RIG '  local stem="$RIG_BASE/capture/codex-$label"
-  local capture="$stem.jsonl"
-  : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  local stem="$RIG_BASE/capture/codex-$label"
-  local capture="$stem.jsonl"
+mutate $RIG '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"' '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
   : > "$capture"; rm -f "$capture.errors"' && run 'M72: codex の run で前回の終了コードを残す'
 mutate $ASSEMBLE '      (r) => r.manifestBacked && claimedEvents.every((n) => derive(r).sources.includes(n)),' '      (r) => r.manifestBacked && claimedEvents.every((n) => r.events.includes(n)),' && run 'M73: 出どころを「記録に在る」だけで認める'
 mutate $ASSEMBLE '        errs.push(`observedEvents[${i}].kind is not one of the kinds capability.schema.json lists`);' '        errs.push(`observedEvents[${i}].kind invalid: ${ev.kind}`);' && run 'M74: 手書き検証が棄却した値を診断へ戻す'
@@ -376,13 +394,17 @@ mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
-  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed' '  wait "$ver_pid" || ver_rc=$?
+  # 落ちた問い合わせで前の run の記録を失わない。降りる前に消すのは今回書いたものだけで、
+  # 取り込み前の記録・その終了コード・記録失敗の痕跡はそのまま残す（測定は始まってもいない）
+  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed' '  wait "$ver_pid" || ver_rc=$?
   # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
   # 終了 0 で帰る CLI で、その診断文が cliVersion として証拠に載る
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
-  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed' && run 'M88: 版の問い合わせが残した子を畳まない'
+  # 落ちた問い合わせで前の run の記録を失わない。降りる前に消すのは今回書いたものだけで、
+  # 取り込み前の記録・その終了コード・記録失敗の痕跡はそのまま残す（測定は始まってもいない）
+  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed' && run 'M88: 版の問い合わせが残した子を畳まない'
 mutate $RIG '      > "$stem.stdout" 2> "$stem.stderr" ) & run_pid=$!
   set +m
   wait "$run_pid" || rc=$?
@@ -406,7 +428,7 @@ codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
 codex_run' && run 'M89: lock の fd を測定対象へ渡さない'
 mutate $RIG '  ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env claude "$ver_capture" \
       timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version )' '( { "$CLAUDE_BIN" --version; } )' && run 'M93: 版の問い合わせを隔離の外で行う'
-mutate $RIG '[ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' '[ "$ver_rc" -eq 0 ] || true' && run 'M94: 失敗した版の問い合わせでも測定を続ける'
+mutate $RIG '[ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' '[ "$ver_rc" -eq 0 ] || true' && run 'M94: 失敗した版の問い合わせでも測定を続ける'
 mutate $CAP '    Array.isArray(cell.evidenceRefs) &&
     cell.evidenceRefs.length > 0' '    true' && run 'M95: 裏付けた記録が無くても証明済みとする'
 mutate $IMPORT 'try {
@@ -441,7 +463,7 @@ mutate $RIG '  teardown) require_rig_base; mkdir -p "$RIG_BASE"; chmod 700 "$RIG
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' '"$CLAUDE_BIN" --version' && run 'M101: 版の問い合わせに時間制限を掛けない'
 mutate $RIG 'RIG_BASE="$ver_state" run_env claude' 'run_env claude' && run 'M102: 版の問い合わせを本実行と同じ state で行う'
 mutate $RIG 'purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }' 'purge_own_credentials() { purge_credentials; return 0; }' && run 'M103: lock を取れなかった process も資格情報を消す'
-mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err"' '"$CLAUDE_BIN" --version ) > "$stem.version" 2>&1' && run 'M105: 版の問い合わせの stderr を版として記録する'
+mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version.new" 2> "$stem.version.err.new"' '"$CLAUDE_BIN" --version ) > "$stem.version.new" 2>&1' && run 'M105: 版の問い合わせの stderr を版として記録する'
 mutate $IMPORT '  if (previous) renameSync(previous, dest);' '  if (previous) rmSync(previous, { force: true });' && run 'M106: 置き換えに失敗しても古い記録を戻さない'
 mutate $IMPORT 'dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);' 'dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);' && run 'M107: 持ち込みの失敗に file system の説明をそのまま出す'
 mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' 'timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' && run 'M108: 時間切れの問い合わせに止めの signal を送らない'
@@ -514,6 +536,11 @@ mutate $RIG 'setup() {
 mutate $IMPORT 'if (existsSync(`${dest}.prev`)) {
   die("a previous record is still set aside for recovery; resolve it before importing again");
 }' 'existsSync(`${dest}.prev`);' && run 'M138: 復旧待ちの退避があっても持ち込みを始める'
+
+mutate $RIG 'PATH=/usr/local/bin:/usr/bin:/bin command -v git' 'command -v git' && run 'M139: 隔離用の git を呼び出し元の PATH から選ぶ'
+mutate $RIG '  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' '  [ "$ver_rc" -eq 0 ] || { : > "$capture"; rm -f "$capture.errors" "$stem.exit"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' && run 'M140: 落ちた版の問い合わせでも前の記録を消す'
+mutate $RIG '  stage_credentials codex' '  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
+  stage_credentials codex' && run 'M141: codex の run が問い合わせより先に前の記録を消す'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす

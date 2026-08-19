@@ -98,7 +98,11 @@ git_iso() { # 測定用 workspace の git を実環境から切り離して走�
   # command-scope の設定を注入でき、GIT_DIR 以下は repository の位置そのもの、GIT_EXEC_PATH は git が
   # 呼ぶ実行 file の在り処を指す。外す変数を列挙する形は、次に増えた入口が黙って通る側へ回るので、
   # run_env と同じく渡すものだけを決める。`env -i` は /etc/gitconfig を止めないので明示する
-  local git_bin; git_bin=$(command -v git) || { echo "git not found" >&2; exit 1; }
+  # 探す場所も呼び出し元から取らない。`command -v git` は**環境を畳む前**の PATH で解決するので、
+  # 先頭に `.` や wrapper を置いた呼び出し元は、隔離したはずの workspace を自分の program に
+  # 作らせられる（それでも manifest は isolated: true を書く）
+  local git_bin; git_bin=$(PATH=/usr/local/bin:/usr/bin:/bin command -v git) \
+    || { echo "git not found in the trusted path" >&2; exit 1; }
   env -i \
     PATH="${git_bin%/*}:/usr/bin:/bin" \
     HOME="$RIG_BASE/home" \
@@ -184,11 +188,6 @@ claude_run() {
   # 「消す名前」と「書く名前」がずれても誰も気づかない（.exit が実際にずれていた）
   local stem="$RIG_BASE/capture/claude-$label"
   local capture="$stem.jsonl"
-  # 記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の manifest の
-  # recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で先に消す:
-  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
-  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
-  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials claude
   # --version も測定対象の起動なので、本実行と同じ扱いにする（ここだけ残骸が残ると
   # 次の run が lock で止まる。実際にこの経路だけ監督から漏れていた）
@@ -211,7 +210,7 @@ claude_run() {
   # 締め切りを env で縮められるようにしてあるのは `VERSION_TIMEOUT` と同じ理由で、test から
   # 秒を待たずに「止めの signal が飛ぶ」ことだけを見るため
   ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env claude "$ver_capture" \
-      timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
+      timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version ) > "$stem.version.new" 2> "$stem.version.err.new" & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
@@ -223,7 +222,15 @@ claude_run() {
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
-  [ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # 落ちた問い合わせで前の run の記録を失わない。降りる前に消すのは今回書いたものだけで、
+  # 取り込み前の記録・その終了コード・記録失敗の痕跡はそのまま残す（測定は始まってもいない）
+  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   # 測定にも止めの signal の締め切りを付ける。SIGTERM を捕まえる・無視する測定対象だと
   # timeout は最初の signal のあと待ち続け、`wait` が帰らないので reap_group まで届かない
   # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる
@@ -248,7 +255,6 @@ codex_run() {
   [ -n "$CODEX_BIN" ] || { echo "codex not found" >&2; exit 1; }
   local stem="$RIG_BASE/capture/codex-$label"
   local capture="$stem.jsonl"
-  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   stage_credentials codex
   local ver_pid=0 run_pid=0 ver_rc=0
   # 版の問い合わせも測定対象の起動なので、本実行と同じ隔離で行う。ここだけ素で起動していると、
@@ -269,7 +275,7 @@ codex_run() {
   # 締め切りを env で縮められるようにしてあるのは `VERSION_TIMEOUT` と同じ理由で、test から
   # 秒を待たずに「止めの signal が飛ぶ」ことだけを見るため
   ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env codex "$ver_capture" \
-      timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CODEX_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
+      timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CODEX_BIN" --version ) > "$stem.version.new" 2> "$stem.version.err.new" & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
@@ -281,7 +287,15 @@ codex_run() {
   # 問い合わせの記録も state も持ち込みの対象にしない。中身も残さない
   rm -rf "$ver_state"
   rm -f "$ver_capture" "$ver_capture.errors"
-  [ "$ver_rc" -eq 0 ] || { echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # 落ちた問い合わせで前の run の記録を失わない。降りる前に消すのは今回書いたものだけで、
+  # 取り込み前の記録・その終了コード・記録失敗の痕跡はそのまま残す（測定は始まってもいない）
+  [ "$ver_rc" -eq 0 ] || { rm -f "$stem.version.new" "$stem.version.err.new"; echo "codex --version failed (exit=$ver_rc)" >&2; exit 1; }
+  # ここから前の記録を置き換える。記録失敗の痕跡も run ごとに消す。残すと前回の失敗が今回の
+  # manifest の recorderErrors に載り、正しい証拠が棄却される。終了コードも同じ理由で消す:
+  # run が SIGKILL で落ちると前回の成功が残り、途中で切れた記録に exitStatus=0 が付く。
+  # .errors だけは hook が $CAPTURE_FILE から作るので記録側の名前になる
+  mv "$stem.version.new" "$stem.version"; mv "$stem.version.err.new" "$stem.version.err"
+  : > "$capture"; rm -f "$capture.errors" "$stem.exit"
   # 測定にも止めの signal の締め切りを付ける。SIGTERM を捕まえる・無視する測定対象だと
   # timeout は最初の signal のあと待ち続け、`wait` が帰らないので reap_group まで届かない
   # ——lock と staged な資格情報を握ったまま、rig が丸ごと止まる
