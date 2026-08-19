@@ -1,0 +1,48 @@
+harness/continuity/fixture-validation.test.ts
+  s_4b760f9c3ea592::t_1c6694f5af706e 114-116
+harness/evidence/killswitch.test.ts
+  s_4b760f9c3ea592::t_1c6694f5af706e 20-23
+harness/evidence/verify.ts
+  s_4b760f9c3ea592::t_1c6694f5af706e 129-134,141
+harness/rig/import-evidence.mjs
+  s_4b760f9c3ea592::t_1c6694f5af706e 149-156
+  s_a2a364145ca286::t_e8631ffb095f35 135-136
+harness/evidence/mutate.sh
+  s_a2a364145ca286::t_610cc32d28ed29 46-49,51,64-65,348-349,354-355,381,385-395
+harness/evidence/rig-manifest.test.mjs
+  s_a2a364145ca286::t_09204b716c7f27 24,317-318,322-324,326,330-344
+harness/evidence/secrets.test.ts
+  s_a2a364145ca286::t_78d813b88b362d 6,10,12,30-34,36,86-87,104-105,119-120,136-137,171-179,181-187,189-194,206-212
+specs/003-evidence-hash-normalization/research.md
+  s_a2a364145ca286::t_417524ac645f17 78
+specs/003-evidence-hash-normalization/tasks.md
+  s_a2a364145ca286::t_19bc708b77b5be 198-199,224,328-330,350-351
+harness/rig/rig.sh
+  s_a2a364145ca286::t_b75cdbb71224c4 127-132,134,141-142,167-172,174,181-182
+harness/schema/capability.ts
+  s_a2a364145ca286::t_bc60dd69eaf63b 263-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1771e7b07f713bdb52fbff0699b0b0f0c62ed15c",
+  "prompts": {},
+  "sessions": {
+    "s_4b760f9c3ea592": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01770-c700-7bd1-8c49-15319f2023ca",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_a2a364145ca286": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e31bc79c-cfbd-44ea-bed7-1dc47ff616ae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
