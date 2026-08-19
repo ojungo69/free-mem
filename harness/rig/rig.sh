@@ -64,6 +64,9 @@ setup() {
   # 消せてしまう）。既にあれば truncate されるだけで inode は変わらないので、握っている
   # 側の lock は落ちない
   with_lock
+  # 握れた = 走っている run はいない。SIGKILL で trap が走らなかった前回の残りは誰のものでも
+  # ないので、ここで消す（置いた本人以外が消してよいのは、lock を握れたこの瞬間だけ）
+  purge_credentials
   sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json" > "$RIG_BASE/claude-config/settings.json"
   sed "s|__HOOK__|$HOOK|g" "$DIR/codex-config-template.toml" > "$RIG_BASE/codex-home/config.toml"
   if [ ! -d "$RIG_BASE/workspace/.git" ]; then
@@ -101,6 +104,7 @@ run_env() { # 最小環境で子 CLI を起動する共通部。$1 = claude | co
     TERM=dumb \
     "${cfg[@]}" \
     AGENT_MEMORY_INTERNAL_RUN=1 \
+    GIT_CONFIG_NOSYSTEM=1 \
     CAPTURE_FILE="$capture" \
     ${INJECT_MARKER:+INJECT_MARKER="$INJECT_MARKER"} \
     ${HOOK_SLEEP:+HOOK_SLEEP="$HOOK_SLEEP"} \

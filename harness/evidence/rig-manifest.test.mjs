@@ -27,7 +27,7 @@ set -eu
 # --version も run_env 経由なので CAPTURE_FILE がある。隔離が効いているかをここで書き出す
 # （run_env の外から呼ぶ変異では CAPTURE_FILE が無くなる）。STEM は記録本体を書く段で作る
 if [ "\${1:-}" = --version ]; then
-{ echo "HOME=\$HOME"; echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR:-<unset>}"; echo "INTERNAL=\${AGENT_MEMORY_INTERNAL_RUN:-<unset>}"; echo "PWD=\$PWD"; echo "CAPTURE=\${CAPTURE_FILE:-<unset>}"; } > "\${CAPTURE_FILE:-/dev/null}.version-env"
+{ echo "HOME=\$HOME"; echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR:-<unset>}"; echo "INTERNAL=\${AGENT_MEMORY_INTERNAL_RUN:-<unset>}"; echo "PWD=\$PWD"; echo "GITSYS=\${GIT_CONFIG_NOSYSTEM:-<unset>}"; echo "CAPTURE=\${CAPTURE_FILE:-<unset>}"; } > "\${CAPTURE_FILE:-/dev/null}.version-env"
 ${versionExtra}
 printf '%s\\n' '${VERSION}'; exit 0; fi
 STEM="\${CAPTURE_FILE%.jsonl}"; export STEM  # 子 shell から見えないと、目印を書かせる test が空振りする
@@ -258,6 +258,16 @@ test("a knob with a space does not turn into another command", () => {
   );
 });
 
+test("setup removes a credential no run owns any more", () => {
+  // SIGKILL で trap が走らなければ資格情報は置きっぱなしになる。次に lock を握れた process は
+  // 「走っている run はいない」ことを知っているので、そこで消せる
+  const { base, sh } = rigRun({ skipRun: true });
+  const left = join(base, "claude-config", ".credentials.json");
+  writeFileSync(left, "{}");
+  assert.equal(sh("setup").status, 0);
+  assert.ok(!existsSync(left), "前の run が残した資格情報が rig に残り続けた");
+});
+
 test("the rig stages no credential when the test runs", () => {
   // run が終われば trap が消すので、外から見ても常に無い。stub に run 中を見させる
   const { base } = rigRun();
@@ -463,6 +473,9 @@ test("the version probe runs in the isolated environment, not the caller's", () 
   assert.match(seen, new RegExp(`CLAUDE_CONFIG_DIR=${base}/version-state/claude-config\n`), seen);
   assert.match(seen, /INTERNAL=1\n/, seen);
   assert.match(seen, new RegExp(`PWD=${base}/version-state/workspace\n`), `版の問い合わせが呼び出し元の作業場所で走っている: ${seen}`);
+  // HOME を差し替えても /etc/gitconfig は読まれる。測定対象が起動する git が host の
+  // core.hooksPath や includes を拾うと、隔離の外の設定が記録を変える
+  assert.match(seen, /GITSYS=1\n/, `測定対象の環境で system の git 設定が遮断されていない: ${seen}`);
   // 使い捨ての state を本実行と共有しない。共有すると、初回起動で設定を書く CLI が
   // 本実行を 2 回目の起動にしてしまう
   assert.ok(!existsSync(join(base, "version-state")), "問い合わせ用の state が残っている");
@@ -586,21 +599,21 @@ test("teardown that cannot take the lock removes nothing", () => {
   // 「あれば取る」にすると、無い瞬間を見た直後に run が作った base を lock 無しで消せる。
   // その順序は race なので直接は再現できない。**lock を取れないなら成功を報告しない**ほうを
   // 固定する: 置き場を作れなければ lock も取れないので、そこで降りる
+  // 権限では止められない（root では 0500 の親にも作れる）。file の下に directory は作れないので、
+  // UID に依らず「置き場を作れない」状態になる
   const tmp = mkdtempSync(join(tmpdir(), "rig-teardown-"));
-  const parent = join(tmp, "sealed");
-  mkdirSync(parent);
-  chmodSync(parent, 0o500);
+  SCRATCH.push(tmp);
+  const blocker = join(tmp, "not-a-directory");
+  writeFileSync(blocker, "");
   const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "teardown"], {
     encoding: "utf8",
-    env: { ...process.env, RIG_BASE: join(parent, "rig-base") },
+    env: { ...process.env, RIG_BASE: join(blocker, "rig-base") },
   });
-  chmodSync(parent, 0o700);
-  rmSync(tmp, { recursive: true, force: true });
   assert.notEqual(done.status, 0, `lock を取れないのに teardown が消したと報告した: ${done.stdout}`);
 });
 
-// 測定用の workspace を、operator の git 設定・template から切り離して作れているか。
-// 漏れると hook ごと .git へ複製され、隔離したはずの測定の中で走る（manifest は isolated: true）
+// $GIT_TEMPLATE_DIR の中身が測定用 workspace の .git へ複製されないか。
+// 漏れると hook ごと複製され、隔離したはずの測定の中で走る（manifest は isolated: true を書く）
 function workspaceTemplateLeak(envFor) {
   const tmp = mkdtempSync(join(tmpdir(), "rig-gitleak-"));
   SCRATCH.push(tmp);
@@ -616,13 +629,23 @@ function workspaceTemplateLeak(envFor) {
   return existsSync(join(base, "workspace", ".git", "MARKER"));
 }
 
-test("the measured workspace is not built from the operator's git configuration", () => {
-  const leaked = workspaceTemplateLeak((tmp, template) => {
-    const config = join(tmp, "gitconfig");
-    writeFileSync(config, `[init]\n\ttemplateDir = ${template}\n`);
-    return { GIT_CONFIG_GLOBAL: config };
+test("the measured workspace does not run the operator's git hooks", () => {
+  // 設定を外す側の観測点は template ではない（template は `--template=` が単独で塞ぐ）。
+  // global の core.hooksPath は、隔離したはずの workspace の commit で operator の hook を走らせる
+  const tmp = mkdtempSync(join(tmpdir(), "rig-githooks-"));
+  SCRATCH.push(tmp);
+  const hooks = join(tmp, "hooks");
+  mkdirSync(hooks, { recursive: true });
+  const preCommit = join(hooks, "pre-commit");
+  writeFileSync(preCommit, "#!/bin/sh\nexit 1\n");
+  chmodSync(preCommit, 0o755);
+  const config = join(tmp, "gitconfig");
+  writeFileSync(config, `[core]\n\thooksPath = ${hooks}\n`);
+  const done = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), "setup"], {
+    encoding: "utf8",
+    env: { ...process.env, RIG_BASE: join(tmp, "base"), GIT_CONFIG_GLOBAL: config },
   });
-  assert.ok(!leaked, "global の init.templateDir が隔離した workspace の .git へ複製された");
+  assert.equal(done.status, 0, `operator の hook が隔離した workspace の commit を止めた: ${done.stderr}`);
 });
 
 test("the measured workspace is not built from the operator's git templates", () => {

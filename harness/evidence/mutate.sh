@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 126:
-    bad.append(f"変異表の行が {len(table)} 件（126 件でない）")
+if len(table) != 128:
+    bad.append(f"変異表の行が {len(table)} 件（128 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -440,7 +440,7 @@ mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VE
 mutate $RIG 'run_env claude "$capture" timeout --foreground --kill-after="${RUN_KILL_AFTER:-5s}"' 'run_env claude "$capture" timeout --foreground' && run 'M110: 測定の時間切れに止めの signal を送らない'
 mutate $RIG 'echo "another rig run holds the lock" >&2' 'echo "another rig run holds $RIG_BASE" >&2' && run 'M111: lock 競合の説明に実行環境の絶対 path を出す'
 mutate $RIG '  with_lock
-  sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' '  sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' && run 'M112: setup が lock を取らずに state を書き換える'
+  # 握れた = 走っている run はいない' '  # 握れた = 走っている run はいない' && run 'M112: setup が lock を取らずに state を書き換える'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'
@@ -481,6 +481,11 @@ mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VE
 mutate $IMPORT 'process.on("uncaughtException", (e) => {
   cleanupStaged();' 'process.on("uncaughtException", (e) => {' && run 'M125: 未捕捉例外の経路が一時 file を証拠置き場に残す'
 mutate $RIG '    ${INJECT_MARKER:+INJECT_MARKER="$INJECT_MARKER"} \' '    ${INJECT_MARKER:+INJECT_MARKER=$INJECT_MARKER} \' && run 'M126: knob の値の引用を外す'
+
+mutate $RIG '    AGENT_MEMORY_INTERNAL_RUN=1 \
+    GIT_CONFIG_NOSYSTEM=1 \' '    AGENT_MEMORY_INTERNAL_RUN=1 \' && run 'M127: 測定対象の環境で system の git 設定を遮断しない'
+mutate $RIG '  purge_credentials
+  sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' '  sed "s|__HOOK__|$HOOK|g" "$DIR/claude-settings-template.json"' && run 'M128: 誰のものでもない資格情報を setup で消さない'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす
