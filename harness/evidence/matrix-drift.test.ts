@@ -6,12 +6,12 @@
 // ここでは repo の I-JSON parser で読むので、重複キーはその場で棄却される。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { decodeUtf8, parseIJson } from "../schema/jcs.ts";
+import { newRoot } from "./scratch.ts";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const CLIS = ["claude", "codex"] as const;
@@ -36,7 +36,7 @@ function readMatrixText(path: string): { text: string; value: Record<string, unk
 }
 
 const assertNoDrift = (cli: (typeof CLIS)[number]): void => {
-  const out = join(mkdtempSync(join(tmpdir(), "matrix-drift-")), `${cli}.json`);
+  const out = join(newRoot("matrix-drift-"), `${cli}.json`);
   const run = spawnSync(
     process.execPath,
     [

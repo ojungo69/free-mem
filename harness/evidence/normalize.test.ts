@@ -1,9 +1,9 @@
-import { test } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { newRoot } from "./scratch.ts";
 import {
   NORMALIZATION_VERSION,
   captureCapturedAt,
@@ -296,13 +296,13 @@ test("存在しないファイルは棄却される", () => {
 });
 
 test("通常ファイルでない参照は棄却される", () => {
-  const root = mkdtempSync(join(tmpdir(), "evroot-"));
+  const root = newRoot("evroot-");
   mkdirSync(join(root, "adir"));
   assert.throws(() => resolveEvidencePath("claude", "adir", root));
 });
 
 test("置き場の外へ出る symlink は棄却される", () => {
-  const base = mkdtempSync(join(tmpdir(), "evlink-"));
+  const base = newRoot("evlink-");
   const root = join(base, "raw");
   mkdirSync(root);
   writeFileSync(join(base, "outside.jsonl"), "x");
@@ -313,7 +313,7 @@ test("置き場の外へ出る symlink は棄却される", () => {
 });
 
 test("兄弟ディレクトリは前方一致で通り抜けない", () => {
-  const base = mkdtempSync(join(tmpdir(), "evsib-"));
+  const base = newRoot("evsib-");
   const root = join(base, "raw");
   mkdirSync(root);
   mkdirSync(join(base, "raw-evil"));
