@@ -44,10 +44,14 @@ function readExitStatus(path) {
   } catch {
     die("the run did not record an exit status");
   }
-  // 桁数も縛る。`^\d+$` だけだと 30 桁が Number で丸められ、schema の integer は通るのに
-  // 元の綴りと違う値が manifest へ載る
+  // 綴りと値を別々に縛る。桁数は rig が書いた綴りそのものを要求する検査で、記録は
+  // `printf '%s\n' "$rc"` なので 0 詰めも 4 桁もありえない（来たなら書いたのは rig ではない）。
+  // 値の側は下位 8 bit しか持てない `$?` に合わせる。256..999 は 3 桁の検査を通り抜けるので、
+  // 綴りだけ見ても「ありえない終了コード」が manifest へ載る
   if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");
-  return Number(text);
+  const status = Number(text);
+  if (status > 255) die("the recorded exit status is not a plausible exit code");
+  return status;
 }
 
 // 未知の option は parseArgs 自身が弾く。素の例外は stack を吐くので die へ寄せる

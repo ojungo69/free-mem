@@ -314,15 +314,44 @@ test("a CLI version the manifest schema rejects does not replace the stored evid
   assert.deepEqual(readFileSync(stored), before, "落ちたのに保存済みの記録が置き換わった");
 });
 
-test("an exit status too large to be one is rejected", () => {
-  // `^\d+$` だけだと 30 桁が Number で丸められ、schema の integer は通るのに
-  // 元の綴りと違う値が manifest へ載る
+test("an exit status the rig could not have written is rejected", () => {
+  // 桁数の検査と範囲の検査は別のものを見ている。片方だけでは、もう片方が拾う綴りが素通りする
   const { base, sh, rawDir } = rigRun();
   const before = readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`));
   writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), `${"9".repeat(30)}\n`);
   const again = sh("import", "claude", LABEL, "self.stub");
   assert.notEqual(again.status, 0, "終了コードでない数で持ち込みが成功した");
   assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
+  // 桁数だけでは足りない。記録するのは shell の `$?` なので 256 以上はありえない
+  writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), "300\n");
+  const tooBig = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(tooBig.status, 0, "255 を超える終了コードで持ち込みが成功した");
+  assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
+  // 逆に、範囲の検査だけでは 0 詰めが通る。値としては 42 でも rig はその綴りを書かない
+  writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), "0042\n");
+  const padded = sh("import", "claude", LABEL, "self.stub");
+  assert.notEqual(padded.status, 0, "0 詰めの終了コードで持ち込みが成功した");
+  assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
+});
+
+test("a version probe that catches SIGTERM is still cut off", () => {
+  // `timeout` は最初の signal のあと待ち続ける。捕まえる・無視する測定対象だと、時間制限を
+  // 付けただけでは同じところで固まり、lock と資格情報を握ったままになる。
+  // run が非ゼロで終わることだけでは足りない: 止めの signal が無くても、測定対象が自分で
+  // 終わった時点で timeout は 124 を返す。**掛かった時間**がこのゲートの唯一の観測点で、
+  // 止めの signal が飛ばなければ下の sleep が終わる 30 秒まで帰ってこない
+  const started = Date.now();
+  const { sh, run } = rigRun({
+    stubVersionExtra: 'trap "" TERM; sleep 30',
+    skipImport: true,
+    expectRunFailure: true,
+    env: { VERSION_TIMEOUT: "1", VERSION_KILL_AFTER: "1s" },
+  });
+  const elapsed = Date.now() - started;
+  assert.notEqual(run.status, 0, "SIGTERM を無視する問い合わせのまま run が成功した");
+  assert.ok(elapsed < 15_000, `時間制限のあとに止めの signal が飛んでいない (${elapsed}ms)`);
+  const removed = sh("teardown");
+  assert.equal(removed.status, 0, `問い合わせが lock を握ったままになった: ${removed.stderr}`);
 });
 
 test("a failure while staging leaves both stored files untouched", () => {

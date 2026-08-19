@@ -155,9 +155,13 @@ claude_run() {
   rm -rf "$ver_state"; mkdir -p "$ver_state"/{home,claude-config,codex-home,workspace}
   set -m
   # 問い合わせにも時間制限を掛ける。掛けないと、更新待ちなどで固まった --version が lock と
-  # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる
+  # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる。
+  # `--kill-after` まで付ける: SIGTERM を捕まえる・無視する測定対象だと、timeout は最初の
+  # signal のあと待ち続けるので、時間制限を付けただけでは同じところで固まる。
+  # 締め切りを env で縮められるようにしてあるのは `VERSION_TIMEOUT` と同じ理由で、test から
+  # 秒を待たずに「止めの signal が飛ぶ」ことだけを見るため
   ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env claude "$ver_capture" \
-      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
+      timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。
@@ -205,9 +209,13 @@ codex_run() {
   rm -rf "$ver_state"; mkdir -p "$ver_state"/{home,claude-config,codex-home,workspace}
   set -m
   # 問い合わせにも時間制限を掛ける。掛けないと、更新待ちなどで固まった --version が lock と
-  # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる
+  # 資格情報を握ったまま帰らず、以後の run・import・teardown が全部止まる。
+  # `--kill-after` まで付ける: SIGTERM を捕まえる・無視する測定対象だと、timeout は最初の
+  # signal のあと待ち続けるので、時間制限を付けただけでは同じところで固まる。
+  # 締め切りを env で縮められるようにしてあるのは `VERSION_TIMEOUT` と同じ理由で、test から
+  # 秒を待たずに「止めの signal が飛ぶ」ことだけを見るため
   ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env codex "$ver_capture" \
-      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CODEX_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
+      timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CODEX_BIN" --version ) > "$stem.version" 2> "$stem.version.err" & ver_pid=$!
   set +m
   # 失敗した問い合わせの出力を版として扱わない。1 行だけ吐いて非ゼロで終える測定対象は、
   # そのエラー行がそのまま cliVersion として証拠に載り「この版で測った」と読めてしまう。

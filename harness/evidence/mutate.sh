@@ -61,8 +61,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 109:
-    bad.append(f"変異表の行が {len(table)} 件（109 件でない）")
+if len(table) != 111:
+    bad.append(f"変異表の行が {len(table)} 件（111 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -349,7 +349,7 @@ mutate $IMPORT 'if (manifest.recorderErrors !== 0) die(' 'if (false && manifest.
 mutate $ASSEMBLE '        ...backedOnly(prev.evidenceKind === "real-cli-e2e", prev.value === "unknown" ? [] : prev.sourceEvents),' '        ...(prev.value === "unknown" ? [] : prev.sourceEvents),' && run 'M84: 先に見た側の裏付け無し hook 名を統合する'
 mutate $ASSEMBLE '        derivable && o.value === "native",' '        derivable,' && run 'M85: 高位 cell の導出可否を key だけで決める'
 mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時刻に ms より細かい桁を許す'
-mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 桁数を見ずに終了コードを読む'
+mutate $IMPORT 'if (!/^\d{1,3}$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 終了コードの綴りを見ずに読む'
 mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
   # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
@@ -392,7 +392,7 @@ codex_run' '      > "$stem.stdout" 2> "$stem.stderr" ) 9>&- & run_pid=$!
 
 codex_run' && run 'M89: lock の fd を測定対象へ渡さない'
 mutate $RIG '  ( cd "$ver_state/workspace" && RIG_BASE="$ver_state" run_env claude "$ver_capture" \
-      timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version )' '( { "$CLAUDE_BIN" --version; } )' && run 'M93: 版の問い合わせを隔離の外で行う'
+      timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version )' '( { "$CLAUDE_BIN" --version; } )' && run 'M93: 版の問い合わせを隔離の外で行う'
 mutate $RIG '[ "$ver_rc" -eq 0 ] || { echo "claude --version failed (exit=$ver_rc)" >&2; exit 1; }' '[ "$ver_rc" -eq 0 ] || true' && run 'M94: 失敗した版の問い合わせでも測定を続ける'
 mutate $CAP '    Array.isArray(cell.evidenceRefs) &&
     cell.evidenceRefs.length > 0' '    true' && run 'M95: 裏付けた記録が無くても証明済みとする'
@@ -425,13 +425,15 @@ mutate $RIG 'reap_group() {
 ' 'reap_group() { kill -- "-$1" 2>/dev/null || true; }
 ' && run 'M99: SIGTERM を無視する残骸を畳み切らない'
 mutate $RIG '  teardown) [ -d "$RIG_BASE" ] && with_lock; rm -f' '  teardown) rm -f' && run 'M100: teardown が lock を取らない'
-mutate $RIG 'timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' '"$CLAUDE_BIN" --version' && run 'M101: 版の問い合わせに時間制限を掛けない'
+mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN" --version' '"$CLAUDE_BIN" --version' && run 'M101: 版の問い合わせに時間制限を掛けない'
 mutate $RIG 'RIG_BASE="$ver_state" run_env claude' 'run_env claude' && run 'M102: 版の問い合わせを本実行と同じ state で行う'
 mutate $RIG 'purge_own_credentials() { [ "$STAGED" -eq 1 ] && purge_credentials; return 0; }' 'purge_own_credentials() { purge_credentials; return 0; }' && run 'M103: lock を取れなかった process も資格情報を消す'
 mutate $RIG '  : > "$RIG_BASE/.lock"' '  :' && run 'M104: setup が lock file を作らない'
 mutate $RIG '"$CLAUDE_BIN" --version ) > "$stem.version" 2> "$stem.version.err"' '"$CLAUDE_BIN" --version ) > "$stem.version" 2>&1' && run 'M105: 版の問い合わせの stderr を版として記録する'
 mutate $IMPORT '  if (previous) renameSync(previous, dest);' '  if (previous) rmSync(previous, { force: true });' && run 'M106: 置き換えに失敗しても古い記録を戻さない'
 mutate $IMPORT 'dieStaged(`import failed while staging: ${e?.constructor?.name ?? "Error"}`);' 'dieStaged(`import failed while staging: ${e instanceof Error ? e.message : String(e)}`);' && run 'M107: 持ち込みの失敗に file system の説明をそのまま出す'
+mutate $RIG 'timeout --foreground --kill-after="${VERSION_KILL_AFTER:-5s}" "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' 'timeout --foreground "${VERSION_TIMEOUT:-60}" "$CLAUDE_BIN"' && run 'M108: 時間切れの問い合わせに止めの signal を送らない'
+mutate $IMPORT '  if (status > 255) die("the recorded exit status is not a plausible exit code");' '  if (false) die("the recorded exit status is not a plausible exit code");' && run 'M109: 255 を超える終了コードを通す'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'
