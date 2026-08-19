@@ -257,6 +257,28 @@ test("a process that escapes the group is not released from the lock by the rig"
   assert.match(again.stderr, /another rig run holds/);
 });
 
+test("a child that ignores SIGTERM does not wedge the rig", () => {
+  // group に残った子が SIGTERM を無視すると lock を握ったままになり、以後の run が全部
+  // 止まる。畳めるはずの残骸で可用性を失う形なので、猶予のあとに SIGKILL まで上げる
+  const stubborn = 'sh -c \'trap "" TERM; sleep 20\' </dev/null >/dev/null 2>&1 &';
+  const { sh } = rigRun({ stubExtra: stubborn, skipImport: true });
+  const again = sh("claude-run", LABEL, "hello");
+  assert.equal(again.status, 0, `SIGTERM を無視する残骸で次の run が止まった: ${again.stderr}`);
+});
+
+test("teardown does not pull the lock out from under a live run", () => {
+  // teardown が lock を無視して消すと、setup が新しい .lock inode を作り、生きた測定対象の
+  // 隣へ次の run が資格情報を置ける。直列化と資格情報の分離が同時に外れる
+  const escape =
+    'setsid sh -c \'printf x > "$STEM.detached"; sleep 20\' </dev/null >/dev/null 2>&1 &\n' +
+    'for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$STEM.detached" ] && break; sleep 0.2; done';
+  const { sh, base } = rigRun({ stubExtra: escape, skipImport: true });
+  const removed = sh("teardown");
+  assert.notEqual(removed.status, 0, "lock を握られたまま rig を消した");
+  assert.match(removed.stderr, /another rig run holds/);
+  assert.ok(existsSync(join(base, ".lock")), "lock を握られたまま .lock を消した");
+});
+
 test("an import that would write an unusable manifest replaces nothing", () => {
   // recorderErrors が 0 でない manifest は検証側が必ず棄却する。持ち込みが成功すると、
   // 保存済みの正しい対を壊したうえで、組み立てが必ず落ちる参照を返すことになる

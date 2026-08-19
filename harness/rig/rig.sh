@@ -105,7 +105,17 @@ with_lock() { # 並行 run を禁止する。同じ RIG_BASE を共有すると�
 # `kill -- -<pid>` が測定対象へ届かない。`--foreground` で group を作らせず、畳むのは
 # こちらの group 1 つに統一する（timeout 自身の group kill を失うが、後段で group ごと
 # 畳むので取りこぼしは増えない）
-reap_group() { kill -- "-$1" 2>/dev/null || true; }
+# SIGTERM だけでは足りない。無視する子が group に残ると lock を握ったままになり、以後の run が
+# 全部止まる（畳めるはずの残骸で可用性を失う）。猶予のあとに生き残りを確かめて SIGKILL する。
+# group を抜けた process には届かないままなので、逃げた側の fail closed は変わらない
+reap_group() {
+  kill -- "-$1" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 -- "-$1" 2>/dev/null || return 0
+    sleep 0.2
+  done
+  kill -KILL -- "-$1" 2>/dev/null || true
+}
 
 claude_run() {
   local label="$1" prompt="$2" rc=0; shift 2
@@ -210,6 +220,8 @@ case "${1:-}" in
   claude-run) shift; claude_run "$@" ;;
   codex-run) shift; codex_run "$@" ;;
   import) shift; import_evidence "$@" ;;
-  teardown) rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
+  # teardown も lock を取る。走っている run の下で消すと、setup が新しい .lock inode を作り、
+  # 生きた測定対象の隣へ次の run が資格情報を置ける（直列化と資格情報の分離が両方外れる）
+  teardown) [ -e "$RIG_BASE/.lock" ] && with_lock; rm -f "$RIG_BASE/claude-config/.credentials.json" "$RIG_BASE/codex-home/auth.json"; rm -rf "$RIG_BASE"; echo "rig removed" ;;
   *) echo "usage: rig.sh setup|claude-run <label> <prompt>|codex-run <label> <prompt>|import <cli> <label> <scenario-id>|teardown" >&2; exit 2 ;;
 esac

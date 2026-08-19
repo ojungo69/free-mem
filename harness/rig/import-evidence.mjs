@@ -126,7 +126,12 @@ if (manifest.recorderErrors !== 0) die("the recorder logged errors during this r
 // 置き場と同じ directory の一時 file へ両方そろえてから、rename 2 回で差し替える。
 // dest を直接触ると、複製後の読み直しや manifest の書き込みで落ちたときに前の対が残らない。
 // rename の間で落ちた場合だけは対が食い違うが、その形は digest が合わないので検証は
-// fail closed になる
+// fail closed になる。
+// **直列化の範囲**: lock は RIG_BASE 単位で、置き場はその外で共有する。別々の RIG_BASE から
+// 同じ label を同時に持ち込むと一時 file の名前が重なり、片方が他方の staged file を消して
+// 持ち込みを失敗させうる（置いてある対は壊れない。対が入れ替わった形も上と同じく検証で落ちる）。
+// 置き場を跨いで直列化するには置き場側の lock が要るが、この rig は 1 人が順に回す道具なので
+// 取っていない
 mkdirSync(destDir, { recursive: true });
 const stagedCapture = `${dest}.tmp`;
 const stagedManifest = `${manifestPath}.tmp`;

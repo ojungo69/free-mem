@@ -61,8 +61,8 @@ rows = re.findall(r"^\| (M\d+b?) \| [^|]+ \| ([^|]+) \|", tasks, re.M)
 table = {mid for mid, _ in rows}
 in_script = set(re.findall(r"&& run '(M\d+b?):", script)) | set(re.findall(r"&& run_custom '(M\d+b?):", script))
 bad = []
-if len(table) != 100:
-    bad.append(f"変異表の行が {len(table)} 件（100 件でない）")
+if len(table) != 102:
+    bad.append(f"変異表の行が {len(table)} 件（102 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -393,6 +393,17 @@ renameSync(stagedCapture, dest);
 renameSync(stagedManifest, manifestPath);' && run 'M96: 置き換えで落ちても一時 file を片付けない'
 mutate $RIG '( cd "$RIG_BASE/workspace" && run_env claude "$ver_capture"' '( run_env claude "$ver_capture"' && run 'M97: 版の問い合わせを呼び出し元の作業場所で行う'
 mutate $RIG 'run_env claude "$ver_capture" "$CLAUDE_BIN" --version' 'run_env claude "$capture" "$CLAUDE_BIN" --version' && run 'M98: 版の問い合わせと本実行で記録先を共有する'
+mutate $RIG 'reap_group() {
+  kill -- "-$1" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 -- "-$1" 2>/dev/null || return 0
+    sleep 0.2
+  done
+  kill -KILL -- "-$1" 2>/dev/null || true
+}
+' 'reap_group() { kill -- "-$1" 2>/dev/null || true; }
+' && run 'M99: SIGTERM を無視する残骸を畳み切らない'
+mutate $RIG '  teardown) [ -e "$RIG_BASE/.lock" ] && with_lock; rm -f' '  teardown) rm -f' && run 'M100: teardown が lock を取らない'
 mutate $RIG 'run_env claude "$capture" timeout --foreground' 'run_env claude "$capture" timeout' && run 'M90: timeout に別の process group を作らせる'
 mutate $IMPORT 'copyFileSync(source, stagedCapture);' 'copyFileSync(source, dest);
 copyFileSync(source, stagedCapture);' && run 'M91: 一時 file を経ずに置き場を直接触る'
