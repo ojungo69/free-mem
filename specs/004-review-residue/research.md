@@ -71,3 +71,36 @@ Node は `v24.16.0`（CI の `node-version: 24.16.0` と一致）。
 この feature は `harness/evidence/*`・`harness/assemble.ts`・`harness/schema/*`・
 `harness/rig/*`・`.github/workflows/ci.yml`・`harness/matrix/README.md`・
 `specs/003-evidence-hash-normalization/*`・`harness/contract-hashes.json` を触る。
+
+## 6. `synthetic-tmp-cleanup` は nit ではなく実害（2026-08-20 実測）
+
+issue #109 は `harness/evidence/synthetic.ts` の一時 directory 漏れを「test 衛生」として挙げていたが、
+この作業中に **実際に別の作業を止めた**。
+
+変異ゲート（`bash harness/evidence/mutate.sh`）は test 一式を約 99 回回す。`newRoot()` は毎回
+`mkdtempSync(join(tmpdir(), "evroot-"))` を作り、どこでも消さない。measurement:
+
+```
+$ find /tmp -maxdepth 1 -name 'evroot-*' | wc -l
+273737
+$ find /tmp -maxdepth 1 -mindepth 1 | wc -l
+309590
+```
+
+内訳（/tmp 直下）: `evroot-` 273,737 / `evidence-secrets-` 9,084 / `matrix-drift-` 7,120 /
+`evsib-` 5,224 / `evlink-` 5,224 / `evfix-` 5,159。
+
+この状態で `grok-delegate.sh` による実装委譲を起動すると、sandbox の構築段階で落ちた:
+
+```
+grok exit=1: error: sandbox deny glob could not be enforced on Linux:
+expanding the deny globs ["/tmp/tmp.*/releases"] visited over 2000000 entries
+across their roots (stopped in /tmp at /tmp/evroot-.../backed
+```
+
+つまり漏れた一時 directory が **カーネル強制の deny glob 展開を破綻させ、sandbox を組めなくした**。
+`/tmp` を掃除してから再実行して復旧させた。
+
+**この項目の優先度はこの実測に基づいて上げてよい。** 直し方は反証役の訂正どおり、
+`synthetic.ts` の `newRoot()` 側に `node:test` の `after` を置き、
+`promotion.test.ts:512` の `evfix-` も同じ経路へ寄せる。
