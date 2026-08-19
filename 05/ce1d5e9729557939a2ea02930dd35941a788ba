@@ -1,0 +1,21 @@
+specs/003-evidence-hash-normalization/baseline.md
+  s_e5710cbcbed85b::t_e2d256126f95a1 27-31
+specs/003-evidence-hash-normalization/spec.md
+  s_e5710cbcbed85b::t_877c123bc53d8b 134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "05ce1d5e9729557939a2ea02930dd35941a788ba",
+  "prompts": {},
+  "sessions": {
+    "s_e5710cbcbed85b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65d44c5d-e71b-42bd-8ee1-dcf5092c5d47",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
