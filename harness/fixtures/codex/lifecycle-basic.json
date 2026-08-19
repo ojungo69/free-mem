@@ -4,6 +4,7 @@
   "nativeVersion": "codex-cli 0.147.0",
   "capturedAt": "2026-08-12T11:16:08.730Z",
   "scenario": "codex exec --json --dangerously-bypass-hook-trust の最小 run で hook lifecycle を観測",
+  "scenarioId": "codex.lifecycle-basic",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -27,6 +28,9 @@
       ],
       "limitations": [
         "Stop.last_assistant_message から復元"
+      ],
+      "limitationCodes": [
+        "assistant-completion-synthesized-from-stop"
       ]
     },
     {
@@ -37,6 +41,9 @@
       ],
       "limitations": [
         "Stop payload に `turn_id` があり turn 境界が native に識別できる。[2026-08-12 訂正: 『Claude 側には無い』は誤り — Claude は UserPromptSubmit/Stop/SessionEnd が同一 `prompt_id` を共有しており turn 対応付けは可能。差は id の名称と、Codex の SessionEnd には turn_id が無い点]"
+      ],
+      "limitationCodes": [
+        "turn-boundary-native-via-turn-id"
       ]
     },
     {
@@ -47,6 +54,9 @@
       ],
       "limitations": [
         "reason は正常終了でも 'other'"
+      ],
+      "limitationCodes": [
+        "session-end-reason-always-other"
       ]
     }
   ],
@@ -55,11 +65,23 @@
     "config は features.hooks=true + [[hooks.X]] 形式が必須（トップレベル `hooks = true` は同名衝突で config 全体が parse error になる — rig で実証）",
     "CODEX_HOME を /tmp 配下に置くと PATH alias 作成を拒否する警告が出るが、実行自体は継続する"
   ],
+  "limitationCodes": [
+    "hooks-config-requires-table-form",
+    "codex-home-in-tmp-warns"
+  ],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
   },
   "highLevel": {
     "sessionStartInjection": "native"
-  }
+  },
+  "evidence": [
+    {
+      "path": "codex-lifecycle-basic.jsonl",
+      "evidenceHash": "18d6e7c91820e1424deebf0ad9e9da735d55d8959b55bd6dc05d767744e0e951",
+      "captureRawHash": "09a006b93306daae568e2ba77b8660b9ac6f385077bf9bd789007b1219fe5ef0",
+      "normalizationVersion": 1
+    }
+  ]
 }

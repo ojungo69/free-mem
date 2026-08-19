@@ -10,7 +10,43 @@
 | Codex | `codex-cli 0.147.0` |
 | OS | Linux WSL2 6.18.33.2-microsoft-standard-WSL2 |
 | 取得日 | 2026-08-12 |
-| evidenceKind | 全 cell `real-cli-e2e`（隔離 rig 下の実 CLI 実行） |
+| evidenceKind | 全 cell `source-test`（下記「証跡種別」参照） |
+
+## 証跡種別と、digest が裏付ける範囲
+
+各 cell の `evidenceKind` は、その値がどこまで機械で確かめられたかを表す。
+
+- `real-cli-e2e` — fixture が名指しした観測記録を再計算して digest が一致し、その記録に rig が
+  書いた run manifest（CLI 版・隔離・内部実行 marker・終了コード・記録失敗数）が付いていて、
+  さらに cell の値そのものを記録から導けた場合だけ付く
+- `source-test` — 上のどれかが欠けている場合。現在の全 cell がこれで、理由は 2 つある
+
+1. **legacy 証拠**: `harness/fixtures/<cli>/raw/*.jsonl` の 16 件は manifest 制度より前に取った
+   ものなので、記録は digest で結び付いているが run の素性を裏付ける manifest が無い。
+   cell の limitations に `unverified: no manifest-backed evidence` が入る
+2. **導けない主張**: hook の stdout が実際にモデルへ届いたか、といった主張は hook 記録の側に
+   現れないため、記録から導けない。`sessionStartInjection` / `promptAwareInjection` /
+   `promptDeliveryBeforeModel` がこれに当たる。したがって `resumeDeliveryStrategy` は、この
+   証拠経路では `manual_only` から動かない
+
+digest が裏付けるのは「その記録である」「事象の並びがそうである」「識別子の相関がそうである」
+までで、モデルが書いた自由文の中身は正規化で伏せるため裏付けの対象にならない。
+
+### 記録の取得側に残っている限界
+
+`real-cli-e2e` が言えるのは「隔離 rig の下で run が起き、その記録が申告どおりである」ところまでで、
+**「測定対象の CLI が記録を捏造していない」ことは言えない**。hook は測定対象 CLI の子として動き、
+記録先の file に同じ UID で書けるので、CLI や CLI が動かした tool は hook 風の行を自分で追記できる。
+`harness/evidence/rig-manifest.test.mjs` の stub CLI が実際にその方法で記録を作っている（test では
+意図した使い方だが、同じことを本物の CLI もできる、という意味でもある）。
+
+閉じるには記録を測定対象から書けない場所へ移す必要がある（別 UID の recorder・監督プロセス・
+隔離した IPC）。設計変更なので別 issue に切り出した。**現時点でこの経路の証拠は 1 件も
+committed されていない**（既存 16 件はすべて manifest 制度より前の legacy 証拠）ので、
+出荷済みの matrix には影響しない。
+
+同じ理由で、manifest の `isolated` と `internalRunMarker` は rig が「そう起動したつもり」を書いた
+値であって、実効状態から導いた値ではない。
 
 ## capture cell 対照
 
@@ -33,7 +69,9 @@
 **Tier A は宣言しない**（v6.1 §29 Phase 0B の明示要件 + HI-23）。未観測 cell は `unknown` のままであり、
 本 matrix は「観測できたものだけを証跡付きで確定した」ものである。
 
-高位 cell は fixture が `highLevel` で観測結果を明記したものだけを反映する（推定はしない）。実測で
+高位 cell は fixture が `highLevel` で観測結果を明記したものだけを反映する（推定はしない）。ただし
+そのうち記録から導けるのは `subagentCapture` / `stableNativeSessionId` の 2 つで、注入系は上記のとおり
+導けない。実測で
 確定したのは Claude の `sessionStartInjection` / `subagentCapture` / `stableNativeSessionId`（= native）
 と Codex の `sessionStartInjection`（= native）で、残りは `unknown` のまま。`compactionRecoveryStrategy`
 は §7.2 の union に "unknown" が無いため **null**（未計測）とし、`unsupported` とは書かない — 未計測を

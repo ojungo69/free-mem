@@ -4,6 +4,7 @@
   "nativeVersion": "2.1.228 (Claude Code)",
   "capturedAt": "2026-08-12T11:09:59.044Z",
   "scenario": "Bash tool 成功実行（allowedTools 明示）で PreToolUse/PostToolUse の対を観測",
+  "scenarioId": "claude.tool-lifecycle",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -50,8 +51,23 @@
   ],
   "toolFailurePhasesObserved": [],
   "limitations": [],
+  "limitationCodes": [],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
-  }
+  },
+  "evidence": [
+    {
+      "path": "claude-tool-ok.jsonl",
+      "evidenceHash": "4564a866ab2118c07f66f92d6bc572f08dc3e46758a2c3a63dda1d904347a7d4",
+      "captureRawHash": "ea8485c3cb9586930570c5e4bafc2214065a4a6733e01a75082db002189d4cdc",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "claude-tool-denied.jsonl",
+      "evidenceHash": "71af90fe29857212f30dd32a566e1b02839a2ad3d5a1b51901189a90215b07f5",
+      "captureRawHash": "f00e7cc19e6b97af361741276bbfd4b03cc319d9f0e9b6b4c7cb4c377b1416c4",
+      "normalizationVersion": 1
+    }
+  ]
 }

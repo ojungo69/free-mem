@@ -57,7 +57,8 @@ test("未知のプロパティを拒否する（additionalProperties: false）",
     ROOT,
   );
   assert.equal(issues.length, 1);
-  assert.match(issues[0].message, /unknown property: extra/);
+  // key 名は載せない。位置だけで場所は足りる
+  assert.match(issues[0].message, /unknown property #3/);
 });
 
 test("required の欠落を拒否する", () => {
@@ -253,7 +254,7 @@ test("properties に無い継承名のキーは additionalProperties: false で�
   };
   for (const key of ["constructor", "toString", "hasOwnProperty"]) {
     const issues = validateAgainstSchema({ [key]: 1 }, schema, ROOT);
-    assert.ok(issues.some((i) => i.message === `unknown property: ${key}`), key);
+    assert.ok(issues.some((i) => i.message === "unknown property #1"), key);
   }
 });
 
@@ -290,7 +291,7 @@ test("__proto__ という名前のデータキーも additionalProperties: false
   const schema = { type: "object", additionalProperties: false, properties: { role: { type: "string" } } };
   const value = JSON.parse('{"role":"primary","__proto__":{"smuggled":"payload"}}');
   const issues = validateAgainstSchema(value, schema, ROOT);
-  assert.ok(issues.some((i) => i.message === "unknown property: __proto__"));
+  assert.ok(issues.some((i) => i.message === "unknown property #2"));
 });
 
 test("循環 $ref はスタックオーバーフローでなく診断可能なエラーにする", () => {

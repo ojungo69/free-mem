@@ -1,7 +1,7 @@
 {
   "cli": "claude",
   "nativeVersion": "2.1.228 (Claude Code)",
-  "generatedAt": "2026-08-16T06:46:39.818Z",
+  "generatedAt": "2026-08-18T12:23:26.847Z",
   "fixtureCount": 5,
   "fixtureIds": [
     "claude/injection-and-subagent",
@@ -11,13 +11,123 @@
     "claude/tool-lifecycle"
   ],
   "fixtureLimitations": [
-    "[claude/injection-and-subagent] 注入実証: hook stdout に置いた token `RIG_INJECT_5f3a9` を子セッションが逐語で復唱した（session 開始時点で注入が届くことの real-cli-e2e 証跡）",
-    "[claude/injection-and-subagent] subagent: 親プロセスの hook に SubagentStop が 1 件届く。**subagent 内部の tool 使用・prompt は親 hook に現れない**（親からは Agent tool 1 回として見える）",
-    "[claude/injection-and-subagent] subagent 固有 id は **存在する**: SubagentStop payload に `agent_id`（例 aa16b2026df287771）/ `agent_type`（general-purpose）/ `agent_transcript_path`（subagent 専用 JSONL）があり、session_id は親と共有。[2026-08-12 訂正: 初版は『subagent 固有 id は hook payload に無い』と誤記していた]",
-    "[claude/interrupt-and-hook-timeout] hook timeout: settings の timeout=10 に対し hook を 15s ブロックさせても、捕捉 event 数・session 完了は正常時と同一（4 events）。hook の遅延は session を壊さないが、hook 側の timeout 超過は payload に現れない",
-    "[claude/interrupt-and-hook-timeout] interrupt fixture は timeout(1) 由来の SIGINT。ユーザーの Ctrl-C 経路（TTY）は未観測",
-    "[claude/lifecycle-basic] headless (-p) run のみ。対話 TTY セッションは未観測",
-    "[claude/tool-failed-executed] permission_denied / schema_invalid / unknown_tool phase は本 fixture では未観測（tool-denied 実行では Claude が許可済み範囲に収まり deny 分岐に到達せず）"
+    "[claude/injection-and-subagent] session-start-injection-echoed",
+    "[claude/injection-and-subagent] subagent-internals-not-visible-to-parent",
+    "[claude/injection-and-subagent] subagent-identity-present-in-payload",
+    "[claude/interrupt-and-hook-timeout] hook-timeout-not-observable",
+    "[claude/interrupt-and-hook-timeout] interrupt-observed-via-signal-only",
+    "[claude/lifecycle-basic] headless-only-no-tty",
+    "[claude/tool-failed-executed] failure-phases-not-reached"
+  ],
+  "evidenceSources": [
+    {
+      "fixtureId": "claude/injection-and-subagent",
+      "path": "claude-inject.jsonl",
+      "evidenceHash": "3733c097d734840d1a7e3373ddecc7fcd6f8fd3bfe474a2d7f527b85c05f82cd",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.injection-and-subagent"
+    },
+    {
+      "fixtureId": "claude/injection-and-subagent",
+      "path": "claude-subagent.jsonl",
+      "evidenceHash": "f4b5f0f847f0e56705d01423e2c87ca3e7c68e9d6f31a3aa1458a2fe0f0d50ef",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.injection-and-subagent"
+    },
+    {
+      "fixtureId": "claude/interrupt-and-hook-timeout",
+      "path": "claude-hook-timeout.jsonl",
+      "evidenceHash": "1a6bab46f7bdc783e0348d0346ee7c418d63acc448a429634e930c60612cf5ab",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.interrupt-and-hook-timeout"
+    },
+    {
+      "fixtureId": "claude/interrupt-and-hook-timeout",
+      "path": "claude-interrupt.jsonl",
+      "evidenceHash": "bff1ecb8a7d2a882c4dc201a2ba7906a09fb6e9cddb7e429621245fedf4ac226",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.interrupt-and-hook-timeout"
+    },
+    {
+      "fixtureId": "claude/interrupt-and-hook-timeout",
+      "path": "claude-interrupt2.jsonl",
+      "evidenceHash": "da592fe7e1347d6e08113fa114025e93e4213ade4761bd0f5a5d8c1c95305aff",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.interrupt-and-hook-timeout"
+    },
+    {
+      "fixtureId": "claude/interrupt-and-hook-timeout",
+      "path": "claude-interrupt3.jsonl",
+      "evidenceHash": "ae3dd7c891c4fce1f559fa82fe19b7fc9bb98319a82a0ef2fda5341f596d68c3",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.interrupt-and-hook-timeout"
+    },
+    {
+      "fixtureId": "claude/interrupt-and-hook-timeout",
+      "path": "claude-interrupt4.jsonl",
+      "evidenceHash": "ae3dd7c891c4fce1f559fa82fe19b7fc9bb98319a82a0ef2fda5341f596d68c3",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.interrupt-and-hook-timeout"
+    },
+    {
+      "fixtureId": "claude/lifecycle-basic",
+      "path": "claude-lifecycle-basic.jsonl",
+      "evidenceHash": "1a6bab46f7bdc783e0348d0346ee7c418d63acc448a429634e930c60612cf5ab",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.lifecycle-basic"
+    },
+    {
+      "fixtureId": "claude/tool-failed-executed",
+      "path": "claude-tool-fail.jsonl",
+      "evidenceHash": "727181f0a7964edc6341b6571245627b1af4ab99babd9c1203ae299f9b3222fd",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.tool-failed-executed"
+    },
+    {
+      "fixtureId": "claude/tool-failed-executed",
+      "path": "claude-tool-fail2.jsonl",
+      "evidenceHash": "b0dbc6cc179bea9e2cd6b036c77ac6974392828f31baf27edf257b8b391e73a2",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.tool-failed-executed"
+    },
+    {
+      "fixtureId": "claude/tool-lifecycle",
+      "path": "claude-tool-denied.jsonl",
+      "evidenceHash": "71af90fe29857212f30dd32a566e1b02839a2ad3d5a1b51901189a90215b07f5",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.tool-lifecycle"
+    },
+    {
+      "fixtureId": "claude/tool-lifecycle",
+      "path": "claude-tool-ok.jsonl",
+      "evidenceHash": "4564a866ab2118c07f66f92d6bc572f08dc3e46758a2c3a63dda1d904347a7d4",
+      "normalizationVersion": 1,
+      "manifestHash": null,
+      "cliVersion": "2.1.228 (Claude Code)",
+      "scenarioId": "claude.tool-lifecycle"
+    }
   ],
   "capabilities": {
     "capture": {
@@ -30,10 +140,13 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:11:21.954Z",
         "limitations": [
-          "no evidenceHash: transcript に紐付いていない自己申告"
+          "unverified: no manifest-backed evidence"
         ],
         "sourceFixtureId": "claude/injection-and-subagent",
-        "evidenceHash": null
+        "evidenceRefs": [
+          0,
+          1
+        ]
       },
       "user_prompted": {
         "value": "native",
@@ -44,10 +157,13 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:11:21.954Z",
         "limitations": [
-          "no evidenceHash: transcript に紐付いていない自己申告"
+          "unverified: no manifest-backed evidence"
         ],
         "sourceFixtureId": "claude/injection-and-subagent",
-        "evidenceHash": null
+        "evidenceRefs": [
+          0,
+          1
+        ]
       },
       "assistant_completed": {
         "value": "synthesized",
@@ -58,11 +174,13 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:07:44.644Z",
         "limitations": [
-          "Stop payload の last_assistant_message から復元。native な assistant_completed hook は無い",
-          "no evidenceHash: transcript に紐付いていない自己申告"
+          "assistant-completion-synthesized-from-stop",
+          "unverified: no manifest-backed evidence"
         ],
         "sourceFixtureId": "claude/lifecycle-basic",
-        "evidenceHash": null
+        "evidenceRefs": [
+          7
+        ]
       },
       "tool_started": {
         "value": "native",
@@ -73,11 +191,13 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:11:21.954Z",
         "limitations": [
-          "subagent 起動も親側 PreToolUse として観測される。**tool_name は `Agent`**（`Task` ではない — 生 capture で確認）。同 run には ToolSearch も現れる",
-          "no evidenceHash: transcript に紐付いていない自己申告"
+          "subagent-start-appears-as-agent-tool",
+          "unverified: no manifest-backed evidence"
         ],
         "sourceFixtureId": "claude/injection-and-subagent",
-        "evidenceHash": null
+        "evidenceRefs": [
+          1
+        ]
       },
       "tool_completed": {
         "value": "native",
@@ -88,10 +208,12 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:11:21.954Z",
         "limitations": [
-          "no evidenceHash: transcript に紐付いていない自己申告"
+          "unverified: no manifest-backed evidence"
         ],
         "sourceFixtureId": "claude/injection-and-subagent",
-        "evidenceHash": null
+        "evidenceRefs": [
+          1
+        ]
       },
       "tool_failed": {
         "value": "synthesized",
@@ -103,12 +225,11 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:10:03.724Z",
         "limitations": [
-          "**PostToolUse は tool 失敗時に発火しない**（2 回実行で決定的に再現: PreToolUse のみ、PostToolUse 無し）。失敗の検出は PreToolUse の未完了 + Stop の last_assistant_message からの合成に依存する",
-          "failurePhase の直接判別は不可。executed failure と他 phase を hook 単体では区別できない",
-          "no evidenceHash: transcript に紐付いていない自己申告"
+          "post-tool-use-absent-on-failure",
+          "failure-phase-not-directly-observable",
+          "unverified: no manifest-backed evidence"
         ],
         "sourceFixtureId": "claude/tool-failed-executed",
-        "evidenceHash": null,
         "coverage": 0.5
       },
       "turn_completed": {
@@ -120,11 +241,14 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:11:21.954Z",
         "limitations": [
-          "no evidenceHash: transcript に紐付いていない自己申告",
-          "Stop = turn 終端として扱う。turn 専用の native event は無いが、UserPromptSubmit / Stop / SessionEnd が同一 `prompt_id` を共有するため turn の対応付け自体は native に可能（生 capture で 3 event 共有を確認）"
+          "unverified: no manifest-backed evidence",
+          "turn-boundary-via-shared-prompt-id"
         ],
         "sourceFixtureId": "claude/injection-and-subagent",
-        "evidenceHash": null
+        "evidenceRefs": [
+          0,
+          1
+        ]
       },
       "pre_compact": {
         "value": "unknown",
@@ -165,13 +289,17 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:13:16.911Z",
         "limitations": [
-          "SIGINT 中断時は **Stop が発火せず** SessionEnd のみ届く（interrupt2/3/4 の 3 回で再現。raw/claude-interrupt{2,3,4}.jsonl）。ただし SessionEnd.reason は正常終了時と同じ 'other' で、中断と正常終了を payload だけでは区別できない",
-          "区別には『Stop 無しで SessionEnd』というパターン合成が必要（本 fixture の根拠）",
-          "raw/claude-interrupt.jsonl は deadline 前に完走した run で Stop を含む。中断形の証跡は interrupt2/3/4 の 3 本",
-          "no evidenceHash: transcript に紐付いていない自己申告"
+          "stop-not-fired-on-sigint",
+          "interrupt-requires-pattern-synthesis",
+          "interrupt-evidence-in-subset-of-captures",
+          "unverified: no manifest-backed evidence"
         ],
         "sourceFixtureId": "claude/interrupt-and-hook-timeout",
-        "evidenceHash": null,
+        "evidenceRefs": [
+          4,
+          5,
+          6
+        ],
         "coverage": 0.75
       },
       "session_ended": {
@@ -183,11 +311,14 @@
         "evidenceKind": "source-test",
         "verifiedAt": "2026-08-12T11:11:21.954Z",
         "limitations": [
-          "no evidenceHash: transcript に紐付いていない自己申告",
-          "reason は headless 正常終了でも 'other'。終了理由の判別には使えない"
+          "unverified: no manifest-backed evidence",
+          "session-end-reason-always-other"
         ],
         "sourceFixtureId": "claude/injection-and-subagent",
-        "evidenceHash": null
+        "evidenceRefs": [
+          0,
+          1
+        ]
       }
     },
     "toolFailurePhases": [
@@ -208,10 +339,9 @@
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
         "observed native in claude/injection-and-subagent",
-        "no evidenceHash: transcript に紐付いていない自己申告"
+        "unverified: no manifest-backed evidence"
       ],
-      "sourceFixtureId": "claude/injection-and-subagent",
-      "evidenceHash": null
+      "sourceFixtureId": "claude/injection-and-subagent"
     },
     "promptAwareInjection": {
       "value": "unknown",
@@ -262,10 +392,12 @@
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
         "observed native in claude/injection-and-subagent",
-        "no evidenceHash: transcript に紐付いていない自己申告"
+        "unverified: no manifest-backed evidence"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",
-      "evidenceHash": null
+      "evidenceRefs": [
+        1
+      ]
     },
     "stableNativeSessionId": {
       "value": "native",
@@ -275,21 +407,19 @@
       "verifiedAt": "2026-08-12T11:11:21.954Z",
       "limitations": [
         "observed native in claude/injection-and-subagent",
-        "no evidenceHash: transcript に紐付いていない自己申告"
+        "unverified: no manifest-backed evidence"
       ],
       "sourceFixtureId": "claude/injection-and-subagent",
-      "evidenceHash": null
+      "evidenceRefs": [
+        0,
+        1
+      ]
     },
     "resumeDeliveryStrategy": "manual_only",
     "capabilityHashInputs": [
-      "cli:claude",
-      "nativeVersion:2.1.228 (Claude Code)",
-      "fixture:claude/injection-and-subagent@no-evidence-hash",
-      "fixture:claude/interrupt-and-hook-timeout@no-evidence-hash",
-      "fixture:claude/lifecycle-basic@no-evidence-hash",
-      "fixture:claude/tool-failed-executed@no-evidence-hash",
-      "fixture:claude/tool-lifecycle@no-evidence-hash",
-      "capabilities:{\"capture\":{\"session_started\":{\"value\":\"native\",\"sourceEvents\":[\"SessionStart\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"user_prompted\":{\"value\":\"native\",\"sourceEvents\":[\"UserPromptSubmit\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"assistant_completed\":{\"value\":\"synthesized\",\"sourceEvents\":[\"Stop\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:07:44.644Z\",\"limitations\":[\"Stop payload の last_assistant_message から復元。native な assistant_completed hook は無い\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/lifecycle-basic\",\"evidenceHash\":null},\"tool_started\":{\"value\":\"native\",\"sourceEvents\":[\"PreToolUse\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"subagent 起動も親側 PreToolUse として観測される。**tool_name は `Agent`**（`Task` ではない — 生 capture で確認）。同 run には ToolSearch も現れる\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"tool_completed\":{\"value\":\"native\",\"sourceEvents\":[\"PostToolUse\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"tool_failed\":{\"value\":\"synthesized\",\"sourceEvents\":[\"PreToolUse\",\"Stop\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:10:03.724Z\",\"limitations\":[\"**PostToolUse は tool 失敗時に発火しない**（2 回実行で決定的に再現: PreToolUse のみ、PostToolUse 無し）。失敗の検出は PreToolUse の未完了 + Stop の last_assistant_message からの合成に依存する\",\"failurePhase の直接判別は不可。executed failure と他 phase を hook 単体では区別できない\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/tool-failed-executed\",\"evidenceHash\":null,\"coverage\":0.5},\"turn_completed\":{\"value\":\"synthesized\",\"sourceEvents\":[\"Stop\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\",\"Stop = turn 終端として扱う。turn 専用の native event は無いが、UserPromptSubmit / Stop / SessionEnd が同一 `prompt_id` を共有するため turn の対応付け自体は native に可能（生 capture で 3 event 共有を確認）\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"pre_compact\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"post_compact\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"session_idle\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"session_interrupted\":{\"value\":\"synthesized\",\"sourceEvents\":[\"SessionEnd\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:13:16.911Z\",\"limitations\":[\"SIGINT 中断時は **Stop が発火せず** SessionEnd のみ届く（interrupt2/3/4 の 3 回で再現。raw/claude-interrupt{2,3,4}.jsonl）。ただし SessionEnd.reason は正常終了時と同じ 'other' で、中断と正常終了を payload だけでは区別できない\",\"区別には『Stop 無しで SessionEnd』というパターン合成が必要（本 fixture の根拠）\",\"raw/claude-interrupt.jsonl は deadline 前に完走した run で Stop を含む。中断形の証跡は interrupt2/3/4 の 3 本\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/interrupt-and-hook-timeout\",\"evidenceHash\":null,\"coverage\":0.75},\"session_ended\":{\"value\":\"native\",\"sourceEvents\":[\"SessionEnd\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"no evidenceHash: transcript に紐付いていない自己申告\",\"reason は headless 正常終了でも 'other'。終了理由の判別には使えない\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null}},\"toolFailurePhases\":[\"executed\"],\"toolFailurePhasesUntested\":[\"permission_denied\",\"schema_invalid\",\"unknown_tool\",\"interrupt\",\"unknown\"],\"sessionStartInjection\":{\"value\":\"native\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"observed native in claude/injection-and-subagent\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"promptAwareInjection\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"promptDeliveryBeforeModel\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"compactSingleDelivery\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"compactionRecoveryStrategy\":null,\"trueSessionEnd\":{\"value\":\"unknown\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":null,\"verifiedAt\":null,\"limitations\":[\"not observed in Phase 0B\"]},\"subagentCapture\":{\"value\":\"native\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"observed native in claude/injection-and-subagent\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"stableNativeSessionId\":{\"value\":\"native\",\"sourceEvents\":[],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"evidenceKind\":\"source-test\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\",\"limitations\":[\"observed native in claude/injection-and-subagent\",\"no evidenceHash: transcript に紐付いていない自己申告\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"evidenceHash\":null},\"resumeDeliveryStrategy\":\"manual_only\"}"
+      "{\"cli\":\"claude\",\"nativeVersion\":\"2.1.228 (Claude Code)\"}",
+      "[{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"3733c097d734840d1a7e3373ddecc7fcd6f8fd3bfe474a2d7f527b85c05f82cd\",\"fixtureId\":\"claude/injection-and-subagent\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-inject.jsonl\",\"scenarioId\":\"claude.injection-and-subagent\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"f4b5f0f847f0e56705d01423e2c87ca3e7c68e9d6f31a3aa1458a2fe0f0d50ef\",\"fixtureId\":\"claude/injection-and-subagent\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-subagent.jsonl\",\"scenarioId\":\"claude.injection-and-subagent\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"1a6bab46f7bdc783e0348d0346ee7c418d63acc448a429634e930c60612cf5ab\",\"fixtureId\":\"claude/interrupt-and-hook-timeout\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-hook-timeout.jsonl\",\"scenarioId\":\"claude.interrupt-and-hook-timeout\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"bff1ecb8a7d2a882c4dc201a2ba7906a09fb6e9cddb7e429621245fedf4ac226\",\"fixtureId\":\"claude/interrupt-and-hook-timeout\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-interrupt.jsonl\",\"scenarioId\":\"claude.interrupt-and-hook-timeout\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"da592fe7e1347d6e08113fa114025e93e4213ade4761bd0f5a5d8c1c95305aff\",\"fixtureId\":\"claude/interrupt-and-hook-timeout\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-interrupt2.jsonl\",\"scenarioId\":\"claude.interrupt-and-hook-timeout\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"ae3dd7c891c4fce1f559fa82fe19b7fc9bb98319a82a0ef2fda5341f596d68c3\",\"fixtureId\":\"claude/interrupt-and-hook-timeout\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-interrupt3.jsonl\",\"scenarioId\":\"claude.interrupt-and-hook-timeout\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"ae3dd7c891c4fce1f559fa82fe19b7fc9bb98319a82a0ef2fda5341f596d68c3\",\"fixtureId\":\"claude/interrupt-and-hook-timeout\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-interrupt4.jsonl\",\"scenarioId\":\"claude.interrupt-and-hook-timeout\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"1a6bab46f7bdc783e0348d0346ee7c418d63acc448a429634e930c60612cf5ab\",\"fixtureId\":\"claude/lifecycle-basic\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-lifecycle-basic.jsonl\",\"scenarioId\":\"claude.lifecycle-basic\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"727181f0a7964edc6341b6571245627b1af4ab99babd9c1203ae299f9b3222fd\",\"fixtureId\":\"claude/tool-failed-executed\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-tool-fail.jsonl\",\"scenarioId\":\"claude.tool-failed-executed\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"b0dbc6cc179bea9e2cd6b036c77ac6974392828f31baf27edf257b8b391e73a2\",\"fixtureId\":\"claude/tool-failed-executed\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-tool-fail2.jsonl\",\"scenarioId\":\"claude.tool-failed-executed\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"71af90fe29857212f30dd32a566e1b02839a2ad3d5a1b51901189a90215b07f5\",\"fixtureId\":\"claude/tool-lifecycle\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-tool-denied.jsonl\",\"scenarioId\":\"claude.tool-lifecycle\"},{\"cliVersion\":\"2.1.228 (Claude Code)\",\"evidenceHash\":\"4564a866ab2118c07f66f92d6bc572f08dc3e46758a2c3a63dda1d904347a7d4\",\"fixtureId\":\"claude/tool-lifecycle\",\"manifestHash\":null,\"normalizationVersion\":1,\"path\":\"claude-tool-ok.jsonl\",\"scenarioId\":\"claude.tool-lifecycle\"}]",
+      "{\"capture\":{\"assistant_completed\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[7],\"limitations\":[\"assistant-completion-synthesized-from-stop\",\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"Stop\"],\"sourceFixtureId\":\"claude/lifecycle-basic\",\"value\":\"synthesized\",\"verifiedAt\":\"2026-08-12T11:07:44.644Z\"},\"post_compact\":{\"evidenceKind\":null,\"limitations\":[\"not observed in Phase 0B\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"value\":\"unknown\",\"verifiedAt\":null},\"pre_compact\":{\"evidenceKind\":null,\"limitations\":[\"not observed in Phase 0B\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"value\":\"unknown\",\"verifiedAt\":null},\"session_ended\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[0,1],\"limitations\":[\"unverified: no manifest-backed evidence\",\"session-end-reason-always-other\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"SessionEnd\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"session_idle\":{\"evidenceKind\":null,\"limitations\":[\"not observed in Phase 0B\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"value\":\"unknown\",\"verifiedAt\":null},\"session_interrupted\":{\"coverage\":0.75,\"evidenceKind\":\"source-test\",\"evidenceRefs\":[4,5,6],\"limitations\":[\"stop-not-fired-on-sigint\",\"interrupt-requires-pattern-synthesis\",\"interrupt-evidence-in-subset-of-captures\",\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"SessionEnd\"],\"sourceFixtureId\":\"claude/interrupt-and-hook-timeout\",\"value\":\"synthesized\",\"verifiedAt\":\"2026-08-12T11:13:16.911Z\"},\"session_started\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[0,1],\"limitations\":[\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"SessionStart\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"tool_completed\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[1],\"limitations\":[\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"PostToolUse\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"tool_failed\":{\"coverage\":0.5,\"evidenceKind\":\"source-test\",\"limitations\":[\"post-tool-use-absent-on-failure\",\"failure-phase-not-directly-observable\",\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"PreToolUse\",\"Stop\"],\"sourceFixtureId\":\"claude/tool-failed-executed\",\"value\":\"synthesized\",\"verifiedAt\":\"2026-08-12T11:10:03.724Z\"},\"tool_started\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[1],\"limitations\":[\"subagent-start-appears-as-agent-tool\",\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"PreToolUse\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"turn_completed\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[0,1],\"limitations\":[\"unverified: no manifest-backed evidence\",\"turn-boundary-via-shared-prompt-id\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"Stop\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"synthesized\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"user_prompted\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[0,1],\"limitations\":[\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[\"UserPromptSubmit\"],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"}},\"compactSingleDelivery\":{\"evidenceKind\":null,\"limitations\":[\"not observed in Phase 0B\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"value\":\"unknown\",\"verifiedAt\":null},\"compactionRecoveryStrategy\":null,\"promptAwareInjection\":{\"evidenceKind\":null,\"limitations\":[\"not observed in Phase 0B\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"value\":\"unknown\",\"verifiedAt\":null},\"promptDeliveryBeforeModel\":{\"evidenceKind\":null,\"limitations\":[\"not observed in Phase 0B\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"value\":\"unknown\",\"verifiedAt\":null},\"resumeDeliveryStrategy\":\"manual_only\",\"sessionStartInjection\":{\"evidenceKind\":\"source-test\",\"limitations\":[\"observed native in claude/injection-and-subagent\",\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"stableNativeSessionId\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[0,1],\"limitations\":[\"observed native in claude/injection-and-subagent\",\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"subagentCapture\":{\"evidenceKind\":\"source-test\",\"evidenceRefs\":[1],\"limitations\":[\"observed native in claude/injection-and-subagent\",\"unverified: no manifest-backed evidence\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"sourceFixtureId\":\"claude/injection-and-subagent\",\"value\":\"native\",\"verifiedAt\":\"2026-08-12T11:11:21.954Z\"},\"toolFailurePhases\":[\"executed\"],\"toolFailurePhasesUntested\":[\"permission_denied\",\"schema_invalid\",\"unknown_tool\",\"interrupt\",\"unknown\"],\"trueSessionEnd\":{\"evidenceKind\":null,\"limitations\":[\"not observed in Phase 0B\"],\"nativeVersion\":\"2.1.228 (Claude Code)\",\"sourceEvents\":[],\"value\":\"unknown\",\"verifiedAt\":null}}"
     ]
   }
 }

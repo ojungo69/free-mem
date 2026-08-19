@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-memory.local/harness/schema/evidence-manifest.schema.json",
+  "title": "RunManifest",
+  "$comment": "rig が run ごとに書く素性の記録。fixture の自己申告ではないことが real-cli-e2e の根拠になる（data-model.md §2.5）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "cli",
+    "cliVersion",
+    "scenarioId",
+    "capturedAt",
+    "isolated",
+    "internalRunMarker",
+    "exitStatus",
+    "recorderErrors",
+    "capture",
+    "captureRawHash",
+    "captureHash",
+    "normalizationVersion"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "$comment": "harness の実装版と違えば失敗する。未知の版を推測で読まない",
+      "type": "integer",
+      "minimum": 1
+    },
+    "cli": {
+      "type": "string",
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "cliVersion": {
+      "$comment": "公開 matrix と診断へそのまま出る。path 区切りと記号を落として自由文の器にしない",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,63}$"
+    },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+    },
+    "capturedAt": {
+      "$comment": "観測記録の 1 行目の at。rig が別に持つ時刻ではないので captureRawHash が縛る",
+      "type": "string",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d{1,3})?Z$"
+    },
+    "isolated": {
+      "$comment": "rig が書く。fixture の自己申告ではない",
+      "type": "boolean"
+    },
+    "internalRunMarker": {
+      "type": "boolean"
+    },
+    "exitStatus": {
+      "$comment": "shell の $? は下位 8 bit しか持てない。取り込み側と同じ範囲をここでも要求する（手で書いた manifest は取り込みを通らないので、範囲を見るのはここだけ）",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "recorderErrors": {
+      "$comment": "capture-hook.sh の .errors が無い / 空なら 0",
+      "type": "integer",
+      "minimum": 0
+    },
+    "capture": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.jsonl$"
+    },
+    "captureRawHash": {
+      "$comment": "観測記録の生 byte の SHA-256。既知の正規化衝突を持つ別の記録と組み合わせられないようにする",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "captureHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "normalizationVersion": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

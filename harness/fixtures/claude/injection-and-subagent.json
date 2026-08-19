@@ -4,6 +4,7 @@
   "nativeVersion": "2.1.228 (Claude Code)",
   "capturedAt": "2026-08-12T11:11:21.954Z",
   "scenario": "SessionStart/UserPromptSubmit hook stdout による context 注入の実証 + Task subagent の hook 観測",
+  "scenarioId": "claude.injection-and-subagent",
   "observedEvents": [
     {
       "kind": "session_started",
@@ -27,6 +28,9 @@
       ],
       "limitations": [
         "subagent 起動も親側 PreToolUse として観測される。**tool_name は `Agent`**（`Task` ではない — 生 capture で確認）。同 run には ToolSearch も現れる"
+      ],
+      "limitationCodes": [
+        "subagent-start-appears-as-agent-tool"
       ]
     },
     {
@@ -57,6 +61,11 @@
     "subagent: 親プロセスの hook に SubagentStop が 1 件届く。**subagent 内部の tool 使用・prompt は親 hook に現れない**（親からは Agent tool 1 回として見える）",
     "subagent 固有 id は **存在する**: SubagentStop payload に `agent_id`（例 aa16b2026df287771）/ `agent_type`（general-purpose）/ `agent_transcript_path`（subagent 専用 JSONL）があり、session_id は親と共有。[2026-08-12 訂正: 初版は『subagent 固有 id は hook payload に無い』と誤記していた]"
   ],
+  "limitationCodes": [
+    "session-start-injection-echoed",
+    "subagent-internals-not-visible-to-parent",
+    "subagent-identity-present-in-payload"
+  ],
   "rig": {
     "isolated": true,
     "internalRunMarker": true
@@ -65,5 +74,19 @@
     "sessionStartInjection": "native",
     "subagentCapture": "native",
     "stableNativeSessionId": "native"
-  }
+  },
+  "evidence": [
+    {
+      "path": "claude-inject.jsonl",
+      "evidenceHash": "3733c097d734840d1a7e3373ddecc7fcd6f8fd3bfe474a2d7f527b85c05f82cd",
+      "captureRawHash": "00c71abe7e54d2560026cce5722cf39e203cf30e21576f1b370022b1840e7213",
+      "normalizationVersion": 1
+    },
+    {
+      "path": "claude-subagent.jsonl",
+      "evidenceHash": "f4b5f0f847f0e56705d01423e2c87ca3e7c68e9d6f31a3aa1458a2fe0f0d50ef",
+      "captureRawHash": "6f2b48ae1654b1f85644862df739e2d15db3cde7c85d3275cf1b430753cf8fcc",
+      "normalizationVersion": 1
+    }
+  ]
 }
