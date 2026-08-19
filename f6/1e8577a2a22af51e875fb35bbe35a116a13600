@@ -1,0 +1,21 @@
+harness/evidence/rig-manifest.test.mjs
+  s_a2a364145ca286::t_c85d8bea91fc0b 781-783,785-786,799
+specs/003-evidence-hash-normalization/tasks.md
+  s_a2a364145ca286::t_4260a6614a2ba7 329
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f61e8577a2a22af51e875fb35bbe35a116a13600",
+  "prompts": {},
+  "sessions": {
+    "s_a2a364145ca286": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e31bc79c-cfbd-44ea-bed7-1dc47ff616ae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
