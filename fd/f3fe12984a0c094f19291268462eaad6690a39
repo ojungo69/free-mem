@@ -1,0 +1,31 @@
+harness/evidence/mutate.sh
+  s_a2a364145ca286::t_e6ecd19baa4879 23,33,61-62,343,345,348-349,375-377
+harness/evidence/promotion.test.ts
+  s_a2a364145ca286::t_cf0f2eb47912bf 21-26,622-642
+harness/evidence/rig-manifest.test.mjs
+  s_a2a364145ca286::t_c08079bf9f63b4 40,57,59,328-343
+specs/003-evidence-hash-normalization/tasks.md
+  s_a2a364145ca286::t_11ece1dab53a65 198-199,224,326-327,347-348
+harness/evidence/normalize.ts
+  s_a2a364145ca286::t_dce73cf3aa9f65 295
+harness/rig/rig.sh
+  s_a2a364145ca286::t_cf5221d9a17678 126,132-135,137,160,166-169,171
+harness/schema/capability.ts
+  s_a2a364145ca286::t_6ce9642f9e80cb 35,38-41,260-265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fdf3fe12984a0c094f19291268462eaad6690a39",
+  "prompts": {},
+  "sessions": {
+    "s_a2a364145ca286": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e31bc79c-cfbd-44ea-bed7-1dc47ff616ae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
