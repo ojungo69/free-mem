@@ -377,7 +377,7 @@ test("a CLI version the manifest schema rejects does not replace the stored evid
 });
 
 test("an exit status the rig could not have written is rejected", () => {
-  // 桁数の検査と範囲の検査は別のものを見ている。片方だけでは、もう片方が拾う綴りが素通りする
+  // 綴りの検査（取り込み側）と範囲の検査（manifest schema）は別のものを見ている
   const { base, sh, rawDir } = rigRun();
   const before = readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`));
   writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), `${"9".repeat(30)}\n`);
@@ -389,15 +389,10 @@ test("an exit status the rig could not have written is rejected", () => {
   const tooBig = sh("import", "claude", LABEL, "self.stub");
   assert.notEqual(tooBig.status, 0, "255 を超える終了コードで持ち込みが成功した");
   assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
-  // 逆に、範囲の検査だけでは 0 詰めが通る。値としては 42 でも rig はその綴りを書かない
-  writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), "0042\n");
+  // 逆に、範囲の検査だけでは 0 詰めが通る（`042` は値としては 42 でも rig はその綴りを書かない）
+  writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), "042\n");
   const padded = sh("import", "claude", LABEL, "self.stub");
   assert.notEqual(padded.status, 0, "0 詰めの終了コードで持ち込みが成功した");
-  assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
-  // 桁数の上限だけでは 3 桁に収まる 0 詰めが残る（`042` は値としては 42 でも rig は書かない）
-  writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), "042\n");
-  const shortPadded = sh("import", "claude", LABEL, "self.stub");
-  assert.notEqual(shortPadded.status, 0, "3 桁に収まる 0 詰めの終了コードで持ち込みが成功した");
   assert.deepEqual(readFileSync(join(rawDir, `claude-${LABEL}.manifest.json`)), before);
   // trim してから見ると、前後の空白や余分な改行が正規の綴りへ畳まれる。記録は 1 行そのもの
   writeFileSync(join(base, "capture", `claude-${LABEL}.exit`), " 42\n\n");

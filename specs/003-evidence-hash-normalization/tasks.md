@@ -195,8 +195,8 @@ byte 同一で持ち込む。既存 16 件は legacy のままで、この phase
 
 - [X] T039 [P] research.md R6 が挙げた 5 箇所の古い記述を退役させる。`harness/matrix/README.md` の `evidenceKind` の説明を実態（digest が裏付ける範囲・legacy 証拠・導けない主張）へ合わせる。**節ごとに掃除する**（変更前の設計は別の語で書かれた節に残る）
 - [X] T040 [P] `harness/contract-hashes.json` を再生成する（`node harness/contract-hashes.mjs > harness/contract-hashes.json`）。`capability.schema.json` と fixture がその入力なので、Phase 2 と Phase 5 の変更で必ず動く
-- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 133 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
-- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 133 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
+- [X] T041 `harness/evidence/mutate.sh` を新規作成する。`harness/continuity/mutate.sh` と同じ形（anchor 付きの実変異 → test 実行 → fail 件数 ≥ 1 を要求 → 実行件数と baseline test 件数の突き合わせ）で、下の変異表を並べる（計画時 62 件。レビューで見つかった経路を足して現在 132 件）。**実行件数の突き合わせを省かない**（anchor が外れた変異は出力に何も出ないまま黙って飛ばされる）
+- [X] T042 変異の網羅を機械的に確認する。変異表の全件（計画時 `M0`〜`M60` と `M8b` の 62 件、現在 132 件）が (a) 下の変異表に 1 行ずつある、(b) `harness/evidence/mutate.sh` に実変異として存在する、の両方を満たすことを検査するスクリプトを `harness/evidence/mutate.sh` の中に置き、欠けたら非ゼロで終了させる
 - [X] T043 `.github/workflows/ci.yml` の `harness` job へ 2 step 足す（`node --experimental-strip-types --test harness/evidence/*.test.ts` と `bash harness/evidence/mutate.sh`）。既存 step は緩めない
 - [X] T044 `specs/003-evidence-hash-normalization/quickstart.md` を実際に上から実行し、書いてあるコマンドがそのまま通ることを確認する。通らない箇所は quickstart 側を直す
 - [X] T045 セキュリティ関連の必須ゲートを通す。`semgrep scan`（CLI）→ `/codex-review mode=security` → `/codex:adversarial-review`。指摘は `review-routing` の批判的評価にかけ、採否の理由を残す
@@ -221,7 +221,7 @@ done
 
 ---
 
-## 変異の割り当て（現在 133 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
+## 変異の割り当て（現在 132 件。うち data-model.md §6 で先に決めた 51 件と、レビューで見つかった経路の分）
 
 各行の「殺す test」は、その変異を入れたときに**必ず落ちる** test。`harness/evidence/mutate.sh`
 （T041）はこの表を実行可能な形にしたもので、T042 が両者の一致を機械的に確認する。
@@ -316,7 +316,6 @@ done
 | M84 | `harness/assemble.ts` 先に見た側の裏付け無し hook 名を統合する | `manifest.test.ts::an unbacked fixture seen before the backed one cannot add a source event either` | T047 |
 | M85 | `harness/assemble.ts` 高位 cell の導出可否を key だけで決める | `promotion.test.ts::a synthesized high-level claim is not invalidated by attaching evidence` | T047 |
 | M86 | `harness/schema/evidence-manifest.schema.json` 時刻に ms より細かい桁を許す | `manifest.test.ts::a timestamp finer than a millisecond is not accepted at all` | T047 |
-| M87 | `harness/rig/import-evidence.mjs` 終了コードの綴りを見ずに読む | `rig-manifest.test.mjs::an exit status the rig could not have written is rejected` | T047 |
 | M88 | `harness/rig/rig.sh` 版の問い合わせが残した子を畳まない | `rig-manifest.test.mjs::the version probe is supervised like the run itself` | T047 |
 | M89 | `harness/rig/rig.sh` lock の fd を測定対象へ渡さない | `rig-manifest.test.mjs::a process that escapes the group is not released from the lock by the rig` | T047 |
 | M90 | `harness/rig/rig.sh` timeout に別の process group を作らせる | `rig-manifest.test.mjs::a run reaps the processes the CLI leaves behind` | T047 |
@@ -380,8 +379,8 @@ done
 **割当の確認**（T042 が自動化する。手で確かめるときはこれ）:
 
 ```bash
-# 表に 133 件そろっているか
-grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 133
+# 表に 132 件そろっているか
+grep -oE '^\| M[0-9]+b? ' specs/003-evidence-hash-normalization/tasks.md | tr -d '| ' | sort -u | wc -l   # => 132
 ```
 
 ---

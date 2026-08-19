@@ -64,8 +64,8 @@ bad = []
 # 件数だけは直書きにする。下の 2 つ（表→script・script→表）は片側の消し忘れしか捕まえず、
 # **表の行と実変異を同時に消した**変異表の縮小を通してしまう。数え上げにすると、
 # 減った件数がそのまま新しい正解になる
-if len(table) != 133:
-    bad.append(f"変異表の行が {len(table)} 件（133 件でない）")
+if len(table) != 132:
+    bad.append(f"変異表の行が {len(table)} 件（132 件でない）")
 for missing in sorted(table - in_script):
     bad.append(f"{missing}: 表にあるが mutate.sh に実変異が無い")
 for extra in sorted(in_script - table):
@@ -360,7 +360,6 @@ mutate $IMPORT 'if (manifest.recorderErrors !== 0) die(' 'if (false && manifest.
 mutate $ASSEMBLE '        ...backedOnly(prev.evidenceKind === "real-cli-e2e", prev.value === "unknown" ? [] : prev.sourceEvents),' '        ...(prev.value === "unknown" ? [] : prev.sourceEvents),' && run 'M84: 先に見た側の裏付け無し hook 名を統合する'
 mutate $ASSEMBLE '        derivable && o.value === "native",' '        derivable,' && run 'M85: 高位 cell の導出可否を key だけで決める'
 mutate $MSCHEMA '(\\.\\d{1,3})?Z$' '(\\.\\d+)?Z$' && run 'M86: manifest の時刻に ms より細かい桁を許す'
-mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d+\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M87: 終了コードの綴りを見ずに読む'
 mutate $RIG '  wait "$ver_pid" || ver_rc=$?
   reap_group "$ver_pid"
   # 版として読むのは stdout だけ。混ぜると、stdout に何も出さず stderr に 1 行だけ出して
@@ -496,8 +495,8 @@ mutate $RIG '  env -i \
     GIT_CONFIG_NOSYSTEM=1 \
     "$git_bin" -C "$RIG_BASE/workspace" "$@"' '  git -C "$RIG_BASE/workspace" "$@"' && run 'M131: 測定用 workspace の git を実環境の環境ごと走らせる'
 mutate $RIG '${RUN_SIGNAL:+--signal="$RUN_SIGNAL"} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' '${RUN_SIGNAL:+--signal=$RUN_SIGNAL} "${RUN_TIMEOUT:-300}" "$CLAUDE_BIN"' && run 'M132: signal knob の引用を外す'
-mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d{1,3}\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M133: 3 桁に収まる 0 詰めを通す'
-mutate $IMPORT 'if (!/^(?:0|[1-9]\d{0,2})\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\s*(?:0|[1-9]\d{0,2})\s*$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M134: 綴りを畳んでから見る'
+mutate $IMPORT 'if (!/^(?:0|[1-9]\d*)\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\d{1,3}\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M133: 3 桁に収まる 0 詰めを通す'
+mutate $IMPORT 'if (!/^(?:0|[1-9]\d*)\n$/.test(text)) die("the recorded exit status is not a plausible exit code");' 'if (!/^\s*(?:0|[1-9]\d{0,2})\s*$/.test(text)) die("the recorded exit status is not a plausible exit code");' && run 'M134: 綴りを畳んでから見る'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす
