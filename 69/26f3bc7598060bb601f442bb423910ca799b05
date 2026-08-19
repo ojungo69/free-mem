@@ -1,0 +1,47 @@
+harness/evidence/manifest.test.ts
+  s_a2a364145ca286::t_a6bfce84dcdaff 71-77
+harness/evidence/mutate.sh
+  s_a2a364145ca286::t_dff6682f84eb39 64-68,101-102,107-114,331,338,347,354,385,395,432,451-470
+harness/evidence/promotion.test.ts
+  s_a2a364145ca286::t_90b649916e7550 452-453
+harness/evidence/rig-manifest.test.mjs
+  s_a2a364145ca286::t_9a17e2ee55ef83 9,13-18,55,70,74,535-582
+harness/rig/import-evidence.mjs
+  s_a2a364145ca286::t_fa6c3ad05e6360 47-52,54
+specs/003-evidence-hash-normalization/checklists/requirements.md
+  s_a2a364145ca286::t_bf7e20b5f0acd5 34-35
+specs/003-evidence-hash-normalization/data-model.md
+  s_a2a364145ca286::t_f3325b13dd1ba1 283
+specs/003-evidence-hash-normalization/plan.md
+  s_a2a364145ca286::t_4020b30ee67e2d 46
+specs/003-evidence-hash-normalization/quickstart.md
+  s_a2a364145ca286::t_1721139b1b8662 3,95-98
+specs/003-evidence-hash-normalization/research.md
+  s_a2a364145ca286::t_4033aaadff9631 3
+specs/003-evidence-hash-normalization/tasks.md
+  s_a2a364145ca286::t_649a4c66dfe4ee 11,198-199,204,224,343-348,368-369
+harness/contract-hashes.json
+  s_a2a364145ca286::t_8edf23cfd6a928 35
+harness/rig/rig.sh
+  s_a2a364145ca286::t_b6766380f4fb72 75-77,88-90,203,260,279-283
+harness/schema/evidence-manifest.schema.json
+  s_a2a364145ca286::t_911cc17bf5c341 59,61-62
+harness/schema/validate.ts
+  s_a2a364145ca286::t_6686a4210a356c 45-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6926f3bc7598060bb601f442bb423910ca799b05",
+  "prompts": {},
+  "sessions": {
+    "s_a2a364145ca286": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e31bc79c-cfbd-44ea-bed7-1dc47ff616ae",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
