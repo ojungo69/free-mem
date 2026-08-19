@@ -171,6 +171,15 @@ count = s.count(old)
 assert count == 1, f"anchor must be unique in {target} (found {count}): {old[:70]}"
 p.write_text(s.replace(old, new, 1))
 PY
+  # 当てた後の file が言語として読めることを確かめる。構文を壊す変異は「保護を外した」ではなく
+  # 「file を壊した」で、落ちるのは保護を迂回できたからではない。test が子 process として起動する
+  # 対象（.mjs / .sh）では node:test の件数照合が働かないので、ここで見るしかない
+  case "$1" in
+    *.mjs|*.js) node --check "$1" ;;
+    *.sh) bash -n "$1" ;;
+    *.json) python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$1" ;;
+    *) return 0 ;;
+  esac || { echo "変異テスト失敗: 変異が $1 の構文を壊した（この変異は保護を検査していない）" >&2; exit 1; }
 }
 
 # contract-hashes の変異は node:test では殺せない。再生成との diff で殺す
@@ -504,7 +513,7 @@ mutate $RIG 'setup() {
   require_rig_base' 'setup() {' && run 'M137: setup が置き場の出どころを確かめない'
 mutate $IMPORT 'if (existsSync(`${dest}.prev`)) {
   die("a previous record is still set aside for recovery; resolve it before importing again");
-}' ':' && run 'M138: 復旧待ちの退避があっても持ち込みを始める'
+}' 'existsSync(`${dest}.prev`);' && run 'M138: 復旧待ちの退避があっても持ち込みを始める'
 
 echo "--- 復元後 ---"
 # 目視で終わらせない。`node ... | grep` は grep の終了状態を返すので、件数を取り出して 0 でなければ落とす
