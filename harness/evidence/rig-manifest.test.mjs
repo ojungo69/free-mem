@@ -260,6 +260,20 @@ test("a knob with a space does not turn into another command", () => {
   );
 });
 
+test("a signal knob with spaces does not turn into another command", () => {
+  // `--signal=$RUN_SIGNAL` を引用しないと word split が起き、`TERM -- 1 <program>` で
+  // timeout の「-- duration command」を作り直せる。測定対象ではない program が、
+  // 資格情報を置いた隔離環境の中で走る
+  const tmp = mkdtempSync(join(tmpdir(), "rig-signal-"));
+  SCRATCH.push(tmp);
+  const marker = join(tmp, "ran");
+  const prog = join(tmp, "prog");
+  writeFileSync(prog, `#!/bin/sh\ntouch ${marker}\n`);
+  chmodSync(prog, 0o755);
+  rigRun({ skipImport: true, expectRunFailure: true, env: { RUN_SIGNAL: `TERM -- 1 ${prog}` } });
+  assert.ok(!existsSync(marker), "signal knob の空白で測定対象ではない program が走った");
+});
+
 test("setup removes a credential no run owns any more", () => {
   // SIGKILL で trap が走らなければ資格情報は置きっぱなしになる。次に lock を握れた process は
   // 「走っている run はいない」ことを知っているので、そこで消せる
