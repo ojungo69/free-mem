@@ -1,0 +1,21 @@
+.github/workflows/ci.yml
+  s_e5710cbcbed85b::t_c795dee692915a 286-289
+harness/evidence/matrix-drift.test.ts
+  s_e5710cbcbed85b::t_04629272c63660 33,52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "ae06acae35389b30f0aa97b023953ff49a78c80d",
+  "prompts": {},
+  "sessions": {
+    "s_e5710cbcbed85b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65d44c5d-e71b-42bd-8ee1-dcf5092c5d47",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
