@@ -21,6 +21,9 @@ issue #20 本文の「既存成果物に偽の証跡はない」はこの点で�
 | `RIG_INJECT_5f3a9` | `harness/matrix/codex.json` | 1 |
 | `aa16b2026df287771` | `harness/matrix/claude.json` | 1 |
 
+**合計 3 件**（`RIG_INJECT_5f3a9` が 2 ファイル、`aa16b2026df287771` が 1 ファイル。異なる文字列としては 2 種類）。
+spec.md の SC-005 はこの「文字列と出現ファイルの組」単位で数える。
+
 どちらも fixture の散文 `limitations` が `harness/assemble.ts:295` で逐語転記された結果で、
 normalizer を伏せ字にしても消えない（data-model.md §5.3）。
 

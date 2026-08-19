@@ -17,8 +17,10 @@
 各 cell の `evidenceKind` は、その値がどこまで機械で確かめられたかを表す。
 
 - `real-cli-e2e` — fixture が名指しした観測記録を再計算して digest が一致し、その記録に rig が
-  書いた run manifest（CLI 版・隔離・内部実行 marker・終了コード・記録失敗数）が付いていて、
-  さらに cell の値そのものを記録から導けた場合だけ付く
+  書いた run manifest（CLI 版・隔離・内部実行 marker・記録失敗数）が付いていて、さらに cell の
+  値そのものを記録から導けた場合だけ付く。manifest の終了コードは schema が存在と 0–255 の範囲
+  だけを見る（`evidence-manifest.schema.json`）。値そのものは照合表の対象外で、意図的な中断を
+  記録した run も昇格しうる
 - `source-test` — 上のどれかが欠けている場合。現在の全 cell がこれで、理由は 2 つある
 
 1. **legacy 証拠**: `harness/fixtures/<cli>/raw/*.jsonl` の 16 件は manifest 制度より前に取った
