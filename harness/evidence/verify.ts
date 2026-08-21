@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import {
   NORMALIZATION_VERSION,
   captureCapturedAt,
-  digestCapture,
+  digestNormalized,
   digestRaw,
   normalizeCapture,
   resolveEvidencePath,
@@ -331,7 +331,7 @@ export function verifyEvidence(f: CaptureFixture, ctx?: EvidenceContext): Verifi
     } catch (e) {
       reject(f.fixtureId, `evidence artifact cannot be normalized: ${ref.path} (${(e as Error).message})`);
     }
-    const evidenceHash = digestCapture(bytes);
+    const evidenceHash = digestNormalized(normalized);
     if (evidenceHash !== ref.evidenceHash) {
       reject(f.fixtureId, `evidenceHash mismatch for ${ref.path}`);
     }

@@ -8,6 +8,7 @@ import {
   NORMALIZATION_VERSION,
   captureCapturedAt,
   digestCapture,
+  digestNormalized,
   digestRaw,
   normalizeCapture,
   resolveEvidencePath,
@@ -208,6 +209,13 @@ test("digestRaw は生 byte の SHA-256 で、正規化を掛けない", () => {
   assert.equal(digestCapture(a), digestCapture(b));
   assert.notEqual(digestRaw(a), digestRaw(b));
   assert.match(digestRaw(a), /^[a-f0-9]{64}$/);
+});
+
+test("digestNormalized は正規化済み抜粋の SHA-256 を返す", () => {
+  assert.equal(
+    digestNormalized("normalized\n"),
+    "5279fc33061aa06e246995c8f063a5869c8b31c77b12173e05cb3b5198d451cb",
+  );
 });
 
 test("NORMALIZATION_VERSION は 1", () => {
