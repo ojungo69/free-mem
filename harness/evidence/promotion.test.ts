@@ -263,7 +263,7 @@ test("claimed cell value the capture does not derive is rejected", () => {
   );
 });
 
-test("a losing high-level observation is still checked against its evidence", () => {
+void test("a losing high-level observation is still checked against its evidence", () => {
   const root = newRoot();
   const good = putEvidence(root, "a-sub", subagentRun("s1"), { manifest: true, scenarioId: "self.a" });
   const bad = putEvidence(root, "b-nosub", lifecycle("s2", "p2"), { manifest: true, scenarioId: "self.b" });

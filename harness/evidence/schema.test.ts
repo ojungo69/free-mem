@@ -88,18 +88,19 @@ function enumAt(schema: unknown, path: string): readonly string[] {
   const walked: string[] = [];
   for (const key of path.split(".")) {
     const here = walked.join(".") || "(root)";
-    assert.ok(
-      typeof node === "object" && node !== null && !Array.isArray(node) && key in node,
-      `schema の ${here} に ${key} が無い（path: ${path}）`,
-    );
-    node = (node as Record<string, unknown>)[key];
+    const descriptor =
+      typeof node === "object" && node !== null && !Array.isArray(node)
+        ? Object.getOwnPropertyDescriptor(node, key)
+        : undefined;
+    assert.ok(descriptor, `schema の ${here} に ${key} が無い（path: ${path}）`);
+    node = descriptor.value;
     walked.push(key);
   }
   assert.ok(Array.isArray(node), `${path} が配列ではない`);
   return node as readonly string[];
 }
 
-test("assemble が使う定数と schema の enum が一致する", () => {
+void test("assemble が使う定数と schema の enum が一致する", () => {
   const schema = readSchema("capability.schema.json");
   const sorted = (xs: readonly string[]) => [...xs].sort();
   for (const { constants, values, path } of SCHEMA_ENUM_MIRRORS) {
@@ -107,7 +108,7 @@ test("assemble が使う定数と schema の enum が一致する", () => {
   }
 });
 
-test("capability.ts の定数に、schema と突き合わせていないものが無い", () => {
+void test("capability.ts の定数に、schema と突き合わせていないものが無い", () => {
   // 対象を手で並べると、次に定数が増えた日に黙って漏れる（hash-inputs-derive-from-structure）。
   // module の export から導いて、登録されていない文字列定数を名指しで落とす。
   // 突き合わせないと決めた定数がいずれ出たら、ここに理由を書いて除外する
@@ -120,7 +121,7 @@ test("capability.ts の定数に、schema と突き合わせていないもの�
   assert.deepEqual(missing, [], `SCHEMA_ENUM_MIRRORS に登録されていない: ${missing.join(", ")}`);
 });
 
-test("unknown source event is rejected", () => {
+void test("unknown source event is rejected", () => {
   // sourceEvents の enum は「閉じている」ことだけが値で、TS 側に読み手が無い。
   // 定数の写しではなく、未知の値が実際に弾かれることで縛る
   assert.throws(
