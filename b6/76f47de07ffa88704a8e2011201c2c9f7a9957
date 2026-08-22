@@ -1,0 +1,25 @@
+vendor/codemem/packages/core/src/ingest-xml-parser.ts
+  s_d7c13d0e584450::t_3d622fc67816b7 90,101,108,128,157,887,933,947
+vendor/codemem/packages/core/src/memory-quality.ts
+  s_d7c13d0e584450::t_ac258a9f540fe5 583,585
+vendor/codemem/packages/core/src/scope-resolution.ts
+  s_d7c13d0e584450::t_0d744257a7f4fd 165
+vendor/codemem/packages/ui/src/lib/dom.test.ts
+  s_d7c13d0e584450::t_fff17b91549bc1 11-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b676f47de07ffa88704a8e2011201c2c9f7a9957",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
