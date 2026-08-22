@@ -85,7 +85,7 @@ export function statePathForSession(sessionId: string): string {
  */
 export function normalizePromptText(value: unknown): string {
 	if (typeof value !== "string") return "";
-	return value.trim().replaceAll(/\n/g, " ");
+	return value.trim().replaceAll("\n", " ");
 }
 
 function normalizeStringList(value: unknown, cap: number): string[] {

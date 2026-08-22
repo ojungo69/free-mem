@@ -854,7 +854,7 @@ export function codememCodexHookBase(
 	nodePath: string = process.execPath,
 ): string {
 	if (!runtimePath) throw new Error("The managed Codex hook runtime is required.");
-	const quote = (value: string): string => `'${value.replaceAll("'", String.raw`'\''`)}'`;
+	const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 	return `${quote(nodePath)} ${quote(runtimePath)}`;
 }
 

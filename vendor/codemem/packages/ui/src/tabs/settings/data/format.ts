@@ -2,7 +2,7 @@
  * credential sources, and failure timestamps. */
 
 export function formatSettingsKey(key: string): string {
-	return String(key || "").replaceAll(/_/g, " ");
+	return String(key || "").replaceAll("_", " ");
 }
 
 export function joinPhrases(values: string[]): string {

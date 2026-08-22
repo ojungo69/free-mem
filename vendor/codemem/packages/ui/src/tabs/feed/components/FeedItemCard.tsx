@@ -135,7 +135,7 @@ export function FeedItemCard({ item }: FeedItemCardProps) {
 					) || h("div", { className: bodyClassName })
 			: h("div", { className: "feed-body" });
 
-	const kindChipLabel = displayKindValue.replaceAll(/_/g, " ");
+	const kindChipLabel = displayKindValue.replaceAll("_", " ");
 	const filesRow = files.length
 		? h(
 				"div",

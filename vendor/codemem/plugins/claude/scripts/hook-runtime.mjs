@@ -1946,7 +1946,7 @@ function parseTomlValue(raw) {
 	if (raw === "false") return false;
 	if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
 	if (raw.startsWith("[")) try {
-		const parsed = JSON.parse(raw.replaceAll(/'/g, "\""));
+		const parsed = JSON.parse(raw.replaceAll("'", "\""));
 		if (Array.isArray(parsed)) return parsed;
 	} catch {
 		return Symbol.for("invalid");
@@ -6084,7 +6084,7 @@ function statePathForSession(sessionId) {
 */
 function normalizePromptText(value) {
 	if (typeof value !== "string") return "";
-	return value.trim().replaceAll(/\n/g, " ");
+	return value.trim().replaceAll("\n", " ");
 }
 function normalizeStringList(value, cap) {
 	if (!Array.isArray(value)) return [];
@@ -6636,7 +6636,7 @@ function parseJsonArray(value) {
 	}
 }
 function normalizePathForCompare(path) {
-	return path.replaceAll(/\\/g, "/");
+	return path.replaceAll("\\", "/");
 }
 function scoreRow(row, normalizedTarget, idx) {
 	const filesModified = parseJsonArray(row.files_modified);
@@ -6681,7 +6681,7 @@ function formatDate(epochMs) {
 	});
 }
 function formatTimeline(rows, filePath, staleness) {
-	const safePath = filePath.replaceAll(/\\/g, "\\\\").replaceAll(/"/g, String.raw`\"`).replaceAll(/\n/g, String.raw`\n`);
+	const safePath = filePath.replaceAll("\\", "\\\\").replaceAll("\"", String.raw`\"`).replaceAll("\n", String.raw`\n`);
 	const enriched = rows.map((row) => ({
 		row,
 		epochMs: Date.parse(row.created_at)

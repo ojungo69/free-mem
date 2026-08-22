@@ -33,11 +33,11 @@ export function show(element: HTMLElement | null) {
 
 export function escapeHtml(value: string): string {
 	return value
-		.replaceAll(/&/g, "&amp;")
-		.replaceAll(/</g, "&lt;")
-		.replaceAll(/>/g, "&gt;")
-		.replaceAll(/"/g, "&quot;")
-		.replaceAll(/'/g, "&#39;");
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("'", "&#39;");
 }
 
 export function escapeRegExp(value: string): string {
