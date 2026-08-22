@@ -6,8 +6,7 @@
  * 常に source-test を返す壊れた実装でも負例と移行結果は全部通ってしまうため、
  * positive control をここで組み立てる。
  */
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assembleFromFixtures, validateFixture } from "../assemble.ts";
 import { digestCapture, digestRaw, NORMALIZATION_VERSION } from "./normalize.ts";
@@ -20,7 +19,6 @@ export interface CaptureLine {
 }
 
 const AT = "2026-08-12T00:00:00.000Z";
-
 /** SessionStart / UserPromptSubmit / Stop / SessionEnd の 1 run（Claude 形） */
 export function lifecycle(session: string, prompt: string): CaptureLine[] {
   const p = (extra: Record<string, unknown>): Record<string, unknown> => ({
@@ -166,7 +164,7 @@ export function fixtureBase(overrides: Record<string, unknown> = {}): Record<str
 }
 
 /** test 用の空の証拠置き場 */
-export const newRoot = (): string => mkdtempSync(join(tmpdir(), "evroot-"));
+export { newRoot } from "./scratch.ts";
 
 /**
  * schema と手書き検証も通してから組み立てる。fixture だけ先に変える経路を作らない。

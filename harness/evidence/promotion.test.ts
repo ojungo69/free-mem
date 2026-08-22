@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -264,6 +263,31 @@ test("claimed cell value the capture does not derive is rejected", () => {
   );
 });
 
+void test("a losing high-level observation is still checked against its evidence", () => {
+  const root = newRoot();
+  const good = putEvidence(root, "a-sub", subagentRun("s1"), { manifest: true, scenarioId: "self.a" });
+  const bad = putEvidence(root, "b-nosub", lifecycle("s2", "p2"), { manifest: true, scenarioId: "self.b" });
+  const a = fixtureBase({
+    fixtureId: "claude/a-sub",
+    scenarioId: "self.a",
+    highLevel: { subagentCapture: "native" },
+    evidence: [good],
+  });
+  const b = fixtureBase({
+    fixtureId: "claude/b-nosub",
+    scenarioId: "self.b",
+    highLevel: { subagentCapture: "native" },
+    evidence: [bad],
+  });
+  // 勝者だけを検証すると、支持の無い native が real-cli-e2e として通る。敗者が検証されるのは
+  // rank() が観測 1 件ずつに promotionOf() を掛けるから（assemble.ts:560）で、そこを外すと
+  // この test が落ちることは実測した。
+  // 引数の順を変えて 2 周しても検証は増えない: assemble は先頭で fixtureId 順に並べ替えるので
+  // （assemble.ts:306）、どちらの順でも同じ配列を渡すだけになる。代わりに message へ fixtureId を
+  // 要求して、弾かれたのが**支持の無い b-nosub 側**だと固定する（a-sub が弾かれても緑になる形にしない）
+  assert.throws(() => assemble([a, b], root), /^Error: claude\/b-nosub: .*no referenced capture derives it/);
+});
+
 // --- 導けない主張 ---
 
 test("underivable claims stay source-test", () => {
@@ -509,7 +533,7 @@ test("the assemble entrypoint ignores EVIDENCE_ROOT from the environment", () =>
   // 置き場を環境変数から取る実装に変えられても気づけないので、子プロセスで見る
   const root = newRoot();
   const ref = putEvidence(root, "cap", lifecycle("s1", "p1"), { manifest: true });
-  const fixturesDir = mkdtempSync(join(tmpdir(), "evfix-"));
+  const fixturesDir = newRoot();
   writeFileSync(
     join(fixturesDir, "f.json"),
     JSON.stringify(fixtureBase({ fixtureId: "claude/env", observedEvents: [{ kind: "session_started", at: AT }], evidence: [ref] })),

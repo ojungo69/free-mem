@@ -193,6 +193,7 @@ reap_group() {
 }
 
 claude_run() {
+  [ "$#" -ge 2 ] || { echo "usage: rig.sh claude-run <label> <prompt> [claude 追加引数...]" >&2; exit 2; }
   local label="$1" prompt="$2" rc=0; shift 2
   require_label "$label"
   with_lock
@@ -265,6 +266,7 @@ claude_run() {
 }
 
 codex_run() {
+  [ "$#" -ge 2 ] || { echo "usage: rig.sh codex-run <label> <prompt> [codex exec 追加引数...]" >&2; exit 2; }
   local label="$1" prompt="$2" rc=0; shift 2
   require_label "$label"
   with_lock
@@ -335,6 +337,7 @@ codex_run() {
 # 証拠置き場へ byte 同一で持ち込んでから digest を取る。持ち込む前に取ると、
 # 持ち込みで内容が変わっても気づけない
 import_evidence() {
+  [ "$#" -eq 3 ] || { echo "usage: rig.sh import <cli> <label> <scenario-id>" >&2; exit 2; }
   local cli="$1" label="$2" scenario="$3"
   # 記録中に読むと、途中までで一貫した prefix を掴んで正しく見える manifest を作る
   with_lock
