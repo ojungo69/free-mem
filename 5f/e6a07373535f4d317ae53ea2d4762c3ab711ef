@@ -1,0 +1,19 @@
+vendor/codemem/packages/core/src/export-import.test.ts
+  s_03699a18ee4907::t_01dcaceb25680e 159-174,177-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5fe6a07373535f4d317ae53ea2d4762c3ab711ef",
+  "prompts": {},
+  "sessions": {
+    "s_03699a18ee4907": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a02a9f-ac91-70a1-924a-cefb98b2e009",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
