@@ -1,0 +1,21 @@
+vendor/codemem/packages/core/src/secret-scanner.test.ts
+  s_367c6bb46e1f3b::t_8d17233642a458 80,287
+vendor/codemem/packages/core/src/vector-migration.test.ts
+  s_367c6bb46e1f3b::t_343262f8464bf2 227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "353252faa4de564091556c8574d86ba79c4e805c",
+  "prompts": {},
+  "sessions": {
+    "s_367c6bb46e1f3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a024c0-94b9-7d11-90d1-67bd5c8a7731",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
