@@ -45,6 +45,9 @@ const fsFault = vi.hoisted(() => ({
 	tmpWrite: false,
 	flushWrite: false,
 	fsyncSuffix: "",
+	lstatMissingOnce: "",
+	lstatFaultCode: "ENOENT",
+	lstatMissingArmOnRead: "",
 	readyUnlink: false,
 }));
 
@@ -78,6 +81,27 @@ vi.mock("node:fs", async (importOriginal) => {
 			}
 			actual.fsyncSync(fd);
 		},
+		readFileSync(...args: Parameters<typeof actual.readFileSync>) {
+			// While this holds a path fragment, lstatMissingOnce stays disarmed. removeStaleLock
+			// probes the lock owner's liveness through that path between its two stats, so
+			// arming there lands the fault on the second stat rather than the guarded first one.
+			if (
+				fsFault.lstatMissingArmOnRead &&
+				String(args[0]).includes(fsFault.lstatMissingArmOnRead)
+			) {
+				fsFault.lstatMissingArmOnRead = "";
+			}
+			return actual.readFileSync(...args);
+		},
+		lstatSync(...args: Parameters<typeof actual.lstatSync>) {
+			if (!fsFault.lstatMissingArmOnRead && fsFault.lstatMissingOnce === String(args[0])) {
+				fsFault.lstatMissingOnce = "";
+				const error = new Error("synthetic spool lock stat failure") as NodeJS.ErrnoException;
+				error.code = fsFault.lstatFaultCode;
+				throw error;
+			}
+			return actual.lstatSync(...args);
+		},
 		renameSync(source: string, destination: string): void {
 			if (fsFault.renameDiskFull && destination.includes("/control/spool/ready/")) {
 				const error = new Error("no space left on device") as NodeJS.ErrnoException;
@@ -102,6 +126,9 @@ afterEach(async () => {
 	fsFault.tmpWrite = false;
 	fsFault.flushWrite = false;
 	fsFault.fsyncSuffix = "";
+	fsFault.lstatMissingOnce = "";
+	fsFault.lstatFaultCode = "ENOENT";
+	fsFault.lstatMissingArmOnRead = "";
 	fsFault.readyUnlink = false;
 	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -450,6 +477,67 @@ describe("phase 1 spool contract", () => {
 			status: "dropped",
 			reason: "lock_timeout",
 		});
+	});
+
+	it("P1-T039-06-stale-lock-restat-missing-retries", async () => {
+		const dataDir = await tempDataDir();
+		const layout = resolveSpoolLayout(dataDir);
+		mkdirSync(dirname(layout.lockPath), { recursive: true });
+		// A lock owned by a process that no longer exists: removeStaleLock passes its liveness
+		// and grace checks and reaches the second stat instead of bailing out early.
+		const deadOwner = {
+			version: 1,
+			pid: 4194303,
+			startTime: "0",
+			fingerprint: "0",
+			nonce: "0",
+		};
+		writeFileSync(layout.lockPath, `${JSON.stringify(deadOwner)}\n`, { mode: 0o600 });
+		fsFault.lstatMissingOnce = layout.lockPath;
+		fsFault.lstatMissingArmOnRead = `/proc/${deadOwner.pid}/`;
+		const result = spoolMutation(
+			{
+				method: "POST /v1/events",
+				idempotencyKey: "stale-restat",
+				body: eventBody("stale-restat"),
+			},
+			{ dataDir, onWarning: () => {} },
+		);
+		// Both empty means the fault armed on the liveness probe and then fired on the stat.
+		// Without them the assertions below would hold for a run that never met the fault.
+		expect(fsFault.lstatMissingArmOnRead).toBe("");
+		expect(fsFault.lstatMissingOnce).toBe("");
+		expect(result).toMatchObject({ status: "queued" });
+		expect(existsSync(layout.lockPath)).toBe(false);
+	});
+
+	it("P1-T039-05-lock-publish-missing-retries", async () => {
+		const dataDir = await tempDataDir();
+		const layout = resolveSpoolLayout(dataDir);
+		fsFault.lstatMissingOnce = layout.lockPath;
+		expect(() => acquireSpoolLock(dataDir).close()).not.toThrow();
+		// Empty means the fault fired; otherwise the acquire never met it and proves nothing.
+		expect(fsFault.lstatMissingOnce).toBe("");
+		expect(existsSync(layout.lockPath)).toBe(false);
+	});
+
+	it("P1-T039-07-lock-publish-io-error-surfaces", async () => {
+		const dataDir = await tempDataDir();
+		const layout = resolveSpoolLayout(dataDir);
+		// Only a missing path means "someone raced us". A real device error is not contention:
+		// reporting it as one would spend the whole lock deadline and then blame the wrong thing.
+		fsFault.lstatMissingOnce = layout.lockPath;
+		fsFault.lstatFaultCode = "EIO";
+		const result = spoolMutation(
+			{
+				method: "POST /v1/events",
+				idempotencyKey: "publish-io-error",
+				body: eventBody("publish-io-error"),
+			},
+			{ dataDir, onWarning: () => {} },
+		);
+		expect(fsFault.lstatMissingOnce).toBe("");
+		expect(result).toMatchObject({ status: "dropped", reason: "io_error" });
 	});
 
 	it("P1-T039-03-disk-full-temp", async () => {

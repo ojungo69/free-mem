@@ -38,6 +38,10 @@ post-T048: `/tmp/free-mem-phase1-post-t048-serial.json` (SHA-256 `e7367709111ae5
 | T048 daemon-handle replacement | 2 |
 | T048 登録済み追加 | 1 |
 | post-T048 | 1,828 |
+| #89 lock 競合修正 登録済み追加 | 3 |
+| post-#89 | 1,831 |
+
+実測の注記（#89、2026-08-22）: 完全な Vitest JSON report は total 1,867 / passed 1,864 / todo 3。#89 の `P1-T039-05/06/07` に加え、baseline 後の #28 (`124817a`) で追加済みだった 10 件を下の post-only exact additions に登録し、`harness/phase1-test-set-compare.mjs` の期待値と一致させた。
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -162,6 +166,9 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T039-02-concurrent-writers` | T039 | 並行 writer で破損・重複・無期限待機が起きる |
 | `P1-T039-03-disk-full-temp` | T039 | disk full/tmp 残骸/両枠満杯で bounded fail-open しない |
 | `P1-T039-04-old-format-drain` | T039 | 旧 spool 残量を drain できない |
+| `P1-T039-05-lock-publish-missing-retries` | T039 | lock 公開直後の stat が消えた path を競合として再試行しない |
+| `P1-T039-06-stale-lock-restat-missing-retries` | T039 | stale lock 除去中の再 stat が消えた path を競合として扱わない |
+| `P1-T039-07-lock-publish-io-error-surfaces` | T039 | 本物の device error を競合として握りつぶし lock_timeout に化ける |
 | `P1-T040-01-commit-before-delete` | T040 | receipt commit 前に spool file を消す |
 | `P1-T040-02-import-exactly-once` | T040 | 再起動/再読込で event を二重適用する |
 | `P1-T040-03-import-conflict` | T040 | 同一 key・異 payload を quarantine しない |
@@ -216,7 +223,7 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T056-04-gitleaks-ruleset-hash` | T056 | ruleset hash が pin・実ロード順・由来・entropy・capture group を反映しない |
 | `P1-T057-01-backup-restore-fault-matrix` | T057 | fresh-dir restore、derived index rebuild、journal durability、legacy split-brain のいずれかが一意に回復しない |
 
-## T058 final post-only exact additions（96）
+## T058 final post-only exact additions（106）
 
 final inventory にだけ存在し、A7 exact 名または事前登録 token では識別されない test。multiset multiplicity を保持する。
 
@@ -288,6 +295,8 @@ final inventory にだけ存在し、A7 exact 名または事前登録 token で
 - packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > applies search filters to get_many reads
 - packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > rejects malformed memory adapter redaction metadata
 - packages/core/src/maintenance.test.ts > maintenance > vacuums a schema-ready database
+- packages/core/src/memory-quality.test.ts > hasSameLineCoOccurrence > matches the pair of regexes it replaced
+- packages/core/src/memory-quality.test.ts > hasSameLineCoOccurrence > does not scale with the length of the line
 - packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-01-receipt-schema
 - packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-02-events-idempotent
 - packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-02b-event-id-required
@@ -309,6 +318,12 @@ final inventory にだけ存在し、A7 exact 名または事前登録 token で
 - packages/core/src/spool.test.ts > phase 1 spool contract > does not rerun failed user rules on an already degraded event
 - packages/core/src/spool.test.ts > phase 1 spool contract > keeps a degraded spool rescan over healthy adapter metadata
 - packages/core/src/store.test.ts > MemoryStore > remember > persists metadata only when workspace scanner config is invalid
+- packages/core/src/text-trim.test.ts > trimEndWhere > matches the regexes they replace
+- packages/core/src/text-trim.test.ts > trimEndWhere > leaves the middle alone
+- packages/core/src/text-trim.test.ts > trimEndWhere > treats surrogate pairs as one code point, like the /u regexes
+- packages/core/src/text-trim.test.ts > trimEndWhere > does not scale with the length of the trimmed run
+- packages/core/src/text-trim.test.ts > ReDoS を外した正規表現の等価性 > ファイル名検出は元の正規表現と同じ判定になる
+- packages/core/src/text-trim.test.ts > ReDoS を外した正規表現の等価性 > フェンス剥がしは元の正規表現と同じ結果になる
 - packages/core/src/vectors.test.ts > memory_vectors bootstrap on fresh databases > creates memory_vectors when explicitly migrating a fresh database
 - packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > persists degraded remember diagnostics across daemon restart
 - packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > redacts project policy matches before the daemon can persist them
@@ -316,6 +331,8 @@ final inventory にだけ存在し、A7 exact 名または事前登録 token で
 - packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > routes backup create, list, and verify through the daemon
 - packages/mcp-server/src/server.test.ts > Phase 1 MCP stdio RPC surface > exports a side-effect-free factory from the package root
 - packages/mcp-server/src/server.test.ts > Phase 1 MCP stdio RPC surface > maps every read tool to its fixed daemon endpoint and mode
+- packages/ui/src/tabs/feed/data/body-renderers.test.ts > isLabeledFact > matches the regex it replaced
+- packages/ui/src/tabs/feed/data/body-renderers.test.ts > isLabeledFact > does not scale with the length of the line
 
 ## T043 retired fully qualified names（61）
 
