@@ -527,17 +527,14 @@ async function prepareReplayBatch(
 	const observerMaxChars = opts.observerMaxChars ?? 12_000;
 	const normalizedEvents = normalizeAdapterEvents(events);
 	const prompts = extractPrompts(normalizedEvents);
-	const promptNumber =
-		prompts.length > 0 ? (prompts[prompts.length - 1]?.promptNumber ?? prompts.length) : null;
+	const promptNumber = prompts.length > 0 ? (prompts.at(-1)?.promptNumber ?? prompts.length) : null;
 	let toolEvents = normalizeEventsForToolExtraction(events, maxChars);
 	const toolBudget = Math.max(2000, Math.min(8000, observerMaxChars - 5000));
 	toolEvents = budgetToolEvents(toolEvents, toolBudget, 30);
 	const assistantMessages = extractAssistantMessages(normalizedEvents);
 	const lastAssistantMessage = assistantMessages.at(-1) ?? null;
 	const latestPrompt =
-		sessionContext.firstPrompt ??
-		(prompts.length > 0 ? prompts[prompts.length - 1]?.promptText : null) ??
-		null;
+		sessionContext.firstPrompt ?? (prompts.length > 0 ? prompts.at(-1)?.promptText : null) ?? null;
 
 	let shouldProcess =
 		toolEvents.length > 0 || Boolean(latestPrompt) || Boolean(lastAssistantMessage);

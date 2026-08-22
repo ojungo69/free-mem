@@ -295,6 +295,20 @@ describe("pack command", () => {
 				},
 			}),
 		).toContain("- Sanitized query: continue safe work\n- Project: demo\n- Working set: (none)");
+		expect(
+			renderPackTrace({
+				...trace,
+				assembly: {
+					...trace.assembly,
+					deduped_ids: [],
+					trimmed_ids: [],
+					trim_reasons: [],
+				},
+				output: { ...trace.output, truncated: false },
+			}),
+		).toContain(
+			"- deduped ids: (none)\n- trimmed ids: (none)\n- trim reasons: (none)\n- section counts: summary=1 timeline=0 observations=0\n- estimated tokens: 2\n- truncated: no",
+		);
 
 		const output = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 		await parsePackCommand(["continue work", "--limit", "0"]);

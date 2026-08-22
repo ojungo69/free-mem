@@ -85,7 +85,7 @@ function nowEpochMs(): number {
 function cleanString(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim();
-	return trimmed ? trimmed : null;
+	return trimmed || null;
 }
 
 function resolveLocalDeviceId(db: Database): string {
@@ -213,7 +213,7 @@ function normalizeImportedProject(project: unknown): string | null {
 	if (/[\\/]/.test(trimmed)) {
 		const normalized = trimEndWhere(trimmed.replaceAll("\\", "/"), TRAILING_SLASH);
 		const parts = normalized.split("/");
-		return parts[parts.length - 1] || null;
+		return parts.at(-1) || null;
 	}
 	return trimmed;
 }

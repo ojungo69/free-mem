@@ -2,7 +2,7 @@
  * credential sources, and failure timestamps. */
 
 export function formatSettingsKey(key: string): string {
-	return String(key || "").replace(/_/g, " ");
+	return String(key || "").replaceAll(/_/g, " ");
 }
 
 export function joinPhrases(values: string[]): string {
@@ -10,7 +10,7 @@ export function joinPhrases(values: string[]): string {
 	if (items.length === 0) return "";
 	if (items.length === 1) return items[0];
 	if (items.length === 2) return `${items[0]} and ${items[1]}`;
-	return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+	return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
 }
 
 export function formatAuthMethod(method: string): string {

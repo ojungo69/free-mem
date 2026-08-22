@@ -188,7 +188,7 @@ export async function runRefBackfillPass(
 	const processedAfter = processedBefore + rows.length;
 	const exhausted = rows.length < batchSize;
 	// rows.length > 0 guaranteed by early return above
-	const newCursor = (rows[rows.length - 1] as BackfillRow).id;
+	const newCursor = (rows.at(-1) as BackfillRow).id;
 
 	if (exhausted) {
 		const finalProgressTotal = Number(

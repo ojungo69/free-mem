@@ -298,6 +298,7 @@ describe("extraction replay", () => {
 		});
 		expect(callCount).toBe(2);
 		expect(result.observerContext.userPrompt).toContain("Track 3");
+		expect(result.observerContext.promptNumber).toBe(1);
 		expect(result.evaluation.coverage.totalThreadCoverage).toBeGreaterThanOrEqual(3);
 		expect(result.evaluation.pass).toBe(true);
 	});
@@ -739,5 +740,58 @@ describe("extraction replay", () => {
 
 		// The observer prompt should include the session-context injection line.
 		expect(result.observerContext.userPrompt).toContain("Session context:");
+	});
+
+	it("replays meaningful assistant output when the batch has no prompts", async () => {
+		const dbPath = createDbPath("extraction-replay-no-prompts");
+		const db = new Database(dbPath);
+		try {
+			initTestSchema(db);
+			db.exec(`
+				INSERT INTO sessions(id, started_at, cwd, project, metadata_json) VALUES
+				  (300002, '2026-04-10T09:00:00Z', '/tmp/repo', 'repo', '{}');
+				INSERT INTO opencode_sessions(source, stream_id, opencode_session_id, session_id, created_at) VALUES
+				  ('opencode', 'ses-no-prompts', 'ses-no-prompts', 300002, '2026-04-10T09:00:00Z');
+				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
+				  (30002, 'opencode', 'ses-no-prompts', 'ses-no-prompts', 1, 1, 'raw_events_v1', 'completed', 1, '2026-04-10T09:00:00Z', '2026-04-10T09:00:01Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
+				  (30002, 'opencode', 'ses-no-prompts', 'ses-no-prompts', 'evt-no-prompts', 1, 'assistant_message', 1000, 1, '{"type":"assistant_message","assistant_text":"Completed a durable replay investigation."}', '2026-04-10T09:00:01Z');
+			`);
+		} finally {
+			db.close();
+		}
+
+		const observer = {
+			model: "test-model",
+			requestedModel: "test-model",
+			openaiUseResponses: false,
+			maxChars: 12_000,
+			maxOutputTokens: 4_000,
+			temperature: 0.2,
+			observe: async () => ({
+				raw: `<summary>
+				  <request>Preserve the assistant-only replay.</request>
+				  <completed>Captured the durable replay investigation.</completed>
+				</summary>`,
+				parsed: null,
+				provider: "test",
+				model: "test-model",
+			}),
+			getStatus: () => ({
+				provider: "test",
+				model: "test-model",
+				runtime: "test",
+				auth: { source: "none", type: "none", hasToken: false },
+			}),
+		} as unknown as ObserverClient;
+
+		const result = await replayBatchExtractionFromPath(dbPath, observer, {
+			batchId: 30002,
+			scenarioId: "simple-batch-shape",
+		});
+
+		expect(result.analysis.promptCount).toBe(0);
+		expect(result.observerContext.promptNumber).toBeNull();
+		expect(result.observerContext.userPrompt).toBe("");
 	});
 });

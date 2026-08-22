@@ -133,7 +133,7 @@ export function titleCase(value: unknown): string {
 
 export function toTitleLabel(value: string): string {
 	return value
-		.replace(/_/g, " ")
+		.replaceAll(/_/g, " ")
 		.split(" ")
 		.map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
 		.join(" ")

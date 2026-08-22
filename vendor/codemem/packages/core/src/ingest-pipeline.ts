@@ -405,7 +405,7 @@ export async function ingest(
 		const normalizedEvents = normalizeAdapterEvents(events);
 		const prompts = extractPrompts(normalizedEvents);
 		const promptNumber =
-			prompts.length > 0 ? (prompts[prompts.length - 1]?.promptNumber ?? prompts.length) : null;
+			prompts.length > 0 ? (prompts.at(-1)?.promptNumber ?? prompts.length) : null;
 
 		// Tool events — handle adapter projection
 		let toolEvents = normalizeEventsForToolExtraction(events, maxChars);
@@ -422,7 +422,7 @@ export async function ingest(
 		// Latest prompt
 		const latestPrompt =
 			sessionContext.firstPrompt ??
-			(prompts.length > 0 ? prompts[prompts.length - 1]?.promptText : null) ??
+			(prompts.length > 0 ? prompts.at(-1)?.promptText : null) ??
 			null;
 
 		// ------------------------------------------------------------------
@@ -552,9 +552,9 @@ export async function ingest(
 
 			// Surface the failure for normal ingest paths.
 			const status = selectedObserver.getStatus();
+			const observerErrorSuffix = status.lastError ? `, error=${status.lastError}` : "";
 			console.warn(
-				`[codemem] Observer returned no output (provider=${response.provider}, model=${response.model}` +
-					`${status.lastError ? `, error=${status.lastError}` : ""}). No memories will be created for this session.`,
+				`[codemem] Observer returned no output (provider=${response.provider}, model=${response.model}${observerErrorSuffix}). No memories will be created for this session.`,
 			);
 			endSession(store, sessionId, events.length, sessionContext);
 			return;

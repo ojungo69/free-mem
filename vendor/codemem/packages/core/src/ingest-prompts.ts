@@ -192,11 +192,11 @@ This summary helps future sessions understand where this work left off.`;
 
 function escapeXml(text: string): string {
 	return text
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&apos;");
+		.replaceAll(/&/g, "&amp;")
+		.replaceAll(/</g, "&lt;")
+		.replaceAll(/>/g, "&gt;")
+		.replaceAll(/"/g, "&quot;")
+		.replaceAll(/'/g, "&apos;");
 }
 
 // ---------------------------------------------------------------------------
@@ -335,8 +335,8 @@ export function buildObserverPrompt(context: ObserverContext): {
 	}
 
 	if (context.includeSummary && context.lastAssistantMessage) {
-		userBlocks.push("Summary context:");
 		userBlocks.push(
+			"Summary context:",
 			`<summary_context>\n  <assistant_response>${escapeXml(context.lastAssistantMessage)}</assistant_response>\n</summary_context>`,
 		);
 	}

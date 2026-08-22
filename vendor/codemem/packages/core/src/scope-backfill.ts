@@ -110,7 +110,7 @@ interface ReplicationOpScopeCandidateRow {
 
 function clean(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
-	return trimmed ? trimmed : null;
+	return trimmed || null;
 }
 
 function hasCanonicalWorkspaceSignal(input: LegacyMemoryScopeInput): boolean {

@@ -178,7 +178,7 @@ export class MemoryStore {
 	/** Lazy Drizzle ORM wrapper — shares the same better-sqlite3 connection. */
 	private _drizzle: ReturnType<typeof drizzle> | null = null;
 	private get d() {
-		if (!this._drizzle) this._drizzle = drizzle(this.db, { schema });
+		this._drizzle ??= drizzle(this.db, { schema });
 		return this._drizzle;
 	}
 

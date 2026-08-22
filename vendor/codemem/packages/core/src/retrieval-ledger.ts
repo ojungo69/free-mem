@@ -792,7 +792,7 @@ function exposureRowsEqualAfterMemoryDeletion(
 	return !memoryIdentityMatchesExposure(expected, memory);
 }
 
-function parsePersistedJson(value: unknown): unknown | null {
+function parsePersistedJson(value: unknown): unknown {
 	if (typeof value !== "string") return null;
 	if (Buffer.byteLength(value, "utf8") > MAX_RETRIEVAL_JSON_BYTES) return null;
 	try {
@@ -1282,8 +1282,7 @@ export function reconcileFailedRetrievalAttempt(
 			.prepare("SELECT * FROM retrieval_attempts WHERE attempt_id = ?")
 			.get(attemptId) as SqlRow | undefined;
 		if (
-			!existing ||
-			existing.contract_version !== RETRIEVAL_LEDGER_CONTRACT_VERSION ||
+			existing?.contract_version !== RETRIEVAL_LEDGER_CONTRACT_VERSION ||
 			existing.source !== attempt.source ||
 			existing.surface !== attempt.surface ||
 			existing.request_id !== attempt.request_id ||
@@ -1312,9 +1311,10 @@ export function reconcileFailedRetrievalAttempt(
 			retention_finalized_at: existing.retention_finalized_at,
 		};
 		const columns = Object.keys(reconciled).filter((column) => column !== "attempt_id");
-		db.prepare(
-			`UPDATE retrieval_attempts SET ${columns.map((column) => `${column} = @${column}`).join(", ")} WHERE attempt_id = @attempt_id`,
-		).run(reconciled);
+		const assignments = columns.map((column) => `${column} = @${column}`).join(", ");
+		db.prepare(`UPDATE retrieval_attempts SET ${assignments} WHERE attempt_id = @attempt_id`).run(
+			reconciled,
+		);
 		db.prepare("DELETE FROM retrieval_exposures WHERE attempt_id = ?").run(attemptId);
 		for (const exposure of exposures) insertRow(db, "retrieval_exposures", exposure);
 	}).immediate();

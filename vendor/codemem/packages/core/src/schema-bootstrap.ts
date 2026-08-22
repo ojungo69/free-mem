@@ -779,9 +779,9 @@ function assertBootstrapTablesCreated(db: Database): void {
 function isSafeEmptyDatabase(db: Database): boolean {
 	const row = db
 		.prepare(
-			`SELECT COUNT(*) AS count
+			String.raw`SELECT COUNT(*) AS count
 			 FROM sqlite_master
-			 WHERE name NOT LIKE 'sqlite\\_%' ESCAPE '\\'`,
+			 WHERE name NOT LIKE 'sqlite\_%' ESCAPE '\'`,
 		)
 		.get() as { count?: number } | undefined;
 	return (row?.count ?? 0) === 0;

@@ -382,11 +382,12 @@ export async function collectStatusReport(
 }
 
 export function renderStatusReport(report: OperationalStatusReport): string {
+	const viewerPidSuffix = report.runtime.pid ? ` (pid ${report.runtime.pid})` : "";
 	const lines = [
 		`codemem status ${report.ok ? "OK" : "ATTENTION"}`,
 		`Daemon:         ${report.daemon.state}`,
 		`Database:       ${report.database.state}`,
-		`Viewer:         ${report.runtime.viewer}${report.runtime.pid ? ` (pid ${report.runtime.pid})` : ""}`,
+		`Viewer:         ${report.runtime.viewer}${viewerPidSuffix}`,
 		`Maintenance:    ${report.maintenance.state}`,
 		`Semantic index: ${report.semantic_index.state}`,
 		`Raw events:     ${report.raw_events.state}${

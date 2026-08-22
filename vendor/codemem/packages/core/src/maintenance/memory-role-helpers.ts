@@ -185,10 +185,10 @@ export function compareProbeResults(
 		{ baseline?: MemoryRoleProbeResult; candidate?: MemoryRoleProbeResult }
 	>();
 	for (const probe of baseline) {
-		byQuery.set(probe.query, { ...(byQuery.get(probe.query) ?? {}), baseline: probe });
+		byQuery.set(probe.query, { ...byQuery.get(probe.query), baseline: probe });
 	}
 	for (const probe of candidate) {
-		byQuery.set(probe.query, { ...(byQuery.get(probe.query) ?? {}), candidate: probe });
+		byQuery.set(probe.query, { ...byQuery.get(probe.query), candidate: probe });
 	}
 	return [...byQuery.entries()]
 		.sort(([a], [b]) => a.localeCompare(b))

@@ -237,9 +237,9 @@ export function renderObserverHeaders(
 	for (const [key, value] of Object.entries(headers)) {
 		if (typeof key !== "string" || typeof value !== "string") continue;
 
-		let candidate = value.replace(AUTH_TOKEN_RE, token);
-		candidate = candidate.replace(AUTH_TYPE_RE, auth.authType);
-		candidate = candidate.replace(AUTH_SOURCE_RE, auth.source);
+		let candidate = value.replaceAll(AUTH_TOKEN_RE, token);
+		candidate = candidate.replaceAll(AUTH_TYPE_RE, auth.authType);
+		candidate = candidate.replaceAll(AUTH_SOURCE_RE, auth.source);
 
 		// Skip headers that reference auth.token when no token is available
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: intentional template pattern, not JS template literal

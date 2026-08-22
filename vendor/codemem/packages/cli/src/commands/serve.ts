@@ -621,7 +621,8 @@ async function runServeInvocation(invocation: ResolvedServeInvocation): Promise<
 		});
 		if (result.stopped) {
 			p.intro("codemem viewer");
-			p.log.success(`Stopped viewer${result.pid ? ` (pid ${result.pid})` : ""}`);
+			const pidSuffix = result.pid ? ` (pid ${result.pid})` : "";
+			p.log.success(`Stopped viewer${pidSuffix}`);
 			if (invocation.mode === "stop") {
 				p.outro("done");
 				return;

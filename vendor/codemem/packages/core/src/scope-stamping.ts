@@ -28,7 +28,7 @@ export interface ResolveSessionScopeOptions {
 
 function clean(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
-	return trimmed ? trimmed : null;
+	return trimmed || null;
 }
 
 function loadProjectScopeMappings(db: Database): ScopeMapping[] {

@@ -15,10 +15,11 @@ export function buildHealthCard(input: HealthCardInput): HealthCardInput {
 }
 
 export function HealthCard({ label, value, detail, icon, className, title }: HealthCardInput) {
+	const classNameSuffix = className ? ` ${className}` : "";
 	const card = h(
 		"div",
 		{
-			class: `stat${className ? ` ${className}` : ""}`,
+			class: `stat${classNameSuffix}`,
 			style: title ? "cursor: help;" : undefined,
 		},
 		icon

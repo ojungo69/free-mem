@@ -11,6 +11,7 @@ import {
 	loadOpenCodeConfig,
 	readCodememConfigFileAtPath,
 	readWorkspaceCodememConfigFile,
+	resolveBuiltInProviderFromModel,
 	resolveCodememConfigPath,
 	resolveCustomProviderFromModel,
 	resolvePlaceholder,
@@ -202,6 +203,12 @@ describe("loadOpenCodeConfig", () => {
 		// If it does, the test is still valid — it just returns whatever is there.
 		const result = loadOpenCodeConfig();
 		expect(typeof result).toBe("object");
+	});
+});
+
+describe("resolveBuiltInProviderFromModel", () => {
+	it("rejects a model whose provider prefix is whitespace", () => {
+		expect(resolveBuiltInProviderFromModel("   /gpt-5")).toBeNull();
 	});
 });
 

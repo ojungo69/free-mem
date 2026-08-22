@@ -390,7 +390,7 @@ function parseJson(value: string | null): unknown {
 }
 
 function escapeSqlLikePattern(value: string): string {
-	return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+	return value.replaceAll("\\", String.raw`\\`).replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 function renameProjects(
@@ -406,14 +406,14 @@ function renameProjects(
 		for (const table of tables) {
 			const row = db
 				.prepare(
-					`SELECT COUNT(*) AS count FROM ${table} WHERE project = ? OR project LIKE ? ESCAPE '\\'`,
+					String.raw`SELECT COUNT(*) AS count FROM ${table} WHERE project = ? OR project LIKE ? ESCAPE '\'`,
 				)
 				.get(oldName, suffixPattern) as { count: number };
 			counts[table] = row.count;
 			if (dryRun || row.count === 0) continue;
 			db.prepare(`UPDATE ${table} SET project = ? WHERE project = ?`).run(newName, oldName);
 			db.prepare(
-				`UPDATE ${table} SET project = ? WHERE project LIKE ? ESCAPE '\\' AND project != ?`,
+				String.raw`UPDATE ${table} SET project = ? WHERE project LIKE ? ESCAPE '\' AND project != ?`,
 			).run(newName, suffixPattern, newName);
 		}
 	};
@@ -603,9 +603,10 @@ export class DaemonJobService {
 			where.push("submitted_at >= ?");
 			params.push(input.submittedAfter);
 		}
+		const whereSuffix = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
 		const rows = this.store.db
 			.prepare(
-				`SELECT * FROM daemon_jobs${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""}
+				`SELECT * FROM daemon_jobs${whereSuffix}
 				 ORDER BY submitted_at DESC, job_id DESC LIMIT 100`,
 			)
 			.all(...params) as DaemonJobRow[];

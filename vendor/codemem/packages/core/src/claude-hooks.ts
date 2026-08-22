@@ -139,10 +139,10 @@ export function normalizeProjectLabel(value: unknown): string | null {
 			(cleaned.length >= 2 && cleaned[1] === ":" && /[a-zA-Z]/.test(cleaned[0] ?? ""));
 		if (isWindows) {
 			const parts = cleaned.replaceAll("\\", "/").split("/");
-			return parts[parts.length - 1] || null;
+			return parts.at(-1) || null;
 		}
 		const parts = cleaned.split("/");
-		return parts[parts.length - 1] || null;
+		return parts.at(-1) || null;
 	}
 	return cleaned;
 }
@@ -691,9 +691,7 @@ export function buildRawEventEnvelopeFromHook(
 	const cwd = typeof hookPayload.cwd === "string" ? hookPayload.cwd : null;
 
 	let project = resolveHookProject(cwd, hookPayload.project);
-	if (project === null) {
-		project = resolveHookProjectFromPayloadPaths(hookPayload);
-	}
+	project ??= resolveHookProjectFromPayloadPaths(hookPayload);
 
 	return {
 		session_stream_id: sessionId,
