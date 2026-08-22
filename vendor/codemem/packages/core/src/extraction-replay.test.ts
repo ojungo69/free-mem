@@ -793,5 +793,10 @@ describe("extraction replay", () => {
 		expect(result.analysis.promptCount).toBe(0);
 		expect(result.observerContext.promptNumber).toBeNull();
 		expect(result.observerContext.userPrompt).toBe("");
+		// With no prompts the assistant message is the only thing carrying the
+		// session's meaning into the observer request.
+		expect(result.observerContext.lastAssistantMessage).toContain(
+			"Completed a durable replay investigation.",
+		);
 	});
 });
