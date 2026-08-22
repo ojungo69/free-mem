@@ -1,0 +1,32 @@
+specs/001-agent-memory-core/contracts/spool-format-v1.md
+  s_367c6bb46e1f3b::t_9fc3023bb3db00 286,297,299,303,305,328,349
+  s_367c6bb46e1f3b::t_e82c8f1c42a115 41,58
+vendor/codemem/README.md
+  s_6c227bfe2a898f::t_a518d7e3503da1 90-94
+vendor/codemem/docs/plugin-reference.md
+  s_6c227bfe2a898f::t_81dbe81d87b527 97-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "beeb5685338293e5b654802f3bf2dd2c43e7a073",
+  "prompts": {},
+  "sessions": {
+    "s_367c6bb46e1f3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a024c0-94b9-7d11-90d1-67bd5c8a7731",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_6c227bfe2a898f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a027a0-4d48-76f0-b41d-5f1a468fbde8",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
