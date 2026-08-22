@@ -371,8 +371,9 @@ function createMemoryRoleReportCommand(): Command {
 					for (const probe of result.probe_results) {
 						p.log.message(`  query: ${probe.query}`);
 						if (probe.scenario_id) {
+							const scenarioTitleSuffix = probe.scenario_title ? ` — ${probe.scenario_title}` : "";
 							p.log.message(
-								`    scenario: ${probe.scenario_id} (${probe.scenario_category ?? "unknown"})${probe.scenario_title ? ` — ${probe.scenario_title}` : ""}`,
+								`    scenario: ${probe.scenario_id} (${probe.scenario_category ?? "unknown"})${scenarioTitleSuffix}`,
 							);
 						}
 						p.log.message(`    mode: ${probe.mode}`);
@@ -708,10 +709,11 @@ function createMemoryExtractionReportCommand(): Command {
 				}
 
 				p.intro("codemem memory extraction-report");
+				const targetBatchSuffix = result.target.batchId != null ? ` #${result.target.batchId}` : "";
 				p.log.info(
 					[
 						`Scenario: ${result.scenario.id} — ${result.scenario.title}`,
-						`Target: ${result.target.type}${result.target.batchId != null ? ` #${result.target.batchId}` : ""}`,
+						`Target: ${result.target.type}${targetBatchSuffix}`,
 						`Session: ${result.session.id} (${result.session.project ?? "no-project"})`,
 						`Session class: ${result.session.sessionClass}`,
 						`Summary disposition: ${result.session.summaryDisposition}`,

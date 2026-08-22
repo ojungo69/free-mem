@@ -22,7 +22,7 @@ export function registerItemTools(server: McpServer, context: ToolRegistrationCo
 				await client.request("GET /v1/memories/:id", {
 					id: args.memory_id,
 					requestId: mcpRequestId("memory_get", extra?.requestId, extra?.sessionId ?? requestScope),
-					...(filters ?? {}),
+					...filters,
 				}),
 				(result) => result.item ?? { error: { code: "not_found", message: "Memory not found." } },
 			);

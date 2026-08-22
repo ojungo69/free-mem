@@ -87,8 +87,8 @@ export const statsCommand = statsCmd.action(
 				});
 
 				const t = result.usage.totals;
-				lines.push("");
 				lines.push(
+					"",
 					`  Total: ${t.events.toLocaleString()} events, read ${fmtTokens(t.tokens_read)} tokens, est. saved ${fmtTokens(t.tokens_saved)} tokens`,
 				);
 

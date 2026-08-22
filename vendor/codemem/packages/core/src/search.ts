@@ -199,7 +199,7 @@ export function kindBonus(kind: string | null): number {
 }
 
 function personalFirstEnabled(filters: MemoryFilters | undefined): boolean {
-	if (!filters || filters.personal_first === undefined) return true;
+	if (filters?.personal_first === undefined) return true;
 	const value = filters.personal_first;
 	if (typeof value === "string") {
 		const lowered = value.trim().toLowerCase();
@@ -223,7 +223,7 @@ function clampTimelineDepth(value: number): number {
 }
 
 function widenSharedWhenWeakEnabled(filters: MemoryFilters | undefined): boolean {
-	if (!filters || filters.widen_shared_when_weak === undefined) return false;
+	if (filters?.widen_shared_when_weak === undefined) return false;
 	const value = filters.widen_shared_when_weak;
 	if (typeof value === "string") {
 		const lowered = value.trim().toLowerCase();
@@ -280,7 +280,7 @@ function filtersBlockSharedWidening(filters: MemoryFilters | undefined): boolean
 
 function sharedWideningFilters(filters: MemoryFilters | undefined): MemoryFilters {
 	return {
-		...(filters ?? {}),
+		...filters,
 		visibility: undefined,
 		ownership_scope: undefined,
 		include_visibility: ["shared"],
@@ -291,7 +291,7 @@ function sharedWideningFilters(filters: MemoryFilters | undefined): MemoryFilter
 }
 
 function widenProjectWhenWeakEnabled(filters: MemoryFilters | undefined): boolean {
-	if (!filters || filters.widen_project_when_weak === undefined) return false;
+	if (filters?.widen_project_when_weak === undefined) return false;
 	const value = filters.widen_project_when_weak;
 	if (typeof value === "string") {
 		const lowered = value.trim().toLowerCase();
@@ -336,7 +336,7 @@ function queryBlocksProjectWidening(query: string): boolean {
 
 function projectWideningFilters(filters: MemoryFilters | undefined): MemoryFilters {
 	return {
-		...(filters ?? {}),
+		...filters,
 		project: undefined,
 		widen_project_when_weak: false,
 		widen_shared_when_weak: false,
@@ -354,7 +354,7 @@ function markProjectWideningMetadata(store: StoreHandle, items: MemoryResult[]):
 		return {
 			...item,
 			metadata: {
-				...(item.metadata ?? {}),
+				...item.metadata,
 				widened_from_project: true,
 				...(sourceProject ? { source_project: sourceProject } : {}),
 			},
@@ -365,7 +365,7 @@ function markProjectWideningMetadata(store: StoreHandle, items: MemoryResult[]):
 function markWideningMetadata(items: MemoryResult[]): MemoryResult[] {
 	return items.map((item) => ({
 		...item,
-		metadata: { ...(item.metadata ?? {}), widened_from_shared: true },
+		metadata: { ...item.metadata, widened_from_shared: true },
 	}));
 }
 
@@ -554,7 +554,7 @@ function pathSegments(path: string): string[] {
 function pathBasename(path: string): string {
 	const segments = pathSegments(path);
 	if (segments.length === 0) return "";
-	return segments[segments.length - 1] ?? "";
+	return segments.at(-1) ?? "";
 }
 
 function pathSegmentsOverlap(a: string[], b: string[]): boolean {
@@ -1200,8 +1200,7 @@ function timelineAround(
 
 	// Combine: reversed(before) + anchor + after
 	const rows: MemoryItem[] = [...beforeRows.reverse()];
-	rows.push(anchorRow);
-	rows.push(...afterRows);
+	rows.push(anchorRow, ...afterRows);
 
 	return rows.map((row) => {
 		const { metadata_json, ...rest } = row;
@@ -1321,11 +1320,16 @@ function loadItemsByIdsForExplain(
 	const placeholders = ids.map(() => "?").join(", ");
 	const scopeContext = ownershipFilterContext(store);
 	const visibilityFilter = buildFilterClausesWithContext(null, scopeContext);
+	const visibilityWhereClause = [
+		"memory_items.active = 1",
+		`memory_items.id IN (${placeholders})`,
+		...visibilityFilter.clauses,
+	].join(" AND ");
 	const visibleRows = store.db
 		.prepare(
 			`SELECT memory_items.*
 			 FROM memory_items
-			 WHERE ${["memory_items.active = 1", `memory_items.id IN (${placeholders})`, ...visibilityFilter.clauses].join(" AND ")}`,
+			 WHERE ${visibilityWhereClause}`,
 		)
 		.all(...ids, ...visibilityFilter.params) as MemoryItem[];
 	const visibleFoundIds = new Set(visibleRows.map((item) => item.id));
@@ -1357,12 +1361,17 @@ function loadItemsByIdsForExplain(
 	const joinClause = filterResult.joinSessions
 		? "JOIN sessions ON sessions.id = memory_items.session_id"
 		: "";
+	const filterWhereClause = [
+		"memory_items.active = 1",
+		`memory_items.id IN (${placeholders})`,
+		...filterResult.clauses,
+	].join(" AND ");
 	const scopedRows = store.db
 		.prepare(
 			`SELECT memory_items.*
-		 FROM memory_items
-		 ${joinClause}
-		 WHERE ${["memory_items.active = 1", `memory_items.id IN (${placeholders})`, ...filterResult.clauses].join(" AND ")}`,
+			 FROM memory_items
+			 ${joinClause}
+			 WHERE ${filterWhereClause}`,
 		)
 		.all(...ids, ...filterResult.params) as MemoryItem[];
 	const scopedIds = new Set(scopedRows.map((item) => item.id));

@@ -85,7 +85,7 @@ export function statePathForSession(sessionId: string): string {
  */
 export function normalizePromptText(value: unknown): string {
 	if (typeof value !== "string") return "";
-	return value.trim().replace(/\n/g, " ");
+	return value.trim().replaceAll(/\n/g, " ");
 }
 
 function normalizeStringList(value: unknown, cap: number): string[] {
@@ -266,7 +266,7 @@ function pathBasename(value: string): string {
 	const normalized = trimEndWhere(value.replaceAll("\\", "/"), TRAILING_SLASH);
 	if (!normalized) return "";
 	const parts = normalized.split("/");
-	return parts[parts.length - 1] ?? "";
+	return parts.at(-1) ?? "";
 }
 
 /**

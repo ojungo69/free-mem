@@ -854,7 +854,7 @@ export function codememCodexHookBase(
 	nodePath: string = process.execPath,
 ): string {
 	if (!runtimePath) throw new Error("The managed Codex hook runtime is required.");
-	const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+	const quote = (value: string): string => `'${value.replaceAll("'", String.raw`'\''`)}'`;
 	return `${quote(nodePath)} ${quote(runtimePath)}`;
 }
 
@@ -948,7 +948,7 @@ function isCodememHook(hook: unknown): boolean {
 }
 
 /** Remove only managed hook entries, preserving the matcher and unrelated siblings. */
-function withoutCodememHooks(group: unknown): unknown | null {
+function withoutCodememHooks(group: unknown): unknown {
 	if (group == null || typeof group !== "object") return group;
 	const hooks = (group as { hooks?: unknown }).hooks;
 	if (!Array.isArray(hooks)) return group;

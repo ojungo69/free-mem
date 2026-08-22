@@ -335,7 +335,7 @@ function parseTomlValue(raw: string): unknown {
 	if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
 	if (raw.startsWith("[")) {
 		try {
-			const parsed = JSON.parse(raw.replace(/'/g, '"'));
+			const parsed = JSON.parse(raw.replaceAll(/'/g, '"'));
 			if (Array.isArray(parsed)) return parsed;
 		} catch {
 			return Symbol.for("invalid");

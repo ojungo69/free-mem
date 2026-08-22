@@ -350,7 +350,7 @@ export function resolveCodememConfigPath(
 	// Should always find at least the legacy candidate, but guard anyway
 	if (resolvedIndex < 0) resolvedIndex = candidates.length - 1;
 
-	const resolved = candidates[resolvedIndex] ?? candidates[candidates.length - 1];
+	const resolved = candidates[resolvedIndex] ?? candidates.at(-1);
 	if (!resolved) {
 		throw new Error("No config path candidates were generated");
 	}
@@ -495,7 +495,7 @@ const BUILTIN_MODEL_PREFIX_PROVIDERS = new Set(["openai", "anthropic", "opencode
 function extractProviderPrefix(value: unknown): string | null {
 	if (typeof value !== "string" || !value.includes("/")) return null;
 	const prefix = value.split("/")[0]?.trim().toLowerCase();
-	return prefix ? prefix : null;
+	return prefix || null;
 }
 
 export function listConfiguredOpenCodeProviders(): Set<string> {

@@ -376,15 +376,15 @@ function collectKeepReasons(input: {
 	// status, no-finding outcomes, and another weak finding verb (a duplicated
 	// bare verb such as a terse "Verified" title followed by "verified ..." must
 	// not bootstrap itself into a substantive finding).
-	const NON_SUBSTANTIVE_OBJECTS = `${WEAK_FINDING_VERBS}|tests?|lint|ci|build|typecheck|tsc|checks?|review|reviewer|pr|pull\\s+request|no|nothing|none`;
+	const NON_SUBSTANTIVE_OBJECTS = String.raw`${WEAK_FINDING_VERBS}|tests?|lint|ci|build|typecheck|tsc|checks?|review|reviewer|pr|pull\s+request|no|nothing|none`;
 	// weak verb -> optional "that" -> optional determiner -> a content word that is
 	// not itself a non-substantive object. Determiners are consumed (not allowed to
 	// satisfy the object) so "verified the tests" / a bare "verified verified" do
 	// not bootstrap a substantive finding, while "determined cursor drift" does.
 	const DETERMINERS = "the|a|an|all|our|its|their";
 	const substantiveWeakFinding = new RegExp(
-		`\\b(?:${WEAK_FINDING_VERBS})\\s+(?:that\\s+)?(?:(?:${DETERMINERS})\\s+)?` +
-			`(?!(?:${NON_SUBSTANTIVE_OBJECTS}|${DETERMINERS})\\b)[a-z]{3,}`,
+		String.raw`\b(?:${WEAK_FINDING_VERBS})\s+(?:that\s+)?(?:(?:${DETERMINERS})\s+)?` +
+			String.raw`(?!(?:${NON_SUBSTANTIVE_OBJECTS}|${DETERMINERS})\b)[a-z]{3,}`,
 	);
 	const hasSubstantiveWeakFinding = substantiveWeakFinding.test(text);
 	// Bare "found no blockers / no remaining issues" review telemetry, with no
@@ -573,17 +573,16 @@ export function classifyMemoryWorthiness(input: InferMemoryRoleInput): MemoryWor
 	// catch-all wrongly demotes durable NEGATIVE findings like "found no fallback
 	// for empty embeddings" (an absence-of-mechanism discovery, not telemetry).
 	// Only no-status outcomes (no issues/blockers/problems/...) count (Codex).
-	const NO_STATUS =
-		"issues?|blockers?|problems?|findings?|bugs?|regressions?|errors?|remaining\\s+issues?";
+	const NO_STATUS = String.raw`issues?|blockers?|problems?|findings?|bugs?|regressions?|errors?|remaining\s+issues?`;
 	const hasNoFindingOutcome = hasAnyPattern(text, [
 		// "found nothing" / "found none" (bare) is a no-finding outcome; but
 		// "found no <X>" only counts when <X> is a status noun, so durable negative
 		// findings like "found no fallback for empty embeddings" are NOT demoted.
 		/\b(?:found|confirmed|determined|discovered)\s+(?:that\s+there\s+(?:were|are|was|is)\s+)?(?:nothing|none)\b/,
 		new RegExp(
-			`\\b(?:found|confirmed|determined|discovered)\\s+(?:that\\s+there\\s+(?:were|are|was|is)\\s+)?no\\s+(?:${NO_STATUS})\\b`,
+			String.raw`\b(?:found|confirmed|determined|discovered)\s+(?:that\s+there\s+(?:were|are|was|is)\s+)?no\s+(?:${NO_STATUS})\b`,
 		),
-		new RegExp(`\\bno\\s+(?:${NO_STATUS})\\b`),
+		new RegExp(String.raw`\bno\s+(?:${NO_STATUS})\b`),
 		/\bnothing\s+(?:to\s+\w+|of\s+note|notable|wrong)\b/,
 	]);
 	const hasInvestigatedWithoutOutcome =

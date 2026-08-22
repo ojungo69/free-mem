@@ -42,11 +42,8 @@ export function bootstrapViewerSession(
 	if (nonce === null) return Promise.resolve();
 	fragment.delete("auth");
 	const remaining = fragment.toString();
-	options.replaceState(
-		options.state,
-		"",
-		`${options.pathname}${options.search}${remaining ? `#${remaining}` : ""}`,
-	);
+	const hashSuffix = remaining ? `#${remaining}` : "";
+	options.replaceState(options.state, "", `${options.pathname}${options.search}${hashSuffix}`);
 	if (!/^[A-Za-z0-9_-]{43}$/.test(nonce)) {
 		return Promise.reject(new Error("Invalid viewer login nonce"));
 	}

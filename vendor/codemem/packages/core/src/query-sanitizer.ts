@@ -32,13 +32,12 @@ function stripWrappingQuotes(value: string): string {
 	while (
 		candidate.length >= 2 &&
 		QUOTE_CHARS.has(candidate[0] ?? "") &&
-		candidate[0] === candidate[candidate.length - 1]
+		candidate[0] === candidate.at(-1)
 	) {
 		candidate = candidate.slice(1, -1).trim();
 	}
 	if (QUOTE_CHARS.has(candidate[0] ?? "")) candidate = candidate.slice(1).trim();
-	if (QUOTE_CHARS.has(candidate[candidate.length - 1] ?? ""))
-		candidate = candidate.slice(0, -1).trim();
+	if (QUOTE_CHARS.has(candidate.at(-1) ?? "")) candidate = candidate.slice(0, -1).trim();
 	return candidate;
 }
 
@@ -56,8 +55,7 @@ function trimCandidate(value: string): string {
 		.split(SENTENCE_SPLIT_RE)
 		.map((segment) => stripWrappingQuotes(segment))
 		.filter((segment) => segment.length >= MIN_QUERY_LENGTH && segment.length <= MAX_QUERY_LENGTH);
-	if (nested.length > 0)
-		return nested[nested.length - 1] ?? candidate.slice(-MAX_QUERY_LENGTH).trim();
+	if (nested.length > 0) return nested.at(-1) ?? candidate.slice(-MAX_QUERY_LENGTH).trim();
 	return candidate.slice(-MAX_QUERY_LENGTH).trim();
 }
 
@@ -154,7 +152,7 @@ export function sanitizeSearchQuery(rawQuery: string): SanitizedQuery {
 
 	if (segments.length > 1 && looksInstructionLike(segments[0] ?? "")) {
 		const tail = segments.filter((segment, index) => index > 0 && !looksInstructionLike(segment));
-		const candidate = trimCandidate(tail[tail.length - 1] ?? "");
+		const candidate = trimCandidate(tail.at(-1) ?? "");
 		if (candidate.length >= MIN_QUERY_LENGTH) {
 			reasons.push("instruction_prefix");
 			return buildResult(raw, candidate, "instruction_prefix_trim", reasons);

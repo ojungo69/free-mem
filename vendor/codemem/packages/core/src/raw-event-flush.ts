@@ -242,9 +242,9 @@ export async function flushRawEvents(
 
 	// Resolve session metadata for missing fields
 	const meta = store.rawEventSessionMeta(opencodeSessionId, source);
-	if (cwd == null) cwd = (meta.cwd as string) ?? process.cwd();
-	if (project == null) project = (meta.project as string) ?? null;
-	if (startedAt == null) startedAt = (meta.started_at as string) ?? null;
+	cwd ??= (meta.cwd as string) ?? process.cwd();
+	project ??= (meta.project as string) ?? null;
+	startedAt ??= (meta.started_at as string) ?? null;
 
 	// Read unflushed events
 	const lastFlushed = store.rawEventFlushState(opencodeSessionId, source);

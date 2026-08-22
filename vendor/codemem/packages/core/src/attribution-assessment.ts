@@ -1452,8 +1452,9 @@ export function recordAttributionAssessment(
 				return false;
 			}
 			const columns = Object.keys(row);
+			const valuePlaceholders = columns.map((key) => `@${key}`).join(", ");
 			db.prepare(
-				`INSERT INTO attribution_assessments (${columns.join(", ")}) VALUES (${columns.map((key) => `@${key}`).join(", ")})`,
+				`INSERT INTO attribution_assessments (${columns.join(", ")}) VALUES (${valuePlaceholders})`,
 			).run(row);
 			const link = db.prepare(
 				"INSERT INTO attribution_assessment_evidence(assessment_id, evidence_id) VALUES (?, ?)",

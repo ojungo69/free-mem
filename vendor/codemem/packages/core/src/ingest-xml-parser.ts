@@ -81,13 +81,13 @@ function cleanXmlText(text: string): string {
 }
 
 function escapeRegExpLiteral(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /** Extract text content from within a single XML tag. Returns empty string if not found. */
 function extractTagText(xml: string, tag: string): string {
 	const escapedTag = escapeRegExpLiteral(tag);
-	const re = new RegExp(`<${escapedTag}(?=[\\s/>])[^>]*>([\\s\\S]*?)</${escapedTag}>`, "i");
+	const re = new RegExp(String.raw`<${escapedTag}(?=[\s/>])[^>]*>([\s\S]*?)</${escapedTag}>`, "i");
 	const match = re.exec(xml);
 	if (!match?.[1]) return "";
 	return match[1].trim();
@@ -98,14 +98,14 @@ function extractChildTexts(xml: string, parentTag: string, childTag: string): st
 	const escapedParentTag = escapeRegExpLiteral(parentTag);
 	const escapedChildTag = escapeRegExpLiteral(childTag);
 	const parentRe = new RegExp(
-		`<${escapedParentTag}(?=[\\s/>])[^>]*>([\\s\\S]*?)</${escapedParentTag}>`,
+		String.raw`<${escapedParentTag}(?=[\s/>])[^>]*>([\s\S]*?)</${escapedParentTag}>`,
 		"i",
 	);
 	const parentMatch = parentRe.exec(xml);
 	if (!parentMatch?.[1]) return [];
 
 	const childRe = new RegExp(
-		`<${escapedChildTag}(?=[\\s/>])[^>]*>([\\s\\S]*?)</${escapedChildTag}>`,
+		String.raw`<${escapedChildTag}(?=[\s/>])[^>]*>([\s\S]*?)</${escapedChildTag}>`,
 		"gi",
 	);
 	const items: string[] = [];
@@ -125,7 +125,7 @@ function directChildFragments(
 	rootTag: string,
 ): Array<{ tag: string; value: string; complete: boolean }> {
 	const escapedRootTag = escapeRegExpLiteral(rootTag);
-	const opening = new RegExp(`<${escapedRootTag}(?=[\\s/>])[^>]*>`, "i").exec(block);
+	const opening = new RegExp(String.raw`<${escapedRootTag}(?=[\s/>])[^>]*>`, "i").exec(block);
 	if (!opening) return [];
 	const contentStart = opening.index + opening[0].length;
 	const remainder = block.slice(contentStart);
@@ -154,7 +154,7 @@ function directChildFragments(
 		if (!childClosing) {
 			const unclosedRemainder = inner.slice(childContentStart);
 			const nextKnownField = new RegExp(
-				`<(?:${[...SUMMARY_FIELDS].map(escapeRegExpLiteral).join("|")})(?=[\\s/>])`,
+				String.raw`<(?:${[...SUMMARY_FIELDS].map(escapeRegExpLiteral).join("|")})(?=[\s/>])`,
 				"i",
 			).exec(unclosedRemainder);
 			fragments.push({
@@ -190,7 +190,7 @@ function openingTagEnd(value: string, contentStart: number): number {
 		}
 		if (character !== '"' && character !== "'") continue;
 		if (quote === character) quote = null;
-		else if (quote === null) quote = character;
+		else quote ??= character;
 	}
 	return firstClosingBracket;
 }
@@ -884,7 +884,7 @@ interface GroundingText extends RecoverableText {
 
 function extractRecoverableTagText(xml: string, tag: string): RecoverableText | null {
 	const escapedTag = escapeRegExpLiteral(tag);
-	const opening = new RegExp(`<${escapedTag}(?=[\\s/>])[^>]*>`, "i").exec(xml);
+	const opening = new RegExp(String.raw`<${escapedTag}(?=[\s/>])[^>]*>`, "i").exec(xml);
 	if (!opening) return null;
 	const contentStart = opening.index + opening[0].length;
 	const remainder = xml.slice(contentStart);
@@ -930,7 +930,7 @@ function extractRecoverableChildTexts(
 ): RecoverableText[] {
 	const escapedParentTag = escapeRegExpLiteral(parentTag);
 	const escapedChildTag = escapeRegExpLiteral(childTag);
-	const parentOpening = new RegExp(`<${escapedParentTag}(?=[\\s/>])[^>]*>`, "i").exec(xml);
+	const parentOpening = new RegExp(String.raw`<${escapedParentTag}(?=[\s/>])[^>]*>`, "i").exec(xml);
 	if (!parentOpening) return [];
 	const parentContentStart = parentOpening.index + parentOpening[0].length;
 	const parentRemainder = xml.slice(parentContentStart);
@@ -944,7 +944,7 @@ function extractRecoverableChildTexts(
 	);
 	const parentContent = parentRemainder.slice(0, parentEnd);
 	const openings = [
-		...parentContent.matchAll(new RegExp(`<${escapedChildTag}(?=[\\s/>])[^>]*>`, "gi")),
+		...parentContent.matchAll(new RegExp(String.raw`<${escapedChildTag}(?=[\s/>])[^>]*>`, "gi")),
 	];
 	return openings.flatMap((opening, index) => {
 		if (opening.index == null) return [];
@@ -1350,7 +1350,8 @@ function isGroundedProsePhrase(value: string, prose: string): boolean {
 		if (
 			/(?:\b(?:non|un|mis)-)$/.test(segment.slice(0, index)) ||
 			negations.some(
-				(negation) => !new RegExp(`\\b${escapeRegExpLiteral(negation)}\\b`).test(comparable),
+				(negation) =>
+					!new RegExp(String.raw`\b${escapeRegExpLiteral(negation)}\b`).test(comparable),
 			)
 		) {
 			continue;

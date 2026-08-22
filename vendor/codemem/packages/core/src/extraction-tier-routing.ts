@@ -85,7 +85,7 @@ function resolveRichTierDefaults(provider: KnownTierProvider): Partial<ObserverC
 }
 
 function nullIfUndefined<T>(value: T | undefined): T | null {
-	return value === undefined ? null : value;
+	return value ?? null;
 }
 
 function shouldUseOpenAIResponses(

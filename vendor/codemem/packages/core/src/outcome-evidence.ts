@@ -341,9 +341,8 @@ function optionalBoolean(value: unknown, name: string): boolean {
 
 function positiveInteger(value: number, name: string, maximum?: number): number {
 	if (!Number.isSafeInteger(value) || value < 1 || (maximum != null && value > maximum)) {
-		throw new OutcomeEvidenceValidationError(
-			`${name} must be a positive integer${maximum == null ? "" : ` no greater than ${maximum}`}`,
-		);
+		const maximumSuffix = maximum == null ? "" : ` no greater than ${maximum}`;
+		throw new OutcomeEvidenceValidationError(`${name} must be a positive integer${maximumSuffix}`);
 	}
 	return value;
 }
@@ -745,8 +744,7 @@ function validateReferences(
 	}
 	if (
 		type === "mechanism.source_location_match" &&
-		references?.matched_paths != null &&
-		references.matched_paths.some((path) => !sourceLocationRepositoryPaths.has(path))
+		references?.matched_paths?.some((path) => !sourceLocationRepositoryPaths.has(path))
 	) {
 		throw new OutcomeEvidenceValidationError(
 			"matched source-location paths must come from repository_paths",
@@ -1171,8 +1169,9 @@ export function recordOutcomeEvidence(
 					);
 			} else {
 				const columns = Object.keys(row);
+				const valuePlaceholders = columns.map((key) => `@${key}`).join(", ");
 				db.prepare(
-					`INSERT INTO outcome_evidence (${columns.join(", ")}) VALUES (${columns.map((key) => `@${key}`).join(", ")})`,
+					`INSERT INTO outcome_evidence (${columns.join(", ")}) VALUES (${valuePlaceholders})`,
 				).run(row);
 				inserted = true;
 			}

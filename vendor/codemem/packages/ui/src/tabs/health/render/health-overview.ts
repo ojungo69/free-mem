@@ -188,14 +188,16 @@ export function renderHealthOverview() {
 	// Recommendations
 	const recommendations: HealthAction[] = [];
 	if (hasBacklog) {
-		recommendations.push({
-			label: "Pipeline needs attention. Check queue health first.",
-			command: "codemem db raw-events-status",
-		});
-		recommendations.push({
-			label: "Then retry failed batches for impacted sessions.",
-			command: "codemem db raw-events-retry <opencode_session_id>",
-		});
+		recommendations.push(
+			{
+				label: "Pipeline needs attention. Check queue health first.",
+				command: "codemem db raw-events-status",
+			},
+			{
+				label: "Then retry failed batches for impacted sessions.",
+				command: "codemem db raw-events-retry <opencode_session_id>",
+			},
+		);
 	}
 	if (tagCoverage > 0 && tagCoverage < 0.7 && recommendations.length < 2) {
 		recommendations.push({

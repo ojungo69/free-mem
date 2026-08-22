@@ -84,7 +84,7 @@ interface MappingCandidate {
 
 function clean(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
-	return trimmed ? trimmed : null;
+	return trimmed || null;
 }
 
 function normalizeSlash(value: string): string {
@@ -150,7 +150,7 @@ function isBasenameOnlyPattern(pattern: string): boolean {
 }
 
 function escapeRegex(value: string): string {
-	return value.replace(/[|\\{}()[\]^$+?.*]/g, "\\$&");
+	return value.replace(/[|\\{}()[\]^$+?.*]/g, String.raw`\$&`);
 }
 
 function patternSpecificity(pattern: string): number {
@@ -162,7 +162,7 @@ function matchesPattern(identity: string, pattern: string): boolean {
 	if (!normalizedPattern || isBasenameOnlyPattern(normalizedPattern)) return false;
 	if (!/[*?]/.test(normalizedPattern)) return identity === normalizedPattern;
 	const regex = new RegExp(
-		`^${escapeRegex(normalizedPattern).replaceAll("\\*", ".*").replaceAll("\\?", ".")}$`,
+		`^${escapeRegex(normalizedPattern).replaceAll(String.raw`\*`, ".*").replaceAll(String.raw`\?`, ".")}$`,
 	);
 	return regex.test(identity);
 }

@@ -228,7 +228,7 @@ const CLUSTER_STOP_WORDS = new Set([
 
 function clean(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
-	return trimmed ? trimmed : null;
+	return trimmed || null;
 }
 
 function parseJsonList(value: string | null | undefined): string[] {
