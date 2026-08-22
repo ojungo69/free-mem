@@ -162,7 +162,7 @@ function matchesPattern(identity: string, pattern: string): boolean {
 	if (!normalizedPattern || isBasenameOnlyPattern(normalizedPattern)) return false;
 	if (!/[*?]/.test(normalizedPattern)) return identity === normalizedPattern;
 	const regex = new RegExp(
-		`^${escapeRegex(normalizedPattern).replaceAll(String.raw`\*`, ".*").replaceAll(String.raw`\?`, ".")}$`,
+		`^${escapeRegex(normalizedPattern).replaceAll("\\*", ".*").replaceAll("\\?", ".")}$`,
 	);
 	return regex.test(identity);
 }

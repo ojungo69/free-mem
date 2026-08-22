@@ -8,10 +8,9 @@ describe("dom string escaping", () => {
 		);
 	});
 
-	it("escapes regex metacharacters so the value matches literally", () => {
-		const escaped = escapeRegExp("a.b*c(d)");
-		expect(escaped).toBe(String.raw`a\.b\*c\(d\)`);
-		expect(new RegExp(escaped).test("a.b*c(d)")).toBe(true);
-		expect(new RegExp(escaped).test("axbxcxdx")).toBe(false);
+	it("escapes every regex metacharacter and leaves other characters alone", () => {
+		expect(escapeRegExp("a.b*c(d)")).toBe(String.raw`a\.b\*c\(d\)`);
+		expect(escapeRegExp("^$+?|[]{}\\")).toBe(String.raw`\^\$\+\?\|\[\]\{\}\\`);
+		expect(escapeRegExp("plain text 42")).toBe("plain text 42");
 	});
 });

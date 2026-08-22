@@ -580,9 +580,9 @@ export function classifyMemoryWorthiness(input: InferMemoryRoleInput): MemoryWor
 		// findings like "found no fallback for empty embeddings" are NOT demoted.
 		/\b(?:found|confirmed|determined|discovered)\s+(?:that\s+there\s+(?:were|are|was|is)\s+)?(?:nothing|none)\b/,
 		new RegExp(
-			String.raw`\b(?:found|confirmed|determined|discovered)\s+(?:that\s+there\s+(?:were|are|was|is)\s+)?no\s+(?:${NO_STATUS})\b`,
+			`\\b(?:found|confirmed|determined|discovered)\\s+(?:that\\s+there\\s+(?:were|are|was|is)\\s+)?no\\s+(?:${NO_STATUS})\\b`,
 		),
-		new RegExp(String.raw`\bno\s+(?:${NO_STATUS})\b`),
+		new RegExp(`\\bno\\s+(?:${NO_STATUS})\\b`),
 		/\bnothing\s+(?:to\s+\w+|of\s+note|notable|wrong)\b/,
 	]);
 	const hasInvestigatedWithoutOutcome =
