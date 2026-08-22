@@ -4,7 +4,7 @@
 **基準 commit**: `bc42c40`（origin/main。PR #92 のマージ commit）
 **作業 branch**: `fix/review-residue-109`
 
-この文書は、実装に入る前に **実際に走らせて確かめた** 環境側の事実だけを記録する。
+この文書は、実装前に **実際に走らせて確かめた** 環境側の事実と、後続検証で確定した結果を記録する。
 issue #109 の各指摘そのものの裏取りは `spec.md` の FR と `tasks.md` に落とす。
 
 ## 1. ベースライン検査の実測（開始 2026-08-20、full gate 2026-08-22）
@@ -16,12 +16,18 @@ worktree を `origin/main` から作り、CI の harness job と同じ順で回�
 | contract hashes | `node harness/contract-hashes.mjs \| diff harness/contract-hashes.json -` | 一致 |
 | capability matrix self-test | `node --experimental-strip-types harness/assemble.ts --self-test` | `PASS` |
 | continuity contract tests | `node --experimental-strip-types --test harness/continuity/*.test.ts` | 333 pass / 0 fail |
-| evidence verification tests | `node --experimental-strip-types --test harness/evidence/*.test.ts harness/evidence/rig-manifest.test.mjs` | 167 pass / 0 fail |
+| evidence verification tests（初回） | `node --experimental-strip-types --test harness/evidence/*.test.ts harness/evidence/rig-manifest.test.mjs` | 167 pass / 0 fail（`bc42c40`、2026-08-20） |
+| evidence verification tests（後続） | 同上 | 174 pass / 0 fail（`49b2ef3`、2026-08-22） |
 | DCO gate self-test | `node --test harness/dco-check.test.mjs` | 0 fail |
 | matrix drift | `node --experimental-strip-types --test harness/evidence/matrix-drift.test.ts` | 2 pass / 0 fail |
-| evidence 変異ゲート | `bash harness/evidence/mutate.sh` | 初回は実行中。後続実測で 144 / 144、survivor 0（local・push CI・PR CI） |
+| evidence 変異ゲート（初回） | `bash harness/evidence/mutate.sh` | 実行開始のみで verdict 未記録（`bc42c40`、2026-08-20） |
+| evidence 変異ゲート（後続） | 同上 | 144 / 144、survivor 0（push CI `32500071210`・PR CI `32500074074`、2026-08-22） |
 
 Node は `v24.16.0`（CI の `node-version: 24.16.0` と一致）。
+
+evidence test の 167 → 174 は、`bc42c40...beefb07` で追加した 7 test による。内訳は
+`digestNormalized`、負け側 high-level observation、rig の不正引数と trailing 引数、schema enum 一致・
+未登録定数・未知 source event の各 1 test。
 
 ## 2. 変異ゲートの自己検査が課す制約（`harness/evidence/mutate.sh`）
 
@@ -78,8 +84,9 @@ Node は `v24.16.0`（CI の `node-version: 24.16.0` と一致）。
 issue #109 は `harness/evidence/synthetic.ts` の一時 directory 漏れを「test 衛生」として挙げていたが、
 この作業中に **実際に別の作業を止めた**。
 
-変異ゲート（`bash harness/evidence/mutate.sh`）は test 一式を約 99 回回す。`newRoot()` は毎回
-`mkdtempSync(join(tmpdir(), "evroot-"))` を作り、どこでも消さない。measurement:
+実害の測定時、変異ゲート（`bash harness/evidence/mutate.sh`）は test 一式を約 99 回回していた。
+現行は baseline と 144 mutation で 145 回以上になる。修正前の `newRoot()` は呼び出すたびに
+`mkdtempSync(join(tmpdir(), "evroot-"))` を作り、どこでも消さなかった。measurement:
 
 ```console
 $ find /tmp -maxdepth 1 -name 'evroot-*' | wc -l
@@ -90,6 +97,11 @@ $ find /tmp -maxdepth 1 -mindepth 1 | wc -l
 
 内訳（/tmp 直下）: `evroot-` 273,737 / `evidence-secrets-` 9,084 / `matrix-drift-` 7,120 /
 `evsib-` 5,224 / `evlink-` 5,224 / `evfix-` 5,159。
+これは反復作業後の `/tmp` 全体の累積 snapshot で、単一の gate run へ件数を帰属する値ではない。
+
+再現用に 2026-08-22、`bc42c40` と `beefb07` を別々の専用 `TMPDIR` で比較した。
+`hash-inputs.test.ts`・`manifest.test.ts`・`promotion.test.ts` は両 commit とも成功し、終了後の残留は
+`bc42c40`: `evroot=57 / evfix=1`、`beefb07`: `evroot=0 / evfix=0` だった。
 
 この状態で `grok-delegate.sh` による実装委譲を起動すると、sandbox の構築段階で落ちた:
 
@@ -102,6 +114,7 @@ across their roots (stopped in /tmp at /tmp/evroot-.../backed
 つまり漏れた一時 directory が **カーネル強制の deny glob 展開を破綻させ、sandbox を組めなくした**。
 `/tmp` を掃除してから再実行して復旧させた。
 
-**この項目の優先度はこの実測に基づいて上げてよい。** 直し方は反証役の訂正どおり、
-`synthetic.ts` の `newRoot()` 側に `node:test` の `after` を置き、
-`promotion.test.ts:512` の `evfix-` も同じ経路へ寄せる。
+**この項目の優先度はこの実測に基づいて上げてよい。** 実装は `scratch.ts` の `newRoot()` で
+作成先を記録し、process の `exit` で一括削除する。module 直下の `node:test` `after()` は、test でない
+script から import しただけでも runner の status を stdout へ出すため採用しなかった。`promotion.test.ts`
+の `evfix-` も同じ `newRoot()` 経路へ寄せた。
