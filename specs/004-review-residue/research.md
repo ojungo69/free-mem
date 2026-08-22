@@ -2,7 +2,7 @@
 
 **作成**: 2026-08-20
 **基準 commit**: `bc42c40`（origin/main。PR #92 のマージ commit）
-**worktree**: `/home/jura/projects/free-mem-wt/residue-109`（branch `fix/review-residue-109`）
+**作業 branch**: `fix/review-residue-109`
 
 この文書は、実装に入る前に **実際に走らせて確かめた** 環境側の事実だけを記録する。
 issue #109 の各指摘そのものの裏取りは `spec.md` の FR と `tasks.md` に落とす。
