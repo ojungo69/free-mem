@@ -18,7 +18,7 @@ export const configCommand = new Command("config")
 
 type WhereOptions = ConfigOpts & JsonOpts;
 
-function formatWhereHuman(result: ConfigResolutionResult): string {
+export function formatWhereHuman(result: ConfigResolutionResult): string {
 	const lines: string[] = [];
 	const allEntries = [result.resolved, ...result.fallbackChain];
 	// Sort by original precedence order for display

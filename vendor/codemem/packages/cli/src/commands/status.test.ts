@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	boundAttention,
 	createStatusCommand,
+	type OperationalStatusReport,
 	renderStatusReport,
 	type StatusDependencies,
 } from "./status.js";
@@ -86,21 +87,25 @@ describe("status command", () => {
 		);
 		expect(attention).toHaveLength(20);
 		expect(attention[0]?.message).toHaveLength(500);
-		expect(
-			renderStatusReport({
-				checked_at: "2026-08-14T00:00:00.000Z",
-				ok: false,
-				version: "test",
-				daemon: { state: "not_running" },
-				database: { state: "missing" },
-				runtime: { viewer: "unreachable" },
-				maintenance: { state: "unknown" },
-				semantic_index: { state: "unknown" },
-				raw_events: { state: "unknown", pending: 0 },
-				observer: { state: "unconfigured" },
-				attention: [],
-			}),
-		).toContain("Database:       missing");
+		const report: OperationalStatusReport = {
+			checked_at: "2026-08-14T00:00:00.000Z",
+			ok: false,
+			version: "test",
+			daemon: { state: "not_running" },
+			database: { state: "missing" },
+			runtime: { viewer: "unreachable" },
+			maintenance: { state: "unknown" },
+			semantic_index: { state: "unknown" },
+			raw_events: { state: "unknown", pending: 0 },
+			observer: { state: "unconfigured" },
+			attention: [],
+		};
+		const rendered = renderStatusReport(report);
+		expect(rendered).toContain("Database:       missing");
+		expect(rendered).toContain("Viewer:         unreachable\nMaintenance:");
+		expect(renderStatusReport({ ...report, runtime: { viewer: "running", pid: 42 } })).toContain(
+			"Viewer:         running (pid 42)",
+		);
 
 		const previousDataDir = process.env.CODEMEM_DATA_DIR;
 		delete process.env.CODEMEM_DATA_DIR;

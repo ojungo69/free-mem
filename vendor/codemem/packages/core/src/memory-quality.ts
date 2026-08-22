@@ -383,8 +383,8 @@ function collectKeepReasons(input: {
 	// not bootstrap a substantive finding, while "determined cursor drift" does.
 	const DETERMINERS = "the|a|an|all|our|its|their";
 	const substantiveWeakFinding = new RegExp(
-		String.raw`\b(?:${WEAK_FINDING_VERBS})\s+(?:that\s+)?(?:(?:${DETERMINERS})\s+)?` +
-			String.raw`(?!(?:${NON_SUBSTANTIVE_OBJECTS}|${DETERMINERS})\b)[a-z]{3,}`,
+		`\\b(?:${WEAK_FINDING_VERBS})\\s+(?:that\\s+)?(?:(?:${DETERMINERS})\\s+)?` +
+			`(?!(?:${NON_SUBSTANTIVE_OBJECTS}|${DETERMINERS})\\b)[a-z]{3,}`,
 	);
 	const hasSubstantiveWeakFinding = substantiveWeakFinding.test(text);
 	// Bare "found no blockers / no remaining issues" review telemetry, with no

@@ -153,6 +153,19 @@ describe("export/import", () => {
 		expect(payload.memory_items[0]?.user_prompt_import_key).toBe("prompt-1");
 	});
 
+	it("falls back to the local device id when CODEMEM_DEVICE_ID is whitespace", () => {
+		const previousDeviceId = process.env.CODEMEM_DEVICE_ID;
+		const dbPath = createDbPath("whitespace-device-id");
+		seedSourceDb(dbPath);
+		process.env.CODEMEM_DEVICE_ID = "   ";
+		try {
+			expect(exportMemories({ dbPath, project: "codemem" }).memory_items).toHaveLength(1);
+		} finally {
+			if (previousDeviceId === undefined) delete process.env.CODEMEM_DEVICE_ID;
+			else process.env.CODEMEM_DEVICE_ID = previousDeviceId;
+		}
+	});
+
 	it("exports only locally authorized scopes and tags source scope ids", () => {
 		const dbPath = createDbPath("scoped-export");
 		const db = new Database(dbPath);
@@ -299,6 +312,31 @@ describe("export/import", () => {
 			// Original created_at_epoch values (1) from the source DB are preserved
 			expect(promptEpoch).toBe(1);
 			expect(summaryEpoch).toBe(1);
+		} finally {
+			checkDb.close();
+		}
+	});
+
+	it("normalizes imported path projects and rejects a separator-only project", () => {
+		const payload = minimalPayload("local-default");
+		if (payload.sessions[0]) payload.sessions[0].project = "/";
+		if (payload.memory_items[0]) {
+			payload.memory_items[0].project = "/tmp/imported-project/";
+			delete payload.memory_items[0].import_key;
+		}
+		const dbPath = createDbPath("project-paths");
+		const db = new Database(dbPath);
+		initTestSchema(db);
+		db.close();
+
+		importMemories(payload, { dbPath });
+
+		const checkDb = new Database(dbPath, { readonly: true });
+		try {
+			expect(checkDb.prepare("SELECT project FROM sessions LIMIT 1").pluck().get()).toBeNull();
+			expect(
+				checkDb.prepare("SELECT import_key FROM memory_items LIMIT 1").pluck().get(),
+			).toContain("|imported-project|");
 		} finally {
 			checkDb.close();
 		}

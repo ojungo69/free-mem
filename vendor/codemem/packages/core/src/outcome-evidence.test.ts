@@ -174,6 +174,15 @@ describe("outcome evidence ledger", () => {
 
 	afterEach(() => db.close());
 
+	it("describes positive-integer validation with and without a maximum", () => {
+		expect(() => queryOutcomeEvidence(db, { sessionId: 0 })).toThrow(
+			"sessionId must be a positive integer",
+		);
+		expect(() => queryOutcomeEvidence(db, { limit: 0 })).toThrow(
+			"limit must be a positive integer no greater than 100",
+		);
+	});
+
 	it("records pass, fail, mixed, and unknown deterministic outcomes independently of retrieval", () => {
 		expect(TEST_SCHEMA_BASE_DDL).toContain("CREATE TABLE IF NOT EXISTS `outcome_evidence`");
 		const statuses = ["pass", "fail", "mixed", "unknown"] as const;

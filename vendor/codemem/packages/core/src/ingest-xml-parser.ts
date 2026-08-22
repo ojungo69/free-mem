@@ -1350,8 +1350,7 @@ function isGroundedProsePhrase(value: string, prose: string): boolean {
 		if (
 			/(?:\b(?:non|un|mis)-)$/.test(segment.slice(0, index)) ||
 			negations.some(
-				(negation) =>
-					!new RegExp(String.raw`\b${escapeRegExpLiteral(negation)}\b`).test(comparable),
+				(negation) => !new RegExp(`\\b${escapeRegExpLiteral(negation)}\\b`).test(comparable),
 			)
 		) {
 			continue;
