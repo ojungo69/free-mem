@@ -1,0 +1,27 @@
+vendor/codemem/packages/cli/src/commands/claude-hook-session-state.test.ts
+  s_367c6bb46e1f3b::t_da73e79bacbf30 361
+vendor/codemem/packages/core/src/db.test.ts
+  s_367c6bb46e1f3b::t_588099db299edf 283,289,303,317,333
+vendor/codemem/packages/core/src/distill-draft.test.ts
+  s_367c6bb46e1f3b::t_e082114d042d99 94
+vendor/codemem/packages/core/src/embeddings.test.ts
+  s_367c6bb46e1f3b::t_19985e9f59e546 99,113
+vendor/codemem/packages/core/src/pack.test.ts
+  s_367c6bb46e1f3b::t_dfc14b9db67eb9 421,425,1851,1869,1964,1975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9ef97149cdd768d92f046f1a89d1af73c4bafb59",
+  "prompts": {},
+  "sessions": {
+    "s_367c6bb46e1f3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a024c0-94b9-7d11-90d1-67bd5c8a7731",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
