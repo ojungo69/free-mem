@@ -224,7 +224,7 @@ describe("vector migration", () => {
 
 		await runVectorMigrationPass(db, { batchSize: 10, signal: controller.signal });
 
-		expect(embedSpy.mock.calls).toHaveLength(1);
+		expect(embedSpy).toHaveBeenCalledTimes(1);
 		// Behavioral: only memory 1 got a target-model row; the other 9
 		// stayed on old-model.
 		const coverage = db
