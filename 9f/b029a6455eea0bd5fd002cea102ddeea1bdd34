@@ -1,0 +1,19 @@
+vendor/codemem/packages/cli/src/commands/config.test.ts
+  s_d7c13d0e584450::t_a246def008de7d 9,17,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9fb029a6455eea0bd5fd002cea102ddeea1bdd34",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
