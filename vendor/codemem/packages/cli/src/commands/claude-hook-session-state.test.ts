@@ -358,7 +358,7 @@ describe("claude-hook-session-state", () => {
 				project: null,
 				state: defaultSessionState(),
 			});
-			expect(query.length).toBe(500);
+			expect(query).toHaveLength(500);
 		});
 	});
 

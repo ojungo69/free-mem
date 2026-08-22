@@ -280,13 +280,13 @@ describe("backupOnFirstAccess", () => {
 		const firstBackups = readdirSync(tmpDir).filter(
 			(name) => name.startsWith("mem.sqlite.pre-ts-") && name.endsWith(".bak"),
 		);
-		expect(firstBackups.length).toBe(1);
+		expect(firstBackups).toHaveLength(1);
 
 		backupOnFirstAccess(dbPath);
 		const secondBackups = readdirSync(tmpDir).filter(
 			(name) => name.startsWith("mem.sqlite.pre-ts-") && name.endsWith(".bak"),
 		);
-		expect(secondBackups.length).toBe(1);
+		expect(secondBackups).toHaveLength(1);
 	});
 
 	it("writes marker when a viable pre-ts backup already exists", () => {
@@ -300,7 +300,7 @@ describe("backupOnFirstAccess", () => {
 		const backups = readdirSync(tmpDir).filter(
 			(name) => name.startsWith("mem.sqlite.pre-ts-") && name.endsWith(".bak"),
 		);
-		expect(backups.length).toBe(1);
+		expect(backups).toHaveLength(1);
 	});
 
 	it("skips backup when lock contention is active", () => {
@@ -314,7 +314,7 @@ describe("backupOnFirstAccess", () => {
 		const backups = readdirSync(tmpDir).filter(
 			(name) => name.startsWith("mem.sqlite.pre-ts-") && name.endsWith(".bak"),
 		);
-		expect(backups.length).toBe(0);
+		expect(backups).toHaveLength(0);
 	});
 
 	it("treats stale lock files as recoverable", () => {
@@ -330,7 +330,7 @@ describe("backupOnFirstAccess", () => {
 		const backups = readdirSync(tmpDir).filter(
 			(name) => name.startsWith("mem.sqlite.pre-ts-") && name.endsWith(".bak"),
 		);
-		expect(backups.length).toBe(1);
+		expect(backups).toHaveLength(1);
 	});
 });
 
