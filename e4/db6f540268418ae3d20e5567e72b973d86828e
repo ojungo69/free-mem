@@ -1,0 +1,19 @@
+specs/004-review-residue/research.md
+  s_367c6bb46e1f3b::t_2874fd212f5e49 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e4db6f540268418ae3d20e5567e72b973d86828e",
+  "prompts": {},
+  "sessions": {
+    "s_367c6bb46e1f3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a024c0-94b9-7d11-90d1-67bd5c8a7731",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
