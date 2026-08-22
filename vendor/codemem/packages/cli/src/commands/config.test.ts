@@ -6,7 +6,7 @@ describe("config command", () => {
 		expect(
 			formatWhereHuman({
 				resolved: {
-					path: "/tmp/cli.json",
+					path: "cli.json",
 					source: "cli-flag",
 					reason: "selected by --config",
 					exists: true,
@@ -14,7 +14,7 @@ describe("config command", () => {
 				},
 				fallbackChain: [
 					{
-						path: "/tmp/legacy.json",
+						path: "legacy.json",
 						source: "legacy-global",
 						reason: "lower precedence",
 						exists: false,
@@ -23,7 +23,7 @@ describe("config command", () => {
 				],
 			}),
 		).toBe(
-			">>> [cli-flag] /tmp/cli.json\n       selected by --config (exists)\n    [legacy-global] /tmp/legacy.json\n       lower precedence (missing)",
+			">>> [cli-flag] cli.json\n       selected by --config (exists)\n    [legacy-global] legacy.json\n       lower precedence (missing)",
 		);
 	});
 });
