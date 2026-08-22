@@ -1,0 +1,53 @@
+vendor/codemem/packages/ui/src/lib/dom.ts
+  s_d7c13d0e584450::t_e85c4fa2158c77 36-40
+vendor/codemem/packages/ui/src/lib/format.ts
+  s_d7c13d0e584450::t_da0c91205afb79 136
+vendor/codemem/packages/ui/src/tabs/feed/components/FeedItemCard.tsx
+  s_d7c13d0e584450::t_160b35d0933796 138
+vendor/codemem/packages/ui/src/tabs/feed/data/helpers.ts
+  s_d7c13d0e584450::t_4c4dab74d4c518 79
+vendor/codemem/packages/ui/src/tabs/settings/data/format.ts
+  s_d7c13d0e584450::t_f650ae2cb02f1a 5
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_d7c13d0e584450::t_76a82b213e1c11 1949,6087,6639,6684
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_d7c13d0e584450::t_2b4050ca80842b 1949,6087,6639,6684
+vendor/codemem/packages/cli/src/commands/claude-hook-file-context.ts
+  s_03699a18ee4907::t_6ae542d205a6a6 132,207-209
+vendor/codemem/packages/cli/src/commands/claude-hook-session-state.ts
+  s_03699a18ee4907::t_67ec852ccba391 88
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_03699a18ee4907::t_47eda7440d2562 857
+vendor/codemem/packages/core/src/ingest-pipeline.ts
+  s_03699a18ee4907::t_fa2f71db996e27 556-557
+vendor/codemem/packages/core/src/ingest-prompts.ts
+  s_03699a18ee4907::t_09e8c29a9df3b1 195-199
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_03699a18ee4907::t_e8b5d27f7a776a 338
+vendor/codemem/packages/core/src/viewer-routes/memory.ts
+  s_03699a18ee4907::t_f042ab8fb348e7 94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d67985083c36f4fd127b81d7b321983fc51be00e",
+  "prompts": {},
+  "sessions": {
+    "s_03699a18ee4907": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a02a9f-ac91-70a1-924a-cefb98b2e009",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
