@@ -80,7 +80,7 @@ issue #109 は `harness/evidence/synthetic.ts` の一時 directory 漏れを「t
 変異ゲート（`bash harness/evidence/mutate.sh`）は test 一式を約 99 回回す。`newRoot()` は毎回
 `mkdtempSync(join(tmpdir(), "evroot-"))` を作り、どこでも消さない。measurement:
 
-```
+```console
 $ find /tmp -maxdepth 1 -name 'evroot-*' | wc -l
 273737
 $ find /tmp -maxdepth 1 -mindepth 1 | wc -l
@@ -92,7 +92,7 @@ $ find /tmp -maxdepth 1 -mindepth 1 | wc -l
 
 この状態で `grok-delegate.sh` による実装委譲を起動すると、sandbox の構築段階で落ちた:
 
-```
+```text
 grok exit=1: error: sandbox deny glob could not be enforced on Linux:
 expanding the deny globs ["/tmp/tmp.*/releases"] visited over 2000000 entries
 across their roots (stopped in /tmp at /tmp/evroot-.../backed

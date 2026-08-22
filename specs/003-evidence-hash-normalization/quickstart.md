@@ -92,10 +92,19 @@ test が確認すること:
 載せる形へ変えて解消した。
 
 ```bash
-# `&& echo NG || echo OK` の形にしない。見つかっても grep の非ゼロが `||` に吸われ、
-# 検出したまま 0 で終わる（検査として成立しない）
-! grep -r "/tmp/free-mem-rig" harness/matrix/
-! grep -r "RIG_INJECT_" harness/matrix/
+# grep の 1 だけを「一致なし」として受ける。対象欠落・読み取り失敗（2 以上）は通さない
+assert_no_match() {
+  local pattern=$1 status
+  if grep -r -- "$pattern" harness/matrix/ > /dev/null; then
+    echo "unexpected match: $pattern" >&2
+    return 1
+  else
+    status=$?
+    [ "$status" -eq 1 ] || return "$status"
+  fi
+}
+assert_no_match "/tmp/free-mem-rig"
+assert_no_match "RIG_INJECT_"
 ```
 
 固定文字列の grep では、新しく混ざった実値も、`OK` のような短い一般文字列の偽陽性も扱えない。
