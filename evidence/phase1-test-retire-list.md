@@ -41,7 +41,7 @@ post-T048: `/tmp/free-mem-phase1-post-t048-serial.json` (SHA-256 `e7367709111ae5
 | #89 lock 競合修正 登録済み追加 | 3 |
 | post-#89 | 1,831 |
 
-実測の注記（#89、2026-08-20）: `CI=true pnpm run test:coverage` の実測は total 1,865 / passed 1,862 / todo 3 で、`harness/phase1-test-set-compare.mjs` の `EXPECTED.final = 1,857` より 8 多い。うち 3 件はこの変更で足した `P1-T039-05/06/07` で、上の表と EXPECTED にはその 3 件ぶんだけを反映した。残る 5 件は本変更より前から台帳に載っていない差分で、出所を特定していないため吸収せずここに残す。
+実測の注記（#89、2026-08-22）: 完全な Vitest JSON report は total 1,867 / passed 1,864 / todo 3。#89 の `P1-T039-05/06/07` に加え、baseline 後の #28 (`124817a`) で追加済みだった 10 件を下の post-only exact additions に登録し、`harness/phase1-test-set-compare.mjs` の期待値と一致させた。
 
 機械式は `4,037 - 2,051 + 20 = 2,006`。baseline 内には同一完全修飾名が 3 回現れる parameterized test が 1 組あるため、Set ではなく multiset で数える。retire 一覧も multiplicity を保持する。
 
@@ -223,7 +223,7 @@ packages/ui/src/lib/state.test.ts > Viewer tab routing > keeps canonical tabs ac
 | `P1-T056-04-gitleaks-ruleset-hash` | T056 | ruleset hash が pin・実ロード順・由来・entropy・capture group を反映しない |
 | `P1-T057-01-backup-restore-fault-matrix` | T057 | fresh-dir restore、derived index rebuild、journal durability、legacy split-brain のいずれかが一意に回復しない |
 
-## T058 final post-only exact additions（96）
+## T058 final post-only exact additions（106）
 
 final inventory にだけ存在し、A7 exact 名または事前登録 token では識別されない test。multiset multiplicity を保持する。
 
@@ -295,6 +295,8 @@ final inventory にだけ存在し、A7 exact 名または事前登録 token で
 - packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > applies search filters to get_many reads
 - packages/core/src/daemon-rpc.test.ts > Phase 1 daemon RPC > rejects malformed memory adapter redaction metadata
 - packages/core/src/maintenance.test.ts > maintenance > vacuums a schema-ready database
+- packages/core/src/memory-quality.test.ts > hasSameLineCoOccurrence > matches the pair of regexes it replaced
+- packages/core/src/memory-quality.test.ts > hasSameLineCoOccurrence > does not scale with the length of the line
 - packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-01-receipt-schema
 - packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-02-events-idempotent
 - packages/core/src/mutation-dispatcher.test.ts > Phase 1 mutation dispatcher > P1-T036-02b-event-id-required
@@ -316,6 +318,12 @@ final inventory にだけ存在し、A7 exact 名または事前登録 token で
 - packages/core/src/spool.test.ts > phase 1 spool contract > does not rerun failed user rules on an already degraded event
 - packages/core/src/spool.test.ts > phase 1 spool contract > keeps a degraded spool rescan over healthy adapter metadata
 - packages/core/src/store.test.ts > MemoryStore > remember > persists metadata only when workspace scanner config is invalid
+- packages/core/src/text-trim.test.ts > trimEndWhere > matches the regexes they replace
+- packages/core/src/text-trim.test.ts > trimEndWhere > leaves the middle alone
+- packages/core/src/text-trim.test.ts > trimEndWhere > treats surrogate pairs as one code point, like the /u regexes
+- packages/core/src/text-trim.test.ts > trimEndWhere > does not scale with the length of the trimmed run
+- packages/core/src/text-trim.test.ts > ReDoS を外した正規表現の等価性 > ファイル名検出は元の正規表現と同じ判定になる
+- packages/core/src/text-trim.test.ts > ReDoS を外した正規表現の等価性 > フェンス剥がしは元の正規表現と同じ結果になる
 - packages/core/src/vectors.test.ts > memory_vectors bootstrap on fresh databases > creates memory_vectors when explicitly migrating a fresh database
 - packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > persists degraded remember diagnostics across daemon restart
 - packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > redacts project policy matches before the daemon can persist them
@@ -323,6 +331,8 @@ final inventory にだけ存在し、A7 exact 名または事前登録 token で
 - packages/mcp-server/src/rpc-client.test.ts > MCP daemon RPC client > routes backup create, list, and verify through the daemon
 - packages/mcp-server/src/server.test.ts > Phase 1 MCP stdio RPC surface > exports a side-effect-free factory from the package root
 - packages/mcp-server/src/server.test.ts > Phase 1 MCP stdio RPC surface > maps every read tool to its fixed daemon endpoint and mode
+- packages/ui/src/tabs/feed/data/body-renderers.test.ts > isLabeledFact > matches the regex it replaced
+- packages/ui/src/tabs/feed/data/body-renderers.test.ts > isLabeledFact > does not scale with the length of the line
 
 ## T043 retired fully qualified names（61）
 

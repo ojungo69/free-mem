@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 const EXPECTED = {
 	baseline: 4_037,
 	retired: 2_376,
-	additions: 196,
-	final: 1_857,
-	passed: 1_854,
+	additions: 206,
+	final: 1_867,
+	passed: 1_864,
 	todo: 3,
 	tokens: 86,
 };
