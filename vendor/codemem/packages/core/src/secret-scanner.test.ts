@@ -77,7 +77,7 @@ describe("SecretScanner", () => {
 		it("redacts Google API keys", () => {
 			// 39 chars total: AIza + 35
 			const k = ["AI", "za", "SyA-", "BCDEFGHIJKLMNOPQRSTUVWXY", "0123456"].join("");
-			expect(k.length).toBe(39);
+			expect(k).toHaveLength(39);
 			const r = scanner.scan(`gkey=${k}`);
 			expect(r.redacted).toContain("[REDACTED:google_api_key]");
 		});
@@ -284,7 +284,7 @@ describe("SecretScanner", () => {
 		it("handles empty and non-string inputs gracefully", () => {
 			expect(scanner.scan("").redacted).toBe("");
 			// @ts-expect-error — guarding runtime use
-			expect(scanner.scan(null).redacted).toBe(null);
+			expect(scanner.scan(null).redacted).toBeNull();
 		});
 
 		it("counts multiple detections of the same kind", () => {
