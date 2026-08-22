@@ -96,7 +96,7 @@ describe("serializeFloat32", () => {
 		const vec = new Float32Array([1.0, 2.0, 3.0]);
 		const buf = serializeFloat32(vec);
 		expect(buf).toBeInstanceOf(Buffer);
-		expect(buf.length).toBe(12);
+		expect(buf).toHaveLength(12);
 	});
 
 	it("round-trips through DataView", () => {
@@ -110,6 +110,6 @@ describe("serializeFloat32", () => {
 
 	it("handles empty vector", () => {
 		const buf = serializeFloat32(new Float32Array(0));
-		expect(buf.length).toBe(0);
+		expect(buf).toHaveLength(0);
 	});
 });

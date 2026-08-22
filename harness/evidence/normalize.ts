@@ -230,9 +230,17 @@ export function isRealInstant(value: string): boolean {
 const sha256 = (data: Uint8Array | string): string =>
   createHash("sha256").update(data).digest("hex");
 
+/**
+ * 正規化済み抜粋の SHA-256。引数は normalizeCapture の出力でなければならない。
+ * 正規化結果を既に持つ呼び出し側が同じ byte 列を二度処理しないための入口。
+ */
+export function digestNormalized(normalized: string): string {
+  return sha256(Buffer.from(normalized, "utf8"));
+}
+
 /** 正規化抜粋の SHA-256。再取得しても変わらない側 */
 export function digestCapture(bytes: Uint8Array): string {
-  return sha256(Buffer.from(normalizeCapture(bytes), "utf8"));
+  return digestNormalized(normalizeCapture(bytes));
 }
 
 /** 生 byte の SHA-256。「この記録そのもの」への結び付けに使う */

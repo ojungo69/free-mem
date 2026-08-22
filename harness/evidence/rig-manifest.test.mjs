@@ -104,6 +104,37 @@ test("the rig writes a manifest and imports the capture byte-identically", () =>
   assert.match(ref.manifestHash, /^[a-f0-9]{64}$/);
 });
 
+test("the rig reports usage and exit 2 for a wrong argument count", () => {
+  // guard は with_lock より前、RIG_BASE を見る前に降りる。scratch tree も setup も要らない
+  // （mutate.sh はこの file を 145 回以上回すので、1 件あたりの複製が丸ごと乗る）
+  const cases = [
+    [["import"], /usage: rig\.sh import <cli> <label> <scenario-id>/],
+    [["import", "claude"], /usage: rig\.sh import <cli> <label> <scenario-id>/],
+    [["import", "claude", "l", "s", "extra"], /usage: rig\.sh import <cli> <label> <scenario-id>/],
+    [["claude-run"], /usage: rig\.sh claude-run <label> <prompt>/],
+    [["codex-run"], /usage: rig\.sh codex-run <label> <prompt>/],
+  ];
+  for (const [argv, usage] of cases) {
+    const result = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), ...argv], { encoding: "utf8" });
+    assert.equal(result.status, 2, `${argv.join(" ")}: ${result.stderr}`);
+    assert.match(result.stderr, usage, argv.join(" "));
+  }
+});
+
+// 落とす側の case だけでは件数の guard が `-eq 2` でも `-ge 2` でも同じ結果になる。header は
+// `[claude 追加引数...]` を約束し、実装は shift 2 のあと `"$@"` を測定対象へ渡すので、**通す側**も
+// 測る。締めすぎた guard は、この test が無いと自分の suite からは緑のまま漏れる
+test("the rig accepts trailing arguments after <label> <prompt>", () => {
+  // 不正な label で require_label に降ろす。件数の guard を越えたことだけを見たいので、
+  // lock も測定対象の CLI も踏まない（どちらも RIG_BASE の setup が要る）
+  for (const sub of ["claude-run", "codex-run"]) {
+    const argv = [sub, "bad/label", "prompt", "--extra"];
+    const result = spawnSync("bash", [join(HARNESS, "rig", "rig.sh"), ...argv], { encoding: "utf8" });
+    assert.equal(result.status, 2, `${argv.join(" ")}: ${result.stderr}`);
+    assert.match(result.stderr, /label must be a plain file-name token/, argv.join(" "));
+  }
+});
+
 test("a rig-produced manifest promotes the cell to real-cli-e2e", () => {
   const { tmp, ref, manifest } = rigRun();
   const dir = join(tmp, "harness", "fixtures", "rigtest");
@@ -513,10 +544,10 @@ test("the version probe runs in the isolated environment, not the caller's", () 
   // 作業場所も見る: CLI は cwd から上へ設定を探すので、呼び出し元に居るだけで実設定に届く
   const { base } = rigRun({ skipImport: true });
   const seen = readFileSync(join(base, "capture", `claude-${LABEL}.version-probe.jsonl.version-env`), "utf8");
-  assert.match(seen, new RegExp(`HOME=${base}/version-state/home\n`), `版の問い合わせが隔離 HOME で走っていない: ${seen}`);
-  assert.match(seen, new RegExp(`CLAUDE_CONFIG_DIR=${base}/version-state/claude-config\n`), seen);
+  assert.ok(seen.includes(`HOME=${join(base, "version-state", "home")}\n`), `版の問い合わせが隔離 HOME で走っていない: ${seen}`);
+  assert.ok(seen.includes(`CLAUDE_CONFIG_DIR=${join(base, "version-state", "claude-config")}\n`), seen);
   assert.match(seen, /INTERNAL=1\n/, seen);
-  assert.match(seen, new RegExp(`PWD=${base}/version-state/workspace\n`), `版の問い合わせが呼び出し元の作業場所で走っている: ${seen}`);
+  assert.ok(seen.includes(`PWD=${join(base, "version-state", "workspace")}\n`), `版の問い合わせが呼び出し元の作業場所で走っている: ${seen}`);
   // HOME を差し替えても /etc/gitconfig は読まれる。測定対象が起動する git が host の
   // core.hooksPath や includes を拾うと、隔離の外の設定が記録を変える
   assert.match(seen, /GITSYS=1\n/, `測定対象の環境で system の git 設定が遮断されていない: ${seen}`);

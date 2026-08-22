@@ -91,7 +91,7 @@ describe("distill draft", () => {
 		expect(second.text).toContain("- Rule one");
 		expect(second.text).toContain("- Rule two");
 		// Only one managed block.
-		expect(second.text.split(DISTILL_BLOCK_BEGIN).length).toBe(2);
+		expect(second.text.split(DISTILL_BLOCK_BEGIN)).toHaveLength(2);
 
 		const dupe = applyDistillRule(second.text, "Rule two");
 		expect(dupe.changed).toBe(false);

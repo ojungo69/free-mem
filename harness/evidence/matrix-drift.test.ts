@@ -6,12 +6,12 @@
 // ここでは repo の I-JSON parser で読むので、重複キーはその場で棄却される。
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { decodeUtf8, parseIJson } from "../schema/jcs.ts";
+import { newRoot } from "./scratch.ts";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const CLIS = ["claude", "codex"] as const;
@@ -30,13 +30,13 @@ function assertGeneratedAt(value: unknown, cli: string): string {
 }
 
 /** 出荷物は byte で比べる。構造だけ比べると、書き方の違いに何かを隠せる */
-function readMatrixText(path: string, cli: string): { text: string; value: Record<string, unknown> } {
+function readMatrixText(path: string): { text: string; value: Record<string, unknown> } {
   const text = decodeUtf8(readFileSync(path), path);
   return { text, value: parseIJson<Record<string, unknown>>(text) };
 }
 
 const assertNoDrift = (cli: (typeof CLIS)[number]): void => {
-  const out = join(mkdtempSync(join(tmpdir(), "matrix-drift-")), `${cli}.json`);
+  const out = join(newRoot("matrix-drift-"), `${cli}.json`);
   const run = spawnSync(
     process.execPath,
     [
@@ -49,8 +49,8 @@ const assertNoDrift = (cli: (typeof CLIS)[number]): void => {
   );
   assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
 
-  const shipped = readMatrixText(join(repoRoot, "harness", "matrix", `${cli}.json`), cli);
-  const fresh = readMatrixText(out, cli);
+  const shipped = readMatrixText(join(repoRoot, "harness", "matrix", `${cli}.json`));
+  const fresh = readMatrixText(out);
   const shippedAt = assertGeneratedAt(shipped.value.generatedAt, cli);
   assertGeneratedAt(fresh.value.generatedAt, cli);
 

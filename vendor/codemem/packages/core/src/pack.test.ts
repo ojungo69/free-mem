@@ -418,11 +418,11 @@ describe("buildMemoryPack", () => {
 	it("returns empty pack for empty database", () => {
 		const pack = buildMemoryPack(store, "anything");
 
-		expect(pack.items.length).toBe(0);
+		expect(pack.items).toHaveLength(0);
 		expect(pack.pack_text).toContain("## Summary");
 		expect(pack.pack_text).toContain("## Timeline");
 		expect(pack.pack_text).toContain("## Observations");
-		expect(pack.item_ids.length).toBe(0);
+		expect(pack.item_ids).toHaveLength(0);
 
 		expect(pack.metrics.total_items).toBe(0);
 		expect(pack.metrics.fallback_used).toBe(true);
@@ -1848,7 +1848,7 @@ describe("buildMemoryPack compact mode", () => {
 		const detailedTitles = ["Top item alpha", "Top item beta"].filter((title) =>
 			detailSection.includes(title),
 		);
-		expect(detailedTitles.length).toBe(2);
+		expect(detailedTitles).toHaveLength(2);
 
 		// Third item body should NOT appear in detail (only in index)
 		expect(detailSection).not.toContain("Gamma body content");
@@ -1866,7 +1866,7 @@ describe("buildMemoryPack compact mode", () => {
 
 		// Same items selected, same relevance order
 		expect(compact.item_ids).toEqual(full.item_ids);
-		expect(compact.items.length).toBe(full.items.length);
+		expect(compact.items).toHaveLength(full.items.length);
 	});
 
 	it("compact pack uses fewer tokens than full pack for the same items", () => {
@@ -1961,7 +1961,7 @@ describe("buildMemoryPack compact mode", () => {
 		const detailSection = pack.pack_text.split("## Detail")[1] ?? "";
 		// Count how many items appear with body content in detail
 		const detailMatches = detailSection.match(/\[\d+\] \(/g) ?? [];
-		expect(detailMatches.length).toBe(3);
+		expect(detailMatches).toHaveLength(3);
 	});
 
 	it("handles empty database in compact mode", () => {
@@ -1972,7 +1972,7 @@ describe("buildMemoryPack compact mode", () => {
 		expect(pack.pack_text).toContain("## Index");
 		expect(pack.pack_text).toContain("## Detail");
 		expect(pack.pack_text).toContain("memory_get");
-		expect(pack.items.length).toBe(0);
+		expect(pack.items).toHaveLength(0);
 	});
 
 	it("does not keep compressed IDs when the representative is dropped by token budget", () => {
