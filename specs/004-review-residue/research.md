@@ -7,7 +7,7 @@
 この文書は、実装に入る前に **実際に走らせて確かめた** 環境側の事実だけを記録する。
 issue #109 の各指摘そのものの裏取りは `spec.md` の FR と `tasks.md` に落とす。
 
-## 1. ベースラインは green（実測 2026-08-20）
+## 1. ベースライン検査の実測（開始 2026-08-20、full gate 2026-08-22）
 
 worktree を `origin/main` から作り、CI の harness job と同じ順で回した結果:
 
@@ -19,7 +19,7 @@ worktree を `origin/main` から作り、CI の harness job と同じ順で回�
 | evidence verification tests | `node --experimental-strip-types --test harness/evidence/*.test.ts harness/evidence/rig-manifest.test.mjs` | 167 pass / 0 fail |
 | DCO gate self-test | `node --test harness/dco-check.test.mjs` | 0 fail |
 | matrix drift | `node --experimental-strip-types --test harness/evidence/matrix-drift.test.ts` | 2 pass / 0 fail |
-| evidence 変異ゲート | `bash harness/evidence/mutate.sh` | 実行中（144 件。別途記録） |
+| evidence 変異ゲート | `bash harness/evidence/mutate.sh` | 初回は実行中。後続実測で 144 / 144、survivor 0（local・push CI・PR CI） |
 
 Node は `v24.16.0`（CI の `node-version: 24.16.0` と一致）。
 
@@ -71,6 +71,7 @@ Node は `v24.16.0`（CI の `node-version: 24.16.0` と一致）。
 この feature は `harness/evidence/*`・`harness/assemble.ts`・`harness/schema/*`・
 `harness/rig/*`・`.github/workflows/ci.yml`・`harness/matrix/README.md`・
 `specs/003-evidence-hash-normalization/*`・`harness/contract-hashes.json` を触る。
+調査記録として本ファイル `specs/004-review-residue/research.md` も対象に含む。
 
 ## 6. `synthetic-tmp-cleanup` は nit ではなく実害（2026-08-20 実測）
 
