@@ -156,10 +156,30 @@ describe("export/import", () => {
 	it("falls back to the local device id when CODEMEM_DEVICE_ID is whitespace", () => {
 		const previousDeviceId = process.env.CODEMEM_DEVICE_ID;
 		const dbPath = createDbPath("whitespace-device-id");
-		seedSourceDb(dbPath);
+		const db = new Database(dbPath);
+		try {
+			initTestSchema(db);
+			grantScope(db, "authorized-team");
+			db.prepare(
+				`INSERT INTO sessions(id, started_at, cwd, project, user, tool_version, metadata_json, import_key)
+				 VALUES (1, '2026-03-01T00:00:00Z', '/tmp/visible', 'visible', 'test', 'test', '{}', 'session-visible')`,
+			).run();
+			db.prepare(
+				`INSERT INTO memory_items(
+					id, session_id, kind, title, body_text, active, created_at, updated_at, metadata_json, import_key, scope_id
+				 ) VALUES (100, 1, 'discovery', 'Visible through local fallback', 'visible', 1, '2026-03-01T00:00:01Z', '2026-03-01T00:00:01Z', '{}', 'memory-visible', 'authorized-team')`,
+			).run();
+		} finally {
+			db.close();
+		}
 		process.env.CODEMEM_DEVICE_ID = "   ";
 		try {
-			expect(exportMemories({ dbPath, project: "codemem" }).memory_items).toHaveLength(1);
+			const payload = exportMemories({ dbPath, allProjects: true });
+			// Whitespace must resolve to device "local"; otherwise its team membership
+			// cannot authorize this scoped memory and the export becomes empty.
+			expect(payload.memory_items.map((memory) => memory.title)).toEqual([
+				"Visible through local fallback",
+			]);
 		} finally {
 			if (previousDeviceId === undefined) delete process.env.CODEMEM_DEVICE_ID;
 			else process.env.CODEMEM_DEVICE_ID = previousDeviceId;
