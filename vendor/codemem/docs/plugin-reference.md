@@ -94,6 +94,11 @@ checkout.
 
 Codex hooks use the same standalone runtime, daemon RPC, redaction, and bounded atomic spool as Claude. Hook clients never open SQLite. The Codex outer watchdog is 5 seconds.
 
+When either hook runtime falls back to the spool, `ENOENT` from post-publication
+or stale-lock revalidation is treated as contention and retried within the
+bounded lock deadline. Other errors from those revalidation reads remain spool
+failures.
+
 ```bash
 printf '%s\n' '{"hook_event_name":"SessionStart","session_id":"codex-1","cwd":"/tmp/demo"}' | node packages/cli/dist/index.js codex-hook-ingest
 ```

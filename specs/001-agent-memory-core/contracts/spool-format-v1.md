@@ -38,7 +38,7 @@ The daemon's own writer lock (`<controlDir>/lock.db`, a SQLite `BEGIN IMMEDIATE`
 
 ### 1.1 Directory permission enforcement
 
-`ensureSpoolDirectories()` calls `ensurePrivateDirectory()` on `rootDir`, `tmpDir`, `readyDir`, and `quarantineDir` every time the spool is touched (`packages/core/src/spool.ts:184-189`), and it is invoked on **every** lock acquisition (`acquireSpoolLock` → `ensureSpoolDirectories`, `packages/core/src/spool.ts:294-295`), i.e. on every `spoolMutation`, every sweep, `readSpoolStatus`, and `quarantineSpoolEntry` call.
+`ensureSpoolDirectories()` calls `ensurePrivateDirectory()` on `rootDir`, `tmpDir`, `readyDir`, and `quarantineDir` every time the spool is touched (`packages/core/src/spool.ts:184-189`), and it is invoked on **every** lock acquisition (`acquireSpoolLock` → `ensureSpoolDirectories`, `packages/core/src/spool.ts:303`), i.e. on every `spoolMutation`, every sweep, `readSpoolStatus`, and `quarantineSpoolEntry` call.
 
 `ensurePrivateDirectory(path)` (`packages/core/src/storage-platform.ts:39-61`), on every call:
 
@@ -55,7 +55,7 @@ The daemon's own writer lock (`<controlDir>/lock.db`, a SQLite `BEGIN IMMEDIATE`
 | `statfsSync` magic number | NFS, SMB/CIFS/SMB2, 9P, FUSE-backed (sshfs/rclone/gvfs/s3fs), virtiofs, Ceph, kAFS, AFS, Lustre, GFS2, OCFS2 (`storage-platform.ts:132-146`) |
 | `/proc/self/mountinfo` fstype string | `nfs`, `nfs4`, `cifs`, `smb3`, `smbfs`, `9p`, `drvfs`, `virtiofs`, `ceph`, `afs`, `lustre`, `gfs2`, `ocfs2`, and any fstype starting with `fuse` (`storage-platform.ts:148-172`) |
 
-Individual spool files are created `0o600`: the lock owner file via `openSync(lockPath, "wx", 0o600)` (`spool.ts:307`), the drop counter via `writeFileSync(..., { mode: 0o600 })` (`spool.ts:401-405`), and ready/tmp entry files via `writeFileSync(..., { mode: 0o600 })` (`spool.ts:929-934`).
+Individual spool files are created `0o600`: the lock owner file via `openSync(lockPath, "wx", 0o600)` (`spool.ts:315`), the drop counter via `writeFileSync(..., { mode: 0o600 })` (`spool.ts:401-405`), and ready/tmp entry files via `writeFileSync(..., { mode: 0o600 })` (`spool.ts:929-934`).
 
 ---
 
@@ -283,7 +283,7 @@ If `incrementDrop` itself throws (e.g. the disk is so full that even the fixed 4
 
 ### 9.1 Lock file protocol
 
-The spool lock is a plain file at `spool/lock` (not a `flock`/`fcntl`-style advisory lock) containing a JSON owner record, created with `O_CREAT|O_EXCL` semantics (`openSync(path, "wx", 0o600)`, `spool.ts:307`):
+The spool lock is a plain file at `spool/lock` (not a `flock`/`fcntl`-style advisory lock) containing a JSON owner record, created with `O_CREAT|O_EXCL` semantics (`openSync(path, "wx", 0o600)`, `spool.ts:315`):
 
 ```ts
 type SpoolLockOwner = {
@@ -294,15 +294,15 @@ type SpoolLockOwner = {
   nonce: string;        // randomUUID(), fresh per acquisition attempt
 };
 ```
-Evidence: `spool.ts:191-197` (type), `spool.ts:296-303` (construction), `packages/core/src/storage-platform.ts:240-265` (`readProcessIdentity`, producing `startTime`/`fingerprint`).
+Evidence: `spool.ts:191-197` (type), `spool.ts:305-311` (construction), `packages/core/src/storage-platform.ts:240-265` (`readProcessIdentity`, producing `startTime`/`fingerprint`).
 
-Acquisition (`acquireSpoolLock`, `spool.ts:289-389`):
+Acquisition (`acquireSpoolLock`, `spool.ts:297-389`):
 
 1. `ensureSpoolDirectories(layout)` (§1.1).
 2. Attempt `openSync(lockPath, "wx", 0o600)`.
-3. On success: write the JSON owner record (`+ "\n"`), `fsyncSync` the fd, `lstat` the path back and re-verify device/inode and owner-content identity to detect a replace-during-init race (`spool.ts:318-342`), then `fsyncPath(rootDir)` to durably record directory entry creation. If that `lstat` fails with `ENOENT`, the path is gone because a waiting writer already reclaimed this still-uninitialized lock; that is the same race, so it is raised as `EEXIST` and retried rather than surfacing as an fs error (`spool.ts:319-331`). Any other `lstat` error propagates unchanged.
+3. On success: write the JSON owner record (`+ "\n"`), `fsyncSync` the fd, `lstat` the path back and re-verify device/inode and owner-content identity to detect a replace-during-init race (`spool.ts:318-342`), then `fsyncPath(rootDir)` to durably record directory entry creation. If that `lstat` fails with `ENOENT`, the path is gone because a waiting writer already reclaimed this still-uninitialized lock; that is the same race, so it is raised as `EEXIST` and retried rather than surfacing as an fs error (`spool.ts:326-335`). Any other `lstat` error propagates unchanged.
 4. On `EEXIST`: call `removeStaleLock(lockPath)` (below), then, if `expiresAt - now <= 0`, throw `SpoolLockTimeoutError`; otherwise sleep `min(LOCK_WAIT_MS, remaining)` and retry.
-5. `LOCK_WAIT_MS = 5` — the poll sleep uses a synchronous `Atomics.wait` on a dedicated `SharedArrayBuffer`-backed `Int32Array` (`spool.ts:48-49,278-280`).
+5. `LOCK_WAIT_MS = 5` — the poll sleep uses a synchronous `Atomics.wait` on a dedicated `SharedArrayBuffer`-backed `Int32Array` (`spool.ts:48-49,286-288`).
 
 `removeStaleLock(lockPath)` (`spool.ts:242-276`):
 
@@ -325,7 +325,7 @@ Release (`SpoolLockHandle.close()`, `spool.ts:344-365`): re-verifies device/inod
 | `LOCK_WAIT_MS` (poll interval) | 5 | `spool.ts:48` |
 | `LOCK_OWNER_MAX_BYTES` | 2048 (owner file larger than this, or a symlink, is treated as absent/unowned) | `spool.ts:46,202` |
 
-`acquireSpoolLock` validates its `deadlineMs` argument via `normalizedDeadline` as the very first step, before any I/O (`spool.ts:293`) — a direct caller of `acquireSpoolLock` observes a synchronous throw on an out-of-range value. `spoolMutation`, however, calls `acquireSpoolLock` inside its own `try { … } catch (error) { … }` block (`spool.ts:848-866`), and that catch is a blanket catch: only `SpoolLockTimeoutError` is special-cased (`spool.ts:852-855`). A deadline-validation `Error` is not that type, so it falls through to the generic branch (`spool.ts:856-866`), and `spoolMutation` *returns* `{status: "dropped", quotaClass: entry.quotaClass, reason: "io_error"}` instead of throwing to its own caller. Because this failure occurs while *acquiring* the lock (before the lock is held), the drop counter is **not** incremented for it (§7.2). A caller passing an invalid `lockDeadlineMs` to `spoolMutation` therefore observes an ordinary dropped-write result indistinguishable from a real lock-acquisition I/O failure, not a synchronous exception. On a genuine lock-acquisition timeout (a valid deadline that simply expires), `spoolMutation` returns `{status: "dropped", reason: "lock_timeout"}`, likewise without incrementing the drop counter (§7.2).
+`acquireSpoolLock` validates its `deadlineMs` argument via `normalizedDeadline` as the very first step, before any I/O (`spool.ts:301`) — a direct caller of `acquireSpoolLock` observes a synchronous throw on an out-of-range value. `spoolMutation`, however, calls `acquireSpoolLock` inside its own `try { … } catch (error) { … }` block (`spool.ts:848-866`), and that catch is a blanket catch: only `SpoolLockTimeoutError` is special-cased (`spool.ts:852-855`). A deadline-validation `Error` is not that type, so it falls through to the generic branch (`spool.ts:856-866`), and `spoolMutation` *returns* `{status: "dropped", quotaClass: entry.quotaClass, reason: "io_error"}` instead of throwing to its own caller. Because this failure occurs while *acquiring* the lock (before the lock is held), the drop counter is **not** incremented for it (§7.2). A caller passing an invalid `lockDeadlineMs` to `spoolMutation` therefore observes an ordinary dropped-write result indistinguishable from a real lock-acquisition I/O failure, not a synchronous exception. On a genuine lock-acquisition timeout (a valid deadline that simply expires), `spoolMutation` returns `{status: "dropped", reason: "lock_timeout"}`, likewise without incrementing the drop counter (§7.2).
 
 ---
 
@@ -346,7 +346,7 @@ const sweepSpool = () => {
 
 - **Skip conditions** (checked at the top of every invocation, before acquiring the spool lock): `jobs.isMaintenanceMode()` is true (`packages/core/src/daemon-jobs.ts:531-533`, flag flipped around maintenance-mode job execution), **or** `rpc.restoreState.active` is true (set for the duration of a backup restore, `packages/core/src/daemon-rpc.ts:513-522`). Either condition causes the **entire sweep to no-op** for that tick — it is not a partial skip of only affected entries.
 - **Scheduling**: `sweepSpool()` is called once synchronously at daemon startup, after draining the legacy hook spools (`daemon-lifecycle.ts:358`), and then on a `setInterval(sweepSpool, 1_000)` (1000 ms) that is immediately `.unref()`'d so it cannot keep the Node process alive on its own (`daemon-lifecycle.ts:362-363`). The timer is cleared on daemon shutdown (`releaseResources`, `daemon-lifecycle.ts:204`).
-- A thrown error from `importReadySpoolEntries` (including a failure to acquire the spool lock, which `importReadySpoolEntries` itself catches and logs rather than propagating, `spool.ts:1012-1027`) is caught at the `sweepSpool` level and only logged; ready entries are retained for the next tick.
+- `importReadySpoolEntries` catches and logs lock-acquisition failures at both acquisition sites (`spool.ts:1012-1017,1029-1035`) and returns, so those failures do not propagate to `sweepSpool`. Any other error that escapes the importer is caught and logged by `sweepSpool`; ready entries are retained for the next tick.
 
 ---
 

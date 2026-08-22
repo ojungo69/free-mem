@@ -87,6 +87,11 @@ Restart Codex and approve the one-time hook trust prompt.
 
 Codex hooks deliver redacted normalized events over daemon RPC and use the shared bounded spool when RPC is unavailable. `UserPromptSubmit` delivers the prompt while requesting memory context for `additionalContext`; disable injection with `CODEMEM_INJECT_CONTEXT=0`. See [docs/plugin-reference.md](docs/plugin-reference.md) for details and troubleshooting.
 
+When either hook runtime falls back to the spool, `ENOENT` from post-publication
+or stale-lock revalidation is treated as contention and retried within the
+bounded lock deadline. Other errors from those revalidation reads remain spool
+failures.
+
 > Migrating from `opencode-mem`? See [docs/rename-migration.md](docs/rename-migration.md).
 
 ## How it works
