@@ -1,0 +1,19 @@
+vendor/codemem/packages/core/src/extraction-replay.test.ts
+  s_d7c13d0e584450::t_f6486f2426b4f1 796-800
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "dc5bee9754ba40d9701773de473a72a16d58c23f",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
