@@ -13,6 +13,8 @@ import {
 } from "./scope-resolution.js";
 import type { MemoryFilters } from "./types.js";
 
+export type FilterStringInput = string | string[] | undefined | null;
+
 export interface OwnershipFilterContext {
 	actorId: string;
 	deviceId: string;
@@ -46,7 +48,7 @@ export interface FilterResult {
  * Normalize a filter value that may be a single string or an array of strings
  * into a clean, non-empty array of trimmed strings.
  */
-export function normalizeFilterStrings(value: string | string[] | undefined | null): string[] {
+export function normalizeFilterStrings(value: FilterStringInput): string[] {
 	if (value == null) return [];
 	const items = Array.isArray(value) ? value : [value];
 	const seen = new Set<string>();
@@ -60,7 +62,7 @@ export function normalizeFilterStrings(value: string | string[] | undefined | nu
 	return normalized;
 }
 
-export function normalizeWorkspaceKinds(value: string | string[] | undefined | null): string[] {
+export function normalizeWorkspaceKinds(value: FilterStringInput): string[] {
 	return normalizeFilterStrings(value)
 		.map((raw) => raw.toLowerCase())
 		.filter(
@@ -68,13 +70,13 @@ export function normalizeWorkspaceKinds(value: string | string[] | undefined | n
 		);
 }
 
-export function normalizeVisibilityValues(value: string | string[] | undefined | null): string[] {
+export function normalizeVisibilityValues(value: FilterStringInput): string[] {
 	return normalizeFilterStrings(value)
 		.map((raw) => raw.toLowerCase())
 		.filter((raw, idx, arr) => (raw === "private" || raw === "shared") && arr.indexOf(raw) === idx);
 }
 
-export function normalizeTrustStates(value: string | string[] | undefined | null): string[] {
+export function normalizeTrustStates(value: FilterStringInput): string[] {
 	return normalizeFilterStrings(value)
 		.map((raw) => raw.toLowerCase())
 		.filter(

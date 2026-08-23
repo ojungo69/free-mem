@@ -76,6 +76,12 @@ const SECRET_BEARING_KEY =
  * more-general ones — see the OpenAI rule, which uses a negative lookahead to
  * avoid swallowing Anthropic keys regardless of order.
  */
+// Each rule's `origin`, `kind`, `pattern.source`, `pattern.flags`, `minEntropy`
+// and `redactGroup` are hashed into the `secret_rules_version` stamped on
+// redacted events, so any edit here — an equivalent pattern rewrite
+// (`[A-Za-z0-9_]` -> `\w`, `\d` for `[0-9]`, dropping a range that /i makes
+// redundant) or a retuned entropy threshold — rotates that digest and splits
+// provenance across stored events. Change a rule only to change what it catches.
 const LOCAL_RULES: SecretRule[] = [
 	// AWS — both halves of an access key pair
 	{ kind: "aws_access_key_id", pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },

@@ -250,16 +250,18 @@ function retrievalSurfaceAttempt(
 	const paths = sanitizeRepositoryPaths(repositoryPaths);
 	const sanitizedQuery = query ? sanitizeSearchQuery(query).clean_query : "";
 	const queryIdentity = sanitizedQuery ? hashRetrievalQuery(sanitizedQuery) : null;
+	let scopeId: ReturnType<typeof safeIdentity>;
+	if (Array.isArray(filters?.scope_id)) {
+		scopeId = filters.scope_id.length === 1 ? safeIdentity(filters.scope_id[0] ?? null) : null;
+	} else {
+		scopeId = safeIdentity(filters?.scope_id ?? null);
+	}
 	return {
 		...attempt,
 		candidateCount: candidateCount ?? candidateIds.length,
 		selectedCount: selectedIds.length,
 		project: safeIdentity(filters?.project ?? null),
-		scopeId: Array.isArray(filters?.scope_id)
-			? filters.scope_id.length === 1
-				? safeIdentity(filters.scope_id[0] ?? null)
-				: null
-			: safeIdentity(filters?.scope_id ?? null),
+		scopeId,
 		workingSetFileCount: paths?.length ?? 0,
 		workingSetFiles: paths,
 		queryHashSha256: queryIdentity?.queryHashSha256 ?? null,

@@ -1729,6 +1729,47 @@ describe("retrieval attribution ledger", () => {
 		).toBe(true);
 	});
 
+	it("records a scope identity only for scalar or single-item scope filters", () => {
+		const cases: Array<{
+			scopeId: string | Array<string | null>;
+			expected: string | null;
+		}> = [
+			{ scopeId: "scalar-scope", expected: "scalar-scope" },
+			{ scopeId: ["array-scope"], expected: "array-scope" },
+			{ scopeId: ["first", "second"], expected: null },
+			{ scopeId: [], expected: null },
+			{ scopeId: [null], expected: null },
+			// Two independent guards drop an absolute path here: safeIdentity() for
+			// the scopeId column and sanitizeRetrievalFilters() for filterSummary.
+			// The loop asserts both, so neither can be removed unnoticed.
+			{ scopeId: "/home/user/private-repo", expected: null },
+			{ scopeId: ["C:\\Users\\user\\private-repo"], expected: null },
+		];
+
+		for (const [index, { scopeId, expected }] of cases.entries()) {
+			const outcome = recordRetrievalSurface(db, {
+				attemptId: attemptId(400 + index),
+				surface: "mcp_search",
+				trigger: "explicit",
+				startedAt: STARTED_AT,
+				retrievalStatus: "no_results",
+				deliveryStatus: "not_attempted",
+				candidateIds: [],
+				selectedIds: [],
+				recorderVersion: "test",
+				source: "mcp",
+				filters: { scope_id: scopeId } as unknown as MemoryFilters,
+			});
+
+			expect(outcome.ok).toBe(true);
+			if (!outcome.ok) throw new Error(outcome.errorCode);
+			expect(outcome.value.attempt.scopeId).toBe(expected);
+			expect(JSON.stringify(outcome.value.attempt.filterSummary ?? {})).not.toContain(
+				"private-repo",
+			);
+		}
+	});
+
 	it("drops filter strings outside the retrieval ledger bounds", () => {
 		expect(
 			sanitizeRetrievalFilters({

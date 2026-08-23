@@ -13,13 +13,15 @@ function items(result: Record<string, unknown>): { items: unknown[] } {
 export function registerSearchTools(server: McpServer, context: ToolRegistrationContext): void {
 	const { client, defaultProject, requestScope } = context;
 
-	server.tool(
+	server.registerTool(
 		"memory_search",
-		"Search memories by text query. Returns full body text for each match.",
 		{
-			query: z.string().min(1).max(16_384).describe("Search query"),
-			limit: z.number().int().min(1).max(50).default(5).describe("Max results"),
-			...filterSchema,
+			description: "Search memories by text query. Returns full body text for each match.",
+			inputSchema: {
+				query: z.string().min(1).max(16_384).describe("Search query"),
+				limit: z.number().int().min(1).max(50).default(5).describe("Max results"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, defaultProject());
@@ -57,13 +59,16 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"memory_search_index",
-		"Search memories by text query. Returns compact index entries without body text.",
 		{
-			query: z.string().min(1).max(16_384).describe("Search query"),
-			limit: z.number().int().min(1).max(50).default(8).describe("Max results"),
-			...filterSchema,
+			description:
+				"Search memories by text query. Returns compact index entries without body text.",
+			inputSchema: {
+				query: z.string().min(1).max(16_384).describe("Search query"),
+				limit: z.number().int().min(1).max(50).default(8).describe("Max results"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, defaultProject());
@@ -94,15 +99,17 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"memory_explain",
-		"Explain search results with detailed scoring breakdown.",
 		{
-			query: z.string().min(1).max(16_384).optional().describe("Search query"),
-			ids: z.array(z.number().int().positive()).max(200).optional().describe("Memory IDs"),
-			limit: z.number().int().min(1).max(50).default(10).describe("Max results"),
-			include_pack_context: z.boolean().default(false).describe("Include formatted pack context"),
-			...filterSchema,
+			description: "Explain search results with detailed scoring breakdown.",
+			inputSchema: {
+				query: z.string().min(1).max(16_384).optional().describe("Search query"),
+				ids: z.array(z.number().int().positive()).max(200).optional().describe("Memory IDs"),
+				limit: z.number().int().min(1).max(50).default(10).describe("Max results"),
+				include_pack_context: z.boolean().default(false).describe("Include formatted pack context"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, defaultProject());
@@ -125,12 +132,14 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"memory_recent",
-		"Return recent memories, newest first.",
 		{
-			limit: z.number().int().min(1).max(100).default(8).describe("Max results"),
-			...filterSchema,
+			description: "Return recent memories, newest first.",
+			inputSchema: {
+				limit: z.number().int().min(1).max(100).default(8).describe("Max results"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, defaultProject());
@@ -150,21 +159,23 @@ export function registerSearchTools(server: McpServer, context: ToolRegistration
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"memory_pack",
-		"Build a formatted memory pack from search results.",
 		{
-			context: z.string().min(1).max(16_384).describe("Context description to search for"),
-			limit: z.number().int().min(1).max(50).optional().describe("Max items to include"),
-			token_budget: z
-				.number()
-				.int()
-				.min(0)
-				.max(Number.MAX_SAFE_INTEGER)
-				.optional()
-				.describe("Maximum pack tokens"),
-			trace: z.boolean().default(false).describe("Include retrieval trace"),
-			...filterSchema,
+			description: "Build a formatted memory pack from search results.",
+			inputSchema: {
+				context: z.string().min(1).max(16_384).describe("Context description to search for"),
+				limit: z.number().int().min(1).max(50).optional().describe("Max items to include"),
+				token_budget: z
+					.number()
+					.int()
+					.min(0)
+					.max(Number.MAX_SAFE_INTEGER)
+					.optional()
+					.describe("Maximum pack tokens"),
+				trace: z.boolean().default(false).describe("Include retrieval trace"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, defaultProject());

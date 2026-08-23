@@ -42,7 +42,7 @@ export function extractApplyPatchPaths(patchText: string): string[] {
 	const seen = new Set<string>();
 	const paths: string[] = [];
 	for (const rawLine of patchText.split(/\r?\n/)) {
-		const match = rawLine.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/);
+		const match = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/.exec(rawLine);
 		if (!match) continue;
 		const path = (match[1] ?? "").trim();
 		if (!path || seen.has(path)) continue;

@@ -109,7 +109,7 @@ export function getMemoryRoleReportWithStore(
 	const mappingCounts = { mapped: 0, unmapped: 0 };
 	const kindCounts: Record<string, number> = {};
 	const projectQuality = { normal: 0, empty: 0, garbage_like: 0 };
-	const sessionDurationBuckets: Record<string, number> = {
+	const sessionDurationBuckets = {
 		"<1m": 0,
 		"1-5m": 0,
 		"5-30m": 0,
@@ -172,19 +172,14 @@ export function getMemoryRoleReportWithStore(
 			summaryDispositionBuckets[summaryDisposition] =
 				(summaryDispositionBuckets[summaryDisposition] ?? 0) + 1;
 			const minutes = row.session_minutes;
-			const bucket: keyof typeof sessionDurationBuckets =
-				minutes == null
-					? "open"
-					: minutes < 1
-						? "<1m"
-						: minutes < 5
-							? "1-5m"
-							: minutes < 30
-								? "5-30m"
-								: minutes < 120
-									? "30-120m"
-									: "120m+";
-			sessionDurationBuckets[bucket] = (sessionDurationBuckets[bucket] ?? 0) + 1;
+			let bucket: keyof typeof sessionDurationBuckets;
+			if (minutes == null) bucket = "open";
+			else if (minutes < 1) bucket = "<1m";
+			else if (minutes < 5) bucket = "1-5m";
+			else if (minutes < 30) bucket = "5-30m";
+			else if (minutes < 120) bucket = "30-120m";
+			else bucket = "120m+";
+			sessionDurationBuckets[bucket] += 1;
 		}
 	}
 

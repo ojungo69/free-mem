@@ -894,9 +894,7 @@ export const coordinatorGroupPreferences = sqliteTable(
 			.default(0),
 		updated_at: text("updated_at").notNull(),
 	},
-	(table) => ({
-		pk: primaryKey({ columns: [table.coordinator_id, table.group_id] }),
-	}),
+	(table) => [primaryKey({ columns: [table.coordinator_id, table.group_id] })],
 );
 
 export type CoordinatorGroupPreferences = typeof coordinatorGroupPreferences.$inferSelect;
@@ -913,10 +911,10 @@ export const actors = sqliteTable(
 		created_at: text("created_at").notNull(),
 		updated_at: text("updated_at").notNull(),
 	},
-	(table) => ({
-		isLocalIdx: index("idx_actors_is_local").on(table.is_local),
-		statusIdx: index("idx_actors_status").on(table.status),
-	}),
+	(table) => [
+		index("idx_actors_is_local").on(table.is_local),
+		index("idx_actors_status").on(table.status),
+	],
 );
 
 export type Actor = typeof actors.$inferSelect;
@@ -1009,13 +1007,10 @@ export const policyTeamMemberships = sqliteTable(
 		created_at: text("created_at").notNull(),
 		updated_at: text("updated_at").notNull(),
 	},
-	(table) => ({
-		pk: primaryKey({ columns: [table.team_id, table.identity_id] }),
-		identityStatusIdx: index("idx_policy_team_memberships_identity_status").on(
-			table.identity_id,
-			table.status,
-		),
-	}),
+	(table) => [
+		primaryKey({ columns: [table.team_id, table.identity_id] }),
+		index("idx_policy_team_memberships_identity_status").on(table.identity_id, table.status),
+	],
 );
 
 export type PolicyTeamMembership = typeof policyTeamMemberships.$inferSelect;
@@ -1036,12 +1031,7 @@ export const identityDevices = sqliteTable(
 		created_at: text("created_at").notNull(),
 		updated_at: text("updated_at").notNull(),
 	},
-	(table) => ({
-		identityStatusIdx: index("idx_identity_devices_identity_status").on(
-			table.identity_id,
-			table.status,
-		),
-	}),
+	(table) => [index("idx_identity_devices_identity_status").on(table.identity_id, table.status)],
 );
 
 export type IdentityDevice = typeof identityDevices.$inferSelect;
@@ -1062,15 +1052,15 @@ export const projectRecipients = sqliteTable(
 		created_at: text("created_at").notNull(),
 		updated_at: text("updated_at").notNull(),
 	},
-	(table) => ({
-		pk: primaryKey({
+	(table) => [
+		primaryKey({
 			columns: [table.canonical_project_identity, table.recipient_kind, table.recipient_id],
 		}),
-		projectStatusIdx: index("idx_project_recipients_project_status").on(
+		index("idx_project_recipients_project_status").on(
 			table.canonical_project_identity,
 			table.status,
 		),
-	}),
+	],
 );
 
 export type ProjectRecipient = typeof projectRecipients.$inferSelect;

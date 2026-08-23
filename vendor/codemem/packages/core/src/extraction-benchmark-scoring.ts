@@ -403,10 +403,8 @@ export function scoreExtractionBenchmarkOutput(input: {
 	].sort((left, right) => left - right);
 	const worthinessPrecision = {
 		score:
-			input.review.status === "reviewed" && forbiddenLabels.length > 0
-				? observations.length === 0
-					? null
-					: 1 - flaggedObservationIndexes.length / observations.length
+			input.review.status === "reviewed" && forbiddenLabels.length > 0 && observations.length > 0
+				? 1 - flaggedObservationIndexes.length / observations.length
 				: null,
 		flaggedObservationIndexes,
 		notes:

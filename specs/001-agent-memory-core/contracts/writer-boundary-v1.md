@@ -45,7 +45,7 @@ to invoke it.
 | opener | permitted production files | role |
 |---|---|---|
 | `connect()` / `connectReadOnly()` (`db.ts:150`, `db.ts:198`) | `daemon-canonical.ts`, `daemon-jobs.ts` | Opens the canonical DB with standard pragmas (writer) or a private snapshot copy read-only for a comparison job (`connectReadOnly` is called in production from `getDaemonMemoryRoleReport`, `daemon-jobs.ts:475`, reached via the live `"report.role-compare"` job kind — registered at `daemon-jobs.ts:77`, arg schema at `daemon-jobs.ts:112`, dispatched at `daemon-jobs.ts:931-943`) |
-| `new MemoryStore(...)` (`store.ts:187`) | `daemon-canonical.ts`, `daemon-jobs.ts` | Wraps an *already-open* `WriterActor`; the constructor takes a connection, never a path — it cannot self-open |
+| `new MemoryStore(...)` (`store.ts:188`) | `daemon-canonical.ts`, `daemon-jobs.ts` | Wraps an *already-open* `WriterActor`; the constructor takes a connection, never a path — it cannot self-open |
 | `WriterActor.open` / `ReadOnlyActor.open` (`writer-actor.ts:269`, `writer-actor.ts:288`) | `db.ts`, `legacy-cutover.ts`, `online-backup.ts`, `storage.ts` | Audited-wrapper primitive used by cutover, backup verification, and storage-artifact integrity checks |
 | `new BetterSqlite3(...)` (raw driver constructor) | `daemon-lifecycle.ts`, `writer-actor.ts` | `daemon-lifecycle.ts` uses it only for the instance lock (`control/lock.db`, §4); `writer-actor.ts` uses it only inside `WriterActor.open`/`ReadOnlyActor.open` |
 | test-only opener (`openTestMemoryStore`) | `test-utils.ts` (test files only) | `test-utils.ts:23-38` calls `connect(dbPath)` — **not** raw `better-sqlite3** — then runs `runDatabaseMigrations` before constructing `MemoryStore`; excluded from the production scan by exact path (§8), not by any code-level distinction |
@@ -69,7 +69,7 @@ test/audit instrument, not a runtime behavior other components depend on (§10 �
 
 ### 2.2 `store.ts` `MemoryStore` constructor
 
-`store.ts:187` — `constructor(connection: WriterActor, options: {closeConnection?: boolean} = {})`.
+`store.ts:188` — `constructor(connection: WriterActor, options: {closeConnection?: boolean} = {})`.
 `MemoryStore` never opens a path itself; it is always handed an already-open `WriterActor`. This is what
 makes `new MemoryStore` count as a distinct, closed opener class in the static scan (`memory_store` rule)
 rather than a bypass of the `WriterActor`/`connect()` allow-lists.

@@ -79,7 +79,7 @@ function extractApplyPatchPaths(patchText) {
 	const seen = /* @__PURE__ */ new Set();
 	const paths = [];
 	for (const rawLine of patchText.split(/\r?\n/)) {
-		const match = rawLine.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/);
+		const match = /^\*\*\* (?:Update|Add|Delete) File: (.+)$/.exec(rawLine);
 		if (!match) continue;
 		const path = (match[1] ?? "").trim();
 		if (!path || seen.has(path)) continue;
@@ -2064,8 +2064,8 @@ function normalizePathValue(value) {
 }
 function nextTag(text, tag, from) {
 	const slice = text.slice(from);
-	const openMatch = slice.match(new RegExp(`<${tag}>`, "i"));
-	const closeMatch = slice.match(new RegExp(`</${tag}>`, "i"));
+	const openMatch = new RegExp(`<${tag}>`, "i").exec(slice);
+	const closeMatch = new RegExp(`</${tag}>`, "i").exec(slice);
 	const openAt = openMatch?.index ?? -1;
 	const closeAt = closeMatch?.index ?? -1;
 	if (openAt < 0 && closeAt < 0) return null;

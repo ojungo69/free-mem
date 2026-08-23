@@ -9,15 +9,17 @@ import type { ToolRegistrationContext } from "../tool-context.js";
 export function registerTimelineTools(server: McpServer, context: ToolRegistrationContext): void {
 	const { client, defaultProject, requestScope } = context;
 
-	server.tool(
+	server.registerTool(
 		"memory_timeline",
-		"Get a chronological window of memories around an anchor (by ID or query).",
 		{
-			query: z.string().min(1).max(16_384).optional().describe("Search query to find anchor"),
-			memory_id: z.number().int().positive().optional().describe("Anchor memory ID"),
-			depth_before: z.number().int().min(0).max(100).default(3).describe("Items before anchor"),
-			depth_after: z.number().int().min(0).max(100).default(3).describe("Items after anchor"),
-			...filterSchema,
+			description: "Get a chronological window of memories around an anchor (by ID or query).",
+			inputSchema: {
+				query: z.string().min(1).max(16_384).optional().describe("Search query to find anchor"),
+				memory_id: z.number().int().positive().optional().describe("Anchor memory ID"),
+				depth_before: z.number().int().min(0).max(100).default(3).describe("Items before anchor"),
+				depth_after: z.number().int().min(0).max(100).default(3).describe("Items after anchor"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, defaultProject());
@@ -40,18 +42,23 @@ export function registerTimelineTools(server: McpServer, context: ToolRegistrati
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"memory_expand",
-		"Fetch memories by ID with surrounding timeline context.",
 		{
-			ids: z
-				.array(z.union([z.number().int().positive(), z.string().regex(/^[1-9][0-9]*$/)]))
-				.min(1)
-				.max(200)
-				.describe("Memory IDs to expand"),
-			depth_before: z.number().int().min(0).max(100).default(3).describe("Timeline items before"),
-			depth_after: z.number().int().min(0).max(100).default(3).describe("Timeline items after"),
-			...filterSchema,
+			description: "Fetch memories by ID with surrounding timeline context.",
+			inputSchema: {
+				// `[0-9]`, not `\d`: zod copies RegExp.source verbatim into the JSON
+				// Schema `pattern` this tool publishes through tools/list, so the
+				// spelling is part of the wire contract. Pinned in server.test.ts.
+				ids: z
+					.array(z.union([z.number().int().positive(), z.string().regex(/^[1-9][0-9]*$/)]))
+					.min(1)
+					.max(200)
+					.describe("Memory IDs to expand"),
+				depth_before: z.number().int().min(0).max(100).default(3).describe("Timeline items before"),
+				depth_after: z.number().int().min(0).max(100).default(3).describe("Timeline items after"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filterDefaultProject =
