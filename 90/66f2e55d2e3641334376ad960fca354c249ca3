@@ -1,0 +1,29 @@
+vendor/codemem/packages/core/src/attribution-assessment.test.ts
+  s_eb6264d292f6be::t_8e7ab3c7b4215c 19,46-49
+vendor/codemem/packages/core/src/attribution-diagnostics.test.ts
+  s_eb6264d292f6be::t_5dff72c84ff239 2,10,22-28
+vendor/codemem/packages/core/src/outcome-evidence.test.ts
+  s_eb6264d292f6be::t_92d1d006038c62 5,9,32-38
+vendor/codemem/packages/core/src/redaction-worker.test.ts
+  s_eb6264d292f6be::t_6ac0048fa6c041 1-28
+vendor/codemem/packages/core/src/outcome-evidence.ts
+  s_eb6264d292f6be::t_c52822fd5c5d5e 248-262
+vendor/codemem/packages/core/src/redaction-worker.ts
+  s_eb6264d292f6be::t_bb38a323d48a30 269,271-276,279,300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9066f2e55d2e3641334376ad960fca354c249ca3",
+  "prompts": {},
+  "sessions": {
+    "s_eb6264d292f6be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a9ebfec-b207-4459-8457-167369cfc5e4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
