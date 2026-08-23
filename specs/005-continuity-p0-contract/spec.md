@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-24
 
-**Status**: Draft
+**Status**: Clarified
 
 **Input**: User description: "Continuity P0 契約の凍結: issue #1 の owner sequencing 手順2 にあたる Continuity P0 cluster 9 件を、ひとつの decision window としてまとめて仕様化する。対象は #46 #49 #53 #61 #62（CanonicalWorkStateV1 のスキーマとバージョニングを同時に変える組）、#56 #57（復元境界での validation を共通化する組）、#32 #58（宣言のみで未強制の上限と、silent な terminal partial-conflict の可視化）。Rust Stage 1 の開始条件でもあるため、TS と Rust が同じ fixture で同一の結果を出せる契約として書く。実装ではなく契約の凍結が目的。"
 
@@ -231,10 +231,12 @@ terminal 処理で候補から外れた operation があれば、診断からそ
 - **FR-014**: raw 値が必要な経路は local evidence store の別 surface へ隔離し、retention・access・
   export を明示しなければならない。
 - **FR-015**: 層 A の 5 件（#46 / #49 / #53 / #61 / #62）は、schema と versioning をひとつの
-  decision window で決め、単一の契約変更として凍結しなければならない。
-  [NEEDS CLARIFICATION: 新しい schema 版を 1 つ立てて移行を伴わせるか、v1 内の追加互換な変更として
-  収めるか。前者は fixture と別言語実装の期待値を一度に切り替えられるが移行が必要、後者は移行が
-  不要だが「新しい欄を持たない状態」との二重の挙動を長く抱える]
+  decision window で決め、**新しい schema 版を 1 つ立てる単一の契約変更**として凍結しなければならない。
+  v1 内の追加互換な変更には収めない。
+- **FR-015a**: 既存の永続化状態・checkpoint から新しい版への移行経路を提供し、移行の失敗が
+  可用性の全損にならないこと（移行できない状態は層 B の quarantine 経路へ送る）。
+- **FR-015b**: 状態はどの版に属するかが常に一意に決まらなければならない。版が判別できない状態を
+  推測で解釈してはならない。
 
 **層 B — 復元境界の検証**
 
@@ -255,10 +257,16 @@ terminal 処理で候補から外れた operation があれば、診断からそ
 
 - **FR-023**: §10 で凍結した 12 上限すべてを、すべての delivery path で強制しなければならない
   （現在強制されているのは構造系 4 つのみ）。
-- **FR-024**: 上限違反の扱いは全 delivery path で一致しなければならない。
-  [NEEDS CLARIFICATION: 超過時に event を拒否するか、上限まで切り詰めて劣化を記録するか、
-  劣化モードへフェイルするか。拒否は fail-closed だが可用性を落とし、切り詰めは可用性を保つが
-  内容の欠落を生む]
+- **FR-024**: 上限違反の扱いは**上限ごとに規定**し、規定した扱いが全 delivery path で一致しなければならない。
+  上限は性質で 2 種に分ける。
+  - **選択型**（`rankedCandidates` のように「上位 N 件を選ぶ」ことが元から意味を成すもの）:
+    上限まで絞り、絞ったこと自体を診断に残す。
+  - **容量型**（payload 総 bytes・最終 wrapper bytes・token 予算 5 種のように「入り切らない」もの）:
+    拒否する。黙って内容を落とさない。
+- **FR-024a**: 12 上限それぞれがどちらの型かは、実装ではなく契約として一覧で固定しなければならない。
+  型の割り当てが実装ごとに漂ってはならない。
+- **FR-024b**: 選択型で絞られた件数と、容量型で拒否された理由は、どちらも呼び出し側が
+  機械可読に判別できなければならない。
 - **FR-025**: terminal path が conflict により候補から除外した operation は、診断に現れなければならない
   （現在は診断が空のまま `started` で残る）。
 - **FR-026**: `ContinuityDiagnosticCode` の語彙は runtime / schema / contract hash に拘束し、
@@ -270,10 +278,12 @@ terminal 処理で候補から外れた operation があれば、診断からそ
   判断・同一の状態・同一の内容 hash に到達できる形でなければならない。
 - **FR-028**: 新設した検査は、締めすぎによる偽陽性を測る corpus を伴わなければならない
   （通す側も同じ gate で測る）。
-- **FR-029**: この契約凍結の成果物の範囲。
-  [NEEDS CLARIFICATION: 公開 conformance fixture をこの feature で作るか、契約の凍結までに留めて
-  fixture は #66 / #67 / #8（owner sequencing の手順 3 / 4）に委ねるか。前者は手順 2 と 3 を
-  一度に進められるが範囲が大きく、後者は手順どおりだが Rust 実測までの往復が 1 回増える]
+- **FR-029**: この feature の成果物は**契約の凍結までとする**。公開 conformance fixture の作成は
+  owner sequencing の手順 3（#66 / #67）と手順 4（#8）へ委ねる。
+- **FR-029a**: 契約は、後から書かれる fixture が**追加の設計判断なしに**書ける粒度で凍結しなければ
+  ならない。fixture 作成時に契約へ戻って決め直す必要が生じたら、それは凍結が不十分だったということ。
+- **FR-029b**: 凍結した契約が塞ぐ 9 件の欠陥それぞれについて、fixture が満たすべき観測点
+  （何を入力し、何が同一であることを確認するか）を列挙しなければならない。fixture そのものは作らない。
 
 ### Key Entities
 
@@ -335,8 +345,14 @@ terminal 処理で候補から外れた operation があれば、診断からそ
 - 層 B と層 C は層 A とは独立に出荷できるが、契約の版が層 A で決まるため、凍結の順序は A → B → C とする。
 - #62 はプライバシー境界（constitution Principle III）に該当するため、実装は外部 CLI へ委譲せず
   Claude Code が直接行う。
-- 本 feature は契約の凍結までを範囲とし、Rust prototype の実装・G1–G7 の実測は含まない
-  （owner sequencing の手順 5）。
+- 本 feature は契約の凍結までを範囲とし、conformance fixture の作成（手順 3 / 4）も
+  Rust prototype の実装・G1–G7 の実測（手順 5）も含まない。
+- 層 A は新しい schema 版として切る。移行が必要になるが、fixture と Rust 側の期待値を一度に
+  切り替えられ、どの版の状態かが常に一意に決まる。v1 内の追加互換に収めると、新しい欄を持たない
+  状態と持つ状態の二重の挙動を長く抱え、Rust 側も両方に対応する必要が生じる。
+- §10 の上限は性質で 2 種に分けて扱う。「上位 N 件を選ぶ」ことが元から意味を成す上限は絞り、
+  「入り切らない」上限は拒否する。一律 fail-closed は候補が数件多いだけで落ちるため採らず、
+  一律の切り詰めは内容が黙って欠ける経路を新設するため採らない。
 - constitution Principle VI（ローカル完結）は現在の GitHub PR 運用と矛盾しており、issue #74 で
   `status: decision needed` として追跡されている。本 feature はこの矛盾を解決しないが、
   plan 段階の Constitution Check では未解決として明記する。

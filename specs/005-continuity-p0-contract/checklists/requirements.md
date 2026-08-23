@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,12 +31,13 @@
 
 ## Notes
 
-3 件の [NEEDS CLARIFICATION] が残っている。いずれも「合理的な既定が無く、選択で feature の範囲が
-変わる」ものに限っており、SC / FR の他の項目とは独立に解決できる。
+3 件の [NEEDS CLARIFICATION] はユーザー判断で解決済み（2026-08-24）。全項目 pass。
 
-- **FR-015**: 層 A の 5 件を新しい schema 版として切るか、v1 内の追加互換な変更に収めるか
-- **FR-024**: 上限超過時に拒否するか、切り詰めるか、劣化モードへフェイルするか
-- **FR-029**: 公開 conformance fixture をこの feature で作るか、#66 / #67 / #8 に委ねるか
+| 論点 | 決定 | 反映先 |
+|---|---|---|
+| 層 A の出し方 | **新しい schema 版を 1 つ切る**。v1 内の追加互換には収めない | FR-015 / FR-015a / FR-015b |
+| 上限超過時の扱い | **上限ごとに規定**。選択型は絞る、容量型は拒否する | FR-024 / FR-024a / FR-024b |
+| fixture の範囲 | **契約の凍結までに留める**。fixture は #66 / #67 / #8 へ | FR-029 / FR-029a / FR-029b |
 
 `spec.md` の「Success Criteria are technology-agnostic」については、`stateRevision` / `contentHash` /
 `IsoTimestamp` など**正典仕様 v6.1 が定義する契約上の名前**は残している。これらは実装技術ではなく
@@ -45,7 +46,7 @@
 FR-027 と SC-012 が TypeScript / Rust に触れているのは、この feature の目的が
 「両者が同じ fixture で同一結果を出せる契約を凍結すること」だからで、実装技術の選定ではない。
 
-## 解決後の再検証
+## 次の段階
 
-3 件が解決したら、この checklist の 1 項目目を [x] にし、該当 FR から marker を外して
-`/speckit-plan` へ進む。
+`/speckit-plan` へ進める状態。plan.md の Constitution Check では、Principle VI（ローカル完結）が
+現在の GitHub PR 運用と矛盾している点を未解決として明記する（issue #74 で追跡中）。
