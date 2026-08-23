@@ -1,0 +1,21 @@
+vendor/codemem/packages/core/src/redaction-worker.test.ts
+  s_eb6264d292f6be::t_6c6e25a61e332a 1-18
+vendor/codemem/packages/core/src/redaction-worker.ts
+  s_eb6264d292f6be::t_b5ebd026c77597 293-299
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a861a18cc4f63a9b622a412838065997500abb24",
+  "prompts": {},
+  "sessions": {
+    "s_eb6264d292f6be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a9ebfec-b207-4459-8457-167369cfc5e4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
