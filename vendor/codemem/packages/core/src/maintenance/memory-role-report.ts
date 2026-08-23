@@ -42,7 +42,8 @@ function inferMemoryRoleForReport(row: {
 		body_text: row.body_text,
 		metadata: safeParseMetadata(row.metadata_json),
 		project: row.project,
-		session_minutes: row.session_minutes,
+		session_minutes:
+			row.session_minutes != null && row.session_minutes >= 0 ? row.session_minutes : null,
 	});
 }
 
@@ -70,8 +71,11 @@ export function getMemoryRoleReportWithStore(
 					m.facts,
 					s.project,
 					s.metadata_json AS session_metadata_json,
-					(unixepoch(s.ended_at, 'subsec') - unixepoch(s.started_at, 'subsec')) / 60.0 AS session_minutes,
-					s.ended_at IS NULL AS session_open,
+					CASE
+						WHEN s.ended_at IS NULL THEN NULL
+						ELSE (unixepoch(s.ended_at, 'subsec') - unixepoch(s.started_at, 'subsec')) / 60.0
+					END AS session_minutes,
+					s.ended_at,
 					CASE WHEN os.session_id IS NULL THEN 0 ELSE 1 END AS has_opencode_mapping
 				FROM memory_items m
 				JOIN sessions s ON s.id = m.session_id
@@ -95,7 +99,7 @@ export function getMemoryRoleReportWithStore(
 		project: string | null;
 		session_metadata_json: string | null;
 		session_minutes: number | null;
-		session_open: number;
+		ended_at: string | null;
 		has_opencode_mapping: number;
 	}>;
 
@@ -173,8 +177,8 @@ export function getMemoryRoleReportWithStore(
 				(summaryDispositionBuckets[summaryDisposition] ?? 0) + 1;
 			const minutes = row.session_minutes;
 			let bucket: keyof typeof sessionDurationBuckets;
-			if (minutes == null) bucket = row.session_open ? "open" : "invalid";
-			else if (minutes < 0) bucket = "invalid";
+			if (row.ended_at == null) bucket = "open";
+			else if (minutes == null || minutes < 0) bucket = "invalid";
 			else if (minutes < 1) bucket = "<1m";
 			else if (minutes < 5) bucket = "1-5m";
 			else if (minutes < 30) bucket = "5-30m";

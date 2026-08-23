@@ -446,7 +446,8 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					  (7, '2026-03-01T10:00:00Z', 'not-a-date',           '/tmp/repo', 'codemem', 'adam', 'test'),
 					  (8, '2026-03-01T10:00:00Z', '',                     '/tmp/repo', 'codemem', 'adam', 'test'),
 					  (9, '2026-03-01T10:00:00Z', '2026-03-01T09:50:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
-					  (10, '2026-03-01T10:00:00.850Z', '2026-03-01T10:01:00.450Z', '/tmp/repo', 'codemem', 'adam', 'test');
+					  (10, '2026-03-01T10:00:00.850Z', '2026-03-01T10:01:00.450Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (11, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
 					INSERT INTO memory_items(
 						id, session_id, kind, title, body_text, active, created_at, updated_at, import_key
 					) VALUES
@@ -459,14 +460,15 @@ describe("maintenance", { timeout: 15_000 }, () => {
 					  (7, 7, 'change', 'Unparseable end', 'Invalid session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-7'),
 					  (8, 8, 'change', 'Empty end', 'Invalid session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-8'),
 					  (9, 9, 'change', 'Negative duration', 'Invalid session', 1, '2026-03-01T09:50:00Z', '2026-03-01T09:50:00Z', 'duration-9'),
-					  (10, 10, 'change', 'Subsecond under one minute', 'Short session', 1, '2026-03-01T10:01:00.450Z', '2026-03-01T10:01:00.450Z', 'duration-10');
+					  (10, 10, 'change', 'Subsecond under one minute', 'Short session', 1, '2026-03-01T10:01:00.450Z', '2026-03-01T10:01:00.450Z', 'duration-10'),
+					  (11, 11, 'change', 'Zero duration', 'Same-instant session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-11');
 				`);
 		} finally {
 			db.close();
 		}
 
 		expect(getMemoryRoleReport(dbPath).session_duration_buckets).toEqual({
-			"<1m": 2,
+			"<1m": 3,
 			"1-5m": 1,
 			"5-30m": 1,
 			"30-120m": 1,
