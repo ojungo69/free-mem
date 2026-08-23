@@ -183,12 +183,12 @@ function runPipeline(
 	// Recorded here because stripInjectedContext() below can remove a <private> opener and
 	// leave its closer looking orphaned. See orphanClosePolicy().
 	const openersSeen = new Map<string, Set<string>>();
-	payload = mapStrings(payload, (text, key) => {
-		const seen = openersSeen.get(key) ?? new Set<string>();
+	payload = mapStrings(payload, (text, _key, path) => {
+		const seen = new Set<string>();
 		for (const tag of DROPPING_TAGS) {
-			if (!seen.has(tag) && hasOpener(text, tag)) seen.add(tag);
+			if (hasOpener(text, tag)) seen.add(tag);
 		}
-		if (seen.size > 0) openersSeen.set(key, seen);
+		if (seen.size > 0) openersSeen.set(path, seen);
 		return stripInjectedContext(text);
 	});
 	payload = mapStrings(payload, (text, key) =>
@@ -211,8 +211,8 @@ function runPipeline(
 
 	let privateOmitted = false;
 	let localOnly = false;
-	payload = mapStrings(payload, (text, key) => {
-		const stripped = stripReservedMarkup(text, openersSeen.get(key));
+	payload = mapStrings(payload, (text, _key, path) => {
+		const stripped = stripReservedMarkup(text, openersSeen.get(path));
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
 		return stripped.text;
@@ -229,8 +229,8 @@ function runPipeline(
 			workerDegraded = true;
 		}
 	}
-	payload = mapStrings(payload, (text, key) => {
-		const again = stripReservedMarkup(text, openersSeen.get(key));
+	payload = mapStrings(payload, (text, _key, path) => {
+		const again = stripReservedMarkup(text, openersSeen.get(path));
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
@@ -468,7 +468,7 @@ function elide(text: string, original: number): string {
 const DROPPING_TAGS = ["injected-context", "private"] as const;
 
 function hasOpener(text: string, tag: string): boolean {
-	return new RegExp(`<${tag}>`, "i").test(text);
+	return text.toLowerCase().includes(`<${tag}>`);
 }
 
 function stripInjectedContext(text: string): string {
@@ -507,15 +507,31 @@ function stripReservedMarkup(
 	let current = text;
 	let privateHit = false;
 	let localOnly = false;
-	// Two sources, unioned. The recorded set covers openers an earlier pass already removed;
-	// scanning `text` here covers openers that appeared after it was recorded, since the
-	// private_regex pass can delete characters and reassemble a reserved tag.
-	const sawOpener = (tag: string) => openersSeen?.has(tag) === true || hasOpener(text, tag);
-	const injectedOrphan = orphanClosePolicy(sawOpener("injected-context"));
-	const privateOrphan = orphanClosePolicy(sawOpener("private"));
+	// Opener knowledge only ever grows, and it has to be re-taken between stages: the
+	// private_regex pass can delete characters that reassemble a tag, and stripping one tag
+	// can itself finish assembling another one's opener
+	// (`<pri<injected-context>x</injected-context>vate>` becomes `<private>` here, not before).
+	const seen = new Set<string>(openersSeen);
+	const note = (value: string) => {
+		for (const tag of DROPPING_TAGS) {
+			if (!seen.has(tag) && hasOpener(value, tag)) seen.add(tag);
+		}
+	};
 	for (let i = 0; i < 8; i += 1) {
-		const injected = stripTagged(current, "injected-context", "drop", injectedOrphan);
-		const priv = stripTagged(injected.text, "private", "drop", privateOrphan);
+		note(current);
+		const injected = stripTagged(
+			current,
+			"injected-context",
+			"drop",
+			orphanClosePolicy(seen.has("injected-context")),
+		);
+		note(injected.text);
+		const priv = stripTagged(
+			injected.text,
+			"private",
+			"drop",
+			orphanClosePolicy(seen.has("private")),
+		);
 		if (priv.hit) privateHit = true;
 		const local = stripTagged(priv.text, "local-only", "keep", "keep");
 		if (local.hit) localOnly = true;
@@ -627,21 +643,22 @@ function stripTagged(
 
 function mapStrings(
 	value: Record<string, unknown>,
-	fn: (text: string, key: string) => string,
+	fn: (text: string, key: string, path: string) => string,
 ): Record<string, unknown> {
-	const walk = (item: unknown, key: string): unknown => {
-		if (typeof item === "string") return fn(item, key);
-		if (Array.isArray(item)) return item.map((entry) => walk(entry, key));
+	const walk = (item: unknown, key: string, path: string): unknown => {
+		if (typeof item === "string") return fn(item, key, path);
+		if (Array.isArray(item))
+			return item.map((entry, index) => walk(entry, key, `${path}[${index}]`));
 		if (item && typeof item === "object") {
 			const next: Record<string, unknown> = {};
 			for (const [childKey, child] of Object.entries(item as Record<string, unknown>)) {
-				next[childKey] = walk(child, childKey);
+				next[childKey] = walk(child, childKey, path ? `${path}.${childKey}` : childKey);
 			}
 			return next;
 		}
 		return item;
 	};
-	return walk(value, "") as Record<string, unknown>;
+	return walk(value, "", "") as Record<string, unknown>;
 }
 
 function asObject(value: unknown): Record<string, unknown> {

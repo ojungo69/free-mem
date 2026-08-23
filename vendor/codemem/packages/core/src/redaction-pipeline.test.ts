@@ -155,6 +155,16 @@ describe("Phase 1 redaction", () => {
 		);
 		expect(String(perField.payload.title)).toBe("keep  text");
 
+		// Nested fields that happen to share a leaf property name are still separate
+		// locations, so the history is keyed by the full traversal path.
+		const nested = core.preprocessAdapterEvent(
+			{
+				input: { left: { text: "<private>x</private>" }, right: { text: "keep </private> prose" } },
+			},
+			{ allowlist: ["input"] },
+		);
+		expect((nested.payload.input as { right: { text: string } }).right.text).toBe("keep  prose");
+
 		// private_regex runs between the two markup passes and can delete characters that
 		// reassemble a reserved tag, so the opener history is re-checked against the text
 		// as it stands, not only against what was recorded before the first pass.
@@ -164,6 +174,18 @@ describe("Phase 1 redaction", () => {
 		);
 		expect(String(reassembledTags.payload.body)).toBe(" tail");
 		expect(String(reassembledTags.payload.body)).not.toContain("SECRET");
+
+		// Stripping one tag can itself finish assembling another tag's opener, so the
+		// history is re-taken between stages and not only once per call: the injected block
+		// below sits *inside* a split `<private>` opener.
+		const assembledMidPass = core.preprocessAdapterEvent(
+			{
+				body: "<pri<injXected-context>x</injYected-context>vate>a</priZvate>SECRET</priWvate> tail",
+			},
+			{ config: core.parseAgentMemoryToml('private_regex = ["[XYZW]"]'), allowlist: ["body"] },
+		);
+		expect(String(assembledMidPass.payload.body)).toBe(" tail");
+		expect(String(assembledMidPass.payload.body)).not.toContain("SECRET");
 
 		// `local-only` removes nothing, so a stray closer has no extent to fail closed over
 		// and the untagged prose around it survives even after a matched block.

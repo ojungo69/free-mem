@@ -1818,10 +1818,10 @@ function runPipeline(input, options, layer) {
 	if (tooLarge(source)) payload = {};
 	else for (const [key, value] of Object.entries(source)) if (allow.has(key) && !isSensitiveFieldName(key)) payload[key] = dropSensitiveFields(value, toolAllow, toolDeny);
 	const openersSeen = /* @__PURE__ */ new Map();
-	payload = mapStrings(payload, (text, key) => {
-		const seen = openersSeen.get(key) ?? /* @__PURE__ */ new Set();
-		for (const tag of DROPPING_TAGS) if (!seen.has(tag) && hasOpener(text, tag)) seen.add(tag);
-		if (seen.size > 0) openersSeen.set(key, seen);
+	payload = mapStrings(payload, (text, _key, path) => {
+		const seen = /* @__PURE__ */ new Set();
+		for (const tag of DROPPING_TAGS) if (hasOpener(text, tag)) seen.add(tag);
+		if (seen.size > 0) openersSeen.set(path, seen);
 		return stripInjectedContext(text);
 	});
 	payload = mapStrings(payload, (text, key) => PATH_KEYS.has(key) ? normalizePathValue(text) : text);
@@ -1835,8 +1835,8 @@ function runPipeline(input, options, layer) {
 	payload = firstScan.ok ? asObject(firstScan.value) : keepMetadataOnly(payload, options.metadataKeys);
 	let privateOmitted = false;
 	let localOnly = false;
-	payload = mapStrings(payload, (text, key) => {
-		const stripped = stripReservedMarkup(text, openersSeen.get(key));
+	payload = mapStrings(payload, (text, _key, path) => {
+		const stripped = stripReservedMarkup(text, openersSeen.get(path));
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
 		return stripped.text;
@@ -1853,8 +1853,8 @@ function runPipeline(input, options, layer) {
 			workerDegraded = true;
 		}
 	}
-	payload = mapStrings(payload, (text, key) => {
-		const again = stripReservedMarkup(text, openersSeen.get(key));
+	payload = mapStrings(payload, (text, _key, path) => {
+		const again = stripReservedMarkup(text, openersSeen.get(path));
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
@@ -2027,7 +2027,7 @@ function elide(text, original) {
 */
 var DROPPING_TAGS = ["injected-context", "private"];
 function hasOpener(text, tag) {
-	return new RegExp(`<${tag}>`, "i").test(text);
+	return text.toLowerCase().includes(`<${tag}>`);
 }
 function stripInjectedContext(text) {
 	return stripTagged(text, "injected-context", "drop", orphanClosePolicy(hasOpener(text, "injected-context"))).text;
@@ -2049,11 +2049,15 @@ function stripReservedMarkup(text, openersSeen) {
 	let current = text;
 	let privateHit = false;
 	let localOnly = false;
-	const sawOpener = (tag) => openersSeen?.has(tag) === true || hasOpener(text, tag);
-	const injectedOrphan = orphanClosePolicy(sawOpener("injected-context"));
-	const privateOrphan = orphanClosePolicy(sawOpener("private"));
+	const seen = new Set(openersSeen);
+	const note = (value) => {
+		for (const tag of DROPPING_TAGS) if (!seen.has(tag) && hasOpener(value, tag)) seen.add(tag);
+	};
 	for (let i = 0; i < 8; i += 1) {
-		const priv = stripTagged(stripTagged(current, "injected-context", "drop", injectedOrphan).text, "private", "drop", privateOrphan);
+		note(current);
+		const injected = stripTagged(current, "injected-context", "drop", orphanClosePolicy(seen.has("injected-context")));
+		note(injected.text);
+		const priv = stripTagged(injected.text, "private", "drop", orphanClosePolicy(seen.has("private")));
 		if (priv.hit) privateHit = true;
 		const local = stripTagged(priv.text, "local-only", "keep", "keep");
 		if (local.hit) localOnly = true;
@@ -2155,17 +2159,17 @@ function stripTagged(text, tag, unclosed, orphanClose) {
 	};
 }
 function mapStrings(value, fn) {
-	const walk = (item, key) => {
-		if (typeof item === "string") return fn(item, key);
-		if (Array.isArray(item)) return item.map((entry) => walk(entry, key));
+	const walk = (item, key, path) => {
+		if (typeof item === "string") return fn(item, key, path);
+		if (Array.isArray(item)) return item.map((entry, index) => walk(entry, key, `${path}[${index}]`));
 		if (item && typeof item === "object") {
 			const next = {};
-			for (const [childKey, child] of Object.entries(item)) next[childKey] = walk(child, childKey);
+			for (const [childKey, child] of Object.entries(item)) next[childKey] = walk(child, childKey, path ? `${path}.${childKey}` : childKey);
 			return next;
 		}
 		return item;
 	};
-	return walk(value, "");
+	return walk(value, "", "");
 }
 function asObject(value) {
 	if (value && typeof value === "object" && !Array.isArray(value)) return value;
