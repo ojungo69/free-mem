@@ -42,6 +42,8 @@ export interface ExplainOptions {
 	includePackContext?: boolean;
 }
 
+export type OwnershipCandidate = MemoryItem | MemoryResult | Record<string, unknown>;
+
 /** Lazily wrap a better-sqlite3 Database in a Drizzle ORM instance. */
 function getDrizzle(db: Database) {
 	return drizzle(db, { schema });
@@ -53,11 +55,9 @@ export interface StoreHandle {
 	readonly actorId: string;
 	readonly deviceId: string;
 	get(memoryId: number): MemoryItemResponse | null;
-	memoryOwnedBySelf(item: MemoryItem | MemoryResult | Record<string, unknown>): boolean;
+	memoryOwnedBySelf(item: OwnershipCandidate): boolean;
 	sameActorPeerIds?(): string[];
-	buildOwnershipPredicate?(): (
-		item: MemoryItem | MemoryResult | Record<string, unknown>,
-	) => boolean;
+	buildOwnershipPredicate?(): (item: OwnershipCandidate) => boolean;
 	recent(limit?: number, filters?: MemoryFilters | null, offset?: number): MemoryItemResponse[];
 	recentByKinds(
 		kinds: string[],
@@ -156,7 +156,7 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
  * and joins multiple tokens with OR for broader matching.
  */
 export function expandQuery(query: string): string {
-	const rawTokens = query.match(/[A-Za-z0-9_]+/g);
+	const rawTokens = query.match(/\w+/g);
 	if (!rawTokens) return "";
 	const operatorFiltered = rawTokens.filter((token) => {
 		const lowered = token.toLowerCase();
@@ -779,9 +779,7 @@ function workingSetOverlapBoost(item: MemoryResult, workingSetPaths: string[]): 
  * prior version of this interface) at the cost of re-querying sync_peers
  * per item.
  */
-function ownershipPredicateFor(
-	store: StoreHandle,
-): (item: MemoryItem | MemoryResult | Record<string, unknown>) => boolean {
+function ownershipPredicateFor(store: StoreHandle): (item: OwnershipCandidate) => boolean {
 	if (typeof store.buildOwnershipPredicate === "function") {
 		return store.buildOwnershipPredicate();
 	}
@@ -1516,7 +1514,7 @@ export function explain(
 
 	// Tokenize query for term matching
 	const queryTokens = sanitizedQuery
-		? (sanitizedQuery.match(/[A-Za-z0-9_]+/g) ?? []).map((t) => t.toLowerCase())
+		? (sanitizedQuery.match(/\w+/g) ?? []).map((t) => t.toLowerCase())
 		: [];
 
 	const sessionProjects = loadSessionProjects(

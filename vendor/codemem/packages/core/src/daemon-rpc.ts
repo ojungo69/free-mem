@@ -642,9 +642,9 @@ async function handleMethod(
 }
 
 function strongestSensitivity(
-	claimed: "normal" | "private" | "secret",
-	detected: "normal" | "private" | "secret",
-): "normal" | "private" | "secret" {
+	claimed: SpoolRedactionMetadata["sensitivity"],
+	detected: SpoolRedactionMetadata["sensitivity"],
+): SpoolRedactionMetadata["sensitivity"] {
 	if (claimed === "secret" || detected === "secret") return "secret";
 	if (claimed === "private" || detected === "private") return "private";
 	return "normal";
@@ -1502,7 +1502,7 @@ function optionalString(value: unknown): string | null {
 
 function requirePositiveInt(value: unknown): number {
 	if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
-	if (typeof value === "string" && /^[1-9][0-9]*$/.test(value)) return Number(value);
+	if (typeof value === "string" && /^[1-9]\d*$/.test(value)) return Number(value);
 	throw new RpcRequestError("id is invalid.");
 }
 

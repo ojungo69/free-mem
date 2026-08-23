@@ -66,17 +66,17 @@ function envBoolDisabled(name: string): boolean {
 // ---------------------------------------------------------------------------
 
 export class RawEventSweeper {
-	private store: MemoryStore;
-	private ingestOpts: IngestOptions;
+	private readonly store: MemoryStore;
+	private readonly ingestOpts: IngestOptions;
 	private active = false;
 	private running = false; // reentrancy guard — prevents overlapping ticks
 	private currentTick: Promise<void> | null = null;
 	private wakeHandle: ReturnType<typeof setTimeout> | null = null;
 	private loopHandle: ReturnType<typeof setTimeout> | null = null;
-	private autoFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
-	private sessionFlushing = new Set<string>();
-	private autoFlushPending = new Set<string>();
-	private autoFlushPromises = new Set<Promise<void>>();
+	private readonly autoFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	private readonly sessionFlushing = new Set<string>();
+	private readonly autoFlushPending = new Set<string>();
+	private readonly autoFlushPromises = new Set<Promise<void>>();
 	private authBackoffUntil = 0; // epoch seconds
 	private authErrorLogged = false;
 

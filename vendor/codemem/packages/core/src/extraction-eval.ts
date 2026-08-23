@@ -386,6 +386,7 @@ export function getSessionExtractionEval(
 	if (!sessionRow) {
 		throw new Error(`Session ${sessionId} not found`);
 	}
+	const includeInactiveFlag = opts.includeInactive === true ? 1 : 0;
 	const rows = (
 		"batchId" in opts
 			? db
@@ -402,7 +403,7 @@ export function getSessionExtractionEval(
 					)
 					.all(
 						sessionId,
-						opts.includeInactive === true ? 1 : 0,
+						includeInactiveFlag,
 						opts.batchId,
 						batchRow?.created_at,
 						batchRow?.updated_at,
@@ -414,7 +415,7 @@ export function getSessionExtractionEval(
 							 WHERE session_id = ? AND (? = 1 OR active = 1)
 							 ORDER BY created_at ASC, id ASC`,
 					)
-					.all(sessionId, opts.includeInactive === true ? 1 : 0)
+					.all(sessionId, includeInactiveFlag)
 	) as Array<{
 		id: number;
 		kind: string;

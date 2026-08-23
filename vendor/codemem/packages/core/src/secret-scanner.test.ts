@@ -100,6 +100,13 @@ describe("SecretScanner", () => {
 			expect(r.redacted).toContain("API_KEY=");
 		});
 
+		it("redacts an all-lowercase value (the rule's character class relies on the i flag)", () => {
+			const secret = "abcdefghijklmnopqrstuvwxyz012345";
+			const r = scanner.scan(`client_secret=${secret}`);
+			expect(r.redacted).not.toContain(secret);
+			expect(r.redacted).toMatch(/\[REDACTED:/);
+		});
+
 		it("does not redact ordinary prose without secret context", () => {
 			const text = "The quick brown fox jumps over the lazy dog forty two times.";
 			const r = scanner.scan(text);

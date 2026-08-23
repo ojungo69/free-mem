@@ -61,7 +61,7 @@ function recordOpen(dbPath: string, mode: "writer" | "readonly", owner: string):
  * the audited capability rather than leaking the wrapped connection.
  */
 class AuditedSqliteConnection implements RawDatabase {
-	#raw: RawDatabase;
+	readonly #raw: RawDatabase;
 
 	protected constructor(raw: RawDatabase) {
 		this.#raw = raw;
@@ -186,7 +186,7 @@ class AuditedSqliteConnection implements RawDatabase {
 }
 
 class AuditedStatement<BindParameters extends unknown[], Result> {
-	#raw: RawStatement<BindParameters, Result>;
+	readonly #raw: RawStatement<BindParameters, Result>;
 	readonly database: AuditedSqliteConnection;
 
 	constructor(database: AuditedSqliteConnection, raw: RawStatement<BindParameters, Result>) {

@@ -48,6 +48,7 @@ import { resolveSessionScopeId } from "./scope-stamping.js";
 import {
 	type ExplainOptions,
 	explain as explainFn,
+	type OwnershipCandidate,
 	search as searchFn,
 	timeline as timelineFn,
 } from "./search.js";
@@ -299,15 +300,14 @@ export class MemoryStore {
 		const previousDeviceId = this.deviceId;
 		const fallbackActorId = `local:${previousDeviceId}`;
 		const hasActorsTable = tableExists(this.db, "actors");
+		const includeInactiveParam = this.actorIdUsesDeviceFallback ? 1 : 0;
 		const fallbackActor = hasActorsTable
 			? (this.db
 					.prepare(
 						`SELECT display_name FROM actors WHERE actor_id = ?
 						 AND (? = 1 OR (is_local = 1 AND status = 'active'))`,
 					)
-					.get(fallbackActorId, this.actorIdUsesDeviceFallback ? 1 : 0) as
-					| { display_name: string }
-					| undefined)
+					.get(fallbackActorId, includeInactiveParam) as { display_name: string } | undefined)
 			: undefined;
 		if (!this.actorIdUsesDeviceFallback && !fallbackActor) {
 			this.deviceId = normalizedDeviceId;
@@ -930,7 +930,7 @@ export class MemoryStore {
 	 * 2. origin_device_id in claimed_same_actor_peers → owned
 	 * 3. actor_id in legacy sync actor ids → owned
 	 */
-	memoryOwnedBySelf(item: MemoryItem | MemoryResult | Record<string, unknown>): boolean {
+	memoryOwnedBySelf(item: OwnershipCandidate): boolean {
 		// Always re-reads sync_peers via sameActorPeerIds(). This method
 		// authorizes mutating APIs (forgetMemory / setMemoryVisibility),
 		// so it must reflect legacy peer claim changes
@@ -950,9 +950,7 @@ export class MemoryStore {
 	 * should rebuild the predicate once per request — never share one
 	 * across requests where peer claims could change in between.
 	 */
-	buildOwnershipPredicate(): (
-		item: MemoryItem | MemoryResult | Record<string, unknown>,
-	) => boolean {
+	buildOwnershipPredicate(): (item: OwnershipCandidate) => boolean {
 		const peerIds = this.sameActorPeerIds();
 		const claimedDeviceIds = new Set(peerIds);
 		const legacyActorIds = new Set(peerIds.map((peerId) => `legacy-sync:${peerId}`));

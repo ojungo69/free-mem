@@ -192,10 +192,12 @@ interface TomlStructure {
 	tableStarts: number[];
 }
 
+type QuoteChar = '"' | "'" | null;
+
 function isTomlTableHeader(header: string): boolean {
 	const arrayTable = header.startsWith("[[");
 	const bodyStart = arrayTable ? 2 : 1;
-	let quote: '"' | "'" | null = null;
+	let quote: QuoteChar = null;
 	for (let i = bodyStart; i < header.length; i += 1) {
 		const char = header[i] ?? "";
 		if (quote === '"' && char === "\\") {
@@ -359,7 +361,7 @@ function tomlLineAt(structure: TomlStructure, start: number): string {
 
 function tomlKeyHasBasicEscape(line: string): boolean {
 	const table = line.trimStart().startsWith("[");
-	let quote: '"' | "'" | null = null;
+	let quote: QuoteChar = null;
 	for (let i = 0; i < line.length; i += 1) {
 		const char = line[i] ?? "";
 		if (quote === '"' && char === "\\") return true;
@@ -374,7 +376,7 @@ function tomlKeyHasBasicEscape(line: string): boolean {
 }
 
 function isSingleInlineTableAssignment(line: string): boolean {
-	let quote: '"' | "'" | null = null;
+	let quote: QuoteChar = null;
 	let valueStart = -1;
 	for (let i = 0; i < line.length; i += 1) {
 		const char = line[i] ?? "";
@@ -732,7 +734,7 @@ const CODEX_MCP_TABLE_RE =
 const CODEX_MCP_DESCENDANT_TABLE_RE =
 	/^[ \t]*\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\./m;
 const CODEX_MCP_ARRAY_TABLE_RE =
-	/^[ \t]*\[\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2(?:[ \t]*\.|[ \t]*\]\])/m;
+	/^[ \t]*\[\[[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*(?:\.|\]\])/m;
 const CODEX_MCP_DOTTED_KEY_RE = /^[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*=/m;
 const CODEX_MCP_DESCENDANT_RE =
 	/^[ \t]*(["']?)mcp_servers\1[ \t]*\.[ \t]*(["']?)codemem\2[ \t]*\./m;

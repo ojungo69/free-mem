@@ -82,7 +82,7 @@ export function parseJudgeVerdict(text: string | null | undefined): {
 		cleaned = cleaned.slice(0, -1);
 	}
 	cleaned = cleaned.trim();
-	const match = cleaned.match(VERDICT_PATTERN);
+	const match = VERDICT_PATTERN.exec(cleaned);
 	if (!match) return { verdict: "unjudged", reason: null };
 
 	const verdict = match[1]?.toLowerCase() === "lesson" ? "lesson" : "routine";

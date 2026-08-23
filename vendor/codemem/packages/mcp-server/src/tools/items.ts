@@ -9,12 +9,14 @@ import type { ToolRegistrationContext } from "../tool-context.js";
 export function registerItemTools(server: McpServer, context: ToolRegistrationContext): void {
 	const { client, envProject, requestScope } = context;
 
-	server.tool(
+	server.registerTool(
 		"memory_get",
-		"Fetch a single memory item by ID.",
 		{
-			memory_id: z.number().int().positive().describe("Memory ID"),
-			...filterSchema,
+			description: "Fetch a single memory item by ID.",
+			inputSchema: {
+				memory_id: z.number().int().positive().describe("Memory ID"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, null);
@@ -29,12 +31,14 @@ export function registerItemTools(server: McpServer, context: ToolRegistrationCo
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"memory_get_observations",
-		"Fetch multiple memory items by their IDs.",
 		{
-			ids: z.array(z.number().int().positive()).min(1).max(200).describe("Memory IDs to fetch"),
-			...filterSchema,
+			description: "Fetch multiple memory items by their IDs.",
+			inputSchema: {
+				ids: z.array(z.number().int().positive()).min(1).max(200).describe("Memory IDs to fetch"),
+				...filterSchema,
+			},
 		},
 		async (args, extra) => {
 			const filters = buildFilters(args, null);
@@ -54,15 +58,17 @@ export function registerItemTools(server: McpServer, context: ToolRegistrationCo
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"memory_remember",
-		"Create a new memory. Use for milestones, decisions, and notable facts.",
 		{
-			kind: memoryKindSchema.describe("Memory kind"),
-			title: z.string().min(1).max(1_024).describe("Short title"),
-			body: z.string().min(1).max(16_384).describe("Body text (high-signal content)"),
-			confidence: z.number().min(0).max(1).default(0.5).describe("Confidence 0-1"),
-			project: z.string().max(512).optional().describe("Project identifier"),
+			description: "Create a new memory. Use for milestones, decisions, and notable facts.",
+			inputSchema: {
+				kind: memoryKindSchema.describe("Memory kind"),
+				title: z.string().min(1).max(1_024).describe("Short title"),
+				body: z.string().min(1).max(16_384).describe("Body text (high-signal content)"),
+				confidence: z.number().min(0).max(1).default(0.5).describe("Confidence 0-1"),
+				project: z.string().max(512).optional().describe("Project identifier"),
+			},
 		},
 		async (args, extra) => {
 			const project = resolveWriteProject({ project: args.project, envProject: envProject() });
@@ -85,7 +91,9 @@ export function registerItemTools(server: McpServer, context: ToolRegistrationCo
 		},
 	);
 
-	server.tool("memory_status", "Show local memory daemon status.", {}, async () =>
-		rpcContent(await client.request("GET /v1/health", {})),
+	server.registerTool(
+		"memory_status",
+		{ description: "Show local memory daemon status.", inputSchema: {} },
+		async () => rpcContent(await client.request("GET /v1/health", {})),
 	);
 }

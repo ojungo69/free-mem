@@ -328,7 +328,7 @@ export function inspectObserverResponseStructure(
 	const discardedSummaryBlocks = Math.max(0, summaryBlocks - retainedSummaries);
 	const malformedRetainedChildren = [...observationBlockValues, ...summaryBlockValues].some(
 		(block) => {
-			const rootTag = /^\s*<([A-Za-z_][\w:.-]*)/i.exec(block)?.[1];
+			const rootTag = /^\s*<([A-Z_][\w:.-]*)/i.exec(block)?.[1];
 			return rootTag
 				? directChildFragments(block, rootTag).some((fragment) => !fragment.complete)
 				: false;
@@ -1290,7 +1290,7 @@ function proseOutsideRootBlocks(raw: string): string[] {
 		const prose = visibleTextForComparison(cleaned.slice(cursor, start));
 		if (prose) fragments.push(normalizeRecoverableText(prose).toLowerCase());
 		const remainder = cleaned.slice(start);
-		const rootName = /^<([A-Za-z_][\w:.-]*)/i.exec(remainder)?.[1]?.toLowerCase();
+		const rootName = /^<([A-Z_][\w:.-]*)/i.exec(remainder)?.[1]?.toLowerCase();
 		const completePattern =
 			rootName === "observation"
 				? /^<observation[^>]*>.*?<\/observation>/is
