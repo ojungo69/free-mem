@@ -1,0 +1,19 @@
+vendor/codemem/packages/core/src/maintenance/memory-role-report.ts
+  s_d7c13d0e584450::t_2d7ccf1d81007a 112-115,185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c228295d10b9927d7d6394ccb0f91a9a878d14ef",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
