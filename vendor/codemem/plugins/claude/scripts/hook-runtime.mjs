@@ -2104,7 +2104,7 @@ function stripTagged(text, tag, unclosed) {
 		while (depth > 0) {
 			const inner = nextTag(text, tag, pos);
 			if (!inner) return {
-				text: unclosed === "keep" ? output + text.slice(innerStart) : `${output}[${tag}]`,
+				text: unclosed === "keep" ? output + text.slice(innerStart).replace(new RegExp(`</?${tag}>`, "gi"), "") : `${output}[${tag}]`,
 				hit
 			};
 			if (inner.kind === "open") {

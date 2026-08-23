@@ -551,9 +551,15 @@ function stripTagged(
 			const inner = nextTag(text, tag, pos);
 			if (!inner) {
 				// Unclosed open tag: the block's extent runs to the end of the string. `[tag]`
-				// marks the omission, and is the same length as the `<tag>` it replaces.
+				// marks the omission, and is the same length as the `<tag>` it replaces. The
+				// `keep` side strips the tag's own markup out of what it keeps, matching the
+				// closed-block branch below - nested opens were consumed by `depth` above and
+				// would otherwise survive into the output.
 				return {
-					text: unclosed === "keep" ? output + text.slice(innerStart) : `${output}[${tag}]`,
+					text:
+						unclosed === "keep"
+							? output + text.slice(innerStart).replace(new RegExp(`</?${tag}>`, "gi"), "")
+							: `${output}[${tag}]`,
 					hit,
 				};
 			}

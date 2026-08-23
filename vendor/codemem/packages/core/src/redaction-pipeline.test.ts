@@ -133,6 +133,15 @@ describe("Phase 1 redaction", () => {
 			{ allowlist: ["body"] },
 		);
 		expect(String(rebuilt.payload.body)).not.toContain("LEAK");
+
+		// `local-only` keeps its prose, so the tag's own markup has to come out of what is
+		// kept. Nesting deeper than the strip loop's iteration cap used to leave literal
+		// tags in the output, since only `private`/`injected-context` get a residual check.
+		const deepLocal = core.preprocessAdapterEvent(
+			{ body: `x ${"<local-only>".repeat(20)}tail` },
+			{ allowlist: ["body"] },
+		);
+		expect(String(deepLocal.payload.body)).toBe("x tail");
 	});
 
 	it("P1-T038-03-japanese-redaction", () => {
