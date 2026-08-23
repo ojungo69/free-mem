@@ -1,0 +1,25 @@
+vendor/codemem/packages/core/src/redaction-pipeline.test.ts
+  s_eb6264d292f6be::t_fd370c540e1ffb 77,89,98-99,102,116-131
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_eb6264d292f6be::t_75ba88fdd30241 535-537,539,551-558
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_eb6264d292f6be::t_25ce50241db6d9 2095,2107
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_eb6264d292f6be::t_e50890c2c61996 2095,2107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "82cd35c8506fdbc19b1fa6544d715aa654c7ab54",
+  "prompts": {},
+  "sessions": {
+    "s_eb6264d292f6be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a9ebfec-b207-4459-8457-167369cfc5e4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
