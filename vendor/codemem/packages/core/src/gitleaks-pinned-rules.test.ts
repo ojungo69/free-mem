@@ -5,7 +5,7 @@ import {
 	GITLEAKS_PIN,
 	GITLEAKS_PINNED_RULE_IDS,
 } from "./gitleaks-pinned-rules.js";
-import { SecretScanner } from "./secret-scanner.js";
+import { DEFAULT_RULES, SecretScanner } from "./secret-scanner.js";
 
 const cycle = (alphabet: string, length: number): string =>
 	Array.from({ length }, (_, index) => alphabet[index % alphabet.length]).join("");
@@ -89,5 +89,16 @@ describe("pinned Gitleaks runtime subset", () => {
 		];
 		expect(new Set([baseline, ...variants])).toHaveLength(5);
 		expect(fingerprintSecretRules(rules, true)).toBe(`${baseline}:degraded`);
+	});
+
+	it("pins the production ruleset digest that every stored event carries", () => {
+		// secret_rules_version is persisted per redacted event, and this digest
+		// hashes each rule's `pattern.source`. Changing a pattern — even to an
+		// exactly equivalent one — invalidates every existing database's
+		// re-scan state, so this constant must only ever move deliberately.
+		expect(DEFAULT_RULES).toHaveLength(23);
+		expect(fingerprintSecretRules(DEFAULT_RULES, false)).toBe(
+			"6e6e4c16e13455a5352b01ad4635c98415b0ac0b0b9596dcf9be84a9bf22cf99",
+		);
 	});
 });

@@ -1502,7 +1502,10 @@ function optionalString(value: unknown): string | null {
 
 function requirePositiveInt(value: unknown): number {
 	if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
-	if (typeof value === "string" && /^[1-9]\d*$/.test(value)) return Number(value);
+	// `[0-9]` stays spelled out: specs/001-agent-memory-core/contracts/rpc-v1.md R28
+	// quotes this pattern verbatim as part of a frozen wire contract, and a
+	// reimplementer certifies parity against that quote.
+	if (typeof value === "string" && /^[1-9][0-9]*$/.test(value)) return Number(value);
 	throw new RpcRequestError("id is invalid.");
 }
 

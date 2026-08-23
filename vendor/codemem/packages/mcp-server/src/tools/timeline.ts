@@ -47,6 +47,9 @@ export function registerTimelineTools(server: McpServer, context: ToolRegistrati
 		{
 			description: "Fetch memories by ID with surrounding timeline context.",
 			inputSchema: {
+				// `[0-9]`, not `\d`: zod copies RegExp.source verbatim into the JSON
+				// Schema `pattern` this tool publishes through tools/list, so the
+				// spelling is part of the wire contract. Pinned in server.test.ts.
 				ids: z
 					.array(z.union([z.number().int().positive(), z.string().regex(/^[1-9][0-9]*$/)]))
 					.min(1)

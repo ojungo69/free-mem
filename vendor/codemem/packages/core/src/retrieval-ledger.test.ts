@@ -1739,6 +1739,10 @@ describe("retrieval attribution ledger", () => {
 			{ scopeId: ["first", "second"], expected: null },
 			{ scopeId: [], expected: null },
 			{ scopeId: [null], expected: null },
+			// safeIdentity() is the only guard stopping an absolute path from
+			// reaching the ledger column; nothing upstream rejects one.
+			{ scopeId: "/home/user/private-repo", expected: null },
+			{ scopeId: ["C:\\Users\\user\\private-repo"], expected: null },
 		];
 
 		for (const [index, { scopeId, expected }] of cases.entries()) {

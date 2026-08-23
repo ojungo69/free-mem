@@ -506,6 +506,8 @@ function nextTag(
 	from: number,
 ): { kind: "open" | "close"; index: number; length: number } | null {
 	const slice = text.slice(from);
+	// `.match()`, not `.exec()`: Codacy reports `new RegExp` + `.exec()` as a
+	// HIGH RISK finding. Equivalent here because neither pattern carries g/y.
 	const openMatch = slice.match(new RegExp(`<${tag}>`, "i"));
 	const closeMatch = slice.match(new RegExp(`</${tag}>`, "i"));
 	const openAt = openMatch?.index ?? -1;

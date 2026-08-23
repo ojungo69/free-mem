@@ -430,7 +430,10 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		expect(report.session_duration_buckets["<1m"]).toBe(1);
 	});
 
-	it("buckets open and elapsed sessions across every duration range", () => {
+	// Mid-bucket values only: julianday() float error puts an exactly-1-minute
+	// session at 0.9999999403953552, so boundary values cannot be asserted
+	// against current behaviour. Tracked in #118.
+	it("assigns one session to each of the six duration buckets", () => {
 		const dbPath = createDbPath("memory-role-report-duration-buckets");
 		const db = new Database(dbPath);
 		try {

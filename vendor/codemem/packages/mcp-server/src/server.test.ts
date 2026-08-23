@@ -60,6 +60,19 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 					$schema: "http://json-schema.org/draft-07/schema#",
 				});
 			}
+			// memory_expand publishes its id pattern on the wire: zod copies
+			// RegExp.source into the JSON Schema, so `[0-9]` vs `\d` is an
+			// observable difference for clients, not a style choice.
+			const expand = listed.tools.find((candidate) => candidate.name === "memory_expand");
+			expect(
+				(expand?.inputSchema as { properties?: { ids?: { items?: unknown } } }).properties?.ids
+					?.items,
+			).toMatchObject({
+				anyOf: [
+					{ type: "integer", exclusiveMinimum: 0 },
+					{ type: "string", pattern: "^[1-9][0-9]*$" },
+				],
+			});
 		} finally {
 			await connection.close();
 		}

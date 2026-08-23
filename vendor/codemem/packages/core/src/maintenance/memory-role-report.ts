@@ -109,10 +109,7 @@ export function getMemoryRoleReportWithStore(
 	const mappingCounts = { mapped: 0, unmapped: 0 };
 	const kindCounts: Record<string, number> = {};
 	const projectQuality = { normal: 0, empty: 0, garbage_like: 0 };
-	const sessionDurationBuckets: Record<
-		"<1m" | "1-5m" | "5-30m" | "30-120m" | "120m+" | "open",
-		number
-	> = {
+	const sessionDurationBuckets = {
 		"<1m": 0,
 		"1-5m": 0,
 		"5-30m": 0,

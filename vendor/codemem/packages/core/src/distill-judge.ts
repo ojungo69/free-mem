@@ -82,6 +82,8 @@ export function parseJudgeVerdict(text: string | null | undefined): {
 		cleaned = cleaned.slice(0, -1);
 	}
 	cleaned = cleaned.trim();
+	// `.match()`, not `.exec()`: swapping them re-fingerprints this line and
+	// re-opens the CodeQL js/polynomial-redos alert that was triaged as dismissed.
 	const match = cleaned.match(VERDICT_PATTERN);
 	if (!match) return { verdict: "unjudged", reason: null };
 
