@@ -17,6 +17,14 @@ import {
 
 export const REDACTION_WORKER_DEADLINE_MS = 100;
 const REDACTION_WORKER_STARTUP_DEADLINE_MS = 1_000;
+/**
+ * How long a scan that fails closed will wait for the worker to come up, before its own
+ * REDACTION_WORKER_DEADLINE_MS budget starts. Generous against measured worker start, and
+ * bounded so that this wait plus the scan budget stays inside the daemon's smallest hook
+ * RPC cutoff (`codex.rpcCutoffMs`, daemon-rpc-contract.ts) - the wait is a synchronous
+ * `Atomics.wait`, so it blocks the whole thread.
+ */
+const REDACTION_SCAN_STARTUP_BUDGET_MS = 500;
 
 type WorkerRequest =
 	| {
@@ -167,6 +175,21 @@ function getWorker(): Worker {
 	return activeWorker;
 }
 
+/**
+ * Starts the redaction worker if needed and waits for it to report ready.
+ *
+ * `deadlineAtMs` switches two things at once, so pick it deliberately:
+ *
+ * - the wait bound: `min(what is left of the worker's own startup window, your deadline)`,
+ *   or the startup window alone when omitted;
+ * - the discard policy: with a deadline, a worker that is merely slow is left booting, so
+ *   the next call picks up where this one stopped. With no deadline, a worker that is not
+ *   ready when the wait ends is terminated and the next call starts a fresh one.
+ *
+ * Pass a deadline whenever the caller has a budget to respect. Omit it only where blocking
+ * for the full startup window is acceptable and a stuck worker is better replaced than kept
+ * (process/daemon start-up).
+ */
 export function warmRedactionWorker(deadlineAtMs?: number): boolean {
 	let worker: Worker;
 	try {
@@ -290,8 +313,13 @@ export class WorkerSecretScanner extends SecretScanner {
 		parentKey?: string,
 	): { value: unknown; detections: ScanDetection[] } {
 		if (this.options.degraded) throw new RedactionWorkerError();
+		// Warm on its own budget, not the scan budget. Charging worker start-up to the scan
+		// deadline left the first scan in a process with a fraction of it, and unlike the
+		// callers in redaction-pipeline.ts and store.ts - which degrade when the worker is
+		// not ready - this path throws, so the cost surfaced as an unrelated test failing
+		// on CI (#119).
+		warmRedactionWorker(performance.now() + REDACTION_SCAN_STARTUP_BUDGET_MS);
 		const deadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
-		warmRedactionWorker(deadlineAtMs);
 		const result = redactValueInWorker(
 			value,
 			this.options.rules ?? [],
