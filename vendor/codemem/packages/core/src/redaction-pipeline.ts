@@ -179,7 +179,16 @@ function runPipeline(
 		}
 	}
 
-	payload = mapStrings(payload, stripInjectedContext);
+	// Which reserved openers the event carried before anything stripped them. Recorded here
+	// because stripInjectedContext() below, and the secret scan after it, can both remove an
+	// opener and leave its closer looking orphaned. See orphanClosePolicy().
+	const openersSeen = new Set<string>();
+	payload = mapStrings(payload, (text) => {
+		for (const tag of RESERVED_TAGS) {
+			if (!openersSeen.has(tag) && new RegExp(`<${tag}>`, "i").test(text)) openersSeen.add(tag);
+		}
+		return stripInjectedContext(text);
+	});
 	payload = mapStrings(payload, (text, key) =>
 		PATH_KEYS.has(key) ? normalizePathValue(text) : text,
 	);
@@ -201,7 +210,7 @@ function runPipeline(
 	let privateOmitted = false;
 	let localOnly = false;
 	payload = mapStrings(payload, (text) => {
-		const stripped = stripReservedMarkup(text);
+		const stripped = stripReservedMarkup(text, openersSeen);
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
 		return stripped.text;
@@ -219,7 +228,7 @@ function runPipeline(
 		}
 	}
 	payload = mapStrings(payload, (text) => {
-		const again = stripReservedMarkup(text);
+		const again = stripReservedMarkup(text, openersSeen);
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
@@ -449,11 +458,33 @@ function elide(text: string, original: number): string {
 	return `${text.slice(0, head)}\n…[elided ${original} bytes]…\n${text.slice(-tail)}`;
 }
 
+const RESERVED_TAGS = ["injected-context", "private", "local-only"] as const;
+
 function stripInjectedContext(text: string): string {
-	return stripTagged(text, "injected-context", "drop").text;
+	// Called before anything else has stripped this string, so the text itself still shows
+	// whether an opener was present.
+	const sawOpener = /<injected-context>/i.test(text);
+	return stripTagged(text, "injected-context", "drop", orphanClosePolicy(sawOpener)).text;
 }
 
-function stripReservedMarkup(text: string): {
+/**
+ * An orphan close tag is only safe to strip in place when the event never carried an opener
+ * for that tag: the prose around it was then never inside a tagged region, so dropping it
+ * protects nothing and only loses a note about the tag syntax (#117).
+ *
+ * If an opener did exist, a close without a match means either malformed markup or an opener
+ * that an earlier pass consumed - `<injected-context><private>x</injected-context>SECRET</private>`
+ * leaves a synthetic orphan `</private>` around content that really was inside a private
+ * block. Fail closed there.
+ */
+function orphanClosePolicy(sawOpener: boolean): "drop" | "keep" {
+	return sawOpener ? "drop" : "keep";
+}
+
+function stripReservedMarkup(
+	text: string,
+	openersSeen: ReadonlySet<string>,
+): {
 	text: string;
 	privateHit: boolean;
 	localOnly: boolean;
@@ -461,11 +492,16 @@ function stripReservedMarkup(text: string): {
 	let current = text;
 	let privateHit = false;
 	let localOnly = false;
+	// From the event as it arrived, not from `text` - by the time this runs, an earlier pass
+	// may already have removed the opener whose closer we are about to judge.
+	const injectedOrphan = orphanClosePolicy(openersSeen.has("injected-context"));
+	const privateOrphan = orphanClosePolicy(openersSeen.has("private"));
+	const localOrphan = orphanClosePolicy(openersSeen.has("local-only"));
 	for (let i = 0; i < 8; i += 1) {
-		const injected = stripTagged(current, "injected-context", "drop");
-		const priv = stripTagged(injected.text, "private", "drop");
+		const injected = stripTagged(current, "injected-context", "drop", injectedOrphan);
+		const priv = stripTagged(injected.text, "private", "drop", privateOrphan);
 		if (priv.hit) privateHit = true;
-		const local = stripTagged(priv.text, "local-only", "keep");
+		const local = stripTagged(priv.text, "local-only", "keep", localOrphan);
 		if (local.hit) localOnly = true;
 		if (local.text === current) break;
 		if (local.text.length > current.length) {
@@ -521,6 +557,7 @@ function stripTagged(
 	text: string,
 	tag: string,
 	unclosed: "drop" | "keep",
+	orphanClose: "drop" | "keep",
 ): { text: string; hit: boolean } {
 	let cursor = 0;
 	let output = "";
@@ -532,11 +569,10 @@ function stripTagged(
 			break;
 		}
 		if (found.kind === "close") {
-			// Orphan close tag: no open tag preceded it, so the text before it was never
-			// inside a tagged region and there is no extent to fail closed over. Drop the
-			// tag, keep the prose - the same rule stripPrivate() applies in ingest-sanitize.ts.
+			// Orphan close tag. See orphanClosePolicy(): keep the prose when the input never
+			// had an opener for this tag, fail closed when it did.
 			hit = true;
-			output += text.slice(cursor, found.index);
+			if (orphanClose === "keep") output += text.slice(cursor, found.index);
 			cursor = found.index + found.length;
 			continue;
 		}

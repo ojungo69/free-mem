@@ -1817,7 +1817,11 @@ function runPipeline(input, options, layer) {
 	let payload = {};
 	if (tooLarge(source)) payload = {};
 	else for (const [key, value] of Object.entries(source)) if (allow.has(key) && !isSensitiveFieldName(key)) payload[key] = dropSensitiveFields(value, toolAllow, toolDeny);
-	payload = mapStrings(payload, stripInjectedContext);
+	const openersSeen = /* @__PURE__ */ new Set();
+	payload = mapStrings(payload, (text) => {
+		for (const tag of RESERVED_TAGS) if (!openersSeen.has(tag) && new RegExp(`<${tag}>`, "i").test(text)) openersSeen.add(tag);
+		return stripInjectedContext(text);
+	});
 	payload = mapStrings(payload, (text, key) => PATH_KEYS.has(key) ? normalizePathValue(text) : text);
 	const userRules = config?.secretRules ?? [];
 	const rules = [...DEFAULT_RULES, ...userRules];
@@ -1830,7 +1834,7 @@ function runPipeline(input, options, layer) {
 	let privateOmitted = false;
 	let localOnly = false;
 	payload = mapStrings(payload, (text) => {
-		const stripped = stripReservedMarkup(text);
+		const stripped = stripReservedMarkup(text, openersSeen);
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
 		return stripped.text;
@@ -1848,7 +1852,7 @@ function runPipeline(input, options, layer) {
 		}
 	}
 	payload = mapStrings(payload, (text) => {
-		const again = stripReservedMarkup(text);
+		const again = stripReservedMarkup(text, openersSeen);
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
@@ -2014,17 +2018,38 @@ function elide(text, original) {
 	if (text.length <= 512) return text;
 	return `${text.slice(0, head)}\n…[elided ${original} bytes]…\n${text.slice(-256)}`;
 }
+var RESERVED_TAGS = [
+	"injected-context",
+	"private",
+	"local-only"
+];
 function stripInjectedContext(text) {
-	return stripTagged(text, "injected-context", "drop").text;
+	return stripTagged(text, "injected-context", "drop", orphanClosePolicy(/<injected-context>/i.test(text))).text;
 }
-function stripReservedMarkup(text) {
+/**
+* An orphan close tag is only safe to strip in place when the event never carried an opener
+* for that tag: the prose around it was then never inside a tagged region, so dropping it
+* protects nothing and only loses a note about the tag syntax (#117).
+*
+* If an opener did exist, a close without a match means either malformed markup or an opener
+* that an earlier pass consumed - `<injected-context><private>x</injected-context>SECRET</private>`
+* leaves a synthetic orphan `</private>` around content that really was inside a private
+* block. Fail closed there.
+*/
+function orphanClosePolicy(sawOpener) {
+	return sawOpener ? "drop" : "keep";
+}
+function stripReservedMarkup(text, openersSeen) {
 	let current = text;
 	let privateHit = false;
 	let localOnly = false;
+	const injectedOrphan = orphanClosePolicy(openersSeen.has("injected-context"));
+	const privateOrphan = orphanClosePolicy(openersSeen.has("private"));
+	const localOrphan = orphanClosePolicy(openersSeen.has("local-only"));
 	for (let i = 0; i < 8; i += 1) {
-		const priv = stripTagged(stripTagged(current, "injected-context", "drop").text, "private", "drop");
+		const priv = stripTagged(stripTagged(current, "injected-context", "drop", injectedOrphan).text, "private", "drop", privateOrphan);
 		if (priv.hit) privateHit = true;
-		const local = stripTagged(priv.text, "local-only", "keep");
+		const local = stripTagged(priv.text, "local-only", "keep", localOrphan);
 		if (local.hit) localOnly = true;
 		if (local.text === current) break;
 		if (local.text.length > current.length) return {
@@ -2080,7 +2105,7 @@ function nextTag(text, tag, from) {
 		length: openMatch?.[0].length ?? 0
 	};
 }
-function stripTagged(text, tag, unclosed) {
+function stripTagged(text, tag, unclosed, orphanClose) {
 	let cursor = 0;
 	let output = "";
 	let hit = false;
@@ -2092,7 +2117,7 @@ function stripTagged(text, tag, unclosed) {
 		}
 		if (found.kind === "close") {
 			hit = true;
-			output += text.slice(cursor, found.index);
+			if (orphanClose === "keep") output += text.slice(cursor, found.index);
 			cursor = found.index + found.length;
 			continue;
 		}

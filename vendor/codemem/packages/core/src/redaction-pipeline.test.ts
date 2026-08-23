@@ -129,6 +129,23 @@ describe("Phase 1 redaction", () => {
 		);
 		expect(String(orphanClose.payload.injected)).toBe("The  marker closes an injected block.");
 		expect(String(orphanClose.payload.local)).toBe("note  done");
+
+		// An earlier pass can eat an opener and leave a *synthetic* orphan close around
+		// content that really was inside a tagged block, so an input that carried an opener
+		// for the tag keeps failing closed. Here stripping <injected-context> removes the
+		// <private> opener, and SECRET must not survive that.
+		const crossTag = core.preprocessAdapterEvent(
+			{
+				body: "<injected-context><private>x</injected-context>SECRET</private> tail",
+				stray: "<private>foo</private>SECRET</private>rest",
+			},
+			{ allowlist: ["body", "stray"] },
+		);
+		expect(String(crossTag.payload.body)).toBe(" tail");
+		expect(String(crossTag.payload.body)).not.toContain("SECRET");
+		expect(String(crossTag.payload.stray)).toBe("rest");
+		expect(String(crossTag.payload.stray)).not.toContain("SECRET");
+		expect(crossTag.private_content_omitted).toBe(true);
 	});
 
 	it("P1-T038-03-japanese-redaction", () => {
