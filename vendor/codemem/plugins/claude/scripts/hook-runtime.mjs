@@ -2164,7 +2164,10 @@ function mapStrings(value, fn) {
 		if (Array.isArray(item)) return item.map((entry, index) => walk(entry, key, `${path}[${index}]`));
 		if (item && typeof item === "object") {
 			const next = {};
-			for (const [childKey, child] of Object.entries(item)) next[childKey] = walk(child, childKey, path ? `${path}.${childKey}` : childKey);
+			for (const [childKey, child] of Object.entries(item)) {
+				const childPath = JSON.stringify(childKey);
+				next[childKey] = walk(child, childKey, path ? `${path},${childPath}` : childPath);
+			}
 			return next;
 		}
 		return item;

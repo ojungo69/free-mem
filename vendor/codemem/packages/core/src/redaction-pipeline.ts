@@ -645,6 +645,8 @@ function mapStrings(
 	value: Record<string, unknown>,
 	fn: (text: string, key: string, path: string) => string,
 ): Record<string, unknown> {
+	// Segments are JSON-encoded so a key containing the delimiter cannot alias a different
+	// location: {"a.b": x} and {a: {b: y}} serialize to `"a.b"` and `"a","b"`.
 	const walk = (item: unknown, key: string, path: string): unknown => {
 		if (typeof item === "string") return fn(item, key, path);
 		if (Array.isArray(item))
@@ -652,7 +654,8 @@ function mapStrings(
 		if (item && typeof item === "object") {
 			const next: Record<string, unknown> = {};
 			for (const [childKey, child] of Object.entries(item as Record<string, unknown>)) {
-				next[childKey] = walk(child, childKey, path ? `${path}.${childKey}` : childKey);
+				const childPath = JSON.stringify(childKey);
+				next[childKey] = walk(child, childKey, path ? `${path},${childPath}` : childPath);
 			}
 			return next;
 		}

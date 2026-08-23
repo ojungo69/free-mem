@@ -165,6 +165,19 @@ describe("Phase 1 redaction", () => {
 		);
 		expect((nested.payload.input as { right: { text: string } }).right.text).toBe("keep  prose");
 
+		// Keys may themselves contain the path delimiter, so segments are JSON-encoded: a
+		// literal "a.b" key must not alias the nested a -> b location and overwrite its history.
+		const collidingKeys = core.preprocessAdapterEvent(
+			{
+				input: {
+					"a.b": "<injected-context><private>x</injected-context>SECRET</private> tail",
+					a: { b: "<injected-context>other</injected-context>" },
+				},
+			},
+			{ allowlist: ["input"] },
+		);
+		expect((collidingKeys.payload.input as Record<string, unknown>)["a.b"]).toBe(" tail");
+
 		// private_regex runs between the two markup passes and can delete characters that
 		// reassemble a reserved tag, so the opener history is re-checked against the text
 		// as it stands, not only against what was recorded before the first pass.
