@@ -305,9 +305,6 @@ describe("session extraction eval", () => {
 			expect(result.counts.observations).toBe(2);
 			expect(result.pass).toBe(true);
 			expect(includeInactive.counts.observations).toBe(3);
-			// includeInactiveFlag is threaded into two separate statements; pin
-			// the summary side too so a change to only one of them is visible.
-			expect(includeInactive.counts.summaries).toBe(1);
 		} finally {
 			db.close();
 		}

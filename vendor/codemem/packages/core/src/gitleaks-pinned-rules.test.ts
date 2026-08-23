@@ -91,11 +91,12 @@ describe("pinned Gitleaks runtime subset", () => {
 		expect(fingerprintSecretRules(rules, true)).toBe(`${baseline}:degraded`);
 	});
 
-	it("pins the production ruleset digest that every stored event carries", () => {
-		// secret_rules_version is persisted per redacted event, and this digest
-		// hashes each rule's `pattern.source`. Changing a pattern — even to an
-		// exactly equivalent one — invalidates every existing database's
-		// re-scan state, so this constant must only ever move deliberately.
+	it("pins the DEFAULT_RULES digest", () => {
+		// This is the secret_rules_version a deployment stamps on redacted events
+		// when it configures no extra rules and the scan is not degraded. The digest
+		// covers the GITLEAKS_PIN triple plus each rule's source, flags, minEntropy
+		// and redactGroup — so a gitleaks bump moves it too, with no regex edit.
+		// Moving it splits provenance across stored events: only ever do so on purpose.
 		expect(DEFAULT_RULES).toHaveLength(23);
 		expect(fingerprintSecretRules(DEFAULT_RULES, false)).toBe(
 			"6e6e4c16e13455a5352b01ad4635c98415b0ac0b0b9596dcf9be84a9bf22cf99",

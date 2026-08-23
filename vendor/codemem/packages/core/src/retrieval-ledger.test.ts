@@ -1739,8 +1739,9 @@ describe("retrieval attribution ledger", () => {
 			{ scopeId: ["first", "second"], expected: null },
 			{ scopeId: [], expected: null },
 			{ scopeId: [null], expected: null },
-			// safeIdentity() is the only guard stopping an absolute path from
-			// reaching the ledger column; nothing upstream rejects one.
+			// Two independent guards drop an absolute path here: safeIdentity() for
+			// the scopeId column and sanitizeRetrievalFilters() for filterSummary.
+			// The loop asserts both, so neither can be removed unnoticed.
 			{ scopeId: "/home/user/private-repo", expected: null },
 			{ scopeId: ["C:\\Users\\user\\private-repo"], expected: null },
 		];
@@ -1763,6 +1764,9 @@ describe("retrieval attribution ledger", () => {
 			expect(outcome.ok).toBe(true);
 			if (!outcome.ok) throw new Error(outcome.errorCode);
 			expect(outcome.value.attempt.scopeId).toBe(expected);
+			expect(JSON.stringify(outcome.value.attempt.filterSummary ?? {})).not.toContain(
+				"private-repo",
+			);
 		}
 	});
 

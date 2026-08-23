@@ -17,45 +17,55 @@ import { openTestMemoryStore } from "./test-utils.js";
 function withContext(run: (ctx: DaemonRpcContext, seededIds: number[]) => Promise<void>) {
 	const dir = mkdtempSync(join(tmpdir(), "codemem-rpc-id-"));
 	const store = openTestMemoryStore(join(dir, "test.sqlite"));
-	const db = store.db;
-	const sessionId = Number(
-		db
-			.prepare(
-				`INSERT INTO sessions(started_at, cwd, project, user, tool_version, metadata_json, import_key)
-				 VALUES ('2026-03-01T10:00:00Z', '/tmp/repo', 'codemem', 'test-user', 'test', '{}', 'rpc-id-session')`,
-			)
-			.run().lastInsertRowid,
-	);
-	const seededIds = ["first", "second"].map((slug) =>
-		Number(
-			db
-				.prepare(
-					`INSERT INTO memory_items(
-						session_id, kind, title, body_text, confidence, tags_text, active,
-						created_at, updated_at, metadata_json, rev, visibility, import_key
-					 ) VALUES (?, 'decision', ?, 'seeded for id validation', 0.9, '', 1,
-						'2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', '{}', 1, 'shared', ?)`,
-				)
-				.run(sessionId, `RPC id fixture ${slug}`, `rpc-id-${slug}`).lastInsertRowid,
-		),
-	);
-	const ctx = {
-		identity: { pid: process.pid, nonce: "rpc-id-test" },
-		dataDir: dir,
-		onStop: () => {},
-		writer: db,
-		store,
-		jobs: { isMaintenanceMode: () => false } as never,
-	} as DaemonRpcContext;
-	return run(ctx, seededIds).finally(() => {
+	const cleanup = () => {
 		store.close();
 		rmSync(dir, { recursive: true, force: true });
-	});
+	};
+	// Seeding sits inside the try: these hand-written INSERTs bypass store.remember,
+	// so a schema change can make one throw — outside, that would leak the sqlite
+	// handle and the temp dir, because `.finally` is not attached yet.
+	try {
+		const db = store.db;
+		const sessionId = Number(
+			db
+				.prepare(
+					`INSERT INTO sessions(started_at, cwd, project, user, tool_version, metadata_json, import_key)
+					 VALUES ('2026-03-01T10:00:00Z', '/tmp/repo', 'codemem', 'test-user', 'test', '{}', 'rpc-id-session')`,
+				)
+				.run().lastInsertRowid,
+		);
+		const seededIds = ["first", "second"].map((slug) =>
+			Number(
+				db
+					.prepare(
+						`INSERT INTO memory_items(
+							session_id, kind, title, body_text, confidence, tags_text, active,
+							created_at, updated_at, metadata_json, rev, visibility, import_key
+						 ) VALUES (?, 'decision', ?, 'seeded for id validation', 0.9, '', 1,
+							'2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', '{}', 1, 'shared', ?)`,
+					)
+					.run(sessionId, `RPC id fixture ${slug}`, `rpc-id-${slug}`).lastInsertRowid,
+			),
+		);
+		const ctx = {
+			identity: { pid: process.pid, nonce: "rpc-id-test" },
+			dataDir: dir,
+			onStop: () => {},
+			writer: db,
+			store,
+			jobs: { isMaintenanceMode: () => false } as never,
+		} as DaemonRpcContext;
+		return run(ctx, seededIds).finally(cleanup);
+	} catch (error) {
+		cleanup();
+		throw error;
+	}
 }
 
-// Every dispatch needs its own requestId: it becomes the class-A idempotency
-// key, so a reused one makes the second accepted call return the first call's
-// receipt as a conflict instead of executing.
+// `requestId` becomes the class-A idempotency key for POST /v1/search. A repeat
+// under the same key replays the stored receipt when the payload hash matches and
+// raises MutationConflictError when it does not — which is what makes the shared
+// key in the rejection test a real ordering probe.
 const getMany = (requestId: string, memoryId: unknown, envelopeId: unknown = requestId) =>
 	JSON.stringify({
 		id: envelopeId,
@@ -80,17 +90,26 @@ describe("daemon RPC id validation", () => {
 		});
 	});
 
-	it("rejects non-canonical id spellings", async () => {
-		await withContext(async (ctx) => {
-			for (const [index, memoryId] of ["0", "01", "-1", "1.5", "", true].entries()) {
-				expect(
-					await dispatchDaemonRpc(getMany(`rpc-id-reject-${index}`, memoryId), ctx),
-				).toMatchObject({ error: { code: "invalid_request", message: "id is invalid." } });
+	it("rejects non-canonical id spellings before the idempotency key is consumed", async () => {
+		await withContext(async (ctx, seededIds) => {
+			const [, second] = seededIds;
+			// One key for the whole block. The first call commits a class-A receipt
+			// under it, so every later rejection also proves body validation runs
+			// before the idempotency lookup: reordered, these differing payloads
+			// would come back as a conflict instead of "id is invalid."
+			const key = "rpc-id-order";
+			expect(await dispatchDaemonRpc(getMany(key, String(second)), ctx)).toMatchObject({
+				result: { items: [{ id: second }] },
+			});
+			for (const memoryId of ["0", "01", "-1", "1.5", "", true]) {
+				expect(await dispatchDaemonRpc(getMany(key, memoryId), ctx)).toMatchObject({
+					error: { code: "invalid_request", message: "id is invalid." },
+				});
 			}
 		});
 	});
 
-	it("rejects an envelope whose own id is missing or not a non-empty string", async () => {
+	it("rejects an envelope id that is not a non-empty string", async () => {
 		await withContext(async (ctx, seededIds) => {
 			const [first] = seededIds;
 			for (const [index, envelopeId] of ["", 7, null].entries()) {

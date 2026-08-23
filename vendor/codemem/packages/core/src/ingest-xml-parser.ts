@@ -328,9 +328,10 @@ export function inspectObserverResponseStructure(
 	const discardedSummaryBlocks = Math.max(0, summaryBlocks - retainedSummaries);
 	const malformedRetainedChildren = [...observationBlockValues, ...summaryBlockValues].some(
 		(block) => {
-			// `[A-Za-z_]` stays explicit under /i to match the sibling root-tag
-			// patterns in this file (lines ~135 and ~1423); shortening only some of
-			// them reads as a behavioural difference that does not exist.
+			// `[a-z_]` would be equivalent under /i, but every other tag pattern in
+			// this file spells the class out (they carry no /i, where the long form
+			// is load-bearing). Matching them keeps the class readable without
+			// having to check the flags first.
 			const rootTag = /^\s*<([A-Za-z_][\w:.-]*)/i.exec(block)?.[1];
 			return rootTag
 				? directChildFragments(block, rootTag).some((fragment) => !fragment.complete)
@@ -1293,7 +1294,8 @@ function proseOutsideRootBlocks(raw: string): string[] {
 		const prose = visibleTextForComparison(cleaned.slice(cursor, start));
 		if (prose) fragments.push(normalizeRecoverableText(prose).toLowerCase());
 		const remainder = cleaned.slice(start);
-		// `[A-Za-z_]` stays explicit under /i — see the sibling-pattern note above.
+		// `[A-Za-z_]` spelled out — see the tag-pattern note in
+		// malformedRetainedChildren.
 		const rootName = /^<([A-Za-z_][\w:.-]*)/i.exec(remainder)?.[1]?.toLowerCase();
 		const completePattern =
 			rootName === "observation"

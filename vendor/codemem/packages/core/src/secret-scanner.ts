@@ -76,6 +76,11 @@ const SECRET_BEARING_KEY =
  * more-general ones — see the OpenAI rule, which uses a negative lookahead to
  * avoid swallowing Anthropic keys regardless of order.
  */
+// Every rule's `pattern.source` and `flags` are hashed into the
+// `secret_rules_version` stamped on each redacted event, so rewriting a pattern
+// to an equivalent form (`[A-Za-z0-9_]` -> `\w`, spelling `\d` for `[0-9]`,
+// dropping a range that /i makes redundant) rotates that digest and splits
+// provenance across stored events. Change a pattern only to change what it matches.
 const LOCAL_RULES: SecretRule[] = [
 	// AWS — both halves of an access key pair
 	{ kind: "aws_access_key_id", pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
@@ -88,10 +93,6 @@ const LOCAL_RULES: SecretRule[] = [
 
 	// GitHub token family
 	{ kind: "github_pat_classic", pattern: /\bghp_[A-Za-z0-9]{36}\b/g },
-	// Character classes here are spelled out rather than shortened to `\w`:
-	// fingerprintSecretRules() hashes `pattern.source` into the persisted
-	// secret_rules_version, so an equivalent rewrite forces a full re-scan of
-	// every existing database.
 	{ kind: "github_pat_finegrained", pattern: /\bgithub_pat_[A-Za-z0-9_]{82}\b/g },
 	{ kind: "github_oauth", pattern: /\bgho_[A-Za-z0-9]{36}\b/g },
 	{ kind: "github_user_token", pattern: /\bghu_[A-Za-z0-9]{36}\b/g },
@@ -129,7 +130,6 @@ const LOCAL_RULES: SecretRule[] = [
 	// Only the captured value (group 1) is redacted; the prefix is preserved.
 	{
 		kind: "generic_assigned_secret",
-		// `A-Za-z` stays explicit even under /i — see the secret_rules_version note above.
 		pattern:
 			/\b(?:secret|token|password|passwd|pwd|auth|bearer|credential|api[_-]?key|access[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer[_-]?token|api[_-]?token)\s*[:=]\s*["']?([A-Za-z0-9+/=_.-]{20,})["']?/gi,
 		minEntropy: 3.5,
