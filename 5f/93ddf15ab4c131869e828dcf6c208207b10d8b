@@ -1,0 +1,53 @@
+vendor/codemem/packages/core/src/distill-judge.ts
+  s_d7c13d0e584450::t_efefc931cb9a1c 85
+vendor/codemem/packages/core/src/extraction-eval.test.ts
+  s_cca5b78ef77f95::t_3bd9daf099b9c7 278-283,285,287-297,307
+vendor/codemem/packages/core/src/index.ts
+  s_d7c13d0e584450::t_fa9b9de659e982 524
+vendor/codemem/packages/core/src/ingest-xml-parser.ts
+  s_d7c13d0e584450::t_fc3af35748bc12 331,1293
+vendor/codemem/packages/core/src/maintenance.test.ts
+  s_cca5b78ef77f95::t_e66419d9231928 433-469
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_d7c13d0e584450::t_5b068395787d11 509-510
+vendor/codemem/packages/core/src/retrieval-ledger.test.ts
+  s_cca5b78ef77f95::t_3988ecc506231d 1732-1764
+vendor/codemem/packages/core/src/secret-scanner.test.ts
+  s_d7c13d0e584450::t_766ec71cccc573 103
+vendor/codemem/packages/core/src/secret-scanner.ts
+  s_d7c13d0e584450::t_7b69a0c1ce0adf 91,129
+vendor/codemem/packages/mcp-server/src/server.test.ts
+  s_d7c13d0e584450::t_4f949eeb14b129 52-62
+vendor/codemem/packages/mcp-server/src/tools/timeline.ts
+  s_d7c13d0e584450::t_8caf2421db78b6 51
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_d7c13d0e584450::t_52178cb6fc0108 1269,1322,2067-2068
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_d7c13d0e584450::t_a44b3ae745ecb8 1269,1322,2067-2068
+vendor/codemem/packages/core/src/daemon-rpc-validation.test.ts
+  s_cca5b78ef77f95::t_068eb7941dd0b7 1-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "5f93ddf15ab4c131869e828dcf6c208207b10d8b",
+  "prompts": {},
+  "sessions": {
+    "s_cca5b78ef77f95": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a02c46-1516-7bb0-a874-9e07a7b4900a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
