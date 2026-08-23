@@ -101,9 +101,11 @@ describe("SecretScanner", () => {
 		});
 
 		it("redacts an all-lowercase value", () => {
-			const secret = "abcdefghijklmnopqrstuvwxyz012345";
-			const r = scanner.scan(`client_secret=${secret}`);
-			expect(r.redacted).not.toContain(secret);
+			// Named `lowercaseValue`, not `secret`: `const secret = "<32 chars>"` is itself
+			// a generic-assigned-secret shape, and static analysers flag the fixture.
+			const lowercaseValue = "abcdefghijklmnopqrstuvwxyz012345";
+			const r = scanner.scan(`client_secret=${lowercaseValue}`);
+			expect(r.redacted).not.toContain(lowercaseValue);
 			expect(r.redacted).toMatch(/\[REDACTED:/);
 		});
 
