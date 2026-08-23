@@ -179,18 +179,7 @@ function runPipeline(
 		}
 	}
 
-	// Which content-removing openers each field carried before anything stripped them.
-	// Recorded here because stripInjectedContext() below can remove a <private> opener and
-	// leave its closer looking orphaned. See orphanClosePolicy().
-	const openersSeen = new Map<string, Set<string>>();
-	payload = mapStrings(payload, (text, _key, path) => {
-		const seen = new Set<string>();
-		for (const tag of DROPPING_TAGS) {
-			if (hasOpener(text, tag)) seen.add(tag);
-		}
-		if (seen.size > 0) openersSeen.set(path, seen);
-		return stripInjectedContext(text);
-	});
+	payload = mapStrings(payload, stripInjectedContext);
 	payload = mapStrings(payload, (text, key) =>
 		PATH_KEYS.has(key) ? normalizePathValue(text) : text,
 	);
@@ -211,8 +200,8 @@ function runPipeline(
 
 	let privateOmitted = false;
 	let localOnly = false;
-	payload = mapStrings(payload, (text, _key, path) => {
-		const stripped = stripReservedMarkup(text, openersSeen.get(path));
+	payload = mapStrings(payload, (text) => {
+		const stripped = stripReservedMarkup(text);
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
 		return stripped.text;
@@ -229,8 +218,8 @@ function runPipeline(
 			workerDegraded = true;
 		}
 	}
-	payload = mapStrings(payload, (text, _key, path) => {
-		const again = stripReservedMarkup(text, openersSeen.get(path));
+	payload = mapStrings(payload, (text) => {
+		const again = stripReservedMarkup(text);
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
@@ -460,46 +449,11 @@ function elide(text: string, original: number): string {
 	return `${text.slice(0, head)}\n…[elided ${original} bytes]…\n${text.slice(-tail)}`;
 }
 
-/**
- * The tags whose blocks are *removed*. `local-only` is not one of them: it keeps its content
- * and only flags the record, so there is nothing for a dangling `</local-only>` to fail
- * closed over and its orphan policy is always "keep".
- */
-const DROPPING_TAGS = ["injected-context", "private"] as const;
-
-function hasOpener(text: string, tag: string): boolean {
-	return text.toLowerCase().includes(`<${tag}>`);
-}
-
 function stripInjectedContext(text: string): string {
-	// Called before anything else has stripped this string, so the text itself still shows
-	// whether an opener was present.
-	return stripTagged(
-		text,
-		"injected-context",
-		"drop",
-		orphanClosePolicy(hasOpener(text, "injected-context")),
-	).text;
+	return stripTagged(text, "injected-context", "drop").text;
 }
 
-/**
- * An orphan close tag is only safe to strip in place when the event never carried an opener
- * for that tag: the prose around it was then never inside a tagged region, so dropping it
- * protects nothing and only loses a note about the tag syntax (#117).
- *
- * If an opener did exist, a close without a match means either malformed markup or an opener
- * that an earlier pass consumed - `<injected-context><private>x</injected-context>SECRET</private>`
- * leaves a synthetic orphan `</private>` around content that really was inside a private
- * block. Fail closed there.
- */
-function orphanClosePolicy(sawOpener: boolean): "drop" | "keep" {
-	return sawOpener ? "drop" : "keep";
-}
-
-function stripReservedMarkup(
-	text: string,
-	openersSeen: ReadonlySet<string> | undefined,
-): {
+function stripReservedMarkup(text: string): {
 	text: string;
 	privateHit: boolean;
 	localOnly: boolean;
@@ -507,33 +461,11 @@ function stripReservedMarkup(
 	let current = text;
 	let privateHit = false;
 	let localOnly = false;
-	// Opener knowledge only ever grows, and it has to be re-taken between stages: the
-	// private_regex pass can delete characters that reassemble a tag, and stripping one tag
-	// can itself finish assembling another one's opener
-	// (`<pri<injected-context>x</injected-context>vate>` becomes `<private>` here, not before).
-	const seen = new Set<string>(openersSeen);
-	const note = (value: string) => {
-		for (const tag of DROPPING_TAGS) {
-			if (!seen.has(tag) && hasOpener(value, tag)) seen.add(tag);
-		}
-	};
 	for (let i = 0; i < 8; i += 1) {
-		note(current);
-		const injected = stripTagged(
-			current,
-			"injected-context",
-			"drop",
-			orphanClosePolicy(seen.has("injected-context")),
-		);
-		note(injected.text);
-		const priv = stripTagged(
-			injected.text,
-			"private",
-			"drop",
-			orphanClosePolicy(seen.has("private")),
-		);
+		const injected = stripTagged(current, "injected-context", "drop");
+		const priv = stripTagged(injected.text, "private", "drop");
 		if (priv.hit) privateHit = true;
-		const local = stripTagged(priv.text, "local-only", "keep", "keep");
+		const local = stripTagged(priv.text, "local-only", "keep");
 		if (local.hit) localOnly = true;
 		if (local.text === current) break;
 		if (local.text.length > current.length) {
@@ -589,7 +521,6 @@ function stripTagged(
 	text: string,
 	tag: string,
 	unclosed: "drop" | "keep",
-	orphanClose: "drop" | "keep",
 ): { text: string; hit: boolean } {
 	let cursor = 0;
 	let output = "";
@@ -601,10 +532,13 @@ function stripTagged(
 			break;
 		}
 		if (found.kind === "close") {
-			// Orphan close tag. See orphanClosePolicy(): keep the prose when the input never
-			// had an opener for this tag, fail closed when it did.
+			// Orphan close tag: whatever region it belongs to is unknown, since the opener may
+			// have been truncated away or removed by an earlier reserved-tag pass. Fail closed
+			// exactly as before, but leave `[/tag]` so the omission is visible instead of silent
+			// (#117). The marker is the same length as the `</tag>` it replaces and contains no
+			// `<`, so it trips neither guard in stripReservedMarkup.
 			hit = true;
-			if (orphanClose === "keep") output += text.slice(cursor, found.index);
+			output += unclosed === "keep" ? text.slice(cursor, found.index) : `[/${tag}]`;
 			cursor = found.index + found.length;
 			continue;
 		}
@@ -616,10 +550,8 @@ function stripTagged(
 		while (depth > 0) {
 			const inner = nextTag(text, tag, pos);
 			if (!inner) {
-				// Unclosed open tag: the block's extent is unknown, so fail closed and drop
-				// to the end of the string. `[tag]` marks the omission and is exactly as long
-				// as the `<tag>` it replaces, so the text can never grow past the expansion
-				// guard in stripReservedMarkup.
+				// Unclosed open tag: the block's extent runs to the end of the string. `[tag]`
+				// marks the omission, and is the same length as the `<tag>` it replaces.
 				return {
 					text: unclosed === "keep" ? output + text.slice(innerStart) : `${output}[${tag}]`,
 					hit,
@@ -643,25 +575,21 @@ function stripTagged(
 
 function mapStrings(
 	value: Record<string, unknown>,
-	fn: (text: string, key: string, path: string) => string,
+	fn: (text: string, key: string) => string,
 ): Record<string, unknown> {
-	// Segments are JSON-encoded so a key containing the delimiter cannot alias a different
-	// location: {"a.b": x} and {a: {b: y}} serialize to `"a.b"` and `"a","b"`.
-	const walk = (item: unknown, key: string, path: string): unknown => {
-		if (typeof item === "string") return fn(item, key, path);
-		if (Array.isArray(item))
-			return item.map((entry, index) => walk(entry, key, `${path}[${index}]`));
+	const walk = (item: unknown, key: string): unknown => {
+		if (typeof item === "string") return fn(item, key);
+		if (Array.isArray(item)) return item.map((entry) => walk(entry, key));
 		if (item && typeof item === "object") {
 			const next: Record<string, unknown> = {};
 			for (const [childKey, child] of Object.entries(item as Record<string, unknown>)) {
-				const childPath = JSON.stringify(childKey);
-				next[childKey] = walk(child, childKey, path ? `${path},${childPath}` : childPath);
+				next[childKey] = walk(child, childKey);
 			}
 			return next;
 		}
 		return item;
 	};
-	return walk(value, "", "") as Record<string, unknown>;
+	return walk(value, "") as Record<string, unknown>;
 }
 
 function asObject(value: unknown): Record<string, unknown> {

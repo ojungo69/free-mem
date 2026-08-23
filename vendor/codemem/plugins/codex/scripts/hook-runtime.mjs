@@ -1817,13 +1817,7 @@ function runPipeline(input, options, layer) {
 	let payload = {};
 	if (tooLarge(source)) payload = {};
 	else for (const [key, value] of Object.entries(source)) if (allow.has(key) && !isSensitiveFieldName(key)) payload[key] = dropSensitiveFields(value, toolAllow, toolDeny);
-	const openersSeen = /* @__PURE__ */ new Map();
-	payload = mapStrings(payload, (text, _key, path) => {
-		const seen = /* @__PURE__ */ new Set();
-		for (const tag of DROPPING_TAGS) if (hasOpener(text, tag)) seen.add(tag);
-		if (seen.size > 0) openersSeen.set(path, seen);
-		return stripInjectedContext(text);
-	});
+	payload = mapStrings(payload, stripInjectedContext);
 	payload = mapStrings(payload, (text, key) => PATH_KEYS.has(key) ? normalizePathValue(text) : text);
 	const userRules = config?.secretRules ?? [];
 	const rules = [...DEFAULT_RULES, ...userRules];
@@ -1835,8 +1829,8 @@ function runPipeline(input, options, layer) {
 	payload = firstScan.ok ? asObject(firstScan.value) : keepMetadataOnly(payload, options.metadataKeys);
 	let privateOmitted = false;
 	let localOnly = false;
-	payload = mapStrings(payload, (text, _key, path) => {
-		const stripped = stripReservedMarkup(text, openersSeen.get(path));
+	payload = mapStrings(payload, (text) => {
+		const stripped = stripReservedMarkup(text);
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
 		return stripped.text;
@@ -1853,8 +1847,8 @@ function runPipeline(input, options, layer) {
 			workerDegraded = true;
 		}
 	}
-	payload = mapStrings(payload, (text, _key, path) => {
-		const again = stripReservedMarkup(text, openersSeen.get(path));
+	payload = mapStrings(payload, (text) => {
+		const again = stripReservedMarkup(text);
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
@@ -2020,46 +2014,17 @@ function elide(text, original) {
 	if (text.length <= 512) return text;
 	return `${text.slice(0, head)}\n…[elided ${original} bytes]…\n${text.slice(-256)}`;
 }
-/**
-* The tags whose blocks are *removed*. `local-only` is not one of them: it keeps its content
-* and only flags the record, so there is nothing for a dangling `</local-only>` to fail
-* closed over and its orphan policy is always "keep".
-*/
-var DROPPING_TAGS = ["injected-context", "private"];
-function hasOpener(text, tag) {
-	return text.toLowerCase().includes(`<${tag}>`);
-}
 function stripInjectedContext(text) {
-	return stripTagged(text, "injected-context", "drop", orphanClosePolicy(hasOpener(text, "injected-context"))).text;
+	return stripTagged(text, "injected-context", "drop").text;
 }
-/**
-* An orphan close tag is only safe to strip in place when the event never carried an opener
-* for that tag: the prose around it was then never inside a tagged region, so dropping it
-* protects nothing and only loses a note about the tag syntax (#117).
-*
-* If an opener did exist, a close without a match means either malformed markup or an opener
-* that an earlier pass consumed - `<injected-context><private>x</injected-context>SECRET</private>`
-* leaves a synthetic orphan `</private>` around content that really was inside a private
-* block. Fail closed there.
-*/
-function orphanClosePolicy(sawOpener) {
-	return sawOpener ? "drop" : "keep";
-}
-function stripReservedMarkup(text, openersSeen) {
+function stripReservedMarkup(text) {
 	let current = text;
 	let privateHit = false;
 	let localOnly = false;
-	const seen = new Set(openersSeen);
-	const note = (value) => {
-		for (const tag of DROPPING_TAGS) if (!seen.has(tag) && hasOpener(value, tag)) seen.add(tag);
-	};
 	for (let i = 0; i < 8; i += 1) {
-		note(current);
-		const injected = stripTagged(current, "injected-context", "drop", orphanClosePolicy(seen.has("injected-context")));
-		note(injected.text);
-		const priv = stripTagged(injected.text, "private", "drop", orphanClosePolicy(seen.has("private")));
+		const priv = stripTagged(stripTagged(current, "injected-context", "drop").text, "private", "drop");
 		if (priv.hit) privateHit = true;
-		const local = stripTagged(priv.text, "local-only", "keep", "keep");
+		const local = stripTagged(priv.text, "local-only", "keep");
 		if (local.hit) localOnly = true;
 		if (local.text === current) break;
 		if (local.text.length > current.length) return {
@@ -2115,7 +2080,7 @@ function nextTag(text, tag, from) {
 		length: openMatch?.[0].length ?? 0
 	};
 }
-function stripTagged(text, tag, unclosed, orphanClose) {
+function stripTagged(text, tag, unclosed) {
 	let cursor = 0;
 	let output = "";
 	let hit = false;
@@ -2127,7 +2092,7 @@ function stripTagged(text, tag, unclosed, orphanClose) {
 		}
 		if (found.kind === "close") {
 			hit = true;
-			if (orphanClose === "keep") output += text.slice(cursor, found.index);
+			output += unclosed === "keep" ? text.slice(cursor, found.index) : `[/${tag}]`;
 			cursor = found.index + found.length;
 			continue;
 		}
@@ -2159,20 +2124,17 @@ function stripTagged(text, tag, unclosed, orphanClose) {
 	};
 }
 function mapStrings(value, fn) {
-	const walk = (item, key, path) => {
-		if (typeof item === "string") return fn(item, key, path);
-		if (Array.isArray(item)) return item.map((entry, index) => walk(entry, key, `${path}[${index}]`));
+	const walk = (item, key) => {
+		if (typeof item === "string") return fn(item, key);
+		if (Array.isArray(item)) return item.map((entry) => walk(entry, key));
 		if (item && typeof item === "object") {
 			const next = {};
-			for (const [childKey, child] of Object.entries(item)) {
-				const childPath = JSON.stringify(childKey);
-				next[childKey] = walk(child, childKey, path ? `${path},${childPath}` : childPath);
-			}
+			for (const [childKey, child] of Object.entries(item)) next[childKey] = walk(child, childKey);
 			return next;
 		}
 		return item;
 	};
-	return walk(value, "", "");
+	return walk(value, "");
 }
 function asObject(value) {
 	if (value && typeof value === "object" && !Array.isArray(value)) return value;

@@ -128,19 +128,21 @@ Matching is case-insensitive, and the tags nest.
 ### Malformed markup
 
 Text you write is not always well-formed, so the rules for one-sided tags are explicit.
+For the two tags that remove content, a tag with no partner means the extent of the block
+is unknown, so the content around it is removed and a marker is left where it was:
 
-- **An opening tag with no close** ends the block at the end of the text and leaves a
-  `[private]` / `[injected-context]` marker where the removed content was. The extent is
-  unknown, so nothing after it is kept.
-- **A closing tag with no open** depends on whether the same field carried an opening tag
-  for that same tag anywhere:
-  - It did not — the text was never inside a block, so only the tag is removed and the
-    prose around it is kept. This is what lets you write *about* the tag syntax.
-  - It did — the text before the closer is removed. A close without a match there means
-    either malformed markup or an opener that an earlier pass already consumed, and in
-    both cases the text may be block content.
-- `</local-only>` is never treated this way. That tag removes nothing, so a stray closer
-  has nothing to fail closed over and the prose is always kept.
+| input | stored |
+|---|---|
+| `keep <private>secret` | `keep [private]` |
+| `See </private> in the spec.` | `[/private] in the spec.` |
+
+The marker is the point of it: a one-sided tag used to take the surrounding text with it
+and leave nothing behind, so there was no way to tell a redaction from an empty note. The
+text is still removed - `[private]` means "an opening tag with no close ended the text
+here", `[/private]` means "a closing tag with no open removed what came before it".
+
+`<local-only>` is different. It removes nothing and only flags the record, so a one-sided
+`</local-only>` has nothing to protect: the tag is dropped and your prose is kept.
 
 Removal happens before secrets are scanned and again afterwards, so markup cannot be used
 to split a secret into halves that individually escape detection.

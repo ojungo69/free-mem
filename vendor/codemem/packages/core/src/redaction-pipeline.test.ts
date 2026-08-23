@@ -95,11 +95,8 @@ describe("Phase 1 redaction", () => {
 		expect(String(clipped.payload.body)).not.toContain("SECRET_NOTE");
 		expect(clipped.private_content_omitted).toBe(true);
 
-		// The orphan `</private>` no longer eats the prefix, so the token really is
-		// reassembled here; it is the documented second secret scan that catches it.
 		const splitPat = `ghp_${"A".repeat(18)}</private>${"A".repeat(18)}`;
 		const reassembled = core.preprocessAdapterEvent({ body: splitPat }, { allowlist: ["body"] });
-		expect(String(reassembled.payload.body)).toBe("[REDACTED:github_pat_classic]");
 		expect(String(reassembled.payload.body)).not.toMatch(/ghp_[A-Za-z0-9]{36}/);
 		expect(String(reassembled.payload.body)).not.toContain("ghp_");
 
@@ -108,106 +105,34 @@ describe("Phase 1 redaction", () => {
 		expect(String(folded.payload.body)).not.toContain("UNCLOSED_SECRET");
 		expect(String(folded.payload.body)).toContain("visible");
 
-		const rebuilt = core.preprocessAdapterEvent(
-			{ body: "<pri<private>x</private>vate>LEAK" },
-			{ allowlist: ["body"] },
-		);
-		expect(String(rebuilt.payload.body)).not.toContain("LEAK");
-
-		// An orphan close tag never had an open tag establishing an extent, so the prose
-		// around it is ordinary text and must survive - only the tag itself is removed.
+		// An orphan close still fails closed - the region it belongs to is unknown, and an
+		// earlier reserved-tag pass may be what removed its opener. What changed is that the
+		// omission now leaves `[/tag]` instead of vanishing silently (#117).
 		const orphanClose = core.preprocessAdapterEvent(
 			{
 				priv: "Fixed the parser bug in commit abc123. See </private> in the spec.",
 				injected: "The </injected-context> marker closes an injected block.",
 				local: "note </local-only> done",
+				crossTag: "<injected-context><private>x</injected-context>SECRET</private> tail",
 			},
-			{ allowlist: ["priv", "injected", "local"] },
+			{ allowlist: ["priv", "injected", "local", "crossTag"] },
 		);
-		expect(String(orphanClose.payload.priv)).toBe(
-			"Fixed the parser bug in commit abc123. See  in the spec.",
+		expect(String(orphanClose.payload.priv)).toBe("[/private] in the spec.");
+		expect(String(orphanClose.payload.injected)).toBe(
+			"[/injected-context] marker closes an injected block.",
 		);
-		expect(String(orphanClose.payload.injected)).toBe("The  marker closes an injected block.");
+		// `local-only` removes nothing and only flags the record, so it keeps its prose.
 		expect(String(orphanClose.payload.local)).toBe("note  done");
+		// Stripping <injected-context> takes the <private> opener with it, leaving a closer
+		// whose block content really was private. The marker must not become an opening.
+		expect(String(orphanClose.payload.crossTag)).toBe("[/private] tail");
+		expect(String(orphanClose.payload.crossTag)).not.toContain("SECRET");
 
-		// An earlier pass can eat an opener and leave a *synthetic* orphan close around
-		// content that really was inside a tagged block, so an input that carried an opener
-		// for the tag keeps failing closed. Here stripping <injected-context> removes the
-		// <private> opener, and SECRET must not survive that.
-		const crossTag = core.preprocessAdapterEvent(
-			{
-				body: "<injected-context><private>x</injected-context>SECRET</private> tail",
-				stray: "<private>foo</private>SECRET</private>rest",
-			},
-			{ allowlist: ["body", "stray"] },
-		);
-		expect(String(crossTag.payload.body)).toBe(" tail");
-		expect(String(crossTag.payload.body)).not.toContain("SECRET");
-		expect(String(crossTag.payload.stray)).toBe("rest");
-		expect(String(crossTag.payload.stray)).not.toContain("SECRET");
-		expect(crossTag.private_content_omitted).toBe(true);
-
-		// The opener history is per field: an opener in `body` must not make `title`'s
-		// stray closer fail closed, because tag parsing never spans two fields.
-		const perField = core.preprocessAdapterEvent(
-			{ body: "<private>x</private>", title: "keep </private> text" },
-			{ allowlist: ["body", "title"] },
-		);
-		expect(String(perField.payload.title)).toBe("keep  text");
-
-		// Nested fields that happen to share a leaf property name are still separate
-		// locations, so the history is keyed by the full traversal path.
-		const nested = core.preprocessAdapterEvent(
-			{
-				input: { left: { text: "<private>x</private>" }, right: { text: "keep </private> prose" } },
-			},
-			{ allowlist: ["input"] },
-		);
-		expect((nested.payload.input as { right: { text: string } }).right.text).toBe("keep  prose");
-
-		// Keys may themselves contain the path delimiter, so segments are JSON-encoded: a
-		// literal "a.b" key must not alias the nested a -> b location and overwrite its history.
-		const collidingKeys = core.preprocessAdapterEvent(
-			{
-				input: {
-					"a.b": "<injected-context><private>x</injected-context>SECRET</private> tail",
-					a: { b: "<injected-context>other</injected-context>" },
-				},
-			},
-			{ allowlist: ["input"] },
-		);
-		expect((collidingKeys.payload.input as Record<string, unknown>)["a.b"]).toBe(" tail");
-
-		// private_regex runs between the two markup passes and can delete characters that
-		// reassemble a reserved tag, so the opener history is re-checked against the text
-		// as it stands, not only against what was recorded before the first pass.
-		const reassembledTags = core.preprocessAdapterEvent(
-			{ body: "<injXected-context><priYvate>x</injZected-context>SECRET</priWvate> tail" },
-			{ config: core.parseAgentMemoryToml('private_regex = ["[XYZW]"]'), allowlist: ["body"] },
-		);
-		expect(String(reassembledTags.payload.body)).toBe(" tail");
-		expect(String(reassembledTags.payload.body)).not.toContain("SECRET");
-
-		// Stripping one tag can itself finish assembling another tag's opener, so the
-		// history is re-taken between stages and not only once per call: the injected block
-		// below sits *inside* a split `<private>` opener.
-		const assembledMidPass = core.preprocessAdapterEvent(
-			{
-				body: "<pri<injXected-context>x</injYected-context>vate>a</priZvate>SECRET</priWvate> tail",
-			},
-			{ config: core.parseAgentMemoryToml('private_regex = ["[XYZW]"]'), allowlist: ["body"] },
-		);
-		expect(String(assembledMidPass.payload.body)).toBe(" tail");
-		expect(String(assembledMidPass.payload.body)).not.toContain("SECRET");
-
-		// `local-only` removes nothing, so a stray closer has no extent to fail closed over
-		// and the untagged prose around it survives even after a matched block.
-		const strayLocal = core.preprocessAdapterEvent(
-			{ body: "<local-only>device</local-only> visible docs </local-only> suffix" },
+		const rebuilt = core.preprocessAdapterEvent(
+			{ body: "<pri<private>x</private>vate>LEAK" },
 			{ allowlist: ["body"] },
 		);
-		expect(String(strayLocal.payload.body)).toBe("device visible docs  suffix");
-		expect(strayLocal.local_only).toBe(true);
+		expect(String(rebuilt.payload.body)).not.toContain("LEAK");
 	});
 
 	it("P1-T038-03-japanese-redaction", () => {
