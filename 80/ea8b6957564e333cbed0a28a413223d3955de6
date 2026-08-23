@@ -1,0 +1,19 @@
+vendor/codemem/packages/core/src/secret-scanner.test.ts
+  s_d7c13d0e584450::t_c2d4ccf24c6196 104-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "80ea8b6957564e333cbed0a28a413223d3955de6",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
