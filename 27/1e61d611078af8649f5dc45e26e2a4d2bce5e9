@@ -1,0 +1,73 @@
+vendor/codemem/packages/core/src/secret-scanner.test.ts
+  s_d7c13d0e584450::t_700f28a613fb1b 103-109
+vendor/codemem/packages/core/src/secret-scanner.ts
+  s_d7c13d0e584450::t_dbbbac9852a3ff 91,129
+vendor/codemem/packages/mcp-server/src/tools/items.ts
+  s_d7c13d0e584450::t_ffee1e788dcba9 12,15-19,34,37-41,61,64-71,94-97
+vendor/codemem/packages/mcp-server/src/tools/schema.ts
+  s_d7c13d0e584450::t_cbfdc43967c1eb 7,9-12
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_d7c13d0e584450::t_615ba30ae6e0c1 82,1269,1322,2067-2068
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_d7c13d0e584450::t_7b5baf8ffc17bd 82,1269,1322,2067-2068
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_5e0c0f49d25e86::t_ce7be55f4d6a6b 195-196,200,364,379,737
+vendor/codemem/packages/core/src/apply-patch.ts
+  s_5e0c0f49d25e86::t_a1a113bfea97de 45
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_5e0c0f49d25e86::t_8600747debc242 645-647,1505
+vendor/codemem/packages/core/src/distill-judge.ts
+  s_5e0c0f49d25e86::t_6e192ef52e8683 85
+vendor/codemem/packages/core/src/extraction-benchmark-scoring.ts
+  s_5e0c0f49d25e86::t_f510a22f3dbea6 406-407
+vendor/codemem/packages/core/src/extraction-eval.ts
+  s_5e0c0f49d25e86::t_e146c53b71af82 389,406,418
+vendor/codemem/packages/core/src/filters.ts
+  s_5e0c0f49d25e86::t_d5214367bb9dc8 16-17,51,65,73,79
+vendor/codemem/packages/core/src/ingest-xml-parser.ts
+  s_5e0c0f49d25e86::t_2d53ae59ed5252 331,1293
+vendor/codemem/packages/core/src/maintenance/memory-role-report.ts
+  s_5e0c0f49d25e86::t_bea0cd4f8aa3a6 175-181
+vendor/codemem/packages/core/src/raw-event-sweeper.ts
+  s_5e0c0f49d25e86::t_f735a440ce046e 69-70,76-79
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_5e0c0f49d25e86::t_051b7348a3fb7e 509-510
+vendor/codemem/packages/core/src/retrieval-surface-ledger.ts
+  s_5e0c0f49d25e86::t_7e5d070ccccf0a 253-258,264
+vendor/codemem/packages/core/src/schema.ts
+  s_5e0c0f49d25e86::t_736a9a2e54a6df 897,914-917,1010-1013,1034,1055-1056,1059,1063
+vendor/codemem/packages/core/src/search.ts
+  s_5e0c0f49d25e86::t_eb524083121be9 45-46,58,60,159,782,1517
+vendor/codemem/packages/core/src/store.ts
+  s_5e0c0f49d25e86::t_5d3f1541c4166a 51,303,310,933,953
+vendor/codemem/packages/core/src/writer-actor.ts
+  s_5e0c0f49d25e86::t_8142e01a3ae410 64,189
+vendor/codemem/packages/mcp-server/src/tools/search.ts
+  s_5e0c0f49d25e86::t_3f27ce26bc5a31 16,19-24,62,65-71,102,105-112,135,138-142,162,165-178
+vendor/codemem/packages/mcp-server/src/tools/timeline.ts
+  s_5e0c0f49d25e86::t_a7837f82514cf7 12,15-22,45,48-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "271e61d611078af8649f5dc45e26e2a4d2bce5e9",
+  "prompts": {},
+  "sessions": {
+    "s_5e0c0f49d25e86": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a02c0d-5e58-7282-9978-f4d7eb798140",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
