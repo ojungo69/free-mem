@@ -179,14 +179,16 @@ function runPipeline(
 		}
 	}
 
-	// Which reserved openers the event carried before anything stripped them. Recorded here
-	// because stripInjectedContext() below, and the secret scan after it, can both remove an
-	// opener and leave its closer looking orphaned. See orphanClosePolicy().
-	const openersSeen = new Set<string>();
-	payload = mapStrings(payload, (text) => {
-		for (const tag of RESERVED_TAGS) {
-			if (!openersSeen.has(tag) && new RegExp(`<${tag}>`, "i").test(text)) openersSeen.add(tag);
+	// Which content-removing openers each field carried before anything stripped them.
+	// Recorded here because stripInjectedContext() below can remove a <private> opener and
+	// leave its closer looking orphaned. See orphanClosePolicy().
+	const openersSeen = new Map<string, Set<string>>();
+	payload = mapStrings(payload, (text, key) => {
+		const seen = openersSeen.get(key) ?? new Set<string>();
+		for (const tag of DROPPING_TAGS) {
+			if (!seen.has(tag) && hasOpener(text, tag)) seen.add(tag);
 		}
+		if (seen.size > 0) openersSeen.set(key, seen);
 		return stripInjectedContext(text);
 	});
 	payload = mapStrings(payload, (text, key) =>
@@ -209,8 +211,8 @@ function runPipeline(
 
 	let privateOmitted = false;
 	let localOnly = false;
-	payload = mapStrings(payload, (text) => {
-		const stripped = stripReservedMarkup(text, openersSeen);
+	payload = mapStrings(payload, (text, key) => {
+		const stripped = stripReservedMarkup(text, openersSeen.get(key));
 		if (stripped.privateHit) privateOmitted = true;
 		if (stripped.localOnly) localOnly = true;
 		return stripped.text;
@@ -227,8 +229,8 @@ function runPipeline(
 			workerDegraded = true;
 		}
 	}
-	payload = mapStrings(payload, (text) => {
-		const again = stripReservedMarkup(text, openersSeen);
+	payload = mapStrings(payload, (text, key) => {
+		const again = stripReservedMarkup(text, openersSeen.get(key));
 		if (again.privateHit) privateOmitted = true;
 		if (again.localOnly) localOnly = true;
 		return again.text;
@@ -458,13 +460,26 @@ function elide(text: string, original: number): string {
 	return `${text.slice(0, head)}\n…[elided ${original} bytes]…\n${text.slice(-tail)}`;
 }
 
-const RESERVED_TAGS = ["injected-context", "private", "local-only"] as const;
+/**
+ * The tags whose blocks are *removed*. `local-only` is not one of them: it keeps its content
+ * and only flags the record, so there is nothing for a dangling `</local-only>` to fail
+ * closed over and its orphan policy is always "keep".
+ */
+const DROPPING_TAGS = ["injected-context", "private"] as const;
+
+function hasOpener(text: string, tag: string): boolean {
+	return new RegExp(`<${tag}>`, "i").test(text);
+}
 
 function stripInjectedContext(text: string): string {
 	// Called before anything else has stripped this string, so the text itself still shows
 	// whether an opener was present.
-	const sawOpener = /<injected-context>/i.test(text);
-	return stripTagged(text, "injected-context", "drop", orphanClosePolicy(sawOpener)).text;
+	return stripTagged(
+		text,
+		"injected-context",
+		"drop",
+		orphanClosePolicy(hasOpener(text, "injected-context")),
+	).text;
 }
 
 /**
@@ -483,7 +498,7 @@ function orphanClosePolicy(sawOpener: boolean): "drop" | "keep" {
 
 function stripReservedMarkup(
 	text: string,
-	openersSeen: ReadonlySet<string>,
+	openersSeen: ReadonlySet<string> | undefined,
 ): {
 	text: string;
 	privateHit: boolean;
@@ -492,16 +507,17 @@ function stripReservedMarkup(
 	let current = text;
 	let privateHit = false;
 	let localOnly = false;
-	// From the event as it arrived, not from `text` - by the time this runs, an earlier pass
-	// may already have removed the opener whose closer we are about to judge.
-	const injectedOrphan = orphanClosePolicy(openersSeen.has("injected-context"));
-	const privateOrphan = orphanClosePolicy(openersSeen.has("private"));
-	const localOrphan = orphanClosePolicy(openersSeen.has("local-only"));
+	// Two sources, unioned. The recorded set covers openers an earlier pass already removed;
+	// scanning `text` here covers openers that appeared after it was recorded, since the
+	// private_regex pass can delete characters and reassemble a reserved tag.
+	const sawOpener = (tag: string) => openersSeen?.has(tag) === true || hasOpener(text, tag);
+	const injectedOrphan = orphanClosePolicy(sawOpener("injected-context"));
+	const privateOrphan = orphanClosePolicy(sawOpener("private"));
 	for (let i = 0; i < 8; i += 1) {
 		const injected = stripTagged(current, "injected-context", "drop", injectedOrphan);
 		const priv = stripTagged(injected.text, "private", "drop", privateOrphan);
 		if (priv.hit) privateHit = true;
-		const local = stripTagged(priv.text, "local-only", "keep", localOrphan);
+		const local = stripTagged(priv.text, "local-only", "keep", "keep");
 		if (local.hit) localOnly = true;
 		if (local.text === current) break;
 		if (local.text.length > current.length) {

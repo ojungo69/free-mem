@@ -146,6 +146,33 @@ describe("Phase 1 redaction", () => {
 		expect(String(crossTag.payload.stray)).toBe("rest");
 		expect(String(crossTag.payload.stray)).not.toContain("SECRET");
 		expect(crossTag.private_content_omitted).toBe(true);
+
+		// The opener history is per field: an opener in `body` must not make `title`'s
+		// stray closer fail closed, because tag parsing never spans two fields.
+		const perField = core.preprocessAdapterEvent(
+			{ body: "<private>x</private>", title: "keep </private> text" },
+			{ allowlist: ["body", "title"] },
+		);
+		expect(String(perField.payload.title)).toBe("keep  text");
+
+		// private_regex runs between the two markup passes and can delete characters that
+		// reassemble a reserved tag, so the opener history is re-checked against the text
+		// as it stands, not only against what was recorded before the first pass.
+		const reassembledTags = core.preprocessAdapterEvent(
+			{ body: "<injXected-context><priYvate>x</injZected-context>SECRET</priWvate> tail" },
+			{ config: core.parseAgentMemoryToml('private_regex = ["[XYZW]"]'), allowlist: ["body"] },
+		);
+		expect(String(reassembledTags.payload.body)).toBe(" tail");
+		expect(String(reassembledTags.payload.body)).not.toContain("SECRET");
+
+		// `local-only` removes nothing, so a stray closer has no extent to fail closed over
+		// and the untagged prose around it survives even after a matched block.
+		const strayLocal = core.preprocessAdapterEvent(
+			{ body: "<local-only>device</local-only> visible docs </local-only> suffix" },
+			{ allowlist: ["body"] },
+		);
+		expect(String(strayLocal.payload.body)).toBe("device visible docs  suffix");
+		expect(strayLocal.local_only).toBe(true);
 	});
 
 	it("P1-T038-03-japanese-redaction", () => {

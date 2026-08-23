@@ -112,6 +112,39 @@ Command/file token caching notes:
 - Observations and summaries persist when the observer emits meaningful content.
 - Low-signal observations are filtered before writing.
 
+## Reserved markup in memory text
+
+Three tags are reserved. Hooks apply them before an event leaves your machine, so they
+work in any text an adapter captures.
+
+| tag | effect |
+|---|---|
+| `<private>…</private>` | The block is removed and the record is marked private. |
+| `<local-only>…</local-only>` | The content is kept; the record is marked as never leaving this device. |
+| `<injected-context>…</injected-context>` | The block is removed. Adapters wrap injected context in it so it is not captured back as your own writing. |
+
+Matching is case-insensitive, and the tags nest.
+
+### Malformed markup
+
+Text you write is not always well-formed, so the rules for one-sided tags are explicit.
+
+- **An opening tag with no close** ends the block at the end of the text and leaves a
+  `[private]` / `[injected-context]` marker where the removed content was. The extent is
+  unknown, so nothing after it is kept.
+- **A closing tag with no open** depends on whether the same field carried an opening tag
+  for that same tag anywhere:
+  - It did not — the text was never inside a block, so only the tag is removed and the
+    prose around it is kept. This is what lets you write *about* the tag syntax.
+  - It did — the text before the closer is removed. A close without a match there means
+    either malformed markup or an opener that an earlier pass already consumed, and in
+    both cases the text may be block content.
+- `</local-only>` is never treated this way. That tag removes nothing, so a stray closer
+  has nothing to fail closed over and the prose is always kept.
+
+Removal happens before secrets are scanned and again afterwards, so markup cannot be used
+to split a secret into halves that individually escape detection.
+
 ## Automatic context injection
 - The OpenCode plugin injects a memory pack next to the latest user message by default, keeping older prompt prefixes stable for provider prompt caches.
 - Controls:
