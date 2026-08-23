@@ -1,0 +1,23 @@
+vendor/codemem/packages/core/src/daemon-rpc-validation.test.ts
+  s_d7c13d0e584450::t_b0c4dc174a7124 106-108
+vendor/codemem/packages/core/src/distill-judge.ts
+  s_d7c13d0e584450::t_4e6906538d5a83 87-88
+vendor/codemem/packages/core/src/secret-scanner.ts
+  s_d7c13d0e584450::t_6f2c8e0f4fd9d6 81-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c9d0a3026f715ede3241748b9c23e8eb8e3f036a",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
