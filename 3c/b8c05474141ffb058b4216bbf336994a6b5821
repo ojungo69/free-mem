@@ -1,0 +1,21 @@
+specs/005-continuity-p0-contract/checklists/requirements.md
+  s_eb6264d292f6be::t_54e43e076c38d9 16,34,36-40,49,51-52
+specs/005-continuity-p0-contract/spec.md
+  s_eb6264d292f6be::t_744014602a73fe 7,234-239,260-269,281-286,348-355
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3cb8c05474141ffb058b4216bbf336994a6b5821",
+  "prompts": {},
+  "sessions": {
+    "s_eb6264d292f6be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a9ebfec-b207-4459-8457-167369cfc5e4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
