@@ -1630,6 +1630,21 @@ function getWorker() {
 	}
 	return activeWorker;
 }
+/**
+* Starts the redaction worker if needed and waits for it to report ready.
+*
+* `deadlineAtMs` switches two things at once, so pick it deliberately:
+*
+* - the wait bound: `min(what is left of the worker's own startup window, your deadline)`,
+*   or the startup window alone when omitted;
+* - the discard policy: with a deadline, a worker that is merely slow is left booting, so
+*   the next call picks up where this one stopped. With no deadline, a worker that is not
+*   ready when the wait ends is terminated and the next call starts a fresh one.
+*
+* Pass a deadline whenever the caller has a budget to respect. Omit it only where blocking
+* for the full startup window is acceptable and a stuck worker is better replaced than kept
+* (process/daemon start-up).
+*/
 function warmRedactionWorker(deadlineAtMs) {
 	let worker;
 	try {
