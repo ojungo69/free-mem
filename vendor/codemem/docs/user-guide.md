@@ -120,10 +120,30 @@ work in any text an adapter captures.
 | tag | effect |
 |---|---|
 | `<private>…</private>` | The block is removed and the record is marked private. |
-| `<local-only>…</local-only>` | The content is kept; the record is marked as never leaving this device. |
+| `<local-only>…</local-only>` | The content is kept and the record is flagged local-only. See [What the local-only flag gates](#what-the-local-only-flag-gates). |
 | `<injected-context>…</injected-context>` | The block is removed. Adapters wrap injected context in it so it is not captured back as your own writing. |
 
 Matching is case-insensitive, and the tags nest.
+
+### What the local-only flag gates
+
+`<local-only>` removes nothing. It sets a flag on the record, and each surface decides what
+to do with it. Today the flag keeps the content out of the memory packs that get injected
+into your session, and blanks the prompt and working-set paths that the Claude and Codex
+hooks would otherwise capture.
+
+It does not yet gate the raw-event flush that feeds the observer. If you have configured an
+observer provider, local-only text in a captured event can still be sent to it. Issue
+[#130](https://github.com/ojungo69/free-mem/issues/130) tracks closing that gap. Until it
+is closed, read the flag as "kept out of memory packs and hook capture" rather than as a
+guarantee that the text stays on this device.
+
+### Private blocks and secrets
+
+Marking something private does not exempt it from secret scanning. A secret written inside
+a `<private>` block is still detected, and the record is then classified as containing a
+secret — a stronger outcome than being marked private, because daemon intake discards the
+whole payload instead of keeping the surrounding prose.
 
 ### Malformed markup
 
@@ -144,8 +164,8 @@ here", `[/private]` means "a closing tag with no open removed what came before i
 `<local-only>` is different. It removes nothing and only flags the record, so a one-sided
 `</local-only>` has nothing to protect: the tag is dropped and your prose is kept.
 
-Removal happens before secrets are scanned and again afterwards, so markup cannot be used
-to split a secret into halves that individually escape detection.
+Secrets are scanned before reserved markup is removed and again after it, so markup cannot
+be used to split a secret into halves that individually escape detection.
 
 ## Automatic context injection
 - The OpenCode plugin injects a memory pack next to the latest user message by default, keeping older prompt prefixes stable for provider prompt caches.
