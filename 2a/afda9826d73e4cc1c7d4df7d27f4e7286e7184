@@ -1,0 +1,29 @@
+vendor/codemem/packages/core/src/maintenance.test.ts
+  s_ddadfe3fa8d438::t_c3d113b8854f6e 449-450,463-464,471
+vendor/codemem/packages/core/src/maintenance/memory-role-report.ts
+  s_eb6264d292f6be::t_bbd396ffa5dde7 45-46,74-78,102,180-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2aafda9826d73e4cc1c7d4df7d27f4e7286e7184",
+  "prompts": {},
+  "sessions": {
+    "s_ddadfe3fa8d438": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a02fe2-729b-7a22-a07b-ab81b0a32aa6",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_eb6264d292f6be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a9ebfec-b207-4459-8457-167369cfc5e4",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
