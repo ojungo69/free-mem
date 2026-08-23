@@ -2092,7 +2092,7 @@ function stripTagged(text, tag, unclosed) {
 		}
 		if (found.kind === "close") {
 			hit = true;
-			if (unclosed === "keep") output += text.slice(cursor, found.index);
+			output += text.slice(cursor, found.index);
 			cursor = found.index + found.length;
 			continue;
 		}
@@ -2104,7 +2104,7 @@ function stripTagged(text, tag, unclosed) {
 		while (depth > 0) {
 			const inner = nextTag(text, tag, pos);
 			if (!inner) return {
-				text: unclosed === "keep" ? output + text.slice(innerStart) : output,
+				text: unclosed === "keep" ? output + text.slice(innerStart) : `${output}[${tag}]`,
 				hit
 			};
 			if (inner.kind === "open") {

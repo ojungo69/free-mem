@@ -74,7 +74,7 @@ describe("Phase 1 redaction", () => {
 		expect(String(result.payload.nested)).toBe("keep  after");
 		expect(String(result.payload.nested)).not.toContain("LEAK");
 		expect(String(result.payload.nested)).not.toContain("inner");
-		expect(String(result.payload.unclosed)).toBe("keep ");
+		expect(String(result.payload.unclosed)).toBe("keep [private]");
 		expect(String(result.payload.unclosed)).not.toContain("UNCLOSED_SECRET");
 		expect(String(result.payload.closed)).toBe("keep  visible");
 		expect(String(result.payload.local)).toBe("note device-only done");
@@ -86,7 +86,7 @@ describe("Phase 1 redaction", () => {
 			{ body: "keep <private>outer<private>inner</private>LEAK" },
 			{ allowlist: ["body"] },
 		);
-		expect(String(nestedOpen.payload.body)).toBe("keep ");
+		expect(String(nestedOpen.payload.body)).toBe("keep [private]");
 		expect(String(nestedOpen.payload.body)).not.toContain("LEAK");
 		expect(nestedOpen.private_content_omitted).toBe(true);
 
@@ -95,8 +95,11 @@ describe("Phase 1 redaction", () => {
 		expect(String(clipped.payload.body)).not.toContain("SECRET_NOTE");
 		expect(clipped.private_content_omitted).toBe(true);
 
+		// The orphan `</private>` no longer eats the prefix, so the token really is
+		// reassembled here; it is the documented second secret scan that catches it.
 		const splitPat = `ghp_${"A".repeat(18)}</private>${"A".repeat(18)}`;
 		const reassembled = core.preprocessAdapterEvent({ body: splitPat }, { allowlist: ["body"] });
+		expect(String(reassembled.payload.body)).toBe("[REDACTED:github_pat_classic]");
 		expect(String(reassembled.payload.body)).not.toMatch(/ghp_[A-Za-z0-9]{36}/);
 		expect(String(reassembled.payload.body)).not.toContain("ghp_");
 
@@ -110,6 +113,22 @@ describe("Phase 1 redaction", () => {
 			{ allowlist: ["body"] },
 		);
 		expect(String(rebuilt.payload.body)).not.toContain("LEAK");
+
+		// An orphan close tag never had an open tag establishing an extent, so the prose
+		// around it is ordinary text and must survive - only the tag itself is removed.
+		const orphanClose = core.preprocessAdapterEvent(
+			{
+				priv: "Fixed the parser bug in commit abc123. See </private> in the spec.",
+				injected: "The </injected-context> marker closes an injected block.",
+				local: "note </local-only> done",
+			},
+			{ allowlist: ["priv", "injected", "local"] },
+		);
+		expect(String(orphanClose.payload.priv)).toBe(
+			"Fixed the parser bug in commit abc123. See  in the spec.",
+		);
+		expect(String(orphanClose.payload.injected)).toBe("The  marker closes an injected block.");
+		expect(String(orphanClose.payload.local)).toBe("note  done");
 	});
 
 	it("P1-T038-03-japanese-redaction", () => {

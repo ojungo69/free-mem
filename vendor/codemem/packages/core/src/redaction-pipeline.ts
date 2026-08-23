@@ -532,8 +532,11 @@ function stripTagged(
 			break;
 		}
 		if (found.kind === "close") {
+			// Orphan close tag: no open tag preceded it, so the text before it was never
+			// inside a tagged region and there is no extent to fail closed over. Drop the
+			// tag, keep the prose - the same rule stripPrivate() applies in ingest-sanitize.ts.
 			hit = true;
-			if (unclosed === "keep") output += text.slice(cursor, found.index);
+			output += text.slice(cursor, found.index);
 			cursor = found.index + found.length;
 			continue;
 		}
@@ -545,7 +548,14 @@ function stripTagged(
 		while (depth > 0) {
 			const inner = nextTag(text, tag, pos);
 			if (!inner) {
-				return { text: unclosed === "keep" ? output + text.slice(innerStart) : output, hit };
+				// Unclosed open tag: the block's extent is unknown, so fail closed and drop
+				// to the end of the string. `[tag]` marks the omission and is exactly as long
+				// as the `<tag>` it replaces, so the text can never grow past the expansion
+				// guard in stripReservedMarkup.
+				return {
+					text: unclosed === "keep" ? output + text.slice(innerStart) : `${output}[${tag}]`,
+					hit,
+				};
 			}
 			if (inner.kind === "open") {
 				depth += 1;
