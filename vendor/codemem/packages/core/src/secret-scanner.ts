@@ -78,10 +78,11 @@ const SECRET_BEARING_KEY =
  */
 // Each rule's `origin`, `kind`, `pattern.source`, `pattern.flags`, `minEntropy`
 // and `redactGroup` are hashed into the `secret_rules_version` stamped on every
-// redacted event, so any edit here — an equivalent pattern rewrite
-// (`[A-Za-z0-9_]` -> `\w`, `\d` for `[0-9]`, dropping a range that /i makes
-// redundant) or a retuned entropy threshold — rotates that digest and splits
-// provenance across stored events. Change a rule only to change what it catches.
+// event a non-degraded scan redacts (a degraded one hashes an empty rule list),
+// so any edit here — an equivalent pattern rewrite (`[A-Za-z0-9_]` -> `\w`, `\d`
+// for `[0-9]`, dropping a range that /i makes redundant) or a retuned entropy
+// threshold — rotates that digest and splits provenance across stored events.
+// Change a rule only to change what it catches.
 const LOCAL_RULES: SecretRule[] = [
 	// AWS — both halves of an access key pair
 	{ kind: "aws_access_key_id", pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },

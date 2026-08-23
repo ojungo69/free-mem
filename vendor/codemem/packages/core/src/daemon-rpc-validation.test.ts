@@ -103,7 +103,9 @@ describe("daemon RPC id validation", () => {
 			expect(await dispatchDaemonRpc(getMany(key, String(second)), ctx)).toMatchObject({
 				result: { items: [{ id: second }] },
 			});
-			for (const memoryId of ["0", "01", "-1", "1.5", "", true]) {
+			// The strings exercise requirePositiveInt's regex branch; the two bare
+			// numbers exercise its numeric branch, which nothing else pins.
+			for (const memoryId of ["0", "01", "-1", "1.5", "", true, 0, 1.5]) {
 				expect(await dispatchDaemonRpc(getMany(key, memoryId), ctx)).toMatchObject({
 					error: { code: "invalid_request", message: "id is invalid." },
 				});
