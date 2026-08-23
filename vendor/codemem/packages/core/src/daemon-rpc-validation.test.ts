@@ -16,15 +16,17 @@ import { openTestMemoryStore } from "./test-utils.js";
 // entries must be positive integers). Each is pinned separately below.
 function withContext(run: (ctx: DaemonRpcContext, seededIds: number[]) => Promise<void>) {
 	const dir = mkdtempSync(join(tmpdir(), "codemem-rpc-id-"));
-	const store = openTestMemoryStore(join(dir, "test.sqlite"));
+	let store: ReturnType<typeof openTestMemoryStore> | undefined;
 	const cleanup = () => {
-		store.close();
+		store?.close();
 		rmSync(dir, { recursive: true, force: true });
 	};
-	// Seeding sits inside the try: these hand-written INSERTs bypass store.remember,
-	// so a schema change can make one throw — outside, that would leak the sqlite
-	// handle and the temp dir, because `.finally` is not attached yet.
+	// Everything after mkdtemp sits inside the try: openTestMemoryStore runs the
+	// migrations, and these hand-written INSERTs bypass store.remember — a schema
+	// change can make either throw. Outside, that would orphan the temp dir and
+	// the sqlite handle, because `.finally` is not attached yet.
 	try {
+		store = openTestMemoryStore(join(dir, "test.sqlite"));
 		const db = store.db;
 		const sessionId = Number(
 			db
@@ -92,7 +94,7 @@ describe("daemon RPC id validation", () => {
 
 	it("rejects non-canonical id spellings before the idempotency key is consumed", async () => {
 		await withContext(async (ctx, seededIds) => {
-			const [, second] = seededIds;
+			const [first, second] = seededIds;
 			// One key for the whole block. The first call commits a class-A receipt
 			// under it, so every later rejection also proves body validation runs
 			// before the idempotency lookup: reordered, these differing payloads
@@ -106,6 +108,17 @@ describe("daemon RPC id validation", () => {
 					error: { code: "invalid_request", message: "id is invalid." },
 				});
 			}
+			// The probe only bites while `ids` is part of the hashed class-A payload.
+			// Pin that: the same key with a different valid id must conflict, not
+			// replay the receipt above.
+			expect(await dispatchDaemonRpc(getMany(key, String(first)), ctx)).toMatchObject({
+				error: { code: "idempotency_conflict" },
+			});
+			// ...and one rejection under a never-used key, so the guard is covered
+			// where no receipt exists either.
+			expect(await dispatchDaemonRpc(getMany("rpc-id-fresh", "0"), ctx)).toMatchObject({
+				error: { code: "invalid_request", message: "id is invalid." },
+			});
 		});
 	});
 

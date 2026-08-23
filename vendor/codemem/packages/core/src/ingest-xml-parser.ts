@@ -328,10 +328,9 @@ export function inspectObserverResponseStructure(
 	const discardedSummaryBlocks = Math.max(0, summaryBlocks - retainedSummaries);
 	const malformedRetainedChildren = [...observationBlockValues, ...summaryBlockValues].some(
 		(block) => {
-			// `[a-z_]` would be equivalent under /i, but every other tag pattern in
-			// this file spells the class out (they carry no /i, where the long form
-			// is load-bearing). Matching them keeps the class readable without
-			// having to check the flags first.
+			// `[a-z_]` would be equivalent under /i, but the tag patterns in this
+			// file that carry no /i need the long form, so spelling it the same way
+			// here keeps the class readable without checking the flags first.
 			const rootTag = /^\s*<([A-Za-z_][\w:.-]*)/i.exec(block)?.[1];
 			return rootTag
 				? directChildFragments(block, rootTag).some((fragment) => !fragment.complete)
