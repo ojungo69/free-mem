@@ -290,8 +290,20 @@ export class WorkerSecretScanner extends SecretScanner {
 		parentKey?: string,
 	): { value: unknown; detections: ScanDetection[] } {
 		if (this.options.degraded) throw new RedactionWorkerError();
+		// Warm on the startup budget, not the scan budget. Starting the worker measures
+		// 75-89 ms against a 100 ms scan deadline, so charging startup to that deadline
+		// left the first scan in a process with ~15 ms and made it fail whenever the
+		// machine was busy. Unlike the callers in redaction-pipeline.ts and store.ts,
+		// which degrade when the worker is not ready, this path throws, so the cost
+		// surfaced as an unrelated test failing on CI (#119).
+		//
+		// The cost is the latency bound: a cold start here can block for
+		// REDACTION_WORKER_STARTUP_DEADLINE_MS + REDACTION_WORKER_DEADLINE_MS rather than
+		// the latter alone. That only bites when the worker cannot start within a full
+		// second, and it buys the common case - once the worker is ready this call
+		// returns without waiting at all.
+		warmRedactionWorker();
 		const deadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
-		warmRedactionWorker(deadlineAtMs);
 		const result = redactValueInWorker(
 			value,
 			this.options.rules ?? [],
