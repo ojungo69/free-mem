@@ -430,6 +430,43 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		expect(report.session_duration_buckets["<1m"]).toBe(1);
 	});
 
+	it("buckets open and elapsed sessions across every duration range", () => {
+		const dbPath = createDbPath("memory-role-report-duration-buckets");
+		const db = new Database(dbPath);
+		try {
+			initTestSchema(db);
+			db.exec(`
+					INSERT INTO sessions(id, started_at, ended_at, cwd, project, user, tool_version) VALUES
+					  (1, '2026-03-01T10:00:00Z', NULL,                   '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (2, '2026-03-01T10:00:00Z', '2026-03-01T10:00:30Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (3, '2026-03-01T10:00:00Z', '2026-03-01T10:03:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (4, '2026-03-01T10:00:00Z', '2026-03-01T10:10:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (5, '2026-03-01T10:00:00Z', '2026-03-01T11:00:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (6, '2026-03-01T10:00:00Z', '2026-03-01T13:20:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
+					INSERT INTO memory_items(
+						id, session_id, kind, title, body_text, active, created_at, updated_at, import_key
+					) VALUES
+					  (1, 1, 'change', 'Open', 'Open session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-1'),
+					  (2, 2, 'change', 'Thirty seconds', 'Short session', 1, '2026-03-01T10:00:30Z', '2026-03-01T10:00:30Z', 'duration-2'),
+					  (3, 3, 'change', 'Three minutes', 'Brief session', 1, '2026-03-01T10:03:00Z', '2026-03-01T10:03:00Z', 'duration-3'),
+					  (4, 4, 'change', 'Ten minutes', 'Medium session', 1, '2026-03-01T10:10:00Z', '2026-03-01T10:10:00Z', 'duration-4'),
+					  (5, 5, 'change', 'Sixty minutes', 'Long session', 1, '2026-03-01T11:00:00Z', '2026-03-01T11:00:00Z', 'duration-5'),
+					  (6, 6, 'change', 'Two hundred minutes', 'Very long session', 1, '2026-03-01T13:20:00Z', '2026-03-01T13:20:00Z', 'duration-6');
+				`);
+		} finally {
+			db.close();
+		}
+
+		expect(getMemoryRoleReport(dbPath).session_duration_buckets).toEqual({
+			"<1m": 1,
+			"1-5m": 1,
+			"5-30m": 1,
+			"30-120m": 1,
+			"120m+": 1,
+			open: 1,
+		});
+	});
+
 	it("tolerates malformed metadata JSON in role reports", () => {
 		const dbPath = createDbPath("memory-role-report-malformed-metadata");
 		const db = new Database(dbPath);

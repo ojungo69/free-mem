@@ -275,18 +275,26 @@ describe("session extraction eval", () => {
 				  (166405, '2026-04-06T21:23:59.631Z', '2026-04-07T06:13:45.667Z', '/tmp/repo', 'codemem', 'adam', 'test', '{"post":{"session_class":"durable","summary_disposition":"stored"}}');
 				INSERT INTO memory_items(
 					id, session_id, kind, title, body_text, active, created_at, updated_at, metadata_json, import_key
-				) VALUES
-				  (1, 166405, 'session_summary', 'Track 3 and release readiness session summary', 'Closed qd7h, prepared 0.23.0, reframed Track 3 toward injection-first rediscovery reduction, and discussed graph progressive disclosure work.', 1, '2026-04-07T06:13:45.667Z', '2026-04-07T06:13:45.667Z', '{}', 'k1'),
-				  (2, 166405, 'decision', 'Track 3 reframed around injection-first quality', 'Track 3 now focuses on reducing rediscovery and scouting effort.', 1, '2026-04-07T06:13:46.000Z', '2026-04-07T06:13:46.000Z', '{}', 'k2'),
-				  (3, 166405, 'exploration', 'Graph relationship layer kept as future direction', 'Graph and progressive disclosure ideas were recorded as future work.', 1, '2026-04-07T06:13:47.000Z', '2026-04-07T06:13:47.000Z', '{}', 'k3');
-			`);
+					) VALUES
+					  (1, 166405, 'session_summary', 'Track 3 and release readiness session summary', 'Closed qd7h, prepared 0.23.0, reframed Track 3 toward injection-first rediscovery reduction, and discussed graph progressive disclosure work.', 1, '2026-04-07T06:13:45.667Z', '2026-04-07T06:13:45.667Z', '{}', 'k1'),
+					  (2, 166405, 'decision', 'Track 3 reframed around injection-first quality', 'Track 3 now focuses on reducing rediscovery and scouting effort.', 1, '2026-04-07T06:13:46.000Z', '2026-04-07T06:13:46.000Z', '{}', 'k2'),
+					  (3, 166405, 'exploration', 'Graph relationship layer kept as future direction', 'Graph and progressive disclosure ideas were recorded as future work.', 1, '2026-04-07T06:13:47.000Z', '2026-04-07T06:13:47.000Z', '{}', 'k3'),
+					  (4, 166405, 'discovery', 'Inactive historical observation', 'This inactive item is included only when requested.', 0, '2026-04-07T06:13:48.000Z', '2026-04-07T06:13:48.000Z', '{}', 'k4');
+				`);
 			const reader = connectReadOnly(dbPath);
-			const result = (() => {
+			const [result, includeInactive] = (() => {
 				try {
-					return getSessionExtractionEval(reader, {
-						sessionId: 166405,
-						scenarioId: "rich-session-under-extraction",
-					});
+					return [
+						getSessionExtractionEval(reader, {
+							sessionId: 166405,
+							scenarioId: "rich-session-under-extraction",
+						}),
+						getSessionExtractionEval(reader, {
+							sessionId: 166405,
+							scenarioId: "rich-session-under-extraction",
+							includeInactive: true,
+						}),
+					] as const;
 				} finally {
 					reader.close();
 				}
@@ -296,6 +304,7 @@ describe("session extraction eval", () => {
 			expect(result.counts.summaries).toBe(1);
 			expect(result.counts.observations).toBe(2);
 			expect(result.pass).toBe(true);
+			expect(includeInactive.counts.observations).toBe(3);
 		} finally {
 			db.close();
 		}

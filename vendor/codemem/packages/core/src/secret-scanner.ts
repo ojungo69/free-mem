@@ -88,7 +88,7 @@ const LOCAL_RULES: SecretRule[] = [
 
 	// GitHub token family
 	{ kind: "github_pat_classic", pattern: /\bghp_[A-Za-z0-9]{36}\b/g },
-	{ kind: "github_pat_finegrained", pattern: /\bgithub_pat_\w{82}\b/g },
+	{ kind: "github_pat_finegrained", pattern: /\bgithub_pat_[A-Za-z0-9_]{82}\b/g },
 	{ kind: "github_oauth", pattern: /\bgho_[A-Za-z0-9]{36}\b/g },
 	{ kind: "github_user_token", pattern: /\bghu_[A-Za-z0-9]{36}\b/g },
 	{ kind: "github_server_token", pattern: /\bghs_[A-Za-z0-9]{36}\b/g },
@@ -126,7 +126,7 @@ const LOCAL_RULES: SecretRule[] = [
 	{
 		kind: "generic_assigned_secret",
 		pattern:
-			/\b(?:secret|token|password|passwd|pwd|auth|bearer|credential|api[_-]?key|access[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer[_-]?token|api[_-]?token)\s*[:=]\s*["']?([A-Z0-9+/=_.-]{20,})["']?/gi,
+			/\b(?:secret|token|password|passwd|pwd|auth|bearer|credential|api[_-]?key|access[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer[_-]?token|api[_-]?token)\s*[:=]\s*["']?([A-Za-z0-9+/=_.-]{20,})["']?/gi,
 		minEntropy: 3.5,
 		redactGroup: 1,
 	},

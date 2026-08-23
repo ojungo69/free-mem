@@ -49,6 +49,17 @@ describe("Phase 1 MCP stdio RPC surface", () => {
 		try {
 			const listed = await connection.client.listTools();
 			expect(listed.tools.map((tool) => tool.name).toSorted()).toEqual(ALLOWED_TOOLS);
+			// The zero-argument tools declare `inputSchema: {}` rather than omitting it:
+			// omitting it makes the SDK advertise its own empty-object constant, which
+			// drops the $schema keyword these two tools have always published.
+			for (const name of ["memory_status", "memory_schema"]) {
+				const tool = listed.tools.find((candidate) => candidate.name === name);
+				expect(tool?.inputSchema).toEqual({
+					type: "object",
+					properties: {},
+					$schema: "http://json-schema.org/draft-07/schema#",
+				});
+			}
 		} finally {
 			await connection.close();
 		}

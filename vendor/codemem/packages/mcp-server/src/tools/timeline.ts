@@ -48,7 +48,7 @@ export function registerTimelineTools(server: McpServer, context: ToolRegistrati
 			description: "Fetch memories by ID with surrounding timeline context.",
 			inputSchema: {
 				ids: z
-					.array(z.union([z.number().int().positive(), z.string().regex(/^[1-9]\d*$/)]))
+					.array(z.union([z.number().int().positive(), z.string().regex(/^[1-9][0-9]*$/)]))
 					.min(1)
 					.max(200)
 					.describe("Memory IDs to expand"),

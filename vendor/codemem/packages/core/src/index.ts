@@ -521,7 +521,7 @@ export {
 	LOCAL_DEFAULT_SCOPE_ID,
 	resolveProjectScope,
 } from "./scope-resolution.js";
-export type { StoreHandle } from "./search.js";
+export type { OwnershipCandidate, StoreHandle } from "./search.js";
 export {
 	dedupeOrderedIds,
 	expandQuery,

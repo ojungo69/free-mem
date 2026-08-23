@@ -1266,7 +1266,7 @@ var LOCAL_RULES = [
 	},
 	{
 		kind: "github_pat_finegrained",
-		pattern: /\bgithub_pat_\w{82}\b/g
+		pattern: /\bgithub_pat_[A-Za-z0-9_]{82}\b/g
 	},
 	{
 		kind: "github_oauth",
@@ -1319,7 +1319,7 @@ var LOCAL_RULES = [
 	},
 	{
 		kind: "generic_assigned_secret",
-		pattern: /\b(?:secret|token|password|passwd|pwd|auth|bearer|credential|api[_-]?key|access[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer[_-]?token|api[_-]?token)\s*[:=]\s*["']?([A-Z0-9+/=_.-]{20,})["']?/gi,
+		pattern: /\b(?:secret|token|password|passwd|pwd|auth|bearer|credential|api[_-]?key|access[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer[_-]?token|api[_-]?token)\s*[:=]\s*["']?([A-Za-z0-9+/=_.-]{20,})["']?/gi,
 		minEntropy: 3.5,
 		redactGroup: 1
 	}
@@ -2064,8 +2064,8 @@ function normalizePathValue(value) {
 }
 function nextTag(text, tag, from) {
 	const slice = text.slice(from);
-	const openMatch = new RegExp(`<${tag}>`, "i").exec(slice);
-	const closeMatch = new RegExp(`</${tag}>`, "i").exec(slice);
+	const openMatch = slice.match(new RegExp(`<${tag}>`, "i"));
+	const closeMatch = slice.match(new RegExp(`</${tag}>`, "i"));
 	const openAt = openMatch?.index ?? -1;
 	const closeAt = closeMatch?.index ?? -1;
 	if (openAt < 0 && closeAt < 0) return null;
