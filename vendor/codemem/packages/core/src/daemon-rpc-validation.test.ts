@@ -20,10 +20,7 @@ it("accepts canonical positive integer strings and rejects invalid RPC ids", asy
 		onStop: () => {},
 		writer: store.db,
 		store,
-		viewerAuth: {} as never,
-		viewerRead: async () => ({}),
 		jobs: { isMaintenanceMode: () => false } as never,
-		operations: {} as never,
 	} as DaemonRpcContext;
 	const request = (id: unknown) =>
 		JSON.stringify({
