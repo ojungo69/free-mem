@@ -172,8 +172,9 @@ export function renderUnifiedDiff(
 	const oldCount = pre.length + removed.length + post.length;
 	const newCount = pre.length + added.length + post.length;
 
+	const oldPath = oldText === "" ? "/dev/null" : `a/${displayPath}`;
 	const header = [
-		`--- ${oldText === "" ? "/dev/null" : `a/${displayPath}`}`,
+		`--- ${oldPath}`,
 		`+++ b/${displayPath}`,
 		`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`,
 	];

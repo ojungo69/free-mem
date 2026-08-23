@@ -948,7 +948,7 @@ function isCodememHook(hook: unknown): boolean {
 }
 
 /** Remove only managed hook entries, preserving the matcher and unrelated siblings. */
-function withoutCodememHooks(group: unknown): unknown | null {
+function withoutCodememHooks(group: unknown): unknown {
 	if (group == null || typeof group !== "object") return group;
 	const hooks = (group as { hooks?: unknown }).hooks;
 	if (!Array.isArray(hooks)) return group;

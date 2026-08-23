@@ -107,7 +107,7 @@ export function captureSetupFileSnapshots(paths: readonly string[]): SetupFileSn
 
 export function setupFileSnapshotUnchanged(snapshot: SetupFileSnapshot): boolean {
 	const current = captureSetupFileSnapshots([snapshot.path])[0];
-	if (!current || current.dev !== snapshot.dev || current.ino !== snapshot.ino) return false;
+	if (current?.dev !== snapshot.dev || current?.ino !== snapshot.ino) return false;
 	if (snapshot.contents === null || current.contents === null) {
 		return snapshot.contents === null && current.contents === null;
 	}

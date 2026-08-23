@@ -129,7 +129,7 @@ function parseJsonArray(value: string | null | undefined): string[] {
 }
 
 function normalizePathForCompare(path: string): string {
-	return path.replace(/\\/g, "/");
+	return path.replaceAll("\\", "/");
 }
 
 type ScoredObservation = { row: RefQueryResult; score: number; idx: number };
@@ -203,7 +203,10 @@ function formatTimeline(
 	filePath: string,
 	staleness: { fileMtimeMs: number; newestObservationMs: number } | null,
 ): string {
-	const safePath = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+	const safePath = filePath
+		.replaceAll("\\", "\\\\")
+		.replaceAll('"', String.raw`\"`)
+		.replaceAll("\n", String.raw`\n`);
 	const enriched = rows
 		.map((row) => ({ row, epochMs: Date.parse(row.created_at) }))
 		.filter((item) => Number.isFinite(item.epochMs) && item.epochMs > 0);

@@ -143,9 +143,7 @@ export function getMemoryRoleReportWithStore(
 
 		const inferred = inferMemoryRoleForReport(row);
 		roleCounts[inferred.role] += 1;
-		if (!roleExamples[inferred.role]) {
-			roleExamples[inferred.role] = [];
-		}
+		roleExamples[inferred.role] ??= [];
 		const examples = roleExamples[inferred.role] as Array<{
 			id: number;
 			kind: string;

@@ -81,7 +81,7 @@ function cleanXmlText(text: string): string {
 }
 
 function escapeRegExpLiteral(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /** Extract text content from within a single XML tag. Returns empty string if not found. */
@@ -190,7 +190,7 @@ function openingTagEnd(value: string, contentStart: number): number {
 		}
 		if (character !== '"' && character !== "'") continue;
 		if (quote === character) quote = null;
-		else if (quote === null) quote = character;
+		else quote ??= character;
 	}
 	return firstClosingBracket;
 }

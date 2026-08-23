@@ -2,7 +2,7 @@ import { type MemoryFilters, resolveProject } from "@codemem/core";
 
 function cleanProject(value: string | null | undefined): string | null {
 	const trimmed = value?.trim();
-	return trimmed ? trimmed : null;
+	return trimmed || null;
 }
 
 export function resolveDefaultProject(): string | null {

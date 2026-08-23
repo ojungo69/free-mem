@@ -33,15 +33,15 @@ export function show(element: HTMLElement | null) {
 
 export function escapeHtml(value: string): string {
 	return value
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#39;");
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("'", "&#39;");
 }
 
 export function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 export function highlightText(text: string, query: string): string {

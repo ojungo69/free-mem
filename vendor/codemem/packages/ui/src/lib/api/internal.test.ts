@@ -92,4 +92,46 @@ describe("viewer browser auth bootstrap", () => {
 		);
 		expect(viewerFetchImpl).toHaveBeenCalledOnce();
 	});
+
+	it("keeps the rest of the fragment when the nonce is not the only hash parameter", async () => {
+		const nonce = "n".repeat(43);
+		const replaceState = vi.fn();
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ session: "signed-session" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
+		);
+
+		await bootstrapViewerSession({
+			hash: `#tab=health&auth=${nonce}`,
+			pathname: "/viewer",
+			search: "?project=demo",
+			state: null,
+			replaceState,
+			fetch: fetchImpl,
+			sessionStorage: sessionStore(),
+		});
+
+		expect(replaceState).toHaveBeenCalledWith(null, "", "/viewer?project=demo#tab=health");
+	});
+
+	it("resolves without touching history when the hash carries no nonce", async () => {
+		const replaceState = vi.fn();
+		const fetchImpl = vi.fn<typeof fetch>();
+
+		await bootstrapViewerSession({
+			hash: "#tab=health",
+			pathname: "/viewer",
+			search: "",
+			state: null,
+			replaceState,
+			fetch: fetchImpl,
+			sessionStorage: sessionStore(),
+		});
+
+		expect(replaceState).not.toHaveBeenCalled();
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
 });

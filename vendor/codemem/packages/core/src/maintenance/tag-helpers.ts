@@ -16,10 +16,10 @@ export function fileTags(pathValue: string): string[] {
 	const parts = raw.split(/[\\/]+/).filter((part) => part && part !== "." && part !== "..");
 	if (parts.length === 0) return [];
 	const tags: string[] = [];
-	const basename = normalizeTag(parts[parts.length - 1] ?? "");
+	const basename = normalizeTag(parts.at(-1) ?? "");
 	if (basename) tags.push(basename);
 	if (parts.length >= 2) {
-		const parent = normalizeTag(parts[parts.length - 2] ?? "");
+		const parent = normalizeTag(parts.at(-2) ?? "");
 		if (parent) tags.push(parent);
 	}
 	if (parts.length >= 3) {

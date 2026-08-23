@@ -70,7 +70,8 @@ export function createViewerReadHandler(deps: {
 				query.set(queryName, String(value));
 			}
 		}
-		const response = await app.request(`${path}${query.size > 0 ? `?${query}` : ""}`);
+		const querySuffix = query.size > 0 ? `?${query}` : "";
+		const response = await app.request(`${path}${querySuffix}`);
 		const text = await response.text();
 		let payload: unknown = {};
 		try {

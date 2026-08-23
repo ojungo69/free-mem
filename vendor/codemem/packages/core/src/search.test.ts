@@ -196,6 +196,32 @@ describe("sanitizeSearchQuery", () => {
 		expect(result.was_sanitized).toBe(true);
 		expect(result.method).toBe("question_extraction");
 	});
+
+	it("trims a trailing quote when every segment is instruction-like", () => {
+		const raw = ["You are a memory retrieval assistant", 'Output only JSON responses"'].join("\n");
+		const result = sanitizeSearchQuery(raw);
+
+		expect(result.clean_query).toBe(
+			["You are a memory retrieval assistant", "Output only JSON responses"].join("\n"),
+		);
+		expect(result.method).toBe("tail_truncation");
+	});
+
+	it("uses the last bounded sentence from an oversized candidate", () => {
+		const result = sanitizeSearchQuery(
+			`You are a memory retrieval assistant ${"x".repeat(260)}. OAuth token refresh details`,
+		);
+
+		expect(result.clean_query).toBe("OAuth token refresh details");
+		expect(result.method).toBe("tail_sentence");
+	});
+
+	it("uses the tail when an oversized candidate has no bounded sentence", () => {
+		const result = sanitizeSearchQuery(`You are ${"x".repeat(300)}`);
+
+		expect(result.clean_query).toBe("x".repeat(250));
+		expect(result.method).toBe("tail_sentence");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -752,6 +778,11 @@ describe("MemoryStore.search", () => {
 		seedMemories();
 		const results = store.search("xyznonexistent");
 		expect(results).toEqual([]);
+	});
+
+	it("honors an explicitly disabled shared-widening filter", () => {
+		seedMemories();
+		expect(store.search("database", 10, { widen_shared_when_weak: false })).not.toHaveLength(0);
 	});
 
 	it("returns empty array for empty query", () => {

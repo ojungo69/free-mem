@@ -165,12 +165,8 @@ function normalizeProjectLabel(value) {
 	const cleaned = trimmed.slice(0, end);
 	if (!cleaned) return null;
 	if (cleaned.includes("/") || cleaned.includes("\\")) {
-		if (cleaned.includes("\\") || cleaned.length >= 2 && cleaned[1] === ":" && /[a-zA-Z]/.test(cleaned[0] ?? "")) {
-			const parts = cleaned.replaceAll("\\", "/").split("/");
-			return parts[parts.length - 1] || null;
-		}
-		const parts = cleaned.split("/");
-		return parts[parts.length - 1] || null;
+		if (cleaned.includes("\\") || cleaned.length >= 2 && cleaned[1] === ":" && /[a-zA-Z]/.test(cleaned[0] ?? "")) return cleaned.replaceAll("\\", "/").split("/").at(-1) || null;
+		return cleaned.split("/").at(-1) || null;
 	}
 	return cleaned;
 }
@@ -562,7 +558,7 @@ function buildRawEventEnvelopeFromHook(hookPayload) {
 	const hookEventName = String(hookPayload.hook_event_name ?? "");
 	const cwd = typeof hookPayload.cwd === "string" ? hookPayload.cwd : null;
 	let project = resolveHookProject(cwd, hookPayload.project);
-	if (project === null) project = resolveHookProjectFromPayloadPaths(hookPayload);
+	project ??= resolveHookProjectFromPayloadPaths(hookPayload);
 	return {
 		session_stream_id: sessionId,
 		session_id: sessionId,
@@ -1163,7 +1159,7 @@ function convertGitleaksRules(sources) {
 			patternSource = patternSource.slice(4);
 			flags = "gi";
 		}
-		if (patternSource.replaceAll("(?:", "").includes("(?") || patternSource.includes("[[:") || patternSource.includes("\\z") || patternSource.includes("\\A") || patternSource.includes("\\C") || /\\[1-9]/.test(patternSource)) throw new Error(`gitleaks rule ${source.id} uses unsupported regex syntax`);
+		if (patternSource.replaceAll("(?:", "").includes("(?") || patternSource.includes("[[:") || patternSource.includes(String.raw`\z`) || patternSource.includes(String.raw`\A`) || patternSource.includes(String.raw`\C`) || /\\[1-9]/.test(patternSource)) throw new Error(`gitleaks rule ${source.id} uses unsupported regex syntax`);
 		if (source.entropy !== void 0 && (!Number.isFinite(source.entropy) || source.entropy < 0)) throw new Error(`gitleaks rule ${source.id} has invalid entropy`);
 		const pattern = new RegExp(patternSource, flags);
 		if (source.secretGroup !== void 0 && (!Number.isInteger(source.secretGroup) || source.secretGroup < 1 || source.secretGroup > countRegExpCaptureGroups(pattern))) throw new Error(`gitleaks rule ${source.id} has invalid secretGroup`);
@@ -1950,7 +1946,7 @@ function parseTomlValue(raw) {
 	if (raw === "false") return false;
 	if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
 	if (raw.startsWith("[")) try {
-		const parsed = JSON.parse(raw.replace(/'/g, "\""));
+		const parsed = JSON.parse(raw.replaceAll("'", "\""));
 		if (Array.isArray(parsed)) return parsed;
 	} catch {
 		return Symbol.for("invalid");
@@ -6088,7 +6084,7 @@ function statePathForSession(sessionId) {
 */
 function normalizePromptText(value) {
 	if (typeof value !== "string") return "";
-	return value.trim().replace(/\n/g, " ");
+	return value.trim().replaceAll("\n", " ");
 }
 function normalizeStringList(value, cap) {
 	if (!Array.isArray(value)) return [];
@@ -6237,8 +6233,7 @@ function trackHookSessionState(payload, sanitizedPrompt, sanitizedModifiedPaths)
 function pathBasename(value) {
 	const normalized = trimEndWhere(value.replaceAll("\\", "/"), TRAILING_SLASH);
 	if (!normalized) return "";
-	const parts = normalized.split("/");
-	return parts[parts.length - 1] ?? "";
+	return normalized.split("/").at(-1) ?? "";
 }
 /**
 * Compose a retrieval query that combines the original session intent,
@@ -6641,7 +6636,7 @@ function parseJsonArray(value) {
 	}
 }
 function normalizePathForCompare(path) {
-	return path.replace(/\\/g, "/");
+	return path.replaceAll("\\", "/");
 }
 function scoreRow(row, normalizedTarget, idx) {
 	const filesModified = parseJsonArray(row.files_modified);
@@ -6686,7 +6681,7 @@ function formatDate(epochMs) {
 	});
 }
 function formatTimeline(rows, filePath, staleness) {
-	const safePath = filePath.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\n/g, "\\n");
+	const safePath = filePath.replaceAll("\\", "\\\\").replaceAll("\"", String.raw`\"`).replaceAll("\n", String.raw`\n`);
 	const enriched = rows.map((row) => ({
 		row,
 		epochMs: Date.parse(row.created_at)

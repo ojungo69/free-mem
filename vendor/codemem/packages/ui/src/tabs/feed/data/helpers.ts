@@ -76,7 +76,7 @@ export function itemKey(item: FeedItem): string {
 export function trustStateLabel(trustState: string): string {
 	if (trustState === "legacy_unknown") return "legacy provenance";
 	if (trustState === "unreviewed") return "unreviewed";
-	return trustState.replace(/_/g, " ");
+	return trustState.replaceAll("_", " ");
 }
 
 export function authorLabel(item: FeedItem): string {

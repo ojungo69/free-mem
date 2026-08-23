@@ -45,7 +45,7 @@ export interface RefQueryResult {
 }
 
 function escapeSqlLikePattern(value: string): string {
-	return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+	return value.replaceAll("\\", String.raw`\\`).replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 /**
@@ -70,7 +70,7 @@ export function findByFile(
 
 	if (isDir) {
 		const escaped = escapeSqlLikePattern(trimmed);
-		refClauses.push("mfr.file_path LIKE ? ESCAPE '\\'");
+		refClauses.push(String.raw`mfr.file_path LIKE ? ESCAPE '\'`);
 		refParams.push(`${escaped}%`);
 	} else {
 		refClauses.push("mfr.file_path = ?");

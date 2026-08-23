@@ -376,7 +376,7 @@ function collectKeepReasons(input: {
 	// status, no-finding outcomes, and another weak finding verb (a duplicated
 	// bare verb such as a terse "Verified" title followed by "verified ..." must
 	// not bootstrap itself into a substantive finding).
-	const NON_SUBSTANTIVE_OBJECTS = `${WEAK_FINDING_VERBS}|tests?|lint|ci|build|typecheck|tsc|checks?|review|reviewer|pr|pull\\s+request|no|nothing|none`;
+	const NON_SUBSTANTIVE_OBJECTS = String.raw`${WEAK_FINDING_VERBS}|tests?|lint|ci|build|typecheck|tsc|checks?|review|reviewer|pr|pull\s+request|no|nothing|none`;
 	// weak verb -> optional "that" -> optional determiner -> a content word that is
 	// not itself a non-substantive object. Determiners are consumed (not allowed to
 	// satisfy the object) so "verified the tests" / a bare "verified verified" do
@@ -573,8 +573,7 @@ export function classifyMemoryWorthiness(input: InferMemoryRoleInput): MemoryWor
 	// catch-all wrongly demotes durable NEGATIVE findings like "found no fallback
 	// for empty embeddings" (an absence-of-mechanism discovery, not telemetry).
 	// Only no-status outcomes (no issues/blockers/problems/...) count (Codex).
-	const NO_STATUS =
-		"issues?|blockers?|problems?|findings?|bugs?|regressions?|errors?|remaining\\s+issues?";
+	const NO_STATUS = String.raw`issues?|blockers?|problems?|findings?|bugs?|regressions?|errors?|remaining\s+issues?`;
 	const hasNoFindingOutcome = hasAnyPattern(text, [
 		// "found nothing" / "found none" (bare) is a no-finding outcome; but
 		// "found no <X>" only counts when <X> is a status noun, so durable negative

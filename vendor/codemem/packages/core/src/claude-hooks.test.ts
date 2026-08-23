@@ -17,6 +17,7 @@ import {
 	buildRawEventEnvelopeFromHook,
 	extractFromTranscript,
 	mapClaudeHookPayload,
+	normalizeProjectLabel,
 	TRANSCRIPT_TAIL_MAX_BYTES,
 } from "./claude-hooks.js";
 
@@ -52,6 +53,13 @@ vi.mock("node:fs", async (importOriginal) => {
 afterEach(() => {
 	transcriptRace.path = "";
 	transcriptRace.replacement = "";
+});
+
+describe("normalizeProjectLabel", () => {
+	it("returns the basename for Windows and POSIX paths with trailing separators", () => {
+		expect(normalizeProjectLabel("C:\\work\\codemem\\")).toBe("codemem");
+		expect(normalizeProjectLabel("/workspace/codemem/")).toBe("codemem");
+	});
 });
 
 // ---------------------------------------------------------------------------

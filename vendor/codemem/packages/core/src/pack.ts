@@ -161,7 +161,8 @@ function formatItem(
 			result += `\n${narrative}`;
 		}
 		if (facts) {
-			result += `\n\n${facts.map((f) => `- ${f}`).join("\n")}`;
+			const factLines = facts.map((fact) => `- ${fact}`).join("\n");
+			result += `\n\n${factLines}`;
 		}
 		return result;
 	}
@@ -265,7 +266,7 @@ function toPackItem(
 
 /** Normalize text for dedup comparison: lowercase, trim, collapse whitespace. */
 function normalizeDedupe(text: string): string {
-	return text.trim().toLowerCase().split(/\s+/).join(" ");
+	return text.trim().toLowerCase().replaceAll(/\s+/g, " ");
 }
 
 /**
@@ -957,12 +958,17 @@ function validatePackDeltaBaselineIds(
 	const joinClause = filterResult.joinSessions
 		? "JOIN sessions ON sessions.id = memory_items.session_id"
 		: "";
+	const filterWhereClause = [
+		"memory_items.active = 1",
+		`memory_items.id IN (${placeholders})`,
+		...filterResult.clauses,
+	].join(" AND ");
 	const rows = store.db
 		.prepare(
 			`SELECT memory_items.id
 			 FROM memory_items
 			 ${joinClause}
-			 WHERE ${["memory_items.active = 1", `memory_items.id IN (${placeholders})`, ...filterResult.clauses].join(" AND ")}`,
+			 WHERE ${filterWhereClause}`,
 		)
 		.all(...ids, ...filterResult.params) as Array<{ id: number }>;
 	const visibleIds = new Set(rows.map((row) => row.id));
@@ -1204,12 +1210,17 @@ function rehydrateScopedCandidateResults(
 	for (let offset = 0; offset < ids.length; offset += MAX_SEMANTIC_REVALIDATION_IDS) {
 		const chunkIds = ids.slice(offset, offset + MAX_SEMANTIC_REVALIDATION_IDS);
 		const placeholders = chunkIds.map(() => "?").join(", ");
+		const chunkWhereClause = [
+			"memory_items.active = 1",
+			`memory_items.id IN (${placeholders})`,
+			...filterResult.clauses,
+		].join(" AND ");
 		const rows = store.db
 			.prepare(
 				`SELECT memory_items.*
 				 FROM memory_items
 				 ${joinClause}
-				 WHERE ${["memory_items.active = 1", `memory_items.id IN (${placeholders})`, ...filterResult.clauses].join(" AND ")}`,
+				 WHERE ${chunkWhereClause}`,
 			)
 			.all(...chunkIds, ...filterResult.params) as Array<Record<string, unknown>>;
 

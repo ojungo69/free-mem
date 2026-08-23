@@ -91,8 +91,8 @@ function attachSessionFields(store: MemoryStore, items: Record<string, unknown>[
  */
 function projectBasename(raw: string): string {
 	if (raw.toLowerCase().startsWith("fatal:")) return "";
-	const parts = raw.replace(/\\/g, "/").split("/");
-	return parts[parts.length - 1] ?? raw;
+	const parts = raw.replaceAll("\\", "/").split("/");
+	return parts.at(-1) ?? raw;
 }
 
 function normalizeScope(raw: string | undefined): "mine" | "theirs" | undefined {

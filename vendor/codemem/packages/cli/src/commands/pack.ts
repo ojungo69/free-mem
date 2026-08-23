@@ -78,18 +78,18 @@ export function renderPackTrace(trace: PackTrace): string {
 		lines.push("");
 	}
 
-	lines.push("Assembly");
-	lines.push(`- deduped ids: ${trace.assembly.deduped_ids.join(", ") || "(none)"}`);
-	lines.push(`- trimmed ids: ${trace.assembly.trimmed_ids.join(", ") || "(none)"}`);
-	lines.push(`- trim reasons: ${trace.assembly.trim_reasons.join(", ") || "(none)"}`);
 	lines.push(
+		"Assembly",
+		`- deduped ids: ${trace.assembly.deduped_ids.join(", ") || "(none)"}`,
+		`- trimmed ids: ${trace.assembly.trimmed_ids.join(", ") || "(none)"}`,
+		`- trim reasons: ${trace.assembly.trim_reasons.join(", ") || "(none)"}`,
 		`- section counts: summary=${trace.output.section_counts.summary} timeline=${trace.output.section_counts.timeline} observations=${trace.output.section_counts.observations}`,
+		`- estimated tokens: ${trace.output.estimated_tokens}`,
+		`- truncated: ${trace.output.truncated ? "yes" : "no"}`,
+		"",
+		"Final pack",
+		trace.output.pack_text,
 	);
-	lines.push(`- estimated tokens: ${trace.output.estimated_tokens}`);
-	lines.push(`- truncated: ${trace.output.truncated ? "yes" : "no"}`);
-	lines.push("");
-	lines.push("Final pack");
-	lines.push(trace.output.pack_text);
 	return lines.join("\n");
 }
 

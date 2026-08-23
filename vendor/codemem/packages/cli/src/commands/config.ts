@@ -18,7 +18,7 @@ export const configCommand = new Command("config")
 
 type WhereOptions = ConfigOpts & JsonOpts;
 
-function formatWhereHuman(result: ConfigResolutionResult): string {
+export function formatWhereHuman(result: ConfigResolutionResult): string {
 	const lines: string[] = [];
 	const allEntries = [result.resolved, ...result.fallbackChain];
 	// Sort by original precedence order for display
@@ -35,8 +35,10 @@ function formatWhereHuman(result: ConfigResolutionResult): string {
 		const isSelected = entry === result.resolved;
 		const marker = isSelected ? ">>>" : "   ";
 		const existsLabel = entry.exists ? "exists" : "missing";
-		lines.push(`${marker} [${entry.source}] ${entry.path}`);
-		lines.push(`       ${entry.reason} (${existsLabel})`);
+		lines.push(
+			`${marker} [${entry.source}] ${entry.path}`,
+			`       ${entry.reason} (${existsLabel})`,
+		);
 	}
 	return lines.join("\n");
 }

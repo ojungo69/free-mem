@@ -6,11 +6,11 @@ export function projectBasename(value: string): string {
 	while (normalized.endsWith("/")) normalized = normalized.slice(0, -1);
 	if (!normalized) return "";
 	const parts = normalized.split("/");
-	return parts[parts.length - 1] ?? "";
+	return parts.at(-1) ?? "";
 }
 
 function escapeSqlLikePattern(value: string): string {
-	return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+	return value.replaceAll("\\", String.raw`\\`).replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 export function projectColumnClause(
@@ -23,7 +23,7 @@ export function projectColumnClause(
 	if (!value) return { clause: "", params: [] };
 	const escaped = escapeSqlLikePattern(value);
 	return {
-		clause: `(${columnExpr} = ? OR ${columnExpr} LIKE ? ESCAPE '\\' OR ${columnExpr} LIKE ? ESCAPE '\\')`,
+		clause: String.raw`(${columnExpr} = ? OR ${columnExpr} LIKE ? ESCAPE '\' OR ${columnExpr} LIKE ? ESCAPE '\')`,
 		params: [value, `%/${escaped}`, `%\\${escaped}`],
 	};
 }

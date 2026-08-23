@@ -87,9 +87,9 @@ export function convertGitleaksRules(
 		if (
 			unsupportedGroups.includes("(?") ||
 			patternSource.includes("[[:") ||
-			patternSource.includes("\\z") ||
-			patternSource.includes("\\A") ||
-			patternSource.includes("\\C") ||
+			patternSource.includes(String.raw`\z`) ||
+			patternSource.includes(String.raw`\A`) ||
+			patternSource.includes(String.raw`\C`) ||
 			/\\[1-9]/.test(patternSource)
 		) {
 			throw new Error(`gitleaks rule ${source.id} uses unsupported regex syntax`);

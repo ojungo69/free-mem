@@ -405,7 +405,7 @@ export async function ingest(
 		const normalizedEvents = normalizeAdapterEvents(events);
 		const prompts = extractPrompts(normalizedEvents);
 		const promptNumber =
-			prompts.length > 0 ? (prompts[prompts.length - 1]?.promptNumber ?? prompts.length) : null;
+			prompts.length > 0 ? (prompts.at(-1)?.promptNumber ?? prompts.length) : null;
 
 		// Tool events — handle adapter projection
 		let toolEvents = normalizeEventsForToolExtraction(events, maxChars);
@@ -422,7 +422,7 @@ export async function ingest(
 		// Latest prompt
 		const latestPrompt =
 			sessionContext.firstPrompt ??
-			(prompts.length > 0 ? prompts[prompts.length - 1]?.promptText : null) ??
+			(prompts.length > 0 ? prompts.at(-1)?.promptText : null) ??
 			null;
 
 		// ------------------------------------------------------------------
