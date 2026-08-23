@@ -1,0 +1,43 @@
+vendor/codemem/packages/core/src/daemon-rpc-validation.test.ts
+  s_d7c13d0e584450::t_8af19b32a9cd33 4,14-17,20-42,46,50-79,81,83-89,91-104
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_d7c13d0e584450::t_453e08b23308de 1505-1508
+vendor/codemem/packages/core/src/distill-judge.ts
+  s_d7c13d0e584450::t_e11564761b1e07 85-86
+vendor/codemem/packages/core/src/extraction-eval.test.ts
+  s_d7c13d0e584450::t_1928f26b7ebc07 308-310
+vendor/codemem/packages/core/src/gitleaks-pinned-rules.test.ts
+  s_d7c13d0e584450::t_9643c904ec261c 8,93-103
+vendor/codemem/packages/core/src/ingest-xml-parser.ts
+  s_d7c13d0e584450::t_9c71e4f8659889 331-333,1296
+vendor/codemem/packages/core/src/maintenance.test.ts
+  s_d7c13d0e584450::t_93548fc5906538 433-436
+vendor/codemem/packages/core/src/maintenance/memory-role-report.ts
+  s_d7c13d0e584450::t_ccae563360296c 112
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_d7c13d0e584450::t_0ef61421ed8b55 509-510
+vendor/codemem/packages/core/src/retrieval-ledger.test.ts
+  s_d7c13d0e584450::t_9954a9ec3b1c9b 1742-1745
+vendor/codemem/packages/core/src/secret-scanner.ts
+  s_d7c13d0e584450::t_c5e6202b661f2c 91-94,132
+vendor/codemem/packages/mcp-server/src/server.test.ts
+  s_d7c13d0e584450::t_30652fd887cf98 63-75
+vendor/codemem/packages/mcp-server/src/tools/timeline.ts
+  s_d7c13d0e584450::t_27b10b0c5049e9 50-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bd8fb73e11c3ac5cf737c5005ddf68fdbfda9ecb",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
