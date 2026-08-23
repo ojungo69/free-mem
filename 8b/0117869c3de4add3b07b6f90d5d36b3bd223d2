@@ -1,0 +1,27 @@
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_d7c13d0e584450::t_0d0bb35b47f5ca 262
+vendor/codemem/packages/core/src/daemon-rpc-validation.test.ts
+  s_d7c13d0e584450::t_8e3ea04cd7a156 19,21,24-27,29,97,111-121
+vendor/codemem/packages/core/src/distill-judge.ts
+  s_d7c13d0e584450::t_7941f7657edb55 86-87
+vendor/codemem/packages/core/src/ingest-xml-parser.ts
+  s_d7c13d0e584450::t_73f6e87e74e634 331-333
+vendor/codemem/packages/core/src/secret-scanner.ts
+  s_d7c13d0e584450::t_721e17cfefd223 79-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8b0117869c3de4add3b07b6f90d5d36b3bd223d2",
+  "prompts": {},
+  "sessions": {
+    "s_d7c13d0e584450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797b9d57-695c-48d2-bf9e-f92ff6649319",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
