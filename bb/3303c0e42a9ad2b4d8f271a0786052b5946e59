@@ -1,0 +1,44 @@
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_83bfdc945dcdee 1-5,7-33
+  s_d6433b5ff6fa8e::t_cbec7c97f9cf40 34-36,38-54,56-57,257
+  s_d6433b5ff6fa8e::t_7a6bcaedd5c9e1 6,60-256
+  s_d6433b5ff6fa8e::t_b3545e3b2930d2 37,55,58-59
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_f8db0c6fb82c0c 23-27,124-137
+  s_d6433b5ff6fa8e::t_4bf6cecd035c3f 164-178
+  s_d6433b5ff6fa8e::t_2b5191f220227a 206-213,401-435
+  s_d6433b5ff6fa8e::t_92f00f99e406f3 359-369
+  s_d6433b5ff6fa8e::t_2dbd533fad386c 1000-1006,1010-1011,1013-1014
+  s_d6433b5ff6fa8e::t_b296f08fdb3c71 233-251
+  s_d6433b5ff6fa8e::t_83e1455c435aea 492,503,522-525,536,540,542,544-545,547,549,551-553,558,560-562,573,575,579,586-588,590-591
+  s_d6433b5ff6fa8e::t_4d57684cd821d4 922,941-942
+  s_d6433b5ff6fa8e::t_17aa6f9780b38e 18-22,223-232,493,526,535,548,568,577-578
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_1ddabdf2bda487 45,47-48,56,68,70
+  s_d6433b5ff6fa8e::t_85f2a76e966822 36-37
+  s_d6433b5ff6fa8e::t_65b187f03f1f20 50-51
+  s_d6433b5ff6fa8e::t_062a05a3342ebd 52-54
+  s_d6433b5ff6fa8e::t_d33755bae2ce23 34-35
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_fe1e92ea149d51 22-66
+  s_d6433b5ff6fa8e::t_a5fb2c9cb89535 414-703
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_392588287031be 10-56
+  s_d6433b5ff6fa8e::t_eba8ce995069ab 2821-3195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bb3303c0e42a9ad2b4d8f271a0786052b5946e59",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
