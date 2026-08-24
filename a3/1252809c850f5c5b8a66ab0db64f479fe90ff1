@@ -1,0 +1,19 @@
+vendor/codemem/docs/user-guide.md
+  s_eb6264d292f6be::t_2aa4c08c6a196c 145-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a31252809c850f5c5b8a66ab0db64f479fe90ff1",
+  "prompts": {},
+  "sessions": {
+    "s_eb6264d292f6be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a9ebfec-b207-4459-8457-167369cfc5e4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
