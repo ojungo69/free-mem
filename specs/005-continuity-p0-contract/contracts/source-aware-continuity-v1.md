@@ -37,7 +37,8 @@ Core 1.0 `CanonicalClientIdV1` is closed to `claude-code` and `codex-cli`.
 ## 3. Source authority
 
 Intake resolves `SourceIdentityV1` from authenticated peer context, adapter manifest, ingest channel, exact client/adapter
-version, session binding, capability evidence, capture method, and ingest receipt. Caller payload values are proposals only.
+version, session binding, capability evidence, daemon-owned private-eligibility policy, capture method, and ingest receipt.
+Caller payload values are proposals only.
 
 The resolved identity reuses `ContinuityEventProvenanceV1`, `ContinuityIngestAttestationV1`, and the normalized source
 event. It is not copied into each work-state field. Persisted artifacts keep sorted unique opaque source-event refs.
@@ -56,7 +57,8 @@ Subject scope and sharing scope are independent. Subject scope is the closed hie
 `personal_vault -> project -> workspace -> branch -> task_lineage -> session -> turn`.
 Sharing scope is `agent_private | task_shared | project_shared | personal_shared`.
 Here `private` means the closed `Sensitivity` value, while `agent_private` is a `SharingScopeV1` value; they are independent.
-`privateEligible` gates a `sensitivity="private"` record only after an explicit sharing grant. It never makes an
+The destination identity's authenticated `privateEligible` value gates a `sensitivity="private"` record only after an
+explicit sharing grant. A capsule does not carry an authoritative eligibility boolean, and eligibility never makes an
 `agent_private` record deliverable to another client.
 
 The decision order is fixed:
@@ -65,7 +67,7 @@ The decision order is fixed:
    automatic injection, `active_task_shared`, `same_agent`, `cross_agent`, capsule, sync, and export); `local_only` remains
    usable only inside daemon-owned local state;
 2. deny cross-`personal_vault`, project, or workspace mismatch;
-3. require explicit opt-in and destination `privateEligible=true` for `private`;
+3. require explicit opt-in and resolved destination `SourceIdentityV1.privateEligible=true` for `private`;
 4. isolate `agent_private` from every other client;
 5. downgrade when destination capabilities cannot represent the record safely;
 6. apply the allowed task/project/personal sharing rule;
@@ -81,9 +83,10 @@ out-of-order refs are rejected before hashing/publication and are never normaliz
 
 ## 5. Shared and Agent-local projections
 
-`CanonicalWorkStateV2` contains one `SharedTaskStateV1` and bounded `AgentLocalStateV1[]` lanes. The shared projection has a
-non-empty `sharingDecisionEventIds` set whose events resolve to authenticated sharing authority; sensitivity and
-`privateEligible` do not substitute for consent.
+`CanonicalWorkStateV2` contains zero or one `SharedTaskStateV1` plus bounded `AgentLocalStateV1[]` lanes, and at least one
+projection must exist. This permits F0 private-only state without fabricating sharing consent. A present shared projection
+has a non-empty `sharingDecisionEventIds` set whose events resolve to authenticated sharing authority; sensitivity and
+private eligibility do not substitute for consent.
 
 - Shared task: goal, constraints, active/modified files, commands, tests, pending operations, dropped-evidence summary,
   repository state, eligible semantic note.
@@ -93,15 +96,17 @@ Agent-local lanes are keyed by `(clientId, sessionId)`, unique in canonical stat
 `sourceIdentityEventId` to the same authenticated pair. Duplicate lanes quarantine. A capsule carries zero or one lane and
 rejects it unless both client and session match the destination.
 
-Sensitivity uses the closed order `normal < private < secret`. Shared and Agent-local projections each declare the maximum
-of their contained values; canonical state declares the maximum across all projections, and a capsule derives the maximum
-of what it includes. A checkpoint must match its embedded canonical-state maximum. Any mismatch quarantines before delivery
-instead of lowering sensitivity.
+Sensitivity uses the closed order `normal < private < secret`. Every present shared or Agent-local projection declares the
+maximum of its contained values; canonical state declares the maximum across its present projections, and a capsule derives
+the maximum of what it includes. A checkpoint must match its embedded canonical-state maximum. Any mismatch quarantines
+before delivery instead of lowering sensitivity.
 
-`ResumeCapsuleV2` carries the shared projection and, only when eligible, the destination client's own Agent-local lane.
-It never carries another client's Agent-local lane. The full canonical state is not embedded in a delivery capsule.
-The destination itself always carries `sourceIdentityEventId`; restore rejects the capsule unless it resolves to the same
-authenticated client, exact client version, session, and optional capability hash, including capsules with no Agent-local lane.
+`ResumeCapsuleV2` carries zero or one granted shared projection and zero or one destination-client Agent-local lane, with at
+least one present. A capsule without a shared projection is same-agent only; cross-agent delivery requires a granted shared
+projection. It never carries another client's Agent-local lane. The full canonical state is not embedded in a delivery
+capsule. The destination always carries `sourceIdentityEventId`; restore rejects unless it resolves to the same authenticated
+client, exact client version, session, optional capability hash, and daemon-owned private eligibility, including capsules
+with no Agent-local lane.
 
 ## 6. Lineage provenance
 
@@ -116,11 +121,18 @@ The following meanings are distinct:
 Origin/last/participants are derived from append-only event/revision evidence. Checkpoint creator is stored explicitly.
 No rule reuses an ambiguous single `sourceAgent` value for these meanings.
 
+Every nested shared-field source-event array is sorted unique and resolves to authenticated source identities. Agent-local
+field refs additionally resolve to the enclosing lane's exact client/session. Canonical-memory source refs follow the same
+authenticated rule; evidence-snapshot refs resolve to existing hash-valid snapshots bound to the same memory entity.
+Unresolved, unauthenticated, ID-mismatched, or lane-mismatched references quarantine even when artifact hashes were recomputed.
+
 ## 7. Revision, immutability, and evidence bounds
 
-Published successor graphs are deeply readonly. `contentHash` is SHA-256 over RFC 8785 JCS of the seven non-revision
-`CanonicalWorkStateV2` fields. `stateRevision` hashes the fixed domain, that `contentHash`, and the six non-hash revision
-metadata fields; neither preimage includes its own digest. The manifest's fixed vector is the cross-language oracle. Lineage order uses daemon-owned
+Published successor graphs are deeply readonly. `contentHash` is SHA-256 over RFC 8785 JCS of the declared non-revision
+`CanonicalWorkStateV2` projection; an absent optional `sharedTaskState` member is omitted rather than encoded as `null`.
+`stateRevision` hashes the fixed domain, that `contentHash`, and the six non-hash revision
+metadata fields; neither preimage includes its own digest. The manifest pins shared and local-only/omitted-member vectors as
+cross-language oracles. Lineage order uses daemon-owned
 `lineageRevisionOrdinal`; caller timestamp, session-local sequence, and hash lexical order never choose a head.
 
 Checkpoint and canonical-memory hashes use separate domain strings and manifest vectors. Checkpoint content excludes its
@@ -128,8 +140,13 @@ ID/parent/revision fields; initial and parent transitions bind checkpoint ID, co
 present. Memory content excludes identity/revision/evidence metadata; memory revision binds memory ID, content hash,
 sorted evidence metadata, and either an initial or parent-memory-revision transition. `canonicalFactId` remains the separate
 exact-fact identity hash with schema literal `CanonicalMemoryEntityV1`.
-Resume capsules use their own domain-separated hash over every field except `contentHash`; restore also resolves the named
-checkpoint/work-state revisions before accepting any persisted projection. A body-only mutation is therefore rejected.
+Resume capsules use their own domain-separated hash over every present field except `contentHash`; absent optional projection
+members are omitted rather than encoded as `null`; the manifest pins a local-only capsule vector. Restore resolves the named
+checkpoint/work-state revisions and requires every serialized shared/local projection to equal the corresponding resolved
+work-state projection. All remaining envelope fields must equal the persisted delivery claim (injection/checkpoint/state IDs,
+scope/lineage/destination, profile, age, reconciliation, selected memories, and warnings). A body-only or authorization-field
+mutation remains rejected even after an attacker recomputes the public capsule hash; `reconciliation="incompatible"` cannot
+produce a delivery capsule.
 
 Meaning-neutral events do not advance the canonical state revision/history, while event/delivery/diagnostic/watermark
 transitions remain separately auditable. `StateNeutralTransitionPolicyV1` names the four classifications and fixes
@@ -144,8 +161,10 @@ ordered head itself is eligible. If it is not, the result is manual; the selecto
 revision. Duplicate revisions/ordinals, zero or multiple ordered heads, a mismatched head reference, or a non-greatest
 marked head use the third `fallbackDisposition="quarantine"` variant with exact corruption reason codes.
 
-Dropped evidence has separate bounded windows and monotone decimal-string counters for `evicted` and
-`orphaned_terminal`. One reason cannot erase the other's existence or count.
+Dropped evidence has separate bounded windows and decimal-string counters for `evicted` and `orphaned_terminal`. Per window,
+`totalRecorded = totalOverflowed + retained entries`; top-level totals equal the window sums. A non-empty window carries
+oldest/latest boundaries equal to the minimum/maximum retained lineage ordinal, while an empty window carries neither.
+One reason cannot erase the other's existence or count.
 
 All caller identifiers/fingerprints that can reach successor state are replaced by domain-separated opaque IDs. New-intake
 raw values are not persisted; a legacy raw value remains only inside its original local quarantined artifact when needed.
@@ -200,7 +219,9 @@ the persisted `SharingDecisionV1` authority event;
 in particular, `ResumeCapsuleV2` requires its optional Agent-local lane to match `destination.clientId`.
 
 Scope IDs must be non-blank and parent/embedded scopes must agree. Every listed timestamp must be canonically valid, not
-merely regex-shaped. Invalid artifacts preserve original bytes in quarantine and never reach the reducer/selector.
+merely regex-shaped. The successor work-state/capsule rules enumerate every nested field source ref; canonical-memory rules
+also resolve same-memory hash-valid evidence snapshots. Invalid artifacts preserve original bytes in quarantine and never
+reach the reducer/selector.
 
 Repair, discard, and rebind require explicit user authority and an audit event. Daemon/model inference is forbidden. The
 machine rule set is exact: deleting an artifact or a required path is a contract/hash change, not an implementation choice.

@@ -848,6 +848,7 @@ export interface SourceIdentityV1 {
   readonly sessionId: OpaqueIdV1;
   readonly deviceId?: OpaqueIdV1;
   readonly capabilityHash?: Sha256Hex;
+  readonly privateEligible: boolean;
   readonly captureMethod: ContinuityCaptureMethod;
   readonly ingestAttestation: ContinuityIngestAttestationV1 & {
     readonly ingestReceiptId: OpaqueIdV1;
@@ -914,16 +915,23 @@ export interface SensitivityAggregationPolicyV1 {
   readonly mismatchDisposition: "quarantine_before_delivery";
 }
 
-export interface CanonicalWorkStateV2 {
+export type CanonicalWorkStateV2 = {
   readonly schemaVersion: 2;
   readonly subjectScope: TaskLineageSubjectScopeV1;
   readonly opaqueIdProfile: OpaqueIdProfileV1;
   readonly revision: TaskStateRevisionEnvelopeV1;
   readonly lineageSourceSummary: LineageSourceSummaryV1;
-  readonly sharedTaskState: SharedTaskStateV1;
-  readonly agentLocalStates: readonly AgentLocalStateV1[];
   readonly sensitivity: Sensitivity;
-}
+} & (
+  | {
+      readonly sharedTaskState: SharedTaskStateV1;
+      readonly agentLocalStates: readonly AgentLocalStateV1[];
+    }
+  | {
+      readonly sharedTaskState?: never;
+      readonly agentLocalStates: readonly [AgentLocalStateV1, ...AgentLocalStateV1[]];
+    }
+);
 
 export interface ContinuationCheckpointV3 {
   readonly id: OpaqueIdV1;
@@ -948,10 +956,9 @@ export interface ResumeDestinationV1 {
   readonly clientVersion: string;
   readonly sessionId: OpaqueIdV1;
   readonly capabilityHash?: Sha256Hex;
-  readonly privateEligible: boolean;
 }
 
-export interface ResumeCapsuleV2 {
+export type ResumeCapsuleV2 = {
   readonly schemaVersion: 2;
   readonly contentHash: Sha256Hex;
   readonly injectionId: OpaqueIdV1;
@@ -965,11 +972,18 @@ export interface ResumeCapsuleV2 {
   readonly resumeProfile: ResumeProfileV1;
   readonly ageSeconds: number;
   readonly reconciliation: ReconciliationStatus;
-  readonly sharedTaskState: SharedTaskStateV1;
-  readonly destinationAgentLocalState?: AgentLocalStateV1;
   readonly selectedMemoryIds: readonly OpaqueIdV1[];
   readonly warnings: readonly string[];
-}
+} & (
+  | {
+      readonly sharedTaskState: SharedTaskStateV1;
+      readonly destinationAgentLocalState?: AgentLocalStateV1;
+    }
+  | {
+      readonly sharedTaskState?: never;
+      readonly destinationAgentLocalState: AgentLocalStateV1;
+    }
+);
 
 export type MemoryKindV1 =
   | "decision"
@@ -1359,12 +1373,12 @@ export interface SourceAwareFixtureSourceV1 {
   readonly canonicalClientId: CanonicalClientIdV1;
   readonly claimedClientId: string;
   readonly authenticated: boolean;
+  readonly privateEligible: boolean;
+  readonly capabilityIds: readonly string[];
 }
 
 export interface SourceAwareFixtureDestinationV1 {
   readonly sourceId: string;
-  readonly privateEligible: boolean;
-  readonly capabilityIds: readonly string[];
 }
 
 export interface SourceAwareFixtureScopeV1 {
@@ -1630,6 +1644,11 @@ export interface CanonicalStateHashTestVectorV1 {
   readonly contentHash: Sha256Hex;
   readonly revisionMetadata: JsonValue;
   readonly stateRevision: Sha256Hex;
+  readonly localOnly: {
+    readonly contentProjection: JsonValue;
+    readonly contentHash: Sha256Hex;
+    readonly stateRevision: Sha256Hex;
+  };
 }
 
 export interface CanonicalStateHashProfileV1 {
@@ -1736,6 +1755,10 @@ export interface ResumeCapsuleHashTestVectorV1 {
   readonly sharedTaskStateVectorRef: "canonicalStateHashProfile.testVector.contentProjection.sharedTaskState";
   readonly envelope: JsonValue;
   readonly contentHash: Sha256Hex;
+  readonly localOnly: {
+    readonly envelope: JsonValue;
+    readonly contentHash: Sha256Hex;
+  };
 }
 
 export interface ResumeCapsuleHashProfileV1 {

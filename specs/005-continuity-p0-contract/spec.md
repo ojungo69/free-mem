@@ -251,8 +251,9 @@ contract は期待する source identity、sharing disposition、participant集�
    active-task shared injectionが別のprofileとして働き、filterを外してもwrong project/workspaceが0件である。
 7. **F6 — Source authority**: callerが`sourceAgent`やcanonical client IDを偽装しても、authenticated
    source provenanceまたはautomatic resume authorityを得ない。
-8. **F7 — Privacy / destination capability**: `agent_private`、secret、`local_only`、prohibited-egress、未対応destination
-   capabilityではfull cross-agent injectionが0件となり、明示したhint/manual dispositionへdowngradeする。
+8. **F7 — Privacy / destination capability**: `agent_private`、secret、`local_only`、prohibited-egress、認証済み
+   destination identityがprivate非対応、または未対応destination capabilityではfull cross-agent injectionが0件となり、
+   明示したhint/manual dispositionへdowngradeする。
 
 ---
 
@@ -348,7 +349,8 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-021**: quarantine からの repair / discard / rebind は、daemon も model も推測せず、明示的な
   authority と audit を要求しなければならない。
 - **FR-022**: 検証対象の identity 欄は、schema 版ごとに機械可読な形で列挙または schema 注釈から
-  導出できなければならない。
+  導出できなければならない。shared/Agent-local の全 nested `sourceEventIds` と canonical-memory の
+  `sourceEventIds`/`evidenceSnapshotIds`を含み、未解決・未認証・lane不一致・別memory snapshotはquarantineする。
 
 **層 C — 上限の強制と診断の可視化**
 
@@ -394,7 +396,8 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-030**: Core 1.0 のcanonical client IDは`claude-code`と`codex-cli`とし、legacy alias、future client、
   provider/model identityとの対応をversioned vocabularyとして凍結しなければならない。
 - **FR-031**: source identityはauthenticated peer、adapter manifest、ingest channel、exact client/adapter
-  version、session binding、capability evidenceからintakeが導出し、callerのAgent名だけを信用してはならない。
+  version、session binding、capability evidence、daemon所有の`privateEligible` policyからintakeが導出し、
+  callerのAgent名やcapsule内booleanだけを信用してはならない。
 - **FR-032**: model provider/model identityはcoding Agent/client identityと別fieldに保持し、片方をもう片方の
   代用にしてはならない。
 - **FR-033**: 新しいsource contractは既存のevent provenance、ingest attestation、source event参照を
@@ -402,7 +405,7 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-034**: subject scope（`personal_vault` / project / workspace / branch / task lineage / session / turn）とsharing
   scope（`agent_private` / `task_shared` / `project_shared` / `personal_shared`）を別軸として凍結しなければならない。
 - **FR-035**: sharing判定のprecedenceは、secret/`local_only`/prohibited-egress deny、cross-vault/project/workspace deny、
-  privateの明示opt-inとdestination `privateEligible` gate、Agent-local isolation、destination capability
+  privateの明示opt-inと認証済みdestination `SourceIdentityV1.privateEligible` gate、Agent-local isolation、destination capability
   downgrade、sharing allow、source preference/display filterの順で評価しなければならない。
 - **FR-036**: callerはsharing scopeのproposalまでしか行えず、自分でscopeを昇格できてはならない。
   authority未確認のrecordはautomatic cross-agent full injectionへ使わない。共有grantはversioned
@@ -410,8 +413,12 @@ contract は期待する source identity、sharing disposition、participant集�
   結び付け、unknown/unauthenticated/wrong-scope/wrong-targetを拒否する。decision参照はhash前にsorted uniqueとする。
 - **FR-037**: shared task projectionとAgent-local projectionを別のvisibility laneとして表現し、
   native todo、Agent固有plan、last assistant conclusion、host metadataを別Agentへ自動注入してはならない。
+  private-only canonical stateはgrantを捏造せずshared projectionを省略できるが、projectionが0件のstate/capsuleは拒否し、
+  shared projectionなしcapsuleはsame-agentに限定する。capsuleのprojectionはresolved work-state revisionと、
+  その他のauthorization metadataはpersisted delivery claimと一致しなければならず、公開hashの再計算をauthorityにしない。
 - **FR-038**: 曖昧な単数`sourceAgent`をmulti-Agent lineageの代表値として再利用せず、lineage origin、
   last contributor、participants、checkpoint creator、field/memory source evidenceを区別しなければならない。
+  field/memory refsはartifact hashの自己整合だけで受理せず、認証済みsource/snapshot artifactへ解決しなければならない。
 - **FR-039**: lineage origin、last contributor、participantsはappend-only event/revision evidenceから
   決定論的に導出し、checkpoint creatorだけはcheckpoint envelopeへ明示的に保持しなければならない。
 - **FR-040**: legacy `source` / `origin_source` / actor / provider / visibilityの各語彙にdisposition表を持ち、
@@ -525,7 +532,7 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
 - **SC-014**: Claude Code → Codex CLI → Claude Code のlineageで、origin、last contributor、participants、
   checkpoint creatorの期待値がF3の全stepで一致し、source relabelが**0件**である。
 - **SC-015**: Agent-local state、secret、`local_only`、prohibited-egress、wrong `personal_vault`/project/workspace、
-  opt-inなしまたは`privateEligible=false`のprivate stateが別Agentへのautomatic full injectionへ入る件数が
+  opt-inなしまたは認証済みdestination `SourceIdentityV1.privateEligible=false`のprivate stateが別Agentへのautomatic full injectionへ入る件数が
   **0件**である。
 - **SC-016**: 同じcanonical fact identityを2 Agentが裏付けたF4でmemory entityが**1件**、source
   evidence系統が**2件**となり、per-Agent duplicateが**0件**である。

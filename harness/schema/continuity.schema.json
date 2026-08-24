@@ -3315,7 +3315,7 @@
     "SourceIdentityV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["clientId", "clientVersion", "adapterId", "adapterVersion", "sessionId", "captureMethod", "ingestAttestation"],
+      "required": ["clientId", "clientVersion", "adapterId", "adapterVersion", "sessionId", "privateEligible", "captureMethod", "ingestAttestation"],
       "properties": {
         "clientId": { "$ref": "#/$defs/CanonicalClientIdV1" },
         "clientVersion": { "type": "string", "minLength": 1, "maxLength": 8192 },
@@ -3324,6 +3324,7 @@
         "sessionId": { "$ref": "#/$defs/OpaqueIdV1" },
         "deviceId": { "$ref": "#/$defs/OpaqueIdV1" },
         "capabilityHash": { "$ref": "#/$defs/Sha256Hex" },
+        "privateEligible": { "type": "boolean" },
         "captureMethod": { "$ref": "#/$defs/ContinuityCaptureMethod" },
         "ingestAttestation": {
           "allOf": [
@@ -3444,7 +3445,7 @@
     "CanonicalWorkStateV2": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "subjectScope", "opaqueIdProfile", "revision", "lineageSourceSummary", "sharedTaskState", "agentLocalStates", "sensitivity"],
+      "required": ["schemaVersion", "subjectScope", "opaqueIdProfile", "revision", "lineageSourceSummary", "agentLocalStates", "sensitivity"],
       "properties": {
         "schemaVersion": { "const": 2 },
         "subjectScope": { "$ref": "#/$defs/TaskLineageSubjectScopeV1" },
@@ -3454,7 +3455,11 @@
         "sharedTaskState": { "$ref": "#/$defs/SharedTaskStateV1" },
         "agentLocalStates": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/AgentLocalStateV1" } },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" }
-      }
+      },
+      "anyOf": [
+        { "required": ["sharedTaskState"] },
+        { "properties": { "agentLocalStates": { "minItems": 1 } } }
+      ]
     },
     "ContinuationCheckpointV3": {
       "type": "object",
@@ -3484,20 +3489,19 @@
     "ResumeDestinationV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceIdentityEventId", "clientId", "clientVersion", "sessionId", "privateEligible"],
+      "required": ["sourceIdentityEventId", "clientId", "clientVersion", "sessionId"],
       "properties": {
         "sourceIdentityEventId": { "$ref": "#/$defs/OpaqueIdV1" },
         "clientId": { "$ref": "#/$defs/CanonicalClientIdV1" },
         "clientVersion": { "type": "string", "minLength": 1, "maxLength": 8192 },
         "sessionId": { "$ref": "#/$defs/OpaqueIdV1" },
-        "capabilityHash": { "$ref": "#/$defs/Sha256Hex" },
-        "privateEligible": { "type": "boolean" }
+        "capabilityHash": { "$ref": "#/$defs/Sha256Hex" }
       }
     },
     "ResumeCapsuleV2": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "contentHash", "injectionId", "checkpointId", "checkpointRevision", "workStateRevision", "subjectScope", "lineageSourceSummary", "checkpointCreatedBySourceEventId", "destination", "resumeProfile", "ageSeconds", "reconciliation", "sharedTaskState", "selectedMemoryIds", "warnings"],
+      "required": ["schemaVersion", "contentHash", "injectionId", "checkpointId", "checkpointRevision", "workStateRevision", "subjectScope", "lineageSourceSummary", "checkpointCreatedBySourceEventId", "destination", "resumeProfile", "ageSeconds", "reconciliation", "selectedMemoryIds", "warnings"],
       "properties": {
         "schemaVersion": { "const": 2 },
         "contentHash": { "$ref": "#/$defs/Sha256Hex" },
@@ -3516,7 +3520,11 @@
         "destinationAgentLocalState": { "$ref": "#/$defs/AgentLocalStateV1" },
         "selectedMemoryIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "warnings": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
-      }
+      },
+      "anyOf": [
+        { "required": ["sharedTaskState"] },
+        { "required": ["destinationAgentLocalState"] }
+      ]
     },
     "MemoryKindV1": {
       "type": "string",
@@ -3792,22 +3800,22 @@
     "SourceAwareFixtureSourceV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "canonicalClientId", "claimedClientId", "authenticated"],
+      "required": ["id", "canonicalClientId", "claimedClientId", "authenticated", "privateEligible", "capabilityIds"],
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 8192 },
         "canonicalClientId": { "$ref": "#/$defs/CanonicalClientIdV1" },
         "claimedClientId": { "type": "string", "minLength": 1, "maxLength": 8192 },
-        "authenticated": { "type": "boolean" }
+        "authenticated": { "type": "boolean" },
+        "privateEligible": { "type": "boolean" },
+        "capabilityIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
       }
     },
     "SourceAwareFixtureDestinationV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceId", "privateEligible", "capabilityIds"],
+      "required": ["sourceId"],
       "properties": {
-        "sourceId": { "type": "string", "minLength": 1, "maxLength": 8192 },
-        "privateEligible": { "type": "boolean" },
-        "capabilityIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
+        "sourceId": { "type": "string", "minLength": 1, "maxLength": 8192 }
       }
     },
     "SourceAwareFixtureScopeV1": {
@@ -4102,12 +4110,22 @@
     "CanonicalStateHashTestVectorV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contentProjection", "contentHash", "revisionMetadata", "stateRevision"],
+      "required": ["contentProjection", "contentHash", "revisionMetadata", "stateRevision", "localOnly"],
       "properties": {
         "contentProjection": { "$ref": "#/$defs/JsonValue" },
         "contentHash": { "$ref": "#/$defs/Sha256Hex" },
         "revisionMetadata": { "$ref": "#/$defs/JsonValue" },
-        "stateRevision": { "$ref": "#/$defs/Sha256Hex" }
+        "stateRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "localOnly": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contentProjection", "contentHash", "stateRevision"],
+          "properties": {
+            "contentProjection": { "$ref": "#/$defs/JsonValue" },
+            "contentHash": { "$ref": "#/$defs/Sha256Hex" },
+            "stateRevision": { "$ref": "#/$defs/Sha256Hex" }
+          }
+        }
       }
     },
     "CanonicalStateHashProfileV1": {
@@ -4195,11 +4213,20 @@
     "ResumeCapsuleHashTestVectorV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sharedTaskStateVectorRef", "envelope", "contentHash"],
+      "required": ["sharedTaskStateVectorRef", "envelope", "contentHash", "localOnly"],
       "properties": {
         "sharedTaskStateVectorRef": { "const": "canonicalStateHashProfile.testVector.contentProjection.sharedTaskState" },
         "envelope": { "$ref": "#/$defs/JsonValue" },
-        "contentHash": { "$ref": "#/$defs/Sha256Hex" }
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" },
+        "localOnly": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["envelope", "contentHash"],
+          "properties": {
+            "envelope": { "$ref": "#/$defs/JsonValue" },
+            "contentHash": { "$ref": "#/$defs/Sha256Hex" }
+          }
+        }
       }
     },
     "ResumeCapsuleHashProfileV1": {

@@ -59,11 +59,13 @@ form too.
 | `sessionId` | yes | `OpaqueIdV1` |
 | `deviceId` | no | `OpaqueIdV1`; only when authenticated binding exists |
 | `capabilityHash` | no | `Sha256Hex` |
+| `privateEligible` | yes | daemon-resolved destination policy; never accepted from a capsule/caller claim |
 | `captureMethod` | yes | existing `ContinuityCaptureMethod` |
 | `ingestAttestation` | yes | existing intake-stamped `ContinuityIngestAttestationV1` |
 
 `SourceIdentityV1` is resolved once per normalized source event. Persisted fields do not embed it. They retain sorted,
-unique `OpaqueIdV1` source-event references instead.
+unique `OpaqueIdV1` source-event references instead. Private eligibility is read from this authenticated identity at delivery;
+`ResumeDestinationV1` cannot self-authorize it.
 
 ### `LineageSourceSummaryV1`
 
@@ -122,11 +124,11 @@ the existing receipt; key/evidence collisions quarantine. `history` and `updated
 before/after observation only; they are not invented as successor work-state fields.
 
 `CanonicalStateHashProfileV1` removes the envelope from the content preimage. `contentHash` is SHA-256 over RFC 8785 JCS
-of exactly `schemaVersion`, `subjectScope`, `opaqueIdProfile`, `lineageSourceSummary`, `sharedTaskState`,
-`agentLocalStates`, and `sensitivity`. `stateRevision` is SHA-256 over RFC 8785 JCS of
+of `schemaVersion`, `subjectScope`, `opaqueIdProfile`, `lineageSourceSummary`, optional `sharedTaskState`,
+`agentLocalStates`, and `sensitivity`; absence omits the member rather than writing `null`. `stateRevision` is SHA-256 over RFC 8785 JCS of
 `{ domain: "free-mem/CanonicalWorkStateV2/state-revision/v1", contentHash, revision }`, where `revision` contains exactly
 `parentStateRevisions`, `lineageRevisionOrdinal`, `committedByDaemonId`, `writerEpoch`, `sourceSessionId`, and
-`committedAt`. Neither hash includes itself. The manifest carries a fixed vector for TypeScript/Rust parity.
+`committedAt`. Neither hash includes itself. The manifest carries shared and local-only fixed vectors for TypeScript/Rust parity.
 
 ### `RevisionHeadSelectionContractV1`
 
@@ -159,8 +161,8 @@ Required fields: `sharingScope: "task_shared"`, non-empty authenticated `sharing
 Optional fields: `goal`, `semanticResumeNote`.
 
 The shared projection sensitivity is the maximum of every contained value. Each Agent-local lane applies the same rule to
-its contents, and `CanonicalWorkStateV2.sensitivity` is the maximum of the shared projection plus every lane. A mismatch
-quarantines before restore/delivery; implementations never choose one conflicting declaration silently.
+its contents, and `CanonicalWorkStateV2.sensitivity` is the maximum of every present projection. A mismatch quarantines
+before restore/delivery; implementations never choose one conflicting declaration silently.
 `ContinuationCheckpointV3.sensitivity` must equal its embedded canonical state's maximum sensitivity.
 
 The Observed/file/command/test/operation/repository/note V2 shapes preserve their V1 semantic fields, make all arrays and
@@ -185,10 +187,13 @@ subjectScope: TaskLineageSubjectScopeV1
 opaqueIdProfile: OpaqueIdProfileV1
 revision: TaskStateRevisionEnvelopeV1
 lineageSourceSummary: LineageSourceSummaryV1
-sharedTaskState: SharedTaskStateV1
+sharedTaskState?: SharedTaskStateV1
 agentLocalStates: AgentLocalStateV1[]
 sensitivity: Sensitivity
 ```
+
+At least one projection is required: either a granted shared projection or one Agent-local lane. The shared field remains
+grant-bearing when present; private-only F0 state omits it instead of storing an empty or fabricated grant list.
 
 The V1 top-level `sourceAgent`, `lastIngestSeq`, and `updatedAt` fields do not carry forward. Revision/order/audit fields
 live in the envelope; source meaning lives in references and the lineage summary.
@@ -197,8 +202,10 @@ live in the envelope; source meaning lives in references and the lineage summary
 
 `DroppedEvidenceSummaryV1` has total `totalRecorded`/`totalOverflowed` decimal strings and exactly one
 `DroppedEvidenceReasonWindowV1` per reason (`evicted`, `orphaned_terminal`). Each reason window independently caps
-`entries` at 256 and records its total counts plus oldest/latest retained lineage ordinals. Flooding one reason cannot erase
-the other reason's existence or totals.
+`entries` at 256 and records its total counts plus oldest/latest retained lineage ordinals. Within a window,
+`totalRecorded = totalOverflowed + entries.length`; summary totals equal the window sums. Non-empty windows require boundaries
+equal to the retained entry ordinal minimum/maximum, and empty windows omit both. Flooding one reason cannot erase the other
+reason's existence or totals.
 
 Each `DroppedEvidenceEntryV2` stores reason, source-event refs, recorded lineage ordinal, sensitivity, and only the optional
 opaque operation/status/fingerprint/delivery fields needed for that reason.
@@ -225,21 +232,24 @@ The capsule contains a bounded delivery projection, not the full state:
 - `schemaVersion: 2`, `contentHash`, opaque injection/checkpoint IDs, checkpoint/work-state revisions;
 - subject scope, lineage source summary, explicit checkpoint creator event;
 - `ResumeDestinationV1` (required authenticated `sourceIdentityEventId`, `clientId`, exact version, opaque session,
-  optional capability hash, `privateEligible`); the reference must resolve to the same client/session/capability even when no
-  Agent-local lane is included; exact client version cannot be inferred from client ID or an absent capability hash;
+  optional capability hash); the reference must resolve to the same client/session/capability and private eligibility even
+  when no Agent-local lane is included; exact client version or eligibility cannot be inferred from client ID;
 - `resumeProfile`, age, reconciliation status;
-- shared task state;
+- optional granted shared task state;
 - at most the destination client's own eligible `destinationAgentLocalState`;
 - opaque selected memory IDs and bounded warnings.
 
-Cross-agent capsules never contain the source client's Agent-local lane. Matching client ID with an old/different session is
-also rejected; the source identity event, lane key, and destination must agree on both values.
+At least one shared/local projection is required. A capsule with only the destination Agent-local lane is same-agent only;
+cross-agent capsules require the shared projection and never contain the source client's Agent-local lane. Matching client ID
+with an old/different session is also rejected; the source identity event, lane key, and destination must agree on both values.
 
 `ResumeCapsuleHashProfileV1` computes SHA-256 over RFC 8785 JCS of
-`{domain:"free-mem/ResumeCapsuleV2/content/v1",capsule}` where `capsule` contains every V2 field except `contentHash`.
-Restore recomputes this hash and resolves both referenced checkpoint/work-state revisions before trusting the projection;
-changing shared text, destination, selected memory, or warnings without the exact hash is rejected. The manifest pins a
-cross-runtime vector.
+`{domain:"free-mem/ResumeCapsuleV2/content/v1",capsule}` where `capsule` contains every present V2 field except
+`contentHash`; absent optional projections are omitted rather than encoded as `null`.
+Restore recomputes this hash, resolves both referenced checkpoint/work-state revisions, and requires included projections to
+equal the resolved work-state projections. Non-projection envelope fields must equal the persisted delivery claim, and an
+incompatible reconciliation cannot produce a capsule; recomputing the public hash cannot authorize changed content or policy.
+The manifest pins shared and local-only cross-runtime vectors.
 
 ## Canonical memory
 
@@ -249,7 +259,8 @@ cross-runtime vector.
 - scope/content: `SubjectScopeV1`, kind, `normalizationProfileId`, `canonicalContent`, `canonicalFactId`;
 - policy: `sharingScope`, `sharingDecisionEventIds`, sensitivity, egress policy;
 - lifecycle: `active|superseded|retracted|expired`, truth state, durability;
-- evidence: sorted unique `sourceEventIds` and `evidenceSnapshotIds`;
+- evidence: sorted unique `sourceEventIds` resolving to authenticated sources and `evidenceSnapshotIds` resolving to
+  hash-valid snapshots bound to this `memoryId`;
 - validity/audit timestamps.
 
 `canonicalFactId = sha256(JCS({schema, subjectScope, kind, normalizationProfileId, canonicalContent}))`.
@@ -283,8 +294,10 @@ successor target, migration condition, `restoreValidationRequired`, optional sch
 ### `SourceAwareContractCorpusV1`
 
 Contains `corpusVersion: 1`, bundle ID, and exactly eight ordered unique F0–F7 cases. Each case has common input
-(sources, destination, scope, records, sharing decisions, transitions), current V1 non-success disposition/reason, and successor expected
+(sources, destination selector, scope, records, sharing decisions, transitions), current V1 non-success disposition/reason, and successor expected
 delivery/source/lineage/memory/retrieval/authority/downgrade outputs. Cross-references are closed and validated.
+Destination `privateEligible` and `capabilityIds` live on the authenticated source/profile selected by `destination.sourceId`;
+the destination selector has no detached authority fields.
 An omitted record `subjectScope` inherits the case scope; an explicit record scope is compared structurally. F7 carries
 separate wrong-vault, wrong-project, and wrong-workspace records rather than a magic scope tag.
 
@@ -324,7 +337,7 @@ persisted artifact without a validation rule fails the contract test. Current re
 work state/checkpoint/disposition/metadata/anchor/delivery/suppression/selection/derived invalidation, engagement and
 contradiction evidence/ranges, resume capsule, and DurableMemory; the inventory-derived closure is authoritative rather than
 a hand-maintained count. The four successor artifacts and persisted sharing-decision authority are inventory entries too, so their scope/hash/sharing semantics and
-the capsule destination-lane equality cannot bypass restore validation.
+the capsule destination-lane equality, destination private eligibility, and nested provenance cannot bypass restore validation.
 
 Each `RestoreArtifactValidationRuleV1` has:
 
@@ -336,8 +349,9 @@ Each `RestoreArtifactValidationRuleV1` has:
 - `repairAuthorities: ["user"]`;
 - `auditRequired: true`.
 
-Wildcard pointer segments use `*` for every array element. Nested artifact refs are expanded in the manifest rather than
-silently assumed. DurableMemory rules name `session_id`, `scope_id`, `project`, `workspace_kind`, `workspace_id`,
+Wildcard pointer segments use `*` for every array element. Nested shared and Agent-local source-event refs are expanded in the
+manifest and resolved to authenticated identities; Agent-local refs must match the lane client/session. Canonical-memory
+snapshot refs resolve to hash-valid snapshots bound to the same memory. DurableMemory rules name `session_id`, `scope_id`, `project`, `workspace_kind`, `workspace_id`,
 `created_at`, `updated_at`, and `deleted_at`; legacy visibility/source fields cannot establish scope authority.
 
 The focused test derives the exact artifact set from inventory, requires non-empty identity/timestamp coverage where

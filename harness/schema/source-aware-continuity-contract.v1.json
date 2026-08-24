@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
-  "contractHash": "14b65549187bafe42724f02e262c7afbd76598f9b36200d7a39d507bc85cb00f",
+  "contractHash": "3c39186799a2b11245e73157477862f6a9d3f17ab2f0439a1037cad8110fc4e8",
   "schemaFile": "schema/continuity.schema.json",
-  "schemaHash": "7d37d2b08b21ceaf28551a478f70077c37b433e6637a7a377d601af443267db6",
+  "schemaHash": "c770c7d2af52f4b5992a73d7c6bbe0543acc00cf964723fccc5de3998f37b5f1",
   "artifactSchemas": [
     { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
     { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
@@ -14,7 +14,7 @@
   "inventoryHash": "1d2642999fca4f4d35d1280011baa36f29825898121a48e392d106c341bb5dff",
   "fixtureCorpusFile": "fixtures/continuity/source-aware-f0-f7.v1.json",
   "fixtureCorpusVersion": 1,
-  "fixtureCorpusHash": "6b8c1f85007b376c614152ed7fc4dfe8fdc95c551f17b1d3f2835f75cd1b6aeb",
+  "fixtureCorpusHash": "5a86cfd83c5fe11d90dc6d79465c149a320d7c7f5a6868ddadc399e149e8b296",
   "fixtureCaseIds": ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"],
   "opaqueIdProfile": {
     "schemaVersion": 1,
@@ -104,7 +104,21 @@
         "sourceSessionId": "3333333333333333333333333333333333333333333333333333333333333333",
         "committedAt": "2026-08-24T00:00:00Z"
       },
-      "stateRevision": "2157dfa924ce2dd2355af5f6bb0f400fa551fe9d911c959fd4902b14fb859a26"
+      "stateRevision": "2157dfa924ce2dd2355af5f6bb0f400fa551fe9d911c959fd4902b14fb859a26",
+      "localOnly": {
+        "contentProjection": {
+          "schemaVersion": 2,
+          "subjectScope": { "kind": "task_lineage", "personalVaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "projectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "workspaceId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "taskLineageId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+          "opaqueIdProfile": { "schemaVersion": 1, "algorithm": "hmac-sha-256", "keyId": "local-v1", "outputEncoding": "lowercase_hex_256" },
+          "lineageSourceSummary": { "lineageOriginSourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "lastContributingSourceEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "participantSourceEventIds": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"] },
+          "agentLocalStates": [
+            { "sharingScope": "agent_private", "sourceIdentityEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "clientId": "claude-code", "sessionId": "3333333333333333333333333333333333333333333333333333333333333333", "sensitivity": "normal", "egressPolicy": "eligible" }
+          ],
+          "sensitivity": "normal"
+        },
+        "contentHash": "7a88f4dc5e6cfe81ff7d1d0af9c62915608bbb44b80a13623c3d53c56284beb8",
+        "stateRevision": "9100402eb1bea3a54ea710b9177159481a09dc8bb50e59d673b204932eaa3249"
+      }
     }
   },
   "checkpointHashProfile": {
@@ -188,14 +202,34 @@
         "subjectScope": { "kind": "task_lineage", "personalVaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "projectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "workspaceId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "taskLineageId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
         "lineageSourceSummary": { "lineageOriginSourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "lastContributingSourceEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "participantSourceEventIds": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"] },
         "checkpointCreatedBySourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        "destination": { "sourceIdentityEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "clientId": "codex-cli", "clientVersion": "1", "sessionId": "3333333333333333333333333333333333333333333333333333333333333333", "privateEligible": false },
+        "destination": { "sourceIdentityEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "clientId": "codex-cli", "clientVersion": "1", "sessionId": "3333333333333333333333333333333333333333333333333333333333333333" },
         "resumeProfile": "cross_agent",
         "ageSeconds": 0,
         "reconciliation": "exact",
         "selectedMemoryIds": [],
         "warnings": []
       },
-      "contentHash": "6ee0ddb6e2943301b167bf5ab5571988d40e4d500f03c9a43b49a6a885bb0e23"
+      "contentHash": "5a8f2ee9e3a3faee6d4340f77127a763d49b35d43d57a5de71ad5e92b3e5d931",
+      "localOnly": {
+        "envelope": {
+          "schemaVersion": 2,
+          "injectionId": "9999999999999999999999999999999999999999999999999999999999999999",
+          "checkpointId": "4444444444444444444444444444444444444444444444444444444444444444",
+          "checkpointRevision": "9dc20787fed61a62e44930285ee6bed07088b8089c7416bfccfe37e15f5193b0",
+          "workStateRevision": "9100402eb1bea3a54ea710b9177159481a09dc8bb50e59d673b204932eaa3249",
+          "subjectScope": { "kind": "task_lineage", "personalVaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "projectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "workspaceId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "taskLineageId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+          "lineageSourceSummary": { "lineageOriginSourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "lastContributingSourceEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "participantSourceEventIds": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"] },
+          "checkpointCreatedBySourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "destination": { "sourceIdentityEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "clientId": "claude-code", "clientVersion": "1", "sessionId": "3333333333333333333333333333333333333333333333333333333333333333" },
+          "resumeProfile": "same_agent",
+          "ageSeconds": 0,
+          "reconciliation": "exact",
+          "selectedMemoryIds": [],
+          "warnings": [],
+          "destinationAgentLocalState": { "sharingScope": "agent_private", "sourceIdentityEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "clientId": "claude-code", "sessionId": "3333333333333333333333333333333333333333333333333333333333333333", "sensitivity": "normal", "egressPolicy": "eligible" }
+        },
+        "contentHash": "b1cdf1e1e6d800dd43bb956eed5082e2b2bea2396a9ac16d492604873d1cc892"
+      }
     }
   },
   "revisionHeadSelectionPolicy": {
@@ -326,12 +360,12 @@
           "windowLimitPerReason": 256,
           "initial": { "evicted": { "totalRecorded": "0", "totalOverflowed": "0" }, "orphaned_terminal": { "totalRecorded": "1", "totalOverflowed": "0", "oldestRetainedLineageRevisionOrdinal": "7", "latestRecordedLineageRevisionOrdinal": "7" } },
           "flood": { "reason": "evicted", "count": "2560", "firstOrdinal": "8", "lastOrdinal": "2567" },
-          "expected": { "reasonOrder": ["evicted", "orphaned_terminal"], "evictedTotalRecorded": "2560", "evictedTotalOverflowed": "2304", "orphanedTerminalTotalRecorded": "1", "orphanedTerminalTotalOverflowed": "0" }
+          "expected": { "reasonOrder": ["evicted", "orphaned_terminal"], "totalRecorded": "2561", "totalOverflowed": "2304", "evictedTotalRecorded": "2560", "evictedTotalOverflowed": "2304", "evictedOldestRetainedLineageRevisionOrdinal": "2312", "evictedLatestRecordedLineageRevisionOrdinal": "2567", "orphanedTerminalTotalRecorded": "1", "orphanedTerminalTotalOverflowed": "0", "orphanedTerminalOldestRetainedLineageRevisionOrdinal": "7", "orphanedTerminalLatestRecordedLineageRevisionOrdinal": "7" }
         },
         "observationKind": "overflow_summary",
         "downstreamStage": "S1",
         "behaviorDeltas": [
-          { "jsonPathOrField": "/sharedTaskState/droppedEvidence/reasonWindows", "currentV1": "one_shared_fifo_can_erase_other_reason", "successor": { "exactReasons": ["evicted", "orphaned_terminal"], "independentLimit": 256, "countsAndBoundariesPersist": true }, "deltaKind": "overflow_summary_visible" }
+          { "jsonPathOrField": "/sharedTaskState/droppedEvidence/reasonWindows", "currentV1": "one_shared_fifo_can_erase_other_reason", "successor": { "exactReasons": ["evicted", "orphaned_terminal"], "independentLimit": 256, "totalRecordedEqualsOverflowedPlusRetained": true, "aggregateTotalsEqualWindowSums": true, "boundariesEqualRetainedOrdinalMinMax": true }, "deltaKind": "overflow_summary_visible" }
         ]
       },
       {
@@ -588,9 +622,9 @@
       },
       {
         "inventoryEntryId": "persisted-canonical-work-state-v2",
-        "scopeIdentityPaths": ["/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/revision/committedByDaemonId", "/revision/sourceSessionId", "/lineageSourceSummary/lineageOriginSourceEventId", "/lineageSourceSummary/lastContributingSourceEventId", "/lineageSourceSummary/participantSourceEventIds/*", "/agentLocalStates/*/sourceIdentityEventId", "/agentLocalStates/*/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/sharedTaskState/repositoryState/repositoryId", "/sharedTaskState/repositoryState/workspaceId", "/sharedTaskState/repositoryState/branchKey", "/sharedTaskState/repositoryState/worktreeId", "/sharedTaskState/pendingOperations/*/operationId", "/sharedTaskState/pendingOperations/*/correlation/sessionId", "/sharedTaskState/pendingOperations/*/correlation/taskLineageId"],
+        "scopeIdentityPaths": ["/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/revision/committedByDaemonId", "/revision/sourceSessionId", "/lineageSourceSummary/lineageOriginSourceEventId", "/lineageSourceSummary/lastContributingSourceEventId", "/lineageSourceSummary/participantSourceEventIds/*", "/agentLocalStates/*/sourceIdentityEventId", "/agentLocalStates/*/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/sharedTaskState/repositoryState/repositoryId", "/sharedTaskState/repositoryState/workspaceId", "/sharedTaskState/repositoryState/branchKey", "/sharedTaskState/repositoryState/worktreeId", "/sharedTaskState/pendingOperations/*/operationId", "/sharedTaskState/pendingOperations/*/correlation/sessionId", "/sharedTaskState/pendingOperations/*/correlation/taskLineageId", "/sharedTaskState/goal/sourceEventIds/*", "/sharedTaskState/constraints/*/sourceEventIds/*", "/sharedTaskState/activeFiles/*/sourceEventIds/*", "/sharedTaskState/modifiedFiles/*/sourceEventIds/*", "/sharedTaskState/recentCommands/*/sourceEventIds/*", "/sharedTaskState/recentTests/*/sourceEventIds/*", "/sharedTaskState/pendingOperations/*/sourceEventIds/*", "/sharedTaskState/droppedEvidence/reasonWindows/*/entries/*/sourceEventIds/*", "/sharedTaskState/semanticResumeNote/sourceEventIds/*", "/agentLocalStates/*/latestSubstantivePrompt/sourceEventIds/*", "/agentLocalStates/*/lastAssistantConclusion/sourceEventIds/*", "/agentLocalStates/*/nativeTodoState/sourceEventIds/*", "/agentLocalStates/*/nativePlanState/sourceEventIds/*", "/agentLocalStates/*/hostMetadata/sourceEventIds/*"],
         "isoTimestampPaths": ["/revision/committedAt", "/sharedTaskState/goal/observedAt", "/sharedTaskState/constraints/*/observedAt", "/sharedTaskState/activeFiles/*/observedAt", "/sharedTaskState/modifiedFiles/*/observedAt", "/sharedTaskState/recentCommands/*/observedAt", "/sharedTaskState/recentTests/*/observedAt", "/sharedTaskState/pendingOperations/*/startedAt", "/sharedTaskState/pendingOperations/*/terminalAt", "/sharedTaskState/repositoryState/capturedAt", "/agentLocalStates/*/latestSubstantivePrompt/observedAt", "/agentLocalStates/*/lastAssistantConclusion/observedAt", "/agentLocalStates/*/nativeTodoState/observedAt", "/agentLocalStates/*/nativePlanState/observedAt", "/agentLocalStates/*/hostMetadata/observedAt"],
-        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "state_and_repository_workspace_match", "pending_operation_scope_matches_state", "lineage_refs_resolve_to_authenticated_sources", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "agent_local_lane_keys_client_and_session_are_unique", "agent_local_source_identity_resolves_same_client_and_session", "shared_and_agent_local_sensitivity_are_max_of_contained_values", "canonical_state_sensitivity_is_max_of_all_projections", "dropped_evidence_has_exact_reason_windows", "content_and_state_revision_match_CanonicalStateHashProfileV1"],
+        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "state_and_repository_workspace_match", "pending_operation_scope_matches_state", "lineage_refs_resolve_to_authenticated_sources", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "agent_local_lane_keys_client_and_session_are_unique", "agent_local_source_identity_resolves_same_client_and_session", "shared_and_agent_local_sensitivity_are_max_of_contained_values", "canonical_state_sensitivity_is_max_of_all_projections", "canonical_state_contains_shared_or_agent_local_projection", "shared_field_source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources", "agent_local_field_source_event_refs_are_sorted_unique_and_resolve_to_lane_client_and_session", "dropped_evidence_reason_windows_have_consistent_counters_boundaries_and_aggregates", "content_and_state_revision_match_CanonicalStateHashProfileV1"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true
@@ -606,9 +640,9 @@
       },
       {
         "inventoryEntryId": "persisted-resume-capsule-v2",
-        "scopeIdentityPaths": ["/injectionId", "/checkpointId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/checkpointCreatedBySourceEventId", "/destination/sourceIdentityEventId", "/destination/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/destinationAgentLocalState/sourceIdentityEventId", "/destinationAgentLocalState/sessionId", "/selectedMemoryIds/*"],
+        "scopeIdentityPaths": ["/injectionId", "/checkpointId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/checkpointCreatedBySourceEventId", "/destination/sourceIdentityEventId", "/destination/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/destinationAgentLocalState/sourceIdentityEventId", "/destinationAgentLocalState/sessionId", "/selectedMemoryIds/*", "/sharedTaskState/goal/sourceEventIds/*", "/sharedTaskState/constraints/*/sourceEventIds/*", "/sharedTaskState/activeFiles/*/sourceEventIds/*", "/sharedTaskState/modifiedFiles/*/sourceEventIds/*", "/sharedTaskState/recentCommands/*/sourceEventIds/*", "/sharedTaskState/recentTests/*/sourceEventIds/*", "/sharedTaskState/pendingOperations/*/sourceEventIds/*", "/sharedTaskState/droppedEvidence/reasonWindows/*/entries/*/sourceEventIds/*", "/sharedTaskState/semanticResumeNote/sourceEventIds/*", "/destinationAgentLocalState/latestSubstantivePrompt/sourceEventIds/*", "/destinationAgentLocalState/lastAssistantConclusion/sourceEventIds/*", "/destinationAgentLocalState/nativeTodoState/sourceEventIds/*", "/destinationAgentLocalState/nativePlanState/sourceEventIds/*", "/destinationAgentLocalState/hostMetadata/sourceEventIds/*"],
         "isoTimestampPaths": ["/sharedTaskState/goal/observedAt", "/sharedTaskState/constraints/*/observedAt", "/sharedTaskState/activeFiles/*/observedAt", "/sharedTaskState/modifiedFiles/*/observedAt", "/sharedTaskState/recentCommands/*/observedAt", "/sharedTaskState/recentTests/*/observedAt", "/sharedTaskState/pendingOperations/*/startedAt", "/sharedTaskState/pendingOperations/*/terminalAt", "/sharedTaskState/repositoryState/capturedAt", "/destinationAgentLocalState/latestSubstantivePrompt/observedAt", "/destinationAgentLocalState/lastAssistantConclusion/observedAt", "/destinationAgentLocalState/nativeTodoState/observedAt", "/destinationAgentLocalState/nativePlanState/observedAt", "/destinationAgentLocalState/hostMetadata/observedAt"],
-        "crossFieldRules": ["capsule_content_hash_matches_ResumeCapsuleHashProfileV1", "capsule_checkpoint_and_work_state_revisions_resolve", "capsule_subject_matches_shared_projection", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "destination_source_identity_resolves_to_client_version_session_and_capability", "destination_agent_local_state_client_and_session_match_destination", "destination_agent_local_state_source_event_resolves_to_destination_client_and_session", "cross_agent_capsule_excludes_non_destination_local_lanes", "included_projection_sensitivity_is_max_of_contained_values", "private_requires_authenticated_opt_in_and_privateEligible", "secret_local_only_and_prohibited_egress_are_not_serialized", "destination_capability_downgrade_is_explicit"],
+        "crossFieldRules": ["capsule_content_hash_matches_ResumeCapsuleHashProfileV1", "capsule_checkpoint_and_work_state_revisions_resolve", "capsule_envelope_matches_persisted_delivery_claim", "capsule_projections_match_resolved_work_state_revision", "capsule_subject_matches_shared_projection", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "destination_source_identity_resolves_to_client_version_session_and_capability", "destination_agent_local_state_client_and_session_match_destination", "destination_agent_local_state_source_event_resolves_to_destination_client_and_session", "cross_agent_capsule_excludes_non_destination_local_lanes", "included_projection_sensitivity_is_max_of_contained_values", "capsule_contains_shared_or_destination_local_projection", "local_only_capsule_is_same_agent", "capsule_lineage_and_checkpoint_creator_refs_resolve_to_authenticated_sources", "shared_field_source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources", "destination_agent_local_field_source_event_refs_are_sorted_unique_and_resolve_to_destination_client_and_session", "destination_private_eligibility_resolves_from_authenticated_source_identity", "private_requires_authenticated_opt_in_and_resolved_private_eligibility", "secret_local_only_and_prohibited_egress_are_not_serialized", "destination_capability_downgrade_is_explicit"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true
@@ -617,7 +651,7 @@
         "inventoryEntryId": "persisted-canonical-memory-entity-v1",
         "scopeIdentityPaths": ["/memoryId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/subjectScope/sessionId", "/subjectScope/turnId", "/sharingDecisionEventIds/*", "/sourceEventIds/*", "/evidenceSnapshotIds/*"],
         "isoTimestampPaths": ["/validFrom", "/validTo", "/expiresAt", "/createdAt", "/updatedAt"],
-        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "canonicalFactId_matches_exact_identity_preimage", "memory_content_and_revision_match_CanonicalMemoryHashProfileV1", "parent_memory_revision_selects_initial_or_parent_transition", "sharing_decision_refs_are_sorted_unique", "shared_scope_decisions_match_authenticated_authority_scope_and_target", "private_sharing_requires_explicit_opt_in", "validity_interval_and_audit_timestamps_are_monotone"],
+        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "canonicalFactId_matches_exact_identity_preimage", "memory_content_and_revision_match_CanonicalMemoryHashProfileV1", "parent_memory_revision_selects_initial_or_parent_transition", "sharing_decision_refs_are_sorted_unique", "shared_scope_decisions_match_authenticated_authority_scope_and_target", "private_sharing_requires_explicit_opt_in", "source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources", "evidence_snapshot_refs_are_sorted_unique_and_resolve_to_existing_hash_valid_snapshots_bound_to_same_memory", "validity_interval_and_audit_timestamps_are_monotone"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true

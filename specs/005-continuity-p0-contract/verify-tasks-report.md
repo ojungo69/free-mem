@@ -203,3 +203,41 @@ All review output was treated as a proposal and checked against source/tests.
 ## Pull request
 
 - [PR #133](https://github.com/ojungo69/free-mem/pull/133) uses `Refs #132`, lists the nine Continuity P0 observations without closing them, and leaves the umbrella Issue #132 open for S1–S6.
+
+## PR #133 review follow-up
+
+| Reviewer / finding | Disposition | Evidence / correction |
+|---|---|---|
+| Codacy — dynamic inventory `RegExp` | Rejected | Fixed committed inventory JSON and pinned-baseline `git grep` are the only producer/input; precompiling does not mitigate ReDoS, and a 20-literal mirror would duplicate the machine source of truth. Tracked as advisory scanner policy in #64. |
+| Codacy — extract two closed-shape loops | Rejected | The trial removed 12 lines and added 13 while moving each user-story invariant away from its test; no third caller exists. |
+| Codex — F0 private-only state cannot persist | Accepted | Shared projection remains grant-bearing but becomes optional; state/capsule require at least one projection, and local-only capsule is same-agent only. |
+| Codex — nested field/memory provenance is not resolved | Accepted | Every shared/local nested source path is pinned; source refs resolve to authenticated identity, lane refs match client/session, and memory snapshots are hash-valid and same-memory bound. |
+| Codex — dropped-evidence counters/boundaries are unchecked | Accepted | Window arithmetic, aggregate sums, empty/non-empty boundaries, and retained ordinal min/max are executable invariants with negative mutations. |
+| Codex — capsule-owned `privateEligible` can self-authorize | Accepted | Eligibility moved to authenticated `SourceIdentityV1`; capsule destination and F0–F7 destination selector no longer own the boolean. |
+| Security re-review — capsule hash is not parent authority | Accepted | Rehashed capsule projections must equal the resolved checkpoint/work-state revision; valid-source tampering is rejected. |
+| Security re-review — local-only capsule bypasses deny precedence | Accepted | `secret`, `local_only`, and `prohibited_egress` are executable denials for every included projection, including same-agent local-only capsules. |
+| Correctness re-review — omitted projection has no cross-runtime oracle | Accepted | Manifest now pins local-only state and capsule vectors; absent optional members are omitted, never encoded as `null`. |
+| Correctness re-review — private test declared sensitivity without private content | Accepted | The positive fixture now contains an authenticated private observed value and a matching rehashed parent state. |
+| CodeRabbit PR review | Tool-limited | Manual full review was triggered as required for a 0-star public repository, but the service reported the OSS review limit. Four earlier local CodeRabbit rounds are dispositioned above; no gate or scanner scope was weakened. |
+| Security re-review — private Agent-local capsule bypasses eligibility | Accepted | The authenticated destination private gate now applies to every included projection, including same-agent local-only. |
+| Correctness re-review — destination/authority authentication not universal | Accepted | Every case requires the selected destination and successor authority to be the same authenticated source. |
+| Security re-review — rehashed authorization metadata is accepted | Accepted | The full non-projection envelope is bound to the persisted delivery claim; incompatible reconciliation cannot produce a capsule. |
+| Cubic — local-only sensitivity was not executable | Accepted | Aggregation now handles absent shared projections and rejects lowered canonical/checkpoint sensitivity. |
+| Cubic — TS type allowed zero projections | Accepted | State/capsule TS mirrors are closed unions matching the JSON Schema at-least-one projection rule. |
+| Cubic — destination policy fields were optional on fixture sources | Accepted | Every fixture source now carries the authenticated eligibility/capability profile; the destination remains only a source selector. |
+| Cubic — split the contract models into modules | Rejected | Repeated architectural preference without a concrete correctness failure; S0 intentionally keeps one independently runnable parity gate and adds no new production/reference-model module. |
+| Correctness final — ADR omitted `local_only` precedence | Accepted | The ADR precedence diagram now matches the normative all-path deny rule. |
+| Security final — evidence-only sharing decision could be unauthenticated | Accepted | Every referenced sharing decision is authenticated before delivery, review-lane preservation, or canonical-memory evidence union. |
+| Cubic final rerun | Tool timeout | The local review exceeded the five-minute window and was interrupted; it emitted an empty `issues` array with `Review interrupted`, so no clean verdict is claimed. The preceding completed Cubic round's two concrete findings were fixed and its module-split preference was explicitly rejected. |
+
+## Final post-review verification — 2026-08-24
+
+- Focused source-aware contract: 21 passed, 0 failed.
+- Full continuity suite: 354 passed, 0 failed.
+- Schema freeze: 19 passed, 0 failed.
+- Harness TypeScript: no diagnostics.
+- Generated contract hashes: empty diff.
+- Old-shape baseline: 20 cases / 29 steps, empty diff.
+- Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
+- Scope gate and `git diff --check`: no forbidden path and no whitespace error.
+- Latest whole-diff correctness/security reviews: no findings. Latest `ponytail-review`: `Lean already. Ship.`

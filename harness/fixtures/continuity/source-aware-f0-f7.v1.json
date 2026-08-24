@@ -7,10 +7,10 @@
       "title": "Agent-local isolation",
       "input": {
         "sources": [
-          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex", "authenticated": true }
+          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] }
         ],
-        "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+        "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "native-todo", "kind": "native_todo", "sourceId": "source-claude", "sharingScope": "agent_private", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"] }
@@ -39,10 +39,10 @@
       "title": "Shared task visibility",
       "input": {
         "sources": [
-          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex", "authenticated": true }
+          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] }
         ],
-        "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+        "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "goal", "kind": "goal", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-goal"] },
@@ -76,10 +76,10 @@
       "title": "Immutable provenance",
       "input": {
         "sources": [
-          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true }
+          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] }
         ],
-        "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+        "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "modified-file", "kind": "modified_file", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-file"] }
@@ -112,10 +112,10 @@
       "title": "Multi-Agent lineage",
       "input": {
         "sources": [
-          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true }
+          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] }
         ],
-        "destination": { "sourceId": "source-claude", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+        "destination": { "sourceId": "source-claude" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "goal", "kind": "goal", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-goal"] },
@@ -153,12 +153,12 @@
       "title": "Canonical memory evidence union",
       "input": {
         "sources": [
-          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true },
-          { "id": "source-claude-private", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
-          { "id": "source-codex-secret", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true }
+          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-claude-private", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex-secret", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] }
         ],
-        "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+        "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "memory-claude", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-memory-claude"], "canonicalFactId": "fact-pkce" },
@@ -204,10 +204,10 @@
       "title": "Retrieval profiles",
       "input": {
         "sources": [
-          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true }
+          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] }
         ],
-        "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+        "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "claude-decision", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-claude"], "canonicalFactId": "fact-claude-decision" },
@@ -252,9 +252,9 @@
       "title": "Source authority: caller client claim is unverified",
       "input": {
         "sources": [
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "claude-code", "authenticated": true }
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "claude-code", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] }
         ],
-        "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+        "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "forged-goal", "kind": "goal", "sourceId": "source-codex", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"] }
@@ -281,10 +281,10 @@
       "title": "Privacy and destination capability",
       "input": {
         "sources": [
-          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true }
+          { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true, "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true, "privateEligible": false, "capabilityIds": [] }
         ],
-        "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": [] },
+        "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "private-record", "kind": "private", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "private", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-private"] },
