@@ -1,0 +1,52 @@
+specs/005-continuity-p0-contract/spec.md
+  s_d6433b5ff6fa8e::t_4956af2d71158a 461-467,476-480,506-507,510-511,527-529,532-537
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_bd60b0647ff00f 1-46,52,54-66,68,70,73,76-86,90,95-105,108,110-182
+  s_d6433b5ff6fa8e::t_1a62b2c74627e6 47-51,53,67,69,71,74-75,87-89,91,93,106-107,109
+  s_d6433b5ff6fa8e::t_e0ea4aff706a86 92,94
+  s_d6433b5ff6fa8e::t_0b16b26915f187 72
+specs/005-continuity-p0-contract/research.md
+  s_d6433b5ff6fa8e::t_c218646d4ac353 11
+  s_d6433b5ff6fa8e::t_03dfc6dce61a01 5,139
+  s_d6433b5ff6fa8e::t_e60695ad4aa55c 205-208,218-244
+  s_d6433b5ff6fa8e::t_3031ff9e5b8b28 160-170
+  s_d6433b5ff6fa8e::t_122acc2d5e08d8 1-4,6-10,12-138,140-149,151-159,171-201
+  s_d6433b5ff6fa8e::t_e0ea4aff706a86 202-204,209-217
+  s_d6433b5ff6fa8e::t_cfdef93b2df11d 150
+specs/005-continuity-p0-contract/data-model.md
+  s_d6433b5ff6fa8e::t_4054675150562e 97-115
+  s_d6433b5ff6fa8e::t_c218646d4ac353 17-18
+  s_d6433b5ff6fa8e::t_ce872877273f2b 1-16,19-96,116-203,205-210,239,267-282
+  s_d6433b5ff6fa8e::t_7b1c9eb0daef0a 204,211-238
+  s_d6433b5ff6fa8e::t_c68fb8af0ab5b9 240-241,248-262,266
+  s_d6433b5ff6fa8e::t_dd9e1cb9dab09f 242-247,263-265
+specs/005-continuity-p0-contract/plan.md
+  s_d6433b5ff6fa8e::t_0b16799ee43a1b 1-91,95-192,196-199,201-202,205-212
+  s_d6433b5ff6fa8e::t_e0ea4aff706a86 193
+  s_d6433b5ff6fa8e::t_9cd6d95914c216 92-94,194-195,200,203-204
+specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md
+  s_d6433b5ff6fa8e::t_dbbd5f2607e3ac 107-108
+  s_d6433b5ff6fa8e::t_48b4e3d300bb04 140,142,148-156,169,188,209,227
+  s_d6433b5ff6fa8e::t_c218646d4ac353 218
+  s_d6433b5ff6fa8e::t_b754258c8948f0 99-103,110-114,143-147,204-207,219-220
+  s_d6433b5ff6fa8e::t_421e745dc47b39 1-98,104-106,109,115-139,141,157-168,170-187,189-203,208,210-217,221-226,228-233
+specs/005-continuity-p0-contract/quickstart.md
+  s_d6433b5ff6fa8e::t_556d3708b09475 1-11,14-78
+  s_d6433b5ff6fa8e::t_e0ea4aff706a86 12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d12715e57957f1270713dcd6baa38d1779e3d919",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
