@@ -1,0 +1,21 @@
+specs/005-continuity-p0-contract/verify-tasks-report.md
+  s_d6433b5ff6fa8e::t_5a08a1049257ed 288
+specs/005-continuity-p0-contract/data-model.md
+  s_d6433b5ff6fa8e::t_d8b49f688ad12e 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "32473de390872ba78b4a8616802f4d81945e307c",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
