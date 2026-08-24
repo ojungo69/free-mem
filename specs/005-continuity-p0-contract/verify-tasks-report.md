@@ -177,3 +177,25 @@ All review output was treated as a proposal and checked against source/tests.
 | CodeRabbit 3 — FR-007 committedAt | Accepted | State-neutral events reuse the existing envelope/time; only semantic state changes issue a new daemon-owned time. |
 | CodeRabbit 3 — all-path `local_only` denial | Accepted | Generic semantic validation covers retrieval, RPC/hint, automatic/resume, capsule/sync/export profiles independent of record names. |
 | CodeRabbit 3 — scope inspection failures | Accepted | The documented gate uses `set -euo pipefail` and sequential Git writes before forbidden-path matching, so Git failures cannot become a clean result. |
+| Cubic 4 — split module/suite/generated descriptors | Rejected | Same three architectural preferences as round 2; no concrete regression, and they conflict with the deliberate single-bundle/independent-parity design. |
+| CodeRabbit 4 — opaque-kind cardinality comment | Accepted | Added the exact-vocabulary cardinality comment. |
+| CodeRabbit 4 — colon-safe inventory paths | Accepted | NUL-delimited parsing now supports Git paths containing `:`. |
+| CodeRabbit 4 — checkpoint parent dependency | Accepted with supported schema form | Bidirectional `if/then` pairing is enforced because the local validator intentionally rejects `dependentRequired`. |
+| CodeRabbit 4 — FR-007 revision time | Accepted | State-neutral reuse preserves the existing envelope and time; only semantic changes issue a new one. |
+| CodeRabbit 4 — local-only precedence | Accepted | FR-035, SC-015, F7, docs, and generic all-profile tests now agree. |
+| CodeRabbit 4 — quickstart status handling | Accepted | Hash/old-shape failures propagate; scope matching distinguishes match 0, no-match 1, and execution errors. |
+
+## Final simplification review
+
+`ponytail-review` returned `Lean already. Ship.` No contract-required schema, configuration, or abstraction was removed.
+
+## Final pre-PR verification — 2026-08-24
+
+- Focused source-aware contract: 21 passed, 0 failed.
+- Full continuity suite: 354 passed, 0 failed.
+- Harness TypeScript: no diagnostics.
+- Generated contract hashes: empty diff.
+- Old-shape baseline: 20 cases / 29 steps, empty diff.
+- Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
+- Scope gate and `git diff --check`: no forbidden path and no whitespace error.
+- Whole-diff correctness/security reviews: no findings. Final `ponytail-review`: `Lean already. Ship.`

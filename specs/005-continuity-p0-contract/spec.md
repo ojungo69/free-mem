@@ -251,7 +251,7 @@ contract は期待する source identity、sharing disposition、participant集�
    active-task shared injectionが別のprofileとして働き、filterを外してもwrong project/workspaceが0件である。
 7. **F6 — Source authority**: callerが`sourceAgent`やcanonical client IDを偽装しても、authenticated
    source provenanceまたはautomatic resume authorityを得ない。
-8. **F7 — Privacy / destination capability**: `agent_private`、secret、prohibited-egress、未対応destination
+8. **F7 — Privacy / destination capability**: `agent_private`、secret、`local_only`、prohibited-egress、未対応destination
    capabilityではfull cross-agent injectionが0件となり、明示したhint/manual dispositionへdowngradeする。
 
 ---
@@ -401,7 +401,7 @@ contract は期待する source identity、sharing disposition、participant集�
   正本へ統合し、同じprovenance objectをfieldごとに複製する並立schemaを作ってはならない。
 - **FR-034**: subject scope（`personal_vault` / project / workspace / branch / task lineage / session / turn）とsharing
   scope（`agent_private` / `task_shared` / `project_shared` / `personal_shared`）を別軸として凍結しなければならない。
-- **FR-035**: sharing判定のprecedenceは、secret/prohibited-egress deny、cross-vault/project/workspace deny、
+- **FR-035**: sharing判定のprecedenceは、secret/`local_only`/prohibited-egress deny、cross-vault/project/workspace deny、
   privateの明示opt-inとdestination `privateEligible` gate、Agent-local isolation、destination capability
   downgrade、sharing allow、source preference/display filterの順で評価しなければならない。
 - **FR-036**: callerはsharing scopeのproposalまでしか行えず、自分でscopeを昇格できてはならない。
@@ -524,7 +524,7 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
   successor contractの期待値が各caseで一意に判別できる。
 - **SC-014**: Claude Code → Codex CLI → Claude Code のlineageで、origin、last contributor、participants、
   checkpoint creatorの期待値がF3の全stepで一致し、source relabelが**0件**である。
-- **SC-015**: Agent-local state、secret、prohibited-egress、wrong `personal_vault`/project/workspace、
+- **SC-015**: Agent-local state、secret、`local_only`、prohibited-egress、wrong `personal_vault`/project/workspace、
   opt-inなしまたは`privateEligible=false`のprivate stateが別Agentへのautomatic full injectionへ入る件数が
   **0件**である。
 - **SC-016**: 同じcanonical fact identityを2 Agentが裏付けたF4でmemory entityが**1件**、source

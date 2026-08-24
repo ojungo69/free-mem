@@ -76,8 +76,8 @@ new sharing scope.
 
 `SharingDecisionV1` is the only grant authority: explicit user authority event, exact subject scope, exact target, and
 `grant` action. The target is a task-lineage shared projection or a canonical fact. Unknown, unauthenticated, wrong-scope,
-or wrong-target decisions reject. Referenced decision IDs are sorted unique before hashing; duplicate or out-of-order refs
-are semantic-invalid rather than normalized after publication.
+or wrong-target decisions reject. Referenced decision IDs must already be sorted and unique on input; duplicate or
+out-of-order refs are rejected before hashing/publication and are never normalized into acceptance.
 
 ## 5. Shared and Agent-local projections
 

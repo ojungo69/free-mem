@@ -33,10 +33,11 @@ Expected: all tests pass, including legacy V1 reference-model and old-shape pari
 ## 4. Raw-byte contract hash regeneration check
 
 ```bash
+set -euo pipefail
 S0_HASH_TMP=$(mktemp)
+trap 'rm -f "$S0_HASH_TMP"' EXIT
 node harness/contract-hashes.mjs > "$S0_HASH_TMP"
 diff harness/contract-hashes.json "$S0_HASH_TMP"
-rm "$S0_HASH_TMP"
 ```
 
 Expected: empty diff. The new schema, inventory manifest, contract manifest, and F0–F7 corpus are all present in the
@@ -45,11 +46,12 @@ committed raw-byte hash manifest.
 ## 5. Old-shape parity check
 
 ```bash
+set -euo pipefail
 S0_OLD_SHAPE_TMP=$(mktemp)
+trap 'rm -f "$S0_OLD_SHAPE_TMP"' EXIT
 node --experimental-strip-types harness/continuity/old-shape-baseline.mjs \
   --output "$S0_OLD_SHAPE_TMP"
 diff harness/fixtures/continuity/old-shape-parity.json "$S0_OLD_SHAPE_TMP"
-rm "$S0_OLD_SHAPE_TMP"
 ```
 
 Expected: empty diff. S0 adds successor contracts without changing V1 behavior or its pinned corpus.
@@ -74,13 +76,19 @@ git diff --name-only >> "$S0_SCOPE_TMP"
 git diff --cached --name-only >> "$S0_SCOPE_TMP"
 git ls-files --others --exclude-standard >> "$S0_SCOPE_TMP"
 sort -u "$S0_SCOPE_TMP"
-if sort -u "$S0_SCOPE_TMP" | rg '^(vendor/codemem/|\.github/workflows/|harness/continuity/reference-model\.ts$|harness/fixtures/continuity/old-shape-parity\.json$|harness/continuity/mutate\.sh$|harness/contract-hashes\.mjs$)'; then
+S0_RG_STATUS=0
+sort -u "$S0_SCOPE_TMP" | rg '^(vendor/codemem/|\.github/workflows/|harness/continuity/reference-model\.ts$|harness/fixtures/continuity/old-shape-parity\.json$|harness/continuity/mutate\.sh$|harness/contract-hashes\.mjs$)' || S0_RG_STATUS=$?
+if [ "$S0_RG_STATUS" -eq 0 ]; then
   exit 1
+fi
+if [ "$S0_RG_STATUS" -ne 1 ]; then
+  exit "$S0_RG_STATUS"
 fi
 ```
 
-Expected: the final command prints nothing across committed, unstaged, staged, and untracked scope. S0 contains docs,
-schema/manifest/corpus, tests, and generated hashes only.
+Expected: `sort -u` lists the allowed changed docs/schema/manifest/corpus/tests/generated hashes. The forbidden-path `rg`
+prints nothing across committed, unstaged, staged, and untracked scope; match status 0 fails, no-match status 1 passes, and
+any Git/`rg` execution error fails.
 
 ## 8. Spec Kit completion check
 

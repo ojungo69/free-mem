@@ -8,7 +8,7 @@
 
 - [x] No accidental implementation choices beyond the mandated TS/Rust/JSON-Schema cross-runtime contract and artifact paths
 - [x] Focused on user value and business needs
-- [x] Written for non-technical stakeholders
+- [x] Written for technical implementers/reviewers at the contract boundary; stakeholder impact is summarized in user stories
 - [x] All mandatory sections completed
 
 ## Requirement Completeness
