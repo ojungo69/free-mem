@@ -49,5 +49,5 @@ FR-027 と SC-012 が TypeScript / Rust に触れているのは、この featur
 
 ## 次の段階
 
-`/speckit-plan` へ進める状態。plan.md の Constitution Check では、Principle VI（ローカル完結）が
-現在の GitHub PR 運用と矛盾している点を未解決として明記する（issue #74 で追跡中）。
+`plan.md` / `tasks.md` は作成・実行済みで、現在はPR review/merge gate段階。Constitution Checkで記録した
+Principle VI（ローカル完結）と現在の GitHub PR 運用の矛盾は、引き続きissue #74で追跡する。

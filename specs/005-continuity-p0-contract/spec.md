@@ -36,7 +36,7 @@ TypeScript reference の共通入力になり、G1–G7 の実測が「Rust の�
 ### Session 2026-08-24
 
 - Q: spec 005 と Issue #132 S0 をどの単位で進めるか？ → A: 同じ successor schema 版へ統合し、F0〜F7 を同じ contract PR に含める。
-- Q: Core 1.0で別Agent由来の「同じ事実」を自動統合する境界はどこか？ → A: 同じscope・kind・正規化済みcanonical contentの完全一致だけを自動統合し、言い換えは明示review後にmergeする。
+- Q: Core 1.0で別Agent由来の「同じ事実」を自動統合する境界はどこか？ → A: 同じscope・kind・正規化済みcanonical contentの完全一致でfact identityを決め、evidence unionは`sharingScope`・`sensitivity`・`egressPolicy`も完全一致する場合だけ行う。policy mismatchと言い換えは明示reviewへ送る。
 
 問題は 4 つの層に分かれる。
 
@@ -397,11 +397,13 @@ contract は期待する source identity、sharing disposition、participant集�
   provider/model identityとの対応をversioned vocabularyとして凍結しなければならない。
 - **FR-031**: source identityはauthenticated peer、adapter manifest、ingest channel、exact client/adapter
   version、session binding、capability evidence、daemon所有の`privateEligible` policyからintakeが導出し、
-  callerのAgent名やcapsule内booleanだけを信用してはならない。
+  callerのAgent名やcapsule内booleanだけを信用してはならない。shared capsuleはdestination capability hashが
+  `shared-task-v1`を含む認証済みprofileへ解決する場合だけ許可する。
 - **FR-032**: model provider/model identityはcoding Agent/client identityと別fieldに保持し、片方をもう片方の
   代用にしてはならない。
 - **FR-033**: 新しいsource contractは既存のevent provenance、ingest attestation、source event参照を
   正本へ統合し、同じprovenance objectをfieldごとに複製する並立schemaを作ってはならない。
+  successorのnested JSON object/arrayはrecursive readonly型とし、公開後にhash外から変更可能な型を残さない。
 - **FR-034**: subject scope（`personal_vault` / project / workspace / branch / task lineage / session / turn）とsharing
   scope（`agent_private` / `task_shared` / `project_shared` / `personal_shared`）を別軸として凍結しなければならない。
 - **FR-035**: sharing判定のprecedenceは、secret/`local_only`/prohibited-egress deny、cross-vault/project/workspace deny、
@@ -410,17 +412,24 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-036**: callerはsharing scopeのproposalまでしか行えず、自分でscopeを昇格できてはならない。
   authority未確認のrecordはautomatic cross-agent full injectionへ使わない。共有grantはversioned
   `SharingDecisionV1`としてexplicit user authority event、exact subject scope、exact projection/memory targetへ
-  結び付け、unknown/unauthenticated/wrong-scope/wrong-targetを拒否する。decision参照はhash前にsorted uniqueとする。
+  結び付け、resolved user-eventのaction/scope/sharing scope/target/decidedAt payloadと完全一致させる。
+  unknown/unauthenticated/wrong-scope/wrong-target/payload mismatchを拒否し、decision参照はhash前にsorted uniqueとする。
 - **FR-037**: shared task projectionとAgent-local projectionを別のvisibility laneとして表現し、
   native todo、Agent固有plan、last assistant conclusion、host metadataを別Agentへ自動注入してはならない。
   private-only canonical stateはgrantを捏造せずshared projectionを省略できるが、projectionが0件のstate/capsuleは拒否し、
   shared projectionなしcapsuleはsame-agentに限定する。capsuleのprojectionはresolved work-state revisionと、
   その他のauthorization metadataはpersisted delivery claimと一致しなければならず、公開hashの再計算をauthorityにしない。
+  各projectionはcontained valueの最大sensitivityを宣言し、canonical stateはpresent projection全体の最大値、
+  checkpointはembedded stateと同値、capsuleはincluded projectionから再計算した最大値を使う。いずれの不一致も
+  delivery前にquarantineし、宣言値でprivate/secret gateを下げてはならない。
 - **FR-038**: 曖昧な単数`sourceAgent`をmulti-Agent lineageの代表値として再利用せず、lineage origin、
   last contributor、participants、checkpoint creator、field/memory source evidenceを区別しなければならない。
   field/memory refsはartifact hashの自己整合だけで受理せず、認証済みsource/snapshot artifactへ解決しなければならない。
+  lineage summaryはID認証だけでなくappend-only event/revision evidenceから導出した完全な期待値と一致させる。
 - **FR-039**: lineage origin、last contributor、participantsはappend-only event/revision evidenceから
-  決定論的に導出し、checkpoint creatorだけはcheckpoint envelopeへ明示的に保持しなければならない。
+  決定論的に導出し、participantsはdistinct canonical clientごとのfirst substantive eventをresolved canonical
+  client ID順に並べる。checkpoint creatorだけはcheckpoint envelopeへ明示的に保持しなければならない。
+  `parentStateRevisions`はhash/publication前にsorted uniqueとし、重複または同じ集合の並べ替えを拒否する。
 - **FR-040**: legacy `source` / `origin_source` / actor / provider / visibilityの各語彙にdisposition表を持ち、
   意味が一致しない値を新しいsource identityまたはsharing scopeへ機械変換してはならない。
 - **FR-041**: shared lineage適用とAgent-local isolationの判定は、reducer、terminal correlation、abandonの
@@ -544,9 +553,10 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
   明示したdocumentation/test/fixture/tooling supporting ruleへ分類され、未分類・重複分類が**0件**である。
   runtime/normative schemaの単数`sourceAgent`はsupportingへ送れず、inventory行への未分類が**0件**である。
   広い`coverageMode=snapshot`検索は候補集合のdrift検出に限定し、4,095 hitを偽の1行1surfaceへ膨らませない。
-- **SC-020**: `SourceAwareContinuityContractV1`のhash入力に4つのsuccessor artifact schema、source
-  inventoryで`restoreValidationRequired=true`となる全persisted artifactのrule、F0〜F7の全8caseが含まれ、
-  旧artifact4種すべてにmigration dispositionが1つずつ存在する。
+- **SC-020**: `SourceAwareContinuityContractV1.contractHash`はnormative contract §14の完全なmachine-readable
+  入力集合（manifestの`contractHash`以外の全field）を含み、4 successor schema、全restore rule、F0〜F7、
+  legacy dispositionに加えて9 Issue observation、raw-ID/sharing/opaque-ID/limit/diagnostic/revision/head policyと
+  全hash vectorのいずれかを除外して再計算が一致する件数が**0件**である。
 - **SC-021**: #13のPhase 3 start gateとauthoritative task ledgerがS0 bundle/hashへ接続され、S0未完了時に
   persisted state/checkpoint、cross-agent renderer、source filterのruntime taskをreadyと示す箇所が**0件**である。
 - **SC-022**: `ContinuityP0ObservationContractV1`に#46/#49/#53/#61/#62/#56/#57/#32/#58のexact 9 entryが

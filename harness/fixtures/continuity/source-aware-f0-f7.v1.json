@@ -212,12 +212,14 @@
         "records": [
           { "id": "claude-decision", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-claude"], "canonicalFactId": "fact-claude-decision" },
           { "id": "codex-test", "kind": "test", "sourceId": "source-codex", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"], "sharingDecisionEventIds": ["decision-codex"] },
-          { "id": "wrong-project", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-2"], "sharingDecisionEventIds": ["decision-wrong-project"], "canonicalFactId": "fact-wrong-project", "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } }
+          { "id": "wrong-project", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-2"], "sharingDecisionEventIds": ["decision-wrong-project"], "canonicalFactId": "fact-wrong-project", "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } },
+          { "id": "wrong-workspace", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-3"], "sharingDecisionEventIds": ["decision-wrong-workspace"], "canonicalFactId": "fact-wrong-workspace", "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } }
         ],
         "sharingDecisions": [
           { "id": "decision-claude", "authorityEventId": "user-grant-claude-decision", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-claude-decision" } },
           { "id": "decision-codex", "authorityEventId": "user-grant-codex-test", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "task_shared", "target": { "kind": "shared_task_projection", "taskLineageId": "lineage-a" } },
-          { "id": "decision-wrong-project", "authorityEventId": "user-grant-wrong-project", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-project" } }
+          { "id": "decision-wrong-project", "authorityEventId": "user-grant-wrong-project", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-project" } },
+          { "id": "decision-wrong-workspace", "authorityEventId": "user-grant-wrong-workspace", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-workspace" } }
         ],
         "transitions": [
           { "id": "t1", "actorSourceId": "source-claude", "kind": "create" },
@@ -232,7 +234,8 @@
         "sourceEvidence": [
           { "recordId": "claude-decision", "sourceIds": ["source-claude"] },
           { "recordId": "codex-test", "sourceIds": ["source-codex"] },
-          { "recordId": "wrong-project", "sourceIds": ["source-claude"] }
+          { "recordId": "wrong-project", "sourceIds": ["source-claude"] },
+          { "recordId": "wrong-workspace", "sourceIds": ["source-claude"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [],

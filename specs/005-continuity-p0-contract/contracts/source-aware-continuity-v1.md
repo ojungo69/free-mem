@@ -40,6 +40,10 @@ Intake resolves `SourceIdentityV1` from authenticated peer context, adapter mani
 version, session binding, capability evidence, daemon-owned private-eligibility policy, capture method, and ingest receipt.
 Caller payload values are proposals only.
 
+A shared capsule requires a non-blank destination `capabilityHash` resolving to an authenticated profile that contains
+`shared-task-v1`. Missing/unknown/unsupported profiles downgrade or reject before delivery. A same-agent local-only capsule
+may omit the capability hash because no foreign shared projection is serialized.
+
 The resolved identity reuses `ContinuityEventProvenanceV1`, `ContinuityIngestAttestationV1`, and the normalized source
 event. It is not copied into each work-state field. Persisted artifacts keep sorted unique opaque source-event refs.
 
@@ -78,8 +82,9 @@ new sharing scope.
 
 `SharingDecisionV1` is the only grant authority: explicit user authority event, exact subject scope, exact target, and
 `grant` action. The target is a task-lineage shared projection or a canonical fact. Unknown, unauthenticated, wrong-scope,
-or wrong-target decisions reject. Referenced decision IDs must already be sorted and unique on input; duplicate or
-out-of-order refs are rejected before hashing/publication and are never normalized into acceptance.
+or wrong-target decisions reject. The resolved authority event payload must exactly equal the persisted action, subject scope,
+sharing scope, target, and decision time; ID membership alone is not authority. Referenced decision IDs must already be sorted
+and unique on input; duplicate or out-of-order refs are rejected before hashing/publication and are never normalized into acceptance.
 
 ## 5. Shared and Agent-local projections
 
@@ -105,8 +110,8 @@ before delivery instead of lowering sensitivity.
 least one present. A capsule without a shared projection is same-agent only; cross-agent delivery requires a granted shared
 projection. It never carries another client's Agent-local lane. The full canonical state is not embedded in a delivery
 capsule. The destination always carries `sourceIdentityEventId`; restore rejects unless it resolves to the same authenticated
-client, exact client version, session, optional capability hash, and daemon-owned private eligibility, including capsules
-with no Agent-local lane.
+client, exact client version, session, required supported capability profile for shared delivery, and daemon-owned private
+eligibility. Capability hash remains optional only for same-agent local-only capsules.
 
 ## 6. Lineage provenance
 
@@ -114,12 +119,13 @@ The following meanings are distinct:
 
 - lineage origin: first authoritative lineage-establishing event;
 - last contributor: event that produced the current revision;
-- participants: first substantive event for each distinct canonical client;
+- participants: first substantive event for each distinct canonical client, ordered by resolved canonical client ID;
 - checkpoint creator: explicit event on the checkpoint envelope;
 - field/memory evidence: source-event reference set on the value/entity.
 
 Origin/last/participants are derived from append-only event/revision evidence. Checkpoint creator is stored explicitly.
-No rule reuses an ambiguous single `sourceAgent` value for these meanings.
+Restore compares the complete summary with that evidence; merely authenticating the supplied IDs is insufficient. No rule
+reuses an ambiguous single `sourceAgent` value for these meanings.
 
 Every nested shared-field source-event array is sorted unique and resolves to authenticated source identities. Agent-local
 field refs additionally resolve to the enclosing lane's exact client/session. Canonical-memory source refs follow the same
@@ -128,12 +134,14 @@ Unresolved, unauthenticated, ID-mismatched, or lane-mismatched references quaran
 
 ## 7. Revision, immutability, and evidence bounds
 
-Published successor graphs are deeply readonly. `contentHash` is SHA-256 over RFC 8785 JCS of the declared non-revision
+Published successor graphs use recursively readonly `ReadonlyJsonValue`; nested objects/arrays are not mutable through the
+TypeScript contract. S1 publication still owns runtime clone/freeze. `contentHash` is SHA-256 over RFC 8785 JCS of the declared non-revision
 `CanonicalWorkStateV2` projection; an absent optional `sharedTaskState` member is omitted rather than encoded as `null`.
 `stateRevision` hashes the fixed domain, that `contentHash`, and the six non-hash revision
 metadata fields; neither preimage includes its own digest. The manifest pins shared and local-only/omitted-member vectors as
 cross-language oracles. Lineage order uses daemon-owned
 `lineageRevisionOrdinal`; caller timestamp, session-local sequence, and hash lexical order never choose a head.
+`parentStateRevisions` is sorted unique before hash/publication; duplicates or reordered equivalent sets quarantine.
 
 Checkpoint and canonical-memory hashes use separate domain strings and manifest vectors. Checkpoint content excludes its
 ID/parent/revision fields; initial and parent transitions bind checkpoint ID, content hash, and both parent ID/revision when
@@ -284,18 +292,19 @@ entries make SC-001–SC-012 executable later without claiming runtime conforman
 
 ## 14. Contract hash
 
-`contractHash` is SHA-256 of RFC 8785 JCS over the manifest excluding `contractHash` itself. Input fields are:
+`contractHash` is SHA-256 of RFC 8785 JCS over every top-level manifest field except `contractHash` itself. The following
+bullets group that complete input set; they do not define a narrower subset:
 
-- contract version and four artifact schema names/versions;
-- raw-byte JSON Schema hash;
-- machine inventory version/hash;
-- fixture corpus version/hash and exact F0–F7 IDs;
+- contract version, JSON Schema file identifier/raw-byte hash, and four artifact schema names/versions;
+- machine inventory file identifier/version/hash;
+- fixture corpus file identifier/version/hash and exact F0–F7 IDs;
 - legacy migration rules;
 - exact restore semantic-validation artifact/path/authority rules;
 - canonical state/checkpoint/memory/capsule hash preimages and vectors, revision-head ordering/eligibility/corruption
   rules, and the exact 9-entry Continuity P0 observation/delta contract;
 - raw-identifier retention/access/diagnostic/export/egress policy;
 - sharing-decision user authority, exact scope/target, invalid disposition, and sorted-unique reference policy;
+- state-neutral transition, Agent-local lane, and sensitivity-aggregation policies;
 - opaque-ID derivation profile, closed kind vocabulary, and public conformance vector;
 - limit policy table;
 - diagnostic vocabularies.

@@ -85,8 +85,9 @@ legacy capsuleはsuccessorへ自動upgradeせずsame-agent manual/hint-onlyだ�
 ## Decision 6: memoryの自動dedupeはcanonical contentの完全一致だけにする
 
 **Decision**: 同じsubject scope、kind、normalization profile、canonical contentのJCS bytesが一致する場合だけ
-同じ`canonicalFactId`へ自動統合する。言い換え/semantic similarityは別entityのままにし、明示authorityの
-auditable mergeだけを許す。
+同じ`canonicalFactId`と判定する。evidence unionは`sharingScope`、`sensitivity`、`egressPolicy`も完全一致する場合だけ
+自動化し、policy mismatchはreview candidateへ分離する。言い換え/semantic similarityは別entityのままにし、
+明示authorityのauditable mergeだけを許す。
 
 **Rationale**: 決定論、local privacy、ゼロ追加costを守りながら、同一contentのper-Agent duplicateを0にできる。
 

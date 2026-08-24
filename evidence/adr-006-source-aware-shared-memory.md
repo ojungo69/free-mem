@@ -65,8 +65,9 @@ shared projectionを持たないcapsuleはsame-agentだけに限定する。
 
 ### 4. memory identityは完全一致だけ自動統合する
 
-同じsubject scope、kind、normalization profile、canonical contentのJCS bytesだけを同一factとして自動統合する。
-別Agent evidenceは1つのentityへunionする。semantic similarity/言い換えは別entityのままにし、明示authorityの
+同じsubject scope、kind、normalization profile、canonical contentのJCS bytesだけを同一factと判定する。
+別Agent evidenceを1つのentityへ自動unionするのは`sharingScope`、`sensitivity`、`egressPolicy`も完全一致する場合だけ。
+policy tuple不一致はreview candidateへ分離し、semantic similarity/言い換えは別entityのまま明示authorityの
 auditable mergeだけを許す。
 
 ### 5. raw identifierを新規永続化しない

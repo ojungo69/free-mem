@@ -160,6 +160,17 @@ export interface TaskBoundaryAuthorityContextV1 {
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+type ReadonlyJsonValue =
+  | JsonPrimitive
+  | readonly ReadonlyJsonValue[]
+  | { readonly [key: string]: ReadonlyJsonValue };
+type DeepReadonlyJson<T> = T extends JsonPrimitive
+  ? T
+  : T extends readonly (infer Item)[]
+    ? readonly DeepReadonlyJson<Item>[]
+    : T extends object
+      ? { readonly [Key in keyof T]: DeepReadonlyJson<T[Key]> }
+      : never;
 export type EvidenceKind = "native" | "synthesized" | "derived";
 
 export const EVIDENCE_KINDS = ["native", "synthesized", "derived"] as const satisfies readonly EvidenceKind[];
@@ -480,7 +491,7 @@ export interface OpaqueIdConformanceTestVectorV1 {
   readonly input: {
     readonly domain: "free-mem/OpaqueIdV1/v1";
     readonly kind: OpaqueIdKindV1;
-    readonly value: JsonValue;
+    readonly value: ReadonlyJsonValue;
   };
   readonly opaqueId: OpaqueIdV1;
 }
@@ -598,6 +609,7 @@ export interface SharingDecisionV1 {
 export interface SharingDecisionPolicyV1 {
   readonly schemaVersion: 1;
   readonly authority: "explicit_user";
+  readonly authorityPayloadBinding: "action_scope_target_and_decided_at_exact";
   readonly scopeMatch: "exact";
   readonly targetMatch: "exact";
   readonly invalidDisposition: "reject";
@@ -704,8 +716,8 @@ export type RevisionHeadSelectionContractV1 =
       readonly corruptionReasonCodes: readonly RevisionSelectionCorruptionReasonV1[];
     });
 
-export interface ObservedV2<T extends JsonValue> {
-  readonly value: T;
+export interface ObservedV2<T extends ReadonlyJsonValue> {
+  readonly value: DeepReadonlyJson<T>;
   readonly sourceEventIds: readonly OpaqueIdV1[];
   readonly observedAt: string;
   readonly evidenceKind: EvidenceKind;
@@ -886,9 +898,9 @@ export interface AgentLocalStateV1 {
   readonly sessionId: OpaqueIdV1;
   readonly latestSubstantivePrompt?: ObservedV2<string>;
   readonly lastAssistantConclusion?: ObservedV2<string>;
-  readonly nativeTodoState?: ObservedV2<JsonValue>;
-  readonly nativePlanState?: ObservedV2<JsonValue>;
-  readonly hostMetadata?: ObservedV2<JsonValue>;
+  readonly nativeTodoState?: ObservedV2<ReadonlyJsonValue>;
+  readonly nativePlanState?: ObservedV2<ReadonlyJsonValue>;
+  readonly hostMetadata?: ObservedV2<ReadonlyJsonValue>;
   readonly sensitivity: Sensitivity;
   readonly egressPolicy: EgressPolicyV1;
 }
@@ -933,13 +945,11 @@ export type CanonicalWorkStateV2 = {
     }
 );
 
-export interface ContinuationCheckpointV3 {
+export type ContinuationCheckpointV3 = {
   readonly id: OpaqueIdV1;
   readonly schemaVersion: 3;
   readonly checkpointRevision: Sha256Hex;
   readonly kind: ContinuationCheckpointV2["kind"];
-  readonly parentCheckpointId?: OpaqueIdV1;
-  readonly parentCheckpointRevision?: Sha256Hex;
   readonly sourceSessionId: OpaqueIdV1;
   readonly checkpointCreatedBySourceEventId: OpaqueIdV1;
   readonly canonicalState: CanonicalWorkStateV2;
@@ -948,7 +958,16 @@ export interface ContinuationCheckpointV3 {
   readonly sensitivity: Sensitivity;
   readonly createdAt: string;
   readonly expiresAt?: string;
-}
+} & (
+  | {
+      readonly parentCheckpointId?: never;
+      readonly parentCheckpointRevision?: never;
+    }
+  | {
+      readonly parentCheckpointId: OpaqueIdV1;
+      readonly parentCheckpointRevision: Sha256Hex;
+    }
+);
 
 export interface ResumeDestinationV1 {
   readonly sourceIdentityEventId: OpaqueIdV1;
@@ -968,7 +987,6 @@ export type ResumeCapsuleV2 = {
   readonly subjectScope: TaskLineageSubjectScopeV1;
   readonly lineageSourceSummary: LineageSourceSummaryV1;
   readonly checkpointCreatedBySourceEventId: OpaqueIdV1;
-  readonly destination: ResumeDestinationV1;
   readonly resumeProfile: ResumeProfileV1;
   readonly ageSeconds: number;
   readonly reconciliation: ReconciliationStatus;
@@ -976,10 +994,12 @@ export type ResumeCapsuleV2 = {
   readonly warnings: readonly string[];
 } & (
   | {
+      readonly destination: ResumeDestinationV1 & { readonly capabilityHash: Sha256Hex };
       readonly sharedTaskState: SharedTaskStateV1;
       readonly destinationAgentLocalState?: AgentLocalStateV1;
     }
   | {
+      readonly destination: ResumeDestinationV1;
       readonly sharedTaskState?: never;
       readonly destinationAgentLocalState: AgentLocalStateV1;
     }
@@ -1050,7 +1070,7 @@ export interface CanonicalMemoryEntityV1 {
   readonly opaqueIdProfile: OpaqueIdProfileV1;
   readonly kind: MemoryKindV1;
   readonly normalizationProfileId: string;
-  readonly canonicalContent: JsonValue;
+  readonly canonicalContent: ReadonlyJsonValue;
   readonly canonicalFactId: Sha256Hex;
   readonly sharingScope: SharingScopeV1;
   readonly sharingDecisionEventIds: readonly OpaqueIdV1[];
@@ -1152,15 +1172,15 @@ export const SOURCE_AWARE_DOWNSTREAM_STAGES_V1 = [
 
 export interface BehaviorDeltaEntryV1 {
   readonly jsonPathOrField: string;
-  readonly currentV1: JsonValue;
-  readonly successor: JsonValue;
+  readonly currentV1: ReadonlyJsonValue;
+  readonly successor: ReadonlyJsonValue;
   readonly deltaKind: ContinuityP0DeltaKindV1;
 }
 
 export interface ContinuityP0ObservationEntryV1 {
   readonly caseId: string;
   readonly issueNumber: ContinuityP0IssueNumberV1;
-  readonly input: JsonValue;
+  readonly input: ReadonlyJsonValue;
   readonly observationKind: ContinuityP0ObservationKindV1;
   readonly downstreamStage: SourceAwareDownstreamStageV1;
   readonly behaviorDeltas: readonly BehaviorDeltaEntryV1[];
@@ -1640,12 +1660,12 @@ export interface RevisionHeadSelectionPolicyV1 {
 }
 
 export interface CanonicalStateHashTestVectorV1 {
-  readonly contentProjection: JsonValue;
+  readonly contentProjection: ReadonlyJsonValue;
   readonly contentHash: Sha256Hex;
-  readonly revisionMetadata: JsonValue;
+  readonly revisionMetadata: ReadonlyJsonValue;
   readonly stateRevision: Sha256Hex;
   readonly localOnly: {
-    readonly contentProjection: JsonValue;
+    readonly contentProjection: ReadonlyJsonValue;
     readonly contentHash: Sha256Hex;
     readonly stateRevision: Sha256Hex;
   };
@@ -1678,7 +1698,7 @@ export interface CanonicalStateHashProfileV1 {
 
 export interface CheckpointHashTestVectorV1 {
   readonly canonicalStateVectorRef: "canonicalStateHashProfile.testVector";
-  readonly envelope: JsonValue;
+  readonly envelope: ReadonlyJsonValue;
   readonly contentHash: Sha256Hex;
   readonly checkpointId: OpaqueIdV1;
   readonly initialCheckpointRevision: Sha256Hex;
@@ -1708,9 +1728,9 @@ export interface CheckpointHashProfileV1 {
 }
 
 export interface CanonicalMemoryHashTestVectorV1 {
-  readonly contentProjection: JsonValue;
+  readonly contentProjection: ReadonlyJsonValue;
   readonly contentHash: Sha256Hex;
-  readonly revisionMetadata: JsonValue;
+  readonly revisionMetadata: ReadonlyJsonValue;
   readonly memoryId: OpaqueIdV1;
   readonly initialMemoryRevision: Sha256Hex;
   readonly parentMemoryRevision: Sha256Hex;
@@ -1753,10 +1773,10 @@ export interface CanonicalMemoryHashProfileV1 {
 
 export interface ResumeCapsuleHashTestVectorV1 {
   readonly sharedTaskStateVectorRef: "canonicalStateHashProfile.testVector.contentProjection.sharedTaskState";
-  readonly envelope: JsonValue;
+  readonly envelope: ReadonlyJsonValue;
   readonly contentHash: Sha256Hex;
   readonly localOnly: {
-    readonly envelope: JsonValue;
+    readonly envelope: ReadonlyJsonValue;
     readonly contentHash: Sha256Hex;
   };
 }

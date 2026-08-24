@@ -218,7 +218,7 @@ All review output was treated as a proposal and checked against source/tests.
 | Security re-review — local-only capsule bypasses deny precedence | Accepted | `secret`, `local_only`, and `prohibited_egress` are executable denials for every included projection, including same-agent local-only capsules. |
 | Correctness re-review — omitted projection has no cross-runtime oracle | Accepted | Manifest now pins local-only state and capsule vectors; absent optional members are omitted, never encoded as `null`. |
 | Correctness re-review — private test declared sensitivity without private content | Accepted | The positive fixture now contains an authenticated private observed value and a matching rehashed parent state. |
-| CodeRabbit PR review | Tool-limited | Manual full review was triggered as required for a 0-star public repository, but the service reported the OSS review limit. Four earlier local CodeRabbit rounds are dispositioned above; no gate or scanner scope was weakened. |
+| CodeRabbit first PR attempt | Tool-limited | Manual full review was triggered as required for a 0-star public repository, but the service reported the OSS review limit. Four earlier local CodeRabbit rounds are dispositioned above; no gate or scanner scope was weakened. |
 | Security re-review — private Agent-local capsule bypasses eligibility | Accepted | The authenticated destination private gate now applies to every included projection, including same-agent local-only. |
 | Correctness re-review — destination/authority authentication not universal | Accepted | Every case requires the selected destination and successor authority to be the same authenticated source. |
 | Security re-review — rehashed authorization metadata is accepted | Accepted | The full non-projection envelope is bound to the persisted delivery claim; incompatible reconciliation cannot produce a capsule. |
@@ -228,16 +228,39 @@ All review output was treated as a proposal and checked against source/tests.
 | Cubic — split the contract models into modules | Rejected | Repeated architectural preference without a concrete correctness failure; S0 intentionally keeps one independently runnable parity gate and adds no new production/reference-model module. |
 | Correctness final — ADR omitted `local_only` precedence | Accepted | The ADR precedence diagram now matches the normative all-path deny rule. |
 | Security final — evidence-only sharing decision could be unauthenticated | Accepted | Every referenced sharing decision is authenticated before delivery, review-lane preservation, or canonical-memory evidence union. |
-| Cubic final rerun | Tool timeout | The local review exceeded the five-minute window and was interrupted; it emitted an empty `issues` array with `Review interrupted`, so no clean verdict is claimed. The preceding completed Cubic round's two concrete findings were fixed and its module-split preference was explicitly rejected. |
+| Codex final — destination capability profile could be absent/unsupported | Accepted | Shared capsules require a capability hash resolving to `shared-task-v1`; same-agent local-only remains profile-optional. |
+| Codex final — F5 lacked an independent wrong-workspace negative | Accepted | F5 now carries same-project/wrong-workspace data and all four retrieval profiles reject injected leakage. |
+| Codex final — nested successor JSON was mutable in TypeScript | Accepted | Successor JSON surfaces use a recursive readonly type; `ObservedV2<{ nested: string[] }>` also rejects nested mutation in the compile-only gate. |
+| Codex final — capsule trusted declared sensitivity | Accepted | Contained sensitivity is recomputed for shared/local projections before private/secret delivery policy. |
+| Codex final — lineage summary was only ID-authenticated | Accepted | Restored lineage must equal the summary derived from append-only event/revision evidence; four authenticated rehash mutations fail. |
+| Codex final — parent revisions were not sorted unique | Accepted | Parent revision sets are checked before hash/publication; duplicate and reordered rehash mutations fail. |
+| Codex final — sharing authority was ID-only | Accepted | Resolved user-event action/scope/sharing scope/target/time payload must equal the persisted decision in shared and memory paths. |
+| CodeRabbit final — memory policy tuple wording | Accepted | ADR, research, and clarification now separate fact identity from exact policy-tuple union eligibility and review-lane mismatch. |
+| CodeRabbit final — checklist next-stage text was stale | Accepted | Checklist now records plan/tasks complete and PR review/merge stage while retaining Principle VI/#74. |
+| CodeRabbit final — SC-020 under-described hash inputs | Accepted | SC-020 references the complete normative §14 manifest-minus-hash input set. |
+| Security post-final — generic `ObservedV2<T>` preserved mutable `T` | Accepted | `ObservedV2.value` applies a recursive readonly transform to `T`; the compile-only regression instantiates a mutable nested array and proves `push` is rejected. JSON Schema keeps the existing `JsonValue` because mutability is TypeScript-only. |
+| Correctness post-final — participant ordering had two authorities | Accepted | Participant refs are authenticated individually while the append-only evidence oracle remains the ordering authority: first substantive event per client, sorted by resolved client ID. A valid client-ordered/reverse-opaque-ID case passes and a reordered derived summary fails. |
+| Cubic post-final — evidence paths were traversed twice | Accepted | Shared and Agent-local evidence are each enumerated once, then reused for source-reference and contained-sensitivity checks. |
+| Cubic post-final — split the focused contract suite | Rejected | Repeated architectural preference without a correctness defect; one S0 suite deliberately checks the atomic cross-artifact hash/semantic bundle. |
+| Ponytail post-final — redundant schema alias and one-call helpers | Accepted | Removed the validation-identical readonly JSON Schema alias and one-call lineage/parent helpers; reused the profileless source fixture. Final Ponytail re-review: `Lean already. Ship.` |
+| Cubic previous final rerun | Tool timeout | The local review exceeded the five-minute window and was interrupted; it emitted an empty `issues` array with `Review interrupted`, so no clean verdict was claimed. The preceding completed Cubic round's two concrete findings were fixed and its module-split preference was explicitly rejected. |
+| Cubic final — authority payload oracle was circular | Accepted | Authenticated authority events are now independently constructed fixtures; the validator compares their complete payload with the persisted decision rather than building the positive event from that decision. |
+| Cubic final — lineage expectation was supplied, not derived | Accepted | The parent now carries append-only event/revision evidence; the oracle derives origin, current-revision contributor, and first substantive participant per resolved client before comparing the complete summary. |
+| Cubic clean rerun | Clean | `cubic review -j` exited 0 with an empty `issues` array after both independence fixes. |
+| Grok final full diff | Tool timeout | Read-only runner exited 124 before creating a session or structured result. Per the skill, one path-scoped retry followed. |
+| Grok final scoped retry | Tool-limited | The retry reached max turns and returned no structured review result, so no clean verdict is claimed and no further retry was run. Its raw trace candidates were independently checked against source. |
+| Grok raw candidate — checkpoint parent pairing only existed in JSON Schema | Accepted | `ContinuationCheckpointV3` is now a TypeScript union matching the schema: no parent fields or both parent ID/revision. Compile-only single-field assignments fail. |
+| Grok raw candidate — recursive readonly loses optional fields | Rejected | Mapped types preserve optional modifiers; a compile-only `ObservedV2<{ nested?: string[] }>["value"] = {}` passes while nested `push` fails. |
+| Grok raw candidate — JSON Schema must encode readonly | Rejected | JSON Schema has no mutability semantics; runtime shape remains `JsonValue`, while TypeScript owns recursive readonly and S1 owns clone/freeze. |
 
-## Final post-review verification — 2026-08-24
+## Final post-review verification — 2026-08-25
 
 - Focused source-aware contract: 21 passed, 0 failed.
-- Full continuity suite: 354 passed, 0 failed.
 - Schema freeze: 19 passed, 0 failed.
-- Harness TypeScript: no diagnostics.
+- Full continuity suite: 354 passed, 0 failed.
+- Harness TypeScript: exit 0, no diagnostics, including generic nested-readonly, optional-property, and checkpoint parent-pair compile checks.
 - Generated contract hashes: empty diff.
-- Old-shape baseline: 20 cases / 29 steps, empty diff.
+- Old-shape baseline regeneration: 20 cases / 29 steps, empty diff.
 - Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
-- Scope gate and `git diff --check`: no forbidden path and no whitespace error.
-- Latest whole-diff correctness/security reviews: no findings. Latest `ponytail-review`: `Lean already. Ship.`
+- `git diff --check`: no whitespace error; reducer, old-shape fixture, mutation script, runtime, vendor, and workflow paths remain unchanged.
+- Final whole-diff correctness and security reviews: no findings. Cubic: zero issues. Grok: tool-limited after two attempts, with its one valid raw candidate fixed and source-verified. Final Ponytail review: `Lean already. Ship.`

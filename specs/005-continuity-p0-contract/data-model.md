@@ -66,6 +66,8 @@ form too.
 `SourceIdentityV1` is resolved once per normalized source event. Persisted fields do not embed it. They retain sorted,
 unique `OpaqueIdV1` source-event references instead. Private eligibility is read from this authenticated identity at delivery;
 `ResumeDestinationV1` cannot self-authorize it.
+A shared capsule requires its destination capability hash to resolve to a profile containing `shared-task-v1`; only a
+same-agent local-only capsule may omit the hash.
 
 ### `LineageSourceSummaryV1`
 
@@ -99,6 +101,8 @@ A persisted sharing grant contains `schemaVersion: 1`, opaque decision/authority
 `decision: "grant"`, exact `SubjectScopeV1`, `task_shared|project_shared|personal_shared`, a closed target, and canonical
 `decidedAt`. The target is either the exact task lineage for `shared_task_projection` or the exact `canonicalFactId` for
 `canonical_memory_entity`. Unknown or unauthenticated authority, wrong scope, and wrong target reject the grant.
+The resolved user-event payload must exactly match action, subject/sharing scope, target, and decision time; matching only
+`authoritySourceEventId` is insufficient.
 `SharedTaskStateV1` and `CanonicalMemoryEntityV1` store sorted-unique decision IDs; order/duplicates are semantic-invalid
 because these arrays participate in canonical hashes.
 
@@ -166,7 +170,7 @@ before restore/delivery; implementations never choose one conflicting declaratio
 `ContinuationCheckpointV3.sensitivity` must equal its embedded canonical state's maximum sensitivity.
 
 The Observed/file/command/test/operation/repository/note V2 shapes preserve their V1 semantic fields, make all arrays and
-properties readonly, replace every identifier/fingerprint/source-event reference with `OpaqueIdV1`, and remove
+properties recursively readonly through `ReadonlyJsonValue`, replace every identifier/fingerprint/source-event reference with `OpaqueIdV1`, and remove
 caller-owned ordering material. `sourceEventIds` are sorted unique arrays.
 
 ### `AgentLocalStateV1`
@@ -232,8 +236,9 @@ The capsule contains a bounded delivery projection, not the full state:
 - `schemaVersion: 2`, `contentHash`, opaque injection/checkpoint IDs, checkpoint/work-state revisions;
 - subject scope, lineage source summary, explicit checkpoint creator event;
 - `ResumeDestinationV1` (required authenticated `sourceIdentityEventId`, `clientId`, exact version, opaque session,
-  optional capability hash); the reference must resolve to the same client/session/capability and private eligibility even
-  when no Agent-local lane is included; exact client version or eligibility cannot be inferred from client ID;
+  capability hash required for shared delivery and optional for same-agent local-only); the reference must resolve to the
+  same client/session/capability profile and private eligibility even when no Agent-local lane is included; exact client
+  version, supported capability IDs, or eligibility cannot be inferred from client ID;
 - `resumeProfile`, age, reconciliation status;
 - optional granted shared task state;
 - at most the destination client's own eligible `destinationAgentLocalState`;
@@ -337,7 +342,8 @@ persisted artifact without a validation rule fails the contract test. Current re
 work state/checkpoint/disposition/metadata/anchor/delivery/suppression/selection/derived invalidation, engagement and
 contradiction evidence/ranges, resume capsule, and DurableMemory; the inventory-derived closure is authoritative rather than
 a hand-maintained count. The four successor artifacts and persisted sharing-decision authority are inventory entries too, so their scope/hash/sharing semantics and
-the capsule destination-lane equality, destination private eligibility, and nested provenance cannot bypass restore validation.
+the capsule destination-lane/capability equality, destination private eligibility, authority payload, lineage derivation,
+parent ordering, and nested provenance cannot bypass restore validation.
 
 Each `RestoreArtifactValidationRuleV1` has:
 

@@ -9,6 +9,23 @@ const root = readIJsonFile<JsonSchemaDocument>(new URL("../schema/continuity.sch
 
 const defs = (root.$defs ?? {}) as Record<string, Record<string, unknown>>;
 
+if (false) {
+  const observed = {} as contract.ObservedV2<{ nested: string[] }>;
+  // @ts-expect-error generic successor payloads are recursively readonly
+  observed.value.nested.push("changed");
+  const optionalValue: contract.ObservedV2<{ nested?: string[] }>["value"] = {};
+  // @ts-expect-error optional generic arrays remain recursively readonly
+  optionalValue.nested?.push("changed");
+  const checkpoint = {} as Omit<
+    contract.ContinuationCheckpointV3,
+    "parentCheckpointId" | "parentCheckpointRevision"
+  >;
+  // @ts-expect-error checkpoint parent ID and revision must appear together
+  const missingParentRevision: contract.ContinuationCheckpointV3 = { ...checkpoint, parentCheckpointId: "a".repeat(64) };
+  // @ts-expect-error checkpoint parent ID and revision must appear together
+  const missingParentId: contract.ContinuationCheckpointV3 = { ...checkpoint, parentCheckpointRevision: "b".repeat(64) };
+}
+
 /**
  * TS の union 定数 → 対応する `$defs` 名。名前の対応規則が不規則（SENSITIVITIES ↔ Sensitivity、
  * FRESHNESS_VALUES ↔ Freshness）なので明示する。値の集合だけを突き合わせると Freshness と
@@ -294,6 +311,7 @@ const INLINE_CONSTS = {
   "SharingDecisionV1.properties.decision": "grant",
   "SharingDecisionPolicyV1.properties.schemaVersion": 1,
   "SharingDecisionPolicyV1.properties.authority": "explicit_user",
+  "SharingDecisionPolicyV1.properties.authorityPayloadBinding": "action_scope_target_and_decided_at_exact",
   "SharingDecisionPolicyV1.properties.scopeMatch": "exact",
   "SharingDecisionPolicyV1.properties.targetMatch": "exact",
   "SharingDecisionPolicyV1.properties.invalidDisposition": "reject",
@@ -795,6 +813,7 @@ type _InlineConstsMatchContract = [
   Assert<SameLiteral<contract.SharingDecisionV1["decision"], ConstAt<"SharingDecisionV1.properties.decision">>>,
   Assert<SameLiteral<contract.SharingDecisionPolicyV1["schemaVersion"], ConstAt<"SharingDecisionPolicyV1.properties.schemaVersion">>>,
   Assert<SameLiteral<contract.SharingDecisionPolicyV1["authority"], ConstAt<"SharingDecisionPolicyV1.properties.authority">>>,
+  Assert<SameLiteral<contract.SharingDecisionPolicyV1["authorityPayloadBinding"], ConstAt<"SharingDecisionPolicyV1.properties.authorityPayloadBinding">>>,
   Assert<SameLiteral<contract.SharingDecisionPolicyV1["scopeMatch"], ConstAt<"SharingDecisionPolicyV1.properties.scopeMatch">>>,
   Assert<SameLiteral<contract.SharingDecisionPolicyV1["targetMatch"], ConstAt<"SharingDecisionPolicyV1.properties.targetMatch">>>,
   Assert<SameLiteral<contract.SharingDecisionPolicyV1["invalidDisposition"], ConstAt<"SharingDecisionPolicyV1.properties.invalidDisposition">>>,

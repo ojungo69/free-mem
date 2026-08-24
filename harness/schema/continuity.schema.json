@@ -3017,10 +3017,11 @@
     "SharingDecisionPolicyV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "authority", "scopeMatch", "targetMatch", "invalidDisposition", "referenceOrder"],
+      "required": ["schemaVersion", "authority", "authorityPayloadBinding", "scopeMatch", "targetMatch", "invalidDisposition", "referenceOrder"],
       "properties": {
         "schemaVersion": { "const": 1 },
         "authority": { "const": "explicit_user" },
+        "authorityPayloadBinding": { "const": "action_scope_target_and_decided_at_exact" },
         "scopeMatch": { "const": "exact" },
         "targetMatch": { "const": "exact" },
         "invalidDisposition": { "const": "reject" },
@@ -3524,6 +3525,12 @@
       "anyOf": [
         { "required": ["sharedTaskState"] },
         { "required": ["destinationAgentLocalState"] }
+      ],
+      "allOf": [
+        {
+          "if": { "required": ["sharedTaskState"] },
+          "then": { "properties": { "destination": { "required": ["capabilityHash"] } } }
+        }
       ]
     },
     "MemoryKindV1": {
