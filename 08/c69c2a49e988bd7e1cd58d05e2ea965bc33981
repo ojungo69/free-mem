@@ -1,0 +1,53 @@
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_69c35be895a291 28,1051
+  s_d6433b5ff6fa8e::t_365c617be6e317 705-1050,1052-1265,1280-1373
+  s_d6433b5ff6fa8e::t_92809d91a90476 1266-1279
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_01ce06db68f784 3200-3501,3503-3729,3734-3742,3744-3798
+  s_d6433b5ff6fa8e::t_92809d91a90476 3730-3733,3743
+  s_d6433b5ff6fa8e::t_69c35be895a291 18-21,3502
+harness/schema/source-aware-source-inventory.v1.json
+  s_d6433b5ff6fa8e::t_14b6bd10760b7e 1-411
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_62b6b6df322cc6 3-5,7
+  s_d6433b5ff6fa8e::t_1697484029fec1 467-629,631-635,637-641,643-647,649-657
+  s_d6433b5ff6fa8e::t_9ec9c7aeaa6372 260-466
+  s_d6433b5ff6fa8e::t_69c35be895a291 630,636,642,648
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_4bd77e2e44d0d3 1172
+  s_d6433b5ff6fa8e::t_ece856a32f3c32 28-48
+  s_d6433b5ff6fa8e::t_ad0daaa1f74405 783-841
+  s_d6433b5ff6fa8e::t_e8962aad7ed7e3 159-173,506-526
+  s_d6433b5ff6fa8e::t_b9fc87200233e6 215-247
+  s_d6433b5ff6fa8e::t_3bcb7bf01126fe 322-387
+  s_d6433b5ff6fa8e::t_0b1bccd0bfb557 269,593-625
+  s_d6433b5ff6fa8e::t_69c35be895a291 722
+  s_d6433b5ff6fa8e::t_beaa88773b4e63 1193-1195,1251
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_3e26e39b915b3d 3
+  s_d6433b5ff6fa8e::t_0c46e35583590a 1-2,4,6-152
+  s_d6433b5ff6fa8e::t_5070fc451996a7 5
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_77e14caee8f314 70-76
+  s_d6433b5ff6fa8e::t_b3d4de3158a99a 68-69
+harness/fixtures/continuity/source-aware-f0-f7.v1.json
+  s_d6433b5ff6fa8e::t_3c534729f43aa0 1-278
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_650919953dcd58 31,35-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "08c69c2a49e988bd7e1cd58d05e2ea965bc33981",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
