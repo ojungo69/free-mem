@@ -15,6 +15,11 @@
 > ユーザー決定6件はv6.1付録A、Codex壁打ち反映（B-01〜B-13）は付録B、
 > Phase 3のOSS比較・採否は `evidence/phase3-resume-oss-comparison.md` に記録する。
 > 本ファイルは各フェーズの受け入れ基準を索引化し、正本の型や状態遷移を重複定義しない。
+>
+> **2026-08-24 successor gate**: source provenance / sharing semanticsと次のpersisted artifact版の正本は
+> `specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md`（#132 S0）。v6.2/V1を
+> 後書きせずsuccessor overlayとして扱い、S0 bundle/hash完了前にpersisted state/checkpoint、
+> cross-agent renderer、source filterのruntime実装を始めない。
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -109,6 +114,9 @@ strategyとTierへ正しく反映されること（Phase 4 Exit）。
 - **FR-1**: Safety Boundary / Sole Writer — daemon single writer、thin RPC、atomic spool、peer auth、ownership manifest、backup。
 - **FR-2**: Canonical Identity / Event State Machine — opaque UUID、adapterDeliveryId、turn state、late correction、session liveness。
 - **FR-3P**: Phase 3 Preflight — v6.2 addendum §2〜§14。exact capability disposition、typed task state、event no-op、PendingOperation、task boundary、fail-closed reconciliation、initial claim、engagement/atomic acceptance、selection wire、sensitivity、capsule lifecycle、memory history、single quality-report schema、doctorをfreezeする。
+- **FR-3S**: Source-Aware Successor S0 — `SourceAwareContinuityContractV1`としてContinuity P0と#132を
+  1 bundle/hashへ統合し、successor artifact 4種、source inventory、restore/head/raw-ID policy、9-Issue
+  observation/delta contract、F0〜F7、legacy dispositionをruntime実装前にfreezeする。
 - **FR-3**: Continuity State Machine — task lineage/binding、CanonicalWorkStateV1、checkpoint history、claim/fence/lease/engagement、crash recovery、capability-driven resume、memory_resume。
 - **FR-4**: Claude/Codex Vertical Routes — 4 directed routes、exact evidence profile公開。
 - **FR-5**: Retrieval / Injection / MCP — dual FTS、fixed RRF、CJK routing、safe capsule、self-ingestion prevention、local stdio MCP、user-authority CAS、evidence-preserving dedupe。
@@ -133,6 +141,9 @@ SyncOperation（Core 1.0では未実装）。
 - **SC-1**: daemon-only write handle、fault injection、no Agent blockage、backup restore smoke。
 - **SC-2**: identity collision、duplicate x10、parallel/late-event property tests。
 - **SC-3P**: `ContractPreflightState=complete`（addendum §13 と同一 predicate: manifest exact-set 一致 — missing / extra / duplicate / manifest hash mismatch / artifact 欠落は全て blocking — + matrix 再生成 + runtime-neutral fixture green）。全required capability scenarioが`not_run`以外のdispositionを持ち、typed schema/hash、duplicate-event no-op、task-boundary proposal/confirmation、pending-operation、fail-closed reconciliation、initial-claim race、engagement threshold/contradiction、atomic acceptance、mode × capability、selection ambiguity、sensitivity、renderer/capture negative test、memory-history、quality-report reproducibility、doctor fixtureがpassする。未証明capabilityは適切にdowngradeする。
+- **SC-3S**: `SourceAwareContinuityContractV1`のTS/JSON Schema parity、inventory closure、inventory-derived
+  restore rules、exact 9-Issue observation/delta set、F0〜F7、legacy dispositions、JCS/raw-byte hashが全てgreen。
+  S0差分のruntime/DB/MCP/viewer/workflow変更は0件で、umbrella #132はopenのまま後続S1〜S6へ進む。
 - **SC-3**: providerなしでsame-agent continuation成功。duplicate full injection、wrong scope、incompatible auto-resume、unsafe unknown replay、early acceptance、accepted-attempt/open-checkpoint、stale fence、capsule escape、malformed capsule trust、source evidence deletion、stale derived artifact use（直接依存・推移依存の両方）が全て0。
 - **SC-4**: 4/4 route pass、destination Agentの証明済みstrategyのみ使用。
 - **SC-5**: retrieval + echo-loop + temporal/source preservation + 100k FTS-only performance pass。
@@ -163,6 +174,7 @@ Behavioral metricは`number | "unsupported"`。ただし該当Phase/Releaseが�
 ## Assumptions
 
 - Phase順序はv6.1 §30を基礎とするが、FR-3P / SC-3PをPhase 3 product実装前のblocking barrierとして挿入する。
+- source-aware persisted/cross-agent実装にはFR-3P/SC-3Pに加えてFR-3S/SC-3Sをblocking barrierとして挿入する。
 - Contract preflightの`complete`はaddendum §13と同一predicate: required scenario manifestとのexact-set一致（missing / extra / duplicate / manifest hash mismatch は fail）+ 全scenario disposition済み + evidence artifact存在 + matrix再生成 + runtime-neutral contract green。capabilityがunsupported/unknown_after_testでもgeneric/manual implementationは可能だが、automatic strategy/Tierはproven時のみ。
 - 大規模なPhase 2以降のTS product codeは**#1 Stage 0の完了まで**増やさない（Stage 0完了 = ADR-003 + 凍結した4 contract + cutover gate定義。ADR-003「帰結」、tasks.md「Runtime barrier」）。schema/fixture/harnessはruntime-neutralなので並行可能。
 - Stage 1が決めるのはroadmapを進めてよいかと候補scopeの評価までである。実際のCore 1.0のcutover scopeと時期は、Cutover gate 1–10と#84の完了後に確定する。**Core 1.0の現行runtime authorityはTypeScript/Nodeのまま**（v6.1 / ADR-001）で、Rustを標準実行基盤とする戦略目標自体はADR-005で決着済み。

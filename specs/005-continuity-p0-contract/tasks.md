@@ -18,9 +18,9 @@
 
 **Purpose**: Make the GitHub and repository ledgers point to the approved single-bundle S0 before schema work starts.
 
-- [ ] T001 Update GitHub Issue #132 body and labels with the spec 005 integration, S0 migration-disposition-only boundary, exact-memory identity, and consistent S1–S6 numbering; verify with `gh issue view 132 --repo ojungo69/free-mem`
-- [ ] T002 Create the source-aware decision record in `evidence/adr-006-source-aware-shared-memory.md` and add its index entry to `evidence/README.md`
-- [ ] T003 Update the S0 start gate without marking runtime work complete in `specs/001-agent-memory-core/spec.md`, `specs/001-agent-memory-core/tasks.md`, and `docs/superpowers/plans/2026-08-16-phase3-resume-preflight.md`
+- [X] T001 Update GitHub Issue #132 body and labels with the spec 005 integration, S0 migration-disposition-only boundary, exact-memory identity, and consistent S1–S6 numbering; verify with `gh issue view 132 --repo ojungo69/free-mem`
+- [X] T002 Create the source-aware decision record in `evidence/adr-006-source-aware-shared-memory.md` and add its index entry to `evidence/README.md`
+- [X] T003 Update the S0 start gate without marking runtime work complete in `specs/001-agent-memory-core/spec.md`, `specs/001-agent-memory-core/tasks.md`, and `docs/superpowers/plans/2026-08-16-phase3-resume-preflight.md`
 
 **Checkpoint**: #132 and every authoritative local ledger say `SourceAwareContinuityContractV1` blocks persisted
 state/checkpoint, cross-agent renderer, and source-filter runtime work.

@@ -212,9 +212,21 @@ runtime-neutral な schema / fixture / harness（Phase 3 preflight, issue #13）
 
 Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。前提: 上記 Runtime barrier の S0-1〜S0-3 完了（S0-4 が決めるのは実装言語ではなく roadmap の進行可否と候補 scope。実際の cutover scope と時期は ADR-005 の Cutover gate 1–10 と #84 の完了後）。
 
+## Source-aware continuity S0 barrier（#132 / spec 005）
+
+- [ ] S0-SA `specs/005-continuity-p0-contract/tasks.md`のS0 contract tasks、verify-tasks、review、required
+  checksを完了し、`SourceAwareContinuityContractV1` bundle/hashをmainへmergeする。predicateはSC-3S:
+  successor artifact 4種 + inventory closure + inventory-derived restore rules + exact 9-Issue observations + F0〜F7 +
+  legacy dispositions + hash parityがgreen、runtime/DB/MCP/viewer/workflow差分0件。
+
+S0-SA完了まで、`CanonicalWorkState` / checkpointのpersisted successor、Agent-local/shared projection runtime、
+cross-agent renderer、source filter、migration DDL/data rewriteを開始しない。daemon lifecycle、authenticated RPC、
+sole-writer、spool、backup骨格はsource-sharing persisted schemaへ依存しない範囲で並行可能。
+
 ## Phase 3 — Continuity State Machine [US1]（着手時に詳細化）
 
-Exit: SC-3（= US1 Independent Test）。v6.1 §29 Phase 3 + §11。
+Exit: SC-3（= US1 Independent Test）。v6.1 §29 Phase 3 + §11。persisted/source-aware workの前提:
+SC-3P + SC-3S complete。
 
 ## Phase 4 — Claude/Codex Vertical Routes [US3]（着手時に詳細化）
 

@@ -6,6 +6,23 @@
 
 **Toolchain:** Node.js 24.16.0, pnpm 11.8.0, TypeScript via Node type stripping, `node:test`, JSON Schema, isolated real-CLI rigs.
 
+## 2026-08-24 dispatch update
+
+Tasks 1〜11 below are the V1/v6.2 preflight history and acceptance detail. Committed schema/reference artifacts already exist;
+an unchecked historical checkbox is not, by itself, authority to recreate or redesign them.
+
+Source provenance/sharing and the next persisted artifact versions are now frozen in the successor overlay:
+`specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md` (#132 S0). Do not edit V1 meanings in place.
+
+```text
+#1 Stage 0 + ContractPreflightState = complete
+  + SourceAwareContinuityContractV1 S0 bundle/hash = complete
+  -> persisted successor state/checkpoint and cross-agent runtime may start
+```
+
+Before the source-aware S0 gate, only schema-independent daemon/RPC/sole-writer/spool/backup work may proceed. S0 itself is
+contract-only and must not add product runtime/DB/MCP/viewer/workflow changes.
+
 ## Constraints
 
 - Preserve all Phase 1 sole-writer, spool, peer-auth, redaction, backup, and fail-open invariants.
@@ -385,7 +402,9 @@ cmp /tmp/a.json /tmp/b.json
 #1 Stage 0 + ContractPreflightState = complete (addendum §13 predicate:
 manifest exact-set + manifest hash + artifacts + regenerated matrices +
 runtime-neutral fixtures green)
-  -> generic Phase 3 implementation may start
+  + SourceAwareContinuityContractV1 S0 complete (successor schemas + inventory +
+    restore/observation/raw-ID rules + F0-F7 + legacy dispositions + hashes)
+  -> persisted/source-aware Phase 3 implementation may start
 
 exact strategy capability proven
   -> that Agent/version may enable automatic strategy

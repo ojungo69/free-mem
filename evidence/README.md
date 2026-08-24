@@ -32,6 +32,7 @@
 | Rust Local Core 再評価 ADR（#1 Stage 0。ADR-001 の却下理由分解・cutover gate の pass/defer 定義） | adr-003-rust-local-core.md | #1 Stage 0 |
 | ライセンス決定 ADR（#10。候補比較・依存 license 実測・material 分類・inbound 方針） | adr-004-licensing.md | #10 |
 | Rust Core 戦略 ADR（#1。標準実行基盤の段階移行方針・Stage 1 の再定義・正本連鎖との関係） | adr-005-rust-core-product-direction.md | #1 |
+| source-aware shared memory ADR（source provenance / sharing policy分離、spec 005とのsingle-bundle freeze） | adr-006-source-aware-shared-memory.md | #132 S0 |
 | 直接競合の positioning snapshot（commit pin 済みの公開情報のみ。benchmark 証拠ではない） | direct-competitor-positioning-2026-08-18.md | #8 / #79 |
 | capability scenario manifest（§13 の manifest hash 規則） | phase3-capability-scenario-manifest.md | Phase 3 Task 4 |
 | 継続 event の参照実装（§3.1 / §4.2 / §4.3 の導出と限界） | phase3-reference-model.md | Phase 3 Task 5 |
