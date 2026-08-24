@@ -55,6 +55,9 @@ semantic surface.
 Subject scope and sharing scope are independent. Subject scope is the closed hierarchy
 `personal_vault -> project -> workspace -> branch -> task_lineage -> session -> turn`.
 Sharing scope is `agent_private | task_shared | project_shared | personal_shared`.
+Here `private` means the closed `Sensitivity` value, while `agent_private` is a `SharingScopeV1` value; they are independent.
+`privateEligible` gates a `sensitivity="private"` record only after an explicit sharing grant. It never makes an
+`agent_private` record deliverable to another client.
 
 The decision order is fixed:
 
@@ -84,6 +87,10 @@ non-empty `sharingDecisionEventIds` set whose events resolve to authenticated sh
   repository state, eligible semantic note.
 - Agent-local: latest prompt, last assistant conclusion, native todo/plan, host metadata.
 
+Agent-local lanes are keyed by `(clientId, sessionId)`, unique in canonical state, and bound through
+`sourceIdentityEventId` to the same authenticated pair. Duplicate lanes quarantine. A capsule carries zero or one lane and
+rejects it unless both client and session match the destination.
+
 `ResumeCapsuleV2` carries the shared projection and, only when eligible, the destination client's own Agent-local lane.
 It never carries another client's Agent-local lane. The full canonical state is not embedded in a delivery capsule.
 
@@ -107,21 +114,35 @@ Published successor graphs are deeply readonly. `contentHash` is SHA-256 over RF
 metadata fields; neither preimage includes its own digest. The manifest's fixed vector is the cross-language oracle. Lineage order uses daemon-owned
 `lineageRevisionOrdinal`; caller timestamp, session-local sequence, and hash lexical order never choose a head.
 
+Checkpoint and canonical-memory hashes use separate domain strings and manifest vectors. Checkpoint content excludes its
+ID/parent/revision fields; initial and parent transitions bind checkpoint ID, content hash, and both parent ID/revision when
+present. Memory content excludes identity/revision/evidence metadata; memory revision binds memory ID, content hash,
+sorted evidence metadata, and either an initial or parent-memory-revision transition. `canonicalFactId` remains the separate
+exact-fact identity hash with schema literal `CanonicalMemoryEntityV1`.
+
 Meaning-neutral events do not advance the canonical state revision/history, while event/delivery/diagnostic/watermark
 transitions remain separately auditable. `StateNeutralTransitionPolicyV1` names the four classifications and fixes
 `ledger_only` to `reuse_revision + insert_once + record_bounded + advance` in one daemon transaction; no undefined successor
-`history` or `updatedAt` field is required.
+`history` or `updatedAt` field is required. The receipt key is `adapterDeliveryId` when present, otherwise the canonical
+fingerprint, under the versioned `d:`/`f:` keyspace. Uniqueness is per task-lineage event store. An identical retry returns
+the existing receipt; the same key with different canonical evidence quarantines instead of overwriting.
 
 The greatest daemon-owned `lineageRevisionOrdinal` is the ordered head. Resume eligibility is a separate typed evaluation
 of workspace compatibility, checkpoint disposition, and lineage fork/conflict. Automatic resume is permitted only when the
 ordered head itself is eligible. If it is not, the result is manual; the selector never silently falls back to an older
-revision. Equal ordinals or multiple ordered heads quarantine the selection as corruption.
+revision. Duplicate revisions/ordinals, zero or multiple ordered heads, a mismatched head reference, or a non-greatest
+marked head use the third `fallbackDisposition="quarantine"` variant with exact corruption reason codes.
 
 Dropped evidence has separate bounded windows and monotone decimal-string counters for `evicted` and
 `orphaned_terminal`. One reason cannot erase the other's existence or count.
 
 All caller identifiers/fingerprints that can reach successor state are replaced by domain-separated opaque IDs. New-intake
 raw values are not persisted; a legacy raw value remains only inside its original local quarantined artifact when needed.
+
+Opaque IDs use the closed manifest profile:
+`lowerhex(HMAC-SHA-256(vaultKey(keyId), UTF8(JCS({domain:"free-mem/OpaqueIdV1/v1",kind,value}))))`.
+The key is resolved from the personal-vault keyring and is at least 32 bytes; `kind` is closed and the public test key/vector
+is conformance-only. Ingest receipt and peer identity IDs inside `SourceIdentityV1` are opaque under the same profile.
 
 `RawIdentifierEvidencePolicyV1` makes that boundary exact: new-intake raw IDs are never persisted; migration scratch is
 memory-only for one transaction and zeroized on commit/rollback; an original legacy artifact remains local in quarantine
@@ -215,7 +236,8 @@ expectations cover:
 - F3 multi-Agent lineage;
 - F4 one canonical memory with two source evidence branches;
 - F5 the four retrieval profiles;
-- F6 authenticated authority overriding caller claims;
+- F6 authenticated authority overriding caller claims (`source_unverified` refers to the unverified caller client-ID claim,
+  not to the authenticated intake source);
 - F7 privacy/scope/destination-capability downgrade.
 
 The test requires the exact ordered set F0–F7, validates all references, checks case-specific invariants, and kills in-memory
@@ -235,10 +257,11 @@ entries make SC-001–SC-012 executable later without claiming runtime conforman
 - fixture corpus version/hash and exact F0–F7 IDs;
 - legacy migration rules;
 - exact restore semantic-validation artifact/path/authority rules;
-- canonical state hash preimage/vector, revision-head ordering/eligibility rules, and the exact 9-entry Continuity P0 observation/delta contract;
+- canonical state/checkpoint/memory hash preimages and initial/parent vectors, revision-head ordering/eligibility/corruption
+  rules, and the exact 9-entry Continuity P0 observation/delta contract;
 - raw-identifier retention/access/diagnostic/export/egress policy;
 - sharing-decision user authority, exact scope/target, invalid disposition, and sorted-unique reference policy;
-- opaque-ID profile;
+- opaque-ID derivation profile, closed kind vocabulary, and public conformance vector;
 - limit policy table;
 - diagnostic vocabularies.
 

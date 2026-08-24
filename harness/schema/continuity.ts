@@ -419,6 +419,86 @@ export interface OpaqueIdProfileV1 {
   readonly outputEncoding: "lowercase_hex_256";
 }
 
+export type OpaqueIdKindV1 =
+  | "personal_vault_id"
+  | "project_id"
+  | "workspace_id"
+  | "branch_key"
+  | "task_lineage_id"
+  | "session_id"
+  | "turn_id"
+  | "decision_event_id"
+  | "source_event_id"
+  | "ingest_receipt_id"
+  | "peer_identity_id"
+  | "daemon_id"
+  | "operation_id"
+  | "native_operation_id"
+  | "operation_match_key"
+  | "idempotency_key"
+  | "terminal_fingerprint"
+  | "adapter_delivery_id"
+  | "repository_id"
+  | "worktree_id"
+  | "dirty_tree_fingerprint"
+  | "device_id"
+  | "checkpoint_id"
+  | "injection_id"
+  | "memory_id"
+  | "evidence_snapshot_id";
+export const OPAQUE_ID_KINDS_V1 = [
+  "personal_vault_id",
+  "project_id",
+  "workspace_id",
+  "branch_key",
+  "task_lineage_id",
+  "session_id",
+  "turn_id",
+  "decision_event_id",
+  "source_event_id",
+  "ingest_receipt_id",
+  "peer_identity_id",
+  "daemon_id",
+  "operation_id",
+  "native_operation_id",
+  "operation_match_key",
+  "idempotency_key",
+  "terminal_fingerprint",
+  "adapter_delivery_id",
+  "repository_id",
+  "worktree_id",
+  "dirty_tree_fingerprint",
+  "device_id",
+  "checkpoint_id",
+  "injection_id",
+  "memory_id",
+  "evidence_snapshot_id",
+] as const satisfies readonly OpaqueIdKindV1[];
+
+export interface OpaqueIdConformanceTestVectorV1 {
+  readonly keyHex: string;
+  readonly input: {
+    readonly domain: "free-mem/OpaqueIdV1/v1";
+    readonly kind: OpaqueIdKindV1;
+    readonly value: JsonValue;
+  };
+  readonly opaqueId: OpaqueIdV1;
+}
+
+export interface OpaqueIdConformanceProfileV1 {
+  readonly schemaVersion: 1;
+  readonly algorithm: "hmac-sha-256";
+  readonly keyResolution: "keyId_from_personal_vault_keyring";
+  readonly keyEncoding: "lowercase_hex";
+  readonly minimumKeyBytes: 32;
+  readonly inputCanonicalization: "rfc8785-jcs";
+  readonly derivationDomain: "free-mem/OpaqueIdV1/v1";
+  readonly messageFields: readonly ["domain", "kind", "value"];
+  readonly idKinds: readonly OpaqueIdKindV1[];
+  readonly outputEncoding: "lowercase_hex_256";
+  readonly testVector: OpaqueIdConformanceTestVectorV1;
+}
+
 export interface PersonalVaultSubjectScopeV1 {
   readonly kind: "personal_vault";
   readonly personalVaultId: OpaqueIdV1;
@@ -591,6 +671,20 @@ export interface RevisionCandidateEvaluationV1 {
   readonly reasonCodes: readonly RevisionEligibilityReasonCodeV1[];
 }
 
+export type RevisionSelectionCorruptionReasonV1 =
+  | "duplicate_state_revision"
+  | "duplicate_lineage_ordinal"
+  | "ordered_head_cardinality"
+  | "ordered_head_reference_mismatch"
+  | "ordered_head_not_greatest";
+export const REVISION_SELECTION_CORRUPTION_REASONS_V1 = [
+  "duplicate_state_revision",
+  "duplicate_lineage_ordinal",
+  "ordered_head_cardinality",
+  "ordered_head_reference_mismatch",
+  "ordered_head_not_greatest",
+] as const satisfies readonly RevisionSelectionCorruptionReasonV1[];
+
 interface RevisionHeadSelectionBaseV1 {
   readonly orderingKey: "lineage_revision_ordinal";
   readonly orderedHeadStateRevision: Sha256Hex;
@@ -604,6 +698,10 @@ export type RevisionHeadSelectionContractV1 =
     })
   | (RevisionHeadSelectionBaseV1 & {
       readonly fallbackDisposition: "manual";
+    })
+  | (RevisionHeadSelectionBaseV1 & {
+      readonly fallbackDisposition: "quarantine";
+      readonly corruptionReasonCodes: readonly RevisionSelectionCorruptionReasonV1[];
     });
 
 export interface ObservedV2<T extends JsonValue> {
@@ -751,7 +849,10 @@ export interface SourceIdentityV1 {
   readonly deviceId?: OpaqueIdV1;
   readonly capabilityHash?: Sha256Hex;
   readonly captureMethod: ContinuityCaptureMethod;
-  readonly ingestAttestation: ContinuityIngestAttestationV1;
+  readonly ingestAttestation: ContinuityIngestAttestationV1 & {
+    readonly ingestReceiptId: OpaqueIdV1;
+    readonly peerIdentityId: OpaqueIdV1;
+  };
 }
 
 export interface LineageSourceSummaryV1 {
@@ -781,6 +882,7 @@ export interface AgentLocalStateV1 {
   readonly sharingScope: "agent_private";
   readonly sourceIdentityEventId: OpaqueIdV1;
   readonly clientId: CanonicalClientIdV1;
+  readonly sessionId: OpaqueIdV1;
   readonly latestSubstantivePrompt?: ObservedV2<string>;
   readonly lastAssistantConclusion?: ObservedV2<string>;
   readonly nativeTodoState?: ObservedV2<JsonValue>;
@@ -788,6 +890,17 @@ export interface AgentLocalStateV1 {
   readonly hostMetadata?: ObservedV2<JsonValue>;
   readonly sensitivity: Sensitivity;
   readonly egressPolicy: EgressPolicyV1;
+}
+
+export interface AgentLocalLanePolicyV1 {
+  readonly schemaVersion: 1;
+  readonly laneKeyFields: readonly ["clientId", "sessionId"];
+  readonly canonicalStateCardinality: "at_most_one_per_key";
+  readonly capsuleCardinality: "zero_or_one";
+  readonly destinationBinding: "client_and_session";
+  readonly sourceIdentityBinding: "client_and_session";
+  readonly duplicateDisposition: "quarantine";
+  readonly nonMatchingCapsuleDisposition: "reject";
 }
 
 export interface CanonicalWorkStateV2 {
@@ -807,6 +920,7 @@ export interface ContinuationCheckpointV3 {
   readonly checkpointRevision: Sha256Hex;
   readonly kind: ContinuationCheckpointV2["kind"];
   readonly parentCheckpointId?: OpaqueIdV1;
+  readonly parentCheckpointRevision?: Sha256Hex;
   readonly sourceSessionId: OpaqueIdV1;
   readonly checkpointCreatedBySourceEventId: OpaqueIdV1;
   readonly canonicalState: CanonicalWorkStateV2;
@@ -904,6 +1018,7 @@ export interface CanonicalMemoryEntityV1 {
   readonly schemaVersion: 1;
   readonly memoryId: OpaqueIdV1;
   readonly memoryRevision: Sha256Hex;
+  readonly parentMemoryRevision?: Sha256Hex;
   readonly subjectScope: SubjectScopeV1;
   readonly opaqueIdProfile: OpaqueIdProfileV1;
   readonly kind: MemoryKindV1;
@@ -1047,6 +1162,10 @@ export interface StateNeutralTransitionPolicyV1 {
   readonly stateNeutralClassification: "ledger_only";
   readonly canonicalStateEffect: "reuse_revision";
   readonly receiptLedgerEffect: "insert_once";
+  readonly receiptKeyProfile: "adapter_delivery_id_else_canonical_fingerprint_v1";
+  readonly receiptUniquenessScope: "task_lineage_event_store";
+  readonly receiptCollisionDisposition: "quarantine";
+  readonly duplicateReceiptDisposition: "return_existing";
   readonly diagnosticAuditEffect: "record_bounded";
   readonly coverageWatermarkEffect: "advance";
   readonly transactionBoundary: "same_daemon_transaction";
@@ -1508,6 +1627,81 @@ export interface CanonicalStateHashProfileV1 {
   readonly testVector: CanonicalStateHashTestVectorV1;
 }
 
+export interface CheckpointHashTestVectorV1 {
+  readonly canonicalStateVectorRef: "canonicalStateHashProfile.testVector";
+  readonly envelope: JsonValue;
+  readonly contentHash: Sha256Hex;
+  readonly checkpointId: OpaqueIdV1;
+  readonly initialCheckpointRevision: Sha256Hex;
+  readonly parentCheckpointId: OpaqueIdV1;
+  readonly parentCheckpointRevision: Sha256Hex;
+  readonly childCheckpointRevision: Sha256Hex;
+}
+
+export interface CheckpointHashProfileV1 {
+  readonly schemaVersion: 1;
+  readonly canonicalization: "rfc8785-jcs";
+  readonly digest: "sha-256";
+  readonly contentProjectionFields: readonly [
+    "schemaVersion",
+    "kind",
+    "sourceSessionId",
+    "checkpointCreatedBySourceEventId",
+    "canonicalState",
+    "memoryWatermark",
+    "sensitivity",
+    "createdAt",
+    "expiresAt",
+  ];
+  readonly checkpointRevisionDomain: "free-mem/ContinuationCheckpointV3/checkpoint-revision/v1";
+  readonly transitionKinds: readonly ["initial", "parent"];
+  readonly testVector: CheckpointHashTestVectorV1;
+}
+
+export interface CanonicalMemoryHashTestVectorV1 {
+  readonly contentProjection: JsonValue;
+  readonly contentHash: Sha256Hex;
+  readonly revisionMetadata: JsonValue;
+  readonly memoryId: OpaqueIdV1;
+  readonly initialMemoryRevision: Sha256Hex;
+  readonly parentMemoryRevision: Sha256Hex;
+  readonly childMemoryRevision: Sha256Hex;
+}
+
+export interface CanonicalMemoryHashProfileV1 {
+  readonly schemaVersion: 1;
+  readonly canonicalization: "rfc8785-jcs";
+  readonly digest: "sha-256";
+  readonly contentProjectionFields: readonly [
+    "schemaVersion",
+    "subjectScope",
+    "opaqueIdProfile",
+    "kind",
+    "normalizationProfileId",
+    "canonicalContent",
+    "canonicalFactId",
+    "sharingScope",
+    "sensitivity",
+    "egressPolicy",
+    "lifecycle",
+    "truthState",
+    "durability",
+    "validFrom",
+    "validTo",
+    "expiresAt",
+  ];
+  readonly revisionMetadataFields: readonly [
+    "sharingDecisionEventIds",
+    "sourceEventIds",
+    "evidenceSnapshotIds",
+    "createdAt",
+    "updatedAt",
+  ];
+  readonly memoryRevisionDomain: "free-mem/CanonicalMemoryEntityV1/memory-revision/v1";
+  readonly transitionKinds: readonly ["initial", "parent"];
+  readonly testVector: CanonicalMemoryHashTestVectorV1;
+}
+
 export interface SourceAwareContinuityContractV1 {
   readonly contractVersion: 1;
   readonly contractHash: Sha256Hex;
@@ -1522,11 +1716,15 @@ export interface SourceAwareContinuityContractV1 {
   readonly fixtureCorpusHash: Sha256Hex;
   readonly fixtureCaseIds: readonly SourceAwareFixtureCaseIdV1[];
   readonly opaqueIdProfile: OpaqueIdProfileV1;
+  readonly opaqueIdConformanceProfile: OpaqueIdConformanceProfileV1;
   readonly canonicalStateHashProfile: CanonicalStateHashProfileV1;
+  readonly checkpointHashProfile: CheckpointHashProfileV1;
+  readonly canonicalMemoryHashProfile: CanonicalMemoryHashProfileV1;
   readonly revisionHeadSelectionPolicy: RevisionHeadSelectionPolicyV1;
   readonly rawIdentifierEvidencePolicy: RawIdentifierEvidencePolicyV1;
   readonly stateNeutralTransitionPolicy: StateNeutralTransitionPolicyV1;
   readonly sharingDecisionPolicy: SharingDecisionPolicyV1;
+  readonly agentLocalLanePolicy: AgentLocalLanePolicyV1;
   readonly continuityP0Observations: ContinuityP0ObservationContractV1;
   readonly legacyMigrationRules: readonly LegacyMigrationRuleV1[];
   readonly restoreSemanticValidation: RestoreSemanticValidationContractV1;

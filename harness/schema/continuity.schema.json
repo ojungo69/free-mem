@@ -2834,6 +2834,47 @@
         "outputEncoding": { "const": "lowercase_hex_256" }
       }
     },
+    "OpaqueIdKindV1": {
+      "type": "string",
+      "enum": ["personal_vault_id", "project_id", "workspace_id", "branch_key", "task_lineage_id", "session_id", "turn_id", "decision_event_id", "source_event_id", "ingest_receipt_id", "peer_identity_id", "daemon_id", "operation_id", "native_operation_id", "operation_match_key", "idempotency_key", "terminal_fingerprint", "adapter_delivery_id", "repository_id", "worktree_id", "dirty_tree_fingerprint", "device_id", "checkpoint_id", "injection_id", "memory_id", "evidence_snapshot_id"]
+    },
+    "OpaqueIdConformanceTestVectorV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyHex", "input", "opaqueId"],
+      "properties": {
+        "keyHex": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["domain", "kind", "value"],
+          "properties": {
+            "domain": { "const": "free-mem/OpaqueIdV1/v1" },
+            "kind": { "$ref": "#/$defs/OpaqueIdKindV1" },
+            "value": { "$ref": "#/$defs/JsonValue" }
+          }
+        },
+        "opaqueId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "OpaqueIdConformanceProfileV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "algorithm", "keyResolution", "keyEncoding", "minimumKeyBytes", "inputCanonicalization", "derivationDomain", "messageFields", "idKinds", "outputEncoding", "testVector"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "algorithm": { "const": "hmac-sha-256" },
+        "keyResolution": { "const": "keyId_from_personal_vault_keyring" },
+        "keyEncoding": { "const": "lowercase_hex" },
+        "minimumKeyBytes": { "const": 32 },
+        "inputCanonicalization": { "const": "rfc8785-jcs" },
+        "derivationDomain": { "const": "free-mem/OpaqueIdV1/v1" },
+        "messageFields": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "string", "enum": ["domain", "kind", "value"] } },
+        "idKinds": { "type": "array", "minItems": 26, "maxItems": 26, "items": { "$ref": "#/$defs/OpaqueIdKindV1" } },
+        "outputEncoding": { "const": "lowercase_hex_256" },
+        "testVector": { "$ref": "#/$defs/OpaqueIdConformanceTestVectorV1" }
+      }
+    },
     "PersonalVaultSubjectScopeV1": {
       "type": "object",
       "additionalProperties": false,
@@ -3050,6 +3091,10 @@
         }
       }
     },
+    "RevisionSelectionCorruptionReasonV1": {
+      "type": "string",
+      "enum": ["duplicate_state_revision", "duplicate_lineage_ordinal", "ordered_head_cardinality", "ordered_head_reference_mismatch", "ordered_head_not_greatest"]
+    },
     "RevisionHeadSelectionContractV1": {
       "oneOf": [
         {
@@ -3073,6 +3118,18 @@
             "orderedHeadStateRevision": { "$ref": "#/$defs/Sha256Hex" },
             "candidateEvaluations": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/RevisionCandidateEvaluationV1" } },
             "fallbackDisposition": { "const": "manual" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["orderingKey", "orderedHeadStateRevision", "candidateEvaluations", "fallbackDisposition", "corruptionReasonCodes"],
+          "properties": {
+            "orderingKey": { "const": "lineage_revision_ordinal" },
+            "orderedHeadStateRevision": { "$ref": "#/$defs/Sha256Hex" },
+            "candidateEvaluations": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/RevisionCandidateEvaluationV1" } },
+            "fallbackDisposition": { "const": "quarantine" },
+            "corruptionReasonCodes": { "type": "array", "minItems": 1, "maxItems": 5, "items": { "$ref": "#/$defs/RevisionSelectionCorruptionReasonV1" } }
           }
         }
       ]
@@ -3268,7 +3325,17 @@
         "deviceId": { "$ref": "#/$defs/OpaqueIdV1" },
         "capabilityHash": { "$ref": "#/$defs/Sha256Hex" },
         "captureMethod": { "$ref": "#/$defs/ContinuityCaptureMethod" },
-        "ingestAttestation": { "$ref": "#/$defs/ContinuityIngestAttestationV1" }
+        "ingestAttestation": {
+          "allOf": [
+            { "$ref": "#/$defs/ContinuityIngestAttestationV1" },
+            {
+              "properties": {
+                "ingestReceiptId": { "$ref": "#/$defs/OpaqueIdV1" },
+                "peerIdentityId": { "$ref": "#/$defs/OpaqueIdV1" }
+              }
+            }
+          ]
+        }
       }
     },
     "LineageSourceSummaryV1": {
@@ -3288,8 +3355,22 @@
       "properties": {
         "sharingScope": { "const": "task_shared" },
         "sharingDecisionEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
-        "goal": { "$ref": "#/$defs/ObservedV2" },
-        "constraints": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ObservedV2" } },
+        "goal": {
+          "allOf": [
+            { "$ref": "#/$defs/ObservedV2" },
+            { "properties": { "value": { "type": "string", "maxLength": 8192 } } }
+          ]
+        },
+        "constraints": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/ObservedV2" },
+              { "properties": { "value": { "type": "string", "maxLength": 8192 } } }
+            ]
+          }
+        },
         "activeFiles": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ObservedFileV2" } },
         "modifiedFiles": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ObservedFileV2" } },
         "recentCommands": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ObservedCommandV2" } },
@@ -3305,18 +3386,44 @@
     "AgentLocalStateV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sharingScope", "sourceIdentityEventId", "clientId", "sensitivity", "egressPolicy"],
+      "required": ["sharingScope", "sourceIdentityEventId", "clientId", "sessionId", "sensitivity", "egressPolicy"],
       "properties": {
         "sharingScope": { "const": "agent_private" },
         "sourceIdentityEventId": { "$ref": "#/$defs/OpaqueIdV1" },
         "clientId": { "$ref": "#/$defs/CanonicalClientIdV1" },
-        "latestSubstantivePrompt": { "$ref": "#/$defs/ObservedV2" },
-        "lastAssistantConclusion": { "$ref": "#/$defs/ObservedV2" },
+        "sessionId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "latestSubstantivePrompt": {
+          "allOf": [
+            { "$ref": "#/$defs/ObservedV2" },
+            { "properties": { "value": { "type": "string", "maxLength": 8192 } } }
+          ]
+        },
+        "lastAssistantConclusion": {
+          "allOf": [
+            { "$ref": "#/$defs/ObservedV2" },
+            { "properties": { "value": { "type": "string", "maxLength": 8192 } } }
+          ]
+        },
         "nativeTodoState": { "$ref": "#/$defs/ObservedV2" },
         "nativePlanState": { "$ref": "#/$defs/ObservedV2" },
         "hostMetadata": { "$ref": "#/$defs/ObservedV2" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" },
         "egressPolicy": { "$ref": "#/$defs/EgressPolicyV1" }
+      }
+    },
+    "AgentLocalLanePolicyV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "laneKeyFields", "canonicalStateCardinality", "capsuleCardinality", "destinationBinding", "sourceIdentityBinding", "duplicateDisposition", "nonMatchingCapsuleDisposition"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "laneKeyFields": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "string", "enum": ["clientId", "sessionId"] } },
+        "canonicalStateCardinality": { "const": "at_most_one_per_key" },
+        "capsuleCardinality": { "const": "zero_or_one" },
+        "destinationBinding": { "const": "client_and_session" },
+        "sourceIdentityBinding": { "const": "client_and_session" },
+        "duplicateDisposition": { "const": "quarantine" },
+        "nonMatchingCapsuleDisposition": { "const": "reject" }
       }
     },
     "CanonicalWorkStateV2": {
@@ -3344,6 +3451,7 @@
         "checkpointRevision": { "$ref": "#/$defs/Sha256Hex" },
         "kind": { "type": "string", "enum": ["pre_compact", "session_end", "idle", "manual", "crash_recovery"] },
         "parentCheckpointId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "parentCheckpointRevision": { "$ref": "#/$defs/Sha256Hex" },
         "sourceSessionId": { "$ref": "#/$defs/OpaqueIdV1" },
         "checkpointCreatedBySourceEventId": { "$ref": "#/$defs/OpaqueIdV1" },
         "canonicalState": { "$ref": "#/$defs/CanonicalWorkStateV2" },
@@ -3413,6 +3521,7 @@
         "schemaVersion": { "const": 1 },
         "memoryId": { "$ref": "#/$defs/OpaqueIdV1" },
         "memoryRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "parentMemoryRevision": { "$ref": "#/$defs/Sha256Hex" },
         "subjectScope": { "$ref": "#/$defs/SubjectScopeV1" },
         "opaqueIdProfile": { "$ref": "#/$defs/OpaqueIdProfileV1" },
         "kind": { "$ref": "#/$defs/MemoryKindV1" },
@@ -3528,13 +3637,17 @@
     "StateNeutralTransitionPolicyV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "classifications", "stateNeutralClassification", "canonicalStateEffect", "receiptLedgerEffect", "diagnosticAuditEffect", "coverageWatermarkEffect", "transactionBoundary"],
+      "required": ["schemaVersion", "classifications", "stateNeutralClassification", "canonicalStateEffect", "receiptLedgerEffect", "receiptKeyProfile", "receiptUniquenessScope", "receiptCollisionDisposition", "duplicateReceiptDisposition", "diagnosticAuditEffect", "coverageWatermarkEffect", "transactionBoundary"],
       "properties": {
         "schemaVersion": { "const": 1 },
         "classifications": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/StateTransitionClassificationV1" } },
         "stateNeutralClassification": { "const": "ledger_only" },
         "canonicalStateEffect": { "const": "reuse_revision" },
         "receiptLedgerEffect": { "const": "insert_once" },
+        "receiptKeyProfile": { "const": "adapter_delivery_id_else_canonical_fingerprint_v1" },
+        "receiptUniquenessScope": { "const": "task_lineage_event_store" },
+        "receiptCollisionDisposition": { "const": "quarantine" },
+        "duplicateReceiptDisposition": { "const": "return_existing" },
         "diagnosticAuditEffect": { "const": "record_bounded" },
         "coverageWatermarkEffect": { "const": "advance" },
         "transactionBoundary": { "const": "same_daemon_transaction" }
@@ -3979,10 +4092,68 @@
         "testVector": { "$ref": "#/$defs/CanonicalStateHashTestVectorV1" }
       }
     },
+    "CheckpointHashTestVectorV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalStateVectorRef", "envelope", "contentHash", "checkpointId", "initialCheckpointRevision", "parentCheckpointId", "parentCheckpointRevision", "childCheckpointRevision"],
+      "properties": {
+        "canonicalStateVectorRef": { "const": "canonicalStateHashProfile.testVector" },
+        "envelope": { "$ref": "#/$defs/JsonValue" },
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" },
+        "checkpointId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "initialCheckpointRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "parentCheckpointId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "parentCheckpointRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "childCheckpointRevision": { "$ref": "#/$defs/Sha256Hex" }
+      }
+    },
+    "CheckpointHashProfileV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "canonicalization", "digest", "contentProjectionFields", "checkpointRevisionDomain", "transitionKinds", "testVector"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "canonicalization": { "const": "rfc8785-jcs" },
+        "digest": { "const": "sha-256" },
+        "contentProjectionFields": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "type": "string", "enum": ["schemaVersion", "kind", "sourceSessionId", "checkpointCreatedBySourceEventId", "canonicalState", "memoryWatermark", "sensitivity", "createdAt", "expiresAt"] } },
+        "checkpointRevisionDomain": { "const": "free-mem/ContinuationCheckpointV3/checkpoint-revision/v1" },
+        "transitionKinds": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "string", "enum": ["initial", "parent"] } },
+        "testVector": { "$ref": "#/$defs/CheckpointHashTestVectorV1" }
+      }
+    },
+    "CanonicalMemoryHashTestVectorV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentProjection", "contentHash", "revisionMetadata", "memoryId", "initialMemoryRevision", "parentMemoryRevision", "childMemoryRevision"],
+      "properties": {
+        "contentProjection": { "$ref": "#/$defs/JsonValue" },
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" },
+        "revisionMetadata": { "$ref": "#/$defs/JsonValue" },
+        "memoryId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "initialMemoryRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "parentMemoryRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "childMemoryRevision": { "$ref": "#/$defs/Sha256Hex" }
+      }
+    },
+    "CanonicalMemoryHashProfileV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "canonicalization", "digest", "contentProjectionFields", "revisionMetadataFields", "memoryRevisionDomain", "transitionKinds", "testVector"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "canonicalization": { "const": "rfc8785-jcs" },
+        "digest": { "const": "sha-256" },
+        "contentProjectionFields": { "type": "array", "minItems": 16, "maxItems": 16, "items": { "type": "string", "enum": ["schemaVersion", "subjectScope", "opaqueIdProfile", "kind", "normalizationProfileId", "canonicalContent", "canonicalFactId", "sharingScope", "sensitivity", "egressPolicy", "lifecycle", "truthState", "durability", "validFrom", "validTo", "expiresAt"] } },
+        "revisionMetadataFields": { "type": "array", "minItems": 5, "maxItems": 5, "items": { "type": "string", "enum": ["sharingDecisionEventIds", "sourceEventIds", "evidenceSnapshotIds", "createdAt", "updatedAt"] } },
+        "memoryRevisionDomain": { "const": "free-mem/CanonicalMemoryEntityV1/memory-revision/v1" },
+        "transitionKinds": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "string", "enum": ["initial", "parent"] } },
+        "testVector": { "$ref": "#/$defs/CanonicalMemoryHashTestVectorV1" }
+      }
+    },
     "SourceAwareContinuityContractV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contractVersion", "contractHash", "schemaFile", "schemaHash", "artifactSchemas", "sourceVocabularyVersion", "inventoryFile", "inventoryHash", "fixtureCorpusFile", "fixtureCorpusVersion", "fixtureCorpusHash", "fixtureCaseIds", "opaqueIdProfile", "canonicalStateHashProfile", "revisionHeadSelectionPolicy", "rawIdentifierEvidencePolicy", "stateNeutralTransitionPolicy", "sharingDecisionPolicy", "continuityP0Observations", "legacyMigrationRules", "restoreSemanticValidation", "limitPolicies", "continuityDiagnosticCodes", "sourceSharingDispositionCodes"],
+      "required": ["contractVersion", "contractHash", "schemaFile", "schemaHash", "artifactSchemas", "sourceVocabularyVersion", "inventoryFile", "inventoryHash", "fixtureCorpusFile", "fixtureCorpusVersion", "fixtureCorpusHash", "fixtureCaseIds", "opaqueIdProfile", "opaqueIdConformanceProfile", "canonicalStateHashProfile", "checkpointHashProfile", "canonicalMemoryHashProfile", "revisionHeadSelectionPolicy", "rawIdentifierEvidencePolicy", "stateNeutralTransitionPolicy", "sharingDecisionPolicy", "agentLocalLanePolicy", "continuityP0Observations", "legacyMigrationRules", "restoreSemanticValidation", "limitPolicies", "continuityDiagnosticCodes", "sourceSharingDispositionCodes"],
       "properties": {
         "contractVersion": { "const": 1 },
         "contractHash": { "$ref": "#/$defs/Sha256Hex" },
@@ -3997,11 +4168,15 @@
         "fixtureCorpusHash": { "$ref": "#/$defs/Sha256Hex" },
         "fixtureCaseIds": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/SourceAwareFixtureCaseIdV1" } },
         "opaqueIdProfile": { "$ref": "#/$defs/OpaqueIdProfileV1" },
+        "opaqueIdConformanceProfile": { "$ref": "#/$defs/OpaqueIdConformanceProfileV1" },
         "canonicalStateHashProfile": { "$ref": "#/$defs/CanonicalStateHashProfileV1" },
+        "checkpointHashProfile": { "$ref": "#/$defs/CheckpointHashProfileV1" },
+        "canonicalMemoryHashProfile": { "$ref": "#/$defs/CanonicalMemoryHashProfileV1" },
         "revisionHeadSelectionPolicy": { "$ref": "#/$defs/RevisionHeadSelectionPolicyV1" },
         "rawIdentifierEvidencePolicy": { "$ref": "#/$defs/RawIdentifierEvidencePolicyV1" },
         "stateNeutralTransitionPolicy": { "$ref": "#/$defs/StateNeutralTransitionPolicyV1" },
         "sharingDecisionPolicy": { "$ref": "#/$defs/SharingDecisionPolicyV1" },
+        "agentLocalLanePolicy": { "$ref": "#/$defs/AgentLocalLanePolicyV1" },
         "continuityP0Observations": { "$ref": "#/$defs/ContinuityP0ObservationContractV1" },
         "legacyMigrationRules": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/LegacyMigrationRuleV1" } },
         "restoreSemanticValidation": { "$ref": "#/$defs/RestoreSemanticValidationContractV1" },

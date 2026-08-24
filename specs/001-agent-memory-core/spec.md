@@ -130,7 +130,8 @@ NormalizedEvent / Session / SessionTaskBinding / CanonicalWorkStateV1 / PendingO
 ContinuationCheckpointV2 / CheckpointDispositionEvent+Projection / CheckpointDeliveryAttempt /
 WorkspaceReconciliationReport / ResumeThresholdProfileV1 / ResumeSelectionDecisionV1 /
 ResumeCapsuleV1 / DurableMemory revision history / CapabilityEvidence / EmbeddingRequest /
-SyncOperation（Core 1.0では未実装）。
+SyncOperation（Core 1.0では未実装） / CanonicalWorkStateV2 / ContinuationCheckpointV3 /
+ResumeCapsuleV2 / CanonicalMemoryEntityV1 / SharingDecisionV1。
 
 ## Success Criteria *(mandatory)*
 

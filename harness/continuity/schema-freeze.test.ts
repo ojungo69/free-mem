@@ -25,12 +25,14 @@ const NAMED_ENUMS: Record<string, keyof typeof contract> = {
   CheckpointResumeDispositionV1: "CHECKPOINT_RESUME_DISPOSITIONS_V1",
   LineageHeadStateV1: "LINEAGE_HEAD_STATES_V1",
   RevisionEligibilityReasonCodeV1: "REVISION_ELIGIBILITY_REASON_CODES_V1",
+  RevisionSelectionCorruptionReasonV1: "REVISION_SELECTION_CORRUPTION_REASONS_V1",
   DroppedEvidenceReasonV1: "DROPPED_EVIDENCE_REASONS_V1",
   MemoryKindV1: "MEMORY_KINDS_V1",
   MemoryLifecycleV1: "MEMORY_LIFECYCLES_V1",
   MemoryTruthStateV1: "MEMORY_TRUTH_STATES_V1",
   MemoryDurabilityV1: "MEMORY_DURABILITIES_V1",
   RawIdentifierReaderV1: "RAW_IDENTIFIER_READERS_V1",
+  OpaqueIdKindV1: "OPAQUE_ID_KINDS_V1",
   ContinuityP0IssueNumberV1: "CONTINUITY_P0_ISSUE_NUMBERS_V1",
   ContinuityP0DeltaKindV1: "CONTINUITY_P0_DELTA_KINDS_V1",
   ContinuityP0ObservationKindV1: "CONTINUITY_P0_OBSERVATION_KINDS_V1",
@@ -197,6 +199,13 @@ const INLINE_ENUMS = {
     "sourceSessionId",
     "committedAt",
   ],
+  "AgentLocalLanePolicyV1.properties.laneKeyFields.items": ["clientId", "sessionId"],
+  "OpaqueIdConformanceProfileV1.properties.messageFields.items": ["domain", "kind", "value"],
+  "CheckpointHashProfileV1.properties.contentProjectionFields.items": ["schemaVersion", "kind", "sourceSessionId", "checkpointCreatedBySourceEventId", "canonicalState", "memoryWatermark", "sensitivity", "createdAt", "expiresAt"],
+  "CheckpointHashProfileV1.properties.transitionKinds.items": ["initial", "parent"],
+  "CanonicalMemoryHashProfileV1.properties.contentProjectionFields.items": ["schemaVersion", "subjectScope", "opaqueIdProfile", "kind", "normalizationProfileId", "canonicalContent", "canonicalFactId", "sharingScope", "sensitivity", "egressPolicy", "lifecycle", "truthState", "durability", "validFrom", "validTo", "expiresAt"],
+  "CanonicalMemoryHashProfileV1.properties.revisionMetadataFields.items": ["sharingDecisionEventIds", "sourceEventIds", "evidenceSnapshotIds", "createdAt", "updatedAt"],
+  "CanonicalMemoryHashProfileV1.properties.transitionKinds.items": ["initial", "parent"],
 } as const;
 
 /**
@@ -237,6 +246,8 @@ const INLINE_CONSTS = {
   "RevisionHeadSelectionContractV1.oneOf[0].properties.fallbackDisposition": "none",
   "RevisionHeadSelectionContractV1.oneOf[1].properties.orderingKey": "lineage_revision_ordinal",
   "RevisionHeadSelectionContractV1.oneOf[1].properties.fallbackDisposition": "manual",
+  "RevisionHeadSelectionContractV1.oneOf[2].properties.orderingKey": "lineage_revision_ordinal",
+  "RevisionHeadSelectionContractV1.oneOf[2].properties.fallbackDisposition": "quarantine",
   "SemanticResumeNoteV2.properties.schemaVersion": 2,
   "SharedTaskStateV1.properties.sharingScope": "task_shared",
   "AgentLocalStateV1.properties.sharingScope": "agent_private",
@@ -290,10 +301,39 @@ const INLINE_CONSTS = {
   "SourceAwareFixtureMemoryTargetV1.properties.kind": "canonical_memory_entity",
   "SourceAwareFixtureSharingDecisionV1.properties.authorityKind": "user",
   "SourceAwareFixtureSharingDecisionV1.properties.decision": "grant",
+  "AgentLocalLanePolicyV1.properties.schemaVersion": 1,
+  "AgentLocalLanePolicyV1.properties.canonicalStateCardinality": "at_most_one_per_key",
+  "AgentLocalLanePolicyV1.properties.capsuleCardinality": "zero_or_one",
+  "AgentLocalLanePolicyV1.properties.destinationBinding": "client_and_session",
+  "AgentLocalLanePolicyV1.properties.sourceIdentityBinding": "client_and_session",
+  "AgentLocalLanePolicyV1.properties.duplicateDisposition": "quarantine",
+  "AgentLocalLanePolicyV1.properties.nonMatchingCapsuleDisposition": "reject",
+  "OpaqueIdConformanceProfileV1.properties.schemaVersion": 1,
+  "OpaqueIdConformanceProfileV1.properties.algorithm": "hmac-sha-256",
+  "OpaqueIdConformanceProfileV1.properties.keyResolution": "keyId_from_personal_vault_keyring",
+  "OpaqueIdConformanceProfileV1.properties.keyEncoding": "lowercase_hex",
+  "OpaqueIdConformanceProfileV1.properties.minimumKeyBytes": 32,
+  "OpaqueIdConformanceProfileV1.properties.inputCanonicalization": "rfc8785-jcs",
+  "OpaqueIdConformanceProfileV1.properties.derivationDomain": "free-mem/OpaqueIdV1/v1",
+  "OpaqueIdConformanceProfileV1.properties.outputEncoding": "lowercase_hex_256",
+  "OpaqueIdConformanceTestVectorV1.properties.input.properties.domain": "free-mem/OpaqueIdV1/v1",
+  "CheckpointHashProfileV1.properties.schemaVersion": 1,
+  "CheckpointHashProfileV1.properties.canonicalization": "rfc8785-jcs",
+  "CheckpointHashProfileV1.properties.digest": "sha-256",
+  "CheckpointHashProfileV1.properties.checkpointRevisionDomain": "free-mem/ContinuationCheckpointV3/checkpoint-revision/v1",
+  "CheckpointHashTestVectorV1.properties.canonicalStateVectorRef": "canonicalStateHashProfile.testVector",
+  "CanonicalMemoryHashProfileV1.properties.schemaVersion": 1,
+  "CanonicalMemoryHashProfileV1.properties.canonicalization": "rfc8785-jcs",
+  "CanonicalMemoryHashProfileV1.properties.digest": "sha-256",
+  "CanonicalMemoryHashProfileV1.properties.memoryRevisionDomain": "free-mem/CanonicalMemoryEntityV1/memory-revision/v1",
   "StateNeutralTransitionPolicyV1.properties.schemaVersion": 1,
   "StateNeutralTransitionPolicyV1.properties.stateNeutralClassification": "ledger_only",
   "StateNeutralTransitionPolicyV1.properties.canonicalStateEffect": "reuse_revision",
   "StateNeutralTransitionPolicyV1.properties.receiptLedgerEffect": "insert_once",
+  "StateNeutralTransitionPolicyV1.properties.receiptKeyProfile": "adapter_delivery_id_else_canonical_fingerprint_v1",
+  "StateNeutralTransitionPolicyV1.properties.receiptUniquenessScope": "task_lineage_event_store",
+  "StateNeutralTransitionPolicyV1.properties.receiptCollisionDisposition": "quarantine",
+  "StateNeutralTransitionPolicyV1.properties.duplicateReceiptDisposition": "return_existing",
   "StateNeutralTransitionPolicyV1.properties.diagnosticAuditEffect": "record_bounded",
   "StateNeutralTransitionPolicyV1.properties.coverageWatermarkEffect": "advance",
   "StateNeutralTransitionPolicyV1.properties.transactionBoundary": "same_daemon_transaction",
@@ -350,6 +390,7 @@ type SubjectScopeKindConsts =
 type _NamedEnumsMatchContract = [
   Assert<SameSet<contract.CanonicalClientIdV1, (typeof contract.CANONICAL_CLIENT_IDS_V1)[number]>>,
   Assert<SameSet<contract.SharingScopeV1, (typeof contract.SHARING_SCOPES_V1)[number]>>,
+  Assert<SameSet<contract.SharingGrantScopeV1, (typeof contract.SHARING_GRANT_SCOPES_V1)[number]>>,
   Assert<SameSet<contract.EgressPolicyV1, (typeof contract.EGRESS_POLICIES_V1)[number]>>,
   Assert<SameSet<contract.ResumeProfileV1, (typeof contract.RESUME_PROFILES_V1)[number]>>,
   Assert<
@@ -375,6 +416,12 @@ type _NamedEnumsMatchContract = [
     >
   >,
   Assert<
+    SameSet<
+      contract.RevisionSelectionCorruptionReasonV1,
+      (typeof contract.REVISION_SELECTION_CORRUPTION_REASONS_V1)[number]
+    >
+  >,
+  Assert<
     SameSet<contract.DroppedEvidenceReasonV1, (typeof contract.DROPPED_EVIDENCE_REASONS_V1)[number]>
   >,
   Assert<SameSet<contract.MemoryKindV1, (typeof contract.MEMORY_KINDS_V1)[number]>>,
@@ -382,6 +429,7 @@ type _NamedEnumsMatchContract = [
   Assert<SameSet<contract.MemoryTruthStateV1, (typeof contract.MEMORY_TRUTH_STATES_V1)[number]>>,
   Assert<SameSet<contract.MemoryDurabilityV1, (typeof contract.MEMORY_DURABILITIES_V1)[number]>>,
   Assert<SameSet<contract.RawIdentifierReaderV1, (typeof contract.RAW_IDENTIFIER_READERS_V1)[number]>>,
+  Assert<SameSet<contract.OpaqueIdKindV1, (typeof contract.OPAQUE_ID_KINDS_V1)[number]>>,
   Assert<
     SameSet<contract.ContinuityP0IssueNumberV1, (typeof contract.CONTINUITY_P0_ISSUE_NUMBERS_V1)[number]>
   >,
@@ -409,6 +457,24 @@ type _NamedEnumsMatchContract = [
   >,
   Assert<
     SameSet<contract.SourceInventoryAuthorityV1, (typeof contract.SOURCE_INVENTORY_AUTHORITIES_V1)[number]>
+  >,
+  Assert<
+    SameSet<
+      contract.SourceInventoryCoverageModeV1,
+      (typeof contract.SOURCE_INVENTORY_COVERAGE_MODES_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SourceInventorySupportingReasonV1,
+      (typeof contract.SOURCE_INVENTORY_SUPPORTING_REASONS_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.StateTransitionClassificationV1,
+      (typeof contract.STATE_TRANSITION_CLASSIFICATIONS_V1)[number]
+    >
   >,
   Assert<
     SameSet<contract.SourceAwareFixtureCaseIdV1, (typeof contract.SOURCE_AWARE_FIXTURE_CASE_IDS_V1)[number]>
@@ -572,6 +638,23 @@ type _InlineEnumsMatchContract = [
   >,
   Assert<
     SameSet<
+      contract.AgentLocalLanePolicyV1["laneKeyFields"][number],
+      EnumAt<"AgentLocalLanePolicyV1.properties.laneKeyFields.items">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.OpaqueIdConformanceProfileV1["messageFields"][number],
+      EnumAt<"OpaqueIdConformanceProfileV1.properties.messageFields.items">
+    >
+  >,
+  Assert<SameSet<contract.CheckpointHashProfileV1["contentProjectionFields"][number], EnumAt<"CheckpointHashProfileV1.properties.contentProjectionFields.items">>>,
+  Assert<SameSet<contract.CheckpointHashProfileV1["transitionKinds"][number], EnumAt<"CheckpointHashProfileV1.properties.transitionKinds.items">>>,
+  Assert<SameSet<contract.CanonicalMemoryHashProfileV1["contentProjectionFields"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.contentProjectionFields.items">>>,
+  Assert<SameSet<contract.CanonicalMemoryHashProfileV1["revisionMetadataFields"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.revisionMetadataFields.items">>>,
+  Assert<SameSet<contract.CanonicalMemoryHashProfileV1["transitionKinds"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.transitionKinds.items">>>,
+  Assert<
+    SameSet<
       contract.SourceAwareArtifactSchemaRefV1["name"],
       EnumAt<"SourceAwareArtifactSchemaRefV1.properties.name">
     >
@@ -634,6 +717,7 @@ type _InlineConstsMatchContract = [
       contract.RevisionHeadSelectionContractV1["fallbackDisposition"],
       | ConstAt<"RevisionHeadSelectionContractV1.oneOf[0].properties.fallbackDisposition">
       | ConstAt<"RevisionHeadSelectionContractV1.oneOf[1].properties.fallbackDisposition">
+      | ConstAt<"RevisionHeadSelectionContractV1.oneOf[2].properties.fallbackDisposition">
     >
   >,
   Assert<
@@ -700,10 +784,39 @@ type _InlineConstsMatchContract = [
   Assert<SameLiteral<contract.SourceAwareFixtureMemoryTargetV1["kind"], ConstAt<"SourceAwareFixtureMemoryTargetV1.properties.kind">>>,
   Assert<SameLiteral<contract.SourceAwareFixtureSharingDecisionV1["authorityKind"], ConstAt<"SourceAwareFixtureSharingDecisionV1.properties.authorityKind">>>,
   Assert<SameLiteral<contract.SourceAwareFixtureSharingDecisionV1["decision"], ConstAt<"SourceAwareFixtureSharingDecisionV1.properties.decision">>>,
+  Assert<SameLiteral<contract.AgentLocalLanePolicyV1["schemaVersion"], ConstAt<"AgentLocalLanePolicyV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.AgentLocalLanePolicyV1["canonicalStateCardinality"], ConstAt<"AgentLocalLanePolicyV1.properties.canonicalStateCardinality">>>,
+  Assert<SameLiteral<contract.AgentLocalLanePolicyV1["capsuleCardinality"], ConstAt<"AgentLocalLanePolicyV1.properties.capsuleCardinality">>>,
+  Assert<SameLiteral<contract.AgentLocalLanePolicyV1["destinationBinding"], ConstAt<"AgentLocalLanePolicyV1.properties.destinationBinding">>>,
+  Assert<SameLiteral<contract.AgentLocalLanePolicyV1["sourceIdentityBinding"], ConstAt<"AgentLocalLanePolicyV1.properties.sourceIdentityBinding">>>,
+  Assert<SameLiteral<contract.AgentLocalLanePolicyV1["duplicateDisposition"], ConstAt<"AgentLocalLanePolicyV1.properties.duplicateDisposition">>>,
+  Assert<SameLiteral<contract.AgentLocalLanePolicyV1["nonMatchingCapsuleDisposition"], ConstAt<"AgentLocalLanePolicyV1.properties.nonMatchingCapsuleDisposition">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["schemaVersion"], ConstAt<"OpaqueIdConformanceProfileV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["algorithm"], ConstAt<"OpaqueIdConformanceProfileV1.properties.algorithm">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["keyResolution"], ConstAt<"OpaqueIdConformanceProfileV1.properties.keyResolution">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["keyEncoding"], ConstAt<"OpaqueIdConformanceProfileV1.properties.keyEncoding">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["minimumKeyBytes"], ConstAt<"OpaqueIdConformanceProfileV1.properties.minimumKeyBytes">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["inputCanonicalization"], ConstAt<"OpaqueIdConformanceProfileV1.properties.inputCanonicalization">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["derivationDomain"], ConstAt<"OpaqueIdConformanceProfileV1.properties.derivationDomain">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["outputEncoding"], ConstAt<"OpaqueIdConformanceProfileV1.properties.outputEncoding">>>,
+  Assert<SameLiteral<contract.OpaqueIdConformanceTestVectorV1["input"]["domain"], ConstAt<"OpaqueIdConformanceTestVectorV1.properties.input.properties.domain">>>,
+  Assert<SameLiteral<contract.CheckpointHashProfileV1["schemaVersion"], ConstAt<"CheckpointHashProfileV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.CheckpointHashProfileV1["canonicalization"], ConstAt<"CheckpointHashProfileV1.properties.canonicalization">>>,
+  Assert<SameLiteral<contract.CheckpointHashProfileV1["digest"], ConstAt<"CheckpointHashProfileV1.properties.digest">>>,
+  Assert<SameLiteral<contract.CheckpointHashProfileV1["checkpointRevisionDomain"], ConstAt<"CheckpointHashProfileV1.properties.checkpointRevisionDomain">>>,
+  Assert<SameLiteral<contract.CheckpointHashTestVectorV1["canonicalStateVectorRef"], ConstAt<"CheckpointHashTestVectorV1.properties.canonicalStateVectorRef">>>,
+  Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["schemaVersion"], ConstAt<"CanonicalMemoryHashProfileV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["canonicalization"], ConstAt<"CanonicalMemoryHashProfileV1.properties.canonicalization">>>,
+  Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["digest"], ConstAt<"CanonicalMemoryHashProfileV1.properties.digest">>>,
+  Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["memoryRevisionDomain"], ConstAt<"CanonicalMemoryHashProfileV1.properties.memoryRevisionDomain">>>,
   Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["schemaVersion"], ConstAt<"StateNeutralTransitionPolicyV1.properties.schemaVersion">>>,
   Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["stateNeutralClassification"], ConstAt<"StateNeutralTransitionPolicyV1.properties.stateNeutralClassification">>>,
   Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["canonicalStateEffect"], ConstAt<"StateNeutralTransitionPolicyV1.properties.canonicalStateEffect">>>,
   Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["receiptLedgerEffect"], ConstAt<"StateNeutralTransitionPolicyV1.properties.receiptLedgerEffect">>>,
+  Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["receiptKeyProfile"], ConstAt<"StateNeutralTransitionPolicyV1.properties.receiptKeyProfile">>>,
+  Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["receiptUniquenessScope"], ConstAt<"StateNeutralTransitionPolicyV1.properties.receiptUniquenessScope">>>,
+  Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["receiptCollisionDisposition"], ConstAt<"StateNeutralTransitionPolicyV1.properties.receiptCollisionDisposition">>>,
+  Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["duplicateReceiptDisposition"], ConstAt<"StateNeutralTransitionPolicyV1.properties.duplicateReceiptDisposition">>>,
   Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["diagnosticAuditEffect"], ConstAt<"StateNeutralTransitionPolicyV1.properties.diagnosticAuditEffect">>>,
   Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["coverageWatermarkEffect"], ConstAt<"StateNeutralTransitionPolicyV1.properties.coverageWatermarkEffect">>>,
   Assert<SameLiteral<contract.StateNeutralTransitionPolicyV1["transactionBoundary"], ConstAt<"StateNeutralTransitionPolicyV1.properties.transactionBoundary">>>,
@@ -775,6 +888,8 @@ const FROZEN_DEFS = [
   "CapabilityScenarioManifestV1",
   "CapabilityTestDisposition",
   "CheckpointAnchorV1",
+  "CheckpointHashProfileV1",
+  "CheckpointHashTestVectorV1",
   "CheckpointDeliveryAttempt",
   "CheckpointDispositionEvent",
   "CheckpointDispositionKind",
@@ -824,6 +939,9 @@ const FROZEN_DEFS = [
   "ObservedTest",
   "ObservedTestV2",
   "ObservedV2",
+  "OpaqueIdConformanceProfileV1",
+  "OpaqueIdConformanceTestVectorV1",
+  "OpaqueIdKindV1",
   "OperationCorrelationV1",
   "OperationCorrelationV2",
   "OpaqueIdV1",
@@ -841,6 +959,7 @@ const FROZEN_DEFS = [
   "RevisionCandidateEvaluationV1",
   "RevisionEligibilityReasonCodeV1",
   "RevisionHeadSelectionContractV1",
+  "RevisionSelectionCorruptionReasonV1",
   "ResumeCapsuleV1",
   "ResumeDecisionAction",
   "ResumeDeliveryBoundary",
@@ -871,9 +990,12 @@ const FROZEN_DEFS = [
   "WorkspaceCompatibilityV1",
   "WorkspaceSubjectScopeV1",
   "AgentLocalStateV1",
+  "AgentLocalLanePolicyV1",
   "BehaviorDeltaEntryV1",
   "CanonicalMemoryEntityV1",
   "CanonicalMemoryEntityTargetV1",
+  "CanonicalMemoryHashProfileV1",
+  "CanonicalMemoryHashTestVectorV1",
   "CanonicalStateHashProfileV1",
   "CanonicalStateHashTestVectorV1",
   "CanonicalWorkStateV2",

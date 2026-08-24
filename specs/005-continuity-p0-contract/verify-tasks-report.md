@@ -4,7 +4,8 @@
 - **Scope**: `all`
 - **Git base**: `origin/main`
 - **Completed tasks inspected**: 35 (`T001`–`T035`)
-- **Changed-file scope**: 21 branch files plus the existing uncommitted `tasks.md` edit; no untracked files
+- **Changed-file scope**: pre-report snapshot of 21 branch files plus the existing uncommitted `tasks.md` edit; this report
+  did not exist yet and was therefore not counted as an untracked file
 - **Repository**: not shallow
 
 > ⚠️ **FRESH SESSION ADVISORY**: For maximum reliability, run `/speckit.verify-tasks`
@@ -125,12 +126,21 @@ These tasks name external operations, historical red runs, or commit actions but
 The scorecard above is the immutable fresh-session snapshot taken before correctness/security review. After resolving the
 review findings, the controller reran the affected and full gates:
 
-- focused source-aware contract: 16 passed, 0 failed;
+- focused source-aware contract: 19 passed, 0 failed;
 - schema freeze: 19 passed, 0 failed;
-- full continuity suite: 349 passed, 0 failed;
+- full continuity suite: 352 passed, 0 failed;
 - harness TypeScript: exit 0, no diagnostics;
 - generated contract hashes: empty diff;
 - regenerated old-shape baseline: 20 cases / 29 steps, empty diff;
 - mutation gate: `実行 218 / 期待 218、生存 0`; restored baseline `pass 220 / fail 0`;
-- review-fix worktree scope: 13 modified contract/spec/test paths plus this untracked report, with no runtime, vendor,
+- current external-review fix scope: 13 modified tracked paths including this report, with no untracked, runtime, vendor,
   workflow, V1 reference reducer, old-shape corpus, mutation script, or hash-generator change.
+
+### T005 durable red reproduction
+
+To make the historical red step durable, the controller created a detached disposable worktree at `f2d1bb0`, temporarily
+moved only `harness/schema/source-aware-continuity-contract.v1.json` aside there, and ran the focused test with
+`--test-name-pattern='source-aware S0 machine artifacts exist before contract validation'`. It exited 1 with exactly one
+failed test and the assertion `source-aware contract manifest is missing` (`pass 0 / fail 1`). The artifact was restored and
+the disposable worktree removed. This proves T005's expected failure is the missing contract artifact, not parser/setup
+failure; the original `VERIFIED` row now has durable supporting evidence.

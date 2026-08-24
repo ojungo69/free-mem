@@ -67,10 +67,21 @@ The source-aware static corpus uses its own in-memory negative mutations and is 
 
 ```bash
 git diff --name-only origin/main...HEAD
-git diff --name-only origin/main...HEAD -- vendor/codemem .github/workflows
+{
+  git diff --name-only
+  git diff --cached --name-only
+  git ls-files --others --exclude-standard
+} | sort -u
+! {
+  git diff --name-only origin/main...HEAD
+  git diff --name-only
+  git diff --cached --name-only
+  git ls-files --others --exclude-standard
+} | sort -u | rg '^(vendor/codemem/|\.github/workflows/|harness/continuity/reference-model\.ts$|harness/fixtures/continuity/old-shape-parity\.json$|harness/continuity/mutate\.sh$|harness/contract-hashes\.mjs$)'
 ```
 
-Expected: the second command prints nothing. S0 contains docs, schema/manifest/corpus, tests, and generated hashes only.
+Expected: the final command prints nothing across committed, unstaged, staged, and untracked scope. S0 contains docs,
+schema/manifest/corpus, tests, and generated hashes only.
 
 ## 8. Spec Kit completion check
 

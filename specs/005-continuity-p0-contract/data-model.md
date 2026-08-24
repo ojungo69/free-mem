@@ -39,6 +39,12 @@ without persistence. Migration scratch remains memory-only for one transaction; 
 local quarantine artifact until explicit user repair or discard. Raw values never enter successor state, checkpoint, capsule,
 diagnostic, export, or egress.
 
+`OpaqueIdConformanceProfileV1` freezes the derivation: resolve `keyId` from the personal-vault keyring (minimum 32-byte
+key), then compute `lowerhex(HMAC-SHA-256(key, UTF8(JCS({domain, kind, value}))))`. `domain` is exactly
+`free-mem/OpaqueIdV1/v1`; `kind` comes from the closed ID-kind vocabulary; `value` is I-JSON. The manifest contains a public
+conformance key/vector only for TS/Rust parity, never a production key. New source-identity receipt/peer IDs use this opaque
+form too.
+
 ## Source identity and references
 
 ### `SourceIdentityV1`
@@ -109,7 +115,9 @@ Ordering uses `lineageRevisionOrdinal`; selection eligibility remains a separate
 
 `StateNeutralTransitionPolicyV1` freezes the #46 authority split. A semantic no-op is `ledger_only`: it reuses the canonical
 revision, inserts the receipt exactly once, records bounded diagnostic/audit coverage, advances the separate event-store
-watermark, and commits those side effects in the same daemon transaction. `history` and `updatedAt` remain V1 inputs for the
+watermark, and commits those side effects in the same daemon transaction. Receipt identity uses adapter delivery ID first
+and canonical fingerprint fallback in separate `d:`/`f:` keyspaces, unique per task-lineage event store. Exact retries return
+the existing receipt; key/evidence collisions quarantine. `history` and `updatedAt` remain V1 inputs for the
 before/after observation only; they are not invented as successor work-state fields.
 
 `CanonicalStateHashProfileV1` removes the envelope from the content preimage. `contentHash` is SHA-256 over RFC 8785 JCS
@@ -126,7 +134,8 @@ orderingKey = "lineage_revision_ordinal"
 orderedHeadStateRevision: Sha256Hex
 candidateEvaluations: RevisionCandidateEvaluationV1[]
 automaticResumeHeadStateRevision?: Sha256Hex
-fallbackDisposition: "none" | "manual"
+fallbackDisposition: "none" | "manual" | "quarantine"
+corruptionReasonCodes?: RevisionSelectionCorruptionReasonV1[]
 ```
 
 Each candidate evaluation contains `stateRevision`, `lineageRevisionOrdinal`, `isOrderedHead`,
@@ -136,7 +145,9 @@ Each candidate evaluation contains `stateRevision`, `lineageRevisionOrdinal`, `i
 
 Ordinals are unique and exactly one candidate is marked as the greatest daemon-owned ordered head. Automatic resume is allowed only when that same head is compatible,
 open, single, and otherwise eligible. An ineligible ordered head produces `fallbackDisposition="manual"`; it never silently
-selects an older revision. Equal ordinals or multiple ordered heads are contract corruption and quarantine the selection.
+selects an older revision. Duplicate state revisions/ordinals, zero or multiple ordered heads, a mismatched head reference,
+or a non-greatest marked head produce `fallbackDisposition="quarantine"` plus exact corruption reason codes. Corruption is
+never represented as ordinary manual fallback.
 
 ## Work-state projections
 
@@ -152,11 +163,13 @@ caller-owned ordering material. `sourceEventIds` are sorted unique arrays.
 
 ### `AgentLocalStateV1`
 
-Required fields: `sharingScope: "agent_private"`, `sourceIdentityEventId`, `clientId`, `sensitivity`, `egressPolicy`.
+Required fields: `sharingScope: "agent_private"`, `sourceIdentityEventId`, `clientId`, `sessionId`, `sensitivity`, `egressPolicy`.
 Optional fields: `latestSubstantivePrompt`, `lastAssistantConclusion`, `nativeTodoState`, `nativePlanState`,
 `hostMetadata`.
 
-Each lane is bound to one authenticated source identity event. Another client never receives the lane automatically.
+Each lane is keyed by `(clientId, sessionId)` and bound to one authenticated source identity event resolving to the same
+pair. Canonical state permits at most one lane per key; duplicates quarantine. A capsule contains zero or one lane, and its
+client/session must both equal the destination or the capsule is rejected.
 
 ### `CanonicalWorkStateV2`
 
@@ -190,7 +203,14 @@ opaque operation/status/fingerprint/delivery fields needed for that reason.
 
 Required: opaque `id`, `schemaVersion: 3`, `checkpointRevision`, `kind`, opaque `sourceSessionId`,
 `checkpointCreatedBySourceEventId`, `canonicalState: CanonicalWorkStateV2`, decimal `memoryWatermark`, `contentHash`,
-`sensitivity`, `createdAt`. Optional: opaque `parentCheckpointId`, `expiresAt`.
+`sensitivity`, `createdAt`. Optional: opaque `parentCheckpointId`, matching `parentCheckpointRevision`, `expiresAt`.
+
+`CheckpointHashProfileV1` computes `contentHash` as SHA-256 of RFC 8785 JCS over exactly `schemaVersion`, `kind`,
+`sourceSessionId`, `checkpointCreatedBySourceEventId`, `canonicalState`, `memoryWatermark`, `sensitivity`, `createdAt`, and
+optional `expiresAt`. The ID, parent link, and both hashes are excluded. `checkpointRevision` hashes
+`{domain:"free-mem/ContinuationCheckpointV3/checkpoint-revision/v1", checkpointId:id, transition, contentHash}`. Initial
+creation uses `transition:{kind:"initial"}`. A child requires both `parentCheckpointId` and `parentCheckpointRevision` and
+uses `transition:{kind:"parent",parentCheckpointId,parentCheckpointRevision}`. The manifest pins both vectors.
 
 ### `ResumeCapsuleV2`
 
@@ -204,7 +224,8 @@ The capsule contains a bounded delivery projection, not the full state:
 - at most the destination client's own eligible `destinationAgentLocalState`;
 - opaque selected memory IDs and bounded warnings.
 
-Cross-agent capsules never contain the source client's Agent-local lane.
+Cross-agent capsules never contain the source client's Agent-local lane. Matching client ID with an old/different session is
+also rejected; the source identity event, lane key, and destination must agree on both values.
 
 ## Canonical memory
 
@@ -222,6 +243,14 @@ An exact match unions evidence into the same entity and advances its revision. S
 Any entity whose sharing scope is wider than `agent_private` requires at least one authenticated
 `sharingDecisionEventId`; an empty array is invalid rather than implicit consent. A `private` entity additionally requires
 the destination `privateEligible` gate at delivery time.
+
+For the identity preimage, `schema` is the literal `CanonicalMemoryEntityV1`. `CanonicalMemoryHashProfileV1.contentHash`
+hashes the exact fact/policy/lifecycle projection and excludes `memoryId`, revision fields, evidence refs, and audit times.
+`memoryRevision` hashes `{domain:"free-mem/CanonicalMemoryEntityV1/memory-revision/v1", memoryId, transition,
+contentHash, revision}` where `revision` is the sorted decision/source/evidence refs plus `createdAt`/`updatedAt`. Initial
+creation uses `{kind:"initial"}`; later revisions require `parentMemoryRevision` and use
+`{kind:"parent",parentMemoryRevision}`. Adding evidence therefore advances `memoryRevision` without changing fact
+identity or `contentHash`. The manifest pins both transitions.
 
 ## Machine inventory and F0–F7 corpus
 

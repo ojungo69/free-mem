@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { canonicalizeJson, readIJsonFile } from "../schema/jcs.ts";
-import { validateContractValue, type JsonSchemaDocument } from "../schema/validate.ts";
+import { validateAgainstSchema, validateContractValue, type JsonSchemaDocument } from "../schema/validate.ts";
 import * as contract from "../schema/continuity.ts";
 
 const ROOT_URL = new URL("../schema/continuity.schema.json", import.meta.url);
@@ -59,6 +59,34 @@ test("source-aware common vocabulary is closed in TypeScript and JSON Schema", (
   assert.equal(Reflect.get(contract, "SOURCE_AWARE_SHA256_PATTERN"), "^[0-9a-f]{64}$");
   assert.equal(defs.Sha256Hex?.pattern, "^[0-9a-f]{64}$");
   assert.equal(defs.OpaqueIdV1?.pattern, "^[0-9a-f]{64}$");
+});
+
+test("source identity attestation IDs use the opaque profile", () => {
+  const root = loadRequiredJson<JsonSchemaDocument>(ROOT_URL, "continuity schema");
+  const id = "a".repeat(64);
+  const value = {
+    clientId: "codex-cli",
+    clientVersion: "1",
+    adapterId: "codex-hook",
+    adapterVersion: "1",
+    sessionId: id,
+    captureMethod: "hook",
+    ingestAttestation: {
+      ingestReceiptId: id,
+      peerIdentityId: id,
+      channel: "rpc",
+      attestedAt: "2026-08-24T00:00:00Z",
+    },
+  };
+  assert.deepEqual(validateContractValue("SourceIdentityV1", value, root, contract.CONTINUITY_LIMITS), []);
+  assert.ok(
+    validateContractValue(
+      "SourceIdentityV1",
+      { ...value, ingestAttestation: { ...value.ingestAttestation, peerIdentityId: "raw-peer" } },
+      root,
+      contract.CONTINUITY_LIMITS,
+    ).length > 0,
+  );
 });
 
 const US1_FIELDS = {
@@ -214,26 +242,30 @@ test("US1 successor primitives expose exact closed shapes", () => {
   assert.equal((defs.SemanticResumeNoteV2.properties as Record<string, { const?: unknown }>).schemaVersion?.const, 2);
   assert.equal((defs.DroppedEvidenceReasonWindowV1.properties as Record<string, { maxItems?: number }>).entries?.maxItems, 256);
   assert.equal((defs.SubjectScopeV1.oneOf as unknown[] | undefined)?.length, 7);
-  assert.equal((defs.RevisionHeadSelectionContractV1.oneOf as unknown[] | undefined)?.length, 2);
+  assert.equal((defs.RevisionHeadSelectionContractV1.oneOf as unknown[] | undefined)?.length, 3);
 });
 
 function revisionHeadSemanticIssues(value: contract.RevisionHeadSelectionContractV1): string[] {
   const issues: string[] = [];
+  const corruptionReasons: contract.RevisionSelectionCorruptionReasonV1[] = [];
   const revisions = value.candidateEvaluations.map(({ stateRevision }) => stateRevision);
   const ordinals = value.candidateEvaluations.map(({ lineageRevisionOrdinal }) => lineageRevisionOrdinal);
-  if (new Set(revisions).size !== revisions.length) issues.push("candidate revisions are duplicated");
-  if (new Set(ordinals).size !== ordinals.length) issues.push("candidate ordinals are duplicated");
+  if (new Set(revisions).size !== revisions.length) corruptionReasons.push("duplicate_state_revision");
+  if (new Set(ordinals).size !== ordinals.length) corruptionReasons.push("duplicate_lineage_ordinal");
   const ordered = value.candidateEvaluations.filter(({ isOrderedHead }) => isOrderedHead);
-  if (ordered.length !== 1) issues.push("ordered head cardinality is not one");
+  if (ordered.length !== 1) corruptionReasons.push("ordered_head_cardinality");
   const head = ordered[0];
-  if (head?.stateRevision !== value.orderedHeadStateRevision) issues.push("ordered head reference does not match candidate");
+  if (ordered.length === 1 && head?.stateRevision !== value.orderedHeadStateRevision) {
+    corruptionReasons.push("ordered_head_reference_mismatch");
+  }
   if (
+    ordered.length === 1 &&
     head &&
     value.candidateEvaluations.some(
       ({ lineageRevisionOrdinal }) => BigInt(lineageRevisionOrdinal) > BigInt(head.lineageRevisionOrdinal),
     )
   ) {
-    issues.push("ordered head is not the greatest daemon ordinal");
+    corruptionReasons.push("ordered_head_not_greatest");
   }
   for (const candidate of value.candidateEvaluations) {
     const expectedReasons: contract.RevisionEligibilityReasonCodeV1[] = [];
@@ -252,7 +284,17 @@ function revisionHeadSemanticIssues(value: contract.RevisionHeadSelectionContrac
       issues.push(`${candidate.stateRevision}: eligibility reasons do not match frozen gates`);
     }
   }
-  if ("automaticResumeHeadStateRevision" in value) {
+  if (corruptionReasons.length > 0) {
+    if (value.fallbackDisposition !== "quarantine") {
+      issues.push("selection corruption did not quarantine");
+    } else if (value.corruptionReasonCodes.join() !== corruptionReasons.join()) {
+      issues.push("selection corruption reasons are not exact");
+    }
+    return issues;
+  }
+  if (value.fallbackDisposition === "quarantine") {
+    issues.push("valid selection was quarantined");
+  } else if ("automaticResumeHeadStateRevision" in value) {
     if (value.automaticResumeHeadStateRevision !== value.orderedHeadStateRevision) {
       issues.push("automatic resume target is not the ordered head");
     }
@@ -323,6 +365,30 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
   const duplicateOrdinal = structuredClone(base) as unknown as contract.RevisionHeadSelectionContractV1;
   (duplicateOrdinal.candidateEvaluations[1] as unknown as { lineageRevisionOrdinal: string }).lineageRevisionOrdinal = "2";
   assert.ok(revisionHeadSemanticIssues(duplicateOrdinal).length > 0);
+  const quarantinedDuplicate = {
+    ...duplicateOrdinal,
+    fallbackDisposition: "quarantine",
+    corruptionReasonCodes: ["duplicate_lineage_ordinal"],
+  } as contract.RevisionHeadSelectionContractV1;
+  assert.deepEqual(
+    validateContractValue("RevisionHeadSelectionContractV1", quarantinedDuplicate, root, contract.CONTINUITY_LIMITS),
+    [],
+  );
+  assert.deepEqual(revisionHeadSemanticIssues(quarantinedDuplicate), []);
+
+  const multipleHeads = structuredClone(base) as unknown as contract.RevisionHeadSelectionContractV1;
+  (multipleHeads.candidateEvaluations[1] as unknown as { isOrderedHead: boolean }).isOrderedHead = true;
+  const quarantinedMultiple = {
+    ...multipleHeads,
+    fallbackDisposition: "quarantine",
+    corruptionReasonCodes: ["ordered_head_cardinality"],
+  } as contract.RevisionHeadSelectionContractV1;
+  assert.deepEqual(revisionHeadSemanticIssues(quarantinedMultiple), []);
+  const reversedMultiple = {
+    ...quarantinedMultiple,
+    candidateEvaluations: [...quarantinedMultiple.candidateEvaluations].reverse(),
+  };
+  assert.deepEqual(revisionHeadSemanticIssues(reversedMultiple), []);
 
   const trustedFlag = structuredClone(base) as unknown as contract.RevisionHeadSelectionContractV1;
   const incompatibleHead = trustedFlag.candidateEvaluations[0] as unknown as {
@@ -411,6 +477,7 @@ const US4_FIELDS = {
     "nativePlanState",
     "nativeTodoState",
     "sensitivity",
+    "sessionId",
     "sharingScope",
     "sourceIdentityEventId",
   ],
@@ -435,6 +502,7 @@ const US4_FIELDS = {
     "kind",
     "memoryWatermark",
     "parentCheckpointId",
+    "parentCheckpointRevision",
     "schemaVersion",
     "sensitivity",
     "sourceSessionId",
@@ -477,6 +545,7 @@ const US4_FIELDS = {
     "lifecycle",
     "memoryId",
     "memoryRevision",
+    "parentMemoryRevision",
     "normalizationProfileId",
     "opaqueIdProfile",
     "schemaVersion",
@@ -525,6 +594,33 @@ test("US4 successor projection and memory schemas expose exact closed shapes", (
   ] as const) {
     const properties = defs[name]?.properties as Record<string, { const?: unknown }> | undefined;
     assert.equal(properties?.schemaVersion?.const, version, name);
+  }
+});
+
+test("successor observed text fields reject non-string and overlong values", () => {
+  const root = loadRequiredJson<JsonSchemaDocument>(ROOT_URL, "continuity schema");
+  const defs = (root.$defs ?? {}) as Record<string, { properties?: Record<string, unknown> }>;
+  const observed = {
+    value: "ok",
+    sourceEventIds: ["a".repeat(64)],
+    observedAt: "2026-08-24T00:00:00Z",
+    evidenceKind: "native",
+    confidence: 1,
+    freshness: "current",
+    truncated: false,
+    sensitivity: "normal",
+  };
+  const schemas = [
+    defs.SharedTaskStateV1?.properties?.goal,
+    (defs.SharedTaskStateV1?.properties?.constraints as { items?: unknown } | undefined)?.items,
+    defs.AgentLocalStateV1?.properties?.latestSubstantivePrompt,
+    defs.AgentLocalStateV1?.properties?.lastAssistantConclusion,
+  ];
+  for (const schema of schemas) {
+    assert.ok(schema);
+    assert.deepEqual(validateAgainstSchema(observed, schema, root), []);
+    assert.ok(validateAgainstSchema({ ...observed, value: 1 }, schema, root).length > 0);
+    assert.ok(validateAgainstSchema({ ...observed, value: "x".repeat(8193) }, schema, root).length > 0);
   }
 });
 
@@ -580,7 +676,7 @@ test("US4 raw identifier policy forbids persistence, diagnostics, export, and eg
 const CASE_IDS = ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"] as const;
 const P0_ISSUES = [46, 49, 53, 61, 62, 56, 57, 32, 58] as const;
 const EXPECTED_P0_OBSERVATION_HASHES: Readonly<Record<number, string>> = {
-  46: "3c62b1398bd85fb39fa481d57cd2edbd94d10bc1a36f607c8b43049519983a94",
+  46: "b342269952b5f3e8023f8498ff2028c76cbda4fb82b2bc5826036fef39c53968",
   49: "fd12a79a19603b8119b6c0cbd450b9d475f68e79257306d95abe973274d8b947",
   53: "5b1bd6726ec40ac5ebf0c0984c437ac66de01ec8761fcbe261739a2a97fe534b",
   61: "2e3cc879ae69ba383b61ae4aca5eb1b27bf0ed15712b30c45f54352a107d9746",
@@ -803,6 +899,10 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
       stateNeutralClassification: "ledger_only",
       canonicalStateEffect: "reuse_revision",
       receiptLedgerEffect: "insert_once",
+      receiptKeyProfile: "adapter_delivery_id_else_canonical_fingerprint_v1",
+      receiptUniquenessScope: "task_lineage_event_store",
+      receiptCollisionDisposition: "quarantine",
+      duplicateReceiptDisposition: "return_existing",
       diagnosticAuditEffect: "record_bounded",
       coverageWatermarkEffect: "advance",
       transactionBoundary: "same_daemon_transaction",
@@ -822,6 +922,21 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
     })
   ) {
     issues.push("sharing decision authority changed");
+  }
+  if (
+    JSON.stringify(value.agentLocalLanePolicy) !==
+    JSON.stringify({
+      schemaVersion: 1,
+      laneKeyFields: ["clientId", "sessionId"],
+      canonicalStateCardinality: "at_most_one_per_key",
+      capsuleCardinality: "zero_or_one",
+      destinationBinding: "client_and_session",
+      sourceIdentityBinding: "client_and_session",
+      duplicateDisposition: "quarantine",
+      nonMatchingCapsuleDisposition: "reject",
+    })
+  ) {
+    issues.push("Agent-local lane policy changed");
   }
   const raw = value.rawIdentifierEvidencePolicy;
   if (
@@ -862,6 +977,112 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
     )
     .digest("hex");
   if (stateRevision !== vector.stateRevision) issues.push("canonical state revision vector changed");
+  const checkpointProfile = value.checkpointHashProfile;
+  if (
+    checkpointProfile.contentProjectionFields.join() !==
+    "schemaVersion,kind,sourceSessionId,checkpointCreatedBySourceEventId,canonicalState,memoryWatermark,sensitivity,createdAt,expiresAt"
+  ) {
+    issues.push("checkpoint content projection changed");
+  }
+  const checkpointVector = checkpointProfile.testVector;
+  const canonicalState = {
+    ...(vector.contentProjection as Record<string, contract.JsonValue>),
+    revision: {
+      ...(vector.revisionMetadata as Record<string, contract.JsonValue>),
+      contentHash: vector.contentHash,
+      stateRevision: vector.stateRevision,
+    },
+  };
+  const checkpointContentProjection = {
+    ...(checkpointVector.envelope as Record<string, contract.JsonValue>),
+    canonicalState,
+  };
+  const checkpointContentHash = createHash("sha256")
+    .update(canonicalizeJson(checkpointContentProjection), "utf8")
+    .digest("hex");
+  if (checkpointContentHash !== checkpointVector.contentHash) issues.push("checkpoint content hash vector changed");
+  const checkpointRevision = (transition: contract.JsonValue) =>
+    createHash("sha256")
+      .update(
+        canonicalizeJson({
+          domain: checkpointProfile.checkpointRevisionDomain,
+          checkpointId: checkpointVector.checkpointId,
+          transition,
+          contentHash: checkpointVector.contentHash,
+        }),
+        "utf8",
+      )
+      .digest("hex");
+  if (checkpointRevision({ kind: "initial" }) !== checkpointVector.initialCheckpointRevision) {
+    issues.push("initial checkpoint revision vector changed");
+  }
+  if (
+    checkpointRevision({
+      kind: "parent",
+      parentCheckpointId: checkpointVector.parentCheckpointId,
+      parentCheckpointRevision: checkpointVector.parentCheckpointRevision,
+    }) !== checkpointVector.childCheckpointRevision
+  ) {
+    issues.push("child checkpoint revision vector changed");
+  }
+  const memoryProfile = value.canonicalMemoryHashProfile;
+  if (
+    memoryProfile.contentProjectionFields.join() !==
+    "schemaVersion,subjectScope,opaqueIdProfile,kind,normalizationProfileId,canonicalContent,canonicalFactId,sharingScope,sensitivity,egressPolicy,lifecycle,truthState,durability,validFrom,validTo,expiresAt" ||
+    memoryProfile.revisionMetadataFields.join() !==
+      "sharingDecisionEventIds,sourceEventIds,evidenceSnapshotIds,createdAt,updatedAt"
+  ) {
+    issues.push("canonical memory hash projection changed");
+  }
+  const memoryVector = memoryProfile.testVector;
+  const memoryContentHash = createHash("sha256")
+    .update(canonicalizeJson(memoryVector.contentProjection), "utf8")
+    .digest("hex");
+  if (memoryContentHash !== memoryVector.contentHash) issues.push("canonical memory content hash vector changed");
+  const memoryContent = memoryVector.contentProjection as Record<string, contract.JsonValue>;
+  const canonicalFactId = createHash("sha256")
+    .update(
+      canonicalizeJson({
+        schema: "CanonicalMemoryEntityV1",
+        subjectScope: memoryContent.subjectScope,
+        kind: memoryContent.kind,
+        normalizationProfileId: memoryContent.normalizationProfileId,
+        canonicalContent: memoryContent.canonicalContent,
+      }),
+      "utf8",
+    )
+    .digest("hex");
+  if (canonicalFactId !== memoryContent.canonicalFactId) issues.push("canonical fact identity vector changed");
+  const memoryRevision = (transition: contract.JsonValue) =>
+    createHash("sha256")
+      .update(
+        canonicalizeJson({
+          domain: memoryProfile.memoryRevisionDomain,
+          memoryId: memoryVector.memoryId,
+          transition,
+          contentHash: memoryVector.contentHash,
+          revision: memoryVector.revisionMetadata,
+        }),
+        "utf8",
+      )
+      .digest("hex");
+  if (memoryRevision({ kind: "initial" }) !== memoryVector.initialMemoryRevision) {
+    issues.push("initial memory revision vector changed");
+  }
+  if (
+    memoryRevision({ kind: "parent", parentMemoryRevision: memoryVector.parentMemoryRevision }) !==
+    memoryVector.childMemoryRevision
+  ) {
+    issues.push("child memory revision vector changed");
+  }
+  const opaque = value.opaqueIdConformanceProfile;
+  if (opaque.messageFields.join() !== "domain,kind,value") issues.push("opaque ID message framing changed");
+  if (opaque.idKinds.join() !== contract.OPAQUE_ID_KINDS_V1.join()) issues.push("opaque ID kind vocabulary changed");
+  const opaqueVector = opaque.testVector;
+  const derivedOpaqueId = createHmac("sha256", Buffer.from(opaqueVector.keyHex, "hex"))
+    .update(canonicalizeJson(opaqueVector.input), "utf8")
+    .digest("hex");
+  if (derivedOpaqueId !== opaqueVector.opaqueId) issues.push("opaque ID conformance vector changed");
   return issues;
 }
 
@@ -946,6 +1167,37 @@ test("source-aware JSON artifacts satisfy schema, hashes, inventory, and semanti
     },
   };
   assert.deepEqual(validateContractValue("CanonicalWorkStateV2", vectorState, root, contract.CONTINUITY_LIMITS), []);
+  const checkpointVector = manifest.checkpointHashProfile.testVector;
+  const checkpoint = {
+    ...(checkpointVector.envelope as Record<string, contract.JsonValue>),
+    id: checkpointVector.checkpointId,
+    checkpointRevision: checkpointVector.initialCheckpointRevision,
+    canonicalState: vectorState,
+    contentHash: checkpointVector.contentHash,
+  };
+  assert.deepEqual(validateContractValue("ContinuationCheckpointV3", checkpoint, root, contract.CONTINUITY_LIMITS), []);
+  const childCheckpoint = {
+    ...checkpoint,
+    checkpointRevision: checkpointVector.childCheckpointRevision,
+    parentCheckpointId: checkpointVector.parentCheckpointId,
+    parentCheckpointRevision: checkpointVector.parentCheckpointRevision,
+  };
+  assert.deepEqual(validateContractValue("ContinuationCheckpointV3", childCheckpoint, root, contract.CONTINUITY_LIMITS), []);
+  const memoryVector = manifest.canonicalMemoryHashProfile.testVector;
+  const memory = {
+    ...(memoryVector.contentProjection as Record<string, contract.JsonValue>),
+    ...(memoryVector.revisionMetadata as Record<string, contract.JsonValue>),
+    memoryId: memoryVector.memoryId,
+    memoryRevision: memoryVector.initialMemoryRevision,
+    contentHash: memoryVector.contentHash,
+  };
+  assert.deepEqual(validateContractValue("CanonicalMemoryEntityV1", memory, root, contract.CONTINUITY_LIMITS), []);
+  const childMemory = {
+    ...memory,
+    memoryRevision: memoryVector.childMemoryRevision,
+    parentMemoryRevision: memoryVector.parentMemoryRevision,
+  };
+  assert.deepEqual(validateContractValue("CanonicalMemoryEntityV1", childMemory, root, contract.CONTINUITY_LIMITS), []);
 
   const rootBytes = readFileSync(fileURLToPath(ROOT_URL));
   const inventoryBytes = readFileSync(fileURLToPath(INVENTORY_URL));
@@ -1214,12 +1466,36 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
   );
 });
 
+interface ResolvedFixtureSourceIdentity {
+  readonly clientId: contract.CanonicalClientIdV1;
+  readonly sessionId: string;
+}
+
+function agentLocalLaneSemanticIssues(
+  lanes: readonly contract.AgentLocalStateV1[],
+  sourceIdentityByEventId: ReadonlyMap<string, ResolvedFixtureSourceIdentity>,
+): string[] {
+  const issues: string[] = [];
+  const keys = lanes.map(({ clientId, sessionId }) => `${clientId}\0${sessionId}`);
+  if (new Set(keys).size !== keys.length) issues.push("Agent-local lane key is duplicated");
+  for (const lane of lanes) {
+    const resolved = sourceIdentityByEventId.get(lane.sourceIdentityEventId);
+    if (!resolved || resolved.clientId !== lane.clientId || resolved.sessionId !== lane.sessionId) {
+      issues.push("Agent-local lane does not match its authenticated source identity");
+    }
+  }
+  return issues;
+}
+
 function resumeCapsuleSemanticIssues(
   value: contract.ResumeCapsuleV2,
-  sourceClientByEventId: ReadonlyMap<string, contract.CanonicalClientIdV1>,
+  sourceIdentityByEventId: ReadonlyMap<string, ResolvedFixtureSourceIdentity>,
 ): string[] {
   const issues: string[] = [];
   issues.push(...sharingDecisionReferenceIssues(value.sharedTaskState.sharingDecisionEventIds));
+  if (value.destinationAgentLocalState) {
+    issues.push(...agentLocalLaneSemanticIssues([value.destinationAgentLocalState], sourceIdentityByEventId));
+  }
   if (
     value.destinationAgentLocalState &&
     value.destinationAgentLocalState.clientId !== value.destination.clientId
@@ -1228,9 +1504,13 @@ function resumeCapsuleSemanticIssues(
   }
   if (
     value.destinationAgentLocalState &&
-    sourceClientByEventId.get(value.destinationAgentLocalState.sourceIdentityEventId) !== value.destination.clientId
+    (value.destinationAgentLocalState.sessionId !== value.destination.sessionId ||
+      sourceIdentityByEventId.get(value.destinationAgentLocalState.sourceIdentityEventId)?.clientId !==
+        value.destination.clientId ||
+      sourceIdentityByEventId.get(value.destinationAgentLocalState.sourceIdentityEventId)?.sessionId !==
+        value.destination.sessionId)
   ) {
-    issues.push("destination Agent-local source event resolves to another client");
+    issues.push("destination Agent-local source event resolves to another client or session");
   }
   if (value.sharedTaskState.repositoryState.workspaceId !== value.subjectScope.workspaceId) {
     issues.push("capsule and shared projection workspace differ");
@@ -1265,13 +1545,16 @@ test("successor capsule rejects another client's Agent-local lane", () => {
       sharingScope: "agent_private",
       sourceIdentityEventId: id,
       clientId: "codex-cli",
+      sessionId: id,
       sensitivity: "normal",
       egressPolicy: "eligible",
     },
     selectedMemoryIds: [],
     warnings: [],
   };
-  const sourceClients = new Map<string, contract.CanonicalClientIdV1>([[id, "codex-cli"]]);
+  const sourceClients = new Map<string, ResolvedFixtureSourceIdentity>([
+    [id, { clientId: "codex-cli", sessionId: id }],
+  ]);
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", capsule, root, contract.CONTINUITY_LIMITS), []);
   assert.deepEqual(resumeCapsuleSemanticIssues(capsule, sourceClients), []);
   const leakedLane = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
@@ -1279,8 +1562,14 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", leakedLane, root, contract.CONTINUITY_LIMITS), []);
   assert.ok(resumeCapsuleSemanticIssues(leakedLane, sourceClients).length > 0);
 
-  const relabelledLaneSources = new Map<string, contract.CanonicalClientIdV1>([[id, "claude-code"]]);
+  const relabelledLaneSources = new Map<string, ResolvedFixtureSourceIdentity>([
+    [id, { clientId: "claude-code", sessionId: id }],
+  ]);
   assert.ok(resumeCapsuleSemanticIssues(capsule, relabelledLaneSources).length > 0);
+  const oldSessionSources = new Map<string, ResolvedFixtureSourceIdentity>([
+    [id, { clientId: "codex-cli", sessionId: "b".repeat(64) }],
+  ]);
+  assert.ok(resumeCapsuleSemanticIssues(capsule, oldSessionSources).length > 0);
 
   const privateEligible = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
   (privateEligible.destination as unknown as { privateEligible: boolean }).privateEligible = true;
@@ -1295,6 +1584,32 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   );
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", duplicateConsent, root, contract.CONTINUITY_LIMITS), []);
   assert.ok(resumeCapsuleSemanticIssues(duplicateConsent, sourceClients).length > 0);
+});
+
+test("Agent-local lanes are unique by client and session and match authenticated source identity", () => {
+  const eventA = "a".repeat(64);
+  const eventB = "b".repeat(64);
+  const sessionA = "1".repeat(64);
+  const sessionB = "2".repeat(64);
+  const lane = (sourceIdentityEventId: string, sessionId: string): contract.AgentLocalStateV1 => ({
+    sharingScope: "agent_private",
+    sourceIdentityEventId,
+    clientId: "codex-cli",
+    sessionId,
+    sensitivity: "normal",
+    egressPolicy: "eligible",
+  });
+  const lanes = [lane(eventA, sessionA), lane(eventB, sessionB)];
+  const sources = new Map<string, ResolvedFixtureSourceIdentity>([
+    [eventA, { clientId: "codex-cli", sessionId: sessionA }],
+    [eventB, { clientId: "codex-cli", sessionId: sessionB }],
+  ]);
+  assert.deepEqual(agentLocalLaneSemanticIssues(lanes, sources), []);
+  const duplicate = [lanes[0]!, lane(eventB, sessionA)];
+  assert.ok(agentLocalLaneSemanticIssues(duplicate, sources).length > 0);
+  const relabelled = new Map(sources);
+  relabelled.set(eventB, { clientId: "claude-code", sessionId: sessionB });
+  assert.ok(agentLocalLaneSemanticIssues(lanes, relabelled).length > 0);
 });
 
 test("shared memory requires authenticated consent evidence", () => {
@@ -1409,10 +1724,10 @@ const EXPECTED_RESTORE_RULE_PATH_HASHES: Readonly<Record<string, string>> = {
   "persisted-derived-invalidation-event": "a3d5d6961c0ea1b11c24d4113547b482a79961f9b2345ca9f1caca071e05bcb0",
   "persisted-resume-capsule-v1": "e1f7758c7bb30cad0d51773677fe3288491c961f2cea29077ed7fd25f707ac85",
   "persisted-durable-memory": "7a11699d0a052b6e71601a7712693f8e593c2e06b5b68727179d7a9a16965174",
-  "persisted-canonical-work-state-v2": "20a40ea4bbaa514c76fd5469a6e01d3a100adbd2614b0b1d2dd09910cc11753e",
-  "persisted-checkpoint-v3": "9bcbc6b2bcc5e01606e34526fef0d9966d2b271dfe6348cd5ac557a6d72fcbbe",
-  "persisted-resume-capsule-v2": "c1af100d36ad2e8feb5cf9f88a97ba941f007db1e6cc4dbb0ce1ff5c9f62e9b2",
-  "persisted-canonical-memory-entity-v1": "60c3bb991c840d8a99526e75a51130f4f6648a7a44c5b9de157f850188d7d3d6",
+  "persisted-canonical-work-state-v2": "4385cccbd71d03f1c3b4890c249e2ae10db16c17804804298f9a6068d7bca3aa",
+  "persisted-checkpoint-v3": "6dbac301dba6d6f7f0b81ac07e67a3ff6b223413d3015f46ac849d5bad59ff09",
+  "persisted-resume-capsule-v2": "018f46170988cffc5c30b6ebe4b5e29e33855b84276b2ed3291df0686055e8f3",
+  "persisted-canonical-memory-entity-v1": "383b15285d4ec70db54275c7c5e4606af50f49bd3d8fda60249753c6938c905d",
   "persisted-sharing-decision-v1": "2f96e5868b434b174222015be90ee1d139e3e097644c157fa0d54b4f0e937437",
 };
 

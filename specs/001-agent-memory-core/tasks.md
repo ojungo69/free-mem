@@ -217,7 +217,9 @@ Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。前提: 上記 Runtime bar
 - [ ] S0-SA `specs/005-continuity-p0-contract/tasks.md`のS0 contract tasks、verify-tasks、review、required
   checksを完了し、`SourceAwareContinuityContractV1` bundle/hashをmainへmergeする。predicateはSC-3S:
   successor artifact 4種 + inventory closure + inventory-derived restore rules + exact 9-Issue observations + F0〜F7 +
-  legacy dispositions + hash parityがgreen、runtime/DB/MCP/viewer/workflow差分0件。
+  legacy dispositions + hash parityがgreen、runtime/DB/MCP/viewer/workflow差分0件。さらに
+  `vendor/codemem/**`、reference reducer、old-shape corpus、`harness/continuity/mutate.sh`、
+  `harness/contract-hashes.mjs`の差分0件をmachine scope checkで確認する。
 
 S0-SA完了まで、`CanonicalWorkState` / checkpointのpersisted successor、Agent-local/shared projection runtime、
 cross-agent renderer、source filter、migration DDL/data rewriteを開始しない。daemon lifecycle、authenticated RPC、

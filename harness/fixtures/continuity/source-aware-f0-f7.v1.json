@@ -233,7 +233,7 @@
     },
     {
       "id": "F6",
-      "title": "Source authority",
+      "title": "Source authority: caller client claim is unverified",
       "input": {
         "sources": [
           { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "claude-code", "authenticated": true }
