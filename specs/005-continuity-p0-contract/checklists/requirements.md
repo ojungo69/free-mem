@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Continuity P0 契約の凍結（decision window）
+# Specification Quality Checklist: Continuity P0 + source-aware shared memory 契約の凍結
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-08-24
@@ -31,13 +31,14 @@
 
 ## Notes
 
-3 件の [NEEDS CLARIFICATION] はユーザー判断で解決済み（2026-08-24）。全項目 pass。
+既存3件と、spec 005 / #132の統合方針はユーザー判断で解決済み（2026-08-24）。全項目 pass。
 
 | 論点 | 決定 | 反映先 |
 |---|---|---|
-| 層 A の出し方 | **新しい schema 版を 1 つ切る**。v1 内の追加互換には収めない | FR-015 / FR-015a / FR-015b |
+| 層 A / D の出し方 | **1つのcontract bundle/hashで同時freeze**。work state V2 / checkpoint V3 / capsule V2 / memory entity V1 | FR-015 / FR-015a〜e |
 | 上限超過時の扱い | **上限ごとに規定**。選択型は絞る、容量型は拒否する | FR-024 / FR-024a / FR-024b |
-| fixture の範囲 | **契約の凍結までに留める**。fixture は #66 / #67 / #8 へ | FR-029 / FR-029a / FR-029b |
+| fixture の範囲 | **F0〜F7 contract corpusはS0へ統合**。層A〜Cのruntime fixtureは #66 / #67 / #8 へ | FR-029 / FR-029a〜d |
+| canonical fact identity | **完全一致だけ自動統合**。言い換えは明示review後にmerge | FR-042 / F4 |
 
 `spec.md` の「Success Criteria are technology-agnostic」については、`stateRevision` / `contentHash` /
 `IsoTimestamp` など**正典仕様 v6.1 が定義する契約上の名前**は残している。これらは実装技術ではなく
