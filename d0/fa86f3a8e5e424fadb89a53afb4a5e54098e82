@@ -1,0 +1,39 @@
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_bb5a556ab2f370 90-91
+  s_d6433b5ff6fa8e::t_158abb31635658 92-94
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_38fbe14de8cf65 1262-1263
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_38fbe14de8cf65 3724,3727-3728
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_bb2a8d6d9021e8 138-165,168-270,272-332
+  s_d6433b5ff6fa8e::t_eb9e814a72b10c 3
+  s_d6433b5ff6fa8e::t_b3dc547a323e18 5
+  s_d6433b5ff6fa8e::t_b388856c0b5f2e 271
+  s_d6433b5ff6fa8e::t_38fbe14de8cf65 166-167
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_4503e139c4d36b 746-751
+  s_d6433b5ff6fa8e::t_37e2c75bcb39a3 658-680,698-703,706-716,720-745,752-776,801-802,815
+  s_d6433b5ff6fa8e::t_099272de5b1c5f 681-697,704-705,717-719,777-800,803-814
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_38fbe14de8cf65 238-239
+  s_d6433b5ff6fa8e::t_58d479ee0fae6e 618-619
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_0686e68f243eb9 35,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d0fa86f3a8e5e424fadb89a53afb4a5e54098e82",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
