@@ -142,8 +142,8 @@ guarantee that the text stays on this device.
 
 Marking something private does not exempt it from secret scanning. A secret written inside
 a `<private>` block is still detected, and the record is then classified as containing a
-secret — a stronger outcome than being marked private, because daemon intake discards the
-whole payload instead of keeping the surrounding prose.
+secret — a stronger outcome than being marked private, because daemon intake drops the
+content and keeps only the configured metadata, rather than keeping the surrounding prose.
 
 ### Malformed markup
 
