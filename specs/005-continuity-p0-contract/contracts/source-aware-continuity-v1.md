@@ -61,7 +61,9 @@ Here `private` means the closed `Sensitivity` value, while `agent_private` is a 
 
 The decision order is fixed:
 
-1. deny `secret` and `prohibited_egress`, and keep `local_only` out of every capsule/export boundary;
+1. deny `secret`, `local_only`, and `prohibited_egress` on every non-daemon-local path (retrieval, RPC, hint/manual,
+   automatic injection, `active_task_shared`, `same_agent`, `cross_agent`, capsule, sync, and export); `local_only` remains
+   usable only inside daemon-owned local state;
 2. deny cross-`personal_vault`, project, or workspace mismatch;
 3. require explicit opt-in and destination `privateEligible=true` for `private`;
 4. isolate `agent_private` from every other client;
@@ -126,6 +128,8 @@ ID/parent/revision fields; initial and parent transitions bind checkpoint ID, co
 present. Memory content excludes identity/revision/evidence metadata; memory revision binds memory ID, content hash,
 sorted evidence metadata, and either an initial or parent-memory-revision transition. `canonicalFactId` remains the separate
 exact-fact identity hash with schema literal `CanonicalMemoryEntityV1`.
+Resume capsules use their own domain-separated hash over every field except `contentHash`; restore also resolves the named
+checkpoint/work-state revisions before accepting any persisted projection. A body-only mutation is therefore rejected.
 
 Meaning-neutral events do not advance the canonical state revision/history, while event/delivery/diagnostic/watermark
 transitions remain separately auditable. `StateNeutralTransitionPolicyV1` names the four classifications and fixes
@@ -267,7 +271,7 @@ entries make SC-001–SC-012 executable later without claiming runtime conforman
 - fixture corpus version/hash and exact F0–F7 IDs;
 - legacy migration rules;
 - exact restore semantic-validation artifact/path/authority rules;
-- canonical state/checkpoint/memory hash preimages and initial/parent vectors, revision-head ordering/eligibility/corruption
+- canonical state/checkpoint/memory/capsule hash preimages and vectors, revision-head ordering/eligibility/corruption
   rules, and the exact 9-entry Continuity P0 observation/delta contract;
 - raw-identifier retention/access/diagnostic/export/egress policy;
 - sharing-decision user authority, exact scope/target, invalid disposition, and sorted-unique reference policy;

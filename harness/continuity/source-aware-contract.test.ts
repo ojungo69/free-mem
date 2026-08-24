@@ -546,6 +546,7 @@ const US4_FIELDS = {
     "checkpointCreatedBySourceEventId",
     "checkpointId",
     "checkpointRevision",
+    "contentHash",
     "destination",
     "destinationAgentLocalState",
     "injectionId",
@@ -703,7 +704,7 @@ test("US4 raw identifier policy forbids persistence, diagnostics, export, and eg
 const CASE_IDS = ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"] as const;
 const P0_ISSUES = [46, 49, 53, 61, 62, 56, 57, 32, 58] as const;
 const EXPECTED_P0_OBSERVATION_HASHES: Readonly<Record<number, string>> = {
-  46: "b342269952b5f3e8023f8498ff2028c76cbda4fb82b2bc5826036fef39c53968",
+  46: "36248bf0a5f08bac4d152e11d7e9a1cdf9b051b2e6d5b6f9e40d48e6621c1685",
   49: "fd12a79a19603b8119b6c0cbd450b9d475f68e79257306d95abe973274d8b947",
   53: "5b1bd6726ec40ac5ebf0c0984c437ac66de01ec8761fcbe261739a2a97fe534b",
   61: "2e3cc879ae69ba383b61ae4aca5eb1b27bf0ed15712b30c45f54352a107d9746",
@@ -757,6 +758,19 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
       ...item.successor.agentLocalRecordIds,
     ]) {
       if (!recordIds.has(id)) issues.push(`${item.id}: delivery record ${id} is missing`);
+    }
+    const nonLocalDeliveryIds = new Set([
+      ...item.successor.automaticFullRecordIds,
+      ...item.successor.hintOrManualRecordIds,
+      ...item.successor.retrievalProfiles.flatMap(({ recordIds: ids }) => ids),
+    ]);
+    for (const record of item.input.records) {
+      if (
+        (record.sensitivity === "secret" || record.egressPolicy !== "eligible") &&
+        nonLocalDeliveryIds.has(record.id)
+      ) {
+        issues.push(`${item.id}: non-daemon-local profile delivered denied record ${record.id}`);
+      }
     }
     for (const id of item.successor.automaticFullRecordIds) {
       const record = item.input.records.find((candidate) => candidate.id === id);
@@ -1016,7 +1030,10 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
       canonicalStateEffect: "reuse_revision",
       receiptLedgerEffect: "insert_once",
       receiptKeyProfile: "adapter_delivery_id_else_canonical_fingerprint_v1",
+      deliveryKeyPrefix: "d:",
+      fingerprintKeyPrefix: "f:",
       receiptUniquenessScope: "task_lineage_event_store",
+      receiptEvidenceComparison: "canonical_fingerprint",
       receiptCollisionDisposition: "quarantine",
       duplicateReceiptDisposition: "return_existing",
       diagnosticAuditEffect: "record_bounded",
@@ -1206,6 +1223,25 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
   ) {
     issues.push("child memory revision vector changed");
   }
+  const capsuleProfile = value.resumeCapsuleHashProfile;
+  if (
+    capsuleProfile.contentProjectionFields.join() !==
+    "schemaVersion,injectionId,checkpointId,checkpointRevision,workStateRevision,subjectScope,lineageSourceSummary,checkpointCreatedBySourceEventId,destination,resumeProfile,ageSeconds,reconciliation,sharedTaskState,destinationAgentLocalState,selectedMemoryIds,warnings"
+  ) {
+    issues.push("resume capsule content projection changed");
+  }
+  const capsuleVector = capsuleProfile.testVector;
+  const capsuleProjection = {
+    ...(capsuleVector.envelope as Record<string, contract.JsonValue>),
+    sharedTaskState: (vector.contentProjection as Record<string, contract.JsonValue>).sharedTaskState,
+  };
+  const capsuleContentHash = createHash("sha256")
+    .update(
+      canonicalizeJson({ domain: capsuleProfile.contentDomain, capsule: capsuleProjection }),
+      "utf8",
+    )
+    .digest("hex");
+  if (capsuleContentHash !== capsuleVector.contentHash) issues.push("resume capsule content hash vector changed");
   const opaque = value.opaqueIdConformanceProfile;
   if (opaque.messageFields.join() !== "domain,kind,value") issues.push("opaque ID message framing changed");
   if (opaque.idKinds.join() !== contract.OPAQUE_ID_KINDS_V1.join()) issues.push("opaque ID kind vocabulary changed");
@@ -1226,6 +1262,26 @@ interface FrozenSearchCandidate {
   readonly path: string;
   readonly line: string;
   readonly record: string;
+}
+
+function readFrozenSearchCandidates(
+  repoRoot: string,
+  inventory: contract.SourceIdentityInventoryV1,
+  search: contract.SourceInventorySearchV1,
+): FrozenSearchCandidate[] {
+  const pathspecs = [...search.includePaths, ...search.excludePaths.map((path) => `:(exclude)${path}`)];
+  const output = execFileSync(
+    "git",
+    ["grep", "-n", "-z", "-I", "-E", search.pattern, inventory.baselineCommit, "--", ...pathspecs],
+    { cwd: repoRoot, maxBuffer: 16 * 1024 * 1024, encoding: "utf8" },
+  );
+  const refPrefix = `${inventory.baselineCommit}:`;
+  return output.trimEnd().split("\n").map((record) => {
+    const [refPath, lineNumber, text, ...extra] = record.split("\0");
+    assert.ok(refPath?.startsWith(refPrefix) && /^\d+$/.test(lineNumber ?? "") && text !== undefined && extra.length === 0);
+    const path = refPath.slice(refPrefix.length);
+    return { searchId: search.id, path, line: lineNumber, record: `${path}\t${lineNumber}\t${text}` };
+  });
 }
 
 function inventoryCoverageIssues(
@@ -1314,6 +1370,14 @@ test("source-aware JSON artifacts satisfy schema, hashes, inventory, and semanti
     parentCheckpointRevision: checkpointVector.parentCheckpointRevision,
   };
   assert.deepEqual(validateContractValue("ContinuationCheckpointV3", childCheckpoint, root, contract.CONTINUITY_LIMITS), []);
+  const missingParentRevision = { ...childCheckpoint } as Record<string, unknown>;
+  delete missingParentRevision.parentCheckpointRevision;
+  assert.ok(
+    validateContractValue("ContinuationCheckpointV3", missingParentRevision, root, contract.CONTINUITY_LIMITS).length > 0,
+  );
+  const missingParentId = { ...childCheckpoint } as Record<string, unknown>;
+  delete missingParentId.parentCheckpointId;
+  assert.ok(validateContractValue("ContinuationCheckpointV3", missingParentId, root, contract.CONTINUITY_LIMITS).length > 0);
   const memoryVector = manifest.canonicalMemoryHashProfile.testVector;
   const memory = {
     ...(memoryVector.contentProjection as Record<string, contract.JsonValue>),
@@ -1329,6 +1393,13 @@ test("source-aware JSON artifacts satisfy schema, hashes, inventory, and semanti
     parentMemoryRevision: memoryVector.parentMemoryRevision,
   };
   assert.deepEqual(validateContractValue("CanonicalMemoryEntityV1", childMemory, root, contract.CONTINUITY_LIMITS), []);
+  const capsuleVector = manifest.resumeCapsuleHashProfile.testVector;
+  const capsule = {
+    ...(capsuleVector.envelope as Record<string, contract.JsonValue>),
+    sharedTaskState: (hashVector.contentProjection as Record<string, contract.JsonValue>).sharedTaskState,
+    contentHash: capsuleVector.contentHash,
+  };
+  assert.deepEqual(validateContractValue("ResumeCapsuleV2", capsule, root, contract.CONTINUITY_LIMITS), []);
 
   const rootBytes = readFileSync(fileURLToPath(ROOT_URL));
   const inventoryBytes = readFileSync(fileURLToPath(INVENTORY_URL));
@@ -1357,11 +1428,8 @@ test("source-aware JSON artifacts satisfy schema, hashes, inventory, and semanti
     const lines = output.toString("utf8").trimEnd().split("\n");
     assert.equal(lines.length, search.lineCount, search.id);
     assert.equal(sha256(output), search.sha256, search.id);
-    for (const line of lines) {
-      const match = /^[^:]+:([^:]+):(\d+):(.*)$/.exec(line);
-      assert.ok(match, `${search.id}: unexpected git grep output`);
-      const [, path, lineNumber, text] = match;
-      candidates.push({ searchId: search.id, path, line: lineNumber, record: `${path}\t${lineNumber}\t${text}` });
+    if (search.coverageMode === "partition") {
+      candidates.push(...readFrozenSearchCandidates(repoRoot, inventory, search));
     }
   }
   assert.deepEqual(inventoryCoverageIssues(inventory, candidates), []);
@@ -1386,6 +1454,15 @@ test("source-aware negative self-mutations are rejected", () => {
   assert.ok(f7);
   (f7.successor.automaticFullRecordIds as string[]).push("private-record");
   assert.ok(corpusSemanticIssues(privateLeak as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  const localOnlyRetrieval = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const privacyCase = localOnlyRetrieval.cases.find(({ id }) => id === "F7");
+  assert.ok(privacyCase);
+  (privacyCase.successor.retrievalProfiles as contract.SourceAwareRetrievalExpectationV1[]).push({
+    profile: "active_task_shared",
+    recordIds: ["local-only-record"],
+  });
+  assert.ok(corpusSemanticIssues(localOnlyRetrieval as unknown as contract.SourceAwareContractCorpusV1).length > 0);
 
   const renamedSecretLeak = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
   const sharedCaseForLeak = renamedSecretLeak.cases.find(({ id }) => id === "F1");
@@ -1479,27 +1556,7 @@ test("source-aware negative self-mutations are rejected", () => {
   const inventory = loadRequiredJson<contract.SourceIdentityInventoryV1>(INVENTORY_URL, "source inventory");
   const partitionSearch = inventory.searches.find(({ coverageMode }) => coverageMode === "partition");
   assert.ok(partitionSearch);
-  const output = execFileSync(
-    "git",
-    [
-      "grep",
-      "-n",
-      "-I",
-      "-E",
-      partitionSearch.pattern,
-      inventory.baselineCommit,
-      "--",
-      ...partitionSearch.includePaths,
-      ...partitionSearch.excludePaths.map((path) => `:(exclude)${path}`),
-    ],
-    { cwd: repoRoot, maxBuffer: 16 * 1024 * 1024, encoding: "utf8" },
-  );
-  const candidates = output.trimEnd().split("\n").map((line): FrozenSearchCandidate => {
-    const match = /^[^:]+:([^:]+):(\d+):(.*)$/.exec(line);
-    assert.ok(match);
-    const [, path, lineNumber, text] = match;
-    return { searchId: partitionSearch.id, path, line: lineNumber, record: `${path}\t${lineNumber}\t${text}` };
-  });
+  const candidates = readFrozenSearchCandidates(repoRoot, inventory, partitionSearch);
   const missingOwner = structuredClone(inventory) as unknown as contract.SourceIdentityInventoryV1;
   (missingOwner.candidateRules as contract.SourceInventoryCandidateRuleV1[]).pop();
   assert.ok(inventoryCoverageIssues(missingOwner, candidates).length > 0);
@@ -1536,6 +1593,36 @@ function sharingDecisionReferenceIssues(ids: readonly string[]): string[] {
   return new Set(ids).size === ids.length && [...ids].sort().join() === ids.join()
     ? []
     : ["sharing-decision references are not sorted unique"];
+}
+
+function canonicalMemorySharingIssues(
+  value: contract.CanonicalMemoryEntityV1,
+  sharingDecisionByEventId: ReadonlyMap<string, contract.SharingDecisionV1>,
+  authenticatedAuthorityEvents: ReadonlySet<string>,
+): string[] {
+  const issues = sharingDecisionReferenceIssues(value.sharingDecisionEventIds);
+  if (value.sharingScope === "agent_private") return issues;
+  for (const decisionEventId of value.sharingDecisionEventIds) {
+    const decision = sharingDecisionByEventId.get(decisionEventId);
+    if (!decision) {
+      issues.push("canonical memory references an unknown sharing decision");
+      continue;
+    }
+    if (decision.decisionEventId !== decisionEventId) {
+      issues.push("canonical memory sharing-decision reference does not match the resolved artifact ID");
+      continue;
+    }
+    issues.push(
+      ...sharingDecisionSemanticIssues(
+        decision,
+        authenticatedAuthorityEvents,
+        value.subjectScope,
+        { kind: "canonical_memory_entity", canonicalFactId: value.canonicalFactId },
+        value.sharingScope,
+      ),
+    );
+  }
+  return issues;
 }
 
 function sharingDecisionSemanticIssues(
@@ -1640,6 +1727,16 @@ interface ResolvedFixtureSourceIdentity {
   readonly capabilityHash?: string;
 }
 
+function computeResumeCapsuleContentHash(value: contract.ResumeCapsuleV2): string {
+  const { contentHash: _excluded, ...capsule } = value;
+  return createHash("sha256")
+    .update(
+      canonicalizeJson({ domain: "free-mem/ResumeCapsuleV2/content/v1", capsule }),
+      "utf8",
+    )
+    .digest("hex");
+}
+
 function agentLocalLaneSemanticIssues(
   lanes: readonly contract.AgentLocalStateV1[],
   sourceIdentityByEventId: ReadonlyMap<string, ResolvedFixtureSourceIdentity>,
@@ -1659,9 +1756,34 @@ function agentLocalLaneSemanticIssues(
 function resumeCapsuleSemanticIssues(
   value: contract.ResumeCapsuleV2,
   sourceIdentityByEventId: ReadonlyMap<string, ResolvedFixtureSourceIdentity>,
+  sharingDecisionByEventId: ReadonlyMap<string, contract.SharingDecisionV1>,
+  authenticatedAuthorityEvents: ReadonlySet<string>,
 ): string[] {
   const issues: string[] = [];
+  if (computeResumeCapsuleContentHash(value) !== value.contentHash) {
+    issues.push("resume capsule content hash does not match its projection");
+  }
   issues.push(...sharingDecisionReferenceIssues(value.sharedTaskState.sharingDecisionEventIds));
+  for (const decisionEventId of value.sharedTaskState.sharingDecisionEventIds) {
+    const decision = sharingDecisionByEventId.get(decisionEventId);
+    if (!decision) {
+      issues.push("shared projection references an unknown sharing decision");
+      continue;
+    }
+    if (decision.decisionEventId !== decisionEventId) {
+      issues.push("shared projection decision reference does not match the resolved artifact ID");
+      continue;
+    }
+    issues.push(
+      ...sharingDecisionSemanticIssues(
+        decision,
+        authenticatedAuthorityEvents,
+        value.subjectScope,
+        { kind: "shared_task_projection", taskLineageId: value.subjectScope.taskLineageId },
+        "task_shared",
+      ),
+    );
+  }
   const destinationIdentity = sourceIdentityByEventId.get(value.destination.sourceIdentityEventId);
   if (
     !destinationIdentity ||
@@ -1708,6 +1830,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   const id = "a".repeat(64);
   const capsule: contract.ResumeCapsuleV2 = {
     schemaVersion: 2,
+    contentHash: id,
     injectionId: id,
     checkpointId: id,
     checkpointRevision: id,
@@ -1731,33 +1854,53 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     selectedMemoryIds: [],
     warnings: [],
   };
+  (capsule as unknown as { contentHash: string }).contentHash = computeResumeCapsuleContentHash(capsule);
   const sourceClients = new Map<string, ResolvedFixtureSourceIdentity>([
     [id, { clientId: "codex-cli", clientVersion: "1", sessionId: id }],
   ]);
+  const decisionEventId = capsule.sharedTaskState.sharingDecisionEventIds[0]!;
+  const authorityEventId = "f".repeat(64);
+  const sharingDecision: contract.SharingDecisionV1 = {
+    schemaVersion: 1,
+    decisionEventId,
+    authoritySourceEventId: authorityEventId,
+    authorityKind: "user",
+    decision: "grant",
+    subjectScope: capsule.subjectScope,
+    sharingScope: "task_shared",
+    target: { kind: "shared_task_projection", taskLineageId: capsule.subjectScope.taskLineageId },
+    decidedAt: "2026-08-24T00:00:00Z",
+  };
+  const sharingDecisions = new Map([[decisionEventId, sharingDecision]]);
+  const authorityEvents = new Set([authorityEventId]);
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", capsule, root, contract.CONTINUITY_LIMITS), []);
-  assert.deepEqual(resumeCapsuleSemanticIssues(capsule, sourceClients), []);
+  assert.deepEqual(resumeCapsuleSemanticIssues(capsule, sourceClients, sharingDecisions, authorityEvents), []);
   const leakedLane = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
   (leakedLane.destinationAgentLocalState as unknown as { clientId: contract.CanonicalClientIdV1 }).clientId = "claude-code";
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", leakedLane, root, contract.CONTINUITY_LIMITS), []);
-  assert.ok(resumeCapsuleSemanticIssues(leakedLane, sourceClients).length > 0);
+  assert.ok(resumeCapsuleSemanticIssues(leakedLane, sourceClients, sharingDecisions, authorityEvents).length > 0);
 
   const relabelledLaneSources = new Map<string, ResolvedFixtureSourceIdentity>([
     [id, { clientId: "claude-code", clientVersion: "1", sessionId: id }],
   ]);
-  assert.ok(resumeCapsuleSemanticIssues(capsule, relabelledLaneSources).length > 0);
+  assert.ok(
+    resumeCapsuleSemanticIssues(capsule, relabelledLaneSources, sharingDecisions, authorityEvents).length > 0,
+  );
   const oldSessionSources = new Map<string, ResolvedFixtureSourceIdentity>([
     [id, { clientId: "codex-cli", clientVersion: "1", sessionId: "b".repeat(64) }],
   ]);
-  assert.ok(resumeCapsuleSemanticIssues(capsule, oldSessionSources).length > 0);
+  assert.ok(resumeCapsuleSemanticIssues(capsule, oldSessionSources, sharingDecisions, authorityEvents).length > 0);
   const withoutLocalLane = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
   delete (withoutLocalLane as unknown as { destinationAgentLocalState?: contract.AgentLocalStateV1 })
     .destinationAgentLocalState;
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", withoutLocalLane, root, contract.CONTINUITY_LIMITS), []);
-  assert.ok(resumeCapsuleSemanticIssues(withoutLocalLane, new Map()).length > 0);
+  assert.ok(resumeCapsuleSemanticIssues(withoutLocalLane, new Map(), sharingDecisions, authorityEvents).length > 0);
   const wrongVersionSources = new Map<string, ResolvedFixtureSourceIdentity>([
     [id, { clientId: "codex-cli", clientVersion: "2", sessionId: id }],
   ]);
-  assert.ok(resumeCapsuleSemanticIssues(withoutLocalLane, wrongVersionSources).length > 0);
+  assert.ok(
+    resumeCapsuleSemanticIssues(withoutLocalLane, wrongVersionSources, sharingDecisions, authorityEvents).length > 0,
+  );
 
   const privateEligible = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
   (privateEligible.destination as unknown as { privateEligible: boolean }).privateEligible = true;
@@ -1771,7 +1914,26 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     duplicateConsent.sharedTaskState.sharingDecisionEventIds[0]!,
   );
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", duplicateConsent, root, contract.CONTINUITY_LIMITS), []);
-  assert.ok(resumeCapsuleSemanticIssues(duplicateConsent, sourceClients).length > 0);
+  assert.ok(
+    resumeCapsuleSemanticIssues(duplicateConsent, sourceClients, sharingDecisions, authorityEvents).length > 0,
+  );
+  assert.ok(resumeCapsuleSemanticIssues(capsule, sourceClients, new Map(), authorityEvents).length > 0);
+  assert.ok(resumeCapsuleSemanticIssues(capsule, sourceClients, sharingDecisions, new Set()).length > 0);
+  const wrongDecisionId = { ...sharingDecision, decisionEventId: "c".repeat(64) };
+  assert.ok(
+    resumeCapsuleSemanticIssues(
+      capsule,
+      sourceClients,
+      new Map([[decisionEventId, wrongDecisionId]]),
+      authorityEvents,
+    ).length > 0,
+  );
+  const tamperedCapsule = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
+  (tamperedCapsule.warnings as string[]).push("tampered");
+  assert.deepEqual(validateContractValue("ResumeCapsuleV2", tamperedCapsule, root, contract.CONTINUITY_LIMITS), []);
+  assert.ok(
+    resumeCapsuleSemanticIssues(tamperedCapsule, sourceClients, sharingDecisions, authorityEvents).length > 0,
+  );
 });
 
 test("Agent-local lanes are unique by client and session and match authenticated source identity", () => {
@@ -1890,7 +2052,26 @@ test("shared memory requires authenticated consent evidence", () => {
   assert.deepEqual(validateContractValue("CanonicalMemoryEntityV1", agentPrivate, root, contract.CONTINUITY_LIMITS), []);
   (value.sharingDecisionEventIds as string[]).push(id);
   assert.deepEqual(validateContractValue("CanonicalMemoryEntityV1", value, root, contract.CONTINUITY_LIMITS), []);
-  assert.deepEqual(sharingDecisionReferenceIssues(value.sharingDecisionEventIds), []);
+  const authorityEventId = "b".repeat(64);
+  const decision: contract.SharingDecisionV1 = {
+    schemaVersion: 1,
+    decisionEventId: id,
+    authoritySourceEventId: authorityEventId,
+    authorityKind: "user",
+    decision: "grant",
+    subjectScope: value.subjectScope as contract.SubjectScopeV1,
+    sharingScope: "personal_shared",
+    target: { kind: "canonical_memory_entity", canonicalFactId: id },
+    decidedAt: "2026-08-24T00:00:00Z",
+  };
+  const typedValue = value as unknown as contract.CanonicalMemoryEntityV1;
+  assert.deepEqual(canonicalMemorySharingIssues(typedValue, new Map([[id, decision]]), new Set([authorityEventId])), []);
+  assert.ok(canonicalMemorySharingIssues(typedValue, new Map(), new Set([authorityEventId])).length > 0);
+  assert.ok(canonicalMemorySharingIssues(typedValue, new Map([[id, decision]]), new Set()).length > 0);
+  const wrongDecisionId = { ...decision, decisionEventId: "c".repeat(64) };
+  assert.ok(
+    canonicalMemorySharingIssues(typedValue, new Map([[id, wrongDecisionId]]), new Set([authorityEventId])).length > 0,
+  );
   const outOfOrder = ["b".repeat(64), id];
   assert.ok(sharingDecisionReferenceIssues(outOfOrder).length > 0);
   assert.ok(sharingDecisionReferenceIssues([id, id]).length > 0);
@@ -1969,7 +2150,7 @@ const EXPECTED_RESTORE_RULE_PATH_HASHES: Readonly<Record<string, string>> = {
   "persisted-durable-memory": "7a11699d0a052b6e71601a7712693f8e593c2e06b5b68727179d7a9a16965174",
   "persisted-canonical-work-state-v2": "63caff4b881e2fafd62ac558951d75c65aaade1da856c40849070b36a4af07d9",
   "persisted-checkpoint-v3": "5e1ee47e0c507279c731eed79399f8f174aa1754859573c77389e3231001a9ef",
-  "persisted-resume-capsule-v2": "c7a49f1e3fa3057c43415daefd8898ccafeb13e4122337d408185eda3322d77a",
+  "persisted-resume-capsule-v2": "48036fdfe584d76d03c3b2500dbbf5fe1b664f139c5a690c6bd07c4f31e4d6bb",
   "persisted-canonical-memory-entity-v1": "383b15285d4ec70db54275c7c5e4606af50f49bd3d8fda60249753c6938c905d",
   "persisted-sharing-decision-v1": "2f96e5868b434b174222015be90ee1d139e3e097644c157fa0d54b4f0e937437",
 };

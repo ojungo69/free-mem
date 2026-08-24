@@ -66,18 +66,17 @@ The source-aware static corpus uses its own in-memory negative mutations and is 
 ## 7. Scope check
 
 ```bash
-git diff --name-only origin/main...HEAD
-{
-  git diff --name-only
-  git diff --cached --name-only
-  git ls-files --others --exclude-standard
-} | sort -u
-! {
-  git diff --name-only origin/main...HEAD
-  git diff --name-only
-  git diff --cached --name-only
-  git ls-files --others --exclude-standard
-} | sort -u | rg '^(vendor/codemem/|\.github/workflows/|harness/continuity/reference-model\.ts$|harness/fixtures/continuity/old-shape-parity\.json$|harness/continuity/mutate\.sh$|harness/contract-hashes\.mjs$)'
+set -euo pipefail
+S0_SCOPE_TMP=$(mktemp)
+trap 'rm -f "$S0_SCOPE_TMP"' EXIT
+git diff --name-only origin/main...HEAD > "$S0_SCOPE_TMP"
+git diff --name-only >> "$S0_SCOPE_TMP"
+git diff --cached --name-only >> "$S0_SCOPE_TMP"
+git ls-files --others --exclude-standard >> "$S0_SCOPE_TMP"
+sort -u "$S0_SCOPE_TMP"
+if sort -u "$S0_SCOPE_TMP" | rg '^(vendor/codemem/|\.github/workflows/|harness/continuity/reference-model\.ts$|harness/fixtures/continuity/old-shape-parity\.json$|harness/continuity/mutate\.sh$|harness/contract-hashes\.mjs$)'; then
+  exit 1
+fi
 ```
 
 Expected: the final command prints nothing across committed, unstaged, staged, and untracked scope. S0 contains docs,

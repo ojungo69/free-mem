@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
-  "contractHash": "72a7cc815df7276564c878d864c0fbb7209b287ee5b9b9c7d334c6ccf13be40b",
+  "contractHash": "14b65549187bafe42724f02e262c7afbd76598f9b36200d7a39d507bc85cb00f",
   "schemaFile": "schema/continuity.schema.json",
-  "schemaHash": "5d3d941a2e475c84e69d82f52be3818273b002ba97c82e08969d6ef7f7a8cce4",
+  "schemaHash": "7d37d2b08b21ceaf28551a478f70077c37b433e6637a7a377d601af443267db6",
   "artifactSchemas": [
     { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
     { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
@@ -171,6 +171,33 @@
       "childMemoryRevision": "115d121490edd1ffae7fdd1ceff83b6126138981e812182fc0dc9c85c1d9f6a4"
     }
   },
+  "resumeCapsuleHashProfile": {
+    "schemaVersion": 1,
+    "canonicalization": "rfc8785-jcs",
+    "digest": "sha-256",
+    "contentDomain": "free-mem/ResumeCapsuleV2/content/v1",
+    "contentProjectionFields": ["schemaVersion", "injectionId", "checkpointId", "checkpointRevision", "workStateRevision", "subjectScope", "lineageSourceSummary", "checkpointCreatedBySourceEventId", "destination", "resumeProfile", "ageSeconds", "reconciliation", "sharedTaskState", "destinationAgentLocalState", "selectedMemoryIds", "warnings"],
+    "testVector": {
+      "sharedTaskStateVectorRef": "canonicalStateHashProfile.testVector.contentProjection.sharedTaskState",
+      "envelope": {
+        "schemaVersion": 2,
+        "injectionId": "9999999999999999999999999999999999999999999999999999999999999999",
+        "checkpointId": "4444444444444444444444444444444444444444444444444444444444444444",
+        "checkpointRevision": "8eea8932b5f338f2ae8d170d6f159f763b636cfde2eee9dcba90484ef6eb01f1",
+        "workStateRevision": "2157dfa924ce2dd2355af5f6bb0f400fa551fe9d911c959fd4902b14fb859a26",
+        "subjectScope": { "kind": "task_lineage", "personalVaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "projectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "workspaceId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "taskLineageId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+        "lineageSourceSummary": { "lineageOriginSourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "lastContributingSourceEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "participantSourceEventIds": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"] },
+        "checkpointCreatedBySourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "destination": { "sourceIdentityEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "clientId": "codex-cli", "clientVersion": "1", "sessionId": "3333333333333333333333333333333333333333333333333333333333333333", "privateEligible": false },
+        "resumeProfile": "cross_agent",
+        "ageSeconds": 0,
+        "reconciliation": "exact",
+        "selectedMemoryIds": [],
+        "warnings": []
+      },
+      "contentHash": "6ee0ddb6e2943301b167bf5ab5571988d40e4d500f03c9a43b49a6a885bb0e23"
+    }
+  },
   "revisionHeadSelectionPolicy": {
     "orderingKey": "lineage_revision_ordinal",
     "headCardinality": "exactly_one",
@@ -200,7 +227,10 @@
     "canonicalStateEffect": "reuse_revision",
     "receiptLedgerEffect": "insert_once",
     "receiptKeyProfile": "adapter_delivery_id_else_canonical_fingerprint_v1",
+    "deliveryKeyPrefix": "d:",
+    "fingerprintKeyPrefix": "f:",
     "receiptUniquenessScope": "task_lineage_event_store",
+    "receiptEvidenceComparison": "canonical_fingerprint",
     "receiptCollisionDisposition": "quarantine",
     "duplicateReceiptDisposition": "return_existing",
     "diagnosticAuditEffect": "record_bounded",
@@ -251,7 +281,7 @@
         "downstreamStage": "S1",
         "behaviorDeltas": [
           { "jsonPathOrField": "currentV1:/stateRevision,/history,/updatedAt;successor:/revision/stateRevision,StateNeutralTransitionPolicyV1.canonicalStateEffect", "currentV1": "changes", "successor": { "classification": "ledger_only", "canonicalStateEffect": "reuse_revision", "stateRevisionDelta": 0 }, "deltaKind": "no_op_state_stable" },
-          { "jsonPathOrField": "StateNeutralTransitionPolicyV1.receiptLedgerEffect,receiptKeyProfile,receiptUniquenessScope,receiptCollisionDisposition,duplicateReceiptDisposition,diagnosticAuditEffect,coverageWatermarkEffect,transactionBoundary", "currentV1": "not_separate_from_state_revision", "successor": { "receiptLedgerEffect": "insert_once", "receiptKeyProfile": "adapter_delivery_id_else_canonical_fingerprint_v1", "receiptUniquenessScope": "task_lineage_event_store", "receiptCollisionDisposition": "quarantine", "duplicateReceiptDisposition": "return_existing", "diagnosticAuditEffect": "record_bounded", "coverageWatermarkEffect": "advance", "transactionBoundary": "same_daemon_transaction" }, "deltaKind": "no_op_state_stable" }
+          { "jsonPathOrField": "StateNeutralTransitionPolicyV1.receiptLedgerEffect,receiptKeyProfile,deliveryKeyPrefix,fingerprintKeyPrefix,receiptUniquenessScope,receiptEvidenceComparison,receiptCollisionDisposition,duplicateReceiptDisposition,diagnosticAuditEffect,coverageWatermarkEffect,transactionBoundary", "currentV1": "not_separate_from_state_revision", "successor": { "receiptLedgerEffect": "insert_once", "receiptKeyProfile": "adapter_delivery_id_else_canonical_fingerprint_v1", "deliveryKeyPrefix": "d:", "fingerprintKeyPrefix": "f:", "receiptUniquenessScope": "task_lineage_event_store", "receiptEvidenceComparison": "canonical_fingerprint", "receiptCollisionDisposition": "quarantine", "duplicateReceiptDisposition": "return_existing", "diagnosticAuditEffect": "record_bounded", "coverageWatermarkEffect": "advance", "transactionBoundary": "same_daemon_transaction" }, "deltaKind": "no_op_state_stable" }
         ]
       },
       {
@@ -578,7 +608,7 @@
         "inventoryEntryId": "persisted-resume-capsule-v2",
         "scopeIdentityPaths": ["/injectionId", "/checkpointId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/checkpointCreatedBySourceEventId", "/destination/sourceIdentityEventId", "/destination/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/destinationAgentLocalState/sourceIdentityEventId", "/destinationAgentLocalState/sessionId", "/selectedMemoryIds/*"],
         "isoTimestampPaths": ["/sharedTaskState/goal/observedAt", "/sharedTaskState/constraints/*/observedAt", "/sharedTaskState/activeFiles/*/observedAt", "/sharedTaskState/modifiedFiles/*/observedAt", "/sharedTaskState/recentCommands/*/observedAt", "/sharedTaskState/recentTests/*/observedAt", "/sharedTaskState/pendingOperations/*/startedAt", "/sharedTaskState/pendingOperations/*/terminalAt", "/sharedTaskState/repositoryState/capturedAt", "/destinationAgentLocalState/latestSubstantivePrompt/observedAt", "/destinationAgentLocalState/lastAssistantConclusion/observedAt", "/destinationAgentLocalState/nativeTodoState/observedAt", "/destinationAgentLocalState/nativePlanState/observedAt", "/destinationAgentLocalState/hostMetadata/observedAt"],
-        "crossFieldRules": ["capsule_subject_matches_shared_projection", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "destination_source_identity_resolves_to_client_version_session_and_capability", "destination_agent_local_state_client_and_session_match_destination", "destination_agent_local_state_source_event_resolves_to_destination_client_and_session", "cross_agent_capsule_excludes_non_destination_local_lanes", "included_projection_sensitivity_is_max_of_contained_values", "private_requires_authenticated_opt_in_and_privateEligible", "secret_local_only_and_prohibited_egress_are_not_serialized", "destination_capability_downgrade_is_explicit"],
+        "crossFieldRules": ["capsule_content_hash_matches_ResumeCapsuleHashProfileV1", "capsule_checkpoint_and_work_state_revisions_resolve", "capsule_subject_matches_shared_projection", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "destination_source_identity_resolves_to_client_version_session_and_capability", "destination_agent_local_state_client_and_session_match_destination", "destination_agent_local_state_source_event_resolves_to_destination_client_and_session", "cross_agent_capsule_excludes_non_destination_local_lanes", "included_projection_sensitivity_is_max_of_contained_values", "private_requires_authenticated_opt_in_and_privateEligible", "secret_local_only_and_prohibited_egress_are_not_serialized", "destination_capability_downgrade_is_explicit"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true

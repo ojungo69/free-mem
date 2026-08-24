@@ -32,9 +32,9 @@
     "fixtures/continuity/tool-lifecycle-reduction.json": "beefef9cd5fc61784d6057464e45f26d37497819f2428a73d1c3f2b55a75c755",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
     "schema/capability.schema.json": "cc84f87e2c66b57d725af3df67ffdbd30ba0be6119ffe75785b2612b6bf51b1a",
-    "schema/continuity.schema.json": "5d3d941a2e475c84e69d82f52be3818273b002ba97c82e08969d6ef7f7a8cce4",
+    "schema/continuity.schema.json": "7d37d2b08b21ceaf28551a478f70077c37b433e6637a7a377d601af443267db6",
     "schema/evidence-manifest.schema.json": "2fc0949ba97f91ba6a258a387cb5ff12727595028815a47b98bcf5c8ad5680aa",
-    "schema/source-aware-continuity-contract.v1.json": "fadb4277c461faf4fd71905c4c6d31438ea30c2a34a0bb71e4017d660a93b624",
+    "schema/source-aware-continuity-contract.v1.json": "d0d7bb5c22153aa853ef98dbc4bf0e6467eee5b8485b278e26e174ece12950bd",
     "schema/source-aware-source-inventory.v1.json": "1d2642999fca4f4d35d1280011baa36f29825898121a48e392d106c341bb5dff"
   }
 }

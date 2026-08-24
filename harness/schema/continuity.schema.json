@@ -2870,7 +2870,7 @@
         "inputCanonicalization": { "const": "rfc8785-jcs" },
         "derivationDomain": { "const": "free-mem/OpaqueIdV1/v1" },
         "messageFields": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "string", "enum": ["domain", "kind", "value"] } },
-        "idKinds": { "type": "array", "minItems": 26, "maxItems": 26, "items": { "$ref": "#/$defs/OpaqueIdKindV1" } },
+        "idKinds": { "$comment": "26 is the exact OpaqueIdKindV1 / OPAQUE_ID_KINDS_V1 cardinality", "type": "array", "minItems": 26, "maxItems": 26, "items": { "$ref": "#/$defs/OpaqueIdKindV1" } },
         "outputEncoding": { "const": "lowercase_hex_256" },
         "testVector": { "$ref": "#/$defs/OpaqueIdConformanceTestVectorV1" }
       }
@@ -3475,7 +3475,11 @@
         "sensitivity": { "$ref": "#/$defs/Sensitivity" },
         "createdAt": { "$ref": "#/$defs/IsoTimestamp" },
         "expiresAt": { "$ref": "#/$defs/IsoTimestamp" }
-      }
+      },
+      "allOf": [
+        { "if": { "required": ["parentCheckpointId"] }, "then": { "required": ["parentCheckpointRevision"] } },
+        { "if": { "required": ["parentCheckpointRevision"] }, "then": { "required": ["parentCheckpointId"] } }
+      ]
     },
     "ResumeDestinationV1": {
       "type": "object",
@@ -3493,9 +3497,10 @@
     "ResumeCapsuleV2": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "injectionId", "checkpointId", "checkpointRevision", "workStateRevision", "subjectScope", "lineageSourceSummary", "checkpointCreatedBySourceEventId", "destination", "resumeProfile", "ageSeconds", "reconciliation", "sharedTaskState", "selectedMemoryIds", "warnings"],
+      "required": ["schemaVersion", "contentHash", "injectionId", "checkpointId", "checkpointRevision", "workStateRevision", "subjectScope", "lineageSourceSummary", "checkpointCreatedBySourceEventId", "destination", "resumeProfile", "ageSeconds", "reconciliation", "sharedTaskState", "selectedMemoryIds", "warnings"],
       "properties": {
         "schemaVersion": { "const": 2 },
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" },
         "injectionId": { "$ref": "#/$defs/OpaqueIdV1" },
         "checkpointId": { "$ref": "#/$defs/OpaqueIdV1" },
         "checkpointRevision": { "$ref": "#/$defs/Sha256Hex" },
@@ -3653,7 +3658,7 @@
     "StateNeutralTransitionPolicyV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "classifications", "stateNeutralClassification", "canonicalStateEffect", "receiptLedgerEffect", "receiptKeyProfile", "receiptUniquenessScope", "receiptCollisionDisposition", "duplicateReceiptDisposition", "diagnosticAuditEffect", "coverageWatermarkEffect", "transactionBoundary"],
+      "required": ["schemaVersion", "classifications", "stateNeutralClassification", "canonicalStateEffect", "receiptLedgerEffect", "receiptKeyProfile", "deliveryKeyPrefix", "fingerprintKeyPrefix", "receiptUniquenessScope", "receiptEvidenceComparison", "receiptCollisionDisposition", "duplicateReceiptDisposition", "diagnosticAuditEffect", "coverageWatermarkEffect", "transactionBoundary"],
       "properties": {
         "schemaVersion": { "const": 1 },
         "classifications": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/StateTransitionClassificationV1" } },
@@ -3661,7 +3666,10 @@
         "canonicalStateEffect": { "const": "reuse_revision" },
         "receiptLedgerEffect": { "const": "insert_once" },
         "receiptKeyProfile": { "const": "adapter_delivery_id_else_canonical_fingerprint_v1" },
+        "deliveryKeyPrefix": { "const": "d:" },
+        "fingerprintKeyPrefix": { "const": "f:" },
         "receiptUniquenessScope": { "const": "task_lineage_event_store" },
+        "receiptEvidenceComparison": { "const": "canonical_fingerprint" },
         "receiptCollisionDisposition": { "const": "quarantine" },
         "duplicateReceiptDisposition": { "const": "return_existing" },
         "diagnosticAuditEffect": { "const": "record_bounded" },
@@ -4184,10 +4192,33 @@
         "testVector": { "$ref": "#/$defs/CanonicalMemoryHashTestVectorV1" }
       }
     },
+    "ResumeCapsuleHashTestVectorV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sharedTaskStateVectorRef", "envelope", "contentHash"],
+      "properties": {
+        "sharedTaskStateVectorRef": { "const": "canonicalStateHashProfile.testVector.contentProjection.sharedTaskState" },
+        "envelope": { "$ref": "#/$defs/JsonValue" },
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" }
+      }
+    },
+    "ResumeCapsuleHashProfileV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "canonicalization", "digest", "contentDomain", "contentProjectionFields", "testVector"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "canonicalization": { "const": "rfc8785-jcs" },
+        "digest": { "const": "sha-256" },
+        "contentDomain": { "const": "free-mem/ResumeCapsuleV2/content/v1" },
+        "contentProjectionFields": { "type": "array", "minItems": 16, "maxItems": 16, "items": { "type": "string", "enum": ["schemaVersion", "injectionId", "checkpointId", "checkpointRevision", "workStateRevision", "subjectScope", "lineageSourceSummary", "checkpointCreatedBySourceEventId", "destination", "resumeProfile", "ageSeconds", "reconciliation", "sharedTaskState", "destinationAgentLocalState", "selectedMemoryIds", "warnings"] } },
+        "testVector": { "$ref": "#/$defs/ResumeCapsuleHashTestVectorV1" }
+      }
+    },
     "SourceAwareContinuityContractV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contractVersion", "contractHash", "schemaFile", "schemaHash", "artifactSchemas", "sourceVocabularyVersion", "inventoryFile", "inventoryHash", "fixtureCorpusFile", "fixtureCorpusVersion", "fixtureCorpusHash", "fixtureCaseIds", "opaqueIdProfile", "opaqueIdConformanceProfile", "canonicalStateHashProfile", "checkpointHashProfile", "canonicalMemoryHashProfile", "revisionHeadSelectionPolicy", "rawIdentifierEvidencePolicy", "stateNeutralTransitionPolicy", "sharingDecisionPolicy", "agentLocalLanePolicy", "sensitivityAggregationPolicy", "continuityP0Observations", "legacyMigrationRules", "restoreSemanticValidation", "limitPolicies", "continuityDiagnosticCodes", "sourceSharingDispositionCodes"],
+      "required": ["contractVersion", "contractHash", "schemaFile", "schemaHash", "artifactSchemas", "sourceVocabularyVersion", "inventoryFile", "inventoryHash", "fixtureCorpusFile", "fixtureCorpusVersion", "fixtureCorpusHash", "fixtureCaseIds", "opaqueIdProfile", "opaqueIdConformanceProfile", "canonicalStateHashProfile", "checkpointHashProfile", "canonicalMemoryHashProfile", "resumeCapsuleHashProfile", "revisionHeadSelectionPolicy", "rawIdentifierEvidencePolicy", "stateNeutralTransitionPolicy", "sharingDecisionPolicy", "agentLocalLanePolicy", "sensitivityAggregationPolicy", "continuityP0Observations", "legacyMigrationRules", "restoreSemanticValidation", "limitPolicies", "continuityDiagnosticCodes", "sourceSharingDispositionCodes"],
       "properties": {
         "contractVersion": { "const": 1 },
         "contractHash": { "$ref": "#/$defs/Sha256Hex" },
@@ -4206,6 +4237,7 @@
         "canonicalStateHashProfile": { "$ref": "#/$defs/CanonicalStateHashProfileV1" },
         "checkpointHashProfile": { "$ref": "#/$defs/CheckpointHashProfileV1" },
         "canonicalMemoryHashProfile": { "$ref": "#/$defs/CanonicalMemoryHashProfileV1" },
+        "resumeCapsuleHashProfile": { "$ref": "#/$defs/ResumeCapsuleHashProfileV1" },
         "revisionHeadSelectionPolicy": { "$ref": "#/$defs/RevisionHeadSelectionPolicyV1" },
         "rawIdentifierEvidencePolicy": { "$ref": "#/$defs/RawIdentifierEvidencePolicyV1" },
         "stateNeutralTransitionPolicy": { "$ref": "#/$defs/StateNeutralTransitionPolicyV1" },

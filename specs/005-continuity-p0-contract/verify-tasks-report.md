@@ -133,7 +133,7 @@ review findings, the controller reran the affected and full gates:
 - generated contract hashes: empty diff;
 - regenerated old-shape baseline: 20 cases / 29 steps, empty diff;
 - mutation gate: `実行 218 / 期待 218、生存 0`; restored baseline `pass 220 / fail 0`;
-- current external-review fix scope: 13 modified tracked paths including this report, with no untracked, runtime, vendor,
+- first external-review fix snapshot before `014631b`: 13 modified tracked paths including this report, with no untracked, runtime, vendor,
   workflow, V1 reference reducer, old-shape corpus, mutation script, or hash-generator change.
 
 ### T005 durable red reproduction
@@ -169,3 +169,11 @@ All review output was treated as a proposal and checked against source/tests.
 | CodeRabbit 2 — policy-mismatched memory union | Accepted | Automatic evidence union requires an exact sharing/sensitivity/egress tuple; F4/F7 carry policy-conflict negatives. |
 | CodeRabbit 2 — plan completion wording | Accepted | File-level `VERIFIED`, `SKIPPED`, live evidence, history evidence, and checked-task state are no longer conflated. |
 | CodeRabbit 2 — sensitivity aggregation | Accepted | A closed max-sensitivity policy and fail-closed tests cover shared, Agent-local, canonical, and capsule projections. |
+| Grok security 3 | Blocked by max-turns | No schema-conforming final result. Two trace candidates were independently source-verified and accepted: explicit `d:`/`f:` receipt namespaces and a domain-separated persisted-capsule content hash/tamper gate. No further Grok retry was run after the skill stop condition. |
+| Cubic 3 — fabricated decision IDs | Accepted | Capsule and memory resolvers now load the referenced SharingDecision, verify its own ID, authenticated user authority, exact scope/target/scope level, and reject substitution. |
+| CodeRabbit 3 — opaque-kind cardinality comment | Accepted | Schema now documents that 26 comes from the exact type/runtime vocabulary. |
+| CodeRabbit 3 — colon paths in git grep | Accepted | Candidate parsing now uses NUL-delimited git output and one shared helper. |
+| CodeRabbit 3 — checkpoint parent pairing | Accepted with supported schema form | The local validator does not support `dependentRequired`; two supported `if/then` clauses enforce both directions. |
+| CodeRabbit 3 — FR-007 committedAt | Accepted | State-neutral events reuse the existing envelope/time; only semantic state changes issue a new daemon-owned time. |
+| CodeRabbit 3 — all-path `local_only` denial | Accepted | Generic semantic validation covers retrieval, RPC/hint, automatic/resume, capsule/sync/export profiles independent of record names. |
+| CodeRabbit 3 — scope inspection failures | Accepted | The documented gate uses `set -euo pipefail` and sequential Git writes before forbidden-path matching, so Git failures cannot become a clean result. |

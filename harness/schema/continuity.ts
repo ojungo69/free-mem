@@ -953,6 +953,7 @@ export interface ResumeDestinationV1 {
 
 export interface ResumeCapsuleV2 {
   readonly schemaVersion: 2;
+  readonly contentHash: Sha256Hex;
   readonly injectionId: OpaqueIdV1;
   readonly checkpointId: OpaqueIdV1;
   readonly checkpointRevision: Sha256Hex;
@@ -1175,7 +1176,10 @@ export interface StateNeutralTransitionPolicyV1 {
   readonly canonicalStateEffect: "reuse_revision";
   readonly receiptLedgerEffect: "insert_once";
   readonly receiptKeyProfile: "adapter_delivery_id_else_canonical_fingerprint_v1";
+  readonly deliveryKeyPrefix: "d:";
+  readonly fingerprintKeyPrefix: "f:";
   readonly receiptUniquenessScope: "task_lineage_event_store";
+  readonly receiptEvidenceComparison: "canonical_fingerprint";
   readonly receiptCollisionDisposition: "quarantine";
   readonly duplicateReceiptDisposition: "return_existing";
   readonly diagnosticAuditEffect: "record_bounded";
@@ -1728,6 +1732,38 @@ export interface CanonicalMemoryHashProfileV1 {
   readonly testVector: CanonicalMemoryHashTestVectorV1;
 }
 
+export interface ResumeCapsuleHashTestVectorV1 {
+  readonly sharedTaskStateVectorRef: "canonicalStateHashProfile.testVector.contentProjection.sharedTaskState";
+  readonly envelope: JsonValue;
+  readonly contentHash: Sha256Hex;
+}
+
+export interface ResumeCapsuleHashProfileV1 {
+  readonly schemaVersion: 1;
+  readonly canonicalization: "rfc8785-jcs";
+  readonly digest: "sha-256";
+  readonly contentDomain: "free-mem/ResumeCapsuleV2/content/v1";
+  readonly contentProjectionFields: readonly [
+    "schemaVersion",
+    "injectionId",
+    "checkpointId",
+    "checkpointRevision",
+    "workStateRevision",
+    "subjectScope",
+    "lineageSourceSummary",
+    "checkpointCreatedBySourceEventId",
+    "destination",
+    "resumeProfile",
+    "ageSeconds",
+    "reconciliation",
+    "sharedTaskState",
+    "destinationAgentLocalState",
+    "selectedMemoryIds",
+    "warnings",
+  ];
+  readonly testVector: ResumeCapsuleHashTestVectorV1;
+}
+
 export interface SourceAwareContinuityContractV1 {
   readonly contractVersion: 1;
   readonly contractHash: Sha256Hex;
@@ -1746,6 +1782,7 @@ export interface SourceAwareContinuityContractV1 {
   readonly canonicalStateHashProfile: CanonicalStateHashProfileV1;
   readonly checkpointHashProfile: CheckpointHashProfileV1;
   readonly canonicalMemoryHashProfile: CanonicalMemoryHashProfileV1;
+  readonly resumeCapsuleHashProfile: ResumeCapsuleHashProfileV1;
   readonly revisionHeadSelectionPolicy: RevisionHeadSelectionPolicyV1;
   readonly rawIdentifierEvidencePolicy: RawIdentifierEvidencePolicyV1;
   readonly stateNeutralTransitionPolicy: StateNeutralTransitionPolicyV1;

@@ -30,8 +30,9 @@ remain independent.
 | `ResumeProfileV1` | `same_agent`, `cross_agent` |
 | `LegacyMigrationDispositionV1` | `migrate`, `legacy_read_only`, `quarantine` |
 
-`local_only` may remain in daemon-owned local state but is never serialized into a resume capsule or export. It has its own
-`local_only` disposition code; it is not reported as `prohibited_egress`.
+`local_only` may remain in daemon-owned local state but is never emitted through retrieval, RPC, hint/manual, automatic
+injection, `active_task_shared`, `same_agent`, `cross_agent`, capsule, sync, or export. It has its own `local_only`
+disposition code; it is not reported as `prohibited_egress`.
 
 `OpaqueIdProfileV1` is `{ schemaVersion: 1, algorithm: "hmac-sha-256", keyId,
 outputEncoding: "lowercase_hex_256" }`. The HMAC input is domain-separated by ID kind. New-intake raw values are transformed
@@ -221,7 +222,7 @@ uses `transition:{kind:"parent",parentCheckpointId,parentCheckpointRevision}`. T
 
 The capsule contains a bounded delivery projection, not the full state:
 
-- `schemaVersion: 2`, opaque injection/checkpoint IDs, checkpoint/work-state revisions;
+- `schemaVersion: 2`, `contentHash`, opaque injection/checkpoint IDs, checkpoint/work-state revisions;
 - subject scope, lineage source summary, explicit checkpoint creator event;
 - `ResumeDestinationV1` (required authenticated `sourceIdentityEventId`, `clientId`, exact version, opaque session,
   optional capability hash, `privateEligible`); the reference must resolve to the same client/session/capability even when no
@@ -233,6 +234,12 @@ The capsule contains a bounded delivery projection, not the full state:
 
 Cross-agent capsules never contain the source client's Agent-local lane. Matching client ID with an old/different session is
 also rejected; the source identity event, lane key, and destination must agree on both values.
+
+`ResumeCapsuleHashProfileV1` computes SHA-256 over RFC 8785 JCS of
+`{domain:"free-mem/ResumeCapsuleV2/content/v1",capsule}` where `capsule` contains every V2 field except `contentHash`.
+Restore recomputes this hash and resolves both referenced checkpoint/work-state revisions before trusting the projection;
+changing shared text, destination, selected memory, or warnings without the exact hash is rejected. The manifest pins a
+cross-runtime vector.
 
 ## Canonical memory
 

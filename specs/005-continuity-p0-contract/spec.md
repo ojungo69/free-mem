@@ -300,7 +300,8 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-006**: FR-005 の場合でも、(a) canonical work-state transition、(b) event / delivery の冪等台帳
   transition、(c) 診断 / 監査 transition、(d) event store の網羅 watermark を分離して記録しなければならない。
 - **FR-007**: current V1の`updatedAt`はcaller由来の`occurredAt`により巻き戻ってはならない。successorでは
-  state-neutral eventがrevisionを再利用し、新revisionの`committedAt`だけをdaemon authorityが発行する。
+  state-neutral eventが既存revisionとそのenvelope/`committedAt`をそのまま再利用する。semantic state changeで
+  新revisionを作る場合だけ、new `committedAt`をdaemon authorityが発行する。
 - **FR-008**: 上限つき証跡 window から個別 entry が落ちても、「何件・どの理由・どの境界以前が
   欠けているか」は canonical state だけで判別できなければならない。
 - **FR-009**: overflow した事実は state 内の単調な値として保持し、理由ごとに件数と欠落を区別しなければならない。
