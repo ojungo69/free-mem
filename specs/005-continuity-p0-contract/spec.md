@@ -458,6 +458,13 @@ contract は期待する source identity、sharing disposition、participant集�
 - **Canonical Memory Entity**: scopeとversioned canonical fact identityで一意なmemory。複数sourceの
   evidenceをunionし、conflict/supersession/validity historyを別に保持する。自動identityは同じscope・
   kind・normalization profile・canonical contentの完全一致であり、semantic similarityを含まない。
+- **Revision Head Selection Contract**: daemon-owned ordinalで決めるordered headと、workspace/disposition/
+  fork/conflictを通過したautomatic resume eligibilityを別々に表す。ordered headが不適格なら古いrevisionへ
+  自動fallbackせずmanualへ送る。
+- **Continuity P0 Observation Contract**: 9 Issueそれぞれの入力、観測path、current V1値、successor期待値、
+  許容behavior deltaをmachine-readableに固定する。
+- **Raw Identifier Evidence Policy**: new intake、migration scratch、quarantined original artifactごとのretention、
+  reader、diagnostic、export、egress、zeroizationを固定する。
 - **Source-Aware Continuity Contract Bundle**: `SourceAwareContinuityContractV1`としてhashされる1回の
   freeze単位。`CanonicalWorkStateV2`、`ContinuationCheckpointV3`、`ResumeCapsuleV2`、
   `CanonicalMemoryEntityV1`とF0〜F7を同時に含む。
@@ -466,7 +473,11 @@ contract は期待する source identity、sharing disposition、participant集�
 
 ## Success Criteria *(mandatory)*
 
-### Measurable Outcomes
+### Downstream runtime gates frozen by S0
+
+SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-only S0がruntime passを主張するものでは
+ない。S0はSC-022のmachine-readable observation/delta contractとして、各gateの入力・観測点・期待値を
+追加判断なしに実装できる粒度でfreezeする。
 
 - **SC-001**: 状態と event だけを渡された実装が、daemon と同じ順序判定・同じ head 選択・同じ
   受理／隔離の判断・同じ内容 hash に、パリティ用 fixture の**全件**で到達する。
@@ -492,9 +503,12 @@ contract は期待する source identity、sharing disposition、participant集�
 - **SC-011**: 層A〜Cの契約変更前後で、既存の妥当な状態とeventに対する挙動が、**9件のissueが名指しした
   欠陥の修正を除いて**変わらない。判定は変更前の実装との突き合わせで行い、除外はissue番号ではなく
   具体的な差分（case名・event・JSON path・そのときの値・issue番号）で列挙する。層Dの意図した差分は
-  SC-013〜SC-021で別に列挙し、どちらの許容表にも無い差分が1つでもあれば不合格とする。
+  SC-013〜SC-023で別に列挙し、どちらの許容表にも無い差分が1つでもあれば不合格とする。S0では9件の
+  exact observation/delta entryをfreezeし、runtime before/after実測は後続fixtureで行う。
 - **SC-012**: 凍結した契約が、TypeScript reference と Rust prototype の**両方**で同じ fixture に対し
   同一の結果を出せることを、Stage 1 の実測開始前に確認できる。
+
+### S0 completion outcomes
 - **SC-013**: F0〜F7の全8 caseがschema-validなcontract corpusとして存在し、current V1の非対応理由と
   successor contractの期待値が各caseで一意に判別できる。
 - **SC-014**: Claude Code → Codex CLI → Claude Code のlineageで、origin、last contributor、participants、
@@ -510,10 +524,17 @@ contract は期待する source identity、sharing disposition、participant集�
   schema版とmigration dispositionがspec 005と#132で**1系統**だけ存在する。
 - **SC-019**: frozen inventory search patternが返す候補とinventory行の差集合が**0件**で、全行がsurface
   classとdispositionをちょうど1つ持ち、ambiguousな単数`sourceAgent`の未分類が**0件**である。
-- **SC-020**: `SourceAwareContinuityContractV1`のhash入力に4つのsuccessor artifact schemaとF0〜F7の
-  全8caseが含まれ、旧artifact4種すべてにmigration dispositionが1つずつ存在する。
+- **SC-020**: `SourceAwareContinuityContractV1`のhash入力に4つのsuccessor artifact schema、source
+  inventoryで`restoreValidationRequired=true`となる全persisted artifactのrule、F0〜F7の全8caseが含まれ、
+  旧artifact4種すべてにmigration dispositionが1つずつ存在する。
 - **SC-021**: #13のPhase 3 start gateとauthoritative task ledgerがS0 bundle/hashへ接続され、S0未完了時に
   persisted state/checkpoint、cross-agent renderer、source filterのruntime taskをreadyと示す箇所が**0件**である。
+- **SC-022**: `ContinuityP0ObservationContractV1`に#46/#49/#53/#61/#62/#56/#57/#32/#58のexact 9 entryが
+  あり、各entryがcase ID、input、JSON path/field、current V1値、successor期待値、許容delta kindを持つ。
+  9 Issueの未分類/重複entryは**0件**である。
+- **SC-023**: `RawIdentifierEvidencePolicyV1`はnew intake raw IDの永続化**0件**、migration scratchの
+  transaction終了時zeroization、quarantined originalのuser repair/discardまでのlocal retention、daemon
+  validator/migratorだけのraw access、raw diagnostic/export/egress **0件**を機械可読に固定する。
 
 ## Assumptions
 
