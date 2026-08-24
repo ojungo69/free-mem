@@ -1,0 +1,31 @@
+docs/superpowers/plans/2026-08-16-phase3-resume-preflight.md
+  s_d6433b5ff6fa8e::t_0997810eed71f8 9-25,405-407
+evidence/README.md
+  s_d6433b5ff6fa8e::t_a0b0fdf48cb806 35
+evidence/adr-006-source-aware-shared-memory.md
+  s_d6433b5ff6fa8e::t_a0b0fdf48cb806 1-114
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_d4b4d61dcb2d70 21
+  s_d6433b5ff6fa8e::t_529b49140839e0 22
+  s_d6433b5ff6fa8e::t_43874b41b8ce8b 23
+specs/001-agent-memory-core/spec.md
+  s_d6433b5ff6fa8e::t_02f0431486e680 18-22,117-119,144-146,177
+specs/001-agent-memory-core/tasks.md
+  s_d6433b5ff6fa8e::t_62cf182be88fa5 215-225,228-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4d32080a748037865105535845ac93401d9ecbd7",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
