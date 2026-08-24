@@ -794,12 +794,13 @@ test("successor observed text fields reject non-string and overlong values", () 
 });
 
 test("US4 machine artifacts freeze the inventory and exact F0-F7 set", () => {
+  const root = loadRequiredJson<JsonSchemaDocument>(ROOT_URL, "continuity schema");
   const inventory = loadRequiredJson<{
     inventoryVersion: number;
     baselineCommit: string;
     searches: { id: string; lineCount: number; sha256: string }[];
   }>(INVENTORY_URL, "source-aware source inventory");
-  const corpus = loadRequiredJson<{ corpusVersion: number; cases: { id: string }[] }>(
+  const corpus = loadRequiredJson<contract.SourceAwareContractCorpusV1>(
     CORPUS_URL,
     "source-aware F0-F7 corpus",
   );
@@ -821,6 +822,24 @@ test("US4 machine artifacts freeze the inventory and exact F0-F7 set", () => {
     { name: "ResumeCapsuleV2", schemaVersion: 2 },
     { name: "CanonicalMemoryEntityV1", schemaVersion: 1 },
   ]);
+  assert.ok(
+    validateContractValue(
+      "SourceAwareArtifactSchemaRefV1",
+      { name: "CanonicalWorkStateV2", schemaVersion: 3 },
+      root,
+      contract.CONTINUITY_LIMITS,
+    ).length > 0,
+  );
+  assert.deepEqual(
+    [
+      ...new Set(
+        corpus.cases.flatMap(({ successor }) =>
+          successor.memoryReviewCandidates.map(({ reasonCode }) => reasonCode),
+        ),
+      ),
+    ].sort(),
+    ["consent_or_source_locality_mismatch", "policy_tuple_mismatch"],
+  );
 });
 
 test("US4 raw identifier policy forbids persistence, diagnostics, export, and egress", () => {
@@ -910,21 +929,30 @@ function fixtureRecordIsPolicyEligible(
   );
 }
 
-function fixtureRecordIsUnionEligible(
+type FixtureMemoryRecordDisposition = "union_eligible" | contract.SourceAwareMemoryReviewCandidateV1["reasonCode"];
+
+function fixtureMemoryRecordDisposition(
   record: contract.SourceAwareFixtureRecordV1,
+  memory: contract.SourceAwareMemoryExpectationV1,
   caseScope: contract.SourceAwareFixtureScopeV1,
   sources: ReadonlyMap<string, contract.SourceAwareFixtureSourceV1>,
   decisions: ReadonlyMap<string, contract.SourceAwareFixtureSharingDecisionV1>,
-  agentPrivateOwnerSourceId: string | undefined,
-): boolean {
+): FixtureMemoryRecordDisposition {
+  if (
+    record.sharingScope !== memory.sharingScope ||
+    record.sensitivity !== memory.sensitivity ||
+    record.egressPolicy !== memory.egressPolicy
+  ) {
+    return "policy_tuple_mismatch";
+  }
   const recordScope = record.subjectScope ?? caseScope;
-  return (
+  const eligible =
     sources.get(record.sourceId)?.authenticated === true &&
     canonicalizeJson(recordScope) === canonicalizeJson(caseScope) &&
     (record.sharingScope === "agent_private"
-      ? record.sourceId === agentPrivateOwnerSourceId
-      : fixtureRecordHasValidConsent(record, recordScope, decisions))
-  );
+      ? record.sourceId === memory.sourceIds[0]
+      : fixtureRecordHasValidConsent(record, recordScope, decisions));
+  return eligible ? "union_eligible" : "consent_or_source_locality_mismatch";
 }
 
 function memoryProjectionSemanticIssues(
@@ -939,21 +967,11 @@ function memoryProjectionSemanticIssues(
       if (!sourcesById.has(id)) issues.push(`${item.id}: memory source is missing`);
       else if (sourcesById.get(id)?.authenticated !== true) issues.push(`${item.id}: memory source is unauthenticated`);
     }
-    const matchingPolicyRecords = item.input.records.filter(
+    const eligibleRecords = item.input.records.filter(
       (record) =>
         record.canonicalFactId === memory.canonicalFactId &&
-        record.sharingScope === memory.sharingScope &&
-        record.sensitivity === memory.sensitivity &&
-        record.egressPolicy === memory.egressPolicy,
-    );
-    const eligibleRecords = matchingPolicyRecords.filter((record) =>
-      fixtureRecordIsUnionEligible(
-        record,
-        item.input.scope,
-        sourcesById,
-        sharingDecisions,
-        memory.sharingScope === "agent_private" ? memory.sourceIds[0] : undefined,
-      ),
+        fixtureMemoryRecordDisposition(record, memory, item.input.scope, sourcesById, sharingDecisions) ===
+          "union_eligible",
     );
     for (const record of eligibleRecords) activeUnionRecordIds.add(record.id);
     const eligibleSources = [...new Set(eligibleRecords.map(({ sourceId }) => sourceId))].sort();
@@ -986,13 +1004,29 @@ function memoryProjectionSemanticIssues(
   }
   for (const candidate of item.successor.memoryReviewCandidates) {
     const record = item.input.records.find(({ id }) => id === candidate.recordId);
-    const matchingTuple = item.successor.memoryEntities.some(
-      (memory) =>
-        record?.canonicalFactId === memory.canonicalFactId &&
-        record.sharingScope === memory.sharingScope &&
-        record.sensitivity === memory.sensitivity &&
-        record.egressPolicy === memory.egressPolicy,
+    const sameFactMemories = item.successor.memoryEntities.filter(
+      ({ canonicalFactId }) => canonicalFactId === candidate.canonicalFactId,
     );
+    const dispositions = record
+      ? sameFactMemories.map((memory) =>
+          fixtureMemoryRecordDisposition(record, memory, item.input.scope, sourcesById, sharingDecisions),
+        )
+      : [];
+    const preEntityPolicyConflict = record !== undefined && item.input.records.some(
+      (peer) =>
+        peer.id !== record.id &&
+        peer.canonicalFactId === record.canonicalFactId &&
+        (peer.sharingScope !== record.sharingScope ||
+          peer.sensitivity !== record.sensitivity ||
+          peer.egressPolicy !== record.egressPolicy),
+    );
+    const expectedReason = dispositions.includes("union_eligible")
+      ? undefined
+      : dispositions.includes("consent_or_source_locality_mismatch")
+        ? "consent_or_source_locality_mismatch"
+        : dispositions.includes("policy_tuple_mismatch") || preEntityPolicyConflict
+          ? "policy_tuple_mismatch"
+          : undefined;
     if (
       !record ||
       record.canonicalFactId !== candidate.canonicalFactId ||
@@ -1000,7 +1034,7 @@ function memoryProjectionSemanticIssues(
       record.sensitivity !== candidate.sensitivity ||
       record.egressPolicy !== candidate.egressPolicy ||
       !orderedStringsEqual(record.sourceEvidenceIds, candidate.sourceEvidenceIds) ||
-      candidate.reasonCode !== (matchingTuple ? "consent_or_source_locality_mismatch" : "policy_tuple_mismatch")
+      candidate.reasonCode !== expectedReason
     ) {
       issues.push(`${item.id}: memory review candidate does not preserve its record policy`);
     }
@@ -1213,14 +1247,16 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     ?.successor.memoryReviewCandidates.map(({ recordId }) => recordId)
     .sort();
   if (
-    f4Input?.length !== 4 ||
+    f4Input?.length !== 5 ||
     f4Input.filter(
       ({ sharingScope, sensitivity, egressPolicy }) =>
         sharingScope === "project_shared" && sensitivity === "normal" && egressPolicy === "eligible",
-    ).length !== 2 ||
-    f4ReviewIds?.join() !== "memory-private,memory-secret"
+    ).length !== 3 ||
+    f4ReviewIds?.join() !== "memory-private,memory-secret,memory-unconsented" ||
+    byId.get("F4")?.successor.memoryReviewCandidates.find(({ recordId }) => recordId === "memory-unconsented")
+      ?.reasonCode !== "consent_or_source_locality_mismatch"
   ) {
-    issues.push("F4 does not preserve policy-mismatch negative evidence");
+    issues.push("F4 does not preserve union-ineligible negative evidence");
   }
   const f5 = byId.get("F5")?.successor.retrievalProfiles;
   if (f5?.map(({ profile }) => profile).join() !== "all_source_project,current_source,named_source,active_task_shared") {
@@ -2203,28 +2239,37 @@ test("source-aware negative self-mutations are rejected", () => {
   );
 
   const privateMemoryRecord = unconsentedMemoryCase.input.records.find(({ id }) => id === "memory-private");
-  assert.ok(privateMemoryRecord);
+  assert.ok(privateMemoryRecord?.canonicalFactId);
   const f4Sources = new Map(unconsentedMemoryCase.input.sources.map((source) => [source.id, source]));
   const f4Decisions = new Map(unconsentedMemoryCase.input.sharingDecisions.map((decision) => [decision.id, decision]));
+  const privateMemoryExpectation: contract.SourceAwareMemoryExpectationV1 = {
+    memoryId: "memory-private-locality-check",
+    canonicalFactId: privateMemoryRecord.canonicalFactId,
+    sourceIds: [privateMemoryRecord.sourceId],
+    sourceEvidenceIds: privateMemoryRecord.sourceEvidenceIds,
+    sharingScope: privateMemoryRecord.sharingScope,
+    sensitivity: privateMemoryRecord.sensitivity,
+    egressPolicy: privateMemoryRecord.egressPolicy,
+  };
   assert.equal(
-    fixtureRecordIsUnionEligible(
+    fixtureMemoryRecordDisposition(
       privateMemoryRecord,
+      privateMemoryExpectation,
       unconsentedMemoryCase.input.scope,
       f4Sources,
       f4Decisions,
-      privateMemoryRecord.sourceId,
     ),
-    true,
+    "union_eligible",
   );
   assert.equal(
-    fixtureRecordIsUnionEligible(
+    fixtureMemoryRecordDisposition(
       { ...privateMemoryRecord, sourceId: "source-codex" },
+      privateMemoryExpectation,
       unconsentedMemoryCase.input.scope,
       f4Sources,
       f4Decisions,
-      privateMemoryRecord.sourceId,
     ),
-    false,
+    "consent_or_source_locality_mismatch",
   );
 
   const policyCandidateLoss = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
@@ -2232,6 +2277,41 @@ test("source-aware negative self-mutations are rejected", () => {
   assert.ok(policyCase);
   (policyCase.successor.memoryReviewCandidates as contract.SourceAwareMemoryReviewCandidateV1[]).pop();
   assert.ok(corpusSemanticIssues(policyCandidateLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  const orphanReviewCandidate = structuredClone(corpus) as unknown as {
+    cases: contract.SourceAwareContractCaseV1[];
+  };
+  const orphanCase = orphanReviewCandidate.cases.find(({ id }) => id === "F0");
+  assert.ok(orphanCase);
+  const orphanRecord = orphanCase.input.records[0];
+  assert.ok(orphanRecord);
+  (orphanRecord as unknown as { canonicalFactId: string }).canonicalFactId = "fact-orphan";
+  (orphanCase.successor.memoryReviewCandidates as contract.SourceAwareMemoryReviewCandidateV1[]).push({
+    recordId: orphanRecord.id,
+    canonicalFactId: "fact-orphan",
+    sharingScope: orphanRecord.sharingScope,
+    sensitivity: orphanRecord.sensitivity,
+    egressPolicy: orphanRecord.egressPolicy,
+    sourceEvidenceIds: orphanRecord.sourceEvidenceIds,
+    disposition: "policy_review_required",
+    reasonCode: "policy_tuple_mismatch",
+  });
+  assert.ok(corpusSemanticIssues(orphanReviewCandidate as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  const sameTuplePeerReview = structuredClone(orphanReviewCandidate);
+  const sameTupleCase = sameTuplePeerReview.cases.find(({ id }) => id === "F0");
+  assert.ok(sameTupleCase);
+  (sameTupleCase.input.records as contract.SourceAwareFixtureRecordV1[]).push({
+    ...sameTupleCase.input.records[0]!,
+    id: "native-todo-peer",
+    sourceEvidenceIds: ["event-claude-2"],
+  });
+  (sameTupleCase.successor.sourceEvidence as contract.SourceAwareRecordEvidenceExpectationV1[]).push({
+    recordId: "native-todo-peer",
+    sourceIds: ["source-claude"],
+    sourceEvidenceIds: ["event-claude-2"],
+  });
+  assert.ok(corpusSemanticIssues(sameTuplePeerReview as unknown as contract.SourceAwareContractCorpusV1).length > 0);
 
   const forgedLineage = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
   const authorityCase = forgedLineage.cases.find(({ id }) => id === "F6");
@@ -3841,11 +3921,11 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   );
   const missingConsent = structuredClone(privateEligible) as unknown as contract.ResumeCapsuleV2;
   assert.ok(missingConsent.sharedTaskState);
-  (missingConsent.sharedTaskState.sharingDecisionEventIds as string[]).pop();
+  (missingConsent.sharedTaskState.sharingDecisionEventIds as unknown as string[]).pop();
   assert.ok(validateContractValue("ResumeCapsuleV2", missingConsent, root, contract.CONTINUITY_LIMITS).length > 0);
   const duplicateConsent = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
   assert.ok(duplicateConsent.sharedTaskState);
-  (duplicateConsent.sharedTaskState.sharingDecisionEventIds as string[]).push(
+  (duplicateConsent.sharedTaskState.sharingDecisionEventIds as unknown as string[]).push(
     duplicateConsent.sharedTaskState.sharingDecisionEventIds[0]!,
   );
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", duplicateConsent, root, contract.CONTINUITY_LIMITS), []);

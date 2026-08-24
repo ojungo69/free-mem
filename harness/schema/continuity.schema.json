@@ -4117,7 +4117,13 @@
       "properties": {
         "name": { "type": "string", "enum": ["CanonicalWorkStateV2", "ContinuationCheckpointV3", "ResumeCapsuleV2", "CanonicalMemoryEntityV1"] },
         "schemaVersion": { "type": "number", "enum": [1, 2, 3] }
-      }
+      },
+      "oneOf": [
+        { "properties": { "name": { "const": "CanonicalWorkStateV2" }, "schemaVersion": { "const": 2 } } },
+        { "properties": { "name": { "const": "ContinuationCheckpointV3" }, "schemaVersion": { "const": 3 } } },
+        { "properties": { "name": { "const": "ResumeCapsuleV2" }, "schemaVersion": { "const": 2 } } },
+        { "properties": { "name": { "const": "CanonicalMemoryEntityV1" }, "schemaVersion": { "const": 1 } } }
+      ]
     },
     "RevisionHeadSelectionPolicyV1": {
       "type": "object",

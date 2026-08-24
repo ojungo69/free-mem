@@ -16,7 +16,7 @@ issue #1 の owner sequencing（2026-08-18）は Rust Stage 1 の開始条件を
 通すことが継続性と Rust の両方を同時に開く唯一の経路になっている。
 
 9 件はばらばらの欠陥ではない。**互いを名指しして「同じ decision window で判断しろ」と書いている**。
-#62 は本文で「#49 / #53 / #61 と versioning をまとめて判断する」と述べ、その 1 点だけを理由に
+Issue `#62` は本文で「#49 / #53 / #61 と versioning をまとめて判断する」と述べ、その 1 点だけを理由に
 `status: blocked` が付いている。#56 と #57 は「同じ restore validation work package で解決する」と
 書いている。1 件ずつ切ると、凍結 schema の版・fixture・hash・別言語実装の期待値が
 そのたびに動く。#35 / #39 / #43 / #44 を 1 回の拡張でまとめた 002 と同じ理由である。
@@ -29,14 +29,14 @@ TypeScript reference の共通入力になり、G1–G7 の実測が「Rust の�
 `CanonicalWorkState` / checkpoint の versioned schema と migration disposition を要求するため、
 この feature と別の successor schema を立てると、migration・contract hash・TS/Rust fixture を
 連続して作り直すことになる。したがって**次の persisted schema 版は 1 つだけ**とし、Continuity P0 と
-#132 S0 を同じ decision window で凍結する。
+Issue `#132` S0 を同じ decision window で凍結する。
 
 ## Clarifications
 
 ### Session 2026-08-24
 
 - Q: spec 005 と Issue #132 S0 をどの単位で進めるか？ → A: 同じ successor schema 版へ統合し、F0〜F7 を同じ contract PR に含める。
-- Q: Core 1.0で別Agent由来の「同じ事実」を自動統合する境界はどこか？ → A: 同じscope・kind・正規化済みcanonical contentの完全一致でfact identityを決め、evidence unionは`sharingScope`・`sensitivity`・`egressPolicy`も完全一致する場合だけ行う。policy mismatchと言い換えは明示reviewへ送る。
+- Q: Core 1.0で別Agent由来の「同じ事実」を自動統合する境界はどこか？ → A: 同じscope・kind・正規化済みcanonical contentの完全一致でfact identityを決める。union eligibilityはFR-042を正本とし、exact policy tuple、shared contributorごとのauthenticated consent、Agent-privateのexact-source localityを要求する。不一致と言い換えは明示reviewへ送る。
 
 問題は 4 つの層に分かれる。
 
@@ -246,7 +246,8 @@ contract は期待する source identity、sharing disposition、participant集�
 4. **F3 — Multi-Agent lineage**: Claude Code → Codex CLI → Claude Code の順に更新しても、lineage
    origin、last contributor、participants、checkpoint creatorが別々に決まる。
 5. **F4 — Canonical memory dedupe**: 同じscope・同じcanonical fact identityを2 Agentが裏付けても
-   memory entityは1件で、source evidenceは2系統になる。conflict / supersessionはdedupeと混同しない。
+   memory entityは1件で、source evidenceは2系統になる。同じpolicy tupleでもconsentのないevidenceはactive
+   unionへ入れず、`consent_or_source_locality_mismatch`としてreviewに保持する。conflict / supersessionはdedupeと混同しない。
 6. **F5 — Retrieval policy**: all-source project search、current-source filter、named-source filter、
    active-task shared injectionが別のprofileとして働き、filterを外してもwrong project/workspaceが0件である。
 7. **F6 — Source authority**: callerが`sourceAgent`やcanonical client IDを偽装しても、authenticated
@@ -555,6 +556,7 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
   同一の結果を出せることを、Stage 1 の実測開始前に確認できる。
 
 ### S0 completion outcomes
+
 - **SC-013**: F0〜F7の全8 caseがschema-validなcontract corpusとして存在し、current V1の非対応理由と
   successor contractの期待値が各caseで一意に判別できる。
 - **SC-014**: Claude Code → Codex CLI → Claude Code のlineageで、origin、last contributor、participants、
@@ -563,7 +565,8 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
   opt-inなしまたは認証済みdestination `SourceIdentityV1.privateEligible=false`のprivate stateが別Agentへのautomatic full injectionへ入る件数が
   **0件**である。
 - **SC-016**: 同じcanonical fact identityを2 Agentが裏付けたF4でmemory entityが**1件**、source
-  evidence系統が**2件**となり、per-Agent duplicateが**0件**である。
+  evidence系統が**2件**となり、per-Agent duplicateが**0件**である。同じpolicy tupleのunconsented recordは
+  active evidenceを増やさず、`consent_or_source_locality_mismatch`のreview candidateとして保持される。
 - **SC-017**: canonical client ID、legacy alias、unknown/unverified source、provider/modelの全fixtureが
   versioned vocabulary/disposition表のちょうど1行に対応し、callerの自己申告だけでtrustedへ昇格する件数が**0件**である。
 - **SC-018**: S0差分にproduct runtime、DB、reducer、MCP、viewerの変更が**0件**で、successor persisted

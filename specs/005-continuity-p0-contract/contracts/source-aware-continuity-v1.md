@@ -301,7 +301,7 @@ expectations cover:
 - F1 shared task visibility;
 - F2 immutable provenance;
 - F3 multi-Agent lineage;
-- F4 one canonical memory with two source evidence branches;
+- F4 one canonical memory with two consented source evidence branches, plus one same-tuple unconsented review candidate;
 - F5 the four retrieval profiles;
 - F6 authenticated authority overriding caller claims (`source_unverified` refers to the unverified caller client-ID claim,
   not to the authenticated intake source);

@@ -163,6 +163,7 @@
         "records": [
           { "id": "memory-claude", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-memory-claude"], "canonicalFactId": "fact-pkce" },
           { "id": "memory-codex", "kind": "memory", "sourceId": "source-codex", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"], "sharingDecisionEventIds": ["decision-memory-codex"], "canonicalFactId": "fact-pkce" },
+          { "id": "memory-unconsented", "kind": "memory", "sourceId": "source-codex", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-unconsented-1"], "canonicalFactId": "fact-pkce" },
           { "id": "memory-private", "kind": "memory", "sourceId": "source-claude-private", "sharingScope": "agent_private", "sensitivity": "private", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-private-1"], "canonicalFactId": "fact-pkce" },
           { "id": "memory-secret", "kind": "memory", "sourceId": "source-codex-secret", "sharingScope": "project_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-codex-secret-1"], "sharingDecisionEventIds": ["decision-memory-secret"], "canonicalFactId": "fact-pkce" }
         ],
@@ -185,12 +186,14 @@
         "sourceEvidence": [
           { "recordId": "memory-claude", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] },
           { "recordId": "memory-codex", "sourceIds": ["source-codex"], "sourceEvidenceIds": ["event-codex-1"] },
+          { "recordId": "memory-unconsented", "sourceIds": ["source-codex"], "sourceEvidenceIds": ["event-codex-unconsented-1"] },
           { "recordId": "memory-private", "sourceIds": ["source-claude-private"], "sourceEvidenceIds": ["event-claude-private-1"] },
           { "recordId": "memory-secret", "sourceIds": ["source-codex-secret"], "sourceEvidenceIds": ["event-codex-secret-1"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [{ "memoryId": "memory-pkce", "canonicalFactId": "fact-pkce", "sourceIds": ["source-claude", "source-codex"], "sourceEvidenceIds": ["event-claude-1", "event-codex-1"], "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible" }],
         "memoryReviewCandidates": [
+          { "recordId": "memory-unconsented", "canonicalFactId": "fact-pkce", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-unconsented-1"], "disposition": "policy_review_required", "reasonCode": "consent_or_source_locality_mismatch" },
           { "recordId": "memory-private", "canonicalFactId": "fact-pkce", "sharingScope": "agent_private", "sensitivity": "private", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-private-1"], "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" },
           { "recordId": "memory-secret", "canonicalFactId": "fact-pkce", "sharingScope": "project_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-codex-secret-1"], "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" }
         ],

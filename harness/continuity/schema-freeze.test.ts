@@ -35,6 +35,13 @@ if (false) {
   sourceIdentity.ingestAttestation.peerIdentityId = "b".repeat(64);
   // @ts-expect-error canonical memory always has at least one authenticated source event
   const emptyMemorySources: contract.CanonicalMemoryEntityV1["sourceEventIds"] = [];
+  // @ts-expect-error shared task state always has at least one authenticated sharing decision
+  const emptySharedDecisions: contract.SharedTaskStateV1["sharingDecisionEventIds"] = [];
+  // @ts-expect-error artifact names and schema versions are one discriminated contract
+  const mismatchedArtifactSchema: contract.SourceAwareArtifactSchemaRefV1 = {
+    name: "CanonicalWorkStateV2",
+    schemaVersion: 3,
+  };
 }
 
 /**
@@ -286,6 +293,14 @@ const INLINE_CONSTS = {
   "RevisionHeadSelectionContractV1.oneOf[2].properties.fallbackDisposition": "quarantine",
   "SemanticResumeNoteV2.properties.schemaVersion": 2,
   "SharedTaskStateV1.properties.sharingScope": "task_shared",
+  "SourceAwareArtifactSchemaRefV1.oneOf[0].properties.name": "CanonicalWorkStateV2",
+  "SourceAwareArtifactSchemaRefV1.oneOf[0].properties.schemaVersion": 2,
+  "SourceAwareArtifactSchemaRefV1.oneOf[1].properties.name": "ContinuationCheckpointV3",
+  "SourceAwareArtifactSchemaRefV1.oneOf[1].properties.schemaVersion": 3,
+  "SourceAwareArtifactSchemaRefV1.oneOf[2].properties.name": "ResumeCapsuleV2",
+  "SourceAwareArtifactSchemaRefV1.oneOf[2].properties.schemaVersion": 2,
+  "SourceAwareArtifactSchemaRefV1.oneOf[3].properties.name": "CanonicalMemoryEntityV1",
+  "SourceAwareArtifactSchemaRefV1.oneOf[3].properties.schemaVersion": 1,
   "AgentLocalStateV1.properties.sharingScope": "agent_private",
   "CanonicalWorkStateV2.properties.schemaVersion": 2,
   "ContinuationCheckpointV3.properties.schemaVersion": 3,
@@ -704,6 +719,8 @@ type _InlineEnumsMatchContract = [
       EnumAt<"OpaqueIdConformanceProfileV1.properties.messageFields.items">
     >
   >,
+  Assert<SameSet<contract.CanonicalStateHashProfileV1["contentProjectionFields"][number], EnumAt<"CanonicalStateHashProfileV1.properties.contentProjectionFields.items">>>,
+  Assert<SameSet<contract.CanonicalStateHashProfileV1["revisionMetadataFields"][number], EnumAt<"CanonicalStateHashProfileV1.properties.revisionMetadataFields.items">>>,
   Assert<SameSet<contract.CheckpointHashProfileV1["contentProjectionFields"][number], EnumAt<"CheckpointHashProfileV1.properties.contentProjectionFields.items">>>,
   Assert<SameSet<contract.CanonicalMemoryHashProfileV1["contentProjectionFields"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.contentProjectionFields.items">>>,
   Assert<SameSet<contract.CanonicalMemoryHashProfileV1["revisionMetadataFields"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.revisionMetadataFields.items">>>,
@@ -788,6 +805,30 @@ type _InlineConstsMatchContract = [
     >
   >,
   Assert<SameLiteral<contract.SharedTaskStateV1["sharingScope"], ConstAt<"SharedTaskStateV1.properties.sharingScope">>>,
+  Assert<
+    SameLiteral<
+      Extract<contract.SourceAwareArtifactSchemaRefV1, { name: ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[0].properties.name"> }>["schemaVersion"],
+      ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[0].properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameLiteral<
+      Extract<contract.SourceAwareArtifactSchemaRefV1, { name: ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[1].properties.name"> }>["schemaVersion"],
+      ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[1].properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameLiteral<
+      Extract<contract.SourceAwareArtifactSchemaRefV1, { name: ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[2].properties.name"> }>["schemaVersion"],
+      ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[2].properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameLiteral<
+      Extract<contract.SourceAwareArtifactSchemaRefV1, { name: ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[3].properties.name"> }>["schemaVersion"],
+      ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[3].properties.schemaVersion">
+    >
+  >,
   Assert<SameLiteral<contract.AgentLocalStateV1["sharingScope"], ConstAt<"AgentLocalStateV1.properties.sharingScope">>>,
   Assert<SameLiteral<contract.CanonicalWorkStateV2["schemaVersion"], ConstAt<"CanonicalWorkStateV2.properties.schemaVersion">>>,
   Assert<SameLiteral<contract.ContinuationCheckpointV3["schemaVersion"], ConstAt<"ContinuationCheckpointV3.properties.schemaVersion">>>,

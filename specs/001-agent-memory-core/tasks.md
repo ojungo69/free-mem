@@ -221,8 +221,9 @@ Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。前提: 上記 Runtime bar
   `vendor/codemem/**`、reference reducer、old-shape corpus、`harness/continuity/mutate.sh`、
   `harness/contract-hashes.mjs`の差分0件をmachine scope checkで確認する。
 
-S0-SA完了まで、`CanonicalWorkState` / checkpointのpersisted successor、Agent-local/shared projection runtime、
-cross-agent renderer、source filter、migration DDL/data rewriteを開始しない。daemon lifecycle、authenticated RPC、
+S0-SA完了まで、successor artifact 4種（`CanonicalWorkStateV2` / `ContinuationCheckpointV3` / `ResumeCapsuleV2` /
+`CanonicalMemoryEntityV1`）のruntime・persistence・migration（DDL/data rewriteを含む）、Agent-local/shared projection、
+cross-agent renderer、source filterを開始しない。daemon lifecycle、authenticated RPC、
 sole-writer、spool、backup骨格はsource-sharing persisted schemaへ依存しない範囲で並行可能。
 
 ## Phase 3 — Continuity State Machine [US1]（着手時に詳細化）

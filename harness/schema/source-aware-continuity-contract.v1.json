@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
-  "contractHash": "616f5faa6389a529f9c6c7a3f36dd8706c3635c96895a96ed2f546efd46b780b",
+  "contractHash": "3534fb191caf022a7e7b2477171a92231159a32cc6aa684337dc7ed1ed54ad81",
   "schemaFile": "schema/continuity.schema.json",
-  "schemaHash": "b8c1e4e4957d7860690301851f700ccf11b8baf72d854be1958b113838125998",
+  "schemaHash": "c64c3440ef27b5ea4a8856b7279c255349cd53654f41bcb9a0e81a8554c1b156",
   "artifactSchemas": [
     { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
     { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
@@ -14,7 +14,7 @@
   "inventoryHash": "1d2642999fca4f4d35d1280011baa36f29825898121a48e392d106c341bb5dff",
   "fixtureCorpusFile": "fixtures/continuity/source-aware-f0-f7.v1.json",
   "fixtureCorpusVersion": 1,
-  "fixtureCorpusHash": "ca7a718de536a28fb29d8ad94d8616c9274bc71855ee80dd66e115c8b24c2077",
+  "fixtureCorpusHash": "0b6914a9177f4b800226a0d1161ef1dd1add3907ef47398eee3433a0d5b9afa2",
   "fixtureCaseIds": ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"],
   "opaqueIdProfile": {
     "schemaVersion": 1,

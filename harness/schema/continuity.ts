@@ -882,7 +882,7 @@ export interface LineageSourceSummaryV1 {
 
 export interface SharedTaskStateV1 {
   readonly sharingScope: "task_shared";
-  readonly sharingDecisionEventIds: readonly OpaqueIdV1[];
+  readonly sharingDecisionEventIds: readonly [OpaqueIdV1, ...OpaqueIdV1[]];
   readonly goal?: ObservedV2<string>;
   readonly constraints: readonly ObservedV2<string>[];
   readonly activeFiles: readonly ObservedFileV2[];
@@ -1660,10 +1660,11 @@ export const CONTINUITY_DIAGNOSTIC_CODES_V2 = [
   "terminal_sibling_conflict",
 ] as const satisfies readonly ContinuityDiagnosticCodeV2[];
 
-export interface SourceAwareArtifactSchemaRefV1 {
-  readonly name: "CanonicalWorkStateV2" | "ContinuationCheckpointV3" | "ResumeCapsuleV2" | "CanonicalMemoryEntityV1";
-  readonly schemaVersion: 1 | 2 | 3;
-}
+export type SourceAwareArtifactSchemaRefV1 =
+  | { readonly name: "CanonicalWorkStateV2"; readonly schemaVersion: 2 }
+  | { readonly name: "ContinuationCheckpointV3"; readonly schemaVersion: 3 }
+  | { readonly name: "ResumeCapsuleV2"; readonly schemaVersion: 2 }
+  | { readonly name: "CanonicalMemoryEntityV1"; readonly schemaVersion: 1 };
 
 export interface RevisionHeadSelectionPolicyV1 {
   readonly orderingKey: "lineage_revision_ordinal";

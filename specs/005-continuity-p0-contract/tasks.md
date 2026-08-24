@@ -22,8 +22,9 @@
 - [X] T002 Create the source-aware decision record in `evidence/adr-006-source-aware-shared-memory.md` and add its index entry to `evidence/README.md`
 - [X] T003 Update the S0 start gate without marking runtime work complete in `specs/001-agent-memory-core/spec.md`, `specs/001-agent-memory-core/tasks.md`, and `docs/superpowers/plans/2026-08-16-phase3-resume-preflight.md`
 
-**Checkpoint**: #132 and every authoritative local ledger say `SourceAwareContinuityContractV1` blocks persisted
-state/checkpoint, cross-agent renderer, and source-filter runtime work.
+**Checkpoint**: #132 and every authoritative local ledger say `SourceAwareContinuityContractV1` blocks runtime,
+persistence, and migration for all four successor artifacts (`CanonicalWorkStateV2`, `ContinuationCheckpointV3`,
+`ResumeCapsuleV2`, and `CanonicalMemoryEntityV1`), including cross-agent renderer and source-filter work.
 
 ---
 
