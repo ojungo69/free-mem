@@ -1,0 +1,98 @@
+specs/005-continuity-p0-contract/spec.md
+  s_d6433b5ff6fa8e::t_20a92ce365fd12 424-425
+  s_d6433b5ff6fa8e::t_1c79fba5d6d792 297-299,302-303,494-497
+specs/005-continuity-p0-contract/data-model.md
+  s_d6433b5ff6fa8e::t_03f0f14db93a6d 250-251
+  s_d6433b5ff6fa8e::t_ebc8dfce9215cb 228
+  s_d6433b5ff6fa8e::t_20a92ce365fd12 249,252
+  s_d6433b5ff6fa8e::t_a0f4e2e15b8f9a 160-162,164
+  s_d6433b5ff6fa8e::t_fcc377c3fdd037 163
+  s_d6433b5ff6fa8e::t_833082521fa95c 226-227
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_255e784329a4fe 581
+  s_d6433b5ff6fa8e::t_5103b49712a5c6 579
+  s_d6433b5ff6fa8e::t_2c573ddb621655 5
+  s_d6433b5ff6fa8e::t_11c9ad8f442d64 572
+  s_d6433b5ff6fa8e::t_3b92e3e6391943 563
+  s_d6433b5ff6fa8e::t_1db64d89aeaec7 228-233,235-237
+  s_d6433b5ff6fa8e::t_edb9640228ddbb 152,160,169,171
+  s_d6433b5ff6fa8e::t_4ad8a339789c14 3
+  s_d6433b5ff6fa8e::t_3aeb41b2c37d1b 147
+  s_d6433b5ff6fa8e::t_a0d0dd05c5489b 234
+  s_d6433b5ff6fa8e::t_f427503340a07f 17
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_3788532753df68 31
+  s_d6433b5ff6fa8e::t_6d3217a99732e6 35
+  s_d6433b5ff6fa8e::t_2253b34d7aff7c 37
+specs/005-continuity-p0-contract/checklists/requirements.md
+  s_d6433b5ff6fa8e::t_408ed147f44bb4 9,19,30
+specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md
+  s_d6433b5ff6fa8e::t_a0f4e2e15b8f9a 94-95,98
+  s_d6433b5ff6fa8e::t_fcc377c3fdd037 96-97
+  s_d6433b5ff6fa8e::t_03f0f14db93a6d 169-171
+  s_d6433b5ff6fa8e::t_833082521fa95c 101
+  s_d6433b5ff6fa8e::t_ebc8dfce9215cb 102
+  s_d6433b5ff6fa8e::t_20a92ce365fd12 167-168
+harness/fixtures/continuity/source-aware-f0-f7.v1.json
+  s_d6433b5ff6fa8e::t_e7007972f1a214 31
+  s_d6433b5ff6fa8e::t_3aa0df7106460b 165-167,171-172,187-189,192
+  s_d6433b5ff6fa8e::t_bebb66f72872b9 292,297
+  s_d6433b5ff6fa8e::t_56e48c6607a795 157-159
+  s_d6433b5ff6fa8e::t_cf881864c1290f 68,104,145,193-196,239,273,327-329
+specs/005-continuity-p0-contract/verify-tasks-report.md
+  s_d6433b5ff6fa8e::t_cb610ea2fd378a 129,131
+  s_d6433b5ff6fa8e::t_2a5dbac05340e5 147-171
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_f779db2a285918 311-314,316-317,803-806,808-809,992
+  s_d6433b5ff6fa8e::t_da7f3ad78e2613 315,807
+  s_d6433b5ff6fa8e::t_57727f47f3508c 318-319,810-811,1073
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_c34ab61d5f0880 1972
+  s_d6433b5ff6fa8e::t_cf2a87904c78e4 770,1405-1418
+  s_d6433b5ff6fa8e::t_4f70af7656b1f7 542,1718
+  s_d6433b5ff6fa8e::t_8a55ac2d3550dd 1970
+  s_d6433b5ff6fa8e::t_1fb0b514aee435 836-864,899-902,908-909,985-989
+  s_d6433b5ff6fa8e::t_84e3c280b9f18b 1065,1819,1832-1834,1844,1855
+  s_d6433b5ff6fa8e::t_0db5904a340d97 1638,1669,1735,1745,1749,1757-1760,1792-1793,1799
+  s_d6433b5ff6fa8e::t_8b412cec977472 438-463
+  s_d6433b5ff6fa8e::t_69b17be32c03f3 1426-1431
+  s_d6433b5ff6fa8e::t_f427503340a07f 1971
+  s_d6433b5ff6fa8e::t_fe190173f03125 1640,1665-1668,1670-1674,1752-1756
+  s_d6433b5ff6fa8e::t_b4b77ab42c4121 763-769,771-776,820-835,889-895,898,903-907,910-912,982-984,990-991
+  s_d6433b5ff6fa8e::t_3a5c5720cdad1b 1803-1818,1820-1831,1835-1843,1845-1854,1856-1857
+  s_d6433b5ff6fa8e::t_3b54ec0a22b95e 1390-1404,1419
+  s_d6433b5ff6fa8e::t_8cfafc67615925 1057-1064,1066-1071
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_4f70af7656b1f7 946
+  s_d6433b5ff6fa8e::t_f58d6f45216c9a 820-821
+  s_d6433b5ff6fa8e::t_2cfe7b4ffbe524 1447-1449
+  s_d6433b5ff6fa8e::t_a0d0dd05c5489b 912
+  s_d6433b5ff6fa8e::t_d5b6a4621e2d99 1452-1459,1479
+  s_d6433b5ff6fa8e::t_b15009f11f0eb9 906-911,913-916,1450,1754
+  s_d6433b5ff6fa8e::t_08feeb26d7261c 1451
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_4f70af7656b1f7 3483,3485
+  s_d6433b5ff6fa8e::t_80da9e1aad69fe 3927,3931-3934
+  s_d6433b5ff6fa8e::t_a0d0dd05c5489b 3432,3439
+  s_d6433b5ff6fa8e::t_b15009f11f0eb9 3429-3431,3433-3438,3440-3443,3935-3936,4190,4214
+  s_d6433b5ff6fa8e::t_f58d6f45216c9a 3288-3289
+  s_d6433b5ff6fa8e::t_d5b6a4621e2d99 3937-3948,3972,3980
+specs/005-continuity-p0-contract/plan.md
+  s_d6433b5ff6fa8e::t_afe29f6c5bfb62 206-209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fe1a6cfdda3af489a46ecc94bc51d3fd0c3868a3",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
