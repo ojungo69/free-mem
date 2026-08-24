@@ -1,0 +1,100 @@
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_d7f4e76d25977b 3020,3024
+  s_d6433b5ff6fa8e::t_13f1e85a3c7338 3528-3533
+specs/005-continuity-p0-contract/research.md
+  s_d6433b5ff6fa8e::t_41aacbb6e601c8 88-90
+specs/005-continuity-p0-contract/spec.md
+  s_d6433b5ff6fa8e::t_80caac9f6f2aad 422-424,430-432
+  s_d6433b5ff6fa8e::t_41aacbb6e601c8 39,556-559
+  s_d6433b5ff6fa8e::t_199c9170691d7f 400-401,406,415-416,428
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_b44c632165fd7d 3,5
+  s_d6433b5ff6fa8e::t_180bdec7e2d510 205
+  s_d6433b5ff6fa8e::t_c24a0a6d4af117 212
+  s_d6433b5ff6fa8e::t_c78f381d25c2fc 628
+  s_d6433b5ff6fa8e::t_c4f2da297db2a1 17
+  s_d6433b5ff6fa8e::t_d7f4e76d25977b 277,664
+  s_d6433b5ff6fa8e::t_a946212e87103b 646
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_1360aeb2e37dbb 997,1002
+  s_d6433b5ff6fa8e::t_d7f4e76d25977b 612
+  s_d6433b5ff6fa8e::t_2086a8bfd4ed2e 163,167-173,720
+  s_d6433b5ff6fa8e::t_a7d295a7113ac4 164-166,494,719,901-903,1073,1175-1176,1183,1663,1665,1668,1701,1731,1733,1776,1779
+  s_d6433b5ff6fa8e::t_9fd6211689cc77 948,961-970
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_48b08a17e111ad 2191-2194,2196,2198-2207,2210-2216,2273,2276-2278,2307-2308,2316,2322,2337,2347,2404
+  s_d6433b5ff6fa8e::t_49e5f949cd9494 2090,2443-2449,2481-2499,2590-2592,2595-2601,2603,2605-2607,2609-2619
+  s_d6433b5ff6fa8e::t_d699582966f901 2529-2534,2548,2561-2583,2585-2589,2593-2594,2608,2639,2734,2862-2863
+  s_d6433b5ff6fa8e::t_eca022a40204dc 1703-1712
+  s_d6433b5ff6fa8e::t_f76171d562f47e 2112-2116,2271
+  s_d6433b5ff6fa8e::t_f496c7ad9b842a 1044,2855-2861,2864-2886
+  s_d6433b5ff6fa8e::t_e999c190dd8037 3121,3125,3160
+  s_d6433b5ff6fa8e::t_79b08b5e2c624c 3241,3243,3245
+  s_d6433b5ff6fa8e::t_d7f4e76d25977b 1150
+  s_d6433b5ff6fa8e::t_c78f381d25c2fc 3287-3288
+  s_d6433b5ff6fa8e::t_9a661aece720d2 2516-2527,2535-2547,2584
+  s_d6433b5ff6fa8e::t_40c3d840c6b94a 2672-2693,2695-2709,2711-2728,2730-2733,2735-2739
+  s_d6433b5ff6fa8e::t_a946212e87103b 3302
+  s_d6433b5ff6fa8e::t_1f80434e524f41 1543,2768,2772,2781,2824-2825,2967-2968,2978,3105
+  s_d6433b5ff6fa8e::t_5e332a3ae02bb3 3309-3311
+  s_d6433b5ff6fa8e::t_3a1acd3cbbe9ee 2550,2602,2625,2634,2665,2694,2729,2745,2817,2852
+  s_d6433b5ff6fa8e::t_979d80aceec0af 2528,2556,2845
+  s_d6433b5ff6fa8e::t_f1bdf07c61b2f3 2217,2710
+  s_d6433b5ff6fa8e::t_aebf1e5380bcb0 3109-3120
+  s_d6433b5ff6fa8e::t_2483aff24ec19e 2099-2105,2109-2110,2117-2141,2272,2274-2275
+  s_d6433b5ff6fa8e::t_10ac3397223302 2027,2029,2040,2043,2048,2058,2067-2077
+  s_d6433b5ff6fa8e::t_9d24d890f3e868 2309-2315,2317-2321,2323-2324
+  s_d6433b5ff6fa8e::t_aee72de9e5adcb 2387-2394
+  s_d6433b5ff6fa8e::t_efe6199fe70aff 2195,2197,2325-2327,2395-2396
+  s_d6433b5ff6fa8e::t_24964ad6f06007 1495-1511
+  s_d6433b5ff6fa8e::t_9007ef1632831e 2940-2943,3163-3164
+  s_d6433b5ff6fa8e::t_cc27c29f11428e 2604
+  s_d6433b5ff6fa8e::t_27e37c729829f5 1904-1905,1909,1955,1961,1970-1971,1973-1975,2260
+  s_d6433b5ff6fa8e::t_abbccf498dcc70 2629-2633,2635-2638,2640-2645
+  s_d6433b5ff6fa8e::t_159fe4bd5a22b6 1023,1037-1043
+  s_d6433b5ff6fa8e::t_0ffc73883e6fed 1897-1903,1962-1969,1972,2015-2026
+  s_d6433b5ff6fa8e::t_07a00d85586afc 2111
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_9ba8a942677b24 31
+  s_d6433b5ff6fa8e::t_b44c632165fd7d 35
+  s_d6433b5ff6fa8e::t_9d43dd8d5561d4 37
+harness/fixtures/continuity/source-aware-f0-f7.v1.json
+  s_d6433b5ff6fa8e::t_191015a3b8e509 215-216,221-222,237-238
+specs/005-continuity-p0-contract/data-model.md
+  s_d6433b5ff6fa8e::t_37fdfc932054bb 69-70,104-105,173,239-241,345-346
+evidence/adr-006-source-aware-shared-memory.md
+  s_d6433b5ff6fa8e::t_41aacbb6e601c8 68-70
+specs/005-continuity-p0-contract/checklists/requirements.md
+  s_d6433b5ff6fa8e::t_41aacbb6e601c8 52-53
+specs/005-continuity-p0-contract/verify-tasks-report.md
+  s_d6433b5ff6fa8e::t_342cd37d7cfb8e 247-249
+  s_d6433b5ff6fa8e::t_f5eb9a7a130ade 221,231-232,234,236-240
+  s_d6433b5ff6fa8e::t_1666bad2c4098a 250-254,261,266
+  s_d6433b5ff6fa8e::t_5378905b2b8064 246
+  s_d6433b5ff6fa8e::t_80caac9f6f2aad 235
+  s_d6433b5ff6fa8e::t_4705b6ab43b47c 233,241-245,255-256,260,263,265
+specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md
+  s_d6433b5ff6fa8e::t_f10634a323aed9 43-46,85-87,113-114,127-128,137-138,144
+  s_d6433b5ff6fa8e::t_80caac9f6f2aad 122,295-296,298-300,307
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_9fd6211689cc77 16-26
+  s_d6433b5ff6fa8e::t_2086a8bfd4ed2e 13-15
+  s_d6433b5ff6fa8e::t_a7d295a7113ac4 12,27-28
+  s_d6433b5ff6fa8e::t_2cad12fc797553 314,816
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "127613908974403cd65e52fa4ff777ce784cc4d3",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
