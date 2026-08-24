@@ -478,6 +478,37 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		});
 	});
 
+	it("hands a negative session duration to the role inference as null, not as a micro session", () => {
+		const dbPath = createDbPath("memory-role-report-negative-duration-role");
+		const db = new Database(dbPath);
+		try {
+			initTestSchema(db);
+			db.exec(`
+				INSERT INTO sessions(id, started_at, ended_at, cwd, project, user, tool_version) VALUES
+				  (1, '2026-03-01T10:00:00Z', '2026-03-01T09:50:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
+				INSERT INTO memory_items(
+					id, session_id, kind, title, body_text, active, created_at, updated_at, import_key
+				) VALUES
+				  (1, 1, 'change', 'Negative duration', 'Invalid session', 1, '2026-03-01T09:50:00Z', '2026-03-01T09:50:00Z', 'negative-role-1');
+			`);
+		} finally {
+			db.close();
+		}
+
+		const report = getMemoryRoleReport(dbPath);
+
+		// `session_duration_buckets` cannot pin this on its own. The ladder reads `ended_at` and
+		// the raw minutes, so it reports `invalid` whether or not the call site converts the
+		// negative to null - the buckets test above passes either way. What the conversion
+		// decides is what the role inference sees: a number below 1 reads as a micro session.
+		// Both branches land on `ephemeral`, so `counts_by_role` cannot separate them either and
+		// only the reason can. Measured: `null` gives `default_change_ephemeral`, `-10` gives
+		// `micro_session_change`.
+		expect(report.session_duration_buckets.invalid).toBe(1);
+		expect(report.counts_by_role.ephemeral).toBe(1);
+		expect(report.role_examples.ephemeral?.[0]?.role_reason).toBe("default_change_ephemeral");
+	});
+
 	it("tolerates malformed metadata JSON in role reports", () => {
 		const dbPath = createDbPath("memory-role-report-malformed-metadata");
 		const db = new Database(dbPath);
