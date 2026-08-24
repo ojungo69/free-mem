@@ -1,0 +1,113 @@
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_53e5cea5c380c2 891-892,997-998
+  s_d6433b5ff6fa8e::t_ba1dd4540549bc 419-423
+  s_d6433b5ff6fa8e::t_190a4b0216ef00 802
+  s_d6433b5ff6fa8e::t_3223cb71e02e72 393,461-477
+  s_d6433b5ff6fa8e::t_71662dcbbae8b0 418,432,639-640,643-648
+  s_d6433b5ff6fa8e::t_9fdc584fdba145 28,249-250,720,962
+  s_d6433b5ff6fa8e::t_958a23875813d0 333-336,816-819
+  s_d6433b5ff6fa8e::t_901011665f87b5 478,641-642,649-650
+  s_d6433b5ff6fa8e::t_fd1259ec90e173 202,304-310,787-793,993
+  s_d6433b5ff6fa8e::t_84e0c9707c3bd6 651-655,803-811
+  s_d6433b5ff6fa8e::t_d68c69f00d1c17 35,203,311-319,794-801,942-944
+  s_d6433b5ff6fa8e::t_cb60b16e48d25b 204-208,320-328
+specs/005-continuity-p0-contract/verify-tasks-report.md
+  s_d6433b5ff6fa8e::t_f051846d59f3fe 136
+  s_d6433b5ff6fa8e::t_3ce8c7d482364e 129,131
+  s_d6433b5ff6fa8e::t_201865f6a14919 7-8
+  s_d6433b5ff6fa8e::t_baf99511c5bc64 138-146
+harness/fixtures/continuity/source-aware-f0-f7.v1.json
+  s_d6433b5ff6fa8e::t_201865f6a14919 236
+specs/005-continuity-p0-contract/quickstart.md
+  s_d6433b5ff6fa8e::t_711fad0bf3cf13 70-74,76-79,83-84
+  s_d6433b5ff6fa8e::t_eae2a0a47cb7ae 75,80
+specs/005-continuity-p0-contract/data-model.md
+  s_d6433b5ff6fa8e::t_dc920d9e507166 166,170-172,227-228
+  s_d6433b5ff6fa8e::t_958d9074c06214 206
+  s_d6433b5ff6fa8e::t_32ad3b185e00ac 137-138,148-150
+  s_d6433b5ff6fa8e::t_df5aa227f3aeec 208-213,247-253
+  s_d6433b5ff6fa8e::t_bf9e5461c591d6 42-47
+  s_d6433b5ff6fa8e::t_ce37d8243a5dc4 118-120
+  s_d6433b5ff6fa8e::t_93a3bbc9e63530 207
+  s_d6433b5ff6fa8e::t_182e92046a9a0d 254
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_8d2fc911dd7d0c 31,35,37
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_796b6134497b48 3427-3428,4095-4152,4156,4173-4174
+  s_d6433b5ff6fa8e::t_a9258931b7c63f 2837-2845,2847-2877
+  s_d6433b5ff6fa8e::t_be8dd37e0243c2 3328-3338
+  s_d6433b5ff6fa8e::t_3106e8e8e28ce3 3640,3647-3650
+  s_d6433b5ff6fa8e::t_0524d2379b40b7 3133,3358-3373,3395-3406
+  s_d6433b5ff6fa8e::t_02a37bef9ad3a2 2846
+  s_d6433b5ff6fa8e::t_ea5f0f561e97a0 3454,3524
+  s_d6433b5ff6fa8e::t_c0b7ed04911436 4171
+  s_d6433b5ff6fa8e::t_3bb696ddfd887d 3389,3394,3414-3426,4179
+  s_d6433b5ff6fa8e::t_f24b637818ebfa 3094-3095,3097,3122-3131
+  s_d6433b5ff6fa8e::t_59af1fe9d1599c 3096,3132
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_deb551c60185f8 8,600-623
+  s_d6433b5ff6fa8e::t_958a23875813d0 902-905
+  s_d6433b5ff6fa8e::t_d77894ee1e14f3 505,548
+  s_d6433b5ff6fa8e::t_6cd6747b6dc940 1170-1200
+  s_d6433b5ff6fa8e::t_7786ffeaaa8c3f 679,1727-1730
+  s_d6433b5ff6fa8e::t_2da405d6f651a8 250,253-254,256,259-260,268,287-297,368-377
+  s_d6433b5ff6fa8e::t_9fdc584fdba145 245
+  s_d6433b5ff6fa8e::t_ae2183622be23d 480,1469-1489,1492,1507-1511,1513,1548,1555-1557,1565-1567,1569-1572
+  s_d6433b5ff6fa8e::t_be38bd2ceea808 3,1078-1085
+  s_d6433b5ff6fa8e::t_e88872d788b8d0 926-940
+  s_d6433b5ff6fa8e::t_63c07a825183b7 624,1496-1498,1589-1612
+  s_d6433b5ff6fa8e::t_4946e140ad8bde 980-1077
+  s_d6433b5ff6fa8e::t_68249fe34d6c3d 64-91,625,1613
+  s_d6433b5ff6fa8e::t_5320339cee42f0 258,262,378-391
+  s_d6433b5ff6fa8e::t_c381e51c4f50d8 626
+  s_d6433b5ff6fa8e::t_5c5ae7862ac511 1614
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_e3cde6591e9976 244
+  s_d6433b5ff6fa8e::t_59d2d64755b455 5,17
+  s_d6433b5ff6fa8e::t_f63e653ce9e4a3 551,553,569,571
+  s_d6433b5ff6fa8e::t_731821b8e252df 218-227
+  s_d6433b5ff6fa8e::t_3106e8e8e28ce3 202-205
+  s_d6433b5ff6fa8e::t_74442bb840165a 110-173
+  s_d6433b5ff6fa8e::t_ef01bb9184b5b7 3
+  s_d6433b5ff6fa8e::t_061ee57146ac51 25-41
+  s_d6433b5ff6fa8e::t_d0386e887ad33b 562,580
+specs/001-agent-memory-core/tasks.md
+  s_d6433b5ff6fa8e::t_201865f6a14919 220-222
+specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md
+  s_d6433b5ff6fa8e::t_ac5c867fd75500 58-60
+  s_d6433b5ff6fa8e::t_df5aa227f3aeec 117-122
+  s_d6433b5ff6fa8e::t_dc920d9e507166 90-93
+  s_d6433b5ff6fa8e::t_ce37d8243a5dc4 126-128
+  s_d6433b5ff6fa8e::t_bf9e5461c591d6 142-146
+  s_d6433b5ff6fa8e::t_201865f6a14919 239-240
+  s_d6433b5ff6fa8e::t_32ad3b185e00ac 133-134
+  s_d6433b5ff6fa8e::t_b29c8579f10d9c 260-261,264
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_39908ca06e3ab4 674,676-680,682-687,701-704
+  s_d6433b5ff6fa8e::t_59af1fe9d1599c 675,681
+  s_d6433b5ff6fa8e::t_3106e8e8e28ce3 1165-1168
+  s_d6433b5ff6fa8e::t_ea5f0f561e97a0 923,1021
+  s_d6433b5ff6fa8e::t_5e46a3abd8c71a 904,1630-1704,1721-1722
+  s_d6433b5ff6fa8e::t_ecef47a915dfac 422-501,852-855
+  s_d6433b5ff6fa8e::t_3bb696ddfd887d 885,895-903,1727
+  s_d6433b5ff6fa8e::t_e0d4cb6ac804fa 1719
+  s_d6433b5ff6fa8e::t_9ae29cfd644c2e 905
+specs/001-agent-memory-core/spec.md
+  s_d6433b5ff6fa8e::t_201865f6a14919 133-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "014631bf4cdab755a2b24aff6c04c5d526d0af0e",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
