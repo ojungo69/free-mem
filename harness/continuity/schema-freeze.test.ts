@@ -9,7 +9,7 @@ const root = readIJsonFile<JsonSchemaDocument>(new URL("../schema/continuity.sch
 
 const defs = (root.$defs ?? {}) as Record<string, Record<string, unknown>>;
 
-if (false) {
+void (() => {
   const observed = {} as contract.ObservedV2<{ nested: string[] }>;
   // @ts-expect-error generic successor payloads are recursively readonly
   observed.value.nested.push("changed");
@@ -21,9 +21,9 @@ if (false) {
     "parentCheckpointId" | "parentCheckpointRevision"
   >;
   // @ts-expect-error checkpoint parent ID and revision must appear together
-  const missingParentRevision: contract.ContinuationCheckpointV3 = { ...checkpoint, parentCheckpointId: "a".repeat(64) };
+  void ({ ...checkpoint, parentCheckpointId: "a".repeat(64) } satisfies contract.ContinuationCheckpointV3);
   // @ts-expect-error checkpoint parent ID and revision must appear together
-  const missingParentId: contract.ContinuationCheckpointV3 = { ...checkpoint, parentCheckpointRevision: "b".repeat(64) };
+  void ({ ...checkpoint, parentCheckpointRevision: "b".repeat(64) } satisfies contract.ContinuationCheckpointV3);
   const sourceIdentity = {} as contract.SourceIdentityV1;
   // @ts-expect-error successor attestation channel is readonly
   sourceIdentity.ingestAttestation.channel = "spool";
@@ -34,20 +34,20 @@ if (false) {
   // @ts-expect-error successor attestation peer identity is readonly
   sourceIdentity.ingestAttestation.peerIdentityId = "b".repeat(64);
   // @ts-expect-error canonical memory always has at least one authenticated source event
-  const emptyMemorySources: contract.CanonicalMemoryEntityV1["sourceEventIds"] = [];
+  void ([] satisfies contract.CanonicalMemoryEntityV1["sourceEventIds"]);
   // @ts-expect-error shared task state always has at least one authenticated sharing decision
-  const emptySharedDecisions: contract.SharedTaskStateV1["sharingDecisionEventIds"] = [];
-  // @ts-expect-error artifact names and schema versions are one discriminated contract
-  const mismatchedArtifactSchema: contract.SourceAwareArtifactSchemaRefV1 = {
+  void ([] satisfies contract.SharedTaskStateV1["sharingDecisionEventIds"]);
+  void ({
     name: "CanonicalWorkStateV2",
     schemaVersion: 3,
-  };
-  // @ts-expect-error repository snapshots carry their own sensitivity classification
-  const repositoryWithoutSensitivity: contract.RepositoryStateSnapshotV2 = {
+    // @ts-expect-error artifact names and schema versions are one discriminated contract
+  } satisfies contract.SourceAwareArtifactSchemaRefV1);
+  void ({
     repositoryId: "a".repeat(64),
     workspaceId: "b".repeat(64),
     capturedAt: "2026-08-25T00:00:00Z",
-  };
+    // @ts-expect-error repository snapshots carry their own sensitivity classification
+  } satisfies contract.RepositoryStateSnapshotV2);
   const sharingDecisionBase = {
     schemaVersion: 1,
     decisionEventId: "a".repeat(64),
@@ -58,12 +58,12 @@ if (false) {
     privateConsent: false,
     decidedAt: "2026-08-25T00:00:00Z",
   } as const;
-  // @ts-expect-error project-shared grants require exact project subject scope
-  const projectGrantWithVaultScope: contract.SharingDecisionV1 = {
+  void ({
     ...sharingDecisionBase,
     sharingScope: "project_shared",
     subjectScope: { kind: "personal_vault", personalVaultId: "d".repeat(64) },
-  };
+    // @ts-expect-error project-shared grants require exact project subject scope
+  } satisfies contract.SharingDecisionV1);
   const projectTaskProjectionGrant = {
     ...sharingDecisionBase,
     sharingScope: "project_shared",
@@ -71,17 +71,17 @@ if (false) {
     target: { kind: "shared_task_projection", taskLineageId: "f".repeat(64) },
   } as const;
   // @ts-expect-error project-shared grants target canonical memory only
-  const projectGrantForTaskProjection: contract.SharingDecisionV1 = projectTaskProjectionGrant;
-  const projectFixtureScope: Extract<
-    contract.SourceAwareFixtureSharingDecisionV1,
-    { sharingScope: "project_shared" }
-  >["subjectScope"] = {
+  void (projectTaskProjectionGrant satisfies contract.SharingDecisionV1);
+  void ({
     personalVaultId: "vault-a",
     projectId: "project-a",
     // @ts-expect-error project-shared fixture grants stop at project scope
     taskLineageId: "lineage-a",
-  };
-}
+  } satisfies Extract<
+    contract.SourceAwareFixtureSharingDecisionV1,
+    { sharingScope: "project_shared" }
+  >["subjectScope"]);
+});
 
 /**
  * TS の union 定数 → 対応する `$defs` 名。名前の対応規則が不規則（SENSITIVITIES ↔ Sensitivity、
