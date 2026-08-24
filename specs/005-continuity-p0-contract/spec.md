@@ -291,6 +291,7 @@ contract は期待する source identity、sharing disposition、participant集�
   session 内連番・hash の辞書順に依存せず、daemon が所有する取引メタデータだけから決定できなければならない。
 - **FR-002**: 順序の新しさと resume 対象としての正しさは別の gate として評価しなければならない。
   workspace 互換性・disposition・accepted / superseded / retracted・fork / conflict を独立に判定する。
+  checkpointの`expired`は`unknown`へ潰さず、既知の不適格理由`checkpoint_expired`として保持する。
 - **FR-003**: いったん公開・永続化した revision の canonical bytes は、その後の consumer 操作・
   後続 event・別 revision の構築によって変化してはならない。
 - **FR-004**: revision 間の構造共有は、共有される全 node が実行時にも変更不可である場合に限り許可する。
@@ -394,6 +395,8 @@ contract は期待する source identity、sharing disposition、participant集�
   F0〜F7、contract hash、#13 start gateまでに限定し、product runtime、DB、reducer、MCP、viewerを変更しない。
 - **FR-029e**: F0〜F7の各recordはnon-empty/nonblank/sorted-uniqueなevent evidence IDを持ち、successorの
   record evidence、canonical-memory union、policy review candidateまでexact IDを保持しなければならない。
+  F3 lineageはauthenticated ordered transitionsから導出し、`named_source`はauthenticated requested source IDを
+  inputとして明示する。
 
 **層 D — source-aware shared memory**
 
@@ -416,6 +419,8 @@ contract は期待する source identity、sharing disposition、participant集�
   private shared/memoryのauthority-bound `SharingDecisionV1.privateConsent=true`と認証済みdestination
   `SourceIdentityV1.privateEligible` gate、Agent-local isolation、destination capability
   downgrade、sharing allow、source preference/display filterの順で評価しなければならない。
+  automaticだけでなくhint/manualと全retrieval profileも、routeに適用可能なauthentication/scope/consent/privacy/
+  egress gateを通す。capability gateはautomaticと`active_task_shared`に追加適用する。
 - **FR-036**: callerはsharing scopeのproposalまでしか行えず、自分でscopeを昇格できてはならない。
   authority未確認のrecordはautomatic cross-agent full injectionへ使わない。共有grantはversioned
   `SharingDecisionV1`としてexplicit user authority event、exact subject scope、exact projection/memory targetへ
@@ -431,6 +436,8 @@ contract は期待する source identity、sharing disposition、participant集�
   delivery前にquarantineし、宣言値でprivate/secret gateを下げてはならない。
   capsuleのcheckpoint ID/revision/creatorは同じresolved checkpointへ結び付け、`selectedMemoryIds`はsorted uniqueかつ
   hash-valid entityへ解決し、scope/sharing/private consent/lifecycle/sensitivity/egress/destination policyを全件検証する。
+  pending operationのouter/correlation operation IDは一致し、authenticated start-phase eventはそのoperation evidenceに
+  含め、complete correlation envelope、`startTurnIdSource`、source-identity sessionを完全一致させる。
 - **FR-038**: 曖昧な単数`sourceAgent`をmulti-Agent lineageの代表値として再利用せず、lineage origin、
   last contributor、participants、checkpoint creator、field/memory source evidenceを区別しなければならない。
   field/memory refsはartifact hashの自己整合だけで受理せず、認証済みsource/snapshot artifactへ解決しなければならない。
@@ -447,10 +454,13 @@ contract は期待する source identity、sharing disposition、participant集�
   同一evidenceはentityを複製せずunionする。Core 1.0の自動同一判定は、同じsubject scope・kind・
   versioned normalization profileで得たcanonical contentの完全一致に限定する。言い換えやsemantic
   similarityは自動統合せず、明示authorityによるauditable mergeだけを許可する。conflict、supersession、
-  validity historyはdedupeと別に扱う。evidence unionは`sharingScope`・`sensitivity`・`egressPolicy`も完全一致
-  するときだけ自動化し、policy不一致はactive entityへ混ぜず明示user reviewまで別laneに置く。
+  validity historyはdedupeと別に扱う。evidence unionは`sharingScope`・`sensitivity`・`egressPolicy`が完全一致し、
+  shared contributorごとのexact authenticated consentがあるときだけ自動化する。Agent-private evidenceはexact source内だけ
+  unionし、cross-sourceでは統合しない。policy/consent/source-locality不一致はactive entityへ
+  混ぜず明示user reviewまで別laneに置く。
 - **FR-043**: source filterは検索・表示optionであり、filterの有無によってtask lineage identity、
   canonical memory identity、revision historyが変化してはならない。
+  `current_source`はdestination source、`named_source`は明示requested sourceのrecordだけを返す。
 - **FR-044**: future clientはcore schema forkやAgent別DBではなく、adapter/profile/conformanceの追加で
   接続できなければならない。
 - **FR-045**: source inventoryは、source/agent/client/provider/session/device/capture/attestation/sharing/

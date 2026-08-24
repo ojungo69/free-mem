@@ -3054,7 +3054,7 @@
     },
     "CheckpointResumeDispositionV1": {
       "type": "string",
-      "enum": ["open", "accepted", "superseded", "retracted", "unknown"]
+      "enum": ["open", "accepted", "superseded", "retracted", "expired", "unknown"]
     },
     "LineageHeadStateV1": {
       "type": "string",
@@ -3068,6 +3068,7 @@
         "checkpoint_accepted",
         "checkpoint_superseded",
         "checkpoint_retracted",
+        "checkpoint_expired",
         "checkpoint_unknown",
         "lineage_forked",
         "lineage_conflicted",
@@ -3973,17 +3974,31 @@
         "egressPolicy": { "$ref": "#/$defs/EgressPolicyV1" },
         "sourceEvidenceIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" } },
         "disposition": { "const": "policy_review_required" },
-        "reasonCode": { "const": "policy_tuple_mismatch" }
+        "reasonCode": { "type": "string", "enum": ["policy_tuple_mismatch", "consent_or_source_locality_mismatch"] }
       }
     },
     "SourceAwareRetrievalExpectationV1": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["profile", "recordIds"],
-      "properties": {
-        "profile": { "$ref": "#/$defs/SourceAwareRetrievalProfileV1" },
-        "recordIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profile", "requestedSourceId", "recordIds"],
+          "properties": {
+            "profile": { "const": "named_source" },
+            "requestedSourceId": { "type": "string", "minLength": 1, "maxLength": 8192 },
+            "recordIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profile", "recordIds"],
+          "properties": {
+            "profile": { "type": "string", "enum": ["all_source_project", "current_source", "active_task_shared"] },
+            "recordIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
+          }
+        }
+      ]
     },
     "SourceAwareAuthorityExpectationV1": {
       "type": "object",

@@ -635,12 +635,13 @@ export const WORKSPACE_COMPATIBILITIES_V1 = [
   "unknown",
 ] as const satisfies readonly WorkspaceCompatibilityV1[];
 
-export type CheckpointResumeDispositionV1 = "open" | "accepted" | "superseded" | "retracted" | "unknown";
+export type CheckpointResumeDispositionV1 = "open" | "accepted" | "superseded" | "retracted" | "expired" | "unknown";
 export const CHECKPOINT_RESUME_DISPOSITIONS_V1 = [
   "open",
   "accepted",
   "superseded",
   "retracted",
+  "expired",
   "unknown",
 ] as const satisfies readonly CheckpointResumeDispositionV1[];
 
@@ -657,6 +658,7 @@ export type RevisionEligibilityReasonCodeV1 =
   | "checkpoint_accepted"
   | "checkpoint_superseded"
   | "checkpoint_retracted"
+  | "checkpoint_expired"
   | "checkpoint_unknown"
   | "lineage_forked"
   | "lineage_conflicted"
@@ -667,6 +669,7 @@ export const REVISION_ELIGIBILITY_REASON_CODES_V1 = [
   "checkpoint_accepted",
   "checkpoint_superseded",
   "checkpoint_retracted",
+  "checkpoint_expired",
   "checkpoint_unknown",
   "lineage_forked",
   "lineage_conflicted",
@@ -1501,13 +1504,20 @@ export interface SourceAwareMemoryReviewCandidateV1 {
   readonly egressPolicy: EgressPolicyV1;
   readonly sourceEvidenceIds: readonly [string, ...string[]];
   readonly disposition: "policy_review_required";
-  readonly reasonCode: "policy_tuple_mismatch";
+  readonly reasonCode: "policy_tuple_mismatch" | "consent_or_source_locality_mismatch";
 }
 
-export interface SourceAwareRetrievalExpectationV1 {
-  readonly profile: SourceAwareRetrievalProfileV1;
-  readonly recordIds: readonly string[];
-}
+export type SourceAwareRetrievalExpectationV1 =
+  | {
+      readonly profile: "named_source";
+      readonly requestedSourceId: string;
+      readonly recordIds: readonly string[];
+    }
+  | {
+      readonly profile: Exclude<SourceAwareRetrievalProfileV1, "named_source">;
+      readonly requestedSourceId?: never;
+      readonly recordIds: readonly string[];
+    };
 
 export interface SourceAwareAuthorityExpectationV1 {
   readonly authenticatedSourceId: string;

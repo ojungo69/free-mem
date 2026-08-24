@@ -342,6 +342,30 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
     [],
   );
   assert.deepEqual(revisionHeadSemanticIssues(base as contract.RevisionHeadSelectionContractV1), []);
+  const expired = {
+    ...base,
+    candidateEvaluations: base.candidateEvaluations.map((candidate) =>
+      candidate.stateRevision === head
+        ? {
+            ...candidate,
+            workspaceCompatibility: "compatible",
+            checkpointDisposition: "expired",
+            resumeEligible: false,
+            reasonCodes: ["checkpoint_expired"],
+          }
+        : candidate,
+    ),
+  } as const;
+  assert.deepEqual(
+    validateContractValue("RevisionHeadSelectionContractV1", expired, root, contract.CONTINUITY_LIMITS),
+    [],
+  );
+  assert.deepEqual(revisionHeadSemanticIssues(expired as contract.RevisionHeadSelectionContractV1), []);
+  const expiredAsUnknown = structuredClone(expired) as unknown as contract.RevisionHeadSelectionContractV1;
+  (expiredAsUnknown.candidateEvaluations[0] as unknown as { reasonCodes: string[] }).reasonCodes = [
+    "checkpoint_unknown",
+  ];
+  assert.ok(revisionHeadSemanticIssues(expiredAsUnknown).length > 0);
   const invalid = { ...base, automaticResumeHeadStateRevision: older };
   assert.ok(
     validateContractValue("RevisionHeadSelectionContractV1", invalid, root, contract.CONTINUITY_LIMITS).length > 0,
@@ -840,6 +864,150 @@ function isSortedUniqueStrings(values: readonly string[]): boolean {
   return new Set(values).size === values.length && orderedStringsEqual([...values].sort(), values);
 }
 
+function fixtureRecordHasValidConsent(
+  record: contract.SourceAwareFixtureRecordV1,
+  recordScope: contract.SourceAwareFixtureScopeV1,
+  decisions: ReadonlyMap<string, contract.SourceAwareFixtureSharingDecisionV1>,
+): boolean {
+  return (record.sharingDecisionEventIds ?? []).some((decisionId) => {
+    const decision = decisions.get(decisionId);
+    const targetMatches = record.sharingScope === "task_shared"
+      ? decision?.target.kind === "shared_task_projection" &&
+        decision.target.taskLineageId === recordScope.taskLineageId
+      : decision?.target.kind === "canonical_memory_entity" &&
+        decision.target.canonicalFactId === record.canonicalFactId;
+    return (
+      decision?.authenticated === true &&
+      decision.authorityKind === "user" &&
+      decision.decision === "grant" &&
+      decision.sharingScope === record.sharingScope &&
+      (record.sensitivity !== "private" || decision.privateConsent) &&
+      targetMatches &&
+      canonicalizeJson(decision.subjectScope) === canonicalizeJson(recordScope)
+    );
+  });
+}
+
+function fixtureRecordIsPolicyEligible(
+  record: contract.SourceAwareFixtureRecordV1,
+  caseScope: contract.SourceAwareFixtureScopeV1,
+  sources: ReadonlyMap<string, contract.SourceAwareFixtureSourceV1>,
+  destination: contract.SourceAwareFixtureSourceV1 | undefined,
+  decisions: ReadonlyMap<string, contract.SourceAwareFixtureSharingDecisionV1>,
+  requireSharedCapability: boolean,
+): boolean {
+  const recordScope = record.subjectScope ?? caseScope;
+  return (
+    record.sharingScope !== "agent_private" &&
+    record.sensitivity !== "secret" &&
+    record.egressPolicy === "eligible" &&
+    sources.get(record.sourceId)?.authenticated === true &&
+    destination?.authenticated === true &&
+    canonicalizeJson(recordScope) === canonicalizeJson(caseScope) &&
+    (record.sensitivity !== "private" || destination.privateEligible) &&
+    fixtureRecordHasValidConsent(record, recordScope, decisions) &&
+    (!requireSharedCapability || destination.capabilityIds.includes("shared-task-v1"))
+  );
+}
+
+function fixtureRecordIsUnionEligible(
+  record: contract.SourceAwareFixtureRecordV1,
+  caseScope: contract.SourceAwareFixtureScopeV1,
+  sources: ReadonlyMap<string, contract.SourceAwareFixtureSourceV1>,
+  decisions: ReadonlyMap<string, contract.SourceAwareFixtureSharingDecisionV1>,
+  agentPrivateOwnerSourceId: string | undefined,
+): boolean {
+  const recordScope = record.subjectScope ?? caseScope;
+  return (
+    sources.get(record.sourceId)?.authenticated === true &&
+    canonicalizeJson(recordScope) === canonicalizeJson(caseScope) &&
+    (record.sharingScope === "agent_private"
+      ? record.sourceId === agentPrivateOwnerSourceId
+      : fixtureRecordHasValidConsent(record, recordScope, decisions))
+  );
+}
+
+function memoryProjectionSemanticIssues(
+  item: contract.SourceAwareContractCaseV1,
+  sourcesById: ReadonlyMap<string, contract.SourceAwareFixtureSourceV1>,
+  sharingDecisions: ReadonlyMap<string, contract.SourceAwareFixtureSharingDecisionV1>,
+): string[] {
+  const issues: string[] = [];
+  const activeUnionRecordIds = new Set<string>();
+  for (const memory of item.successor.memoryEntities) {
+    for (const id of memory.sourceIds) {
+      if (!sourcesById.has(id)) issues.push(`${item.id}: memory source is missing`);
+      else if (sourcesById.get(id)?.authenticated !== true) issues.push(`${item.id}: memory source is unauthenticated`);
+    }
+    const matchingPolicyRecords = item.input.records.filter(
+      (record) =>
+        record.canonicalFactId === memory.canonicalFactId &&
+        record.sharingScope === memory.sharingScope &&
+        record.sensitivity === memory.sensitivity &&
+        record.egressPolicy === memory.egressPolicy,
+    );
+    const eligibleRecords = matchingPolicyRecords.filter((record) =>
+      fixtureRecordIsUnionEligible(
+        record,
+        item.input.scope,
+        sourcesById,
+        sharingDecisions,
+        memory.sharingScope === "agent_private" ? memory.sourceIds[0] : undefined,
+      ),
+    );
+    for (const record of eligibleRecords) activeUnionRecordIds.add(record.id);
+    const eligibleSources = [...new Set(eligibleRecords.map(({ sourceId }) => sourceId))].sort();
+    if (!orderedStringsEqual(eligibleSources, [...memory.sourceIds].sort())) {
+      issues.push(`${item.id}: canonical memory union crossed or dropped a policy partition`);
+    }
+    const eligibleEvidence = [
+      ...new Set(eligibleRecords.flatMap(({ sourceEvidenceIds }) => sourceEvidenceIds)),
+    ].sort();
+    if (!orderedStringsEqual(eligibleEvidence, memory.sourceEvidenceIds)) {
+      issues.push(`${item.id}: canonical memory union lost or changed event-level evidence`);
+    }
+  }
+  const activeMemoryFactIds = new Set(item.successor.memoryEntities.map(({ canonicalFactId }) => canonicalFactId));
+  const expectedReviewIds = item.input.records
+    .filter(
+      (record) =>
+        record.canonicalFactId !== undefined &&
+        activeMemoryFactIds.has(record.canonicalFactId) &&
+        !activeUnionRecordIds.has(record.id),
+    )
+    .map(({ id }) => id)
+    .sort();
+  const reviewIds = item.successor.memoryReviewCandidates
+    .filter(({ canonicalFactId }) => activeMemoryFactIds.has(canonicalFactId))
+    .map(({ recordId }) => recordId)
+    .sort();
+  if (!orderedStringsEqual(expectedReviewIds, reviewIds)) {
+    issues.push(`${item.id}: ineligible memory evidence was not preserved for review`);
+  }
+  for (const candidate of item.successor.memoryReviewCandidates) {
+    const record = item.input.records.find(({ id }) => id === candidate.recordId);
+    const matchingTuple = item.successor.memoryEntities.some(
+      (memory) =>
+        record?.canonicalFactId === memory.canonicalFactId &&
+        record.sharingScope === memory.sharingScope &&
+        record.sensitivity === memory.sensitivity &&
+        record.egressPolicy === memory.egressPolicy,
+    );
+    if (
+      !record ||
+      record.canonicalFactId !== candidate.canonicalFactId ||
+      record.sharingScope !== candidate.sharingScope ||
+      record.sensitivity !== candidate.sensitivity ||
+      record.egressPolicy !== candidate.egressPolicy ||
+      !orderedStringsEqual(record.sourceEvidenceIds, candidate.sourceEvidenceIds) ||
+      candidate.reasonCode !== (matchingTuple ? "consent_or_source_locality_mismatch" : "policy_tuple_mismatch")
+    ) {
+      issues.push(`${item.id}: memory review candidate does not preserve its record policy`);
+    }
+  }
+  return issues;
+}
+
 function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): string[] {
   const issues: string[] = [];
   const caseIds = corpus.cases.map(({ id }) => id);
@@ -847,9 +1015,8 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
   if (new Set(caseIds).size !== caseIds.length) issues.push("case IDs are duplicated");
 
   for (const item of corpus.cases) {
-    const sourceIds = new Set(item.input.sources.map(({ id }) => id));
-    const sourceAuthenticated = new Map(item.input.sources.map(({ id, authenticated }) => [id, authenticated]));
-    const destinationSource = item.input.sources.find(({ id }) => id === item.input.destination.sourceId);
+    const sourcesById = new Map(item.input.sources.map((source) => [source.id, source]));
+    const destinationSource = sourcesById.get(item.input.destination.sourceId);
     const recordIds = new Set(item.input.records.map(({ id }) => id));
     const evidenceByRecordId = new Map(item.successor.sourceEvidence.map((evidence) => [evidence.recordId, evidence]));
     if (evidenceByRecordId.size !== item.successor.sourceEvidence.length) {
@@ -863,7 +1030,7 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
       issues.push(`${item.id}: authenticated destination policy is missing`);
     }
     for (const record of item.input.records) {
-      if (!sourceIds.has(record.sourceId)) issues.push(`${item.id}: record source ${record.sourceId} is missing`);
+      if (!sourcesById.has(record.sourceId)) issues.push(`${item.id}: record source ${record.sourceId} is missing`);
       if (
         record.sourceEvidenceIds.length === 0 ||
         record.sourceEvidenceIds.some((id) => id.trim() === "") ||
@@ -899,7 +1066,7 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
       }
     }
     for (const transition of item.input.transitions) {
-      if (!sourceIds.has(transition.actorSourceId)) issues.push(`${item.id}: transition source is missing`);
+      if (!sourcesById.has(transition.actorSourceId)) issues.push(`${item.id}: transition source is missing`);
     }
     for (const id of [
       ...item.successor.automaticFullRecordIds,
@@ -908,61 +1075,37 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     ]) {
       if (!recordIds.has(id)) issues.push(`${item.id}: delivery record ${id} is missing`);
     }
-    const nonLocalDeliveryIds = new Set([
-      ...item.successor.automaticFullRecordIds,
-      ...item.successor.hintOrManualRecordIds,
-      ...item.successor.retrievalProfiles.flatMap(({ recordIds: ids }) => ids),
-    ]);
-    for (const record of item.input.records) {
-      if (
-        (record.sensitivity === "secret" || record.egressPolicy !== "eligible") &&
-        nonLocalDeliveryIds.has(record.id)
-      ) {
-        issues.push(`${item.id}: non-daemon-local profile delivered denied record ${record.id}`);
+    const validateNonlocalOutput = (ids: readonly string[], label: string, requireCapability: boolean) => {
+      for (const id of ids) {
+        const record = item.input.records.find((candidate) => candidate.id === id);
+        if (!record) {
+          issues.push(`${item.id}: ${label} record ${id} is missing`);
+          continue;
+        }
+        if (
+          !fixtureRecordIsPolicyEligible(
+            record,
+            item.input.scope,
+            sourcesById,
+            destinationSource,
+            sharingDecisions,
+            requireCapability,
+          )
+        ) {
+          issues.push(`${item.id}: ${label} record ${id} violates delivery policy`);
+        }
       }
-    }
-    for (const id of item.successor.automaticFullRecordIds) {
-      const record = item.input.records.find((candidate) => candidate.id === id);
-      const recordScope = record?.subjectScope ?? item.input.scope;
-      if (
-        !record ||
-        record.sharingScope === "agent_private" ||
-        record.sensitivity === "secret" ||
-        record.egressPolicy !== "eligible" ||
-        sourceAuthenticated.get(record.sourceId) !== true ||
-        sourceAuthenticated.get(item.input.destination.sourceId) !== true ||
-        canonicalizeJson(recordScope) !== canonicalizeJson(item.input.scope) ||
-        (record.sensitivity === "private" && destinationSource?.privateEligible !== true) ||
-        !destinationSource?.capabilityIds?.includes("shared-task-v1")
-      ) {
-        issues.push(`${item.id}: automatic record ${id} violates privacy precedence`);
-      }
-      if (record?.sharingScope !== "agent_private") {
-        const validDecision = record?.sharingDecisionEventIds?.some((decisionId) => {
-          const decision = sharingDecisions.get(decisionId);
-          const targetMatches = record?.canonicalFactId
-            ? decision?.target.kind === "canonical_memory_entity" &&
-              decision.target.canonicalFactId === record.canonicalFactId
-            : decision?.target.kind === "shared_task_projection" &&
-              decision.target.taskLineageId === recordScope.taskLineageId;
-          return (
-            decision?.authenticated === true &&
-            decision.authorityKind === "user" &&
-            decision.decision === "grant" &&
-            decision.sharingScope === record?.sharingScope &&
-            (record?.sensitivity !== "private" || decision.privateConsent) &&
-            targetMatches &&
-            canonicalizeJson(decision.subjectScope) === canonicalizeJson(recordScope)
-          );
-        });
-        if (!validDecision) issues.push(`${item.id}: automatic shared record ${id} lacks valid consent evidence`);
-      }
+    };
+    validateNonlocalOutput(item.successor.automaticFullRecordIds, "automatic", true);
+    validateNonlocalOutput(item.successor.hintOrManualRecordIds, "hint/manual", false);
+    for (const profile of item.successor.retrievalProfiles) {
+      validateNonlocalOutput(profile.recordIds, profile.profile, profile.profile === "active_task_shared");
     }
     for (const evidence of item.successor.sourceEvidence) {
       if (!recordIds.has(evidence.recordId)) issues.push(`${item.id}: evidence record is missing`);
       for (const id of evidence.sourceIds) {
-        if (!sourceIds.has(id)) issues.push(`${item.id}: evidence source is missing`);
-        else if (sourceAuthenticated.get(id) !== true) issues.push(`${item.id}: evidence source is unauthenticated`);
+        if (!sourcesById.has(id)) issues.push(`${item.id}: evidence source is missing`);
+        else if (sourcesById.get(id)?.authenticated !== true) issues.push(`${item.id}: evidence source is unauthenticated`);
       }
     }
     for (const id of [
@@ -972,11 +1115,11 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
       ...item.successor.lineage.participantSourceIds,
       item.successor.authority.authenticatedSourceId,
     ]) {
-      if (!sourceIds.has(id)) issues.push(`${item.id}: lineage/authority source ${id} is missing`);
+      if (!sourcesById.has(id)) issues.push(`${item.id}: lineage/authority source ${id} is missing`);
     }
     if (
       item.successor.authority.authenticatedSourceId !== item.input.destination.sourceId ||
-      sourceAuthenticated.get(item.successor.authority.authenticatedSourceId) !== true
+      sourcesById.get(item.successor.authority.authenticatedSourceId)?.authenticated !== true
     ) {
       issues.push(`${item.id}: destination authority is not the authenticated destination source`);
     }
@@ -986,65 +1129,29 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
       item.successor.lineage.checkpointCreatorSourceId,
       ...item.successor.lineage.participantSourceIds,
     ]) {
-      if (sourceAuthenticated.get(id) !== true) issues.push(`${item.id}: authoritative lineage uses unverified source ${id}`);
+      if (sourcesById.get(id)?.authenticated !== true) issues.push(`${item.id}: authoritative lineage uses unverified source ${id}`);
     }
-    for (const memory of item.successor.memoryEntities) {
-      for (const id of memory.sourceIds) {
-        if (!sourceIds.has(id)) issues.push(`${item.id}: memory source is missing`);
-        else if (sourceAuthenticated.get(id) !== true) issues.push(`${item.id}: memory source is unauthenticated`);
-      }
-      const matchingPolicyRecords = item.input.records.filter(
-        (record) =>
-          record.canonicalFactId === memory.canonicalFactId &&
-          record.sharingScope === memory.sharingScope &&
-          record.sensitivity === memory.sensitivity &&
-          record.egressPolicy === memory.egressPolicy,
-      );
-      const matchingPolicySources = [...new Set(matchingPolicyRecords.map(({ sourceId }) => sourceId))].sort();
-      if (!orderedStringsEqual(matchingPolicySources, [...memory.sourceIds].sort())) {
-        issues.push(`${item.id}: canonical memory union crossed or dropped a policy partition`);
-      }
-      const matchingPolicyEvidence = [
-        ...new Set(
-          matchingPolicyRecords.flatMap(({ sourceEvidenceIds }) => sourceEvidenceIds),
-        ),
-      ].sort();
-      if (!orderedStringsEqual(matchingPolicyEvidence, memory.sourceEvidenceIds)) {
-        issues.push(`${item.id}: canonical memory union lost or changed event-level evidence`);
-      }
-      const mismatchedRecordIds = item.input.records
-        .filter(
-          (record) =>
-            record.canonicalFactId === memory.canonicalFactId &&
-            (record.sharingScope !== memory.sharingScope ||
-              record.sensitivity !== memory.sensitivity ||
-              record.egressPolicy !== memory.egressPolicy),
-        )
-        .map(({ id }) => id)
-        .sort();
-      const reviewIds = item.successor.memoryReviewCandidates
-        .filter(({ canonicalFactId }) => canonicalFactId === memory.canonicalFactId)
-        .map(({ recordId }) => recordId)
-        .sort();
-      if (!orderedStringsEqual(mismatchedRecordIds, reviewIds)) {
-        issues.push(`${item.id}: policy-mismatched memory evidence was not preserved for review`);
-      }
-    }
-    for (const candidate of item.successor.memoryReviewCandidates) {
-      const record = item.input.records.find(({ id }) => id === candidate.recordId);
-      if (
-        !record ||
-        record.canonicalFactId !== candidate.canonicalFactId ||
-        record.sharingScope !== candidate.sharingScope ||
-        record.sensitivity !== candidate.sensitivity ||
-        record.egressPolicy !== candidate.egressPolicy ||
-        !orderedStringsEqual(record.sourceEvidenceIds, candidate.sourceEvidenceIds)
-      ) {
-        issues.push(`${item.id}: memory review candidate does not preserve its record policy`);
-      }
-    }
+    issues.push(...memoryProjectionSemanticIssues(item, sourcesById, sharingDecisions));
     for (const profile of item.successor.retrievalProfiles) {
       for (const id of profile.recordIds) if (!recordIds.has(id)) issues.push(`${item.id}: retrieval record is missing`);
+      if (profile.profile === "named_source") {
+        const requestedSource = sourcesById.get(profile.requestedSourceId);
+        if (
+          requestedSource?.authenticated !== true ||
+          profile.recordIds.some(
+            (recordId) => item.input.records.find(({ id }) => id === recordId)?.sourceId !== profile.requestedSourceId,
+          )
+        ) {
+          issues.push(`${item.id}: named-source query or results do not match an authenticated requested source`);
+        }
+      } else if (
+        profile.profile === "current_source" &&
+        profile.recordIds.some(
+          (recordId) => item.input.records.find(({ id }) => id === recordId)?.sourceId !== item.input.destination.sourceId,
+        )
+      ) {
+        issues.push(`${item.id}: current-source results include another source`);
+      }
     }
   }
 
@@ -1059,12 +1166,33 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
   ) {
     issues.push("F2 relabelled Claude evidence");
   }
-  const f3 = byId.get("F3")?.successor.lineage;
+  const f3Case = byId.get("F3");
+  const f3Sources = new Map(f3Case?.input.sources.map((source) => [source.id, source]));
+  const f3Transitions = f3Case?.input.transitions ?? [];
+  const f3ParticipantsByClient = new Map<contract.CanonicalClientIdV1, string>();
+  for (const transition of f3Transitions) {
+    const source = f3Sources.get(transition.actorSourceId);
+    if (source?.authenticated && !f3ParticipantsByClient.has(source.canonicalClientId)) {
+      f3ParticipantsByClient.set(source.canonicalClientId, source.id);
+    }
+  }
+  const f3Checkpoint = [...f3Transitions].reverse().find(({ kind }) => kind === "checkpoint");
+  const f3DerivedLineage = f3Transitions.length === 0
+    ? undefined
+    : {
+        originSourceId: f3Transitions[0]!.actorSourceId,
+        lastContributorSourceId: f3Transitions.at(-1)!.actorSourceId,
+        participantSourceIds: [...f3ParticipantsByClient.entries()]
+          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+          .map(([, sourceId]) => sourceId),
+        checkpointCreatorSourceId: f3Checkpoint?.actorSourceId,
+      };
   if (
-    f3?.originSourceId !== "source-claude" ||
-    f3.lastContributorSourceId !== "source-claude" ||
-    f3.participantSourceIds.join() !== "source-claude,source-codex" ||
-    f3.checkpointCreatorSourceId !== "source-claude"
+    f3Transitions[0]?.kind !== "create" ||
+    !f3Checkpoint ||
+    f3Transitions.some(({ actorSourceId }) => f3Sources.get(actorSourceId)?.authenticated !== true) ||
+    !f3DerivedLineage ||
+    canonicalizeJson(f3DerivedLineage) !== canonicalizeJson(f3Case?.successor.lineage)
   ) {
     issues.push("F3 lineage summary changed");
   }
@@ -1816,6 +1944,77 @@ test("source-aware negative self-mutations are rejected", () => {
     (expectation.recordIds as string[]).push("wrong-workspace");
     assert.ok(corpusSemanticIssues(wrongWorkspaceLeak as unknown as contract.SourceAwareContractCorpusV1).length > 0, profile);
   }
+  for (const mutation of ["missing", "unknown", "unauthenticated", "wrong_source", "extra_non_named"] as const) {
+    const invalidNamedSource = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+    const retrievalCase = invalidNamedSource.cases.find(({ id }) => id === "F5");
+    assert.ok(retrievalCase);
+    const namedProfile = retrievalCase.successor.retrievalProfiles.find(({ profile }) => profile === "named_source");
+    assert.ok(namedProfile?.profile === "named_source");
+    if (mutation === "missing") {
+      delete (namedProfile as unknown as { requestedSourceId?: string }).requestedSourceId;
+    } else if (mutation === "unknown") {
+      (namedProfile as { requestedSourceId: string }).requestedSourceId = "source-missing";
+    } else if (mutation === "unauthenticated") {
+      const requestedSource = retrievalCase.input.sources.find(({ id }) => id === namedProfile.requestedSourceId);
+      assert.ok(requestedSource);
+      (requestedSource as { authenticated: boolean }).authenticated = false;
+    } else if (mutation === "wrong_source") {
+      (namedProfile as { requestedSourceId: string }).requestedSourceId = "source-codex";
+    } else {
+      (retrievalCase.successor.retrievalProfiles[0] as unknown as { requestedSourceId: string }).requestedSourceId =
+        "source-claude";
+    }
+    if (mutation === "missing" || mutation === "extra_non_named") {
+      assert.ok(
+        validateContractValue(
+          "SourceAwareContractCorpusV1",
+          invalidNamedSource,
+          root,
+          contract.CONTINUITY_LIMITS,
+        ).length > 0,
+        mutation,
+      );
+    } else {
+      assert.ok(corpusSemanticIssues(invalidNamedSource as unknown as contract.SourceAwareContractCorpusV1).length > 0, mutation);
+    }
+  }
+  const wrongCurrentSource = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const currentSourceCase = wrongCurrentSource.cases.find(({ id }) => id === "F5");
+  assert.ok(currentSourceCase);
+  const currentSourceProfile = currentSourceCase.successor.retrievalProfiles.find(
+    ({ profile }) => profile === "current_source",
+  );
+  assert.ok(currentSourceProfile);
+  (currentSourceProfile.recordIds as string[])[0] = "claude-decision";
+  assert.ok(corpusSemanticIssues(wrongCurrentSource as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+  for (const recordId of ["private-no-consent", "wrong-workspace"]) {
+    const hintPolicyLeak = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+    const hintPrivacyCase = hintPolicyLeak.cases.find(({ id }) => id === "F7");
+    assert.ok(hintPrivacyCase);
+    (hintPrivacyCase.successor.hintOrManualRecordIds as string[]).push(recordId);
+    assert.ok(
+      corpusSemanticIssues(hintPolicyLeak as unknown as contract.SourceAwareContractCorpusV1).length > 0,
+      recordId,
+    );
+    const retrievalPolicyLeak = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+    const retrievalPrivacyCase = retrievalPolicyLeak.cases.find(({ id }) => id === "F7");
+    assert.ok(retrievalPrivacyCase);
+    const activeProfile = retrievalPrivacyCase.successor.retrievalProfiles.find(
+      ({ profile }) => profile === "active_task_shared",
+    );
+    if (activeProfile) {
+      (activeProfile.recordIds as string[]).push(recordId);
+    } else {
+      (retrievalPrivacyCase.successor.retrievalProfiles as contract.SourceAwareRetrievalExpectationV1[]).push({
+        profile: "active_task_shared",
+        recordIds: [recordId],
+      });
+    }
+    assert.ok(
+      corpusSemanticIssues(retrievalPolicyLeak as unknown as contract.SourceAwareContractCorpusV1).length > 0,
+      recordId,
+    );
+  }
 
   const renamedSecretLeak = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
   const sharedCaseForLeak = renamedSecretLeak.cases.find(({ id }) => id === "F1");
@@ -1969,6 +2168,64 @@ test("source-aware negative self-mutations are rejected", () => {
   assert.ok(
     corpusSemanticIssues(unauthenticatedMemoryDecision as unknown as contract.SourceAwareContractCorpusV1).length > 0,
   );
+  const unconsentedMemoryUnion = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const unconsentedMemoryCase = unconsentedMemoryUnion.cases.find(({ id }) => id === "F4");
+  assert.ok(unconsentedMemoryCase);
+  const codexMemory = unconsentedMemoryCase.input.records.find(({ id }) => id === "memory-codex");
+  assert.ok(codexMemory);
+  (codexMemory as unknown as { sharingDecisionEventIds: string[] }).sharingDecisionEventIds = [];
+  assert.ok(corpusSemanticIssues(unconsentedMemoryUnion as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  const reviewedUnconsentedMemory = structuredClone(unconsentedMemoryUnion);
+  const reviewedMemoryCase = reviewedUnconsentedMemory.cases.find(({ id }) => id === "F4");
+  assert.ok(reviewedMemoryCase);
+  const activeMemory = reviewedMemoryCase.successor.memoryEntities[0];
+  assert.ok(activeMemory);
+  (activeMemory as unknown as { sourceIds: string[] }).sourceIds = ["source-claude"];
+  (activeMemory as unknown as { sourceEvidenceIds: string[] }).sourceEvidenceIds = ["event-claude-1"];
+  (reviewedMemoryCase.successor.memoryReviewCandidates as contract.SourceAwareMemoryReviewCandidateV1[]).push({
+    recordId: "memory-codex",
+    canonicalFactId: "fact-pkce",
+    sharingScope: "project_shared",
+    sensitivity: "normal",
+    egressPolicy: "eligible",
+    sourceEvidenceIds: ["event-codex-1"],
+    disposition: "policy_review_required",
+    reasonCode: "consent_or_source_locality_mismatch",
+  });
+  assert.deepEqual(
+    memoryProjectionSemanticIssues(
+      reviewedMemoryCase,
+      new Map(reviewedMemoryCase.input.sources.map((source) => [source.id, source])),
+      new Map(reviewedMemoryCase.input.sharingDecisions.map((decision) => [decision.id, decision])),
+    ),
+    [],
+  );
+
+  const privateMemoryRecord = unconsentedMemoryCase.input.records.find(({ id }) => id === "memory-private");
+  assert.ok(privateMemoryRecord);
+  const f4Sources = new Map(unconsentedMemoryCase.input.sources.map((source) => [source.id, source]));
+  const f4Decisions = new Map(unconsentedMemoryCase.input.sharingDecisions.map((decision) => [decision.id, decision]));
+  assert.equal(
+    fixtureRecordIsUnionEligible(
+      privateMemoryRecord,
+      unconsentedMemoryCase.input.scope,
+      f4Sources,
+      f4Decisions,
+      privateMemoryRecord.sourceId,
+    ),
+    true,
+  );
+  assert.equal(
+    fixtureRecordIsUnionEligible(
+      { ...privateMemoryRecord, sourceId: "source-codex" },
+      unconsentedMemoryCase.input.scope,
+      f4Sources,
+      f4Decisions,
+      privateMemoryRecord.sourceId,
+    ),
+    false,
+  );
 
   const policyCandidateLoss = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
   const policyCase = policyCandidateLoss.cases.find(({ id }) => id === "F4");
@@ -1981,6 +2238,22 @@ test("source-aware negative self-mutations are rejected", () => {
   assert.ok(authorityCase);
   (authorityCase.input.sources[0] as unknown as { authenticated: boolean }).authenticated = false;
   assert.ok(corpusSemanticIssues(forgedLineage as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  for (const mutateTransitions of [
+    (transitions: contract.SourceAwareFixtureTransitionV1[]) =>
+      ((transitions[0] as { actorSourceId: string }).actorSourceId = "source-codex"),
+    (transitions: contract.SourceAwareFixtureTransitionV1[]) =>
+      ((transitions[1] as { actorSourceId: string }).actorSourceId = "source-claude"),
+    (transitions: contract.SourceAwareFixtureTransitionV1[]) =>
+      ((transitions[2] as { actorSourceId: string }).actorSourceId = "source-codex"),
+    (transitions: contract.SourceAwareFixtureTransitionV1[]) => transitions.pop(),
+  ]) {
+    const invalidF3Lineage = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+    const lineageCase = invalidF3Lineage.cases.find(({ id }) => id === "F3");
+    assert.ok(lineageCase);
+    mutateTransitions(lineageCase.input.transitions as contract.SourceAwareFixtureTransitionV1[]);
+    assert.ok(corpusSemanticIssues(invalidF3Lineage as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+  }
 
   for (const mutation of ["unknown", "unauthenticated", "wrong_scope", "wrong_target", "wrong_sharing_scope"] as const) {
     const badDecision = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
@@ -2305,6 +2578,12 @@ interface ResolvedFixtureSourceIdentity {
   readonly privateEligible: boolean;
 }
 
+interface ResolvedOperationEvent {
+  readonly phase: "start" | "progress" | "terminal";
+  readonly correlation: contract.OperationCorrelationV2;
+  readonly turnIdSource?: contract.TurnIdSource;
+}
+
 interface ResolvedMemoryEvidenceSnapshot {
   readonly memoryId: string;
   readonly hashValid: boolean;
@@ -2426,6 +2705,44 @@ function sourceReferenceIssues(
     }
   }
   return issues;
+}
+
+function pendingOperationSemanticIssues(
+  operations: readonly contract.PendingOperationV2[],
+  sourceIdentityByEventId: ReadonlyMap<string, ResolvedFixtureSourceIdentity>,
+  operationEventById: ReadonlyMap<string, ResolvedOperationEvent>,
+): string[] {
+  const issues: string[] = [];
+  for (const operation of operations) {
+    if (operation.operationId !== operation.correlation.operationId) {
+      issues.push("pending operation ID differs from its correlation operation ID");
+    }
+    const startEvent = operationEventById.get(operation.correlation.startEventId);
+    const startSource = sourceIdentityByEventId.get(operation.correlation.startEventId);
+    if (
+      !operation.sourceEventIds.includes(operation.correlation.startEventId) ||
+      !startSource ||
+      !startEvent ||
+      startEvent.phase !== "start" ||
+      startSource.sessionId !== operation.correlation.sessionId ||
+      canonicalizeJson(startEvent.correlation as unknown as contract.JsonValue) !==
+        canonicalizeJson(operation.correlation as unknown as contract.JsonValue) ||
+      startEvent.turnIdSource !== operation.startTurnIdSource
+    ) {
+      issues.push("pending operation start event is unauthenticated, unbound, or correlation-mismatched");
+    }
+  }
+  return issues;
+}
+
+function canonicalWorkStateSemanticIssues(
+  value: contract.CanonicalWorkStateV2,
+  sourceIdentityByEventId: ReadonlyMap<string, ResolvedFixtureSourceIdentity>,
+  operationEventById: ReadonlyMap<string, ResolvedOperationEvent>,
+): string[] {
+  return value.sharedTaskState
+    ? pendingOperationSemanticIssues(value.sharedTaskState.pendingOperations, sourceIdentityByEventId, operationEventById)
+    : [];
 }
 
 function selectedMemoryDeliveryIssues(
@@ -2555,6 +2872,7 @@ function resumeCapsuleSemanticIssues(
   parentByCheckpointRevision: ReadonlyMap<string, ResolvedCapsuleParent>,
   selectedMemoryById: ReadonlyMap<string, ResolvedSelectedMemory>,
   memoryEvidenceSnapshotById: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot>,
+  operationEventById: ReadonlyMap<string, ResolvedOperationEvent>,
 ): string[] {
   const issues: string[] = [];
   if (computeResumeCapsuleContentHash(value) !== value.contentHash) {
@@ -2570,6 +2888,7 @@ function resumeCapsuleSemanticIssues(
     issues.push("capsule checkpoint ID, revision, creator, or work-state binding is invalid");
   } else {
     issues.push(...stateRevisionEnvelopeIssues(parent.canonicalState.revision));
+    issues.push(...canonicalWorkStateSemanticIssues(parent.canonicalState, sourceIdentityByEventId, operationEventById));
     const derivedLineageSourceSummary = deriveLineageSourceSummary(parent, sourceIdentityByEventId);
     if (
       !derivedLineageSourceSummary ||
@@ -2877,9 +3196,135 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     parents: ReadonlyMap<string, ResolvedCapsuleParent> = resolvedParents,
     memories: ReadonlyMap<string, ResolvedSelectedMemory> = new Map(),
     memorySnapshots: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot> = new Map(),
-  ) => resumeCapsuleSemanticIssues(value, sources, decisions, authorities, parents, memories, memorySnapshots);
+    operationEvents: ReadonlyMap<string, ResolvedOperationEvent> = new Map(),
+  ) =>
+    resumeCapsuleSemanticIssues(
+      value,
+      sources,
+      decisions,
+      authorities,
+      parents,
+      memories,
+      memorySnapshots,
+      operationEvents,
+    );
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", capsule, root, contract.CONTINUITY_LIMITS), []);
   assert.deepEqual(capsuleIssues(capsule), []);
+  const operationId = "7".repeat(64);
+  const pendingOperation: contract.PendingOperationV2 = {
+    operationId,
+    correlation: {
+      operationId,
+      startEventId: "e".repeat(64),
+      operationMatchKey: "8".repeat(64),
+      sessionId: "1".repeat(64),
+      taskLineageId: capsule.subjectScope.taskLineageId,
+    },
+    kind: "tool",
+    description: "pending operation",
+    status: "started",
+    replayPolicy: "never_auto",
+    sourceEventIds: ["e".repeat(64)],
+    startedAt: "2026-08-24T00:00:00Z",
+    sensitivity: "normal",
+  };
+  const resolvePendingCapsule = (operation: contract.PendingOperationV2) => {
+    const value = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
+    assert.ok(value.sharedTaskState);
+    (value.sharedTaskState.pendingOperations as contract.PendingOperationV2[]).push(operation);
+    const stateInput = structuredClone(resolvedState) as unknown as Record<string, unknown>;
+    stateInput.sharedTaskState = value.sharedTaskState;
+    const state = rehashCanonicalState(stateInput, manifest.canonicalStateHashProfile);
+    (value as unknown as { workStateRevision: string }).workStateRevision = state.revision.stateRevision;
+    (value as unknown as { contentHash: string }).contentHash = computeResumeCapsuleContentHash(value);
+    return {
+      value,
+      state,
+      parents: new Map([[value.checkpointRevision, parentFor(value, state)]]) as ReadonlyMap<
+        string,
+        ResolvedCapsuleParent
+      >,
+    };
+  };
+  const pendingStartEvents = new Map<string, ResolvedOperationEvent>([
+    [
+      pendingOperation.correlation.startEventId,
+      {
+        phase: "start",
+        correlation: structuredClone(pendingOperation.correlation),
+        turnIdSource: pendingOperation.startTurnIdSource,
+      },
+    ],
+  ]);
+  const pendingIssues = (
+    resolved: ReturnType<typeof resolvePendingCapsule>,
+    operationEvents: ReadonlyMap<string, ResolvedOperationEvent> = pendingStartEvents,
+  ) =>
+    capsuleIssues(
+      resolved.value,
+      sourceClients,
+      sharingDecisions,
+      authorityEvents,
+      resolved.parents,
+      new Map(),
+      new Map(),
+      operationEvents,
+    );
+  const validPending = resolvePendingCapsule(pendingOperation);
+  assert.deepEqual(validateContractValue("ResumeCapsuleV2", validPending.value, root, contract.CONTINUITY_LIMITS), []);
+  assert.deepEqual(canonicalWorkStateSemanticIssues(validPending.state, sourceClients, pendingStartEvents), []);
+  assert.deepEqual(pendingIssues(validPending), []);
+  for (const mutateOperation of [
+    (operation: contract.PendingOperationV2) =>
+      ((operation.correlation as unknown as { operationId: string }).operationId = "9".repeat(64)),
+    (operation: contract.PendingOperationV2) =>
+      ((operation.correlation as unknown as { startEventId: string }).startEventId = "9".repeat(64)),
+    (operation: contract.PendingOperationV2) =>
+      ((operation.correlation as unknown as { startEventId: string }).startEventId = "f".repeat(64)),
+  ]) {
+    const invalidOperation = structuredClone(pendingOperation) as unknown as contract.PendingOperationV2;
+    mutateOperation(invalidOperation);
+    const invalidPending = resolvePendingCapsule(invalidOperation);
+    assert.deepEqual(validateContractValue("ResumeCapsuleV2", invalidPending.value, root, contract.CONTINUITY_LIMITS), []);
+    assert.ok(canonicalWorkStateSemanticIssues(invalidPending.state, sourceClients, pendingStartEvents).length > 0);
+    assert.ok(pendingIssues(invalidPending).length > 0);
+  }
+  const wrongPhaseOperation = structuredClone(pendingOperation) as unknown as contract.PendingOperationV2;
+  (wrongPhaseOperation.correlation as unknown as { startEventId: string }).startEventId = "f".repeat(64);
+  (wrongPhaseOperation.sourceEventIds as string[]).push("f".repeat(64));
+  const wrongPhasePending = resolvePendingCapsule(wrongPhaseOperation);
+  const wrongPhaseEvents = new Map(pendingStartEvents).set("f".repeat(64), {
+    ...pendingStartEvents.get("e".repeat(64))!,
+    correlation: structuredClone(wrongPhaseOperation.correlation),
+    phase: "terminal" as const,
+  });
+  assert.ok(pendingIssues(wrongPhasePending, wrongPhaseEvents).length > 0);
+  for (const mutateOptionalCorrelation of [
+    (operation: contract.PendingOperationV2) =>
+      ((operation.correlation as unknown as { nativeOperationId: string }).nativeOperationId = "3".repeat(64)),
+    (operation: contract.PendingOperationV2) =>
+      ((operation.correlation as unknown as { toolName: string }).toolName = "Bash"),
+    (operation: contract.PendingOperationV2) =>
+      ((operation.correlation as unknown as { canonicalInputHash: string }).canonicalInputHash = "4".repeat(64)),
+    (operation: contract.PendingOperationV2) =>
+      ((operation.correlation as unknown as { turnId: string }).turnId = "5".repeat(64)),
+    (operation: contract.PendingOperationV2) =>
+      ((operation as unknown as { startTurnIdSource: contract.TurnIdSource }).startTurnIdSource = "native"),
+  ]) {
+    const optionalMismatch = structuredClone(pendingOperation) as unknown as contract.PendingOperationV2;
+    mutateOptionalCorrelation(optionalMismatch);
+    assert.ok(pendingIssues(resolvePendingCapsule(optionalMismatch)).length > 0);
+  }
+  const wrongAuthenticatedSession = structuredClone(pendingOperation) as unknown as contract.PendingOperationV2;
+  (wrongAuthenticatedSession.correlation as unknown as { sessionId: string }).sessionId = "2".repeat(64);
+  const wrongSessionPending = resolvePendingCapsule(wrongAuthenticatedSession);
+  const wrongSessionEvents = new Map<string, ResolvedOperationEvent>([
+    [
+      wrongAuthenticatedSession.correlation.startEventId,
+      { phase: "start", correlation: structuredClone(wrongAuthenticatedSession.correlation) },
+    ],
+  ]);
+  assert.ok(pendingIssues(wrongSessionPending, wrongSessionEvents).length > 0);
   for (const field of ["checkpointId", "checkpointCreatedBySourceEventId"] as const) {
     const mismatchedCheckpoint = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
     (mismatchedCheckpoint as unknown as Record<string, string>)[field] = "9".repeat(64);
@@ -3813,9 +4258,9 @@ const EXPECTED_RESTORE_RULE_PATH_HASHES: Readonly<Record<string, string>> = {
   "persisted-derived-invalidation-event": "a3d5d6961c0ea1b11c24d4113547b482a79961f9b2345ca9f1caca071e05bcb0",
   "persisted-resume-capsule-v1": "e1f7758c7bb30cad0d51773677fe3288491c961f2cea29077ed7fd25f707ac85",
   "persisted-durable-memory": "7a11699d0a052b6e71601a7712693f8e593c2e06b5b68727179d7a9a16965174",
-  "persisted-canonical-work-state-v2": "467e977f3cca857f1651f30d7ad1a96daece960cbd600ac0ad8d5eb9cb086330",
+  "persisted-canonical-work-state-v2": "a8da35c42abcf916c9bf2739f520686df3ff0af86a0361f2ff5fd10bf78bacf4",
   "persisted-checkpoint-v3": "5e1ee47e0c507279c731eed79399f8f174aa1754859573c77389e3231001a9ef",
-  "persisted-resume-capsule-v2": "532eeef124488783fbf1792d307c039f08b77b596638bddb30adf09b629a1172",
+  "persisted-resume-capsule-v2": "3a2619c2f13bde4d8992247016bbf6be4a3e9b53b497daaccab5d307d3dba8fe",
   "persisted-canonical-memory-entity-v1": "7a1787f4f9b73d8be7a0e1106b787bbbe0fdba741e8cf3faad8eb0e4295b5296",
   "persisted-sharing-decision-v1": "af7b9a35a9ef8d675572038d7c896d8597fb21f26d3df68a27c11fe6cb0a41f3",
 };
@@ -3828,6 +4273,7 @@ const REQUIRED_SOURCE_REFERENCE_PATHS: Readonly<Record<string, readonly string[]
     "/sharedTaskState/modifiedFiles/*/sourceEventIds/*",
     "/sharedTaskState/recentCommands/*/sourceEventIds/*",
     "/sharedTaskState/recentTests/*/sourceEventIds/*",
+    "/sharedTaskState/pendingOperations/*/correlation/startEventId",
     "/sharedTaskState/pendingOperations/*/sourceEventIds/*",
     "/sharedTaskState/droppedEvidence/reasonWindows/*/entries/*/sourceEventIds/*",
     "/sharedTaskState/semanticResumeNote/sourceEventIds/*",
@@ -3844,6 +4290,7 @@ const REQUIRED_SOURCE_REFERENCE_PATHS: Readonly<Record<string, readonly string[]
     "/sharedTaskState/modifiedFiles/*/sourceEventIds/*",
     "/sharedTaskState/recentCommands/*/sourceEventIds/*",
     "/sharedTaskState/recentTests/*/sourceEventIds/*",
+    "/sharedTaskState/pendingOperations/*/correlation/startEventId",
     "/sharedTaskState/pendingOperations/*/sourceEventIds/*",
     "/sharedTaskState/droppedEvidence/reasonWindows/*/entries/*/sourceEventIds/*",
     "/sharedTaskState/semanticResumeNote/sourceEventIds/*",
@@ -3861,6 +4308,8 @@ const REQUIRED_RESTORE_CROSS_FIELD_RULES: Readonly<Record<string, readonly strin
     "canonical_state_contains_shared_or_agent_local_projection",
     "lineage_summary_matches_append_only_event_and_revision_evidence",
     "parent_state_revisions_are_sorted_unique_before_hash_and_publication",
+    "pending_operation_id_matches_correlation_operation_id",
+    "pending_operation_start_event_and_source_identity_match_full_authenticated_start_correlation_and_evidence",
     "shared_field_source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources",
     "shared_state_decisions_match_authenticated_authority_scope_target_and_private_consent",
     "agent_local_field_source_event_refs_are_sorted_unique_and_resolve_to_lane_client_and_session",
@@ -3871,6 +4320,8 @@ const REQUIRED_RESTORE_CROSS_FIELD_RULES: Readonly<Record<string, readonly strin
     "local_only_capsule_is_same_agent",
     "capsule_envelope_matches_persisted_delivery_claim",
     "capsule_projections_match_resolved_work_state_revision",
+    "pending_operation_id_matches_correlation_operation_id",
+    "pending_operation_start_event_and_source_identity_match_full_authenticated_start_correlation_and_evidence",
     "capsule_lineage_and_checkpoint_creator_refs_resolve_to_authenticated_sources",
     "shared_field_source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources",
     "destination_agent_local_field_source_event_refs_are_sorted_unique_and_resolve_to_destination_client_and_session",

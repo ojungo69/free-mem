@@ -149,7 +149,7 @@ corruptionReasonCodes?: RevisionSelectionCorruptionReasonV1[]
 
 Each candidate evaluation contains `stateRevision`, `lineageRevisionOrdinal`, `isOrderedHead`,
 `workspaceCompatibility: compatible|incompatible|unknown`,
-`checkpointDisposition: open|accepted|superseded|retracted|unknown`,
+`checkpointDisposition: open|accepted|superseded|retracted|expired|unknown`,
 `lineageState: single|forked|conflicted`, `resumeEligible`, and closed reason codes.
 
 Ordinals are unique and exactly one candidate is marked as the greatest daemon-owned ordered head. Automatic resume is allowed only when that same head is compatible,
@@ -184,6 +184,11 @@ Optional fields: `latestSubstantivePrompt`, `lastAssistantConclusion`, `nativeTo
 Each lane is keyed by `(clientId, sessionId)` and bound to one authenticated source identity event resolving to the same
 pair. Canonical state permits at most one lane per key; duplicates quarantine. A capsule contains zero or one lane, and its
 client/session must both equal the destination or the capsule is rejected.
+
+Every pending operation has matching outer/correlation `operationId` values. Its authenticated
+`correlation.startEventId` is a start-phase event present in that operation's sorted-unique `sourceEventIds`, with matching
+complete `OperationCorrelationV2`, `startTurnIdSource`, and authenticated source-identity session; an unbound, wrong-phase,
+or mismatched event quarantines the state/capsule.
 
 ### `CanonicalWorkStateV2`
 
@@ -282,9 +287,12 @@ The manifest pins shared and local-only cross-runtime vectors.
 
 `canonicalFactId = sha256(JCS({schema, subjectScope, kind, normalizationProfileId, canonicalContent}))`.
 An exact fact match unions evidence only when `sharingScope`, `sensitivity`, and `egressPolicy` also match exactly, then
-advances the same entity revision. A policy mismatch stays outside the active canonical entity as a typed
+advances the same entity revision. Every shared contributor has exact authenticated consent; Agent-private evidence unions
+only within the same exact source and never across sources. A policy/consent/source-locality mismatch stays outside the active canonical entity as a typed
 `SourceAwareMemoryReviewCandidateV1` preserving the record/fact IDs and exact policy tuple;
-it never widens delivery or forces a per-Agent duplicate. Semantic similarity never auto-merges.
+its reason is `policy_tuple_mismatch` for a different tuple or `consent_or_source_locality_mismatch` for an otherwise matching
+tuple that fails contributor consent or exact Agent-private source locality.
+It never widens delivery or forces a per-Agent duplicate. Semantic similarity never auto-merges.
 Any entity whose sharing scope is wider than `agent_private` requires at least one authenticated
 `sharingDecisionEventId`; an empty array is invalid rather than implicit consent. A `private` entity additionally requires
 the destination `privateEligible` gate at delivery time.
@@ -321,6 +329,8 @@ Destination `privateEligible` and `capabilityIds` live on the authenticated sour
 the destination selector has no detached authority fields.
 An omitted record `subjectScope` inherits the case scope; an explicit record scope is compared structurally. F7 carries
 separate wrong-vault, wrong-project, and wrong-workspace records rather than a magic scope tag.
+The `named_source` expectation alone requires `requestedSourceId`; it resolves to an authenticated input source and every
+returned record belongs to that source. `current_source` results all belong to `destination.sourceId`.
 
 ### `ContinuityP0ObservationContractV1`
 

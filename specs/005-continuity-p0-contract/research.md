@@ -85,8 +85,10 @@ legacy capsuleはsuccessorへ自動upgradeせずsame-agent manual/hint-onlyだ�
 ## Decision 6: memoryの自動dedupeはcanonical contentの完全一致だけにする
 
 **Decision**: 同じsubject scope、kind、normalization profile、canonical contentのJCS bytesが一致する場合だけ
-同じ`canonicalFactId`と判定する。evidence unionは`sharingScope`、`sensitivity`、`egressPolicy`も完全一致する場合だけ
-自動化し、policy mismatchはreview candidateへ分離する。言い換え/semantic similarityは別entityのままにし、
+同じ`canonicalFactId`と判定する。evidence unionは`sharingScope`、`sensitivity`、`egressPolicy`の完全一致に加え、
+shared contributorのexact authenticated sharing consentがある場合だけ自動化する。Agent-private evidenceはexact source内
+だけunionし、cross-sourceでは統合しない。policy/consent/source-locality mismatchはreview
+candidateへ分離する。言い換え/semantic similarityは別entityのままにし、
 明示authorityのauditable mergeだけを許す。
 
 **Rationale**: 決定論、local privacy、ゼロ追加costを守りながら、同一contentのper-Agent duplicateを0にできる。
@@ -224,7 +226,8 @@ calendar timestamp、permanent wedge、unaudited repairをfreezeできない。r
 
 **Decision**: `RevisionHeadSelectionContractV1`は最大daemon-owned lineage ordinalをordered headとし、
 workspace compatibility、checkpoint disposition、lineage fork/conflictを別評価する。ordered headがeligibleでない
-場合はmanualへ送り、古いrevisionへautomatic fallbackしない。同一ordinal/multiple headはquarantineする。
+場合はmanualへ送り、古いrevisionへautomatic fallbackしない。`expired`は既知のineligible dispositionとして
+`checkpoint_expired`を返し、`checkpoint_unknown`へ潰さない。同一ordinal/multiple headはquarantineする。
 
 **Rationale**: 「新しい」と「再開してよい」を1つのfield/algorithmにすると、incompatible/retracted headを
 選ぶか、古いstateへ黙って巻き戻る。fail-closedな2 gateをfixture作成前に固定する。

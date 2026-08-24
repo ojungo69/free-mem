@@ -104,6 +104,10 @@ Agent-local lanes are keyed by `(clientId, sessionId)`, unique in canonical stat
 `sourceIdentityEventId` to the same authenticated pair. Duplicate lanes quarantine. A capsule carries zero or one lane and
 rejects it unless both client and session match the destination.
 
+Every pending operation's outer/correlation operation IDs match. Its `correlation.startEventId` resolves to an authenticated
+start-phase event present in that operation's evidence and matching the complete correlation envelope, `startTurnIdSource`,
+and authenticated source-identity session.
+
 Sensitivity uses the closed order `normal < private < secret`. Every present shared or Agent-local projection declares the
 maximum of its contained values; canonical state declares the maximum across its present projections, and a capsule derives
 the maximum of what it includes. A checkpoint must match its embedded canonical-state maximum. Any mismatch quarantines
@@ -178,6 +182,8 @@ of workspace compatibility, checkpoint disposition, and lineage fork/conflict. A
 ordered head itself is eligible. If it is not, the result is manual; the selector never silently falls back to an older
 revision. Duplicate revisions/ordinals, zero or multiple ordered heads, a mismatched head reference, or a non-greatest
 marked head use the third `fallbackDisposition="quarantine"` variant with exact corruption reason codes.
+`checkpointDisposition="expired"` is a known ineligible state with reason `checkpoint_expired` and manual fallback; it is
+never collapsed into `checkpoint_unknown`.
 
 Dropped evidence has separate bounded windows and decimal-string counters for `evicted` and `orphaned_terminal`. Per window,
 `totalRecorded = totalOverflowed + retained entries`; top-level totals equal the window sums. A non-empty window carries
@@ -206,10 +212,14 @@ sha256(JCS({schema, subjectScope, kind, normalizationProfileId, canonicalContent
 ```
 
 Only exact identity **and exact policy tuple** (`sharingScope`, `sensitivity`, `egressPolicy`) matches auto-union evidence.
-A second source with the same tuple adds sorted unique source-event/evidence refs and advances the entity revision; it does
+A shared contributor with the same tuple and its own exact authenticated sharing grant adds sorted unique source-event/evidence
+refs and advances the entity revision. Agent-private evidence may union only within the same exact source; it never crosses
+sources without a grantable sharing scope. Unconsented or cross-source private evidence remains outside the active union. The union does
 not create a per-source memory row. Policy-mismatched evidence is preserved as a typed
 `SourceAwareMemoryReviewCandidateV1` with its record ID, fact ID, exact policy tuple, and `policy_tuple_mismatch`; it cannot
-broaden or weaken the active entity's delivery policy without explicit audited user resolution. Semantic similarity and paraphrases remain separate until
+broaden or weaken the active entity's delivery policy without explicit audited user resolution. Evidence matching an active
+policy tuple but failing contributor consent or exact Agent-private source locality is preserved with
+`consent_or_source_locality_mismatch`. Semantic similarity and paraphrases remain separate until
 an explicit authority records an auditable merge. Conflict, supersession, truth state, lifecycle, and validity history are
 independent of dedupe.
 
@@ -219,11 +229,15 @@ The contract distinguishes:
 
 - `all_source_project` search;
 - `current_source` filter;
-- `named_source` filter;
+- `named_source` filter with an explicit authenticated `requestedSourceId`;
 - `active_task_shared` automatic injection;
 - `same_agent` and `cross_agent` resume profiles.
 
 Source filters affect result selection/display only. They never change lineage, memory identity, or revision history.
+`current_source` results belong to the destination source; named-source results belong to the explicit requested source.
+Every non-daemon-local output applies source/destination authentication, scope, sharing consent, Agent-private isolation,
+private eligibility, secret, and egress gates. Capability support is additionally required for automatic and
+`active_task_shared`; a valid hint/manual downgrade may omit that capability but may not bypass the other gates.
 
 ## 10. Restore semantic validation
 
@@ -295,6 +309,8 @@ expectations cover:
 
 The test requires the exact ordered set F0–F7, validates all references, checks case-specific invariants, and kills in-memory
 mutations that remove a case, relabel a source, leak a denied record, or drop one evidence branch.
+F3 origin, last contributor, canonical-client participants, and checkpoint creator are derived from its authenticated ordered
+transition history rather than copied from expected output.
 Each record's event-level evidence is non-empty, nonblank, sorted unique, and preserved exactly in successor record evidence;
 memory unions carry the sorted event union and review candidates retain their record's exact evidence IDs.
 

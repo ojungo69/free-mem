@@ -243,7 +243,7 @@
         "retrievalProfiles": [
           { "profile": "all_source_project", "recordIds": ["claude-decision", "codex-test"] },
           { "profile": "current_source", "recordIds": ["codex-test"] },
-          { "profile": "named_source", "recordIds": ["claude-decision"] },
+          { "profile": "named_source", "requestedSourceId": "source-claude", "recordIds": ["claude-decision"] },
           { "profile": "active_task_shared", "recordIds": ["claude-decision", "codex-test"] }
         ],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": true },
@@ -260,9 +260,11 @@
         "destination": { "sourceId": "source-codex" },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
-          { "id": "forged-goal", "kind": "goal", "sourceId": "source-codex", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"] }
+          { "id": "forged-goal", "kind": "goal", "sourceId": "source-codex", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"], "sharingDecisionEventIds": ["decision-forged-goal"] }
         ],
-        "sharingDecisions": [],
+        "sharingDecisions": [
+          { "id": "decision-forged-goal", "authorityEventId": "user-grant-forged-goal", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "task_shared", "target": { "kind": "shared_task_projection", "taskLineageId": "lineage-a" } }
+        ],
         "transitions": [{ "id": "t1", "actorSourceId": "source-codex", "kind": "create" }]
       },
       "currentV1": { "disposition": "unsafe", "reasonCode": "caller_claimed_source_not_authority_bound" },
