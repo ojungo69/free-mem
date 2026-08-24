@@ -1,0 +1,57 @@
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_19ff9a5953b846 885,1663-1667
+specs/005-continuity-p0-contract/verify-tasks-report.md
+  s_d6433b5ff6fa8e::t_885834b438ae3d 296
+  s_d6433b5ff6fa8e::t_88ad0559690720 297,299
+  s_d6433b5ff6fa8e::t_fed25382e65a88 289-295
+evidence/adr-006-source-aware-shared-memory.md
+  s_d6433b5ff6fa8e::t_0707cfde39d517 72-75
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_3049fd9994ce8e 1007-1008,1013,1037
+  s_d6433b5ff6fa8e::t_bc983ac27c8251 2242,2245-2253,2255,2257,2262,2265,2267,2272
+  s_d6433b5ff6fa8e::t_1061d9940c2930 1009
+  s_d6433b5ff6fa8e::t_aafa034ebe997d 2281-2300
+  s_d6433b5ff6fa8e::t_010a0ccbccd917 797,803,825-842,1250,1254-1257
+  s_d6433b5ff6fa8e::t_d5235f62d1498c 1259
+  s_d6433b5ff6fa8e::t_47b7634f452efb 932-934,936,940-947,949,953-955,970,973-974,1010-1012,1014-1021,1023-1029
+  s_d6433b5ff6fa8e::t_613c5d154ed52d 2301-2315
+  s_d6433b5ff6fa8e::t_0c57d8f48ad5f3 3924,3928
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_7358d3f22131b9 5,17
+  s_d6433b5ff6fa8e::t_5bca76694cc8c3 3
+specs/001-agent-memory-core/tasks.md
+  s_d6433b5ff6fa8e::t_0707cfde39d517 224-226
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_19ff9a5953b846 4120-4126
+specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md
+  s_d6433b5ff6fa8e::t_d5235f62d1498c 304
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_1aecb6d4d0efbd 38-44,296-303
+  s_d6433b5ff6fa8e::t_b6a341209ac4e4 722-723
+  s_d6433b5ff6fa8e::t_1fabc5e5787122 808-831
+specs/005-continuity-p0-contract/spec.md
+  s_d6433b5ff6fa8e::t_d5235f62d1498c 249-250,568-569
+  s_d6433b5ff6fa8e::t_0707cfde39d517 19,32,39,559
+harness/fixtures/continuity/source-aware-f0-f7.v1.json
+  s_d6433b5ff6fa8e::t_ce78ff65163e83 166,189,196
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_0707cfde39d517 25-27
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_58171d780523c8 31,35,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "360b4b9963b26e38ca29b77f020cddac58a878d9",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
