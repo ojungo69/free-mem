@@ -817,8 +817,8 @@ export interface RepositoryStateSnapshotV2 {
   readonly workspaceId: OpaqueIdV1;
   readonly branchKey?: OpaqueIdV1;
   readonly worktreeId?: OpaqueIdV1;
-  readonly headSha?: Sha256Hex;
-  readonly upstreamSha?: Sha256Hex;
+  readonly headSha?: GitObjectIdV1;
+  readonly upstreamSha?: GitObjectIdV1;
   readonly dirtyTreeFingerprint?: OpaqueIdV1;
   readonly gitStatusSummary?: string;
   readonly capturedAt: string;
@@ -903,6 +903,17 @@ export interface AgentLocalLanePolicyV1 {
   readonly nonMatchingCapsuleDisposition: "reject";
 }
 
+export interface SensitivityAggregationPolicyV1 {
+  readonly schemaVersion: 1;
+  readonly order: readonly ["normal", "private", "secret"];
+  readonly sharedTaskState: "max_of_contained_values";
+  readonly agentLocalState: "max_of_contained_values";
+  readonly canonicalWorkState: "max_of_shared_and_agent_local";
+  readonly checkpoint: "match_embedded_canonical_state";
+  readonly resumeCapsule: "max_of_included_projections";
+  readonly mismatchDisposition: "quarantine_before_delivery";
+}
+
 export interface CanonicalWorkStateV2 {
   readonly schemaVersion: 2;
   readonly subjectScope: TaskLineageSubjectScopeV1;
@@ -932,6 +943,7 @@ export interface ContinuationCheckpointV3 {
 }
 
 export interface ResumeDestinationV1 {
+  readonly sourceIdentityEventId: OpaqueIdV1;
   readonly clientId: CanonicalClientIdV1;
   readonly clientVersion: string;
   readonly sessionId: OpaqueIdV1;
@@ -1432,6 +1444,19 @@ export interface SourceAwareMemoryExpectationV1 {
   readonly memoryId: string;
   readonly canonicalFactId: string;
   readonly sourceIds: readonly string[];
+  readonly sharingScope: SharingScopeV1;
+  readonly sensitivity: Sensitivity;
+  readonly egressPolicy: EgressPolicyV1;
+}
+
+export interface SourceAwareMemoryReviewCandidateV1 {
+  readonly recordId: string;
+  readonly canonicalFactId: string;
+  readonly sharingScope: SharingScopeV1;
+  readonly sensitivity: Sensitivity;
+  readonly egressPolicy: EgressPolicyV1;
+  readonly disposition: "policy_review_required";
+  readonly reasonCode: "policy_tuple_mismatch";
 }
 
 export interface SourceAwareRetrievalExpectationV1 {
@@ -1451,6 +1476,7 @@ export interface SourceAwareSuccessorExpectationV1 {
   readonly sourceEvidence: readonly SourceAwareRecordEvidenceExpectationV1[];
   readonly lineage: SourceAwareLineageExpectationV1;
   readonly memoryEntities: readonly SourceAwareMemoryExpectationV1[];
+  readonly memoryReviewCandidates: readonly SourceAwareMemoryReviewCandidateV1[];
   readonly retrievalProfiles: readonly SourceAwareRetrievalExpectationV1[];
   readonly authority: SourceAwareAuthorityExpectationV1;
   readonly downgradeReasonCodes: readonly SourceSharingDispositionCodeV1[];
@@ -1725,6 +1751,7 @@ export interface SourceAwareContinuityContractV1 {
   readonly stateNeutralTransitionPolicy: StateNeutralTransitionPolicyV1;
   readonly sharingDecisionPolicy: SharingDecisionPolicyV1;
   readonly agentLocalLanePolicy: AgentLocalLanePolicyV1;
+  readonly sensitivityAggregationPolicy: SensitivityAggregationPolicyV1;
   readonly continuityP0Observations: ContinuityP0ObservationContractV1;
   readonly legacyMigrationRules: readonly LegacyMigrationRuleV1[];
   readonly restoreSemanticValidation: RestoreSemanticValidationContractV1;

@@ -203,7 +203,10 @@ Detailed executable steps and commit boundaries are generated in `tasks.md` by `
 - Drift: regenerated `contract-hashes.json` matches; contract manifest recomputes JCS hash excluding itself and covers
   inventory-derived restore closure, exact 9-Issue observations, and raw-ID policy.
 - Scope: no changed path under `vendor/codemem` or `.github/workflows`; no reference reducer/old-shape corpus diff.
-- Completion: every checked task maps to a committed artifact and command output through verify-tasks.
+- Completion: verify-tasks classifies every checked task. Local artifact tasks require committed file/command evidence;
+  external operations, commit actions, historical red runs, and command-only tasks may be `SKIPPED` by the file-based layers
+  and are verified separately from live GitHub state, commit history, or controller command evidence. A checked task is not
+  automatically equivalent to a file-level `VERIFIED` verdict.
 
 ## Complexity Tracking
 

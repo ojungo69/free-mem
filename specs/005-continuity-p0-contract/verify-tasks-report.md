@@ -126,9 +126,9 @@ These tasks name external operations, historical red runs, or commit actions but
 The scorecard above is the immutable fresh-session snapshot taken before correctness/security review. After resolving the
 review findings, the controller reran the affected and full gates:
 
-- focused source-aware contract: 19 passed, 0 failed;
+- focused source-aware contract: 21 passed, 0 failed;
 - schema freeze: 19 passed, 0 failed;
-- full continuity suite: 352 passed, 0 failed;
+- full continuity suite: 354 passed, 0 failed;
 - harness TypeScript: exit 0, no diagnostics;
 - generated contract hashes: empty diff;
 - regenerated old-shape baseline: 20 cases / 29 steps, empty diff;
@@ -144,3 +144,28 @@ moved only `harness/schema/source-aware-continuity-contract.v1.json` aside there
 failed test and the assertion `source-aware contract manifest is missing` (`pass 0 / fail 1`). The artifact was restored and
 the disposable worktree removed. This proves T005's expected failure is the missing contract artifact, not parser/setup
 failure; the original `VERIFIED` row now has durable supporting evidence.
+
+## External Review Dispositions
+
+All review output was treated as a proposal and checked against source/tests.
+
+| Engine / round | Disposition | Source-verified result |
+|---|---|---|
+| Grok security 1 | Blocked by timeout | Runner exited 124 with no session/envelope; retried once on the high-risk machine paths as required. |
+| Grok security 2 | Clean | `ok:true`, zero findings; session `01a033a1-0c93-7721-955d-757e960e8320`. |
+| Cubic 1 — successor restore rules absent | Rejected | Manifest already contained work-state V2, checkpoint V3, capsule V2, memory V1, and SharingDecision V1 rules; inventory-derived closure passed. |
+| CodeRabbit 1 — durable-memory paths need `/` | Rejected | Those entries are SQL columns, not JSON Pointers; the mixed path/column format is explicitly normative. |
+| CodeRabbit 1 — remaining 14 | Accepted | Clarified F6 claim, specialized observed strings, indexed successor entities, completed enum parity, corrected report/scope commands, froze receipt identity, checkpoint/memory hashes, corruption output, private meaning, T005 evidence, S0 prohibited paths, lane keys, and opaque-ID derivation. |
+| Cubic 2 — project boundary | Accepted | `project_shared` memory vector now has an exact project subject scope. |
+| Cubic 2 — generic privacy precedence | Accepted | Automatic delivery rejects any record name for secret, non-eligible egress, wrong scope/source, ineligible private, missing capability, or invalid consent. |
+| Cubic 2 — split continuity module | Rejected | Existing authority is one additive `continuity.ts` / one schema mirror; splitting adds re-export/ownership drift without a second runtime implementation. |
+| Cubic 2 — split focused suite | Rejected | One focused bundle test intentionally verifies cross-artifact hashes/closure; splitting would duplicate setup and weaken atomic bundle review. |
+| Cubic 2 — generate parity descriptors | Rejected | The independent handwritten third point is deliberate: generating it from either authority would stop detecting coordinated drift. |
+| CodeRabbit 2 — `uniqueItems` | Rejected | The local schema validator rejects unsupported `uniqueItems`; exact arrays are pinned by semantic/hash and schema-freeze assertions. |
+| CodeRabbit 2 — CI fetch depth | Rejected | The continuity CI checkout already uses `fetch-depth: 0`; the frozen baseline commit is available. |
+| CodeRabbit 2 — Git object IDs | Accepted | Repository heads now use `GitObjectIdV1` and test both SHA-1 and SHA-256 object IDs. |
+| CodeRabbit 2 — V1 history/updatedAt ambiguity | Accepted | FR-005/007 and SC-003 now distinguish V1 comparison fields from successor receipt/audit/watermark authorities. |
+| CodeRabbit 2 — checklist wording | Accepted | Checklist exceptions name the mandated cross-runtime contract target rather than claiming zero technical vocabulary. |
+| CodeRabbit 2 — policy-mismatched memory union | Accepted | Automatic evidence union requires an exact sharing/sensitivity/egress tuple; F4/F7 carry policy-conflict negatives. |
+| CodeRabbit 2 — plan completion wording | Accepted | File-level `VERIFIED`, `SKIPPED`, live evidence, history evidence, and checked-task state are no longer conflated. |
+| CodeRabbit 2 — sensitivity aggregation | Accepted | A closed max-sensitivity policy and fail-closed tests cover shared, Agent-local, canonical, and capsule projections. |

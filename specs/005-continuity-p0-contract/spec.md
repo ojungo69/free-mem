@@ -294,10 +294,13 @@ contract は期待する source identity、sharing disposition、participant集�
   後続 event・別 revision の構築によって変化してはならない。
 - **FR-004**: revision 間の構造共有は、共有される全 node が実行時にも変更不可である場合に限り許可する。
 - **FR-005**: canonical work state の意味内容が変わらない event は、同じ state bytes・content hash・
-  revision pointer・history を返さなければならない。
+  revision pointerを返さなければならない。current V1の比較観測では`history`長と`updatedAt`も不変とするが、
+  successor work stateは両fieldを持たず、`StateNeutralTransitionPolicyV1.canonicalStateEffect="reuse_revision"`と
+  separate receipt/diagnostic/watermark authorityで同じ不変条件を表す。
 - **FR-006**: FR-005 の場合でも、(a) canonical work-state transition、(b) event / delivery の冪等台帳
   transition、(c) 診断 / 監査 transition、(d) event store の網羅 watermark を分離して記録しなければならない。
-- **FR-007**: `updatedAt` は caller 由来の `occurredAt` によって過去へ巻き戻ってはならない。
+- **FR-007**: current V1の`updatedAt`はcaller由来の`occurredAt`により巻き戻ってはならない。successorでは
+  state-neutral eventがrevisionを再利用し、新revisionの`committedAt`だけをdaemon authorityが発行する。
 - **FR-008**: 上限つき証跡 window から個別 entry が落ちても、「何件・どの理由・どの境界以前が
   欠けているか」は canonical state だけで判別できなければならない。
 - **FR-009**: overflow した事実は state 内の単調な値として保持し、理由ごとに件数と欠落を区別しなければならない。
@@ -418,7 +421,8 @@ contract は期待する source identity、sharing disposition、participant集�
   同一evidenceはentityを複製せずunionする。Core 1.0の自動同一判定は、同じsubject scope・kind・
   versioned normalization profileで得たcanonical contentの完全一致に限定する。言い換えやsemantic
   similarityは自動統合せず、明示authorityによるauditable mergeだけを許可する。conflict、supersession、
-  validity historyはdedupeと別に扱う。
+  validity historyはdedupeと別に扱う。evidence unionは`sharingScope`・`sensitivity`・`egressPolicy`も完全一致
+  するときだけ自動化し、policy不一致はactive entityへ混ぜず明示user reviewまで別laneに置く。
 - **FR-043**: source filterは検索・表示optionであり、filterの有無によってtask lineage identity、
   canonical memory identity、revision historyが変化してはならない。
 - **FR-044**: future clientはcore schema forkやAgent別DBではなく、adapter/profile/conformanceの追加で
@@ -487,8 +491,10 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
   受理／隔離の判断・同じ内容 hash に、パリティ用 fixture の**全件**で到達する。
 - **SC-002**: 公開済み revision の canonical bytes と `contentHash` が、後続の consumer 操作・
   後続 event・別 revision 構築のいずれによっても変化しない。変化を試みる操作は失敗する。
-- **SC-003**: 意味を変えない event を任意回数送っても、`stateRevision`・`history` 長・`updatedAt` の
-  変化が **0 回**であり、かつ受理・delivery key 消費・診断・watermark の記録は **1 件も失われない**。
+- **SC-003**: 意味を変えないeventを任意回数送ったcurrent V1比較では`stateRevision`・`history`長・
+  `updatedAt`の変化が**0回**、successorでは`canonicalStateEffect="reuse_revision"`でnew revisionが**0件**で
+  ある。どちらも受理・delivery key消費・診断coverage・watermarkの記録を失わず、successorのexact authority/
+  key/collision動作は`StateNeutralTransitionPolicyV1`と#46 observation entryから一意に導けなければならない。
 - **SC-004**: `stateRevision` を CAS token として使う下流が、無害な event の連続送信によって
   空振りさせられない（現在は送るだけで永久に空振りさせられる）。
 - **SC-005**: 証跡が上限で落ちた状態から、欠落の件数・理由の内訳・欠落境界を、状態だけを渡された

@@ -157,6 +157,11 @@ Required fields: `sharingScope: "task_shared"`, non-empty authenticated `sharing
 `recentTests`, `pendingOperations`, `droppedEvidence`, `repositoryState`, `sensitivity`, `egressPolicy`.
 Optional fields: `goal`, `semanticResumeNote`.
 
+The shared projection sensitivity is the maximum of every contained value. Each Agent-local lane applies the same rule to
+its contents, and `CanonicalWorkStateV2.sensitivity` is the maximum of the shared projection plus every lane. A mismatch
+quarantines before restore/delivery; implementations never choose one conflicting declaration silently.
+`ContinuationCheckpointV3.sensitivity` must equal its embedded canonical state's maximum sensitivity.
+
 The Observed/file/command/test/operation/repository/note V2 shapes preserve their V1 semantic fields, make all arrays and
 properties readonly, replace every identifier/fingerprint/source-event reference with `OpaqueIdV1`, and remove
 caller-owned ordering material. `sourceEventIds` are sorted unique arrays.
@@ -218,7 +223,9 @@ The capsule contains a bounded delivery projection, not the full state:
 
 - `schemaVersion: 2`, opaque injection/checkpoint IDs, checkpoint/work-state revisions;
 - subject scope, lineage source summary, explicit checkpoint creator event;
-- `ResumeDestinationV1` (`clientId`, exact version, opaque session, optional capability hash, `privateEligible`);
+- `ResumeDestinationV1` (required authenticated `sourceIdentityEventId`, `clientId`, exact version, opaque session,
+  optional capability hash, `privateEligible`); the reference must resolve to the same client/session/capability even when no
+  Agent-local lane is included; exact client version cannot be inferred from client ID or an absent capability hash;
 - `resumeProfile`, age, reconciliation status;
 - shared task state;
 - at most the destination client's own eligible `destinationAgentLocalState`;
@@ -239,7 +246,10 @@ also rejected; the source identity event, lane key, and destination must agree o
 - validity/audit timestamps.
 
 `canonicalFactId = sha256(JCS({schema, subjectScope, kind, normalizationProfileId, canonicalContent}))`.
-An exact match unions evidence into the same entity and advances its revision. Semantic similarity never auto-merges.
+An exact fact match unions evidence only when `sharingScope`, `sensitivity`, and `egressPolicy` also match exactly, then
+advances the same entity revision. A policy mismatch stays outside the active canonical entity as a typed
+`SourceAwareMemoryReviewCandidateV1` preserving the record/fact IDs and exact policy tuple;
+it never widens delivery or forces a per-Agent duplicate. Semantic similarity never auto-merges.
 Any entity whose sharing scope is wider than `agent_private` requires at least one authenticated
 `sharingDecisionEventId`; an empty array is invalid rather than implicit consent. A `private` entity additionally requires
 the destination `privateEligible` gate at delivery time.

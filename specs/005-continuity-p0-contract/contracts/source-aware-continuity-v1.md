@@ -91,8 +91,15 @@ Agent-local lanes are keyed by `(clientId, sessionId)`, unique in canonical stat
 `sourceIdentityEventId` to the same authenticated pair. Duplicate lanes quarantine. A capsule carries zero or one lane and
 rejects it unless both client and session match the destination.
 
+Sensitivity uses the closed order `normal < private < secret`. Shared and Agent-local projections each declare the maximum
+of their contained values; canonical state declares the maximum across all projections, and a capsule derives the maximum
+of what it includes. A checkpoint must match its embedded canonical-state maximum. Any mismatch quarantines before delivery
+instead of lowering sensitivity.
+
 `ResumeCapsuleV2` carries the shared projection and, only when eligible, the destination client's own Agent-local lane.
 It never carries another client's Agent-local lane. The full canonical state is not embedded in a delivery capsule.
+The destination itself always carries `sourceIdentityEventId`; restore rejects the capsule unless it resolves to the same
+authenticated client, exact client version, session, and optional capability hash, including capsules with no Agent-local lane.
 
 ## 6. Lineage provenance
 
@@ -157,8 +164,11 @@ Automatic fact identity is exactly:
 sha256(JCS({schema, subjectScope, kind, normalizationProfileId, canonicalContent}))
 ```
 
-Only exact identity matches auto-union evidence. A second source adds sorted unique source-event/evidence refs and advances
-the entity revision; it does not create a per-source memory row. Semantic similarity and paraphrases remain separate until
+Only exact identity **and exact policy tuple** (`sharingScope`, `sensitivity`, `egressPolicy`) matches auto-union evidence.
+A second source with the same tuple adds sorted unique source-event/evidence refs and advances the entity revision; it does
+not create a per-source memory row. Policy-mismatched evidence is preserved as a typed
+`SourceAwareMemoryReviewCandidateV1` with its record ID, fact ID, exact policy tuple, and `policy_tuple_mismatch`; it cannot
+broaden or weaken the active entity's delivery policy without explicit audited user resolution. Semantic similarity and paraphrases remain separate until
 an explicit authority records an auditable merge. Conflict, supersession, truth state, lifecycle, and validity history are
 independent of dedupe.
 

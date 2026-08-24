@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
-  "contractHash": "c2484f9789a659e334fb92594b95b24cb1e2c5800870156d2a56a0d592d9b36c",
+  "contractHash": "72a7cc815df7276564c878d864c0fbb7209b287ee5b9b9c7d334c6ccf13be40b",
   "schemaFile": "schema/continuity.schema.json",
-  "schemaHash": "f9247e961f20d79e95f8b30d2728dfcb69e18f77322a28a55ea737f6fbf14971",
+  "schemaHash": "5d3d941a2e475c84e69d82f52be3818273b002ba97c82e08969d6ef7f7a8cce4",
   "artifactSchemas": [
     { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
     { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
@@ -14,7 +14,7 @@
   "inventoryHash": "1d2642999fca4f4d35d1280011baa36f29825898121a48e392d106c341bb5dff",
   "fixtureCorpusFile": "fixtures/continuity/source-aware-f0-f7.v1.json",
   "fixtureCorpusVersion": 1,
-  "fixtureCorpusHash": "f3f74f128fe88b1900408bc3883877b9922e8ad35df5198d9f859577b3c8206b",
+  "fixtureCorpusHash": "6b8c1f85007b376c614152ed7fc4dfe8fdc95c551f17b1d3f2835f75cd1b6aeb",
   "fixtureCaseIds": ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"],
   "opaqueIdProfile": {
     "schemaVersion": 1,
@@ -144,12 +144,12 @@
     "testVector": {
       "contentProjection": {
         "schemaVersion": 1,
-        "subjectScope": { "kind": "personal_vault", "personalVaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "subjectScope": { "kind": "project", "personalVaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "projectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
         "opaqueIdProfile": { "schemaVersion": 1, "algorithm": "hmac-sha-256", "keyId": "local-v1", "outputEncoding": "lowercase_hex_256" },
         "kind": "decision",
         "normalizationProfileId": "exact-jcs-v1",
         "canonicalContent": { "decision": "use PKCE" },
-        "canonicalFactId": "83b3d15d961cbf99eaf1e8d4419b6edc4cf39bb508cae416806f6ea34f964250",
+        "canonicalFactId": "773f78d471848e8a7fd4b257de2e2d7dbf661f6ab177e0a6eb1e1a9ee03a12c2",
         "sharingScope": "project_shared",
         "sensitivity": "normal",
         "egressPolicy": "eligible",
@@ -157,7 +157,7 @@
         "truthState": "user_confirmed",
         "durability": "durable"
       },
-      "contentHash": "69137ae4748325787abda95e4a028b07e38d57206ea9387ab5a7fc393a72ca31",
+      "contentHash": "98920426ac6d94167d967ca81a30b4b17759276fec37df2ba79285041ca69a93",
       "revisionMetadata": {
         "sharingDecisionEventIds": ["dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
         "sourceEventIds": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],
@@ -166,9 +166,9 @@
         "updatedAt": "2026-08-24T00:00:00Z"
       },
       "memoryId": "7777777777777777777777777777777777777777777777777777777777777777",
-      "initialMemoryRevision": "1feee9ca91b0cb019ab22072f5d78414364f8057886b2cf0d483767dfb76f73d",
+      "initialMemoryRevision": "131b8c30e6fa4198c155980994b882eed9063eaafb532dc0929bbb41cbf5d54e",
       "parentMemoryRevision": "8888888888888888888888888888888888888888888888888888888888888888",
-      "childMemoryRevision": "a59359fe82c728f6936d3c1456ac98b25452c5c4833f412d267352952e14a0eb"
+      "childMemoryRevision": "115d121490edd1ffae7fdd1ceff83b6126138981e812182fc0dc9c85c1d9f6a4"
     }
   },
   "revisionHeadSelectionPolicy": {
@@ -224,6 +224,16 @@
     "sourceIdentityBinding": "client_and_session",
     "duplicateDisposition": "quarantine",
     "nonMatchingCapsuleDisposition": "reject"
+  },
+  "sensitivityAggregationPolicy": {
+    "schemaVersion": 1,
+    "order": ["normal", "private", "secret"],
+    "sharedTaskState": "max_of_contained_values",
+    "agentLocalState": "max_of_contained_values",
+    "canonicalWorkState": "max_of_shared_and_agent_local",
+    "checkpoint": "match_embedded_canonical_state",
+    "resumeCapsule": "max_of_included_projections",
+    "mismatchDisposition": "quarantine_before_delivery"
   },
   "continuityP0Observations": {
     "schemaVersion": 1,
@@ -550,7 +560,7 @@
         "inventoryEntryId": "persisted-canonical-work-state-v2",
         "scopeIdentityPaths": ["/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/revision/committedByDaemonId", "/revision/sourceSessionId", "/lineageSourceSummary/lineageOriginSourceEventId", "/lineageSourceSummary/lastContributingSourceEventId", "/lineageSourceSummary/participantSourceEventIds/*", "/agentLocalStates/*/sourceIdentityEventId", "/agentLocalStates/*/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/sharedTaskState/repositoryState/repositoryId", "/sharedTaskState/repositoryState/workspaceId", "/sharedTaskState/repositoryState/branchKey", "/sharedTaskState/repositoryState/worktreeId", "/sharedTaskState/pendingOperations/*/operationId", "/sharedTaskState/pendingOperations/*/correlation/sessionId", "/sharedTaskState/pendingOperations/*/correlation/taskLineageId"],
         "isoTimestampPaths": ["/revision/committedAt", "/sharedTaskState/goal/observedAt", "/sharedTaskState/constraints/*/observedAt", "/sharedTaskState/activeFiles/*/observedAt", "/sharedTaskState/modifiedFiles/*/observedAt", "/sharedTaskState/recentCommands/*/observedAt", "/sharedTaskState/recentTests/*/observedAt", "/sharedTaskState/pendingOperations/*/startedAt", "/sharedTaskState/pendingOperations/*/terminalAt", "/sharedTaskState/repositoryState/capturedAt", "/agentLocalStates/*/latestSubstantivePrompt/observedAt", "/agentLocalStates/*/lastAssistantConclusion/observedAt", "/agentLocalStates/*/nativeTodoState/observedAt", "/agentLocalStates/*/nativePlanState/observedAt", "/agentLocalStates/*/hostMetadata/observedAt"],
-        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "state_and_repository_workspace_match", "pending_operation_scope_matches_state", "lineage_refs_resolve_to_authenticated_sources", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "agent_local_lane_keys_client_and_session_are_unique", "agent_local_source_identity_resolves_same_client_and_session", "dropped_evidence_has_exact_reason_windows", "content_and_state_revision_match_CanonicalStateHashProfileV1"],
+        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "state_and_repository_workspace_match", "pending_operation_scope_matches_state", "lineage_refs_resolve_to_authenticated_sources", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "agent_local_lane_keys_client_and_session_are_unique", "agent_local_source_identity_resolves_same_client_and_session", "shared_and_agent_local_sensitivity_are_max_of_contained_values", "canonical_state_sensitivity_is_max_of_all_projections", "dropped_evidence_has_exact_reason_windows", "content_and_state_revision_match_CanonicalStateHashProfileV1"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true
@@ -559,16 +569,16 @@
         "inventoryEntryId": "persisted-checkpoint-v3",
         "scopeIdentityPaths": ["/id", "/parentCheckpointId", "/sourceSessionId", "/checkpointCreatedBySourceEventId", "/canonicalState/subjectScope/personalVaultId", "/canonicalState/subjectScope/projectId", "/canonicalState/subjectScope/workspaceId", "/canonicalState/subjectScope/branchKey", "/canonicalState/subjectScope/taskLineageId"],
         "isoTimestampPaths": ["/createdAt", "/expiresAt", "/canonicalState/revision/committedAt", "/canonicalState/sharedTaskState/repositoryState/capturedAt"],
-        "crossFieldRules": ["embedded_state_passes_persisted-canonical-work-state-v2", "checkpoint_creator_resolves_to_authenticated_source", "checkpoint_source_session_matches_state_revision", "parent_checkpoint_id_and_revision_are_both_present_or_absent", "checkpoint_content_and_revision_match_CheckpointHashProfileV1"],
+        "crossFieldRules": ["embedded_state_passes_persisted-canonical-work-state-v2", "checkpoint_creator_resolves_to_authenticated_source", "checkpoint_source_session_matches_state_revision", "checkpoint_sensitivity_matches_embedded_canonical_state", "parent_checkpoint_id_and_revision_are_both_present_or_absent", "checkpoint_content_and_revision_match_CheckpointHashProfileV1"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true
       },
       {
         "inventoryEntryId": "persisted-resume-capsule-v2",
-        "scopeIdentityPaths": ["/injectionId", "/checkpointId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/checkpointCreatedBySourceEventId", "/destination/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/destinationAgentLocalState/sourceIdentityEventId", "/destinationAgentLocalState/sessionId", "/selectedMemoryIds/*"],
+        "scopeIdentityPaths": ["/injectionId", "/checkpointId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/checkpointCreatedBySourceEventId", "/destination/sourceIdentityEventId", "/destination/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/destinationAgentLocalState/sourceIdentityEventId", "/destinationAgentLocalState/sessionId", "/selectedMemoryIds/*"],
         "isoTimestampPaths": ["/sharedTaskState/goal/observedAt", "/sharedTaskState/constraints/*/observedAt", "/sharedTaskState/activeFiles/*/observedAt", "/sharedTaskState/modifiedFiles/*/observedAt", "/sharedTaskState/recentCommands/*/observedAt", "/sharedTaskState/recentTests/*/observedAt", "/sharedTaskState/pendingOperations/*/startedAt", "/sharedTaskState/pendingOperations/*/terminalAt", "/sharedTaskState/repositoryState/capturedAt", "/destinationAgentLocalState/latestSubstantivePrompt/observedAt", "/destinationAgentLocalState/lastAssistantConclusion/observedAt", "/destinationAgentLocalState/nativeTodoState/observedAt", "/destinationAgentLocalState/nativePlanState/observedAt", "/destinationAgentLocalState/hostMetadata/observedAt"],
-        "crossFieldRules": ["capsule_subject_matches_shared_projection", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "destination_agent_local_state_client_and_session_match_destination", "destination_agent_local_state_source_event_resolves_to_destination_client_and_session", "cross_agent_capsule_excludes_non_destination_local_lanes", "private_requires_authenticated_opt_in_and_privateEligible", "secret_local_only_and_prohibited_egress_are_not_serialized", "destination_capability_downgrade_is_explicit"],
+        "crossFieldRules": ["capsule_subject_matches_shared_projection", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "destination_source_identity_resolves_to_client_version_session_and_capability", "destination_agent_local_state_client_and_session_match_destination", "destination_agent_local_state_source_event_resolves_to_destination_client_and_session", "cross_agent_capsule_excludes_non_destination_local_lanes", "included_projection_sensitivity_is_max_of_contained_values", "private_requires_authenticated_opt_in_and_privateEligible", "secret_local_only_and_prohibited_egress_are_not_serialized", "destination_capability_downgrade_is_explicit"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true

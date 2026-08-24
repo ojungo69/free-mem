@@ -435,6 +435,32 @@ test("US1 dropped evidence retains one independent window per reason", () => {
   assert.ok(droppedEvidenceSemanticIssues(missing as unknown as contract.DroppedEvidenceSummaryV1).length > 0);
 });
 
+test("successor repository snapshots accept SHA-1 and SHA-256 Git object IDs", () => {
+  const root = loadRequiredJson<JsonSchemaDocument>(ROOT_URL, "continuity schema");
+  const base = {
+    repositoryId: "a".repeat(64),
+    workspaceId: "b".repeat(64),
+    capturedAt: "2026-08-24T00:00:00Z",
+  };
+  assert.deepEqual(
+    validateContractValue(
+      "RepositoryStateSnapshotV2",
+      { ...base, headSha: "1".repeat(40), upstreamSha: "2".repeat(64) },
+      root,
+      contract.CONTINUITY_LIMITS,
+    ),
+    [],
+  );
+  assert.ok(
+    validateContractValue(
+      "RepositoryStateSnapshotV2",
+      { ...base, headSha: "1".repeat(39) },
+      root,
+      contract.CONTINUITY_LIMITS,
+    ).length > 0,
+  );
+});
+
 const US4_FIELDS = {
   SourceIdentityV1: [
     "adapterId",
@@ -513,6 +539,7 @@ const US4_FIELDS = {
     "clientVersion",
     "privateEligible",
     "sessionId",
+    "sourceIdentityEventId",
   ],
   ResumeCapsuleV2: [
     "ageSeconds",
@@ -733,8 +760,21 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     }
     for (const id of item.successor.automaticFullRecordIds) {
       const record = item.input.records.find((candidate) => candidate.id === id);
+      const recordScope = record?.subjectScope ?? item.input.scope;
+      if (
+        !record ||
+        record.sharingScope === "agent_private" ||
+        record.sensitivity === "secret" ||
+        record.egressPolicy !== "eligible" ||
+        sourceAuthenticated.get(record.sourceId) !== true ||
+        sourceAuthenticated.get(item.input.destination.sourceId) !== true ||
+        canonicalizeJson(recordScope) !== canonicalizeJson(item.input.scope) ||
+        (record.sensitivity === "private" && !item.input.destination.privateEligible) ||
+        !item.input.destination.capabilityIds.includes("shared-task-v1")
+      ) {
+        issues.push(`${item.id}: automatic record ${id} violates privacy precedence`);
+      }
       if (record?.sharingScope !== "agent_private") {
-        const recordScope = record?.subjectScope ?? item.input.scope;
         const validDecision = record?.sharingDecisionEventIds?.some((decisionId) => {
           const decision = sharingDecisions.get(decisionId);
           const targetMatches = record?.canonicalFactId
@@ -777,6 +817,51 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     }
     for (const memory of item.successor.memoryEntities) {
       for (const id of memory.sourceIds) if (!sourceIds.has(id)) issues.push(`${item.id}: memory source is missing`);
+      const matchingPolicySources = [
+        ...new Set(
+          item.input.records
+            .filter(
+              (record) =>
+                record.canonicalFactId === memory.canonicalFactId &&
+                record.sharingScope === memory.sharingScope &&
+                record.sensitivity === memory.sensitivity &&
+                record.egressPolicy === memory.egressPolicy,
+            )
+            .map(({ sourceId }) => sourceId),
+        ),
+      ].sort();
+      if (matchingPolicySources.join() !== [...memory.sourceIds].sort().join()) {
+        issues.push(`${item.id}: canonical memory union crossed or dropped a policy partition`);
+      }
+      const mismatchedRecordIds = item.input.records
+        .filter(
+          (record) =>
+            record.canonicalFactId === memory.canonicalFactId &&
+            (record.sharingScope !== memory.sharingScope ||
+              record.sensitivity !== memory.sensitivity ||
+              record.egressPolicy !== memory.egressPolicy),
+        )
+        .map(({ id }) => id)
+        .sort();
+      const reviewIds = item.successor.memoryReviewCandidates
+        .filter(({ canonicalFactId }) => canonicalFactId === memory.canonicalFactId)
+        .map(({ recordId }) => recordId)
+        .sort();
+      if (mismatchedRecordIds.join() !== reviewIds.join()) {
+        issues.push(`${item.id}: policy-mismatched memory evidence was not preserved for review`);
+      }
+    }
+    for (const candidate of item.successor.memoryReviewCandidates) {
+      const record = item.input.records.find(({ id }) => id === candidate.recordId);
+      if (
+        !record ||
+        record.canonicalFactId !== candidate.canonicalFactId ||
+        record.sharingScope !== candidate.sharingScope ||
+        record.sensitivity !== candidate.sensitivity ||
+        record.egressPolicy !== candidate.egressPolicy
+      ) {
+        issues.push(`${item.id}: memory review candidate does not preserve its record policy`);
+      }
     }
     for (const profile of item.successor.retrievalProfiles) {
       for (const id of profile.recordIds) if (!recordIds.has(id)) issues.push(`${item.id}: retrieval record is missing`);
@@ -801,8 +886,29 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     issues.push("F3 lineage summary changed");
   }
   const f4 = byId.get("F4")?.successor.memoryEntities;
-  if (f4?.length !== 1 || f4[0]?.sourceIds.join() !== "source-claude,source-codex") {
+  if (
+    f4?.length !== 1 ||
+    f4[0]?.sourceIds.join() !== "source-claude,source-codex" ||
+    f4[0]?.sharingScope !== "project_shared" ||
+    f4[0]?.sensitivity !== "normal" ||
+    f4[0]?.egressPolicy !== "eligible"
+  ) {
     issues.push("F4 is not one entity with two source branches");
+  }
+  const f4Input = byId.get("F4")?.input.records.filter(({ canonicalFactId }) => canonicalFactId === "fact-pkce");
+  const f4ReviewIds = byId
+    .get("F4")
+    ?.successor.memoryReviewCandidates.map(({ recordId }) => recordId)
+    .sort();
+  if (
+    f4Input?.length !== 4 ||
+    f4Input.filter(
+      ({ sharingScope, sensitivity, egressPolicy }) =>
+        sharingScope === "project_shared" && sensitivity === "normal" && egressPolicy === "eligible",
+    ).length !== 2 ||
+    f4ReviewIds?.join() !== "memory-private,memory-secret"
+  ) {
+    issues.push("F4 does not preserve policy-mismatch negative evidence");
   }
   const f5 = byId.get("F5")?.successor.retrievalProfiles;
   if (f5?.map(({ profile }) => profile).join() !== "all_source_project,current_source,named_source,active_task_shared") {
@@ -873,6 +979,16 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     if (!f7?.successor.downgradeReasonCodes.includes(reason)) issues.push(`F7 missing ${reason} disposition`);
   }
   if ((f7?.successor.automaticFullRecordIds.length ?? -1) !== 0) issues.push("F7 automatic full is not empty");
+  const f7PolicyConflict = f7?.input.records.filter(
+    ({ canonicalFactId }) => canonicalFactId === "fact-policy-conflict",
+  );
+  if (
+    f7PolicyConflict?.length !== 2 ||
+    f7?.successor.memoryEntities.length !== 0 ||
+    f7.successor.memoryReviewCandidates.map(({ recordId }) => recordId).join() !== "secret-record"
+  ) {
+    issues.push("F7 policy-conflicting evidence was automatically unioned");
+  }
   return issues;
 }
 
@@ -937,6 +1053,21 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
     })
   ) {
     issues.push("Agent-local lane policy changed");
+  }
+  if (
+    JSON.stringify(value.sensitivityAggregationPolicy) !==
+    JSON.stringify({
+      schemaVersion: 1,
+      order: ["normal", "private", "secret"],
+      sharedTaskState: "max_of_contained_values",
+      agentLocalState: "max_of_contained_values",
+      canonicalWorkState: "max_of_shared_and_agent_local",
+      checkpoint: "match_embedded_canonical_state",
+      resumeCapsule: "max_of_included_projections",
+      mismatchDisposition: "quarantine_before_delivery",
+    })
+  ) {
+    issues.push("sensitivity aggregation policy changed");
   }
   const raw = value.rawIdentifierEvidencePolicy;
   if (
@@ -1256,11 +1387,47 @@ test("source-aware negative self-mutations are rejected", () => {
   (f7.successor.automaticFullRecordIds as string[]).push("private-record");
   assert.ok(corpusSemanticIssues(privateLeak as unknown as contract.SourceAwareContractCorpusV1).length > 0);
 
+  const renamedSecretLeak = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const sharedCaseForLeak = renamedSecretLeak.cases.find(({ id }) => id === "F1");
+  assert.ok(sharedCaseForLeak);
+  (sharedCaseForLeak.input.records as contract.SourceAwareFixtureRecordV1[]).push({
+    id: "newly-named-denied-record",
+    kind: "new_kind",
+    sourceId: "source-claude",
+    sharingScope: "task_shared",
+    sensitivity: "secret",
+    egressPolicy: "eligible",
+    sourceEvidenceIds: ["event-secret-new"],
+    sharingDecisionEventIds: ["decision-goal"],
+  });
+  (sharedCaseForLeak.successor.automaticFullRecordIds as string[]).push("newly-named-denied-record");
+  assert.ok(corpusSemanticIssues(renamedSecretLeak as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  const unauthenticatedDestination = structuredClone(corpus) as unknown as {
+    cases: contract.SourceAwareContractCaseV1[];
+  };
+  const destinationCase = unauthenticatedDestination.cases.find(({ id }) => id === "F1");
+  assert.ok(destinationCase);
+  const destinationSource = destinationCase.input.sources.find(
+    ({ id }) => id === destinationCase.input.destination.sourceId,
+  );
+  assert.ok(destinationSource);
+  (destinationSource as unknown as { authenticated: boolean }).authenticated = false;
+  assert.ok(
+    corpusSemanticIssues(unauthenticatedDestination as unknown as contract.SourceAwareContractCorpusV1).length > 0,
+  );
+
   const evidenceLoss = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
   const f4 = evidenceLoss.cases.find(({ id }) => id === "F4");
   assert.ok(f4);
   (f4.successor.memoryEntities[0]!.sourceIds as string[]).pop();
   assert.ok(corpusSemanticIssues(evidenceLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  const policyCandidateLoss = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const policyCase = policyCandidateLoss.cases.find(({ id }) => id === "F4");
+  assert.ok(policyCase);
+  (policyCase.successor.memoryReviewCandidates as contract.SourceAwareMemoryReviewCandidateV1[]).pop();
+  assert.ok(corpusSemanticIssues(policyCandidateLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
 
   const forgedLineage = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
   const authorityCase = forgedLineage.cases.find(({ id }) => id === "F6");
@@ -1468,7 +1635,9 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
 
 interface ResolvedFixtureSourceIdentity {
   readonly clientId: contract.CanonicalClientIdV1;
+  readonly clientVersion: string;
   readonly sessionId: string;
+  readonly capabilityHash?: string;
 }
 
 function agentLocalLaneSemanticIssues(
@@ -1493,6 +1662,16 @@ function resumeCapsuleSemanticIssues(
 ): string[] {
   const issues: string[] = [];
   issues.push(...sharingDecisionReferenceIssues(value.sharedTaskState.sharingDecisionEventIds));
+  const destinationIdentity = sourceIdentityByEventId.get(value.destination.sourceIdentityEventId);
+  if (
+    !destinationIdentity ||
+    destinationIdentity.clientId !== value.destination.clientId ||
+    destinationIdentity.clientVersion !== value.destination.clientVersion ||
+    destinationIdentity.sessionId !== value.destination.sessionId ||
+    destinationIdentity.capabilityHash !== value.destination.capabilityHash
+  ) {
+    issues.push("destination does not match authenticated source identity");
+  }
   if (value.destinationAgentLocalState) {
     issues.push(...agentLocalLaneSemanticIssues([value.destinationAgentLocalState], sourceIdentityByEventId));
   }
@@ -1536,7 +1715,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     subjectScope: projection.subjectScope,
     lineageSourceSummary: projection.lineageSourceSummary,
     checkpointCreatedBySourceEventId: id,
-    destination: { clientId: "codex-cli", clientVersion: "1", sessionId: id, privateEligible: false },
+    destination: { sourceIdentityEventId: id, clientId: "codex-cli", clientVersion: "1", sessionId: id, privateEligible: false },
     resumeProfile: "cross_agent",
     ageSeconds: 0,
     reconciliation: "exact",
@@ -1553,7 +1732,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     warnings: [],
   };
   const sourceClients = new Map<string, ResolvedFixtureSourceIdentity>([
-    [id, { clientId: "codex-cli", sessionId: id }],
+    [id, { clientId: "codex-cli", clientVersion: "1", sessionId: id }],
   ]);
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", capsule, root, contract.CONTINUITY_LIMITS), []);
   assert.deepEqual(resumeCapsuleSemanticIssues(capsule, sourceClients), []);
@@ -1563,13 +1742,22 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   assert.ok(resumeCapsuleSemanticIssues(leakedLane, sourceClients).length > 0);
 
   const relabelledLaneSources = new Map<string, ResolvedFixtureSourceIdentity>([
-    [id, { clientId: "claude-code", sessionId: id }],
+    [id, { clientId: "claude-code", clientVersion: "1", sessionId: id }],
   ]);
   assert.ok(resumeCapsuleSemanticIssues(capsule, relabelledLaneSources).length > 0);
   const oldSessionSources = new Map<string, ResolvedFixtureSourceIdentity>([
-    [id, { clientId: "codex-cli", sessionId: "b".repeat(64) }],
+    [id, { clientId: "codex-cli", clientVersion: "1", sessionId: "b".repeat(64) }],
   ]);
   assert.ok(resumeCapsuleSemanticIssues(capsule, oldSessionSources).length > 0);
+  const withoutLocalLane = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
+  delete (withoutLocalLane as unknown as { destinationAgentLocalState?: contract.AgentLocalStateV1 })
+    .destinationAgentLocalState;
+  assert.deepEqual(validateContractValue("ResumeCapsuleV2", withoutLocalLane, root, contract.CONTINUITY_LIMITS), []);
+  assert.ok(resumeCapsuleSemanticIssues(withoutLocalLane, new Map()).length > 0);
+  const wrongVersionSources = new Map<string, ResolvedFixtureSourceIdentity>([
+    [id, { clientId: "codex-cli", clientVersion: "2", sessionId: id }],
+  ]);
+  assert.ok(resumeCapsuleSemanticIssues(withoutLocalLane, wrongVersionSources).length > 0);
 
   const privateEligible = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
   (privateEligible.destination as unknown as { privateEligible: boolean }).privateEligible = true;
@@ -1601,15 +1789,70 @@ test("Agent-local lanes are unique by client and session and match authenticated
   });
   const lanes = [lane(eventA, sessionA), lane(eventB, sessionB)];
   const sources = new Map<string, ResolvedFixtureSourceIdentity>([
-    [eventA, { clientId: "codex-cli", sessionId: sessionA }],
-    [eventB, { clientId: "codex-cli", sessionId: sessionB }],
+    [eventA, { clientId: "codex-cli", clientVersion: "1", sessionId: sessionA }],
+    [eventB, { clientId: "codex-cli", clientVersion: "1", sessionId: sessionB }],
   ]);
   assert.deepEqual(agentLocalLaneSemanticIssues(lanes, sources), []);
   const duplicate = [lanes[0]!, lane(eventB, sessionA)];
   assert.ok(agentLocalLaneSemanticIssues(duplicate, sources).length > 0);
   const relabelled = new Map(sources);
-  relabelled.set(eventB, { clientId: "claude-code", sessionId: sessionB });
+  relabelled.set(eventB, { clientId: "claude-code", clientVersion: "1", sessionId: sessionB });
   assert.ok(agentLocalLaneSemanticIssues(lanes, relabelled).length > 0);
+});
+
+function maxSensitivity(values: readonly contract.Sensitivity[]): contract.Sensitivity {
+  return values.reduce(
+    (highest, value) =>
+      contract.SENSITIVITIES.indexOf(value) > contract.SENSITIVITIES.indexOf(highest) ? value : highest,
+    "normal",
+  );
+}
+
+function sensitivityAggregationIssues(value: {
+  readonly sharedDeclared: contract.Sensitivity;
+  readonly sharedContained: readonly contract.Sensitivity[];
+  readonly lanes: readonly {
+    declared: contract.Sensitivity;
+    contained: readonly contract.Sensitivity[];
+  }[];
+  readonly canonicalDeclared: contract.Sensitivity;
+  readonly checkpointDeclared: contract.Sensitivity;
+}): string[] {
+  const issues: string[] = [];
+  if (value.sharedDeclared !== maxSensitivity(value.sharedContained)) issues.push("shared sensitivity is not maximal");
+  for (const lane of value.lanes) {
+    if (lane.declared !== maxSensitivity(lane.contained)) issues.push("Agent-local sensitivity is not maximal");
+  }
+  if (
+    value.canonicalDeclared !==
+    maxSensitivity([value.sharedDeclared, ...value.lanes.map(({ declared }) => declared)])
+  ) {
+    issues.push("canonical sensitivity is not maximal");
+  }
+  if (value.checkpointDeclared !== value.canonicalDeclared) {
+    issues.push("checkpoint sensitivity differs from embedded canonical state");
+  }
+  return issues;
+}
+
+test("sensitivity is the maximum of contained and projected values", () => {
+  const valid = {
+    sharedDeclared: "private",
+    sharedContained: ["normal", "private"],
+    lanes: [{ declared: "secret", contained: ["private", "secret"] }],
+    canonicalDeclared: "secret",
+    checkpointDeclared: "secret",
+  } as const;
+  assert.deepEqual(sensitivityAggregationIssues(valid), []);
+  assert.ok(sensitivityAggregationIssues({ ...valid, sharedDeclared: "normal" }).length > 0);
+  assert.ok(
+    sensitivityAggregationIssues({
+      ...valid,
+      lanes: [{ declared: "normal", contained: ["secret"] }],
+    }).length > 0,
+  );
+  assert.ok(sensitivityAggregationIssues({ ...valid, canonicalDeclared: "private" }).length > 0);
+  assert.ok(sensitivityAggregationIssues({ ...valid, checkpointDeclared: "normal" }).length > 0);
 });
 
 test("shared memory requires authenticated consent evidence", () => {
@@ -1724,9 +1967,9 @@ const EXPECTED_RESTORE_RULE_PATH_HASHES: Readonly<Record<string, string>> = {
   "persisted-derived-invalidation-event": "a3d5d6961c0ea1b11c24d4113547b482a79961f9b2345ca9f1caca071e05bcb0",
   "persisted-resume-capsule-v1": "e1f7758c7bb30cad0d51773677fe3288491c961f2cea29077ed7fd25f707ac85",
   "persisted-durable-memory": "7a11699d0a052b6e71601a7712693f8e593c2e06b5b68727179d7a9a16965174",
-  "persisted-canonical-work-state-v2": "4385cccbd71d03f1c3b4890c249e2ae10db16c17804804298f9a6068d7bca3aa",
-  "persisted-checkpoint-v3": "6dbac301dba6d6f7f0b81ac07e67a3ff6b223413d3015f46ac849d5bad59ff09",
-  "persisted-resume-capsule-v2": "018f46170988cffc5c30b6ebe4b5e29e33855b84276b2ed3291df0686055e8f3",
+  "persisted-canonical-work-state-v2": "63caff4b881e2fafd62ac558951d75c65aaade1da856c40849070b36a4af07d9",
+  "persisted-checkpoint-v3": "5e1ee47e0c507279c731eed79399f8f174aa1754859573c77389e3231001a9ef",
+  "persisted-resume-capsule-v2": "c7a49f1e3fa3057c43415daefd8898ccafeb13e4122337d408185eda3322d77a",
   "persisted-canonical-memory-entity-v1": "383b15285d4ec70db54275c7c5e4606af50f49bd3d8fda60249753c6938c905d",
   "persisted-sharing-decision-v1": "2f96e5868b434b174222015be90ee1d139e3e097644c157fa0d54b4f0e937437",
 };

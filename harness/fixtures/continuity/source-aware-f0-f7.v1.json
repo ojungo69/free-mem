@@ -28,6 +28,7 @@
         "sourceEvidence": [{ "recordId": "native-todo", "sourceIds": ["source-claude"] }],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
+        "memoryReviewCandidates": [],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": false },
         "downgradeReasonCodes": ["agent_private"]
@@ -64,6 +65,7 @@
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
+        "memoryReviewCandidates": [],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": true },
         "downgradeReasonCodes": []
@@ -99,6 +101,7 @@
         "sourceEvidence": [{ "recordId": "modified-file", "sourceIds": ["source-claude"] }],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [],
+        "memoryReviewCandidates": [],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": true },
         "downgradeReasonCodes": []
@@ -139,6 +142,7 @@
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
+        "memoryReviewCandidates": [],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-claude", "automaticResumeAuthorized": true },
         "downgradeReasonCodes": []
@@ -150,17 +154,22 @@
       "input": {
         "sources": [
           { "id": "source-claude", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
-          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true }
+          { "id": "source-codex", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true },
+          { "id": "source-claude-private", "canonicalClientId": "claude-code", "claimedClientId": "claude-code", "authenticated": true },
+          { "id": "source-codex-secret", "canonicalClientId": "codex-cli", "claimedClientId": "codex-cli", "authenticated": true }
         ],
         "destination": { "sourceId": "source-codex", "privateEligible": false, "capabilityIds": ["shared-task-v1"] },
         "scope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" },
         "records": [
           { "id": "memory-claude", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-memory-claude"], "canonicalFactId": "fact-pkce" },
-          { "id": "memory-codex", "kind": "memory", "sourceId": "source-codex", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"], "sharingDecisionEventIds": ["decision-memory-codex"], "canonicalFactId": "fact-pkce" }
+          { "id": "memory-codex", "kind": "memory", "sourceId": "source-codex", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"], "sharingDecisionEventIds": ["decision-memory-codex"], "canonicalFactId": "fact-pkce" },
+          { "id": "memory-private", "kind": "memory", "sourceId": "source-claude-private", "sharingScope": "agent_private", "sensitivity": "private", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-private-1"], "canonicalFactId": "fact-pkce" },
+          { "id": "memory-secret", "kind": "memory", "sourceId": "source-codex-secret", "sharingScope": "project_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-codex-secret-1"], "sharingDecisionEventIds": ["decision-memory-secret"], "canonicalFactId": "fact-pkce" }
         ],
         "sharingDecisions": [
           { "id": "decision-memory-claude", "authorityEventId": "user-grant-memory-claude", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } },
-          { "id": "decision-memory-codex", "authorityEventId": "user-grant-memory-codex", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } }
+          { "id": "decision-memory-codex", "authorityEventId": "user-grant-memory-codex", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } },
+          { "id": "decision-memory-secret", "authorityEventId": "user-grant-memory-secret", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } }
         ],
         "transitions": [
           { "id": "t1", "actorSourceId": "source-claude", "kind": "create" },
@@ -175,10 +184,16 @@
         "agentLocalRecordIds": [],
         "sourceEvidence": [
           { "recordId": "memory-claude", "sourceIds": ["source-claude"] },
-          { "recordId": "memory-codex", "sourceIds": ["source-codex"] }
+          { "recordId": "memory-codex", "sourceIds": ["source-codex"] },
+          { "recordId": "memory-private", "sourceIds": ["source-claude-private"] },
+          { "recordId": "memory-secret", "sourceIds": ["source-codex-secret"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
-        "memoryEntities": [{ "memoryId": "memory-pkce", "canonicalFactId": "fact-pkce", "sourceIds": ["source-claude", "source-codex"] }],
+        "memoryEntities": [{ "memoryId": "memory-pkce", "canonicalFactId": "fact-pkce", "sourceIds": ["source-claude", "source-codex"], "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible" }],
+        "memoryReviewCandidates": [
+          { "recordId": "memory-private", "canonicalFactId": "fact-pkce", "sharingScope": "agent_private", "sensitivity": "private", "egressPolicy": "eligible", "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" },
+          { "recordId": "memory-secret", "canonicalFactId": "fact-pkce", "sharingScope": "project_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" }
+        ],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": true },
         "downgradeReasonCodes": []
@@ -221,6 +236,7 @@
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [],
+        "memoryReviewCandidates": [],
         "retrievalProfiles": [
           { "profile": "all_source_project", "recordIds": ["claude-decision", "codex-test"] },
           { "profile": "current_source", "recordIds": ["codex-test"] },
@@ -254,6 +270,7 @@
         "sourceEvidence": [{ "recordId": "forged-goal", "sourceIds": ["source-codex"] }],
         "lineage": { "originSourceId": "source-codex", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [],
+        "memoryReviewCandidates": [],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": false },
         "downgradeReasonCodes": ["source_unverified"]
@@ -272,12 +289,12 @@
         "records": [
           { "id": "private-record", "kind": "private", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "private", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-private"] },
           { "id": "private-no-consent", "kind": "private", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "private", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-2"] },
-          { "id": "secret-record", "kind": "secret", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-claude-3"], "sharingDecisionEventIds": ["decision-secret"] },
+          { "id": "secret-record", "kind": "secret", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-claude-3"], "sharingDecisionEventIds": ["decision-secret"], "canonicalFactId": "fact-policy-conflict" },
           { "id": "local-only-record", "kind": "local_only", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "local_only", "sourceEvidenceIds": ["event-claude-4"], "sharingDecisionEventIds": ["decision-local"] },
           { "id": "wrong-vault", "kind": "scope_mismatch", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-5"], "sharingDecisionEventIds": ["decision-wrong-vault"], "subjectScope": { "personalVaultId": "vault-b", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } },
           { "id": "wrong-project", "kind": "scope_mismatch", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-6"], "sharingDecisionEventIds": ["decision-wrong-project"], "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } },
           { "id": "wrong-workspace", "kind": "scope_mismatch", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-7"], "sharingDecisionEventIds": ["decision-wrong-workspace"], "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } },
-          { "id": "shared-safe", "kind": "goal", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-8"], "sharingDecisionEventIds": ["decision-shared-safe"] }
+          { "id": "shared-safe", "kind": "goal", "sourceId": "source-claude", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-8"], "sharingDecisionEventIds": ["decision-shared-safe"], "canonicalFactId": "fact-policy-conflict" }
         ],
         "sharingDecisions": [
           { "id": "decision-private", "authorityEventId": "user-grant-private", "authorityKind": "user", "decision": "grant", "authenticated": true, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "task_shared", "target": { "kind": "shared_task_projection", "taskLineageId": "lineage-a" } },
@@ -307,6 +324,9 @@
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
+        "memoryReviewCandidates": [
+          { "recordId": "secret-record", "canonicalFactId": "fact-policy-conflict", "sharingScope": "task_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" }
+        ],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": false },
         "downgradeReasonCodes": ["private_not_eligible", "secret", "local_only", "prohibited_egress", "scope_mismatch", "destination_capability_unsupported"]
