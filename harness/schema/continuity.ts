@@ -19,6 +19,51 @@ export const CONTINUITY_LIMITS = {
   rankedCandidates: 5,
 } as const;
 
+/** spec 005 / #132 S0 successor contract bundle version. */
+export const SOURCE_AWARE_CONTINUITY_CONTRACT_VERSION: 1 = 1;
+export const SOURCE_AWARE_SHA256_PATTERN = "^[0-9a-f]{64}$";
+
+export type Sha256Hex = string;
+export type OpaqueIdV1 = string;
+
+export type CanonicalClientIdV1 = "claude-code" | "codex-cli";
+export const CANONICAL_CLIENT_IDS_V1 = [
+  "claude-code",
+  "codex-cli",
+] as const satisfies readonly CanonicalClientIdV1[];
+
+export type SharingScopeV1 =
+  | "agent_private"
+  | "task_shared"
+  | "project_shared"
+  | "personal_shared";
+export const SHARING_SCOPES_V1 = [
+  "agent_private",
+  "task_shared",
+  "project_shared",
+  "personal_shared",
+] as const satisfies readonly SharingScopeV1[];
+
+export type EgressPolicyV1 = "eligible" | "local_only" | "prohibited_egress";
+export const EGRESS_POLICIES_V1 = [
+  "eligible",
+  "local_only",
+  "prohibited_egress",
+] as const satisfies readonly EgressPolicyV1[];
+
+export type ResumeProfileV1 = "same_agent" | "cross_agent";
+export const RESUME_PROFILES_V1 = [
+  "same_agent",
+  "cross_agent",
+] as const satisfies readonly ResumeProfileV1[];
+
+export type LegacyMigrationDispositionV1 = "migrate" | "legacy_read_only" | "quarantine";
+export const LEGACY_MIGRATION_DISPOSITIONS_V1 = [
+  "migrate",
+  "legacy_read_only",
+  "quarantine",
+] as const satisfies readonly LegacyMigrationDispositionV1[];
+
 export type TaskBindingRole = "primary" | "side" | "subagent";
 
 export const TASK_BINDING_ROLES = ["primary", "side", "subagent"] as const satisfies readonly TaskBindingRole[];
@@ -364,6 +409,296 @@ export interface SemanticResumeNoteV1 {
   confidence: number;
   sourceEventIds: string[];
   sensitivity: Sensitivity;
+}
+
+export interface OpaqueIdProfileV1 {
+  readonly schemaVersion: 1;
+  readonly algorithm: "hmac-sha-256";
+  readonly keyId: string;
+  readonly outputEncoding: "lowercase_hex_256";
+}
+
+export interface PersonalVaultSubjectScopeV1 {
+  readonly kind: "personal_vault";
+  readonly personalVaultId: OpaqueIdV1;
+}
+
+export interface ProjectSubjectScopeV1 {
+  readonly kind: "project";
+  readonly personalVaultId: OpaqueIdV1;
+  readonly projectId: OpaqueIdV1;
+}
+
+export interface WorkspaceSubjectScopeV1 {
+  readonly kind: "workspace";
+  readonly personalVaultId: OpaqueIdV1;
+  readonly projectId: OpaqueIdV1;
+  readonly workspaceId: OpaqueIdV1;
+}
+
+export interface BranchSubjectScopeV1 {
+  readonly kind: "branch";
+  readonly personalVaultId: OpaqueIdV1;
+  readonly projectId: OpaqueIdV1;
+  readonly workspaceId: OpaqueIdV1;
+  readonly branchKey: OpaqueIdV1;
+}
+
+export interface TaskLineageSubjectScopeV1 {
+  readonly kind: "task_lineage";
+  readonly personalVaultId: OpaqueIdV1;
+  readonly projectId: OpaqueIdV1;
+  readonly workspaceId: OpaqueIdV1;
+  readonly branchKey?: OpaqueIdV1;
+  readonly taskLineageId: OpaqueIdV1;
+}
+
+export interface SessionSubjectScopeV1 {
+  readonly kind: "session";
+  readonly personalVaultId: OpaqueIdV1;
+  readonly projectId: OpaqueIdV1;
+  readonly workspaceId: OpaqueIdV1;
+  readonly branchKey?: OpaqueIdV1;
+  readonly taskLineageId: OpaqueIdV1;
+  readonly sessionId: OpaqueIdV1;
+}
+
+export interface TurnSubjectScopeV1 {
+  readonly kind: "turn";
+  readonly personalVaultId: OpaqueIdV1;
+  readonly projectId: OpaqueIdV1;
+  readonly workspaceId: OpaqueIdV1;
+  readonly branchKey?: OpaqueIdV1;
+  readonly taskLineageId: OpaqueIdV1;
+  readonly sessionId: OpaqueIdV1;
+  readonly turnId: OpaqueIdV1;
+}
+
+export type SubjectScopeV1 =
+  | PersonalVaultSubjectScopeV1
+  | ProjectSubjectScopeV1
+  | WorkspaceSubjectScopeV1
+  | BranchSubjectScopeV1
+  | TaskLineageSubjectScopeV1
+  | SessionSubjectScopeV1
+  | TurnSubjectScopeV1;
+
+export interface TaskStateRevisionEnvelopeV1 {
+  readonly stateRevision: Sha256Hex;
+  readonly contentHash: Sha256Hex;
+  readonly parentStateRevisions: readonly Sha256Hex[];
+  readonly lineageRevisionOrdinal: string;
+  readonly committedByDaemonId: OpaqueIdV1;
+  readonly writerEpoch: string;
+  readonly sourceSessionId: OpaqueIdV1;
+  readonly committedAt: string;
+}
+
+export type WorkspaceCompatibilityV1 = "compatible" | "incompatible" | "unknown";
+export const WORKSPACE_COMPATIBILITIES_V1 = [
+  "compatible",
+  "incompatible",
+  "unknown",
+] as const satisfies readonly WorkspaceCompatibilityV1[];
+
+export type CheckpointResumeDispositionV1 = "open" | "accepted" | "superseded" | "retracted" | "unknown";
+export const CHECKPOINT_RESUME_DISPOSITIONS_V1 = [
+  "open",
+  "accepted",
+  "superseded",
+  "retracted",
+  "unknown",
+] as const satisfies readonly CheckpointResumeDispositionV1[];
+
+export type LineageHeadStateV1 = "single" | "forked" | "conflicted";
+export const LINEAGE_HEAD_STATES_V1 = [
+  "single",
+  "forked",
+  "conflicted",
+] as const satisfies readonly LineageHeadStateV1[];
+
+export type RevisionEligibilityReasonCodeV1 =
+  | "workspace_incompatible"
+  | "workspace_unknown"
+  | "checkpoint_accepted"
+  | "checkpoint_superseded"
+  | "checkpoint_retracted"
+  | "checkpoint_unknown"
+  | "lineage_forked"
+  | "lineage_conflicted"
+  | "ordered_head_corrupt";
+export const REVISION_ELIGIBILITY_REASON_CODES_V1 = [
+  "workspace_incompatible",
+  "workspace_unknown",
+  "checkpoint_accepted",
+  "checkpoint_superseded",
+  "checkpoint_retracted",
+  "checkpoint_unknown",
+  "lineage_forked",
+  "lineage_conflicted",
+  "ordered_head_corrupt",
+] as const satisfies readonly RevisionEligibilityReasonCodeV1[];
+
+export interface RevisionCandidateEvaluationV1 {
+  readonly stateRevision: Sha256Hex;
+  readonly lineageRevisionOrdinal: string;
+  readonly isOrderedHead: boolean;
+  readonly workspaceCompatibility: WorkspaceCompatibilityV1;
+  readonly checkpointDisposition: CheckpointResumeDispositionV1;
+  readonly lineageState: LineageHeadStateV1;
+  readonly resumeEligible: boolean;
+  readonly reasonCodes: readonly RevisionEligibilityReasonCodeV1[];
+}
+
+interface RevisionHeadSelectionBaseV1 {
+  readonly orderingKey: "lineage_revision_ordinal";
+  readonly orderedHeadStateRevision: Sha256Hex;
+  readonly candidateEvaluations: readonly RevisionCandidateEvaluationV1[];
+}
+
+export type RevisionHeadSelectionContractV1 =
+  | (RevisionHeadSelectionBaseV1 & {
+      readonly automaticResumeHeadStateRevision: Sha256Hex;
+      readonly fallbackDisposition: "none";
+    })
+  | (RevisionHeadSelectionBaseV1 & {
+      readonly fallbackDisposition: "manual";
+    });
+
+export interface ObservedV2<T extends JsonValue> {
+  readonly value: T;
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly observedAt: string;
+  readonly evidenceKind: EvidenceKind;
+  readonly confidence: number;
+  readonly freshness: Freshness;
+  readonly truncated: boolean;
+  readonly sensitivity: Sensitivity;
+}
+
+export interface ObservedFileV2 {
+  readonly path: string;
+  readonly role: ObservedFile["role"];
+  readonly contentHash?: Sha256Hex;
+  readonly existsAtObservation: boolean;
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly observedAt: string;
+  readonly freshness: Freshness;
+  readonly sensitivity: Sensitivity;
+}
+
+export interface ObservedCommandV2 {
+  readonly operationId: OpaqueIdV1;
+  readonly commandDisplay: string;
+  readonly cwd?: string;
+  readonly exitCode?: number;
+  readonly status: ObservedCommand["status"];
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly observedAt: string;
+  readonly evidenceKind: EvidenceKind;
+  readonly sensitivity: Sensitivity;
+}
+
+export interface ObservedTestV2 {
+  readonly operationId: OpaqueIdV1;
+  readonly commandDisplay?: string;
+  readonly target?: string;
+  readonly status: ObservedTest["status"];
+  readonly summary?: string;
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly observedAt: string;
+  readonly evidenceKind: EvidenceKind;
+  readonly sensitivity: Sensitivity;
+}
+
+export interface OperationCorrelationV2 {
+  readonly operationId: OpaqueIdV1;
+  readonly startEventId: OpaqueIdV1;
+  readonly nativeOperationId?: OpaqueIdV1;
+  readonly operationMatchKey: OpaqueIdV1;
+  readonly sessionId: OpaqueIdV1;
+  readonly taskLineageId: OpaqueIdV1;
+  readonly turnId?: OpaqueIdV1;
+  readonly toolName?: string;
+  readonly canonicalInputHash?: Sha256Hex;
+}
+
+export interface PendingOperationV2 {
+  readonly operationId: OpaqueIdV1;
+  readonly correlation: OperationCorrelationV2;
+  readonly kind: PendingOperation["kind"];
+  readonly description: string;
+  readonly status: PendingOperation["status"];
+  readonly replayPolicy: ReplayPolicy;
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly startedAt: string;
+  readonly terminalAt?: string;
+  readonly idempotencyKey?: OpaqueIdV1;
+  readonly verificationHint?: string;
+  readonly sensitivity: Sensitivity;
+  readonly startLineageRevisionOrdinal?: string;
+  readonly startTurnIdSource?: TurnIdSource;
+  readonly terminalFingerprint?: OpaqueIdV1;
+}
+
+export type DroppedEvidenceReasonV1 = "evicted" | "orphaned_terminal";
+export const DROPPED_EVIDENCE_REASONS_V1 = [
+  "evicted",
+  "orphaned_terminal",
+] as const satisfies readonly DroppedEvidenceReasonV1[];
+
+export interface DroppedEvidenceEntryV2 {
+  readonly reason: DroppedEvidenceReasonV1;
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly recordedAtLineageRevisionOrdinal: string;
+  readonly sensitivity: Sensitivity;
+  readonly operationId?: OpaqueIdV1;
+  readonly status?: PendingOperation["status"];
+  readonly terminalFingerprint?: OpaqueIdV1;
+  readonly adapterDeliveryId?: OpaqueIdV1;
+}
+
+export interface DroppedEvidenceReasonWindowV1 {
+  readonly reason: DroppedEvidenceReasonV1;
+  readonly totalRecorded: string;
+  readonly totalOverflowed: string;
+  readonly oldestRetainedLineageRevisionOrdinal?: string;
+  readonly latestRecordedLineageRevisionOrdinal?: string;
+  readonly entries: readonly DroppedEvidenceEntryV2[];
+}
+
+export interface DroppedEvidenceSummaryV1 {
+  readonly totalRecorded: string;
+  readonly totalOverflowed: string;
+  readonly reasonWindows: readonly DroppedEvidenceReasonWindowV1[];
+}
+
+export interface RepositoryStateSnapshotV2 {
+  readonly repositoryId: OpaqueIdV1;
+  readonly workspaceId: OpaqueIdV1;
+  readonly branchKey?: OpaqueIdV1;
+  readonly worktreeId?: OpaqueIdV1;
+  readonly headSha?: Sha256Hex;
+  readonly upstreamSha?: Sha256Hex;
+  readonly dirtyTreeFingerprint?: OpaqueIdV1;
+  readonly gitStatusSummary?: string;
+  readonly capturedAt: string;
+}
+
+export interface SemanticResumeNoteV2 {
+  readonly schemaVersion: 2;
+  readonly goal?: string;
+  readonly completed: readonly string[];
+  readonly currentState?: string;
+  readonly nextActions: readonly string[];
+  readonly blockers: readonly string[];
+  readonly unresolvedQuestions: readonly string[];
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly promptHash: Sha256Hex;
+  readonly confidence: number;
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sensitivity: Sensitivity;
 }
 
 export interface CanonicalWorkStateV1 {

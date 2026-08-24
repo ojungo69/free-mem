@@ -15,6 +15,16 @@ const defs = (root.$defs ?? {}) as Record<string, Record<string, unknown>>;
  * Sensitivity を入れ替えても素通りするため、対応表そのものを契約として持つ。
  */
 const NAMED_ENUMS: Record<string, keyof typeof contract> = {
+  CanonicalClientIdV1: "CANONICAL_CLIENT_IDS_V1",
+  SharingScopeV1: "SHARING_SCOPES_V1",
+  EgressPolicyV1: "EGRESS_POLICIES_V1",
+  ResumeProfileV1: "RESUME_PROFILES_V1",
+  LegacyMigrationDispositionV1: "LEGACY_MIGRATION_DISPOSITIONS_V1",
+  WorkspaceCompatibilityV1: "WORKSPACE_COMPATIBILITIES_V1",
+  CheckpointResumeDispositionV1: "CHECKPOINT_RESUME_DISPOSITIONS_V1",
+  LineageHeadStateV1: "LINEAGE_HEAD_STATES_V1",
+  RevisionEligibilityReasonCodeV1: "REVISION_ELIGIBILITY_REASON_CODES_V1",
+  DroppedEvidenceReasonV1: "DROPPED_EVIDENCE_REASONS_V1",
   TaskBindingRole: "TASK_BINDING_ROLES",
   BoundaryEvidenceKind: "BOUNDARY_EVIDENCE_KINDS",
   TaskBoundaryProposalState: "TASK_BOUNDARY_PROPOSAL_STATES",
@@ -111,6 +121,20 @@ const INLINE_ENUMS = {
     "automatic_strategy",
     "tier_a",
   ],
+  "ObservedFileV2.properties.role": ["active", "modified", "read", "test", "config", "unknown"],
+  "ObservedCommandV2.properties.status": ["succeeded", "failed", "unknown"],
+  "ObservedTestV2.properties.status": ["passed", "failed", "partial", "unknown"],
+  "PendingOperationV2.properties.kind": [
+    "command",
+    "file_mutation",
+    "test",
+    "tool",
+    "migration",
+    "external_side_effect",
+    "other",
+  ],
+  "PendingOperationV2.properties.status": ["started", "succeeded", "failed", "unknown"],
+  "DroppedEvidenceEntryV2.properties.status": ["started", "succeeded", "failed", "unknown"],
 } as const;
 
 /**
@@ -137,6 +161,21 @@ const INLINE_CONSTS = {
   "DerivedArtifactSourceRefV1.oneOf[0].properties.kind": "memory",
   "DerivedArtifactSourceRefV1.oneOf[1].properties.kind": "artifact",
   "DerivedArtifactInvalidationEventV1.allOf[0].if.properties.reason": "source_artifact_invalidated",
+  "OpaqueIdProfileV1.properties.schemaVersion": 1,
+  "OpaqueIdProfileV1.properties.algorithm": "hmac-sha-256",
+  "OpaqueIdProfileV1.properties.outputEncoding": "lowercase_hex_256",
+  "PersonalVaultSubjectScopeV1.properties.kind": "personal_vault",
+  "ProjectSubjectScopeV1.properties.kind": "project",
+  "WorkspaceSubjectScopeV1.properties.kind": "workspace",
+  "BranchSubjectScopeV1.properties.kind": "branch",
+  "TaskLineageSubjectScopeV1.properties.kind": "task_lineage",
+  "SessionSubjectScopeV1.properties.kind": "session",
+  "TurnSubjectScopeV1.properties.kind": "turn",
+  "RevisionHeadSelectionContractV1.oneOf[0].properties.orderingKey": "lineage_revision_ordinal",
+  "RevisionHeadSelectionContractV1.oneOf[0].properties.fallbackDisposition": "none",
+  "RevisionHeadSelectionContractV1.oneOf[1].properties.orderingKey": "lineage_revision_ordinal",
+  "RevisionHeadSelectionContractV1.oneOf[1].properties.fallbackDisposition": "manual",
+  "SemanticResumeNoteV2.properties.schemaVersion": 2,
 } as const;
 
 /* -------------------------------------------------------------------------
@@ -164,6 +203,14 @@ type ConstAt<K extends keyof typeof INLINE_CONSTS> = (typeof INLINE_CONSTS)[K];
 type ConstsUnder<P extends string> = {
   [K in keyof typeof INLINE_CONSTS]: K extends `${P}${string}` ? (typeof INLINE_CONSTS)[K] : never;
 }[keyof typeof INLINE_CONSTS];
+type SubjectScopeKindConsts =
+  | ConstAt<"PersonalVaultSubjectScopeV1.properties.kind">
+  | ConstAt<"ProjectSubjectScopeV1.properties.kind">
+  | ConstAt<"WorkspaceSubjectScopeV1.properties.kind">
+  | ConstAt<"BranchSubjectScopeV1.properties.kind">
+  | ConstAt<"TaskLineageSubjectScopeV1.properties.kind">
+  | ConstAt<"SessionSubjectScopeV1.properties.kind">
+  | ConstAt<"TurnSubjectScopeV1.properties.kind">;
 
 /**
  * 名前付き union も型として突き合わせる。定数は `as const satisfies readonly T[]` なので
@@ -173,6 +220,35 @@ type ConstsUnder<P extends string> = {
  * 成立し、schema も定数も無傷なので全 test が通った（TS が許す値を schema が拒否する）。
  */
 type _NamedEnumsMatchContract = [
+  Assert<SameSet<contract.CanonicalClientIdV1, (typeof contract.CANONICAL_CLIENT_IDS_V1)[number]>>,
+  Assert<SameSet<contract.SharingScopeV1, (typeof contract.SHARING_SCOPES_V1)[number]>>,
+  Assert<SameSet<contract.EgressPolicyV1, (typeof contract.EGRESS_POLICIES_V1)[number]>>,
+  Assert<SameSet<contract.ResumeProfileV1, (typeof contract.RESUME_PROFILES_V1)[number]>>,
+  Assert<
+    SameSet<
+      contract.LegacyMigrationDispositionV1,
+      (typeof contract.LEGACY_MIGRATION_DISPOSITIONS_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<contract.WorkspaceCompatibilityV1, (typeof contract.WORKSPACE_COMPATIBILITIES_V1)[number]>
+  >,
+  Assert<
+    SameSet<
+      contract.CheckpointResumeDispositionV1,
+      (typeof contract.CHECKPOINT_RESUME_DISPOSITIONS_V1)[number]
+    >
+  >,
+  Assert<SameSet<contract.LineageHeadStateV1, (typeof contract.LINEAGE_HEAD_STATES_V1)[number]>>,
+  Assert<
+    SameSet<
+      contract.RevisionEligibilityReasonCodeV1,
+      (typeof contract.REVISION_ELIGIBILITY_REASON_CODES_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<contract.DroppedEvidenceReasonV1, (typeof contract.DROPPED_EVIDENCE_REASONS_V1)[number]>
+  >,
   Assert<SameSet<contract.TaskBindingRole, (typeof contract.TASK_BINDING_ROLES)[number]>>,
   Assert<SameSet<contract.BoundaryEvidenceKind, (typeof contract.BOUNDARY_EVIDENCE_KINDS)[number]>>,
   Assert<SameSet<contract.TaskBoundaryProposalState, (typeof contract.TASK_BOUNDARY_PROPOSAL_STATES)[number]>>,
@@ -280,6 +356,17 @@ type _InlineEnumsMatchContract = [
       EnumAt<"RequiredCapabilityScenarioV1.properties.requiredFor.items">
     >
   >,
+  Assert<SameSet<contract.ObservedFileV2["role"], EnumAt<"ObservedFileV2.properties.role">>>,
+  Assert<SameSet<contract.ObservedCommandV2["status"], EnumAt<"ObservedCommandV2.properties.status">>>,
+  Assert<SameSet<contract.ObservedTestV2["status"], EnumAt<"ObservedTestV2.properties.status">>>,
+  Assert<SameSet<contract.PendingOperationV2["kind"], EnumAt<"PendingOperationV2.properties.kind">>>,
+  Assert<SameSet<contract.PendingOperationV2["status"], EnumAt<"PendingOperationV2.properties.status">>>,
+  Assert<
+    SameSet<
+      NonNullable<contract.DroppedEvidenceEntryV2["status"]>,
+      EnumAt<"DroppedEvidenceEntryV2.properties.status">
+    >
+  >,
 ];
 
 type _InlineConstsMatchContract = [
@@ -309,6 +396,41 @@ type _InlineConstsMatchContract = [
     SameSet<
       contract.ContinuationCheckpointV2["schemaVersion"],
       ConstAt<"ContinuationCheckpointV2.properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.OpaqueIdProfileV1["schemaVersion"],
+      ConstAt<"OpaqueIdProfileV1.properties.schemaVersion">
+    >
+  >,
+  Assert<
+    SameSet<contract.OpaqueIdProfileV1["algorithm"], ConstAt<"OpaqueIdProfileV1.properties.algorithm">>
+  >,
+  Assert<
+    SameSet<
+      contract.OpaqueIdProfileV1["outputEncoding"],
+      ConstAt<"OpaqueIdProfileV1.properties.outputEncoding">
+    >
+  >,
+  Assert<SameSet<contract.SubjectScopeV1["kind"], SubjectScopeKindConsts>>,
+  Assert<
+    SameSet<
+      contract.RevisionHeadSelectionContractV1["fallbackDisposition"],
+      | ConstAt<"RevisionHeadSelectionContractV1.oneOf[0].properties.fallbackDisposition">
+      | ConstAt<"RevisionHeadSelectionContractV1.oneOf[1].properties.fallbackDisposition">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.RevisionHeadSelectionContractV1["orderingKey"],
+      ConstAt<"RevisionHeadSelectionContractV1.oneOf[0].properties.orderingKey">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SemanticResumeNoteV2["schemaVersion"],
+      ConstAt<"SemanticResumeNoteV2.properties.schemaVersion">
     >
   >,
   Assert<
@@ -367,6 +489,8 @@ function* walkDefs(): Generator<[string, Record<string, unknown>, boolean]> {
 const FROZEN_DEFS = [
   "BoundaryEvidence",
   "BoundaryEvidenceKind",
+  "BranchSubjectScopeV1",
+  "CanonicalClientIdV1",
   "CanonicalWorkStateV1",
   "CapabilityScenarioManifestV1",
   "CapabilityTestDisposition",
@@ -376,6 +500,7 @@ const FROZEN_DEFS = [
   "CheckpointDispositionKind",
   "CheckpointDispositionProjection",
   "CheckpointMetadataV1",
+  "CheckpointResumeDispositionV1",
   "ContinuationCheckpointV2",
   "ContinuityCaptureMethod",
   "ContinuityEventProvenanceV1",
@@ -394,6 +519,11 @@ const FROZEN_DEFS = [
   "DerivedArtifactStatus",
   "DispositionAuthorityContextV1",
   "DroppedEvidenceEntryV1",
+  "DroppedEvidenceEntryV2",
+  "DroppedEvidenceReasonV1",
+  "DroppedEvidenceReasonWindowV1",
+  "DroppedEvidenceSummaryV1",
+  "EgressPolicyV1",
   "EngagementEvaluationContextV1",
   "EngagementEvidence",
   "EngagementEvidenceKind",
@@ -402,36 +532,63 @@ const FROZEN_DEFS = [
   "IsoTimestamp",
   "JsonPrimitive",
   "JsonValue",
+  "LegacyMigrationDispositionV1",
+  "LineageHeadStateV1",
   "NormalizedContinuityEvent",
   "Observed",
   "ObservedCommand",
+  "ObservedCommandV2",
   "ObservedFile",
+  "ObservedFileV2",
   "ObservedTest",
+  "ObservedTestV2",
+  "ObservedV2",
   "OperationCorrelationV1",
+  "OperationCorrelationV2",
+  "OpaqueIdV1",
+  "OpaqueIdProfileV1",
   "PendingOperation",
+  "PendingOperationV2",
+  "PersonalVaultSubjectScopeV1",
+  "ProjectSubjectScopeV1",
   "RankedResumeCandidateV1",
   "ReconciliationStatus",
   "ReplayPolicy",
   "RepositoryStateSnapshot",
+  "RepositoryStateSnapshotV2",
   "RequiredCapabilityScenarioV1",
+  "RevisionCandidateEvaluationV1",
+  "RevisionEligibilityReasonCodeV1",
+  "RevisionHeadSelectionContractV1",
   "ResumeCapsuleV1",
   "ResumeDecisionAction",
   "ResumeDeliveryBoundary",
   "ResumeDeliveryStrategy",
   "ResumeMode",
+  "ResumeProfileV1",
   "ResumeSelectionDecisionV1",
   "ResumeSuppressionEntryV1",
   "ResumeThresholdProfileV1",
   "SemanticResumeNoteV1",
+  "SemanticResumeNoteV2",
   "Sensitivity",
+  "SessionSubjectScopeV1",
   "SessionTaskBinding",
+  "Sha256Hex",
+  "SharingScopeV1",
+  "SubjectScopeV1",
   "TaskBindingRole",
   "TaskBoundaryAuthorityContextV1",
   "TaskBoundaryDecisionSource",
   "TaskBoundaryDecisionV1",
   "TaskBoundaryProposalState",
   "TaskBoundaryProposalV1",
+  "TaskLineageSubjectScopeV1",
+  "TaskStateRevisionEnvelopeV1",
+  "TurnSubjectScopeV1",
   "TurnIdSource",
+  "WorkspaceCompatibilityV1",
+  "WorkspaceSubjectScopeV1",
 ] as const;
 
 test("$defs の名前集合は凍結されている", () => {
@@ -762,8 +919,7 @@ test("子孫の無効化は viaArtifactId を伴う（§12.3）", () => {
 
 test("数値の範囲は正本が書いているものだけ", () => {
   // 正本に無い範囲を足すと、正当な値を契約が拒否する（IsoTimestamp の小数秒で実際に起きた）。
-  // addendum で数値範囲が書かれているのは `Observed.confidence` の `// 0..1` 1 箇所だけなので、
-  // schema 側の minimum/maximum もそこだけであることを固定する
+  // V1/V2 の confidence は 0..1。schema 側の minimum/maximum もその3箇所だけに固定する
   // path だけを集めると、`minimum` を -1 にしても `maximum` を消しても同じ集合になる。
   // 値まで凍結して、唯一の根拠つき範囲が弱められたときにも落ちるようにする
   const found: { path: string; minimum?: unknown; maximum?: unknown }[] = [];
@@ -782,6 +938,8 @@ test("数値の範囲は正本が書いているものだけ", () => {
   walk(defs, "$defs");
   assert.deepEqual(found, [
     { path: "$defs.Observed.properties.confidence", minimum: 0, maximum: 1 },
+    { path: "$defs.ObservedV2.properties.confidence", minimum: 0, maximum: 1 },
+    { path: "$defs.SemanticResumeNoteV2.properties.confidence", minimum: 0, maximum: 1 },
   ]);
 });
 
@@ -839,10 +997,21 @@ test("decimal string の pattern は sequence/watermark 全部に付いている
     "CanonicalWorkStateV1.properties.lastIngestSeq",
     "ContradictionScanRangeV1.properties.fromIngestSeq",
     "ContradictionScanRangeV1.properties.toIngestSeq",
+    "DroppedEvidenceEntryV2.properties.recordedAtLineageRevisionOrdinal",
+    "DroppedEvidenceReasonWindowV1.properties.latestRecordedLineageRevisionOrdinal",
+    "DroppedEvidenceReasonWindowV1.properties.oldestRetainedLineageRevisionOrdinal",
+    "DroppedEvidenceReasonWindowV1.properties.totalOverflowed",
+    "DroppedEvidenceReasonWindowV1.properties.totalRecorded",
+    "DroppedEvidenceSummaryV1.properties.totalOverflowed",
+    "DroppedEvidenceSummaryV1.properties.totalRecorded",
     "NormalizedContinuityEvent.properties.ingestSeq",
     "Observed.properties.ingestSeq",
     "PendingOperation.properties.startIngestSeq",
+    "PendingOperationV2.properties.startLineageRevisionOrdinal",
+    "RevisionCandidateEvaluationV1.properties.lineageRevisionOrdinal",
     "SemanticResumeNoteV1.properties.generatedFromIngestSeq",
+    "TaskStateRevisionEnvelopeV1.properties.lineageRevisionOrdinal",
+    "TaskStateRevisionEnvelopeV1.properties.writerEpoch",
   ]);
 });
 

@@ -31,10 +31,10 @@ state/checkpoint, cross-agent renderer, and source-filter runtime work.
 
 **Purpose**: Establish one focused executable gate before adding any successor contract definition.
 
-- [ ] T004 Create `harness/continuity/source-aware-contract.test.ts` with loaders for `continuity.schema.json`, the contract manifest, inventory manifest, and F0–F7 corpus; reference `SourceAwareContinuityContractV1` so the test is red while those artifacts are absent
-- [ ] T005 Run `node --experimental-strip-types --test harness/continuity/source-aware-contract.test.ts` and record the expected failure as missing source-aware contract artifacts, not a parse/setup failure
-- [ ] T006 Add only shared scalar/enumeration constants and their closed JSON Schema mirrors (`CanonicalClientIdV1`, sharing/egress/resume/migration enums, SHA/opaque ID patterns) in `harness/schema/continuity.ts` and `harness/schema/continuity.schema.json`; add compile-time/runtime parity mappings in `harness/continuity/schema-freeze.test.ts`
-- [ ] T007 Run `vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json` and `node --experimental-strip-types --test harness/continuity/schema-freeze.test.ts`; both must pass while the focused contract test remains red only for missing successor artifacts
+- [X] T004 Create `harness/continuity/source-aware-contract.test.ts` with loaders for `continuity.schema.json`, the contract manifest, inventory manifest, and F0–F7 corpus; reference `SourceAwareContinuityContractV1` so the test is red while those artifacts are absent
+- [X] T005 Run `node --experimental-strip-types --test harness/continuity/source-aware-contract.test.ts` and record the expected failure as missing source-aware contract artifacts, not a parse/setup failure
+- [X] T006 Add only shared scalar/enumeration constants and their closed JSON Schema mirrors (`CanonicalClientIdV1`, sharing/egress/resume/migration enums, SHA/opaque ID patterns) in `harness/schema/continuity.ts` and `harness/schema/continuity.schema.json`; add compile-time/runtime parity mappings in `harness/continuity/schema-freeze.test.ts`
+- [X] T007 Run `vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json` and `node --experimental-strip-types --test harness/continuity/schema-freeze.test.ts`; both must pass while the focused contract test remains red only for missing successor artifacts
 
 **Checkpoint**: Common contract vocabulary is closed and reusable; no V1 definition changed.
 
@@ -42,19 +42,18 @@ state/checkpoint, cross-agent renderer, and source-filter runtime work.
 
 ## Phase 3: User Story 1 — immutable ordered successor state (Priority: P1)
 
-**Goal**: Freeze the successor state/revision/evidence-window contract without implementing the reducer.
+**Goal**: Freeze the successor revision/ordering/observed/operation/evidence-window primitives without implementing the reducer.
 
-**Independent Test**: The focused test validates `CanonicalWorkStateV2`/`RevisionHeadSelectionContractV1` and kills
-mutations that restore top-level `sourceAgent`, mutable arrays, caller ordering, old-revision fallback, raw IDs, or a shared
-dropped-evidence FIFO.
+**Independent Test**: The focused test validates the revision/state primitives and `RevisionHeadSelectionContractV1`, and
+kills mutations that restore mutable arrays, caller ordering, old-revision fallback, raw IDs, or a shared dropped-evidence FIFO.
 
-- [ ] T008 [US1] Add failing exact-field/version/readonly/limit assertions for `OpaqueIdProfileV1`, `SubjectScopeV1`, `TaskStateRevisionEnvelopeV1`, `RevisionHeadSelectionContractV1`, Observed/operation V2 shapes, per-reason dropped-evidence windows, and `CanonicalWorkStateV2` in `harness/continuity/source-aware-contract.test.ts`
-- [ ] T009 [US1] Run the focused test and verify it fails because the named successor `$defs` and TS exports do not exist
-- [ ] T010 [US1] Implement the minimum readonly TS interfaces/constants in `harness/schema/continuity.ts` and closed JSON Schema `$defs` in `harness/schema/continuity.schema.json` exactly as `data-model.md` defines, including ordered-head/manual-fallback eligibility; leave all V1 exports byte-for-byte unchanged
-- [ ] T011 [US1] Extend `harness/continuity/schema-freeze.test.ts` with exact enum/const/field-set parity for the new US1 definitions and run focused schema/type tests to green
-- [ ] T012 [US1] Commit the US1 contract slice with sign-off: `git commit -s -m "feat(contract): freeze successor work state"`
+- [X] T008 [US1] Add failing exact-field/version/readonly/limit assertions for `OpaqueIdProfileV1`, `SubjectScopeV1`, `TaskStateRevisionEnvelopeV1`, `RevisionHeadSelectionContractV1`, Observed/operation V2 shapes, and per-reason dropped-evidence windows in `harness/continuity/source-aware-contract.test.ts`
+- [X] T009 [US1] Run the focused test and verify it fails because the named successor `$defs` and TS exports do not exist
+- [X] T010 [US1] Implement the minimum readonly TS revision/observed/operation/evidence-window interfaces/constants in `harness/schema/continuity.ts` and closed JSON Schema `$defs` in `harness/schema/continuity.schema.json` exactly as `data-model.md` defines, including ordered-head/manual-fallback eligibility; leave all V1 exports byte-for-byte unchanged
+- [X] T011 [US1] Extend `harness/continuity/schema-freeze.test.ts` with exact enum/const/field-set parity for the new US1 definitions and run focused schema/type tests to green
+- [X] T012 [US1] Commit the US1 contract slice with sign-off: `git commit -s -m "feat(contract): freeze successor state primitives"`
 
-**Checkpoint**: `CanonicalWorkStateV2` is machine-readable, deterministic, immutable by contract, and V1 parity still passes.
+**Checkpoint**: Successor state primitives are machine-readable, deterministic, immutable by contract, and V1 parity passes.
 
 ---
 
@@ -66,9 +65,9 @@ dropped-evidence FIFO.
 F3 produces origin/last/participants/creator separately, F4 has one entity/two source branches, F5 has four profiles,
 F6 uses authenticated source rather than caller claim, and raw IDs are never persisted/exported/egressed.
 
-- [ ] T013 [US4] Add failing TS/JSON Schema parity and F0–F7 invariant assertions for `SourceIdentityV1`, `LineageSourceSummaryV1`, `SharedTaskStateV1`, `AgentLocalStateV1`, `ContinuationCheckpointV3`, `ResumeCapsuleV2`, `CanonicalMemoryEntityV1`, `RawIdentifierEvidencePolicyV1`, and `ContinuityP0ObservationContractV1` in `harness/continuity/source-aware-contract.test.ts`
+- [ ] T013 [US4] Add failing TS/JSON Schema parity and F0–F7 invariant assertions for `SourceIdentityV1`, `LineageSourceSummaryV1`, `SharedTaskStateV1`, `AgentLocalStateV1`, `CanonicalWorkStateV2`, `ContinuationCheckpointV3`, `ResumeCapsuleV2`, `CanonicalMemoryEntityV1`, `RawIdentifierEvidencePolicyV1`, and `ContinuityP0ObservationContractV1` in `harness/continuity/source-aware-contract.test.ts`
 - [ ] T014 [US4] Run the focused test and verify failures name missing source/projection/checkpoint/capsule/memory definitions and absent F0–F7 artifacts
-- [ ] T015 [US4] Implement the minimum readonly TS definitions/constants in `harness/schema/continuity.ts`, including raw-ID policy and P0 observation/delta types, their closed `$defs` in `harness/schema/continuity.schema.json`, and exact parity mappings in `harness/continuity/schema-freeze.test.ts`
+- [ ] T015 [US4] Implement the minimum readonly TS projection/final-state/checkpoint/capsule/memory definitions/constants in `harness/schema/continuity.ts`, including `CanonicalWorkStateV2`, raw-ID policy and P0 observation/delta types, their closed `$defs` in `harness/schema/continuity.schema.json`, and exact parity mappings in `harness/continuity/schema-freeze.test.ts`
 - [ ] T016 [US4] Create `harness/schema/source-aware-source-inventory.v1.json` from the frozen `cdf90f39f642753a9d72297e3fad41c0deeaaafd` searches, with each candidate group carrying exactly one surface class/disposition and a reproducible result count/digest; every persisted restore target gets its own entry with `restoreValidationRequired` and schema-definition/SQL-table identity
 - [ ] T017 [US4] Create `harness/fixtures/continuity/source-aware-f0-f7.v1.json` with common closed case shapes, exact current V1 disposition/reason mapping, valid references, and successor expectations for all eight cases
 - [ ] T018 [US4] Create `harness/schema/source-aware-continuity-contract.v1.json` with artifact versions, raw schema/inventory/corpus hashes, exact F0–F7 IDs, exact 9-Issue observation/delta entries, ordered-head/manual-fallback rule, raw-ID policy, migration/restore-rule slots, opaque-ID profile, and JCS `contractHash` excluding itself

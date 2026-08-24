@@ -7,6 +7,53 @@
       "$comment": "正本は「timestamps は UTC RFC3339」（agent-memory-final-spec-v6.md §22.6）。小数秒は RFC3339 の `time-secfrac = \".\" 1*DIGIT` に合わせて桁数を固定しない。一方で **offset は `Z` 固定、秒は 00-59 に絞っている**——RFC3339 は `+00:00` のような数値 offset とうるう秒の `:60` も許すが、同じ瞬間の綴りが複数あると canonical hash と dedupe が割れるため。正本に明記の無い profile なので #33 で追認を仰ぐ。暦としての実在（2 月 30 日・閏年・うるう秒日）は pattern では表せないので Task 5 の runtime validator が受け持つ（#27）。",
       "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?Z$"
     },
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "OpaqueIdV1": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "CanonicalClientIdV1": {
+      "type": "string",
+      "enum": [
+        "claude-code",
+        "codex-cli"
+      ]
+    },
+    "SharingScopeV1": {
+      "type": "string",
+      "enum": [
+        "agent_private",
+        "task_shared",
+        "project_shared",
+        "personal_shared"
+      ]
+    },
+    "EgressPolicyV1": {
+      "type": "string",
+      "enum": [
+        "eligible",
+        "local_only",
+        "prohibited_egress"
+      ]
+    },
+    "ResumeProfileV1": {
+      "type": "string",
+      "enum": [
+        "same_agent",
+        "cross_agent"
+      ]
+    },
+    "LegacyMigrationDispositionV1": {
+      "type": "string",
+      "enum": [
+        "migrate",
+        "legacy_read_only",
+        "quarantine"
+      ]
+    },
     "TaskBindingRole": {
       "type": "string",
       "enum": [
@@ -2770,6 +2817,381 @@
             "$ref": "#/$defs/RequiredCapabilityScenarioV1"
           }
         }
+      }
+    },
+    "OpaqueIdProfileV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "algorithm", "keyId", "outputEncoding"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "algorithm": { "const": "hmac-sha-256" },
+        "keyId": { "type": "string", "minLength": 1, "maxLength": 8192 },
+        "outputEncoding": { "const": "lowercase_hex_256" }
+      }
+    },
+    "PersonalVaultSubjectScopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "personalVaultId"],
+      "properties": {
+        "kind": { "const": "personal_vault" },
+        "personalVaultId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "ProjectSubjectScopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "personalVaultId", "projectId"],
+      "properties": {
+        "kind": { "const": "project" },
+        "personalVaultId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "projectId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "WorkspaceSubjectScopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "personalVaultId", "projectId", "workspaceId"],
+      "properties": {
+        "kind": { "const": "workspace" },
+        "personalVaultId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "projectId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "workspaceId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "BranchSubjectScopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "personalVaultId", "projectId", "workspaceId", "branchKey"],
+      "properties": {
+        "kind": { "const": "branch" },
+        "personalVaultId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "projectId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "workspaceId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "branchKey": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "TaskLineageSubjectScopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "personalVaultId", "projectId", "workspaceId", "taskLineageId"],
+      "properties": {
+        "kind": { "const": "task_lineage" },
+        "personalVaultId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "projectId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "workspaceId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "branchKey": { "$ref": "#/$defs/OpaqueIdV1" },
+        "taskLineageId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "SessionSubjectScopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "personalVaultId", "projectId", "workspaceId", "taskLineageId", "sessionId"],
+      "properties": {
+        "kind": { "const": "session" },
+        "personalVaultId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "projectId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "workspaceId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "branchKey": { "$ref": "#/$defs/OpaqueIdV1" },
+        "taskLineageId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "sessionId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "TurnSubjectScopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "personalVaultId", "projectId", "workspaceId", "taskLineageId", "sessionId", "turnId"],
+      "properties": {
+        "kind": { "const": "turn" },
+        "personalVaultId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "projectId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "workspaceId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "branchKey": { "$ref": "#/$defs/OpaqueIdV1" },
+        "taskLineageId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "sessionId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "turnId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "SubjectScopeV1": {
+      "oneOf": [
+        { "$ref": "#/$defs/PersonalVaultSubjectScopeV1" },
+        { "$ref": "#/$defs/ProjectSubjectScopeV1" },
+        { "$ref": "#/$defs/WorkspaceSubjectScopeV1" },
+        { "$ref": "#/$defs/BranchSubjectScopeV1" },
+        { "$ref": "#/$defs/TaskLineageSubjectScopeV1" },
+        { "$ref": "#/$defs/SessionSubjectScopeV1" },
+        { "$ref": "#/$defs/TurnSubjectScopeV1" }
+      ]
+    },
+    "TaskStateRevisionEnvelopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stateRevision", "contentHash", "parentStateRevisions", "lineageRevisionOrdinal", "committedByDaemonId", "writerEpoch", "sourceSessionId", "committedAt"],
+      "properties": {
+        "stateRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" },
+        "parentStateRevisions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/Sha256Hex" }
+        },
+        "lineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "committedByDaemonId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "writerEpoch": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "sourceSessionId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "committedAt": { "$ref": "#/$defs/IsoTimestamp" }
+      }
+    },
+    "WorkspaceCompatibilityV1": {
+      "type": "string",
+      "enum": ["compatible", "incompatible", "unknown"]
+    },
+    "CheckpointResumeDispositionV1": {
+      "type": "string",
+      "enum": ["open", "accepted", "superseded", "retracted", "unknown"]
+    },
+    "LineageHeadStateV1": {
+      "type": "string",
+      "enum": ["single", "forked", "conflicted"]
+    },
+    "RevisionEligibilityReasonCodeV1": {
+      "type": "string",
+      "enum": [
+        "workspace_incompatible",
+        "workspace_unknown",
+        "checkpoint_accepted",
+        "checkpoint_superseded",
+        "checkpoint_retracted",
+        "checkpoint_unknown",
+        "lineage_forked",
+        "lineage_conflicted",
+        "ordered_head_corrupt"
+      ]
+    },
+    "RevisionCandidateEvaluationV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stateRevision", "lineageRevisionOrdinal", "isOrderedHead", "workspaceCompatibility", "checkpointDisposition", "lineageState", "resumeEligible", "reasonCodes"],
+      "properties": {
+        "stateRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "lineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "isOrderedHead": { "type": "boolean" },
+        "workspaceCompatibility": { "$ref": "#/$defs/WorkspaceCompatibilityV1" },
+        "checkpointDisposition": { "$ref": "#/$defs/CheckpointResumeDispositionV1" },
+        "lineageState": { "$ref": "#/$defs/LineageHeadStateV1" },
+        "resumeEligible": { "type": "boolean" },
+        "reasonCodes": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/RevisionEligibilityReasonCodeV1" }
+        }
+      }
+    },
+    "RevisionHeadSelectionContractV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["orderingKey", "orderedHeadStateRevision", "candidateEvaluations", "automaticResumeHeadStateRevision", "fallbackDisposition"],
+          "properties": {
+            "orderingKey": { "const": "lineage_revision_ordinal" },
+            "orderedHeadStateRevision": { "$ref": "#/$defs/Sha256Hex" },
+            "candidateEvaluations": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/RevisionCandidateEvaluationV1" } },
+            "automaticResumeHeadStateRevision": { "$ref": "#/$defs/Sha256Hex" },
+            "fallbackDisposition": { "const": "none" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["orderingKey", "orderedHeadStateRevision", "candidateEvaluations", "fallbackDisposition"],
+          "properties": {
+            "orderingKey": { "const": "lineage_revision_ordinal" },
+            "orderedHeadStateRevision": { "$ref": "#/$defs/Sha256Hex" },
+            "candidateEvaluations": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/RevisionCandidateEvaluationV1" } },
+            "fallbackDisposition": { "const": "manual" }
+          }
+        }
+      ]
+    },
+    "ObservedV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "sourceEventIds", "observedAt", "evidenceKind", "confidence", "freshness", "truncated", "sensitivity"],
+      "properties": {
+        "value": { "$ref": "#/$defs/JsonValue" },
+        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
+        "evidenceKind": { "$ref": "#/$defs/EvidenceKind" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "freshness": { "$ref": "#/$defs/Freshness" },
+        "truncated": { "type": "boolean" },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" }
+      }
+    },
+    "ObservedFileV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "existsAtObservation", "sourceEventIds", "observedAt", "freshness", "sensitivity"],
+      "properties": {
+        "path": { "type": "string", "maxLength": 8192 },
+        "role": { "type": "string", "enum": ["active", "modified", "read", "test", "config", "unknown"] },
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" },
+        "existsAtObservation": { "type": "boolean" },
+        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
+        "freshness": { "$ref": "#/$defs/Freshness" },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" }
+      }
+    },
+    "ObservedCommandV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "commandDisplay", "status", "sourceEventIds", "observedAt", "evidenceKind", "sensitivity"],
+      "properties": {
+        "operationId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "commandDisplay": { "type": "string", "maxLength": 8192 },
+        "cwd": { "type": "string", "maxLength": 8192 },
+        "exitCode": { "type": "number" },
+        "status": { "type": "string", "enum": ["succeeded", "failed", "unknown"] },
+        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
+        "evidenceKind": { "$ref": "#/$defs/EvidenceKind" },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" }
+      }
+    },
+    "ObservedTestV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "status", "sourceEventIds", "observedAt", "evidenceKind", "sensitivity"],
+      "properties": {
+        "operationId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "commandDisplay": { "type": "string", "maxLength": 8192 },
+        "target": { "type": "string", "maxLength": 8192 },
+        "status": { "type": "string", "enum": ["passed", "failed", "partial", "unknown"] },
+        "summary": { "type": "string", "maxLength": 8192 },
+        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
+        "evidenceKind": { "$ref": "#/$defs/EvidenceKind" },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" }
+      }
+    },
+    "OperationCorrelationV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "startEventId", "operationMatchKey", "sessionId", "taskLineageId"],
+      "properties": {
+        "operationId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "startEventId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "nativeOperationId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "operationMatchKey": { "$ref": "#/$defs/OpaqueIdV1" },
+        "sessionId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "taskLineageId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "turnId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "toolName": { "type": "string", "maxLength": 8192 },
+        "canonicalInputHash": { "$ref": "#/$defs/Sha256Hex" }
+      }
+    },
+    "PendingOperationV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "correlation", "kind", "description", "status", "replayPolicy", "sourceEventIds", "startedAt", "sensitivity"],
+      "properties": {
+        "operationId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "correlation": { "$ref": "#/$defs/OperationCorrelationV2" },
+        "kind": { "type": "string", "enum": ["command", "file_mutation", "test", "tool", "migration", "external_side_effect", "other"] },
+        "description": { "type": "string", "maxLength": 8192 },
+        "status": { "type": "string", "enum": ["started", "succeeded", "failed", "unknown"] },
+        "replayPolicy": { "$ref": "#/$defs/ReplayPolicy" },
+        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "startedAt": { "$ref": "#/$defs/IsoTimestamp" },
+        "terminalAt": { "$ref": "#/$defs/IsoTimestamp" },
+        "idempotencyKey": { "$ref": "#/$defs/OpaqueIdV1" },
+        "verificationHint": { "type": "string", "maxLength": 8192 },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" },
+        "startLineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "startTurnIdSource": { "$ref": "#/$defs/TurnIdSource" },
+        "terminalFingerprint": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "DroppedEvidenceReasonV1": {
+      "type": "string",
+      "enum": ["evicted", "orphaned_terminal"]
+    },
+    "DroppedEvidenceEntryV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "sourceEventIds", "recordedAtLineageRevisionOrdinal", "sensitivity"],
+      "properties": {
+        "reason": { "$ref": "#/$defs/DroppedEvidenceReasonV1" },
+        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "recordedAtLineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" },
+        "operationId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "status": { "type": "string", "enum": ["started", "succeeded", "failed", "unknown"] },
+        "terminalFingerprint": { "$ref": "#/$defs/OpaqueIdV1" },
+        "adapterDeliveryId": { "$ref": "#/$defs/OpaqueIdV1" }
+      }
+    },
+    "DroppedEvidenceReasonWindowV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "totalRecorded", "totalOverflowed", "entries"],
+      "properties": {
+        "reason": { "$ref": "#/$defs/DroppedEvidenceReasonV1" },
+        "totalRecorded": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "totalOverflowed": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "oldestRetainedLineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "latestRecordedLineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "entries": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/DroppedEvidenceEntryV2" } }
+      }
+    },
+    "DroppedEvidenceSummaryV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalRecorded", "totalOverflowed", "reasonWindows"],
+      "properties": {
+        "totalRecorded": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "totalOverflowed": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "reasonWindows": { "type": "array", "maxItems": 2, "items": { "$ref": "#/$defs/DroppedEvidenceReasonWindowV1" } }
+      }
+    },
+    "RepositoryStateSnapshotV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryId", "workspaceId", "capturedAt"],
+      "properties": {
+        "repositoryId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "workspaceId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "branchKey": { "$ref": "#/$defs/OpaqueIdV1" },
+        "worktreeId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "headSha": { "$ref": "#/$defs/Sha256Hex" },
+        "upstreamSha": { "$ref": "#/$defs/Sha256Hex" },
+        "dirtyTreeFingerprint": { "$ref": "#/$defs/OpaqueIdV1" },
+        "gitStatusSummary": { "type": "string", "maxLength": 8192 },
+        "capturedAt": { "$ref": "#/$defs/IsoTimestamp" }
+      }
+    },
+    "SemanticResumeNoteV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "completed", "nextActions", "blockers", "unresolvedQuestions", "providerId", "modelId", "promptHash", "confidence", "sourceEventIds", "sensitivity"],
+      "properties": {
+        "schemaVersion": { "const": 2 },
+        "goal": { "type": "string", "maxLength": 8192 },
+        "completed": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
+        "currentState": { "type": "string", "maxLength": 8192 },
+        "nextActions": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
+        "blockers": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
+        "unresolvedQuestions": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
+        "providerId": { "type": "string", "maxLength": 8192 },
+        "modelId": { "type": "string", "maxLength": 8192 },
+        "promptHash": { "$ref": "#/$defs/Sha256Hex" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" }
       }
     }
   }
