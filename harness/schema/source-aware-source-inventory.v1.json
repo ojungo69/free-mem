@@ -4,6 +4,7 @@
   "searches": [
     {
       "id": "continuity-agent-vocabulary",
+      "coverageMode": "partition",
       "pattern": "sourceAgent(Version)?|expectedSourceAgent|destinationAgent(Version)?|appliesToAgents|platformSource",
       "includePaths": ["."],
       "excludePaths": ["vendor/codemem/pnpm-lock.yaml"],
@@ -12,6 +13,7 @@
     },
     {
       "id": "concrete-identity-sharing-fields",
+      "coverageMode": "snapshot",
       "pattern": "origin_source|originSource|agentInstanceId|parentSessionId|nativeSessionId|sourceSessionId|source_session_id|actor_id|actor_display_name|origin_device_id|device_id|providerId|modelId|observer_(provider|model|auth_source)|captureMethod|capabilityHash|ingestAttestation|ingestReceiptId|peerIdentityId|adapter_version|native_cli_version|visibility|sharingScope|sharing_scope",
       "includePaths": ["agent-memory-final-spec-v6.md", "specs", "harness", "vendor/codemem"],
       "excludePaths": [],
@@ -20,6 +22,7 @@
     },
     {
       "id": "generic-source-agent-provider-model-access",
+      "coverageMode": "snapshot",
       "pattern": "(^|[^[:alnum:]_])(source|agent|provider|model)[[:space:]]*:|[.](source|agent|provider|model)([^[:alnum:]_]|$)|[\"'](source|agent|provider|model)[\"']",
       "includePaths": ["harness", "vendor/codemem/packages", "vendor/codemem/plugins"],
       "excludePaths": [],
@@ -28,11 +31,134 @@
     },
     {
       "id": "db-filter-public-renderer-closure",
+      "coverageMode": "snapshot",
       "pattern": "raw_events|raw_event_sessions|opencode_sessions|memory_items|retrieval_attempts|outcome_evidence|include_visibility|exclude_visibility|include_actor_ids|exclude_actor_ids|ownership_scope|widen_shared|originSource|ProvenanceChip|authorLabel|NORMALIZED_EVENT_FIELDS|METHOD_BODY_FIELDS|FILTER_FIELDS",
       "includePaths": ["vendor/codemem/packages", "vendor/codemem/docs"],
       "excludePaths": [],
       "lineCount": 1459,
       "sha256": "af8d237f06e71a9ad27a87c51d6387fc5cc27cd457ce6fe370bd8e0a4531efa3"
+    }
+  ],
+  "candidateRules": [
+    {
+      "id": "agent-vocabulary-documentation",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^(?:agent-memory-[^\\t]+\\.md|docs/|evidence/|specs/)",
+      "supportingReason": "documentation"
+    },
+    {
+      "id": "agent-vocabulary-tests",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/continuity/[^\\t]+\\.test\\.ts\\t",
+      "supportingReason": "test"
+    },
+    {
+      "id": "agent-vocabulary-fixtures",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/(?:fixtures/|schema/capability-scenarios\\.v1\\.json\\t)",
+      "supportingReason": "fixture"
+    },
+    {
+      "id": "agent-vocabulary-tooling",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/continuity/mutate\\.sh\\t",
+      "supportingReason": "tooling"
+    },
+    {
+      "id": "reference-model-intake-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/continuity/reference-model\\.ts\\t(?:10[7-9]|1[1-9][0-9]|2[0-9][0-9]|30[0-4])\\t",
+      "inventoryEntryId": "wire-normalized-event-agent"
+    },
+    {
+      "id": "reference-model-state-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/continuity/reference-model\\.ts\\t(?:489|49[0-9]|5[0-9]{2}|6(?:[0-3][0-9]|4[0-6])|1833)\\t",
+      "inventoryEntryId": "persisted-canonical-work-state-v1"
+    },
+    {
+      "id": "ts-event-provenance-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.ts\\t164\\t",
+      "inventoryEntryId": "derived-ingest-attestation"
+    },
+    {
+      "id": "ts-normalized-event-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.ts\\t236\\t",
+      "inventoryEntryId": "wire-normalized-event-agent"
+    },
+    {
+      "id": "ts-work-state-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.ts\\t375\\t",
+      "inventoryEntryId": "persisted-canonical-work-state-v1"
+    },
+    {
+      "id": "ts-checkpoint-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.ts\\t403\\t",
+      "inventoryEntryId": "persisted-checkpoint-v2"
+    },
+    {
+      "id": "ts-delivery-destination-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.ts\\t(?:549|561)\\t",
+      "inventoryEntryId": "persisted-checkpoint-delivery-attempt"
+    },
+    {
+      "id": "ts-capsule-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.ts\\t642\\t",
+      "inventoryEntryId": "persisted-resume-capsule-v1"
+    },
+    {
+      "id": "ts-capability-agent-target",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.ts\\t796\\t",
+      "inventoryEntryId": "wire-capability-client-target"
+    },
+    {
+      "id": "json-event-provenance-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.schema\\.json\\t(?:460|487)\\t",
+      "inventoryEntryId": "derived-ingest-attestation"
+    },
+    {
+      "id": "json-normalized-event-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.schema\\.json\\t(?:567|623)\\t",
+      "inventoryEntryId": "wire-normalized-event-agent"
+    },
+    {
+      "id": "json-work-state-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.schema\\.json\\t(?:1157|1189)\\t",
+      "inventoryEntryId": "persisted-canonical-work-state-v1"
+    },
+    {
+      "id": "json-checkpoint-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.schema\\.json\\t(?:1304|1345)\\t",
+      "inventoryEntryId": "persisted-checkpoint-v2"
+    },
+    {
+      "id": "json-delivery-destination-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.schema\\.json\\t(?:1763|1801|1828|1854)\\t",
+      "inventoryEntryId": "persisted-checkpoint-delivery-attempt"
+    },
+    {
+      "id": "json-capsule-source",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.schema\\.json\\t(?:2207|2234)\\t",
+      "inventoryEntryId": "persisted-resume-capsule-v1"
+    },
+    {
+      "id": "json-capability-agent-target",
+      "searchIds": ["continuity-agent-vocabulary"],
+      "recordPattern": "^harness/schema/continuity\\.schema\\.json\\t(?:2715|2727)\\t",
+      "inventoryEntryId": "wire-capability-client-target"
     }
   ],
   "entries": [
@@ -73,10 +199,10 @@
       "surfaceClass": "persisted",
       "disposition": "split",
       "successorTarget": "CanonicalWorkStateV2 lineageSourceSummary and sourceEventIds",
-      "migrationCondition": "all source refs resolve to one authenticated source and scope/order/opaque IDs are reconstructible",
+      "migrationCondition": "all source refs resolve to one authenticated source, scope/order/opaque IDs are reconstructible, and explicit sharing authority exists",
       "restoreValidationRequired": true,
       "schemaDefinition": "CanonicalWorkStateV1",
-      "notes": "never backfill origin/last/participants from sourceAgent alone"
+      "notes": "never backfill origin/last/participants or sharing consent from sourceAgent/provenance alone"
     },
     {
       "id": "persisted-checkpoint-v2",
@@ -289,6 +415,76 @@
       "notes": "unresolved row remains legacy_read_only"
     },
     {
+      "id": "persisted-canonical-work-state-v2",
+      "locus": "harness/schema/continuity.ts:CanonicalWorkStateV2",
+      "semanticTerm": "successor work state",
+      "currentMeaning": "source-aware task state with shared and Agent-local lanes",
+      "authority": "derived",
+      "surfaceClass": "persisted",
+      "disposition": "retain",
+      "successorTarget": "CanonicalWorkStateV2",
+      "migrationCondition": "schema, hash profile, scope, lineage, and nested semantics validate",
+      "restoreValidationRequired": true,
+      "schemaDefinition": "CanonicalWorkStateV2",
+      "notes": "successor artifact introduced by this contract bundle"
+    },
+    {
+      "id": "persisted-checkpoint-v3",
+      "locus": "harness/schema/continuity.ts:ContinuationCheckpointV3",
+      "semanticTerm": "successor checkpoint",
+      "currentMeaning": "source-aware checkpoint embedding CanonicalWorkStateV2",
+      "authority": "derived",
+      "surfaceClass": "persisted",
+      "disposition": "retain",
+      "successorTarget": "ContinuationCheckpointV3",
+      "migrationCondition": "own envelope and embedded work-state rule both validate",
+      "restoreValidationRequired": true,
+      "schemaDefinition": "ContinuationCheckpointV3",
+      "notes": "creator event is checked separately from lineage participants"
+    },
+    {
+      "id": "persisted-resume-capsule-v2",
+      "locus": "harness/schema/continuity.ts:ResumeCapsuleV2",
+      "semanticTerm": "successor delivery capsule",
+      "currentMeaning": "bounded shared projection with optional destination-local lane",
+      "authority": "derived",
+      "surfaceClass": "persisted",
+      "disposition": "retain",
+      "successorTarget": "ResumeCapsuleV2",
+      "migrationCondition": "scope, destination, capability, private, and local-lane rules validate",
+      "restoreValidationRequired": true,
+      "schemaDefinition": "ResumeCapsuleV2",
+      "notes": "destinationAgentLocalState.clientId must equal destination.clientId"
+    },
+    {
+      "id": "persisted-canonical-memory-entity-v1",
+      "locus": "harness/schema/continuity.ts:CanonicalMemoryEntityV1",
+      "semanticTerm": "successor canonical memory",
+      "currentMeaning": "canonical fact entity with explicit sharing and source evidence",
+      "authority": "derived",
+      "surfaceClass": "persisted",
+      "disposition": "retain",
+      "successorTarget": "CanonicalMemoryEntityV1",
+      "migrationCondition": "scope, hashes, evidence, validity, and sharing authority validate",
+      "restoreValidationRequired": true,
+      "schemaDefinition": "CanonicalMemoryEntityV1",
+      "notes": "shared scopes require non-empty authenticated decision evidence"
+    },
+    {
+      "id": "persisted-sharing-decision-v1",
+      "locus": "harness/schema/continuity.ts:SharingDecisionV1",
+      "semanticTerm": "sharing grant authority",
+      "currentMeaning": "explicit user grant bound to exact subject scope and target",
+      "authority": "authenticated",
+      "surfaceClass": "persisted",
+      "disposition": "retain",
+      "successorTarget": "SharingDecisionV1",
+      "migrationCondition": "authority event, exact scope/target, grant action, and timestamp validate",
+      "restoreValidationRequired": true,
+      "schemaDefinition": "SharingDecisionV1",
+      "notes": "unknown, unauthenticated, wrong-scope, or wrong-target decisions never authorize sharing"
+    },
+    {
       "id": "persisted-raw-event-source",
       "locus": "vendor/codemem/packages/core/src/schema.ts:rawEvents.source",
       "semanticTerm": "source",
@@ -341,6 +537,20 @@
       "migrationCondition": "authenticated manifest and capability binding required",
       "restoreValidationRequired": false,
       "notes": "spool lacks this envelope today"
+    },
+    {
+      "id": "wire-capability-client-target",
+      "locus": "harness/schema/continuity.ts:RequiredCapabilityScenarioV1.appliesToAgents",
+      "semanticTerm": "appliesToAgents",
+      "currentMeaning": "capability scenario target coding-client labels",
+      "authority": "derived",
+      "surfaceClass": "wire",
+      "disposition": "rename",
+      "successorTarget": "versioned appliesToClients canonical client IDs",
+      "migrationCondition": "legacy labels resolve through authenticated client vocabulary",
+      "restoreValidationRequired": false,
+      "schemaDefinition": "RequiredCapabilityScenarioV1",
+      "notes": "capability targeting does not grant source authority"
     },
     {
       "id": "derived-source-event-refs",

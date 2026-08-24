@@ -269,8 +269,8 @@ contract は期待する source identity、sharing disposition、participant集�
 - 復元時の検証を締めすぎると、妥当な既存状態が quarantine される。偽陽性は自分のテストからは
   漏れやすいので、通す側の corpus も同じ gate で測る。
 - 生 identifier の排除は、相関性まで失うことを意味しない。相関に必要な情報は残す。
-- 生値がどうしても必要な経路は、local evidence store の別 surface へ隔離し、retention・access・
-  export を明示する。
+- 生値が必要なlegacy migrationはmemory-only transaction scratchを使い、原artifactだけをlocal quarantineに
+  user repair/discardまで保持する。new intake用のraw mappingや新しい永続storeは作らない。
 - 上限強制を新設すると、既存の正常な payload が初めて拒否されうる。上限直下の入力で偽陽性を測る。
 - `claude` / `claude-code` や `codex` / `codex-cli` のaliasは、authenticated adapter contextなしに
   canonical IDへ昇格させない。unknown sourceを既知Agentとして推測しない。
@@ -306,8 +306,9 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-012**: canonical state・checkpoint・診断・capsule・sync operation には、caller が供給した
   raw identifier / fingerprint を保存してはならない。
 - **FR-013**: 相関に必要な情報は、daemon が発行・検証する domain-separated な opaque 表現へ変換しなければならない。
-- **FR-014**: raw 値が必要な経路は local evidence store の別 surface へ隔離し、retention・access・
-  export を明示しなければならない。
+- **FR-014**: new intake raw 値は永続化せず入力中にopaque化する。legacy migrationでraw値が必要な経路は
+  transaction内のmemory-only scratchと原artifactのlocal quarantineだけへ隔離し、retention・access・export・
+  rollback時を含むzeroizationを明示しなければならない。恒久的なraw→opaque mappingを新設してはならない。
 - **FR-015**: 層 A の 5 件（#46 / #49 / #53 / #61 / #62）と層 D（#132）は、schema と versioning を
   ひとつの decision window で決め、**新しい persisted schema 版を 1 つ立てる単一の契約変更**として
   凍結しなければならない。v1 内の追加互換にも、連続する別versionにも分けない。
@@ -325,7 +326,8 @@ contract は期待する source identity、sharing disposition、participant集�
   artifactだけをmigrateし、推測を要するartifactはautomatic cross-agent deliveryから除外する。
 - **FR-015e**: legacy `CanonicalWorkStateV1.sourceAgent`をorigin/last contributor/participantsへ黙って
   展開してはならない。全source eventが同じauthenticated sourceへ解決できる場合だけ3値を同じsourceで
-  初期化し、それ以外はquarantineする。legacy checkpoint creatorも同じ根拠を要求し、legacy capsuleは
+  初期化できるが、shared projectionへのmigrationには別の明示・認証済みsharing authorityも必須とし、
+  provenanceをconsentへ流用してはならない。いずれかを欠けばquarantineする。legacy checkpoint creatorも同じ根拠を要求し、legacy capsuleは
   successorへ自動upgradeせずsame-agent manual/hint-only profileに限定する。legacy DurableMemoryはsourceと
   sharing scopeを一意にbackfillできるまでlegacy_read_onlyとし、automatic cross-agent injectionへ使わない。
 
@@ -399,7 +401,9 @@ contract は期待する source identity、sharing disposition、participant集�
   privateの明示opt-inとdestination `privateEligible` gate、Agent-local isolation、destination capability
   downgrade、sharing allow、source preference/display filterの順で評価しなければならない。
 - **FR-036**: callerはsharing scopeのproposalまでしか行えず、自分でscopeを昇格できてはならない。
-  authority未確認のrecordはautomatic cross-agent full injectionへ使わない。
+  authority未確認のrecordはautomatic cross-agent full injectionへ使わない。共有grantはversioned
+  `SharingDecisionV1`としてexplicit user authority event、exact subject scope、exact projection/memory targetへ
+  結び付け、unknown/unauthenticated/wrong-scope/wrong-targetを拒否する。decision参照はhash前にsorted uniqueとする。
 - **FR-037**: shared task projectionとAgent-local projectionを別のvisibility laneとして表現し、
   native todo、Agent固有plan、last assistant conclusion、host metadataを別Agentへ自動注入してはならない。
 - **FR-038**: 曖昧な単数`sourceAgent`をmulti-Agent lineageの代表値として再利用せず、lineage origin、
@@ -522,8 +526,10 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
   versioned vocabulary/disposition表のちょうど1行に対応し、callerの自己申告だけでtrustedへ昇格する件数が**0件**である。
 - **SC-018**: S0差分にproduct runtime、DB、reducer、MCP、viewerの変更が**0件**で、successor persisted
   schema版とmigration dispositionがspec 005と#132で**1系統**だけ存在する。
-- **SC-019**: frozen inventory search patternが返す候補とinventory行の差集合が**0件**で、全行がsurface
-  classとdispositionをちょうど1つ持ち、ambiguousな単数`sourceAgent`の未分類が**0件**である。
+- **SC-019**: `coverageMode=partition`のfrozen searchが返す全candidateは、ちょうど1つのinventory行または
+  明示したdocumentation/test/fixture/tooling supporting ruleへ分類され、未分類・重複分類が**0件**である。
+  runtime/normative schemaの単数`sourceAgent`はsupportingへ送れず、inventory行への未分類が**0件**である。
+  広い`coverageMode=snapshot`検索は候補集合のdrift検出に限定し、4,095 hitを偽の1行1surfaceへ膨らませない。
 - **SC-020**: `SourceAwareContinuityContractV1`のhash入力に4つのsuccessor artifact schema、source
   inventoryで`restoreValidationRequired=true`となる全persisted artifactのrule、F0〜F7の全8caseが含まれ、
   旧artifact4種すべてにmigration dispositionが1つずつ存在する。

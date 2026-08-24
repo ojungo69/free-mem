@@ -484,6 +484,46 @@ export type SubjectScopeV1 =
   | SessionSubjectScopeV1
   | TurnSubjectScopeV1;
 
+export type SharingGrantScopeV1 = "task_shared" | "project_shared" | "personal_shared";
+export const SHARING_GRANT_SCOPES_V1 = [
+  "task_shared",
+  "project_shared",
+  "personal_shared",
+] as const satisfies readonly SharingGrantScopeV1[];
+
+export interface SharedTaskProjectionTargetV1 {
+  readonly kind: "shared_task_projection";
+  readonly taskLineageId: OpaqueIdV1;
+}
+
+export interface CanonicalMemoryEntityTargetV1 {
+  readonly kind: "canonical_memory_entity";
+  readonly canonicalFactId: Sha256Hex;
+}
+
+export type SharingDecisionTargetV1 = SharedTaskProjectionTargetV1 | CanonicalMemoryEntityTargetV1;
+
+export interface SharingDecisionV1 {
+  readonly schemaVersion: 1;
+  readonly decisionEventId: OpaqueIdV1;
+  readonly authoritySourceEventId: OpaqueIdV1;
+  readonly authorityKind: "user";
+  readonly decision: "grant";
+  readonly subjectScope: SubjectScopeV1;
+  readonly sharingScope: SharingGrantScopeV1;
+  readonly target: SharingDecisionTargetV1;
+  readonly decidedAt: string;
+}
+
+export interface SharingDecisionPolicyV1 {
+  readonly schemaVersion: 1;
+  readonly authority: "explicit_user";
+  readonly scopeMatch: "exact";
+  readonly targetMatch: "exact";
+  readonly invalidDisposition: "reject";
+  readonly referenceOrder: "sorted_unique";
+}
+
 export interface TaskStateRevisionEnvelopeV1 {
   readonly stateRevision: Sha256Hex;
   readonly contentHash: Sha256Hex;
@@ -722,6 +762,7 @@ export interface LineageSourceSummaryV1 {
 
 export interface SharedTaskStateV1 {
   readonly sharingScope: "task_shared";
+  readonly sharingDecisionEventIds: readonly OpaqueIdV1[];
   readonly goal?: ObservedV2<string>;
   readonly constraints: readonly ObservedV2<string>[];
   readonly activeFiles: readonly ObservedFileV2[];
@@ -988,6 +1029,29 @@ export interface ContinuityP0ObservationContractV1 {
   readonly entries: readonly ContinuityP0ObservationEntryV1[];
 }
 
+export type StateTransitionClassificationV1 =
+  | "state_changed"
+  | "ledger_only"
+  | "duplicate_noop"
+  | "rejected_or_quarantined";
+export const STATE_TRANSITION_CLASSIFICATIONS_V1 = [
+  "state_changed",
+  "ledger_only",
+  "duplicate_noop",
+  "rejected_or_quarantined",
+] as const satisfies readonly StateTransitionClassificationV1[];
+
+export interface StateNeutralTransitionPolicyV1 {
+  readonly schemaVersion: 1;
+  readonly classifications: readonly StateTransitionClassificationV1[];
+  readonly stateNeutralClassification: "ledger_only";
+  readonly canonicalStateEffect: "reuse_revision";
+  readonly receiptLedgerEffect: "insert_once";
+  readonly diagnosticAuditEffect: "record_bounded";
+  readonly coverageWatermarkEffect: "advance";
+  readonly transactionBoundary: "same_daemon_transaction";
+}
+
 export type SourceInventorySurfaceClassV1 = "persisted" | "wire" | "user-facing" | "derived" | "diagnostic";
 export const SOURCE_INVENTORY_SURFACE_CLASSES_V1 = [
   "persisted",
@@ -1021,14 +1085,43 @@ export const SOURCE_INVENTORY_AUTHORITIES_V1 = [
   "none",
 ] as const satisfies readonly SourceInventoryAuthorityV1[];
 
+export type SourceInventoryCoverageModeV1 = "partition" | "snapshot";
+export const SOURCE_INVENTORY_COVERAGE_MODES_V1 = [
+  "partition",
+  "snapshot",
+] as const satisfies readonly SourceInventoryCoverageModeV1[];
+
 export interface SourceInventorySearchV1 {
   readonly id: string;
+  readonly coverageMode: SourceInventoryCoverageModeV1;
   readonly pattern: string;
   readonly includePaths: readonly string[];
   readonly excludePaths: readonly string[];
   readonly lineCount: number;
   readonly sha256: Sha256Hex;
 }
+
+export type SourceInventorySupportingReasonV1 = "documentation" | "test" | "fixture" | "tooling";
+export const SOURCE_INVENTORY_SUPPORTING_REASONS_V1 = [
+  "documentation",
+  "test",
+  "fixture",
+  "tooling",
+] as const satisfies readonly SourceInventorySupportingReasonV1[];
+
+export type SourceInventoryCandidateRuleV1 =
+  | {
+      readonly id: string;
+      readonly searchIds: readonly string[];
+      readonly recordPattern: string;
+      readonly inventoryEntryId: string;
+    }
+  | {
+      readonly id: string;
+      readonly searchIds: readonly string[];
+      readonly recordPattern: string;
+      readonly supportingReason: SourceInventorySupportingReasonV1;
+    };
 
 export interface SourceInventoryEntryV1 {
   readonly id: string;
@@ -1050,6 +1143,7 @@ export interface SourceIdentityInventoryV1 {
   readonly inventoryVersion: 1;
   readonly baselineCommit: GitObjectIdV1;
   readonly searches: readonly SourceInventorySearchV1[];
+  readonly candidateRules: readonly SourceInventoryCandidateRuleV1[];
   readonly entries: readonly SourceInventoryEntryV1[];
 }
 
@@ -1095,6 +1189,7 @@ export type SourceSharingDispositionCodeV1 =
   | "agent_private"
   | "private_not_eligible"
   | "secret"
+  | "local_only"
   | "prohibited_egress"
   | "scope_mismatch"
   | "destination_capability_unsupported"
@@ -1104,6 +1199,7 @@ export const SOURCE_SHARING_DISPOSITION_CODES_V1 = [
   "agent_private",
   "private_not_eligible",
   "secret",
+  "local_only",
   "prohibited_egress",
   "scope_mismatch",
   "destination_capability_unsupported",
@@ -1151,8 +1247,34 @@ export interface SourceAwareFixtureRecordV1 {
   readonly sensitivity: Sensitivity;
   readonly egressPolicy: EgressPolicyV1;
   readonly sourceEvidenceIds: readonly string[];
-  readonly scopeKey?: string;
+  readonly sharingDecisionEventIds?: readonly string[];
+  readonly subjectScope?: SourceAwareFixtureScopeV1;
   readonly canonicalFactId?: string;
+}
+
+export interface SourceAwareFixtureSharedTaskTargetV1 {
+  readonly kind: "shared_task_projection";
+  readonly taskLineageId: string;
+}
+
+export interface SourceAwareFixtureMemoryTargetV1 {
+  readonly kind: "canonical_memory_entity";
+  readonly canonicalFactId: string;
+}
+
+export type SourceAwareFixtureSharingTargetV1 =
+  | SourceAwareFixtureSharedTaskTargetV1
+  | SourceAwareFixtureMemoryTargetV1;
+
+export interface SourceAwareFixtureSharingDecisionV1 {
+  readonly id: string;
+  readonly authorityEventId: string;
+  readonly authorityKind: "user";
+  readonly decision: "grant";
+  readonly authenticated: boolean;
+  readonly subjectScope: SourceAwareFixtureScopeV1;
+  readonly sharingScope: SharingGrantScopeV1;
+  readonly target: SourceAwareFixtureSharingTargetV1;
 }
 
 export interface SourceAwareFixtureTransitionV1 {
@@ -1166,6 +1288,7 @@ export interface SourceAwareFixtureInputV1 {
   readonly destination: SourceAwareFixtureDestinationV1;
   readonly scope: SourceAwareFixtureScopeV1;
   readonly records: readonly SourceAwareFixtureRecordV1[];
+  readonly sharingDecisions: readonly SourceAwareFixtureSharingDecisionV1[];
   readonly transitions: readonly SourceAwareFixtureTransitionV1[];
 }
 
@@ -1344,9 +1467,45 @@ export interface SourceAwareArtifactSchemaRefV1 {
 
 export interface RevisionHeadSelectionPolicyV1 {
   readonly orderingKey: "lineage_revision_ordinal";
+  readonly headCardinality: "exactly_one";
+  readonly ordinalUniqueness: "required";
+  readonly automaticTarget: "ordered_head_only";
+  readonly eligibilityDerivation: "workspace_checkpoint_lineage";
   readonly automaticFallback: "never";
   readonly ineligibleDisposition: "manual";
   readonly corruptDisposition: "quarantine";
+}
+
+export interface CanonicalStateHashTestVectorV1 {
+  readonly contentProjection: JsonValue;
+  readonly contentHash: Sha256Hex;
+  readonly revisionMetadata: JsonValue;
+  readonly stateRevision: Sha256Hex;
+}
+
+export interface CanonicalStateHashProfileV1 {
+  readonly schemaVersion: 1;
+  readonly canonicalization: "rfc8785-jcs";
+  readonly digest: "sha-256";
+  readonly contentProjectionFields: readonly [
+    "schemaVersion",
+    "subjectScope",
+    "opaqueIdProfile",
+    "lineageSourceSummary",
+    "sharedTaskState",
+    "agentLocalStates",
+    "sensitivity",
+  ];
+  readonly stateRevisionDomain: "free-mem/CanonicalWorkStateV2/state-revision/v1";
+  readonly revisionMetadataFields: readonly [
+    "parentStateRevisions",
+    "lineageRevisionOrdinal",
+    "committedByDaemonId",
+    "writerEpoch",
+    "sourceSessionId",
+    "committedAt",
+  ];
+  readonly testVector: CanonicalStateHashTestVectorV1;
 }
 
 export interface SourceAwareContinuityContractV1 {
@@ -1363,8 +1522,11 @@ export interface SourceAwareContinuityContractV1 {
   readonly fixtureCorpusHash: Sha256Hex;
   readonly fixtureCaseIds: readonly SourceAwareFixtureCaseIdV1[];
   readonly opaqueIdProfile: OpaqueIdProfileV1;
+  readonly canonicalStateHashProfile: CanonicalStateHashProfileV1;
   readonly revisionHeadSelectionPolicy: RevisionHeadSelectionPolicyV1;
   readonly rawIdentifierEvidencePolicy: RawIdentifierEvidencePolicyV1;
+  readonly stateNeutralTransitionPolicy: StateNeutralTransitionPolicyV1;
+  readonly sharingDecisionPolicy: SharingDecisionPolicyV1;
   readonly continuityP0Observations: ContinuityP0ObservationContractV1;
   readonly legacyMigrationRules: readonly LegacyMigrationRuleV1[];
   readonly restoreSemanticValidation: RestoreSemanticValidationContractV1;

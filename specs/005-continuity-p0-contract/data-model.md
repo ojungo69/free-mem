@@ -30,10 +30,14 @@ remain independent.
 | `ResumeProfileV1` | `same_agent`, `cross_agent` |
 | `LegacyMigrationDispositionV1` | `migrate`, `legacy_read_only`, `quarantine` |
 
+`local_only` may remain in daemon-owned local state but is never serialized into a resume capsule or export. It has its own
+`local_only` disposition code; it is not reported as `prohibited_egress`.
+
 `OpaqueIdProfileV1` is `{ schemaVersion: 1, algorithm: "hmac-sha-256", keyId,
-outputEncoding: "lowercase_hex_256" }`. The HMAC input is domain-separated by ID kind. The raw caller value is retained only
-in a local evidence mapping with explicit retention/access rules; it never enters successor state, checkpoint, capsule,
-diagnostic, or exported memory.
+outputEncoding: "lowercase_hex_256" }`. The HMAC input is domain-separated by ID kind. New-intake raw values are transformed
+without persistence. Migration scratch remains memory-only for one transaction; a legacy original remains only inside its
+local quarantine artifact until explicit user repair or discard. Raw values never enter successor state, checkpoint, capsule,
+diagnostic, export, or egress.
 
 ## Source identity and references
 
@@ -80,6 +84,15 @@ Checkpoint creator is not inferred from this summary; `ContinuationCheckpointV3`
 
 All IDs are `OpaqueIdV1`. Sharing scope is a separate field and never changes subject identity.
 
+### `SharingDecisionV1`
+
+A persisted sharing grant contains `schemaVersion: 1`, opaque decision/authority event IDs, `authorityKind: "user"`,
+`decision: "grant"`, exact `SubjectScopeV1`, `task_shared|project_shared|personal_shared`, a closed target, and canonical
+`decidedAt`. The target is either the exact task lineage for `shared_task_projection` or the exact `canonicalFactId` for
+`canonical_memory_entity`. Unknown or unauthenticated authority, wrong scope, and wrong target reject the grant.
+`SharedTaskStateV1` and `CanonicalMemoryEntityV1` store sorted-unique decision IDs; order/duplicates are semantic-invalid
+because these arrays participate in canonical hashes.
+
 ## Revision envelope
 
 `TaskStateRevisionEnvelopeV1` contains:
@@ -93,6 +106,18 @@ All IDs are `OpaqueIdV1`. Sharing scope is a separate field and never changes su
 - `committedAt`: canonical ISO-Z timestamp used for display/audit, not ordering.
 
 Ordering uses `lineageRevisionOrdinal`; selection eligibility remains a separate gate.
+
+`StateNeutralTransitionPolicyV1` freezes the #46 authority split. A semantic no-op is `ledger_only`: it reuses the canonical
+revision, inserts the receipt exactly once, records bounded diagnostic/audit coverage, advances the separate event-store
+watermark, and commits those side effects in the same daemon transaction. `history` and `updatedAt` remain V1 inputs for the
+before/after observation only; they are not invented as successor work-state fields.
+
+`CanonicalStateHashProfileV1` removes the envelope from the content preimage. `contentHash` is SHA-256 over RFC 8785 JCS
+of exactly `schemaVersion`, `subjectScope`, `opaqueIdProfile`, `lineageSourceSummary`, `sharedTaskState`,
+`agentLocalStates`, and `sensitivity`. `stateRevision` is SHA-256 over RFC 8785 JCS of
+`{ domain: "free-mem/CanonicalWorkStateV2/state-revision/v1", contentHash, revision }`, where `revision` contains exactly
+`parentStateRevisions`, `lineageRevisionOrdinal`, `committedByDaemonId`, `writerEpoch`, `sourceSessionId`, and
+`committedAt`. Neither hash includes itself. The manifest carries a fixed vector for TypeScript/Rust parity.
 
 ### `RevisionHeadSelectionContractV1`
 
@@ -109,7 +134,7 @@ Each candidate evaluation contains `stateRevision`, `lineageRevisionOrdinal`, `i
 `checkpointDisposition: open|accepted|superseded|retracted|unknown`,
 `lineageState: single|forked|conflicted`, `resumeEligible`, and closed reason codes.
 
-The greatest daemon-owned ordinal is the ordered head. Automatic resume is allowed only when that same head is compatible,
+Ordinals are unique and exactly one candidate is marked as the greatest daemon-owned ordered head. Automatic resume is allowed only when that same head is compatible,
 open, single, and otherwise eligible. An ineligible ordered head produces `fallbackDisposition="manual"`; it never silently
 selects an older revision. Equal ordinals or multiple ordered heads are contract corruption and quarantine the selection.
 
@@ -117,7 +142,7 @@ selects an older revision. Equal ordinals or multiple ordered heads are contract
 
 ### `SharedTaskStateV1`
 
-Required fields: `sharingScope: "task_shared"`, `constraints`, `activeFiles`, `modifiedFiles`, `recentCommands`,
+Required fields: `sharingScope: "task_shared"`, non-empty authenticated `sharingDecisionEventIds`, `constraints`, `activeFiles`, `modifiedFiles`, `recentCommands`,
 `recentTests`, `pendingOperations`, `droppedEvidence`, `repositoryState`, `sensitivity`, `egressPolicy`.
 Optional fields: `goal`, `semanticResumeNote`.
 
@@ -194,20 +219,28 @@ Cross-agent capsules never contain the source client's Agent-local lane.
 
 `canonicalFactId = sha256(JCS({schema, subjectScope, kind, normalizationProfileId, canonicalContent}))`.
 An exact match unions evidence into the same entity and advances its revision. Semantic similarity never auto-merges.
+Any entity whose sharing scope is wider than `agent_private` requires at least one authenticated
+`sharingDecisionEventId`; an empty array is invalid rather than implicit consent. A `private` entity additionally requires
+the destination `privateEligible` gate at delivery time.
 
 ## Machine inventory and F0–F7 corpus
 
 ### `SourceIdentityInventoryV1`
 
-Contains `inventoryVersion`, baseline commit, frozen searches (ID, regex, include/exclude paths, result count/digest), and
-entries with: ID, matched locus, semantic term, current meaning, authority, one surface class, one disposition, successor
-target, migration condition, `restoreValidationRequired`, optional schema definition/SQL table, and notes.
+Contains `inventoryVersion`, baseline commit, frozen searches (ID, `partition|snapshot`, regex, include/exclude paths,
+result count/digest), ordered candidate rules, and semantic entries. `partition` is reserved for the ambiguous
+`sourceAgent` vocabulary: every hit matches exactly one owner/supporting rule, and runtime/schema hits cannot be supporting.
+The broader 4,095 non-`sourceAgent` hits remain immutable discovery snapshots instead of becoming thousands of fake
+one-line surfaces. Entries carry ID, locus, semantic term, current meaning, authority, one surface class, one disposition,
+successor target, migration condition, `restoreValidationRequired`, optional schema definition/SQL table, and notes.
 
 ### `SourceAwareContractCorpusV1`
 
 Contains `corpusVersion: 1`, bundle ID, and exactly eight ordered unique F0–F7 cases. Each case has common input
-(sources, destination, scope, records, transitions), current V1 non-success disposition/reason, and successor expected
+(sources, destination, scope, records, sharing decisions, transitions), current V1 non-success disposition/reason, and successor expected
 delivery/source/lineage/memory/retrieval/authority/downgrade outputs. Cross-references are closed and validated.
+An omitted record `subjectScope` inherits the case scope; an explicit record scope is compared structurally. F7 carries
+separate wrong-vault, wrong-project, and wrong-workspace records rather than a magic scope tag.
 
 ### `ContinuityP0ObservationContractV1`
 
@@ -244,7 +277,8 @@ the migration scratch copy is memory-only and zeroized on commit or rollback.
 persisted artifact without a validation rule fails the contract test. Current required seeds include task binding/proposal,
 work state/checkpoint/disposition/metadata/anchor/delivery/suppression/selection/derived invalidation, engagement and
 contradiction evidence/ranges, resume capsule, and DurableMemory; the inventory-derived closure is authoritative rather than
-a hand-maintained count.
+a hand-maintained count. The four successor artifacts and persisted sharing-decision authority are inventory entries too, so their scope/hash/sharing semantics and
+the capsule destination-lane equality cannot bypass restore validation.
 
 Each `RestoreArtifactValidationRuleV1` has:
 
@@ -269,7 +303,7 @@ artifact without a rule, remove a timestamp path, accept blank scope, or allow u
 ```text
 legacy artifact
   -> schema/semantic/hash invalid -> quarantine
-  -> source + scope + chain uniquely verified
+  -> source + scope + chain + explicit sharing authority uniquely verified
        -> state/checkpoint/memory -> migrate
        -> capsule -> legacy_read_only
   -> evidence unresolved
@@ -280,3 +314,6 @@ legacy artifact
 
 `legacy_read_only` allows local search/inspection but never automatic cross-agent full injection. Repair/rebind/merge requires
 explicit authority and an audit event.
+
+V1 source provenance never counts as consent. A `CanonicalWorkStateV1` can migrate to a shared V2 projection only when a
+separate explicit authenticated sharing decision can be reconstructed; otherwise its unresolved disposition is quarantine.

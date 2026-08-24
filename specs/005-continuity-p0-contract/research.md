@@ -131,7 +131,10 @@ fixture JSONは既存walkerが自動hashし、新testは既存`harness/continuit
 
 `harness/schema/source-aware-source-inventory.v1.json`をmachine-readable正本にし、本節を人向け索引にする。
 各entryは`surfaceClass`と`disposition`をちょうど1つ持つ。testはbaseline commitに対してfrozen searchを
-再実行し、candidate digest/countとmanifestを照合する。
+再実行し、digest/countとmanifestを照合する。Search 1は`coverageMode=partition`として全308 hitを
+ordered `candidateRules`でちょうど1つのsemantic ownerまたはsupporting referenceへ分類し、runtime/schema
+のhitをsupportingへ逃がさない。Search 2〜4はbroad discovery snapshotであり、4,095 hitを1行1surfaceへ
+水増しせず、semantic entry作成時のdrift anchorとして使う。
 
 ### Frozen search commands
 
@@ -161,12 +164,12 @@ git grep -n -I -E \
 
 The digest is SHA-256 of the exact `git grep -n` byte stream, including its trailing newlines.
 
-| Search | Line count | SHA-256 |
-|---|---:|---|
-| 1 — continuity Agent vocabulary | 308 | `420160dde7e3552caaecdb4ae71ebce6eb01b9fadefaaf88fecdf9f9f41e37eb` |
-| 2 — concrete identity/sharing fields | 1542 | `0827374c9eb87b6c7d67d84dfcd0653b02c732dd84c0ee9255a4ad6d3de5cdfe` |
-| 3 — generic source/agent/provider/model access | 1094 | `a566fc042c3285c8c5044cade89975d7921c51b44f8a737989aa83e17cbe7198` |
-| 4 — DB/filter/public/renderer closure | 1459 | `af8d237f06e71a9ad27a87c51d6387fc5cc27cd457ce6fe370bd8e0a4531efa3` |
+| Search | Mode | Line count | SHA-256 |
+|---|---|---:|---|
+| 1 — continuity Agent vocabulary | partition | 308 | `420160dde7e3552caaecdb4ae71ebce6eb01b9fadefaaf88fecdf9f9f41e37eb` |
+| 2 — concrete identity/sharing fields | snapshot | 1542 | `0827374c9eb87b6c7d67d84dfcd0653b02c732dd84c0ee9255a4ad6d3de5cdfe` |
+| 3 — generic source/agent/provider/model access | snapshot | 1094 | `a566fc042c3285c8c5044cade89975d7921c51b44f8a737989aa83e17cbe7198` |
+| 4 — DB/filter/public/renderer closure | snapshot | 1459 | `af8d237f06e71a9ad27a87c51d6387fc5cc27cd457ce6fe370bd8e0a4531efa3` |
 
 ### Surface classes
 

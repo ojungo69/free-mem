@@ -45,6 +45,11 @@ event. It is not copied into each work-state field. Persisted artifacts keep sor
 Evidence certainty never grants instruction authority. Derived/synthesized records remain traceable but cannot confirm a
 boundary or raise sharing scope without the separate authority rule.
 
+The inventory freezes broad discovery snapshots by count/hash, while the high-risk `sourceAgent` search uses an exact-one
+partition into semantic owners or documentation/test/fixture/tooling support. Normative schema and runtime hits cannot be
+classified as support. This keeps the proof closed without pretending each generic `source` or `model` access is a separate
+semantic surface.
+
 ## 4. Subject scope, sharing scope, sensitivity, and egress
 
 Subject scope and sharing scope are independent. Subject scope is the closed hierarchy
@@ -53,7 +58,7 @@ Sharing scope is `agent_private | task_shared | project_shared | personal_shared
 
 The decision order is fixed:
 
-1. deny `secret` and `prohibited_egress`;
+1. deny `secret` and `prohibited_egress`, and keep `local_only` out of every capsule/export boundary;
 2. deny cross-`personal_vault`, project, or workspace mismatch;
 3. require explicit opt-in and destination `privateEligible=true` for `private`;
 4. isolate `agent_private` from every other client;
@@ -64,9 +69,16 @@ The decision order is fixed:
 Caller code may propose sharing scope but may not elevate it. Legacy `visibility=private/shared` is insufficient to assign a
 new sharing scope.
 
+`SharingDecisionV1` is the only grant authority: explicit user authority event, exact subject scope, exact target, and
+`grant` action. The target is a task-lineage shared projection or a canonical fact. Unknown, unauthenticated, wrong-scope,
+or wrong-target decisions reject. Referenced decision IDs are sorted unique before hashing; duplicate or out-of-order refs
+are semantic-invalid rather than normalized after publication.
+
 ## 5. Shared and Agent-local projections
 
-`CanonicalWorkStateV2` contains one `SharedTaskStateV1` and bounded `AgentLocalStateV1[]` lanes.
+`CanonicalWorkStateV2` contains one `SharedTaskStateV1` and bounded `AgentLocalStateV1[]` lanes. The shared projection has a
+non-empty `sharingDecisionEventIds` set whose events resolve to authenticated sharing authority; sensitivity and
+`privateEligible` do not substitute for consent.
 
 - Shared task: goal, constraints, active/modified files, commands, tests, pending operations, dropped-evidence summary,
   repository state, eligible semantic note.
@@ -90,11 +102,15 @@ No rule reuses an ambiguous single `sourceAgent` value for these meanings.
 
 ## 7. Revision, immutability, and evidence bounds
 
-Published successor graphs are deeply readonly. Hashes cover canonical bytes. Lineage order uses daemon-owned
+Published successor graphs are deeply readonly. `contentHash` is SHA-256 over RFC 8785 JCS of the seven non-revision
+`CanonicalWorkStateV2` fields. `stateRevision` hashes the fixed domain, that `contentHash`, and the six non-hash revision
+metadata fields; neither preimage includes its own digest. The manifest's fixed vector is the cross-language oracle. Lineage order uses daemon-owned
 `lineageRevisionOrdinal`; caller timestamp, session-local sequence, and hash lexical order never choose a head.
 
 Meaning-neutral events do not advance the canonical state revision/history, while event/delivery/diagnostic/watermark
-transitions remain separately auditable.
+transitions remain separately auditable. `StateNeutralTransitionPolicyV1` names the four classifications and fixes
+`ledger_only` to `reuse_revision + insert_once + record_bounded + advance` in one daemon transaction; no undefined successor
+`history` or `updatedAt` field is required.
 
 The greatest daemon-owned `lineageRevisionOrdinal` is the ordered head. Resume eligibility is a separate typed evaluation
 of workspace compatibility, checkpoint disposition, and lineage fork/conflict. Automatic resume is permitted only when the
@@ -144,7 +160,9 @@ or delivery. The authoritative set is derived from source-inventory entries wher
 `restoreValidationRequired=true`; every such entry must have exactly one `RestoreSemanticValidationContractV1` rule.
 The current seeds include task binding/proposal, work state/checkpoint/disposition/metadata/anchor/delivery/suppression/
 selection/derived invalidation, engagement and contradiction evidence/ranges, resume capsule, and DurableMemory. A newly
-inventoried persisted artifact without a rule fails the contract.
+inventoried persisted artifact without a rule fails the contract. The closure also includes all four successor artifacts and
+the persisted `SharingDecisionV1` authority event;
+in particular, `ResumeCapsuleV2` requires its optional Agent-local lane to match `destination.clientId`.
 
 Scope IDs must be non-blank and parent/embedded scopes must agree. Every listed timestamp must be canonically valid, not
 merely regex-shaped. Invalid artifacts preserve original bytes in quarantine and never reach the reducer/selector.
@@ -158,7 +176,7 @@ Before the table is evaluated, schema/semantic/hash failure always quarantines t
 
 | Artifact | Verified disposition | Unresolved disposition | Additional rule |
 |---|---|---|---|
-| `CanonicalWorkStateV1` | `migrate` | `quarantine` | all source refs resolve to one authenticated source; scope/order/opaque-ID material is unique |
+| `CanonicalWorkStateV1` | `migrate` | `quarantine` | all source refs resolve to one authenticated source; scope/order/opaque-ID material is unique; every shared projection has separate explicit authenticated sharing authority |
 | `ContinuationCheckpointV2` | `migrate` | `quarantine` | embedded state passes; creator and scope/hash chain are unique |
 | `ResumeCapsuleV1` | `legacy_read_only` | `quarantine` | same-agent manual/hint-only; never automatic full/cross-agent |
 | legacy DurableMemory | `migrate` | `legacy_read_only` | source evidence, scope, sharing authority, normalization profile all unique |
@@ -178,6 +196,7 @@ sibling excluded by identity conflict. `SourceSharingDispositionCodeV1` is close
 agent_private
 private_not_eligible
 secret
+local_only
 prohibited_egress
 scope_mismatch
 destination_capability_unsupported
@@ -216,8 +235,9 @@ entries make SC-001–SC-012 executable later without claiming runtime conforman
 - fixture corpus version/hash and exact F0–F7 IDs;
 - legacy migration rules;
 - exact restore semantic-validation artifact/path/authority rules;
-- revision-head ordering/eligibility rules and the exact 9-entry Continuity P0 observation/delta contract;
+- canonical state hash preimage/vector, revision-head ordering/eligibility rules, and the exact 9-entry Continuity P0 observation/delta contract;
 - raw-identifier retention/access/diagnostic/export/egress policy;
+- sharing-decision user authority, exact scope/target, invalid disposition, and sorted-unique reference policy;
 - opaque-ID profile;
 - limit policy table;
 - diagnostic vocabularies.

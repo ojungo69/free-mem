@@ -102,7 +102,7 @@ enters automatic cross-agent delivery, and blank/invalid timestamp artifacts qua
 **Goal**: Freeze all 12 limit policies and make excluded terminal siblings observable in the successor vocabulary.
 
 **Independent Test**: The manifest has exactly 12 policies: `rankedCandidates=select_with_diagnostic`, the other
-11 `reject`; successor diagnostics contain current codes plus `terminal_sibling_conflict`, the 8 sharing disposition codes,
+11 `reject`; successor diagnostics contain current codes plus `terminal_sibling_conflict`, the 9 sharing disposition codes,
 and the exact P0 observation set still contains the #32/#58 policy/diagnostic deltas.
 
 - [X] T027 [US3] Add failing exact-set assertions for 12 limit policies, `ContinuityDiagnosticCodeV2`, `SourceSharingDispositionCodeV1`, and the #32/#58 entries plus exact nine-Issue closure in `ContinuityP0ObservationContractV1` in `harness/continuity/source-aware-contract.test.ts`
@@ -119,12 +119,12 @@ and the exact P0 observation set still contains the #32/#58 policy/diagnostic de
 
 **Purpose**: Prove compatibility, scope, task truth, review quality, and remote merge readiness.
 
-- [ ] T032 Run the focused gate, full `harness/continuity/*.test.ts`, and `vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json` as listed in `specs/005-continuity-p0-contract/quickstart.md`
-- [ ] T033 Regenerate to temporary files and diff `harness/contract-hashes.json` plus `harness/fixtures/continuity/old-shape-parity.json`; both diffs must be empty
-- [ ] T034 Run `bash harness/continuity/mutate.sh` and require executed count match plus zero surviving mutations
-- [ ] T035 Audit `git diff --name-only origin/main...HEAD` and require no changed path under `vendor/codemem`, `.github/workflows`, the reference reducer, old-shape corpus, mutation script, or hash generator
-- [ ] T036 Run the installed `speckit.verify-tasks.run` extension exactly once in a fresh verification pass; fix every phantom completion before leaving tasks checked
-- [ ] T037 Run the correctness/security code-review gate on the full branch diff and adopt only source-verified findings; rerun affected focused/full tests
+- [X] T032 Run the focused gate, full `harness/continuity/*.test.ts`, and `vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json` as listed in `specs/005-continuity-p0-contract/quickstart.md`
+- [X] T033 Regenerate to temporary files and diff `harness/contract-hashes.json` plus `harness/fixtures/continuity/old-shape-parity.json`; both diffs must be empty
+- [X] T034 Run `bash harness/continuity/mutate.sh` and require executed count match plus zero surviving mutations
+- [X] T035 Audit `git diff --name-only origin/main...HEAD` and require no changed path under `vendor/codemem`, `.github/workflows`, the reference reducer, old-shape corpus, mutation script, or hash generator
+- [X] T036 Run the installed `speckit.verify-tasks.run` extension exactly once in a fresh verification pass; fix every phantom completion before leaving tasks checked
+- [X] T037 Run the correctness/security code-review gate on the full branch diff and adopt only source-verified findings; rerun affected focused/full tests
 - [ ] T038 Run Grok review plus Cubic and CodeRabbit local/PR review for this important schema/security change; resolve or explicitly reject every validated finding with evidence
 - [ ] T039 Run `ponytail-review` after correctness reviews, remove only duplicated schema/config/abstraction that is not required, and rerun affected gates
 - [ ] T040 Push `spec/005-continuity-p0-contract`, create a PR whose body says `Refs #132` and lists the 9 Continuity P0 issues without closing the umbrella, then record focused/full verification evidence

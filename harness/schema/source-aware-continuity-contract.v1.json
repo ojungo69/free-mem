@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
-  "contractHash": "8572f1bbf507533891050ca8ea52b7b872c77f83a3bd7277880e3178151922e5",
+  "contractHash": "7cff2de183666f29bada8be45e633891f51d92c1fa50d13dabef7eef608535a2",
   "schemaFile": "schema/continuity.schema.json",
-  "schemaHash": "c3457378aea66eeb938dd7d3afbb5ffa777bd20edb69f540a35ea35bb9657bec",
+  "schemaHash": "92bd39d6acd1ad8571ae040f8dd5f8850f6af3ada90366ad2352de9271906258",
   "artifactSchemas": [
     { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
     { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
@@ -11,10 +11,10 @@
   ],
   "sourceVocabularyVersion": "1",
   "inventoryFile": "schema/source-aware-source-inventory.v1.json",
-  "inventoryHash": "fe8213a4a1b39bc88cc5c648ba7ec815a1b58bfc58391bae253606aacbfff4c4",
+  "inventoryHash": "1d2642999fca4f4d35d1280011baa36f29825898121a48e392d106c341bb5dff",
   "fixtureCorpusFile": "fixtures/continuity/source-aware-f0-f7.v1.json",
   "fixtureCorpusVersion": 1,
-  "fixtureCorpusHash": "f597008e70edd209e22876c9b0ba9285181e0dc9d4066a48bcbb0dfa5719471b",
+  "fixtureCorpusHash": "3cca2ed478e1665b56b87f3870abc3b11657b9ab6d6bb8227e48bddde7c68890",
   "fixtureCaseIds": ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"],
   "opaqueIdProfile": {
     "schemaVersion": 1,
@@ -22,8 +22,80 @@
     "keyId": "source-aware-v1",
     "outputEncoding": "lowercase_hex_256"
   },
+  "canonicalStateHashProfile": {
+    "schemaVersion": 1,
+    "canonicalization": "rfc8785-jcs",
+    "digest": "sha-256",
+    "contentProjectionFields": ["schemaVersion", "subjectScope", "opaqueIdProfile", "lineageSourceSummary", "sharedTaskState", "agentLocalStates", "sensitivity"],
+    "stateRevisionDomain": "free-mem/CanonicalWorkStateV2/state-revision/v1",
+    "revisionMetadataFields": ["parentStateRevisions", "lineageRevisionOrdinal", "committedByDaemonId", "writerEpoch", "sourceSessionId", "committedAt"],
+    "testVector": {
+      "contentProjection": {
+        "schemaVersion": 2,
+        "subjectScope": {
+          "kind": "task_lineage",
+          "personalVaultId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "projectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "workspaceId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "taskLineageId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "opaqueIdProfile": {
+          "schemaVersion": 1,
+          "algorithm": "hmac-sha-256",
+          "keyId": "local-v1",
+          "outputEncoding": "lowercase_hex_256"
+        },
+        "lineageSourceSummary": {
+          "lineageOriginSourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "lastContributingSourceEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "participantSourceEventIds": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"]
+        },
+        "sharedTaskState": {
+          "sharingScope": "task_shared",
+          "sharingDecisionEventIds": ["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],
+          "constraints": [],
+          "activeFiles": [],
+          "modifiedFiles": [],
+          "recentCommands": [],
+          "recentTests": [],
+          "pendingOperations": [],
+          "droppedEvidence": {
+            "totalRecorded": "0",
+            "totalOverflowed": "0",
+            "reasonWindows": [
+              { "reason": "evicted", "totalRecorded": "0", "totalOverflowed": "0", "entries": [] },
+              { "reason": "orphaned_terminal", "totalRecorded": "0", "totalOverflowed": "0", "entries": [] }
+            ]
+          },
+          "repositoryState": {
+            "repositoryId": "1111111111111111111111111111111111111111111111111111111111111111",
+            "workspaceId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "capturedAt": "2026-08-24T00:00:00Z"
+          },
+          "sensitivity": "normal",
+          "egressPolicy": "eligible"
+        },
+        "agentLocalStates": [],
+        "sensitivity": "normal"
+      },
+      "contentHash": "2673ba267e81412b69f175d5b199d712f3c7f6035277a9fa00c8e9ee9f0e8edf",
+      "revisionMetadata": {
+        "parentStateRevisions": [],
+        "lineageRevisionOrdinal": "1",
+        "committedByDaemonId": "2222222222222222222222222222222222222222222222222222222222222222",
+        "writerEpoch": "1",
+        "sourceSessionId": "3333333333333333333333333333333333333333333333333333333333333333",
+        "committedAt": "2026-08-24T00:00:00Z"
+      },
+      "stateRevision": "2157dfa924ce2dd2355af5f6bb0f400fa551fe9d911c959fd4902b14fb859a26"
+    }
+  },
   "revisionHeadSelectionPolicy": {
     "orderingKey": "lineage_revision_ordinal",
+    "headCardinality": "exactly_one",
+    "ordinalUniqueness": "required",
+    "automaticTarget": "ordered_head_only",
+    "eligibilityDerivation": "workspace_checkpoint_lineage",
     "automaticFallback": "never",
     "ineligibleDisposition": "manual",
     "corruptDisposition": "quarantine"
@@ -40,97 +112,148 @@
     "externalEgress": "prohibited",
     "postTransaction": "zeroize"
   },
+  "stateNeutralTransitionPolicy": {
+    "schemaVersion": 1,
+    "classifications": ["state_changed", "ledger_only", "duplicate_noop", "rejected_or_quarantined"],
+    "stateNeutralClassification": "ledger_only",
+    "canonicalStateEffect": "reuse_revision",
+    "receiptLedgerEffect": "insert_once",
+    "diagnosticAuditEffect": "record_bounded",
+    "coverageWatermarkEffect": "advance",
+    "transactionBoundary": "same_daemon_transaction"
+  },
+  "sharingDecisionPolicy": {
+    "schemaVersion": 1,
+    "authority": "explicit_user",
+    "scopeMatch": "exact",
+    "targetMatch": "exact",
+    "invalidDisposition": "reject",
+    "referenceOrder": "sorted_unique"
+  },
   "continuityP0Observations": {
     "schemaVersion": 1,
     "entries": [
       {
         "caseId": "P0-46-no-op-state",
         "issueNumber": 46,
-        "input": { "event": "state-neutral terminal", "repeat": 100 },
+        "input": {
+          "fixtureVersion": 1,
+          "initialState": { "operationId": "op-closed", "operationStatus": "succeeded", "stateRevision": "revision-0", "historyLength": 1, "updatedAt": "2026-08-24T00:00:00Z", "acceptedEventCount": 0, "consumedDeliveryKeyCount": 0, "diagnosticCount": 0, "ingestWatermark": "10" },
+          "event": { "kind": "operation_terminal", "outcomeClaim": "none", "operationId": "op-closed", "deliveryIdPattern": "delivery-{index}", "repeat": 10000 },
+          "expectedAudit": { "acceptedEventCountDelta": 10000, "consumedDeliveryKeyCountDelta": 10000, "diagnosticCoverageCountDelta": 10000, "ingestWatermark": "10010" }
+        },
         "observationKind": "state_transition",
         "downstreamStage": "S1",
         "behaviorDeltas": [
-          { "jsonPathOrField": "/revision/stateRevision,/history,/updatedAt", "currentV1": "changes", "successor": "unchanged", "deltaKind": "no_op_state_stable" }
+          { "jsonPathOrField": "currentV1:/stateRevision,/history,/updatedAt;successor:/revision/stateRevision,StateNeutralTransitionPolicyV1.canonicalStateEffect", "currentV1": "changes", "successor": { "classification": "ledger_only", "canonicalStateEffect": "reuse_revision", "stateRevisionDelta": 0 }, "deltaKind": "no_op_state_stable" },
+          { "jsonPathOrField": "StateNeutralTransitionPolicyV1.receiptLedgerEffect,diagnosticAuditEffect,coverageWatermarkEffect,transactionBoundary", "currentV1": "not_separate_from_state_revision", "successor": { "receiptLedgerEffect": "insert_once", "diagnosticAuditEffect": "record_bounded", "coverageWatermarkEffect": "advance", "transactionBoundary": "same_daemon_transaction" }, "deltaKind": "no_op_state_stable" }
         ]
       },
       {
         "caseId": "P0-49-published-immutability",
         "issueNumber": 49,
-        "input": { "operation": "mutate nested node after publication" },
+        "input": {
+          "fixtureVersion": 1,
+          "publishedState": { "schemaVersion": 2, "stateRevision": "revision-published", "contentHash": "hash-before", "nestedPath": "/sharedTaskState/pendingOperations/0/status", "nestedValue": "started" },
+          "consumerMutation": { "operation": "assign", "path": "/sharedTaskState/pendingOperations/0/status", "value": "succeeded" },
+          "expected": { "operationResult": "throws", "canonicalBytesEqual": true, "contentHash": "hash-before" }
+        },
         "observationKind": "canonical_bytes",
         "downstreamStage": "S1",
         "behaviorDeltas": [
-          { "jsonPathOrField": "canonicalBytes/contentHash", "currentV1": "can_change", "successor": "mutation_rejected_and_hash_stable", "deltaKind": "published_bytes_immutable" }
+          { "jsonPathOrField": "/sharedTaskState/pendingOperations/0/status,canonicalBytes,/revision/contentHash", "currentV1": "nested_alias_can_change_published_bytes", "successor": { "mutationResult": "throws", "canonicalBytesEqual": true, "contentHashEqual": true }, "deltaKind": "published_bytes_immutable" }
         ]
       },
       {
         "caseId": "P0-53-lineage-head",
         "issueNumber": 53,
-        "input": { "sessions": 2, "callerTimesReversed": true, "hashOrderReversed": true },
+        "input": {
+          "fixtureVersion": 1,
+          "lineageId": "lineage-a",
+          "revisions": [
+            { "stateRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "sessionId": "session-a", "lineageRevisionOrdinal": "1", "callerOccurredAt": "2026-08-24T00:00:02Z" },
+            { "stateRevision": "0000000000000000000000000000000000000000000000000000000000000000", "sessionId": "session-b", "lineageRevisionOrdinal": "2", "callerOccurredAt": "2026-08-24T00:00:01Z" }
+          ],
+          "permutations": ["caller_time_reversed", "session_sequence_reversed", "hash_lexical_order_reversed"],
+          "expectedOrderedHeadStateRevision": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
         "observationKind": "head_selection",
         "downstreamStage": "S1",
         "behaviorDeltas": [
-          { "jsonPathOrField": "/revision/lineageRevisionOrdinal", "currentV1": "no_authoritative_global_order", "successor": "daemon_owned_ordered_head", "deltaKind": "daemon_ordered_head" }
+          { "jsonPathOrField": "/revision/lineageRevisionOrdinal,RevisionHeadSelectionContractV1.orderedHeadStateRevision", "currentV1": "no_authoritative_global_order", "successor": { "orderingKey": "lineage_revision_ordinal", "orderedHeadOrdinal": "2", "automaticTarget": "ordered_head_only" }, "deltaKind": "daemon_ordered_head" }
         ]
       },
       {
         "caseId": "P0-61-overflow-summary",
         "issueNumber": 61,
-        "input": { "reasonFlood": "evicted", "count": 2560 },
+        "input": {
+          "fixtureVersion": 1,
+          "windowLimitPerReason": 256,
+          "initial": { "evicted": { "totalRecorded": "0", "totalOverflowed": "0" }, "orphaned_terminal": { "totalRecorded": "1", "totalOverflowed": "0", "oldestRetainedLineageRevisionOrdinal": "7", "latestRecordedLineageRevisionOrdinal": "7" } },
+          "flood": { "reason": "evicted", "count": "2560", "firstOrdinal": "8", "lastOrdinal": "2567" },
+          "expected": { "reasonOrder": ["evicted", "orphaned_terminal"], "evictedTotalRecorded": "2560", "evictedTotalOverflowed": "2304", "orphanedTerminalTotalRecorded": "1", "orphanedTerminalTotalOverflowed": "0" }
+        },
         "observationKind": "overflow_summary",
         "downstreamStage": "S1",
         "behaviorDeltas": [
-          { "jsonPathOrField": "/sharedTaskState/droppedEvidence", "currentV1": "overflow_only_in_diagnostic", "successor": "reason_counts_and_boundaries_in_state", "deltaKind": "overflow_summary_visible" }
+          { "jsonPathOrField": "/sharedTaskState/droppedEvidence/reasonWindows", "currentV1": "one_shared_fifo_can_erase_other_reason", "successor": { "exactReasons": ["evicted", "orphaned_terminal"], "independentLimit": 256, "countsAndBoundariesPersist": true }, "deltaKind": "overflow_summary_visible" }
         ]
       },
       {
         "caseId": "P0-62-opaque-identifiers",
         "issueNumber": 62,
-        "input": { "identifierContains": "token/path/prompt fragment" },
+        "input": {
+          "fixtureVersion": 1,
+          "rawIdentifier": "token=abc123:/home/user/private-path:prompt-fragment",
+          "identifierKind": "operation_id",
+          "successorSurfaces": ["CanonicalWorkStateV2", "ContinuationCheckpointV3", "ResumeCapsuleV2", "CanonicalMemoryEntityV1", "ContinuityDiagnostic", "export", "sync"],
+          "opaqueProfile": { "algorithm": "hmac-sha-256", "domain": "operation_id", "outputEncoding": "lowercase_hex_256" },
+          "expectedRawOccurrences": 0
+        },
         "observationKind": "identifier_privacy",
         "downstreamStage": "S1",
         "behaviorDeltas": [
-          { "jsonPathOrField": "successor exported identifier fields", "currentV1": "raw_value_may_remain", "successor": "raw_value_absent", "deltaKind": "raw_identifier_absent" }
+          { "jsonPathOrField": "all successor identifier, diagnostic, export, and sync fields", "currentV1": "raw_value_may_remain", "successor": { "rawOccurrences": 0, "correlationForm": "domain_separated_opaque_id" }, "deltaKind": "raw_identifier_absent" }
         ]
       },
       {
         "caseId": "P0-56-invalid-scope",
         "issueNumber": 56,
-        "input": { "taskLineageId": "   " },
+        "input": { "fixtureVersion": 1, "artifactSchema": "CanonicalWorkStateV1", "schemaValid": true, "artifact": { "taskLineageId": "   ", "projectId": "project-a", "workspaceId": "workspace-a", "repositoryWorkspaceId": "workspace-b" }, "restoreBoundary": "after_schema_before_reducer", "expectedOriginalBytesRetained": true },
         "observationKind": "restore_validation",
         "downstreamStage": "S3",
         "behaviorDeltas": [
-          { "jsonPathOrField": "/taskLineageId", "currentV1": "late_throw_or_wedge", "successor": "quarantine_before_reducer", "deltaKind": "invalid_scope_quarantined" }
+          { "jsonPathOrField": "/taskLineageId,/workspaceId,/repositoryState/workspaceId", "currentV1": "late_throw_or_wedge", "successor": { "disposition": "quarantine", "reducerCalls": 0, "originalBytesRetained": true, "repairAuthorities": ["user"] }, "deltaKind": "invalid_scope_quarantined" }
         ]
       },
       {
         "caseId": "P0-57-invalid-timestamp",
         "issueNumber": 57,
-        "input": { "startedAt": "2026-02-30T00:00:00Z" },
+        "input": { "fixtureVersion": 1, "artifactSchema": "CanonicalWorkStateV1", "schemaValid": true, "timestampProfile": "iso-z-nanos-v1-calendar-valid", "path": "/pendingOperations/0/startedAt", "value": "2026-02-30T00:00:00Z", "restoreBoundary": "after_schema_before_reducer" },
         "observationKind": "restore_validation",
         "downstreamStage": "S3",
         "behaviorDeltas": [
-          { "jsonPathOrField": "/pendingOperations/*/startedAt", "currentV1": "regex_shape_accepted", "successor": "quarantine_before_reducer", "deltaKind": "invalid_timestamp_quarantined" }
+          { "jsonPathOrField": "/pendingOperations/*/startedAt", "currentV1": "regex_shape_accepted", "successor": { "disposition": "quarantine", "reducerCalls": 0, "calendarValidation": "reject" }, "deltaKind": "invalid_timestamp_quarantined" }
         ]
       },
       {
         "caseId": "P0-32-limit-policies",
         "issueNumber": 32,
-        "input": { "limitCases": 12, "atBoundaryAndOverflow": true },
+        "input": { "fixtureVersion": 1, "policySource": "/limitPolicies", "limitNames": ["hintTokens", "fullCapsuleTokens", "promptMemoryTokens", "combinedTokens", "absoluteTokens", "capsulePayloadBytes", "wrapperBytes", "jsonDepth", "stringUtf8Bytes", "arrayItems", "objectKeys", "rankedCandidates"], "deliveryPaths": ["hint", "full_capsule", "prompt_memory", "combined_wrapper"], "generatedCasesPerLimitAndPath": ["at_limit", "limit_plus_one"], "expectedCapacityDisposition": "reject", "expectedSelectionDisposition": "select_with_diagnostic" },
         "observationKind": "limit_policy",
         "downstreamStage": "S3",
         "behaviorDeltas": [
-          { "jsonPathOrField": "all delivery limit surfaces", "currentV1": "8_policies_unenforced", "successor": "11_reject_and_1_select_with_diagnostic", "deltaKind": "limit_policy_enforced" }
+          { "jsonPathOrField": "hint,full_capsule,prompt_memory,combined_wrapper limit gates", "currentV1": "8_policies_unenforced", "successor": { "policyCount": 12, "capacityPolicies": 11, "selectionPolicies": 1, "allPathsAgree": true }, "deltaKind": "limit_policy_enforced" }
         ]
       },
       {
         "caseId": "P0-58-terminal-sibling",
         "issueNumber": 58,
-        "input": { "compatibleSibling": true, "conflictingSibling": true },
+        "input": { "fixtureVersion": 1, "pendingOperations": [ { "operationId": "op-compatible", "sessionId": "session-a", "taskLineageId": "lineage-a", "turnId": "turn-a", "operationMatchKey": "match-a", "canonicalInputHash": "hash-a", "status": "started" }, { "operationId": "op-conflict", "sessionId": "session-a", "taskLineageId": "lineage-a", "turnId": "turn-a", "operationMatchKey": "match-a", "canonicalInputHash": "hash-b", "status": "started" } ], "terminalEvent": { "sessionId": "session-a", "taskLineageId": "lineage-a", "turnId": "turn-a", "operationMatchKey": "match-a", "canonicalInputHash": "hash-a", "status": "succeeded" }, "expectedAppliedOperationId": "op-compatible", "expectedSkippedOperationId": "op-conflict" },
         "observationKind": "diagnostic",
         "downstreamStage": "S2",
         "behaviorDeltas": [
-          { "jsonPathOrField": "ContinuityDiagnosticCodeV2", "currentV1": "conflicting_sibling_silent", "successor": "terminal_sibling_conflict", "deltaKind": "terminal_sibling_diagnostic" }
+          { "jsonPathOrField": "/diagnostics/*,/pendingOperations/op-conflict/status", "currentV1": "conflicting_sibling_silent", "successor": { "diagnosticCode": "terminal_sibling_conflict", "operationId": "op-conflict", "silentStartedCount": 0 }, "deltaKind": "terminal_sibling_diagnostic" }
         ]
       }
     ]
@@ -140,7 +263,7 @@
       "artifact": "CanonicalWorkStateV1",
       "verifiedDisposition": "migrate",
       "unresolvedDisposition": "quarantine",
-      "evidencePreconditions": ["all sourceEventIds resolve to one authenticated source", "subject scope is unique", "lineage ordinal can be reconstructed", "raw identifiers can be opaque-mapped"]
+      "evidencePreconditions": ["all sourceEventIds resolve to one authenticated source", "subject scope is unique", "lineage ordinal can be reconstructed", "raw identifiers can be opaque-mapped", "explicit authenticated sharing authority exists for every shared projection"]
     },
     {
       "artifact": "ContinuationCheckpointV2",
@@ -327,6 +450,51 @@
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-canonical-work-state-v2",
+        "scopeIdentityPaths": ["/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/revision/committedByDaemonId", "/revision/sourceSessionId", "/lineageSourceSummary/lineageOriginSourceEventId", "/lineageSourceSummary/lastContributingSourceEventId", "/lineageSourceSummary/participantSourceEventIds/*", "/agentLocalStates/*/sourceIdentityEventId", "/sharedTaskState/sharingDecisionEventIds/*", "/sharedTaskState/repositoryState/repositoryId", "/sharedTaskState/repositoryState/workspaceId", "/sharedTaskState/repositoryState/branchKey", "/sharedTaskState/repositoryState/worktreeId", "/sharedTaskState/pendingOperations/*/operationId", "/sharedTaskState/pendingOperations/*/correlation/sessionId", "/sharedTaskState/pendingOperations/*/correlation/taskLineageId"],
+        "isoTimestampPaths": ["/revision/committedAt", "/sharedTaskState/goal/observedAt", "/sharedTaskState/constraints/*/observedAt", "/sharedTaskState/activeFiles/*/observedAt", "/sharedTaskState/modifiedFiles/*/observedAt", "/sharedTaskState/recentCommands/*/observedAt", "/sharedTaskState/recentTests/*/observedAt", "/sharedTaskState/pendingOperations/*/startedAt", "/sharedTaskState/pendingOperations/*/terminalAt", "/sharedTaskState/repositoryState/capturedAt", "/agentLocalStates/*/latestSubstantivePrompt/observedAt", "/agentLocalStates/*/lastAssistantConclusion/observedAt", "/agentLocalStates/*/nativeTodoState/observedAt", "/agentLocalStates/*/nativePlanState/observedAt", "/agentLocalStates/*/hostMetadata/observedAt"],
+        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "state_and_repository_workspace_match", "pending_operation_scope_matches_state", "lineage_refs_resolve_to_authenticated_sources", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "agent_local_lanes_are_unique_and_authenticated", "dropped_evidence_has_exact_reason_windows", "content_and_state_revision_match_CanonicalStateHashProfileV1"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-checkpoint-v3",
+        "scopeIdentityPaths": ["/id", "/parentCheckpointId", "/sourceSessionId", "/checkpointCreatedBySourceEventId", "/canonicalState/subjectScope/personalVaultId", "/canonicalState/subjectScope/projectId", "/canonicalState/subjectScope/workspaceId", "/canonicalState/subjectScope/branchKey", "/canonicalState/subjectScope/taskLineageId"],
+        "isoTimestampPaths": ["/createdAt", "/expiresAt", "/canonicalState/revision/committedAt", "/canonicalState/sharedTaskState/repositoryState/capturedAt"],
+        "crossFieldRules": ["embedded_state_passes_persisted-canonical-work-state-v2", "checkpoint_creator_resolves_to_authenticated_source", "checkpoint_source_session_matches_state_revision", "checkpoint_hash_and_revision_match_canonical_state"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-resume-capsule-v2",
+        "scopeIdentityPaths": ["/injectionId", "/checkpointId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/checkpointCreatedBySourceEventId", "/destination/sessionId", "/sharedTaskState/sharingDecisionEventIds/*", "/destinationAgentLocalState/sourceIdentityEventId", "/selectedMemoryIds/*"],
+        "isoTimestampPaths": ["/sharedTaskState/goal/observedAt", "/sharedTaskState/constraints/*/observedAt", "/sharedTaskState/activeFiles/*/observedAt", "/sharedTaskState/modifiedFiles/*/observedAt", "/sharedTaskState/recentCommands/*/observedAt", "/sharedTaskState/recentTests/*/observedAt", "/sharedTaskState/pendingOperations/*/startedAt", "/sharedTaskState/pendingOperations/*/terminalAt", "/sharedTaskState/repositoryState/capturedAt", "/destinationAgentLocalState/latestSubstantivePrompt/observedAt", "/destinationAgentLocalState/lastAssistantConclusion/observedAt", "/destinationAgentLocalState/nativeTodoState/observedAt", "/destinationAgentLocalState/nativePlanState/observedAt", "/destinationAgentLocalState/hostMetadata/observedAt"],
+        "crossFieldRules": ["capsule_subject_matches_shared_projection", "sharing_decision_refs_are_sorted_unique", "shared_state_decisions_match_authenticated_authority_scope_and_target", "destination_agent_local_state_client_matches_destination_client", "destination_agent_local_state_source_event_resolves_to_destination_client", "cross_agent_capsule_excludes_non_destination_local_lanes", "private_requires_authenticated_opt_in_and_privateEligible", "secret_local_only_and_prohibited_egress_are_not_serialized", "destination_capability_downgrade_is_explicit"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-canonical-memory-entity-v1",
+        "scopeIdentityPaths": ["/memoryId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/subjectScope/sessionId", "/subjectScope/turnId", "/sharingDecisionEventIds/*", "/sourceEventIds/*", "/evidenceSnapshotIds/*"],
+        "isoTimestampPaths": ["/validFrom", "/validTo", "/expiresAt", "/createdAt", "/updatedAt"],
+        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "canonicalFactId_matches_exact_identity_preimage", "contentHash_and_memoryRevision_match_canonical_bytes", "sharing_decision_refs_are_sorted_unique", "shared_scope_decisions_match_authenticated_authority_scope_and_target", "private_sharing_requires_explicit_opt_in", "validity_interval_and_audit_timestamps_are_monotone"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-sharing-decision-v1",
+        "scopeIdentityPaths": ["/decisionEventId", "/authoritySourceEventId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/subjectScope/sessionId", "/subjectScope/turnId", "/target/taskLineageId", "/target/canonicalFactId"],
+        "isoTimestampPaths": ["/decidedAt"],
+        "crossFieldRules": ["authority_source_event_resolves_to_explicit_user", "decision_is_grant", "subject_scope_parent_chain_is_consistent", "sharing_scope_matches_target_scope", "target_matches_exact_projection_or_canonical_fact"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
       }
     ]
   },
@@ -371,6 +539,7 @@
     "agent_private",
     "private_not_eligible",
     "secret",
+    "local_only",
     "prohibited_egress",
     "scope_mismatch",
     "destination_capability_unsupported",
