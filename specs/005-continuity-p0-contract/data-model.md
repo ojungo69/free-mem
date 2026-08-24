@@ -21,7 +21,7 @@ remain independent.
 
 | Name | Contract |
 |---|---|
-| `DecimalString` | `^(0|[1-9][0-9]*)$`; no JavaScript number conversion |
+| `DecimalString` | `^(0\|[1-9][0-9]*)$`; no JavaScript number conversion |
 | `Sha256Hex` | exactly 64 lowercase hexadecimal characters |
 | `OpaqueIdV1` | exactly 64 lowercase hexadecimal characters issued by the daemon profile below |
 | `CanonicalClientIdV1` | `claude-code` or `codex-cli` |

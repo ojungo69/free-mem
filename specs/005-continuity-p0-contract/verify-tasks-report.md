@@ -260,6 +260,7 @@ All review output was treated as a proposal and checked against source/tests.
 | Correctness latest — private Agent-private selected memory lacked consent authority | Accepted | `SharingDecisionV1` intentionally grants only task/project/personal scopes, so private Agent-private memory remains daemon-local and is rejected from capsules even for an eligible same-agent destination. |
 | Cubic latest — privateConsent required without a version bump | Rejected | `SharingDecisionV1` is introduced for the first time by this unmerged S0 PR; no persisted V1 decision exists to migrate. The field is being frozen before the first merge, while actual legacy artifacts retain their separate dispositions. |
 | Cubic latest final rerun | Tool timeout | The post-fix local review was interrupted at the five-minute limit with an empty `issues` array and `Review interrupted`; no clean verdict is claimed. Its preceding concrete branch finding was fixed and independently re-reviewed clean. |
+| CodeRabbit latest — DecimalString regex broke its Markdown table | Accepted | Escaped the regex alternation pipe inside the table cell without changing the normative expression; `git diff --check` remains clean. Local `markdownlint-cli2` was unavailable, so the current PR lint/check is the remote verifier. |
 
 The four-finding TDD red pass failed exactly on four unused readonly `@ts-expect-error` directives, missing `privateConsent`
 schema fields, and three missing restore rules. The two subsequent review fixes also have isolated red evidence: restoring the
