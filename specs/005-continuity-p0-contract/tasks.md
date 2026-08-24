@@ -87,11 +87,11 @@ F6 uses authenticated source rather than caller claim, and raw IDs are never per
 inventory-derived persisted restore target; unresolved state/checkpoint/capsule never auto-migrates, unresolved memory never
 enters automatic cross-agent delivery, and blank/invalid timestamp artifacts quarantine before use.
 
-- [ ] T022 [US2] Add failing exact-set assertions for the four legacy migration rules and every inventory entry marked persisted plus `restoreValidationRequired`; add negative mutations that add an unruled persisted artifact, remove an identity/timestamp path, accept blank scope, or allow unaudited daemon/model repair in `harness/continuity/source-aware-contract.test.ts`
-- [ ] T023 [US2] Run the focused test and verify it fails on incomplete migration/restore validation rules rather than unrelated fixture validation
-- [ ] T024 [US2] Add exact verified/unresolved migration rules plus inventory-referenced `RestoreSemanticValidationContractV1` scope-identity, ISO timestamp, cross-field, quarantine, user-authority, and audit rules to `harness/schema/source-aware-continuity-contract.v1.json`, with matching types/schema in `harness/schema/continuity.ts` and `harness/schema/continuity.schema.json`
-- [ ] T025 [US2] Run focused/schema/type tests to green; confirm `ResumeCapsuleV1` is always legacy-read-only when verified, invalid artifacts quarantine before reducer/selector use, and repair/rebind/discard is user-authorized plus audited
-- [ ] T026 [US2] Commit the US2 migration-contract slice with sign-off: `git commit -s -m "feat(contract): freeze legacy dispositions"`
+- [X] T022 [US2] Add failing exact-set assertions for the four legacy migration rules and every inventory entry marked persisted plus `restoreValidationRequired`; add negative mutations that add an unruled persisted artifact, remove an identity/timestamp path, accept blank scope, or allow unaudited daemon/model repair in `harness/continuity/source-aware-contract.test.ts`
+- [X] T023 [US2] Run the focused test and verify it fails on incomplete migration/restore validation rules rather than unrelated fixture validation
+- [X] T024 [US2] Add exact verified/unresolved migration rules plus inventory-referenced `RestoreSemanticValidationContractV1` scope-identity, ISO timestamp, cross-field, quarantine, user-authority, and audit rules to `harness/schema/source-aware-continuity-contract.v1.json`, with matching types/schema in `harness/schema/continuity.ts` and `harness/schema/continuity.schema.json`
+- [X] T025 [US2] Run focused/schema/type tests to green; confirm `ResumeCapsuleV1` is always legacy-read-only when verified, invalid artifacts quarantine before reducer/selector use, and repair/rebind/discard is user-authorized plus audited
+- [X] T026 [US2] Commit the US2 migration-contract slice with sign-off: `git commit -s -m "feat(contract): freeze legacy dispositions"`
 
 **Checkpoint**: Every old artifact has one fail-closed disposition and no runtime migration exists in the diff.
 

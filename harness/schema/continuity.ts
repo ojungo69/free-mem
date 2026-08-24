@@ -1259,6 +1259,8 @@ export interface RestoreArtifactValidationRuleV1 {
 
 export interface RestoreSemanticValidationContractV1 {
   readonly schemaVersion: 1;
+  readonly scopeIdentityPolicy: "non_blank_and_parent_consistent";
+  readonly timestampProfile: "iso-z-nanos-v1-calendar-valid";
   readonly rules: readonly RestoreArtifactValidationRuleV1[];
 }
 

@@ -3721,9 +3721,11 @@
     "RestoreSemanticValidationContractV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "rules"],
+      "required": ["schemaVersion", "scopeIdentityPolicy", "timestampProfile", "rules"],
       "properties": {
         "schemaVersion": { "const": 1 },
+        "scopeIdentityPolicy": { "const": "non_blank_and_parent_consistent" },
+        "timestampProfile": { "const": "iso-z-nanos-v1-calendar-valid" },
         "rules": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/RestoreArtifactValidationRuleV1" } }
       }
     },

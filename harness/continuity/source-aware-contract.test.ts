@@ -655,3 +655,161 @@ test("source-aware negative self-mutations are rejected", () => {
   (rawExport.rawIdentifierEvidencePolicy as { rawExport: string }).rawExport = "allowed";
   assert.ok(contractSemanticIssues(rawExport).length > 0);
 });
+
+const EXPECTED_LEGACY_RULES = [
+  {
+    artifact: "CanonicalWorkStateV1",
+    verifiedDisposition: "migrate",
+    unresolvedDisposition: "quarantine",
+  },
+  {
+    artifact: "ContinuationCheckpointV2",
+    verifiedDisposition: "migrate",
+    unresolvedDisposition: "quarantine",
+  },
+  {
+    artifact: "ResumeCapsuleV1",
+    verifiedDisposition: "legacy_read_only",
+    unresolvedDisposition: "quarantine",
+  },
+  {
+    artifact: "DurableMemory",
+    verifiedDisposition: "migrate",
+    unresolvedDisposition: "legacy_read_only",
+  },
+] as const;
+const TIMESTAMP_REQUIRED_RESTORE_IDS = new Set([
+  "persisted-session-task-binding",
+  "persisted-task-boundary-proposal",
+  "persisted-canonical-work-state-v1",
+  "persisted-checkpoint-v2",
+  "persisted-checkpoint-disposition-event",
+  "persisted-checkpoint-disposition-projection",
+  "persisted-engagement-evidence",
+  "persisted-contradiction-evidence",
+  "persisted-contradiction-scan-range",
+  "persisted-engagement-evaluation-context",
+  "persisted-checkpoint-delivery-attempt",
+  "persisted-resume-suppression",
+  "persisted-derived-invalidation-event",
+  "persisted-resume-capsule-v1",
+  "persisted-durable-memory",
+]);
+
+function restoreSemanticIssues(
+  inventory: contract.SourceIdentityInventoryV1,
+  value: contract.RestoreSemanticValidationContractV1,
+): string[] {
+  const issues: string[] = [];
+  if (value.scopeIdentityPolicy !== "non_blank_and_parent_consistent") issues.push("blank/inconsistent scope allowed");
+  if (value.timestampProfile !== "iso-z-nanos-v1-calendar-valid") issues.push("timestamp profile changed");
+  const expected = inventory.entries
+    .filter(({ surfaceClass, restoreValidationRequired }) => surfaceClass === "persisted" && restoreValidationRequired)
+    .map(({ id }) => id)
+    .sort();
+  const actual = value.rules.map(({ inventoryEntryId }) => inventoryEntryId).sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) issues.push("restore rules do not close over inventory");
+  if (new Set(actual).size !== actual.length) issues.push("restore rules are duplicated");
+  for (const rule of value.rules) {
+    if (rule.scopeIdentityPaths.length + rule.isoTimestampPaths.length === 0) {
+      issues.push(`${rule.inventoryEntryId}: no semantic paths`);
+    }
+    if (TIMESTAMP_REQUIRED_RESTORE_IDS.has(rule.inventoryEntryId) && rule.isoTimestampPaths.length === 0) {
+      issues.push(`${rule.inventoryEntryId}: timestamp coverage missing`);
+    }
+    if (rule.invalidDisposition !== "quarantine") issues.push(`${rule.inventoryEntryId}: invalid artifact not quarantined`);
+    if (rule.repairAuthorities.join() !== "user") issues.push(`${rule.inventoryEntryId}: repair authority is not user-only`);
+    if (!rule.auditRequired) issues.push(`${rule.inventoryEntryId}: repair is not audited`);
+  }
+  return issues;
+}
+
+test("US2 legacy migration and restore semantic rules are exact and fail closed", () => {
+  const inventory = loadRequiredJson<contract.SourceIdentityInventoryV1>(INVENTORY_URL, "source inventory");
+  const manifest = loadRequiredJson<contract.SourceAwareContinuityContractV1>(CONTRACT_URL, "contract manifest");
+  assert.deepEqual(
+    manifest.legacyMigrationRules.map(({ evidencePreconditions: _ignored, ...rule }) => rule),
+    EXPECTED_LEGACY_RULES,
+  );
+  for (const rule of manifest.legacyMigrationRules) assert.ok(rule.evidencePreconditions.length > 0, rule.artifact);
+  assert.deepEqual(restoreSemanticIssues(inventory, manifest.restoreSemanticValidation), []);
+
+  const byIssue = new Map(manifest.continuityP0Observations.entries.map((entry) => [entry.issueNumber, entry]));
+  assert.equal(byIssue.get(56)?.behaviorDeltas[0]?.successor, "quarantine_before_reducer");
+  assert.equal(byIssue.get(57)?.behaviorDeltas[0]?.successor, "quarantine_before_reducer");
+
+  const missingRule = structuredClone(manifest.restoreSemanticValidation) as unknown as {
+    schemaVersion: 1;
+    rules: contract.RestoreArtifactValidationRuleV1[];
+  };
+  missingRule.rules.pop();
+  assert.ok(
+    restoreSemanticIssues(
+      inventory,
+      missingRule as unknown as contract.RestoreSemanticValidationContractV1,
+    ).length > 0,
+  );
+
+  const unruledInventory = structuredClone(inventory) as unknown as {
+    inventoryVersion: 1;
+    baselineCommit: string;
+    searches: contract.SourceInventorySearchV1[];
+    entries: contract.SourceInventoryEntryV1[];
+  };
+  unruledInventory.entries.push({
+    id: "persisted-new-artifact",
+    locus: "fixture:new",
+    semanticTerm: "new",
+    currentMeaning: "new persisted artifact",
+    authority: "derived",
+    surfaceClass: "persisted",
+    disposition: "retain",
+    successorTarget: "new",
+    migrationCondition: "valid",
+    restoreValidationRequired: true,
+    schemaDefinition: "NewArtifactV1",
+    notes: "mutation",
+  });
+  assert.ok(
+    restoreSemanticIssues(
+      unruledInventory as contract.SourceIdentityInventoryV1,
+      manifest.restoreSemanticValidation,
+    ).length > 0,
+  );
+
+  const missingTimestamp = structuredClone(manifest.restoreSemanticValidation) as unknown as {
+    schemaVersion: 1;
+    scopeIdentityPolicy: "non_blank_and_parent_consistent";
+    timestampProfile: "iso-z-nanos-v1-calendar-valid";
+    rules: contract.RestoreArtifactValidationRuleV1[];
+  };
+  const proposalRule = missingTimestamp.rules.find(
+    ({ inventoryEntryId }) => inventoryEntryId === "persisted-task-boundary-proposal",
+  );
+  assert.ok(proposalRule);
+  (proposalRule.isoTimestampPaths as string[]).pop();
+  assert.ok(restoreSemanticIssues(inventory, missingTimestamp).length > 0);
+
+  const blankScope = structuredClone(manifest.restoreSemanticValidation) as unknown as {
+    scopeIdentityPolicy: string;
+  };
+  blankScope.scopeIdentityPolicy = "allow_blank";
+  assert.ok(
+    restoreSemanticIssues(
+      inventory,
+      blankScope as unknown as contract.RestoreSemanticValidationContractV1,
+    ).length > 0,
+  );
+
+  const unauditedRepair = structuredClone(manifest.restoreSemanticValidation) as unknown as {
+    schemaVersion: 1;
+    scopeIdentityPolicy: "non_blank_and_parent_consistent";
+    timestampProfile: "iso-z-nanos-v1-calendar-valid";
+    rules: contract.RestoreArtifactValidationRuleV1[];
+  };
+  const firstRule = unauditedRepair.rules[0];
+  assert.ok(firstRule);
+  (firstRule.repairAuthorities as unknown as string[])[0] = "daemon";
+  (firstRule as unknown as { auditRequired: boolean }).auditRequired = false;
+  assert.ok(restoreSemanticIssues(inventory, unauditedRepair).length > 0);
+});

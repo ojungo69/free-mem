@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
-  "contractHash": "61e558a0eb5505a6b3d7f33e706f88a75d209ae906700efb605d5b584281609c",
+  "contractHash": "fad4c2ba5353b92f1ecf9a847a4bc01a869fe39f5be5184f51878ee2048fb6af",
   "schemaFile": "schema/continuity.schema.json",
-  "schemaHash": "d9556971414444aa49a0f3a870dbf907d8fd0246c101629bfd3c701b960c3708",
+  "schemaHash": "c3457378aea66eeb938dd7d3afbb5ffa777bd20edb69f540a35ea35bb9657bec",
   "artifactSchemas": [
     { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
     { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
@@ -135,8 +135,201 @@
       }
     ]
   },
-  "legacyMigrationRules": [],
-  "restoreSemanticValidation": { "schemaVersion": 1, "rules": [] },
+  "legacyMigrationRules": [
+    {
+      "artifact": "CanonicalWorkStateV1",
+      "verifiedDisposition": "migrate",
+      "unresolvedDisposition": "quarantine",
+      "evidencePreconditions": ["all sourceEventIds resolve to one authenticated source", "subject scope is unique", "lineage ordinal can be reconstructed", "raw identifiers can be opaque-mapped"]
+    },
+    {
+      "artifact": "ContinuationCheckpointV2",
+      "verifiedDisposition": "migrate",
+      "unresolvedDisposition": "quarantine",
+      "evidencePreconditions": ["embedded state is migratable", "checkpoint creator event/session is unique", "top-level and embedded scope agree", "hash/revision chain agrees"]
+    },
+    {
+      "artifact": "ResumeCapsuleV1",
+      "verifiedDisposition": "legacy_read_only",
+      "unresolvedDisposition": "quarantine",
+      "evidencePreconditions": ["owned wrapper/hash/schema validates", "same-agent manual or hint-only profile", "automatic full and cross-agent delivery disabled"]
+    },
+    {
+      "artifact": "DurableMemory",
+      "verifiedDisposition": "migrate",
+      "unresolvedDisposition": "legacy_read_only",
+      "evidencePreconditions": ["authenticated source evidence is unique", "subject scope is unique", "sharing authority is explicit", "normalization profile is known"]
+    }
+  ],
+  "restoreSemanticValidation": {
+    "schemaVersion": 1,
+    "scopeIdentityPolicy": "non_blank_and_parent_consistent",
+    "timestampProfile": "iso-z-nanos-v1-calendar-valid",
+    "rules": [
+      {
+        "inventoryEntryId": "persisted-session-task-binding",
+        "scopeIdentityPaths": ["/sessionId", "/taskLineageId", "/boundaryEvidence/sourceEventIds/*"],
+        "isoTimestampPaths": ["/boundAt", "/unboundAt", "/boundaryEvidence/proposedAt"],
+        "crossFieldRules": ["boundAt_lte_unboundAt", "boundary_evidence_matches_binding_scope"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-task-boundary-proposal",
+        "scopeIdentityPaths": ["/proposalId", "/sessionId", "/currentTaskLineageId", "/proposedTaskLineageId", "/evidence/sourceEventIds/*"],
+        "isoTimestampPaths": ["/evidence/proposedAt"],
+        "crossFieldRules": ["proposal_evidence_matches_session", "confirmed_lineage_is_not_blank"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-canonical-work-state-v1",
+        "scopeIdentityPaths": ["/taskLineageId", "/projectId", "/workspaceId", "/branchKey", "/repositoryState/workspaceId", "/pendingOperations/*/correlation/sessionId", "/pendingOperations/*/correlation/taskLineageId"],
+        "isoTimestampPaths": ["/latestSubstantivePrompt/observedAt", "/lastAssistantConclusion/observedAt", "/nativeTodoState/observedAt", "/activeFiles/*/observedAt", "/modifiedFiles/*/observedAt", "/recentCommands/*/observedAt", "/recentTests/*/observedAt", "/pendingOperations/*/startedAt", "/pendingOperations/*/terminalAt", "/droppedEvidence/*/recordedAt", "/repositoryState/capturedAt", "/updatedAt"],
+        "crossFieldRules": ["state_and_repository_workspace_match", "pending_operation_scope_matches_state", "state_revision_hashes_canonical_bytes"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-checkpoint-v2",
+        "scopeIdentityPaths": ["/id", "/projectId", "/workspaceId", "/branchKey", "/taskLineageId", "/sourceSessionId", "/canonicalState/taskLineageId", "/canonicalState/projectId", "/canonicalState/workspaceId"],
+        "isoTimestampPaths": ["/createdAt", "/expiresAt"],
+        "crossFieldRules": ["top_level_scope_matches_canonical_state", "workStateRevision_matches_canonical_state", "checkpoint_hash_matches_canonical_bytes"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-checkpoint-disposition-event",
+        "scopeIdentityPaths": ["/eventId", "/checkpointId", "/relatedCheckpointId", "/relatedDeliveryAttemptId"],
+        "isoTimestampPaths": ["/createdAt"],
+        "crossFieldRules": ["expected_and_resulting_projection_revisions_form_one_transition"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-checkpoint-disposition-projection",
+        "scopeIdentityPaths": ["/checkpointId", "/latestEventId", "/activeDeliveryAttemptId", "/activeClaimFence"],
+        "isoTimestampPaths": ["/activeLeaseUntil"],
+        "crossFieldRules": ["active_attempt_fence_and_lease_are_all_present_or_all_absent"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-checkpoint-metadata",
+        "scopeIdentityPaths": ["/checkpointId", "/taskLineageId", "/sourceSessionId"],
+        "isoTimestampPaths": [],
+        "crossFieldRules": ["checkpoint_revision_is_nonblank", "checkpoint_kind_is_known"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-checkpoint-anchor",
+        "scopeIdentityPaths": ["/anchorId", "/checkpointId", "/taskLineageId", "/sourceEventIds/*"],
+        "isoTimestampPaths": [],
+        "crossFieldRules": ["anchor_checkpoint_revision_is_nonblank", "anchor_value_hash_is_nonblank"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-engagement-evidence",
+        "scopeIdentityPaths": ["/sourceEventIds/*", "/checkpointAnchorIds/*"],
+        "isoTimestampPaths": ["/observedAt"],
+        "crossFieldRules": ["engagement_kind_and_anchor_scope_are_compatible"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-contradiction-evidence",
+        "scopeIdentityPaths": ["/contradictionId", "/sourceEventIds/*"],
+        "isoTimestampPaths": ["/observedAt"],
+        "crossFieldRules": ["contradiction_reason_scope_is_known"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-contradiction-scan-range",
+        "scopeIdentityPaths": [],
+        "isoTimestampPaths": ["/scannedAt"],
+        "crossFieldRules": ["fromIngestSeq_lte_toIngestSeq"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-engagement-evaluation-context",
+        "scopeIdentityPaths": ["/destinationTurnId", "/destinationCapabilityHash", "/sourceEvents/*/sessionId", "/checkpointAnchors/*/taskLineageId"],
+        "isoTimestampPaths": ["/evaluationStartedAt", "/evaluationEndedAt", "/sourceEvents/*/occurredAt"],
+        "crossFieldRules": ["evaluation_start_lte_end", "destination_turn_and_capability_are_bound"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-checkpoint-delivery-attempt",
+        "scopeIdentityPaths": ["/attemptId", "/checkpointId", "/destinationSessionId", "/claimFence", "/injectionId"],
+        "isoTimestampPaths": ["/leaseUntil", "/heartbeatUntil", "/createdAt", "/deliveredAt", "/engagedAt", "/acceptedAt", "/dismissedAt", "/abandonedAt", "/engagementEvidence/*/observedAt"],
+        "crossFieldRules": ["attempt_state_timestamps_are_monotone", "active_attempt_lease_is_unexpired", "injection_fields_are_both_present_or_both_absent"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-resume-suppression",
+        "scopeIdentityPaths": ["/checkpointId", "/sessionId", "/attemptId"],
+        "isoTimestampPaths": ["/createdAt"],
+        "crossFieldRules": ["suppression_reason_is_dismissed"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-resume-selection-decision",
+        "scopeIdentityPaths": ["/selectedCheckpointId", "/capabilityHash", "/rankedCandidates/*/checkpointId", "/rankedCandidates/*/taskLineageId"],
+        "isoTimestampPaths": [],
+        "crossFieldRules": ["selected_checkpoint_is_ranked", "automatic_action_requires_eligible_ordered_head"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-derived-invalidation-event",
+        "scopeIdentityPaths": ["/eventId", "/artifactId", "/sourceMemoryId", "/viaArtifactId", "/idempotencyKey"],
+        "isoTimestampPaths": ["/createdAt"],
+        "crossFieldRules": ["source_artifact_reason_requires_viaArtifactId", "hop_depth_matches_dependency_edge"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-resume-capsule-v1",
+        "scopeIdentityPaths": ["/injectionId", "/checkpointId", "/taskLineageId", "/workState/taskLineageId", "/selectedMemoryIds/*"],
+        "isoTimestampPaths": ["/workState/updatedAt", "/workState/repositoryState/capturedAt"],
+        "crossFieldRules": ["capsule_scope_matches_work_state", "owned_wrapper_hash_and_bytes_validate", "legacy_capsule_is_same_agent_manual_or_hint_only"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      },
+      {
+        "inventoryEntryId": "persisted-durable-memory",
+        "scopeIdentityPaths": ["session_id", "scope_id", "project", "workspace_kind", "workspace_id"],
+        "isoTimestampPaths": ["created_at", "updated_at", "deleted_at"],
+        "crossFieldRules": ["session_scope_project_workspace_are_consistent", "legacy_visibility_and_origin_source_do_not_grant_sharing_authority"],
+        "invalidDisposition": "quarantine",
+        "repairAuthorities": ["user"],
+        "auditRequired": true
+      }
+    ]
+  },
   "limitPolicies": [],
   "continuityDiagnosticCodes": [],
   "sourceSharingDispositionCodes": [
