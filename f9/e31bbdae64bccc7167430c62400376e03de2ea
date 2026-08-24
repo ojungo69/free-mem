@@ -1,0 +1,27 @@
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_ae352115192eb4 333-369
+  s_d6433b5ff6fa8e::t_68cd1399311b3d 3
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_1843aecfe44cbe 108-109
+  s_d6433b5ff6fa8e::t_ed48845c29074a 110-112
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_56f40519d03e42 816-846
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_d08f5036da4799 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f9e31bbdae64bccc7167430c62400376e03de2ea",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
