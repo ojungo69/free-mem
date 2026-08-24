@@ -430,44 +430,83 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		expect(report.session_duration_buckets["<1m"]).toBe(1);
 	});
 
-	// Mid-bucket values only: julianday() float error puts an exactly-1-minute
-	// session at 0.9999999403953552, so boundary values cannot be asserted
-	// against current behaviour. Tracked in #118.
-	it("assigns one session to each of the six duration buckets", () => {
+	it("assigns sessions to all seven duration buckets", () => {
 		const dbPath = createDbPath("memory-role-report-duration-buckets");
 		const db = new Database(dbPath);
 		try {
 			initTestSchema(db);
 			db.exec(`
 					INSERT INTO sessions(id, started_at, ended_at, cwd, project, user, tool_version) VALUES
-					  (1, '2026-03-01T10:00:00Z', NULL,                   '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (1, '2026-03-01T10:00:00Z', NULL,                    '/tmp/repo', 'codemem', 'adam', 'test'),
 					  (2, '2026-03-01T10:00:00Z', '2026-03-01T10:00:30Z', '/tmp/repo', 'codemem', 'adam', 'test'),
-					  (3, '2026-03-01T10:00:00Z', '2026-03-01T10:03:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
-					  (4, '2026-03-01T10:00:00Z', '2026-03-01T10:10:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
-					  (5, '2026-03-01T10:00:00Z', '2026-03-01T11:00:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
-					  (6, '2026-03-01T10:00:00Z', '2026-03-01T13:20:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
+					  (3, '2026-03-01T10:00:00Z', '2026-03-01T10:01:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (4, '2026-03-01T10:00:00Z', '2026-03-01T10:05:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (5, '2026-03-01T10:00:00Z', '2026-03-01T10:30:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (6, '2026-03-01T10:00:00Z', '2026-03-01T12:00:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (7, '2026-03-01T10:00:00Z', 'not-a-date',           '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (8, '2026-03-01T10:00:00Z', '',                     '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (9, '2026-03-01T10:00:00Z', '2026-03-01T09:50:00Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (10, '2026-03-01T10:00:00.850Z', '2026-03-01T10:01:00.450Z', '/tmp/repo', 'codemem', 'adam', 'test'),
+					  (11, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
 					INSERT INTO memory_items(
 						id, session_id, kind, title, body_text, active, created_at, updated_at, import_key
 					) VALUES
 					  (1, 1, 'change', 'Open', 'Open session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-1'),
 					  (2, 2, 'change', 'Thirty seconds', 'Short session', 1, '2026-03-01T10:00:30Z', '2026-03-01T10:00:30Z', 'duration-2'),
-					  (3, 3, 'change', 'Three minutes', 'Brief session', 1, '2026-03-01T10:03:00Z', '2026-03-01T10:03:00Z', 'duration-3'),
-					  (4, 4, 'change', 'Ten minutes', 'Medium session', 1, '2026-03-01T10:10:00Z', '2026-03-01T10:10:00Z', 'duration-4'),
-					  (5, 5, 'change', 'Sixty minutes', 'Long session', 1, '2026-03-01T11:00:00Z', '2026-03-01T11:00:00Z', 'duration-5'),
-					  (6, 6, 'change', 'Two hundred minutes', 'Very long session', 1, '2026-03-01T13:20:00Z', '2026-03-01T13:20:00Z', 'duration-6');
+					  (3, 3, 'change', 'One minute', 'Brief session', 1, '2026-03-01T10:01:00Z', '2026-03-01T10:01:00Z', 'duration-3'),
+					  (4, 4, 'change', 'Five minutes', 'Medium session', 1, '2026-03-01T10:05:00Z', '2026-03-01T10:05:00Z', 'duration-4'),
+					  (5, 5, 'change', 'Thirty minutes', 'Long session', 1, '2026-03-01T10:30:00Z', '2026-03-01T10:30:00Z', 'duration-5'),
+					  (6, 6, 'change', 'One hundred twenty minutes', 'Very long session', 1, '2026-03-01T12:00:00Z', '2026-03-01T12:00:00Z', 'duration-6'),
+					  (7, 7, 'change', 'Unparseable end', 'Invalid session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-7'),
+					  (8, 8, 'change', 'Empty end', 'Invalid session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-8'),
+					  (9, 9, 'change', 'Negative duration', 'Invalid session', 1, '2026-03-01T09:50:00Z', '2026-03-01T09:50:00Z', 'duration-9'),
+					  (10, 10, 'change', 'Subsecond under one minute', 'Short session', 1, '2026-03-01T10:01:00.450Z', '2026-03-01T10:01:00.450Z', 'duration-10'),
+					  (11, 11, 'change', 'Zero duration', 'Same-instant session', 1, '2026-03-01T10:00:00Z', '2026-03-01T10:00:00Z', 'duration-11');
 				`);
 		} finally {
 			db.close();
 		}
 
 		expect(getMemoryRoleReport(dbPath).session_duration_buckets).toEqual({
-			"<1m": 1,
+			"<1m": 3,
 			"1-5m": 1,
 			"5-30m": 1,
 			"30-120m": 1,
 			"120m+": 1,
 			open: 1,
+			invalid: 3,
 		});
+	});
+
+	it("hands a negative session duration to the role inference as null, not as a micro session", () => {
+		const dbPath = createDbPath("memory-role-report-negative-duration-role");
+		const db = new Database(dbPath);
+		try {
+			initTestSchema(db);
+			db.exec(`
+				INSERT INTO sessions(id, started_at, ended_at, cwd, project, user, tool_version) VALUES
+				  (1, '2026-03-01T10:00:00Z', '2026-03-01T09:50:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
+				INSERT INTO memory_items(
+					id, session_id, kind, title, body_text, active, created_at, updated_at, import_key
+				) VALUES
+				  (1, 1, 'change', 'Negative duration', 'Invalid session', 1, '2026-03-01T09:50:00Z', '2026-03-01T09:50:00Z', 'negative-role-1');
+			`);
+		} finally {
+			db.close();
+		}
+
+		const report = getMemoryRoleReport(dbPath);
+
+		// `session_duration_buckets` cannot pin this on its own. The ladder reads `ended_at` and
+		// the raw minutes, so it reports `invalid` whether or not the call site converts the
+		// negative to null - the buckets test above passes either way. What the conversion
+		// decides is what the role inference sees: a number below 1 reads as a micro session.
+		// Both branches land on `ephemeral`, so `counts_by_role` cannot separate them either and
+		// only the reason can. Measured: `null` gives `default_change_ephemeral`, `-10` gives
+		// `micro_session_change`.
+		expect(report.session_duration_buckets.invalid).toBe(1);
+		expect(report.counts_by_role.ephemeral).toBe(1);
+		expect(report.role_examples.ephemeral?.[0]?.role_reason).toBe("default_change_ephemeral");
 	});
 
 	it("tolerates malformed metadata JSON in role reports", () => {
