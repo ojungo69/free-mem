@@ -74,7 +74,7 @@ describe("Phase 1 redaction", () => {
 		expect(String(result.payload.nested)).toBe("keep  after");
 		expect(String(result.payload.nested)).not.toContain("LEAK");
 		expect(String(result.payload.nested)).not.toContain("inner");
-		expect(String(result.payload.unclosed)).toBe("keep ");
+		expect(String(result.payload.unclosed)).toBe("keep [private]");
 		expect(String(result.payload.unclosed)).not.toContain("UNCLOSED_SECRET");
 		expect(String(result.payload.closed)).toBe("keep  visible");
 		expect(String(result.payload.local)).toBe("note device-only done");
@@ -86,7 +86,7 @@ describe("Phase 1 redaction", () => {
 			{ body: "keep <private>outer<private>inner</private>LEAK" },
 			{ allowlist: ["body"] },
 		);
-		expect(String(nestedOpen.payload.body)).toBe("keep ");
+		expect(String(nestedOpen.payload.body)).toBe("keep [private]");
 		expect(String(nestedOpen.payload.body)).not.toContain("LEAK");
 		expect(nestedOpen.private_content_omitted).toBe(true);
 
@@ -105,11 +105,43 @@ describe("Phase 1 redaction", () => {
 		expect(String(folded.payload.body)).not.toContain("UNCLOSED_SECRET");
 		expect(String(folded.payload.body)).toContain("visible");
 
+		// An orphan close still fails closed - the region it belongs to is unknown, and an
+		// earlier reserved-tag pass may be what removed its opener. What changed is that the
+		// omission now leaves `[/tag]` instead of vanishing silently (#117).
+		const orphanClose = core.preprocessAdapterEvent(
+			{
+				priv: "Fixed the parser bug in commit abc123. See </private> in the spec.",
+				injected: "The </injected-context> marker closes an injected block.",
+				local: "note </local-only> done",
+				crossTag: "<injected-context><private>x</injected-context>SECRET</private> tail",
+			},
+			{ allowlist: ["priv", "injected", "local", "crossTag"] },
+		);
+		expect(String(orphanClose.payload.priv)).toBe("[/private] in the spec.");
+		expect(String(orphanClose.payload.injected)).toBe(
+			"[/injected-context] marker closes an injected block.",
+		);
+		// `local-only` removes nothing and only flags the record, so it keeps its prose.
+		expect(String(orphanClose.payload.local)).toBe("note  done");
+		// Stripping <injected-context> takes the <private> opener with it, leaving a closer
+		// whose block content really was private. The marker must not become an opening.
+		expect(String(orphanClose.payload.crossTag)).toBe("[/private] tail");
+		expect(String(orphanClose.payload.crossTag)).not.toContain("SECRET");
+
 		const rebuilt = core.preprocessAdapterEvent(
 			{ body: "<pri<private>x</private>vate>LEAK" },
 			{ allowlist: ["body"] },
 		);
 		expect(String(rebuilt.payload.body)).not.toContain("LEAK");
+
+		// `local-only` keeps its prose, so the tag's own markup has to come out of what is
+		// kept. Nesting deeper than the strip loop's iteration cap used to leave literal
+		// tags in the output, since only `private`/`injected-context` get a residual check.
+		const deepLocal = core.preprocessAdapterEvent(
+			{ body: `x ${"<local-only>".repeat(20)}tail` },
+			{ allowlist: ["body"] },
+		);
+		expect(String(deepLocal.payload.body)).toBe("x tail");
 	});
 
 	it("P1-T038-03-japanese-redaction", () => {

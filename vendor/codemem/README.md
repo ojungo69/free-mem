@@ -124,6 +124,8 @@ PL->>OC: inject codemem context
 
 **Memories** are typed — `bugfix`, `feature`, `refactor`, `change`, `discovery`, `decision`, `exploration` — with structured fields like `facts`, `concepts`, `files_read`, and `files_modified` that improve retrieval relevance. Low-signal events are filtered at multiple layers before persistence.
 
+**Reserved markup** lets you control capture from inside the text itself. `<private>…</private>` removes the block and marks the record private, `<local-only>…</local-only>` keeps the content and flags the record local-only — today that keeps it out of memory packs and hook prompt capture, but it does not yet gate the raw-event flush that feeds the observer (see the user guide, and [#130](https://github.com/ojungo69/free-mem/issues/130)), and `<injected-context>…</injected-context>` is what adapters wrap injected context in so it is not captured back as your own writing. A one-sided `<private>` or `<injected-context>` tag has an unknown extent, so the surrounding content is removed and a marker naming that tag — `[private]`, `[/injected-context]`, and so on — is left in its place; the redaction stays visible instead of silently emptying the record. See [docs/user-guide.md](docs/user-guide.md#reserved-markup-in-memory-text).
+
 For architecture details, see [docs/architecture.md](docs/architecture.md).
 
 ## CLI

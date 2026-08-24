@@ -2077,10 +2077,41 @@ function normalizePathValue(value) {
 	if (value.startsWith("~/")) return `${homedir()}/${value.slice(2)}`;
 	return value;
 }
+/**
+* Matchers for the three reserved tags, compiled once.
+*
+* `nextTag` runs inside `stripTagged`'s scan loop, so building these from the tag name
+* compiled two patterns per iteration - on the path every captured string goes through.
+* The tag set is closed (the only callers pass these three literals), so a fixed table is
+* both cheaper and narrower: `ReservedTag` now rejects anything else at the type level,
+* and no `RegExp` is constructed from a value.
+*
+* `either` carries `g` because it is used with `String.prototype.replace`, which resets
+* `lastIndex` around the call, so sharing one instance across calls carries no state.
+* `open` and `close` have no `g`, so `exec` ignores `lastIndex` entirely.
+*/
+var RESERVED_TAG_PATTERNS = {
+	private: {
+		open: /<private>/i,
+		close: /<\/private>/i,
+		either: /<\/?private>/gi
+	},
+	"local-only": {
+		open: /<local-only>/i,
+		close: /<\/local-only>/i,
+		either: /<\/?local-only>/gi
+	},
+	"injected-context": {
+		open: /<injected-context>/i,
+		close: /<\/injected-context>/i,
+		either: /<\/?injected-context>/gi
+	}
+};
 function nextTag(text, tag, from) {
 	const slice = text.slice(from);
-	const openMatch = new RegExp(`<${tag}>`, "i").exec(slice);
-	const closeMatch = new RegExp(`</${tag}>`, "i").exec(slice);
+	const patterns = RESERVED_TAG_PATTERNS[tag];
+	const openMatch = patterns.open.exec(slice);
+	const closeMatch = patterns.close.exec(slice);
 	const openAt = openMatch?.index ?? -1;
 	const closeAt = closeMatch?.index ?? -1;
 	if (openAt < 0 && closeAt < 0) return null;
@@ -2107,7 +2138,7 @@ function stripTagged(text, tag, unclosed) {
 		}
 		if (found.kind === "close") {
 			hit = true;
-			if (unclosed === "keep") output += text.slice(cursor, found.index);
+			output += unclosed === "keep" ? text.slice(cursor, found.index) : `[/${tag}]`;
 			cursor = found.index + found.length;
 			continue;
 		}
@@ -2119,7 +2150,7 @@ function stripTagged(text, tag, unclosed) {
 		while (depth > 0) {
 			const inner = nextTag(text, tag, pos);
 			if (!inner) return {
-				text: unclosed === "keep" ? output + text.slice(innerStart) : output,
+				text: unclosed === "keep" ? output + text.slice(innerStart).replace(RESERVED_TAG_PATTERNS[tag].either, "") : `${output}[${tag}]`,
 				hit
 			};
 			if (inner.kind === "open") {
@@ -2130,7 +2161,7 @@ function stripTagged(text, tag, unclosed) {
 			depth -= 1;
 			pos = inner.index + inner.length;
 		}
-		if (unclosed === "keep") output += text.slice(innerStart, pos).replace(new RegExp(`</?${tag}>`, "gi"), "");
+		if (unclosed === "keep") output += text.slice(innerStart, pos).replace(RESERVED_TAG_PATTERNS[tag].either, "");
 		cursor = pos;
 	}
 	return {

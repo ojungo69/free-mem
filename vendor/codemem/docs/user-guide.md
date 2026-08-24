@@ -112,6 +112,61 @@ Command/file token caching notes:
 - Observations and summaries persist when the observer emits meaningful content.
 - Low-signal observations are filtered before writing.
 
+## Reserved markup in memory text
+
+Three tags are reserved. Hooks apply them before an event leaves your machine, so they
+work in any text an adapter captures.
+
+| tag | effect |
+|---|---|
+| `<private>…</private>` | The block is removed and the record is marked private. |
+| `<local-only>…</local-only>` | The content is kept and the record is flagged local-only. See [What the local-only flag gates](#what-the-local-only-flag-gates). |
+| `<injected-context>…</injected-context>` | The block is removed. Adapters wrap injected context in it so it is not captured back as your own writing. |
+
+Matching is case-insensitive, and the tags nest.
+
+### What the local-only flag gates
+
+`<local-only>` removes nothing. It sets a flag on the record, and each surface decides what
+to do with it. Today the flag keeps the content out of the memory packs that get injected
+into your session, and blanks the prompt and working-set paths that the Claude and Codex
+hooks would otherwise capture.
+
+It does not yet gate the raw-event flush that feeds the observer. If you have configured an
+observer provider, local-only text in a captured event can still be sent to it. Issue
+[#130](https://github.com/ojungo69/free-mem/issues/130) tracks closing that gap. Until it
+is closed, read the flag as "kept out of memory packs and hook capture" rather than as a
+guarantee that the text stays on this device.
+
+### Private blocks and secrets
+
+Marking something private does not exempt it from secret scanning. A secret written inside
+a `<private>` block is still detected, and the record is then classified as containing a
+secret — a stronger outcome than being marked private, because daemon intake drops the
+content and keeps only the configured metadata, rather than keeping the surrounding prose.
+
+### Malformed markup
+
+Text you write is not always well-formed, so the rules for one-sided tags are explicit.
+For the two tags that remove content, a tag with no partner means the extent of the block
+is unknown, so the content around it is removed and a marker is left where it was:
+
+| input | stored |
+|---|---|
+| `keep <private>secret` | `keep [private]` |
+| `See </private> in the spec.` | `[/private] in the spec.` |
+
+The marker is the point of it: a one-sided tag used to take the surrounding text with it
+and leave nothing behind, so there was no way to tell a redaction from an empty note. The
+text is still removed - `[private]` means "an opening tag with no close ended the text
+here", `[/private]` means "a closing tag with no open removed what came before it".
+
+`<local-only>` is different. It removes nothing and only flags the record, so a one-sided
+`</local-only>` has nothing to protect: the tag is dropped and your prose is kept.
+
+Secrets are scanned before reserved markup is removed and again after it, so markup cannot
+be used to split a secret into halves that individually escape detection.
+
 ## Automatic context injection
 - The OpenCode plugin injects a memory pack next to the latest user message by default, keeping older prompt prefixes stable for provider prompt caches.
 - Controls:

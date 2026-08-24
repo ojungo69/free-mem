@@ -500,14 +500,40 @@ function normalizePathValue(value: string): string {
 	return value;
 }
 
+/**
+ * Matchers for the three reserved tags, compiled once.
+ *
+ * `nextTag` runs inside `stripTagged`'s scan loop, so building these from the tag name
+ * compiled two patterns per iteration - on the path every captured string goes through.
+ * The tag set is closed (the only callers pass these three literals), so a fixed table is
+ * both cheaper and narrower: `ReservedTag` now rejects anything else at the type level,
+ * and no `RegExp` is constructed from a value.
+ *
+ * `either` carries `g` because it is used with `String.prototype.replace`, which resets
+ * `lastIndex` around the call, so sharing one instance across calls carries no state.
+ * `open` and `close` have no `g`, so `exec` ignores `lastIndex` entirely.
+ */
+const RESERVED_TAG_PATTERNS = {
+	private: { open: /<private>/i, close: /<\/private>/i, either: /<\/?private>/gi },
+	"local-only": { open: /<local-only>/i, close: /<\/local-only>/i, either: /<\/?local-only>/gi },
+	"injected-context": {
+		open: /<injected-context>/i,
+		close: /<\/injected-context>/i,
+		either: /<\/?injected-context>/gi,
+	},
+} as const;
+
+type ReservedTag = keyof typeof RESERVED_TAG_PATTERNS;
+
 function nextTag(
 	text: string,
-	tag: string,
+	tag: ReservedTag,
 	from: number,
 ): { kind: "open" | "close"; index: number; length: number } | null {
 	const slice = text.slice(from);
-	const openMatch = new RegExp(`<${tag}>`, "i").exec(slice);
-	const closeMatch = new RegExp(`</${tag}>`, "i").exec(slice);
+	const patterns = RESERVED_TAG_PATTERNS[tag];
+	const openMatch = patterns.open.exec(slice);
+	const closeMatch = patterns.close.exec(slice);
 	const openAt = openMatch?.index ?? -1;
 	const closeAt = closeMatch?.index ?? -1;
 	if (openAt < 0 && closeAt < 0) return null;
@@ -519,7 +545,7 @@ function nextTag(
 
 function stripTagged(
 	text: string,
-	tag: string,
+	tag: ReservedTag,
 	unclosed: "drop" | "keep",
 ): { text: string; hit: boolean } {
 	let cursor = 0;
@@ -532,8 +558,13 @@ function stripTagged(
 			break;
 		}
 		if (found.kind === "close") {
+			// Orphan close tag: whatever region it belongs to is unknown, since the opener may
+			// have been truncated away or removed by an earlier reserved-tag pass. Fail closed
+			// exactly as before, but leave `[/tag]` so the omission is visible instead of silent
+			// (#117). The marker is the same length as the `</tag>` it replaces and contains no
+			// `<`, so it trips neither guard in stripReservedMarkup.
 			hit = true;
-			if (unclosed === "keep") output += text.slice(cursor, found.index);
+			output += unclosed === "keep" ? text.slice(cursor, found.index) : `[/${tag}]`;
 			cursor = found.index + found.length;
 			continue;
 		}
@@ -545,7 +576,18 @@ function stripTagged(
 		while (depth > 0) {
 			const inner = nextTag(text, tag, pos);
 			if (!inner) {
-				return { text: unclosed === "keep" ? output + text.slice(innerStart) : output, hit };
+				// Unclosed open tag: the block's extent runs to the end of the string. `[tag]`
+				// marks the omission, and is the same length as the `<tag>` it replaces. The
+				// `keep` side strips the tag's own markup out of what it keeps, matching the
+				// closed-block branch below - nested opens were consumed by `depth` above and
+				// would otherwise survive into the output.
+				return {
+					text:
+						unclosed === "keep"
+							? output + text.slice(innerStart).replace(RESERVED_TAG_PATTERNS[tag].either, "")
+							: `${output}[${tag}]`,
+					hit,
+				};
 			}
 			if (inner.kind === "open") {
 				depth += 1;
@@ -556,7 +598,7 @@ function stripTagged(
 			pos = inner.index + inner.length;
 		}
 		if (unclosed === "keep") {
-			output += text.slice(innerStart, pos).replace(new RegExp(`</?${tag}>`, "gi"), "");
+			output += text.slice(innerStart, pos).replace(RESERVED_TAG_PATTERNS[tag].either, "");
 		}
 		cursor = pos;
 	}
