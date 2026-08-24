@@ -247,7 +247,9 @@ contract は期待する source identity、sharing disposition、participant集�
    origin、last contributor、participants、checkpoint creatorが別々に決まる。
 5. **F4 — Canonical memory dedupe**: 同じscope・同じcanonical fact identityを2 Agentが裏付けても
    memory entityは1件で、source evidenceは2系統になる。同じpolicy tupleでもconsentのないevidenceはactive
-   unionへ入れず、`consent_or_source_locality_mismatch`としてreviewに保持する。conflict / supersessionはdedupeと混同しない。
+   unionへ入れず、`consent_or_source_locality_mismatch`としてreviewに保持する。unionにdestination自身のevidenceも保存するが、
+   automatic raw deliveryはeligibleなexternal-source contributorを全件含め、destination-owned recordをechoしない。
+   conflict / supersessionはdedupeと混同しない。
 6. **F5 — Retrieval policy**: all-source project search、current-source filter、named-source filter、
    active-task shared injectionが別のprofileとして働き、filterを外してもwrong project/workspaceが0件である。
    same-workspace wrong-lineageはproject/named searchでは取得でき、active-task injectionでは除外される。
@@ -295,9 +297,12 @@ contract は期待する source identity、sharing disposition、participant集�
   `stateRevision`、`contentHash`、subject scope、`committedByDaemonId`、`writerEpoch`、`lineageRevisionOrdinal`が
   完全一致し、non-blankな`writerLeaseId`/`fenceToken`と`validAtCommit=true`を持つhistorical commit receiptへ
   解決できるstateだけとする。このresolver evidenceはclosed `StateCommitReceiptV1`（`schemaVersion: 1`）で凍結し、
-  head-selection policyがそのschema名を明示する。
+  head-selection policyがそのschema名を明示する。serialized candidate集合はrequested task scopeのresolved集合と
+  完全一致させ、新しいcandidateの省略による古いheadへのautomatic fallbackを許可しない。
 - **FR-002**: 順序の新しさと resume 対象としての正しさは別の gate として評価しなければならない。
   workspace 互換性・disposition・accepted / superseded / retracted・fork / conflict を独立に判定する。
+  candidate内のworkspace compatibility、checkpoint disposition、lineage stateは独立resolverの結果と一致させ、
+  serialized claim自体をeligibility authorityにしない。
   checkpointの`expired`は`unknown`へ潰さず、既知の不適格理由`checkpoint_expired`として保持する。
 - **FR-003**: いったん公開・永続化した revision の canonical bytes は、その後の consumer 操作・
   後続 event・別 revision の構築によって変化してはならない。
@@ -415,13 +420,15 @@ contract は期待する source identity、sharing disposition、participant集�
   `shared-task-v1`を含む認証済みprofileへ解決する場合だけ許可する。他のprivacy/egress/consent gateを通過した
   shared projectionをcapability未対応だけにより省略するsame-agent capsuleは、`warnings`へexact
   `destination_capability_unsupported` dispositionをexactly onceで記録し、それ以外では記録しない。
+  `warnings`全体はsorted uniqueな`SourceSharingDispositionCodeV1`だけを含める。
 - **FR-032**: model provider/model identityはcoding Agent/client identityと別fieldに保持し、片方をもう片方の
   代用にしてはならない。
 - **FR-033**: 新しいsource contractは既存のevent provenance、ingest attestation、source event参照を
   正本へ統合し、同じprovenance objectをfieldごとに複製する並立schemaを作ってはならない。
   successorのnested JSON object/arrayはrecursive readonly型とし、公開後にhash外から変更可能な型を残さない。
   `SourceIdentityV1.ingestAttestation`の全nested fieldもreadonlyとする。
-  `CanonicalMemoryEntityV1.sourceEventIds`はnon-emptyとし、owner不明のAgent-private memoryを許可しない。
+  shared/Agent-localの全nested evidence itemの`sourceEventIds`はnon-empty/sorted uniqueとする。
+  `CanonicalMemoryEntityV1.sourceEventIds`もnon-emptyとし、owner不明のAgent-private memoryを許可しない。
   state/memoryの`opaqueIdProfile.keyId`はsubject personal vaultのkeyringで32 bytes以上のkey metadataへ解決し、
   missing/cross-vault/short keyは再hash済みでもquarantineする。
   state/memory/sharing decisionのsubject scopeはauthoritative scope registryのexact chainへ解決し、
@@ -455,6 +462,8 @@ contract は期待する source identity、sharing disposition、participant集�
   ある場合はrepository branchも必須かつ完全一致しなければならない。
   capsuleのcheckpoint ID/revision/creatorは同じresolved checkpointへ結び付け、`selectedMemoryIds`はsorted uniqueかつ
   hash-valid entityへ解決し、scope/sharing/private consent/lifecycle/sensitivity/egress/destination policyを全件検証する。
+  checkpoint creatorのauthenticated source sessionはcheckpointとembedded state revisionのsource sessionに一致させ、
+  child parentはexact ID/task scopeのexisting hash-valid prior checkpointへ解決する。
   `truthState`が`contradicted`または`confirmed_wrong`のmemoryはinspect可能なままcapsule deliveryから除外する。
   pending operationのouter/correlation operation IDは一致し、authenticated start-phase eventはそのoperation evidenceに
   含め、complete correlation envelope、`startTurnIdSource`、source-identity sessionを完全一致させる。correlationの
@@ -478,7 +487,8 @@ contract は期待する source identity、sharing disposition、participant集�
   validity historyはdedupeと別に扱う。evidence unionは`sharingScope`・`sensitivity`・`egressPolicy`が完全一致し、
   shared contributorごとのexact authenticated consentがあるときだけ自動化する。Agent-private evidenceはexact source内だけ
   unionし、cross-sourceでは統合しない。policy/consent/source-locality不一致はactive entityへ
-  混ぜず明示user reviewまで別laneに置く。childの`parentMemoryRevision`は同じ`memoryId`のexisting hash-validで、
+  混ぜず明示user reviewまで別laneに置く。canonical unionはdestination-owned evidenceも含むが、automatic raw deliveryは
+  eligibleなexternal-source contributorを全件含めてdestination-owned recordを除外する。childの`parentMemoryRevision`は同じ`memoryId`のexisting hash-validで、
   authoritative resolverがそのchildよりpriorと証明したrevisionへ解決し、単なる別revisionやself-parentを許可しない。
   timestamp順序は`createdAt <= updatedAt`および両端がある場合の
   `validFrom <= validTo`だけを要求し、`expiresAt`へ追加の順序制約を作らない。
@@ -491,6 +501,7 @@ contract は期待する source identity、sharing disposition、participant集�
   visibilityに関する全field、DB column、query/filter、renderer、wire/public surface、derived/diagnostic valueを
   列挙し、各行を`persisted` / `wire` / `user-facing` / `derived` / `diagnostic`と、`retain` / `rename` /
   `split` / `migrate` / `legacy_read_only` / `quarantine`で分類しなければならない。
+  `sqlTable`は1行に1 tableとし、複数tableにまたがるsemantic surfaceは別entryに分ける。
 - **FR-046**: inventoryの全`sourceAgent` occurrenceに、event source、legacy single-source summary、
   lineage origin、last contributor、checkpoint creator、display-onlyのどの意味か、またはambiguousで廃止するかの
   dispositionを1つ割り当てなければならない。
@@ -589,7 +600,8 @@ SC-001〜SC-012は後続runtime/fixtureがpassすべきgateであり、contract-
   **0件**である。
 - **SC-016**: 同じcanonical fact identityを2 Agentが裏付けたF4でmemory entityが**1件**、source
   evidence系統が**2件**となり、per-Agent duplicateが**0件**である。同じpolicy tupleのunconsented recordは
-  active evidenceを増やさず、`consent_or_source_locality_mismatch`のreview candidateとして保持される。
+  active evidenceを増やさず、`consent_or_source_locality_mismatch`のreview candidateとして保持される。automatic raw deliveryは
+  eligible external-source contributorの欠落**0件**、destination-owned echo **0件**である。
 - **SC-017**: canonical client ID、legacy alias、unknown/unverified source、provider/modelの全fixtureが
   versioned vocabulary/disposition表のちょうど1行に対応し、callerの自己申告だけでtrustedへ昇格する件数が**0件**である。
 - **SC-018**: S0差分にproduct runtime、DB、reducer、MCP、viewerの変更が**0件**で、successor persisted

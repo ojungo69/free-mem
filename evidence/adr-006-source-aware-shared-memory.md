@@ -66,12 +66,19 @@ chainへ解決し、別scopeへのrehash移送を許さない。
 authenticated sourceへ、Agent-local refsは同じclient/sessionへ解決する。memory snapshotはhash-validかつsame-memory
 bindingを要求する。lineage origin/last/participantsはappend-only evidenceから導出し、checkpoint creatorだけ
 envelopeへ明示する。
+Every nested shared/Agent-local evidence item has non-empty source-event refs. The authenticated checkpoint creator session
+equals the checkpoint and state-revision source sessions; child parents resolve to an existing hash-valid prior checkpoint
+with the exact ID and task scope.
 
 private-only stateはshared grantを捏造せずshared projectionを省略する。state/capsuleはいずれかのprojectionを必須とし、
 shared projectionを持たないcapsuleはsame-agentだけに限定する。
 private shared/memory deliveryはauthenticated grant payloadの`privateConsent=true`も必須とする。capsuleのcheckpoint
 ID/revision/creatorは同じresolved checkpointへ、selected memory IDはhash-valid entityへ解決し、同じscope・sharing・
 sensitivity・egress・destination policyを通す。
+Head eligibility compares independently resolved workspace compatibility, checkpoint disposition, and lineage state rather
+than serialized claims. Serialized revisions exactly cover the requested scope's resolved candidate set, so omitting the real
+newer head is corruption. Capsule warnings are sorted-unique closed disposition codes, and the capability-only token appears
+exactly once if and only if required.
 
 ### 4. memory identityは完全一致だけ自動統合する
 
@@ -80,6 +87,8 @@ sensitivity・egress・destination policyを通す。
 shared contributorごとのexact authenticated consentを要求し、Agent-private evidenceはexact source内だけに限定する。
 policy、consent、source localityの不一致はreview candidateへ分離し、semantic similarity/言い換えは別entityのまま
 明示authorityのauditable mergeだけを許す。
+The canonical union includes destination-owned evidence. Automatic raw delivery includes all eligible external-source
+contributors and excludes destination-owned records to prevent echo.
 
 ### 5. raw identifierを新規永続化しない
 

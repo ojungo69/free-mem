@@ -94,3 +94,11 @@ any Git/`rg` execution error fails.
 
 After implementation, run the installed verify-tasks extension exactly once. Every checked task must point to a committed
 artifact and runnable evidence; no task is complete merely because the contract describes it.
+
+Run this prompt-driven command in a fresh agent session, not in the shell:
+
+```text
+/speckit.verify-tasks --scope all
+```
+
+Expected: the canonical output is `specs/005-continuity-p0-contract/verify-tasks-report.md`.

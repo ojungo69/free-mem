@@ -54,6 +54,8 @@ The inventory freezes broad discovery snapshots by count/hash, while the high-ri
 partition into semantic owners or documentation/test/fixture/tooling support. Normative schema and runtime hits cannot be
 classified as support. This keeps the proof closed without pretending each generic `source` or `model` access is a separate
 semantic surface.
+Each persisted inventory entry names at most one `sqlTable`; a semantic surface spanning two tables is represented by two
+entries rather than a comma-separated pseudo-table name.
 
 ## 4. Subject scope, sharing scope, sensitivity, and egress
 
@@ -147,10 +149,12 @@ Origin/last/participants are derived from append-only event/revision evidence. C
 Restore compares the complete summary with that evidence; merely authenticating the supplied IDs is insufficient. No rule
 reuses an ambiguous single `sourceAgent` value for these meanings.
 
-Every nested shared-field source-event array is sorted unique and resolves to authenticated source identities. Agent-local
+Every nested shared/Agent-local evidence item's source-event array is non-empty, sorted unique, and resolves to authenticated source identities. Agent-local
 field refs additionally resolve to the enclosing lane's exact client/session. Canonical-memory source refs follow the same
 authenticated rule and are non-empty; evidence-snapshot refs resolve to existing hash-valid snapshots bound to the same memory entity.
 Unresolved, unauthenticated, ID-mismatched, or lane-mismatched references quarantine even when artifact hashes were recomputed.
+The checkpoint creator resolves to an authenticated source whose session equals both the checkpoint `sourceSessionId` and
+the embedded canonical-state revision `sourceSessionId`.
 
 ## 7. Revision, immutability, and evidence bounds
 
@@ -168,10 +172,14 @@ Restore recomputes both state hashes for integrity only; matching hashes grant n
 `validAtCommit=true`. `StateCommitReceiptV1` is the closed resolver contract for that evidence: `schemaVersion:1` plus exactly
 those ten fields, with task-lineage scope and decimal epoch/ordinal. `RevisionHeadSelectionPolicyV1.candidateReceiptSchema`
 pins that name; revision-head candidates come only from states validated against it.
+`RevisionHeadSelectionPolicyV1.candidateCoverage="exact_resolved_scope_set"` requires serialized candidate revisions to
+exactly cover the resolved candidate set for the requested task scope; omitting a newer resolved candidate is corruption, not
+a route to an older automatic head.
 
 Checkpoint and canonical-memory hashes use separate domain strings and manifest vectors. Checkpoint content excludes its
 ID/parent/revision fields; initial and parent transitions bind checkpoint ID, content hash, and both parent ID/revision when
-present. Memory content excludes identity/revision/evidence metadata; memory revision binds memory ID, content hash,
+present. A child checkpoint parent resolves to an existing hash-valid prior checkpoint with the exact parent ID and task scope;
+missing, non-prior, self-referential, wrong-ID, or wrong-scope parents quarantine. Memory content excludes identity/revision/evidence metadata; memory revision binds memory ID, content hash,
 sorted evidence metadata, and either an initial or parent-memory-revision transition. `canonicalFactId` remains the separate
 exact-fact identity hash with schema literal `CanonicalMemoryEntityV1`.
 Every non-initial `parentMemoryRevision` resolves to an existing hash-valid revision of the same `memoryId` that the
@@ -189,6 +197,7 @@ produce a delivery capsule.
 When an otherwise available shared projection is omitted only because the authenticated destination lacks `shared-task-v1`,
 `warnings` contains the exact `SourceSharingDispositionCodeV1` token `destination_capability_unsupported` exactly once. The
 token is absent otherwise; the downgrade may be neither silent nor falsely attributed to capability.
+The complete `warnings` array is sorted unique and contains only `SourceSharingDispositionCodeV1` values.
 
 Meaning-neutral events do not advance the canonical state revision/history, while event/delivery/diagnostic/watermark
 transitions remain separately auditable. `StateNeutralTransitionPolicyV1` names the four classifications and fixes
@@ -202,6 +211,8 @@ of workspace compatibility, checkpoint disposition, and lineage fork/conflict. A
 ordered head itself is eligible. If it is not, the result is manual; the selector never silently falls back to an older
 revision. Duplicate revisions/ordinals, zero or multiple ordered heads, a mismatched head reference, or a non-greatest
 marked head use the third `fallbackDisposition="quarantine"` variant with exact corruption reason codes.
+Each candidate's serialized workspace compatibility, checkpoint disposition, and lineage state must equal independently
+resolved values; serialized eligibility claims are never authority.
 `checkpointDisposition="expired"` is a known ineligible state with reason `checkpoint_expired` and manual fallback; it is
 never collapsed into `checkpoint_unknown`.
 
@@ -242,6 +253,8 @@ policy tuple but failing contributor consent or exact Agent-private source local
 `consent_or_source_locality_mismatch`. Semantic similarity and paraphrases remain separate until
 an explicit authority records an auditable merge. Conflict, supersession, truth state, lifecycle, and validity history are
 independent of dedupe.
+The canonical union retains every eligible contributor, including destination-owned evidence. Automatic raw-record delivery
+includes every eligible external-source contributor but excludes destination-owned records to prevent echo.
 Canonical-memory audit time requires `createdAt <= updatedAt`; when both validity endpoints exist, it also requires
 `validFrom <= validTo`. `expiresAt` has no additional ordering rule beyond canonical timestamp validity.
 

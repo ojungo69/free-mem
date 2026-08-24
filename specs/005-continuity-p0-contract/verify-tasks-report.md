@@ -326,6 +326,20 @@ All review output was treated as a proposal and checked against source/tests.
 | CodeRabbit current-tree — self-parent regression could pass on hash mismatch | Accepted; current tree verified | The self-parent case now calls the parent resolver gate directly, so the assertion cannot be satisfied by canonical-memory hash failure. |
 | Cubic final — split the atomic semantic gate into modules | Rejected | This repeats the previously dispositioned architecture preference without a concrete behavior, security, or parity defect. S0 keeps one test-owned bundle gate; typed contexts and pure helpers remove the validated dependency-order risks without adding a second reference model. |
 | Ponytail final | Clean after one shrink | The capsule context reuses the canonical-state context and the redundant receipt alias was removed. Final rerun: `Lean already. Ship.` |
+| CodeRabbit remote — F4 delivery echoed destination-owned evidence | Accepted; current tree verified | The canonical union retains destination evidence, while automatic raw delivery includes every eligible external contributor and excludes destination-owned records. |
+| CodeRabbit remote — shared canonical-memory decisions were non-empty only in JSON Schema | Accepted; current tree verified | The TypeScript memory contract now keeps Agent-private decisions optional but requires a non-empty tuple for every shared scope. |
+| CodeRabbit remote — nested successor evidence allowed empty provenance | Accepted; current tree verified | Every shared/Agent-local nested evidence shape now requires a non-empty source-event tuple. |
+| CodeRabbit remote — checkpoint creator and parent authority were incomplete | Accepted; current tree verified | Creator session binds checkpoint and state sessions; child parents resolve to an existing hash-valid prior checkpoint with exact ID and task scope. |
+| CodeRabbit remote — head eligibility trusted serialized claims | Accepted; current tree verified | Workspace compatibility, checkpoint disposition, and lineage state are compared with independently resolved values. |
+| Correctness final — serialized head candidates could omit the real newer head | Accepted; current tree verified | The serialized revision set must exactly equal the requested scope's resolved candidate set before ordering or eligibility runs. |
+| CodeRabbit remote — capsule warnings were open and capability downgrade was ambiguous | Accepted; current tree verified | Warnings are sorted-unique closed disposition codes; the capability token appears exactly once iff capability is the sole omission reason. |
+| CodeRabbit remote — one inventory entry named two SQL tables | Accepted; current tree verified | Retrieval-attempt and outcome-evidence surfaces are separate entries, and comma-separated `sqlTable` values fail validation. |
+| CodeRabbit remote — quickstart omitted the verify-tasks invocation | Accepted | Step 8 now gives the prompt-driven `/speckit.verify-tasks --scope all` command and its canonical report path. |
+| CodeRabbit remote — current JST evidence was treated as future-dated | Rejected | The review timestamp `2026-08-24T22:33Z` is `2026-08-25 07:33 JST`; the recorded `2026-08-25T07:15:30+09:00` run preceded it in the active environment. |
+| CodeRabbit final current-wave CLI | Rejected one false positive | `coderabbit review --agent -t uncommitted` reported one alleged duplicate `capsuleProperties` declaration; source inspection and `rg` show exactly one declaration, and TypeScript remains clean. |
+| Cubic final current-wave rerun | Clean | `cubic review -j` exited 0 with `{"issues":[]}`. |
+| Correctness/security/docs final reruns | Clean | Independent read-only reviews found no remaining correctness, security, or documentation issue after exact candidate-set duplicate handling. |
+| Ponytail final current-wave rerun | Clean | `Lean already. Ship.` No abstraction, dependency, wrapper, or speculative configuration can be removed without weakening the S0 contract. |
 
 The three-finding TDD red pass failed on the unused non-empty memory tuple assertion, absent exact transition constants,
 missing event-evidence expectation fields, and the old restore rule. The implementation then restored focused/schema/type/hash
@@ -337,16 +351,15 @@ old branch-containment logic failed `true !== false`, and removing the private A
 `assert.ok(selectedMemoryIssues(...).length > 0)` regression. Each mutation was immediately restored. Focused contract 21/21,
 schema freeze 19/19, TypeScript, and raw contract-hash regeneration then returned green before the final full review rerun.
 
-## Current review-fix wave verification
+## Final current-tree verification
 
-Evidence refreshed at `2026-08-25T07:15:30+09:00` for the current uncommitted working tree over
-`3bded47b7b16231a20c366fd84b76126532ea69b` (committed `2026-08-25T05:44:01+09:00`).
+Evidence refreshed at `2026-08-25T08:21:16+09:00` for the uncommitted remote-fix working tree over
+`5799cb4d299c7d23e2e968500e4d9b5836dc926f`.
 
 - Focused source-aware contract: 21 passed, 0 failed; schema freeze: 19 passed, 0 failed.
 - Full continuity suite: 354 passed, 0 failed; harness TypeScript: exit 0 with no diagnostics.
 - Generated contract hashes: empty diff; old-shape regeneration: 20 cases / 29 steps, empty diff.
 - Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
 - Combined scope: 22 allowed paths, 0 forbidden matches; `git diff --check` has no whitespace errors.
-- Independent correctness, security, and docs reviews are clean after their accepted fixes. All concrete CodeRabbit/Cubic
-  findings were source-verified and fixed; Cubic's remaining module-split preference is rejected above. Final Ponytail is clean.
-  The next local CodeRabbit retry is rate-limited after three completed runs, so a post-push remote full review remains required.
+- Independent correctness, security, docs, Cubic, and Ponytail reviews are clean. CodeRabbit's only local issue was rejected
+  against the source as a duplicate-declaration false positive. A post-push remote full review remains required before merge.

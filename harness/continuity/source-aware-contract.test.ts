@@ -255,6 +255,18 @@ test("US1 successor primitives expose exact closed shapes", () => {
   assert.equal((defs.OpaqueIdProfileV1.properties as Record<string, { const?: unknown }>).schemaVersion?.const, 1);
   assert.equal((defs.SemanticResumeNoteV2.properties as Record<string, { const?: unknown }>).schemaVersion?.const, 2);
   assert.equal((defs.DroppedEvidenceReasonWindowV1.properties as Record<string, { maxItems?: number }>).entries?.maxItems, 256);
+  for (const name of [
+    "ObservedV2",
+    "ObservedFileV2",
+    "ObservedCommandV2",
+    "ObservedTestV2",
+    "PendingOperationV2",
+    "DroppedEvidenceEntryV2",
+    "SemanticResumeNoteV2",
+  ]) {
+    const properties = defs[name]?.properties as Record<string, { minItems?: number }> | undefined;
+    assert.equal(properties?.sourceEventIds?.minItems, 1, name);
+  }
   assert.equal((defs.SubjectScopeV1.oneOf as unknown[] | undefined)?.length, 7);
   assert.equal((defs.RevisionHeadSelectionContractV1.oneOf as unknown[] | undefined)?.length, 3);
 });
@@ -266,12 +278,20 @@ function revisionHeadSemanticIssues(
 ): string[] {
   const issues: string[] = [];
   const expectedScope = canonicalizeJson(expectedSubjectScope as unknown as contract.JsonValue);
+  const serializedRevisions = [...new Set(value.candidateEvaluations.map(({ stateRevision }) => stateRevision))].sort();
+  const resolvedRevisions = [...validatedCandidates.keys()].sort();
+  if (!orderedStringsEqual(serializedRevisions, resolvedRevisions)) {
+    issues.push("serialized head candidates do not exactly cover the resolved candidate set");
+  }
   for (const candidate of value.candidateEvaluations) {
     const resolved = validatedCandidates.get(candidate.stateRevision);
     if (
       !resolved ||
       resolved.canonicalState.revision.stateRevision !== candidate.stateRevision ||
       resolved.canonicalState.revision.lineageRevisionOrdinal !== candidate.lineageRevisionOrdinal ||
+      resolved.workspaceCompatibility !== candidate.workspaceCompatibility ||
+      resolved.checkpointDisposition !== candidate.checkpointDisposition ||
+      resolved.lineageState !== candidate.lineageState ||
       stateCommitReceiptIssues(
         resolved.canonicalState,
         new Map([[resolved.commitReceipt.stateRevision, resolved.commitReceipt]]),
@@ -307,14 +327,15 @@ function revisionHeadSemanticIssues(
     corruptionReasons.push("ordered_head_not_greatest");
   }
   for (const candidate of value.candidateEvaluations) {
+    const resolved = validatedCandidates.get(candidate.stateRevision)!;
     const expectedReasons: contract.RevisionEligibilityReasonCodeV1[] = [];
-    if (candidate.workspaceCompatibility === "incompatible") expectedReasons.push("workspace_incompatible");
-    if (candidate.workspaceCompatibility === "unknown") expectedReasons.push("workspace_unknown");
-    if (candidate.checkpointDisposition !== "open") {
-      expectedReasons.push(`checkpoint_${candidate.checkpointDisposition}` as contract.RevisionEligibilityReasonCodeV1);
+    if (resolved.workspaceCompatibility === "incompatible") expectedReasons.push("workspace_incompatible");
+    if (resolved.workspaceCompatibility === "unknown") expectedReasons.push("workspace_unknown");
+    if (resolved.checkpointDisposition !== "open") {
+      expectedReasons.push(`checkpoint_${resolved.checkpointDisposition}` as contract.RevisionEligibilityReasonCodeV1);
     }
-    if (candidate.lineageState === "forked") expectedReasons.push("lineage_forked");
-    if (candidate.lineageState === "conflicted") expectedReasons.push("lineage_conflicted");
+    if (resolved.lineageState === "forked") expectedReasons.push("lineage_forked");
+    if (resolved.lineageState === "conflicted") expectedReasons.push("lineage_conflicted");
     const expectedEligible = expectedReasons.length === 0;
     if (candidate.resumeEligible !== expectedEligible) {
       issues.push(`${candidate.stateRevision}: resume eligibility does not match frozen gates`);
@@ -441,7 +462,16 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
     new Map(
       value.candidateEvaluations.map((candidate) => {
         const state = candidateStateFor(candidate);
-        return [candidate.stateRevision, { canonicalState: state, commitReceipt: candidateReceiptFor(state) }];
+        return [
+          candidate.stateRevision,
+          {
+            canonicalState: state,
+            commitReceipt: candidateReceiptFor(state),
+            workspaceCompatibility: candidate.workspaceCompatibility,
+            checkpointDisposition: candidate.checkpointDisposition,
+            lineageState: candidate.lineageState,
+          },
+        ];
       }),
     );
   assert.deepEqual(
@@ -470,6 +500,29 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
   );
   assert.ok(
     revisionHeadSemanticIssues(base as contract.RevisionHeadSelectionContractV1, new Map(), candidateSubjectScope).length > 0,
+  );
+  const omittedResolvedHead = {
+    orderingKey: "lineage_revision_ordinal",
+    orderedHeadStateRevision: older,
+    candidateEvaluations: [
+      {
+        ...base.candidateEvaluations[1]!,
+        isOrderedHead: true,
+      },
+    ],
+    automaticResumeHeadStateRevision: older,
+    fallbackDisposition: "none",
+  } as unknown as contract.RevisionHeadSelectionContractV1;
+  assert.deepEqual(
+    validateContractValue("RevisionHeadSelectionContractV1", omittedResolvedHead, root, contract.CONTINUITY_LIMITS),
+    [],
+  );
+  assert.ok(
+    revisionHeadSemanticIssues(
+      omittedResolvedHead,
+      validatedCandidatesFor(base as contract.RevisionHeadSelectionContractV1),
+      candidateSubjectScope,
+    ).length > 0,
   );
   const forgedReceiptOrdinal = structuredClone(base) as unknown as contract.RevisionHeadSelectionContractV1;
   (forgedReceiptOrdinal.candidateEvaluations[0] as unknown as { lineageRevisionOrdinal: string })
@@ -528,6 +581,9 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
   crossLineageCandidates.set(older, {
     canonicalState: crossLineageState,
     commitReceipt: candidateReceiptFor(crossLineageState),
+    workspaceCompatibility: olderCandidate.workspaceCompatibility,
+    checkpointDisposition: olderCandidate.checkpointDisposition,
+    lineageState: olderCandidate.lineageState,
   });
   assert.ok(
     revisionHeadSemanticIssues(
@@ -540,13 +596,42 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
   const allForeignCandidates: ResolvedValidatedHeadCandidates = new Map(
     (base as contract.RevisionHeadSelectionContractV1).candidateEvaluations.map((candidate) => {
       const state = candidateStateFor(candidate, foreignSubjectScope);
-      return [candidate.stateRevision, { canonicalState: state, commitReceipt: candidateReceiptFor(state) }];
+      return [
+        candidate.stateRevision,
+        {
+          canonicalState: state,
+          commitReceipt: candidateReceiptFor(state),
+          workspaceCompatibility: candidate.workspaceCompatibility,
+          checkpointDisposition: candidate.checkpointDisposition,
+          lineageState: candidate.lineageState,
+        },
+      ];
     }),
   );
   assert.ok(
     revisionHeadSemanticIssues(
       base as contract.RevisionHeadSelectionContractV1,
       allForeignCandidates,
+      candidateSubjectScope,
+    ).length > 0,
+  );
+  const forgedWorkspaceEligibility = structuredClone(base) as unknown as contract.RevisionHeadSelectionContractV1 & {
+    automaticResumeHeadStateRevision: string;
+  };
+  const forgedWorkspaceHead = forgedWorkspaceEligibility.candidateEvaluations[0] as unknown as {
+    workspaceCompatibility: contract.WorkspaceCompatibilityV1;
+    resumeEligible: boolean;
+    reasonCodes: contract.RevisionEligibilityReasonCodeV1[];
+  };
+  forgedWorkspaceHead.workspaceCompatibility = "compatible";
+  forgedWorkspaceHead.resumeEligible = true;
+  forgedWorkspaceHead.reasonCodes = [];
+  forgedWorkspaceEligibility.automaticResumeHeadStateRevision = head;
+  (forgedWorkspaceEligibility as unknown as { fallbackDisposition: string }).fallbackDisposition = "none";
+  assert.ok(
+    revisionHeadSemanticIssues(
+      forgedWorkspaceEligibility,
+      validatedCandidatesFor(base as contract.RevisionHeadSelectionContractV1),
       candidateSubjectScope,
     ).length > 0,
   );
@@ -582,6 +667,45 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
   ];
   assert.ok(
     revisionHeadSemanticIssues(expiredAsUnknown, validatedCandidatesFor(expiredAsUnknown), candidateSubjectScope).length > 0,
+  );
+  const forgedCheckpointEligibility = structuredClone(expired) as unknown as contract.RevisionHeadSelectionContractV1 & {
+    automaticResumeHeadStateRevision: string;
+  };
+  const forgedCheckpointHead = forgedCheckpointEligibility.candidateEvaluations[0] as unknown as {
+    checkpointDisposition: contract.CheckpointResumeDispositionV1;
+    resumeEligible: boolean;
+    reasonCodes: contract.RevisionEligibilityReasonCodeV1[];
+  };
+  forgedCheckpointHead.checkpointDisposition = "open";
+  forgedCheckpointHead.resumeEligible = true;
+  forgedCheckpointHead.reasonCodes = [];
+  forgedCheckpointEligibility.automaticResumeHeadStateRevision = head;
+  (forgedCheckpointEligibility as unknown as { fallbackDisposition: string }).fallbackDisposition = "none";
+  assert.ok(
+    revisionHeadSemanticIssues(
+      forgedCheckpointEligibility,
+      validatedCandidatesFor(expired as contract.RevisionHeadSelectionContractV1),
+      candidateSubjectScope,
+    ).length > 0,
+  );
+  const forkedResolved = structuredClone(forgedCheckpointEligibility) as unknown as contract.RevisionHeadSelectionContractV1;
+  const forkedHead = forkedResolved.candidateEvaluations[0] as unknown as {
+    lineageState: contract.LineageHeadStateV1;
+    resumeEligible: boolean;
+    reasonCodes: contract.RevisionEligibilityReasonCodeV1[];
+  };
+  forkedHead.lineageState = "forked";
+  forkedHead.resumeEligible = false;
+  forkedHead.reasonCodes = ["lineage_forked"];
+  delete (forkedResolved as unknown as { automaticResumeHeadStateRevision?: string }).automaticResumeHeadStateRevision;
+  (forkedResolved as unknown as { fallbackDisposition: string }).fallbackDisposition = "manual";
+  const forgedLineageEligibility = structuredClone(forgedCheckpointEligibility) as unknown as contract.RevisionHeadSelectionContractV1;
+  assert.ok(
+    revisionHeadSemanticIssues(
+      forgedLineageEligibility,
+      validatedCandidatesFor(forkedResolved),
+      candidateSubjectScope,
+    ).length > 0,
   );
   const invalid = { ...base, automaticResumeHeadStateRevision: older };
   assert.ok(
@@ -628,6 +752,25 @@ test("US1 ordered head and automatic resume target remain the same revision", ()
     revisionHeadSemanticIssues(
       quarantinedDuplicate,
       validatedCandidatesFor(quarantinedDuplicate),
+      candidateSubjectScope,
+    ),
+    [],
+  );
+  const duplicatedStateRevision = structuredClone(base) as unknown as contract.RevisionHeadSelectionContractV1;
+  (duplicatedStateRevision.candidateEvaluations as unknown as contract.RevisionCandidateEvaluationV1[])[1] = {
+    ...duplicatedStateRevision.candidateEvaluations[0]!,
+    isOrderedHead: false,
+  };
+  const quarantinedDuplicateState = {
+    ...duplicatedStateRevision,
+    fallbackDisposition: "quarantine",
+    corruptionReasonCodes: ["duplicate_state_revision", "duplicate_lineage_ordinal"],
+  } as contract.RevisionHeadSelectionContractV1;
+  const resolvedHeadOnly = validatedCandidatesFor(base as contract.RevisionHeadSelectionContractV1).get(head)!;
+  assert.deepEqual(
+    revisionHeadSemanticIssues(
+      quarantinedDuplicateState,
+      new Map([[head, resolvedHeadOnly]]),
       candidateSubjectScope,
     ),
     [],
@@ -1010,6 +1153,8 @@ test("US4 successor projection and memory schemas expose exact closed shapes", (
     const properties = defs[name]?.properties as Record<string, { const?: unknown }> | undefined;
     assert.equal(properties?.schemaVersion?.const, version, name);
   }
+  const capsuleProperties = defs.ResumeCapsuleV2.properties as Record<string, { items?: { $ref?: string } }>;
+  assert.equal(capsuleProperties.warnings?.items?.$ref, "#/$defs/SourceSharingDispositionCodeV1");
 });
 
 test("successor observed text fields reject non-string and overlong values", () => {
@@ -1256,6 +1401,16 @@ function memoryProjectionSemanticIssues(
     if (!orderedStringsEqual(eligibleEvidence, memory.sourceEvidenceIds)) {
       issues.push(`${item.id}: canonical memory union lost or changed event-level evidence`);
     }
+  }
+  const expectedAutomaticMemoryRecordIds = item.input.records
+    .filter(({ id, sourceId }) => activeUnionRecordIds.has(id) && sourceId !== item.input.destination.sourceId)
+    .map(({ id }) => id)
+    .sort();
+  const actualAutomaticMemoryRecordIds = item.successor.automaticFullRecordIds
+    .filter((id) => activeUnionRecordIds.has(id))
+    .sort();
+  if (!orderedStringsEqual(expectedAutomaticMemoryRecordIds, actualAutomaticMemoryRecordIds)) {
+    issues.push(`${item.id}: automatic memory delivery omitted external evidence or echoed destination-owned evidence`);
   }
   const activeMemoryFactIds = new Set(item.successor.memoryEntities.map(({ canonicalFactId }) => canonicalFactId));
   const expectedReviewIds = item.input.records
@@ -1987,6 +2142,9 @@ function inventoryCoverageIssues(
   const issues: string[] = [];
   const searchById = new Map(inventory.searches.map((search) => [search.id, search]));
   const entryIds = new Set(inventory.entries.map(({ id }) => id));
+  for (const entry of inventory.entries) {
+    if (entry.sqlTable?.includes(",")) issues.push(`${entry.id}: sqlTable is not one table name`);
+  }
   const ruleIds = inventory.candidateRules.map(({ id }) => id);
   if (new Set(ruleIds).size !== ruleIds.length) issues.push("candidate rule IDs are duplicated");
   const matchedRuleIds = new Set<string>();
@@ -2421,6 +2579,22 @@ test("source-aware negative self-mutations are rejected", () => {
   (f4.successor.memoryEntities[0]!.sourceIds as string[]).pop();
   assert.ok(corpusSemanticIssues(evidenceLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
 
+  const missingExternalMemoryDelivery = structuredClone(corpus) as unknown as {
+    cases: contract.SourceAwareContractCaseV1[];
+  };
+  const missingExternalF4 = missingExternalMemoryDelivery.cases.find(({ id }) => id === "F4");
+  assert.ok(missingExternalF4);
+  (missingExternalF4.successor.automaticFullRecordIds as string[]).length = 0;
+  assert.ok(corpusSemanticIssues(missingExternalMemoryDelivery as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
+  const echoedDestinationMemory = structuredClone(corpus) as unknown as {
+    cases: contract.SourceAwareContractCaseV1[];
+  };
+  const echoedDestinationF4 = echoedDestinationMemory.cases.find(({ id }) => id === "F4");
+  assert.ok(echoedDestinationF4);
+  (echoedDestinationF4.successor.automaticFullRecordIds as string[]).push("memory-codex");
+  assert.ok(corpusSemanticIssues(echoedDestinationMemory as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
   for (const sourceEvidenceIds of [[], [""], ["   "], ["event-z", "event-a"], ["event-a", "event-a"]]) {
     const invalidInputEvidence = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
     const f2 = invalidInputEvidence.cases.find(({ id }) => id === "F2");
@@ -2754,6 +2928,11 @@ test("source-aware negative self-mutations are rejected", () => {
   const missingOwner = structuredClone(inventory) as unknown as contract.SourceIdentityInventoryV1;
   (missingOwner.candidateRules as contract.SourceInventoryCandidateRuleV1[]).pop();
   assert.ok(inventoryCoverageIssues(missingOwner, candidates).length > 0);
+  const commaSeparatedTable = structuredClone(inventory) as unknown as contract.SourceIdentityInventoryV1;
+  const tableEntry = commaSeparatedTable.entries.find(({ sqlTable }) => sqlTable !== undefined);
+  assert.ok(tableEntry);
+  (tableEntry as { sqlTable: string }).sqlTable = "table_a,table_b";
+  assert.ok(inventoryCoverageIssues(commaSeparatedTable, candidates).length > 0);
   const duplicateOwner = structuredClone(inventory) as unknown as contract.SourceIdentityInventoryV1;
   (duplicateOwner.candidateRules as contract.SourceInventoryCandidateRuleV1[]).push({
     ...(duplicateOwner.candidateRules[0] as contract.SourceInventoryCandidateRuleV1),
@@ -3227,6 +3406,9 @@ type ResolvedStateCommitReceipts = ReadonlyMap<string, contract.StateCommitRecei
 interface ResolvedValidatedHeadCandidate {
   readonly canonicalState: contract.CanonicalWorkStateV2;
   readonly commitReceipt: contract.StateCommitReceiptV1;
+  readonly workspaceCompatibility: contract.WorkspaceCompatibilityV1;
+  readonly checkpointDisposition: contract.CheckpointResumeDispositionV1;
+  readonly lineageState: contract.LineageHeadStateV1;
 }
 
 type ResolvedValidatedHeadCandidates = ReadonlyMap<string, ResolvedValidatedHeadCandidate>;
@@ -3239,6 +3421,16 @@ interface ResolvedMemoryRevision {
 }
 
 type ResolvedMemoryRevisions = ReadonlyMap<string, ResolvedMemoryRevision>;
+
+interface ResolvedCheckpointRevision {
+  readonly checkpointId: string;
+  readonly checkpointRevision: string;
+  readonly subjectScope: contract.TaskLineageSubjectScopeV1;
+  readonly hashValid: boolean;
+  readonly priorToCheckpointRevision: string;
+}
+
+type ResolvedCheckpointRevisions = ReadonlyMap<string, ResolvedCheckpointRevision>;
 
 interface ResolvedLineageEventEvidence {
   readonly sourceEventId: string;
@@ -3265,6 +3457,12 @@ interface CanonicalStateSemanticContext {
   readonly sharingDecisionByEventId: ReadonlyMap<string, contract.SharingDecisionV1>;
   readonly authenticatedAuthorityEvents: ReadonlyMap<string, ResolvedSharingAuthorityEvent>;
   readonly lineageEvidence: readonly ResolvedLineageEventEvidence[];
+}
+
+interface ContinuationCheckpointSemanticContext {
+  readonly stateContext: CanonicalStateSemanticContext;
+  readonly hashProfile: contract.CheckpointHashProfileV1;
+  readonly resolvedCheckpointRevisions: ResolvedCheckpointRevisions;
 }
 
 type ResumeCapsuleSemanticContext = Omit<CanonicalStateSemanticContext, "lineageEvidence"> & {
@@ -3471,6 +3669,7 @@ function sourceReferenceIssues(
 ): string[] {
   const issues: string[] = [];
   for (const ids of referenceSets) {
+    if (ids.length === 0) issues.push(`${label} has no source-event reference`);
     if (!isSortedUniqueStrings(ids)) {
       issues.push(`${label} source-event references are not sorted unique`);
     }
@@ -3620,17 +3819,13 @@ function canonicalWorkStateSemanticIssues(
 
 function continuationCheckpointSemanticIssues(
   value: contract.ContinuationCheckpointV3,
-  stateContext: CanonicalStateSemanticContext,
-  profile: contract.CheckpointHashProfileV1,
+  context: ContinuationCheckpointSemanticContext,
 ): string[] {
-  const issues = canonicalWorkStateSemanticIssues(value.canonicalState, stateContext);
-  issues.push(
-    ...sourceReferenceIssues(
-      [[value.checkpointCreatedBySourceEventId]],
-      stateContext.sourceIdentityByEventId,
-      "checkpoint creator",
-    ),
-  );
+  const issues = canonicalWorkStateSemanticIssues(value.canonicalState, context.stateContext);
+  const creator = context.stateContext.sourceIdentityByEventId.get(value.checkpointCreatedBySourceEventId);
+  if (!creator || creator.sessionId !== value.sourceSessionId) {
+    issues.push("checkpoint creator is unresolved or belongs to another source session");
+  }
   if (value.sourceSessionId !== value.canonicalState.revision.sourceSessionId) {
     issues.push("checkpoint source session differs from its canonical state revision");
   }
@@ -3642,7 +3837,25 @@ function continuationCheckpointSemanticIssues(
   if (parentPresenceMismatch) {
     issues.push("checkpoint parent ID and revision presence differ");
   } else {
-    const recomputed = rehashContinuationCheckpoint(value as unknown as Readonly<Record<string, unknown>>, profile);
+    if (value.parentCheckpointId !== undefined && value.parentCheckpointRevision !== undefined) {
+      const parent = context.resolvedCheckpointRevisions.get(value.parentCheckpointRevision);
+      if (
+        !parent ||
+        parent.checkpointId !== value.parentCheckpointId ||
+        parent.checkpointRevision !== value.parentCheckpointRevision ||
+        parent.checkpointRevision === value.checkpointRevision ||
+        !parent.hashValid ||
+        parent.priorToCheckpointRevision !== value.checkpointRevision ||
+        canonicalizeJson(parent.subjectScope as unknown as contract.JsonValue) !==
+          canonicalizeJson(value.canonicalState.subjectScope as unknown as contract.JsonValue)
+      ) {
+        issues.push("checkpoint parent is unresolved, invalid, non-prior, self-referential, or scope-mismatched");
+      }
+    }
+    const recomputed = rehashContinuationCheckpoint(
+      value as unknown as Readonly<Record<string, unknown>>,
+      context.hashProfile,
+    );
     if (recomputed.contentHash !== value.contentHash || recomputed.checkpointRevision !== value.checkpointRevision) {
       issues.push("checkpoint content hash or revision hash is invalid");
     }
@@ -3810,6 +4023,9 @@ function resumeCapsuleSemanticIssues(
   if (computeResumeCapsuleContentHash(value) !== value.contentHash) {
     issues.push("resume capsule content hash does not match its projection");
   }
+  if (!isSortedUniqueStrings(value.warnings)) {
+    issues.push("resume capsule warning codes are not sorted unique");
+  }
   const parent = parentByCheckpointRevision.get(value.checkpointRevision);
   let parentCanonicalStateValid = false;
   if (
@@ -3820,6 +4036,10 @@ function resumeCapsuleSemanticIssues(
   ) {
     issues.push("capsule checkpoint ID, revision, creator, or work-state binding is invalid");
   } else {
+    const checkpointCreator = sourceIdentityByEventId.get(parent.checkpointCreatedBySourceEventId);
+    if (!checkpointCreator || checkpointCreator.sessionId !== parent.canonicalState.revision.sourceSessionId) {
+      issues.push("resolved checkpoint creator belongs to another source session");
+    }
     const parentStateIssues = canonicalWorkStateSemanticIssues(
       parent.canonicalState,
       { ...context, lineageEvidence: parent.lineageEvidence },
@@ -3989,6 +4209,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     sharedTaskState: contract.SharedTaskStateV1;
   };
   const id = "a".repeat(64);
+  const checkpointCreatorEventId = "6".repeat(64);
   const capsule: contract.ResumeCapsuleV2 = {
     schemaVersion: 2,
     contentHash: id,
@@ -3998,7 +4219,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     workStateRevision: id,
     subjectScope: projection.subjectScope,
     lineageSourceSummary: projection.lineageSourceSummary,
-    checkpointCreatedBySourceEventId: id,
+    checkpointCreatedBySourceEventId: checkpointCreatorEventId,
     destination: {
       sourceIdentityEventId: id,
       clientId: "codex-cli",
@@ -4080,6 +4301,16 @@ test("successor capsule rejects another client's Agent-local lane", () => {
       "f".repeat(64),
       { clientId: "codex-cli", clientVersion: "1", sessionId: "2".repeat(64), capabilityIds: [], privateEligible: false },
     ],
+    [
+      checkpointCreatorEventId,
+      {
+        clientId: "codex-cli",
+        clientVersion: "1",
+        sessionId: resolvedState.revision.sourceSessionId,
+        capabilityIds: [],
+        privateEligible: false,
+      },
+    ],
   ]);
   assert.ok(capsule.sharedTaskState);
   const decisionEventId = capsule.sharedTaskState.sharingDecisionEventIds[0]!;
@@ -4116,7 +4347,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     state: contract.CanonicalWorkStateV2,
   ): ResolvedCapsuleParent => ({
     checkpointId: id,
-    checkpointCreatedBySourceEventId: id,
+    checkpointCreatedBySourceEventId: checkpointCreatorEventId,
     canonicalState: state,
     authorizedEnvelope: capsuleAuthorityProjection(value),
     lineageEvidence: [
@@ -4146,6 +4377,14 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     sharingDecisionByEventId: overrides.sharingDecisionByEventId ?? sharingDecisions,
     authenticatedAuthorityEvents: overrides.authenticatedAuthorityEvents ?? authorityEvents,
     lineageEvidence: overrides.lineageEvidence ?? parentFor(capsule, state).lineageEvidence,
+  });
+  const checkpointContextFor = (
+    state: contract.CanonicalWorkStateV2,
+    resolvedCheckpointRevisions: ResolvedCheckpointRevisions = new Map(),
+  ): ContinuationCheckpointSemanticContext => ({
+    stateContext: stateContextFor(state),
+    hashProfile: manifest.checkpointHashProfile,
+    resolvedCheckpointRevisions,
   });
   const resolvedParents = new Map<string, ResolvedCapsuleParent>([
     [capsule.checkpointRevision, parentFor(capsule, resolvedState)],
@@ -4359,7 +4598,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
       ...(checkpointVector.envelope as Record<string, contract.JsonValue>),
       id: checkpointVector.checkpointId,
       sourceSessionId: resolvedState.revision.sourceSessionId,
-      checkpointCreatedBySourceEventId: "f".repeat(64),
+      checkpointCreatedBySourceEventId: checkpointCreatorEventId,
       canonicalState: resolvedState,
       sensitivity: resolvedState.sensitivity,
     },
@@ -4372,11 +4611,78 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   assert.deepEqual(
     continuationCheckpointSemanticIssues(
       standaloneCheckpoint,
-      stateContextFor(resolvedState),
-      manifest.checkpointHashProfile,
+      checkpointContextFor(resolvedState),
     ),
     [],
   );
+  const wrongSessionCreatorCheckpoint = rehashContinuationCheckpoint(
+    { ...standaloneCheckpoint, checkpointCreatedBySourceEventId: "f".repeat(64) },
+    manifest.checkpointHashProfile,
+  );
+  assert.ok(
+    continuationCheckpointSemanticIssues(
+      wrongSessionCreatorCheckpoint,
+      checkpointContextFor(resolvedState),
+    ).length > 0,
+  );
+  const unresolvedParentCheckpoint = rehashContinuationCheckpoint(
+    {
+      ...standaloneCheckpoint,
+      parentCheckpointId: "8".repeat(64),
+      parentCheckpointRevision: "9".repeat(64),
+    },
+    manifest.checkpointHashProfile,
+  );
+  assert.ok(
+    continuationCheckpointSemanticIssues(
+      unresolvedParentCheckpoint,
+      checkpointContextFor(resolvedState),
+    ).length > 0,
+  );
+  const childCheckpoint = rehashContinuationCheckpoint(
+    {
+      ...standaloneCheckpoint,
+      parentCheckpointId: standaloneCheckpoint.id,
+      parentCheckpointRevision: standaloneCheckpoint.checkpointRevision,
+    },
+    manifest.checkpointHashProfile,
+  );
+  const resolvedCheckpointParent: ResolvedCheckpointRevision = {
+    checkpointId: standaloneCheckpoint.id,
+    checkpointRevision: standaloneCheckpoint.checkpointRevision,
+    subjectScope: structuredClone(standaloneCheckpoint.canonicalState.subjectScope),
+    hashValid: true,
+    priorToCheckpointRevision: childCheckpoint.checkpointRevision,
+  };
+  assert.deepEqual(
+    continuationCheckpointSemanticIssues(
+      childCheckpoint,
+      checkpointContextFor(
+        resolvedState,
+        new Map([[standaloneCheckpoint.checkpointRevision, resolvedCheckpointParent]]),
+      ),
+    ),
+    [],
+  );
+  for (const invalidParent of [
+    { ...resolvedCheckpointParent, checkpointId: "9".repeat(64) },
+    { ...resolvedCheckpointParent, hashValid: false },
+    { ...resolvedCheckpointParent, priorToCheckpointRevision: "9".repeat(64) },
+    {
+      ...resolvedCheckpointParent,
+      subjectScope: { ...resolvedCheckpointParent.subjectScope, taskLineageId: "9".repeat(64) },
+    },
+  ]) {
+    assert.ok(
+      continuationCheckpointSemanticIssues(
+        childCheckpoint,
+        checkpointContextFor(
+          resolvedState,
+          new Map([[standaloneCheckpoint.checkpointRevision, invalidParent]]),
+        ),
+      ).length > 0,
+    );
+  }
   const invalidStateCheckpoint = rehashContinuationCheckpoint(
     {
       ...standaloneCheckpoint,
@@ -4389,8 +4695,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   assert.ok(
     continuationCheckpointSemanticIssues(
       invalidStateCheckpoint,
-      stateContextFor(duplicateDecisionState),
-      manifest.checkpointHashProfile,
+      checkpointContextFor(duplicateDecisionState),
     ).length > 0,
   );
   const tamperedCheckpoint = structuredClone(standaloneCheckpoint) as unknown as contract.ContinuationCheckpointV3;
@@ -4398,8 +4703,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   assert.ok(
     continuationCheckpointSemanticIssues(
       tamperedCheckpoint,
-      stateContextFor(resolvedState),
-      manifest.checkpointHashProfile,
+      checkpointContextFor(resolvedState),
     ).length > 0,
   );
   for (const mutation of [
@@ -4414,8 +4718,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     assert.ok(
       continuationCheckpointSemanticIssues(
         invalidCheckpoint,
-        stateContextFor(resolvedState),
-        manifest.checkpointHashProfile,
+        checkpointContextFor(resolvedState),
       ).length > 0,
     );
   }
@@ -4426,8 +4729,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   assert.ok(
     continuationCheckpointSemanticIssues(
       unmatchedCheckpointParent,
-      stateContextFor(resolvedState),
-      manifest.checkpointHashProfile,
+      checkpointContextFor(resolvedState),
     ).length > 0,
   );
   for (const [keyId, keyrings] of [
@@ -4597,7 +4899,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   }
   const wrongPhaseOperation = structuredClone(pendingOperation) as unknown as contract.PendingOperationV2;
   (wrongPhaseOperation.correlation as unknown as { startEventId: string }).startEventId = "f".repeat(64);
-  (wrongPhaseOperation.sourceEventIds as string[]).push("f".repeat(64));
+  (wrongPhaseOperation.sourceEventIds as unknown as string[]).push("f".repeat(64));
   const wrongPhasePending = resolvePendingCapsule(wrongPhaseOperation);
   const wrongPhaseEvents = new Map(pendingStartEvents).set("f".repeat(64), {
     ...pendingStartEvents.get("e".repeat(64))!,
@@ -4742,7 +5044,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
       personalVaultId: capsule.subjectScope.personalVaultId,
     },
     sharingScope: "project_shared" as const,
-  };
+  } as unknown as contract.CanonicalMemoryEntityV1;
   const vaultScopedProjectDecision = {
     ...selectedMemoryDecision,
     subjectScope: structuredClone(vaultScopedProjectMemory.subjectScope),
@@ -4895,6 +5197,24 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   ]);
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", sameAgentLocalOnly, root, contract.CONTINUITY_LIMITS), []);
   assert.deepEqual(capsuleIssues(sameAgentLocalOnly, sourceClients, sharingDecisions, authorityEvents, localOnlyParents), []);
+  for (const warnings of [
+    ["scope_mismatch", "private_not_eligible"],
+    ["scope_mismatch", "scope_mismatch"],
+  ] as const) {
+    const invalidWarningOrder = structuredClone(sameAgentLocalOnly) as unknown as contract.ResumeCapsuleV2;
+    (invalidWarningOrder as unknown as { warnings: string[] }).warnings = [...warnings];
+    (invalidWarningOrder as unknown as { contentHash: string }).contentHash =
+      computeResumeCapsuleContentHash(invalidWarningOrder);
+    assert.ok(
+      capsuleIssues(
+        invalidWarningOrder,
+        sourceClients,
+        sharingDecisions,
+        authorityEvents,
+        new Map([[invalidWarningOrder.checkpointRevision, parentFor(invalidWarningOrder, resolvedState)]]),
+      ).length > 0,
+    );
+  }
   const spuriousCapabilityWarning = structuredClone(sameAgentLocalOnly) as unknown as contract.ResumeCapsuleV2;
   (spuriousCapabilityWarning.warnings as string[]).push("destination_capability_unsupported");
   (spuriousCapabilityWarning as unknown as { contentHash: string }).contentHash =
@@ -5415,8 +5735,13 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   assert.ok(
     capsuleIssues(capsule, sourceClients, new Map([[decisionEventId, mismatchedAuthorityPayload]])).length > 0,
   );
+  const invalidWarningCapsule = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
+  (invalidWarningCapsule.warnings as string[]).push("private prompt text");
+  (invalidWarningCapsule as unknown as { contentHash: string }).contentHash =
+    computeResumeCapsuleContentHash(invalidWarningCapsule);
+  assert.ok(validateContractValue("ResumeCapsuleV2", invalidWarningCapsule, root, contract.CONTINUITY_LIMITS).length > 0);
   const tamperedCapsule = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
-  (tamperedCapsule.warnings as string[]).push("tampered");
+  (tamperedCapsule.warnings as string[]).push("scope_mismatch");
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", tamperedCapsule, root, contract.CONTINUITY_LIMITS), []);
   assert.ok(
     capsuleIssues(tamperedCapsule).length > 0,
@@ -5441,6 +5766,7 @@ test("Agent-local lanes are unique by client and session and match authenticated
     [eventA, { clientId: "codex-cli", clientVersion: "1", sessionId: sessionA, capabilityIds: [], privateEligible: false }],
     [eventB, { clientId: "codex-cli", clientVersion: "1", sessionId: sessionB, capabilityIds: [], privateEligible: false }],
   ]);
+  assert.ok(sourceReferenceIssues([[]], sources, "empty evidence").length > 0);
   assert.deepEqual(agentLocalLaneSemanticIssues(lanes, sources), []);
   const duplicate = [lanes[0]!, lane(eventB, sessionA)];
   assert.ok(agentLocalLaneSemanticIssues(duplicate, sources).length > 0);
@@ -5880,8 +6206,8 @@ const EXPECTED_RESTORE_RULE_PATH_HASHES: Readonly<Record<string, string>> = {
   "persisted-resume-capsule-v1": "e1f7758c7bb30cad0d51773677fe3288491c961f2cea29077ed7fd25f707ac85",
   "persisted-durable-memory": "7a11699d0a052b6e71601a7712693f8e593c2e06b5b68727179d7a9a16965174",
   "persisted-canonical-work-state-v2": "9ac3446826466ef23e730dd234d7a7fc3a5ac1c199e89239ffb61e8fe6f55dd4",
-  "persisted-checkpoint-v3": "5e1ee47e0c507279c731eed79399f8f174aa1754859573c77389e3231001a9ef",
-  "persisted-resume-capsule-v2": "fad0b4142c99ac19f4b4a7d10b5bd65fa8d6c44bfc4cb0300e7456c0730250d9",
+  "persisted-checkpoint-v3": "a637c94c54e0ab1775606aa83f8b8a15dfb57c8741275291a3c4baaec3243143",
+  "persisted-resume-capsule-v2": "5ebe6aa62cebdde31ea4cf71bfc2aaf34399585dba1e5d2acd60d0b555fcc6a7",
   "persisted-canonical-memory-entity-v1": "08775b61f91917893486af80de6eb8bc186708ca23f3cb62573638ed9c3bc07a",
   "persisted-sharing-decision-v1": "1f64041e3bd61ce74cb9ffde8110ef3053932cfc279361571c499834ad67efa7",
 };
@@ -5952,15 +6278,18 @@ const REQUIRED_RESTORE_CROSS_FIELD_RULES: Readonly<Record<string, readonly strin
   "persisted-checkpoint-v3": [
     "embedded_state_passes_persisted-canonical-work-state-v2",
     "checkpoint_creator_resolves_to_authenticated_source",
+    "checkpoint_creator_source_session_matches_checkpoint_source_session",
     "checkpoint_source_session_matches_state_revision",
     "checkpoint_sensitivity_matches_embedded_canonical_state",
     "parent_checkpoint_id_and_revision_are_both_present_or_absent",
+    "parent_checkpoint_revision_resolves_to_existing_valid_checkpoint_with_matching_id_and_scope",
     "checkpoint_content_and_revision_match_CheckpointHashProfileV1",
   ],
   "persisted-resume-capsule-v2": [
     "capsule_content_hash_matches_ResumeCapsuleHashProfileV1",
     "capsule_checkpoint_id_and_revision_resolve_to_same_checkpoint_and_work_state_revision_matches_checkpoint_state",
     "capsule_checkpoint_creator_matches_resolved_checkpoint",
+    "resolved_checkpoint_creator_source_session_matches_resolved_state_revision",
     "capsule_envelope_matches_persisted_delivery_claim",
     "capsule_projections_match_resolved_work_state_revision",
     "capsule_subject_matches_shared_projection",
@@ -5985,6 +6314,7 @@ const REQUIRED_RESTORE_CROSS_FIELD_RULES: Readonly<Record<string, readonly strin
     "private_requires_authenticated_opt_in_and_resolved_private_eligibility",
     "selected_memory_ids_are_sorted_unique_and_resolve_to_hash_valid_policy_eligible_entities",
     "secret_local_only_and_prohibited_egress_are_not_serialized",
+    "capsule_warning_codes_are_sorted_unique_and_closed",
     "destination_capability_downgrade_is_explicit",
   ],
   "persisted-canonical-memory-entity-v1": [

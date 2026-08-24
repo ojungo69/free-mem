@@ -38,6 +38,10 @@ V1定義、reference reducer、old-shape corpusは変更しない。
 state/checkpoint/memoryのfieldはopaqueな`sourceEventIds`だけを保持し、origin/last/participants/creatorも
 代表source-event IDで表す。
 
+Every nested shared/Agent-local evidence item requires non-empty source-event refs. The authenticated checkpoint creator
+session equals both checkpoint and state-revision source sessions; a child parent resolves to an existing hash-valid prior
+checkpoint with the exact ID and task scope.
+
 **Rationale**: 既存`ContinuityEventProvenanceV1`、`ContinuityIngestAttestationV1`、`sourceEventIds`を
 再利用できる。SourceIdentity objectの複製はdriftとrelabelの新しい経路になる。
 
@@ -63,6 +67,8 @@ RPC handshakeのversion文字列とspool eventのcaller文字列だけでsource 
 Sharing grantはlevelをsubjectへexact mappingする: `task_shared -> task_lineage`、`project_shared -> project`、
 `personal_shared -> personal_vault`。階層包含だけにすると、personal-vault scopeのproject grantが同じvaultの
 別projectへ届くため不採用。project/current/named retrievalはworkspace境界、active-task/automatic/hintはlineage境界を使う。
+Capsule warnings are sorted-unique closed sharing-disposition codes. The capability-only downgrade token appears exactly
+once if and only if that downgrade is required.
 
 ## Decision 5: legacy artifactは根拠別の3 dispositionに限定する
 
@@ -96,6 +102,8 @@ candidateへ分離する。言い換え/semantic similarityは別entityのまま
 明示authorityのauditable mergeだけを許す。child revisionは同じmemoryのexisting hash-validで、authoritative
 resolverがそのchildよりpriorと証明したrevisionだけをparentにできる。`contradicted`/`confirmed_wrong`はinspect可能な履歴として残すがcapsule deliveryから除外する。
 時刻順序は`createdAt <= updatedAt`と、両端がある場合の`validFrom <= validTo`だけを要求する。
+The canonical union includes destination-owned evidence. Automatic raw delivery includes every eligible external-source
+contributor and excludes destination-owned records to prevent echo.
 
 **Rationale**: 決定論、local privacy、ゼロ追加costを守りながら、同一contentのper-Agent duplicateを0にできる。
 
@@ -144,6 +152,7 @@ fixture JSONは既存walkerが自動hashし、新testは既存`harness/continuit
 ordered `candidateRules`でちょうど1つのsemantic ownerまたはsupporting referenceへ分類し、runtime/schema
 のhitをsupportingへ逃がさない。Search 2〜4はbroad discovery snapshotであり、4,095 hitを1行1surfaceへ
 水増しせず、semantic entry作成時のdrift anchorとして使う。
+Each `sqlTable` names one table; multi-table semantics use separate entries.
 
 ### Frozen search commands
 
@@ -240,6 +249,10 @@ workspace compatibility、checkpoint disposition、lineage fork/conflictを別�
 state hash再計算はintegrity検査に限定し、head候補はstate revision/hash/scope/daemon/epoch/ordinalが一致し、
 non-blankなwriter lease/fenceとcommit時の有効性を持つclosed `StateCommitReceiptV1`へ解決したstateだけにする。
 head-selection policyはこのschema名を明示する。
+Candidate workspace compatibility, checkpoint disposition, and lineage state are compared with independently resolved
+values; serialized claims are not eligibility authority.
+The serialized revision set also equals the requested scope's resolved candidate set exactly, so omission cannot recreate an
+automatic fallback to an older head.
 
 **Rationale**: 「新しい」と「再開してよい」を1つのfield/algorithmにすると、incompatible/retracted headを
 選ぶか、古いstateへ黙って巻き戻る。fail-closedな2 gateをfixture作成前に固定する。

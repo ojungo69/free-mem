@@ -499,17 +499,31 @@
       "notes": "not automatic source authority"
     },
     {
-      "id": "persisted-retrieval-outcome-source",
-      "locus": "vendor/codemem/packages/core/src/schema.ts:retrievalAttempts/outcomeEvidence.source",
-      "semanticTerm": "source/source_session_id",
-      "currentMeaning": "retrieval or diagnostic channel",
+      "id": "persisted-retrieval-attempt-source",
+      "locus": "vendor/codemem/packages/core/src/schema.ts:retrievalAttempts.source",
+      "semanticTerm": "source",
+      "currentMeaning": "retrieval channel",
       "authority": "derived",
       "surfaceClass": "persisted",
       "disposition": "rename",
-      "successorTarget": "retrievalChannel/diagnosticChannel",
-      "migrationCondition": "retain channel semantics only",
+      "successorTarget": "retrievalChannel",
+      "migrationCondition": "retain retrieval channel semantics only",
       "restoreValidationRequired": false,
-      "sqlTable": "retrieval_attempts,outcome_evidence",
+      "sqlTable": "retrieval_attempts",
+      "notes": "not coding-client identity"
+    },
+    {
+      "id": "persisted-outcome-evidence-source",
+      "locus": "vendor/codemem/packages/core/src/schema.ts:outcomeEvidence.source",
+      "semanticTerm": "source_session_id",
+      "currentMeaning": "diagnostic channel",
+      "authority": "derived",
+      "surfaceClass": "persisted",
+      "disposition": "rename",
+      "successorTarget": "diagnosticChannel",
+      "migrationCondition": "retain diagnostic channel semantics only",
+      "restoreValidationRequired": false,
+      "sqlTable": "outcome_evidence",
       "notes": "not coding-client identity"
     },
     {

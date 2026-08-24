@@ -754,9 +754,11 @@ export type RevisionHeadSelectionContractV1 =
       readonly corruptionReasonCodes: readonly RevisionSelectionCorruptionReasonV1[];
     });
 
+type NonEmptySourceEventIdsV1 = readonly [OpaqueIdV1, ...OpaqueIdV1[]];
+
 export interface ObservedV2<T extends ReadonlyJsonValue> {
   readonly value: DeepReadonlyJson<T>;
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: NonEmptySourceEventIdsV1;
   readonly observedAt: string;
   readonly evidenceKind: EvidenceKind;
   readonly confidence: number;
@@ -770,7 +772,7 @@ export interface ObservedFileV2 {
   readonly role: ObservedFile["role"];
   readonly contentHash?: Sha256Hex;
   readonly existsAtObservation: boolean;
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: NonEmptySourceEventIdsV1;
   readonly observedAt: string;
   readonly freshness: Freshness;
   readonly sensitivity: Sensitivity;
@@ -782,7 +784,7 @@ export interface ObservedCommandV2 {
   readonly cwd?: string;
   readonly exitCode?: number;
   readonly status: ObservedCommand["status"];
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: NonEmptySourceEventIdsV1;
   readonly observedAt: string;
   readonly evidenceKind: EvidenceKind;
   readonly sensitivity: Sensitivity;
@@ -794,7 +796,7 @@ export interface ObservedTestV2 {
   readonly target?: string;
   readonly status: ObservedTest["status"];
   readonly summary?: string;
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: NonEmptySourceEventIdsV1;
   readonly observedAt: string;
   readonly evidenceKind: EvidenceKind;
   readonly sensitivity: Sensitivity;
@@ -819,7 +821,7 @@ export interface PendingOperationV2 {
   readonly description: string;
   readonly status: PendingOperation["status"];
   readonly replayPolicy: ReplayPolicy;
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: NonEmptySourceEventIdsV1;
   readonly startedAt: string;
   readonly terminalAt?: string;
   readonly idempotencyKey?: OpaqueIdV1;
@@ -838,7 +840,7 @@ export const DROPPED_EVIDENCE_REASONS_V1 = [
 
 export interface DroppedEvidenceEntryV2 {
   readonly reason: DroppedEvidenceReasonV1;
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: NonEmptySourceEventIdsV1;
   readonly recordedAtLineageRevisionOrdinal: string;
   readonly sensitivity: Sensitivity;
   readonly operationId?: OpaqueIdV1;
@@ -887,7 +889,7 @@ export interface SemanticResumeNoteV2 {
   readonly modelId: string;
   readonly promptHash: Sha256Hex;
   readonly confidence: number;
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: NonEmptySourceEventIdsV1;
   readonly sensitivity: Sensitivity;
 }
 
@@ -1032,7 +1034,7 @@ export type ResumeCapsuleV2 = {
   readonly ageSeconds: number;
   readonly reconciliation: ReconciliationStatus;
   readonly selectedMemoryIds: readonly OpaqueIdV1[];
-  readonly warnings: readonly string[];
+  readonly warnings: readonly SourceSharingDispositionCodeV1[];
 } & (
   | {
       readonly destination: ResumeDestinationV1 & { readonly capabilityHash: Sha256Hex };
@@ -1102,7 +1104,7 @@ export const MEMORY_DURABILITIES_V1 = [
   "pinned",
 ] as const satisfies readonly MemoryDurabilityV1[];
 
-export interface CanonicalMemoryEntityV1 {
+type CanonicalMemoryEntityBaseV1 = {
   readonly schemaVersion: 1;
   readonly memoryId: OpaqueIdV1;
   readonly memoryRevision: Sha256Hex;
@@ -1113,8 +1115,6 @@ export interface CanonicalMemoryEntityV1 {
   readonly normalizationProfileId: string;
   readonly canonicalContent: ReadonlyJsonValue;
   readonly canonicalFactId: Sha256Hex;
-  readonly sharingScope: SharingScopeV1;
-  readonly sharingDecisionEventIds: readonly OpaqueIdV1[];
   readonly sensitivity: Sensitivity;
   readonly egressPolicy: EgressPolicyV1;
   readonly lifecycle: MemoryLifecycleV1;
@@ -1128,7 +1128,19 @@ export interface CanonicalMemoryEntityV1 {
   readonly contentHash: Sha256Hex;
   readonly createdAt: string;
   readonly updatedAt: string;
-}
+};
+
+export type CanonicalMemoryEntityV1 = CanonicalMemoryEntityBaseV1 &
+  (
+    | {
+        readonly sharingScope: "agent_private";
+        readonly sharingDecisionEventIds: readonly OpaqueIdV1[];
+      }
+    | {
+        readonly sharingScope: SharingGrantScopeV1;
+        readonly sharingDecisionEventIds: readonly [OpaqueIdV1, ...OpaqueIdV1[]];
+      }
+  );
 
 export type RawIdentifierReaderV1 = "daemon_validator" | "daemon_migrator";
 export const RAW_IDENTIFIER_READERS_V1 = [
@@ -1721,6 +1733,7 @@ export interface RevisionHeadSelectionPolicyV1 {
   readonly orderingKey: "lineage_revision_ordinal";
   readonly candidateAuthority: "validated_state_commit_receipt_only";
   readonly candidateReceiptSchema: "StateCommitReceiptV1";
+  readonly candidateCoverage: "exact_resolved_scope_set";
   readonly headCardinality: "exactly_one";
   readonly ordinalUniqueness: "required";
   readonly automaticTarget: "ordered_head_only";

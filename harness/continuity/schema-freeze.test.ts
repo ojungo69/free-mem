@@ -37,6 +37,32 @@ void (() => {
   void ([] satisfies contract.CanonicalMemoryEntityV1["sourceEventIds"]);
   // @ts-expect-error shared task state always has at least one authenticated sharing decision
   void ([] satisfies contract.SharedTaskStateV1["sharingDecisionEventIds"]);
+  const canonicalMemoryBase = {} as Omit<
+    contract.CanonicalMemoryEntityV1,
+    "sharingScope" | "sharingDecisionEventIds"
+  >;
+  void ({
+    ...canonicalMemoryBase,
+    sharingScope: "project_shared",
+    sharingDecisionEventIds: [],
+    // @ts-expect-error shared canonical memory always has at least one authenticated sharing decision
+  } satisfies contract.CanonicalMemoryEntityV1);
+  // @ts-expect-error every observed value retains at least one source event
+  void ([] satisfies contract.ObservedV2<string>["sourceEventIds"]);
+  // @ts-expect-error every observed file retains at least one source event
+  void ([] satisfies contract.ObservedFileV2["sourceEventIds"]);
+  // @ts-expect-error every observed command retains at least one source event
+  void ([] satisfies contract.ObservedCommandV2["sourceEventIds"]);
+  // @ts-expect-error every observed test retains at least one source event
+  void ([] satisfies contract.ObservedTestV2["sourceEventIds"]);
+  // @ts-expect-error every pending operation retains at least one source event
+  void ([] satisfies contract.PendingOperationV2["sourceEventIds"]);
+  // @ts-expect-error every dropped-evidence item retains at least one source event
+  void ([] satisfies contract.DroppedEvidenceEntryV2["sourceEventIds"]);
+  // @ts-expect-error every semantic resume note retains at least one source event
+  void ([] satisfies contract.SemanticResumeNoteV2["sourceEventIds"]);
+  // @ts-expect-error successor capsule warnings use the closed disposition-code vocabulary
+  void (["private prompt text"] satisfies contract.ResumeCapsuleV2["warnings"]);
   void ({
     name: "CanonicalWorkStateV2",
     schemaVersion: 3,
@@ -367,6 +393,7 @@ const INLINE_CONSTS = {
   "RevisionHeadSelectionPolicyV1.properties.orderingKey": "lineage_revision_ordinal",
   "RevisionHeadSelectionPolicyV1.properties.candidateAuthority": "validated_state_commit_receipt_only",
   "RevisionHeadSelectionPolicyV1.properties.candidateReceiptSchema": "StateCommitReceiptV1",
+  "RevisionHeadSelectionPolicyV1.properties.candidateCoverage": "exact_resolved_scope_set",
   "RevisionHeadSelectionPolicyV1.properties.headCardinality": "exactly_one",
   "RevisionHeadSelectionPolicyV1.properties.ordinalUniqueness": "required",
   "RevisionHeadSelectionPolicyV1.properties.automaticTarget": "ordered_head_only",
@@ -918,6 +945,7 @@ type _InlineConstsMatchContract = [
   Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["orderingKey"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.orderingKey">>>,
   Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["candidateAuthority"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.candidateAuthority">>>,
   Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["candidateReceiptSchema"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.candidateReceiptSchema">>>,
+  Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["candidateCoverage"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.candidateCoverage">>>,
   Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["headCardinality"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.headCardinality">>>,
   Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["ordinalUniqueness"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.ordinalUniqueness">>>,
   Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["automaticTarget"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.automaticTarget">>>,

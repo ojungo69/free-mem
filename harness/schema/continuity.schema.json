@@ -3198,7 +3198,7 @@
       "required": ["value", "sourceEventIds", "observedAt", "evidenceKind", "confidence", "freshness", "truncated", "sensitivity"],
       "properties": {
         "value": { "$ref": "#/$defs/JsonValue" },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
         "evidenceKind": { "$ref": "#/$defs/EvidenceKind" },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
@@ -3216,7 +3216,7 @@
         "role": { "type": "string", "enum": ["active", "modified", "read", "test", "config", "unknown"] },
         "contentHash": { "$ref": "#/$defs/Sha256Hex" },
         "existsAtObservation": { "type": "boolean" },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
         "freshness": { "$ref": "#/$defs/Freshness" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" }
@@ -3232,7 +3232,7 @@
         "cwd": { "type": "string", "maxLength": 8192 },
         "exitCode": { "type": "number" },
         "status": { "type": "string", "enum": ["succeeded", "failed", "unknown"] },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
         "evidenceKind": { "$ref": "#/$defs/EvidenceKind" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" }
@@ -3248,7 +3248,7 @@
         "target": { "type": "string", "maxLength": 8192 },
         "status": { "type": "string", "enum": ["passed", "failed", "partial", "unknown"] },
         "summary": { "type": "string", "maxLength": 8192 },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "observedAt": { "$ref": "#/$defs/IsoTimestamp" },
         "evidenceKind": { "$ref": "#/$defs/EvidenceKind" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" }
@@ -3281,7 +3281,7 @@
         "description": { "type": "string", "maxLength": 8192 },
         "status": { "type": "string", "enum": ["started", "succeeded", "failed", "unknown"] },
         "replayPolicy": { "$ref": "#/$defs/ReplayPolicy" },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "startedAt": { "$ref": "#/$defs/IsoTimestamp" },
         "terminalAt": { "$ref": "#/$defs/IsoTimestamp" },
         "idempotencyKey": { "$ref": "#/$defs/OpaqueIdV1" },
@@ -3302,7 +3302,7 @@
       "required": ["reason", "sourceEventIds", "recordedAtLineageRevisionOrdinal", "sensitivity"],
       "properties": {
         "reason": { "$ref": "#/$defs/DroppedEvidenceReasonV1" },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "recordedAtLineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" },
         "operationId": { "$ref": "#/$defs/OpaqueIdV1" },
@@ -3367,7 +3367,7 @@
         "modelId": { "type": "string", "maxLength": 8192 },
         "promptHash": { "$ref": "#/$defs/Sha256Hex" },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" }
       }
     },
@@ -3578,7 +3578,7 @@
         "sharedTaskState": { "$ref": "#/$defs/SharedTaskStateV1" },
         "destinationAgentLocalState": { "$ref": "#/$defs/AgentLocalStateV1" },
         "selectedMemoryIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
-        "warnings": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
+        "warnings": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/SourceSharingDispositionCodeV1" } }
       },
       "anyOf": [
         { "required": ["sharedTaskState"] },
@@ -4222,11 +4222,12 @@
     "RevisionHeadSelectionPolicyV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orderingKey", "candidateAuthority", "candidateReceiptSchema", "headCardinality", "ordinalUniqueness", "automaticTarget", "eligibilityDerivation", "automaticFallback", "ineligibleDisposition", "corruptDisposition"],
+      "required": ["orderingKey", "candidateAuthority", "candidateReceiptSchema", "candidateCoverage", "headCardinality", "ordinalUniqueness", "automaticTarget", "eligibilityDerivation", "automaticFallback", "ineligibleDisposition", "corruptDisposition"],
       "properties": {
         "orderingKey": { "const": "lineage_revision_ordinal" },
         "candidateAuthority": { "const": "validated_state_commit_receipt_only" },
         "candidateReceiptSchema": { "const": "StateCommitReceiptV1" },
+        "candidateCoverage": { "const": "exact_resolved_scope_set" },
         "headCardinality": { "const": "exactly_one" },
         "ordinalUniqueness": { "const": "required" },
         "automaticTarget": { "const": "ordered_head_only" },

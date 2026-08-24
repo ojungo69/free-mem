@@ -163,6 +163,11 @@ Only states backed by `StateCommitReceiptV1` are head candidates. Each candidate
 `workspaceCompatibility: compatible|incompatible|unknown`,
 `checkpointDisposition: open|accepted|superseded|retracted|expired|unknown`,
 `lineageState: single|forked|conflicted`, `resumeEligible`, and closed reason codes.
+The three gate values are compared with independently resolved workspace, checkpoint, and lineage state; the serialized
+candidate values do not establish eligibility.
+Policy `candidateCoverage="exact_resolved_scope_set"` requires the serialized revision set to exactly equal the resolved
+candidate set for the requested task scope; omission is selection corruption and cannot make an older revision the automatic
+head.
 
 Ordinals are unique and exactly one candidate is marked as the greatest daemon-owned ordered head. Automatic resume is allowed only when that same head is compatible,
 open, single, and otherwise eligible. An ineligible ordered head produces `fallbackDisposition="manual"`; it never silently
@@ -187,7 +192,7 @@ the subject workspace; a subject branch, when present, requires an equal reposit
 
 The Observed/file/command/test/operation/repository/note V2 shapes preserve their V1 semantic fields, make all arrays and
 properties recursively readonly through `ReadonlyJsonValue`, replace every identifier/fingerprint/source-event reference with `OpaqueIdV1`, and remove
-caller-owned ordering material. `sourceEventIds` are sorted unique arrays.
+caller-owned ordering material. Every nested evidence item has a non-empty sorted-unique `sourceEventIds` array.
 
 ### `AgentLocalStateV1`
 
@@ -250,6 +255,9 @@ optional `expiresAt`. The ID, parent link, and both hashes are excluded. `checkp
 `{domain:"free-mem/ContinuationCheckpointV3/checkpoint-revision/v1", checkpointId:id, transition, contentHash}`. Initial
 creation uses `transition:{kind:"initial"}`. A child requires both `parentCheckpointId` and `parentCheckpointRevision` and
 uses `transition:{kind:"parent",parentCheckpointId,parentCheckpointRevision}`. The manifest pins both vectors.
+The creator event resolves to an authenticated source whose session equals both `sourceSessionId` and
+`canonicalState.revision.sourceSessionId`. A child parent resolves to an existing hash-valid prior checkpoint with the exact
+parent ID and canonical task scope.
 
 ### `ResumeCapsuleV2`
 
@@ -270,6 +278,7 @@ If an otherwise deliverable resolved shared projection is omitted only because t
 `shared-task-v1`, warnings include the exact `SourceSharingDispositionCodeV1` token exactly once:
 `destination_capability_unsupported`. A projection already denied by sensitivity, egress, consent, or destination-private
 eligibility does not acquire that capability warning, and a supported destination cannot carry it.
+The full warnings array is sorted unique and contains only closed `SourceSharingDispositionCodeV1` values.
 
 Selected memory IDs are sorted unique and each resolves to a hash-valid `CanonicalMemoryEntityV1`. Before delivery, each
 resolved entity must pass subject-scope containment, sharing authority (including private consent), active lifecycle,
@@ -315,6 +324,8 @@ only within the same exact source and never across sources. A policy/consent/sou
 its reason is `policy_tuple_mismatch` for a different tuple or `consent_or_source_locality_mismatch` for an otherwise matching
 tuple that fails contributor consent or exact Agent-private source locality.
 It never widens delivery or forces a per-Agent duplicate. Semantic similarity never auto-merges.
+The union includes eligible destination-owned evidence. Automatic raw-record delivery includes every eligible external-source
+contributor and excludes destination-owned records to prevent echo.
 Any entity whose sharing scope is wider than `agent_private` requires at least one authenticated
 `sharingDecisionEventId`; an empty array is invalid rather than implicit consent. A `private` entity additionally requires
 the destination `privateEligible` gate at delivery time.
@@ -342,6 +353,7 @@ result count/digest), ordered candidate rules, and semantic entries. `partition`
 The broader 4,095 non-`sourceAgent` hits remain immutable discovery snapshots instead of becoming thousands of fake
 one-line surfaces. Entries carry ID, locus, semantic term, current meaning, authority, one surface class, one disposition,
 successor target, migration condition, `restoreValidationRequired`, optional schema definition/SQL table, and notes.
+An entry names at most one SQL table; a semantic surface spanning tables is split into one entry per table.
 
 ### `SourceAwareContractCorpusV1`
 
