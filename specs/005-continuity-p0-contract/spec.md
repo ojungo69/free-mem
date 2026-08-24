@@ -404,15 +404,17 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-033**: 新しいsource contractは既存のevent provenance、ingest attestation、source event参照を
   正本へ統合し、同じprovenance objectをfieldごとに複製する並立schemaを作ってはならない。
   successorのnested JSON object/arrayはrecursive readonly型とし、公開後にhash外から変更可能な型を残さない。
+  `SourceIdentityV1.ingestAttestation`の全nested fieldもreadonlyとする。
 - **FR-034**: subject scope（`personal_vault` / project / workspace / branch / task lineage / session / turn）とsharing
   scope（`agent_private` / `task_shared` / `project_shared` / `personal_shared`）を別軸として凍結しなければならない。
 - **FR-035**: sharing判定のprecedenceは、secret/`local_only`/prohibited-egress deny、cross-vault/project/workspace deny、
-  privateの明示opt-inと認証済みdestination `SourceIdentityV1.privateEligible` gate、Agent-local isolation、destination capability
+  private shared/memoryのauthority-bound `SharingDecisionV1.privateConsent=true`と認証済みdestination
+  `SourceIdentityV1.privateEligible` gate、Agent-local isolation、destination capability
   downgrade、sharing allow、source preference/display filterの順で評価しなければならない。
 - **FR-036**: callerはsharing scopeのproposalまでしか行えず、自分でscopeを昇格できてはならない。
   authority未確認のrecordはautomatic cross-agent full injectionへ使わない。共有grantはversioned
   `SharingDecisionV1`としてexplicit user authority event、exact subject scope、exact projection/memory targetへ
-  結び付け、resolved user-eventのaction/scope/sharing scope/target/decidedAt payloadと完全一致させる。
+  結び付け、resolved user-eventのaction/scope/sharing scope/target/privateConsent/decidedAt payloadと完全一致させる。
   unknown/unauthenticated/wrong-scope/wrong-target/payload mismatchを拒否し、decision参照はhash前にsorted uniqueとする。
 - **FR-037**: shared task projectionとAgent-local projectionを別のvisibility laneとして表現し、
   native todo、Agent固有plan、last assistant conclusion、host metadataを別Agentへ自動注入してはならない。
@@ -422,6 +424,8 @@ contract は期待する source identity、sharing disposition、participant集�
   各projectionはcontained valueの最大sensitivityを宣言し、canonical stateはpresent projection全体の最大値、
   checkpointはembedded stateと同値、capsuleはincluded projectionから再計算した最大値を使う。いずれの不一致も
   delivery前にquarantineし、宣言値でprivate/secret gateを下げてはならない。
+  capsuleのcheckpoint ID/revision/creatorは同じresolved checkpointへ結び付け、`selectedMemoryIds`はsorted uniqueかつ
+  hash-valid entityへ解決し、scope/sharing/private consent/lifecycle/sensitivity/egress/destination policyを全件検証する。
 - **FR-038**: 曖昧な単数`sourceAgent`をmulti-Agent lineageの代表値として再利用せず、lineage origin、
   last contributor、participants、checkpoint creator、field/memory source evidenceを区別しなければならない。
   field/memory refsはartifact hashの自己整合だけで受理せず、認証済みsource/snapshot artifactへ解決しなければならない。

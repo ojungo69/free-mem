@@ -252,15 +252,29 @@ All review output was treated as a proposal and checked against source/tests.
 | Grok raw candidate — checkpoint parent pairing only existed in JSON Schema | Accepted | `ContinuationCheckpointV3` is now a TypeScript union matching the schema: no parent fields or both parent ID/revision. Compile-only single-field assignments fail. |
 | Grok raw candidate — recursive readonly loses optional fields | Rejected | Mapped types preserve optional modifiers; a compile-only `ObservedV2<{ nested?: string[] }>["value"] = {}` passes while nested `push` fails. |
 | Grok raw candidate — JSON Schema must encode readonly | Rejected | JSON Schema has no mutability semantics; runtime shape remains `JsonValue`, while TypeScript owns recursive readonly and S1 owns clone/freeze. |
+| Codex latest — private projection reused a normal grant | Accepted | `SharingDecisionV1` and the independently authenticated user event now bind required `privateConsent`; private shared/memory delivery requires `true` in addition to destination eligibility. F7 and direct capsule/memory regressions cover false/true and payload mismatch. |
+| Codex latest — selected memories bypassed delivery policy | Accepted | Capsule validation requires sorted-unique selected IDs resolving to hash-valid canonical memories, then reuses sharing/source/snapshot checks and enforces scope containment, lifecycle, sensitivity, egress, private eligibility, and Agent-private isolation. |
+| Codex latest — checkpoint ID was not owned by the resolved revision | Accepted | The resolved checkpoint carries independent ID and creator; capsule ID/revision/creator/work-state must all bind to it even when the attacker recomputes the capsule hash and persisted envelope. |
+| Codex latest — nested ingest attestation remained mutable | Accepted | The successor identity uses a readonly legacy-attestation view; compile-only mutations of channel, time, receipt ID, and peer identity all fail while the mutable legacy event type remains unchanged. |
+| Correctness/Cubic latest — selected-memory containment ignored branch identity below workspace | Accepted | Scope containment now compares an optional container `branchKey` for branch/task/session/turn scopes; a task-lineage memory on branch A cannot select into branch B or an unbranched capsule. |
+| Correctness latest — private Agent-private selected memory lacked consent authority | Accepted | `SharingDecisionV1` intentionally grants only task/project/personal scopes, so private Agent-private memory remains daemon-local and is rejected from capsules even for an eligible same-agent destination. |
+| Cubic latest — privateConsent required without a version bump | Rejected | `SharingDecisionV1` is introduced for the first time by this unmerged S0 PR; no persisted V1 decision exists to migrate. The field is being frozen before the first merge, while actual legacy artifacts retain their separate dispositions. |
+| Cubic latest final rerun | Tool timeout | The post-fix local review was interrupted at the five-minute limit with an empty `issues` array and `Review interrupted`; no clean verdict is claimed. Its preceding concrete branch finding was fixed and independently re-reviewed clean. |
+
+The four-finding TDD red pass failed exactly on four unused readonly `@ts-expect-error` directives, missing `privateConsent`
+schema fields, and three missing restore rules. The two subsequent review fixes also have isolated red evidence: restoring the
+old branch-containment logic failed `true !== false`, and removing the private Agent-private denial failed the exact
+`assert.ok(selectedMemoryIssues(...).length > 0)` regression. Each mutation was immediately restored. Focused contract 21/21,
+schema freeze 19/19, TypeScript, and raw contract-hash regeneration then returned green before the final full review rerun.
 
 ## Final post-review verification — 2026-08-25
 
 - Focused source-aware contract: 21 passed, 0 failed.
 - Schema freeze: 19 passed, 0 failed.
 - Full continuity suite: 354 passed, 0 failed.
-- Harness TypeScript: exit 0, no diagnostics, including generic nested-readonly, optional-property, and checkpoint parent-pair compile checks.
+- Harness TypeScript: exit 0, no diagnostics, including generic nested-readonly, optional-property, checkpoint parent-pair, and full nested-attestation readonly compile checks.
 - Generated contract hashes: empty diff.
 - Old-shape baseline regeneration: 20 cases / 29 steps, empty diff.
 - Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
 - `git diff --check`: no whitespace error; reducer, old-shape fixture, mutation script, runtime, vendor, and workflow paths remain unchanged.
-- Final whole-diff correctness and security reviews: no findings. Cubic: zero issues. Grok: tool-limited after two attempts, with its one valid raw candidate fixed and source-verified. Final Ponytail review: `Lean already. Ship.`
+- Final whole-diff correctness and security reviews: no findings. Latest Cubic rerun: five-minute tool timeout, no clean verdict; its concrete branch finding was fixed and independently re-reviewed clean. Grok: tool-limited after two attempts, with its one valid raw candidate fixed and source-verified. Final Ponytail review: `Lean already. Ship.`

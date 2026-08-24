@@ -44,7 +44,7 @@ A shared capsule requires a non-blank destination `capabilityHash` resolving to 
 `shared-task-v1`. Missing/unknown/unsupported profiles downgrade or reject before delivery. A same-agent local-only capsule
 may omit the capability hash because no foreign shared projection is serialized.
 
-The resolved identity reuses `ContinuityEventProvenanceV1`, `ContinuityIngestAttestationV1`, and the normalized source
+The resolved identity reuses `ContinuityEventProvenanceV1`, a fully readonly `ContinuityIngestAttestationV1` view, and the normalized source
 event. It is not copied into each work-state field. Persisted artifacts keep sorted unique opaque source-event refs.
 
 Evidence certainty never grants instruction authority. Derived/synthesized records remain traceable but cannot confirm a
@@ -71,7 +71,8 @@ The decision order is fixed:
    automatic injection, `active_task_shared`, `same_agent`, `cross_agent`, capsule, sync, and export); `local_only` remains
    usable only inside daemon-owned local state;
 2. deny cross-`personal_vault`, project, or workspace mismatch;
-3. require explicit opt-in and resolved destination `SourceIdentityV1.privateEligible=true` for `private`;
+3. require authenticated `SharingDecisionV1.privateConsent=true` and resolved destination
+   `SourceIdentityV1.privateEligible=true` for private shared/memory delivery;
 4. isolate `agent_private` from every other client;
 5. downgrade when destination capabilities cannot represent the record safely;
 6. apply the allowed task/project/personal sharing rule;
@@ -80,10 +81,12 @@ The decision order is fixed:
 Caller code may propose sharing scope but may not elevate it. Legacy `visibility=private/shared` is insufficient to assign a
 new sharing scope.
 
-`SharingDecisionV1` is the only grant authority: explicit user authority event, exact subject scope, exact target, and
+`SharingDecisionV1` is the only grant authority: explicit user authority event, exact subject scope, exact target,
+required `privateConsent`, and
 `grant` action. The target is a task-lineage shared projection or a canonical fact. Unknown, unauthenticated, wrong-scope,
 or wrong-target decisions reject. The resolved authority event payload must exactly equal the persisted action, subject scope,
-sharing scope, target, and decision time; ID membership alone is not authority. Referenced decision IDs must already be sorted
+sharing scope, target, private consent, and decision time; ID membership alone is not authority. Private shared/memory delivery
+requires consent `true`; eligibility alone is insufficient. Referenced decision IDs must already be sorted
 and unique on input; duplicate or out-of-order refs are rejected before hashing/publication and are never normalized into acceptance.
 
 ## 5. Shared and Agent-local projections
@@ -112,6 +115,11 @@ projection. It never carries another client's Agent-local lane. The full canonic
 capsule. The destination always carries `sourceIdentityEventId`; restore rejects unless it resolves to the same authenticated
 client, exact client version, session, required supported capability profile for shared delivery, and daemon-owned private
 eligibility. Capability hash remains optional only for same-agent local-only capsules.
+Every selected memory ID is sorted unique, resolves to a hash-valid canonical memory, and passes the same subject-scope,
+sharing/private-consent, lifecycle, sensitivity, egress, destination-eligibility, and Agent-private isolation gates before
+delivery.
+A private `agent_private` memory has no grantable `SharingDecisionV1` target and therefore remains daemon-local; destination
+eligibility cannot make it capsule-deliverable.
 
 ## 6. Lineage provenance
 
@@ -150,7 +158,8 @@ sorted evidence metadata, and either an initial or parent-memory-revision transi
 exact-fact identity hash with schema literal `CanonicalMemoryEntityV1`.
 Resume capsules use their own domain-separated hash over every present field except `contentHash`; absent optional projection
 members are omitted rather than encoded as `null`; the manifest pins a local-only capsule vector. Restore resolves the named
-checkpoint/work-state revisions and requires every serialized shared/local projection to equal the corresponding resolved
+checkpoint revision to the same checkpoint ID and creator event, then requires its work-state revision and every serialized
+shared/local projection to equal the corresponding resolved
 work-state projection. All remaining envelope fields must equal the persisted delivery claim (injection/checkpoint/state IDs,
 scope/lineage/destination, profile, age, reconciliation, selected memories, and warnings). A body-only or authorization-field
 mutation remains rejected even after an attacker recomputes the public capsule hash; `reconciliation="incompatible"` cannot

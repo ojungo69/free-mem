@@ -61,7 +61,7 @@ form too.
 | `capabilityHash` | no | `Sha256Hex` |
 | `privateEligible` | yes | daemon-resolved destination policy; never accepted from a capsule/caller claim |
 | `captureMethod` | yes | existing `ContinuityCaptureMethod` |
-| `ingestAttestation` | yes | existing intake-stamped `ContinuityIngestAttestationV1` |
+| `ingestAttestation` | yes | fully readonly intake-stamped `ContinuityIngestAttestationV1` view |
 
 `SourceIdentityV1` is resolved once per normalized source event. Persisted fields do not embed it. They retain sorted,
 unique `OpaqueIdV1` source-event references instead. Private eligibility is read from this authenticated identity at delivery;
@@ -98,11 +98,13 @@ All IDs are `OpaqueIdV1`. Sharing scope is a separate field and never changes su
 ### `SharingDecisionV1`
 
 A persisted sharing grant contains `schemaVersion: 1`, opaque decision/authority event IDs, `authorityKind: "user"`,
-`decision: "grant"`, exact `SubjectScopeV1`, `task_shared|project_shared|personal_shared`, a closed target, and canonical
+`decision: "grant"`, exact `SubjectScopeV1`, `task_shared|project_shared|personal_shared`, a closed target, required
+`privateConsent: boolean`, and canonical
 `decidedAt`. The target is either the exact task lineage for `shared_task_projection` or the exact `canonicalFactId` for
 `canonical_memory_entity`. Unknown or unauthenticated authority, wrong scope, and wrong target reject the grant.
-The resolved user-event payload must exactly match action, subject/sharing scope, target, and decision time; matching only
+The resolved user-event payload must exactly match action, subject/sharing scope, target, private consent, and decision time; matching only
 `authoritySourceEventId` is insufficient.
+Private shared/memory delivery requires `privateConsent=true`; destination eligibility alone is not user consent.
 `SharedTaskStateV1` and `CanonicalMemoryEntityV1` store sorted-unique decision IDs; order/duplicates are semantic-invalid
 because these arrays participate in canonical hashes.
 
@@ -243,6 +245,16 @@ The capsule contains a bounded delivery projection, not the full state:
 - optional granted shared task state;
 - at most the destination client's own eligible `destinationAgentLocalState`;
 - opaque selected memory IDs and bounded warnings.
+
+Selected memory IDs are sorted unique and each resolves to a hash-valid `CanonicalMemoryEntityV1`. Before delivery, each
+resolved entity must pass subject-scope containment, sharing authority (including private consent), active lifecycle,
+sensitivity/egress, destination private eligibility, and Agent-private client isolation. Unknown or ineligible IDs reject the
+capsule; the capsule hash only protects the selection and is not delivery authority.
+Because `SharingDecisionV1` deliberately grants only task/project/personal sharing scopes, a private `agent_private` memory
+has no grantable consent authority and remains daemon-local rather than entering a capsule.
+
+Resolving `checkpointRevision` must yield the same `checkpointId`, creator event, and embedded work-state revision carried by
+the capsule. A self-consistent persisted envelope with a mismatched checkpoint identity is rejected.
 
 At least one shared/local projection is required. A capsule with only the destination Agent-local lane is same-agent only;
 cross-agent capsules require the shared projection and never contain the source client's Agent-local lane. Matching client ID

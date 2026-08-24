@@ -603,13 +603,14 @@ export interface SharingDecisionV1 {
   readonly subjectScope: SubjectScopeV1;
   readonly sharingScope: SharingGrantScopeV1;
   readonly target: SharingDecisionTargetV1;
+  readonly privateConsent: boolean;
   readonly decidedAt: string;
 }
 
 export interface SharingDecisionPolicyV1 {
   readonly schemaVersion: 1;
   readonly authority: "explicit_user";
-  readonly authorityPayloadBinding: "action_scope_target_and_decided_at_exact";
+  readonly authorityPayloadBinding: "action_scope_target_private_consent_and_decided_at_exact";
   readonly scopeMatch: "exact";
   readonly targetMatch: "exact";
   readonly invalidDisposition: "reject";
@@ -862,7 +863,9 @@ export interface SourceIdentityV1 {
   readonly capabilityHash?: Sha256Hex;
   readonly privateEligible: boolean;
   readonly captureMethod: ContinuityCaptureMethod;
-  readonly ingestAttestation: ContinuityIngestAttestationV1 & {
+  readonly ingestAttestation: Readonly<
+    Omit<ContinuityIngestAttestationV1, "ingestReceiptId" | "peerIdentityId">
+  > & {
     readonly ingestReceiptId: OpaqueIdV1;
     readonly peerIdentityId: OpaqueIdV1;
   };
@@ -1444,6 +1447,7 @@ export interface SourceAwareFixtureSharingDecisionV1 {
   readonly subjectScope: SourceAwareFixtureScopeV1;
   readonly sharingScope: SharingGrantScopeV1;
   readonly target: SourceAwareFixtureSharingTargetV1;
+  readonly privateConsent: boolean;
 }
 
 export interface SourceAwareFixtureTransitionV1 {

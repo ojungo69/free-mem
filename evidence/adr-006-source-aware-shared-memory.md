@@ -45,7 +45,7 @@ subject scopeは`personal_vault -> project -> workspace -> branch -> task_lineag
 ```text
 secret / local_only / prohibited-egress deny
   > cross-vault / project / workspace deny
-  > private opt-in + authenticated destination eligibility
+  > authority-bound privateConsent + authenticated destination eligibility
   > agent_private isolation
   > destination capability downgrade
   > sharing allow
@@ -54,7 +54,7 @@ secret / local_only / prohibited-egress deny
 
 ### 3. provenanceはsource event参照で保持する
 
-`SourceIdentityV1`を各fieldへ複製しない。既存event provenance/attestationとdaemon所有のprivate-eligibility policyを
+`SourceIdentityV1`を各fieldへ複製しない。既存event provenance/readonly attestationとdaemon所有のprivate-eligibility policyを
 一度だけ解決し、state/checkpoint/memoryはsorted uniqueなopaque source-event refsを保持する。全nested refsは
 authenticated sourceへ、Agent-local refsは同じclient/sessionへ解決する。memory snapshotはhash-validかつsame-memory
 bindingを要求する。lineage origin/last/participantsはappend-only evidenceから導出し、checkpoint creatorだけ
@@ -62,6 +62,9 @@ envelopeへ明示する。
 
 private-only stateはshared grantを捏造せずshared projectionを省略する。state/capsuleはいずれかのprojectionを必須とし、
 shared projectionを持たないcapsuleはsame-agentだけに限定する。
+private shared/memory deliveryはauthenticated grant payloadの`privateConsent=true`も必須とする。capsuleのcheckpoint
+ID/revision/creatorは同じresolved checkpointへ、selected memory IDはhash-valid entityへ解決し、同じscope・sharing・
+sensitivity・egress・destination policyを通す。
 
 ### 4. memory identityは完全一致だけ自動統合する
 

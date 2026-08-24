@@ -548,6 +548,29 @@ const US4_FIELDS = {
     "privateEligible",
     "sessionId",
   ],
+  SharingDecisionV1: [
+    "authorityKind",
+    "authoritySourceEventId",
+    "decidedAt",
+    "decision",
+    "decisionEventId",
+    "privateConsent",
+    "schemaVersion",
+    "sharingScope",
+    "subjectScope",
+    "target",
+  ],
+  SourceAwareFixtureSharingDecisionV1: [
+    "authenticated",
+    "authorityEventId",
+    "authorityKind",
+    "decision",
+    "id",
+    "privateConsent",
+    "sharingScope",
+    "subjectScope",
+    "target",
+  ],
   LineageSourceSummaryV1: [
     "lastContributingSourceEventId",
     "lineageOriginSourceEventId",
@@ -880,6 +903,7 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
             decision.authorityKind === "user" &&
             decision.decision === "grant" &&
             decision.sharingScope === record?.sharingScope &&
+            (record?.sensitivity !== "private" || decision.privateConsent) &&
             targetMatches &&
             canonicalizeJson(decision.subjectScope) === canonicalizeJson(recordScope)
           );
@@ -1075,7 +1099,12 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
   }
   const f7Private = f7?.input.records.find(({ id }) => id === "private-record");
   const f7NoConsent = f7?.input.records.find(({ id }) => id === "private-no-consent");
-  if (!f7Private?.sharingDecisionEventIds?.length || f7NoConsent?.sharingDecisionEventIds?.length) {
+  const f7PrivateDecision = f7?.input.sharingDecisions.find(({ id }) => id === "decision-private");
+  if (
+    !f7Private?.sharingDecisionEventIds?.length ||
+    f7NoConsent?.sharingDecisionEventIds?.length ||
+    f7PrivateDecision?.privateConsent !== true
+  ) {
     issues.push("F7 does not separate privateEligible failure from missing consent");
   }
   const f7Scopes = new Map(
@@ -1147,7 +1176,7 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
     JSON.stringify({
       schemaVersion: 1,
       authority: "explicit_user",
-      authorityPayloadBinding: "action_scope_target_and_decided_at_exact",
+      authorityPayloadBinding: "action_scope_target_private_consent_and_decided_at_exact",
       scopeMatch: "exact",
       targetMatch: "exact",
       invalidDisposition: "reject",
@@ -1691,6 +1720,22 @@ test("source-aware negative self-mutations are rejected", () => {
   (f7.successor.automaticFullRecordIds as string[]).push("private-record");
   assert.ok(corpusSemanticIssues(privateLeak as unknown as contract.SourceAwareContractCorpusV1).length > 0);
 
+  const privateWithoutConsent = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const privateConsentCase = privateWithoutConsent.cases.find(({ id }) => id === "F7");
+  assert.ok(privateConsentCase);
+  const privateDestination = privateConsentCase.input.sources.find(
+    ({ id }) => id === privateConsentCase.input.destination.sourceId,
+  );
+  const privateDecision = privateConsentCase.input.sharingDecisions.find(({ id }) => id === "decision-private");
+  assert.ok(privateDestination && privateDecision);
+  (privateDestination as unknown as { privateEligible: boolean; capabilityIds: string[] }).privateEligible = true;
+  (privateDestination.capabilityIds as string[]).push("shared-task-v1");
+  (privateDecision as unknown as { privateConsent: boolean }).privateConsent = false;
+  (privateConsentCase.successor.automaticFullRecordIds as string[]).push("private-record");
+  assert.ok(
+    corpusSemanticIssues(privateWithoutConsent as unknown as contract.SourceAwareContractCorpusV1).length > 0,
+  );
+
   const localOnlyRetrieval = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
   const privacyCase = localOnlyRetrieval.cases.find(({ id }) => id === "F7");
   assert.ok(privacyCase);
@@ -1900,6 +1945,7 @@ interface ResolvedSharingAuthorityEvent {
   readonly subjectScope: contract.SubjectScopeV1;
   readonly sharingScope: contract.SharingGrantScopeV1;
   readonly target: contract.SharingDecisionTargetV1;
+  readonly privateConsent: boolean;
   readonly decidedAt: string;
 }
 
@@ -1927,6 +1973,9 @@ function canonicalMemorySharingIssues(
     }
   }
   if (value.sharingScope === "agent_private") return issues;
+  if (value.sharingDecisionEventIds.length === 0) {
+    issues.push("shared canonical memory has no sharing decision");
+  }
   for (const decisionEventId of value.sharingDecisionEventIds) {
     const decision = sharingDecisionByEventId.get(decisionEventId);
     if (!decision) {
@@ -1944,6 +1993,7 @@ function canonicalMemorySharingIssues(
         value.subjectScope,
         { kind: "canonical_memory_entity", canonicalFactId: value.canonicalFactId },
         value.sharingScope,
+        value.sensitivity,
       ),
     );
   }
@@ -1956,6 +2006,7 @@ function sharingDecisionSemanticIssues(
   expectedScope: contract.SubjectScopeV1,
   expectedTarget: contract.SharingDecisionTargetV1,
   expectedSharingScope: contract.SharingGrantScopeV1,
+  expectedSensitivity: contract.Sensitivity,
 ): string[] {
   const issues: string[] = [];
   const authority = authenticatedAuthorityEvents.get(decision.authoritySourceEventId);
@@ -1965,6 +2016,7 @@ function sharingDecisionSemanticIssues(
     subjectScope: decision.subjectScope,
     sharingScope: decision.sharingScope,
     target: decision.target,
+    privateConsent: decision.privateConsent,
     decidedAt: decision.decidedAt,
   };
   if (
@@ -1976,6 +2028,9 @@ function sharingDecisionSemanticIssues(
   if (canonicalizeJson(decision.subjectScope) !== canonicalizeJson(expectedScope)) issues.push("sharing scope target differs");
   if (canonicalizeJson(decision.target) !== canonicalizeJson(expectedTarget)) issues.push("sharing decision target differs");
   if (decision.sharingScope !== expectedSharingScope) issues.push("sharing grant scope differs");
+  if (expectedSensitivity === "private" && !decision.privateConsent) {
+    issues.push("private sharing lacks authenticated explicit consent");
+  }
   if (
     decision.target.kind === "shared_task_projection" &&
     (decision.subjectScope.kind !== "task_lineage" ||
@@ -2009,6 +2064,7 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
     subjectScope,
     sharingScope: "task_shared",
     target,
+    privateConsent: false,
     decidedAt: "2026-08-24T00:00:00Z",
   };
   assert.deepEqual(validateContractValue("SharingDecisionV1", decision, root, contract.CONTINUITY_LIMITS), []);
@@ -2021,12 +2077,13 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
         subjectScope: structuredClone(subjectScope),
         sharingScope: "task_shared",
         target: structuredClone(target),
+        privateConsent: false,
         decidedAt: "2026-08-24T00:00:00Z",
       },
     ],
   ]);
   assert.deepEqual(
-    sharingDecisionSemanticIssues(decision, authorityEvents, subjectScope, target, "task_shared"),
+    sharingDecisionSemanticIssues(decision, authorityEvents, subjectScope, target, "task_shared", "normal"),
     [],
   );
   const reorderedScope = {
@@ -2037,10 +2094,10 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
     kind: "task_lineage",
   } as contract.TaskLineageSubjectScopeV1;
   assert.deepEqual(
-    sharingDecisionSemanticIssues(decision, authorityEvents, reorderedScope, target, "task_shared"),
+    sharingDecisionSemanticIssues(decision, authorityEvents, reorderedScope, target, "task_shared", "normal"),
     [],
   );
-  assert.ok(sharingDecisionSemanticIssues(decision, new Map(), subjectScope, target, "task_shared").length > 0);
+  assert.ok(sharingDecisionSemanticIssues(decision, new Map(), subjectScope, target, "task_shared", "normal").length > 0);
   const wrongScope = { ...subjectScope, projectId: id("9") };
   assert.ok(
     sharingDecisionSemanticIssues(
@@ -2049,6 +2106,7 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
       wrongScope,
       target,
       "task_shared",
+      "normal",
     ).length > 0,
   );
   const wrongTarget: contract.SharedTaskProjectionTargetV1 = { ...target, taskLineageId: id("8") };
@@ -2059,6 +2117,7 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
       subjectScope,
       wrongTarget,
       "task_shared",
+      "normal",
     ).length > 0,
   );
   assert.ok(
@@ -2068,6 +2127,7 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
       subjectScope,
       target,
       "project_shared",
+      "normal",
     ).length > 0,
   );
   const alteredDecision = { ...decision, sharingScope: "project_shared" } as contract.SharingDecisionV1;
@@ -2078,7 +2138,19 @@ test("sharing decisions bind explicit user authority, exact scope, and exact tar
       subjectScope,
       target,
       "project_shared",
+      "normal",
     ).length > 0,
+  );
+  assert.ok(
+    sharingDecisionSemanticIssues(decision, authorityEvents, subjectScope, target, "task_shared", "private").length > 0,
+  );
+  const privateDecision = { ...decision, privateConsent: true };
+  const privateAuthority = new Map<string, ResolvedSharingAuthorityEvent>([
+    [decision.authoritySourceEventId, { ...authorityEvents.get(decision.authoritySourceEventId)!, privateConsent: true }],
+  ]);
+  assert.deepEqual(
+    sharingDecisionSemanticIssues(privateDecision, privateAuthority, subjectScope, target, "task_shared", "private"),
+    [],
   );
 });
 
@@ -2096,6 +2168,11 @@ interface ResolvedMemoryEvidenceSnapshot {
   readonly hashValid: boolean;
 }
 
+interface ResolvedSelectedMemory {
+  readonly entity: contract.CanonicalMemoryEntityV1;
+  readonly hashValid: boolean;
+}
+
 interface ResolvedLineageEventEvidence {
   readonly sourceEventId: string;
   readonly establishesLineage: boolean;
@@ -2104,9 +2181,32 @@ interface ResolvedLineageEventEvidence {
 }
 
 interface ResolvedCapsuleParent {
+  readonly checkpointId: string;
+  readonly checkpointCreatedBySourceEventId: string;
   readonly canonicalState: contract.CanonicalWorkStateV2;
   readonly authorizedEnvelope: contract.JsonValue;
   readonly lineageEvidence: readonly ResolvedLineageEventEvidence[];
+}
+
+function subjectScopeContains(container: contract.SubjectScopeV1, nested: contract.SubjectScopeV1): boolean {
+  if (container.personalVaultId !== nested.personalVaultId) return false;
+  if (container.kind === "personal_vault") return true;
+  if (!("projectId" in nested) || container.projectId !== nested.projectId) return false;
+  if (container.kind === "project") return true;
+  if (!("workspaceId" in nested) || container.workspaceId !== nested.workspaceId) return false;
+  if (container.kind === "workspace") return true;
+  if (
+    container.branchKey !== undefined &&
+    (!("branchKey" in nested) || container.branchKey !== nested.branchKey)
+  ) {
+    return false;
+  }
+  if (container.kind === "branch") return true;
+  if (!("taskLineageId" in nested) || container.taskLineageId !== nested.taskLineageId) return false;
+  if (container.kind === "task_lineage") return true;
+  if (!("sessionId" in nested) || container.sessionId !== nested.sessionId) return false;
+  if (container.kind === "session") return true;
+  return "turnId" in nested && container.turnId === nested.turnId;
 }
 
 function stateRevisionEnvelopeIssues(value: contract.TaskStateRevisionEnvelopeV1): string[] {
@@ -2188,6 +2288,63 @@ function sourceReferenceIssues(
   return issues;
 }
 
+function selectedMemoryDeliveryIssues(
+  value: contract.ResumeCapsuleV2,
+  selectedMemoryById: ReadonlyMap<string, ResolvedSelectedMemory>,
+  evidenceSnapshotById: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot>,
+  sharingDecisionByEventId: ReadonlyMap<string, contract.SharingDecisionV1>,
+  authenticatedAuthorityEvents: ReadonlyMap<string, ResolvedSharingAuthorityEvent>,
+  sourceIdentityByEventId: ReadonlyMap<string, ResolvedFixtureSourceIdentity>,
+  destinationIdentity: ResolvedFixtureSourceIdentity | undefined,
+): string[] {
+  const issues: string[] = [];
+  if (
+    new Set(value.selectedMemoryIds).size !== value.selectedMemoryIds.length ||
+    [...value.selectedMemoryIds].sort().join() !== value.selectedMemoryIds.join()
+  ) {
+    issues.push("selected memory references are not sorted unique");
+  }
+  for (const memoryId of value.selectedMemoryIds) {
+    const resolved = selectedMemoryById.get(memoryId);
+    if (!resolved || !resolved.hashValid || resolved.entity.memoryId !== memoryId) {
+      issues.push("selected memory is unresolved, hash-invalid, or ID-mismatched");
+      continue;
+    }
+    const memory = resolved.entity;
+    issues.push(
+      ...canonicalMemorySharingIssues(
+        memory,
+        sharingDecisionByEventId,
+        authenticatedAuthorityEvents,
+        sourceIdentityByEventId,
+        evidenceSnapshotById,
+      ),
+    );
+    if (!subjectScopeContains(memory.subjectScope, value.subjectScope)) {
+      issues.push("selected memory subject scope does not contain the capsule task scope");
+    }
+    if (memory.lifecycle !== "active") issues.push("selected memory is not active");
+    if (memory.sensitivity === "secret") issues.push("secret selected memory was serialized into a capsule");
+    if (memory.egressPolicy !== "eligible") issues.push("non-egress selected memory was serialized into a capsule");
+    if (memory.sensitivity === "private" && destinationIdentity?.privateEligible !== true) {
+      issues.push("private selected memory is not eligible under authenticated destination policy");
+    }
+    if (memory.sharingScope === "agent_private" && memory.sensitivity === "private") {
+      issues.push("private Agent-private memory has no grantable explicit-consent authority for capsule delivery");
+    }
+    if (
+      memory.sharingScope === "agent_private" &&
+      (value.resumeProfile !== "same_agent" ||
+        memory.sourceEventIds.some(
+          (sourceEventId) => sourceIdentityByEventId.get(sourceEventId)?.clientId !== value.destination.clientId,
+        ))
+    ) {
+      issues.push("Agent-private selected memory belongs to another client or cross-agent delivery");
+    }
+  }
+  return issues;
+}
+
 type ProjectionEvidence = Readonly<{
   sourceEventIds: readonly string[];
   sensitivity: contract.Sensitivity;
@@ -2259,14 +2416,21 @@ function resumeCapsuleSemanticIssues(
   sharingDecisionByEventId: ReadonlyMap<string, contract.SharingDecisionV1>,
   authenticatedAuthorityEvents: ReadonlyMap<string, ResolvedSharingAuthorityEvent>,
   parentByCheckpointRevision: ReadonlyMap<string, ResolvedCapsuleParent>,
+  selectedMemoryById: ReadonlyMap<string, ResolvedSelectedMemory>,
+  memoryEvidenceSnapshotById: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot>,
 ): string[] {
   const issues: string[] = [];
   if (computeResumeCapsuleContentHash(value) !== value.contentHash) {
     issues.push("resume capsule content hash does not match its projection");
   }
   const parent = parentByCheckpointRevision.get(value.checkpointRevision);
-  if (!parent || parent.canonicalState.revision.stateRevision !== value.workStateRevision) {
-    issues.push("capsule does not resolve to its checkpoint and work-state revisions");
+  if (
+    !parent ||
+    parent.checkpointId !== value.checkpointId ||
+    parent.checkpointCreatedBySourceEventId !== value.checkpointCreatedBySourceEventId ||
+    parent.canonicalState.revision.stateRevision !== value.workStateRevision
+  ) {
+    issues.push("capsule checkpoint ID, revision, creator, or work-state binding is invalid");
   } else {
     issues.push(...stateRevisionEnvelopeIssues(parent.canonicalState.revision));
     const derivedLineageSourceSummary = deriveLineageSourceSummary(parent, sourceIdentityByEventId);
@@ -2306,6 +2470,9 @@ function resumeCapsuleSemanticIssues(
   if (value.reconciliation === "incompatible") issues.push("incompatible reconciliation cannot produce a capsule");
   const sharedEvidence = value.sharedTaskState ? sharedTaskEvidence(value.sharedTaskState) : [];
   const localEvidence = value.destinationAgentLocalState ? agentLocalEvidence(value.destinationAgentLocalState) : [];
+  const sharedActualSensitivity = value.sharedTaskState
+    ? maxSensitivity(sharedEvidence.map(({ sensitivity }) => sensitivity))
+    : undefined;
   const includedProjections: Array<{
     projection: contract.SharedTaskStateV1 | contract.AgentLocalStateV1;
     actualSensitivity: contract.Sensitivity;
@@ -2313,7 +2480,7 @@ function resumeCapsuleSemanticIssues(
   if (value.sharedTaskState) {
     includedProjections.push({
       projection: value.sharedTaskState,
-      actualSensitivity: maxSensitivity(sharedEvidence.map(({ sensitivity }) => sensitivity)),
+      actualSensitivity: sharedActualSensitivity!,
     });
   }
   if (value.destinationAgentLocalState) {
@@ -2367,6 +2534,7 @@ function resumeCapsuleSemanticIssues(
           value.subjectScope,
           { kind: "shared_task_projection", taskLineageId: value.subjectScope.taskLineageId },
           "task_shared",
+          sharedActualSensitivity!,
         ),
       );
     }
@@ -2391,6 +2559,17 @@ function resumeCapsuleSemanticIssues(
   ) {
     issues.push("destination capability profile does not support shared task delivery");
   }
+  issues.push(
+    ...selectedMemoryDeliveryIssues(
+      value,
+      selectedMemoryById,
+      memoryEvidenceSnapshotById,
+      sharingDecisionByEventId,
+      authenticatedAuthorityEvents,
+      sourceIdentityByEventId,
+      destinationIdentity,
+    ),
+  );
   if (
     includedProjections.some(({ actualSensitivity }) => actualSensitivity === "private") &&
     destinationIdentity?.privateEligible !== true
@@ -2510,6 +2689,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     subjectScope: capsule.subjectScope,
     sharingScope: "task_shared",
     target: { kind: "shared_task_projection", taskLineageId: capsule.subjectScope.taskLineageId },
+    privateConsent: false,
     decidedAt: "2026-08-24T00:00:00Z",
   };
   const sharingDecisions = new Map([[decisionEventId, sharingDecision]]);
@@ -2522,6 +2702,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
         subjectScope: structuredClone(capsule.subjectScope),
         sharingScope: "task_shared",
         target: { kind: "shared_task_projection", taskLineageId: capsule.subjectScope.taskLineageId },
+        privateConsent: false,
         decidedAt: "2026-08-24T00:00:00Z",
       },
     ],
@@ -2530,6 +2711,8 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     value: contract.ResumeCapsuleV2,
     state: contract.CanonicalWorkStateV2,
   ): ResolvedCapsuleParent => ({
+    checkpointId: id,
+    checkpointCreatedBySourceEventId: id,
     canonicalState: state,
     authorizedEnvelope: capsuleAuthorityProjection(value),
     lineageEvidence: [
@@ -2555,9 +2738,151 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     decisions: ReadonlyMap<string, contract.SharingDecisionV1> = sharingDecisions,
     authorities: ReadonlyMap<string, ResolvedSharingAuthorityEvent> = authorityEvents,
     parents: ReadonlyMap<string, ResolvedCapsuleParent> = resolvedParents,
-  ) => resumeCapsuleSemanticIssues(value, sources, decisions, authorities, parents);
+    memories: ReadonlyMap<string, ResolvedSelectedMemory> = new Map(),
+    memorySnapshots: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot> = new Map(),
+  ) => resumeCapsuleSemanticIssues(value, sources, decisions, authorities, parents, memories, memorySnapshots);
   assert.deepEqual(validateContractValue("ResumeCapsuleV2", capsule, root, contract.CONTINUITY_LIMITS), []);
   assert.deepEqual(capsuleIssues(capsule), []);
+  for (const field of ["checkpointId", "checkpointCreatedBySourceEventId"] as const) {
+    const mismatchedCheckpoint = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
+    (mismatchedCheckpoint as unknown as Record<string, string>)[field] = "9".repeat(64);
+    (mismatchedCheckpoint as unknown as { contentHash: string }).contentHash =
+      computeResumeCapsuleContentHash(mismatchedCheckpoint);
+    const mismatchedParents = new Map<string, ResolvedCapsuleParent>([
+      [mismatchedCheckpoint.checkpointRevision, parentFor(mismatchedCheckpoint, resolvedState)],
+    ]);
+    assert.deepEqual(validateContractValue("ResumeCapsuleV2", mismatchedCheckpoint, root, contract.CONTINUITY_LIMITS), []);
+    assert.ok(
+      capsuleIssues(mismatchedCheckpoint, sourceClients, sharingDecisions, authorityEvents, mismatchedParents).length > 0,
+      field,
+    );
+  }
+
+  const memoryVector = manifest.canonicalMemoryHashProfile.testVector;
+  const selectedMemory = {
+    ...(memoryVector.contentProjection as Record<string, contract.JsonValue>),
+    ...(memoryVector.revisionMetadata as Record<string, contract.JsonValue>),
+    memoryId: memoryVector.memoryId,
+    memoryRevision: memoryVector.initialMemoryRevision,
+    contentHash: memoryVector.contentHash,
+  } as unknown as contract.CanonicalMemoryEntityV1;
+  assert.deepEqual(validateContractValue("CanonicalMemoryEntityV1", selectedMemory, root, contract.CONTINUITY_LIMITS), []);
+  const selectedMemoryDecisionEventId = selectedMemory.sharingDecisionEventIds[0]!;
+  const selectedMemoryAuthorityEventId = "b".repeat(64);
+  const selectedMemoryDecision: contract.SharingDecisionV1 = {
+    schemaVersion: 1,
+    decisionEventId: selectedMemoryDecisionEventId,
+    authoritySourceEventId: selectedMemoryAuthorityEventId,
+    authorityKind: "user",
+    decision: "grant",
+    subjectScope: selectedMemory.subjectScope,
+    sharingScope: "project_shared",
+    target: { kind: "canonical_memory_entity", canonicalFactId: selectedMemory.canonicalFactId },
+    privateConsent: false,
+    decidedAt: "2026-08-24T00:00:00Z",
+  };
+  const decisionsWithMemory = new Map(sharingDecisions).set(selectedMemoryDecisionEventId, selectedMemoryDecision);
+  const authoritiesWithMemory = new Map(authorityEvents).set(selectedMemoryAuthorityEventId, {
+    authorityKind: "user" as const,
+    decision: "grant" as const,
+    subjectScope: structuredClone(selectedMemory.subjectScope),
+    sharingScope: "project_shared" as const,
+    target: { kind: "canonical_memory_entity" as const, canonicalFactId: selectedMemory.canonicalFactId },
+    privateConsent: false,
+    decidedAt: "2026-08-24T00:00:00Z",
+  });
+  const selectedMemorySnapshots = new Map<string, ResolvedMemoryEvidenceSnapshot>([
+    [
+      selectedMemory.evidenceSnapshotIds[0]!,
+      { memoryId: selectedMemory.memoryId, hashValid: true },
+    ],
+  ]);
+  const selectedMemories = new Map<string, ResolvedSelectedMemory>([
+    [selectedMemory.memoryId, { entity: selectedMemory, hashValid: true }],
+  ]);
+  assert.equal(
+    subjectScopeContains(
+      { ...capsule.subjectScope, branchKey: "8".repeat(64) },
+      { ...capsule.subjectScope, branchKey: "9".repeat(64) },
+    ),
+    false,
+  );
+  const capsuleWithMemory = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
+  (capsuleWithMemory.selectedMemoryIds as string[]).push(selectedMemory.memoryId);
+  (capsuleWithMemory as unknown as { contentHash: string }).contentHash =
+    computeResumeCapsuleContentHash(capsuleWithMemory);
+  const memoryCapsuleParents = new Map<string, ResolvedCapsuleParent>([
+    [capsuleWithMemory.checkpointRevision, parentFor(capsuleWithMemory, resolvedState)],
+  ]);
+  const selectedMemoryIssues = (
+    overrides: Readonly<{
+      value?: contract.ResumeCapsuleV2;
+      sources?: ReadonlyMap<string, ResolvedFixtureSourceIdentity>;
+      decisions?: ReadonlyMap<string, contract.SharingDecisionV1>;
+      authorities?: ReadonlyMap<string, ResolvedSharingAuthorityEvent>;
+      parents?: ReadonlyMap<string, ResolvedCapsuleParent>;
+      memories?: ReadonlyMap<string, ResolvedSelectedMemory>;
+      snapshots?: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot>;
+    }> = {},
+  ) =>
+    capsuleIssues(
+      overrides.value ?? capsuleWithMemory,
+      overrides.sources ?? sourceClients,
+      overrides.decisions ?? decisionsWithMemory,
+      overrides.authorities ?? authoritiesWithMemory,
+      overrides.parents ?? memoryCapsuleParents,
+      overrides.memories ?? selectedMemories,
+      overrides.snapshots ?? selectedMemorySnapshots,
+    );
+  assert.deepEqual(validateContractValue("ResumeCapsuleV2", capsuleWithMemory, root, contract.CONTINUITY_LIMITS), []);
+  assert.deepEqual(selectedMemoryIssues(), []);
+  assert.ok(selectedMemoryIssues({ memories: new Map() }).length > 0);
+  assert.ok(
+    selectedMemoryIssues({
+      memories: new Map([[selectedMemory.memoryId, { entity: selectedMemory, hashValid: false }]]),
+    }).length > 0,
+  );
+  for (const overrides of [
+    { subjectScope: { ...selectedMemory.subjectScope, projectId: "9".repeat(64) } },
+    {
+      subjectScope: {
+        ...capsule.subjectScope,
+        branchKey: "9".repeat(64),
+      },
+    },
+    { sensitivity: "secret" as const },
+    { egressPolicy: "local_only" as const },
+    { lifecycle: "superseded" as const },
+  ]) {
+    const ineligibleMemory = { ...selectedMemory, ...overrides } as contract.CanonicalMemoryEntityV1;
+    assert.ok(
+      selectedMemoryIssues({
+        memories: new Map([[selectedMemory.memoryId, { entity: ineligibleMemory, hashValid: true }]]),
+      }).length > 0,
+    );
+  }
+  const agentPrivateMemory = {
+    ...selectedMemory,
+    sharingScope: "agent_private" as const,
+    sharingDecisionEventIds: [],
+  };
+  assert.ok(
+    selectedMemoryIssues({
+      memories: new Map([[selectedMemory.memoryId, { entity: agentPrivateMemory, hashValid: true }]]),
+    }).length > 0,
+  );
+  const duplicateSelectedMemory = structuredClone(capsuleWithMemory) as unknown as contract.ResumeCapsuleV2;
+  (duplicateSelectedMemory.selectedMemoryIds as string[]).push(selectedMemory.memoryId);
+  (duplicateSelectedMemory as unknown as { contentHash: string }).contentHash =
+    computeResumeCapsuleContentHash(duplicateSelectedMemory);
+  assert.ok(
+    selectedMemoryIssues({
+      value: duplicateSelectedMemory,
+      parents: new Map([
+        [duplicateSelectedMemory.checkpointRevision, parentFor(duplicateSelectedMemory, resolvedState)],
+      ]),
+    }).length > 0,
+  );
   const clientOrderedCapsule = structuredClone(capsule) as unknown as contract.ResumeCapsuleV2;
   const clientOrderedParticipants = ["f".repeat(64), "e".repeat(64)];
   (clientOrderedCapsule.lineageSourceSummary as unknown as { participantSourceEventIds: string[] })
@@ -2825,11 +3150,80 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     capabilityIds: ["shared-task-v1"],
     privateEligible: true,
   });
+  const sameAgentMemoryCapsule = structuredClone(capsuleWithMemory) as unknown as contract.ResumeCapsuleV2;
+  (sameAgentMemoryCapsule as unknown as { resumeProfile: contract.ResumeProfileV1 }).resumeProfile = "same_agent";
+  (sameAgentMemoryCapsule as unknown as { contentHash: string }).contentHash =
+    computeResumeCapsuleContentHash(sameAgentMemoryCapsule);
+  const privateAgentMemory = {
+    ...selectedMemory,
+    sharingScope: "agent_private" as const,
+    sensitivity: "private" as const,
+    sharingDecisionEventIds: [],
+    sourceEventIds: [id],
+  };
+  assert.ok(
+    selectedMemoryIssues({
+      value: sameAgentMemoryCapsule,
+      sources: privateEligibleSources,
+      parents: new Map([
+        [sameAgentMemoryCapsule.checkpointRevision, parentFor(sameAgentMemoryCapsule, resolvedState)],
+      ]),
+      memories: new Map([[selectedMemory.memoryId, { entity: privateAgentMemory, hashValid: true }]]),
+    }).length > 0,
+  );
+  const privateSelectedMemory = { ...selectedMemory, sensitivity: "private" as const };
+  const privateSelectedMemories = new Map<string, ResolvedSelectedMemory>([
+    [selectedMemory.memoryId, { entity: privateSelectedMemory, hashValid: true }],
+  ]);
+  assert.ok(
+    selectedMemoryIssues({ sources: privateEligibleSources, memories: privateSelectedMemories }).length > 0,
+  );
+  const privateMemoryDecision = { ...selectedMemoryDecision, privateConsent: true };
+  const privateMemoryDecisions = new Map(decisionsWithMemory).set(
+    selectedMemoryDecisionEventId,
+    privateMemoryDecision,
+  );
+  const privateMemoryAuthorities = new Map(authoritiesWithMemory).set(selectedMemoryAuthorityEventId, {
+    ...authoritiesWithMemory.get(selectedMemoryAuthorityEventId)!,
+    privateConsent: true,
+  });
   assert.deepEqual(
-    capsuleIssues(privateEligible, privateEligibleSources, sharingDecisions, authorityEvents, privateParents),
+    selectedMemoryIssues({
+      sources: privateEligibleSources,
+      decisions: privateMemoryDecisions,
+      authorities: privateMemoryAuthorities,
+      memories: privateSelectedMemories,
+    }),
     [],
   );
-  assert.ok(capsuleIssues(privateEligible, sourceClients, sharingDecisions, authorityEvents, privateParents).length > 0);
+  assert.ok(
+    selectedMemoryIssues({
+      decisions: privateMemoryDecisions,
+      authorities: privateMemoryAuthorities,
+      memories: privateSelectedMemories,
+    }).length > 0,
+  );
+  assert.ok(
+    capsuleIssues(privateEligible, privateEligibleSources, sharingDecisions, authorityEvents, privateParents).length > 0,
+  );
+  const privateSharingDecision = { ...sharingDecision, privateConsent: true };
+  const privateSharingDecisions = new Map([[decisionEventId, privateSharingDecision]]);
+  const privateAuthorityEvents = new Map<string, ResolvedSharingAuthorityEvent>([
+    [authorityEventId, { ...authorityEvents.get(authorityEventId)!, privateConsent: true }],
+  ]);
+  assert.deepEqual(
+    capsuleIssues(
+      privateEligible,
+      privateEligibleSources,
+      privateSharingDecisions,
+      privateAuthorityEvents,
+      privateParents,
+    ),
+    [],
+  );
+  assert.ok(
+    capsuleIssues(privateEligible, sourceClients, privateSharingDecisions, privateAuthorityEvents, privateParents).length > 0,
+  );
   const missingConsent = structuredClone(privateEligible) as unknown as contract.ResumeCapsuleV2;
   assert.ok(missingConsent.sharedTaskState);
   (missingConsent.sharedTaskState.sharingDecisionEventIds as string[]).pop();
@@ -3098,6 +3492,7 @@ test("shared memory requires authenticated consent evidence", () => {
     subjectScope: value.subjectScope as contract.SubjectScopeV1,
     sharingScope: "personal_shared",
     target: { kind: "canonical_memory_entity", canonicalFactId: id },
+    privateConsent: true,
     decidedAt: "2026-08-24T00:00:00Z",
   };
   const typedValue = value as unknown as contract.CanonicalMemoryEntityV1;
@@ -3115,6 +3510,7 @@ test("shared memory requires authenticated consent evidence", () => {
         subjectScope: structuredClone(value.subjectScope as contract.SubjectScopeV1),
         sharingScope: "personal_shared",
         target: { kind: "canonical_memory_entity", canonicalFactId: id },
+        privateConsent: true,
         decidedAt: "2026-08-24T00:00:00Z",
       },
     ],
@@ -3127,6 +3523,13 @@ test("shared memory requires authenticated consent evidence", () => {
     snapshots: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot> = evidenceSnapshots,
   ) => canonicalMemorySharingIssues(candidate, decisions, authorities, sources, snapshots);
   assert.deepEqual(memoryIssues(), []);
+  const normalOnlyDecision = { ...decision, privateConsent: false };
+  const normalOnlyAuthority = new Map<string, ResolvedSharingAuthorityEvent>([
+    [authorityEventId, { ...memoryAuthorities.get(authorityEventId)!, privateConsent: false }],
+  ]);
+  assert.ok(
+    memoryIssues(typedValue, new Map([[id, normalOnlyDecision]]), normalOnlyAuthority).length > 0,
+  );
   const unknownSource = structuredClone(typedValue) as unknown as contract.CanonicalMemoryEntityV1;
   (unknownSource.sourceEventIds as string[])[0] = "c".repeat(64);
   assert.ok(memoryIssues(unknownSource).length > 0);
@@ -3238,11 +3641,11 @@ const EXPECTED_RESTORE_RULE_PATH_HASHES: Readonly<Record<string, string>> = {
   "persisted-derived-invalidation-event": "a3d5d6961c0ea1b11c24d4113547b482a79961f9b2345ca9f1caca071e05bcb0",
   "persisted-resume-capsule-v1": "e1f7758c7bb30cad0d51773677fe3288491c961f2cea29077ed7fd25f707ac85",
   "persisted-durable-memory": "7a11699d0a052b6e71601a7712693f8e593c2e06b5b68727179d7a9a16965174",
-  "persisted-canonical-work-state-v2": "8298a0530e991afaf40c3e2348b12d6a3f9d894fa08e13e2a24f4b6b855e5256",
+  "persisted-canonical-work-state-v2": "467e977f3cca857f1651f30d7ad1a96daece960cbd600ac0ad8d5eb9cb086330",
   "persisted-checkpoint-v3": "5e1ee47e0c507279c731eed79399f8f174aa1754859573c77389e3231001a9ef",
-  "persisted-resume-capsule-v2": "f56bae5b4ee9b42cfdfb5ce6d2bff32e62167d00a01a8d6aaf764f2d1898067e",
-  "persisted-canonical-memory-entity-v1": "a17c1e321242b5b7170c3c0f2b53377f9bc6b45c02df040fc408942e6a99396f",
-  "persisted-sharing-decision-v1": "a2571e2d30db349b3dd235002b2f8be5f5c82a681101e9110a7631e9de51b075",
+  "persisted-resume-capsule-v2": "532eeef124488783fbf1792d307c039f08b77b596638bddb30adf09b629a1172",
+  "persisted-canonical-memory-entity-v1": "68fdff37e7f3ca27d8f4892cbba92eb68197be5df5d3c4932311eab93b60d4aa",
+  "persisted-sharing-decision-v1": "af7b9a35a9ef8d675572038d7c896d8597fb21f26d3df68a27c11fe6cb0a41f3",
 };
 
 const REQUIRED_SOURCE_REFERENCE_PATHS: Readonly<Record<string, readonly string[]>> = {
@@ -3287,6 +3690,7 @@ const REQUIRED_RESTORE_CROSS_FIELD_RULES: Readonly<Record<string, readonly strin
     "lineage_summary_matches_append_only_event_and_revision_evidence",
     "parent_state_revisions_are_sorted_unique_before_hash_and_publication",
     "shared_field_source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources",
+    "shared_state_decisions_match_authenticated_authority_scope_target_and_private_consent",
     "agent_local_field_source_event_refs_are_sorted_unique_and_resolve_to_lane_client_and_session",
     "dropped_evidence_reason_windows_have_consistent_counters_boundaries_and_aggregates",
   ],
@@ -3301,13 +3705,19 @@ const REQUIRED_RESTORE_CROSS_FIELD_RULES: Readonly<Record<string, readonly strin
     "destination_private_eligibility_resolves_from_authenticated_source_identity",
     "destination_capability_profile_resolves_and_supports_included_projections",
     "private_requires_authenticated_opt_in_and_resolved_private_eligibility",
+    "selected_memory_ids_are_sorted_unique_and_resolve_to_hash_valid_policy_eligible_entities",
+    "capsule_checkpoint_id_and_revision_resolve_to_same_checkpoint_and_work_state_revision_matches_checkpoint_state",
+    "capsule_checkpoint_creator_matches_resolved_checkpoint",
+    "shared_state_decisions_match_authenticated_authority_scope_target_and_private_consent",
   ],
   "persisted-canonical-memory-entity-v1": [
+    "shared_scope_decisions_match_authenticated_authority_scope_target_and_private_consent",
+    "private_sharing_requires_explicit_opt_in",
     "source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources",
     "evidence_snapshot_refs_are_sorted_unique_and_resolve_to_existing_hash_valid_snapshots_bound_to_same_memory",
   ],
   "persisted-sharing-decision-v1": [
-    "authority_event_payload_matches_decision_action_scope_target_and_decided_at",
+    "authority_event_payload_matches_decision_action_scope_target_private_consent_and_decided_at",
   ],
 };
 

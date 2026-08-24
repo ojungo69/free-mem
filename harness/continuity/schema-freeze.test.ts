@@ -24,6 +24,15 @@ if (false) {
   const missingParentRevision: contract.ContinuationCheckpointV3 = { ...checkpoint, parentCheckpointId: "a".repeat(64) };
   // @ts-expect-error checkpoint parent ID and revision must appear together
   const missingParentId: contract.ContinuationCheckpointV3 = { ...checkpoint, parentCheckpointRevision: "b".repeat(64) };
+  const sourceIdentity = {} as contract.SourceIdentityV1;
+  // @ts-expect-error successor attestation channel is readonly
+  sourceIdentity.ingestAttestation.channel = "spool";
+  // @ts-expect-error successor attestation time is readonly
+  sourceIdentity.ingestAttestation.attestedAt = "2026-08-25T00:00:00Z";
+  // @ts-expect-error successor attestation receipt is readonly
+  sourceIdentity.ingestAttestation.ingestReceiptId = "a".repeat(64);
+  // @ts-expect-error successor attestation peer identity is readonly
+  sourceIdentity.ingestAttestation.peerIdentityId = "b".repeat(64);
 }
 
 /**
@@ -311,7 +320,7 @@ const INLINE_CONSTS = {
   "SharingDecisionV1.properties.decision": "grant",
   "SharingDecisionPolicyV1.properties.schemaVersion": 1,
   "SharingDecisionPolicyV1.properties.authority": "explicit_user",
-  "SharingDecisionPolicyV1.properties.authorityPayloadBinding": "action_scope_target_and_decided_at_exact",
+  "SharingDecisionPolicyV1.properties.authorityPayloadBinding": "action_scope_target_private_consent_and_decided_at_exact",
   "SharingDecisionPolicyV1.properties.scopeMatch": "exact",
   "SharingDecisionPolicyV1.properties.targetMatch": "exact",
   "SharingDecisionPolicyV1.properties.invalidDisposition": "reject",

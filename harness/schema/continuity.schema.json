@@ -3001,7 +3001,7 @@
     "SharingDecisionV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "decisionEventId", "authoritySourceEventId", "authorityKind", "decision", "subjectScope", "sharingScope", "target", "decidedAt"],
+      "required": ["schemaVersion", "decisionEventId", "authoritySourceEventId", "authorityKind", "decision", "subjectScope", "sharingScope", "target", "privateConsent", "decidedAt"],
       "properties": {
         "schemaVersion": { "const": 1 },
         "decisionEventId": { "$ref": "#/$defs/OpaqueIdV1" },
@@ -3011,6 +3011,7 @@
         "subjectScope": { "$ref": "#/$defs/SubjectScopeV1" },
         "sharingScope": { "$ref": "#/$defs/SharingGrantScopeV1" },
         "target": { "$ref": "#/$defs/SharingDecisionTargetV1" },
+        "privateConsent": { "type": "boolean" },
         "decidedAt": { "$ref": "#/$defs/IsoTimestamp" }
       }
     },
@@ -3021,7 +3022,7 @@
       "properties": {
         "schemaVersion": { "const": 1 },
         "authority": { "const": "explicit_user" },
-        "authorityPayloadBinding": { "const": "action_scope_target_and_decided_at_exact" },
+        "authorityPayloadBinding": { "const": "action_scope_target_private_consent_and_decided_at_exact" },
         "scopeMatch": { "const": "exact" },
         "targetMatch": { "const": "exact" },
         "invalidDisposition": { "const": "reject" },
@@ -3880,7 +3881,7 @@
     "SourceAwareFixtureSharingDecisionV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "authorityEventId", "authorityKind", "decision", "authenticated", "subjectScope", "sharingScope", "target"],
+      "required": ["id", "authorityEventId", "authorityKind", "decision", "authenticated", "subjectScope", "sharingScope", "target", "privateConsent"],
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 8192 },
         "authorityEventId": { "type": "string", "minLength": 1, "maxLength": 8192 },
@@ -3889,7 +3890,8 @@
         "authenticated": { "type": "boolean" },
         "subjectScope": { "$ref": "#/$defs/SourceAwareFixtureScopeV1" },
         "sharingScope": { "$ref": "#/$defs/SharingGrantScopeV1" },
-        "target": { "$ref": "#/$defs/SourceAwareFixtureSharingTargetV1" }
+        "target": { "$ref": "#/$defs/SourceAwareFixtureSharingTargetV1" },
+        "privateConsent": { "type": "boolean" }
       }
     },
     "SourceAwareFixtureTransitionV1": {
