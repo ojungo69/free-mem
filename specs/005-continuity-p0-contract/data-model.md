@@ -141,6 +141,11 @@ of `schemaVersion`, `subjectScope`, `opaqueIdProfile`, `lineageSourceSummary`, o
 `{ domain: "free-mem/CanonicalWorkStateV2/state-revision/v1", contentHash, revision }`, where `revision` contains exactly
 `parentStateRevisions`, `lineageRevisionOrdinal`, `committedByDaemonId`, `writerEpoch`, `sourceSessionId`, and
 `committedAt`. Neither hash includes itself. The manifest carries shared and local-only fixed vectors for TypeScript/Rust parity.
+Restore recomputes both hashes for integrity only. A state is authoritative only when its `stateRevision` resolves to a
+historical commit receipt with exact `stateRevision`, `contentHash`, subject scope, `committedByDaemonId`, `writerEpoch`, and
+`lineageRevisionOrdinal`, non-blank `writerLeaseId` and `fenceToken`, and `validAtCommit: true`.
+The closed `StateCommitReceiptV1` resolver contract freezes those fields with `schemaVersion: 1`, task-lineage subject scope,
+decimal epoch/ordinal, and `validAtCommit: true`; the head-selection policy pins `candidateReceiptSchema` to that exact name.
 
 ### `RevisionHeadSelectionContractV1`
 
@@ -153,7 +158,8 @@ fallbackDisposition: "none" | "manual" | "quarantine"
 corruptionReasonCodes?: RevisionSelectionCorruptionReasonV1[]
 ```
 
-Each candidate evaluation contains `stateRevision`, `lineageRevisionOrdinal`, `isOrderedHead`,
+Only states backed by `StateCommitReceiptV1` are head candidates. Each candidate evaluation contains
+`stateRevision`, `lineageRevisionOrdinal`, `isOrderedHead`,
 `workspaceCompatibility: compatible|incompatible|unknown`,
 `checkpointDisposition: open|accepted|superseded|retracted|expired|unknown`,
 `lineageState: single|forked|conflicted`, `resumeEligible`, and closed reason codes.
@@ -196,7 +202,8 @@ client/session must both equal the destination or the capsule is rejected.
 Every pending operation has matching outer/correlation `operationId` values. Its authenticated
 `correlation.startEventId` is a start-phase event present in that operation's sorted-unique `sourceEventIds`, with matching
 complete `OperationCorrelationV2`, `startTurnIdSource`, and authenticated source-identity session; an unbound, wrong-phase,
-or mismatched event quarantines the state/capsule.
+or mismatched event quarantines the state/capsule. The correlation `taskLineageId` must equal the enclosing canonical state's
+`subjectScope.taskLineageId`.
 
 ### `CanonicalWorkStateV2`
 
@@ -259,10 +266,17 @@ The capsule contains a bounded delivery projection, not the full state:
 - at most the destination client's own eligible `destinationAgentLocalState`;
 - opaque selected memory IDs and bounded warnings.
 
+If an otherwise deliverable resolved shared projection is omitted only because the authenticated destination lacks
+`shared-task-v1`, warnings include the exact `SourceSharingDispositionCodeV1` token exactly once:
+`destination_capability_unsupported`. A projection already denied by sensitivity, egress, consent, or destination-private
+eligibility does not acquire that capability warning, and a supported destination cannot carry it.
+
 Selected memory IDs are sorted unique and each resolves to a hash-valid `CanonicalMemoryEntityV1`. Before delivery, each
 resolved entity must pass subject-scope containment, sharing authority (including private consent), active lifecycle,
 sensitivity/egress, destination private eligibility, and Agent-private client isolation. Unknown or ineligible IDs reject the
 capsule; the capsule hash only protects the selection and is not delivery authority.
+Entities with `truthState="contradicted"` or `truthState="confirmed_wrong"` remain inspectable but are ineligible for capsule
+delivery.
 Because `SharingDecisionV1` deliberately grants only task/project/personal sharing scopes, a private `agent_private` memory
 has no grantable consent authority and remains daemon-local rather than entering a capsule.
 
@@ -313,6 +327,10 @@ creation uses `{kind:"initial"}`; later revisions require `parentMemoryRevision`
 `{kind:"parent",parentMemoryRevision}`. Adding evidence therefore advances `memoryRevision` without changing fact
 identity or `contentHash`. Both checkpoint and memory hash profiles freeze the exact ordered transition tuple
 `["initial", "parent"]`; duplicates and reversal are invalid. The manifest pins both transitions.
+A child `parentMemoryRevision` must resolve to an existing hash-valid revision of the same `memoryId` that the authoritative
+revision resolver proves is prior to that child; a merely different revision is insufficient.
+Audit time requires `createdAt <= updatedAt`; when both validity endpoints exist, it requires `validFrom <= validTo`.
+`expiresAt` is checked only for canonical timestamp validity.
 
 ## Machine inventory and F0–F7 corpus
 

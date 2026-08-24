@@ -219,7 +219,8 @@ Exit: SC-2。v6.1 §29 Phase 2 + §6 + §8 + §10.1。前提: 上記 Runtime bar
   successor artifact 4種 + inventory closure + inventory-derived restore rules + exact 9-Issue observations + F0〜F7 +
   legacy dispositions + hash parityがgreen、runtime/DB/MCP/viewer/workflow差分0件。さらに
   `vendor/codemem/**`、reference reducer、old-shape corpus、`harness/continuity/mutate.sh`、
-  `harness/contract-hashes.mjs`の差分0件をmachine scope checkで確認する。
+  `harness/contract-hashes.mjs`、`specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md`の差分0件を
+  machine scope checkで確認する。
 
 S0-SA完了まで、successor artifact 4種（`CanonicalWorkStateV2` / `ContinuationCheckpointV3` / `ResumeCapsuleV2` /
 `CanonicalMemoryEntityV1`）のruntime・persistence・migration（DDL/data rewriteを含む）、Agent-local/shared projection、

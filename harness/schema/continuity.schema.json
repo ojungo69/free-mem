@@ -3086,6 +3086,23 @@
         "committedAt": { "$ref": "#/$defs/IsoTimestamp" }
       }
     },
+    "StateCommitReceiptV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "stateRevision", "contentHash", "subjectScope", "committedByDaemonId", "writerEpoch", "lineageRevisionOrdinal", "writerLeaseId", "fenceToken", "validAtCommit"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "stateRevision": { "$ref": "#/$defs/Sha256Hex" },
+        "contentHash": { "$ref": "#/$defs/Sha256Hex" },
+        "subjectScope": { "$ref": "#/$defs/TaskLineageSubjectScopeV1" },
+        "committedByDaemonId": { "$ref": "#/$defs/OpaqueIdV1" },
+        "writerEpoch": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "lineageRevisionOrdinal": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+        "writerLeaseId": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "fenceToken": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" },
+        "validAtCommit": { "const": true }
+      }
+    },
     "WorkspaceCompatibilityV1": {
       "type": "string",
       "enum": ["compatible", "incompatible", "unknown"]
@@ -4205,9 +4222,11 @@
     "RevisionHeadSelectionPolicyV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orderingKey", "headCardinality", "ordinalUniqueness", "automaticTarget", "eligibilityDerivation", "automaticFallback", "ineligibleDisposition", "corruptDisposition"],
+      "required": ["orderingKey", "candidateAuthority", "candidateReceiptSchema", "headCardinality", "ordinalUniqueness", "automaticTarget", "eligibilityDerivation", "automaticFallback", "ineligibleDisposition", "corruptDisposition"],
       "properties": {
         "orderingKey": { "const": "lineage_revision_ordinal" },
+        "candidateAuthority": { "const": "validated_state_commit_receipt_only" },
+        "candidateReceiptSchema": { "const": "StateCommitReceiptV1" },
         "headCardinality": { "const": "exactly_one" },
         "ordinalUniqueness": { "const": "required" },
         "automaticTarget": { "const": "ordered_head_only" },

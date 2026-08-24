@@ -291,6 +291,11 @@ contract は期待する source identity、sharing disposition、participant集�
 
 - **FR-001**: task lineage 内の revision commit 順序と、現在選択可能な head は、caller 時刻・
   session 内連番・hash の辞書順に依存せず、daemon が所有する取引メタデータだけから決定できなければならない。
+  stateのcontent/revision hashは復元時に再計算するがintegrity証明に限り、authorityにはしない。head候補は
+  `stateRevision`、`contentHash`、subject scope、`committedByDaemonId`、`writerEpoch`、`lineageRevisionOrdinal`が
+  完全一致し、non-blankな`writerLeaseId`/`fenceToken`と`validAtCommit=true`を持つhistorical commit receiptへ
+  解決できるstateだけとする。このresolver evidenceはclosed `StateCommitReceiptV1`（`schemaVersion: 1`）で凍結し、
+  head-selection policyがそのschema名を明示する。
 - **FR-002**: 順序の新しさと resume 対象としての正しさは別の gate として評価しなければならない。
   workspace 互換性・disposition・accepted / superseded / retracted・fork / conflict を独立に判定する。
   checkpointの`expired`は`unknown`へ潰さず、既知の不適格理由`checkpoint_expired`として保持する。
@@ -407,7 +412,9 @@ contract は期待する source identity、sharing disposition、participant集�
 - **FR-031**: source identityはauthenticated peer、adapter manifest、ingest channel、exact client/adapter
   version、session binding、capability evidence、daemon所有の`privateEligible` policyからintakeが導出し、
   callerのAgent名やcapsule内booleanだけを信用してはならない。shared capsuleはdestination capability hashが
-  `shared-task-v1`を含む認証済みprofileへ解決する場合だけ許可する。
+  `shared-task-v1`を含む認証済みprofileへ解決する場合だけ許可する。他のprivacy/egress/consent gateを通過した
+  shared projectionをcapability未対応だけにより省略するsame-agent capsuleは、`warnings`へexact
+  `destination_capability_unsupported` dispositionをexactly onceで記録し、それ以外では記録しない。
 - **FR-032**: model provider/model identityはcoding Agent/client identityと別fieldに保持し、片方をもう片方の
   代用にしてはならない。
 - **FR-033**: 新しいsource contractは既存のevent provenance、ingest attestation、source event参照を
@@ -448,8 +455,10 @@ contract は期待する source identity、sharing disposition、participant集�
   ある場合はrepository branchも必須かつ完全一致しなければならない。
   capsuleのcheckpoint ID/revision/creatorは同じresolved checkpointへ結び付け、`selectedMemoryIds`はsorted uniqueかつ
   hash-valid entityへ解決し、scope/sharing/private consent/lifecycle/sensitivity/egress/destination policyを全件検証する。
+  `truthState`が`contradicted`または`confirmed_wrong`のmemoryはinspect可能なままcapsule deliveryから除外する。
   pending operationのouter/correlation operation IDは一致し、authenticated start-phase eventはそのoperation evidenceに
-  含め、complete correlation envelope、`startTurnIdSource`、source-identity sessionを完全一致させる。
+  含め、complete correlation envelope、`startTurnIdSource`、source-identity sessionを完全一致させる。correlationの
+  `taskLineageId`はenclosing canonical stateの`subjectScope.taskLineageId`とも完全一致させる。
 - **FR-038**: 曖昧な単数`sourceAgent`をmulti-Agent lineageの代表値として再利用せず、lineage origin、
   last contributor、participants、checkpoint creator、field/memory source evidenceを区別しなければならない。
   field/memory refsはartifact hashの自己整合だけで受理せず、認証済みsource/snapshot artifactへ解決しなければならない。
@@ -469,7 +478,10 @@ contract は期待する source identity、sharing disposition、participant集�
   validity historyはdedupeと別に扱う。evidence unionは`sharingScope`・`sensitivity`・`egressPolicy`が完全一致し、
   shared contributorごとのexact authenticated consentがあるときだけ自動化する。Agent-private evidenceはexact source内だけ
   unionし、cross-sourceでは統合しない。policy/consent/source-locality不一致はactive entityへ
-  混ぜず明示user reviewまで別laneに置く。
+  混ぜず明示user reviewまで別laneに置く。childの`parentMemoryRevision`は同じ`memoryId`のexisting hash-validで、
+  authoritative resolverがそのchildよりpriorと証明したrevisionへ解決し、単なる別revisionやself-parentを許可しない。
+  timestamp順序は`createdAt <= updatedAt`および両端がある場合の
+  `validFrom <= validTo`だけを要求し、`expiresAt`へ追加の順序制約を作らない。
 - **FR-043**: source filterは検索・表示optionであり、filterの有無によってtask lineage identity、
   canonical memory identity、revision historyが変化してはならない。
   `current_source`はdestination source、`named_source`は明示requested sourceのrecordだけを返す。

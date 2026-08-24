@@ -109,7 +109,8 @@ rejects it unless both client and session match the destination.
 
 Every pending operation's outer/correlation operation IDs match. Its `correlation.startEventId` resolves to an authenticated
 start-phase event present in that operation's evidence and matching the complete correlation envelope, `startTurnIdSource`,
-and authenticated source-identity session.
+and authenticated source-identity session. The correlation `taskLineageId` must also equal the enclosing canonical state's
+`subjectScope.taskLineageId`.
 
 Sensitivity uses the closed order `normal < private < secret`. Every present shared or Agent-local projection declares the
 maximum of its contained values; canonical state declares the maximum across its present projections, and a capsule derives
@@ -126,6 +127,8 @@ client, exact client version, session, required supported capability profile for
 eligibility. Capability hash remains optional only for same-agent local-only capsules.
 Every selected memory ID is sorted unique, resolves to a hash-valid canonical memory, and passes the same subject-scope,
 sharing/private-consent, lifecycle, sensitivity, egress, destination-eligibility, and Agent-private isolation gates before
+delivery.
+An entity whose `truthState` is `contradicted` or `confirmed_wrong` remains locally inspectable but is excluded from capsule
 delivery.
 A private `agent_private` memory has no grantable `SharingDecisionV1` target and therefore remains daemon-local; destination
 eligibility cannot make it capsule-deliverable.
@@ -159,12 +162,21 @@ metadata fields; neither preimage includes its own digest. The manifest pins sha
 cross-language oracles. Lineage order uses daemon-owned
 `lineageRevisionOrdinal`; caller timestamp, session-local sequence, and hash lexical order never choose a head.
 `parentStateRevisions` is sorted unique before hash/publication; duplicates or reordered equivalent sets quarantine.
+Restore recomputes both state hashes for integrity only; matching hashes grant no writer or ordering authority. The
+`stateRevision` must resolve to a historical commit receipt that exactly matches `stateRevision`, `contentHash`, subject scope,
+`committedByDaemonId`, `writerEpoch`, and `lineageRevisionOrdinal`, carries non-blank `writerLeaseId` and `fenceToken`, and records
+`validAtCommit=true`. `StateCommitReceiptV1` is the closed resolver contract for that evidence: `schemaVersion:1` plus exactly
+those ten fields, with task-lineage scope and decimal epoch/ordinal. `RevisionHeadSelectionPolicyV1.candidateReceiptSchema`
+pins that name; revision-head candidates come only from states validated against it.
 
 Checkpoint and canonical-memory hashes use separate domain strings and manifest vectors. Checkpoint content excludes its
 ID/parent/revision fields; initial and parent transitions bind checkpoint ID, content hash, and both parent ID/revision when
 present. Memory content excludes identity/revision/evidence metadata; memory revision binds memory ID, content hash,
 sorted evidence metadata, and either an initial or parent-memory-revision transition. `canonicalFactId` remains the separate
 exact-fact identity hash with schema literal `CanonicalMemoryEntityV1`.
+Every non-initial `parentMemoryRevision` resolves to an existing hash-valid revision of the same `memoryId` that the
+authoritative revision resolver proves is prior to this child; missing, cross-memory, invalid, non-prior, or self-referential
+parents quarantine.
 Both profiles require the exact ordered `transitionKinds=["initial","parent"]`; duplicate or reversed members are invalid.
 Resume capsules use their own domain-separated hash over every present field except `contentHash`; absent optional projection
 members are omitted rather than encoded as `null`; the manifest pins a local-only capsule vector. Restore resolves the named
@@ -174,6 +186,9 @@ work-state projection. All remaining envelope fields must equal the persisted de
 scope/lineage/destination, profile, age, reconciliation, selected memories, and warnings). A body-only or authorization-field
 mutation remains rejected even after an attacker recomputes the public capsule hash; `reconciliation="incompatible"` cannot
 produce a delivery capsule.
+When an otherwise available shared projection is omitted only because the authenticated destination lacks `shared-task-v1`,
+`warnings` contains the exact `SourceSharingDispositionCodeV1` token `destination_capability_unsupported` exactly once. The
+token is absent otherwise; the downgrade may be neither silent nor falsely attributed to capability.
 
 Meaning-neutral events do not advance the canonical state revision/history, while event/delivery/diagnostic/watermark
 transitions remain separately auditable. `StateNeutralTransitionPolicyV1` names the four classifications and fixes
@@ -227,6 +242,8 @@ policy tuple but failing contributor consent or exact Agent-private source local
 `consent_or_source_locality_mismatch`. Semantic similarity and paraphrases remain separate until
 an explicit authority records an auditable merge. Conflict, supersession, truth state, lifecycle, and validity history are
 independent of dedupe.
+Canonical-memory audit time requires `createdAt <= updatedAt`; when both validity endpoints exist, it also requires
+`validFrom <= validTo`. `expiresAt` has no additional ordering rule beyond canonical timestamp validity.
 
 ## 9. Retrieval and delivery profiles
 
@@ -355,7 +372,7 @@ The existing `harness/contract-hashes.json` raw-byte manifest remains an indepen
 ## 15. S0 boundary and gates
 
 S0 includes inventory, this normative contract/ADR, TS mirror, JSON Schema, migration disposition, F0–F7, hashes, and the
-#13 Phase 3 start gate. It does not change product runtime, DB/DDL/data, reference reducer, MCP, viewer, or CI workflow.
+Issue #13 Phase 3 start gate. It does not change product runtime, DB/DDL/data, reference reducer, MCP, viewer, or CI workflow.
 
 After S0: S1 reference projections/reducer; S2 TS/Rust conformance; S3 storage/migration/checkpoints; S4 retrieval/injection/
 MCP; S5 product surfaces; S6 benchmark/real-client E2E. The #132 umbrella remains open after the S0 PR.

@@ -7,7 +7,7 @@
 
 **Scope fence**: No task may modify `vendor/codemem/**`, `harness/continuity/reference-model.ts`,
 `harness/fixtures/continuity/old-shape-parity.json`, `harness/continuity/mutate.sh`,
-`harness/contract-hashes.mjs`, or `.github/workflows/**`.
+`harness/contract-hashes.mjs`, `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md`, or `.github/workflows/**`.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -123,7 +123,7 @@ and the exact P0 observation set still contains the #32/#58 policy/diagnostic de
 - [X] T032 Run the focused gate, full `harness/continuity/*.test.ts`, and `vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json` as listed in `specs/005-continuity-p0-contract/quickstart.md`
 - [X] T033 Regenerate to temporary files and diff `harness/contract-hashes.json` plus `harness/fixtures/continuity/old-shape-parity.json`; both diffs must be empty
 - [X] T034 Run `bash harness/continuity/mutate.sh` and require executed count match plus zero surviving mutations
-- [X] T035 Audit `git diff --name-only origin/main...HEAD` and require no changed path under `vendor/codemem`, `.github/workflows`, the reference reducer, old-shape corpus, mutation script, or hash generator
+- [X] T035 Audit the sorted, deduplicated union of `git diff --name-only origin/main...HEAD`, `git diff --name-only`, `git diff --cached --name-only`, and `git ls-files --others --exclude-standard`; require no path under `vendor/codemem`, `.github/workflows`, the reference reducer, old-shape corpus, mutation script, hash generator, or `specs/001-agent-memory-core/resume-continuity-addendum-v6.2.md`
 - [X] T036 Run the installed `speckit.verify-tasks.run` extension exactly once in a fresh verification pass; fix every phantom completion before leaving tasks checked
 - [X] T037 Run the correctness/security code-review gate on the full branch diff and adopt only source-verified findings; rerun affected focused/full tests
 - [X] T038 Run Grok review plus Cubic and CodeRabbit local/PR review for this important schema/security change; resolve or explicitly reject every validated finding with evidence

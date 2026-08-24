@@ -18,8 +18,9 @@
 >
 > **2026-08-24 successor gate**: source provenance / sharing semanticsと次のpersisted artifact版の正本は
 > `specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md`（#132 S0）。v6.2/V1を
-> 後書きせずsuccessor overlayとして扱い、S0 bundle/hash完了前にpersisted state/checkpoint、
-> cross-agent renderer、source filterのruntime実装を始めない。
+> 後書きせずsuccessor overlayとして扱う。S0 bundle/hash完了前に`CanonicalWorkStateV2`、
+> `ContinuationCheckpointV3`、`ResumeCapsuleV2`、`CanonicalMemoryEntityV1`のruntime・persistence・migration
+> （DDL/data rewriteを含む）、cross-agent renderer、source filterを始めない。
 
 ## User Scenarios & Testing *(mandatory)*
 

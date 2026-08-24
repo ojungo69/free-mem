@@ -649,6 +649,19 @@ export interface TaskStateRevisionEnvelopeV1 {
   readonly committedAt: string;
 }
 
+export interface StateCommitReceiptV1 {
+  readonly schemaVersion: 1;
+  readonly stateRevision: Sha256Hex;
+  readonly contentHash: Sha256Hex;
+  readonly subjectScope: TaskLineageSubjectScopeV1;
+  readonly committedByDaemonId: OpaqueIdV1;
+  readonly writerEpoch: string;
+  readonly lineageRevisionOrdinal: string;
+  readonly writerLeaseId: string;
+  readonly fenceToken: string;
+  readonly validAtCommit: true;
+}
+
 export type WorkspaceCompatibilityV1 = "compatible" | "incompatible" | "unknown";
 export const WORKSPACE_COMPATIBILITIES_V1 = [
   "compatible",
@@ -1706,6 +1719,8 @@ export type SourceAwareArtifactSchemaRefV1 =
 
 export interface RevisionHeadSelectionPolicyV1 {
   readonly orderingKey: "lineage_revision_ordinal";
+  readonly candidateAuthority: "validated_state_commit_receipt_only";
+  readonly candidateReceiptSchema: "StateCommitReceiptV1";
   readonly headCardinality: "exactly_one";
   readonly ordinalUniqueness: "required";
   readonly automaticTarget: "ordered_head_only";

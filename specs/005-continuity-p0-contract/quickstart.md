@@ -77,7 +77,7 @@ git diff --cached --name-only >> "$S0_SCOPE_TMP"
 git ls-files --others --exclude-standard >> "$S0_SCOPE_TMP"
 sort -u "$S0_SCOPE_TMP"
 S0_RG_STATUS=0
-sort -u "$S0_SCOPE_TMP" | rg '^(vendor/codemem/|\.github/workflows/|harness/continuity/reference-model\.ts$|harness/fixtures/continuity/old-shape-parity\.json$|harness/continuity/mutate\.sh$|harness/contract-hashes\.mjs$)' || S0_RG_STATUS=$?
+sort -u "$S0_SCOPE_TMP" | rg '^(vendor/codemem/|\.github/workflows/|harness/continuity/reference-model\.ts$|harness/fixtures/continuity/old-shape-parity\.json$|harness/continuity/mutate\.sh$|harness/contract-hashes\.mjs$|specs/001-agent-memory-core/resume-continuity-addendum-v6\.2\.md$)' || S0_RG_STATUS=$?
 if [ "$S0_RG_STATUS" -eq 0 ]; then
   exit 1
 fi

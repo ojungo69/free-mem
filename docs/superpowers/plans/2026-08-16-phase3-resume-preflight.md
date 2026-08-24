@@ -403,7 +403,9 @@ cmp /tmp/a.json /tmp/b.json
 manifest exact-set + manifest hash + artifacts + regenerated matrices +
 runtime-neutral fixtures green)
   + SourceAwareContinuityContractV1 S0 complete (successor schemas + inventory +
-    restore/observation/raw-ID rules + F0-F7 + legacy dispositions + hashes)
+    restore/observation/raw-ID rules + F0-F7 + legacy dispositions + hashes;
+    CanonicalWorkStateV2 + ContinuationCheckpointV3 + ResumeCapsuleV2 +
+    CanonicalMemoryEntityV1 all frozen)
   -> persisted/source-aware Phase 3 implementation may start
 
 exact strategy capability proven

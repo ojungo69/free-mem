@@ -93,7 +93,9 @@ legacy capsuleはsuccessorへ自動upgradeせずsame-agent manual/hint-onlyだ�
 shared contributorのexact authenticated sharing consentがある場合だけ自動化する。Agent-private evidenceはexact source内
 だけunionし、cross-sourceでは統合しない。policy/consent/source-locality mismatchはreview
 candidateへ分離する。言い換え/semantic similarityは別entityのままにし、
-明示authorityのauditable mergeだけを許す。
+明示authorityのauditable mergeだけを許す。child revisionは同じmemoryのexisting hash-validで、authoritative
+resolverがそのchildよりpriorと証明したrevisionだけをparentにできる。`contradicted`/`confirmed_wrong`はinspect可能な履歴として残すがcapsule deliveryから除外する。
+時刻順序は`createdAt <= updatedAt`と、両端がある場合の`validFrom <= validTo`だけを要求する。
 
 **Rationale**: 決定論、local privacy、ゼロ追加costを守りながら、同一contentのper-Agent duplicateを0にできる。
 
@@ -235,6 +237,9 @@ calendar timestamp、permanent wedge、unaudited repairをfreezeできない。r
 workspace compatibility、checkpoint disposition、lineage fork/conflictを別評価する。ordered headがeligibleでない
 場合はmanualへ送り、古いrevisionへautomatic fallbackしない。`expired`は既知のineligible dispositionとして
 `checkpoint_expired`を返し、`checkpoint_unknown`へ潰さない。同一ordinal/multiple headはquarantineする。
+state hash再計算はintegrity検査に限定し、head候補はstate revision/hash/scope/daemon/epoch/ordinalが一致し、
+non-blankなwriter lease/fenceとcommit時の有効性を持つclosed `StateCommitReceiptV1`へ解決したstateだけにする。
+head-selection policyはこのschema名を明示する。
 
 **Rationale**: 「新しい」と「再開してよい」を1つのfield/algorithmにすると、incompatible/retracted headを
 選ぶか、古いstateへ黙って巻き戻る。fail-closedな2 gateをfixture作成前に固定する。

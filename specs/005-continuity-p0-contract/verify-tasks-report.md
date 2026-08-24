@@ -119,7 +119,7 @@ These tasks name external operations, historical red runs, or commit actions but
 | Task | Disposition | Evidence |
 |---|---|---|
 | T034 | Investigated — live verified | Controller-observed execution in this worktree completed successfully: `実行 218 / 期待 218、生存 0`; restored baseline then passed `220 / 220` with `fail 0`. Original `🔍 PARTIAL` audit verdict remains immutable. |
-| T035 | Investigated — live verified | The complete `origin/main...HEAD` list contains 22 paths and none is under `vendor/codemem/**` or `.github/workflows/**`, nor is it the reference reducer, actual old-shape corpus `harness/fixtures/continuity/old-shape-parity.json`, mutation script, or hash generator. The controller-observed forbidden-path filter also exited 0 with zero output. Original `🔍 PARTIAL` audit verdict remains immutable. |
+| T035 | Investigated — live verified | The sorted deduplicated union of committed branch, unstaged, staged, and untracked paths contains 22 paths and none is under `vendor/codemem/**` or `.github/workflows/**`, nor is it the reference reducer, actual old-shape corpus `harness/fixtures/continuity/old-shape-parity.json`, mutation script, hash generator, or v6.2 addendum. The controller-observed forbidden-path filter exited 0 with zero output. Original `🔍 PARTIAL` audit verdict remains immutable. |
 
 ## Post-review Evidence Refresh
 
@@ -310,6 +310,22 @@ All review output was treated as a proposal and checked against source/tests.
 | CodeRabbit final — wrong-phase regression also mismatched correlation | Accepted | The resolved test event now copies the mutated pending-operation correlation, so the negative case fails on `phase="terminal"` alone. |
 | CodeRabbit pre-current-wave CLI rerun | Clean | `coderabbit review --agent -t uncommitted` completed with zero issues after the earlier focused fix. |
 | Cubic final current-tree rerun | Clean | `cubic review -j` exited 0 with `{"issues":[]}` after every latest-wave concrete finding and the typed policy-mode simplification. |
+| Correctness latest — pending operation could bind a foreign task lineage | Accepted; current tree verified | The shared state/capsule gate now requires the correlation task lineage to equal the enclosing canonical-state scope. |
+| Correctness latest — state revision metadata could self-authorize | Accepted; current tree verified | State hashes are recomputed for integrity only; commit authority resolves an exact historical receipt with matching revision/hash/scope/daemon/epoch/ordinal, non-blank lease/fence, and commit-time validity. Head selection receives fully receipt-validated states and rejects missing, mismatched, mixed-scope, and all-foreign-scope candidates before ordinal comparison. |
+| Correctness latest — canonical-memory parent was not resolved | Accepted; current tree verified | A child parent must resolve to an existing hash-valid, non-self revision of the same memory that the authoritative resolver proves is prior to that child. |
+| CodeRabbit current-head — canonical-state hashes were not recomputed | Accepted; current tree verified | Standalone state, checkpoint, and capsule restore share the canonical state hash gate. |
+| CodeRabbit current-head — dropped-evidence and duplicate Agent-local lanes bypassed standalone restore | Accepted; current tree verified | Canonical-state validation now reuses the existing dropped-evidence and Agent-local lane semantic gates; the normative prose was already sufficient. |
+| CodeRabbit current-head — canonical-memory timestamp ordering was unchecked | Accepted; current tree verified | The gate enforces only `createdAt <= updatedAt` and, when both exist, `validFrom <= validTo`; no `expiresAt` ordering was invented. |
+| CodeRabbit current-head — disproven memory remained capsule-deliverable | Accepted; current tree verified | `contradicted` and `confirmed_wrong` memories remain inspectable but are excluded from selected-memory capsule delivery. |
+| Docs current — Phase 3 gate did not name the full successor bundle | Accepted | The authoritative spec and preflight plan now name all four successor artifacts. The S0 scope fence also protects the v6.2 addendum from accidental edits. |
+| Docs current — line-leading `#13` was parsed as a heading | Accepted | The remaining raw line was rewritten as `Issue #13 Phase 3`. |
+| Design audit current — seven canonical-state rules ran only through capsule projections | Accepted; current tree verified | Lineage, shared-decision, shared-source, and every Agent-local nested-source gate now run in the common canonical-state entrypoint; standalone checkpoint and capsule validation delegate to it. |
+| Correctness final — capability warning ignored deny-first precedence | Accepted; current tree verified | `destination_capability_unsupported` is present exactly once only when the parent state and shared projection pass all earlier gates and capability is the sole omission reason; missing, duplicate, and spurious tokens fail. |
+| Security final — head selection did not consume validated state authority | Accepted; current tree verified | The selector receives state-plus-receipt candidates, checks every receipt field and the requested exact task scope, and rejects missing/forged/mixed/all-foreign candidates before ordinal comparison. |
+| Cubic final — head authority depended on a test-local receipt shape | Accepted; current tree verified | `StateCommitReceiptV1` now freezes the closed resolver evidence in TypeScript and JSON Schema, and the head-selection policy pins that schema name. |
+| CodeRabbit current-tree — self-parent regression could pass on hash mismatch | Accepted; current tree verified | The self-parent case now calls the parent resolver gate directly, so the assertion cannot be satisfied by canonical-memory hash failure. |
+| Cubic final — split the atomic semantic gate into modules | Rejected | This repeats the previously dispositioned architecture preference without a concrete behavior, security, or parity defect. S0 keeps one test-owned bundle gate; typed contexts and pure helpers remove the validated dependency-order risks without adding a second reference model. |
+| Ponytail final | Clean after one shrink | The capsule context reuses the canonical-state context and the redundant receipt alias was removed. Final rerun: `Lean already. Ship.` |
 
 The three-finding TDD red pass failed on the unused non-empty memory tuple assertion, absent exact transition constants,
 missing event-evidence expectation fields, and the old restore rule. The implementation then restored focused/schema/type/hash
@@ -321,14 +337,16 @@ old branch-containment logic failed `true !== false`, and removing the private A
 `assert.ok(selectedMemoryIssues(...).length > 0)` regression. Each mutation was immediately restored. Focused contract 21/21,
 schema freeze 19/19, TypeScript, and raw contract-hash regeneration then returned green before the final full review rerun.
 
-## Final post-review verification — 2026-08-25
+## Current review-fix wave verification
 
-- Focused source-aware contract: 21 passed, 0 failed.
-- Schema freeze: 19 passed, 0 failed.
-- Full continuity suite: 354 passed, 0 failed.
-- Harness TypeScript: exit 0, no diagnostics, including generic nested-readonly, optional-property, checkpoint parent-pair, and full nested-attestation readonly compile checks.
-- Generated contract hashes: empty diff.
-- Old-shape baseline regeneration: 20 cases / 29 steps, empty diff.
+Evidence refreshed at `2026-08-25T07:15:30+09:00` for the current uncommitted working tree over
+`3bded47b7b16231a20c366fd84b76126532ea69b` (committed `2026-08-25T05:44:01+09:00`).
+
+- Focused source-aware contract: 21 passed, 0 failed; schema freeze: 19 passed, 0 failed.
+- Full continuity suite: 354 passed, 0 failed; harness TypeScript: exit 0 with no diagnostics.
+- Generated contract hashes: empty diff; old-shape regeneration: 20 cases / 29 steps, empty diff.
 - Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
-- `git diff --check`: no whitespace error; reducer, old-shape fixture, mutation script, runtime, vendor, and workflow paths remain unchanged.
-- Final whole-diff correctness and security reviews: no findings. Final Cubic rerun: zero issues. Grok: tool-limited after two attempts, with its one valid raw candidate fixed and source-verified. Final Ponytail review: `Lean already. Ship.`
+- Combined scope: 22 allowed paths, 0 forbidden matches; `git diff --check` has no whitespace errors.
+- Independent correctness, security, and docs reviews are clean after their accepted fixes. All concrete CodeRabbit/Cubic
+  findings were source-verified and fixed; Cubic's remaining module-split preference is rejected above. Final Ponytail is clean.
+  The next local CodeRabbit retry is rate-limited after three completed runs, so a post-push remote full review remains required.
