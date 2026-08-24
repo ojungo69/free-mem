@@ -1,0 +1,152 @@
+{
+  "contractVersion": 1,
+  "contractHash": "61e558a0eb5505a6b3d7f33e706f88a75d209ae906700efb605d5b584281609c",
+  "schemaFile": "schema/continuity.schema.json",
+  "schemaHash": "d9556971414444aa49a0f3a870dbf907d8fd0246c101629bfd3c701b960c3708",
+  "artifactSchemas": [
+    { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
+    { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
+    { "name": "ResumeCapsuleV2", "schemaVersion": 2 },
+    { "name": "CanonicalMemoryEntityV1", "schemaVersion": 1 }
+  ],
+  "sourceVocabularyVersion": "1",
+  "inventoryFile": "schema/source-aware-source-inventory.v1.json",
+  "inventoryHash": "fe8213a4a1b39bc88cc5c648ba7ec815a1b58bfc58391bae253606aacbfff4c4",
+  "fixtureCorpusFile": "fixtures/continuity/source-aware-f0-f7.v1.json",
+  "fixtureCorpusVersion": 1,
+  "fixtureCorpusHash": "f597008e70edd209e22876c9b0ba9285181e0dc9d4066a48bcbb0dfa5719471b",
+  "fixtureCaseIds": ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"],
+  "opaqueIdProfile": {
+    "schemaVersion": 1,
+    "algorithm": "hmac-sha-256",
+    "keyId": "source-aware-v1",
+    "outputEncoding": "lowercase_hex_256"
+  },
+  "revisionHeadSelectionPolicy": {
+    "orderingKey": "lineage_revision_ordinal",
+    "automaticFallback": "never",
+    "ineligibleDisposition": "manual",
+    "corruptDisposition": "quarantine"
+  },
+  "rawIdentifierEvidencePolicy": {
+    "schemaVersion": 1,
+    "newIntakePersistence": "none",
+    "migrationScratch": "memory_only",
+    "scratchRetention": "transaction",
+    "quarantinedArtifactRetention": "until_user_repair_or_discard",
+    "allowedRawReaders": ["daemon_validator", "daemon_migrator"],
+    "rawDiagnostics": "never",
+    "rawExport": "never",
+    "externalEgress": "prohibited",
+    "postTransaction": "zeroize"
+  },
+  "continuityP0Observations": {
+    "schemaVersion": 1,
+    "entries": [
+      {
+        "caseId": "P0-46-no-op-state",
+        "issueNumber": 46,
+        "input": { "event": "state-neutral terminal", "repeat": 100 },
+        "observationKind": "state_transition",
+        "downstreamStage": "S1",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "/revision/stateRevision,/history,/updatedAt", "currentV1": "changes", "successor": "unchanged", "deltaKind": "no_op_state_stable" }
+        ]
+      },
+      {
+        "caseId": "P0-49-published-immutability",
+        "issueNumber": 49,
+        "input": { "operation": "mutate nested node after publication" },
+        "observationKind": "canonical_bytes",
+        "downstreamStage": "S1",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "canonicalBytes/contentHash", "currentV1": "can_change", "successor": "mutation_rejected_and_hash_stable", "deltaKind": "published_bytes_immutable" }
+        ]
+      },
+      {
+        "caseId": "P0-53-lineage-head",
+        "issueNumber": 53,
+        "input": { "sessions": 2, "callerTimesReversed": true, "hashOrderReversed": true },
+        "observationKind": "head_selection",
+        "downstreamStage": "S1",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "/revision/lineageRevisionOrdinal", "currentV1": "no_authoritative_global_order", "successor": "daemon_owned_ordered_head", "deltaKind": "daemon_ordered_head" }
+        ]
+      },
+      {
+        "caseId": "P0-61-overflow-summary",
+        "issueNumber": 61,
+        "input": { "reasonFlood": "evicted", "count": 2560 },
+        "observationKind": "overflow_summary",
+        "downstreamStage": "S1",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "/sharedTaskState/droppedEvidence", "currentV1": "overflow_only_in_diagnostic", "successor": "reason_counts_and_boundaries_in_state", "deltaKind": "overflow_summary_visible" }
+        ]
+      },
+      {
+        "caseId": "P0-62-opaque-identifiers",
+        "issueNumber": 62,
+        "input": { "identifierContains": "token/path/prompt fragment" },
+        "observationKind": "identifier_privacy",
+        "downstreamStage": "S1",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "successor exported identifier fields", "currentV1": "raw_value_may_remain", "successor": "raw_value_absent", "deltaKind": "raw_identifier_absent" }
+        ]
+      },
+      {
+        "caseId": "P0-56-invalid-scope",
+        "issueNumber": 56,
+        "input": { "taskLineageId": "   " },
+        "observationKind": "restore_validation",
+        "downstreamStage": "S3",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "/taskLineageId", "currentV1": "late_throw_or_wedge", "successor": "quarantine_before_reducer", "deltaKind": "invalid_scope_quarantined" }
+        ]
+      },
+      {
+        "caseId": "P0-57-invalid-timestamp",
+        "issueNumber": 57,
+        "input": { "startedAt": "2026-02-30T00:00:00Z" },
+        "observationKind": "restore_validation",
+        "downstreamStage": "S3",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "/pendingOperations/*/startedAt", "currentV1": "regex_shape_accepted", "successor": "quarantine_before_reducer", "deltaKind": "invalid_timestamp_quarantined" }
+        ]
+      },
+      {
+        "caseId": "P0-32-limit-policies",
+        "issueNumber": 32,
+        "input": { "limitCases": 12, "atBoundaryAndOverflow": true },
+        "observationKind": "limit_policy",
+        "downstreamStage": "S3",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "all delivery limit surfaces", "currentV1": "8_policies_unenforced", "successor": "11_reject_and_1_select_with_diagnostic", "deltaKind": "limit_policy_enforced" }
+        ]
+      },
+      {
+        "caseId": "P0-58-terminal-sibling",
+        "issueNumber": 58,
+        "input": { "compatibleSibling": true, "conflictingSibling": true },
+        "observationKind": "diagnostic",
+        "downstreamStage": "S2",
+        "behaviorDeltas": [
+          { "jsonPathOrField": "ContinuityDiagnosticCodeV2", "currentV1": "conflicting_sibling_silent", "successor": "terminal_sibling_conflict", "deltaKind": "terminal_sibling_diagnostic" }
+        ]
+      }
+    ]
+  },
+  "legacyMigrationRules": [],
+  "restoreSemanticValidation": { "schemaVersion": 1, "rules": [] },
+  "limitPolicies": [],
+  "continuityDiagnosticCodes": [],
+  "sourceSharingDispositionCodes": [
+    "agent_private",
+    "private_not_eligible",
+    "secret",
+    "prohibited_egress",
+    "scope_mismatch",
+    "destination_capability_unsupported",
+    "source_unverified",
+    "legacy_read_only"
+  ]
+}

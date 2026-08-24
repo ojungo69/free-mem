@@ -25,6 +25,7 @@ export const SOURCE_AWARE_SHA256_PATTERN = "^[0-9a-f]{64}$";
 
 export type Sha256Hex = string;
 export type OpaqueIdV1 = string;
+export type GitObjectIdV1 = string;
 
 export type CanonicalClientIdV1 = "claude-code" | "codex-cli";
 export const CANONICAL_CLIENT_IDS_V1 = [
@@ -699,6 +700,675 @@ export interface SemanticResumeNoteV2 {
   readonly confidence: number;
   readonly sourceEventIds: readonly OpaqueIdV1[];
   readonly sensitivity: Sensitivity;
+}
+
+export interface SourceIdentityV1 {
+  readonly clientId: CanonicalClientIdV1;
+  readonly clientVersion: string;
+  readonly adapterId: string;
+  readonly adapterVersion: string;
+  readonly sessionId: OpaqueIdV1;
+  readonly deviceId?: OpaqueIdV1;
+  readonly capabilityHash?: Sha256Hex;
+  readonly captureMethod: ContinuityCaptureMethod;
+  readonly ingestAttestation: ContinuityIngestAttestationV1;
+}
+
+export interface LineageSourceSummaryV1 {
+  readonly lineageOriginSourceEventId: OpaqueIdV1;
+  readonly lastContributingSourceEventId: OpaqueIdV1;
+  readonly participantSourceEventIds: readonly OpaqueIdV1[];
+}
+
+export interface SharedTaskStateV1 {
+  readonly sharingScope: "task_shared";
+  readonly goal?: ObservedV2<string>;
+  readonly constraints: readonly ObservedV2<string>[];
+  readonly activeFiles: readonly ObservedFileV2[];
+  readonly modifiedFiles: readonly ObservedFileV2[];
+  readonly recentCommands: readonly ObservedCommandV2[];
+  readonly recentTests: readonly ObservedTestV2[];
+  readonly pendingOperations: readonly PendingOperationV2[];
+  readonly droppedEvidence: DroppedEvidenceSummaryV1;
+  readonly repositoryState: RepositoryStateSnapshotV2;
+  readonly semanticResumeNote?: SemanticResumeNoteV2;
+  readonly sensitivity: Sensitivity;
+  readonly egressPolicy: EgressPolicyV1;
+}
+
+export interface AgentLocalStateV1 {
+  readonly sharingScope: "agent_private";
+  readonly sourceIdentityEventId: OpaqueIdV1;
+  readonly clientId: CanonicalClientIdV1;
+  readonly latestSubstantivePrompt?: ObservedV2<string>;
+  readonly lastAssistantConclusion?: ObservedV2<string>;
+  readonly nativeTodoState?: ObservedV2<JsonValue>;
+  readonly nativePlanState?: ObservedV2<JsonValue>;
+  readonly hostMetadata?: ObservedV2<JsonValue>;
+  readonly sensitivity: Sensitivity;
+  readonly egressPolicy: EgressPolicyV1;
+}
+
+export interface CanonicalWorkStateV2 {
+  readonly schemaVersion: 2;
+  readonly subjectScope: TaskLineageSubjectScopeV1;
+  readonly opaqueIdProfile: OpaqueIdProfileV1;
+  readonly revision: TaskStateRevisionEnvelopeV1;
+  readonly lineageSourceSummary: LineageSourceSummaryV1;
+  readonly sharedTaskState: SharedTaskStateV1;
+  readonly agentLocalStates: readonly AgentLocalStateV1[];
+  readonly sensitivity: Sensitivity;
+}
+
+export interface ContinuationCheckpointV3 {
+  readonly id: OpaqueIdV1;
+  readonly schemaVersion: 3;
+  readonly checkpointRevision: Sha256Hex;
+  readonly kind: ContinuationCheckpointV2["kind"];
+  readonly parentCheckpointId?: OpaqueIdV1;
+  readonly sourceSessionId: OpaqueIdV1;
+  readonly checkpointCreatedBySourceEventId: OpaqueIdV1;
+  readonly canonicalState: CanonicalWorkStateV2;
+  readonly memoryWatermark: string;
+  readonly contentHash: Sha256Hex;
+  readonly sensitivity: Sensitivity;
+  readonly createdAt: string;
+  readonly expiresAt?: string;
+}
+
+export interface ResumeDestinationV1 {
+  readonly clientId: CanonicalClientIdV1;
+  readonly clientVersion: string;
+  readonly sessionId: OpaqueIdV1;
+  readonly capabilityHash?: Sha256Hex;
+  readonly privateEligible: boolean;
+}
+
+export interface ResumeCapsuleV2 {
+  readonly schemaVersion: 2;
+  readonly injectionId: OpaqueIdV1;
+  readonly checkpointId: OpaqueIdV1;
+  readonly checkpointRevision: Sha256Hex;
+  readonly workStateRevision: Sha256Hex;
+  readonly subjectScope: TaskLineageSubjectScopeV1;
+  readonly lineageSourceSummary: LineageSourceSummaryV1;
+  readonly checkpointCreatedBySourceEventId: OpaqueIdV1;
+  readonly destination: ResumeDestinationV1;
+  readonly resumeProfile: ResumeProfileV1;
+  readonly ageSeconds: number;
+  readonly reconciliation: ReconciliationStatus;
+  readonly sharedTaskState: SharedTaskStateV1;
+  readonly destinationAgentLocalState?: AgentLocalStateV1;
+  readonly selectedMemoryIds: readonly OpaqueIdV1[];
+  readonly warnings: readonly string[];
+}
+
+export type MemoryKindV1 =
+  | "decision"
+  | "bugfix"
+  | "feature"
+  | "discovery"
+  | "security"
+  | "constraint"
+  | "procedure"
+  | "preference"
+  | "failed_approach"
+  | "handoff"
+  | "other";
+export const MEMORY_KINDS_V1 = [
+  "decision",
+  "bugfix",
+  "feature",
+  "discovery",
+  "security",
+  "constraint",
+  "procedure",
+  "preference",
+  "failed_approach",
+  "handoff",
+  "other",
+] as const satisfies readonly MemoryKindV1[];
+
+export type MemoryLifecycleV1 = "active" | "superseded" | "retracted" | "expired";
+export const MEMORY_LIFECYCLES_V1 = [
+  "active",
+  "superseded",
+  "retracted",
+  "expired",
+] as const satisfies readonly MemoryLifecycleV1[];
+
+export type MemoryTruthStateV1 =
+  | "unverified"
+  | "user_confirmed"
+  | "runtime_confirmed"
+  | "contradicted"
+  | "confirmed_wrong";
+export const MEMORY_TRUTH_STATES_V1 = [
+  "unverified",
+  "user_confirmed",
+  "runtime_confirmed",
+  "contradicted",
+  "confirmed_wrong",
+] as const satisfies readonly MemoryTruthStateV1[];
+
+export type MemoryDurabilityV1 = "transient" | "session" | "durable" | "pinned";
+export const MEMORY_DURABILITIES_V1 = [
+  "transient",
+  "session",
+  "durable",
+  "pinned",
+] as const satisfies readonly MemoryDurabilityV1[];
+
+export interface CanonicalMemoryEntityV1 {
+  readonly schemaVersion: 1;
+  readonly memoryId: OpaqueIdV1;
+  readonly memoryRevision: Sha256Hex;
+  readonly subjectScope: SubjectScopeV1;
+  readonly opaqueIdProfile: OpaqueIdProfileV1;
+  readonly kind: MemoryKindV1;
+  readonly normalizationProfileId: string;
+  readonly canonicalContent: JsonValue;
+  readonly canonicalFactId: Sha256Hex;
+  readonly sharingScope: SharingScopeV1;
+  readonly sharingDecisionEventIds: readonly OpaqueIdV1[];
+  readonly sensitivity: Sensitivity;
+  readonly egressPolicy: EgressPolicyV1;
+  readonly lifecycle: MemoryLifecycleV1;
+  readonly truthState: MemoryTruthStateV1;
+  readonly durability: MemoryDurabilityV1;
+  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly evidenceSnapshotIds: readonly OpaqueIdV1[];
+  readonly validFrom?: string;
+  readonly validTo?: string;
+  readonly expiresAt?: string;
+  readonly contentHash: Sha256Hex;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type RawIdentifierReaderV1 = "daemon_validator" | "daemon_migrator";
+export const RAW_IDENTIFIER_READERS_V1 = [
+  "daemon_validator",
+  "daemon_migrator",
+] as const satisfies readonly RawIdentifierReaderV1[];
+
+export interface RawIdentifierEvidencePolicyV1 {
+  readonly schemaVersion: 1;
+  readonly newIntakePersistence: "none";
+  readonly migrationScratch: "memory_only";
+  readonly scratchRetention: "transaction";
+  readonly quarantinedArtifactRetention: "until_user_repair_or_discard";
+  readonly allowedRawReaders: readonly RawIdentifierReaderV1[];
+  readonly rawDiagnostics: "never";
+  readonly rawExport: "never";
+  readonly externalEgress: "prohibited";
+  readonly postTransaction: "zeroize";
+}
+
+export type ContinuityP0IssueNumberV1 = 46 | 49 | 53 | 61 | 62 | 56 | 57 | 32 | 58;
+export const CONTINUITY_P0_ISSUE_NUMBERS_V1 = [
+  46,
+  49,
+  53,
+  61,
+  62,
+  56,
+  57,
+  32,
+  58,
+] as const satisfies readonly ContinuityP0IssueNumberV1[];
+
+export type ContinuityP0DeltaKindV1 =
+  | "no_op_state_stable"
+  | "published_bytes_immutable"
+  | "daemon_ordered_head"
+  | "overflow_summary_visible"
+  | "raw_identifier_absent"
+  | "invalid_scope_quarantined"
+  | "invalid_timestamp_quarantined"
+  | "limit_policy_enforced"
+  | "terminal_sibling_diagnostic";
+export const CONTINUITY_P0_DELTA_KINDS_V1 = [
+  "no_op_state_stable",
+  "published_bytes_immutable",
+  "daemon_ordered_head",
+  "overflow_summary_visible",
+  "raw_identifier_absent",
+  "invalid_scope_quarantined",
+  "invalid_timestamp_quarantined",
+  "limit_policy_enforced",
+  "terminal_sibling_diagnostic",
+] as const satisfies readonly ContinuityP0DeltaKindV1[];
+
+export type ContinuityP0ObservationKindV1 =
+  | "state_transition"
+  | "canonical_bytes"
+  | "head_selection"
+  | "overflow_summary"
+  | "identifier_privacy"
+  | "restore_validation"
+  | "limit_policy"
+  | "diagnostic";
+export const CONTINUITY_P0_OBSERVATION_KINDS_V1 = [
+  "state_transition",
+  "canonical_bytes",
+  "head_selection",
+  "overflow_summary",
+  "identifier_privacy",
+  "restore_validation",
+  "limit_policy",
+  "diagnostic",
+] as const satisfies readonly ContinuityP0ObservationKindV1[];
+
+export type SourceAwareDownstreamStageV1 = "S1" | "S2" | "S3";
+export const SOURCE_AWARE_DOWNSTREAM_STAGES_V1 = [
+  "S1",
+  "S2",
+  "S3",
+] as const satisfies readonly SourceAwareDownstreamStageV1[];
+
+export interface BehaviorDeltaEntryV1 {
+  readonly jsonPathOrField: string;
+  readonly currentV1: JsonValue;
+  readonly successor: JsonValue;
+  readonly deltaKind: ContinuityP0DeltaKindV1;
+}
+
+export interface ContinuityP0ObservationEntryV1 {
+  readonly caseId: string;
+  readonly issueNumber: ContinuityP0IssueNumberV1;
+  readonly input: JsonValue;
+  readonly observationKind: ContinuityP0ObservationKindV1;
+  readonly downstreamStage: SourceAwareDownstreamStageV1;
+  readonly behaviorDeltas: readonly BehaviorDeltaEntryV1[];
+}
+
+export interface ContinuityP0ObservationContractV1 {
+  readonly schemaVersion: 1;
+  readonly entries: readonly ContinuityP0ObservationEntryV1[];
+}
+
+export type SourceInventorySurfaceClassV1 = "persisted" | "wire" | "user-facing" | "derived" | "diagnostic";
+export const SOURCE_INVENTORY_SURFACE_CLASSES_V1 = [
+  "persisted",
+  "wire",
+  "user-facing",
+  "derived",
+  "diagnostic",
+] as const satisfies readonly SourceInventorySurfaceClassV1[];
+
+export type SourceInventoryDispositionV1 =
+  | "retain"
+  | "rename"
+  | "split"
+  | "migrate"
+  | "legacy_read_only"
+  | "quarantine";
+export const SOURCE_INVENTORY_DISPOSITIONS_V1 = [
+  "retain",
+  "rename",
+  "split",
+  "migrate",
+  "legacy_read_only",
+  "quarantine",
+] as const satisfies readonly SourceInventoryDispositionV1[];
+
+export type SourceInventoryAuthorityV1 = "authenticated" | "caller_claimed" | "derived" | "none";
+export const SOURCE_INVENTORY_AUTHORITIES_V1 = [
+  "authenticated",
+  "caller_claimed",
+  "derived",
+  "none",
+] as const satisfies readonly SourceInventoryAuthorityV1[];
+
+export interface SourceInventorySearchV1 {
+  readonly id: string;
+  readonly pattern: string;
+  readonly includePaths: readonly string[];
+  readonly excludePaths: readonly string[];
+  readonly lineCount: number;
+  readonly sha256: Sha256Hex;
+}
+
+export interface SourceInventoryEntryV1 {
+  readonly id: string;
+  readonly locus: string;
+  readonly semanticTerm: string;
+  readonly currentMeaning: string;
+  readonly authority: SourceInventoryAuthorityV1;
+  readonly surfaceClass: SourceInventorySurfaceClassV1;
+  readonly disposition: SourceInventoryDispositionV1;
+  readonly successorTarget: string;
+  readonly migrationCondition: string;
+  readonly restoreValidationRequired: boolean;
+  readonly schemaDefinition?: string;
+  readonly sqlTable?: string;
+  readonly notes: string;
+}
+
+export interface SourceIdentityInventoryV1 {
+  readonly inventoryVersion: 1;
+  readonly baselineCommit: GitObjectIdV1;
+  readonly searches: readonly SourceInventorySearchV1[];
+  readonly entries: readonly SourceInventoryEntryV1[];
+}
+
+export type SourceAwareFixtureCaseIdV1 = "F0" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7";
+export const SOURCE_AWARE_FIXTURE_CASE_IDS_V1 = [
+  "F0",
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "F6",
+  "F7",
+] as const satisfies readonly SourceAwareFixtureCaseIdV1[];
+
+export type SourceAwareCurrentDispositionV1 = "unsupported" | "unsafe";
+export const SOURCE_AWARE_CURRENT_DISPOSITIONS_V1 = [
+  "unsupported",
+  "unsafe",
+] as const satisfies readonly SourceAwareCurrentDispositionV1[];
+
+export type SourceAwareCurrentReasonCodeV1 =
+  | "agent_local_not_isolated"
+  | "shared_projection_not_expressible"
+  | "field_provenance_not_immutable"
+  | "multi_agent_lineage_not_expressible"
+  | "canonical_memory_evidence_union_not_expressible"
+  | "source_retrieval_profile_not_expressible"
+  | "caller_claimed_source_not_authority_bound"
+  | "destination_policy_and_capability_not_expressible";
+export const SOURCE_AWARE_CURRENT_REASON_CODES_V1 = [
+  "agent_local_not_isolated",
+  "shared_projection_not_expressible",
+  "field_provenance_not_immutable",
+  "multi_agent_lineage_not_expressible",
+  "canonical_memory_evidence_union_not_expressible",
+  "source_retrieval_profile_not_expressible",
+  "caller_claimed_source_not_authority_bound",
+  "destination_policy_and_capability_not_expressible",
+] as const satisfies readonly SourceAwareCurrentReasonCodeV1[];
+
+export type SourceSharingDispositionCodeV1 =
+  | "agent_private"
+  | "private_not_eligible"
+  | "secret"
+  | "prohibited_egress"
+  | "scope_mismatch"
+  | "destination_capability_unsupported"
+  | "source_unverified"
+  | "legacy_read_only";
+export const SOURCE_SHARING_DISPOSITION_CODES_V1 = [
+  "agent_private",
+  "private_not_eligible",
+  "secret",
+  "prohibited_egress",
+  "scope_mismatch",
+  "destination_capability_unsupported",
+  "source_unverified",
+  "legacy_read_only",
+] as const satisfies readonly SourceSharingDispositionCodeV1[];
+
+export type SourceAwareRetrievalProfileV1 =
+  | "all_source_project"
+  | "current_source"
+  | "named_source"
+  | "active_task_shared";
+export const SOURCE_AWARE_RETRIEVAL_PROFILES_V1 = [
+  "all_source_project",
+  "current_source",
+  "named_source",
+  "active_task_shared",
+] as const satisfies readonly SourceAwareRetrievalProfileV1[];
+
+export interface SourceAwareFixtureSourceV1 {
+  readonly id: string;
+  readonly canonicalClientId: CanonicalClientIdV1;
+  readonly claimedClientId: string;
+  readonly authenticated: boolean;
+}
+
+export interface SourceAwareFixtureDestinationV1 {
+  readonly sourceId: string;
+  readonly privateEligible: boolean;
+  readonly capabilityIds: readonly string[];
+}
+
+export interface SourceAwareFixtureScopeV1 {
+  readonly personalVaultId: string;
+  readonly projectId: string;
+  readonly workspaceId: string;
+  readonly taskLineageId: string;
+}
+
+export interface SourceAwareFixtureRecordV1 {
+  readonly id: string;
+  readonly kind: string;
+  readonly sourceId: string;
+  readonly sharingScope: SharingScopeV1;
+  readonly sensitivity: Sensitivity;
+  readonly egressPolicy: EgressPolicyV1;
+  readonly sourceEvidenceIds: readonly string[];
+  readonly scopeKey?: string;
+  readonly canonicalFactId?: string;
+}
+
+export interface SourceAwareFixtureTransitionV1 {
+  readonly id: string;
+  readonly actorSourceId: string;
+  readonly kind: "create" | "update" | "checkpoint";
+}
+
+export interface SourceAwareFixtureInputV1 {
+  readonly sources: readonly SourceAwareFixtureSourceV1[];
+  readonly destination: SourceAwareFixtureDestinationV1;
+  readonly scope: SourceAwareFixtureScopeV1;
+  readonly records: readonly SourceAwareFixtureRecordV1[];
+  readonly transitions: readonly SourceAwareFixtureTransitionV1[];
+}
+
+export interface SourceAwareCurrentExpectationV1 {
+  readonly disposition: SourceAwareCurrentDispositionV1;
+  readonly reasonCode: SourceAwareCurrentReasonCodeV1;
+}
+
+export interface SourceAwareRecordEvidenceExpectationV1 {
+  readonly recordId: string;
+  readonly sourceIds: readonly string[];
+}
+
+export interface SourceAwareLineageExpectationV1 {
+  readonly originSourceId: string;
+  readonly lastContributorSourceId: string;
+  readonly participantSourceIds: readonly string[];
+  readonly checkpointCreatorSourceId: string;
+}
+
+export interface SourceAwareMemoryExpectationV1 {
+  readonly memoryId: string;
+  readonly canonicalFactId: string;
+  readonly sourceIds: readonly string[];
+}
+
+export interface SourceAwareRetrievalExpectationV1 {
+  readonly profile: SourceAwareRetrievalProfileV1;
+  readonly recordIds: readonly string[];
+}
+
+export interface SourceAwareAuthorityExpectationV1 {
+  readonly authenticatedSourceId: string;
+  readonly automaticResumeAuthorized: boolean;
+}
+
+export interface SourceAwareSuccessorExpectationV1 {
+  readonly automaticFullRecordIds: readonly string[];
+  readonly hintOrManualRecordIds: readonly string[];
+  readonly agentLocalRecordIds: readonly string[];
+  readonly sourceEvidence: readonly SourceAwareRecordEvidenceExpectationV1[];
+  readonly lineage: SourceAwareLineageExpectationV1;
+  readonly memoryEntities: readonly SourceAwareMemoryExpectationV1[];
+  readonly retrievalProfiles: readonly SourceAwareRetrievalExpectationV1[];
+  readonly authority: SourceAwareAuthorityExpectationV1;
+  readonly downgradeReasonCodes: readonly SourceSharingDispositionCodeV1[];
+}
+
+export interface SourceAwareContractCaseV1 {
+  readonly id: SourceAwareFixtureCaseIdV1;
+  readonly title: string;
+  readonly input: SourceAwareFixtureInputV1;
+  readonly currentV1: SourceAwareCurrentExpectationV1;
+  readonly successor: SourceAwareSuccessorExpectationV1;
+}
+
+export interface SourceAwareContractCorpusV1 {
+  readonly corpusVersion: 1;
+  readonly contractBundle: "SourceAwareContinuityContractV1";
+  readonly cases: readonly SourceAwareContractCaseV1[];
+}
+
+export type LegacyArtifactV1 =
+  | "CanonicalWorkStateV1"
+  | "ContinuationCheckpointV2"
+  | "ResumeCapsuleV1"
+  | "DurableMemory";
+export const LEGACY_ARTIFACTS_V1 = [
+  "CanonicalWorkStateV1",
+  "ContinuationCheckpointV2",
+  "ResumeCapsuleV1",
+  "DurableMemory",
+] as const satisfies readonly LegacyArtifactV1[];
+
+export interface LegacyMigrationRuleV1 {
+  readonly artifact: LegacyArtifactV1;
+  readonly verifiedDisposition: LegacyMigrationDispositionV1;
+  readonly unresolvedDisposition: LegacyMigrationDispositionV1;
+  readonly evidencePreconditions: readonly string[];
+}
+
+export interface RestoreArtifactValidationRuleV1 {
+  readonly inventoryEntryId: string;
+  readonly scopeIdentityPaths: readonly string[];
+  readonly isoTimestampPaths: readonly string[];
+  readonly crossFieldRules: readonly string[];
+  readonly invalidDisposition: "quarantine";
+  readonly repairAuthorities: readonly ["user"];
+  readonly auditRequired: true;
+}
+
+export interface RestoreSemanticValidationContractV1 {
+  readonly schemaVersion: 1;
+  readonly rules: readonly RestoreArtifactValidationRuleV1[];
+}
+
+export type ContinuityLimitNameV1 = keyof typeof CONTINUITY_LIMITS;
+export const CONTINUITY_LIMIT_NAMES_V1 = [
+  "hintTokens",
+  "fullCapsuleTokens",
+  "promptMemoryTokens",
+  "combinedTokens",
+  "absoluteTokens",
+  "capsulePayloadBytes",
+  "wrapperBytes",
+  "jsonDepth",
+  "stringUtf8Bytes",
+  "arrayItems",
+  "objectKeys",
+  "rankedCandidates",
+] as const satisfies readonly ContinuityLimitNameV1[];
+export type ContinuityLimitDispositionV1 = "reject" | "select_with_diagnostic";
+export const CONTINUITY_LIMIT_DISPOSITIONS_V1 = [
+  "reject",
+  "select_with_diagnostic",
+] as const satisfies readonly ContinuityLimitDispositionV1[];
+
+export interface ContinuityLimitPolicyV1 {
+  readonly name: ContinuityLimitNameV1;
+  readonly limit: number;
+  readonly disposition: ContinuityLimitDispositionV1;
+}
+
+export type ContinuityDiagnosticCodeV2 =
+  | "terminal_unmatched"
+  | "terminal_orphaned"
+  | "terminal_ambiguous"
+  | "terminal_conflict"
+  | "terminal_out_of_order"
+  | "terminal_order_unverifiable"
+  | "terminal_turn_unverifiable"
+  | "terminal_identity_unverifiable"
+  | "terminal_already_applied"
+  | "terminal_evidence_contradicts"
+  | "duplicate_operation_start"
+  | "start_sibling_conflict"
+  | "start_conflict"
+  | "delivery_conflict"
+  | "pending_operations_evicted"
+  | "dropped_evidence_recorded"
+  | "dropped_evidence_overflowed"
+  | "source_events_truncated"
+  | "turn_identity_downgraded"
+  | "turn_identity_unauthenticated"
+  | "terminal_sibling_conflict";
+export const CONTINUITY_DIAGNOSTIC_CODES_V2 = [
+  "terminal_unmatched",
+  "terminal_orphaned",
+  "terminal_ambiguous",
+  "terminal_conflict",
+  "terminal_out_of_order",
+  "terminal_order_unverifiable",
+  "terminal_turn_unverifiable",
+  "terminal_identity_unverifiable",
+  "terminal_already_applied",
+  "terminal_evidence_contradicts",
+  "duplicate_operation_start",
+  "start_sibling_conflict",
+  "start_conflict",
+  "delivery_conflict",
+  "pending_operations_evicted",
+  "dropped_evidence_recorded",
+  "dropped_evidence_overflowed",
+  "source_events_truncated",
+  "turn_identity_downgraded",
+  "turn_identity_unauthenticated",
+  "terminal_sibling_conflict",
+] as const satisfies readonly ContinuityDiagnosticCodeV2[];
+
+export interface SourceAwareArtifactSchemaRefV1 {
+  readonly name: "CanonicalWorkStateV2" | "ContinuationCheckpointV3" | "ResumeCapsuleV2" | "CanonicalMemoryEntityV1";
+  readonly schemaVersion: 1 | 2 | 3;
+}
+
+export interface RevisionHeadSelectionPolicyV1 {
+  readonly orderingKey: "lineage_revision_ordinal";
+  readonly automaticFallback: "never";
+  readonly ineligibleDisposition: "manual";
+  readonly corruptDisposition: "quarantine";
+}
+
+export interface SourceAwareContinuityContractV1 {
+  readonly contractVersion: 1;
+  readonly contractHash: Sha256Hex;
+  readonly schemaFile: "schema/continuity.schema.json";
+  readonly schemaHash: Sha256Hex;
+  readonly artifactSchemas: readonly SourceAwareArtifactSchemaRefV1[];
+  readonly sourceVocabularyVersion: "1";
+  readonly inventoryFile: "schema/source-aware-source-inventory.v1.json";
+  readonly inventoryHash: Sha256Hex;
+  readonly fixtureCorpusFile: "fixtures/continuity/source-aware-f0-f7.v1.json";
+  readonly fixtureCorpusVersion: 1;
+  readonly fixtureCorpusHash: Sha256Hex;
+  readonly fixtureCaseIds: readonly SourceAwareFixtureCaseIdV1[];
+  readonly opaqueIdProfile: OpaqueIdProfileV1;
+  readonly revisionHeadSelectionPolicy: RevisionHeadSelectionPolicyV1;
+  readonly rawIdentifierEvidencePolicy: RawIdentifierEvidencePolicyV1;
+  readonly continuityP0Observations: ContinuityP0ObservationContractV1;
+  readonly legacyMigrationRules: readonly LegacyMigrationRuleV1[];
+  readonly restoreSemanticValidation: RestoreSemanticValidationContractV1;
+  readonly limitPolicies: readonly ContinuityLimitPolicyV1[];
+  readonly continuityDiagnosticCodes: readonly ContinuityDiagnosticCodeV2[];
+  readonly sourceSharingDispositionCodes: readonly SourceSharingDispositionCodeV1[];
 }
 
 export interface CanonicalWorkStateV1 {

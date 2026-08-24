@@ -25,6 +25,27 @@ const NAMED_ENUMS: Record<string, keyof typeof contract> = {
   LineageHeadStateV1: "LINEAGE_HEAD_STATES_V1",
   RevisionEligibilityReasonCodeV1: "REVISION_ELIGIBILITY_REASON_CODES_V1",
   DroppedEvidenceReasonV1: "DROPPED_EVIDENCE_REASONS_V1",
+  MemoryKindV1: "MEMORY_KINDS_V1",
+  MemoryLifecycleV1: "MEMORY_LIFECYCLES_V1",
+  MemoryTruthStateV1: "MEMORY_TRUTH_STATES_V1",
+  MemoryDurabilityV1: "MEMORY_DURABILITIES_V1",
+  RawIdentifierReaderV1: "RAW_IDENTIFIER_READERS_V1",
+  ContinuityP0IssueNumberV1: "CONTINUITY_P0_ISSUE_NUMBERS_V1",
+  ContinuityP0DeltaKindV1: "CONTINUITY_P0_DELTA_KINDS_V1",
+  ContinuityP0ObservationKindV1: "CONTINUITY_P0_OBSERVATION_KINDS_V1",
+  SourceAwareDownstreamStageV1: "SOURCE_AWARE_DOWNSTREAM_STAGES_V1",
+  SourceInventorySurfaceClassV1: "SOURCE_INVENTORY_SURFACE_CLASSES_V1",
+  SourceInventoryDispositionV1: "SOURCE_INVENTORY_DISPOSITIONS_V1",
+  SourceInventoryAuthorityV1: "SOURCE_INVENTORY_AUTHORITIES_V1",
+  SourceAwareFixtureCaseIdV1: "SOURCE_AWARE_FIXTURE_CASE_IDS_V1",
+  SourceAwareCurrentDispositionV1: "SOURCE_AWARE_CURRENT_DISPOSITIONS_V1",
+  SourceAwareCurrentReasonCodeV1: "SOURCE_AWARE_CURRENT_REASON_CODES_V1",
+  SourceSharingDispositionCodeV1: "SOURCE_SHARING_DISPOSITION_CODES_V1",
+  SourceAwareRetrievalProfileV1: "SOURCE_AWARE_RETRIEVAL_PROFILES_V1",
+  LegacyArtifactV1: "LEGACY_ARTIFACTS_V1",
+  ContinuityLimitNameV1: "CONTINUITY_LIMIT_NAMES_V1",
+  ContinuityLimitDispositionV1: "CONTINUITY_LIMIT_DISPOSITIONS_V1",
+  ContinuityDiagnosticCodeV2: "CONTINUITY_DIAGNOSTIC_CODES_V2",
   TaskBindingRole: "TASK_BINDING_ROLES",
   BoundaryEvidenceKind: "BOUNDARY_EVIDENCE_KINDS",
   TaskBoundaryProposalState: "TASK_BOUNDARY_PROPOSAL_STATES",
@@ -135,6 +156,21 @@ const INLINE_ENUMS = {
   ],
   "PendingOperationV2.properties.status": ["started", "succeeded", "failed", "unknown"],
   "DroppedEvidenceEntryV2.properties.status": ["started", "succeeded", "failed", "unknown"],
+  "ContinuationCheckpointV3.properties.kind": [
+    "pre_compact",
+    "session_end",
+    "idle",
+    "manual",
+    "crash_recovery",
+  ],
+  "SourceAwareFixtureTransitionV1.properties.kind": ["create", "update", "checkpoint"],
+  "SourceAwareArtifactSchemaRefV1.properties.name": [
+    "CanonicalWorkStateV2",
+    "ContinuationCheckpointV3",
+    "ResumeCapsuleV2",
+    "CanonicalMemoryEntityV1",
+  ],
+  "SourceAwareArtifactSchemaRefV1.properties.schemaVersion": [1, 2, 3],
 } as const;
 
 /**
@@ -176,6 +212,39 @@ const INLINE_CONSTS = {
   "RevisionHeadSelectionContractV1.oneOf[1].properties.orderingKey": "lineage_revision_ordinal",
   "RevisionHeadSelectionContractV1.oneOf[1].properties.fallbackDisposition": "manual",
   "SemanticResumeNoteV2.properties.schemaVersion": 2,
+  "SharedTaskStateV1.properties.sharingScope": "task_shared",
+  "AgentLocalStateV1.properties.sharingScope": "agent_private",
+  "CanonicalWorkStateV2.properties.schemaVersion": 2,
+  "ContinuationCheckpointV3.properties.schemaVersion": 3,
+  "ResumeCapsuleV2.properties.schemaVersion": 2,
+  "CanonicalMemoryEntityV1.properties.schemaVersion": 1,
+  "RawIdentifierEvidencePolicyV1.properties.schemaVersion": 1,
+  "RawIdentifierEvidencePolicyV1.properties.newIntakePersistence": "none",
+  "RawIdentifierEvidencePolicyV1.properties.migrationScratch": "memory_only",
+  "RawIdentifierEvidencePolicyV1.properties.scratchRetention": "transaction",
+  "RawIdentifierEvidencePolicyV1.properties.quarantinedArtifactRetention": "until_user_repair_or_discard",
+  "RawIdentifierEvidencePolicyV1.properties.rawDiagnostics": "never",
+  "RawIdentifierEvidencePolicyV1.properties.rawExport": "never",
+  "RawIdentifierEvidencePolicyV1.properties.externalEgress": "prohibited",
+  "RawIdentifierEvidencePolicyV1.properties.postTransaction": "zeroize",
+  "ContinuityP0ObservationContractV1.properties.schemaVersion": 1,
+  "SourceIdentityInventoryV1.properties.inventoryVersion": 1,
+  "SourceAwareContractCorpusV1.properties.corpusVersion": 1,
+  "SourceAwareContractCorpusV1.properties.contractBundle": "SourceAwareContinuityContractV1",
+  "RestoreArtifactValidationRuleV1.properties.invalidDisposition": "quarantine",
+  "RestoreArtifactValidationRuleV1.properties.repairAuthorities.items": "user",
+  "RestoreArtifactValidationRuleV1.properties.auditRequired": true,
+  "RestoreSemanticValidationContractV1.properties.schemaVersion": 1,
+  "RevisionHeadSelectionPolicyV1.properties.orderingKey": "lineage_revision_ordinal",
+  "RevisionHeadSelectionPolicyV1.properties.automaticFallback": "never",
+  "RevisionHeadSelectionPolicyV1.properties.ineligibleDisposition": "manual",
+  "RevisionHeadSelectionPolicyV1.properties.corruptDisposition": "quarantine",
+  "SourceAwareContinuityContractV1.properties.contractVersion": 1,
+  "SourceAwareContinuityContractV1.properties.schemaFile": "schema/continuity.schema.json",
+  "SourceAwareContinuityContractV1.properties.sourceVocabularyVersion": "1",
+  "SourceAwareContinuityContractV1.properties.inventoryFile": "schema/source-aware-source-inventory.v1.json",
+  "SourceAwareContinuityContractV1.properties.fixtureCorpusFile": "fixtures/continuity/source-aware-f0-f7.v1.json",
+  "SourceAwareContinuityContractV1.properties.fixtureCorpusVersion": 1,
 } as const;
 
 /* -------------------------------------------------------------------------
@@ -197,6 +266,7 @@ type SameSet<A extends string | number, B extends string | number> = [A] extends
     ? true
     : false
   : false;
+type SameLiteral<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type EnumAt<K extends keyof typeof INLINE_ENUMS> = (typeof INLINE_ENUMS)[K][number];
 type ConstAt<K extends keyof typeof INLINE_CONSTS> = (typeof INLINE_CONSTS)[K];
 /** 同じ `$defs` に属する複数の `const`（`oneOf` の判別子）をまとめて 1 つの union にする */
@@ -249,6 +319,72 @@ type _NamedEnumsMatchContract = [
   Assert<
     SameSet<contract.DroppedEvidenceReasonV1, (typeof contract.DROPPED_EVIDENCE_REASONS_V1)[number]>
   >,
+  Assert<SameSet<contract.MemoryKindV1, (typeof contract.MEMORY_KINDS_V1)[number]>>,
+  Assert<SameSet<contract.MemoryLifecycleV1, (typeof contract.MEMORY_LIFECYCLES_V1)[number]>>,
+  Assert<SameSet<contract.MemoryTruthStateV1, (typeof contract.MEMORY_TRUTH_STATES_V1)[number]>>,
+  Assert<SameSet<contract.MemoryDurabilityV1, (typeof contract.MEMORY_DURABILITIES_V1)[number]>>,
+  Assert<SameSet<contract.RawIdentifierReaderV1, (typeof contract.RAW_IDENTIFIER_READERS_V1)[number]>>,
+  Assert<
+    SameSet<contract.ContinuityP0IssueNumberV1, (typeof contract.CONTINUITY_P0_ISSUE_NUMBERS_V1)[number]>
+  >,
+  Assert<SameSet<contract.ContinuityP0DeltaKindV1, (typeof contract.CONTINUITY_P0_DELTA_KINDS_V1)[number]>>,
+  Assert<
+    SameSet<
+      contract.ContinuityP0ObservationKindV1,
+      (typeof contract.CONTINUITY_P0_OBSERVATION_KINDS_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<contract.SourceAwareDownstreamStageV1, (typeof contract.SOURCE_AWARE_DOWNSTREAM_STAGES_V1)[number]>
+  >,
+  Assert<
+    SameSet<
+      contract.SourceInventorySurfaceClassV1,
+      (typeof contract.SOURCE_INVENTORY_SURFACE_CLASSES_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SourceInventoryDispositionV1,
+      (typeof contract.SOURCE_INVENTORY_DISPOSITIONS_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<contract.SourceInventoryAuthorityV1, (typeof contract.SOURCE_INVENTORY_AUTHORITIES_V1)[number]>
+  >,
+  Assert<
+    SameSet<contract.SourceAwareFixtureCaseIdV1, (typeof contract.SOURCE_AWARE_FIXTURE_CASE_IDS_V1)[number]>
+  >,
+  Assert<
+    SameSet<
+      contract.SourceAwareCurrentDispositionV1,
+      (typeof contract.SOURCE_AWARE_CURRENT_DISPOSITIONS_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SourceAwareCurrentReasonCodeV1,
+      (typeof contract.SOURCE_AWARE_CURRENT_REASON_CODES_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SourceSharingDispositionCodeV1,
+      (typeof contract.SOURCE_SHARING_DISPOSITION_CODES_V1)[number]
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SourceAwareRetrievalProfileV1,
+      (typeof contract.SOURCE_AWARE_RETRIEVAL_PROFILES_V1)[number]
+    >
+  >,
+  Assert<SameSet<contract.LegacyArtifactV1, (typeof contract.LEGACY_ARTIFACTS_V1)[number]>>,
+  Assert<SameSet<contract.ContinuityLimitNameV1, (typeof contract.CONTINUITY_LIMIT_NAMES_V1)[number]>>,
+  Assert<
+    SameSet<contract.ContinuityLimitDispositionV1, (typeof contract.CONTINUITY_LIMIT_DISPOSITIONS_V1)[number]>
+  >,
+  Assert<SameSet<contract.ContinuityDiagnosticCodeV2, (typeof contract.CONTINUITY_DIAGNOSTIC_CODES_V2)[number]>>,
   Assert<SameSet<contract.TaskBindingRole, (typeof contract.TASK_BINDING_ROLES)[number]>>,
   Assert<SameSet<contract.BoundaryEvidenceKind, (typeof contract.BOUNDARY_EVIDENCE_KINDS)[number]>>,
   Assert<SameSet<contract.TaskBoundaryProposalState, (typeof contract.TASK_BOUNDARY_PROPOSAL_STATES)[number]>>,
@@ -367,6 +503,27 @@ type _InlineEnumsMatchContract = [
       EnumAt<"DroppedEvidenceEntryV2.properties.status">
     >
   >,
+  Assert<
+    SameSet<contract.ContinuationCheckpointV3["kind"], EnumAt<"ContinuationCheckpointV3.properties.kind">>
+  >,
+  Assert<
+    SameSet<
+      contract.SourceAwareFixtureTransitionV1["kind"],
+      EnumAt<"SourceAwareFixtureTransitionV1.properties.kind">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SourceAwareArtifactSchemaRefV1["name"],
+      EnumAt<"SourceAwareArtifactSchemaRefV1.properties.name">
+    >
+  >,
+  Assert<
+    SameSet<
+      contract.SourceAwareArtifactSchemaRefV1["schemaVersion"],
+      EnumAt<"SourceAwareArtifactSchemaRefV1.properties.schemaVersion">
+    >
+  >,
 ];
 
 type _InlineConstsMatchContract = [
@@ -433,6 +590,39 @@ type _InlineConstsMatchContract = [
       ConstAt<"SemanticResumeNoteV2.properties.schemaVersion">
     >
   >,
+  Assert<SameLiteral<contract.SharedTaskStateV1["sharingScope"], ConstAt<"SharedTaskStateV1.properties.sharingScope">>>,
+  Assert<SameLiteral<contract.AgentLocalStateV1["sharingScope"], ConstAt<"AgentLocalStateV1.properties.sharingScope">>>,
+  Assert<SameLiteral<contract.CanonicalWorkStateV2["schemaVersion"], ConstAt<"CanonicalWorkStateV2.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.ContinuationCheckpointV3["schemaVersion"], ConstAt<"ContinuationCheckpointV3.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.ResumeCapsuleV2["schemaVersion"], ConstAt<"ResumeCapsuleV2.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.CanonicalMemoryEntityV1["schemaVersion"], ConstAt<"CanonicalMemoryEntityV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["schemaVersion"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["newIntakePersistence"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.newIntakePersistence">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["migrationScratch"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.migrationScratch">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["scratchRetention"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.scratchRetention">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["quarantinedArtifactRetention"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.quarantinedArtifactRetention">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["rawDiagnostics"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.rawDiagnostics">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["rawExport"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.rawExport">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["externalEgress"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.externalEgress">>>,
+  Assert<SameLiteral<contract.RawIdentifierEvidencePolicyV1["postTransaction"], ConstAt<"RawIdentifierEvidencePolicyV1.properties.postTransaction">>>,
+  Assert<SameLiteral<contract.ContinuityP0ObservationContractV1["schemaVersion"], ConstAt<"ContinuityP0ObservationContractV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.SourceIdentityInventoryV1["inventoryVersion"], ConstAt<"SourceIdentityInventoryV1.properties.inventoryVersion">>>,
+  Assert<SameLiteral<contract.SourceAwareContractCorpusV1["corpusVersion"], ConstAt<"SourceAwareContractCorpusV1.properties.corpusVersion">>>,
+  Assert<SameLiteral<contract.SourceAwareContractCorpusV1["contractBundle"], ConstAt<"SourceAwareContractCorpusV1.properties.contractBundle">>>,
+  Assert<SameLiteral<contract.RestoreArtifactValidationRuleV1["invalidDisposition"], ConstAt<"RestoreArtifactValidationRuleV1.properties.invalidDisposition">>>,
+  Assert<SameLiteral<contract.RestoreArtifactValidationRuleV1["repairAuthorities"][number], ConstAt<"RestoreArtifactValidationRuleV1.properties.repairAuthorities.items">>>,
+  Assert<SameLiteral<contract.RestoreArtifactValidationRuleV1["auditRequired"], ConstAt<"RestoreArtifactValidationRuleV1.properties.auditRequired">>>,
+  Assert<SameLiteral<contract.RestoreSemanticValidationContractV1["schemaVersion"], ConstAt<"RestoreSemanticValidationContractV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["orderingKey"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.orderingKey">>>,
+  Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["automaticFallback"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.automaticFallback">>>,
+  Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["ineligibleDisposition"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.ineligibleDisposition">>>,
+  Assert<SameLiteral<contract.RevisionHeadSelectionPolicyV1["corruptDisposition"], ConstAt<"RevisionHeadSelectionPolicyV1.properties.corruptDisposition">>>,
+  Assert<SameLiteral<contract.SourceAwareContinuityContractV1["contractVersion"], ConstAt<"SourceAwareContinuityContractV1.properties.contractVersion">>>,
+  Assert<SameLiteral<contract.SourceAwareContinuityContractV1["schemaFile"], ConstAt<"SourceAwareContinuityContractV1.properties.schemaFile">>>,
+  Assert<SameLiteral<contract.SourceAwareContinuityContractV1["sourceVocabularyVersion"], ConstAt<"SourceAwareContinuityContractV1.properties.sourceVocabularyVersion">>>,
+  Assert<SameLiteral<contract.SourceAwareContinuityContractV1["inventoryFile"], ConstAt<"SourceAwareContinuityContractV1.properties.inventoryFile">>>,
+  Assert<SameLiteral<contract.SourceAwareContinuityContractV1["fixtureCorpusFile"], ConstAt<"SourceAwareContinuityContractV1.properties.fixtureCorpusFile">>>,
+  Assert<SameLiteral<contract.SourceAwareContinuityContractV1["fixtureCorpusVersion"], ConstAt<"SourceAwareContinuityContractV1.properties.fixtureCorpusVersion">>>,
   Assert<
     SameSet<contract.ResumeCapsuleV1["schemaVersion"], ConstAt<"ResumeCapsuleV1.properties.schemaVersion">>
   >,
@@ -529,6 +719,7 @@ const FROZEN_DEFS = [
   "EngagementEvidenceKind",
   "EvidenceKind",
   "Freshness",
+  "GitObjectIdV1",
   "IsoTimestamp",
   "JsonPrimitive",
   "JsonValue",
@@ -589,6 +780,65 @@ const FROZEN_DEFS = [
   "TurnIdSource",
   "WorkspaceCompatibilityV1",
   "WorkspaceSubjectScopeV1",
+  "AgentLocalStateV1",
+  "BehaviorDeltaEntryV1",
+  "CanonicalMemoryEntityV1",
+  "CanonicalWorkStateV2",
+  "ContinuationCheckpointV3",
+  "ContinuityDiagnosticCodeV2",
+  "ContinuityLimitDispositionV1",
+  "ContinuityLimitNameV1",
+  "ContinuityLimitPolicyV1",
+  "ContinuityP0DeltaKindV1",
+  "ContinuityP0IssueNumberV1",
+  "ContinuityP0ObservationContractV1",
+  "ContinuityP0ObservationEntryV1",
+  "ContinuityP0ObservationKindV1",
+  "LegacyArtifactV1",
+  "LegacyMigrationRuleV1",
+  "LineageSourceSummaryV1",
+  "MemoryDurabilityV1",
+  "MemoryKindV1",
+  "MemoryLifecycleV1",
+  "MemoryTruthStateV1",
+  "RawIdentifierEvidencePolicyV1",
+  "RawIdentifierReaderV1",
+  "RestoreArtifactValidationRuleV1",
+  "RestoreSemanticValidationContractV1",
+  "ResumeCapsuleV2",
+  "ResumeDestinationV1",
+  "RevisionHeadSelectionPolicyV1",
+  "SharedTaskStateV1",
+  "SourceAwareArtifactSchemaRefV1",
+  "SourceAwareAuthorityExpectationV1",
+  "SourceAwareContinuityContractV1",
+  "SourceAwareContractCaseV1",
+  "SourceAwareContractCorpusV1",
+  "SourceAwareCurrentDispositionV1",
+  "SourceAwareCurrentExpectationV1",
+  "SourceAwareCurrentReasonCodeV1",
+  "SourceAwareDownstreamStageV1",
+  "SourceAwareFixtureCaseIdV1",
+  "SourceAwareFixtureDestinationV1",
+  "SourceAwareFixtureInputV1",
+  "SourceAwareFixtureRecordV1",
+  "SourceAwareFixtureScopeV1",
+  "SourceAwareFixtureSourceV1",
+  "SourceAwareFixtureTransitionV1",
+  "SourceAwareLineageExpectationV1",
+  "SourceAwareMemoryExpectationV1",
+  "SourceAwareRecordEvidenceExpectationV1",
+  "SourceAwareRetrievalExpectationV1",
+  "SourceAwareRetrievalProfileV1",
+  "SourceAwareSuccessorExpectationV1",
+  "SourceIdentityInventoryV1",
+  "SourceIdentityV1",
+  "SourceInventoryAuthorityV1",
+  "SourceInventoryDispositionV1",
+  "SourceInventoryEntryV1",
+  "SourceInventorySearchV1",
+  "SourceInventorySurfaceClassV1",
+  "SourceSharingDispositionCodeV1",
 ] as const;
 
 test("$defs の名前集合は凍結されている", () => {
@@ -919,7 +1169,7 @@ test("子孫の無効化は viaArtifactId を伴う（§12.3）", () => {
 
 test("数値の範囲は正本が書いているものだけ", () => {
   // 正本に無い範囲を足すと、正当な値を契約が拒否する（IsoTimestamp の小数秒で実際に起きた）。
-  // V1/V2 の confidence は 0..1。schema 側の minimum/maximum もその3箇所だけに固定する
+  // V1/V2 の confidence は 0..1。age/count/limit は非負。根拠のある範囲だけに固定する
   // path だけを集めると、`minimum` を -1 にしても `maximum` を消しても同じ集合になる。
   // 値まで凍結して、唯一の根拠つき範囲が弱められたときにも落ちるようにする
   const found: { path: string; minimum?: unknown; maximum?: unknown }[] = [];
@@ -940,6 +1190,9 @@ test("数値の範囲は正本が書いているものだけ", () => {
     { path: "$defs.Observed.properties.confidence", minimum: 0, maximum: 1 },
     { path: "$defs.ObservedV2.properties.confidence", minimum: 0, maximum: 1 },
     { path: "$defs.SemanticResumeNoteV2.properties.confidence", minimum: 0, maximum: 1 },
+    { path: "$defs.ResumeCapsuleV2.properties.ageSeconds", minimum: 0, maximum: undefined },
+    { path: "$defs.SourceInventorySearchV1.properties.lineCount", minimum: 0, maximum: undefined },
+    { path: "$defs.ContinuityLimitPolicyV1.properties.limit", minimum: 0, maximum: undefined },
   ]);
 });
 
@@ -995,6 +1248,7 @@ test("decimal string の pattern は sequence/watermark 全部に付いている
   }
   assert.deepEqual(found.sort(), [
     "CanonicalWorkStateV1.properties.lastIngestSeq",
+    "ContinuationCheckpointV3.properties.memoryWatermark",
     "ContradictionScanRangeV1.properties.fromIngestSeq",
     "ContradictionScanRangeV1.properties.toIngestSeq",
     "DroppedEvidenceEntryV2.properties.recordedAtLineageRevisionOrdinal",
