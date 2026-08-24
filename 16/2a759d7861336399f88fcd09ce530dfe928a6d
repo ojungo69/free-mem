@@ -1,0 +1,89 @@
+specs/005-continuity-p0-contract/research.md
+  s_d6433b5ff6fa8e::t_1b287b14b02a2e 254-255
+  s_d6433b5ff6fa8e::t_526c235e02f67c 41-44,70-71,105-106,155,252-253
+harness/schema/source-aware-source-inventory.v1.json
+  s_d6433b5ff6fa8e::t_629a13f8ca9841 502-519,523-524,526
+specs/005-continuity-p0-contract/data-model.md
+  s_d6433b5ff6fa8e::t_2f0ea64ac5947a 166-167,195,258-260,281,327-328,356
+  s_d6433b5ff6fa8e::t_a163422de004b4 168-170
+harness/continuity/schema-freeze.test.ts
+  s_d6433b5ff6fa8e::t_62ee25c155ca17 64-65
+  s_d6433b5ff6fa8e::t_2845c55fa268d0 396,948
+  s_d6433b5ff6fa8e::t_c61dd734982c81 40-47,49-63
+  s_d6433b5ff6fa8e::t_8146abc19823ea 48
+harness/continuity/source-aware-contract.test.ts
+  s_d6433b5ff6fa8e::t_6245a17ab42bda 5200-5217
+  s_d6433b5ff6fa8e::t_0b245b95ba0abf 4212,4222,4304-4313,4350,4601
+  s_d6433b5ff6fa8e::t_2f9925f7977a7e 465-474,584-586,599-608
+  s_d6433b5ff6fa8e::t_83871b48252b51 760-763
+  s_d6433b5ff6fa8e::t_594ea301457264 504-526
+  s_d6433b5ff6fa8e::t_de42e03dbeedca 759,764-777,4615-4616
+  s_d6433b5ff6fa8e::t_4768194204347a 4618-4624,4626-4638,4640-4641
+  s_d6433b5ff6fa8e::t_4dd7799c27fa1c 1405-1414
+  s_d6433b5ff6fa8e::t_700ce1420fcc4c 5738-5742,5744
+  s_d6433b5ff6fa8e::t_b5f360ce458cb9 281
+  s_d6433b5ff6fa8e::t_0067176bc83d66 709,4617,4642-4663,4667-4685
+  s_d6433b5ff6fa8e::t_1dcf470e5651fd 4614,4625,4639,4698,4706,4721,4732
+  s_d6433b5ff6fa8e::t_bb7dc7539997df 3672
+  s_d6433b5ff6fa8e::t_284865235e2258 618-637,671-708
+  s_d6433b5ff6fa8e::t_92ee851a055394 282-285
+  s_d6433b5ff6fa8e::t_a7d2dd1c6d66c6 3425-3434,3462-3466
+  s_d6433b5ff6fa8e::t_f3e8714bb892d7 4039-4042
+  s_d6433b5ff6fa8e::t_cf02ed371b5084 2582-2597
+  s_d6433b5ff6fa8e::t_f709ab6a1e3ebf 4381-4388
+  s_d6433b5ff6fa8e::t_58bc154193404e 5769
+  s_d6433b5ff6fa8e::t_a4fec0df4f6199 6209-6210
+  s_d6433b5ff6fa8e::t_433464c0770060 258-269,1156-1157
+  s_d6433b5ff6fa8e::t_82973ee3919bb6 6281,6285,6292,6317
+  s_d6433b5ff6fa8e::t_2f3fb87ea0ac36 3822,3824-3828,3840-3858
+  s_d6433b5ff6fa8e::t_8146abc19823ea 4902,5047
+  s_d6433b5ff6fa8e::t_1ad913044e1df7 2145-2147,2931-2935
+  s_d6433b5ff6fa8e::t_adc3fea15f8a8a 4026-4028
+  s_d6433b5ff6fa8e::t_ff0c94755c2825 292-294,330,332-335,337-338,3409-3411
+  s_d6433b5ff6fa8e::t_eb81dafd8a1594 3467
+specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md
+  s_d6433b5ff6fa8e::t_f3101bb7d58d52 57-58,152,156-157,181-182,200,214-215,256-257
+  s_d6433b5ff6fa8e::t_a163422de004b4 175-177
+harness/schema/source-aware-continuity-contract.v1.json
+  s_d6433b5ff6fa8e::t_00b19dfec4db64 3
+  s_d6433b5ff6fa8e::t_6739836441139e 5
+  s_d6433b5ff6fa8e::t_19c25e3cfe6f9b 644,646,655
+  s_d6433b5ff6fa8e::t_a4fec0df4f6199 14
+  s_d6433b5ff6fa8e::t_2845c55fa268d0 240
+harness/schema/continuity.schema.json
+  s_d6433b5ff6fa8e::t_172ddd56f633ad 3201,3219,3235,3251,3284,3305,3370,3581
+  s_d6433b5ff6fa8e::t_2845c55fa268d0 4225,4230
+harness/contract-hashes.json
+  s_d6433b5ff6fa8e::t_15d3e6a554b642 35,37
+  s_d6433b5ff6fa8e::t_724a7e8999ab02 38
+harness/schema/continuity.ts
+  s_d6433b5ff6fa8e::t_2845c55fa268d0 1736
+  s_d6433b5ff6fa8e::t_a3fb2809d90e98 757-758,761,775,787,799,824,843,892,1037,1107,1131-1143
+specs/005-continuity-p0-contract/verify-tasks-report.md
+  s_d6433b5ff6fa8e::t_87ccb5fb8bd71f 329-336,339-342,354,356-357,364-365
+  s_d6433b5ff6fa8e::t_47bc5698245c96 337-338
+evidence/adr-006-source-aware-shared-memory.md
+  s_d6433b5ff6fa8e::t_60e4b8e99f1521 69-71,78,81,90-91
+  s_d6433b5ff6fa8e::t_ffba228ac06df4 79-80
+specs/005-continuity-p0-contract/spec.md
+  s_d6433b5ff6fa8e::t_41f0f0fb9d4011 250-252,304-305,423,430-431,465-466,490-491,504,603-604
+  s_d6433b5ff6fa8e::t_a5af3642d8fefa 300-301
+specs/005-continuity-p0-contract/quickstart.md
+  s_d6433b5ff6fa8e::t_7386c13287f883 97-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "162a759d7861336399f88fcd09ce530dfe928a6d",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
