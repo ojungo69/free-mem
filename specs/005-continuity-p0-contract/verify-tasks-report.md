@@ -199,3 +199,7 @@ All review output was treated as a proposal and checked against source/tests.
 - Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
 - Scope gate and `git diff --check`: no forbidden path and no whitespace error.
 - Whole-diff correctness/security reviews: no findings. Final `ponytail-review`: `Lean already. Ship.`
+
+## Pull request
+
+- [PR #133](https://github.com/ojungo69/free-mem/pull/133) uses `Refs #132`, lists the nine Continuity P0 observations without closing them, and leaves the umbrella Issue #132 open for S1–S6.

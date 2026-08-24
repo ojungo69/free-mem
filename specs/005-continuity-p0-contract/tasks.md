@@ -127,7 +127,7 @@ and the exact P0 observation set still contains the #32/#58 policy/diagnostic de
 - [X] T037 Run the correctness/security code-review gate on the full branch diff and adopt only source-verified findings; rerun affected focused/full tests
 - [X] T038 Run Grok review plus Cubic and CodeRabbit local/PR review for this important schema/security change; resolve or explicitly reject every validated finding with evidence
 - [X] T039 Run `ponytail-review` after correctness reviews, remove only duplicated schema/config/abstraction that is not required, and rerun affected gates
-- [ ] T040 Push `spec/005-continuity-p0-contract`, create a PR whose body says `Refs #132` and lists the 9 Continuity P0 issues without closing the umbrella, then record focused/full verification evidence
+- [X] T040 Push `spec/005-continuity-p0-contract`, create a PR whose body says `Refs #132` and lists the 9 Continuity P0 issues without closing the umbrella, then record focused/full verification evidence
 - [ ] T041 Monitor `gh pr checks`, unresolved review threads, CodeRabbit/Codacy/CodeQL/Sonar/Quality Gate, and apply valid review findings through the full review order until all required gates are green
 - [ ] T042 Merge the PR only after required checks are green, unresolved valid threads are zero, review gates remain satisfied, and post-merge `main` plus Issue/PR states are live-verified
 
