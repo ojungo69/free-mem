@@ -261,6 +261,17 @@ All review output was treated as a proposal and checked against source/tests.
 | Cubic latest — privateConsent required without a version bump | Rejected | `SharingDecisionV1` is introduced for the first time by this unmerged S0 PR; no persisted V1 decision exists to migrate. The field is being frozen before the first merge, while actual legacy artifacts retain their separate dispositions. |
 | Cubic latest final rerun | Tool timeout | The post-fix local review was interrupted at the five-minute limit with an empty `issues` array and `Review interrupted`; no clean verdict is claimed. Its preceding concrete branch finding was fixed and independently re-reviewed clean. |
 | CodeRabbit latest — DecimalString regex broke its Markdown table | Accepted | Escaped the regex alternation pipe inside the table cell without changing the normative expression; `git diff --check` remains clean. Local `markdownlint-cli2` was unavailable, so the current PR lint/check is the remote verifier. |
+| Codex latest — F0–F7 collapsed event evidence to source identity | Accepted | Input record event IDs are non-empty/nonblank/sorted unique and preserved exactly in successor record evidence, canonical-memory unions, and review candidates. Removal, substitution, duplicate, blank, and unsorted mutations fail. |
+| Codex latest — empty Agent-private owner passed vacuously | Accepted | Canonical memory now has a non-empty source-event tuple in TS/schema/common semantic validation; same-agent selected-memory tests cover empty, unresolved/wrong-client, and authenticated-owner cases. |
+| Codex latest — hash transition tuple was only an enum set | Accepted | Checkpoint and canonical-memory profiles use exact JSON `const ["initial","parent"]`; duplicate and reversed tuples fail schema and semantic mutation checks. |
+| Cubic latest — comma-bearing evidence IDs collided under `join()` | Accepted | Ordered evidence/source comparisons now use one length-and-element helper; a schema-valid one-element `event-a,event-b` versus two-element `event-a`/`event-b` mutation is rejected. |
+| Cubic latest — event-evidence array logic was duplicated | Accepted | Sorted-unique and ordered-equality semantics are centralized in two small helpers and reused by record, memory-union, and review-candidate checks. |
+| Correctness/security latest — fixture sharing-decision refs retained comma collision | Accepted | All sorted-unique reference checks now reuse the boundary-preserving helper; a schema-valid `a,a`/`a` decision-ID collision mutation is rejected. |
+| Cubic final post-collision rerun | Clean | `cubic review -j` completed on the final working tree with an empty `issues` array. |
+
+The three-finding TDD red pass failed on the unused non-empty memory tuple assertion, absent exact transition constants,
+missing event-evidence expectation fields, and the old restore rule. The implementation then restored focused/schema/type/hash
+gates before whole-diff review.
 
 The four-finding TDD red pass failed exactly on four unused readonly `@ts-expect-error` directives, missing `privateConsent`
 schema fields, and three missing restore rules. The two subsequent review fixes also have isolated red evidence: restoring the
@@ -278,4 +289,4 @@ schema freeze 19/19, TypeScript, and raw contract-hash regeneration then returne
 - Old-shape baseline regeneration: 20 cases / 29 steps, empty diff.
 - Existing reducer mutation gate: 218 executed / 218 expected, 0 survivors; restored suite 220 passed, 0 failed.
 - `git diff --check`: no whitespace error; reducer, old-shape fixture, mutation script, runtime, vendor, and workflow paths remain unchanged.
-- Final whole-diff correctness and security reviews: no findings. Latest Cubic rerun: five-minute tool timeout, no clean verdict; its concrete branch finding was fixed and independently re-reviewed clean. Grok: tool-limited after two attempts, with its one valid raw candidate fixed and source-verified. Final Ponytail review: `Lean already. Ship.`
+- Final whole-diff correctness and security reviews: no findings. Final Cubic rerun: zero issues. Grok: tool-limited after two attempts, with its one valid raw candidate fixed and source-verified. Final Ponytail review: `Lean already. Ship.`

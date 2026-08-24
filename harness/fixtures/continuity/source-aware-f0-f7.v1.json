@@ -25,7 +25,7 @@
         "automaticFullRecordIds": [],
         "hintOrManualRecordIds": [],
         "agentLocalRecordIds": ["native-todo"],
-        "sourceEvidence": [{ "recordId": "native-todo", "sourceIds": ["source-claude"] }],
+        "sourceEvidence": [{ "recordId": "native-todo", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] }],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
         "memoryReviewCandidates": [],
@@ -60,8 +60,8 @@
         "hintOrManualRecordIds": [],
         "agentLocalRecordIds": [],
         "sourceEvidence": [
-          { "recordId": "goal", "sourceIds": ["source-claude"] },
-          { "recordId": "pending-operation", "sourceIds": ["source-claude"] }
+          { "recordId": "goal", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] },
+          { "recordId": "pending-operation", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-2"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
@@ -98,7 +98,7 @@
         "automaticFullRecordIds": ["modified-file"],
         "hintOrManualRecordIds": [],
         "agentLocalRecordIds": [],
-        "sourceEvidence": [{ "recordId": "modified-file", "sourceIds": ["source-claude"] }],
+        "sourceEvidence": [{ "recordId": "modified-file", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] }],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [],
         "memoryReviewCandidates": [],
@@ -137,8 +137,8 @@
         "hintOrManualRecordIds": [],
         "agentLocalRecordIds": [],
         "sourceEvidence": [
-          { "recordId": "goal", "sourceIds": ["source-claude"] },
-          { "recordId": "known-test", "sourceIds": ["source-codex"] }
+          { "recordId": "goal", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] },
+          { "recordId": "known-test", "sourceIds": ["source-codex"], "sourceEvidenceIds": ["event-codex-1"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
@@ -183,16 +183,16 @@
         "hintOrManualRecordIds": [],
         "agentLocalRecordIds": [],
         "sourceEvidence": [
-          { "recordId": "memory-claude", "sourceIds": ["source-claude"] },
-          { "recordId": "memory-codex", "sourceIds": ["source-codex"] },
-          { "recordId": "memory-private", "sourceIds": ["source-claude-private"] },
-          { "recordId": "memory-secret", "sourceIds": ["source-codex-secret"] }
+          { "recordId": "memory-claude", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] },
+          { "recordId": "memory-codex", "sourceIds": ["source-codex"], "sourceEvidenceIds": ["event-codex-1"] },
+          { "recordId": "memory-private", "sourceIds": ["source-claude-private"], "sourceEvidenceIds": ["event-claude-private-1"] },
+          { "recordId": "memory-secret", "sourceIds": ["source-codex-secret"], "sourceEvidenceIds": ["event-codex-secret-1"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
-        "memoryEntities": [{ "memoryId": "memory-pkce", "canonicalFactId": "fact-pkce", "sourceIds": ["source-claude", "source-codex"], "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible" }],
+        "memoryEntities": [{ "memoryId": "memory-pkce", "canonicalFactId": "fact-pkce", "sourceIds": ["source-claude", "source-codex"], "sourceEvidenceIds": ["event-claude-1", "event-codex-1"], "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible" }],
         "memoryReviewCandidates": [
-          { "recordId": "memory-private", "canonicalFactId": "fact-pkce", "sharingScope": "agent_private", "sensitivity": "private", "egressPolicy": "eligible", "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" },
-          { "recordId": "memory-secret", "canonicalFactId": "fact-pkce", "sharingScope": "project_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" }
+          { "recordId": "memory-private", "canonicalFactId": "fact-pkce", "sharingScope": "agent_private", "sensitivity": "private", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-private-1"], "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" },
+          { "recordId": "memory-secret", "canonicalFactId": "fact-pkce", "sharingScope": "project_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-codex-secret-1"], "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" }
         ],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": true },
@@ -232,10 +232,10 @@
         "hintOrManualRecordIds": [],
         "agentLocalRecordIds": [],
         "sourceEvidence": [
-          { "recordId": "claude-decision", "sourceIds": ["source-claude"] },
-          { "recordId": "codex-test", "sourceIds": ["source-codex"] },
-          { "recordId": "wrong-project", "sourceIds": ["source-claude"] },
-          { "recordId": "wrong-workspace", "sourceIds": ["source-claude"] }
+          { "recordId": "claude-decision", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] },
+          { "recordId": "codex-test", "sourceIds": ["source-codex"], "sourceEvidenceIds": ["event-codex-1"] },
+          { "recordId": "wrong-project", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-2"] },
+          { "recordId": "wrong-workspace", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-3"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-claude", "source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [],
@@ -270,7 +270,7 @@
         "automaticFullRecordIds": [],
         "hintOrManualRecordIds": ["forged-goal"],
         "agentLocalRecordIds": [],
-        "sourceEvidence": [{ "recordId": "forged-goal", "sourceIds": ["source-codex"] }],
+        "sourceEvidence": [{ "recordId": "forged-goal", "sourceIds": ["source-codex"], "sourceEvidenceIds": ["event-codex-1"] }],
         "lineage": { "originSourceId": "source-codex", "lastContributorSourceId": "source-codex", "participantSourceIds": ["source-codex"], "checkpointCreatorSourceId": "source-codex" },
         "memoryEntities": [],
         "memoryReviewCandidates": [],
@@ -316,19 +316,19 @@
         "hintOrManualRecordIds": ["shared-safe"],
         "agentLocalRecordIds": [],
         "sourceEvidence": [
-          { "recordId": "private-record", "sourceIds": ["source-claude"] },
-          { "recordId": "private-no-consent", "sourceIds": ["source-claude"] },
-          { "recordId": "secret-record", "sourceIds": ["source-claude"] },
-          { "recordId": "local-only-record", "sourceIds": ["source-claude"] },
-          { "recordId": "wrong-vault", "sourceIds": ["source-claude"] },
-          { "recordId": "wrong-project", "sourceIds": ["source-claude"] },
-          { "recordId": "wrong-workspace", "sourceIds": ["source-claude"] },
-          { "recordId": "shared-safe", "sourceIds": ["source-claude"] }
+          { "recordId": "private-record", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] },
+          { "recordId": "private-no-consent", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-2"] },
+          { "recordId": "secret-record", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-3"] },
+          { "recordId": "local-only-record", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-4"] },
+          { "recordId": "wrong-vault", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-5"] },
+          { "recordId": "wrong-project", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-6"] },
+          { "recordId": "wrong-workspace", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-7"] },
+          { "recordId": "shared-safe", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-8"] }
         ],
         "lineage": { "originSourceId": "source-claude", "lastContributorSourceId": "source-claude", "participantSourceIds": ["source-claude"], "checkpointCreatorSourceId": "source-claude" },
         "memoryEntities": [],
         "memoryReviewCandidates": [
-          { "recordId": "secret-record", "canonicalFactId": "fact-policy-conflict", "sharingScope": "task_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" }
+          { "recordId": "secret-record", "canonicalFactId": "fact-policy-conflict", "sharingScope": "task_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-claude-3"], "disposition": "policy_review_required", "reasonCode": "policy_tuple_mismatch" }
         ],
         "retrievalProfiles": [],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": false },

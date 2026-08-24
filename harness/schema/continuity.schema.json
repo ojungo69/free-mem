@@ -3572,7 +3572,7 @@
         "lifecycle": { "$ref": "#/$defs/MemoryLifecycleV1" },
         "truthState": { "$ref": "#/$defs/MemoryTruthStateV1" },
         "durability": { "$ref": "#/$defs/MemoryDurabilityV1" },
-        "sourceEventIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
+        "sourceEventIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "evidenceSnapshotIds": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/OpaqueIdV1" } },
         "validFrom": { "$ref": "#/$defs/IsoTimestamp" },
         "validTo": { "$ref": "#/$defs/IsoTimestamp" },
@@ -3848,7 +3848,7 @@
         "sharingScope": { "$ref": "#/$defs/SharingScopeV1" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" },
         "egressPolicy": { "$ref": "#/$defs/EgressPolicyV1" },
-        "sourceEvidenceIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
+        "sourceEvidenceIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" } },
         "sharingDecisionEventIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
         "subjectScope": { "$ref": "#/$defs/SourceAwareFixtureScopeV1" },
         "canonicalFactId": { "type": "string", "maxLength": 8192 }
@@ -3929,10 +3929,11 @@
     "SourceAwareRecordEvidenceExpectationV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["recordId", "sourceIds"],
+      "required": ["recordId", "sourceIds", "sourceEvidenceIds"],
       "properties": {
         "recordId": { "type": "string", "maxLength": 8192 },
-        "sourceIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } }
+        "sourceIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
+        "sourceEvidenceIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" } }
       }
     },
     "SourceAwareLineageExpectationV1": {
@@ -3949,11 +3950,12 @@
     "SourceAwareMemoryExpectationV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["memoryId", "canonicalFactId", "sourceIds", "sharingScope", "sensitivity", "egressPolicy"],
+      "required": ["memoryId", "canonicalFactId", "sourceIds", "sourceEvidenceIds", "sharingScope", "sensitivity", "egressPolicy"],
       "properties": {
         "memoryId": { "type": "string", "maxLength": 8192 },
         "canonicalFactId": { "type": "string", "maxLength": 8192 },
         "sourceIds": { "type": "array", "maxItems": 256, "items": { "type": "string", "maxLength": 8192 } },
+        "sourceEvidenceIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" } },
         "sharingScope": { "$ref": "#/$defs/SharingScopeV1" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" },
         "egressPolicy": { "$ref": "#/$defs/EgressPolicyV1" }
@@ -3962,13 +3964,14 @@
     "SourceAwareMemoryReviewCandidateV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["recordId", "canonicalFactId", "sharingScope", "sensitivity", "egressPolicy", "disposition", "reasonCode"],
+      "required": ["recordId", "canonicalFactId", "sharingScope", "sensitivity", "egressPolicy", "sourceEvidenceIds", "disposition", "reasonCode"],
       "properties": {
         "recordId": { "type": "string", "minLength": 1, "maxLength": 8192 },
         "canonicalFactId": { "type": "string", "minLength": 1, "maxLength": 8192 },
         "sharingScope": { "$ref": "#/$defs/SharingScopeV1" },
         "sensitivity": { "$ref": "#/$defs/Sensitivity" },
         "egressPolicy": { "$ref": "#/$defs/EgressPolicyV1" },
+        "sourceEvidenceIds": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S" } },
         "disposition": { "const": "policy_review_required" },
         "reasonCode": { "const": "policy_tuple_mismatch" }
       }
@@ -4186,7 +4189,7 @@
         "digest": { "const": "sha-256" },
         "contentProjectionFields": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "type": "string", "enum": ["schemaVersion", "kind", "sourceSessionId", "checkpointCreatedBySourceEventId", "canonicalState", "memoryWatermark", "sensitivity", "createdAt", "expiresAt"] } },
         "checkpointRevisionDomain": { "const": "free-mem/ContinuationCheckpointV3/checkpoint-revision/v1" },
-        "transitionKinds": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "string", "enum": ["initial", "parent"] } },
+        "transitionKinds": { "const": ["initial", "parent"] },
         "testVector": { "$ref": "#/$defs/CheckpointHashTestVectorV1" }
       }
     },
@@ -4215,7 +4218,7 @@
         "contentProjectionFields": { "type": "array", "minItems": 16, "maxItems": 16, "items": { "type": "string", "enum": ["schemaVersion", "subjectScope", "opaqueIdProfile", "kind", "normalizationProfileId", "canonicalContent", "canonicalFactId", "sharingScope", "sensitivity", "egressPolicy", "lifecycle", "truthState", "durability", "validFrom", "validTo", "expiresAt"] } },
         "revisionMetadataFields": { "type": "array", "minItems": 5, "maxItems": 5, "items": { "type": "string", "enum": ["sharingDecisionEventIds", "sourceEventIds", "evidenceSnapshotIds", "createdAt", "updatedAt"] } },
         "memoryRevisionDomain": { "const": "free-mem/CanonicalMemoryEntityV1/memory-revision/v1" },
-        "transitionKinds": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "string", "enum": ["initial", "parent"] } },
+        "transitionKinds": { "const": ["initial", "parent"] },
         "testVector": { "$ref": "#/$defs/CanonicalMemoryHashTestVectorV1" }
       }
     },

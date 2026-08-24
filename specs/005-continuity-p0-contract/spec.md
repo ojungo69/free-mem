@@ -383,6 +383,8 @@ contract は期待する source identity、sharing disposition、participant集�
   手順4（#8）へ委ねる。
 - **FR-029a**: 契約は、後から書かれる fixture が**追加の設計判断なしに**書ける粒度で凍結しなければ
   ならない。fixture 作成時に契約へ戻って決め直す必要が生じたら、それは凍結が不十分だったということ。
+  checkpoint/canonical-memory hash profileの`transitionKinds`はexact ordered tuple `["initial", "parent"]`とし、
+  重複・逆順を拒否する。
 - **FR-029b**: 凍結した契約が塞ぐ 9 件の欠陥それぞれについて、後続fixtureが満たすべき観測点
   （何を入力し、何が同一であることを確認するか）を列挙しなければならない。F0〜F7以外のruntime
   fixtureそのものは作らない。
@@ -390,6 +392,8 @@ contract は期待する source identity、sharing disposition、participant集�
   記録するcorpusにしなければならない。successor実装が存在しないことをpassと誤認してはならない。
 - **FR-029d**: S0はsource inventory、normative contract/ADR、successor schema、migration disposition、
   F0〜F7、contract hash、#13 start gateまでに限定し、product runtime、DB、reducer、MCP、viewerを変更しない。
+- **FR-029e**: F0〜F7の各recordはnon-empty/nonblank/sorted-uniqueなevent evidence IDを持ち、successorの
+  record evidence、canonical-memory union、policy review candidateまでexact IDを保持しなければならない。
 
 **層 D — source-aware shared memory**
 
@@ -405,6 +409,7 @@ contract は期待する source identity、sharing disposition、participant集�
   正本へ統合し、同じprovenance objectをfieldごとに複製する並立schemaを作ってはならない。
   successorのnested JSON object/arrayはrecursive readonly型とし、公開後にhash外から変更可能な型を残さない。
   `SourceIdentityV1.ingestAttestation`の全nested fieldもreadonlyとする。
+  `CanonicalMemoryEntityV1.sourceEventIds`はnon-emptyとし、owner不明のAgent-private memoryを許可しない。
 - **FR-034**: subject scope（`personal_vault` / project / workspace / branch / task lineage / session / turn）とsharing
   scope（`agent_private` / `task_shared` / `project_shared` / `personal_shared`）を別軸として凍結しなければならない。
 - **FR-035**: sharing判定のprecedenceは、secret/`local_only`/prohibited-egress deny、cross-vault/project/workspace deny、

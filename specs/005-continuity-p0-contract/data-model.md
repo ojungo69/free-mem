@@ -276,7 +276,7 @@ The manifest pins shared and local-only cross-runtime vectors.
 - scope/content: `SubjectScopeV1`, kind, `normalizationProfileId`, `canonicalContent`, `canonicalFactId`;
 - policy: `sharingScope`, `sharingDecisionEventIds`, sensitivity, egress policy;
 - lifecycle: `active|superseded|retracted|expired`, truth state, durability;
-- evidence: sorted unique `sourceEventIds` resolving to authenticated sources and `evidenceSnapshotIds` resolving to
+- evidence: non-empty sorted unique `sourceEventIds` resolving to authenticated sources and `evidenceSnapshotIds` resolving to
   hash-valid snapshots bound to this `memoryId`;
 - validity/audit timestamps.
 
@@ -295,7 +295,8 @@ hashes the exact fact/policy/lifecycle projection and excludes `memoryId`, revis
 contentHash, revision}` where `revision` is the sorted decision/source/evidence refs plus `createdAt`/`updatedAt`. Initial
 creation uses `{kind:"initial"}`; later revisions require `parentMemoryRevision` and use
 `{kind:"parent",parentMemoryRevision}`. Adding evidence therefore advances `memoryRevision` without changing fact
-identity or `contentHash`. The manifest pins both transitions.
+identity or `contentHash`. Both checkpoint and memory hash profiles freeze the exact ordered transition tuple
+`["initial", "parent"]`; duplicates and reversal are invalid. The manifest pins both transitions.
 
 ## Machine inventory and F0–F7 corpus
 
@@ -313,6 +314,9 @@ successor target, migration condition, `restoreValidationRequired`, optional sch
 Contains `corpusVersion: 1`, bundle ID, and exactly eight ordered unique F0–F7 cases. Each case has common input
 (sources, destination selector, scope, records, sharing decisions, transitions), current V1 non-success disposition/reason, and successor expected
 delivery/source/lineage/memory/retrieval/authority/downgrade outputs. Cross-references are closed and validated.
+Every input record has non-empty, nonblank, sorted-unique `sourceEvidenceIds`. Successor record evidence preserves that exact
+array, canonical-memory expectations preserve the sorted union, and review candidates preserve the originating record array;
+source identity alone cannot stand in for event-level evidence.
 Destination `privateEligible` and `capabilityIds` live on the authenticated source/profile selected by `destination.sourceId`;
 the destination selector has no detached authority fields.
 An omitted record `subjectScope` inherits the case scope; an explicit record scope is compared structurally. F7 carries

@@ -1082,7 +1082,7 @@ export interface CanonicalMemoryEntityV1 {
   readonly lifecycle: MemoryLifecycleV1;
   readonly truthState: MemoryTruthStateV1;
   readonly durability: MemoryDurabilityV1;
-  readonly sourceEventIds: readonly OpaqueIdV1[];
+  readonly sourceEventIds: readonly [OpaqueIdV1, ...OpaqueIdV1[]];
   readonly evidenceSnapshotIds: readonly OpaqueIdV1[];
   readonly validFrom?: string;
   readonly validTo?: string;
@@ -1418,7 +1418,7 @@ export interface SourceAwareFixtureRecordV1 {
   readonly sharingScope: SharingScopeV1;
   readonly sensitivity: Sensitivity;
   readonly egressPolicy: EgressPolicyV1;
-  readonly sourceEvidenceIds: readonly string[];
+  readonly sourceEvidenceIds: readonly [string, ...string[]];
   readonly sharingDecisionEventIds?: readonly string[];
   readonly subjectScope?: SourceAwareFixtureScopeV1;
   readonly canonicalFactId?: string;
@@ -1473,6 +1473,7 @@ export interface SourceAwareCurrentExpectationV1 {
 export interface SourceAwareRecordEvidenceExpectationV1 {
   readonly recordId: string;
   readonly sourceIds: readonly string[];
+  readonly sourceEvidenceIds: readonly [string, ...string[]];
 }
 
 export interface SourceAwareLineageExpectationV1 {
@@ -1486,6 +1487,7 @@ export interface SourceAwareMemoryExpectationV1 {
   readonly memoryId: string;
   readonly canonicalFactId: string;
   readonly sourceIds: readonly string[];
+  readonly sourceEvidenceIds: readonly [string, ...string[]];
   readonly sharingScope: SharingScopeV1;
   readonly sensitivity: Sensitivity;
   readonly egressPolicy: EgressPolicyV1;
@@ -1497,6 +1499,7 @@ export interface SourceAwareMemoryReviewCandidateV1 {
   readonly sharingScope: SharingScopeV1;
   readonly sensitivity: Sensitivity;
   readonly egressPolicy: EgressPolicyV1;
+  readonly sourceEvidenceIds: readonly [string, ...string[]];
   readonly disposition: "policy_review_required";
   readonly reasonCode: "policy_tuple_mismatch";
 }

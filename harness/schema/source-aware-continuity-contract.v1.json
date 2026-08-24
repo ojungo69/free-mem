@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
-  "contractHash": "14b85ba2f2d5471dd6b4cce003a30688fb10b016393a1a9bc629a45493888f99",
+  "contractHash": "c3ed5825b6315ae86c7dcb483e129761fc43dd860abbd049d96203d9862aaef9",
   "schemaFile": "schema/continuity.schema.json",
-  "schemaHash": "61a2fa1133ea9b9a9fd1a07948a2ac80192e70703ba0368fefbb4516af4841fb",
+  "schemaHash": "7c9f59d10dbf4d3124e3c6d9abf4fca3595704ca19fabea72a6dc3e11883d28f",
   "artifactSchemas": [
     { "name": "CanonicalWorkStateV2", "schemaVersion": 2 },
     { "name": "ContinuationCheckpointV3", "schemaVersion": 3 },
@@ -14,7 +14,7 @@
   "inventoryHash": "1d2642999fca4f4d35d1280011baa36f29825898121a48e392d106c341bb5dff",
   "fixtureCorpusFile": "fixtures/continuity/source-aware-f0-f7.v1.json",
   "fixtureCorpusVersion": 1,
-  "fixtureCorpusHash": "edb70b5af6e79062dbcf01246e524d6571588b36bc1e481f0418f5ac3283037c",
+  "fixtureCorpusHash": "05659d5742e28ef025866a09208161e6bc2764651aa5bde2caca67e54471a27f",
   "fixtureCaseIds": ["F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7"],
   "opaqueIdProfile": {
     "schemaVersion": 1,
@@ -652,7 +652,7 @@
         "inventoryEntryId": "persisted-canonical-memory-entity-v1",
         "scopeIdentityPaths": ["/memoryId", "/subjectScope/personalVaultId", "/subjectScope/projectId", "/subjectScope/workspaceId", "/subjectScope/branchKey", "/subjectScope/taskLineageId", "/subjectScope/sessionId", "/subjectScope/turnId", "/sharingDecisionEventIds/*", "/sourceEventIds/*", "/evidenceSnapshotIds/*"],
         "isoTimestampPaths": ["/validFrom", "/validTo", "/expiresAt", "/createdAt", "/updatedAt"],
-        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "canonicalFactId_matches_exact_identity_preimage", "memory_content_and_revision_match_CanonicalMemoryHashProfileV1", "parent_memory_revision_selects_initial_or_parent_transition", "sharing_decision_refs_are_sorted_unique", "shared_scope_decisions_match_authenticated_authority_scope_target_and_private_consent", "private_sharing_requires_explicit_opt_in", "source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources", "evidence_snapshot_refs_are_sorted_unique_and_resolve_to_existing_hash_valid_snapshots_bound_to_same_memory", "validity_interval_and_audit_timestamps_are_monotone"],
+        "crossFieldRules": ["subject_scope_parent_chain_is_consistent", "canonicalFactId_matches_exact_identity_preimage", "memory_content_and_revision_match_CanonicalMemoryHashProfileV1", "parent_memory_revision_selects_initial_or_parent_transition", "sharing_decision_refs_are_sorted_unique", "shared_scope_decisions_match_authenticated_authority_scope_target_and_private_consent", "private_sharing_requires_explicit_opt_in", "source_event_refs_are_non_empty_sorted_unique_and_resolve_to_authenticated_sources", "evidence_snapshot_refs_are_sorted_unique_and_resolve_to_existing_hash_valid_snapshots_bound_to_same_memory", "validity_interval_and_audit_timestamps_are_monotone"],
         "invalidDisposition": "quarantine",
         "repairAuthorities": ["user"],
         "auditRequired": true

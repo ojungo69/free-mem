@@ -571,6 +571,26 @@ const US4_FIELDS = {
     "subjectScope",
     "target",
   ],
+  SourceAwareRecordEvidenceExpectationV1: ["recordId", "sourceEvidenceIds", "sourceIds"],
+  SourceAwareMemoryExpectationV1: [
+    "canonicalFactId",
+    "egressPolicy",
+    "memoryId",
+    "sensitivity",
+    "sharingScope",
+    "sourceEvidenceIds",
+    "sourceIds",
+  ],
+  SourceAwareMemoryReviewCandidateV1: [
+    "canonicalFactId",
+    "disposition",
+    "egressPolicy",
+    "reasonCode",
+    "recordId",
+    "sensitivity",
+    "sharingScope",
+    "sourceEvidenceIds",
+  ],
   LineageSourceSummaryV1: [
     "lastContributingSourceEventId",
     "lineageOriginSourceEventId",
@@ -812,6 +832,14 @@ const EXPECTED_P0_OBSERVATION_HASHES: Readonly<Record<number, string>> = {
   58: "3976713e648161c10750ffed74791d478040d05a1ed519f591ac0908dff54149",
 };
 
+function orderedStringsEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function isSortedUniqueStrings(values: readonly string[]): boolean {
+  return new Set(values).size === values.length && orderedStringsEqual([...values].sort(), values);
+}
+
 function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): string[] {
   const issues: string[] = [];
   const caseIds = corpus.cases.map(({ id }) => id);
@@ -823,6 +851,10 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     const sourceAuthenticated = new Map(item.input.sources.map(({ id, authenticated }) => [id, authenticated]));
     const destinationSource = item.input.sources.find(({ id }) => id === item.input.destination.sourceId);
     const recordIds = new Set(item.input.records.map(({ id }) => id));
+    const evidenceByRecordId = new Map(item.successor.sourceEvidence.map((evidence) => [evidence.recordId, evidence]));
+    if (evidenceByRecordId.size !== item.successor.sourceEvidence.length) {
+      issues.push(`${item.id}: successor record evidence is duplicated`);
+    }
     const sharingDecisions = new Map(item.input.sharingDecisions.map((decision) => [decision.id, decision]));
     if (sharingDecisions.size !== item.input.sharingDecisions.length) issues.push(`${item.id}: sharing decisions are duplicated`);
     if (!destinationSource) issues.push(`${item.id}: destination source is missing`);
@@ -832,8 +864,23 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
     }
     for (const record of item.input.records) {
       if (!sourceIds.has(record.sourceId)) issues.push(`${item.id}: record source ${record.sourceId} is missing`);
+      if (
+        record.sourceEvidenceIds.length === 0 ||
+        record.sourceEvidenceIds.some((id) => id.trim() === "") ||
+        !isSortedUniqueStrings(record.sourceEvidenceIds)
+      ) {
+        issues.push(`${item.id}: ${record.id} source evidence is empty, blank, or not sorted unique`);
+      }
+      const expectedEvidence = evidenceByRecordId.get(record.id);
+      if (
+        !expectedEvidence ||
+        !orderedStringsEqual(expectedEvidence.sourceIds, [record.sourceId]) ||
+        !orderedStringsEqual(expectedEvidence.sourceEvidenceIds, record.sourceEvidenceIds)
+      ) {
+        issues.push(`${item.id}: ${record.id} event-level evidence was not preserved exactly`);
+      }
       const decisionIds = record.sharingDecisionEventIds ?? [];
-      if ([...decisionIds].sort().join() !== decisionIds.join() || new Set(decisionIds).size !== decisionIds.length) {
+      if (!isSortedUniqueStrings(decisionIds)) {
         issues.push(`${item.id}: ${record.id} sharing-decision refs are not sorted unique`);
       }
       for (const decisionId of decisionIds) {
@@ -946,21 +993,24 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
         if (!sourceIds.has(id)) issues.push(`${item.id}: memory source is missing`);
         else if (sourceAuthenticated.get(id) !== true) issues.push(`${item.id}: memory source is unauthenticated`);
       }
-      const matchingPolicySources = [
+      const matchingPolicyRecords = item.input.records.filter(
+        (record) =>
+          record.canonicalFactId === memory.canonicalFactId &&
+          record.sharingScope === memory.sharingScope &&
+          record.sensitivity === memory.sensitivity &&
+          record.egressPolicy === memory.egressPolicy,
+      );
+      const matchingPolicySources = [...new Set(matchingPolicyRecords.map(({ sourceId }) => sourceId))].sort();
+      if (!orderedStringsEqual(matchingPolicySources, [...memory.sourceIds].sort())) {
+        issues.push(`${item.id}: canonical memory union crossed or dropped a policy partition`);
+      }
+      const matchingPolicyEvidence = [
         ...new Set(
-          item.input.records
-            .filter(
-              (record) =>
-                record.canonicalFactId === memory.canonicalFactId &&
-                record.sharingScope === memory.sharingScope &&
-                record.sensitivity === memory.sensitivity &&
-                record.egressPolicy === memory.egressPolicy,
-            )
-            .map(({ sourceId }) => sourceId),
+          matchingPolicyRecords.flatMap(({ sourceEvidenceIds }) => sourceEvidenceIds),
         ),
       ].sort();
-      if (matchingPolicySources.join() !== [...memory.sourceIds].sort().join()) {
-        issues.push(`${item.id}: canonical memory union crossed or dropped a policy partition`);
+      if (!orderedStringsEqual(matchingPolicyEvidence, memory.sourceEvidenceIds)) {
+        issues.push(`${item.id}: canonical memory union lost or changed event-level evidence`);
       }
       const mismatchedRecordIds = item.input.records
         .filter(
@@ -976,7 +1026,7 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
         .filter(({ canonicalFactId }) => canonicalFactId === memory.canonicalFactId)
         .map(({ recordId }) => recordId)
         .sort();
-      if (mismatchedRecordIds.join() !== reviewIds.join()) {
+      if (!orderedStringsEqual(mismatchedRecordIds, reviewIds)) {
         issues.push(`${item.id}: policy-mismatched memory evidence was not preserved for review`);
       }
     }
@@ -987,7 +1037,8 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
         record.canonicalFactId !== candidate.canonicalFactId ||
         record.sharingScope !== candidate.sharingScope ||
         record.sensitivity !== candidate.sensitivity ||
-        record.egressPolicy !== candidate.egressPolicy
+        record.egressPolicy !== candidate.egressPolicy ||
+        !orderedStringsEqual(record.sourceEvidenceIds, candidate.sourceEvidenceIds)
       ) {
         issues.push(`${item.id}: memory review candidate does not preserve its record policy`);
       }
@@ -1002,7 +1053,10 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
   if (byId.get("F1")?.successor.automaticFullRecordIds.join() !== "goal,pending-operation") {
     issues.push("F1 shared projection changed");
   }
-  if (byId.get("F2")?.successor.sourceEvidence[0]?.sourceIds.join() !== "source-claude") {
+  if (
+    byId.get("F2")?.successor.sourceEvidence[0]?.sourceIds.join() !== "source-claude" ||
+    byId.get("F2")?.successor.sourceEvidence[0]?.sourceEvidenceIds.join() !== "event-claude-1"
+  ) {
     issues.push("F2 relabelled Claude evidence");
   }
   const f3 = byId.get("F3")?.successor.lineage;
@@ -1018,6 +1072,7 @@ function corpusSemanticIssues(corpus: contract.SourceAwareContractCorpusV1): str
   if (
     f4?.length !== 1 ||
     f4[0]?.sourceIds.join() !== "source-claude,source-codex" ||
+    f4[0]?.sourceEvidenceIds.join() !== "event-claude-1,event-codex-1" ||
     f4[0]?.sharingScope !== "project_shared" ||
     f4[0]?.sensitivity !== "normal" ||
     f4[0]?.egressPolicy !== "eligible"
@@ -1285,6 +1340,9 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
   ) {
     issues.push("checkpoint content projection changed");
   }
+  if (JSON.stringify(checkpointProfile.transitionKinds) !== '["initial","parent"]') {
+    issues.push("checkpoint transition kinds changed");
+  }
   const checkpointVector = checkpointProfile.testVector;
   const canonicalState = {
     ...(vector.contentProjection as Record<string, contract.JsonValue>),
@@ -1334,6 +1392,9 @@ function contractSemanticIssues(value: contract.SourceAwareContinuityContractV1)
       "sharingDecisionEventIds,sourceEventIds,evidenceSnapshotIds,createdAt,updatedAt"
   ) {
     issues.push("canonical memory hash projection changed");
+  }
+  if (JSON.stringify(memoryProfile.transitionKinds) !== '["initial","parent"]') {
+    issues.push("canonical memory transition kinds changed");
   }
   const memoryVector = memoryProfile.testVector;
   const memoryContentHash = createHash("sha256")
@@ -1701,6 +1762,7 @@ test("source-aware JSON artifacts satisfy schema, hashes, inventory, and semanti
 });
 
 test("source-aware negative self-mutations are rejected", () => {
+  const root = loadRequiredJson<JsonSchemaDocument>(ROOT_URL, "continuity schema");
   const corpus = loadRequiredJson<contract.SourceAwareContractCorpusV1>(CORPUS_URL, "F0-F7 corpus");
   const manifest = loadRequiredJson<contract.SourceAwareContinuityContractV1>(CONTRACT_URL, "contract manifest");
 
@@ -1820,6 +1882,70 @@ test("source-aware negative self-mutations are rejected", () => {
   (f4.successor.memoryEntities[0]!.sourceIds as string[]).pop();
   assert.ok(corpusSemanticIssues(evidenceLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
 
+  for (const sourceEvidenceIds of [[], [""], ["   "], ["event-z", "event-a"], ["event-a", "event-a"]]) {
+    const invalidInputEvidence = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+    const f2 = invalidInputEvidence.cases.find(({ id }) => id === "F2");
+    assert.ok(f2);
+    (f2.input.records[0] as unknown as { sourceEvidenceIds: string[] }).sourceEvidenceIds = sourceEvidenceIds;
+    assert.ok(
+      corpusSemanticIssues(invalidInputEvidence as unknown as contract.SourceAwareContractCorpusV1).length > 0,
+    );
+    if (sourceEvidenceIds.length === 0 || sourceEvidenceIds.some((id) => id.trim() === "")) {
+      assert.ok(
+        validateContractValue(
+          "SourceAwareContractCorpusV1",
+          invalidInputEvidence,
+          root,
+          contract.CONTINUITY_LIMITS,
+        ).length > 0,
+      );
+    }
+  }
+  const commaCollision = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const f2CommaCollision = commaCollision.cases.find(({ id }) => id === "F2");
+  assert.ok(f2CommaCollision);
+  (f2CommaCollision.input.records[0] as unknown as { sourceEvidenceIds: [string] }).sourceEvidenceIds = [
+    "event-a,event-b",
+  ];
+  (f2CommaCollision.successor.sourceEvidence[0] as unknown as { sourceEvidenceIds: [string, string] })
+    .sourceEvidenceIds = ["event-a", "event-b"];
+  assert.deepEqual(
+    validateContractValue("SourceAwareContractCorpusV1", commaCollision, root, contract.CONTINUITY_LIMITS),
+    [],
+  );
+  assert.ok(corpusSemanticIssues(commaCollision as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+  const decisionCommaCollision = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const f1DecisionCollision = decisionCommaCollision.cases.find(({ id }) => id === "F1");
+  assert.ok(f1DecisionCollision);
+  const goalDecision = f1DecisionCollision.input.sharingDecisions.find(({ id }) => id === "decision-goal");
+  assert.ok(goalDecision);
+  (f1DecisionCollision.input.sharingDecisions as contract.SourceAwareFixtureSharingDecisionV1[]).push(
+    { ...goalDecision, id: "a,a" },
+    { ...goalDecision, id: "a" },
+  );
+  (f1DecisionCollision.input.records[0] as unknown as { sharingDecisionEventIds: string[] })
+    .sharingDecisionEventIds = ["a,a", "a"];
+  assert.deepEqual(
+    validateContractValue("SourceAwareContractCorpusV1", decisionCommaCollision, root, contract.CONTINUITY_LIMITS),
+    [],
+  );
+  assert.ok(corpusSemanticIssues(decisionCommaCollision as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+  const recordEventLoss = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const f2EventLoss = recordEventLoss.cases.find(({ id }) => id === "F2");
+  assert.ok(f2EventLoss);
+  (f2EventLoss.successor.sourceEvidence[0]!.sourceEvidenceIds as unknown as string[]).pop();
+  assert.ok(corpusSemanticIssues(recordEventLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+  const memoryEventLoss = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const f4EventLoss = memoryEventLoss.cases.find(({ id }) => id === "F4");
+  assert.ok(f4EventLoss);
+  (f4EventLoss.successor.memoryEntities[0]!.sourceEvidenceIds as unknown as string[]).pop();
+  assert.ok(corpusSemanticIssues(memoryEventLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+  const reviewEventLoss = structuredClone(corpus) as unknown as { cases: contract.SourceAwareContractCaseV1[] };
+  const f4ReviewEventLoss = reviewEventLoss.cases.find(({ id }) => id === "F4");
+  assert.ok(f4ReviewEventLoss);
+  (f4ReviewEventLoss.successor.memoryReviewCandidates[0]!.sourceEvidenceIds as unknown as string[])[0] = "event-other";
+  assert.ok(corpusSemanticIssues(reviewEventLoss as unknown as contract.SourceAwareContractCorpusV1).length > 0);
+
   const unauthenticatedEvidence = structuredClone(corpus) as unknown as {
     cases: contract.SourceAwareContractCaseV1[];
   };
@@ -1896,6 +2022,26 @@ test("source-aware negative self-mutations are rejected", () => {
     "new_revision";
   assert.ok(contractSemanticIssues(stateNeutralRevision).length > 0);
 
+  for (const profileName of ["checkpointHashProfile", "canonicalMemoryHashProfile"] as const) {
+    for (const transitionKinds of [
+      ["initial", "initial"],
+      ["parent", "initial"],
+    ]) {
+      const invalidTransitions = structuredClone(manifest) as unknown as contract.SourceAwareContinuityContractV1;
+      (invalidTransitions[profileName] as unknown as { transitionKinds: string[] }).transitionKinds = transitionKinds;
+      assert.ok(contractSemanticIssues(invalidTransitions).length > 0, profileName);
+      assert.ok(
+        validateContractValue(
+          "SourceAwareContinuityContractV1",
+          invalidTransitions,
+          root,
+          contract.CONTINUITY_LIMITS,
+        ).length > 0,
+        profileName,
+      );
+    }
+  }
+
   const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
   const inventory = loadRequiredJson<contract.SourceIdentityInventoryV1>(INVENTORY_URL, "source inventory");
   const partitionSearch = inventory.searches.find(({ coverageMode }) => coverageMode === "partition");
@@ -1934,9 +2080,7 @@ test("source-aware negative self-mutations are rejected", () => {
 });
 
 function sharingDecisionReferenceIssues(ids: readonly string[]): string[] {
-  return new Set(ids).size === ids.length && [...ids].sort().join() === ids.join()
-    ? []
-    : ["sharing-decision references are not sorted unique"];
+  return isSortedUniqueStrings(ids) ? [] : ["sharing-decision references are not sorted unique"];
 }
 
 interface ResolvedSharingAuthorityEvent {
@@ -1957,11 +2101,9 @@ function canonicalMemorySharingIssues(
   evidenceSnapshotById: ReadonlyMap<string, ResolvedMemoryEvidenceSnapshot>,
 ): string[] {
   const issues = sharingDecisionReferenceIssues(value.sharingDecisionEventIds);
+  if (value.sourceEventIds.length === 0) issues.push("canonical memory has no authenticated source owner");
   issues.push(...sourceReferenceIssues([value.sourceEventIds], sourceIdentityByEventId, "canonical memory"));
-  if (
-    new Set(value.evidenceSnapshotIds).size !== value.evidenceSnapshotIds.length ||
-    [...value.evidenceSnapshotIds].sort().join() !== value.evidenceSnapshotIds.join()
-  ) {
+  if (!isSortedUniqueStrings(value.evidenceSnapshotIds)) {
     issues.push("canonical memory evidence-snapshot references are not sorted unique");
   }
   for (const snapshotId of value.evidenceSnapshotIds) {
@@ -2211,9 +2353,7 @@ function subjectScopeContains(container: contract.SubjectScopeV1, nested: contra
 
 function stateRevisionEnvelopeIssues(value: contract.TaskStateRevisionEnvelopeV1): string[] {
   const parents = value.parentStateRevisions;
-  return new Set(parents).size === parents.length && [...parents].sort().join() === parents.join()
-    ? []
-    : ["parent state revisions are not sorted unique"];
+  return isSortedUniqueStrings(parents) ? [] : ["parent state revisions are not sorted unique"];
 }
 
 function deriveLineageSourceSummary(
@@ -2270,7 +2410,7 @@ function sourceReferenceIssues(
 ): string[] {
   const issues: string[] = [];
   for (const ids of referenceSets) {
-    if (new Set(ids).size !== ids.length || [...ids].sort().join() !== ids.join()) {
+    if (!isSortedUniqueStrings(ids)) {
       issues.push(`${label} source-event references are not sorted unique`);
     }
     for (const id of ids) {
@@ -2298,10 +2438,7 @@ function selectedMemoryDeliveryIssues(
   destinationIdentity: ResolvedFixtureSourceIdentity | undefined,
 ): string[] {
   const issues: string[] = [];
-  if (
-    new Set(value.selectedMemoryIds).size !== value.selectedMemoryIds.length ||
-    [...value.selectedMemoryIds].sort().join() !== value.selectedMemoryIds.join()
-  ) {
+  if (!isSortedUniqueStrings(value.selectedMemoryIds)) {
     issues.push("selected memory references are not sorted unique");
   }
   for (const memoryId of value.selectedMemoryIds) {
@@ -3035,7 +3172,7 @@ test("successor capsule rejects another client's Agent-local lane", () => {
     hostMetadata: NonNullable<contract.AgentLocalStateV1["hostMetadata"]>;
   }).hostMetadata = {
     value: { private: true },
-    sourceEventIds: [id],
+    sourceEventIds: [id] as [string],
     observedAt: "2026-08-24T00:00:00Z",
     evidenceKind: "synthesized",
     confidence: 1,
@@ -3154,12 +3291,45 @@ test("successor capsule rejects another client's Agent-local lane", () => {
   (sameAgentMemoryCapsule as unknown as { resumeProfile: contract.ResumeProfileV1 }).resumeProfile = "same_agent";
   (sameAgentMemoryCapsule as unknown as { contentHash: string }).contentHash =
     computeResumeCapsuleContentHash(sameAgentMemoryCapsule);
+  const normalAgentMemory = {
+    ...selectedMemory,
+    sharingScope: "agent_private" as const,
+    sharingDecisionEventIds: [],
+    sourceEventIds: [id] as [string],
+  };
+  const sameAgentMemoryParents = new Map([
+    [sameAgentMemoryCapsule.checkpointRevision, parentFor(sameAgentMemoryCapsule, resolvedState)],
+  ]);
+  assert.deepEqual(
+    selectedMemoryIssues({
+      value: sameAgentMemoryCapsule,
+      parents: sameAgentMemoryParents,
+      memories: new Map([[selectedMemory.memoryId, { entity: normalAgentMemory, hashValid: true }]]),
+    }),
+    [],
+  );
+  const emptyOwnerMemory = { ...normalAgentMemory, sourceEventIds: [] } as unknown as contract.CanonicalMemoryEntityV1;
+  assert.ok(
+    selectedMemoryIssues({
+      value: sameAgentMemoryCapsule,
+      parents: sameAgentMemoryParents,
+      memories: new Map([[selectedMemory.memoryId, { entity: emptyOwnerMemory, hashValid: true }]]),
+    }).length > 0,
+  );
+  const wrongOwnerMemory = { ...normalAgentMemory, sourceEventIds: ["e".repeat(64)] as [string] };
+  assert.ok(
+    selectedMemoryIssues({
+      value: sameAgentMemoryCapsule,
+      parents: sameAgentMemoryParents,
+      memories: new Map([[selectedMemory.memoryId, { entity: wrongOwnerMemory, hashValid: true }]]),
+    }).length > 0,
+  );
   const privateAgentMemory = {
     ...selectedMemory,
     sharingScope: "agent_private" as const,
     sensitivity: "private" as const,
     sharingDecisionEventIds: [],
-    sourceEventIds: [id],
+    sourceEventIds: [id] as [string],
   };
   assert.ok(
     selectedMemoryIssues({
@@ -3496,6 +3666,8 @@ test("shared memory requires authenticated consent evidence", () => {
     decidedAt: "2026-08-24T00:00:00Z",
   };
   const typedValue = value as unknown as contract.CanonicalMemoryEntityV1;
+  const emptySourceMemory = { ...typedValue, sourceEventIds: [] };
+  assert.ok(validateContractValue("CanonicalMemoryEntityV1", emptySourceMemory, root, contract.CONTINUITY_LIMITS).length > 0);
   const sourceIdentities = new Map<string, ResolvedFixtureSourceIdentity>([
     [id, { clientId: "codex-cli", clientVersion: "1", sessionId: "1".repeat(64), capabilityIds: [], privateEligible: false }],
   ]);
@@ -3531,7 +3703,7 @@ test("shared memory requires authenticated consent evidence", () => {
     memoryIssues(typedValue, new Map([[id, normalOnlyDecision]]), normalOnlyAuthority).length > 0,
   );
   const unknownSource = structuredClone(typedValue) as unknown as contract.CanonicalMemoryEntityV1;
-  (unknownSource.sourceEventIds as string[])[0] = "c".repeat(64);
+  (unknownSource.sourceEventIds as unknown as string[])[0] = "c".repeat(64);
   assert.ok(memoryIssues(unknownSource).length > 0);
   const unknownSnapshot = structuredClone(typedValue) as unknown as contract.CanonicalMemoryEntityV1;
   const snapshotId = "d".repeat(64);
@@ -3644,7 +3816,7 @@ const EXPECTED_RESTORE_RULE_PATH_HASHES: Readonly<Record<string, string>> = {
   "persisted-canonical-work-state-v2": "467e977f3cca857f1651f30d7ad1a96daece960cbd600ac0ad8d5eb9cb086330",
   "persisted-checkpoint-v3": "5e1ee47e0c507279c731eed79399f8f174aa1754859573c77389e3231001a9ef",
   "persisted-resume-capsule-v2": "532eeef124488783fbf1792d307c039f08b77b596638bddb30adf09b629a1172",
-  "persisted-canonical-memory-entity-v1": "68fdff37e7f3ca27d8f4892cbba92eb68197be5df5d3c4932311eab93b60d4aa",
+  "persisted-canonical-memory-entity-v1": "7a1787f4f9b73d8be7a0e1106b787bbbe0fdba741e8cf3faad8eb0e4295b5296",
   "persisted-sharing-decision-v1": "af7b9a35a9ef8d675572038d7c896d8597fb21f26d3df68a27c11fe6cb0a41f3",
 };
 
@@ -3713,7 +3885,7 @@ const REQUIRED_RESTORE_CROSS_FIELD_RULES: Readonly<Record<string, readonly strin
   "persisted-canonical-memory-entity-v1": [
     "shared_scope_decisions_match_authenticated_authority_scope_target_and_private_consent",
     "private_sharing_requires_explicit_opt_in",
-    "source_event_refs_are_sorted_unique_and_resolve_to_authenticated_sources",
+    "source_event_refs_are_non_empty_sorted_unique_and_resolve_to_authenticated_sources",
     "evidence_snapshot_refs_are_sorted_unique_and_resolve_to_existing_hash_valid_snapshots_bound_to_same_memory",
   ],
   "persisted-sharing-decision-v1": [

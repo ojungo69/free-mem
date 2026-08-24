@@ -137,7 +137,7 @@ reuses an ambiguous single `sourceAgent` value for these meanings.
 
 Every nested shared-field source-event array is sorted unique and resolves to authenticated source identities. Agent-local
 field refs additionally resolve to the enclosing lane's exact client/session. Canonical-memory source refs follow the same
-authenticated rule; evidence-snapshot refs resolve to existing hash-valid snapshots bound to the same memory entity.
+authenticated rule and are non-empty; evidence-snapshot refs resolve to existing hash-valid snapshots bound to the same memory entity.
 Unresolved, unauthenticated, ID-mismatched, or lane-mismatched references quarantine even when artifact hashes were recomputed.
 
 ## 7. Revision, immutability, and evidence bounds
@@ -156,6 +156,7 @@ ID/parent/revision fields; initial and parent transitions bind checkpoint ID, co
 present. Memory content excludes identity/revision/evidence metadata; memory revision binds memory ID, content hash,
 sorted evidence metadata, and either an initial or parent-memory-revision transition. `canonicalFactId` remains the separate
 exact-fact identity hash with schema literal `CanonicalMemoryEntityV1`.
+Both profiles require the exact ordered `transitionKinds=["initial","parent"]`; duplicate or reversed members are invalid.
 Resume capsules use their own domain-separated hash over every present field except `contentHash`; absent optional projection
 members are omitted rather than encoded as `null`; the manifest pins a local-only capsule vector. Restore resolves the named
 checkpoint revision to the same checkpoint ID and creator event, then requires its work-state revision and every serialized
@@ -294,6 +295,8 @@ expectations cover:
 
 The test requires the exact ordered set F0–F7, validates all references, checks case-specific invariants, and kills in-memory
 mutations that remove a case, relabel a source, leak a denied record, or drop one evidence branch.
+Each record's event-level evidence is non-empty, nonblank, sorted unique, and preserved exactly in successor record evidence;
+memory unions carry the sorted event union and review candidates retain their record's exact evidence IDs.
 
 The same bundle contains `ContinuityP0ObservationContractV1` with exact entries for #46/#49/#53/#61/#62/#56/#57/#32/#58.
 Each entry freezes its input, observation field/JSON path, current V1 value, successor value, and allowed delta kind. These

@@ -33,6 +33,8 @@ if (false) {
   sourceIdentity.ingestAttestation.ingestReceiptId = "a".repeat(64);
   // @ts-expect-error successor attestation peer identity is readonly
   sourceIdentity.ingestAttestation.peerIdentityId = "b".repeat(64);
+  // @ts-expect-error canonical memory always has at least one authenticated source event
+  const emptyMemorySources: contract.CanonicalMemoryEntityV1["sourceEventIds"] = [];
 }
 
 /**
@@ -228,10 +230,8 @@ const INLINE_ENUMS = {
   "AgentLocalLanePolicyV1.properties.laneKeyFields.items": ["clientId", "sessionId"],
   "OpaqueIdConformanceProfileV1.properties.messageFields.items": ["domain", "kind", "value"],
   "CheckpointHashProfileV1.properties.contentProjectionFields.items": ["schemaVersion", "kind", "sourceSessionId", "checkpointCreatedBySourceEventId", "canonicalState", "memoryWatermark", "sensitivity", "createdAt", "expiresAt"],
-  "CheckpointHashProfileV1.properties.transitionKinds.items": ["initial", "parent"],
   "CanonicalMemoryHashProfileV1.properties.contentProjectionFields.items": ["schemaVersion", "subjectScope", "opaqueIdProfile", "kind", "normalizationProfileId", "canonicalContent", "canonicalFactId", "sharingScope", "sensitivity", "egressPolicy", "lifecycle", "truthState", "durability", "validFrom", "validTo", "expiresAt"],
   "CanonicalMemoryHashProfileV1.properties.revisionMetadataFields.items": ["sharingDecisionEventIds", "sourceEventIds", "evidenceSnapshotIds", "createdAt", "updatedAt"],
-  "CanonicalMemoryHashProfileV1.properties.transitionKinds.items": ["initial", "parent"],
   "ResumeCapsuleHashProfileV1.properties.contentProjectionFields.items": ["schemaVersion", "injectionId", "checkpointId", "checkpointRevision", "workStateRevision", "subjectScope", "lineageSourceSummary", "checkpointCreatedBySourceEventId", "destination", "resumeProfile", "ageSeconds", "reconciliation", "sharedTaskState", "destinationAgentLocalState", "selectedMemoryIds", "warnings"],
 } as const;
 
@@ -355,11 +355,13 @@ const INLINE_CONSTS = {
   "OpaqueIdConformanceProfileV1.properties.outputEncoding": "lowercase_hex_256",
   "OpaqueIdConformanceTestVectorV1.properties.input.properties.domain": "free-mem/OpaqueIdV1/v1",
   "CheckpointHashProfileV1.properties.schemaVersion": 1,
+  "CheckpointHashProfileV1.properties.transitionKinds": ["initial", "parent"],
   "CheckpointHashProfileV1.properties.canonicalization": "rfc8785-jcs",
   "CheckpointHashProfileV1.properties.digest": "sha-256",
   "CheckpointHashProfileV1.properties.checkpointRevisionDomain": "free-mem/ContinuationCheckpointV3/checkpoint-revision/v1",
   "CheckpointHashTestVectorV1.properties.canonicalStateVectorRef": "canonicalStateHashProfile.testVector",
   "CanonicalMemoryHashProfileV1.properties.schemaVersion": 1,
+  "CanonicalMemoryHashProfileV1.properties.transitionKinds": ["initial", "parent"],
   "CanonicalMemoryHashProfileV1.properties.canonicalization": "rfc8785-jcs",
   "CanonicalMemoryHashProfileV1.properties.digest": "sha-256",
   "CanonicalMemoryHashProfileV1.properties.memoryRevisionDomain": "free-mem/CanonicalMemoryEntityV1/memory-revision/v1",
@@ -694,10 +696,8 @@ type _InlineEnumsMatchContract = [
     >
   >,
   Assert<SameSet<contract.CheckpointHashProfileV1["contentProjectionFields"][number], EnumAt<"CheckpointHashProfileV1.properties.contentProjectionFields.items">>>,
-  Assert<SameSet<contract.CheckpointHashProfileV1["transitionKinds"][number], EnumAt<"CheckpointHashProfileV1.properties.transitionKinds.items">>>,
   Assert<SameSet<contract.CanonicalMemoryHashProfileV1["contentProjectionFields"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.contentProjectionFields.items">>>,
   Assert<SameSet<contract.CanonicalMemoryHashProfileV1["revisionMetadataFields"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.revisionMetadataFields.items">>>,
-  Assert<SameSet<contract.CanonicalMemoryHashProfileV1["transitionKinds"][number], EnumAt<"CanonicalMemoryHashProfileV1.properties.transitionKinds.items">>>,
   Assert<SameSet<contract.ResumeCapsuleHashProfileV1["contentProjectionFields"][number], EnumAt<"ResumeCapsuleHashProfileV1.properties.contentProjectionFields.items">>>,
   Assert<
     SameSet<
@@ -857,11 +857,13 @@ type _InlineConstsMatchContract = [
   Assert<SameLiteral<contract.OpaqueIdConformanceProfileV1["outputEncoding"], ConstAt<"OpaqueIdConformanceProfileV1.properties.outputEncoding">>>,
   Assert<SameLiteral<contract.OpaqueIdConformanceTestVectorV1["input"]["domain"], ConstAt<"OpaqueIdConformanceTestVectorV1.properties.input.properties.domain">>>,
   Assert<SameLiteral<contract.CheckpointHashProfileV1["schemaVersion"], ConstAt<"CheckpointHashProfileV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.CheckpointHashProfileV1["transitionKinds"], ConstAt<"CheckpointHashProfileV1.properties.transitionKinds">>>,
   Assert<SameLiteral<contract.CheckpointHashProfileV1["canonicalization"], ConstAt<"CheckpointHashProfileV1.properties.canonicalization">>>,
   Assert<SameLiteral<contract.CheckpointHashProfileV1["digest"], ConstAt<"CheckpointHashProfileV1.properties.digest">>>,
   Assert<SameLiteral<contract.CheckpointHashProfileV1["checkpointRevisionDomain"], ConstAt<"CheckpointHashProfileV1.properties.checkpointRevisionDomain">>>,
   Assert<SameLiteral<contract.CheckpointHashTestVectorV1["canonicalStateVectorRef"], ConstAt<"CheckpointHashTestVectorV1.properties.canonicalStateVectorRef">>>,
   Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["schemaVersion"], ConstAt<"CanonicalMemoryHashProfileV1.properties.schemaVersion">>>,
+  Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["transitionKinds"], ConstAt<"CanonicalMemoryHashProfileV1.properties.transitionKinds">>>,
   Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["canonicalization"], ConstAt<"CanonicalMemoryHashProfileV1.properties.canonicalization">>>,
   Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["digest"], ConstAt<"CanonicalMemoryHashProfileV1.properties.digest">>>,
   Assert<SameLiteral<contract.CanonicalMemoryHashProfileV1["memoryRevisionDomain"], ConstAt<"CanonicalMemoryHashProfileV1.properties.memoryRevisionDomain">>>,
