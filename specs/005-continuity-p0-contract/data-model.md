@@ -13,9 +13,8 @@
 | same bundle | `ResumeCapsuleV2` | `ResumeCapsuleV1` |
 | same bundle | `CanonicalMemoryEntityV1` | legacy DurableMemory row |
 
-The bundle hash covers the JSON Schema, machine inventory, F0–F7 corpus, artifact/version list, migration rules,
-restore semantic-validation rules, opaque-ID profile, limit policies, and diagnostic vocabulary. Artifact version numbers
-remain independent.
+The bundle hash covers every top-level field of `SourceAwareContinuityContractV1` except `contractHash`, as defined in the
+normative contract §14. Artifact version numbers remain independent.
 
 ## Common scalar contracts
 
