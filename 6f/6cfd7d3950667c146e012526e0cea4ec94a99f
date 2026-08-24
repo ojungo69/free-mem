@@ -1,0 +1,32 @@
+specs/005-continuity-p0-contract/tasks.md
+  s_d6433b5ff6fa8e::t_c50ce8c8ce8a3c 128
+  s_d6433b5ff6fa8e::t_bf8f28604a8772 129
+specs/005-continuity-p0-contract/verify-tasks-report.md
+  s_d6433b5ff6fa8e::t_9b5f0afaf77bc2 191-201
+  s_d6433b5ff6fa8e::t_c50ce8c8ce8a3c 180-186
+  s_d6433b5ff6fa8e::t_bf8f28604a8772 187-190
+specs/005-continuity-p0-contract/contracts/source-aware-continuity-v1.md
+  s_d6433b5ff6fa8e::t_89af168b318791 79-80
+specs/005-continuity-p0-contract/spec.md
+  s_d6433b5ff6fa8e::t_89af168b318791 254,404,527
+specs/005-continuity-p0-contract/quickstart.md
+  s_d6433b5ff6fa8e::t_4bc3660e8a756c 36,38,49,51,79-81,84-86,89-91
+specs/005-continuity-p0-contract/checklists/requirements.md
+  s_d6433b5ff6fa8e::t_89af168b318791 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6f6cfd7d3950667c146e012526e0cea4ec94a99f",
+  "prompts": {},
+  "sessions": {
+    "s_d6433b5ff6fa8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03271-a2d8-7be1-a076-d732cd226fdf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
