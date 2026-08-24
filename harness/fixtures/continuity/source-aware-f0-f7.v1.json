@@ -168,9 +168,9 @@
           { "id": "memory-secret", "kind": "memory", "sourceId": "source-codex-secret", "sharingScope": "project_shared", "sensitivity": "secret", "egressPolicy": "prohibited_egress", "sourceEvidenceIds": ["event-codex-secret-1"], "sharingDecisionEventIds": ["decision-memory-secret"], "canonicalFactId": "fact-pkce" }
         ],
         "sharingDecisions": [
-          { "id": "decision-memory-claude", "authorityEventId": "user-grant-memory-claude", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } },
-          { "id": "decision-memory-codex", "authorityEventId": "user-grant-memory-codex", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } },
-          { "id": "decision-memory-secret", "authorityEventId": "user-grant-memory-secret", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } }
+          { "id": "decision-memory-claude", "authorityEventId": "user-grant-memory-claude", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } },
+          { "id": "decision-memory-codex", "authorityEventId": "user-grant-memory-codex", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } },
+          { "id": "decision-memory-secret", "authorityEventId": "user-grant-memory-secret", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-pkce" } }
         ],
         "transitions": [
           { "id": "t1", "actorSourceId": "source-claude", "kind": "create" },
@@ -215,14 +215,16 @@
         "records": [
           { "id": "claude-decision", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-1"], "sharingDecisionEventIds": ["decision-claude"], "canonicalFactId": "fact-claude-decision" },
           { "id": "codex-test", "kind": "test", "sourceId": "source-codex", "sharingScope": "task_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-codex-1"], "sharingDecisionEventIds": ["decision-codex"] },
+          { "id": "wrong-lineage", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-lineage"], "sharingDecisionEventIds": ["decision-wrong-lineage"], "canonicalFactId": "fact-wrong-lineage", "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-b" } },
           { "id": "wrong-project", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-2"], "sharingDecisionEventIds": ["decision-wrong-project"], "canonicalFactId": "fact-wrong-project", "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } },
           { "id": "wrong-workspace", "kind": "memory", "sourceId": "source-claude", "sharingScope": "project_shared", "sensitivity": "normal", "egressPolicy": "eligible", "sourceEvidenceIds": ["event-claude-3"], "sharingDecisionEventIds": ["decision-wrong-workspace"], "canonicalFactId": "fact-wrong-workspace", "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" } }
         ],
         "sharingDecisions": [
-          { "id": "decision-claude", "authorityEventId": "user-grant-claude-decision", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-claude-decision" } },
+          { "id": "decision-claude", "authorityEventId": "user-grant-claude-decision", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-claude-decision" } },
           { "id": "decision-codex", "authorityEventId": "user-grant-codex-test", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-a", "taskLineageId": "lineage-a" }, "sharingScope": "task_shared", "target": { "kind": "shared_task_projection", "taskLineageId": "lineage-a" } },
-          { "id": "decision-wrong-project", "authorityEventId": "user-grant-wrong-project", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-project" } },
-          { "id": "decision-wrong-workspace", "authorityEventId": "user-grant-wrong-workspace", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a", "workspaceId": "workspace-b", "taskLineageId": "lineage-b" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-workspace" } }
+          { "id": "decision-wrong-lineage", "authorityEventId": "user-grant-wrong-lineage", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-lineage" } },
+          { "id": "decision-wrong-project", "authorityEventId": "user-grant-wrong-project", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-b" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-project" } },
+          { "id": "decision-wrong-workspace", "authorityEventId": "user-grant-wrong-workspace", "authorityKind": "user", "decision": "grant", "authenticated": true, "privateConsent": false, "subjectScope": { "personalVaultId": "vault-a", "projectId": "project-a" }, "sharingScope": "project_shared", "target": { "kind": "canonical_memory_entity", "canonicalFactId": "fact-wrong-workspace" } }
         ],
         "transitions": [
           { "id": "t1", "actorSourceId": "source-claude", "kind": "create" },
@@ -237,6 +239,7 @@
         "sourceEvidence": [
           { "recordId": "claude-decision", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-1"] },
           { "recordId": "codex-test", "sourceIds": ["source-codex"], "sourceEvidenceIds": ["event-codex-1"] },
+          { "recordId": "wrong-lineage", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-lineage"] },
           { "recordId": "wrong-project", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-2"] },
           { "recordId": "wrong-workspace", "sourceIds": ["source-claude"], "sourceEvidenceIds": ["event-claude-3"] }
         ],
@@ -244,9 +247,9 @@
         "memoryEntities": [],
         "memoryReviewCandidates": [],
         "retrievalProfiles": [
-          { "profile": "all_source_project", "recordIds": ["claude-decision", "codex-test"] },
+          { "profile": "all_source_project", "recordIds": ["claude-decision", "codex-test", "wrong-lineage"] },
           { "profile": "current_source", "recordIds": ["codex-test"] },
-          { "profile": "named_source", "requestedSourceId": "source-claude", "recordIds": ["claude-decision"] },
+          { "profile": "named_source", "requestedSourceId": "source-claude", "recordIds": ["claude-decision", "wrong-lineage"] },
           { "profile": "active_task_shared", "recordIds": ["claude-decision", "codex-test"] }
         ],
         "authority": { "authenticatedSourceId": "source-codex", "automaticResumeAuthorized": true },

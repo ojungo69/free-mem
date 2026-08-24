@@ -42,6 +42,45 @@ if (false) {
     name: "CanonicalWorkStateV2",
     schemaVersion: 3,
   };
+  // @ts-expect-error repository snapshots carry their own sensitivity classification
+  const repositoryWithoutSensitivity: contract.RepositoryStateSnapshotV2 = {
+    repositoryId: "a".repeat(64),
+    workspaceId: "b".repeat(64),
+    capturedAt: "2026-08-25T00:00:00Z",
+  };
+  const sharingDecisionBase = {
+    schemaVersion: 1,
+    decisionEventId: "a".repeat(64),
+    authoritySourceEventId: "b".repeat(64),
+    authorityKind: "user",
+    decision: "grant",
+    target: { kind: "canonical_memory_entity", canonicalFactId: "c".repeat(64) },
+    privateConsent: false,
+    decidedAt: "2026-08-25T00:00:00Z",
+  } as const;
+  // @ts-expect-error project-shared grants require exact project subject scope
+  const projectGrantWithVaultScope: contract.SharingDecisionV1 = {
+    ...sharingDecisionBase,
+    sharingScope: "project_shared",
+    subjectScope: { kind: "personal_vault", personalVaultId: "d".repeat(64) },
+  };
+  const projectTaskProjectionGrant = {
+    ...sharingDecisionBase,
+    sharingScope: "project_shared",
+    subjectScope: { kind: "project", personalVaultId: "d".repeat(64), projectId: "e".repeat(64) },
+    target: { kind: "shared_task_projection", taskLineageId: "f".repeat(64) },
+  } as const;
+  // @ts-expect-error project-shared grants target canonical memory only
+  const projectGrantForTaskProjection: contract.SharingDecisionV1 = projectTaskProjectionGrant;
+  const projectFixtureScope: Extract<
+    contract.SourceAwareFixtureSharingDecisionV1,
+    { sharingScope: "project_shared" }
+  >["subjectScope"] = {
+    personalVaultId: "vault-a",
+    projectId: "project-a",
+    // @ts-expect-error project-shared fixture grants stop at project scope
+    taskLineageId: "lineage-a",
+  };
 }
 
 /**
@@ -342,10 +381,16 @@ const INLINE_CONSTS = {
   "SharingDecisionV1.properties.schemaVersion": 1,
   "SharingDecisionV1.properties.authorityKind": "user",
   "SharingDecisionV1.properties.decision": "grant",
+  "SharingDecisionV1.oneOf[0].properties.sharingScope": "task_shared",
+  "SharingDecisionV1.oneOf[1].properties.sharingScope": "project_shared",
+  "SharingDecisionV1.oneOf[2].properties.sharingScope": "personal_shared",
   "SharingDecisionPolicyV1.properties.schemaVersion": 1,
   "SharingDecisionPolicyV1.properties.authority": "explicit_user",
   "SharingDecisionPolicyV1.properties.authorityPayloadBinding": "action_scope_target_private_consent_and_decided_at_exact",
   "SharingDecisionPolicyV1.properties.scopeMatch": "exact",
+  "SharingDecisionPolicyV1.properties.scopeLevelMapping.properties.task_shared": "task_lineage",
+  "SharingDecisionPolicyV1.properties.scopeLevelMapping.properties.project_shared": "project",
+  "SharingDecisionPolicyV1.properties.scopeLevelMapping.properties.personal_shared": "personal_vault",
   "SharingDecisionPolicyV1.properties.targetMatch": "exact",
   "SharingDecisionPolicyV1.properties.invalidDisposition": "reject",
   "SharingDecisionPolicyV1.properties.referenceOrder": "sorted_unique",
@@ -353,6 +398,9 @@ const INLINE_CONSTS = {
   "SourceAwareFixtureMemoryTargetV1.properties.kind": "canonical_memory_entity",
   "SourceAwareFixtureSharingDecisionV1.properties.authorityKind": "user",
   "SourceAwareFixtureSharingDecisionV1.properties.decision": "grant",
+  "SourceAwareFixtureSharingDecisionV1.oneOf[0].properties.sharingScope": "task_shared",
+  "SourceAwareFixtureSharingDecisionV1.oneOf[1].properties.sharingScope": "project_shared",
+  "SourceAwareFixtureSharingDecisionV1.oneOf[2].properties.sharingScope": "personal_shared",
   "SourceAwareRetrievalExpectationV1.oneOf[0].properties.profile": "named_source",
   "AgentLocalLanePolicyV1.properties.schemaVersion": 1,
   "AgentLocalLanePolicyV1.properties.canonicalStateCardinality": "at_most_one_per_key",
@@ -805,6 +853,16 @@ type _InlineConstsMatchContract = [
     >
   >,
   Assert<SameLiteral<contract.SharedTaskStateV1["sharingScope"], ConstAt<"SharedTaskStateV1.properties.sharingScope">>>,
+  Assert<SameSet<contract.SharingDecisionV1["sharingScope"], ConstsUnder<"SharingDecisionV1.oneOf">>>,
+  Assert<
+    SameSet<
+      contract.SourceAwareFixtureSharingDecisionV1["sharingScope"],
+      ConstsUnder<"SourceAwareFixtureSharingDecisionV1.oneOf">
+    >
+  >,
+  Assert<SameLiteral<contract.SharingDecisionPolicyV1["scopeLevelMapping"]["task_shared"], ConstAt<"SharingDecisionPolicyV1.properties.scopeLevelMapping.properties.task_shared">>>,
+  Assert<SameLiteral<contract.SharingDecisionPolicyV1["scopeLevelMapping"]["project_shared"], ConstAt<"SharingDecisionPolicyV1.properties.scopeLevelMapping.properties.project_shared">>>,
+  Assert<SameLiteral<contract.SharingDecisionPolicyV1["scopeLevelMapping"]["personal_shared"], ConstAt<"SharingDecisionPolicyV1.properties.scopeLevelMapping.properties.personal_shared">>>,
   Assert<
     SameLiteral<
       Extract<contract.SourceAwareArtifactSchemaRefV1, { name: ConstAt<"SourceAwareArtifactSchemaRefV1.oneOf[0].properties.name"> }>["schemaVersion"],

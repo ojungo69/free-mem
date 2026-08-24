@@ -594,24 +594,45 @@ export interface CanonicalMemoryEntityTargetV1 {
 
 export type SharingDecisionTargetV1 = SharedTaskProjectionTargetV1 | CanonicalMemoryEntityTargetV1;
 
-export interface SharingDecisionV1 {
+type SharingDecisionBaseV1 = {
   readonly schemaVersion: 1;
   readonly decisionEventId: OpaqueIdV1;
   readonly authoritySourceEventId: OpaqueIdV1;
   readonly authorityKind: "user";
   readonly decision: "grant";
-  readonly subjectScope: SubjectScopeV1;
-  readonly sharingScope: SharingGrantScopeV1;
-  readonly target: SharingDecisionTargetV1;
   readonly privateConsent: boolean;
   readonly decidedAt: string;
-}
+};
+
+export type SharingDecisionV1 = SharingDecisionBaseV1 &
+  (
+    | {
+        readonly subjectScope: TaskLineageSubjectScopeV1;
+        readonly sharingScope: "task_shared";
+        readonly target: SharedTaskProjectionTargetV1 | CanonicalMemoryEntityTargetV1;
+      }
+    | {
+        readonly subjectScope: ProjectSubjectScopeV1;
+        readonly sharingScope: "project_shared";
+        readonly target: CanonicalMemoryEntityTargetV1;
+      }
+    | {
+        readonly subjectScope: PersonalVaultSubjectScopeV1;
+        readonly sharingScope: "personal_shared";
+        readonly target: CanonicalMemoryEntityTargetV1;
+      }
+  );
 
 export interface SharingDecisionPolicyV1 {
   readonly schemaVersion: 1;
   readonly authority: "explicit_user";
   readonly authorityPayloadBinding: "action_scope_target_private_consent_and_decided_at_exact";
   readonly scopeMatch: "exact";
+  readonly scopeLevelMapping: Readonly<{
+    task_shared: "task_lineage";
+    project_shared: "project";
+    personal_shared: "personal_vault";
+  }>;
   readonly targetMatch: "exact";
   readonly invalidDisposition: "reject";
   readonly referenceOrder: "sorted_unique";
@@ -838,6 +859,7 @@ export interface RepositoryStateSnapshotV2 {
   readonly dirtyTreeFingerprint?: OpaqueIdV1;
   readonly gitStatusSummary?: string;
   readonly capturedAt: string;
+  readonly sensitivity: Sensitivity;
 }
 
 export interface SemanticResumeNoteV2 {
@@ -1441,17 +1463,33 @@ export type SourceAwareFixtureSharingTargetV1 =
   | SourceAwareFixtureSharedTaskTargetV1
   | SourceAwareFixtureMemoryTargetV1;
 
-export interface SourceAwareFixtureSharingDecisionV1 {
+type SourceAwareFixtureSharingDecisionBaseV1 = {
   readonly id: string;
   readonly authorityEventId: string;
   readonly authorityKind: "user";
   readonly decision: "grant";
   readonly authenticated: boolean;
-  readonly subjectScope: SourceAwareFixtureScopeV1;
-  readonly sharingScope: SharingGrantScopeV1;
-  readonly target: SourceAwareFixtureSharingTargetV1;
   readonly privateConsent: boolean;
-}
+};
+
+export type SourceAwareFixtureSharingDecisionV1 = SourceAwareFixtureSharingDecisionBaseV1 &
+  (
+    | {
+        readonly subjectScope: SourceAwareFixtureScopeV1;
+        readonly sharingScope: "task_shared";
+        readonly target: SourceAwareFixtureSharingTargetV1;
+      }
+    | {
+        readonly subjectScope: Pick<SourceAwareFixtureScopeV1, "personalVaultId" | "projectId">;
+        readonly sharingScope: "project_shared";
+        readonly target: SourceAwareFixtureMemoryTargetV1;
+      }
+    | {
+        readonly subjectScope: Pick<SourceAwareFixtureScopeV1, "personalVaultId">;
+        readonly sharingScope: "personal_shared";
+        readonly target: SourceAwareFixtureMemoryTargetV1;
+      }
+  );
 
 export interface SourceAwareFixtureTransitionV1 {
   readonly id: string;

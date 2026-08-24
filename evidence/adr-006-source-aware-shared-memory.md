@@ -41,6 +41,8 @@ producer markerはそれぞれ別identity軸として扱う。
 
 subject scopeは`personal_vault -> project -> workspace -> branch -> task_lineage -> session -> turn`、sharing scopeは
 `agent_private | task_shared | project_shared | personal_shared`とする。sharingのprecedenceは次で固定する。
+grant levelは`task_shared -> task_lineage`、`project_shared -> project`、`personal_shared -> personal_vault`へ
+exact mappingする。task grantはmatching shared projectionまたはcanonical fact、project/personal grantはcanonical factだけをtargetにする。
 
 ```text
 secret / local_only / prohibited-egress deny
@@ -51,6 +53,11 @@ secret / local_only / prohibited-egress deny
   > sharing allow
   > source preference / display filter
 ```
+
+repository snapshotは独自sensitivityをshared集約へ渡し、subject workspaceと一致する。subject branchがある場合は
+repository branchも必須かつ一致する。state/memoryのopaque keyはsubject personal vaultのkeyringで32 bytes以上へ
+解決できない限り、再hashされていてもquarantineする。artifact subjectは先にauthoritative scope registryのexact
+chainへ解決し、別scopeへのrehash移送を許さない。
 
 ### 3. provenanceはsource event参照で保持する
 

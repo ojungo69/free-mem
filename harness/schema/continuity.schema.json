@@ -3013,17 +3013,55 @@
         "target": { "$ref": "#/$defs/SharingDecisionTargetV1" },
         "privateConsent": { "type": "boolean" },
         "decidedAt": { "$ref": "#/$defs/IsoTimestamp" }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "subjectScope": { "$ref": "#/$defs/TaskLineageSubjectScopeV1" },
+            "sharingScope": { "const": "task_shared" },
+            "target": {
+              "oneOf": [
+                { "$ref": "#/$defs/SharedTaskProjectionTargetV1" },
+                { "$ref": "#/$defs/CanonicalMemoryEntityTargetV1" }
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "subjectScope": { "$ref": "#/$defs/ProjectSubjectScopeV1" },
+            "sharingScope": { "const": "project_shared" },
+            "target": { "$ref": "#/$defs/CanonicalMemoryEntityTargetV1" }
+          }
+        },
+        {
+          "properties": {
+            "subjectScope": { "$ref": "#/$defs/PersonalVaultSubjectScopeV1" },
+            "sharingScope": { "const": "personal_shared" },
+            "target": { "$ref": "#/$defs/CanonicalMemoryEntityTargetV1" }
+          }
+        }
+      ]
     },
     "SharingDecisionPolicyV1": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "authority", "authorityPayloadBinding", "scopeMatch", "targetMatch", "invalidDisposition", "referenceOrder"],
+      "required": ["schemaVersion", "authority", "authorityPayloadBinding", "scopeMatch", "scopeLevelMapping", "targetMatch", "invalidDisposition", "referenceOrder"],
       "properties": {
         "schemaVersion": { "const": 1 },
         "authority": { "const": "explicit_user" },
         "authorityPayloadBinding": { "const": "action_scope_target_private_consent_and_decided_at_exact" },
         "scopeMatch": { "const": "exact" },
+        "scopeLevelMapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_shared", "project_shared", "personal_shared"],
+          "properties": {
+            "task_shared": { "const": "task_lineage" },
+            "project_shared": { "const": "project" },
+            "personal_shared": { "const": "personal_vault" }
+          }
+        },
         "targetMatch": { "const": "exact" },
         "invalidDisposition": { "const": "reject" },
         "referenceOrder": { "const": "sorted_unique" }
@@ -3282,7 +3320,7 @@
     "RepositoryStateSnapshotV2": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repositoryId", "workspaceId", "capturedAt"],
+      "required": ["repositoryId", "workspaceId", "capturedAt", "sensitivity"],
       "properties": {
         "repositoryId": { "$ref": "#/$defs/OpaqueIdV1" },
         "workspaceId": { "$ref": "#/$defs/OpaqueIdV1" },
@@ -3292,7 +3330,8 @@
         "upstreamSha": { "$ref": "#/$defs/GitObjectIdV1" },
         "dirtyTreeFingerprint": { "$ref": "#/$defs/OpaqueIdV1" },
         "gitStatusSummary": { "type": "string", "maxLength": 8192 },
-        "capturedAt": { "$ref": "#/$defs/IsoTimestamp" }
+        "capturedAt": { "$ref": "#/$defs/IsoTimestamp" },
+        "sensitivity": { "$ref": "#/$defs/Sensitivity" }
       }
     },
     "SemanticResumeNoteV2": {
@@ -3889,11 +3928,49 @@
         "authorityKind": { "const": "user" },
         "decision": { "const": "grant" },
         "authenticated": { "type": "boolean" },
-        "subjectScope": { "$ref": "#/$defs/SourceAwareFixtureScopeV1" },
+        "subjectScope": {},
         "sharingScope": { "$ref": "#/$defs/SharingGrantScopeV1" },
         "target": { "$ref": "#/$defs/SourceAwareFixtureSharingTargetV1" },
         "privateConsent": { "type": "boolean" }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "subjectScope": { "$ref": "#/$defs/SourceAwareFixtureScopeV1" },
+            "sharingScope": { "const": "task_shared" },
+            "target": { "$ref": "#/$defs/SourceAwareFixtureSharingTargetV1" }
+          }
+        },
+        {
+          "properties": {
+            "subjectScope": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["personalVaultId", "projectId"],
+              "properties": {
+                "personalVaultId": { "type": "string", "minLength": 1, "maxLength": 8192 },
+                "projectId": { "type": "string", "minLength": 1, "maxLength": 8192 }
+              }
+            },
+            "sharingScope": { "const": "project_shared" },
+            "target": { "$ref": "#/$defs/SourceAwareFixtureMemoryTargetV1" }
+          }
+        },
+        {
+          "properties": {
+            "subjectScope": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["personalVaultId"],
+              "properties": {
+                "personalVaultId": { "type": "string", "minLength": 1, "maxLength": 8192 }
+              }
+            },
+            "sharingScope": { "const": "personal_shared" },
+            "target": { "$ref": "#/$defs/SourceAwareFixtureMemoryTargetV1" }
+          }
+        }
+      ]
     },
     "SourceAwareFixtureTransitionV1": {
       "type": "object",

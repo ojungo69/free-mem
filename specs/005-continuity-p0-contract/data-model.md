@@ -29,6 +29,10 @@ normative contract §14. Artifact version numbers remain independent.
 | `ResumeProfileV1` | `same_agent`, `cross_agent` |
 | `LegacyMigrationDispositionV1` | `migrate`, `legacy_read_only`, `quarantine` |
 
+Authenticated grants use an exact level map: `task_shared -> task_lineage`, `project_shared -> project`, and
+`personal_shared -> personal_vault`. Task-shared grants may target the matching shared-task projection or a canonical fact;
+project/personal grants target a canonical fact only. Agent-private state is not grantable.
+
 `local_only` may remain in daemon-owned local state but is never emitted through retrieval, RPC, hint/manual, automatic
 injection, `active_task_shared`, `same_agent`, `cross_agent`, capsule, sync, or export. It has its own `local_only`
 disposition code; it is not reported as `prohibited_egress`.
@@ -44,6 +48,9 @@ key), then compute `lowerhex(HMAC-SHA-256(key, UTF8(JCS({domain, kind, value})))
 `free-mem/OpaqueIdV1/v1`; `kind` comes from the closed ID-kind vocabulary; `value` is I-JSON. The manifest contains a public
 conformance key/vector only for TS/Rust parity, never a production key. New source-identity receipt/peer IDs use this opaque
 form too.
+Restore first resolves state/memory/sharing-decision subject scopes in the authoritative scope registry, then resolves each
+state/memory `keyId` inside its subject personal-vault keyring and requires key metadata of at least
+32 bytes; a missing, cross-vault-only, or short key quarantines even when content/revision hashes were recomputed.
 
 ## Source identity and references
 
@@ -169,6 +176,8 @@ The shared projection sensitivity is the maximum of every contained value. Each 
 its contents, and `CanonicalWorkStateV2.sensitivity` is the maximum of every present projection. A mismatch quarantines
 before restore/delivery; implementations never choose one conflicting declaration silently.
 `ContinuationCheckpointV3.sensitivity` must equal its embedded canonical state's maximum sensitivity.
+`RepositoryStateSnapshotV2.sensitivity` is required and participates in the shared maximum. Repository workspace must match
+the subject workspace; a subject branch, when present, requires an equal repository branch.
 
 The Observed/file/command/test/operation/repository/note V2 shapes preserve their V1 semantic fields, make all arrays and
 properties recursively readonly through `ReadonlyJsonValue`, replace every identifier/fingerprint/source-event reference with `OpaqueIdV1`, and remove
@@ -328,8 +337,12 @@ Destination `privateEligible` and `capabilityIds` live on the authenticated sour
 the destination selector has no detached authority fields.
 An omitted record `subjectScope` inherits the case scope; an explicit record scope is compared structurally. F7 carries
 separate wrong-vault, wrong-project, and wrong-workspace records rather than a magic scope tag.
+Fixture records retain their full retrieval locator, while fixture sharing decisions retain only their grant-level subject
+scope (task lineage, project, or personal vault); project grants are not duplicated per lineage.
 The `named_source` expectation alone requires `requestedSourceId`; it resolves to an authenticated input source and every
 returned record belongs to that source. `current_source` results all belong to `destination.sourceId`.
+F5 includes a same-vault/project/workspace but different-lineage record: project/named retrieval returns it, while
+`active_task_shared` excludes it. Automatic and hint/manual delivery use the same exact-lineage boundary.
 
 ### `ContinuityP0ObservationContractV1`
 

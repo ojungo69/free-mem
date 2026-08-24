@@ -250,6 +250,7 @@ contract は期待する source identity、sharing disposition、participant集�
    unionへ入れず、`consent_or_source_locality_mismatch`としてreviewに保持する。conflict / supersessionはdedupeと混同しない。
 6. **F5 — Retrieval policy**: all-source project search、current-source filter、named-source filter、
    active-task shared injectionが別のprofileとして働き、filterを外してもwrong project/workspaceが0件である。
+   same-workspace wrong-lineageはproject/named searchでは取得でき、active-task injectionでは除外される。
 7. **F6 — Source authority**: callerが`sourceAgent`やcanonical client IDを偽装しても、authenticated
    source provenanceまたはautomatic resume authorityを得ない。
 8. **F7 — Privacy / destination capability**: `agent_private`、secret、`local_only`、prohibited-egress、認証済み
@@ -414,14 +415,22 @@ contract は期待する source identity、sharing disposition、participant集�
   successorのnested JSON object/arrayはrecursive readonly型とし、公開後にhash外から変更可能な型を残さない。
   `SourceIdentityV1.ingestAttestation`の全nested fieldもreadonlyとする。
   `CanonicalMemoryEntityV1.sourceEventIds`はnon-emptyとし、owner不明のAgent-private memoryを許可しない。
+  state/memoryの`opaqueIdProfile.keyId`はsubject personal vaultのkeyringで32 bytes以上のkey metadataへ解決し、
+  missing/cross-vault/short keyは再hash済みでもquarantineする。
+  state/memory/sharing decisionのsubject scopeはauthoritative scope registryのexact chainへ解決し、
+  別vault/project/lineageへ自己整合的に再hashして移送できてはならない。
 - **FR-034**: subject scope（`personal_vault` / project / workspace / branch / task lineage / session / turn）とsharing
   scope（`agent_private` / `task_shared` / `project_shared` / `personal_shared`）を別軸として凍結しなければならない。
+  grant levelは`task_shared -> task_lineage`、`project_shared -> project`、`personal_shared -> personal_vault`へ
+  exact mappingし、project/personal grantはcanonical factだけ、task grantはmatching projectionまたはcanonical factだけをtargetにする。
 - **FR-035**: sharing判定のprecedenceは、secret/`local_only`/prohibited-egress deny、cross-vault/project/workspace deny、
   private shared/memoryのauthority-bound `SharingDecisionV1.privateConsent=true`と認証済みdestination
   `SourceIdentityV1.privateEligible` gate、Agent-local isolation、destination capability
   downgrade、sharing allow、source preference/display filterの順で評価しなければならない。
   automaticだけでなくhint/manualと全retrieval profileも、routeに適用可能なauthentication/scope/consent/privacy/
   egress gateを通す。capability gateはautomaticと`active_task_shared`に追加適用する。
+  project/current/named retrievalはexact vault/project/workspace、automatic/hint/manual/`active_task_shared`はさらに
+  exact task lineageを要求する。
 - **FR-036**: callerはsharing scopeのproposalまでしか行えず、自分でscopeを昇格できてはならない。
   authority未確認のrecordはautomatic cross-agent full injectionへ使わない。共有grantはversioned
   `SharingDecisionV1`としてexplicit user authority event、exact subject scope、exact projection/memory targetへ
@@ -435,6 +444,8 @@ contract は期待する source identity、sharing disposition、participant集�
   各projectionはcontained valueの最大sensitivityを宣言し、canonical stateはpresent projection全体の最大値、
   checkpointはembedded stateと同値、capsuleはincluded projectionから再計算した最大値を使う。いずれの不一致も
   delivery前にquarantineし、宣言値でprivate/secret gateを下げてはならない。
+  repository snapshotは必須sensitivityを持ってshared最大値へ含め、workspaceはsubjectと一致し、subjectにbranchが
+  ある場合はrepository branchも必須かつ完全一致しなければならない。
   capsuleのcheckpoint ID/revision/creatorは同じresolved checkpointへ結び付け、`selectedMemoryIds`はsorted uniqueかつ
   hash-valid entityへ解決し、scope/sharing/private consent/lifecycle/sensitivity/egress/destination policyを全件検証する。
   pending operationのouter/correlation operation IDは一致し、authenticated start-phase eventはそのoperation evidenceに

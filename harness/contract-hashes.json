@@ -28,13 +28,13 @@
     "fixtures/continuity/invalid/rejected-events.json": "b19265a42d0038a9b0f33b2da699c4370519f8fd4d30f9795c2f7892d6ab1ce0",
     "fixtures/continuity/old-shape-parity.json": "0f6924a4d3e45c3c88336f4f08184d78ebaedd88ad3fbfed194677199c59949a",
     "fixtures/continuity/restored-state-reduction.json": "ddb1ec22f1d37dfa980ea6870e883ed32977f42ec732ce7e89f3f6e689fadaa2",
-    "fixtures/continuity/source-aware-f0-f7.v1.json": "0b6914a9177f4b800226a0d1161ef1dd1add3907ef47398eee3433a0d5b9afa2",
+    "fixtures/continuity/source-aware-f0-f7.v1.json": "9e123ba019b40d662e42c672ec03bfd443228e7a4d53718327539204ea2bb481",
     "fixtures/continuity/tool-lifecycle-reduction.json": "beefef9cd5fc61784d6057464e45f26d37497819f2428a73d1c3f2b55a75c755",
     "schema/capability-scenarios.v1.json": "e7be10dd3bdb9f08e06a00c085ddd318b497bd6426ecc8d72fc6095eb43b3ae3",
     "schema/capability.schema.json": "cc84f87e2c66b57d725af3df67ffdbd30ba0be6119ffe75785b2612b6bf51b1a",
-    "schema/continuity.schema.json": "c64c3440ef27b5ea4a8856b7279c255349cd53654f41bcb9a0e81a8554c1b156",
+    "schema/continuity.schema.json": "36587965327c37c493b2cb1f49512d155f00dc3d172ebb6bf907e1da0d28c464",
     "schema/evidence-manifest.schema.json": "2fc0949ba97f91ba6a258a387cb5ff12727595028815a47b98bcf5c8ad5680aa",
-    "schema/source-aware-continuity-contract.v1.json": "4457cbcdaa6840a2b826ba6ee2231c455458dcc44230c8ce2145e3eefae4cb97",
+    "schema/source-aware-continuity-contract.v1.json": "e46adcaa8774f914463a006989c29a5e2dbbf643f6d03bfa29960f60eecee2df",
     "schema/source-aware-source-inventory.v1.json": "1d2642999fca4f4d35d1280011baa36f29825898121a48e392d106c341bb5dff"
   }
 }

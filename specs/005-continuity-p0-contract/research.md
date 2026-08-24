@@ -60,6 +60,10 @@ RPC handshakeのversion文字列とspool eventのcaller文字列だけでsource 
 - caller文字列をcanonical IDとして採用: F6を満たさないため不採用。
 - provider/model名をAgent identityへ流用: coding clientと生成modelを混同するため不採用。
 
+Sharing grantはlevelをsubjectへexact mappingする: `task_shared -> task_lineage`、`project_shared -> project`、
+`personal_shared -> personal_vault`。階層包含だけにすると、personal-vault scopeのproject grantが同じvaultの
+別projectへ届くため不採用。project/current/named retrievalはworkspace境界、active-task/automatic/hintはlineage境界を使う。
+
 ## Decision 5: legacy artifactは根拠別の3 dispositionに限定する
 
 **Decision**:
@@ -212,6 +216,9 @@ viewer、workflowを変更しない。
 artifact setを導出し、`RestoreSemanticValidationContractV1`へ各entryのscope-identity paths、ISO timestamp
 paths、cross-field rules、invalid=`quarantine`、user-only repair authority、audit requiredを記録する。
 読込後、reducer/router/selectorへ渡す前に1回だけ適用する。
+Successor state/memoryはsubject vault keyringでopaque keyを32 bytes以上へ解決し、repository snapshotは
+shared sensitivity集約とworkspace/required-branch一致を通す。state/memory/sharing decisionのsubjectは
+authoritative scope registryのexact chainへ解決し、別scopeへの自己整合rehashをquarantineする。
 
 **Rationale**: 4artifactのmigration dispositionだけでは、FR-016〜022 / SC-007〜008のblank scope、invalid
 calendar timestamp、permanent wedge、unaudited repairをfreezeできない。runtimeをS0へ入れず、後続TS/Rustが

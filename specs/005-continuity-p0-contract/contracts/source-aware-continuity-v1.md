@@ -60,6 +60,9 @@ semantic surface.
 Subject scope and sharing scope are independent. Subject scope is the closed hierarchy
 `personal_vault -> project -> workspace -> branch -> task_lineage -> session -> turn`.
 Sharing scope is `agent_private | task_shared | project_shared | personal_shared`.
+Grant levels map exactly: `task_shared -> task_lineage`, `project_shared -> project`, and
+`personal_shared -> personal_vault`. Task-shared grants may target the matching shared-task projection or an exact canonical
+fact; project/personal grants target an exact canonical fact only. `agent_private` has no grant branch.
 Here `private` means the closed `Sensitivity` value, while `agent_private` is a `SharingScopeV1` value; they are independent.
 The destination identity's authenticated `privateEligible` value gates a `sensitivity="private"` record only after an
 explicit sharing grant. A capsule does not carry an authoritative eligibility boolean, and eligibility never makes an
@@ -112,6 +115,8 @@ Sensitivity uses the closed order `normal < private < secret`. Every present sha
 maximum of its contained values; canonical state declares the maximum across its present projections, and a capsule derives
 the maximum of what it includes. A checkpoint must match its embedded canonical-state maximum. Any mismatch quarantines
 before delivery instead of lowering sensitivity.
+Repository state carries its own sensitivity and participates in the shared maximum, including status/path summaries. Its
+workspace must equal the subject workspace; when the task scope names a branch, the repository branch is required and equal.
 
 `ResumeCapsuleV2` carries zero or one granted shared projection and zero or one destination-client Agent-local lane, with at
 least one present. A capsule without a shared projection is same-agent only; cross-agent delivery requires a granted shared
@@ -235,6 +240,8 @@ The contract distinguishes:
 
 Source filters affect result selection/display only. They never change lineage, memory identity, or revision history.
 `current_source` results belong to the destination source; named-source results belong to the explicit requested source.
+Project/current/named retrieval stays within the exact vault/project/workspace but may cross task lineages;
+`active_task_shared`, automatic delivery, and hint/manual delivery additionally require the exact task lineage.
 Every non-daemon-local output applies source/destination authentication, scope, sharing consent, Agent-private isolation,
 private eligibility, secret, and egress gates. Capability support is additionally required for automatic and
 `active_task_shared`; a valid hint/manual downgrade may omit that capability but may not bypass the other gates.
@@ -250,10 +257,15 @@ inventoried persisted artifact without a rule fails the contract. The closure al
 the persisted `SharingDecisionV1` authority event;
 in particular, `ResumeCapsuleV2` requires its optional Agent-local lane to match `destination.clientId`.
 
-Scope IDs must be non-blank and parent/embedded scopes must agree. Every listed timestamp must be canonically valid, not
+Scope IDs must be non-blank, parent/embedded scopes must agree, and state/memory/sharing-decision scopes must resolve as an
+exact chain in the authoritative subject-scope registry. Self-consistent rehashing cannot move an artifact to another scope.
+Every listed timestamp must be canonically valid, not
 merely regex-shaped. The successor work-state/capsule rules enumerate every nested field source ref; canonical-memory rules
 also resolve same-memory hash-valid evidence snapshots. Invalid artifacts preserve original bytes in quarantine and never
 reach the reducer/selector.
+Before state or canonical-memory acceptance, `opaqueIdProfile.keyId` resolves in the subject personal vault's keyring to key
+metadata of at least 32 bytes. A missing, cross-vault-only, or short key quarantines even after all public hashes are recomputed.
+Work-state/capsule restore also enforces the repository workspace and required branch rule above.
 
 Repair, discard, and rebind require explicit user authority and an audit event. Daemon/model inference is forbidden. The
 machine rule set is exact: deleting an artifact or a required path is a contract/hash change, not an implementation choice.
@@ -302,7 +314,8 @@ expectations cover:
 - F2 immutable provenance;
 - F3 multi-Agent lineage;
 - F4 one canonical memory with two consented source evidence branches, plus one same-tuple unconsented review candidate;
-- F5 the four retrieval profiles;
+- F5 the four retrieval profiles, with a same-workspace wrong-lineage record visible to project/named search but excluded
+  from active-task injection;
 - F6 authenticated authority overriding caller claims (`source_unverified` refers to the unverified caller client-ID claim,
   not to the authenticated intake source);
 - F7 privacy/scope/destination-capability downgrade.
