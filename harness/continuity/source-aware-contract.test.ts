@@ -813,3 +813,34 @@ test("US2 legacy migration and restore semantic rules are exact and fail closed"
   (firstRule as unknown as { auditRequired: boolean }).auditRequired = false;
   assert.ok(restoreSemanticIssues(inventory, unauditedRepair).length > 0);
 });
+
+test("US3 limit policies and diagnostic vocabularies are exact", () => {
+  const manifest = loadRequiredJson<contract.SourceAwareContinuityContractV1>(CONTRACT_URL, "contract manifest");
+  const expectedPolicies = contract.CONTINUITY_LIMIT_NAMES_V1.map((name) => ({
+    name,
+    limit: contract.CONTINUITY_LIMITS[name],
+    disposition: name === "rankedCandidates" ? "select_with_diagnostic" : "reject",
+  }));
+  assert.deepEqual(manifest.limitPolicies, expectedPolicies);
+  assert.deepEqual(manifest.continuityDiagnosticCodes, contract.CONTINUITY_DIAGNOSTIC_CODES_V2);
+  assert.deepEqual(manifest.sourceSharingDispositionCodes, contract.SOURCE_SHARING_DISPOSITION_CODES_V1);
+
+  const byIssue = new Map(manifest.continuityP0Observations.entries.map((entry) => [entry.issueNumber, entry]));
+  assert.deepEqual([...byIssue.keys()], P0_ISSUES);
+  assert.equal(byIssue.get(32)?.behaviorDeltas[0]?.successor, "11_reject_and_1_select_with_diagnostic");
+  assert.equal(byIssue.get(58)?.behaviorDeltas[0]?.successor, "terminal_sibling_conflict");
+
+  const missingPolicy = structuredClone(manifest) as unknown as contract.SourceAwareContinuityContractV1;
+  (missingPolicy.limitPolicies as contract.ContinuityLimitPolicyV1[]).pop();
+  assert.notDeepEqual(missingPolicy.limitPolicies, expectedPolicies);
+
+  const silentRankedLimit = structuredClone(manifest) as unknown as contract.SourceAwareContinuityContractV1;
+  const ranked = silentRankedLimit.limitPolicies.find(({ name }) => name === "rankedCandidates");
+  assert.ok(ranked);
+  (ranked as { disposition: string }).disposition = "reject";
+  assert.notDeepEqual(silentRankedLimit.limitPolicies, expectedPolicies);
+
+  const missingDiagnostic = structuredClone(manifest) as unknown as contract.SourceAwareContinuityContractV1;
+  (missingDiagnostic.continuityDiagnosticCodes as contract.ContinuityDiagnosticCodeV2[]).pop();
+  assert.notDeepEqual(missingDiagnostic.continuityDiagnosticCodes, contract.CONTINUITY_DIAGNOSTIC_CODES_V2);
+});

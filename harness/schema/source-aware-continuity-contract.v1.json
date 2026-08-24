@@ -1,6 +1,6 @@
 {
   "contractVersion": 1,
-  "contractHash": "fad4c2ba5353b92f1ecf9a847a4bc01a869fe39f5be5184f51878ee2048fb6af",
+  "contractHash": "8572f1bbf507533891050ca8ea52b7b872c77f83a3bd7277880e3178151922e5",
   "schemaFile": "schema/continuity.schema.json",
   "schemaHash": "c3457378aea66eeb938dd7d3afbb5ffa777bd20edb69f540a35ea35bb9657bec",
   "artifactSchemas": [
@@ -330,8 +330,43 @@
       }
     ]
   },
-  "limitPolicies": [],
-  "continuityDiagnosticCodes": [],
+  "limitPolicies": [
+    { "name": "hintTokens", "limit": 120, "disposition": "reject" },
+    { "name": "fullCapsuleTokens", "limit": 700, "disposition": "reject" },
+    { "name": "promptMemoryTokens", "limit": 700, "disposition": "reject" },
+    { "name": "combinedTokens", "limit": 1500, "disposition": "reject" },
+    { "name": "absoluteTokens", "limit": 1800, "disposition": "reject" },
+    { "name": "capsulePayloadBytes", "limit": 32768, "disposition": "reject" },
+    { "name": "wrapperBytes", "limit": 36864, "disposition": "reject" },
+    { "name": "jsonDepth", "limit": 12, "disposition": "reject" },
+    { "name": "stringUtf8Bytes", "limit": 8192, "disposition": "reject" },
+    { "name": "arrayItems", "limit": 256, "disposition": "reject" },
+    { "name": "objectKeys", "limit": 128, "disposition": "reject" },
+    { "name": "rankedCandidates", "limit": 5, "disposition": "select_with_diagnostic" }
+  ],
+  "continuityDiagnosticCodes": [
+    "terminal_unmatched",
+    "terminal_orphaned",
+    "terminal_ambiguous",
+    "terminal_conflict",
+    "terminal_out_of_order",
+    "terminal_order_unverifiable",
+    "terminal_turn_unverifiable",
+    "terminal_identity_unverifiable",
+    "terminal_already_applied",
+    "terminal_evidence_contradicts",
+    "duplicate_operation_start",
+    "start_sibling_conflict",
+    "start_conflict",
+    "delivery_conflict",
+    "pending_operations_evicted",
+    "dropped_evidence_recorded",
+    "dropped_evidence_overflowed",
+    "source_events_truncated",
+    "turn_identity_downgraded",
+    "turn_identity_unauthenticated",
+    "terminal_sibling_conflict"
+  ],
   "sourceSharingDispositionCodes": [
     "agent_private",
     "private_not_eligible",

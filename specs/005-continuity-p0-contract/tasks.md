@@ -105,11 +105,11 @@ enters automatic cross-agent delivery, and blank/invalid timestamp artifacts qua
 11 `reject`; successor diagnostics contain current codes plus `terminal_sibling_conflict`, the 8 sharing disposition codes,
 and the exact P0 observation set still contains the #32/#58 policy/diagnostic deltas.
 
-- [ ] T027 [US3] Add failing exact-set assertions for 12 limit policies, `ContinuityDiagnosticCodeV2`, `SourceSharingDispositionCodeV1`, and the #32/#58 entries plus exact nine-Issue closure in `ContinuityP0ObservationContractV1` in `harness/continuity/source-aware-contract.test.ts`
-- [ ] T028 [US3] Run the focused test and verify it fails for missing policy/diagnostic vocabulary
-- [ ] T029 [US3] Add the limit-policy and diagnostic constants/types to `harness/schema/continuity.ts`, closed schema definitions to `harness/schema/continuity.schema.json`, and exact values to `harness/schema/source-aware-continuity-contract.v1.json`
-- [ ] T030 [US3] Run focused/schema/type tests to green and regenerate `harness/contract-hashes.json`
-- [ ] T031 [US3] Commit the US3 contract slice with sign-off: `git commit -s -m "feat(contract): freeze limits and diagnostics"`
+- [X] T027 [US3] Add failing exact-set assertions for 12 limit policies, `ContinuityDiagnosticCodeV2`, `SourceSharingDispositionCodeV1`, and the #32/#58 entries plus exact nine-Issue closure in `ContinuityP0ObservationContractV1` in `harness/continuity/source-aware-contract.test.ts`
+- [X] T028 [US3] Run the focused test and verify it fails for missing policy/diagnostic vocabulary
+- [X] T029 [US3] Add the limit-policy and diagnostic constants/types to `harness/schema/continuity.ts`, closed schema definitions to `harness/schema/continuity.schema.json`, and exact values to `harness/schema/source-aware-continuity-contract.v1.json`
+- [X] T030 [US3] Run focused/schema/type tests to green and regenerate `harness/contract-hashes.json`
+- [X] T031 [US3] Commit the US3 contract slice with sign-off: `git commit -s -m "feat(contract): freeze limits and diagnostics"`
 
 **Checkpoint**: Layer C is executable as a contract and still contains no delivery/runtime implementation.
 
