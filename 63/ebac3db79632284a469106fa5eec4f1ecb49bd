@@ -1,0 +1,84 @@
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_c071191deaaf69 70
+  s_9d346c66194a0d::t_36da63bd44895a 12-13,34,36-37
+  s_9d346c66194a0d::t_02acc67640785f 39-40
+  s_9d346c66194a0d::t_3b928e04a3f602 15-17,19
+  s_9d346c66194a0d::t_8d9e30d564af0a 43-45
+specs/005-product-reset/contracts/injection-pack.md
+  s_9d346c66194a0d::t_36da63bd44895a 9-11,17-21,23-25,37,40
+specs/005-product-reset/contracts/capability-manifest.md
+  s_9d346c66194a0d::t_c071191deaaf69 37-38
+specs/005-product-reset/plan.md
+  s_9d346c66194a0d::t_2edfaf9de963a7 116-117
+  s_9d346c66194a0d::t_6c7170b08d1dd6 76-77
+  s_9d346c66194a0d::t_36da63bd44895a 114-115
+specs/005-product-reset/rollback.md
+  s_9d346c66194a0d::t_36da63bd44895a 19-20,151,184
+specs/005-product-reset/data-model.md
+  s_9d346c66194a0d::t_c071191deaaf69 158
+  s_9d346c66194a0d::t_36da63bd44895a 30-32,66-69,96,106,115,204-205,212-214,221-222,225
+  s_9d346c66194a0d::t_7ed30d9ea5e9cd 37-38
+  s_9d346c66194a0d::t_3c0871cfee851c 39,56-65,92-93,97-100,107-109,113-114,125-128,131-134
+specs/005-product-reset/issue-routing.md
+  s_9d346c66194a0d::t_544136e0d2da87 194
+  s_9d346c66194a0d::t_36da63bd44895a 59
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_c625a530f3d2a7 150-151
+  s_9d346c66194a0d::t_0e351fdf8adffc 7,26,41,66,116
+  s_9d346c66194a0d::t_544136e0d2da87 196,204,219-221
+  s_9d346c66194a0d::t_9e1286fc2da69e 139
+  s_9d346c66194a0d::t_02acc67640785f 112-114
+  s_9d346c66194a0d::t_2edfaf9de963a7 42,44-47,49-55,67-69,79-100,108,159-165,167,169
+  s_9d346c66194a0d::t_624327f8a0f9ec 117
+  s_9d346c66194a0d::t_e54f2eadc97b20 8,27
+  s_9d346c66194a0d::t_ad96021adf3cfc 118-134,146-147,152-155,158,166,168,170-175,191
+  s_9d346c66194a0d::t_3b928e04a3f602 143-144,176-183
+  s_9d346c66194a0d::t_adc5e4bf382175 115
+specs/005-product-reset/spec.md
+  s_9d346c66194a0d::t_36da63bd44895a 206-207
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_0e351fdf8adffc 81
+  s_9d346c66194a0d::t_3c0871cfee851c 19-20,75-77,79,83-89,92-107,497
+  s_9d346c66194a0d::t_8d9e30d564af0a 3
+  s_9d346c66194a0d::t_c0c3e9eda8b687 82
+  s_9d346c66194a0d::t_3b928e04a3f602 90-91,445-487,490
+  s_9d346c66194a0d::t_d88bc51efeeb9b 134,140,146,152,158,224,230,236,242,248,403,409
+  s_9d346c66194a0d::t_c071191deaaf69 16-18,21-31,74,78,80,108,165-168,172-173,177-178,182-183,192,255-258,262-263,267-268,272-273,282,314-330,334,340,347-350,354-355,360,364,366
+  s_f4c5d7c9e24841::t_183a0dfee943fb 488-489,491-496
+specs/005-product-reset/checklists/requirements.md
+  s_9d346c66194a0d::t_544136e0d2da87 43
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json
+  s_9d346c66194a0d::t_02acc67640785f 5
+  s_9d346c66194a0d::t_ab113e38b7adc5 64-66,68-72
+  s_9d346c66194a0d::t_ac0a6e052e4a02 36-42,46,48-50,53-55,58-59,77-81,85-91,93-94,96,98-106,112-126
+  s_9d346c66194a0d::t_2af0083ce9045e 1-4,6-23,26-35,43-45,47,51-52,56-57,60-63,67,73-76,82-84,95,107-111,127-189,199-202,205-210,212-224,230-232,251-276,281-284,291-294
+  s_9d346c66194a0d::t_49729bf43e6497 225-229,233-235,250
+  s_9d346c66194a0d::t_0e351fdf8adffc 92
+  s_9d346c66194a0d::t_97e3e7d525d73b 285-290
+  s_9d346c66194a0d::t_3b928e04a3f602 24-25,97,190-198,203-204,211,240-249,277-280
+  s_9d346c66194a0d::t_c625a530f3d2a7 236-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "63ebac3db79632284a469106fa5eec4f1ecb49bd",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_f4c5d7c9e24841": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7270c054-8f70-42fe-9284-1f67bd345989",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
