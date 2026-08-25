@@ -1,5 +1,18 @@
 import { isDeepStrictEqual } from "node:util";
 
+function nearestRankP95(values) {
+  const ordered = [...values].sort((left, right) => left - right);
+  return ordered[Math.ceil(ordered.length * 0.95) - 1];
+}
+
+function thresholdsPass(aggregates, thresholds) {
+  return (aggregates.captureP95Ms === null || aggregates.captureP95Ms < thresholds.captureP95Ms) &&
+    (aggregates.warmInjectionP95Ms === null ||
+      aggregates.warmInjectionP95Ms < thresholds.warmInjectionP95Ms) &&
+    (aggregates.shortColdLexicalInjectionMs === null ||
+      aggregates.shortColdLexicalInjectionMs < thresholds.shortColdLexicalInjectionMs);
+}
+
 export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
   const protocol = fixture.samplingProtocol;
   const metricApplies = (name) => protocol.metrics[name].scenarios.includes(scenario.scenarioId);
@@ -55,10 +68,6 @@ export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalSt
        new Set(measuredEventIds).size !== measuredEventIds.length)) {
     throw new Error("warm latency runs reused a repository, session, or event identity");
   }
-  const nearestRankP95 = (values) => {
-    const ordered = [...values].sort((left, right) => left - right);
-    return ordered[Math.ceil(ordered.length * 0.95) - 1];
-  };
   const expectedAggregates = {
     captureP95Ms: captureApplies
       ? nearestRankP95(measuredRuns.flatMap((run) => run.captureElapsedMs))
@@ -73,12 +82,5 @@ export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalSt
   if (!isDeepStrictEqual(result.latencyEvidence.aggregates, expectedAggregates)) {
     throw new Error("latency aggregates do not match the recorded measured runs");
   }
-  return (
-    (expectedAggregates.captureP95Ms === null ||
-      expectedAggregates.captureP95Ms < fixture.thresholds.captureP95Ms) &&
-    (expectedAggregates.warmInjectionP95Ms === null ||
-      expectedAggregates.warmInjectionP95Ms < fixture.thresholds.warmInjectionP95Ms) &&
-    (expectedAggregates.shortColdLexicalInjectionMs === null ||
-      expectedAggregates.shortColdLexicalInjectionMs < fixture.thresholds.shortColdLexicalInjectionMs)
-  );
+  return thresholdsPass(expectedAggregates, fixture.thresholds);
 }
