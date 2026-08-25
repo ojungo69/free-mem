@@ -58,12 +58,13 @@ else
 fi
 test -z "$unexpected"
 git diff --quiet "$base" -- vendor/codemem harness
+git diff --check "$base" HEAD --
 git diff --check
 git diff --cached --check
 ```
 
 Expected: only root/evidence/specification documentation changed from the pinned M0 base; the final
-command exits 0.
+three commands check base-to-HEAD, worktree, and index whitespace and exit 0.
 
 ## 4. Verify GitHub routing after the documentation commit is pushed
 
@@ -144,7 +145,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T23:24:36+09:00
+## Validation result — 2026-08-26T00:41:16+09:00
 
 | Check | Result |
 |---|---|
@@ -152,12 +153,12 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `corepack pnpm run build` | PASS, exit 0 |
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
-| Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, transport, privacy, output-limit, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete generated suite plus required before-model negative result, incomplete-suite rejection, and targeted conflict, retry, redirect, mixed-sensitivity, artifact-order, manifest, environment, pack-limit, latency, resource, quality, and exceptional-state mutations |
+| Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, transport, privacy, host-identity, output-limit recovery-manifest, span, and profile mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete generated suite plus required before-model negative result, incomplete-suite rejection, and targeted conflict, exact retry output, redirect, mixed-sensitivity, wire-byte/cost, artifact-order, manifest, environment, pack-limit, timeout, latency, resource, quality, and exceptional-state mutations |
 | Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
-| `git diff --check` and `git diff --cached --check` | PASS |
+| Base-to-HEAD, worktree, and index `git diff --check` | PASS |
 | GitHub routing | PASS; 12 open issues, five active-status issues, PR #133 closed/unmerged |
 
 Environment-specific deviations:
@@ -172,8 +173,10 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- The last completed local CodeRabbit review raised zero issues; the staged follow-up reached the
-  three-review limit. The pushed head must receive a fresh GitHub CodeRabbit review before merge.
-- Cubic's final review returned `issues: []`. Ponytail review found no unused definitions,
-  speculative abstraction, dependency, or removable compatibility layer.
+- The final local CodeRabbit review raised only a stale-date suggestion that contradicted the actual
+  2026-08-26 validation time, so it was rejected. The pushed head must still receive a fresh GitHub
+  CodeRabbit review before merge.
+- Cubic's final review returned `issues: []`; Grok's focused retry returned `ok: true` with no
+  findings. Ponytail review found no unused definitions, speculative abstraction, dependency, or
+  removable compatibility layer.
 - No command required a changed path, flag, retry, or skipped gate.

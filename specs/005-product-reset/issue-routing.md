@@ -192,5 +192,5 @@ Recorded after T015-T018:
 - PR #131: open; DCO is the only failed check
 - PR #133: closed and unmerged; branch retained
 - Final GitHub verification timestamp: 2026-08-25T17:32:54+09:00
-- `git diff --check`: pass
+- base-to-HEAD, worktree, and index `git diff --check`: pass
 - Runtime/harness diff: none

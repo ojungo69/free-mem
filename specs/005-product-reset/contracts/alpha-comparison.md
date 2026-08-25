@@ -52,9 +52,9 @@ Each fixture defines:
 - ordered expected injected items binding fact, memory kind, source events, lane, and selection
   reason; expected omissions; forbidden facts; and retrieval queries
 - expected durable event and MemoryItem counts, including persisted summaries
-- declared effective-manifest identity/fingerprint, the validated local-derivation manifest and
-  activation boundary, profile/provider identities, and a versioned destination-policy map resolving
-  every scenario target class
+- declared effective-manifest identity/fingerprint, the validated local-derivation and output-limit
+  recovery manifests with their activation boundaries, profile/provider identities, and a versioned
+  destination-policy map resolving every scenario target class
 - the complete pinned InjectionPack selection envelope, including time, candidate, byte, item,
   token, and per-lane budgets
 - latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
@@ -66,8 +66,8 @@ Each fixture defines:
   and additionally over its structural schema, semantic validator text, and canonical executable
   validator text, plus the result schema/semantic/canonical-validator artifacts; text is normalized
   to LF and the fixture executable's pinned-fingerprint literal is normalized to a placeholder to
-  avoid a self-hash cycle. Changing any included element requires a new pinned fingerprint/version
-  review
+  avoid a self-hash cycle. The result validator's imported latency/retry modules are included too.
+  Changing any included element requires a new pinned fingerprint/version review
 
 The committed Slice 1 fixture is
 [`../fixtures/slice1-bidirectional-en-v1.json`](../fixtures/slice1-bidirectional-en-v1.json), with
@@ -96,20 +96,25 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
   target-model-dispatch milestones; otherwise null
 - a fixed negative fixture that reverses those milestones, sets the marker false, and requires a
   non-eligible `scenario_oracle_mismatch` result
+- host-observed Agent/repository/session identity plus three single-field caller-claim mismatch
+  decisions; caller claims authorize zero persistence or injection
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
 - observed retry signal delivery, consumed/ignored signal identities, provider-attempt/outcome,
-  budget transitions, state, and recovered output disposition when applicable
+  budget transitions, state, and the exact recovered durable output when applicable
 - the payload-free identity-conflict receipt, canonical/incoming states, reason, preservation flag,
   and durable-memory delta when applicable
 - the closed payload-free failure metadata record when an output-limit rejection applies
 - individual zero-tolerance counters for Agent blockage, accepted-event loss, duplicate durable
   memory, secret egress, and incompatible-scope injection
 - positive considered-event/candidate/activation denominators plus remote request, payload,
-  injection, transmitted-byte, and forbidden-sentinel observations for security rejection scenarios
+  injection, exact aggregate credential/payload wire bytes, provider cost units, and
+  forbidden-sentinel observations for security rejection scenarios
 - expected-injection recall, expected-omission match, and forbidden-fact count
 - attempted and delivered rendered bytes/tokens, selection elapsed time,
   input/traced/deadline-unprocessed/admitted/selected candidate counts, and per-item source lane and
   selection reason
+- a nullable pack-compilation failure; `injection_pack_limit_exceeded` requires an oversized
+  attempted render and zero final delivered items, bytes, and tokens
 - all 22 ordinal latency runs, discarded-run markers, event-ordered capture samples, applicable
   warm/cold injection samples, and recomputed nearest-rank P95 aggregates
 - process-tree samples, resource plateau, queue depth, and storage growth
@@ -152,7 +157,8 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
 - Candidates are compared only after their equivalent drain condition completes or times out.
 - `drainTimedOut=true` is always a non-success `failed` or `degraded` disposition. Its record remains
   inspectable but is excluded from successful candidate comparison and cannot pass completion,
-  quality, or resource gates. Safety counters remain independently required to be zero.
+  quality, or resource gates. Periodic process observation must reach the pinned timeout boundary;
+  safety counters and zero-tolerance security evidence remain independently required to be zero.
 - After a completed drain, a positive `deadlineUnprocessed` count is non-eligible with result reason
   `selection_deadline_exceeded`; it is not a quality-threshold failure. `drain_timed_out` remains the
   higher-priority reason when the drain itself times out.
@@ -160,7 +166,7 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
   `selection_deadline_exceeded` result. Rendered-byte or token overflow is
   `injection_pack_limit_exceeded`; attempted size remains inspectable and may exceed the envelope
   during deterministic pruning, while only the final rendered byte/token values gate eligibility.
-  Delivered items, bytes, and tokens remain zero for every late pack.
+  Delivered items, bytes, and tokens remain zero for every late or oversized pack.
 - Run ordinals are exactly 1 through 22, ordinals 1-2 are discarded, and the remaining 20 runs feed
   nearest-rank P95. Capture samples bind the fixed event order and flatten across the 20 measured
   runs within that scenario; warm/cold injection contributes one sample per measured run only for
@@ -191,8 +197,10 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
 - For the deterministic redirect stub only, the initial request wire body is exactly the event's
   UTF-8 `redactedPayload`. Its positive configured-endpoint byte count and zero redirect-location
   request/byte/resend counters are independently recorded.
-- Credential-byte evidence is positive only for an allowed request to the configured verified-HTTPS
-  provider. Local providers and rejected HTTP activations record zero credential bytes.
+- Credential/payload byte evidence is the fixture-pinned aggregate across the configured-endpoint
+  attempt set. Allowed verified-HTTPS attempts must match that exact aggregate; local providers and
+  rejected activations record zero. The fixed `fixture` and `local_zero` cost classes both record
+  exactly zero provider cost units.
 - Remote request/payload counts cover the initial drain attempt set only; independent recovery cases
   keep their own observed provider-attempt evidence. The count is one unless the fixture explicitly
   pins an exhausted attempt count, and zero for rejected or local-provider routes.

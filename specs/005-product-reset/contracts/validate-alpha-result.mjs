@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalizeJson, parseIJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
 import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
+import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(contractDir, "alpha-result-v1.schema.json");
@@ -191,6 +192,15 @@ if (
 ) {
   throw new Error("completed drain exceeded the pinned timeout");
 }
+const lastObservationTime = result.processSamples.at(-1)?.monotonicMs;
+if (
+  result.drain.timedOut &&
+  (typeof drainStartTime !== "number" ||
+    typeof lastObservationTime !== "number" ||
+    lastObservationTime - drainStartTime < scenario.drainCondition.timeoutMs)
+) {
+  throw new Error("timed-out result did not reach the pinned timeout");
+}
 const milestonesPass = result.drain.timedOut
   ? milestoneNames.length < expectedMilestones.length &&
     milestoneNames.every((name, index) => name === expectedMilestones[index]) &&
@@ -208,40 +218,19 @@ const expectedInjectionBeforeModel = scenario.drainCondition.targetInjectionAckn
   typeof modelDispatchedAt === "number"
   ? injectionAcknowledgedAt < modelDispatchedAt
   : null;
+const expectedHostIdentityEvidence = !exceptionalState &&
+  result.scenarioId === fixture.hostIdentityProbe.scenarioId
+  ? fixture.hostIdentityProbe.expectedResult
+  : null;
+if (!isDeepStrictEqual(result.hostIdentityEvidence, expectedHostIdentityEvidence)) {
+  throw new Error("host-derived identity evidence does not match the pinned claim probes");
+}
 const expectedOperationalStatus = scenario.expectedOperationalStatus ?? null;
 const expectedFailureMetadata = scenario.fault?.failureMetadata ?? null;
-const observedRetryCase = (item) => {
-  const providerAttempted = item.expected.attemptDelta > 0;
-  return {
-    caseId: item.caseId,
-    deliveredSignals: item.signals,
-    consumedSignalIds: item.expectedConsumedSignalIds,
-    ignoredSignalIds: item.expectedIgnoredSignalIds,
-    providerAttempted,
-    observedProviderOutcome: providerAttempted ? item.providerOutcome : null,
-    observedTransition: item.expected,
-  };
-};
-const expectedRetryEvidence = scenario.fault?.resumeCases
-  ? {
-      observedInitialSnapshot: scenario.fault.resumeCaseInitialSnapshot,
-      cases: scenario.fault.resumeCases.map(observedRetryCase),
-    }
-  : scenario.fault?.redirectRecovery
-    ? {
-        observedInitialSnapshot: scenario.fault.resumeCaseInitialSnapshot,
-        redirectCase: observedRetryCase({
-          caseId: scenario.fault.redirectRecovery.caseId,
-          signals: [scenario.fault.redirectRecovery.signal],
-          expectedConsumedSignalIds:
-            scenario.fault.redirectRecovery.expectedConsumedSignalIds,
-          expectedIgnoredSignalIds:
-            scenario.fault.redirectRecovery.expectedIgnoredSignalIds,
-          providerOutcome: scenario.fault.redirectRecovery.providerOutcome,
-          expected: scenario.fault.redirectRecovery.expected,
-        }),
-      }
-    : null;
+const expectedRetryEvidenceRecord = exceptionalState ? null : expectedRetryEvidence(scenario);
+if (!isDeepStrictEqual(result.retryEvidence, expectedRetryEvidenceRecord)) {
+  throw new Error("retry evidence does not match the pinned durable outputs");
+}
 const conflictProbe = scenario.fault?.identityConflictProbe;
 const expectedIdentityConflictEvidence = conflictProbe
   ? {
@@ -258,18 +247,7 @@ const expectedIdentityConflictEvidence = conflictProbe
       durableMemoryDelta: conflictProbe.durableMemoryDelta,
     }
   : null;
-const observedCases = result.retryEvidence?.cases ??
-  (result.retryEvidence?.redirectCase ? [result.retryEvidence.redirectCase] : []);
-if (!observedCases.every((item) =>
-  item.providerAttempted === (item.observedTransition.attemptDelta > 0) &&
-  item.ignoredSignalIds.length === item.observedTransition.ignoredSignalCount &&
-  item.consumedSignalIds.length + item.ignoredSignalIds.length === item.deliveredSignals.length &&
-  (item.providerAttempted
-    ? item.observedProviderOutcome !== null
-    : item.observedProviderOutcome === null)
-)) {
-  throw new Error("observed retry evidence is internally inconsistent");
-}
+assertRetryEvidenceConsistent(result);
 
 const matchingPositions = (actual, expected) =>
   expected.reduce(
@@ -370,24 +348,33 @@ const remoteProviderExpected =
 const expectedRemoteProviderRequests = remoteProviderExpected
   ? (scenario.fault?.attemptsUntilExhausted ?? 1)
   : 0;
-const credentialTransmissionExpected =
-  remoteProviderExpected && Object.hasOwn(activeSummaryProvider, "credentialSource");
+const transmissionOracle = scenario.providerTransmissionOracle;
 const providerRoutingPass = remoteProviderExpected
   ? result.securityDenominators.consideredRemoteProviderEventCount > 0 &&
     result.securityDenominators.consideredEligibleEventCount > 0 &&
     result.securityEvidence.remoteProviderRequestCount === expectedRemoteProviderRequests &&
-    result.securityEvidence.remoteProviderPayloadCount === expectedRemoteProviderRequests &&
-    (credentialTransmissionExpected
-      ? result.securityEvidence.credentialBytesSent > 0
-      : result.securityEvidence.credentialBytesSent === 0) &&
-    result.securityEvidence.payloadBytesSent > 0
+    result.securityEvidence.remoteProviderPayloadCount === expectedRemoteProviderRequests
   : result.securityEvidence.remoteProviderRequestCount === 0 &&
-    result.securityEvidence.remoteProviderPayloadCount === 0 &&
-    result.securityEvidence.credentialBytesSent === 0 &&
-    result.securityEvidence.payloadBytesSent === 0;
+    result.securityEvidence.remoteProviderPayloadCount === 0;
+const transmissionPass =
+  result.securityEvidence.credentialBytesSent === transmissionOracle.credentialBytesSent &&
+  result.securityEvidence.payloadBytesSent === transmissionOracle.payloadBytesSent;
+const observedProviderRequests = result.securityEvidence.remoteProviderRequestCount;
+const timeoutTransmissionPass =
+  observedProviderRequests <= expectedRemoteProviderRequests &&
+  result.securityEvidence.remoteProviderPayloadCount === observedProviderRequests &&
+  (expectedRemoteProviderRequests === 0
+    ? transmissionPass
+    : result.securityEvidence.credentialBytesSent * expectedRemoteProviderRequests ===
+        transmissionOracle.credentialBytesSent * observedProviderRequests &&
+      result.securityEvidence.payloadBytesSent * expectedRemoteProviderRequests ===
+        transmissionOracle.payloadBytesSent * observedProviderRequests);
+if (!exceptionalState && !(result.drain.timedOut ? timeoutTransmissionPass : transmissionPass)) {
+  throw new Error("provider transmission bytes do not match the pinned wire aggregate");
+}
 const destinationPolicy =
   fixture.effectiveConfiguration.destinationPolicyMap[scenario.targetDestinationClass];
-const securityEvidencePass =
+const zeroToleranceSecurityEvidencePass =
   result.securityEvidence.persistedSecretCount === 0 &&
   result.securityEvidence.injectedSecretCount === 0 &&
   result.securityEvidence.restrictedPayloadBytesSent === 0 &&
@@ -395,9 +382,17 @@ const securityEvidencePass =
   result.securityEvidence.redirectLocationPayloadBytesSent === 0 &&
   result.securityEvidence.resentPayloadCount === 0 &&
   result.securityEvidence.forbiddenSentinelObservationCount === 0 &&
-  providerRoutingPass &&
   (destinationPolicy.executionLocation === "remote" ||
     result.securityEvidence.remoteInjectionCount === 0) &&
+  oracleEvidenceFields.every((name) =>
+    !Object.hasOwn(oracle, name) ||
+    oracle[name] !== 0 ||
+    result.securityEvidence[name] === 0
+  );
+const securityEvidencePass =
+  zeroToleranceSecurityEvidencePass &&
+  providerRoutingPass &&
+  transmissionPass &&
   (result.securityEvidence.remoteProviderRequestCount === 0 ||
     result.securityDenominators.consideredRemoteProviderEventCount > 0) &&
   oracleEvidenceFields.every(
@@ -466,11 +461,21 @@ const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injecti
 const selectionDeadlineExceeded =
   result.counts.deadlineUnprocessed > 0 ||
   result.selectionElapsedMs > injectionEnvelope.selectionTimeBudgetMs;
-const injectionPackSizePass =
+const finalInjectionPackSizePass =
   result.renderedBytes <= injectionEnvelope.maxRenderedBytes &&
   result.injectedTokens <= injectionEnvelope.maxInjectedTokens;
+const attemptedInjectionPackSizeExceeded =
+  result.attemptedRenderedBytes > injectionEnvelope.maxRenderedBytes ||
+  result.attemptedInjectedTokens > injectionEnvelope.maxInjectedTokens;
+const packCompilationFailed = result.packCompilationFailure === "injection_pack_limit_exceeded";
+if (!finalInjectionPackSizePass) {
+  throw new Error("oversized InjectionPack was recorded as final output");
+}
+if (packCompilationFailed && !attemptedInjectionPackSizeExceeded) {
+  throw new Error("InjectionPack limit failure has no oversized compilation attempt");
+}
 if (
-  selectionDeadlineExceeded &&
+  (selectionDeadlineExceeded || packCompilationFailed) &&
   (result.counts.selectedItems !== 0 ||
     result.injectedItems.length !== 0 ||
     result.renderedBytes !== 0 ||
@@ -484,6 +489,13 @@ const resourcePass =
   result.resource.maxPendingQueueDepth <= limits.maxPendingQueueDepth &&
   result.resource.maxStorageGrowthBytes <= limits.maxStorageGrowthBytes &&
   result.resource.orphanProductProcessCount <= limits.orphanProductProcessCount;
+const expectedProviderCostUnits =
+  activeSummaryProvider.costClass === "fixture" || activeSummaryProvider.costClass === "local_zero"
+    ? 0
+    : null;
+if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits) {
+  throw new Error("provider cost does not match the pinned provider cost class");
+}
 const scenarioOraclePass =
   milestonesPass &&
   countsPass &&
@@ -491,15 +503,17 @@ const scenarioOraclePass =
   isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
   result.injectionBeforeModel === expectedInjectionBeforeModel &&
   (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
+  isDeepStrictEqual(result.hostIdentityEvidence, expectedHostIdentityEvidence) &&
+  result.providerCostUnits === expectedProviderCostUnits &&
   isDeepStrictEqual(result.identityConflictEvidence, expectedIdentityConflictEvidence) &&
   isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) &&
   isDeepStrictEqual(result.operationalStatus, expectedOperationalStatus) &&
-  isDeepStrictEqual(result.retryEvidence, expectedRetryEvidence);
+  isDeepStrictEqual(result.retryEvidence, expectedRetryEvidenceRecord);
 const derivedFailureReason = result.drain.timedOut
   ? "drain_timed_out"
   : selectionDeadlineExceeded
     ? "selection_deadline_exceeded"
-    : !injectionPackSizePass
+    : packCompilationFailed
       ? "injection_pack_limit_exceeded"
       : !latencyPass
         ? "latency_threshold_exceeded"
@@ -517,8 +531,8 @@ const shouldBeEligible = derivedFailureReason === null;
 if (result.drain.timedOut && !milestonesPass) {
   throw new Error("timed-out result milestones are not a valid pre-terminal lifecycle prefix");
 }
-if (result.drain.timedOut && !safetyCountersPass) {
-  throw new Error("timed-out result violates an independent zero-tolerance safety counter");
+if (result.drain.timedOut && !(safetyCountersPass && zeroToleranceSecurityEvidencePass)) {
+  throw new Error("timed-out result violates an independent zero-tolerance safety boundary");
 }
 
 if (!resourcePass && expectedOperationalStatus &&
@@ -543,12 +557,15 @@ if (exceptionalState) {
     result.injectedItems.length === 0 &&
     result.omittedItems.length === 0 &&
     result.injectionBeforeModel === null &&
+    result.hostIdentityEvidence === null &&
     result.packDegradations.length === 0 &&
+    result.packCompilationFailure === null &&
     result.attemptedRenderedBytes === 0 &&
     result.renderedBytes === 0 &&
     result.attemptedInjectedTokens === 0 &&
     result.injectedTokens === 0 &&
     result.selectionElapsedMs === 0 &&
+    result.providerCostUnits === null &&
     result.retryEvidence === null &&
     result.identityConflictEvidence === null &&
     result.failureMetadata === null &&

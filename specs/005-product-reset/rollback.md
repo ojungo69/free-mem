@@ -46,6 +46,8 @@ test -s "$RESET_ROLLBACK_DIR/issues-before.json"
 test -s "$RESET_ROLLBACK_DIR/pr-131-before.json"
 test -s "$RESET_ROLLBACK_DIR/pr-133-before.json"
 test -s "$RESET_ROLLBACK_DIR/relationships-before.json"
+jq -e '.state == "OPEN" and .mergedAt == null' \
+  "$RESET_ROLLBACK_DIR/pr-131-before.json"
 
 jq -e \
   --argjson original "$RESET_ORIGINAL_ISSUES" \
@@ -154,8 +156,9 @@ Remove only the `wontfix` labels M0 added to the superseded set:
 
 ```sh
 set -e
-gh issue edit 1 12 13 24 31 53 54 58 64 65 70 71 73 76 79 84 99 104 132 134 135 \
-  --remove-label wontfix
+for n in 1 12 13 24 31 53 54 58 64 65 70 71 73 76 79 84 99 104 132 134 135; do
+  gh issue edit "$n" --remove-label wontfix
+done
 ```
 
 ## Restore labels on the eight kept issues
@@ -165,10 +168,14 @@ set -e
 gh issue edit 81 --remove-label 'target: technical alpha' --add-label 'target: core 1.0'
 gh issue edit 123 --remove-label 'target: technical alpha,status: deferred'
 gh issue edit 124 --remove-label 'target: technical alpha'
-gh issue edit 126 129 130 \
-  --remove-label 'target: technical alpha,status: ready for implementation' \
-  --add-label 'target: core 1.0'
-gh issue edit 127 128 --remove-label 'target: technical alpha,status: deferred'
+for n in 126 129 130; do
+  gh issue edit "$n" \
+    --remove-label 'target: technical alpha,status: ready for implementation' \
+    --add-label 'target: core 1.0'
+done
+for n in 127 128; do
+  gh issue edit "$n" --remove-label 'target: technical alpha,status: deferred'
+done
 ```
 
 The new labels may remain unused; deleting repository labels is not required for functional
@@ -178,8 +185,12 @@ rollback and should be a separate owner decision.
 
 ```sh
 set -e
-gh issue edit 126 129 130 --remove-parent
-gh issue edit 137 138 139 --remove-parent
+for n in 126 129 130; do
+  gh issue edit "$n" --remove-parent
+done
+for n in 137 138 139; do
+  gh issue edit "$n" --remove-parent
+done
 gh issue edit 138 --remove-blocked-by 137
 gh issue edit 139 --remove-blocked-by 137 --remove-blocked-by 138
 

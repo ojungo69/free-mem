@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:b7244618a09ec5f748f51e0b4a39ff63294ed87361772b89aaaad04cda58e339",
+  "contractFingerprint": "sha256:64555254961621baeac7ba4d8e25d068d5f6a445edee3fd13e444d75ddefe5cf",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -114,6 +114,92 @@
       "egressPolicy": "on_device",
       "capabilities": ["summary_v1"],
       "validationState": "valid"
+    }
+  },
+  "outputLimitRecoveryManifest": {
+    "baseConfigurationFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
+    "configuration": {
+      "manifestVersion": 1,
+      "manifestId": "slice1-output-limit-recovery-manifest-v1",
+      "configurationFingerprint": "sha256:f3c1235d170c1d9ce1c6f9042492194cab3a50d160267837644441fcef108771",
+      "destinationPolicyMap": {
+        "claude-code-local": {
+          "targetAgent": "claude-code",
+          "executionLocation": "local",
+          "egressPolicy": "same_repository_on_device",
+          "eligibleSensitivities": ["eligible", "private", "local_only"]
+        },
+        "codex-local": {
+          "targetAgent": "codex",
+          "executionLocation": "local",
+          "egressPolicy": "same_repository_on_device",
+          "eligibleSensitivities": ["eligible", "private", "local_only"]
+        },
+        "claude-code-remote": {
+          "targetAgent": "claude-code",
+          "executionLocation": "remote",
+          "egressPolicy": "remote_off_host",
+          "eligibleSensitivities": ["eligible"]
+        },
+        "codex-remote": {
+          "targetAgent": "codex",
+          "executionLocation": "remote",
+          "egressPolicy": "remote_off_host",
+          "eligibleSensitivities": ["eligible"]
+        }
+      },
+      "resourceProfile": {
+        "profileId": "slice1-short-run",
+        "version": 2,
+        "captureConcurrencyLimit": 2,
+        "processingConcurrencyLimit": 2,
+        "processingQueueCapacity": 25,
+        "processingRetryLimit": 3,
+        "maxMemoryItemsPerDerivation": 17,
+        "workerWarmLifetimeMs": 30000,
+        "resourceWarningThresholds": {
+          "maxSteadyProductProcessCount": 3,
+          "maxShortRunRssGrowthMiB": 32,
+          "maxPendingQueueDepth": 20,
+          "maxStorageGrowthBytes": 1048576
+        },
+        "injectionEnvelope": {
+          "selectionTimeBudgetMs": 750,
+          "admittedCandidateLimit": 32,
+          "maxRenderedBytes": 16384,
+          "maxSelectedItems": 8,
+          "maxInjectedTokens": 800,
+          "laneBudgets": {
+            "exact_session": {"minItems": 0, "maxItems": 4},
+            "lexical": {"minItems": 0, "maxItems": 8},
+            "semantic": {"minItems": 0, "maxItems": 0},
+            "recency": {"minItems": 0, "maxItems": 2}
+          }
+        }
+      },
+      "summaryProvider": {
+        "state": "enabled",
+        "providerId": "deterministic-summary-v1",
+        "providerKind": "explicit_remote_endpoint",
+        "modelId": "deterministic-summary-model-v1",
+        "modelRevision": "1",
+        "configurationFingerprint": "summary-config-v1",
+        "executionLocation": "remote",
+        "endpointScheme": "https",
+        "endpointHost": "summary.stub.invalid",
+        "credentialSource": "fixture-credential-ref",
+        "costClass": "fixture",
+        "egressPolicy": "explicit_remote",
+        "capabilities": ["summary_v1"],
+        "validationState": "valid",
+        "tlsCertificateValidation": "required",
+        "redirectPolicy": "reject"
+      },
+      "embeddingProvider": {
+        "state": "disabled",
+        "reason": "slice1_semantic_not_owned",
+        "packDegradationReason": "semantic_disabled"
+      }
     }
   },
   "kindContract": {
@@ -315,6 +401,58 @@
     "secretEgressCount": 0,
     "incompatibleScopeInjectionCount": 0
   },
+  "hostIdentityProbe": {
+    "scenarioId": "claude-to-codex",
+    "hostObservedIdentity": {
+      "agent": "claude-code",
+      "repositoryScope": "repo-primary",
+      "sessionId": "host-session-1"
+    },
+    "callerClaimProbes": [
+      {
+        "probeId": "caller-agent-mismatch",
+        "mismatchField": "agent",
+        "callerClaimedIdentity": {
+          "agent": "codex",
+          "repositoryScope": "repo-primary",
+          "sessionId": "host-session-1"
+        }
+      },
+      {
+        "probeId": "caller-repository-mismatch",
+        "mismatchField": "repositoryScope",
+        "callerClaimedIdentity": {
+          "agent": "claude-code",
+          "repositoryScope": "repo-other",
+          "sessionId": "host-session-1"
+        }
+      },
+      {
+        "probeId": "caller-session-mismatch",
+        "mismatchField": "sessionId",
+        "callerClaimedIdentity": {
+          "agent": "claude-code",
+          "repositoryScope": "repo-primary",
+          "sessionId": "caller-forged-session"
+        }
+      }
+    ],
+    "expectedResult": {
+      "consideredClaimCount": 3,
+      "claimAuthorizedPersistenceCount": 0,
+      "claimAuthorizedInjectionCount": 0,
+      "effectiveIdentity": {
+        "agent": "claude-code",
+        "repositoryScope": "repo-primary",
+        "sessionId": "host-session-1"
+      },
+      "decisions": [
+        {"probeId": "caller-agent-mismatch", "authorityAccepted": false, "reason": "caller_claim_discarded"},
+        {"probeId": "caller-repository-mismatch", "authorityAccepted": false, "reason": "caller_claim_discarded"},
+        {"probeId": "caller-session-mismatch", "authorityAccepted": false, "reason": "caller_claim_discarded"}
+      ]
+    }
+  },
   "beforeModelNegativeFixture": {
     "caseId": "late-injection-after-model-dispatch",
     "baseScenarioId": "claude-to-codex",
@@ -339,6 +477,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "cold",
       "retrievalQuery": "settings validation decision and next regression",
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 256},
       "events": [
         {
           "eventId": "claude-to-codex-event-1",
@@ -487,6 +626,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "warm",
       "retrievalQuery": "cache invalidation constraint failed approach and next action",
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
       "events": [
         {
           "eventId": "codex-to-claude-event-1",
@@ -635,6 +775,7 @@
       "lifecycleProfileId": "spool_recovery",
       "resourceSampleMode": "cold",
       "retrievalQuery": "queued event after daemon restart",
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
       "fault": {
         "kind": "daemon_unavailable_after_event_accept",
         "recovery": "restart_and_replay_same_batch_twice",
@@ -760,6 +901,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "provider failure pending summary state",
+      "providerTransmissionOracle": {"credentialBytesSent": 96, "payloadBytesSent": 384},
       "fault": {
         "kind": "summary_provider_malformed_response",
         "attemptsUntilExhausted": 3,
@@ -978,6 +1120,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "provider redirect rejection state",
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 58},
       "fault": {
         "kind": "summary_provider_redirect_response",
         "resumeCaseInitialSnapshot": {
@@ -1094,6 +1237,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: configuration rejection",
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
       "providerActivationProposal": {
         "providerChoiceId": "credentialless-http-summary-v1",
         "executionLocation": "remote",
@@ -1156,6 +1300,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: credentialed configuration rejection",
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
       "providerActivationProposal": {
         "providerChoiceId": "credentialed-http-summary-v1",
         "executionLocation": "remote",
@@ -1218,6 +1363,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: TLS configuration rejection",
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
       "providerActivationProposal": {
         "providerChoiceId": "invalid-chain-https-summary-v1",
         "executionLocation": "remote",
@@ -1280,6 +1426,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: TLS configuration rejection",
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
       "providerActivationProposal": {
         "providerChoiceId": "hostname-mismatch-https-summary-v1",
         "executionLocation": "remote",
@@ -1342,6 +1489,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "output-limit failure state",
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
       "fault": {
         "kind": "summary_provider_output_limit_exceeded",
         "observedResultCount": 17,
@@ -1361,7 +1509,7 @@
           "budget": 0,
           "lastConsumedSequence": 0
         },
-      "recoveredMaxMemoryItemsPerDerivation": 17,
+      "recoveryManifestId": "slice1-output-limit-recovery-manifest-v1",
       "resumeCases": [
           {
             "caseId": "validated-larger-limit-activation",
@@ -1370,9 +1518,10 @@
                 "signalId": "output-limit-config-activation-1",
                 "sequence": 1,
                 "kind": "validated_configuration_activation",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-limit-17-v2"
+              "targetRole": "summary",
+              "providerChoiceId": "deterministic-summary-v1",
+              "configurationFingerprint": "summary-config-limit-17-v2",
+              "effectiveManifestFingerprint": "sha256:f3c1235d170c1d9ce1c6f9042492194cab3a50d160267837644441fcef108771"
               }
             ],
             "expectedConsumedSignalIds": ["output-limit-config-activation-1"],
@@ -1756,6 +1905,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "warm",
       "retrievalQuery": "allowed deployment decision",
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
       "fault": {
         "kind": "mixed_sensitivity_allowed_projection"
       },
@@ -1884,6 +2034,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "private provider rejection state",
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
       "fault": {
         "kind": "private_remote_provider_ineligible"
       },
@@ -1959,6 +2110,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "local-only provider rejection state",
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
       "fault": {
         "kind": "local_only_remote_provider_ineligible"
       },
@@ -2043,6 +2195,7 @@
       "lifecycleProfileId": "scope_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "other repository sentinel",
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
       "events": [
         {
           "eventId": "cross-scope-event-1",
@@ -2113,6 +2266,7 @@
       "lifecycleProfileId": "derived_sensitivity_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "local derived sentinel",
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
       "events": [
         {
           "eventId": "local-derived-event-1",

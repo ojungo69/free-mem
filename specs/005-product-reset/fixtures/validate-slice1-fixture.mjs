@@ -15,6 +15,7 @@ const validatorPath = fileURLToPath(import.meta.url);
 const resultSchemaPath = join(fixtureDir, "../contracts/alpha-result-v1.schema.json");
 const resultSemanticPath = join(fixtureDir, "../contracts/alpha-result-v1.semantic.jq");
 const resultLatencyValidatorPath = join(fixtureDir, "../contracts/alpha-result-latency.mjs");
+const resultRetryValidatorPath = join(fixtureDir, "../contracts/alpha-result-retry.mjs");
 const resultValidatorPath = join(fixtureDir, "../contracts/validate-alpha-result.mjs");
 const normalizeText = (value) => value.replace(/\r\n?/g, "\n");
 const args = process.argv.slice(2);
@@ -42,7 +43,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:b7244618a09ec5f748f51e0b4a39ff63294ed87361772b89aaaad04cda58e339";
+  "fixture-contract-fingerprint=sha256:64555254961621baeac7ba4d8e25d068d5f6a445edee3fd13e444d75ddefe5cf";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -60,6 +61,7 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     resultSchema,
     resultSemanticValidator: normalizeText(readFileSync(resultSemanticPath, "utf8")),
     resultLatencyValidator: normalizeText(readFileSync(resultLatencyValidatorPath, "utf8")),
+    resultRetryValidator: normalizeText(readFileSync(resultRetryValidatorPath, "utf8")),
     resultCanonicalValidator: normalizeText(readFileSync(resultValidatorPath, "utf8")),
   }))
   .digest("hex")}`;
@@ -96,6 +98,33 @@ if (
     actualLocalConfigurationFingerprint
 ) {
   throw new Error("local derivation manifest is not bound to the active base manifest");
+}
+const recoveryManifest = fixture.outputLimitRecoveryManifest;
+const {
+  configurationFingerprint: _recoveryConfigurationFingerprint,
+  ...recoveryConfiguration
+} = recoveryManifest.configuration;
+const actualRecoveryConfigurationFingerprint = `sha256:${createHash("sha256")
+  .update("free-mem:effective-manifest:v1\0")
+  .update(canonicalizeJson(recoveryConfiguration))
+  .digest("hex")}`;
+const outputLimitScenario = fixture.scenarios.find(
+  (scenario) => scenario.fault?.kind === "summary_provider_output_limit_exceeded",
+);
+const recoverySignal = outputLimitScenario?.fault?.resumeCases.find(
+  (item) => item.caseId === "validated-larger-limit-activation",
+)?.signals[0];
+if (
+  recoveryManifest.baseConfigurationFingerprint !==
+    fixture.effectiveConfiguration.configurationFingerprint ||
+  recoveryManifest.configuration.configurationFingerprint !==
+    actualRecoveryConfigurationFingerprint ||
+  recoveryManifest.configuration.manifestId !== outputLimitScenario?.fault?.recoveryManifestId ||
+  recoveryManifest.configuration.resourceProfile.maxMemoryItemsPerDerivation <
+    outputLimitScenario.fault.observedResultCount ||
+  recoverySignal?.effectiveManifestFingerprint !== actualRecoveryConfigurationFingerprint
+) {
+  throw new Error("output-limit recovery manifest is not fully bound to its activation signal");
 }
 
 const spool = fixture.scenarios.find(

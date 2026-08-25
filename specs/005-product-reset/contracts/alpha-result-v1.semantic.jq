@@ -43,6 +43,14 @@ def counts_ok:
     end)
   and .attemptedRenderedBytes >= .renderedBytes
   and .attemptedInjectedTokens >= .injectedTokens
+  and (if .packCompilationFailure != null
+    then .counts.selectedItems == 0
+      and (.injectedItems | length) == 0
+      and .renderedBytes == 0
+      and .injectedTokens == 0
+      and (.attemptedRenderedBytes > 0 or .attemptedInjectedTokens > 0)
+    else true
+    end)
   and ((.counts.selectedItems == 0 and .renderedBytes == 0 and .injectedTokens == 0)
     or (.counts.selectedItems > 0 and .renderedBytes > 0 and .injectedTokens > 0))
   and .counts.committed <= .counts.captured
@@ -58,9 +66,18 @@ def process_samples_ok:
   ([.processSamples[].monotonicMs] as $times
     | all(range(1; $times | length); $times[.] >= $times[. - 1]));
 
+def host_identity_ok:
+  .hostIdentityEvidence == null
+  or (.hostIdentityEvidence.consideredClaimCount ==
+      (.hostIdentityEvidence.decisions | length)
+    and .hostIdentityEvidence.claimAuthorizedPersistenceCount == 0
+    and .hostIdentityEvidence.claimAuthorizedInjectionCount == 0
+    and all(.hostIdentityEvidence.decisions[]; .authorityAccepted | not));
+
 . as $result
 | ensure(drain_ok; "drain/disposition mismatch")
 | ensure(milestones_ok; "milestone order mismatch")
 | ensure(counts_ok; "count relationship mismatch")
 | ensure(process_samples_ok; "process sample order mismatch")
+| ensure(host_identity_ok; "host identity evidence mismatch")
 | true

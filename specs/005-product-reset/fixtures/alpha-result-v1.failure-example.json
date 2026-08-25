@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:b7244618a09ec5f748f51e0b4a39ff63294ed87361772b89aaaad04cda58e339",
+  "fixtureFingerprint": "sha256:64555254961621baeac7ba4d8e25d068d5f6a445edee3fd13e444d75ddefe5cf",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-retry-exhausted",
   "resourceSampleMode": "warm",
@@ -47,6 +47,7 @@
     "terminalMilestone": "provider_processing_rejected_or_exhausted"
   },
   "injectionBeforeModel": null,
+  "hostIdentityEvidence": null,
   "disposition": {
     "state": "failed",
     "reason": "selection_deadline_exceeded",
@@ -142,7 +143,7 @@
     "remoteInjectionCount": 0,
     "persistedSecretCount": 0,
     "injectedSecretCount": 0,
-    "credentialBytesSent": 32,
+    "credentialBytesSent": 96,
     "payloadBytesSent": 384,
     "restrictedPayloadBytesSent": 0,
     "redirectLocationRequestCount": 0,
@@ -174,6 +175,27 @@
         "ignoredSignalIds": [],
         "providerAttempted": true,
         "observedProviderOutcome": "valid",
+        "observedDurableOutput": {
+          "summary": {
+            "title": "Provider failure summary",
+            "body": "The event must remain durable when summary generation fails.",
+            "sourceEventIds": ["summary-provider-failure-event-1"],
+            "sourceSpans": [
+              {"eventId": "summary-provider-failure-event-1", "startByte": 0, "endByte": 59}
+            ]
+          },
+          "memoryItems": [
+            {
+              "kind": "discovery",
+              "title": "Malformed provider output",
+              "body": "The provider returned malformed output.",
+              "sourceEventIds": ["summary-provider-failure-event-2"],
+              "sourceSpans": [
+                {"eventId": "summary-provider-failure-event-2", "startByte": 0, "endByte": 39}
+              ]
+            }
+          ]
+        },
         "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 3,
@@ -201,6 +223,27 @@
         "ignoredSignalIds": [],
         "providerAttempted": true,
         "observedProviderOutcome": "valid",
+        "observedDurableOutput": {
+          "summary": {
+            "title": "Provider failure summary",
+            "body": "The event must remain durable when summary generation fails.",
+            "sourceEventIds": ["summary-provider-failure-event-1"],
+            "sourceSpans": [
+              {"eventId": "summary-provider-failure-event-1", "startByte": 0, "endByte": 59}
+            ]
+          },
+          "memoryItems": [
+            {
+              "kind": "discovery",
+              "title": "Malformed provider output",
+              "body": "The provider returned malformed output.",
+              "sourceEventIds": ["summary-provider-failure-event-2"],
+              "sourceSpans": [
+                {"eventId": "summary-provider-failure-event-2", "startByte": 0, "endByte": 39}
+              ]
+            }
+          ]
+        },
         "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 1,
@@ -228,6 +271,27 @@
         "ignoredSignalIds": [],
         "providerAttempted": true,
         "observedProviderOutcome": "valid",
+        "observedDurableOutput": {
+          "summary": {
+            "title": "Provider failure summary",
+            "body": "The event must remain durable when summary generation fails.",
+            "sourceEventIds": ["summary-provider-failure-event-1"],
+            "sourceSpans": [
+              {"eventId": "summary-provider-failure-event-1", "startByte": 0, "endByte": 59}
+            ]
+          },
+          "memoryItems": [
+            {
+              "kind": "discovery",
+              "title": "Malformed provider output",
+              "body": "The provider returned malformed output.",
+              "sourceEventIds": ["summary-provider-failure-event-2"],
+              "sourceSpans": [
+                {"eventId": "summary-provider-failure-event-2", "startByte": 0, "endByte": 39}
+              ]
+            }
+          ]
+        },
         "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 1,
@@ -271,6 +335,7 @@
         "ignoredSignalIds": ["provider-healthy-2", "doctor-retry-stale-1"],
         "providerAttempted": true,
         "observedProviderOutcome": "malformed",
+        "observedDurableOutput": null,
         "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 1,
@@ -329,6 +394,7 @@
   "injectedItems": [],
   "omittedItems": [],
   "packDegradations": [],
+  "packCompilationFailure": null,
   "quality": {
     "expectedInjectedItemCount": 0,
     "matchedInjectedItemCount": 0,

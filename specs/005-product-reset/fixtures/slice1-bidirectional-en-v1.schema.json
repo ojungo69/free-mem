@@ -5,7 +5,7 @@
   "$comment": "Structural layer only. Run validate-slice1-fixture.mjs for canonical contract conformance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "effectiveConfiguration", "localDerivationManifest", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "beforeModelNegativeFixture", "scenarios"],
+  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "effectiveConfiguration", "localDerivationManifest", "outputLimitRecoveryManifest", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "hostIdentityProbe", "beforeModelNegativeFixture", "scenarios"],
   "properties": {
     "fixtureVersion": { "const": 1 },
     "schema": { "const": "slice1-bidirectional-en-v1.schema.json" },
@@ -17,11 +17,13 @@
     "pins": { "$ref": "#/$defs/SharedPins" },
     "effectiveConfiguration": { "$ref": "#/$defs/EffectiveConfiguration" },
     "localDerivationManifest": { "$ref": "#/$defs/LocalDerivationManifest" },
+    "outputLimitRecoveryManifest": { "$ref": "#/$defs/OutputLimitRecoveryManifest" },
     "kindContract": { "$ref": "#/$defs/KindContract" },
     "environment": { "$ref": "#/$defs/SharedEnvironment" },
     "lifecycleProfiles": { "$ref": "#/$defs/LifecycleProfiles" },
     "samplingProtocol": { "$ref": "#/$defs/SamplingProtocol" },
     "thresholds": { "$ref": "#/$defs/Thresholds" },
+    "hostIdentityProbe": { "$ref": "#/$defs/HostIdentityProbe" },
     "beforeModelNegativeFixture": { "$ref": "#/$defs/BeforeModelNegativeFixture" },
     "scenarios": {
       "type": "array",
@@ -34,6 +36,86 @@
     "SharedNonNegativeInteger": { "type": "integer", "minimum": 0 },
     "SharedPositiveInteger": { "type": "integer", "minimum": 1 },
     "Agent": { "enum": ["claude-code", "codex"] },
+    "HostIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "repositoryScope", "sessionId"],
+      "properties": {
+        "agent": { "$ref": "#/$defs/Agent" },
+        "repositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "sessionId": { "$ref": "#/$defs/SharedNonEmptyString" }
+      }
+    },
+    "HostIdentityDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["probeId", "authorityAccepted", "reason"],
+      "properties": {
+        "probeId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "authorityAccepted": { "const": false },
+        "reason": { "const": "caller_claim_discarded" }
+      }
+    },
+    "HostIdentityExpectedResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consideredClaimCount", "claimAuthorizedPersistenceCount", "claimAuthorizedInjectionCount", "effectiveIdentity", "decisions"],
+      "properties": {
+        "consideredClaimCount": { "const": 3 },
+        "claimAuthorizedPersistenceCount": { "const": 0 },
+        "claimAuthorizedInjectionCount": { "const": 0 },
+        "effectiveIdentity": { "$ref": "#/$defs/HostIdentity" },
+        "decisions": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/HostIdentityDecision" }
+        }
+      }
+    },
+    "HostIdentityProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "hostObservedIdentity", "callerClaimProbes", "expectedResult"],
+      "properties": {
+        "scenarioId": { "const": "claude-to-codex" },
+        "hostObservedIdentity": { "$ref": "#/$defs/HostIdentity" },
+        "callerClaimProbes": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["probeId", "mismatchField", "callerClaimedIdentity"],
+            "properties": {
+              "probeId": { "$ref": "#/$defs/SharedNonEmptyString" },
+              "mismatchField": { "enum": ["agent", "repositoryScope", "sessionId"] },
+              "callerClaimedIdentity": { "$ref": "#/$defs/HostIdentity" }
+            }
+          }
+        },
+        "expectedResult": { "$ref": "#/$defs/HostIdentityExpectedResult" }
+      }
+    },
+    "OutputLimitRecoveryManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseConfigurationFingerprint", "configuration"],
+      "properties": {
+        "baseConfigurationFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "configuration": { "$ref": "#/$defs/EffectiveConfiguration" }
+      }
+    },
+    "ProviderTransmissionOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["credentialBytesSent", "payloadBytesSent"],
+      "properties": {
+        "credentialBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
     "BeforeModelNegativeFixture": {
       "const": {
         "caseId": "late-injection-after-model-dispatch",
@@ -67,7 +149,7 @@
       "required": ["manifestVersion", "manifestId", "configurationFingerprint", "destinationPolicyMap", "resourceProfile", "summaryProvider", "embeddingProvider"],
       "properties": {
         "manifestVersion": { "const": 1 },
-        "manifestId": { "const": "slice1-effective-manifest-v1" },
+        "manifestId": { "enum": ["slice1-effective-manifest-v1", "slice1-output-limit-recovery-manifest-v1"] },
         "configurationFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "destinationPolicyMap": { "$ref": "#/$defs/DestinationPolicyMap" },
         "resourceProfile": {
@@ -364,7 +446,7 @@
     "Scenario": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarioId", "sourceAgent", "targetDestinationClass", "sourceRepositoryScope", "targetRepositoryScope", "lifecycleProfileId", "resourceSampleMode", "retrievalQuery", "events", "summaryProviderStub", "drainCondition", "expectedInjectedItems", "expectedOmissions", "forbiddenFacts", "expectedCounters"],
+      "required": ["scenarioId", "sourceAgent", "targetDestinationClass", "sourceRepositoryScope", "targetRepositoryScope", "lifecycleProfileId", "resourceSampleMode", "retrievalQuery", "providerTransmissionOracle", "events", "summaryProviderStub", "drainCondition", "expectedInjectedItems", "expectedOmissions", "forbiddenFacts", "expectedCounters"],
       "properties": {
         "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sourceAgent": { "$ref": "#/$defs/Agent" },
@@ -375,6 +457,7 @@
         "resourceSampleMode": { "enum": ["cold", "warm"] },
         "derivationManifestId": { "const": "slice1-local-summary-manifest-v1" },
         "retrievalQuery": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "providerTransmissionOracle": { "$ref": "#/$defs/ProviderTransmissionOracle" },
         "fault": { "$ref": "#/$defs/Fault" },
         "providerActivationProposal": { "$ref": "#/$defs/ProviderActivationProposal" },
         "events": { "type": "array", "items": { "$ref": "#/$defs/Event" } },
@@ -478,7 +561,7 @@
         "reason": { "enum": ["duplicate_revision", "omitted_budget", "omitted_ineligible", "candidate_limit", "lane_minimum_not_funded"] }
       }
     },
-    "MemoryDraft": {
+    "SharedMemoryDraft": {
       "type": "object",
       "additionalProperties": false,
       "required": ["kind", "title", "body", "sourceEventIds", "sourceSpans"],
@@ -490,7 +573,7 @@
         "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedSourceSpan" } }
       }
     },
-    "SummaryDraft": {
+    "SharedSummaryDraft": {
       "type": "object",
       "additionalProperties": false,
       "required": ["title", "body", "sourceEventIds", "sourceSpans"],
@@ -500,6 +583,19 @@
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedSourceSpan" } }
       }
+    },
+    "SharedDurableOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memoryItems"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/SharedSummaryDraft" },
+        "memoryItems": { "type": "array", "items": { "$ref": "#/$defs/SharedMemoryDraft" } }
+      },
+      "anyOf": [
+        { "required": ["summary"] },
+        { "properties": { "memoryItems": { "type": "array", "minItems": 1 } } }
+      ]
     },
     "SharedSourceSpan": {
       "type": "object",
@@ -516,7 +612,7 @@
       "additionalProperties": false,
       "required": ["memoryItems"],
       "properties": {
-        "summary": { "$ref": "#/$defs/SummaryDraft" },
+        "summary": { "$ref": "#/$defs/SharedSummaryDraft" },
         "malformedResponse": { "$ref": "#/$defs/SharedNonEmptyString" },
         "policyRejectedReason": { "$ref": "#/$defs/SharedNonEmptyString" },
         "redirectResponse": {
@@ -528,7 +624,7 @@
             "location": { "$ref": "#/$defs/SharedNonEmptyString" }
           }
         },
-        "memoryItems": { "type": "array", "items": { "$ref": "#/$defs/MemoryDraft" } }
+        "memoryItems": { "type": "array", "items": { "$ref": "#/$defs/SharedMemoryDraft" } }
       },
       "oneOf": [
         { "required": ["summary"] },
@@ -541,7 +637,7 @@
             "malformedResponse": false,
             "redirectResponse": false,
             "policyRejectedReason": false,
-            "memoryItems": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/MemoryDraft" } }
+            "memoryItems": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedMemoryDraft" } }
           }
         }
       ]
@@ -579,7 +675,7 @@
         "resumeCaseInitialSnapshot": {
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
-        "recoveredOutput": { "$ref": "#/$defs/SummaryProviderStub" },
+        "recoveredOutput": { "$ref": "#/$defs/SharedDurableOutput" },
         "resumeCases": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/ResumeCase" } }
       }
     },
@@ -592,7 +688,7 @@
         "resumeCaseInitialSnapshot": {
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
-        "recoveredOutput": { "$ref": "#/$defs/SummaryProviderStub" },
+        "recoveredOutput": { "$ref": "#/$defs/SharedDurableOutput" },
         "redirectRecovery": { "$ref": "#/$defs/RedirectRecovery" }
       }
     },
@@ -608,7 +704,7 @@
     "SummaryProviderOutputLimitFault": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "observedResultCount", "configuredLimit", "failureMetadata", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveredMaxMemoryItemsPerDerivation", "resumeCases"],
+      "required": ["kind", "observedResultCount", "configuredLimit", "failureMetadata", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveryManifestId", "resumeCases"],
       "properties": {
         "kind": { "const": "summary_provider_output_limit_exceeded" },
         "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
@@ -618,7 +714,7 @@
         "resumeCaseInitialSnapshot": {
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
-        "recoveredMaxMemoryItemsPerDerivation": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "recoveryManifestId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "resumeCases": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/ResumeCase" } }
       }
     },
@@ -673,7 +769,8 @@
         "kind": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] },
         "targetRole": { "const": "summary" },
         "providerChoiceId": { "const": "deterministic-summary-v1" },
-        "configurationFingerprint": { "$ref": "#/$defs/SharedNonEmptyString" }
+        "configurationFingerprint": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "effectiveManifestFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       }
     },
     "SharedResumeExpected": {

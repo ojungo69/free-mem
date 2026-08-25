@@ -98,6 +98,67 @@ def fixture_graph_ok($root):
       . as $profileId
       | any($root.scenarios[]; .lifecycleProfileId == $profileId)));
 
+def host_identity_ok($root):
+  $root.hostIdentityProbe as $probe
+  | $probe.hostObservedIdentity as $host
+  | ([ $root.scenarios[] | select(.scenarioId == $probe.scenarioId) ]
+      | if length == 1 then .[0] else null end) as $scenario
+  | $scenario != null
+    and $scenario.sourceAgent == $host.agent
+    and $scenario.sourceRepositoryScope == $host.repositoryScope
+    and [ $probe.callerClaimProbes[].mismatchField ] == [
+      "agent", "repositoryScope", "sessionId"
+    ]
+    and all($probe.callerClaimProbes[];
+      . as $claim
+      | (["agent", "repositoryScope", "sessionId"]
+        | map(select($claim.callerClaimedIdentity[.] != $host[.]))) ==
+          [$claim.mismatchField])
+    and $probe.expectedResult.consideredClaimCount ==
+      ($probe.callerClaimProbes | length)
+    and $probe.expectedResult.effectiveIdentity == $host
+    and [ $probe.expectedResult.decisions[].probeId ] ==
+      [ $probe.callerClaimProbes[].probeId ]
+    and all($probe.expectedResult.decisions[];
+      (.authorityAccepted | not) and .reason == "caller_claim_discarded");
+
+def provider_transmission_ok($root):
+  all($root.scenarios[];
+      . as $scenario
+      | $scenario.providerTransmissionOracle as $wire
+      | (($scenario.derivationManifestId? // "") == ""
+          and (($scenario.summaryProviderStub | has("summary"))
+            or ($scenario.summaryProviderStub | has("malformedResponse"))
+            or ($scenario.summaryProviderStub | has("redirectResponse"))
+            or ($scenario.summaryProviderStub.memoryItems | length) > 0)
+          and ($scenario.summaryProviderStub | has("policyRejectedReason") | not)) as $remoteAttempt
+      | if $remoteAttempt
+        then $wire.credentialBytesSent > 0 and $wire.payloadBytesSent > 0
+        else $wire.credentialBytesSent == 0 and $wire.payloadBytesSent == 0
+        end);
+
+def output_limit_recovery_manifest_ok($root):
+  $root.outputLimitRecoveryManifest as $manifest
+  | $manifest.configuration as $recovery
+  | $root.effectiveConfiguration as $base
+  | fault_scenario($root; "summary_provider_output_limit_exceeded") as $scenario
+  | ($scenario.fault.resumeCases[]
+      | select(.caseId == "validated-larger-limit-activation")
+      | .signals[0]) as $signal
+  | $manifest.baseConfigurationFingerprint == $base.configurationFingerprint
+    and $recovery.manifestId == $scenario.fault.recoveryManifestId
+    and $recovery.configurationFingerprint == $signal.effectiveManifestFingerprint
+    and $recovery.configurationFingerprint != $base.configurationFingerprint
+    and $recovery.resourceProfile.version == ($base.resourceProfile.version + 1)
+    and $recovery.resourceProfile.maxMemoryItemsPerDerivation ==
+      $scenario.fault.observedResultCount
+    and ($recovery
+      | del(.manifestId, .configurationFingerprint, .resourceProfile.version,
+          .resourceProfile.maxMemoryItemsPerDerivation)) ==
+      ($base
+      | del(.manifestId, .configurationFingerprint, .resourceProfile.version,
+          .resourceProfile.maxMemoryItemsPerDerivation));
+
 def before_model_evidence_ok($root):
   all($root.scenarios[] | select(.drainCondition.targetInjectionAcknowledged);
     . as $scenario
@@ -518,8 +579,8 @@ def output_limit_ok($root):
     and $scenario.drainCondition.pendingSummaryJobCount == 1
     and ($scenario.expectedInjectedItems | length) == 0
     and ($scenario.expectedOmissions | length) == 0
-    and $scenario.fault.recoveredMaxMemoryItemsPerDerivation >=
-      $scenario.fault.observedResultCount
+    and $scenario.fault.recoveryManifestId ==
+      $root.outputLimitRecoveryManifest.configuration.manifestId
     and $scenario.fault.resumeCaseInitialSnapshot == {
       "state": "retry-exhausted",
       "budget": 0,
@@ -530,6 +591,8 @@ def output_limit_ok($root):
       | .signals[0].kind == "validated_configuration_activation"
         and .signals[0].configurationFingerprint !=
           $root.effectiveConfiguration.summaryProvider.configurationFingerprint
+        and .signals[0].effectiveManifestFingerprint ==
+          $root.outputLimitRecoveryManifest.configuration.configurationFingerprint
         and .expected.budgetAfterGrant ==
           $root.effectiveConfiguration.resourceProfile.processingRetryLimit
         and .expected.budgetAfterAttempt ==
@@ -690,6 +753,9 @@ def derived_sensitivity_security_ok($root):
 
 . as $root
 | ensure(fixture_graph_ok($root); "fixture scenario graph mismatch")
+| ensure(host_identity_ok($root); "host-derived identity probe mismatch")
+| ensure(provider_transmission_ok($root); "provider transmission oracle mismatch")
+| ensure(output_limit_recovery_manifest_ok($root); "output-limit recovery manifest mismatch")
 | ensure(before_model_evidence_ok($root); "before-model evidence invariant failed")
 | ensure(injection_envelope_ok($root); "injection envelope mismatch")
 | ensure(resource_profile_ok($root); "resource profile mismatch")

@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:b7244618a09ec5f748f51e0b4a39ff63294ed87361772b89aaaad04cda58e339",
+  "fixtureFingerprint": "sha256:64555254961621baeac7ba4d8e25d068d5f6a445edee3fd13e444d75ddefe5cf",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "resourceSampleMode": "cold",
@@ -47,6 +47,21 @@
     "terminalMilestone": "target_injection_acknowledged"
   },
   "injectionBeforeModel": true,
+  "hostIdentityEvidence": {
+    "consideredClaimCount": 3,
+    "claimAuthorizedPersistenceCount": 0,
+    "claimAuthorizedInjectionCount": 0,
+    "effectiveIdentity": {
+      "agent": "claude-code",
+      "repositoryScope": "repo-primary",
+      "sessionId": "host-session-1"
+    },
+    "decisions": [
+      {"probeId": "caller-agent-mismatch", "authorityAccepted": false, "reason": "caller_claim_discarded"},
+      {"probeId": "caller-repository-mismatch", "authorityAccepted": false, "reason": "caller_claim_discarded"},
+      {"probeId": "caller-session-mismatch", "authorityAccepted": false, "reason": "caller_claim_discarded"}
+    ]
+  },
   "disposition": {
     "state": "degraded",
     "reason": "semantic_disabled",
@@ -248,6 +263,7 @@
   "packDegradations": [
     "semantic_disabled"
   ],
+  "packCompilationFailure": null,
   "quality": {
     "expectedInjectedItemCount": 4,
     "matchedInjectedItemCount": 4,
