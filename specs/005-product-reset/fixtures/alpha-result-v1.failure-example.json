@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:64555254961621baeac7ba4d8e25d068d5f6a445edee3fd13e444d75ddefe5cf",
+  "fixtureFingerprint": "sha256:5abdbca5640285544bbc4f7befe2f7685de015636c4a9d4abe5bbda39102df78",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-retry-exhausted",
   "resourceSampleMode": "warm",

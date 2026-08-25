@@ -145,7 +145,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T00:41:16+09:00
+## Validation result — 2026-08-26T00:55:25+09:00
 
 | Check | Result |
 |---|---|
@@ -173,9 +173,8 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- The final local CodeRabbit review raised only a stale-date suggestion that contradicted the actual
-  2026-08-26 validation time, so it was rejected. The pushed head must still receive a fresh GitHub
-  CodeRabbit review before merge.
+- The final local CodeRabbit review raised zero issues. The pushed head must still receive a fresh
+  GitHub CodeRabbit review before merge.
 - Cubic's final review returned `issues: []`; Grok's focused retry returned `ok: true` with no
   findings. Ponytail review found no unused definitions, speculative abstraction, dependency, or
   removable compatibility layer.
