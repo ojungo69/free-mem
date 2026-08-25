@@ -61,9 +61,10 @@ Each fixture defines:
   establishes fixture conformance
 - a domain-separated fingerprint over the entire fixed fixture except the fingerprint field itself,
   and additionally over its structural schema, semantic validator text, and canonical executable
-  validator text; text is normalized to LF and the executable's pinned-fingerprint literal is
-  normalized to a placeholder to avoid a self-hash cycle. Changing any included element requires a
-  new pinned fingerprint/version review
+  validator text, plus the result schema/semantic/canonical-validator artifacts; text is normalized
+  to LF and the fixture executable's pinned-fingerprint literal is normalized to a placeholder to
+  avoid a self-hash cycle. Changing any included element requires a new pinned fingerprint/version
+  review
 
 The committed Slice 1 fixture is
 [`../fixtures/slice1-bidirectional-en-v1.json`](../fixtures/slice1-bidirectional-en-v1.json), with
@@ -132,7 +133,9 @@ comparison eligibility; consumers do not combine partial verdicts from those lay
 `environmentFingerprint` is SHA-256 over the execution-environment object with domain
 `free-mem:alpha-execution-environment:v1\0`. `artifactFingerprint` uses the same JCS construction
 over artifact metadata with domain `free-mem:alpha-candidate-artifact:v1\0`. The validator requires
-the environment pins/descriptors and artifact base commit to match the fixed fixture.
+the environment pins/descriptors and artifact base commit to match the fixed fixture. The artifact
+manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that digest must equal
+`contentSha256` before the metadata fingerprint is accepted.
 
 ## Comparison rules
 
@@ -145,8 +148,9 @@ the environment pins/descriptors and artifact base commit to match the fixed fix
   higher-priority reason when the drain itself times out.
 - Selection elapsed time above the profile deadline has the same
   `selection_deadline_exceeded` result. Rendered-byte or token overflow is
-  `injection_pack_limit_exceeded`; attempted size remains inspectable, while delivered items,
-  bytes, and tokens remain zero for every late or oversized pack.
+  `injection_pack_limit_exceeded`; attempted size remains inspectable and may exceed the envelope
+  during deterministic pruning, while only the final rendered byte/token values gate eligibility.
+  Delivered items, bytes, and tokens remain zero for every late pack.
 - Run ordinals are exactly 1 through 22, ordinals 1-2 are discarded, and the remaining 20 runs feed
   nearest-rank P95. Capture samples bind the fixed event order and flatten across the 20 measured
   runs within that scenario; warm/cold injection contributes one sample per measured run only for

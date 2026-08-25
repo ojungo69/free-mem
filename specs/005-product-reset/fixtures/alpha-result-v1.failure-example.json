@@ -1,12 +1,12 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:df09e81134c84d6d19a6edfaf3fbaee87ce63e64c8776dd7f22a2d3841bc0df1",
+  "fixtureFingerprint": "sha256:867752dcf5c8e5b72860a7fd7b04ab4966bb97b50c6cf1b23cd2cc3d58fd3268",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-retry-exhausted",
   "resourceSampleMode": "warm",
   "targetDestinationClass": "claude-code-local",
-  "effectiveManifestFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
+  "effectiveManifestFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
   "executionEnvironment": {
     "pins": {
       "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
@@ -27,9 +27,19 @@
   "artifactMetadata": {
     "candidateId": "candidate-failure-example-v1",
     "baseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
-    "contentSha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    "manifest": {
+      "entrypoint": "candidate-runtime",
+      "revision": "failure-example-v1",
+      "files": [
+        {
+          "path": "candidate.bundle",
+          "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ]
+    },
+    "contentSha256": "sha256:c53652a57b1dad36058acc7c00e0c425c2794287f116a68765d313e96c16009e"
   },
-  "artifactFingerprint": "sha256:7127ed68ed4aa4271d093d4f526bbd7e3b3538d4ca8a943bc5b32273a68d83fa",
+  "artifactFingerprint": "sha256:439407b5329235334e2e338ee8ce55e9740f5ca633f9d06afede55a2f079abd3",
   "drain": {
     "drainConditionId": "slice1-summary-retry-exhausted-visible-v1",
     "status": "completed",

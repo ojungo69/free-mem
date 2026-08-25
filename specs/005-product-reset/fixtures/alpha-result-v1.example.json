@@ -1,12 +1,12 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:df09e81134c84d6d19a6edfaf3fbaee87ce63e64c8776dd7f22a2d3841bc0df1",
+  "fixtureFingerprint": "sha256:867752dcf5c8e5b72860a7fd7b04ab4966bb97b50c6cf1b23cd2cc3d58fd3268",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "resourceSampleMode": "cold",
   "targetDestinationClass": "codex-local",
-  "effectiveManifestFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
+  "effectiveManifestFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
   "executionEnvironment": {
     "pins": {
       "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
@@ -27,9 +27,19 @@
   "artifactMetadata": {
     "candidateId": "candidate-example-v1",
     "baseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
-    "contentSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    "manifest": {
+      "entrypoint": "candidate-runtime",
+      "revision": "example-v1",
+      "files": [
+        {
+          "path": "candidate.bundle",
+          "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ]
+    },
+    "contentSha256": "sha256:381d2567492564f738d2310c01a66e3529d2eaf441dda06b2aa282947b298f0a"
   },
-  "artifactFingerprint": "sha256:930fa2a57701a4075ce7ab0c2c83c5f1a17c959bff38294f586d7e20d40e28ec",
+  "artifactFingerprint": "sha256:fb21c7fd368593968ebf7df123238451b153dbd61e35e554e500b84969edc698",
   "drain": {
     "drainConditionId": "slice1-claude-to-codex-visible-v1",
     "status": "completed",

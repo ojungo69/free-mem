@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:df09e81134c84d6d19a6edfaf3fbaee87ce63e64c8776dd7f22a2d3841bc0df1",
+  "contractFingerprint": "sha256:867752dcf5c8e5b72860a7fd7b04ab4966bb97b50c6cf1b23cd2cc3d58fd3268",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -17,7 +17,7 @@
   "effectiveConfiguration": {
     "manifestVersion": 1,
     "manifestId": "slice1-effective-manifest-v1",
-    "configurationFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
+    "configurationFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
     "destinationPolicyMap": {
       "claude-code-local": {
         "targetAgent": "claude-code",
@@ -76,11 +76,18 @@
       "summaryProvider": {
         "state": "enabled",
         "providerId": "deterministic-summary-v1",
+        "providerKind": "explicit_remote_endpoint",
+        "modelId": "deterministic-summary-model-v1",
+        "modelRevision": "1",
         "configurationFingerprint": "summary-config-v1",
         "executionLocation": "remote",
         "endpointScheme": "https",
         "endpointHost": "summary.stub.invalid",
         "credentialSource": "fixture-credential-ref",
+        "costClass": "fixture",
+        "egressPolicy": "explicit_remote",
+        "capabilities": ["summary_v1"],
+        "validationState": "valid",
         "tlsCertificateValidation": "required",
         "redirectPolicy": "reject"
     },
@@ -93,13 +100,19 @@
   "localDerivationManifest": {
     "manifestVersion": 1,
     "manifestId": "slice1-local-summary-manifest-v1",
-    "baseConfigurationFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
-    "configurationFingerprint": "sha256:5fa2d0feac5eaeec371c6d1d6f1a7a6f49de7da10aa2e4e8ea99841912942dfd",
+    "baseConfigurationFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
+    "configurationFingerprint": "sha256:915c494993fc850520fc476c4414defe3ceb10c386c7bbae2aebb620a73ef796",
     "summaryProvider": {
       "state": "enabled",
       "providerId": "deterministic-summary-local-v1",
+      "providerKind": "built_in_local",
+      "modelId": "deterministic-summary-local-model-v1",
+      "modelRevision": "1",
       "configurationFingerprint": "local-summary-config-v1",
       "executionLocation": "local",
+      "costClass": "local_zero",
+      "egressPolicy": "on_device",
+      "capabilities": ["summary_v1"],
       "validationState": "valid"
     }
   },
@@ -1282,9 +1295,9 @@
           "sequence": 1,
           "kind": "assistant_message",
           "sensitivity": "eligible",
-          "redactedPayload": "ABCDEFGHIJKLMNOPQ",
+          "redactedPayload": "ABCDEFGHIJKLMNOPUNCOMMITTED_OUTPUT_SENTINEL",
           "payloadDigestVersion": "event-payload-digest-v1",
-          "text": "ABCDEFGHIJKLMNOPQ"
+          "text": "ABCDEFGHIJKLMNOPUNCOMMITTED_OUTPUT_SENTINEL"
         }
       ],
       "summaryProviderStub": {
@@ -1530,7 +1543,7 @@
           },
           {
             "kind": "decision",
-            "title": "Output Q",
+            "title": "Uncommitted output sentinel",
             "body": "UNCOMMITTED_OUTPUT_SENTINEL",
             "sourceEventIds": [
               "output-limit-event-1"
@@ -1539,7 +1552,7 @@
               {
                 "eventId": "output-limit-event-1",
                 "startByte": 16,
-                "endByte": 17
+                "endByte": 43
               }
             ]
           }

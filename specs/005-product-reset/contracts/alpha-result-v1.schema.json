@@ -105,11 +105,35 @@
     "ArtifactMetadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["candidateId", "baseCommit", "contentSha256"],
+      "required": ["candidateId", "baseCommit", "manifest", "contentSha256"],
       "properties": {
         "candidateId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "baseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "manifest": { "$ref": "#/$defs/ArtifactContentManifest" },
         "contentSha256": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "ArtifactContentManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entrypoint", "revision", "files"],
+      "properties": {
+        "entrypoint": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "revision": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "files": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ArtifactFile" } }
+      }
+    },
+    "ArtifactFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*(?:^|/)\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+        },
+        "sha256": { "$ref": "#/$defs/Sha256" }
       }
     },
     "Drain": {

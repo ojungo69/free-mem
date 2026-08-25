@@ -76,15 +76,22 @@
         "summaryProvider": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["state", "providerId", "configurationFingerprint", "executionLocation", "endpointScheme", "endpointHost", "credentialSource", "tlsCertificateValidation", "redirectPolicy"],
+          "required": ["state", "providerId", "providerKind", "modelId", "modelRevision", "configurationFingerprint", "executionLocation", "endpointScheme", "endpointHost", "credentialSource", "costClass", "egressPolicy", "capabilities", "validationState", "tlsCertificateValidation", "redirectPolicy"],
           "properties": {
             "state": { "const": "enabled" },
             "providerId": { "$ref": "#/$defs/SharedNonEmptyString" },
+            "providerKind": { "const": "explicit_remote_endpoint" },
+            "modelId": { "$ref": "#/$defs/SharedNonEmptyString" },
+            "modelRevision": { "$ref": "#/$defs/SharedNonEmptyString" },
             "configurationFingerprint": { "$ref": "#/$defs/SharedNonEmptyString" },
-            "executionLocation": { "enum": ["local", "remote"] },
+            "executionLocation": { "const": "remote" },
             "endpointScheme": { "const": "https" },
             "endpointHost": { "$ref": "#/$defs/SharedNonEmptyString" },
             "credentialSource": { "$ref": "#/$defs/SharedNonEmptyString" },
+            "costClass": { "const": "fixture" },
+            "egressPolicy": { "const": "explicit_remote" },
+            "capabilities": { "const": ["summary_v1"] },
+            "validationState": { "const": "valid" },
             "tlsCertificateValidation": { "const": "required" },
             "redirectPolicy": { "const": "reject" }
           }
@@ -113,12 +120,18 @@
         "summaryProvider": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["state", "providerId", "configurationFingerprint", "executionLocation", "validationState"],
+          "required": ["state", "providerId", "providerKind", "modelId", "modelRevision", "configurationFingerprint", "executionLocation", "costClass", "egressPolicy", "capabilities", "validationState"],
           "properties": {
             "state": { "const": "enabled" },
             "providerId": { "const": "deterministic-summary-local-v1" },
+            "providerKind": { "const": "built_in_local" },
+            "modelId": { "const": "deterministic-summary-local-model-v1" },
+            "modelRevision": { "const": "1" },
             "configurationFingerprint": { "const": "local-summary-config-v1" },
             "executionLocation": { "const": "local" },
+            "costClass": { "const": "local_zero" },
+            "egressPolicy": { "const": "on_device" },
+            "capabilities": { "const": ["summary_v1"] },
             "validationState": { "const": "valid" }
           }
         }

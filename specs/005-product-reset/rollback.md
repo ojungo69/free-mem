@@ -11,6 +11,8 @@ the default branch. Do not run it merely because a later implementation slice ch
    mutation.
 3. Announce the rollback on #136 so users do not follow child issues during the transition.
 4. Run mutations serially with `set -e`; after any failure, re-query live state before resuming.
+5. Use GitHub CLI 2.94.0 or newer and verify that `gh issue edit` exposes `--remove-parent` and
+   `--remove-blocked-by` before the first mutation.
 
 ## Read-only preview
 
@@ -85,6 +87,12 @@ The M0 closure set is exact and contains 61 issues.
 ```sh
 set -e
 test -n "${RESET_ROLLBACK_DIR:-}"
+GH_VERSION=$(gh version | sed -n '1s/^gh version \([^ ]*\).*/\1/p')
+test -n "$GH_VERSION"
+test "$(printf '%s\n' 2.94.0 "$GH_VERSION" | sort -V | head -n 1)" = 2.94.0
+GH_ISSUE_EDIT_HELP=$(gh issue edit --help)
+printf '%s\n' "$GH_ISSUE_EDIT_HELP" | rg -q -- '--remove-parent'
+printf '%s\n' "$GH_ISSUE_EDIT_HELP" | rg -q -- '--remove-blocked-by'
 
 gh issue list --state all --limit 200 --json number,state,labels \
   > "$RESET_ROLLBACK_DIR/issues-pre-mutation.json"

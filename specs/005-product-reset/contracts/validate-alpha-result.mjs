@@ -81,11 +81,11 @@ function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
   }
   return (
     (expectedAggregates.captureP95Ms === null ||
-      expectedAggregates.captureP95Ms <= fixture.thresholds.captureP95Ms) &&
+      expectedAggregates.captureP95Ms < fixture.thresholds.captureP95Ms) &&
     (expectedAggregates.warmInjectionP95Ms === null ||
-      expectedAggregates.warmInjectionP95Ms <= fixture.thresholds.warmInjectionP95Ms) &&
+      expectedAggregates.warmInjectionP95Ms < fixture.thresholds.warmInjectionP95Ms) &&
     (expectedAggregates.shortColdLexicalInjectionMs === null ||
-      expectedAggregates.shortColdLexicalInjectionMs <= fixture.thresholds.shortColdLexicalInjectionMs)
+      expectedAggregates.shortColdLexicalInjectionMs < fixture.thresholds.shortColdLexicalInjectionMs)
   );
 }
 
@@ -193,6 +193,14 @@ const artifactFingerprint = fingerprint(
   "free-mem:alpha-candidate-artifact:v1\0",
   result.artifactMetadata,
 );
+const artifactContentFingerprint = fingerprint(
+  "free-mem:alpha-artifact-content:v1\0",
+  result.artifactMetadata.manifest,
+);
+const artifactPaths = result.artifactMetadata.manifest.files.map((item) => item.path);
+if (artifactPaths.length !== new Set(artifactPaths).size) {
+  throw new Error("artifact manifest contains duplicate normalized paths");
+}
 const expectedManifestFingerprint = scenario?.derivationManifestId
   ? fixture.localDerivationManifest.configurationFingerprint
   : fixture.effectiveConfiguration.configurationFingerprint;
@@ -207,6 +215,7 @@ if (
   result.environmentFingerprint !== environmentFingerprint ||
   result.artifactMetadata.candidateId !== result.candidateId ||
   result.artifactMetadata.baseCommit !== fixture.pins.freeMemBaseCommit ||
+  result.artifactMetadata.contentSha256 !== artifactContentFingerprint ||
   result.artifactFingerprint !== artifactFingerprint ||
   result.drain.drainConditionId !== scenario.drainCondition.drainConditionId ||
   result.drain.terminalMilestone !== scenario.drainCondition.terminalMilestone
@@ -405,8 +414,8 @@ const securityEvidencePass =
   oracleEvidenceFields.every(
     (name) => !Object.hasOwn(oracle, name) || result.securityEvidence[name] === oracle[name],
   );
-const safetyPass =
-  isDeepStrictEqual(result.safety, scenario.expectedCounters) && securityEvidencePass;
+const safetyCountersPass = isDeepStrictEqual(result.safety, scenario.expectedCounters);
+const safetyPass = safetyCountersPass && securityEvidencePass;
 
 const latencyPass = evaluateLatencyEvidence(result, scenario, fixture, exceptionalState);
 
@@ -469,10 +478,10 @@ const selectionDeadlineExceeded =
   result.counts.deadlineUnprocessed > 0 ||
   result.selectionElapsedMs > injectionEnvelope.selectionTimeBudgetMs;
 const injectionPackSizePass =
-  result.attemptedRenderedBytes <= injectionEnvelope.maxRenderedBytes &&
-  result.attemptedInjectedTokens <= injectionEnvelope.maxInjectedTokens;
+  result.renderedBytes <= injectionEnvelope.maxRenderedBytes &&
+  result.injectedTokens <= injectionEnvelope.maxInjectedTokens;
 if (
-  (selectionDeadlineExceeded || !injectionPackSizePass) &&
+  selectionDeadlineExceeded &&
   (result.counts.selectedItems !== 0 ||
     result.injectedItems.length !== 0 ||
     result.renderedBytes !== 0 ||
@@ -516,6 +525,9 @@ const shouldBeEligible = derivedFailureReason === null;
 
 if (result.drain.timedOut && !milestonesPass) {
   throw new Error("timed-out result milestones are not a valid pre-terminal lifecycle prefix");
+}
+if (result.drain.timedOut && !safetyCountersPass) {
+  throw new Error("timed-out result violates an independent zero-tolerance safety counter");
 }
 
 if (!resourcePass && expectedOperationalStatus &&
