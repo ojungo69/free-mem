@@ -394,10 +394,8 @@ const resourcePass =
   result.resource.maxPendingQueueDepth <= limits.maxPendingQueueDepth &&
   result.resource.maxStorageGrowthBytes <= limits.maxStorageGrowthBytes &&
   result.resource.orphanProductProcessCount <= limits.orphanProductProcessCount;
-const expectedProviderCostUnits =
-  activeSummaryProvider.costClass === "fixture" || activeSummaryProvider.costClass === "local_zero"
-    ? 0
-    : null;
+const expectedProviderCostUnits = ["fixture", "local_zero"].includes(activeSummaryProvider.costClass)
+  ? 0 : null;
 if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits) {
   throw new Error("provider cost does not match the pinned provider cost class");
 }
