@@ -1,0 +1,79 @@
+specs/005-product-reset/contracts/alpha-result-security.mjs
+  s_9d346c66194a0d::t_7456ba2867aee8 85-88
+  s_9d346c66194a0d::t_6b8550b7faa129 16-21,24-25,27,61
+  s_9d346c66194a0d::t_5d22739784be53 22-23,28,30-37,39-42,47,49-53,63,138-139
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_765b5f92289cae 74-76
+  s_9d346c66194a0d::t_bc93fbbdf0d5be 7,11,77-80,125-127
+  s_9d346c66194a0d::t_68979be77e884e 81,122
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_420541ba59bd96 131-134
+  s_9d346c66194a0d::t_193774cc002f01 217-218
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_a032ef29202f04 4
+specs/005-product-reset/contracts/alpha-result-input.mjs
+  s_9d346c66194a0d::t_bc93fbbdf0d5be 1-3,5-24,26-39
+  s_9d346c66194a0d::t_4ce0c4a27886ac 4,25
+specs/005-product-reset/m0-post-mutation-issues.json
+  s_9d346c66194a0d::t_0d015e1571ac33 1
+specs/005-product-reset/rollback.md
+  s_9d346c66194a0d::t_fe45dc6c2d7cb6 322
+  s_9d346c66194a0d::t_d76ecf1f219a9d 27,33,35-36
+  s_9d346c66194a0d::t_099c1edcdc9d4d 104,106-121
+  s_9d346c66194a0d::t_10819c837e3132 23,28-29,34,37-38
+  s_9d346c66194a0d::t_4312fc6520c598 198-210
+  s_9d346c66194a0d::t_ae2e65e999a510 154,247,250-251
+  s_9d346c66194a0d::t_855329668f045e 73,76-85,122-124
+  s_9d346c66194a0d::t_c1549c97a72ff3 246,248-249,268-282
+  s_9d346c66194a0d::t_f3dab6dd45ccf2 145
+  s_9d346c66194a0d::t_a391528c3626bc 101
+  s_9d346c66194a0d::t_3cbd6d848a4034 63-72,74-75,86-100,102-103,105
+  s_9d346c66194a0d::t_a49d033e00fa77 146-147
+  s_9d346c66194a0d::t_7a0e0162d9403d 242
+  s_9d346c66194a0d::t_5f66466d6fed02 22,153,218,241
+  s_9d346c66194a0d::t_57f22133b0d662 39
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_a032ef29202f04 54
+  s_9d346c66194a0d::t_bc93fbbdf0d5be 19,73
+specs/005-product-reset/plan.md
+  s_9d346c66194a0d::t_bc93fbbdf0d5be 96
+  s_9d346c66194a0d::t_120bcd24a92ef7 75
+  s_9d346c66194a0d::t_ead05b1dbb7da5 76
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_bc93fbbdf0d5be 24-26
+  s_9d346c66194a0d::t_a032ef29202f04 8
+specs/005-product-reset/m0-pre-mutation-issues.json
+  s_9d346c66194a0d::t_ff20df9add42b0 1
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_a032ef29202f04 4
+specs/005-product-reset/contracts/alpha-result-atomicity.mjs
+  s_9d346c66194a0d::t_2c4ed5b61c442c 14-15
+  s_9d346c66194a0d::t_81d958604f483b 13,16-18
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json
+  s_9d346c66194a0d::t_bc93fbbdf0d5be 8,19
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_6315562cb0b59a 162
+  s_9d346c66194a0d::t_ccc9fa45df7008 185
+  s_9d346c66194a0d::t_5615f0a131d32c 167
+  s_9d346c66194a0d::t_fe51e2f02c6b8c 199-201
+  s_9d346c66194a0d::t_10eb19ea2ddf45 163,186-188
+  s_9d346c66194a0d::t_d71035e0e7470b 177
+  s_9d346c66194a0d::t_a7ca471fb4f211 196-198
+  s_9d346c66194a0d::t_89050964b3d2e1 176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f24a32f73b8d2d44778afc8ed4fd96f1a0071fee",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
