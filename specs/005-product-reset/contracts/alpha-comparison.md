@@ -208,8 +208,9 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
   rejected activations record zero. The fixed `fixture` and `local_zero` cost classes both record
   exactly zero provider cost units.
 - Remote request/payload counts cover the initial drain attempt set only; independent recovery cases
-  keep their own observed provider-attempt evidence. The count is one unless the fixture explicitly
-  pins an exhausted attempt count, and zero for rejected or local-provider routes.
+  keep their own observed provider-attempt evidence. Redirect recovery additionally records exact
+  zero request/payload/resend evidence for the rejected Location. The initial count is one unless the
+  fixture explicitly pins an exhausted attempt count, and zero for rejected or local-provider routes.
 - Resource or quality thresholds are frozen before candidate results are inspected.
 - Raw records remain available beside the human summary.
 

@@ -137,7 +137,15 @@ def provider_transmission_ok($root):
           and ($scenario.summaryProviderStub | has("policyRejectedReason") | not)) as $remoteAttempt
       | if $remoteAttempt
         then $wire.credentialBytesSent > 0 and $wire.payloadBytesSent > 0
+          and $wire.completionMilestone != null
+          and ($root.lifecycleProfiles[$scenario.lifecycleProfileId] as $profile
+            | ($profile | index($scenario.drainCondition.startMilestone)) as $start
+            | ($profile | index($wire.completionMilestone)) as $completion
+            | ($profile | index($scenario.drainCondition.terminalMilestone)) as $terminal
+            | $start != null and $completion != null and $terminal != null
+              and $start < $completion and $completion <= $terminal)
         else $wire.credentialBytesSent == 0 and $wire.payloadBytesSent == 0
+          and $wire.completionMilestone == null
         end);
 
 def output_limit_recovery_manifest_ok($root):
@@ -550,6 +558,8 @@ def redirect_scenario_ok($root; $redirect):
     and $redirect.fault.redirectRecovery.signal.configurationFingerprint !=
       $root.effectiveConfiguration.summaryProvider.configurationFingerprint
     and $redirect.fault.redirectRecovery.oldLocationRequestCountAfterActivation == 0
+    and $redirect.fault.redirectRecovery.oldLocationPayloadBytesSentAfterActivation == 0
+    and $redirect.fault.redirectRecovery.resentPayloadCountAfterActivation == 0
     and $redirect.fault.redirectRecovery.expected.budgetBefore == 0
     and $redirect.fault.redirectRecovery.expected.budgetAfterGrant ==
       $root.effectiveConfiguration.resourceProfile.processingRetryLimit

@@ -24,16 +24,22 @@ export function expectedRetryEvidence(scenario) {
     };
   }
   if (scenario.fault?.redirectRecovery) {
+    const recovery = scenario.fault.redirectRecovery;
     return {
       observedInitialSnapshot: scenario.fault.resumeCaseInitialSnapshot,
       redirectCase: observedRetryCase({
-        caseId: scenario.fault.redirectRecovery.caseId,
-        signals: [scenario.fault.redirectRecovery.signal],
-        expectedConsumedSignalIds: scenario.fault.redirectRecovery.expectedConsumedSignalIds,
-        expectedIgnoredSignalIds: scenario.fault.redirectRecovery.expectedIgnoredSignalIds,
-        providerOutcome: scenario.fault.redirectRecovery.providerOutcome,
-        expected: scenario.fault.redirectRecovery.expected,
+        caseId: recovery.caseId,
+        signals: [recovery.signal],
+        expectedConsumedSignalIds: recovery.expectedConsumedSignalIds,
+        expectedIgnoredSignalIds: recovery.expectedIgnoredSignalIds,
+        providerOutcome: recovery.providerOutcome,
+        expected: recovery.expected,
       }),
+      recoveryTransportEvidence: {
+        rejectedLocationRequestCount: recovery.oldLocationRequestCountAfterActivation,
+        rejectedLocationPayloadBytesSent: recovery.oldLocationPayloadBytesSentAfterActivation,
+        resentPayloadCount: recovery.resentPayloadCountAfterActivation,
+      },
     };
   }
   return null;

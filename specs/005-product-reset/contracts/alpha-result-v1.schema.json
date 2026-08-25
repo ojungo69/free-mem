@@ -475,12 +475,22 @@
     "RedirectEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["observedInitialSnapshot", "redirectCase"],
+      "required": ["observedInitialSnapshot", "redirectCase", "recoveryTransportEvidence"],
       "properties": {
         "observedInitialSnapshot": {
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
-        "redirectCase": { "$ref": "#/$defs/ObservedRetryCase" }
+        "redirectCase": { "$ref": "#/$defs/ObservedRetryCase" },
+        "recoveryTransportEvidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rejectedLocationRequestCount", "rejectedLocationPayloadBytesSent", "resentPayloadCount"],
+          "properties": {
+            "rejectedLocationRequestCount": { "const": 0 },
+            "rejectedLocationPayloadBytesSent": { "const": 0 },
+            "resentPayloadCount": { "const": 0 }
+          }
+        }
       }
     },
     "SharedOutputLimitFailureMetadata": {

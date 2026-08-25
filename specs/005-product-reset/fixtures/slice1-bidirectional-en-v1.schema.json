@@ -110,10 +110,16 @@
     "ProviderTransmissionOracle": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["credentialBytesSent", "payloadBytesSent"],
+      "required": ["credentialBytesSent", "payloadBytesSent", "completionMilestone"],
       "properties": {
         "credentialBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
-        "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+        "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "completionMilestone": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/SharedNonEmptyString" }
+          ]
+        }
       }
     },
     "BeforeModelNegativeFixture": {
@@ -817,13 +823,15 @@
     "RedirectRecovery": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "signal", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "oldLocationRequestCountAfterActivation", "providerOutcome", "expected"],
+      "required": ["caseId", "signal", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "oldLocationRequestCountAfterActivation", "oldLocationPayloadBytesSentAfterActivation", "resentPayloadCountAfterActivation", "providerOutcome", "expected"],
       "properties": {
         "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "signal": { "$ref": "#/$defs/SharedResumeSignal" },
         "expectedConsumedSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "expectedIgnoredSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "oldLocationRequestCountAfterActivation": { "const": 0 },
+        "oldLocationPayloadBytesSentAfterActivation": { "const": 0 },
+        "resentPayloadCountAfterActivation": { "const": 0 },
         "providerOutcome": { "const": "valid" },
         "expected": { "$ref": "#/$defs/SharedResumeExpected" }
       }

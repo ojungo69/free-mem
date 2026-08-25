@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:713f2da437726308b3672278f3b6e6e14ef03218437609f8bfa1b0be6d5ccffa",
+  "contractFingerprint": "sha256:089cb2d64325993df498399c13e0bda8de4ab562085208847e23359bd06fc7cc",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -486,7 +486,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "cold",
       "retrievalQuery": "settings validation decision and next regression",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 256},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 256, "completionMilestone": "source_summary_committed"},
       "events": [
         {
           "eventId": "claude-to-codex-event-1",
@@ -635,7 +635,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "warm",
       "retrievalQuery": "cache invalidation constraint failed approach and next action",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "source_summary_committed"},
       "events": [
         {
           "eventId": "codex-to-claude-event-1",
@@ -784,7 +784,7 @@
       "lifecycleProfileId": "spool_recovery",
       "resourceSampleMode": "cold",
       "retrievalQuery": "queued event after daemon restart",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "source_memory_drain_completed"},
       "fault": {
         "kind": "daemon_unavailable_after_event_accept",
         "recovery": "restart_and_replay_same_batch_twice",
@@ -910,7 +910,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "provider failure pending summary state",
-      "providerTransmissionOracle": {"credentialBytesSent": 96, "payloadBytesSent": 384},
+      "providerTransmissionOracle": {"credentialBytesSent": 96, "payloadBytesSent": 384, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_malformed_response",
         "attemptsUntilExhausted": 3,
@@ -1129,7 +1129,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "provider redirect rejection state",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 58},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 58, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_redirect_response",
         "resumeCaseInitialSnapshot": {
@@ -1159,6 +1159,8 @@
           "expectedConsumedSignalIds": ["redirect-config-activation-1"],
           "expectedIgnoredSignalIds": [],
           "oldLocationRequestCountAfterActivation": 0,
+          "oldLocationPayloadBytesSentAfterActivation": 0,
+          "resentPayloadCountAfterActivation": 0,
           "providerOutcome": "valid",
           "expected": {
             "budgetBefore": 0,
@@ -1249,7 +1251,7 @@
       "providerTransmissionOracle": {
         "credentialBytesSent": 32,
         "payloadBytesSent": 58
-      },
+      , "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_redirect_response",
         "resumeCaseInitialSnapshot": {
@@ -1289,6 +1291,8 @@
           ],
           "expectedIgnoredSignalIds": [],
           "oldLocationRequestCountAfterActivation": 0,
+          "oldLocationPayloadBytesSentAfterActivation": 0,
+          "resentPayloadCountAfterActivation": 0,
           "providerOutcome": "valid",
           "expected": {
             "budgetBefore": 0,
@@ -1376,7 +1380,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: configuration rejection",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
         "providerChoiceId": "credentialless-http-summary-v1",
         "executionLocation": "remote",
@@ -1439,7 +1443,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: credentialed configuration rejection",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
         "providerChoiceId": "credentialed-http-summary-v1",
         "executionLocation": "remote",
@@ -1502,7 +1506,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: TLS configuration rejection",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
         "providerChoiceId": "invalid-chain-https-summary-v1",
         "executionLocation": "remote",
@@ -1565,7 +1569,7 @@
       "lifecycleProfileId": "configuration_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "not applicable: TLS configuration rejection",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
         "providerChoiceId": "hostname-mismatch-https-summary-v1",
         "executionLocation": "remote",
@@ -1628,7 +1632,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "output-limit failure state",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_output_limit_exceeded",
         "observedResultCount": 17,
@@ -2044,7 +2048,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "warm",
       "retrievalQuery": "allowed deployment decision",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "source_summary_committed"},
       "fault": {
         "kind": "mixed_sensitivity_allowed_projection"
       },
@@ -2173,7 +2177,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "private provider rejection state",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "fault": {
         "kind": "private_remote_provider_ineligible"
       },
@@ -2249,7 +2253,7 @@
       "lifecycleProfileId": "provider_failure",
       "resourceSampleMode": "warm",
       "retrievalQuery": "local-only provider rejection state",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "fault": {
         "kind": "local_only_remote_provider_ineligible"
       },
@@ -2334,7 +2338,7 @@
       "lifecycleProfileId": "scope_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "other repository sentinel",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "source_summary_committed"},
       "events": [
         {
           "eventId": "cross-scope-event-1",
@@ -2405,7 +2409,7 @@
       "lifecycleProfileId": "derived_sensitivity_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "local derived sentinel",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "events": [
         {
           "eventId": "local-derived-event-1",

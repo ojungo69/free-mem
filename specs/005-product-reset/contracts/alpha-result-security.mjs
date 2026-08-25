@@ -13,7 +13,6 @@ const ORACLE_EVIDENCE_FIELDS = [
   "redirectLocationPayloadBytesSent",
   "resentPayloadCount",
 ];
-
 function evaluateDenominators(result, scenario, activeSummaryProvider, expectedDuplicateDeliveries, oracle) {
   const remoteEvents = activeSummaryProvider.executionLocation === "remote" ? scenario.events : [];
   const eligibleCount = remoteEvents.filter((event) => event.sensitivity === "eligible").length;
@@ -48,11 +47,16 @@ function evaluateProviderEvidence(result, scenario, activeSummaryProvider, excep
   const observedPayloads = result.securityEvidence.remoteProviderPayloadCount;
   const denominatorsPositive = result.securityDenominators.consideredRemoteProviderEventCount > 0 &&
     result.securityDenominators.consideredEligibleEventCount > 0;
+  const completionMilestone = scenario.providerTransmissionOracle.completionMilestone;
+  const providerCompletionObserved = completionMilestone !== null && result.milestones.some(
+    (milestone) => milestone.name === completionMilestone,
+  );
   const completedRouting = remoteExpected
     ? denominatorsPositive && observedRequests === expectedRequests && observedPayloads === expectedRequests
     : observedRequests === 0 && observedPayloads === 0;
   const timeoutRouting = remoteExpected
     ? denominatorsPositive && observedRequests <= expectedRequests && observedPayloads === observedRequests
+      && (!providerCompletionObserved || observedRequests === expectedRequests)
     : observedRequests === 0 && observedPayloads === 0;
   const wire = scenario.providerTransmissionOracle;
   const exactWire = result.securityEvidence.credentialBytesSent === wire.credentialBytesSent &&
