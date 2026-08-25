@@ -47,6 +47,9 @@ binding each target Agent to local/remote execution and egress policy, and a non
   and local-only data; either disposition requires a matching explicit on-device policy.
 - Secret values never appear in the manifest, logs, doctor output, or fingerprint.
 - Runtime consumers do not read legacy configuration or provider environment independently.
+- A scenario that changes provider execution first activates a separately fingerprinted validated
+  manifest bound to the prior active-manifest fingerprint; scenario-local provider overrides are
+  never accepted.
 - Doctor reports the active manifest, not a separately reconstructed approximation.
 - Any ignored, translated, overridden, or conflicting legacy setting is reported.
 - Model or index changes that require rebuilding never remove lexical retrieval during transition.

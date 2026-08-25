@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:fcc1756b2eeb9d56a25531b729b55d47d6b55623355432ef8145b6d59045486c",
+  "contractFingerprint": "sha256:df09e81134c84d6d19a6edfaf3fbaee87ce63e64c8776dd7f22a2d3841bc0df1",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -88,6 +88,19 @@
       "state": "disabled",
       "reason": "slice1_semantic_not_owned",
       "packDegradationReason": "semantic_disabled"
+    }
+  },
+  "localDerivationManifest": {
+    "manifestVersion": 1,
+    "manifestId": "slice1-local-summary-manifest-v1",
+    "baseConfigurationFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
+    "configurationFingerprint": "sha256:5fa2d0feac5eaeec371c6d1d6f1a7a6f49de7da10aa2e4e8ea99841912942dfd",
+    "summaryProvider": {
+      "state": "enabled",
+      "providerId": "deterministic-summary-local-v1",
+      "configurationFingerprint": "local-summary-config-v1",
+      "executionLocation": "local",
+      "validationState": "valid"
     }
   },
   "kindContract": {
@@ -173,6 +186,7 @@
     "derived_sensitivity_rejection": [
       "source_session_started",
       "source_events_captured",
+      "validated_local_manifest_activated",
       "local_provider_derived_memory",
       "target_session_started",
       "target_first_prompt_submitted_before_model",
@@ -1078,9 +1092,69 @@
         "expectedActivationState": "rejected",
         "expectedReason": "insecure_remote_transport",
         "remoteProviderRequestCount": 0,
+        "credentialBytesSent": 0,
         "payloadBytesSent": 0,
         "forbiddenSentinels": [
           "TRANSPORT_PAYLOAD_SENTINEL"
+        ],
+        "sentinelObservedAtRemote": false
+      },
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "credentialed-http-activation-rejected",
+      "sourceAgent": "claude-code",
+      "targetDestinationClass": "codex-local",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "configuration_rejection",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "not applicable: credentialed configuration rejection",
+      "providerActivationProposal": {
+        "providerChoiceId": "credentialed-http-summary-v1",
+        "executionLocation": "remote",
+        "credentialPresent": true,
+        "endpointScheme": "http",
+        "endpointHost": "credentialed-summary.http.invalid",
+        "redactedPayload": "CREDENTIALED_TRANSPORT_PAYLOAD_SENTINEL",
+        "payloadBytes": 39
+      },
+      "events": [],
+      "summaryProviderStub": {
+        "policyRejectedReason": "insecure_remote_transport",
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-credentialed-http-activation-rejected-v1",
+        "terminalMilestone": "configuration_validation_rejected",
+        "timeoutMs": 30000,
+        "committedEventCount": 0,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "providerRequestCount": 0,
+        "providerPayloadCount": 0,
+        "targetInjectionAcknowledged": false
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "CREDENTIALED_TRANSPORT_PAYLOAD_SENTINEL"
+      ],
+      "securityOracle": {
+        "consideredActivationProposalCount": 1,
+        "expectedActivationState": "rejected",
+        "expectedReason": "insecure_remote_transport",
+        "remoteProviderRequestCount": 0,
+        "credentialBytesSent": 0,
+        "payloadBytesSent": 0,
+        "forbiddenSentinels": [
+          "CREDENTIALED_TRANSPORT_PAYLOAD_SENTINEL"
         ],
         "sentinelObservedAtRemote": false
       },
@@ -1689,7 +1763,7 @@
             "title": "Other repository sentinel",
             "body": "OTHER_REPO_SENTINEL belongs only to repo-other.",
             "sourceEventIds": ["cross-scope-event-1"],
-            "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":19}]
+            "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":47}]
           }
         ]
       },
@@ -1708,7 +1782,7 @@
           "fact": "OTHER_REPO_SENTINEL belongs only to repo-other.",
           "memoryKind": "discovery",
           "sourceEventIds": ["cross-scope-event-1"],
-          "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":19}],
+          "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":47}],
           "sensitivity": "eligible",
           "reason": "omitted_ineligible"
         }
@@ -1734,11 +1808,11 @@
       "scenarioId": "local-derived-memory-remote-injection-rejected",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-remote",
+      "derivationManifestId": "slice1-local-summary-manifest-v1",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "derived_sensitivity_rejection",
       "resourceSampleMode": "warm",
-      "derivationProviderExecutionLocation": "local",
       "retrievalQuery": "local derived sentinel",
       "events": [
         {

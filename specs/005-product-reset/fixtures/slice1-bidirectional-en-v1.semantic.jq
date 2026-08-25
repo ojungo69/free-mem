@@ -162,13 +162,17 @@ def pack_degradation_policy_ok($root):
 
 def transport_security_ok($root):
   ([ $root.scenarios[] | select(has("providerActivationProposal")) ]) as $matches
-  | ($matches | length) == 1
-  and ($matches[0] as $scenario
-    | $scenario.scenarioId == "credentialless-http-activation-rejected"
-    and $scenario.lifecycleProfileId == "configuration_rejection"
+  | ($matches | length) == 2
+  and ([$matches[].scenarioId] | sort) == [
+    "credentialed-http-activation-rejected",
+    "credentialless-http-activation-rejected"
+  ]
+  and ([$matches[].providerActivationProposal.credentialPresent] | sort) == [false, true]
+  and all($matches[];
+    . as $scenario
+    | $scenario.lifecycleProfileId == "configuration_rejection"
     and ($scenario.events | length) == 0
     and $scenario.providerActivationProposal.executionLocation == "remote"
-    and ($scenario.providerActivationProposal.credentialPresent | not)
     and $scenario.providerActivationProposal.endpointScheme == "http"
     and $scenario.providerActivationProposal.payloadBytes ==
       ($scenario.providerActivationProposal.redactedPayload | utf8bytelength)
@@ -178,6 +182,7 @@ def transport_security_ok($root):
     and $scenario.securityOracle.expectedActivationState == "rejected"
     and $scenario.securityOracle.expectedReason == "insecure_remote_transport"
     and $scenario.securityOracle.remoteProviderRequestCount == 0
+    and $scenario.securityOracle.credentialBytesSent == 0
     and $scenario.securityOracle.payloadBytesSent == 0
     and $scenario.drainCondition.providerRequestCount == 0
     and $scenario.drainCondition.providerPayloadCount == 0
@@ -594,7 +599,15 @@ def derived_sensitivity_security_ok($root):
     | $root.effectiveConfiguration.destinationPolicyMap[
         $scenario.targetDestinationClass
       ] as $destinationPolicy
-    | $scenario.derivationProviderExecutionLocation == "local"
+    | $scenario.derivationManifestId == $root.localDerivationManifest.manifestId
+    and $root.localDerivationManifest.baseConfigurationFingerprint ==
+      $root.effectiveConfiguration.configurationFingerprint
+    and $root.localDerivationManifest.summaryProvider.executionLocation == "local"
+    and $root.localDerivationManifest.summaryProvider.validationState == "valid"
+    and ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
+      | index("validated_local_manifest_activated")) <
+      ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
+      | index("local_provider_derived_memory"))
     and $destinationPolicy.executionLocation == "remote"
     and all($scenario.events[]; .sensitivity == "local_only")
     and all($items[]; .sensitivity == "local_only")

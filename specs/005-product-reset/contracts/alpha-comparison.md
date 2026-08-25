@@ -17,8 +17,9 @@ change before adopting it. This contract is not a general benchmark framework.
    output commits, and only a changed larger limit/provider resumes the retained job.
 6. **Slice 1**: Summary provider returns an HTTP redirect; no request or payload is sent to the
    redirect location and doctor reports the bounded rejection reason.
-7. **Slice 1**: A credentialless remote HTTP provider with a non-empty redacted payload is rejected
-   before activation, external request, or payload transmission.
+7. **Slice 1**: Remote HTTP providers with and without configured credentials are each rejected with
+   a non-empty redacted payload before activation, credential transmission, request, or payload
+   transmission.
 8. **Slice 1**: Local-only content is considered for a remote summary provider but produces zero
    remote requests or payloads.
 9. **Slice 1**: Private content is considered for a remote summary provider but produces zero remote
@@ -48,8 +49,9 @@ Each fixture defines:
 - ordered expected injected items binding fact, memory kind, source events, lane, and selection
   reason; expected omissions; forbidden facts; and retrieval queries
 - expected durable event and MemoryItem counts, including persisted summaries
-- declared effective-manifest identity/fingerprint, profile/provider identities, and a versioned
-  destination-policy map resolving every scenario target class
+- declared effective-manifest identity/fingerprint, the validated local-derivation manifest and
+  activation boundary, profile/provider identities, and a versioned destination-policy map resolving
+  every scenario target class
 - the complete pinned InjectionPack selection envelope, including time, candidate, byte, item,
   token, and per-lane budgets
 - latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
@@ -113,6 +115,11 @@ The authoritative format is
 [`validate-alpha-result.mjs`](validate-alpha-result.mjs). Runner-specific records are not comparable
 until this canonical validator exits 0.
 
+A single `--result` validates one inspectable scenario record only. Candidate comparison requires
+suite mode: pass one `--result PATH` per scenario. The validator requires the scenario-ID multiset to
+equal the complete fixed fixture, a common candidate/environment/artifact identity, and every record
+to be comparison-eligible before exiting 0.
+
 The schema and semantic rules define the Alpha v1 vocabulary for Slice 1, including its fixed retry
 signal and provider identity. The current executable validator is deliberately bound to that
 fingerprinted fixture bundle; neither the schema nor validator is a generic fixture-plugin interface.
@@ -163,13 +170,15 @@ the environment pins/descriptors and artifact base commit to match the fixed fix
   positive duplicate replay count. Secret-egress and incompatible-scope zeroes require the matching
   `securityOracle` positive considered-event/candidate denominator and an absent forbidden sentinel
   at the protected destination.
-- The credentialless-HTTP configuration-rejection scenario ends before capture and therefore has a
-  zero accepted/committed-event denominator. It does not use `acceptedEventLossCount=0` as safety
-  evidence; its positive activation-proposal denominator and zero request/transmitted-byte evidence
-  prove the pre-send rejection instead.
+- The two HTTP configuration-rejection scenarios end before capture and therefore have zero
+  accepted/committed-event denominators. They do not use `acceptedEventLossCount=0` as safety
+  evidence; their positive activation-proposal denominators and zero credential/request/transmitted-
+  byte evidence prove pre-send rejection instead.
 - For the deterministic redirect stub only, the initial request wire body is exactly the event's
   UTF-8 `redactedPayload`. Its positive configured-endpoint byte count and zero redirect-location
   request/byte/resend counters are independently recorded.
+- Credential-byte evidence is positive only for an allowed request to the configured verified-HTTPS
+  provider. Local providers and rejected HTTP activations record zero credential bytes.
 - Resource or quality thresholds are frozen before candidate results are inspected.
 - Raw records remain available beside the human summary.
 

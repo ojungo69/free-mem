@@ -5,7 +5,7 @@
   "$comment": "Structural layer only. Run validate-slice1-fixture.mjs for canonical contract conformance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "effectiveConfiguration", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "scenarios"],
+  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "effectiveConfiguration", "localDerivationManifest", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "scenarios"],
   "properties": {
     "fixtureVersion": { "const": 1 },
     "schema": { "const": "slice1-bidirectional-en-v1.schema.json" },
@@ -16,6 +16,7 @@
     "contractFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "pins": { "$ref": "#/$defs/SharedPins" },
     "effectiveConfiguration": { "$ref": "#/$defs/EffectiveConfiguration" },
+    "localDerivationManifest": { "$ref": "#/$defs/LocalDerivationManifest" },
     "kindContract": { "$ref": "#/$defs/KindContract" },
     "environment": { "$ref": "#/$defs/SharedEnvironment" },
     "lifecycleProfiles": { "$ref": "#/$defs/LifecycleProfiles" },
@@ -96,6 +97,29 @@
             "state": { "const": "disabled" },
             "reason": { "$ref": "#/$defs/SharedNonEmptyString" },
             "packDegradationReason": { "const": "semantic_disabled" }
+          }
+        }
+      }
+    },
+    "LocalDerivationManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestVersion", "manifestId", "baseConfigurationFingerprint", "configurationFingerprint", "summaryProvider"],
+      "properties": {
+        "manifestVersion": { "const": 1 },
+        "manifestId": { "const": "slice1-local-summary-manifest-v1" },
+        "baseConfigurationFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "configurationFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "summaryProvider": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "providerId", "configurationFingerprint", "executionLocation", "validationState"],
+          "properties": {
+            "state": { "const": "enabled" },
+            "providerId": { "const": "deterministic-summary-local-v1" },
+            "configurationFingerprint": { "const": "local-summary-config-v1" },
+            "executionLocation": { "const": "local" },
+            "validationState": { "const": "valid" }
           }
         }
       }
@@ -322,7 +346,7 @@
         "targetRepositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
         "lifecycleProfileId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "resourceSampleMode": { "enum": ["cold", "warm"] },
-        "derivationProviderExecutionLocation": { "const": "local" },
+        "derivationManifestId": { "const": "slice1-local-summary-manifest-v1" },
         "retrievalQuery": { "$ref": "#/$defs/SharedNonEmptyString" },
         "fault": { "$ref": "#/$defs/Fault" },
         "providerActivationProposal": { "$ref": "#/$defs/ProviderActivationProposal" },
@@ -338,11 +362,11 @@
       },
       "oneOf": [
         {
-          "required": ["derivationProviderExecutionLocation", "securityOracle"]
+          "required": ["derivationManifestId", "securityOracle"]
         },
         {
           "properties": {
-            "derivationProviderExecutionLocation": false
+            "derivationManifestId": false
           }
         }
       ]
@@ -354,7 +378,7 @@
       "properties": {
         "providerChoiceId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "executionLocation": { "const": "remote" },
-        "credentialPresent": { "const": false },
+        "credentialPresent": { "type": "boolean" },
         "endpointScheme": { "const": "http" },
         "endpointHost": { "$ref": "#/$defs/SharedNonEmptyString" },
         "redactedPayload": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -708,12 +732,13 @@
     "TransportSecurityOracle": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["consideredActivationProposalCount", "expectedActivationState", "expectedReason", "remoteProviderRequestCount", "payloadBytesSent", "forbiddenSentinels", "sentinelObservedAtRemote"],
+      "required": ["consideredActivationProposalCount", "expectedActivationState", "expectedReason", "remoteProviderRequestCount", "credentialBytesSent", "payloadBytesSent", "forbiddenSentinels", "sentinelObservedAtRemote"],
       "properties": {
         "consideredActivationProposalCount": { "const": 1 },
         "expectedActivationState": { "const": "rejected" },
         "expectedReason": { "const": "insecure_remote_transport" },
         "remoteProviderRequestCount": { "const": 0 },
+        "credentialBytesSent": { "const": 0 },
         "payloadBytesSent": { "const": 0 },
         "forbiddenSentinels": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "sentinelObservedAtRemote": { "const": false }

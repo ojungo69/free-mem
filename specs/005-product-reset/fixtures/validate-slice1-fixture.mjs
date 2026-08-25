@@ -37,7 +37,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:fcc1756b2eeb9d56a25531b729b55d47d6b55623355432ef8145b6d59045486c";
+  "fixture-contract-fingerprint=sha256:df09e81134c84d6d19a6edfaf3fbaee87ce63e64c8776dd7f22a2d3841bc0df1";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -71,6 +71,22 @@ const actualConfigurationFingerprint = `sha256:${createHash("sha256")
   .digest("hex")}`;
 if (fixture.effectiveConfiguration.configurationFingerprint !== actualConfigurationFingerprint) {
   throw new Error("effective manifest fingerprint does not match its non-secret configuration");
+}
+const {
+  configurationFingerprint: _localConfigurationFingerprint,
+  ...localDerivationManifest
+} = fixture.localDerivationManifest;
+const actualLocalConfigurationFingerprint = `sha256:${createHash("sha256")
+  .update("free-mem:local-derivation-manifest:v1\0")
+  .update(canonicalizeJson(localDerivationManifest))
+  .digest("hex")}`;
+if (
+  fixture.localDerivationManifest.baseConfigurationFingerprint !==
+    fixture.effectiveConfiguration.configurationFingerprint ||
+  fixture.localDerivationManifest.configurationFingerprint !==
+    actualLocalConfigurationFingerprint
+) {
+  throw new Error("local derivation manifest is not bound to the active base manifest");
 }
 
 const spool = fixture.scenarios.find(

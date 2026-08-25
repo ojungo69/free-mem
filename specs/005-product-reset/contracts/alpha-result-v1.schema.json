@@ -192,13 +192,14 @@
     "SecurityEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "remoteInjectionCount", "persistedSecretCount", "injectedSecretCount", "payloadBytesSent", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount", "forbiddenSentinelObservationCount"],
+      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "remoteInjectionCount", "persistedSecretCount", "injectedSecretCount", "credentialBytesSent", "payloadBytesSent", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount", "forbiddenSentinelObservationCount"],
       "properties": {
         "remoteProviderRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "remoteProviderPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "remoteInjectionCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "persistedSecretCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "injectedSecretCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "credentialBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "redirectLocationRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "redirectLocationPayloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },

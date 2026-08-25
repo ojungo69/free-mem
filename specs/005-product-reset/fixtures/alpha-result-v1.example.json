@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:fcc1756b2eeb9d56a25531b729b55d47d6b55623355432ef8145b6d59045486c",
+  "fixtureFingerprint": "sha256:df09e81134c84d6d19a6edfaf3fbaee87ce63e64c8776dd7f22a2d3841bc0df1",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "resourceSampleMode": "cold",
@@ -125,6 +125,7 @@
     "remoteInjectionCount": 0,
     "persistedSecretCount": 0,
     "injectedSecretCount": 0,
+    "credentialBytesSent": 32,
     "payloadBytesSent": 256,
     "redirectLocationRequestCount": 0,
     "redirectLocationPayloadBytesSent": 0,

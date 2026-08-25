@@ -28,6 +28,10 @@ def counts_ok:
     end)
   and .securityEvidence.remoteProviderPayloadCount <=
     .securityEvidence.remoteProviderRequestCount
+  and (if .securityEvidence.remoteProviderRequestCount == 0
+    then .securityEvidence.credentialBytesSent == 0
+    else true
+    end)
   and (if .securityEvidence.remoteProviderPayloadCount == 0
     then .securityEvidence.payloadBytesSent == 0
     else .securityEvidence.payloadBytesSent > 0

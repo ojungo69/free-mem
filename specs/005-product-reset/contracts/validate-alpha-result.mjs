@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { canonicalizeJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
+import { canonicalizeJson, parseIJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
@@ -90,24 +91,31 @@ function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
 
 if (args.length === 1 && args[0] === "--help") {
   console.log(
-    "Usage: node --experimental-strip-types validate-alpha-result.mjs [--fixture PATH] [--result PATH]",
+    "Usage: node --experimental-strip-types validate-alpha-result.mjs [--fixture PATH] [--result PATH]...",
   );
   process.exit(0);
 }
 
 let fixturePath = defaultFixturePath;
-let resultPath = defaultResultPath;
-const seen = new Set();
+const resultPaths = [];
+let fixtureSeen = false;
 for (let index = 0; index < args.length; index += 2) {
   const flag = args[index];
   const value = args[index + 1];
-  if (!value || (flag !== "--fixture" && flag !== "--result") || seen.has(flag)) {
+  if (
+    !value ||
+    (flag !== "--fixture" && flag !== "--result") ||
+    (flag === "--fixture" && fixtureSeen)
+  ) {
     throw new Error("invalid arguments; use --help for usage");
   }
-  seen.add(flag);
-  if (flag === "--fixture") fixturePath = resolve(value);
-  if (flag === "--result") resultPath = resolve(value);
+  if (flag === "--fixture") {
+    fixtureSeen = true;
+    fixturePath = resolve(value);
+  }
+  if (flag === "--result") resultPaths.push(value === "-" ? value : resolve(value));
 }
+if (resultPaths.length === 0) resultPaths.push(defaultResultPath);
 
 execFileSync(
   process.execPath,
@@ -115,9 +123,40 @@ execFileSync(
   { stdio: "inherit" },
 );
 
+if (resultPaths.length > 1) {
+  const suiteFixture = readIJsonFile(fixturePath);
+  const suiteResults = resultPaths.map((path) => readIJsonFile(path));
+  const expectedScenarioIds = suiteFixture.scenarios.map((item) => item.scenarioId).sort();
+  const actualScenarioIds = suiteResults.map((item) => item.scenarioId).sort();
+  const first = suiteResults[0];
+  if (
+    !isDeepStrictEqual(actualScenarioIds, expectedScenarioIds) ||
+    !suiteResults.every((item) =>
+      item.candidateId === first.candidateId &&
+      item.fixtureFingerprint === first.fixtureFingerprint &&
+      item.environmentFingerprint === first.environmentFingerprint &&
+      item.artifactFingerprint === first.artifactFingerprint &&
+      item.disposition.successfulComparisonEligible
+    )
+  ) {
+    throw new Error("candidate suite is incomplete, inconsistent, or non-eligible");
+  }
+  for (const item of suiteResults) {
+    execFileSync(
+      process.execPath,
+      ["--experimental-strip-types", fileURLToPath(import.meta.url), "--fixture", fixturePath, "--result", "-"],
+      { input: JSON.stringify(item), stdio: ["pipe", "inherit", "inherit"] },
+    );
+  }
+  process.exit(0);
+}
+
 const schema = readIJsonFile(schemaPath);
 const fixtureSchema = readIJsonFile(fixtureSchemaPath);
-const result = readIJsonFile(resultPath);
+const resultPath = resultPaths[0];
+const result = resultPath === "-"
+  ? parseIJson(new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(0)))
+  : readIJsonFile(resultPath);
 const fixture = readIJsonFile(fixturePath);
 const issues = validateAgainstSchema(result, schema, schema);
 if (issues.length > 0) {
@@ -154,14 +193,16 @@ const artifactFingerprint = fingerprint(
   "free-mem:alpha-candidate-artifact:v1\0",
   result.artifactMetadata,
 );
+const expectedManifestFingerprint = scenario?.derivationManifestId
+  ? fixture.localDerivationManifest.configurationFingerprint
+  : fixture.effectiveConfiguration.configurationFingerprint;
 if (
   !scenario ||
   result.fixtureId !== fixture.fixtureId ||
   result.fixtureFingerprint !== fixture.contractFingerprint ||
   result.resourceSampleMode !== scenario.resourceSampleMode ||
   result.targetDestinationClass !== scenario.targetDestinationClass ||
-  result.effectiveManifestFingerprint !==
-    fixture.effectiveConfiguration.configurationFingerprint ||
+  result.effectiveManifestFingerprint !== expectedManifestFingerprint ||
   !isDeepStrictEqual(result.executionEnvironment, expectedExecutionEnvironment) ||
   result.environmentFingerprint !== environmentFingerprint ||
   result.artifactMetadata.candidateId !== result.candidateId ||
@@ -316,11 +357,39 @@ const oracleEvidenceFields = [
   "remoteInjectionCount",
   "persistedSecretCount",
   "injectedSecretCount",
+  "credentialBytesSent",
   "payloadBytesSent",
   "redirectLocationRequestCount",
   "redirectLocationPayloadBytesSent",
   "resentPayloadCount",
 ];
+const activeSummaryProvider = scenario.derivationManifestId
+  ? fixture.localDerivationManifest.summaryProvider
+  : fixture.effectiveConfiguration.summaryProvider;
+const providerRejected = Object.hasOwn(scenario.summaryProviderStub, "policyRejectedReason");
+const derivationRequested =
+  Object.hasOwn(scenario.summaryProviderStub, "summary") ||
+  Object.hasOwn(scenario.summaryProviderStub, "malformedResponse") ||
+  Object.hasOwn(scenario.summaryProviderStub, "redirectResponse") ||
+  scenario.summaryProviderStub.memoryItems.length > 0;
+const remoteProviderExpected =
+  activeSummaryProvider.executionLocation === "remote" && derivationRequested && !providerRejected;
+const credentialTransmissionExpected =
+  remoteProviderExpected && Object.hasOwn(activeSummaryProvider, "credentialSource");
+const providerRoutingPass = remoteProviderExpected
+  ? result.securityDenominators.consideredRemoteProviderEventCount > 0 &&
+    result.securityEvidence.remoteProviderRequestCount > 0 &&
+    result.securityEvidence.remoteProviderPayloadCount > 0 &&
+    (credentialTransmissionExpected
+      ? result.securityEvidence.credentialBytesSent > 0
+      : result.securityEvidence.credentialBytesSent === 0) &&
+    result.securityEvidence.payloadBytesSent > 0
+  : result.securityEvidence.remoteProviderRequestCount === 0 &&
+    result.securityEvidence.remoteProviderPayloadCount === 0 &&
+    result.securityEvidence.credentialBytesSent === 0 &&
+    result.securityEvidence.payloadBytesSent === 0;
+const destinationPolicy =
+  fixture.effectiveConfiguration.destinationPolicyMap[scenario.targetDestinationClass];
 const securityEvidencePass =
   result.securityEvidence.persistedSecretCount === 0 &&
   result.securityEvidence.injectedSecretCount === 0 &&
@@ -328,7 +397,9 @@ const securityEvidencePass =
   result.securityEvidence.redirectLocationPayloadBytesSent === 0 &&
   result.securityEvidence.resentPayloadCount === 0 &&
   result.securityEvidence.forbiddenSentinelObservationCount === 0 &&
-  (scenario.expectedInjectedItems.length > 0 || result.securityEvidence.remoteInjectionCount === 0) &&
+  providerRoutingPass &&
+  (destinationPolicy.executionLocation === "remote" ||
+    result.securityEvidence.remoteInjectionCount === 0) &&
   (result.securityEvidence.remoteProviderRequestCount === 0 ||
     result.securityDenominators.consideredRemoteProviderEventCount > 0) &&
   oracleEvidenceFields.every(
@@ -345,18 +416,23 @@ const orphanMetric = resourceMetrics.orphanProductProcessCount;
 const maxSampleGapMs = fixture.samplingProtocol.processSampleIntervalMs;
 const milestoneTimes = new Map(result.milestones.map((item) => [item.name, item.monotonicMs]));
 const startTime = milestoneTimes.get(steadyMetric.startMilestone);
-const sampleAt = (time) => {
+const sampleAtOrAfter = (time) => {
   if (typeof time !== "number") return [];
   const sample = result.processSamples.find((item) => item.monotonicMs >= time);
   return sample && sample.monotonicMs - time <= maxSampleGapMs ? [sample] : [];
 };
-const startSamples = exceptionalState ? [result.processSamples[0]] : sampleAt(startTime);
+const sampleAtOrBefore = (time) => {
+  if (typeof time !== "number") return [];
+  const sample = [...result.processSamples].reverse().find((item) => item.monotonicMs <= time);
+  return sample && time - sample.monotonicMs <= maxSampleGapMs ? [sample] : [];
+};
+const startSamples = exceptionalState ? [result.processSamples[0]] : sampleAtOrBefore(startTime);
 const terminalSamples = (exceptionalState || result.drain.timedOut)
   ? [result.processSamples.at(-1)]
-  : sampleAt(milestoneTimes.get(steadyMetric.endMilestone));
+  : sampleAtOrAfter(milestoneTimes.get(steadyMetric.endMilestone));
 const teardownSamples = (exceptionalState || result.drain.timedOut)
   ? terminalSamples
-  : sampleAt(milestoneTimes.get(orphanMetric.endMilestone));
+  : sampleAtOrAfter(milestoneTimes.get(orphanMetric.endMilestone));
 if (startSamples.length !== 1 || terminalSamples.length !== 1 || teardownSamples.length !== 1) {
   throw new Error("raw resource samples do not cover the pinned milestone boundaries");
 }
