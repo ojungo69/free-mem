@@ -1,0 +1,49 @@
+specs/005-product-reset/contracts/alpha-result-render.mjs
+  s_9d346c66194a0d::t_51d48e5d26c7f5 22-27,30
+  s_9d346c66194a0d::t_8a121df04833de 5-6,53
+specs/005-product-reset/contracts/alpha-result-v1.schema.json
+  s_9d346c66194a0d::t_d3b545ac0d76a0 7,90-92,589,596-602,604
+  s_ade11e03cc5fe6::t_5e047d3f997c91 603
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_acdef6ae8ad166 14,185
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_b6c9664fb78801 4
+  s_9d346c66194a0d::t_c6fa93c7115014 419
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_acdef6ae8ad166 21,72
+  s_9d346c66194a0d::t_b6c9664fb78801 51
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_b6c9664fb78801 4
+  s_9d346c66194a0d::t_c6fa93c7115014 760
+  s_9d346c66194a0d::t_bb9bc9fafaa185 288-289,325-340,371-378,385-390,411,413,418,471-486,505-512,519-524,547,549,551,555-562,566,570,582,586,608-615,622-627,679-694,713-720,727-732
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_f9d6428980dd15 119-120,176-177
+specs/005-product-reset/contracts/alpha-result-selection.mjs
+  s_9d346c66194a0d::t_acdef6ae8ad166 1-13
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_b6c9664fb78801 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e541010f6efac8c98164c005d6844b0994394f62",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_ade11e03cc5fe6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a039fd-27cb-77b3-ac53-085816ff56e4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
