@@ -73,7 +73,8 @@ specs/005-product-reset/
 ├── issue-routing.md        # M0 GitHub audit and mutation evidence
 ├── rollback.md             # GitHub state restoration if M0 is abandoned
 ├── fixtures/
-│   └── slice1-bidirectional-en-v1.json
+│   ├── slice1-bidirectional-en-v1.json
+│   └── slice1-bidirectional-en-v1.schema.json
 ├── contracts/
 │   ├── alpha-comparison.md
 │   ├── capability-manifest.md
@@ -110,9 +111,10 @@ runtime slice exists.
    fixed contracts, and GitHub PR/Issue routing.
 2. **Slice 1 — Automatic runtime path**: setup starts and diagnoses the runtime; one permanent
    minimal capability manifest binds the resource profile, explicit summary provider, disabled
-   embedding lane, and lexical fallback; Claude and Codex capture, flush, summary, store, and inject
-   complete in both directions. #126, #129, and #130 are child entry criteria and land before or
-   inside the same Slice 1 implementation branch. Setup rejects unsupported platforms/mounts
+   embedding lane, and lexical fallback; capture, flush, summarization, storage, and injection
+   complete in both directions between Claude Code and Codex. #126, #129, and #130 are child entry
+   criteria and land before or inside the same Slice 1 implementation branch. Setup rejects
+   unsupported platforms/mounts
    before mutation, embedding-disabled preserves existing semantic data, and the named Phase 1
    sole-writer/spool/redaction/backup gates remain green.
 3. **Slice 2 — Profiles and explainable retrieval**: extend the Slice 1 manifest to multiple

@@ -56,7 +56,7 @@ Active-count policy after replacement creation: parent + Slice 1 + #126 + #129 +
 The other kept issues remain open but do not carry `status: in progress` or
 `status: ready for implementation`.
 
-#126, #129, and #130 are sub-issues and entry criteria of Slice 1 #137. They are counted as work
+\#126, #129, and #130 are sub-issues and entry criteria of Slice 1 #137. They are counted as work
 inside the one active product slice, not three parallel product tracks. #137 cannot be declared
 complete while any remains open, and its focused spec must include their privacy/data-loss
 regressions.
@@ -191,6 +191,6 @@ Recorded after T015-T018:
 - Active-status issues: 5 (`#136`, `#137`, `#126`, `#129`, `#130`)
 - PR #131: open; DCO is the only failed check
 - PR #133: closed and unmerged; branch retained
-- Final GitHub verification timestamp: 2026-08-25T10:19:39+09:00
+- Final GitHub verification timestamp: 2026-08-25T13:48:57+09:00
 - `git diff --check`: pass
 - Runtime/harness diff: none

@@ -203,7 +203,8 @@ without leaving active processes or managed configuration behind.
   observable for every shipped profile.
 - **FR-017**: Users MUST be able to inspect memory content, origin, processing state, selection
   reason, effective profile, and safe recovery action without exposing credential values.
-- **FR-018**: Users MUST be able to delete a memory and prevent its later retrieval or injection.
+- **FR-018**: Users MUST be able to delete a memory and prevent its later retrieval, injection, or
+  resurrection by reprocessing retained sources under a different profile or model generation.
 - **FR-019**: The product MUST support verified backup and restore of durable local memory.
 - **FR-020**: Installation, update, diagnostics, backup, restore, and uninstall MUST form one
   documented lifecycle and MUST not leave orphan managed processes after completion.

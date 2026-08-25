@@ -1,5 +1,6 @@
 {
   "fixtureVersion": 1,
+  "schema": "slice1-bidirectional-en-v1.schema.json",
   "fixtureId": "slice1-bidirectional-en-v1",
   "ownerSlice": 1,
   "language": "en",
@@ -11,6 +12,22 @@
     "nodeVersion": "24.16.0",
     "pnpmVersion": "11.8.0",
     "summaryProviderStub": "deterministic-summary-v1"
+  },
+  "effectiveConfiguration": {
+    "resourceProfile": {
+      "profileId": "slice1-short-run",
+      "version": 1,
+      "processingRetryLimit": 3
+    },
+    "summaryProvider": {
+      "state": "enabled",
+      "providerId": "deterministic-summary-v1",
+      "redirectPolicy": "reject"
+    },
+    "embeddingProvider": {
+      "state": "disabled",
+      "reason": "slice1_semantic_not_owned"
+    }
   },
   "kindContract": {
     "capturedEventKinds": [
@@ -54,6 +71,41 @@
     "repository": "<isolated-local-repository>",
     "network": "provider-stub-only"
   },
+  "samplingProtocol": {
+    "runsPerScenario": 22,
+    "discardInitialRunsPerScenario": 2,
+    "measuredRunsPerScenario": 20,
+    "percentileMethod": "nearest_rank_ceiling",
+    "percentileScope": "per_scenario_no_pooling",
+    "clock": "monotonic",
+    "coldReset": "fresh isolated data directory and stopped product process before every cold-mode run",
+    "warmState": "ready product process retained; each measured run uses a fresh repository/session namespace and event IDs namespaced by measured-run ordinal",
+    "processSampleIntervalMs": 100,
+    "metrics": {
+      "captureP95Ms": {
+        "scenarios": [
+          "claude-to-codex",
+          "codex-to-claude",
+          "runtime-unavailable-spool-recovery",
+          "summary-provider-retry-exhausted",
+          "summary-provider-redirect-rejected"
+        ],
+        "sampleBoundary": "capture hook entry to accepted-or-durably-spooled return"
+      },
+      "warmInjectionP95Ms": {
+        "scenarios": [
+          "codex-to-claude"
+        ],
+        "sampleBoundary": "injection request to target acknowledgement"
+      },
+      "shortColdLexicalInjectionMs": {
+        "scenarios": [
+          "claude-to-codex"
+        ],
+        "sampleBoundary": "cold lexical injection request to target acknowledgement"
+      }
+    }
+  },
   "thresholds": {
     "captureP95Ms": 200,
     "warmInjectionP95Ms": 1000,
@@ -79,45 +131,56 @@
       "retrievalQuery": "settings validation decision and next regression",
       "events": [
         {
+          "eventId": "claude-to-codex-event-1",
           "sequence": 1,
           "kind": "prompt",
           "text": "Add validation for the project settings file."
         },
         {
+          "eventId": "claude-to-codex-event-2",
           "sequence": 2,
           "kind": "assistant_message",
           "text": "Reuse the existing JSON-schema validation path."
         },
         {
+          "eventId": "claude-to-codex-event-3",
           "sequence": 3,
           "kind": "tool_result",
           "text": "A second custom parser was rejected because it duplicated validation."
         },
         {
+          "eventId": "claude-to-codex-event-4",
           "sequence": 4,
           "kind": "tool_activity",
           "text": "The settings loader now calls the existing validator."
         },
         {
+          "eventId": "claude-to-codex-event-5",
           "sequence": 5,
           "kind": "assistant_message",
           "text": "Add the malformed-root regression test."
         }
       ],
       "summaryProviderStub": {
-        "summary": "Settings validation now reuses the existing JSON-schema path; a duplicate parser was rejected, and the malformed-root regression remains.",
+        "summary": {
+          "title": "Settings validation summary",
+          "body": "Settings validation now reuses the existing JSON-schema path; a duplicate parser was rejected, and the malformed-root regression remains."
+        },
         "memoryItems": [
           {
             "kind": "decision",
-            "text": "Reuse the existing JSON-schema validation path."
+            "title": "Settings validation path",
+            "body": "Reuse the existing JSON-schema validation path."
           },
           {
             "kind": "failed_approach",
-            "text": "Do not add a second custom parser."
+            "title": "Duplicate settings parser",
+            "body": "Do not add a second custom parser."
           },
           {
             "kind": "next_action",
-            "text": "Next: add the malformed-root regression test."
+            "title": "Malformed-root regression",
+            "body": "Next: add the malformed-root regression test."
           }
         ]
       },
@@ -126,7 +189,7 @@
         "timeoutMs": 30000,
         "committedEventCount": 5,
         "summaryCount": 1,
-        "durableMemoryCount": 3,
+        "durableMemoryCount": 4,
         "targetInjectionAcknowledged": true
       },
       "requiredFacts": [
@@ -158,45 +221,56 @@
       "retrievalQuery": "cache invalidation constraint failed approach and next action",
       "events": [
         {
+          "eventId": "codex-to-claude-event-1",
           "sequence": 1,
           "kind": "prompt",
           "text": "Fix the cache invalidation race without changing the public API."
         },
         {
+          "eventId": "codex-to-claude-event-2",
           "sequence": 2,
           "kind": "assistant_message",
           "text": "Preserve the existing public cache API."
         },
         {
+          "eventId": "codex-to-claude-event-3",
           "sequence": 3,
           "kind": "tool_result",
           "text": "The race occurs in shared-key invalidation."
         },
         {
+          "eventId": "codex-to-claude-event-4",
           "sequence": 4,
           "kind": "tool_result",
           "text": "A global lock was rejected because it serialized unrelated keys."
         },
         {
+          "eventId": "codex-to-claude-event-5",
           "sequence": 5,
           "kind": "assistant_message",
           "text": "Add a per-key invalidation lock and concurrent-key regression."
         }
       ],
       "summaryProviderStub": {
-        "summary": "The public cache API stays unchanged; shared-key invalidation races, a global lock was rejected, and a per-key lock plus concurrency regression is next.",
+        "summary": {
+          "title": "Cache invalidation summary",
+          "body": "The public cache API stays unchanged; shared-key invalidation races, a global lock was rejected, and a per-key lock plus concurrency regression is next."
+        },
         "memoryItems": [
           {
             "kind": "decision",
-            "text": "Preserve the existing public cache API."
+            "title": "Public cache API",
+            "body": "Preserve the existing public cache API."
           },
           {
             "kind": "failed_approach",
-            "text": "Do not use a global invalidation lock."
+            "title": "Global invalidation lock",
+            "body": "Do not use a global invalidation lock."
           },
           {
             "kind": "next_action",
-            "text": "Next: add a per-key lock and concurrent-key regression."
+            "title": "Per-key invalidation lock",
+            "body": "Next: add a per-key lock and concurrent-key regression."
           }
         ]
       },
@@ -205,7 +279,7 @@
         "timeoutMs": 30000,
         "committedEventCount": 5,
         "summaryCount": 1,
-        "durableMemoryCount": 3,
+        "durableMemoryCount": 4,
         "targetInjectionAcknowledged": true
       },
       "requiredFacts": [
@@ -237,37 +311,59 @@
       "retrievalQuery": "queued event after daemon restart",
       "fault": {
         "kind": "daemon_unavailable_after_event_accept",
-        "recovery": "restart_and_replay_spool_once"
+        "recovery": "restart_and_replay_same_batch_twice",
+        "replaySchedule": [
+          {
+            "attempt": 1,
+            "eventIds": [
+              "spool-event-1",
+              "spool-event-2"
+            ]
+          },
+          {
+            "attempt": 2,
+            "eventIds": [
+              "spool-event-1",
+              "spool-event-2"
+            ]
+          }
+        ]
       },
       "events": [
         {
+          "eventId": "spool-event-1",
           "sequence": 1,
           "kind": "prompt",
           "text": "Record a durable follow-up while the memory daemon is unavailable."
         },
         {
+          "eventId": "spool-event-2",
           "sequence": 2,
           "kind": "assistant_message",
           "text": "Next: verify the queued event after daemon restart."
         }
       ],
       "summaryProviderStub": {
-        "summary": "The daemon was unavailable; the accepted event was spooled and replayed once after restart.",
+        "summary": {
+          "title": "Spool recovery summary",
+          "body": "The daemon was unavailable; the same stable events were replayed twice and committed once after restart."
+        },
         "memoryItems": [
           {
             "kind": "next_action",
-            "text": "Next: verify the queued event after daemon restart."
+            "title": "Queued-event verification",
+            "body": "Next: verify the queued event after daemon restart."
           }
         ]
       },
       "drainCondition": {
-        "drainConditionId": "slice1-spool-replayed-once-v1",
+        "drainConditionId": "slice1-spool-idempotent-replay-v1",
         "timeoutMs": 30000,
         "committedEventCount": 2,
         "spooledEventCount": 2,
-        "replayCount": 1,
+        "replayCount": 2,
         "summaryCount": 1,
-        "durableMemoryCount": 1,
+        "durableMemoryCount": 2,
         "targetInjectionAcknowledged": true
       },
       "requiredFacts": [
@@ -304,11 +400,13 @@
       },
       "events": [
         {
+          "eventId": "summary-provider-failure-event-1",
           "sequence": 1,
           "kind": "prompt",
           "text": "Keep this event durable even when summary generation fails."
         },
         {
+          "eventId": "summary-provider-failure-event-2",
           "sequence": 2,
           "kind": "tool_result",
           "text": "The provider returned malformed output."
@@ -333,6 +431,59 @@
       "forbiddenFacts": [
         "Summary generation succeeded.",
         "The accepted event was discarded."
+      ],
+      "selectionReasons": [
+        "semantic_disabled"
+      ],
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "summary-provider-redirect-rejected",
+      "sourceAgent": "claude-code",
+      "targetAgent": "codex",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "provider redirect rejection state",
+      "fault": {
+        "kind": "summary_provider_redirect_response"
+      },
+      "events": [
+        {
+          "eventId": "summary-provider-redirect-event-1",
+          "sequence": 1,
+          "kind": "prompt",
+          "text": "Keep this event local when the summary provider redirects."
+        }
+      ],
+      "summaryProviderStub": {
+        "redirectResponse": {
+          "status": 307,
+          "location": "https://redirect.invalid/v1/summary"
+        },
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-summary-redirect-rejected-v1",
+        "timeoutMs": 30000,
+        "committedEventCount": 1,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "pendingSummaryJobCount": 1,
+        "eventDeliveryState": "committed",
+        "summaryJobState": "quarantined",
+        "redirectLocationRequestCount": 0,
+        "resentPayloadCount": 0,
+        "doctorReason": "provider_redirect_rejected",
+        "targetInjectionAcknowledged": false
+      },
+      "requiredFacts": [],
+      "forbiddenFacts": [
+        "The redirect payload was resent."
       ],
       "selectionReasons": [
         "semantic_disabled"

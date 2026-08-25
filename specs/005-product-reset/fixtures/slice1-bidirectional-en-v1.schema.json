@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://free-mem.dev/specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json",
+  "title": "Product Reset Slice 1 bidirectional fixture v1",
+  "$comment": "Structural validation only. Contract conformance also requires the semantic jq gate in ../quickstart.md; neither check may be used alone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "pins", "effectiveConfiguration", "kindContract", "environment", "samplingProtocol", "thresholds", "scenarios"],
+  "properties": {
+    "fixtureVersion": { "const": 1 },
+    "schema": { "const": "slice1-bidirectional-en-v1.schema.json" },
+    "fixtureId": { "$ref": "#/$defs/NonEmptyString" },
+    "ownerSlice": { "const": 1 },
+    "language": { "$ref": "#/$defs/NonEmptyString" },
+    "factMatch": { "const": "exact" },
+    "pins": { "$ref": "#/$defs/Pins" },
+    "effectiveConfiguration": { "$ref": "#/$defs/EffectiveConfiguration" },
+    "kindContract": { "$ref": "#/$defs/KindContract" },
+    "environment": { "$ref": "#/$defs/Environment" },
+    "samplingProtocol": { "$ref": "#/$defs/SamplingProtocol" },
+    "thresholds": { "$ref": "#/$defs/Thresholds" },
+    "scenarios": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/Scenario" }
+    }
+  },
+  "$defs": {
+    "NonEmptyString": { "type": "string", "minLength": 1 },
+    "NonNegativeInteger": { "type": "integer", "minimum": 0 },
+    "PositiveInteger": { "type": "integer", "minimum": 1 },
+    "Agent": { "enum": ["claude-code", "codex"] },
+    "EventKind": { "enum": ["prompt", "tool_activity", "tool_result", "assistant_message", "session_boundary"] },
+    "Pins": {
+      "const": {
+        "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
+        "claudeCodeVersion": "2.1.243",
+        "codexVersion": "0.149.1",
+        "nodeVersion": "24.16.0",
+        "pnpmVersion": "11.8.0",
+        "summaryProviderStub": "deterministic-summary-v1"
+      }
+    },
+    "EffectiveConfiguration": {
+      "const": {
+        "resourceProfile": {
+          "profileId": "slice1-short-run",
+          "version": 1,
+          "processingRetryLimit": 3
+        },
+        "summaryProvider": {
+          "state": "enabled",
+          "providerId": "deterministic-summary-v1",
+          "redirectPolicy": "reject"
+        },
+        "embeddingProvider": {
+          "state": "disabled",
+          "reason": "slice1_semantic_not_owned"
+        }
+      }
+    },
+    "KindContract": {
+      "const": {
+        "capturedEventKinds": ["prompt", "tool_activity", "tool_result", "assistant_message", "session_boundary"],
+        "memoryItemKinds": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"],
+        "conversionRules": {
+          "prompt": ["summary"],
+          "tool_activity": ["change"],
+          "tool_result": ["discovery", "failed_approach"],
+          "assistant_message": ["decision", "next_action"],
+          "session_boundary": ["summary"]
+        }
+      }
+    },
+    "Environment": {
+      "const": {
+        "home": "<isolated-home>",
+        "dataDir": "<isolated-data-dir>",
+        "repository": "<isolated-local-repository>",
+        "network": "provider-stub-only"
+      }
+    },
+    "SamplingProtocol": {
+      "const": {
+        "runsPerScenario": 22,
+        "discardInitialRunsPerScenario": 2,
+        "measuredRunsPerScenario": 20,
+        "percentileMethod": "nearest_rank_ceiling",
+        "percentileScope": "per_scenario_no_pooling",
+        "clock": "monotonic",
+        "coldReset": "fresh isolated data directory and stopped product process before every cold-mode run",
+        "warmState": "ready product process retained; each measured run uses a fresh repository/session namespace and event IDs namespaced by measured-run ordinal",
+        "processSampleIntervalMs": 100,
+        "metrics": {
+          "captureP95Ms": {
+            "scenarios": ["claude-to-codex", "codex-to-claude", "runtime-unavailable-spool-recovery", "summary-provider-retry-exhausted", "summary-provider-redirect-rejected"],
+            "sampleBoundary": "capture hook entry to accepted-or-durably-spooled return"
+          },
+          "warmInjectionP95Ms": {
+            "scenarios": ["codex-to-claude"],
+            "sampleBoundary": "injection request to target acknowledgement"
+          },
+          "shortColdLexicalInjectionMs": {
+            "scenarios": ["claude-to-codex"],
+            "sampleBoundary": "cold lexical injection request to target acknowledgement"
+          }
+        }
+      }
+    },
+    "Thresholds": {
+      "const": {
+        "captureP95Ms": 200,
+        "warmInjectionP95Ms": 1000,
+        "shortColdLexicalInjectionMs": 3000,
+        "maxSteadyProductProcessCount": 3,
+        "orphanProductProcessCount": 0,
+        "maxShortRunRssGrowthMiB": 32,
+        "maxPendingQueueDepth": 25,
+        "maxStorageGrowthBytes": 1048576,
+        "maxInjectedTokens": 800,
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    "Scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "sourceAgent", "targetAgent", "resourceSampleMode", "retrievalQuery", "events", "summaryProviderStub", "drainCondition", "requiredFacts", "forbiddenFacts", "selectionReasons", "expectedCounters"],
+      "properties": {
+        "scenarioId": { "$ref": "#/$defs/NonEmptyString" },
+        "sourceAgent": { "$ref": "#/$defs/Agent" },
+        "targetAgent": { "$ref": "#/$defs/Agent" },
+        "resourceSampleMode": { "enum": ["cold", "warm"] },
+        "retrievalQuery": { "$ref": "#/$defs/NonEmptyString" },
+        "fault": { "$ref": "#/$defs/Fault" },
+        "events": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Event" } },
+        "summaryProviderStub": { "$ref": "#/$defs/SummaryProviderStub" },
+        "drainCondition": { "$ref": "#/$defs/DrainCondition" },
+        "requiredFacts": { "type": "array", "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "forbiddenFacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "selectionReasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["exact_session", "lexical", "omitted_budget", "omitted_ineligible", "semantic_disabled"] }
+        },
+        "expectedCounters": { "$ref": "#/$defs/ExpectedCounters" }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "sequence", "kind", "text"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/NonEmptyString" },
+        "sequence": { "$ref": "#/$defs/PositiveInteger" },
+        "kind": { "$ref": "#/$defs/EventKind" },
+        "text": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "MemoryDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title", "body"],
+      "properties": {
+        "kind": { "enum": ["decision", "discovery", "change", "failed_approach", "next_action"] },
+        "title": { "$ref": "#/$defs/NonEmptyString" },
+        "body": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "SummaryDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "body"],
+      "properties": {
+        "title": { "$ref": "#/$defs/NonEmptyString" },
+        "body": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "SummaryProviderStub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memoryItems"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/SummaryDraft" },
+        "malformedResponse": { "$ref": "#/$defs/NonEmptyString" },
+        "redirectResponse": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "location"],
+          "properties": {
+            "status": { "enum": [301, 302, 303, 307, 308] },
+            "location": { "$ref": "#/$defs/NonEmptyString" }
+          }
+        },
+        "memoryItems": { "type": "array", "items": { "$ref": "#/$defs/MemoryDraft" } }
+      },
+      "oneOf": [
+        { "required": ["summary"] },
+        { "required": ["malformedResponse"] },
+        { "required": ["redirectResponse"] }
+      ]
+    },
+    "Fault": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["daemon_unavailable_after_event_accept", "summary_provider_malformed_response", "summary_provider_redirect_response"] },
+        "recovery": { "const": "restart_and_replay_same_batch_twice" },
+        "replaySchedule": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/ReplayAttempt" } },
+        "attemptsUntilExhausted": { "$ref": "#/$defs/PositiveInteger" },
+        "resumeSignals": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] }
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["kind", "recovery", "replaySchedule"],
+          "properties": {
+            "kind": { "const": "daemon_unavailable_after_event_accept" },
+            "attemptsUntilExhausted": false,
+            "resumeSignals": false
+          }
+        },
+        {
+          "required": ["kind", "attemptsUntilExhausted", "resumeSignals"],
+          "properties": {
+            "kind": { "const": "summary_provider_malformed_response" },
+            "recovery": false,
+            "replaySchedule": false,
+            "resumeSignals": {
+              "const": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"]
+            }
+          }
+        },
+        {
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "summary_provider_redirect_response" },
+            "recovery": false,
+            "replaySchedule": false,
+            "attemptsUntilExhausted": false,
+            "resumeSignals": false
+          }
+        }
+      ]
+    },
+    "ReplayAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt", "eventIds"],
+      "properties": {
+        "attempt": { "$ref": "#/$defs/PositiveInteger" },
+        "eventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } }
+      }
+    },
+    "DrainCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["drainConditionId", "timeoutMs", "committedEventCount", "summaryCount", "durableMemoryCount", "targetInjectionAcknowledged"],
+      "properties": {
+        "drainConditionId": { "$ref": "#/$defs/NonEmptyString" },
+        "timeoutMs": { "$ref": "#/$defs/PositiveInteger" },
+        "committedEventCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "spooledEventCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "replayCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "summaryCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "durableMemoryCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "pendingSummaryJobCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "eventDeliveryState": { "const": "committed" },
+        "summaryJobState": { "enum": ["retry-exhausted", "quarantined"] },
+        "redirectLocationRequestCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "resentPayloadCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "doctorReason": { "$ref": "#/$defs/NonEmptyString" },
+        "targetInjectionAcknowledged": { "type": "boolean" }
+      }
+    },
+    "ExpectedCounters": {
+      "const": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    }
+  }
+}

@@ -9,11 +9,14 @@ change before adopting it. This contract is not a general benchmark framework.
 
 1. **Slice 1**: Claude Code capture followed by Codex lexical retrieval and injection.
 2. **Slice 1**: Codex capture followed by Claude Code lexical retrieval and injection.
-3. **Slice 1**: Runtime unavailable during capture, followed by spool recovery.
+3. **Slice 1**: Runtime unavailable during capture, followed by duplicate delivery of the same
+   stable event identities during spool recovery.
 4. **Slice 1**: Summary provider unavailable or malformed.
-5. **Slice 2**: Semantic provider or index unavailable, with lexical fallback and InjectionPack
+5. **Slice 1**: Summary provider returns an HTTP redirect; no request or payload is sent to the
+   redirect location and doctor reports the bounded rejection reason.
+6. **Slice 2**: Semantic provider or index unavailable, with lexical fallback and InjectionPack
    reasons.
-6. **Resource samples**:
+7. **Resource samples**:
    - Slice 1: cold and warm short-run samples only;
    - Slice 3: long, burst, packed-artifact, and eight-hour soak samples.
 
@@ -28,13 +31,18 @@ Each fixture defines:
 - isolated configuration and data locations
 - ordered input events and lifecycle milestones
 - required facts, forbidden facts, and retrieval queries
-- expected durable event and memory counts
+- expected durable event and MemoryItem counts, including persisted summaries
 - declared profile and provider identities
-- latency, process, memory-growth, queue, storage, and token thresholds
+- latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
+  warm-up/reset rules, sample boundaries, and percentile calculation
 - an explicit drain condition proving comparable completion across candidates
+- a versioned structural fixture schema and mandatory semantic validation path; neither check alone
+  establishes fixture conformance
 
 The committed Slice 1 fixture is
-[`../fixtures/slice1-bidirectional-en-v1.json`](../fixtures/slice1-bidirectional-en-v1.json).
+[`../fixtures/slice1-bidirectional-en-v1.json`](../fixtures/slice1-bidirectional-en-v1.json), with
+structure fixed by
+[`../fixtures/slice1-bidirectional-en-v1.schema.json`](../fixtures/slice1-bidirectional-en-v1.schema.json).
 
 Real credentials, private transcripts, and local absolute paths are forbidden in committed fixtures.
 
@@ -59,6 +67,7 @@ Every run emits one machine-readable record containing:
 ## Comparison rules
 
 - Candidates are compared only after their equivalent drain condition completes or times out.
+- `summaryCount` is included in `durableMemoryCount`; it is not an additional durable entity count.
 - Unsupported, not-run, failed, and degraded are distinct states.
 - Safety counts for Agent blockage, accepted-event loss, duplicate durable memory, secret egress,
   and incompatible-scope injection must be zero.

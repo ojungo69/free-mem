@@ -34,6 +34,8 @@ and a non-secret fingerprint.
 - Disabled is an explicit provider state, not an empty model, missing endpoint, or other sentinel.
 - Provider egress policy distinguishes on-device consumers from remote/off-host destinations;
   local-only data is eligible only for the former and secrets are eligible for neither.
+- Technical Alpha provider HTTP redirects are rejected before any payload is resent, and doctor
+  reports the bounded redirect reason. A later redirect allowlist requires a new explicit contract.
 - Each InjectionPack request supplies its concrete target Agent/model destination and resolves it
   against the active manifest's policy map. Unknown destinations are remote/ineligible for
   local-only data; local-only eligibility requires a matching explicit on-device policy.

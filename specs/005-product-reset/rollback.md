@@ -16,6 +16,8 @@ the default branch. Do not run it merely because a later implementation slice ch
 
 ```sh
 set -e
+export GH_REPO='ojungo69/free-mem'
+test "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" = "$GH_REPO"
 export RESET_ROLLBACK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/free-mem-reset-rollback.XXXXXX")
 chmod 700 "$RESET_ROLLBACK_DIR"
 
@@ -146,7 +148,7 @@ jq -e --argjson expected "$expected" '
 jq -e '
   def names: [.labels[].name];
   (map(select(.number == 81))[0] | (names | index("target: core 1.0")) != null and (names | index("target: technical alpha")) == null)
-  and (all(.[] | select(.number == 123 or .number == 127 or .number == 128); (names | index("status: deferred")) == null and (names | index("target: technical alpha")) == null))
+  and (all(.[] | select(.number == 123 or .number == 124 or .number == 127 or .number == 128); (names | index("status: deferred")) == null and (names | index("target: technical alpha")) == null))
   and (all(.[] | select(.number == 126 or .number == 129 or .number == 130); (names | index("status: ready for implementation")) == null and (names | index("target: technical alpha")) == null and (names | index("target: core 1.0")) != null))
 ' "$RESET_ROLLBACK_DIR/issues-after.json"
 
@@ -179,5 +181,5 @@ Expected minimum state:
 - no claim is made that the old continuity findings are fixed or merge-ready.
 
 Record the actual timestamp, command results, and any deviations in a new rollback comment on
-#136. If any issue cannot be restored exactly, stop and document the difference rather than
+\#136. If any issue cannot be restored exactly, stop and document the difference rather than
 guessing labels or relationships.
