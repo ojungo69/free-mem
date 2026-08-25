@@ -1,0 +1,46 @@
+specs/005-product-reset/contracts/alpha-result-retry.mjs
+  s_9d346c66194a0d::t_7a75bddc8962fe 63-65
+specs/005-product-reset/tasks.md
+  s_9d346c66194a0d::t_0ab1684c744cf9 99
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_32f737c4de2dba 466-467
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_868274f7eae5e7 8
+specs/005-product-reset/contracts/alpha-result-v1.schema.json
+  s_9d346c66194a0d::t_1ad035eb01ee87 7,76-81
+specs/005-product-reset/data-model.md
+  s_9d346c66194a0d::t_0ab1684c744cf9 106
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_868274f7eae5e7 4
+  s_9d346c66194a0d::t_1ad035eb01ee87 282
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_e969fa7afb5fc8 63,66,68
+  s_9d346c66194a0d::t_2cc869ee992048 60-62,64-65,67,69,76-77
+specs/005-product-reset/rollback.md
+  s_9d346c66194a0d::t_0ab1684c744cf9 159
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_1ad035eb01ee87 413
+  s_9d346c66194a0d::t_868274f7eae5e7 4
+specs/005-product-reset/plan.md
+  s_9d346c66194a0d::t_0ab1684c744cf9 88-92,96-97
+specs/005-product-reset/contracts/alpha-result-render.mjs
+  s_9d346c66194a0d::t_1ad035eb01ee87 37-39,49-52
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_868274f7eae5e7 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bf0463a21bb4c504ebcb8d1c6754b9e80694e7f8",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
