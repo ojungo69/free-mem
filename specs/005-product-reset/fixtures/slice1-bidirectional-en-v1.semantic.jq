@@ -16,6 +16,23 @@ def output_items($output):
    else []
    end) + ($output.memoryItems | map({body, kind, sourceEventIds, sourceSpans}));
 
+def spans_overlap($left; $right):
+  $left.eventId == $right.eventId
+  and $left.startByte < $right.endByte
+  and $right.startByte < $left.endByte;
+
+def output_anchors_disjoint($output):
+  output_items($output) as $items
+  | all($items[]; .sourceSpans as $spans
+    | all(range(0; ($spans | length)); . as $leftIndex
+      | all(range($leftIndex + 1; ($spans | length)); . as $rightIndex
+        | (spans_overlap($spans[$leftIndex]; $spans[$rightIndex]) | not))))
+  and all(range(0; ($items | length)); . as $leftIndex
+    | all(range($leftIndex + 1; ($items | length)); . as $rightIndex
+      | all($items[$leftIndex].sourceSpans[]; . as $left
+        | all($items[$rightIndex].sourceSpans[]; . as $right
+          | (spans_overlap($left; $right) | not)))));
+
 def sensitivity_rank:
   if . == "eligible" then 0
   elif . == "local_only" then 1
@@ -69,9 +86,10 @@ def expected_item_key:
 
 def fixture_graph_ok($root):
   ($root.scenarios | map(.scenarioId)) as $scenarioIds
+  | ($root.scenarios | map(select((.events | length) > 0) | .scenarioId)) as $captureScenarioIds
   | ($scenarioIds | length) == ($scenarioIds | unique | length)
   and ([ $root.samplingProtocol.metrics.captureP95Ms.scenarios[] ] | sort) ==
-    ($scenarioIds | sort)
+    ($captureScenarioIds | sort)
   and all($root.samplingProtocol.metrics[].scenarios[];
     . as $scenarioId
     | ($scenarioIds | index($scenarioId)) != null)
@@ -98,6 +116,16 @@ def injection_envelope_ok($root):
       | ([ $scenario.expectedInjectedItems[] | select(.sourceLane == $lane) ] | length)
         <= $envelope.laneBudgets[$lane].maxItems));
 
+def resource_profile_ok($root):
+  $root.effectiveConfiguration.resourceProfile as $profile
+  | $profile.processingQueueCapacity >= $profile.resourceWarningThresholds.maxPendingQueueDepth
+  and $profile.resourceWarningThresholds == {
+    "maxSteadyProductProcessCount": $root.thresholds.maxSteadyProductProcessCount,
+    "maxShortRunRssGrowthMiB": $root.thresholds.maxShortRunRssGrowthMiB,
+    "maxPendingQueueDepth": $root.thresholds.maxPendingQueueDepth,
+    "maxStorageGrowthBytes": $root.thresholds.maxStorageGrowthBytes
+  };
+
 def resource_metrics_ok($root):
   all($root.samplingProtocol.resourceMetrics[];
     . as $metric
@@ -120,34 +148,75 @@ def pack_degradation_policy_ok($root):
   else true
   end;
 
+def transport_security_ok($root):
+  ([ $root.scenarios[] | select(has("providerActivationProposal")) ]) as $matches
+  | ($matches | length) == 1
+  and ($matches[0] as $scenario
+    | $scenario.scenarioId == "credentialless-http-activation-rejected"
+    and $scenario.lifecycleProfileId == "configuration_rejection"
+    and ($scenario.events | length) == 0
+    and $scenario.providerActivationProposal.executionLocation == "remote"
+    and ($scenario.providerActivationProposal.credentialPresent | not)
+    and $scenario.providerActivationProposal.endpointScheme == "http"
+    and $scenario.providerActivationProposal.payloadBytes ==
+      ($scenario.providerActivationProposal.redactedPayload | utf8bytelength)
+    and $scenario.providerActivationProposal.payloadBytes > 0
+    and $scenario.summaryProviderStub.policyRejectedReason == "insecure_remote_transport"
+    and $scenario.securityOracle.consideredActivationProposalCount == 1
+    and $scenario.securityOracle.expectedActivationState == "rejected"
+    and $scenario.securityOracle.expectedReason == "insecure_remote_transport"
+    and $scenario.securityOracle.remoteProviderRequestCount == 0
+    and $scenario.securityOracle.payloadBytesSent == 0
+    and $scenario.drainCondition.providerRequestCount == 0
+    and $scenario.drainCondition.providerPayloadCount == 0
+    and ($scenario.securityOracle.forbiddenSentinels[0] as $sentinel
+      | $scenario.providerActivationProposal.redactedPayload | contains($sentinel))
+    and ($scenario.securityOracle.sentinelObservedAtRemote | not));
+
+def scenario_core_ok($root; $scenario):
+  [ $scenario.events[].sequence ] == [ range(1; (($scenario.events | length) + 1)) ]
+  and (if ($scenario | has("providerActivationProposal"))
+    then ($scenario.events | length) == 0
+    else ($scenario.events | length) > 0
+    end)
+  and all($scenario.events[];
+    if .sensitivity == "secret"
+    then .redactedPayload == ""
+    else .redactedPayload == .text
+    end)
+  and ($root.lifecycleProfiles | has($scenario.lifecycleProfileId))
+  and ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
+    | length == (unique | length))
+  and ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
+    | index($scenario.drainCondition.terminalMilestone)) != null
+  and $scenario.drainCondition.committedEventCount == ($scenario.events | length);
+
 def common_scenarios_ok($root):
   ([ $root.scenarios[].events[].eventId ] as $ids
     | ($ids | length) == ($ids | unique | length))
-  and all($root.scenarios[];
+  and all($root.scenarios[] | select(.fault?.kind != "summary_provider_output_limit_exceeded");
     . as $scenario
-    | [ .events[].sequence ] == [ range(1; ((.events | length) + 1)) ]
-    and all(.events[];
-      if .sensitivity == "secret"
-      then .redactedPayload == ""
-      else .redactedPayload == .text
-      end)
-    and ($root.lifecycleProfiles | has($scenario.lifecycleProfileId))
-    and ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
-      | length == (unique | length))
-    and .drainCondition.committedEventCount == (.events | length)
+    | scenario_core_ok($root; $scenario)
     and .drainCondition.summaryCount ==
       (if (.summaryProviderStub | has("summary")) then 1 else 0 end)
     and .drainCondition.durableMemoryCount ==
       (.drainCondition.summaryCount + (.summaryProviderStub.memoryItems | length))
     and (provider_items($scenario) as $providerItems
       | output_sources_ok($scenario; $scenario.summaryProviderStub)
+      and output_anchors_disjoint($scenario.summaryProviderStub)
       and ($providerItems | length) <=
           $root.effectiveConfiguration.resourceProfile.maxMemoryItemsPerDerivation
       and ([$providerItems[].sourceSpans | @json]
         | length == (unique | length))
       and ([ .expectedInjectedItems[].fact ] | length == (unique | length))
       and ([ .expectedOmissions[].fact ] | length == (unique | length))
-      and all(.expectedInjectedItems[]; .selectionReason == .sourceLane)
+      and all(.expectedInjectedItems[];
+        (.sourceLane == "exact_session" or .sourceLane == "lexical")
+        and .selectionReason == .sourceLane)
+      and all(.expectedOmissions[];
+        .reason == "duplicate_revision"
+        or .reason == "omitted_budget"
+        or .reason == "omitted_ineligible")
       and (([ .expectedInjectedItems[].fact ] + [ .expectedOmissions[].fact ])
         | length == (unique | length))
       and ((.expectedInjectedItems | length) + (.expectedOmissions | length)
@@ -267,6 +336,7 @@ def retry_ok($root):
     and (output_items($retry.fault.recoveredOutput) | length) <=
       $root.effectiveConfiguration.resourceProfile.maxMemoryItemsPerDerivation
     and output_sources_ok($retry; $retry.fault.recoveredOutput)
+    and output_anchors_disjoint($retry.fault.recoveredOutput)
     and ($retry.fault.resumeCases[]
       | select(.caseId == "validated-configuration-activation")
       | .signals[0].configurationFingerprint !=
@@ -328,7 +398,63 @@ def redirect_ok($root):
       (1 + ($redirect.fault.recoveredOutput.memoryItems | length))
     and (output_items($redirect.fault.recoveredOutput) | length) <=
       $root.effectiveConfiguration.resourceProfile.maxMemoryItemsPerDerivation
-    and output_sources_ok($redirect; $redirect.fault.recoveredOutput);
+    and output_sources_ok($redirect; $redirect.fault.recoveredOutput)
+    and output_anchors_disjoint($redirect.fault.recoveredOutput);
+
+def output_limit_ok($root):
+  fault_scenario($root; "summary_provider_output_limit_exceeded") as $scenario
+  | provider_items($scenario) as $items
+  | scenario_core_ok($root; $scenario)
+    and $scenario.fault.configuredLimit ==
+      $root.effectiveConfiguration.resourceProfile.maxMemoryItemsPerDerivation
+    and $scenario.fault.observedResultCount == ($items | length)
+    and $scenario.fault.observedResultCount == ($scenario.fault.configuredLimit + 1)
+    and $scenario.fault.failureMetadata == {
+      "errorCode": "memory_output_limit_exceeded",
+      "jobId": "output-limit-job-1",
+      "sourceEventIds": [ $scenario.events[].eventId ],
+      "observedResultCount": $scenario.fault.observedResultCount,
+      "configuredLimit": $scenario.fault.configuredLimit
+    }
+    and output_sources_ok($scenario; $scenario.summaryProviderStub)
+    and output_anchors_disjoint($scenario.summaryProviderStub)
+    and $scenario.drainCondition.summaryCount == 0
+    and $scenario.drainCondition.durableMemoryCount == 0
+    and $scenario.drainCondition.pendingSummaryJobCount == 1
+    and ($scenario.expectedInjectedItems | length) == 0
+    and ($scenario.expectedOmissions | length) == 0
+    and $scenario.fault.recoveredMaxMemoryItemsPerDerivation >=
+      $scenario.fault.observedResultCount
+    and $scenario.fault.resumeCaseInitialSnapshot == {
+      "state": "retry-exhausted",
+      "budget": 0,
+      "lastConsumedSequence": 0
+    }
+    and ($scenario.fault.resumeCases[]
+      | select(.caseId == "validated-larger-limit-activation")
+      | .signals[0].kind == "validated_configuration_activation"
+        and .signals[0].configurationFingerprint !=
+          $root.effectiveConfiguration.summaryProvider.configurationFingerprint
+        and .expected.budgetAfterGrant ==
+          $root.effectiveConfiguration.resourceProfile.processingRetryLimit
+        and .expected.budgetAfterAttempt ==
+          ($root.effectiveConfiguration.resourceProfile.processingRetryLimit - 1)
+        and .expected.attemptDelta == 1
+        and .expected.finalState == "completed"
+        and .expected.durableMemoryCount == ($items | length))
+    and all($scenario.fault.resumeCases[]
+      | select(.caseId == "unchanged-provider-health-no-op"
+          or .caseId == "unchanged-doctor-retry-no-op");
+        .signals[0].configurationFingerprint ==
+          $root.effectiveConfiguration.summaryProvider.configurationFingerprint
+        and .expected.budgetAfterGrant == 0
+        and .expected.budgetAfterAttempt == 0
+        and .expected.attemptDelta == 0
+        and .expected.lastConsumedSequence == 0
+        and .expected.ignoredSignalCount == 1
+        and .expected.finalState == "retry-exhausted"
+        and .expected.durableMemoryCount == 0)
+    and $scenario.expectedOperationalStatus.reason == "memory_output_limit_exceeded";
 
 def operational_status_ok($root):
   all($root.scenarios[] | select(has("expectedOperationalStatus"));
@@ -367,6 +493,27 @@ def local_security_ok($root):
     and $security.expectedOperationalStatus.safeAction ==
       "activate_local_summary_provider_or_exclude_local_only";
 
+def private_security_ok($root):
+  fault_scenario($root; "private_remote_provider_ineligible") as $security
+  | [ $security.events[].sensitivity ] == ["private"]
+    and $root.effectiveConfiguration.summaryProvider.executionLocation == "remote"
+    and $security.securityOracle.consideredRemoteProviderEventCount == 1
+    and $security.securityOracle.consideredPrivateEventCount == 1
+    and $security.securityOracle.remoteProviderRequestCount == 0
+    and $security.securityOracle.remoteProviderPayloadCount == 0
+    and $security.securityOracle.remoteInjectionCount == 0
+    and $security.drainCondition.providerRequestCount == 0
+    and $security.drainCondition.providerPayloadCount == 0
+    and $security.summaryProviderStub.policyRejectedReason ==
+      "private_remote_provider_ineligible"
+    and ($security.securityOracle.forbiddenSentinels[0] as $sentinel
+      | any($security.events[]; .redactedPayload | contains($sentinel)))
+    and ($security.securityOracle.sentinelObservedAtRemoteOrInjection | not)
+    and $security.expectedOperationalStatus.reason ==
+      "private_remote_provider_ineligible"
+    and $security.expectedOperationalStatus.safeAction ==
+      "activate_local_summary_provider_or_exclude_private";
+
 def scope_security_ok($root):
   ([
     $root.scenarios[]
@@ -376,10 +523,10 @@ def scope_security_ok($root):
   and ($matches[0] as $scope
   | $scope.sourceRepositoryScope != $scope.targetRepositoryScope
     and ($scope.expectedInjectedItems | length) == 0
-    and ($scope.expectedOmissions | length) == 2
+    and ($scope.expectedOmissions | length) == 1
     and all($scope.expectedOmissions[]; .reason == "omitted_ineligible")
     and $scope.securityOracle.forbiddenSentinels == ["OTHER_REPO_SENTINEL"]
-    and $scope.securityOracle.consideredCrossScopeCandidateCount == 2
+    and $scope.securityOracle.consideredCrossScopeCandidateCount == 1
     and $scope.securityOracle.incompatibleScopeInjectionCount == 0
     and ($scope.securityOracle.forbiddenSentinels[0] as $sentinel
       | ([
@@ -416,16 +563,20 @@ def derived_sensitivity_security_ok($root):
 . as $root
 | ensure(fixture_graph_ok($root); "fixture scenario graph mismatch")
 | ensure(injection_envelope_ok($root); "injection envelope mismatch")
+| ensure(resource_profile_ok($root); "resource profile mismatch")
 | ensure(resource_metrics_ok($root); "resource measurement boundary mismatch")
 | ensure(failure_continuation_ok($root); "failure continuation milestone mismatch")
 | ensure(pack_degradation_policy_ok($root); "pack degradation policy mismatch")
+| ensure(transport_security_ok($root); "off-host transport security mismatch")
 | ensure(common_scenarios_ok($root); "common event, count, or per-item provenance invariant failed")
 | ensure(bidirectional_ok($root); "bidirectional prompt-flush or content-based derivation invariant failed")
 | ensure(spool_ok($root); "spool replay or event-identity conflict invariant failed")
 | ensure(retry_ok($root); "retry resume-signal invariant failed")
 | ensure(redirect_ok($root); "redirect rejection or repair invariant failed")
+| ensure(output_limit_ok($root); "provider output-limit invariant failed")
 | ensure(operational_status_ok($root); "operational status invariant failed")
 | ensure(local_security_ok($root); "local-only or secret boundary invariant failed")
+| ensure(private_security_ok($root); "private egress boundary invariant failed")
 | ensure(scope_security_ok($root); "cross-scope omission invariant failed")
 | ensure(derived_sensitivity_security_ok($root); "derived local-only injection invariant failed")
 | true

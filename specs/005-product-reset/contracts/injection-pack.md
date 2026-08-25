@@ -14,25 +14,31 @@ Define the stable, explainable context product supplied to Claude Code and Codex
 
 ## Selection behavior
 
+The compiler uses one monotonic hard deadline and checks it at entry, before and after every
+candidate operation, before and after stages 2-10, and around each render/tokenization attempt.
+Expiration at any point aborts pack delivery and returns no context with an out-of-band deadline
+reason; later stages never continue past the deadline.
+
 1. Resolve the concrete destination class against the manifest policy map, then traverse supplied
    candidates in stable input order until the time cutoff. Each reached candidate is classified.
    Candidates outside repository scope, deleted, superseded, secret-bearing, or otherwise
    ineligible are not admitted, but remain in the trace with `omitted_ineligible`. Missing or
-   unknown destinations are remote/ineligible for local-only
-   data. Local-only candidates require an explicit matching on-device policy in the same repository
-   scope and are never rendered to a remote provider or off-host destination.
+   unknown destinations are remote/ineligible for private and local-only data. Either disposition
+   requires an explicit matching on-device policy in the same repository scope and is never rendered
+   to a remote provider or off-host destination.
 2. Normalize lane scores without erasing lane identity.
 3. Keep only the active revision of each memory lineage, then deduplicate repeated candidates for
    that revision using stable precedence.
-4. Apply lane precedence `exact_session > lexical > semantic > recency`.
-5. Apply the hard admitted-candidate cap before allocation using lane precedence, normalized score,
-   revision order, and stable memory identity. Eligible overflow is not admitted, records
+4. Establish one total comparison key used by every later ordering decision: lane precedence
+   `exact_session > lexical > semantic > recency`, then normalized score descending, then revision
+   order, then stable memory identity.
+5. Apply the hard admitted-candidate cap before allocation using that total key. Eligible overflow
+   is not admitted, records
    `candidate_limit`, and never enters render-time pruning.
 6. Allocate each lane's minimum in precedence order without exceeding any global budget. If the
    sum of minima cannot fit, lower-precedence minima receive no allocation and every affected
    candidate records `lane_minimum_not_funded`.
-7. Enforce each lane maximum. Fill remaining global budget by normalized score; ties use lane
-   precedence, then memory revision, then stable memory identity.
+7. Enforce each lane maximum. Fill remaining global budget using the same total key from step 4.
 8. Render with the resolved destination renderer and measure exact UTF-8 bytes and
    destination-token count, including wrappers, provenance, escaping, and degradation metadata.
    If any hard byte, token, or item limit is exceeded, remove items in reverse final selected-item
@@ -74,8 +80,10 @@ order, provenance, and degradation meaning.
 ## Failure behavior
 
 - A missing semantic lane uses lexical and recency lanes and marks semantic degradation.
-- A time budget expiration returns a valid partial pack only after exact render limits pass. The
-  trace records terminal reasons for processed candidates and the aggregate untouched suffix count.
+- A time budget expiration returns no pack and no context. Diagnostic state retains terminal reasons
+  already recorded plus the aggregate untouched suffix count, without continuing compilation. A
+  positive `deadlineUnprocessedCount` appears only in that diagnostic record; every delivered pack
+  has a zero count.
 - A scope or sensitivity validation failure excludes the candidate and is never overridden by
   relevance score.
 - Compilation failure returns no fabricated context and must not block the Agent.

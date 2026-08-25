@@ -41,7 +41,10 @@ Expected:
 ```bash
 set -euo pipefail
 git status --short
-changed=$(git diff --name-only origin/main --)
+base=accaa29f5627c20c7e4c106a81211067fcf2bc42
+git cat-file -e "${base}^{commit}"
+git merge-base --is-ancestor "$base" HEAD
+changed=$(git diff --name-only "$base" --)
 printf '%s\n' "$changed"
 untracked=$(git ls-files --others --exclude-standard)
 if unexpected=$(printf '%s\n%s\n' "$changed" "$untracked" \
@@ -54,12 +57,13 @@ else
   unexpected=
 fi
 test -z "$unexpected"
-git diff --quiet origin/main -- vendor/codemem harness
+git diff --quiet "$base" -- vendor/codemem harness
 git diff --check
 git diff --cached --check
 ```
 
-Expected: only root/evidence/specification documentation is changed; the final command exits 0.
+Expected: only root/evidence/specification documentation changed from the pinned M0 base; the final
+command exits 0.
 
 ## 4. Verify GitHub routing after the documentation commit is pushed
 
@@ -117,12 +121,22 @@ semantic jq validation in that order:
 set -euo pipefail
 node --experimental-strip-types \
   specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+node --experimental-strip-types \
+  specs/005-product-reset/contracts/validate-alpha-result.mjs
+node --experimental-strip-types \
+  specs/005-product-reset/contracts/validate-alpha-result.mjs \
+  --result specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
 ```
 
 - [Alpha comparison](contracts/alpha-comparison.md)
 - [Effective capability manifest](contracts/capability-manifest.md)
 - [InjectionPack](contracts/injection-pack.md)
+- [Alpha result schema](contracts/alpha-result-v1.schema.json)
+- [Alpha result semantic validator](contracts/alpha-result-v1.semantic.jq)
+- [Alpha result canonical validator](contracts/validate-alpha-result.mjs)
 - [Slice 1 fixed fixture](fixtures/slice1-bidirectional-en-v1.json)
+- [Slice 1 example result](fixtures/alpha-result-v1.example.json)
+- [Slice 1 failure example result](fixtures/alpha-result-v1.failure-example.json)
 - [Slice 1 fixture schema](fixtures/slice1-bidirectional-en-v1.schema.json)
 - [Slice 1 semantic validator](fixtures/slice1-bidirectional-en-v1.semantic.jq)
 - [Slice 1 canonical validator](fixtures/validate-slice1-fixture.mjs)
@@ -130,7 +144,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T17:32:54+09:00
+## Validation result — 2026-08-25T19:46:45+09:00
 
 | Check | Result |
 |---|---|
@@ -138,7 +152,8 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `corepack pnpm run build` | PASS, exit 0 |
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
-| Slice 1 fixture schema and semantic checks | PASS; positive fixture and 104 negative mutations |
+| Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, transport, privacy, output-limit, span, and profile mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, generated results for all 11 scenarios, 25 negative mutations, and six inspectable non-eligible variants |
 | Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
@@ -154,7 +169,8 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- The final local CodeRabbit CLI re-run reached its three-review limit after the prior completed run
-  identified the redirect-oracle gap. That gap is fixed and the pushed head must receive a fresh
-  GitHub CodeRabbit review before merge.
+- Three completed local CodeRabbit review cycles identified contract gaps; every technically valid
+  finding is fixed. The pushed head must still receive a fresh GitHub CodeRabbit review before merge.
+- Cubic's final review returned `issues: []`. Ponytail review found no unused definitions,
+  speculative abstraction, dependency, or removable compatibility layer.
 - No command required a changed path, flag, retry, or skipped gate.

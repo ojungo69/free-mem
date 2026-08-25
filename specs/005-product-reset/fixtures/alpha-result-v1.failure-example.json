@@ -1,0 +1,294 @@
+{
+  "resultVersion": 1,
+  "fixtureId": "slice1-bidirectional-en-v1",
+  "fixtureFingerprint": "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c",
+  "candidateId": "candidate-failure-example-v1",
+  "scenarioId": "summary-provider-retry-exhausted",
+  "resourceSampleMode": "warm",
+  "environmentFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "artifactFingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "drain": {
+    "drainConditionId": "slice1-summary-retry-exhausted-visible-v1",
+    "status": "completed",
+    "timedOut": false,
+    "terminalMilestone": "provider_processing_rejected_or_exhausted"
+  },
+  "disposition": {
+    "state": "failed",
+    "reason": "selection_deadline_exceeded",
+    "successfulComparisonEligible": false
+  },
+  "milestones": [
+    {
+      "name": "source_session_started",
+      "monotonicMs": 0
+    },
+    {
+      "name": "source_events_captured",
+      "monotonicMs": 100
+    },
+    {
+      "name": "source_session_ended",
+      "monotonicMs": 200
+    },
+    {
+      "name": "target_session_started_before_source_drain",
+      "monotonicMs": 300
+    },
+    {
+      "name": "target_first_prompt_submitted_before_model",
+      "monotonicMs": 400
+    },
+    {
+      "name": "source_flush_requested_by_target_prompt",
+      "monotonicMs": 500
+    },
+    {
+      "name": "provider_processing_rejected_or_exhausted",
+      "monotonicMs": 600
+    },
+    {
+      "name": "operational_status_inspected",
+      "monotonicMs": 700
+    },
+    {
+      "name": "target_injection_skipped",
+      "monotonicMs": 800
+    },
+    {
+      "name": "target_model_continued_after_memory_failure",
+      "monotonicMs": 900
+    },
+    {
+      "name": "scenario_terminal",
+      "monotonicMs": 1000
+    },
+    {
+      "name": "post_teardown_grace_elapsed",
+      "monotonicMs": 1100
+    }
+  ],
+  "counts": {
+    "captured": 2,
+    "committed": 2,
+    "duplicateDeliveries": 0,
+    "lost": 0,
+    "pending": 1,
+    "summaryCount": 0,
+    "durableMemoryCount": 0,
+    "inputCandidates": 1,
+    "tracedCandidates": 0,
+    "deadlineUnprocessed": 1,
+    "admittedCandidates": 0,
+    "selectedItems": 0
+  },
+  "safety": {
+    "agentBlockageCount": 0,
+    "acceptedEventLossCount": 0,
+    "duplicateDurableMemoryCount": 0,
+    "secretEgressCount": 0,
+    "incompatibleScopeInjectionCount": 0
+  },
+  "securityDenominators": {
+    "agentOperationCount": 1,
+    "acceptedEventCount": 2,
+    "duplicateDeliveryAttemptCount": 0,
+    "consideredRemoteProviderEventCount": 2,
+    "consideredSecretEventCount": 0,
+    "consideredPrivateEventCount": 0,
+    "consideredCrossScopeCandidateCount": 0,
+    "consideredDerivedCandidateCount": 0,
+    "consideredActivationProposalCount": 0
+  },
+  "securityEvidence": {
+    "remoteProviderRequestCount": 3,
+    "remoteProviderPayloadCount": 3,
+    "remoteInjectionCount": 0,
+    "persistedSecretCount": 0,
+    "injectedSecretCount": 0,
+    "payloadBytesSent": 384,
+    "forbiddenSentinelObservationCount": 0
+  },
+  "retryEvidence": {
+    "initialSnapshot": {
+      "state": "retry-exhausted",
+      "budget": 0,
+      "lastConsumedSequence": 0
+    },
+    "cases": [
+      {
+        "caseId": "validated-configuration-activation",
+        "signals": [
+          {
+            "signalId": "config-activation-1",
+            "sequence": 1,
+            "kind": "validated_configuration_activation",
+            "targetRole": "summary",
+            "providerChoiceId": "deterministic-summary-v1",
+            "configurationFingerprint": "summary-config-repaired-v2"
+          }
+        ],
+        "providerOutcome": "valid",
+        "expected": {
+          "budgetBefore": 0,
+          "budgetAfterGrant": 3,
+          "budgetAfterAttempt": 2,
+          "attemptDelta": 1,
+          "lastConsumedSequence": 1,
+          "ignoredSignalCount": 0,
+          "finalState": "completed",
+          "durableMemoryCount": 2
+        }
+      },
+      {
+        "caseId": "recorded-provider-healthy-transition",
+        "signals": [
+          {
+            "signalId": "provider-healthy-1",
+            "sequence": 1,
+            "kind": "recorded_provider_healthy_transition",
+            "targetRole": "summary",
+            "providerChoiceId": "deterministic-summary-v1",
+            "configurationFingerprint": "summary-config-v1"
+          }
+        ],
+        "providerOutcome": "valid",
+        "expected": {
+          "budgetBefore": 0,
+          "budgetAfterGrant": 1,
+          "budgetAfterAttempt": 0,
+          "attemptDelta": 1,
+          "lastConsumedSequence": 1,
+          "ignoredSignalCount": 0,
+          "finalState": "completed",
+          "durableMemoryCount": 2
+        }
+      },
+      {
+        "caseId": "user-confirmed-doctor-retry",
+        "signals": [
+          {
+            "signalId": "doctor-retry-1",
+            "sequence": 1,
+            "kind": "user_confirmed_doctor_retry",
+            "targetRole": "summary",
+            "providerChoiceId": "deterministic-summary-v1",
+            "configurationFingerprint": "summary-config-v1"
+          }
+        ],
+        "providerOutcome": "valid",
+        "expected": {
+          "budgetBefore": 0,
+          "budgetAfterGrant": 1,
+          "budgetAfterAttempt": 0,
+          "attemptDelta": 1,
+          "lastConsumedSequence": 1,
+          "ignoredSignalCount": 0,
+          "finalState": "completed",
+          "durableMemoryCount": 2
+        }
+      },
+      {
+        "caseId": "duplicate-and-out-of-order-no-op",
+        "signals": [
+          {
+            "signalId": "provider-healthy-2",
+            "sequence": 2,
+            "kind": "recorded_provider_healthy_transition",
+            "targetRole": "summary",
+            "providerChoiceId": "deterministic-summary-v1",
+            "configurationFingerprint": "summary-config-v1"
+          },
+          {
+            "signalId": "provider-healthy-2",
+            "sequence": 2,
+            "kind": "recorded_provider_healthy_transition",
+            "targetRole": "summary",
+            "providerChoiceId": "deterministic-summary-v1",
+            "configurationFingerprint": "summary-config-v1"
+          },
+          {
+            "signalId": "doctor-retry-stale-1",
+            "sequence": 1,
+            "kind": "user_confirmed_doctor_retry",
+            "targetRole": "summary",
+            "providerChoiceId": "deterministic-summary-v1",
+            "configurationFingerprint": "summary-config-v1"
+          }
+        ],
+        "providerOutcome": "malformed",
+        "expected": {
+          "budgetBefore": 0,
+          "budgetAfterGrant": 1,
+          "budgetAfterAttempt": 0,
+          "attemptDelta": 1,
+          "lastConsumedSequence": 2,
+          "ignoredSignalCount": 2,
+          "finalState": "retry-exhausted",
+          "durableMemoryCount": 0
+        }
+      }
+    ]
+  },
+  "failureMetadata": null,
+  "operationalStatus": {
+    "component": "summary",
+    "state": "failed",
+    "reason": "summary_provider_retry_exhausted",
+    "pendingCount": 1,
+    "safeAction": "repair_summary_provider_or_confirm_retry",
+    "profileId": "slice1-short-run",
+    "profileVersion": 1
+  },
+  "processSamples": [
+    {
+      "monotonicMs": 0,
+      "processCount": 1,
+      "rssMiB": 100,
+      "queueDepth": 0,
+      "storageBytes": 1000
+    },
+    {"monotonicMs": 100, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 200, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 300, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 400, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 500, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 600, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 700, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 800, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {"monotonicMs": 900, "processCount": 2, "rssMiB": 108, "queueDepth": 1, "storageBytes": 3000},
+    {
+      "monotonicMs": 1000,
+      "processCount": 2,
+      "rssMiB": 108,
+      "queueDepth": 1,
+      "storageBytes": 3000
+    },
+    {
+      "monotonicMs": 1100,
+      "processCount": 0,
+      "rssMiB": 0,
+      "queueDepth": 0,
+      "storageBytes": 3000
+    }
+  ],
+  "injectedItems": [],
+  "omittedItems": [],
+  "packDegradations": [],
+  "quality": {
+    "expectedInjectedItemCount": 0,
+    "matchedInjectedItemCount": 0,
+    "expectedOmissionCount": 0,
+    "matchedOmissionCount": 0,
+    "forbiddenFactCount": 0
+  },
+  "injectedTokens": 0,
+  "resource": {
+    "maxSteadyProductProcessCount": 2,
+    "maxShortRunRssGrowthMiB": 8,
+    "maxPendingQueueDepth": 1,
+    "maxStorageGrowthBytes": 2000,
+    "orphanProductProcessCount": 0
+  },
+  "providerCostUnits": 0
+}

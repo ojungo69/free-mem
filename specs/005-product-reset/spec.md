@@ -215,9 +215,11 @@ without leaving active processes or managed configuration behind.
   healthy, semantic relevance, with deterministic deduplication and bounded result size.
 - **FR-009**: The product MUST automatically provide a bounded context pack to the receiving
   Agent and MUST record why each included item was selected.
-- **FR-010**: Secrets MUST never be persisted or injected. Local-only items MAY be summarized and
-  injected only by on-device consumers in the same repository scope and MUST never reach a remote
-  provider or off-host renderer. Deleted and incompatible-scope memories MUST never be selected.
+- **FR-010**: Secrets MUST never be persisted, transmitted to a summary or embedding provider,
+  rendered off-host, or injected; every remote call MUST remove them or be blocked before sending.
+  Private items and local-only items MAY be summarized and injected only by on-device consumers in
+  the same repository scope and MUST never reach a remote provider or off-host renderer, even after
+  private spans are removed. Deleted and incompatible-scope memories MUST never be selected.
 - **FR-011**: Setup MUST offer a small set of resource profiles and independent summary and
   embedding provider choices.
 - **FR-012**: Before activation, setup MUST show whether each provider is local or remote,

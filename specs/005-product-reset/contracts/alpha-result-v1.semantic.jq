@@ -1,0 +1,54 @@
+def ensure($condition; $message):
+  if $condition then . else error($message) end;
+
+def drain_ok:
+  (.drain.timedOut == (.drain.status == "timed_out"));
+
+def milestones_ok:
+  . as $result
+  | ([$result.milestones[].name] | length == (unique | length))
+  and ([$result.milestones[].monotonicMs] as $times
+    | all(range(1; $times | length); $times[.] >= $times[. - 1]))
+  and (if ($result.drain.timedOut
+      or $result.disposition.state == "unsupported"
+      or $result.disposition.state == "not_run")
+    then true
+    else any($result.milestones[]; .name == $result.drain.terminalMilestone)
+    end);
+
+def counts_ok:
+  .counts.tracedCandidates + .counts.deadlineUnprocessed == .counts.inputCandidates
+  and .counts.admittedCandidates <= .counts.tracedCandidates
+  and .counts.selectedItems <= .counts.admittedCandidates
+  and .counts.selectedItems == (.injectedItems | length)
+  and .counts.summaryCount <= .counts.durableMemoryCount
+  and (if .securityEvidence.remoteProviderRequestCount > 0
+    then .securityDenominators.consideredRemoteProviderEventCount > 0
+    else true
+    end)
+  and .securityEvidence.remoteProviderPayloadCount <=
+    .securityEvidence.remoteProviderRequestCount
+  and (if .securityEvidence.remoteProviderPayloadCount == 0
+    then .securityEvidence.payloadBytesSent == 0
+    else .securityEvidence.payloadBytesSent > 0
+    end)
+  and ((.counts.selectedItems == 0 and .injectedTokens == 0)
+    or (.counts.selectedItems > 0 and .injectedTokens > 0))
+  and .counts.committed <= .counts.captured
+  and .counts.lost <= .counts.captured
+  and (if (.drain.timedOut or .counts.deadlineUnprocessed > 0)
+    then .counts.selectedItems == 0
+      and (.injectedItems | length) == 0
+    else true
+    end);
+
+def process_samples_ok:
+  ([.processSamples[].monotonicMs] as $times
+    | all(range(1; $times | length); $times[.] >= $times[. - 1]));
+
+. as $result
+| ensure(drain_ok; "drain/disposition mismatch")
+| ensure(milestones_ok; "milestone order mismatch")
+| ensure(counts_ok; "count relationship mismatch")
+| ensure(process_samples_ok; "process sample order mismatch")
+| true

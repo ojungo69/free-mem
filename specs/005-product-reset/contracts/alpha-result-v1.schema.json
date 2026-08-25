@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://free-mem.dev/specs/005-product-reset/contracts/alpha-result-v1.schema.json",
+  "title": "Product Reset Alpha comparison result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "environmentFingerprint", "artifactFingerprint", "drain", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "quality", "injectedTokens", "resource", "providerCostUnits"],
+  "properties": {
+    "resultVersion": { "const": 1 },
+    "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
+    "fixtureFingerprint": { "$ref": "#/$defs/Sha256" },
+    "candidateId": { "$ref": "#/$defs/SharedNonEmptyString" },
+    "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
+    "resourceSampleMode": { "enum": ["cold", "warm"] },
+    "environmentFingerprint": { "$ref": "#/$defs/Sha256" },
+    "artifactFingerprint": { "$ref": "#/$defs/Sha256" },
+    "drain": { "$ref": "#/$defs/Drain" },
+    "disposition": { "$ref": "#/$defs/Disposition" },
+    "milestones": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Milestone" } },
+    "counts": { "$ref": "#/$defs/Counts" },
+    "safety": { "$ref": "#/$defs/Safety" },
+    "securityDenominators": { "$ref": "#/$defs/SecurityDenominators" },
+    "securityEvidence": { "$ref": "#/$defs/SecurityEvidence" },
+    "retryEvidence": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/RetryCasesEvidence" },
+        { "$ref": "#/$defs/RedirectEvidence" }
+      ]
+    },
+    "failureMetadata": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/SharedOutputLimitFailureMetadata" }
+      ]
+    },
+    "operationalStatus": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/SharedExpectedOperationalStatus" }
+      ]
+    },
+    "processSamples": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/ProcessSample" } },
+    "injectedItems": { "type": "array", "items": { "$ref": "#/$defs/SharedExpectedInjectedItem" } },
+    "omittedItems": { "type": "array", "items": { "$ref": "#/$defs/SharedExpectedOmission" } },
+    "packDegradations": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+    "quality": { "$ref": "#/$defs/Quality" },
+    "injectedTokens": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+    "resource": { "$ref": "#/$defs/Resource" },
+    "providerCostUnits": { "type": ["number", "null"], "minimum": 0 }
+  },
+  "$defs": {
+    "SharedNonEmptyString": { "type": "string", "minLength": 1 },
+    "SharedNonNegativeInteger": { "type": "integer", "minimum": 0 },
+    "SharedPositiveInteger": { "type": "integer", "minimum": 1 },
+    "Sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "Drain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["drainConditionId", "status", "timedOut", "terminalMilestone"],
+      "properties": {
+        "drainConditionId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "status": { "enum": ["completed", "timed_out"] },
+        "timedOut": { "type": "boolean" },
+        "terminalMilestone": { "$ref": "#/$defs/SharedNonEmptyString" }
+      }
+    },
+    "Disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reason", "successfulComparisonEligible"],
+      "properties": {
+        "state": { "enum": ["healthy", "degraded", "failed", "unsupported", "not_run"] },
+        "reason": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "successfulComparisonEligible": { "type": "boolean" }
+      }
+    },
+    "Milestone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "monotonicMs"],
+      "properties": {
+        "name": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "monotonicMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "Counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captured", "committed", "duplicateDeliveries", "lost", "pending", "summaryCount", "durableMemoryCount", "inputCandidates", "tracedCandidates", "deadlineUnprocessed", "admittedCandidates", "selectedItems"],
+      "properties": {
+        "captured": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "committed": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "duplicateDeliveries": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "lost": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "pending": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "summaryCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "durableMemoryCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "inputCandidates": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "tracedCandidates": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "deadlineUnprocessed": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "admittedCandidates": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "selectedItems": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "Safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentBlockageCount", "acceptedEventLossCount", "duplicateDurableMemoryCount", "secretEgressCount", "incompatibleScopeInjectionCount"],
+      "properties": {
+        "agentBlockageCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "acceptedEventLossCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "duplicateDurableMemoryCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "secretEgressCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "incompatibleScopeInjectionCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "SecurityDenominators": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentOperationCount", "acceptedEventCount", "duplicateDeliveryAttemptCount", "consideredRemoteProviderEventCount", "consideredSecretEventCount", "consideredPrivateEventCount", "consideredCrossScopeCandidateCount", "consideredDerivedCandidateCount", "consideredActivationProposalCount"],
+      "properties": {
+        "agentOperationCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "acceptedEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "duplicateDeliveryAttemptCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredRemoteProviderEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredSecretEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredPrivateEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredCrossScopeCandidateCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredDerivedCandidateCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredActivationProposalCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "SecurityEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "remoteInjectionCount", "persistedSecretCount", "injectedSecretCount", "payloadBytesSent", "forbiddenSentinelObservationCount"],
+      "properties": {
+        "remoteProviderRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "remoteProviderPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "remoteInjectionCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "persistedSecretCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "injectedSecretCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "forbiddenSentinelObservationCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "SharedSourceSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "startByte", "endByte"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "startByte": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "endByte": { "$ref": "#/$defs/SharedPositiveInteger" }
+      }
+    },
+    "SharedExpectedInjectedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "selectionReason"],
+      "properties": {
+        "fact": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedSourceSpan" } },
+        "sensitivity": { "enum": ["eligible", "local_only", "private"] },
+        "sourceLane": { "enum": ["exact_session", "lexical", "semantic", "recency"] },
+        "selectionReason": { "enum": ["exact_session", "lexical", "semantic", "recency"] }
+      }
+    },
+    "SharedExpectedOmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
+      "properties": {
+        "fact": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedSourceSpan" } },
+        "sensitivity": { "enum": ["eligible", "local_only", "private"] },
+        "reason": { "enum": ["duplicate_revision", "omitted_budget", "omitted_ineligible", "candidate_limit", "lane_minimum_not_funded"] }
+      }
+    },
+    "SharedExpectedOperationalStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "state", "reason", "pendingCount", "safeAction", "profileId", "profileVersion"],
+      "properties": {
+        "component": { "const": "summary" },
+        "state": { "const": "failed" },
+        "reason": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "pendingCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "safeAction": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "profileId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "profileVersion": { "$ref": "#/$defs/SharedPositiveInteger" }
+      }
+    },
+    "SharedResumeSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signalId", "sequence", "kind", "targetRole", "providerChoiceId", "configurationFingerprint"],
+      "properties": {
+        "signalId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "sequence": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "kind": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] },
+        "targetRole": { "const": "summary" },
+        "providerChoiceId": { "const": "deterministic-summary-v1" },
+        "configurationFingerprint": { "$ref": "#/$defs/SharedNonEmptyString" }
+      }
+    },
+    "SharedResumeExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["budgetBefore", "budgetAfterGrant", "budgetAfterAttempt", "attemptDelta", "lastConsumedSequence", "ignoredSignalCount", "finalState", "durableMemoryCount"],
+      "properties": {
+        "budgetBefore": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "budgetAfterGrant": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "budgetAfterAttempt": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "attemptDelta": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "lastConsumedSequence": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "ignoredSignalCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "finalState": { "enum": ["completed", "retry-exhausted"] },
+        "durableMemoryCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "SharedResumeCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "signals", "providerOutcome", "expected"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "signals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedResumeSignal" } },
+        "providerOutcome": { "enum": ["valid", "malformed"] },
+        "expected": { "$ref": "#/$defs/SharedResumeExpected" }
+      }
+    },
+    "SharedRedirectRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signal", "oldLocationRequestCountAfterActivation", "providerOutcome", "expected"],
+      "properties": {
+        "signal": { "$ref": "#/$defs/SharedResumeSignal" },
+        "oldLocationRequestCountAfterActivation": { "const": 0 },
+        "providerOutcome": { "const": "valid" },
+        "expected": { "$ref": "#/$defs/SharedResumeExpected" }
+      }
+    },
+    "RetryCasesEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialSnapshot", "cases"],
+      "properties": {
+        "initialSnapshot": {
+          "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
+        },
+        "cases": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/SharedResumeCase" } }
+      }
+    },
+    "RedirectEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redirectRecovery"],
+      "properties": {
+        "redirectRecovery": { "$ref": "#/$defs/SharedRedirectRecovery" }
+      }
+    },
+    "SharedOutputLimitFailureMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errorCode", "jobId", "sourceEventIds", "observedResultCount", "configuredLimit"],
+      "properties": {
+        "errorCode": { "const": "memory_output_limit_exceeded" },
+        "jobId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" }
+      }
+    },
+    "ProcessSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monotonicMs", "processCount", "rssMiB", "queueDepth", "storageBytes"],
+      "properties": {
+        "monotonicMs": { "type": "number", "minimum": 0 },
+        "processCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "rssMiB": { "type": "number", "minimum": 0 },
+        "queueDepth": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "storageBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "Quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedInjectedItemCount", "matchedInjectedItemCount", "expectedOmissionCount", "matchedOmissionCount", "forbiddenFactCount"],
+      "properties": {
+        "expectedInjectedItemCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "matchedInjectedItemCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "expectedOmissionCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "matchedOmissionCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "forbiddenFactCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "Resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxSteadyProductProcessCount", "maxShortRunRssGrowthMiB", "maxPendingQueueDepth", "maxStorageGrowthBytes", "orphanProductProcessCount"],
+      "properties": {
+        "maxSteadyProductProcessCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "maxShortRunRssGrowthMiB": { "type": "number", "minimum": 0 },
+        "maxPendingQueueDepth": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "maxStorageGrowthBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "orphanProductProcessCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    }
+  }
+}

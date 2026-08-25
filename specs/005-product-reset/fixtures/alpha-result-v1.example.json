@@ -1,0 +1,220 @@
+{
+  "resultVersion": 1,
+  "fixtureId": "slice1-bidirectional-en-v1",
+  "fixtureFingerprint": "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c",
+  "candidateId": "candidate-example-v1",
+  "scenarioId": "claude-to-codex",
+  "resourceSampleMode": "cold",
+  "environmentFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "artifactFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "drain": {
+    "drainConditionId": "slice1-claude-to-codex-visible-v1",
+    "status": "completed",
+    "timedOut": false,
+    "terminalMilestone": "target_injection_acknowledged"
+  },
+  "disposition": {
+    "state": "degraded",
+    "reason": "semantic_disabled",
+    "successfulComparisonEligible": true
+  },
+  "milestones": [
+    {
+      "name": "source_session_started",
+      "monotonicMs": 0
+    },
+    {
+      "name": "source_events_captured",
+      "monotonicMs": 100
+    },
+    {
+      "name": "source_session_ended",
+      "monotonicMs": 200
+    },
+    {
+      "name": "target_session_started_before_source_drain",
+      "monotonicMs": 300
+    },
+    {
+      "name": "target_first_prompt_submitted_before_model",
+      "monotonicMs": 400
+    },
+    {
+      "name": "source_flush_requested_by_target_prompt",
+      "monotonicMs": 500
+    },
+    {
+      "name": "source_summary_committed",
+      "monotonicMs": 600
+    },
+    {
+      "name": "target_retrieval_requested",
+      "monotonicMs": 700
+    },
+    {
+      "name": "target_injection_acknowledged",
+      "monotonicMs": 800
+    },
+    {
+      "name": "scenario_terminal",
+      "monotonicMs": 900
+    },
+    {
+      "name": "post_teardown_grace_elapsed",
+      "monotonicMs": 1000
+    }
+  ],
+  "counts": {
+    "captured": 5,
+    "committed": 5,
+    "duplicateDeliveries": 0,
+    "lost": 0,
+    "pending": 0,
+    "summaryCount": 1,
+    "durableMemoryCount": 4,
+    "inputCandidates": 4,
+    "tracedCandidates": 4,
+    "deadlineUnprocessed": 0,
+    "admittedCandidates": 4,
+    "selectedItems": 4
+  },
+  "safety": {
+    "agentBlockageCount": 0,
+    "acceptedEventLossCount": 0,
+    "duplicateDurableMemoryCount": 0,
+    "secretEgressCount": 0,
+    "incompatibleScopeInjectionCount": 0
+  },
+  "securityDenominators": {
+    "agentOperationCount": 1,
+    "acceptedEventCount": 5,
+    "duplicateDeliveryAttemptCount": 0,
+    "consideredRemoteProviderEventCount": 5,
+    "consideredSecretEventCount": 0,
+    "consideredPrivateEventCount": 0,
+    "consideredCrossScopeCandidateCount": 0,
+    "consideredDerivedCandidateCount": 0,
+    "consideredActivationProposalCount": 0
+  },
+  "securityEvidence": {
+    "remoteProviderRequestCount": 1,
+    "remoteProviderPayloadCount": 1,
+    "remoteInjectionCount": 0,
+    "persistedSecretCount": 0,
+    "injectedSecretCount": 0,
+    "payloadBytesSent": 256,
+    "forbiddenSentinelObservationCount": 0
+  },
+  "retryEvidence": null,
+  "failureMetadata": null,
+  "operationalStatus": null,
+  "processSamples": [
+    {"monotonicMs": 0, "processCount": 1, "rssMiB": 100, "queueDepth": 0, "storageBytes": 1000},
+    {"monotonicMs": 100, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 200, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 300, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 400, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 500, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 600, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 700, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 800, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 900, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 1000, "processCount": 0, "rssMiB": 0, "queueDepth": 0, "storageBytes": 11000}
+  ],
+  "injectedItems": [
+    {
+      "fact": "Project settings validation now uses the existing validator.",
+      "memoryKind": "summary",
+      "sourceEventIds": [
+        "claude-to-codex-event-1",
+        "claude-to-codex-event-4"
+      ],
+      "sourceSpans": [
+        {
+          "eventId": "claude-to-codex-event-1",
+          "startByte": 0,
+          "endByte": 45
+        },
+        {
+          "eventId": "claude-to-codex-event-4",
+          "startByte": 0,
+          "endByte": 53
+        }
+      ],
+      "sensitivity": "eligible",
+      "sourceLane": "lexical",
+      "selectionReason": "lexical"
+    },
+    {
+      "fact": "Reuse the existing JSON-schema validation path.",
+      "memoryKind": "decision",
+      "sourceEventIds": [
+        "claude-to-codex-event-2"
+      ],
+      "sourceSpans": [
+        {
+          "eventId": "claude-to-codex-event-2",
+          "startByte": 0,
+          "endByte": 47
+        }
+      ],
+      "sensitivity": "eligible",
+      "sourceLane": "lexical",
+      "selectionReason": "lexical"
+    },
+    {
+      "fact": "Do not add a second custom parser.",
+      "memoryKind": "failed_approach",
+      "sourceEventIds": [
+        "claude-to-codex-event-3"
+      ],
+      "sourceSpans": [
+        {
+          "eventId": "claude-to-codex-event-3",
+          "startByte": 0,
+          "endByte": 69
+        }
+      ],
+      "sensitivity": "eligible",
+      "sourceLane": "lexical",
+      "selectionReason": "lexical"
+    },
+    {
+      "fact": "Next: add the malformed-root regression test.",
+      "memoryKind": "next_action",
+      "sourceEventIds": [
+        "claude-to-codex-event-5"
+      ],
+      "sourceSpans": [
+        {
+          "eventId": "claude-to-codex-event-5",
+          "startByte": 0,
+          "endByte": 39
+        }
+      ],
+      "sensitivity": "eligible",
+      "sourceLane": "lexical",
+      "selectionReason": "lexical"
+    }
+  ],
+  "omittedItems": [],
+  "packDegradations": [
+    "semantic_disabled"
+  ],
+  "quality": {
+    "expectedInjectedItemCount": 4,
+    "matchedInjectedItemCount": 4,
+    "expectedOmissionCount": 0,
+    "matchedOmissionCount": 0,
+    "forbiddenFactCount": 0
+  },
+  "injectedTokens": 300,
+  "resource": {
+    "maxSteadyProductProcessCount": 2,
+    "maxShortRunRssGrowthMiB": 10,
+    "maxPendingQueueDepth": 3,
+    "maxStorageGrowthBytes": 10000,
+    "orphanProductProcessCount": 0
+  },
+  "providerCostUnits": 0
+}

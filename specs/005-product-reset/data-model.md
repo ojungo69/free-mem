@@ -173,8 +173,9 @@ A durable reusable output derived from one or more captured events.
 Derived sensitivity is the most restrictive contributing source disposition in this order:
 `secret > private > local_only > eligible`. Secret-bearing output is prohibited after redaction;
 `private` and `local_only` never downgrade during summarization, revision, indexing, or retrieval.
-In particular, memory derived on-device from any `local_only` source remains `local_only` and is
-ineligible for a remote/off-host InjectionPack destination.
+Both dispositions are eligible only for same-repository on-device processing and InjectionPack
+destinations; neither may reach a remote/off-host provider or renderer, even after private spans are
+removed.
 
 Deletion is terminal for retrieval and injection. It records a permanent durable tombstone for the
 `lineageId`; reprocessing retained sources under any profile or model generation cannot create an
@@ -216,6 +217,8 @@ SHA-256(
   `startByte`, then `endByte`.
 - Span coordinates are half-open `[startByte, endByte)` offsets into the canonical
   `redactedPayload` UTF-8 bytes.
+- `startByte` and `endByte` MUST fall on UTF-8 scalar boundaries; a span that starts or ends on a
+  continuation byte is invalid and quarantines the provider result.
 - Profile, model generation, processing batch, fact wording, and semantic kind are absent from the
   digest input.
 
@@ -256,7 +259,7 @@ The independently selected summary or embedding execution method.
 - `providerKind`: built-in local, compatible local endpoint, or explicit remote endpoint
 - `modelId`, `modelRevision`
 - `endpointScheme`, `endpointHost`, `credentialSource`
-- `tlsCertificateValidation`: required for credential-bearing remote providers
+- `tlsCertificateValidation`: required for every remote/off-host provider
 - `redirectPolicy`: `reject` for the Technical Alpha
 - `executionLocation`: local or remote
 - `costClass`, `egressPolicy`
@@ -267,9 +270,9 @@ Secret values are referenced, never included in this entity's diagnostics or fin
 When `state` is disabled, provider/model/endpoint/credential fields are absent and a bounded
 machine-readable disabled reason is required. Disabled is never encoded as an empty model or
 unreachable endpoint.
-Credential-bearing remote requests require `https` on the initial connection and normal certificate
-chain and hostname verification. Plain HTTP, disabled verification, and HTTPS-to-HTTP redirect are
-rejected before credentials or payload bytes are sent.
+Every remote/off-host request requires `https` on the initial connection and normal certificate
+chain and hostname verification, regardless of credential use. Plain HTTP, disabled verification,
+and HTTPS-to-HTTP redirect are rejected before any credentials or payload bytes are sent.
 
 ## SemanticIndexGeneration
 

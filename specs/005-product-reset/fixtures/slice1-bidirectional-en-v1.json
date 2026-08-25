@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:473669f7b30ce41f67f3cac949f2526b0545a8d8e8d3db2311acb36ff8b59300",
+  "contractFingerprint": "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -18,8 +18,18 @@
     "resourceProfile": {
       "profileId": "slice1-short-run",
       "version": 1,
+      "captureConcurrencyLimit": 2,
+      "processingConcurrencyLimit": 2,
+      "processingQueueCapacity": 25,
       "processingRetryLimit": 3,
       "maxMemoryItemsPerDerivation": 16,
+      "workerWarmLifetimeMs": 30000,
+      "resourceWarningThresholds": {
+        "maxSteadyProductProcessCount": 3,
+        "maxShortRunRssGrowthMiB": 32,
+        "maxPendingQueueDepth": 20,
+        "maxStorageGrowthBytes": 1048576
+      },
       "injectionEnvelope": {
         "selectionTimeBudgetMs": 750,
         "admittedCandidateLimit": 32,
@@ -142,6 +152,13 @@
       "target_injection_acknowledged",
       "scenario_terminal",
       "post_teardown_grace_elapsed"
+    ],
+    "configuration_rejection": [
+      "source_session_started",
+      "provider_activation_proposed",
+      "configuration_validation_rejected",
+      "scenario_terminal",
+      "post_teardown_grace_elapsed"
     ]
   },
   "samplingProtocol": {
@@ -163,6 +180,8 @@
           "summary-provider-retry-exhausted",
           "summary-provider-redirect-rejected",
           "local-only-remote-provider-rejected",
+          "private-remote-provider-rejected",
+          "summary-provider-output-limit-exceeded",
           "incompatible-scope-injection-rejected",
           "local-derived-memory-remote-injection-rejected"
         ],
@@ -208,7 +227,7 @@
         "startMilestone": "source_session_started",
         "endMilestone": "scenario_terminal",
         "sampleSubject": "isolated_data_directory",
-        "aggregation": "end_bytes_minus_start_bytes"
+        "aggregation": "maximum_bytes_minus_start_bytes"
       },
       "orphanProductProcessCount": {
         "scenarioSelection": "all",
@@ -226,7 +245,7 @@
     "maxSteadyProductProcessCount": 3,
     "orphanProductProcessCount": 0,
     "maxShortRunRssGrowthMiB": 32,
-    "maxPendingQueueDepth": 25,
+    "maxPendingQueueDepth": 20,
     "maxStorageGrowthBytes": 1048576,
     "maxInjectedTokens": 800,
     "agentBlockageCount": 0,
@@ -295,9 +314,9 @@
       "summaryProviderStub": {
         "summary": {
           "title": "Settings validation summary",
-          "body": "Settings validation now reuses the existing JSON-schema path; a duplicate parser was rejected, and the malformed-root regression remains.",
-          "sourceEventIds": ["claude-to-codex-event-1", "claude-to-codex-event-2", "claude-to-codex-event-3", "claude-to-codex-event-4", "claude-to-codex-event-5"],
-          "sourceSpans": [{"eventId":"claude-to-codex-event-1","startByte":0,"endByte":45},{"eventId":"claude-to-codex-event-2","startByte":0,"endByte":47},{"eventId":"claude-to-codex-event-3","startByte":0,"endByte":69},{"eventId":"claude-to-codex-event-4","startByte":0,"endByte":53},{"eventId":"claude-to-codex-event-5","startByte":0,"endByte":39}]
+          "body": "Project settings validation now uses the existing validator.",
+          "sourceEventIds": ["claude-to-codex-event-1", "claude-to-codex-event-4"],
+          "sourceSpans": [{"eventId":"claude-to-codex-event-1","startByte":0,"endByte":45},{"eventId":"claude-to-codex-event-4","startByte":0,"endByte":53}]
         },
         "memoryItems": [
           {
@@ -325,6 +344,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-claude-to-codex-visible-v1",
+        "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 5,
         "summaryCount": 1,
@@ -333,10 +353,10 @@
       },
       "expectedInjectedItems": [
         {
-          "fact": "Settings validation now reuses the existing JSON-schema path; a duplicate parser was rejected, and the malformed-root regression remains.",
+          "fact": "Project settings validation now uses the existing validator.",
           "memoryKind": "summary",
-          "sourceEventIds": ["claude-to-codex-event-1", "claude-to-codex-event-2", "claude-to-codex-event-3", "claude-to-codex-event-4", "claude-to-codex-event-5"],
-          "sourceSpans": [{"eventId":"claude-to-codex-event-1","startByte":0,"endByte":45},{"eventId":"claude-to-codex-event-2","startByte":0,"endByte":47},{"eventId":"claude-to-codex-event-3","startByte":0,"endByte":69},{"eventId":"claude-to-codex-event-4","startByte":0,"endByte":53},{"eventId":"claude-to-codex-event-5","startByte":0,"endByte":39}],
+          "sourceEventIds": ["claude-to-codex-event-1", "claude-to-codex-event-4"],
+          "sourceSpans": [{"eventId":"claude-to-codex-event-1","startByte":0,"endByte":45},{"eventId":"claude-to-codex-event-4","startByte":0,"endByte":53}],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
@@ -441,9 +461,9 @@
       "summaryProviderStub": {
         "summary": {
           "title": "Cache invalidation summary",
-          "body": "The public cache API stays unchanged; shared-key invalidation races, a global lock was rejected, and a per-key lock plus concurrency regression is next.",
-          "sourceEventIds": ["codex-to-claude-event-1", "codex-to-claude-event-2", "codex-to-claude-event-3", "codex-to-claude-event-4", "codex-to-claude-event-5"],
-          "sourceSpans": [{"eventId":"codex-to-claude-event-1","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-2","startByte":0,"endByte":39},{"eventId":"codex-to-claude-event-3","startByte":0,"endByte":43},{"eventId":"codex-to-claude-event-4","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-5","startByte":0,"endByte":62}]
+          "body": "Shared-key invalidation is the race to fix without changing the public API.",
+          "sourceEventIds": ["codex-to-claude-event-1", "codex-to-claude-event-3"],
+          "sourceSpans": [{"eventId":"codex-to-claude-event-1","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-3","startByte":0,"endByte":43}]
         },
         "memoryItems": [
           {
@@ -471,6 +491,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-codex-to-claude-visible-v1",
+        "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 5,
         "summaryCount": 1,
@@ -479,10 +500,10 @@
       },
       "expectedInjectedItems": [
         {
-          "fact": "The public cache API stays unchanged; shared-key invalidation races, a global lock was rejected, and a per-key lock plus concurrency regression is next.",
+          "fact": "Shared-key invalidation is the race to fix without changing the public API.",
           "memoryKind": "summary",
-          "sourceEventIds": ["codex-to-claude-event-1", "codex-to-claude-event-2", "codex-to-claude-event-3", "codex-to-claude-event-4", "codex-to-claude-event-5"],
-          "sourceSpans": [{"eventId":"codex-to-claude-event-1","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-2","startByte":0,"endByte":39},{"eventId":"codex-to-claude-event-3","startByte":0,"endByte":43},{"eventId":"codex-to-claude-event-4","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-5","startByte":0,"endByte":62}],
+          "sourceEventIds": ["codex-to-claude-event-1", "codex-to-claude-event-3"],
+          "sourceSpans": [{"eventId":"codex-to-claude-event-1","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-3","startByte":0,"endByte":43}],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
@@ -593,9 +614,9 @@
       "summaryProviderStub": {
         "summary": {
           "title": "Durable follow-up",
-          "body": "Record a durable follow-up while the memory daemon is unavailable; next verify the queued event after daemon restart.",
-          "sourceEventIds": ["spool-event-1", "spool-event-2"],
-          "sourceSpans": [{"eventId":"spool-event-1","startByte":0,"endByte":66},{"eventId":"spool-event-2","startByte":0,"endByte":51}]
+          "body": "Record a durable follow-up while the memory daemon is unavailable.",
+          "sourceEventIds": ["spool-event-1"],
+          "sourceSpans": [{"eventId":"spool-event-1","startByte":0,"endByte":66}]
         },
         "memoryItems": [
           {
@@ -609,6 +630,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-spool-idempotent-replay-v1",
+        "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 2,
         "spooledEventCount": 2,
@@ -619,10 +641,10 @@
       },
       "expectedInjectedItems": [
         {
-          "fact": "Record a durable follow-up while the memory daemon is unavailable; next verify the queued event after daemon restart.",
+          "fact": "Record a durable follow-up while the memory daemon is unavailable.",
           "memoryKind": "summary",
-          "sourceEventIds": ["spool-event-1", "spool-event-2"],
-          "sourceSpans": [{"eventId":"spool-event-1","startByte":0,"endByte":66},{"eventId":"spool-event-2","startByte":0,"endByte":51}],
+          "sourceEventIds": ["spool-event-1"],
+          "sourceSpans": [{"eventId":"spool-event-1","startByte":0,"endByte":66}],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
@@ -670,9 +692,9 @@
         "recoveredOutput": {
           "summary": {
             "title": "Provider failure summary",
-            "body": "The event must remain durable when summary generation fails, and the provider returned malformed output.",
-            "sourceEventIds": ["summary-provider-failure-event-1", "summary-provider-failure-event-2"],
-            "sourceSpans": [{"eventId":"summary-provider-failure-event-1","startByte":0,"endByte":59},{"eventId":"summary-provider-failure-event-2","startByte":0,"endByte":39}]
+            "body": "The event must remain durable when summary generation fails.",
+            "sourceEventIds": ["summary-provider-failure-event-1"],
+            "sourceSpans": [{"eventId":"summary-provider-failure-event-1","startByte":0,"endByte":59}]
           },
           "memoryItems": [
             {
@@ -825,6 +847,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-summary-retry-exhausted-visible-v1",
+        "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 2,
         "summaryCount": 0,
@@ -920,6 +943,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-summary-redirect-rejected-v1",
+        "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 1,
         "summaryCount": 0,
@@ -945,6 +969,545 @@
       "forbiddenFacts": [
         "The redirect payload was resent."
       ],
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "credentialless-http-activation-rejected",
+      "sourceAgent": "codex",
+      "targetAgent": "claude-code",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "configuration_rejection",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "not applicable: configuration rejection",
+      "providerActivationProposal": {
+        "providerChoiceId": "credentialless-http-summary-v1",
+        "executionLocation": "remote",
+        "credentialPresent": false,
+        "endpointScheme": "http",
+        "endpointHost": "summary.http.invalid",
+        "redactedPayload": "TRANSPORT_PAYLOAD_SENTINEL",
+        "payloadBytes": 26
+      },
+      "events": [],
+      "summaryProviderStub": {
+        "policyRejectedReason": "insecure_remote_transport",
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-credentialless-http-activation-rejected-v1",
+        "terminalMilestone": "configuration_validation_rejected",
+        "timeoutMs": 30000,
+        "committedEventCount": 0,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "providerRequestCount": 0,
+        "providerPayloadCount": 0,
+        "targetInjectionAcknowledged": false
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "TRANSPORT_PAYLOAD_SENTINEL"
+      ],
+      "securityOracle": {
+        "consideredActivationProposalCount": 1,
+        "expectedActivationState": "rejected",
+        "expectedReason": "insecure_remote_transport",
+        "remoteProviderRequestCount": 0,
+        "payloadBytesSent": 0,
+        "forbiddenSentinels": [
+          "TRANSPORT_PAYLOAD_SENTINEL"
+        ],
+        "sentinelObservedAtRemote": false
+      },
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "summary-provider-output-limit-exceeded",
+      "sourceAgent": "claude-code",
+      "targetAgent": "codex",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "provider_failure",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "output-limit failure state",
+      "fault": {
+        "kind": "summary_provider_output_limit_exceeded",
+        "observedResultCount": 17,
+        "configuredLimit": 16,
+        "failureMetadata": {
+          "errorCode": "memory_output_limit_exceeded",
+          "jobId": "output-limit-job-1",
+          "sourceEventIds": [
+            "output-limit-event-1"
+          ],
+          "observedResultCount": 17,
+          "configuredLimit": 16
+        },
+        "resumeCasesAreIndependent": true,
+        "resumeCaseInitialSnapshot": {
+          "state": "retry-exhausted",
+          "budget": 0,
+          "lastConsumedSequence": 0
+        },
+      "recoveredMaxMemoryItemsPerDerivation": 17,
+      "resumeCases": [
+          {
+            "caseId": "validated-larger-limit-activation",
+            "signals": [
+              {
+                "signalId": "output-limit-config-activation-1",
+                "sequence": 1,
+                "kind": "validated_configuration_activation",
+                "targetRole": "summary",
+                "providerChoiceId": "deterministic-summary-v1",
+                "configurationFingerprint": "summary-config-limit-17-v2"
+              }
+            ],
+            "providerOutcome": "valid",
+            "expected": {
+              "budgetBefore": 0,
+              "budgetAfterGrant": 3,
+              "budgetAfterAttempt": 2,
+              "attemptDelta": 1,
+              "lastConsumedSequence": 1,
+              "ignoredSignalCount": 0,
+              "finalState": "completed",
+              "durableMemoryCount": 17
+            }
+          },
+          {
+            "caseId": "unchanged-provider-health-no-op",
+            "signals": [
+              {
+                "signalId": "output-limit-provider-health-1",
+                "sequence": 1,
+                "kind": "recorded_provider_healthy_transition",
+                "targetRole": "summary",
+                "providerChoiceId": "deterministic-summary-v1",
+                "configurationFingerprint": "summary-config-v1"
+              }
+            ],
+            "providerOutcome": "valid",
+            "expected": {
+              "budgetBefore": 0,
+              "budgetAfterGrant": 0,
+              "budgetAfterAttempt": 0,
+              "attemptDelta": 0,
+              "lastConsumedSequence": 0,
+              "ignoredSignalCount": 1,
+              "finalState": "retry-exhausted",
+              "durableMemoryCount": 0
+            }
+          },
+          {
+            "caseId": "unchanged-doctor-retry-no-op",
+            "signals": [
+              {
+                "signalId": "output-limit-doctor-retry-1",
+                "sequence": 1,
+                "kind": "user_confirmed_doctor_retry",
+                "targetRole": "summary",
+                "providerChoiceId": "deterministic-summary-v1",
+                "configurationFingerprint": "summary-config-v1"
+              }
+            ],
+            "providerOutcome": "valid",
+            "expected": {
+              "budgetBefore": 0,
+              "budgetAfterGrant": 0,
+              "budgetAfterAttempt": 0,
+              "attemptDelta": 0,
+              "lastConsumedSequence": 0,
+              "ignoredSignalCount": 1,
+              "finalState": "retry-exhausted",
+              "durableMemoryCount": 0
+            }
+          }
+        ]
+      },
+      "events": [
+        {
+          "eventId": "output-limit-event-1",
+          "sequence": 1,
+          "kind": "assistant_message",
+          "sensitivity": "eligible",
+          "redactedPayload": "ABCDEFGHIJKLMNOPQ",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "ABCDEFGHIJKLMNOPQ"
+        }
+      ],
+      "summaryProviderStub": {
+        "summary": {
+          "title": "Output A",
+          "body": "A",
+          "sourceEventIds": [
+            "output-limit-event-1"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "output-limit-event-1",
+              "startByte": 0,
+              "endByte": 1
+            }
+          ]
+        },
+        "memoryItems": [
+          {
+            "kind": "decision",
+            "title": "Output B",
+            "body": "B",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 1,
+                "endByte": 2
+              }
+            ]
+          },
+          {
+            "kind": "discovery",
+            "title": "Output C",
+            "body": "C",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 2,
+                "endByte": 3
+              }
+            ]
+          },
+          {
+            "kind": "change",
+            "title": "Output D",
+            "body": "D",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 3,
+                "endByte": 4
+              }
+            ]
+          },
+          {
+            "kind": "failed_approach",
+            "title": "Output E",
+            "body": "E",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 4,
+                "endByte": 5
+              }
+            ]
+          },
+          {
+            "kind": "next_action",
+            "title": "Output F",
+            "body": "F",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 5,
+                "endByte": 6
+              }
+            ]
+          },
+          {
+            "kind": "decision",
+            "title": "Output G",
+            "body": "G",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 6,
+                "endByte": 7
+              }
+            ]
+          },
+          {
+            "kind": "discovery",
+            "title": "Output H",
+            "body": "H",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 7,
+                "endByte": 8
+              }
+            ]
+          },
+          {
+            "kind": "change",
+            "title": "Output I",
+            "body": "I",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 8,
+                "endByte": 9
+              }
+            ]
+          },
+          {
+            "kind": "failed_approach",
+            "title": "Output J",
+            "body": "J",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 9,
+                "endByte": 10
+              }
+            ]
+          },
+          {
+            "kind": "next_action",
+            "title": "Output K",
+            "body": "K",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 10,
+                "endByte": 11
+              }
+            ]
+          },
+          {
+            "kind": "decision",
+            "title": "Output L",
+            "body": "L",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 11,
+                "endByte": 12
+              }
+            ]
+          },
+          {
+            "kind": "discovery",
+            "title": "Output M",
+            "body": "M",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 12,
+                "endByte": 13
+              }
+            ]
+          },
+          {
+            "kind": "change",
+            "title": "Output N",
+            "body": "N",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 13,
+                "endByte": 14
+              }
+            ]
+          },
+          {
+            "kind": "failed_approach",
+            "title": "Output O",
+            "body": "O",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 14,
+                "endByte": 15
+              }
+            ]
+          },
+          {
+            "kind": "next_action",
+            "title": "Output P",
+            "body": "P",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 15,
+                "endByte": 16
+              }
+            ]
+          },
+          {
+            "kind": "decision",
+            "title": "Output Q",
+            "body": "UNCOMMITTED_OUTPUT_SENTINEL",
+            "sourceEventIds": [
+              "output-limit-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "output-limit-event-1",
+                "startByte": 16,
+                "endByte": 17
+              }
+            ]
+          }
+        ]
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-summary-output-limit-visible-v1",
+        "terminalMilestone": "provider_processing_rejected_or_exhausted",
+        "timeoutMs": 30000,
+        "committedEventCount": 1,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "pendingSummaryJobCount": 1,
+        "eventDeliveryState": "committed",
+        "summaryJobState": "retry-exhausted",
+        "targetInjectionAcknowledged": false
+      },
+      "expectedOperationalStatus": {
+        "component": "summary",
+        "state": "failed",
+        "reason": "memory_output_limit_exceeded",
+        "pendingCount": 1,
+        "safeAction": "activate_larger_output_limit_or_repaired_provider",
+        "profileId": "slice1-short-run",
+        "profileVersion": 1
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "UNCOMMITTED_OUTPUT_SENTINEL"
+      ],
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "private-remote-provider-rejected",
+      "sourceAgent": "codex",
+      "targetAgent": "claude-code",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "provider_failure",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "private provider rejection state",
+      "fault": {
+        "kind": "private_remote_provider_ineligible"
+      },
+      "events": [
+        {
+          "eventId": "private-event-1",
+          "sequence": 1,
+          "kind": "assistant_message",
+          "sensitivity": "private",
+          "redactedPayload": "PRIVATE_SENTINEL must remain on device.",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "PRIVATE_SENTINEL must remain on device."
+        }
+      ],
+      "summaryProviderStub": {
+        "policyRejectedReason": "private_remote_provider_ineligible",
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-private-remote-provider-rejected-v1",
+        "terminalMilestone": "provider_processing_rejected_or_exhausted",
+        "timeoutMs": 30000,
+        "committedEventCount": 1,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "pendingSummaryJobCount": 1,
+        "eventDeliveryState": "committed",
+        "summaryJobState": "retry-exhausted",
+        "providerRequestCount": 0,
+        "providerPayloadCount": 0,
+        "targetInjectionAcknowledged": false
+      },
+      "expectedOperationalStatus": {
+        "component": "summary",
+        "state": "failed",
+        "reason": "private_remote_provider_ineligible",
+        "pendingCount": 1,
+        "safeAction": "activate_local_summary_provider_or_exclude_private",
+        "profileId": "slice1-short-run",
+        "profileVersion": 1
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "PRIVATE_SENTINEL must remain on device."
+      ],
+      "securityOracle": {
+        "consideredRemoteProviderEventCount": 1,
+        "consideredPrivateEventCount": 1,
+        "remoteProviderRequestCount": 0,
+        "remoteProviderPayloadCount": 0,
+        "remoteInjectionCount": 0,
+        "forbiddenSentinels": [
+          "PRIVATE_SENTINEL"
+        ],
+        "sentinelObservedAtRemoteOrInjection": false
+      },
       "expectedCounters": {
         "agentBlockageCount": 0,
         "acceptedEventLossCount": 0,
@@ -991,6 +1554,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-local-only-remote-provider-rejected-v1",
+        "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 2,
         "summaryCount": 0,
@@ -1056,12 +1620,6 @@
         }
       ],
       "summaryProviderStub": {
-        "summary": {
-          "title": "Other repository summary",
-          "body": "The source fact belongs only to repo-other.",
-          "sourceEventIds": ["cross-scope-event-1"],
-          "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":47}]
-        },
         "memoryItems": [
           {
             "kind": "discovery",
@@ -1074,22 +1632,15 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-incompatible-scope-injection-rejected-v1",
+        "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 1,
-        "summaryCount": 1,
-        "durableMemoryCount": 2,
+        "summaryCount": 0,
+        "durableMemoryCount": 1,
         "targetInjectionAcknowledged": true
       },
       "expectedInjectedItems": [],
       "expectedOmissions": [
-        {
-          "fact": "The source fact belongs only to repo-other.",
-          "memoryKind": "summary",
-          "sourceEventIds": ["cross-scope-event-1"],
-          "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":47}],
-          "sensitivity": "eligible",
-          "reason": "omitted_ineligible"
-        },
         {
           "fact": "OTHER_REPO_SENTINEL belongs only to repo-other.",
           "memoryKind": "discovery",
@@ -1103,7 +1654,7 @@
         "OTHER_REPO_SENTINEL belongs only to repo-other."
       ],
       "securityOracle": {
-        "consideredCrossScopeCandidateCount": 2,
+        "consideredCrossScopeCandidateCount": 1,
         "incompatibleScopeInjectionCount": 0,
         "forbiddenSentinels": ["OTHER_REPO_SENTINEL"],
         "sentinelObservedInInjection": false
@@ -1139,12 +1690,6 @@
         }
       ],
       "summaryProviderStub": {
-        "summary": {
-          "title": "Local derived summary",
-          "body": "The local derived sentinel must remain local after derivation.",
-          "sourceEventIds": ["local-derived-event-1"],
-          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":54}]
-        },
         "memoryItems": [
           {
             "kind": "discovery",
@@ -1157,22 +1702,15 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-local-derived-remote-injection-rejected-v1",
+        "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 1,
-        "summaryCount": 1,
-        "durableMemoryCount": 2,
+        "summaryCount": 0,
+        "durableMemoryCount": 1,
         "targetInjectionAcknowledged": true
       },
       "expectedInjectedItems": [],
       "expectedOmissions": [
-        {
-          "fact": "The local derived sentinel must remain local after derivation.",
-          "memoryKind": "summary",
-          "sourceEventIds": ["local-derived-event-1"],
-          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":54}],
-          "sensitivity": "local_only",
-          "reason": "omitted_ineligible"
-        },
         {
           "fact": "LOCAL_DERIVED_SENTINEL remains local after derivation.",
           "memoryKind": "discovery",
@@ -1186,7 +1724,7 @@
         "LOCAL_DERIVED_SENTINEL remains local after derivation."
       ],
       "securityOracle": {
-        "consideredDerivedCandidateCount": 2,
+        "consideredDerivedCandidateCount": 1,
         "remoteInjectionCount": 0,
         "expectedSensitivity": "local_only",
         "forbiddenSentinels": ["LOCAL_DERIVED_SENTINEL"],

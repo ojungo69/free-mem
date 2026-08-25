@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,10 +35,14 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprint =
-  "sha256:473669f7b30ce41f67f3cac949f2526b0545a8d8e8d3db2311acb36ff8b59300";
+  "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c";
 const actualContractFingerprint = `sha256:${createHash("sha256")
   .update(fixtureContractDomain)
-  .update(canonicalizeJson(contract))
+  .update(canonicalizeJson({
+    fixture: contract,
+    schema,
+    semanticValidator: readFileSync(semanticPath, "utf8"),
+  }))
   .digest("hex")}`;
 if (
   fixture.contractFingerprint !== expectedContractFingerprint ||
@@ -105,6 +110,55 @@ for (const vector of lineageVectors) {
   }
 }
 
+const isUtf8Boundary = (bytes, offset) =>
+  Number.isInteger(offset) &&
+  offset >= 0 &&
+  offset <= bytes.length &&
+  (offset === 0 || offset === bytes.length || (bytes[offset] & 0xc0) !== 0x80);
+
+const utf8BoundaryProbe = {
+  text: "設定",
+  validByteOffsets: [0, 3, 6],
+  invalidByteOffsets: [1, 2, 4, 5],
+};
+const boundaryProbeBytes = Buffer.from(utf8BoundaryProbe.text, "utf8");
+if (
+  !utf8BoundaryProbe.validByteOffsets.every((offset) =>
+    isUtf8Boundary(boundaryProbeBytes, offset),
+  ) ||
+  !utf8BoundaryProbe.invalidByteOffsets.every(
+    (offset) => !isUtf8Boundary(boundaryProbeBytes, offset),
+  )
+) {
+  throw new Error("UTF-8 boundary probe mismatch");
+}
+
+for (const scenario of fixture.scenarios) {
+  const events = new Map(scenario.events.map((event) => [event.eventId, event]));
+  const outputs = [
+    scenario.summaryProviderStub.summary,
+    ...scenario.summaryProviderStub.memoryItems,
+    scenario.fault?.recoveredOutput?.summary,
+    ...(scenario.fault?.recoveredOutput?.memoryItems ?? []),
+    ...scenario.expectedInjectedItems,
+    ...scenario.expectedOmissions,
+  ].filter(Boolean);
+  for (const output of outputs) {
+    for (const span of output.sourceSpans) {
+      const event = events.get(span.eventId);
+      const bytes = event && Buffer.from(event.redactedPayload, "utf8");
+      if (
+        !bytes ||
+        !isUtf8Boundary(bytes, span.startByte) ||
+        !isUtf8Boundary(bytes, span.endByte) ||
+        span.startByte >= span.endByte
+      ) {
+        throw new Error(`invalid UTF-8 source span in scenario ${scenario.scenarioId}`);
+      }
+    }
+  }
+}
+
 if (digest(canonicalEvent.redactedPayload) !== probe.canonicalPayloadDigest) {
   throw new Error("identity-conflict canonical digest does not match redacted payload");
 }
@@ -116,7 +170,10 @@ if (
 }
 
 try {
-  execFileSync("jq", ["-e", "-f", semanticPath, fixturePath], { stdio: "inherit" });
+  execFileSync("jq", ["-e", "-f", semanticPath], {
+    input: JSON.stringify(fixture),
+    stdio: ["pipe", "inherit", "inherit"],
+  });
 } catch (error) {
   if (error?.code === "ENOENT") {
     console.error("Prerequisite missing: jq is required to validate the Slice 1 fixture.");

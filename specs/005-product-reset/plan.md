@@ -76,11 +76,16 @@ specs/005-product-reset/
 │   ├── slice1-bidirectional-en-v1.json
 │   ├── slice1-bidirectional-en-v1.schema.json
 │   ├── slice1-bidirectional-en-v1.semantic.jq
-│   └── validate-slice1-fixture.mjs
+│   ├── validate-slice1-fixture.mjs
+│   ├── alpha-result-v1.example.json
+│   └── alpha-result-v1.failure-example.json
 ├── contracts/
 │   ├── alpha-comparison.md
 │   ├── capability-manifest.md
-│   └── injection-pack.md
+│   ├── injection-pack.md
+│   ├── alpha-result-v1.schema.json
+│   ├── alpha-result-v1.semantic.jq
+│   └── validate-alpha-result.mjs
 ├── checklists/
 │   └── requirements.md
 └── tasks.md
