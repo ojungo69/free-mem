@@ -19,6 +19,9 @@ set -e
 export GH_REPO='ojungo69/free-mem'
 test "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" = "$GH_REPO"
 export RESET_ROLLBACK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/free-mem-reset-rollback.XXXXXX")
+export RESET_ORIGINAL_ISSUES='[1,8,9,10,11,12,13,19,22,24,31,32,40,45,46,49,53,54,56,57,58,61,62,64,65,66,67,68,69,70,71,72,73,74,76,79,80,81,82,83,84,90,91,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,123,124,126,127,128,129,130,132,134,135]'
+export RESET_KEPT_ISSUES='[81,123,124,126,127,128,129,130]'
+export RESET_REPLACEMENT_ISSUES='[136,137,138,139]'
 chmod 700 "$RESET_ROLLBACK_DIR"
 
 gh issue list --state all --limit 200 --json number,state,labels \
@@ -41,6 +44,34 @@ test -s "$RESET_ROLLBACK_DIR/issues-before.json"
 test -s "$RESET_ROLLBACK_DIR/pr-131-before.json"
 test -s "$RESET_ROLLBACK_DIR/pr-133-before.json"
 test -s "$RESET_ROLLBACK_DIR/relationships-before.json"
+
+jq -e \
+  --argjson original "$RESET_ORIGINAL_ISSUES" \
+  --argjson kept "$RESET_KEPT_ISSUES" \
+  --argjson replacements "$RESET_REPLACEMENT_ISSUES" '
+  ([.[] | select(.number as $n | $original | index($n)) | .number] | sort)
+    == ($original | sort)
+  and all(.[] | select(.number as $n | $original | index($n));
+    if (.number as $n | $kept | index($n)) then .state == "OPEN" else .state == "CLOSED" end)
+  and ([.[] | select(.number as $n | $replacements | index($n)) | .number] | sort)
+    == ($replacements | sort)
+  and all(.[] | select(.number as $n | $replacements | index($n)); .state == "OPEN")
+  and all(.[] | select(.number as $n | $kept | index($n));
+    any(.labels[]; .name == "target: technical alpha"))
+' "$RESET_ROLLBACK_DIR/issues-before.json"
+jq -e '.state == "CLOSED" and .mergedAt == null' \
+  "$RESET_ROLLBACK_DIR/pr-133-before.json"
+jq -e '
+  .data.repository as $r
+  | ($r.i126.parent.number == 137 and $r.i129.parent.number == 137
+    and $r.i130.parent.number == 137)
+  and ([ $r.i136.subIssues.nodes[].number ] | sort) == [137,138,139]
+  and ($r.i137.parent.number == 136 and $r.i138.parent.number == 136
+    and $r.i139.parent.number == 136)
+  and ($r.i137.blockedBy.nodes | length) == 0
+  and ([ $r.i138.blockedBy.nodes[].number ] | sort) == [137]
+  and ([ $r.i139.blockedBy.nodes[].number ] | sort) == [137,138]
+' "$RESET_ROLLBACK_DIR/relationships-before.json"
 printf 'Snapshot: %s\n' "$RESET_ROLLBACK_DIR"
 ```
 
@@ -53,6 +84,42 @@ The M0 closure set is exact and contains 61 issues.
 
 ```sh
 set -e
+test -n "${RESET_ROLLBACK_DIR:-}"
+
+gh issue list --state all --limit 200 --json number,state,labels \
+  > "$RESET_ROLLBACK_DIR/issues-pre-mutation.json"
+gh pr view 131 --json number,state,mergedAt,headRefName \
+  > "$RESET_ROLLBACK_DIR/pr-131-pre-mutation.json"
+gh pr view 133 --json number,state,mergedAt,headRefName \
+  > "$RESET_ROLLBACK_DIR/pr-133-pre-mutation.json"
+gh api graphql -f query='query { repository(owner:"ojungo69", name:"free-mem") {
+  i126: issue(number:126) { number parent { number } }
+  i129: issue(number:129) { number parent { number } }
+  i130: issue(number:130) { number parent { number } }
+  i136: issue(number:136) { number state subIssues(first:20) { nodes { number state } } }
+  i137: issue(number:137) { number state parent { number } blockedBy(first:20) { nodes { number } } }
+  i138: issue(number:138) { number state parent { number } blockedBy(first:20) { nodes { number } } }
+  i139: issue(number:139) { number state parent { number } blockedBy(first:20) { nodes { number } } }
+} }' > "$RESET_ROLLBACK_DIR/relationships-pre-mutation.json"
+
+jq -S 'map(.labels |= sort_by(.name)) | sort_by(.number)' \
+  "$RESET_ROLLBACK_DIR/issues-before.json" \
+  > "$RESET_ROLLBACK_DIR/issues-before.lock.json"
+jq -S 'map(.labels |= sort_by(.name)) | sort_by(.number)' \
+  "$RESET_ROLLBACK_DIR/issues-pre-mutation.json" \
+  > "$RESET_ROLLBACK_DIR/issues-pre-mutation.lock.json"
+diff -u \
+  "$RESET_ROLLBACK_DIR/issues-before.lock.json" \
+  "$RESET_ROLLBACK_DIR/issues-pre-mutation.lock.json"
+for stem in pr-131 pr-133 relationships; do
+  jq -S . "$RESET_ROLLBACK_DIR/$stem-before.json" \
+    > "$RESET_ROLLBACK_DIR/$stem-before.lock.json"
+  jq -S . "$RESET_ROLLBACK_DIR/$stem-pre-mutation.json" \
+    > "$RESET_ROLLBACK_DIR/$stem-pre-mutation.lock.json"
+  diff -u \
+    "$RESET_ROLLBACK_DIR/$stem-before.lock.json" \
+    "$RESET_ROLLBACK_DIR/$stem-pre-mutation.lock.json"
+done
 
 # Scope copied to Slice 1
 for n in 19 40 45 46 49 61 62 68 69 80 91 93 96 100 101 102 108; do
@@ -123,6 +190,8 @@ evidence.
 ```sh
 set -e
 test -n "${RESET_ROLLBACK_DIR:-}"
+test -n "${RESET_ORIGINAL_ISSUES:-}"
+test -n "${RESET_REPLACEMENT_ISSUES:-}"
 
 gh issue list --state all --limit 200 --json number,state,labels \
   > "$RESET_ROLLBACK_DIR/issues-after.json"
@@ -139,11 +208,27 @@ gh api graphql -f query='query { repository(owner:"ojungo69", name:"free-mem") {
   i139: issue(number:139) { number state parent { number } blockedBy(first:20) { nodes { number } } }
 } }' > "$RESET_ROLLBACK_DIR/relationships-after.json"
 
-expected='[1,8,9,10,11,12,13,19,22,24,31,32,40,45,46,49,53,54,56,57,58,61,62,64,65,66,67,68,69,70,71,72,73,74,76,79,80,81,82,83,84,90,91,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,123,124,126,127,128,129,130,132,134,135]'
+expected="$RESET_ORIGINAL_ISSUES"
 jq -e --argjson expected "$expected" '
   ([.[] | select(.number as $n | $expected | index($n)) | select(.state == "OPEN") | .number] | sort)
   == ($expected | sort)
 ' "$RESET_ROLLBACK_DIR/issues-after.json"
+
+mutated=$(jq -cn \
+  --argjson original "$RESET_ORIGINAL_ISSUES" \
+  --argjson replacements "$RESET_REPLACEMENT_ISSUES" \
+  '$original + $replacements | unique')
+jq -S --argjson mutated "$mutated" '
+  map(select(.number as $n | $mutated | index($n) | not)) | sort_by(.number)
+' "$RESET_ROLLBACK_DIR/issues-before.json" \
+  > "$RESET_ROLLBACK_DIR/issues-untouched-before.json"
+jq -S --argjson mutated "$mutated" '
+  map(select(.number as $n | $mutated | index($n) | not)) | sort_by(.number)
+' "$RESET_ROLLBACK_DIR/issues-after.json" \
+  > "$RESET_ROLLBACK_DIR/issues-untouched-after.json"
+diff -u \
+  "$RESET_ROLLBACK_DIR/issues-untouched-before.json" \
+  "$RESET_ROLLBACK_DIR/issues-untouched-after.json"
 
 jq -e '
   def names: [.labels[].name];

@@ -289,8 +289,11 @@ without leaving active processes or managed configuration behind.
   truthful degraded fallback within that time.
 - **SC-005**: After warm-up, the balanced-profile reference workload grows resident memory by
   no more than 32 MB over an eight-hour soak and leaves no orphan product process.
-- **SC-006**: Reprocessing an unchanged event set changes neither durable-memory count nor
-  semantic-entry count.
+- **SC-006**: Reprocessing an unchanged event set under the same `profileId`/profile version and
+  `modelId`/model revision leaves active durable-memory and active semantic-entry counts unchanged.
+  Historical revision rows are excluded from those active counts and may increase after an allowed
+  profile/model change, but validation always requires one active revision per lineage and one
+  active semantic entry per item.
 - **SC-007**: Every injected item in the fixed scenarios has a visible source and selection
   reason, and every induced degraded state has the expected reason and safe next action.
 - **SC-008**: All secret and cross-scope fixtures produce zero external disclosures and zero

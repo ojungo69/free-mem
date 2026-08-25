@@ -237,7 +237,8 @@ The independently selected summary or embedding execution method.
 - `state`: enabled or disabled
 - `providerKind`: built-in local, compatible local endpoint, or explicit remote endpoint
 - `modelId`, `modelRevision`
-- `endpointHost`, `credentialSource`
+- `endpointScheme`, `endpointHost`, `credentialSource`
+- `tlsCertificateValidation`: required for credential-bearing remote providers
 - `redirectPolicy`: `reject` for the Technical Alpha
 - `executionLocation`: local or remote
 - `costClass`, `egressPolicy`
@@ -248,6 +249,9 @@ Secret values are referenced, never included in this entity's diagnostics or fin
 When `state` is disabled, provider/model/endpoint/credential fields are absent and a bounded
 machine-readable disabled reason is required. Disabled is never encoded as an empty model or
 unreachable endpoint.
+Credential-bearing remote requests require `https` on the initial connection and normal certificate
+chain and hostname verification. Plain HTTP, disabled verification, and HTTPS-to-HTTP redirect are
+rejected before credentials or payload bytes are sent.
 
 ## SemanticIndexGeneration
 

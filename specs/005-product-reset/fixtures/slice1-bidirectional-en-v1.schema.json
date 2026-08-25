@@ -65,13 +65,16 @@
         "summaryProvider": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["state", "providerId", "configurationFingerprint", "executionLocation", "endpointHost", "redirectPolicy"],
+          "required": ["state", "providerId", "configurationFingerprint", "executionLocation", "endpointScheme", "endpointHost", "credentialSource", "tlsCertificateValidation", "redirectPolicy"],
           "properties": {
             "state": { "const": "enabled" },
             "providerId": { "$ref": "#/$defs/NonEmptyString" },
             "configurationFingerprint": { "$ref": "#/$defs/NonEmptyString" },
             "executionLocation": { "enum": ["local", "remote"] },
+            "endpointScheme": { "const": "https" },
             "endpointHost": { "$ref": "#/$defs/NonEmptyString" },
+            "credentialSource": { "$ref": "#/$defs/NonEmptyString" },
+            "tlsCertificateValidation": { "const": "required" },
             "redirectPolicy": { "const": "reject" }
           }
         },

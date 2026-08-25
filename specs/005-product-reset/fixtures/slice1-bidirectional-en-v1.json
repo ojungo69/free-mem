@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:89f55ba482c93c8f9fb68be80c63961951d0c819bfbda209bdf2c5dc1f6557f4",
+  "contractFingerprint": "sha256:6c2e47ae43e1f149741ce293a0805b40bf02ef43a0a0c4a19dfe27091c8aee7e",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -26,8 +26,11 @@
         "providerId": "deterministic-summary-v1",
         "configurationFingerprint": "summary-config-v1",
         "executionLocation": "remote",
-      "endpointHost": "summary.stub.invalid",
-      "redirectPolicy": "reject"
+        "endpointScheme": "https",
+        "endpointHost": "summary.stub.invalid",
+        "credentialSource": "fixture-credential-ref",
+        "tlsCertificateValidation": "required",
+        "redirectPolicy": "reject"
     },
     "embeddingProvider": {
       "state": "disabled",

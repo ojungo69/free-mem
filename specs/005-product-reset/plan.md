@@ -34,7 +34,7 @@ first post-Alpha platform milestone; native Windows is separate.
 **Project Type**: Public monorepo containing a CLI, local daemon, MCP server, hooks, and viewer.
 The current slice is an authority and backlog migration, not a product-runtime rewrite.
 
-**Performance Goals**: M0 adds no runtime cost. Later slices inherit SC-003 through SC-006:
+**Performance Goals**: M0 adds no runtime cost. Later slices inherit SC-003 through SC-005:
 capture p95 below 200 ms, warm context p95 below one second, truthful cold fallback within three
 seconds, and no post-warm growth above the frozen resource envelope.
 

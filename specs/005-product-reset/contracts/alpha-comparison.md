@@ -87,6 +87,9 @@ Every run emits one machine-readable record containing:
 ## Comparison rules
 
 - Candidates are compared only after their equivalent drain condition completes or times out.
+- `drainTimedOut=true` is always a non-success `failed` or `degraded` disposition. Its record remains
+  inspectable but is excluded from successful candidate comparison and cannot pass completion,
+  quality, or resource gates. Safety counters remain independently required to be zero.
 - Actual injected items must exactly match `expectedInjectedItems` in order and in every bound field:
   fact, memory kind, source event identities, source lane, and selection reason. Actual omissions
   must likewise match the expected omission records.

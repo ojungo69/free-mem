@@ -38,6 +38,10 @@ and a non-secret fingerprint.
   reports the bounded redirect reason. The rejected job resumes only after activation of a changed,
   validated configuration for that provider; the prior `Location` is never followed or replayed.
   A later redirect allowlist requires a new explicit contract.
+- A credential-bearing remote ProviderChoice requires `endpointScheme=https` and certificate-chain
+  and hostname validation with no insecure bypass. Initial HTTP connections and HTTPS-to-HTTP
+  downgrade attempts are rejected before credentials or payload bytes are sent and are reported by
+  setup/doctor.
 - Each InjectionPack request supplies its concrete target Agent/model destination and resolves it
   against the active manifest's policy map. Unknown destinations are remote/ineligible for
   local-only data; local-only eligibility requires a matching explicit on-device policy.
