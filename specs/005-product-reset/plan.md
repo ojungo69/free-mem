@@ -74,7 +74,9 @@ specs/005-product-reset/
 ├── rollback.md             # GitHub state restoration if M0 is abandoned
 ├── fixtures/
 │   ├── slice1-bidirectional-en-v1.json
-│   └── slice1-bidirectional-en-v1.schema.json
+│   ├── slice1-bidirectional-en-v1.schema.json
+│   ├── slice1-bidirectional-en-v1.semantic.jq
+│   └── validate-slice1-fixture.mjs
 ├── contracts/
 │   ├── alpha-comparison.md
 │   ├── capability-manifest.md

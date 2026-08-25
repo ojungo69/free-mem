@@ -154,6 +154,16 @@ without leaving active processes or managed configuration behind.
 
 - An Agent switches before the prior session's summary work has completed.
 - The same event is retried after an uncertain delivery result.
+- The same scoped event identity is retried with a different deterministically normalized,
+  post-redaction payload digest; a durable payload-free conflict record captures the event identity
+  and both digests in the same atomic transaction that makes the incoming delivery terminally
+  quarantined. Only after that commit does the caller receive a non-success conflict receipt; a
+  normal success ACK or silent discard is forbidden. The first accepted event remains immutable and
+  no additional durable result is created. Retrying the same conflict returns the same non-success
+  receipt; correction requires the canonical digest or a new event identity.
+- A queued or replayed event crosses a redaction/digest algorithm upgrade. The event retains the
+  immutable normalization version recorded at first acceptance, and comparison uses that version;
+  the upgrade alone MUST NOT fabricate an identity conflict.
 - A summary succeeds while embedding fails, or embedding succeeds after the active model changes.
 - An embedding model changes dimension or identity while an older semantic index is active.
 - A remote provider redirects, changes capabilities, rate-limits, or returns malformed output.
@@ -176,10 +186,28 @@ without leaving active processes or managed configuration behind.
 - **FR-003**: The product MUST automatically capture supported activity from both Agents and
   preserve the originating Agent, repository, session, ordering, and event identity.
 - **FR-004**: Captured activity accepted by the product MUST survive runtime and provider
-  interruption and MUST NOT produce duplicate durable memories after retry or recovery.
+  interruption and MUST NOT produce duplicate durable memories after retry or recovery. A scoped
+  event identity with a conflicting post-redaction digest MUST persist a payload-free quarantined
+  conflict record atomically before returning an explicit non-success conflict receipt. The
+  conflicting delivery is terminally quarantined and MUST NOT receive a normal success ACK, be
+  silently discarded, overwrite or duplicate the first accepted result, or retain unprocessed
+  secret data.
+  The accepted event and every spool/retry record MUST persist the digest-normalization version;
+  replay uses the original version even after a newer algorithm activates.
 - **FR-005**: Capture and memory-processing failures MUST NOT block normal Agent work.
 - **FR-006**: The product MUST asynchronously produce concise session summaries and a bounded
-  set of durable decisions, discoveries, changes, failed approaches, and next actions.
+  set of durable decisions, discoveries, changes, failed approaches, and next actions from supported
+  content rather than assuming transport event kind determines semantic memory kind. One source
+  event or aggregate source set MAY yield zero to many distinct MemoryItems. Each output MUST retain
+  semantic kind and provenance, receive its own stable logical lineage and deduplication key, and be
+  bounded as an output item; retries MUST neither merge sibling facts nor drop one because another
+  output shares its source events. Each ResourceProfile MUST publish an exact
+  `maxMemoryItemsPerDerivation`. A provider result above that limit is quarantined atomically with
+  `memory_output_limit_exceeded`: no partial derived batch is committed, all committed source events
+  and previously valid sibling memories remain unchanged, and a validated profile/provider change
+  may retry the retained work. The quarantine record is payload-free and contains only the error
+  code, job identity, source event IDs, observed result count, and active limit; it MUST NOT retain
+  raw provider output, copied source text, or any uncommitted derived item.
 - **FR-007**: Low-signal activity MUST be excluded without discarding required decisions,
   corrections, failures, or next actions.
 - **FR-008**: Users MUST be able to retrieve memory by lexical relevance and, when enabled and
@@ -204,7 +232,8 @@ without leaving active processes or managed configuration behind.
 - **FR-017**: Users MUST be able to inspect memory content, origin, processing state, selection
   reason, effective profile, and safe recovery action without exposing credential values.
 - **FR-018**: Users MUST be able to delete a memory and prevent its later retrieval, injection, or
-  resurrection by reprocessing retained sources under a different profile or model generation.
+  resurrection by reprocessing retained sources under a different profile, model generation, or
+  semantic kind classification.
 - **FR-019**: The product MUST support verified backup and restore of durable local memory.
 - **FR-020**: Installation, update, diagnostics, backup, restore, and uninstall MUST form one
   documented lifecycle and MUST not leave orphan managed processes after completion.
@@ -222,8 +251,19 @@ without leaving active processes or managed configuration behind.
   session identity, timing, and processing state.
 - **Captured Event**: An ordered, idempotent record of relevant Agent activity and its scope,
   sensitivity, delivery state, and source evidence.
-- **Memory Item**: A durable summary, decision, discovery, change, failed approach, or next
-  action with provenance, lifecycle state, search representation, and deletion state.
+- **Memory Item**: A durable summary, decision, discovery, change, failed approach, or next action
+  with provenance, lifecycle state, search representation, and deletion state. Its logical lineage
+  identity is a versioned, domain-separated collision-resistant digest of repository scope and a
+  canonical source-fact anchor. The anchor is only the minimal supporting evidence set of sorted
+  unique event identities and exact source byte spans—not fact wording, sibling-set membership,
+  processing-batch membership, or model output order. Sibling facts MUST cite distinct minimal
+  source spans; a provider result that assigns one anchor to multiple facts or cannot provide a
+  distinct anchor is quarantined instead of inventing an ordinal. Thus paraphrases and overlapping
+  aggregate batches retain one lineage while separately anchored siblings remain distinct. Profile,
+  model generation, and semantic kind are revision attributes, not lineage inputs; deletion
+  suppression uses the stable lineage identity.
+  The anchor and lineage are computed before semantic-kind classification; later classification or
+  reclassification can create a revision but cannot select a different lineage for the same spans.
 - **Resource Profile**: A user-facing operating envelope that defines limits and default
   behavior without coupling summary and embedding provider choices.
 - **Provider Choice**: The independently selected summary or embedding execution method,

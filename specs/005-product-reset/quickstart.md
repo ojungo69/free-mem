@@ -46,7 +46,7 @@ printf '%s\n' "$changed"
 untracked=$(git ls-files --others --exclude-standard)
 if unexpected=$(printf '%s\n%s\n' "$changed" "$untracked" \
   | sort -u \
-  | rg -v '^(README\.md|evidence/(README\.md|adr-006-product-reset\.md)|specs/005-product-reset/.*\.(md|json))$'); then
+  | rg -v '^(README\.md|evidence/(README\.md|adr-006-product-reset\.md)|specs/005-product-reset/.*\.(md|json|jq|mjs))$'); then
   :
 else
   status=$?
@@ -109,79 +109,14 @@ Expected:
 
 ## 5. Review future runtime contracts
 
-Validate the fixed Slice 1 fixture. The schema owns structure and fixed values; the jq gate owns
-cross-field counts, ordering, identity, and scenario relations. Both are mandatory and run in the
-same fail-fast block:
+Prerequisites for this step are Node.js 24 and `jq`. Validate the fixed Slice 1 fixture through its
+canonical executable path. It always runs structural schema validation, digest reproduction, and
+semantic jq validation in that order:
 
 ```bash
 set -euo pipefail
-node --experimental-strip-types --input-type=module <<'NODE'
-import { readIJsonFile } from "./harness/schema/jcs.ts";
-import { validateAgainstSchema } from "./harness/schema/validate.ts";
-
-const schema = readIJsonFile(
-  "specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json",
-);
-const fixture = readIJsonFile(
-  "specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json",
-);
-const issues = validateAgainstSchema(fixture, schema, schema);
-
-if (issues.length > 0) {
-  console.error(JSON.stringify(issues, null, 2));
-  process.exit(1);
-}
-NODE
-
-jq -e '
-  . as $root
-  |
-  ([.scenarios[].scenarioId] | sort) == ([
-    "claude-to-codex",
-    "codex-to-claude",
-    "runtime-unavailable-spool-recovery",
-    "summary-provider-retry-exhausted",
-    "summary-provider-redirect-rejected"
-  ] | sort)
-  and ([.scenarios[].events[].eventId] as $ids
-    | ($ids | length) == ($ids | unique | length))
-  and all(.scenarios[];
-    . as $scenario
-    | [.events[].sequence] == [range(1; ((.events | length) + 1))]
-    and .drainCondition.committedEventCount == (.events | length)
-    and .drainCondition.summaryCount ==
-      (if (.summaryProviderStub | has("summary")) then 1 else 0 end)
-    and .drainCondition.durableMemoryCount ==
-      (.drainCondition.summaryCount + (.summaryProviderStub.memoryItems | length))
-    and all(.requiredFacts[]?;
-      . as $fact
-      | any($scenario.summaryProviderStub.memoryItems[]?; .body == $fact)))
-  and (.scenarios[]
-    | select(.scenarioId == "runtime-unavailable-spool-recovery")
-    | [.events[].eventId] as $eventIds
-    | ($eventIds | length) == 2
-      and ($eventIds | unique | length) == 2
-      and .fault.recovery == "restart_and_replay_same_batch_twice"
-      and (.fault.replaySchedule | length) == 2
-      and [.fault.replaySchedule[].attempt] == [1, 2]
-      and all(.fault.replaySchedule[]; .eventIds == $eventIds)
-      and .drainCondition.spooledEventCount == ($eventIds | length)
-      and .drainCondition.replayCount == 2)
-  and (.scenarios[]
-    | select(.scenarioId == "summary-provider-retry-exhausted")
-    | .drainCondition.eventDeliveryState == "committed"
-      and .drainCondition.summaryJobState == "retry-exhausted"
-      and .fault.attemptsUntilExhausted ==
-        $root.effectiveConfiguration.resourceProfile.processingRetryLimit)
-  and (.scenarios[]
-    | select(.scenarioId == "summary-provider-redirect-rejected")
-    | .summaryProviderStub.redirectResponse.status == 307
-      and .drainCondition.eventDeliveryState == "committed"
-      and .drainCondition.summaryJobState == "quarantined"
-      and .drainCondition.redirectLocationRequestCount == 0
-      and .drainCondition.resentPayloadCount == 0
-      and .drainCondition.doctorReason == "provider_redirect_rejected")
-' specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+node --experimental-strip-types \
+  specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
 ```
 
 - [Alpha comparison](contracts/alpha-comparison.md)
@@ -189,11 +124,13 @@ jq -e '
 - [InjectionPack](contracts/injection-pack.md)
 - [Slice 1 fixed fixture](fixtures/slice1-bidirectional-en-v1.json)
 - [Slice 1 fixture schema](fixtures/slice1-bidirectional-en-v1.schema.json)
+- [Slice 1 semantic validator](fixtures/slice1-bidirectional-en-v1.semantic.jq)
+- [Slice 1 canonical validator](fixtures/validate-slice1-fixture.mjs)
 - [M0 rollback](rollback.md)
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T13:48:57+09:00
+## Validation result — 2026-08-25T16:25:44+09:00
 
 | Check | Result |
 |---|---|
@@ -201,7 +138,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `corepack pnpm run build` | PASS, exit 0 |
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
-| Slice 1 fixture schema and semantic checks | PASS; positive fixture and 14 negative mutations |
+| Slice 1 fixture schema and semantic checks | PASS; positive fixture and 79 negative mutations |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
 | `git diff --check` and `git diff --cached --check` | PASS |

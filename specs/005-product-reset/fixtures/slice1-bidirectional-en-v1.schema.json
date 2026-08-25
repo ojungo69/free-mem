@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://free-mem.dev/specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json",
   "title": "Product Reset Slice 1 bidirectional fixture v1",
-  "$comment": "Structural validation only. Contract conformance also requires the semantic jq gate in ../quickstart.md; neither check may be used alone.",
+  "$comment": "Structural layer only. Run validate-slice1-fixture.mjs for canonical contract conformance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "pins", "effectiveConfiguration", "kindContract", "environment", "samplingProtocol", "thresholds", "scenarios"],
+  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "effectiveConfiguration", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "scenarios"],
   "properties": {
     "fixtureVersion": { "const": 1 },
     "schema": { "const": "slice1-bidirectional-en-v1.schema.json" },
@@ -13,16 +13,17 @@
     "ownerSlice": { "const": 1 },
     "language": { "$ref": "#/$defs/NonEmptyString" },
     "factMatch": { "const": "exact" },
+    "contractFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "pins": { "$ref": "#/$defs/Pins" },
     "effectiveConfiguration": { "$ref": "#/$defs/EffectiveConfiguration" },
     "kindContract": { "$ref": "#/$defs/KindContract" },
     "environment": { "$ref": "#/$defs/Environment" },
+    "lifecycleProfiles": { "$ref": "#/$defs/LifecycleProfiles" },
     "samplingProtocol": { "$ref": "#/$defs/SamplingProtocol" },
     "thresholds": { "$ref": "#/$defs/Thresholds" },
     "scenarios": {
       "type": "array",
-      "minItems": 5,
-      "maxItems": 5,
+      "minItems": 1,
       "items": { "$ref": "#/$defs/Scenario" }
     }
   },
@@ -33,151 +34,241 @@
     "Agent": { "enum": ["claude-code", "codex"] },
     "EventKind": { "enum": ["prompt", "tool_activity", "tool_result", "assistant_message", "session_boundary"] },
     "Pins": {
-      "const": {
-        "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
-        "claudeCodeVersion": "2.1.243",
-        "codexVersion": "0.149.1",
-        "nodeVersion": "24.16.0",
-        "pnpmVersion": "11.8.0",
-        "summaryProviderStub": "deterministic-summary-v1"
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["freeMemBaseCommit", "claudeCodeVersion", "codexVersion", "nodeVersion", "pnpmVersion", "summaryProviderStub"],
+      "properties": {
+        "freeMemBaseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "claudeCodeVersion": { "$ref": "#/$defs/NonEmptyString" },
+        "codexVersion": { "$ref": "#/$defs/NonEmptyString" },
+        "nodeVersion": { "$ref": "#/$defs/NonEmptyString" },
+        "pnpmVersion": { "$ref": "#/$defs/NonEmptyString" },
+        "summaryProviderStub": { "$ref": "#/$defs/NonEmptyString" }
       }
     },
     "EffectiveConfiguration": {
-      "const": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceProfile", "summaryProvider", "embeddingProvider"],
+      "properties": {
         "resourceProfile": {
-          "profileId": "slice1-short-run",
-          "version": 1,
-          "processingRetryLimit": 3
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profileId", "version", "processingRetryLimit", "maxMemoryItemsPerDerivation"],
+          "properties": {
+            "profileId": { "$ref": "#/$defs/NonEmptyString" },
+            "version": { "$ref": "#/$defs/PositiveInteger" },
+            "processingRetryLimit": { "$ref": "#/$defs/PositiveInteger" },
+            "maxMemoryItemsPerDerivation": { "$ref": "#/$defs/PositiveInteger" }
+          }
         },
         "summaryProvider": {
-          "state": "enabled",
-          "providerId": "deterministic-summary-v1",
-          "redirectPolicy": "reject"
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "providerId", "configurationFingerprint", "executionLocation", "endpointHost", "redirectPolicy"],
+          "properties": {
+            "state": { "const": "enabled" },
+            "providerId": { "$ref": "#/$defs/NonEmptyString" },
+            "configurationFingerprint": { "$ref": "#/$defs/NonEmptyString" },
+            "executionLocation": { "enum": ["local", "remote"] },
+            "endpointHost": { "$ref": "#/$defs/NonEmptyString" },
+            "redirectPolicy": { "const": "reject" }
+          }
         },
         "embeddingProvider": {
-          "state": "disabled",
-          "reason": "slice1_semantic_not_owned"
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "reason"],
+          "properties": {
+            "state": { "const": "disabled" },
+            "reason": { "$ref": "#/$defs/NonEmptyString" }
+          }
         }
       }
     },
     "KindContract": {
-      "const": {
-        "capturedEventKinds": ["prompt", "tool_activity", "tool_result", "assistant_message", "session_boundary"],
-        "memoryItemKinds": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"],
-        "conversionRules": {
-          "prompt": ["summary"],
-          "tool_activity": ["change"],
-          "tool_result": ["discovery", "failed_approach"],
-          "assistant_message": ["decision", "next_action"],
-          "session_boundary": ["summary"]
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capturedEventKinds", "memoryItemKinds"],
+      "properties": {
+        "capturedEventKinds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/EventKind" } },
+        "memoryItemKinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] }
         }
       }
     },
     "Environment": {
-      "const": {
-        "home": "<isolated-home>",
-        "dataDir": "<isolated-data-dir>",
-        "repository": "<isolated-local-repository>",
-        "network": "provider-stub-only"
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["home", "dataDir", "repository", "network"],
+      "properties": {
+        "home": { "$ref": "#/$defs/NonEmptyString" },
+        "dataDir": { "$ref": "#/$defs/NonEmptyString" },
+        "repository": { "$ref": "#/$defs/NonEmptyString" },
+        "network": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "LifecycleProfiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "MetricSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "sampleBoundary"],
+      "properties": {
+        "scenarios": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sampleBoundary": { "$ref": "#/$defs/NonEmptyString" }
       }
     },
     "SamplingProtocol": {
-      "const": {
-        "runsPerScenario": 22,
-        "discardInitialRunsPerScenario": 2,
-        "measuredRunsPerScenario": 20,
-        "percentileMethod": "nearest_rank_ceiling",
-        "percentileScope": "per_scenario_no_pooling",
-        "clock": "monotonic",
-        "coldReset": "fresh isolated data directory and stopped product process before every cold-mode run",
-        "warmState": "ready product process retained; each measured run uses a fresh repository/session namespace and event IDs namespaced by measured-run ordinal",
-        "processSampleIntervalMs": 100,
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runsPerScenario", "discardInitialRunsPerScenario", "measuredRunsPerScenario", "percentileMethod", "percentileScope", "clock", "coldReset", "warmState", "processSampleIntervalMs", "metrics"],
+      "properties": {
+        "runsPerScenario": { "$ref": "#/$defs/PositiveInteger" },
+        "discardInitialRunsPerScenario": { "$ref": "#/$defs/NonNegativeInteger" },
+        "measuredRunsPerScenario": { "$ref": "#/$defs/PositiveInteger" },
+        "percentileMethod": { "$ref": "#/$defs/NonEmptyString" },
+        "percentileScope": { "$ref": "#/$defs/NonEmptyString" },
+        "clock": { "$ref": "#/$defs/NonEmptyString" },
+        "coldReset": { "$ref": "#/$defs/NonEmptyString" },
+        "warmState": { "$ref": "#/$defs/NonEmptyString" },
+        "processSampleIntervalMs": { "$ref": "#/$defs/PositiveInteger" },
         "metrics": {
-          "captureP95Ms": {
-            "scenarios": ["claude-to-codex", "codex-to-claude", "runtime-unavailable-spool-recovery", "summary-provider-retry-exhausted", "summary-provider-redirect-rejected"],
-            "sampleBoundary": "capture hook entry to accepted-or-durably-spooled return"
-          },
-          "warmInjectionP95Ms": {
-            "scenarios": ["codex-to-claude"],
-            "sampleBoundary": "injection request to target acknowledgement"
-          },
-          "shortColdLexicalInjectionMs": {
-            "scenarios": ["claude-to-codex"],
-            "sampleBoundary": "cold lexical injection request to target acknowledgement"
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["captureP95Ms", "warmInjectionP95Ms", "shortColdLexicalInjectionMs"],
+          "properties": {
+            "captureP95Ms": { "$ref": "#/$defs/MetricSample" },
+            "warmInjectionP95Ms": { "$ref": "#/$defs/MetricSample" },
+            "shortColdLexicalInjectionMs": { "$ref": "#/$defs/MetricSample" }
           }
         }
       }
     },
     "Thresholds": {
-      "const": {
-        "captureP95Ms": 200,
-        "warmInjectionP95Ms": 1000,
-        "shortColdLexicalInjectionMs": 3000,
-        "maxSteadyProductProcessCount": 3,
-        "orphanProductProcessCount": 0,
-        "maxShortRunRssGrowthMiB": 32,
-        "maxPendingQueueDepth": 25,
-        "maxStorageGrowthBytes": 1048576,
-        "maxInjectedTokens": 800,
-        "agentBlockageCount": 0,
-        "acceptedEventLossCount": 0,
-        "duplicateDurableMemoryCount": 0,
-        "secretEgressCount": 0,
-        "incompatibleScopeInjectionCount": 0
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captureP95Ms", "warmInjectionP95Ms", "shortColdLexicalInjectionMs", "maxSteadyProductProcessCount", "orphanProductProcessCount", "maxShortRunRssGrowthMiB", "maxPendingQueueDepth", "maxStorageGrowthBytes", "maxInjectedTokens", "agentBlockageCount", "acceptedEventLossCount", "duplicateDurableMemoryCount", "secretEgressCount", "incompatibleScopeInjectionCount"],
+      "properties": {
+        "captureP95Ms": { "$ref": "#/$defs/NonNegativeInteger" },
+        "warmInjectionP95Ms": { "$ref": "#/$defs/NonNegativeInteger" },
+        "shortColdLexicalInjectionMs": { "$ref": "#/$defs/NonNegativeInteger" },
+        "maxSteadyProductProcessCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "orphanProductProcessCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "maxShortRunRssGrowthMiB": { "$ref": "#/$defs/NonNegativeInteger" },
+        "maxPendingQueueDepth": { "$ref": "#/$defs/NonNegativeInteger" },
+        "maxStorageGrowthBytes": { "$ref": "#/$defs/NonNegativeInteger" },
+        "maxInjectedTokens": { "$ref": "#/$defs/NonNegativeInteger" },
+        "agentBlockageCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "acceptedEventLossCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "duplicateDurableMemoryCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "secretEgressCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "incompatibleScopeInjectionCount": { "$ref": "#/$defs/NonNegativeInteger" }
       }
     },
     "Scenario": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarioId", "sourceAgent", "targetAgent", "resourceSampleMode", "retrievalQuery", "events", "summaryProviderStub", "drainCondition", "requiredFacts", "forbiddenFacts", "selectionReasons", "expectedCounters"],
+      "required": ["scenarioId", "sourceAgent", "targetAgent", "sourceRepositoryScope", "targetRepositoryScope", "lifecycleProfileId", "resourceSampleMode", "retrievalQuery", "events", "summaryProviderStub", "drainCondition", "expectedInjectedItems", "expectedOmissions", "forbiddenFacts", "expectedCounters"],
       "properties": {
         "scenarioId": { "$ref": "#/$defs/NonEmptyString" },
         "sourceAgent": { "$ref": "#/$defs/Agent" },
         "targetAgent": { "$ref": "#/$defs/Agent" },
+        "sourceRepositoryScope": { "$ref": "#/$defs/NonEmptyString" },
+        "targetRepositoryScope": { "$ref": "#/$defs/NonEmptyString" },
+        "lifecycleProfileId": { "$ref": "#/$defs/NonEmptyString" },
         "resourceSampleMode": { "enum": ["cold", "warm"] },
         "retrievalQuery": { "$ref": "#/$defs/NonEmptyString" },
         "fault": { "$ref": "#/$defs/Fault" },
         "events": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Event" } },
         "summaryProviderStub": { "$ref": "#/$defs/SummaryProviderStub" },
         "drainCondition": { "$ref": "#/$defs/DrainCondition" },
-        "requiredFacts": { "type": "array", "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "expectedOperationalStatus": { "$ref": "#/$defs/ExpectedOperationalStatus" },
+        "expectedInjectedItems": { "type": "array", "items": { "$ref": "#/$defs/ExpectedInjectedItem" } },
+        "expectedOmissions": { "type": "array", "items": { "$ref": "#/$defs/ExpectedOmission" } },
         "forbiddenFacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
-        "selectionReasons": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "enum": ["exact_session", "lexical", "omitted_budget", "omitted_ineligible", "semantic_disabled"] }
-        },
+        "securityOracle": { "$ref": "#/$defs/SecurityOracle" },
         "expectedCounters": { "$ref": "#/$defs/ExpectedCounters" }
       }
     },
     "Event": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["eventId", "sequence", "kind", "text"],
+      "required": ["eventId", "sequence", "kind", "sensitivity", "redactedPayload", "payloadDigestVersion", "text"],
       "properties": {
         "eventId": { "$ref": "#/$defs/NonEmptyString" },
         "sequence": { "$ref": "#/$defs/PositiveInteger" },
         "kind": { "$ref": "#/$defs/EventKind" },
+        "sensitivity": { "enum": ["eligible", "local_only", "private", "secret"] },
+        "redactedPayload": { "type": "string" },
+        "payloadDigestVersion": { "const": "event-payload-digest-v1" },
         "text": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "ExpectedInjectedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sourceLane", "selectionReason"],
+      "properties": {
+        "fact": { "$ref": "#/$defs/NonEmptyString" },
+        "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SourceSpan" } },
+        "sourceLane": { "enum": ["exact_session", "lexical"] },
+        "selectionReason": { "enum": ["exact_session", "lexical"] }
+      }
+    },
+    "ExpectedOmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "reason"],
+      "properties": {
+        "fact": { "$ref": "#/$defs/NonEmptyString" },
+        "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SourceSpan" } },
+        "reason": { "enum": ["duplicate_revision", "omitted_budget", "omitted_ineligible"] }
       }
     },
     "MemoryDraft": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "title", "body"],
+      "required": ["kind", "title", "body", "sourceEventIds", "sourceSpans"],
       "properties": {
         "kind": { "enum": ["decision", "discovery", "change", "failed_approach", "next_action"] },
         "title": { "$ref": "#/$defs/NonEmptyString" },
-        "body": { "$ref": "#/$defs/NonEmptyString" }
+        "body": { "$ref": "#/$defs/NonEmptyString" },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SourceSpan" } }
       }
     },
     "SummaryDraft": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title", "body"],
+      "required": ["title", "body", "sourceEventIds", "sourceSpans"],
       "properties": {
         "title": { "$ref": "#/$defs/NonEmptyString" },
-        "body": { "$ref": "#/$defs/NonEmptyString" }
+        "body": { "$ref": "#/$defs/NonEmptyString" },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SourceSpan" } }
+      }
+    },
+    "SourceSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "startByte", "endByte"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/NonEmptyString" },
+        "startByte": { "$ref": "#/$defs/NonNegativeInteger" },
+        "endByte": { "$ref": "#/$defs/PositiveInteger" }
       }
     },
     "SummaryProviderStub": {
@@ -187,6 +278,7 @@
       "properties": {
         "summary": { "$ref": "#/$defs/SummaryDraft" },
         "malformedResponse": { "$ref": "#/$defs/NonEmptyString" },
+        "policyRejectedReason": { "$ref": "#/$defs/NonEmptyString" },
         "redirectResponse": {
           "type": "object",
           "additionalProperties": false,
@@ -201,55 +293,56 @@
       "oneOf": [
         { "required": ["summary"] },
         { "required": ["malformedResponse"] },
-        { "required": ["redirectResponse"] }
+        { "required": ["redirectResponse"] },
+        { "required": ["policyRejectedReason"] }
       ]
     },
     "Fault": {
+      "oneOf": [
+        { "$ref": "#/$defs/DaemonUnavailableFault" },
+        { "$ref": "#/$defs/SummaryProviderMalformedFault" },
+        { "$ref": "#/$defs/SummaryProviderRedirectFault" },
+        { "$ref": "#/$defs/LocalOnlyProviderFault" }
+      ]
+    },
+    "DaemonUnavailableFault": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["kind", "recovery", "replaySchedule", "identityConflictProbe"],
       "properties": {
-        "kind": { "enum": ["daemon_unavailable_after_event_accept", "summary_provider_malformed_response", "summary_provider_redirect_response"] },
+        "kind": { "const": "daemon_unavailable_after_event_accept" },
         "recovery": { "const": "restart_and_replay_same_batch_twice" },
         "replaySchedule": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/ReplayAttempt" } },
+        "identityConflictProbe": { "$ref": "#/$defs/IdentityConflictProbe" }
+      }
+    },
+    "SummaryProviderMalformedFault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "attemptsUntilExhausted", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveredOutput", "resumeCases"],
+      "properties": {
+        "kind": { "const": "summary_provider_malformed_response" },
         "attemptsUntilExhausted": { "$ref": "#/$defs/PositiveInteger" },
-        "resumeSignals": {
-          "type": "array",
-          "minItems": 3,
-          "maxItems": 3,
-          "items": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] }
-        }
-      },
-      "oneOf": [
-        {
-          "required": ["kind", "recovery", "replaySchedule"],
-          "properties": {
-            "kind": { "const": "daemon_unavailable_after_event_accept" },
-            "attemptsUntilExhausted": false,
-            "resumeSignals": false
-          }
+        "resumeCasesAreIndependent": { "const": true },
+        "resumeCaseInitialSnapshot": {
+          "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
-        {
-          "required": ["kind", "attemptsUntilExhausted", "resumeSignals"],
-          "properties": {
-            "kind": { "const": "summary_provider_malformed_response" },
-            "recovery": false,
-            "replaySchedule": false,
-            "resumeSignals": {
-              "const": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"]
-            }
-          }
-        },
-        {
-          "required": ["kind"],
-          "properties": {
-            "kind": { "const": "summary_provider_redirect_response" },
-            "recovery": false,
-            "replaySchedule": false,
-            "attemptsUntilExhausted": false,
-            "resumeSignals": false
-          }
-        }
-      ]
+        "recoveredOutput": { "$ref": "#/$defs/SummaryProviderStub" },
+        "resumeCases": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/ResumeCase" } }
+      }
+    },
+    "SummaryProviderRedirectFault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "recoveredOutput", "redirectRecovery"],
+      "properties": {
+        "kind": { "const": "summary_provider_redirect_response" },
+        "recoveredOutput": { "$ref": "#/$defs/SummaryProviderStub" },
+        "redirectRecovery": { "$ref": "#/$defs/RedirectRecovery" }
+      }
+    },
+    "LocalOnlyProviderFault": {
+      "const": { "kind": "local_only_remote_provider_ineligible" }
     },
     "ReplayAttempt": {
       "type": "object",
@@ -258,6 +351,74 @@
       "properties": {
         "attempt": { "$ref": "#/$defs/PositiveInteger" },
         "eventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } }
+      }
+    },
+    "IdentityConflictProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "digestInput", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingRedactedPayload", "conflictingPayloadDigest", "canonicalEventState", "incomingDeliveryState", "expectedReason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/NonEmptyString" },
+        "digestInput": { "const": "domain_separated_jcs_redacted_payload_v1" },
+        "payloadDigestVersion": { "const": "event-payload-digest-v1" },
+        "canonicalPayloadDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "conflictingRedactedPayload": { "$ref": "#/$defs/NonEmptyString" },
+        "conflictingPayloadDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "canonicalEventState": { "const": "committed" },
+        "incomingDeliveryState": { "const": "quarantined" },
+        "expectedReason": { "const": "event_identity_payload_conflict" },
+        "canonicalPayloadUnchanged": { "const": true },
+        "durableMemoryDelta": { "const": 0 }
+      }
+    },
+    "ResumeSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signalId", "sequence", "kind", "targetRole", "providerChoiceId", "configurationFingerprint"],
+      "properties": {
+        "signalId": { "$ref": "#/$defs/NonEmptyString" },
+        "sequence": { "$ref": "#/$defs/PositiveInteger" },
+        "kind": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] },
+        "targetRole": { "const": "summary" },
+        "providerChoiceId": { "const": "deterministic-summary-v1" },
+        "configurationFingerprint": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "ResumeExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["budgetBefore", "budgetAfterGrant", "budgetAfterAttempt", "attemptDelta", "lastConsumedSequence", "ignoredSignalCount", "finalState", "durableMemoryCount"],
+      "properties": {
+        "budgetBefore": { "$ref": "#/$defs/NonNegativeInteger" },
+        "budgetAfterGrant": { "$ref": "#/$defs/NonNegativeInteger" },
+        "budgetAfterAttempt": { "$ref": "#/$defs/NonNegativeInteger" },
+        "attemptDelta": { "$ref": "#/$defs/NonNegativeInteger" },
+        "lastConsumedSequence": { "$ref": "#/$defs/NonNegativeInteger" },
+        "ignoredSignalCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "finalState": { "enum": ["completed", "retry-exhausted"] },
+        "durableMemoryCount": { "$ref": "#/$defs/NonNegativeInteger" }
+      }
+    },
+    "ResumeCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "signals", "providerOutcome", "expected"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/NonEmptyString" },
+        "signals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ResumeSignal" } },
+        "providerOutcome": { "enum": ["valid", "malformed"] },
+        "expected": { "$ref": "#/$defs/ResumeExpected" }
+      }
+    },
+    "RedirectRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signal", "oldLocationRequestCountAfterActivation", "providerOutcome", "expected"],
+      "properties": {
+        "signal": { "$ref": "#/$defs/ResumeSignal" },
+        "oldLocationRequestCountAfterActivation": { "const": 0 },
+        "providerOutcome": { "const": "valid" },
+        "expected": { "$ref": "#/$defs/ResumeExpected" }
       }
     },
     "DrainCondition": {
@@ -274,11 +435,59 @@
         "durableMemoryCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "pendingSummaryJobCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "eventDeliveryState": { "const": "committed" },
-        "summaryJobState": { "enum": ["retry-exhausted", "quarantined"] },
+        "summaryJobState": { "const": "retry-exhausted" },
         "redirectLocationRequestCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "resentPayloadCount": { "$ref": "#/$defs/NonNegativeInteger" },
-        "doctorReason": { "$ref": "#/$defs/NonEmptyString" },
+        "providerRequestCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "providerPayloadCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "targetInjectionAcknowledged": { "type": "boolean" }
+      }
+    },
+    "ExpectedOperationalStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "state", "reason", "pendingCount", "safeAction", "profileId", "profileVersion"],
+      "properties": {
+        "component": { "const": "summary" },
+        "state": { "const": "failed" },
+        "reason": { "$ref": "#/$defs/NonEmptyString" },
+        "pendingCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "safeAction": { "$ref": "#/$defs/NonEmptyString" },
+        "profileId": { "$ref": "#/$defs/NonEmptyString" },
+        "profileVersion": { "$ref": "#/$defs/PositiveInteger" }
+      }
+    },
+    "SecurityOracle": {
+      "oneOf": [
+        { "$ref": "#/$defs/RemoteEgressSecurityOracle" },
+        { "$ref": "#/$defs/CrossScopeSecurityOracle" }
+      ]
+    },
+    "RemoteEgressSecurityOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consideredRemoteProviderEventCount", "consideredSecretEventCount", "remoteProviderRequestCount", "remoteProviderPayloadCount", "persistedSecretCount", "injectedSecretCount", "forbiddenSentinels", "sentinelObservedAtRemote", "secretObservedInPersistenceOrInjection"],
+      "properties": {
+        "consideredRemoteProviderEventCount": { "$ref": "#/$defs/PositiveInteger" },
+        "consideredSecretEventCount": { "$ref": "#/$defs/PositiveInteger" },
+        "remoteProviderRequestCount": { "const": 0 },
+        "remoteProviderPayloadCount": { "const": 0 },
+        "persistedSecretCount": { "const": 0 },
+        "injectedSecretCount": { "const": 0 },
+        "forbiddenSentinels": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sentinelObservedAtRemote": { "const": false },
+        "secretObservedInPersistenceOrInjection": { "const": false }
+      }
+    },
+    "CrossScopeSecurityOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consideredCrossScopeCandidateCount", "incompatibleScopeInjectionCount", "forbiddenSentinels", "sentinelObservedInInjection"],
+      "properties": {
+        "consideredCrossScopeCandidateCount": { "$ref": "#/$defs/PositiveInteger" },
+        "incompatibleScopeInjectionCount": { "const": 0 },
+        "forbiddenSentinels": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sentinelObservedInInjection": { "const": false }
       }
     },
     "ExpectedCounters": {
