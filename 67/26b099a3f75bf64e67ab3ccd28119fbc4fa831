@@ -1,0 +1,69 @@
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_151d3ba836bacd 1766,1785
+  s_9d346c66194a0d::t_b41e559091648d 8
+  s_9d346c66194a0d::t_63c81dbc51d446 1110
+  s_9d346c66194a0d::t_5d5137415129e4 93-96,98-105,189,1811
+  s_9d346c66194a0d::t_f65df882eb8a47 97
+  s_9d346c66194a0d::t_2a4e5ac8d99cdf 1095,1111-1157,1160
+  s_9d346c66194a0d::t_799e1ae3e8b188 1158-1159
+  s_9d346c66194a0d::t_3b770c5ace9f95 1161-1163
+  s_9d346c66194a0d::t_cd584ba415786e 1164-1168
+specs/005-product-reset/contracts/alpha-result-v1.schema.json
+  s_9d346c66194a0d::t_817e5b870eb767 195,202
+specs/005-product-reset/contracts/capability-manifest.md
+  s_9d346c66194a0d::t_f48acff3f12f79 50-52
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_83a6a509522d8f 419,424-429,432,435
+  s_9d346c66194a0d::t_0352c3244ce8f5 3,8,116,147,157,159
+  s_9d346c66194a0d::t_9375c2c863cdc9 144,148
+  s_9d346c66194a0d::t_b6bf1034c8211c 94,100-101,105-109,112-115,118,126-143,145-146,149-153,156
+  s_9d346c66194a0d::t_817e5b870eb767 360
+  s_9d346c66194a0d::t_f88ada4fc476aa 158,377-378,383-385,389
+  s_9d346c66194a0d::t_ba2b1c8fb5d452 196-198,205
+  s_9d346c66194a0d::t_86e422c5077998 366-376,379-382,386-388,390-392,400-402
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_387df28dee0a06 128
+  s_9d346c66194a0d::t_b41e559091648d 4
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.semantic.jq
+  s_9d346c66194a0d::t_fd4e4a421b0374 165-173,185
+  s_9d346c66194a0d::t_f4ce4c12b9e65a 602-610
+specs/005-product-reset/contracts/alpha-result-v1.semantic.jq
+  s_9d346c66194a0d::t_387df28dee0a06 31-34
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_4896b4112b1952 175-177
+  s_9d346c66194a0d::t_9e8619de58220b 156
+  s_9d346c66194a0d::t_10c4df34c48ca4 147
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_61e8383d0f6b86 118-122
+  s_9d346c66194a0d::t_f48acff3f12f79 52-54
+  s_9d346c66194a0d::t_0d379ea7436700 20-22
+  s_9d346c66194a0d::t_97a46e0bd1ab58 180-181
+  s_9d346c66194a0d::t_b4c7fac483ca6a 173-176
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_b41e559091648d 40
+  s_9d346c66194a0d::t_3921835c47b0ef 75-90
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_387df28dee0a06 132
+  s_9d346c66194a0d::t_b41e559091648d 4
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json
+  s_9d346c66194a0d::t_931244d0e05956 104-126
+  s_9d346c66194a0d::t_b42e8a149367a9 349,365,369
+  s_9d346c66194a0d::t_2ac0dc40d75c9a 381,735,741
+  s_9d346c66194a0d::t_858eec1f6bef8c 8,19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6726b099a3f75bf64e67ab3ccd28119fbc4fa831",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
