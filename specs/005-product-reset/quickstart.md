@@ -130,7 +130,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T16:43:26+09:00
+## Validation result — 2026-08-25T17:32:54+09:00
 
 | Check | Result |
 |---|---|
@@ -138,7 +138,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `corepack pnpm run build` | PASS, exit 0 |
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
-| Slice 1 fixture schema and semantic checks | PASS; positive fixture and 79 negative mutations |
+| Slice 1 fixture schema and semantic checks | PASS; positive fixture and 104 negative mutations |
 | Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |

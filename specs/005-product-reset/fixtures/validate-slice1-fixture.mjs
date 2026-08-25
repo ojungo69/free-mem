@@ -34,7 +34,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprint =
-  "sha256:6c2e47ae43e1f149741ce293a0805b40bf02ef43a0a0c4a19dfe27091c8aee7e";
+  "sha256:473669f7b30ce41f67f3cac949f2526b0545a8d8e8d3db2311acb36ff8b59300";
 const actualContractFingerprint = `sha256:${createHash("sha256")
   .update(fixtureContractDomain)
   .update(canonicalizeJson(contract))

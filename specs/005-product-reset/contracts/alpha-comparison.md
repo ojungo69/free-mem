@@ -17,13 +17,15 @@ change before adopting it. This contract is not a general benchmark framework.
    redirect location and doctor reports the bounded rejection reason.
 6. **Slice 1**: Local-only content is considered for a remote summary provider but produces zero
    remote requests or payloads.
-7. **Slice 1**: A candidate from another repository scope is considered and omitted before
+7. **Slice 1**: Memory derived locally from a local-only source retains `local_only` and is omitted
+   from a remote InjectionPack destination.
+8. **Slice 1**: A candidate from another repository scope is considered and omitted before
    injection.
-8. **Slice 2**: Semantic provider or index unavailable, with lexical fallback and InjectionPack
+9. **Slice 2**: Semantic provider or index unavailable, with lexical fallback and InjectionPack
    reasons.
-9. **Slice 3**: Deleting a fact prevents regeneration after profile, model, or semantic-kind
+10. **Slice 3**: Deleting a fact prevents regeneration after profile, model, or semantic-kind
    reclassification while sibling source facts remain available.
-10. **Resource samples**:
+11. **Resource samples**:
     - Slice 1: cold and warm short-run samples only;
     - Slice 3: long, burst, packed-artifact, and eight-hour soak samples.
 
@@ -41,6 +43,8 @@ Each fixture defines:
   reason; expected omissions; forbidden facts; and retrieval queries
 - expected durable event and MemoryItem counts, including persisted summaries
 - declared profile and provider identities
+- the complete pinned InjectionPack selection envelope, including time, candidate, byte, item,
+  token, and per-lane budgets
 - latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
   warm-up/reset rules, sample boundaries, and percentile calculation
 - an explicit drain condition proving comparable completion across candidates

@@ -54,12 +54,13 @@
         "resourceProfile": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["profileId", "version", "processingRetryLimit", "maxMemoryItemsPerDerivation"],
+          "required": ["profileId", "version", "processingRetryLimit", "maxMemoryItemsPerDerivation", "injectionEnvelope"],
           "properties": {
             "profileId": { "$ref": "#/$defs/NonEmptyString" },
             "version": { "$ref": "#/$defs/PositiveInteger" },
             "processingRetryLimit": { "$ref": "#/$defs/PositiveInteger" },
-            "maxMemoryItemsPerDerivation": { "$ref": "#/$defs/PositiveInteger" }
+            "maxMemoryItemsPerDerivation": { "$ref": "#/$defs/PositiveInteger" },
+            "injectionEnvelope": { "$ref": "#/$defs/InjectionEnvelope" }
           }
         },
         "summaryProvider": {
@@ -81,10 +82,43 @@
         "embeddingProvider": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["state", "reason"],
+          "required": ["state", "reason", "packDegradationReason"],
           "properties": {
             "state": { "const": "disabled" },
-            "reason": { "$ref": "#/$defs/NonEmptyString" }
+            "reason": { "$ref": "#/$defs/NonEmptyString" },
+            "packDegradationReason": { "const": "semantic_disabled" }
+          }
+        }
+      }
+    },
+    "LaneBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minItems", "maxItems"],
+      "properties": {
+        "minItems": { "$ref": "#/$defs/NonNegativeInteger" },
+        "maxItems": { "$ref": "#/$defs/NonNegativeInteger" }
+      }
+    },
+    "InjectionEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectionTimeBudgetMs", "admittedCandidateLimit", "maxRenderedBytes", "maxSelectedItems", "maxInjectedTokens", "laneBudgets"],
+      "properties": {
+        "selectionTimeBudgetMs": { "$ref": "#/$defs/PositiveInteger" },
+        "admittedCandidateLimit": { "$ref": "#/$defs/PositiveInteger" },
+        "maxRenderedBytes": { "$ref": "#/$defs/PositiveInteger" },
+        "maxSelectedItems": { "$ref": "#/$defs/PositiveInteger" },
+        "maxInjectedTokens": { "$ref": "#/$defs/PositiveInteger" },
+        "laneBudgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exact_session", "lexical", "semantic", "recency"],
+          "properties": {
+            "exact_session": { "$ref": "#/$defs/LaneBudget" },
+            "lexical": { "$ref": "#/$defs/LaneBudget" },
+            "semantic": { "$ref": "#/$defs/LaneBudget" },
+            "recency": { "$ref": "#/$defs/LaneBudget" }
           }
         }
       }
@@ -130,10 +164,29 @@
         "sampleBoundary": { "$ref": "#/$defs/NonEmptyString" }
       }
     },
+    "ResourceMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioSelection", "startMilestone", "endMilestone", "sampleSubject", "aggregation"],
+      "properties": {
+        "scenarioSelection": { "const": "all" },
+        "startMilestone": { "$ref": "#/$defs/NonEmptyString" },
+        "endMilestone": { "$ref": "#/$defs/NonEmptyString" },
+        "sampleSubject": { "enum": ["product_root_and_descendants", "memory_processing_queue", "isolated_data_directory"] },
+        "aggregation": { "enum": ["maximum_concurrent_process_count", "maximum_rss_mib_minus_start_rss_mib", "maximum_queue_depth", "end_bytes_minus_start_bytes", "process_count_at_end"] }
+      },
+      "oneOf": [
+        { "properties": { "sampleSubject": { "const": "product_root_and_descendants" }, "aggregation": { "const": "maximum_concurrent_process_count" } } },
+        { "properties": { "sampleSubject": { "const": "product_root_and_descendants" }, "aggregation": { "const": "maximum_rss_mib_minus_start_rss_mib" } } },
+        { "properties": { "sampleSubject": { "const": "memory_processing_queue" }, "aggregation": { "const": "maximum_queue_depth" } } },
+        { "properties": { "sampleSubject": { "const": "isolated_data_directory" }, "aggregation": { "const": "end_bytes_minus_start_bytes" } } },
+        { "properties": { "sampleSubject": { "const": "product_root_and_descendants" }, "aggregation": { "const": "process_count_at_end" } } }
+      ]
+    },
     "SamplingProtocol": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runsPerScenario", "discardInitialRunsPerScenario", "measuredRunsPerScenario", "percentileMethod", "percentileScope", "clock", "coldReset", "warmState", "processSampleIntervalMs", "metrics"],
+      "required": ["runsPerScenario", "discardInitialRunsPerScenario", "measuredRunsPerScenario", "percentileMethod", "percentileScope", "clock", "coldReset", "warmState", "processSampleIntervalMs", "metrics", "resourceMetrics"],
       "properties": {
         "runsPerScenario": { "$ref": "#/$defs/PositiveInteger" },
         "discardInitialRunsPerScenario": { "$ref": "#/$defs/NonNegativeInteger" },
@@ -152,6 +205,33 @@
             "captureP95Ms": { "$ref": "#/$defs/MetricSample" },
             "warmInjectionP95Ms": { "$ref": "#/$defs/MetricSample" },
             "shortColdLexicalInjectionMs": { "$ref": "#/$defs/MetricSample" }
+          }
+        },
+        "resourceMetrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maxSteadyProductProcessCount", "maxShortRunRssGrowthMiB", "maxPendingQueueDepth", "maxStorageGrowthBytes", "orphanProductProcessCount"],
+          "properties": {
+            "maxSteadyProductProcessCount": { "allOf": [
+              { "$ref": "#/$defs/ResourceMetric" },
+              { "properties": { "startMilestone": { "const": "source_session_started" }, "endMilestone": { "const": "scenario_terminal" }, "sampleSubject": { "const": "product_root_and_descendants" }, "aggregation": { "const": "maximum_concurrent_process_count" } } }
+            ] },
+            "maxShortRunRssGrowthMiB": { "allOf": [
+              { "$ref": "#/$defs/ResourceMetric" },
+              { "properties": { "startMilestone": { "const": "source_session_started" }, "endMilestone": { "const": "scenario_terminal" }, "sampleSubject": { "const": "product_root_and_descendants" }, "aggregation": { "const": "maximum_rss_mib_minus_start_rss_mib" } } }
+            ] },
+            "maxPendingQueueDepth": { "allOf": [
+              { "$ref": "#/$defs/ResourceMetric" },
+              { "properties": { "startMilestone": { "const": "source_session_started" }, "endMilestone": { "const": "scenario_terminal" }, "sampleSubject": { "const": "memory_processing_queue" }, "aggregation": { "const": "maximum_queue_depth" } } }
+            ] },
+            "maxStorageGrowthBytes": { "allOf": [
+              { "$ref": "#/$defs/ResourceMetric" },
+              { "properties": { "startMilestone": { "const": "source_session_started" }, "endMilestone": { "const": "scenario_terminal" }, "sampleSubject": { "const": "isolated_data_directory" }, "aggregation": { "const": "end_bytes_minus_start_bytes" } } }
+            ] },
+            "orphanProductProcessCount": { "allOf": [
+              { "$ref": "#/$defs/ResourceMetric" },
+              { "properties": { "startMilestone": { "const": "scenario_terminal" }, "endMilestone": { "const": "post_teardown_grace_elapsed" }, "sampleSubject": { "const": "product_root_and_descendants" }, "aggregation": { "const": "process_count_at_end" } } }
+            ] }
           }
         }
       }
@@ -189,6 +269,8 @@
         "targetRepositoryScope": { "$ref": "#/$defs/NonEmptyString" },
         "lifecycleProfileId": { "$ref": "#/$defs/NonEmptyString" },
         "resourceSampleMode": { "enum": ["cold", "warm"] },
+        "derivationProviderExecutionLocation": { "const": "local" },
+        "targetExecutionLocation": { "enum": ["local", "remote"] },
         "retrievalQuery": { "$ref": "#/$defs/NonEmptyString" },
         "fault": { "$ref": "#/$defs/Fault" },
         "events": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Event" } },
@@ -200,7 +282,18 @@
         "forbiddenFacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
         "securityOracle": { "$ref": "#/$defs/SecurityOracle" },
         "expectedCounters": { "$ref": "#/$defs/ExpectedCounters" }
-      }
+      },
+      "oneOf": [
+        {
+          "required": ["derivationProviderExecutionLocation", "targetExecutionLocation", "securityOracle"]
+        },
+        {
+          "properties": {
+            "derivationProviderExecutionLocation": false,
+            "targetExecutionLocation": false
+          }
+        }
+      ]
     },
     "Event": {
       "type": "object",
@@ -219,12 +312,13 @@
     "ExpectedInjectedItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sourceLane", "selectionReason"],
+      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "selectionReason"],
       "properties": {
         "fact": { "$ref": "#/$defs/NonEmptyString" },
         "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
         "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SourceSpan" } },
+        "sensitivity": { "enum": ["eligible", "local_only", "private"] },
         "sourceLane": { "enum": ["exact_session", "lexical"] },
         "selectionReason": { "enum": ["exact_session", "lexical"] }
       }
@@ -232,12 +326,13 @@
     "ExpectedOmission": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "reason"],
+      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
       "properties": {
         "fact": { "$ref": "#/$defs/NonEmptyString" },
         "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
         "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SourceSpan" } },
+        "sensitivity": { "enum": ["eligible", "local_only", "private"] },
         "reason": { "enum": ["duplicate_revision", "omitted_budget", "omitted_ineligible"] }
       }
     },
@@ -463,7 +558,8 @@
     "SecurityOracle": {
       "oneOf": [
         { "$ref": "#/$defs/RemoteEgressSecurityOracle" },
-        { "$ref": "#/$defs/CrossScopeSecurityOracle" }
+        { "$ref": "#/$defs/CrossScopeSecurityOracle" },
+        { "$ref": "#/$defs/DerivedSensitivitySecurityOracle" }
       ]
     },
     "RemoteEgressSecurityOracle": {
@@ -489,6 +585,18 @@
       "properties": {
         "consideredCrossScopeCandidateCount": { "$ref": "#/$defs/PositiveInteger" },
         "incompatibleScopeInjectionCount": { "const": 0 },
+        "forbiddenSentinels": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
+        "sentinelObservedInInjection": { "const": false }
+      }
+    },
+    "DerivedSensitivitySecurityOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consideredDerivedCandidateCount", "remoteInjectionCount", "expectedSensitivity", "forbiddenSentinels", "sentinelObservedInInjection"],
+      "properties": {
+        "consideredDerivedCandidateCount": { "$ref": "#/$defs/PositiveInteger" },
+        "remoteInjectionCount": { "const": 0 },
+        "expectedSensitivity": { "const": "local_only" },
         "forbiddenSentinels": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "$ref": "#/$defs/NonEmptyString" } },
         "sentinelObservedInInjection": { "const": false }
       }

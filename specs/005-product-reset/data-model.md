@@ -125,16 +125,20 @@ Represents asynchronous summary or embedding work over already committed events/
 
 A provider failure changes the job state, never the committed source event. `retry-exhausted` uses
 the same durable one-time resume and budget mechanics as CapturedEvent, but a signal applies only
-when its role, `providerChoiceId`, and relevant configuration fingerprint match the failed job;
-unrelated summary/embedding activations and health transitions are no-ops. Timer-only resume is
-prohibited.
+when its role and `providerChoiceId` match the failed job. Provider-health and doctor signals also
+require the failed job's configuration fingerprint. A `validated_configuration_activation` instead
+requires the same role/provider target plus the newly active, validated, changed fingerprint; the
+transition atomically rebinds the job to that manifest. Unrelated summary/embedding activations and
+health transitions are no-ops. Timer-only resume is prohibited.
 
 A summary result containing more items than the active ResourceProfile's
-`maxMemoryItemsPerDerivation` is quarantined atomically with `memory_output_limit_exceeded`. No
-partial derived batch is committed; source events and previously committed sibling lineages remain
-intact for an authorized retry. Its payload-free quarantine metadata is limited to error code,
-`jobId`, source event IDs, observed result count, and configured limit; raw provider output, copied
-source content, and uncommitted derived items are forbidden.
+`maxMemoryItemsPerDerivation` enters `retry-exhausted` atomically with
+`memory_output_limit_exceeded` and zero remaining budget. No partial derived batch is committed;
+source events and previously committed sibling lineages remain intact. Only activation of a changed,
+validated profile with a larger limit or a repaired provider may rebind and requeue the job; health
+and doctor signals under the unchanged limit are no-ops. Its payload-free failure metadata is
+limited to error code, `jobId`, source event IDs, observed result count, and configured limit; raw
+provider output, copied source content, and uncommitted derived items are forbidden.
 
 Redirect rejection immediately records `provider_redirect_rejected` and leaves the job
 `retry-exhausted` without following or retaining authority from the old `Location`. Only activation
@@ -166,11 +170,24 @@ A durable reusable output derived from one or more captured events.
 - `lexicalState`, `semanticState`: ready, pending, degraded, stale, or unavailable
 - `semanticGenerationId`: generation that owns the active vector for this item, when present
 
+Derived sensitivity is the most restrictive contributing source disposition in this order:
+`secret > private > local_only > eligible`. Secret-bearing output is prohibited after redaction;
+`private` and `local_only` never downgrade during summarization, revision, indexing, or retrieval.
+In particular, memory derived on-device from any `local_only` source remains `local_only` and is
+ineligible for a remote/off-host InjectionPack destination.
+
 Deletion is terminal for retrieval and injection. It records a permanent durable tombstone for the
 `lineageId`; reprocessing retained sources under any profile or model generation cannot create an
 active revision for that lineage, including when a later model reclassifies the fact's `kind`.
 Sibling facts with different source-fact anchors are unaffected. Superseded items remain auditable
 but are ineligible for normal selection.
+
+The persisted SourceFactAnchor registry resolves reprocessing before lineage creation. An exact
+span match reuses its anchor. For the same source events, a proposed span that overlaps, contains,
+or is contained by a deleted anchor is suppressed by that tombstone even when its boundaries or
+semantic kind differ. Ambiguous overlap with a non-deleted anchor is quarantined for inspection;
+only disjoint minimal spans may establish a new sibling anchor automatically. This conservative
+coverage prevents boundary drift from bypassing deletion.
 
 Retrying the same source events under the same processing profile and model generation reuses the
 same derivation key and converges on one MemoryItem per lineage. Reprocessing under a different
@@ -224,7 +241,8 @@ A small user-facing operating envelope independent of provider choice.
 - queue and retry limits
 - exact `maxMemoryItemsPerDerivation`
 - worker warm-lifetime policy
-- retrieval time, byte, item, and token budgets
+- complete InjectionPack envelope: selection time, admitted-candidate, final byte, selected-item, and
+  token limits plus per-lane minimum/maximum item budgets
 - storage and resource warning thresholds
 
 Profiles are immutable once published; changing behavior creates a new version.

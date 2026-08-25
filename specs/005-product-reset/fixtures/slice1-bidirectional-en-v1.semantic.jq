@@ -14,10 +14,31 @@ def output_items($output):
      "sourceSpans": $output.summary.sourceSpans
    }]
    else []
-   end) + $output.memoryItems;
+   end) + ($output.memoryItems | map({body, kind, sourceEventIds, sourceSpans}));
+
+def sensitivity_rank:
+  if . == "eligible" then 0
+  elif . == "local_only" then 1
+  elif . == "private" then 2
+  elif . == "secret" then 3
+  else error("unknown sensitivity")
+  end;
+
+def derived_sensitivity($scenario; $sourceEventIds):
+  ([
+    $sourceEventIds[]
+    | . as $sourceId
+    | $scenario.events[]
+    | select(.eventId == $sourceId)
+    | .sensitivity
+  ] | max_by(sensitivity_rank));
+
+def derived_output_items($scenario; $output):
+  output_items($output)
+  | map(. + {sensitivity: derived_sensitivity($scenario; .sourceEventIds)});
 
 def provider_items($scenario):
-  output_items($scenario.summaryProviderStub);
+  derived_output_items($scenario; $scenario.summaryProviderStub);
 
 def output_sources_ok($scenario; $output):
   all(output_items($output)[];
@@ -41,10 +62,10 @@ def output_sources_ok($scenario; $output):
           and $span.endByte <= $payloadBytes)));
 
 def provider_item_key:
-  [ .kind, .body, .sourceEventIds, .sourceSpans ] | @json;
+  [ .kind, .body, .sourceEventIds, .sourceSpans, .sensitivity ] | @json;
 
 def expected_item_key:
-  [ .memoryKind, .fact, .sourceEventIds, .sourceSpans ] | @json;
+  [ .memoryKind, .fact, .sourceEventIds, .sourceSpans, .sensitivity ] | @json;
 
 def fixture_graph_ok($root):
   ($root.scenarios | map(.scenarioId)) as $scenarioIds
@@ -58,6 +79,46 @@ def fixture_graph_ok($root):
     | all($profiles[];
       . as $profileId
       | any($root.scenarios[]; .lifecycleProfileId == $profileId)));
+
+def injection_envelope_ok($root):
+  $root.effectiveConfiguration.resourceProfile.injectionEnvelope as $envelope
+  | all($envelope.laneBudgets[]; .minItems <= .maxItems)
+  and $envelope.maxSelectedItems <= $envelope.admittedCandidateLimit
+  and $envelope.maxInjectedTokens == $root.thresholds.maxInjectedTokens
+  and $envelope.selectionTimeBudgetMs < $root.thresholds.warmInjectionP95Ms
+  and (if $root.effectiveConfiguration.embeddingProvider.state == "disabled"
+    then $envelope.laneBudgets.semantic.maxItems == 0
+    else true
+    end)
+  and all($root.scenarios[];
+    . as $scenario
+    | (.expectedInjectedItems | length) <= $envelope.maxSelectedItems
+    and all($envelope.laneBudgets | keys[];
+      . as $lane
+      | ([ $scenario.expectedInjectedItems[] | select(.sourceLane == $lane) ] | length)
+        <= $envelope.laneBudgets[$lane].maxItems));
+
+def resource_metrics_ok($root):
+  all($root.samplingProtocol.resourceMetrics[];
+    . as $metric
+    | all($root.scenarios[];
+      $root.lifecycleProfiles[.lifecycleProfileId] as $milestones
+      | ($milestones | index($metric.startMilestone)) as $start
+      | ($milestones | index($metric.endMilestone)) as $end
+      | $start != null and $end != null and $start < $end));
+
+def failure_continuation_ok($root):
+  all($root.scenarios[] | select(has("expectedOperationalStatus"));
+    $root.lifecycleProfiles[.lifecycleProfileId] as $milestones
+    | ($milestones | index("target_injection_skipped")) as $skipped
+    | ($milestones | index("target_model_continued_after_memory_failure")) as $continued
+    | $skipped != null and $continued != null and $skipped < $continued);
+
+def pack_degradation_policy_ok($root):
+  if $root.effectiveConfiguration.embeddingProvider.state == "disabled"
+  then $root.effectiveConfiguration.embeddingProvider.packDegradationReason == "semantic_disabled"
+  else true
+  end;
 
 def common_scenarios_ok($root):
   ([ $root.scenarios[].events[].eventId ] as $ids
@@ -103,7 +164,8 @@ def common_scenarios_ok($root):
             | select(.body == $item.fact
                 and .kind == $item.memoryKind
                 and .sourceEventIds == $item.sourceEventIds
-                and .sourceSpans == $item.sourceSpans)
+                and .sourceSpans == $item.sourceSpans
+                and .sensitivity == $item.sensitivity)
           ] | length) == 1
         and ($item.sourceEventIds | length == (unique | length))
         and all($item.sourceEventIds[];
@@ -116,7 +178,8 @@ def common_scenarios_ok($root):
             | select(.body == $item.fact
                 and .kind == $item.memoryKind
                 and .sourceEventIds == $item.sourceEventIds
-                and .sourceSpans == $item.sourceSpans)
+                and .sourceSpans == $item.sourceSpans
+                and .sensitivity == $item.sensitivity)
           ] | length) == 1
         and ($item.sourceEventIds | length == (unique | length))
         and all($item.sourceEventIds[];
@@ -327,8 +390,35 @@ def scope_security_ok($root):
           .body | contains($sentinel)))
     and ($scope.securityOracle.sentinelObservedInInjection | not));
 
+def derived_sensitivity_security_ok($root):
+  ([
+    $root.scenarios[]
+    | select((.securityOracle?.consideredDerivedCandidateCount? // 0) > 0)
+  ]) as $matches
+  | ($matches | length) == 1
+  and ($matches[0] as $scenario
+    | provider_items($scenario) as $items
+    | $scenario.derivationProviderExecutionLocation == "local"
+    and $scenario.targetExecutionLocation == "remote"
+    and all($scenario.events[]; .sensitivity == "local_only")
+    and all($items[]; .sensitivity == "local_only")
+    and ($scenario.expectedInjectedItems | length) == 0
+    and ($scenario.expectedOmissions | length) == ($items | length)
+    and all($scenario.expectedOmissions[];
+      .sensitivity == "local_only" and .reason == "omitted_ineligible")
+    and $scenario.securityOracle.consideredDerivedCandidateCount == ($items | length)
+    and $scenario.securityOracle.remoteInjectionCount == 0
+    and $scenario.securityOracle.expectedSensitivity == "local_only"
+    and ($scenario.securityOracle.forbiddenSentinels[0] as $sentinel
+      | any($scenario.expectedOmissions[]; .fact | contains($sentinel)))
+    and ($scenario.securityOracle.sentinelObservedInInjection | not));
+
 . as $root
 | ensure(fixture_graph_ok($root); "fixture scenario graph mismatch")
+| ensure(injection_envelope_ok($root); "injection envelope mismatch")
+| ensure(resource_metrics_ok($root); "resource measurement boundary mismatch")
+| ensure(failure_continuation_ok($root); "failure continuation milestone mismatch")
+| ensure(pack_degradation_policy_ok($root); "pack degradation policy mismatch")
 | ensure(common_scenarios_ok($root); "common event, count, or per-item provenance invariant failed")
 | ensure(bidirectional_ok($root); "bidirectional prompt-flush or content-based derivation invariant failed")
 | ensure(spool_ok($root); "spool replay or event-identity conflict invariant failed")
@@ -337,4 +427,5 @@ def scope_security_ok($root):
 | ensure(operational_status_ok($root); "operational status invariant failed")
 | ensure(local_security_ok($root); "local-only or secret boundary invariant failed")
 | ensure(scope_security_ok($root); "cross-scope omission invariant failed")
+| ensure(derived_sensitivity_security_ok($root); "derived local-only injection invariant failed")
 | true

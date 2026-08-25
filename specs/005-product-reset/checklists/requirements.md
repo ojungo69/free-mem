@@ -40,7 +40,7 @@
 
 ## Revalidation
 
-- **Revalidated**: 2026-08-25T16:43:26+09:00
+- **Revalidated**: 2026-08-25T17:32:54+09:00
 - **Result**: 16/16 items pass after final file and GitHub evidence.
 - **Evidence order**: baseline, design artifacts, foundation ADR, full 69-issue audit, README and
   evidence authority, replacement issues, legacy routing, live GitHub state, quickstart rerun,

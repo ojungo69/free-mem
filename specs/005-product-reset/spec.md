@@ -202,11 +202,12 @@ without leaving active processes or managed configuration behind.
   semantic kind and provenance, receive its own stable logical lineage and deduplication key, and be
   bounded as an output item; retries MUST neither merge sibling facts nor drop one because another
   output shares its source events. Each ResourceProfile MUST publish an exact
-  `maxMemoryItemsPerDerivation`. A provider result above that limit is quarantined atomically with
-  `memory_output_limit_exceeded`: no partial derived batch is committed, all committed source events
-  and previously valid sibling memories remain unchanged, and a validated profile/provider change
-  may retry the retained work. The quarantine record is payload-free and contains only the error
-  code, job identity, source event IDs, observed result count, and active limit; it MUST NOT retain
+  `maxMemoryItemsPerDerivation`. A provider result above that limit enters recoverable
+  `retry-exhausted` atomically with `memory_output_limit_exceeded` and zero budget: no partial
+  derived batch is committed, all committed source events and previously valid sibling memories
+  remain unchanged, and only a changed validated limit/provider may retry the retained work. The
+  failure record is payload-free and contains only the error code, job identity, source event IDs,
+  observed result count, and active limit; it MUST NOT retain
   raw provider output, copied source text, or any uncommitted derived item.
 - **FR-007**: Low-signal activity MUST be excluded without discarding required decisions,
   corrections, failures, or next actions.
@@ -264,6 +265,9 @@ without leaving active processes or managed configuration behind.
   suppression uses the stable lineage identity.
   The anchor and lineage are computed before semantic-kind classification; later classification or
   reclassification can create a revision but cannot select a different lineage for the same spans.
+  Reprocessing resolves proposed spans against the persisted anchor registry before hashing: exact
+  spans reuse the anchor, overlap/containment with a deleted anchor remains suppressed, ambiguous
+  overlap is quarantined, and only disjoint spans may create a new sibling automatically.
 - **Resource Profile**: A user-facing operating envelope that defines limits and default
   behavior without coupling summary and embedding provider choices.
 - **Provider Choice**: The independently selected summary or embedding execution method,

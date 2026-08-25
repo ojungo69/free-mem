@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:6c2e47ae43e1f149741ce293a0805b40bf02ef43a0a0c4a19dfe27091c8aee7e",
+  "contractFingerprint": "sha256:473669f7b30ce41f67f3cac949f2526b0545a8d8e8d3db2311acb36ff8b59300",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -19,7 +19,20 @@
       "profileId": "slice1-short-run",
       "version": 1,
       "processingRetryLimit": 3,
-      "maxMemoryItemsPerDerivation": 16
+      "maxMemoryItemsPerDerivation": 16,
+      "injectionEnvelope": {
+        "selectionTimeBudgetMs": 750,
+        "admittedCandidateLimit": 32,
+        "maxRenderedBytes": 16384,
+        "maxSelectedItems": 8,
+        "maxInjectedTokens": 800,
+        "laneBudgets": {
+          "exact_session": {"minItems": 0, "maxItems": 4},
+          "lexical": {"minItems": 0, "maxItems": 8},
+          "semantic": {"minItems": 0, "maxItems": 0},
+          "recency": {"minItems": 0, "maxItems": 2}
+        }
+      }
     },
       "summaryProvider": {
         "state": "enabled",
@@ -34,7 +47,8 @@
     },
     "embeddingProvider": {
       "state": "disabled",
-      "reason": "slice1_semantic_not_owned"
+      "reason": "slice1_semantic_not_owned",
+      "packDegradationReason": "semantic_disabled"
     }
   },
   "kindContract": {
@@ -70,7 +84,9 @@
       "source_flush_requested_by_target_prompt",
       "source_summary_committed",
       "target_retrieval_requested",
-      "target_injection_acknowledged"
+      "target_injection_acknowledged",
+      "scenario_terminal",
+      "post_teardown_grace_elapsed"
     ],
     "spool_recovery": [
       "source_session_started",
@@ -84,7 +100,9 @@
       "target_session_started",
       "target_first_prompt_submitted_before_model",
       "target_retrieval_requested",
-      "target_injection_acknowledged"
+      "target_injection_acknowledged",
+      "scenario_terminal",
+      "post_teardown_grace_elapsed"
     ],
     "provider_failure": [
       "source_session_started",
@@ -95,7 +113,10 @@
       "source_flush_requested_by_target_prompt",
       "provider_processing_rejected_or_exhausted",
       "operational_status_inspected",
-      "target_injection_skipped"
+      "target_injection_skipped",
+      "target_model_continued_after_memory_failure",
+      "scenario_terminal",
+      "post_teardown_grace_elapsed"
     ],
     "scope_rejection": [
       "source_session_started",
@@ -106,7 +127,21 @@
       "target_first_prompt_submitted_before_model",
       "target_retrieval_requested",
       "cross_scope_candidate_omitted",
-      "target_injection_acknowledged"
+      "target_injection_acknowledged",
+      "scenario_terminal",
+      "post_teardown_grace_elapsed"
+    ],
+    "derived_sensitivity_rejection": [
+      "source_session_started",
+      "source_events_captured",
+      "local_provider_derived_memory",
+      "target_session_started",
+      "target_first_prompt_submitted_before_model",
+      "target_retrieval_requested",
+      "local_only_derived_candidates_omitted",
+      "target_injection_acknowledged",
+      "scenario_terminal",
+      "post_teardown_grace_elapsed"
     ]
   },
   "samplingProtocol": {
@@ -128,7 +163,8 @@
           "summary-provider-retry-exhausted",
           "summary-provider-redirect-rejected",
           "local-only-remote-provider-rejected",
-          "incompatible-scope-injection-rejected"
+          "incompatible-scope-injection-rejected",
+          "local-derived-memory-remote-injection-rejected"
         ],
         "sampleBoundary": "capture hook entry to accepted-or-durably-spooled return"
       },
@@ -143,6 +179,43 @@
           "claude-to-codex"
         ],
         "sampleBoundary": "cold lexical injection request to target acknowledgement"
+      }
+    },
+    "resourceMetrics": {
+      "maxSteadyProductProcessCount": {
+        "scenarioSelection": "all",
+        "startMilestone": "source_session_started",
+        "endMilestone": "scenario_terminal",
+        "sampleSubject": "product_root_and_descendants",
+        "aggregation": "maximum_concurrent_process_count"
+      },
+      "maxShortRunRssGrowthMiB": {
+        "scenarioSelection": "all",
+        "startMilestone": "source_session_started",
+        "endMilestone": "scenario_terminal",
+        "sampleSubject": "product_root_and_descendants",
+        "aggregation": "maximum_rss_mib_minus_start_rss_mib"
+      },
+      "maxPendingQueueDepth": {
+        "scenarioSelection": "all",
+        "startMilestone": "source_session_started",
+        "endMilestone": "scenario_terminal",
+        "sampleSubject": "memory_processing_queue",
+        "aggregation": "maximum_queue_depth"
+      },
+      "maxStorageGrowthBytes": {
+        "scenarioSelection": "all",
+        "startMilestone": "source_session_started",
+        "endMilestone": "scenario_terminal",
+        "sampleSubject": "isolated_data_directory",
+        "aggregation": "end_bytes_minus_start_bytes"
+      },
+      "orphanProductProcessCount": {
+        "scenarioSelection": "all",
+        "startMilestone": "scenario_terminal",
+        "endMilestone": "post_teardown_grace_elapsed",
+        "sampleSubject": "product_root_and_descendants",
+        "aggregation": "process_count_at_end"
       }
     }
   },
@@ -264,6 +337,7 @@
           "memoryKind": "summary",
           "sourceEventIds": ["claude-to-codex-event-1", "claude-to-codex-event-2", "claude-to-codex-event-3", "claude-to-codex-event-4", "claude-to-codex-event-5"],
           "sourceSpans": [{"eventId":"claude-to-codex-event-1","startByte":0,"endByte":45},{"eventId":"claude-to-codex-event-2","startByte":0,"endByte":47},{"eventId":"claude-to-codex-event-3","startByte":0,"endByte":69},{"eventId":"claude-to-codex-event-4","startByte":0,"endByte":53},{"eventId":"claude-to-codex-event-5","startByte":0,"endByte":39}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
@@ -272,6 +346,7 @@
           "memoryKind": "decision",
           "sourceEventIds": ["claude-to-codex-event-2"],
           "sourceSpans": [{"eventId":"claude-to-codex-event-2","startByte":0,"endByte":47}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
@@ -280,6 +355,7 @@
           "memoryKind": "failed_approach",
           "sourceEventIds": ["claude-to-codex-event-3"],
           "sourceSpans": [{"eventId":"claude-to-codex-event-3","startByte":0,"endByte":69}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
@@ -288,6 +364,7 @@
           "memoryKind": "next_action",
           "sourceEventIds": ["claude-to-codex-event-5"],
           "sourceSpans": [{"eventId":"claude-to-codex-event-5","startByte":0,"endByte":39}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         }
@@ -406,6 +483,7 @@
           "memoryKind": "summary",
           "sourceEventIds": ["codex-to-claude-event-1", "codex-to-claude-event-2", "codex-to-claude-event-3", "codex-to-claude-event-4", "codex-to-claude-event-5"],
           "sourceSpans": [{"eventId":"codex-to-claude-event-1","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-2","startByte":0,"endByte":39},{"eventId":"codex-to-claude-event-3","startByte":0,"endByte":43},{"eventId":"codex-to-claude-event-4","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-5","startByte":0,"endByte":62}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
@@ -414,6 +492,7 @@
           "memoryKind": "decision",
           "sourceEventIds": ["codex-to-claude-event-2"],
           "sourceSpans": [{"eventId":"codex-to-claude-event-2","startByte":0,"endByte":39}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
@@ -422,6 +501,7 @@
           "memoryKind": "failed_approach",
           "sourceEventIds": ["codex-to-claude-event-4"],
           "sourceSpans": [{"eventId":"codex-to-claude-event-4","startByte":0,"endByte":64}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
@@ -430,6 +510,7 @@
           "memoryKind": "next_action",
           "sourceEventIds": ["codex-to-claude-event-5"],
           "sourceSpans": [{"eventId":"codex-to-claude-event-5","startByte":0,"endByte":62}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         }
@@ -511,8 +592,8 @@
       ],
       "summaryProviderStub": {
         "summary": {
-          "title": "Spool recovery summary",
-          "body": "The daemon was unavailable; the same stable events were replayed twice and committed once after restart.",
+          "title": "Durable follow-up",
+          "body": "Record a durable follow-up while the memory daemon is unavailable; next verify the queued event after daemon restart.",
           "sourceEventIds": ["spool-event-1", "spool-event-2"],
           "sourceSpans": [{"eventId":"spool-event-1","startByte":0,"endByte":66},{"eventId":"spool-event-2","startByte":0,"endByte":51}]
         },
@@ -538,10 +619,11 @@
       },
       "expectedInjectedItems": [
         {
-          "fact": "The daemon was unavailable; the same stable events were replayed twice and committed once after restart.",
+          "fact": "Record a durable follow-up while the memory daemon is unavailable; next verify the queued event after daemon restart.",
           "memoryKind": "summary",
           "sourceEventIds": ["spool-event-1", "spool-event-2"],
           "sourceSpans": [{"eventId":"spool-event-1","startByte":0,"endByte":66},{"eventId":"spool-event-2","startByte":0,"endByte":51}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
@@ -550,6 +632,7 @@
           "memoryKind": "next_action",
           "sourceEventIds": ["spool-event-2"],
           "sourceSpans": [{"eventId":"spool-event-2","startByte":0,"endByte":51}],
+          "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         }
@@ -1004,6 +1087,7 @@
           "memoryKind": "summary",
           "sourceEventIds": ["cross-scope-event-1"],
           "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":47}],
+          "sensitivity": "eligible",
           "reason": "omitted_ineligible"
         },
         {
@@ -1011,6 +1095,7 @@
           "memoryKind": "discovery",
           "sourceEventIds": ["cross-scope-event-1"],
           "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":19}],
+          "sensitivity": "eligible",
           "reason": "omitted_ineligible"
         }
       ],
@@ -1021,6 +1106,90 @@
         "consideredCrossScopeCandidateCount": 2,
         "incompatibleScopeInjectionCount": 0,
         "forbiddenSentinels": ["OTHER_REPO_SENTINEL"],
+        "sentinelObservedInInjection": false
+      },
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "local-derived-memory-remote-injection-rejected",
+      "sourceAgent": "codex",
+      "targetAgent": "claude-code",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "derived_sensitivity_rejection",
+      "resourceSampleMode": "warm",
+      "derivationProviderExecutionLocation": "local",
+      "targetExecutionLocation": "remote",
+      "retrievalQuery": "local derived sentinel",
+      "events": [
+        {
+          "eventId": "local-derived-event-1",
+          "sequence": 1,
+          "kind": "assistant_message",
+          "sensitivity": "local_only",
+          "redactedPayload": "LOCAL_DERIVED_SENTINEL remains local after derivation.",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "LOCAL_DERIVED_SENTINEL remains local after derivation."
+        }
+      ],
+      "summaryProviderStub": {
+        "summary": {
+          "title": "Local derived summary",
+          "body": "The local derived sentinel must remain local after derivation.",
+          "sourceEventIds": ["local-derived-event-1"],
+          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":54}]
+        },
+        "memoryItems": [
+          {
+            "kind": "discovery",
+            "title": "Local derived sentinel",
+            "body": "LOCAL_DERIVED_SENTINEL remains local after derivation.",
+            "sourceEventIds": ["local-derived-event-1"],
+            "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":22}]
+          }
+        ]
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-local-derived-remote-injection-rejected-v1",
+        "timeoutMs": 30000,
+        "committedEventCount": 1,
+        "summaryCount": 1,
+        "durableMemoryCount": 2,
+        "targetInjectionAcknowledged": true
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [
+        {
+          "fact": "The local derived sentinel must remain local after derivation.",
+          "memoryKind": "summary",
+          "sourceEventIds": ["local-derived-event-1"],
+          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":54}],
+          "sensitivity": "local_only",
+          "reason": "omitted_ineligible"
+        },
+        {
+          "fact": "LOCAL_DERIVED_SENTINEL remains local after derivation.",
+          "memoryKind": "discovery",
+          "sourceEventIds": ["local-derived-event-1"],
+          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":22}],
+          "sensitivity": "local_only",
+          "reason": "omitted_ineligible"
+        }
+      ],
+      "forbiddenFacts": [
+        "LOCAL_DERIVED_SENTINEL remains local after derivation."
+      ],
+      "securityOracle": {
+        "consideredDerivedCandidateCount": 2,
+        "remoteInjectionCount": 0,
+        "expectedSensitivity": "local_only",
+        "forbiddenSentinels": ["LOCAL_DERIVED_SENTINEL"],
         "sentinelObservedInInjection": false
       },
       "expectedCounters": {
