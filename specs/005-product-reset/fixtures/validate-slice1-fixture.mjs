@@ -11,6 +11,8 @@ const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const defaultFixturePath = join(fixtureDir, "slice1-bidirectional-en-v1.json");
 const schemaPath = join(fixtureDir, "slice1-bidirectional-en-v1.schema.json");
 const semanticPath = join(fixtureDir, "slice1-bidirectional-en-v1.semantic.jq");
+const validatorPath = fileURLToPath(import.meta.url);
+const normalizeText = (value) => value.replace(/\r\n?/g, "\n");
 const args = process.argv.slice(2);
 
 if (args.length === 1 && args[0] === "--help") {
@@ -34,14 +36,22 @@ if (issues.length > 0) {
 
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
-const expectedContractFingerprint =
-  "sha256:ac90d921ecf20371ccd580a9fde31c300225ab2d3bb6b07bd9fcecadeef6980b";
+const expectedContractFingerprintRecord =
+  "fixture-contract-fingerprint=sha256:fcc1756b2eeb9d56a25531b729b55d47d6b55623355432ef8145b6d59045486c";
+const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
+  "fixture-contract-fingerprint=",
+  "",
+);
 const actualContractFingerprint = `sha256:${createHash("sha256")
   .update(fixtureContractDomain)
   .update(canonicalizeJson({
     fixture: contract,
     schema,
-    semanticValidator: readFileSync(semanticPath, "utf8"),
+    semanticValidator: normalizeText(readFileSync(semanticPath, "utf8")),
+    canonicalValidator: normalizeText(readFileSync(validatorPath, "utf8")).replace(
+      /fixture-contract-fingerprint=sha256:[0-9a-f]{64}/,
+      "fixture-contract-fingerprint=<normalized>",
+    ),
   }))
   .digest("hex")}`;
 if (

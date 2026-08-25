@@ -58,8 +58,10 @@ Each fixture defines:
 - a versioned structural fixture schema and mandatory semantic validation path; neither check alone
   establishes fixture conformance
 - a domain-separated fingerprint over the entire fixed fixture except the fingerprint field itself,
-  and additionally over its structural schema and semantic validator bytes; changing any included
-  element requires a new pinned fingerprint/version review
+  and additionally over its structural schema, semantic validator text, and canonical executable
+  validator text; text is normalized to LF and the executable's pinned-fingerprint literal is
+  normalized to a placeholder to avoid a self-hash cycle. Changing any included element requires a
+  new pinned fingerprint/version review
 
 The committed Slice 1 fixture is
 [`../fixtures/slice1-bidirectional-en-v1.json`](../fixtures/slice1-bidirectional-en-v1.json), with
@@ -172,7 +174,7 @@ the environment pins/descriptors and artifact base commit to match the fixed fix
 - Raw records remain available beside the human summary.
 
 Slice 1 candidate terminal reasons are the permanent minimal subset `exact_session`, `lexical`,
-`duplicate_revision`, `omitted_budget`, and `omitted_ineligible` from the authoritative InjectionPack
-enumeration. The separate pack-level degradation reason is `semantic_disabled`; it is never
-recorded as a candidate terminal reason. Slice 1 does not emit the remaining Slice 2-owned
+`recency`, `duplicate_revision`, `omitted_budget`, and `omitted_ineligible` from the authoritative
+InjectionPack enumeration. The separate pack-level degradation reason is `semantic_disabled`; it is
+never recorded as a candidate terminal reason. Slice 1 does not emit the remaining Slice 2-owned
 lane-minimum, candidate-cap, semantic-scoring, or full-trace reasons.

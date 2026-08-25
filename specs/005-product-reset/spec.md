@@ -286,7 +286,8 @@ without leaving active processes or managed configuration behind.
 ### Measurable Outcomes
 
 - **SC-001**: The fixed Claude-to-Codex and Codex-to-Claude scenarios each complete with all
-  required facts, zero forbidden facts, and zero manual handoff steps.
+  required facts, zero forbidden facts, no failed approach rendered as a recommended next action,
+  and zero manual handoff steps.
 - **SC-002**: Across the required failure matrix, Agent blockage count, accepted-event loss,
   and duplicate durable-memory count are all zero.
 - **SC-003**: Capture adds less than 200 ms at the 95th percentile under the reference workload.
@@ -298,8 +299,9 @@ without leaving active processes or managed configuration behind.
 - **SC-006**: Reprocessing an unchanged event set under the same `profileId`/profile version and
   `modelId`/model revision leaves active durable-memory and active semantic-entry counts unchanged.
   Historical revision rows are excluded from those active counts and may increase after an allowed
-  profile/model change, but validation always requires one active revision per lineage and one
-  active semantic entry per item.
+  profile/model change. When semantic indexing is enabled, validation requires one active semantic
+  entry per item. When disabled, it requires no active semantic entry and an unchanged semantic-entry
+  count.
 - **SC-007**: Every injected item in the fixed scenarios has a visible source and selection
   reason, and every induced degraded state has the expected reason and safe next action.
 - **SC-008**: All secret and cross-scope fixtures produce zero external disclosures and zero

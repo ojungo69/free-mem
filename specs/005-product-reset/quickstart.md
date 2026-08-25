@@ -144,7 +144,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T21:15:09+09:00
+## Validation result — 2026-08-25T21:27:20+09:00
 
 | Check | Result |
 |---|---|
@@ -162,6 +162,9 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 
 Environment-specific deviations:
 
+- `verify-tasks-report.md` is the immutable pre-mutation snapshot at the pinned M0 base; this
+  post-mutation table and `issue-routing.md` carry the later local/live verification evidence without
+  rewriting its original verdicts.
 - `pnpm install` reports that the vendored workspace has no nested `.git` directory when the
   Husky prepare script runs; prepare still exits 0 and the repository-level worktree remains the
   Git authority.
