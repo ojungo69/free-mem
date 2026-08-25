@@ -144,7 +144,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T23:11:16+09:00
+## Validation result — 2026-08-25T23:24:36+09:00
 
 | Check | Result |
 |---|---|
@@ -172,9 +172,8 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- The last completed local CodeRabbit review raised one valid before-model ordering issue, which was
-  fixed. Its follow-up reached the three-review limit, so the pushed head must receive a fresh GitHub
-  CodeRabbit review before merge.
+- The last completed local CodeRabbit review raised zero issues; the staged follow-up reached the
+  three-review limit. The pushed head must receive a fresh GitHub CodeRabbit review before merge.
 - Cubic's final review returned `issues: []`. Ponytail review found no unused definitions,
   speculative abstraction, dependency, or removable compatibility layer.
 - No command required a changed path, flag, retry, or skipped gate.

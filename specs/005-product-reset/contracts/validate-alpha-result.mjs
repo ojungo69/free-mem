@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson, parseIJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
+import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(contractDir, "alpha-result-v1.schema.json");
@@ -18,76 +19,6 @@ const defaultResultPath = join(contractDir, "../fixtures/alpha-result-v1.example
 const args = process.argv.slice(2);
 const fingerprint = (domain, value) =>
   `sha256:${createHash("sha256").update(domain).update(canonicalizeJson(value)).digest("hex")}`;
-
-function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
-  const protocol = fixture.samplingProtocol;
-  const metricApplies = (name) => protocol.metrics[name].scenarios.includes(scenario.scenarioId);
-  const captureApplies = metricApplies("captureP95Ms");
-  const warmInjectionApplies = metricApplies("warmInjectionP95Ms");
-  const coldInjectionApplies = metricApplies("shortColdLexicalInjectionMs");
-  const expectedCaptureEventIds = captureApplies ? scenario.events.map((event) => event.eventId) : [];
-  if (exceptionalState) {
-    if (
-      result.latencyEvidence.captureEventIds.length !== 0 ||
-      result.latencyEvidence.runs.length !== 0 ||
-      !Object.values(result.latencyEvidence.aggregates).every((value) => value === null)
-    ) {
-      throw new Error("unsupported/not-run latency evidence is not empty");
-    }
-    return false;
-  }
-
-  const runs = result.latencyEvidence.runs;
-  const expectedResetMode = result.resourceSampleMode === "cold"
-    ? "fresh_isolated_data"
-    : "fresh_namespace_on_ready_process";
-  if (
-    !isDeepStrictEqual(result.latencyEvidence.captureEventIds, expectedCaptureEventIds) ||
-    runs.length !== protocol.runsPerScenario ||
-    !runs.every((run, index) =>
-      run.runOrdinal === index + 1 &&
-      run.discarded === (run.runOrdinal <= protocol.discardInitialRunsPerScenario) &&
-      run.resetMode === expectedResetMode &&
-      run.captureElapsedMs.length === expectedCaptureEventIds.length &&
-      (warmInjectionApplies ? typeof run.warmInjectionMs === "number" : run.warmInjectionMs === null) &&
-      (coldInjectionApplies
-        ? typeof run.coldLexicalInjectionMs === "number"
-        : run.coldLexicalInjectionMs === null)
-    )
-  ) {
-    throw new Error("latency run evidence does not match the pinned sampling protocol");
-  }
-  const measuredRuns = runs.filter((run) => !run.discarded);
-  if (measuredRuns.length !== protocol.measuredRunsPerScenario) {
-    throw new Error("latency measured-run count does not match the pinned protocol");
-  }
-  const nearestRankP95 = (values) => {
-    const ordered = [...values].sort((left, right) => left - right);
-    return ordered[Math.ceil(ordered.length * 0.95) - 1];
-  };
-  const expectedAggregates = {
-    captureP95Ms: captureApplies
-      ? nearestRankP95(measuredRuns.flatMap((run) => run.captureElapsedMs))
-      : null,
-    warmInjectionP95Ms: warmInjectionApplies
-      ? nearestRankP95(measuredRuns.map((run) => run.warmInjectionMs))
-      : null,
-    shortColdLexicalInjectionMs: coldInjectionApplies
-      ? nearestRankP95(measuredRuns.map((run) => run.coldLexicalInjectionMs))
-      : null,
-  };
-  if (!isDeepStrictEqual(result.latencyEvidence.aggregates, expectedAggregates)) {
-    throw new Error("latency aggregates do not match the recorded measured runs");
-  }
-  return (
-    (expectedAggregates.captureP95Ms === null ||
-      expectedAggregates.captureP95Ms < fixture.thresholds.captureP95Ms) &&
-    (expectedAggregates.warmInjectionP95Ms === null ||
-      expectedAggregates.warmInjectionP95Ms < fixture.thresholds.warmInjectionP95Ms) &&
-    (expectedAggregates.shortColdLexicalInjectionMs === null ||
-      expectedAggregates.shortColdLexicalInjectionMs < fixture.thresholds.shortColdLexicalInjectionMs)
-  );
-}
 
 if (args.length === 1 && args[0] === "--help") {
   console.log(
@@ -115,16 +46,10 @@ for (let index = 0; index < args.length; index += 2) {
     fixturePath = resolve(value);
   }
   if (flag === "--result") resultPaths.push(value === "-" ? value : resolve(value));
-  if (flag === "--negative-result") {
-    negativeResultPaths.push(value === "-" ? value : resolve(value));
-  }
+  if (flag === "--negative-result") negativeResultPaths.push(value === "-" ? value : resolve(value));
 }
-if (resultPaths.length === 0 && negativeResultPaths.length === 0) {
-  resultPaths.push(defaultResultPath);
-}
-if (negativeResultPaths.length > 0 && resultPaths.length === 0) {
-  throw new Error("a negative result requires the complete positive suite");
-}
+if (resultPaths.length === 0 && negativeResultPaths.length === 0) resultPaths.push(defaultResultPath);
+if (negativeResultPaths.length > 0 && resultPaths.length === 0) throw new Error("a negative result requires the complete positive suite");
 
 execFileSync(
   process.execPath,
@@ -140,28 +65,18 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
   const actualScenarioIds = suiteResults.map((item) => item.scenarioId).sort();
   const first = suiteResults[0];
   const negativeContract = suiteFixture.beforeModelNegativeFixture;
-  const baseResult = suiteResults.find(
-    (item) => item.scenarioId === negativeContract.baseScenarioId,
-  );
-  const negativeMilestoneOrder = negativeResults[0]?.milestones
-    ?.map((item) => item.name)
-    .filter((name) => negativeContract.lateMilestoneOrder.includes(name)) ?? [];
-  const normalizedNegative = negativeResults.length === 1 &&
-    baseResult &&
-    Array.isArray(negativeResults[0].milestones)
-    ? structuredClone(negativeResults[0])
+  const baseResult = suiteResults.find((item) => item.scenarioId === negativeContract.baseScenarioId);
+  const expectedNegative = baseResult && Array.isArray(baseResult.milestones)
+    ? structuredClone(baseResult)
     : null;
-  if (normalizedNegative) {
-    normalizedNegative.milestones = normalizedNegative.milestones.map((item) => ({
-      ...item,
-      name: item.name === "target_model_request_dispatched"
-        ? "target_injection_acknowledged"
-        : item.name === "target_injection_acknowledged"
-          ? "target_model_request_dispatched"
-          : item.name,
-    }));
-    normalizedNegative.injectionBeforeModel = baseResult.injectionBeforeModel;
-    normalizedNegative.disposition = baseResult.disposition;
+  if (expectedNegative) {
+    const positiveOrder = [...negativeContract.lateMilestoneOrder].reverse();
+    for (const milestone of expectedNegative.milestones) {
+      const position = positiveOrder.indexOf(milestone.name);
+      if (position >= 0) milestone.name = negativeContract.lateMilestoneOrder[position];
+    }
+    expectedNegative.injectionBeforeModel = negativeContract.injectionBeforeModel;
+    expectedNegative.disposition = negativeContract.expectedDisposition;
   }
   const commonIdentity = (item) =>
     item.candidateId === first.candidateId &&
@@ -172,12 +87,7 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
     !isDeepStrictEqual(actualScenarioIds, expectedScenarioIds) ||
     !suiteResults.every((item) => commonIdentity(item) && item.disposition.successfulComparisonEligible) ||
     negativeResults.length !== 1 ||
-    !commonIdentity(negativeResults[0]) ||
-    negativeResults[0].scenarioId !== negativeContract.baseScenarioId ||
-    negativeResults[0].injectionBeforeModel !== negativeContract.injectionBeforeModel ||
-    !isDeepStrictEqual(negativeMilestoneOrder, negativeContract.lateMilestoneOrder) ||
-    !isDeepStrictEqual(negativeResults[0].disposition, negativeContract.expectedDisposition) ||
-    !isDeepStrictEqual(normalizedNegative, baseResult)
+    !isDeepStrictEqual(negativeResults[0], expectedNegative)
   ) {
     throw new Error("candidate suite or required negative result is incomplete or inconsistent");
   }

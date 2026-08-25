@@ -14,6 +14,7 @@ const semanticPath = join(fixtureDir, "slice1-bidirectional-en-v1.semantic.jq");
 const validatorPath = fileURLToPath(import.meta.url);
 const resultSchemaPath = join(fixtureDir, "../contracts/alpha-result-v1.schema.json");
 const resultSemanticPath = join(fixtureDir, "../contracts/alpha-result-v1.semantic.jq");
+const resultLatencyValidatorPath = join(fixtureDir, "../contracts/alpha-result-latency.mjs");
 const resultValidatorPath = join(fixtureDir, "../contracts/validate-alpha-result.mjs");
 const normalizeText = (value) => value.replace(/\r\n?/g, "\n");
 const args = process.argv.slice(2);
@@ -41,7 +42,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:2bc969aeebb6ec63b7b98d1bc7e77e8125ec53ad61f7eb8941c43748892b44af";
+  "fixture-contract-fingerprint=sha256:b7244618a09ec5f748f51e0b4a39ff63294ed87361772b89aaaad04cda58e339";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -58,6 +59,7 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     ),
     resultSchema,
     resultSemanticValidator: normalizeText(readFileSync(resultSemanticPath, "utf8")),
+    resultLatencyValidator: normalizeText(readFileSync(resultLatencyValidatorPath, "utf8")),
     resultCanonicalValidator: normalizeText(readFileSync(resultValidatorPath, "utf8")),
   }))
   .digest("hex")}`;
