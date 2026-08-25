@@ -1,0 +1,47 @@
+specs/005-product-reset/checklists/requirements.md
+  s_9d346c66194a0d::t_7db09b33efdb7d 43
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json
+  s_9d346c66194a0d::t_54c1bccfdfbc49 68,74,76-77
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_54c1bccfdfbc49 90-92
+specs/005-product-reset/contracts/capability-manifest.md
+  s_9d346c66194a0d::t_a7c9cfb1ce0e44 41-44
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_7db09b33efdb7d 133
+  s_9d346c66194a0d::t_36ac8d1a363af9 142
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_d5ae65d5c80b06 8
+  s_9d346c66194a0d::t_54c1bccfdfbc49 29-33
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_d5ae65d5c80b06 37
+specs/005-product-reset/plan.md
+  s_9d346c66194a0d::t_54c1bccfdfbc49 37
+specs/005-product-reset/data-model.md
+  s_9d346c66194a0d::t_54c1bccfdfbc49 240-241,252-254
+specs/005-product-reset/issue-routing.md
+  s_9d346c66194a0d::t_7db09b33efdb7d 194
+specs/005-product-reset/rollback.md
+  s_9d346c66194a0d::t_d1d3481cf4b9ed 193-194,211,217-231
+  s_9d346c66194a0d::t_117a4ef09ea1c6 59
+  s_9d346c66194a0d::t_5e2d5c6b9e4866 87-122
+  s_9d346c66194a0d::t_4a5b0ab140d4c9 22-24,47-58,60-74
+  s_9d346c66194a0d::t_58a1b69e69272c 232
+specs/005-product-reset/spec.md
+  s_9d346c66194a0d::t_5e2d5c6b9e4866 292-296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "d7ff64f39bd30d0f3519032cdbaae72f5b317163",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
