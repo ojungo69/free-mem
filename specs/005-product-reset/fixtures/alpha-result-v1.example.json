@@ -1,12 +1,35 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c",
+  "fixtureFingerprint": "sha256:ac90d921ecf20371ccd580a9fde31c300225ab2d3bb6b07bd9fcecadeef6980b",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "resourceSampleMode": "cold",
-  "environmentFingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-  "artifactFingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "targetDestinationClass": "codex-local",
+  "effectiveManifestFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
+  "executionEnvironment": {
+    "pins": {
+      "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
+      "claudeCodeVersion": "2.1.243",
+      "codexVersion": "0.149.1",
+      "nodeVersion": "24.16.0",
+      "pnpmVersion": "11.8.0",
+      "summaryProviderStub": "deterministic-summary-v1"
+    },
+    "environment": {
+      "home": "<isolated-home>",
+      "dataDir": "<isolated-data-dir>",
+      "repository": "<isolated-local-repository>",
+      "network": "provider-stub-only"
+    }
+  },
+  "environmentFingerprint": "sha256:2684483c5e62e7bae4401c78fc45f1e5e668b7ff6481d3d2d741cb54debb0551",
+  "artifactMetadata": {
+    "candidateId": "candidate-example-v1",
+    "baseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
+    "contentSha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "artifactFingerprint": "sha256:930fa2a57701a4075ce7ab0c2c83c5f1a17c959bff38294f586d7e20d40e28ec",
   "drain": {
     "drainConditionId": "slice1-claude-to-codex-visible-v1",
     "status": "completed",
@@ -103,8 +126,12 @@
     "persistedSecretCount": 0,
     "injectedSecretCount": 0,
     "payloadBytesSent": 256,
+    "redirectLocationRequestCount": 0,
+    "redirectLocationPayloadBytesSent": 0,
+    "resentPayloadCount": 0,
     "forbiddenSentinelObservationCount": 0
   },
+  "identityConflictEvidence": null,
   "retryEvidence": null,
   "failureMetadata": null,
   "operationalStatus": null,
@@ -208,7 +235,335 @@
     "matchedOmissionCount": 0,
     "forbiddenFactCount": 0
   },
+  "attemptedRenderedBytes": 1024,
+  "renderedBytes": 1024,
+  "attemptedInjectedTokens": 300,
   "injectedTokens": 300,
+  "selectionElapsedMs": 500,
+  "latencyEvidence": {
+    "captureEventIds": [
+      "claude-to-codex-event-1",
+      "claude-to-codex-event-2",
+      "claude-to-codex-event-3",
+      "claude-to-codex-event-4",
+      "claude-to-codex-event-5"
+    ],
+    "runs": [
+      {
+        "runOrdinal": 1,
+        "discarded": true,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 2,
+        "discarded": true,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 3,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 4,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 5,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 6,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 7,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 8,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 9,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 10,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 11,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 12,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 13,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 14,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 15,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 16,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 17,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 18,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 19,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 20,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 21,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      },
+      {
+        "runOrdinal": 22,
+        "discarded": false,
+        "resetMode": "fresh_isolated_data",
+        "captureElapsedMs": [
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": 1000
+      }
+    ],
+    "aggregates": {
+      "captureP95Ms": 100,
+      "warmInjectionP95Ms": null,
+      "shortColdLexicalInjectionMs": 1000
+    }
+  },
   "resource": {
     "maxSteadyProductProcessCount": 2,
     "maxShortRunRssGrowthMiB": 10,

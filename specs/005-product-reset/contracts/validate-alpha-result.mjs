@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { readIJsonFile } from "../../../harness/schema/jcs.ts";
+import { canonicalizeJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,78 @@ const fixtureValidatorPath = join(contractDir, "../fixtures/validate-slice1-fixt
 const defaultFixturePath = join(contractDir, "../fixtures/slice1-bidirectional-en-v1.json");
 const defaultResultPath = join(contractDir, "../fixtures/alpha-result-v1.example.json");
 const args = process.argv.slice(2);
+const fingerprint = (domain, value) =>
+  `sha256:${createHash("sha256").update(domain).update(canonicalizeJson(value)).digest("hex")}`;
+
+function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
+  const protocol = fixture.samplingProtocol;
+  const metricApplies = (name) => protocol.metrics[name].scenarios.includes(scenario.scenarioId);
+  const captureApplies = metricApplies("captureP95Ms");
+  const warmInjectionApplies = metricApplies("warmInjectionP95Ms");
+  const coldInjectionApplies = metricApplies("shortColdLexicalInjectionMs");
+  const expectedCaptureEventIds = captureApplies ? scenario.events.map((event) => event.eventId) : [];
+  if (exceptionalState) {
+    if (
+      result.latencyEvidence.captureEventIds.length !== 0 ||
+      result.latencyEvidence.runs.length !== 0 ||
+      !Object.values(result.latencyEvidence.aggregates).every((value) => value === null)
+    ) {
+      throw new Error("unsupported/not-run latency evidence is not empty");
+    }
+    return false;
+  }
+
+  const runs = result.latencyEvidence.runs;
+  const expectedResetMode = result.resourceSampleMode === "cold"
+    ? "fresh_isolated_data"
+    : "fresh_namespace_on_ready_process";
+  if (
+    !isDeepStrictEqual(result.latencyEvidence.captureEventIds, expectedCaptureEventIds) ||
+    runs.length !== protocol.runsPerScenario ||
+    !runs.every((run, index) =>
+      run.runOrdinal === index + 1 &&
+      run.discarded === (run.runOrdinal <= protocol.discardInitialRunsPerScenario) &&
+      run.resetMode === expectedResetMode &&
+      run.captureElapsedMs.length === expectedCaptureEventIds.length &&
+      (warmInjectionApplies ? typeof run.warmInjectionMs === "number" : run.warmInjectionMs === null) &&
+      (coldInjectionApplies
+        ? typeof run.coldLexicalInjectionMs === "number"
+        : run.coldLexicalInjectionMs === null)
+    )
+  ) {
+    throw new Error("latency run evidence does not match the pinned sampling protocol");
+  }
+  const measuredRuns = runs.filter((run) => !run.discarded);
+  if (measuredRuns.length !== protocol.measuredRunsPerScenario) {
+    throw new Error("latency measured-run count does not match the pinned protocol");
+  }
+  const nearestRankP95 = (values) => {
+    const ordered = [...values].sort((left, right) => left - right);
+    return ordered[Math.ceil(ordered.length * 0.95) - 1];
+  };
+  const expectedAggregates = {
+    captureP95Ms: captureApplies
+      ? nearestRankP95(measuredRuns.flatMap((run) => run.captureElapsedMs))
+      : null,
+    warmInjectionP95Ms: warmInjectionApplies
+      ? nearestRankP95(measuredRuns.map((run) => run.warmInjectionMs))
+      : null,
+    shortColdLexicalInjectionMs: coldInjectionApplies
+      ? nearestRankP95(measuredRuns.map((run) => run.coldLexicalInjectionMs))
+      : null,
+  };
+  if (!isDeepStrictEqual(result.latencyEvidence.aggregates, expectedAggregates)) {
+    throw new Error("latency aggregates do not match the recorded measured runs");
+  }
+  return (
+    (expectedAggregates.captureP95Ms === null ||
+      expectedAggregates.captureP95Ms <= fixture.thresholds.captureP95Ms) &&
+    (expectedAggregates.warmInjectionP95Ms === null ||
+      expectedAggregates.warmInjectionP95Ms <= fixture.thresholds.warmInjectionP95Ms) &&
+    (expectedAggregates.shortColdLexicalInjectionMs === null ||
+      expectedAggregates.shortColdLexicalInjectionMs <= fixture.thresholds.shortColdLexicalInjectionMs)
+  );
+}
 
 if (args.length === 1 && args[0] === "--help") {
   console.log(
@@ -69,11 +142,31 @@ for (const name of resultSharedNames) {
 }
 
 const scenario = fixture.scenarios.find((item) => item.scenarioId === result.scenarioId);
+const expectedExecutionEnvironment = {
+  pins: fixture.pins,
+  environment: fixture.environment,
+};
+const environmentFingerprint = fingerprint(
+  "free-mem:alpha-execution-environment:v1\0",
+  result.executionEnvironment,
+);
+const artifactFingerprint = fingerprint(
+  "free-mem:alpha-candidate-artifact:v1\0",
+  result.artifactMetadata,
+);
 if (
   !scenario ||
   result.fixtureId !== fixture.fixtureId ||
   result.fixtureFingerprint !== fixture.contractFingerprint ||
   result.resourceSampleMode !== scenario.resourceSampleMode ||
+  result.targetDestinationClass !== scenario.targetDestinationClass ||
+  result.effectiveManifestFingerprint !==
+    fixture.effectiveConfiguration.configurationFingerprint ||
+  !isDeepStrictEqual(result.executionEnvironment, expectedExecutionEnvironment) ||
+  result.environmentFingerprint !== environmentFingerprint ||
+  result.artifactMetadata.candidateId !== result.candidateId ||
+  result.artifactMetadata.baseCommit !== fixture.pins.freeMemBaseCommit ||
+  result.artifactFingerprint !== artifactFingerprint ||
   result.drain.drainConditionId !== scenario.drainCondition.drainConditionId ||
   result.drain.terminalMilestone !== scenario.drainCondition.terminalMilestone
 ) {
@@ -95,11 +188,66 @@ const expectedDegradations = scenario.drainCondition.targetInjectionAcknowledged
   : [];
 const expectedOperationalStatus = scenario.expectedOperationalStatus ?? null;
 const expectedFailureMetadata = scenario.fault?.failureMetadata ?? null;
+const observedRetryCase = (item) => {
+  const providerAttempted = item.expected.attemptDelta > 0;
+  return {
+    caseId: item.caseId,
+    deliveredSignals: item.signals,
+    consumedSignalIds: item.expectedConsumedSignalIds,
+    ignoredSignalIds: item.expectedIgnoredSignalIds,
+    providerAttempted,
+    observedProviderOutcome: providerAttempted ? item.providerOutcome : null,
+    observedTransition: item.expected,
+  };
+};
 const expectedRetryEvidence = scenario.fault?.resumeCases
-  ? { initialSnapshot: scenario.fault.resumeCaseInitialSnapshot, cases: scenario.fault.resumeCases }
+  ? {
+      observedInitialSnapshot: scenario.fault.resumeCaseInitialSnapshot,
+      cases: scenario.fault.resumeCases.map(observedRetryCase),
+    }
   : scenario.fault?.redirectRecovery
-    ? { redirectRecovery: scenario.fault.redirectRecovery }
+    ? {
+        observedInitialSnapshot: scenario.fault.resumeCaseInitialSnapshot,
+        redirectCase: observedRetryCase({
+          caseId: scenario.fault.redirectRecovery.caseId,
+          signals: [scenario.fault.redirectRecovery.signal],
+          expectedConsumedSignalIds:
+            scenario.fault.redirectRecovery.expectedConsumedSignalIds,
+          expectedIgnoredSignalIds:
+            scenario.fault.redirectRecovery.expectedIgnoredSignalIds,
+          providerOutcome: scenario.fault.redirectRecovery.providerOutcome,
+          expected: scenario.fault.redirectRecovery.expected,
+        }),
+      }
     : null;
+const conflictProbe = scenario.fault?.identityConflictProbe;
+const expectedIdentityConflictEvidence = conflictProbe
+  ? {
+      eventId: conflictProbe.eventId,
+      payloadDigestVersion: conflictProbe.payloadDigestVersion,
+      canonicalPayloadDigest: conflictProbe.canonicalPayloadDigest,
+      conflictingPayloadDigest: conflictProbe.conflictingPayloadDigest,
+      conflictReceiptId: conflictProbe.conflictReceiptId,
+      conflictReceiptState: conflictProbe.conflictReceiptState,
+      canonicalEventState: conflictProbe.canonicalEventState,
+      incomingDeliveryState: conflictProbe.incomingDeliveryState,
+      reason: conflictProbe.expectedReason,
+      canonicalPayloadUnchanged: conflictProbe.canonicalPayloadUnchanged,
+      durableMemoryDelta: conflictProbe.durableMemoryDelta,
+    }
+  : null;
+const observedCases = result.retryEvidence?.cases ??
+  (result.retryEvidence?.redirectCase ? [result.retryEvidence.redirectCase] : []);
+if (!observedCases.every((item) =>
+  item.providerAttempted === (item.observedTransition.attemptDelta > 0) &&
+  item.ignoredSignalIds.length === item.observedTransition.ignoredSignalCount &&
+  item.consumedSignalIds.length + item.ignoredSignalIds.length === item.deliveredSignals.length &&
+  (item.providerAttempted
+    ? item.observedProviderOutcome !== null
+    : item.observedProviderOutcome === null)
+)) {
+  throw new Error("observed retry evidence is internally inconsistent");
+}
 
 const matchingPositions = (actual, expected) =>
   expected.reduce(
@@ -169,10 +317,16 @@ const oracleEvidenceFields = [
   "persistedSecretCount",
   "injectedSecretCount",
   "payloadBytesSent",
+  "redirectLocationRequestCount",
+  "redirectLocationPayloadBytesSent",
+  "resentPayloadCount",
 ];
 const securityEvidencePass =
   result.securityEvidence.persistedSecretCount === 0 &&
   result.securityEvidence.injectedSecretCount === 0 &&
+  result.securityEvidence.redirectLocationRequestCount === 0 &&
+  result.securityEvidence.redirectLocationPayloadBytesSent === 0 &&
+  result.securityEvidence.resentPayloadCount === 0 &&
   result.securityEvidence.forbiddenSentinelObservationCount === 0 &&
   (scenario.expectedInjectedItems.length > 0 || result.securityEvidence.remoteInjectionCount === 0) &&
   (result.securityEvidence.remoteProviderRequestCount === 0 ||
@@ -182,6 +336,8 @@ const securityEvidencePass =
   );
 const safetyPass =
   isDeepStrictEqual(result.safety, scenario.expectedCounters) && securityEvidencePass;
+
+const latencyPass = evaluateLatencyEvidence(result, scenario, fixture, exceptionalState);
 
 const resourceMetrics = fixture.samplingProtocol.resourceMetrics;
 const steadyMetric = resourceMetrics.maxSteadyProductProcessCount;
@@ -232,8 +388,23 @@ if (!isDeepStrictEqual(result.resource, derivedResource)) {
 }
 
 const limits = fixture.thresholds;
+const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
+const selectionDeadlineExceeded =
+  result.counts.deadlineUnprocessed > 0 ||
+  result.selectionElapsedMs > injectionEnvelope.selectionTimeBudgetMs;
+const injectionPackSizePass =
+  result.attemptedRenderedBytes <= injectionEnvelope.maxRenderedBytes &&
+  result.attemptedInjectedTokens <= injectionEnvelope.maxInjectedTokens;
+if (
+  (selectionDeadlineExceeded || !injectionPackSizePass) &&
+  (result.counts.selectedItems !== 0 ||
+    result.injectedItems.length !== 0 ||
+    result.renderedBytes !== 0 ||
+    result.injectedTokens !== 0)
+) {
+  throw new Error("late or oversized InjectionPack was recorded as delivered");
+}
 const resourcePass =
-  result.injectedTokens <= limits.maxInjectedTokens &&
   result.resource.maxSteadyProductProcessCount <= limits.maxSteadyProductProcessCount &&
   result.resource.maxShortRunRssGrowthMiB <= limits.maxShortRunRssGrowthMiB &&
   result.resource.maxPendingQueueDepth <= limits.maxPendingQueueDepth &&
@@ -244,16 +415,28 @@ const scenarioOraclePass =
   countsPass &&
   denominatorsPass &&
   isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
+  isDeepStrictEqual(result.identityConflictEvidence, expectedIdentityConflictEvidence) &&
   isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) &&
   isDeepStrictEqual(result.operationalStatus, expectedOperationalStatus) &&
   isDeepStrictEqual(result.retryEvidence, expectedRetryEvidence);
-const shouldBeEligible =
-  !result.drain.timedOut &&
-  result.counts.deadlineUnprocessed === 0 &&
-  resourcePass &&
-  safetyPass &&
-  qualityPass &&
-  scenarioOraclePass;
+const derivedFailureReason = result.drain.timedOut
+  ? "drain_timed_out"
+  : selectionDeadlineExceeded
+    ? "selection_deadline_exceeded"
+    : !injectionPackSizePass
+      ? "injection_pack_limit_exceeded"
+      : !latencyPass
+        ? "latency_threshold_exceeded"
+        : !resourcePass
+          ? "resource_threshold_exceeded"
+          : !safetyPass
+            ? "safety_threshold_exceeded"
+            : !qualityPass
+              ? "quality_threshold_exceeded"
+              : !scenarioOraclePass
+                ? "scenario_oracle_mismatch"
+                : null;
+const shouldBeEligible = derivedFailureReason === null;
 
 if (result.drain.timedOut && !milestonesPass) {
   throw new Error("timed-out result milestones are not a valid pre-terminal lifecycle prefix");
@@ -281,8 +464,13 @@ if (exceptionalState) {
     result.injectedItems.length === 0 &&
     result.omittedItems.length === 0 &&
     result.packDegradations.length === 0 &&
+    result.attemptedRenderedBytes === 0 &&
+    result.renderedBytes === 0 &&
+    result.attemptedInjectedTokens === 0 &&
     result.injectedTokens === 0 &&
+    result.selectionElapsedMs === 0 &&
     result.retryEvidence === null &&
+    result.identityConflictEvidence === null &&
     result.failureMetadata === null &&
     result.operationalStatus === null &&
     !result.drain.timedOut &&
@@ -307,22 +495,11 @@ if (exceptionalState) {
     throw new Error("passing evidence is not recorded as an eligible result");
   }
 } else {
-  const expectedFailureReason = result.drain.timedOut
-    ? "drain_timed_out"
-    : result.counts.deadlineUnprocessed > 0
-      ? "selection_deadline_exceeded"
-      : !resourcePass
-        ? "resource_threshold_exceeded"
-      : !safetyPass
-        ? "safety_threshold_exceeded"
-        : !qualityPass
-          ? "quality_threshold_exceeded"
-          : "scenario_oracle_mismatch";
   if (
     (result.drain.timedOut
       ? result.disposition.state !== "failed" && result.disposition.state !== "degraded"
       : result.disposition.state !== "failed") ||
-    result.disposition.reason !== expectedFailureReason ||
+    result.disposition.reason !== derivedFailureReason ||
     result.disposition.successfulComparisonEligible
   ) {
     throw new Error("failed evidence is not recorded with the derived non-eligible reason");

@@ -14,10 +14,10 @@
     "language": { "$ref": "#/$defs/SharedNonEmptyString" },
     "factMatch": { "const": "exact" },
     "contractFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "pins": { "$ref": "#/$defs/Pins" },
+    "pins": { "$ref": "#/$defs/SharedPins" },
     "effectiveConfiguration": { "$ref": "#/$defs/EffectiveConfiguration" },
     "kindContract": { "$ref": "#/$defs/KindContract" },
-    "environment": { "$ref": "#/$defs/Environment" },
+    "environment": { "$ref": "#/$defs/SharedEnvironment" },
     "lifecycleProfiles": { "$ref": "#/$defs/LifecycleProfiles" },
     "samplingProtocol": { "$ref": "#/$defs/SamplingProtocol" },
     "thresholds": { "$ref": "#/$defs/Thresholds" },
@@ -33,7 +33,7 @@
     "SharedPositiveInteger": { "type": "integer", "minimum": 1 },
     "Agent": { "enum": ["claude-code", "codex"] },
     "EventKind": { "enum": ["prompt", "tool_activity", "tool_result", "assistant_message", "session_boundary"] },
-    "Pins": {
+    "SharedPins": {
       "type": "object",
       "additionalProperties": false,
       "required": ["freeMemBaseCommit", "claudeCodeVersion", "codexVersion", "nodeVersion", "pnpmVersion", "summaryProviderStub"],
@@ -49,8 +49,12 @@
     "EffectiveConfiguration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["resourceProfile", "summaryProvider", "embeddingProvider"],
+      "required": ["manifestVersion", "manifestId", "configurationFingerprint", "destinationPolicyMap", "resourceProfile", "summaryProvider", "embeddingProvider"],
       "properties": {
+        "manifestVersion": { "const": 1 },
+        "manifestId": { "const": "slice1-effective-manifest-v1" },
+        "configurationFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "destinationPolicyMap": { "$ref": "#/$defs/DestinationPolicyMap" },
         "resourceProfile": {
           "type": "object",
           "additionalProperties": false,
@@ -94,6 +98,39 @@
             "packDegradationReason": { "const": "semantic_disabled" }
           }
         }
+      }
+    },
+    "DestinationPolicyMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claude-code-local", "codex-local", "claude-code-remote", "codex-remote"],
+      "properties": {
+        "claude-code-local": { "$ref": "#/$defs/LocalDestinationPolicy" },
+        "codex-local": { "$ref": "#/$defs/LocalDestinationPolicy" },
+        "claude-code-remote": { "$ref": "#/$defs/RemoteDestinationPolicy" },
+        "codex-remote": { "$ref": "#/$defs/RemoteDestinationPolicy" }
+      }
+    },
+    "LocalDestinationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetAgent", "executionLocation", "egressPolicy", "eligibleSensitivities"],
+      "properties": {
+        "targetAgent": { "$ref": "#/$defs/Agent" },
+        "executionLocation": { "const": "local" },
+        "egressPolicy": { "const": "same_repository_on_device" },
+        "eligibleSensitivities": { "const": ["eligible", "private", "local_only"] }
+      }
+    },
+    "RemoteDestinationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetAgent", "executionLocation", "egressPolicy", "eligibleSensitivities"],
+      "properties": {
+        "targetAgent": { "$ref": "#/$defs/Agent" },
+        "executionLocation": { "const": "remote" },
+        "egressPolicy": { "const": "remote_off_host" },
+        "eligibleSensitivities": { "const": ["eligible"] }
       }
     },
     "ResourceWarningThresholds": {
@@ -152,7 +189,7 @@
         }
       }
     },
-    "Environment": {
+    "SharedEnvironment": {
       "type": "object",
       "additionalProperties": false,
       "required": ["home", "dataDir", "repository", "network"],
@@ -276,17 +313,16 @@
     "Scenario": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarioId", "sourceAgent", "targetAgent", "sourceRepositoryScope", "targetRepositoryScope", "lifecycleProfileId", "resourceSampleMode", "retrievalQuery", "events", "summaryProviderStub", "drainCondition", "expectedInjectedItems", "expectedOmissions", "forbiddenFacts", "expectedCounters"],
+      "required": ["scenarioId", "sourceAgent", "targetDestinationClass", "sourceRepositoryScope", "targetRepositoryScope", "lifecycleProfileId", "resourceSampleMode", "retrievalQuery", "events", "summaryProviderStub", "drainCondition", "expectedInjectedItems", "expectedOmissions", "forbiddenFacts", "expectedCounters"],
       "properties": {
         "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sourceAgent": { "$ref": "#/$defs/Agent" },
-        "targetAgent": { "$ref": "#/$defs/Agent" },
+        "targetDestinationClass": { "enum": ["claude-code-local", "codex-local", "claude-code-remote", "codex-remote"] },
         "sourceRepositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
         "targetRepositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
         "lifecycleProfileId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "resourceSampleMode": { "enum": ["cold", "warm"] },
         "derivationProviderExecutionLocation": { "const": "local" },
-        "targetExecutionLocation": { "enum": ["local", "remote"] },
         "retrievalQuery": { "$ref": "#/$defs/SharedNonEmptyString" },
         "fault": { "$ref": "#/$defs/Fault" },
         "providerActivationProposal": { "$ref": "#/$defs/ProviderActivationProposal" },
@@ -302,12 +338,11 @@
       },
       "oneOf": [
         {
-          "required": ["derivationProviderExecutionLocation", "targetExecutionLocation", "securityOracle"]
+          "required": ["derivationProviderExecutionLocation", "securityOracle"]
         },
         {
           "properties": {
-            "derivationProviderExecutionLocation": false,
-            "targetExecutionLocation": false
+            "derivationProviderExecutionLocation": false
           }
         }
       ]
@@ -468,17 +503,20 @@
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
         "recoveredOutput": { "$ref": "#/$defs/SummaryProviderStub" },
-        "resumeCases": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/SharedResumeCase" } }
+        "resumeCases": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/ResumeCase" } }
       }
     },
     "SummaryProviderRedirectFault": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "recoveredOutput", "redirectRecovery"],
+      "required": ["kind", "resumeCaseInitialSnapshot", "recoveredOutput", "redirectRecovery"],
       "properties": {
         "kind": { "const": "summary_provider_redirect_response" },
+        "resumeCaseInitialSnapshot": {
+          "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
+        },
         "recoveredOutput": { "$ref": "#/$defs/SummaryProviderStub" },
-        "redirectRecovery": { "$ref": "#/$defs/SharedRedirectRecovery" }
+        "redirectRecovery": { "$ref": "#/$defs/RedirectRecovery" }
       }
     },
     "LocalOnlyProviderFault": {
@@ -501,7 +539,7 @@
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
         "recoveredMaxMemoryItemsPerDerivation": { "$ref": "#/$defs/SharedPositiveInteger" },
-        "resumeCases": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/SharedResumeCase" } }
+        "resumeCases": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/ResumeCase" } }
       }
     },
     "SharedOutputLimitFailureMetadata": {
@@ -528,7 +566,7 @@
     "IdentityConflictProbe": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["eventId", "digestInput", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingRedactedPayload", "conflictingPayloadDigest", "canonicalEventState", "incomingDeliveryState", "expectedReason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
+      "required": ["eventId", "digestInput", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingRedactedPayload", "conflictingPayloadDigest", "conflictReceiptId", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "expectedReason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
       "properties": {
         "eventId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "digestInput": { "const": "domain_separated_jcs_redacted_payload_v1" },
@@ -536,6 +574,8 @@
         "canonicalPayloadDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "conflictingRedactedPayload": { "$ref": "#/$defs/SharedNonEmptyString" },
         "conflictingPayloadDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "conflictReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "conflictReceiptState": { "const": "non_success" },
         "canonicalEventState": { "const": "committed" },
         "incomingDeliveryState": { "const": "quarantined" },
         "expectedReason": { "const": "event_identity_payload_conflict" },
@@ -571,23 +611,33 @@
         "durableMemoryCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
       }
     },
-    "SharedResumeCase": {
+    "ResumeCase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "signals", "providerOutcome", "expected"],
+      "required": ["caseId", "signals", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "providerOutcome", "expected"],
       "properties": {
         "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "signals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedResumeSignal" } },
-        "providerOutcome": { "enum": ["valid", "malformed"] },
+        "expectedConsumedSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "expectedIgnoredSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "providerOutcome": {
+          "oneOf": [
+            { "type": "null" },
+            { "enum": ["valid", "malformed"] }
+          ]
+        },
         "expected": { "$ref": "#/$defs/SharedResumeExpected" }
       }
     },
-    "SharedRedirectRecovery": {
+    "RedirectRecovery": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["signal", "oldLocationRequestCountAfterActivation", "providerOutcome", "expected"],
+      "required": ["caseId", "signal", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "oldLocationRequestCountAfterActivation", "providerOutcome", "expected"],
       "properties": {
+        "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "signal": { "$ref": "#/$defs/SharedResumeSignal" },
+        "expectedConsumedSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "expectedIgnoredSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "oldLocationRequestCountAfterActivation": { "const": 0 },
         "providerOutcome": { "const": "valid" },
         "expected": { "$ref": "#/$defs/SharedResumeExpected" }
@@ -610,6 +660,7 @@
         "eventDeliveryState": { "const": "committed" },
         "summaryJobState": { "const": "retry-exhausted" },
         "redirectLocationRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "redirectLocationPayloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "resentPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "providerRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "providerPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
@@ -633,6 +684,7 @@
     "SecurityOracle": {
       "oneOf": [
         { "$ref": "#/$defs/RemoteEgressSecurityOracle" },
+        { "$ref": "#/$defs/RedirectEgressSecurityOracle" },
         { "$ref": "#/$defs/PrivateEgressSecurityOracle" },
         { "$ref": "#/$defs/TransportSecurityOracle" },
         { "$ref": "#/$defs/CrossScopeSecurityOracle" },
@@ -681,6 +733,20 @@
         "forbiddenSentinels": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "sentinelObservedAtRemote": { "const": false },
         "secretObservedInPersistenceOrInjection": { "const": false }
+      }
+    },
+    "RedirectEgressSecurityOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consideredRemoteProviderEventCount", "remoteProviderRequestCount", "remoteProviderPayloadCount", "payloadBytesSent", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount"],
+      "properties": {
+        "consideredRemoteProviderEventCount": { "const": 1 },
+        "remoteProviderRequestCount": { "const": 1 },
+        "remoteProviderPayloadCount": { "const": 1 },
+        "payloadBytesSent": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "redirectLocationRequestCount": { "const": 0 },
+        "redirectLocationPayloadBytesSent": { "const": 0 },
+        "resentPayloadCount": { "const": 0 }
       }
     },
     "CrossScopeSecurityOracle": {

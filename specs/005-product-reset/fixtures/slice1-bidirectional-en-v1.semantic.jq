@@ -126,6 +126,18 @@ def resource_profile_ok($root):
     "maxStorageGrowthBytes": $root.thresholds.maxStorageGrowthBytes
   };
 
+def destination_policy_ok($root):
+  $root.effectiveConfiguration.destinationPolicyMap as $policies
+  | $root.effectiveConfiguration.manifestVersion == 1
+  and $root.effectiveConfiguration.manifestId == "slice1-effective-manifest-v1"
+  and $policies["claude-code-local"].targetAgent == "claude-code"
+  and $policies["codex-local"].targetAgent == "codex"
+  and $policies["claude-code-remote"].targetAgent == "claude-code"
+  and $policies["codex-remote"].targetAgent == "codex"
+  and all($root.scenarios[];
+    . as $scenario
+    | ($policies | has($scenario.targetDestinationClass)));
+
 def resource_metrics_ok($root):
   all($root.samplingProtocol.resourceMetrics[];
     . as $metric
@@ -263,7 +275,10 @@ def bidirectional_ok($root):
         and (.expectedInjectedItems | length) > 0)
   ]) as $flows
   | ($flows | length) == 2
-  and ([ $flows[] | (.sourceAgent + "->" + .targetAgent) ] | sort) ==
+  and ([ $flows[] |
+    (.sourceAgent + "->" +
+      $root.effectiveConfiguration.destinationPolicyMap[.targetDestinationClass].targetAgent)
+  ] | sort) ==
     (["claude-code->codex", "codex->claude-code"] | sort)
   and all($flows[];
     $root.lifecycleProfiles[.lifecycleProfileId] as $milestones
@@ -292,15 +307,26 @@ def spool_ok($root):
     and .fault.identityConflictProbe.eventId == $eventIds[1]
     and .fault.identityConflictProbe.canonicalPayloadDigest
       != .fault.identityConflictProbe.conflictingPayloadDigest
+    and .fault.identityConflictProbe.conflictReceiptId ==
+      "conflict-receipt-spool-event-2-v1"
+    and .fault.identityConflictProbe.conflictReceiptState == "non_success"
     and .fault.identityConflictProbe.canonicalEventState == "committed"
     and .fault.identityConflictProbe.incomingDeliveryState == "quarantined"
     and .fault.identityConflictProbe.expectedReason == "event_identity_payload_conflict"
     and .fault.identityConflictProbe.canonicalPayloadUnchanged
     and .fault.identityConflictProbe.durableMemoryDelta == 0;
 
+def resume_case_signal_sets_ok($case):
+  ($case.expectedConsumedSignalIds | length) +
+    ($case.expectedIgnoredSignalIds | length) == ($case.signals | length)
+  and ($case.expectedIgnoredSignalIds | length) == $case.expected.ignoredSignalCount
+  and (([$case.signals[].signalId] | sort) ==
+    (([$case.expectedConsumedSignalIds[]] + [$case.expectedIgnoredSignalIds[]]) | sort));
+
 def retry_ok($root):
   fault_scenario($root; "summary_provider_malformed_response") as $retry
   | $retry.drainCondition.eventDeliveryState == "committed"
+    and all($retry.fault.resumeCases[]; resume_case_signal_sets_ok(.))
     and $retry.drainCondition.summaryJobState == "retry-exhausted"
     and $retry.fault.attemptsUntilExhausted ==
       $root.effectiveConfiguration.resourceProfile.processingRetryLimit
@@ -376,10 +402,27 @@ def redirect_ok($root):
     and $redirect.drainCondition.eventDeliveryState == "committed"
     and $redirect.drainCondition.summaryJobState == "retry-exhausted"
     and $redirect.drainCondition.redirectLocationRequestCount == 0
+    and $redirect.drainCondition.redirectLocationPayloadBytesSent == 0
     and $redirect.drainCondition.resentPayloadCount == 0
+    and $redirect.securityOracle.consideredRemoteProviderEventCount == 1
+    and $redirect.securityOracle.remoteProviderRequestCount == 1
+    and $redirect.securityOracle.remoteProviderPayloadCount == 1
+    and $redirect.securityOracle.payloadBytesSent ==
+      ($redirect.events[0].redactedPayload | utf8bytelength)
+    and $redirect.securityOracle.redirectLocationRequestCount ==
+      $redirect.drainCondition.redirectLocationRequestCount
+    and $redirect.securityOracle.redirectLocationPayloadBytesSent ==
+      $redirect.drainCondition.redirectLocationPayloadBytesSent
+    and $redirect.securityOracle.resentPayloadCount ==
+      $redirect.drainCondition.resentPayloadCount
     and $redirect.expectedOperationalStatus.reason == "provider_redirect_rejected"
     and $redirect.expectedOperationalStatus.safeAction ==
       "activate_non_redirecting_summary_provider"
+    and $redirect.fault.redirectRecovery.caseId ==
+      "redirect-validated-configuration-activation"
+    and ($redirect.fault.redirectRecovery.expectedConsumedSignalIds ==
+      [$redirect.fault.redirectRecovery.signal.signalId])
+    and ($redirect.fault.redirectRecovery.expectedIgnoredSignalIds | length) == 0
     and $redirect.fault.redirectRecovery.signal.kind ==
       "validated_configuration_activation"
     and $redirect.fault.redirectRecovery.signal.configurationFingerprint ==
@@ -405,6 +448,7 @@ def output_limit_ok($root):
   fault_scenario($root; "summary_provider_output_limit_exceeded") as $scenario
   | provider_items($scenario) as $items
   | scenario_core_ok($root; $scenario)
+    and all($scenario.fault.resumeCases[]; resume_case_signal_sets_ok(.))
     and $scenario.fault.configuredLimit ==
       $root.effectiveConfiguration.resourceProfile.maxMemoryItemsPerDerivation
     and $scenario.fault.observedResultCount == ($items | length)
@@ -445,6 +489,8 @@ def output_limit_ok($root):
     and all($scenario.fault.resumeCases[]
       | select(.caseId == "unchanged-provider-health-no-op"
           or .caseId == "unchanged-doctor-retry-no-op");
+        .providerOutcome == null
+        and
         .signals[0].configurationFingerprint ==
           $root.effectiveConfiguration.summaryProvider.configurationFingerprint
         and .expected.budgetAfterGrant == 0
@@ -545,8 +591,11 @@ def derived_sensitivity_security_ok($root):
   | ($matches | length) == 1
   and ($matches[0] as $scenario
     | provider_items($scenario) as $items
+    | $root.effectiveConfiguration.destinationPolicyMap[
+        $scenario.targetDestinationClass
+      ] as $destinationPolicy
     | $scenario.derivationProviderExecutionLocation == "local"
-    and $scenario.targetExecutionLocation == "remote"
+    and $destinationPolicy.executionLocation == "remote"
     and all($scenario.events[]; .sensitivity == "local_only")
     and all($items[]; .sensitivity == "local_only")
     and ($scenario.expectedInjectedItems | length) == 0
@@ -564,6 +613,7 @@ def derived_sensitivity_security_ok($root):
 | ensure(fixture_graph_ok($root); "fixture scenario graph mismatch")
 | ensure(injection_envelope_ok($root); "injection envelope mismatch")
 | ensure(resource_profile_ok($root); "resource profile mismatch")
+| ensure(destination_policy_ok($root); "destination policy map mismatch")
 | ensure(resource_metrics_ok($root); "resource measurement boundary mismatch")
 | ensure(failure_continuation_ok($root); "failure continuation milestone mismatch")
 | ensure(pack_degradation_policy_ok($root); "pack degradation policy mismatch")

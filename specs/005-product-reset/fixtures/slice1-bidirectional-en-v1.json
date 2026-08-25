@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c",
+  "contractFingerprint": "sha256:ac90d921ecf20371ccd580a9fde31c300225ab2d3bb6b07bd9fcecadeef6980b",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -15,6 +15,35 @@
     "summaryProviderStub": "deterministic-summary-v1"
   },
   "effectiveConfiguration": {
+    "manifestVersion": 1,
+    "manifestId": "slice1-effective-manifest-v1",
+    "configurationFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
+    "destinationPolicyMap": {
+      "claude-code-local": {
+        "targetAgent": "claude-code",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
+      },
+      "codex-local": {
+        "targetAgent": "codex",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
+      },
+      "claude-code-remote": {
+        "targetAgent": "claude-code",
+        "executionLocation": "remote",
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
+      },
+      "codex-remote": {
+        "targetAgent": "codex",
+        "executionLocation": "remote",
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
+      }
+    },
     "resourceProfile": {
       "profileId": "slice1-short-run",
       "version": 1,
@@ -258,7 +287,7 @@
     {
       "scenarioId": "claude-to-codex",
       "sourceAgent": "claude-code",
-      "targetAgent": "codex",
+      "targetDestinationClass": "codex-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "bidirectional_prompt_flush",
@@ -405,7 +434,7 @@
     {
       "scenarioId": "codex-to-claude",
       "sourceAgent": "codex",
-      "targetAgent": "claude-code",
+      "targetDestinationClass": "claude-code-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "bidirectional_prompt_flush",
@@ -552,7 +581,7 @@
     {
       "scenarioId": "runtime-unavailable-spool-recovery",
       "sourceAgent": "claude-code",
-      "targetAgent": "codex",
+      "targetDestinationClass": "codex-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "spool_recovery",
@@ -584,6 +613,8 @@
           "canonicalPayloadDigest": "sha256:d24752e237bb46925c9baffce7f9ee4964b2d1878897a5400b8b2d106db296f1",
           "conflictingRedactedPayload": "Next: verify the queued event after daemon restart with altered payload.",
           "conflictingPayloadDigest": "sha256:629ce8c5b81da6e328e1c747061042058d79ee8e017fdb2dd6a366c6b08a0727",
+          "conflictReceiptId": "conflict-receipt-spool-event-2-v1",
+          "conflictReceiptState": "non_success",
           "canonicalEventState": "committed",
           "incomingDeliveryState": "quarantined",
           "expectedReason": "event_identity_payload_conflict",
@@ -674,7 +705,7 @@
     {
       "scenarioId": "summary-provider-retry-exhausted",
       "sourceAgent": "codex",
-      "targetAgent": "claude-code",
+      "targetDestinationClass": "claude-code-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -719,6 +750,8 @@
                 "configurationFingerprint": "summary-config-repaired-v2"
               }
             ],
+            "expectedConsumedSignalIds": ["config-activation-1"],
+            "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
             "expected": {
               "budgetBefore": 0,
@@ -743,6 +776,8 @@
                 "configurationFingerprint": "summary-config-v1"
               }
             ],
+            "expectedConsumedSignalIds": ["provider-healthy-1"],
+            "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
             "expected": {
               "budgetBefore": 0,
@@ -767,6 +802,8 @@
                 "configurationFingerprint": "summary-config-v1"
               }
             ],
+            "expectedConsumedSignalIds": ["doctor-retry-1"],
+            "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
             "expected": {
               "budgetBefore": 0,
@@ -807,6 +844,8 @@
                 "configurationFingerprint": "summary-config-v1"
               }
             ],
+            "expectedConsumedSignalIds": ["provider-healthy-2"],
+            "expectedIgnoredSignalIds": ["provider-healthy-2", "doctor-retry-stale-1"],
             "providerOutcome": "malformed",
             "expected": {
               "budgetBefore": 0,
@@ -883,7 +922,7 @@
     {
       "scenarioId": "summary-provider-redirect-rejected",
       "sourceAgent": "claude-code",
-      "targetAgent": "codex",
+      "targetDestinationClass": "codex-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -891,6 +930,11 @@
       "retrievalQuery": "provider redirect rejection state",
       "fault": {
         "kind": "summary_provider_redirect_response",
+        "resumeCaseInitialSnapshot": {
+          "state": "retry-exhausted",
+          "budget": 0,
+          "lastConsumedSequence": 0
+        },
         "recoveredOutput": {
           "summary": {
             "title": "Redirect-safe local event",
@@ -901,6 +945,7 @@
           "memoryItems": []
         },
         "redirectRecovery": {
+          "caseId": "redirect-validated-configuration-activation",
           "signal": {
             "signalId": "redirect-config-activation-1",
             "sequence": 1,
@@ -909,6 +954,8 @@
             "providerChoiceId": "deterministic-summary-v1",
             "configurationFingerprint": "summary-config-no-redirect-v2"
           },
+          "expectedConsumedSignalIds": ["redirect-config-activation-1"],
+          "expectedIgnoredSignalIds": [],
           "oldLocationRequestCountAfterActivation": 0,
           "providerOutcome": "valid",
           "expected": {
@@ -952,6 +999,7 @@
         "eventDeliveryState": "committed",
         "summaryJobState": "retry-exhausted",
         "redirectLocationRequestCount": 0,
+        "redirectLocationPayloadBytesSent": 0,
         "resentPayloadCount": 0,
         "targetInjectionAcknowledged": false
       },
@@ -969,6 +1017,15 @@
       "forbiddenFacts": [
         "The redirect payload was resent."
       ],
+      "securityOracle": {
+        "consideredRemoteProviderEventCount": 1,
+        "remoteProviderRequestCount": 1,
+        "remoteProviderPayloadCount": 1,
+        "payloadBytesSent": 58,
+        "redirectLocationRequestCount": 0,
+        "redirectLocationPayloadBytesSent": 0,
+        "resentPayloadCount": 0
+      },
       "expectedCounters": {
         "agentBlockageCount": 0,
         "acceptedEventLossCount": 0,
@@ -980,7 +1037,7 @@
     {
       "scenarioId": "credentialless-http-activation-rejected",
       "sourceAgent": "codex",
-      "targetAgent": "claude-code",
+      "targetDestinationClass": "claude-code-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "configuration_rejection",
@@ -1038,7 +1095,7 @@
     {
       "scenarioId": "summary-provider-output-limit-exceeded",
       "sourceAgent": "claude-code",
-      "targetAgent": "codex",
+      "targetDestinationClass": "codex-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -1077,6 +1134,8 @@
                 "configurationFingerprint": "summary-config-limit-17-v2"
               }
             ],
+            "expectedConsumedSignalIds": ["output-limit-config-activation-1"],
+            "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
             "expected": {
               "budgetBefore": 0,
@@ -1101,7 +1160,9 @@
                 "configurationFingerprint": "summary-config-v1"
               }
             ],
-            "providerOutcome": "valid",
+            "expectedConsumedSignalIds": [],
+            "expectedIgnoredSignalIds": ["output-limit-provider-health-1"],
+            "providerOutcome": null,
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 0,
@@ -1125,7 +1186,9 @@
                 "configurationFingerprint": "summary-config-v1"
               }
             ],
-            "providerOutcome": "valid",
+            "expectedConsumedSignalIds": [],
+            "expectedIgnoredSignalIds": ["output-limit-doctor-retry-1"],
+            "providerOutcome": null,
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 0,
@@ -1445,7 +1508,7 @@
     {
       "scenarioId": "private-remote-provider-rejected",
       "sourceAgent": "codex",
-      "targetAgent": "claude-code",
+      "targetDestinationClass": "claude-code-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -1519,7 +1582,7 @@
     {
       "scenarioId": "local-only-remote-provider-rejected",
       "sourceAgent": "codex",
-      "targetAgent": "claude-code",
+      "targetDestinationClass": "claude-code-local",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -1602,7 +1665,7 @@
     {
       "scenarioId": "incompatible-scope-injection-rejected",
       "sourceAgent": "claude-code",
-      "targetAgent": "codex",
+      "targetDestinationClass": "codex-local",
       "sourceRepositoryScope": "repo-other",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "scope_rejection",
@@ -1670,13 +1733,12 @@
     {
       "scenarioId": "local-derived-memory-remote-injection-rejected",
       "sourceAgent": "codex",
-      "targetAgent": "claude-code",
+      "targetDestinationClass": "claude-code-remote",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "derived_sensitivity_rejection",
       "resourceSampleMode": "warm",
       "derivationProviderExecutionLocation": "local",
-      "targetExecutionLocation": "remote",
       "retrievalQuery": "local derived sentinel",
       "events": [
         {

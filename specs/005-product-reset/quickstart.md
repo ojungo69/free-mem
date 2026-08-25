@@ -144,7 +144,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T19:46:45+09:00
+## Validation result — 2026-08-25T21:15:09+09:00
 
 | Check | Result |
 |---|---|
@@ -153,7 +153,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, transport, privacy, output-limit, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, generated results for all 11 scenarios, 25 negative mutations, and six inspectable non-eligible variants |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, generated results for all 11 scenarios, and targeted conflict, retry, redirect, manifest, environment, pack-limit, latency, resource, quality, and exceptional-state mutations |
 | Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
@@ -169,8 +169,8 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- Three completed local CodeRabbit review cycles identified contract gaps; every technically valid
-  finding is fixed. The pushed head must still receive a fresh GitHub CodeRabbit review before merge.
+- Local CodeRabbit review found no remaining issue after the valid contract findings were fixed. The
+  pushed head must still receive a fresh GitHub CodeRabbit review before merge.
 - Cubic's final review returned `issues: []`. Ponytail review found no unused definitions,
   speculative abstraction, dependency, or removable compatibility layer.
 - No command required a changed path, flag, retry, or skipped gate.

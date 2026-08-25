@@ -4,7 +4,7 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "environmentFingerprint", "artifactFingerprint", "drain", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "quality", "injectedTokens", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "quality", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -12,7 +12,11 @@
     "candidateId": { "$ref": "#/$defs/SharedNonEmptyString" },
     "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
     "resourceSampleMode": { "enum": ["cold", "warm"] },
+    "targetDestinationClass": { "enum": ["claude-code-local", "codex-local", "claude-code-remote", "codex-remote"] },
+    "effectiveManifestFingerprint": { "$ref": "#/$defs/Sha256" },
+    "executionEnvironment": { "$ref": "#/$defs/ExecutionEnvironment" },
     "environmentFingerprint": { "$ref": "#/$defs/Sha256" },
+    "artifactMetadata": { "$ref": "#/$defs/ArtifactMetadata" },
     "artifactFingerprint": { "$ref": "#/$defs/Sha256" },
     "drain": { "$ref": "#/$defs/Drain" },
     "disposition": { "$ref": "#/$defs/Disposition" },
@@ -21,6 +25,12 @@
     "safety": { "$ref": "#/$defs/Safety" },
     "securityDenominators": { "$ref": "#/$defs/SecurityDenominators" },
     "securityEvidence": { "$ref": "#/$defs/SecurityEvidence" },
+    "identityConflictEvidence": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/IdentityConflictEvidence" }
+      ]
+    },
     "retryEvidence": {
       "oneOf": [
         { "type": "null" },
@@ -45,7 +55,12 @@
     "omittedItems": { "type": "array", "items": { "$ref": "#/$defs/SharedExpectedOmission" } },
     "packDegradations": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
     "quality": { "$ref": "#/$defs/Quality" },
+    "attemptedRenderedBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+    "renderedBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+    "attemptedInjectedTokens": { "$ref": "#/$defs/SharedNonNegativeInteger" },
     "injectedTokens": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+    "selectionElapsedMs": { "type": "number", "minimum": 0 },
+    "latencyEvidence": { "$ref": "#/$defs/LatencyEvidence" },
     "resource": { "$ref": "#/$defs/Resource" },
     "providerCostUnits": { "type": ["number", "null"], "minimum": 0 }
   },
@@ -54,6 +69,49 @@
     "SharedNonNegativeInteger": { "type": "integer", "minimum": 0 },
     "SharedPositiveInteger": { "type": "integer", "minimum": 1 },
     "Sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "SharedPins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["freeMemBaseCommit", "claudeCodeVersion", "codexVersion", "nodeVersion", "pnpmVersion", "summaryProviderStub"],
+      "properties": {
+        "freeMemBaseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "claudeCodeVersion": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "codexVersion": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "nodeVersion": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "pnpmVersion": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "summaryProviderStub": { "$ref": "#/$defs/SharedNonEmptyString" }
+      }
+    },
+    "SharedEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["home", "dataDir", "repository", "network"],
+      "properties": {
+        "home": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "dataDir": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "repository": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "network": { "$ref": "#/$defs/SharedNonEmptyString" }
+      }
+    },
+    "ExecutionEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pins", "environment"],
+      "properties": {
+        "pins": { "$ref": "#/$defs/SharedPins" },
+        "environment": { "$ref": "#/$defs/SharedEnvironment" }
+      }
+    },
+    "ArtifactMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "baseCommit", "contentSha256"],
+      "properties": {
+        "candidateId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "baseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "contentSha256": { "$ref": "#/$defs/Sha256" }
+      }
+    },
     "Drain": {
       "type": "object",
       "additionalProperties": false,
@@ -134,7 +192,7 @@
     "SecurityEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "remoteInjectionCount", "persistedSecretCount", "injectedSecretCount", "payloadBytesSent", "forbiddenSentinelObservationCount"],
+      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "remoteInjectionCount", "persistedSecretCount", "injectedSecretCount", "payloadBytesSent", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount", "forbiddenSentinelObservationCount"],
       "properties": {
         "remoteProviderRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "remoteProviderPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
@@ -142,7 +200,28 @@
         "persistedSecretCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "injectedSecretCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "redirectLocationRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "redirectLocationPayloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "resentPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "forbiddenSentinelObservationCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "IdentityConflictEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingPayloadDigest", "conflictReceiptId", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "reason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "payloadDigestVersion": { "const": "event-payload-digest-v1" },
+        "canonicalPayloadDigest": { "$ref": "#/$defs/Sha256" },
+        "conflictingPayloadDigest": { "$ref": "#/$defs/Sha256" },
+        "conflictReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "conflictReceiptState": { "const": "non_success" },
+        "canonicalEventState": { "const": "committed" },
+        "incomingDeliveryState": { "const": "quarantined" },
+        "reason": { "const": "event_identity_payload_conflict" },
+        "canonicalPayloadUnchanged": { "const": true },
+        "durableMemoryDelta": { "const": 0 }
       }
     },
     "SharedSourceSpan": {
@@ -224,45 +303,45 @@
         "durableMemoryCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
       }
     },
-    "SharedResumeCase": {
+    "ObservedRetryCase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "signals", "providerOutcome", "expected"],
+      "required": ["caseId", "deliveredSignals", "consumedSignalIds", "ignoredSignalIds", "providerAttempted", "observedProviderOutcome", "observedTransition"],
       "properties": {
         "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
-        "signals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedResumeSignal" } },
-        "providerOutcome": { "enum": ["valid", "malformed"] },
-        "expected": { "$ref": "#/$defs/SharedResumeExpected" }
-      }
-    },
-    "SharedRedirectRecovery": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["signal", "oldLocationRequestCountAfterActivation", "providerOutcome", "expected"],
-      "properties": {
-        "signal": { "$ref": "#/$defs/SharedResumeSignal" },
-        "oldLocationRequestCountAfterActivation": { "const": 0 },
-        "providerOutcome": { "const": "valid" },
-        "expected": { "$ref": "#/$defs/SharedResumeExpected" }
+        "deliveredSignals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedResumeSignal" } },
+        "consumedSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "ignoredSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "providerAttempted": { "type": "boolean" },
+        "observedProviderOutcome": {
+          "oneOf": [
+            { "type": "null" },
+            { "enum": ["valid", "malformed"] }
+          ]
+        },
+        "observedTransition": { "$ref": "#/$defs/SharedResumeExpected" }
       }
     },
     "RetryCasesEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["initialSnapshot", "cases"],
+      "required": ["observedInitialSnapshot", "cases"],
       "properties": {
-        "initialSnapshot": {
+        "observedInitialSnapshot": {
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
-        "cases": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/SharedResumeCase" } }
+        "cases": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/ObservedRetryCase" } }
       }
     },
     "RedirectEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["redirectRecovery"],
+      "required": ["observedInitialSnapshot", "redirectCase"],
       "properties": {
-        "redirectRecovery": { "$ref": "#/$defs/SharedRedirectRecovery" }
+        "observedInitialSnapshot": {
+          "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
+        },
+        "redirectCase": { "$ref": "#/$defs/ObservedRetryCase" }
       }
     },
     "SharedOutputLimitFailureMetadata": {
@@ -275,6 +354,64 @@
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
         "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" }
+      }
+    },
+    "LatencyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captureEventIds", "runs", "aggregates"],
+      "properties": {
+        "captureEventIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "runs": { "type": "array", "items": { "$ref": "#/$defs/LatencyRun" } },
+        "aggregates": { "$ref": "#/$defs/LatencyAggregates" }
+      }
+    },
+    "LatencyRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runOrdinal", "discarded", "resetMode", "captureElapsedMs", "warmInjectionMs", "coldLexicalInjectionMs"],
+      "properties": {
+        "runOrdinal": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "discarded": { "type": "boolean" },
+        "resetMode": { "enum": ["fresh_isolated_data", "fresh_namespace_on_ready_process"] },
+        "captureElapsedMs": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+        "warmInjectionMs": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "number", "minimum": 0 }
+          ]
+        },
+        "coldLexicalInjectionMs": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "number", "minimum": 0 }
+          ]
+        }
+      }
+    },
+    "LatencyAggregates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captureP95Ms", "warmInjectionP95Ms", "shortColdLexicalInjectionMs"],
+      "properties": {
+        "captureP95Ms": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "number", "minimum": 0 }
+          ]
+        },
+        "warmInjectionP95Ms": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "number", "minimum": 0 }
+          ]
+        },
+        "shortColdLexicalInjectionMs": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "number", "minimum": 0 }
+          ]
+        }
       }
     },
     "ProcessSample": {

@@ -35,7 +35,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprint =
-  "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c";
+  "sha256:ac90d921ecf20371ccd580a9fde31c300225ab2d3bb6b07bd9fcecadeef6980b";
 const actualContractFingerprint = `sha256:${createHash("sha256")
   .update(fixtureContractDomain)
   .update(canonicalizeJson({
@@ -49,6 +49,18 @@ if (
   actualContractFingerprint !== expectedContractFingerprint
 ) {
   throw new Error("fixed fixture contract changed without a fixture-version fingerprint update");
+}
+
+const {
+  configurationFingerprint: _configurationFingerprint,
+  ...effectiveManifest
+} = fixture.effectiveConfiguration;
+const actualConfigurationFingerprint = `sha256:${createHash("sha256")
+  .update("free-mem:effective-manifest:v1\0")
+  .update(canonicalizeJson(effectiveManifest))
+  .digest("hex")}`;
+if (fixture.effectiveConfiguration.configurationFingerprint !== actualConfigurationFingerprint) {
+  throw new Error("effective manifest fingerprint does not match its non-secret configuration");
 }
 
 const spool = fixture.scenarios.find(

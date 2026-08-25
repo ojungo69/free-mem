@@ -24,9 +24,9 @@ The compiler returns either:
 - a validated immutable manifest ready for atomic activation, or
 - structured validation failures that leave the prior manifest active.
 
-The manifest includes profile limits, effective model and endpoint host, credential source, local
-or remote execution, egress policy, cost class, enabled and disabled capabilities, fallback policy,
-and a non-secret fingerprint.
+The manifest includes its version/identity, profile limits, effective model and endpoint host,
+credential source, enabled and disabled capabilities, fallback policy, a versioned destination map
+binding each target Agent to local/remote execution and egress policy, and a non-secret fingerprint.
 
 ## Invariants
 

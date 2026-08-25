@@ -48,7 +48,8 @@ Each fixture defines:
 - ordered expected injected items binding fact, memory kind, source events, lane, and selection
   reason; expected omissions; forbidden facts; and retrieval queries
 - expected durable event and MemoryItem counts, including persisted summaries
-- declared profile and provider identities
+- declared effective-manifest identity/fingerprint, profile/provider identities, and a versioned
+  destination-policy map resolving every scenario target class
 - the complete pinned InjectionPack selection envelope, including time, candidate, byte, item,
   token, and per-lane budgets
 - latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
@@ -74,24 +75,31 @@ Real credentials, private transcripts, and local absolute paths are forbidden in
 
 ## Result record
 
-Every run emits one machine-readable record containing:
+Every candidate/scenario comparison emits one machine-readable aggregate record containing:
 
 - fixture and candidate identity
-- environment and artifact fingerprints
+- resolved target destination class and effective-manifest fingerprint
+- the fixture-pinned execution environment and candidate artifact metadata, each with a
+  domain-separated JCS fingerprint
 - cold or warm mode
 - milestone timestamps and completion state
 - `drainConditionId`, `drainStatus`, and `drainTimedOut`
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
-- retry resume signal identity/order, budget transitions, attempt delta, ignored-signal count, and
-  recovered output disposition when applicable
+- observed retry signal delivery, consumed/ignored signal identities, provider-attempt/outcome,
+  budget transitions, state, and recovered output disposition when applicable
+- the payload-free identity-conflict receipt, canonical/incoming states, reason, preservation flag,
+  and durable-memory delta when applicable
 - the closed payload-free failure metadata record when an output-limit rejection applies
 - individual zero-tolerance counters for Agent blockage, accepted-event loss, duplicate durable
   memory, secret egress, and incompatible-scope injection
 - positive considered-event/candidate/activation denominators plus remote request, payload,
   injection, transmitted-byte, and forbidden-sentinel observations for security rejection scenarios
 - expected-injection recall, expected-omission match, and forbidden-fact count
-- injected token count, input/traced/deadline-unprocessed/admitted/selected candidate counts, and
-  per-item source lane and selection reason
+- attempted and delivered rendered bytes/tokens, selection elapsed time,
+  input/traced/deadline-unprocessed/admitted/selected candidate counts, and per-item source lane and
+  selection reason
+- all 22 ordinal latency runs, discarded-run markers, event-ordered capture samples, applicable
+  warm/cold injection samples, and recomputed nearest-rank P95 aggregates
 - process-tree samples, resource plateau, queue depth, and storage growth
 - effective provider cost units when known
 - healthy, degraded, failed, unsupported, or not-run disposition with reason
@@ -112,6 +120,11 @@ The schema owns structure, the jq layer owns fixture-independent record arithmet
 the executable validator alone derives fixture-oracle matches, thresholds, failure priority, and
 comparison eligibility; consumers do not combine partial verdicts from those layers.
 
+`environmentFingerprint` is SHA-256 over the execution-environment object with domain
+`free-mem:alpha-execution-environment:v1\0`. `artifactFingerprint` uses the same JCS construction
+over artifact metadata with domain `free-mem:alpha-candidate-artifact:v1\0`. The validator requires
+the environment pins/descriptors and artifact base commit to match the fixed fixture.
+
 ## Comparison rules
 
 - Candidates are compared only after their equivalent drain condition completes or times out.
@@ -121,6 +134,15 @@ comparison eligibility; consumers do not combine partial verdicts from those lay
 - After a completed drain, a positive `deadlineUnprocessed` count is non-eligible with result reason
   `selection_deadline_exceeded`; it is not a quality-threshold failure. `drain_timed_out` remains the
   higher-priority reason when the drain itself times out.
+- Selection elapsed time above the profile deadline has the same
+  `selection_deadline_exceeded` result. Rendered-byte or token overflow is
+  `injection_pack_limit_exceeded`; attempted size remains inspectable, while delivered items,
+  bytes, and tokens remain zero for every late or oversized pack.
+- Run ordinals are exactly 1 through 22, ordinals 1-2 are discarded, and the remaining 20 runs feed
+  nearest-rank P95. Capture samples bind the fixed event order and flatten across the 20 measured
+  runs within that scenario; warm/cold injection contributes one sample per measured run only for
+  scenarios named by the fixture metric. A missing sample, false aggregate, or threshold miss is
+  non-eligible with `latency_threshold_exceeded`.
 - Actual injected items must exactly match `expectedInjectedItems` in order and in every bound field:
   fact, memory kind, source event identities, source lane, and selection reason. Actual omissions
   must likewise match the expected omission records.
@@ -143,6 +165,9 @@ comparison eligibility; consumers do not combine partial verdicts from those lay
   zero accepted/committed-event denominator. It does not use `acceptedEventLossCount=0` as safety
   evidence; its positive activation-proposal denominator and zero request/transmitted-byte evidence
   prove the pre-send rejection instead.
+- For the deterministic redirect stub only, the initial request wire body is exactly the event's
+  UTF-8 `redactedPayload`. Its positive configured-endpoint byte count and zero redirect-location
+  request/byte/resend counters are independently recorded.
 - Resource or quality thresholds are frozen before candidate results are inspected.
 - Raw records remain available beside the human summary.
 

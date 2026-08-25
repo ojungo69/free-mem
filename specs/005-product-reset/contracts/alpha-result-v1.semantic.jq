@@ -32,13 +32,20 @@ def counts_ok:
     then .securityEvidence.payloadBytesSent == 0
     else .securityEvidence.payloadBytesSent > 0
     end)
-  and ((.counts.selectedItems == 0 and .injectedTokens == 0)
-    or (.counts.selectedItems > 0 and .injectedTokens > 0))
+  and (if .securityEvidence.redirectLocationRequestCount == 0
+    then .securityEvidence.redirectLocationPayloadBytesSent == 0
+    else true
+    end)
+  and .attemptedRenderedBytes >= .renderedBytes
+  and .attemptedInjectedTokens >= .injectedTokens
+  and ((.counts.selectedItems == 0 and .renderedBytes == 0 and .injectedTokens == 0)
+    or (.counts.selectedItems > 0 and .renderedBytes > 0 and .injectedTokens > 0))
   and .counts.committed <= .counts.captured
   and .counts.lost <= .counts.captured
   and (if (.drain.timedOut or .counts.deadlineUnprocessed > 0)
     then .counts.selectedItems == 0
       and (.injectedItems | length) == 0
+      and .renderedBytes == 0
     else true
     end);
 

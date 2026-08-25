@@ -1,12 +1,35 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:f447b1890dd1a062ccd307d41d6f5df644324dade28af509ae00d6c392444e8c",
+  "fixtureFingerprint": "sha256:ac90d921ecf20371ccd580a9fde31c300225ab2d3bb6b07bd9fcecadeef6980b",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-retry-exhausted",
   "resourceSampleMode": "warm",
-  "environmentFingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-  "artifactFingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "targetDestinationClass": "claude-code-local",
+  "effectiveManifestFingerprint": "sha256:4296968d7d133f9192eb148d2cf0e9980566ba167e564f83b925514bf62d9297",
+  "executionEnvironment": {
+    "pins": {
+      "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
+      "claudeCodeVersion": "2.1.243",
+      "codexVersion": "0.149.1",
+      "nodeVersion": "24.16.0",
+      "pnpmVersion": "11.8.0",
+      "summaryProviderStub": "deterministic-summary-v1"
+    },
+    "environment": {
+      "home": "<isolated-home>",
+      "dataDir": "<isolated-data-dir>",
+      "repository": "<isolated-local-repository>",
+      "network": "provider-stub-only"
+    }
+  },
+  "environmentFingerprint": "sha256:2684483c5e62e7bae4401c78fc45f1e5e668b7ff6481d3d2d741cb54debb0551",
+  "artifactMetadata": {
+    "candidateId": "candidate-failure-example-v1",
+    "baseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
+    "contentSha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "artifactFingerprint": "sha256:7127ed68ed4aa4271d093d4f526bbd7e3b3538d4ca8a943bc5b32273a68d83fa",
   "drain": {
     "drainConditionId": "slice1-summary-retry-exhausted-visible-v1",
     "status": "completed",
@@ -107,10 +130,14 @@
     "persistedSecretCount": 0,
     "injectedSecretCount": 0,
     "payloadBytesSent": 384,
+    "redirectLocationRequestCount": 0,
+    "redirectLocationPayloadBytesSent": 0,
+    "resentPayloadCount": 0,
     "forbiddenSentinelObservationCount": 0
   },
+  "identityConflictEvidence": null,
   "retryEvidence": {
-    "initialSnapshot": {
+    "observedInitialSnapshot": {
       "state": "retry-exhausted",
       "budget": 0,
       "lastConsumedSequence": 0
@@ -118,7 +145,7 @@
     "cases": [
       {
         "caseId": "validated-configuration-activation",
-        "signals": [
+        "deliveredSignals": [
           {
             "signalId": "config-activation-1",
             "sequence": 1,
@@ -128,8 +155,11 @@
             "configurationFingerprint": "summary-config-repaired-v2"
           }
         ],
-        "providerOutcome": "valid",
-        "expected": {
+        "consumedSignalIds": ["config-activation-1"],
+        "ignoredSignalIds": [],
+        "providerAttempted": true,
+        "observedProviderOutcome": "valid",
+        "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 3,
           "budgetAfterAttempt": 2,
@@ -142,7 +172,7 @@
       },
       {
         "caseId": "recorded-provider-healthy-transition",
-        "signals": [
+        "deliveredSignals": [
           {
             "signalId": "provider-healthy-1",
             "sequence": 1,
@@ -152,8 +182,11 @@
             "configurationFingerprint": "summary-config-v1"
           }
         ],
-        "providerOutcome": "valid",
-        "expected": {
+        "consumedSignalIds": ["provider-healthy-1"],
+        "ignoredSignalIds": [],
+        "providerAttempted": true,
+        "observedProviderOutcome": "valid",
+        "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 1,
           "budgetAfterAttempt": 0,
@@ -166,7 +199,7 @@
       },
       {
         "caseId": "user-confirmed-doctor-retry",
-        "signals": [
+        "deliveredSignals": [
           {
             "signalId": "doctor-retry-1",
             "sequence": 1,
@@ -176,8 +209,11 @@
             "configurationFingerprint": "summary-config-v1"
           }
         ],
-        "providerOutcome": "valid",
-        "expected": {
+        "consumedSignalIds": ["doctor-retry-1"],
+        "ignoredSignalIds": [],
+        "providerAttempted": true,
+        "observedProviderOutcome": "valid",
+        "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 1,
           "budgetAfterAttempt": 0,
@@ -190,7 +226,7 @@
       },
       {
         "caseId": "duplicate-and-out-of-order-no-op",
-        "signals": [
+        "deliveredSignals": [
           {
             "signalId": "provider-healthy-2",
             "sequence": 2,
@@ -216,8 +252,11 @@
             "configurationFingerprint": "summary-config-v1"
           }
         ],
-        "providerOutcome": "malformed",
-        "expected": {
+        "consumedSignalIds": ["provider-healthy-2"],
+        "ignoredSignalIds": ["provider-healthy-2", "doctor-retry-stale-1"],
+        "providerAttempted": true,
+        "observedProviderOutcome": "malformed",
+        "observedTransition": {
           "budgetBefore": 0,
           "budgetAfterGrant": 1,
           "budgetAfterAttempt": 0,
@@ -282,7 +321,266 @@
     "matchedOmissionCount": 0,
     "forbiddenFactCount": 0
   },
+  "attemptedRenderedBytes": 0,
+  "renderedBytes": 0,
+  "attemptedInjectedTokens": 0,
   "injectedTokens": 0,
+  "selectionElapsedMs": 751,
+  "latencyEvidence": {
+    "captureEventIds": [
+      "summary-provider-failure-event-1",
+      "summary-provider-failure-event-2"
+    ],
+    "runs": [
+      {
+        "runOrdinal": 1,
+        "discarded": true,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 2,
+        "discarded": true,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 3,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 4,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 5,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 6,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 7,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 8,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 9,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 10,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 11,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 12,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 13,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 14,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 15,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 16,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 17,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 18,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 19,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 20,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 21,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      },
+      {
+        "runOrdinal": 22,
+        "discarded": false,
+        "resetMode": "fresh_namespace_on_ready_process",
+        "captureElapsedMs": [
+          100,
+          100
+        ],
+        "warmInjectionMs": null,
+        "coldLexicalInjectionMs": null
+      }
+    ],
+    "aggregates": {
+      "captureP95Ms": 100,
+      "warmInjectionP95Ms": null,
+      "shortColdLexicalInjectionMs": null
+    }
+  },
   "resource": {
     "maxSteadyProductProcessCount": 2,
     "maxShortRunRssGrowthMiB": 8,
