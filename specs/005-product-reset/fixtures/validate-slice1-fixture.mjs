@@ -41,7 +41,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:6f603bf52b65c57922989196a19565b5d4100bf00245fbf66433215cd0888b2b";
+  "fixture-contract-fingerprint=sha256:2bc969aeebb6ec63b7b98d1bc7e77e8125ec53ad61f7eb8941c43748892b44af";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",

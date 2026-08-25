@@ -23,17 +23,19 @@ change before adopting it. This contract is not a general benchmark framework.
    and a hostname mismatch with the same zero-egress evidence.
 8. **Slice 1**: Local-only content is considered for a remote summary provider but produces zero
    remote requests or payloads.
-9. **Slice 1**: Private content is considered for a remote summary provider but produces zero remote
+9. **Slice 1**: A mixed eligible/local-only/private/secret batch sends one allowed-only projection
+   while restricted sentinels contribute zero transmitted bytes.
+10. **Slice 1**: Private content is considered for a remote summary provider but produces zero remote
    requests, payloads, or injection.
-10. **Slice 1**: Memory derived locally from a local-only source retains `local_only` and is omitted
+11. **Slice 1**: Memory derived locally from a local-only source retains `local_only` and is omitted
    from a remote InjectionPack destination.
-11. **Slice 1**: A candidate from another repository scope is considered and omitted before
+12. **Slice 1**: A candidate from another repository scope is considered and omitted before
    injection.
-12. **Slice 2**: Semantic provider or index unavailable, with lexical fallback and InjectionPack
+13. **Slice 2**: Semantic provider or index unavailable, with lexical fallback and InjectionPack
    reasons.
-13. **Slice 3**: Deleting a fact prevents regeneration after profile, model, or semantic-kind
+14. **Slice 3**: Deleting a fact prevents regeneration after profile, model, or semantic-kind
    reclassification while sibling source facts remain available.
-14. **Resource samples**:
+15. **Resource samples**:
     - Slice 1: cold and warm short-run samples only;
     - Slice 3: long, burst, packed-artifact, and eight-hour soak samples.
 
@@ -90,6 +92,10 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - cold or warm mode
 - milestone timestamps and completion state
 - `drainConditionId`, `drainStatus`, and `drainTimedOut`
+- a boolean before-model injection marker derived from observed injection-acknowledgment and
+  target-model-dispatch milestones; otherwise null
+- a fixed negative fixture that reverses those milestones, sets the marker false, and requires a
+  non-eligible `scenario_oracle_mismatch` result
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
 - observed retry signal delivery, consumed/ignored signal identities, provider-attempt/outcome,
   budget transitions, state, and recovered output disposition when applicable
@@ -118,9 +124,12 @@ The authoritative format is
 until this canonical validator exits 0.
 
 A single `--result` validates one inspectable scenario record only. Candidate comparison requires
-suite mode: pass one `--result PATH` per scenario. The validator requires the scenario-ID multiset to
-equal the complete fixed fixture, a common candidate/environment/artifact identity, and every record
-to be comparison-eligible before exiting 0.
+suite mode: pass one `--result PATH` per positive scenario and the required late-injection record as
+`--negative-result PATH`. The validator requires the positive scenario-ID multiset to equal the
+complete fixed fixture, a common candidate/environment/artifact identity, and every positive record
+to be comparison-eligible. The negative record applies `beforeModelNegativeFixture` to its named
+base scenario; it must reverse the two observed milestones and match the fixed failed, non-eligible
+disposition.
 
 The schema and semantic rules define the Alpha v1 vocabulary for Slice 1, including its fixed retry
 signal and provider identity. The current executable validator is deliberately bound to that

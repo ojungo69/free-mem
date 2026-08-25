@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:6f603bf52b65c57922989196a19565b5d4100bf00245fbf66433215cd0888b2b",
+  "fixtureFingerprint": "sha256:2bc969aeebb6ec63b7b98d1bc7e77e8125ec53ad61f7eb8941c43748892b44af",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "resourceSampleMode": "cold",
@@ -46,6 +46,7 @@
     "timedOut": false,
     "terminalMilestone": "target_injection_acknowledged"
   },
+  "injectionBeforeModel": true,
   "disposition": {
     "state": "degraded",
     "reason": "semantic_disabled",
@@ -89,12 +90,16 @@
       "monotonicMs": 800
     },
     {
-      "name": "scenario_terminal",
+      "name": "target_model_request_dispatched",
       "monotonicMs": 900
     },
     {
-      "name": "post_teardown_grace_elapsed",
+      "name": "scenario_terminal",
       "monotonicMs": 1000
+    },
+    {
+      "name": "post_teardown_grace_elapsed",
+      "monotonicMs": 1100
     }
   ],
   "counts": {
@@ -123,6 +128,8 @@
     "acceptedEventCount": 5,
     "duplicateDeliveryAttemptCount": 0,
     "consideredRemoteProviderEventCount": 5,
+    "consideredEligibleEventCount": 5,
+    "consideredRestrictedEventCount": 0,
     "consideredSecretEventCount": 0,
     "consideredPrivateEventCount": 0,
     "consideredCrossScopeCandidateCount": 0,
@@ -137,6 +144,7 @@
     "injectedSecretCount": 0,
     "credentialBytesSent": 32,
     "payloadBytesSent": 256,
+    "restrictedPayloadBytesSent": 0,
     "redirectLocationRequestCount": 0,
     "redirectLocationPayloadBytesSent": 0,
     "resentPayloadCount": 0,
@@ -157,7 +165,8 @@
     {"monotonicMs": 700, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
     {"monotonicMs": 800, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
     {"monotonicMs": 900, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 1000, "processCount": 0, "rssMiB": 0, "queueDepth": 0, "storageBytes": 11000}
+    {"monotonicMs": 1000, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
+    {"monotonicMs": 1100, "processCount": 0, "rssMiB": 0, "queueDepth": 0, "storageBytes": 11000}
   ],
   "injectedItems": [
     {

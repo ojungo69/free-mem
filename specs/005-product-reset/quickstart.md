@@ -144,7 +144,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-25T22:24:10+09:00
+## Validation result — 2026-08-25T23:11:16+09:00
 
 | Check | Result |
 |---|---|
@@ -153,7 +153,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, transport, privacy, output-limit, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, per-scenario generated checks, incomplete-suite rejection, and targeted conflict, retry, redirect, manifest, environment, pack-limit, latency, resource, quality, and exceptional-state mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete generated suite plus required before-model negative result, incomplete-suite rejection, and targeted conflict, retry, redirect, mixed-sensitivity, artifact-order, manifest, environment, pack-limit, latency, resource, quality, and exceptional-state mutations |
 | Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
@@ -172,9 +172,9 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- The last completed local CodeRabbit review found no issue; the next follow-up reached the
-  three-review limit. The pushed head must therefore receive a fresh GitHub CodeRabbit review before
-  merge.
+- The last completed local CodeRabbit review raised one valid before-model ordering issue, which was
+  fixed. Its follow-up reached the three-review limit, so the pushed head must receive a fresh GitHub
+  CodeRabbit review before merge.
 - Cubic's final review returned `issues: []`. Ponytail review found no unused definitions,
   speculative abstraction, dependency, or removable compatibility layer.
 - No command required a changed path, flag, retry, or skipped gate.

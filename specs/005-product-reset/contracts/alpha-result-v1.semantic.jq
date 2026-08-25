@@ -36,6 +36,7 @@ def counts_ok:
     then .securityEvidence.payloadBytesSent == 0
     else .securityEvidence.payloadBytesSent > 0
     end)
+  and .securityEvidence.restrictedPayloadBytesSent == 0
   and (if .securityEvidence.redirectLocationRequestCount == 0
     then .securityEvidence.redirectLocationPayloadBytesSent == 0
     else true

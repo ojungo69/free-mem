@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:6f603bf52b65c57922989196a19565b5d4100bf00245fbf66433215cd0888b2b",
+  "contractFingerprint": "sha256:2bc969aeebb6ec63b7b98d1bc7e77e8125ec53ad61f7eb8941c43748892b44af",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -150,6 +150,7 @@
       "source_summary_committed",
       "target_retrieval_requested",
       "target_injection_acknowledged",
+      "target_model_request_dispatched",
       "scenario_terminal",
       "post_teardown_grace_elapsed"
     ],
@@ -166,6 +167,7 @@
       "target_first_prompt_submitted_before_model",
       "target_retrieval_requested",
       "target_injection_acknowledged",
+      "target_model_request_dispatched",
       "scenario_terminal",
       "post_teardown_grace_elapsed"
     ],
@@ -193,6 +195,7 @@
       "target_retrieval_requested",
       "cross_scope_candidate_omitted",
       "target_injection_acknowledged",
+      "target_model_request_dispatched",
       "scenario_terminal",
       "post_teardown_grace_elapsed"
     ],
@@ -206,6 +209,7 @@
       "target_retrieval_requested",
       "local_only_derived_candidates_omitted",
       "target_injection_acknowledged",
+      "target_model_request_dispatched",
       "scenario_terminal",
       "post_teardown_grace_elapsed"
     ],
@@ -236,6 +240,7 @@
           "summary-provider-retry-exhausted",
           "summary-provider-redirect-rejected",
           "local-only-remote-provider-rejected",
+          "mixed-sensitivity-remote-projection",
           "private-remote-provider-rejected",
           "summary-provider-output-limit-exceeded",
           "incompatible-scope-injection-rejected",
@@ -309,6 +314,20 @@
     "duplicateDurableMemoryCount": 0,
     "secretEgressCount": 0,
     "incompatibleScopeInjectionCount": 0
+  },
+  "beforeModelNegativeFixture": {
+    "caseId": "late-injection-after-model-dispatch",
+    "baseScenarioId": "claude-to-codex",
+    "lateMilestoneOrder": [
+      "target_model_request_dispatched",
+      "target_injection_acknowledged"
+    ],
+    "injectionBeforeModel": false,
+    "expectedDisposition": {
+      "state": "failed",
+      "reason": "scenario_oracle_mismatch",
+      "successfulComparisonEligible": false
+    }
   },
   "scenarios": [
     {
@@ -1729,6 +1748,134 @@
       }
     },
     {
+      "scenarioId": "mixed-sensitivity-remote-projection",
+      "sourceAgent": "claude-code",
+      "targetDestinationClass": "codex-local",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "bidirectional_prompt_flush",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "allowed deployment decision",
+      "fault": {
+        "kind": "mixed_sensitivity_allowed_projection"
+      },
+      "events": [
+        {
+          "eventId": "mixed-event-1",
+          "sequence": 1,
+          "kind": "assistant_message",
+          "sensitivity": "eligible",
+          "redactedPayload": "Allowed deployment decision.",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "Allowed deployment decision."
+        },
+        {
+          "eventId": "mixed-event-2",
+          "sequence": 2,
+          "kind": "assistant_message",
+          "sensitivity": "local_only",
+          "redactedPayload": "LOCAL_MIXED_SENTINEL must remain local.",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "LOCAL_MIXED_SENTINEL must remain local."
+        },
+        {
+          "eventId": "mixed-event-3",
+          "sequence": 3,
+          "kind": "assistant_message",
+          "sensitivity": "private",
+          "redactedPayload": "PRIVATE_MIXED_SENTINEL must remain private.",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "PRIVATE_MIXED_SENTINEL must remain private."
+        },
+        {
+          "eventId": "mixed-event-4",
+          "sequence": 4,
+          "kind": "tool_result",
+          "sensitivity": "secret",
+          "redactedPayload": "",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "SECRET_MIXED_SENTINEL must never leave."
+        }
+      ],
+      "summaryProviderStub": {
+        "memoryItems": [
+          {
+            "kind": "decision",
+            "title": "Allowed deployment",
+            "body": "Allowed deployment decision.",
+            "sourceEventIds": [
+              "mixed-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "mixed-event-1",
+                "startByte": 0,
+                "endByte": 28
+              }
+            ]
+          }
+        ]
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-mixed-sensitivity-projection-v1",
+        "startMilestone": "source_session_started",
+        "terminalMilestone": "target_injection_acknowledged",
+        "timeoutMs": 30000,
+        "committedEventCount": 4,
+        "summaryCount": 0,
+        "durableMemoryCount": 1,
+        "targetInjectionAcknowledged": true
+      },
+      "expectedInjectedItems": [
+        {
+          "fact": "Allowed deployment decision.",
+          "memoryKind": "decision",
+          "sourceEventIds": [
+            "mixed-event-1"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "mixed-event-1",
+              "startByte": 0,
+              "endByte": 28
+            }
+          ],
+          "sensitivity": "eligible",
+          "sourceLane": "lexical",
+          "selectionReason": "lexical"
+        }
+      ],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "LOCAL_MIXED_SENTINEL must remain local.",
+        "PRIVATE_MIXED_SENTINEL must remain private.",
+        "SECRET_MIXED_SENTINEL must never leave."
+      ],
+      "securityOracle": {
+        "consideredRemoteProviderEventCount": 4,
+        "consideredEligibleEventCount": 1,
+        "consideredRestrictedEventCount": 3,
+        "consideredPrivateEventCount": 1,
+        "consideredSecretEventCount": 1,
+        "remoteProviderRequestCount": 1,
+        "remoteProviderPayloadCount": 1,
+        "restrictedPayloadBytesSent": 0,
+        "forbiddenSentinels": [
+          "LOCAL_MIXED_SENTINEL",
+          "PRIVATE_MIXED_SENTINEL",
+          "SECRET_MIXED_SENTINEL"
+        ],
+        "sentinelObservedAtRemote": false
+      },
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
       "scenarioId": "private-remote-provider-rejected",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-local",
@@ -1984,7 +2131,7 @@
             "title": "Local derived sentinel",
             "body": "LOCAL_DERIVED_SENTINEL remains local after derivation.",
             "sourceEventIds": ["local-derived-event-1"],
-            "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":22}]
+            "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":54}]
           }
         ]
       },
@@ -2004,7 +2151,7 @@
           "fact": "LOCAL_DERIVED_SENTINEL remains local after derivation.",
           "memoryKind": "discovery",
           "sourceEventIds": ["local-derived-event-1"],
-          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":22}],
+          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":54}],
           "sensitivity": "local_only",
           "reason": "omitted_ineligible"
         }

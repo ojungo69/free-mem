@@ -98,6 +98,30 @@ def fixture_graph_ok($root):
       . as $profileId
       | any($root.scenarios[]; .lifecycleProfileId == $profileId)));
 
+def before_model_evidence_ok($root):
+  all($root.scenarios[] | select(.drainCondition.targetInjectionAcknowledged);
+    . as $scenario
+    | $root.lifecycleProfiles[$scenario.lifecycleProfileId] as $profile
+    | ($profile | index("target_injection_acknowledged")) as $injectionIndex
+    | ($profile | index("target_model_request_dispatched")) as $dispatchIndex
+    | $injectionIndex != null
+      and $dispatchIndex != null
+      and $injectionIndex < $dispatchIndex)
+  and ($root.beforeModelNegativeFixture as $negative
+    | any($root.scenarios[];
+        .scenarioId == $negative.baseScenarioId
+        and .drainCondition.targetInjectionAcknowledged)
+      and $negative.lateMilestoneOrder == [
+        "target_model_request_dispatched",
+        "target_injection_acknowledged"
+      ]
+      and ($negative.injectionBeforeModel | not)
+      and ($negative.expectedDisposition == {
+        state: "failed",
+        reason: "scenario_oracle_mismatch",
+        successfulComparisonEligible: false
+      }));
+
 def injection_envelope_ok($root):
   $root.effectiveConfiguration.resourceProfile.injectionEnvelope as $envelope
   | all($envelope.laneBudgets[]; .minItems <= .maxItems)
@@ -587,6 +611,26 @@ def private_security_ok($root):
     and $security.expectedOperationalStatus.safeAction ==
       "activate_local_summary_provider_or_exclude_private";
 
+def mixed_sensitivity_security_ok($root):
+  fault_scenario($root; "mixed_sensitivity_allowed_projection") as $scenario
+  | provider_items($scenario) as $items
+  | [ $scenario.events[].sensitivity ] == ["eligible", "local_only", "private", "secret"]
+    and ($items | length) == 1
+    and all($items[]; .sensitivity == "eligible" and .sourceEventIds == ["mixed-event-1"])
+    and $scenario.securityOracle.consideredRemoteProviderEventCount == 4
+    and $scenario.securityOracle.consideredEligibleEventCount == 1
+    and $scenario.securityOracle.consideredRestrictedEventCount == 3
+    and $scenario.securityOracle.consideredPrivateEventCount == 1
+    and $scenario.securityOracle.consideredSecretEventCount == 1
+    and $scenario.securityOracle.remoteProviderRequestCount == 1
+    and $scenario.securityOracle.remoteProviderPayloadCount == 1
+    and $scenario.securityOracle.restrictedPayloadBytesSent == 0
+    and all($scenario.securityOracle.forbiddenSentinels[];
+      . as $sentinel
+      | any($scenario.events[] | select(.sensitivity != "eligible");
+        .text | contains($sentinel)))
+    and ($scenario.securityOracle.sentinelObservedAtRemote | not);
+
 def scope_security_ok($root):
   ([
     $root.scenarios[]
@@ -646,6 +690,7 @@ def derived_sensitivity_security_ok($root):
 
 . as $root
 | ensure(fixture_graph_ok($root); "fixture scenario graph mismatch")
+| ensure(before_model_evidence_ok($root); "before-model evidence invariant failed")
 | ensure(injection_envelope_ok($root); "injection envelope mismatch")
 | ensure(resource_profile_ok($root); "resource profile mismatch")
 | ensure(destination_policy_ok($root); "destination policy map mismatch")
@@ -662,6 +707,7 @@ def derived_sensitivity_security_ok($root):
 | ensure(operational_status_ok($root); "operational status invariant failed")
 | ensure(local_security_ok($root); "local-only or secret boundary invariant failed")
 | ensure(private_security_ok($root); "private egress boundary invariant failed")
+| ensure(mixed_sensitivity_security_ok($root); "mixed-sensitivity projection invariant failed")
 | ensure(scope_security_ok($root); "cross-scope omission invariant failed")
 | ensure(derived_sensitivity_security_ok($root); "derived local-only injection invariant failed")
 | true

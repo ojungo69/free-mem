@@ -91,20 +91,21 @@ function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
 
 if (args.length === 1 && args[0] === "--help") {
   console.log(
-    "Usage: node --experimental-strip-types validate-alpha-result.mjs [--fixture PATH] [--result PATH]...",
+    "Usage: node --experimental-strip-types validate-alpha-result.mjs [--fixture PATH] [--result PATH]... [--negative-result PATH]",
   );
   process.exit(0);
 }
 
 let fixturePath = defaultFixturePath;
 const resultPaths = [];
+const negativeResultPaths = [];
 let fixtureSeen = false;
 for (let index = 0; index < args.length; index += 2) {
   const flag = args[index];
   const value = args[index + 1];
   if (
     !value ||
-    (flag !== "--fixture" && flag !== "--result") ||
+    (flag !== "--fixture" && flag !== "--result" && flag !== "--negative-result") ||
     (flag === "--fixture" && fixtureSeen)
   ) {
     throw new Error("invalid arguments; use --help for usage");
@@ -114,8 +115,16 @@ for (let index = 0; index < args.length; index += 2) {
     fixturePath = resolve(value);
   }
   if (flag === "--result") resultPaths.push(value === "-" ? value : resolve(value));
+  if (flag === "--negative-result") {
+    negativeResultPaths.push(value === "-" ? value : resolve(value));
+  }
 }
-if (resultPaths.length === 0) resultPaths.push(defaultResultPath);
+if (resultPaths.length === 0 && negativeResultPaths.length === 0) {
+  resultPaths.push(defaultResultPath);
+}
+if (negativeResultPaths.length > 0 && resultPaths.length === 0) {
+  throw new Error("a negative result requires the complete positive suite");
+}
 
 execFileSync(
   process.execPath,
@@ -123,25 +132,56 @@ execFileSync(
   { stdio: "inherit" },
 );
 
-if (resultPaths.length > 1) {
+if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
   const suiteFixture = readIJsonFile(fixturePath);
   const suiteResults = resultPaths.map((path) => readIJsonFile(path));
+  const negativeResults = negativeResultPaths.map((path) => readIJsonFile(path));
   const expectedScenarioIds = suiteFixture.scenarios.map((item) => item.scenarioId).sort();
   const actualScenarioIds = suiteResults.map((item) => item.scenarioId).sort();
   const first = suiteResults[0];
+  const negativeContract = suiteFixture.beforeModelNegativeFixture;
+  const baseResult = suiteResults.find(
+    (item) => item.scenarioId === negativeContract.baseScenarioId,
+  );
+  const negativeMilestoneOrder = negativeResults[0]?.milestones
+    ?.map((item) => item.name)
+    .filter((name) => negativeContract.lateMilestoneOrder.includes(name)) ?? [];
+  const normalizedNegative = negativeResults.length === 1 &&
+    baseResult &&
+    Array.isArray(negativeResults[0].milestones)
+    ? structuredClone(negativeResults[0])
+    : null;
+  if (normalizedNegative) {
+    normalizedNegative.milestones = normalizedNegative.milestones.map((item) => ({
+      ...item,
+      name: item.name === "target_model_request_dispatched"
+        ? "target_injection_acknowledged"
+        : item.name === "target_injection_acknowledged"
+          ? "target_model_request_dispatched"
+          : item.name,
+    }));
+    normalizedNegative.injectionBeforeModel = baseResult.injectionBeforeModel;
+    normalizedNegative.disposition = baseResult.disposition;
+  }
+  const commonIdentity = (item) =>
+    item.candidateId === first.candidateId &&
+    item.fixtureFingerprint === first.fixtureFingerprint &&
+    item.environmentFingerprint === first.environmentFingerprint &&
+    item.artifactFingerprint === first.artifactFingerprint;
   if (
     !isDeepStrictEqual(actualScenarioIds, expectedScenarioIds) ||
-    !suiteResults.every((item) =>
-      item.candidateId === first.candidateId &&
-      item.fixtureFingerprint === first.fixtureFingerprint &&
-      item.environmentFingerprint === first.environmentFingerprint &&
-      item.artifactFingerprint === first.artifactFingerprint &&
-      item.disposition.successfulComparisonEligible
-    )
+    !suiteResults.every((item) => commonIdentity(item) && item.disposition.successfulComparisonEligible) ||
+    negativeResults.length !== 1 ||
+    !commonIdentity(negativeResults[0]) ||
+    negativeResults[0].scenarioId !== negativeContract.baseScenarioId ||
+    negativeResults[0].injectionBeforeModel !== negativeContract.injectionBeforeModel ||
+    !isDeepStrictEqual(negativeMilestoneOrder, negativeContract.lateMilestoneOrder) ||
+    !isDeepStrictEqual(negativeResults[0].disposition, negativeContract.expectedDisposition) ||
+    !isDeepStrictEqual(normalizedNegative, baseResult)
   ) {
-    throw new Error("candidate suite is incomplete, inconsistent, or non-eligible");
+    throw new Error("candidate suite or required negative result is incomplete or inconsistent");
   }
-  for (const item of suiteResults) {
+  for (const item of [...suiteResults, ...negativeResults]) {
     execFileSync(
       process.execPath,
       ["--experimental-strip-types", fileURLToPath(import.meta.url), "--fixture", fixturePath, "--result", "-"],
@@ -198,8 +238,11 @@ const artifactContentFingerprint = fingerprint(
   result.artifactMetadata.manifest,
 );
 const artifactPaths = result.artifactMetadata.manifest.files.map((item) => item.path);
-if (artifactPaths.length !== new Set(artifactPaths).size) {
-  throw new Error("artifact manifest contains duplicate normalized paths");
+if (
+  artifactPaths.length !== new Set(artifactPaths).size ||
+  !isDeepStrictEqual(artifactPaths, [...artifactPaths].sort())
+) {
+  throw new Error("artifact manifest paths are duplicated or not canonically sorted");
 }
 const expectedManifestFingerprint = scenario?.derivationManifestId
   ? fixture.localDerivationManifest.configurationFingerprint
@@ -247,6 +290,14 @@ const expectedDegradations = scenario.drainCondition.targetInjectionAcknowledged
   fixture.effectiveConfiguration.embeddingProvider.state === "disabled"
   ? [fixture.effectiveConfiguration.embeddingProvider.packDegradationReason]
   : [];
+const injectionAcknowledgedAt = drainMilestoneTimes.get("target_injection_acknowledged");
+const modelDispatchedAt = drainMilestoneTimes.get("target_model_request_dispatched");
+const expectedInjectionBeforeModel = scenario.drainCondition.targetInjectionAcknowledged &&
+  !result.drain.timedOut &&
+  typeof injectionAcknowledgedAt === "number" &&
+  typeof modelDispatchedAt === "number"
+  ? injectionAcknowledgedAt < modelDispatchedAt
+  : null;
 const expectedOperationalStatus = scenario.expectedOperationalStatus ?? null;
 const expectedFailureMetadata = scenario.fault?.failureMetadata ?? null;
 const observedRetryCase = (item) => {
@@ -356,10 +407,17 @@ if (
 }
 
 const oracle = scenario.securityOracle ?? {};
+const activeSummaryProvider = scenario.derivationManifestId
+  ? fixture.localDerivationManifest.summaryProvider
+  : fixture.effectiveConfiguration.summaryProvider;
+const remoteProviderEvents = activeSummaryProvider.executionLocation === "remote"
+  ? scenario.events
+  : [];
+const expectedEligibleEventCount = remoteProviderEvents.filter(
+  (event) => event.sensitivity === "eligible",
+).length;
+const expectedRestrictedEventCount = remoteProviderEvents.length - expectedEligibleEventCount;
 const consideredDenominatorNames = [
-  "consideredRemoteProviderEventCount",
-  "consideredSecretEventCount",
-  "consideredPrivateEventCount",
   "consideredCrossScopeCandidateCount",
   "consideredDerivedCandidateCount",
   "consideredActivationProposalCount",
@@ -368,6 +426,13 @@ const denominatorsPass =
   result.securityDenominators.agentOperationCount > 0 &&
   result.securityDenominators.acceptedEventCount === scenario.events.length &&
   result.securityDenominators.duplicateDeliveryAttemptCount === expectedDuplicateDeliveries &&
+  result.securityDenominators.consideredRemoteProviderEventCount === remoteProviderEvents.length &&
+  result.securityDenominators.consideredEligibleEventCount === expectedEligibleEventCount &&
+  result.securityDenominators.consideredRestrictedEventCount === expectedRestrictedEventCount &&
+  result.securityDenominators.consideredSecretEventCount ===
+    scenario.events.filter((event) => event.sensitivity === "secret").length &&
+  result.securityDenominators.consideredPrivateEventCount ===
+    scenario.events.filter((event) => event.sensitivity === "private").length &&
   consideredDenominatorNames.every(
     (name) => !Object.hasOwn(oracle, name) || result.securityDenominators[name] === oracle[name],
   );
@@ -379,13 +444,11 @@ const oracleEvidenceFields = [
   "injectedSecretCount",
   "credentialBytesSent",
   "payloadBytesSent",
+  "restrictedPayloadBytesSent",
   "redirectLocationRequestCount",
   "redirectLocationPayloadBytesSent",
   "resentPayloadCount",
 ];
-const activeSummaryProvider = scenario.derivationManifestId
-  ? fixture.localDerivationManifest.summaryProvider
-  : fixture.effectiveConfiguration.summaryProvider;
 const providerRejected = Object.hasOwn(scenario.summaryProviderStub, "policyRejectedReason");
 const derivationRequested =
   Object.hasOwn(scenario.summaryProviderStub, "summary") ||
@@ -401,6 +464,7 @@ const credentialTransmissionExpected =
   remoteProviderExpected && Object.hasOwn(activeSummaryProvider, "credentialSource");
 const providerRoutingPass = remoteProviderExpected
   ? result.securityDenominators.consideredRemoteProviderEventCount > 0 &&
+    result.securityDenominators.consideredEligibleEventCount > 0 &&
     result.securityEvidence.remoteProviderRequestCount === expectedRemoteProviderRequests &&
     result.securityEvidence.remoteProviderPayloadCount === expectedRemoteProviderRequests &&
     (credentialTransmissionExpected
@@ -416,6 +480,7 @@ const destinationPolicy =
 const securityEvidencePass =
   result.securityEvidence.persistedSecretCount === 0 &&
   result.securityEvidence.injectedSecretCount === 0 &&
+  result.securityEvidence.restrictedPayloadBytesSent === 0 &&
   result.securityEvidence.redirectLocationRequestCount === 0 &&
   result.securityEvidence.redirectLocationPayloadBytesSent === 0 &&
   result.securityEvidence.resentPayloadCount === 0 &&
@@ -514,6 +579,8 @@ const scenarioOraclePass =
   countsPass &&
   denominatorsPass &&
   isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
+  result.injectionBeforeModel === expectedInjectionBeforeModel &&
+  (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
   isDeepStrictEqual(result.identityConflictEvidence, expectedIdentityConflictEvidence) &&
   isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) &&
   isDeepStrictEqual(result.operationalStatus, expectedOperationalStatus) &&
@@ -565,6 +632,7 @@ if (exceptionalState) {
     Object.values(result.resource).every((value) => value === 0) &&
     result.injectedItems.length === 0 &&
     result.omittedItems.length === 0 &&
+    result.injectionBeforeModel === null &&
     result.packDegradations.length === 0 &&
     result.attemptedRenderedBytes === 0 &&
     result.renderedBytes === 0 &&

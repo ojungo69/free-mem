@@ -4,7 +4,7 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "quality", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "quality", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -19,6 +19,12 @@
     "artifactMetadata": { "$ref": "#/$defs/ArtifactMetadata" },
     "artifactFingerprint": { "$ref": "#/$defs/Sha256" },
     "drain": { "$ref": "#/$defs/Drain" },
+    "injectionBeforeModel": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" }
+      ]
+    },
     "disposition": { "$ref": "#/$defs/Disposition" },
     "milestones": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Milestone" } },
     "counts": { "$ref": "#/$defs/Counts" },
@@ -200,12 +206,14 @@
     "SecurityDenominators": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["agentOperationCount", "acceptedEventCount", "duplicateDeliveryAttemptCount", "consideredRemoteProviderEventCount", "consideredSecretEventCount", "consideredPrivateEventCount", "consideredCrossScopeCandidateCount", "consideredDerivedCandidateCount", "consideredActivationProposalCount"],
+      "required": ["agentOperationCount", "acceptedEventCount", "duplicateDeliveryAttemptCount", "consideredRemoteProviderEventCount", "consideredEligibleEventCount", "consideredRestrictedEventCount", "consideredSecretEventCount", "consideredPrivateEventCount", "consideredCrossScopeCandidateCount", "consideredDerivedCandidateCount", "consideredActivationProposalCount"],
       "properties": {
         "agentOperationCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "acceptedEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "duplicateDeliveryAttemptCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "consideredRemoteProviderEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredEligibleEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "consideredRestrictedEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "consideredSecretEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "consideredPrivateEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "consideredCrossScopeCandidateCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
@@ -216,7 +224,7 @@
     "SecurityEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "remoteInjectionCount", "persistedSecretCount", "injectedSecretCount", "credentialBytesSent", "payloadBytesSent", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount", "forbiddenSentinelObservationCount"],
+      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "remoteInjectionCount", "persistedSecretCount", "injectedSecretCount", "credentialBytesSent", "payloadBytesSent", "restrictedPayloadBytesSent", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount", "forbiddenSentinelObservationCount"],
       "properties": {
         "remoteProviderRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "remoteProviderPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
@@ -225,6 +233,7 @@
         "injectedSecretCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "credentialBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "restrictedPayloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "redirectLocationRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "redirectLocationPayloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "resentPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
