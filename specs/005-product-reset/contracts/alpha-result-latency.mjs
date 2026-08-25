@@ -13,6 +13,15 @@ function thresholdsPass(aggregates, thresholds) {
       aggregates.shortColdLexicalInjectionMs < thresholds.shortColdLexicalInjectionMs);
 }
 
+function validateExceptionalLatency(result) {
+  if (result.latencyEvidence.captureEventIds.length !== 0 ||
+      result.latencyEvidence.runs.length !== 0 ||
+      !Object.values(result.latencyEvidence.aggregates).every((value) => value === null)) {
+    throw new Error("unsupported/not-run latency evidence is not empty");
+  }
+  return false;
+}
+
 export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
   const protocol = fixture.samplingProtocol;
   const metricApplies = (name) => protocol.metrics[name].scenarios.includes(scenario.scenarioId);
@@ -20,16 +29,7 @@ export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalSt
   const warmInjectionApplies = metricApplies("warmInjectionP95Ms");
   const coldInjectionApplies = metricApplies("shortColdLexicalInjectionMs");
   const expectedCaptureEventIds = captureApplies ? scenario.events.map((event) => event.eventId) : [];
-  if (exceptionalState) {
-    if (
-      result.latencyEvidence.captureEventIds.length !== 0 ||
-      result.latencyEvidence.runs.length !== 0 ||
-      !Object.values(result.latencyEvidence.aggregates).every((value) => value === null)
-    ) {
-      throw new Error("unsupported/not-run latency evidence is not empty");
-    }
-    return false;
-  }
+  if (exceptionalState) return validateExceptionalLatency(result);
 
   const runs = result.latencyEvidence.runs;
   const expectedResetMode = result.resourceSampleMode === "cold"
