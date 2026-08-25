@@ -116,8 +116,8 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - attempted and delivered rendered bytes/tokens, selection elapsed time,
   input/traced/deadline-unprocessed/admitted/selected candidate counts, and per-item source lane and
   selection reason
-- exact attempted/final UTF-8 render payload evidence plus pinned renderer/tokenizer identity and
-  ordered token-ID records; aggregate byte/token counts are recomputed from this evidence
+- exact attempted/final canonical-JCS UTF-8 render payload evidence plus pinned renderer/tokenizer
+  identity and ordered token-ID records; aggregate byte/token counts are recomputed from this evidence
 - a nullable pack-compilation failure; `injection_pack_limit_exceeded` requires an oversized
   attempted render and zero final delivered items, bytes, and tokens
 - all 22 ordinal latency runs, discarded-run markers, event-ordered capture samples, applicable
@@ -173,6 +173,8 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
   `injection_pack_limit_exceeded`; attempted size remains inspectable and may exceed the envelope
   during deterministic pruning, while only the final rendered byte/token values gate eligibility.
   Delivered items, bytes, and tokens remain zero for every late or oversized pack.
+- Selection elapsed time is recomputed from raw monotonic start/end evidence; scalar-only timing is
+  never accepted.
 - Run ordinals are exactly 1 through 22, ordinals 1-2 are discarded, and the remaining 20 runs feed
   nearest-rank P95. Capture samples bind the fixed event order and flatten across the 20 measured
   runs within that scenario; warm/cold injection contributes one sample per measured run only for

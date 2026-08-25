@@ -4,7 +4,7 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "packCompilationFailure", "quality", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "packCompilationFailure", "quality", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -86,6 +86,9 @@
     "injectedTokens": { "$ref": "#/$defs/SharedNonNegativeInteger" },
     "finalRenderEvidence": {
       "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/RenderEvidence" }]
+    },
+    "selectionTimingEvidence": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/SelectionTimingEvidence" }]
     },
     "selectionElapsedMs": { "type": "number", "minimum": 0 },
     "latencyEvidence": { "$ref": "#/$defs/LatencyEvidence" },
@@ -583,11 +586,20 @@
       "additionalProperties": false,
       "required": ["rendererId", "utf8Payload", "tokenizerId", "tokenizerRevision", "tokenIds"],
       "properties": {
-        "rendererId": { "const": "alpha-json-renderer-v1" },
+        "rendererId": { "const": "alpha-jcs-renderer-v1" },
         "utf8Payload": { "type": "string" },
         "tokenizerId": { "const": "deterministic-fixture-tokenizer-v1" },
         "tokenizerRevision": { "const": "1" },
         "tokenIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonNegativeInteger" } }
+      }
+    },
+    "SelectionTimingEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startMonotonicMs", "endMonotonicMs"],
+      "properties": {
+        "startMonotonicMs": { "type": "number", "minimum": 0 },
+        "endMonotonicMs": { "type": "number", "minimum": 0 }
       }
     },
     "Quality": {

@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:089cb2d64325993df498399c13e0bda8de4ab562085208847e23359bd06fc7cc",
+  "fixtureFingerprint": "sha256:b869d0bf49a6556904534eed9a89750dea302497e308f580e3f192b96ba33c6b",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-retry-exhausted",
   "resourceSampleMode": "warm",
@@ -416,6 +416,7 @@
   "attemptedInjectedTokens": 0,
   "injectedTokens": 0,
   "finalRenderEvidence": null,
+  "selectionTimingEvidence": {"startMonotonicMs": 1000, "endMonotonicMs": 1750},
   "selectionElapsedMs": 750,
   "latencyEvidence": {
     "captureEventIds": [

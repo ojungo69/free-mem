@@ -11,6 +11,7 @@ import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
 import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 import { evaluateSecurityEvidence } from "./alpha-result-security.mjs";
 import { validateRenderEvidence } from "./alpha-result-render.mjs";
+import { validateSelectionTiming } from "./alpha-result-selection.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(contractDir, "alpha-result-v1.schema.json");
@@ -181,6 +182,7 @@ if (
 }
 const exceptionalState = result.disposition.state === "unsupported" ||
   result.disposition.state === "not_run";
+validateSelectionTiming(result, exceptionalState);
 
 const expectedMilestones = fixture.lifecycleProfiles[scenario.lifecycleProfileId];
 const milestoneNames = result.milestones.map((item) => item.name);
