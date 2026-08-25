@@ -156,7 +156,12 @@ comparison eligibility; consumers do not combine partial verdicts from those lay
 over artifact metadata with domain `free-mem:alpha-candidate-artifact:v1\0`. The validator requires
 the environment pins/descriptors and artifact base commit to match the fixed fixture. The artifact
 manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that digest must equal
-`contentSha256` before the metadata fingerprint is accepted.
+`contentSha256` before the metadata fingerprint is accepted. Each manifest digest is also recomputed
+from the regular file bytes below the candidate's realpath-contained artifact root; self-declared
+file hashes are not accepted as artifact evidence. `entrypoint` names one listed file. The harness
+owns one immutable staged artifact snapshot from candidate execution through result validation;
+the validator rejects non-regular/unlisted entries and hashes each open file descriptor between
+stable-stat checks.
 
 ## Comparison rules
 
@@ -173,24 +178,34 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
   `injection_pack_limit_exceeded`; attempted size remains inspectable and may exceed the envelope
   during deterministic pruning, while only the final rendered byte/token values gate eligibility.
   Delivered items, bytes, and tokens remain zero for every late or oversized pack.
-- Selection elapsed time is recomputed from raw monotonic start/end evidence; scalar-only timing is
-  never accepted.
+- Selection elapsed time is recomputed from `target_selection_started` and
+  `target_selection_finished` in the fixture-pinned lifecycle; the separate timing record must match
+  those observed boundaries exactly. Scenarios without a selection lifecycle record no candidate
+  counts or selection timing.
 - Run ordinals are exactly 1 through 22, ordinals 1-2 are discarded, and the remaining 20 runs feed
   nearest-rank P95. Capture samples bind the fixed event order and flatten across the 20 measured
   runs within that scenario; warm/cold injection contributes one sample per measured run only for
   scenarios named by the fixture metric. A missing sample, false aggregate, or threshold miss is
   non-eligible with `latency_threshold_exceeded`.
 - Actual injected items must exactly match `expectedInjectedItems` in order and in every bound field:
-  fact, memory kind, source event identities, source lane, and selection reason. Actual omissions
-  must likewise match the expected omission records.
+  memory, lineage, revision identity and ordinal; fact; memory kind; source event identities; source
+  lane; and selection reason. Actual omissions must likewise match the expected active revision.
+- Exact render evidence covers the complete canonical destination wrapper and InjectionPack,
+  including pack, target-session, repository, destination-policy, manifest, degradation, provenance,
+  and revision identity. Byte and token totals are derived from that UTF-8 payload, not an item-only
+  projection.
 - Provider extraction order is not assumed to equal injection order. Fixture validation compares
   provider outputs to dispositions as a multiset; the whole-fixture fingerprint pins the declared
   `expectedInjectedItems` order, and the runtime result must match that order exactly.
 - `summaryCount` is included in `durableMemoryCount`; it is not an additional durable entity count.
 - Unsupported, not-run, failed, and degraded are distinct states.
-- `unsupported` and `not_run` are canonical no-activity records: all operation, evidence, resource,
+- `unsupported` and `not_run` are canonical no-activity records with an empty milestone list: all operation, evidence, resource,
   item, and token counts are zero; retry/failure/operational evidence is absent; and their reasons are
   `capability_unsupported` and `owner_slice_not_run`, respectively. They cannot wrap a failed run.
+- The output-limit scenario binds raw authoritative writer receipts and one durable-observer sample
+  at every lifecycle milestone across the pinned processing-through-teardown window. The validator
+  derives committed batches, item mutations, maximum visible derived items, and forbidden-sentinel
+  observations from those records; a terminal zero count or copied aggregate alone is insufficient.
 - Safety counts for Agent blockage, accepted-event loss, duplicate durable memory, secret egress,
   and incompatible-scope injection must be zero.
 - Agent-blockage and accepted-loss zeroes are backed by each scenario's non-empty lifecycle and

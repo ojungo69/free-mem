@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson, parseIJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
+import { validateArtifact } from "./alpha-result-artifact.mjs";
+import { validateOutputLimitAtomicity } from "./alpha-result-atomicity.mjs";
 import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
 import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 import { evaluateSecurityEvidence } from "./alpha-result-security.mjs";
@@ -20,35 +22,40 @@ const fixtureSchemaPath = join(contractDir, "../fixtures/slice1-bidirectional-en
 const fixtureValidatorPath = join(contractDir, "../fixtures/validate-slice1-fixture.mjs");
 const defaultFixturePath = join(contractDir, "../fixtures/slice1-bidirectional-en-v1.json");
 const defaultResultPath = join(contractDir, "../fixtures/alpha-result-v1.example.json");
+const defaultArtifactRoot = join(contractDir, "../fixtures/artifacts");
 const args = process.argv.slice(2);
 const fingerprint = (domain, value) =>
   `sha256:${createHash("sha256").update(domain).update(canonicalizeJson(value)).digest("hex")}`;
 
 if (args.length === 1 && args[0] === "--help") {
   console.log(
-    "Usage: validate-alpha-result.mjs [--fixture PATH] [--result PATH]",
-    "       validate-alpha-result.mjs [--fixture PATH] --result PATH... --negative-result PATH  # suite mode",
+    "Usage: validate-alpha-result.mjs [--fixture FIXED_FIXTURE_PATH] [--artifact-root PATH] [--result PATH]",
+    "       validate-alpha-result.mjs [--fixture FIXED_FIXTURE_PATH] [--artifact-root PATH] --result PATH... --negative-result PATH  # suite mode",
   );
   process.exit(0);
 }
 
-let fixturePath = defaultFixturePath;
-const resultPaths = [];
-const negativeResultPaths = [];
-let fixtureSeen = false;
+let fixturePath = defaultFixturePath, artifactRoot = defaultArtifactRoot;
+const resultPaths = [], negativeResultPaths = [];
+let fixtureSeen = false, artifactRootSeen = false;
 for (let index = 0; index < args.length; index += 2) {
   const flag = args[index];
   const value = args[index + 1];
   if (
     !value ||
-    (flag !== "--fixture" && flag !== "--result" && flag !== "--negative-result") ||
-    (flag === "--fixture" && fixtureSeen)
+    !["--fixture", "--artifact-root", "--result", "--negative-result"].includes(flag) ||
+    (flag === "--fixture" && fixtureSeen) ||
+    (flag === "--artifact-root" && artifactRootSeen)
   ) {
     throw new Error("invalid arguments; use --help for usage");
   }
   if (flag === "--fixture") {
     fixtureSeen = true;
     fixturePath = resolve(value);
+  }
+  if (flag === "--artifact-root") {
+    artifactRootSeen = true;
+    artifactRoot = resolve(value);
   }
   if (flag === "--result") resultPaths.push(value === "-" ? value : resolve(value));
   if (flag === "--negative-result") negativeResultPaths.push(value === "-" ? value : resolve(value));
@@ -98,7 +105,8 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
   for (const item of [...suiteResults, ...negativeResults]) {
     execFileSync(
       process.execPath,
-      ["--experimental-strip-types", fileURLToPath(import.meta.url), "--fixture", fixturePath, "--result", "-"],
+      ["--experimental-strip-types", fileURLToPath(import.meta.url), "--fixture", fixturePath,
+        "--artifact-root", artifactRoot, "--result", "-"],
       { input: JSON.stringify(item), stdio: ["pipe", "inherit", "inherit"] },
     );
   }
@@ -143,21 +151,7 @@ const environmentFingerprint = fingerprint(
   "free-mem:alpha-execution-environment:v1\0",
   result.executionEnvironment,
 );
-const artifactFingerprint = fingerprint(
-  "free-mem:alpha-candidate-artifact:v1\0",
-  result.artifactMetadata,
-);
-const artifactContentFingerprint = fingerprint(
-  "free-mem:alpha-artifact-content:v1\0",
-  result.artifactMetadata.manifest,
-);
-const artifactPaths = result.artifactMetadata.manifest.files.map((item) => item.path);
-if (
-  artifactPaths.length !== new Set(artifactPaths).size ||
-  !isDeepStrictEqual(artifactPaths, [...artifactPaths].sort())
-) {
-  throw new Error("artifact manifest paths are duplicated or not canonically sorted");
-}
+validateArtifact(result, artifactRoot, fixture.pins.freeMemBaseCommit);
 const expectedManifestFingerprint = scenario?.derivationManifestId
   ? fixture.localDerivationManifest.configurationFingerprint
   : fixture.effectiveConfiguration.configurationFingerprint;
@@ -170,10 +164,6 @@ if (
   result.effectiveManifestFingerprint !== expectedManifestFingerprint ||
   !isDeepStrictEqual(result.executionEnvironment, expectedExecutionEnvironment) ||
   result.environmentFingerprint !== environmentFingerprint ||
-  result.artifactMetadata.candidateId !== result.candidateId ||
-  result.artifactMetadata.baseCommit !== fixture.pins.freeMemBaseCommit ||
-  result.artifactMetadata.contentSha256 !== artifactContentFingerprint ||
-  result.artifactFingerprint !== artifactFingerprint ||
   result.drain.drainConditionId !== scenario.drainCondition.drainConditionId ||
   result.drain.terminalMilestone !== scenario.drainCondition.terminalMilestone
 ) {
@@ -181,7 +171,7 @@ if (
 }
 const exceptionalState = result.disposition.state === "unsupported" ||
   result.disposition.state === "not_run";
-validateSelectionTiming(result, exceptionalState);
+const selectionObserved = validateSelectionTiming(result, exceptionalState);
 
 const expectedMilestones = fixture.lifecycleProfiles[scenario.lifecycleProfileId];
 const milestoneNames = result.milestones.map((item) => item.name);
@@ -231,6 +221,7 @@ if (!isDeepStrictEqual(result.hostIdentityEvidence, expectedHostIdentityEvidence
 }
 const expectedOperationalStatus = scenario.expectedOperationalStatus ?? null;
 const expectedFailureMetadata = scenario.fault?.failureMetadata ?? null;
+validateOutputLimitAtomicity(result, scenario, exceptionalState);
 const expectedRetryEvidenceRecord = exceptionalState ? null : expectedRetryEvidence(scenario);
 if (!isDeepStrictEqual(result.retryEvidence, expectedRetryEvidenceRecord)) {
   throw new Error("retry evidence does not match the pinned durable outputs");
@@ -270,7 +261,7 @@ const derivedQuality = {
 if (!isDeepStrictEqual(result.quality, derivedQuality)) {
   throw new Error("result quality counters do not match the recorded items");
 }
-validateRenderEvidence(result);
+validateRenderEvidence(result, scenario, fixture);
 const qualityPass =
   isDeepStrictEqual(result.injectedItems, scenario.expectedInjectedItems) &&
   isDeepStrictEqual(result.omittedItems, scenario.expectedOmissions) &&
@@ -363,8 +354,8 @@ if (!isDeepStrictEqual(result.resource, derivedResource)) {
 const limits = fixture.thresholds;
 const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
 const selectionDeadlineExceeded =
-  result.counts.deadlineUnprocessed > 0 ||
-  result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs;
+  selectionObserved && (result.counts.deadlineUnprocessed > 0 ||
+    result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs);
 const finalInjectionPackSizePass =
   result.renderedBytes <= injectionEnvelope.maxRenderedBytes &&
   result.injectedTokens <= injectionEnvelope.maxInjectedTokens;
@@ -462,6 +453,8 @@ if (exceptionalState) {
     result.packCompilationFailure === null &&
     Array.isArray(result.attemptedItems) &&
     result.attemptedItems.length === 0 &&
+    result.attemptedRenderEvidence === null && result.finalRenderEvidence === null &&
+    result.packId === null &&
     result.attemptedRenderedBytes === 0 &&
     result.renderedBytes === 0 &&
     result.attemptedInjectedTokens === 0 &&
@@ -471,9 +464,10 @@ if (exceptionalState) {
     result.retryEvidence === null &&
     result.identityConflictEvidence === null &&
     result.failureMetadata === null &&
+    result.outputLimitAtomicityEvidence === null &&
     result.operationalStatus === null &&
     !result.drain.timedOut &&
-    !milestonesPass;
+    result.milestones.length === 0;
   if (
     !noActivity ||
     !resourcePass ||

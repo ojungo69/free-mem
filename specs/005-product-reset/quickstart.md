@@ -49,7 +49,7 @@ printf '%s\n' "$changed"
 untracked=$(git ls-files --others --exclude-standard)
 if unexpected=$(printf '%s\n%s\n' "$changed" "$untracked" \
   | sort -u \
-  | rg -v '^(README\.md|evidence/(README\.md|adr-006-product-reset\.md)|specs/005-product-reset/.*\.(md|json|jq|mjs))$'); then
+  | rg -v '^(README\.md|evidence/(README\.md|adr-006-product-reset\.md)|specs/005-product-reset/.*\.(md|json|jq|mjs)|specs/005-product-reset/fixtures/artifacts/(candidate-example-v1|candidate-failure-example-v1)/candidate\.bundle)$'); then
   :
 else
   status=$?
@@ -141,6 +141,11 @@ node --experimental-strip-types \
   --result specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
 ```
 
+The result validator hashes each candidate file below
+`fixtures/artifacts/<candidateId>/`; use `--artifact-root PATH` only when the same fixed artifacts
+are staged under another runner-owned immutable root. Keep that exact snapshot mounted from
+candidate execution through result validation.
+
 - [Alpha comparison](contracts/alpha-comparison.md)
 - [Effective capability manifest](contracts/capability-manifest.md)
 - [InjectionPack](contracts/injection-pack.md)
@@ -157,7 +162,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T02:08:39+09:00
+## Validation result — 2026-08-26T05:26:31+09:00
 
 | Check | Result |
 |---|---|
@@ -166,7 +171,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, cross-host/downgrade transport, privacy, host-identity, output-limit recovery-manifest, environment, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, incomplete-suite rejection, and targeted conflict, exact retry output, render/token evidence, mixed-sensitivity, wire-byte/cost, artifact-order, manifest, environment, pack-limit, timeout, per-run namespace, latency, resource, quality, and exceptional-state mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, lifecycle-bound selection, raw per-run timing, complete render/token payload, durable revision identity, raw output-limit receipt/observer evidence, exact artifact bytes/path set/entrypoint, timeout prefix, and canonical exceptional-state mutations |
 | Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
@@ -185,11 +190,13 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- The final local CodeRabbit review raised zero issues. The pushed head must still receive a fresh
-  GitHub CodeRabbit review before merge.
-- Cubic's final retry-only multiset finding was disproved by the passing duplicate-signal fixture.
-  Grok's earlier contract review returned `ok: true`; its final render-only review timed out twice
-  without a session ID, so that narrow range is not claimed as Grok-reviewed. Ponytail found no
-  unused definitions, speculative abstraction, dependency, or removable compatibility layer.
+- CodeRabbit's completed local review raised three actionable-looking issues: artifact completeness
+  was fixed, while attempted pre-final pack identity and opaque fixture-pinned revision ID generation
+  were rejected after contract verification. The final local retry hit the review rate limit; the
+  pushed head must still receive a fresh GitHub CodeRabbit review before merge.
+- Cubic's final review raised zero issues. Grok's split contract/validator review returned `ok: true`;
+  the full-diff and fixture/documentation review attempts timed out without session IDs, so that
+  range is not claimed as Grok-reviewed. Ponytail found no unused definition, speculative
+  abstraction, dependency, or removable compatibility layer.
 - No functional validation command required a changed path, flag, retry, or skipped gate; the Grok
   timeout and one narrowed retry are recorded separately above.

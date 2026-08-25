@@ -460,11 +460,12 @@
     "Scenario": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarioId", "sourceAgent", "targetDestinationClass", "sourceRepositoryScope", "targetRepositoryScope", "lifecycleProfileId", "resourceSampleMode", "retrievalQuery", "providerTransmissionOracle", "events", "summaryProviderStub", "drainCondition", "expectedInjectedItems", "expectedOmissions", "forbiddenFacts", "expectedCounters"],
+      "required": ["scenarioId", "sourceAgent", "targetDestinationClass", "targetSessionId", "sourceRepositoryScope", "targetRepositoryScope", "lifecycleProfileId", "resourceSampleMode", "retrievalQuery", "providerTransmissionOracle", "events", "summaryProviderStub", "drainCondition", "expectedInjectedItems", "expectedOmissions", "forbiddenFacts", "expectedCounters"],
       "properties": {
         "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sourceAgent": { "$ref": "#/$defs/Agent" },
         "targetDestinationClass": { "enum": ["claude-code-local", "codex-local", "claude-code-remote", "codex-remote"] },
+        "targetSessionId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sourceRepositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
         "targetRepositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
         "lifecycleProfileId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -551,8 +552,12 @@
     "SharedExpectedInjectedItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "selectionReason"],
+      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "selectionReason"],
       "properties": {
+        "memoryId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "lineageId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "revisionId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "revisionOrdinal": { "$ref": "#/$defs/SharedPositiveInteger" },
         "fact": { "$ref": "#/$defs/SharedNonEmptyString" },
         "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
@@ -565,8 +570,12 @@
     "SharedExpectedOmission": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
+      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
       "properties": {
+        "memoryId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "lineageId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "revisionId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "revisionOrdinal": { "$ref": "#/$defs/SharedPositiveInteger" },
         "fact": { "$ref": "#/$defs/SharedNonEmptyString" },
         "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
@@ -718,12 +727,13 @@
     "SummaryProviderOutputLimitFault": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "observedResultCount", "configuredLimit", "failureMetadata", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveryManifestId", "resumeCases"],
+      "required": ["kind", "observedResultCount", "configuredLimit", "failureMetadata", "atomicityEvidence", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveryManifestId", "resumeCases"],
       "properties": {
         "kind": { "const": "summary_provider_output_limit_exceeded" },
         "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
         "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" },
         "failureMetadata": { "$ref": "#/$defs/SharedOutputLimitFailureMetadata" },
+        "atomicityEvidence": { "$ref": "#/$defs/SharedOutputLimitAtomicityEvidence" },
         "resumeCasesAreIndependent": { "const": true },
         "resumeCaseInitialSnapshot": {
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
@@ -742,6 +752,55 @@
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
         "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" }
+      }
+    },
+    "SharedOutputLimitAtomicityEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jobId", "sourceEventIds", "observedResultCount", "configuredLimit", "evidenceSource", "observationStartMilestone", "observationEndMilestone", "writerReceipts", "durableObserverSamples", "committedDerivedBatchCount", "committedDerivedItemMutationCount", "maximumObservableDerivedItemCount", "forbiddenSentinelObservationCount"],
+      "properties": {
+        "jobId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "evidenceSource": { "const": "authoritative_writer_receipts_and_durable_observer" },
+        "observationStartMilestone": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "observationEndMilestone": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "writerReceipts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["receiptId", "jobId", "outcome", "attemptedDerivedItemCount", "committedDerivedItemCount", "committedMutationCount"],
+            "properties": {
+              "receiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+              "jobId": { "$ref": "#/$defs/SharedNonEmptyString" },
+              "outcome": { "const": "rejected_before_commit" },
+              "attemptedDerivedItemCount": { "$ref": "#/$defs/SharedPositiveInteger" },
+              "committedDerivedItemCount": { "const": 0 },
+              "committedMutationCount": { "const": 0 }
+            }
+          }
+        },
+        "durableObserverSamples": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["milestone", "observableDerivedItemCount", "forbiddenSentinelObserved"],
+            "properties": {
+              "milestone": { "$ref": "#/$defs/SharedNonEmptyString" },
+              "observableDerivedItemCount": { "const": 0 },
+              "forbiddenSentinelObserved": { "const": false }
+            }
+          }
+        },
+        "committedDerivedBatchCount": { "const": 0 },
+        "committedDerivedItemMutationCount": { "const": 0 },
+        "maximumObservableDerivedItemCount": { "const": 0 },
+        "forbiddenSentinelObservationCount": { "const": 0 }
       }
     },
     "ReplayAttempt": {

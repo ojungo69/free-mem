@@ -4,12 +4,12 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "packCompilationFailure", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "packCompilationFailure", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
     "fixtureFingerprint": { "$ref": "#/$defs/Sha256" },
-    "candidateId": { "$ref": "#/$defs/SharedNonEmptyString" },
+    "candidateId": { "$ref": "#/$defs/CandidateId" },
     "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
     "resourceSampleMode": { "enum": ["cold", "warm"] },
     "targetDestinationClass": { "enum": ["claude-code-local", "codex-local", "claude-code-remote", "codex-remote"] },
@@ -32,7 +32,7 @@
       ]
     },
     "disposition": { "$ref": "#/$defs/Disposition" },
-    "milestones": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Milestone" } },
+    "milestones": { "type": "array", "items": { "$ref": "#/$defs/Milestone" } },
     "counts": { "$ref": "#/$defs/Counts" },
     "safety": { "$ref": "#/$defs/Safety" },
     "securityDenominators": { "$ref": "#/$defs/SecurityDenominators" },
@@ -56,6 +56,12 @@
         { "$ref": "#/$defs/SharedOutputLimitFailureMetadata" }
       ]
     },
+    "outputLimitAtomicityEvidence": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/SharedOutputLimitAtomicityEvidence" }
+      ]
+    },
     "operationalStatus": {
       "oneOf": [
         { "type": "null" },
@@ -65,6 +71,12 @@
     "processSamples": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/ProcessSample" } },
     "injectedItems": { "type": "array", "items": { "$ref": "#/$defs/SharedExpectedInjectedItem" } },
     "omittedItems": { "type": "array", "items": { "$ref": "#/$defs/SharedExpectedOmission" } },
+    "packId": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/SharedNonEmptyString" }
+      ]
+    },
     "packDegradations": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
     "packCompilationFailure": {
       "oneOf": [
@@ -101,11 +113,30 @@
     "resource": { "$ref": "#/$defs/Resource" },
     "providerCostUnits": { "type": ["number", "null"], "minimum": 0 }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "properties": { "state": { "enum": ["unsupported", "not_run"] } },
+            "required": ["state"]
+          }
+        },
+        "required": ["disposition"]
+      },
+      "then": { "properties": { "milestones": { "maxItems": 0 } } },
+      "else": { "properties": { "milestones": { "minItems": 1 } } }
+    }
+  ],
   "$defs": {
     "SharedNonEmptyString": { "type": "string", "minLength": 1 },
     "SharedNonNegativeInteger": { "type": "integer", "minimum": 0 },
     "SharedPositiveInteger": { "type": "integer", "minimum": 1 },
     "Sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "CandidateId": {
+      "type": "string",
+      "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
     "SharedPins": {
       "type": "object",
       "additionalProperties": false,
@@ -152,7 +183,7 @@
       "additionalProperties": false,
       "required": ["candidateId", "baseCommit", "manifest", "contentSha256"],
       "properties": {
-        "candidateId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "candidateId": { "$ref": "#/$defs/CandidateId" },
         "baseCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "manifest": { "$ref": "#/$defs/ArtifactContentManifest" },
         "contentSha256": { "$ref": "#/$defs/Sha256" }
@@ -342,8 +373,12 @@
     "SharedExpectedInjectedItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "selectionReason"],
+      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "selectionReason"],
       "properties": {
+        "memoryId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "lineageId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "revisionId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "revisionOrdinal": { "$ref": "#/$defs/SharedPositiveInteger" },
         "fact": { "$ref": "#/$defs/SharedNonEmptyString" },
         "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
@@ -356,8 +391,12 @@
     "SharedExpectedOmission": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
+      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
       "properties": {
+        "memoryId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "lineageId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "revisionId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "revisionOrdinal": { "$ref": "#/$defs/SharedPositiveInteger" },
         "fact": { "$ref": "#/$defs/SharedNonEmptyString" },
         "memoryKind": { "enum": ["summary", "decision", "discovery", "change", "failed_approach", "next_action"] },
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
@@ -514,6 +553,55 @@
         "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" }
       }
     },
+    "SharedOutputLimitAtomicityEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jobId", "sourceEventIds", "observedResultCount", "configuredLimit", "evidenceSource", "observationStartMilestone", "observationEndMilestone", "writerReceipts", "durableObserverSamples", "committedDerivedBatchCount", "committedDerivedItemMutationCount", "maximumObservableDerivedItemCount", "forbiddenSentinelObservationCount"],
+      "properties": {
+        "jobId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
+        "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "evidenceSource": { "const": "authoritative_writer_receipts_and_durable_observer" },
+        "observationStartMilestone": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "observationEndMilestone": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "writerReceipts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["receiptId", "jobId", "outcome", "attemptedDerivedItemCount", "committedDerivedItemCount", "committedMutationCount"],
+            "properties": {
+              "receiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+              "jobId": { "$ref": "#/$defs/SharedNonEmptyString" },
+              "outcome": { "const": "rejected_before_commit" },
+              "attemptedDerivedItemCount": { "$ref": "#/$defs/SharedPositiveInteger" },
+              "committedDerivedItemCount": { "const": 0 },
+              "committedMutationCount": { "const": 0 }
+            }
+          }
+        },
+        "durableObserverSamples": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["milestone", "observableDerivedItemCount", "forbiddenSentinelObserved"],
+            "properties": {
+              "milestone": { "$ref": "#/$defs/SharedNonEmptyString" },
+              "observableDerivedItemCount": { "const": 0 },
+              "forbiddenSentinelObserved": { "const": false }
+            }
+          }
+        },
+        "committedDerivedBatchCount": { "const": 0 },
+        "committedDerivedItemMutationCount": { "const": 0 },
+        "maximumObservableDerivedItemCount": { "const": 0 },
+        "forbiddenSentinelObservationCount": { "const": 0 }
+      }
+    },
     "LatencyEvidence": {
       "type": "object",
       "additionalProperties": false,
@@ -527,27 +615,45 @@
     "LatencyRun": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runOrdinal", "discarded", "resetMode", "repositoryNamespace", "sessionNamespace", "captureEventIds", "captureElapsedMs", "warmInjectionMs", "coldLexicalInjectionMs"],
+      "required": ["runOrdinal", "discarded", "resetMode", "repositoryNamespace", "sessionNamespace", "captureTimings", "warmInjectionTiming", "coldLexicalInjectionTiming"],
       "properties": {
         "runOrdinal": { "$ref": "#/$defs/SharedPositiveInteger" },
         "discarded": { "type": "boolean" },
         "resetMode": { "enum": ["fresh_isolated_data", "fresh_namespace_on_ready_process"] },
         "repositoryNamespace": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sessionNamespace": { "$ref": "#/$defs/SharedNonEmptyString" },
-        "captureEventIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
-        "captureElapsedMs": { "type": "array", "items": { "type": "number", "minimum": 0 } },
-        "warmInjectionMs": {
+        "captureTimings": { "type": "array", "items": { "$ref": "#/$defs/CaptureTiming" } },
+        "warmInjectionTiming": {
           "oneOf": [
             { "type": "null" },
-            { "type": "number", "minimum": 0 }
+            { "$ref": "#/$defs/LatencyInterval" }
           ]
         },
-        "coldLexicalInjectionMs": {
+        "coldLexicalInjectionTiming": {
           "oneOf": [
             { "type": "null" },
-            { "type": "number", "minimum": 0 }
+            { "$ref": "#/$defs/LatencyInterval" }
           ]
         }
+      }
+    },
+    "LatencyInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startMonotonicMs", "endMonotonicMs"],
+      "properties": {
+        "startMonotonicMs": { "type": "number", "minimum": 0 },
+        "endMonotonicMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "CaptureTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "startMonotonicMs", "endMonotonicMs"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "startMonotonicMs": { "type": "number", "minimum": 0 },
+        "endMonotonicMs": { "type": "number", "minimum": 0 }
       }
     },
     "LatencyAggregates": {

@@ -79,13 +79,18 @@ specs/005-product-reset/
 │   ├── slice1-bidirectional-en-v1.semantic.jq
 │   ├── validate-slice1-fixture.mjs
 │   ├── alpha-result-v1.example.json
-│   └── alpha-result-v1.failure-example.json
+│   ├── alpha-result-v1.failure-example.json
+│   └── artifacts/
+│       ├── candidate-example-v1/candidate.bundle
+│       └── candidate-failure-example-v1/candidate.bundle
 ├── contracts/
 │   ├── alpha-comparison.md
 │   ├── capability-manifest.md
 │   ├── injection-pack.md
 │   ├── alpha-result-v1.schema.json
 │   ├── alpha-result-v1.semantic.jq
+│   ├── alpha-result-artifact.mjs
+│   ├── alpha-result-atomicity.mjs
 │   ├── alpha-result-latency.mjs
 │   ├── alpha-result-render.mjs
 │   ├── alpha-result-retry.mjs

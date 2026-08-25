@@ -16,7 +16,7 @@ export function tokenizeRenderPayload(payload) {
 function validateEvidence(evidence, renderedBytes, injectedTokens, label) {
   if (renderedBytes === 0 && injectedTokens === 0) {
     if (evidence !== null) throw new Error(`${label} render evidence is not empty`);
-    return;
+    return null;
   }
   if (evidence === null) throw new Error(`${label} render evidence is missing`);
   let parsedPayload;
@@ -31,33 +31,61 @@ function validateEvidence(evidence, renderedBytes, injectedTokens, label) {
       !isDeepStrictEqual(evidence.tokenIds, tokenizeRenderPayload(evidence.utf8Payload))) {
     throw new Error(`${label} render aggregates do not match their exact evidence`);
   }
+  return parsedPayload;
 }
 
-export function validateRenderEvidence(result) {
+export function buildRenderPayload(result, scenario, fixture, items, packId) {
+  const manifest = scenario.derivationManifestId
+    ? fixture.localDerivationManifest
+    : fixture.effectiveConfiguration;
+  return {
+    injectionPack: {
+      packVersion: 1,
+      packId,
+      targetDestinationClass: result.targetDestinationClass,
+      targetSessionId: scenario.targetSessionId,
+      targetRepositoryScope: scenario.targetRepositoryScope,
+      resolvedDestinationPolicy:
+        fixture.effectiveConfiguration.destinationPolicyMap[result.targetDestinationClass],
+      manifestIdentity: {
+        manifestId: manifest.manifestId,
+        effectiveManifestFingerprint: result.effectiveManifestFingerprint,
+      },
+      packDegradations: result.packDegradations,
+      items,
+    },
+  };
+}
+
+export function validateRenderEvidence(result, scenario, fixture) {
   const attemptedItems = result.attemptedItems === "same_as_final"
     ? result.injectedItems
     : result.attemptedItems;
   const attemptedEvidence = result.attemptedRenderEvidence === "same_as_final"
     ? result.finalRenderEvidence
     : result.attemptedRenderEvidence;
-  validateEvidence(
+  const attemptedPayload = validateEvidence(
     attemptedEvidence,
     result.attemptedRenderedBytes,
     result.attemptedInjectedTokens,
     "attempted",
   );
-  if (attemptedEvidence !== null && attemptedEvidence.utf8Payload !==
-      canonicalizeJson({ items: attemptedItems })) {
+  const attemptedPackId = result.attemptedRenderEvidence === "same_as_final"
+    ? result.packId
+    : null;
+  if (attemptedPayload !== null && !isDeepStrictEqual(attemptedPayload,
+    buildRenderPayload(result, scenario, fixture, attemptedItems, attemptedPackId))) {
     throw new Error("attempted render payload does not match attempted items");
   }
-  validateEvidence(
+  const finalPayload = validateEvidence(
     result.finalRenderEvidence,
     result.renderedBytes,
     result.injectedTokens,
     "final",
   );
-  if (result.finalRenderEvidence !== null && result.finalRenderEvidence.utf8Payload !==
-      canonicalizeJson({ items: result.injectedItems })) {
+  if ((finalPayload === null) !== (result.packId === null) ||
+      (finalPayload !== null && !isDeepStrictEqual(finalPayload,
+        buildRenderPayload(result, scenario, fixture, result.injectedItems, result.packId)))) {
     throw new Error("final render payload does not match delivered items");
   }
 }

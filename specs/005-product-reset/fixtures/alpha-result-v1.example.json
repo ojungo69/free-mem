@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:2e8e3b7b7edee1b016eea0086d3cba4ae8c60c9f3728bc66a8c6308823545128",
+  "fixtureFingerprint": "sha256:35cda69e13fd1eb7392d0c070ecab4e01cc5c580ebf7c2cdb866db4174786ea0",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "resourceSampleMode": "cold",
@@ -36,18 +36,18 @@
     "candidateId": "candidate-example-v1",
     "baseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "manifest": {
-      "entrypoint": "candidate-runtime",
+      "entrypoint": "candidate.bundle",
       "revision": "example-v1",
       "files": [
         {
           "path": "candidate.bundle",
-          "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          "sha256": "sha256:5ec9dafb58d56ebf6424097cbcd6bc69a1bcdb06f05c400b7d1edf4977e59016"
         }
       ]
     },
-    "contentSha256": "sha256:381d2567492564f738d2310c01a66e3529d2eaf441dda06b2aa282947b298f0a"
+    "contentSha256": "sha256:3aa4a5decdf2adc0fa88aefec50badd7484d867eb094d7cfe60797b73ddbd259"
   },
-  "artifactFingerprint": "sha256:fb21c7fd368593968ebf7df123238451b153dbd61e35e554e500b84969edc698",
+  "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
   "drain": {
     "drainConditionId": "slice1-claude-to-codex-visible-v1",
     "status": "completed",
@@ -109,20 +109,28 @@
       "monotonicMs": 700
     },
     {
-      "name": "target_injection_acknowledged",
+      "name": "target_selection_started",
       "monotonicMs": 800
     },
     {
-      "name": "target_model_request_dispatched",
+      "name": "target_selection_finished",
       "monotonicMs": 900
     },
     {
-      "name": "scenario_terminal",
+      "name": "target_injection_acknowledged",
       "monotonicMs": 1000
     },
     {
-      "name": "post_teardown_grace_elapsed",
+      "name": "target_model_request_dispatched",
       "monotonicMs": 1100
+    },
+    {
+      "name": "scenario_terminal",
+      "monotonicMs": 1200
+    },
+    {
+      "name": "post_teardown_grace_elapsed",
+      "monotonicMs": 1300
     }
   ],
   "counts": {
@@ -176,23 +184,30 @@
   "identityConflictEvidence": null,
   "retryEvidence": null,
   "failureMetadata": null,
+  "outputLimitAtomicityEvidence": null,
   "operationalStatus": null,
   "processSamples": [
-    {"monotonicMs": 0, "processCount": 1, "rssMiB": 100, "queueDepth": 0, "storageBytes": 1000},
-    {"monotonicMs": 100, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 200, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 300, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 400, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 500, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 600, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 700, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 800, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 900, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 1000, "processCount": 2, "rssMiB": 110, "queueDepth": 3, "storageBytes": 11000},
-    {"monotonicMs": 1100, "processCount": 0, "rssMiB": 0, "queueDepth": 0, "storageBytes": 11000}
+    {"monotonicMs":0,"processCount":1,"rssMiB":100,"queueDepth":0,"storageBytes":1000},
+    {"monotonicMs":100,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":200,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":300,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":400,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":500,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":600,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":700,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":800,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":900,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":1000,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":1100,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":1200,"processCount":2,"rssMiB":110,"queueDepth":3,"storageBytes":11000},
+    {"monotonicMs":1300,"processCount":0,"rssMiB":0,"queueDepth":0,"storageBytes":11000}
   ],
   "injectedItems": [
     {
+      "memoryId": "memory:18907f0c51d483d6a0a0192e70c86728f91d8c3625c86a8641ddd94ca8c4a377",
+      "lineageId": "8bc0d5f574dc4db7edf79fa2dd0a04e563a397190cd3a4c1755b3964f324f99c",
+      "revisionId": "revision:e3e1ef7d280904adf53d8b49baf1deb8c2013ebf202ce8730de26d5777b7f1b1",
+      "revisionOrdinal": 1,
       "fact": "Project settings validation now uses the existing validator.",
       "memoryKind": "summary",
       "sourceEventIds": [
@@ -216,6 +231,10 @@
       "selectionReason": "lexical"
     },
     {
+      "memoryId": "memory:4077823df9cd06fe528b34ee2aa96caeaa50a70341c2accd37a0b2ded1ed598c",
+      "lineageId": "6a056444cac2365e46dbe216e70d7ff8b89d6a431701a2403f8512212dd864c2",
+      "revisionId": "revision:351b9ac6ade5120b2816807a75bc12f9907f39342455cc0703ca775ea8033cf8",
+      "revisionOrdinal": 1,
       "fact": "Reuse the existing JSON-schema validation path.",
       "memoryKind": "decision",
       "sourceEventIds": [
@@ -233,6 +252,10 @@
       "selectionReason": "lexical"
     },
     {
+      "memoryId": "memory:9016c2e8daec075653957f53bc8d304de3df1002217500f49364379dea848466",
+      "lineageId": "c1712f25bc7fc5d8db55e22c7bea971066661aa3ff391ec7e01576a120d42878",
+      "revisionId": "revision:da099e3e92c0d671a326700d09f35a596c92fb8520c2457af9489c617a0d55a6",
+      "revisionOrdinal": 1,
       "fact": "Do not add a second custom parser.",
       "memoryKind": "failed_approach",
       "sourceEventIds": [
@@ -250,6 +273,10 @@
       "selectionReason": "lexical"
     },
     {
+      "memoryId": "memory:eb4d9015e6efb615428aaf7271a945b18bcea1fe2d0d591a5ce08340affc14a4",
+      "lineageId": "f949fbe6af10ee7d8c41f208fe3c878ebfa9b7a8b0be2ec8e69b5eda395a220b",
+      "revisionId": "revision:4dad9f748e25321de060890002fe43e3dcdba7d10604b23f520a79db6f8624e4",
+      "revisionOrdinal": 1,
       "fact": "Next: add the malformed-root regression test.",
       "memoryKind": "next_action",
       "sourceEventIds": [
@@ -268,6 +295,7 @@
     }
   ],
   "omittedItems": [],
+  "packId": "candidate-example-v1:claude-to-codex:pack-v1",
   "packDegradations": [
     "semantic_disabled"
   ],
@@ -281,16 +309,21 @@
   },
   "attemptedItems": "same_as_final",
   "attemptedRenderEvidence": "same_as_final",
-  "attemptedRenderedBytes": 1249,
-  "renderedBytes": 1249,
-  "attemptedInjectedTokens": 465,
-  "injectedTokens": 465,
+  "attemptedRenderedBytes": 2954,
+  "renderedBytes": 2954,
+  "attemptedInjectedTokens": 759,
+  "injectedTokens": 759,
   "finalRenderEvidence": {
     "rendererId": "alpha-jcs-renderer-v1",
-    "utf8Payload": "{\"items\":[{\"fact\":\"Project settings validation now uses the existing validator.\",\"memoryKind\":\"summary\",\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-1\",\"claude-to-codex-event-4\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":45,\"eventId\":\"claude-to-codex-event-1\",\"startByte\":0},{\"endByte\":53,\"eventId\":\"claude-to-codex-event-4\",\"startByte\":0}]},{\"fact\":\"Reuse the existing JSON-schema validation path.\",\"memoryKind\":\"decision\",\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-2\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":47,\"eventId\":\"claude-to-codex-event-2\",\"startByte\":0}]},{\"fact\":\"Do not add a second custom parser.\",\"memoryKind\":\"failed_approach\",\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-3\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":69,\"eventId\":\"claude-to-codex-event-3\",\"startByte\":0}]},{\"fact\":\"Next: add the malformed-root regression test.\",\"memoryKind\":\"next_action\",\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-5\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":39,\"eventId\":\"claude-to-codex-event-5\",\"startByte\":0}]}]}",
+    "utf8Payload": "{\"injectionPack\":{\"items\":[{\"fact\":\"Project settings validation now uses the existing validator.\",\"lineageId\":\"8bc0d5f574dc4db7edf79fa2dd0a04e563a397190cd3a4c1755b3964f324f99c\",\"memoryId\":\"memory:18907f0c51d483d6a0a0192e70c86728f91d8c3625c86a8641ddd94ca8c4a377\",\"memoryKind\":\"summary\",\"revisionId\":\"revision:e3e1ef7d280904adf53d8b49baf1deb8c2013ebf202ce8730de26d5777b7f1b1\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-1\",\"claude-to-codex-event-4\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":45,\"eventId\":\"claude-to-codex-event-1\",\"startByte\":0},{\"endByte\":53,\"eventId\":\"claude-to-codex-event-4\",\"startByte\":0}]},{\"fact\":\"Reuse the existing JSON-schema validation path.\",\"lineageId\":\"6a056444cac2365e46dbe216e70d7ff8b89d6a431701a2403f8512212dd864c2\",\"memoryId\":\"memory:4077823df9cd06fe528b34ee2aa96caeaa50a70341c2accd37a0b2ded1ed598c\",\"memoryKind\":\"decision\",\"revisionId\":\"revision:351b9ac6ade5120b2816807a75bc12f9907f39342455cc0703ca775ea8033cf8\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-2\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":47,\"eventId\":\"claude-to-codex-event-2\",\"startByte\":0}]},{\"fact\":\"Do not add a second custom parser.\",\"lineageId\":\"c1712f25bc7fc5d8db55e22c7bea971066661aa3ff391ec7e01576a120d42878\",\"memoryId\":\"memory:9016c2e8daec075653957f53bc8d304de3df1002217500f49364379dea848466\",\"memoryKind\":\"failed_approach\",\"revisionId\":\"revision:da099e3e92c0d671a326700d09f35a596c92fb8520c2457af9489c617a0d55a6\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-3\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":69,\"eventId\":\"claude-to-codex-event-3\",\"startByte\":0}]},{\"fact\":\"Next: add the malformed-root regression test.\",\"lineageId\":\"f949fbe6af10ee7d8c41f208fe3c878ebfa9b7a8b0be2ec8e69b5eda395a220b\",\"memoryId\":\"memory:eb4d9015e6efb615428aaf7271a945b18bcea1fe2d0d591a5ce08340affc14a4\",\"memoryKind\":\"next_action\",\"revisionId\":\"revision:4dad9f748e25321de060890002fe43e3dcdba7d10604b23f520a79db6f8624e4\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-5\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":39,\"eventId\":\"claude-to-codex-event-5\",\"startByte\":0}]}],\"manifestIdentity\":{\"effectiveManifestFingerprint\":\"sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445\",\"manifestId\":\"slice1-effective-manifest-v1\"},\"packDegradations\":[\"semantic_disabled\"],\"packId\":\"candidate-example-v1:claude-to-codex:pack-v1\",\"packVersion\":1,\"resolvedDestinationPolicy\":{\"egressPolicy\":\"same_repository_on_device\",\"eligibleSensitivities\":[\"eligible\",\"private\",\"local_only\"],\"executionLocation\":\"local\",\"targetAgent\":\"codex\"},\"targetDestinationClass\":\"codex-local\",\"targetRepositoryScope\":\"repo-primary\",\"targetSessionId\":\"claude-to-codex:target-session\"}}",
     "tokenizerId": "deterministic-fixture-tokenizer-v1",
     "tokenizerRevision": "1",
     "tokenIds": [
+      1100414391,
+      318520971,
+      4231374113,
+      318520971,
+      382474223,
       1100414391,
       318520971,
       1183950975,
@@ -315,12 +348,46 @@
       318520971,
       501256575,
       318520971,
+      46042388,
+      318520971,
+      382474223,
+      318520971,
+      3067043758,
+      318520971,
+      501256575,
+      318520971,
+      1705974009,
+      318520971,
+      382474223,
+      318520971,
+      1058359,
+      382474223,
+      3076296994,
+      318520971,
+      501256575,
+      318520971,
       3077173570,
       318520971,
       382474223,
       318520971,
       13059082,
       318520971,
+      501256575,
+      318520971,
+      2493133778,
+      318520971,
+      382474223,
+      318520971,
+      1433421432,
+      382474223,
+      2813920535,
+      318520971,
+      501256575,
+      318520971,
+      975101814,
+      318520971,
+      382474223,
+      776065890,
       501256575,
       318520971,
       2980818261,
@@ -461,12 +528,46 @@
       318520971,
       501256575,
       318520971,
+      46042388,
+      318520971,
+      382474223,
+      318520971,
+      3323823064,
+      318520971,
+      501256575,
+      318520971,
+      1705974009,
+      318520971,
+      382474223,
+      318520971,
+      1058359,
+      382474223,
+      2438420936,
+      318520971,
+      501256575,
+      318520971,
       3077173570,
       318520971,
       382474223,
       318520971,
       4269737206,
       318520971,
+      501256575,
+      318520971,
+      2493133778,
+      318520971,
+      382474223,
+      318520971,
+      1433421432,
+      382474223,
+      2577532079,
+      318520971,
+      501256575,
+      318520971,
+      975101814,
+      318520971,
+      382474223,
+      776065890,
       501256575,
       318520971,
       2980818261,
@@ -564,12 +665,46 @@
       318520971,
       501256575,
       318520971,
+      46042388,
+      318520971,
+      382474223,
+      318520971,
+      3513063292,
+      318520971,
+      501256575,
+      318520971,
+      1705974009,
+      318520971,
+      382474223,
+      318520971,
+      1058359,
+      382474223,
+      780102721,
+      318520971,
+      501256575,
+      318520971,
       3077173570,
       318520971,
       382474223,
       318520971,
       3166305707,
       318520971,
+      501256575,
+      318520971,
+      2493133778,
+      318520971,
+      382474223,
+      318520971,
+      1433421432,
+      382474223,
+      2908496801,
+      318520971,
+      501256575,
+      318520971,
+      975101814,
+      318520971,
+      382474223,
+      776065890,
       501256575,
       318520971,
       2980818261,
@@ -669,12 +804,46 @@
       318520971,
       501256575,
       318520971,
+      46042388,
+      318520971,
+      382474223,
+      318520971,
+      1725657506,
+      318520971,
+      501256575,
+      318520971,
+      1705974009,
+      318520971,
+      382474223,
+      318520971,
+      1058359,
+      382474223,
+      1766055054,
+      318520971,
+      501256575,
+      318520971,
       3077173570,
       318520971,
       382474223,
       318520971,
       264998067,
       318520971,
+      501256575,
+      318520971,
+      2493133778,
+      318520971,
+      382474223,
+      318520971,
+      1433421432,
+      382474223,
+      772508970,
+      318520971,
+      501256575,
+      318520971,
+      975101814,
+      318520971,
+      382474223,
+      776065890,
       501256575,
       318520971,
       2980818261,
@@ -755,19 +924,169 @@
       849182181,
       2552996445,
       849182181,
+      501256575,
+      318520971,
+      1793057789,
+      318520971,
+      382474223,
+      1100414391,
+      318520971,
+      430466346,
+      318520971,
+      382474223,
+      318520971,
+      2314107055,
+      382474223,
+      2370786204,
+      318520971,
+      501256575,
+      318520971,
+      846066861,
+      318520971,
+      382474223,
+      318520971,
+      2470601885,
+      773071164,
+      437926632,
+      773071164,
+      112766610,
+      773071164,
+      3722126200,
+      318520971,
+      2552996445,
+      501256575,
+      318520971,
+      59519013,
+      318520971,
+      382474223,
+      2581605094,
+      318520971,
+      3939980442,
+      318520971,
+      849182181,
+      501256575,
+      318520971,
+      4031941820,
+      318520971,
+      382474223,
+      318520971,
+      2251025921,
+      773071164,
+      2328193982,
+      773071164,
+      3722126200,
+      382474223,
+      1318684097,
+      773071164,
+      1908984722,
+      773071164,
+      3976286045,
+      382474223,
+      4098312269,
+      773071164,
+      3722126200,
+      318520971,
+      501256575,
+      318520971,
+      3279073331,
+      318520971,
+      382474223,
+      776065890,
+      501256575,
+      318520971,
+      3627694640,
+      318520971,
+      382474223,
+      1100414391,
+      318520971,
+      2784357134,
+      318520971,
+      382474223,
+      318520971,
+      1840872557,
+      318520971,
+      501256575,
+      318520971,
+      3047804086,
+      318520971,
+      382474223,
+      2581605094,
+      318520971,
+      891551392,
+      318520971,
+      501256575,
+      318520971,
+      58203950,
+      318520971,
+      501256575,
+      318520971,
+      2362029433,
+      318520971,
+      849182181,
+      501256575,
+      318520971,
+      3284120071,
+      318520971,
+      382474223,
+      318520971,
+      4288406260,
+      318520971,
+      501256575,
+      318520971,
+      1344710274,
+      318520971,
+      382474223,
+      318520971,
+      3976286045,
+      318520971,
+      2552996445,
+      501256575,
+      318520971,
+      2051706175,
+      318520971,
+      382474223,
+      318520971,
+      3976286045,
+      773071164,
+      4288406260,
+      318520971,
+      501256575,
+      318520971,
+      1487982110,
+      318520971,
+      382474223,
+      318520971,
+      1344635344,
+      773071164,
+      1606372727,
+      318520971,
+      501256575,
+      318520971,
+      363815304,
+      318520971,
+      382474223,
+      318520971,
+      1318684097,
+      773071164,
+      1908984722,
+      773071164,
+      3976286045,
+      382474223,
+      2475628290,
+      773071164,
+      3882894974,
+      318520971,
+      2552996445,
       2552996445
     ]
   },
-  "selectionTimingEvidence": {"startMonotonicMs": 1000, "endMonotonicMs": 1500},
-  "selectionElapsedMs": 500,
+  "selectionTimingEvidence": {
+    "startMonotonicMs": 800,
+    "endMonotonicMs": 900
+  },
+  "selectionElapsedMs": 100,
   "latencyEvidence": {
-    "captureEventIds": [
-      "claude-to-codex-event-1",
-      "claude-to-codex-event-2",
-      "claude-to-codex-event-3",
-      "claude-to-codex-event-4",
-      "claude-to-codex-event-5"
-    ],
+    "captureEventIds": ["claude-to-codex-event-1","claude-to-codex-event-2","claude-to-codex-event-3","claude-to-codex-event-4","claude-to-codex-event-5"],
     "runs": [
       {
         "runOrdinal": 1,
@@ -775,16 +1094,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-1",
         "sessionNamespace": "claude-to-codex:session-1",
-        "captureEventIds": ["claude-to-codex:run-1:claude-to-codex-event-1", "claude-to-codex:run-1:claude-to-codex-event-2", "claude-to-codex:run-1:claude-to-codex-event-3", "claude-to-codex:run-1:claude-to-codex-event-4", "claude-to-codex:run-1:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-1:claude-to-codex-event-1","startMonotonicMs":100000,"endMonotonicMs":100100},
+          {"eventId":"claude-to-codex:run-1:claude-to-codex-event-2","startMonotonicMs":101000,"endMonotonicMs":101100},
+          {"eventId":"claude-to-codex:run-1:claude-to-codex-event-3","startMonotonicMs":102000,"endMonotonicMs":102100},
+          {"eventId":"claude-to-codex:run-1:claude-to-codex-event-4","startMonotonicMs":103000,"endMonotonicMs":103100},
+          {"eventId":"claude-to-codex:run-1:claude-to-codex-event-5","startMonotonicMs":104000,"endMonotonicMs":104100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":160000,"endMonotonicMs":161000}
       },
       {
         "runOrdinal": 2,
@@ -792,16 +1110,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-2",
         "sessionNamespace": "claude-to-codex:session-2",
-        "captureEventIds": ["claude-to-codex:run-2:claude-to-codex-event-1", "claude-to-codex:run-2:claude-to-codex-event-2", "claude-to-codex:run-2:claude-to-codex-event-3", "claude-to-codex:run-2:claude-to-codex-event-4", "claude-to-codex:run-2:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-2:claude-to-codex-event-1","startMonotonicMs":200000,"endMonotonicMs":200100},
+          {"eventId":"claude-to-codex:run-2:claude-to-codex-event-2","startMonotonicMs":201000,"endMonotonicMs":201100},
+          {"eventId":"claude-to-codex:run-2:claude-to-codex-event-3","startMonotonicMs":202000,"endMonotonicMs":202100},
+          {"eventId":"claude-to-codex:run-2:claude-to-codex-event-4","startMonotonicMs":203000,"endMonotonicMs":203100},
+          {"eventId":"claude-to-codex:run-2:claude-to-codex-event-5","startMonotonicMs":204000,"endMonotonicMs":204100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":260000,"endMonotonicMs":261000}
       },
       {
         "runOrdinal": 3,
@@ -809,16 +1126,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-3",
         "sessionNamespace": "claude-to-codex:session-3",
-        "captureEventIds": ["claude-to-codex:run-3:claude-to-codex-event-1", "claude-to-codex:run-3:claude-to-codex-event-2", "claude-to-codex:run-3:claude-to-codex-event-3", "claude-to-codex:run-3:claude-to-codex-event-4", "claude-to-codex:run-3:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-3:claude-to-codex-event-1","startMonotonicMs":300000,"endMonotonicMs":300100},
+          {"eventId":"claude-to-codex:run-3:claude-to-codex-event-2","startMonotonicMs":301000,"endMonotonicMs":301100},
+          {"eventId":"claude-to-codex:run-3:claude-to-codex-event-3","startMonotonicMs":302000,"endMonotonicMs":302100},
+          {"eventId":"claude-to-codex:run-3:claude-to-codex-event-4","startMonotonicMs":303000,"endMonotonicMs":303100},
+          {"eventId":"claude-to-codex:run-3:claude-to-codex-event-5","startMonotonicMs":304000,"endMonotonicMs":304100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":360000,"endMonotonicMs":361000}
       },
       {
         "runOrdinal": 4,
@@ -826,16 +1142,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-4",
         "sessionNamespace": "claude-to-codex:session-4",
-        "captureEventIds": ["claude-to-codex:run-4:claude-to-codex-event-1", "claude-to-codex:run-4:claude-to-codex-event-2", "claude-to-codex:run-4:claude-to-codex-event-3", "claude-to-codex:run-4:claude-to-codex-event-4", "claude-to-codex:run-4:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-4:claude-to-codex-event-1","startMonotonicMs":400000,"endMonotonicMs":400100},
+          {"eventId":"claude-to-codex:run-4:claude-to-codex-event-2","startMonotonicMs":401000,"endMonotonicMs":401100},
+          {"eventId":"claude-to-codex:run-4:claude-to-codex-event-3","startMonotonicMs":402000,"endMonotonicMs":402100},
+          {"eventId":"claude-to-codex:run-4:claude-to-codex-event-4","startMonotonicMs":403000,"endMonotonicMs":403100},
+          {"eventId":"claude-to-codex:run-4:claude-to-codex-event-5","startMonotonicMs":404000,"endMonotonicMs":404100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":460000,"endMonotonicMs":461000}
       },
       {
         "runOrdinal": 5,
@@ -843,16 +1158,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-5",
         "sessionNamespace": "claude-to-codex:session-5",
-        "captureEventIds": ["claude-to-codex:run-5:claude-to-codex-event-1", "claude-to-codex:run-5:claude-to-codex-event-2", "claude-to-codex:run-5:claude-to-codex-event-3", "claude-to-codex:run-5:claude-to-codex-event-4", "claude-to-codex:run-5:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-5:claude-to-codex-event-1","startMonotonicMs":500000,"endMonotonicMs":500100},
+          {"eventId":"claude-to-codex:run-5:claude-to-codex-event-2","startMonotonicMs":501000,"endMonotonicMs":501100},
+          {"eventId":"claude-to-codex:run-5:claude-to-codex-event-3","startMonotonicMs":502000,"endMonotonicMs":502100},
+          {"eventId":"claude-to-codex:run-5:claude-to-codex-event-4","startMonotonicMs":503000,"endMonotonicMs":503100},
+          {"eventId":"claude-to-codex:run-5:claude-to-codex-event-5","startMonotonicMs":504000,"endMonotonicMs":504100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":560000,"endMonotonicMs":561000}
       },
       {
         "runOrdinal": 6,
@@ -860,16 +1174,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-6",
         "sessionNamespace": "claude-to-codex:session-6",
-        "captureEventIds": ["claude-to-codex:run-6:claude-to-codex-event-1", "claude-to-codex:run-6:claude-to-codex-event-2", "claude-to-codex:run-6:claude-to-codex-event-3", "claude-to-codex:run-6:claude-to-codex-event-4", "claude-to-codex:run-6:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-6:claude-to-codex-event-1","startMonotonicMs":600000,"endMonotonicMs":600100},
+          {"eventId":"claude-to-codex:run-6:claude-to-codex-event-2","startMonotonicMs":601000,"endMonotonicMs":601100},
+          {"eventId":"claude-to-codex:run-6:claude-to-codex-event-3","startMonotonicMs":602000,"endMonotonicMs":602100},
+          {"eventId":"claude-to-codex:run-6:claude-to-codex-event-4","startMonotonicMs":603000,"endMonotonicMs":603100},
+          {"eventId":"claude-to-codex:run-6:claude-to-codex-event-5","startMonotonicMs":604000,"endMonotonicMs":604100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":660000,"endMonotonicMs":661000}
       },
       {
         "runOrdinal": 7,
@@ -877,16 +1190,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-7",
         "sessionNamespace": "claude-to-codex:session-7",
-        "captureEventIds": ["claude-to-codex:run-7:claude-to-codex-event-1", "claude-to-codex:run-7:claude-to-codex-event-2", "claude-to-codex:run-7:claude-to-codex-event-3", "claude-to-codex:run-7:claude-to-codex-event-4", "claude-to-codex:run-7:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-7:claude-to-codex-event-1","startMonotonicMs":700000,"endMonotonicMs":700100},
+          {"eventId":"claude-to-codex:run-7:claude-to-codex-event-2","startMonotonicMs":701000,"endMonotonicMs":701100},
+          {"eventId":"claude-to-codex:run-7:claude-to-codex-event-3","startMonotonicMs":702000,"endMonotonicMs":702100},
+          {"eventId":"claude-to-codex:run-7:claude-to-codex-event-4","startMonotonicMs":703000,"endMonotonicMs":703100},
+          {"eventId":"claude-to-codex:run-7:claude-to-codex-event-5","startMonotonicMs":704000,"endMonotonicMs":704100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":760000,"endMonotonicMs":761000}
       },
       {
         "runOrdinal": 8,
@@ -894,16 +1206,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-8",
         "sessionNamespace": "claude-to-codex:session-8",
-        "captureEventIds": ["claude-to-codex:run-8:claude-to-codex-event-1", "claude-to-codex:run-8:claude-to-codex-event-2", "claude-to-codex:run-8:claude-to-codex-event-3", "claude-to-codex:run-8:claude-to-codex-event-4", "claude-to-codex:run-8:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-8:claude-to-codex-event-1","startMonotonicMs":800000,"endMonotonicMs":800100},
+          {"eventId":"claude-to-codex:run-8:claude-to-codex-event-2","startMonotonicMs":801000,"endMonotonicMs":801100},
+          {"eventId":"claude-to-codex:run-8:claude-to-codex-event-3","startMonotonicMs":802000,"endMonotonicMs":802100},
+          {"eventId":"claude-to-codex:run-8:claude-to-codex-event-4","startMonotonicMs":803000,"endMonotonicMs":803100},
+          {"eventId":"claude-to-codex:run-8:claude-to-codex-event-5","startMonotonicMs":804000,"endMonotonicMs":804100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":860000,"endMonotonicMs":861000}
       },
       {
         "runOrdinal": 9,
@@ -911,16 +1222,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-9",
         "sessionNamespace": "claude-to-codex:session-9",
-        "captureEventIds": ["claude-to-codex:run-9:claude-to-codex-event-1", "claude-to-codex:run-9:claude-to-codex-event-2", "claude-to-codex:run-9:claude-to-codex-event-3", "claude-to-codex:run-9:claude-to-codex-event-4", "claude-to-codex:run-9:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-9:claude-to-codex-event-1","startMonotonicMs":900000,"endMonotonicMs":900100},
+          {"eventId":"claude-to-codex:run-9:claude-to-codex-event-2","startMonotonicMs":901000,"endMonotonicMs":901100},
+          {"eventId":"claude-to-codex:run-9:claude-to-codex-event-3","startMonotonicMs":902000,"endMonotonicMs":902100},
+          {"eventId":"claude-to-codex:run-9:claude-to-codex-event-4","startMonotonicMs":903000,"endMonotonicMs":903100},
+          {"eventId":"claude-to-codex:run-9:claude-to-codex-event-5","startMonotonicMs":904000,"endMonotonicMs":904100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":960000,"endMonotonicMs":961000}
       },
       {
         "runOrdinal": 10,
@@ -928,16 +1238,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-10",
         "sessionNamespace": "claude-to-codex:session-10",
-        "captureEventIds": ["claude-to-codex:run-10:claude-to-codex-event-1", "claude-to-codex:run-10:claude-to-codex-event-2", "claude-to-codex:run-10:claude-to-codex-event-3", "claude-to-codex:run-10:claude-to-codex-event-4", "claude-to-codex:run-10:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-10:claude-to-codex-event-1","startMonotonicMs":1000000,"endMonotonicMs":1000100},
+          {"eventId":"claude-to-codex:run-10:claude-to-codex-event-2","startMonotonicMs":1001000,"endMonotonicMs":1001100},
+          {"eventId":"claude-to-codex:run-10:claude-to-codex-event-3","startMonotonicMs":1002000,"endMonotonicMs":1002100},
+          {"eventId":"claude-to-codex:run-10:claude-to-codex-event-4","startMonotonicMs":1003000,"endMonotonicMs":1003100},
+          {"eventId":"claude-to-codex:run-10:claude-to-codex-event-5","startMonotonicMs":1004000,"endMonotonicMs":1004100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1060000,"endMonotonicMs":1061000}
       },
       {
         "runOrdinal": 11,
@@ -945,16 +1254,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-11",
         "sessionNamespace": "claude-to-codex:session-11",
-        "captureEventIds": ["claude-to-codex:run-11:claude-to-codex-event-1", "claude-to-codex:run-11:claude-to-codex-event-2", "claude-to-codex:run-11:claude-to-codex-event-3", "claude-to-codex:run-11:claude-to-codex-event-4", "claude-to-codex:run-11:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-11:claude-to-codex-event-1","startMonotonicMs":1100000,"endMonotonicMs":1100100},
+          {"eventId":"claude-to-codex:run-11:claude-to-codex-event-2","startMonotonicMs":1101000,"endMonotonicMs":1101100},
+          {"eventId":"claude-to-codex:run-11:claude-to-codex-event-3","startMonotonicMs":1102000,"endMonotonicMs":1102100},
+          {"eventId":"claude-to-codex:run-11:claude-to-codex-event-4","startMonotonicMs":1103000,"endMonotonicMs":1103100},
+          {"eventId":"claude-to-codex:run-11:claude-to-codex-event-5","startMonotonicMs":1104000,"endMonotonicMs":1104100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1160000,"endMonotonicMs":1161000}
       },
       {
         "runOrdinal": 12,
@@ -962,16 +1270,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-12",
         "sessionNamespace": "claude-to-codex:session-12",
-        "captureEventIds": ["claude-to-codex:run-12:claude-to-codex-event-1", "claude-to-codex:run-12:claude-to-codex-event-2", "claude-to-codex:run-12:claude-to-codex-event-3", "claude-to-codex:run-12:claude-to-codex-event-4", "claude-to-codex:run-12:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-12:claude-to-codex-event-1","startMonotonicMs":1200000,"endMonotonicMs":1200100},
+          {"eventId":"claude-to-codex:run-12:claude-to-codex-event-2","startMonotonicMs":1201000,"endMonotonicMs":1201100},
+          {"eventId":"claude-to-codex:run-12:claude-to-codex-event-3","startMonotonicMs":1202000,"endMonotonicMs":1202100},
+          {"eventId":"claude-to-codex:run-12:claude-to-codex-event-4","startMonotonicMs":1203000,"endMonotonicMs":1203100},
+          {"eventId":"claude-to-codex:run-12:claude-to-codex-event-5","startMonotonicMs":1204000,"endMonotonicMs":1204100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1260000,"endMonotonicMs":1261000}
       },
       {
         "runOrdinal": 13,
@@ -979,16 +1286,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-13",
         "sessionNamespace": "claude-to-codex:session-13",
-        "captureEventIds": ["claude-to-codex:run-13:claude-to-codex-event-1", "claude-to-codex:run-13:claude-to-codex-event-2", "claude-to-codex:run-13:claude-to-codex-event-3", "claude-to-codex:run-13:claude-to-codex-event-4", "claude-to-codex:run-13:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-13:claude-to-codex-event-1","startMonotonicMs":1300000,"endMonotonicMs":1300100},
+          {"eventId":"claude-to-codex:run-13:claude-to-codex-event-2","startMonotonicMs":1301000,"endMonotonicMs":1301100},
+          {"eventId":"claude-to-codex:run-13:claude-to-codex-event-3","startMonotonicMs":1302000,"endMonotonicMs":1302100},
+          {"eventId":"claude-to-codex:run-13:claude-to-codex-event-4","startMonotonicMs":1303000,"endMonotonicMs":1303100},
+          {"eventId":"claude-to-codex:run-13:claude-to-codex-event-5","startMonotonicMs":1304000,"endMonotonicMs":1304100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1360000,"endMonotonicMs":1361000}
       },
       {
         "runOrdinal": 14,
@@ -996,16 +1302,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-14",
         "sessionNamespace": "claude-to-codex:session-14",
-        "captureEventIds": ["claude-to-codex:run-14:claude-to-codex-event-1", "claude-to-codex:run-14:claude-to-codex-event-2", "claude-to-codex:run-14:claude-to-codex-event-3", "claude-to-codex:run-14:claude-to-codex-event-4", "claude-to-codex:run-14:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-14:claude-to-codex-event-1","startMonotonicMs":1400000,"endMonotonicMs":1400100},
+          {"eventId":"claude-to-codex:run-14:claude-to-codex-event-2","startMonotonicMs":1401000,"endMonotonicMs":1401100},
+          {"eventId":"claude-to-codex:run-14:claude-to-codex-event-3","startMonotonicMs":1402000,"endMonotonicMs":1402100},
+          {"eventId":"claude-to-codex:run-14:claude-to-codex-event-4","startMonotonicMs":1403000,"endMonotonicMs":1403100},
+          {"eventId":"claude-to-codex:run-14:claude-to-codex-event-5","startMonotonicMs":1404000,"endMonotonicMs":1404100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1460000,"endMonotonicMs":1461000}
       },
       {
         "runOrdinal": 15,
@@ -1013,16 +1318,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-15",
         "sessionNamespace": "claude-to-codex:session-15",
-        "captureEventIds": ["claude-to-codex:run-15:claude-to-codex-event-1", "claude-to-codex:run-15:claude-to-codex-event-2", "claude-to-codex:run-15:claude-to-codex-event-3", "claude-to-codex:run-15:claude-to-codex-event-4", "claude-to-codex:run-15:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-15:claude-to-codex-event-1","startMonotonicMs":1500000,"endMonotonicMs":1500100},
+          {"eventId":"claude-to-codex:run-15:claude-to-codex-event-2","startMonotonicMs":1501000,"endMonotonicMs":1501100},
+          {"eventId":"claude-to-codex:run-15:claude-to-codex-event-3","startMonotonicMs":1502000,"endMonotonicMs":1502100},
+          {"eventId":"claude-to-codex:run-15:claude-to-codex-event-4","startMonotonicMs":1503000,"endMonotonicMs":1503100},
+          {"eventId":"claude-to-codex:run-15:claude-to-codex-event-5","startMonotonicMs":1504000,"endMonotonicMs":1504100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1560000,"endMonotonicMs":1561000}
       },
       {
         "runOrdinal": 16,
@@ -1030,16 +1334,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-16",
         "sessionNamespace": "claude-to-codex:session-16",
-        "captureEventIds": ["claude-to-codex:run-16:claude-to-codex-event-1", "claude-to-codex:run-16:claude-to-codex-event-2", "claude-to-codex:run-16:claude-to-codex-event-3", "claude-to-codex:run-16:claude-to-codex-event-4", "claude-to-codex:run-16:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-16:claude-to-codex-event-1","startMonotonicMs":1600000,"endMonotonicMs":1600100},
+          {"eventId":"claude-to-codex:run-16:claude-to-codex-event-2","startMonotonicMs":1601000,"endMonotonicMs":1601100},
+          {"eventId":"claude-to-codex:run-16:claude-to-codex-event-3","startMonotonicMs":1602000,"endMonotonicMs":1602100},
+          {"eventId":"claude-to-codex:run-16:claude-to-codex-event-4","startMonotonicMs":1603000,"endMonotonicMs":1603100},
+          {"eventId":"claude-to-codex:run-16:claude-to-codex-event-5","startMonotonicMs":1604000,"endMonotonicMs":1604100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1660000,"endMonotonicMs":1661000}
       },
       {
         "runOrdinal": 17,
@@ -1047,16 +1350,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-17",
         "sessionNamespace": "claude-to-codex:session-17",
-        "captureEventIds": ["claude-to-codex:run-17:claude-to-codex-event-1", "claude-to-codex:run-17:claude-to-codex-event-2", "claude-to-codex:run-17:claude-to-codex-event-3", "claude-to-codex:run-17:claude-to-codex-event-4", "claude-to-codex:run-17:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-17:claude-to-codex-event-1","startMonotonicMs":1700000,"endMonotonicMs":1700100},
+          {"eventId":"claude-to-codex:run-17:claude-to-codex-event-2","startMonotonicMs":1701000,"endMonotonicMs":1701100},
+          {"eventId":"claude-to-codex:run-17:claude-to-codex-event-3","startMonotonicMs":1702000,"endMonotonicMs":1702100},
+          {"eventId":"claude-to-codex:run-17:claude-to-codex-event-4","startMonotonicMs":1703000,"endMonotonicMs":1703100},
+          {"eventId":"claude-to-codex:run-17:claude-to-codex-event-5","startMonotonicMs":1704000,"endMonotonicMs":1704100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1760000,"endMonotonicMs":1761000}
       },
       {
         "runOrdinal": 18,
@@ -1064,16 +1366,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-18",
         "sessionNamespace": "claude-to-codex:session-18",
-        "captureEventIds": ["claude-to-codex:run-18:claude-to-codex-event-1", "claude-to-codex:run-18:claude-to-codex-event-2", "claude-to-codex:run-18:claude-to-codex-event-3", "claude-to-codex:run-18:claude-to-codex-event-4", "claude-to-codex:run-18:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-18:claude-to-codex-event-1","startMonotonicMs":1800000,"endMonotonicMs":1800100},
+          {"eventId":"claude-to-codex:run-18:claude-to-codex-event-2","startMonotonicMs":1801000,"endMonotonicMs":1801100},
+          {"eventId":"claude-to-codex:run-18:claude-to-codex-event-3","startMonotonicMs":1802000,"endMonotonicMs":1802100},
+          {"eventId":"claude-to-codex:run-18:claude-to-codex-event-4","startMonotonicMs":1803000,"endMonotonicMs":1803100},
+          {"eventId":"claude-to-codex:run-18:claude-to-codex-event-5","startMonotonicMs":1804000,"endMonotonicMs":1804100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1860000,"endMonotonicMs":1861000}
       },
       {
         "runOrdinal": 19,
@@ -1081,16 +1382,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-19",
         "sessionNamespace": "claude-to-codex:session-19",
-        "captureEventIds": ["claude-to-codex:run-19:claude-to-codex-event-1", "claude-to-codex:run-19:claude-to-codex-event-2", "claude-to-codex:run-19:claude-to-codex-event-3", "claude-to-codex:run-19:claude-to-codex-event-4", "claude-to-codex:run-19:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-19:claude-to-codex-event-1","startMonotonicMs":1900000,"endMonotonicMs":1900100},
+          {"eventId":"claude-to-codex:run-19:claude-to-codex-event-2","startMonotonicMs":1901000,"endMonotonicMs":1901100},
+          {"eventId":"claude-to-codex:run-19:claude-to-codex-event-3","startMonotonicMs":1902000,"endMonotonicMs":1902100},
+          {"eventId":"claude-to-codex:run-19:claude-to-codex-event-4","startMonotonicMs":1903000,"endMonotonicMs":1903100},
+          {"eventId":"claude-to-codex:run-19:claude-to-codex-event-5","startMonotonicMs":1904000,"endMonotonicMs":1904100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":1960000,"endMonotonicMs":1961000}
       },
       {
         "runOrdinal": 20,
@@ -1098,16 +1398,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-20",
         "sessionNamespace": "claude-to-codex:session-20",
-        "captureEventIds": ["claude-to-codex:run-20:claude-to-codex-event-1", "claude-to-codex:run-20:claude-to-codex-event-2", "claude-to-codex:run-20:claude-to-codex-event-3", "claude-to-codex:run-20:claude-to-codex-event-4", "claude-to-codex:run-20:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-20:claude-to-codex-event-1","startMonotonicMs":2000000,"endMonotonicMs":2000100},
+          {"eventId":"claude-to-codex:run-20:claude-to-codex-event-2","startMonotonicMs":2001000,"endMonotonicMs":2001100},
+          {"eventId":"claude-to-codex:run-20:claude-to-codex-event-3","startMonotonicMs":2002000,"endMonotonicMs":2002100},
+          {"eventId":"claude-to-codex:run-20:claude-to-codex-event-4","startMonotonicMs":2003000,"endMonotonicMs":2003100},
+          {"eventId":"claude-to-codex:run-20:claude-to-codex-event-5","startMonotonicMs":2004000,"endMonotonicMs":2004100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":2060000,"endMonotonicMs":2061000}
       },
       {
         "runOrdinal": 21,
@@ -1115,16 +1414,15 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-21",
         "sessionNamespace": "claude-to-codex:session-21",
-        "captureEventIds": ["claude-to-codex:run-21:claude-to-codex-event-1", "claude-to-codex:run-21:claude-to-codex-event-2", "claude-to-codex:run-21:claude-to-codex-event-3", "claude-to-codex:run-21:claude-to-codex-event-4", "claude-to-codex:run-21:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-21:claude-to-codex-event-1","startMonotonicMs":2100000,"endMonotonicMs":2100100},
+          {"eventId":"claude-to-codex:run-21:claude-to-codex-event-2","startMonotonicMs":2101000,"endMonotonicMs":2101100},
+          {"eventId":"claude-to-codex:run-21:claude-to-codex-event-3","startMonotonicMs":2102000,"endMonotonicMs":2102100},
+          {"eventId":"claude-to-codex:run-21:claude-to-codex-event-4","startMonotonicMs":2103000,"endMonotonicMs":2103100},
+          {"eventId":"claude-to-codex:run-21:claude-to-codex-event-5","startMonotonicMs":2104000,"endMonotonicMs":2104100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":2160000,"endMonotonicMs":2161000}
       },
       {
         "runOrdinal": 22,
@@ -1132,23 +1430,18 @@
         "resetMode": "fresh_isolated_data",
         "repositoryNamespace": "claude-to-codex:repo-22",
         "sessionNamespace": "claude-to-codex:session-22",
-        "captureEventIds": ["claude-to-codex:run-22:claude-to-codex-event-1", "claude-to-codex:run-22:claude-to-codex-event-2", "claude-to-codex:run-22:claude-to-codex-event-3", "claude-to-codex:run-22:claude-to-codex-event-4", "claude-to-codex:run-22:claude-to-codex-event-5"],
-        "captureElapsedMs": [
-          100,
-          100,
-          100,
-          100,
-          100
+        "captureTimings": [
+          {"eventId":"claude-to-codex:run-22:claude-to-codex-event-1","startMonotonicMs":2200000,"endMonotonicMs":2200100},
+          {"eventId":"claude-to-codex:run-22:claude-to-codex-event-2","startMonotonicMs":2201000,"endMonotonicMs":2201100},
+          {"eventId":"claude-to-codex:run-22:claude-to-codex-event-3","startMonotonicMs":2202000,"endMonotonicMs":2202100},
+          {"eventId":"claude-to-codex:run-22:claude-to-codex-event-4","startMonotonicMs":2203000,"endMonotonicMs":2203100},
+          {"eventId":"claude-to-codex:run-22:claude-to-codex-event-5","startMonotonicMs":2204000,"endMonotonicMs":2204100}
         ],
-        "warmInjectionMs": null,
-        "coldLexicalInjectionMs": 1000
+        "warmInjectionTiming": null,
+        "coldLexicalInjectionTiming": {"startMonotonicMs":2260000,"endMonotonicMs":2261000}
       }
     ],
-    "aggregates": {
-      "captureP95Ms": 100,
-      "warmInjectionP95Ms": null,
-      "shortColdLexicalInjectionMs": 1000
-    }
+    "aggregates": {"captureP95Ms":100,"warmInjectionP95Ms":null,"shortColdLexicalInjectionMs":1000}
   },
   "resource": {
     "maxSteadyProductProcessCount": 2,

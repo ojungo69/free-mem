@@ -14,6 +14,8 @@ const semanticPath = join(fixtureDir, "slice1-bidirectional-en-v1.semantic.jq");
 const validatorPath = fileURLToPath(import.meta.url);
 const resultSchemaPath = join(fixtureDir, "../contracts/alpha-result-v1.schema.json");
 const resultSemanticPath = join(fixtureDir, "../contracts/alpha-result-v1.semantic.jq");
+const resultArtifactValidatorPath = join(fixtureDir, "../contracts/alpha-result-artifact.mjs");
+const resultAtomicityValidatorPath = join(fixtureDir, "../contracts/alpha-result-atomicity.mjs");
 const resultLatencyValidatorPath = join(fixtureDir, "../contracts/alpha-result-latency.mjs");
 const resultRetryValidatorPath = join(fixtureDir, "../contracts/alpha-result-retry.mjs");
 const resultSecurityValidatorPath = join(fixtureDir, "../contracts/alpha-result-security.mjs");
@@ -48,7 +50,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:2e8e3b7b7edee1b016eea0086d3cba4ae8c60c9f3728bc66a8c6308823545128";
+  "fixture-contract-fingerprint=sha256:35cda69e13fd1eb7392d0c070ecab4e01cc5c580ebf7c2cdb866db4174786ea0";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -65,6 +67,8 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     ),
     resultSchema,
     resultSemanticValidator: normalizeText(readFileSync(resultSemanticPath, "utf8")),
+    resultArtifactValidator: normalizeText(readFileSync(resultArtifactValidatorPath, "utf8")),
+    resultAtomicityValidator: normalizeText(readFileSync(resultAtomicityValidatorPath, "utf8")),
     resultLatencyValidator: normalizeText(readFileSync(resultLatencyValidatorPath, "utf8")),
     resultRetryValidator: normalizeText(readFileSync(resultRetryValidatorPath, "utf8")),
     resultSecurityValidator: normalizeText(readFileSync(resultSecurityValidatorPath, "utf8")),
@@ -221,6 +225,11 @@ if (
 
 for (const scenario of fixture.scenarios) {
   const events = new Map(scenario.events.map((event) => [event.eventId, event]));
+  for (const item of [...scenario.expectedInjectedItems, ...scenario.expectedOmissions]) {
+    if (item.lineageId !== lineageDigest(scenario.sourceRepositoryScope, item.sourceSpans)) {
+      throw new Error(`candidate lineage does not match source evidence in ${scenario.scenarioId}`);
+    }
+  }
   const outputs = [
     scenario.summaryProviderStub.summary,
     ...scenario.summaryProviderStub.memoryItems,

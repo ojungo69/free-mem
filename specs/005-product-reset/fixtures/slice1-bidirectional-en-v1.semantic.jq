@@ -234,6 +234,21 @@ def destination_policy_ok($root):
     . as $scenario
     | ($policies | has($scenario.targetDestinationClass)));
 
+def selection_lifecycle_ok($root):
+  all($root.scenarios[];
+    . as $scenario
+    | $root.lifecycleProfiles[$scenario.lifecycleProfileId] as $milestones
+    | ($milestones | index("target_selection_started")) as $started
+    | ($milestones | index("target_selection_finished")) as $finished
+    | if $scenario.drainCondition.targetInjectionAcknowledged
+      then ($milestones | index("target_retrieval_requested")) < $started
+        and $started < $finished
+        and $finished < ($milestones | index("target_injection_acknowledged"))
+        and ($milestones | index("target_injection_acknowledged")) <
+          ($milestones | index("target_model_request_dispatched"))
+      else $started == null and $finished == null
+      end);
+
 def resource_metrics_ok($root):
   all($root.samplingProtocol.resourceMetrics[];
     . as $metric
@@ -606,6 +621,32 @@ def output_limit_ok($root):
       "observedResultCount": $scenario.fault.observedResultCount,
       "configuredLimit": $scenario.fault.configuredLimit
     }
+    and ($scenario.fault.atomicityEvidence as $atomicity
+      | $root.lifecycleProfiles[$scenario.lifecycleProfileId] as $profile
+      | ($profile | index($atomicity.observationStartMilestone)) as $start
+      | ($profile | index($atomicity.observationEndMilestone)) as $end
+      | $atomicity.jobId == $scenario.fault.failureMetadata.jobId
+        and $atomicity.sourceEventIds == $scenario.fault.failureMetadata.sourceEventIds
+        and $atomicity.observedResultCount == $scenario.fault.observedResultCount
+        and $atomicity.configuredLimit == $scenario.fault.configuredLimit
+        and $atomicity.evidenceSource ==
+          "authoritative_writer_receipts_and_durable_observer"
+        and $start != null and $end != null and $start < $end
+        and $atomicity.writerReceipts == [{
+          "receiptId": "output-limit-job-1:writer-attempt-1",
+          "jobId": $scenario.fault.failureMetadata.jobId,
+          "outcome": "rejected_before_commit",
+          "attemptedDerivedItemCount": $scenario.fault.observedResultCount,
+          "committedDerivedItemCount": 0,
+          "committedMutationCount": 0
+        }]
+        and [$atomicity.durableObserverSamples[].milestone] == $profile[$start:$end + 1]
+        and all($atomicity.durableObserverSamples[];
+          .observableDerivedItemCount == 0 and (.forbiddenSentinelObserved | not))
+        and $atomicity.committedDerivedBatchCount == 0
+        and $atomicity.committedDerivedItemMutationCount == 0
+        and $atomicity.maximumObservableDerivedItemCount == 0
+        and $atomicity.forbiddenSentinelObservationCount == 0)
     and output_sources_ok($scenario; $scenario.summaryProviderStub)
     and output_anchors_disjoint($scenario.summaryProviderStub)
     and $scenario.drainCondition.summaryCount == 0
@@ -794,6 +835,7 @@ def derived_sensitivity_security_ok($root):
 | ensure(injection_envelope_ok($root); "injection envelope mismatch")
 | ensure(resource_profile_ok($root); "resource profile mismatch")
 | ensure(destination_policy_ok($root); "destination policy map mismatch")
+| ensure(selection_lifecycle_ok($root); "selection lifecycle boundary mismatch")
 | ensure(resource_metrics_ok($root); "resource measurement boundary mismatch")
 | ensure(failure_continuation_ok($root); "failure continuation milestone mismatch")
 | ensure(pack_degradation_policy_ok($root); "pack degradation policy mismatch")

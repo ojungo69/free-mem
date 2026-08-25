@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:2e8e3b7b7edee1b016eea0086d3cba4ae8c60c9f3728bc66a8c6308823545128",
+  "contractFingerprint": "sha256:35cda69e13fd1eb7392d0c070ecab4e01cc5c580ebf7c2cdb866db4174786ea0",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -243,6 +243,8 @@
       "source_flush_requested_by_target_prompt",
       "source_summary_committed",
       "target_retrieval_requested",
+      "target_selection_started",
+      "target_selection_finished",
       "target_injection_acknowledged",
       "target_model_request_dispatched",
       "scenario_terminal",
@@ -260,6 +262,8 @@
       "target_session_started",
       "target_first_prompt_submitted_before_model",
       "target_retrieval_requested",
+      "target_selection_started",
+      "target_selection_finished",
       "target_injection_acknowledged",
       "target_model_request_dispatched",
       "scenario_terminal",
@@ -287,7 +291,9 @@
       "target_session_started",
       "target_first_prompt_submitted_before_model",
       "target_retrieval_requested",
+      "target_selection_started",
       "cross_scope_candidate_omitted",
+      "target_selection_finished",
       "target_injection_acknowledged",
       "target_model_request_dispatched",
       "scenario_terminal",
@@ -301,7 +307,9 @@
       "target_session_started",
       "target_first_prompt_submitted_before_model",
       "target_retrieval_requested",
+      "target_selection_started",
       "local_only_derived_candidates_omitted",
+      "target_selection_finished",
       "target_injection_acknowledged",
       "target_model_request_dispatched",
       "scenario_terminal",
@@ -481,6 +489,7 @@
       "scenarioId": "claude-to-codex",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "claude-to-codex:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "bidirectional_prompt_flush",
@@ -577,37 +586,91 @@
       },
       "expectedInjectedItems": [
         {
+          "memoryId": "memory:18907f0c51d483d6a0a0192e70c86728f91d8c3625c86a8641ddd94ca8c4a377",
+          "lineageId": "8bc0d5f574dc4db7edf79fa2dd0a04e563a397190cd3a4c1755b3964f324f99c",
+          "revisionId": "revision:e3e1ef7d280904adf53d8b49baf1deb8c2013ebf202ce8730de26d5777b7f1b1",
+          "revisionOrdinal": 1,
           "fact": "Project settings validation now uses the existing validator.",
           "memoryKind": "summary",
-          "sourceEventIds": ["claude-to-codex-event-1", "claude-to-codex-event-4"],
-          "sourceSpans": [{"eventId":"claude-to-codex-event-1","startByte":0,"endByte":45},{"eventId":"claude-to-codex-event-4","startByte":0,"endByte":53}],
+          "sourceEventIds": [
+            "claude-to-codex-event-1",
+            "claude-to-codex-event-4"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "claude-to-codex-event-1",
+              "startByte": 0,
+              "endByte": 45
+            },
+            {
+              "eventId": "claude-to-codex-event-4",
+              "startByte": 0,
+              "endByte": 53
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
         {
+          "memoryId": "memory:4077823df9cd06fe528b34ee2aa96caeaa50a70341c2accd37a0b2ded1ed598c",
+          "lineageId": "6a056444cac2365e46dbe216e70d7ff8b89d6a431701a2403f8512212dd864c2",
+          "revisionId": "revision:351b9ac6ade5120b2816807a75bc12f9907f39342455cc0703ca775ea8033cf8",
+          "revisionOrdinal": 1,
           "fact": "Reuse the existing JSON-schema validation path.",
           "memoryKind": "decision",
-          "sourceEventIds": ["claude-to-codex-event-2"],
-          "sourceSpans": [{"eventId":"claude-to-codex-event-2","startByte":0,"endByte":47}],
+          "sourceEventIds": [
+            "claude-to-codex-event-2"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "claude-to-codex-event-2",
+              "startByte": 0,
+              "endByte": 47
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
         {
+          "memoryId": "memory:9016c2e8daec075653957f53bc8d304de3df1002217500f49364379dea848466",
+          "lineageId": "c1712f25bc7fc5d8db55e22c7bea971066661aa3ff391ec7e01576a120d42878",
+          "revisionId": "revision:da099e3e92c0d671a326700d09f35a596c92fb8520c2457af9489c617a0d55a6",
+          "revisionOrdinal": 1,
           "fact": "Do not add a second custom parser.",
           "memoryKind": "failed_approach",
-          "sourceEventIds": ["claude-to-codex-event-3"],
-          "sourceSpans": [{"eventId":"claude-to-codex-event-3","startByte":0,"endByte":69}],
+          "sourceEventIds": [
+            "claude-to-codex-event-3"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "claude-to-codex-event-3",
+              "startByte": 0,
+              "endByte": 69
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
         {
+          "memoryId": "memory:eb4d9015e6efb615428aaf7271a945b18bcea1fe2d0d591a5ce08340affc14a4",
+          "lineageId": "f949fbe6af10ee7d8c41f208fe3c878ebfa9b7a8b0be2ec8e69b5eda395a220b",
+          "revisionId": "revision:4dad9f748e25321de060890002fe43e3dcdba7d10604b23f520a79db6f8624e4",
+          "revisionOrdinal": 1,
           "fact": "Next: add the malformed-root regression test.",
           "memoryKind": "next_action",
-          "sourceEventIds": ["claude-to-codex-event-5"],
-          "sourceSpans": [{"eventId":"claude-to-codex-event-5","startByte":0,"endByte":39}],
+          "sourceEventIds": [
+            "claude-to-codex-event-5"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "claude-to-codex-event-5",
+              "startByte": 0,
+              "endByte": 39
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
@@ -630,6 +693,7 @@
       "scenarioId": "codex-to-claude",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-local",
+      "targetSessionId": "codex-to-claude:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "bidirectional_prompt_flush",
@@ -726,37 +790,91 @@
       },
       "expectedInjectedItems": [
         {
+          "memoryId": "memory:fe988060a6950e5de5ab9df8b17176d75de6ebfe7003a3f50a84fdd681bc2b44",
+          "lineageId": "449625cbd15322a36f99b1f04f1ad058b8a1d44c8e7552ea7bd21904c0618d7e",
+          "revisionId": "revision:ff118df172e22ff776024208252cd28993e07faf782955ce9f63409462ff65c1",
+          "revisionOrdinal": 1,
           "fact": "Shared-key invalidation is the race to fix without changing the public API.",
           "memoryKind": "summary",
-          "sourceEventIds": ["codex-to-claude-event-1", "codex-to-claude-event-3"],
-          "sourceSpans": [{"eventId":"codex-to-claude-event-1","startByte":0,"endByte":64},{"eventId":"codex-to-claude-event-3","startByte":0,"endByte":43}],
+          "sourceEventIds": [
+            "codex-to-claude-event-1",
+            "codex-to-claude-event-3"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "codex-to-claude-event-1",
+              "startByte": 0,
+              "endByte": 64
+            },
+            {
+              "eventId": "codex-to-claude-event-3",
+              "startByte": 0,
+              "endByte": 43
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
         {
+          "memoryId": "memory:26249332bc6b4cbe1b2284e2e878f904f97dcb05008d5df00eb3b4c70a696f9f",
+          "lineageId": "106a4a04d75770881a591480808711dfa0b3ab1233cb505e6e6897caefa83550",
+          "revisionId": "revision:a25ea17a3fe7ab928fd8a92f7fb8e7ad1498e26289a7a91e2cc284ee451c1d87",
+          "revisionOrdinal": 1,
           "fact": "Preserve the existing public cache API.",
           "memoryKind": "decision",
-          "sourceEventIds": ["codex-to-claude-event-2"],
-          "sourceSpans": [{"eventId":"codex-to-claude-event-2","startByte":0,"endByte":39}],
+          "sourceEventIds": [
+            "codex-to-claude-event-2"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "codex-to-claude-event-2",
+              "startByte": 0,
+              "endByte": 39
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
         {
+          "memoryId": "memory:8b6f7a6a7edde8a86465447443d775b4e957b8aced7ab1619d381588823b24d8",
+          "lineageId": "aabc677f635933d0985f1bf7995cd7e977a8933e1d643f7542cae3f73683758e",
+          "revisionId": "revision:54d2a17b1422f96594cbf1bec516323f1eb27e5c990adf8a8018ec6d6686dd3a",
+          "revisionOrdinal": 1,
           "fact": "Do not use a global invalidation lock.",
           "memoryKind": "failed_approach",
-          "sourceEventIds": ["codex-to-claude-event-4"],
-          "sourceSpans": [{"eventId":"codex-to-claude-event-4","startByte":0,"endByte":64}],
+          "sourceEventIds": [
+            "codex-to-claude-event-4"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "codex-to-claude-event-4",
+              "startByte": 0,
+              "endByte": 64
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
         {
+          "memoryId": "memory:8fd9a56d6fea401ac6818f0e852740fe0bc69602e3e12381ef0e9911442fd3c6",
+          "lineageId": "ce4e8a8b438ecb6612c670c882f3c4da99539f42e573eca7a275d85e52564f9c",
+          "revisionId": "revision:5d469652881d98c4f761ae949fc28b30bfa720ed545a4942aef8a86949731e39",
+          "revisionOrdinal": 1,
           "fact": "Next: add a per-key lock and concurrent-key regression.",
           "memoryKind": "next_action",
-          "sourceEventIds": ["codex-to-claude-event-5"],
-          "sourceSpans": [{"eventId":"codex-to-claude-event-5","startByte":0,"endByte":62}],
+          "sourceEventIds": [
+            "codex-to-claude-event-5"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "codex-to-claude-event-5",
+              "startByte": 0,
+              "endByte": 62
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
@@ -779,6 +897,7 @@
       "scenarioId": "runtime-unavailable-spool-recovery",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "runtime-unavailable-spool-recovery:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "spool_recovery",
@@ -871,19 +990,43 @@
       },
       "expectedInjectedItems": [
         {
+          "memoryId": "memory:66a90c0f0715e1aaeeaab9720e65ca216d23d730b2e5a7dd662dd6a61bcf6314",
+          "lineageId": "4f81e512fd3e020f9246a4baeba246ed3fee212ed76a40018fc6435119e261a0",
+          "revisionId": "revision:ddde598596159c89d6e01975a9d40f11ceeb04fca537301230a16d2976325f69",
+          "revisionOrdinal": 1,
           "fact": "Record a durable follow-up while the memory daemon is unavailable.",
           "memoryKind": "summary",
-          "sourceEventIds": ["spool-event-1"],
-          "sourceSpans": [{"eventId":"spool-event-1","startByte":0,"endByte":66}],
+          "sourceEventIds": [
+            "spool-event-1"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "spool-event-1",
+              "startByte": 0,
+              "endByte": 66
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
         },
         {
+          "memoryId": "memory:481345a8657d37a809957d7bd17b1b59585b936cd57a1441d944628a64eac362",
+          "lineageId": "b0f815daaf720b8ae38c6b82c9bcdb56be313b8e14221432972a2d34576b6c27",
+          "revisionId": "revision:0be49ffeb7f5059c3ab6fdfa5d0eee3e4e46d35a1ad552b75b3997f480838f75",
+          "revisionOrdinal": 1,
           "fact": "Next: verify the queued event after daemon restart.",
           "memoryKind": "next_action",
-          "sourceEventIds": ["spool-event-2"],
-          "sourceSpans": [{"eventId":"spool-event-2","startByte":0,"endByte":51}],
+          "sourceEventIds": [
+            "spool-event-2"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "spool-event-2",
+              "startByte": 0,
+              "endByte": 51
+            }
+          ],
           "sensitivity": "eligible",
           "sourceLane": "lexical",
           "selectionReason": "lexical"
@@ -905,6 +1048,7 @@
       "scenarioId": "summary-provider-retry-exhausted",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-local",
+      "targetSessionId": "summary-provider-retry-exhausted:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -1124,6 +1268,7 @@
       "scenarioId": "summary-provider-redirect-rejected",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "summary-provider-redirect-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -1243,6 +1388,7 @@
       "scenarioId": "summary-provider-https-to-http-downgrade-rejected",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "summary-provider-https-to-http-downgrade-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -1375,6 +1521,7 @@
       "scenarioId": "credentialless-http-activation-rejected",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-local",
+      "targetSessionId": "credentialless-http-activation-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "configuration_rejection",
@@ -1438,6 +1585,7 @@
       "scenarioId": "credentialed-http-activation-rejected",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "credentialed-http-activation-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "configuration_rejection",
@@ -1501,6 +1649,7 @@
       "scenarioId": "invalid-chain-https-activation-rejected",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-local",
+      "targetSessionId": "invalid-chain-https-activation-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "configuration_rejection",
@@ -1564,6 +1713,7 @@
       "scenarioId": "hostname-mismatch-https-activation-rejected",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "hostname-mismatch-https-activation-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "configuration_rejection",
@@ -1627,6 +1777,7 @@
       "scenarioId": "summary-provider-output-limit-exceeded",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "summary-provider-output-limit-exceeded:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -1645,6 +1796,68 @@
           ],
           "observedResultCount": 17,
           "configuredLimit": 16
+        },
+        "atomicityEvidence": {
+          "jobId": "output-limit-job-1",
+          "sourceEventIds": [
+            "output-limit-event-1"
+          ],
+          "observedResultCount": 17,
+          "configuredLimit": 16,
+          "evidenceSource": "authoritative_writer_receipts_and_durable_observer",
+          "observationStartMilestone": "source_flush_requested_by_target_prompt",
+          "observationEndMilestone": "post_teardown_grace_elapsed",
+          "writerReceipts": [
+            {
+              "receiptId": "output-limit-job-1:writer-attempt-1",
+              "jobId": "output-limit-job-1",
+              "outcome": "rejected_before_commit",
+              "attemptedDerivedItemCount": 17,
+              "committedDerivedItemCount": 0,
+              "committedMutationCount": 0
+            }
+          ],
+          "durableObserverSamples": [
+            {
+              "milestone": "source_flush_requested_by_target_prompt",
+              "observableDerivedItemCount": 0,
+              "forbiddenSentinelObserved": false
+            },
+            {
+              "milestone": "provider_processing_rejected_or_exhausted",
+              "observableDerivedItemCount": 0,
+              "forbiddenSentinelObserved": false
+            },
+            {
+              "milestone": "operational_status_inspected",
+              "observableDerivedItemCount": 0,
+              "forbiddenSentinelObserved": false
+            },
+            {
+              "milestone": "target_injection_skipped",
+              "observableDerivedItemCount": 0,
+              "forbiddenSentinelObserved": false
+            },
+            {
+              "milestone": "target_model_continued_after_memory_failure",
+              "observableDerivedItemCount": 0,
+              "forbiddenSentinelObserved": false
+            },
+            {
+              "milestone": "scenario_terminal",
+              "observableDerivedItemCount": 0,
+              "forbiddenSentinelObserved": false
+            },
+            {
+              "milestone": "post_teardown_grace_elapsed",
+              "observableDerivedItemCount": 0,
+              "forbiddenSentinelObserved": false
+            }
+          ],
+          "committedDerivedBatchCount": 0,
+          "committedDerivedItemMutationCount": 0,
+          "maximumObservableDerivedItemCount": 0,
+          "forbiddenSentinelObservationCount": 0
         },
         "resumeCasesAreIndependent": true,
         "resumeCaseInitialSnapshot": {
@@ -2043,6 +2256,7 @@
       "scenarioId": "mixed-sensitivity-remote-projection",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "mixed-sensitivity-remote-projection:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "bidirectional_prompt_flush",
@@ -2121,6 +2335,10 @@
       },
       "expectedInjectedItems": [
         {
+          "memoryId": "memory:57811e186e05758e1126fb50abcb782bf5da0a94a44d77efb041e21284da6829",
+          "lineageId": "7bb48f5170df24f2f47e4f5f1a906834c3bf207edbd6775b09ddc89a49df7842",
+          "revisionId": "revision:807df2026188a7e0b5609b1fb7686485ddf2e3744127e2264407324960566b1c",
+          "revisionOrdinal": 1,
           "fact": "Allowed deployment decision.",
           "memoryKind": "decision",
           "sourceEventIds": [
@@ -2172,6 +2390,7 @@
       "scenarioId": "private-remote-provider-rejected",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-local",
+      "targetSessionId": "private-remote-provider-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -2248,6 +2467,7 @@
       "scenarioId": "local-only-remote-provider-rejected",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-local",
+      "targetSessionId": "local-only-remote-provider-rejected:target-session",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "provider_failure",
@@ -2333,6 +2553,7 @@
       "scenarioId": "incompatible-scope-injection-rejected",
       "sourceAgent": "claude-code",
       "targetDestinationClass": "codex-local",
+      "targetSessionId": "incompatible-scope-injection-rejected:target-session",
       "sourceRepositoryScope": "repo-other",
       "targetRepositoryScope": "repo-primary",
       "lifecycleProfileId": "scope_rejection",
@@ -2374,10 +2595,22 @@
       "expectedInjectedItems": [],
       "expectedOmissions": [
         {
+          "memoryId": "memory:dbf9bec9bff1b42989ce78bf755b5a450e15210ed75f41f47572d5de2e9c752b",
+          "lineageId": "d70234e4e8d0d4a900198828f67e669f623803505d758fd50ca84f87a6e85689",
+          "revisionId": "revision:ac774f71aa7876db0bda28956e22bb3918f9bca1ddba38a9068b50b6eef2ab0b",
+          "revisionOrdinal": 1,
           "fact": "OTHER_REPO_SENTINEL belongs only to repo-other.",
           "memoryKind": "discovery",
-          "sourceEventIds": ["cross-scope-event-1"],
-          "sourceSpans": [{"eventId":"cross-scope-event-1","startByte":0,"endByte":47}],
+          "sourceEventIds": [
+            "cross-scope-event-1"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "cross-scope-event-1",
+              "startByte": 0,
+              "endByte": 47
+            }
+          ],
           "sensitivity": "eligible",
           "reason": "omitted_ineligible"
         }
@@ -2403,6 +2636,7 @@
       "scenarioId": "local-derived-memory-remote-injection-rejected",
       "sourceAgent": "codex",
       "targetDestinationClass": "claude-code-remote",
+      "targetSessionId": "local-derived-memory-remote-injection-rejected:target-session",
       "derivationManifestId": "slice1-local-summary-manifest-v1",
       "sourceRepositoryScope": "repo-primary",
       "targetRepositoryScope": "repo-primary",
@@ -2445,10 +2679,22 @@
       "expectedInjectedItems": [],
       "expectedOmissions": [
         {
+          "memoryId": "memory:387fc2c5eab4e5156549b19749ac8ee390628f1af24e7d54e7012b9a41177581",
+          "lineageId": "1cbf6fa0b9d01f723b584658389c15527b9274e840a46bd0b92ca3ea7a66bee9",
+          "revisionId": "revision:66ec0385a0dfde165e2151846d60e958eb7aef105115d5aea820d2b09a600ce4",
+          "revisionOrdinal": 1,
           "fact": "LOCAL_DERIVED_SENTINEL remains local after derivation.",
           "memoryKind": "discovery",
-          "sourceEventIds": ["local-derived-event-1"],
-          "sourceSpans": [{"eventId":"local-derived-event-1","startByte":0,"endByte":54}],
+          "sourceEventIds": [
+            "local-derived-event-1"
+          ],
+          "sourceSpans": [
+            {
+              "eventId": "local-derived-event-1",
+              "startByte": 0,
+              "endByte": 54
+            }
+          ],
           "sensitivity": "local_only",
           "reason": "omitted_ineligible"
         }

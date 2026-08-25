@@ -43,6 +43,7 @@ def counts_ok:
     end)
   and .attemptedRenderedBytes >= .renderedBytes
   and .attemptedInjectedTokens >= .injectedTokens
+  and ((.finalRenderEvidence == null) == (.packId == null))
   and (if .packCompilationFailure != null
     then .counts.selectedItems == 0
       and (.injectedItems | length) == 0
