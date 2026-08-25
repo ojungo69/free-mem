@@ -109,6 +109,6 @@ export function evaluateSecurityEvidence({
     (result.securityEvidence.remoteProviderRequestCount === 0 ||
       result.securityDenominators.consideredRemoteProviderEventCount > 0);
   const safetyCountersPass = isDeepStrictEqual(result.safety, scenario.expectedCounters);
-  return { oracle, activeSummaryProvider, denominatorsPass, zeroToleranceSecurityEvidencePass,
-    safetyCountersPass, safetyPass: safetyCountersPass && securityEvidencePass };
+  return { oracle, activeSummaryProvider, denominatorsPass, safetyCountersPass,
+    securityEvidencePass };
 }

@@ -17,7 +17,10 @@ const resultSemanticPath = join(fixtureDir, "../contracts/alpha-result-v1.semant
 const resultLatencyValidatorPath = join(fixtureDir, "../contracts/alpha-result-latency.mjs");
 const resultRetryValidatorPath = join(fixtureDir, "../contracts/alpha-result-retry.mjs");
 const resultSecurityValidatorPath = join(fixtureDir, "../contracts/alpha-result-security.mjs");
+const resultRenderValidatorPath = join(fixtureDir, "../contracts/alpha-result-render.mjs");
 const resultValidatorPath = join(fixtureDir, "../contracts/validate-alpha-result.mjs");
+const sharedJcsRuntimePath = join(fixtureDir, "../../../harness/schema/jcs.ts");
+const sharedSchemaRuntimePath = join(fixtureDir, "../../../harness/schema/validate.ts");
 const normalizeText = (value) => value.replace(/\r\n?/g, "\n");
 const args = process.argv.slice(2);
 
@@ -44,7 +47,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:a4185faba11ec696f578c6c322f9aefe7d3f1d26e310daf66a9f7916d93654d1";
+  "fixture-contract-fingerprint=sha256:86e780c1613d461d79b1b46210e48a465c9180372f43827086fa5414f8ad32a9";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -64,7 +67,10 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     resultLatencyValidator: normalizeText(readFileSync(resultLatencyValidatorPath, "utf8")),
     resultRetryValidator: normalizeText(readFileSync(resultRetryValidatorPath, "utf8")),
     resultSecurityValidator: normalizeText(readFileSync(resultSecurityValidatorPath, "utf8")),
+    resultRenderValidator: normalizeText(readFileSync(resultRenderValidatorPath, "utf8")),
     resultCanonicalValidator: normalizeText(readFileSync(resultValidatorPath, "utf8")),
+    sharedJcsRuntime: normalizeText(readFileSync(sharedJcsRuntimePath, "utf8")),
+    sharedSchemaRuntime: normalizeText(readFileSync(sharedSchemaRuntimePath, "utf8")),
   }))
   .digest("hex")}`;
 if (

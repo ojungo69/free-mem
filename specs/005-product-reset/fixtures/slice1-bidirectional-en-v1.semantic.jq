@@ -88,6 +88,9 @@ def fixture_graph_ok($root):
   ($root.scenarios | map(.scenarioId)) as $scenarioIds
   | ($root.scenarios | map(select((.events | length) > 0) | .scenarioId)) as $captureScenarioIds
   | ($scenarioIds | length) == ($scenarioIds | unique | length)
+  and $root.samplingProtocol.runsPerScenario ==
+    ($root.samplingProtocol.discardInitialRunsPerScenario +
+      $root.samplingProtocol.measuredRunsPerScenario)
   and ([ $root.samplingProtocol.metrics.captureP95Ms.scenarios[] ] | sort) ==
     ($captureScenarioIds | sort)
   and all($root.samplingProtocol.metrics[].scenarios[];
@@ -508,9 +511,8 @@ def retry_ok($root):
     and $retry.expectedOperationalStatus.pendingCount ==
       $retry.drainCondition.pendingSummaryJobCount;
 
-def redirect_ok($root):
-  fault_scenario($root; "summary_provider_redirect_response") as $redirect
-  | $redirect.summaryProviderStub.redirectResponse.status == 307
+def redirect_scenario_ok($root; $redirect):
+  $redirect.summaryProviderStub.redirectResponse.status == 307
     and $redirect.drainCondition.eventDeliveryState == "committed"
     and $redirect.drainCondition.summaryJobState == "retry-exhausted"
     and $redirect.drainCondition.redirectLocationRequestCount == 0
@@ -530,15 +532,21 @@ def redirect_ok($root):
     and $redirect.expectedOperationalStatus.reason == "provider_redirect_rejected"
     and $redirect.expectedOperationalStatus.safeAction ==
       "activate_non_redirecting_summary_provider"
-    and $redirect.fault.redirectRecovery.caseId ==
-      "redirect-validated-configuration-activation"
+    and (($redirect.scenarioId == "summary-provider-redirect-rejected"
+        and $redirect.fault.redirectRecovery.caseId ==
+          "redirect-validated-configuration-activation"
+        and $redirect.fault.redirectRecovery.signal.configurationFingerprint ==
+          "summary-config-no-redirect-v2")
+      or ($redirect.scenarioId == "summary-provider-https-to-http-downgrade-rejected"
+        and $redirect.fault.redirectRecovery.caseId ==
+          "downgrade-validated-configuration-activation"
+        and $redirect.fault.redirectRecovery.signal.configurationFingerprint ==
+          "summary-config-no-downgrade-v2"))
     and ($redirect.fault.redirectRecovery.expectedConsumedSignalIds ==
       [$redirect.fault.redirectRecovery.signal.signalId])
     and ($redirect.fault.redirectRecovery.expectedIgnoredSignalIds | length) == 0
     and $redirect.fault.redirectRecovery.signal.kind ==
       "validated_configuration_activation"
-    and $redirect.fault.redirectRecovery.signal.configurationFingerprint ==
-      "summary-config-no-redirect-v2"
     and $redirect.fault.redirectRecovery.signal.configurationFingerprint !=
       $root.effectiveConfiguration.summaryProvider.configurationFingerprint
     and $redirect.fault.redirectRecovery.oldLocationRequestCountAfterActivation == 0
@@ -555,6 +563,22 @@ def redirect_ok($root):
       $root.effectiveConfiguration.resourceProfile.maxMemoryItemsPerDerivation
     and output_sources_ok($redirect; $redirect.fault.recoveredOutput)
     and output_anchors_disjoint($redirect.fault.recoveredOutput);
+
+def redirect_ok($root):
+  [ $root.scenarios[] | select(.fault?.kind == "summary_provider_redirect_response") ] as $redirects
+  | ([ $redirects[].scenarioId ] | sort) == ([
+      "summary-provider-redirect-rejected",
+      "summary-provider-https-to-http-downgrade-rejected"
+    ] | sort)
+    and ($redirects[]
+      | select(.scenarioId == "summary-provider-redirect-rejected")
+      | .summaryProviderStub.redirectResponse.location ==
+        "https://redirect.invalid/v1/summary")
+    and ($redirects[]
+      | select(.scenarioId == "summary-provider-https-to-http-downgrade-rejected")
+      | .summaryProviderStub.redirectResponse.location ==
+        "http://summary.stub.invalid/v1/summary")
+    and all($redirects[]; . as $redirect | redirect_scenario_ok($root; $redirect));
 
 def output_limit_ok($root):
   fault_scenario($root; "summary_provider_output_limit_exceeded") as $scenario

@@ -10,6 +10,7 @@ import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
 import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
 import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 import { evaluateSecurityEvidence } from "./alpha-result-security.mjs";
+import { validateRenderEvidence } from "./alpha-result-render.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(contractDir, "alpha-result-v1.schema.json");
@@ -24,7 +25,8 @@ const fingerprint = (domain, value) =>
 
 if (args.length === 1 && args[0] === "--help") {
   console.log(
-    "Usage: node --experimental-strip-types validate-alpha-result.mjs [--fixture PATH] [--result PATH]... [--negative-result PATH]",
+    "Usage: validate-alpha-result.mjs [--fixture PATH] [--result PATH]",
+    "       validate-alpha-result.mjs [--fixture PATH] --result PATH... --negative-result PATH  # suite mode",
   );
   process.exit(0);
 }
@@ -267,6 +269,7 @@ const derivedQuality = {
 if (!isDeepStrictEqual(result.quality, derivedQuality)) {
   throw new Error("result quality counters do not match the recorded items");
 }
+validateRenderEvidence(result);
 const qualityPass =
   isDeepStrictEqual(result.injectedItems, scenario.expectedInjectedItems) &&
   isDeepStrictEqual(result.omittedItems, scenario.expectedOmissions) &&
@@ -298,8 +301,8 @@ if (
 const securityEvaluation = evaluateSecurityEvidence({
   result, scenario, fixture, exceptionalState, expectedDuplicateDeliveries,
 });
-const { oracle, activeSummaryProvider, denominatorsPass, zeroToleranceSecurityEvidencePass,
-  safetyCountersPass, safetyPass } = securityEvaluation;
+const { oracle, activeSummaryProvider, denominatorsPass, safetyCountersPass,
+  securityEvidencePass } = securityEvaluation;
 
 const latencyPass = evaluateLatencyEvidence(result, scenario, fixture, exceptionalState);
 
@@ -360,7 +363,7 @@ const limits = fixture.thresholds;
 const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
 const selectionDeadlineExceeded =
   result.counts.deadlineUnprocessed > 0 ||
-  result.selectionElapsedMs > injectionEnvelope.selectionTimeBudgetMs;
+  result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs;
 const finalInjectionPackSizePass =
   result.renderedBytes <= injectionEnvelope.maxRenderedBytes &&
   result.injectedTokens <= injectionEnvelope.maxInjectedTokens;
@@ -419,20 +422,18 @@ const derivedFailureReason = result.drain.timedOut
         ? "latency_threshold_exceeded"
         : !resourcePass
           ? "resource_threshold_exceeded"
-          : !safetyPass
-            ? "safety_threshold_exceeded"
-            : !qualityPass
-              ? "quality_threshold_exceeded"
-              : !scenarioOraclePass
-                ? "scenario_oracle_mismatch"
-                : null;
+          : !qualityPass
+            ? "quality_threshold_exceeded"
+            : !scenarioOraclePass
+              ? "scenario_oracle_mismatch"
+              : null;
 const shouldBeEligible = derivedFailureReason === null;
 
 if (result.drain.timedOut && !milestonesPass) {
   throw new Error("timed-out result milestones are not a valid pre-terminal lifecycle prefix");
 }
-if (result.drain.timedOut && !(safetyCountersPass && zeroToleranceSecurityEvidencePass)) {
-  throw new Error("timed-out result violates an independent zero-tolerance safety boundary");
+if (!exceptionalState && !(safetyCountersPass && securityEvidencePass)) {
+  throw new Error("result violates an independent zero-tolerance safety boundary");
 }
 
 if (!resourcePass && expectedOperationalStatus &&

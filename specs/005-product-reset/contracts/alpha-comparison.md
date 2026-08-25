@@ -15,8 +15,9 @@ change before adopting it. This contract is not a general benchmark framework.
    signal and duplicate/out-of-order signal delivery.
 5. **Slice 1**: Summary provider returns one item above the active derivation limit; no partial
    output commits, and only a changed larger limit/provider resumes the retained job.
-6. **Slice 1**: Summary provider returns an HTTP redirect; no request or payload is sent to the
-   redirect location and doctor reports the bounded rejection reason.
+6. **Slice 1**: Summary provider returns either a cross-host HTTPS redirect or a same-host
+   HTTPS-to-HTTP downgrade; no request or payload is sent to either redirect location and doctor
+   reports the bounded rejection reason.
 7. **Slice 1**: Remote HTTP providers with and without configured credentials are each rejected with
    a non-empty redacted payload before activation, credential transmission, request, or payload
    transmission. Verified-HTTPS activation is separately rejected for an invalid certificate chain
@@ -47,7 +48,8 @@ An owner slice is required to implement only its scenarios. Later-slice scenario
 Each fixture defines:
 
 - pinned Agent and candidate versions
-- isolated configuration and data locations
+- isolated configuration and data locations plus pinned OS/kernel, CPU, memory, and filesystem
+  descriptors for the reference runner
 - ordered input events and lifecycle milestones
 - ordered expected injected items binding fact, memory kind, source events, lane, and selection
   reason; expected omissions; forbidden facts; and retrieval queries
@@ -66,8 +68,9 @@ Each fixture defines:
   and additionally over its structural schema, semantic validator text, and canonical executable
   validator text, plus the result schema/semantic/canonical-validator artifacts; text is normalized
   to LF and the fixture executable's pinned-fingerprint literal is normalized to a placeholder to
-  avoid a self-hash cycle. The result validator's imported latency/retry modules are included too.
-  Changing any included element requires a new pinned fingerprint/version review
+  avoid a self-hash cycle. All imported result-validator modules and the shared JCS/schema runtime
+  implementations are included too. Changing any included element requires a new pinned
+  fingerprint/version review
 
 The committed Slice 1 fixture is
 [`../fixtures/slice1-bidirectional-en-v1.json`](../fixtures/slice1-bidirectional-en-v1.json), with
@@ -113,10 +116,13 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - attempted and delivered rendered bytes/tokens, selection elapsed time,
   input/traced/deadline-unprocessed/admitted/selected candidate counts, and per-item source lane and
   selection reason
+- exact attempted/final UTF-8 render payload evidence plus pinned renderer/tokenizer identity and
+  ordered token-ID records; aggregate byte/token counts are recomputed from this evidence
 - a nullable pack-compilation failure; `injection_pack_limit_exceeded` requires an oversized
   attempted render and zero final delivered items, bytes, and tokens
 - all 22 ordinal latency runs, discarded-run markers, event-ordered capture samples, applicable
-  warm/cold injection samples, and recomputed nearest-rank P95 aggregates
+  warm/cold injection samples, per-run repository/session namespaces and ordinal-scoped event IDs,
+  and recomputed nearest-rank P95 aggregates
 - process-tree samples, resource plateau, queue depth, and storage growth
 - effective provider cost units when known
 - healthy, degraded, failed, unsupported, or not-run disposition with reason
@@ -162,7 +168,7 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
 - After a completed drain, a positive `deadlineUnprocessed` count is non-eligible with result reason
   `selection_deadline_exceeded`; it is not a quality-threshold failure. `drain_timed_out` remains the
   higher-priority reason when the drain itself times out.
-- Selection elapsed time above the profile deadline has the same
+- Selection elapsed time that reaches or exceeds the profile deadline has the same
   `selection_deadline_exceeded` result. Rendered-byte or token overflow is
   `injection_pack_limit_exceeded`; attempted size remains inspectable and may exceed the envelope
   during deterministic pruning, while only the final rendered byte/token values gate eligibility.

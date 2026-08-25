@@ -4,7 +4,7 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "packCompilationFailure", "quality", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packDegradations", "packCompilationFailure", "quality", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -73,10 +73,20 @@
       ]
     },
     "quality": { "$ref": "#/$defs/Quality" },
+    "attemptedRenderEvidence": {
+      "oneOf": [
+        { "type": "null" },
+        { "const": "same_as_final" },
+        { "$ref": "#/$defs/RenderEvidence" }
+      ]
+    },
     "attemptedRenderedBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" },
     "renderedBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" },
     "attemptedInjectedTokens": { "$ref": "#/$defs/SharedNonNegativeInteger" },
     "injectedTokens": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+    "finalRenderEvidence": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/RenderEvidence" }]
+    },
     "selectionElapsedMs": { "type": "number", "minimum": 0 },
     "latencyEvidence": { "$ref": "#/$defs/LatencyEvidence" },
     "resource": { "$ref": "#/$defs/Resource" },
@@ -103,12 +113,20 @@
     "SharedEnvironment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["home", "dataDir", "repository", "network"],
+      "required": ["home", "dataDir", "repository", "network", "osName", "osVersion", "kernelRelease", "cpuArchitecture", "cpuModel", "cpuLogicalCount", "memoryMiB", "filesystemType"],
       "properties": {
         "home": { "$ref": "#/$defs/SharedNonEmptyString" },
         "dataDir": { "$ref": "#/$defs/SharedNonEmptyString" },
         "repository": { "$ref": "#/$defs/SharedNonEmptyString" },
-        "network": { "$ref": "#/$defs/SharedNonEmptyString" }
+        "network": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "osName": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "osVersion": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "kernelRelease": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "cpuArchitecture": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "cpuModel": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "cpuLogicalCount": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "memoryMiB": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "filesystemType": { "$ref": "#/$defs/SharedNonEmptyString" }
       }
     },
     "ExecutionEnvironment": {
@@ -490,11 +508,14 @@
     "LatencyRun": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["runOrdinal", "discarded", "resetMode", "captureElapsedMs", "warmInjectionMs", "coldLexicalInjectionMs"],
+      "required": ["runOrdinal", "discarded", "resetMode", "repositoryNamespace", "sessionNamespace", "captureEventIds", "captureElapsedMs", "warmInjectionMs", "coldLexicalInjectionMs"],
       "properties": {
         "runOrdinal": { "$ref": "#/$defs/SharedPositiveInteger" },
         "discarded": { "type": "boolean" },
         "resetMode": { "enum": ["fresh_isolated_data", "fresh_namespace_on_ready_process"] },
+        "repositoryNamespace": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "sessionNamespace": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "captureEventIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "captureElapsedMs": { "type": "array", "items": { "type": "number", "minimum": 0 } },
         "warmInjectionMs": {
           "oneOf": [
@@ -545,6 +566,18 @@
         "rssMiB": { "type": "number", "minimum": 0 },
         "queueDepth": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "storageBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+      }
+    },
+    "RenderEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rendererId", "utf8Payload", "tokenizerId", "tokenizerRevision", "tokenIds"],
+      "properties": {
+        "rendererId": { "const": "alpha-json-renderer-v1" },
+        "utf8Payload": { "type": "string" },
+        "tokenizerId": { "const": "deterministic-fixture-tokenizer-v1" },
+        "tokenizerRevision": { "const": "1" },
+        "tokenIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonNegativeInteger" } }
       }
     },
     "Quality": {

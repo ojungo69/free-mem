@@ -145,7 +145,7 @@ node --experimental-strip-types \
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T00:55:25+09:00
+## Validation result — 2026-08-26T02:08:39+09:00
 
 | Check | Result |
 |---|---|
@@ -153,8 +153,8 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `corepack pnpm run build` | PASS, exit 0 |
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
-| Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, transport, privacy, host-identity, output-limit recovery-manifest, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete generated suite plus required before-model negative result, incomplete-suite rejection, and targeted conflict, exact retry output, redirect, mixed-sensitivity, wire-byte/cost, artifact-order, manifest, environment, pack-limit, timeout, latency, resource, quality, and exceptional-state mutations |
+| Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, cross-host/downgrade transport, privacy, host-identity, output-limit recovery-manifest, environment, span, and profile mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, incomplete-suite rejection, and targeted conflict, exact retry output, render/token evidence, mixed-sensitivity, wire-byte/cost, artifact-order, manifest, environment, pack-limit, timeout, per-run namespace, latency, resource, quality, and exceptional-state mutations |
 | Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
@@ -175,7 +175,9 @@ Environment-specific deviations:
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
 - The final local CodeRabbit review raised zero issues. The pushed head must still receive a fresh
   GitHub CodeRabbit review before merge.
-- Cubic's final review returned `issues: []`; Grok's focused retry returned `ok: true` with no
-  findings. Ponytail review found no unused definitions, speculative abstraction, dependency, or
-  removable compatibility layer.
-- No command required a changed path, flag, retry, or skipped gate.
+- Cubic's final retry-only multiset finding was disproved by the passing duplicate-signal fixture.
+  Grok's earlier contract review returned `ok: true`; its final render-only review timed out twice
+  without a session ID, so that narrow range is not claimed as Grok-reviewed. Ponytail found no
+  unused definitions, speculative abstraction, dependency, or removable compatibility layer.
+- No functional validation command required a changed path, flag, retry, or skipped gate; the Grok
+  timeout and one narrowed retry are recorded separately above.

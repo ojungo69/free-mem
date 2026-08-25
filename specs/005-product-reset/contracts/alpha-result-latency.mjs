@@ -22,6 +22,9 @@ export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalSt
   const expectedResetMode = result.resourceSampleMode === "cold"
     ? "fresh_isolated_data"
     : "fresh_namespace_on_ready_process";
+  const expectedRunEventIds = (ordinal) => expectedCaptureEventIds.map(
+    (eventId) => `${scenario.scenarioId}:run-${ordinal}:${eventId}`,
+  );
   if (
     !isDeepStrictEqual(result.latencyEvidence.captureEventIds, expectedCaptureEventIds) ||
     runs.length !== protocol.runsPerScenario ||
@@ -29,6 +32,9 @@ export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalSt
       run.runOrdinal === index + 1 &&
       run.discarded === (run.runOrdinal <= protocol.discardInitialRunsPerScenario) &&
       run.resetMode === expectedResetMode &&
+      run.repositoryNamespace === `${scenario.scenarioId}:repo-${run.runOrdinal}` &&
+      run.sessionNamespace === `${scenario.scenarioId}:session-${run.runOrdinal}` &&
+      isDeepStrictEqual(run.captureEventIds, expectedRunEventIds(run.runOrdinal)) &&
       run.captureElapsedMs.length === expectedCaptureEventIds.length &&
       (warmInjectionApplies ? typeof run.warmInjectionMs === "number" : run.warmInjectionMs === null) &&
       (coldInjectionApplies
@@ -41,6 +47,13 @@ export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalSt
   const measuredRuns = runs.filter((run) => !run.discarded);
   if (measuredRuns.length !== protocol.measuredRunsPerScenario) {
     throw new Error("latency measured-run count does not match the pinned protocol");
+  }
+  const measuredEventIds = measuredRuns.flatMap((run) => run.captureEventIds);
+  if (result.resourceSampleMode === "warm" &&
+      (new Set(measuredRuns.map((run) => run.repositoryNamespace)).size !== measuredRuns.length ||
+       new Set(measuredRuns.map((run) => run.sessionNamespace)).size !== measuredRuns.length ||
+       new Set(measuredEventIds).size !== measuredEventIds.length)) {
+    throw new Error("warm latency runs reused a repository, session, or event identity");
   }
   const nearestRankP95 = (values) => {
     const ordered = [...values].sort((left, right) => left - right);

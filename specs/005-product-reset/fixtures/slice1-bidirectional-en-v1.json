@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:a4185faba11ec696f578c6c322f9aefe7d3f1d26e310daf66a9f7916d93654d1",
+  "contractFingerprint": "sha256:86e780c1613d461d79b1b46210e48a465c9180372f43827086fa5414f8ad32a9",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -223,7 +223,15 @@
     "home": "<isolated-home>",
     "dataDir": "<isolated-data-dir>",
     "repository": "<isolated-local-repository>",
-    "network": "provider-stub-only"
+    "network": "provider-stub-only",
+    "osName": "Linux",
+    "osVersion": "Ubuntu 24.04.4 LTS",
+    "kernelRelease": "6.18.33.2-microsoft-standard-WSL2",
+    "cpuArchitecture": "x86_64",
+    "cpuModel": "AMD Ryzen 9 5950X 16-Core Processor",
+    "cpuLogicalCount": 32,
+    "memoryMiB": 22011,
+    "filesystemType": "ext2/ext3"
   },
   "lifecycleProfiles": {
     "bidirectional_prompt_flush": [
@@ -325,6 +333,7 @@
           "runtime-unavailable-spool-recovery",
           "summary-provider-retry-exhausted",
           "summary-provider-redirect-rejected",
+          "summary-provider-https-to-http-downgrade-rejected",
           "local-only-remote-provider-rejected",
           "mixed-sensitivity-remote-projection",
           "private-remote-provider-rejected",
@@ -1183,6 +1192,136 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-summary-redirect-rejected-v1",
+        "startMilestone": "source_session_started",
+        "terminalMilestone": "provider_processing_rejected_or_exhausted",
+        "timeoutMs": 30000,
+        "committedEventCount": 1,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "pendingSummaryJobCount": 1,
+        "eventDeliveryState": "committed",
+        "summaryJobState": "retry-exhausted",
+        "redirectLocationRequestCount": 0,
+        "redirectLocationPayloadBytesSent": 0,
+        "resentPayloadCount": 0,
+        "targetInjectionAcknowledged": false
+      },
+      "expectedOperationalStatus": {
+        "component": "summary",
+        "state": "failed",
+        "reason": "provider_redirect_rejected",
+        "pendingCount": 1,
+        "safeAction": "activate_non_redirecting_summary_provider",
+        "profileId": "slice1-short-run",
+        "profileVersion": 1
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "The redirect payload was resent."
+      ],
+      "securityOracle": {
+        "consideredRemoteProviderEventCount": 1,
+        "remoteProviderRequestCount": 1,
+        "remoteProviderPayloadCount": 1,
+        "payloadBytesSent": 58,
+        "redirectLocationRequestCount": 0,
+        "redirectLocationPayloadBytesSent": 0,
+        "resentPayloadCount": 0
+      },
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "summary-provider-https-to-http-downgrade-rejected",
+      "sourceAgent": "claude-code",
+      "targetDestinationClass": "codex-local",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "provider_failure",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "HTTPS-to-HTTP downgrade rejection state",
+      "providerTransmissionOracle": {
+        "credentialBytesSent": 32,
+        "payloadBytesSent": 58
+      },
+      "fault": {
+        "kind": "summary_provider_redirect_response",
+        "resumeCaseInitialSnapshot": {
+          "state": "retry-exhausted",
+          "budget": 0,
+          "lastConsumedSequence": 0
+        },
+        "recoveredOutput": {
+          "summary": {
+            "title": "Redirect-safe local event",
+            "body": "Keep this event local when the summary provider redirects.",
+            "sourceEventIds": [
+              "summary-provider-downgrade-event-1"
+            ],
+            "sourceSpans": [
+              {
+                "eventId": "summary-provider-downgrade-event-1",
+                "startByte": 0,
+                "endByte": 58
+              }
+            ]
+          },
+          "memoryItems": []
+        },
+        "redirectRecovery": {
+          "caseId": "downgrade-validated-configuration-activation",
+          "signal": {
+            "signalId": "downgrade-config-activation-1",
+            "sequence": 1,
+            "kind": "validated_configuration_activation",
+            "targetRole": "summary",
+            "providerChoiceId": "deterministic-summary-v1",
+            "configurationFingerprint": "summary-config-no-downgrade-v2"
+          },
+          "expectedConsumedSignalIds": [
+            "downgrade-config-activation-1"
+          ],
+          "expectedIgnoredSignalIds": [],
+          "oldLocationRequestCountAfterActivation": 0,
+          "providerOutcome": "valid",
+          "expected": {
+            "budgetBefore": 0,
+            "budgetAfterGrant": 3,
+            "budgetAfterAttempt": 2,
+            "attemptDelta": 1,
+            "lastConsumedSequence": 1,
+            "ignoredSignalCount": 0,
+            "finalState": "completed",
+            "durableMemoryCount": 1
+          }
+        }
+      },
+      "events": [
+        {
+          "eventId": "summary-provider-downgrade-event-1",
+          "sequence": 1,
+          "kind": "prompt",
+          "sensitivity": "eligible",
+          "redactedPayload": "Keep this event local when the summary provider redirects.",
+          "payloadDigestVersion": "event-payload-digest-v1",
+          "text": "Keep this event local when the summary provider redirects."
+        }
+      ],
+      "summaryProviderStub": {
+        "redirectResponse": {
+          "status": 307,
+          "location": "http://summary.stub.invalid/v1/summary"
+        },
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-summary-downgrade-rejected-v1",
         "startMilestone": "source_session_started",
         "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,

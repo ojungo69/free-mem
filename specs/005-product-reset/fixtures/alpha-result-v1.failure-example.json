@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:a4185faba11ec696f578c6c322f9aefe7d3f1d26e310daf66a9f7916d93654d1",
+  "fixtureFingerprint": "sha256:86e780c1613d461d79b1b46210e48a465c9180372f43827086fa5414f8ad32a9",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-retry-exhausted",
   "resourceSampleMode": "warm",
@@ -20,10 +20,18 @@
       "home": "<isolated-home>",
       "dataDir": "<isolated-data-dir>",
       "repository": "<isolated-local-repository>",
-      "network": "provider-stub-only"
+      "network": "provider-stub-only",
+      "osName": "Linux",
+      "osVersion": "Ubuntu 24.04.4 LTS",
+      "kernelRelease": "6.18.33.2-microsoft-standard-WSL2",
+      "cpuArchitecture": "x86_64",
+      "cpuModel": "AMD Ryzen 9 5950X 16-Core Processor",
+      "cpuLogicalCount": 32,
+      "memoryMiB": 22011,
+      "filesystemType": "ext2/ext3"
     }
   },
-  "environmentFingerprint": "sha256:2684483c5e62e7bae4401c78fc45f1e5e668b7ff6481d3d2d741cb54debb0551",
+  "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactMetadata": {
     "candidateId": "candidate-failure-example-v1",
     "baseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
@@ -402,11 +410,13 @@
     "matchedOmissionCount": 0,
     "forbiddenFactCount": 0
   },
+  "attemptedRenderEvidence": null,
   "attemptedRenderedBytes": 0,
   "renderedBytes": 0,
   "attemptedInjectedTokens": 0,
   "injectedTokens": 0,
-  "selectionElapsedMs": 751,
+  "finalRenderEvidence": null,
+  "selectionElapsedMs": 750,
   "latencyEvidence": {
     "captureEventIds": [
       "summary-provider-failure-event-1",
@@ -417,6 +427,9 @@
         "runOrdinal": 1,
         "discarded": true,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-1",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-1",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-1:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-1:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -428,6 +441,9 @@
         "runOrdinal": 2,
         "discarded": true,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-2",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-2",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-2:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-2:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -439,6 +455,9 @@
         "runOrdinal": 3,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-3",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-3",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-3:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-3:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -450,6 +469,9 @@
         "runOrdinal": 4,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-4",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-4",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-4:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-4:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -461,6 +483,9 @@
         "runOrdinal": 5,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-5",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-5",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-5:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-5:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -472,6 +497,9 @@
         "runOrdinal": 6,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-6",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-6",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-6:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-6:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -483,6 +511,9 @@
         "runOrdinal": 7,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-7",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-7",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-7:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-7:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -494,6 +525,9 @@
         "runOrdinal": 8,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-8",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-8",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-8:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-8:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -505,6 +539,9 @@
         "runOrdinal": 9,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-9",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-9",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-9:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-9:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -516,6 +553,9 @@
         "runOrdinal": 10,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-10",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-10",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-10:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-10:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -527,6 +567,9 @@
         "runOrdinal": 11,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-11",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-11",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-11:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-11:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -538,6 +581,9 @@
         "runOrdinal": 12,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-12",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-12",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-12:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-12:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -549,6 +595,9 @@
         "runOrdinal": 13,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-13",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-13",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-13:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-13:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -560,6 +609,9 @@
         "runOrdinal": 14,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-14",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-14",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-14:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-14:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -571,6 +623,9 @@
         "runOrdinal": 15,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-15",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-15",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-15:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-15:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -582,6 +637,9 @@
         "runOrdinal": 16,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-16",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-16",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-16:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-16:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -593,6 +651,9 @@
         "runOrdinal": 17,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-17",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-17",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-17:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-17:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -604,6 +665,9 @@
         "runOrdinal": 18,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-18",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-18",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-18:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-18:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -615,6 +679,9 @@
         "runOrdinal": 19,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-19",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-19",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-19:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-19:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -626,6 +693,9 @@
         "runOrdinal": 20,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-20",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-20",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-20:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-20:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -637,6 +707,9 @@
         "runOrdinal": 21,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-21",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-21",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-21:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-21:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100
@@ -648,6 +721,9 @@
         "runOrdinal": 22,
         "discarded": false,
         "resetMode": "fresh_namespace_on_ready_process",
+        "repositoryNamespace": "summary-provider-retry-exhausted:repo-22",
+        "sessionNamespace": "summary-provider-retry-exhausted:session-22",
+        "captureEventIds": ["summary-provider-retry-exhausted:run-22:summary-provider-failure-event-1", "summary-provider-retry-exhausted:run-22:summary-provider-failure-event-2"],
         "captureElapsedMs": [
           100,
           100

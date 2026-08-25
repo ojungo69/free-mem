@@ -325,12 +325,20 @@
     "SharedEnvironment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["home", "dataDir", "repository", "network"],
+      "required": ["home", "dataDir", "repository", "network", "osName", "osVersion", "kernelRelease", "cpuArchitecture", "cpuModel", "cpuLogicalCount", "memoryMiB", "filesystemType"],
       "properties": {
         "home": { "$ref": "#/$defs/SharedNonEmptyString" },
         "dataDir": { "$ref": "#/$defs/SharedNonEmptyString" },
         "repository": { "$ref": "#/$defs/SharedNonEmptyString" },
-        "network": { "$ref": "#/$defs/SharedNonEmptyString" }
+        "network": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "osName": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "osVersion": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "kernelRelease": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "cpuArchitecture": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "cpuModel": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "cpuLogicalCount": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "memoryMiB": { "$ref": "#/$defs/SharedPositiveInteger" },
+        "filesystemType": { "$ref": "#/$defs/SharedNonEmptyString" }
       }
     },
     "LifecycleProfiles": {

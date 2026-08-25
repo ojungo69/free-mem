@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 export function expectedRetryEvidence(scenario) {
   const observedRetryCase = (item) => {
     const providerAttempted = item.expected.attemptDelta > 0;
@@ -43,7 +45,10 @@ export function assertRetryEvidenceConsistent(result) {
   if (!observedCases.every((item) =>
     item.providerAttempted === (item.observedTransition.attemptDelta > 0) &&
     item.ignoredSignalIds.length === item.observedTransition.ignoredSignalCount &&
-    item.consumedSignalIds.length + item.ignoredSignalIds.length === item.deliveredSignals.length &&
+    isDeepStrictEqual(
+      item.deliveredSignals.map((signal) => signal.signalId).sort(),
+      [...item.consumedSignalIds, ...item.ignoredSignalIds].sort(),
+    ) &&
     item.observedTransition.durableMemoryCount === (item.observedDurableOutput
       ? Number(Object.hasOwn(item.observedDurableOutput, "summary")) +
         item.observedDurableOutput.memoryItems.length
