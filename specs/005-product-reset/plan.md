@@ -85,10 +85,16 @@ specs/005-product-reset/
 │   ├── injection-pack.md
 │   ├── alpha-result-v1.schema.json
 │   ├── alpha-result-v1.semantic.jq
+│   ├── alpha-result-latency.mjs
+│   ├── alpha-result-render.mjs
+│   ├── alpha-result-retry.mjs
+│   ├── alpha-result-security.mjs
+│   ├── alpha-result-selection.mjs
 │   └── validate-alpha-result.mjs
 ├── checklists/
 │   └── requirements.md
-└── tasks.md
+├── tasks.md
+└── verify-tasks-report.md
 ```
 
 ### Source Code (repository root)

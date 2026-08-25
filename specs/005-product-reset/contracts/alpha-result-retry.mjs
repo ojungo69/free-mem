@@ -60,8 +60,9 @@ export function assertRetryEvidenceConsistent(result) {
         item.observedDurableOutput.memoryItems.length
       : 0) &&
     (item.providerAttempted
-      ? item.observedProviderOutcome !== null
-      : item.observedProviderOutcome === null)
+      ? item.observedProviderOutcome !== null &&
+        ((item.observedProviderOutcome === "valid") === (item.observedDurableOutput !== null))
+      : item.observedProviderOutcome === null && item.observedDurableOutput === null)
   )) {
     throw new Error("observed retry evidence is internally inconsistent");
   }

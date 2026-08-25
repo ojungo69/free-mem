@@ -103,7 +103,7 @@ post-redaction content.
 - `conflictId`: deterministic receipt identity for scope, event ID, digest version, and the two
   digests
 - `repositoryScope`, `eventId`, `payloadDigestVersion`, `canonicalPayloadDigest`,
-  `incomingPayloadDigest`
+  `conflictingPayloadDigest`
 - `state`: quarantined
 - `reason`: `event_identity_payload_conflict`
 - `firstSeenAt`, `lastSeenAt`, `occurrenceCount`

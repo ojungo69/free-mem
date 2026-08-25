@@ -463,6 +463,8 @@ if (exceptionalState) {
     result.hostIdentityEvidence === null &&
     result.packDegradations.length === 0 &&
     result.packCompilationFailure === null &&
+    Array.isArray(result.attemptedItems) &&
+    result.attemptedItems.length === 0 &&
     result.attemptedRenderedBytes === 0 &&
     result.renderedBytes === 0 &&
     result.attemptedInjectedTokens === 0 &&

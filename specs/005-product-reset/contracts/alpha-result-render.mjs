@@ -34,6 +34,9 @@ function validateEvidence(evidence, renderedBytes, injectedTokens, label) {
 }
 
 export function validateRenderEvidence(result) {
+  const attemptedItems = result.attemptedItems === "same_as_final"
+    ? result.injectedItems
+    : result.attemptedItems;
   const attemptedEvidence = result.attemptedRenderEvidence === "same_as_final"
     ? result.finalRenderEvidence
     : result.attemptedRenderEvidence;
@@ -43,6 +46,10 @@ export function validateRenderEvidence(result) {
     result.attemptedInjectedTokens,
     "attempted",
   );
+  if (attemptedEvidence !== null && attemptedEvidence.utf8Payload !==
+      canonicalizeJson({ items: attemptedItems })) {
+    throw new Error("attempted render payload does not match attempted items");
+  }
   validateEvidence(
     result.finalRenderEvidence,
     result.renderedBytes,

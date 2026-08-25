@@ -57,14 +57,24 @@ else
   unexpected=
 fi
 test -z "$unexpected"
+while IFS= read -r path; do
+  test -n "$path" || continue
+  set +e
+  check_output=$(git diff --no-index --check -- /dev/null "$path" 2>&1)
+  status=$?
+  set -e
+  printf '%s' "$check_output"
+  test "$status" -eq 0 || test "$status" -eq 1
+  test -z "$check_output"
+done <<< "$untracked"
 git diff --quiet "$base" -- vendor/codemem harness
 git diff --check "$base" HEAD --
 git diff --check
 git diff --cached --check
 ```
 
-Expected: only root/evidence/specification documentation changed from the pinned M0 base; the final
-three commands check base-to-HEAD, worktree, and index whitespace and exit 0.
+Expected: only root/evidence/specification documentation changed from the pinned M0 base; untracked
+allowed artifacts plus base-to-HEAD, worktree, and index whitespace checks pass.
 
 ## 4. Verify GitHub routing after the documentation commit is pushed
 

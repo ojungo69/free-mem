@@ -96,7 +96,7 @@ discussion or concrete current-runtime defects.
 - [x] T015 Close PR #133 without merge using the disposition in `specs/005-product-reset/issue-routing.md`
 - [x] T016 Close #134 and #135 as superseded and link the Product Reset parent recorded in `specs/005-product-reset/issue-routing.md`
 - [x] T017 Apply the audited keep, defer, close, and replace dispositions to all remaining open issues from `specs/005-product-reset/issue-routing.md`
-- [x] T018 Verify no more than five issues have an active status and only Slice 1 is implementation-ready; record the final counts in `specs/005-product-reset/issue-routing.md`
+- [x] T018 Verify no more than five issues have an active status and only the Product Reset Slice 1 replacement issue is implementation-ready, while preserving audited statuses on kept legacy issues; record the final counts in `specs/005-product-reset/issue-routing.md`
 
 ---
 

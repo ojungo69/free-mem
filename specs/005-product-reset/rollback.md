@@ -156,7 +156,7 @@ Remove only the `wontfix` labels M0 added to the superseded set:
 
 ```sh
 set -e
-for n in 1 12 13 24 31 53 54 58 64 65 70 71 73 76 79 84 99 104 132 134 135; do
+for n in 1 12 13 24 31 53 54 58 64 65 70 71 73 74 76 79 84 99 104 132 134 135; do
   gh issue edit "$n" --remove-label wontfix
 done
 ```

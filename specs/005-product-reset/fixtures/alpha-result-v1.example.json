@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:b869d0bf49a6556904534eed9a89750dea302497e308f580e3f192b96ba33c6b",
+  "fixtureFingerprint": "sha256:da78df726a2c6fa91819532fcedb75519f66082a635ab537b93e9adc198f9536",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "resourceSampleMode": "cold",
@@ -279,6 +279,7 @@
     "matchedOmissionCount": 0,
     "forbiddenFactCount": 0
   },
+  "attemptedItems": "same_as_final",
   "attemptedRenderEvidence": "same_as_final",
   "attemptedRenderedBytes": 1249,
   "renderedBytes": 1249,
