@@ -1,0 +1,349 @@
+{
+  "fixtureVersion": 1,
+  "fixtureId": "slice1-bidirectional-en-v1",
+  "ownerSlice": 1,
+  "language": "en",
+  "factMatch": "exact",
+  "pins": {
+    "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
+    "claudeCodeVersion": "2.1.243",
+    "codexVersion": "0.149.1",
+    "nodeVersion": "24.16.0",
+    "pnpmVersion": "11.8.0",
+    "summaryProviderStub": "deterministic-summary-v1"
+  },
+  "kindContract": {
+    "capturedEventKinds": [
+      "prompt",
+      "tool_activity",
+      "tool_result",
+      "assistant_message",
+      "session_boundary"
+    ],
+    "memoryItemKinds": [
+      "summary",
+      "decision",
+      "discovery",
+      "change",
+      "failed_approach",
+      "next_action"
+    ],
+    "conversionRules": {
+      "prompt": [
+        "summary"
+      ],
+      "tool_activity": [
+        "change"
+      ],
+      "tool_result": [
+        "discovery",
+        "failed_approach"
+      ],
+      "assistant_message": [
+        "decision",
+        "next_action"
+      ],
+      "session_boundary": [
+        "summary"
+      ]
+    }
+  },
+  "environment": {
+    "home": "<isolated-home>",
+    "dataDir": "<isolated-data-dir>",
+    "repository": "<isolated-local-repository>",
+    "network": "provider-stub-only"
+  },
+  "thresholds": {
+    "captureP95Ms": 200,
+    "warmInjectionP95Ms": 1000,
+    "shortColdLexicalInjectionMs": 3000,
+    "maxSteadyProductProcessCount": 3,
+    "orphanProductProcessCount": 0,
+    "maxShortRunRssGrowthMiB": 32,
+    "maxPendingQueueDepth": 25,
+    "maxStorageGrowthBytes": 1048576,
+    "maxInjectedTokens": 800,
+    "agentBlockageCount": 0,
+    "acceptedEventLossCount": 0,
+    "duplicateDurableMemoryCount": 0,
+    "secretEgressCount": 0,
+    "incompatibleScopeInjectionCount": 0
+  },
+  "scenarios": [
+    {
+      "scenarioId": "claude-to-codex",
+      "sourceAgent": "claude-code",
+      "targetAgent": "codex",
+      "resourceSampleMode": "cold",
+      "retrievalQuery": "settings validation decision and next regression",
+      "events": [
+        {
+          "sequence": 1,
+          "kind": "prompt",
+          "text": "Add validation for the project settings file."
+        },
+        {
+          "sequence": 2,
+          "kind": "assistant_message",
+          "text": "Reuse the existing JSON-schema validation path."
+        },
+        {
+          "sequence": 3,
+          "kind": "tool_result",
+          "text": "A second custom parser was rejected because it duplicated validation."
+        },
+        {
+          "sequence": 4,
+          "kind": "tool_activity",
+          "text": "The settings loader now calls the existing validator."
+        },
+        {
+          "sequence": 5,
+          "kind": "assistant_message",
+          "text": "Add the malformed-root regression test."
+        }
+      ],
+      "summaryProviderStub": {
+        "summary": "Settings validation now reuses the existing JSON-schema path; a duplicate parser was rejected, and the malformed-root regression remains.",
+        "memoryItems": [
+          {
+            "kind": "decision",
+            "text": "Reuse the existing JSON-schema validation path."
+          },
+          {
+            "kind": "failed_approach",
+            "text": "Do not add a second custom parser."
+          },
+          {
+            "kind": "next_action",
+            "text": "Next: add the malformed-root regression test."
+          }
+        ]
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-claude-to-codex-visible-v1",
+        "timeoutMs": 30000,
+        "committedEventCount": 5,
+        "summaryCount": 1,
+        "durableMemoryCount": 3,
+        "targetInjectionAcknowledged": true
+      },
+      "requiredFacts": [
+        "Reuse the existing JSON-schema validation path.",
+        "Do not add a second custom parser.",
+        "Next: add the malformed-root regression test."
+      ],
+      "forbiddenFacts": [
+        "Replace the existing validator with a new parser.",
+        "The malformed-root regression is complete."
+      ],
+      "selectionReasons": [
+        "exact_session",
+        "lexical"
+      ],
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "codex-to-claude",
+      "sourceAgent": "codex",
+      "targetAgent": "claude-code",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "cache invalidation constraint failed approach and next action",
+      "events": [
+        {
+          "sequence": 1,
+          "kind": "prompt",
+          "text": "Fix the cache invalidation race without changing the public API."
+        },
+        {
+          "sequence": 2,
+          "kind": "assistant_message",
+          "text": "Preserve the existing public cache API."
+        },
+        {
+          "sequence": 3,
+          "kind": "tool_result",
+          "text": "The race occurs in shared-key invalidation."
+        },
+        {
+          "sequence": 4,
+          "kind": "tool_result",
+          "text": "A global lock was rejected because it serialized unrelated keys."
+        },
+        {
+          "sequence": 5,
+          "kind": "assistant_message",
+          "text": "Add a per-key invalidation lock and concurrent-key regression."
+        }
+      ],
+      "summaryProviderStub": {
+        "summary": "The public cache API stays unchanged; shared-key invalidation races, a global lock was rejected, and a per-key lock plus concurrency regression is next.",
+        "memoryItems": [
+          {
+            "kind": "decision",
+            "text": "Preserve the existing public cache API."
+          },
+          {
+            "kind": "failed_approach",
+            "text": "Do not use a global invalidation lock."
+          },
+          {
+            "kind": "next_action",
+            "text": "Next: add a per-key lock and concurrent-key regression."
+          }
+        ]
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-codex-to-claude-visible-v1",
+        "timeoutMs": 30000,
+        "committedEventCount": 5,
+        "summaryCount": 1,
+        "durableMemoryCount": 3,
+        "targetInjectionAcknowledged": true
+      },
+      "requiredFacts": [
+        "Preserve the existing public cache API.",
+        "Do not use a global invalidation lock.",
+        "Next: add a per-key lock and concurrent-key regression."
+      ],
+      "forbiddenFacts": [
+        "Ship a global invalidation lock.",
+        "Change the public cache API."
+      ],
+      "selectionReasons": [
+        "exact_session",
+        "lexical"
+      ],
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "runtime-unavailable-spool-recovery",
+      "sourceAgent": "claude-code",
+      "targetAgent": "codex",
+      "resourceSampleMode": "cold",
+      "retrievalQuery": "queued event after daemon restart",
+      "fault": {
+        "kind": "daemon_unavailable_after_event_accept",
+        "recovery": "restart_and_replay_spool_once"
+      },
+      "events": [
+        {
+          "sequence": 1,
+          "kind": "prompt",
+          "text": "Record a durable follow-up while the memory daemon is unavailable."
+        },
+        {
+          "sequence": 2,
+          "kind": "assistant_message",
+          "text": "Next: verify the queued event after daemon restart."
+        }
+      ],
+      "summaryProviderStub": {
+        "summary": "The daemon was unavailable; the accepted event was spooled and replayed once after restart.",
+        "memoryItems": [
+          {
+            "kind": "next_action",
+            "text": "Next: verify the queued event after daemon restart."
+          }
+        ]
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-spool-replayed-once-v1",
+        "timeoutMs": 30000,
+        "committedEventCount": 2,
+        "spooledEventCount": 2,
+        "replayCount": 1,
+        "summaryCount": 1,
+        "durableMemoryCount": 1,
+        "targetInjectionAcknowledged": true
+      },
+      "requiredFacts": [
+        "Next: verify the queued event after daemon restart."
+      ],
+      "forbiddenFacts": [
+        "The queued event was committed twice."
+      ],
+      "selectionReasons": [
+        "lexical"
+      ],
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "summary-provider-retry-exhausted",
+      "sourceAgent": "codex",
+      "targetAgent": "claude-code",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "provider failure pending summary state",
+      "fault": {
+        "kind": "summary_provider_malformed_response",
+        "attemptsUntilExhausted": 3,
+        "resumeSignals": [
+          "validated_configuration_activation",
+          "recorded_provider_healthy_transition",
+          "user_confirmed_doctor_retry"
+        ]
+      },
+      "events": [
+        {
+          "sequence": 1,
+          "kind": "prompt",
+          "text": "Keep this event durable even when summary generation fails."
+        },
+        {
+          "sequence": 2,
+          "kind": "tool_result",
+          "text": "The provider returned malformed output."
+        }
+      ],
+      "summaryProviderStub": {
+        "malformedResponse": "<invalid",
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-summary-retry-exhausted-visible-v1",
+        "timeoutMs": 30000,
+        "committedEventCount": 2,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "pendingSummaryJobCount": 1,
+        "eventDeliveryState": "committed",
+        "summaryJobState": "retry-exhausted",
+        "targetInjectionAcknowledged": false
+      },
+      "requiredFacts": [],
+      "forbiddenFacts": [
+        "Summary generation succeeded.",
+        "The accepted event was discarded."
+      ],
+      "selectionReasons": [
+        "semantic_disabled"
+      ],
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    }
+  ]
+}

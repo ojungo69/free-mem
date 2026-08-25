@@ -1,40 +1,81 @@
-# Evidence 成果物索引
+# Evidence Index
 
-正本: `agent-memory-final-spec-v6.md` / `specs/001-agent-memory-core/phase-1-design.md` / `specs/001-agent-memory-core/tasks.md`
+## Active Product Authority
 
-| 成果物 | パス | タスク |
-|---|---|---|
-| codemem upstream test ログ | codemem/upstream-test.log | T004 |
-| codemem license/SBOM/native asset | codemem/sbom.md | T004 |
-| ai-memory 同上 | ai-memory/ | T005 |
-| remem 同上 | remem/ | T006 |
-| codemem write-handle inventory（file:line） | codemem/write-handle-inventory.md | T007 |
-| ai-memory/remem 簡易 inventory | */inventory-summary.md | T008 |
-| codemem runtime audit / benchmark runner | codemem/runtime-audit.md | T009 |
-| fatal/non-fatal 分類 | codemem/write-handle-classification.md | T010 |
-| delta 比較 | delta-comparison.md | T011 |
-| unsafe path action plan | unsafe-path-action-plan.md | T012 |
-| base ADR | adr-001-base.md | T013 |
-| clean install 検証 | clean-install.md | T015 |
-| viewer 認証・read-only RPC security validation | phase1-t043-viewer-security-validation.md | T043 |
-| CLI daemon RPC cutover validation | phase1-t044-cli-rpc-validation.md | T044 |
-| daemon jobs・maintenance mode validation | phase1-t045-t046-daemon-jobs-validation.md | T045–T046 |
-| export/import daemon operation validation | phase1-t047-operations-validation.md | T047 |
-| daemon-only DB handle validation | phase1-t048-zero-external-db-handles-validation.md | T048 |
-| legacy cutover validation | phase1-t051-legacy-cutover-validation.md | T051 |
-| backup/restore baseline validation | phase1-t052-backup-restore-validation.md | T052 |
-| static exit-gate validation | phase1-t053-static-scan-validation.md | T053 |
-| runtime DB ownership validation | phase1-t054-runtime-db-open-validation.md | T054 |
-| fault-injection validation | phase1-t055-fault-injection-validation.md | T055 |
-| no-Agent-blockage validation | phase1-t056-no-agent-blockage-validation.md | T056 |
-| backup/restore smoke validation | phase1-t057-backup-restore-smoke-validation.md | T057 |
-| Phase 1 final candidate validation（machine 25/31 と manual 31/31 を分離） | phase1-t058-final-validation.md | T058 |
-| Rust Local Core 再評価 ADR（#1 Stage 0。ADR-001 の却下理由分解・cutover gate の pass/defer 定義） | adr-003-rust-local-core.md | #1 Stage 0 |
-| ライセンス決定 ADR（#10。候補比較・依存 license 実測・material 分類・inbound 方針） | adr-004-licensing.md | #10 |
-| Rust Core 戦略 ADR（#1。標準実行基盤の段階移行方針・Stage 1 の再定義・正本連鎖との関係） | adr-005-rust-core-product-direction.md | #1 |
-| 直接競合の positioning snapshot（commit pin 済みの公開情報のみ。benchmark 証拠ではない） | direct-competitor-positioning-2026-08-18.md | #8 / #79 |
-| capability scenario manifest（§13 の manifest hash 規則） | phase3-capability-scenario-manifest.md | Phase 3 Task 4 |
-| 継続 event の参照実装（§3.1 / §4.2 / §4.3 の導出と限界） | phase3-reference-model.md | Phase 3 Task 5 |
+The active product direction is the lightweight automatic-memory Product Reset:
 
-pin: codemem 26438e75ce1d0fec6be34981f15045a15c89658b / ai-memory a9e9a24d50f59e970fc01ae48efe647abf20702e / remem cde8bc05504c74794d044ef118f74d8f828adbf5
-clone 元: ~/projects/free-mem-vendor/（ローカル clone のみ・公開 fork なし）
+| Artifact | Purpose |
+|---|---|
+| [`../specs/005-product-reset/spec.md`](../specs/005-product-reset/spec.md) | User outcomes, Alpha boundary, requirements, and success criteria |
+| [`../specs/005-product-reset/plan.md`](../specs/005-product-reset/plan.md) | M0 authority reset and three-slice delivery order |
+| [`adr-006-product-reset.md`](adr-006-product-reset.md) | Codemem-base decision, claude-mem fork rejection, and revisit triggers |
+| [`../specs/005-product-reset/issue-routing.md`](../specs/005-product-reset/issue-routing.md) | Complete GitHub work disposition and mutation evidence |
+
+## Reused Safety and Foundation Evidence
+
+These artifacts remain relevant because the Product Reset preserves the existing Codemem safety
+kernel:
+
+| Artifact | Reused evidence |
+|---|---|
+| `adr-001-base.md` | Why the pinned Codemem snapshot was selected over a new runtime |
+| `delta-comparison.md` | Reusable source, test, and write-boundary comparison |
+| `unsafe-path-action-plan.md` | Historical unsafe write/auth inventory and removal plan |
+| `codemem/write-handle-inventory.md` | Original write-capable surface inventory |
+| `codemem/write-handle-classification.md` | Fatal versus non-fatal boundary classification |
+| `phase1-t043-viewer-security-validation.md` | Viewer authentication and read-only boundary evidence |
+| `phase1-t044-cli-rpc-validation.md` | CLI-to-daemon mutation cutover evidence |
+| `phase1-t045-t046-daemon-jobs-validation.md` | Daemon job and maintenance-mode evidence |
+| `phase1-t047-operations-validation.md` | Export/import operation evidence |
+| `phase1-t048-zero-external-db-handles-validation.md` | Daemon-only write-handle evidence |
+| `phase1-t051-legacy-cutover-validation.md` | Existing local migration safety evidence |
+| `phase1-t052-backup-restore-validation.md` | Backup/restore baseline |
+| `phase1-t053-static-scan-validation.md` | Static safety exit gate |
+| `phase1-t054-runtime-db-open-validation.md` | Runtime database ownership evidence |
+| `phase1-t055-fault-injection-validation.md` | Existing fault-injection evidence |
+| `phase1-t056-no-agent-blockage-validation.md` | Existing fail-open Agent evidence |
+| `phase1-t057-backup-restore-smoke-validation.md` | Backup/restore smoke evidence |
+| `phase1-t058-final-validation.md` | Phase 1 candidate baseline |
+| `adr-004-licensing.md` | Repository and third-party material license decision |
+
+The source snapshot remains pinned at Codemem
+`26438e75ce1d0fec6be34981f15045a15c89658b`. `vendor/codemem/VENDOR.md` records provenance.
+
+## Historical Evidence
+
+The following artifacts remain available for audit and selective reuse, but they are not active
+Product Alpha authority:
+
+- `agent-memory-final-spec-v5.md`, `agent-memory-final-spec-v6.md`, and earlier implementation or
+  preimplementation reviews at the repository root
+- `specs/001-agent-memory-core/` beyond the completed Phase 1 safety evidence
+- `specs/002-continuity-state-evidence/`
+- `specs/003-evidence-hash-normalization/`
+- `specs/004-review-residue/`
+- `adr-003-rust-local-core.md` and `adr-005-rust-core-product-direction.md`
+- `phase3-capability-scenario-manifest.md`, `phase3-reference-model.md`, and
+  `phase3-resume-oss-comparison.md`
+- `direct-competitor-positioning-2026-08-18.md` as a discovery snapshot rather than current
+  benchmark proof
+- `harness/continuity/`, continuity fixtures, and broad capability-rig artifacts
+
+Historical status means:
+
+- no old phase number, P0 label, or unfinished task blocks the Product Alpha by itself;
+- old contracts are not silently copied into a new slice;
+- a later slice may reuse a bounded invariant only when its current user-visible failure and test
+  are restated in that slice;
+- physical deletion waits until no replacement test, reference, or migration needs the artifact.
+
+## Product Reset Acceptance Baseline
+
+At commit `accaa29f5627c20c7e4c106a81211067fcf2bc42`, the isolated Product Reset worktree produced:
+
+- frozen dependency installation: pass
+- workspace build: pass
+- TypeScript check: pass
+- Biome check: pass
+- Vitest: 124 files passed, 1,895 tests passed, three todo
+
+This is a code-health baseline only. It is not evidence that the automatic-memory Technical Alpha
+is implemented or supported.
