@@ -1,0 +1,56 @@
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json
+  s_9d346c66194a0d::t_0fefd3aa0b0a71 79,83-85,91-94,123,127-129,132-134
+  s_9d346c66194a0d::t_bb06dc6f7830a2 87
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_924093df138c1a 4
+  s_9d346c66194a0d::t_abf05fb444e15a 40,42
+  s_9d346c66194a0d::t_939df94910294b 30-39
+  s_9d346c66194a0d::t_358e9985bae243 9
+specs/005-product-reset/contracts/alpha-result-v1.schema.json
+  s_9d346c66194a0d::t_bb06dc6f7830a2 131-135
+  s_9d346c66194a0d::t_939df94910294b 108,112,116-130,136-138
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_939df94910294b 30-39
+  s_9d346c66194a0d::t_abf05fb444e15a 40,42
+  s_9d346c66194a0d::t_924093df138c1a 4
+  s_9d346c66194a0d::t_358e9985bae243 9
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_71522bb74f07ea 136-138
+  s_9d346c66194a0d::t_f838685656ef4d 151-153
+  s_9d346c66194a0d::t_2b2534860b2923 64-67
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_924093df138c1a 44
+  s_9d346c66194a0d::t_a58a567af224ca 15-17,33,59-61
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_57bd899a1fc305 104
+  s_9d346c66194a0d::t_cfbfb2d492b70a 79-81,87-90,108-110,113-115
+  s_9d346c66194a0d::t_358e9985bae243 20,103
+  s_9d346c66194a0d::t_dbf5f38981f9f3 1298,1300,1546,1555
+  s_9d346c66194a0d::t_924093df138c1a 8
+specs/005-product-reset/rollback.md
+  s_9d346c66194a0d::t_ba9256c60adc80 14-15,90-95
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_d12420eac441e1 147,156
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_f838685656ef4d 481-482,484
+  s_9d346c66194a0d::t_af95ec81c293b5 84,86,88
+  s_9d346c66194a0d::t_939df94910294b 196-199,218
+  s_9d346c66194a0d::t_bb06dc6f7830a2 200-203,531
+  s_9d346c66194a0d::t_c3def06a8b2666 417-418,529-530
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e44fe9925be0004ffd3f28406b57385499a6de15",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
