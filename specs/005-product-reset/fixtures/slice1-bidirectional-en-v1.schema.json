@@ -387,16 +387,41 @@
     "ProviderActivationProposal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["providerChoiceId", "executionLocation", "credentialPresent", "endpointScheme", "endpointHost", "redactedPayload", "payloadBytes"],
+      "required": ["providerChoiceId", "executionLocation", "credentialPresent", "endpointScheme", "endpointHost", "certificateChainState", "hostnameState", "redactedPayload", "payloadBytes"],
       "properties": {
         "providerChoiceId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "executionLocation": { "const": "remote" },
         "credentialPresent": { "type": "boolean" },
-        "endpointScheme": { "const": "http" },
+        "endpointScheme": { "enum": ["http", "https"] },
         "endpointHost": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "certificateChainState": { "enum": ["not_applicable", "valid", "invalid"] },
+        "hostnameState": { "enum": ["not_applicable", "valid", "mismatch"] },
         "redactedPayload": { "$ref": "#/$defs/SharedNonEmptyString" },
         "payloadBytes": { "$ref": "#/$defs/SharedPositiveInteger" }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "endpointScheme": { "const": "http" },
+            "certificateChainState": { "const": "not_applicable" },
+            "hostnameState": { "const": "not_applicable" }
+          }
+        },
+        {
+          "properties": {
+            "endpointScheme": { "const": "https" },
+            "certificateChainState": { "const": "invalid" },
+            "hostnameState": { "const": "valid" }
+          }
+        },
+        {
+          "properties": {
+            "endpointScheme": { "const": "https" },
+            "certificateChainState": { "const": "valid" },
+            "hostnameState": { "const": "mismatch" }
+          }
+        }
+      ]
     },
     "Event": {
       "type": "object",
@@ -683,9 +708,10 @@
     "DrainCondition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["drainConditionId", "terminalMilestone", "timeoutMs", "committedEventCount", "summaryCount", "durableMemoryCount", "targetInjectionAcknowledged"],
+      "required": ["drainConditionId", "startMilestone", "terminalMilestone", "timeoutMs", "committedEventCount", "summaryCount", "durableMemoryCount", "targetInjectionAcknowledged"],
       "properties": {
         "drainConditionId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "startMilestone": { "$ref": "#/$defs/SharedNonEmptyString" },
         "terminalMilestone": { "$ref": "#/$defs/SharedNonEmptyString" },
         "timeoutMs": { "$ref": "#/$defs/SharedPositiveInteger" },
         "committedEventCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
@@ -749,7 +775,7 @@
       "properties": {
         "consideredActivationProposalCount": { "const": 1 },
         "expectedActivationState": { "const": "rejected" },
-        "expectedReason": { "const": "insecure_remote_transport" },
+        "expectedReason": { "enum": ["insecure_remote_transport", "tls_certificate_chain_invalid", "tls_hostname_mismatch"] },
         "remoteProviderRequestCount": { "const": 0 },
         "credentialBytesSent": { "const": 0 },
         "payloadBytesSent": { "const": 0 },

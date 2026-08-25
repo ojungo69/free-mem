@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:867752dcf5c8e5b72860a7fd7b04ab4966bb97b50c6cf1b23cd2cc3d58fd3268",
+  "contractFingerprint": "sha256:6f603bf52b65c57922989196a19565b5d4100bf00245fbf66433215cd0888b2b",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -400,6 +400,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-claude-to-codex-visible-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 5,
@@ -547,6 +548,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-codex-to-claude-visible-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 5,
@@ -688,6 +690,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-spool-idempotent-replay-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 2,
@@ -913,6 +916,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-summary-retry-exhausted-visible-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 2,
@@ -1017,6 +1021,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-summary-redirect-rejected-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 1,
@@ -1076,6 +1081,8 @@
         "credentialPresent": false,
         "endpointScheme": "http",
         "endpointHost": "summary.http.invalid",
+        "certificateChainState": "not_applicable",
+        "hostnameState": "not_applicable",
         "redactedPayload": "TRANSPORT_PAYLOAD_SENTINEL",
         "payloadBytes": 26
       },
@@ -1086,6 +1093,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-credentialless-http-activation-rejected-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "configuration_validation_rejected",
         "timeoutMs": 30000,
         "committedEventCount": 0,
@@ -1135,6 +1143,8 @@
         "credentialPresent": true,
         "endpointScheme": "http",
         "endpointHost": "credentialed-summary.http.invalid",
+        "certificateChainState": "not_applicable",
+        "hostnameState": "not_applicable",
         "redactedPayload": "CREDENTIALED_TRANSPORT_PAYLOAD_SENTINEL",
         "payloadBytes": 39
       },
@@ -1145,6 +1155,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-credentialed-http-activation-rejected-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "configuration_validation_rejected",
         "timeoutMs": 30000,
         "committedEventCount": 0,
@@ -1168,6 +1179,130 @@
         "payloadBytesSent": 0,
         "forbiddenSentinels": [
           "CREDENTIALED_TRANSPORT_PAYLOAD_SENTINEL"
+        ],
+        "sentinelObservedAtRemote": false
+      },
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "invalid-chain-https-activation-rejected",
+      "sourceAgent": "codex",
+      "targetDestinationClass": "claude-code-local",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "configuration_rejection",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "not applicable: TLS configuration rejection",
+      "providerActivationProposal": {
+        "providerChoiceId": "invalid-chain-https-summary-v1",
+        "executionLocation": "remote",
+        "credentialPresent": true,
+        "endpointScheme": "https",
+        "endpointHost": "invalid-chain.summary.invalid",
+        "certificateChainState": "invalid",
+        "hostnameState": "valid",
+        "redactedPayload": "INVALID_CHAIN_TRANSPORT_PAYLOAD_SENTINEL",
+        "payloadBytes": 40
+      },
+      "events": [],
+      "summaryProviderStub": {
+        "policyRejectedReason": "tls_certificate_chain_invalid",
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-invalid-chain-https-activation-rejected-v1",
+        "startMilestone": "source_session_started",
+        "terminalMilestone": "configuration_validation_rejected",
+        "timeoutMs": 30000,
+        "committedEventCount": 0,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "providerRequestCount": 0,
+        "providerPayloadCount": 0,
+        "targetInjectionAcknowledged": false
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "INVALID_CHAIN_TRANSPORT_PAYLOAD_SENTINEL"
+      ],
+      "securityOracle": {
+        "consideredActivationProposalCount": 1,
+        "expectedActivationState": "rejected",
+        "expectedReason": "tls_certificate_chain_invalid",
+        "remoteProviderRequestCount": 0,
+        "credentialBytesSent": 0,
+        "payloadBytesSent": 0,
+        "forbiddenSentinels": [
+          "INVALID_CHAIN_TRANSPORT_PAYLOAD_SENTINEL"
+        ],
+        "sentinelObservedAtRemote": false
+      },
+      "expectedCounters": {
+        "agentBlockageCount": 0,
+        "acceptedEventLossCount": 0,
+        "duplicateDurableMemoryCount": 0,
+        "secretEgressCount": 0,
+        "incompatibleScopeInjectionCount": 0
+      }
+    },
+    {
+      "scenarioId": "hostname-mismatch-https-activation-rejected",
+      "sourceAgent": "claude-code",
+      "targetDestinationClass": "codex-local",
+      "sourceRepositoryScope": "repo-primary",
+      "targetRepositoryScope": "repo-primary",
+      "lifecycleProfileId": "configuration_rejection",
+      "resourceSampleMode": "warm",
+      "retrievalQuery": "not applicable: TLS configuration rejection",
+      "providerActivationProposal": {
+        "providerChoiceId": "hostname-mismatch-https-summary-v1",
+        "executionLocation": "remote",
+        "credentialPresent": true,
+        "endpointScheme": "https",
+        "endpointHost": "hostname-mismatch.summary.invalid",
+        "certificateChainState": "valid",
+        "hostnameState": "mismatch",
+        "redactedPayload": "HOSTNAME_MISMATCH_TRANSPORT_PAYLOAD_SENTINEL",
+        "payloadBytes": 44
+      },
+      "events": [],
+      "summaryProviderStub": {
+        "policyRejectedReason": "tls_hostname_mismatch",
+        "memoryItems": []
+      },
+      "drainCondition": {
+        "drainConditionId": "slice1-hostname-mismatch-https-activation-rejected-v1",
+        "startMilestone": "source_session_started",
+        "terminalMilestone": "configuration_validation_rejected",
+        "timeoutMs": 30000,
+        "committedEventCount": 0,
+        "summaryCount": 0,
+        "durableMemoryCount": 0,
+        "providerRequestCount": 0,
+        "providerPayloadCount": 0,
+        "targetInjectionAcknowledged": false
+      },
+      "expectedInjectedItems": [],
+      "expectedOmissions": [],
+      "forbiddenFacts": [
+        "HOSTNAME_MISMATCH_TRANSPORT_PAYLOAD_SENTINEL"
+      ],
+      "securityOracle": {
+        "consideredActivationProposalCount": 1,
+        "expectedActivationState": "rejected",
+        "expectedReason": "tls_hostname_mismatch",
+        "remoteProviderRequestCount": 0,
+        "credentialBytesSent": 0,
+        "payloadBytesSent": 0,
+        "forbiddenSentinels": [
+          "HOSTNAME_MISMATCH_TRANSPORT_PAYLOAD_SENTINEL"
         ],
         "sentinelObservedAtRemote": false
       },
@@ -1560,6 +1695,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-summary-output-limit-visible-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 1,
@@ -1621,6 +1757,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-private-remote-provider-rejected-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 1,
@@ -1704,6 +1841,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-local-only-remote-provider-rejected-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "provider_processing_rejected_or_exhausted",
         "timeoutMs": 30000,
         "committedEventCount": 2,
@@ -1782,6 +1920,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-incompatible-scope-injection-rejected-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 1,
@@ -1851,6 +1990,7 @@
       },
       "drainCondition": {
         "drainConditionId": "slice1-local-derived-remote-injection-rejected-v1",
+        "startMilestone": "source_session_started",
         "terminalMilestone": "target_injection_acknowledged",
         "timeoutMs": 30000,
         "committedEventCount": 1,

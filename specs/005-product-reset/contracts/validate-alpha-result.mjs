@@ -227,6 +227,17 @@ const exceptionalState = result.disposition.state === "unsupported" ||
 
 const expectedMilestones = fixture.lifecycleProfiles[scenario.lifecycleProfileId];
 const milestoneNames = result.milestones.map((item) => item.name);
+const drainMilestoneTimes = new Map(result.milestones.map((item) => [item.name, item.monotonicMs]));
+const drainStartTime = drainMilestoneTimes.get(scenario.drainCondition.startMilestone);
+const drainTerminalTime = drainMilestoneTimes.get(scenario.drainCondition.terminalMilestone);
+if (
+  !result.drain.timedOut &&
+  typeof drainStartTime === "number" &&
+  typeof drainTerminalTime === "number" &&
+  drainTerminalTime - drainStartTime > scenario.drainCondition.timeoutMs
+) {
+  throw new Error("completed drain exceeded the pinned timeout");
+}
 const milestonesPass = result.drain.timedOut
   ? milestoneNames.length < expectedMilestones.length &&
     milestoneNames.every((name, index) => name === expectedMilestones[index]) &&
@@ -383,12 +394,15 @@ const derivationRequested =
   scenario.summaryProviderStub.memoryItems.length > 0;
 const remoteProviderExpected =
   activeSummaryProvider.executionLocation === "remote" && derivationRequested && !providerRejected;
+const expectedRemoteProviderRequests = remoteProviderExpected
+  ? (scenario.fault?.attemptsUntilExhausted ?? 1)
+  : 0;
 const credentialTransmissionExpected =
   remoteProviderExpected && Object.hasOwn(activeSummaryProvider, "credentialSource");
 const providerRoutingPass = remoteProviderExpected
   ? result.securityDenominators.consideredRemoteProviderEventCount > 0 &&
-    result.securityEvidence.remoteProviderRequestCount > 0 &&
-    result.securityEvidence.remoteProviderPayloadCount > 0 &&
+    result.securityEvidence.remoteProviderRequestCount === expectedRemoteProviderRequests &&
+    result.securityEvidence.remoteProviderPayloadCount === expectedRemoteProviderRequests &&
     (credentialTransmissionExpected
       ? result.securityEvidence.credentialBytesSent > 0
       : result.securityEvidence.credentialBytesSent === 0) &&

@@ -19,7 +19,8 @@ change before adopting it. This contract is not a general benchmark framework.
    redirect location and doctor reports the bounded rejection reason.
 7. **Slice 1**: Remote HTTP providers with and without configured credentials are each rejected with
    a non-empty redacted payload before activation, credential transmission, request, or payload
-   transmission.
+   transmission. Verified-HTTPS activation is separately rejected for an invalid certificate chain
+   and a hostname mismatch with the same zero-egress evidence.
 8. **Slice 1**: Local-only content is considered for a remote summary provider but produces zero
    remote requests or payloads.
 9. **Slice 1**: Private content is considered for a remote summary provider but produces zero remote
@@ -183,6 +184,9 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
   request/byte/resend counters are independently recorded.
 - Credential-byte evidence is positive only for an allowed request to the configured verified-HTTPS
   provider. Local providers and rejected HTTP activations record zero credential bytes.
+- Remote request/payload counts cover the initial drain attempt set only; independent recovery cases
+  keep their own observed provider-attempt evidence. The count is one unless the fixture explicitly
+  pins an exhausted attempt count, and zero for rejected or local-provider routes.
 - Resource or quality thresholds are frozen before candidate results are inspected.
 - Raw records remain available beside the human summary.
 

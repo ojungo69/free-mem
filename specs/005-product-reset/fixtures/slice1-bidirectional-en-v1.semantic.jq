@@ -162,25 +162,44 @@ def pack_degradation_policy_ok($root):
 
 def transport_security_ok($root):
   ([ $root.scenarios[] | select(has("providerActivationProposal")) ]) as $matches
-  | ($matches | length) == 2
+  | ($matches | length) == 4
   and ([$matches[].scenarioId] | sort) == [
     "credentialed-http-activation-rejected",
-    "credentialless-http-activation-rejected"
+    "credentialless-http-activation-rejected",
+    "hostname-mismatch-https-activation-rejected",
+    "invalid-chain-https-activation-rejected"
   ]
-  and ([$matches[].providerActivationProposal.credentialPresent] | sort) == [false, true]
+  and ([$matches[].providerActivationProposal.credentialPresent] | sort) == [false, true, true, true]
   and all($matches[];
     . as $scenario
+    | (if $scenario.providerActivationProposal.endpointScheme == "http"
+      then "insecure_remote_transport"
+      elif $scenario.providerActivationProposal.certificateChainState == "invalid"
+      then "tls_certificate_chain_invalid"
+      elif $scenario.providerActivationProposal.hostnameState == "mismatch"
+      then "tls_hostname_mismatch"
+      else null
+      end) as $expectedReason
     | $scenario.lifecycleProfileId == "configuration_rejection"
     and ($scenario.events | length) == 0
     and $scenario.providerActivationProposal.executionLocation == "remote"
-    and $scenario.providerActivationProposal.endpointScheme == "http"
+    and (if $scenario.providerActivationProposal.endpointScheme == "http"
+      then $scenario.providerActivationProposal.certificateChainState == "not_applicable"
+        and $scenario.providerActivationProposal.hostnameState == "not_applicable"
+      else $scenario.providerActivationProposal.endpointScheme == "https"
+        and (($scenario.providerActivationProposal.certificateChainState == "invalid"
+            and $scenario.providerActivationProposal.hostnameState == "valid")
+          or ($scenario.providerActivationProposal.certificateChainState == "valid"
+            and $scenario.providerActivationProposal.hostnameState == "mismatch"))
+      end)
     and $scenario.providerActivationProposal.payloadBytes ==
       ($scenario.providerActivationProposal.redactedPayload | utf8bytelength)
     and $scenario.providerActivationProposal.payloadBytes > 0
-    and $scenario.summaryProviderStub.policyRejectedReason == "insecure_remote_transport"
+    and $expectedReason != null
+    and $scenario.summaryProviderStub.policyRejectedReason == $expectedReason
     and $scenario.securityOracle.consideredActivationProposalCount == 1
     and $scenario.securityOracle.expectedActivationState == "rejected"
-    and $scenario.securityOracle.expectedReason == "insecure_remote_transport"
+    and $scenario.securityOracle.expectedReason == $expectedReason
     and $scenario.securityOracle.remoteProviderRequestCount == 0
     and $scenario.securityOracle.credentialBytesSent == 0
     and $scenario.securityOracle.payloadBytesSent == 0
@@ -204,8 +223,11 @@ def scenario_core_ok($root; $scenario):
   and ($root.lifecycleProfiles | has($scenario.lifecycleProfileId))
   and ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
     | length == (unique | length))
-  and ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
-    | index($scenario.drainCondition.terminalMilestone)) != null
+  and (($root.lifecycleProfiles[$scenario.lifecycleProfileId]
+    | index($scenario.drainCondition.startMilestone)) as $start
+    | ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
+      | index($scenario.drainCondition.terminalMilestone)) as $end
+    | $start != null and $end != null and $start < $end)
   and $scenario.drainCondition.committedEventCount == ($scenario.events | length);
 
 def common_scenarios_ok($root):
