@@ -159,10 +159,12 @@ candidate execution through result validation.
 - [Slice 1 semantic validator](fixtures/slice1-bidirectional-en-v1.semantic.jq)
 - [Slice 1 canonical validator](fixtures/validate-slice1-fixture.mjs)
 - [M0 rollback](rollback.md)
+- [M0 pre-mutation issue baseline](m0-pre-mutation-issues.json)
+- [M0 post-mutation issue baseline](m0-post-mutation-issues.json)
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T06:23:06+09:00
+## Validation result — 2026-08-26T07:50:09+09:00
 
 | Check | Result |
 |---|---|
@@ -171,8 +173,8 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, cross-host/downgrade transport, privacy, host-identity, output-limit recovery-manifest, environment, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, independent safety denominators, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, timeout prefix, and canonical exceptional-state mutations |
-| Rollback read-only snapshot/pre-mutation fence | PASS against live GitHub state |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss denominators, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin result input, timeout prefixes, and canonical exceptional-state mutations |
+| Rollback exact-state fence | PASS; 69-entry pre/post snapshot SHAs, live post-M0 fence, and generated inverse state/full-label simulation match |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
 | Base-to-HEAD, worktree, and index `git diff --check` | PASS |
@@ -180,9 +182,10 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 
 Environment-specific deviations:
 
-- `verify-tasks-report.md` is the immutable pre-mutation snapshot at the pinned M0 base; this
-  post-mutation table and `issue-routing.md` carry the later local/live verification evidence without
-  rewriting its original verdicts.
+- `verify-tasks-report.md` is the immutable post-routing task-verification report, not pre-M0 label
+  authority. The `m0-pre-mutation-issues.json` and `m0-post-mutation-issues.json` pair is the exact
+  69-issue rollback boundary; this table and `issue-routing.md` carry later local/live verification
+  evidence without rewriting old verdicts.
 - `pnpm install` reports that the vendored workspace has no nested `.git` directory when the
   Husky prepare script runs; prepare still exits 0 and the repository-level worktree remains the
   Git authority.
@@ -190,12 +193,12 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- CodeRabbit's final local review raised two suggestions, both rejected after source verification:
-  an oversized final pack is already rejected immediately after render validation, and the recorded
-  timestamp is the actual Asia/Tokyo execution time. The pushed head must still receive a fresh
-  GitHub CodeRabbit review before merge.
-- The latest GitHub Codex review raised five evidence gaps; all were reproduced, fixed, and covered
-  by focused rejection cases. Cubic's post-fix review raised zero issues. Grok's split
+- CodeRabbit's completed local review found the hand-maintained rollback delta; it was replaced by
+  generated inverse operations from exact pre/post snapshots. The final retry hit the review rate
+  limit, so the pushed head must still receive a fresh GitHub CodeRabbit review before merge.
+- The latest GitHub Codex/CodeRabbit reviews raised timeout, input-boundary, loss-evidence, and exact
+  rollback gaps; all valid findings were reproduced, fixed, and covered by focused cases. Cubic's
+  post-fix review raised zero issues. Grok's split
   contract/validator review returned `ok: true`; its full-diff, fixture/documentation, and final
   follow-up attempts timed out without session IDs, so those ranges are not claimed as Grok-reviewed.
   Ponytail found no unused definition, speculative abstraction, dependency, or removable

@@ -72,6 +72,8 @@ specs/005-product-reset/
 ├── data-model.md
 ├── quickstart.md
 ├── issue-routing.md        # M0 GitHub audit and mutation evidence
+├── m0-pre-mutation-issues.json # exact 69-issue state/label rollback baseline
+├── m0-post-mutation-issues.json # exact expected state/labels before rollback
 ├── rollback.md             # GitHub state restoration if M0 is abandoned
 ├── fixtures/
 │   ├── slice1-bidirectional-en-v1.json
@@ -91,6 +93,7 @@ specs/005-product-reset/
 │   ├── alpha-result-v1.semantic.jq
 │   ├── alpha-result-artifact.mjs
 │   ├── alpha-result-atomicity.mjs
+│   ├── alpha-result-input.mjs
 │   ├── alpha-result-latency.mjs
 │   ├── alpha-result-render.mjs
 │   ├── alpha-result-retry.mjs

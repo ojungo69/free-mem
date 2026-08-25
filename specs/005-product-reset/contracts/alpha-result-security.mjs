@@ -13,26 +13,44 @@ const ORACLE_EVIDENCE_FIELDS = [
   "redirectLocationPayloadBytesSent",
   "resentPayloadCount",
 ];
+
+function observedScenarioEvents(result, scenario) {
+  const milestones = new Set(result.milestones.map((item) => item.name));
+  const captureCompleted = milestones.has("source_events_captured") ||
+    milestones.has("source_events_accepted");
+  return result.drain.timedOut && !captureCompleted
+    ? scenario.events.slice(0, result.counts.captured)
+    : scenario.events;
+}
+
 function evaluateDenominators(result, scenario, activeSummaryProvider, expectedDuplicateDeliveries, oracle) {
-  const remoteEvents = activeSummaryProvider.executionLocation === "remote" ? scenario.events : [];
+  const observedEvents = observedScenarioEvents(result, scenario);
+  const remoteEvents = activeSummaryProvider.executionLocation === "remote" ? observedEvents : [];
   const eligibleCount = remoteEvents.filter((event) => event.sensitivity === "eligible").length;
-  const extraNames = [
-    "consideredCrossScopeCandidateCount",
-    "consideredDerivedCandidateCount",
-    "consideredActivationProposalCount",
-  ];
+  const milestones = new Set(result.milestones.map((item) => item.name));
+  const extraMilestones = {
+    consideredCrossScopeCandidateCount: "cross_scope_candidate_omitted",
+    consideredDerivedCandidateCount: "local_only_derived_candidates_omitted",
+    consideredActivationProposalCount: "provider_activation_proposed",
+  };
+  const duplicateDeliveries = result.drain.timedOut &&
+    !milestones.has("stable_batch_replayed_second_time") ? 0 : expectedDuplicateDeliveries;
   return result.securityDenominators.agentOperationCount > 0 &&
-    result.securityDenominators.acceptedEventCount === scenario.events.length &&
-    result.securityDenominators.duplicateDeliveryAttemptCount === expectedDuplicateDeliveries &&
+    result.counts.captured === observedEvents.length &&
+    result.securityDenominators.acceptedEventCount === result.counts.captured &&
+    result.counts.duplicateDeliveries === duplicateDeliveries &&
+    result.securityDenominators.duplicateDeliveryAttemptCount === duplicateDeliveries &&
     result.securityDenominators.consideredRemoteProviderEventCount === remoteEvents.length &&
     result.securityDenominators.consideredEligibleEventCount === eligibleCount &&
     result.securityDenominators.consideredRestrictedEventCount === remoteEvents.length - eligibleCount &&
     result.securityDenominators.consideredSecretEventCount ===
-      scenario.events.filter((event) => event.sensitivity === "secret").length &&
+      observedEvents.filter((event) => event.sensitivity === "secret").length &&
     result.securityDenominators.consideredPrivateEventCount ===
-      scenario.events.filter((event) => event.sensitivity === "private").length &&
-    extraNames.every(
-      (name) => !Object.hasOwn(oracle, name) || result.securityDenominators[name] === oracle[name],
+      observedEvents.filter((event) => event.sensitivity === "private").length &&
+    Object.entries(extraMilestones).every(
+      ([name, milestone]) => !Object.hasOwn(oracle, name) ||
+        result.securityDenominators[name] ===
+          (!result.drain.timedOut || milestones.has(milestone) ? oracle[name] : 0),
     );
 }
 
@@ -40,8 +58,9 @@ function evaluateProviderEvidence(result, scenario, activeSummaryProvider, excep
   const stub = scenario.summaryProviderStub;
   const requested = Object.hasOwn(stub, "summary") || Object.hasOwn(stub, "malformedResponse") ||
     Object.hasOwn(stub, "redirectResponse") || stub.memoryItems.length > 0;
+  const observedEvents = observedScenarioEvents(result, scenario);
   const remoteExpected = activeSummaryProvider.executionLocation === "remote" && requested &&
-    scenario.events.some((event) => event.sensitivity === "eligible") &&
+    observedEvents.some((event) => event.sensitivity === "eligible") &&
     !Object.hasOwn(stub, "policyRejectedReason");
   const expectedRequests = remoteExpected ? (scenario.fault?.attemptsUntilExhausted ?? 1) : 0;
   const observedRequests = result.securityEvidence.remoteProviderRequestCount;
@@ -63,7 +82,10 @@ function evaluateProviderEvidence(result, scenario, activeSummaryProvider, excep
   const exactWire = result.securityEvidence.credentialBytesSent === wire.credentialBytesSent &&
     result.securityEvidence.payloadBytesSent === wire.payloadBytesSent;
   const proportionalWire = observedRequests <= expectedRequests && observedPayloads === observedRequests &&
-    (expectedRequests === 0 ? exactWire :
+    (expectedRequests === 0
+      ? result.securityEvidence.credentialBytesSent === 0 &&
+        result.securityEvidence.payloadBytesSent === 0
+      :
       result.securityEvidence.credentialBytesSent * expectedRequests ===
         wire.credentialBytesSent * observedRequests &&
       result.securityEvidence.payloadBytesSent * expectedRequests === wire.payloadBytesSent * observedRequests);
@@ -113,7 +135,8 @@ export function evaluateSecurityEvidence({
     effectiveTransmissionPass && exactOraclePass &&
     (result.securityEvidence.remoteProviderRequestCount === 0 ||
       result.securityDenominators.consideredRemoteProviderEventCount > 0);
-  const safetyCountersPass = isDeepStrictEqual(result.safety, scenario.expectedCounters);
+  const safetyCountersPass = isDeepStrictEqual(result.safety, scenario.expectedCounters) &&
+    result.counts.lost === result.safety.acceptedEventLossCount;
   return { oracle, activeSummaryProvider, denominatorsPass, safetyCountersPass,
     securityEvidencePass };
 }

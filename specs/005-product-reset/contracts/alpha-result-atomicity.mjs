@@ -10,6 +10,12 @@ export function validateOutputLimitAtomicity(result, scenario, exceptionalState)
     }
     return;
   }
+  if (result.drain.timedOut) {
+    if (result.outputLimitAtomicityEvidence !== null) {
+      throw new Error("timed-out output-limit result has unobserved atomicity evidence");
+    }
+    return;
+  }
   const times = new Map(result.milestones.map((item) => [item.name, item.monotonicMs]));
   const start = times.get(expected.observationStartMilestone);
   const end = times.get(expected.observationEndMilestone);

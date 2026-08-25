@@ -5,7 +5,7 @@
   "$comment": "Structural layer only. Run validate-slice1-fixture.mjs for canonical contract conformance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "artifactLimits", "effectiveConfiguration", "localDerivationManifest", "outputLimitRecoveryManifest", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "hostIdentityProbe", "beforeModelNegativeFixture", "scenarios"],
+  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "artifactLimits", "resultLimits", "effectiveConfiguration", "localDerivationManifest", "outputLimitRecoveryManifest", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "hostIdentityProbe", "beforeModelNegativeFixture", "scenarios"],
   "properties": {
     "fixtureVersion": { "const": 1 },
     "schema": { "const": "slice1-bidirectional-en-v1.schema.json" },
@@ -16,6 +16,7 @@
     "contractFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "pins": { "$ref": "#/$defs/SharedPins" },
     "artifactLimits": { "$ref": "#/$defs/ArtifactLimits" },
+    "resultLimits": { "const": { "maxResultBytes": 1048576 } },
     "effectiveConfiguration": { "$ref": "#/$defs/EffectiveConfiguration" },
     "localDerivationManifest": { "$ref": "#/$defs/LocalDerivationManifest" },
     "outputLimitRecoveryManifest": { "$ref": "#/$defs/OutputLimitRecoveryManifest" },

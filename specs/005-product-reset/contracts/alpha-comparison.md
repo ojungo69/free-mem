@@ -128,6 +128,10 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - healthy, degraded, failed, unsupported, or not-run disposition with reason
 - effective profile and bounded safe recovery action for pending or failed work
 
+Each result file or stdin record is limited to 1 MiB and read incrementally before UTF-8 decoding or
+I-JSON parsing. Suite mode rejects any positive/negative path count other than the fixed 16+1 shape
+before opening candidate result paths.
+
 The authoritative format is
 [`alpha-result-v1.schema.json`](alpha-result-v1.schema.json), with cross-field rules in
 [`alpha-result-v1.semantic.jq`](alpha-result-v1.semantic.jq) and executable fixture/result checks in
@@ -210,6 +214,8 @@ use a fixed 64 KiB content buffer, and reject each boundary before unbounded wor
   at every lifecycle milestone across the pinned processing-through-teardown window. The validator
   derives committed batches, item mutations, maximum visible derived items, and forbidden-sentinel
   observations from those records; a terminal zero count or copied aggregate alone is insufficient.
+  A timed-out prefix cannot reach the provider-rejection terminal or teardown window and therefore
+  records null atomicity evidence instead of fabricating the completed observation.
 - Safety counts for Agent blockage, accepted-event loss, duplicate durable memory, secret egress,
   and incompatible-scope injection must be zero.
 - Their fixture-bound operation/event/candidate denominators are an independent zero-tolerance

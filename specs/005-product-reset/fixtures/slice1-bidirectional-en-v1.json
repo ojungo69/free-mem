@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:00a60422b78f75c4ad17f77f1f2d49fdda4a263238a19020bc17dbe775865017",
+  "contractFingerprint": "sha256:addac7fa369996a30e2bfe0864b2345d2aad2eb437db2ed2c126ad516d9da55b",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -20,6 +20,9 @@
     "maxDirectoryDepth": 8,
     "maxFileBytes": 16777216,
     "maxTotalBytes": 67108864
+  },
+  "resultLimits": {
+    "maxResultBytes": 1048576
   },
   "effectiveConfiguration": {
     "manifestVersion": 1,

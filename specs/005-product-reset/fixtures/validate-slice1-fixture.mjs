@@ -16,6 +16,7 @@ const resultSchemaPath = join(fixtureDir, "../contracts/alpha-result-v1.schema.j
 const resultSemanticPath = join(fixtureDir, "../contracts/alpha-result-v1.semantic.jq");
 const resultArtifactValidatorPath = join(fixtureDir, "../contracts/alpha-result-artifact.mjs");
 const resultAtomicityValidatorPath = join(fixtureDir, "../contracts/alpha-result-atomicity.mjs");
+const resultInputValidatorPath = join(fixtureDir, "../contracts/alpha-result-input.mjs");
 const resultLatencyValidatorPath = join(fixtureDir, "../contracts/alpha-result-latency.mjs");
 const resultRetryValidatorPath = join(fixtureDir, "../contracts/alpha-result-retry.mjs");
 const resultSecurityValidatorPath = join(fixtureDir, "../contracts/alpha-result-security.mjs");
@@ -50,7 +51,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:00a60422b78f75c4ad17f77f1f2d49fdda4a263238a19020bc17dbe775865017";
+  "fixture-contract-fingerprint=sha256:addac7fa369996a30e2bfe0864b2345d2aad2eb437db2ed2c126ad516d9da55b";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -69,6 +70,7 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     resultSemanticValidator: normalizeText(readFileSync(resultSemanticPath, "utf8")),
     resultArtifactValidator: normalizeText(readFileSync(resultArtifactValidatorPath, "utf8")),
     resultAtomicityValidator: normalizeText(readFileSync(resultAtomicityValidatorPath, "utf8")),
+    resultInputValidator: normalizeText(readFileSync(resultInputValidatorPath, "utf8")),
     resultLatencyValidator: normalizeText(readFileSync(resultLatencyValidatorPath, "utf8")),
     resultRetryValidator: normalizeText(readFileSync(resultRetryValidatorPath, "utf8")),
     resultSecurityValidator: normalizeText(readFileSync(resultSecurityValidatorPath, "utf8")),

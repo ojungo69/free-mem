@@ -1,14 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { canonicalizeJson, parseIJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
+import { canonicalizeJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
 import { validateArtifact } from "./alpha-result-artifact.mjs";
 import { validateOutputLimitAtomicity } from "./alpha-result-atomicity.mjs";
+import { readBoundedIJsonFile, readBoundedIJsonStdin } from "./alpha-result-input.mjs";
 import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
 import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 import { evaluateSecurityEvidence } from "./alpha-result-security.mjs";
@@ -71,8 +71,14 @@ execFileSync(
 
 if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
   const suiteFixture = readIJsonFile(fixturePath);
-  const suiteResults = resultPaths.map((path) => readIJsonFile(path));
-  const negativeResults = negativeResultPaths.map((path) => readIJsonFile(path));
+  if (resultPaths.length !== suiteFixture.scenarios.length || negativeResultPaths.length !== 1) {
+    throw new Error("candidate suite has an invalid positive or negative result count");
+  }
+  const maxResultBytes = suiteFixture.resultLimits.maxResultBytes;
+  const readResult = (path) => path === "-"
+    ? readBoundedIJsonStdin(maxResultBytes)
+    : readBoundedIJsonFile(path, maxResultBytes);
+  const suiteResults = resultPaths.map(readResult), negativeResults = negativeResultPaths.map(readResult);
   const expectedScenarioIds = suiteFixture.scenarios.map((item) => item.scenarioId).sort();
   const actualScenarioIds = suiteResults.map((item) => item.scenarioId).sort();
   const first = suiteResults[0];
@@ -113,13 +119,12 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
   process.exit(0);
 }
 
-const schema = readIJsonFile(schemaPath);
-const fixtureSchema = readIJsonFile(fixtureSchemaPath);
+const schema = readIJsonFile(schemaPath), fixtureSchema = readIJsonFile(fixtureSchemaPath);
 const resultPath = resultPaths[0];
-const result = resultPath === "-"
-  ? parseIJson(new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(0)))
-  : readIJsonFile(resultPath);
 const fixture = readIJsonFile(fixturePath);
+const result = resultPath === "-"
+  ? readBoundedIJsonStdin(fixture.resultLimits.maxResultBytes)
+  : readBoundedIJsonFile(resultPath, fixture.resultLimits.maxResultBytes);
 const issues = validateAgainstSchema(result, schema, schema);
 if (issues.length > 0) {
   console.error(JSON.stringify(issues, null, 2));

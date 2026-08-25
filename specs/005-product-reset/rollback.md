@@ -19,15 +19,23 @@ the default branch. Do not run it merely because a later implementation slice ch
 The 69-issue original universe is the disjoint union of eight kept issues and 61 issues reopened by
 rollback. The four replacement issues are tracked separately and are not part of that original set.
 
-```sh
-set -e
+```bash
+set -euo pipefail
 export GH_REPO='ojungo69/free-mem'
 test "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" = "$GH_REPO"
 export RESET_ROLLBACK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/free-mem-reset-rollback.XXXXXX")
-export RESET_ORIGINAL_ISSUES='[1,8,9,10,11,12,13,19,22,24,31,32,40,45,46,49,53,54,56,57,58,61,62,64,65,66,67,68,69,70,71,72,73,74,76,79,80,81,82,83,84,90,91,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,123,124,126,127,128,129,130,132,134,135]'
-export RESET_KEPT_ISSUES='[81,123,124,126,127,128,129,130]'
+export RESET_PRE_M0_ISSUES='specs/005-product-reset/m0-pre-mutation-issues.json'
+export RESET_POST_M0_ISSUES='specs/005-product-reset/m0-post-mutation-issues.json'
+export RESET_ORIGINAL_ISSUES=$(jq -c '[.[].number]' "$RESET_PRE_M0_ISSUES")
 export RESET_REPLACEMENT_ISSUES='[136,137,138,139]'
 chmod 700 "$RESET_ROLLBACK_DIR"
+
+test -f "$RESET_PRE_M0_ISSUES"
+test -f "$RESET_POST_M0_ISSUES"
+test "$(sha256sum "$RESET_PRE_M0_ISSUES" | cut -d ' ' -f 1)" = \
+  ba5600b60f829cc1081a0920e57d2883f566c105c47c70df28d72c12745f600e
+test "$(sha256sum "$RESET_POST_M0_ISSUES" | cut -d ' ' -f 1)" = \
+  a1e888398f18c0731db7545277e381c7637c8c3d11b394703b380acb51e3d47a
 
 gh issue list --state all --limit 200 --json number,state,labels \
   > "$RESET_ROLLBACK_DIR/issues-before.json"
@@ -52,19 +60,70 @@ test -s "$RESET_ROLLBACK_DIR/relationships-before.json"
 jq -e '.state == "OPEN" and .mergedAt == null' \
   "$RESET_ROLLBACK_DIR/pr-131-before.json"
 
-jq -e \
-  --argjson original "$RESET_ORIGINAL_ISSUES" \
-  --argjson kept "$RESET_KEPT_ISSUES" \
-  --argjson replacements "$RESET_REPLACEMENT_ISSUES" '
-  ([.[] | select(.number as $n | $original | index($n)) | .number] | sort)
-    == ($original | sort)
-  and all(.[] | select(.number as $n | $original | index($n));
-    if (.number as $n | $kept | index($n)) then .state == "OPEN" else .state == "CLOSED" end)
-  and ([.[] | select(.number as $n | $replacements | index($n)) | .number] | sort)
+for snapshot in "$RESET_PRE_M0_ISSUES" "$RESET_POST_M0_ISSUES"; do
+  jq -e --argjson original "$RESET_ORIGINAL_ISSUES" '
+    length == 69
+    and ([.[].number] | sort) == ($original | sort)
+    and ([.[].number] | length) == ([.[].number] | unique | length)
+    and all(.[]; .state == "OPEN" or .state == "CLOSED")
+    and all(.[]; .labels == (.labels | unique | sort))
+  ' "$snapshot"
+done
+jq -e 'all(.[]; .state == "OPEN")' "$RESET_PRE_M0_ISSUES"
+
+jq -S . "$RESET_POST_M0_ISSUES" \
+  > "$RESET_ROLLBACK_DIR/issues-post-m0.expected.json"
+jq -S --argjson original "$RESET_ORIGINAL_ISSUES" '
+  [.[]
+    | select(.number as $n | ($original | index($n)) != null)
+    | {number, state, labels: ([.labels[].name] | sort)}]
+  | sort_by(.number)
+' "$RESET_ROLLBACK_DIR/issues-before.json" \
+  > "$RESET_ROLLBACK_DIR/issues-post-m0.actual.json"
+diff -u \
+  "$RESET_ROLLBACK_DIR/issues-post-m0.expected.json" \
+  "$RESET_ROLLBACK_DIR/issues-post-m0.actual.json"
+
+jq -n -S \
+  --slurpfile pre "$RESET_PRE_M0_ISSUES" \
+  --slurpfile post "$RESET_POST_M0_ISSUES" '
+  [$post[0][] as $after
+    | $pre[0][]
+    | select(.number == $after.number)
+    | {
+        number,
+        remove: ($after.labels - .labels),
+        add: (.labels - $after.labels)
+      }
+    | select((.remove | length) > 0 or (.add | length) > 0)]
+' > "$RESET_ROLLBACK_DIR/issue-label-rollback.json"
+jq -e '
+  all(.[];
+    (.remove | length) == (.remove | unique | length)
+    and (.add | length) == (.add | unique | length)
+      and ([.remove[], .add[]] | length) == ([.remove[], .add[]] | unique | length))
+' "$RESET_ROLLBACK_DIR/issue-label-rollback.json"
+jq -n -S \
+  --slurpfile post "$RESET_POST_M0_ISSUES" \
+  --slurpfile operations "$RESET_ROLLBACK_DIR/issue-label-rollback.json" '
+  ($operations[0] | map({key: (.number | tostring), value: .}) | from_entries) as $by_number
+  | $post[0]
+  | map(.number as $n
+    | ($by_number[($n | tostring)] // {remove: [], add: []}) as $operation
+    | .state = "OPEN"
+    | .labels = ((.labels - $operation.remove) + $operation.add | unique | sort))
+  | sort_by(.number)
+' > "$RESET_ROLLBACK_DIR/issues-rollback.simulated.json"
+jq -S . "$RESET_PRE_M0_ISSUES" \
+  > "$RESET_ROLLBACK_DIR/issues-pre-m0.expected.json"
+diff -u \
+  "$RESET_ROLLBACK_DIR/issues-pre-m0.expected.json" \
+  "$RESET_ROLLBACK_DIR/issues-rollback.simulated.json"
+
+jq -e --argjson replacements "$RESET_REPLACEMENT_ISSUES" '
+  ([.[] | select(.number as $n | $replacements | index($n)) | .number] | sort)
     == ($replacements | sort)
   and all(.[] | select(.number as $n | $replacements | index($n)); .state == "OPEN")
-  and all(.[] | select(.number as $n | $kept | index($n));
-    any(.labels[]; .name == "target: technical alpha"))
 ' "$RESET_ROLLBACK_DIR/issues-before.json"
 jq -e '.state == "CLOSED" and .mergedAt == null' \
   "$RESET_ROLLBACK_DIR/pr-133-before.json"
@@ -83,14 +142,16 @@ printf 'Snapshot: %s\n' "$RESET_ROLLBACK_DIR"
 ```
 
 Keep the same shell and `RESET_ROLLBACK_DIR` value through post-verification. Compare the snapshot
-with `issue-routing.md`. Do not infer state from this document alone.
+with `issue-routing.md`. `issues-before.json` is the live post-M0 rollback input; the committed
+pre/post snapshot pair is the exact state/full-label authority and generates every inverse label
+operation. Do not substitute the live snapshot for either committed boundary.
 
 ## Restore the former issue set
 
 The M0 closure set is exact and contains 61 issues.
 
-```sh
-set -e
+```bash
+set -euo pipefail
 test -n "${RESET_ROLLBACK_DIR:-}"
 GH_VERSION=$(gh version | sed -n '1s/^gh version \([^ ]*\).*/\1/p')
 test -n "$GH_VERSION"
@@ -134,51 +195,19 @@ for stem in pr-131 pr-133 relationships; do
     "$RESET_ROLLBACK_DIR/$stem-pre-mutation.lock.json"
 done
 
-# Scope copied to Slice 1
-for n in 19 40 45 46 49 61 62 68 69 80 91 93 96 100 101 102 108; do
-  gh issue reopen "$n" --comment 'Product Reset M0 rollback: reopening because the replacement authority did not land or was reverted. Restore the pre-reset issue scope and re-triage before implementation.'
-done
+while IFS= read -r n; do
+  gh issue reopen "$n" --comment 'Product Reset M0 rollback: restoring the exact pre-M0 issue state because the replacement authority did not land or was reverted. Re-triage before implementation.'
+done < <(jq -r '.[] | select(.state == "CLOSED") | .number' "$RESET_POST_M0_ISSUES")
 
-# Scope copied to Slice 2
-for n in 8 11 32 67; do
-  gh issue reopen "$n" --comment 'Product Reset M0 rollback: reopening because the replacement authority did not land or was reverted. Restore the pre-reset issue scope and re-triage before implementation.'
-done
-
-# Scope copied to Slice 3
-for n in 9 10 22 56 57 66 72 82 83 90 94 95 97 98 103 105 106 107; do
-  gh issue reopen "$n" --comment 'Product Reset M0 rollback: reopening because the replacement authority did not land or was reverted. Restore the pre-reset issue scope and re-triage before implementation.'
-done
-
-# Superseded/deferred set plus the resolved governance issue
-for n in 1 12 13 24 31 53 54 58 64 65 70 71 73 74 76 79 84 99 104 132 134 135; do
-  gh issue reopen "$n" --comment 'Product Reset M0 rollback: reopening because the replacement authority did not land or was reverted. The former product direction is restored pending a new owner decision.'
-done
-```
-
-Remove only the `wontfix` labels M0 added to the superseded set:
-
-```sh
-set -e
-for n in 1 12 13 24 31 53 54 58 64 65 70 71 73 74 76 79 84 99 104 132 134 135; do
-  gh issue edit "$n" --remove-label wontfix
-done
-```
-
-## Restore labels on the eight kept issues
-
-```sh
-set -e
-gh issue edit 81 --remove-label 'target: technical alpha' --add-label 'target: core 1.0'
-gh issue edit 123 --remove-label 'target: technical alpha,status: deferred'
-gh issue edit 124 --remove-label 'target: technical alpha'
-for n in 126 129 130; do
-  gh issue edit "$n" \
-    --remove-label 'target: technical alpha,status: ready for implementation' \
-    --add-label 'target: core 1.0'
-done
-for n in 127 128; do
-  gh issue edit "$n" --remove-label 'target: technical alpha,status: deferred'
-done
+while IFS= read -r operation; do
+  n=$(jq -r '.number' <<<"$operation")
+  while IFS= read -r label; do
+    gh issue edit "$n" --remove-label "$label"
+  done < <(jq -r '.remove[]' <<<"$operation")
+  while IFS= read -r label; do
+    gh issue edit "$n" --add-label "$label"
+  done < <(jq -r '.add[]' <<<"$operation")
+done < <(jq -c '.[]' "$RESET_ROLLBACK_DIR/issue-label-rollback.json")
 ```
 
 The new labels may remain unused; deleting repository labels is not required for functional
@@ -186,7 +215,7 @@ rollback and should be a separate owner decision.
 
 ## Restore the old pull request and retire replacement work
 
-```sh
+```bash
 set -e
 for n in 126 129 130; do
   gh issue edit "$n" --remove-parent
@@ -209,11 +238,17 @@ evidence.
 
 ## Post-rollback verification
 
-```sh
-set -e
+```bash
+set -euo pipefail
 test -n "${RESET_ROLLBACK_DIR:-}"
 test -n "${RESET_ORIGINAL_ISSUES:-}"
 test -n "${RESET_REPLACEMENT_ISSUES:-}"
+test -n "${RESET_PRE_M0_ISSUES:-}"
+test -n "${RESET_POST_M0_ISSUES:-}"
+test "$(sha256sum "$RESET_PRE_M0_ISSUES" | cut -d ' ' -f 1)" = \
+  ba5600b60f829cc1081a0920e57d2883f566c105c47c70df28d72c12745f600e
+test "$(sha256sum "$RESET_POST_M0_ISSUES" | cut -d ' ' -f 1)" = \
+  a1e888398f18c0731db7545277e381c7637c8c3d11b394703b380acb51e3d47a
 
 gh issue list --state all --limit 200 --json number,state,labels \
   > "$RESET_ROLLBACK_DIR/issues-after.json"
@@ -230,11 +265,21 @@ gh api graphql -f query='query { repository(owner:"ojungo69", name:"free-mem") {
   i139: issue(number:139) { number state parent { number } blockedBy(first:20) { nodes { number } } }
 } }' > "$RESET_ROLLBACK_DIR/relationships-after.json"
 
-expected="$RESET_ORIGINAL_ISSUES"
-jq -e --argjson expected "$expected" '
-  ([.[] | select(.number as $n | $expected | index($n)) | select(.state == "OPEN") | .number] | sort)
-  == ($expected | sort)
-' "$RESET_ROLLBACK_DIR/issues-after.json"
+jq -S '
+  [.[] | {number, state, labels: (.labels | sort)}]
+  | sort_by(.number)
+' "$RESET_PRE_M0_ISSUES" \
+  > "$RESET_ROLLBACK_DIR/issues-expected.normalized.json"
+jq -S --argjson original "$RESET_ORIGINAL_ISSUES" '
+  [.[]
+    | select(.number as $n | ($original | index($n)) != null)
+    | {number, state, labels: ([.labels[].name] | sort)}]
+  | sort_by(.number)
+' "$RESET_ROLLBACK_DIR/issues-after.json" \
+  > "$RESET_ROLLBACK_DIR/issues-after.normalized.json"
+diff -u \
+  "$RESET_ROLLBACK_DIR/issues-expected.normalized.json" \
+  "$RESET_ROLLBACK_DIR/issues-after.normalized.json"
 
 mutated=$(jq -cn \
   --argjson original "$RESET_ORIGINAL_ISSUES" \
@@ -251,13 +296,6 @@ jq -S --argjson mutated "$mutated" '
 diff -u \
   "$RESET_ROLLBACK_DIR/issues-untouched-before.json" \
   "$RESET_ROLLBACK_DIR/issues-untouched-after.json"
-
-jq -e '
-  def names: [.labels[].name];
-  (map(select(.number == 81))[0] | (names | index("target: core 1.0")) != null and (names | index("target: technical alpha")) == null)
-  and (all(.[] | select(.number == 123 or .number == 124 or .number == 127 or .number == 128); (names | index("status: deferred")) == null and (names | index("target: technical alpha")) == null))
-  and (all(.[] | select(.number == 126 or .number == 129 or .number == 130); (names | index("status: ready for implementation")) == null and (names | index("target: technical alpha")) == null and (names | index("target: core 1.0")) != null))
-' "$RESET_ROLLBACK_DIR/issues-after.json"
 
 jq -S . "$RESET_ROLLBACK_DIR/pr-131-before.json" \
   > "$RESET_ROLLBACK_DIR/pr-131-before.sorted.json"
@@ -281,7 +319,7 @@ done
 
 Expected minimum state:
 
-- the original 69 issues are open again;
+- the original 69 issues exactly match the committed pre-M0 state and complete label sets;
 - PR #133 is open and remains unmerged;
 - replacement issues #136-#139 are closed with rollback comments;
 - #131 remains unchanged;
