@@ -1,0 +1,34 @@
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_9f9dc5c4a07ae0 45
+  s_9d346c66194a0d::t_91aefd0266a376 17,62
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_9f9dc5c4a07ae0 4
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_9f9dc5c4a07ae0 4
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_2de82105b71b71 10
+  s_9d346c66194a0d::t_11a90ceb086381 49,51-52,68
+  s_9d346c66194a0d::t_51cf304f8de20d 69-70,72-79,90
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_e49400002dfc8b 147,175-176
+specs/005-product-reset/contracts/alpha-result-latency.mjs
+  s_9d346c66194a0d::t_2de82105b71b71 1-71
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_9f9dc5c4a07ae0 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "70e03116ba0ad2e3738723c4cf9e2278d25b43f5",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
