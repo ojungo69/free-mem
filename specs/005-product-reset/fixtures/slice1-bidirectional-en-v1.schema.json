@@ -5,7 +5,7 @@
   "$comment": "Structural layer only. Run validate-slice1-fixture.mjs for canonical contract conformance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "effectiveConfiguration", "localDerivationManifest", "outputLimitRecoveryManifest", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "hostIdentityProbe", "beforeModelNegativeFixture", "scenarios"],
+  "required": ["fixtureVersion", "schema", "fixtureId", "ownerSlice", "language", "factMatch", "contractFingerprint", "pins", "artifactLimits", "effectiveConfiguration", "localDerivationManifest", "outputLimitRecoveryManifest", "kindContract", "environment", "lifecycleProfiles", "samplingProtocol", "thresholds", "hostIdentityProbe", "beforeModelNegativeFixture", "scenarios"],
   "properties": {
     "fixtureVersion": { "const": 1 },
     "schema": { "const": "slice1-bidirectional-en-v1.schema.json" },
@@ -15,6 +15,7 @@
     "factMatch": { "const": "exact" },
     "contractFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "pins": { "$ref": "#/$defs/SharedPins" },
+    "artifactLimits": { "$ref": "#/$defs/ArtifactLimits" },
     "effectiveConfiguration": { "$ref": "#/$defs/EffectiveConfiguration" },
     "localDerivationManifest": { "$ref": "#/$defs/LocalDerivationManifest" },
     "outputLimitRecoveryManifest": { "$ref": "#/$defs/OutputLimitRecoveryManifest" },
@@ -36,6 +37,15 @@
     "SharedNonNegativeInteger": { "type": "integer", "minimum": 0 },
     "SharedPositiveInteger": { "type": "integer", "minimum": 1 },
     "Agent": { "enum": ["claude-code", "codex"] },
+    "ArtifactLimits": {
+      "const": {
+        "maxFileCount": 64,
+        "maxEntryCount": 128,
+        "maxDirectoryDepth": 8,
+        "maxFileBytes": 16777216,
+        "maxTotalBytes": 67108864
+      }
+    },
     "HostIdentity": {
       "type": "object",
       "additionalProperties": false,
@@ -570,7 +580,7 @@
     "SharedExpectedOmission": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
+      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "reason"],
       "properties": {
         "memoryId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "lineageId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -581,6 +591,7 @@
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedSourceSpan" } },
         "sensitivity": { "enum": ["eligible", "local_only", "private"] },
+        "sourceLane": { "enum": ["exact_session", "lexical", "semantic", "recency"] },
         "reason": { "enum": ["duplicate_revision", "omitted_budget", "omitted_ineligible", "candidate_limit", "lane_minimum_not_funded"] }
       }
     },
@@ -754,6 +765,19 @@
         "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" }
       }
     },
+    "SharedResumeTransmissionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "credentialBytesSent", "payloadBytesSent", "restrictedPayloadBytesSent", "forbiddenSentinelObservationCount"],
+      "properties": {
+        "remoteProviderRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "remoteProviderPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "credentialBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "restrictedPayloadBytesSent": { "const": 0 },
+        "forbiddenSentinelObservationCount": { "const": 0 }
+      }
+    },
     "SharedOutputLimitAtomicityEvidence": {
       "type": "object",
       "additionalProperties": false,
@@ -864,7 +888,7 @@
     "ResumeCase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "signals", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "providerOutcome", "expected"],
+      "required": ["caseId", "signals", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "providerOutcome", "expectedTransmissionEvidence", "expected"],
       "properties": {
         "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "signals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedResumeSignal" } },
@@ -876,13 +900,14 @@
             { "enum": ["valid", "malformed"] }
           ]
         },
+        "expectedTransmissionEvidence": { "$ref": "#/$defs/SharedResumeTransmissionEvidence" },
         "expected": { "$ref": "#/$defs/SharedResumeExpected" }
       }
     },
     "RedirectRecovery": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "signal", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "oldLocationRequestCountAfterActivation", "oldLocationPayloadBytesSentAfterActivation", "resentPayloadCountAfterActivation", "providerOutcome", "expected"],
+      "required": ["caseId", "signal", "expectedConsumedSignalIds", "expectedIgnoredSignalIds", "oldLocationRequestCountAfterActivation", "oldLocationPayloadBytesSentAfterActivation", "resentPayloadCountAfterActivation", "providerOutcome", "expectedTransmissionEvidence", "expected"],
       "properties": {
         "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "signal": { "$ref": "#/$defs/SharedResumeSignal" },
@@ -892,6 +917,7 @@
         "oldLocationPayloadBytesSentAfterActivation": { "const": 0 },
         "resentPayloadCountAfterActivation": { "const": 0 },
         "providerOutcome": { "const": "valid" },
+        "expectedTransmissionEvidence": { "$ref": "#/$defs/SharedResumeTransmissionEvidence" },
         "expected": { "$ref": "#/$defs/SharedResumeExpected" }
       }
     },

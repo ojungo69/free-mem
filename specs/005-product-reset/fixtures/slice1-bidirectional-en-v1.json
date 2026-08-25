@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:35cda69e13fd1eb7392d0c070ecab4e01cc5c580ebf7c2cdb866db4174786ea0",
+  "contractFingerprint": "sha256:00a60422b78f75c4ad17f77f1f2d49fdda4a263238a19020bc17dbe775865017",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -13,6 +13,13 @@
     "nodeVersion": "24.16.0",
     "pnpmVersion": "11.8.0",
     "summaryProviderStub": "deterministic-summary-v1"
+  },
+  "artifactLimits": {
+    "maxFileCount": 64,
+    "maxEntryCount": 128,
+    "maxDirectoryDepth": 8,
+    "maxFileBytes": 16777216,
+    "maxTotalBytes": 67108864
   },
   "effectiveConfiguration": {
     "manifestVersion": 1,
@@ -1097,6 +1104,14 @@
             "expectedConsumedSignalIds": ["config-activation-1"],
             "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
+            "expectedTransmissionEvidence": {
+              "remoteProviderRequestCount": 1,
+              "remoteProviderPayloadCount": 1,
+              "credentialBytesSent": 32,
+              "payloadBytesSent": 128,
+              "restrictedPayloadBytesSent": 0,
+              "forbiddenSentinelObservationCount": 0
+            },
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 3,
@@ -1123,6 +1138,14 @@
             "expectedConsumedSignalIds": ["provider-healthy-1"],
             "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
+            "expectedTransmissionEvidence": {
+              "remoteProviderRequestCount": 1,
+              "remoteProviderPayloadCount": 1,
+              "credentialBytesSent": 32,
+              "payloadBytesSent": 128,
+              "restrictedPayloadBytesSent": 0,
+              "forbiddenSentinelObservationCount": 0
+            },
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 1,
@@ -1149,6 +1172,14 @@
             "expectedConsumedSignalIds": ["doctor-retry-1"],
             "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
+            "expectedTransmissionEvidence": {
+              "remoteProviderRequestCount": 1,
+              "remoteProviderPayloadCount": 1,
+              "credentialBytesSent": 32,
+              "payloadBytesSent": 128,
+              "restrictedPayloadBytesSent": 0,
+              "forbiddenSentinelObservationCount": 0
+            },
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 1,
@@ -1191,6 +1222,14 @@
             "expectedConsumedSignalIds": ["provider-healthy-2"],
             "expectedIgnoredSignalIds": ["provider-healthy-2", "doctor-retry-stale-1"],
             "providerOutcome": "malformed",
+            "expectedTransmissionEvidence": {
+              "remoteProviderRequestCount": 1,
+              "remoteProviderPayloadCount": 1,
+              "credentialBytesSent": 32,
+              "payloadBytesSent": 128,
+              "restrictedPayloadBytesSent": 0,
+              "forbiddenSentinelObservationCount": 0
+            },
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 1,
@@ -1307,6 +1346,14 @@
           "oldLocationPayloadBytesSentAfterActivation": 0,
           "resentPayloadCountAfterActivation": 0,
           "providerOutcome": "valid",
+          "expectedTransmissionEvidence": {
+            "remoteProviderRequestCount": 1,
+            "remoteProviderPayloadCount": 1,
+            "credentialBytesSent": 32,
+            "payloadBytesSent": 58,
+            "restrictedPayloadBytesSent": 0,
+            "forbiddenSentinelObservationCount": 0
+          },
           "expected": {
             "budgetBefore": 0,
             "budgetAfterGrant": 3,
@@ -1440,6 +1487,14 @@
           "oldLocationPayloadBytesSentAfterActivation": 0,
           "resentPayloadCountAfterActivation": 0,
           "providerOutcome": "valid",
+          "expectedTransmissionEvidence": {
+            "remoteProviderRequestCount": 1,
+            "remoteProviderPayloadCount": 1,
+            "credentialBytesSent": 32,
+            "payloadBytesSent": 58,
+            "restrictedPayloadBytesSent": 0,
+            "forbiddenSentinelObservationCount": 0
+          },
           "expected": {
             "budgetBefore": 0,
             "budgetAfterGrant": 3,
@@ -1883,6 +1938,14 @@
             "expectedConsumedSignalIds": ["output-limit-config-activation-1"],
             "expectedIgnoredSignalIds": [],
             "providerOutcome": "valid",
+            "expectedTransmissionEvidence": {
+              "remoteProviderRequestCount": 1,
+              "remoteProviderPayloadCount": 1,
+              "credentialBytesSent": 32,
+              "payloadBytesSent": 128,
+              "restrictedPayloadBytesSent": 0,
+              "forbiddenSentinelObservationCount": 0
+            },
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 3,
@@ -1909,6 +1972,14 @@
             "expectedConsumedSignalIds": [],
             "expectedIgnoredSignalIds": ["output-limit-provider-health-1"],
             "providerOutcome": null,
+            "expectedTransmissionEvidence": {
+              "remoteProviderRequestCount": 0,
+              "remoteProviderPayloadCount": 0,
+              "credentialBytesSent": 0,
+              "payloadBytesSent": 0,
+              "restrictedPayloadBytesSent": 0,
+              "forbiddenSentinelObservationCount": 0
+            },
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 0,
@@ -1935,6 +2006,14 @@
             "expectedConsumedSignalIds": [],
             "expectedIgnoredSignalIds": ["output-limit-doctor-retry-1"],
             "providerOutcome": null,
+            "expectedTransmissionEvidence": {
+              "remoteProviderRequestCount": 0,
+              "remoteProviderPayloadCount": 0,
+              "credentialBytesSent": 0,
+              "payloadBytesSent": 0,
+              "restrictedPayloadBytesSent": 0,
+              "forbiddenSentinelObservationCount": 0
+            },
             "expected": {
               "budgetBefore": 0,
               "budgetAfterGrant": 0,
@@ -2612,6 +2691,7 @@
             }
           ],
           "sensitivity": "eligible",
+          "sourceLane": "lexical",
           "reason": "omitted_ineligible"
         }
       ],
@@ -2696,6 +2776,7 @@
             }
           ],
           "sensitivity": "local_only",
+          "sourceLane": "lexical",
           "reason": "omitted_ineligible"
         }
       ],

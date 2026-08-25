@@ -52,8 +52,10 @@ def counts_ok:
       and (.attemptedRenderedBytes > 0 or .attemptedInjectedTokens > 0)
     else true
     end)
-  and ((.counts.selectedItems == 0 and .renderedBytes == 0 and .injectedTokens == 0)
-    or (.counts.selectedItems > 0 and .renderedBytes > 0 and .injectedTokens > 0))
+  and (if .finalRenderEvidence == null
+    then .renderedBytes == 0 and .injectedTokens == 0
+    else .renderedBytes > 0 and .injectedTokens > 0
+    end)
   and .counts.committed <= .counts.captured
   and .counts.lost <= .counts.captured
   and (if (.drain.timedOut or .counts.deadlineUnprocessed > 0)

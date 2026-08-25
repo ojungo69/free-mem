@@ -461,10 +461,27 @@ def resume_case_signal_sets_ok($case):
   and (([$case.signals[].signalId] | sort) ==
     (([$case.expectedConsumedSignalIds[]] + [$case.expectedIgnoredSignalIds[]]) | sort));
 
+def resume_transmission_ok($case; $credentialBytes; $payloadBytes):
+  $case.expected.attemptDelta as $attempts
+  | $case.expectedTransmissionEvidence == {
+      "remoteProviderRequestCount": $attempts,
+      "remoteProviderPayloadCount": $attempts,
+      "credentialBytesSent": ($credentialBytes * $attempts),
+      "payloadBytesSent": ($payloadBytes * $attempts),
+      "restrictedPayloadBytesSent": 0,
+      "forbiddenSentinelObservationCount": 0
+    };
+
 def retry_ok($root):
   fault_scenario($root; "summary_provider_malformed_response") as $retry
   | $retry.drainCondition.eventDeliveryState == "committed"
     and all($retry.fault.resumeCases[]; resume_case_signal_sets_ok(.))
+    and all($retry.fault.resumeCases[];
+      resume_transmission_ok(.;
+        $retry.providerTransmissionOracle.credentialBytesSent /
+          $retry.fault.attemptsUntilExhausted;
+        $retry.providerTransmissionOracle.payloadBytesSent /
+          $retry.fault.attemptsUntilExhausted))
     and $retry.drainCondition.summaryJobState == "retry-exhausted"
     and $retry.fault.attemptsUntilExhausted ==
       $root.effectiveConfiguration.resourceProfile.processingRetryLimit
@@ -575,6 +592,9 @@ def redirect_scenario_ok($root; $redirect):
     and $redirect.fault.redirectRecovery.oldLocationRequestCountAfterActivation == 0
     and $redirect.fault.redirectRecovery.oldLocationPayloadBytesSentAfterActivation == 0
     and $redirect.fault.redirectRecovery.resentPayloadCountAfterActivation == 0
+    and resume_transmission_ok($redirect.fault.redirectRecovery;
+      $redirect.providerTransmissionOracle.credentialBytesSent;
+      $redirect.providerTransmissionOracle.payloadBytesSent)
     and $redirect.fault.redirectRecovery.expected.budgetBefore == 0
     and $redirect.fault.redirectRecovery.expected.budgetAfterGrant ==
       $root.effectiveConfiguration.resourceProfile.processingRetryLimit
@@ -610,6 +630,10 @@ def output_limit_ok($root):
   | provider_items($scenario) as $items
   | scenario_core_ok($root; $scenario)
     and all($scenario.fault.resumeCases[]; resume_case_signal_sets_ok(.))
+    and all($scenario.fault.resumeCases[];
+      resume_transmission_ok(.;
+        $scenario.providerTransmissionOracle.credentialBytesSent;
+        $scenario.providerTransmissionOracle.payloadBytesSent))
     and $scenario.fault.configuredLimit ==
       $root.effectiveConfiguration.resourceProfile.maxMemoryItemsPerDerivation
     and $scenario.fault.observedResultCount == ($items | length)

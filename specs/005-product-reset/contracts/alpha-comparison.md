@@ -161,7 +161,9 @@ from the regular file bytes below the candidate's realpath-contained artifact ro
 file hashes are not accepted as artifact evidence. `entrypoint` names one listed file. The harness
 owns one immutable staged artifact snapshot from candidate execution through result validation;
 the validator rejects non-regular/unlisted entries and hashes each open file descriptor between
-stable-stat checks.
+stable-stat checks. The fixed artifact boundary is at most 64 files, 128 total filesystem entries,
+eight directory levels, 16 MiB per file, and 64 MiB total; traversal and hashing are incremental,
+use a fixed 64 KiB content buffer, and reject each boundary before unbounded work.
 
 ## Comparison rules
 
@@ -189,7 +191,9 @@ stable-stat checks.
   non-eligible with `latency_threshold_exceeded`.
 - Actual injected items must exactly match `expectedInjectedItems` in order and in every bound field:
   memory, lineage, revision identity and ordinal; fact; memory kind; source event identities; source
-  lane; and selection reason. Actual omissions must likewise match the expected active revision.
+  lane; and selection reason. Actual omissions must likewise match the expected active revision and
+  source lane. Explicit pre-pruning render items equal the ordered delivered prefix plus only the
+  `omitted_budget` suffix; `same_as_final` is valid only when no budget pruning occurred.
 - Exact render evidence covers the complete canonical destination wrapper and InjectionPack,
   including pack, target-session, repository, destination-policy, manifest, degradation, provenance,
   and revision identity. Byte and token totals are derived from that UTF-8 payload, not an item-only
@@ -208,6 +212,9 @@ stable-stat checks.
   observations from those records; a terminal zero count or copied aggregate alone is insufficient.
 - Safety counts for Agent blockage, accepted-event loss, duplicate durable memory, secret egress,
   and incompatible-scope injection must be zero.
+- Their fixture-bound operation/event/candidate denominators are an independent zero-tolerance
+  boundary and must pass even when a higher-priority timeout, latency, resource, or quality failure
+  already makes the result non-eligible.
 - Agent-blockage and accepted-loss zeroes are backed by each scenario's non-empty lifecycle and
   committed-event denominator; duplicate-durable-memory zero is backed by the spool scenario's
   positive duplicate replay count. Secret-egress and incompatible-scope zeroes require the matching
@@ -224,10 +231,12 @@ stable-stat checks.
   attempt set. Allowed verified-HTTPS attempts must match that exact aggregate; local providers and
   rejected activations record zero. The fixed `fixture` and `local_zero` cost classes both record
   exactly zero provider cost units.
-- Remote request/payload counts cover the initial drain attempt set only; independent recovery cases
-  keep their own observed provider-attempt evidence. Redirect recovery additionally records exact
-  zero request/payload/resend evidence for the rejected Location. The initial count is one unless the
-  fixture explicitly pins an exhausted attempt count, and zero for rejected or local-provider routes.
+- Remote request/payload counts cover the initial drain attempt set only. Every independent recovery
+  case records fixture-pinned request, payload, credential-byte, payload-byte, restricted-byte, and
+  forbidden-sentinel evidence for that attempt; no-op cases record six zeroes. Redirect recovery
+  additionally records exact zero request/payload/resend evidence for the rejected Location. The
+  initial count is one unless the fixture explicitly pins an exhausted attempt count, and zero for
+  rejected or local-provider routes.
 - Resource or quality thresholds are frozen before candidate results are inspected.
 - Raw records remain available beside the human summary.
 

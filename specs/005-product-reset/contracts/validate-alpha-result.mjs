@@ -151,7 +151,7 @@ const environmentFingerprint = fingerprint(
   "free-mem:alpha-execution-environment:v1\0",
   result.executionEnvironment,
 );
-validateArtifact(result, artifactRoot, fixture.pins.freeMemBaseCommit);
+validateArtifact(result, artifactRoot, fixture.pins.freeMemBaseCommit, fixture.artifactLimits);
 const expectedManifestFingerprint = scenario?.derivationManifestId
   ? fixture.localDerivationManifest.configurationFingerprint
   : fixture.effectiveConfiguration.configurationFingerprint;
@@ -261,7 +261,6 @@ const derivedQuality = {
 if (!isDeepStrictEqual(result.quality, derivedQuality)) {
   throw new Error("result quality counters do not match the recorded items");
 }
-validateRenderEvidence(result, scenario, fixture);
 const qualityPass =
   isDeepStrictEqual(result.injectedItems, scenario.expectedInjectedItems) &&
   isDeepStrictEqual(result.omittedItems, scenario.expectedOmissions) &&
@@ -363,6 +362,10 @@ const attemptedInjectionPackSizeExceeded =
   result.attemptedRenderedBytes > injectionEnvelope.maxRenderedBytes ||
   result.attemptedInjectedTokens > injectionEnvelope.maxInjectedTokens;
 const packCompilationFailed = result.packCompilationFailure === "injection_pack_limit_exceeded";
+const finalPackExpected = !exceptionalState &&
+  scenario.drainCondition.targetInjectionAcknowledged && !result.drain.timedOut &&
+  !selectionDeadlineExceeded && !packCompilationFailed;
+validateRenderEvidence(result, scenario, fixture, finalPackExpected);
 if (!finalInjectionPackSizePass) {
   throw new Error("oversized InjectionPack was recorded as final output");
 }
@@ -392,7 +395,6 @@ if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits)
 const scenarioOraclePass =
   milestonesPass &&
   countsPass &&
-  denominatorsPass &&
   isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
   result.injectionBeforeModel === expectedInjectionBeforeModel &&
   (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
@@ -422,7 +424,7 @@ const shouldBeEligible = derivedFailureReason === null;
 if (result.drain.timedOut && !milestonesPass) {
   throw new Error("timed-out result milestones are not a valid pre-terminal lifecycle prefix");
 }
-if (!exceptionalState && !(safetyCountersPass && securityEvidencePass)) {
+if (!exceptionalState && !(denominatorsPass && safetyCountersPass && securityEvidencePass)) {
   throw new Error("result violates an independent zero-tolerance safety boundary");
 }
 

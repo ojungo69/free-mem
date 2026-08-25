@@ -57,10 +57,25 @@ export function buildRenderPayload(result, scenario, fixture, items, packId) {
   };
 }
 
-export function validateRenderEvidence(result, scenario, fixture) {
+function validateAttemptedItems(result, attemptedItems) {
+  if (result.attemptedItems === "same_as_final") {
+    if (result.omittedItems.some((item) => item.reason === "omitted_budget")) {
+      throw new Error("pruned render candidates require explicit attempted items");
+    }
+    return;
+  }
+  const pruned = result.omittedItems.filter((item) => item.reason === "omitted_budget")
+    .map(({ reason: _reason, ...item }) => ({ ...item, selectionReason: item.sourceLane }));
+  if (!isDeepStrictEqual(attemptedItems, [...result.injectedItems, ...pruned])) {
+    throw new Error("attempted render does not match the ordered traced candidates");
+  }
+}
+
+export function validateRenderEvidence(result, scenario, fixture, finalPackExpected) {
   const attemptedItems = result.attemptedItems === "same_as_final"
     ? result.injectedItems
     : result.attemptedItems;
+  validateAttemptedItems(result, attemptedItems);
   const attemptedEvidence = result.attemptedRenderEvidence === "same_as_final"
     ? result.finalRenderEvidence
     : result.attemptedRenderEvidence;
@@ -83,7 +98,8 @@ export function validateRenderEvidence(result, scenario, fixture) {
     result.injectedTokens,
     "final",
   );
-  if ((finalPayload === null) !== (result.packId === null) ||
+  if ((finalPayload !== null) !== finalPackExpected ||
+      (finalPayload === null) !== (result.packId === null) ||
       (finalPayload !== null && !isDeepStrictEqual(finalPayload,
         buildRenderPayload(result, scenario, fixture, result.injectedItems, result.packId)))) {
     throw new Error("final render payload does not match delivered items");

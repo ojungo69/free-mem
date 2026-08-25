@@ -196,7 +196,7 @@
       "properties": {
         "entrypoint": { "$ref": "#/$defs/SharedNonEmptyString" },
         "revision": { "$ref": "#/$defs/SharedNonEmptyString" },
-        "files": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ArtifactFile" } }
+        "files": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/ArtifactFile" } }
       }
     },
     "ArtifactFile": {
@@ -391,7 +391,7 @@
     "SharedExpectedOmission": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "reason"],
+      "required": ["memoryId", "lineageId", "revisionId", "revisionOrdinal", "fact", "memoryKind", "sourceEventIds", "sourceSpans", "sensitivity", "sourceLane", "reason"],
       "properties": {
         "memoryId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "lineageId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -402,6 +402,7 @@
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "sourceSpans": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedSourceSpan" } },
         "sensitivity": { "enum": ["eligible", "local_only", "private"] },
+        "sourceLane": { "enum": ["exact_session", "lexical", "semantic", "recency"] },
         "reason": { "enum": ["duplicate_revision", "omitted_budget", "omitted_ineligible", "candidate_limit", "lane_minimum_not_funded"] }
       }
     },
@@ -487,13 +488,14 @@
     "ObservedRetryCase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "deliveredSignals", "consumedSignalIds", "ignoredSignalIds", "providerAttempted", "observedProviderOutcome", "observedDurableOutput", "observedTransition"],
+      "required": ["caseId", "deliveredSignals", "consumedSignalIds", "ignoredSignalIds", "providerAttempted", "observedTransmissionEvidence", "observedProviderOutcome", "observedDurableOutput", "observedTransition"],
       "properties": {
         "caseId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "deliveredSignals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedResumeSignal" } },
         "consumedSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "ignoredSignalIds": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "providerAttempted": { "type": "boolean" },
+        "observedTransmissionEvidence": { "$ref": "#/$defs/SharedResumeTransmissionEvidence" },
         "observedProviderOutcome": {
           "oneOf": [
             { "type": "null" },
@@ -551,6 +553,19 @@
         "sourceEventIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
         "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
         "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" }
+      }
+    },
+    "SharedResumeTransmissionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remoteProviderRequestCount", "remoteProviderPayloadCount", "credentialBytesSent", "payloadBytesSent", "restrictedPayloadBytesSent", "forbiddenSentinelObservationCount"],
+      "properties": {
+        "remoteProviderRequestCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "remoteProviderPayloadCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "credentialBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "payloadBytesSent": { "$ref": "#/$defs/SharedNonNegativeInteger" },
+        "restrictedPayloadBytesSent": { "const": 0 },
+        "forbiddenSentinelObservationCount": { "const": 0 }
       }
     },
     "SharedOutputLimitAtomicityEvidence": {

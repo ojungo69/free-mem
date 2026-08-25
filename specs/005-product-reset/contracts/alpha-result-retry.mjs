@@ -12,6 +12,7 @@ export function expectedRetryEvidence(scenario) {
       consumedSignalIds: item.expectedConsumedSignalIds,
       ignoredSignalIds: item.expectedIgnoredSignalIds,
       providerAttempted,
+      observedTransmissionEvidence: item.expectedTransmissionEvidence,
       observedProviderOutcome: providerAttempted ? item.providerOutcome : null,
       observedDurableOutput,
       observedTransition: item.expected,
@@ -33,6 +34,7 @@ export function expectedRetryEvidence(scenario) {
         expectedConsumedSignalIds: recovery.expectedConsumedSignalIds,
         expectedIgnoredSignalIds: recovery.expectedIgnoredSignalIds,
         providerOutcome: recovery.providerOutcome,
+        expectedTransmissionEvidence: recovery.expectedTransmissionEvidence,
         expected: recovery.expected,
       }),
       recoveryTransportEvidence: {
@@ -50,6 +52,14 @@ export function assertRetryEvidenceConsistent(result) {
     (result.retryEvidence?.redirectCase ? [result.retryEvidence.redirectCase] : []);
   if (!observedCases.every((item) =>
     item.providerAttempted === (item.observedTransition.attemptDelta > 0) &&
+    item.observedTransmissionEvidence.remoteProviderRequestCount ===
+      item.observedTransition.attemptDelta &&
+    item.observedTransmissionEvidence.remoteProviderPayloadCount ===
+      item.observedTransmissionEvidence.remoteProviderRequestCount &&
+    (item.providerAttempted
+      ? item.observedTransmissionEvidence.credentialBytesSent > 0 &&
+        item.observedTransmissionEvidence.payloadBytesSent > 0
+      : Object.values(item.observedTransmissionEvidence).every((value) => value === 0)) &&
     item.ignoredSignalIds.length === item.observedTransition.ignoredSignalCount &&
     isDeepStrictEqual(
       item.deliveredSignals.map((signal) => signal.signalId).sort(),

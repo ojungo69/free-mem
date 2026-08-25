@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:35cda69e13fd1eb7392d0c070ecab4e01cc5c580ebf7c2cdb866db4174786ea0",
+  "fixtureFingerprint": "sha256:00a60422b78f75c4ad17f77f1f2d49fdda4a263238a19020bc17dbe775865017",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-output-limit-exceeded",
   "resourceSampleMode": "warm",
@@ -185,6 +185,14 @@
         ],
         "ignoredSignalIds": [],
         "providerAttempted": true,
+        "observedTransmissionEvidence": {
+          "remoteProviderRequestCount": 1,
+          "remoteProviderPayloadCount": 1,
+          "credentialBytesSent": 32,
+          "payloadBytesSent": 128,
+          "restrictedPayloadBytesSent": 0,
+          "forbiddenSentinelObservationCount": 0
+        },
         "observedProviderOutcome": "valid",
         "observedDurableOutput": {
           "summary": {
@@ -472,6 +480,14 @@
           "output-limit-provider-health-1"
         ],
         "providerAttempted": false,
+        "observedTransmissionEvidence": {
+          "remoteProviderRequestCount": 0,
+          "remoteProviderPayloadCount": 0,
+          "credentialBytesSent": 0,
+          "payloadBytesSent": 0,
+          "restrictedPayloadBytesSent": 0,
+          "forbiddenSentinelObservationCount": 0
+        },
         "observedProviderOutcome": null,
         "observedDurableOutput": null,
         "observedTransition": {
@@ -502,6 +518,14 @@
           "output-limit-doctor-retry-1"
         ],
         "providerAttempted": false,
+        "observedTransmissionEvidence": {
+          "remoteProviderRequestCount": 0,
+          "remoteProviderPayloadCount": 0,
+          "credentialBytesSent": 0,
+          "payloadBytesSent": 0,
+          "restrictedPayloadBytesSent": 0,
+          "forbiddenSentinelObservationCount": 0
+        },
         "observedProviderOutcome": null,
         "observedDurableOutput": null,
         "observedTransition": {
