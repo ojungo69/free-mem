@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:979af201a5ac754112ff763d67c6c79c6e5572d98d3000be15e5d58beb2a3dad",
+  "contractFingerprint": "sha256:2e8e3b7b7edee1b016eea0086d3cba4ae8c60c9f3728bc66a8c6308823545128",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -465,9 +465,9 @@
   "beforeModelNegativeFixture": {
     "caseId": "late-injection-after-model-dispatch",
     "baseScenarioId": "claude-to-codex",
-    "lateMilestoneOrder": [
-      "target_model_request_dispatched",
-      "target_injection_acknowledged"
+    "nonBeforeModelMilestones": [
+      "target_injection_acknowledged",
+      "target_model_request_dispatched"
     ],
     "injectionBeforeModel": false,
     "expectedDisposition": {

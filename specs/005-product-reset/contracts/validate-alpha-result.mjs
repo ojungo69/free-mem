@@ -75,11 +75,10 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
     ? structuredClone(baseResult)
     : null;
   if (expectedNegative) {
-    const positiveOrder = [...negativeContract.lateMilestoneOrder].reverse();
-    for (const milestone of expectedNegative.milestones) {
-      const position = positiveOrder.indexOf(milestone.name);
-      if (position >= 0) milestone.name = negativeContract.lateMilestoneOrder[position];
-    }
+    const [injectionName, dispatchName] = negativeContract.nonBeforeModelMilestones;
+    const injection = expectedNegative.milestones.find((item) => item.name === injectionName);
+    const dispatch = expectedNegative.milestones.find((item) => item.name === dispatchName);
+    if (injection && dispatch) dispatch.monotonicMs = injection.monotonicMs;
     expectedNegative.injectionBeforeModel = negativeContract.injectionBeforeModel;
     expectedNegative.disposition = negativeContract.expectedDisposition;
   }

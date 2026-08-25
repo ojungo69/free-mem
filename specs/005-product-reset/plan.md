@@ -66,6 +66,7 @@ No approved exception is required.
 
 ```text
 specs/005-product-reset/
+├── spec.md
 ├── plan.md
 ├── research.md
 ├── data-model.md

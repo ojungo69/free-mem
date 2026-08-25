@@ -41,6 +41,7 @@ function evaluateProviderEvidence(result, scenario, activeSummaryProvider, excep
   const requested = Object.hasOwn(stub, "summary") || Object.hasOwn(stub, "malformedResponse") ||
     Object.hasOwn(stub, "redirectResponse") || stub.memoryItems.length > 0;
   const remoteExpected = activeSummaryProvider.executionLocation === "remote" && requested &&
+    scenario.events.some((event) => event.sensitivity === "eligible") &&
     !Object.hasOwn(stub, "policyRejectedReason");
   const expectedRequests = remoteExpected ? (scenario.fault?.attemptsUntilExhausted ?? 1) : 0;
   const observedRequests = result.securityEvidence.remoteProviderRequestCount;

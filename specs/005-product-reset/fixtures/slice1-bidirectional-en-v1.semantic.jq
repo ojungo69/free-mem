@@ -183,9 +183,9 @@ def before_model_evidence_ok($root):
     | any($root.scenarios[];
         .scenarioId == $negative.baseScenarioId
         and .drainCondition.targetInjectionAcknowledged)
-      and $negative.lateMilestoneOrder == [
-        "target_model_request_dispatched",
-        "target_injection_acknowledged"
+      and $negative.nonBeforeModelMilestones == [
+        "target_injection_acknowledged",
+        "target_model_request_dispatched"
       ]
       and ($negative.injectionBeforeModel | not)
       and ($negative.expectedDisposition == {

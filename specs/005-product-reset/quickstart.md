@@ -93,7 +93,9 @@ for n in 136 137 138 139; do
 done
 gh issue list --state open --limit 200 --json number,labels \
   | jq -e '
-    [
+    . as $issues
+    | ($issues | length) == 12
+    and ([
       .[]
       | {
           number,
@@ -104,7 +106,7 @@ gh issue list --state open --limit 200 --json number,labels \
         }
       | select(.activeStatuses | length > 0)
     ]
-    | sort_by(.number)
+    | sort_by(.number))
     == [
       {"number":126,"activeStatuses":["status: ready for implementation"]},
       {"number":129,"activeStatuses":["status: ready for implementation"]},

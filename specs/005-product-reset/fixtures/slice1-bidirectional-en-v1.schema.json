@@ -126,7 +126,7 @@
       "const": {
         "caseId": "late-injection-after-model-dispatch",
         "baseScenarioId": "claude-to-codex",
-        "lateMilestoneOrder": ["target_model_request_dispatched", "target_injection_acknowledged"],
+        "nonBeforeModelMilestones": ["target_injection_acknowledged", "target_model_request_dispatched"],
         "injectionBeforeModel": false,
         "expectedDisposition": {
           "state": "failed",

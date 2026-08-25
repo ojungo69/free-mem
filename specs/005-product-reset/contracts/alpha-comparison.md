@@ -97,8 +97,8 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - `drainConditionId`, `drainStatus`, and `drainTimedOut`
 - a boolean before-model injection marker derived from observed injection-acknowledgment and
   target-model-dispatch milestones; otherwise null
-- a fixed negative fixture that reverses those milestones, sets the marker false, and requires a
-  non-eligible `scenario_oracle_mismatch` result
+- a fixed negative fixture that gives injection acknowledgment and model dispatch the same
+  monotonic time, sets the marker false, and requires a non-eligible `scenario_oracle_mismatch`
 - host-observed Agent/repository/session identity plus three single-field caller-claim mismatch
   decisions; caller claims authorize zero persistence or injection
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
@@ -139,8 +139,8 @@ suite mode: pass one `--result PATH` per positive scenario and the required late
 `--negative-result PATH`. The validator requires the positive scenario-ID multiset to equal the
 complete fixed fixture, a common candidate/environment/artifact identity, and every positive record
 to be comparison-eligible. The negative record applies `beforeModelNegativeFixture` to its named
-base scenario; it must reverse the two observed milestones and match the fixed failed, non-eligible
-disposition.
+base scenario; injection must not precede model dispatch, and the record must match the fixed failed,
+non-eligible disposition.
 
 The schema and semantic rules define the Alpha v1 vocabulary for Slice 1, including its fixed retry
 signal and provider identity. The current executable validator is deliberately bound to that

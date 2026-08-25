@@ -16,6 +16,9 @@ the default branch. Do not run it merely because a later implementation slice ch
 
 ## Read-only preview
 
+The 69-issue original universe is the disjoint union of eight kept issues and 61 issues reopened by
+rollback. The four replacement issues are tracked separately and are not part of that original set.
+
 ```sh
 set -e
 export GH_REPO='ojungo69/free-mem'
