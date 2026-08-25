@@ -1,0 +1,67 @@
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_96be4f851aacc3 131,147
+  s_9d346c66194a0d::t_8291fb0b00aa8a 132
+  s_9d346c66194a0d::t_4ea7b9f8420459 93,97,99-102,168-169
+  s_9d346c66194a0d::t_c831ddc64245af 4
+  s_9d346c66194a0d::t_edb6788a9fd114 49
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_c831ddc64245af 44
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_96be4f851aacc3 131,147
+  s_9d346c66194a0d::t_8291fb0b00aa8a 132
+  s_9d346c66194a0d::t_edb6788a9fd114 49
+  s_9d346c66194a0d::t_c831ddc64245af 4
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_a1563ca0168708 147-151
+  s_9d346c66194a0d::t_abbab66cc6da35 94,101,108,118-124,135,138,142,146,166-170,173-178,182,184
+  s_9d346c66194a0d::t_96be4f851aacc3 447,467,483
+  s_9d346c66194a0d::t_458a72a6b9cd3b 125-126,143-145,152-165,179-180
+  s_9d346c66194a0d::t_90e09850a1abf1 293-294,297-299,410-419,429-435
+  s_9d346c66194a0d::t_c79462f548e22a 295-296,635
+  s_9d346c66194a0d::t_edb6788a9fd114 300,582
+  s_9d346c66194a0d::t_c7f42838da9461 241-245
+  s_9d346c66194a0d::t_dc507773f31d0f 583
+specs/005-product-reset/contracts/alpha-result-v1.semantic.jq
+  s_9d346c66194a0d::t_ab4e745116d0de 39
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.semantic.jq
+  s_9d346c66194a0d::t_a6a301ca8e9c4e 101-124,693
+  s_9d346c66194a0d::t_f29402c9872057 614-633,710
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_de6ed8fd1797e2 156
+  s_9d346c66194a0d::t_5bde36f5f8cbb7 147,175-177
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_bf0b98ef810abe 153,170,198,212,318-330
+  s_9d346c66194a0d::t_2ff38a1fc5b9a6 1751-1877
+  s_9d346c66194a0d::t_c831ddc64245af 8
+  s_9d346c66194a0d::t_bf1d110cd1d448 243
+  s_9d346c66194a0d::t_c7f42838da9461 2134,2154
+  s_9d346c66194a0d::t_5c03a294c29e60 1750
+  s_9d346c66194a0d::t_c1567b7bd09345 331
+specs/005-product-reset/contracts/alpha-result-v1.schema.json
+  s_9d346c66194a0d::t_edb6788a9fd114 7,22-27
+  s_9d346c66194a0d::t_96be4f851aacc3 215,227,236
+  s_9d346c66194a0d::t_8291fb0b00aa8a 209,216
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.schema.json
+  s_9d346c66194a0d::t_82b30adc5c03f8 555,605-607,769,835-849,851
+  s_9d346c66194a0d::t_2b6b22c4a8863d 8,25,37-49,850
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_e2640037244720 26-28,30,32,34,36,38
+  s_9d346c66194a0d::t_afa9c93e70e591 95-98
+  s_9d346c66194a0d::t_d762c283ab5437 127-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a17f2dab49154f9af33ad631508623c8e08603dc",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
