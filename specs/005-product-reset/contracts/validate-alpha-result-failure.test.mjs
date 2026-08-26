@@ -9,27 +9,25 @@ import { fileURLToPath } from "node:url";
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { lineageDigest } from "./alpha-result-lineage.mjs";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
-import { runnerEvidenceFingerprint, runnerResultObservationFingerprint }
-  from "./alpha-runner-evidence.mjs";
+import { runnerEvidenceFingerprint, runnerResultObservationFingerprint } from "./alpha-runner-evidence.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
 const validatorPath = join(contractDir, "validate-alpha-result.mjs");
 const fixtureRoot = join(contractDir, "../fixtures");
 const fixtureSemanticPath = join(fixtureRoot, "slice1-bidirectional-en-v1.semantic.jq");
-const fixture = JSON.parse(readFileSync(join(fixtureRoot,
-  "slice1-bidirectional-en-v1.json"), "utf8"));
+const fixture = JSON.parse(readFileSync(join(fixtureRoot, "slice1-bidirectional-en-v1.json"), "utf8"));
 const failure = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.failure-example.json"), "utf8"));
 const failureEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.failure-example.json"), "utf8"));
 const success = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.example.json"), "utf8"));
 const successEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.example.json"), "utf8"));
-const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot,
-  "alpha-result-v1.suite-regression.json"), "utf8"));
-const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot,
-  "runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
+const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.suite-regression.json"), "utf8"));
+const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
 const evidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-failure-evidence-"));
 process.on("exit", () => rmSync(evidenceRoot, { recursive: true }));
 let ordinal = 0;
+const scenarioFor = (id) => fixture.scenarios.find((item) => item.scenarioId === id);
+const suiteResultFor = (id) => structuredClone(suiteRegression.positiveResults.find((item) => item.scenarioId === id));
 
 function validate(result, evidenceTemplate = failureEvidence) {
   const evidence = structuredClone(evidenceTemplate);
@@ -411,12 +409,19 @@ assertRejected(duplicateIdentityTrace, /result trace contains duplicate active i
   "quality failure duplicated one active identity",
   runnerEvidenceFor(duplicateIdentityTrace, successEvidence));
 
-const restrictedInjection = structuredClone(suiteRegression.positiveResults.find(
-  (result) => result.scenarioId === "local-derived-memory-remote-injection-rejected",
-));
-const restrictedScenario = fixture.scenarios.find(
-  (item) => item.scenarioId === restrictedInjection.scenarioId,
-);
+const sentinelMetadata = suiteResultFor("mixed-sensitivity-remote-projection");
+const sentinelScenario = scenarioFor(sentinelMetadata.scenarioId);
+sentinelMetadata.injectedItems[0].memoryId += sentinelScenario.securityOracle.forbiddenSentinels[2];
+sentinelMetadata.quality.matchedInjectedItemCount = 0;
+bindFinalRender(sentinelMetadata, sentinelScenario);
+sentinelMetadata.disposition = {
+  state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
+};
+assertRejected(sentinelMetadata, /independent zero-tolerance safety boundary/,
+  "final pack concealed a forbidden sentinel in metadata", suiteRegressionEvidence);
+
+const restrictedInjection = suiteResultFor("local-derived-memory-remote-injection-rejected");
+const restrictedScenario = scenarioFor(restrictedInjection.scenarioId);
 const { reason: _restrictedReason, ...restrictedItem } = restrictedInjection.omittedItems[0];
 restrictedItem.selectionReason = restrictedItem.sourceLane;
 restrictedInjection.injectedItems = [restrictedItem];
@@ -439,12 +444,8 @@ assertRejected(relabeledRestrictedInjection,
   /result trace provenance does not match scenario source events/,
   "remote final pack weakened source-derived sensitivity", suiteRegressionEvidence);
 
-const crossScopeInjection = structuredClone(suiteRegression.positiveResults.find(
-  (result) => result.scenarioId === "incompatible-scope-injection-rejected",
-));
-const crossScopeScenario = fixture.scenarios.find(
-  (item) => item.scenarioId === crossScopeInjection.scenarioId,
-);
+const crossScopeInjection = suiteResultFor("incompatible-scope-injection-rejected");
+const crossScopeScenario = scenarioFor(crossScopeInjection.scenarioId);
 const { reason: _crossScopeReason, ...crossScopeItem } = crossScopeInjection.omittedItems[0];
 crossScopeItem.selectionReason = crossScopeItem.sourceLane;
 crossScopeInjection.injectedItems = [crossScopeItem];
