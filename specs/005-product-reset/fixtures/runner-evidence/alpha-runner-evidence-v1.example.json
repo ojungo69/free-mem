@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:0e85d102ae44e175e1eb40e8f29639b7dce9ae9daff3d27533969e0da9856f87",
+  "fixtureFingerprint": "sha256:cf62f966e8795ab6dad0c61848e48fe62fa1083dc4fde557c0a4712be5bda4c2",
   "candidateId": "candidate-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
@@ -1348,7 +1348,7 @@
           }
         ]
       },
-      "resultObservationFingerprint": "sha256:bac8684ee691990f23f74013b258780d7b37d06864a0b09110d96afb21db1b94"
+      "resultObservationFingerprint": "sha256:64996395b0604af38f94840d2467c17decc30552b830551b3b4b2da53dddc310"
     }
   ]
 }

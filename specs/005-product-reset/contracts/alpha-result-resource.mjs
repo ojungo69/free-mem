@@ -1,8 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 
 export function evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord, timeoutMs) {
-  const resourceMetrics = fixture.samplingProtocol.resourceMetrics;
-  const steadyMetric = resourceMetrics.maxSteadyProductProcessCount;
+  const resourceMetrics = fixture.samplingProtocol.resourceMetrics, steadyMetric = resourceMetrics.maxSteadyProductProcessCount;
   const orphanMetric = resourceMetrics.orphanProductProcessCount;
   const maxSampleGapMs = fixture.samplingProtocol.processSampleIntervalMs;
   const milestoneTimes = new Map(runnerRecord.observedMilestones

@@ -203,7 +203,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T19:08:53+09:00
+## Validation result — 2026-08-26T19:21:05+09:00
 
 | Check | Result |
 |---|---|
@@ -233,13 +233,15 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- CodeRabbit's final local review raised zero actionable issues. Its earlier valid suite-fixture
-  separation was applied, while its only repeated fixed-contract equal-time suggestion was rejected
-  after fixture/source checks. A fresh GitHub full review is requested after each pushed head.
+- CodeRabbit's final completed local review raised zero actionable issues. Its earlier valid
+  suite-fixture separation was applied, while its repeated fixed-contract equal-time suggestion was
+  rejected after fixture/source checks. The post-Codacy formatting retry reached the CLI rate limit;
+  a fresh GitHub full review is requested after each pushed head.
 - The latest GitHub Codex/CodeRabbit reviews raised timeout, input-boundary, loss-evidence, and exact
   rollback gaps; all valid findings were reproduced, fixed, and covered by focused cases. Cubic's
   earlier P1 contradicted the cited source values and the passing acceptance regression, so it was
-  rejected; its latest post-fix review raised zero issues. Grok's split
+  rejected. Its last completed post-fix review raised zero issues; the post-Codacy formatting retry
+  returned an empty issue list with a timeout error. Grok's split
   contract/validator review returned `ok: true`; its full-diff, fixture/documentation, and final
   follow-up attempts timed out without session IDs, so those ranges are not claimed as Grok-reviewed.
   Ponytail found no unused definition, speculative abstraction, dependency, or removable
