@@ -28,13 +28,14 @@ let ordinal = 0;
 const scenarioFor = (id) => fixture.scenarios.find((item) => item.scenarioId === id);
 const suiteResultFor = (id) => structuredClone(suiteRegression.positiveResults.find((item) => item.scenarioId === id));
 const successScenario = scenarioFor(success.scenarioId);
-const zeroSuccessQuality = () => ({
-  expectedInjectedItemCount: successScenario.expectedInjectedItems.length,
+const zeroQualityFor = (scenario) => ({
+  expectedInjectedItemCount: scenario.expectedInjectedItems.length,
   matchedInjectedItemCount: 0,
-  expectedOmissionCount: successScenario.expectedOmissions.length,
+  expectedOmissionCount: scenario.expectedOmissions.length,
   matchedOmissionCount: 0,
   forbiddenFactCount: 0,
 });
+const zeroSuccessQuality = () => zeroQualityFor(successScenario);
 
 function validate(result, evidenceTemplate = failureEvidence) {
   const evidence = structuredClone(evidenceTemplate);
@@ -67,7 +68,7 @@ function assertRejected(result, pattern, label, evidence) {
 
 function runnerEvidenceFor(result, template) {
   const evidence = structuredClone(template);
-  const record = evidence.scenarios[0];
+  const record = evidence.scenarios.find((item) => item.caseId === result.runnerEvidenceCaseId);
   record.hostIdentityEvidence = structuredClone(result.hostIdentityEvidence);
   record.observedMilestones = structuredClone(result.milestones);
   record.processSamples = structuredClone(result.processSamples);
@@ -158,15 +159,16 @@ delayedFirstMeasurementEvidence.scenarios[0].runPreparations[0].runFinishedMonot
 assertRejected(delayedFirstMeasurement, /runner preparation evidence does not match latency runs/,
   "first measurement was delayed after cold reset", delayedFirstMeasurementEvidence);
 
-function timedOutSuccessAt(lastMilestone) {
-  const result = structuredClone(success);
+function timedOutAt(base, lastMilestone) {
+  const result = structuredClone(base);
   const lastIndex = result.milestones.findIndex((item) => item.name === lastMilestone);
-  assert.notEqual(lastIndex, -1, "success fixture does not contain its requested milestone");
+  assert.notEqual(lastIndex, -1, "fixture result does not contain its requested milestone");
   result.milestones = result.milestones.slice(0, lastIndex + 1);
   result.drain = { ...result.drain, status: "timed_out", timedOut: true };
   result.disposition = {
     state: "failed", reason: "drain_timed_out", successfulComparisonEligible: false,
   };
+  result.identityConflictEvidence = null;
   result.injectionBeforeModel = null;
   result.packId = null;
   result.finalRenderEvidence = null;
@@ -181,11 +183,12 @@ function timedOutSuccessAt(lastMilestone) {
   for (let monotonicMs = 0; monotonicMs < 30000; monotonicMs += 100) {
     result.processSamples.push({ ...(monotonicMs === 0 ? start : steady), monotonicMs });
   }
-  result.processSamples.push({ ...success.processSamples.at(-1), monotonicMs: 30000 });
+  result.processSamples.push({ ...base.processSamples.at(-1), monotonicMs: 30000 });
   return result;
 }
+const timedOutSuccessAt = (lastMilestone) => timedOutAt(success, lastMilestone);
 
-function clearUnobservedSelection(result) {
+function clearUnobservedSelection(result, scenario = successScenario) {
   for (const name of ["inputCandidates", "tracedCandidates", "deadlineUnprocessed",
     "admittedCandidates", "selectedItems"]) result.counts[name] = 0;
   result.counts.summaryCount = 0;
@@ -197,12 +200,12 @@ function clearUnobservedSelection(result) {
   result.selectionTimingEvidence = null;
   result.selectionElapsedMs = 0;
   result.packDegradations = [];
-  result.quality = zeroSuccessQuality();
+  result.quality = zeroQualityFor(scenario);
 }
 
 const timeoutBeforePersistence = timedOutSuccessAt("source_flush_requested_by_target_prompt");
 clearUnobservedSelection(timeoutBeforePersistence);
-assertAccepted(timeoutBeforePersistence, "timeout before persistence commit",
+assertAccepted(timeoutBeforePersistence, "timeout after provider attempt before summary commit",
   runnerEvidenceFor(timeoutBeforePersistence, successEvidence));
 
 const timeoutBeforeCapture = timedOutSuccessAt("source_session_started");
@@ -221,9 +224,47 @@ assertAccepted(timeoutBeforeCapture, "timeout before event capture",
 
 const timeoutBeforeProviderAttempt = timedOutSuccessAt("source_events_captured");
 clearUnobservedSelection(timeoutBeforeProviderAttempt);
-assertRejected(timeoutBeforeProviderAttempt, /provider egress exists before the observed attempt boundary/,
+timeoutBeforeProviderAttempt.counts.committed = 0;
+assertRejected(timeoutBeforeProviderAttempt, /provider egress exists without committed events/,
   "timeout before provider attempt claimed egress",
   runnerEvidenceFor(timeoutBeforeProviderAttempt, successEvidence));
+
+const spoolScenario = scenarioFor("runtime-unavailable-spool-recovery");
+const spoolResult = suiteResultFor(spoolScenario.scenarioId);
+const timeoutWhileSpooled = timedOutAt(spoolResult, "events_spooled");
+clearUnobservedSelection(timeoutWhileSpooled, spoolScenario);
+Object.assign(timeoutWhileSpooled.counts, {
+  committed: 0, duplicateDeliveries: 0, summaryCount: 0, durableMemoryCount: 0,
+});
+timeoutWhileSpooled.securityDenominators.duplicateDeliveryAttemptCount = 0;
+Object.assign(timeoutWhileSpooled.securityEvidence, {
+  remoteProviderRequestCount: 0, remoteProviderPayloadCount: 0,
+  credentialBytesSent: 0, payloadBytesSent: 0,
+});
+assertAccepted(timeoutWhileSpooled, "timeout while events remained spooled",
+  runnerEvidenceFor(timeoutWhileSpooled, suiteRegressionEvidence));
+
+const timeoutBeforeSpoolCompletion = timedOutAt(spoolResult, "stable_batch_replayed_second_time");
+clearUnobservedSelection(timeoutBeforeSpoolCompletion, spoolScenario);
+Object.assign(timeoutBeforeSpoolCompletion.counts, {
+  committed: 0,
+  duplicateDeliveries: spoolResult.counts.duplicateDeliveries,
+  summaryCount: 0,
+  durableMemoryCount: 0,
+});
+assertRejected(timeoutBeforeSpoolCompletion, /provider egress exists without committed events/,
+  "spool timeout before provider completion claimed egress",
+  runnerEvidenceFor(timeoutBeforeSpoolCompletion, suiteRegressionEvidence));
+
+const timeoutAfterSpoolCompletion = timedOutAt(spoolResult, "source_memory_drain_completed");
+clearUnobservedSelection(timeoutAfterSpoolCompletion, spoolScenario);
+Object.assign(timeoutAfterSpoolCompletion.counts, {
+  committed: spoolResult.counts.committed,
+  summaryCount: spoolResult.counts.summaryCount,
+  durableMemoryCount: spoolResult.counts.durableMemoryCount,
+});
+assertAccepted(timeoutAfterSpoolCompletion, "timeout after spool provider completion",
+  runnerEvidenceFor(timeoutAfterSpoolCompletion, suiteRegressionEvidence));
 
 const earlyAttemptedRender = structuredClone(timeoutBeforePersistence);
 function bindFinalRender(result, scenario) {

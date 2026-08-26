@@ -354,12 +354,16 @@ const expectedDuplicateDeliveries = scenario.fault?.replaySchedule
 const captureObserved = !result.drain.timedOut || milestoneNames.includes("source_events_captured") || milestoneNames.includes("source_events_accepted");
 const duplicateReplayObserved = !result.drain.timedOut || milestoneNames.includes("stable_batch_replayed_second_time");
 const persistenceMilestone = ["source_summary_committed", "source_memory_drain_completed", "local_provider_derived_memory"].find((name) => expectedMilestones.includes(name));
+const commitMilestone = expectedMilestones.includes("source_flush_requested_by_target_prompt")
+  ? "source_flush_requested_by_target_prompt"
+  : persistenceMilestone ?? scenario.drainCondition.terminalMilestone;
+const commitObserved = !result.drain.timedOut || milestoneNames.includes(commitMilestone);
 const persistenceObserved = !result.drain.timedOut || persistenceMilestone === undefined ||
   milestoneNames.includes(persistenceMilestone);
 const pendingObserved = !result.drain.timedOut || milestoneNames.includes("source_flush_requested_by_target_prompt");
 const countsPass =
   result.counts.captured === (captureObserved ? scenario.events.length : 0) &&
-  result.counts.committed === (captureObserved ? scenario.drainCondition.committedEventCount : 0) &&
+  result.counts.committed === (commitObserved ? scenario.drainCondition.committedEventCount : 0) &&
   result.counts.duplicateDeliveries ===
     (duplicateReplayObserved ? expectedDuplicateDeliveries : 0) &&
   result.counts.lost === scenario.expectedCounters.acceptedEventLossCount &&
