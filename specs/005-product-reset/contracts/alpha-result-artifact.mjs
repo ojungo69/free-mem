@@ -1,13 +1,20 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, opendirSync, openSync, readSync,
-  realpathSync } from "node:fs";
+  realpathSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { isWithin } from "./alpha-result-input.mjs";
 
+const isRunnerOwnedImmutable = (stats) => (stats.mode & 0o022n) === 0n &&
+  (typeof process.getuid !== "function" || stats.uid === BigInt(process.getuid()));
+
 function artifactFiles(root, directory, limits, state = { entries: 0, files: 0 }, depth = 0) {
   if (depth > limits.maxDirectoryDepth) throw new Error("candidate artifact exceeds depth limit");
+  const directoryStats = statSync(directory, { bigint: true });
+  if (!directoryStats.isDirectory() || !isRunnerOwnedImmutable(directoryStats)) {
+    throw new Error(`candidate artifact directory is not runner-owned and immutable: ${directory}`);
+  }
   const files = [];
   const opened = opendirSync(directory);
   try {
@@ -39,6 +46,9 @@ function hashArtifact(path, candidateRoot, maxFileBytes) {
     const openedPath = realpathSync(`/proc/self/fd/${descriptor}`);
     if (!before.isFile() || !isWithin(candidateRoot, openedPath)) {
       throw new Error(`artifact path is not a contained regular file: ${path}`);
+    }
+    if (!isRunnerOwnedImmutable(before)) {
+      throw new Error(`candidate artifact file is not runner-owned and immutable: ${path}`);
     }
     if (before.size > BigInt(maxFileBytes)) throw new Error(`artifact file exceeds limit: ${path}`);
     const hash = createHash("sha256");
@@ -72,6 +82,9 @@ function validateArtifactFiles(artifactRoot, candidateId, manifest, limits) {
     throw new Error("candidate entrypoint is not present in the artifact manifest");
   }
   const root = realpathSync(resolve(artifactRoot));
+  if (!isRunnerOwnedImmutable(statSync(root, { bigint: true }))) {
+    throw new Error("candidate artifact root is not runner-owned and immutable");
+  }
   const candidateRoot = realpathSync(resolve(root, candidateId));
   if (!isWithin(root, candidateRoot)) {
     throw new Error("candidate artifact directory escapes the artifact root");

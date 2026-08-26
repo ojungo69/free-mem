@@ -1,4 +1,4 @@
-export function validateSelectionTiming(result, exceptionalState) {
+export function validateSelectionTiming(result, exceptionalState, expectedInputCandidates) {
   const evidence = result.selectionTimingEvidence;
   if (exceptionalState) {
     if (evidence !== null || result.selectionElapsedMs !== 0) {
@@ -30,6 +30,9 @@ export function validateSelectionTiming(result, exceptionalState) {
       evidence.endMonotonicMs < evidence.startMonotonicMs ||
       result.selectionElapsedMs !== evidence.endMonotonicMs - evidence.startMonotonicMs) {
     throw new Error("selection elapsed time does not match monotonic timing evidence");
+  }
+  if (result.counts.inputCandidates !== expectedInputCandidates) {
+    throw new Error("completed selection input count does not match the scenario");
   }
   return true;
 }

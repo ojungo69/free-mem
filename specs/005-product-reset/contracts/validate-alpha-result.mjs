@@ -238,7 +238,7 @@ const runnerRecord = validateRunnerEvidence(
 );
 const exceptionalState = result.disposition.state === "unsupported" ||
   result.disposition.state === "not_run";
-const selectionObserved = validateSelectionTiming(result, exceptionalState);
+const selectionObserved = validateSelectionTiming(result, exceptionalState, scenario.expectedInjectedItems.length + scenario.expectedOmissions.length);
 
 const expectedMilestones = fixture.lifecycleProfiles[scenario.lifecycleProfileId];
 const milestoneNames = result.milestones.map((item) => item.name);

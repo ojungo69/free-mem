@@ -114,11 +114,14 @@ function evaluateProviderEvidence(result, scenario, activeSummaryProvider, excep
 function evaluateZeroToleranceEvidence(result, scenario, fixture, oracle) {
   const evidence = result.securityEvidence;
   const destination = fixture.effectiveConfiguration.destinationPolicyMap[scenario.targetDestinationClass];
+  const incompatibleInjections = result.injectedItems.filter(
+    (item) => !destination.eligibleSensitivities.includes(item.sensitivity),
+  ).length;
   return evidence.persistedSecretCount === 0 && evidence.injectedSecretCount === 0 &&
     evidence.restrictedPayloadBytesSent === 0 && evidence.redirectLocationRequestCount === 0 &&
     evidence.redirectLocationPayloadBytesSent === 0 && evidence.resentPayloadCount === 0 &&
     evidence.forbiddenSentinelObservationCount === 0 &&
-    (destination.executionLocation === "remote" || evidence.remoteInjectionCount === 0) &&
+    incompatibleInjections === 0 && evidence.remoteInjectionCount === incompatibleInjections &&
     ORACLE_EVIDENCE_FIELDS.every((name) =>
       !Object.hasOwn(oracle, name) || oracle[name] !== 0 || evidence[name] === 0
     );

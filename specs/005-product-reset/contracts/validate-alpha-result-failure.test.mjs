@@ -26,14 +26,18 @@ const success = JSON.parse(readFileSync(join(fixtureRoot,
   "alpha-result-v1.example.json"), "utf8"));
 const successEvidence = JSON.parse(readFileSync(join(fixtureRoot,
   "runner-evidence/alpha-runner-evidence-v1.example.json"), "utf8"));
+const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot,
+  "alpha-result-v1.suite-regression.json"), "utf8"));
+const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot,
+  "runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
 const evidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-failure-evidence-"));
 process.on("exit", () => rmSync(evidenceRoot, { recursive: true }));
 let ordinal = 0;
 
 function validate(result, evidenceTemplate = failureEvidence) {
   const evidence = structuredClone(evidenceTemplate);
-  evidence.scenarios[0].resultObservationFingerprint =
-    runnerResultObservationFingerprint(result);
+  const record = evidence.scenarios.find((item) => item.caseId === result.runnerEvidenceCaseId);
+  record.resultObservationFingerprint = runnerResultObservationFingerprint(result);
   result.runnerEvidenceFingerprint = runnerEvidenceFingerprint(evidence);
   const path = join(evidenceRoot, `evidence-${ordinal += 1}.json`);
   writeFileSync(path, JSON.stringify(evidence), { mode: 0o600 });
@@ -232,6 +236,21 @@ assertRejected(timeoutBeforeProviderAttempt, /provider egress exists before the 
 
 const earlyAttemptedRender = structuredClone(timeoutBeforePersistence);
 const successScenario = fixture.scenarios.find((item) => item.scenarioId === success.scenarioId);
+function bindFinalRender(result, scenario) {
+  const payload = canonicalizeJson(
+    buildRenderPayload(result, scenario, fixture, result.injectedItems, result.packId),
+  );
+  result.finalRenderEvidence = {
+    rendererId: "alpha-jcs-renderer-v1", utf8Payload: payload,
+    tokenizerId: "deterministic-fixture-tokenizer-v1", tokenizerRevision: "1",
+    tokenIds: tokenizeRenderPayload(payload),
+  };
+  result.attemptedRenderEvidence = "same_as_final";
+  result.renderedBytes = Buffer.byteLength(payload, "utf8");
+  result.attemptedRenderedBytes = result.renderedBytes;
+  result.injectedTokens = result.finalRenderEvidence.tokenIds.length;
+  result.attemptedInjectedTokens = result.injectedTokens;
+}
 const earlyPayload = canonicalizeJson(
   buildRenderPayload(earlyAttemptedRender, successScenario, fixture, [], null),
 );
@@ -286,7 +305,7 @@ erasedSelection.quality = {
   expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
   expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
 };
-assertRejected(erasedSelection, /completed selection does not match the pinned item trace/,
+assertRejected(erasedSelection, /completed selection input count does not match the scenario/,
   "timeout erased an observed completed selection", timeoutAfterSelectionEvidence);
 
 const deadlineExceeded = structuredClone(success);
@@ -314,28 +333,72 @@ deadlineExceeded.disposition = {
 assertAccepted(deadlineExceeded, "completed selection deadline failure",
   runnerEvidenceFor(deadlineExceeded, successEvidence));
 
+const elapsedDeadlineWithoutInputs = structuredClone(deadlineExceeded);
+elapsedDeadlineWithoutInputs.counts.inputCandidates = 0;
+elapsedDeadlineWithoutInputs.counts.deadlineUnprocessed = 0;
+for (const [name, monotonicMs] of [["target_selection_started", 700],
+  ["target_selection_finished", 1450], ["target_injection_acknowledged", 1550],
+  ["target_model_request_dispatched", 1650], ["scenario_terminal", 1750],
+  ["post_teardown_grace_elapsed", 1850]]) {
+  elapsedDeadlineWithoutInputs.milestones.find((item) => item.name === name).monotonicMs = monotonicMs;
+}
+elapsedDeadlineWithoutInputs.selectionTimingEvidence = {
+  startMonotonicMs: 700, endMonotonicMs: 1450,
+};
+elapsedDeadlineWithoutInputs.selectionElapsedMs = 750;
+for (let monotonicMs = 1400; monotonicMs <= 1900; monotonicMs += 100) {
+  elapsedDeadlineWithoutInputs.processSamples.push({
+    ...success.processSamples.at(-1), monotonicMs,
+  });
+}
+assertRejected(elapsedDeadlineWithoutInputs,
+  /completed selection input count does not match the scenario/,
+  "elapsed deadline failure erased available inputs",
+  runnerEvidenceFor(elapsedDeadlineWithoutInputs, successEvidence));
+
 const qualityFailure = structuredClone(success);
 qualityFailure.injectedItems[0].fact = "Fixture-mismatched selected fact.";
 qualityFailure.quality.matchedInjectedItemCount -= 1;
-const qualityPayload = canonicalizeJson(
-  buildRenderPayload(qualityFailure, successScenario, fixture,
-    qualityFailure.injectedItems, qualityFailure.packId),
-);
-qualityFailure.finalRenderEvidence = {
-  rendererId: "alpha-jcs-renderer-v1", utf8Payload: qualityPayload,
-  tokenizerId: "deterministic-fixture-tokenizer-v1", tokenizerRevision: "1",
-  tokenIds: tokenizeRenderPayload(qualityPayload),
-};
-qualityFailure.attemptedRenderEvidence = "same_as_final";
-qualityFailure.renderedBytes = Buffer.byteLength(qualityPayload, "utf8");
-qualityFailure.attemptedRenderedBytes = qualityFailure.renderedBytes;
-qualityFailure.injectedTokens = qualityFailure.finalRenderEvidence.tokenIds.length;
-qualityFailure.attemptedInjectedTokens = qualityFailure.injectedTokens;
+bindFinalRender(qualityFailure, successScenario);
 qualityFailure.disposition = {
   state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
 };
 assertAccepted(qualityFailure, "completed selection quality failure",
   runnerEvidenceFor(qualityFailure, successEvidence));
+
+const duplicateIdentityTrace = structuredClone(success);
+duplicateIdentityTrace.injectedItems = Array.from(
+  { length: 4 }, () => structuredClone(success.injectedItems[0]),
+);
+duplicateIdentityTrace.quality.matchedInjectedItemCount = 1;
+bindFinalRender(duplicateIdentityTrace, successScenario);
+duplicateIdentityTrace.disposition = {
+  state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
+};
+assertRejected(duplicateIdentityTrace, /result trace contains duplicate active identities/,
+  "quality failure duplicated one active identity",
+  runnerEvidenceFor(duplicateIdentityTrace, successEvidence));
+
+const restrictedInjection = structuredClone(suiteRegression.positiveResults.find(
+  (result) => result.scenarioId === "local-derived-memory-remote-injection-rejected",
+));
+const restrictedScenario = fixture.scenarios.find(
+  (item) => item.scenarioId === restrictedInjection.scenarioId,
+);
+const { reason: _restrictedReason, ...restrictedItem } = restrictedInjection.omittedItems[0];
+restrictedItem.selectionReason = restrictedItem.sourceLane;
+restrictedInjection.injectedItems = [restrictedItem];
+restrictedInjection.omittedItems = [];
+restrictedInjection.counts.admittedCandidates = 1;
+restrictedInjection.counts.selectedItems = 1;
+restrictedInjection.quality.matchedOmissionCount = 0;
+restrictedInjection.quality.forbiddenFactCount = 1;
+bindFinalRender(restrictedInjection, restrictedScenario);
+restrictedInjection.disposition = {
+  state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
+};
+assertRejected(restrictedInjection, /independent zero-tolerance safety boundary/,
+  "remote final pack injected a restricted item", suiteRegressionEvidence);
 
 const unsupportedDeadlineOmission = structuredClone(deadlineExceeded);
 const { selectionReason: _selectionReason, ...deadlineOmission } = success.injectedItems[0];

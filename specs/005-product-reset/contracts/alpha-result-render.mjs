@@ -60,6 +60,17 @@ export function buildRenderPayload(result, scenario, fixture, items, packId) {
 
 function validateTraceProvenance(result, scenario) {
   const events = new Map(scenario.events.map((event) => [event.eventId, event]));
+  const normalItems = [...result.injectedItems,
+    ...result.omittedItems.filter((item) => item.reason !== "duplicate_revision")];
+  for (const name of ["lineageId", "memoryId", "revisionId"]) {
+    if (new Set(normalItems.map((item) => item[name])).size !== normalItems.length) {
+      throw new Error("result trace contains duplicate active identities");
+    }
+  }
+  if (!result.omittedItems.filter((item) => item.reason === "duplicate_revision").every(
+    (duplicate) => result.injectedItems.some((item) => item.lineageId === duplicate.lineageId &&
+      item.memoryId === duplicate.memoryId && item.revisionId === duplicate.revisionId),
+  )) throw new Error("duplicate revision omission has no retained active item");
   for (const item of [...result.injectedItems, ...result.omittedItems]) {
     const sourceIds = [...new Set(item.sourceEventIds)].sort();
     const spanIds = [...new Set(item.sourceSpans.map((span) => span.eventId))].sort();

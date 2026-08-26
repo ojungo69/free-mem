@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
   writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { MAX_RUNNER_EVIDENCE_BYTES, readRunnerEvidenceFile } from "./alpha-runner-evidence.mjs";
+import { validateArtifact } from "./alpha-result-artifact.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
@@ -14,6 +15,8 @@ const validatorPath = join(contractDir, "validate-alpha-result.mjs");
 const fixtureRoot = join(contractDir, "../fixtures");
 const success = JSON.parse(readFileSync(join(fixtureRoot,
   "alpha-result-v1.example.json"), "utf8"));
+const fixture = JSON.parse(readFileSync(join(fixtureRoot,
+  "slice1-bidirectional-en-v1.json"), "utf8"));
 const successEvidence = JSON.parse(readFileSync(join(fixtureRoot,
   "runner-evidence/alpha-runner-evidence-v1.example.json"), "utf8"));
 const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot,
@@ -98,6 +101,20 @@ try {
     /runner evidence root is not runner-owned and immutable/);
 } finally {
   rmSync(writableRoot, { recursive: true });
+}
+
+const writableArtifactRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-writable-artifact-"));
+try {
+  const candidateRoot = join(writableArtifactRoot, success.candidateId);
+  mkdirSync(candidateRoot);
+  const candidatePath = join(candidateRoot, "candidate.bundle");
+  copyFileSync(join(fixtureRoot, "artifacts", success.candidateId, "candidate.bundle"), candidatePath);
+  chmodSync(candidatePath, 0o666);
+  assert.throws(() => validateArtifact(success, writableArtifactRoot,
+    fixture.pins.freeMemBaseCommit, fixture.artifactLimits),
+  /candidate artifact file is not runner-owned and immutable/);
+} finally {
+  rmSync(writableArtifactRoot, { recursive: true });
 }
 
 const fifoDir = mkdtempSync(join(tmpdir(), "free-mem-alpha-result-fifo-"));

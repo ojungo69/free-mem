@@ -196,8 +196,9 @@ manifest itself is JCS-hashed with `free-mem:alpha-artifact-content:v1\0`; that 
 from the regular file bytes below the candidate's realpath-contained artifact root; self-declared
 file hashes are not accepted as artifact evidence. `entrypoint` names one listed file. The harness
 owns one immutable staged artifact snapshot from candidate execution through result validation;
-the validator rejects non-regular/unlisted entries and hashes each open file descriptor between
-stable-stat checks. The fixed artifact boundary is at most 64 files, 128 total filesystem entries,
+the validator requires runner ownership with no group/other write access, rejects
+non-regular/unlisted entries, and hashes each open file descriptor between stable-stat checks. The
+fixed artifact boundary is at most 64 files, 128 total filesystem entries,
 eight directory levels, 16 MiB per file, and 64 MiB total; traversal and hashing are incremental,
 use a fixed 64 KiB content buffer, and reject each boundary before unbounded work.
 The runner-evidence root is separately realpath-contained, non-overlapping with that artifact root,
