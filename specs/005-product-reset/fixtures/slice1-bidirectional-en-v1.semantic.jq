@@ -87,18 +87,9 @@ def expected_item_key:
 def revision_identity_ok($scenario):
   ([ $scenario.expectedInjectedItems[], $scenario.expectedOmissions[] ]) as $items
   | ([ $items[] | select(.reason? != "duplicate_revision") ]) as $normal
-  | ([ $scenario.expectedInjectedItems[].lineageId ]
-      | length == (unique | length))
-    and ([ $normal[] | [.lineageId, .revisionId, .revisionOrdinal] | @json ]
-      | length == (unique | length))
-    and all($normal[];
-      . as $item
-      | ([ $normal[]
-          | select(.lineageId == $item.lineageId and .revisionId == $item.revisionId)
-          | .revisionOrdinal ] | unique | length) == 1
-        and ([ $normal[]
-          | select(.lineageId == $item.lineageId and .revisionOrdinal == $item.revisionOrdinal)
-          | .revisionId ] | unique | length) == 1)
+  | all(["lineageId", "memoryId", "revisionId"][];
+      . as $field
+      | ([ $normal[][$field] ] | length == (unique | length)))
     and all($items[] | select(.reason? == "duplicate_revision");
       . as $duplicate
       | any($scenario.expectedInjectedItems[];
@@ -113,8 +104,17 @@ def fixture_graph_ok($root):
   and $root.samplingProtocol.runsPerScenario ==
     ($root.samplingProtocol.discardInitialRunsPerScenario +
       $root.samplingProtocol.measuredRunsPerScenario)
+  and $root.samplingProtocol.percentileMethod == "nearest_rank_ceiling"
   and ([ $root.samplingProtocol.metrics.captureP95Ms.scenarios[] ] | sort) ==
     ($captureScenarioIds | sort)
+  and all($root.samplingProtocol.metrics.warmInjectionP95Ms.scenarios[];
+    . as $scenarioId
+    | any($root.scenarios[];
+        .scenarioId == $scenarioId and .resourceSampleMode == "warm"))
+  and all($root.samplingProtocol.metrics.shortColdLexicalInjectionMs.scenarios[];
+    . as $scenarioId
+    | any($root.scenarios[];
+        .scenarioId == $scenarioId and .resourceSampleMode == "cold"))
   and all($root.samplingProtocol.metrics[].scenarios[];
     . as $scenarioId
     | ($scenarioIds | index($scenarioId)) != null)

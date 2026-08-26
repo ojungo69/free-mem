@@ -10,6 +10,7 @@ import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
 import { runnerEvidenceFingerprint, runnerResultObservationFingerprint,
   validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import "./validate-slice1-fixture.test.mjs";
 import "./validate-alpha-result-failure.test.mjs";
 import "./validate-alpha-result-input.test.mjs";
 
