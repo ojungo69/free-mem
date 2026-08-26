@@ -168,7 +168,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T09:47:01+09:00
+## Validation result — 2026-08-26T10:13:28+09:00
 
 | Check | Result |
 |---|---|
@@ -177,7 +177,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, cross-host/downgrade transport, privacy, host-identity, output-limit recovery-manifest, environment, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss denominators, pre-terminal evidence nullability, inclusive timeout expiration, Slice 1 pack-failure refusal and final byte/token ceiling, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin result input, timeout prefixes, and canonical exceptional-state mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, retrieval-before-selection presence/order, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss denominators, pre-terminal evidence nullability, inclusive timeout expiration, Slice 1 pack-failure refusal and final byte/token ceiling, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin result input, timeout prefixes, and canonical exceptional-state mutations |
 | Product Reset CI contract step | PASS locally; workflow `actionlint` and the committed regression command exit 0 |
 | Rollback exact-state fence | PASS; 69-entry pre/post snapshot SHAs, live post-M0 fence, generated inverse state/full-label simulation, and empty parent sub-issue postcondition match |
 | Local Markdown links (one-shot external validation) | PASS |

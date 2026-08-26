@@ -241,7 +241,9 @@ def selection_lifecycle_ok($root):
     | ($milestones | index("target_selection_started")) as $started
     | ($milestones | index("target_selection_finished")) as $finished
     | if $scenario.drainCondition.targetInjectionAcknowledged
-      then ($milestones | index("target_retrieval_requested")) < $started
+      then ($milestones | index("target_retrieval_requested")) as $requested
+        | $requested != null
+        and $requested < $started
         and $started < $finished
         and $finished < ($milestones | index("target_injection_acknowledged"))
         and ($milestones | index("target_injection_acknowledged")) <

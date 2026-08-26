@@ -11,6 +11,8 @@ import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
 const validatorPath = join(contractDir, "validate-alpha-result.mjs");
+const fixtureSemanticPath = join(contractDir,
+  "../fixtures/slice1-bidirectional-en-v1.semantic.jq");
 const fixture = JSON.parse(readFileSync(join(contractDir,
   "../fixtures/slice1-bidirectional-en-v1.json"), "utf8"));
 const success = JSON.parse(readFileSync(join(contractDir,
@@ -179,5 +181,17 @@ assert.ok(tokenOversized.injectedTokens >
   fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxInjectedTokens);
 assertRejected(tokenOversized, /oversized InjectionPack was recorded as final output/,
   "token-oversized final pack");
+
+const missingRetrievalMilestone = structuredClone(fixture);
+missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush =
+  missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush.filter(
+    (name) => name !== "target_retrieval_requested",
+  );
+const missingRetrievalRun = spawnSync("jq", ["-e", "-f", fixtureSemanticPath], {
+  input: JSON.stringify(missingRetrievalMilestone),
+  encoding: "utf8",
+});
+assert.notEqual(missingRetrievalRun.status, 0,
+  "fixture semantics accepted a selection lifecycle without retrieval");
 
 console.log("Alpha result regression checks passed.");
