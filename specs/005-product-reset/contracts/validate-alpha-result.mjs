@@ -337,7 +337,7 @@ const derivedQuality = {
   expectedOmissionCount: scenario.expectedOmissions.length,
   matchedOmissionCount: matchingPositions(result.omittedItems, scenario.expectedOmissions),
   forbiddenFactCount: result.injectedItems.filter((item) =>
-    scenario.forbiddenFacts.includes(item.fact)
+    scenario.forbiddenFacts.some((forbidden) => item.fact.includes(forbidden))
   ).length,
 };
 if (!isDeepStrictEqual(result.quality, derivedQuality)) {
@@ -395,7 +395,7 @@ const resourcePass = evaluateResourceEvidence(result, fixture, exceptionalState,
 const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
 const selectionDeadlineExceeded = selectionObserved &&
   result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs;
-if (result.drain.timedOut && selectionFinishedObserved && !qualityPass)
+if (result.drain.timedOut && selectionFinishedObserved && !selectionDeadlineExceeded && !qualityPass)
   throw new Error("completed selection does not match the pinned item trace");
 const finalInjectionPackSizePass =
   result.renderedBytes <= injectionEnvelope.maxRenderedBytes &&

@@ -69,6 +69,15 @@ function validateTraceProvenance(result, scenario) {
       throw new Error("result trace contains duplicate active identities");
     }
   }
+  const activeSpansByEvent = Map.groupBy(
+    normalItems.flatMap((item) => item.sourceSpans), (span) => span.eventId,
+  );
+  for (const spans of activeSpansByEvent.values()) {
+    spans.sort((left, right) => left.startByte - right.startByte);
+    if (spans.some((span, index) => index > 0 && span.startByte < spans[index - 1].endByte)) {
+      throw new Error("result trace contains overlapping active source anchors");
+    }
+  }
   if (!result.omittedItems.filter((item) => item.reason === "duplicate_revision").every(
     (duplicate) => result.injectedItems.some((item) => item.lineageId === duplicate.lineageId &&
       item.memoryId === duplicate.memoryId && item.revisionId === duplicate.revisionId),

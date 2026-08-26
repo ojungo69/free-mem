@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
+import { lineageDigest } from "./alpha-result-lineage.mjs";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
 import { runnerEvidenceFingerprint, runnerResultObservationFingerprint }
   from "./alpha-runner-evidence.mjs";
@@ -18,14 +19,10 @@ const fixtureRoot = join(contractDir, "../fixtures");
 const fixtureSemanticPath = join(fixtureRoot, "slice1-bidirectional-en-v1.semantic.jq");
 const fixture = JSON.parse(readFileSync(join(fixtureRoot,
   "slice1-bidirectional-en-v1.json"), "utf8"));
-const failure = JSON.parse(readFileSync(join(fixtureRoot,
-  "alpha-result-v1.failure-example.json"), "utf8"));
-const failureEvidence = JSON.parse(readFileSync(join(fixtureRoot,
-  "runner-evidence/alpha-runner-evidence-v1.failure-example.json"), "utf8"));
-const success = JSON.parse(readFileSync(join(fixtureRoot,
-  "alpha-result-v1.example.json"), "utf8"));
-const successEvidence = JSON.parse(readFileSync(join(fixtureRoot,
-  "runner-evidence/alpha-runner-evidence-v1.example.json"), "utf8"));
+const failure = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.failure-example.json"), "utf8"));
+const failureEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.failure-example.json"), "utf8"));
+const success = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.example.json"), "utf8"));
+const successEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.example.json"), "utf8"));
 const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot,
   "alpha-result-v1.suite-regression.json"), "utf8"));
 const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot,
@@ -358,6 +355,16 @@ markDeadlineFailure(deadlineExceeded);
 assertAccepted(deadlineExceeded, "completed selection deadline failure",
   runnerEvidenceFor(deadlineExceeded, successEvidence));
 
+const deadlineTimeout = timedOutSuccessAt("target_selection_finished");
+deadlineTimeout.milestones.find((item) => item.name === "target_selection_started").monotonicMs = 700;
+deadlineTimeout.milestones.find((item) => item.name === "target_selection_finished").monotonicMs = 1450;
+deadlineTimeout.selectionTimingEvidence = { startMonotonicMs: 700, endMonotonicMs: 1450 };
+deadlineTimeout.selectionElapsedMs = 750;
+markDeadlineFailure(deadlineTimeout);
+deadlineTimeout.disposition = { state: "failed", reason: "drain_timed_out", successfulComparisonEligible: false };
+assertAccepted(deadlineTimeout, "selection deadline followed by drain timeout",
+  runnerEvidenceFor(deadlineTimeout, successEvidence));
+
 const elapsedDeadlineWithoutInputs = structuredClone(deadlineExceeded);
 elapsedDeadlineWithoutInputs.counts.inputCandidates = 0;
 elapsedDeadlineWithoutInputs.counts.deadlineUnprocessed = 0;
@@ -375,6 +382,21 @@ qualityFailure.disposition = {
 };
 assertAccepted(qualityFailure, "completed selection quality failure",
   runnerEvidenceFor(qualityFailure, successEvidence));
+
+const concealedForbidden = structuredClone(qualityFailure);
+concealedForbidden.injectedItems[0].fact = `prefix ${successScenario.forbiddenFacts[0]} suffix`;
+bindFinalRender(concealedForbidden, successScenario);
+assertRejected(concealedForbidden, /result quality counters do not match the recorded items/,
+  "quality failure concealed a contained forbidden fact", runnerEvidenceFor(concealedForbidden, successEvidence));
+
+const overlappingAnchor = structuredClone(qualityFailure), overlap = overlappingAnchor.injectedItems[1];
+overlap.sourceEventIds = ["claude-to-codex-event-1"];
+overlap.sourceSpans = [{ eventId: "claude-to-codex-event-1", startByte: 1, endByte: 44 }];
+overlap.lineageId = lineageDigest(successScenario.sourceRepositoryScope, overlap.sourceSpans);
+overlappingAnchor.quality.matchedInjectedItemCount = 2;
+bindFinalRender(overlappingAnchor, successScenario);
+assertRejected(overlappingAnchor, /result trace contains overlapping active source anchors/,
+  "quality failure retained overlapping source anchors", runnerEvidenceFor(overlappingAnchor, successEvidence));
 
 const duplicateIdentityTrace = structuredClone(success);
 duplicateIdentityTrace.injectedItems = Array.from(
