@@ -1,0 +1,61 @@
+specs/005-product-reset/contracts/alpha-result-render.mjs
+  s_9d346c66194a0d::t_a9ce532074f0bb 61-64,79-82,110-114
+specs/005-product-reset/contracts/alpha-result-security.mjs
+  s_9d346c66194a0d::t_2a7c844ad30fd0 68-76
+specs/005-product-reset/contracts/validate-alpha-result-failure.test.mjs
+  s_9d346c66194a0d::t_1dcf1853b4b3f8 227-232,250-256,311-353
+  s_9d346c66194a0d::t_09b5415eca813a 177-178
+  s_a57e04d99eb233::t_6d08bec8be224a 354
+specs/005-product-reset/contracts/alpha-runner-evidence.mjs
+  s_9d346c66194a0d::t_6cba9fdbf52753 97-99
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_9d346c66194a0d::t_ae07fab1e6f672 520-527,529-533
+  s_9d346c66194a0d::t_629366ac0c0819 528
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_c4ef568f2df441 156-160
+specs/005-product-reset/data-model.md
+  s_9d346c66194a0d::t_c4ef568f2df441 355-356
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_904da0de4896f3 205
+  s_9d346c66194a0d::t_c4ef568f2df441 214
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_a9be9258b7c306 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_fc8fcc2e977c66 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.suite-regression.json
+  s_9d346c66194a0d::t_7aa43a08baef35 1
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.example.json
+  s_9d346c66194a0d::t_bb27cc946bec31 4,1351
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json
+  s_9d346c66194a0d::t_bfc89525f00938 4,797
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json
+  s_9d346c66194a0d::t_69bd3c9701ef6e 1
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_b71f0bd76d2a80 8
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_38c79291dbb7b3 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2613a7446b88acdabc3e34f676c98ead7fd923fb",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_a57e04d99eb233": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "94a34ad1-0b91-43a1-8918-b4960c1fd2ec",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
