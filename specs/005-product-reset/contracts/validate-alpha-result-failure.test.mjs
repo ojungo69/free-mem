@@ -295,4 +295,10 @@ injectedForbiddenScenario.forbiddenFacts[0] = injectedForbiddenScenario.expected
 assertFixtureRejected(injectedForbiddenFact,
   "fixture semantics accepted an injected forbidden fact");
 
+const inconsistentRevisionIdentity = structuredClone(fixture);
+const revisionItems = inconsistentRevisionIdentity.scenarios[0].expectedInjectedItems;
+revisionItems[1].lineageId = revisionItems[0].lineageId;
+assertFixtureRejected(inconsistentRevisionIdentity,
+  "fixture semantics accepted two revisions for one lineage ordinal");
+
 console.log("Alpha result failed-record invariant checks passed.");

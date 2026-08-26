@@ -84,6 +84,26 @@ def provider_item_key:
 def expected_item_key:
   [ .memoryKind, .fact, .sourceEventIds, .sourceSpans, .sensitivity ] | @json;
 
+def revision_identity_ok($scenario):
+  ([ $scenario.expectedInjectedItems[], $scenario.expectedOmissions[] ]) as $items
+  | ([ $items[] | select(.reason? != "duplicate_revision") ]) as $normal
+  | ([ $normal[] | [.lineageId, .revisionId, .revisionOrdinal] | @json ]
+      | length == (unique | length))
+    and all($normal[];
+      . as $item
+      | ([ $normal[]
+          | select(.lineageId == $item.lineageId and .revisionId == $item.revisionId)
+          | .revisionOrdinal ] | unique | length) == 1
+        and ([ $normal[]
+          | select(.lineageId == $item.lineageId and .revisionOrdinal == $item.revisionOrdinal)
+          | .revisionId ] | unique | length) == 1)
+    and all($items[] | select(.reason? == "duplicate_revision");
+      . as $duplicate
+      | any($scenario.expectedInjectedItems[];
+        .lineageId == $duplicate.lineageId
+        and .revisionId == $duplicate.revisionId
+        and .revisionOrdinal == $duplicate.revisionOrdinal));
+
 def fixture_graph_ok($root):
   ($root.scenarios | map(.scenarioId)) as $scenarioIds
   | ($root.scenarios | map(select((.events | length) > 0) | .scenarioId)) as $captureScenarioIds
@@ -349,6 +369,7 @@ def common_scenarios_ok($root):
   and all($root.scenarios[] | select(.fault?.kind != "summary_provider_output_limit_exceeded");
     . as $scenario
     | scenario_core_ok($root; $scenario)
+    and revision_identity_ok($scenario)
     and .drainCondition.summaryCount ==
       (if (.summaryProviderStub | has("summary")) then 1 else 0 end)
     and .drainCondition.durableMemoryCount ==
