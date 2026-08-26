@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
-  writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -9,8 +8,8 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
-import { MAX_RUNNER_EVIDENCE_BYTES, readRunnerEvidenceFile, runnerEvidenceFingerprint,
-  validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import { runnerEvidenceFingerprint, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import "./validate-alpha-result-input.test.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
@@ -28,12 +27,8 @@ const suiteRegression = JSON.parse(readFileSync(join(contractDir,
 const suiteRegressionEvidence = JSON.parse(readFileSync(join(contractDir,
   "../fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
 const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evidence-"));
-const suiteResultRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-suite-results-"));
 let runnerEvidenceOrdinal = 0;
-process.on("exit", () => {
-  rmSync(runnerEvidenceRoot, { recursive: true });
-  rmSync(suiteResultRoot, { recursive: true });
-});
+process.on("exit", () => rmSync(runnerEvidenceRoot, { recursive: true }));
 
 function buildRunnerEvidence(result) {
   const latencyRuns = structuredClone(result.latencyEvidence.runs);
@@ -518,111 +513,5 @@ const missingRetrievalRun = spawnSync("jq", ["-e", "-f", fixtureSemanticPath], {
 });
 assert.notEqual(missingRetrievalRun.status, 0,
   "fixture semantics accepted a selection lifecycle without retrieval");
-
-const missingRunnerEvidence = spawnSync(process.execPath,
-  ["--experimental-strip-types", validatorPath, "--result", "-"], {
-    cwd: repoRoot,
-    input: JSON.stringify(success),
-    encoding: "utf8",
-  });
-assert.notEqual(missingRunnerEvidence.status, 0, "explicit result omitted runner evidence");
-assert.match(`${missingRunnerEvidence.stderr}${missingRunnerEvidence.stdout}`,
-  /explicit result requires runner evidence/);
-const evidenceWithoutInvocationPath = writeRunnerEvidence(successEvidence);
-const missingRunnerInvocation = spawnSync(process.execPath,
-  ["--experimental-strip-types", validatorPath,
-    "--runner-evidence-root", runnerEvidenceRoot,
-    "--runner-evidence", evidenceWithoutInvocationPath, "--result", "-"], {
-    cwd: repoRoot,
-    input: JSON.stringify(success),
-    encoding: "utf8",
-  });
-assert.notEqual(missingRunnerInvocation.status, 0, "explicit result omitted runner invocation ID");
-assert.match(`${missingRunnerInvocation.stderr}${missingRunnerInvocation.stdout}`,
-  /explicit result requires a runner invocation ID/);
-
-const oversizedRunnerEvidencePath = join(runnerEvidenceRoot, "oversized-runner-evidence.json");
-writeFileSync(oversizedRunnerEvidencePath, " ".repeat(MAX_RUNNER_EVIDENCE_BYTES + 1),
-  { mode: 0o600 });
-const oversizedRunnerEvidence = spawnSync(process.execPath,
-  ["--experimental-strip-types", validatorPath,
-      "--runner-evidence-root", runnerEvidenceRoot,
-      "--runner-evidence", oversizedRunnerEvidencePath,
-      "--runner-invocation-id", successEvidence.invocationId, "--result", "-"], {
-    cwd: repoRoot,
-    input: JSON.stringify(success),
-    encoding: "utf8",
-  });
-assert.notEqual(oversizedRunnerEvidence.status, 0, "oversized runner evidence was accepted");
-assert.match(`${oversizedRunnerEvidence.stderr}${oversizedRunnerEvidence.stdout}`,
-  /result input exceeds the fixed byte limit/);
-
-const overlappingRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-overlap-"));
-try {
-  const artifactRoot = join(overlappingRoot, "artifacts");
-  const evidenceRoot = join(artifactRoot, "runner-evidence");
-  mkdirSync(evidenceRoot, { recursive: true });
-  const evidencePath = join(evidenceRoot, "evidence.json");
-  writeFileSync(evidencePath, JSON.stringify(successEvidence));
-  assert.throws(() => readRunnerEvidenceFile(evidencePath, evidenceRoot, artifactRoot),
-    /runner evidence root overlaps the candidate artifact root/);
-} finally {
-  rmSync(overlappingRoot, { recursive: true });
-}
-
-const writableRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-writable-root-"));
-try {
-  const artifactRoot = join(writableRoot, "artifacts");
-  const evidenceRoot = join(writableRoot, "runner-evidence");
-  mkdirSync(artifactRoot);
-  mkdirSync(evidenceRoot);
-  chmodSync(evidenceRoot, 0o777);
-  const evidencePath = join(evidenceRoot, "evidence.json");
-  writeFileSync(evidencePath, JSON.stringify(successEvidence));
-  assert.throws(() => readRunnerEvidenceFile(evidencePath, evidenceRoot, artifactRoot),
-    /runner evidence root is not runner-owned and immutable/);
-} finally {
-  rmSync(writableRoot, { recursive: true });
-}
-
-const fifoDir = mkdtempSync(join(tmpdir(), "free-mem-alpha-result-fifo-"));
-const fifoPath = join(fifoDir, "candidate-result.fifo");
-try {
-  const mkfifo = spawnSync("mkfifo", [fifoPath], { encoding: "utf8" });
-  assert.equal(mkfifo.status, 0, `${mkfifo.stderr}${mkfifo.stdout}`);
-  const fifoEvidencePath = writeRunnerEvidence(successEvidence);
-  const fifoRun = spawnSync(process.execPath,
-    ["--experimental-strip-types", validatorPath,
-      "--runner-evidence-root", runnerEvidenceRoot,
-      "--runner-evidence", fifoEvidencePath,
-      "--runner-invocation-id", successEvidence.invocationId, "--result", fifoPath], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      timeout: 2000,
-    });
-  assert.notEqual(fifoRun.error?.code, "ETIMEDOUT", "FIFO result path blocked before validation");
-  assert.notEqual(fifoRun.status, 0, "FIFO result path was accepted");
-  assert.match(`${fifoRun.stderr}${fifoRun.stdout}`, /result input path is not a regular file/);
-} finally {
-  rmSync(fifoDir, { recursive: true });
-}
-
-const suiteEvidencePath = writeRunnerEvidence(suiteRegressionEvidence);
-const suiteResultPaths = suiteRegression.positiveResults.map((result, index) => {
-  const path = join(suiteResultRoot, `suite-positive-${index + 1}.json`);
-  writeFileSync(path, JSON.stringify(result));
-  return path;
-});
-const suiteNegativePath = join(suiteResultRoot, "suite-negative.json");
-writeFileSync(suiteNegativePath, JSON.stringify(suiteRegression.negativeResult));
-const suiteArgs = suiteResultPaths.flatMap((path) => ["--result", path]);
-suiteArgs.push("--negative-result", suiteNegativePath);
-const suiteRun = spawnSync(process.execPath,
-  ["--experimental-strip-types", validatorPath,
-    "--runner-evidence-root", runnerEvidenceRoot,
-    "--runner-evidence", suiteEvidencePath,
-    "--runner-invocation-id", suiteRegressionEvidence.invocationId,
-    ...suiteArgs], { cwd: repoRoot, encoding: "utf8" });
-assert.equal(suiteRun.status, 0, `16+1 suite regression: ${suiteRun.stderr}${suiteRun.stdout}`);
 
 console.log("Alpha result regression checks passed.");

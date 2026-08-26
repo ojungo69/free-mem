@@ -108,7 +108,8 @@ specs/005-product-reset/
 │   ├── alpha-result-security.mjs
 │   ├── alpha-result-selection.mjs
 │   ├── validate-alpha-result.mjs
-│   └── validate-alpha-result.test.mjs
+│   ├── validate-alpha-result.test.mjs
+│   └── validate-alpha-result-input.test.mjs
 ├── checklists/
 │   └── requirements.md
 ├── tasks.md

@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { decodeUtf8, parseIJson } from "../../../harness/schema/jcs.ts";
@@ -40,7 +40,6 @@ function readBoundedIJson(descriptor, maxBytes,
 }
 
 export function readBoundedIJsonFile(path, maxBytes, root = null) {
-  if (!lstatSync(path).isFile()) throw new Error("result input path is not a regular file");
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
   try {
     if (root !== null && !isWithin(realpathSync(resolve(root)),

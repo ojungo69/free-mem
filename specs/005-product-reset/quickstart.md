@@ -186,6 +186,7 @@ candidate execution through result validation.
 - [Alpha runner evidence validator](contracts/alpha-runner-evidence.mjs)
 - [Alpha result canonical validator](contracts/validate-alpha-result.mjs)
 - [Alpha result regression checks](contracts/validate-alpha-result.test.mjs)
+- [Alpha result input and suite regression checks](contracts/validate-alpha-result-input.test.mjs)
 - [Slice 1 fixed fixture](fixtures/slice1-bidirectional-en-v1.json)
 - [Slice 1 example result](fixtures/alpha-result-v1.example.json)
 - [Slice 1 failure example result](fixtures/alpha-result-v1.failure-example.json)
@@ -200,7 +201,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T13:20:23+09:00
+## Validation result — 2026-08-26T13:29:22+09:00
 
 | Check | Result |
 |---|---|
@@ -232,8 +233,8 @@ Environment-specific deviations:
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
 - CodeRabbit's final local review repeated the fixed contract's equal-time before-model boundary and
   fixed-case identifier suggestions; both were rejected after fixture/source checks. Its earlier
-  valid suite-fixture separation was applied. The pushed head must still receive a fresh GitHub
-  CodeRabbit review before merge.
+  valid suite-fixture separation was applied. The post-CI local retry reached the CLI rate limit;
+  a fresh GitHub full review was requested for the pushed head.
 - The latest GitHub Codex/CodeRabbit reviews raised timeout, input-boundary, loss-evidence, and exact
   rollback gaps; all valid findings were reproduced, fixed, and covered by focused cases. Cubic's
   post-fix review raised zero issues. Grok's split
