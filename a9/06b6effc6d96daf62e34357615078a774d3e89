@@ -1,0 +1,32 @@
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_874e73d888830f 54
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_2dff5b823bd94d 171,180
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_9d346c66194a0d::t_b4eb9587230dfc 14-15,185-195
+  s_9d346c66194a0d::t_72f7bd0ece7701 196
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.semantic.jq
+  s_9d346c66194a0d::t_2ca27e884d0962 244-246
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_874e73d888830f 4
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_874e73d888830f 4
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_874e73d888830f 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a906b6effc6d96daf62e34357615078a774d3e89",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
