@@ -1,0 +1,64 @@
+specs/005-product-reset/contracts/alpha-result-render.mjs
+  s_9d346c66194a0d::t_57bab83629aaea 82-86
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_57bab83629aaea 282-284,357-359
+specs/005-product-reset/plan.md
+  s_9d346c66194a0d::t_03f88a113d4980 112-113
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_71621f8f932eb5 214
+  s_9d346c66194a0d::t_8f793db3c520a6 205,235-237
+  s_9d346c66194a0d::t_03f88a113d4980 190
+specs/005-product-reset/contracts/alpha-runner-evidence.mjs
+  s_9d346c66194a0d::t_c2a923fef6d90c 18-25,117-118
+  s_9d346c66194a0d::t_ea73d6b69be032 119
+specs/005-product-reset/contracts/validate-alpha-result-failure.test.mjs
+  s_9d346c66194a0d::t_024ea104de4704 2,66-68
+  s_9d346c66194a0d::t_70183208917f0c 1,3-65,69-83
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_71621f8f932eb5 152-156
+  s_9d346c66194a0d::t_57bab83629aaea 180-184
+specs/005-product-reset/contracts/alpha-runner-evidence-v1.schema.json
+  s_9d346c66194a0d::t_c2a923fef6d90c 103,111
+specs/005-product-reset/data-model.md
+  s_9d346c66194a0d::t_71621f8f932eb5 352-353
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_9d346c66194a0d::t_7c8f4f8ef54b48 109,111-114
+  s_9d346c66194a0d::t_c02c25b558a91b 329
+  s_9d346c66194a0d::t_c2a923fef6d90c 11-12,83
+  s_9d346c66194a0d::t_66051eea7ff324 338-339,341
+  s_9d346c66194a0d::t_6850efb49ff448 446-447
+  s_9d346c66194a0d::t_d1dd93cd04a147 479-483
+  s_9d346c66194a0d::t_f2f7e84038b5c6 13
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_0da01e97128ca1 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_3553d2eeffd656 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.suite-regression.json
+  s_9d346c66194a0d::t_1427fb055e1013 1
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.example.json
+  s_9d346c66194a0d::t_b0e10b0196b08a 4,1350-1351
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json
+  s_9d346c66194a0d::t_813da3c67d5026 4,796-797
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json
+  s_9d346c66194a0d::t_61e84b613b38b6 1
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_142d9e39bcbf64 8
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_92d69d40527e57 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f86c4f150b36e6cbdc97e3441b49d5d70df8bd6d",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
