@@ -100,7 +100,7 @@
     "ScenarioEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "scenarioId", "resourceSampleMode", "resourceObserverId", "processTreeRootId", "resourceDataRootId", "hostIdentityEvidence", "observedMilestones", "processSamples", "latencyRuns", "runPreparations"],
+      "required": ["caseId", "scenarioId", "resourceSampleMode", "resourceObserverId", "processTreeRootId", "resourceDataRootId", "resultObservationFingerprint", "hostIdentityEvidence", "observedMilestones", "processSamples", "latencyRuns", "runPreparations"],
       "properties": {
         "caseId": { "$ref": "#/$defs/NonEmptyString" },
         "scenarioId": { "$ref": "#/$defs/NonEmptyString" },
@@ -108,6 +108,7 @@
         "resourceObserverId": { "const": "fixture-pinned-resource-observer-v1" },
         "processTreeRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "resourceDataRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "resultObservationFingerprint": { "$ref": "#/$defs/Fingerprint" },
         "hostIdentityEvidence": {
           "oneOf": [
             { "type": "null" },

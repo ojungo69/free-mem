@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
-import { runnerEvidenceFingerprint, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import { runnerEvidenceFingerprint, runnerResultObservationFingerprint,
+  validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import "./validate-alpha-result-failure.test.mjs";
 import "./validate-alpha-result-input.test.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +80,7 @@ function buildRunnerEvidence(result) {
       resourceObserverId: "fixture-pinned-resource-observer-v1",
       processTreeRootId: `${result.scenarioId}:process-tree-root`,
       resourceDataRootId: `${result.scenarioId}:resource-data-root`,
+      resultObservationFingerprint: runnerResultObservationFingerprint(result),
       hostIdentityEvidence: structuredClone(result.hostIdentityEvidence),
       observedMilestones: structuredClone(result.milestones),
       processSamples: structuredClone(result.processSamples),
@@ -103,9 +106,12 @@ function writeRunnerEvidence(evidence) {
   return path;
 }
 
-function validate(result, evidence = result.candidateId === failure.candidateId
-  ? failureEvidence : successEvidence,
+function validate(result, evidence = null,
   expectedInvocationId = `${result.candidateId}:fixture-invocation-v1`) {
+  if (evidence === null) {
+    evidence = buildRunnerEvidence(result);
+    attachRunnerEvidence(result, evidence);
+  }
   const evidencePath = writeRunnerEvidence(evidence);
   return spawnSync(process.execPath,
     ["--experimental-strip-types", validatorPath,
@@ -320,7 +326,7 @@ for (const name of Object.keys(zeroReportedObservations.resource)) {
   zeroReportedObservations.resource[name] = 0;
 }
 assertRejected(zeroReportedObservations, /runner evidence/,
-  "candidate-authored zero latency and resource evidence");
+  "candidate-authored zero latency and resource evidence", successEvidence);
 
 const timeout = timedOutBeforeProviderTerminal();
 const timeoutEvidence = buildRunnerEvidence(timeout);
@@ -329,8 +335,10 @@ assertAccepted(timeout, "timeout before provider terminal", timeoutEvidence);
 for (const field of ["retryEvidence", "failureMetadata", "operationalStatus"]) {
   const isolated = structuredClone(timeout);
   isolated[field] = failure[field];
+  const isolatedEvidence = buildRunnerEvidence(isolated);
+  attachRunnerEvidence(isolated, isolatedEvidence);
   assertRejected(isolated, /provider failure evidence does not match observed lifecycle/,
-    `timeout with isolated ${field}`, timeoutEvidence);
+    `timeout with isolated ${field}`, isolatedEvidence);
 }
 const spoolConflictEvidence = suiteRegression.positiveResults.find(
   (result) => result.scenarioId === "runtime-unavailable-spool-recovery",
@@ -435,6 +443,8 @@ const emptyObservationResult = structuredClone(failure);
 emptyObservationResult.latencyEvidence.runs = structuredClone(
   emptyObservationPreparation.scenarios[0].latencyRuns,
 );
+emptyObservationPreparation.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(emptyObservationResult);
 attachRunnerEvidence(emptyObservationResult, emptyObservationPreparation);
 assert.throws(() => validateRunnerEvidence(emptyObservationPreparation, emptyObservationResult,
   fixture, emptyObservationPreparation.invocationId),
@@ -465,6 +475,11 @@ const mismatchedHostIdentityResult = attachRunnerEvidence(
 );
 assertRejected(mismatchedHostIdentityResult, /result observations do not match runner evidence/,
   "candidate copied host identity projection", mismatchedHostIdentity);
+
+const unboundResultObservation = structuredClone(success);
+unboundResultObservation.securityEvidence.payloadBytesSent += 1;
+assert.throws(() => validateRunnerEvidence(successEvidence, unboundResultObservation,
+  fixture, successEvidence.invocationId), /result observation fingerprint/);
 
 const suiteScenarioIds = fixture.scenarios.map((item) => item.scenarioId).sort();
 const suiteCaseIds = [...suiteScenarioIds, fixture.beforeModelNegativeFixture.caseId].sort();

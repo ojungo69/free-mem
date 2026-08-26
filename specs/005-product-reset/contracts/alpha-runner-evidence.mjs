@@ -15,6 +15,14 @@ export function runnerEvidenceFingerprint(evidence) {
     .digest("hex")}`;
 }
 
+export function runnerResultObservationFingerprint(result) {
+  const { runnerEvidenceFingerprint: _runnerEvidenceFingerprint, ...observation } = result;
+  return `sha256:${createHash("sha256")
+    .update("free-mem:alpha-runner-result-observation:v1\0")
+    .update(canonicalizeJson(observation))
+    .digest("hex")}`;
+}
+
 export function readRunnerEvidenceFile(path, evidenceRoot, artifactRoot) {
   const root = realpathSync(resolve(evidenceRoot));
   const artifact = realpathSync(resolve(artifactRoot));
@@ -105,6 +113,9 @@ export function validateRunnerEvidence(evidence, result, fixture, expectedInvoca
   if (!record || record.scenarioId !== result.scenarioId ||
       record.resourceSampleMode !== result.resourceSampleMode) {
     throw new Error("runner evidence does not contain the result scenario");
+  }
+  if (record.resultObservationFingerprint !== runnerResultObservationFingerprint(result)) {
+    throw new Error("result observation fingerprint does not match runner evidence");
   }
   if (!isDeepStrictEqual(record.hostIdentityEvidence, result.hostIdentityEvidence) ||
       !isDeepStrictEqual(record.observedMilestones, result.milestones) ||

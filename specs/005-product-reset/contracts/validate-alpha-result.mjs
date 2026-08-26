@@ -279,6 +279,9 @@ const expectedInjectionBeforeModel = scenario.drainCondition.targetInjectionAckn
   typeof modelDispatchedAt === "number"
   ? injectionAcknowledgedAt < modelDispatchedAt
   : null;
+if (result.injectionBeforeModel !== expectedInjectionBeforeModel) {
+  throw new Error("before-model injection marker does not match observed milestones");
+}
 const expectedHostIdentityEvidence = !exceptionalState &&
   result.scenarioId === fixture.hostIdentityProbe.scenarioId
   ? fixture.hostIdentityProbe.expectedResult
@@ -351,6 +354,9 @@ const countsPass =
   result.counts.pending === (scenario.drainCondition.pendingSummaryJobCount ?? 0) &&
   result.counts.summaryCount === scenario.drainCondition.summaryCount &&
   result.counts.durableMemoryCount === scenario.drainCondition.durableMemoryCount;
+if (!exceptionalState && !countsPass) {
+  throw new Error("scenario counts do not match the pinned lifecycle");
+}
 const tracedItems = result.injectedItems.length + result.omittedItems.length;
 const admittedItems = result.injectedItems.length + result.omittedItems.filter(
   (item) => item.reason === "omitted_budget" || item.reason === "lane_minimum_not_funded",
@@ -403,9 +409,7 @@ if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits)
 }
 const scenarioOraclePass =
   milestonesPass &&
-  countsPass &&
   isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
-  result.injectionBeforeModel === expectedInjectionBeforeModel &&
   (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
   result.providerCostUnits === expectedProviderCostUnits;
 const derivedFailureReason = result.drain.timedOut

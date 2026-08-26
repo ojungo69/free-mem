@@ -149,7 +149,11 @@ Runner-owned latency intervals, cold/warm preparation receipts, full observed li
 process samples, and host-derived identity decisions live in the separately validated
 [`alpha-runner-evidence-v1.schema.json`](alpha-runner-evidence-v1.schema.json) bundle. The result keeps
 inspectable copies and derived aggregates, but the validator derives gates from the bundle and
-requires exact equality. A candidate-authored hash or source label is not evidence. Cold runs require
+requires exact equality. Each case also carries a runner-derived, domain-separated fingerprint of
+the complete schema-validated result observation, excluding only the bundle fingerprint that would
+create a cycle. This binds egress, render, atomicity, and conflict evidence without duplicating
+private payload into the runner bundle. A candidate-authored hash or source label is not evidence.
+Cold runs require
 bundle-global unique opaque data-root, reset-receipt, and process-generation identities plus observed
 zero process and directory-entry counts before measurement. Warm runs require one retained data-root/process
 generation and a ready-process observation.
@@ -173,10 +177,11 @@ signal and provider identity. The current executable validator is deliberately b
 fingerprinted fixture bundle; neither the schema nor validator is a generic fixture-plugin interface.
 Slice 2 and Slice 3 add their own fingerprinted fixture validator, reuse compatible core fields, and
 version-review any new retry family rather than weakening the Slice 1 evidence shape.
-Slice 1 gates only the fixed fixture's final byte/token ceilings and exact attempted/final render
-evidence. Slice 2 owns explicit zero-delivery compilation refusal, admitted-candidate, selected-item,
-lane-allocation, multi-profile, and generic compiler boundary cases; the Slice 1 gate does not claim
-those compiler capabilities are implemented.
+Slice 1 applies the shared safety, latency, resource, and eligibility gates above. It also gates the
+fixed fixture's final byte/token ceilings and exact attempted/final render evidence. Slice 2 owns
+explicit zero-delivery compilation refusal, admitted-candidate, selected-item, lane-allocation,
+multi-profile, and generic compiler boundary cases; the Slice 1 gate does not claim those compiler
+capabilities are implemented.
 The schema owns structure, the jq layer owns fixture-independent record arithmetic and ordering, and
 the executable validator alone derives fixture-oracle matches, thresholds, failure priority, and
 comparison eligibility; consumers do not combine partial verdicts from those layers.

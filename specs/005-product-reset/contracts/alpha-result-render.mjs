@@ -79,6 +79,11 @@ export function validateRenderEvidence(result, scenario, fixture, finalPackExpec
   const attemptedEvidence = result.attemptedRenderEvidence === "same_as_final"
     ? result.finalRenderEvidence
     : result.attemptedRenderEvidence;
+  if (!scenario.drainCondition.targetInjectionAcknowledged &&
+      (attemptedItems.length !== 0 || attemptedEvidence !== null ||
+        result.attemptedRenderedBytes !== 0 || result.attemptedInjectedTokens !== 0)) {
+    throw new Error("attempted render exists without an injection boundary");
+  }
   const attemptedPayload = validateEvidence(
     attemptedEvidence,
     result.attemptedRenderedBytes,
