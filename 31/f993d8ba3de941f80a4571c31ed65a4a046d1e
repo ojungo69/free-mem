@@ -1,0 +1,63 @@
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_e7036270f22862 4
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_67a84d76fcfb47 227-230,392
+  s_9d346c66194a0d::t_a84f6a718825f4 190,192,233-236
+  s_9d346c66194a0d::t_09442d165ba78a 403
+  s_9d346c66194a0d::t_215dd09fd49034 232
+  s_9d346c66194a0d::t_b9f3ebd8886ac8 372,378,384,408-416
+specs/005-product-reset/spec.md
+  s_9d346c66194a0d::t_7dfbe87a95af41 302-306
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_e7036270f22862 54
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_e7036270f22862 8
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_939567eba8151a 52,76-78
+  s_9d346c66194a0d::t_db81f41d20a984 171
+  s_9d346c66194a0d::t_babeef5606029d 180
+  s_9d346c66194a0d::t_4cbb8fcb5a287d 181
+  s_9d346c66194a0d::t_927fe6ba368f35 143-144,158
+  s_9d346c66194a0d::t_f92247a736d32c 182
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_babeef5606029d 121-123,155-158,188-191
+specs/005-product-reset/contracts/alpha-result-v1.schema.json
+  s_9d346c66194a0d::t_b9f3ebd8886ac8 7
+specs/005-product-reset/rollback.md
+  s_9d346c66194a0d::t_7dfbe87a95af41 263,312
+specs/005-product-reset/plan.md
+  s_9d346c66194a0d::t_939567eba8151a 114,128-129
+  s_9d346c66194a0d::t_927fe6ba368f35 102-103
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_e7036270f22862 4
+.github/workflows/ci.yml
+  s_9d346c66194a0d::t_939567eba8151a 62-64
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_9d346c66194a0d::t_875cebb8857a8c 137,140,168-181
+  s_9d346c66194a0d::t_29575934986229 156-161
+  s_9d346c66194a0d::t_4dad0607f6b8b7 71
+  s_9d346c66194a0d::t_9f833500506662 89-103,105,114-123,125-132,134-136,138-139,141-147,167
+  s_9d346c66194a0d::t_3805b0f6d7029b 48,51
+  s_9d346c66194a0d::t_7dbb4f16bc588f 1-40,44-47,49-50,52-70,72-84,86-88,106-113,124,133,148-155,162-165,182-183
+  s_9d346c66194a0d::t_9678ee82d22d1e 104
+  s_9d346c66194a0d::t_28af477e8e9a5a 166
+  s_9d346c66194a0d::t_c405c755a88302 41-43,85
+specs/005-product-reset/issue-routing.md
+  s_9d346c66194a0d::t_babeef5606029d 97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "31f993d8ba3de941f80a4571c31ed65a4a046d1e",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
