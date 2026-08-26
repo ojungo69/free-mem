@@ -243,6 +243,18 @@ const timeoutAfterSelection = timedOutSuccessAt("target_selection_finished");
 const timeoutAfterSelectionEvidence = runnerEvidenceFor(timeoutAfterSelection, successEvidence);
 assertAccepted(timeoutAfterSelection, "timeout after completed selection",
   timeoutAfterSelectionEvidence);
+const postTimeoutMilestone = structuredClone(timeoutAfterSelection);
+postTimeoutMilestone.milestones.find((item) => item.name === "target_selection_started").monotonicMs =
+  31000;
+postTimeoutMilestone.milestones.find((item) => item.name === "target_selection_finished").monotonicMs =
+  31100;
+postTimeoutMilestone.selectionTimingEvidence = {
+  startMonotonicMs: 31000, endMonotonicMs: 31100,
+};
+postTimeoutMilestone.selectionElapsedMs = 100;
+assertRejected(postTimeoutMilestone, /timed-out milestone occurred after the pinned timeout/,
+  "timeout record contained a post-expiration milestone",
+  runnerEvidenceFor(postTimeoutMilestone, successEvidence));
 const erasedSelection = structuredClone(timeoutAfterSelection);
 for (const name of ["inputCandidates", "tracedCandidates", "deadlineUnprocessed",
   "admittedCandidates", "selectedItems"]) erasedSelection.counts[name] = 0;
@@ -298,7 +310,8 @@ assertFixtureRejected(injectedForbiddenFact,
 const inconsistentRevisionIdentity = structuredClone(fixture);
 const revisionItems = inconsistentRevisionIdentity.scenarios[0].expectedInjectedItems;
 revisionItems[1].lineageId = revisionItems[0].lineageId;
+revisionItems[1].revisionOrdinal = revisionItems[0].revisionOrdinal + 1;
 assertFixtureRejected(inconsistentRevisionIdentity,
-  "fixture semantics accepted two revisions for one lineage ordinal");
+  "fixture semantics accepted two active revisions for one lineage");
 
 console.log("Alpha result failed-record invariant checks passed.");

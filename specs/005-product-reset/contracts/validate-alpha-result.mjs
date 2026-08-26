@@ -254,6 +254,7 @@ if (
   throw new Error("completed drain reached or exceeded the pinned timeout");
 }
 const lastObservationTime = result.processSamples.at(-1)?.monotonicMs;
+if (result.drain.timedOut && typeof drainStartTime === "number" && result.milestones.some((item) => item.monotonicMs > drainStartTime + scenario.drainCondition.timeoutMs)) throw new Error("timed-out milestone occurred after the pinned timeout");
 if (
   result.drain.timedOut &&
   (typeof drainStartTime !== "number" ||
@@ -420,8 +421,7 @@ const expectedProviderCostUnits = ["fixture", "local_zero"].includes(activeSumma
 if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits) {
   throw new Error("provider cost does not match the pinned provider cost class");
 }
-const scenarioOraclePass = !scenario.drainCondition.targetInjectionAcknowledged ||
-  expectedInjectionBeforeModel === true;
+const scenarioOraclePass = !scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true;
 const derivedFailureReason = result.drain.timedOut
   ? "drain_timed_out"
   : selectionDeadlineExceeded

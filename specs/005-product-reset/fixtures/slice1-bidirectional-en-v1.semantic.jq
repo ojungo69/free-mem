@@ -87,7 +87,9 @@ def expected_item_key:
 def revision_identity_ok($scenario):
   ([ $scenario.expectedInjectedItems[], $scenario.expectedOmissions[] ]) as $items
   | ([ $items[] | select(.reason? != "duplicate_revision") ]) as $normal
-  | ([ $normal[] | [.lineageId, .revisionId, .revisionOrdinal] | @json ]
+  | ([ $scenario.expectedInjectedItems[].lineageId ]
+      | length == (unique | length))
+    and ([ $normal[] | [.lineageId, .revisionId, .revisionOrdinal] | @json ]
       | length == (unique | length))
     and all($normal[];
       . as $item
