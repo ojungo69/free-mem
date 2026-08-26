@@ -112,11 +112,15 @@ def fixture_graph_ok($root):
   and all($root.samplingProtocol.metrics.warmInjectionP95Ms.scenarios[];
     . as $scenarioId
     | any($root.scenarios[];
-        .scenarioId == $scenarioId and .resourceSampleMode == "warm"))
+        .scenarioId == $scenarioId and .resourceSampleMode == "warm"
+        and .drainCondition.targetInjectionAcknowledged
+        and (.expectedInjectedItems | length) > 0))
   and all($root.samplingProtocol.metrics.shortColdLexicalInjectionMs.scenarios[];
     . as $scenarioId
     | any($root.scenarios[];
-        .scenarioId == $scenarioId and .resourceSampleMode == "cold"))
+        .scenarioId == $scenarioId and .resourceSampleMode == "cold"
+        and .drainCondition.targetInjectionAcknowledged
+        and (.expectedInjectedItems | length) > 0))
   and all($root.samplingProtocol.metrics[].scenarios[];
     . as $scenarioId
     | ($scenarioIds | index($scenarioId)) != null)

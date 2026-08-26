@@ -73,6 +73,20 @@ for (const [metricName, invalidScenarioId] of [["warmInjectionP95Ms", "claude-to
     `fixture semantics accepted ${metricName} with the wrong reset mode`);
 }
 
+const nonInjectionWarmMetric = structuredClone(fixture);
+nonInjectionWarmMetric.samplingProtocol.metrics.warmInjectionP95Ms.scenarios.push(
+  "credentialless-http-activation-rejected",
+);
+assertFixtureRejected(nonInjectionWarmMetric,
+  "fixture semantics accepted a warm injection metric without an injection lifecycle");
+
+const emptyInjectionWarmMetric = structuredClone(fixture);
+emptyInjectionWarmMetric.samplingProtocol.metrics.warmInjectionP95Ms.scenarios.push(
+  "incompatible-scope-injection-rejected",
+);
+assertFixtureRejected(emptyInjectionWarmMetric,
+  "fixture semantics accepted a warm injection metric without injected items");
+
 const unsupportedPercentileMethod = structuredClone(fixture);
 unsupportedPercentileMethod.samplingProtocol.percentileMethod = "linear_interpolation";
 assertFixtureRejected(unsupportedPercentileMethod,
