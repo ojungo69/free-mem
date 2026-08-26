@@ -28,7 +28,7 @@ const suiteRegressionEvidence = JSON.parse(readFileSync(join(contractDir,
   "../fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
 const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evidence-"));
 let runnerEvidenceOrdinal = 0;
-process.on("exit", () => rmSync(runnerEvidenceRoot, { recursive: true }));
+process.on("exit", () => rmSync(runnerEvidenceRoot, { recursive: true, force: true }));
 
 function buildRunnerEvidence(result) {
   const latencyRuns = structuredClone(result.latencyEvidence.runs);

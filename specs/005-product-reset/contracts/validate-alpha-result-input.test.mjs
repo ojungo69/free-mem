@@ -31,8 +31,8 @@ const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evi
 const suiteResultRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-suite-results-"));
 let runnerEvidenceOrdinal = 0;
 process.on("exit", () => {
-  rmSync(runnerEvidenceRoot, { recursive: true });
-  rmSync(suiteResultRoot, { recursive: true });
+  rmSync(runnerEvidenceRoot, { recursive: true, force: true });
+  rmSync(suiteResultRoot, { recursive: true, force: true });
 });
 
 function writeRunnerEvidence(evidence) {

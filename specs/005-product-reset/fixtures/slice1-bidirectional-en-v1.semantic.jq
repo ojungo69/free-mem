@@ -449,8 +449,9 @@ def bidirectional_ok($root):
     (["claude-code->codex", "codex->claude-code"] | sort)
   and all($flows[];
     $root.lifecycleProfiles[.lifecycleProfileId] as $milestones
-    | ($milestones | index("target_first_prompt_submitted_before_model")) <
-      ($milestones | index("source_summary_committed")))
+    | ($milestones | index("target_first_prompt_submitted_before_model")) as $prompt
+    | ($milestones | index("source_summary_committed")) as $summary
+    | $prompt != null and $summary != null and $prompt < $summary)
   and any($flows[];
     . as $flow
     | any($flow.expectedInjectedItems[] | select(.memoryKind == "failed_approach");
@@ -861,10 +862,10 @@ def derived_sensitivity_security_ok($root):
       $root.effectiveConfiguration.configurationFingerprint
     and $root.localDerivationManifest.summaryProvider.executionLocation == "local"
     and $root.localDerivationManifest.summaryProvider.validationState == "valid"
-    and ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
-      | index("validated_local_manifest_activated")) <
-      ($root.lifecycleProfiles[$scenario.lifecycleProfileId]
-      | index("local_provider_derived_memory"))
+    and ($root.lifecycleProfiles[$scenario.lifecycleProfileId] as $milestones
+      | ($milestones | index("validated_local_manifest_activated")) as $activation
+      | ($milestones | index("local_provider_derived_memory")) as $derivation
+      | $activation != null and $derivation != null and $activation < $derivation)
     and $destinationPolicy.executionLocation == "remote"
     and all($scenario.events[]; .sensitivity == "local_only")
     and all($items[]; .sensitivity == "local_only")

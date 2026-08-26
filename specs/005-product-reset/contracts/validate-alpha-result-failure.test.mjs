@@ -24,7 +24,7 @@ const successEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-eviden
 const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.suite-regression.json"), "utf8"));
 const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
 const evidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-failure-evidence-"));
-process.on("exit", () => rmSync(evidenceRoot, { recursive: true }));
+process.on("exit", () => rmSync(evidenceRoot, { recursive: true, force: true }));
 let ordinal = 0;
 const scenarioFor = (id) => fixture.scenarios.find((item) => item.scenarioId === id);
 const suiteResultFor = (id) => structuredClone(suiteRegression.positiveResults.find((item) => item.scenarioId === id));
@@ -521,6 +521,12 @@ missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush =
   );
 assertFixtureRejected(missingRetrievalMilestone,
   "fixture semantics accepted a selection lifecycle without retrieval");
+
+for (const [profileId, milestone] of [["bidirectional_prompt_flush", "target_first_prompt_submitted_before_model"], ["derived_sensitivity_rejection", "validated_local_manifest_activated"]]) {
+  const missingOrderedMilestone = structuredClone(fixture);
+  missingOrderedMilestone.lifecycleProfiles[profileId] = missingOrderedMilestone.lifecycleProfiles[profileId].filter((name) => name !== milestone);
+  assertFixtureRejected(missingOrderedMilestone, `fixture semantics accepted missing ${milestone}`);
+}
 
 const injectedForbiddenFact = structuredClone(fixture);
 const injectedForbiddenScenario = injectedForbiddenFact.scenarios[0];
