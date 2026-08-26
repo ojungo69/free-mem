@@ -298,7 +298,7 @@ if (!isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) ||
   throw new Error("provider failure evidence does not match observed lifecycle");
 }
 const conflictProbe = scenario.fault?.identityConflictProbe;
-const expectedIdentityConflictEvidence = conflictProbe
+const expectedIdentityConflictEvidence = conflictProbe && drainTerminalObserved
   ? {
       eventId: conflictProbe.eventId,
       payloadDigestVersion: conflictProbe.payloadDigestVersion,
@@ -313,6 +313,9 @@ const expectedIdentityConflictEvidence = conflictProbe
       durableMemoryDelta: conflictProbe.durableMemoryDelta,
     }
   : null;
+if (!isDeepStrictEqual(result.identityConflictEvidence, expectedIdentityConflictEvidence)) {
+  throw new Error("identity conflict evidence does not match observed lifecycle");
+}
 assertRetryEvidenceConsistent(result);
 
 const matchingPositions = (actual, expected) =>
@@ -404,8 +407,7 @@ const scenarioOraclePass =
   isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
   result.injectionBeforeModel === expectedInjectionBeforeModel &&
   (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
-  result.providerCostUnits === expectedProviderCostUnits &&
-  isDeepStrictEqual(result.identityConflictEvidence, expectedIdentityConflictEvidence);
+  result.providerCostUnits === expectedProviderCostUnits;
 const derivedFailureReason = result.drain.timedOut
   ? "drain_timed_out"
   : selectionDeadlineExceeded

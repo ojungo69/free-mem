@@ -83,6 +83,7 @@ function buildRunnerEvidence(result) {
       resourceObserverId: "fixture-pinned-resource-observer-v1",
       processTreeRootId: `${result.scenarioId}:process-tree-root`,
       resourceDataRootId: `${result.scenarioId}:resource-data-root`,
+      hostIdentityEvidence: structuredClone(result.hostIdentityEvidence),
       observedMilestones: structuredClone(result.milestones),
       processSamples: structuredClone(result.processSamples),
       latencyRuns,
@@ -336,6 +337,16 @@ for (const field of ["retryEvidence", "failureMetadata", "operationalStatus"]) {
   assertRejected(isolated, /provider failure evidence does not match observed lifecycle/,
     `timeout with isolated ${field}`, timeoutEvidence);
 }
+const spoolConflictEvidence = suiteRegression.positiveResults.find(
+  (result) => result.scenarioId === "runtime-unavailable-spool-recovery",
+).identityConflictEvidence;
+const timeoutWithConflictEvidence = structuredClone(timeout);
+timeoutWithConflictEvidence.identityConflictEvidence = structuredClone(spoolConflictEvidence);
+const timeoutWithConflictRunnerEvidence = buildRunnerEvidence(timeoutWithConflictEvidence);
+attachRunnerEvidence(timeoutWithConflictEvidence, timeoutWithConflictRunnerEvidence);
+assertRejected(timeoutWithConflictEvidence,
+  /identity conflict evidence does not match observed lifecycle/,
+  "timeout claimed an unobserved identity conflict", timeoutWithConflictRunnerEvidence);
 
 const beforeBoundary = completedAtBoundary(29999);
 const beforeBoundaryEvidence = buildRunnerEvidence(beforeBoundary);
@@ -450,6 +461,15 @@ const replayedInvocationResult = attachRunnerEvidence(
 assertRejected(replayedInvocationResult, /runner evidence identity does not match the result/,
   "runner evidence invocation replay", replayedInvocation,
   successEvidence.invocationId);
+
+const mismatchedHostIdentity = structuredClone(successEvidence);
+mismatchedHostIdentity.scenarios[0].hostIdentityEvidence.effectiveIdentity.sessionId =
+  "host-observed-other-session";
+const mismatchedHostIdentityResult = attachRunnerEvidence(
+  structuredClone(success), mismatchedHostIdentity,
+);
+assertRejected(mismatchedHostIdentityResult, /result observations do not match runner evidence/,
+  "candidate copied host identity projection", mismatchedHostIdentity);
 
 const suiteScenarioIds = fixture.scenarios.map((item) => item.scenarioId).sort();
 const suiteCaseIds = [...suiteScenarioIds, fixture.beforeModelNegativeFixture.caseId].sort();

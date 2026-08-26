@@ -106,7 +106,8 @@ export function validateRunnerEvidence(evidence, result, fixture, expectedInvoca
       record.resourceSampleMode !== result.resourceSampleMode) {
     throw new Error("runner evidence does not contain the result scenario");
   }
-  if (!isDeepStrictEqual(record.observedMilestones, result.milestones) ||
+  if (!isDeepStrictEqual(record.hostIdentityEvidence, result.hostIdentityEvidence) ||
+      !isDeepStrictEqual(record.observedMilestones, result.milestones) ||
       !isDeepStrictEqual(record.processSamples, result.processSamples) ||
       !isDeepStrictEqual(record.latencyRuns, result.latencyEvidence.runs)) {
     throw new Error("result observations do not match runner evidence");

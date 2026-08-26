@@ -348,6 +348,7 @@ in suite mode.
 
 - runner-owned latency interval endpoints and full observed lifecycle milestones
 - runner-owned process, RSS, queue, and storage samples
+- runner-owned effective Agent/repository/session identity and caller-claim authorization decisions
 - bundle-global unique per-run preparation receipts with path-free ASCII opaque data-directory and
   process-generation identities, observed after the prior run and before the current run
 - cold-reset observations proving zero prior product processes and an empty data directory

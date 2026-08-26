@@ -100,8 +100,8 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
   target-model-dispatch milestones; otherwise null
 - a fixed negative fixture that gives injection acknowledgment and model dispatch the same
   monotonic time, sets the marker false, and requires a non-eligible `scenario_oracle_mismatch`
-- host-observed Agent/repository/session identity plus three single-field caller-claim mismatch
-  decisions; caller claims authorize zero persistence or injection
+- runner-bound host-observed Agent/repository/session identity plus three single-field caller-claim
+  mismatch decisions; caller claims authorize zero persistence or injection
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
 - observed retry signal delivery, consumed/ignored signal identities, provider-attempt/outcome,
   budget transitions, state, and the exact recovered durable output when applicable
@@ -145,8 +145,8 @@ The authoritative format is
 [`validate-alpha-result.mjs`](validate-alpha-result.mjs). Runner-specific records are not comparable
 until this canonical validator exits 0.
 
-Runner-owned latency intervals, cold/warm preparation receipts, full observed lifecycle milestones, and
-process samples live in the separately validated
+Runner-owned latency intervals, cold/warm preparation receipts, full observed lifecycle milestones,
+process samples, and host-derived identity decisions live in the separately validated
 [`alpha-runner-evidence-v1.schema.json`](alpha-runner-evidence-v1.schema.json) bundle. The result keeps
 inspectable copies and derived aggregates, but the validator derives gates from the bundle and
 requires exact equality. A candidate-authored hash or source label is not evidence. Cold runs require
