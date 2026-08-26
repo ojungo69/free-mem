@@ -202,7 +202,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T18:39:44+09:00
+## Validation result — 2026-08-26T18:51:39+09:00
 
 | Check | Result |
 |---|---|

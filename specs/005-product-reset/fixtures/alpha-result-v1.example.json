@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:93adfbb9f4326f2f255c6afcbda013e46f1e8306f736a036204f2c7f4ddba984",
+  "fixtureFingerprint": "sha256:2f3fb7ae92cf10449c6630716ba6ecbee8bdfbb700f0d013b4fa24f88e5fef8b",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "runnerEvidenceCaseId": "claude-to-codex",
@@ -49,7 +49,7 @@
     "contentSha256": "sha256:3aa4a5decdf2adc0fa88aefec50badd7484d867eb094d7cfe60797b73ddbd259"
   },
   "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
-  "runnerEvidenceFingerprint": "sha256:affa931c2aad2318101a960f63542d65a91852c298aa81f802ff020e356e9c36",
+  "runnerEvidenceFingerprint": "sha256:db8bd0608627aa69648fecfd47e5a1e852ee0a60e540b2f32174939e1734f6ac",
   "drain": {
     "drainConditionId": "slice1-claude-to-codex-visible-v1",
     "status": "completed",

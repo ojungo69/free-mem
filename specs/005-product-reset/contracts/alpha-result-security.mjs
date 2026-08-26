@@ -63,11 +63,8 @@ function evaluateProviderEvidence(result, scenario, activeSummaryProvider, excep
     observedEvents.some((event) => event.sensitivity === "eligible") &&
     !Object.hasOwn(stub, "policyRejectedReason");
   const expectedRequests = remoteExpected ? (scenario.fault?.attemptsUntilExhausted ?? 1) : 0;
-  const observedRequests = result.securityEvidence.remoteProviderRequestCount;
-  const observedPayloads = result.securityEvidence.remoteProviderPayloadCount;
-  const providerAttemptObserved = result.milestones.some(
-    (milestone) => milestone.name === "source_flush_requested_by_target_prompt",
-  );
+  const observedRequests = result.securityEvidence.remoteProviderRequestCount, observedPayloads = result.securityEvidence.remoteProviderPayloadCount;
+  const providerAttemptObserved = result.milestones.some((milestone) => milestone.name === "source_flush_requested_by_target_prompt");
   if (result.drain.timedOut && !providerAttemptObserved &&
       (observedRequests !== 0 || observedPayloads !== 0 ||
         result.securityEvidence.credentialBytesSent !== 0 ||
