@@ -23,6 +23,18 @@ function observedScenarioEvents(result, scenario) {
     : scenario.events;
 }
 
+function assertNoEgressBeforeProviderAttempt(result, observedRequests, observedPayloads) {
+  const attemptObserved = result.milestones.some(
+    (milestone) => milestone.name === "source_flush_requested_by_target_prompt",
+  );
+  if (result.drain.timedOut && !attemptObserved &&
+      (observedRequests !== 0 || observedPayloads !== 0 ||
+        result.securityEvidence.credentialBytesSent !== 0 ||
+        result.securityEvidence.payloadBytesSent !== 0)) {
+    throw new Error("provider egress exists before the observed attempt boundary");
+  }
+}
+
 function evaluateDenominators(result, scenario, activeSummaryProvider, expectedDuplicateDeliveries, oracle) {
   const observedEvents = observedScenarioEvents(result, scenario);
   const remoteEvents = activeSummaryProvider.executionLocation === "remote" ? observedEvents : [];
@@ -64,13 +76,7 @@ function evaluateProviderEvidence(result, scenario, activeSummaryProvider, excep
     !Object.hasOwn(stub, "policyRejectedReason");
   const expectedRequests = remoteExpected ? (scenario.fault?.attemptsUntilExhausted ?? 1) : 0;
   const observedRequests = result.securityEvidence.remoteProviderRequestCount, observedPayloads = result.securityEvidence.remoteProviderPayloadCount;
-  const providerAttemptObserved = result.milestones.some((milestone) => milestone.name === "source_flush_requested_by_target_prompt");
-  if (result.drain.timedOut && !providerAttemptObserved &&
-      (observedRequests !== 0 || observedPayloads !== 0 ||
-        result.securityEvidence.credentialBytesSent !== 0 ||
-        result.securityEvidence.payloadBytesSent !== 0)) {
-    throw new Error("provider egress exists before the observed attempt boundary");
-  }
+  assertNoEgressBeforeProviderAttempt(result, observedRequests, observedPayloads);
   const denominatorsPositive = result.securityDenominators.consideredRemoteProviderEventCount > 0 &&
     result.securityDenominators.consideredEligibleEventCount > 0;
   const completionMilestone = scenario.providerTransmissionOracle.completionMilestone;
