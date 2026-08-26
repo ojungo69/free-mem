@@ -68,7 +68,7 @@ accepted -> spooled -> processing -> committed
 processing -> failed -> processing
 failed -> retry-exhausted
 retry-exhausted -> processing
-accepted|processing -> quarantined
+accepted|spooled|processing -> quarantined
 ```
 
 `retryBudgetRemaining` counts attempts that may still be started and is decremented atomically

@@ -28,6 +28,14 @@ process.on("exit", () => rmSync(evidenceRoot, { recursive: true }));
 let ordinal = 0;
 const scenarioFor = (id) => fixture.scenarios.find((item) => item.scenarioId === id);
 const suiteResultFor = (id) => structuredClone(suiteRegression.positiveResults.find((item) => item.scenarioId === id));
+const successScenario = scenarioFor(success.scenarioId);
+const zeroSuccessQuality = () => ({
+  expectedInjectedItemCount: successScenario.expectedInjectedItems.length,
+  matchedInjectedItemCount: 0,
+  expectedOmissionCount: successScenario.expectedOmissions.length,
+  matchedOmissionCount: 0,
+  forbiddenFactCount: 0,
+});
 
 function validate(result, evidenceTemplate = failureEvidence) {
   const evidence = structuredClone(evidenceTemplate);
@@ -163,6 +171,7 @@ assertRejected(delayedFirstMeasurement, /runner preparation evidence does not ma
 function timedOutSuccessAt(lastMilestone) {
   const result = structuredClone(success);
   const lastIndex = result.milestones.findIndex((item) => item.name === lastMilestone);
+  assert.notEqual(lastIndex, -1, "success fixture does not contain its requested milestone");
   result.milestones = result.milestones.slice(0, lastIndex + 1);
   result.drain = { ...result.drain, status: "timed_out", timedOut: true };
   result.disposition = {
@@ -198,10 +207,7 @@ function clearUnobservedSelection(result) {
   result.selectionTimingEvidence = null;
   result.selectionElapsedMs = 0;
   result.packDegradations = [];
-  result.quality = {
-    expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
-    expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
-  };
+  result.quality = zeroSuccessQuality();
 }
 
 const timeoutBeforePersistence = timedOutSuccessAt("source_flush_requested_by_target_prompt");
@@ -230,7 +236,6 @@ assertRejected(timeoutBeforeProviderAttempt, /provider egress exists before the 
   runnerEvidenceFor(timeoutBeforeProviderAttempt, successEvidence));
 
 const earlyAttemptedRender = structuredClone(timeoutBeforePersistence);
-const successScenario = fixture.scenarios.find((item) => item.scenarioId === success.scenarioId);
 function bindFinalRender(result, scenario) {
   const payload = canonicalizeJson(
     buildRenderPayload(result, scenario, fixture, result.injectedItems, result.packId),
@@ -296,10 +301,7 @@ for (const name of ["inputCandidates", "tracedCandidates", "deadlineUnprocessed"
 erasedSelection.injectedItems = [];
 erasedSelection.omittedItems = [];
 erasedSelection.attemptedItems = [];
-erasedSelection.quality = {
-  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
-  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
-};
+erasedSelection.quality = zeroSuccessQuality();
 assertRejected(erasedSelection, /completed selection input count does not match the scenario/,
   "timeout erased an observed completed selection", timeoutAfterSelectionEvidence);
 
@@ -332,10 +334,7 @@ function markDeadlineFailure(result) {
   result.finalRenderEvidence = null;
   result.renderedBytes = 0;
   result.injectedTokens = 0;
-  result.quality = {
-    expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
-    expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
-  };
+  result.quality = zeroSuccessQuality();
   result.disposition = {
     state: "failed", reason: "selection_deadline_exceeded", successfulComparisonEligible: false,
   };
@@ -467,10 +466,7 @@ const { selectionReason: _selectionReason, ...deadlineOmission } = success.injec
 unsupportedDeadlineOmission.omittedItems = [{ ...deadlineOmission, reason: "candidate_limit" }];
 unsupportedDeadlineOmission.counts.tracedCandidates = 1;
 unsupportedDeadlineOmission.counts.deadlineUnprocessed = 3;
-unsupportedDeadlineOmission.quality = {
-  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
-  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
-};
+unsupportedDeadlineOmission.quality = zeroSuccessQuality();
 assertRejected(unsupportedDeadlineOmission, /omission reason outside the Slice 1 contract/,
   "deadline failure used a Slice 2 omission reason",
   runnerEvidenceFor(unsupportedDeadlineOmission, successEvidence));
@@ -511,10 +507,7 @@ oversizedDeadlineAttempt.attemptedRenderEvidence = {
 oversizedDeadlineAttempt.attemptedRenderedBytes = Buffer.byteLength(oversizedAttemptPayload, "utf8");
 oversizedDeadlineAttempt.attemptedInjectedTokens =
   oversizedDeadlineAttempt.attemptedRenderEvidence.tokenIds.length;
-oversizedDeadlineAttempt.quality = {
-  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
-  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
-};
+oversizedDeadlineAttempt.quality = zeroSuccessQuality();
 assert.ok(oversizedDeadlineAttempt.attemptedRenderedBytes >
   fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxRenderedBytes);
 assertRejected(oversizedDeadlineAttempt, /oversized attempted InjectionPack has no valid final output/,
