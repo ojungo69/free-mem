@@ -355,6 +355,7 @@ in suite mode.
   process-generation identities, observed after the prior run and within one pinned process-sample
   interval before the current run
 - cold-reset observations proving zero prior product processes and an empty data directory
+- first cold-run measurement observed within one pinned process-sample interval after run start
 - warm observations proving one retained ready data directory and process generation
 
 The result record carries only the bundle fingerprint plus inspectable copies and aggregates. Those

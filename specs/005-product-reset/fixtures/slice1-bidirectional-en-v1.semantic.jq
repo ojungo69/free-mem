@@ -362,6 +362,10 @@ def common_scenarios_ok($root):
         | length == (unique | length))
       and ([ .expectedInjectedItems[].fact ] | length == (unique | length))
       and ([ .expectedOmissions[].fact ] | length == (unique | length))
+      and all($scenario.forbiddenFacts[];
+        . as $forbidden
+        | all($scenario.expectedInjectedItems[];
+          (.fact | contains($forbidden)) | not))
       and all(.expectedInjectedItems[];
         (.sourceLane == "exact_session" or .sourceLane == "lexical")
         and .selectionReason == .sourceLane)

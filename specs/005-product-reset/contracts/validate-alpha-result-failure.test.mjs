@@ -15,6 +15,7 @@ const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
 const validatorPath = join(contractDir, "validate-alpha-result.mjs");
 const fixtureRoot = join(contractDir, "../fixtures");
+const fixtureSemanticPath = join(fixtureRoot, "slice1-bidirectional-en-v1.semantic.jq");
 const fixture = JSON.parse(readFileSync(join(fixtureRoot,
   "slice1-bidirectional-en-v1.json"), "utf8"));
 const failure = JSON.parse(readFileSync(join(fixtureRoot,
@@ -68,6 +69,15 @@ function runnerEvidenceFor(result, template) {
   return evidence;
 }
 
+function assertFixtureRejected(mutant, label) {
+  const run = spawnSync("jq", ["-e", "-f", fixtureSemanticPath], {
+    input: JSON.stringify(mutant), encoding: "utf8",
+  });
+  assert.equal(run.error, undefined, `${label}: jq did not start`);
+  assert.equal(typeof run.status, "number", `${label}: jq did not report an exit status`);
+  assert.notEqual(run.status, 0, label);
+}
+
 const unobservedInjectionClaim = structuredClone(failure);
 unobservedInjectionClaim.injectionBeforeModel = true;
 assertRejected(unobservedInjectionClaim, /before-model injection marker/,
@@ -96,7 +106,7 @@ skippedInjectionRender.attemptedRenderEvidence = {
 skippedInjectionRender.attemptedRenderedBytes = Buffer.byteLength(payload, "utf8");
 skippedInjectionRender.attemptedInjectedTokens =
   skippedInjectionRender.attemptedRenderEvidence.tokenIds.length;
-assertRejected(skippedInjectionRender, /attempted render exists without an injection boundary/,
+assertRejected(skippedInjectionRender, /attempted render exists without an observed selection boundary/,
   "skipped injection claimed an attempted render");
 
 const fabricatedDegradation = structuredClone(failure);
@@ -136,6 +146,21 @@ stalePreparation.observedAtMonotonicMs = stalePreparation.runStartedMonotonicMs 
 assertRejected(structuredClone(success), /runner preparation evidence does not match latency runs/,
   "cold reset proof was stale before measurement", stalePreparationEvidence);
 
+const delayedFirstMeasurement = structuredClone(success);
+const delayedFirstMeasurementEvidence = structuredClone(successEvidence);
+for (const run of [delayedFirstMeasurement.latencyEvidence.runs[0],
+  delayedFirstMeasurementEvidence.scenarios[0].latencyRuns[0]]) {
+  for (const timing of run.captureTimings) {
+    timing.startMonotonicMs += 1000;
+    timing.endMonotonicMs += 1000;
+  }
+  run.coldLexicalInjectionTiming.startMonotonicMs += 1000;
+  run.coldLexicalInjectionTiming.endMonotonicMs += 1000;
+}
+delayedFirstMeasurementEvidence.scenarios[0].runPreparations[0].runFinishedMonotonicMs += 1000;
+assertRejected(delayedFirstMeasurement, /runner preparation evidence does not match latency runs/,
+  "first measurement was delayed after cold reset", delayedFirstMeasurementEvidence);
+
 function timedOutSuccessAt(lastMilestone) {
   const result = structuredClone(success);
   const lastIndex = result.milestones.findIndex((item) => item.name === lastMilestone);
@@ -160,24 +185,59 @@ function timedOutSuccessAt(lastMilestone) {
   return result;
 }
 
+function clearUnobservedSelection(result) {
+  for (const name of ["inputCandidates", "tracedCandidates", "deadlineUnprocessed",
+    "admittedCandidates", "selectedItems"]) result.counts[name] = 0;
+  result.counts.summaryCount = 0;
+  result.counts.durableMemoryCount = 0;
+  result.injectedItems = [];
+  result.omittedItems = [];
+  result.attemptedItems = [];
+  result.attemptedRenderEvidence = null;
+  result.selectionTimingEvidence = null;
+  result.selectionElapsedMs = 0;
+  result.packDegradations = [];
+  result.quality = {
+    expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
+    expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
+  };
+}
+
 const timeoutBeforePersistence = timedOutSuccessAt("source_flush_requested_by_target_prompt");
-for (const name of ["inputCandidates", "tracedCandidates", "deadlineUnprocessed",
-  "admittedCandidates", "selectedItems"]) timeoutBeforePersistence.counts[name] = 0;
-timeoutBeforePersistence.counts.summaryCount = 0;
-timeoutBeforePersistence.counts.durableMemoryCount = 0;
-timeoutBeforePersistence.injectedItems = [];
-timeoutBeforePersistence.omittedItems = [];
-timeoutBeforePersistence.attemptedItems = [];
-timeoutBeforePersistence.attemptedRenderEvidence = null;
-timeoutBeforePersistence.selectionTimingEvidence = null;
-timeoutBeforePersistence.selectionElapsedMs = 0;
-timeoutBeforePersistence.packDegradations = [];
-timeoutBeforePersistence.quality = {
-  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
-  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
-};
+clearUnobservedSelection(timeoutBeforePersistence);
 assertAccepted(timeoutBeforePersistence, "timeout before persistence commit",
   runnerEvidenceFor(timeoutBeforePersistence, successEvidence));
+
+const timeoutBeforeCapture = timedOutSuccessAt("source_session_started");
+clearUnobservedSelection(timeoutBeforeCapture);
+timeoutBeforeCapture.counts.captured = 0;
+timeoutBeforeCapture.counts.committed = 0;
+timeoutBeforeCapture.securityDenominators = {
+  ...Object.fromEntries(Object.keys(timeoutBeforeCapture.securityDenominators)
+    .map((name) => [name, 0])),
+  agentOperationCount: 1,
+};
+for (const name of Object.keys(timeoutBeforeCapture.securityEvidence))
+  timeoutBeforeCapture.securityEvidence[name] = 0;
+assertAccepted(timeoutBeforeCapture, "timeout before event capture",
+  runnerEvidenceFor(timeoutBeforeCapture, successEvidence));
+
+const earlyAttemptedRender = structuredClone(timeoutBeforePersistence);
+const successScenario = fixture.scenarios.find((item) => item.scenarioId === success.scenarioId);
+const earlyPayload = canonicalizeJson(
+  buildRenderPayload(earlyAttemptedRender, successScenario, fixture, [], null),
+);
+earlyAttemptedRender.attemptedRenderEvidence = {
+  rendererId: "alpha-jcs-renderer-v1", utf8Payload: earlyPayload,
+  tokenizerId: "deterministic-fixture-tokenizer-v1", tokenizerRevision: "1",
+  tokenIds: tokenizeRenderPayload(earlyPayload),
+};
+earlyAttemptedRender.attemptedRenderedBytes = Buffer.byteLength(earlyPayload, "utf8");
+earlyAttemptedRender.attemptedInjectedTokens =
+  earlyAttemptedRender.attemptedRenderEvidence.tokenIds.length;
+assertRejected(earlyAttemptedRender, /attempted render exists without an observed selection boundary/,
+  "timeout before selection claimed an attempted render",
+  runnerEvidenceFor(earlyAttemptedRender, successEvidence));
 
 const timeoutAfterSelection = timedOutSuccessAt("target_selection_finished");
 const timeoutAfterSelectionEvidence = runnerEvidenceFor(timeoutAfterSelection, successEvidence);
@@ -195,5 +255,44 @@ erasedSelection.quality = {
 };
 assertRejected(erasedSelection, /completed selection does not match the pinned item trace/,
   "timeout erased an observed completed selection", timeoutAfterSelectionEvidence);
+
+const deadlineExceeded = structuredClone(success);
+deadlineExceeded.counts.tracedCandidates = 0;
+deadlineExceeded.counts.deadlineUnprocessed = deadlineExceeded.counts.inputCandidates;
+deadlineExceeded.counts.admittedCandidates = 0;
+deadlineExceeded.counts.selectedItems = 0;
+deadlineExceeded.injectedItems = [];
+deadlineExceeded.omittedItems = [];
+deadlineExceeded.attemptedItems = [];
+deadlineExceeded.attemptedRenderEvidence = null;
+deadlineExceeded.attemptedRenderedBytes = 0;
+deadlineExceeded.attemptedInjectedTokens = 0;
+deadlineExceeded.packId = null;
+deadlineExceeded.finalRenderEvidence = null;
+deadlineExceeded.renderedBytes = 0;
+deadlineExceeded.injectedTokens = 0;
+deadlineExceeded.quality = {
+  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
+  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
+};
+deadlineExceeded.disposition = {
+  state: "failed", reason: "selection_deadline_exceeded", successfulComparisonEligible: false,
+};
+assertAccepted(deadlineExceeded, "completed selection deadline failure",
+  runnerEvidenceFor(deadlineExceeded, successEvidence));
+
+const missingRetrievalMilestone = structuredClone(fixture);
+missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush =
+  missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush.filter(
+    (name) => name !== "target_retrieval_requested",
+  );
+assertFixtureRejected(missingRetrievalMilestone,
+  "fixture semantics accepted a selection lifecycle without retrieval");
+
+const injectedForbiddenFact = structuredClone(fixture);
+const injectedForbiddenScenario = injectedForbiddenFact.scenarios[0];
+injectedForbiddenScenario.forbiddenFacts[0] = injectedForbiddenScenario.expectedInjectedItems[0].fact;
+assertFixtureRejected(injectedForbiddenFact,
+  "fixture semantics accepted an injected forbidden fact");
 
 console.log("Alpha result failed-record invariant checks passed.");

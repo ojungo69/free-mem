@@ -155,8 +155,9 @@ create a cycle. This binds egress, render, atomicity, and conflict evidence with
 private payload into the runner bundle. A candidate-authored hash or source label is not evidence.
 Cold runs require bundle-global unique opaque data-root, reset-receipt, and process-generation
 identities plus observed zero process and directory-entry counts within one pinned process-sample
-interval before measurement. Warm runs require one retained data-root/process generation and a
-fresh ready-process observation.
+interval before measurement; the first cold observation must also begin within that interval after
+the declared run start. Warm runs require one retained data-root/process generation and a fresh
+ready-process observation.
 The late-injection negative is a runner-generated fixture projection, not an independent benchmark
 run. It has its own runner-evidence `caseId`, preparation identities, and full observed lifecycle
 milestones, while deliberately reusing the base case's latency/resource observations. The validator

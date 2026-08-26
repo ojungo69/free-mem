@@ -34,7 +34,11 @@ export function readRunnerEvidenceFile(path, evidenceRoot, artifactRoot) {
   if (isWithin(artifact, root) || isWithin(root, artifact)) {
     throw new Error("runner evidence root overlaps the candidate artifact root");
   }
-  return readBoundedIJsonFile(path, MAX_RUNNER_EVIDENCE_BYTES, root);
+  try {
+    return readBoundedIJsonFile(path, MAX_RUNNER_EVIDENCE_BYTES, root);
+  } catch (error) {
+    throw new Error(`runner evidence ${error instanceof Error ? error.message : "read failed"}`);
+  }
 }
 
 const observationTimes = (run) => [
@@ -53,16 +57,19 @@ function validateRunPreparations(record, result, exceptionalState, maxPreparatio
     }
     return;
   }
-  if (preparations.length !== runs.length || !preparations.every((item, index) =>
-    item.runOrdinal === runs[index].runOrdinal && item.mode === runs[index].resetMode &&
-    item.runStartedMonotonicMs <= item.runFinishedMonotonicMs &&
-    item.observedAtMonotonicMs < item.runStartedMonotonicMs &&
-    item.runStartedMonotonicMs - item.observedAtMonotonicMs <= maxPreparationGapMs &&
-    observationTimes(runs[index]).every((time) =>
-      time >= item.runStartedMonotonicMs && time <= item.runFinishedMonotonicMs) &&
-    (index === 0 || (item.observedAtMonotonicMs > preparations[index - 1].runFinishedMonotonicMs &&
-      item.runStartedMonotonicMs > preparations[index - 1].runFinishedMonotonicMs))
-  )) {
+  if (preparations.length !== runs.length || !preparations.every((item, index) => {
+    const times = observationTimes(runs[index]);
+    return item.runOrdinal === runs[index].runOrdinal && item.mode === runs[index].resetMode &&
+      item.runStartedMonotonicMs <= item.runFinishedMonotonicMs &&
+      item.observedAtMonotonicMs < item.runStartedMonotonicMs &&
+      item.runStartedMonotonicMs - item.observedAtMonotonicMs <= maxPreparationGapMs &&
+      (result.resourceSampleMode !== "cold" || (times.length > 0 &&
+        Math.min(...times) - item.runStartedMonotonicMs <= maxPreparationGapMs)) &&
+      times.every((time) =>
+        time >= item.runStartedMonotonicMs && time <= item.runFinishedMonotonicMs) &&
+      (index === 0 || (item.observedAtMonotonicMs > preparations[index - 1].runFinishedMonotonicMs &&
+        item.runStartedMonotonicMs > preparations[index - 1].runFinishedMonotonicMs));
+  })) {
     throw new Error("runner preparation evidence does not match latency runs");
   }
   const dataRoots = new Set(preparations.map((item) => item.dataDirInstanceId));

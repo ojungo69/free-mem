@@ -79,10 +79,12 @@ export function validateRenderEvidence(result, scenario, fixture, finalPackExpec
   const attemptedEvidence = result.attemptedRenderEvidence === "same_as_final"
     ? result.finalRenderEvidence
     : result.attemptedRenderEvidence;
-  if (!scenario.drainCondition.targetInjectionAcknowledged &&
+  const attemptedBoundaryObserved = scenario.drainCondition.targetInjectionAcknowledged &&
+    result.milestones.some((item) => item.name === "target_selection_finished");
+  if (!attemptedBoundaryObserved &&
       (attemptedItems.length !== 0 || attemptedEvidence !== null ||
         result.attemptedRenderedBytes !== 0 || result.attemptedInjectedTokens !== 0)) {
-    throw new Error("attempted render exists without an injection boundary");
+    throw new Error("attempted render exists without an observed selection boundary");
   }
   const attemptedPayload = validateEvidence(
     attemptedEvidence,

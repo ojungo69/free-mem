@@ -1,14 +1,10 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, opendirSync, openSync, readSync,
   realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
-
-function isWithin(base, target) {
-  const path = relative(base, target);
-  return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`));
-}
+import { isWithin } from "./alpha-result-input.mjs";
 
 function artifactFiles(root, directory, limits, state = { entries: 0, files: 0 }, depth = 0) {
   if (depth > limits.maxDirectoryDepth) throw new Error("candidate artifact exceeds depth limit");

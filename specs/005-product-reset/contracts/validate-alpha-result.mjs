@@ -346,21 +346,21 @@ const qualityPass =
   isDeepStrictEqual(result.injectedItems, scenario.expectedInjectedItems) &&
   isDeepStrictEqual(result.omittedItems, scenario.expectedOmissions) &&
   derivedQuality.forbiddenFactCount === 0;
-if (selectionFinishedObserved && !qualityPass) throw new Error("completed selection does not match the pinned item trace");
 
 const expectedDuplicateDeliveries = scenario.fault?.replaySchedule
   ? scenario.fault.replaySchedule.slice(1).reduce((count, item) => count + item.eventIds.length, 0)
   : 0;
-const persistenceMilestone = ["source_summary_committed", "source_memory_drain_completed",
-  "local_provider_derived_memory"].find((name) => expectedMilestones.includes(name));
+const captureObserved = !result.drain.timedOut || milestoneNames.includes("source_events_captured") || milestoneNames.includes("source_events_accepted");
+const duplicateReplayObserved = !result.drain.timedOut || milestoneNames.includes("stable_batch_replayed_second_time");
+const persistenceMilestone = ["source_summary_committed", "source_memory_drain_completed", "local_provider_derived_memory"].find((name) => expectedMilestones.includes(name));
 const persistenceObserved = !result.drain.timedOut || persistenceMilestone === undefined ||
   milestoneNames.includes(persistenceMilestone);
-const pendingObserved = !result.drain.timedOut ||
-  milestoneNames.includes("source_flush_requested_by_target_prompt");
+const pendingObserved = !result.drain.timedOut || milestoneNames.includes("source_flush_requested_by_target_prompt");
 const countsPass =
-  result.counts.captured === scenario.events.length &&
-  result.counts.committed === scenario.drainCondition.committedEventCount &&
-  result.counts.duplicateDeliveries === expectedDuplicateDeliveries &&
+  result.counts.captured === (captureObserved ? scenario.events.length : 0) &&
+  result.counts.committed === (captureObserved ? scenario.drainCondition.committedEventCount : 0) &&
+  result.counts.duplicateDeliveries ===
+    (duplicateReplayObserved ? expectedDuplicateDeliveries : 0) &&
   result.counts.lost === scenario.expectedCounters.acceptedEventLossCount &&
   result.counts.pending === (pendingObserved
     ? (scenario.drainCondition.pendingSummaryJobCount ?? 0) : 0) &&
@@ -395,6 +395,8 @@ const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injecti
 const selectionDeadlineExceeded =
   selectionObserved && (result.counts.deadlineUnprocessed > 0 ||
     result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs);
+if (selectionFinishedObserved && !selectionDeadlineExceeded && !qualityPass)
+  throw new Error("completed selection does not match the pinned item trace");
 const finalInjectionPackSizePass =
   result.renderedBytes <= injectionEnvelope.maxRenderedBytes &&
   result.injectedTokens <= injectionEnvelope.maxInjectedTokens;

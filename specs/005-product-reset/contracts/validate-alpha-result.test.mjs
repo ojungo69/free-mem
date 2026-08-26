@@ -16,8 +16,6 @@ import "./validate-alpha-result-input.test.mjs";
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
 const validatorPath = join(contractDir, "validate-alpha-result.mjs");
-const fixtureSemanticPath = join(contractDir,
-  "../fixtures/slice1-bidirectional-en-v1.semantic.jq");
 const fixture = JSON.parse(readFileSync(join(contractDir,
   "../fixtures/slice1-bidirectional-en-v1.json"), "utf8"));
 const success = JSON.parse(readFileSync(join(contractDir,
@@ -155,6 +153,7 @@ function timedOutBeforeProviderTerminal() {
   const terminalIndex = result.milestones.findIndex(
     (item) => item.name === result.drain.terminalMilestone,
   );
+  assert.notEqual(terminalIndex, -1, "failure fixture does not contain its terminal milestone");
   result.drain = { ...result.drain, status: "timed_out", timedOut: true };
   result.milestones = result.milestones.slice(0, terminalIndex);
   result.disposition = {
@@ -517,17 +516,5 @@ const duplicateSuiteResult = attachRunnerEvidence(
 assert.throws(() => validateRunnerEvidence(duplicateSuitePreparations, duplicateSuiteResult,
   fixture, duplicateSuitePreparations.invocationId, suiteCaseIds),
   /runner preparation receipts are reused across the evidence bundle/);
-
-const missingRetrievalMilestone = structuredClone(fixture);
-missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush =
-  missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush.filter(
-    (name) => name !== "target_retrieval_requested",
-  );
-const missingRetrievalRun = spawnSync("jq", ["-e", "-f", fixtureSemanticPath], {
-  input: JSON.stringify(missingRetrievalMilestone),
-  encoding: "utf8",
-});
-assert.notEqual(missingRetrievalRun.status, 0,
-  "fixture semantics accepted a selection lifecycle without retrieval");
 
 console.log("Alpha result regression checks passed.");

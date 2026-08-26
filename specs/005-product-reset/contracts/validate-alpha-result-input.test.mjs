@@ -70,7 +70,7 @@ const oversizedRunnerEvidence = spawnSync(process.execPath,
   });
 assert.notEqual(oversizedRunnerEvidence.status, 0, "oversized runner evidence was accepted");
 assert.match(`${oversizedRunnerEvidence.stderr}${oversizedRunnerEvidence.stdout}`,
-  /result input exceeds the fixed byte limit/);
+  /runner evidence result input exceeds the fixed byte limit/);
 
 const overlappingRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-overlap-"));
 try {
