@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:c62be76a2755f48f4379bd5d77a1de015cc3d104c894d0bb5ce6bd5d95c5d9f4",
+  "contractFingerprint": "sha256:712285e83b897dfe84507bb998ff67e3575c37cd37b3d5e56324c65ac33d7e23",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",

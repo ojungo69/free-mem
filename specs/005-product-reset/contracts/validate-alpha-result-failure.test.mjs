@@ -229,8 +229,7 @@ assertRejected(timeoutBeforeProviderAttempt, /provider egress exists without com
   "timeout before provider attempt claimed egress",
   runnerEvidenceFor(timeoutBeforeProviderAttempt, successEvidence));
 
-const spoolScenario = scenarioFor("runtime-unavailable-spool-recovery");
-const spoolResult = suiteResultFor(spoolScenario.scenarioId);
+const spoolScenario = scenarioFor("runtime-unavailable-spool-recovery"), spoolResult = suiteResultFor(spoolScenario.scenarioId);
 const timeoutWhileSpooled = timedOutAt(spoolResult, "events_spooled");
 clearUnobservedSelection(timeoutWhileSpooled, spoolScenario);
 Object.assign(timeoutWhileSpooled.counts, {
@@ -247,10 +246,8 @@ assertAccepted(timeoutWhileSpooled, "timeout while events remained spooled",
 const timeoutBeforeSpoolCompletion = timedOutAt(spoolResult, "stable_batch_replayed_second_time");
 clearUnobservedSelection(timeoutBeforeSpoolCompletion, spoolScenario);
 Object.assign(timeoutBeforeSpoolCompletion.counts, {
-  committed: 0,
-  duplicateDeliveries: spoolResult.counts.duplicateDeliveries,
-  summaryCount: 0,
-  durableMemoryCount: 0,
+  committed: 0, duplicateDeliveries: spoolResult.counts.duplicateDeliveries,
+  summaryCount: 0, durableMemoryCount: 0,
 });
 assertRejected(timeoutBeforeSpoolCompletion, /provider egress exists without committed events/,
   "spool timeout before provider completion claimed egress",
@@ -259,8 +256,7 @@ assertRejected(timeoutBeforeSpoolCompletion, /provider egress exists without com
 const timeoutAfterSpoolCompletion = timedOutAt(spoolResult, "source_memory_drain_completed");
 clearUnobservedSelection(timeoutAfterSpoolCompletion, spoolScenario);
 Object.assign(timeoutAfterSpoolCompletion.counts, {
-  committed: spoolResult.counts.committed,
-  summaryCount: spoolResult.counts.summaryCount,
+  committed: spoolResult.counts.committed, summaryCount: spoolResult.counts.summaryCount,
   durableMemoryCount: spoolResult.counts.durableMemoryCount,
 });
 assertAccepted(timeoutAfterSpoolCompletion, "timeout after spool provider completion",
