@@ -65,6 +65,19 @@ for (const identityField of ["lineageId", "memoryId", "revisionId"]) {
     `fixture semantics accepted duplicate normal ${identityField}`);
 }
 
+const mismatchedDuplicateRevision = structuredClone(fixture);
+const duplicateScenario = mismatchedDuplicateRevision.scenarios[0];
+const retainedRevision = duplicateScenario.expectedInjectedItems[0];
+const duplicateRevision = duplicateScenario.expectedInjectedItems.splice(1, 1)[0];
+delete duplicateRevision.selectionReason;
+duplicateRevision.reason = "duplicate_revision";
+for (const field of ["memoryId", "lineageId", "revisionId", "revisionOrdinal"]) {
+  duplicateRevision[field] = retainedRevision[field];
+}
+duplicateScenario.expectedOmissions.push(duplicateRevision);
+assertFixtureRejected(mismatchedDuplicateRevision,
+  "fixture semantics accepted conflicting content for one duplicate revision");
+
 for (const [metricName, invalidScenarioId] of [["warmInjectionP95Ms", "claude-to-codex"],
   ["shortColdLexicalInjectionMs", "codex-to-claude"]]) {
   const invalidMetricMode = structuredClone(fixture);

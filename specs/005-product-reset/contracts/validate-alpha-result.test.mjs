@@ -11,11 +11,11 @@ import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render
 import { runnerEvidenceFingerprint, runnerResultObservationFingerprint, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
 import "./validate-slice1-fixture.test.mjs";
 import "./validate-alpha-runner-evidence.test.mjs";
+import "./validate-alpha-result-render.test.mjs";
 import "./validate-alpha-result-failure.test.mjs";
 import "./validate-alpha-result-input.test.mjs";
 
-const contractDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(contractDir, "../../..");
+const contractDir = dirname(fileURLToPath(import.meta.url)), repoRoot = join(contractDir, "../../..");
 const validatorPath = join(contractDir, "validate-alpha-result.mjs");
 const fixture = JSON.parse(readFileSync(join(contractDir,
   "../fixtures/slice1-bidirectional-en-v1.json"), "utf8"));

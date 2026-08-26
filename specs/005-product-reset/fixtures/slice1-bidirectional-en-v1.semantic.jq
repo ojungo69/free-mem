@@ -93,9 +93,7 @@ def revision_identity_ok($scenario):
     and all($items[] | select(.reason? == "duplicate_revision");
       . as $duplicate
       | any($scenario.expectedInjectedItems[];
-        .lineageId == $duplicate.lineageId
-        and .revisionId == $duplicate.revisionId
-        and .revisionOrdinal == $duplicate.revisionOrdinal));
+        del(.selectionReason) == ($duplicate | del(.reason))));
 
 def fixture_graph_ok($root):
   ($root.scenarios | map(.scenarioId)) as $scenarioIds
