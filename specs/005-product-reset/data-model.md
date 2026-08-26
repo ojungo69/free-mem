@@ -339,6 +339,24 @@ The bounded, versioned product output rendered for Claude Code or Codex.
 The same normalized pack must render equivalent facts for both Agents even when their hook output
 formats differ.
 
+## RunnerEvidenceBundle
+
+A bounded comparison artifact written by the reference runner in an immutable root that the
+candidate cannot access. One bundle binds fixture, candidate, environment, artifact, and invocation
+identity to exactly 16 positive scenario observations plus the required late-injection negative case
+in suite mode.
+
+- runner-owned latency interval endpoints and full observed lifecycle milestones
+- runner-owned process, RSS, queue, and storage samples
+- bundle-global unique per-run preparation receipts with path-free ASCII opaque data-directory and
+  process-generation identities, observed after the prior run and before the current run
+- cold-reset observations proving zero prior product processes and an empty data directory
+- warm observations proving one retained ready data directory and process generation
+
+The result record carries only the bundle fingerprint plus inspectable copies and aggregates. Those
+copies are not authoritative and must exactly match the bundle before they can affect eligibility.
+The bundle contains no absolute path or private payload.
+
 ## OperationalStatus
 
 A secret-free snapshot used by doctor and inspection surfaces.

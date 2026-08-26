@@ -1,10 +1,24 @@
 import { Buffer } from "node:buffer";
-import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { decodeUtf8, parseIJson } from "../../../harness/schema/jcs.ts";
 
-function readBoundedIJson(descriptor, maxBytes) {
+export const isWithin = (base, target) => {
+  const path = relative(base, target);
+  return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`));
+};
+
+function readBoundedIJson(descriptor, maxBytes,
+  { requireRegularFile = false, requireRunnerOwnership = false } = {}) {
   const before = fstatSync(descriptor, { bigint: true });
+  if (requireRegularFile && !before.isFile()) {
+    throw new Error("result input path is not a regular file");
+  }
+  if (requireRunnerOwnership && ((before.mode & 0o022n) !== 0n ||
+      (typeof process.getuid === "function" && before.uid !== BigInt(process.getuid())))) {
+    throw new Error("runner evidence file is not runner-owned and immutable");
+  }
   if (before.isFile() && before.size > BigInt(maxBytes)) {
     throw new Error("result input exceeds the fixed byte limit");
   }
@@ -25,10 +39,18 @@ function readBoundedIJson(descriptor, maxBytes) {
   return parseIJson(decodeUtf8(bytes, "candidate result"));
 }
 
-export function readBoundedIJsonFile(path, maxBytes) {
-  const descriptor = openSync(path, constants.O_RDONLY);
+export function readBoundedIJsonFile(path, maxBytes, root = null) {
+  if (!lstatSync(path).isFile()) throw new Error("result input path is not a regular file");
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
   try {
-    return readBoundedIJson(descriptor, maxBytes);
+    if (root !== null && !isWithin(realpathSync(resolve(root)),
+      realpathSync(`/proc/self/fd/${descriptor}`))) {
+      throw new Error("result input path escapes its runner-owned root");
+    }
+    return readBoundedIJson(descriptor, maxBytes, {
+      requireRegularFile: true,
+      requireRunnerOwnership: root !== null,
+    });
   } finally {
     closeSync(descriptor);
   }

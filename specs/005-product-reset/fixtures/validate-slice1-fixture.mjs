@@ -14,11 +14,14 @@ const semanticPath = join(fixtureDir, "slice1-bidirectional-en-v1.semantic.jq");
 const validatorPath = fileURLToPath(import.meta.url);
 const resultSchemaPath = join(fixtureDir, "../contracts/alpha-result-v1.schema.json");
 const resultSemanticPath = join(fixtureDir, "../contracts/alpha-result-v1.semantic.jq");
+const runnerEvidenceSchemaPath = join(fixtureDir, "../contracts/alpha-runner-evidence-v1.schema.json");
+const runnerEvidenceValidatorPath = join(fixtureDir, "../contracts/alpha-runner-evidence.mjs");
 const resultArtifactValidatorPath = join(fixtureDir, "../contracts/alpha-result-artifact.mjs");
 const resultAtomicityValidatorPath = join(fixtureDir, "../contracts/alpha-result-atomicity.mjs");
 const resultInputValidatorPath = join(fixtureDir, "../contracts/alpha-result-input.mjs");
 const resultLatencyValidatorPath = join(fixtureDir, "../contracts/alpha-result-latency.mjs");
 const resultRetryValidatorPath = join(fixtureDir, "../contracts/alpha-result-retry.mjs");
+const resultResourceValidatorPath = join(fixtureDir, "../contracts/alpha-result-resource.mjs");
 const resultSecurityValidatorPath = join(fixtureDir, "../contracts/alpha-result-security.mjs");
 const resultRenderValidatorPath = join(fixtureDir, "../contracts/alpha-result-render.mjs");
 const resultSelectionValidatorPath = join(fixtureDir, "../contracts/alpha-result-selection.mjs");
@@ -41,6 +44,7 @@ const fixturePath = args.length === 0 ? defaultFixturePath : resolve(args[1]);
 const fixture = readIJsonFile(fixturePath);
 const schema = readIJsonFile(schemaPath);
 const resultSchema = readIJsonFile(resultSchemaPath);
+const runnerEvidenceSchema = readIJsonFile(runnerEvidenceSchemaPath);
 const issues = validateAgainstSchema(fixture, schema, schema);
 
 if (issues.length > 0) {
@@ -51,7 +55,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:aa045e2c530728aa1475240923b6bf46c7ca87b5e96c4cf4b2fe54f901db137d";
+  "fixture-contract-fingerprint=sha256:52772f664df8a9c4c1f0f7064bec0901d049e99b2eebdc8ee850365a6f24c613";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -68,11 +72,14 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     ),
     resultSchema,
     resultSemanticValidator: normalizeText(readFileSync(resultSemanticPath, "utf8")),
+    runnerEvidenceSchema,
+    runnerEvidenceValidator: normalizeText(readFileSync(runnerEvidenceValidatorPath, "utf8")),
     resultArtifactValidator: normalizeText(readFileSync(resultArtifactValidatorPath, "utf8")),
     resultAtomicityValidator: normalizeText(readFileSync(resultAtomicityValidatorPath, "utf8")),
     resultInputValidator: normalizeText(readFileSync(resultInputValidatorPath, "utf8")),
     resultLatencyValidator: normalizeText(readFileSync(resultLatencyValidatorPath, "utf8")),
     resultRetryValidator: normalizeText(readFileSync(resultRetryValidatorPath, "utf8")),
+    resultResourceValidator: normalizeText(readFileSync(resultResourceValidatorPath, "utf8")),
     resultSecurityValidator: normalizeText(readFileSync(resultSecurityValidatorPath, "utf8")),
     resultRenderValidator: normalizeText(readFileSync(resultRenderValidatorPath, "utf8")),
     resultSelectionValidator: normalizeText(readFileSync(resultSelectionValidatorPath, "utf8")),

@@ -278,6 +278,8 @@ without leaving active processes or managed configuration behind.
   provider choices, and supported environment that both runtime and diagnostics report.
 - **Injection Pack**: A bounded ordered set of memory items plus selection, omission,
   provenance, and degradation metadata supplied to an Agent.
+- **Runner Evidence Bundle**: A candidate-inaccessible immutable comparison artifact that binds raw
+  latency, resource, and cold/warm preparation observations to fixture/candidate/environment identity.
 - **Operational Status**: The health and pending-work state for capture, summary, lexical
   retrieval, semantic retrieval, injection, backup, and configured providers.
 

@@ -10,6 +10,8 @@ import { validateArtifact } from "./alpha-result-artifact.mjs";
 import { validateOutputLimitAtomicity } from "./alpha-result-atomicity.mjs";
 import { readBoundedIJsonFile, readBoundedIJsonStdin } from "./alpha-result-input.mjs";
 import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
+import { readRunnerEvidenceFile, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import { evaluateResourceEvidence } from "./alpha-result-resource.mjs";
 import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 import { evaluateSecurityEvidence } from "./alpha-result-security.mjs";
 import { validateRenderEvidence } from "./alpha-result-render.mjs";
@@ -18,34 +20,46 @@ import { validateSelectionTiming } from "./alpha-result-selection.mjs";
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(contractDir, "alpha-result-v1.schema.json");
 const semanticPath = join(contractDir, "alpha-result-v1.semantic.jq");
+const runnerEvidenceSchemaPath = join(contractDir, "alpha-runner-evidence-v1.schema.json");
 const fixtureSchemaPath = join(contractDir, "../fixtures/slice1-bidirectional-en-v1.schema.json");
 const fixtureValidatorPath = join(contractDir, "../fixtures/validate-slice1-fixture.mjs");
 const defaultFixturePath = join(contractDir, "../fixtures/slice1-bidirectional-en-v1.json");
 const defaultResultPath = join(contractDir, "../fixtures/alpha-result-v1.example.json");
 const defaultArtifactRoot = join(contractDir, "../fixtures/artifacts");
+const defaultRunnerEvidenceRoot = join(contractDir, "../fixtures/runner-evidence");
+const defaultRunnerEvidencePath = join(defaultRunnerEvidenceRoot, "alpha-runner-evidence-v1.example.json");
+const defaultRunnerInvocationId = "candidate-example-v1:fixture-invocation-v1";
 const args = process.argv.slice(2);
 const fingerprint = (domain, value) =>
   `sha256:${createHash("sha256").update(domain).update(canonicalizeJson(value)).digest("hex")}`;
 
 if (args.length === 1 && args[0] === "--help") {
   console.log(
-    "Usage: validate-alpha-result.mjs [--fixture FIXED_FIXTURE_PATH] [--artifact-root PATH] [--result PATH]",
-    "       validate-alpha-result.mjs [--fixture FIXED_FIXTURE_PATH] [--artifact-root PATH] --result PATH... --negative-result PATH  # suite mode",
+    "Usage: validate-alpha-result.mjs [--fixture PATH] [--artifact-root PATH] [--runner-evidence-root PATH] [--runner-evidence PATH] [--runner-invocation-id ID] [--result PATH]",
+    "       validate-alpha-result.mjs [common options] --runner-evidence PATH --runner-invocation-id ID --result PATH... --negative-result PATH  # suite mode",
   );
   process.exit(0);
 }
 
 let fixturePath = defaultFixturePath, artifactRoot = defaultArtifactRoot;
+let runnerEvidenceRoot = defaultRunnerEvidenceRoot, runnerEvidencePath = defaultRunnerEvidencePath;
+let runnerInvocationId = defaultRunnerInvocationId;
 const resultPaths = [], negativeResultPaths = [];
-let fixtureSeen = false, artifactRootSeen = false;
+let fixtureSeen = false, artifactRootSeen = false, runnerEvidenceRootSeen = false;
+let runnerEvidenceSeen = false, runnerInvocationSeen = false, resultSeen = false;
 for (let index = 0; index < args.length; index += 2) {
   const flag = args[index];
   const value = args[index + 1];
   if (
     !value ||
-    !["--fixture", "--artifact-root", "--result", "--negative-result"].includes(flag) ||
+    !["--fixture", "--artifact-root", "--runner-evidence-root", "--runner-evidence",
+      "--runner-invocation-id",
+      "--result", "--negative-result"].includes(flag) ||
     (flag === "--fixture" && fixtureSeen) ||
-    (flag === "--artifact-root" && artifactRootSeen)
+    (flag === "--artifact-root" && artifactRootSeen) ||
+    (flag === "--runner-evidence-root" && runnerEvidenceRootSeen) ||
+    (flag === "--runner-evidence" && runnerEvidenceSeen) ||
+    (flag === "--runner-invocation-id" && runnerInvocationSeen)
   ) {
     throw new Error("invalid arguments; use --help for usage");
   }
@@ -57,11 +71,28 @@ for (let index = 0; index < args.length; index += 2) {
     artifactRootSeen = true;
     artifactRoot = resolve(value);
   }
-  if (flag === "--result") resultPaths.push(value === "-" ? value : resolve(value));
+  if (flag === "--runner-evidence-root") {
+    runnerEvidenceRootSeen = true;
+    runnerEvidenceRoot = resolve(value);
+  }
+  if (flag === "--runner-evidence") {
+    runnerEvidenceSeen = true;
+    runnerEvidencePath = resolve(value);
+  }
+  if (flag === "--runner-invocation-id") {
+    runnerInvocationSeen = true;
+    runnerInvocationId = value;
+  }
+  if (flag === "--result") {
+    resultSeen = true;
+    resultPaths.push(value === "-" ? value : resolve(value));
+  }
   if (flag === "--negative-result") negativeResultPaths.push(value === "-" ? value : resolve(value));
 }
 if (resultPaths.length === 0 && negativeResultPaths.length === 0) resultPaths.push(defaultResultPath);
 if (negativeResultPaths.length > 0 && resultPaths.length === 0) throw new Error("a negative result requires the complete positive suite");
+if (resultSeen && !runnerEvidenceSeen) throw new Error("an explicit result requires runner evidence");
+if (resultSeen && !runnerInvocationSeen) throw new Error("an explicit result requires a runner invocation ID");
 
 execFileSync(
   process.execPath,
@@ -74,14 +105,24 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
   if (resultPaths.length !== suiteFixture.scenarios.length || negativeResultPaths.length !== 1) {
     throw new Error("candidate suite has an invalid positive or negative result count");
   }
+  if ([...resultPaths, ...negativeResultPaths].includes("-")) {
+    throw new Error("suite result paths must be regular files");
+  }
   const maxResultBytes = suiteFixture.resultLimits.maxResultBytes;
-  const readResult = (path) => path === "-"
-    ? readBoundedIJsonStdin(maxResultBytes)
-    : readBoundedIJsonFile(path, maxResultBytes);
+  const readResult = (path) => readBoundedIJsonFile(path, maxResultBytes);
   const suiteResults = resultPaths.map(readResult), negativeResults = negativeResultPaths.map(readResult);
   const expectedScenarioIds = suiteFixture.scenarios.map((item) => item.scenarioId).sort();
+  const expectedRunnerCaseIds = [
+    ...expectedScenarioIds, suiteFixture.beforeModelNegativeFixture.caseId,
+  ].sort();
   const actualScenarioIds = suiteResults.map((item) => item.scenarioId).sort();
   const first = suiteResults[0];
+  const runnerEvidenceSchema = readIJsonFile(runnerEvidenceSchemaPath);
+  const runnerEvidence = readRunnerEvidenceFile(runnerEvidencePath, runnerEvidenceRoot, artifactRoot);
+  const runnerEvidenceIssues = validateAgainstSchema(
+    runnerEvidence, runnerEvidenceSchema, runnerEvidenceSchema,
+  );
+  if (runnerEvidenceIssues.length > 0) throw new Error("runner evidence does not match its schema");
   const negativeContract = suiteFixture.beforeModelNegativeFixture;
   const baseResult = suiteResults.find((item) => item.scenarioId === negativeContract.baseScenarioId);
   const expectedNegative = baseResult && Array.isArray(baseResult.milestones)
@@ -94,12 +135,14 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
     if (injection && dispatch) dispatch.monotonicMs = injection.monotonicMs;
     expectedNegative.injectionBeforeModel = negativeContract.injectionBeforeModel;
     expectedNegative.disposition = negativeContract.expectedDisposition;
+    expectedNegative.runnerEvidenceCaseId = negativeContract.caseId;
   }
   const commonIdentity = (item) =>
     item.candidateId === first.candidateId &&
     item.fixtureFingerprint === first.fixtureFingerprint &&
     item.environmentFingerprint === first.environmentFingerprint &&
-    item.artifactFingerprint === first.artifactFingerprint;
+    item.artifactFingerprint === first.artifactFingerprint &&
+    item.runnerEvidenceFingerprint === first.runnerEvidenceFingerprint;
   if (
     !isDeepStrictEqual(actualScenarioIds, expectedScenarioIds) ||
     !suiteResults.every((item) => commonIdentity(item) && item.disposition.successfulComparisonEligible) ||
@@ -109,10 +152,17 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
     throw new Error("candidate suite or required negative result is incomplete or inconsistent");
   }
   for (const item of [...suiteResults, ...negativeResults]) {
+    validateRunnerEvidence(
+      runnerEvidence, item, suiteFixture, runnerInvocationId, expectedRunnerCaseIds,
+    );
+  }
+  for (const item of [...suiteResults, ...negativeResults]) {
     execFileSync(
       process.execPath,
       ["--experimental-strip-types", fileURLToPath(import.meta.url), "--fixture", fixturePath,
-        "--artifact-root", artifactRoot, "--result", "-"],
+        "--artifact-root", artifactRoot, "--runner-evidence-root", runnerEvidenceRoot,
+        "--runner-evidence", runnerEvidencePath, "--runner-invocation-id", runnerInvocationId,
+        "--result", "-"],
       { input: JSON.stringify(item), stdio: ["pipe", "inherit", "inherit"] },
     );
   }
@@ -120,6 +170,7 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
 }
 
 const schema = readIJsonFile(schemaPath), fixtureSchema = readIJsonFile(fixtureSchemaPath);
+const runnerEvidenceSchema = readIJsonFile(runnerEvidenceSchemaPath);
 const resultPath = resultPaths[0];
 const fixture = readIJsonFile(fixturePath);
 const result = resultPath === "-"
@@ -128,6 +179,14 @@ const result = resultPath === "-"
 const issues = validateAgainstSchema(result, schema, schema);
 if (issues.length > 0) {
   console.error(JSON.stringify(issues, null, 2));
+  process.exit(1);
+}
+const runnerEvidence = readRunnerEvidenceFile(runnerEvidencePath, runnerEvidenceRoot, artifactRoot);
+const runnerEvidenceIssues = validateAgainstSchema(
+  runnerEvidence, runnerEvidenceSchema, runnerEvidenceSchema,
+);
+if (runnerEvidenceIssues.length > 0) {
+  console.error(JSON.stringify(runnerEvidenceIssues, null, 2));
   process.exit(1);
 }
 
@@ -174,6 +233,9 @@ if (
 ) {
   throw new Error("result identity does not match the pinned fixture scenario");
 }
+const runnerRecord = validateRunnerEvidence(
+  runnerEvidence, result, fixture, runnerInvocationId,
+);
 const exceptionalState = result.disposition.state === "unsupported" ||
   result.disposition.state === "not_run";
 const selectionObserved = validateSelectionTiming(result, exceptionalState);
@@ -304,62 +366,11 @@ const securityEvaluation = evaluateSecurityEvidence({
 const { oracle, activeSummaryProvider, denominatorsPass, safetyCountersPass,
   securityEvidencePass } = securityEvaluation;
 
-const latencyPass = evaluateLatencyEvidence(result, scenario, fixture, exceptionalState);
-
-const resourceMetrics = fixture.samplingProtocol.resourceMetrics;
-const steadyMetric = resourceMetrics.maxSteadyProductProcessCount;
-const orphanMetric = resourceMetrics.orphanProductProcessCount;
-const maxSampleGapMs = fixture.samplingProtocol.processSampleIntervalMs;
-const milestoneTimes = new Map(result.milestones.map((item) => [item.name, item.monotonicMs]));
-const startTime = milestoneTimes.get(steadyMetric.startMilestone);
-const sampleAtOrAfter = (time) => {
-  if (typeof time !== "number") return [];
-  const sample = result.processSamples.find((item) => item.monotonicMs >= time);
-  return sample && sample.monotonicMs - time <= maxSampleGapMs ? [sample] : [];
-};
-const sampleAtOrBefore = (time) => {
-  if (typeof time !== "number") return [];
-  const sample = [...result.processSamples].reverse().find((item) => item.monotonicMs <= time);
-  return sample && time - sample.monotonicMs <= maxSampleGapMs ? [sample] : [];
-};
-const startSamples = exceptionalState ? [result.processSamples[0]] : sampleAtOrBefore(startTime);
-const terminalSamples = (exceptionalState || result.drain.timedOut)
-  ? [result.processSamples.at(-1)]
-  : sampleAtOrAfter(milestoneTimes.get(steadyMetric.endMilestone));
-const teardownSamples = (exceptionalState || result.drain.timedOut)
-  ? terminalSamples
-  : sampleAtOrAfter(milestoneTimes.get(orphanMetric.endMilestone));
-if (startSamples.length !== 1 || terminalSamples.length !== 1 || teardownSamples.length !== 1) {
-  throw new Error("raw resource samples do not cover the pinned milestone boundaries");
-}
-const startSample = startSamples[0];
-const terminalSample = terminalSamples[0];
-const teardownSample = teardownSamples[0];
-const steadySamples = result.processSamples.filter(
-  (sample) => sample.monotonicMs >= startSample.monotonicMs &&
-    sample.monotonicMs <= terminalSample.monotonicMs,
+const latencyPass = evaluateLatencyEvidence(
+  result, scenario, fixture, exceptionalState, runnerRecord.latencyRuns,
 );
-if (!result.processSamples.every((sample, index, samples) =>
-  index === 0 ||
-  (sample.monotonicMs > samples[index - 1].monotonicMs &&
-    sample.monotonicMs - samples[index - 1].monotonicMs <= maxSampleGapMs)
-)) {
-  throw new Error("process samples do not honor the pinned sampling interval");
-}
-const derivedResource = {
-  maxSteadyProductProcessCount: Math.max(...steadySamples.map((sample) => sample.processCount)),
-  maxShortRunRssGrowthMiB:
-    Math.max(...steadySamples.map((sample) => sample.rssMiB)) - startSample.rssMiB,
-  maxPendingQueueDepth: Math.max(...steadySamples.map((sample) => sample.queueDepth)),
-  maxStorageGrowthBytes:
-    Math.max(...steadySamples.map((sample) => sample.storageBytes)) - startSample.storageBytes,
-  orphanProductProcessCount: teardownSample.processCount,
-};
-if (!isDeepStrictEqual(result.resource, derivedResource)) {
-  throw new Error("resource aggregates do not match the pinned sample boundaries");
-}
 
-const limits = fixture.thresholds;
+const resourcePass = evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord);
 const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
 const selectionDeadlineExceeded =
   selectionObserved && (result.counts.deadlineUnprocessed > 0 ||
@@ -383,12 +394,6 @@ if (
 ) {
   throw new Error("late InjectionPack was recorded as delivered");
 }
-const resourcePass =
-  result.resource.maxSteadyProductProcessCount <= limits.maxSteadyProductProcessCount &&
-  result.resource.maxShortRunRssGrowthMiB <= limits.maxShortRunRssGrowthMiB &&
-  result.resource.maxPendingQueueDepth <= limits.maxPendingQueueDepth &&
-  result.resource.maxStorageGrowthBytes <= limits.maxStorageGrowthBytes &&
-  result.resource.orphanProductProcessCount <= limits.orphanProductProcessCount;
 const expectedProviderCostUnits = ["fixture", "local_zero"].includes(activeSummaryProvider.costClass) ? 0 : null;
 if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits) {
   throw new Error("provider cost does not match the pinned provider cost class");

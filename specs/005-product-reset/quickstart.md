@@ -25,9 +25,24 @@ Expected baseline before M0 documentation changes:
 
 ```bash
 set -euo pipefail
-rg -n "automatic memory|Product Reset|historical|Linux/WSL" \
-  README.md evidence/README.md specs/005-product-reset
-rg -n "claude-mem|Codemem|fork" evidence/adr-006-product-reset.md
+rg -Fn 'The **Product Reset M0** is the active work.' README.md
+rg -Fn 'Active specification: [`specs/005-product-reset/spec.md`](specs/005-product-reset/spec.md)' README.md
+rg -Fn 'The active product direction is the lightweight automatic-memory Product Reset:' evidence/README.md
+rg -Fn '[`../specs/005-product-reset/spec.md`](../specs/005-product-reset/spec.md)' evidence/README.md
+rg -Fn 'The v6 continuity documents, Rust-first ADR, continuity reference model, and broad capability rig' README.md
+rg -Fn 'remain available as historical evidence. They are not active Product Alpha authority' README.md
+rg -Fn '## Historical Evidence' evidence/README.md
+rg -Fn -- '- `adr-003-rust-local-core.md` and `adr-005-rust-core-product-direction.md`' evidence/README.md
+rg -Fn '### 2. Keep the current Codemem safety kernel' evidence/adr-006-product-reset.md
+rg -Fn '### 3. Reject a claude-mem runtime fork; use it as a UX and test donor' evidence/adr-006-product-reset.md
+if rg -ni '(v6 continuity|Rust-first|Verified Continuity).*(is|remains).*(active|current|canonical|required)' \
+  README.md evidence/README.md; then
+  exit 1
+fi
+if rg -n 'Active specification:.*(agent-memory-final-spec-v6|specs/00[1-4])' \
+  README.md evidence/README.md; then
+  exit 1
+fi
 ```
 
 Expected:
@@ -116,6 +131,17 @@ gh issue list --state open --limit 200 --json number,labels \
       {"number":137,"activeStatuses":["status: ready for implementation"]}
     ]
   '
+# The snapshot covers the 69 pre-M0 issues. Replacement issues are checked above.
+gh api --paginate "repos/$GH_REPO/issues?state=all&per_page=100" \
+  | jq -s -e --slurpfile expected specs/005-product-reset/m0-post-mutation-issues.json '
+      add
+      | map(select(has("pull_request") | not))
+      | ($expected[0] | map(.number)) as $numbers
+      | ([.[]
+          | select(.number as $number | ($numbers | index($number)) != null)
+          | {number, state: (.state | ascii_upcase), labels: ([.labels[].name] | sort)}]
+        | sort_by(.number)) == $expected[0]
+    '
 ```
 
 Expected:
@@ -139,6 +165,8 @@ node --experimental-strip-types \
   specs/005-product-reset/contracts/validate-alpha-result.mjs
 node --experimental-strip-types \
   specs/005-product-reset/contracts/validate-alpha-result.mjs \
+  --runner-evidence specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json \
+  --runner-invocation-id candidate-failure-example-v1:fixture-invocation-v1 \
   --result specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
 node --experimental-strip-types \
   specs/005-product-reset/contracts/validate-alpha-result.test.mjs
@@ -154,11 +182,15 @@ candidate execution through result validation.
 - [InjectionPack](contracts/injection-pack.md)
 - [Alpha result schema](contracts/alpha-result-v1.schema.json)
 - [Alpha result semantic validator](contracts/alpha-result-v1.semantic.jq)
+- [Alpha runner evidence schema](contracts/alpha-runner-evidence-v1.schema.json)
+- [Alpha runner evidence validator](contracts/alpha-runner-evidence.mjs)
 - [Alpha result canonical validator](contracts/validate-alpha-result.mjs)
 - [Alpha result regression checks](contracts/validate-alpha-result.test.mjs)
 - [Slice 1 fixed fixture](fixtures/slice1-bidirectional-en-v1.json)
 - [Slice 1 example result](fixtures/alpha-result-v1.example.json)
 - [Slice 1 failure example result](fixtures/alpha-result-v1.failure-example.json)
+- [Slice 1 exact 16+1 suite regression corpus](fixtures/alpha-result-v1.suite-regression.json)
+- [Slice 1 runner evidence examples](fixtures/runner-evidence/)
 - [Slice 1 fixture schema](fixtures/slice1-bidirectional-en-v1.schema.json)
 - [Slice 1 semantic validator](fixtures/slice1-bidirectional-en-v1.semantic.jq)
 - [Slice 1 canonical validator](fixtures/validate-slice1-fixture.mjs)
@@ -168,7 +200,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T10:13:28+09:00
+## Validation result — 2026-08-26T13:03:52+09:00
 
 | Check | Result |
 |---|---|
@@ -177,7 +209,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, cross-host/downgrade transport, privacy, host-identity, output-limit recovery-manifest, environment, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, retrieval-before-selection presence/order, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss denominators, pre-terminal evidence nullability, inclusive timeout expiration, Slice 1 pack-failure refusal and final byte/token ceiling, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin result input, timeout prefixes, and canonical exceptional-state mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, secure runner-owned 16-scenario bundle plus required before-model negative result, zero-report attack rejection, bundle-global cold reset receipts/data/process identities, path-free opaque runner identities, retained warm generation, current invocation binding, immutable/non-overlapping evidence root, retrieval-before-selection presence/order, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss denominators, pre-terminal evidence nullability, inclusive timeout expiration, Slice 1 pack-failure refusal and final byte/token ceiling, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin and runner-evidence inputs, FIFO rejection, timeout prefixes, and canonical exceptional-state mutations |
 | Product Reset CI contract step | PASS locally; workflow `actionlint` and the committed regression command exit 0 |
 | Rollback exact-state fence | PASS; 69-entry pre/post snapshot SHAs, live post-M0 fence, generated inverse state/full-label simulation, and empty parent sub-issue postcondition match |
 | Local Markdown links (one-shot external validation) | PASS |
@@ -198,9 +230,10 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- CodeRabbit's completed local review found the hand-maintained rollback delta; it was replaced by
-  generated inverse operations from exact pre/post snapshots. The final retry hit the review rate
-  limit, so the pushed head must still receive a fresh GitHub CodeRabbit review before merge.
+- CodeRabbit's final local review repeated the fixed contract's equal-time before-model boundary and
+  fixed-case identifier suggestions; both were rejected after fixture/source checks. Its earlier
+  valid suite-fixture separation was applied. The pushed head must still receive a fresh GitHub
+  CodeRabbit review before merge.
 - The latest GitHub Codex/CodeRabbit reviews raised timeout, input-boundary, loss-evidence, and exact
   rollback gaps; all valid findings were reproduced, fixed, and covered by focused cases. Cubic's
   post-fix review raised zero issues. Grok's split
@@ -208,5 +241,6 @@ Environment-specific deviations:
   follow-up attempts timed out without session IDs, so those ranges are not claimed as Grok-reviewed.
   Ponytail found no unused definition, speculative abstraction, dependency, or removable
   compatibility layer.
-- No functional validation command required a changed path, flag, retry, or skipped gate; the Grok
-  timeout and one narrowed retry are recorded separately above.
+- No functional validation command required a changed path, flag, retry, or skipped gate. A latest
+  full Grok attempt timed out; its narrowed retry was stopped for host memory pressure after the
+  earlier split contract review had returned `ok: true`.

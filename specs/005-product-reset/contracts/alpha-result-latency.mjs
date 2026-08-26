@@ -80,7 +80,7 @@ function deriveAggregates(measuredRuns, applicability) {
   };
 }
 
-export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState) {
+export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalState, observedRuns) {
   const protocol = fixture.samplingProtocol;
   const metricApplies = (name) => protocol.metrics[name].scenarios.includes(scenario.scenarioId);
   const captureApplies = metricApplies("captureP95Ms");
@@ -89,7 +89,7 @@ export function evaluateLatencyEvidence(result, scenario, fixture, exceptionalSt
   const expectedCaptureEventIds = captureApplies ? scenario.events.map((event) => event.eventId) : [];
   if (exceptionalState) return validateExceptionalLatency(result);
 
-  const runs = result.latencyEvidence.runs;
+  const runs = observedRuns;
   const applicability = {
     captureApplies, warmInjectionApplies, coldInjectionApplies, expectedCaptureEventIds,
   };

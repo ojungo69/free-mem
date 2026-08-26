@@ -4,13 +4,14 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "runnerEvidenceCaseId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "runnerEvidenceFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
     "fixtureFingerprint": { "$ref": "#/$defs/Sha256" },
     "candidateId": { "$ref": "#/$defs/CandidateId" },
     "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
+    "runnerEvidenceCaseId": { "$ref": "#/$defs/SharedNonEmptyString" },
     "resourceSampleMode": { "enum": ["cold", "warm"] },
     "targetDestinationClass": { "enum": ["claude-code-local", "codex-local", "claude-code-remote", "codex-remote"] },
     "effectiveManifestFingerprint": { "$ref": "#/$defs/Sha256" },
@@ -18,6 +19,7 @@
     "environmentFingerprint": { "$ref": "#/$defs/Sha256" },
     "artifactMetadata": { "$ref": "#/$defs/ArtifactMetadata" },
     "artifactFingerprint": { "$ref": "#/$defs/Sha256" },
+    "runnerEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
     "drain": { "$ref": "#/$defs/Drain" },
     "injectionBeforeModel": {
       "oneOf": [

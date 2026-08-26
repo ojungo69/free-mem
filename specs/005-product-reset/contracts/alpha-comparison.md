@@ -88,7 +88,8 @@ Real credentials, private transcripts, and local absolute paths are forbidden in
 
 Every candidate/scenario comparison emits one machine-readable aggregate record containing:
 
-- fixture and candidate identity
+- fixture, candidate, scenario, and runner-evidence case identity
+- the domain-separated fingerprint of one runner-owned evidence bundle for the candidate suite
 - resolved target destination class and effective-manifest fingerprint
 - the fixture-pinned execution environment and candidate artifact metadata, each with a
   domain-separated JCS fingerprint
@@ -130,14 +131,34 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - effective profile and bounded safe recovery action for pending or failed work
 
 Each result file or stdin record is limited to 1 MiB and read incrementally before UTF-8 decoding or
-I-JSON parsing. Suite mode rejects any positive/negative path count other than the fixed 16+1 shape
-before opening candidate result paths.
+I-JSON parsing. One path-only runner evidence bundle is limited to 1 MiB. Suite mode rejects any
+positive/negative path count other than the fixed 16+1 shape before opening candidate result paths.
+The bundle is staged in a candidate-inaccessible immutable root disjoint from the artifact root and
+binds fixture, candidate, environment, artifact, runner invocation, and scenario identity. The
+validator requires a runner-supplied current invocation ID and rejects group/other-writable roots or
+files; the reference runner executes the candidate under a distinct sandbox identity without access
+to that root.
 
 The authoritative format is
 [`alpha-result-v1.schema.json`](alpha-result-v1.schema.json), with cross-field rules in
 [`alpha-result-v1.semantic.jq`](alpha-result-v1.semantic.jq) and executable fixture/result checks in
 [`validate-alpha-result.mjs`](validate-alpha-result.mjs). Runner-specific records are not comparable
 until this canonical validator exits 0.
+
+Runner-owned latency intervals, cold/warm preparation receipts, full observed lifecycle milestones, and
+process samples live in the separately validated
+[`alpha-runner-evidence-v1.schema.json`](alpha-runner-evidence-v1.schema.json) bundle. The result keeps
+inspectable copies and derived aggregates, but the validator derives gates from the bundle and
+requires exact equality. A candidate-authored hash or source label is not evidence. Cold runs require
+bundle-global unique opaque data-root, reset-receipt, and process-generation identities plus observed
+zero process and directory-entry counts before measurement. Warm runs require one retained data-root/process
+generation and a ready-process observation.
+The late-injection negative is a runner-generated fixture projection, not an independent benchmark
+run. It has its own runner-evidence `caseId`, preparation identities, and full observed lifecycle
+milestones, while deliberately reusing the base case's latency/resource observations. The validator
+requires that exact projection, and the negative never contributes to candidate performance samples.
+The committed regression corpus executes the canonical suite branch with all 16 positive records,
+the projected negative, and one 17-case runner bundle.
 
 A single `--result` validates one inspectable scenario record only. Candidate comparison requires
 suite mode: pass one `--result PATH` per positive scenario and the required late-injection record as
@@ -173,6 +194,8 @@ the validator rejects non-regular/unlisted entries and hashes each open file des
 stable-stat checks. The fixed artifact boundary is at most 64 files, 128 total filesystem entries,
 eight directory levels, 16 MiB per file, and 64 MiB total; traversal and hashing are incremental,
 use a fixed 64 KiB content buffer, and reject each boundary before unbounded work.
+The runner-evidence root is separately realpath-contained, non-overlapping with that artifact root,
+and read through the same nonblocking/no-follow regular-file and stable-stat boundary.
 
 ## Comparison rules
 
@@ -180,7 +203,8 @@ use a fixed 64 KiB content buffer, and reject each boundary before unbounded wor
 - `drainTimedOut=true` is always a non-success `failed` or `degraded` disposition. Its record remains
   inspectable but is excluded from successful candidate comparison and cannot pass completion,
   quality, or resource gates. Periodic process observation must reach the pinned timeout boundary;
-  safety counters and zero-tolerance security evidence remain independently required to be zero.
+  its orphan-process field is the last timeout observation rather than teardown proof. Safety
+  counters and zero-tolerance security evidence remain independently required to be zero.
 - After a completed drain, a positive `deadlineUnprocessed` count is non-eligible with result reason
   `selection_deadline_exceeded`; it is not a quality-threshold failure. `drain_timed_out` remains the
   higher-priority reason when the drain itself times out.

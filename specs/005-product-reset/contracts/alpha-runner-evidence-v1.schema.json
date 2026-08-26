@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "free-mem Alpha runner evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runnerEvidenceVersion", "fixtureId", "fixtureFingerprint", "candidateId", "environmentFingerprint", "artifactFingerprint", "runnerId", "invocationId", "scenarios"],
+  "properties": {
+    "runnerEvidenceVersion": { "const": 1 },
+    "fixtureId": { "$ref": "#/$defs/NonEmptyString" },
+    "fixtureFingerprint": { "$ref": "#/$defs/Fingerprint" },
+    "candidateId": { "$ref": "#/$defs/NonEmptyString" },
+    "environmentFingerprint": { "$ref": "#/$defs/Fingerprint" },
+    "artifactFingerprint": { "$ref": "#/$defs/Fingerprint" },
+    "runnerId": { "const": "fixture-pinned-reference-runner-v1" },
+    "invocationId": { "$ref": "#/$defs/NonEmptyString" },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 17,
+      "items": { "$ref": "#/$defs/ScenarioEvidence" }
+    }
+  },
+  "$defs": {
+    "NonEmptyString": { "type": "string", "minLength": 1 },
+    "OpaqueIdentifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+    "Fingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "NonNegativeInteger": { "type": "integer", "minimum": 0 },
+    "Milestone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "monotonicMs"],
+      "properties": {
+        "name": { "$ref": "#/$defs/NonEmptyString" },
+        "monotonicMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "ProcessSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monotonicMs", "processCount", "rssMiB", "queueDepth", "storageBytes"],
+      "properties": {
+        "monotonicMs": { "type": "number", "minimum": 0 },
+        "processCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "rssMiB": { "type": "number", "minimum": 0 },
+        "queueDepth": { "$ref": "#/$defs/NonNegativeInteger" },
+        "storageBytes": { "$ref": "#/$defs/NonNegativeInteger" }
+      }
+    },
+    "RunPreparation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runOrdinal", "mode", "receiptId", "observedAtMonotonicMs", "runStartedMonotonicMs", "runFinishedMonotonicMs", "dataDirInstanceId", "processGenerationId", "observedProductProcessCount", "observedDataDirEntryCount", "readyProcessObserved"],
+      "properties": {
+        "runOrdinal": { "type": "integer", "minimum": 1, "maximum": 22 },
+        "mode": { "enum": ["fresh_isolated_data", "fresh_namespace_on_ready_process"] },
+        "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "observedAtMonotonicMs": { "type": "number", "minimum": 0 },
+        "runStartedMonotonicMs": { "type": "number", "minimum": 0 },
+        "runFinishedMonotonicMs": { "type": "number", "minimum": 0 },
+        "dataDirInstanceId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "processGenerationId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "observedProductProcessCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "observedDataDirEntryCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "readyProcessObserved": { "type": "boolean" }
+      }
+    },
+    "ScenarioEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "scenarioId", "resourceSampleMode", "resourceObserverId", "processTreeRootId", "resourceDataRootId", "observedMilestones", "processSamples", "latencyRuns", "runPreparations"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/NonEmptyString" },
+        "scenarioId": { "$ref": "#/$defs/NonEmptyString" },
+        "resourceSampleMode": { "enum": ["cold", "warm"] },
+        "resourceObserverId": { "const": "fixture-pinned-resource-observer-v1" },
+        "processTreeRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "resourceDataRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "observedMilestones": { "type": "array", "maxItems": 17, "items": { "$ref": "#/$defs/Milestone" } },
+        "processSamples": { "type": "array", "minItems": 2, "maxItems": 303, "items": { "$ref": "#/$defs/ProcessSample" } },
+        "latencyRuns": { "type": "array", "maxItems": 22, "items": { "$ref": "#/$defs/LatencyRun" } },
+        "runPreparations": { "type": "array", "maxItems": 22, "items": { "$ref": "#/$defs/RunPreparation" } }
+      }
+    },
+    "LatencyInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startMonotonicMs", "endMonotonicMs"],
+      "properties": {
+        "startMonotonicMs": { "type": "number", "minimum": 0 },
+        "endMonotonicMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "CaptureTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "startMonotonicMs", "endMonotonicMs"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/NonEmptyString" },
+        "startMonotonicMs": { "type": "number", "minimum": 0 },
+        "endMonotonicMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "LatencyRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runOrdinal", "discarded", "resetMode", "repositoryNamespace", "sessionNamespace", "captureTimings", "warmInjectionTiming", "coldLexicalInjectionTiming"],
+      "properties": {
+        "runOrdinal": { "type": "integer", "minimum": 1, "maximum": 22 },
+        "discarded": { "type": "boolean" },
+        "resetMode": { "enum": ["fresh_isolated_data", "fresh_namespace_on_ready_process"] },
+        "repositoryNamespace": { "$ref": "#/$defs/NonEmptyString" },
+        "sessionNamespace": { "$ref": "#/$defs/NonEmptyString" },
+        "captureTimings": { "type": "array", "items": { "$ref": "#/$defs/CaptureTiming" } },
+        "warmInjectionTiming": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/LatencyInterval" }] },
+        "coldLexicalInjectionTiming": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/LatencyInterval" }] }
+      }
+    }
+  }
+}

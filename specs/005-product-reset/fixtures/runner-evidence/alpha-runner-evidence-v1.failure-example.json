@@ -1,0 +1,798 @@
+{
+  "runnerEvidenceVersion": 1,
+  "fixtureId": "slice1-bidirectional-en-v1",
+  "fixtureFingerprint": "sha256:52772f664df8a9c4c1f0f7064bec0901d049e99b2eebdc8ee850365a6f24c613",
+  "candidateId": "candidate-failure-example-v1",
+  "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
+  "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
+  "runnerId": "fixture-pinned-reference-runner-v1",
+  "invocationId": "candidate-failure-example-v1:fixture-invocation-v1",
+  "scenarios": [
+    {
+      "caseId": "summary-provider-output-limit-exceeded",
+      "scenarioId": "summary-provider-output-limit-exceeded",
+      "resourceSampleMode": "warm",
+      "resourceObserverId": "fixture-pinned-resource-observer-v1",
+      "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root",
+      "resourceDataRootId": "summary-provider-output-limit-exceeded:resource-data-root",
+      "observedMilestones": [
+        {
+          "name": "source_session_started",
+          "monotonicMs": 0
+        },
+        {
+          "name": "source_events_captured",
+          "monotonicMs": 100
+        },
+        {
+          "name": "source_session_ended",
+          "monotonicMs": 200
+        },
+        {
+          "name": "target_session_started_before_source_drain",
+          "monotonicMs": 300
+        },
+        {
+          "name": "target_first_prompt_submitted_before_model",
+          "monotonicMs": 400
+        },
+        {
+          "name": "source_flush_requested_by_target_prompt",
+          "monotonicMs": 500
+        },
+        {
+          "name": "provider_processing_rejected_or_exhausted",
+          "monotonicMs": 600
+        },
+        {
+          "name": "operational_status_inspected",
+          "monotonicMs": 700
+        },
+        {
+          "name": "target_injection_skipped",
+          "monotonicMs": 800
+        },
+        {
+          "name": "target_model_continued_after_memory_failure",
+          "monotonicMs": 900
+        },
+        {
+          "name": "scenario_terminal",
+          "monotonicMs": 1000
+        },
+        {
+          "name": "post_teardown_grace_elapsed",
+          "monotonicMs": 1100
+        }
+      ],
+      "processSamples": [
+        {
+          "monotonicMs": 0,
+          "processCount": 1,
+          "rssMiB": 100,
+          "queueDepth": 0,
+          "storageBytes": 1000
+        },
+        {
+          "monotonicMs": 100,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 200,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 300,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 400,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 500,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 600,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 700,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 800,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 900,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 1000,
+          "processCount": 4,
+          "rssMiB": 108,
+          "queueDepth": 1,
+          "storageBytes": 3000
+        },
+        {
+          "monotonicMs": 1100,
+          "processCount": 0,
+          "rssMiB": 0,
+          "queueDepth": 0,
+          "storageBytes": 3000
+        }
+      ],
+      "latencyRuns": [
+        {
+          "runOrdinal": 1,
+          "discarded": true,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-1",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-1",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-1:output-limit-event-1",
+              "startMonotonicMs": 100000,
+              "endMonotonicMs": 100100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 2,
+          "discarded": true,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-2",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-2",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-2:output-limit-event-1",
+              "startMonotonicMs": 200000,
+              "endMonotonicMs": 200100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 3,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-3",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-3",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-3:output-limit-event-1",
+              "startMonotonicMs": 300000,
+              "endMonotonicMs": 300100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 4,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-4",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-4",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-4:output-limit-event-1",
+              "startMonotonicMs": 400000,
+              "endMonotonicMs": 400100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 5,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-5",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-5",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-5:output-limit-event-1",
+              "startMonotonicMs": 500000,
+              "endMonotonicMs": 500100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 6,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-6",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-6",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-6:output-limit-event-1",
+              "startMonotonicMs": 600000,
+              "endMonotonicMs": 600100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 7,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-7",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-7",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-7:output-limit-event-1",
+              "startMonotonicMs": 700000,
+              "endMonotonicMs": 700100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 8,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-8",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-8",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-8:output-limit-event-1",
+              "startMonotonicMs": 800000,
+              "endMonotonicMs": 800100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 9,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-9",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-9",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-9:output-limit-event-1",
+              "startMonotonicMs": 900000,
+              "endMonotonicMs": 900100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 10,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-10",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-10",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-10:output-limit-event-1",
+              "startMonotonicMs": 1000000,
+              "endMonotonicMs": 1000100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 11,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-11",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-11",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-11:output-limit-event-1",
+              "startMonotonicMs": 1100000,
+              "endMonotonicMs": 1100100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 12,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-12",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-12",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-12:output-limit-event-1",
+              "startMonotonicMs": 1200000,
+              "endMonotonicMs": 1200100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 13,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-13",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-13",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-13:output-limit-event-1",
+              "startMonotonicMs": 1300000,
+              "endMonotonicMs": 1300100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 14,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-14",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-14",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-14:output-limit-event-1",
+              "startMonotonicMs": 1400000,
+              "endMonotonicMs": 1400100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 15,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-15",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-15",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-15:output-limit-event-1",
+              "startMonotonicMs": 1500000,
+              "endMonotonicMs": 1500100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 16,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-16",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-16",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-16:output-limit-event-1",
+              "startMonotonicMs": 1600000,
+              "endMonotonicMs": 1600100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 17,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-17",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-17",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-17:output-limit-event-1",
+              "startMonotonicMs": 1700000,
+              "endMonotonicMs": 1700100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 18,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-18",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-18",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-18:output-limit-event-1",
+              "startMonotonicMs": 1800000,
+              "endMonotonicMs": 1800100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 19,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-19",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-19",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-19:output-limit-event-1",
+              "startMonotonicMs": 1900000,
+              "endMonotonicMs": 1900100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 20,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-20",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-20",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-20:output-limit-event-1",
+              "startMonotonicMs": 2000000,
+              "endMonotonicMs": 2000100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 21,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-21",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-21",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-21:output-limit-event-1",
+              "startMonotonicMs": 2100000,
+              "endMonotonicMs": 2100100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        },
+        {
+          "runOrdinal": 22,
+          "discarded": false,
+          "resetMode": "fresh_namespace_on_ready_process",
+          "repositoryNamespace": "summary-provider-output-limit-exceeded:repo-22",
+          "sessionNamespace": "summary-provider-output-limit-exceeded:session-22",
+          "captureTimings": [
+            {
+              "eventId": "summary-provider-output-limit-exceeded:run-22:output-limit-event-1",
+              "startMonotonicMs": 2200000,
+              "endMonotonicMs": 2200100
+            }
+          ],
+          "warmInjectionTiming": null,
+          "coldLexicalInjectionTiming": null
+        }
+      ],
+      "runPreparations": [
+        {
+          "runOrdinal": 1,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-1:preparation-receipt",
+          "observedAtMonotonicMs": 99000,
+          "runStartedMonotonicMs": 100000,
+          "runFinishedMonotonicMs": 100100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 2,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-2:preparation-receipt",
+          "observedAtMonotonicMs": 199000,
+          "runStartedMonotonicMs": 200000,
+          "runFinishedMonotonicMs": 200100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 3,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-3:preparation-receipt",
+          "observedAtMonotonicMs": 299000,
+          "runStartedMonotonicMs": 300000,
+          "runFinishedMonotonicMs": 300100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 4,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-4:preparation-receipt",
+          "observedAtMonotonicMs": 399000,
+          "runStartedMonotonicMs": 400000,
+          "runFinishedMonotonicMs": 400100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 5,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-5:preparation-receipt",
+          "observedAtMonotonicMs": 499000,
+          "runStartedMonotonicMs": 500000,
+          "runFinishedMonotonicMs": 500100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 6,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-6:preparation-receipt",
+          "observedAtMonotonicMs": 599000,
+          "runStartedMonotonicMs": 600000,
+          "runFinishedMonotonicMs": 600100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 7,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-7:preparation-receipt",
+          "observedAtMonotonicMs": 699000,
+          "runStartedMonotonicMs": 700000,
+          "runFinishedMonotonicMs": 700100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 8,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-8:preparation-receipt",
+          "observedAtMonotonicMs": 799000,
+          "runStartedMonotonicMs": 800000,
+          "runFinishedMonotonicMs": 800100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 9,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-9:preparation-receipt",
+          "observedAtMonotonicMs": 899000,
+          "runStartedMonotonicMs": 900000,
+          "runFinishedMonotonicMs": 900100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 10,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-10:preparation-receipt",
+          "observedAtMonotonicMs": 999000,
+          "runStartedMonotonicMs": 1000000,
+          "runFinishedMonotonicMs": 1000100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 11,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-11:preparation-receipt",
+          "observedAtMonotonicMs": 1099000,
+          "runStartedMonotonicMs": 1100000,
+          "runFinishedMonotonicMs": 1100100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 12,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-12:preparation-receipt",
+          "observedAtMonotonicMs": 1199000,
+          "runStartedMonotonicMs": 1200000,
+          "runFinishedMonotonicMs": 1200100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 13,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-13:preparation-receipt",
+          "observedAtMonotonicMs": 1299000,
+          "runStartedMonotonicMs": 1300000,
+          "runFinishedMonotonicMs": 1300100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 14,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-14:preparation-receipt",
+          "observedAtMonotonicMs": 1399000,
+          "runStartedMonotonicMs": 1400000,
+          "runFinishedMonotonicMs": 1400100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 15,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-15:preparation-receipt",
+          "observedAtMonotonicMs": 1499000,
+          "runStartedMonotonicMs": 1500000,
+          "runFinishedMonotonicMs": 1500100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 16,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-16:preparation-receipt",
+          "observedAtMonotonicMs": 1599000,
+          "runStartedMonotonicMs": 1600000,
+          "runFinishedMonotonicMs": 1600100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 17,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-17:preparation-receipt",
+          "observedAtMonotonicMs": 1699000,
+          "runStartedMonotonicMs": 1700000,
+          "runFinishedMonotonicMs": 1700100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 18,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-18:preparation-receipt",
+          "observedAtMonotonicMs": 1799000,
+          "runStartedMonotonicMs": 1800000,
+          "runFinishedMonotonicMs": 1800100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 19,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-19:preparation-receipt",
+          "observedAtMonotonicMs": 1899000,
+          "runStartedMonotonicMs": 1900000,
+          "runFinishedMonotonicMs": 1900100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 20,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-20:preparation-receipt",
+          "observedAtMonotonicMs": 1999000,
+          "runStartedMonotonicMs": 2000000,
+          "runFinishedMonotonicMs": 2000100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 21,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-21:preparation-receipt",
+          "observedAtMonotonicMs": 2099000,
+          "runStartedMonotonicMs": 2100000,
+          "runFinishedMonotonicMs": 2100100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        },
+        {
+          "runOrdinal": 22,
+          "mode": "fresh_namespace_on_ready_process",
+          "receiptId": "summary-provider-output-limit-exceeded:run-22:preparation-receipt",
+          "observedAtMonotonicMs": 2199000,
+          "runStartedMonotonicMs": 2200000,
+          "runFinishedMonotonicMs": 2200100,
+          "dataDirInstanceId": "summary-provider-output-limit-exceeded:warm-data-root",
+          "processGenerationId": "summary-provider-output-limit-exceeded:warm-process-generation",
+          "observedProductProcessCount": 1,
+          "observedDataDirEntryCount": 1,
+          "readyProcessObserved": true
+        }
+      ]
+    }
+  ]
+}

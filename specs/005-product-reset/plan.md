@@ -82,6 +82,11 @@ specs/005-product-reset/
 │   ├── validate-slice1-fixture.mjs
 │   ├── alpha-result-v1.example.json
 │   ├── alpha-result-v1.failure-example.json
+│   ├── alpha-result-v1.suite-regression.json
+│   ├── runner-evidence/
+│   │   ├── alpha-runner-evidence-v1.example.json
+│   │   ├── alpha-runner-evidence-v1.failure-example.json
+│   │   └── alpha-runner-evidence-v1.suite-regression.json
 │   └── artifacts/
 │       ├── candidate-example-v1/candidate.bundle
 │       └── candidate-failure-example-v1/candidate.bundle
@@ -91,11 +96,14 @@ specs/005-product-reset/
 │   ├── injection-pack.md
 │   ├── alpha-result-v1.schema.json
 │   ├── alpha-result-v1.semantic.jq
+│   ├── alpha-runner-evidence-v1.schema.json
+│   ├── alpha-runner-evidence.mjs
 │   ├── alpha-result-artifact.mjs
 │   ├── alpha-result-atomicity.mjs
 │   ├── alpha-result-input.mjs
 │   ├── alpha-result-latency.mjs
 │   ├── alpha-result-render.mjs
+│   ├── alpha-result-resource.mjs
 │   ├── alpha-result-retry.mjs
 │   ├── alpha-result-security.mjs
 │   ├── alpha-result-selection.mjs
