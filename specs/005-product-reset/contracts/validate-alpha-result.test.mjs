@@ -32,10 +32,10 @@ function assertAccepted(result, label) {
   assert.equal(run.status, 0, `${label}: ${run.stderr}${run.stdout}`);
 }
 
-function assertRejected(result, message, label) {
+function assertRejected(result, pattern, label) {
   const run = validate(result);
   assert.notEqual(run.status, 0, `${label}: unexpectedly accepted`);
-  assert.match(`${run.stderr}${run.stdout}`, new RegExp(message), label);
+  assert.match(`${run.stderr}${run.stdout}`, pattern, label);
 }
 
 function processSamplesThrough(template, endMs, terminalMs = endMs) {
@@ -156,28 +156,28 @@ assertAccepted(timeout, "timeout before provider terminal");
 for (const field of ["retryEvidence", "failureMetadata", "operationalStatus"]) {
   const isolated = structuredClone(timeout);
   isolated[field] = failure[field];
-  assertRejected(isolated, "provider failure evidence does not match observed lifecycle",
+  assertRejected(isolated, /provider failure evidence does not match observed lifecycle/,
     `timeout with isolated ${field}`);
 }
 
 assertAccepted(completedAtBoundary(29999), "completion before timeout boundary");
-assertRejected(completedAtBoundary(30000), "completed drain reached or exceeded the pinned timeout",
+assertRejected(completedAtBoundary(30000), /completed drain reached or exceeded the pinned timeout/,
   "completion at timeout boundary");
-assertRejected(unsupportedPackFailure(), "unknown property",
+assertRejected(unsupportedPackFailure(), /unknown property/,
   "Slice 1 explicit pack-compilation failure");
 const byteOversized = oversizedFinalPack("x".repeat(17000));
 assert.ok(byteOversized.renderedBytes >
   fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxRenderedBytes);
 assert.ok(byteOversized.injectedTokens <=
   fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxInjectedTokens);
-assertRejected(byteOversized, "oversized InjectionPack was recorded as final output",
+assertRejected(byteOversized, /oversized InjectionPack was recorded as final output/,
   "byte-oversized final pack");
 const tokenOversized = oversizedFinalPack("x ".repeat(801).trim());
 assert.ok(tokenOversized.renderedBytes <=
   fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxRenderedBytes);
 assert.ok(tokenOversized.injectedTokens >
   fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxInjectedTokens);
-assertRejected(tokenOversized, "oversized InjectionPack was recorded as final output",
+assertRejected(tokenOversized, /oversized InjectionPack was recorded as final output/,
   "token-oversized final pack");
 
 console.log("Alpha result regression checks passed.");
