@@ -270,6 +270,12 @@ postTimeoutMilestone.selectionElapsedMs = 100;
 assertRejected(postTimeoutMilestone, /timed-out milestone occurred after the pinned timeout/,
   "timeout record contained a post-expiration milestone",
   runnerEvidenceFor(postTimeoutMilestone, successEvidence));
+const postTimeoutCleanup = structuredClone(timeoutAfterSelection);
+postTimeoutCleanup.processSamples.at(-1).processCount = 2;
+postTimeoutCleanup.processSamples.push({ ...success.processSamples.at(-1), monotonicMs: 30100 });
+assertRejected(postTimeoutCleanup, /timed-out resource sample does not match the deadline boundary/,
+  "post-timeout cleanup hid live processes at the deadline",
+  runnerEvidenceFor(postTimeoutCleanup, successEvidence));
 const erasedSelection = structuredClone(timeoutAfterSelection);
 for (const name of ["inputCandidates", "tracedCandidates", "deadlineUnprocessed",
   "admittedCandidates", "selectedItems"]) erasedSelection.counts[name] = 0;
@@ -308,6 +314,29 @@ deadlineExceeded.disposition = {
 assertAccepted(deadlineExceeded, "completed selection deadline failure",
   runnerEvidenceFor(deadlineExceeded, successEvidence));
 
+const qualityFailure = structuredClone(success);
+qualityFailure.injectedItems[0].fact = "Fixture-mismatched selected fact.";
+qualityFailure.quality.matchedInjectedItemCount -= 1;
+const qualityPayload = canonicalizeJson(
+  buildRenderPayload(qualityFailure, successScenario, fixture,
+    qualityFailure.injectedItems, qualityFailure.packId),
+);
+qualityFailure.finalRenderEvidence = {
+  rendererId: "alpha-jcs-renderer-v1", utf8Payload: qualityPayload,
+  tokenizerId: "deterministic-fixture-tokenizer-v1", tokenizerRevision: "1",
+  tokenIds: tokenizeRenderPayload(qualityPayload),
+};
+qualityFailure.attemptedRenderEvidence = "same_as_final";
+qualityFailure.renderedBytes = Buffer.byteLength(qualityPayload, "utf8");
+qualityFailure.attemptedRenderedBytes = qualityFailure.renderedBytes;
+qualityFailure.injectedTokens = qualityFailure.finalRenderEvidence.tokenIds.length;
+qualityFailure.attemptedInjectedTokens = qualityFailure.injectedTokens;
+qualityFailure.disposition = {
+  state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
+};
+assertAccepted(qualityFailure, "completed selection quality failure",
+  runnerEvidenceFor(qualityFailure, successEvidence));
+
 const unsupportedDeadlineOmission = structuredClone(deadlineExceeded);
 const { selectionReason: _selectionReason, ...deadlineOmission } = success.injectedItems[0];
 unsupportedDeadlineOmission.omittedItems = [{ ...deadlineOmission, reason: "candidate_limit" }];
@@ -320,6 +349,21 @@ unsupportedDeadlineOmission.quality = {
 assertRejected(unsupportedDeadlineOmission, /omission reason outside the Slice 1 contract/,
   "deadline failure used a Slice 2 omission reason",
   runnerEvidenceFor(unsupportedDeadlineOmission, successEvidence));
+
+const fabricatedDeadlineTrace = structuredClone(deadlineExceeded);
+const fabricatedOmission = {
+  ...deadlineOmission,
+  lineageId: "0".repeat(64),
+  sourceEventIds: ["fabricated-event"],
+  sourceSpans: [{ eventId: "fabricated-event", startByte: 0, endByte: 1 }],
+  reason: "omitted_ineligible",
+};
+fabricatedDeadlineTrace.omittedItems = [fabricatedOmission];
+fabricatedDeadlineTrace.counts.tracedCandidates = 1;
+fabricatedDeadlineTrace.counts.deadlineUnprocessed = 3;
+assertRejected(fabricatedDeadlineTrace, /result trace provenance does not match scenario source events/,
+  "deadline failure fabricated trace provenance",
+  runnerEvidenceFor(fabricatedDeadlineTrace, successEvidence));
 
 const oversizedDeadlineAttempt = structuredClone(deadlineExceeded);
 const oversizedOmission = { ...deadlineOmission, fact: "x".repeat(20000), reason: "omitted_budget" };

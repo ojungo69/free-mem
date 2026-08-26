@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
+import { lineageDigest } from "../contracts/alpha-result-lineage.mjs";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const defaultFixturePath = join(fixtureDir, "slice1-bidirectional-en-v1.json");
@@ -19,6 +20,7 @@ const runnerEvidenceValidatorPath = join(fixtureDir, "../contracts/alpha-runner-
 const resultArtifactValidatorPath = join(fixtureDir, "../contracts/alpha-result-artifact.mjs");
 const resultAtomicityValidatorPath = join(fixtureDir, "../contracts/alpha-result-atomicity.mjs");
 const resultInputValidatorPath = join(fixtureDir, "../contracts/alpha-result-input.mjs");
+const resultLineageValidatorPath = join(fixtureDir, "../contracts/alpha-result-lineage.mjs");
 const resultLatencyValidatorPath = join(fixtureDir, "../contracts/alpha-result-latency.mjs");
 const resultRetryValidatorPath = join(fixtureDir, "../contracts/alpha-result-retry.mjs");
 const resultResourceValidatorPath = join(fixtureDir, "../contracts/alpha-result-resource.mjs");
@@ -55,7 +57,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:2f3fb7ae92cf10449c6630716ba6ecbee8bdfbb700f0d013b4fa24f88e5fef8b";
+  "fixture-contract-fingerprint=sha256:0e85d102ae44e175e1eb40e8f29639b7dce9ae9daff3d27533969e0da9856f87";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -77,6 +79,7 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     resultArtifactValidator: normalizeText(readFileSync(resultArtifactValidatorPath, "utf8")),
     resultAtomicityValidator: normalizeText(readFileSync(resultAtomicityValidatorPath, "utf8")),
     resultInputValidator: normalizeText(readFileSync(resultInputValidatorPath, "utf8")),
+    resultLineageValidator: normalizeText(readFileSync(resultLineageValidatorPath, "utf8")),
     resultLatencyValidator: normalizeText(readFileSync(resultLatencyValidatorPath, "utf8")),
     resultRetryValidator: normalizeText(readFileSync(resultRetryValidatorPath, "utf8")),
     resultResourceValidator: normalizeText(readFileSync(resultResourceValidatorPath, "utf8")),
@@ -169,22 +172,6 @@ const digest = (payload) =>
     .update(digestDomain)
     .update(canonicalizeJson(payload))
     .digest("hex")}`;
-
-const lineageDomain = "free-mem:memory-lineage:v1\0";
-const lineageDigest = (repositoryScope, sourceSpans) => {
-  const normalizedSpans = [
-    ...new Map(sourceSpans.map((span) => [canonicalizeJson(span), span])).values(),
-  ].sort(
-    (left, right) =>
-      (left.eventId < right.eventId ? -1 : left.eventId > right.eventId ? 1 : 0) ||
-      left.startByte - right.startByte ||
-      left.endByte - right.endByte,
-  );
-  return createHash("sha256")
-    .update(lineageDomain)
-    .update(canonicalizeJson({ repositoryScope, sourceSpans: normalizedSpans }))
-    .digest("hex");
-};
 
 const lineageVectors = [
   {

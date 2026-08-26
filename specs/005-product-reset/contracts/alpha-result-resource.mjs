@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 
-export function evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord) {
+export function evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord, timeoutMs) {
   const resourceMetrics = fixture.samplingProtocol.resourceMetrics;
   const steadyMetric = resourceMetrics.maxSteadyProductProcessCount;
   const orphanMetric = resourceMetrics.orphanProductProcessCount;
@@ -36,6 +36,14 @@ export function evaluateResourceEvidence(result, fixture, exceptionalState, runn
       (sample.monotonicMs > samples[index - 1].monotonicMs &&
         sample.monotonicMs - samples[index - 1].monotonicMs <= maxSampleGapMs))) {
     throw new Error("process samples do not honor the pinned sampling interval");
+  }
+  if (result.drain.timedOut) {
+    const deadline = startTime + timeoutMs;
+    const deadlineSample = samples.find((sample) => sample.monotonicMs >= deadline);
+    if (typeof startTime !== "number" || deadlineSample !== samples.at(-1) ||
+        !deadlineSample || deadlineSample.monotonicMs - deadline > maxSampleGapMs) {
+      throw new Error("timed-out resource sample does not match the deadline boundary");
+    }
   }
   const derived = {
     maxSteadyProductProcessCount: Math.max(...steadySamples.map((sample) => sample.processCount)),

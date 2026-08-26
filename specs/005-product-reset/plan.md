@@ -102,6 +102,7 @@ specs/005-product-reset/
 │   ├── alpha-result-atomicity.mjs
 │   ├── alpha-result-input.mjs
 │   ├── alpha-result-latency.mjs
+│   ├── alpha-result-lineage.mjs
 │   ├── alpha-result-render.mjs
 │   ├── alpha-result-resource.mjs
 │   ├── alpha-result-retry.mjs

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
+import { lineageDigest } from "./alpha-result-lineage.mjs";
 
 export function tokenizeRenderPayload(payload) {
   const tokens = payload.match(/[\p{L}\p{N}_]+|[^\s]/gu) ?? [];
@@ -57,7 +58,30 @@ export function buildRenderPayload(result, scenario, fixture, items, packId) {
   };
 }
 
-function validateAttemptedItems(result, attemptedItems) {
+function validateTraceProvenance(result, scenario) {
+  const events = new Map(scenario.events.map((event) => [event.eventId, event]));
+  for (const item of [...result.injectedItems, ...result.omittedItems]) {
+    const sourceIds = [...new Set(item.sourceEventIds)].sort();
+    const spanIds = [...new Set(item.sourceSpans.map((span) => span.eventId))].sort();
+    const spansPass = new Set(item.sourceSpans.map((span) => canonicalizeJson(span))).size ===
+      item.sourceSpans.length && item.sourceSpans.every((span) => {
+      const event = events.get(span.eventId);
+      const bytes = event && Buffer.from(event.redactedPayload, "utf8");
+      return bytes && span.startByte >= 0 && span.startByte < span.endByte &&
+        span.endByte <= bytes.length &&
+        (span.startByte === 0 || (bytes[span.startByte] & 0xc0) !== 0x80) &&
+        (span.endByte === bytes.length || (bytes[span.endByte] & 0xc0) !== 0x80);
+    });
+    if (sourceIds.length !== item.sourceEventIds.length || !isDeepStrictEqual(sourceIds, spanIds) ||
+        sourceIds.some((id) => !events.has(id)) ||
+        !spansPass || item.lineageId !== lineageDigest(scenario.sourceRepositoryScope, item.sourceSpans)) {
+      throw new Error("result trace provenance does not match scenario source events");
+    }
+  }
+}
+
+function validateAttemptedItems(result, attemptedItems, scenario) {
+  validateTraceProvenance(result, scenario);
   const allowedOmissionReasons = new Set(["duplicate_revision", "omitted_budget", "omitted_ineligible"]);
   if (result.omittedItems.some((item) => !allowedOmissionReasons.has(item.reason))) {
     throw new Error("result uses an omission reason outside the Slice 1 contract");
@@ -83,7 +107,7 @@ export function validateRenderEvidence(result, scenario, fixture, finalPackExpec
   const attemptedItems = result.attemptedItems === "same_as_final"
     ? result.injectedItems
     : result.attemptedItems;
-  validateAttemptedItems(result, attemptedItems);
+  validateAttemptedItems(result, attemptedItems, scenario);
   const attemptedEvidence = result.attemptedRenderEvidence === "same_as_final"
     ? result.finalRenderEvidence
     : result.attemptedRenderEvidence;
