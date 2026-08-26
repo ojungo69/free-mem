@@ -397,14 +397,11 @@ assertRejected(overlappingAnchor, /result trace contains overlapping active sour
   "quality failure retained overlapping source anchors", runnerEvidenceFor(overlappingAnchor, successEvidence));
 
 const duplicateIdentityTrace = structuredClone(success);
-duplicateIdentityTrace.injectedItems = Array.from(
-  { length: 4 }, () => structuredClone(success.injectedItems[0]),
-);
+duplicateIdentityTrace.injectedItems = Array.from({ length: 4 }, () => structuredClone(success.injectedItems[0]));
 duplicateIdentityTrace.quality.matchedInjectedItemCount = 1;
 bindFinalRender(duplicateIdentityTrace, successScenario);
-duplicateIdentityTrace.disposition = {
-  state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
-};
+duplicateIdentityTrace.disposition = { state: "failed", reason: "quality_threshold_exceeded",
+  successfulComparisonEligible: false };
 assertRejected(duplicateIdentityTrace, /result trace contains duplicate active identities/,
   "quality failure duplicated one active identity",
   runnerEvidenceFor(duplicateIdentityTrace, successEvidence));
@@ -414,11 +411,15 @@ const sentinelScenario = scenarioFor(sentinelMetadata.scenarioId);
 sentinelMetadata.injectedItems[0].memoryId += sentinelScenario.securityOracle.forbiddenSentinels[2];
 sentinelMetadata.quality.matchedInjectedItemCount = 0;
 bindFinalRender(sentinelMetadata, sentinelScenario);
-sentinelMetadata.disposition = {
-  state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
-};
+sentinelMetadata.disposition = { state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false };
 assertRejected(sentinelMetadata, /independent zero-tolerance safety boundary/,
   "final pack concealed a forbidden sentinel in metadata", suiteRegressionEvidence);
+
+const sentinelWrapper = suiteResultFor("mixed-sensitivity-remote-projection");
+sentinelWrapper.packId += sentinelScenario.securityOracle.forbiddenSentinels[2];
+bindFinalRender(sentinelWrapper, sentinelScenario);
+assertRejected(sentinelWrapper, /independent zero-tolerance safety boundary/,
+  "final pack concealed a forbidden sentinel in wrapper metadata", suiteRegressionEvidence);
 
 const restrictedInjection = suiteResultFor("local-derived-memory-remote-injection-rejected");
 const restrictedScenario = scenarioFor(restrictedInjection.scenarioId);

@@ -35,12 +35,6 @@ function assertNoEgressBeforeProviderAttempt(result, observedRequests, observedP
   }
 }
 
-function containsText(value, needle) {
-  if (typeof value === "string") return value.includes(needle);
-  if (value === null || typeof value !== "object") return false;
-  return Object.values(value).some((item) => containsText(item, needle));
-}
-
 function evaluateDenominators(result, scenario, activeSummaryProvider, expectedDuplicateDeliveries, oracle) {
   const observedEvents = observedScenarioEvents(result, scenario);
   const remoteEvents = activeSummaryProvider.executionLocation === "remote" ? observedEvents : [];
@@ -125,9 +119,10 @@ function evaluateZeroToleranceEvidence(result, scenario, fixture, oracle) {
   ).length;
   const crossScopeInjections = scenario.sourceRepositoryScope === scenario.targetRepositoryScope
     ? 0 : result.injectedItems.length;
-  const forbiddenSentinelObservations = result.injectedItems.filter((item) =>
-    (oracle.forbiddenSentinels ?? []).some((sentinel) => containsText(item, sentinel)),
-  ).length;
+  const deliveredPayload = result.finalRenderEvidence?.utf8Payload ?? "";
+  const forbiddenSentinelObservations = Number((oracle.forbiddenSentinels ?? []).some(
+    (sentinel) => deliveredPayload.includes(sentinel),
+  ));
   return evidence.persistedSecretCount === 0 && evidence.injectedSecretCount === 0 &&
     evidence.restrictedPayloadBytesSent === 0 && evidence.redirectLocationRequestCount === 0 &&
     evidence.redirectLocationPayloadBytesSent === 0 && evidence.resentPayloadCount === 0 &&
