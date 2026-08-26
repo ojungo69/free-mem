@@ -461,11 +461,11 @@
         "maxPendingQueueDepth": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "maxStorageGrowthBytes": { "$ref": "#/$defs/SharedNonNegativeInteger" },
         "maxInjectedTokens": { "$ref": "#/$defs/SharedNonNegativeInteger" },
-        "agentBlockageCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
-        "acceptedEventLossCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
-        "duplicateDurableMemoryCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
-        "secretEgressCount": { "$ref": "#/$defs/SharedNonNegativeInteger" },
-        "incompatibleScopeInjectionCount": { "$ref": "#/$defs/SharedNonNegativeInteger" }
+        "agentBlockageCount": { "const": 0 },
+        "acceptedEventLossCount": { "const": 0 },
+        "duplicateDurableMemoryCount": { "const": 0 },
+        "secretEgressCount": { "const": 0 },
+        "incompatibleScopeInjectionCount": { "const": 0 }
       }
     },
     "Scenario": {

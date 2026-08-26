@@ -48,7 +48,9 @@ const observationTimes = (run) => [
     .flatMap((timing) => [timing.startMonotonicMs, timing.endMonotonicMs]),
 ];
 
-function validateRunPreparations(record, result, exceptionalState, maxPreparationGapMs) {
+function validateRunPreparations(
+  record, result, exceptionalState, maxPreparationGapMs, maxProductProcessCount,
+) {
   const runs = record.latencyRuns;
   const preparations = record.runPreparations;
   if (exceptionalState) {
@@ -81,6 +83,7 @@ function validateRunPreparations(record, result, exceptionalState, maxPreparatio
     }
   } else if (dataRoots.size !== 1 || processGenerations.size !== 1 ||
       !preparations.every((item) => item.observedProductProcessCount > 0 &&
+        item.observedProductProcessCount <= maxProductProcessCount &&
         item.readyProcessObserved)) {
     throw new Error("warm runner preparation did not prove retained ready state");
   }
@@ -135,6 +138,7 @@ export function validateRunnerEvidence(evidence, result, fixture, expectedInvoca
   }
   validateRunPreparations(record, result,
     result.disposition.state === "unsupported" || result.disposition.state === "not_run",
-    fixture.samplingProtocol.processSampleIntervalMs);
+    fixture.samplingProtocol.processSampleIntervalMs,
+    fixture.thresholds.maxSteadyProductProcessCount);
   return record;
 }

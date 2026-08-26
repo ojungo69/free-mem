@@ -4,11 +4,15 @@ import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
+
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = join(contractDir, "../fixtures");
 const semanticPath = join(fixtureRoot, "slice1-bidirectional-en-v1.semantic.jq");
 const fixture = JSON.parse(readFileSync(join(fixtureRoot,
   "slice1-bidirectional-en-v1.json"), "utf8"));
+const fixtureSchema = JSON.parse(readFileSync(join(fixtureRoot,
+  "slice1-bidirectional-en-v1.schema.json"), "utf8"));
 
 function assertFixtureRejected(mutant, label) {
   const run = spawnSync("jq", ["-e", "-f", semanticPath], {
@@ -73,5 +77,25 @@ const unsupportedPercentileMethod = structuredClone(fixture);
 unsupportedPercentileMethod.samplingProtocol.percentileMethod = "linear_interpolation";
 assertFixtureRejected(unsupportedPercentileMethod,
   "fixture semantics accepted an unsupported percentile method");
+
+for (const [field, value] of [
+  ["percentileScope", "pooled_across_scenarios"], ["clock", "wall_clock"],
+]) {
+  const unsupportedSamplingProtocol = structuredClone(fixture);
+  unsupportedSamplingProtocol.samplingProtocol[field] = value;
+  assertFixtureRejected(unsupportedSamplingProtocol,
+    `fixture semantics accepted unsupported ${field}`);
+}
+
+for (const name of ["agentBlockageCount", "acceptedEventLossCount",
+  "duplicateDurableMemoryCount", "secretEgressCount", "incompatibleScopeInjectionCount"]) {
+  const nonzeroSafetyThreshold = structuredClone(fixture);
+  nonzeroSafetyThreshold.thresholds[name] = 1;
+  assert.notEqual(validateAgainstSchema(
+    nonzeroSafetyThreshold, fixtureSchema, fixtureSchema,
+  ).length, 0, `fixture schema accepted nonzero ${name}`);
+  assertFixtureRejected(nonzeroSafetyThreshold,
+    `fixture semantics accepted nonzero ${name}`);
+}
 
 console.log("Slice 1 fixture semantic regression checks passed.");

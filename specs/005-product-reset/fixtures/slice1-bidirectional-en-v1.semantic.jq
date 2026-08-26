@@ -105,6 +105,8 @@ def fixture_graph_ok($root):
     ($root.samplingProtocol.discardInitialRunsPerScenario +
       $root.samplingProtocol.measuredRunsPerScenario)
   and $root.samplingProtocol.percentileMethod == "nearest_rank_ceiling"
+  and $root.samplingProtocol.percentileScope == "per_scenario_no_pooling"
+  and $root.samplingProtocol.clock == "monotonic"
   and ([ $root.samplingProtocol.metrics.captureP95Ms.scenarios[] ] | sort) ==
     ($captureScenarioIds | sort)
   and all($root.samplingProtocol.metrics.warmInjectionP95Ms.scenarios[];
@@ -242,7 +244,10 @@ def resource_profile_ok($root):
     "maxShortRunRssGrowthMiB": $root.thresholds.maxShortRunRssGrowthMiB,
     "maxPendingQueueDepth": $root.thresholds.maxPendingQueueDepth,
     "maxStorageGrowthBytes": $root.thresholds.maxStorageGrowthBytes
-  };
+  }
+  and all(["agentBlockageCount", "acceptedEventLossCount", "duplicateDurableMemoryCount",
+    "secretEgressCount", "incompatibleScopeInjectionCount"][];
+    . as $name | $root.thresholds[$name] == 0);
 
 def destination_policy_ok($root):
   $root.effectiveConfiguration.destinationPolicyMap as $policies
