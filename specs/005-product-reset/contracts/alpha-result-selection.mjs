@@ -1,4 +1,5 @@
-export function validateSelectionTiming(result, exceptionalState, expectedInputCandidates) {
+export function validateSelectionTiming(result, exceptionalState, expectedInputCandidates,
+  selectionTimeBudgetMs) {
   const evidence = result.selectionTimingEvidence;
   if (exceptionalState) {
     if (evidence !== null || result.selectionElapsedMs !== 0) {
@@ -33,6 +34,10 @@ export function validateSelectionTiming(result, exceptionalState, expectedInputC
   }
   if (result.counts.inputCandidates !== expectedInputCandidates) {
     throw new Error("completed selection input count does not match the scenario");
+  }
+  if (result.counts.deadlineUnprocessed > 0 &&
+      result.selectionElapsedMs < selectionTimeBudgetMs) {
+    throw new Error("selection left unprocessed candidates before its deadline");
   }
   return true;
 }

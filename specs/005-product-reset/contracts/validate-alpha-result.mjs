@@ -238,7 +238,7 @@ const runnerRecord = validateRunnerEvidence(
 );
 const exceptionalState = result.disposition.state === "unsupported" ||
   result.disposition.state === "not_run";
-const selectionObserved = validateSelectionTiming(result, exceptionalState, scenario.expectedInjectedItems.length + scenario.expectedOmissions.length);
+const selectionObserved = validateSelectionTiming(result, exceptionalState, scenario.expectedInjectedItems.length + scenario.expectedOmissions.length, fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.selectionTimeBudgetMs);
 
 const expectedMilestones = fixture.lifecycleProfiles[scenario.lifecycleProfileId];
 const milestoneNames = result.milestones.map((item) => item.name);
@@ -393,9 +393,8 @@ const latencyPass = evaluateLatencyEvidence(
 
 const resourcePass = evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord, scenario.drainCondition.timeoutMs);
 const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
-const selectionDeadlineExceeded =
-  selectionObserved && (result.counts.deadlineUnprocessed > 0 ||
-    result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs);
+const selectionDeadlineExceeded = selectionObserved &&
+  result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs;
 if (result.drain.timedOut && selectionFinishedObserved && !qualityPass)
   throw new Error("completed selection does not match the pinned item trace");
 const finalInjectionPackSizePass =

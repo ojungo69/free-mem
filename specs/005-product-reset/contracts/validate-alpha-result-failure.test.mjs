@@ -308,49 +308,59 @@ erasedSelection.quality = {
 assertRejected(erasedSelection, /completed selection input count does not match the scenario/,
   "timeout erased an observed completed selection", timeoutAfterSelectionEvidence);
 
+function observeElapsedDeadline(result) {
+  for (const [name, monotonicMs] of [["target_selection_started", 700],
+    ["target_selection_finished", 1450], ["target_injection_acknowledged", 1550],
+    ["target_model_request_dispatched", 1650], ["scenario_terminal", 1750],
+    ["post_teardown_grace_elapsed", 1850]]) {
+    result.milestones.find((item) => item.name === name).monotonicMs = monotonicMs;
+  }
+  result.selectionTimingEvidence = { startMonotonicMs: 700, endMonotonicMs: 1450 };
+  result.selectionElapsedMs = 750;
+  for (let monotonicMs = 1400; monotonicMs <= 1900; monotonicMs += 100) {
+    result.processSamples.push({ ...success.processSamples.at(-1), monotonicMs });
+  }
+}
+
+function markDeadlineFailure(result) {
+  result.counts.tracedCandidates = 0;
+  result.counts.deadlineUnprocessed = result.counts.inputCandidates;
+  result.counts.admittedCandidates = 0;
+  result.counts.selectedItems = 0;
+  result.injectedItems = [];
+  result.omittedItems = [];
+  result.attemptedItems = [];
+  result.attemptedRenderEvidence = null;
+  result.attemptedRenderedBytes = 0;
+  result.attemptedInjectedTokens = 0;
+  result.packId = null;
+  result.finalRenderEvidence = null;
+  result.renderedBytes = 0;
+  result.injectedTokens = 0;
+  result.quality = {
+    expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
+    expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
+  };
+  result.disposition = {
+    state: "failed", reason: "selection_deadline_exceeded", successfulComparisonEligible: false,
+  };
+}
+
+const prematureDeadline = structuredClone(success);
+markDeadlineFailure(prematureDeadline);
+assertRejected(prematureDeadline, /selection left unprocessed candidates before its deadline/,
+  "selection abandoned candidates before the deadline",
+  runnerEvidenceFor(prematureDeadline, successEvidence));
+
 const deadlineExceeded = structuredClone(success);
-deadlineExceeded.counts.tracedCandidates = 0;
-deadlineExceeded.counts.deadlineUnprocessed = deadlineExceeded.counts.inputCandidates;
-deadlineExceeded.counts.admittedCandidates = 0;
-deadlineExceeded.counts.selectedItems = 0;
-deadlineExceeded.injectedItems = [];
-deadlineExceeded.omittedItems = [];
-deadlineExceeded.attemptedItems = [];
-deadlineExceeded.attemptedRenderEvidence = null;
-deadlineExceeded.attemptedRenderedBytes = 0;
-deadlineExceeded.attemptedInjectedTokens = 0;
-deadlineExceeded.packId = null;
-deadlineExceeded.finalRenderEvidence = null;
-deadlineExceeded.renderedBytes = 0;
-deadlineExceeded.injectedTokens = 0;
-deadlineExceeded.quality = {
-  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
-  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
-};
-deadlineExceeded.disposition = {
-  state: "failed", reason: "selection_deadline_exceeded", successfulComparisonEligible: false,
-};
+observeElapsedDeadline(deadlineExceeded);
+markDeadlineFailure(deadlineExceeded);
 assertAccepted(deadlineExceeded, "completed selection deadline failure",
   runnerEvidenceFor(deadlineExceeded, successEvidence));
 
 const elapsedDeadlineWithoutInputs = structuredClone(deadlineExceeded);
 elapsedDeadlineWithoutInputs.counts.inputCandidates = 0;
 elapsedDeadlineWithoutInputs.counts.deadlineUnprocessed = 0;
-for (const [name, monotonicMs] of [["target_selection_started", 700],
-  ["target_selection_finished", 1450], ["target_injection_acknowledged", 1550],
-  ["target_model_request_dispatched", 1650], ["scenario_terminal", 1750],
-  ["post_teardown_grace_elapsed", 1850]]) {
-  elapsedDeadlineWithoutInputs.milestones.find((item) => item.name === name).monotonicMs = monotonicMs;
-}
-elapsedDeadlineWithoutInputs.selectionTimingEvidence = {
-  startMonotonicMs: 700, endMonotonicMs: 1450,
-};
-elapsedDeadlineWithoutInputs.selectionElapsedMs = 750;
-for (let monotonicMs = 1400; monotonicMs <= 1900; monotonicMs += 100) {
-  elapsedDeadlineWithoutInputs.processSamples.push({
-    ...success.processSamples.at(-1), monotonicMs,
-  });
-}
 assertRejected(elapsedDeadlineWithoutInputs,
   /completed selection input count does not match the scenario/,
   "elapsed deadline failure erased available inputs",
