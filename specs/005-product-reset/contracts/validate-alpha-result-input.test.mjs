@@ -19,6 +19,10 @@ const fixture = JSON.parse(readFileSync(join(fixtureRoot,
   "slice1-bidirectional-en-v1.json"), "utf8"));
 const successEvidence = JSON.parse(readFileSync(join(fixtureRoot,
   "runner-evidence/alpha-runner-evidence-v1.example.json"), "utf8"));
+const failure = JSON.parse(readFileSync(join(fixtureRoot,
+  "alpha-result-v1.failure-example.json"), "utf8"));
+const failureEvidence = JSON.parse(readFileSync(join(fixtureRoot,
+  "runner-evidence/alpha-runner-evidence-v1.failure-example.json"), "utf8"));
 const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot,
   "alpha-result-v1.suite-regression.json"), "utf8"));
 const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot,
@@ -35,6 +39,18 @@ function writeRunnerEvidence(evidence) {
   const path = join(runnerEvidenceRoot, `runner-evidence-${runnerEvidenceOrdinal += 1}.json`);
   writeFileSync(path, JSON.stringify(evidence), { mode: 0o600 });
   return path;
+}
+
+for (const [result, evidence] of [[success, successEvidence], [failure, failureEvidence]]) {
+  const evidencePath = writeRunnerEvidence(evidence);
+  const committedPair = spawnSync(process.execPath,
+    ["--experimental-strip-types", validatorPath,
+      "--runner-evidence-root", runnerEvidenceRoot, "--runner-evidence", evidencePath,
+      "--runner-invocation-id", evidence.invocationId, "--result", "-"], {
+      cwd: repoRoot, input: JSON.stringify(result), encoding: "utf8",
+    });
+  assert.equal(committedPair.status, 0,
+    `committed result/evidence pair drifted: ${committedPair.stderr}${committedPair.stdout}`);
 }
 
 const missingRunnerEvidence = spawnSync(process.execPath,
