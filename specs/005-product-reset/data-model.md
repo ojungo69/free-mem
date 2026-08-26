@@ -352,7 +352,8 @@ in suite mode.
 - a runner-derived fingerprint over the complete result observation, binding egress, render,
   atomicity, and conflict evidence without copying private payload into the bundle
 - bundle-global unique per-run preparation receipts with path-free ASCII opaque data-directory and
-  process-generation identities, observed after the prior run and before the current run
+  process-generation identities, observed after the prior run and within one pinned process-sample
+  interval before the current run
 - cold-reset observations proving zero prior product processes and an empty data directory
 - warm observations proving one retained ready data directory and process generation
 

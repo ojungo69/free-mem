@@ -45,10 +45,16 @@ function validateRunEvidence(runs, scenario, result, protocol, applicability) {
     run.sessionNamespace === `${scenario.scenarioId}:session-${run.runOrdinal}` &&
     isDeepStrictEqual(run.captureTimings.map((timing) => timing.eventId),
       expectedRunEventIds(run.runOrdinal)) &&
+    run.captureTimings.every((timing, timingIndex, timings) => timingIndex === 0 ||
+      timing.startMonotonicMs >= timings[timingIndex - 1].endMonotonicMs) &&
     (warmInjectionApplies ? run.warmInjectionTiming !== null : run.warmInjectionTiming === null) &&
     (coldInjectionApplies
       ? run.coldLexicalInjectionTiming !== null
-      : run.coldLexicalInjectionTiming === null)
+      : run.coldLexicalInjectionTiming === null) &&
+    [run.warmInjectionTiming, run.coldLexicalInjectionTiming].filter(Boolean).every(
+      (timing) => run.captureTimings.length === 0 ||
+        timing.startMonotonicMs >= run.captureTimings.at(-1).endMonotonicMs,
+    )
   );
   if (!runsMatch) {
     throw new Error("latency run evidence does not match the pinned sampling protocol");

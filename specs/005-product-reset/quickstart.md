@@ -202,7 +202,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T14:41:50+09:00
+## Validation result — 2026-08-26T15:18:21+09:00
 
 | Check | Result |
 |---|---|
@@ -211,7 +211,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, cross-host/downgrade transport, privacy, host-identity, output-limit recovery-manifest, environment, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, secure runner-owned 16-scenario bundle plus required before-model negative result, full result-observation attestation, zero-report attack rejection, bundle-global cold reset receipts/data/process identities, runner-bound host identity decisions, path-free opaque runner identities, retained warm generation, current invocation binding, immutable/non-overlapping evidence root, retrieval-before-selection presence/order, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss/conflict evidence, pre-terminal evidence nullability, inclusive timeout expiration, Slice 1 pack-failure refusal and final byte/token ceiling, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin and runner-evidence inputs, FIFO rejection, timeout prefixes, and canonical exceptional-state mutations |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, secure runner-owned 16-scenario bundle plus required before-model negative result, full result-observation attestation, zero-report attack rejection, bundle-global cold reset receipts/data/process identities with a pinned freshness gap, runner-bound host identity decisions, path-free opaque runner identities, retained warm generation, current invocation binding, immutable/non-overlapping evidence root, retrieval-before-selection presence/order, lifecycle-bound selection, ordered raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, timeout-prefix persistence counts, retained completed selection, exact Agent-operation denominator, lifecycle-derived timeout/loss/conflict evidence, pre-terminal evidence nullability, inclusive timeout expiration, Slice 1 pack-failure refusal and final byte/token ceiling, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin and runner-evidence inputs, FIFO rejection, timeout prefixes, and canonical exceptional-state mutations |
 | Product Reset CI contract step | PASS locally; workflow `actionlint` and the committed regression command exit 0 |
 | Rollback exact-state fence | PASS; 69-entry pre/post snapshot SHAs, live post-M0 fence, generated inverse state/full-label simulation, and empty parent sub-issue postcondition match |
 | Local Markdown links (one-shot external validation) | PASS |
@@ -232,12 +232,13 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- CodeRabbit's final local review only repeated the fixed contract's equal-time before-model boundary;
-  it was rejected after fixture/source checks. Its earlier valid suite-fixture separation was
-  applied. A fresh GitHub full review is requested after each pushed head.
+- CodeRabbit's final local review raised zero issues. Its earlier valid suite-fixture separation was
+  applied, while its repeated fixed-contract equal-time suggestion was rejected after fixture/source
+  checks. A fresh GitHub full review is requested after each pushed head.
 - The latest GitHub Codex/CodeRabbit reviews raised timeout, input-boundary, loss-evidence, and exact
   rollback gaps; all valid findings were reproduced, fixed, and covered by focused cases. Cubic's
-  post-fix review raised zero issues. Grok's split
+  latest P1 contradicted the cited source values and the passing acceptance regression, so it was
+  rejected; its preceding post-fix reviews raised zero issues. Grok's split
   contract/validator review returned `ok: true`; its full-diff, fixture/documentation, and final
   follow-up attempts timed out without session IDs, so those ranges are not claimed as Grok-reviewed.
   Ponytail found no unused definition, speculative abstraction, dependency, or removable

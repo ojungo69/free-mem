@@ -44,7 +44,7 @@ const observationTimes = (run) => [
     .flatMap((timing) => [timing.startMonotonicMs, timing.endMonotonicMs]),
 ];
 
-function validateRunPreparations(record, result, exceptionalState) {
+function validateRunPreparations(record, result, exceptionalState, maxPreparationGapMs) {
   const runs = record.latencyRuns;
   const preparations = record.runPreparations;
   if (exceptionalState) {
@@ -57,6 +57,7 @@ function validateRunPreparations(record, result, exceptionalState) {
     item.runOrdinal === runs[index].runOrdinal && item.mode === runs[index].resetMode &&
     item.runStartedMonotonicMs <= item.runFinishedMonotonicMs &&
     item.observedAtMonotonicMs < item.runStartedMonotonicMs &&
+    item.runStartedMonotonicMs - item.observedAtMonotonicMs <= maxPreparationGapMs &&
     observationTimes(runs[index]).every((time) =>
       time >= item.runStartedMonotonicMs && time <= item.runFinishedMonotonicMs) &&
     (index === 0 || (item.observedAtMonotonicMs > preparations[index - 1].runFinishedMonotonicMs &&
@@ -124,6 +125,7 @@ export function validateRunnerEvidence(evidence, result, fixture, expectedInvoca
     throw new Error("result observations do not match runner evidence");
   }
   validateRunPreparations(record, result,
-    result.disposition.state === "unsupported" || result.disposition.state === "not_run");
+    result.disposition.state === "unsupported" || result.disposition.state === "not_run",
+    fixture.samplingProtocol.processSampleIntervalMs);
   return record;
 }

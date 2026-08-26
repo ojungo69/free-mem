@@ -50,7 +50,8 @@ function buildRunnerEvidence(result) {
       runOrdinal: run.runOrdinal,
       mode: run.resetMode,
       receiptId: `${result.scenarioId}:run-${run.runOrdinal}:preparation-receipt`,
-      observedAtMonotonicMs: Math.max(0, runStartedMonotonicMs - 1000),
+      observedAtMonotonicMs: Math.max(0,
+        runStartedMonotonicMs - fixture.samplingProtocol.processSampleIntervalMs),
       runStartedMonotonicMs,
       runFinishedMonotonicMs,
       dataDirInstanceId: cold
@@ -231,10 +232,10 @@ function unsupportedPackFailure() {
   return result;
 }
 
-function oversizedFinalPack(degradation) {
+function oversizedFinalPack(packIdSuffix) {
   const result = structuredClone(success);
   const scenario = fixture.scenarios.find((item) => item.scenarioId === result.scenarioId);
-  result.packDegradations = [degradation];
+  result.packId = `${result.packId}:${packIdSuffix}`;
   const final = renderEvidence(result, scenario, result.injectedItems, result.packId);
   result.finalRenderEvidence = final.evidence;
   result.attemptedRenderEvidence = "same_as_final";

@@ -50,7 +50,9 @@ def counts_ok:
     end)
   and .counts.committed <= .counts.captured
   and .counts.lost <= .counts.captured
-  and (if (.drain.timedOut or .counts.deadlineUnprocessed > 0)
+  and (if (.counts.deadlineUnprocessed > 0
+      or (.drain.timedOut
+        and ([.milestones[].name] | index("target_selection_finished")) == null))
     then .counts.selectedItems == 0
       and (.injectedItems | length) == 0
       and .renderedBytes == 0

@@ -267,10 +267,11 @@ const milestonesPass = result.drain.timedOut
     milestoneNames.every((name, index) => name === expectedMilestones[index]) &&
     !milestoneNames.includes(scenario.drainCondition.terminalMilestone)
   : isDeepStrictEqual(milestoneNames, expectedMilestones);
+const selectionFinishedObserved = milestoneNames.includes("target_selection_finished");
 const expectedDegradations = scenario.drainCondition.targetInjectionAcknowledged &&
-  fixture.effectiveConfiguration.embeddingProvider.state === "disabled"
-  ? [fixture.effectiveConfiguration.embeddingProvider.packDegradationReason]
-  : [];
+    selectionFinishedObserved && fixture.effectiveConfiguration.embeddingProvider.state === "disabled"
+  ? [fixture.effectiveConfiguration.embeddingProvider.packDegradationReason] : [];
+if (!isDeepStrictEqual(result.packDegradations, expectedDegradations)) throw new Error("pack degradations do not match observed capabilities");
 const injectionAcknowledgedAt = drainMilestoneTimes.get("target_injection_acknowledged");
 const modelDispatchedAt = drainMilestoneTimes.get("target_model_request_dispatched");
 const expectedInjectionBeforeModel = scenario.drainCondition.targetInjectionAcknowledged &&
@@ -342,21 +343,28 @@ const qualityPass =
   isDeepStrictEqual(result.injectedItems, scenario.expectedInjectedItems) &&
   isDeepStrictEqual(result.omittedItems, scenario.expectedOmissions) &&
   derivedQuality.forbiddenFactCount === 0;
+if (selectionFinishedObserved && !qualityPass) throw new Error("completed selection does not match the pinned item trace");
 
 const expectedDuplicateDeliveries = scenario.fault?.replaySchedule
   ? scenario.fault.replaySchedule.slice(1).reduce((count, item) => count + item.eventIds.length, 0)
   : 0;
+const persistenceMilestone = ["source_summary_committed", "source_memory_drain_completed",
+  "local_provider_derived_memory"].find((name) => expectedMilestones.includes(name));
+const persistenceObserved = !result.drain.timedOut || persistenceMilestone === undefined ||
+  milestoneNames.includes(persistenceMilestone);
+const pendingObserved = !result.drain.timedOut ||
+  milestoneNames.includes("source_flush_requested_by_target_prompt");
 const countsPass =
   result.counts.captured === scenario.events.length &&
   result.counts.committed === scenario.drainCondition.committedEventCount &&
   result.counts.duplicateDeliveries === expectedDuplicateDeliveries &&
   result.counts.lost === scenario.expectedCounters.acceptedEventLossCount &&
-  result.counts.pending === (scenario.drainCondition.pendingSummaryJobCount ?? 0) &&
-  result.counts.summaryCount === scenario.drainCondition.summaryCount &&
-  result.counts.durableMemoryCount === scenario.drainCondition.durableMemoryCount;
-if (!exceptionalState && !countsPass) {
-  throw new Error("scenario counts do not match the pinned lifecycle");
-}
+  result.counts.pending === (pendingObserved
+    ? (scenario.drainCondition.pendingSummaryJobCount ?? 0) : 0) &&
+  result.counts.summaryCount === (persistenceObserved ? scenario.drainCondition.summaryCount : 0) &&
+  result.counts.durableMemoryCount ===
+    (persistenceObserved ? scenario.drainCondition.durableMemoryCount : 0);
+if (!exceptionalState && !countsPass) throw new Error("scenario counts do not match the pinned lifecycle");
 const tracedItems = result.injectedItems.length + result.omittedItems.length;
 const admittedItems = result.injectedItems.length + result.omittedItems.filter(
   (item) => item.reason === "omitted_budget" || item.reason === "lane_minimum_not_funded",
@@ -409,7 +417,6 @@ if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits)
 }
 const scenarioOraclePass =
   milestonesPass &&
-  isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
   (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
   result.providerCostUnits === expectedProviderCostUnits;
 const derivedFailureReason = result.drain.timedOut

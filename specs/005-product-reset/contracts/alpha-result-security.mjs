@@ -35,7 +35,7 @@ function evaluateDenominators(result, scenario, activeSummaryProvider, expectedD
   };
   const duplicateDeliveries = result.drain.timedOut &&
     !milestones.has("stable_batch_replayed_second_time") ? 0 : expectedDuplicateDeliveries;
-  return result.securityDenominators.agentOperationCount > 0 &&
+  return result.securityDenominators.agentOperationCount === 1 &&
     result.counts.captured === observedEvents.length &&
     result.securityDenominators.acceptedEventCount === result.counts.captured &&
     result.counts.duplicateDeliveries === duplicateDeliveries &&
