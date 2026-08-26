@@ -58,6 +58,10 @@ export function buildRenderPayload(result, scenario, fixture, items, packId) {
 }
 
 function validateAttemptedItems(result, attemptedItems) {
+  const allowedOmissionReasons = new Set(["duplicate_revision", "omitted_budget", "omitted_ineligible"]);
+  if (result.omittedItems.some((item) => !allowedOmissionReasons.has(item.reason))) {
+    throw new Error("result uses an omission reason outside the Slice 1 contract");
+  }
   if (result.attemptedItems === "same_as_final") {
     if (result.omittedItems.some((item) => item.reason === "omitted_budget")) {
       throw new Error("pruned render candidates require explicit attempted items");
@@ -72,6 +76,10 @@ function validateAttemptedItems(result, attemptedItems) {
 }
 
 export function validateRenderEvidence(result, scenario, fixture, finalPackExpected) {
+  if ((result.attemptedItems === "same_as_final" ||
+      result.attemptedRenderEvidence === "same_as_final") && result.finalRenderEvidence === null) {
+    throw new Error("attempted render aliases require an observed final pack");
+  }
   const attemptedItems = result.attemptedItems === "same_as_final"
     ? result.injectedItems
     : result.attemptedItems;
@@ -98,6 +106,11 @@ export function validateRenderEvidence(result, scenario, fixture, finalPackExpec
   if (attemptedPayload !== null && !isDeepStrictEqual(attemptedPayload,
     buildRenderPayload(result, scenario, fixture, attemptedItems, attemptedPackId))) {
     throw new Error("attempted render payload does not match attempted items");
+  }
+  const envelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
+  if (!finalPackExpected && (result.attemptedRenderedBytes > envelope.maxRenderedBytes ||
+      result.attemptedInjectedTokens > envelope.maxInjectedTokens)) {
+    throw new Error("oversized attempted InjectionPack has no valid final output");
   }
   const finalPayload = validateEvidence(
     result.finalRenderEvidence,

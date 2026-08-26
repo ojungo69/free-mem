@@ -174,6 +174,8 @@ function timedOutSuccessAt(lastMilestone) {
   result.finalRenderEvidence = null;
   result.renderedBytes = 0;
   result.injectedTokens = 0;
+  result.attemptedItems = structuredClone(result.injectedItems);
+  result.attemptedRenderEvidence = null;
   result.attemptedRenderedBytes = 0;
   result.attemptedInjectedTokens = 0;
   const start = result.processSamples[0], steady = result.processSamples[1];
@@ -222,6 +224,12 @@ for (const name of Object.keys(timeoutBeforeCapture.securityEvidence))
 assertAccepted(timeoutBeforeCapture, "timeout before event capture",
   runnerEvidenceFor(timeoutBeforeCapture, successEvidence));
 
+const timeoutBeforeProviderAttempt = timedOutSuccessAt("source_events_captured");
+clearUnobservedSelection(timeoutBeforeProviderAttempt);
+assertRejected(timeoutBeforeProviderAttempt, /provider egress exists before the observed attempt boundary/,
+  "timeout before provider attempt claimed egress",
+  runnerEvidenceFor(timeoutBeforeProviderAttempt, successEvidence));
+
 const earlyAttemptedRender = structuredClone(timeoutBeforePersistence);
 const successScenario = fixture.scenarios.find((item) => item.scenarioId === success.scenarioId);
 const earlyPayload = canonicalizeJson(
@@ -238,6 +246,13 @@ earlyAttemptedRender.attemptedInjectedTokens =
 assertRejected(earlyAttemptedRender, /attempted render exists without an observed selection boundary/,
   "timeout before selection claimed an attempted render",
   runnerEvidenceFor(earlyAttemptedRender, successEvidence));
+
+const earlyAttemptAliases = structuredClone(timeoutBeforePersistence);
+earlyAttemptAliases.attemptedItems = "same_as_final";
+earlyAttemptAliases.attemptedRenderEvidence = "same_as_final";
+assertRejected(earlyAttemptAliases, /attempted render aliases require an observed final pack/,
+  "timeout before selection used final-pack aliases",
+  runnerEvidenceFor(earlyAttemptAliases, successEvidence));
 
 const timeoutAfterSelection = timedOutSuccessAt("target_selection_finished");
 const timeoutAfterSelectionEvidence = runnerEvidenceFor(timeoutAfterSelection, successEvidence);
@@ -292,6 +307,50 @@ deadlineExceeded.disposition = {
 };
 assertAccepted(deadlineExceeded, "completed selection deadline failure",
   runnerEvidenceFor(deadlineExceeded, successEvidence));
+
+const unsupportedDeadlineOmission = structuredClone(deadlineExceeded);
+const { selectionReason: _selectionReason, ...deadlineOmission } = success.injectedItems[0];
+unsupportedDeadlineOmission.omittedItems = [{ ...deadlineOmission, reason: "candidate_limit" }];
+unsupportedDeadlineOmission.counts.tracedCandidates = 1;
+unsupportedDeadlineOmission.counts.deadlineUnprocessed = 3;
+unsupportedDeadlineOmission.quality = {
+  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
+  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
+};
+assertRejected(unsupportedDeadlineOmission, /omission reason outside the Slice 1 contract/,
+  "deadline failure used a Slice 2 omission reason",
+  runnerEvidenceFor(unsupportedDeadlineOmission, successEvidence));
+
+const oversizedDeadlineAttempt = structuredClone(deadlineExceeded);
+const oversizedOmission = { ...deadlineOmission, fact: "x".repeat(20000), reason: "omitted_budget" };
+oversizedDeadlineAttempt.omittedItems = [oversizedOmission];
+oversizedDeadlineAttempt.counts.tracedCandidates = 1;
+oversizedDeadlineAttempt.counts.deadlineUnprocessed = 3;
+oversizedDeadlineAttempt.counts.admittedCandidates = 1;
+const { reason: _reason, ...oversizedAttemptedItem } = oversizedOmission;
+oversizedAttemptedItem.selectionReason = oversizedAttemptedItem.sourceLane;
+oversizedDeadlineAttempt.attemptedItems = [oversizedAttemptedItem];
+const oversizedAttemptPayload = canonicalizeJson(
+  buildRenderPayload(oversizedDeadlineAttempt, successScenario, fixture,
+    oversizedDeadlineAttempt.attemptedItems, null),
+);
+oversizedDeadlineAttempt.attemptedRenderEvidence = {
+  rendererId: "alpha-jcs-renderer-v1", utf8Payload: oversizedAttemptPayload,
+  tokenizerId: "deterministic-fixture-tokenizer-v1", tokenizerRevision: "1",
+  tokenIds: tokenizeRenderPayload(oversizedAttemptPayload),
+};
+oversizedDeadlineAttempt.attemptedRenderedBytes = Buffer.byteLength(oversizedAttemptPayload, "utf8");
+oversizedDeadlineAttempt.attemptedInjectedTokens =
+  oversizedDeadlineAttempt.attemptedRenderEvidence.tokenIds.length;
+oversizedDeadlineAttempt.quality = {
+  expectedInjectedItemCount: 4, matchedInjectedItemCount: 0,
+  expectedOmissionCount: 0, matchedOmissionCount: 0, forbiddenFactCount: 0,
+};
+assert.ok(oversizedDeadlineAttempt.attemptedRenderedBytes >
+  fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxRenderedBytes);
+assertRejected(oversizedDeadlineAttempt, /oversized attempted InjectionPack has no valid final output/,
+  "deadline failure retained an oversized attempted pack",
+  runnerEvidenceFor(oversizedDeadlineAttempt, successEvidence));
 
 const missingRetrievalMilestone = structuredClone(fixture);
 missingRetrievalMilestone.lifecycleProfiles.bidirectional_prompt_flush =

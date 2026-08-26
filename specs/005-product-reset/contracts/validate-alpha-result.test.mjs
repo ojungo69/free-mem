@@ -517,4 +517,18 @@ assert.throws(() => validateRunnerEvidence(duplicateSuitePreparations, duplicate
   fixture, duplicateSuitePreparations.invocationId, suiteCaseIds),
   /runner preparation receipts are reused across the evidence bundle/);
 
+const crossModePreparationReuse = structuredClone(suiteRegressionEvidence);
+const coldRecord = crossModePreparationReuse.scenarios.find(
+  (record) => record.resourceSampleMode === "cold",
+);
+const warmRecord = crossModePreparationReuse.scenarios.find(
+  (record) => record.resourceSampleMode === "warm",
+);
+coldRecord.runPreparations[0].dataDirInstanceId = warmRecord.runPreparations[0].dataDirInstanceId;
+const crossModeResult = structuredClone([...suiteRegression.positiveResults, suiteRegression.negativeResult].find((result) => result.runnerEvidenceCaseId === coldRecord.caseId));
+attachRunnerEvidence(crossModeResult, crossModePreparationReuse);
+assert.throws(() => validateRunnerEvidence(crossModePreparationReuse, crossModeResult,
+  fixture, crossModePreparationReuse.invocationId, suiteCaseIds),
+  /cold preparation identities are reused across the evidence bundle/);
+
 console.log("Alpha result regression checks passed.");

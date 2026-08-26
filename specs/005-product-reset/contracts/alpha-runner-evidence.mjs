@@ -94,7 +94,9 @@ function validateBundlePreparationIdentities(evidence) {
   const cold = evidence.scenarios.filter((record) => record.resourceSampleMode === "cold")
     .flatMap((record) => record.runPreparations);
   for (const name of ["dataDirInstanceId", "processGenerationId"]) {
-    if (new Set(cold.map((item) => item[name])).size !== cold.length) {
+    const occurrences = new Map();
+    for (const item of preparations) occurrences.set(item[name], (occurrences.get(item[name]) ?? 0) + 1);
+    if (cold.some((item) => occurrences.get(item[name]) !== 1)) {
       throw new Error("cold preparation identities are reused across the evidence bundle");
     }
   }
