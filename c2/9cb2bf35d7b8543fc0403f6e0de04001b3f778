@@ -1,0 +1,20 @@
+specs/005-product-reset/contracts/validate-alpha-result-input.test.mjs
+  s_9d346c66194a0d::t_23ef19a7a34af6 22-25,44-53
+  s_9d346c66194a0d::t_2f28f0aeafa0f8 54-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c29cb2bf35d7b8543fc0403f6e0de04001b3f778",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
