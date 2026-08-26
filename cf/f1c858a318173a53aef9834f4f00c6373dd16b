@@ -1,0 +1,50 @@
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_9d346c66194a0d::t_dd674fc17e7fb5 86,465-472
+  s_9d346c66194a0d::t_0b970d5f187498 340-349
+  s_9d346c66194a0d::t_df581f6da8d0f3 473
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_9d346c66194a0d::t_532fb75e2d005a 103-104,148-149
+specs/005-product-reset/quickstart.md
+  s_9d346c66194a0d::t_3ec40ea2b85447 203
+  s_9d346c66194a0d::t_532fb75e2d005a 212
+specs/005-product-reset/contracts/alpha-runner-evidence-v1.schema.json
+  s_9d346c66194a0d::t_d032c564ce2f33 28-60,103,111-116
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_9d346c66194a0d::t_663307928798be 301,316-318,410
+specs/005-product-reset/contracts/alpha-runner-evidence.mjs
+  s_9d346c66194a0d::t_d032c564ce2f33 109-110
+specs/005-product-reset/data-model.md
+  s_9d346c66194a0d::t_532fb75e2d005a 351
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_9d346c66194a0d::t_2c5008336286c1 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_9d346c66194a0d::t_17b592856dd517 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.suite-regression.json
+  s_9d346c66194a0d::t_195e0f338256e0 1
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.example.json
+  s_9d346c66194a0d::t_f2690339e5ab05 4,1323-1350
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json
+  s_9d346c66194a0d::t_b0674519c65eca 4,795-796
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json
+  s_9d346c66194a0d::t_22d6c70d9baeb0 1
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_9d346c66194a0d::t_e2c5f5dc18ed3b 8
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_9d346c66194a0d::t_f558de7bd7f529 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "cff1c858a318173a53aef9834f4f00c6373dd16b",
+  "prompts": {},
+  "sessions": {
+    "s_9d346c66194a0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0361c-2473-77c2-8dff-96928e78d32b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
