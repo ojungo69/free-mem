@@ -49,7 +49,7 @@ printf '%s\n' "$changed"
 untracked=$(git ls-files --others --exclude-standard)
 if unexpected=$(printf '%s\n%s\n' "$changed" "$untracked" \
   | sort -u \
-  | rg -v '^(README\.md|evidence/(README\.md|adr-006-product-reset\.md)|specs/005-product-reset/.*\.(md|json|jq|mjs)|specs/005-product-reset/fixtures/artifacts/(candidate-example-v1|candidate-failure-example-v1)/candidate\.bundle)$'); then
+  | rg -v '^(README\.md|\.github/workflows/ci\.yml|evidence/(README\.md|adr-006-product-reset\.md)|specs/005-product-reset/.*\.(md|json|jq|mjs)|specs/005-product-reset/fixtures/artifacts/(candidate-example-v1|candidate-failure-example-v1)/candidate\.bundle)$'); then
   :
 else
   status=$?
@@ -73,8 +73,9 @@ git diff --check
 git diff --cached --check
 ```
 
-Expected: only root/evidence/specification documentation changed from the pinned M0 base; untracked
-allowed artifacts plus base-to-HEAD, worktree, and index whitespace checks pass.
+Expected: only root/evidence/specification documentation and Product Reset CI test wiring changed
+from the pinned M0 base; untracked allowed artifacts plus base-to-HEAD, worktree, and index whitespace
+checks pass.
 
 ## 4. Verify GitHub routing after the documentation commit is pushed
 
@@ -139,6 +140,8 @@ node --experimental-strip-types \
 node --experimental-strip-types \
   specs/005-product-reset/contracts/validate-alpha-result.mjs \
   --result specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+node --experimental-strip-types \
+  specs/005-product-reset/contracts/validate-alpha-result.test.mjs
 ```
 
 The result validator hashes each candidate file below
@@ -152,6 +155,7 @@ candidate execution through result validation.
 - [Alpha result schema](contracts/alpha-result-v1.schema.json)
 - [Alpha result semantic validator](contracts/alpha-result-v1.semantic.jq)
 - [Alpha result canonical validator](contracts/validate-alpha-result.mjs)
+- [Alpha result regression checks](contracts/validate-alpha-result.test.mjs)
 - [Slice 1 fixed fixture](fixtures/slice1-bidirectional-en-v1.json)
 - [Slice 1 example result](fixtures/alpha-result-v1.example.json)
 - [Slice 1 failure example result](fixtures/alpha-result-v1.failure-example.json)
@@ -164,7 +168,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T07:50:09+09:00
+## Validation result — 2026-08-26T09:47:01+09:00
 
 | Check | Result |
 |---|---|
@@ -173,8 +177,9 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 | `CI=true corepack pnpm run check` | PASS, exit 0; 124 test files and 1,895 tests passed, three todo |
 | Product authority grep | PASS |
 | Slice 1 fixture schema and semantic checks | PASS; positive fixture plus targeted schema, cross-host/downgrade transport, privacy, host-identity, output-limit recovery-manifest, environment, span, and profile mutations |
-| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss denominators, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin result input, timeout prefixes, and canonical exceptional-state mutations |
-| Rollback exact-state fence | PASS; 69-entry pre/post snapshot SHAs, live post-M0 fence, and generated inverse state/full-label simulation match |
+| Alpha result schema and semantic checks | PASS; eligible/non-eligible examples, complete 16-scenario suite plus required before-model negative result, lifecycle-bound selection, raw per-run timing, complete zero/nonzero render payloads, ordered attempted-item closure, durable revision identity, lifecycle-derived timeout/loss denominators, pre-terminal evidence nullability, inclusive timeout expiration, Slice 1 pack-failure refusal and final byte/token ceiling, per-resume egress evidence, raw output-limit receipt/observer evidence, bounded artifact traversal/bytes, 1 MiB file/stdin result input, timeout prefixes, and canonical exceptional-state mutations |
+| Product Reset CI contract step | PASS locally; workflow `actionlint` and the committed regression command exit 0 |
+| Rollback exact-state fence | PASS; 69-entry pre/post snapshot SHAs, live post-M0 fence, generated inverse state/full-label simulation, and empty parent sub-issue postcondition match |
 | Local Markdown links (one-shot external validation) | PASS |
 | `vendor/codemem/` and `harness/` diff | NONE |
 | Base-to-HEAD, worktree, and index `git diff --check` | PASS |

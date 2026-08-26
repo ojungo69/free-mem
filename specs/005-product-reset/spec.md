@@ -299,9 +299,11 @@ without leaving active processes or managed configuration behind.
 - **SC-006**: Reprocessing an unchanged event set under the same `profileId`/profile version and
   `modelId`/model revision leaves active durable-memory and active semantic-entry counts unchanged.
   Historical revision rows are excluded from those active counts and may increase after an allowed
-  profile/model change. When semantic indexing is enabled, validation requires one active semantic
-  entry per item. When disabled, it requires no active semantic entry and an unchanged semantic-entry
-  count.
+  profile/model change. When semantic indexing is enabled and healthy, validation requires exactly
+  one ready semantic entry in the active compatible generation per active durable-memory item. If it
+  is enabled but semantic retrieval is incomplete, degraded, stale, or unavailable, validation
+  instead requires lexical fallback and the matching degradation reason. When semantic indexing is
+  disabled, validation requires no active semantic entry and an unchanged semantic-entry count.
 - **SC-007**: Every injected item in the fixed scenarios has a visible source and selection
   reason, and every induced degraded state has the expected reason and safe next action.
 - **SC-008**: All secret and cross-scope fixtures produce zero external disclosures and zero

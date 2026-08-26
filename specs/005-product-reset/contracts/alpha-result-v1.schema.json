@@ -4,7 +4,7 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "packCompilationFailure", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -78,12 +78,6 @@
       ]
     },
     "packDegradations": { "type": "array", "items": { "$ref": "#/$defs/SharedNonEmptyString" } },
-    "packCompilationFailure": {
-      "oneOf": [
-        { "type": "null" },
-        { "const": "injection_pack_limit_exceeded" }
-      ]
-    },
     "quality": { "$ref": "#/$defs/Quality" },
     "attemptedItems": {
       "oneOf": [

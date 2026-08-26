@@ -99,7 +99,8 @@ specs/005-product-reset/
 │   ├── alpha-result-retry.mjs
 │   ├── alpha-result-security.mjs
 │   ├── alpha-result-selection.mjs
-│   └── validate-alpha-result.mjs
+│   ├── validate-alpha-result.mjs
+│   └── validate-alpha-result.test.mjs
 ├── checklists/
 │   └── requirements.md
 ├── tasks.md
@@ -110,6 +111,7 @@ specs/005-product-reset/
 
 ```text
 README.md                         # active public product entry point
+.github/workflows/ci.yml          # Product Reset contract regression gate
 evidence/
 ├── README.md                     # active versus historical evidence index
 └── adr-006-product-reset.md      # foundation and scope decision
@@ -123,7 +125,8 @@ vendor/codemem/                   # unchanged by M0; later runtime implementatio
 ```
 
 **Structure Decision**: Keep the existing repository and pinned vendor tree. M0 changes only the
-root product entry point, evidence authority, Product Reset documents, and GitHub work tracking.
+root product entry point, evidence authority, Product Reset documents, their CI regression step,
+and GitHub work tracking.
 Historical files remain in place so links and validation assets do not break before a replacement
 runtime slice exists.
 

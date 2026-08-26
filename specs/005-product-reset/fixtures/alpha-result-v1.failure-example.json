@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:addac7fa369996a30e2bfe0864b2345d2aad2eb437db2ed2c126ad516d9da55b",
+  "fixtureFingerprint": "sha256:8c20e703dddadede1d408c7e36f0b39ee6b8fab9aa0a54757da57819668aafc1",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-output-limit-exceeded",
   "resourceSampleMode": "warm",
@@ -648,7 +648,6 @@
   "injectedItems": [],
   "omittedItems": [],
   "packDegradations": [],
-  "packCompilationFailure": null,
   "quality": {
     "expectedInjectedItemCount": 0,
     "matchedInjectedItemCount": 0,

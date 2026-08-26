@@ -260,6 +260,7 @@ gh api graphql -f query='query { repository(owner:"ojungo69", name:"free-mem") {
   i126: issue(number:126) { number parent { number } }
   i129: issue(number:129) { number parent { number } }
   i130: issue(number:130) { number parent { number } }
+  i136: issue(number:136) { number state subIssues(first:20) { nodes { number state } } }
   i137: issue(number:137) { number state parent { number } blockedBy(first:20) { nodes { number } } }
   i138: issue(number:138) { number state parent { number } blockedBy(first:20) { nodes { number } } }
   i139: issue(number:139) { number state parent { number } blockedBy(first:20) { nodes { number } } }
@@ -308,6 +309,7 @@ jq -e '.state == "OPEN" and .mergedAt == null' "$RESET_ROLLBACK_DIR/pr-133-after
 jq -e '
   .data.repository
   | (.i126.parent == null and .i129.parent == null and .i130.parent == null)
+  and (.i136.state == "CLOSED" and (.i136.subIssues.nodes | length) == 0)
   and all(.i137,.i138,.i139; .state == "CLOSED" and .parent == null and (.blockedBy.nodes | length) == 0)
 ' "$RESET_ROLLBACK_DIR/relationships-after.json"
 

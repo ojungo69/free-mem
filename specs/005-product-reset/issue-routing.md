@@ -94,7 +94,7 @@ comparison publication and long-resource-run safeguards are owned by Slice 3.
 |---|---|
 | #8 | Use pinned claude-mem automatic-memory behavior as a test donor for summary quality, stale/duplicate handling, retrieval, and injection efficiency. |
 | #11 | Make summary and embedding egress independent, explicit, redacted, bounded, revocable, and provider-failure tolerant. |
-| #32 | Enforce exact final byte, token, item, and candidate budgets before recording delivery; degrade to a valid minimal/empty pack. |
+| #32 | Generalize Slice 1's fixed final byte/token gate into exact time, byte, token, item, candidate, and lane budgets across profiles, including an explicit zero-delivery compilation refusal with its own truthful lifecycle. |
 | #67 | Preserve Japanese, English, mixed, short-CJK, and old-important-memory recall in lexical and semantic paths with visible omission reasons. |
 
 ## Replace with Slice 3

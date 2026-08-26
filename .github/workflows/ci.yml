@@ -59,6 +59,9 @@ jobs:
         # vendor の依存が入っているこの job でだけ tsc をかけられる
         working-directory: .
         run: vendor/codemem/node_modules/.bin/tsc -p harness/tsconfig.json
+      - name: Product Reset contract regression checks
+        working-directory: .
+        run: node --experimental-strip-types specs/005-product-reset/contracts/validate-alpha-result.test.mjs
       - name: Test with coverage
         run: CI=true corepack pnpm run test:coverage
       - name: Analyze with SonarQube Cloud

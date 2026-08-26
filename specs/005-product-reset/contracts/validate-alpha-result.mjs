@@ -187,9 +187,9 @@ if (
   !result.drain.timedOut &&
   typeof drainStartTime === "number" &&
   typeof drainTerminalTime === "number" &&
-  drainTerminalTime - drainStartTime > scenario.drainCondition.timeoutMs
+  drainTerminalTime - drainStartTime >= scenario.drainCondition.timeoutMs
 ) {
-  throw new Error("completed drain exceeded the pinned timeout");
+  throw new Error("completed drain reached or exceeded the pinned timeout");
 }
 const lastObservationTime = result.processSamples.at(-1)?.monotonicMs;
 if (
@@ -224,12 +224,16 @@ const expectedHostIdentityEvidence = !exceptionalState &&
 if (!isDeepStrictEqual(result.hostIdentityEvidence, expectedHostIdentityEvidence)) {
   throw new Error("host-derived identity evidence does not match the pinned claim probes");
 }
-const expectedOperationalStatus = scenario.expectedOperationalStatus ?? null;
-const expectedFailureMetadata = scenario.fault?.failureMetadata ?? null;
+const drainTerminalObserved = milestoneNames.includes(scenario.drainCondition.terminalMilestone);
+const operationalStatusObserved = milestoneNames.includes("operational_status_inspected");
+const expectedOperationalStatus = operationalStatusObserved ? scenario.expectedOperationalStatus ?? null : null;
+const expectedFailureMetadata = drainTerminalObserved ? scenario.fault?.failureMetadata ?? null : null;
 validateOutputLimitAtomicity(result, scenario, exceptionalState);
-const expectedRetryEvidenceRecord = exceptionalState ? null : expectedRetryEvidence(scenario);
-if (!isDeepStrictEqual(result.retryEvidence, expectedRetryEvidenceRecord)) {
-  throw new Error("retry evidence does not match the pinned durable outputs");
+const expectedRetryEvidenceRecord = exceptionalState || !drainTerminalObserved ? null : expectedRetryEvidence(scenario);
+if (!isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) ||
+    !isDeepStrictEqual(result.operationalStatus, expectedOperationalStatus) ||
+    !isDeepStrictEqual(result.retryEvidence, expectedRetryEvidenceRecord)) {
+  throw new Error("provider failure evidence does not match observed lifecycle");
 }
 const conflictProbe = scenario.fault?.identityConflictProbe;
 const expectedIdentityConflictEvidence = conflictProbe
@@ -363,28 +367,21 @@ const selectionDeadlineExceeded =
 const finalInjectionPackSizePass =
   result.renderedBytes <= injectionEnvelope.maxRenderedBytes &&
   result.injectedTokens <= injectionEnvelope.maxInjectedTokens;
-const attemptedInjectionPackSizeExceeded =
-  result.attemptedRenderedBytes > injectionEnvelope.maxRenderedBytes ||
-  result.attemptedInjectedTokens > injectionEnvelope.maxInjectedTokens;
-const packCompilationFailed = result.packCompilationFailure === "injection_pack_limit_exceeded";
 const finalPackExpected = !exceptionalState &&
   scenario.drainCondition.targetInjectionAcknowledged && !result.drain.timedOut &&
-  !selectionDeadlineExceeded && !packCompilationFailed;
+  !selectionDeadlineExceeded;
 validateRenderEvidence(result, scenario, fixture, finalPackExpected);
 if (!finalInjectionPackSizePass) {
   throw new Error("oversized InjectionPack was recorded as final output");
 }
-if (packCompilationFailed && !attemptedInjectionPackSizeExceeded) {
-  throw new Error("InjectionPack limit failure has no oversized compilation attempt");
-}
 if (
-  (selectionDeadlineExceeded || packCompilationFailed) &&
+  selectionDeadlineExceeded &&
   (result.counts.selectedItems !== 0 ||
     result.injectedItems.length !== 0 ||
     result.renderedBytes !== 0 ||
     result.injectedTokens !== 0)
 ) {
-  throw new Error("late or oversized InjectionPack was recorded as delivered");
+  throw new Error("late InjectionPack was recorded as delivered");
 }
 const resourcePass =
   result.resource.maxSteadyProductProcessCount <= limits.maxSteadyProductProcessCount &&
@@ -392,8 +389,7 @@ const resourcePass =
   result.resource.maxPendingQueueDepth <= limits.maxPendingQueueDepth &&
   result.resource.maxStorageGrowthBytes <= limits.maxStorageGrowthBytes &&
   result.resource.orphanProductProcessCount <= limits.orphanProductProcessCount;
-const expectedProviderCostUnits = ["fixture", "local_zero"].includes(activeSummaryProvider.costClass)
-  ? 0 : null;
+const expectedProviderCostUnits = ["fixture", "local_zero"].includes(activeSummaryProvider.costClass) ? 0 : null;
 if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits) {
   throw new Error("provider cost does not match the pinned provider cost class");
 }
@@ -403,27 +399,21 @@ const scenarioOraclePass =
   isDeepStrictEqual(result.packDegradations, expectedDegradations) &&
   result.injectionBeforeModel === expectedInjectionBeforeModel &&
   (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
-  isDeepStrictEqual(result.hostIdentityEvidence, expectedHostIdentityEvidence) &&
   result.providerCostUnits === expectedProviderCostUnits &&
-  isDeepStrictEqual(result.identityConflictEvidence, expectedIdentityConflictEvidence) &&
-  isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) &&
-  isDeepStrictEqual(result.operationalStatus, expectedOperationalStatus) &&
-  isDeepStrictEqual(result.retryEvidence, expectedRetryEvidenceRecord);
+  isDeepStrictEqual(result.identityConflictEvidence, expectedIdentityConflictEvidence);
 const derivedFailureReason = result.drain.timedOut
   ? "drain_timed_out"
   : selectionDeadlineExceeded
     ? "selection_deadline_exceeded"
-    : packCompilationFailed
-      ? "injection_pack_limit_exceeded"
-      : !latencyPass
-        ? "latency_threshold_exceeded"
-        : !resourcePass
-          ? "resource_threshold_exceeded"
-          : !qualityPass
-            ? "quality_threshold_exceeded"
-            : !scenarioOraclePass
-              ? "scenario_oracle_mismatch"
-              : null;
+    : !latencyPass
+      ? "latency_threshold_exceeded"
+      : !resourcePass
+        ? "resource_threshold_exceeded"
+        : !qualityPass
+          ? "quality_threshold_exceeded"
+          : !scenarioOraclePass
+            ? "scenario_oracle_mismatch"
+            : null;
 const shouldBeEligible = derivedFailureReason === null;
 
 if (result.drain.timedOut && !milestonesPass) {
@@ -431,15 +421,6 @@ if (result.drain.timedOut && !milestonesPass) {
 }
 if (!exceptionalState && !(denominatorsPass && safetyCountersPass && securityEvidencePass)) {
   throw new Error("result violates an independent zero-tolerance safety boundary");
-}
-
-if (!resourcePass && expectedOperationalStatus &&
-    !isDeepStrictEqual(result.operationalStatus, expectedOperationalStatus)) {
-  throw new Error("resource failure record lost the underlying operational status");
-}
-if (!resourcePass && expectedFailureMetadata &&
-    !isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata)) {
-  throw new Error("resource failure record lost the underlying payload-free failure metadata");
 }
 
 if (exceptionalState) {
@@ -457,7 +438,6 @@ if (exceptionalState) {
     result.injectionBeforeModel === null &&
     result.hostIdentityEvidence === null &&
     result.packDegradations.length === 0 &&
-    result.packCompilationFailure === null &&
     Array.isArray(result.attemptedItems) &&
     result.attemptedItems.length === 0 &&
     result.attemptedRenderEvidence === null && result.finalRenderEvidence === null &&

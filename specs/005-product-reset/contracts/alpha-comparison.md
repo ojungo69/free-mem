@@ -118,8 +118,9 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
   selection reason
 - exact attempted/final canonical-JCS UTF-8 render payload evidence plus pinned renderer/tokenizer
   identity and ordered token-ID records; aggregate byte/token counts are recomputed from this evidence
-- a nullable pack-compilation failure; `injection_pack_limit_exceeded` requires an oversized
-  attempted render and zero final delivered items, bytes, and tokens
+- no pack-compilation-failure field in Slice 1; a candidate that cannot emit a within-envelope final
+  pack cannot fill that positive suite slot, while Slice 2 owns an explicit zero-delivery refusal
+  artifact and lifecycle
 - all 22 ordinal latency runs, discarded-run markers, event-ordered capture samples, applicable
   warm/cold injection samples, per-run repository/session namespaces and ordinal-scoped event IDs,
   and recomputed nearest-rank P95 aggregates
@@ -151,6 +152,10 @@ signal and provider identity. The current executable validator is deliberately b
 fingerprinted fixture bundle; neither the schema nor validator is a generic fixture-plugin interface.
 Slice 2 and Slice 3 add their own fingerprinted fixture validator, reuse compatible core fields, and
 version-review any new retry family rather than weakening the Slice 1 evidence shape.
+Slice 1 gates only the fixed fixture's final byte/token ceilings and exact attempted/final render
+evidence. Slice 2 owns explicit zero-delivery compilation refusal, admitted-candidate, selected-item,
+lane-allocation, multi-profile, and generic compiler boundary cases; the Slice 1 gate does not claim
+those compiler capabilities are implemented.
 The schema owns structure, the jq layer owns fixture-independent record arithmetic and ordering, and
 the executable validator alone derives fixture-oracle matches, thresholds, failure priority, and
 comparison eligibility; consumers do not combine partial verdicts from those layers.
@@ -180,10 +185,10 @@ use a fixed 64 KiB content buffer, and reject each boundary before unbounded wor
   `selection_deadline_exceeded`; it is not a quality-threshold failure. `drain_timed_out` remains the
   higher-priority reason when the drain itself times out.
 - Selection elapsed time that reaches or exceeds the profile deadline has the same
-  `selection_deadline_exceeded` result. Rendered-byte or token overflow is
-  `injection_pack_limit_exceeded`; attempted size remains inspectable and may exceed the envelope
-  during deterministic pruning, while only the final rendered byte/token values gate eligibility.
-  Delivered items, bytes, and tokens remain zero for every late or oversized pack.
+  `selection_deadline_exceeded` result and delivers zero items, bytes, and tokens. Attempted size may
+  exceed the envelope during deterministic pruning only when a valid final pack remains; final
+  rendered byte/token values always gate eligibility. Slice 1 has no zero-delivery compilation-failure
+  result. Slice 2 must define that refusal's own evidence and lifecycle before adding it.
 - Selection elapsed time is recomputed from `target_selection_started` and
   `target_selection_finished` in the fixture-pinned lifecycle; the separate timing record must match
   those observed boundaries exactly. Scenarios without a selection lifecycle record no candidate
