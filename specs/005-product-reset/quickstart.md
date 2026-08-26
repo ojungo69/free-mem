@@ -105,8 +105,15 @@ for n in 134 135; do
   gh issue view "$n" --json state | jq -e '.state == "CLOSED"'
 done
 for n in 136 137 138 139; do
-  gh issue view "$n" --json state | jq -e '.state == "OPEN"'
-done
+  gh issue view "$n" --json number,state,labels
+done | jq -s -e '
+  (map({number, state, labels: ([.labels[].name] | sort)}) | sort_by(.number)) == [
+    {"number":136,"state":"OPEN","labels":["area: product","enhancement","priority: p0","status: in progress","target: technical alpha"]},
+    {"number":137,"state":"OPEN","labels":["area: adapter","area: product","area: storage","enhancement","priority: p0","status: ready for implementation","target: technical alpha"]},
+    {"number":138,"state":"OPEN","labels":["area: product","area: retrieval","area: security","enhancement","priority: p1","status: blocked","target: technical alpha"]},
+    {"number":139,"state":"OPEN","labels":["area: product","area: quality","area: release","enhancement","priority: p1","status: blocked","target: technical alpha"]}
+  ]
+'
 gh issue list --state open --limit 200 --json number,labels \
   | jq -e '
     . as $issues
@@ -203,7 +210,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T20:18:48+09:00
+## Validation result — 2026-08-26T20:45:27+09:00
 
 | Check | Result |
 |---|---|
@@ -222,7 +229,7 @@ These contracts guide later focused specs; M0 does not claim the runtime behavio
 
 Environment-specific deviations:
 
-- `verify-tasks-report.md` is the immutable post-routing task-verification report, not pre-M0 label
+- `verify-tasks-report.md` is the immutable pre-mutation task-verification snapshot, not pre-M0 label
   authority. The `m0-pre-mutation-issues.json` and `m0-post-mutation-issues.json` pair is the exact
   69-issue rollback boundary; this table and `issue-routing.md` carry later local/live verification
   evidence without rewriting old verdicts.

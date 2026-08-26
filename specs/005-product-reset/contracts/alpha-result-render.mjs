@@ -5,6 +5,8 @@ import { isDeepStrictEqual } from "node:util";
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { lineageDigest } from "./alpha-result-lineage.mjs";
 
+const SENSITIVITY_RANK = { eligible: 0, local_only: 1, private: 2, secret: 3 };
+
 export function tokenizeRenderPayload(payload) {
   const tokens = payload.match(/[\p{L}\p{N}_]+|[^\s]/gu) ?? [];
   return tokens.map((token) => createHash("sha256")
@@ -74,6 +76,10 @@ function validateTraceProvenance(result, scenario) {
   for (const item of [...result.injectedItems, ...result.omittedItems]) {
     const sourceIds = [...new Set(item.sourceEventIds)].sort();
     const spanIds = [...new Set(item.sourceSpans.map((span) => span.eventId))].sort();
+    const sourceSensitivities = sourceIds.map((id) => events.get(id)?.sensitivity);
+    const derivedSensitivity = sourceSensitivities.length === 0 || sourceSensitivities.includes(undefined) ? null :
+      sourceSensitivities.reduce((left, right) =>
+        SENSITIVITY_RANK[left] >= SENSITIVITY_RANK[right] ? left : right);
     const spansPass = new Set(item.sourceSpans.map((span) => canonicalizeJson(span))).size ===
       item.sourceSpans.length && item.sourceSpans.every((span) => {
       const event = events.get(span.eventId);
@@ -83,7 +89,8 @@ function validateTraceProvenance(result, scenario) {
         (span.startByte === 0 || (bytes[span.startByte] & 0xc0) !== 0x80) &&
         (span.endByte === bytes.length || (bytes[span.endByte] & 0xc0) !== 0x80);
     });
-    if (sourceIds.length !== item.sourceEventIds.length || !isDeepStrictEqual(sourceIds, spanIds) ||
+    if (item.sensitivity !== derivedSensitivity ||
+        sourceIds.length !== item.sourceEventIds.length || !isDeepStrictEqual(sourceIds, spanIds) ||
         sourceIds.some((id) => !events.has(id)) ||
         !spansPass || item.lineageId !== lineageDigest(scenario.sourceRepositoryScope, item.sourceSpans)) {
       throw new Error("result trace provenance does not match scenario source events");

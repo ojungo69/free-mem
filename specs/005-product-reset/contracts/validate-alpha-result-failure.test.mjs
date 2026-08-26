@@ -410,6 +410,34 @@ restrictedInjection.disposition = {
 assertRejected(restrictedInjection, /independent zero-tolerance safety boundary/,
   "remote final pack injected a restricted item", suiteRegressionEvidence);
 
+const relabeledRestrictedInjection = structuredClone(restrictedInjection);
+relabeledRestrictedInjection.injectedItems[0].sensitivity = "eligible";
+bindFinalRender(relabeledRestrictedInjection, restrictedScenario);
+assertRejected(relabeledRestrictedInjection,
+  /result trace provenance does not match scenario source events/,
+  "remote final pack weakened source-derived sensitivity", suiteRegressionEvidence);
+
+const crossScopeInjection = structuredClone(suiteRegression.positiveResults.find(
+  (result) => result.scenarioId === "incompatible-scope-injection-rejected",
+));
+const crossScopeScenario = fixture.scenarios.find(
+  (item) => item.scenarioId === crossScopeInjection.scenarioId,
+);
+const { reason: _crossScopeReason, ...crossScopeItem } = crossScopeInjection.omittedItems[0];
+crossScopeItem.selectionReason = crossScopeItem.sourceLane;
+crossScopeInjection.injectedItems = [crossScopeItem];
+crossScopeInjection.omittedItems = [];
+crossScopeInjection.counts.admittedCandidates = 1;
+crossScopeInjection.counts.selectedItems = 1;
+crossScopeInjection.quality.matchedOmissionCount = 0;
+crossScopeInjection.quality.forbiddenFactCount = 1;
+bindFinalRender(crossScopeInjection, crossScopeScenario);
+crossScopeInjection.disposition = {
+  state: "failed", reason: "quality_threshold_exceeded", successfulComparisonEligible: false,
+};
+assertRejected(crossScopeInjection, /independent zero-tolerance safety boundary/,
+  "final pack injected a cross-repository item", suiteRegressionEvidence);
+
 const unsupportedDeadlineOmission = structuredClone(deadlineExceeded);
 const { selectionReason: _selectionReason, ...deadlineOmission } = success.injectedItems[0];
 unsupportedDeadlineOmission.omittedItems = [{ ...deadlineOmission, reason: "candidate_limit" }];

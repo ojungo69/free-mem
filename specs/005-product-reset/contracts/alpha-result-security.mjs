@@ -117,11 +117,19 @@ function evaluateZeroToleranceEvidence(result, scenario, fixture, oracle) {
   const incompatibleInjections = result.injectedItems.filter(
     (item) => !destination.eligibleSensitivities.includes(item.sensitivity),
   ).length;
+  const crossScopeInjections = scenario.sourceRepositoryScope === scenario.targetRepositoryScope
+    ? 0 : result.injectedItems.length;
+  const forbiddenSentinelObservations = result.injectedItems.filter((item) =>
+    (oracle.forbiddenSentinels ?? []).some((sentinel) => item.fact.includes(sentinel)),
+  ).length;
   return evidence.persistedSecretCount === 0 && evidence.injectedSecretCount === 0 &&
     evidence.restrictedPayloadBytesSent === 0 && evidence.redirectLocationRequestCount === 0 &&
     evidence.redirectLocationPayloadBytesSent === 0 && evidence.resentPayloadCount === 0 &&
-    evidence.forbiddenSentinelObservationCount === 0 &&
+    evidence.forbiddenSentinelObservationCount === forbiddenSentinelObservations &&
+    forbiddenSentinelObservations === 0 &&
     incompatibleInjections === 0 && evidence.remoteInjectionCount === incompatibleInjections &&
+    crossScopeInjections === 0 &&
+    result.safety.incompatibleScopeInjectionCount === crossScopeInjections &&
     ORACLE_EVIDENCE_FIELDS.every((name) =>
       !Object.hasOwn(oracle, name) || oracle[name] !== 0 || evidence[name] === 0
     );
