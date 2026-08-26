@@ -267,6 +267,9 @@ const milestonesPass = result.drain.timedOut
     milestoneNames.every((name, index) => name === expectedMilestones[index]) &&
     !milestoneNames.includes(scenario.drainCondition.terminalMilestone)
   : isDeepStrictEqual(milestoneNames, expectedMilestones);
+if (!exceptionalState && !milestonesPass) throw new Error(result.drain.timedOut
+  ? "timed-out result milestones are not a valid pre-terminal lifecycle prefix"
+  : "completed result milestones do not match the pinned lifecycle");
 const selectionFinishedObserved = milestoneNames.includes("target_selection_finished");
 const expectedDegradations = scenario.drainCondition.targetInjectionAcknowledged &&
     selectionFinishedObserved && fixture.effectiveConfiguration.embeddingProvider.state === "disabled"
@@ -415,10 +418,8 @@ const expectedProviderCostUnits = ["fixture", "local_zero"].includes(activeSumma
 if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits) {
   throw new Error("provider cost does not match the pinned provider cost class");
 }
-const scenarioOraclePass =
-  milestonesPass &&
-  (!scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true) &&
-  result.providerCostUnits === expectedProviderCostUnits;
+const scenarioOraclePass = !scenario.drainCondition.targetInjectionAcknowledged ||
+  expectedInjectionBeforeModel === true;
 const derivedFailureReason = result.drain.timedOut
   ? "drain_timed_out"
   : selectionDeadlineExceeded
@@ -434,9 +435,6 @@ const derivedFailureReason = result.drain.timedOut
             : null;
 const shouldBeEligible = derivedFailureReason === null;
 
-if (result.drain.timedOut && !milestonesPass) {
-  throw new Error("timed-out result milestones are not a valid pre-terminal lifecycle prefix");
-}
 if (!exceptionalState && !(denominatorsPass && safetyCountersPass && securityEvidencePass)) {
   throw new Error("result violates an independent zero-tolerance safety boundary");
 }

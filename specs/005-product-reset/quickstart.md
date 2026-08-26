@@ -202,7 +202,7 @@ candidate execution through result validation.
 
 These contracts guide later focused specs; M0 does not claim the runtime behaviors are implemented.
 
-## Validation result — 2026-08-26T15:18:21+09:00
+## Validation result — 2026-08-26T15:31:21+09:00
 
 | Check | Result |
 |---|---|
@@ -232,13 +232,13 @@ Environment-specific deviations:
   the suite exits 0 with the counts above.
 - The local Markdown link result was produced by a one-shot Node filesystem check during M0
   validation; no permanent link-checker dependency or script was added for this docs-only slice.
-- CodeRabbit's final local review raised zero issues. Its earlier valid suite-fixture separation was
-  applied, while its repeated fixed-contract equal-time suggestion was rejected after fixture/source
-  checks. A fresh GitHub full review is requested after each pushed head.
+- CodeRabbit's final local review raised zero actionable issues. Its earlier valid suite-fixture
+  separation was applied, while its only repeated fixed-contract equal-time suggestion was rejected
+  after fixture/source checks. A fresh GitHub full review is requested after each pushed head.
 - The latest GitHub Codex/CodeRabbit reviews raised timeout, input-boundary, loss-evidence, and exact
   rollback gaps; all valid findings were reproduced, fixed, and covered by focused cases. Cubic's
-  latest P1 contradicted the cited source values and the passing acceptance regression, so it was
-  rejected; its preceding post-fix reviews raised zero issues. Grok's split
+  earlier P1 contradicted the cited source values and the passing acceptance regression, so it was
+  rejected; its latest post-fix review raised zero issues. Grok's split
   contract/validator review returned `ok: true`; its full-diff, fixture/documentation, and final
   follow-up attempts timed out without session IDs, so those ranges are not claimed as Grok-reviewed.
   Ponytail found no unused definition, speculative abstraction, dependency, or removable

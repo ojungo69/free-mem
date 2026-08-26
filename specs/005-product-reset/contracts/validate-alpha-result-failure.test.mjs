@@ -104,6 +104,13 @@ fabricatedDegradation.packDegradations = ["fabricated_degradation"];
 assertRejected(fabricatedDegradation, /pack degradations do not match observed capabilities/,
   "resource failure fabricated a pack degradation");
 
+const fabricatedMilestone = structuredClone(failure);
+fabricatedMilestone.milestones.find((item) => item.name === "scenario_terminal").name =
+  "fabricated_terminal";
+assertRejected(fabricatedMilestone, /completed result milestones do not match the pinned lifecycle/,
+  "resource failure fabricated a lifecycle milestone",
+  runnerEvidenceFor(fabricatedMilestone, failureEvidence));
+
 const inflatedAgentOperations = structuredClone(failure);
 inflatedAgentOperations.securityDenominators.agentOperationCount = 999;
 assertRejected(inflatedAgentOperations, /independent zero-tolerance safety boundary/,
