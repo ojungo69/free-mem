@@ -1,98 +1,107 @@
 # free-mem
 
-> **Pre-release source.** This repository is under active development and is not a
-> Core 1.0 release. Do not use it with production secrets or irreplaceable memory data.
+> **Pre-release source.** free-mem does not yet publish a supported package or compatibility
+> promise. Do not use this checkout with production secrets or irreplaceable memory data.
 
-**Crash-safe continuity for coding agents.**
+**Automatic local memory for Claude Code and Codex.**
 
-free-mem is a local-first project for preserving coding work across session exits,
-context compaction, crashes, and Agent switches. Its target is not only to retrieve
-related history, but to determine whether a previous task can be resumed safely in the
-current workspace.
+free-mem is being reset around one product outcome: work normally in Claude Code or Codex, then
+switch to the other Agent and receive the relevant decisions, discoveries, failed approaches,
+changes, and next actions without writing a handoff document.
 
-The first continuity path targeted for Core 1.0 is Claude Code and Codex; neither is
-supported yet, because there is no release artifact. Broader Agent and MCP support is
-planned through thin, capability-tested adapters rather than client-specific copies of
-the memory store.
+The target experience is inspired by claude-mem's automatic capture and context injection. The
+implementation goal is a smaller, more predictable product with no Chroma/Python sidecar, bounded
+background work, simple profiles, independent summary and embedding choices, and diagnostics that
+state when retrieval is degraded.
 
-## Product hypothesis
+## Current status
 
-Many memory tools can store and search prior conversations. free-mem is designed around
-a narrower continuity problem:
+The **Product Reset M0** is the active work. It establishes product authority and routes the old
+continuity backlog before runtime changes begin.
 
-- identify the logical task lineage rather than assuming the latest session is relevant;
-- reconcile repository, branch, worktree, HEAD, dirty state, and file drift before full resume;
-- preserve in-flight commands, tests, tools, and file mutations as typed operations;
-- mark unknown results as `verify_first` or `never_auto` instead of guessing or replaying;
-- claim, deliver, engage, and accept checkpoints as separate fenced states;
-- downgrade unsupported or unverified Agent versions instead of overstating compatibility;
-- keep deterministic continuation available when generation, embeddings, or providers fail.
+- Active specification: [`specs/005-product-reset/spec.md`](specs/005-product-reset/spec.md)
+- Foundation decision: [`evidence/adr-006-product-reset.md`](evidence/adr-006-product-reset.md)
+- Implementation plan: [`specs/005-product-reset/plan.md`](specs/005-product-reset/plan.md)
+- GitHub routing ledger:
+  [`specs/005-product-reset/issue-routing.md`](specs/005-product-reset/issue-routing.md)
 
-These are release targets, not blanket claims about the current pre-release implementation.
-See [`specs/001-agent-memory-core/spec.md`](specs/001-agent-memory-core/spec.md) and
-[`evidence/phase3-resume-oss-comparison.md`](evidence/phase3-resume-oss-comparison.md).
+The existing TypeScript workspace contains a tested safety kernel—daemon-owned writes, bounded
+spool, redaction, local search, backup/restore, Claude/Codex hooks, CLI/MCP, and viewer assets—but
+it is not yet a supported automatic-memory product. In particular, clean setup, automatic runtime
+startup, model profiles, prompt-timed flushing, end-to-end diagnostics, packaging, and resource
+evidence still need focused implementation.
 
-## Status
+## Technical Alpha boundary
 
-- The Phase 1 safety boundary is implemented and candidate-validated; see
-  [`specs/001-agent-memory-core/tasks.md`](specs/001-agent-memory-core/tasks.md) and
-  [`evidence/phase1-t058-final-validation.md`](evidence/phase1-t058-final-validation.md).
-- Runtime-neutral continuity schema, fixtures, and reference-model work are in progress.
-- The local Core Runtime's strategic target is Rust, with the existing TypeScript runtime
-  retained as the reference and migration source until verified cutover; see
-  [`evidence/adr-005-rust-core-product-direction.md`](evidence/adr-005-rust-core-product-direction.md).
-- Direct competitors and the intended measurable differentiation are recorded in
-  [`evidence/direct-competitor-positioning-2026-08-18.md`](evidence/direct-competitor-positioning-2026-08-18.md).
-- The broader project remains pre-release; later phases are not complete.
-- No package, release artifact, compatibility promise, performance claim, or support
-  promise is made yet.
-- Public source visibility does not change the local-only runtime and data boundary.
+Technical Alpha is deliberately narrow:
 
-## Architecture direction
+- Linux and WSL on a local Linux filesystem
+- one local user alternating between Claude Code and Codex
+- automatic capture, asynchronous summary, local storage, retrieval, and context injection
+- lexical retrieval plus semantic retrieval when enabled and healthy
+- a small resource profile plus independent summary and embedding provider choices
+- explicit provider destination, credential source, cost class, and data-egress behavior
+- truthful lexical fallback when a model or semantic index is unavailable
+- doctor, minimal inspection/deletion, backup/restore, and a clean lifecycle
 
-The intended product boundary is **Rust Core + host-native thin adapters**, not a
-repository-wide rewrite into one language.
+The Alpha does **not** promise safe operation replay, workspace reconciliation, checkpoint leases,
+Rust Core, macOS/native Windows, additional Agents, broad remote MCP, Cloud sync, teams, or RBAC.
+Those are reconsidered only after the local automatic-memory flow is useful to external users.
+
+## Product shape
 
 ```text
-Claude Code / Codex / other Agents
-              │
-        thin adapter / hook / plugin
-              │ versioned RPC / MCP contract
-              ▼
-      free-mem Core Runtime (Rust target)
-      daemon · SQLite sole writer · spool · checkpoints
-      retrieval · provider routing · backup / repair · CLI / MCP
-              │
-         SQLite + FTS5
-              │
-React / TypeScript viewer through authenticated local API
+Claude Code / Codex hooks
+          │  bounded, fail-open capture
+          ▼
+local daemon ── durable queue/spool ── local memory store
+          │
+          ├─ asynchronous summary provider
+          ├─ independent embedding provider
+          └─ lexical + semantic candidate lanes
+                            │
+                 bounded InjectionPack
+                            ▼
+                    Claude Code / Codex
 ```
 
-The Core clean-install target does not require Node.js, Bun, Python, Chroma, Redis, or
-Postgres at runtime. Agent plugins, the React viewer build, and Cloudflare components may
-continue using their native toolchains.
+The durable store and lexical retrieval remain local and usable without Cloud. Remote providers
+are opt-in and receive only the allowed redacted projection. Semantic failure never fabricates a
+healthy empty result; the product falls back to the strongest available local result and reports
+the reason.
 
-Rust, a single binary, SQLite, local-first operation, MCP, and multi-Agent support are not
-sufficient differentiation by themselves. free-mem must demonstrate its advantage through
-reproducible continuity scenarios: wrong-resume prevention, workspace reconciliation,
-unknown-operation safety, at most one live delivery attempt per checkpoint on a device,
-reduced re-explanation, and faster first useful action.
+## Delivery order
+
+After M0, the Alpha is split into three focused specifications and pull requests:
+
+1. **Automatic runtime path** — setup/start/doctor, one permanent minimal capability manifest,
+   Claude-to-Codex and Codex-to-Claude capture, prompt-triggered flush, summary, lexical retrieval,
+   inject, daemon/provider failure, and spool recovery.
+2. **Profiles and explainable retrieval** — extend the Slice 1 manifest to multiple resource
+   profiles and independent embedding providers, then add semantic lifecycle and bounded
+   InjectionPack.
+3. **Doctor and Alpha release** — inspection/deletion, full lifecycle, package, backup/restore,
+   resource soak, and five-user external validation.
+
+Only the first slice becomes implementation-ready after the Product Reset. Rust, Cloud, and extra
+platform/Agent work do not run in parallel with it.
 
 ## Repository layout
 
-- `vendor/codemem/`: modified pinned snapshot containing the current TypeScript product
-  workspace and reference implementation
-- `specs/001-agent-memory-core/`: implementation plan, contracts, and task gates
-- `evidence/`: base-selection, architecture decisions, competitor research, and safety evidence
-- `harness/`: version-pinned adapter, schema, continuity, and conformance fixtures
-- future `crates/`: first-party Rust Core workspace after the Stage 1 vertical slice
+- `vendor/codemem/`: pinned, modified Codemem workspace and current implementation base
+- `specs/005-product-reset/`: active Product Reset specification, contracts, and tasks
+- `evidence/`: foundation, safety, and decision evidence
+- `specs/001-*` through `specs/004-*`: completed or historical pre-reset specifications
+- `harness/`: existing capability and continuity evidence, historical unless a new slice explicitly
+  reuses a bounded part
 
-The base snapshot provenance is recorded in
-[`vendor/codemem/VENDOR.md`](vendor/codemem/VENDOR.md).
+The v6 continuity documents, Rust-first ADR, continuity reference model, and broad capability rig
+remain available as historical evidence. They are not active Product Alpha authority and must not
+silently re-enter a new implementation slice.
 
-## Current development workflow
+## Development baseline
 
-The current TypeScript reference toolchain is frozen to Node.js 24.16.0 and pnpm 11.8.0.
+The current workspace uses Node.js 24.16.0 and pnpm 11.8.0.
 
 ```sh
 cd vendor/codemem
@@ -101,52 +110,51 @@ corepack pnpm run build
 CI=true corepack pnpm run check
 ```
 
-The build runs before the test gate because viewer assets and internal package outputs
-are generated, ignored artifacts.
+At the Product Reset branch point, build, typecheck, and lint passed; Vitest passed 124 files and
+1,895 tests with three existing todo tests.
 
-Pre-release editor setup must run the built CLI directly from this checkout:
+The built CLI can be inspected from this checkout, but it is not a supported installation path:
 
 ```sh
-node vendor/codemem/packages/cli/dist/index.js setup --opencode-only # or --claude-only / --codex-only
+node vendor/codemem/packages/cli/dist/index.js --help
 ```
 
-Setup records the absolute CLI, plugin, and hook runtime artifacts and their fingerprints.
-Rebuild and rerun setup after moving or updating the checkout. npm/PATH-resolved codemem
-runtimes are intentionally unsupported until free-mem publishes a release artifact.
+Do not run editor setup against a real profile merely to evaluate this repository. Focused runtime
+slices use isolated configuration and data directories until the Technical Alpha package exists.
 
 ## Release standard
 
-Core 1.0 must be supported by evidence rather than feature presence alone. Planned
-blocking evidence includes:
+The Alpha requires evidence for the complete user path, not feature presence alone:
 
-- sole-writer, authentication, redaction, spool, migration, and backup invariants;
-- fault injection with no data loss, duplicate commit, split brain, or Agent blockage;
-- deterministic same-Agent and Claude Code ↔ Codex continuation;
-- wrong-project/workspace resume and unsafe unknown-operation replay count of zero;
-- a reproducible behavioral comparison report against pinned public baselines — the report
-  is required, while the pass/fail condition is #8's frozen claude-mem non-inferiority gate
-  plus whatever issue #79's manifest declares `releaseBlocking=true` in advance;
-- clean install, update, migration, rollback, doctor, backup/restore, and uninstall;
-- signed artifacts, checksums, SBOM, and documented support dispositions.
+- Claude-to-Codex and Codex-to-Claude automatic memory with no manual handoff
+- zero Agent blockage, accepted-event loss, duplicate durable memory, secret egress, or
+  incompatible-scope injection in the required failure set
+- bounded capture, retry, queue, process, storage-growth, and injection behavior
+- lexical fallback and visible degradation when summary or semantic providers fail
+- clean install, update, backup, restore, rollback, doctor, and uninstall
+- packed artifact, notices, checksums, SBOM, and protected publishing path
+- external Alpha users completing first value without manual configuration-file editing
 
-The quality-gate plan is tracked in GitHub issue #8. Rust cutover is tracked in issue #1,
-and namespace/data migration in issue #9.
+Broad superiority claims are prohibited until a pinned, reproducible comparison report supports
+them.
+
+## Future Pro lane
+
+After the local Alpha is validated, free-mem may add encrypted Cloud sync, multi-device backup,
+and a hosted viewer. These services must consume the local contracts and must never become a
+dependency of local capture, search, or injection.
 
 ## Security
 
-Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
-Never include real credentials, private memory content, or local artifact paths in an
-issue or test fixture.
+Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md). Never include real
+credentials, private memory content, or local artifact paths in an issue or fixture.
 
 ## Licensing
 
-free-mem is licensed under the Apache License 2.0 — see [`LICENSE`](LICENSE) and
-[`NOTICE`](NOTICE). The reasoning, dependency license scan, and per-directory material
-breakdown are in [`evidence/adr-004-licensing.md`](evidence/adr-004-licensing.md).
+free-mem is licensed under Apache License 2.0; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Third-party material keeps its original license. `vendor/codemem/` is a pinned MIT snapshot and is
+not relicensed by this repository; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and
+[`vendor/codemem/VENDOR.md`](vendor/codemem/VENDOR.md).
 
-Third-party material retains its own license. In particular `vendor/codemem/` is a pinned
-MIT snapshot and is **not** relicensed by this repository; see
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-
-Contributions are accepted under the same license, with a DCO sign-off — see
+Contributions use the same license and require DCO sign-off; see
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
