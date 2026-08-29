@@ -1,0 +1,33 @@
+vendor/codemem/packages/core/src/redaction-readiness.test.ts
+  s_99d8ac07476f81::t_fdc666b9a34504 211
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_99d8ac07476f81::t_e5b2f2c71f4489 1687-1689
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_99d8ac07476f81::t_12a8805c73fa2e 1687-1689
+vendor/codemem/packages/core/src/redaction-worker.ts
+  s_c898318ac23b36::t_5d9015188ac528 248-254,256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "81701557cf3e8755451c026a736e242df4c76543",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_c898318ac23b36": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04fcd-c9df-7221-8e6e-386ba8a4b532",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
