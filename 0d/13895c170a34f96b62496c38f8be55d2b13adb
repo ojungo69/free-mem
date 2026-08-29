@@ -1,0 +1,19 @@
+vendor/codemem/packages/core/src/ingest-sanitize.ts
+  s_99d8ac07476f81::t_a3ed38aa6606dc 18-19,30-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0d13895c170a34f96b62496c38f8be55d2b13adb",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
