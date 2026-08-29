@@ -1684,10 +1684,9 @@ function prepareRedactionWorkerForScan(deadlineAtMs) {
 		if (deadlineAtMs !== void 0 && scanStartedAtMs >= deadlineAtMs) return null;
 		return Math.min(scanStartedAtMs + 100, deadlineAtMs === void 0 ? Number.POSITIVE_INFINITY : deadlineAtMs + 100);
 	}
-	if (!inCooldown) {
-		if (activeWorker && readinessDeadlineAtMs === startupDeadlineAtMs && performance.now() + 1 >= startupDeadlineAtMs) discardWorker(activeWorker);
-		recentWorkerStartupFailureAt = performance.now();
-	}
+	if (inCooldown) return null;
+	if (activeWorker && readinessDeadlineAtMs === startupDeadlineAtMs && performance.now() + 1 >= startupDeadlineAtMs) discardWorker(activeWorker);
+	recentWorkerStartupFailureAt = performance.now();
 	return null;
 }
 if (!isMainThread && workerData && typeof workerData === "object" && workerData.role === "hook-runtime") getWorker();

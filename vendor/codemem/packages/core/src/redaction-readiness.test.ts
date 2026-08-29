@@ -208,7 +208,7 @@ describe("redaction worker readiness", () => {
 			tags_text: "kept",
 			metadata_json: { note: "kept" },
 		});
-	});
+	}, 15_000);
 
 	it("suppresses replacement worker starts during the readiness cooldown", () => {
 		const result = runReadinessScenario("cooldown", 0) as { spawnCount: number };

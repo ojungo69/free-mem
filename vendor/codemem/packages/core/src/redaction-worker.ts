@@ -245,16 +245,15 @@ export function prepareRedactionWorkerForScan(deadlineAtMs?: number): number | n
 				: deadlineAtMs + REDACTION_WORKER_DEADLINE_MS,
 		);
 	}
-	if (!inCooldown) {
-		if (
-			activeWorker &&
-			readinessDeadlineAtMs === startupDeadlineAtMs &&
-			performance.now() + 1 >= startupDeadlineAtMs
-		) {
-			discardWorker(activeWorker);
-		}
-		recentWorkerStartupFailureAt = performance.now();
+	if (inCooldown) return null;
+	if (
+		activeWorker &&
+		readinessDeadlineAtMs === startupDeadlineAtMs &&
+		performance.now() + 1 >= startupDeadlineAtMs
+	) {
+		discardWorker(activeWorker);
 	}
+	recentWorkerStartupFailureAt = performance.now();
 	return null;
 }
 
