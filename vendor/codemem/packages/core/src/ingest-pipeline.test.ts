@@ -1923,6 +1923,10 @@ describe("ingest-sanitize", () => {
 			expect(stripPrivate("hello <private>secret</private> world")).toBe("hello  world");
 		});
 
+		it("drops content before a duplicated closing tag after a private block", () => {
+			expect(stripPrivate("<private>foo</private>SECRET</private>rest")).toBe("rest");
+		});
+
 		it("handles orphaned opening tags", () => {
 			expect(stripPrivate("before <private>after")).toBe("before ");
 		});

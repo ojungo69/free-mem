@@ -15,30 +15,26 @@ const PRIVATE_CLOSE = "</private>";
 /**
  * Remove `<private>…</private>` blocks from text.
  *
- * Handles matched pairs, orphaned opening tags (truncates at the tag),
- * and stray closing tags (removed).
+ * Handles matched pairs and orphaned opening tags (truncates at the tag).
+ * Stray closes before any opener are removed; after an opener, their preceding span is dropped.
  */
 export function stripPrivate(text: string): string {
 	if (!text) return "";
 	let remaining = text;
 	let lowered = remaining.toLowerCase();
 	let output = "";
+	let sawOpen = false;
 	while (remaining) {
 		const openIndex = lowered.indexOf(PRIVATE_OPEN);
 		const closeIndex = lowered.indexOf(PRIVATE_CLOSE);
-		if (openIndex < 0) {
-			if (closeIndex < 0) return output + remaining;
-			output += remaining.slice(0, closeIndex);
+		if (openIndex < 0 && closeIndex < 0) return output + remaining;
+		if (closeIndex >= 0 && (openIndex < 0 || closeIndex < openIndex)) {
+			if (!sawOpen) output += remaining.slice(0, closeIndex);
 			remaining = remaining.slice(closeIndex + PRIVATE_CLOSE.length);
 			lowered = remaining.toLowerCase();
 			continue;
 		}
-		if (closeIndex >= 0 && closeIndex < openIndex) {
-			output += remaining.slice(0, closeIndex);
-			remaining = remaining.slice(closeIndex + PRIVATE_CLOSE.length);
-			lowered = remaining.toLowerCase();
-			continue;
-		}
+		sawOpen = true;
 		output += remaining.slice(0, openIndex);
 		const blockCloseIndex = lowered.indexOf(PRIVATE_CLOSE, openIndex + PRIVATE_OPEN.length);
 		if (blockCloseIndex < 0) return output;
