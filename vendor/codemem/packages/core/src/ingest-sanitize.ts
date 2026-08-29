@@ -23,22 +23,24 @@ export function stripPrivate(text: string): string {
 	let remaining = text;
 	let lowered = remaining.toLowerCase();
 	let output = "";
+	let sawOpen = false;
 	while (remaining) {
 		const openIndex = lowered.indexOf(PRIVATE_OPEN);
 		const closeIndex = lowered.indexOf(PRIVATE_CLOSE);
 		if (openIndex < 0) {
 			if (closeIndex < 0) return output + remaining;
-			output += remaining.slice(0, closeIndex);
+			if (!sawOpen) output += remaining.slice(0, closeIndex);
 			remaining = remaining.slice(closeIndex + PRIVATE_CLOSE.length);
 			lowered = remaining.toLowerCase();
 			continue;
 		}
 		if (closeIndex >= 0 && closeIndex < openIndex) {
-			output += remaining.slice(0, closeIndex);
+			if (!sawOpen) output += remaining.slice(0, closeIndex);
 			remaining = remaining.slice(closeIndex + PRIVATE_CLOSE.length);
 			lowered = remaining.toLowerCase();
 			continue;
 		}
+		sawOpen = true;
 		output += remaining.slice(0, openIndex);
 		const blockCloseIndex = lowered.indexOf(PRIVATE_CLOSE, openIndex + PRIVATE_OPEN.length);
 		if (blockCloseIndex < 0) return output;
