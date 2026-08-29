@@ -1,0 +1,21 @@
+vendor/codemem/packages/core/src/ingest-pipeline.test.ts
+  s_99d8ac07476f81::t_ea2b5bfc462494 1926-1929
+vendor/codemem/packages/core/src/ingest-sanitize.ts
+  s_99d8ac07476f81::t_a216dbffd0bdcd 26,32,38,43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c877f821a9a81458b7f5a8de3f266db400b16406",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
