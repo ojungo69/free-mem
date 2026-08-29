@@ -1508,9 +1508,18 @@ function aggregateMap(map) {
 //#endregion
 //#region ../core/src/redaction-worker.ts
 var REDACTION_WORKER_STARTUP_DEADLINE_MS = 1e3;
+/**
+* How long a scan that fails closed will wait for the worker to come up, before its own
+* REDACTION_WORKER_DEADLINE_MS budget starts. Generous against measured worker start, and
+* bounded so that this wait plus the scan budget stays inside the daemon's smallest hook
+* RPC cutoff (`codex.rpcCutoffMs`, daemon-rpc-contract.ts) - the wait is a synchronous
+* `Atomics.wait`, so it blocks the whole thread.
+*/
+var REDACTION_SCAN_STARTUP_BUDGET_MS = 250;
 var activeWorker;
 var activeWorkerReady;
 var activeWorkerStartedAt = 0;
+var recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
 function isRedactionWorkerData(value) {
 	return Boolean(value) && typeof value === "object" && value.role === "redaction-worker" && value.ready instanceof SharedArrayBuffer;
 }
@@ -1650,10 +1659,14 @@ function warmRedactionWorker(deadlineAtMs) {
 	try {
 		worker = getWorker();
 	} catch {
+		if (deadlineAtMs === void 0) recentWorkerStartupFailureAt = performance.now();
 		return false;
 	}
 	const ready = activeWorkerReady;
-	if (!ready) return false;
+	if (!ready) {
+		if (deadlineAtMs === void 0) recentWorkerStartupFailureAt = performance.now();
+		return false;
+	}
 	if (Atomics.load(ready, 0) === 0) {
 		const startupRemaining = REDACTION_WORKER_STARTUP_DEADLINE_MS - (performance.now() - activeWorkerStartedAt);
 		const eventRemaining = deadlineAtMs === void 0 ? startupRemaining : deadlineAtMs - performance.now();
@@ -1662,6 +1675,23 @@ function warmRedactionWorker(deadlineAtMs) {
 	}
 	if (Atomics.load(ready, 0) === 1) return true;
 	if (deadlineAtMs === void 0 || performance.now() - activeWorkerStartedAt >= REDACTION_WORKER_STARTUP_DEADLINE_MS) discardWorker(worker);
+	if (deadlineAtMs === void 0) recentWorkerStartupFailureAt = performance.now();
+	return false;
+}
+function prepareRedactionWorkerForScan(deadlineAtMs) {
+	const now = performance.now();
+	const inCooldown = now - recentWorkerStartupFailureAt < REDACTION_SCAN_STARTUP_BUDGET_MS;
+	if (inCooldown && !activeWorker) return false;
+	const startupDeadlineAtMs = activeWorkerStartedAt > 0 ? activeWorkerStartedAt + REDACTION_SCAN_STARTUP_BUDGET_MS : now + REDACTION_SCAN_STARTUP_BUDGET_MS;
+	const readinessDeadlineAtMs = Math.min(startupDeadlineAtMs, deadlineAtMs ?? Number.POSITIVE_INFINITY);
+	if (warmRedactionWorker(inCooldown ? now : Math.max(now, readinessDeadlineAtMs))) {
+		recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
+		return true;
+	}
+	if (!inCooldown) {
+		if (activeWorker && readinessDeadlineAtMs === startupDeadlineAtMs && performance.now() + 1 >= startupDeadlineAtMs) discardWorker(activeWorker);
+		recentWorkerStartupFailureAt = performance.now();
+	}
 	return false;
 }
 if (!isMainThread && workerData && typeof workerData === "object" && workerData.role === "hook-runtime") getWorker();
@@ -1836,8 +1866,9 @@ function runPipeline(input, options, layer) {
 	payload = mapStrings(payload, (text, key) => PATH_KEYS.has(key) ? normalizePathValue(text) : text);
 	const userRules = config?.secretRules ?? [];
 	const rules = [...DEFAULT_RULES, ...userRules];
+	const workerReady = prepareRedactionWorkerForScan(options.workerStartupDeadlineAtMs);
 	const workerDeadlineAtMs = performance.now() + 100;
-	const firstScan = warmRedactionWorker(workerDeadlineAtMs) ? redactValueInWorker(payload, userRules, workerDeadlineAtMs) : { ok: false };
+	const firstScan = workerReady ? redactValueInWorker(payload, userRules, workerDeadlineAtMs) : { ok: false };
 	const loadedRules = firstScan.ok ? rules : [];
 	let workerDegraded = !firstScan.ok;
 	let detections = firstScan.ok ? firstScan.detections : [];
@@ -6476,7 +6507,8 @@ function prepareHookEvent(agent, payload, deadlineAtMs = performance.now() + HOO
 	const redacted = preprocessAdapterEvent(event, {
 		allowlist: [...NORMALIZED_EVENT_FIELDS],
 		metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
-		config: policy.config
+		config: policy.config,
+		workerStartupDeadlineAtMs: deadlineAtMs - HOOK_DELIVERY_BUDGETS[agent].spoolReserveMs - 100
 	});
 	const rpcEvent = redacted.degraded ? sealDegradedNormalizedEvent(redacted.payload) : redacted.payload;
 	if (!Object.hasOwn(rpcEvent, "payload")) rpcEvent.payload = {};
@@ -7407,8 +7439,6 @@ async function runHookRuntime(command, raw, deadlineAtMs) {
 	} catch {
 		return fallback(command);
 	}
-	const budget = command.startsWith("claude-") ? HOOK_DELIVERY_BUDGETS.claude : HOOK_DELIVERY_BUDGETS.codex;
-	warmRedactionWorker(deadlineAtMs === void 0 ? void 0 : deadlineAtMs - budget.spoolReserveMs - 100);
 	try {
 		if (command === "claude-hook-ingest") {
 			await ingestClaudeHookPayload(payload, {

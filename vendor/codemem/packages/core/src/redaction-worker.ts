@@ -24,7 +24,7 @@ const REDACTION_WORKER_STARTUP_DEADLINE_MS = 1_000;
  * RPC cutoff (`codex.rpcCutoffMs`, daemon-rpc-contract.ts) - the wait is a synchronous
  * `Atomics.wait`, so it blocks the whole thread.
  */
-const REDACTION_SCAN_STARTUP_BUDGET_MS = 500;
+const REDACTION_SCAN_STARTUP_BUDGET_MS = 250;
 
 type WorkerRequest =
 	| {
@@ -55,6 +55,7 @@ type WorkerMessage = {
 let activeWorker: Worker | undefined;
 let activeWorkerReady: Int32Array | undefined;
 let activeWorkerStartedAt = 0;
+let recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
 
 function isRedactionWorkerData(value: unknown): value is RedactionWorkerData {
 	return (
@@ -195,10 +196,14 @@ export function warmRedactionWorker(deadlineAtMs?: number): boolean {
 	try {
 		worker = getWorker();
 	} catch {
+		if (deadlineAtMs === undefined) recentWorkerStartupFailureAt = performance.now();
 		return false;
 	}
 	const ready = activeWorkerReady;
-	if (!ready) return false;
+	if (!ready) {
+		if (deadlineAtMs === undefined) recentWorkerStartupFailureAt = performance.now();
+		return false;
+	}
 	if (Atomics.load(ready, 0) === 0) {
 		const startupRemaining =
 			REDACTION_WORKER_STARTUP_DEADLINE_MS - (performance.now() - activeWorkerStartedAt);
@@ -213,6 +218,37 @@ export function warmRedactionWorker(deadlineAtMs?: number): boolean {
 		performance.now() - activeWorkerStartedAt >= REDACTION_WORKER_STARTUP_DEADLINE_MS
 	) {
 		discardWorker(worker);
+	}
+	if (deadlineAtMs === undefined) recentWorkerStartupFailureAt = performance.now();
+	return false;
+}
+
+export function prepareRedactionWorkerForScan(deadlineAtMs?: number): boolean {
+	const now = performance.now();
+	const inCooldown = now - recentWorkerStartupFailureAt < REDACTION_SCAN_STARTUP_BUDGET_MS;
+	if (inCooldown && !activeWorker) return false;
+	const startupDeadlineAtMs =
+		activeWorkerStartedAt > 0
+			? activeWorkerStartedAt + REDACTION_SCAN_STARTUP_BUDGET_MS
+			: now + REDACTION_SCAN_STARTUP_BUDGET_MS;
+	const readinessDeadlineAtMs = Math.min(
+		startupDeadlineAtMs,
+		deadlineAtMs ?? Number.POSITIVE_INFINITY,
+	);
+	const ready = warmRedactionWorker(inCooldown ? now : Math.max(now, readinessDeadlineAtMs));
+	if (ready) {
+		recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
+		return true;
+	}
+	if (!inCooldown) {
+		if (
+			activeWorker &&
+			readinessDeadlineAtMs === startupDeadlineAtMs &&
+			performance.now() + 1 >= startupDeadlineAtMs
+		) {
+			discardWorker(activeWorker);
+		}
+		recentWorkerStartupFailureAt = performance.now();
 	}
 	return false;
 }
@@ -313,12 +349,7 @@ export class WorkerSecretScanner extends SecretScanner {
 		parentKey?: string,
 	): { value: unknown; detections: ScanDetection[] } {
 		if (this.options.degraded) throw new RedactionWorkerError();
-		// Warm on its own budget, not the scan budget. Charging worker start-up to the scan
-		// deadline left the first scan in a process with a fraction of it, and unlike the
-		// callers in redaction-pipeline.ts and store.ts - which degrade when the worker is
-		// not ready - this path throws, so the cost surfaced as an unrelated test failing
-		// on CI (#119).
-		warmRedactionWorker(performance.now() + REDACTION_SCAN_STARTUP_BUDGET_MS);
+		if (!prepareRedactionWorkerForScan()) throw new RedactionWorkerError();
 		const deadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
 		const result = redactValueInWorker(
 			value,

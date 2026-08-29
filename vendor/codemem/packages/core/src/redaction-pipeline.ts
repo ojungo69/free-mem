@@ -3,9 +3,9 @@ import { fingerprintSecretRules } from "./gitleaks-pinned-rules.js";
 import { isSensitiveFieldName } from "./ingest-sanitize.js";
 import {
 	applyPrivateRegexInWorker,
+	prepareRedactionWorkerForScan,
 	REDACTION_WORKER_DEADLINE_MS,
 	redactValueInWorker,
-	warmRedactionWorker,
 } from "./redaction-worker.js";
 import { DEFAULT_RULES, type ScanDetection, type SecretRule } from "./secret-scanner.js";
 
@@ -28,6 +28,7 @@ export type RedactionOptions = {
 	allowlist?: string[];
 	metadataKeys?: string[];
 	maxBytes?: number;
+	workerStartupDeadlineAtMs?: number;
 };
 
 export type RedactionResult = {
@@ -186,8 +187,8 @@ function runPipeline(
 
 	const userRules = config?.secretRules ?? [];
 	const rules = [...DEFAULT_RULES, ...userRules];
+	const workerReady = prepareRedactionWorkerForScan(options.workerStartupDeadlineAtMs);
 	const workerDeadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
-	const workerReady = warmRedactionWorker(workerDeadlineAtMs);
 	const firstScan = workerReady
 		? redactValueInWorker(payload, userRules, workerDeadlineAtMs)
 		: { ok: false as const };

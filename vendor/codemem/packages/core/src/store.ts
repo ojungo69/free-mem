@@ -35,6 +35,7 @@ import {
 	buildMemoryPackWithTraceAsync,
 } from "./pack.js";
 import {
+	prepareRedactionWorkerForScan,
 	REDACTION_WORKER_DEADLINE_MS,
 	redactValueInWorker,
 	warmRedactionWorker,
@@ -688,16 +689,16 @@ export class MemoryStore {
 		// failure, preserve only non-content metadata needed to surface degraded
 		// delivery without ever writing the unscanned body.
 		const scannerOptions = this.scanner.workerOptions();
+		const workerReady = !scannerOptions.degraded && prepareRedactionWorkerForScan();
 		const workerDeadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
-		if (!scannerOptions.degraded) warmRedactionWorker(workerDeadlineAtMs);
-		const scan = scannerOptions.degraded
-			? { ok: false as const }
-			: redactValueInWorker(
+		const scan = workerReady
+			? redactValueInWorker(
 					{ title, bodyText, tags, metadata: metadata ?? {} },
 					scannerOptions.rules ?? [],
 					workerDeadlineAtMs,
 					scannerOptions.allowlist,
-				);
+				)
+			: { ok: false as const };
 		const value = scan.ok ? (scan.value as Record<string, unknown>) : {};
 		const safeTitle = typeof value.title === "string" ? value.title : "";
 		const safeBody = typeof value.bodyText === "string" ? value.bodyText : "";
