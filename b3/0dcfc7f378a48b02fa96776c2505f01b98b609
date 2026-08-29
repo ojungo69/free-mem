@@ -1,0 +1,42 @@
+harness/phase1-no-agent-blockage.mjs
+  s_99d8ac07476f81::t_f7ab0c8e9537e8 759,763-772,774-780,810-812,814
+  s_99d8ac07476f81::t_35f50aa7e4b38d 760,783-787,809,815-816,818-827,833-837,841-844,1201
+  s_99d8ac07476f81::t_5f87a8e56f607b 838
+  s_99d8ac07476f81::t_e1821aad1bbac4 773,813,817,828-832,839-840
+vendor/codemem/docs/plugin-reference.md
+  s_99d8ac07476f81::t_ab9e106999474c 57-62
+vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts
+  s_99d8ac07476f81::t_779bcb9d98203d 25,264-265
+vendor/codemem/packages/cli/src/hook-runtime.ts
+  s_99d8ac07476f81::t_13708edbfdf25f 6
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_99d8ac07476f81::t_29ee6cec7e8c40 6,31,190
+vendor/codemem/packages/core/src/store.ts
+  s_99d8ac07476f81::t_17259ae1105e82 38,692,694-695,700-701
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_99d8ac07476f81::t_cf081ffd814e9c 1511-1518,1522,1662,1666-1669,1678-1694,1869,1871,6510-6511
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_99d8ac07476f81::t_584543f1912df5 1511-1518,1522,1662,1666-1669,1678-1694,1869,1871,6510-6511
+vendor/codemem/README.md
+  s_99d8ac07476f81::t_f4788d56708ec4 90-93
+vendor/codemem/packages/core/src/redaction-readiness.test.ts
+  s_99d8ac07476f81::t_7f4d667154e30a 1-206
+vendor/codemem/packages/core/src/redaction-worker.ts
+  s_99d8ac07476f81::t_7696aaa2bda557 27,58,199,203-206,222-252,352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b30dcfc7f378a48b02fa96776c2505f01b98b609",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
