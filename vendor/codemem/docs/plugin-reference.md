@@ -54,11 +54,12 @@ Claude hooks run the packaged standalone Node runtime. It applies project policy
 
 Hook clients never open SQLite. Claude's outer watchdog is 3 seconds; the client uses a shorter RPC cutoff so the spool has a reserved completion window.
 
-Redaction worker readiness is bounded separately from the 100 ms scan deadline. A worker gets up
-to 250 ms from its original start to become ready; after a failed readiness attempt, calls during
-the next 250 ms only probe readiness and fail closed immediately instead of paying the wait again.
-A true readiness or scan failure keeps only safe metadata and preserves the hook's spool fallback
-window; unscanned content is never delivered or persisted.
+Redaction worker readiness is bounded separately from the 100 ms scan deadline. Source and daemon
+callers allow up to 500 ms from the worker's original start; hooks use the earlier caller deadline
+that preserves their 500 ms spool fallback. A caller whose readiness start deadline has elapsed does
+not begin a scan. After a true failed readiness attempt, calls during the next 500 ms only probe
+readiness and fail closed instead of paying the wait again. A true readiness or scan failure keeps
+only safe metadata; unscanned content is never delivered or persisted.
 
 The CLI keeps a compatible manual stdin entry point for development:
 

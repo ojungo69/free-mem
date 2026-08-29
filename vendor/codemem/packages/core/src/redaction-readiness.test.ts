@@ -12,6 +12,7 @@ function runReadinessScenario(
 		| "caller-deadline-local"
 		| "cooldown"
 		| "cooldown-expired"
+		| "expired-ready"
 		| "pipeline"
 		| "prewarm-cooldown"
 		| "store",
@@ -51,7 +52,18 @@ import { WorkerSecretScanner } from "./packages/core/src/redaction-worker.ts";
 import { SecretScanner } from "./packages/core/src/secret-scanner.ts";
 import { insertTestSession, openTestMemoryStore } from "./packages/core/src/test-utils.ts";
 const scenario = process.env.CODEMEM_TEST_SCENARIO;
-if (scenario === "caller-deadline-local") {
+if (scenario === "expired-ready") {
+	if (!core.warmRedactionWorker()) throw new Error("fixture failed to warm the worker");
+	const result = core.preprocessAdapterEvent(
+		{ id: "expired", body: "must not scan" },
+		{
+			allowlist: ["id", "body"],
+			metadataKeys: ["id"],
+			workerStartupDeadlineAtMs: performance.now() - 1,
+		},
+	);
+	console.log(JSON.stringify(result));
+} else if (scenario === "caller-deadline-local") {
 	const first = core.preprocessAdapterEvent(
 		{ id: "bounded", body: "safe" },
 		{
@@ -112,7 +124,7 @@ if (scenario === "caller-deadline-local") {
 		} catch {
 			// Expected while the injected worker cannot become ready.
 		}
-		const pauseMs = scenario === "cooldown-expired" && index === 1 ? 300 : 50;
+		const pauseMs = scenario === "cooldown-expired" && index === 1 ? 550 : 50;
 		await new Promise((resolve) => setTimeout(resolve, pauseMs));
 	}
 	const spawnLog = process.env.CODEMEM_TEST_WORKER_SPAWN_LOG;
@@ -155,6 +167,15 @@ if (scenario === "caller-deadline-local") {
 }
 
 describe("redaction worker readiness", () => {
+	it("does not scan after the caller readiness deadline expires", () => {
+		const result = runReadinessScenario("expired-ready", 0) as {
+			degraded: boolean;
+			payload: Record<string, unknown>;
+		};
+		expect(result.degraded).toBe(true);
+		expect(result.payload).toEqual({ id: "expired" });
+	});
+
 	it("keeps a caller deadline local to that redaction attempt", () => {
 		const result = runReadinessScenario("caller-deadline-local", 125) as {
 			first: { degraded: boolean };
@@ -166,7 +187,7 @@ describe("redaction worker readiness", () => {
 	});
 
 	it("keeps adapter content when a cold worker becomes ready inside its readiness budget", () => {
-		const result = runReadinessScenario("pipeline", 125) as {
+		const result = runReadinessScenario("pipeline", 300) as {
 			degraded: boolean;
 			payload: Record<string, unknown>;
 		};
@@ -175,7 +196,7 @@ describe("redaction worker readiness", () => {
 	});
 
 	it("keeps memory content when a scan timeout makes the next worker cold", () => {
-		const row = runReadinessScenario("store", 125) as {
+		const row = runReadinessScenario("store", 300) as {
 			title: string;
 			body_text: string;
 			tags_text: string;

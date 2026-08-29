@@ -4,7 +4,6 @@ import { isSensitiveFieldName } from "./ingest-sanitize.js";
 import {
 	applyPrivateRegexInWorker,
 	prepareRedactionWorkerForScan,
-	REDACTION_WORKER_DEADLINE_MS,
 	redactValueInWorker,
 } from "./redaction-worker.js";
 import { DEFAULT_RULES, type ScanDetection, type SecretRule } from "./secret-scanner.js";
@@ -187,11 +186,12 @@ function runPipeline(
 
 	const userRules = config?.secretRules ?? [];
 	const rules = [...DEFAULT_RULES, ...userRules];
-	const workerReady = prepareRedactionWorkerForScan(options.workerStartupDeadlineAtMs);
-	const workerDeadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
-	const firstScan = workerReady
-		? redactValueInWorker(payload, userRules, workerDeadlineAtMs)
-		: { ok: false as const };
+	const workerDeadlineAtMs = prepareRedactionWorkerForScan(options.workerStartupDeadlineAtMs);
+	const scanDeadlineAtMs = workerDeadlineAtMs ?? 0;
+	const firstScan =
+		workerDeadlineAtMs !== null
+			? redactValueInWorker(payload, userRules, scanDeadlineAtMs)
+			: { ok: false as const };
 	const loadedRules = firstScan.ok ? rules : [];
 	let workerDegraded = !firstScan.ok;
 	let detections = firstScan.ok ? firstScan.detections : [];
@@ -209,7 +209,7 @@ function runPipeline(
 	});
 	if (config?.privateRegex.length && !workerDegraded) {
 		const metadata = keepMetadataOnly(payload, options.metadataKeys);
-		const privateScan = applyPrivateRegexInWorker(payload, config.privateRegex, workerDeadlineAtMs);
+		const privateScan = applyPrivateRegexInWorker(payload, config.privateRegex, scanDeadlineAtMs);
 		if (privateScan.ok) {
 			payload = asObject(privateScan.value);
 			privateOmitted ||= privateScan.privateHit;
@@ -228,7 +228,7 @@ function runPipeline(
 
 	// Tags can reassemble split secrets; scan again after markup removal.
 	if (!workerDegraded) {
-		const secondScan = redactValueInWorker(payload, userRules, workerDeadlineAtMs);
+		const secondScan = redactValueInWorker(payload, userRules, scanDeadlineAtMs);
 		if (secondScan.ok) {
 			payload = asObject(secondScan.value);
 			detections = mergeDetections(detections, secondScan.detections);

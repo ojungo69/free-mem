@@ -1505,17 +1505,14 @@ function aggregateMap(map) {
 		count
 	}));
 }
-//#endregion
-//#region ../core/src/redaction-worker.ts
 var REDACTION_WORKER_STARTUP_DEADLINE_MS = 1e3;
 /**
 * How long a scan that fails closed will wait for the worker to come up, before its own
-* REDACTION_WORKER_DEADLINE_MS budget starts. Generous against measured worker start, and
-* bounded so that this wait plus the scan budget stays inside the daemon's smallest hook
-* RPC cutoff (`codex.rpcCutoffMs`, daemon-rpc-contract.ts) - the wait is a synchronous
-* `Atomics.wait`, so it blocks the whole thread.
+* REDACTION_WORKER_DEADLINE_MS budget starts. Source and daemon callers use this allowance;
+* hook callers pass an earlier deadline that preserves their spool window. The wait is a
+* synchronous `Atomics.wait`, so it blocks the whole thread.
 */
-var REDACTION_SCAN_STARTUP_BUDGET_MS = 250;
+var REDACTION_SCAN_STARTUP_BUDGET_MS = 500;
 var activeWorker;
 var activeWorkerReady;
 var activeWorkerStartedAt = 0;
@@ -1663,10 +1660,6 @@ function warmRedactionWorker(deadlineAtMs) {
 		return false;
 	}
 	const ready = activeWorkerReady;
-	if (!ready) {
-		if (deadlineAtMs === void 0) recentWorkerStartupFailureAt = performance.now();
-		return false;
-	}
 	if (Atomics.load(ready, 0) === 0) {
 		const startupRemaining = REDACTION_WORKER_STARTUP_DEADLINE_MS - (performance.now() - activeWorkerStartedAt);
 		const eventRemaining = deadlineAtMs === void 0 ? startupRemaining : deadlineAtMs - performance.now();
@@ -1680,19 +1673,22 @@ function warmRedactionWorker(deadlineAtMs) {
 }
 function prepareRedactionWorkerForScan(deadlineAtMs) {
 	const now = performance.now();
+	if (deadlineAtMs !== void 0 && now >= deadlineAtMs) return null;
 	const inCooldown = now - recentWorkerStartupFailureAt < REDACTION_SCAN_STARTUP_BUDGET_MS;
-	if (inCooldown && !activeWorker) return false;
+	if (inCooldown && !activeWorker) return null;
 	const startupDeadlineAtMs = activeWorkerStartedAt > 0 ? activeWorkerStartedAt + REDACTION_SCAN_STARTUP_BUDGET_MS : now + REDACTION_SCAN_STARTUP_BUDGET_MS;
 	const readinessDeadlineAtMs = Math.min(startupDeadlineAtMs, deadlineAtMs ?? Number.POSITIVE_INFINITY);
 	if (warmRedactionWorker(inCooldown ? now : Math.max(now, readinessDeadlineAtMs))) {
 		recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
-		return true;
+		const scanStartedAtMs = performance.now();
+		if (deadlineAtMs !== void 0 && scanStartedAtMs >= deadlineAtMs) return null;
+		return Math.min(scanStartedAtMs + 100, deadlineAtMs === void 0 ? Number.POSITIVE_INFINITY : deadlineAtMs + 100);
 	}
 	if (!inCooldown) {
 		if (activeWorker && readinessDeadlineAtMs === startupDeadlineAtMs && performance.now() + 1 >= startupDeadlineAtMs) discardWorker(activeWorker);
 		recentWorkerStartupFailureAt = performance.now();
 	}
-	return false;
+	return null;
 }
 if (!isMainThread && workerData && typeof workerData === "object" && workerData.role === "hook-runtime") getWorker();
 function discardWorker(worker) {
@@ -1866,9 +1862,9 @@ function runPipeline(input, options, layer) {
 	payload = mapStrings(payload, (text, key) => PATH_KEYS.has(key) ? normalizePathValue(text) : text);
 	const userRules = config?.secretRules ?? [];
 	const rules = [...DEFAULT_RULES, ...userRules];
-	const workerReady = prepareRedactionWorkerForScan(options.workerStartupDeadlineAtMs);
-	const workerDeadlineAtMs = performance.now() + 100;
-	const firstScan = workerReady ? redactValueInWorker(payload, userRules, workerDeadlineAtMs) : { ok: false };
+	const workerDeadlineAtMs = prepareRedactionWorkerForScan(options.workerStartupDeadlineAtMs);
+	const scanDeadlineAtMs = workerDeadlineAtMs ?? 0;
+	const firstScan = workerDeadlineAtMs !== null ? redactValueInWorker(payload, userRules, scanDeadlineAtMs) : { ok: false };
 	const loadedRules = firstScan.ok ? rules : [];
 	let workerDegraded = !firstScan.ok;
 	let detections = firstScan.ok ? firstScan.detections : [];
@@ -1883,7 +1879,7 @@ function runPipeline(input, options, layer) {
 	});
 	if (config?.privateRegex.length && !workerDegraded) {
 		const metadata = keepMetadataOnly(payload, options.metadataKeys);
-		const privateScan = applyPrivateRegexInWorker(payload, config.privateRegex, workerDeadlineAtMs);
+		const privateScan = applyPrivateRegexInWorker(payload, config.privateRegex, scanDeadlineAtMs);
 		if (privateScan.ok) {
 			payload = asObject(privateScan.value);
 			privateOmitted ||= privateScan.privateHit;
@@ -1900,7 +1896,7 @@ function runPipeline(input, options, layer) {
 		return again.text;
 	});
 	if (!workerDegraded) {
-		const secondScan = redactValueInWorker(payload, userRules, workerDeadlineAtMs);
+		const secondScan = redactValueInWorker(payload, userRules, scanDeadlineAtMs);
 		if (secondScan.ok) {
 			payload = asObject(secondScan.value);
 			detections = mergeDetections(detections, secondScan.detections);
