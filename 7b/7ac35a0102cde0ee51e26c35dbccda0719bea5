@@ -1,0 +1,33 @@
+vendor/codemem/packages/core/src/redaction-pipeline.ts
+  s_99d8ac07476f81::t_e1aae9ee03df77 189-194,212,231
+vendor/codemem/packages/core/src/store.ts
+  s_99d8ac07476f81::t_10c6687a635991 691-700
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_99d8ac07476f81::t_36716632a36a1b 1511-1513,1515,1676,1678,1683-1685,1691,1865-1867,1882,1899
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_99d8ac07476f81::t_8c0998ac6aa390 1511-1513,1515,1676,1678,1683-1685,1691,1865-1867,1882,1899
+vendor/codemem/docs/plugin-reference.md
+  s_99d8ac07476f81::t_75200c21d97f52 57-62
+vendor/codemem/packages/core/src/redaction-readiness.test.ts
+  s_99d8ac07476f81::t_2201c4945ee835 15,55-66,127,170-178,190,199
+vendor/codemem/packages/core/src/redaction-worker-lifecycle.test.ts
+  s_99d8ac07476f81::t_c059925ed024c3 1-127
+vendor/codemem/packages/core/src/redaction-worker.ts
+  s_99d8ac07476f81::t_efb486f7bd272b 22-24,26,201-203,223,225,227,239-246,258,357-358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7b7ac35a0102cde0ee51e26c35dbccda0719bea5",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
