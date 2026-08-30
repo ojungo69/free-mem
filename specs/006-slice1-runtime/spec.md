@@ -234,8 +234,10 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   also fix request timeout, input/output/response limits, and temperature.
 - **FR-004**: The compiler MUST compute `providerFingerprint` and derive execution location,
   egress policy, cost class, TLS policy, and redirect rejection. Literal `127.0.0.1` or URL hostname
-  `[::1]` is local; `localhost`, localhost subdomains, and any trailing-dot hostname are rejected; every
-  non-loopback endpoint is remote and HTTPS-only with system
+  `[::1]` is local; `localhost`, localhost subdomains, any trailing-dot hostname, wildcard or
+  unspecified addresses (including IPv4-mapped unspecified), and every other loopback spelling
+  (including IPv4-mapped loopback) are rejected; every other accepted endpoint is remote and
+  HTTPS-only with system
   TLS verification; `NODE_TLS_REJECT_UNAUTHORIZED=0`, production added-CA path/environment input, or
   an equivalent trust bypass rejects activation/start. The runner may install its public test CA
   only into isolated system trust before candidate start; redirects are rejected. Before mutation
@@ -424,9 +426,9 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   no-op outcome, and zero memory/job deltas. The result schema carries
   separate trust/plateau fingerprints and derived aggregates, not raw copies. Canonical
   `unsupported`/`not_run` no-activity evidence MUST instead carry a null plateau object and null
-  result plateau fingerprint; an executed result MUST carry the complete plateau;
-  pair-bound repeated same-event-ID/different-digest conflict evidence, and the exact 16 positive plus one
-  late-injection-negative suite.
+  result plateau fingerprint; an executed result MUST carry the complete plateau. The runner-evidence
+  suite MUST carry pair-bound repeated same-event-ID/different-digest conflict evidence and exactly
+  16 positive observations plus one late-injection-negative observation.
 
 ### Key Entities
 

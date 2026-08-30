@@ -84,7 +84,9 @@ a successor, and a computed non-secret configuration fingerprint.
   stuck claim 300,000 ms, and raw-event retention disabled/0 ms.
 - After setup confirmation and again at daemon start, every HTTPS choice performs a native
   credential-free, payload-free TLS handshake to the exact host/port/SNI with normal chain and
-  hostname validation within 5,000 ms. Failure mutates nothing or restores the prior activation.
+  hostname validation within 5,000 ms. Setup failure mutates nothing or restores the prior
+  activation. Daemon-start failure preserves writer/RPC/capture/spool-import/lexical services and
+  disables only provider/AI processing as `provider_unavailable` or `provider_tls_rejected`.
   Production rejects added CA path/environment configuration; only platform system trust is used.
   The isolated runner installs its public test CA into its private system trust before candidate
   start, outside proposal/manifest/candidate control. Local HTTP skips this preflight and remains

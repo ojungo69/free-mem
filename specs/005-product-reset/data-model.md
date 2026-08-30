@@ -290,7 +290,8 @@ The compiler returns `ProviderChoiceV1` by adding only:
 - literal `redirectPolicy: reject`
 
 Only literal `127.0.0.1` and `[::1]` are local; `localhost`, localhost subdomains, trailing-dot
-hostnames, and alternate/wildcard loopbacks are rejected. Local HTTP is credential-none and
+hostnames, wildcard/unspecified addresses (including IPv4-mapped unspecified), and alternate
+loopback spellings (including IPv4-mapped loopback) are rejected. Local HTTP is credential-none and
 eligible-only with TLS not applicable. Local HTTPS uses verified system chain/hostname identity and
 may receive private/local-only content only for the exact repository. Every other host is remote
 HTTPS with system chain and hostname validation. URL
@@ -311,9 +312,11 @@ fallback are unsupported.
 Input length is JavaScript UTF-16 code units. The user has a 3,000-unit floor: slice system from the
 start to 9,000 units and call `toWellFormed()`, then slice user from the start to
 `max(3,000, 12,000 - clippedSystem.length)` units and call `toWellFormed()`. Both protocols use this
-allocation without a tail merge or token-based alternative. Setup after confirmation and daemon
-start each perform a native credential/payload-free TLS chain+hostname handshake to the exact
-host/port/SNI within 5,000 ms; failure mutates nothing or restores prior state. Production rejects
+allocation without a tail merge or token-based alternative. Setup after confirmation performs a
+native credential/payload-free TLS chain+hostname handshake to the exact host/port/SNI within
+5,000 ms; failure mutates nothing or restores prior state. Daemon start performs the same preflight;
+failure preserves writer/RPC/capture/spool-import/lexical services and disables only provider/AI
+processing as `provider_unavailable` or `provider_tls_rejected`. Production rejects
 added CA path/environment input and equivalent trust overrides and uses only platform system trust;
 the isolated runner may install its public test CA into private system trust before candidate start.
 Local HTTP skips the handshake and remains credential-none/eligible-only.

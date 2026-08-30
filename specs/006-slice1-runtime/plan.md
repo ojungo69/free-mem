@@ -140,7 +140,7 @@ PR 0 co-delivers this plan and the scoped 005 correction; no runtime source is i
 - Interactive compile/disclosure/confirmation occurs before taking that lock. After confirmation,
   setup acquires it, rechecks daemon and editor/pointer prestates, and performs a native 5 s
   credential/payload-free TLS chain+hostname handshake before any mutation. Daemon start repeats the
-  handshake while holding the same lock; failure there starts capture/RPC/spool-import/lexical in a
+  handshake while holding the same lock; failure there starts writer/RPC/capture/spool-import/lexical in a
   provider-only degraded state rather than aborting the daemon.
 - Compile and display safe fields and fingerprints before confirmation.
 - Generalize the existing setup snapshot tracker from per-lane commit to one transaction covering
