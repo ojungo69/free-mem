@@ -1,0 +1,71 @@
+specs/005-product-reset/contracts/validate-alpha-runner-evidence.test.mjs
+  s_99d8ac07476f81::t_3d89f8dfd012e1 485-492
+  s_99d8ac07476f81::t_3523e84bb734ee 340-344
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_99d8ac07476f81::t_569204e0274649 447
+specs/005-product-reset/data-model.md
+  s_99d8ac07476f81::t_be20366f4e93d1 421-423,428,435-436,447-451
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_99d8ac07476f81::t_240eaa1ebcb8cb 376-380,382
+  s_99d8ac07476f81::t_09adf7602f5d2b 86-94,109-110,125-126,153-154,370-375,381,383
+  s_99d8ac07476f81::t_c39d44bb61235b 352
+  s_99d8ac07476f81::t_7cd2b538911b92 384
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_99d8ac07476f81::t_be20366f4e93d1 193,195-199,216,328-329
+specs/005-product-reset/contracts/alpha-runner-evidence.mjs
+  s_99d8ac07476f81::t_924f29912d9e6e 181-182,301
+  s_99d8ac07476f81::t_569204e0274649 143-144
+  s_99d8ac07476f81::t_1ebade5f6a477d 183-201
+specs/006-slice1-runtime/tasks.md
+  s_99d8ac07476f81::t_7d3df90f6dd2b1 22,24,151,153
+specs/005-product-reset/contracts/alpha-result-v1.schema.json
+  s_99d8ac07476f81::t_569204e0274649 24-26,127-138
+specs/006-slice1-runtime/checklists/requirements.md
+  s_99d8ac07476f81::t_a174606f492ccf 67-68,74
+specs/006-slice1-runtime/plan.md
+  s_99d8ac07476f81::t_550e78d43c477b 100-101,367-368
+specs/005-product-reset/contracts/alpha-result-security.mjs
+  s_99d8ac07476f81::t_0cfb034f63cf4d 257-261
+specs/005-product-reset/contracts/alpha-runner-evidence-v1.schema.json
+  s_99d8ac07476f81::t_569204e0274649 17-19
+specs/006-slice1-runtime/research.md
+  s_99d8ac07476f81::t_9a1d4277fc0046 371-373
+specs/006-slice1-runtime/spec.md
+  s_99d8ac07476f81::t_4a602f3384a825 405-406,416-418
+specs/006-slice1-runtime/data-model.md
+  s_99d8ac07476f81::t_b38859bf3936a9 771,797,811-812
+specs/006-slice1-runtime/quickstart.md
+  s_99d8ac07476f81::t_80355da06d5237 66-68,359-360
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_99d8ac07476f81::t_479d4d6f875f3f 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_99d8ac07476f81::t_2a596664723ddf 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.suite-regression.json
+  s_99d8ac07476f81::t_9822f6074bddcb 1
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.example.json
+  s_99d8ac07476f81::t_e347f2b50ad459 4,1351
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json
+  s_99d8ac07476f81::t_376659241613fc 4,797
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json
+  s_99d8ac07476f81::t_0c658ff2456422 1
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_99d8ac07476f81::t_7456527aa8a8c1 8,916
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_99d8ac07476f81::t_78779700381271 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fdee4d9a68581c1b58a9c782c34887bcd6d4e137",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
