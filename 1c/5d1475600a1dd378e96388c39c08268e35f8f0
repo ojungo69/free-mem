@@ -1,0 +1,58 @@
+specs/006-slice1-runtime/tasks.md
+  s_99d8ac07476f81::t_e6c9eaf7a1712e 153
+specs/005-product-reset/contracts/alpha-runner-evidence.mjs
+  s_99d8ac07476f81::t_add12f3c09f879 178-183,245,249
+specs/005-product-reset/contracts/alpha-runner-evidence-v1.schema.json
+  s_99d8ac07476f81::t_8df41c0a21295e 224,229
+specs/005-product-reset/data-model.md
+  s_99d8ac07476f81::t_55fa9e6925ba1d 424
+specs/006-slice1-runtime/data-model.md
+  s_99d8ac07476f81::t_c7d95a651aac67 799-800
+specs/005-product-reset/contracts/validate-alpha-runner-evidence.test.mjs
+  s_99d8ac07476f81::t_2e82e0cc456ca3 181,184-185
+  s_99d8ac07476f81::t_777a908c38b8e7 216-220,229
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_99d8ac07476f81::t_cde978d5208f81 565
+specs/006-slice1-runtime/spec.md
+  s_99d8ac07476f81::t_d664ae9b4eae87 408-409
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_99d8ac07476f81::t_8a586cc55ff085 217-218
+specs/006-slice1-runtime/quickstart.md
+  s_99d8ac07476f81::t_d1a525bf05a65c 348-349
+specs/006-slice1-runtime/research.md
+  s_99d8ac07476f81::t_d1a525bf05a65c 376-377
+specs/006-slice1-runtime/checklists/requirements.md
+  s_99d8ac07476f81::t_cafb80125d282d 68-69
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_99d8ac07476f81::t_0a92e407ebe2be 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_99d8ac07476f81::t_1f94ac97943c70 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.suite-regression.json
+  s_99d8ac07476f81::t_de0267d43ee684 1
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.example.json
+  s_99d8ac07476f81::t_d01b32fd018f41 4,1351,1356
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json
+  s_99d8ac07476f81::t_4f0ddf1edc38c4 4,797,802,846,883,920
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json
+  s_99d8ac07476f81::t_1524566b94f527 1
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_99d8ac07476f81::t_fd6f4582dbf949 8
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_99d8ac07476f81::t_45c1da82813d20 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "1c5d1475600a1dd378e96388c39c08268e35f8f0",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
