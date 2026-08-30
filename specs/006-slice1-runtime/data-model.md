@@ -694,11 +694,21 @@ post-teardown orphan process count is zero. Any missing sample or equality above
 
 ## Closed runner evidence additions
 
-The accepted result and runner-evidence schemas require all 12 raw window records. Each carries
+The accepted runner-evidence schema requires all 12 raw window records. Each carries
 ordinal, process count, RSS MiB, drained queue depth, storage bytes, selected-item count,
 injected-token count, max processing concurrency, and a completed drain/checkpoint receipt.
 Remote-stub cases also carry the base/repaired hostnames, hostname-valid public CA SHA-256
-fingerprint, normal chain/hostname-validation booleans, and `privateKeyCommitted=false`.
+fingerprint, normal chain/hostname-validation booleans, and `privateKeyCommitted=false`. The network
+object includes exactly four runner-owned raw TLS preflight receipts: base and repaired host, each at
+`setup_activation` and `daemon_start`. Every receipt has a unique opaque ID, exact hostname/SNI,
+port 443, timeout 5,000 ms, monotonic start/end within timeout, verified result, normal chain/
+hostname booleans, `trustAnchorSha256` equal to the bundle public CA, a peer-certificate SHA-256, and
+zero HTTP requests, credential bytes, and payload bytes.
+
+Every plateau window also carries a unique opaque `workloadReceiptId`, one duplicate-delivery
+attempt count of at least one, `noOpOutcome=duplicate_noop`, `durableMemoryDelta=0`, and
+`processingJobDelta=0`. The result schema carries only separate network/plateau fingerprints and
+derived resource aggregates; the validator recomputes those fingerprints from the runner bundle.
 
 The suite contains one same-event-ID/different-payload-digest probe whose durable conflict count is
 exactly one and no overwrite occurs, plus exactly 16 positive scenario observations and one

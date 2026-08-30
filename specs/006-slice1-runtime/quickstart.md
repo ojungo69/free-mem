@@ -283,8 +283,12 @@ environment, packed setup/runtime, and semantic-disabled retention emit validato
 
 The runner emits exactly 16 positive observations plus the late-injection negative and one
 same-event-ID/different-payload-digest conflict without overwrite. The closed result and
-runner-evidence schemas carry all 12 plateau windows, drain/checkpoint receipts, item/token/
-concurrency samples, and public CA proof; all are included in observation/bundle fingerprints.
+runner-evidence schema carries all 12 plateau windows, drain/checkpoint receipts, item/token/
+concurrency samples, public CA proof, and four raw base/repaired setup/start TLS receipts with exact
+SNI/timeout/timing/verified/trust-anchor/peer-cert/zero-request/credential/payload evidence. Every
+plateau window has a unique workload receipt, positive duplicate-attempt count, no-op outcome, and
+zero memory/job delta. Results carry separate network/plateau fingerprints and derived aggregates;
+all raw fields remain in the candidate-inaccessible runner bundle.
 
 Local proposals use the fixture-pinned literal-loopback URL. Remote proposals use the fixture-pinned
 base/repaired HTTPS hostnames mapped only inside the runner namespace to its loopback stub, with a per-run

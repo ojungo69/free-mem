@@ -91,9 +91,10 @@ Mechanically correct, in one separate scoped change:
   `specs/005-product-reset/data-model.md`;
 - Slice 1 JSON schema, fixture, semantic validator, JS validator, and validator tests;
 - bound alpha success/failure/suite examples and provider/resource result checks;
-- closed result/runner-evidence fields for 12 plateau windows, drain/checkpoint,
-  item/token/concurrency, hostname-valid public CA proof, same-ID/different-digest conflict, and the
-  exact 16+1 suite;
+- closed runner-evidence fields for 12 plateau windows, drain/checkpoint,
+  item/token/concurrency, unique duplicate/no-op workload receipts with zero memory/job deltas,
+  hostname-valid public CA plus four base/repaired setup/start TLS receipts binding trust-anchor/
+  peer-certificate/zero-byte proof, same-ID/different-digest conflict, and the exact 16+1 suite;
 - all provider/manifest/fixture/result/runner-evidence fingerprints.
 
 Replace provider kind/scheme/host/free-form credential/self-declared policy with closed
@@ -335,9 +336,11 @@ the merged boundary prove all reachable consumers. It does not close after raw f
   absolute ceiling on 3-12, and require the final five to have constant process count, zero drained
   queue, identical item/token counts, RSS span at most 16 MiB, storage span at most 65,536 bytes,
   concurrency at most 2, and zero post-teardown orphan process. Do not claim the deferred eight-hour soak.
-- Populate and validate the closed result/runner-evidence fields for every plateau window,
-  drain/checkpoint receipt, item/token/concurrency value, public CA fingerprint, 16+1 case, and
-  identity conflict; reject any private-key artifact or missing observation.
+- Populate and validate the closed runner-evidence fields for every plateau window,
+  drain/checkpoint/workload receipt, no-op/zero-delta and item/token/concurrency value, public CA and
+  four raw trust-anchor/peer-certificate TLS receipts; bind them through separate result fingerprints
+  and derived aggregates alongside the 16+1 case and identity conflict; reject any private-key
+  artifact or missing observation.
 - Add the runner/validator CI job without weakening existing gates and update user-facing docs.
 
 ## Project Structure

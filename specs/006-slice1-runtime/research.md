@@ -335,8 +335,12 @@ duplicate/no-op windows with full drain/checkpoint; windows 8-12 must have const
 zero drained queue, identical item/token counts, RSS span at most 16 MiB, storage span at most 65,536
 bytes, concurrency at most 2, and zero post-teardown orphan process.
 
-The corrected accepted schemas bind every raw plateau window, drain/checkpoint receipt,
-item/token/concurrency sample, and hostname-valid public CA fingerprint. The runner also emits one
+The corrected runner-evidence schema binds every raw plateau window, drain/checkpoint receipt,
+item/token/concurrency sample, hostname-valid public CA fingerprint, and four raw base/repaired
+setup/start TLS receipts with exact SNI/timing/result/trust-anchor/peer-cert/zero-byte evidence. Each
+plateau window has a unique workload receipt, positive duplicate-attempt count, no-op outcome, and
+zero memory/job deltas. Results bind the bundle objects through separate fingerprints and derived
+aggregates. The runner also emits one
 same-event-ID/different-digest conflict without overwrite and exactly 16 positives plus the required
 late-injection negative; result and runner-bundle fingerprints cover all fields.
 

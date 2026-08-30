@@ -58,7 +58,8 @@
   recovery plus shared setup/daemon lifecycle-lock exclusion before provider startup
 - [x] Activation receipt, persisted provider health edge, and user-confirmed doctor retry are the only
   crash-idempotent resume-signal producers
-- [x] Closed result/runner-evidence schemas own raw plateau, CA, conflict, and exact 16+1 evidence
+- [x] Closed runner-evidence schema owns raw plateau/TLS evidence; result fingerprints/aggregates bind
+  it while conflict and exact 16+1 evidence remain closed
 - [x] Tasks are sequential T001-T060 and every independent PR boundary/dependency/range is explicit
 
 ## Notes

@@ -349,9 +349,14 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   bytes, and eligible payload bytes MAY equal the explicit fixture expectations.
 - **FR-031**: All emitted evidence MUST distinguish attempted processing from final delivery and MUST
   never report an interrupted, unpinned, inaccessible, or incomplete run as successful. The closed
-  result/runner-evidence schemas MUST represent the 12 resource windows, drain/checkpoint receipts,
+  runner-evidence schema MUST represent the 12 raw resource windows, drain/checkpoint receipts,
   selected-item/token/concurrency samples, hostname-valid CA fingerprint with no private-key
-  artifact, same-event-ID/different-digest conflict evidence, and the exact 16 positive plus one
+  artifact, raw setup/daemon-start TLS preflight receipts for base/repaired hosts with exact SNI,
+  timeout, timing, verified result, per-receipt trust-anchor/peer-certificate fingerprints, and zero
+  request/credential/payload bytes; each plateau window MUST carry a unique workload receipt with at
+  least one duplicate attempt, no-op outcome, and zero memory/job deltas. The result schema carries
+  separate trust/plateau fingerprints and derived aggregates, not raw copies;
+  same-event-ID/different-digest conflict evidence, and the exact 16 positive plus one
   late-injection-negative suite.
 
 ### Key Entities

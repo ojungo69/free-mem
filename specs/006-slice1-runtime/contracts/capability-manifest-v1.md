@@ -36,6 +36,12 @@ Configuration-activation, redirect-recovery, and downgrade-recovery signals targ
 successor's computed manifest/provider fingerprints. Runner cost evidence is 0 because the stub is
 runner-owned; it does not change remote cost class.
 
+Runner network evidence binds the public CA and exactly four raw credential/payload-free TLS
+preflight receipts (base/repaired × setup activation/daemon start), including unique receipt ID,
+hostname/SNI, port, frozen timeout, monotonic interval, verified result, trust-anchor fingerprint
+equal to the public CA, peer-certificate fingerprint, and zero HTTP request, credential, and payload
+byte counts.
+
 ## ProviderProposalV1
 
 The accepted input is a closed object with exactly:
