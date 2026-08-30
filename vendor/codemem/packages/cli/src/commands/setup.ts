@@ -19,11 +19,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import * as p from "@clack/prompts";
 import {
 	acquireSpoolLock,
+	assertDataDirPreflight,
 	captureManagedTarget,
+	compileDefaultCapabilityManifest,
+	type EffectiveCapabilityManifestV1,
+	type LegacyDispositionV1,
+	readCurrentCapabilityManifest,
 	readInstallManifest,
+	readLegacyCapabilityConfigForSetup,
 	resolveRuntimeDataDir,
 	resolveStorageLayout,
+	stripJsonComments,
+	stripTrailingCommas,
 	VERSION,
+	withCapabilitySetupTransaction,
 	writeInstallManifest,
 } from "@codemem/core";
 import { Command } from "commander";
@@ -1109,9 +1118,24 @@ function installCodexHooks(
 
 const CLAUDE_PLUGIN_ID = "codemem@codemem-marketplace";
 
+function snapshotText(snapshot: SetupFileSnapshot): string {
+	return snapshot.contents === null ? "" : Buffer.from(snapshot.contents).toString("utf8");
+}
+
+function loadJsoncSnapshot(snapshot: SetupFileSnapshot): Record<string, unknown> {
+	if (snapshot.contents === null) return {};
+	const raw = snapshotText(snapshot);
+	try {
+		return parseObjectJson(raw);
+	} catch {
+		return parseObjectJson(stripTrailingCommas(stripJsonComments(raw)));
+	}
+}
+
 function loadClaudeConfiguration(
 	force: boolean,
 	runtime: SetupRuntime,
+	inputSnapshots?: ReadonlyMap<string, SetupFileSnapshot>,
 ): {
 	settingsPath: string;
 	settings: Record<string, unknown>;
@@ -1121,7 +1145,9 @@ function loadClaudeConfiguration(
 	const settingsPath = join(claudeConfigDir(), "settings.json");
 	let settings: Record<string, unknown>;
 	try {
-		settings = loadJsoncConfig(settingsPath);
+		settings = inputSnapshots?.has(resolve(settingsPath))
+			? loadJsoncSnapshot(inputSnapshots.get(resolve(settingsPath)) as SetupFileSnapshot)
+			: loadJsoncConfig(settingsPath);
 	} catch (error) {
 		p.log.error(
 			`Failed to parse ${settingsPath}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1160,7 +1186,9 @@ function loadClaudeConfiguration(
 	const mcpPath = claudeMcpConfigPath();
 	let mcpConfig: Record<string, unknown>;
 	try {
-		mcpConfig = loadJsoncConfig(mcpPath);
+		mcpConfig = inputSnapshots?.has(resolve(mcpPath))
+			? loadJsoncSnapshot(inputSnapshots.get(resolve(mcpPath)) as SetupFileSnapshot)
+			: loadJsoncConfig(mcpPath);
 	} catch {
 		p.log.error(`Failed to parse ${mcpPath}; configuration contents were not logged.`);
 		p.log.info(
@@ -1308,12 +1336,21 @@ function preflightOpencode(force: boolean, runtime: SetupRuntime, configPath: st
 	return false;
 }
 
-function preflightCodex(force: boolean, runtime: SetupRuntime): boolean {
+function preflightCodex(
+	force: boolean,
+	runtime: SetupRuntime,
+	inputSnapshots?: ReadonlyMap<string, SetupFileSnapshot>,
+): boolean {
 	const codexHome = codexConfigDir();
 	const configPath = join(codexHome, "config.toml");
 	let existing = "";
 	try {
-		existing = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
+		const configSnapshot = inputSnapshots?.get(resolve(configPath));
+		existing = configSnapshot
+			? snapshotText(configSnapshot)
+			: existsSync(configPath)
+				? readFileSync(configPath, "utf8")
+				: "";
 	} catch (error) {
 		p.log.error(
 			`Failed to read ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1338,10 +1375,13 @@ function preflightCodex(force: boolean, runtime: SetupRuntime): boolean {
 	}
 
 	const hooksPath = join(codexHome, "hooks.json");
-	if (!existsSync(hooksPath)) return true;
+	const hooksSnapshot = inputSnapshots?.get(resolve(hooksPath));
+	if (hooksSnapshot?.contents === null || (!hooksSnapshot && !existsSync(hooksPath))) return true;
 	let config: Record<string, unknown>;
 	try {
-		config = parseObjectJson(readFileSync(hooksPath, "utf8"));
+		config = parseObjectJson(
+			hooksSnapshot ? snapshotText(hooksSnapshot) : readFileSync(hooksPath, "utf8"),
+		);
 	} catch (error) {
 		p.log.error(
 			`Failed to parse ${hooksPath}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1547,15 +1587,564 @@ export function writeSetupInstallManifest(
 	}
 }
 
+type PlannedSetupFile = {
+	path: string;
+	contents: Uint8Array;
+	mode: number;
+};
+
+type PlannedManagedTarget = { id: string; path: string };
+
+function plannedFile(path: string, contents: string | Uint8Array, mode = 0o600): PlannedSetupFile {
+	return { path: resolve(path), contents: Buffer.from(contents), mode };
+}
+
+function planBackup(path: string, snapshot?: SetupFileSnapshot): PlannedSetupFile | null {
+	if (snapshot) {
+		return snapshot.contents === null
+			? null
+			: plannedFile(`${path}.codemem.bak`, snapshot.contents);
+	}
+	return existsSync(path) ? plannedFile(`${path}.codemem.bak`, readFileSync(path)) : null;
+}
+
+function planClaudeSetup(
+	force: boolean,
+	runtime: SetupRuntime,
+): {
+	files: PlannedSetupFile[];
+	targets: PlannedManagedTarget[];
+	inputSnapshots: SetupFileSnapshot[];
+} | null {
+	const inputSnapshots = captureSetupFileSnapshots([
+		join(claudeConfigDir(), "settings.json"),
+		claudeMcpConfigPath(),
+	]);
+	const inputByPath = new Map(inputSnapshots.map((snapshot) => [snapshot.path, snapshot]));
+	const prepared = loadClaudeConfiguration(force, runtime, inputByPath);
+	if (!prepared) return null;
+	const settings = structuredClone(prepared.settings);
+	const mcpConfig = structuredClone(prepared.mcpConfig);
+	const staleSettingsMcp = settings.mcpServers;
+	if (
+		staleSettingsMcp &&
+		typeof staleSettingsMcp === "object" &&
+		!Array.isArray(staleSettingsMcp)
+	) {
+		const staleServers = staleSettingsMcp as Record<string, unknown>;
+		delete staleServers.codemem;
+		if (Object.keys(staleServers).length === 0) delete settings.mcpServers;
+	}
+	const mcpServers = (mcpConfig.mcpServers ?? {}) as Record<string, unknown>;
+	mcpServers.codemem = managedMcp(runtime);
+	mcpConfig.mcpServers = mcpServers;
+	const runtimePath = join(claudeConfigDir(), "codemem-hook-runtime.mjs");
+	mergeCodememHookGroups(settings, buildCodememClaudeHookGroups(codememCodexHookBase(runtimePath)));
+	const enabledPlugins = settings.enabledPlugins;
+	if (
+		enabledPlugins !== null &&
+		typeof enabledPlugins === "object" &&
+		!Array.isArray(enabledPlugins) &&
+		(enabledPlugins as Record<string, unknown>)[CLAUDE_PLUGIN_ID] === true
+	) {
+		(enabledPlugins as Record<string, unknown>)[CLAUDE_PLUGIN_ID] = false;
+	}
+	const files = [
+		planBackup(prepared.settingsPath, inputByPath.get(resolve(prepared.settingsPath))),
+		planBackup(prepared.mcpPath, inputByPath.get(resolve(prepared.mcpPath))),
+		plannedFile(runtimePath, readFileSync(runtime.hookRuntimePath)),
+		plannedFile(prepared.settingsPath, `${JSON.stringify(settings, null, 2)}\n`),
+		plannedFile(prepared.mcpPath, `${JSON.stringify(mcpConfig, null, 2)}\n`),
+	].filter((file): file is PlannedSetupFile => file !== null);
+	return {
+		files,
+		inputSnapshots,
+		targets: [
+			{ id: "claude-mcp", path: prepared.mcpPath },
+			{ id: "claude-hooks", path: prepared.settingsPath },
+			{ id: "claude-hook-runtime", path: runtimePath },
+		],
+	};
+}
+
+function plannedCodexConfig(existing: string, runtime: SetupRuntime): string {
+	const block = codexMcpBlock(runtime);
+	const current = codexMcpTable(existing);
+	if (current) {
+		if (sameCodexMcpBlock(current.block, runtime)) return existing;
+		return `${existing.slice(0, current.start)}${block}\n${existing.slice(current.end)}`;
+	}
+	let next = existing;
+	if (next.length > 0 && !next.endsWith("\n\n")) next += next.endsWith("\n") ? "\n" : "\n\n";
+	return `${next}${block}\n`;
+}
+
+function planCodexSetup(
+	force: boolean,
+	runtime: SetupRuntime,
+): {
+	files: PlannedSetupFile[];
+	targets: PlannedManagedTarget[];
+	inputSnapshots: SetupFileSnapshot[];
+} | null {
+	const home = codexConfigDir();
+	const configPath = join(home, "config.toml");
+	const hooksPath = join(home, "hooks.json");
+	const inputSnapshots = captureSetupFileSnapshots([configPath, hooksPath]);
+	const inputByPath = new Map(inputSnapshots.map((snapshot) => [snapshot.path, snapshot]));
+	if (!preflightCodex(force, runtime, inputByPath)) return null;
+	const runtimePath = join(home, "codemem-hook-runtime.mjs");
+	const existingConfig = snapshotText(inputByPath.get(resolve(configPath)) as SetupFileSnapshot);
+	let hooks: Record<string, unknown> = {};
+	const hooksSnapshot = inputByPath.get(resolve(hooksPath)) as SetupFileSnapshot;
+	if (hooksSnapshot.contents !== null) hooks = parseObjectJson(snapshotText(hooksSnapshot));
+	mergeCodememHookGroups(hooks, buildCodememCodexHookGroups(codememCodexHookBase(runtimePath)));
+	const files = [
+		planBackup(configPath, inputByPath.get(resolve(configPath))),
+		planBackup(hooksPath, inputByPath.get(resolve(hooksPath))),
+		plannedFile(runtimePath, readFileSync(runtime.hookRuntimePath)),
+		plannedFile(configPath, plannedCodexConfig(existingConfig, runtime)),
+		plannedFile(hooksPath, `${JSON.stringify(hooks, null, 2)}\n`),
+	].filter((file): file is PlannedSetupFile => file !== null);
+	return {
+		files,
+		inputSnapshots,
+		targets: [
+			{ id: "codex-mcp", path: configPath },
+			{ id: "codex-hooks", path: hooksPath },
+			{ id: "codex-hook-runtime", path: runtimePath },
+		],
+	};
+}
+
+function legacyCapabilityDispositions(): LegacyDispositionV1[] {
+	const legacyEnv: Record<string, string> = {
+		observer_provider: "CODEMEM_OBSERVER_PROVIDER",
+		observer_model: "CODEMEM_OBSERVER_MODEL",
+		observer_runtime: "CODEMEM_OBSERVER_RUNTIME",
+		observer_api_key: "CODEMEM_OBSERVER_API_KEY",
+		observer_base_url: "CODEMEM_OBSERVER_BASE_URL",
+		observer_temperature: "CODEMEM_OBSERVER_TEMPERATURE",
+		observer_tier_routing_enabled: "CODEMEM_OBSERVER_TIER_ROUTING_ENABLED",
+		observer_simple_provider: "CODEMEM_OBSERVER_SIMPLE_PROVIDER",
+		observer_simple_model: "CODEMEM_OBSERVER_SIMPLE_MODEL",
+		observer_simple_temperature: "CODEMEM_OBSERVER_SIMPLE_TEMPERATURE",
+		observer_rich_provider: "CODEMEM_OBSERVER_RICH_PROVIDER",
+		observer_rich_model: "CODEMEM_OBSERVER_RICH_MODEL",
+		observer_rich_temperature: "CODEMEM_OBSERVER_RICH_TEMPERATURE",
+		observer_rich_reasoning_effort: "CODEMEM_OBSERVER_RICH_REASONING_EFFORT",
+		observer_rich_reasoning_summary: "CODEMEM_OBSERVER_RICH_REASONING_SUMMARY",
+		observer_rich_max_output_tokens: "CODEMEM_OBSERVER_RICH_MAX_OUTPUT_TOKENS",
+		observer_openai_use_responses: "CODEMEM_OBSERVER_OPENAI_USE_RESPONSES",
+		observer_reasoning_effort: "CODEMEM_OBSERVER_REASONING_EFFORT",
+		observer_reasoning_summary: "CODEMEM_OBSERVER_REASONING_SUMMARY",
+		observer_max_output_tokens: "CODEMEM_OBSERVER_MAX_OUTPUT_TOKENS",
+		observer_auth_source: "CODEMEM_OBSERVER_AUTH_SOURCE",
+		observer_auth_file: "CODEMEM_OBSERVER_AUTH_FILE",
+		observer_auth_cache_ttl_s: "CODEMEM_OBSERVER_AUTH_CACHE_TTL_S",
+		observer_headers: "CODEMEM_OBSERVER_HEADERS",
+		observer_max_chars: "CODEMEM_OBSERVER_MAX_CHARS",
+		observer_max_tokens: "CODEMEM_OBSERVER_MAX_TOKENS",
+	};
+	const loaded = readLegacyCapabilityConfigForSetup();
+	if (loaded.degraded) throw new Error("Legacy provider configuration is malformed.");
+	const config = loaded.config;
+	const candidateValues = (keys: string[], normalize = (value: string) => value.trim()) => {
+		const values = new Set<string>();
+		for (const key of keys) {
+			const fileValue = config[key];
+			if (typeof fileValue === "string" && fileValue.trim()) values.add(normalize(fileValue));
+			const envValue = process.env[legacyEnv[key] as string];
+			if (envValue?.trim()) values.add(normalize(envValue));
+		}
+		return values;
+	};
+	for (const candidates of [
+		candidateValues(
+			["observer_provider", "observer_simple_provider", "observer_rich_provider"],
+			(value) => value.trim().toLowerCase(),
+		),
+		candidateValues(["observer_model", "observer_simple_model", "observer_rich_model"]),
+		candidateValues(["observer_base_url"]),
+	]) {
+		if (candidates.size > 1) {
+			throw new Error("Legacy provider conflict requires explicit cleanup before activation.");
+		}
+	}
+	const keys = Object.keys(legacyEnv)
+		.filter(
+			(key) => Object.hasOwn(config, key) || Boolean(process.env[legacyEnv[key] as string]?.trim()),
+		)
+		.sort((left, right) => left.localeCompare(right));
+	if (keys.length > 64)
+		throw new Error("Legacy provider configuration has too many recognized keys.");
+	return keys.map((key) => ({
+		key,
+		disposition:
+			key.includes("api_key") ||
+			key.includes("header") ||
+			key.includes("auth_file") ||
+			key.includes("auth_source")
+				? ("ignored" as const)
+				: ("overridden" as const),
+	}));
+}
+
+async function promptSlice1Manifest(current: EffectiveCapabilityManifestV1 | null) {
+	const selectedAgents = await p.multiselect({
+		message: "Install automatic memory for Claude Code and Codex",
+		options: [
+			{ value: "claude-code", label: "Claude Code" },
+			{ value: "codex", label: "Codex" },
+		],
+		initialValues: ["claude-code", "codex"],
+		required: true,
+	});
+	if (
+		p.isCancel(selectedAgents) ||
+		!Array.isArray(selectedAgents) ||
+		!selectedAgents.includes("claude-code") ||
+		!selectedAgents.includes("codex")
+	) {
+		throw new Error("Slice 1 activation requires Claude Code and Codex.");
+	}
+	const wireProtocol = await p.select({
+		message: "Summary provider wire protocol",
+		options: [
+			{ value: "openai_chat_completions_v1", label: "OpenAI Chat Completions" },
+			{ value: "anthropic_messages_v1", label: "Anthropic Messages" },
+		],
+	});
+	const modelId = await p.text({ message: "Summary model ID", validate: requiredPromptValue });
+	const modelRevision = await p.text({
+		message: "Summary model revision",
+		validate: requiredPromptValue,
+	});
+	const endpointUrl = await p.text({
+		message: "Complete summary endpoint URL",
+		validate: requiredPromptValue,
+	});
+	const credentialKind = await p.select({
+		message: "Summary credential source",
+		options: [
+			{ value: "none", label: "No credential" },
+			{ value: "environment", label: "Named environment variable" },
+		],
+	});
+	for (const value of [wireProtocol, modelId, modelRevision, endpointUrl, credentialKind]) {
+		if (p.isCancel(value)) throw new Error("Setup confirmation was cancelled.");
+	}
+	const credentialName =
+		credentialKind === "environment"
+			? await p.text({
+					message: "Credential environment variable name",
+					validate: requiredPromptValue,
+				})
+			: null;
+	if (credentialName !== null && p.isCancel(credentialName)) {
+		throw new Error("Setup confirmation was cancelled.");
+	}
+	const candidate = compileDefaultCapabilityManifest(
+		{
+			version: 1,
+			role: "summary",
+			state: "enabled",
+			wireProtocol,
+			modelId,
+			modelRevision,
+			endpointUrl,
+			credentialRef:
+				credentialKind === "environment"
+					? { kind: "environment", name: credentialName }
+					: { kind: "none" },
+		},
+		legacyCapabilityDispositions(),
+		current?.configurationFingerprint,
+	);
+	if (
+		current &&
+		JSON.stringify([
+			current.destinationPolicyMap,
+			current.resourceProfile,
+			current.summaryProvider,
+			current.embeddingProvider,
+			current.legacyDispositions,
+		]) ===
+			JSON.stringify([
+				candidate.destinationPolicyMap,
+				candidate.resourceProfile,
+				candidate.summaryProvider,
+				candidate.embeddingProvider,
+				candidate.legacyDispositions,
+			])
+	) {
+		return current;
+	}
+	return candidate;
+}
+
+function requiredPromptValue(value: string | undefined): string | undefined {
+	return value?.trim() ? undefined : "A value is required";
+}
+
+function safeCapabilityDisclosure(
+	manifest: ReturnType<typeof compileDefaultCapabilityManifest>,
+): void {
+	const provider = manifest.summaryProvider;
+	const credential =
+		provider.credentialRef.kind === "environment"
+			? `environment:${provider.credentialRef.name}`
+			: "none";
+	for (const line of [
+		`wire protocol: ${provider.wireProtocol}`,
+		`endpoint: ${provider.endpointUrl}`,
+		`model: ${provider.modelId}@${provider.modelRevision}`,
+		`credential: ${credential}`,
+		`location/egress/cost: ${provider.executionLocation}/${provider.egressPolicy}/${provider.costClass}`,
+		`TLS/redirect: ${provider.tlsPolicy}/${provider.redirectPolicy}`,
+		`provider fingerprint: ${provider.providerFingerprint}`,
+		`manifest fingerprint: ${manifest.configurationFingerprint}`,
+	]) {
+		p.log.info(line);
+	}
+}
+
+function managedTargetFingerprint(
+	path: string,
+	planned: ReadonlyMap<string, PlannedSetupFile>,
+): string {
+	const contents = planned.get(resolve(path))?.contents ?? readFileSync(path);
+	return createHash("sha256").update(contents).digest("hex");
+}
+
+type CapabilitySetupFileState = {
+	contentsBase64: string | null;
+	mode: number | null;
+	sha256: string | null;
+};
+
+type CapabilitySetupTarget = {
+	path: string;
+	before: CapabilitySetupFileState;
+	after: CapabilitySetupFileState;
+};
+
+type CapabilitySetupJournal = {
+	version: 1;
+	phase: "prepared";
+	configurationFingerprint: string;
+	targets: CapabilitySetupTarget[];
+};
+
+function capabilitySetupFileState(
+	contents: Uint8Array | string | null,
+	mode: number | null,
+): CapabilitySetupFileState {
+	if (contents === null) return { contentsBase64: null, mode: null, sha256: null };
+	const bytes = Buffer.from(contents);
+	return {
+		contentsBase64: bytes.toString("base64"),
+		mode,
+		sha256: createHash("sha256").update(bytes).digest("hex"),
+	};
+}
+
+function setupJournalTarget(
+	snapshot: SetupFileSnapshot,
+	planned: PlannedSetupFile,
+): CapabilitySetupTarget {
+	return {
+		path: snapshot.path,
+		before: capabilitySetupFileState(
+			snapshot.contents,
+			snapshot.contents === null ? null : snapshot.mode,
+		),
+		after: capabilitySetupFileState(planned.contents, planned.mode),
+	};
+}
+
+async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<boolean> {
+	const dataDir = setupDataDir();
+	const layout = resolveStorageLayout(dataDir);
+	try {
+		assertDataDirPreflight(dataDir);
+	} catch (error) {
+		p.log.error(error instanceof Error ? error.message : "Capability storage preflight failed.");
+		return false;
+	}
+	let currentBeforeDisclosure: EffectiveCapabilityManifestV1 | null;
+	let manifest: ReturnType<typeof compileDefaultCapabilityManifest>;
+	try {
+		currentBeforeDisclosure = readCurrentCapabilityManifest(layout);
+		manifest = await promptSlice1Manifest(currentBeforeDisclosure);
+	} catch (error) {
+		p.log.error(error instanceof Error ? error.message : "Capability proposal is invalid.");
+		return false;
+	}
+	safeCapabilityDisclosure(manifest);
+	const confirmed = await p.confirm({
+		message: "Activate this capability manifest?",
+		initialValue: false,
+	});
+	if (p.isCancel(confirmed) || confirmed !== true) return false;
+
+	try {
+		return await withCapabilitySetupTransaction({
+			dataDir,
+			manifest,
+			expectedCurrentFingerprint: currentBeforeDisclosure?.configurationFingerprint ?? null,
+			run: async (transaction) => {
+				const claude = planClaudeSetup(force, runtime);
+				const codex = planCodexSetup(force, runtime);
+				if (!claude || !codex) throw new Error("Editor setup preflight failed.");
+
+				const files = new Map<string, PlannedSetupFile>();
+				for (const file of [...claude.files, ...codex.files]) {
+					const path = resolve(file.path);
+					if (files.has(path)) throw new Error("Setup file target paths must not overlap.");
+					files.set(path, { ...file, path });
+				}
+				const managedTargetPlans = [
+					{ id: "cli-runtime", path: runtime.cliPath },
+					...claude.targets,
+					...codex.targets,
+				];
+				const managedTargetPaths = managedTargetPlans.map((target) => resolve(target.path));
+				if (new Set(managedTargetPaths).size !== managedTargetPaths.length) {
+					throw new Error("Setup managed target paths must not overlap.");
+				}
+				const managedTargets = managedTargetPlans.map((target) => ({
+					...target,
+					path: resolve(target.path),
+					fingerprint: managedTargetFingerprint(target.path, files),
+				}));
+				files.set(
+					resolve(layout.installManifestPath),
+					plannedFile(
+						layout.installManifestPath,
+						`${JSON.stringify({ version: 1, blocks: [], targets: managedTargets }, null, 2)}\n`,
+					),
+				);
+				files.set(
+					resolve(layout.capabilityActivationReceiptPath),
+					plannedFile(
+						layout.capabilityActivationReceiptPath,
+						`${JSON.stringify({
+							version: 1,
+							configurationFingerprint: manifest.configurationFingerprint,
+							targets: managedTargets,
+						})}\n`,
+					),
+				);
+				const generationPath = resolve(
+					layout.capabilityManifestsDir,
+					`${manifest.configurationFingerprint}.json`,
+				);
+				files.set(generationPath, plannedFile(generationPath, `${JSON.stringify(manifest)}\n`));
+				files.set(
+					resolve(layout.capabilityCurrentPointerPath),
+					plannedFile(
+						layout.capabilityCurrentPointerPath,
+						`${manifest.configurationFingerprint}\n`,
+					),
+				);
+				const currentPath = resolve(layout.capabilityCurrentPointerPath);
+				const receiptPath = resolve(layout.capabilityActivationReceiptPath);
+				const orderedFiles = [...files.values()].filter(
+					(file) => file.path !== receiptPath && file.path !== currentPath,
+				);
+				orderedFiles.push(
+					files.get(receiptPath) as PlannedSetupFile,
+					files.get(currentPath) as PlannedSetupFile,
+				);
+				const capturedSnapshots = captureSetupFileSnapshots(orderedFiles.map((file) => file.path));
+				const inputSnapshots = new Map(
+					[...claude.inputSnapshots, ...codex.inputSnapshots].map((snapshot) => [
+						snapshot.path,
+						snapshot,
+					]),
+				);
+				for (const snapshot of inputSnapshots.values()) {
+					if (!setupFileSnapshotUnchanged(snapshot)) {
+						throw new Error("Setup input changed after it was read.");
+					}
+				}
+				const snapshots = capturedSnapshots.map(
+					(snapshot) => inputSnapshots.get(snapshot.path) ?? snapshot,
+				);
+				const snapshotByPath = new Map(snapshots.map((snapshot) => [snapshot.path, snapshot]));
+				for (const snapshot of snapshots) {
+					if (!setupFileSnapshotUnchanged(snapshot)) {
+						throw new Error("Setup target changed after preflight.");
+					}
+				}
+				const journal: CapabilitySetupJournal = {
+					version: 1,
+					phase: "prepared",
+					configurationFingerprint: manifest.configurationFingerprint,
+					targets: orderedFiles.map((file) =>
+						setupJournalTarget(snapshotByPath.get(file.path) as SetupFileSnapshot, file),
+					),
+				};
+				transaction.writeJournal(journal);
+				const trackedMutations = new Map<string, SetupFileMutation>();
+				try {
+					withSetupFileMutationTracking(trackedMutations, snapshotByPath, () => {
+						for (const file of orderedFiles) {
+							if (
+								file.path === generationPath ||
+								file.path === receiptPath ||
+								file.path === currentPath
+							)
+								continue;
+							atomicReplaceSetupFile(file.path, file.contents, file.mode);
+						}
+						const generation = files.get(generationPath) as PlannedSetupFile;
+						const generationSnapshot = snapshotByPath.get(generationPath) as SetupFileSnapshot;
+						if (generationSnapshot.contents === null) {
+							atomicReplaceSetupFile(generation.path, generation.contents, generation.mode);
+						} else if (
+							!setupFileMatchesMutation(generation.path, {
+								contents: generation.contents,
+								mode: generation.mode,
+							})
+						) {
+							throw new Error("Existing capability generation is not immutable.");
+						}
+						const receipt = files.get(receiptPath) as PlannedSetupFile;
+						atomicReplaceSetupFile(receipt.path, receipt.contents, receipt.mode);
+						const current = files.get(currentPath) as PlannedSetupFile;
+						atomicReplaceSetupFile(current.path, current.contents, current.mode);
+					});
+					transaction.recover();
+					return true;
+				} catch (error) {
+					try {
+						transaction.recover();
+					} catch {
+						p.log.error(
+							"Capability setup recovery conflict; journal retained and no target overwritten.",
+						);
+					}
+					throw error;
+				}
+			},
+		});
+	} catch (error) {
+		p.log.error(error instanceof Error ? error.message : "Slice 1 setup failed.");
+		return false;
+	}
+}
+
 export const setupCommand = new Command("setup")
 	.configureHelp(helpStyle)
-	.description("Install checkout-pinned editor MCP and hook integrations")
+	.description("Install checkout-pinned Claude Code and Codex automatic memory")
 	.option("--force", "overwrite existing installations")
 	.option("--opencode-only", "only install for OpenCode")
 	.option("--claude-only", "only install for Claude Code")
 	.option("--codex-only", "only install for Codex")
 	.action(
-		(opts: {
+		async (opts: {
 			force?: boolean;
 			opencodeOnly?: boolean;
 			claudeOnly?: boolean;
@@ -1573,11 +2162,19 @@ export const setupCommand = new Command("setup")
 				return;
 			}
 			const onlyFlag = Boolean(opts.opencodeOnly || opts.claudeOnly || opts.codexOnly);
+			if (!onlyFlag) {
+				if (!(await runSlice1Setup(force, runtime))) {
+					p.outro("Setup stopped before completing activation");
+					process.exitCode = 1;
+					return;
+				}
+				p.outro("Setup complete — run `codemem serve start`, then restart Claude Code and Codex");
+				return;
+			}
 
-			const doOpencode = opts.opencodeOnly || !onlyFlag;
-			const doClaude = opts.claudeOnly || !onlyFlag;
-			// With no only-flag, Codex runs only when a Codex home is detected.
-			const doCodex = opts.codexOnly || (!onlyFlag && existsSync(codexConfigDir()));
+			const doOpencode = opts.opencodeOnly ?? false;
+			const doClaude = opts.claudeOnly ?? false;
+			const doCodex = opts.codexOnly ?? false;
 			const opencodeConfigPath = doOpencode
 				? resolveOpencodeConfigPath(opencodeConfigDir())
 				: undefined;

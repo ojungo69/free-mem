@@ -1977,7 +1977,7 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			const result = await aiBackfillStructuredContent(db, { observer });
+			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
 
 			expect(result).toMatchObject({ checked: 1, updated: 1, skipped: 0, failed: 0 });
 			const row = db
@@ -2019,7 +2019,7 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			const result = await aiBackfillStructuredContent(db, { observer });
+			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
 			expect(result).toMatchObject({ updated: 1 });
 
 			const row = db.prepare("SELECT narrative, facts FROM memory_items WHERE id = ?").get(id) as {
@@ -2063,7 +2063,7 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			const result = await aiBackfillStructuredContent(db, { observer });
+			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
 
 			expect(result).toMatchObject({ checked: 1, updated: 1, skipped: 0, failed: 0 });
 			const row = db
@@ -2105,7 +2105,11 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			await aiBackfillStructuredContent(db, { observer, overwrite: true });
+			await aiBackfillStructuredContent(db, {
+				observer,
+				overwrite: true,
+				runtimeReason: "ready",
+			});
 
 			const row = db
 				.prepare("SELECT narrative, facts, concepts FROM memory_items WHERE id = ?")
@@ -2130,7 +2134,7 @@ describe("aiBackfillStructuredContent", () => {
 			seedMemory(db, sessionId, "feature", "Bad JSON", "Body text");
 
 			const observer = makeObserver("not json at all");
-			const result = await aiBackfillStructuredContent(db, { observer });
+			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
 
 			expect(result).toMatchObject({ checked: 1, updated: 0, skipped: 0, failed: 1 });
 			const job = getMaintenanceJob(db, "ai_structured_backfill");
@@ -2156,7 +2160,7 @@ describe("aiBackfillStructuredContent", () => {
 			seedMemory(db, sessionId, "feature", "Schema invalid", "Body text");
 
 			const observer = makeObserver(JSON.stringify({ foo: "bar" }));
-			const result = await aiBackfillStructuredContent(db, { observer });
+			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
 
 			expect(result).toMatchObject({ checked: 1, updated: 0, skipped: 0, failed: 1 });
 		} finally {
@@ -2187,7 +2191,7 @@ describe("aiBackfillStructuredContent", () => {
 					concepts: ["what-changed"],
 				}),
 			);
-			const result = await aiBackfillStructuredContent(db, { observer });
+			const result = await aiBackfillStructuredContent(db, { observer, runtimeReason: "ready" });
 
 			expect(result).toMatchObject({ checked: 0, updated: 0, skipped: 0, failed: 0 });
 		} finally {
@@ -2221,7 +2225,11 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			await aiBackfillStructuredContent(db, { observer, overwrite: true });
+			await aiBackfillStructuredContent(db, {
+				observer,
+				overwrite: true,
+				runtimeReason: "ready",
+			});
 
 			const row = db
 				.prepare("SELECT narrative, facts, concepts FROM memory_items WHERE id = ?")
@@ -2252,7 +2260,11 @@ describe("aiBackfillStructuredContent", () => {
 				}),
 			);
 
-			const result = await aiBackfillStructuredContent(db, { observer, dryRun: true });
+			const result = await aiBackfillStructuredContent(db, {
+				observer,
+				dryRun: true,
+				runtimeReason: "ready",
+			});
 
 			expect(result).toMatchObject({ checked: 1, updated: 1, skipped: 0, failed: 0 });
 			expect(result.samples).toHaveLength(1);

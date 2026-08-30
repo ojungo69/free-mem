@@ -33,6 +33,7 @@ export function createViewerReadHandler(deps: {
 	store: MemoryStore;
 	sweeper?: RawEventSweeper | null;
 	observer?: ObserverClient | null;
+	capability?: Record<string, unknown>;
 }): ViewerReadHandler {
 	const app = memoryRoutes(() => deps.store);
 	app.route(
@@ -49,9 +50,10 @@ export function createViewerReadHandler(deps: {
 			getStore: () => deps.store,
 			getSweeper: () => deps.sweeper ?? null,
 			getObserver: () => deps.observer ?? null,
+			getCapabilitySnapshot: () => deps.capability ?? {},
 		}),
 	);
-	app.route("/", configReadRoutes());
+	app.route("/", configReadRoutes({ getCapabilitySnapshot: () => deps.capability ?? {} }));
 
 	return async (body) => {
 		const path = COLLECTION_PATHS[String(body.collection ?? "")];

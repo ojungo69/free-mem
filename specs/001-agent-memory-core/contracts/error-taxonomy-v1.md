@@ -357,9 +357,9 @@ All 5 adapter functions take `payload` and (except `claude-hook-file-context`, w
 
 ### 6.1 `GET /v1/health` and `GET /v1/doctor` result shapes
 
-`GET /v1/health` result: `{ status: "ok", instanceId, maintenanceMode, protocolVersion, spool }` (`daemon-rpc.ts:439-446`). `status` is always the literal `"ok"` if the RPC succeeds at all — a reachable-but-unhealthy daemon is not distinguished from a healthy one by this field; distress is only visible in `spool.status` (`"ok" | "warning" | "critical" | "unavailable"`, `daemon-rpc.ts:66-89`) or by the RPC failing entirely.
+`GET /v1/health` result: `{ status: "ok", instanceId, maintenanceMode, protocolVersion, spool, capability }` (`daemon-rpc.ts:441-449`). `capability` is the bounded frozen safe projection selected at daemon startup: capture-only when no current manifest exists, or the validated manifest/provider identity, runtime reason, provider health, feature gates, and explicit `pending_schema_v21` / `pending_pack_boundary` readiness. It contains no credential value. `status` is always the literal `"ok"` if the RPC succeeds at all — a reachable-but-unhealthy daemon is not distinguished from a healthy one by this field; distress is visible in `spool.status`, `capability.runtimeReason`, `capability.providerHealth`, or by the RPC failing entirely.
 
-`GET /v1/doctor` result adds `diagnostics: { pid, dataDir, lock: "held", socket: "listening", platform, spool, hookDelivery: { implementation: "node-fallback", p95TargetMs: 150, budgets: HOOK_DELIVERY_BUDGETS }, redaction: { status: degradedDeliveries > 0 ? "warning" : "ok", degradedDeliveries, workerDeadlineMs }, operationalStatus }` (`daemon-rpc.ts:448-492`). `degradedDeliveries` is a single `COUNT(*)` across three tables (`raw_events`, `memory_items`, `daemon_jobs`) for redaction-degraded rows (`daemon-rpc.ts:453-467`) — it is a point-in-time count, not filtered by any recency window (unlike `operationalStatus`'s `raw_events`/`observer` failure counts, which are optionally bounded by `recentFailureCutoff`, `daemon-rpc.ts:451`).
+`GET /v1/doctor` result adds `diagnostics: { pid, dataDir, lock: "held", socket: "listening", platform, spool, hookDelivery: { implementation: "node-fallback", p95TargetMs: 150, budgets: HOOK_DELIVERY_BUDGETS }, redaction: { status: degradedDeliveries > 0 ? "warning" : "ok", degradedDeliveries, workerDeadlineMs }, operationalStatus, capability }` (`daemon-rpc.ts:451-496`). The nested `capability` is the same frozen object returned by health. `degradedDeliveries` is a point-in-time count across `raw_events`, `memory_items`, and `daemon_jobs`.
 
 ### 6.2 `status` command daemon/database resolution logic
 
@@ -386,11 +386,11 @@ type DatabaseState = "ready" | "missing" | "unavailable" | "unknown";
 type MaintenanceState = "idle" | "running" | "failed" | "unknown";
 type SemanticIndexState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 type RawEventsState = "healthy" | "backlogged" | "failing" | "unknown";
-type ObserverState = "healthy" | "idle" | "backoff" | "failed" | "unconfigured" | "unknown";
+type ObserverState = "healthy" | "idle" | "pending" | "backoff" | "failed" | "unconfigured" | "unknown";
 ```
-(`status.ts:27-32`.) `RawEventsState` reaches all four of its non-`"unknown"`-adjacent values from a present snapshot: `rawState` starts as `"healthy"` when `snapshot.raw_events.available` is true (`status.ts:281`, the normal case — most-common value, not a fallback), starts `"unknown"` when `available` is false, and is overridden to `"failing"` (`failed_batches > 0`) or `"backlogged"` (`pending > 0` and not failing) (`status.ts:282-296`). `ObserverState`, by contrast, never reaches `"healthy"` from `projectDatabaseSubsystems` (`status.ts:298-314`) — it only produces `"unconfigured"`, `"unknown"`, `"idle"`, `"failed"`, or `"backoff"`; `"healthy"` is declared on the type (`status.ts:32`) but unreachable from this function (see Known gaps).
+The report also carries the exact safe `capability` projection or `null` when doctor is unavailable. A configured manifest whose provider gate is disabled reports observer `"pending"`, not `"idle"`; its manifest/provider fingerprints and privacy/schema/pack reasons remain visible in JSON and human output. A missing doctor snapshot reports observer `"unknown"` because status does not reread mutable legacy config.
 
-`projectDatabaseSubsystems` maps a missing `OperationalStatusSnapshot` (no doctor response) to `maintenance/semantic_index: "unknown"`, `raw_events: {state:"unknown", pending:0}`, `observer: {state: configuredObserver ? "unknown" : "unconfigured"}` (`status.ts:239-246`).
+`projectDatabaseSubsystems` maps a missing `OperationalStatusSnapshot` (no doctor response) to `maintenance/semantic_index: "unknown"`, `raw_events: {state:"unknown", pending:0}`, and `observer: {state:"unknown"}`.
 
 ### 6.4 Attention codes (`StatusAttention`)
 
@@ -412,6 +412,8 @@ type ObserverState = "healthy" | "idle" | "backoff" | "failed" | "unconfigured" 
 | `raw_events_backlogged` | warning | `pending > 0` and not failing | `status.ts:289-296` |
 | `observer_failed` | error | `configuredObserver && snapshot.observer.failed_batches > 0` | `status.ts:300-306` |
 | `observer_backoff` | warning | `configuredObserver && snapshot.observer.backoff_batches > 0` and not failed | `status.ts:307-314` |
+| `observer_pending` | warning | frozen manifest is configured while `providerEnabled !== true` | `status.ts` capability projection |
+| `legacy_config_ignored` | warning | compatibility `status --config` was supplied; runtime still uses the frozen manifest | `status.ts` compatibility branch |
 
 `report.ok = !attention.some(item => item.severity === "error")` (`status.ts:370`). Attention is capped to `MAX_ATTENTION = 20` items, with `code` sanitized to `[a-z0-9_]` (case-insensitive) and truncated to 64 chars, and `message` truncated to 500 chars (`boundAttention`, `status.ts:74,148-154`).
 

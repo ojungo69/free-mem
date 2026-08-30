@@ -21,12 +21,9 @@
 
 import { and, eq, isNull, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { ResourceProfileV1 } from "./capability-manifest.js";
 import { normalizeProjectLabel } from "./claude-hooks.js";
 import { fromJson, toJson } from "./db.js";
-import {
-	buildTieredObserverSelection,
-	decideExtractionReplayTier,
-} from "./extraction-tier-routing.js";
 import {
 	budgetToolEvents,
 	eventToToolEvent,
@@ -65,7 +62,7 @@ import {
 	shouldPreferRepairedObserverResponse,
 	shouldRepairObserverResponse,
 } from "./ingest-xml-parser.js";
-import { type ObserverClient, ObserverClient as ObserverClientImpl } from "./observer-client.js";
+import type { ObserverClient } from "./observer-client.js";
 import { resolveProject } from "./project.js";
 import * as schema from "./schema.js";
 import { classifySessionForInjection, shouldSuppressSummaryOnlyOutput } from "./session-policy.js";
@@ -270,8 +267,7 @@ function normalizeEventsForToolExtraction(
 export interface IngestOptions {
 	/** Observer LLM client. */
 	observer: ObserverClient;
-	/** Optional hook to create a routed observer during tests or controlled integrations. */
-	createTierObserver?: (config: ReturnType<ObserverClient["toConfig"]>) => ObserverClient;
+	resourceProfile?: ResourceProfileV1;
 	/** Maximum chars per tool event payload (from config). Default 12000. */
 	maxChars?: number;
 	/** Maximum chars for observer total budget. Default 12000. */
@@ -497,44 +493,15 @@ export async function ingest(
 			recentFiles: "",
 		};
 
-		let selectedObserver = options.observer;
-		let selectedTier: "simple" | "rich" | null = null;
-		let selectedTierReasons: string[] = [];
-		let requestedObserverProvider: string | null = null;
-		let requestedObserverModel: string | null = null;
-		let requestedObserverRuntime: string | null = null;
-		let requestedObserverOpenAIResponses: boolean | null = null;
-		let observerFallbackApplied = false;
-		let observerFallbackReason: string | null = null;
-		if (options.observer.tierRoutingEnabled) {
-			const flushBatchId =
-				sessionContext.flushBatch &&
-				typeof sessionContext.flushBatch === "object" &&
-				"batch_id" in sessionContext.flushBatch
-					? Number((sessionContext.flushBatch as Record<string, unknown>).batch_id ?? 0)
-					: 0;
-			const decision = decideExtractionReplayTier({
-				batchId: Number.isFinite(flushBatchId) ? flushBatchId : 0,
-				sessionId,
-				eventSpan: events.length,
-				promptCount: sessionContext.promptCount ?? 0,
-				toolCount: sessionContext.toolCount ?? 0,
-				transcriptLength: transcript.length,
-			});
-			selectedTier = decision.tier;
-			selectedTierReasons = decision.reasons;
-			const tierSelection = buildTieredObserverSelection(options.observer.toConfig(), decision);
-			const tierConfig = tierSelection.observer;
-			requestedObserverProvider = tierSelection.metadata.requestedProvider;
-			requestedObserverModel = tierSelection.metadata.requestedModel;
-			requestedObserverRuntime = tierSelection.metadata.requestedRuntime;
-			requestedObserverOpenAIResponses = tierSelection.metadata.requestedOpenAIResponses;
-			observerFallbackApplied = tierSelection.metadata.fallbackApplied;
-			observerFallbackReason = tierSelection.metadata.fallbackReason;
-			selectedObserver = options.createTierObserver
-				? options.createTierObserver(tierConfig)
-				: new ObserverClientImpl(tierConfig);
-		}
+		const selectedObserver = options.observer;
+		const selectedTier = null;
+		const selectedTierReasons: string[] = [];
+		const requestedObserverProvider = null;
+		const requestedObserverModel = null;
+		const requestedObserverRuntime = null;
+		const requestedObserverOpenAIResponses = null;
+		const observerFallbackApplied = false;
+		const observerFallbackReason = null;
 
 		const { system, user } = buildObserverPrompt(observerContext);
 

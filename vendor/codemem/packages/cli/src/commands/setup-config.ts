@@ -135,6 +135,20 @@ export function setupFileMatchesMutation(path: string, mutation: SetupFileMutati
 
 function assertTrackedSetupFileUnchanged(path: string): SetupFileSnapshot | null {
 	const resolvedPath = resolve(path);
+	if (activeSetupFileTracking) {
+		for (const [trackedPath, baseline] of activeSetupFileTracking.baselines) {
+			const mutation = activeSetupFileTracking.mutations.get(trackedPath);
+			const unchanged = mutation
+				? setupFileMatchesMutation(trackedPath, mutation)
+				: setupFileSnapshotUnchanged(baseline);
+			if (!unchanged) {
+				if (trackedPath === resolvedPath && !mutation) {
+					throw new Error(`Setup target changed before its first write: ${trackedPath}`);
+				}
+				throw new Error(`Setup transaction target changed before mutation: ${trackedPath}`);
+			}
+		}
+	}
 	const previous = activeSetupFileTracking?.mutations.get(resolvedPath);
 	if (previous && !setupFileMatchesMutation(resolvedPath, previous)) {
 		throw new Error(`Setup target changed before a repeated write: ${resolvedPath}`);

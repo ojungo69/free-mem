@@ -11,6 +11,12 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+	type ProviderChoiceV1,
+	type ProviderTransportProfileV1,
+	validateProviderChoice,
+	validateProviderTransportProfile,
+} from "./capability-manifest.js";
 import { codememHomeDir } from "./home.js";
 
 import {
@@ -119,6 +125,8 @@ export interface ObserverTokenUsage {
 export interface ObserverStructuredJsonResponse extends ObserverResponse {
 	usedStructuredOutputs: boolean;
 }
+
+export type ObserverTransportProfile = ProviderTransportProfileV1;
 
 export interface ObserverStatus {
 	provider: string;
@@ -528,13 +536,17 @@ function buildAnthropicPayload(
 	systemPrompt: string,
 	userPrompt: string,
 	maxTokens: number,
+	temperature: number | null,
+	normalizeModel = true,
 ): Record<string, unknown> {
-	return {
-		model: normalizeAnthropicModel(model),
+	const payload: Record<string, unknown> = {
+		model: normalizeModel ? normalizeAnthropicModel(model) : model,
 		max_tokens: maxTokens,
 		system: systemPrompt,
 		messages: [{ role: "user", content: userPrompt }],
 	};
+	if (temperature !== null) payload.temperature = temperature;
+	return payload;
 }
 
 function buildAnthropicStructuredPayload(
@@ -543,9 +555,10 @@ function buildAnthropicStructuredPayload(
 	userPrompt: string,
 	maxTokens: number,
 	schema: Record<string, unknown>,
+	normalizeModel = true,
 ): Record<string, unknown> {
 	return {
-		model: normalizeAnthropicModel(model),
+		model: normalizeModel ? normalizeAnthropicModel(model) : model,
 		max_tokens: maxTokens,
 		system: systemPrompt,
 		messages: [{ role: "user", content: userPrompt }],
@@ -801,6 +814,52 @@ function nowMs(): number {
 	return Date.now();
 }
 
+async function readBoundedResponseBody(
+	response: Response,
+	maxBytes: number,
+): Promise<Uint8Array | null> {
+	const declaredLength = Number(response.headers.get("content-length"));
+	if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+		await response.body?.cancel().catch(() => undefined);
+		return null;
+	}
+	if (!response.body) return new Uint8Array();
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		for (;;) {
+			const next = await reader.read();
+			if (next.done) break;
+			total += next.value.byteLength;
+			if (total > maxBytes) {
+				await reader.cancel().catch(() => undefined);
+				return null;
+			}
+			chunks.push(next.value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	const output = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		output.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return output;
+}
+
+function isManifestProviderChoice(
+	value: ObserverConfig | ProviderChoiceV1 | undefined,
+): value is ProviderChoiceV1 {
+	return Boolean(
+		value && "providerFingerprint" in value && "wireProtocol" in value && "endpointUrl" in value,
+	);
+}
+
+const LEGACY_OBSERVER_CONSTRUCTION = Symbol("legacy-observer-construction");
+
 // ---------------------------------------------------------------------------
 // ObserverClient
 // ---------------------------------------------------------------------------
@@ -845,13 +904,78 @@ export class ObserverClient {
 	private _customBaseUrl: string | null;
 	private _customBaseUrlAllowsNoAuth: boolean;
 	private readonly _apiKey: string | null;
+	private readonly _manifestChoice: ProviderChoiceV1 | null;
+	private readonly _maxResponseBytes: number;
+	private readonly _requestTimeoutMs: number;
 
 	// Error tracking
 	private _lastErrorCode: string | null = null;
 	private _lastErrorMessage: string | null = null;
 	private readonly _observerExplicitConfigKeys: string[];
 
-	constructor(config?: ObserverConfig) {
+	constructor(provider: ProviderChoiceV1, profile: ObserverTransportProfile);
+	constructor(
+		config: ObserverConfig,
+		profile: undefined,
+		legacyToken: typeof LEGACY_OBSERVER_CONSTRUCTION,
+	);
+	constructor(
+		configOrProvider?: ObserverConfig | ProviderChoiceV1,
+		manifestProfile?: ObserverTransportProfile,
+		legacyToken?: typeof LEGACY_OBSERVER_CONSTRUCTION,
+	) {
+		if (isManifestProviderChoice(configOrProvider)) {
+			if (!manifestProfile) throw new Error("A frozen Observer transport profile is required.");
+			const provider = validateProviderChoice(configOrProvider);
+			const profile = validateProviderTransportProfile(manifestProfile);
+			this._manifestChoice = provider;
+			this._maxResponseBytes = profile.observerMaxResponseBytes;
+			this._requestTimeoutMs = profile.observerRequestTimeoutMs;
+			this.provider = provider.wireProtocol === "anthropic_messages_v1" ? "anthropic" : "openai";
+			this.requestedModel = provider.modelId;
+			this.model = provider.modelId;
+			this.runtime = "api_http";
+			this.temperature = profile.observerTemperature;
+			this.tierRoutingEnabled = false;
+			this.simpleProvider = null;
+			this.simpleModel = null;
+			this.simpleTemperature = null;
+			this.richProvider = null;
+			this.richModel = null;
+			this.richTemperature = null;
+			this.richReasoningEffort = null;
+			this.richReasoningSummary = null;
+			this.richMaxOutputTokens = null;
+			this.openaiUseResponses = false;
+			this.reasoningEffort = null;
+			this.reasoningSummary = null;
+			this.maxChars = profile.observerMaxInputChars;
+			this.maxTokens = profile.observerMaxOutputTokens;
+			this.maxOutputTokens = profile.observerMaxOutputTokens;
+			this.authSource =
+				provider.credentialRef.kind === "environment"
+					? `environment:${provider.credentialRef.name}`
+					: "none";
+			this.authFile = null;
+			this.authCacheTtlS = 0;
+			this._observerHeaders = {};
+			this._customBaseUrl = provider.endpointUrl;
+			this._customBaseUrlAllowsNoAuth = provider.credentialRef.kind === "none";
+			this._apiKey = null;
+			this._observerExplicitConfigKeys = [];
+			this.authAdapter = new ObserverAuthAdapter({ source: "none", cacheTtlS: 0 });
+			this.auth = { token: null, authType: "none", source: "none" };
+			this._initProvider(false);
+			return;
+		}
+
+		if (legacyToken !== LEGACY_OBSERVER_CONSTRUCTION) {
+			throw new Error("ObserverClient requires a validated frozen provider choice and profile.");
+		}
+		this._manifestChoice = null;
+		this._maxResponseBytes = Number.POSITIVE_INFINITY;
+		this._requestTimeoutMs = FETCH_TIMEOUT_MS;
+		const config = configOrProvider;
 		const configWasProvided = config !== undefined;
 		const cfg = config ?? loadObserverConfig();
 		const explicitConfigKeys = resolveExplicitObserverConfigKeys(cfg, configWasProvided);
@@ -1087,6 +1211,7 @@ export class ObserverClient {
 	}
 
 	private canCallOpenAIDirectWithoutAuth(): boolean {
+		if (this._manifestChoice) return this._manifestChoice.credentialRef.kind === "none";
 		return this._customBaseUrlAllowsNoAuth && this.provider !== "anthropic";
 	}
 
@@ -1152,6 +1277,14 @@ export class ObserverClient {
 		schema: Record<string, unknown>,
 	): Promise<ObserverStructuredJsonResponse> {
 		const startedAt = nowMs();
+		if (this._manifestChoice) {
+			const fallback = await this.observe(systemPrompt, userPrompt);
+			return {
+				...fallback,
+				elapsedMs: Math.max(0, nowMs() - startedAt),
+				usedStructuredOutputs: false,
+			};
+		}
 		if (this.provider === "openai" && this.openaiUseResponses) {
 			if (!this.auth.token && !this.canCallOpenAIDirectWithoutAuth()) {
 				this._initProvider(true);
@@ -1224,6 +1357,7 @@ export class ObserverClient {
 						userPrompt,
 						this.maxTokens,
 						schema,
+						this._manifestChoice === null,
 					),
 					{ parseResponse: parseAnthropicResponse, providerLabel: "Anthropic" },
 				);
@@ -1257,6 +1391,18 @@ export class ObserverClient {
 	// -----------------------------------------------------------------------
 
 	private _initProvider(forceRefresh: boolean): void {
+		if (this._manifestChoice) {
+			const credential = this._manifestChoice.credentialRef;
+			if (credential.kind === "environment") {
+				const token = process.env[credential.name]?.trim() || null;
+				this.auth = token
+					? { token, authType: "api_key", source: `environment:${credential.name}` }
+					: { token: null, authType: "none", source: credential.kind };
+			} else {
+				this.auth = { token: null, authType: "none", source: credential.kind };
+			}
+			return;
+		}
 		if (this.provider !== "openai" && this.provider !== "anthropic") {
 			// Custom provider — resolve base URL, model ID, and headers from OpenCode config
 			const providerConfig = getOpenCodeProviderConfig(this.provider);
@@ -1334,14 +1480,24 @@ export class ObserverClient {
 		systemPrompt: string,
 		userPrompt: string,
 	): Promise<ObserverCallResult> {
-		const url = resolveAnthropicEndpoint();
+		const url = this._manifestChoice?.endpointUrl ?? resolveAnthropicEndpoint();
 		const token = this.auth.token ?? "";
-		const headers = buildAnthropicHeaders(token);
+		const headers =
+			this._manifestChoice?.credentialRef.kind === "none"
+				? { "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" }
+				: buildAnthropicHeaders(token);
 		const mergedHeaders = mergeHeadersCaseInsensitive(
 			headers,
 			renderObserverHeaders(this._observerHeaders, this.auth),
 		);
-		const payload = buildAnthropicPayload(this.model, systemPrompt, userPrompt, this.maxTokens);
+		const payload = buildAnthropicPayload(
+			this.model,
+			systemPrompt,
+			userPrompt,
+			this.maxTokens,
+			this._manifestChoice ? this.temperature : null,
+			this._manifestChoice === null,
+		);
 
 		return this._fetchJSON(url, mergedHeaders, payload, {
 			parseResponse: parseAnthropicResponse,
@@ -1358,7 +1514,9 @@ export class ObserverClient {
 		userPrompt: string,
 	): Promise<ObserverCallResult> {
 		let url: string;
-		if (this._customBaseUrl) {
+		if (this._manifestChoice) {
+			url = this._manifestChoice.endpointUrl;
+		} else if (this._customBaseUrl) {
 			url = `${stripTrailingSlashes(this._customBaseUrl)}/${this.openaiUseResponses ? "responses" : "chat/completions"}`;
 		} else {
 			url = this.openaiUseResponses
@@ -1407,16 +1565,24 @@ export class ObserverClient {
 				method: "POST",
 				headers,
 				body: JSON.stringify(payload),
-				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+				signal: AbortSignal.timeout(this._requestTimeoutMs),
+				redirect: "manual",
 			});
-
-			if (!response.ok) {
-				const errorText = await response.text().catch(() => "");
-				this._handleHttpError(response.status, errorText, opts.providerLabel);
+			const responseBytes = await readBoundedResponseBody(response, this._maxResponseBytes);
+			if (responseBytes === null) {
+				this._setLastError(
+					"Provider response exceeded the frozen byte limit.",
+					"response_too_large",
+				);
 				return emptyCallResult(null);
 			}
+			const responseText = new TextDecoder().decode(responseBytes);
 
-			const body = (await response.json()) as Record<string, unknown>;
+			if (!response.ok) {
+				this._handleHttpError(response.status, responseText, opts.providerLabel);
+				return emptyCallResult(null);
+			}
+			const body = JSON.parse(responseText) as Record<string, unknown>;
 			const result = opts.parseResponse(body);
 			if (result === null) {
 				this._setLastError(
@@ -1490,6 +1656,13 @@ export class ObserverClient {
 		this._lastErrorCode = null;
 		this._lastErrorMessage = null;
 	}
+}
+
+/** Internal benchmark/setup-translation compatibility; intentionally absent from the package barrel. */
+export function createLegacyObserverClient(
+	config: ObserverConfig = loadObserverConfig(),
+): ObserverClient {
+	return new ObserverClient(config, undefined, LEGACY_OBSERVER_CONSTRUCTION);
 }
 
 // ---------------------------------------------------------------------------

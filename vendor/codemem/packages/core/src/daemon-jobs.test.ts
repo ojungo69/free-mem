@@ -88,6 +88,24 @@ describe("daemon jobs", () => {
 		expect(() => service.schedule(() => {})).toThrow("service is stopping");
 	});
 
+	it("rejects structured maintenance while the frozen provider is pending", () => {
+		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-jobs-pending-provider-"));
+		db = connect(join(dir, "jobs.sqlite"));
+		initTestSchema(db);
+		store = new MemoryStore(db);
+		const service = new DaemonJobService(store, {
+			capability: {
+				providerEnabled: false,
+				runtimeReason: "pending_privacy_boundary",
+			},
+		});
+
+		expect(() => service.submit({ kind: "structured.backfill", args: {} })).toThrow(
+			/pending_privacy_boundary/i,
+		);
+		expect(service.list({ kind: "structured.backfill" })).toEqual([]);
+	});
+
 	it("P1-T046-01-maintenance-mode", async () => {
 		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-maintenance-"));
 		db = connect(join(dir, "jobs.sqlite"));

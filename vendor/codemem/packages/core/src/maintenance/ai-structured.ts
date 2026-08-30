@@ -1,6 +1,7 @@
 /* AI-powered structured-content backfill for older memories.
  */
 
+import type { ProviderChoiceV1, ProviderTransportProfileV1 } from "../capability-manifest.js";
 import type { Database } from "../db.js";
 import {
 	completeMaintenanceJob,
@@ -8,7 +9,7 @@ import {
 	startMaintenanceJob,
 	updateMaintenanceJob,
 } from "../maintenance-jobs.js";
-import { loadObserverConfig, ObserverClient } from "../observer-client.js";
+import { ObserverClient } from "../observer-client.js";
 import { SecretScanner } from "../secret-scanner.js";
 import { isSummaryLikeMemory } from "../summary-memory.js";
 import { isOneOf, isWhitespace, trimEndWhere } from "../text-trim.js";
@@ -80,6 +81,13 @@ export interface AIBackfillStructuredContentOptions {
 	dryRun?: boolean;
 	overwrite?: boolean;
 	observer?: StructuredBackfillObserver;
+	summaryProvider?: ProviderChoiceV1;
+	resourceProfile?: ProviderTransportProfileV1;
+	runtimeReason?:
+		| "ready"
+		| "pending_privacy_boundary"
+		| "provider_unavailable"
+		| "provider_tls_rejected";
 	/**
 	 * Secret scanner used to redact AI-generated narrative/facts/concepts
 	 * before they are written back to memory_items. The summarizer can launder
@@ -106,18 +114,12 @@ type StructuredBackfillRow = {
 	concepts: string | null;
 };
 
-function createStructuredBackfillObserver(): StructuredBackfillObserver {
-	const base = loadObserverConfig();
-	return new ObserverClient({
-		...base,
-		observerProvider: "openai",
-		observerModel: "gpt-5.4",
-		observerTemperature: 0.2,
-		observerOpenAIUseResponses: true,
-		observerReasoningEffort: null,
-		observerReasoningSummary: null,
-		observerMaxOutputTokens: 4000,
-	});
+function createStructuredBackfillObserver(
+	provider: ProviderChoiceV1 | undefined,
+	profile: ProviderTransportProfileV1 | undefined,
+): StructuredBackfillObserver {
+	if (!provider || !profile) throw new Error("Structured maintenance requires a frozen provider.");
+	return new ObserverClient(provider, profile);
 }
 
 function parseJsonArrayOfStrings(value: string | null): string[] {
@@ -275,8 +277,8 @@ function parseStructuredBackfillResponse(raw: string | null): ParsedStructuredBa
 
 /**
  * AI-powered backfill for older non-session-summary memories that still lack
- * structured content (`narrative`, `facts`, `concepts`). Uses GPT-5.4 via the
- * existing ObserverClient/OpenAI integration.
+ * structured content (`narrative`, `facts`, `concepts`) through the frozen
+ * manifest-selected provider and existing ObserverClient integration.
  */
 export async function aiBackfillStructuredContent(
 	db: Database,
@@ -304,14 +306,18 @@ export async function aiBackfillStructuredContent(
 	const eligibleRows = rows.filter(
 		(row) => !isSummaryLikeMemory({ kind: row.kind, metadata: row.metadata_json }),
 	);
+	if (opts.runtimeReason !== "ready") {
+		return { checked: 0, updated: 0, skipped: eligibleRows.length, failed: 0 };
+	}
 
-	const observer = opts.observer ?? createStructuredBackfillObserver();
+	const observer =
+		opts.observer ?? createStructuredBackfillObserver(opts.summaryProvider, opts.resourceProfile);
 	const scanner = opts.scanner ?? new SecretScanner();
 	const total = eligibleRows.length;
 	startMaintenanceJob(db, {
 		kind: AI_BACKFILL_JOB_KIND,
 		title: "Backfilling structured content",
-		message: `Preparing GPT-5.4 extraction for ${total} memories`,
+		message: `Preparing structured-content extraction for ${total} memories`,
 		progressTotal: total,
 		metadata: {
 			model: observer.getStatus().model,

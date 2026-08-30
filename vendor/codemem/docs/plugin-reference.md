@@ -141,7 +141,7 @@ What it does (idempotent; honors `CODEX_HOME`; backs up existing files; `--force
 - **MCP:** writes `[mcp_servers.codemem]` with the absolute Node executable and this checkout's absolute built CLI path in `<CODEX_HOME>/config.toml`, preserving comments and unrelated servers.
 - **Hooks:** installs the bundled runtime as `<CODEX_HOME>/codemem-hook-runtime.mjs` (mode `0600`) and merges `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`, and `SessionEnd` into `<CODEX_HOME>/hooks.json`, preserving unrelated user hooks. `UserPromptSubmit` uses one combined capture/recall hook. Existing legacy codemem hook groups are migrated on a normal rerun.
 
-Hooks loaded from the user config layer require a one-time trust approval in Codex (you'll be prompted on first run; MCP recall needs no trust). Codex setup also runs automatically in a plain `codemem setup` when a Codex home (`~/.codex` or `$CODEX_HOME`) is detected.
+Hooks loaded from the user config layer require a one-time trust approval in Codex (you'll be prompted on first run; MCP recall needs no trust). Plain `codemem setup` installs Claude Code and Codex together; use `codemem setup --opencode-only` for the retained OpenCode compatibility lane.
 
 ### Troubleshooting
 
@@ -205,48 +205,14 @@ Example agent requests:
 
 ## Observer model defaults
 
-- OpenAI: `gpt-5.4-mini`
-- Anthropic: `claude-4.5-haiku` (mapped to Anthropic direct API alias `claude-haiku-4-5` when using `api_http`)
-
-Provider/model selection can be overridden with `CODEMEM_OBSERVER_PROVIDER` and
-`CODEMEM_OBSERVER_MODEL`. Custom providers are loaded from OpenCode config.
+Slice 1 has no runtime model default or tier router. Plain setup requires an exact model ID and
+complete endpoint, fingerprints that choice, and freezes it for the daemon lifetime.
 
 ### Observer auth modes
 
-Observer execution uses the `api_http` runtime. The default OpenAI model is
-`gpt-5.4-mini` unless `observer_model` is set.
-
-- Anthropic direct API calls accept Anthropic model IDs/aliases; use `claude-haiku-4-5-20251001` if you need a pinned snapshot instead of the moving alias.
-- Supported auth sources: `auto`, `env`, `file`, `none`. Automatic resolution follows explicit key → environment → file.
-- Supported: API keys and gateway tokens codemem can read directly.
-- Custom provider path does not implicitly fall back to unrelated environment tokens; use the provider key, `CODEMEM_OBSERVER_API_KEY`, or `file`.
-- For codemem-native custom providers, set `observer_base_url` (or `CODEMEM_OBSERVER_BASE_URL`) to avoid relying on OpenCode provider config.
-
-For gateway auth, configure a token file plus templated headers:
-
-```json
-{
-  "observer_provider": "your-gateway-provider",
-  "observer_base_url": "https://gateway.example/v1",
-  "observer_auth_source": "file",
-  "observer_auth_file": "/path/to/gateway-token",
-  "observer_auth_cache_ttl_s": 300,
-  "observer_headers": {
-    "Authorization": "Bearer ${auth.token}"
-  }
-}
-```
-
-Header template variables:
-
-- `${auth.token}`
-- `${auth.type}`
-- `${auth.source}`
-
-Token-file cache behavior:
-
-- Successful token resolutions are cached for `observer_auth_cache_ttl_s`.
-- Failed token resolutions are not cached.
+The only credential forms are `none` and a named environment-variable reference entered during
+setup. Inline secrets, auth files, custom headers, fallback token cascades, runtime URL suffixes,
+and mutable provider environment overrides are rejected or recorded only as legacy dispositions.
 
 ## Stream-only mode (advanced)
 
@@ -255,21 +221,12 @@ Stream contract:
 - Event streaming: `POST /api/raw-events`
 - Non-2xx and network failures are treated as stream failures.
 - Raw events are delivered through the viewer ingest API.
-- Raw-event batches accepted by the viewer are retried by the sweeper flush workers.
+- Raw-event batches accepted by the viewer are retained. Scheduled flush/retry workers remain disabled until PR 3.
 - If the direct CLI fallback reports an explicit SQLite busy/locked result or command timeout, the plugin retries it once with the same event ID. Other failures are reported and dropped rather than requeued or spooled, and logs retain only a bounded failure category rather than raw command output.
 
-Suggested settings:
-
-```bash
-export CODEMEM_RAW_EVENTS_AUTO_FLUSH=1
-export CODEMEM_RAW_EVENTS_DEBOUNCE_MS=60000
-export CODEMEM_RAW_EVENTS_SWEEPER=1
-export CODEMEM_RAW_EVENTS_SWEEPER_IDLE_MS=120000
-export CODEMEM_RAW_EVENTS_SWEEPER_LIMIT=25
-export CODEMEM_RAW_EVENTS_STUCK_BATCH_MS=300000
-# optional retention
-# export CODEMEM_RAW_EVENTS_RETENTION_MS=$((7*24*60*60*1000))
-```
+Slice 1 fixes the future scheduler values in the manifest: 1 s debounce, 30 s sweep, 120 s idle,
+and retention disabled (`0`). These are not configurable through legacy `CODEMEM_RAW_EVENTS_*`
+settings, and no flush or sweeper execution starts before PR 3.
 
 To monitor backlog:
 
@@ -277,31 +234,17 @@ To monitor backlog:
 node packages/cli/dist/index.js db raw-events-status
 ```
 
-If `raw-events-status` shows `batches=error:N` (legacy label) or `queue=... failed:N` for a stream, retry:
+`raw-events-status` can show retained backlog, but processing retries remain unavailable until PR 3.
 
-```bash
-node packages/cli/dist/index.js db raw-events-retry <session_stream_id>
-```
+## Hook lifecycle and processing availability
 
-## Hook lifecycle and flush boundaries
-
-The plugin uses OpenCode event hooks and flushes on explicit lifecycle boundaries:
-
-- `tool.execute.after`: queue tool event; contributes to force-flush thresholds.
-- `session.idle`: immediate flush attempt.
-- `session.created`: flush previous session buffer before switching context.
-- `/new` prompt boundary: flush before session reset.
-- `session.error`: immediate flush attempt.
-
-Force-flush thresholds (immediate flush):
-- `>=50` tool events, or
-- `>=15` prompts, or
-- `>=10` minutes session duration.
+The plugin captures `tool.execute.after`, `session.idle`, `session.created`, `/new` prompt-boundary,
+and `session.error` events. Raw-event flush, retries, and sweeper processing are disabled until PR 3.
 
 Failure semantics:
 - Stream POST failures are backoff-gated in plugin runtime (`CODEMEM_RAW_EVENTS_BACKOFF_MS`).
 - Availability checks are rate-limited (`CODEMEM_RAW_EVENTS_STATUS_CHECK_MS`).
-- Accepted raw-event batches are retried by viewer/store queue workers (`node packages/cli/dist/index.js db raw-events-retry`).
+- Accepted raw-event batches remain retained until PR 3 enables processing.
 
 ## Project label normalization
 
@@ -341,29 +284,9 @@ If you run multiple adapters for the same project (for example OpenCode + Claude
 | `CODEMEM_INJECT_SURFACE` | OpenCode injection surface: `message` by default; set `system` for the legacy system-prompt transform. |
 | `CODEMEM_INJECT_LIMIT` | Max memory items in injected pack (default `8`). |
 | `CODEMEM_INJECT_TOKEN_BUDGET` | Approx token budget for injected pack (default `800`). |
-| `CODEMEM_USE_OPENCODE_RUN` | Use `opencode run` for observer generation (default off). |
-| `CODEMEM_OPENCODE_MODEL` | Model for `opencode run` (default `gpt-5.1-codex-mini`). |
-| `CODEMEM_OPENCODE_AGENT` | Agent for `opencode run` (optional). |
-| `CODEMEM_OBSERVER_PROVIDER` | Force `openai`, `anthropic`, or a custom provider key (optional). |
-| `CODEMEM_OBSERVER_MODEL` | Override observer model (default `gpt-5.4-mini` or `claude-haiku-4-5`). |
-| `CODEMEM_OBSERVER_API_KEY` | API key for observer model (optional). |
-| `CODEMEM_OBSERVER_AUTH_SOURCE` | Observer auth source (`auto`, `env`, `file`, `none`). |
-| `CODEMEM_OBSERVER_AUTH_FILE` | Path to token file used when auth source is `file`. |
-| `CODEMEM_OBSERVER_AUTH_CACHE_TTL_S` | Cache TTL for token-file auth resolution in seconds (default `300`). |
-| `CODEMEM_OBSERVER_HEADERS` | JSON object of templated observer headers, e.g. `{"Authorization":"Bearer ${auth.token}"}`. |
-| `CODEMEM_OBSERVER_MAX_CHARS` | Max observer prompt characters (default `12000`). |
 | `CODEMEM_RAW_EVENTS_BACKOFF_MS` | Backoff window after stream failure before retrying stream POSTs (default `10000`). |
 | `CODEMEM_RAW_EVENTS_STATUS_CHECK_MS` | Minimum interval between stream availability preflight checks (default `30000`). |
 | `CODEMEM_RAW_EVENTS_HARD_MAX` | Hard upper bound for in-memory plugin queue under sustained failure pressure (default `2000`). |
-| `CODEMEM_RAW_EVENTS_AUTO_FLUSH` | Set to `1` to enable viewer-side debounced flush of streamed raw events (default off). |
-| `CODEMEM_RAW_EVENTS_DEBOUNCE_MS` | Debounce delay before auto-flush per session (default `60000`). |
-| `CODEMEM_RAW_EVENTS_SWEEPER` | Set to `1` to enable periodic sweeper flush for idle sessions (default on). |
-| `CODEMEM_RAW_EVENTS_SWEEPER_INTERVAL_MS` | Sweeper tick interval (default `30000`). |
-| `CODEMEM_RAW_EVENTS_SWEEPER_INTERVAL_S` | Config/env interval in seconds used by Settings UI (default `30`; overridden by `CODEMEM_RAW_EVENTS_SWEEPER_INTERVAL_MS` when set). |
-| `CODEMEM_RAW_EVENTS_SWEEPER_IDLE_MS` | Consider session idle if no events since this many ms (default `120000`). |
-| `CODEMEM_RAW_EVENTS_SWEEPER_LIMIT` | Max idle sessions to flush per sweeper tick (default `25`). |
-| `CODEMEM_RAW_EVENTS_STUCK_BATCH_MS` | Mark flush batches older than this many ms as error (default `300000`). |
-| `CODEMEM_RAW_EVENTS_RETENTION_MS` | If >0, delete raw events older than this many ms (default `0`, keep forever). |
 
 ## Compatibility guidance behavior
 

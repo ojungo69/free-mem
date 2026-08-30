@@ -193,9 +193,9 @@ describe("RawEventSweeper auto flush", () => {
 		});
 
 		sweeper.nudge("sess-auth");
-		await sleep(50);
+		await sleep(1_100);
 		sweeper.nudge("sess-auth");
-		await sleep(50);
+		await sleep(1_100);
 
 		expect(calls).toBe(1);
 	});
@@ -227,6 +227,7 @@ describe("RawEventSweeper auto flush", () => {
 		});
 
 		sweeper.nudge("sess-stop");
+		await sleep(1_050);
 		await sweeper.stop();
 
 		expect(resolved).toBe(true);
@@ -281,20 +282,20 @@ describe("RawEventSweeper auto flush", () => {
 		});
 
 		sweeper.nudge("sess-rerun");
-		await sleep(220);
+		await sleep(2_300);
 
 		expect(store.rawEventFlushState("sess-rerun")).toBe(2);
 	});
 
-	it("does not auto flush when auto flush is disabled", async () => {
+	it("ignores the retired auto-flush disable environment", async () => {
 		delete process.env.CODEMEM_RAW_EVENTS_AUTO_FLUSH;
 		seedSession("sess-disabled");
 		const sweeper = new RawEventSweeper(store, ingestOpts);
 
 		sweeper.nudge("sess-disabled");
-		await sleep(150);
+		await sleep(1_100);
 
-		expect(store.rawEventFlushState("sess-disabled")).toBe(-1);
+		expect(store.rawEventFlushState("sess-disabled")).toBe(1);
 	});
 
 	it("debounced auto flush advances flush state when enabled", async () => {
@@ -304,7 +305,7 @@ describe("RawEventSweeper auto flush", () => {
 		const sweeper = new RawEventSweeper(store, ingestOpts);
 
 		sweeper.nudge("sess-auto");
-		await sleep(100);
+		await sleep(1_100);
 
 		expect(store.rawEventFlushState("sess-auto")).toBe(1);
 	});
@@ -332,12 +333,12 @@ describe("RawEventSweeper auto flush", () => {
 			lastSeenTsWallMs: 300,
 		});
 		sweeper.nudge("sess-bounded-debounce");
-		await sleep(70);
+		await sleep(1_100);
 
 		expect(store.rawEventFlushState("sess-bounded-debounce")).toBeGreaterThanOrEqual(1);
 	});
 
-	it("flushes active sessions in smaller batches by default", async () => {
+	it("uses the frozen 100-event source limit instead of legacy env", async () => {
 		process.env.CODEMEM_RAW_EVENTS_AUTO_FLUSH = "1";
 		process.env.CODEMEM_RAW_EVENTS_DEBOUNCE_MS = "0";
 		process.env.CODEMEM_RAW_EVENTS_WORKER_MAX_EVENTS = "2";
@@ -373,9 +374,9 @@ describe("RawEventSweeper auto flush", () => {
 
 		const sweeper = new RawEventSweeper(store, ingestOpts);
 		sweeper.nudge("sess-small-batches");
-		await sleep(120);
+		await sleep(1_100);
 
-		expect(store.rawEventFlushState("sess-small-batches")).toBe(1);
+		expect(store.rawEventFlushState("sess-small-batches")).toBe(4);
 	});
 
 	it("terminally completes low-signal skip_summary batches and advances the flush cursor", async () => {
@@ -401,7 +402,7 @@ describe("RawEventSweeper auto flush", () => {
 		});
 
 		sweeper.nudge("sess-low-signal");
-		await sleep(150);
+		await sleep(1_100);
 
 		expect(store.rawEventFlushState("sess-low-signal")).toBe(1);
 		expect(store.latestRawEventFlushFailure("opencode")?.stream_id).not.toBe("sess-low-signal");
@@ -434,7 +435,7 @@ describe("RawEventSweeper auto flush", () => {
 		});
 
 		sweeper.nudge("sess-failed-diagnostics");
-		await sleep(150);
+		await sleep(1_100);
 
 		const failure = store.latestRawEventFlushFailure("opencode");
 		expect(failure?.stream_id).toBe("sess-failed-diagnostics");
@@ -477,14 +478,14 @@ describe("RawEventSweeper auto flush", () => {
 		});
 
 		sweeper.nudge("sess-lifecycle-only");
-		await sleep(150);
+		await sleep(1_100);
 
 		expect(observerCalls).toBe(0);
 		expect(store.rawEventFlushState("sess-lifecycle-only")).toBe(2);
 		expect(store.latestRawEventFlushFailure("opencode")?.stream_id).not.toBe("sess-lifecycle-only");
 	});
 
-	it("resolves retentionMs: explicit config wins, legacy env only as absent-fallback", () => {
+	it("keeps retention disabled despite retired config and env values", () => {
 		const prevEnabled = process.env.CODEMEM_RAW_EVENTS_RETENTION_ENABLED;
 		const prevMaxAge = process.env.CODEMEM_RAW_EVENTS_RETENTION_MAX_AGE_DAYS;
 		const prevLegacy = process.env.CODEMEM_RAW_EVENTS_RETENTION_MS;
@@ -496,17 +497,17 @@ describe("RawEventSweeper auto flush", () => {
 			(s as unknown as { retentionMs(): number }).retentionMs();
 		const sweeper = new RawEventSweeper(store, ingestOpts);
 		try {
-			// 1. New config keys: enabled + max_age_days => days * 86_400_000.
+			// Retired config/env values cannot mutate the frozen profile.
 			delete process.env.CODEMEM_RAW_EVENTS_RETENTION_MS;
 			process.env.CODEMEM_RAW_EVENTS_RETENTION_ENABLED = "1";
 			process.env.CODEMEM_RAW_EVENTS_RETENTION_MAX_AGE_DAYS = "30";
-			expect(retentionMs(sweeper)).toBe(30 * 86_400_000);
+			expect(retentionMs(sweeper)).toBe(0);
 
 			// 2. New key ABSENT => fall back to the legacy CODEMEM_RAW_EVENTS_RETENTION_MS env var.
 			delete process.env.CODEMEM_RAW_EVENTS_RETENTION_ENABLED;
 			delete process.env.CODEMEM_RAW_EVENTS_RETENTION_MAX_AGE_DAYS;
 			process.env.CODEMEM_RAW_EVENTS_RETENTION_MS = "123456";
-			expect(retentionMs(sweeper)).toBe(123456);
+			expect(retentionMs(sweeper)).toBe(0);
 
 			// 2b. EXPLICIT disable (enabled=0) is authoritative over a stale legacy
 			// env var: retention stays off rather than silently honoring the legacy value.
@@ -556,7 +557,7 @@ describe("RawEventSweeper auto flush", () => {
 		});
 
 		sweeper.nudge("sess-adapter-prompt", "claude");
-		await sleep(150);
+		await sleep(1_100);
 
 		expect(observerCalls).toBe(1);
 		expect(store.rawEventFlushState("sess-adapter-prompt", "claude")).toBe(1);

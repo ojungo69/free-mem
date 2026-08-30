@@ -1,6 +1,12 @@
 import { formatAuthMethod, formatCredentialSources, formatFailureTimestamp } from "../data/format";
 
 export type ObserverStatusShape = {
+	capability?: {
+		configurationFingerprint?: string | null;
+		runtimeReason?: string;
+		providerHealth?: string;
+		providerEnabled?: boolean;
+	} | null;
 	active?: {
 		provider?: string;
 		model?: string;
@@ -27,6 +33,10 @@ export function ObserverStatusBanner({ status }: { status: ObserverStatusShape |
 	}
 
 	const active = status.active;
+	const pending =
+		typeof status.capability?.configurationFingerprint === "string" &&
+		status.capability?.providerEnabled === false;
+	const providerHealth = status.capability?.providerHealth;
 	const available = status.available_credentials || {};
 	const failure = status.latest_failure;
 	const credentialEntries = Object.entries(available).filter(
@@ -35,7 +45,18 @@ export function ObserverStatusBanner({ status }: { status: ObserverStatusShape |
 
 	return (
 		<div id="observerStatusBanner" className="observer-status-banner">
-			{active ? (
+			{pending ? (
+				<>
+					<div className="status-label">Observer status</div>
+					<div className="status-active">
+						{providerHealth === "provider_tls_rejected"
+							? "Configured — provider trust check failed; privacy safeguards are still pending"
+							: providerHealth === "provider_unavailable"
+								? "Configured — provider unavailable; privacy safeguards are still pending"
+								: "Configured — waiting for privacy safeguards"}
+					</div>
+				</>
+			) : active ? (
 				<>
 					<div className="status-label">Active observer</div>
 					<div className="status-active">

@@ -1,8 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { VERSION } from "./index.js";
+import * as core from "./index.js";
 
 describe("core", () => {
 	it("exports a version string", () => {
-		expect(VERSION).toBe("0.40.2");
+		expect(core.VERSION).toBe("0.40.2");
+	});
+
+	it("does not expose mutable observer config discovery", () => {
+		expect(Reflect.has(core, "loadObserverConfig")).toBe(false);
+	});
+
+	it("does not expose raw capability activation writers", () => {
+		for (const name of [
+			"acquireDaemonWriterLease",
+			"acquireCapabilityLifecycleLock",
+			"activateCapabilityManifest",
+			"capabilitySetupFileState",
+			"probeDaemonWriterAvailable",
+			"recoverCapabilitySetupTransaction",
+			"writeCapabilityManifestGeneration",
+			"writeCapabilitySetupJournal",
+		]) {
+			expect(Reflect.has(core, name), name).toBe(false);
+		}
+	});
+
+	it("does not expose tiered replay construction", () => {
+		expect(Reflect.has(core, "decideExtractionReplayTier")).toBe(false);
+		expect(Reflect.has(core, "RICH_TIER_DEFAULTS")).toBe(false);
+		expect(Reflect.has(core, "SIMPLE_TIER_DEFAULTS")).toBe(false);
+	});
+
+	it("does not expose injectable AI maintenance", () => {
+		expect(Reflect.has(core, "aiBackfillStructuredContent")).toBe(false);
 	});
 });

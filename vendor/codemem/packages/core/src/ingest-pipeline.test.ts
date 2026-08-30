@@ -33,7 +33,6 @@ import {
 	shouldPreferRepairedObserverResponse,
 	shouldRepairObserverResponse,
 } from "./ingest-xml-parser.js";
-import type { ObserverConfig } from "./observer-client.js";
 import { flushRawEvents } from "./raw-event-flush.js";
 import type { MemoryStore } from "./store.js";
 import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
@@ -3071,7 +3070,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		expect(session.ended_at).not.toBeNull();
 	});
 
-	it("routes live rich batches to the rich observer tier when enabled and persists routing metadata", async () => {
+	it("keeps live rich batches on the frozen observer without tier fallback", async () => {
 		const observer = {
 			provider: "openai",
 			model: "gpt-5.4-mini",
@@ -3139,13 +3138,6 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 				model: "gpt-5.4",
 			}),
 		} as unknown as IngestOptions["observer"];
-		const createTierObserver = (config: ObserverConfig) =>
-			({
-				...observer,
-				model: String(config.observerRichModel ?? config.observerModel ?? "gpt-5.4"),
-				openaiUseResponses: config.observerOpenAIUseResponses === true,
-			}) as IngestOptions["observer"];
-
 		const payload = buildPayload({
 			events: [
 				{
@@ -3185,7 +3177,7 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 			},
 		});
 
-		await ingest(payload, store, { observer, createTierObserver } as IngestOptions);
+		await ingest(payload, store, { observer } as IngestOptions);
 
 		const memoryRow = store.db
 			.prepare(
@@ -3201,28 +3193,28 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 
 		expect(memoryMeta).toEqual(
 			expect.objectContaining({
-				observer_tier: "rich",
-				observer_requested_provider: "openai",
-				observer_requested_model: "gpt-5.4",
-				observer_requested_runtime: "api_http",
+				observer_tier: null,
+				observer_requested_provider: null,
+				observer_requested_model: null,
+				observer_requested_runtime: null,
 				observer_provider: "openai",
 				observer_model: "gpt-5.4",
 				observer_runtime: "api_http",
-				observer_openai_responses: true,
+				observer_openai_responses: false,
 				observer_fallback_applied: false,
 				observer_fallback_reason: null,
 			}),
 		);
 		expect(sessionMeta.post).toEqual(
 			expect.objectContaining({
-				observer_tier: "rich",
-				observer_requested_provider: "openai",
-				observer_requested_model: "gpt-5.4",
-				observer_requested_runtime: "api_http",
+				observer_tier: null,
+				observer_requested_provider: null,
+				observer_requested_model: null,
+				observer_requested_runtime: null,
 				observer_provider: "openai",
 				observer_model: "gpt-5.4",
 				observer_runtime: "api_http",
-				observer_openai_responses: true,
+				observer_openai_responses: false,
 				observer_fallback_applied: false,
 				observer_fallback_reason: null,
 			}),

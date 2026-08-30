@@ -83,6 +83,7 @@ cd "$(git rev-parse --show-toplevel)/vendor/codemem"
 corepack pnpm install --frozen-lockfile
 corepack pnpm exec vitest run \
   packages/core/src/capability-manifest.test.ts \
+  packages/core/src/setup-internal.test.ts \
   packages/core/src/storage.test.ts \
   packages/core/src/observer-auth.test.ts \
   packages/core/src/observer-client.test.ts \
@@ -103,6 +104,7 @@ corepack pnpm exec vitest run \
   packages/cli/src/commands/setup-codex.test.ts \
   packages/cli/src/commands/setup-config.test.ts \
   packages/cli/src/commands/status.test.ts \
+  packages/ui/src/tabs/settings/components/ObserverStatusBanner.test.tsx \
   --maxWorkers=1 --no-file-parallelism
 ```
 

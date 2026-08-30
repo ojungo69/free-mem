@@ -4,6 +4,7 @@ import type { McpRpcOutcome } from "@codemem/mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	boundAttention,
+	collectStatusReport,
 	createStatusCommand,
 	type OperationalStatusReport,
 	renderStatusReport,
@@ -29,7 +30,6 @@ function dependencies(
 		now: () => new Date("2026-08-14T00:00:00.000Z"),
 		exists: () => false,
 		readText: () => null,
-		readConfig: () => ({}),
 		requestRpc: async () => daemonUnavailable,
 		fetch: vi.fn(async () => {
 			throw new Error("viewer unavailable");
@@ -98,6 +98,7 @@ describe("status command", () => {
 			semantic_index: { state: "unknown" },
 			raw_events: { state: "unknown", pending: 0 },
 			observer: { state: "unconfigured" },
+			capability: null,
 			attention: [],
 		};
 		const rendered = renderStatusReport(report);
@@ -138,5 +139,41 @@ describe("status command", () => {
 			if (previousDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
 			else process.env.CODEMEM_DATA_DIR = previousDataDir;
 		}
+	});
+
+	it("reports the frozen capability identity and pending boundaries", async () => {
+		const capability = {
+			mode: "configured",
+			configurationFingerprint: `sha256:${"a".repeat(64)}`,
+			runtimeReason: "pending_privacy_boundary",
+			providerEnabled: false,
+			schemaReadiness: "pending_schema_v21",
+			packReadiness: "pending_pack_boundary",
+			summaryProvider: { providerFingerprint: `sha256:${"b".repeat(64)}` },
+		};
+		const operationalStatus = {
+			maintenance: { state: "idle", running: 0, failed: 0 },
+			semantic_index: { state: "degraded", vector_table_present: true },
+			raw_events: { available: true, pending: 0, failed_batches: 0 },
+			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok", capability } }
+					: {
+							ok: true,
+							result: { diagnostics: { operationalStatus, capability } },
+						},
+		});
+
+		const report = await collectStatusReport({}, deps);
+
+		expect(report.capability).toEqual(capability);
+		expect(report.observer.state).toBe("pending");
+		const rendered = renderStatusReport(report);
+		expect(rendered).toContain(capability.configurationFingerprint);
+		expect(rendered).toContain("pending_schema_v21");
+		expect(rendered).toContain("pending_pack_boundary");
 	});
 });

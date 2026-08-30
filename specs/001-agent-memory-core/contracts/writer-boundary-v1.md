@@ -140,9 +140,13 @@ lock.exec("BEGIN IMMEDIATE");
 
 `acquireWriterLock` is called from three places, and the resulting handle's lifetime differs by caller:
 
-1. **`startDaemon`** (`daemon-lifecycle.ts:274`) — held for the life of the daemon process; released only
-   in `releaseResources` (§6) or in the `startDaemon` `finally` block if startup failed before the daemon
-   was fully live (`daemon-lifecycle.ts:450-457`).
+1. **`startDaemon`** — acquires the capability lifecycle lease, then the setup/spool owner lock, then
+   this writer lock. All three are held while it recovers a setup journal. The setup/spool lock is then
+   released so hook capture is not blocked while the still-held lifecycle and writer locks protect
+   manifest resolution, TLS preflight, canonical-writer open, and the remaining startup work. The
+   lifecycle lease is released only after socket, identity, and live state are published; the writer
+   lock remains held for the daemon lifetime. A competing start that cannot take the writer lock
+   closes the two earlier locks without touching restore journals, socket, or identity state.
 2. **`cleanupIfStillOwner`** (`daemon-lifecycle.ts:472-488`) — acquired transiently to *prove* no daemon
    currently holds the lock before removing stale control artifacts (socket, identity file); always
    closed in a `finally` (`daemon-lifecycle.ts:486`). If acquisition fails with an "already running"
@@ -285,7 +289,7 @@ else:
 - `stopLive(dataDir)` (`daemon-lifecycle.ts:235-240`) removes the `liveDaemons` map entry and calls
   `releaseResources(layout, live)` (`daemon-lifecycle.ts:202-233`), which in order: clears the spool-sweep
   and backup-sweep timers, awaits any in-flight `dailyBackupTask`, closes the RPC server, stops
-  `DaemonJobService` and `RawEventSweeper`, closes the `MemoryStore`, closes the `WriterActor` if still
+  `DaemonJobService` and the optional `RawEventSweeper`, closes the `MemoryStore`, closes the `WriterActor` if still
   open, removes control artifacts (socket file, identity file — `removeControlArtifacts`,
   `daemon-lifecycle.ts:461-470`), and only *after* artifacts are gone, closes the writer lock. Each step
   is wrapped so a failure in one does not skip the rest (all catches are silent/best-effort, comments
@@ -321,9 +325,9 @@ never concurrent within one daemon regardless of maintenance status.
 - `runInMaintenance(work)` (`daemon-jobs.ts:782-794`): sets `maintenanceMode = true`, calls
   `options.beforeMaintenance?.()`, runs `work()`, then in a `finally` calls `options.afterMaintenance?.()`
   before clearing `maintenanceMode = false` — `afterMaintenance` runs even if `work()` threw.
-- The daemon wires `beforeMaintenance`/`afterMaintenance` to stop/restart the raw-event sweeper
-  (`daemon-lifecycle.ts:297-302`: `beforeMaintenance: () => maintenanceSweeper.stop()`,
-  `afterMaintenance: () => maintenanceSweeper.start()`).
+- PR1 constructs no executable provider or `RawEventSweeper`; maintenance therefore has no sweeper
+  callbacks to stop/restart. The optional sweeper shutdown path remains null-safe for the later
+  privacy-owned delivery.
 - Both periodic sweeps guard on maintenance mode: `sweepSpool` (`daemon-lifecycle.ts:329-336`) and
   `sweepBackup` (`daemon-lifecycle.ts:378-397`) each no-op if `jobs?.isMaintenanceMode() ||
   rpc.restoreState?.active`.

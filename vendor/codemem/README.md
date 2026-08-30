@@ -32,6 +32,25 @@ corepack pnpm install --frozen-lockfile
 corepack pnpm run build
 ```
 
+### Claude Code and Codex
+
+Plain setup is the Slice 1 activation flow for both supported Agent lanes:
+
+```text
+node packages/cli/dist/index.js setup
+```
+
+It discloses the complete provider destination and non-secret credential reference, asks for
+confirmation, and then installs Claude Code and Codex together. OpenCode remains available only
+through the explicit compatibility lane below.
+
+PR1 setup requires a stopped daemon. After setup succeeds, start it manually, then restart both
+Agent clients:
+
+```text
+node packages/cli/dist/index.js serve start
+```
+
 ### OpenCode
 
 Install the checkout-pinned OpenCode wrapper and MCP config:
@@ -210,13 +229,13 @@ The standalone `codemem-mcp-ts` binary runs the same stdio server used by `codem
 
 ## Configuration
 
-Config resolution precedence for runtime commands is:
+Legacy config resolution precedence used by setup migration is:
 
 1. explicit `CODEMEM_CONFIG`
 2. workspace-scoped config derived from `CODEMEM_RUNTIME_ROOT` or `CODEMEM_WORKSPACE_ID`
 3. legacy global config at `~/.config/codemem/config.json{c}`
 
-Environment variables still override file values once a config file has been selected.
+These files and `CODEMEM_OBSERVER_*` variables do not override the active runtime after setup.
 
 Common overrides:
 
@@ -233,18 +252,13 @@ Viewer note:
 - The plugin manages one explicit viewer target per runtime. If you run multiple viewers, give each one its own DB/runtime folder instead of sharing `viewer.pid` state next to the same SQLite file.
 - The OpenCode plugin monitors viewer liveness through `GET /api/health`. When an older viewer returns `404`, it makes one compatibility probe to the legacy raw-event status endpoint; raw-event ingest preflight remains separate and is bounded by a 5-second timeout.
 
-The viewer includes a grouped Settings modal (`Connection`, `Processing`, `Device Sync`) with shell-agnostic labels and an advanced-controls toggle for technical fields.
-- Settings show effective values (configured or default) and only persist changed fields on save.
+The viewer Settings modal is read-only for provider state and renders the frozen safe capability
+snapshot. Use `codemem setup` to activate a replacement manifest.
 - The viewer HTTP service is intended for localhost-only use. It does not currently provide a general-purpose auth/session layer for safe public exposure.
 
-Observer runtime/auth:
-
-- Observer requests use the `api_http` runtime.
-- `api_http` defaults to `gpt-5.4-mini` (OpenAI path) unless you set `observer_model`.
-- Anthropic direct API calls accept Anthropic model IDs/aliases. codemem maps the common Claude shorthand `claude-4.5-haiku` to Anthropic's direct API alias `claude-haiku-4-5`; you can also set a pinned snapshot like `claude-haiku-4-5-20251001` explicitly.
-- Auth sources: `auto`, `env`, `file`, `none`. Automatic resolution uses explicit configuration, then environment variables, then the configured token file.
-- Header templates support `${auth.token}`, `${auth.type}`, and `${auth.source}` (for example `Authorization: Bearer ${auth.token}`).
-- Queue cadence is configurable with `raw_events_sweeper_interval_s` (seconds) in Settings/config.
+Observer runtime/auth is compiled only by setup: exact wire protocol, complete endpoint, exact model
+ID/revision, and either no credential or one named environment-variable reference. PR1 reports the
+choice but keeps provider execution disabled until the privacy boundary lands.
 
 ## Export and import
 

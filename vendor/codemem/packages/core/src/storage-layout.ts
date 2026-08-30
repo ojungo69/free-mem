@@ -9,6 +9,12 @@ const DEFAULT_DB_PATH = join(DEFAULT_DATA_DIR, "mem.sqlite");
 export interface StorageLayout {
 	dataDir: string;
 	controlDir: string;
+	capabilitiesDir: string;
+	capabilityManifestsDir: string;
+	capabilityCurrentPointerPath: string;
+	capabilityLifecycleLockPath: string;
+	capabilityActivationReceiptPath: string;
+	capabilitySetupTransactionPath: string;
 	dbDir: string;
 	versionsDir: string;
 	currentPointerPath: string;
@@ -55,10 +61,17 @@ export function resolveRuntimeDataDir(options: { dataDir?: string; dbPath?: stri
 export function resolveStorageLayout(dataDir: string = DEFAULT_DATA_DIR): StorageLayout {
 	const root = resolve(dataDir);
 	const controlDir = join(root, "control");
+	const capabilitiesDir = join(controlDir, "capabilities");
 	const dbDir = join(root, "db");
 	return {
 		dataDir: root,
 		controlDir,
+		capabilitiesDir,
+		capabilityManifestsDir: join(capabilitiesDir, "manifests"),
+		capabilityCurrentPointerPath: join(capabilitiesDir, "current"),
+		capabilityLifecycleLockPath: join(capabilitiesDir, "lifecycle.lock"),
+		capabilityActivationReceiptPath: join(capabilitiesDir, "activation-receipt.json"),
+		capabilitySetupTransactionPath: join(capabilitiesDir, "setup-transaction.json"),
 		dbDir,
 		versionsDir: join(dbDir, "versions"),
 		currentPointerPath: join(dbDir, "current"),

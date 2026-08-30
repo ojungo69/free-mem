@@ -44,6 +44,7 @@ describe("collectOperationalStatus", () => {
 			const result = collectOperationalStatus(db);
 
 			expect(result).toEqual({
+				capability: null,
 				maintenance: { state: "idle", running: 0, failed: 0 },
 				semantic_index: { state: "failed", vector_table_present: false },
 				raw_events: { available: true, pending: 2, failed_batches: 1 },
@@ -74,6 +75,7 @@ describe("collectOperationalStatus", () => {
 			}
 
 			expect(collectOperationalStatus(db, { embeddingDisabled: true })).toEqual({
+				capability: null,
 				maintenance: { state: "unknown", running: 0, failed: 0 },
 				semantic_index: { state: "degraded", vector_table_present: false },
 				raw_events: { available: false, pending: 0, failed_batches: 0 },

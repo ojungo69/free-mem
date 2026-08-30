@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
 	chmodSync,
 	existsSync,
@@ -8,10 +9,11 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { acquireSpoolLock, resolveRuntimeDataDir } from "@codemem/core";
+import { acquireSpoolLock, resolveRuntimeDataDir, startDaemon } from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildCodememClaudeHookGroups,
@@ -36,9 +38,58 @@ const setupSnapshotRace = vi.hoisted(() => ({
 	afterRename: "",
 	afterTempWrite: "",
 	beforeLink: "",
+	afterLink: "",
 	mutationPath: "",
 	mutationText: "",
 }));
+
+const setupPrompts = vi.hoisted(() => ({
+	confirmCalls: 0,
+	confirmation: true,
+	endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
+	onConfirm: null as null | (() => Promise<void> | void),
+}));
+
+vi.mock("@clack/prompts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@clack/prompts")>();
+	const messageText = (options: unknown): string => {
+		if (!options || typeof options !== "object" || !("message" in options)) return "";
+		return String((options as { message?: unknown }).message ?? "").toLowerCase();
+	};
+	const optionValues = (options: unknown): unknown[] => {
+		if (!options || typeof options !== "object" || !("options" in options)) return [];
+		const values = (options as { options?: Array<{ value?: unknown }> }).options ?? [];
+		return values.map((option) => option.value);
+	};
+	return {
+		...actual,
+		confirm: vi.fn(async () => {
+			setupPrompts.confirmCalls += 1;
+			await setupPrompts.onConfirm?.();
+			return setupPrompts.confirmation;
+		}),
+		multiselect: vi.fn(async (options: unknown) =>
+			optionValues(options).filter((value) => value === "claude-code" || value === "codex"),
+		),
+		select: vi.fn(async (options: unknown) => {
+			const values = optionValues(options);
+			for (const preferred of ["openai_chat_completions_v1", "none", "summary"]) {
+				if (values.includes(preferred)) return preferred;
+			}
+			return values[0];
+		}),
+		text: vi.fn(async (options: unknown) => {
+			const message = messageText(options);
+			if (message.includes("endpoint") || message.includes("url")) return setupPrompts.endpointUrl;
+			if (message.includes("revision")) return "t007-test-revision";
+			if (message.includes("model")) return "t007-test-model";
+			if (message.includes("credential") || message.includes("environment")) {
+				return "FREE_MEM_SUMMARY_API_KEY";
+			}
+			return "t007-test";
+		}),
+	};
+});
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
@@ -79,6 +130,12 @@ vi.mock("node:fs", async (importOriginal) => {
 				setupSnapshotRace.mutationText = "";
 			}
 			actual.linkSync(...args);
+			if (String(args[1]) === setupSnapshotRace.afterLink) {
+				actual.writeFileSync(setupSnapshotRace.mutationPath, setupSnapshotRace.mutationText);
+				setupSnapshotRace.afterLink = "";
+				setupSnapshotRace.mutationPath = "";
+				setupSnapshotRace.mutationText = "";
+			}
 		},
 	};
 });
@@ -90,6 +147,12 @@ const savedClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
 const savedDataDir = process.env.CODEMEM_DATA_DIR;
 const savedDb = process.env.CODEMEM_DB;
 const savedHome = process.env.HOME;
+const savedConfig = process.env.CODEMEM_CONFIG;
+const savedSummaryKey = process.env.FREE_MEM_SUMMARY_API_KEY;
+const savedObserverProvider = process.env.CODEMEM_OBSERVER_PROVIDER;
+const savedObserverModel = process.env.CODEMEM_OBSERVER_MODEL;
+const savedObserverApiKey = process.env.CODEMEM_OBSERVER_API_KEY;
+const savedExitCode = process.exitCode;
 let codexHome: string;
 let claudeHome: string;
 let runtimeDirs: string[];
@@ -105,6 +168,16 @@ beforeEach(() => {
 	runtimeDirs = [];
 	delete process.env.CODEMEM_DATA_DIR;
 	delete process.env.CODEMEM_DB;
+	delete process.env.CODEMEM_CONFIG;
+	delete process.env.FREE_MEM_SUMMARY_API_KEY;
+	delete process.env.CODEMEM_OBSERVER_PROVIDER;
+	delete process.env.CODEMEM_OBSERVER_MODEL;
+	delete process.env.CODEMEM_OBSERVER_API_KEY;
+	process.exitCode = undefined;
+	setupPrompts.confirmCalls = 0;
+	setupPrompts.confirmation = true;
+	setupPrompts.endpointUrl = "http://127.0.0.1:1234/v1/chat/completions";
+	setupPrompts.onConfirm = null;
 	const hookBase = codememCodexHookBase(join(codexHome, "codemem-hook-runtime.mjs"));
 	INGEST_CMD = `${hookBase} codex-hook-ingest`;
 	INJECT_CMD = `${hookBase} codex-hook-inject`;
@@ -116,6 +189,7 @@ afterEach(() => {
 	setupSnapshotRace.afterRename = "";
 	setupSnapshotRace.afterTempWrite = "";
 	setupSnapshotRace.beforeLink = "";
+	setupSnapshotRace.afterLink = "";
 	setupSnapshotRace.mutationPath = "";
 	setupSnapshotRace.mutationText = "";
 	if (savedCodexHome === undefined) delete process.env.CODEX_HOME;
@@ -128,6 +202,17 @@ afterEach(() => {
 	else process.env.CODEMEM_DB = savedDb;
 	if (savedHome === undefined) delete process.env.HOME;
 	else process.env.HOME = savedHome;
+	if (savedConfig === undefined) delete process.env.CODEMEM_CONFIG;
+	else process.env.CODEMEM_CONFIG = savedConfig;
+	if (savedSummaryKey === undefined) delete process.env.FREE_MEM_SUMMARY_API_KEY;
+	else process.env.FREE_MEM_SUMMARY_API_KEY = savedSummaryKey;
+	if (savedObserverProvider === undefined) delete process.env.CODEMEM_OBSERVER_PROVIDER;
+	else process.env.CODEMEM_OBSERVER_PROVIDER = savedObserverProvider;
+	if (savedObserverModel === undefined) delete process.env.CODEMEM_OBSERVER_MODEL;
+	else process.env.CODEMEM_OBSERVER_MODEL = savedObserverModel;
+	if (savedObserverApiKey === undefined) delete process.env.CODEMEM_OBSERVER_API_KEY;
+	else process.env.CODEMEM_OBSERVER_API_KEY = savedObserverApiKey;
+	process.exitCode = savedExitCode;
 	for (const dataDir of runtimeDirs) rmSync(dataDir, { recursive: true, force: true });
 	rmSync(codexHome, { recursive: true, force: true });
 });
@@ -156,6 +241,23 @@ function groupsFor(hooks: Record<string, CodexHookGroup[]>, event: string): Code
 
 function readConfigToml(): string {
 	return readFileSync(join(codexHome, "config.toml"), "utf-8");
+}
+
+function captureProcessOutput(): { chunks: string[]; restore(): void } {
+	const chunks: string[] = [];
+	const capture = (chunk: unknown): true => {
+		chunks.push(String(chunk));
+		return true;
+	};
+	const stdout = vi.spyOn(process.stdout, "write").mockImplementation(capture);
+	const stderr = vi.spyOn(process.stderr, "write").mockImplementation(capture);
+	return {
+		chunks,
+		restore: () => {
+			stdout.mockRestore();
+			stderr.mockRestore();
+		},
+	};
 }
 
 describe("codexConfigDir", () => {
@@ -1022,6 +1124,374 @@ describe("setup command options", () => {
 		await setupCommand.parseAsync(["node", "codemem", "--opencode-only", "--force"]);
 		expect(process.exitCode).toBe(1);
 		expect(lstatSync(blockedWrapperPath).isDirectory()).toBe(true);
+	});
+});
+
+describe("T007 Slice 1 setup activation", () => {
+	it("defaults to Claude Code and Codex while retaining only the legacy OpenCode lane flag", () => {
+		const options = setupCommand.options.map((option) => option.long);
+		expect(options).toEqual(
+			expect.arrayContaining(["--claude-only", "--codex-only", "--opencode-only"]),
+		);
+		expect(setupCommand.description()).toMatch(/Claude Code.*Codex/i);
+	});
+
+	it("publishes one owner-only Claude+Codex activation and removes its journal", async () => {
+		const dataDir = join(codexHome, "slice1-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		const capabilitiesDir = join(dataDir, "control", "capabilities");
+		const currentPath = join(capabilitiesDir, "current");
+		const receiptPath = join(capabilitiesDir, "activation-receipt.json");
+		const journalPath = join(capabilitiesDir, "setup-transaction.json");
+		const installManifestPath = join(dataDir, "control", "install-manifest.json");
+		expect(setupPrompts.confirmCalls).toBe(1);
+		expect(process.exitCode).toBeUndefined();
+		expect(existsSync(join(codexHome, ".config", "opencode"))).toBe(false);
+		expect(existsSync(join(claudeHome, "settings.json"))).toBe(true);
+		expect(existsSync(join(codexHome, "config.toml"))).toBe(true);
+		const current = readFileSync(currentPath, "utf8").trim();
+		expect(current).toMatch(/^sha256:[a-f0-9]{64}$/);
+		expect(readFileSync(receiptPath, "utf8")).toContain(current);
+		expect(existsSync(join(capabilitiesDir, "manifests", `${current}.json`))).toBe(true);
+		expect(existsSync(journalPath)).toBe(false);
+		for (const path of [currentPath, receiptPath, installManifestPath]) {
+			expect(lstatSync(path).mode & 0o777, path).toBe(0o600);
+		}
+		const targetIds = (
+			JSON.parse(readFileSync(installManifestPath, "utf8")) as {
+				targets: Array<{ id: string }>;
+			}
+		).targets.map((target) => target.id);
+		expect(targetIds).toEqual(
+			expect.arrayContaining([
+				"claude-hook-runtime",
+				"claude-hooks",
+				"claude-mcp",
+				"cli-runtime",
+				"codex-hook-runtime",
+				"codex-hooks",
+				"codex-mcp",
+			]),
+		);
+		expect(targetIds.some((id) => id.startsWith("opencode"))).toBe(false);
+	});
+
+	it("rejects overlapping resolved Claude and Codex targets before setup mutation", async () => {
+		const dataDir = join(codexHome, "overlap-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		process.env.CLAUDE_CONFIG_DIR = codexHome;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem"]);
+		} finally {
+			output.restore();
+		}
+
+		expect(setupPrompts.confirmCalls).toBe(1);
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/target paths.*overlap/i);
+		for (const path of [
+			join(codexHome, "settings.json"),
+			join(codexHome, ".claude.json"),
+			join(codexHome, "config.toml"),
+			join(codexHome, "hooks.json"),
+			join(codexHome, "codemem-hook-runtime.mjs"),
+			join(dataDir, "control", "install-manifest.json"),
+			join(dataDir, "control", "capabilities", "setup-transaction.json"),
+			join(dataDir, "control", "capabilities", "current"),
+		]) {
+			expect(existsSync(path), path).toBe(false);
+		}
+	});
+
+	it("discloses before the lifecycle lock, then refuses a daemon that starts at confirmation", async () => {
+		const dataDir = join(codexHome, "interleaving-data");
+		const secret = "t007-secret-must-not-render";
+		const output = captureProcessOutput();
+		let daemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
+		let disclosedBeforeConfirm = false;
+		let storageAbsentBeforeConfirm = false;
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		process.env.FREE_MEM_SUMMARY_API_KEY = secret;
+		setupPrompts.onConfirm = async () => {
+			const rendered = output.chunks.join("");
+			disclosedBeforeConfirm =
+				rendered.includes(setupPrompts.endpointUrl) &&
+				rendered.includes("openai_chat_completions_v1");
+			storageAbsentBeforeConfirm = !existsSync(dataDir);
+			daemon = await startDaemon({ dataDir });
+		};
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem"]);
+		} finally {
+			output.restore();
+			await daemon?.stop();
+		}
+
+		expect(setupPrompts.confirmCalls).toBe(1);
+		expect(disclosedBeforeConfirm).toBe(true);
+		expect(storageAbsentBeforeConfirm).toBe(true);
+		expect(daemon).toBeDefined();
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/daemon.*running|running.*daemon/i);
+		expect(output.chunks.join("")).not.toContain(secret);
+		expect(existsSync(join(claudeHome, "settings.json"))).toBe(false);
+		expect(existsSync(join(codexHome, "config.toml"))).toBe(false);
+		expect(existsSync(join(dataDir, "control", "capabilities", "current"))).toBe(false);
+	});
+
+	it("recovers a transaction created while confirmation was pending before publishing", async () => {
+		const dataDir = join(codexHome, "confirmation-race-data");
+		const capabilitiesDir = join(dataDir, "control", "capabilities");
+		const journalPath = join(capabilitiesDir, "setup-transaction.json");
+		const sentinelPath = join(codexHome, "confirmation-race-sentinel.txt");
+		const untouchedPath = join(codexHome, "confirmation-race-untouched.txt");
+		const fileState = (contents: string | null) => ({
+			contentsBase64: contents === null ? null : Buffer.from(contents).toString("base64"),
+			mode: contents === null ? null : 0o600,
+			sha256: contents === null ? null : createHash("sha256").update(contents).digest("hex"),
+		});
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		setupPrompts.onConfirm = () => {
+			mkdirSync(capabilitiesDir, { recursive: true, mode: 0o700 });
+			writeFileSync(sentinelPath, "partial\n", { mode: 0o600 });
+			writeFileSync(
+				journalPath,
+				`${JSON.stringify({
+					version: 1,
+					phase: "prepared",
+					configurationFingerprint: `sha256:${"a".repeat(64)}`,
+					targets: [
+						{
+							path: sentinelPath,
+							before: fileState("original\n"),
+							after: fileState("partial\n"),
+						},
+						{
+							path: untouchedPath,
+							before: fileState(null),
+							after: fileState("planned\n"),
+						},
+					],
+				})}\n`,
+				{ mode: 0o600 },
+			);
+		};
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(sentinelPath, "utf8")).toBe("original\n");
+		expect(existsSync(untouchedPath)).toBe(false);
+		expect(existsSync(journalPath)).toBe(false);
+		expect(existsSync(join(dataDir, "control", "capabilities", "current"))).toBe(false);
+	});
+
+	it("fails an invalid TLS peer before editor mutation or HTTP credential/payload bytes", async () => {
+		const dataDir = join(codexHome, "tls-data");
+		const secret = "t007-tls-secret";
+		const received: Buffer[] = [];
+		const server = await new Promise<import("node:net").Server>((resolveServer) => {
+			const listener = createServer((socket) => {
+				socket.on("data", (chunk) => {
+					received.push(Buffer.from(chunk));
+					socket.destroy();
+				});
+			});
+			listener.listen(0, "127.0.0.1", () => resolveServer(listener));
+		});
+		const address = server.address();
+		if (!address || typeof address === "string") throw new Error("expected TCP test address");
+		setupPrompts.endpointUrl = `https://127.0.0.1:${address.port}/v1/chat/completions`;
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		process.env.FREE_MEM_SUMMARY_API_KEY = secret;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem"]);
+		} finally {
+			output.restore();
+			await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+		}
+
+		const wire = Buffer.concat(received).toString("latin1");
+		expect(setupPrompts.confirmCalls).toBe(1);
+		expect(received.length).toBeGreaterThan(0);
+		expect(process.exitCode).toBe(1);
+		expect(wire).not.toMatch(/POST|\/v1\/chat\/completions/i);
+		expect(wire).not.toContain(secret);
+		expect(output.chunks.join("")).not.toContain(secret);
+		expect(existsSync(join(claudeHome, "settings.json"))).toBe(false);
+		expect(existsSync(join(codexHome, "config.toml"))).toBe(false);
+		expect(existsSync(join(dataDir, "control", "capabilities", "current"))).toBe(false);
+	});
+
+	it("rolls back every published target when a known-state publication fails", async () => {
+		const dataDir = join(codexHome, "rollback-data");
+		const capabilitiesDir = join(dataDir, "control", "capabilities");
+		const receiptPath = join(capabilitiesDir, "activation-receipt.json");
+		const journalPath = join(capabilitiesDir, "setup-transaction.json");
+		const claudeSettingsPath = join(claudeHome, "settings.json");
+		const claudeMcpPath = join(claudeHome, ".claude.json");
+		const codexConfigPath = join(codexHome, "config.toml");
+		const codexHooksPath = join(codexHome, "hooks.json");
+		const before = new Map<string, string>([
+			[claudeSettingsPath, '{"user":"claude-settings-before"}\n'],
+			[claudeMcpPath, '{"user":"claude-mcp-before"}\n'],
+			[codexConfigPath, "# codex-before\n"],
+			[codexHooksPath, '{"hooks":{},"user":"codex-hooks-before"}\n'],
+		]);
+		for (const [path, contents] of before) {
+			mkdirSync(dirname(path), { recursive: true });
+			writeFileSync(path, contents, "utf8");
+		}
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		setupSnapshotRace.afterLink = receiptPath;
+		setupSnapshotRace.mutationPath = capabilitiesDir;
+		setupSnapshotRace.mutationText = "force EISDIR after receipt publication";
+
+		await setupCommand.parseAsync(["node", "codemem", "--force"]);
+
+		expect(setupPrompts.confirmCalls).toBe(1);
+		expect(process.exitCode).toBe(1);
+		for (const [path, contents] of before) {
+			expect(readFileSync(path, "utf8"), path).toBe(contents);
+		}
+		expect(existsSync(receiptPath)).toBe(false);
+		expect(existsSync(join(capabilitiesDir, "current"))).toBe(false);
+		expect(existsSync(journalPath)).toBe(false);
+		expect(existsSync(join(codexHome, ".config", "opencode"))).toBe(false);
+	});
+
+	it("retains the journal and changes no target during recovery after external current drift", async () => {
+		const dataDir = join(codexHome, "external-drift-data");
+		const capabilitiesDir = join(dataDir, "control", "capabilities");
+		const receiptPath = join(capabilitiesDir, "activation-receipt.json");
+		const currentPath = join(capabilitiesDir, "current");
+		const journalPath = join(capabilitiesDir, "setup-transaction.json");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		setupSnapshotRace.afterLink = receiptPath;
+		setupSnapshotRace.mutationPath = currentPath;
+		setupSnapshotRace.mutationText = "external-current-edit\n";
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		expect(setupPrompts.confirmCalls).toBe(1);
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(currentPath, "utf8")).toBe("external-current-edit\n");
+		expect(existsSync(journalPath)).toBe(true);
+		const watched = [
+			join(claudeHome, "settings.json"),
+			join(claudeHome, ".claude.json"),
+			join(codexHome, "config.toml"),
+			join(codexHome, "hooks.json"),
+			receiptPath,
+			currentPath,
+			journalPath,
+		];
+		const beforeRecovery = new Map(
+			watched.map((path) => [path, existsSync(path) ? readFileSync(path) : null]),
+		);
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		expect(process.exitCode).toBe(1);
+		for (const [path, contents] of beforeRecovery) {
+			expect(existsSync(path), path).toBe(contents !== null);
+			if (contents !== null) expect(readFileSync(path), path).toEqual(contents);
+		}
+		expect(existsSync(journalPath)).toBe(true);
+	});
+
+	it("rejects incompatible legacy provider candidates without displaying legacy secrets", async () => {
+		const dataDir = join(codexHome, "legacy-conflict-data");
+		const configPath = join(codexHome, "legacy-observer.json");
+		const secret = "t007-inline-legacy-secret";
+		writeFileSync(
+			configPath,
+			`${JSON.stringify({
+				observer_provider: "openai",
+				observer_model: "legacy-openai-model",
+				observer_base_url: "https://summary.stub.invalid/v1/chat/completions",
+				observer_api_key: secret,
+				observer_tier_routing_enabled: true,
+				observer_simple_provider: "anthropic",
+				observer_simple_model: "legacy-anthropic-model",
+				observer_rich_provider: "openai",
+				observer_rich_model: "legacy-openai-model",
+			})}\n`,
+			"utf8",
+		);
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		process.env.CODEMEM_CONFIG = configPath;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem"]);
+		} finally {
+			output.restore();
+		}
+
+		expect(process.exitCode).toBe(1);
+		expect(setupPrompts.confirmCalls).toBe(0);
+		expect(output.chunks.join("")).toMatch(/legacy.*conflict|conflicting.*legacy/i);
+		expect(output.chunks.join("")).not.toContain(secret);
+		expect(existsSync(join(claudeHome, "settings.json"))).toBe(false);
+		expect(existsSync(join(codexHome, "config.toml"))).toBe(false);
+		expect(existsSync(join(dataDir, "control", "capabilities", "current"))).toBe(false);
+	});
+
+	it("records sorted legacy env dispositions without copying secret values", async () => {
+		const dataDir = join(codexHome, "legacy-env-data");
+		const credentialSentinel = ["t007", "legacy", "env", "sentinel"].join("-");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		process.env.CODEMEM_OBSERVER_PROVIDER = "openai";
+		process.env.CODEMEM_OBSERVER_MODEL = "legacy-model";
+		process.env.CODEMEM_OBSERVER_API_KEY = credentialSentinel;
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		const capabilitiesDir = join(dataDir, "control", "capabilities");
+		const current = readFileSync(join(capabilitiesDir, "current"), "utf8").trim();
+		const manifestText = readFileSync(
+			join(capabilitiesDir, "manifests", `${current}.json`),
+			"utf8",
+		);
+		const manifest = JSON.parse(manifestText) as {
+			legacyDispositions: Array<{ key: string; disposition: string }>;
+		};
+		expect(manifest.legacyDispositions).toEqual([
+			{ key: "observer_api_key", disposition: "ignored" },
+			{ key: "observer_model", disposition: "overridden" },
+			{ key: "observer_provider", disposition: "overridden" },
+		]);
+		expect(manifestText).not.toContain(credentialSentinel);
+	});
+
+	it("rejects incompatible legacy model candidates for one provider", async () => {
+		const dataDir = join(codexHome, "legacy-model-conflict-data");
+		const configPath = join(codexHome, "legacy-model-conflict.json");
+		writeFileSync(
+			configPath,
+			JSON.stringify({
+				observer_provider: "openai",
+				observer_simple_provider: "openai",
+				observer_model: "legacy-model-a",
+				observer_simple_model: "legacy-model-b",
+			}),
+		);
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		process.env.CODEMEM_CONFIG = configPath;
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		expect(process.exitCode).toBe(1);
+		expect(setupPrompts.confirmCalls).toBe(0);
+		expect(existsSync(join(dataDir, "control", "capabilities", "current"))).toBe(false);
 	});
 });
 

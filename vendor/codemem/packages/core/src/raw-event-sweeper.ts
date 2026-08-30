@@ -16,50 +16,15 @@
  * 7. Handle auth errors by setting backoff
  */
 
+import { defaultResourceProfile, type ResourceProfileV1 } from "./capability-manifest.js";
 import type { IngestOptions } from "./ingest-pipeline.js";
 import { ObserverAuthError } from "./observer-client.js";
-import { getCodememEnvOverrides, readCodememConfigFile } from "./observer-config.js";
 import { flushRawEvents } from "./raw-event-flush.js";
 import type { MemoryStore } from "./store.js";
-
-const MS_PER_DAY = 86_400_000;
 
 /** Back off after an auth error. 60s gives OpenCode time to refresh its
  *  OAuth token while staying longer than the default 30s sweep interval. */
 const AUTH_BACKOFF_S = 60;
-
-// ---------------------------------------------------------------------------
-// Env helpers — read config from env vars matching Python exactly
-// ---------------------------------------------------------------------------
-
-function envInt(name: string, fallback: number): number {
-	const value = process.env[name];
-	if (value == null) return fallback;
-	const parsed = Number.parseInt(value, 10);
-	return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function parseIntOr(value: unknown, fallback: number): number {
-	if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
-	if (typeof value === "string" && /^-?\d+$/.test(value.trim()))
-		return Number.parseInt(value.trim(), 10);
-	return fallback;
-}
-
-function parseBoolOr(value: unknown, fallback: boolean): boolean {
-	if (typeof value === "boolean") return value;
-	if (typeof value === "string") {
-		const normalized = value.trim().toLowerCase();
-		if (["1", "true", "yes", "on"].includes(normalized)) return true;
-		if (["0", "false", "no", "off"].includes(normalized)) return false;
-	}
-	return fallback;
-}
-
-function envBoolDisabled(name: string): boolean {
-	const value = (process.env[name] ?? "1").trim().toLowerCase();
-	return value === "0" || value === "false" || value === "off";
-}
 
 // ---------------------------------------------------------------------------
 // RawEventSweeper
@@ -68,6 +33,7 @@ function envBoolDisabled(name: string): boolean {
 export class RawEventSweeper {
 	private readonly store: MemoryStore;
 	private readonly ingestOpts: IngestOptions;
+	private readonly profile: ResourceProfileV1;
 	private active = false;
 	private running = false; // reentrancy guard — prevents overlapping ticks
 	private currentTick: Promise<void> | null = null;
@@ -82,7 +48,8 @@ export class RawEventSweeper {
 
 	constructor(store: MemoryStore, ingestOpts: IngestOptions) {
 		this.store = store;
-		this.ingestOpts = ingestOpts;
+		this.profile = ingestOpts.resourceProfile ?? defaultResourceProfile();
+		this.ingestOpts = { ...ingestOpts, resourceProfile: this.profile };
 	}
 
 	// -----------------------------------------------------------------------
@@ -90,71 +57,39 @@ export class RawEventSweeper {
 	// -----------------------------------------------------------------------
 
 	private enabled(): boolean {
-		return !envBoolDisabled("CODEMEM_RAW_EVENTS_SWEEPER");
+		return true;
 	}
 
 	private intervalMs(): number {
-		const envValue = process.env.CODEMEM_RAW_EVENTS_SWEEPER_INTERVAL_MS;
-		if (envValue != null) {
-			const parsed = Number.parseInt(envValue, 10);
-			return Number.isFinite(parsed) ? Math.max(1000, parsed) : 30_000;
-		}
-		const configValue = readCodememConfigFile().raw_events_sweeper_interval_s;
-		const configSeconds =
-			typeof configValue === "number"
-				? configValue
-				: typeof configValue === "string"
-					? Number.parseInt(configValue, 10)
-					: Number.NaN;
-		if (Number.isFinite(configSeconds) && configSeconds > 0) {
-			return Math.max(1000, configSeconds * 1000);
-		}
-		return 30_000;
+		return this.profile.periodicSweepIntervalMs;
 	}
 
 	private idleMs(): number {
-		return envInt("CODEMEM_RAW_EVENTS_SWEEPER_IDLE_MS", 120_000);
+		return this.profile.idleFlushMs;
 	}
 
 	private limit(): number {
-		return envInt("CODEMEM_RAW_EVENTS_SWEEPER_LIMIT", 25);
+		return this.profile.processingQueueCapacity;
 	}
 
 	private workerMaxEvents(): number | null {
-		const parsed = envInt("CODEMEM_RAW_EVENTS_WORKER_MAX_EVENTS", 100);
-		return parsed <= 0 ? null : parsed;
+		return this.profile.maxSourceEventsPerJob;
 	}
 
 	private retentionMs(): number {
-		// The raw_events_retention_enabled / _max_age_days keys (config file with
-		// env overrides applied) are the authoritative control. An EXPLICIT value
-		// wins — enabled=true purges by age in days, and an explicit
-		// enabled=false disables retention even if a stale legacy
-		// CODEMEM_RAW_EVENTS_RETENTION_MS is still set. Only when the key is
-		// absent do we fall back to that legacy env var for back-compat.
-		const raw: Record<string, unknown> = { ...readCodememConfigFile() };
-		const envOverrides = getCodememEnvOverrides();
-		for (const key of Object.keys(envOverrides)) {
-			const value = process.env[envOverrides[key] as string];
-			if (value != null) raw[key] = value;
-		}
-		if (raw.raw_events_retention_enabled !== undefined) {
-			if (!parseBoolOr(raw.raw_events_retention_enabled, false)) return 0;
-			return Math.max(1, parseIntOr(raw.raw_events_retention_max_age_days, 90)) * MS_PER_DAY;
-		}
-		return envInt("CODEMEM_RAW_EVENTS_RETENTION_MS", 0);
+		return this.profile.rawEventRetentionEnabled ? this.profile.rawEventRetentionMs : 0;
 	}
 
 	private autoFlushEnabled(): boolean {
-		return (process.env.CODEMEM_RAW_EVENTS_AUTO_FLUSH ?? "").trim() === "1";
+		return true;
 	}
 
 	private debounceMs(): number {
-		return envInt("CODEMEM_RAW_EVENTS_DEBOUNCE_MS", 60_000);
+		return this.profile.eventDebounceMs;
 	}
 
 	private stuckBatchMs(): number {
-		return envInt("CODEMEM_RAW_EVENTS_STUCK_BATCH_MS", 300_000);
+		return this.profile.stuckClaimTimeoutMs;
 	}
 
 	// -----------------------------------------------------------------------

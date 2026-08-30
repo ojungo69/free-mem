@@ -3,6 +3,12 @@ import { appendFileSync, chmodSync, existsSync, readFileSync, unlinkSync } from 
 import { createConnection, createServer, type Server } from "node:net";
 import { resolve } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
+import {
+	captureOnlyCapabilityProjection,
+	ProviderTlsPreflightError,
+	preflightProviderTls,
+	safeManifestProjection,
+} from "./capability-manifest.js";
 import { type CanonicalWriter, openCanonicalWriter } from "./daemon-canonical.js";
 import { DaemonJobService } from "./daemon-jobs.js";
 import { DaemonOperationService, recoverDaemonRestoresBeforeOpen } from "./daemon-operations.js";
@@ -12,13 +18,21 @@ import {
 	buildNormalizedEventFromClaudeHook,
 	buildNormalizedEventFromCodexHook,
 } from "./normalized-event.js";
-import { ObserverClient } from "./observer-client.js";
 import { createDailyBackup } from "./online-backup.js";
-import { RawEventSweeper } from "./raw-event-sweeper.js";
+import type { RawEventSweeper } from "./raw-event-sweeper.js";
 import { warmRedactionWorker } from "./redaction-worker.js";
-import { drainLegacySpool, importReadySpoolEntries, spoolMutation } from "./spool.js";
 import {
+	acquireSpoolLock,
+	drainLegacySpool,
+	importReadySpoolEntries,
+	spoolMutation,
+} from "./spool.js";
+import {
+	acquireCapabilityLifecycleLock,
 	ensureStorageLayout,
+	readCurrentCapabilityManifest,
+	readValidatedCapabilityActivationReceipt,
+	recoverCapabilitySetupTransaction,
 	recoverStorageJournal,
 	resolveStorageLayout,
 	type StorageLayout,
@@ -54,8 +68,13 @@ export type DaemonHandle = {
 	lockPath: string;
 	socketPath: string;
 	identityPath: string;
+	capability: DaemonCapabilityState;
 	stop(): Promise<void>;
 };
+
+export type DaemonCapabilityState =
+	| ReturnType<typeof captureOnlyCapabilityProjection>
+	| ReturnType<typeof safeManifestProjection>;
 
 type LiveDaemon = {
 	lock: BetterSqlite3.Database;
@@ -64,7 +83,7 @@ type LiveDaemon = {
 	layout: StorageLayout;
 	writer: WriterActor;
 	store: MemoryStore;
-	sweeper: RawEventSweeper;
+	sweeper: RawEventSweeper | null;
 	jobs: DaemonJobService;
 	spoolSweepTimer: ReturnType<typeof setInterval>;
 	backupSweepTimer: ReturnType<typeof setInterval> | null;
@@ -180,6 +199,30 @@ function acquireWriterLock(lockPath: string): BetterSqlite3.Database {
 	}
 }
 
+export function probeDaemonWriterAvailable(dataDir: string): boolean {
+	let lease: ReturnType<typeof acquireDaemonWriterLease>;
+	try {
+		lease = acquireDaemonWriterLease(dataDir);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (/already running|busy|locked|SQLITE_BUSY/i.test(message)) return false;
+		throw error;
+	}
+	lease.close();
+	return true;
+}
+
+export function acquireDaemonWriterLease(dataDir: string): { close(): void } {
+	const layout = resolveStorageLayout(dataDir);
+	ensureStorageLayout(layout);
+	const lock = acquireWriterLock(layout.lockPath);
+	return {
+		close(): void {
+			if (lock.open) lock.close();
+		},
+	};
+}
+
 function bindPrivateSocket(socketPath: string, rpc: DaemonRpcContext): Promise<Server> {
 	if (existsSync(socketPath)) unlinkSync(socketPath);
 	const server = createServer((connection) => {
@@ -210,7 +253,7 @@ async function releaseResources(layout: StorageLayout, live?: LiveDaemon): Promi
 			// server may already be closed
 		}
 		await live.jobs.stop();
-		await live.sweeper.stop();
+		await live.sweeper?.stop();
 		try {
 			live.store.close();
 		} catch {
@@ -270,16 +313,49 @@ export async function startDaemon(options: {
 	const layout = resolveStorageLayout(options.dataDir);
 	ensureStorageLayout(layout);
 	warmRedactionWorker();
-
-	const lock = acquireWriterLock(layout.lockPath);
+	const lifecycle = acquireCapabilityLifecycleLock(layout);
+	let setupLock: ReturnType<typeof acquireSpoolLock> | undefined;
+	let lock: BetterSqlite3.Database;
+	try {
+		setupLock = acquireSpoolLock(layout.dataDir);
+		lock = acquireWriterLock(layout.lockPath);
+	} catch (error) {
+		setupLock?.close();
+		lifecycle.close();
+		throw error;
+	}
 
 	let canonical: CanonicalWriter | undefined;
-	let sweeper: RawEventSweeper | undefined;
+	const sweeper: RawEventSweeper | null = null;
 	let jobs: DaemonJobService | undefined;
 	let server: Server | undefined;
 	let started = false;
 	try {
+		recoverCapabilitySetupTransaction(layout, lifecycle);
+		setupLock?.close();
+		setupLock = undefined;
 		recoverStorageJournal(layout);
+		const manifest = readCurrentCapabilityManifest(layout);
+		let capability: DaemonCapabilityState = captureOnlyCapabilityProjection();
+		if (manifest) {
+			let activationReceipt: "absent" | "validated" | "rejected" = "absent";
+			try {
+				if (readValidatedCapabilityActivationReceipt(layout, manifest)) {
+					activationReceipt = "validated";
+				}
+			} catch {
+				activationReceipt = "rejected";
+			}
+			let providerHealth: "available" | "provider_unavailable" | "provider_tls_rejected" =
+				"available";
+			try {
+				await preflightProviderTls(manifest.summaryProvider);
+			} catch (error) {
+				providerHealth =
+					error instanceof ProviderTlsPreflightError ? error.reason : "provider_unavailable";
+			}
+			capability = safeManifestProjection(manifest, providerHealth, activationReceipt);
+		}
 		await cutoverLegacyLayoutIfNeeded(layout);
 		recoverDaemonRestoresBeforeOpen(layout.dataDir);
 		canonical = await openCanonicalWriter(layout);
@@ -291,15 +367,8 @@ export async function startDaemon(options: {
 			fingerprint: liveIdentity.fingerprint,
 			nonce: randomUUID(),
 		};
-		const observer = new ObserverClient();
-		sweeper = new RawEventSweeper(canonical.store, { observer });
-		sweeper.start();
-		const maintenanceSweeper = sweeper;
-		jobs = new DaemonJobService(canonical.store, {
-			dataDir: layout.dataDir,
-			beforeMaintenance: () => maintenanceSweeper.stop(),
-			afterMaintenance: () => maintenanceSweeper.start(),
-		});
+		const observer = null;
+		jobs = new DaemonJobService(canonical.store, { dataDir: layout.dataDir, capability });
 		const operations = new DaemonOperationService(canonical.store, jobs, layout.dataDir);
 		const rpc: DaemonRpcContext = {
 			identity,
@@ -313,9 +382,15 @@ export async function startDaemon(options: {
 				instanceId: identity.nonce,
 				now: options.now,
 			}),
-			viewerRead: createViewerReadHandler({ store: canonical.store, sweeper, observer }),
+			viewerRead: createViewerReadHandler({
+				store: canonical.store,
+				sweeper,
+				observer,
+				capability,
+			}),
 			jobs,
 			operations,
+			capability,
 			restoreState: { active: false },
 			onStop: () => {
 				const current = liveDaemons.get(layout.dataDir);
@@ -334,31 +409,32 @@ export async function startDaemon(options: {
 				console.error("[codemem] spool sweep failed; ready entries were retained.");
 			}
 		};
-		const drained = await drainLegacySpool(layout.dataDir, (source, payload) => {
-			const event =
-				source === "claude"
-					? buildNormalizedEventFromClaudeHook(payload)
-					: buildNormalizedEventFromCodexHook(payload);
-			if (!event) return false;
-			const idempotencyKey = String(event.idempotencyKey);
-			return (
-				spoolMutation(
-					{
-						method: "POST /v1/events",
-						idempotencyKey,
-						body: { idempotencyKey, event },
-					},
-					{ dataDir: layout.dataDir },
-				).status !== "dropped"
-			);
-		});
-		if (drained.failed > 0) {
-			console.error("[codemem] some legacy spool entries were retained for retry.");
-		}
-		sweepSpool();
+		const drainSpoolAfterStartup = async () => {
+			const drained = await drainLegacySpool(layout.dataDir, (source, payload) => {
+				const event =
+					source === "claude"
+						? buildNormalizedEventFromClaudeHook(payload)
+						: buildNormalizedEventFromCodexHook(payload);
+				if (!event) return false;
+				const idempotencyKey = String(event.idempotencyKey);
+				return (
+					spoolMutation(
+						{
+							method: "POST /v1/events",
+							idempotencyKey,
+							body: { idempotencyKey, event },
+						},
+						{ dataDir: layout.dataDir },
+					).status !== "dropped"
+				);
+			});
+			if (drained.failed > 0) {
+				console.error("[codemem] some legacy spool entries were retained for retry.");
+			}
+			sweepSpool();
+		};
 		server = await bindPrivateSocket(layout.socketPath, rpc);
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
-		jobs.startInternalBackfills();
 		const spoolSweepTimer = setInterval(sweepSpool, 1_000);
 		spoolSweepTimer.unref();
 		const live: LiveDaemon = {
@@ -399,6 +475,13 @@ export async function startDaemon(options: {
 		live.backupSweepTimer.unref();
 		liveDaemons.set(layout.dataDir, live);
 		started = true;
+		lifecycle.close();
+		try {
+			await drainSpoolAfterStartup();
+		} catch {
+			console.error("[codemem] startup spool drain failed; entries were retained.");
+		}
+		jobs.startInternalBackfills();
 		return {
 			dataDir: layout.dataDir,
 			layout,
@@ -406,6 +489,7 @@ export async function startDaemon(options: {
 			lockPath: layout.lockPath,
 			socketPath: layout.socketPath,
 			identityPath: layout.identityPath,
+			capability,
 			stop: async () => {
 				const current = liveDaemons.get(layout.dataDir);
 				if (!current || !sameIdentity(current.identity, identity)) return;
@@ -414,7 +498,6 @@ export async function startDaemon(options: {
 		};
 	} catch (error) {
 		if (jobs) await jobs.stop();
-		if (sweeper) await sweeper.stop();
 		if (canonical) {
 			try {
 				canonical.store.close();
@@ -455,6 +538,8 @@ export async function startDaemon(options: {
 				// lock must not leak if startup fails after acquire
 			}
 		}
+		if (!started) setupLock?.close();
+		lifecycle.close();
 	}
 }
 

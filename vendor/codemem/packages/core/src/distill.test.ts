@@ -15,10 +15,22 @@ import {
 	selectDistillCorpus,
 } from "./distill.js";
 import { resolveEmbeddingModel, serializeFloat32 } from "./embeddings.js";
+import * as core from "./index.js";
 import type { MemoryStore } from "./store.js";
 import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 
 describe("distill", () => {
+	it("keeps corpus and report entry points on the internal benchmark module", () => {
+		for (const name of [
+			"selectDistillCorpus",
+			"buildDistillReport",
+			"createContextFactDetector",
+			"emitDistillCandidates",
+		]) {
+			expect(Reflect.has(core, name), `${name} must not be exported by @codemem/core`).toBe(false);
+		}
+	});
+
 	let tmpDir: string;
 	let dbPath: string;
 	let store: MemoryStore;

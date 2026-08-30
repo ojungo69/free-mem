@@ -1,8 +1,13 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadObserverConfig, ObserverClient } from "./observer-client.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { compileProviderChoice } from "./capability-manifest.js";
+import {
+	createLegacyObserverClient,
+	loadObserverConfig,
+	ObserverClient,
+} from "./observer-client.js";
 
 function fixtureToken(label: string): string {
 	return ["fixture", label, "token"].join("-");
@@ -241,7 +246,7 @@ describe("loadObserverConfig", () => {
 describe("ObserverClient", () => {
 	describe("constructor", () => {
 		it("defaults tier routing on for capability-safe api_http providers when not explicitly set", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-5.4-mini",
 				observerRuntime: "api_http",
@@ -259,7 +264,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("keeps tier routing off when the user explicitly disables it", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-5.4-mini",
 				observerRuntime: "api_http",
@@ -279,7 +284,7 @@ describe("ObserverClient", () => {
 
 		it("keeps default tier routing off when a custom base URL is configured", () => {
 			const observerApiKey = fixtureToken("custom-base-url");
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-5.4-mini",
 				observerRuntime: "api_http",
@@ -298,7 +303,7 @@ describe("ObserverClient", () => {
 
 		it("keeps default tier routing off for unmapped api_http providers", () => {
 			const observerApiKey = fixtureToken("unmapped-provider");
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "opencode",
 				observerModel: "opencode/gpt-5.4-mini",
 				observerRuntime: "api_http",
@@ -330,7 +335,7 @@ describe("ObserverClient", () => {
 			}
 
 			for (const observerRuntime of ["claude_sidecar", "codex_sidecar"]) {
-				const client = new ObserverClient({
+				const client = createLegacyObserverClient({
 					observerProvider: "openai",
 					observerModel: "gpt-5.4-mini",
 					observerRuntime,
@@ -350,7 +355,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("defaults to openai provider and default model", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: null,
 				observerModel: null,
 				observerRuntime: null,
@@ -371,7 +376,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("falls back to deterministic default temperature when omitted", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: null,
 				observerRuntime: null,
@@ -388,7 +393,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("uses anthropic provider and default model when configured", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "anthropic",
 				observerModel: null,
 				observerRuntime: null,
@@ -407,7 +412,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("uses configured model when provided", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-4o",
 				observerRuntime: null,
@@ -434,7 +439,7 @@ describe("ObserverClient", () => {
 
 		it("defaults OpenAI api_http clients to Responses when transport is not explicitly set", () => {
 			const observerApiKey = fixtureToken("openai-responses-default");
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-5.4-mini",
 				observerRuntime: "api_http",
@@ -453,7 +458,7 @@ describe("ObserverClient", () => {
 
 		it("ignores explicit false for official OpenAI api_http Responses usage", () => {
 			const observerApiKey = fixtureToken("openai-responses-disabled");
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-5.4-mini",
 				observerRuntime: "api_http",
@@ -473,7 +478,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("round-trips per-tier provider overrides through toConfig", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-5.4-mini",
 				observerRuntime: null,
@@ -497,7 +502,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("preserves auth source details in toConfig", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-5.4-mini",
 				observerRuntime: null,
@@ -518,7 +523,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("infers anthropic from claude model prefix", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: null,
 				observerModel: "claude-haiku-4-5",
 				observerRuntime: null,
@@ -547,7 +552,7 @@ describe("ObserverClient", () => {
 					JSON.stringify({ small_model: "opencode/gpt-5-nano" }),
 				);
 				process.env.HOME = tmpDir;
-				const client = new ObserverClient({
+				const client = createLegacyObserverClient({
 					observerProvider: null,
 					observerModel: "opencode/gpt-5.4-mini",
 					observerRuntime: null,
@@ -572,7 +577,7 @@ describe("ObserverClient", () => {
 
 		it("preserves explicit observer_base_url for opencode built-in provider", () => {
 			const observerApiKey = fixtureToken("opencode-base-url");
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "opencode",
 				observerModel: "opencode/gpt-5.4-mini",
 				observerRuntime: null,
@@ -594,7 +599,7 @@ describe("ObserverClient", () => {
 
 	describe("getStatus", () => {
 		it("returns expected shape", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: "gpt-4.1-mini",
 				observerRuntime: null,
@@ -617,7 +622,7 @@ describe("ObserverClient", () => {
 		});
 
 		it("includes lastError when set", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: null,
 				observerRuntime: null,
@@ -639,7 +644,7 @@ describe("ObserverClient", () => {
 
 		it("reports auth type based on resolved credentials", () => {
 			const observerApiKey = fixtureToken("auth-status");
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: null,
 				observerRuntime: null,
@@ -660,7 +665,7 @@ describe("ObserverClient", () => {
 
 	describe("refreshAuth", () => {
 		it("does not throw", () => {
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "openai",
 				observerModel: null,
 				observerRuntime: null,
@@ -690,7 +695,7 @@ describe("ObserverClient.observe()", () => {
 	});
 
 	function makeClient(provider: string, apiKey: string): ObserverClient {
-		return new ObserverClient({
+		return createLegacyObserverClient({
 			observerProvider: provider,
 			observerModel: null,
 			observerRuntime: null,
@@ -778,7 +783,7 @@ describe("ObserverClient.observe()", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "openai",
 			observerModel: "gpt-5.4-mini",
 			observerRuntime: "api_http",
@@ -814,7 +819,7 @@ describe("ObserverClient.observe()", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "openai",
 			observerModel: "gateway-model",
 			observerRuntime: "api_http",
@@ -855,7 +860,7 @@ describe("ObserverClient.observe()", () => {
 				}),
 				{ status: 200, headers: { "content-type": "application/json" } },
 			)) as typeof globalThis.fetch;
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			...makeClient("openai", observerApiKey).toConfig(),
 			observerBaseUrl: "https://gateway.example.test/v1",
 			observerOpenAIUseResponses: false,
@@ -898,7 +903,7 @@ describe("ObserverClient.observe()", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			...makeClient("openai", apiKey).toConfig(),
 			observerReasoningEffort: "medium",
 		});
@@ -916,7 +921,7 @@ describe("ObserverClient.observe()", () => {
 		expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
 		expect(result.usage).toEqual({ inputTokens: 211, outputTokens: 37, totalTokens: 248 });
 
-		const noReasoningClient = new ObserverClient({
+		const noReasoningClient = createLegacyObserverClient({
 			...makeClient("openai", apiKey).toConfig(),
 			observerReasoningEffort: "none",
 		});
@@ -936,7 +941,7 @@ describe("ObserverClient.observe()", () => {
 				headers: { "content-type": "application/json" },
 			});
 		}) as typeof globalThis.fetch;
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			...makeClient("openai", apiKey).toConfig(),
 			observerMaxChars: 100,
 		});
@@ -995,7 +1000,7 @@ describe("ObserverClient.observe()", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "lms-200",
 			observerModel: "qwopus-glm-18b-merged",
 			observerRuntime: "api_http",
@@ -1036,7 +1041,7 @@ describe("ObserverClient.observe()", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "openai",
 			observerModel: "gpt-5.4-mini",
 			observerRuntime: "api_http",
@@ -1096,7 +1101,7 @@ describe("ObserverClient.observe()", () => {
 
 		try {
 			process.env.HOME = tmpDir;
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "work",
 				observerModel: "work/fast",
 				observerRuntime: null,
@@ -1132,7 +1137,7 @@ describe("ObserverClient.observe()", () => {
 			return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "opencode",
 			observerModel: "opencode/gpt-5.4-mini",
 			observerRuntime: "api_http",
@@ -1169,7 +1174,7 @@ describe("ObserverClient.observe()", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "opencode",
 			observerModel: "opencode/gpt-5.4-mini",
 			observerRuntime: "api_http",
@@ -1233,7 +1238,7 @@ describe("ObserverClient.observe()", () => {
 
 		try {
 			process.env.HOME = tmpDir;
-			const client = new ObserverClient({
+			const client = createLegacyObserverClient({
 				observerProvider: "acme",
 				observerModel: "acme/foo",
 				observerRuntime: null,
@@ -1278,7 +1283,7 @@ describe("ObserverClient.observe()", () => {
 			);
 		}) as typeof globalThis.fetch;
 
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "openai",
 			observerModel: null,
 			observerRuntime: null,
@@ -1331,7 +1336,7 @@ describe("ObserverClient.observe()", () => {
 	});
 
 	it("returns null raw when no credentials available", async () => {
-		const client = new ObserverClient({
+		const client = createLegacyObserverClient({
 			observerProvider: "openai",
 			observerModel: null,
 			observerRuntime: null,
@@ -1347,5 +1352,378 @@ describe("ObserverClient.observe()", () => {
 
 		const result = await client.observe("system", "user");
 		expect(result.raw).toBeNull();
+	});
+});
+
+type ProviderChoiceV1Fixture = Record<string, unknown> & {
+	wireProtocol: "anthropic_messages_v1" | "openai_chat_completions_v1";
+	endpointUrl: string;
+	credentialRef: { kind: "none" } | { kind: "environment"; name: string };
+};
+
+const SLICE1_OBSERVER_PROFILE = {
+	observerRequestTimeoutMs: 60_000,
+	observerMaxInputChars: 12_000,
+	observerMaxOutputTokens: 4_000,
+	observerMaxResponseBytes: 1_048_576,
+	observerTemperature: 0.2,
+} as const;
+
+const OPENAI_CHOICE: ProviderChoiceV1Fixture = {
+	version: 1,
+	role: "summary",
+	state: "enabled",
+	wireProtocol: "openai_chat_completions_v1",
+	modelId: "deterministic-summary-model-v1",
+	modelRevision: "1",
+	endpointUrl: "https://summary.stub.invalid/v1/chat/completions",
+	credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
+	providerFingerprint: "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+	executionLocation: "remote",
+	egressPolicy: "explicit_remote",
+	costClass: "external_metered",
+	tlsPolicy: "system",
+	redirectPolicy: "reject",
+};
+
+const ANTHROPIC_CHOICE: ProviderChoiceV1Fixture = {
+	version: 1,
+	role: "summary",
+	state: "enabled",
+	wireProtocol: "anthropic_messages_v1",
+	modelId: "claude-test-model",
+	modelRevision: "1",
+	endpointUrl: "https://anthropic.example.test/v1/messages",
+	credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
+	providerFingerprint: "sha256:bf3bd6e2ca2101f691cda324eb8af40e869fff23452295d015e2e1784140dbac",
+	executionLocation: "remote",
+	egressPolicy: "explicit_remote",
+	costClass: "external_metered",
+	tlsPolicy: "system",
+	redirectPolicy: "reject",
+};
+
+const LOCAL_HTTP_CHOICE: ProviderChoiceV1Fixture = {
+	version: 1,
+	role: "summary",
+	state: "enabled",
+	wireProtocol: "openai_chat_completions_v1",
+	modelId: "local-test-model",
+	modelRevision: "1",
+	endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
+	credentialRef: { kind: "none" },
+	providerFingerprint: "sha256:25a39fe566639ba853f46884df5c44a323eca0cfe41e2ee2f700e1f518982d0b",
+	executionLocation: "local",
+	egressPolicy: "on_device",
+	costClass: "local_zero",
+	tlsPolicy: "not_applicable",
+	redirectPolicy: "reject",
+};
+
+type ManifestObserverConstructor = new (
+	provider: ProviderChoiceV1Fixture,
+	profile: typeof SLICE1_OBSERVER_PROFILE,
+) => ObserverClient;
+
+describe("ObserverClient Slice 1 manifest transport", () => {
+	const originalFetch = globalThis.fetch;
+	const originalSummaryKey = process.env.FREE_MEM_SUMMARY_API_KEY;
+	const originalOpenAIKey = process.env.OPENAI_API_KEY;
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		if (originalSummaryKey === undefined) delete process.env.FREE_MEM_SUMMARY_API_KEY;
+		else process.env.FREE_MEM_SUMMARY_API_KEY = originalSummaryKey;
+		if (originalOpenAIKey === undefined) delete process.env.OPENAI_API_KEY;
+		else process.env.OPENAI_API_KEY = originalOpenAIKey;
+	});
+
+	function manifestClient(provider: ProviderChoiceV1Fixture): ObserverClient {
+		const Constructor = ObserverClient as unknown as ManifestObserverConstructor;
+		return new Constructor(provider, SLICE1_OBSERVER_PROFILE);
+	}
+
+	it("sends the exact OpenAI Chat Completions request to the complete endpoint", async () => {
+		const token = fixtureToken("slice1-openai");
+		process.env.FREE_MEM_SUMMARY_API_KEY = token;
+		process.env.OPENAI_API_KEY = fixtureToken("must-not-cascade");
+		let request:
+			| {
+					url: string;
+					headers: Record<string, string>;
+					body: Record<string, unknown>;
+					init: RequestInit;
+			  }
+			| undefined;
+		globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+			request = {
+				url: String(input),
+				headers: Object.fromEntries(Object.entries((init.headers as Record<string, string>) ?? {})),
+				body: JSON.parse(String(init.body)) as Record<string, unknown>,
+				init,
+			};
+			return new Response(
+				JSON.stringify({ choices: [{ message: { content: "openai-result" } }] }),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+		}) as typeof globalThis.fetch;
+
+		const result = await manifestClient(OPENAI_CHOICE).observe("system", "user");
+
+		expect(request?.url).toBe(OPENAI_CHOICE.endpointUrl);
+		expect(request?.headers).toEqual({
+			"content-type": "application/json",
+			authorization: `Bearer ${token}`,
+		});
+		expect(request?.body).toEqual({
+			model: "deterministic-summary-model-v1",
+			max_tokens: 4_000,
+			temperature: 0.2,
+			messages: [
+				{ role: "system", content: "system" },
+				{ role: "user", content: "user" },
+			],
+		});
+		expect(request?.init.redirect).toBe("manual");
+		expect(request?.init.signal).toBeInstanceOf(AbortSignal);
+		expect(result.raw).toBe("openai-result");
+	});
+
+	it("sends the exact Anthropic Messages request and concatenates text blocks", async () => {
+		const token = fixtureToken("slice1-anthropic");
+		process.env.FREE_MEM_SUMMARY_API_KEY = token;
+		let request:
+			| { url: string; headers: Record<string, string>; body: Record<string, unknown> }
+			| undefined;
+		globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+			request = {
+				url: String(input),
+				headers: Object.fromEntries(Object.entries((init.headers as Record<string, string>) ?? {})),
+				body: JSON.parse(String(init.body)) as Record<string, unknown>,
+			};
+			return new Response(
+				JSON.stringify({
+					content: [
+						{ type: "text", text: "first" },
+						{ type: "tool_use", id: "ignored" },
+						{ type: "text", text: "second" },
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+		}) as typeof globalThis.fetch;
+
+		const result = await manifestClient(ANTHROPIC_CHOICE).observe("system", "user");
+
+		expect(request?.url).toBe(ANTHROPIC_CHOICE.endpointUrl);
+		expect(request?.headers).toEqual({
+			"content-type": "application/json",
+			"anthropic-version": "2023-06-01",
+			"x-api-key": token,
+		});
+		expect(request?.body).toEqual({
+			model: "claude-test-model",
+			max_tokens: 4_000,
+			temperature: 0.2,
+			system: "system",
+			messages: [{ role: "user", content: "user" }],
+		});
+		expect(result.raw).toBe("firstsecond");
+	});
+
+	it("preserves an alias-shaped Anthropic model ID from the frozen manifest", async () => {
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("slice1-anthropic-alias");
+		let model: unknown;
+		globalThis.fetch = (async (_input: string | URL | Request, init: RequestInit = {}) => {
+			model = (JSON.parse(String(init.body)) as Record<string, unknown>).model;
+			return new Response(JSON.stringify({ content: [{ type: "text", text: "ok" }] }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as typeof globalThis.fetch;
+		const choice = compileProviderChoice({
+			version: 1,
+			role: "summary",
+			state: "enabled",
+			wireProtocol: "anthropic_messages_v1",
+			modelId: "claude-4.5-haiku",
+			modelRevision: "1",
+			endpointUrl: ANTHROPIC_CHOICE.endpointUrl,
+			credentialRef: ANTHROPIC_CHOICE.credentialRef,
+		});
+
+		await manifestClient(choice).observe("system", "user");
+
+		expect(model).toBe("claude-4.5-haiku");
+	});
+
+	it("uses credential-none local HTTP without an authentication header", async () => {
+		let headers: Record<string, string> | undefined;
+		globalThis.fetch = (async (_input: string | URL | Request, init: RequestInit = {}) => {
+			headers = Object.fromEntries(Object.entries((init.headers as Record<string, string>) ?? {}));
+			return new Response(JSON.stringify({ choices: [{ message: { content: "local-result" } }] }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as typeof globalThis.fetch;
+
+		const result = await manifestClient(LOCAL_HTTP_CHOICE).observe("system", "user");
+
+		expect(headers).toEqual({ "content-type": "application/json" });
+		expect(result.raw).toBe("local-result");
+	});
+
+	it("allocates the exact UTF-16 system-first 9,000 and user 3,000 unit budgets", async () => {
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("slice1-utf16");
+		let messages: Array<{ role: string; content: string }> = [];
+		globalThis.fetch = (async (_input: string | URL | Request, init: RequestInit = {}) => {
+			const body = JSON.parse(String(init.body)) as {
+				messages?: Array<{ role: string; content: string }>;
+			};
+			messages = body.messages ?? [];
+			return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		}) as typeof globalThis.fetch;
+
+		await manifestClient(OPENAI_CHOICE).observe(
+			`${"s".repeat(8_999)}😀tail`,
+			`${"u".repeat(4_000)}\uDC00`,
+		);
+
+		const system = messages.find((message) => message.role === "system")?.content;
+		const user = messages.find((message) => message.role === "user")?.content;
+		expect(system).toHaveLength(9_000);
+		expect(user).toHaveLength(3_000);
+		expect(system?.isWellFormed()).toBe(true);
+		expect(user?.isWellFormed()).toBe(true);
+		expect(system).toContain("�");
+	});
+
+	it("rejects a response over 1 MiB before accepting parsed text", async () => {
+		const token = fixtureToken("slice1-response-limit");
+		process.env.FREE_MEM_SUMMARY_API_KEY = token;
+		process.env.OPENAI_API_KEY = token;
+		let jsonCalls = 0;
+		globalThis.fetch = (async () =>
+			({
+				ok: true,
+				status: 200,
+				headers: new Headers({ "content-length": "1048577", "content-type": "application/json" }),
+				json: async () => {
+					jsonCalls += 1;
+					return { choices: [{ message: { content: "x".repeat(1_048_577) } }] };
+				},
+			}) as Response) as typeof globalThis.fetch;
+		const client = manifestClient(OPENAI_CHOICE);
+
+		const result = await client.observe("system", "user");
+
+		expect(result.raw).toBeNull();
+		expect(jsonCalls).toBe(0);
+	});
+});
+
+describe("ObserverClient Slice 1 frozen transport", () => {
+	const originalFetch = globalThis.fetch;
+	const legacyKeys = [
+		"CODEMEM_OBSERVER_API_KEY",
+		"CODEMEM_OBSERVER_BASE_URL",
+		"CODEMEM_OBSERVER_HEADERS",
+		"CODEMEM_OBSERVER_PROVIDER",
+		"CODEMEM_OBSERVER_MODEL",
+		"CODEMEM_OBSERVER_OPENAI_USE_RESPONSES",
+		"OPENAI_API_KEY",
+		"ANTHROPIC_API_KEY",
+		"CODEX_API_KEY",
+		"OPENCODE_API_KEY",
+	] as const;
+	const savedEnvironment = Object.fromEntries(
+		["FREE_MEM_SUMMARY_API_KEY", ...legacyKeys].map((key) => [key, process.env[key]]),
+	) as Record<string, string | undefined>;
+
+	beforeEach(() => {
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("slice1-named-environment");
+		process.env.CODEMEM_OBSERVER_API_KEY = fixtureToken("legacy-codemem");
+		process.env.CODEMEM_OBSERVER_BASE_URL = "https://legacy.invalid/v1";
+		process.env.CODEMEM_OBSERVER_HEADERS = JSON.stringify({ "x-legacy": "must-not-send" });
+		process.env.CODEMEM_OBSERVER_PROVIDER = "legacy-provider";
+		process.env.CODEMEM_OBSERVER_MODEL = "legacy-model";
+		process.env.CODEMEM_OBSERVER_OPENAI_USE_RESPONSES = "true";
+		process.env.OPENAI_API_KEY = fixtureToken("legacy-openai");
+		process.env.ANTHROPIC_API_KEY = fixtureToken("legacy-anthropic");
+		process.env.CODEX_API_KEY = fixtureToken("legacy-codex");
+		process.env.OPENCODE_API_KEY = fixtureToken("legacy-opencode");
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+		globalThis.fetch = originalFetch;
+		for (const [key, value] of Object.entries(savedEnvironment)) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+	});
+
+	function frozenClient(provider: ProviderChoiceV1Fixture): ObserverClient {
+		const Constructor = ObserverClient as unknown as ManifestObserverConstructor;
+		return new Constructor(provider, SLICE1_OBSERVER_PROFILE);
+	}
+
+	it.each([
+		{
+			name: "OpenAI Chat Completions",
+			provider: OPENAI_CHOICE,
+			expectedHeaders: {
+				"content-type": "application/json",
+				authorization: `Bearer ${fixtureToken("slice1-named-environment")}`,
+			},
+		},
+		{
+			name: "Anthropic Messages",
+			provider: ANTHROPIC_CHOICE,
+			expectedHeaders: {
+				"content-type": "application/json",
+				"anthropic-version": "2023-06-01",
+				"x-api-key": fixtureToken("slice1-named-environment"),
+			},
+		},
+	] as const)("uses the complete $name endpoint, named credential, and manual redirect without fallback", async ({
+		provider,
+		expectedHeaders,
+	}) => {
+		const requests: Array<{ url: string; init: RequestInit }> = [];
+		globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+			requests.push({ url: String(input), init });
+			return new Response("redirect", {
+				status: 307,
+				headers: { location: "https://fallback.invalid/collect" },
+			});
+		}) as typeof globalThis.fetch;
+
+		const result = await frozenClient(provider).observe("system", "user");
+
+		expect(result.raw).toBeNull();
+		expect(requests).toHaveLength(1);
+		expect(requests[0]?.url).toBe(provider.endpointUrl);
+		expect(requests[0]?.init.redirect).toBe("manual");
+		expect(requests[0]?.init.headers).toEqual(expectedHeaders);
+		expect(requests[0]?.init.headers).not.toHaveProperty("x-legacy");
+	});
+
+	it("uses the frozen 60 second request timeout", async () => {
+		let timeoutMs: number | undefined;
+		const controller = new AbortController();
+		vi.spyOn(AbortSignal, "timeout").mockImplementation((delay) => {
+			timeoutMs = delay;
+			return controller.signal;
+		});
+		globalThis.fetch = (async () => new Response("unavailable", { status: 503 })) as typeof fetch;
+
+		await frozenClient(OPENAI_CHOICE).observe("system", "user");
+
+		expect(timeoutMs).toBe(60_000);
 	});
 });

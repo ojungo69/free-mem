@@ -229,6 +229,11 @@ GET /v1/jobs/:id
 |---|---|---|---|---|
 | `GET /v1/health` | *(none)* | *(none)* | no | 2000 ms |
 | `GET /v1/doctor` | *(none)* | *(none)* | no | 2000 ms |
+
+Health responses add one bounded `capability` object frozen at daemon startup. Doctor returns the
+same object at `diagnostics.capability`. It contains only the safe manifest/provider identity,
+runtime reason, feature gates, and explicit schema/pack pending codes; credential values are never
+included. No runtime handler rereads legacy provider config or environment to build this projection.
 | `POST /v1/events` | `idempotencyKey, event, adapterRedaction` | `idempotencyKey, event` | **yes** | 2000 ms |
 | `POST /v1/events/batch` | `items` | `items` | **yes** | 2000 ms |
 | `POST /v1/context/pack` | `requestId, context, limit, tokenBudget, filters, trace` | `requestId, context` | **yes** | 2000 ms |

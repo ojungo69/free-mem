@@ -5,6 +5,7 @@ export type OperationalMaintenanceState = "idle" | "running" | "failed" | "unkno
 export type OperationalSemanticState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 
 export interface OperationalStatusSnapshot {
+	capability: Record<string, unknown> | null;
 	maintenance: {
 		state: OperationalMaintenanceState;
 		running: number;
@@ -181,9 +182,14 @@ function collectObserver(
 /** Collect bounded operational aggregates from an already-open database without writing schema. */
 export function collectOperationalStatus(
 	db: Database,
-	options: { embeddingDisabled?: boolean; recentFailureCutoff?: string } = {},
+	options: {
+		embeddingDisabled?: boolean;
+		recentFailureCutoff?: string;
+		capability?: Record<string, unknown>;
+	} = {},
 ): OperationalStatusSnapshot {
 	return {
+		capability: options.capability ?? null,
 		maintenance: collectMaintenance(db),
 		semantic_index: collectSemanticIndex(db, options.embeddingDisabled === true),
 		raw_events: collectRawEvents(db, options.recentFailureCutoff),
