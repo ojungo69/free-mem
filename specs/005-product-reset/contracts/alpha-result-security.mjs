@@ -18,32 +18,54 @@ const ORACLE_EVIDENCE_FIELDS = [
   "resentPayloadCount",
 ];
 
-export function validateNetworkTrustEvidence(evidence, fixture) {
-  if (
-    evidence?.version !== 1 ||
-    evidence.baseHostname !== new URL(
-      fixture.effectiveConfiguration.summaryProvider.endpointUrl,
-    ).hostname ||
-    evidence.localHostname !== new URL(
-      fixture.localDerivationManifest.summaryProvider.endpointUrl,
-    ).hostname ||
-    evidence.repairedHostname !== new URL(
-      fixture.repairedRemoteManifest.summaryProvider.endpointUrl,
-    ).hostname ||
-    !/^sha256:[0-9a-f]{64}$/u.test(evidence.publicCaSha256)
-  ) {
-    throw new Error("network trust evidence does not bind the fixed hostnames and public CA");
+function validateTlsPreflightReceipt(receipt, endpoints, publicCaSha256) {
+  const endpoint = endpoints.find((item) => item.hostname === receipt.hostname);
+  const expectedSni = endpoint && /^[0-9.]+$/u.test(endpoint.hostname)
+    ? null : endpoint?.hostname;
+  if (receipt.sni !== expectedSni) {
+    throw new Error("TLS preflight SNI does not match its hostname");
   }
-  if (!evidence.chainValidation) {
-    throw new Error("network trust evidence did not retain chain validation");
+  const expectedPort = Number(endpoint?.port || 443);
+  if (receipt.port !== expectedPort) {
+    throw new Error("TLS preflight port does not match its endpoint");
   }
-  if (!evidence.hostnameValidation) {
-    throw new Error("network trust evidence did not retain hostname validation");
+  if (receipt.timeoutMs !== 5000) {
+    throw new Error("TLS preflight timeout is not 5000 ms");
   }
-  if (evidence.privateKeyCommitted) {
-    throw new Error("network trust evidence committed a private key");
+  if (receipt.endMonotonicMs < receipt.startMonotonicMs) {
+    throw new Error("TLS preflight monotonic interval is reversed");
   }
-  const receipts = evidence.tlsPreflightReceipts;
+  if (receipt.endMonotonicMs - receipt.startMonotonicMs > receipt.timeoutMs) {
+    throw new Error("TLS preflight duration exceeds its timeout");
+  }
+  if (receipt.result !== "verified") {
+    throw new Error("TLS preflight result is not verified");
+  }
+  if (!receipt.chainValidation) {
+    throw new Error("TLS preflight disabled chain validation");
+  }
+  if (!receipt.hostnameValidation) {
+    throw new Error("TLS preflight disabled hostname validation");
+  }
+  if (receipt.trustAnchorSha256 !== publicCaSha256) {
+    throw new Error("TLS preflight trust anchor does not match the runner public CA");
+  }
+  if (!/^sha256:[0-9a-f]{64}$/u.test(receipt.peerCertificateSha256) ||
+      receipt.peerCertificateSha256 === receipt.trustAnchorSha256) {
+    throw new Error("TLS preflight peer certificate fingerprint is invalid");
+  }
+  if (receipt.credentialBytesSent !== 0) {
+    throw new Error("TLS preflight sent credential bytes");
+  }
+  if (receipt.payloadBytesSent !== 0) {
+    throw new Error("TLS preflight sent payload bytes");
+  }
+  if (receipt.httpRequestCount !== 0) {
+    throw new Error("TLS preflight sent an HTTP request");
+  }
+}
+
+function validateTlsPreflightReceipts(receipts, fixture, publicCaSha256) {
   if (!Array.isArray(receipts) || receipts.length !== 6) {
     throw new Error("network trust evidence must contain exactly six TLS preflight receipts");
   }
@@ -70,51 +92,38 @@ export function validateNetworkTrustEvidence(evidence, fixture) {
     throw new Error("TLS preflight receipts do not cover the exact hostname/phase pair set");
   }
   for (const receipt of receipts) {
-    const endpoint = endpoints.find((item) => item.hostname === receipt.hostname);
-    const expectedSni = endpoint && /^[0-9.]+$/u.test(endpoint.hostname)
-      ? null : endpoint?.hostname;
-    if (receipt.sni !== expectedSni) {
-      throw new Error("TLS preflight SNI does not match its hostname");
-    }
-    const expectedPort = Number(endpoint?.port || 443);
-    if (receipt.port !== expectedPort) {
-      throw new Error("TLS preflight port does not match its endpoint");
-    }
-    if (receipt.timeoutMs !== 5000) {
-      throw new Error("TLS preflight timeout is not 5000 ms");
-    }
-    if (receipt.endMonotonicMs < receipt.startMonotonicMs) {
-      throw new Error("TLS preflight monotonic interval is reversed");
-    }
-    if (receipt.endMonotonicMs - receipt.startMonotonicMs > receipt.timeoutMs) {
-      throw new Error("TLS preflight duration exceeds its timeout");
-    }
-    if (receipt.result !== "verified") {
-      throw new Error("TLS preflight result is not verified");
-    }
-    if (!receipt.chainValidation) {
-      throw new Error("TLS preflight disabled chain validation");
-    }
-    if (!receipt.hostnameValidation) {
-      throw new Error("TLS preflight disabled hostname validation");
-    }
-    if (receipt.trustAnchorSha256 !== evidence.publicCaSha256) {
-      throw new Error("TLS preflight trust anchor does not match the runner public CA");
-    }
-    if (!/^sha256:[0-9a-f]{64}$/u.test(receipt.peerCertificateSha256) ||
-        receipt.peerCertificateSha256 === receipt.trustAnchorSha256) {
-      throw new Error("TLS preflight peer certificate fingerprint is invalid");
-    }
-    if (receipt.credentialBytesSent !== 0) {
-      throw new Error("TLS preflight sent credential bytes");
-    }
-    if (receipt.payloadBytesSent !== 0) {
-      throw new Error("TLS preflight sent payload bytes");
-    }
-    if (receipt.httpRequestCount !== 0) {
-      throw new Error("TLS preflight sent an HTTP request");
-    }
+    validateTlsPreflightReceipt(receipt, endpoints, publicCaSha256);
   }
+}
+
+export function validateNetworkTrustEvidence(evidence, fixture) {
+  if (
+    evidence?.version !== 1 ||
+    evidence.baseHostname !== new URL(
+      fixture.effectiveConfiguration.summaryProvider.endpointUrl,
+    ).hostname ||
+    evidence.localHostname !== new URL(
+      fixture.localDerivationManifest.summaryProvider.endpointUrl,
+    ).hostname ||
+    evidence.repairedHostname !== new URL(
+      fixture.repairedRemoteManifest.summaryProvider.endpointUrl,
+    ).hostname ||
+    !/^sha256:[0-9a-f]{64}$/u.test(evidence.publicCaSha256)
+  ) {
+    throw new Error("network trust evidence does not bind the fixed hostnames and public CA");
+  }
+  if (!evidence.chainValidation) {
+    throw new Error("network trust evidence did not retain chain validation");
+  }
+  if (!evidence.hostnameValidation) {
+    throw new Error("network trust evidence did not retain hostname validation");
+  }
+  if (evidence.privateKeyCommitted) {
+    throw new Error("network trust evidence committed a private key");
+  }
+  validateTlsPreflightReceipts(
+    evidence.tlsPreflightReceipts, fixture, evidence.publicCaSha256,
+  );
 }
 
 const fingerprint = (domain, value) => `sha256:${createHash("sha256")
@@ -130,6 +139,26 @@ export function providerEgressCommittedEventSetFingerprint(events, repositorySco
     sensitivity: event.sensitivity,
     captureState: "accepted",
   })));
+}
+
+function expectedProviderSourcePayloadBytes(provider, committedEvents, providerRequestCount) {
+  const allowedSensitivities = provider.executionLocation === "remote" ||
+      provider.tlsPolicy !== "system"
+    ? new Set(["eligible"])
+    : new Set(["eligible", "local_only", "private"]);
+  const sourcePayloadBytesBySensitivity = {
+    eligible: 0, localOnly: 0, private: 0, secret: 0,
+  };
+  const outputKeys = {
+    eligible: "eligible", local_only: "localOnly", private: "private", secret: "secret",
+  };
+  for (const event of committedEvents) {
+    if (allowedSensitivities.has(event.sensitivity) && providerRequestCount > 0) {
+      sourcePayloadBytesBySensitivity[outputKeys[event.sensitivity]] +=
+        Buffer.byteLength(event.redactedPayload, "utf8") * providerRequestCount;
+    }
+  }
+  return sourcePayloadBytesBySensitivity;
 }
 
 function expectedProviderEgressObservation(result, fixture, committedEventIds) {
@@ -161,54 +190,30 @@ function expectedProviderEgressObservation(result, fixture, committedEventIds) {
   }
   const committedEvents = providerRequestCount > 0
     ? resolvedEvents.map((item) => item.event) : [];
-  const allowedSensitivities = provider.executionLocation === "remote" ||
-      provider.tlsPolicy !== "system"
-    ? new Set(["eligible"])
-    : new Set(["eligible", "local_only", "private"]);
-  const sourcePayloadBytesBySensitivity = {
-    eligible: 0, localOnly: 0, private: 0, secret: 0,
-  };
-  const outputKeys = {
-    eligible: "eligible", local_only: "localOnly", private: "private", secret: "secret",
-  };
-  for (const event of committedEvents) {
-    if (allowedSensitivities.has(event.sensitivity) && providerRequestCount > 0) {
-      sourcePayloadBytesBySensitivity[outputKeys[event.sensitivity]] +=
-        Buffer.byteLength(event.redactedPayload, "utf8") * providerRequestCount;
-    }
-  }
   return {
     scenario,
     provider,
     providerRequestCount,
     providerPayloadCount,
     committedEvents,
-    sourcePayloadBytesBySensitivity,
+    sourcePayloadBytesBySensitivity: expectedProviderSourcePayloadBytes(
+      provider, committedEvents, providerRequestCount,
+    ),
   };
 }
 
-export function validateProviderEgressEvidence(
-  evidence, result, fixture, networkTrustEvidence,
-) {
-  const committedEventIds = evidence.authorization?.committedEventIds ?? [];
-  const {
-    scenario,
-    provider,
-    providerRequestCount: expectedRequests,
-    providerPayloadCount: expectedPayloads,
-    committedEvents,
-    sourcePayloadBytesBySensitivity: expectedSourceBytes,
-  } = expectedProviderEgressObservation(result, fixture, committedEventIds);
+function validateProviderEgressClaims(evidence, result, expected) {
+  const { provider, providerRequestCount, providerPayloadCount,
+    sourcePayloadBytesBySensitivity } = expected;
   if (evidence?.kind !== "observed" ||
       evidence.evidenceSource !== "runner_network_gate_and_stub_v1" ||
       evidence.providerFingerprint !== provider.providerFingerprint ||
       evidence.executionLocation !== provider.executionLocation) {
     throw new Error("provider egress evidence does not bind the active provider");
   }
-
   if (
-    evidence.providerRequestCount !== expectedRequests ||
-    evidence.providerPayloadCount !== expectedPayloads ||
+    evidence.providerRequestCount !== providerRequestCount ||
+    evidence.providerPayloadCount !== providerPayloadCount ||
     evidence.credentialBytesSent !== result.securityEvidence.credentialBytesSent ||
     evidence.payloadBytesSent !== result.securityEvidence.payloadBytesSent ||
     evidence.redirectLocationRequestCount !==
@@ -221,9 +226,8 @@ export function validateProviderEgressEvidence(
   ) {
     throw new Error("provider egress evidence does not match observed wire aggregates");
   }
-
   const observedSourceBytes = evidence.sourcePayloadBytesBySensitivity;
-  if (!isDeepStrictEqual(observedSourceBytes, expectedSourceBytes) ||
+  if (!isDeepStrictEqual(observedSourceBytes, sourcePayloadBytesBySensitivity) ||
       observedSourceBytes.secret !== 0 ||
       (provider.executionLocation === "remote" &&
         (observedSourceBytes.localOnly !== 0 || observedSourceBytes.private !== 0)) ||
@@ -232,7 +236,9 @@ export function validateProviderEgressEvidence(
           observedSourceBytes.private !== 0))) {
     throw new Error("provider egress sensitivity-byte evidence violates the destination boundary");
   }
+}
 
+function validateProviderObservationWindow(evidence) {
   const started = evidence.observationStartedMonotonicMs;
   const candidate = evidence.candidateStartedMonotonicMs;
   const terminated = evidence.processTreeTerminatedMonotonicMs;
@@ -240,17 +246,13 @@ export function validateProviderEgressEvidence(
   if (!(started < candidate && candidate <= terminated && terminated < finished)) {
     throw new Error("provider egress observation did not cover the candidate process tree");
   }
-  if (expectedRequests === 0) {
-    if (evidence.authorization !== null ||
-        evidence.firstProviderRequestStartedMonotonicMs !== null ||
-        evidence.lastProviderRequestFinishedMonotonicMs !== null ||
-        evidence.credentialBytesSent !== 0 || evidence.payloadBytesSent !== 0 ||
-        Object.values(evidence.sourcePayloadBytesBySensitivity).some((value) => value !== 0)) {
-      throw new Error("zero-egress scenario contains an authorization or provider write");
-    }
-    return;
-  }
+  return { candidate, terminated };
+}
 
+function validateProviderAuthorization(
+  evidence, result, expected, networkTrustEvidence, bounds,
+) {
+  const { scenario, provider, committedEvents } = expected;
   const authorization = evidence.authorization;
   if (!authorization ||
       authorization.committedEventCount !== result.counts.committed ||
@@ -258,12 +260,12 @@ export function validateProviderEgressEvidence(
         providerEgressCommittedEventSetFingerprint(
           committedEvents, scenario.sourceRepositoryScope,
         ) ||
-      !(candidate < authorization.observedAtMonotonicMs &&
+      !(bounds.candidate < authorization.observedAtMonotonicMs &&
         authorization.observedAtMonotonicMs <
           evidence.firstProviderRequestStartedMonotonicMs &&
         evidence.firstProviderRequestStartedMonotonicMs <=
           evidence.lastProviderRequestFinishedMonotonicMs &&
-        evidence.lastProviderRequestFinishedMonotonicMs <= terminated)) {
+        evidence.lastProviderRequestFinishedMonotonicMs <= bounds.terminated)) {
     throw new Error("provider request is not strictly after runner-owned authorization");
   }
   const endpoint = new URL(provider.endpointUrl);
@@ -279,6 +281,26 @@ export function validateProviderEgressEvidence(
   if (!verifiedTls && !unverifiedLocalHttp) {
     throw new Error("provider request is not after the exact verified TLS preflights");
   }
+}
+
+export function validateProviderEgressEvidence(
+  evidence, result, fixture, networkTrustEvidence,
+) {
+  const committedEventIds = evidence.authorization?.committedEventIds ?? [];
+  const expected = expectedProviderEgressObservation(result, fixture, committedEventIds);
+  validateProviderEgressClaims(evidence, result, expected);
+  const bounds = validateProviderObservationWindow(evidence);
+  if (expected.providerRequestCount === 0) {
+    if (evidence.authorization !== null ||
+        evidence.firstProviderRequestStartedMonotonicMs !== null ||
+        evidence.lastProviderRequestFinishedMonotonicMs !== null ||
+        evidence.credentialBytesSent !== 0 || evidence.payloadBytesSent !== 0 ||
+        Object.values(evidence.sourcePayloadBytesBySensitivity).some((value) => value !== 0)) {
+      throw new Error("zero-egress scenario contains an authorization or provider write");
+    }
+    return;
+  }
+  validateProviderAuthorization(evidence, result, expected, networkTrustEvidence, bounds);
 }
 
 function observedScenarioEvents(result, scenario) {

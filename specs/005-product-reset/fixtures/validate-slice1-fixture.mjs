@@ -57,7 +57,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:775714c020b7b739494899be11ce6ec10afa928cef8fee3dd3a296c968219474";
+  "fixture-contract-fingerprint=sha256:d9be8ce32f53341ef455ccbad2ee4665dd91fccffc34056fb911d81ceb3f7808";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -94,6 +94,51 @@ const actualContractFingerprint = fingerprint(fixtureContractDomain, {
 const proposalFields = ["version", "role", "state", "wireProtocol", "modelId",
   "modelRevision", "endpointUrl", "credentialRef"];
 
+function validateProviderEndpoint(endpointUrl, credentialKind, label) {
+  if (Buffer.byteLength(endpointUrl, "utf8") > 2048 || /[^\x21-\x7e]/u.test(endpointUrl)) {
+    throw new Error(`${label} endpoint is outside its ASCII/2KiB bounds`);
+  }
+  let endpoint;
+  try {
+    endpoint = new URL(endpointUrl);
+  } catch {
+    throw new Error(`${label} endpoint is not a URL`);
+  }
+  if (endpoint.href !== endpointUrl) {
+    throw new Error(`${label} endpoint is not canonical`);
+  }
+  if (endpoint.username || endpoint.password) {
+    throw new Error(`${label} endpoint contains userinfo`);
+  }
+  if (endpointUrl.includes("?") || endpointUrl.includes("#")) {
+    throw new Error(`${label} endpoint contains a query or fragment`);
+  }
+  if (!endpoint.hostname || !["http:", "https:"].includes(endpoint.protocol) ||
+      endpoint.pathname === "/") {
+    throw new Error(`${label} endpoint is not a complete request URL`);
+  }
+  const host = endpoint.hostname;
+  if (host.endsWith(".")) {
+    throw new Error(`${label} endpoint uses a trailing-dot hostname`);
+  }
+  const local = host === "127.0.0.1" || host === "[::1]";
+  const rejectedLocalAlias = host.includes("*") || host === "localhost" ||
+    host.endsWith(".localhost") || host === "0.0.0.0" || host === "[::]" ||
+    (host.startsWith("127.") && host !== "127.0.0.1") || host.startsWith("[::ffff:7f");
+  if (rejectedLocalAlias) {
+    throw new Error(`${label} endpoint hostname is not an accepted literal loopback or remote host`);
+  }
+  if (local && endpoint.protocol === "http:" && credentialKind !== "none") {
+    throw new Error(`${label} local HTTP endpoint must be credential-none`);
+  }
+  return {
+    endpoint,
+    local,
+    activationRejectionReason:
+      !local && endpoint.protocol !== "https:" ? "insecure_remote_transport" : null,
+  };
+}
+
 function validateProviderProposal(proposal, label) {
   if (
     Object.keys(proposal).sort().join("\0") !== [...proposalFields].sort().join("\0") ||
@@ -123,53 +168,7 @@ function validateProviderProposal(proposal, label) {
   ) {
     throw new Error(`${label} credential reference is not closed none/environment v1`);
   }
-  if (
-    Buffer.byteLength(proposal.endpointUrl, "utf8") > 2048 ||
-    /[^\x21-\x7e]/u.test(proposal.endpointUrl)
-  ) {
-    throw new Error(`${label} endpoint is outside its ASCII/2KiB bounds`);
-  }
-  let endpoint;
-  try {
-    endpoint = new URL(proposal.endpointUrl);
-  } catch {
-    throw new Error(`${label} endpoint is not a URL`);
-  }
-  if (endpoint.href !== proposal.endpointUrl) {
-    throw new Error(`${label} endpoint is not canonical`);
-  }
-  if (endpoint.username || endpoint.password) {
-    throw new Error(`${label} endpoint contains userinfo`);
-  }
-  if (proposal.endpointUrl.includes("?") || proposal.endpointUrl.includes("#")) {
-    throw new Error(`${label} endpoint contains a query or fragment`);
-  }
-  if (!endpoint.hostname || !["http:", "https:"].includes(endpoint.protocol) ||
-      endpoint.pathname === "/") {
-    throw new Error(`${label} endpoint is not a complete request URL`);
-  }
-  const host = endpoint.hostname;
-  if (host.endsWith(".")) {
-    throw new Error(`${label} endpoint uses a trailing-dot hostname`);
-  }
-  const local = host === "127.0.0.1" || host === "[::1]";
-  const rejectedLocalAlias = host.includes("*") || host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host === "0.0.0.0" || host === "[::]" ||
-    (host.startsWith("127.") && host !== "127.0.0.1") ||
-    host.startsWith("[::ffff:7f");
-  if (rejectedLocalAlias) {
-    throw new Error(`${label} endpoint hostname is not an accepted literal loopback or remote host`);
-  }
-  if (local && endpoint.protocol === "http:" && credential.kind !== "none") {
-    throw new Error(`${label} local HTTP endpoint must be credential-none`);
-  }
-  return {
-    endpoint,
-    local,
-    activationRejectionReason:
-      !local && endpoint.protocol !== "https:" ? "insecure_remote_transport" : null,
-  };
+  return validateProviderEndpoint(proposal.endpointUrl, credential.kind, label);
 }
 
 function validateProviderChoice(choice, label) {

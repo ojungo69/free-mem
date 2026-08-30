@@ -43,6 +43,17 @@ export function validateResourcePlateauEvidence(evidence, fixture) {
       receiptIds.length + workloadReceiptIds.length) {
     throw new Error("resource plateau receipt identities are not globally unique");
   }
+  validatePlateauOutcomes(windows);
+  if (evidence.orphanProductProcessCount !== 0) {
+    throw new Error("resource plateau evidence contains an orphan process");
+  }
+  validateMeasuredPlateau(
+    windows.slice(2), fixture.effectiveConfiguration.resourceProfile, fixture.thresholds,
+  );
+  validateFinalPlateau(windows.slice(7));
+}
+
+function validatePlateauOutcomes(windows) {
   if (windows.some((window) =>
     !Number.isInteger(window.duplicateDeliveryAttemptCount) ||
     window.duplicateDeliveryAttemptCount < 1
@@ -69,12 +80,9 @@ export function validateResourcePlateauEvidence(evidence, fixture) {
   })) {
     throw new Error("resource plateau workload/drain/checkpoint/sample order is invalid");
   }
-  if (evidence.orphanProductProcessCount !== 0) {
-    throw new Error("resource plateau evidence contains an orphan process");
-  }
-  const measured = windows.slice(2);
-  const profile = fixture.effectiveConfiguration.resourceProfile;
-  const thresholds = fixture.thresholds;
+}
+
+function validateMeasuredPlateau(measured, profile, thresholds) {
   if (measured.some((window) =>
     window.processCount > thresholds.maxSteadyProductProcessCount
   )) {
@@ -108,7 +116,9 @@ export function validateResourcePlateauEvidence(evidence, fixture) {
   )) {
     throw new Error("resource plateau concurrency exceeds the fixture ceiling");
   }
-  const final = windows.slice(7);
+}
+
+function validateFinalPlateau(final) {
   if (!final.every((window) => window.processCount === final[0].processCount)) {
     throw new Error("resource plateau final process count is not constant");
   }

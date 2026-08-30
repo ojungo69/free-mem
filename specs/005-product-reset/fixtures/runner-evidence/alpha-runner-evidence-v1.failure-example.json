@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:775714c020b7b739494899be11ce6ec10afa928cef8fee3dd3a296c968219474",
+  "fixtureFingerprint": "sha256:d9be8ce32f53341ef455ccbad2ee4665dd91fccffc34056fb911d81ceb3f7808",
   "candidateId": "candidate-failure-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
@@ -794,7 +794,7 @@
         }
       ],
       "hostIdentityEvidence": null,
-      "resultObservationFingerprint": "sha256:fe09f884073bcd319d58ffe1246b6c989f4f143bc342d92b20f615f1be192512",
+      "resultObservationFingerprint": "sha256:7176e6720c0b8ffb3e068fa73dcb70c30e3ce78ee8e9c1306372e8f9dae5c309",
       "providerEgressEvidence": {
         "kind": "observed",
         "receiptId": "provider-egress:summary-provider-output-limit-exceeded",
