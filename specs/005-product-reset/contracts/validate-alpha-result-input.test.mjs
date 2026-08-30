@@ -17,6 +17,7 @@ import { validateArtifact } from "./alpha-result-artifact.mjs";
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
 const validatorPath = join(contractDir, "validate-alpha-result.mjs");
+const semanticPath = join(contractDir, "alpha-result-v1.semantic.jq");
 const fixtureRoot = join(contractDir, "../fixtures");
 const success = JSON.parse(readFileSync(join(fixtureRoot,
   "alpha-result-v1.example.json"), "utf8"));
@@ -49,6 +50,18 @@ assert.ok(negativeMilestones.every((item, index) =>
 assert.deepEqual(suiteRegressionEvidence.scenarios.find((item) =>
   item.caseId === suiteRegression.negativeResult.runnerEvidenceCaseId).observedMilestones,
   negativeMilestones, "late-injection runner milestones drifted from the negative result");
+for (const missingMilestone of ["target_model_request_dispatched",
+  "target_injection_acknowledged"]) {
+  const incompleteNegative = structuredClone(suiteRegression.negativeResult);
+  incompleteNegative.milestones = incompleteNegative.milestones.filter(
+    (item) => item.name !== missingMilestone,
+  );
+  const semanticRun = spawnSync("jq", ["-e", "-f", semanticPath], {
+    cwd: repoRoot, input: JSON.stringify(incompleteNegative), encoding: "utf8",
+  });
+  assert.notEqual(semanticRun.status, 0,
+    `semantic validator accepted late-injection negative without ${missingMilestone}`);
+}
 const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evidence-input-"));
 const suiteResultRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-suite-results-"));
 let runnerEvidenceOrdinal = 0;

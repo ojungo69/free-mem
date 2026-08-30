@@ -22,8 +22,10 @@ def late_injection_ok:
       | if length == 1 then .[0] else null end) as $dispatch
   | ([ $result.milestones[] | select(.name == "target_injection_acknowledged") ]
       | if length == 1 then .[0] else null end) as $injection
-  | if $dispatch == null or $injection == null
+  | if $result.injectionBeforeModel == null
     then true
+    elif $dispatch == null or $injection == null
+    then false
     else $result.injectionBeforeModel ==
       (([$result.milestones[].name] | index($injection.name)) <
         ([$result.milestones[].name] | index($dispatch.name))

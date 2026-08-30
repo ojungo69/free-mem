@@ -69,7 +69,9 @@ password, query, fragment, empty/root-only path, and unsupported scheme are reje
   `not_applicable` for HTTP and `system` for HTTPS.
 - Local HTTP requires credential `none` and is eligible-only. It never authorizes credential,
   private, or local-only bytes. Private/local-only processing requires local HTTPS whose exact peer
-  passes chain and hostname/IP verification.
+  passes chain and hostname/IP verification. Possession of the matching system-trusted certificate
+  private key is the peer proof; PID/UID/port ownership is not authority, and a hostile port squatter
+  without that key must fail preflight content-free.
 - Any other host: remote; HTTPS only; `explicit_remote`; `external_metered`; `system` TLS.
 - `localhost`, localhost subdomains, trailing-dot hostnames, wildcard/unspecified addresses
   (including IPv4-mapped unspecified), alternate loopback spellings, and DNS-to-loopback guessing

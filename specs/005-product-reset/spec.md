@@ -202,8 +202,8 @@ without leaving active processes or managed configuration behind.
   conflicting delivery is terminally quarantined and MUST NOT receive a normal success ACK, be
   silently discarded, overwrite or duplicate the first accepted result, or retain unprocessed
   secret data. Its receipt MUST be deterministic for the canonical identity and ordered digest pair;
-  repeated delivery of that pair reuses one durable receipt and a different conflicting digest does
-  not.
+  repeated delivery of that pair reuses one durable receipt; a different conflicting digest receives
+  a distinct durable receipt and MUST NOT reuse the existing receipt.
   The accepted event and every spool/retry record MUST persist the digest-normalization version;
   replay uses the original version even after a newer algorithm activates.
 - **FR-005**: Capture and memory-processing failures MUST NOT block normal Agent work.
