@@ -21,7 +21,9 @@
     "artifactFingerprint": { "$ref": "#/$defs/Sha256" },
     "runnerEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
     "networkTrustEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
-    "resourcePlateauEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
+    "resourcePlateauEvidenceFingerprint": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/Sha256" }]
+    },
     "drain": { "$ref": "#/$defs/Drain" },
     "injectionBeforeModel": {
       "oneOf": [
@@ -122,8 +124,18 @@
         },
         "required": ["disposition"]
       },
-      "then": { "properties": { "milestones": { "maxItems": 0 } } },
-      "else": { "properties": { "milestones": { "minItems": 1 } } }
+      "then": {
+        "properties": {
+          "milestones": { "maxItems": 0 },
+          "resourcePlateauEvidenceFingerprint": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "milestones": { "minItems": 1 },
+          "resourcePlateauEvidenceFingerprint": { "$ref": "#/$defs/Sha256" }
+        }
+      }
     }
   ],
   "$defs": {

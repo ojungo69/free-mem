@@ -768,7 +768,7 @@ All 12 windows carry the same positive `duplicateDeliveryAttemptCount`.
 
 ## Closed runner evidence additions
 
-The accepted runner-evidence schema requires all 12 raw window records. Each carries
+For every executed result, the accepted runner-evidence schema requires all 12 raw window records. Each carries
 ordinal, process count, RSS MiB, drained queue depth, storage bytes, selected-item count,
 injected-token count, max processing concurrency, unique workload/drain/checkpoint receipts, and
 runner-monotonic workload start, workload receipt, drain receipt, checkpoint receipt, and sample
@@ -794,7 +794,7 @@ The receipt binds active provider/location, first/last request time, exact reque
 redirect aggregates, zero pre-authorization/non-loopback attempts, and source bytes by sensitivity.
 The runner-owned stub measures those sensitivity bytes from the request bytes it actually receives
 against fixed synthetic source markers/spans; neither policy expectation nor candidate output
-supplies the observed values.
+supplies the observed values, and the four-bucket sum cannot exceed `payloadBytesSent`.
 The late-injection negative projects its base receipt instead of claiming another run.
 Every fixed retry/redirect recovery subcase has one sorted, case/manifest-bound full observation
 under the same authorization/timing/TLS/wire/sensitivity rules. No-op subcases carry full zero-egress
@@ -808,6 +808,8 @@ Every plateau window also carries a unique opaque `workloadReceiptId`, one dupli
 attempt count of at least one, `noOpOutcome=duplicate_noop`, `durableMemoryDelta=0`, and
 `processingJobDelta=0`. The result schema carries only separate network/plateau fingerprints and
 derived resource aggregates; the validator recomputes those fingerprints from the runner bundle.
+Canonical `unsupported`/`not_run` no-activity evidence carries `resourcePlateauEvidence: null` and
+a null result plateau fingerprint; any executed result must carry the complete plateau.
 
 The suite contains one same-event-ID/different-payload-digest probe whose repeated attempts reuse one
 pair-bound durable receipt while a different digest cannot, plus exactly 16 positive scenario observations and one

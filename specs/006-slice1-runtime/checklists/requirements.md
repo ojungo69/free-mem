@@ -64,13 +64,14 @@
   crash-idempotent resume-signal producers; every signal binds exact job+producer receipt and global
   setup/health events fan out only to the bounded matching job set
 - [x] Closed runner-evidence schema owns initial plus every retry/redirect recovery provider-egress
-  observation (including zero-egress no-ops), plateau, and six ordered TLS receipts; result
+  observation (including zero-egress no-ops), executed plateau or canonical no-activity null plateau,
+  and six ordered TLS receipts; result
   fingerprints/aggregates bind them; every observation binds the bundle invocation, owning case, and
   one fresh bundle-unique process-tree root; TLS network/receipt evidence binds the invocation, while
   plateau candidate/artifact/environment/invocation/root and one identical duplicate workload count
   are closed; plateau timestamps strictly prove workload→drain→checkpoint→
   sample order and non-overlap while pair-bound conflict reuse/distinctness and exact 16+1 evidence
-  remain closed
+  remain closed; sensitivity-byte totals cannot exceed observed payload bytes
 - [x] Provider authorization records explicit committed event IDs/count/fingerprint and accepts
   canonical non-prefix sets; no validator infers the authorized set from count alone
 - [x] Tasks are sequential T001-T060 and every independent PR boundary/dependency/range is explicit

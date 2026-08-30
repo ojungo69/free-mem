@@ -402,7 +402,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   authorization that records explicit canonical-order committed event IDs, count, and fingerprint
   without inferring a prefix. Source bytes by sensitivity MUST be runner-stub measurements of actual
   received request bytes against fixed synthetic markers/spans, never policy-derived or candidate-
-  reported. Every fixed retry/redirect recovery subcase MUST own one sorted case/manifest-bound full
+  reported, and their sum MUST NOT exceed the observed payload bytes. Every fixed retry/redirect
+  recovery subcase MUST own one sorted case/manifest-bound full
   observation under the same rules, including zero-egress observations for no-op cases, with receipt
   IDs and observed process-tree roots unique across the bundle. Every initial/recovery receipt MUST
   bind the bundle invocation and its owning process-tree root; the live runner MUST generate both
@@ -412,7 +413,9 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   workload-start/workload-receipt/drain-receipt/checkpoint-receipt/sample timestamps, and no overlap
   with its neighboring windows. All 12 windows MUST carry the same positive duplicate-attempt count,
   no-op outcome, and zero memory/job deltas. The result schema carries
-  separate trust/plateau fingerprints and derived aggregates, not raw copies;
+  separate trust/plateau fingerprints and derived aggregates, not raw copies. Canonical
+  `unsupported`/`not_run` no-activity evidence MUST instead carry a null plateau object and null
+  result plateau fingerprint; an executed result MUST carry the complete plateau;
   pair-bound repeated same-event-ID/different-digest conflict evidence, and the exact 16 positive plus one
   late-injection-negative suite.
 

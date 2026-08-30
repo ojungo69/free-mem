@@ -418,20 +418,22 @@ in suite mode.
   direct durable-store authorization containing explicit canonical-order committed event IDs, their
   count and set fingerprint, earliest request interval, provider/location identity,
   exact wire aggregates, and runner-stub-measured source-content bytes split by sensitivity using
-  fixed synthetic markers/spans, never policy-derived or candidate-reported; the negative case only
-  projects an observed base receipt
+  fixed synthetic markers/spans, never policy-derived or candidate-reported; the four sensitivity
+  buckets sum to no more than the observed payload bytes; the negative case only projects an observed
+  base receipt
 - one additional full runner-owned provider-egress observation for every fixed retry/redirect
   recovery subcase, including zero-egress no-op cases, sorted and bound to exact case/manifest/
   provider plus bundle invocation and a fresh subcase process-tree root, with receipt and observed
   process-tree IDs unique across the whole bundle; the nested receipt repeats its owning case ID
-- one closed short-run plateau record with 12 ordered duplicate/no-op windows, discarded 1-2,
+- for every executed result, one closed short-run plateau record with 12 ordered duplicate/no-op windows, discarded 1-2,
   measured 3-12, final 8-12, one identical positive duplicate-delivery count, fixed item/token counts, bounded
   process/RSS/queue/storage/concurrency, measured RSS/storage maximum increase from the first measured
   window, final-five RSS/storage spans, unique path-free drain/checkpoint/workload receipt IDs, strict
   monotonic workload-start/workload-receipt/drain/checkpoint/sample order and window non-overlap,
   exact `duplicate_noop`, zero durable/job deltas, and zero orphan processes; it binds
   candidate/artifact/environment/invocation plus one fresh plateau
-  process-tree root unique from every observed provider root
+  process-tree root unique from every observed provider root; canonical `unsupported`/`not_run`
+  no-activity evidence carries a null plateau object and null result plateau fingerprint instead
 - runner-owned effective Agent/repository/session identity and caller-claim authorization decisions
 - a runner-derived fingerprint over the complete result observation, binding egress, render,
   atomicity, and conflict evidence without copying private payload into the bundle
@@ -442,10 +444,11 @@ in suite mode.
 - first cold-run measurement observed within one pinned process-sample interval after run start
 - warm observations proving one retained ready data directory and process generation
 
-The result record carries the bundle fingerprint plus separate domain-separated fingerprints of the
-network-trust and resource-plateau objects, alongside its existing derived resource aggregates. The
-raw trust and plateau objects live only in the runner bundle; the validator recomputes their
-fingerprints and matches them to the result before they can affect eligibility. The bundle contains
+The result record carries the bundle fingerprint plus a domain-separated network-trust fingerprint
+and, for executed work, a resource-plateau fingerprint alongside its existing derived resource
+aggregates. The raw trust and any plateau object live only in the runner bundle; the validator
+recomputes every present fingerprint and matches it to the result before it can affect eligibility.
+Canonical no-activity evidence uses null plateau object/fingerprint. The bundle contains
 no absolute path, private payload, certificate private key, or secret value.
 
 ## OperationalStatus

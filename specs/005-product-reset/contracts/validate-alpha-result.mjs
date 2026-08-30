@@ -444,7 +444,7 @@ const latencyPass = evaluateLatencyEvidence(
   result, scenario, fixture, exceptionalState, runnerRecord.latencyRuns,
 );
 
-const resourcePlateauPass = validateResourcePlateauEvidence(
+const resourcePlateauPass = exceptionalState || validateResourcePlateauEvidence(
   runnerEvidence.resourcePlateauEvidence, fixture,
 );
 const scenarioResourcePass = evaluateResourceEvidence(

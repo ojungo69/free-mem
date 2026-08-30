@@ -63,7 +63,9 @@ success/failure/suite evidence use closed wire protocols, complete canonical end
 CredentialRefV1, computed provider/manifest fingerprints, fixed resource fields, and normal
 provider-proposal metadata for later harness materialization. Local-derivation and output-limit cases
 are complete successor manifests rather than partial overlays. Result/runner schemas represent and
-fingerprint the 12 resource windows, CA proof, identity conflict, and exact 16+1 suite; recovery
+fingerprint the 12 resource windows for executed results, use a null plateau object/fingerprint for
+canonical no-activity results, and bind CA proof, identity conflict, sensitivity-byte totals no
+greater than observed payload bytes, and the exact 16+1 suite; recovery
 signals enforce exact producer kind, sequence, and 0→1→0 grant CAS. Every command exits 0.
 
 This checkpoint proves static shape, successor/signal fingerprint binding, and bound examples only.
@@ -354,7 +356,8 @@ Every fixed retry/redirect recovery subcase also has one sorted, case/manifest-b
 observation under the same rules. No-op subcases carry full zero-egress observations, and all initial
 and recovery receipt/process-tree IDs are bundle-global unique. Each receipt binds the bundle
 invocation, its owning case ID, and its fresh per-execution/process-generation root; reusable PID
-labels fail.
+labels fail. The sum of each receipt's sensitivity-byte buckets never exceeds its observed payload;
+canonical unsupported/not-run output carries no plateau workload or plateau fingerprint.
 
 Restricted local proposals use the fixture-pinned literal-loopback HTTPS URL. Remote proposals use the fixture-pinned
 base/repaired HTTPS hostnames mapped only inside the runner namespace to its loopback stub, with a per-run

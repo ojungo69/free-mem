@@ -83,13 +83,15 @@ function bindRunnerOwnedEvidence(evidence) {
   for (const receipt of evidence.networkTrustEvidence.tlsPreflightReceipts) {
     receipt.runnerInvocationId = evidence.invocationId;
   }
-  Object.assign(evidence.resourcePlateauEvidence, {
-    candidateId: evidence.candidateId,
-    artifactFingerprint: evidence.artifactFingerprint,
-    environmentFingerprint: evidence.environmentFingerprint,
-    runnerInvocationId: evidence.invocationId,
-    processTreeRootId: `resource-plateau:${evidence.invocationId}`,
-  });
+  if (evidence.resourcePlateauEvidence !== null) {
+    Object.assign(evidence.resourcePlateauEvidence, {
+      candidateId: evidence.candidateId,
+      artifactFingerprint: evidence.artifactFingerprint,
+      environmentFingerprint: evidence.environmentFingerprint,
+      runnerInvocationId: evidence.invocationId,
+      processTreeRootId: `resource-plateau:${evidence.invocationId}`,
+    });
+  }
   const [record] = evidence.scenarios;
   if (record.providerEgressEvidence.kind === "observed") {
     record.providerEgressEvidence.runnerInvocationId = evidence.invocationId;
@@ -104,6 +106,8 @@ function bindRunnerOwnedEvidence(evidence) {
 
 function buildRunnerEvidence(result) {
   const scenario = fixture.scenarios.find((item) => item.scenarioId === result.scenarioId);
+  const exceptional = result.disposition.state === "unsupported" ||
+    result.disposition.state === "not_run";
   const recoveryObserved = result.milestones.some((item) =>
     item.name === scenario.drainCondition.terminalMilestone);
   const latencyRuns = structuredClone(result.latencyEvidence.runs);
@@ -118,7 +122,8 @@ function buildRunnerEvidence(result) {
     runnerId: "fixture-pinned-reference-runner-v1",
     invocationId: `${result.candidateId}:fixture-invocation-v1`,
     networkTrustEvidence: structuredClone(suiteRegressionEvidence.networkTrustEvidence),
-    resourcePlateauEvidence: structuredClone(suiteRegressionEvidence.resourcePlateauEvidence),
+    resourcePlateauEvidence: exceptional
+      ? null : structuredClone(suiteRegressionEvidence.resourcePlateauEvidence),
     scenarios: [{
       caseId: result.runnerEvidenceCaseId,
       scenarioId: result.scenarioId,
@@ -145,6 +150,8 @@ function buildRunnerEvidence(result) {
 }
 
 function attachRunnerEvidence(result, evidence) {
+  result.resourcePlateauEvidenceFingerprint = evidence.resourcePlateauEvidence === null
+    ? null : resourcePlateauEvidenceFingerprint(evidence.resourcePlateauEvidence);
   result.runnerEvidenceFingerprint = runnerEvidenceFingerprint(evidence);
   return result;
 }
@@ -342,6 +349,7 @@ function unsupportedResult() {
       shortColdLexicalInjectionMs: null },
   };
   result.providerCostUnits = null;
+  result.resourcePlateauEvidenceFingerprint = null;
   return result;
 }
 
@@ -358,6 +366,21 @@ const unsupportedEvidence = buildRunnerEvidence(unsupported);
 clearProviderEgressEvidence(unsupportedEvidence, unsupported.runnerEvidenceCaseId);
 attachRunnerEvidence(unsupported, unsupportedEvidence);
 assertAccepted(unsupported, "unsupported result", unsupportedEvidence);
+
+const unsupportedWithPlateau = structuredClone(unsupported);
+const unsupportedWithPlateauEvidence = buildRunnerEvidence(unsupportedWithPlateau);
+unsupportedWithPlateauEvidence.resourcePlateauEvidence =
+  structuredClone(suiteRegressionEvidence.resourcePlateauEvidence);
+bindRunnerOwnedEvidence(unsupportedWithPlateauEvidence);
+attachRunnerEvidence(unsupportedWithPlateau, unsupportedWithPlateauEvidence);
+assert.throws(() => validateRunnerEvidence(
+  unsupportedWithPlateauEvidence, unsupportedWithPlateau, fixture,
+  unsupportedWithPlateauEvidence.invocationId,
+), /unsupported\/not-run runner evidence contains plateau workload/,
+  "shared runner validator accepted plateau work for an unsupported result");
+assertRejected(unsupportedWithPlateau,
+  /expected type null/,
+  "unsupported result carried executed plateau evidence", unsupportedWithPlateauEvidence);
 
 const zeroReportedObservations = structuredClone(success);
 for (const run of zeroReportedObservations.latencyEvidence.runs) {

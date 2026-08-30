@@ -140,7 +140,8 @@ function validateBundleProviderEgressReceipts(evidence, fixture) {
     throw new Error("provider egress receipt identities are reused across the evidence bundle");
   }
   const processTreeRoots = [
-    evidence.resourcePlateauEvidence.processTreeRootId,
+    ...(evidence.resourcePlateauEvidence === null
+      ? [] : [evidence.resourcePlateauEvidence.processTreeRootId]),
     ...evidence.scenarios.flatMap((record) => [
       ...(record.providerEgressEvidence?.kind === "observed" ? [record.processTreeRootId] : []),
       ...record.recoveryProviderEgressEvidence.map((item) => item.processTreeRootId),
@@ -174,6 +175,27 @@ function validateResourcePlateauIdentity(evidence) {
       plateau.environmentFingerprint !== evidence.environmentFingerprint ||
       plateau.runnerInvocationId !== evidence.invocationId) {
     throw new Error("resource plateau evidence does not match the bundle identity");
+  }
+}
+
+function validateResourcePlateauBinding(evidence, result, fixture) {
+  const exceptionalState = ["unsupported", "not_run"].includes(result.disposition.state);
+  if (exceptionalState) {
+    if (evidence.resourcePlateauEvidence !== null ||
+        result.resourcePlateauEvidenceFingerprint !== null) {
+      throw new Error("unsupported/not-run runner evidence contains plateau workload");
+    }
+    return;
+  }
+  if (evidence.resourcePlateauEvidence === null ||
+      result.resourcePlateauEvidenceFingerprint === null) {
+    throw new Error("executed runner evidence is missing its resource plateau");
+  }
+  validateResourcePlateauEvidence(evidence.resourcePlateauEvidence, fixture);
+  validateResourcePlateauIdentity(evidence);
+  if (result.resourcePlateauEvidenceFingerprint !==
+      resourcePlateauEvidenceFingerprint(evidence.resourcePlateauEvidence)) {
+    throw new Error("resource plateau evidence fingerprint does not match the runner bundle");
   }
 }
 
@@ -276,15 +298,10 @@ function validateScenarioProviderEgress(evidence, record, result, fixture) {
 export function validateRunnerEvidence(evidence, result, fixture, expectedInvocationId,
   expectedCaseIds = null) {
   validateNetworkTrustEvidence(evidence.networkTrustEvidence, fixture, evidence.invocationId);
-  validateResourcePlateauEvidence(evidence.resourcePlateauEvidence, fixture);
-  validateResourcePlateauIdentity(evidence);
+  validateResourcePlateauBinding(evidence, result, fixture);
   if (result.networkTrustEvidenceFingerprint !==
       networkTrustEvidenceFingerprint(evidence.networkTrustEvidence)) {
     throw new Error("network trust evidence fingerprint does not match the runner bundle");
-  }
-  if (result.resourcePlateauEvidenceFingerprint !==
-      resourcePlateauEvidenceFingerprint(evidence.resourcePlateauEvidence)) {
-    throw new Error("resource plateau evidence fingerprint does not match the runner bundle");
   }
   validateBundlePreparationIdentities(evidence);
   validateBundleProviderEgressReceipts(evidence, fixture);

@@ -190,10 +190,13 @@ The authoritative format is
 until this canonical validator exits 0.
 
 Runner-owned latency intervals, cold/warm preparation receipts, full observed lifecycle milestones,
-process samples, network trust, the 12 raw plateau windows, and host-derived identity decisions live in the separately validated
+process samples, network trust, and host-derived identity decisions live in the separately validated
 [`alpha-runner-evidence-v1.schema.json`](alpha-runner-evidence-v1.schema.json) bundle. The result keeps
-separate network-trust/resource-plateau fingerprints and derived aggregates, not raw copies; the
-validator recomputes both fingerprints from the bundle. Each case also carries a runner-derived,
+separate network-trust/resource-plateau fingerprints and derived aggregates, not raw copies. An
+executed result requires the 12 raw plateau windows and a matching plateau fingerprint; a canonical
+`unsupported`/`not_run` no-activity bundle carries `resourcePlateauEvidence: null` and a null result
+fingerprint instead of claiming that workload ran. The validator recomputes every present
+fingerprint from the bundle. Each case also carries a runner-derived,
 domain-separated fingerprint of
 the complete schema-validated result observation, excluding only the bundle fingerprint that would
 create a cycle. This binds egress, render, atomicity, and conflict evidence without duplicating
@@ -210,7 +213,7 @@ committed event IDs, their count, and their set fingerprint, and binds the earli
 request interval, provider/location, request/payload/auth aggregates, and source bytes by sensitivity.
 Those sensitivity bytes are measured by the runner-owned stub from the request bytes it receives and
 the fixture's fixed synthetic source markers/spans; they are never derived from allow policy or a
-candidate result field.
+candidate result field. Their four-bucket sum cannot exceed the observed provider payload bytes.
 The projected late-injection negative references the base observation instead of fabricating a run.
 Every fixed retry/redirect recovery subcase owns one additional runner observation, including a full
 zero-egress observation for each no-op. The sorted wrappers bind exact case/manifest/provider,
@@ -322,7 +325,8 @@ runner bundle before the result can be eligible.
 - Unsupported, not-run, failed, and degraded are distinct states.
 - `unsupported` and `not_run` are canonical no-activity records with an empty milestone list: all operation, evidence, resource,
   item, and token counts are zero; retry/failure/operational evidence is absent; and their reasons are
-  `capability_unsupported` and `owner_slice_not_run`, respectively. They cannot wrap a failed run.
+  `capability_unsupported` and `owner_slice_not_run`, respectively. Their plateau object and result
+  plateau fingerprint are null. They cannot wrap a failed or executed run.
 - The output-limit scenario binds raw authoritative writer receipts and one durable-observer sample
   at every lifecycle milestone across the pinned processing-through-teardown window. The validator
   derives committed batches, item mutations, maximum visible derived items, and forbidden-sentinel

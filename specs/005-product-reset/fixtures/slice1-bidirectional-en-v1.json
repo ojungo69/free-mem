@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:2d82fba559144ab36a60c797088ef7f87eda0a0106e72c9d932c807835754413",
+  "contractFingerprint": "sha256:4b1fff5912e543e6ffc1a46d3c171e7b1d7ae4e5e0fcb142e2f6a22b8a7ee57f",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -913,7 +913,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "warm",
       "retrievalQuery": "cache invalidation constraint failed approach and next action",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "source_summary_committed"},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 272, "completionMilestone": "source_summary_committed"},
       "events": [
         {
           "eventId": "codex-to-claude-event-1",

@@ -368,7 +368,9 @@ carries authorization with explicit canonical-order committed event IDs/count/fi
 plateau window has a unique workload receipt, strict runner-monotonic action/sample order,
 one identical positive duplicate-attempt count, no-op outcome, and
 zero memory/job deltas. Results bind the bundle objects through separate fingerprints and derived
-aggregates. The runner also emits repeated same-event-ID/different-digest attempts that reuse one
+aggregates; source-byte sensitivity buckets never exceed the observed payload bytes. Canonical
+unsupported/not-run no-activity output uses a null plateau object/fingerprint rather than reusing an
+executed workload. The runner also emits repeated same-event-ID/different-digest attempts that reuse one
 pair-bound receipt, rejects cross-pair reuse, and emits exactly 16 positives plus the required
 late-injection negative; result and runner-bundle fingerprints cover all fields.
 Each fixed retry/redirect recovery subcase adds a sorted case/manifest-bound full observation under

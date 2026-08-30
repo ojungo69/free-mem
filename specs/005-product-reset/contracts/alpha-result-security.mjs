@@ -254,6 +254,11 @@ function validateProviderEgressClaims(evidence, expected) {
     throw new Error("provider egress evidence does not match observed wire aggregates");
   }
   const observedSourceBytes = evidence.sourcePayloadBytesBySensitivity;
+  const observedSourceByteTotal = Object.values(observedSourceBytes)
+    .reduce((sum, value) => sum + value, 0);
+  if (observedSourceByteTotal > evidence.payloadBytesSent) {
+    throw new Error("provider source sensitivity bytes exceed the provider payload");
+  }
   if (!isDeepStrictEqual(observedSourceBytes, sourcePayloadBytesBySensitivity) ||
       observedSourceBytes.secret !== 0 ||
       (provider.executionLocation === "remote" &&

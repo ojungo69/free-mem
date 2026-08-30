@@ -97,7 +97,8 @@ Co-deliver these planning artifacts and mechanically correct, in the same scoped
   workload/drain/checkpoint/sample timestamps and zero memory/job deltas,
   hostname-valid public CA plus six base/local/repaired setup/start TLS receipts binding trust-anchor/
   peer-certificate/zero-byte proof, runner-owned provider-egress timing, pair-bound
-  same-ID/different-digest conflict, and the exact 16+1 suite;
+  same-ID/different-digest conflict, canonical no-activity null plateau evidence, sensitivity-byte
+  totals bounded by observed payload bytes, and the exact 16+1 suite;
 - all provider/manifest/fixture/result/runner-evidence fingerprints.
 
 Replace provider kind/scheme/host/free-form credential/self-declared policy with closed
@@ -363,7 +364,8 @@ the merged boundary prove all reachable consumers. It does not close after raw f
   drain/checkpoint/workload receipt, strict action/sample timestamps, no-op/zero-delta and item/token/concurrency value, public CA and
   six raw trust-anchor/peer-certificate TLS receipts and runner-owned provider-egress observations;
   bind them through separate result fingerprints
-  and derived aggregates alongside the 16+1 case and identity conflict; reject any private-key
+  and derived aggregates alongside canonical no-activity null plateau evidence, the 16+1 case, and
+  identity conflict; reject sensitivity-byte totals above observed payload bytes, any private-key
   artifact or missing observation.
 - Add the runner/validator CI job without weakening existing gates and update user-facing docs.
 

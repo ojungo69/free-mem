@@ -14,7 +14,9 @@
     "runnerId": { "const": "fixture-pinned-reference-runner-v1" },
     "invocationId": { "$ref": "#/$defs/OpaqueIdentifier" },
     "networkTrustEvidence": { "$ref": "#/$defs/NetworkTrustEvidence" },
-    "resourcePlateauEvidence": { "$ref": "#/$defs/ResourcePlateauEvidence" },
+    "resourcePlateauEvidence": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/ResourcePlateauEvidence" }]
+    },
     "scenarios": {
       "type": "array",
       "minItems": 1,

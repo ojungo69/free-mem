@@ -337,6 +337,11 @@ for (const [field, value, label] of [
   mutant.resourcePlateauEvidence[field] = value;
 }, /resource plateau.*identity/,
   `runner evidence accepted a plateau from another ${label}`);
+assertEvidenceRejected((mutantEvidence, mutantResult) => {
+  mutantEvidence.resourcePlateauEvidence = null;
+  mutantResult.resourcePlateauEvidenceFingerprint = null;
+}, /executed runner evidence is missing its resource plateau/,
+  "executed runner evidence omitted the resource plateau", { bindPlateau: false });
 assertEvidenceRejected((mutant) => {
   mutant.resourcePlateauEvidence.processTreeRootId = mutant.scenarios[0].processTreeRootId;
 }, /process-tree identities are reused/,
@@ -477,6 +482,14 @@ assertEvidenceRejected((mutant) => {
 assertEvidenceRejected((mutant) => {
   mutant.scenarios[0].providerEgressEvidence.sourcePayloadBytesBySensitivity.secret = 1;
 }, /sensitivity-byte/, "provider egress included secret source bytes");
+assertEvidenceRejected((mutantEvidence, mutantResult) => {
+  const observed = mutantEvidence.scenarios[0].providerEgressEvidence;
+  const sourceBytes = Object.values(observed.sourcePayloadBytesBySensitivity)
+    .reduce((sum, value) => sum + value, 0);
+  observed.payloadBytesSent = sourceBytes - 1;
+  mutantResult.securityEvidence.payloadBytesSent = sourceBytes - 1;
+}, /source sensitivity bytes exceed the provider payload/,
+  "provider egress counted more source bytes than payload bytes");
 
 const wrongNegativeProjection = structuredClone(suiteEvidence);
 wrongNegativeProjection.scenarios.find((item) =>
