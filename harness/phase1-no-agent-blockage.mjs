@@ -756,13 +756,35 @@ async function timestampLessSessionEndReplayGate(core, root) {
 	}
 }
 
-async function redactionWorkerStallGate(core, root) {
-	const preloadPath = join(root, "stall-redaction-worker.mjs");
+function redactionWorkerStallPreload(root, name, spoolDelayMs = 0) {
+	const preloadPath = join(root, name);
 	writeFileSync(
 		preloadPath,
-		'import { isMainThread, workerData } from "node:worker_threads";\nif (!isMainThread && workerData?.role === "redaction-worker") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000);\n',
+		`import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { isMainThread, workerData } from "node:worker_threads";
+if (!isMainThread && workerData?.role === "redaction-worker") {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000);
+}
+if (!isMainThread && workerData?.role === "hook-runtime" && ${spoolDelayMs} > 0) {
+	const writeFileSync = fs.writeFileSync.bind(fs);
+	fs.writeFileSync = (path, ...args) => {
+		if (String(path).includes("/spool/tmp/") && String(path).endsWith(".json.tmp")) {
+			fs.appendFileSync(process.env.CODEMEM_TEST_SPOOL_DELAY_LOG, "hit\\n", { mode: 0o600 });
+			Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${spoolDelayMs});
+		}
+		return writeFileSync(path, ...args);
+	};
+	syncBuiltinESMExports();
+}
+`,
 		{ mode: 0o600 },
 	);
+	return preloadPath;
+}
+
+async function redactionWorkerStallGate(core, root) {
+	const preloadPath = redactionWorkerStallPreload(root, "stall-redaction-worker.mjs");
 	for (const agent of Object.keys(agents)) {
 		const item = fixture(core, root, "redaction-worker-stall", agent);
 		const sessionId = `phase1-t056-redaction-stall-${agent}`;
@@ -781,6 +803,42 @@ async function redactionWorkerStallGate(core, root) {
 		assertSpool(core, `redaction-worker-stall/${agent}`, item.dataDir, "reserved", null);
 		assert.equal(readyEntries(core, item.dataDir)[0].redaction.redaction_degraded, true);
 		console.log(`PASS redaction-worker-stall/${agent} ${result.elapsedMs.toFixed(1)}ms`);
+	}
+}
+
+async function redactionWorkerSlowInputGate(core, root) {
+	const preloadPath = redactionWorkerStallPreload(
+		root,
+		"stall-redaction-worker-slow-input.mjs",
+		400,
+	);
+	for (const agent of Object.keys(agents)) {
+		const item = fixture(core, root, "redaction-worker-slow-input", agent);
+		const spoolDelayLog = join(item.fixtureRoot, "spool-delay.log");
+		const sessionId = `phase1-t056-redaction-slow-input-${agent}`;
+		const budget = core.HOOK_DELIVERY_BUDGETS[agent];
+		const stdinDelayMs = budget.clientHardCapMs - budget.spoolReserveMs - 100;
+		const result = await runBuiltHook(
+			agent,
+			hookPayload(item.workspace, sessionId, {
+				hook_event_name: "SessionEnd",
+				prompt: undefined,
+				reason: "redaction worker stalled after slow input",
+			}),
+			{
+				...item.env,
+				CODEMEM_TEST_SPOOL_DELAY_LOG: spoolDelayLog,
+				NODE_OPTIONS: `--import=${pathToFileURL(preloadPath).href}`,
+			},
+			item.workspace,
+			budget,
+			{ stdinDelayMs },
+		);
+		assertHookResult("redaction-worker-slow-input", agent, result, budget);
+		assertSpool(core, `redaction-worker-slow-input/${agent}`, item.dataDir, "reserved", null);
+		assert.equal(readFileSync(spoolDelayLog, "utf8"), "hit\n");
+		assert.equal(readyEntries(core, item.dataDir)[0].redaction.redaction_degraded, true);
+		console.log(`PASS redaction-worker-slow-input/${agent} ${result.elapsedMs.toFixed(1)}ms`);
 	}
 }
 
@@ -1140,6 +1198,7 @@ async function main() {
 		await slowInputSessionEndGate(core, root);
 		await timestampLessSessionEndReplayGate(core, root);
 		await redactionWorkerStallGate(core, root);
+		await redactionWorkerSlowInputGate(core, root);
 		await wholeRuntimeStallGate(core, root);
 		await stdoutFlushStallGate(core, root);
 		await globalScannerDeadlineGate(core, root);

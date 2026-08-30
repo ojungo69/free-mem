@@ -22,6 +22,7 @@ import {
 	NORMALIZED_SCHEMA_VERSION,
 	parseAgentMemoryToml,
 	preprocessAdapterEvent,
+	REDACTION_WORKER_DEADLINE_MS,
 	RPC_CAPABILITY_HASH,
 	RPC_MAX_BYTES,
 	resolveRuntimeDataDir,
@@ -260,6 +261,8 @@ export function prepareHookEvent(
 		allowlist: [...NORMALIZED_EVENT_FIELDS],
 		metadataKeys: NORMALIZED_EVENT_FIELDS.filter((field) => field !== "payload"),
 		config: policy.config,
+		workerStartupDeadlineAtMs:
+			deadlineAtMs - HOOK_DELIVERY_BUDGETS[agent].spoolReserveMs - REDACTION_WORKER_DEADLINE_MS,
 	});
 	const rpcEvent = redacted.degraded
 		? sealDegradedNormalizedEvent(redacted.payload)

@@ -19,10 +19,9 @@ export const REDACTION_WORKER_DEADLINE_MS = 100;
 const REDACTION_WORKER_STARTUP_DEADLINE_MS = 1_000;
 /**
  * How long a scan that fails closed will wait for the worker to come up, before its own
- * REDACTION_WORKER_DEADLINE_MS budget starts. Generous against measured worker start, and
- * bounded so that this wait plus the scan budget stays inside the daemon's smallest hook
- * RPC cutoff (`codex.rpcCutoffMs`, daemon-rpc-contract.ts) - the wait is a synchronous
- * `Atomics.wait`, so it blocks the whole thread.
+ * REDACTION_WORKER_DEADLINE_MS budget starts. Source and daemon callers use this allowance;
+ * hook callers pass an earlier deadline that preserves their spool window. The wait is a
+ * synchronous `Atomics.wait`, so it blocks the whole thread.
  */
 const REDACTION_SCAN_STARTUP_BUDGET_MS = 500;
 
@@ -55,6 +54,13 @@ type WorkerMessage = {
 let activeWorker: Worker | undefined;
 let activeWorkerReady: Int32Array | undefined;
 let activeWorkerStartedAt = 0;
+let recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
+let redactionWorkerRetrySuppressedUntilAtMs = Number.NEGATIVE_INFINITY;
+const isHookRuntimeWorker =
+	!isMainThread &&
+	Boolean(workerData) &&
+	typeof workerData === "object" &&
+	(workerData as { role?: unknown }).role === "hook-runtime";
 
 function isRedactionWorkerData(value: unknown): value is RedactionWorkerData {
 	return (
@@ -195,10 +201,12 @@ export function warmRedactionWorker(deadlineAtMs?: number): boolean {
 	try {
 		worker = getWorker();
 	} catch {
+		if (deadlineAtMs === undefined) recentWorkerStartupFailureAt = performance.now();
 		return false;
 	}
-	const ready = activeWorkerReady;
-	if (!ready) return false;
+	// getWorker assigns the readiness view before it returns; worker error/exit callbacks
+	// cannot run until this synchronous call stack yields.
+	const ready = activeWorkerReady as Int32Array;
 	if (Atomics.load(ready, 0) === 0) {
 		const startupRemaining =
 			REDACTION_WORKER_STARTUP_DEADLINE_MS - (performance.now() - activeWorkerStartedAt);
@@ -214,15 +222,61 @@ export function warmRedactionWorker(deadlineAtMs?: number): boolean {
 	) {
 		discardWorker(worker);
 	}
+	if (deadlineAtMs === undefined) recentWorkerStartupFailureAt = performance.now();
 	return false;
 }
 
-if (
-	!isMainThread &&
-	workerData &&
-	typeof workerData === "object" &&
-	(workerData as { role?: unknown }).role === "hook-runtime"
-) {
+function redactionWorkerPreparationSuppressed(
+	deadlineAtMs: number | undefined,
+	now: number,
+): boolean {
+	if (deadlineAtMs !== undefined && now >= deadlineAtMs) {
+		if (isHookRuntimeWorker && activeWorker && now >= redactionWorkerRetrySuppressedUntilAtMs) {
+			redactionWorkerRetrySuppressedUntilAtMs = now + REDACTION_SCAN_STARTUP_BUDGET_MS;
+		}
+		return true;
+	}
+	return isHookRuntimeWorker && now < redactionWorkerRetrySuppressedUntilAtMs;
+}
+
+export function prepareRedactionWorkerForScan(deadlineAtMs?: number): number | null {
+	const now = performance.now();
+	if (redactionWorkerPreparationSuppressed(deadlineAtMs, now)) return null;
+	const inCooldown = now - recentWorkerStartupFailureAt < REDACTION_SCAN_STARTUP_BUDGET_MS;
+	if (inCooldown && !activeWorker) return null;
+	const startupDeadlineAtMs =
+		activeWorkerStartedAt > 0
+			? activeWorkerStartedAt + REDACTION_SCAN_STARTUP_BUDGET_MS
+			: now + REDACTION_SCAN_STARTUP_BUDGET_MS;
+	const readinessDeadlineAtMs = Math.min(
+		startupDeadlineAtMs,
+		deadlineAtMs ?? Number.POSITIVE_INFINITY,
+	);
+	const ready = warmRedactionWorker(inCooldown ? now : Math.max(now, readinessDeadlineAtMs));
+	if (ready) {
+		recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
+		const scanStartedAtMs = performance.now();
+		if (deadlineAtMs !== undefined && scanStartedAtMs >= deadlineAtMs) return null;
+		return Math.min(
+			scanStartedAtMs + REDACTION_WORKER_DEADLINE_MS,
+			deadlineAtMs === undefined
+				? Number.POSITIVE_INFINITY
+				: deadlineAtMs + REDACTION_WORKER_DEADLINE_MS,
+		);
+	}
+	if (inCooldown) return null;
+	if (
+		activeWorker &&
+		readinessDeadlineAtMs === startupDeadlineAtMs &&
+		performance.now() + 1 >= startupDeadlineAtMs
+	) {
+		discardWorker(activeWorker);
+	}
+	recentWorkerStartupFailureAt = performance.now();
+	return null;
+}
+
+if (isHookRuntimeWorker) {
 	getWorker();
 }
 
@@ -313,13 +367,8 @@ export class WorkerSecretScanner extends SecretScanner {
 		parentKey?: string,
 	): { value: unknown; detections: ScanDetection[] } {
 		if (this.options.degraded) throw new RedactionWorkerError();
-		// Warm on its own budget, not the scan budget. Charging worker start-up to the scan
-		// deadline left the first scan in a process with a fraction of it, and unlike the
-		// callers in redaction-pipeline.ts and store.ts - which degrade when the worker is
-		// not ready - this path throws, so the cost surfaced as an unrelated test failing
-		// on CI (#119).
-		warmRedactionWorker(performance.now() + REDACTION_SCAN_STARTUP_BUDGET_MS);
-		const deadlineAtMs = performance.now() + REDACTION_WORKER_DEADLINE_MS;
+		const deadlineAtMs = prepareRedactionWorkerForScan();
+		if (deadlineAtMs === null) throw new RedactionWorkerError();
 		const result = redactValueInWorker(
 			value,
 			this.options.rules ?? [],

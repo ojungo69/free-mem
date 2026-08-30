@@ -3,11 +3,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
-import {
-	HOOK_DELIVERY_BUDGETS,
-	REDACTION_WORKER_DEADLINE_MS,
-	warmRedactionWorker,
-} from "@codemem/core";
+import { HOOK_DELIVERY_BUDGETS } from "@codemem/core";
 import { buildClaudeFileContext } from "./commands/claude-hook-file-context.js";
 import { ingestClaudeHookPayload } from "./commands/claude-hook-ingest.js";
 import { buildClaudeHookInjection } from "./commands/claude-hook-inject.js";
@@ -62,15 +58,6 @@ export async function runHookRuntime(
 	} catch {
 		return fallback(command);
 	}
-	const budget = command.startsWith("claude-")
-		? HOOK_DELIVERY_BUDGETS.claude
-		: HOOK_DELIVERY_BUDGETS.codex;
-	warmRedactionWorker(
-		deadlineAtMs === undefined
-			? undefined
-			: deadlineAtMs - budget.spoolReserveMs - REDACTION_WORKER_DEADLINE_MS,
-	);
-
 	try {
 		if (command === "claude-hook-ingest") {
 			await ingestClaudeHookPayload(payload, {
