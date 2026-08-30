@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
+import { validateResourcePlateauEvidence } from "./alpha-result-resource.mjs";
 import {
   networkTrustEvidenceFingerprint,
   resourcePlateauEvidenceFingerprint,
@@ -11,7 +12,10 @@ import {
   runnerResultObservationFingerprint,
   validateRunnerEvidence,
 } from "./alpha-runner-evidence.mjs";
-import { providerEgressCommittedEventSetFingerprint } from "./alpha-result-security.mjs";
+import {
+  providerEgressCommittedEventSetFingerprint,
+  validateNetworkTrustEvidence,
+} from "./alpha-result-security.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const readFixture = (name) => JSON.parse(readFileSync(join(contractDir, "../fixtures", name), "utf8"));
@@ -64,6 +68,22 @@ function assertEvidenceAccepted(mutate, label) {
   assert.doesNotThrow(() => validateRunnerEvidence(
     mutantEvidence, mutantResult, fixture, mutantEvidence.invocationId,
   ), label);
+  assert.equal(validateResourcePlateauEvidence(
+    mutantEvidence.resourcePlateauEvidence, fixture,
+  ), true, label);
+}
+
+function assertPlateauThresholdMiss(mutate, label) {
+  const mutantEvidence = structuredClone(evidence);
+  const mutantResult = structuredClone(result);
+  mutate(mutantEvidence.resourcePlateauEvidence);
+  bind(mutantEvidence, mutantResult);
+  assert.doesNotThrow(() => validateRunnerEvidence(
+    mutantEvidence, mutantResult, fixture, mutantEvidence.invocationId,
+  ), label);
+  assert.equal(validateResourcePlateauEvidence(
+    mutantEvidence.resourcePlateauEvidence, fixture,
+  ), false, label);
 }
 
 assert.deepEqual(validateAgainstSchema(evidence, evidenceSchema, evidenceSchema), [],
@@ -122,6 +142,11 @@ for (const field of ["workloadStartedMonotonicMs", "workloadReceiptMonotonicMs",
     missingTimestamp, evidenceSchema, evidenceSchema,
   ).length, 0, `runner evidence schema accepted missing ${field}`);
 }
+const orphanThresholdEvidence = structuredClone(evidence);
+orphanThresholdEvidence.resourcePlateauEvidence.orphanProductProcessCount = 1;
+assert.deepEqual(validateAgainstSchema(
+  orphanThresholdEvidence, evidenceSchema, evidenceSchema,
+), [], "runner evidence schema rejected an inspectable orphan-process threshold miss");
 
 assertEvidenceRejected((mutant) => {
   const changedCa = `sha256:${"0".repeat(64)}`;
@@ -152,6 +177,20 @@ assertEvidenceRejected((_mutant, mutantResult) => {
 }, /network trust evidence fingerprint/, "stale network trust evidence fingerprint", {
   bindNetwork: false,
 });
+
+const ipv6Fixture = structuredClone(fixture);
+ipv6Fixture.localDerivationManifest.summaryProvider.endpointUrl =
+  "https://[::1]:1234/v1/chat/completions";
+const ipv6Network = structuredClone(evidence.networkTrustEvidence);
+ipv6Network.localHostname = "[::1]";
+for (const receipt of ipv6Network.tlsPreflightReceipts.filter(
+  (item) => item.hostname === "127.0.0.1",
+)) {
+  receipt.hostname = "[::1]";
+  receipt.sni = null;
+}
+assert.doesNotThrow(() => validateNetworkTrustEvidence(ipv6Network, ipv6Fixture),
+  "network trust evidence rejected null SNI for an IPv6 literal");
 
 const tlsReceiptMutations = [
   [(network) => { network.tlsPreflightReceipts.pop(); }, /exactly six/,
@@ -195,6 +234,9 @@ const tlsReceiptMutations = [
     /peer certificate/, "TLS preflight malformed peer certificate fingerprint"],
   [(network) => { network.tlsPreflightReceipts[0].peerCertificateSha256 =
     network.publicCaSha256; }, /peer certificate/, "TLS preflight peer equals trust anchor"],
+  [(network) => { network.tlsPreflightReceipts[1].peerCertificateSha256 =
+    `sha256:${"0".repeat(64)}`; }, /peer certificate.*drift/,
+    "TLS preflight peer certificate drift between setup and daemon start"],
 ];
 for (const [mutate, pattern, label] of tlsReceiptMutations) {
   assertEvidenceRejected((mutant) => mutate(mutant.networkTrustEvidence), pattern, label);
@@ -285,22 +327,6 @@ const plateauMutations = [
     "resource plateau windows overlap"],
   [(plateau) => { [plateau.windows[0], plateau.windows[1]] =
     [plateau.windows[1], plateau.windows[0]]; }, /ordered/, "unordered plateau windows"],
-  [(plateau) => { plateau.windows[11].rssMiB = plateau.windows[7].rssMiB + 17; },
-    /RSS span/, "final plateau RSS span"],
-  [(plateau) => { plateau.windows[11].storageBytes =
-    plateau.windows[7].storageBytes + 65537; }, /storage span/, "final plateau storage span"],
-  [(plateau) => { plateau.windows[8].drainedQueueDepth = 1; }, /queue/,
-    "nonzero final plateau queue"],
-  [(plateau) => { plateau.windows[9].selectedItemCount += 1; }, /selected item/,
-    "nonconstant final plateau items"],
-  [(plateau) => { plateau.windows[9].injectedTokenCount += 1; }, /injected token/,
-    "nonconstant final plateau tokens"],
-  [(plateau) => { plateau.windows[4].maxProcessingConcurrency = 3; }, /concurrency/,
-    "over-limit plateau concurrency"],
-  [(plateau) => { plateau.windows[9].processCount += 1; }, /process count/,
-    "nonconstant final plateau process count"],
-  [(plateau) => { plateau.orphanProductProcessCount = 1; }, /orphan process/,
-    "plateau orphan process"],
   [(plateau) => { plateau.windows[1].drainReceiptId = plateau.windows[0].drainReceiptId; },
     /receipt.*unique/, "reused plateau drain receipt"],
   [(plateau) => { plateau.windows[0].checkpointReceiptId = "../checkpoint"; },
@@ -326,21 +352,48 @@ for (const [mutate, pattern, label] of plateauMutations) {
   assertEvidenceRejected((mutant) => mutate(mutant.resourcePlateauEvidence), pattern, label);
 }
 
+for (const [mutate, label] of [
+  [(plateau) => { plateau.windows[11].rssMiB = plateau.windows[7].rssMiB + 17; },
+    "final plateau RSS span"],
+  [(plateau) => { plateau.windows[11].storageBytes =
+    plateau.windows[7].storageBytes + 65537; }, "final plateau storage span"],
+  [(plateau) => { plateau.windows[8].drainedQueueDepth = 1; },
+    "nonzero final plateau queue"],
+  [(plateau) => { plateau.windows[9].selectedItemCount += 1; },
+    "nonconstant final plateau items"],
+  [(plateau) => { plateau.windows[9].injectedTokenCount += 1; },
+    "nonconstant final plateau tokens"],
+  [(plateau) => { plateau.windows[4].maxProcessingConcurrency = 3; },
+    "over-limit plateau concurrency"],
+  [(plateau) => { plateau.windows[3].processCount =
+    fixture.thresholds.maxSteadyProductProcessCount + 1; },
+    "over-limit measured process count"],
+  [(plateau) => { plateau.windows[3].drainedQueueDepth =
+    fixture.thresholds.maxPendingQueueDepth + 1; },
+    "over-limit measured queue depth"],
+  [(plateau) => { plateau.windows[3].selectedItemCount =
+    fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxSelectedItems + 1; },
+    "over-limit measured selected items"],
+  [(plateau) => { plateau.windows[3].injectedTokenCount =
+    fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.maxInjectedTokens + 1; },
+    "over-limit measured injected tokens"],
+  [(plateau) => { plateau.windows[9].processCount += 1; },
+    "nonconstant final plateau process count"],
+  [(plateau) => { plateau.orphanProductProcessCount = 1; }, "plateau orphan process"],
+  [(plateau) => {
+    plateau.windows[3].rssMiB = plateau.windows[2].rssMiB + 33;
+  }, "measured RSS growth from first window"],
+  [(plateau) => {
+    plateau.windows[3].storageBytes = plateau.windows[2].storageBytes + 1048577;
+  }, "measured storage growth from first window"],
+]) assertPlateauThresholdMiss(mutate, label);
+
 assertEvidenceAccepted((mutant) => {
   mutant.resourcePlateauEvidence.windows[2].rssMiB = 200;
 }, "measured RSS decrease after a high first window");
 assertEvidenceAccepted((mutant) => {
   mutant.resourcePlateauEvidence.windows[2].storageBytes = 2000000;
 }, "measured storage decrease after a high first window");
-assertEvidenceRejected((mutant) => {
-  const windows = mutant.resourcePlateauEvidence.windows;
-  windows[3].rssMiB = windows[2].rssMiB + 33;
-}, /RSS maximum increase/, "measured RSS growth from first window");
-assertEvidenceRejected((mutant) => {
-  const windows = mutant.resourcePlateauEvidence.windows;
-  windows[3].storageBytes = windows[2].storageBytes + 1048577;
-}, /storage maximum increase/, "measured storage growth from first window");
-
 assertEvidenceRejected((_mutant, mutantResult) => {
   mutantResult.resourcePlateauEvidenceFingerprint = `sha256:${"0".repeat(64)}`;
 }, /resource plateau evidence fingerprint/, "stale plateau evidence fingerprint", {

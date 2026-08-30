@@ -76,7 +76,7 @@ work until that checkpoint merges.
 ## 3. Vertical manifest gate (PR 1)
 
 ```bash
-cd vendor/codemem
+cd "$(git rev-parse --show-toplevel)/vendor/codemem"
 corepack pnpm install --frozen-lockfile
 corepack pnpm exec vitest run \
   packages/core/src/capability-manifest.test.ts \
@@ -126,7 +126,7 @@ Required assertions:
 ## 4. Schema v21 and durable job gate (PR 2)
 
 ```bash
-cd vendor/codemem
+cd "$(git rev-parse --show-toplevel)/vendor/codemem"
 corepack pnpm --filter @codemem/core run generate:test-schema
 corepack pnpm exec vitest run \
   packages/core/src/db.test.ts \
@@ -168,7 +168,7 @@ Expected:
 ## 5. Complete privacy gate (PR 3 / #130)
 
 ```bash
-cd vendor/codemem
+cd "$(git rev-parse --show-toplevel)/vendor/codemem"
 corepack pnpm exec vitest run \
   packages/core/src/project.test.ts \
   packages/core/src/normalized-event.test.ts \
@@ -231,7 +231,7 @@ Issue #130 is not ready to close unless this entire matrix and the full/packed g
 ## 6. Triggered bidirectional lifecycle gate (PR 4)
 
 ```bash
-cd vendor/codemem
+cd "$(git rev-parse --show-toplevel)/vendor/codemem"
 corepack pnpm exec vitest run \
   packages/core/src/ingest-xml-parser.test.ts \
   packages/core/src/ingest-pipeline.test.ts \
@@ -255,7 +255,7 @@ packed Claude⇄Codex scenarios contain exact required and zero forbidden facts.
 ## 7. Managed setup and doctor gate (PR 5)
 
 ```bash
-cd vendor/codemem
+cd "$(git rev-parse --show-toplevel)/vendor/codemem"
 corepack pnpm exec vitest run \
   packages/cli/src/commands/setup-codex.test.ts \
   packages/cli/src/commands/setup-config.test.ts \
@@ -276,7 +276,7 @@ runtime facts.
 ## 8. Full workspace and generated-artifact gates
 
 ```bash
-cd vendor/codemem
+cd "$(git rev-parse --show-toplevel)/vendor/codemem"
 corepack pnpm run build
 corepack pnpm run tsc
 corepack pnpm run lint
@@ -285,7 +285,7 @@ corepack pnpm run phase1:no-agent-blockage
 corepack pnpm run phase1:backup-restore-smoke
 corepack pnpm --filter codemem test:packed-artifact
 cmp plugins/claude/scripts/hook-runtime.mjs plugins/codex/scripts/hook-runtime.mjs
-cd ../..
+cd "$(git rev-parse --show-toplevel)"
 CODEMEM_INDEX="$PWD/vendor/codemem"
 gitnexus analyze --index-only --skip-skills --skip-git "$CODEMEM_INDEX"
 gitnexus impact startDaemon --direction upstream \
@@ -327,7 +327,8 @@ The runner emits exactly 16 positive observations plus the late-injection negati
 pair-bound same-event-ID/different-payload-digest conflict attempts without overwrite. The closed result and
 runner-evidence schema carries all 12 plateau windows, drain/checkpoint receipts, item/token/
 concurrency samples, public CA proof, and six raw base/local/repaired setup/start TLS receipts with exact
-SNI/timeout/timing/verified/trust-anchor/peer-cert/zero-request/credential/payload evidence. Every
+SNI/timeout/timing/verified/trust-anchor/phase-stable-peer-cert/zero-request/credential/payload
+evidence. Every
 plateau window has a unique workload receipt, positive duplicate-attempt count, no-op outcome, and
 zero memory/job delta, plus a strict non-overlapping workload-start/workload-receipt/drain-receipt/
 checkpoint-receipt/sample timestamp chain. Results carry separate network/plateau fingerprints and derived aggregates;

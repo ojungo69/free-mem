@@ -11,7 +11,10 @@ import { validateOutputLimitAtomicity } from "./alpha-result-atomicity.mjs";
 import { readBoundedIJsonFile, readBoundedIJsonStdin } from "./alpha-result-input.mjs";
 import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
 import { readRunnerEvidenceFile, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
-import { evaluateResourceEvidence } from "./alpha-result-resource.mjs";
+import {
+  evaluateResourceEvidence,
+  validateResourcePlateauEvidence,
+} from "./alpha-result-resource.mjs";
 import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 import { evaluateSecurityEvidence } from "./alpha-result-security.mjs";
 import { validateRenderEvidence } from "./alpha-result-render.mjs";
@@ -441,7 +444,13 @@ const latencyPass = evaluateLatencyEvidence(
   result, scenario, fixture, exceptionalState, runnerRecord.latencyRuns,
 );
 
-const resourcePass = evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord, scenario.drainCondition.timeoutMs);
+const resourcePlateauPass = validateResourcePlateauEvidence(
+  runnerEvidence.resourcePlateauEvidence, fixture,
+);
+const scenarioResourcePass = evaluateResourceEvidence(
+  result, fixture, exceptionalState, runnerRecord, scenario.drainCondition.timeoutMs,
+);
+const resourcePass = resourcePlateauPass && scenarioResourcePass;
 const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
 const selectionDeadlineExceeded = selectionObserved &&
   result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs;

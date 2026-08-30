@@ -44,13 +44,10 @@ export function validateResourcePlateauEvidence(evidence, fixture) {
     throw new Error("resource plateau receipt identities are not globally unique");
   }
   validatePlateauOutcomes(windows);
-  if (evidence.orphanProductProcessCount !== 0) {
-    throw new Error("resource plateau evidence contains an orphan process");
-  }
-  validateMeasuredPlateau(
-    windows.slice(2), fixture.effectiveConfiguration.resourceProfile, fixture.thresholds,
-  );
-  validateFinalPlateau(windows.slice(7));
+  return evidence.orphanProductProcessCount === 0 &&
+    measuredPlateauPass(
+      windows.slice(2), fixture.effectiveConfiguration.resourceProfile, fixture.thresholds,
+    ) && finalPlateauPass(windows.slice(7));
 }
 
 function validatePlateauOutcomes(windows) {
@@ -82,61 +79,27 @@ function validatePlateauOutcomes(windows) {
   }
 }
 
-function validateMeasuredPlateau(measured, profile, thresholds) {
-  if (measured.some((window) =>
-    window.processCount > thresholds.maxSteadyProductProcessCount
-  )) {
-    throw new Error("resource plateau process count exceeds the fixture ceiling");
-  }
-  if (maximumIncrease(measured.map((window) => window.rssMiB)) >
-      thresholds.maxShortRunRssGrowthMiB) {
-    throw new Error("resource plateau RSS maximum increase exceeds the fixture ceiling");
-  }
-  if (measured.some((window) =>
-    window.drainedQueueDepth > thresholds.maxPendingQueueDepth
-  )) {
-    throw new Error("resource plateau queue depth exceeds the fixture ceiling");
-  }
-  if (maximumIncrease(measured.map((window) => window.storageBytes)) >
-      thresholds.maxStorageGrowthBytes) {
-    throw new Error("resource plateau storage maximum increase exceeds the fixture ceiling");
-  }
-  if (measured.some((window) =>
-    window.selectedItemCount > profile.injectionEnvelope.maxSelectedItems
-  )) {
-    throw new Error("resource plateau selected item count exceeds the fixture ceiling");
-  }
-  if (measured.some((window) =>
-    window.injectedTokenCount > profile.injectionEnvelope.maxInjectedTokens
-  )) {
-    throw new Error("resource plateau injected token count exceeds the fixture ceiling");
-  }
-  if (measured.some((window) =>
-    window.maxProcessingConcurrency > profile.processingConcurrencyLimit
-  )) {
-    throw new Error("resource plateau concurrency exceeds the fixture ceiling");
-  }
+function measuredPlateauPass(measured, profile, thresholds) {
+  return measured.every((window) =>
+    window.processCount <= thresholds.maxSteadyProductProcessCount &&
+    window.drainedQueueDepth <= thresholds.maxPendingQueueDepth &&
+    window.selectedItemCount <= profile.injectionEnvelope.maxSelectedItems &&
+    window.injectedTokenCount <= profile.injectionEnvelope.maxInjectedTokens &&
+    window.maxProcessingConcurrency <= profile.processingConcurrencyLimit
+  ) && maximumIncrease(measured.map((window) => window.rssMiB)) <=
+    thresholds.maxShortRunRssGrowthMiB &&
+    maximumIncrease(measured.map((window) => window.storageBytes)) <=
+      thresholds.maxStorageGrowthBytes;
 }
 
-function validateFinalPlateau(final) {
-  if (!final.every((window) => window.processCount === final[0].processCount)) {
-    throw new Error("resource plateau final process count is not constant");
-  }
-  if (!final.every((window) => window.drainedQueueDepth === 0)) {
-    throw new Error("resource plateau final queue is not drained");
-  }
-  if (!final.every((window) => window.selectedItemCount === final[0].selectedItemCount)) {
-    throw new Error("resource plateau final selected item count is not constant");
-  }
-  if (!final.every((window) => window.injectedTokenCount === final[0].injectedTokenCount)) {
-    throw new Error("resource plateau final injected token count is not constant");
-  }
-  if (span(final.map((window) => window.rssMiB)) > FINAL_FIVE_RSS_SPAN_MIB) {
-    throw new Error("resource plateau final RSS span exceeds 16 MiB");
-  }
-  if (span(final.map((window) => window.storageBytes)) > FINAL_FIVE_STORAGE_SPAN_BYTES) {
-    throw new Error("resource plateau final storage span exceeds 65536 bytes");
-  }
+function finalPlateauPass(final) {
+  return final.every((window) =>
+    window.processCount === final[0].processCount &&
+    window.drainedQueueDepth === 0 &&
+    window.selectedItemCount === final[0].selectedItemCount &&
+    window.injectedTokenCount === final[0].injectedTokenCount
+  ) && span(final.map((window) => window.rssMiB)) <= FINAL_FIVE_RSS_SPAN_MIB &&
+    span(final.map((window) => window.storageBytes)) <= FINAL_FIVE_STORAGE_SPAN_BYTES;
 }
 
 export function evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord, timeoutMs) {

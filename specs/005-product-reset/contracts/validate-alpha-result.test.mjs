@@ -8,7 +8,12 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
-import { runnerEvidenceFingerprint, runnerResultObservationFingerprint, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import {
+  resourcePlateauEvidenceFingerprint,
+  runnerEvidenceFingerprint,
+  runnerResultObservationFingerprint,
+  validateRunnerEvidence,
+} from "./alpha-runner-evidence.mjs";
 import { clearProviderEgressEvidence } from "./provider-egress-test-helper.mjs";
 import "./validate-slice1-fixture.test.mjs";
 import "./validate-alpha-runner-evidence.test.mjs";
@@ -378,6 +383,32 @@ const atBoundaryEvidence = buildRunnerEvidence(atBoundary);
 attachRunnerEvidence(atBoundary, atBoundaryEvidence);
 assertRejected(atBoundary, /completed drain reached or exceeded the pinned timeout/,
   "completion at timeout boundary", atBoundaryEvidence);
+
+const resourceThresholdFailure = structuredClone(success);
+resourceThresholdFailure.disposition = {
+  state: "failed",
+  reason: "resource_threshold_exceeded",
+  successfulComparisonEligible: false,
+};
+const failedPlateau = structuredClone(suiteRegressionEvidence.resourcePlateauEvidence);
+failedPlateau.windows[3].rssMiB = failedPlateau.windows[2].rssMiB + 33;
+resourceThresholdFailure.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(failedPlateau);
+const resourceThresholdEvidence = buildRunnerEvidence(resourceThresholdFailure);
+resourceThresholdEvidence.resourcePlateauEvidence = failedPlateau;
+attachRunnerEvidence(resourceThresholdFailure, resourceThresholdEvidence);
+assertAccepted(resourceThresholdFailure,
+  "resource threshold miss remains an inspectable failed result", resourceThresholdEvidence);
+
+const inconsistentResourceThreshold = structuredClone(resourceThresholdFailure);
+inconsistentResourceThreshold.resource.maxSteadyProductProcessCount += 1;
+const inconsistentResourceEvidence = buildRunnerEvidence(inconsistentResourceThreshold);
+inconsistentResourceEvidence.resourcePlateauEvidence = structuredClone(failedPlateau);
+attachRunnerEvidence(inconsistentResourceThreshold, inconsistentResourceEvidence);
+assertRejected(inconsistentResourceThreshold, /resource aggregates/,
+  "resource threshold miss accepted inconsistent per-scenario aggregates",
+  inconsistentResourceEvidence);
+
 assertRejected(unsupportedPackFailure(), /unknown property/,
   "Slice 1 explicit pack-compilation failure");
 const byteOversized = oversizedFinalPack("x".repeat(17000));

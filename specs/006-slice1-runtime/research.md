@@ -58,9 +58,10 @@ changing only the fixture would leave schemas, semantic checks, and bound eviden
 CredentialRefV1 (`none` or one environment name). The compiler derives location, egress, cost, TLS,
 and redirect policy and computes ProviderChoice fingerprint.
 
-Literal `127.0.0.1` and `::1` alone are local. `localhost` is rejected. Every other host is remote
-and HTTPS-only with system TLS; redirects are rejected manually. The runtime never appends
-`/messages`, `/responses`, or `/chat/completions`.
+Only literal `127.0.0.1` and `[::1]` are local. `localhost` and its subdomains, trailing-dot names,
+wildcard or unspecified addresses, and alternate loopback spellings are rejected; DNS-to-loopback
+is never guessed. Every other accepted host is remote and HTTPS-only with system TLS; redirects are
+rejected manually. The runtime never appends `/messages`, `/responses`, or `/chat/completions`.
 
 ResourceProfileV1 fixes timeout 60,000 ms, input 12,000 characters, output 4,000 tokens, response
 1,048,576 bytes, and temperature 0.2. The protocol names fix Anthropic/OpenAI auth headers, request
@@ -347,10 +348,10 @@ resource target.
 host/runtime pins, normal provider proposals created from stub metadata, and existing validators.
 Missing pins or incomplete runs emit no success.
 
-The runner denies non-loopback networking for external-egress-disabled cases, requires prohibited
-remote or unauthenticated-HTTP restricted bytes to remain zero, records expected authenticated
-loopback request/credential/eligible/private/local-only payload bytes, and uses
-ordinals 1-22 with 1-2 discarded and nearest-rank p95 per metric. Its resource gate runs 12
+The runner denies non-loopback networking for external-egress-disabled cases, requires restricted
+bytes sent to prohibited remote or unauthenticated-HTTP destinations to remain zero, records
+expected authenticated loopback request/credential/eligible/private/local-only payload bytes, and
+uses ordinals 1-22 with 1-2 discarded and nearest-rank p95 per metric. Its resource gate runs 12
 duplicate/no-op windows with strict non-overlapping workload/drain/checkpoint/sample timestamps;
 windows 8-12 must have constant process count,
 zero drained queue, identical item/token counts, RSS span at most 16 MiB, storage span at most 65,536
@@ -358,7 +359,8 @@ bytes, concurrency at most 2, and zero post-teardown orphan process.
 
 The corrected runner-evidence schema binds every raw plateau window, drain/checkpoint receipt,
 item/token/concurrency sample, hostname/IP-valid public CA fingerprint, six raw base/local/repaired
-setup/start TLS receipts with exact remote-SNI/null-IP-SNI/timing/result/trust-anchor/peer-cert/
+setup/start TLS receipts with exact remote-SNI/null-IP-SNI/timing/result/trust-anchor/
+phase-stable-peer-cert/
 zero-byte evidence, and one runner-owned gated provider-egress observation per real scenario whose
 authorization carries explicit canonical-order committed event IDs/count/fingerprint. Each
 plateau window has a unique workload receipt, strict runner-monotonic action/sample order,

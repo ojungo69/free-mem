@@ -40,7 +40,8 @@ runner-owned; it does not change remote cost class.
 Runner network evidence binds the public CA and exactly six raw credential/payload-free TLS
 preflight receipts (base/local/repaired × setup activation/daemon start), including unique receipt ID,
 hostname/SNI, port, frozen timeout, monotonic interval, verified result, trust-anchor fingerprint
-equal to the public CA, peer-certificate fingerprint, and zero HTTP request, credential, and payload
+equal to the public CA, and one peer-certificate fingerprint per endpoint that is identical across
+its setup/start receipts and distinct from the CA, plus zero HTTP request, credential, and payload
 byte counts.
 
 ## ProviderProposalV1
@@ -69,9 +70,9 @@ password, query, fragment, empty/root-only path, and unsupported scheme are reje
   private, or local-only bytes. Private/local-only processing requires local HTTPS whose exact peer
   passes chain and hostname/IP verification.
 - Any other host: remote; HTTPS only; `explicit_remote`; `external_metered`; `system` TLS.
-- `localhost`, localhost subdomains, trailing-dot hostnames, wildcard/unspecified addresses,
-  alternate loopback spellings, and DNS-to-loopback guessing are rejected rather than classified as
-  local.
+- `localhost`, localhost subdomains, trailing-dot hostnames, wildcard/unspecified addresses
+  (including IPv4-mapped unspecified), alternate loopback spellings, and DNS-to-loopback guessing
+  are rejected rather than classified as local.
 - Redirect policy is always `reject`; request code uses manual redirect handling and never follows or
   resends to a 3xx `Location`.
 - `NODE_TLS_REJECT_UNAUTHORIZED=0`, an added CA path/environment value, or an equivalent trust
@@ -139,6 +140,9 @@ Manifest fingerprint input is the complete manifest after provider fingerprintin
 `configurationFingerprint`, encoded as JCS and prefixed by
 `free-mem:effective-capability-manifest:v1\0`. The stored value is
 `sha256:<64 lowercase hexadecimal characters>` and must recompute exactly.
+Job `admission_manifest_fingerprint` and `attempt_manifest_fingerprint` store this exact
+`configurationFingerprint` value from the frozen manifest; they use no second domain or
+recomputation path.
 
 ResourceProfileV1 fixes all accepted fixture limits plus:
 
@@ -150,9 +154,9 @@ ResourceProfileV1 fixes all accepted fixture limits plus:
   max response 1,048,576 bytes, temperature 0.2, and TLS preflight timeout 5,000 ms.
 
 The only resource successor is the accepted test-only output-limit recovery fault manifest:
-`profileId=slice1-short-run`, `version=2`, all fields identical to version 1 except
-`maxMemoryItemsPerDerivation=17`, with the base remote provider/destination/embedding/legacy fields
-unchanged and the active version-1 manifest as base fingerprint. Production
+`profileId=slice1-short-run`; compared with version 1, only `version=2` and
+`maxMemoryItemsPerDerivation=17` differ, with the base remote provider/destination/embedding/legacy
+fields unchanged and the active version-1 manifest as base fingerprint. Production
 setup exposes no resource selector and continues to compile version 1/max16. The runner may
 materialize the complete v2 test successor. All other profile IDs/field overrides are rejected.
 

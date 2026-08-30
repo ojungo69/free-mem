@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import { isDeepStrictEqual } from "node:util";
 import { URL } from "node:url";
 
@@ -20,8 +21,9 @@ const ORACLE_EVIDENCE_FIELDS = [
 
 function validateTlsPreflightReceipt(receipt, endpoints, publicCaSha256) {
   const endpoint = endpoints.find((item) => item.hostname === receipt.hostname);
-  const expectedSni = endpoint && /^[0-9.]+$/u.test(endpoint.hostname)
-    ? null : endpoint?.hostname;
+  const hostname = endpoint?.hostname;
+  const address = hostname?.startsWith("[") ? hostname.slice(1, -1) : hostname;
+  const expectedSni = isIP(address ?? "") ? null : hostname;
   if (receipt.sni !== expectedSni) {
     throw new Error("TLS preflight SNI does not match its hostname");
   }
@@ -93,6 +95,16 @@ function validateTlsPreflightReceipts(receipts, fixture, publicCaSha256) {
   }
   for (const receipt of receipts) {
     validateTlsPreflightReceipt(receipt, endpoints, publicCaSha256);
+  }
+  const peersByEndpoint = new Map();
+  for (const receipt of receipts) {
+    const key = `${receipt.hostname}\0${receipt.port}`;
+    const peers = peersByEndpoint.get(key) ?? new Set();
+    peers.add(receipt.peerCertificateSha256);
+    peersByEndpoint.set(key, peers);
+  }
+  if ([...peersByEndpoint.values()].some((peers) => peers.size !== 1)) {
+    throw new Error("TLS preflight peer certificate drifted between lifecycle phases");
   }
 }
 

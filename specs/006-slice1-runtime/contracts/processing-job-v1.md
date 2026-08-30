@@ -15,6 +15,8 @@ content-free `source_gap` without creating a job or advancing the frontier.
 
 Admission freezes `admission_manifest_fingerprint`, `admission_provider_fingerprint`, source range,
 and `retry_limit=3`. These fields never change, including after configuration activation or resume.
+The admission and attempt manifest fields store the exact frozen manifest
+`configurationFingerprint`; neither recomputes a distinct manifest hash.
 They are required for new jobs; NULL is allowed only as honest legacy-unknown admission provenance
 and is never backfilled from the current manifest.
 
@@ -83,8 +85,9 @@ Only three durable producers exist:
 - an explicit user-confirmed doctor retry RPC/CLI action emits one `user_confirmed_doctor_retry`
   for exactly the displayed job after displaying its component and fingerprints.
 
-Setup/health receipts are global producer events; one sole-writer transaction fans each out to at
-most the capacity-25 matching job set. Job state, `resume_grant_state != pending`, target role/provider/manifest, and
+Setup/health receipts are global producer events; one sole-writer transaction fans each out to all
+currently matching jobs, necessarily at most 25 under the global uncompleted-job capacity. Job
+state, `resume_grant_state != pending`, target role/provider/manifest, and
 `incoming.sequence > preLastConsumedResumeSequence` are one CAS. Accepted signals alone set
 `postLastConsumedResumeSequence=incoming.sequence` and create a grant; sequence gaps are allowed,
 while equal/stale values are no-ops. Receipt IDs and unique job bindings fence crash replay. Setup never

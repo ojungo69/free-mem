@@ -142,7 +142,9 @@ current attempt; immutable admission provenance remains. Unrelated activations a
 transitions are no-ops. Timer-only resume is prohibited.
 
 Setup activation and provider-health producer receipts are global events, but the sole writer fans
-each out only to the at-most-25 matching `retry-exhausted` jobs that exist in that transaction. Each
+each out to all matching `retry-exhausted` jobs that exist in that transaction. The global
+uncompleted-job capacity is 25, so that complete set is necessarily at most 25 and needs no
+out-of-transaction continuation. Each
 per-job signal includes `targetJobId` and `producerReceiptId`; `(jobId, producerReceiptId)` and
 `(jobId, signalId)` are unique. Doctor confirmation targets exactly the displayed job. State,
 role/provider/manifest, and `sequence > lastConsumedResumeSequence` are compared atomically;
@@ -405,7 +407,8 @@ in suite mode.
   enabled chain/hostname validation, `privateKeyCommitted=false`, and exactly six unique raw TLS
   preflight receipts for base/local/repaired by setup activation/daemon start; every receipt binds
   host, remote SNI or null IP SNI, exact endpoint port, 5,000 ms, the per-run public CA trust anchor,
-  a distinct peer-certificate SHA-256,
+  and one peer-certificate SHA-256 per endpoint that is identical across its setup/start receipts and
+  distinct from the CA,
   verified monotonic duration, and zero credential/payload/request activity
 - one runner-owned provider-egress observation per real scenario, armed before candidate start and
   retained through process-tree termination, with zero pre-authorization/non-loopback attempts,

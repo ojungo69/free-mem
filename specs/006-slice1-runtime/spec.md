@@ -154,8 +154,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
    redirect, and cost behavior rather than trusting those as inputs.
 2. **Given** a remote endpoint, **When** validation runs, **Then** HTTPS and system certificate and
    hostname verification are required; **given** a local endpoint, **Then** only literal `127.0.0.1`
-   or `::1` is local and `localhost` is rejected. An insecure TLS-disable environment rejects remote
-   activation/start, and redirects are never followed.
+   or URL hostname `[::1]` is local and `localhost` is rejected. An insecure TLS-disable environment
+   rejects remote activation/start, and redirects are never followed.
 3. **Given** a valid proposal, **When** setup reaches activation, **Then** it displays protocol,
    complete safe endpoint, credential source, location, cost class, egress policy, TLS policy, and
    both fingerprints without secret values and waits for explicit confirmation before any mutation.
@@ -201,7 +201,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
 - A batch has at most 100 source events. More accepted work remains for a later job; it is not
   silently truncated or dropped.
 - The existing output-limit recovery case may activate only the closed `slice1-short-run` version 2
-  successor: every field equals version 1 except `maxMemoryItemsPerDerivation=17`. It is not a
+  successor: compared with version 1, only `version=2` and
+  `maxMemoryItemsPerDerivation=17` differ. It is not a
   selectable production profile or arbitrary resource override; it remains a runner-owned test-only
   fault contract.
 - Redaction-degraded input is never eligible even when payload data claims otherwise.
@@ -231,8 +232,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   arbitrary headers, inline secrets, or runtime-appended endpoint paths. The frozen profile MUST
   also fix request timeout, input/output/response limits, and temperature.
 - **FR-004**: The compiler MUST compute `providerFingerprint` and derive execution location,
-  egress policy, cost class, TLS policy, and redirect rejection. Literal `127.0.0.1` or `::1` is
-  local; `localhost`, localhost subdomains, and any trailing-dot hostname are rejected; every
+  egress policy, cost class, TLS policy, and redirect rejection. Literal `127.0.0.1` or URL hostname
+  `[::1]` is local; `localhost`, localhost subdomains, and any trailing-dot hostname are rejected; every
   non-loopback endpoint is remote and HTTPS-only with system
   TLS verification; `NODE_TLS_REJECT_UNAUTHORIZED=0`, production added-CA path/environment input, or
   an equivalent trust bypass rejects activation/start. The runner may install its public test CA
@@ -391,7 +392,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   selected-item/token/concurrency samples, hostname/IP-valid CA fingerprint with no private-key
   artifact, raw setup/daemon-start TLS preflight receipts for base/local/repaired hosts with exact
   remote SNI or null IP SNI,
-  timeout, timing, verified result, per-receipt trust-anchor/peer-certificate fingerprints, and zero
+  timeout, timing, verified result, per-receipt trust-anchor and per-endpoint phase-stable
+  peer-certificate fingerprints, and zero
   request/credential/payload bytes, plus runner-owned provider-egress observations spanning
   candidate start through process-tree termination and opening only after direct durable-event-set
   authorization that records explicit canonical-order committed event IDs, count, and fingerprint

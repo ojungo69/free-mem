@@ -103,9 +103,9 @@ Co-deliver these planning artifacts and mechanically correct, in the same scoped
 Replace provider kind/scheme/host/free-form credential/self-declared policy with closed
 ProviderProposalV1/ProviderChoiceV1. Add missing fixed resource fields. Keep summary stub metadata in
 the harness; it materializes normal proposals. Preserve the existing output-limit recovery as the
-only runner-owned/test-only version-2 resource successor (all fields equal except derivation limit
-17); base/local/repaired manifests remain version 1/max16 and production setup has no profile
-selector. Add one complete repaired-remote successor and bind configuration/redirect/downgrade
+only runner-owned/test-only resource successor, differing from version 1 only in `version=2` and
+`maxMemoryItemsPerDerivation=17`; base/local/repaired manifests remain version 1/max16 and production
+setup has no profile selector. Add one complete repaired-remote successor and bind configuration/redirect/downgrade
 signals to its computed manifest/provider fingerprints. Materialize local-derivation and
 output-limit cases as complete successor manifests rather than partial overlays. PR 0 proves static
 shape/fingerprints only; stub transport materialization remains PR 6. Run the complete current
@@ -210,8 +210,9 @@ after the user starts the daemon; PR 5 automates that safely.
   `attempt_count`, consumes an optional one-shot grant, records current attempt manifest/provider,
   and computes attempt fingerprint. Admission provenance never changes.
 - Automatic attempts use frozen limit 3. Retry exhaustion stops timers. Configuration activation
-  and daemon-observed provider health receipts fan out in one sole-writer transaction to at most 25
-  matching exhausted jobs; user confirmation targets exactly one displayed job. Each per-job signal
+  and daemon-observed provider health receipts fan out in one sole-writer transaction to all
+  matching exhausted jobs, necessarily at most 25 under the global capacity; user confirmation
+  targets exactly one displayed job. Each per-job signal
   binds the producer receipt and creates at most one grant; duplicate/stale/wrong-job signals are
   no-ops.
 - Wire those producers durably: import setup activation receipts on daemon start, persist and detect

@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:d9be8ce32f53341ef455ccbad2ee4665dd91fccffc34056fb911d81ceb3f7808",
+  "fixtureFingerprint": "sha256:299c1e6c4cc1dc2079bdaf3f423e2896116024c56cf91ad8586428f3f4f806ed",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-output-limit-exceeded",
   "runnerEvidenceCaseId": "summary-provider-output-limit-exceeded",
@@ -49,7 +49,7 @@
     "contentSha256": "sha256:a586515abebe93a9794d4110209e9894119b7e279da81eed4679f0ba9b6a3328"
   },
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
-  "runnerEvidenceFingerprint": "sha256:8d7bcd1292b6e23cf518d5f6ec8bae0c3c88470d10e695a117e29db3a528c4c2",
+  "runnerEvidenceFingerprint": "sha256:5232bc94a45ac712d63426fe41341ff53e8a18897422341769a022b82de8a790",
   "networkTrustEvidenceFingerprint": "sha256:cf064c7edf1cc3db500cb0f2a030b544931e12e864879fcbe9ecfd41c83ec96a",
   "resourcePlateauEvidenceFingerprint": "sha256:5329f5ee16a1a1c0f0b47437dafd4209db8fa5529bce86fc55e0562fb5a88d67",
   "drain": {

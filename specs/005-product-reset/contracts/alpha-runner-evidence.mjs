@@ -199,7 +199,6 @@ export function validateRunnerEvidence(evidence, result, fixture, expectedInvoca
   }
   validateRunPreparations(record, result,
     result.disposition.state === "unsupported" || result.disposition.state === "not_run",
-    fixture.samplingProtocol.processSampleIntervalMs,
-    fixture.thresholds.maxSteadyProductProcessCount);
+    fixture.samplingProtocol.processSampleIntervalMs, fixture.thresholds.maxSteadyProductProcessCount);
   return record;
 }

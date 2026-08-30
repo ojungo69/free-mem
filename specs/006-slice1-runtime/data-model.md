@@ -58,8 +58,9 @@ stored, fingerprinted, logged, displayed, or inherited from an Agent/OpenCode su
   after the documented canonicalization pass.
 - Require `http:` or `https:`, a non-empty hostname, a non-root API path, and no username, password,
   fragment, or query. The path is the complete protocol endpoint.
-- `127.0.0.1` and `::1` are the only local host literals. `localhost`, localhost subdomains,
-  trailing-dot hostnames, other loopback spellings, and wildcard/unspecified addresses are rejected.
+- `127.0.0.1` and URL hostname `[::1]` are the only local host literals. `localhost`, localhost
+  subdomains, trailing-dot hostnames, other loopback spellings, and wildcard/unspecified addresses
+  (including IPv4-mapped unspecified) are rejected.
   Classification never resolves DNS: every other syntactically valid hostname, including the fixed
   runner `summary.stub.invalid`, is remote.
 - A local literal may use HTTP (`tlsPolicy=not_applicable`) only with credential `none` and
@@ -86,7 +87,7 @@ The compiler output is the proposal plus only derived fields:
 |---|---|
 | proposal fields | Preserved exactly after canonical validation |
 | `providerFingerprint` | Computed SHA-256 fingerprint below |
-| `executionLocation` | Local only for literal `127.0.0.1`/`::1`, otherwise remote |
+| `executionLocation` | Local only for literal `127.0.0.1`/`[::1]`, otherwise remote |
 | `egressPolicy` | `on_device` for local, `explicit_remote` for remote |
 | `costClass` | `local_zero` for local, `external_metered` for remote |
 | `tlsPolicy` | `system` for HTTPS, `not_applicable` only for local HTTP |
@@ -159,7 +160,7 @@ Immutable non-secret state compiled and activated only by setup.
 | `resourceProfile` | Exact `ResourceProfileV1` below |
 | `summaryProvider` | One validated ProviderChoiceV1 |
 | `embeddingProvider` | `{state:"disabled", reason:"slice1_semantic_not_owned", packDegradationReason:"semantic_disabled"}` |
-| `legacyDispositions` | At most 64 unique keys matching `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, each with `translated | ignored | overridden`; no values |
+| `legacyDispositions` | At most 64 unique keys matching `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, each with `translated`, `ignored`, or `overridden`; no values |
 
 Any detected legacy `conflict` belongs to the rejected compile result, not an active manifest.
 Unknown fields are rejected. Secret values, content, prompts, memory text, arbitrary headers, and
@@ -287,8 +288,8 @@ jobs; a deployment may run one, never more than two.
 ### Closed output-limit recovery successor
 
 The accepted fixture already includes one changed configuration for output overflow. Its test-only
-fault contract permits exactly one successor shape: `profileId=slice1-short-run`, `version=2`, every
-field byte-for-byte equal to version 1 except `maxMemoryItemsPerDerivation=17`, and a manifest
+fault contract permits exactly one successor shape: `profileId=slice1-short-run`; compared with
+version 1, only `version=2` and `maxMemoryItemsPerDerivation=17` differ. Its manifest is
 otherwise identical to the base remote destination/provider/embedding/legacy configuration with
 `baseConfigurationFingerprint` equal to the active version-1 manifest. Production setup exposes no
 resource-profile selector and always compiles version 1/max16. The runner may materialize the full
@@ -344,7 +345,7 @@ primary checkout share the remote identity, or the realpathed primary-anchor fal
 | `sensitivity` | Checked canonical enum; missing/invalid trusted write normalizes to `secret` |
 | `repository_identity` | RepositoryIdentityV1 or NULL/unknown |
 | `capture_manifest_fingerprint` | Active manifest at acceptance, or NULL in capture-only mode |
-| `capture_state` | `accepted | quarantined` |
+| `capture_state` | `accepted` or `quarantined` |
 | `safe_error_code` | Bounded content-free code; required for quarantine |
 | `payload_digest_version` | Literal `event-payload-digest-v1` |
 | `payload_digest` | SHA-256 of domain plus JCS redacted canonical payload |
@@ -426,14 +427,14 @@ source/stream/sequence range. No second queue or generic job framework is added.
 | `attempt_provider_fingerprint` | Provider selected for the current claim |
 | `attempt_fingerprint` | Computed identity for the current claim |
 | `resume_grant_id`, `resume_grant_reason` | One-shot grant identity/reason |
-| `resume_grant_state`, `resume_grant_consumed_at` | `none | pending | consumed` plus consumption evidence |
+| `resume_grant_state`, `resume_grant_consumed_at` | `none`, `pending`, or `consumed` plus consumption evidence |
 | `last_resume_signal_id`, `last_resume_sequence` | Signal identity and monotonic replay fence |
-| `last_resume_signal_disposition` | `accepted | duplicate | stale | grant_pending | wrong_job | wrong_role | wrong_provider | unchanged_configuration | unrelated_component` |
+| `last_resume_signal_disposition` | `accepted`, `duplicate`, `stale`, `grant_pending`, `wrong_job`, `wrong_role`, `wrong_provider`, `unchanged_configuration`, or `unrelated_component` |
 | `safe_error_code` | Bounded content-free failure code |
 | `egress_diagnostic_json` | Version/action/reason/counts only |
 | `output_count`, `observed_output_count` | Atomic derivation-limit evidence |
-| `completion_disposition` | `none | memory_committed | privacy_skip | legacy_unrecoverable` |
-| `legacy_recovery_state` | `not_legacy | complete_range | missing_or_ambiguous_range` |
+| `completion_disposition` | `none`, `memory_committed`, `privacy_skip`, or `legacy_unrecoverable` |
+| `legacy_recovery_state` | `not_legacy`, `complete_range`, or `missing_or_ambiguous_range` |
 | `frontier_already_advanced` | Marks exact legacy recovery that must not lower/advance twice |
 
 ### States and capacity
@@ -515,7 +516,8 @@ The only producers are durable and component-specific:
    fingerprints.
 
 Setup/health producer receipts are global events, but one sole-writer transaction fans each out to
-at most the capacity-25 set of currently matching `retry_exhausted` jobs. Each signal stores
+all currently matching `retry_exhausted` jobs. The global uncompleted-job capacity is 25, so that
+complete set is necessarily at most 25. Each signal stores
 `targetJobId` and `producerReceiptId`; `(job_id, producer_receipt_id)` and `(job_id, signal_id)` are
 unique. Job state, `resume_grant_state != pending`, role/provider/manifest fingerprints, and
 `incoming.sequence > preLastConsumedResumeSequence` are one CAS. Only acceptance sets
@@ -589,9 +591,9 @@ Payload-free fixed shape stored on the processing job.
 | Field | Values |
 |---|---|
 | `version` | `1` |
-| `action` | `sent | projected | skipped | failed | exhausted` |
+| `action` | `sent`, `projected`, `skipped`, `failed`, or `exhausted` |
 | `reason` | Closed bounded reason code |
-| `destination` | `local | remote | unknown` |
+| `destination` | `local`, `remote`, or `unknown` |
 | counts | considered/transmitted plus count per sensitivity; no IDs |
 | `configurationFingerprint` | Safe manifest identity |
 | `providerFingerprint` | Safe provider identity |
@@ -662,14 +664,14 @@ One closed trusted value is required before any content-bearing read or provider
 | Field | Rule |
 |---|---|
 | `version` | Literal `1` |
-| `consumer` | `summary_provider | hook_pack | daemon_get | daemon_search | daemon_pack | mcp_direct | mcp_index | viewer | maintenance | export | import | dedup` |
-| `targetAgent` | `claude-code | codex | none` |
+| `consumer` | `summary_provider`, `hook_pack`, `daemon_get`, `daemon_search`, `daemon_pack`, `mcp_direct`, `mcp_index`, `viewer`, `maintenance`, `export`, `import`, or `dedup` |
+| `targetAgent` | `claude-code`, `codex`, or `none` |
 | `targetModel` | 1-256 UTF-8 byte model ID or NULL when not applicable |
-| `executionLocation` | `local | remote | unknown` from frozen manifest/request context |
+| `executionLocation` | `local`, `remote`, or `unknown` from frozen manifest/request context |
 | `repositoryIdentity` | Verified RepositoryIdentityV1 or NULL |
 | `configurationFingerprint` | Frozen daemon manifest fingerprint |
 | `providerFingerprint` | Required for provider/maintenance; otherwise NULL |
-| `providerPeerTrust` | `verified | unverified` for provider/AI-maintenance transport, otherwise `not_applicable`; compiler/runtime-derived, never caller supplied |
+| `providerPeerTrust` | `verified` or `unverified` for provider/AI-maintenance transport, otherwise `not_applicable`; compiler/runtime-derived, never caller supplied |
 
 The boundary is internal and cannot be created from a user project/basename filter. One pure
 eligibility function and its SQL predicate apply the decision table before any row content is
@@ -776,8 +778,9 @@ object includes exactly six runner-owned raw TLS preflight receipts: base, local
 each at `setup_activation` and `daemon_start`. Every receipt has a unique opaque ID, exact hostname,
 remote SNI or null IP SNI, endpoint port, timeout 5,000 ms, monotonic start/end within timeout,
 verified result, normal chain/
-hostname booleans, `trustAnchorSha256` equal to the bundle public CA, a peer-certificate SHA-256, and
-zero HTTP requests, credential bytes, and payload bytes.
+hostname booleans, `trustAnchorSha256` equal to the bundle public CA, one peer-certificate SHA-256
+that is identical across the endpoint's setup/start receipts, and zero HTTP requests, credential
+bytes, and payload bytes.
 
 Each real scenario has one runner-owned provider-egress observation. Its monitor starts before the
 candidate and ends after process-tree termination. A runner-only network gate opens strictly after

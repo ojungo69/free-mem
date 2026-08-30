@@ -307,6 +307,8 @@ for (const [endpointUrl, pattern, label] of [
     "endpoint query"],
   ["https://summary.stub.invalid/v1/chat/completions#fragment", /query or fragment/,
     "endpoint fragment"],
+  ["https://[::ffff:0:0]/v1/chat/completions", /hostname/,
+    "IPv4-mapped unspecified endpoint"],
 ]) {
   const invalidEndpoint = structuredClone(fixture);
   invalidEndpoint.effectiveConfiguration.summaryProvider.endpointUrl = endpointUrl;

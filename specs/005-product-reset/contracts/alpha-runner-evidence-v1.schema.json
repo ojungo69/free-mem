@@ -85,7 +85,7 @@
         "discardedWindowOrdinals": { "const": [1, 2] },
         "measuredWindowOrdinals": { "const": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
         "finalWindowOrdinals": { "const": [8, 9, 10, 11, 12] },
-        "orphanProductProcessCount": { "const": 0 },
+        "orphanProductProcessCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "windows": {
           "type": "array",
           "minItems": 12,

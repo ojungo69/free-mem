@@ -57,7 +57,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:d9be8ce32f53341ef455ccbad2ee4665dd91fccffc34056fb911d81ceb3f7808";
+  "fixture-contract-fingerprint=sha256:299c1e6c4cc1dc2079bdaf3f423e2896116024c56cf91ad8586428f3f4f806ed";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -124,6 +124,7 @@ function validateProviderEndpoint(endpointUrl, credentialKind, label) {
   const local = host === "127.0.0.1" || host === "[::1]";
   const rejectedLocalAlias = host.includes("*") || host === "localhost" ||
     host.endsWith(".localhost") || host === "0.0.0.0" || host === "[::]" ||
+    host === "[::ffff:0:0]" ||
     (host.startsWith("127.") && host !== "127.0.0.1") || host.startsWith("[::ffff:7f");
   if (rejectedLocalAlias) {
     throw new Error(`${label} endpoint hostname is not an accepted literal loopback or remote host`);
