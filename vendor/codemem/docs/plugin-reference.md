@@ -57,9 +57,11 @@ Hook clients never open SQLite. Claude's outer watchdog is 3 seconds; the client
 Redaction worker readiness is bounded separately from the 100 ms scan deadline. Source and daemon
 callers allow up to 500 ms from the worker's original start; hooks use the earlier caller deadline
 that preserves their 500 ms spool fallback. A caller whose readiness start deadline has elapsed does
-not begin a scan. After a true failed readiness attempt, calls during the next 500 ms only probe
-readiness and fail closed instead of paying the wait again. A true readiness or scan failure keeps
-only safe metadata; unscanned content is never delivered or persisted.
+not begin a scan; in the standalone hook worker, immediate retry scans are suppressed for 500 ms so
+spool fallback keeps its reserve. After a true failed readiness attempt, calls during
+the next 500 ms only probe readiness and fail closed instead of paying the wait again. A true
+readiness or scan failure keeps only safe metadata; unscanned content is never delivered or
+persisted.
 
 The CLI keeps a compatible manual stdin entry point for development:
 

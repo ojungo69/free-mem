@@ -101,6 +101,8 @@ describe("redaction worker lifecycle failures", () => {
 		const worker = await loadWorker("ready");
 		expect(worker.prepareRedactionWorkerForScan(performance.now() - 1)).toBeNull();
 		expect(workerState.spawnCount).toBe(0);
+		expect(worker.prepareRedactionWorkerForScan()).not.toBeNull();
+		expect(workerState.spawnCount).toBe(1);
 	});
 
 	it("uses cooldown after a caller deadline prevents readiness", async () => {

@@ -55,6 +55,12 @@ let activeWorker: Worker | undefined;
 let activeWorkerReady: Int32Array | undefined;
 let activeWorkerStartedAt = 0;
 let recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
+let redactionWorkerRetrySuppressedUntilAtMs = Number.NEGATIVE_INFINITY;
+const isHookRuntimeWorker =
+	!isMainThread &&
+	Boolean(workerData) &&
+	typeof workerData === "object" &&
+	(workerData as { role?: unknown }).role === "hook-runtime";
 
 function isRedactionWorkerData(value: unknown): value is RedactionWorkerData {
 	return (
@@ -220,9 +226,22 @@ export function warmRedactionWorker(deadlineAtMs?: number): boolean {
 	return false;
 }
 
+function redactionWorkerPreparationSuppressed(
+	deadlineAtMs: number | undefined,
+	now: number,
+): boolean {
+	if (deadlineAtMs !== undefined && now >= deadlineAtMs) {
+		if (isHookRuntimeWorker && activeWorker && now >= redactionWorkerRetrySuppressedUntilAtMs) {
+			redactionWorkerRetrySuppressedUntilAtMs = now + REDACTION_SCAN_STARTUP_BUDGET_MS;
+		}
+		return true;
+	}
+	return isHookRuntimeWorker && now < redactionWorkerRetrySuppressedUntilAtMs;
+}
+
 export function prepareRedactionWorkerForScan(deadlineAtMs?: number): number | null {
 	const now = performance.now();
-	if (deadlineAtMs !== undefined && now >= deadlineAtMs) return null;
+	if (redactionWorkerPreparationSuppressed(deadlineAtMs, now)) return null;
 	const inCooldown = now - recentWorkerStartupFailureAt < REDACTION_SCAN_STARTUP_BUDGET_MS;
 	if (inCooldown && !activeWorker) return null;
 	const startupDeadlineAtMs =
@@ -257,12 +276,7 @@ export function prepareRedactionWorkerForScan(deadlineAtMs?: number): number | n
 	return null;
 }
 
-if (
-	!isMainThread &&
-	workerData &&
-	typeof workerData === "object" &&
-	(workerData as { role?: unknown }).role === "hook-runtime"
-) {
+if (isHookRuntimeWorker) {
 	getWorker();
 }
 

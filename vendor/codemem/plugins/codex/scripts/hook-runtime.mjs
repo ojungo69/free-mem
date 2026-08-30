@@ -1517,6 +1517,8 @@ var activeWorker;
 var activeWorkerReady;
 var activeWorkerStartedAt = 0;
 var recentWorkerStartupFailureAt = Number.NEGATIVE_INFINITY;
+var redactionWorkerRetrySuppressedUntilAtMs = Number.NEGATIVE_INFINITY;
+var isHookRuntimeWorker = !isMainThread && Boolean(workerData) && typeof workerData === "object" && workerData.role === "hook-runtime";
 function isRedactionWorkerData(value) {
 	return Boolean(value) && typeof value === "object" && value.role === "redaction-worker" && value.ready instanceof SharedArrayBuffer;
 }
@@ -1671,9 +1673,16 @@ function warmRedactionWorker(deadlineAtMs) {
 	if (deadlineAtMs === void 0) recentWorkerStartupFailureAt = performance.now();
 	return false;
 }
+function redactionWorkerPreparationSuppressed(deadlineAtMs, now) {
+	if (deadlineAtMs !== void 0 && now >= deadlineAtMs) {
+		if (isHookRuntimeWorker && activeWorker && now >= redactionWorkerRetrySuppressedUntilAtMs) redactionWorkerRetrySuppressedUntilAtMs = now + REDACTION_SCAN_STARTUP_BUDGET_MS;
+		return true;
+	}
+	return isHookRuntimeWorker && now < redactionWorkerRetrySuppressedUntilAtMs;
+}
 function prepareRedactionWorkerForScan(deadlineAtMs) {
 	const now = performance.now();
-	if (deadlineAtMs !== void 0 && now >= deadlineAtMs) return null;
+	if (redactionWorkerPreparationSuppressed(deadlineAtMs, now)) return null;
 	const inCooldown = now - recentWorkerStartupFailureAt < REDACTION_SCAN_STARTUP_BUDGET_MS;
 	if (inCooldown && !activeWorker) return null;
 	const startupDeadlineAtMs = activeWorkerStartedAt > 0 ? activeWorkerStartedAt + REDACTION_SCAN_STARTUP_BUDGET_MS : now + REDACTION_SCAN_STARTUP_BUDGET_MS;
@@ -1689,7 +1698,7 @@ function prepareRedactionWorkerForScan(deadlineAtMs) {
 	recentWorkerStartupFailureAt = performance.now();
 	return null;
 }
-if (!isMainThread && workerData && typeof workerData === "object" && workerData.role === "hook-runtime") getWorker();
+if (isHookRuntimeWorker) getWorker();
 function discardWorker(worker) {
 	if (activeWorker === worker) {
 		activeWorker = void 0;

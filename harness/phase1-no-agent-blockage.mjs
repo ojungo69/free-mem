@@ -817,7 +817,7 @@ async function redactionWorkerSlowInputGate(core, root) {
 		const spoolDelayLog = join(item.fixtureRoot, "spool-delay.log");
 		const sessionId = `phase1-t056-redaction-slow-input-${agent}`;
 		const budget = core.HOOK_DELIVERY_BUDGETS[agent];
-		const stdinDelayMs = budget.clientHardCapMs - budget.spoolReserveMs - 250;
+		const stdinDelayMs = budget.clientHardCapMs - budget.spoolReserveMs - 100;
 		const result = await runBuiltHook(
 			agent,
 			hookPayload(item.workspace, sessionId, {
