@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { URL } from "node:url";
 
 const ORACLE_EVIDENCE_FIELDS = [
   "remoteProviderRequestCount",
@@ -13,6 +14,93 @@ const ORACLE_EVIDENCE_FIELDS = [
   "redirectLocationPayloadBytesSent",
   "resentPayloadCount",
 ];
+
+export function validateNetworkTrustEvidence(evidence, fixture) {
+  if (
+    evidence?.version !== 1 ||
+    evidence.baseHostname !== new URL(
+      fixture.effectiveConfiguration.summaryProvider.endpointUrl,
+    ).hostname ||
+    evidence.repairedHostname !== new URL(
+      fixture.repairedRemoteManifest.summaryProvider.endpointUrl,
+    ).hostname ||
+    !/^sha256:[0-9a-f]{64}$/u.test(evidence.publicCaSha256)
+  ) {
+    throw new Error("network trust evidence does not bind the fixed hostnames and public CA");
+  }
+  if (!evidence.chainValidation) {
+    throw new Error("network trust evidence did not retain chain validation");
+  }
+  if (!evidence.hostnameValidation) {
+    throw new Error("network trust evidence did not retain hostname validation");
+  }
+  if (evidence.privateKeyCommitted) {
+    throw new Error("network trust evidence committed a private key");
+  }
+  const receipts = evidence.tlsPreflightReceipts;
+  if (!Array.isArray(receipts) || receipts.length !== 4) {
+    throw new Error("network trust evidence must contain exactly four TLS preflight receipts");
+  }
+  const receiptIds = receipts.map((receipt) => receipt.receiptId);
+  if (!receiptIds.every((receiptId) =>
+    typeof receiptId === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(receiptId)
+  )) {
+    throw new Error("TLS preflight receipt IDs are not path-free opaque identifiers");
+  }
+  if (new Set(receiptIds).size !== receiptIds.length) {
+    throw new Error("TLS preflight receipt identities are not unique");
+  }
+  const expectedPairs = [evidence.baseHostname, evidence.repairedHostname]
+    .flatMap((hostname) => ["setup_activation", "daemon_start"]
+      .map((phase) => `${hostname}\0${phase}`)).sort();
+  const actualPairs = receipts.map((receipt) =>
+    `${receipt.hostname}\0${receipt.phase}`).sort();
+  if (!isDeepStrictEqual(actualPairs, expectedPairs)) {
+    throw new Error("TLS preflight receipts do not cover the exact hostname/phase pair set");
+  }
+  for (const receipt of receipts) {
+    if (receipt.sni !== receipt.hostname) {
+      throw new Error("TLS preflight SNI does not match its hostname");
+    }
+    if (receipt.port !== 443) {
+      throw new Error("TLS preflight port is not 443");
+    }
+    if (receipt.timeoutMs !== 5000) {
+      throw new Error("TLS preflight timeout is not 5000 ms");
+    }
+    if (receipt.endMonotonicMs < receipt.startMonotonicMs) {
+      throw new Error("TLS preflight monotonic interval is reversed");
+    }
+    if (receipt.endMonotonicMs - receipt.startMonotonicMs > receipt.timeoutMs) {
+      throw new Error("TLS preflight duration exceeds its timeout");
+    }
+    if (receipt.result !== "verified") {
+      throw new Error("TLS preflight result is not verified");
+    }
+    if (!receipt.chainValidation) {
+      throw new Error("TLS preflight disabled chain validation");
+    }
+    if (!receipt.hostnameValidation) {
+      throw new Error("TLS preflight disabled hostname validation");
+    }
+    if (receipt.trustAnchorSha256 !== evidence.publicCaSha256) {
+      throw new Error("TLS preflight trust anchor does not match the runner public CA");
+    }
+    if (!/^sha256:[0-9a-f]{64}$/u.test(receipt.peerCertificateSha256) ||
+        receipt.peerCertificateSha256 === receipt.trustAnchorSha256) {
+      throw new Error("TLS preflight peer certificate fingerprint is invalid");
+    }
+    if (receipt.credentialBytesSent !== 0) {
+      throw new Error("TLS preflight sent credential bytes");
+    }
+    if (receipt.payloadBytesSent !== 0) {
+      throw new Error("TLS preflight sent payload bytes");
+    }
+    if (receipt.httpRequestCount !== 0) {
+      throw new Error("TLS preflight sent an HTTP request");
+    }
+  }
+}
 
 function observedScenarioEvents(result, scenario) {
   const milestones = new Set(result.milestones.map((item) => item.name));

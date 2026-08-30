@@ -37,7 +37,8 @@ An ordered, idempotent record of supported Agent activity.
 - `attemptCount`, `retryBudgetRemaining`: persisted retry accounting
 - `lastResumeSignal`: `validated_configuration_activation`,
   `recorded_provider_healthy_transition`, or `user_confirmed_doctor_retry`, plus stable signal
-  identity, target component, and relevant configuration fingerprint; absent before the first resume
+  identity, target component, and computed provider/manifest fingerprints; absent before the first
+  resume
 - `lastConsumedResumeSequence`: monotonic per-component sequence persisted outside bounded history
 - `transitionHistory`: bounded ordered entries containing from/to state, timestamp, reason, retry
   budget before/after, and resume signal
@@ -71,13 +72,12 @@ retry-exhausted -> processing
 accepted|spooled|processing -> quarantined
 ```
 
-`retryBudgetRemaining` counts attempts that may still be started and is decremented atomically
-before each attempt. `retry-exhausted` never resumes on a timer alone. Replenishment and
-`lastConsumedResumeSequence` advance in one compare-and-swap; a duplicate or out-of-order signal is
-a no-op even after bounded history rotates. Validated configuration activation replenishes the
-budget once to the relevant newly active manifest limit. A daemon-recorded healthy transition or
-user-confirmed doctor retry grants exactly one attempt, capped by that limit. CapturedEvent accepts
-only signals targeted to its delivery/storage component; provider-only signals are no-ops.
+`retryBudgetRemaining` counts automatic attempts that may still be started and is decremented
+atomically before each attempt. `retry-exhausted` never resumes on a timer alone. A valid signal
+creates one one-shot grant consumed by one claim; configuration activation does not refill the
+automatic limit. Grant creation and `lastConsumedResumeSequence` advance in one compare-and-swap;
+a duplicate or out-of-order signal is a no-op even after bounded history rotates. CapturedEvent
+accepts only signals targeted to its delivery/storage component; provider-only signals are no-ops.
 `attemptCount` remains monotonic. Every transition records the signal identity, target, reason, and
 retry budget before and after the transition. Retry fields survive every delivery-state transition
 and are visible to doctor.
@@ -121,15 +121,15 @@ Represents asynchronous summary or embedding work over already committed events/
 - `attemptCount`, `retryBudgetRemaining`, `lastFailureReason`
 - `lastResumeSignal`, `lastConsumedResumeSequence`, and bounded `transitionHistory` using the same
   resume mechanics as CapturedEvent
-- `providerChoiceId`, `effectiveManifestId`
+- admission and current-attempt provider/manifest fingerprints
 
 A provider failure changes the job state, never the committed source event. `retry-exhausted` uses
-the same durable one-time resume and budget mechanics as CapturedEvent, but a signal applies only
-when its role and `providerChoiceId` match the failed job. Provider-health and doctor signals also
-require the failed job's configuration fingerprint. A `validated_configuration_activation` instead
-requires the same role/provider target plus the newly active, validated, changed fingerprint; the
-transition atomically rebinds the job to that manifest. Unrelated summary/embedding activations and
-health transitions are no-ops. Timer-only resume is prohibited.
+the same durable one-time resume and grant mechanics as CapturedEvent, but a signal applies only
+when its role and computed provider fingerprint match the failed job. Provider-health and doctor
+signals target the active provider/manifest fingerprints. A `validated_configuration_activation`
+requires newly active, validated provider/manifest fingerprints and atomically rebinds only the
+current attempt; immutable admission provenance remains. Unrelated activations and health
+transitions are no-ops. Timer-only resume is prohibited.
 
 A summary result containing more items than the active ResourceProfile's
 `maxMemoryItemsPerDerivation` enters `retry-exhausted` atomically with
@@ -142,8 +142,8 @@ provider output, copied source content, and uncommitted derived items are forbid
 
 Redirect rejection immediately records `provider_redirect_rejected` and leaves the job
 `retry-exhausted` without following or retaining authority from the old `Location`. Only activation
-of a changed, validated configuration fingerprint for the matching provider can requeue it; a
-health transition under the unchanged redirecting configuration is a no-op.
+of the complete repaired-remote successor's changed, validated provider/manifest fingerprints can
+requeue it; a health transition under the unchanged redirecting configuration is a no-op.
 
 ## MemoryItem
 
@@ -237,42 +237,63 @@ spans; it never silently recomputes or drops a deletion tombstone.
 
 ## ResourceProfile
 
-A small user-facing operating envelope independent of provider choice.
+Slice 1 has one closed production operating envelope independent of provider choice:
 
-- `profileId`, `version`
-- capture and processing concurrency
-- queue and retry limits
-- exact `maxMemoryItemsPerDerivation`
-- worker warm-lifetime policy
-- complete InjectionPack envelope: selection time, admitted-candidate, final byte, selected-item, and
-  token limits plus per-lane minimum/maximum item budgets
-- storage and resource warning thresholds
+- `profileId=slice1-short-run`, version 1
+- capture/processing concurrency 2, queue capacity 25, retry limit 3
+- `maxMemoryItemsPerDerivation=16`, `maxSourceEventsPerJob=100`
+- observer request timeout 60,000 ms, maximum input 12,000 JavaScript UTF-16 units, output 4,000 tokens, response
+  1,048,576 bytes, temperature 0.2, and provider TLS preflight timeout 5,000 ms
+- worker warm lifetime and periodic sweep 30,000 ms, idle flush 120,000 ms, event debounce 1,000 ms,
+  and stuck claim timeout 300,000 ms
+- raw-event retention disabled with 0 ms
+- the fixed InjectionPack envelope and resource warning thresholds
 
-Profiles are immutable once published; changing behavior creates a new version.
+The only successor is the complete runner-owned output-limit fault manifest: version 2 and limit 17,
+with every other profile field unchanged. It is not selectable by production setup.
 
 ## ProviderChoice
 
-The independently selected summary or embedding execution method.
+`ProviderProposalV1` is a closed summary input containing only version/role/enabled state, model
+identity, one `wireProtocol` (`anthropic_messages_v1 | openai_chat_completions_v1`), one complete
+canonical `endpointUrl`, and `credentialRef: {kind:none} | {kind:environment,name}`. Provider
+names/kinds, split URLs, appended paths, inline/free-form credentials, arbitrary headers, and
+self-declared policy/fingerprints are invalid.
 
-- `role`: summary or embedding
-- `state`: enabled or disabled
-- `providerKind`: built-in local, compatible local endpoint, or explicit remote endpoint
-- `modelId`, `modelRevision`
-- `endpointScheme`, `endpointHost`, `credentialSource`
-- `tlsCertificateValidation`: required for every remote/off-host provider
-- `redirectPolicy`: `reject` for the Technical Alpha
-- `executionLocation`: local or remote
-- `costClass`, `egressPolicy`
-- `capabilities`: supported operation and output shape
-- `validationState`: unvalidated, valid, invalid, or degraded
+The compiler returns `ProviderChoiceV1` by adding only:
 
-Secret values are referenced, never included in this entity's diagnostics or fingerprint.
-When `state` is disabled, provider/model/endpoint/credential fields are absent and a bounded
-machine-readable disabled reason is required. Disabled is never encoded as an empty model or
-unreachable endpoint.
-Every remote/off-host request requires `https` on the initial connection and normal certificate
-chain and hostname verification, regardless of credential use. Plain HTTP, disabled verification,
-and HTTPS-to-HTTP redirect are rejected before any credentials or payload bytes are sent.
+- computed `providerFingerprint = SHA-256("free-mem:provider-choice:v1\0" || JCS(choice without
+  providerFingerprint))`
+- derived `executionLocation: local | remote`
+- derived `egressPolicy: on_device | explicit_remote`
+- derived `costClass: local_zero | external_metered`
+- derived `tlsPolicy: not_applicable | system`
+- literal `redirectPolicy: reject`
+
+Only literal `127.0.0.1` and `[::1]` are local; `localhost`, localhost subdomains, trailing-dot
+hostnames, and alternate/wildcard loopbacks are rejected. Local HTTP is allowed with TLS not
+applicable. Every other host is remote HTTPS with system chain and hostname validation. URL
+userinfo, query, fragment, noncanonical spelling, and a missing/root-only request path are rejected.
+Secret values are never stored or fingerprinted; only the named environment variable reference is
+retained.
+
+Anthropic Messages uses JSON content type, fixed `anthropic-version: 2023-06-01`, optional
+environment-backed `x-api-key`, request
+`{model,max_tokens,temperature,system,messages:[{role:"user",content}]}`, and concatenated text
+blocks from `content[]`. OpenAI Chat Completions uses JSON content type, optional environment-backed
+`authorization: Bearer`, request
+`{model,max_tokens,temperature,messages:[{role:"system",content},{role:"user",content}]}`, and
+`choices[0].message.content`. Credential `none` sends no authentication header. Responses are
+bounded before JSON parsing; streaming, Responses API, tools, custom headers, tier routing, and
+fallback are unsupported.
+
+Input length is JavaScript UTF-16 code units. The user has a 3,000-unit floor: slice system from the
+start to 9,000 units and call `toWellFormed()`, then slice user from the start to
+`max(3,000, 12,000 - clippedSystem.length)` units and call `toWellFormed()`. Both protocols use this
+allocation without a tail merge or token-based alternative. Setup after confirmation and daemon
+start each perform a native credential/payload-free TLS chain+hostname handshake to the exact
+host/port/SNI within 5,000 ms; failure mutates nothing or restores prior state, and local HTTP skips
+the handshake.
 
 ## SemanticIndexGeneration
 
@@ -292,15 +313,27 @@ vectors from an older generation never become ready in the new vector space by i
 
 The single validated result consumed by setup, runtime, and doctor.
 
-- `manifestVersion`, `manifestId`
-- selected `ResourceProfile`
-- summary and embedding `ProviderChoice` snapshots
-- supported Agent and platform capabilities
-- effective limits and disabled capabilities
-- destination-policy map keyed by supported Agent/model destination class, including execution
-  location and egress policy
-- explicit degradation or fallback reasons
-- non-secret configuration fingerprint
+- `manifestVersion`, `manifestId`, optional predecessor `baseConfigurationFingerprint`
+- exact `ResourceProfileV1`, compiled summary `ProviderChoiceV1`, and explicit disabled embedding
+  lane
+- the closed destination-policy map
+- up to 64 sorted unique legacy `{key, disposition}` records; dispositions are only `translated`,
+  `ignored`, or `overridden`, and contain no values
+- computed non-secret `configurationFingerprint`
+
+The configuration fingerprint is SHA-256 over domain
+`free-mem:effective-capability-manifest:v1\0` plus JCS of the complete manifest after provider
+fingerprinting and excluding only `configurationFingerprint`. A legacy conflict rejects compilation
+and cannot appear in an active manifest.
+
+The fixed fixture has one base remote manifest, one complete local successor, one complete repaired
+remote successor, and the single complete test-only output-limit successor. Every successor binds
+the base fingerprint. Recovery signals carry computed provider/manifest fingerprints, not
+free-form summary configuration labels.
+
+The local destination-map entries exist only for runner-owned loopback-consumer evidence. Claude
+Code, Codex, and MCP resolve remote/unknown in Slice 1 production; local process location or caller
+claims cannot select a local entry.
 
 Activation is atomic: proposed -> validated -> active. Invalid proposals never replace the active
 manifest.
@@ -348,6 +381,17 @@ in suite mode.
 
 - runner-owned latency interval endpoints and full observed lifecycle milestones
 - runner-owned process, RSS, queue, and storage samples
+- one closed network-trust record binding the base/repaired `.invalid` hostnames, public CA SHA-256,
+  enabled chain/hostname validation, `privateKeyCommitted=false`, and exactly four unique raw TLS
+  preflight receipts for base/repaired by setup activation/daemon start; every receipt binds
+  host/SNI/443/5,000 ms, the per-run public CA trust anchor, a distinct peer-certificate SHA-256,
+  verified monotonic duration, and zero credential/payload/request activity
+- one closed short-run plateau record with 12 ordered duplicate/no-op windows, discarded 1-2,
+  measured 3-12, final 8-12, completed checkpoints, fixed item/token counts, bounded
+  process/RSS/queue/storage/concurrency, measured RSS/storage maximum increase from the first measured
+  window, final-five RSS/storage spans, unique path-free drain/checkpoint/workload receipt IDs,
+  positive duplicate-delivery attempts, exact `duplicate_noop`, zero durable/job deltas, and zero
+  orphan processes
 - runner-owned effective Agent/repository/session identity and caller-claim authorization decisions
 - a runner-derived fingerprint over the complete result observation, binding egress, render,
   atomicity, and conflict evidence without copying private payload into the bundle
@@ -358,9 +402,11 @@ in suite mode.
 - first cold-run measurement observed within one pinned process-sample interval after run start
 - warm observations proving one retained ready data directory and process generation
 
-The result record carries only the bundle fingerprint plus inspectable copies and aggregates. Those
-copies are not authoritative and must exactly match the bundle before they can affect eligibility.
-The bundle contains no absolute path or private payload.
+The result record carries the bundle fingerprint plus separate domain-separated fingerprints of the
+network-trust and resource-plateau objects, alongside its existing derived resource aggregates. The
+raw trust and plateau objects live only in the runner bundle; the validator recomputes their
+fingerprints and matches them to the result before they can affect eligibility. The bundle contains
+no absolute path, private payload, certificate private key, or secret value.
 
 ## OperationalStatus
 

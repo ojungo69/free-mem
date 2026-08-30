@@ -4,7 +4,7 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "runnerEvidenceCaseId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "runnerEvidenceFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "runnerEvidenceCaseId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "runnerEvidenceFingerprint", "networkTrustEvidenceFingerprint", "resourcePlateauEvidenceFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -20,6 +20,8 @@
     "artifactMetadata": { "$ref": "#/$defs/ArtifactMetadata" },
     "artifactFingerprint": { "$ref": "#/$defs/Sha256" },
     "runnerEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
+    "networkTrustEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
+    "resourcePlateauEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
     "drain": { "$ref": "#/$defs/Drain" },
     "injectionBeforeModel": {
       "oneOf": [
@@ -107,7 +109,7 @@
     "selectionElapsedMs": { "type": "number", "minimum": 0 },
     "latencyEvidence": { "$ref": "#/$defs/LatencyEvidence" },
     "resource": { "$ref": "#/$defs/Resource" },
-    "providerCostUnits": { "type": ["number", "null"], "minimum": 0 }
+    "providerCostUnits": { "description": "Runner-observed cost; the fixed deterministic stub reports 0 independently of ProviderChoice costClass.", "type": ["number", "null"], "minimum": 0 }
   },
   "allOf": [
     {
@@ -419,14 +421,13 @@
     "SharedResumeSignal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["signalId", "sequence", "kind", "targetRole", "providerChoiceId", "configurationFingerprint"],
+      "required": ["signalId", "sequence", "kind", "targetRole", "providerFingerprint", "effectiveManifestFingerprint"],
       "properties": {
         "signalId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sequence": { "$ref": "#/$defs/SharedPositiveInteger" },
         "kind": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] },
         "targetRole": { "const": "summary" },
-        "providerChoiceId": { "const": "deterministic-summary-v1" },
-        "configurationFingerprint": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "providerFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "effectiveManifestFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       }
     },

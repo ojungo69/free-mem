@@ -174,15 +174,62 @@ def provider_transmission_ok($root):
           and $wire.completionMilestone == null
         end);
 
+def legacy_dispositions_ok($manifest):
+  [ $manifest.legacyDispositions[].key ] as $keys
+  | $keys == ($keys | sort)
+    and ($keys | length) == ($keys | unique | length);
+
+def provider_choice_ok($provider; $endpointUrl; $credentialRef; $location; $egress; $cost; $tls):
+  $provider.version == 1
+    and $provider.role == "summary"
+    and $provider.state == "enabled"
+    and $provider.wireProtocol == "openai_chat_completions_v1"
+    and $provider.endpointUrl == $endpointUrl
+    and $provider.credentialRef == $credentialRef
+    and $provider.executionLocation == $location
+    and $provider.egressPolicy == $egress
+    and $provider.costClass == $cost
+    and $provider.tlsPolicy == $tls
+    and $provider.redirectPolicy == "reject";
+
+def manifest_contract_ok($root):
+  $root.effectiveConfiguration as $base
+  | $root.localDerivationManifest as $local
+  | $root.repairedRemoteManifest as $repaired
+  | $root.outputLimitRecoveryManifest as $output
+  | ($base | has("baseConfigurationFingerprint") | not)
+    and $base.manifestId == "slice1-effective-manifest-v1"
+    and $local.manifestId == "slice1-local-summary-manifest-v1"
+    and $repaired.manifestId == "slice1-repaired-remote-manifest-v1"
+    and $output.manifestId == "slice1-output-limit-recovery-manifest-v1"
+    and all([$local, $repaired, $output][];
+      .baseConfigurationFingerprint == $base.configurationFingerprint)
+    and all([$base, $local, $repaired, $output][]; legacy_dispositions_ok(.))
+    and provider_choice_ok($base.summaryProvider;
+      "https://summary.stub.invalid/v1/chat/completions";
+      {"kind":"environment","name":"FREE_MEM_SUMMARY_API_KEY"};
+      "remote"; "explicit_remote"; "external_metered"; "system")
+    and provider_choice_ok($local.summaryProvider;
+      "http://127.0.0.1:1234/v1/chat/completions";
+      {"kind":"none"}; "local"; "on_device"; "local_zero"; "not_applicable")
+    and provider_choice_ok($repaired.summaryProvider;
+      "https://summary-repaired.stub.invalid/v1/chat/completions";
+      {"kind":"environment","name":"FREE_MEM_SUMMARY_API_KEY"};
+      "remote"; "explicit_remote"; "external_metered"; "system")
+    and $output.summaryProvider == $base.summaryProvider
+    and all([$local, $repaired, $output][];
+      .destinationPolicyMap == $base.destinationPolicyMap
+        and .embeddingProvider == $base.embeddingProvider
+        and .legacyDispositions == $base.legacyDispositions);
+
 def output_limit_recovery_manifest_ok($root):
-  $root.outputLimitRecoveryManifest as $manifest
-  | $manifest.configuration as $recovery
+  $root.outputLimitRecoveryManifest as $recovery
   | $root.effectiveConfiguration as $base
   | fault_scenario($root; "summary_provider_output_limit_exceeded") as $scenario
   | ($scenario.fault.resumeCases[]
       | select(.caseId == "validated-larger-limit-activation")
       | .signals[0]) as $signal
-  | $manifest.baseConfigurationFingerprint == $base.configurationFingerprint
+  | $recovery.baseConfigurationFingerprint == $base.configurationFingerprint
     and $recovery.manifestId == $scenario.fault.recoveryManifestId
     and $recovery.configurationFingerprint == $signal.effectiveManifestFingerprint
     and $recovery.configurationFingerprint != $base.configurationFingerprint
@@ -190,7 +237,8 @@ def output_limit_recovery_manifest_ok($root):
     and $recovery.resourceProfile.maxMemoryItemsPerDerivation ==
       $scenario.fault.observedResultCount
     and ($recovery
-      | del(.manifestId, .configurationFingerprint, .resourceProfile.version,
+      | del(.manifestId, .baseConfigurationFingerprint, .configurationFingerprint,
+          .resourceProfile.version,
           .resourceProfile.maxMemoryItemsPerDerivation)) ==
       ($base
       | del(.manifestId, .configurationFingerprint, .resourceProfile.version,
@@ -210,8 +258,8 @@ def before_model_evidence_ok($root):
         .scenarioId == $negative.baseScenarioId
         and .drainCondition.targetInjectionAcknowledged)
       and $negative.nonBeforeModelMilestones == [
-        "target_injection_acknowledged",
-        "target_model_request_dispatched"
+        "target_model_request_dispatched",
+        "target_injection_acknowledged"
       ]
       and ($negative.injectionBeforeModel | not)
       and ($negative.expectedDisposition == {
@@ -241,6 +289,21 @@ def injection_envelope_ok($root):
 def resource_profile_ok($root):
   $root.effectiveConfiguration.resourceProfile as $profile
   | $profile.processingQueueCapacity >= $profile.resourceWarningThresholds.maxPendingQueueDepth
+  and $profile.maxSourceEventsPerJob == 100
+  and $profile.observerRequestTimeoutMs == 60000
+  and $profile.observerMaxInputChars == 12000
+  and $profile.observerMaxOutputTokens == 4000
+  and $profile.observerMaxResponseBytes == 1048576
+  and $profile.observerTemperature == 0.2
+  and $profile.providerTlsPreflightTimeoutMs == 5000
+  and $profile.periodicSweepIntervalMs == 30000
+  and $profile.idleFlushMs == 120000
+  and $profile.eventDebounceMs == 1000
+  and $profile.stuckClaimTimeoutMs == 300000
+  and ($profile.rawEventRetentionEnabled | not)
+  and $profile.rawEventRetentionMs == 0
+  and $root.localDerivationManifest.resourceProfile == $profile
+  and $root.repairedRemoteManifest.resourceProfile == $profile
   and $profile.resourceWarningThresholds == {
     "maxSteadyProductProcessCount": $root.thresholds.maxSteadyProductProcessCount,
     "maxShortRunRssGrowthMiB": $root.thresholds.maxShortRunRssGrowthMiB,
@@ -252,6 +315,7 @@ def resource_profile_ok($root):
     . as $name | $root.thresholds[$name] == 0);
 
 def destination_policy_ok($root):
+  # Local destination classes are runner-only fixture evidence. Production Agents remain remote/unknown.
   $root.effectiveConfiguration.destinationPolicyMap as $policies
   | $root.effectiveConfiguration.manifestVersion == 1
   and $root.effectiveConfiguration.manifestId == "slice1-effective-manifest-v1"
@@ -311,10 +375,12 @@ def transport_security_ok($root):
     "hostname-mismatch-https-activation-rejected",
     "invalid-chain-https-activation-rejected"
   ]
-  and ([$matches[].providerActivationProposal.credentialPresent] | sort) == [false, true, true, true]
+  and ([$matches[].providerActivationProposal.proposal.credentialRef.kind == "environment"] | sort) ==
+    [false, true, true, true]
   and all($matches[];
     . as $scenario
-    | (if $scenario.providerActivationProposal.endpointScheme == "http"
+    | $scenario.providerActivationProposal.proposal as $proposal
+    | (if ($proposal.endpointUrl | startswith("http://"))
       then "insecure_remote_transport"
       elif $scenario.providerActivationProposal.certificateChainState == "invalid"
       then "tls_certificate_chain_invalid"
@@ -324,11 +390,14 @@ def transport_security_ok($root):
       end) as $expectedReason
     | $scenario.lifecycleProfileId == "configuration_rejection"
     and ($scenario.events | length) == 0
-    and $scenario.providerActivationProposal.executionLocation == "remote"
-    and (if $scenario.providerActivationProposal.endpointScheme == "http"
+    and $proposal.version == 1
+    and $proposal.role == "summary"
+    and $proposal.state == "enabled"
+    and $proposal.wireProtocol == "openai_chat_completions_v1"
+    and (if ($proposal.endpointUrl | startswith("http://"))
       then $scenario.providerActivationProposal.certificateChainState == "not_applicable"
         and $scenario.providerActivationProposal.hostnameState == "not_applicable"
-      else $scenario.providerActivationProposal.endpointScheme == "https"
+      else ($proposal.endpointUrl | startswith("https://"))
         and (($scenario.providerActivationProposal.certificateChainState == "invalid"
             and $scenario.providerActivationProposal.hostnameState == "valid")
           or ($scenario.providerActivationProposal.certificateChainState == "valid"
@@ -509,6 +578,40 @@ def resume_transmission_ok($case; $credentialBytes; $payloadBytes):
       "forbiddenSentinelObservationCount": 0
     };
 
+def successful_recovery_transition_ok(
+  $signal; $expected; $consumed; $ignored; $kind; $providerFingerprint; $manifestFingerprint
+):
+  $signal.kind == $kind
+    and $signal.providerFingerprint == $providerFingerprint
+    and $signal.effectiveManifestFingerprint == $manifestFingerprint
+    and $signal.sequence == 1
+    and $expected.lastConsumedSequence == 1
+    and $consumed == [$signal.signalId]
+    and ($ignored | length) == 0
+    and $expected.budgetBefore == 0
+    and $expected.budgetAfterGrant == 1
+    and $expected.budgetAfterAttempt == 0
+    and $expected.attemptDelta == 1
+    and $expected.ignoredSignalCount == 0;
+
+def ignored_noop_transition_ok($case; $kind; $providerFingerprint; $manifestFingerprint):
+  ($case.signals | length) == 1
+    and $case.signals[0].kind == $kind
+    and $case.signals[0].sequence == 1
+    and $case.signals[0].providerFingerprint == $providerFingerprint
+    and $case.signals[0].effectiveManifestFingerprint == $manifestFingerprint
+    and $case.expectedConsumedSignalIds == []
+    and $case.expectedIgnoredSignalIds == [$case.signals[0].signalId]
+    and $case.providerOutcome == null
+    and $case.expected.budgetBefore == 0
+    and $case.expected.budgetAfterGrant == 0
+    and $case.expected.budgetAfterAttempt == 0
+    and $case.expected.attemptDelta == 0
+    and $case.expected.lastConsumedSequence == 0
+    and $case.expected.ignoredSignalCount == 1
+    and $case.expected.finalState == "retry-exhausted"
+    and $case.expected.durableMemoryCount == 0;
+
 def retry_ok($root):
   fault_scenario($root; "summary_provider_malformed_response") as $retry
   | $retry.drainCondition.eventDeliveryState == "committed"
@@ -545,6 +648,8 @@ def retry_ok($root):
     and all($retry.fault.resumeCases[] | select(.providerOutcome == "valid");
       .expected.budgetBefore == 0
       and .signals[0].sequence == .expected.lastConsumedSequence
+      and .expected.budgetAfterGrant == 1
+      and .expected.budgetAfterAttempt == 0
       and .expected.attemptDelta == 1
       and .expected.lastConsumedSequence == 1
       and .expected.ignoredSignalCount == 0
@@ -557,21 +662,45 @@ def retry_ok($root):
     and output_anchors_disjoint($retry.fault.recoveredOutput)
     and ($retry.fault.resumeCases[]
       | select(.caseId == "validated-configuration-activation")
-      | .signals[0].configurationFingerprint !=
-          $root.effectiveConfiguration.summaryProvider.configurationFingerprint
-        and .expected.budgetAfterGrant ==
-          $root.effectiveConfiguration.resourceProfile.processingRetryLimit
-        and .expected.budgetAfterAttempt ==
-          ($root.effectiveConfiguration.resourceProfile.processingRetryLimit - 1))
-    and all($retry.fault.resumeCases[]
-      | select(.caseId == "recorded-provider-healthy-transition"
-          or .caseId == "user-confirmed-doctor-retry");
-        .expected.budgetAfterGrant == 1
-        and .expected.budgetAfterAttempt == 0)
+      | successful_recovery_transition_ok(
+          .signals[0]; .expected; .expectedConsumedSignalIds; .expectedIgnoredSignalIds;
+          "validated_configuration_activation";
+          $root.repairedRemoteManifest.summaryProvider.providerFingerprint;
+          $root.repairedRemoteManifest.configurationFingerprint))
+    and ($retry.fault.resumeCases[]
+      | select(.caseId == "recorded-provider-healthy-transition")
+      | successful_recovery_transition_ok(
+          .signals[0]; .expected; .expectedConsumedSignalIds; .expectedIgnoredSignalIds;
+          "recorded_provider_healthy_transition";
+          $root.effectiveConfiguration.summaryProvider.providerFingerprint;
+          $root.effectiveConfiguration.configurationFingerprint))
+    and ($retry.fault.resumeCases[]
+      | select(.caseId == "user-confirmed-doctor-retry")
+      | successful_recovery_transition_ok(
+          .signals[0]; .expected; .expectedConsumedSignalIds; .expectedIgnoredSignalIds;
+          "user_confirmed_doctor_retry";
+          $root.effectiveConfiguration.summaryProvider.providerFingerprint;
+          $root.effectiveConfiguration.configurationFingerprint))
     and ($retry.fault.resumeCases[]
       | select(.caseId == "duplicate-and-out-of-order-no-op")
       | [ .signals[].sequence ] == [2, 2, 1]
+        and [ .signals[].kind ] == [
+          "recorded_provider_healthy_transition",
+          "recorded_provider_healthy_transition",
+          "user_confirmed_doctor_retry"
+        ]
         and .signals[0] == .signals[1]
+        and all(.signals[];
+          .providerFingerprint ==
+            $root.effectiveConfiguration.summaryProvider.providerFingerprint
+          and .effectiveManifestFingerprint ==
+            $root.effectiveConfiguration.configurationFingerprint)
+        and .expectedConsumedSignalIds == [.signals[0].signalId]
+        and .expectedIgnoredSignalIds == [
+          .signals[1].signalId,
+          .signals[2].signalId
+        ]
+        and .signals[0].sequence == .expected.lastConsumedSequence
         and .signals[2].sequence < .expected.lastConsumedSequence
         and .providerOutcome == "malformed"
         and .expected.budgetBefore == 0
@@ -611,33 +740,27 @@ def redirect_scenario_ok($root; $redirect):
       "activate_non_redirecting_summary_provider"
     and (($redirect.scenarioId == "summary-provider-redirect-rejected"
         and $redirect.fault.redirectRecovery.caseId ==
-          "redirect-validated-configuration-activation"
-        and $redirect.fault.redirectRecovery.signal.configurationFingerprint ==
-          "summary-config-no-redirect-v2")
+          "redirect-validated-configuration-activation")
       or ($redirect.scenarioId == "summary-provider-https-to-http-downgrade-rejected"
         and $redirect.fault.redirectRecovery.caseId ==
-          "downgrade-validated-configuration-activation"
-        and $redirect.fault.redirectRecovery.signal.configurationFingerprint ==
-          "summary-config-no-downgrade-v2"))
+          "downgrade-validated-configuration-activation"))
     and ($redirect.fault.redirectRecovery.expectedConsumedSignalIds ==
       [$redirect.fault.redirectRecovery.signal.signalId])
     and ($redirect.fault.redirectRecovery.expectedIgnoredSignalIds | length) == 0
-    and $redirect.fault.redirectRecovery.signal.kind ==
-      "validated_configuration_activation"
-    and $redirect.fault.redirectRecovery.signal.configurationFingerprint !=
-      $root.effectiveConfiguration.summaryProvider.configurationFingerprint
+    and successful_recovery_transition_ok(
+      $redirect.fault.redirectRecovery.signal;
+      $redirect.fault.redirectRecovery.expected;
+      $redirect.fault.redirectRecovery.expectedConsumedSignalIds;
+      $redirect.fault.redirectRecovery.expectedIgnoredSignalIds;
+      "validated_configuration_activation";
+      $root.repairedRemoteManifest.summaryProvider.providerFingerprint;
+      $root.repairedRemoteManifest.configurationFingerprint)
     and $redirect.fault.redirectRecovery.oldLocationRequestCountAfterActivation == 0
     and $redirect.fault.redirectRecovery.oldLocationPayloadBytesSentAfterActivation == 0
     and $redirect.fault.redirectRecovery.resentPayloadCountAfterActivation == 0
     and resume_transmission_ok($redirect.fault.redirectRecovery;
       $redirect.providerTransmissionOracle.credentialBytesSent;
       $redirect.providerTransmissionOracle.payloadBytesSent)
-    and $redirect.fault.redirectRecovery.expected.budgetBefore == 0
-    and $redirect.fault.redirectRecovery.expected.budgetAfterGrant ==
-      $root.effectiveConfiguration.resourceProfile.processingRetryLimit
-    and $redirect.fault.redirectRecovery.expected.budgetAfterAttempt ==
-      ($root.effectiveConfiguration.resourceProfile.processingRetryLimit - 1)
-    and $redirect.fault.redirectRecovery.expected.attemptDelta == 1
     and $redirect.fault.redirectRecovery.expected.finalState == "completed"
     and $redirect.fault.redirectRecovery.expected.durableMemoryCount ==
       (1 + ($redirect.fault.recoveredOutput.memoryItems | length))
@@ -716,40 +839,36 @@ def output_limit_ok($root):
     and ($scenario.expectedInjectedItems | length) == 0
     and ($scenario.expectedOmissions | length) == 0
     and $scenario.fault.recoveryManifestId ==
-      $root.outputLimitRecoveryManifest.configuration.manifestId
+      $root.outputLimitRecoveryManifest.manifestId
     and $scenario.fault.resumeCaseInitialSnapshot == {
       "state": "retry-exhausted",
       "budget": 0,
       "lastConsumedSequence": 0
     }
+    and [ $scenario.fault.resumeCases[].caseId ] == [
+      "validated-larger-limit-activation",
+      "unchanged-provider-health-no-op",
+      "unchanged-doctor-retry-no-op"
+    ]
     and ($scenario.fault.resumeCases[]
       | select(.caseId == "validated-larger-limit-activation")
-      | .signals[0].kind == "validated_configuration_activation"
-        and .signals[0].configurationFingerprint !=
-          $root.effectiveConfiguration.summaryProvider.configurationFingerprint
-        and .signals[0].effectiveManifestFingerprint ==
-          $root.outputLimitRecoveryManifest.configuration.configurationFingerprint
-        and .expected.budgetAfterGrant ==
-          $root.effectiveConfiguration.resourceProfile.processingRetryLimit
-        and .expected.budgetAfterAttempt ==
-          ($root.effectiveConfiguration.resourceProfile.processingRetryLimit - 1)
-        and .expected.attemptDelta == 1
+      | successful_recovery_transition_ok(
+          .signals[0]; .expected; .expectedConsumedSignalIds; .expectedIgnoredSignalIds;
+          "validated_configuration_activation";
+          $root.outputLimitRecoveryManifest.summaryProvider.providerFingerprint;
+          $root.outputLimitRecoveryManifest.configurationFingerprint)
         and .expected.finalState == "completed"
         and .expected.durableMemoryCount == ($items | length))
-    and all($scenario.fault.resumeCases[]
-      | select(.caseId == "unchanged-provider-health-no-op"
-          or .caseId == "unchanged-doctor-retry-no-op");
-        .providerOutcome == null
-        and
-        .signals[0].configurationFingerprint ==
-          $root.effectiveConfiguration.summaryProvider.configurationFingerprint
-        and .expected.budgetAfterGrant == 0
-        and .expected.budgetAfterAttempt == 0
-        and .expected.attemptDelta == 0
-        and .expected.lastConsumedSequence == 0
-        and .expected.ignoredSignalCount == 1
-        and .expected.finalState == "retry-exhausted"
-        and .expected.durableMemoryCount == 0)
+    and ($scenario.fault.resumeCases[]
+      | select(.caseId == "unchanged-provider-health-no-op")
+      | ignored_noop_transition_ok(.; "recorded_provider_healthy_transition";
+          $root.effectiveConfiguration.summaryProvider.providerFingerprint;
+          $root.effectiveConfiguration.configurationFingerprint))
+    and ($scenario.fault.resumeCases[]
+      | select(.caseId == "unchanged-doctor-retry-no-op")
+      | ignored_noop_transition_ok(.; "user_confirmed_doctor_retry";
+          $root.effectiveConfiguration.summaryProvider.providerFingerprint;
+          $root.effectiveConfiguration.configurationFingerprint))
     and $scenario.expectedOperationalStatus.reason == "memory_output_limit_exceeded";
 
 def operational_status_ok($root):
@@ -868,7 +987,7 @@ def derived_sensitivity_security_ok($root):
     and $root.localDerivationManifest.baseConfigurationFingerprint ==
       $root.effectiveConfiguration.configurationFingerprint
     and $root.localDerivationManifest.summaryProvider.executionLocation == "local"
-    and $root.localDerivationManifest.summaryProvider.validationState == "valid"
+    and $root.localDerivationManifest.summaryProvider.egressPolicy == "on_device"
     and ($root.lifecycleProfiles[$scenario.lifecycleProfileId] as $milestones
       | ($milestones | index("validated_local_manifest_activated")) as $activation
       | ($milestones | index("local_provider_derived_memory")) as $derivation
@@ -891,6 +1010,7 @@ def derived_sensitivity_security_ok($root):
 | ensure(fixture_graph_ok($root); "fixture scenario graph mismatch")
 | ensure(host_identity_ok($root); "host-derived identity probe mismatch")
 | ensure(provider_transmission_ok($root); "provider transmission oracle mismatch")
+| ensure(manifest_contract_ok($root); "effective capability manifest contract mismatch")
 | ensure(output_limit_recovery_manifest_ok($root); "output-limit recovery manifest mismatch")
 | ensure(before_model_evidence_ok($root); "before-model evidence invariant failed")
 | ensure(injection_envelope_ok($root); "injection envelope mismatch")

@@ -3,7 +3,7 @@
   "title": "free-mem Alpha runner evidence v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["runnerEvidenceVersion", "fixtureId", "fixtureFingerprint", "candidateId", "environmentFingerprint", "artifactFingerprint", "runnerId", "invocationId", "scenarios"],
+  "required": ["runnerEvidenceVersion", "fixtureId", "fixtureFingerprint", "candidateId", "environmentFingerprint", "artifactFingerprint", "runnerId", "invocationId", "networkTrustEvidence", "resourcePlateauEvidence", "scenarios"],
   "properties": {
     "runnerEvidenceVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/NonEmptyString" },
@@ -13,6 +13,8 @@
     "artifactFingerprint": { "$ref": "#/$defs/Fingerprint" },
     "runnerId": { "const": "fixture-pinned-reference-runner-v1" },
     "invocationId": { "$ref": "#/$defs/NonEmptyString" },
+    "networkTrustEvidence": { "$ref": "#/$defs/NetworkTrustEvidence" },
+    "resourcePlateauEvidence": { "$ref": "#/$defs/ResourcePlateauEvidence" },
     "scenarios": {
       "type": "array",
       "minItems": 1,
@@ -26,6 +28,91 @@
     "Fingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "NonNegativeInteger": { "type": "integer", "minimum": 0 },
     "PositiveInteger": { "type": "integer", "minimum": 1 },
+    "NetworkTrustEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "baseHostname", "repairedHostname", "publicCaSha256", "chainValidation", "hostnameValidation", "privateKeyCommitted", "tlsPreflightReceipts"],
+      "properties": {
+        "version": { "const": 1 },
+        "baseHostname": { "const": "summary.stub.invalid" },
+        "repairedHostname": { "const": "summary-repaired.stub.invalid" },
+        "publicCaSha256": { "$ref": "#/$defs/Fingerprint" },
+        "chainValidation": { "const": true },
+        "hostnameValidation": { "const": true },
+        "privateKeyCommitted": { "const": false },
+        "tlsPreflightReceipts": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/TlsPreflightReceipt" }
+        }
+      }
+    },
+    "TlsPreflightReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receiptId", "phase", "hostname", "sni", "port", "timeoutMs", "startMonotonicMs", "endMonotonicMs", "result", "chainValidation", "hostnameValidation", "trustAnchorSha256", "peerCertificateSha256", "credentialBytesSent", "payloadBytesSent", "httpRequestCount"],
+      "properties": {
+        "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "phase": { "enum": ["setup_activation", "daemon_start"] },
+        "hostname": { "enum": ["summary.stub.invalid", "summary-repaired.stub.invalid"] },
+        "sni": { "enum": ["summary.stub.invalid", "summary-repaired.stub.invalid"] },
+        "port": { "const": 443 },
+        "timeoutMs": { "const": 5000 },
+        "startMonotonicMs": { "type": "number", "minimum": 0 },
+        "endMonotonicMs": { "type": "number", "minimum": 0 },
+        "result": { "const": "verified" },
+        "chainValidation": { "const": true },
+        "hostnameValidation": { "const": true },
+        "trustAnchorSha256": { "$ref": "#/$defs/Fingerprint" },
+        "peerCertificateSha256": { "$ref": "#/$defs/Fingerprint" },
+        "credentialBytesSent": { "const": 0 },
+        "payloadBytesSent": { "const": 0 },
+        "httpRequestCount": { "const": 0 }
+      }
+    },
+    "ResourcePlateauEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "workload", "discardedWindowOrdinals", "measuredWindowOrdinals", "finalWindowOrdinals", "orphanProductProcessCount", "windows"],
+      "properties": {
+        "version": { "const": 1 },
+        "workload": { "const": "duplicate_noop_v1" },
+        "discardedWindowOrdinals": { "const": [1, 2] },
+        "measuredWindowOrdinals": { "const": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
+        "finalWindowOrdinals": { "const": [8, 9, 10, 11, 12] },
+        "orphanProductProcessCount": { "const": 0 },
+        "windows": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": { "$ref": "#/$defs/ResourcePlateauWindow" }
+        }
+      }
+    },
+    "ResourcePlateauWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordinal", "processCount", "rssMiB", "drainedQueueDepth", "storageBytes", "selectedItemCount", "injectedTokenCount", "maxProcessingConcurrency", "drainReceiptId", "checkpointReceiptId", "workloadReceiptId", "duplicateDeliveryAttemptCount", "noOpOutcome", "durableMemoryDelta", "processingJobDelta", "checkpointCompleted"],
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1, "maximum": 12 },
+        "processCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "rssMiB": { "type": "number", "minimum": 0 },
+        "drainedQueueDepth": { "$ref": "#/$defs/NonNegativeInteger" },
+        "storageBytes": { "$ref": "#/$defs/NonNegativeInteger" },
+        "selectedItemCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "injectedTokenCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "maxProcessingConcurrency": { "$ref": "#/$defs/NonNegativeInteger" },
+        "drainReceiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "checkpointReceiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "workloadReceiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "duplicateDeliveryAttemptCount": { "$ref": "#/$defs/PositiveInteger" },
+        "noOpOutcome": { "const": "duplicate_noop" },
+        "durableMemoryDelta": { "const": 0 },
+        "processingJobDelta": { "const": 0 },
+        "checkpointCompleted": { "type": "boolean" }
+      }
+    },
     "HostIdentity": {
       "type": "object",
       "additionalProperties": false,

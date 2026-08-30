@@ -54,13 +54,34 @@ Each fixture defines:
 - ordered expected injected items binding fact, memory kind, source events, lane, and selection
   reason; expected omissions; forbidden facts; and retrieval queries
 - expected durable event and MemoryItem counts, including persisted summaries
-- declared effective-manifest identity/fingerprint, the validated local-derivation and output-limit
-  recovery manifests with their activation boundaries, profile/provider identities, and a versioned
-  destination-policy map resolving every scenario target class
+- declared effective-manifest identity/fingerprint; complete local-derivation, repaired-remote, and
+  output-limit successor manifests with their activation boundaries; computed ProviderChoice
+  fingerprints; and a versioned destination-policy map resolving every scenario target class
+- base remote `openai_chat_completions_v1` at
+  `https://summary.stub.invalid/v1/chat/completions` with environment credential
+  `FREE_MEM_SUMMARY_API_KEY`; local successor at
+  `http://127.0.0.1:1234/v1/chat/completions` with credential `none`; and repaired remote at
+  `https://summary-repaired.stub.invalid/v1/chat/completions`
+- the fixed complete ResourceProfile, including 100 source events/job, 60,000 ms observer timeout,
+  exact JavaScript UTF-16 system/user allocation within 12,000 units, 4,000 output tokens, 1 MiB
+  response, temperature 0.2, 5,000 ms provider TLS preflight,
+  sweep/idle/debounce/stuck intervals, and disabled zero-duration raw-event retention; only the
+  runner-owned output-limit successor uses profile version 2/derivation limit 17
 - the complete pinned InjectionPack selection envelope, including time, candidate, byte, item,
   token, and per-lane budgets
 - latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
   warm-up/reset rules, sample boundaries, and percentile calculation
+- runner-owned network trust binding the exact base/repaired hostnames, public CA fingerprint,
+  setup/start credential/payload-free native TLS preflights, normal chain/hostname validation, and
+  absence of a committed private key; exactly four unique raw receipts cover base/repaired by setup
+  activation/daemon start and bind host/SNI/443/5,000 ms, the per-run CA trust anchor, a distinct
+  peer-certificate fingerprint, verified duration, and zero bytes/requests
+- one runner-owned 12-window duplicate/no-op plateau: discard 1-2, measure 3-12, evaluate final
+  8-12 for constant processes, drained queue, equal item/token counts, RSS span at most 16 MiB,
+  storage span at most 65,536 bytes, concurrency at most 2, completed checkpoints, unique path-free
+  drain/checkpoint/workload receipt IDs, positive duplicate-delivery attempts, exact
+  `duplicate_noop`, zero durable/job deltas, and zero orphans; measured RSS/storage ceilings are
+  maximum increase from window 3, while only the final-five predicates use max-minus-min spans
 - an explicit drain condition proving comparable completion across candidates
 - a versioned structural fixture schema and mandatory semantic validation path; neither check alone
   establishes fixture conformance
@@ -83,6 +104,20 @@ The canonical executable validation path is
 claim conformance by running only one underlying layer.
 
 Real credentials, private transcripts, and local absolute paths are forbidden in committed fixtures.
+The `*-local` destination classes are runner-only loopback-consumer evidence. Slice 1 production
+resolves Claude Code, Codex, and MCP remote/unknown; caller location or model labels cannot select a
+local class.
+
+Both protocols use the same JavaScript UTF-16 allocation: clip system from the start to 9,000 units
+and call `toWellFormed()`, then clip user from the start to
+`max(3,000, 12,000 - clippedSystem.length)` and call `toWellFormed()`. Anthropic Messages sends JSON
+content type, fixed `anthropic-version: 2023-06-01`, optional environment-backed `x-api-key`,
+`{model,max_tokens,temperature,system,messages:[{role:"user",content}]}`, and concatenates response
+`content[]` text blocks. OpenAI Chat Completions sends JSON content type, optional
+environment-backed `authorization: Bearer`,
+`{model,max_tokens,temperature,messages:[{role:"system",content},{role:"user",content}]}`, and reads
+`choices[0].message.content`. Credential `none` sends no authentication header, and the 1 MiB
+response limit is enforced before JSON parsing.
 
 ## Result record
 
@@ -90,6 +125,8 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 
 - fixture, candidate, scenario, and runner-evidence case identity
 - the domain-separated fingerprint of one runner-owned evidence bundle for the candidate suite
+- separate domain-separated fingerprints of the bundle's network-trust and resource-plateau
+  evidence objects
 - resolved target destination class and effective-manifest fingerprint
 - the fixture-pinned execution environment and candidate artifact metadata, each with a
   domain-separated JCS fingerprint
@@ -98,8 +135,9 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - `drainConditionId`, `drainStatus`, and `drainTimedOut`
 - a boolean before-model injection marker derived from observed injection-acknowledgment and
   target-model-dispatch milestones; otherwise null
-- a fixed negative fixture that gives injection acknowledgment and model dispatch the same
-  monotonic time, sets the marker false, and requires a non-eligible `scenario_oracle_mismatch`
+- a fixed negative fixture that dispatches the model strictly before injection acknowledgment with
+  increasing monotonic times, sets the marker false, and requires a non-eligible
+  `scenario_oracle_mismatch`
 - runner-bound host-observed Agent/repository/session identity plus three single-field caller-claim
   mismatch decisions; caller claims authorize zero persistence or injection
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
@@ -146,13 +184,21 @@ The authoritative format is
 until this canonical validator exits 0.
 
 Runner-owned latency intervals, cold/warm preparation receipts, full observed lifecycle milestones,
-process samples, and host-derived identity decisions live in the separately validated
+process samples, network trust, the 12 raw plateau windows, and host-derived identity decisions live in the separately validated
 [`alpha-runner-evidence-v1.schema.json`](alpha-runner-evidence-v1.schema.json) bundle. The result keeps
-inspectable copies and derived aggregates, but the validator derives gates from the bundle and
-requires exact equality. Each case also carries a runner-derived, domain-separated fingerprint of
+separate network-trust/resource-plateau fingerprints and derived aggregates, not raw copies; the
+validator recomputes both fingerprints from the bundle. Each case also carries a runner-derived,
+domain-separated fingerprint of
 the complete schema-validated result observation, excluding only the bundle fingerprint that would
 create a cycle. This binds egress, render, atomicity, and conflict evidence without duplicating
 private payload into the runner bundle. A candidate-authored hash or source label is not evidence.
+The network object binds `summary.stub.invalid`, `summary-repaired.stub.invalid`, a hostname-valid
+public CA SHA-256, normal chain/hostname validation, and `privateKeyCommitted=false`; no private key
+is committed. Its four raw receipts prove base/repaired setup and daemon preflights with exact SNI,
+timeout, per-run CA/peer-certificate fingerprints, duration, verification, and zero HTTP/auth/payload
+activity. The plateau object binds all 12 ordered duplicate/no-op workload receipts and separately
+fingerprints maximum-increase-from-first and final-five-span predicates before any aggregate can
+affect eligibility.
 Cold runs require opaque data-root, reset-receipt, and process-generation identities that occur only
 once across the entire bundle, including warm records, plus observed zero process and directory-entry
 counts within one pinned process-sample interval before measurement. The first cold observation must
@@ -173,8 +219,9 @@ to be comparison-eligible. The negative record applies `beforeModelNegativeFixtu
 base scenario; injection must not precede model dispatch, and the record must match the fixed failed,
 non-eligible disposition.
 
-The schema and semantic rules define the Alpha v1 vocabulary for Slice 1, including its fixed retry
-signal and provider identity. The current executable validator is deliberately bound to that
+The schema and semantic rules define the Alpha v1 vocabulary for Slice 1, including retry signals
+bound to computed provider/manifest fingerprints. Each consumed signal creates one one-shot grant;
+configuration activation does not refill the automatic retry limit. The current executable validator is deliberately bound to that
 fingerprinted fixture bundle; neither the schema nor validator is a generic fixture-plugin interface.
 Slice 2 and Slice 3 add their own fingerprinted fixture validator, reuse compatible core fields, and
 version-review any new retry family rather than weakening the Slice 1 evidence shape.
@@ -203,6 +250,10 @@ eight directory levels, 16 MiB per file, and 64 MiB total; traversal and hashing
 use a fixed 64 KiB content buffer, and reject each boundary before unbounded work.
 The runner-evidence root is separately realpath-contained, non-overlapping with that artifact root,
 and read through the same nonblocking/no-follow regular-file and stable-stat boundary.
+`networkTrustEvidenceFingerprint` uses domain
+`free-mem:alpha-network-trust-evidence:v1\0`; `resourcePlateauEvidenceFingerprint` uses
+`free-mem:alpha-resource-plateau-evidence:v1\0`. Both hash canonical JCS evidence and must match the
+runner bundle before the result can be eligible.
 
 ## Comparison rules
 
@@ -271,8 +322,9 @@ and read through the same nonblocking/no-follow regular-file and stable-stat bou
   request/byte/resend counters are independently recorded.
 - Credential/payload byte evidence is the fixture-pinned aggregate across the configured-endpoint
   attempt set. Allowed verified-HTTPS attempts must match that exact aggregate; local providers and
-  rejected activations record zero. The fixed `fixture` and `local_zero` cost classes both record
-  exactly zero provider cost units.
+  rejected activations record zero. The remote ProviderChoice remains `external_metered`; the fixed
+  runner records exactly zero provider cost units because its deterministic stub is runner-owned,
+  not because of provider cost class.
 - Remote request/payload counts cover the initial drain attempt set only. Every independent recovery
   case records fixture-pinned request, payload, credential-byte, payload-byte, restricted-byte, and
   forbidden-sentinel evidence for that attempt; no-op cases record six zeroes. Redirect recovery

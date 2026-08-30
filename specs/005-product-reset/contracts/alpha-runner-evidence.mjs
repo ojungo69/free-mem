@@ -5,22 +5,29 @@ import { isDeepStrictEqual } from "node:util";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { isWithin, readBoundedIJsonFile } from "./alpha-result-input.mjs";
+import { validateResourcePlateauEvidence } from "./alpha-result-resource.mjs";
+import { validateNetworkTrustEvidence } from "./alpha-result-security.mjs";
 
 export const MAX_RUNNER_EVIDENCE_BYTES = 1024 * 1024;
 
+const fingerprint = (domain, value) => `sha256:${createHash("sha256")
+  .update(domain).update(canonicalizeJson(value)).digest("hex")}`;
+
+export function networkTrustEvidenceFingerprint(evidence) {
+  return fingerprint("free-mem:alpha-network-trust-evidence:v1\0", evidence);
+}
+
+export function resourcePlateauEvidenceFingerprint(evidence) {
+  return fingerprint("free-mem:alpha-resource-plateau-evidence:v1\0", evidence);
+}
+
 export function runnerEvidenceFingerprint(evidence) {
-  return `sha256:${createHash("sha256")
-    .update("free-mem:alpha-runner-evidence:v1\0")
-    .update(canonicalizeJson(evidence))
-    .digest("hex")}`;
+  return fingerprint("free-mem:alpha-runner-evidence:v1\0", evidence);
 }
 
 export function runnerResultObservationFingerprint(result) {
   const { runnerEvidenceFingerprint: _runnerEvidenceFingerprint, ...observation } = result;
-  return `sha256:${createHash("sha256")
-    .update("free-mem:alpha-runner-result-observation:v1\0")
-    .update(canonicalizeJson(observation))
-    .digest("hex")}`;
+  return fingerprint("free-mem:alpha-runner-result-observation:v1\0", observation);
 }
 
 export function readRunnerEvidenceFile(path, evidenceRoot, artifactRoot) {
@@ -107,6 +114,16 @@ function validateBundlePreparationIdentities(evidence) {
 
 export function validateRunnerEvidence(evidence, result, fixture, expectedInvocationId,
   expectedCaseIds = null) {
+  validateNetworkTrustEvidence(evidence.networkTrustEvidence, fixture);
+  validateResourcePlateauEvidence(evidence.resourcePlateauEvidence, fixture);
+  if (result.networkTrustEvidenceFingerprint !==
+      networkTrustEvidenceFingerprint(evidence.networkTrustEvidence)) {
+    throw new Error("network trust evidence fingerprint does not match the runner bundle");
+  }
+  if (result.resourcePlateauEvidenceFingerprint !==
+      resourcePlateauEvidenceFingerprint(evidence.resourcePlateauEvidence)) {
+    throw new Error("resource plateau evidence fingerprint does not match the runner bundle");
+  }
   validateBundlePreparationIdentities(evidence);
   const actualCaseIds = evidence.scenarios.map((item) => item.caseId);
   if (!actualCaseIds.every((item, index) => index === 0 || actualCaseIds[index - 1] < item) ||

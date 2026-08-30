@@ -73,6 +73,8 @@ function buildRunnerEvidence(result) {
     artifactFingerprint: result.artifactFingerprint,
     runnerId: "fixture-pinned-reference-runner-v1",
     invocationId: `${result.candidateId}:fixture-invocation-v1`,
+    networkTrustEvidence: structuredClone(suiteRegressionEvidence.networkTrustEvidence),
+    resourcePlateauEvidence: structuredClone(suiteRegressionEvidence.resourcePlateauEvidence),
     scenarios: [{
       caseId: result.runnerEvidenceCaseId,
       scenarioId: result.scenarioId,
@@ -293,6 +295,11 @@ function unsupportedResult() {
 
 assertAccepted(success, "positive example");
 assertAccepted(failure, "failure example");
+
+const missingDeterministicStubCost = structuredClone(success);
+missingDeterministicStubCost.providerCostUnits = null;
+assertRejected(missingDeterministicStubCost, /deterministic provider stub/,
+  "runner-owned deterministic stub cost was inferred from provider cost class");
 
 const unsupported = unsupportedResult();
 const unsupportedEvidence = buildRunnerEvidence(unsupported);
