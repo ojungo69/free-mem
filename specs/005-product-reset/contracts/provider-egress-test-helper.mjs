@@ -20,6 +20,8 @@ export function clearProviderEgressEvidence(evidence, caseId) {
     providerPayloadCount: 0,
     credentialBytesSent: 0,
     payloadBytesSent: 0,
+    restrictedPayloadBytesSent: 0,
+    forbiddenSentinelObservationCount: 0,
     sourcePayloadBytesBySensitivity: { eligible: 0, localOnly: 0, private: 0, secret: 0 },
     redirectLocationRequestCount: 0,
     redirectLocationPayloadBytesSent: 0,

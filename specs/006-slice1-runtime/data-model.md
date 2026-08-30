@@ -202,9 +202,13 @@ phase, intended fingerprint, every target path/hash including `activation-receip
 restore; those bytes never enter manifest/log/evidence. Order is: journal prepared+fsynced, editor
 files and install ownership manifest, immutable generation, mode-0600
 activation receipt, `current` pointer last, then journal commit/removal. Same-process failure restores
-or removes targets in reverse. On next setup/start, a fully published state is finalized only when
-the receipt fingerprint and current generation both match; a mismatched receipt is discarded while
-prestate is restored. Daemon provider startup rejects an unresolved/unrecoverable journal.
+or removes in reverse only after every target is classified as recorded prestate or journal-owned
+poststate; any unknown target leaves all targets unchanged and the journal retained. On next
+setup/start, a fully published state is finalized only when
+the receipt fingerprint, current generation, and all poststate hashes match. A partial state is
+restored only when every target still matches its recorded prestate or journal-owned poststate. If
+any target matches neither, recovery changes nothing, retains the journal, reports a bounded
+recovery conflict, and blocks provider startup; external edits are never overwritten.
 
 A running daemon blocks the first manual activation path before any mutation. Full coordinated
 stop/activate/start or attach behavior is a later increment.
@@ -325,12 +329,15 @@ Resolution uses the active local filesystem:
 4. If Git probes fail or neither identity source can be verified, repository identity is NULL/unknown.
 
 All probes share one 100 ms wall-clock budget and one 8 KiB stdout/stderr cap and do not use a shell.
-Successful or fallback identity is cached once per realpathed working-tree root for the daemon lifetime; the
-persisted event/session identity remains stable for admitted jobs. A failed/timed-out remote probe
-falls back to the already-realpathed common-dir anchor when available, otherwise unknown. Probes do
-not log the raw
-remote/path. A remote may still be unreachable; "verified" here means read from the current Git
-repository rather than trusted from an event/request claim.
+The daemon may cache non-authoritative realpath/common-dir resolution, but it MUST re-read and
+canonicalize the current verified `origin` before each capture identity and each restricted
+DestinationBoundary decision. A cached remote-derived identity is reusable only when that current
+canonical remote matches. If `origin` changes from A to B, the boundary identity becomes B and A's
+restricted rows no longer match; probe failure falls back to the currently verified realpathed
+common-dir anchor when available, otherwise unknown. Persisted event/session identity remains stable
+for already admitted jobs. Probes do not log the raw remote/path. A remote may still be unreachable;
+"verified" here means read from the current Git repository rather than trusted from an event/request
+claim.
 
 `project`, basename, cwd spelling, caller `workspaceKey`, and CLI/MCP project filters remain display
 or query metadata. They never authorize private/local-only disclosure. A linked worktree and its
@@ -421,7 +428,7 @@ source/stream/sequence range. No second queue or generic job framework is added.
 | `admission_manifest_fingerprint` | Immutable manifest at admission; required new, NULL only for legacy unknown |
 | `admission_provider_fingerprint` | Immutable provider at admission; required new, NULL only for legacy unknown |
 | `retry_limit` | Automatic attempt limit frozen at admission (3) |
-| `attempt_count` | Lifetime successful-claim count; monotonic, never reset |
+| `attempt_count` | Starts at 0 for new admission; lifetime successful-claim count, monotonic and never reset |
 | `claim_generation` | Monotonic stale-worker fence |
 | `attempt_manifest_fingerprint` | Manifest selected for the current claim |
 | `attempt_provider_fingerprint` | Provider selected for the current claim |
@@ -794,7 +801,9 @@ The receipt binds active provider/location, first/last request time, exact reque
 redirect aggregates, zero pre-authorization/non-loopback attempts, and source bytes by sensitivity.
 The runner-owned stub measures those sensitivity bytes from the request bytes it actually receives
 against fixed synthetic source markers/spans; neither policy expectation nor candidate output
-supplies the observed values, and the four-bucket sum cannot exceed `payloadBytesSent`.
+supplies the observed values, and the four-bucket sum cannot exceed `payloadBytesSent`. The receipt
+also owns `restrictedPayloadBytesSent=0` and `forbiddenSentinelObservationCount=0`, each matched to
+the result instead of trusting candidate counters.
 The late-injection negative projects its base receipt instead of claiming another run.
 Every fixed retry/redirect recovery subcase has one sorted, case/manifest-bound full observation
 under the same authorization/timing/TLS/wire/sensitivity rules. No-op subcases carry full zero-egress

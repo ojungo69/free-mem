@@ -32,6 +32,9 @@ remote or primary anchor.
 
 Remote canonicalization retains HTTPS/SSH transport class and the exact bounded SSH username.
 HTTPS and SSH spellings, or two SSH usernames on one host/path, do not share restricted authority.
+The current canonical remote is revalidated at capture and before every restricted boundary. A
+change from origin A to B yields B's identity; A's restricted rows cannot match B, and a failed
+revalidation falls back only to a currently verified anchor or unknown.
 
 ## DestinationBoundaryV1
 

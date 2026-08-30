@@ -112,7 +112,8 @@ provider/AI processing with a bounded reason, and can recover only through a per
 - explicit setup proposal, safe disclosure, confirmation, editor+pointer transaction, rollback, and
   running-daemon refusal;
 - one owner-only interruption journal around existing setup snapshots, with `current` published last
-  and next-start hash-based finalize/restore;
+  and next-start hash-based finalize/restore that, on any unknown external edit, preserves every
+  target unchanged and retains the conflicting journal;
 - one shared lifecycle lock and fixed `lifecycle -> setup/spool -> daemon writer` order, with daemon
   state rechecked while held;
 - daemon absent/malformed/valid state handling, frozen snapshot, doctor/status projection;
@@ -192,8 +193,9 @@ SQLite's normal multiple-NULL uniqueness behavior. A collision is retained outsi
 `raw_events` as a secret durable quarantine record with redacted payload/digest and non-success
 receipt, never silently discarded or normally ACKed.
 
-Admission manifest/provider fingerprints, source range, and retry limit never change. Successful
-claim increments monotonic lifetime attempt count and claim generation. A changed configuration
+Admission manifest/provider fingerprints, source range, and retry limit never change. New admission
+starts with attempt count 0; successful automatic claims 1-3 each increment lifetime attempt count
+and claim generation, and a failed attempt 3 becomes retry-exhausted. A changed configuration
 creates new attempt manifest/provider/attempt fingerprints without rewriting admission. Automatic
 attempts stop at the frozen limit; a valid resume signal creates one grant consumed by one claim.
 The contract correction replaces current configuration-activation budget refills with the same
@@ -242,7 +244,9 @@ and provenance. Deleting the row destroys inspectability.
 none exists, resolve and realpath the primary Git anchor through linked-worktree metadata and hash
 that. Canonical remotes retain HTTPS/SSH transport class and a bounded exact SSH username, so
 different transport authorities or SSH users never collapse. Unknown stays NULL.
-Project/basename/workspace values remain display/filter metadata.
+Project/basename/workspace values remain display/filter metadata. The current canonical remote is
+revalidated at capture and every restricted boundary; an origin A→B change cannot reuse A's cached
+authority, and a failed revalidation falls back to a current verified anchor or unknown.
 
 **Rationale**: Current `resolveProject`, normalized events, MCP defaults, and export filters use
 basenames or caller strings. Two unrelated repositories can share them; linked worktrees can have
@@ -368,7 +372,8 @@ carries authorization with explicit canonical-order committed event IDs/count/fi
 plateau window has a unique workload receipt, strict runner-monotonic action/sample order,
 one identical positive duplicate-attempt count, no-op outcome, and
 zero memory/job deltas. Results bind the bundle objects through separate fingerprints and derived
-aggregates; source-byte sensitivity buckets never exceed the observed payload bytes. Canonical
+aggregates; source-byte sensitivity buckets never exceed the observed payload bytes, and runner-owned
+restricted-payload bytes/forbidden-sentinel observations remain zero. Canonical
 unsupported/not-run no-activity output uses a null plateau object/fingerprint rather than reusing an
 executed workload. The runner also emits repeated same-event-ID/different-digest attempts that reuse one
 pair-bound receipt, rejects cross-pair reuse, and emits exactly 16 positives plus the required

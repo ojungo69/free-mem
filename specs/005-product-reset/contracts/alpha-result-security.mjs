@@ -245,6 +245,8 @@ function validateProviderEgressClaims(evidence, expected) {
     evidence.providerPayloadCount !== providerPayloadCount ||
     evidence.credentialBytesSent !== wireEvidence.credentialBytesSent ||
     evidence.payloadBytesSent !== wireEvidence.payloadBytesSent ||
+    evidence.restrictedPayloadBytesSent !== wireEvidence.restrictedPayloadBytesSent ||
+    evidence.forbiddenSentinelObservationCount !== wireEvidence.forbiddenSentinelObservationCount ||
     evidence.redirectLocationRequestCount !== wireEvidence.redirectLocationRequestCount ||
     evidence.redirectLocationPayloadBytesSent !== wireEvidence.redirectLocationPayloadBytesSent ||
     evidence.resentPayloadCount !== wireEvidence.resentPayloadCount ||
@@ -258,6 +260,12 @@ function validateProviderEgressClaims(evidence, expected) {
     .reduce((sum, value) => sum + value, 0);
   if (observedSourceByteTotal > evidence.payloadBytesSent) {
     throw new Error("provider source sensitivity bytes exceed the provider payload");
+  }
+  if (evidence.restrictedPayloadBytesSent !== 0) {
+    throw new Error("runner observed restricted provider payload");
+  }
+  if (evidence.forbiddenSentinelObservationCount !== 0) {
+    throw new Error("runner observed a forbidden sentinel");
   }
   if (!isDeepStrictEqual(observedSourceBytes, sourcePayloadBytesBySensitivity) ||
       observedSourceBytes.secret !== 0 ||
@@ -287,17 +295,21 @@ function validateProviderAuthorization(
   const { scenario, provider, committedEvents } = expected;
   const authorization = evidence.authorization;
   if (!authorization ||
-      authorization.committedEventCount !== result.counts.committed ||
-      authorization.committedEventSetFingerprint !==
-        providerEgressCommittedEventSetFingerprint(
-          committedEvents, scenario.sourceRepositoryScope,
-        ) ||
-      !(bounds.candidate < authorization.observedAtMonotonicMs &&
-        authorization.observedAtMonotonicMs <
-          evidence.firstProviderRequestStartedMonotonicMs &&
-        evidence.firstProviderRequestStartedMonotonicMs <=
-          evidence.lastProviderRequestFinishedMonotonicMs &&
-        evidence.lastProviderRequestFinishedMonotonicMs <= bounds.terminated)) {
+      authorization.committedEventCount !== result.counts.committed) {
+    throw new Error("provider authorization event count does not match committed events");
+  }
+  if (authorization.committedEventSetFingerprint !==
+      providerEgressCommittedEventSetFingerprint(
+        committedEvents, scenario.sourceRepositoryScope,
+      )) {
+    throw new Error("provider authorization event set does not match committed events");
+  }
+  if (!(bounds.candidate < authorization.observedAtMonotonicMs &&
+      authorization.observedAtMonotonicMs <
+        evidence.firstProviderRequestStartedMonotonicMs &&
+      evidence.firstProviderRequestStartedMonotonicMs <=
+        evidence.lastProviderRequestFinishedMonotonicMs &&
+      evidence.lastProviderRequestFinishedMonotonicMs <= bounds.terminated)) {
     throw new Error("provider request is not strictly after runner-owned authorization");
   }
   const endpoint = new URL(provider.endpointUrl);

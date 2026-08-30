@@ -89,7 +89,7 @@ password, query, fragment, empty/root-only path, and unsupported scheme are reje
   is sent. Local HTTP has no TLS handshake and remains credential-none/eligible-only.
 
 The ProviderChoiceV1 contains the proposal plus those derived fields and
-`providerFingerprint=sha256(JCS(domain || choice-without-fingerprint))`, where the domain is
+`providerFingerprint=sha256(domain || JCS(choice-without-fingerprint))`, where the domain is
 `free-mem:provider-choice:v1\0`. Only the named credential environment variable may be read; its
 value is never stored or fingerprinted.
 
@@ -185,11 +185,16 @@ Setup is the only compiler and activation writer. It must:
    manifest/evidence;
 7. publish editor mutations, write the owner-only immutable generation, write the mode-0600
    activation receipt, and publish `current` last;
-8. remove the journal only after commit, or restore/remove every target in reverse.
+8. before rollback, classify every target against recorded pre/post state. If any target is unknown,
+   mutate no target and retain the journal; otherwise restore/remove journal-owned poststate targets
+   in reverse. Remove the journal only after commit or complete verified rollback.
 
 At next setup/daemon start, a leftover journal is finalized only if the intended pointer, activation-
-receipt fingerprint, current generation, and every target hash match; otherwise the receipt is
-discarded and prestate restored. Unrecoverable journal state blocks provider startup.
+receipt fingerprint, current generation, and every target hash match. If every target matches either
+its recorded prestate or the journal-owned intended poststate, recovery may discard the receipt and
+restore only journal-owned poststate targets to prestate in reverse. If any target matches neither
+recorded state, recovery preserves every target unchanged, retains the journal, reports a bounded
+recovery conflict, and blocks provider startup. Unknown external edits are never overwritten.
 
 Daemon start takes the same lifecycle lock before journal/manifest resolution and writer-lock
 acquisition and releases it only after startup state is published. No path takes lifecycle after a

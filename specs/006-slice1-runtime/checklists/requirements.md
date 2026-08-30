@@ -52,14 +52,17 @@
 - [x] Claude/Codex/MCP model egress is remote/unknown by default; no caller/local-process claim can
   select runner-only on-device destination classes
 - [x] Repository authority uses transport-preserving verified Git remote with exact SSH user or a
-  realpathed primary Git anchor, never basename/project label or cross-transport/user collapse
+  realpathed primary Git anchor, never basename/project label or cross-transport/user collapse;
+  capture/boundary revalidation invalidates cached authority after origin A→B
 - [x] Schema v21 durable jobs, retry-exhausted capacity, one-shot resume, attempt/admission provenance,
-  atomic completion, retention safety, and legacy `gave_up` handling precede #130 closure
+  attempt-count 0 plus automatic claims 1-3, atomic completion, retention safety, and legacy `gave_up`
+  handling precede #130 closure
 - [x] RawEventSweeper production nudge and stop-race, content-free diagnostics, semantic-disabled
   vector retention, and generated artifacts have named source/tests
 - [x] EgressDiagnosticV1 requires a closed safe `nextAction`; no producer may omit it or emit free text
 - [x] Setup pointer/editor activation publishes `current` last and has owner-only interruption-journal
-  recovery plus shared setup/daemon lifecycle-lock exclusion before provider startup
+  recovery with all-target zero mutation when any external hash is unknown, plus shared setup/daemon
+  lifecycle-lock exclusion before provider startup
 - [x] Activation receipt, persisted provider health edge, and user-confirmed doctor retry are the only
   crash-idempotent resume-signal producers; every signal binds exact job+producer receipt and global
   setup/health events fan out only to the bounded matching job set
@@ -71,7 +74,8 @@
   plateau candidate/artifact/environment/invocation/root and one identical duplicate workload count
   are closed; plateau timestamps strictly prove workload→drain→checkpoint→
   sample order and non-overlap while pair-bound conflict reuse/distinctness and exact 16+1 evidence
-  remain closed; sensitivity-byte totals cannot exceed observed payload bytes
+  remain closed; sensitivity-byte totals cannot exceed observed payload bytes, and runner-owned
+  restricted-payload/sentinel observations are zero
 - [x] Provider authorization records explicit committed event IDs/count/fingerprint and accepts
   canonical non-prefix sets; no validator infers the authorized set from count alone
 - [x] Tasks are sequential T001-T060 and every independent PR boundary/dependency/range is explicit

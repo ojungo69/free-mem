@@ -65,7 +65,8 @@ provider-proposal metadata for later harness materialization. Local-derivation a
 are complete successor manifests rather than partial overlays. Result/runner schemas represent and
 fingerprint the 12 resource windows for executed results, use a null plateau object/fingerprint for
 canonical no-activity results, and bind CA proof, identity conflict, sensitivity-byte totals no
-greater than observed payload bytes, and the exact 16+1 suite; recovery
+greater than observed payload bytes, zero runner-owned restricted/sentinel observations, and the
+exact 16+1 suite; recovery
 signals enforce exact producer kind, sequence, and 0→1→0 grant CAS. Every command exits 0.
 
 This checkpoint proves static shape, successor/signal fingerprint binding, and bound examples only.
@@ -118,8 +119,9 @@ Required assertions:
   invalid TLS chain/hostname fails the 5 s credential/payload-free handshake with zero mutation/
   request/credential bytes, and daemon start revalidates it;
   legacy conflict and running daemon mutate nothing; rollback restores every touched file/pointer;
-  prepared/applied/committed journal interruptions recover, and unrecoverable journal blocks provider
-  startup without exposing prestate bytes;
+  prepared/applied/committed journal interruptions recover, while any target matching neither
+  recorded prestate nor journal poststate causes zero mutation across all targets and retains the
+  journal; unresolved recovery blocks provider startup without exposing prestate bytes;
 - absent current starts capture-only; malformed current fails startup;
 - daemon-start TLS outage/rejection still starts writer/RPC/capture/spool-import/lexical, disables
   provider/AI only with a bounded reason and retains work;
@@ -161,6 +163,8 @@ Expected:
   creates/reuses one durable non-success conflict receipt, sends no normal ACK, and creates no memory;
 - one job has at most 100 source events; capacity 25 includes retry-exhausted and evicts nothing;
 - claim generation rejects stale completion; successful claims alone increment lifetime attempt count;
+- new jobs start at attempt 0; automatic claims are exactly attempts 1-3, and a failed attempt 3 is
+  retry-exhausted until a one-shot valid grant;
 - admission manifest/provider fingerprints never change; changed config creates a new attempt
   fingerprint and one exact-job grant creates one claim;
 - invalid signals create no claim/attempt; timer never resumes exhausted work;
@@ -215,7 +219,8 @@ Required matrix:
   and verified local HTTPS same-repository restricted-eligible without fingerprint lookup;
 - bounded Git-probed transport-preserving HTTPS/SSH origin with exact SSH-user non-collision,
   realpathed common-dir fallback, linked worktree,
-  basename collision, and forged remote/project/workspace claims;
+  basename collision, forged remote/project/workspace claims, and origin A→B revalidation that
+  prevents A's restricted content from matching B;
 - provider, structured maintenance, search/recent/timeline/explain, findByFile/findByConcept, daemon
   get/search/pack, MCP body/index/recent/timeline/explain/pack, viewer, lexical/semantic pack/trace,
   export/import, dedup/supersession;
@@ -357,7 +362,8 @@ observation under the same rules. No-op subcases carry full zero-egress observat
 and recovery receipt/process-tree IDs are bundle-global unique. Each receipt binds the bundle
 invocation, its owning case ID, and its fresh per-execution/process-generation root; reusable PID
 labels fail. The sum of each receipt's sensitivity-byte buckets never exceeds its observed payload;
-canonical unsupported/not-run output carries no plateau workload or plateau fingerprint.
+its runner-owned restricted-payload bytes and forbidden-sentinel count are zero; canonical
+unsupported/not-run output carries no plateau workload or plateau fingerprint.
 
 Restricted local proposals use the fixture-pinned literal-loopback HTTPS URL. Remote proposals use the fixture-pinned
 base/repaired HTTPS hostnames mapped only inside the runner namespace to its loopback stub, with a per-run

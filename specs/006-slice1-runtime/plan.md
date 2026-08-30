@@ -98,7 +98,8 @@ Co-deliver these planning artifacts and mechanically correct, in the same scoped
   hostname-valid public CA plus six base/local/repaired setup/start TLS receipts binding trust-anchor/
   peer-certificate/zero-byte proof, runner-owned provider-egress timing, pair-bound
   same-ID/different-digest conflict, canonical no-activity null plateau evidence, sensitivity-byte
-  totals bounded by observed payload bytes, and the exact 16+1 suite;
+  totals bounded by observed payload bytes, runner-owned zero restricted/sentinel observations, and
+  the exact 16+1 suite;
 - all provider/manifest/fixture/result/runner-evidence fingerprints.
 
 Replace provider kind/scheme/host/free-form credential/self-declared policy with closed
@@ -146,7 +147,8 @@ PR 0 co-delivers this plan and the scoped 005 correction; no runtime source is i
   the selected Claude/Codex files, install ownership manifest, and capability current pointer.
 - Add one owner-only durable setup journal around those existing snapshots: fsync prepared state,
   publish editor files/generation, publish `current` last, recover/finalize by target hashes on next
-  setup/start, and block provider startup on unrecoverable journal state.
+  setup/start, restore only when every target matches a recorded pre/post hash, and if any target is
+  unknown preserve all targets unchanged with the journal retained and provider startup blocked.
 - Active manifest may retain `translated|ignored|overridden`; detected conflict rejects activation.
 
 ### Frozen daemon/runtime boundary
@@ -207,10 +209,11 @@ after the user starts the daemon; PR 5 automates that safely.
 - Enforce capture concurrency 2, processing concurrency 2, retry 3, derivation 16, stuck-claim 5 min,
   and retained-job purge safety here; excess direct capture falls back to the existing spool within
   hook deadlines, and no more than two jobs may be claimed. PR 1 reported them pending.
-- Claim generation fences stale workers. Successful claim atomically increments lifetime
+- New admission starts with `attempt_count=0`. Claim generation fences stale workers. Successful claim atomically increments lifetime
   `attempt_count`, consumes an optional one-shot grant, records current attempt manifest/provider,
   and computes attempt fingerprint. Admission provenance never changes.
-- Automatic attempts use frozen limit 3. Retry exhaustion stops timers. Configuration activation
+- Automatic attempts use frozen limit 3, permitting claims 1-3 only; a failed attempt 3 becomes
+  retry-exhausted and any later claim requires a grant. Retry exhaustion stops timers. Configuration activation
   and daemon-observed provider health receipts fan out in one sole-writer transaction to all
   matching exhausted jobs, necessarily at most 25 under the global capacity; user confirmation
   targets exactly one displayed job. Each per-job signal
@@ -238,7 +241,8 @@ v21 migration; PR 3 enables them only after the complete boundary is in place.
 - Compute sensitivity from trusted redaction and persist it outside payload JSON.
 - Compute RepositoryIdentityV1 from a transport-preserving Git remote verified against the current
   repository, retaining the exact bounded SSH username, or a realpathed primary Git anchor; caller
-  project/basename/workspace values remain labels only.
+  project/basename/workspace values remain labels only. Revalidate the current canonical remote at
+  capture and every restricted boundary so an A→B origin change cannot reuse A's authority.
 - Quarantine degraded capture with empty payload and content-free error code.
 
 ### One DestinationBoundary seam
@@ -365,7 +369,8 @@ the merged boundary prove all reachable consumers. It does not close after raw f
   six raw trust-anchor/peer-certificate TLS receipts and runner-owned provider-egress observations;
   bind them through separate result fingerprints
   and derived aggregates alongside canonical no-activity null plateau evidence, the 16+1 case, and
-  identity conflict; reject sensitivity-byte totals above observed payload bytes, any private-key
+  identity conflict; reject sensitivity-byte totals above observed payload bytes, nonzero runner-owned
+  restricted/sentinel observations, any private-key
   artifact or missing observation.
 - Add the runner/validator CI job without weakening existing gates and update user-facing docs.
 
@@ -432,7 +437,8 @@ logic across many callers.
   and fingerprint mutation cases all pass before runtime.
 - **Manifest**: closed-shape/property rejection, canonical URL, literal loopback, remote HTTPS,
   CredentialRef, both fingerprints, redirect manual rejection, safe disclosure ordering, conflict,
-  running-daemon refusal, editor+pointer rollback/interruption-journal recovery,
+  running-daemon refusal, editor+pointer rollback/interruption-journal recovery with all-target zero
+  mutation when any external edit is unknown,
   absent/malformed/frozen daemon states, legacy env mutation invariance.
 - **Schema/jobs**: fresh v21, verified v20 migration/backfill/rollback/idempotent reopen/generated DDL,
   complete/missing `gave_up`, capacity including exhausted, 100-event split, stale claims, monotonic
@@ -440,7 +446,8 @@ logic across many callers.
   exemptions.
 - **Privacy**: every sensitivity × destination × repository state across provider, maintenance,
   search/reference, daemon, MCP, viewer, pack/trace, export/import, dedup/supersession; basename
-  collision, HTTPS/SSH transport separation, SSH-user non-collision, and linked worktree;
+  collision, HTTPS/SSH transport separation, SSH-user non-collision, linked worktree, and origin
+  A→B revalidation;
   restricted sentinel absent from wire/render/log/diagnostic/artifact.
 - **Lifecycle**: production nudge after commit only, debounce/immediate/request drain, stop race,
   restart, PreCompact, daemon outage/spool replay, no Agent blockage.

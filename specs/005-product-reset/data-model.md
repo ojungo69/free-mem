@@ -419,8 +419,9 @@ in suite mode.
   count and set fingerprint, earliest request interval, provider/location identity,
   exact wire aggregates, and runner-stub-measured source-content bytes split by sensitivity using
   fixed synthetic markers/spans, never policy-derived or candidate-reported; the four sensitivity
-  buckets sum to no more than the observed payload bytes; the negative case only projects an observed
-  base receipt
+  buckets sum to no more than the observed payload bytes; runner-owned restricted-payload bytes and
+  forbidden-sentinel count are both zero and result-bound; the negative case only projects an
+  observed base receipt
 - one additional full runner-owned provider-egress observation for every fixed retry/redirect
   recovery subcase, including zero-egress no-op cases, sorted and bound to exact case/manifest/
   provider plus bundle invocation and a fresh subcase process-tree root, with receipt and observed

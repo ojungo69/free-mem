@@ -164,7 +164,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
    remains part of the later lifecycle increment.
 5. **Given** setup failure after confirmation, **When** rollback runs, **Then** the previous manifest
    pointer and every touched Claude/Codex configuration file are restored together; an interrupted
-   transaction is recovered or rejected before daemon provider startup.
+   transaction is recovered or rejected before daemon provider startup, and a target changed outside
+   the journal causes all targets to remain unchanged while recovery remains blocked.
 6. **Given** no active manifest, **When** the daemon starts, **Then** it enters explicit capture-only
    restricted mode with no provider and no sweeper; **given** a malformed or mismatched pointer,
    **Then** daemon startup fails before provider construction.
@@ -251,7 +252,9 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   coordinated lifecycle automation owns stop/activate/start. A narrow owner-only durable setup
   journal MUST include the mode-0600 activation receipt target/hash/prestate and make interruption
   recoverable; capability `current` is published last. Daemon import MUST require receipt/current
-  fingerprint agreement, otherwise discard/restore, and daemon
+  fingerprint agreement. Recovery may finalize or restore only targets matching the recorded
+  prestate or journal-owned poststate; if any target has an unknown external hash, recovery MUST
+  modify no target, retain the journal, and block provider startup. Daemon
   provider startup fails while an unresolved transaction exists. Setup activation and daemon start
   MUST share one lifecycle lock and fixed lock order, with daemon state rechecked while held, so a
   daemon cannot start between preflight and pointer/editor mutation.
@@ -283,7 +286,10 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   realpathed primary Git anchor. Canonical remote identity MUST retain transport class and the exact
   supported SSH username; HTTPS and SSH or distinct SSH usernames MUST NOT collapse. Basename,
   project label, workspace label, or caller override MUST remain display/filter metadata and MUST
-  NOT authorize restricted disclosure.
+  NOT authorize restricted disclosure. The current canonical remote MUST be revalidated before
+  capture and every restricted boundary; changing `origin` MUST invalidate reuse of the prior
+  remote-derived identity, and probe failure MUST fail closed to a currently verified anchor or
+  unknown.
 - **FR-012**: Redaction failure MUST retain no raw content and MUST persist restart-stable safe
   ordering metadata, `secret` sensitivity, quarantine state, and the closed code
   `redaction_degraded` without free-text error content.
@@ -344,7 +350,9 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   `frontier_already_advanced=false`; a recovered legacy range leaves it unchanged. Failure,
   overflow, stale claim, or partial parse MUST commit no memory and MUST NOT advance the frontier.
 - **FR-023**: Automatic attempts MUST be bounded. `attempt_count` MUST increase only with a successful
-  claim and remain monotonic for the job. Retry exhaustion stops timer retries; one validated,
+  claim and remain monotonic for the job. New admission starts at 0 and `retry_limit=3` permits only
+  automatic claims 1-3; a failed attempt 3 becomes retry-exhausted and any later claim requires one
+  validated grant. Retry exhaustion stops timer retries; one validated,
   exact-job/component-targeted resume grant authorizes at most one claim and is consumed atomically.
   Global activation and health receipts MUST fan out in one sole-writer transaction to at most the
   capacity-25 currently matching retry-exhausted jobs; doctor retry MUST target exactly the displayed
@@ -402,7 +410,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   authorization that records explicit canonical-order committed event IDs, count, and fingerprint
   without inferring a prefix. Source bytes by sensitivity MUST be runner-stub measurements of actual
   received request bytes against fixed synthetic markers/spans, never policy-derived or candidate-
-  reported, and their sum MUST NOT exceed the observed payload bytes. Every fixed retry/redirect
+  reported, and their sum MUST NOT exceed the observed payload bytes. Each receipt MUST also own
+  restricted-payload byte and forbidden-sentinel counts, both zero and result-bound. Every fixed retry/redirect
   recovery subcase MUST own one sorted case/manifest-bound full
   observation under the same rules, including zero-egress observations for no-op cases, with receipt
   IDs and observed process-tree roots unique across the bundle. Every initial/recovery receipt MUST

@@ -14,7 +14,8 @@ Admission starts exactly at `frontier + 1` and rejects any non-contiguous select
 content-free `source_gap` without creating a job or advancing the frontier.
 
 Admission freezes `admission_manifest_fingerprint`, `admission_provider_fingerprint`, source range,
-and `retry_limit=3`. These fields never change, including after configuration activation or resume.
+`retry_limit=3`, and `attempt_count=0`. These fields never change, including after configuration
+activation or resume, except that each successful claim increments the lifetime attempt count once.
 The admission and attempt manifest fields store the exact frozen manifest
 `configurationFingerprint`; neither recomputes a distinct manifest hash.
 They are required for new jobs; NULL is allowed only as honest legacy-unknown admission provenance
@@ -35,7 +36,9 @@ The database spelling is `retry_exhausted`; public fixture/status evidence proje
 existing `retry-exhausted` string.
 
 Timer scheduling may retry `failed` only while the automatic budget remains. `retry_exhausted`
-never transitions because time passed.
+never transitions because time passed. The initial claim is attempt 1; automatic claims are allowed
+only while the pre-claim count is below 3, so attempts 1, 2, and 3 are the complete automatic budget.
+A failed attempt 3 enters `retry_exhausted`; a fourth or later claim requires a one-shot valid grant.
 
 ## Claims, attempts, and stale workers
 

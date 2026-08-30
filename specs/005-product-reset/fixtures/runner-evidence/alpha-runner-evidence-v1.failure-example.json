@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:4b1fff5912e543e6ffc1a46d3c171e7b1d7ae4e5e0fcb142e2f6a22b8a7ee57f",
+  "fixtureFingerprint": "sha256:082e86b0d1bd8bf142558406978f8be6d2cedfe97c1235fb7f80d71a39c6c8cc",
   "candidateId": "candidate-failure-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
@@ -794,7 +794,7 @@
         }
       ],
       "hostIdentityEvidence": null,
-      "resultObservationFingerprint": "sha256:1138e1c5906edc64581b64142705d394ddc4e075b0f301d171166e45d794f6be",
+      "resultObservationFingerprint": "sha256:0b3c719cf9964edfc084cc13d6aec1a5d87042f3adf7a9fc6202bc2fe4716527",
       "providerEgressEvidence": {
         "kind": "observed",
         "receiptId": "provider-egress:summary-provider-output-limit-exceeded",
@@ -824,6 +824,8 @@
         "providerPayloadCount": 1,
         "credentialBytesSent": 32,
         "payloadBytesSent": 128,
+        "restrictedPayloadBytesSent": 0,
+        "forbiddenSentinelObservationCount": 0,
         "sourcePayloadBytesBySensitivity": {
           "eligible": 43,
           "localOnly": 0,
@@ -861,6 +863,8 @@
             "providerPayloadCount": 0,
             "credentialBytesSent": 0,
             "payloadBytesSent": 0,
+            "restrictedPayloadBytesSent": 0,
+            "forbiddenSentinelObservationCount": 0,
             "sourcePayloadBytesBySensitivity": {
               "eligible": 0,
               "localOnly": 0,
@@ -898,6 +902,8 @@
             "providerPayloadCount": 0,
             "credentialBytesSent": 0,
             "payloadBytesSent": 0,
+            "restrictedPayloadBytesSent": 0,
+            "forbiddenSentinelObservationCount": 0,
             "sourcePayloadBytesBySensitivity": {
               "eligible": 0,
               "localOnly": 0,
@@ -942,6 +948,8 @@
             "providerPayloadCount": 1,
             "credentialBytesSent": 32,
             "payloadBytesSent": 128,
+            "restrictedPayloadBytesSent": 0,
+            "forbiddenSentinelObservationCount": 0,
             "sourcePayloadBytesBySensitivity": {
               "eligible": 43,
               "localOnly": 0,

@@ -214,6 +214,8 @@ request interval, provider/location, request/payload/auth aggregates, and source
 Those sensitivity bytes are measured by the runner-owned stub from the request bytes it receives and
 the fixture's fixed synthetic source markers/spans; they are never derived from allow policy or a
 candidate result field. Their four-bucket sum cannot exceed the observed provider payload bytes.
+The same receipt independently records restricted payload bytes and forbidden-sentinel observations;
+both must be zero and match the result aggregates.
 The projected late-injection negative references the base observation instead of fabricating a run.
 Every fixed retry/redirect recovery subcase owns one additional runner observation, including a full
 zero-egress observation for each no-op. The sorted wrappers bind exact case/manifest/provider,

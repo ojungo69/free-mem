@@ -38,7 +38,7 @@
         "version": { "const": 1 },
         "runnerInvocationId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "baseHostname": { "const": "summary.stub.invalid" },
-        "localHostname": { "const": "127.0.0.1" },
+        "localHostname": { "enum": ["127.0.0.1", "[::1]"] },
         "repairedHostname": { "const": "summary-repaired.stub.invalid" },
         "publicCaSha256": { "$ref": "#/$defs/Fingerprint" },
         "chainValidation": { "const": true },
@@ -60,7 +60,7 @@
         "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "runnerInvocationId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "phase": { "enum": ["setup_activation", "daemon_start"] },
-        "hostname": { "enum": ["summary.stub.invalid", "127.0.0.1", "summary-repaired.stub.invalid"] },
+        "hostname": { "enum": ["summary.stub.invalid", "127.0.0.1", "[::1]", "summary-repaired.stub.invalid"] },
         "sni": { "oneOf": [
           { "type": "null" },
           { "enum": ["summary.stub.invalid", "summary-repaired.stub.invalid"] }
@@ -230,7 +230,7 @@
     "ProviderEgressObserved": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "receiptId", "evidenceSource", "observationCaseId", "runnerInvocationId", "processTreeRootId", "providerFingerprint", "executionLocation", "observationStartedMonotonicMs", "candidateStartedMonotonicMs", "authorization", "firstProviderRequestStartedMonotonicMs", "lastProviderRequestFinishedMonotonicMs", "processTreeTerminatedMonotonicMs", "observationFinishedMonotonicMs", "preAuthorizationProviderAttemptCount", "nonLoopbackSocketAttemptCount", "providerRequestCount", "providerPayloadCount", "credentialBytesSent", "payloadBytesSent", "sourcePayloadBytesBySensitivity", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount"],
+      "required": ["kind", "receiptId", "evidenceSource", "observationCaseId", "runnerInvocationId", "processTreeRootId", "providerFingerprint", "executionLocation", "observationStartedMonotonicMs", "candidateStartedMonotonicMs", "authorization", "firstProviderRequestStartedMonotonicMs", "lastProviderRequestFinishedMonotonicMs", "processTreeTerminatedMonotonicMs", "observationFinishedMonotonicMs", "preAuthorizationProviderAttemptCount", "nonLoopbackSocketAttemptCount", "providerRequestCount", "providerPayloadCount", "credentialBytesSent", "payloadBytesSent", "restrictedPayloadBytesSent", "forbiddenSentinelObservationCount", "sourcePayloadBytesBySensitivity", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount"],
       "properties": {
         "kind": { "const": "observed" },
         "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
@@ -253,6 +253,8 @@
         "providerPayloadCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "credentialBytesSent": { "$ref": "#/$defs/NonNegativeInteger" },
         "payloadBytesSent": { "$ref": "#/$defs/NonNegativeInteger" },
+        "restrictedPayloadBytesSent": { "$ref": "#/$defs/NonNegativeInteger" },
+        "forbiddenSentinelObservationCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "sourcePayloadBytesBySensitivity": { "$ref": "#/$defs/SourcePayloadBytesBySensitivity" },
         "redirectLocationRequestCount": { "$ref": "#/$defs/NonNegativeInteger" },
         "redirectLocationPayloadBytesSent": { "$ref": "#/$defs/NonNegativeInteger" },

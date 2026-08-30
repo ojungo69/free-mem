@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:4b1fff5912e543e6ffc1a46d3c171e7b1d7ae4e5e0fcb142e2f6a22b8a7ee57f",
+  "fixtureFingerprint": "sha256:082e86b0d1bd8bf142558406978f8be6d2cedfe97c1235fb7f80d71a39c6c8cc",
   "candidateId": "candidate-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
@@ -1348,7 +1348,7 @@
           }
         ]
       },
-      "resultObservationFingerprint": "sha256:0510c72b149aeb20658449e6b18c0ce83aed66c01ebef979c3be2fdfe857b096",
+      "resultObservationFingerprint": "sha256:7fe0dfb094a48e89d27a663a5cd7b82dfdf37a74a8072f6437bc4b4539fd1b2f",
       "providerEgressEvidence": {
         "kind": "observed",
         "receiptId": "provider-egress:claude-to-codex",
@@ -1382,6 +1382,8 @@
         "providerPayloadCount": 1,
         "credentialBytesSent": 32,
         "payloadBytesSent": 256,
+        "restrictedPayloadBytesSent": 0,
+        "forbiddenSentinelObservationCount": 0,
         "sourcePayloadBytesBySensitivity": {
           "eligible": 253,
           "localOnly": 0,

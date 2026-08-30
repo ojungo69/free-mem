@@ -221,6 +221,13 @@ delete missingProviderEgress.scenarios[0].providerEgressEvidence;
 assert.notEqual(validateAgainstSchema(
   missingProviderEgress, evidenceSchema, evidenceSchema,
 ).length, 0, "runner evidence schema accepted missing provider egress evidence");
+for (const field of ["restrictedPayloadBytesSent", "forbiddenSentinelObservationCount"]) {
+  const missingRunnerAggregate = structuredClone(evidence);
+  delete missingRunnerAggregate.scenarios[0].providerEgressEvidence[field];
+  assert.notEqual(validateAgainstSchema(
+    missingRunnerAggregate, evidenceSchema, evidenceSchema,
+  ).length, 0, `runner evidence schema accepted missing ${field}`);
+}
 assertEvidenceRejected((mutant) => {
   mutant.scenarios[0].providerEgressEvidence.runnerInvocationId = "stale-invocation";
 }, /invocation/,
@@ -401,6 +408,11 @@ for (const receipt of ipv6Network.tlsPreflightReceipts.filter(
 }
 assert.doesNotThrow(() => validateNetworkTrustEvidence(ipv6Network, ipv6Fixture),
   "network trust evidence rejected null SNI for an IPv6 literal");
+const ipv6SchemaEvidence = structuredClone(evidence);
+ipv6SchemaEvidence.networkTrustEvidence = ipv6Network;
+assert.deepEqual(validateAgainstSchema(
+  ipv6SchemaEvidence, evidenceSchema, evidenceSchema,
+), [], "runner evidence schema rejected the supported IPv6 loopback literal");
 
 const tlsReceiptMutations = [
   [(network) => { network.tlsPreflightReceipts.pop(); }, /exactly six/,
@@ -474,7 +486,8 @@ assertEvidenceRejected((mutant) => {
 assertEvidenceRejected((mutant) => {
   mutant.scenarios[0].providerEgressEvidence.authorization.committedEventSetFingerprint =
     `sha256:${"0".repeat(64)}`;
-}, /strictly after runner-owned authorization/, "provider authorization bound wrong event set");
+}, /provider authorization event set does not match committed events/,
+  "provider authorization bound wrong event set");
 assertEvidenceRejected((mutant) => {
   const authorization = mutant.scenarios[0].providerEgressEvidence.authorization;
   authorization.committedEventIds.push(authorization.committedEventIds[0]);
@@ -490,6 +503,16 @@ assertEvidenceRejected((mutantEvidence, mutantResult) => {
   mutantResult.securityEvidence.payloadBytesSent = sourceBytes - 1;
 }, /source sensitivity bytes exceed the provider payload/,
   "provider egress counted more source bytes than payload bytes");
+assertEvidenceRejected((mutantEvidence, mutantResult) => {
+  mutantEvidence.scenarios[0].providerEgressEvidence.restrictedPayloadBytesSent = 1;
+  mutantResult.securityEvidence.restrictedPayloadBytesSent = 1;
+}, /runner observed restricted provider payload/,
+  "provider egress receipt accepted restricted payload bytes");
+assertEvidenceRejected((mutantEvidence, mutantResult) => {
+  mutantEvidence.scenarios[0].providerEgressEvidence.forbiddenSentinelObservationCount = 1;
+  mutantResult.securityEvidence.forbiddenSentinelObservationCount = 1;
+}, /runner observed a forbidden sentinel/,
+  "provider egress receipt accepted a forbidden sentinel");
 
 const wrongNegativeProjection = structuredClone(suiteEvidence);
 wrongNegativeProjection.scenarios.find((item) =>
