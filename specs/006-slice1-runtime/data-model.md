@@ -794,7 +794,10 @@ supplies the observed values.
 The late-injection negative projects its base receipt instead of claiming another run.
 Every fixed retry/redirect recovery subcase has one sorted, case/manifest-bound full observation
 under the same authorization/timing/TLS/wire/sensitivity rules. No-op subcases carry full zero-egress
-observations rather than relying on an absent receipt, and receipt IDs are unique across the bundle.
+observations rather than relying on an absent receipt. Every observation binds the runner invocation
+and an owning initial/recovery process-tree root; observed roots and receipt IDs are unique across the
+bundle. The live runner generates invocation/root identities freshly per execution/process
+generation and never derives them from a reusable PID alone.
 
 Every plateau window also carries a unique opaque `workloadReceiptId`, one duplicate-delivery
 attempt count of at least one, `noOpOutcome=duplicate_noop`, `durableMemoryDelta=0`, and

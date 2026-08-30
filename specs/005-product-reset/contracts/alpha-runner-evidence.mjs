@@ -139,6 +139,13 @@ function validateBundleProviderEgressReceipts(evidence, fixture) {
   if (new Set(receipts).size !== receipts.length) {
     throw new Error("provider egress receipt identities are reused across the evidence bundle");
   }
+  const processTreeRoots = evidence.scenarios.flatMap((record) => [
+    ...(record.providerEgressEvidence?.kind === "observed" ? [record.processTreeRootId] : []),
+    ...record.recoveryProviderEgressEvidence.map((item) => item.processTreeRootId),
+  ]);
+  if (new Set(processTreeRoots).size !== processTreeRoots.length) {
+    throw new Error("provider egress process-tree identities are reused across the evidence bundle");
+  }
   for (const record of evidence.scenarios) {
     const negative = record.caseId === fixture.beforeModelNegativeFixture.caseId;
     if (negative) {
@@ -165,6 +172,15 @@ function validateRecoveryProviderBinding(wrapper, recovery, fixture) {
       wrapper.effectiveManifestFingerprint !== signal.effectiveManifestFingerprint ||
       manifest.summaryProvider.providerFingerprint !== signal.providerFingerprint) {
     throw new Error("recovery provider egress evidence does not bind its case manifest/provider");
+  }
+}
+
+function validateProviderEgressRunBinding(receipt, invocationId, processTreeRootId) {
+  if (receipt.runnerInvocationId !== invocationId) {
+    throw new Error("provider egress receipt does not match the runner invocation");
+  }
+  if (receipt.processTreeRootId !== processTreeRootId) {
+    throw new Error("provider egress receipt does not match its process tree");
   }
 }
 
@@ -215,8 +231,21 @@ function validateRecoveryProviderEgressEvidence(record, result, fixture, network
 }
 
 function validateScenarioProviderEgress(evidence, record, result, fixture) {
+  const primaryRecord = record.providerEgressEvidence?.kind === "projection"
+    ? evidence.scenarios.find((item) =>
+        item.caseId === record.providerEgressEvidence.sourceCaseId)
+    : record;
+  const primaryReceipt = resolveProviderEgressEvidence(evidence, record);
+  validateProviderEgressRunBinding(
+    primaryReceipt, evidence.invocationId, primaryRecord.processTreeRootId,
+  );
+  for (const wrapper of record.recoveryProviderEgressEvidence) {
+    validateProviderEgressRunBinding(
+      wrapper.evidence, evidence.invocationId, wrapper.processTreeRootId,
+    );
+  }
   validateProviderEgressEvidence(
-    resolveProviderEgressEvidence(evidence, record), result, fixture, evidence.networkTrustEvidence,
+    primaryReceipt, result, fixture, evidence.networkTrustEvidence,
   );
   validateRecoveryProviderEgressEvidence(
     record, result, fixture, evidence.networkTrustEvidence,

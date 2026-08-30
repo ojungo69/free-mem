@@ -420,7 +420,8 @@ in suite mode.
   projects an observed base receipt
 - one additional full runner-owned provider-egress observation for every fixed retry/redirect
   recovery subcase, including zero-egress no-op cases, sorted and bound to exact case/manifest/
-  provider with receipt IDs unique across the whole bundle
+  provider plus bundle invocation and a fresh subcase process-tree root, with receipt and observed
+  process-tree IDs unique across the whole bundle
 - one closed short-run plateau record with 12 ordered duplicate/no-op windows, discarded 1-2,
   measured 3-12, final 8-12, fixed item/token counts, bounded
   process/RSS/queue/storage/concurrency, measured RSS/storage maximum increase from the first measured

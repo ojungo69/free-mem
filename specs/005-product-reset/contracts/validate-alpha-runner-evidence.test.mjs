@@ -158,6 +158,31 @@ assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
 }, /receipt identities are reused/,
   "runner evidence reused an initial receipt for recovery");
 assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  record.recoveryProviderEgressEvidence[0].evidence.processTreeRootId =
+    "stale-recovery-process-tree";
+}, /process tree/,
+  "runner evidence accepted a recovery receipt from another process tree");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  record.recoveryProviderEgressEvidence[0].evidence.runnerInvocationId = "stale-invocation";
+}, /invocation/,
+  "runner evidence accepted a recovery receipt from another invocation");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  const [first, second] = record.recoveryProviderEgressEvidence;
+  second.processTreeRootId = first.processTreeRootId;
+  second.evidence.processTreeRootId = first.processTreeRootId;
+}, /process-tree identities are reused/,
+  "runner evidence reused one process tree across recovery cases");
+assertSuiteRecoveryRejected("summary-provider-output-limit-exceeded", (record) => {
+  const first = record.recoveryProviderEgressEvidence.find((item) =>
+    item.caseId === "unchanged-provider-health-no-op");
+  const second = record.recoveryProviderEgressEvidence.find((item) =>
+    item.caseId === "unchanged-doctor-retry-no-op");
+  const secondReceiptId = second.evidence.receiptId;
+  second.evidence = structuredClone(first.evidence);
+  second.evidence.receiptId = secondReceiptId;
+}, /process tree/,
+  "runner evidence reused one no-op receipt across recovery cases");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
   const evidence = record.recoveryProviderEgressEvidence[0].evidence;
   evidence.authorization.observedAtMonotonicMs = evidence.candidateStartedMonotonicMs;
 }, /runner-owned authorization/,
@@ -182,6 +207,31 @@ delete missingProviderEgress.scenarios[0].providerEgressEvidence;
 assert.notEqual(validateAgainstSchema(
   missingProviderEgress, evidenceSchema, evidenceSchema,
 ).length, 0, "runner evidence schema accepted missing provider egress evidence");
+assertEvidenceRejected((mutant) => {
+  mutant.scenarios[0].providerEgressEvidence.runnerInvocationId = "stale-invocation";
+}, /invocation/,
+  "runner evidence accepted an initial egress receipt from another invocation");
+for (const field of ["runnerInvocationId", "processTreeRootId"]) {
+  const missingRunBinding = structuredClone(evidence);
+  delete missingRunBinding.scenarios[0].providerEgressEvidence[field];
+  assert.notEqual(validateAgainstSchema(
+    missingRunBinding, evidenceSchema, evidenceSchema,
+  ).length, 0, `runner evidence schema accepted missing initial ${field}`);
+}
+for (const [target, field] of [
+  ["wrapper", "processTreeRootId"],
+  ["receipt", "runnerInvocationId"],
+  ["receipt", "processTreeRootId"],
+]) {
+  const missingRecoveryBinding = structuredClone(suiteEvidence);
+  const wrapper = missingRecoveryBinding.scenarios.find((item) =>
+    item.scenarioId === "summary-provider-retry-exhausted"
+  ).recoveryProviderEgressEvidence[0];
+  delete (target === "wrapper" ? wrapper : wrapper.evidence)[field];
+  assert.notEqual(validateAgainstSchema(
+    missingRecoveryBinding, evidenceSchema, evidenceSchema,
+  ).length, 0, `runner evidence schema accepted missing recovery ${target} ${field}`);
+}
 const missingRecoveryProviderEgress = structuredClone(evidence);
 delete missingRecoveryProviderEgress.scenarios[0].recoveryProviderEgressEvidence;
 assert.notEqual(validateAgainstSchema(

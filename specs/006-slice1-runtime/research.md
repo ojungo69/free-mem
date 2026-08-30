@@ -372,7 +372,8 @@ pair-bound receipt, rejects cross-pair reuse, and emits exactly 16 positives plu
 late-injection negative; result and runner-bundle fingerprints cover all fields.
 Each fixed retry/redirect recovery subcase adds a sorted case/manifest-bound full observation under
 the same rules, including full zero-egress observations for no-op subcases and globally unique
-initial/recovery receipt IDs.
+initial/recovery receipt and process-tree IDs. Each receipt binds the bundle invocation and its owning
+fresh per-execution/process-generation runner root; a reusable PID is not identity evidence.
 
 For remote-provider cases, the deny boundary permits only the fixture-pinned remote hostname mapped
 to the runner loopback stub and validates the evidence-bound CA/hostname. This remains a normal remote HTTPS

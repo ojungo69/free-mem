@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:4fe0bf99f0d32ff689454d37db4fddbfe338a3ddca7dccaef82247121069053c",
+  "fixtureFingerprint": "sha256:c7c99305d52e549651726959f24667ebe4173ca0eadb67c3dc5b66eef56b68ef",
   "candidateId": "candidate-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
@@ -1348,11 +1348,13 @@
           }
         ]
       },
-      "resultObservationFingerprint": "sha256:ae75bec4946426ad55f3332967da43108bbd0336679f281625644f67bc53d160",
+      "resultObservationFingerprint": "sha256:e92af6141681aaa18fb5aba85e06294f4eab052b054348ce62416012403f47d7",
       "providerEgressEvidence": {
         "kind": "observed",
         "receiptId": "provider-egress:claude-to-codex",
         "evidenceSource": "runner_network_gate_and_stub_v1",
+        "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
+        "processTreeRootId": "claude-to-codex:process-tree-root",
         "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
         "executionLocation": "remote",
         "observationStartedMonotonicMs": 10000,

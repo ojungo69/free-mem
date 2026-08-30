@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:4fe0bf99f0d32ff689454d37db4fddbfe338a3ddca7dccaef82247121069053c",
+  "fixtureFingerprint": "sha256:c7c99305d52e549651726959f24667ebe4173ca0eadb67c3dc5b66eef56b68ef",
   "candidateId": "candidate-failure-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
@@ -794,11 +794,13 @@
         }
       ],
       "hostIdentityEvidence": null,
-      "resultObservationFingerprint": "sha256:a02dd67193a18f9ae0d175b4fd74e59107b68af850989647c7882d736c845012",
+      "resultObservationFingerprint": "sha256:67d8590eefdf016fa891e0c7187c2ac98194b2e8229aeb04f1fb20a861b02807",
       "providerEgressEvidence": {
         "kind": "observed",
         "receiptId": "provider-egress:summary-provider-output-limit-exceeded",
         "evidenceSource": "runner_network_gate_and_stub_v1",
+        "runnerInvocationId": "candidate-failure-example-v1:fixture-invocation-v1",
+        "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root",
         "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
         "executionLocation": "remote",
         "observationStartedMonotonicMs": 10000,
@@ -835,10 +837,13 @@
         {
           "caseId": "unchanged-doctor-retry-no-op",
           "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
+          "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root:recovery:unchanged-doctor-retry-no-op",
           "evidence": {
             "kind": "observed",
             "receiptId": "provider-egress:summary-provider-output-limit-exceeded:recovery:unchanged-doctor-retry-no-op",
             "evidenceSource": "runner_network_gate_and_stub_v1",
+            "runnerInvocationId": "candidate-failure-example-v1:fixture-invocation-v1",
+            "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root:recovery:unchanged-doctor-retry-no-op",
             "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
             "executionLocation": "remote",
             "observationStartedMonotonicMs": 1002000,
@@ -868,10 +873,13 @@
         {
           "caseId": "unchanged-provider-health-no-op",
           "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
+          "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root:recovery:unchanged-provider-health-no-op",
           "evidence": {
             "kind": "observed",
             "receiptId": "provider-egress:summary-provider-output-limit-exceeded:recovery:unchanged-provider-health-no-op",
             "evidenceSource": "runner_network_gate_and_stub_v1",
+            "runnerInvocationId": "candidate-failure-example-v1:fixture-invocation-v1",
+            "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root:recovery:unchanged-provider-health-no-op",
             "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
             "executionLocation": "remote",
             "observationStartedMonotonicMs": 1001000,
@@ -901,10 +909,13 @@
         {
           "caseId": "validated-larger-limit-activation",
           "effectiveManifestFingerprint": "sha256:9bd12c87e5fb039892fb1d6dd78843ba82339be49b7c4c18c7707bb14ffd153e",
+          "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root:recovery:validated-larger-limit-activation",
           "evidence": {
             "kind": "observed",
             "receiptId": "provider-egress:summary-provider-output-limit-exceeded:recovery:validated-larger-limit-activation",
             "evidenceSource": "runner_network_gate_and_stub_v1",
+            "runnerInvocationId": "candidate-failure-example-v1:fixture-invocation-v1",
+            "processTreeRootId": "summary-provider-output-limit-exceeded:process-tree-root:recovery:validated-larger-limit-activation",
             "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
             "executionLocation": "remote",
             "observationStartedMonotonicMs": 1000000,

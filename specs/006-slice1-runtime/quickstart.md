@@ -344,7 +344,8 @@ Sensitivity-byte counts come from the runner stub's actual received request byte
 synthetic markers/spans; policy-derived or candidate-reported counts fail the self-test.
 Every fixed retry/redirect recovery subcase also has one sorted, case/manifest-bound full
 observation under the same rules. No-op subcases carry full zero-egress observations, and all initial
-and recovery receipt IDs are bundle-global unique.
+and recovery receipt/process-tree IDs are bundle-global unique. Each receipt binds the bundle
+invocation and its owning fresh per-execution/process-generation root; reusable PID labels fail.
 
 Restricted local proposals use the fixture-pinned literal-loopback HTTPS URL. Remote proposals use the fixture-pinned
 base/repaired HTTPS hostnames mapped only inside the runner namespace to its loopback stub, with a per-run

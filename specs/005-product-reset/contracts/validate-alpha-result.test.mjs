@@ -116,6 +116,15 @@ function buildRunnerEvidence(result) {
       runPreparations,
     }],
   };
+  const [record] = evidence.scenarios;
+  if (record.providerEgressEvidence.kind === "observed") {
+    record.providerEgressEvidence.runnerInvocationId = evidence.invocationId;
+    record.providerEgressEvidence.processTreeRootId = record.processTreeRootId;
+  }
+  for (const wrapper of record.recoveryProviderEgressEvidence) {
+    wrapper.evidence.runnerInvocationId = evidence.invocationId;
+    wrapper.evidence.processTreeRootId = wrapper.processTreeRootId;
+  }
   return evidence;
 }
 
@@ -550,8 +559,10 @@ suiteRunnerEvidence.scenarios = suiteCaseIds.map((caseId) => {
   const scenarioId = caseId === fixture.beforeModelNegativeFixture.caseId
     ? fixture.beforeModelNegativeFixture.baseScenarioId : caseId;
   const record = { ...structuredClone(successEvidence.scenarios[0]), caseId, scenarioId };
+  record.processTreeRootId = `${caseId}:${record.processTreeRootId}`;
   record.providerEgressEvidence.receiptId =
     `${caseId}:${record.providerEgressEvidence.receiptId}`;
+  record.providerEgressEvidence.processTreeRootId = record.processTreeRootId;
   for (const preparation of record.runPreparations) {
     preparation.receiptId = `${caseId}:${preparation.receiptId}`;
     preparation.dataDirInstanceId = `${caseId}:${preparation.dataDirInstanceId}`;
