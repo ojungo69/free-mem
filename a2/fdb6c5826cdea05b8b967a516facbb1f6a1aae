@@ -1,0 +1,45 @@
+specs/006-slice1-runtime/tasks.md
+  s_99d8ac07476f81::t_06df23671cc2a1 153
+  s_99d8ac07476f81::t_ed3399982bb7e5 24
+  s_99d8ac07476f81::t_d9067e77a45e14 22,151
+specs/006-slice1-runtime/contracts/capability-manifest-v1.md
+  s_99d8ac07476f81::t_896e680eba7bf3 39-40,44
+  s_99d8ac07476f81::t_99022c576bed94 41-43
+specs/006-slice1-runtime/research.md
+  s_99d8ac07476f81::t_06df23671cc2a1 338,341-343
+  s_99d8ac07476f81::t_d9067e77a45e14 340
+  s_99d8ac07476f81::t_5909af586a7b6a 339
+specs/006-slice1-runtime/spec.md
+  s_99d8ac07476f81::t_1fba323f384c9a 354,359
+  s_99d8ac07476f81::t_d9067e77a45e14 355
+  s_99d8ac07476f81::t_06df23671cc2a1 352,356-358
+specs/006-slice1-runtime/data-model.md
+  s_99d8ac07476f81::t_d9067e77a45e14 705-708
+  s_99d8ac07476f81::t_06df23671cc2a1 697,709-711
+  s_99d8ac07476f81::t_db3b2db3160528 701-704
+specs/006-slice1-runtime/plan.md
+  s_99d8ac07476f81::t_06df23671cc2a1 94,339,341-343
+  s_99d8ac07476f81::t_a4c8d9c175af80 95-97,340
+specs/006-slice1-runtime/checklists/requirements.md
+  s_99d8ac07476f81::t_06df23671cc2a1 61-62
+specs/006-slice1-runtime/quickstart.md
+  s_99d8ac07476f81::t_d9067e77a45e14 288
+  s_99d8ac07476f81::t_ce1b4f9f2bf51e 287
+  s_99d8ac07476f81::t_06df23671cc2a1 286,289-291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a2fdb6c5826cdea05b8b967a516facbb1f6a1aae",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
