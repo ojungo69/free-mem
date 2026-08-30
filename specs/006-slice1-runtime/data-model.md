@@ -764,6 +764,7 @@ ResourceProfile ceiling. Across the final five windows (8-12), product process c
 pending queue depth is zero after every drain, selected item/token counts are identical, RSS span is
 at most 16 MiB, and storage span is at most 65,536 bytes. Processing concurrency never exceeds 2 and
 post-teardown orphan process count is zero. Any missing sample or equality above a ceiling fails.
+All 12 windows carry the same positive `duplicateDeliveryAttemptCount`.
 
 ## Closed runner evidence additions
 
@@ -772,6 +773,8 @@ ordinal, process count, RSS MiB, drained queue depth, storage bytes, selected-it
 injected-token count, max processing concurrency, unique workload/drain/checkpoint receipts, and
 runner-monotonic workload start, workload receipt, drain receipt, checkpoint receipt, and sample
 times. Each chain is strictly increasing and the prior sample is strictly before the next workload.
+The plateau object binds the bundle candidate, artifact, environment, runner invocation, and one
+fresh workload process-tree root unique from all observed initial/recovery provider roots.
 Provider cases also carry the base/local/repaired hostnames, hostname/IP-valid public CA SHA-256
 fingerprint, normal chain/hostname-validation booleans, and `privateKeyCommitted=false`. The network
 object includes exactly six runner-owned raw TLS preflight receipts: base, local, and repaired host,
@@ -781,6 +784,7 @@ verified result, normal chain/
 hostname booleans, `trustAnchorSha256` equal to the bundle public CA, one peer-certificate SHA-256
 that is identical across the endpoint's setup/start receipts, and zero HTTP requests, credential
 bytes, and payload bytes. Each setup receipt finishes strictly before its daemon-start receipt begins.
+The network object and all six receipts repeat the current bundle runner invocation.
 
 Each real scenario has one runner-owned provider-egress observation. Its monitor starts before the
 candidate and ends after process-tree termination. A runner-only network gate opens strictly after

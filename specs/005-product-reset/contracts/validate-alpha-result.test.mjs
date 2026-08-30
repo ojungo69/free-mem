@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
 import {
+  networkTrustEvidenceFingerprint,
   resourcePlateauEvidenceFingerprint,
   runnerEvidenceFingerprint,
   runnerResultObservationFingerprint,
@@ -77,6 +78,30 @@ function buildRunPreparations(result, latencyRuns) {
   });
 }
 
+function bindRunnerOwnedEvidence(evidence) {
+  evidence.networkTrustEvidence.runnerInvocationId = evidence.invocationId;
+  for (const receipt of evidence.networkTrustEvidence.tlsPreflightReceipts) {
+    receipt.runnerInvocationId = evidence.invocationId;
+  }
+  Object.assign(evidence.resourcePlateauEvidence, {
+    candidateId: evidence.candidateId,
+    artifactFingerprint: evidence.artifactFingerprint,
+    environmentFingerprint: evidence.environmentFingerprint,
+    runnerInvocationId: evidence.invocationId,
+    processTreeRootId: `resource-plateau:${evidence.invocationId}`,
+  });
+  const [record] = evidence.scenarios;
+  if (record.providerEgressEvidence.kind === "observed") {
+    record.providerEgressEvidence.runnerInvocationId = evidence.invocationId;
+    record.providerEgressEvidence.processTreeRootId = record.processTreeRootId;
+  }
+  for (const wrapper of record.recoveryProviderEgressEvidence) {
+    wrapper.evidence.runnerInvocationId = evidence.invocationId;
+    wrapper.evidence.processTreeRootId = wrapper.processTreeRootId;
+  }
+  return evidence;
+}
+
 function buildRunnerEvidence(result) {
   const scenario = fixture.scenarios.find((item) => item.scenarioId === result.scenarioId);
   const recoveryObserved = result.milestones.some((item) =>
@@ -116,16 +141,7 @@ function buildRunnerEvidence(result) {
       runPreparations,
     }],
   };
-  const [record] = evidence.scenarios;
-  if (record.providerEgressEvidence.kind === "observed") {
-    record.providerEgressEvidence.runnerInvocationId = evidence.invocationId;
-    record.providerEgressEvidence.processTreeRootId = record.processTreeRootId;
-  }
-  for (const wrapper of record.recoveryProviderEgressEvidence) {
-    wrapper.evidence.runnerInvocationId = evidence.invocationId;
-    wrapper.evidence.processTreeRootId = wrapper.processTreeRootId;
-  }
-  return evidence;
+  return bindRunnerOwnedEvidence(evidence);
 }
 
 function attachRunnerEvidence(result, evidence) {
@@ -418,6 +434,11 @@ resourceThresholdFailure.resourcePlateauEvidenceFingerprint =
   resourcePlateauEvidenceFingerprint(failedPlateau);
 const resourceThresholdEvidence = buildRunnerEvidence(resourceThresholdFailure);
 resourceThresholdEvidence.resourcePlateauEvidence = failedPlateau;
+bindRunnerOwnedEvidence(resourceThresholdEvidence);
+resourceThresholdFailure.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(resourceThresholdEvidence.resourcePlateauEvidence);
+resourceThresholdEvidence.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(resourceThresholdFailure);
 attachRunnerEvidence(resourceThresholdFailure, resourceThresholdEvidence);
 assertAccepted(resourceThresholdFailure,
   "resource threshold miss remains an inspectable failed result", resourceThresholdEvidence);
@@ -426,6 +447,11 @@ const inconsistentResourceThreshold = structuredClone(resourceThresholdFailure);
 inconsistentResourceThreshold.resource.maxSteadyProductProcessCount += 1;
 const inconsistentResourceEvidence = buildRunnerEvidence(inconsistentResourceThreshold);
 inconsistentResourceEvidence.resourcePlateauEvidence = structuredClone(failedPlateau);
+bindRunnerOwnedEvidence(inconsistentResourceEvidence);
+inconsistentResourceThreshold.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(inconsistentResourceEvidence.resourcePlateauEvidence);
+inconsistentResourceEvidence.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(inconsistentResourceThreshold);
 attachRunnerEvidence(inconsistentResourceThreshold, inconsistentResourceEvidence);
 assertRejected(inconsistentResourceThreshold, /resource aggregates/,
   "resource threshold miss accepted inconsistent per-scenario aggregates",
@@ -523,17 +549,27 @@ assert.throws(() => validateRunnerEvidence(emptyObservationPreparation, emptyObs
 
 const mismatchedRunnerIdentity = structuredClone(successEvidence);
 mismatchedRunnerIdentity.candidateId = "another-candidate";
-const mismatchedRunnerResult = attachRunnerEvidence(
-  structuredClone(success), mismatchedRunnerIdentity,
-);
+bindRunnerOwnedEvidence(mismatchedRunnerIdentity);
+const mismatchedRunnerResult = structuredClone(success);
+mismatchedRunnerResult.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(mismatchedRunnerIdentity.resourcePlateauEvidence);
+mismatchedRunnerIdentity.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(mismatchedRunnerResult);
+attachRunnerEvidence(mismatchedRunnerResult, mismatchedRunnerIdentity);
 assertRejected(mismatchedRunnerResult, /runner evidence identity does not match the result/,
   "runner evidence candidate mismatch", mismatchedRunnerIdentity);
 
 const replayedInvocation = structuredClone(successEvidence);
 replayedInvocation.invocationId = "prior-runner-invocation";
-const replayedInvocationResult = attachRunnerEvidence(
-  structuredClone(success), replayedInvocation,
-);
+bindRunnerOwnedEvidence(replayedInvocation);
+const replayedInvocationResult = structuredClone(success);
+replayedInvocationResult.networkTrustEvidenceFingerprint =
+  networkTrustEvidenceFingerprint(replayedInvocation.networkTrustEvidence);
+replayedInvocationResult.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(replayedInvocation.resourcePlateauEvidence);
+replayedInvocation.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(replayedInvocationResult);
+attachRunnerEvidence(replayedInvocationResult, replayedInvocation);
 assertRejected(replayedInvocationResult, /runner evidence identity does not match the result/,
   "runner evidence invocation replay", replayedInvocation,
   successEvidence.invocationId);

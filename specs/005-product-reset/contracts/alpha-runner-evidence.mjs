@@ -139,10 +139,13 @@ function validateBundleProviderEgressReceipts(evidence, fixture) {
   if (new Set(receipts).size !== receipts.length) {
     throw new Error("provider egress receipt identities are reused across the evidence bundle");
   }
-  const processTreeRoots = evidence.scenarios.flatMap((record) => [
-    ...(record.providerEgressEvidence?.kind === "observed" ? [record.processTreeRootId] : []),
-    ...record.recoveryProviderEgressEvidence.map((item) => item.processTreeRootId),
-  ]);
+  const processTreeRoots = [
+    evidence.resourcePlateauEvidence.processTreeRootId,
+    ...evidence.scenarios.flatMap((record) => [
+      ...(record.providerEgressEvidence?.kind === "observed" ? [record.processTreeRootId] : []),
+      ...record.recoveryProviderEgressEvidence.map((item) => item.processTreeRootId),
+    ]),
+  ];
   if (new Set(processTreeRoots).size !== processTreeRoots.length) {
     throw new Error("provider egress process-tree identities are reused across the evidence bundle");
   }
@@ -158,6 +161,16 @@ function validateBundleProviderEgressReceipts(evidence, fixture) {
       throw new Error("real runner scenario does not own an observed provider egress receipt");
     }
     resolveProviderEgressEvidence(evidence, record);
+  }
+}
+
+function validateResourcePlateauIdentity(evidence) {
+  const plateau = evidence.resourcePlateauEvidence;
+  if (plateau.candidateId !== evidence.candidateId ||
+      plateau.artifactFingerprint !== evidence.artifactFingerprint ||
+      plateau.environmentFingerprint !== evidence.environmentFingerprint ||
+      plateau.runnerInvocationId !== evidence.invocationId) {
+    throw new Error("resource plateau evidence does not match the bundle identity");
   }
 }
 
@@ -259,8 +272,9 @@ function validateScenarioProviderEgress(evidence, record, result, fixture) {
 
 export function validateRunnerEvidence(evidence, result, fixture, expectedInvocationId,
   expectedCaseIds = null) {
-  validateNetworkTrustEvidence(evidence.networkTrustEvidence, fixture);
+  validateNetworkTrustEvidence(evidence.networkTrustEvidence, fixture, evidence.invocationId);
   validateResourcePlateauEvidence(evidence.resourcePlateauEvidence, fixture);
+  validateResourcePlateauIdentity(evidence);
   if (result.networkTrustEvidenceFingerprint !==
       networkTrustEvidenceFingerprint(evidence.networkTrustEvidence)) {
     throw new Error("network trust evidence fingerprint does not match the runner bundle");

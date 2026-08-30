@@ -361,11 +361,12 @@ The corrected runner-evidence schema binds every raw plateau window, drain/check
 item/token/concurrency sample, hostname/IP-valid public CA fingerprint, six raw base/local/repaired
 setup/start TLS receipts with exact remote-SNI/null-IP-SNI/timing/result/trust-anchor/
 phase-stable-peer-cert/
-zero-byte evidence with setup completion strictly before daemon-start beginning, and one runner-
-owned gated provider-egress observation per real scenario whose
-authorization carries explicit canonical-order committed event IDs/count/fingerprint. Each
+zero-byte evidence with setup completion strictly before daemon-start beginning and invocation-bound
+network/receipt evidence. The plateau binds candidate/artifact/environment/invocation and a fresh
+bundle-unique process root. One runner-owned gated provider-egress observation per real scenario
+carries authorization with explicit canonical-order committed event IDs/count/fingerprint. Each
 plateau window has a unique workload receipt, strict runner-monotonic action/sample order,
-positive duplicate-attempt count, no-op outcome, and
+one identical positive duplicate-attempt count, no-op outcome, and
 zero memory/job deltas. Results bind the bundle objects through separate fingerprints and derived
 aggregates. The runner also emits repeated same-event-ID/different-digest attempts that reuse one
 pair-bound receipt, rejects cross-pair reuse, and emits exactly 16 positives plus the required

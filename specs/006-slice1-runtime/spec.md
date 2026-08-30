@@ -395,7 +395,9 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   timeout, timing, verified result, per-receipt trust-anchor and per-endpoint phase-stable
   peer-certificate fingerprints, and zero
   request/credential/payload bytes, with setup completion strictly before daemon-start beginning,
-  plus runner-owned provider-egress observations spanning
+  while the network object and all six receipts bind the bundle invocation. The plateau object MUST
+  bind candidate/artifact/environment/invocation and one fresh process-tree root unique from every
+  observed provider root. Runner-owned provider-egress observations span
   candidate start through process-tree termination and opening only after direct durable-event-set
   authorization that records explicit canonical-order committed event IDs, count, and fingerprint
   without inferring a prefix. Source bytes by sensitivity MUST be runner-stub measurements of actual
@@ -408,8 +410,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   nested receipt's `observationCaseId` MUST equal its owning initial/recovery record case. Each plateau
   window MUST carry a unique workload receipt, strict runner-monotonic
   workload-start/workload-receipt/drain-receipt/checkpoint-receipt/sample timestamps, and no overlap
-  with its neighboring windows, with at
-  least one duplicate attempt, no-op outcome, and zero memory/job deltas. The result schema carries
+  with its neighboring windows. All 12 windows MUST carry the same positive duplicate-attempt count,
+  no-op outcome, and zero memory/job deltas. The result schema carries
   separate trust/plateau fingerprints and derived aggregates, not raw copies;
   pair-bound repeated same-event-ID/different-digest conflict evidence, and the exact 16 positive plus one
   late-injection-negative suite.

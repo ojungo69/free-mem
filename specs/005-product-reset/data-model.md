@@ -410,7 +410,8 @@ in suite mode.
   and one peer-certificate SHA-256 per endpoint that is identical across its setup/start receipts and
   distinct from the CA,
   verified monotonic duration, setup completion strictly before daemon-start beginning, and zero
-  credential/payload/request activity
+  credential/payload/request activity; the network object and all six receipts repeat the bundle
+  runner invocation
 - one runner-owned provider-egress observation per real scenario, armed before candidate start and
   retained through process-tree termination, with zero pre-authorization/non-loopback attempts,
   direct durable-store authorization containing explicit canonical-order committed event IDs, their
@@ -423,12 +424,13 @@ in suite mode.
   provider plus bundle invocation and a fresh subcase process-tree root, with receipt and observed
   process-tree IDs unique across the whole bundle; the nested receipt repeats its owning case ID
 - one closed short-run plateau record with 12 ordered duplicate/no-op windows, discarded 1-2,
-  measured 3-12, final 8-12, fixed item/token counts, bounded
+  measured 3-12, final 8-12, one identical positive duplicate-delivery count, fixed item/token counts, bounded
   process/RSS/queue/storage/concurrency, measured RSS/storage maximum increase from the first measured
   window, final-five RSS/storage spans, unique path-free drain/checkpoint/workload receipt IDs, strict
   monotonic workload-start/workload-receipt/drain/checkpoint/sample order and window non-overlap,
-  positive duplicate-delivery attempts, exact `duplicate_noop`, zero durable/job deltas, and zero
-  orphan processes
+  exact `duplicate_noop`, zero durable/job deltas, and zero orphan processes; it binds
+  candidate/artifact/environment/invocation plus one fresh plateau
+  process-tree root unique from every observed provider root
 - runner-owned effective Agent/repository/session identity and caller-claim authorization decisions
 - a runner-derived fingerprint over the complete result observation, binding egress, render,
   atomicity, and conflict evidence without copying private payload into the bundle

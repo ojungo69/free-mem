@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:7a2cd903f7bc4444be85054626ceb4cb16675e6a0a159d3e771f01e3bfb52935",
+  "fixtureFingerprint": "sha256:ce131bdfbde07781fa49bc5b8310d402baa10ff7dee5ab0dbe4175ffda8f7b1b",
   "candidateId": "candidate-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
@@ -1348,7 +1348,7 @@
           }
         ]
       },
-      "resultObservationFingerprint": "sha256:649b35ede97c5bb977e64860e8f098ef4f21e2c43a39914a103f346ec417a54c",
+      "resultObservationFingerprint": "sha256:5caf21005fd9ff344d699d6587f9ad47e32ed6ec13e1f080e7b7769b9779a62c",
       "providerEgressEvidence": {
         "kind": "observed",
         "receiptId": "provider-egress:claude-to-codex",
@@ -1406,6 +1406,7 @@
     "tlsPreflightReceipts": [
       {
         "receiptId": "tls-preflight:base:setup-activation",
+        "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
         "phase": "setup_activation",
         "hostname": "summary.stub.invalid",
         "sni": "summary.stub.invalid",
@@ -1424,6 +1425,7 @@
       },
       {
         "receiptId": "tls-preflight:base:daemon-start",
+        "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
         "phase": "daemon_start",
         "hostname": "summary.stub.invalid",
         "sni": "summary.stub.invalid",
@@ -1442,6 +1444,7 @@
       },
       {
         "receiptId": "tls-preflight:local:setup-activation",
+        "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
         "phase": "setup_activation",
         "hostname": "127.0.0.1",
         "sni": null,
@@ -1460,6 +1463,7 @@
       },
       {
         "receiptId": "tls-preflight:local:daemon-start",
+        "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
         "phase": "daemon_start",
         "hostname": "127.0.0.1",
         "sni": null,
@@ -1478,6 +1482,7 @@
       },
       {
         "receiptId": "tls-preflight:repaired:setup-activation",
+        "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
         "phase": "setup_activation",
         "hostname": "summary-repaired.stub.invalid",
         "sni": "summary-repaired.stub.invalid",
@@ -1496,6 +1501,7 @@
       },
       {
         "receiptId": "tls-preflight:repaired:daemon-start",
+        "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
         "phase": "daemon_start",
         "hostname": "summary-repaired.stub.invalid",
         "sni": "summary-repaired.stub.invalid",
@@ -1513,7 +1519,8 @@
         "peerCertificateSha256": "sha256:f2fb56707cb995450ae7791c26b7f39f38f20dea71800e10e6e54fb451afed70"
       }
     ],
-    "localHostname": "127.0.0.1"
+    "localHostname": "127.0.0.1",
+    "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1"
   },
   "resourcePlateauEvidence": {
     "version": 1,
@@ -1807,6 +1814,11 @@
         "checkpointReceiptMonotonicMs": 3011300,
         "resourceSampleMonotonicMs": 3011400
       }
-    ]
+    ],
+    "candidateId": "candidate-example-v1",
+    "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
+    "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
+    "runnerInvocationId": "candidate-example-v1:fixture-invocation-v1",
+    "processTreeRootId": "resource-plateau:candidate-example-v1:fixture-invocation-v1"
   }
 }

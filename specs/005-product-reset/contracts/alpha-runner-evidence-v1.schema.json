@@ -31,9 +31,10 @@
     "NetworkTrustEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "baseHostname", "localHostname", "repairedHostname", "publicCaSha256", "chainValidation", "hostnameValidation", "privateKeyCommitted", "tlsPreflightReceipts"],
+      "required": ["version", "runnerInvocationId", "baseHostname", "localHostname", "repairedHostname", "publicCaSha256", "chainValidation", "hostnameValidation", "privateKeyCommitted", "tlsPreflightReceipts"],
       "properties": {
         "version": { "const": 1 },
+        "runnerInvocationId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "baseHostname": { "const": "summary.stub.invalid" },
         "localHostname": { "const": "127.0.0.1" },
         "repairedHostname": { "const": "summary-repaired.stub.invalid" },
@@ -52,9 +53,10 @@
     "TlsPreflightReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["receiptId", "phase", "hostname", "sni", "port", "timeoutMs", "startMonotonicMs", "endMonotonicMs", "result", "chainValidation", "hostnameValidation", "trustAnchorSha256", "peerCertificateSha256", "credentialBytesSent", "payloadBytesSent", "httpRequestCount"],
+      "required": ["receiptId", "runnerInvocationId", "phase", "hostname", "sni", "port", "timeoutMs", "startMonotonicMs", "endMonotonicMs", "result", "chainValidation", "hostnameValidation", "trustAnchorSha256", "peerCertificateSha256", "credentialBytesSent", "payloadBytesSent", "httpRequestCount"],
       "properties": {
         "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "runnerInvocationId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "phase": { "enum": ["setup_activation", "daemon_start"] },
         "hostname": { "enum": ["summary.stub.invalid", "127.0.0.1", "summary-repaired.stub.invalid"] },
         "sni": { "oneOf": [
@@ -78,9 +80,14 @@
     "ResourcePlateauEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "workload", "discardedWindowOrdinals", "measuredWindowOrdinals", "finalWindowOrdinals", "orphanProductProcessCount", "windows"],
+      "required": ["version", "candidateId", "artifactFingerprint", "environmentFingerprint", "runnerInvocationId", "processTreeRootId", "workload", "discardedWindowOrdinals", "measuredWindowOrdinals", "finalWindowOrdinals", "orphanProductProcessCount", "windows"],
       "properties": {
         "version": { "const": 1 },
+        "candidateId": { "$ref": "#/$defs/NonEmptyString" },
+        "artifactFingerprint": { "$ref": "#/$defs/Fingerprint" },
+        "environmentFingerprint": { "$ref": "#/$defs/Fingerprint" },
+        "runnerInvocationId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "processTreeRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "workload": { "const": "duplicate_noop_v1" },
         "discardedWindowOrdinals": { "const": [1, 2] },
         "measuredWindowOrdinals": { "const": [3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },

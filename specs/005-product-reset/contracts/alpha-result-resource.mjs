@@ -51,11 +51,13 @@ export function validateResourcePlateauEvidence(evidence, fixture) {
 }
 
 function validatePlateauOutcomes(windows) {
+  const duplicateDeliveryAttemptCount = windows[0].duplicateDeliveryAttemptCount;
   if (windows.some((window) =>
     !Number.isInteger(window.duplicateDeliveryAttemptCount) ||
-    window.duplicateDeliveryAttemptCount < 1
+    window.duplicateDeliveryAttemptCount < 1 ||
+    window.duplicateDeliveryAttemptCount !== duplicateDeliveryAttemptCount
   )) {
-    throw new Error("resource plateau lacks a duplicate delivery attempt");
+    throw new Error("resource plateau duplicate delivery attempts are absent or non-identical");
   }
   if (windows.some((window) => window.noOpOutcome !== "duplicate_noop")) {
     throw new Error("resource plateau lacks the fixed duplicate-no-op outcome");

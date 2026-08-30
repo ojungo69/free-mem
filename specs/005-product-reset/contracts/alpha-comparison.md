@@ -77,12 +77,14 @@ Each fixture defines:
   setup activation/daemon start and bind host/SNI/exact endpoint port/5,000 ms, the per-run CA trust
   anchor, one peer-certificate fingerprint per endpoint that is identical across its two phases and
   distinct from the CA, verified duration, setup completion strictly before daemon-start beginning,
-  and zero bytes/requests
+  the current runner invocation repeated by the network object and all six receipts, and zero
+  bytes/requests
 - one runner-owned 12-window duplicate/no-op plateau: discard 1-2, measure 3-12, evaluate final
   8-12 for constant processes, drained queue, equal item/token counts, RSS span at most 16 MiB,
   storage span at most 65,536 bytes, concurrency at most 2, unique path-free
   drain/checkpoint/workload receipt IDs, strict runner-monotonic workload-start → workload-receipt →
-  drain-receipt → checkpoint-receipt → resource-sample order with non-overlapping windows, positive duplicate-delivery attempts, exact
+  drain-receipt → checkpoint-receipt → resource-sample order with non-overlapping windows, one
+  identical positive duplicate-delivery attempt count across all 12 windows, exact
   `duplicate_noop`, zero durable/job deltas, and zero orphans; measured RSS/storage ceilings are
   maximum increase from window 3, while only the final-five predicates use max-minus-min spans
 - an explicit drain condition proving comparable completion across candidates
@@ -221,7 +223,8 @@ strict workload/drain/checkpoint/sample timestamps, and separately
 fingerprints maximum-increase-from-first and final-five-span predicates before any aggregate can
 affect eligibility. Malformed ordering, receipt, no-op, or zero-delta evidence is invalid; a
 structurally valid threshold miss remains inspectable and yields `resource_threshold_exceeded`
-rather than an invalid record.
+rather than an invalid record. It also binds candidate, artifact, environment, runner invocation,
+and one fresh plateau process-tree root that is unique from every observed provider root.
 Cold runs require opaque data-root, reset-receipt, and process-generation identities that occur only
 once across the entire bundle, including warm records, plus observed zero process and directory-entry
 counts within one pinned process-sample interval before measurement. The first cold observation must

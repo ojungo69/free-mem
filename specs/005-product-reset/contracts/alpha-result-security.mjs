@@ -116,7 +116,7 @@ function validateTlsPreflightReceipts(receipts, fixture, publicCaSha256) {
   }
 }
 
-export function validateNetworkTrustEvidence(evidence, fixture) {
+export function validateNetworkTrustEvidence(evidence, fixture, runnerInvocationId = null) {
   if (
     evidence?.version !== 1 ||
     evidence.baseHostname !== new URL(
@@ -131,6 +131,11 @@ export function validateNetworkTrustEvidence(evidence, fixture) {
     !/^sha256:[0-9a-f]{64}$/u.test(evidence.publicCaSha256)
   ) {
     throw new Error("network trust evidence does not bind the fixed hostnames and public CA");
+  }
+  if ((runnerInvocationId !== null && evidence.runnerInvocationId !== runnerInvocationId) ||
+      !evidence.tlsPreflightReceipts.every((receipt) =>
+        receipt.runnerInvocationId === evidence.runnerInvocationId)) {
+    throw new Error("network trust evidence does not match the runner invocation");
   }
   if (!evidence.chainValidation) {
     throw new Error("network trust evidence did not retain chain validation");

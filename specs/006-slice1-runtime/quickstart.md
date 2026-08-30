@@ -328,8 +328,10 @@ pair-bound same-event-ID/different-payload-digest conflict attempts without over
 runner-evidence schema carries all 12 plateau windows, drain/checkpoint receipts, item/token/
 concurrency samples, public CA proof, and six raw base/local/repaired setup/start TLS receipts with exact
 SNI/timeout/timing/verified/trust-anchor/phase-stable-peer-cert/zero-request/credential/payload
-evidence, with setup completion strictly before daemon-start beginning. Every
-plateau window has a unique workload receipt, positive duplicate-attempt count, no-op outcome, and
+evidence, with setup completion strictly before daemon-start beginning and the network object plus
+all receipts bound to the bundle invocation. The plateau object binds candidate/artifact/environment/
+invocation and a fresh bundle-unique process root. Every plateau window has a unique workload receipt,
+the same positive duplicate-attempt count, no-op outcome, and
 zero memory/job delta, plus a strict non-overlapping workload-start/workload-receipt/drain-receipt/
 checkpoint-receipt/sample timestamp chain. Results carry separate network/plateau fingerprints and derived aggregates;
 all raw fields remain in the candidate-inaccessible runner bundle.

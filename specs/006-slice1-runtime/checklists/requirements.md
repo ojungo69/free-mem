@@ -66,7 +66,9 @@
 - [x] Closed runner-evidence schema owns initial plus every retry/redirect recovery provider-egress
   observation (including zero-egress no-ops), plateau, and six ordered TLS receipts; result
   fingerprints/aggregates bind them; every observation binds the bundle invocation, owning case, and
-  one fresh bundle-unique process-tree root; plateau timestamps strictly prove workload→drain→checkpoint→
+  one fresh bundle-unique process-tree root; TLS network/receipt evidence binds the invocation, while
+  plateau candidate/artifact/environment/invocation/root and one identical duplicate workload count
+  are closed; plateau timestamps strictly prove workload→drain→checkpoint→
   sample order and non-overlap while pair-bound conflict reuse/distinctness and exact 16+1 evidence
   remain closed
 - [x] Provider authorization records explicit committed event IDs/count/fingerprint and accepts

@@ -260,6 +260,11 @@ delete missingPublicCa.networkTrustEvidence.publicCaSha256;
 assert.notEqual(validateAgainstSchema(
   missingPublicCa, evidenceSchema, evidenceSchema,
 ).length, 0, "runner evidence schema accepted missing public CA fingerprint");
+const missingNetworkInvocation = structuredClone(evidence);
+delete missingNetworkInvocation.networkTrustEvidence.runnerInvocationId;
+assert.notEqual(validateAgainstSchema(
+  missingNetworkInvocation, evidenceSchema, evidenceSchema,
+).length, 0, "runner evidence schema accepted missing network invocation identity");
 const missingTlsReceipts = structuredClone(evidence);
 delete missingTlsReceipts.networkTrustEvidence.tlsPreflightReceipts;
 assert.notEqual(validateAgainstSchema(
@@ -272,7 +277,20 @@ for (const field of ["trustAnchorSha256", "peerCertificateSha256"]) {
     missingTlsFingerprint, evidenceSchema, evidenceSchema,
   ).length, 0, `runner evidence schema accepted missing TLS ${field}`);
 }
+const missingTlsInvocation = structuredClone(evidence);
+delete missingTlsInvocation.networkTrustEvidence.tlsPreflightReceipts[0].runnerInvocationId;
+assert.notEqual(validateAgainstSchema(
+  missingTlsInvocation, evidenceSchema, evidenceSchema,
+).length, 0, "runner evidence schema accepted missing TLS receipt invocation identity");
 
+for (const field of ["candidateId", "artifactFingerprint", "environmentFingerprint",
+  "runnerInvocationId", "processTreeRootId"]) {
+  const missingPlateauIdentity = structuredClone(evidence);
+  delete missingPlateauIdentity.resourcePlateauEvidence[field];
+  assert.notEqual(validateAgainstSchema(
+    missingPlateauIdentity, evidenceSchema, evidenceSchema,
+  ).length, 0, `runner evidence schema accepted missing plateau ${field}`);
+}
 for (const field of ["drainReceiptId", "checkpointReceiptId"]) {
   const missingReceipt = structuredClone(evidence);
   delete missingReceipt.resourcePlateauEvidence.windows[0][field];
@@ -298,6 +316,19 @@ orphanThresholdEvidence.resourcePlateauEvidence.orphanProductProcessCount = 1;
 assert.deepEqual(validateAgainstSchema(
   orphanThresholdEvidence, evidenceSchema, evidenceSchema,
 ), [], "runner evidence schema rejected an inspectable orphan-process threshold miss");
+for (const [field, value, label] of [
+  ["candidateId", "stale-plateau-candidate", "candidate"],
+  ["artifactFingerprint", `sha256:${"0".repeat(64)}`, "artifact"],
+  ["environmentFingerprint", `sha256:${"0".repeat(64)}`, "environment"],
+  ["runnerInvocationId", "stale-plateau-invocation", "invocation"],
+]) assertEvidenceRejected((mutant) => {
+  mutant.resourcePlateauEvidence[field] = value;
+}, /resource plateau.*identity/,
+  `runner evidence accepted a plateau from another ${label}`);
+assertEvidenceRejected((mutant) => {
+  mutant.resourcePlateauEvidence.processTreeRootId = mutant.scenarios[0].processTreeRootId;
+}, /process-tree identities are reused/,
+  "runner evidence reused an initial process tree for the resource plateau");
 
 assertEvidenceRejected((mutant) => {
   const changedCa = `sha256:${"0".repeat(64)}`;
@@ -323,6 +354,17 @@ assertEvidenceRejected((mutant) => {
 assertEvidenceRejected((mutant) => {
   mutant.networkTrustEvidence.localHostname = "127.0.0.2";
 }, /fixed hostnames/, "network trust local hostname drift");
+assertEvidenceRejected((mutant) => {
+  mutant.networkTrustEvidence.runnerInvocationId = "stale-network-invocation";
+  for (const receipt of mutant.networkTrustEvidence.tlsPreflightReceipts) {
+    receipt.runnerInvocationId = "stale-network-invocation";
+  }
+}, /network trust.*invocation/,
+  "runner evidence accepted TLS trust from another invocation");
+assertEvidenceRejected((mutant) => {
+  mutant.networkTrustEvidence.tlsPreflightReceipts[0].runnerInvocationId = "stale-invocation";
+}, /network trust.*invocation/,
+  "runner evidence accepted a TLS receipt from another invocation");
 assertEvidenceRejected((_mutant, mutantResult) => {
   mutantResult.networkTrustEvidenceFingerprint = `sha256:${"0".repeat(64)}`;
 }, /network trust evidence fingerprint/, "stale network trust evidence fingerprint", {
@@ -495,6 +537,8 @@ const plateauMutations = [
     /workload receipt.*path-free opaque/, "path-like plateau workload receipt"],
   [(plateau) => { plateau.windows[0].duplicateDeliveryAttemptCount = 0; },
     /duplicate delivery/, "missing plateau duplicate delivery attempt"],
+  [(plateau) => { plateau.windows[7].duplicateDeliveryAttemptCount = 2; },
+    /duplicate delivery/, "non-identical plateau duplicate delivery count"],
   [(plateau) => { plateau.windows[0].noOpOutcome = "completed"; },
     /duplicate-no-op outcome/, "wrong plateau no-op outcome"],
   [(plateau) => { plateau.windows[0].durableMemoryDelta = 1; },
