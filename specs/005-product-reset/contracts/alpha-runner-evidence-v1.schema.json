@@ -221,11 +221,12 @@
     "ProviderEgressObserved": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "receiptId", "evidenceSource", "runnerInvocationId", "processTreeRootId", "providerFingerprint", "executionLocation", "observationStartedMonotonicMs", "candidateStartedMonotonicMs", "authorization", "firstProviderRequestStartedMonotonicMs", "lastProviderRequestFinishedMonotonicMs", "processTreeTerminatedMonotonicMs", "observationFinishedMonotonicMs", "preAuthorizationProviderAttemptCount", "nonLoopbackSocketAttemptCount", "providerRequestCount", "providerPayloadCount", "credentialBytesSent", "payloadBytesSent", "sourcePayloadBytesBySensitivity", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount"],
+      "required": ["kind", "receiptId", "evidenceSource", "observationCaseId", "runnerInvocationId", "processTreeRootId", "providerFingerprint", "executionLocation", "observationStartedMonotonicMs", "candidateStartedMonotonicMs", "authorization", "firstProviderRequestStartedMonotonicMs", "lastProviderRequestFinishedMonotonicMs", "processTreeTerminatedMonotonicMs", "observationFinishedMonotonicMs", "preAuthorizationProviderAttemptCount", "nonLoopbackSocketAttemptCount", "providerRequestCount", "providerPayloadCount", "credentialBytesSent", "payloadBytesSent", "sourcePayloadBytesBySensitivity", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount"],
       "properties": {
         "kind": { "const": "observed" },
         "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "evidenceSource": { "const": "runner_network_gate_and_stub_v1" },
+        "observationCaseId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "runnerInvocationId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "processTreeRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "providerFingerprint": { "$ref": "#/$defs/Fingerprint" },

@@ -214,8 +214,8 @@ Every fixed retry/redirect recovery subcase owns one additional runner observati
 zero-egress observation for each no-op. The sorted wrappers bind exact case/manifest/provider,
 globally unique receipt IDs and fresh process-tree roots, the bundle invocation, committed-event
 authorization, request timing, TLS, wire bytes, and sensitivity measurements under the same rules as
-the initial attempt. Live invocation/root IDs are runner-generated per execution/process generation,
-never reused PID labels.
+the initial attempt. Each nested receipt repeats the owning initial/recovery case ID. Live
+invocation/root IDs are runner-generated per execution/process generation, never reused PID labels.
 The plateau object binds all 12 ordered, non-overlapping duplicate/no-op workload receipts and their
 strict workload/drain/checkpoint/sample timestamps, and separately
 fingerprints maximum-increase-from-first and final-five-span predicates before any aggregate can

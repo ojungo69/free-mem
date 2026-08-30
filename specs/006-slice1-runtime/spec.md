@@ -405,7 +405,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   IDs and observed process-tree roots unique across the bundle. Every initial/recovery receipt MUST
   bind the bundle invocation and its owning process-tree root; the live runner MUST generate both
   identities freshly per execution/process generation and MUST NOT use a reusable PID alone. Each
-  plateau window MUST carry a unique workload receipt, strict runner-monotonic
+  nested receipt's `observationCaseId` MUST equal its owning initial/recovery record case. Each plateau
+  window MUST carry a unique workload receipt, strict runner-monotonic
   workload-start/workload-receipt/drain-receipt/checkpoint-receipt/sample timestamps, and no overlap
   with its neighboring windows, with at
   least one duplicate attempt, no-op outcome, and zero memory/job deltas. The result schema carries

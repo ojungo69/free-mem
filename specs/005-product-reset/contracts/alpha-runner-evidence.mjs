@@ -175,7 +175,12 @@ function validateRecoveryProviderBinding(wrapper, recovery, fixture) {
   }
 }
 
-function validateProviderEgressRunBinding(receipt, invocationId, processTreeRootId) {
+function validateProviderEgressRunBinding(
+  receipt, invocationId, processTreeRootId, observationCaseId,
+) {
+  if (receipt.observationCaseId !== observationCaseId) {
+    throw new Error("provider egress receipt does not match its observation case");
+  }
   if (receipt.runnerInvocationId !== invocationId) {
     throw new Error("provider egress receipt does not match the runner invocation");
   }
@@ -237,11 +242,11 @@ function validateScenarioProviderEgress(evidence, record, result, fixture) {
     : record;
   const primaryReceipt = resolveProviderEgressEvidence(evidence, record);
   validateProviderEgressRunBinding(
-    primaryReceipt, evidence.invocationId, primaryRecord.processTreeRootId,
+    primaryReceipt, evidence.invocationId, primaryRecord.processTreeRootId, primaryRecord.caseId,
   );
   for (const wrapper of record.recoveryProviderEgressEvidence) {
     validateProviderEgressRunBinding(
-      wrapper.evidence, evidence.invocationId, wrapper.processTreeRootId,
+      wrapper.evidence, evidence.invocationId, wrapper.processTreeRootId, wrapper.caseId,
     );
   }
   validateProviderEgressEvidence(

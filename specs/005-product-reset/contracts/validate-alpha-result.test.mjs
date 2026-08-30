@@ -562,6 +562,7 @@ suiteRunnerEvidence.scenarios = suiteCaseIds.map((caseId) => {
   record.processTreeRootId = `${caseId}:${record.processTreeRootId}`;
   record.providerEgressEvidence.receiptId =
     `${caseId}:${record.providerEgressEvidence.receiptId}`;
+  record.providerEgressEvidence.observationCaseId = caseId;
   record.providerEgressEvidence.processTreeRootId = record.processTreeRootId;
   for (const preparation of record.runPreparations) {
     preparation.receiptId = `${caseId}:${preparation.receiptId}`;

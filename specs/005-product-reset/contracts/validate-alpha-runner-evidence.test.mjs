@@ -178,9 +178,11 @@ assertSuiteRecoveryRejected("summary-provider-output-limit-exceeded", (record) =
   const second = record.recoveryProviderEgressEvidence.find((item) =>
     item.caseId === "unchanged-doctor-retry-no-op");
   const secondReceiptId = second.evidence.receiptId;
+  const secondProcessTreeRootId = second.evidence.processTreeRootId;
   second.evidence = structuredClone(first.evidence);
   second.evidence.receiptId = secondReceiptId;
-}, /process tree/,
+  second.evidence.processTreeRootId = secondProcessTreeRootId;
+}, /observation case/,
   "runner evidence reused one no-op receipt across recovery cases");
 assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
   const evidence = record.recoveryProviderEgressEvidence[0].evidence;
@@ -211,7 +213,11 @@ assertEvidenceRejected((mutant) => {
   mutant.scenarios[0].providerEgressEvidence.runnerInvocationId = "stale-invocation";
 }, /invocation/,
   "runner evidence accepted an initial egress receipt from another invocation");
-for (const field of ["runnerInvocationId", "processTreeRootId"]) {
+assertEvidenceRejected((mutant) => {
+  mutant.scenarios[0].providerEgressEvidence.observationCaseId = "other-case";
+}, /observation case/,
+  "runner evidence accepted an initial egress receipt from another case");
+for (const field of ["observationCaseId", "runnerInvocationId", "processTreeRootId"]) {
   const missingRunBinding = structuredClone(evidence);
   delete missingRunBinding.scenarios[0].providerEgressEvidence[field];
   assert.notEqual(validateAgainstSchema(
@@ -220,6 +226,7 @@ for (const field of ["runnerInvocationId", "processTreeRootId"]) {
 }
 for (const [target, field] of [
   ["wrapper", "processTreeRootId"],
+  ["receipt", "observationCaseId"],
   ["receipt", "runnerInvocationId"],
   ["receipt", "processTreeRootId"],
 ]) {
