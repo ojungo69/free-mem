@@ -152,6 +152,9 @@ function validateBundleProviderEgressReceipts(evidence, fixture) {
   for (const record of evidence.scenarios) {
     const negative = record.caseId === fixture.beforeModelNegativeFixture.caseId;
     if (negative) {
+      if (record.scenarioId !== fixture.beforeModelNegativeFixture.baseScenarioId) {
+        throw new Error("late-injection negative does not match its fixed base scenario");
+      }
       if (record.providerEgressEvidence?.kind !== "projection" ||
           record.providerEgressEvidence.sourceCaseId !==
             fixture.beforeModelNegativeFixture.baseScenarioId) {

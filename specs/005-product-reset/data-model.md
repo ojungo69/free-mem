@@ -313,9 +313,10 @@ start to 9,000 units and call `toWellFormed()`, then slice user from the start t
 `max(3,000, 12,000 - clippedSystem.length)` units and call `toWellFormed()`. Both protocols use this
 allocation without a tail merge or token-based alternative. Setup after confirmation and daemon
 start each perform a native credential/payload-free TLS chain+hostname handshake to the exact
-host/port/SNI within 5,000 ms; failure mutates nothing or restores prior state. Added CA files are
-bounded regular realpaths owned by the current UID and not group/world writable. Local HTTP skips
-the handshake and remains credential-none/eligible-only.
+host/port/SNI within 5,000 ms; failure mutates nothing or restores prior state. Production rejects
+added CA path/environment input and equivalent trust overrides and uses only platform system trust;
+the isolated runner may install its public test CA into private system trust before candidate start.
+Local HTTP skips the handshake and remains credential-none/eligible-only.
 
 ## SemanticIndexGeneration
 

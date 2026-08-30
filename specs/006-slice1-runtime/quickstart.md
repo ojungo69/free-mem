@@ -81,16 +81,22 @@ corepack pnpm install --frozen-lockfile
 corepack pnpm exec vitest run \
   packages/core/src/capability-manifest.test.ts \
   packages/core/src/storage.test.ts \
+  packages/core/src/observer-auth.test.ts \
   packages/core/src/observer-client.test.ts \
+  packages/core/src/observer-config.test.ts \
   packages/core/src/extraction-replay.test.ts \
   packages/core/src/distill.test.ts \
+  packages/core/src/ingest-pipeline.test.ts \
   packages/core/src/index.test.ts \
   packages/core/src/maintenance/ai-structured.test.ts \
   packages/core/src/viewer-routes/config.test.ts \
   packages/core/src/viewer-routes/observer-status.test.ts \
   packages/core/src/daemon-lifecycle.test.ts \
   packages/core/src/daemon-rpc.test.ts \
+  packages/core/src/operational-status.test.ts \
+  packages/core/src/raw-event-flush.test.ts \
   packages/core/src/raw-event-sweeper.test.ts \
+  packages/core/src/vectors.test.ts \
   packages/cli/src/commands/setup-codex.test.ts \
   packages/cli/src/commands/setup-config.test.ts \
   packages/cli/src/commands/status.test.ts \

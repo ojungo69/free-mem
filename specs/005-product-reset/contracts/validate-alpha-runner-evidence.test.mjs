@@ -102,6 +102,18 @@ function assertSuiteRecoveryRejected(scenarioId, mutate, pattern, label) {
 
 assert.deepEqual(validateAgainstSchema(evidence, evidenceSchema, evidenceSchema), [],
   "fixed runner evidence does not match its schema");
+const wrongNegativeBaseEvidence = structuredClone(suiteEvidence);
+const wrongNegativeBaseResult = structuredClone(suiteResults.positiveResults[0]);
+wrongNegativeBaseEvidence.scenarios.find((item) =>
+  item.caseId === fixture.beforeModelNegativeFixture.caseId
+).scenarioId = "codex-to-claude";
+wrongNegativeBaseResult.runnerEvidenceFingerprint =
+  runnerEvidenceFingerprint(wrongNegativeBaseEvidence);
+assert.throws(() => validateRunnerEvidence(
+  wrongNegativeBaseEvidence, wrongNegativeBaseResult, fixture,
+  wrongNegativeBaseEvidence.invocationId,
+), /late-injection negative does not match its fixed base scenario/,
+  "runner evidence accepted a late-injection negative for another scenario");
 const missingAttemptedRecoveryResult = structuredClone(suiteResults.positiveResults.find(
   (item) => item.scenarioId === "summary-provider-retry-exhausted",
 ));
