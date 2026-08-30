@@ -12,6 +12,12 @@ The trusted daemon boundary computes it. Payload/provider claims cannot weaken i
 ambiguous, or legacy-unknown values become `secret`. Derived, deduplicated, and superseding state
 keeps the strongest contributing value.
 
+A same-identity/same-payload replay joins trusted sensitivity before ACK. The canonical event and
+every existing derived record that cites it are strengthened atomically. Quarantine is absorbing,
+forces `secret`, makes those records unavailable to every consumer, and returns a non-success
+receipt. Different-payload conflicts never let the incoming delivery weaken or rewrite the
+canonical security disposition.
+
 If redaction cannot produce safe content, capture stores only safe ordering metadata,
 `sensitivity=secret`, `capture_state=quarantined`, and a bounded error code. Failed raw content is
 absent and no provider/read path can select the row.
@@ -24,11 +30,15 @@ basename, caller labels, filters, cwd spelling, and workspace names are never au
 identity denies private/local-only disclosure; linked worktrees resolve through the same verified
 remote or primary anchor.
 
+Remote canonicalization retains HTTPS/SSH transport class and the exact bounded SSH username.
+HTTPS and SSH spellings, or two SSH usernames on one host/path, do not share restricted authority.
+
 ## DestinationBoundaryV1
 
 One closed internal boundary carries consumer kind, concrete Agent/model when applicable,
 local/remote/unknown location, verified destination repository identity or NULL, frozen manifest
-fingerprint, and provider fingerprint when applicable. User filters cannot construct or override it.
+fingerprint, provider fingerprint when applicable, and compiler/runtime-derived
+`providerPeerTrust=verified|unverified|not_applicable`. User filters cannot construct or override it.
 
 Claude Code, Codex, and MCP resolve to remote/unknown in Slice 1 production. A locally running CLI,
 Agent/model label, project, or RPC claim is not an on-device model attestation. Local destination
@@ -39,9 +49,16 @@ One eligibility function and its SQL predicate implement:
 
 | Destination | eligible | local_only | private | secret |
 |---|---:|---:|---:|---:|
-| remote or unknown | allow | deny | deny | deny |
-| local + exact repository match | allow | allow | allow | deny |
-| local + cross/unknown repository | allow | deny | deny | deny |
+| remote, unknown, or local provider with `providerPeerTrust=unverified` | allow | deny | deny | deny |
+| verified local provider or runner-attested local consumer + exact repository match | allow | allow | allow | deny |
+| trusted local + cross/unknown repository | allow | deny | deny | deny |
+
+Local HTTP accepts only credential `none`; port ownership, PID/UID lookup, and bearer headers do not
+authenticate its server. Restricted provider projection requires the exact HTTPS peer to have
+passed chain and hostname/IP verification at activation and daemon start under the frozen manifest,
+which sets `providerPeerTrust=verified`; HTTP sets `unverified`. Non-provider boundaries use
+`not_applicable`, and local execution remains constructible only from the named trusted internal or
+runner-owned path.
 
 Local summary/maintenance groups use each source's verified repository as the boundary repository.
 Viewer has eligible-only behavior unless the daemon supplies a verified repository context.
@@ -99,6 +116,7 @@ serialization. Semantic hits are rehydrated from first-class database state befo
 Restricted omissions emit only aggregate sensitivity/lane/reason counts and
 `omitted_ineligible`; no item ID, title, body, preview, query, path, or source excerpt appears. Eligible
 injected items retain visible source and selection reasons.
+Fixture `expectedOmissions` content is runner-only test evidence, not runtime trace output.
 
 Export payload v2 applies the boundary to memory items, user prompts, legacy session summaries, and
 safe session shells. Restricted data requires a verified same-repository local boundary; unknown/

@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:7eec67b3a68166684de71c98f4da11fbb783970c3cefc6eabd6a13db5ed5fa8b",
+  "fixtureFingerprint": "sha256:775714c020b7b739494899be11ce6ec10afa928cef8fee3dd3a296c968219474",
   "candidateId": "candidate-failure-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
@@ -794,7 +794,43 @@
         }
       ],
       "hostIdentityEvidence": null,
-      "resultObservationFingerprint": "sha256:138712742a4905362b5e3a6e6fed0d2c45545897a38d435a84313d620ce2e2cb"
+      "resultObservationFingerprint": "sha256:fe09f884073bcd319d58ffe1246b6c989f4f143bc342d92b20f615f1be192512",
+      "providerEgressEvidence": {
+        "kind": "observed",
+        "receiptId": "provider-egress:summary-provider-output-limit-exceeded",
+        "evidenceSource": "runner_network_gate_and_stub_v1",
+        "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+        "executionLocation": "remote",
+        "observationStartedMonotonicMs": 10000,
+        "candidateStartedMonotonicMs": 10100,
+        "authorization": {
+          "observedAtMonotonicMs": 10300,
+          "committedEventCount": 1,
+          "committedEventIds": [
+            "output-limit-event-1"
+          ],
+          "committedEventSetFingerprint": "sha256:52fee5575e405fd46c6c37af99ebe2a295306977518be076951efaca36888be7"
+        },
+        "firstProviderRequestStartedMonotonicMs": 10400,
+        "lastProviderRequestFinishedMonotonicMs": 10500,
+        "processTreeTerminatedMonotonicMs": 10800,
+        "observationFinishedMonotonicMs": 10900,
+        "preAuthorizationProviderAttemptCount": 0,
+        "nonLoopbackSocketAttemptCount": 0,
+        "providerRequestCount": 1,
+        "providerPayloadCount": 1,
+        "credentialBytesSent": 32,
+        "payloadBytesSent": 128,
+        "sourcePayloadBytesBySensitivity": {
+          "eligible": 43,
+          "localOnly": 0,
+          "private": 0,
+          "secret": 0
+        },
+        "redirectLocationRequestCount": 0,
+        "redirectLocationPayloadBytesSent": 0,
+        "resentPayloadCount": 0
+      }
     }
   ],
   "networkTrustEvidence": {
@@ -843,14 +879,50 @@
         "peerCertificateSha256": "sha256:ac2794803a018da3f91b98b61d020053cf14793ad8c1aa009b722d342959d59c"
       },
       {
+        "receiptId": "tls-preflight:local:setup-activation",
+        "phase": "setup_activation",
+        "hostname": "127.0.0.1",
+        "sni": null,
+        "port": 1234,
+        "timeoutMs": 5000,
+        "startMonotonicMs": 400,
+        "endMonotonicMs": 500,
+        "result": "verified",
+        "chainValidation": true,
+        "hostnameValidation": true,
+        "credentialBytesSent": 0,
+        "payloadBytesSent": 0,
+        "httpRequestCount": 0,
+        "trustAnchorSha256": "sha256:e71ecd687f164ab82f0551d96c2b99639e8930f1c69af4bead637e32dfc9071b",
+        "peerCertificateSha256": "sha256:76e82ce7ebbeacf903f8eec8da8c8d9264e9d79e410f55d4bc5fe291eabab2f4"
+      },
+      {
+        "receiptId": "tls-preflight:local:daemon-start",
+        "phase": "daemon_start",
+        "hostname": "127.0.0.1",
+        "sni": null,
+        "port": 1234,
+        "timeoutMs": 5000,
+        "startMonotonicMs": 600,
+        "endMonotonicMs": 700,
+        "result": "verified",
+        "chainValidation": true,
+        "hostnameValidation": true,
+        "credentialBytesSent": 0,
+        "payloadBytesSent": 0,
+        "httpRequestCount": 0,
+        "trustAnchorSha256": "sha256:e71ecd687f164ab82f0551d96c2b99639e8930f1c69af4bead637e32dfc9071b",
+        "peerCertificateSha256": "sha256:76e82ce7ebbeacf903f8eec8da8c8d9264e9d79e410f55d4bc5fe291eabab2f4"
+      },
+      {
         "receiptId": "tls-preflight:repaired:setup-activation",
         "phase": "setup_activation",
         "hostname": "summary-repaired.stub.invalid",
         "sni": "summary-repaired.stub.invalid",
         "port": 443,
         "timeoutMs": 5000,
-        "startMonotonicMs": 400,
-        "endMonotonicMs": 500,
+        "startMonotonicMs": 800,
+        "endMonotonicMs": 900,
         "result": "verified",
         "chainValidation": true,
         "hostnameValidation": true,
@@ -867,8 +939,8 @@
         "sni": "summary-repaired.stub.invalid",
         "port": 443,
         "timeoutMs": 5000,
-        "startMonotonicMs": 600,
-        "endMonotonicMs": 700,
+        "startMonotonicMs": 1000,
+        "endMonotonicMs": 1100,
         "result": "verified",
         "chainValidation": true,
         "hostnameValidation": true,
@@ -878,7 +950,8 @@
         "trustAnchorSha256": "sha256:e71ecd687f164ab82f0551d96c2b99639e8930f1c69af4bead637e32dfc9071b",
         "peerCertificateSha256": "sha256:f2fb56707cb995450ae7791c26b7f39f38f20dea71800e10e6e54fb451afed70"
       }
-    ]
+    ],
+    "localHostname": "127.0.0.1"
   },
   "resourcePlateauEvidence": {
     "version": 1,
@@ -917,14 +990,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-1:drain-receipt",
         "checkpointReceiptId": "plateau-window-1:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-1:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3000000,
+        "workloadReceiptMonotonicMs": 3000100,
+        "drainReceiptMonotonicMs": 3000200,
+        "checkpointReceiptMonotonicMs": 3000300,
+        "resourceSampleMonotonicMs": 3000400
       },
       {
         "ordinal": 2,
@@ -935,14 +1012,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-2:drain-receipt",
         "checkpointReceiptId": "plateau-window-2:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-2:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3001000,
+        "workloadReceiptMonotonicMs": 3001100,
+        "drainReceiptMonotonicMs": 3001200,
+        "checkpointReceiptMonotonicMs": 3001300,
+        "resourceSampleMonotonicMs": 3001400
       },
       {
         "ordinal": 3,
@@ -953,14 +1034,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-3:drain-receipt",
         "checkpointReceiptId": "plateau-window-3:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-3:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3002000,
+        "workloadReceiptMonotonicMs": 3002100,
+        "drainReceiptMonotonicMs": 3002200,
+        "checkpointReceiptMonotonicMs": 3002300,
+        "resourceSampleMonotonicMs": 3002400
       },
       {
         "ordinal": 4,
@@ -971,14 +1056,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-4:drain-receipt",
         "checkpointReceiptId": "plateau-window-4:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-4:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3003000,
+        "workloadReceiptMonotonicMs": 3003100,
+        "drainReceiptMonotonicMs": 3003200,
+        "checkpointReceiptMonotonicMs": 3003300,
+        "resourceSampleMonotonicMs": 3003400
       },
       {
         "ordinal": 5,
@@ -989,14 +1078,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-5:drain-receipt",
         "checkpointReceiptId": "plateau-window-5:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-5:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3004000,
+        "workloadReceiptMonotonicMs": 3004100,
+        "drainReceiptMonotonicMs": 3004200,
+        "checkpointReceiptMonotonicMs": 3004300,
+        "resourceSampleMonotonicMs": 3004400
       },
       {
         "ordinal": 6,
@@ -1007,14 +1100,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-6:drain-receipt",
         "checkpointReceiptId": "plateau-window-6:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-6:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3005000,
+        "workloadReceiptMonotonicMs": 3005100,
+        "drainReceiptMonotonicMs": 3005200,
+        "checkpointReceiptMonotonicMs": 3005300,
+        "resourceSampleMonotonicMs": 3005400
       },
       {
         "ordinal": 7,
@@ -1025,14 +1122,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-7:drain-receipt",
         "checkpointReceiptId": "plateau-window-7:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-7:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3006000,
+        "workloadReceiptMonotonicMs": 3006100,
+        "drainReceiptMonotonicMs": 3006200,
+        "checkpointReceiptMonotonicMs": 3006300,
+        "resourceSampleMonotonicMs": 3006400
       },
       {
         "ordinal": 8,
@@ -1043,14 +1144,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-8:drain-receipt",
         "checkpointReceiptId": "plateau-window-8:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-8:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3007000,
+        "workloadReceiptMonotonicMs": 3007100,
+        "drainReceiptMonotonicMs": 3007200,
+        "checkpointReceiptMonotonicMs": 3007300,
+        "resourceSampleMonotonicMs": 3007400
       },
       {
         "ordinal": 9,
@@ -1061,14 +1166,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-9:drain-receipt",
         "checkpointReceiptId": "plateau-window-9:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-9:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3008000,
+        "workloadReceiptMonotonicMs": 3008100,
+        "drainReceiptMonotonicMs": 3008200,
+        "checkpointReceiptMonotonicMs": 3008300,
+        "resourceSampleMonotonicMs": 3008400
       },
       {
         "ordinal": 10,
@@ -1079,14 +1188,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-10:drain-receipt",
         "checkpointReceiptId": "plateau-window-10:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-10:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3009000,
+        "workloadReceiptMonotonicMs": 3009100,
+        "drainReceiptMonotonicMs": 3009200,
+        "checkpointReceiptMonotonicMs": 3009300,
+        "resourceSampleMonotonicMs": 3009400
       },
       {
         "ordinal": 11,
@@ -1097,14 +1210,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-11:drain-receipt",
         "checkpointReceiptId": "plateau-window-11:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-11:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3010000,
+        "workloadReceiptMonotonicMs": 3010100,
+        "drainReceiptMonotonicMs": 3010200,
+        "checkpointReceiptMonotonicMs": 3010300,
+        "resourceSampleMonotonicMs": 3010400
       },
       {
         "ordinal": 12,
@@ -1115,14 +1232,18 @@
         "selectedItemCount": 4,
         "injectedTokenCount": 400,
         "maxProcessingConcurrency": 2,
-        "checkpointCompleted": true,
         "drainReceiptId": "plateau-window-12:drain-receipt",
         "checkpointReceiptId": "plateau-window-12:checkpoint-receipt",
         "workloadReceiptId": "plateau-window-12:workload-receipt",
         "duplicateDeliveryAttemptCount": 1,
         "noOpOutcome": "duplicate_noop",
         "durableMemoryDelta": 0,
-        "processingJobDelta": 0
+        "processingJobDelta": 0,
+        "workloadStartedMonotonicMs": 3011000,
+        "workloadReceiptMonotonicMs": 3011100,
+        "drainReceiptMonotonicMs": 3011200,
+        "checkpointReceiptMonotonicMs": 3011300,
+        "resourceSampleMonotonicMs": 3011400
       }
     ]
   }

@@ -37,20 +37,27 @@ An ordered, idempotent record of supported Agent activity.
 - `attemptCount`, `retryBudgetRemaining`: persisted retry accounting
 - `lastResumeSignal`: `validated_configuration_activation`,
   `recorded_provider_healthy_transition`, or `user_confirmed_doctor_retry`, plus stable signal
-  identity, target component, and computed provider/manifest fingerprints; absent before the first
-  resume
+  identity, producer receipt identity, exact target job/component, and computed provider/manifest
+  fingerprints; absent before the first resume
 - `lastConsumedResumeSequence`: monotonic per-component sequence persisted outside bounded history
 - `transitionHistory`: bounded ordered entries containing from/to state, timestamp, reason, retry
   budget before/after, and resume signal
 
-Uniqueness: `(repositoryScope, eventId)` is permanently bound to the first accepted
-`payloadDigest`. Replay with the same digest is idempotent and produces at most one committed
-effect. A different digest for that identity creates or reuses a durable `EventIdentityConflict`,
+Uniqueness: canonical `(repositoryScope, source, streamId, eventId)` is permanently bound to the
+first accepted `payloadDigest`. Replay with the same digest is idempotent and produces at most one committed
+effect. Before acknowledging a same-digest replay, one Store transaction joins sensitivity using
+`secret > private > local_only > eligible`; quarantine is absorbing. It applies the stronger value
+to the canonical event and every existing record derived from that event. A quarantine escalation
+also makes the canonical source unavailable to every consumer and returns a non-success quarantine
+receipt. Downgrade replays are no-ops. Payload bytes and the payload digest remain unchanged.
+
+A different digest for that identity creates or reuses a durable `EventIdentityConflict`,
 returns its explicit conflict receipt, and quarantines only the incoming delivery with
 `event_identity_payload_conflict`; it is never a normal ACK or silent discard. The canonical event,
-payload, and state remain unchanged. Digest comparison occurs after deterministic redaction and
+payload, and security disposition remain unchanged. Digest comparison occurs after deterministic redaction and
 canonical encoding; the conflicting raw payload is never persisted. Retrying the same conflicting
-digest returns the same non-success receipt. The conflict record and terminal incoming-delivery
+digest returns the same non-success receipt. A different conflicting digest creates a different
+receipt. The conflict record and terminal incoming-delivery
 quarantine commit atomically before that receipt is returned. A sender converges by replaying the
 canonical digest or uses a new event identity for corrected content; neither doctor nor a retry
 replaces canonical bytes.
@@ -100,16 +107,18 @@ merely because it appeared in a different transport kind.
 A durable, payload-free record proving that one scoped event identity arrived with different
 post-redaction content.
 
-- `conflictId`: deterministic receipt identity for scope, event ID, digest version, and the two
-  digests
-- `repositoryScope`, `eventId`, `payloadDigestVersion`, `canonicalPayloadDigest`,
+- `conflictId`: domain-separated deterministic receipt identity for canonical event identity,
+  digest version, canonical digest, and conflicting digest
+- `repositoryScope`, `source`, `streamId`, `eventId`, `payloadDigestVersion`, `canonicalPayloadDigest`,
   `conflictingPayloadDigest`
 - `state`: quarantined
 - `reason`: `event_identity_payload_conflict`
 - `firstSeenAt`, `lastSeenAt`, `occurrenceCount`
 
-It stores no raw or redacted payload. The record is idempotent for repeated conflicting delivery
-and remains visible after the canonical event commits.
+It stores no raw or redacted payload. The database uniquely indexes the canonical identity plus the
+ordered canonical/conflicting digest pair. Repeated delivery of that exact pair reuses one record;
+a second conflicting digest creates a distinct receipt. The record remains visible after the
+canonical event commits.
 
 ## MemoryProcessingJob
 
@@ -125,11 +134,19 @@ Represents asynchronous summary or embedding work over already committed events/
 
 A provider failure changes the job state, never the committed source event. `retry-exhausted` uses
 the same durable one-time resume and grant mechanics as CapturedEvent, but a signal applies only
-when its role and computed provider fingerprint match the failed job. Provider-health and doctor
+when its exact target job, role, and computed provider/manifest fingerprints match the failed job.
+Provider-health and doctor
 signals target the active provider/manifest fingerprints. A `validated_configuration_activation`
 requires newly active, validated provider/manifest fingerprints and atomically rebinds only the
 current attempt; immutable admission provenance remains. Unrelated activations and health
 transitions are no-ops. Timer-only resume is prohibited.
+
+Setup activation and provider-health producer receipts are global events, but the sole writer fans
+each out only to the at-most-25 matching `retry-exhausted` jobs that exist in that transaction. Each
+per-job signal includes `targetJobId` and `producerReceiptId`; `(jobId, producerReceiptId)` and
+`(jobId, signalId)` are unique. Doctor confirmation targets exactly the displayed job. State,
+role/provider/manifest, and `sequence > lastConsumedResumeSequence` are compared atomically;
+accepted signals alone advance the sequence and create one pending grant.
 
 A summary result containing more items than the active ResourceProfile's
 `maxMemoryItemsPerDerivation` enters `retry-exhausted` atomically with
@@ -271,8 +288,10 @@ The compiler returns `ProviderChoiceV1` by adding only:
 - literal `redirectPolicy: reject`
 
 Only literal `127.0.0.1` and `[::1]` are local; `localhost`, localhost subdomains, trailing-dot
-hostnames, and alternate/wildcard loopbacks are rejected. Local HTTP is allowed with TLS not
-applicable. Every other host is remote HTTPS with system chain and hostname validation. URL
+hostnames, and alternate/wildcard loopbacks are rejected. Local HTTP is credential-none and
+eligible-only with TLS not applicable. Local HTTPS uses verified system chain/hostname identity and
+may receive private/local-only content only for the exact repository. Every other host is remote
+HTTPS with system chain and hostname validation. URL
 userinfo, query, fragment, noncanonical spelling, and a missing/root-only request path are rejected.
 Secret values are never stored or fingerprinted; only the named environment variable reference is
 retained.
@@ -292,8 +311,9 @@ start to 9,000 units and call `toWellFormed()`, then slice user from the start t
 `max(3,000, 12,000 - clippedSystem.length)` units and call `toWellFormed()`. Both protocols use this
 allocation without a tail merge or token-based alternative. Setup after confirmation and daemon
 start each perform a native credential/payload-free TLS chain+hostname handshake to the exact
-host/port/SNI within 5,000 ms; failure mutates nothing or restores prior state, and local HTTP skips
-the handshake.
+host/port/SNI within 5,000 ms; failure mutates nothing or restores prior state. Added CA files are
+bounded regular realpaths owned by the current UID and not group/world writable. Local HTTP skips
+the handshake and remains credential-none/eligible-only.
 
 ## SemanticIndexGeneration
 
@@ -381,15 +401,24 @@ in suite mode.
 
 - runner-owned latency interval endpoints and full observed lifecycle milestones
 - runner-owned process, RSS, queue, and storage samples
-- one closed network-trust record binding the base/repaired `.invalid` hostnames, public CA SHA-256,
-  enabled chain/hostname validation, `privateKeyCommitted=false`, and exactly four unique raw TLS
-  preflight receipts for base/repaired by setup activation/daemon start; every receipt binds
-  host/SNI/443/5,000 ms, the per-run public CA trust anchor, a distinct peer-certificate SHA-256,
+- one closed network-trust record binding base/local/repaired host identity, public CA SHA-256,
+  enabled chain/hostname validation, `privateKeyCommitted=false`, and exactly six unique raw TLS
+  preflight receipts for base/local/repaired by setup activation/daemon start; every receipt binds
+  host, remote SNI or null IP SNI, exact endpoint port, 5,000 ms, the per-run public CA trust anchor,
+  a distinct peer-certificate SHA-256,
   verified monotonic duration, and zero credential/payload/request activity
+- one runner-owned provider-egress observation per real scenario, armed before candidate start and
+  retained through process-tree termination, with zero pre-authorization/non-loopback attempts,
+  direct durable-store authorization containing explicit canonical-order committed event IDs, their
+  count and set fingerprint, earliest request interval, provider/location identity,
+  exact wire aggregates, and runner-stub-measured source-content bytes split by sensitivity using
+  fixed synthetic markers/spans, never policy-derived or candidate-reported; the negative case only
+  projects an observed base receipt
 - one closed short-run plateau record with 12 ordered duplicate/no-op windows, discarded 1-2,
-  measured 3-12, final 8-12, completed checkpoints, fixed item/token counts, bounded
+  measured 3-12, final 8-12, fixed item/token counts, bounded
   process/RSS/queue/storage/concurrency, measured RSS/storage maximum increase from the first measured
-  window, final-five RSS/storage spans, unique path-free drain/checkpoint/workload receipt IDs,
+  window, final-five RSS/storage spans, unique path-free drain/checkpoint/workload receipt IDs, strict
+  monotonic workload-start/workload-receipt/drain/checkpoint/sample order and window non-overlap,
   positive duplicate-delivery attempts, exact `duplicate_noop`, zero durable/job deltas, and zero
   orphan processes
 - runner-owned effective Agent/repository/session identity and caller-claim authorization decisions

@@ -58,8 +58,18 @@ assert.equal(fixture.effectiveConfiguration.summaryProvider.endpointUrl,
 assert.deepEqual(fixture.effectiveConfiguration.summaryProvider.credentialRef,
   { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" });
 assert.equal(fixture.localDerivationManifest.summaryProvider.endpointUrl,
-  "http://127.0.0.1:1234/v1/chat/completions");
+  "https://127.0.0.1:1234/v1/chat/completions");
 assert.deepEqual(fixture.localDerivationManifest.summaryProvider.credentialRef, { kind: "none" });
+assert.equal(new URL(fixture.localDerivationManifest.summaryProvider.endpointUrl).protocol, "https:",
+  "restricted local derivation provider is not authenticated HTTPS");
+assert.equal(fixture.localDerivationManifest.summaryProvider.tlsPolicy, "system",
+  "restricted local derivation provider does not require verified TLS");
+const credentialedLocalTransmission = structuredClone(fixture);
+credentialedLocalTransmission.scenarios.find((scenario) =>
+  scenario.derivationManifestId === fixture.localDerivationManifest.manifestId
+).providerTransmissionOracle.credentialBytesSent = 1;
+assertFixtureRejected(credentialedLocalTransmission,
+  "fixture semantics accepted credentials on a credential-none local provider");
 assert.equal(fixture.repairedRemoteManifest.summaryProvider.endpointUrl,
   "https://summary-repaired.stub.invalid/v1/chat/completions");
 for (const name of ["maxSourceEventsPerJob", "periodicSweepIntervalMs", "idleFlushMs",
@@ -105,9 +115,57 @@ function assertCanonicalFixtureRejected(mutant, pattern, label) {
   writeFileSync(path, JSON.stringify(mutant), { mode: 0o600 });
   const run = spawnSync(process.execPath,
     ["--experimental-strip-types", validatorPath, "--fixture", path], { encoding: "utf8" });
+  assert.equal(run.error, undefined, `${label}: canonical validator did not start`);
+  assert.equal(typeof run.status, "number",
+    `${label}: canonical validator did not report an exit status`);
   assert.notEqual(run.status, 0, `${label}: canonical validator unexpectedly accepted fixture`);
   assert.match(`${run.stderr}${run.stdout}`, pattern, label);
 }
+
+const fixedConflictProbe = fixture.scenarios.find((scenario) =>
+  scenario.scenarioId === "runtime-unavailable-spool-recovery").fault.identityConflictProbe;
+assert.ok(fixedConflictProbe.conflictAttemptReceiptIds.length >= 2,
+  "identity conflict does not include repeated attempts");
+assert.ok(fixedConflictProbe.conflictAttemptReceiptIds.every((receiptId) =>
+  receiptId === fixedConflictProbe.conflictReceiptId),
+  "identity conflict attempts do not reuse one pair-bound receipt");
+assert.equal(fixedConflictProbe.durableConflictReceiptCount, 1,
+  "identity conflict does not prove one durable receipt");
+assert.match(fixedConflictProbe.conflictReceiptId,
+  /^conflict-receipt-v1:sha256:[0-9a-f]{64}$/u,
+  "identity conflict receipt is not a pair-bound fingerprint");
+
+const fixedSignals = fixture.scenarios.flatMap((scenario) => [
+  ...(scenario.fault?.resumeCases ?? []).flatMap((item) => item.signals),
+  ...(scenario.fault?.redirectRecovery?.signal ? [scenario.fault.redirectRecovery.signal] : []),
+]);
+assert.ok(fixedSignals.every((signal) => signal.targetJobId && signal.producerReceiptId),
+  "resume signals are not bound to a job and producer receipt");
+
+const crossPairReceiptReuse = structuredClone(fixture);
+crossPairReceiptReuse.scenarios.find((scenario) =>
+  scenario.scenarioId === "runtime-unavailable-spool-recovery").fault.identityConflictProbe
+  .conflictingPayloadDigest = `sha256:${"0".repeat(64)}`;
+assertCanonicalFixtureRejected(crossPairReceiptReuse,
+  /identity-conflict receipt is not unique to and reused for one digest pair/,
+  "fixture accepted one conflict receipt for a different digest pair");
+
+const changedAttemptReceipt = structuredClone(fixture);
+changedAttemptReceipt.scenarios.find((scenario) =>
+  scenario.scenarioId === "runtime-unavailable-spool-recovery").fault.identityConflictProbe
+  .conflictAttemptReceiptIds[1] = `conflict-receipt-v1:sha256:${"0".repeat(64)}`;
+assertCanonicalFixtureRejected(changedAttemptReceipt,
+  /identity-conflict receipt is not unique to and reused for one digest pair/,
+  "fixture accepted a different receipt on conflict retry");
+
+const crossStreamReceiptReuse = structuredClone(fixture);
+const crossStreamScenario = crossStreamReceiptReuse.scenarios.find((scenario) =>
+  scenario.scenarioId === "runtime-unavailable-spool-recovery");
+crossStreamScenario.sourceStreamId = "another-source-stream";
+crossStreamScenario.fault.identityConflictProbe.streamId = "another-source-stream";
+assertCanonicalFixtureRejected(crossStreamReceiptReuse,
+  /identity-conflict receipt is not unique to and reused for one digest pair/,
+  "fixture accepted one conflict receipt across source streams");
 
 const activationScenario = fixture.scenarios.find((scenario) =>
   Object.hasOwn(scenario, "providerActivationProposal"));
@@ -159,6 +217,33 @@ const doctorCase = retryCases.find((item) => item.caseId === "user-confirmed-doc
 assertFixtureRejected(swappedRecoveryKinds,
   "fixture semantics accepted recovery kinds swapped between case IDs");
 
+const mismatchedSignalJob = structuredClone(fixture);
+mismatchedSignalJob.scenarios.find((scenario) =>
+  scenario.scenarioId === "summary-provider-retry-exhausted").fault.resumeCases[0]
+  .signals[0].targetJobId = "another-job";
+assertCanonicalFixtureRejected(mismatchedSignalJob, /resume signal.*job and producer receipt/,
+  "fixture accepted a signal for a different explicit job");
+
+const mismatchedDuplicateProducer = structuredClone(fixture);
+const duplicateProducerSignals = mismatchedDuplicateProducer.scenarios.find((scenario) =>
+  scenario.scenarioId === "summary-provider-retry-exhausted").fault.resumeCases.find((item) =>
+  item.caseId === "duplicate-and-out-of-order-no-op").signals;
+duplicateProducerSignals[1].producerReceiptId = "another-producer-receipt";
+assertCanonicalFixtureRejected(
+  mismatchedDuplicateProducer, /resume signal.*job and producer receipt/,
+  "fixture accepted one signal ID with multiple producer receipts",
+);
+
+const reusedProducerReceipt = structuredClone(fixture);
+const reusedProducerCases = reusedProducerReceipt.scenarios.find((scenario) =>
+  scenario.scenarioId === "summary-provider-retry-exhausted").fault.resumeCases;
+reusedProducerCases[1].signals[0].producerReceiptId =
+  reusedProducerCases[0].signals[0].producerReceiptId;
+assertCanonicalFixtureRejected(
+  reusedProducerReceipt, /resume signal.*job and producer receipt/,
+  "fixture accepted one producer receipt for multiple signal IDs",
+);
+
 for (const [scenarioId, recovery] of [
   ["summary-provider-redirect-rejected", (scenario) => scenario.fault.redirectRecovery],
   ["summary-provider-output-limit-exceeded", (scenario) => scenario.fault.resumeCases.find(
@@ -170,7 +255,7 @@ for (const [scenarioId, recovery] of [
   const signal = target.signals?.[0] ?? target.signal;
   target.expected.lastConsumedSequence = signal.sequence + 1;
   assertFixtureRejected(staleSequence,
-    `fixture semantics accepted stale lastConsumedSequence for ${scenarioId}`);
+    `fixture semantics accepted lastConsumedSequence ahead of the signal for ${scenarioId}`);
 
   const coupledSequenceDrift = structuredClone(fixture);
   const coupledTarget = recovery(coupledSequenceDrift.scenarios.find((scenario) =>
@@ -213,22 +298,37 @@ changedOutputNoopSequence.scenarios.find((scenario) =>
 assertFixtureRejected(changedOutputNoopSequence,
   "fixture semantics accepted a changed output-limit no-op signal sequence");
 
-for (const [endpointUrl, label] of [
-  ["http://summary.stub.invalid/v1/chat/completions", "remote HTTP endpoint"],
-  ["https://user@summary.stub.invalid/v1/chat/completions", "endpoint userinfo"],
-  ["https://summary.stub.invalid/v1/chat/completions?mode=test", "endpoint query"],
-  ["https://summary.stub.invalid/v1/chat/completions#fragment", "endpoint fragment"],
+for (const [endpointUrl, pattern, label] of [
+  ["http://summary.stub.invalid/v1/chat/completions", /remote HTTPS policy/,
+    "remote HTTP endpoint"],
+  ["https://user@summary.stub.invalid/v1/chat/completions", /userinfo/,
+    "endpoint userinfo"],
+  ["https://summary.stub.invalid/v1/chat/completions?mode=test", /query or fragment/,
+    "endpoint query"],
+  ["https://summary.stub.invalid/v1/chat/completions#fragment", /query or fragment/,
+    "endpoint fragment"],
 ]) {
   const invalidEndpoint = structuredClone(fixture);
   invalidEndpoint.effectiveConfiguration.summaryProvider.endpointUrl = endpointUrl;
-  assertFixtureRejected(invalidEndpoint, `fixture semantics accepted ${label}`);
+  assertCanonicalFixtureRejected(invalidEndpoint, pattern,
+    `fixture canonical validator accepted ${label}`);
 }
+
+const credentialedLocalHttp = structuredClone(fixture);
+const credentialedLocalHttpProposal = credentialedLocalHttp.scenarios.find((scenario) =>
+  Object.hasOwn(scenario, "providerActivationProposal")).providerActivationProposal.proposal;
+credentialedLocalHttpProposal.endpointUrl = "http://127.0.0.1:1234/v1/chat/completions";
+credentialedLocalHttpProposal.credentialRef = {
+  kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY",
+};
+assertCanonicalFixtureRejected(credentialedLocalHttp, /local HTTP endpoint must be credential-none/,
+  "fixture accepted a credentialed local HTTP provider");
 
 const localhostLocalProvider = structuredClone(fixture);
 localhostLocalProvider.localDerivationManifest.summaryProvider.endpointUrl =
   "http://localhost:1234/v1/chat/completions";
-assertFixtureRejected(localhostLocalProvider,
-  "fixture semantics accepted localhost as a local provider");
+assertCanonicalFixtureRejected(localhostLocalProvider, /hostname/,
+  "fixture canonical validator accepted localhost as a local provider");
 
 for (const field of ["providerKind", "headers"]) {
   const providerExtension = structuredClone(fixture);
@@ -247,6 +347,12 @@ arbitraryResourceOverride.outputLimitRecoveryManifest.resourceProfile.idleFlushM
 assert.notEqual(validateAgainstSchema(
   arbitraryResourceOverride, fixtureSchema, fixtureSchema,
 ).length, 0, "fixture schema accepted an arbitrary resource successor override");
+
+const mismatchedResourceProfilePair = structuredClone(fixture);
+mismatchedResourceProfilePair.effectiveConfiguration.resourceProfile.version = 2;
+assert.notEqual(validateAgainstSchema(
+  mismatchedResourceProfilePair, fixtureSchema, fixtureSchema,
+).length, 0, "fixture schema accepted profile version 2 with derivation limit 16");
 
 const arbitraryTlsPreflightOverride = structuredClone(fixture);
 arbitraryTlsPreflightOverride.outputLimitRecoveryManifest.resourceProfile

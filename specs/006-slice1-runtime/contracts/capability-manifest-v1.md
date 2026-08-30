@@ -5,7 +5,7 @@
 The existing Product Reset fixture/schema/semantic validators and bound result examples under
 `specs/005-product-reset/` predate this buildable provider/resource shape. They must receive one
 mechanical contract correction and fingerprint recomputation, with their full validator suite green,
-before runtime implementation. This 006 artifact does not change those 005 files.
+before runtime implementation. PR 0 co-delivers that correction with this 006 contract.
 
 The deterministic provider stub remains runner metadata. The runner materializes an ordinary
 ProviderProposalV1; production has no stub provider kind or generic provider registry.
@@ -15,9 +15,10 @@ production; their local client process is not proof of on-device model execution
 classes are runner-only fixtures selected after a verified loopback consumer observation. No caller
 field or production setup option may select them.
 
-Fixture metadata pins complete endpoints: literal-loopback HTTP/HTTPS for local cases and a fixed
+Fixture metadata pins complete endpoints: literal-loopback HTTPS for the restricted local case and a fixed
 remote HTTPS hostname for remote cases. The runner maps that hostname to its isolated loopback stub
-and supplies a per-run hostname-matching test CA through normal Node trust. System chain/hostname
+and installs a per-run hostname/IP-matching public test CA into its private system trust before the
+candidate starts. System chain/hostname
 verification remains enabled; the public CA fingerprint is evidence-bound and no private key is
 committed. Bind/CA/hostname mismatch fails rather than changing endpoint or provider fingerprint.
 
@@ -26,7 +27,7 @@ The corrected fixture statically defines complete manifests for:
 - base remote OpenAI-chat endpoint
   `https://summary.stub.invalid/v1/chat/completions`, credential environment
   `FREE_MEM_SUMMARY_API_KEY`, derived `external_metered`;
-- local derivation endpoint `http://127.0.0.1:1234/v1/chat/completions`, credential `none`, base/local
+- local derivation endpoint `https://127.0.0.1:1234/v1/chat/completions`, credential `none`, base/local
   ResourceProfile version 1 with derivation limit 16, as a complete successor bound to the base;
 - one repaired remote successor at
   `https://summary-repaired.stub.invalid/v1/chat/completions`, bound to the base fingerprint and
@@ -36,8 +37,8 @@ Configuration-activation, redirect-recovery, and downgrade-recovery signals targ
 successor's computed manifest/provider fingerprints. Runner cost evidence is 0 because the stub is
 runner-owned; it does not change remote cost class.
 
-Runner network evidence binds the public CA and exactly four raw credential/payload-free TLS
-preflight receipts (base/repaired × setup activation/daemon start), including unique receipt ID,
+Runner network evidence binds the public CA and exactly six raw credential/payload-free TLS
+preflight receipts (base/local/repaired × setup activation/daemon start), including unique receipt ID,
 hostname/SNI, port, frozen timeout, monotonic interval, verified result, trust-anchor fingerprint
 equal to the public CA, peer-certificate fingerprint, and zero HTTP request, credential, and payload
 byte counts.
@@ -64,22 +65,26 @@ password, query, fragment, empty/root-only path, and unsupported scheme are reje
 - Literal `127.0.0.1` or URL hostname `[::1]` (the serialized form of `::1`): local; HTTP or HTTPS;
   `on_device`; `local_zero`;
   `not_applicable` for HTTP and `system` for HTTPS.
+- Local HTTP requires credential `none` and is eligible-only. It never authorizes credential,
+  private, or local-only bytes. Private/local-only processing requires local HTTPS whose exact peer
+  passes chain and hostname/IP verification.
 - Any other host: remote; HTTPS only; `explicit_remote`; `external_metered`; `system` TLS.
 - `localhost`, localhost subdomains, trailing-dot hostnames, wildcard/unspecified addresses,
   alternate loopback spellings, and DNS-to-loopback guessing are rejected rather than classified as
   local.
 - Redirect policy is always `reject`; request code uses manual redirect handling and never follows or
   resends to a 3xx `Location`.
-- `NODE_TLS_REJECT_UNAUTHORIZED=0` or an equivalent insecure global bypass rejects HTTPS activation/
-  provider start. An added trusted CA path is permitted only while normal chain and hostname
-  validation stay enabled.
+- `NODE_TLS_REJECT_UNAUTHORIZED=0`, an added CA path/environment value, or an equivalent trust
+  override rejects production HTTPS activation/provider start. Production uses only platform system
+  trust. The isolated runner provisions its test CA into its private system trust outside candidate,
+  proposal, and manifest control; normal chain and hostname validation stay enabled.
 - Before pointer/editor mutation and again at daemon start, every HTTPS choice performs a native
   credential-free, payload-free TLS handshake to the exact host/port/SNI with normal chain and
   hostname verification and a frozen 5,000 ms timeout. Setup failure leaves/restores the prior
   activation. Daemon-start failure does not abort writer/RPC/capture/spool-import/lexical startup; it
   disables provider/AI processing, retains pending work, and reports `provider_unavailable` or
   `provider_tls_rejected` until a validated healthy transition. No HTTP request, auth header, or body
-  is sent. Local HTTP has no TLS handshake.
+  is sent. Local HTTP has no TLS handshake and remains credential-none/eligible-only.
 
 The ProviderChoiceV1 contains the proposal plus those derived fields and
 `providerFingerprint=sha256(JCS(domain || choice-without-fingerprint))`, where the domain is
@@ -137,7 +142,8 @@ Manifest fingerprint input is the complete manifest after provider fingerprintin
 
 ResourceProfileV1 fixes all accepted fixture limits plus:
 
-- periodic sweep 30,000 ms, idle flush 120,000 ms, event debounce 1,000 ms;
+- worker warm lifetime 30,000 ms, periodic sweep 30,000 ms, idle flush 120,000 ms,
+  event debounce 1,000 ms;
 - stuck claim 300,000 ms, source events/job 100;
 - raw-event retention disabled and 0 ms;
 - observer request timeout 60,000 ms, max input 12,000 characters, max output 4,000 tokens,
@@ -166,23 +172,27 @@ Setup is the only compiler and activation writer. It must:
 3. obtain explicit confirmation without holding the lifecycle lock;
 4. acquire the lifecycle lock, recheck writer/socket/health plus current editor/pointer prestates,
    and complete the payload/credential-free TLS preflight while held; abort before mutation on drift;
-5. snapshot every targeted Claude/Codex editor file and manifest pointer;
+5. snapshot every targeted Claude/Codex editor file, manifest pointer, and mode-0600 activation-
+   receipt prestate;
 6. using fixed order `lifecycle -> setup/spool -> daemon writer`, hold the existing owner lock and
-   persist/fsync one owner-only narrow setup transaction journal containing prestate needed for
-   recovery but excluded from logs/manifest/evidence;
-7. publish editor mutations, write the owner-only immutable generation, and publish `current` last;
-8. remove the journal only after commit, or restore every snapshot in reverse.
+   persist/fsync one owner-only narrow setup transaction journal containing every target path/hash,
+   including the activation receipt, and prestate needed for recovery but excluded from logs/
+   manifest/evidence;
+7. publish editor mutations, write the owner-only immutable generation, write the mode-0600
+   activation receipt, and publish `current` last;
+8. remove the journal only after commit, or restore/remove every target in reverse.
 
-At next setup/daemon start, a leftover journal is finalized only if intended pointer and every target
-hash match; otherwise prestate is restored. Unrecoverable journal state blocks provider startup.
+At next setup/daemon start, a leftover journal is finalized only if the intended pointer, activation-
+receipt fingerprint, current generation, and every target hash match; otherwise the receipt is
+discarded and prestate restored. Unrecoverable journal state blocks provider startup.
 
 Daemon start takes the same lifecycle lock before journal/manifest resolution and writer-lock
 acquisition and releases it only after startup state is published. No path takes lifecycle after a
 writer/spool lock; setup preflight and activation therefore have no daemon-start race.
 
-`last-good` changes only after a daemon starts from and doctor verifies the new generation. Rollback
-atomically restores the prior pointer and verifies that fingerprint after coordinated lifecycle
-automation exists. Referenced generations are never deleted.
+The activation journal records the prior current pointer. Rollback atomically restores and verifies
+that fingerprint after coordinated lifecycle automation exists. Slice 1 defines no second rollback
+pointer, and referenced generations are never deleted.
 
 The first vertical PR includes compiler/storage, setup proposal/disclosure/confirmation/activation
 and editor rollback, daemon snapshot/doctor, manifest-only ObserverClient, and manifest projections

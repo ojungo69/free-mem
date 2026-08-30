@@ -1,6 +1,6 @@
 # Implementation Plan: Slice 1 Automatic Memory Runtime
 
-**Branch**: `fix/local-only-egress-130` | **Date**: 2026-08-30 | **Spec**: [spec.md](spec.md)
+**Branch**: `spec/slice1-contract-post-142` | **Date**: 2026-08-30 | **Spec**: [spec.md](spec.md)
 
 **Input**: Focused specification under `specs/006-slice1-runtime/`, Product Reset contracts under
 `specs/005-product-reset/`, and Slice 1 issues #130/#137.
@@ -53,6 +53,8 @@ lexical is the healthy required lane.
 
 *GATE: PASS before research and PASS after hardened design.*
 
+Authority: [free-mem Constitution v2.0.0](../../CONSTITUTION.md).
+
 | Principle | Status | Plan evidence |
 |---|---|---|
 | I. Automatic Memory UX First | PASS | Both Agent directions, production nudge, prompt drain, later one-flow setup, and no manual handoff are exit gates. |
@@ -67,7 +69,7 @@ No constitutional exception is required.
 
 | Boundary | Delivery | Independent result |
 |---|---|---|
-| PR 0 | Contract/fixture correction checkpoint | Product Reset fixture, schema, validators, bound examples, and fingerprints agree on one buildable closed manifest; no runtime change. |
+| PR 0 | Planning plus contract/fixture checkpoint | The 006 artifacts and Product Reset fixture, schemas, validators, bound examples, and fingerprints agree on one buildable closed manifest; no runtime change. |
 | PR 1 | Vertical effective manifest | Setup activation exists in the same PR as daemon frozen consumption; absent manifest is capture-only, malformed manifest fails startup, and valid manifest remains pending-privacy/no provider/no sweeper while Observer/maintenance/viewer lose legacy bypasses. |
 | PR 2 | Schema v21 and durable processing jobs | One migration, capacity/claims/retry/resume/provenance/retention/atomic terminal Store transactions are available before privacy activation. |
 | PR 3 | Complete #130 privacy closure | First-class capture, provider projection, derived sensitivity, all read/export consumers, dedup/supersession, content-free diagnostics, generated artifacts, and semantic-disabled retention are enforced; only then close #130. |
@@ -78,13 +80,12 @@ No constitutional exception is required.
 Each later branch is based on the preceding merged boundary. A PR may expose a safe pending state but
 must not claim enforcement owned by a later PR.
 
-Implementation ancestry is also a hard gate: after prerequisite PR #142 merges, refresh
-`origin/main` and create a fresh implementation worktree/branch from that merged commit. Do not
-rebase or reuse this pre-#142 planning worktree as an implementation base.
+Implementation ancestry is also a hard gate: PR 0 is delivered from a fresh worktree created from
+refreshed `origin/main` after merged PR #142. Every runtime branch is based on merged PR 0.
 
 ## PR 0 - Contract and fixture correction checkpoint
 
-Mechanically correct, in one separate scoped change:
+Co-deliver these planning artifacts and mechanically correct, in the same scoped PR:
 
 - `specs/005-product-reset/contracts/capability-manifest.md`,
   `specs/005-product-reset/contracts/alpha-comparison.md`, and
@@ -92,9 +93,11 @@ Mechanically correct, in one separate scoped change:
 - Slice 1 JSON schema, fixture, semantic validator, JS validator, and validator tests;
 - bound alpha success/failure/suite examples and provider/resource result checks;
 - closed runner-evidence fields for 12 plateau windows, drain/checkpoint,
-  item/token/concurrency, unique duplicate/no-op workload receipts with zero memory/job deltas,
-  hostname-valid public CA plus four base/repaired setup/start TLS receipts binding trust-anchor/
-  peer-certificate/zero-byte proof, same-ID/different-digest conflict, and the exact 16+1 suite;
+  item/token/concurrency, unique duplicate/no-op workload receipts with strict non-overlapping
+  workload/drain/checkpoint/sample timestamps and zero memory/job deltas,
+  hostname-valid public CA plus six base/local/repaired setup/start TLS receipts binding trust-anchor/
+  peer-certificate/zero-byte proof, runner-owned provider-egress timing, pair-bound
+  same-ID/different-digest conflict, and the exact 16+1 suite;
 - all provider/manifest/fixture/result/runner-evidence fingerprints.
 
 Replace provider kind/scheme/host/free-form credential/self-declared policy with closed
@@ -108,7 +111,7 @@ output-limit cases as complete successor manifests rather than partial overlays.
 shape/fingerprints only; stub transport materialization remains PR 6. Run the complete current
 validator suite, not only the positive fixture validator.
 
-This plan explicitly requires that correction but does not edit any 005 artifact now.
+PR 0 co-delivers this plan and the scoped 005 correction; no runtime source is included.
 
 ## PR 1 - Vertical effective manifest
 
@@ -116,8 +119,7 @@ This plan explicitly requires that correction but does not edit any 005 artifact
 
 - Add one core `capability-manifest.ts` with closed proposal/choice/manifest types, URL validation,
   compiler-derived policy, native JCS-compatible canonicalization, SHA-256 `providerFingerprint`/manifest
-  fingerprints, safe projection, immutable generation read/write, and current/last-good pointer
-  operations.
+  fingerprints, safe projection, immutable generation read/write, and current-pointer operations.
 - Add only the necessary capability paths to the existing storage layout and export only stable
   compiler/read APIs.
 - Reject unknown fields, self-declared policy/fingerprints, arbitrary headers, inline credentials,
@@ -188,6 +190,11 @@ after the user starts the daemon; PR 5 automates that safely.
 - Run after verified backup in one DDL/backfill/validation transaction. Generate the final test DDL
   from the package generator and prove fresh/migrated parity and rollback/idempotent reopen.
 - Conservative backfill uses `secret`/unknown unless trusted structural evidence proves more.
+- Drop legacy `idx_raw_events_source_stream_event_id` and create the repository-aware unique
+  expression index over `COALESCE(repository_identity,'repo-v1:unknown')`, source, stream, and event;
+  NULL stays stored/unauthorized while the index sentinel creates one fail-closed unknown bucket.
+  Persist any NULL-bucket collision in a separate durable secret `raw_event_quarantine` record with
+  redacted payload/digest and non-success receipt; never drop or canonically ACK/admit it.
 
 ### Existing flush batch becomes the durable job
 
@@ -202,12 +209,15 @@ after the user starts the daemon; PR 5 automates that safely.
 - Claim generation fences stale workers. Successful claim atomically increments lifetime
   `attempt_count`, consumes an optional one-shot grant, records current attempt manifest/provider,
   and computes attempt fingerprint. Admission provenance never changes.
-- Automatic attempts use frozen limit 3. Retry exhaustion stops timers. Configuration activation,
-  daemon-observed provider health transition, and user confirmation may each create one component-
-  targeted grant; duplicate/stale/wrong signals are no-ops.
+- Automatic attempts use frozen limit 3. Retry exhaustion stops timers. Configuration activation
+  and daemon-observed provider health receipts fan out in one sole-writer transaction to at most 25
+  matching exhausted jobs; user confirmation targets exactly one displayed job. Each per-job signal
+  binds the producer receipt and creates at most one grant; duplicate/stale/wrong-job signals are
+  no-ops.
 - Wire those producers durably: import setup activation receipts on daemon start, persist and detect
   provider unhealthy-to-healthy edges, and expose an explicit user-confirmed doctor retry command.
-  Sequence allocation, signal/grant insertion, and crash replay are idempotent.
+  Per-job sequence CAS, signal/grant insertion, job/receipt uniqueness, and crash replay are
+  idempotent.
 - Add Store transactions for atomic privacy skip and atomic memory+reference+dedup/supersession+
   job+frontier completion. PR 2 proves the transaction semantics even before PR 3 calls privacy skip.
 - Keep retention disabled/0. Harden future purge to exempt every uncompleted job range.
@@ -224,13 +234,16 @@ v21 migration; PR 3 enables them only after the complete boundary is in place.
 ### Capture and canonical repository identity
 
 - Compute sensitivity from trusted redaction and persist it outside payload JSON.
-- Compute RepositoryIdentityV1 from a Git remote verified against the current repository or a
-  realpathed primary Git anchor; caller project/basename/workspace values remain labels only.
+- Compute RepositoryIdentityV1 from a transport-preserving Git remote verified against the current
+  repository, retaining the exact bounded SSH username, or a realpathed primary Git anchor; caller
+  project/basename/workspace values remain labels only.
 - Quarantine degraded capture with empty payload and content-free error code.
 
 ### One DestinationBoundary seam
 
 Add one narrow eligibility module with a closed boundary, pure decision function, and SQL predicate.
+Provider/AI-maintenance boundaries carry compiler/runtime-derived peer trust so the pure function
+distinguishes unverified local HTTP from verified local HTTPS without mutable manifest lookup.
 Require it at:
 
 - raw provider flush and structured maintenance;
@@ -255,8 +268,9 @@ loopback consumer observation bound into accepted result evidence.
   mixed/unknown groups content-free. Then project the exact eligible source set before building any
   context/transcript/prompt/request.
 - All-restricted uses the PR 2 atomic privacy-skip transaction and zero calls. Mixed remote sends
-  eligible only. Local provider processes private/local-only only for known source repository;
-  secret never.
+  eligible only. Unauthenticated local HTTP is credential-none/eligible-only. Local HTTPS processes
+  private/local-only only after verified peer identity and for a known source repository; secret
+  never.
 - Provider output cites only the projected job set. Reject unknown/mixed citations and output above
   the active attempt manifest's derivation limit atomically. Persist strongest sensitivity, exact
   repository, lineage/revision, and attempt provenance.
@@ -319,26 +333,35 @@ the merged boundary prove all reachable consumers. It does not close after raw f
   stub/provider-registry path.
 - Use the same pure manifest compiler through the runner adapter; do not add a harness-only provider
   compiler. Base remote uses `FREE_MEM_SUMMARY_API_KEY`/`external_metered`, local uses
-  `http://127.0.0.1:1234/v1/chat/completions`/`none`, and observed stub cost 0 remains runner evidence.
+  `https://127.0.0.1:1234/v1/chat/completions`/`none`, and observed stub cost 0 remains runner evidence.
 - Use fixture-pinned complete local/remote URLs. Map the pinned base/repaired remote HTTPS hostnames
-  only inside the runner network namespace to a loopback stub and provide a per-run hostname-valid test CA through
-  normal Node trust; evidence binds its public fingerprint, no private key is committed, and binding
+  only inside the runner network namespace to a loopback stub. Before candidate start, install a
+  per-run hostname/IP-valid public test CA into isolated system trust outside candidate/manifest
+  control; production rejects added CA path/environment configuration. Evidence binds its public
+  fingerprint, no private key is committed, and binding
   or verification mismatch fails rather than selecting an ephemeral endpoint.
 - Exercise both Agent directions, capture-only absent manifest, malformed manifest, daemon outage/
   spool replay, provider failure/resume, stale claims, queue capacity, privacy across all consumers,
   duplicate/no-op, path-with-spaces/linked worktree, unsupported environment, packed setup/runtime,
   and semantic-disabled retention.
-- Record unconditional zero non-loopback socket attempts and restricted bytes, plus exact expected
-  loopback request/credential/eligible-payload bytes, attempted/final render, lifecycle,
+- Record unconditional zero non-loopback socket attempts and remote restricted bytes, plus exact
+  expected authenticated-loopback request/credential/eligible/private/local-only payload bytes,
+  attempted/final render, lifecycle,
   manifest/provider/admission/attempt identity, capacity/retry, safety, and resource evidence.
+- Bind each positive provider gate to runner-read explicit committed event IDs, count, and fingerprint;
+  never infer the authorized set from a count or fixture prefix.
+- Measure source bytes by sensitivity at the runner-owned stub from actual received request bytes and
+  fixed synthetic markers/spans; do not derive observed bytes from policy or candidate results.
 - Use ordinals 1-22, discard 1-2, measure 3-22 separately, nearest-rank p95, threshold equality fail.
-- Run 12 identical duplicate/no-op windows with complete drain/checkpoint, discard 1-2, enforce every
-  absolute ceiling on 3-12, and require the final five to have constant process count, zero drained
+- Run 12 identical duplicate/no-op windows with strict non-overlapping workload-start/workload-
+  receipt/drain-receipt/checkpoint-receipt/sample chains, discard 1-2, enforce every absolute ceiling
+  on 3-12, and require the final five to have constant process count, zero drained
   queue, identical item/token counts, RSS span at most 16 MiB, storage span at most 65,536 bytes,
   concurrency at most 2, and zero post-teardown orphan process. Do not claim the deferred eight-hour soak.
 - Populate and validate the closed runner-evidence fields for every plateau window,
-  drain/checkpoint/workload receipt, no-op/zero-delta and item/token/concurrency value, public CA and
-  four raw trust-anchor/peer-certificate TLS receipts; bind them through separate result fingerprints
+  drain/checkpoint/workload receipt, strict action/sample timestamps, no-op/zero-delta and item/token/concurrency value, public CA and
+  six raw trust-anchor/peer-certificate TLS receipts and runner-owned provider-egress observations;
+  bind them through separate result fingerprints
   and derived aggregates alongside the 16+1 case and identity conflict; reject any private-key
   artifact or missing observation.
 - Add the runner/validator CI job without weakening existing gates and update user-facing docs.
@@ -414,7 +437,8 @@ logic across many callers.
   exemptions.
 - **Privacy**: every sensitivity × destination × repository state across provider, maintenance,
   search/reference, daemon, MCP, viewer, pack/trace, export/import, dedup/supersession; basename
-  collision and linked worktree; restricted sentinel absent from wire/render/log/diagnostic/artifact.
+  collision, HTTPS/SSH transport separation, SSH-user non-collision, and linked worktree;
+  restricted sentinel absent from wire/render/log/diagnostic/artifact.
 - **Lifecycle**: production nudge after commit only, debounce/immediate/request drain, stop race,
   restart, PreCompact, daemon outage/spool replay, no Agent blockage.
 - **Semantic**: lexical ready with `semantic_disabled`; vector row count/content unchanged.

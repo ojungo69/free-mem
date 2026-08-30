@@ -41,8 +41,9 @@ a successor, and a computed non-secret configuration fingerprint.
 - `new URL(endpointUrl).href` must equal the supplied URL. Userinfo, query, fragment, an empty/root
   path, and unsupported schemes are rejected. Literal `127.0.0.1` and `[::1]` alone are local;
   `localhost`, localhost subdomains, trailing-dot hostnames, wildcard/unspecified addresses, and
-  alternate loopback spellings are rejected. Local endpoints may use HTTP or HTTPS; every remote
-  endpoint is HTTPS with system chain and hostname validation.
+  alternate loopback spellings are rejected. Local endpoints may use HTTP only with credential
+  `none` and eligible-only projection, or HTTPS with verified chain/hostname peer identity. Every
+  remote endpoint is HTTPS with system chain and hostname validation.
 - Provider egress policy distinguishes on-device consumers from remote/off-host destinations;
   private and local-only data are eligible only for the former and secrets are eligible for neither.
 - Technical Alpha provider HTTP redirects are rejected before any payload is resent, and doctor
@@ -52,6 +53,9 @@ a successor, and a computed non-secret configuration fingerprint.
 - Every remote/off-host ProviderChoice has `executionLocation=remote`,
   `egressPolicy=explicit_remote`, `costClass=external_metered`, and `tlsPolicy=system`. Literal
   loopback choices derive `local`, `on_device`, `local_zero`, and `not_applicable` only for HTTP.
+  That HTTP form never authorizes private/local-only payload or credential bytes. Verified local
+  HTTPS derives `executionLocation=local`, `egressPolicy=on_device`, `costClass=local_zero`, and
+  `tlsPolicy=system`, and may process restricted same-repository content.
   Insecure TLS bypasses, initial remote HTTP, and HTTPS-to-HTTP downgrade are rejected before
   credentials or payload bytes are sent and are reported by setup/doctor.
 - Each InjectionPack request supplies its concrete target Agent/model destination and resolves it
@@ -67,7 +71,7 @@ a successor, and a computed non-secret configuration fingerprint.
 - The fixed base remote choice is `openai_chat_completions_v1` at
   `https://summary.stub.invalid/v1/chat/completions` with environment credential
   `FREE_MEM_SUMMARY_API_KEY`. The complete local successor uses
-  `http://127.0.0.1:1234/v1/chat/completions` and credential `none`. One complete repaired-remote
+  `https://127.0.0.1:1234/v1/chat/completions` and credential `none`. One complete repaired-remote
   successor uses `https://summary-repaired.stub.invalid/v1/chat/completions`. Configuration,
   redirect, and downgrade recovery signals bind the successor's computed provider and manifest
   fingerprints; scenario-local provider overrides and summary-config labels are not accepted.
@@ -80,8 +84,11 @@ a successor, and a computed non-secret configuration fingerprint.
   stuck claim 300,000 ms, and raw-event retention disabled/0 ms.
 - After setup confirmation and again at daemon start, every HTTPS choice performs a native
   credential-free, payload-free TLS handshake to the exact host/port/SNI with normal chain and
-  hostname validation within 5,000 ms. Failure mutates nothing or restores the prior activation;
-  local HTTP skips this preflight.
+  hostname validation within 5,000 ms. Failure mutates nothing or restores the prior activation.
+  Production rejects added CA path/environment configuration; only platform system trust is used.
+  The isolated runner installs its public test CA into its private system trust before candidate
+  start, outside proposal/manifest/candidate control. Local HTTP skips this preflight and remains
+  credential-none/eligible-only.
 - Doctor reports the active manifest, not a separately reconstructed approximation.
 - Active `legacyDispositions` contain at most 64 sorted unique closed keys and only `translated`,
   `ignored`, or `overridden`, with no values. A conflict rejects compilation and is not representable

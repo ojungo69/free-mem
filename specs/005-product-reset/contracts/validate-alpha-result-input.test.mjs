@@ -45,10 +45,10 @@ assert.ok(negativeDispatchIndex < negativeInjectionIndex,
   "late-injection negative dispatch does not precede injection acknowledgment");
 assert.ok(negativeMilestones.every((item, index) =>
   index === 0 || item.monotonicMs > negativeMilestones[index - 1].monotonicMs),
-"late-injection negative milestones are not strictly increasing");
+  "late-injection negative milestones are not strictly increasing");
 assert.deepEqual(suiteRegressionEvidence.scenarios.find((item) =>
   item.caseId === suiteRegression.negativeResult.runnerEvidenceCaseId).observedMilestones,
-negativeMilestones, "late-injection runner milestones drifted from the negative result");
+  negativeMilestones, "late-injection runner milestones drifted from the negative result");
 const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evidence-input-"));
 const suiteResultRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-suite-results-"));
 let runnerEvidenceOrdinal = 0;
@@ -228,13 +228,30 @@ equalTimeNegative.milestones.find((item) =>
   equalTimeNegative.milestones.find((item) =>
     item.name === "target_model_request_dispatched").monotonicMs;
 const equalTimeNegativePath = join(suiteResultRoot, "suite-negative-equal-time.json");
+const equalTimeSuiteEvidence = structuredClone(suiteRegressionEvidence);
+const equalTimeSuiteRecord = equalTimeSuiteEvidence.scenarios.find((item) =>
+  item.caseId === equalTimeNegative.runnerEvidenceCaseId);
+equalTimeSuiteRecord.observedMilestones = structuredClone(equalTimeNegative.milestones);
+equalTimeSuiteRecord.resultObservationFingerprint =
+  runnerResultObservationFingerprint(equalTimeNegative);
+const equalTimeSuiteFingerprint = runnerEvidenceFingerprint(equalTimeSuiteEvidence);
+equalTimeNegative.runnerEvidenceFingerprint = equalTimeSuiteFingerprint;
+const equalTimeSuiteEvidencePath = writeRunnerEvidence(equalTimeSuiteEvidence);
+const equalTimePositivePaths = suiteRegression.positiveResults.map((result, index) => {
+  const rebound = structuredClone(result);
+  rebound.runnerEvidenceFingerprint = equalTimeSuiteFingerprint;
+  const path = join(suiteResultRoot, `suite-equal-time-positive-${index + 1}.json`);
+  writeFileSync(path, JSON.stringify(rebound));
+  return path;
+});
 writeFileSync(equalTimeNegativePath, JSON.stringify(equalTimeNegative));
+const equalTimeSuiteArgs = equalTimePositivePaths.flatMap((path) => ["--result", path]);
 const equalTimeNegativeRun = spawnSync(process.execPath,
   ["--experimental-strip-types", validatorPath,
     "--runner-evidence-root", runnerEvidenceRoot,
-    "--runner-evidence", suiteEvidencePath,
-    "--runner-invocation-id", suiteRegressionEvidence.invocationId,
-    ...suiteArgs.slice(0, -2), "--negative-result", equalTimeNegativePath], {
+    "--runner-evidence", equalTimeSuiteEvidencePath,
+    "--runner-invocation-id", equalTimeSuiteEvidence.invocationId,
+    ...equalTimeSuiteArgs, "--negative-result", equalTimeNegativePath], {
       cwd: repoRoot, encoding: "utf8",
     });
 assert.notEqual(equalTimeNegativeRun.status, 0,

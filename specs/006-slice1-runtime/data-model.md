@@ -59,19 +59,22 @@ stored, fingerprinted, logged, displayed, or inherited from an Agent/OpenCode su
 - Require `http:` or `https:`, a non-empty hostname, a non-root API path, and no username, password,
   fragment, or query. The path is the complete protocol endpoint.
 - `127.0.0.1` and `::1` are the only local host literals. `localhost`, localhost subdomains,
-  trailing-dot hostnames, other loopback spellings, wildcard/unspecified addresses, and DNS names
-  that might resolve to loopback are rejected rather than guessed.
-- A local literal may use HTTP (`tlsPolicy=not_applicable`) or HTTPS (`tlsPolicy=system`). Every
+  trailing-dot hostnames, other loopback spellings, and wildcard/unspecified addresses are rejected.
+  Classification never resolves DNS: every other syntactically valid hostname, including the fixed
+  runner `summary.stub.invalid`, is remote.
+- A local literal may use HTTP (`tlsPolicy=not_applicable`) only with credential `none` and
+  eligible-only projection, or HTTPS (`tlsPolicy=system`). Every
   non-loopback host is remote and requires HTTPS with `tlsPolicy=system`.
-- For remote or local HTTPS, `NODE_TLS_REJECT_UNAUTHORIZED=0` or an equivalent supported insecure
-  global bypass rejects setup activation and daemon provider start. A normal additional CA trust path
-  does not disable chain/hostname verification and remains valid for the isolated runner.
+- For remote or local HTTPS, `NODE_TLS_REJECT_UNAUTHORIZED=0`, an additional CA path/environment
+  value, or an equivalent trust override rejects production setup activation and daemon provider
+  start. Production uses platform system trust only. The isolated runner provisions its public test
+  CA into private system trust before candidate start, outside proposal/manifest/candidate control.
 - Setup after confirmation and daemon start each perform a native credential/payload-free TLS
   chain+hostname handshake to the exact host/port/SNI within
   `providerTlsPreflightTimeoutMs=5,000`. Setup failure mutates nothing or restores prior state. A
   daemon-start failure preserves writer/RPC/capture/spool-import/lexical startup and disables only
   provider/AI processing as `provider_unavailable` or `provider_tls_rejected`; local HTTP skips the
-  handshake.
+  handshake and never receives credential, private, or local-only bytes.
 - `redirectPolicy=reject` is compiler-derived and request code uses manual redirect handling; no 3xx
   `Location` is followed or replayed.
 
@@ -128,8 +131,10 @@ for both protocols.
   `{kind:"environment",name:"FREE_MEM_SUMMARY_API_KEY"}`; compiler derives remote,
   `external_metered`, `explicit_remote`, and system TLS.
 - Local derivation: `openai_chat_completions_v1`,
-  `http://127.0.0.1:1234/v1/chat/completions`, `{kind:"none"}`; compiler derives local,
-  `local_zero`, `on_device`, and TLS not applicable.
+  `https://127.0.0.1:1234/v1/chat/completions`, `{kind:"none"}`; compiler derives local,
+  `local_zero`, `on_device`, and system TLS with verified IP peer identity. It is a complete
+  successor with `baseConfigurationFingerprint` equal to the active base manifest and otherwise
+  independently fingerprinted; it is never a scenario-local overlay.
 - Repaired remote: one complete successor manifest using
   `https://summary-repaired.stub.invalid/v1/chat/completions`, the same wire protocol/environment
   credential form, its own computed provider/manifest fingerprints, and the base manifest
@@ -168,19 +173,21 @@ without `configurationFingerprint`, encoded as JCS and prefixed by
 ### Storage and activation
 
 ```text
-control/capabilities/
-├── manifests/<configurationFingerprint>.json  # owner-only immutable generation
-├── current                                     # atomic fingerprint pointer
-├── last-good                                   # prior doctor-verified fingerprint
-├── lifecycle.lock                              # shared setup/daemon start exclusion
-└── activation-receipt.json                     # content-free next-start signal import
+control/
+├── install-manifest.json                       # owner-only editor/install ownership manifest
+└── capabilities/
+    ├── manifests/<configurationFingerprint>.json  # owner-only immutable generation
+    ├── current                                     # atomic fingerprint pointer
+    ├── lifecycle.lock                              # shared setup/daemon start exclusion
+    ├── activation-receipt.json                     # content-free next-start signal import
+    └── setup-transaction.json                      # owner-only activation journal while in progress
 ```
 
 Setup compiles and displays a proposal before mutation. After confirmation it writes the immutable
-generation, then publishes the current pointer and all selected Claude/Codex editor files as one
+generation, activation receipt, current pointer, and all selected Claude/Codex editor files as one
 recoverable transaction using the existing snapshot/atomic-replace mechanism. An unreferenced
-generation may remain after rollback; it has no authority. `last-good` changes only after a daemon
-has started from and doctor has verified the new fingerprint.
+generation may remain after rollback; it has no authority. The activation journal records the prior
+current pointer for rollback; Slice 1 defines no second rollback pointer.
 
 The transaction first acquires the shared lifecycle lock, rechecks daemon writer/socket/health state
 while held, then acquires the existing setup/spool owner lock for its full duration. Daemon start
@@ -189,11 +196,14 @@ releases it only after startup state is published. No path acquires the lifecycl
 writer or spool lock. This fixed order removes the preflight-to-activation race.
 
 The transaction uses one owner-only `control/capabilities/setup-transaction.json` journal. It stores
-phase, intended fingerprint, target paths/hashes, and mode-0600 prestate bytes needed by the existing
-snapshot restore; those bytes never enter manifest/log/evidence. Order is: journal prepared+fsynced,
-editor files, immutable generation, `current` pointer last, then journal commit/removal. Same-process
-failure restores in reverse. On next setup/start, a matching fully published state is finalized;
-otherwise prestate is restored. Daemon provider startup rejects an unresolved/unrecoverable journal.
+phase, intended fingerprint, every target path/hash including `activation-receipt.json`, and
+`control/install-manifest.json`, plus mode-0600 prestate bytes needed by the existing snapshot
+restore; those bytes never enter manifest/log/evidence. Order is: journal prepared+fsynced, editor
+files and install ownership manifest, immutable generation, mode-0600
+activation receipt, `current` pointer last, then journal commit/removal. Same-process failure restores
+or removes targets in reverse. On next setup/start, a fully published state is finalized only when
+the receipt fingerprint and current generation both match; a mismatched receipt is discarded while
+prestate is restored. Daemon provider startup rejects an unresolved/unrecoverable journal.
 
 A running daemon blocks the first manual activation path before any mutation. Full coordinated
 stop/activate/start or attach behavior is a later increment.
@@ -299,12 +309,14 @@ Resolution uses the active local filesystem:
 1. Run bounded, non-shell Git probes for the supplied cwd: `rev-parse --show-toplevel`,
    `rev-parse --path-format=absolute --git-common-dir`, and `remote get-url origin`. The probed root/
    common dir must exist and realpath successfully; caller-supplied remote text is ignored.
-2. If `origin` is an HTTPS URL, `ssh://` URL, or SCP-like SSH URL, reject credentials other than an
-   SSH username, lowercase the DNS host, drop only the protocol's default port, normalize repeated/
-   trailing path separators, remove exactly one trailing `.git`, and form
-   `remote:<host[:nondefault-port]>/<path>`. Thus supported HTTPS and SSH spellings of the same host/
-   path share an identity. Invalid, file, credential-bearing HTTPS, empty-path, or unsupported remote
-   forms do not become authority. Hash
+2. If `origin` is HTTPS, reject all credentials and form
+   `remote:https:<host[:nondefault-port]>/<path>`. If it is `ssh://` or SCP-like SSH, require a
+   username matching `[A-Za-z_][A-Za-z0-9._-]{0,63}` and form
+   `remote:ssh:<username>@<host[:nondefault-port]>/<path>`. In both branches, lowercase the DNS host,
+   drop only that protocol's default port, normalize repeated/trailing path separators, and remove
+   exactly one trailing `.git`. Transport classes and distinct
+   SSH usernames never share authority in Slice 1. Invalid, file, empty-path, ambiguous-user, or
+   unsupported remote forms do not become authority. Hash
    `free-mem:repository-remote:v1\0<canonical-remote>`.
 3. If no supported verified `origin` exists, resolve the real Git common directory (the primary Git
    anchor for linked worktrees) from the successful probe and hash
@@ -340,6 +352,25 @@ primary checkout share the remote identity, or the realpathed primary-anchor fal
 Existing source, stream, event ID, sequence, timestamps, and redacted payload remain. Payload fields
 never override first-class columns.
 
+Migration drops the legacy global `idx_raw_events_source_stream_event_id` and replaces it with one
+unique expression index over
+`(COALESCE(repository_identity, 'repo-v1:unknown'), source, stream_id, event_id)`. Valid repository
+identities can never equal the closed `repo-v1:unknown` sentinel. NULL remains the stored unknown
+representation and authorizes no restricted use; the index-only sentinel deliberately puts all
+unknown repositories into one fail-closed collision bucket instead of letting SQLite accept multiple
+NULL identities. Fresh v21 and migrated DDL must match, and migration verifies the old index is gone
+before commit.
+
+An insert that collides only because both repository identities are NULL never drops input and never
+reuses the existing canonical row. In the same sole-writer transaction, it persists a separate
+`raw_event_quarantine` record containing a stable quarantine receipt ID, source/stream/event identity,
+redacted payload and digest/version, `sensitivity=secret`, `capture_state=quarantined`, and safe code
+`repository_identity_unknown_collision`. It returns that non-success receipt with no normal ACK,
+canonical admission, job, or memory. Repeated delivery of the same quarantined digest is idempotent;
+a different digest gets a distinct receipt. The record is ineligible for every provider/read path,
+survives backup/restart, and may converge only by replay with verified repository identity or a new
+event identity.
+
 Redaction failure persists a quarantined row with `sensitivity=secret`, empty payload, safe ordering
 metadata, and `safe_error_code=redaction_degraded`. It survives restart and is never job/provider/
 retrieval input.
@@ -350,7 +381,8 @@ Capture conversion is:
 redaction degraded or secret -> secret
 private                      -> private
 local_only                   -> local_only
-otherwise                    -> eligible
+eligible                     -> eligible
+missing/malformed/ambiguous/legacy-unknown/other -> secret
 ```
 
 The daemon computes repository identity from the actual cwd/Git state. Caller `projectKey` is not
@@ -358,13 +390,21 @@ authority.
 
 ### EventIdentityConflictV1
 
-The canonical identity is repository identity plus source/stream/event ID. First acceptance stores
+The canonical identity is the repository-aware unique-index key plus source/stream/event ID. First acceptance stores
 `payload_digest=sha256("free-mem:event-payload-digest:v1\0" || JCS(redacted canonical payload))`.
-Same identity and digest is an idempotent duplicate. Same identity with a different digest never
+Same identity and digest is an idempotent duplicate only after one Store transaction joins
+sensitivity using `secret > private > local_only > eligible` and makes quarantine absorbing. The
+transaction strengthens the canonical row and every already-derived record that cites the event;
+quarantine makes them ineligible and returns a non-success quarantine receipt. Downgrade replays do
+nothing, and payload/digest bytes never change.
+
+Same identity with a different digest never
 overwrites the canonical row or returns a normal ACK; one durable conflict row/receipt records both
 digests, reason `event_identity_payload_conflict`, non-success state, canonical-unchanged=true, and
-memory delta 0. Replays reuse that receipt. Conflict records are content-free and inherit repository
-identity/manifest provenance.
+memory delta 0. Its domain-separated ID and unique key include canonical identity, digest version,
+canonical digest, and conflicting digest. Replays of that exact pair reuse the receipt; a different
+conflicting digest creates another receipt. Conflict records are content-free and inherit
+repository identity/manifest provenance.
 
 ## RawEventFlushBatch as MemoryProcessingJobV1
 
@@ -388,7 +428,7 @@ source/stream/sequence range. No second queue or generic job framework is added.
 | `resume_grant_id`, `resume_grant_reason` | One-shot grant identity/reason |
 | `resume_grant_state`, `resume_grant_consumed_at` | `none | pending | consumed` plus consumption evidence |
 | `last_resume_signal_id`, `last_resume_sequence` | Signal identity and monotonic replay fence |
-| `last_resume_signal_disposition` | `accepted | duplicate | stale | wrong_role | wrong_provider | unchanged_configuration | unrelated_component` |
+| `last_resume_signal_disposition` | `accepted | duplicate | stale | grant_pending | wrong_job | wrong_role | wrong_provider | unchanged_configuration | unrelated_component` |
 | `safe_error_code` | Bounded content-free failure code |
 | `egress_diagnostic_json` | Version/action/reason/counts only |
 | `output_count`, `observed_output_count` | Atomic derivation-limit evidence |
@@ -445,29 +485,43 @@ fields. Safe projections render NULL admission as `legacy_unknown`, not a fabric
 
 ### ResumeSignalV1
 
-One signal has unique ID, monotonic sequence, target role `summary`, target provider fingerprint,
-target manifest fingerprint, and one reason:
+One per-job signal has unique ID, producer receipt ID, exact target job ID, monotonic per-job
+sequence, target role `summary`, target provider fingerprint, target manifest fingerprint, and one
+`kind`:
 
 - `validated_configuration_activation` (must change manifest or provider fingerprint);
 - `recorded_provider_healthy_transition` (daemon-recorded unhealthy→healthy edge);
 - `user_confirmed_doctor_retry`.
 
-A valid signal creates one pending grant. Duplicate/out-of-order, wrong-role, wrong-provider,
+A valid signal creates one pending grant only when no grant is already pending. Duplicate/out-of-order, wrong-job, wrong-role, wrong-provider,
 unrelated-component, or unchanged invalid configuration signals are durable content-free no-ops.
 The grant is consumed by at most one claim. Timer passage never creates a grant.
+
+If `resume_grant_state=pending`, a concurrent otherwise-valid setup, health, or doctor signal returns
+content-free disposition `grant_pending` and mutates no signal row, producer-receipt uniqueness,
+sequence, grant, or attempt. The producer remains retryable after the pending grant is consumed and
+that attempt reaches a terminal state. No signal overwrites, queues behind, or creates a second grant.
 
 The only producers are durable and component-specific:
 
 1. Setup writes a content-free activation receipt with monotonic activation sequence under the
    lifecycle lock; the next v21 daemon imports it through the sole writer and records one idempotent
-   `validated_configuration_activation` signal keyed by receipt ID and fingerprints.
+   `validated_configuration_activation` signal per currently matching retry-exhausted job, keyed by
+   job, receipt ID, and fingerprints.
 2. Observer health is persisted per manifest/provider; only a committed unhealthy-to-healthy edge
    emits one `recorded_provider_healthy_transition`. Repeated probes are no-ops.
 3. An explicit user-confirmed doctor retry RPC/CLI command emits one
-   `user_confirmed_doctor_retry` after showing the target component/job and fingerprints.
+   `user_confirmed_doctor_retry` for exactly the displayed job after showing its component and
+   fingerprints.
 
-Sequence allocation, receipt import, signal insert, and grant creation are crash-idempotent. Setup
-never opens the canonical database directly.
+Setup/health producer receipts are global events, but one sole-writer transaction fans each out to
+at most the capacity-25 set of currently matching `retry_exhausted` jobs. Each signal stores
+`targetJobId` and `producerReceiptId`; `(job_id, producer_receipt_id)` and `(job_id, signal_id)` are
+unique. Job state, `resume_grant_state != pending`, role/provider/manifest fingerprints, and
+`incoming.sequence > preLastConsumedResumeSequence` are one CAS. Only acceptance sets
+`postLastConsumedResumeSequence=incoming.sequence` and inserts a pending grant; gaps are allowed,
+while equal/stale values are no-ops. Claim consumption and attempt increment are one transaction.
+Receipt import and crash replay are idempotent. Setup never opens the canonical database directly.
 
 Every accepted signal, including changed configuration, has `grantCount=1`; it never resets or
 refills a three-attempt budget. After claim, the grant count is 0. Success completes; failure returns
@@ -478,20 +532,25 @@ use the one repaired-remote successor's computed manifest/provider fingerprints.
 and user-confirmed retry target the computed active base fingerprints. Output-limit recovery targets
 the computed test-only version-2 manifest fingerprint without changing admission provenance.
 
-Each recovery case has one exact signal kind/producer mapping. Accepted evidence requires
-`signal.sequence=lastConsumedSequence`, automatic `budgetBefore=0`, `budgetAfterGrant=1`,
-`budgetAfterAttempt=0`, and `ignoredSignalCount=0`; swapped kinds or stale sequence fields are no-ops.
+Each recovery case has one exact signal kind/producer/job mapping. `observedTransition.
+lastConsumedSequence` is the post-transition value. Accepted evidence requires
+`preLastConsumedSequence < signal.sequence` and
+`observedTransition.lastConsumedSequence=signal.sequence`, automatic `budgetBefore=0`, `budgetAfterGrant=1`,
+and `budgetAfterAttempt=0` for the consumed signal. `ignoredSignalCount=0` applies only when no
+ignored signals are delivered; aggregate cases may count stale/duplicate signals alongside one
+accepted transition. Swapped kinds or stale sequence fields are no-ops.
 
 ### Completion transactions
 
 **Memory completion** validates job status, claim generation/fingerprint, exact projected source
 set/citations, output limit, lineage/revision/dedup/supersession invariants, and sensitivity. One
-transaction commits every memory and reference, marks the job completed, and advances the
-contiguous `last_flushed_event_seq` once. Any failure commits none of these.
+transaction commits every memory and reference and marks the job completed. It advances the
+contiguous `last_flushed_event_seq` once only when `frontier_already_advanced=false`; a fully
+recovered legacy `gave_up` job leaves the frontier unchanged. Any failure commits none of these.
 
 **Privacy skip** validates the same active claim and exact all-ineligible source set. One transaction
-stores a content-free diagnostic, marks completed, and advances the frontier once with zero provider
-request and zero memory output.
+stores a content-free diagnostic and marks completed. It advances the frontier once only when
+`frontier_already_advanced=false`, with zero provider request and zero memory output.
 
 A completed privacy skip is terminal for that admitted source range. Later configuration activation
 does not silently reopen it; a separately specified user-authorized replay contract would be needed
@@ -537,6 +596,7 @@ Payload-free fixed shape stored on the processing job.
 | `configurationFingerprint` | Safe manifest identity |
 | `providerFingerprint` | Safe provider identity |
 | `attemptFingerprint` | Safe attempt identity when claimed |
+| `nextAction` | Required closed safe action code below; never free text |
 
 It contains no event/memory ID, source text, title, path, prompt, query, request/response excerpt,
 sentinel, credential value, or restricted preview. Actual request/byte evidence comes from the
@@ -549,8 +609,12 @@ eligible_only | restricted_projected | all_restricted | destination_unknown |
 repository_unknown | repository_mismatch | redaction_degraded |
 provider_unavailable | provider_redirect_rejected | provider_tls_rejected |
 provider_auth_failed | output_invalid | output_limit_exceeded |
-retry_exhausted | stale_claim | missing_or_ambiguous_range | source_gap
+retry_exhausted | stale_claim | missing_or_ambiguous_range | source_gap |
+omitted_ineligible
 ```
+
+`omitted_ineligible` is required for aggregate restricted omissions in pack/trace/read diagnostics;
+it carries counts only and never an item ID or preview.
 
 The closed safe next-action values are:
 
@@ -605,6 +669,7 @@ One closed trusted value is required before any content-bearing read or provider
 | `repositoryIdentity` | Verified RepositoryIdentityV1 or NULL |
 | `configurationFingerprint` | Frozen daemon manifest fingerprint |
 | `providerFingerprint` | Required for provider/maintenance; otherwise NULL |
+| `providerPeerTrust` | `verified | unverified` for provider/AI-maintenance transport, otherwise `not_applicable`; compiler/runtime-derived, never caller supplied |
 
 The boundary is internal and cannot be created from a user project/basename filter. One pure
 eligibility function and its SQL predicate apply the decision table before any row content is
@@ -616,11 +681,17 @@ creates no on-device Agent attestation. The `*-local` destination classes remain
 fixtures and can be selected only after the candidate-inaccessible runner verifies its loopback
 consumer and binds that observation to the result; otherwise local selection is impossible.
 
+For provider/AI-maintenance boundaries, local HTTP compiles to `providerPeerTrust=unverified` and
+local/remote HTTPS becomes `verified` only after the exact peer passes chain+hostname/IP verification
+at daemon start; every request still performs normal TLS verification. Other consumers use
+`not_applicable`. The pure eligibility function receives this field directly and never resolves a
+fingerprint back through mutable configuration.
+
 | Destination | eligible | local_only | private | secret |
 |---|---:|---:|---:|---:|
-| remote or unknown | allow | deny | deny | deny |
-| local + exact known repository | allow | allow | allow | deny |
-| local + cross/unknown repository | allow | deny | deny | deny |
+| remote or unknown; or local provider with unverified peer | allow | deny | deny | deny |
+| verified local provider or runner-attested local consumer + exact known repository | allow | allow | allow | deny |
+| trusted local + cross/unknown repository | allow | deny | deny | deny |
 
 For local summary/maintenance, the boundary repository is the known source repository for the
 current projected group. For hook/MCP/export/dedup, it is the verified destination/current
@@ -696,22 +767,36 @@ post-teardown orphan process count is zero. Any missing sample or equality above
 
 The accepted runner-evidence schema requires all 12 raw window records. Each carries
 ordinal, process count, RSS MiB, drained queue depth, storage bytes, selected-item count,
-injected-token count, max processing concurrency, and a completed drain/checkpoint receipt.
-Remote-stub cases also carry the base/repaired hostnames, hostname-valid public CA SHA-256
+injected-token count, max processing concurrency, unique workload/drain/checkpoint receipts, and
+runner-monotonic workload start, workload receipt, drain receipt, checkpoint receipt, and sample
+times. Each chain is strictly increasing and the prior sample is strictly before the next workload.
+Provider cases also carry the base/local/repaired hostnames, hostname/IP-valid public CA SHA-256
 fingerprint, normal chain/hostname-validation booleans, and `privateKeyCommitted=false`. The network
-object includes exactly four runner-owned raw TLS preflight receipts: base and repaired host, each at
-`setup_activation` and `daemon_start`. Every receipt has a unique opaque ID, exact hostname/SNI,
-port 443, timeout 5,000 ms, monotonic start/end within timeout, verified result, normal chain/
+object includes exactly six runner-owned raw TLS preflight receipts: base, local, and repaired host,
+each at `setup_activation` and `daemon_start`. Every receipt has a unique opaque ID, exact hostname,
+remote SNI or null IP SNI, endpoint port, timeout 5,000 ms, monotonic start/end within timeout,
+verified result, normal chain/
 hostname booleans, `trustAnchorSha256` equal to the bundle public CA, a peer-certificate SHA-256, and
 zero HTTP requests, credential bytes, and payload bytes.
+
+Each real scenario has one runner-owned provider-egress observation. Its monitor starts before the
+candidate and ends after process-tree termination. A runner-only network gate opens strictly after
+the runner directly reads the durable store and records explicit canonical-order committed event
+IDs, their count, and domain-separated event-set fingerprint; non-prefix sets remain representable.
+The receipt binds active provider/location, first/last request time, exact request/payload/auth and
+redirect aggregates, zero pre-authorization/non-loopback attempts, and source bytes by sensitivity.
+The runner-owned stub measures those sensitivity bytes from the request bytes it actually receives
+against fixed synthetic source markers/spans; neither policy expectation nor candidate output
+supplies the observed values.
+The late-injection negative projects its base receipt instead of claiming another run.
 
 Every plateau window also carries a unique opaque `workloadReceiptId`, one duplicate-delivery
 attempt count of at least one, `noOpOutcome=duplicate_noop`, `durableMemoryDelta=0`, and
 `processingJobDelta=0`. The result schema carries only separate network/plateau fingerprints and
 derived resource aggregates; the validator recomputes those fingerprints from the runner bundle.
 
-The suite contains one same-event-ID/different-payload-digest probe whose durable conflict count is
-exactly one and no overwrite occurs, plus exactly 16 positive scenario observations and one
+The suite contains one same-event-ID/different-payload-digest probe whose repeated attempts reuse one
+pair-bound durable receipt while a different digest cannot, plus exactly 16 positive scenario observations and one
 late-injection-after-model-dispatch negative. Result-observation and runner-bundle fingerprints bind
 all these fields.
 

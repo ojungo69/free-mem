@@ -54,30 +54,41 @@ from 16 to 17; production setup does not expose it and admission profile/limit r
 
 ## ResumeSignalV1
 
-A signal has a unique ID, monotonic sequence, target role `summary`, target provider fingerprint,
-target manifest fingerprint, and exactly one reason:
+A per-job signal has a unique ID, producer receipt ID, exact target job ID, monotonic per-job
+sequence, target role `summary`, target provider fingerprint, target manifest fingerprint, and
+exactly one `kind`:
 
 - `validated_configuration_activation` (manifest/provider fingerprint must change);
 - `recorded_provider_healthy_transition` (daemon-recorded unhealthy to healthy edge);
 - `user_confirmed_doctor_retry`.
 
-A valid signal creates one grant with `state=pending`. The claim changes it to `consumed`, records
+A valid signal creates one grant with `state=pending` only when no grant is already pending. `(job_id, producer_receipt_id)` and
+`(job_id, signal_id)` are unique. The claim changes the grant to `consumed`, records
 consumption time, and increments the attempt in the same transaction. Duplicate/out-of-order,
-wrong-role, wrong-provider, unrelated-component, unchanged invalid configuration, and already-
+wrong-job, wrong-role, wrong-provider, unrelated-component, unchanged invalid configuration, and already-
 consumed signals update only the closed last-signal disposition as durable content-free no-ops and
 consume no attempt.
+
+An otherwise-valid signal received while a grant is pending returns `grant_pending` without
+inserting/consuming a signal or producer receipt and without changing sequence, grant, or attempt.
+The durable producer may retry after the existing grant is consumed and its attempt terminates; no
+second slot, overwrite, or hidden queue exists.
 
 Only three durable producers exist:
 
 - the v21 daemon imports one setup activation receipt written under the lifecycle lock and emits one
-  idempotent `validated_configuration_activation` signal;
+  idempotent `validated_configuration_activation` signal per matching retry-exhausted job;
 - a persisted provider state edge from unhealthy to healthy emits one
   `recorded_provider_healthy_transition`; repeated probes do nothing;
 - an explicit user-confirmed doctor retry RPC/CLI action emits one `user_confirmed_doctor_retry`
-  after displaying the target component/job and fingerprints.
+  for exactly the displayed job after displaying its component and fingerprints.
 
-Receipt IDs and monotonic sequences fence crash replay; signal insertion and grant creation are one
-sole-writer transaction. Setup never opens the canonical database.
+Setup/health receipts are global producer events; one sole-writer transaction fans each out to at
+most the capacity-25 matching job set. Job state, `resume_grant_state != pending`, target role/provider/manifest, and
+`incoming.sequence > preLastConsumedResumeSequence` are one CAS. Accepted signals alone set
+`postLastConsumedResumeSequence=incoming.sequence` and create a grant; sequence gaps are allowed,
+while equal/stale values are no-ops. Receipt IDs and unique job bindings fence crash replay. Setup never
+opens the canonical database.
 
 Changed configuration also grants exactly one claim; it does not refill the automatic retry limit.
 Any fixture/result field representing budget-after-grant is therefore 1 and becomes 0 after claim.
@@ -87,21 +98,25 @@ repaired-remote successor's computed manifest/provider fingerprints. Healthy tra
 retry use the computed active-base fingerprints; output-limit recovery uses the computed test-only
 v2 manifest/provider binding. Free-form configuration labels are not signal authority.
 
-Fixture and runtime evidence maps each case to its exact producer kind; the kinds are not an
-unordered interchangeable set. Every accepted transition requires
-`signal.sequence=lastConsumedSequence`, automatic `budgetBefore=0`, `budgetAfterGrant=1`,
-`budgetAfterAttempt=0`, and `ignoredSignalCount=0`. Any mismatch is a durable no-op, not a grant.
+Fixture and runtime evidence maps each case to its exact producer kind and target job; the kinds are not an
+unordered interchangeable set. `observedTransition.lastConsumedSequence` is the post-transition
+value. Every accepted transition requires `preLastConsumedSequence < signal.sequence`,
+`observedTransition.lastConsumedSequence=signal.sequence`, automatic `budgetBefore=0`, `budgetAfterGrant=1`,
+and `budgetAfterAttempt=0` for the consumed signal. `ignoredSignalCount=0` is required only when the
+case delivers no ignored signals; an aggregate case may count stale/duplicate signals alongside one
+accepted transition. Any consumed-signal mismatch is a durable no-op, not a grant.
 
 ## Atomic terminal transitions
 
 **Memory completion** validates the live claim, exact projected source set/citations, output count,
 repository identity, sensitivity, lineage, dedup/supersession, and attempt provenance. One database
-transaction commits every memory/reference/index source record, completes the job, and advances the
-contiguous event frontier exactly once. Crash or validation failure commits none.
+transaction commits every memory/reference/index source record and completes the job. It advances
+the contiguous event frontier exactly once only when `frontier_already_advanced=false`; a recovered
+legacy `gave_up` range leaves it unchanged. Crash or validation failure commits none.
 
 **Privacy skip** validates the live claim and exact all-ineligible projection. One database
-transaction stores a content-free diagnostic, completes the job, and advances the frontier exactly
-once with zero provider request and zero memory output.
+transaction stores a content-free diagnostic and completes the job. It advances the frontier exactly
+once only when `frontier_already_advanced=false`, with zero provider request and zero memory output.
 
 The completed privacy skip is terminal for that source range. Configuration change does not reopen
 it; a later explicit user-authorized replay contract is outside Slice 1.
@@ -141,3 +156,5 @@ count, claim generation, grant state, capacity, and one closed next action (`non
 `activate_valid_manifest`, `configure_credential`, `wait_for_capacity`, `confirm_retry`,
 `restart_daemon`, or `upgrade_runtime`). It contains no event/memory content,
 title, path, prompt, query, source excerpt, provider response, sentinel, or credential value.
+This `nextAction` field is separate from fixture-only `expectedOperationalStatus.safeAction`; the
+fixture field is an operational oracle with its own value set, not this seven-value enum.

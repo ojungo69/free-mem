@@ -36,7 +36,8 @@
 
 - [x] Provider proposal is closed and buildable: two wire protocols, complete canonical endpoint,
   explicit CredentialRefV1, exact auth/request/response/no-auth behavior and resource limits,
-  computed provider/manifest fingerprints, and compiler-derived policy
+  computed provider/manifest fingerprints, local-HTTP credential-none/eligible-only behavior,
+  authenticated local-HTTPS restricted behavior, and compiler-derived policy
 - [x] Contract/fixture correction is a separate first checkpoint; no runtime consumer precedes setup
   activation
 - [x] Base/local/repaired manifests and resume/redirect/downgrade fingerprints are complete; v2/max17
@@ -46,26 +47,34 @@
 - [x] Privacy covers provider, maintenance, all Store/reference/daemon/MCP/viewer/pack/trace/export/
   import/dedup consumers through one DestinationBoundary, including viewer artifacts and export-v2
   prompt/legacy-summary/safe-session projections
+- [x] DestinationBoundary carries compiler/runtime-derived provider peer trust, so its pure function
+  distinguishes unverified local HTTP from verified local HTTPS without caller or mutable-config input
 - [x] Claude/Codex/MCP model egress is remote/unknown by default; no caller/local-process claim can
   select runner-only on-device destination classes
-- [x] Repository authority uses verified Git remote or realpathed primary Git anchor, never basename or
-  project label
+- [x] Repository authority uses transport-preserving verified Git remote with exact SSH user or a
+  realpathed primary Git anchor, never basename/project label or cross-transport/user collapse
 - [x] Schema v21 durable jobs, retry-exhausted capacity, one-shot resume, attempt/admission provenance,
   atomic completion, retention safety, and legacy `gave_up` handling precede #130 closure
 - [x] RawEventSweeper production nudge and stop-race, content-free diagnostics, semantic-disabled
   vector retention, and generated artifacts have named source/tests
+- [x] EgressDiagnosticV1 requires a closed safe `nextAction`; no producer may omit it or emit free text
 - [x] Setup pointer/editor activation publishes `current` last and has owner-only interruption-journal
   recovery plus shared setup/daemon lifecycle-lock exclusion before provider startup
 - [x] Activation receipt, persisted provider health edge, and user-confirmed doctor retry are the only
-  crash-idempotent resume-signal producers
-- [x] Closed runner-evidence schema owns raw plateau/TLS evidence; result fingerprints/aggregates bind
-  it while conflict and exact 16+1 evidence remain closed
+  crash-idempotent resume-signal producers; every signal binds exact job+producer receipt and global
+  setup/health events fan out only to the bounded matching job set
+- [x] Closed runner-evidence schema owns raw provider-egress, plateau, and six TLS receipts; result
+  fingerprints/aggregates bind it; plateau timestamps strictly prove workload→drain→checkpoint→
+  sample order and non-overlap while pair-bound conflict reuse/distinctness and exact 16+1 evidence
+  remain closed
+- [x] Provider authorization records explicit committed event IDs/count/fingerprint and accepts
+  canonical non-prefix sets; no validator infers the authorized set from count alone
 - [x] Tasks are sequential T001-T060 and every independent PR boundary/dependency/range is explicit
 
 ## Notes
 
 - Validated against issues #130/#137, current Codemem source/test paths, and Product Reset intent.
-- Current `specs/005-product-reset/` fixture/schema/validators/bound evidence require the separate
-  contract-first mechanical correction recorded in T002-T005; this 006 hardening does not edit them.
+- The pre-PR 0 `specs/005-product-reset/` fixture/schema/validators/bound evidence required the
+  contract-first mechanical correction co-delivered with these planning artifacts in T001-T005.
 - No clarification marker or unchecked checklist item remains; the artifacts are ready for the PR 0
   contract checkpoint.

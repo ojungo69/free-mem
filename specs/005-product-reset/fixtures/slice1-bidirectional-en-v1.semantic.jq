@@ -155,14 +155,19 @@ def provider_transmission_ok($root):
   all($root.scenarios[];
       . as $scenario
       | $scenario.providerTransmissionOracle as $wire
-      | (($scenario.derivationManifestId? // "") == ""
-          and (($scenario.summaryProviderStub | has("summary"))
+      | ((($scenario.summaryProviderStub | has("summary"))
             or ($scenario.summaryProviderStub | has("malformedResponse"))
             or ($scenario.summaryProviderStub | has("redirectResponse"))
             or ($scenario.summaryProviderStub.memoryItems | length) > 0)
-          and ($scenario.summaryProviderStub | has("policyRejectedReason") | not)) as $remoteAttempt
-      | if $remoteAttempt
-        then $wire.credentialBytesSent > 0 and $wire.payloadBytesSent > 0
+          and ($scenario.summaryProviderStub | has("policyRejectedReason") | not)) as $providerAttempt
+      | (($scenario.derivationManifestId? // "") ==
+          $root.localDerivationManifest.manifestId) as $localAttempt
+      | if $providerAttempt
+        then (if $localAttempt
+            then $wire.credentialBytesSent == 0
+            else $wire.credentialBytesSent > 0
+            end)
+          and $wire.payloadBytesSent > 0
           and $wire.completionMilestone != null
           and ($root.lifecycleProfiles[$scenario.lifecycleProfileId] as $profile
             | ($profile | index($scenario.drainCondition.startMilestone)) as $start
@@ -210,8 +215,8 @@ def manifest_contract_ok($root):
       {"kind":"environment","name":"FREE_MEM_SUMMARY_API_KEY"};
       "remote"; "explicit_remote"; "external_metered"; "system")
     and provider_choice_ok($local.summaryProvider;
-      "http://127.0.0.1:1234/v1/chat/completions";
-      {"kind":"none"}; "local"; "on_device"; "local_zero"; "not_applicable")
+      "https://127.0.0.1:1234/v1/chat/completions";
+      {"kind":"none"}; "local"; "on_device"; "local_zero"; "system")
     and provider_choice_ok($repaired.summaryProvider;
       "https://summary-repaired.stub.invalid/v1/chat/completions";
       {"kind":"environment","name":"FREE_MEM_SUMMARY_API_KEY"};
@@ -540,6 +545,7 @@ def bidirectional_ok($root):
 def spool_ok($root):
   fault_scenario($root; "daemon_unavailable_after_event_accept")
   | [ .events[].eventId ] as $eventIds
+  | .fault.identityConflictProbe as $probe
   | ($eventIds | length) == 2
     and ($eventIds | unique | length) == 2
     and .fault.recovery == "restart_and_replay_same_batch_twice"
@@ -548,11 +554,20 @@ def spool_ok($root):
     and all(.fault.replaySchedule[]; .eventIds == $eventIds)
     and .drainCondition.spooledEventCount == ($eventIds | length)
     and .drainCondition.replayCount == 2
+    and .canonicalEventSource == "claude"
+    and .sourceStreamId == "runtime-unavailable-spool-recovery:source-stream"
+    and .fault.identityConflictProbe.repositoryScope == .sourceRepositoryScope
+    and .fault.identityConflictProbe.source == .canonicalEventSource
+    and .fault.identityConflictProbe.streamId == .sourceStreamId
     and .fault.identityConflictProbe.eventId == $eventIds[1]
     and .fault.identityConflictProbe.canonicalPayloadDigest
       != .fault.identityConflictProbe.conflictingPayloadDigest
-    and .fault.identityConflictProbe.conflictReceiptId ==
-      "conflict-receipt-spool-event-2-v1"
+    and (.fault.identityConflictProbe.conflictReceiptId
+      | test("^conflict-receipt-v1:sha256:[0-9a-f]{64}$"))
+    and (.fault.identityConflictProbe.conflictAttemptReceiptIds | length) >= 2
+    and all(.fault.identityConflictProbe.conflictAttemptReceiptIds[];
+      . == $probe.conflictReceiptId)
+    and .fault.identityConflictProbe.durableConflictReceiptCount == 1
     and .fault.identityConflictProbe.conflictReceiptState == "non_success"
     and .fault.identityConflictProbe.canonicalEventState == "committed"
     and .fault.identityConflictProbe.incomingDeliveryState == "quarantined"
@@ -615,6 +630,8 @@ def ignored_noop_transition_ok($case; $kind; $providerFingerprint; $manifestFing
 def retry_ok($root):
   fault_scenario($root; "summary_provider_malformed_response") as $retry
   | $retry.drainCondition.eventDeliveryState == "committed"
+    and all($retry.fault.resumeCases[].signals[];
+      .targetJobId == $retry.fault.targetJobId)
     and all($retry.fault.resumeCases[]; resume_case_signal_sets_ok(.))
     and all($retry.fault.resumeCases[];
       resume_transmission_ok(.;
@@ -744,6 +761,8 @@ def redirect_scenario_ok($root; $redirect):
       or ($redirect.scenarioId == "summary-provider-https-to-http-downgrade-rejected"
         and $redirect.fault.redirectRecovery.caseId ==
           "downgrade-validated-configuration-activation"))
+    and $redirect.fault.redirectRecovery.signal.targetJobId ==
+      $redirect.fault.targetJobId
     and ($redirect.fault.redirectRecovery.expectedConsumedSignalIds ==
       [$redirect.fault.redirectRecovery.signal.signalId])
     and ($redirect.fault.redirectRecovery.expectedIgnoredSignalIds | length) == 0
@@ -789,6 +808,8 @@ def output_limit_ok($root):
   fault_scenario($root; "summary_provider_output_limit_exceeded") as $scenario
   | provider_items($scenario) as $items
   | scenario_core_ok($root; $scenario)
+    and all($scenario.fault.resumeCases[].signals[];
+      .targetJobId == $scenario.fault.targetJobId)
     and all($scenario.fault.resumeCases[]; resume_case_signal_sets_ok(.))
     and all($scenario.fault.resumeCases[];
       resume_transmission_ok(.;

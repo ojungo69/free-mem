@@ -343,13 +343,22 @@
     "IdentityConflictEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["eventId", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingPayloadDigest", "conflictReceiptId", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "reason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
+      "required": ["repositoryScope", "source", "streamId", "eventId", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingPayloadDigest", "conflictReceiptId", "conflictAttemptReceiptIds", "durableConflictReceiptCount", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "reason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
       "properties": {
+        "repositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "source": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "streamId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "eventId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "payloadDigestVersion": { "const": "event-payload-digest-v1" },
         "canonicalPayloadDigest": { "$ref": "#/$defs/Sha256" },
         "conflictingPayloadDigest": { "$ref": "#/$defs/Sha256" },
-        "conflictReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "conflictReceiptId": { "type": "string", "pattern": "^conflict-receipt-v1:sha256:[0-9a-f]{64}$" },
+        "conflictAttemptReceiptIds": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "pattern": "^conflict-receipt-v1:sha256:[0-9a-f]{64}$" }
+        },
+        "durableConflictReceiptCount": { "const": 1 },
         "conflictReceiptState": { "const": "non_success" },
         "canonicalEventState": { "const": "committed" },
         "incomingDeliveryState": { "const": "quarantined" },
@@ -421,9 +430,11 @@
     "SharedResumeSignal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["signalId", "sequence", "kind", "targetRole", "providerFingerprint", "effectiveManifestFingerprint"],
+      "required": ["signalId", "producerReceiptId", "targetJobId", "sequence", "kind", "targetRole", "providerFingerprint", "effectiveManifestFingerprint"],
       "properties": {
         "signalId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "producerReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "targetJobId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sequence": { "$ref": "#/$defs/SharedPositiveInteger" },
         "kind": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] },
         "targetRole": { "const": "summary" },

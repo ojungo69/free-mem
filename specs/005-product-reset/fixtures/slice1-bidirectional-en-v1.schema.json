@@ -280,7 +280,21 @@
         "rawEventRetentionMs": { "const": 0 },
         "resourceWarningThresholds": { "$ref": "#/$defs/ResourceWarningThresholds" },
         "injectionEnvelope": { "$ref": "#/$defs/InjectionEnvelope" }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "version": { "const": 1 },
+            "maxMemoryItemsPerDerivation": { "const": 16 }
+          }
+        },
+        {
+          "properties": {
+            "version": { "const": 2 },
+            "maxMemoryItemsPerDerivation": { "const": 17 }
+          }
+        }
+      ]
     },
     "DestinationPolicyMap": {
       "type": "object",
@@ -507,6 +521,8 @@
       "properties": {
         "scenarioId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sourceAgent": { "$ref": "#/$defs/Agent" },
+        "canonicalEventSource": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "sourceStreamId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "targetDestinationClass": { "enum": ["claude-code-local", "codex-local", "claude-code-remote", "codex-remote"] },
         "targetSessionId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sourceRepositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -730,9 +746,10 @@
     "SummaryProviderMalformedFault": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "attemptsUntilExhausted", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveredOutput", "resumeCases"],
+      "required": ["kind", "targetJobId", "attemptsUntilExhausted", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveredOutput", "resumeCases"],
       "properties": {
         "kind": { "const": "summary_provider_malformed_response" },
+        "targetJobId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "attemptsUntilExhausted": { "$ref": "#/$defs/SharedPositiveInteger" },
         "resumeCasesAreIndependent": { "const": true },
         "resumeCaseInitialSnapshot": {
@@ -745,9 +762,10 @@
     "SummaryProviderRedirectFault": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "resumeCaseInitialSnapshot", "recoveredOutput", "redirectRecovery"],
+      "required": ["kind", "targetJobId", "resumeCaseInitialSnapshot", "recoveredOutput", "redirectRecovery"],
       "properties": {
         "kind": { "const": "summary_provider_redirect_response" },
+        "targetJobId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "resumeCaseInitialSnapshot": {
           "const": { "state": "retry-exhausted", "budget": 0, "lastConsumedSequence": 0 }
         },
@@ -767,9 +785,10 @@
     "SummaryProviderOutputLimitFault": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "observedResultCount", "configuredLimit", "failureMetadata", "atomicityEvidence", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveryManifestId", "resumeCases"],
+      "required": ["kind", "targetJobId", "observedResultCount", "configuredLimit", "failureMetadata", "atomicityEvidence", "resumeCasesAreIndependent", "resumeCaseInitialSnapshot", "recoveryManifestId", "resumeCases"],
       "properties": {
         "kind": { "const": "summary_provider_output_limit_exceeded" },
+        "targetJobId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "observedResultCount": { "$ref": "#/$defs/SharedPositiveInteger" },
         "configuredLimit": { "$ref": "#/$defs/SharedPositiveInteger" },
         "failureMetadata": { "$ref": "#/$defs/SharedOutputLimitFailureMetadata" },
@@ -868,15 +887,24 @@
     "IdentityConflictProbe": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["eventId", "digestInput", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingRedactedPayload", "conflictingPayloadDigest", "conflictReceiptId", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "expectedReason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
+      "required": ["repositoryScope", "source", "streamId", "eventId", "digestInput", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingRedactedPayload", "conflictingPayloadDigest", "conflictReceiptId", "conflictAttemptReceiptIds", "durableConflictReceiptCount", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "expectedReason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
       "properties": {
+        "repositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "source": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "streamId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "eventId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "digestInput": { "const": "domain_separated_jcs_redacted_payload_v1" },
         "payloadDigestVersion": { "const": "event-payload-digest-v1" },
         "canonicalPayloadDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "conflictingRedactedPayload": { "$ref": "#/$defs/SharedNonEmptyString" },
         "conflictingPayloadDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-        "conflictReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "conflictReceiptId": { "type": "string", "pattern": "^conflict-receipt-v1:sha256:[0-9a-f]{64}$" },
+        "conflictAttemptReceiptIds": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "pattern": "^conflict-receipt-v1:sha256:[0-9a-f]{64}$" }
+        },
+        "durableConflictReceiptCount": { "const": 1 },
         "conflictReceiptState": { "const": "non_success" },
         "canonicalEventState": { "const": "committed" },
         "incomingDeliveryState": { "const": "quarantined" },
@@ -888,9 +916,11 @@
     "SharedResumeSignal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["signalId", "sequence", "kind", "targetRole", "providerFingerprint", "effectiveManifestFingerprint"],
+      "required": ["signalId", "producerReceiptId", "targetJobId", "sequence", "kind", "targetRole", "providerFingerprint", "effectiveManifestFingerprint"],
       "properties": {
         "signalId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "producerReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "targetJobId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sequence": { "$ref": "#/$defs/SharedPositiveInteger" },
         "kind": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] },
         "targetRole": { "const": "summary" },

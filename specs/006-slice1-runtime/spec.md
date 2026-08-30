@@ -1,6 +1,6 @@
 # Feature Specification: Slice 1 Automatic Memory Runtime
 
-**Feature Branch**: `fix/local-only-egress-130`
+**Feature Branch**: `spec/slice1-contract-post-142`
 
 **Created**: 2026-08-30
 
@@ -33,7 +33,8 @@ repository eligibility.
 2. **Given** a remote summary destination and a mixed job, **When** processing runs, **Then** only
    eligible events are sent in source order and local-only, private, secret, and degraded events
    contribute zero request bytes.
-3. **Given** an explicit loopback provider and a source with a verified repository identity,
+3. **Given** an explicit loopback HTTPS provider with verified peer identity and a source with a
+   verified repository identity,
    **When** local-only or private work is processed, **Then** it may produce memory while retaining
    its strongest sensitivity and exact repository identity; secret work remains excluded.
 4. **Given** a restricted memory, **When** search, recent, timeline, explain, a reference query,
@@ -78,7 +79,9 @@ triggers, and injection reasons at the receiving prompt boundary.
    Code, **Then** the correction arrives automatically and the failed approach is not recommended.
 3. **Given** an identical event or semantic no-op is delivered again, **When** processing converges,
    **Then** no duplicate active summary, memory, semantic entry, or injection item is created and
-   deduplication cannot weaken sensitivity or repository identity.
+   deduplication cannot weaken sensitivity or repository identity. A same-payload replay with
+   stronger trusted sensitivity atomically strengthens the canonical event and every already-derived
+   record; quarantine is absorbing and returns no normal ACK.
 4. **Given** newly accepted activity, session end, or pre-compact, **When** the lifecycle signal is
    committed, **Then** the existing sweeper is nudged using the frozen profile and relevant work is
    processed within the hook deadline without depending only on the idle sweep.
@@ -124,7 +127,8 @@ frontier atomicity, retained sources, deduplication, and lexical fallback.
    may resume scheduling.
 9. **Given** the same repository/event identity arrives with a different canonical payload digest,
    **When** capture retries, **Then** the canonical event is unchanged, one durable non-success
-   identity-conflict receipt is reused, no ACK/memory is fabricated, and Agent work remains open.
+   identity-conflict receipt is reused for that ordered digest pair, a different conflicting digest
+   receives a different receipt, no ACK/memory is fabricated, and Agent work remains open.
 
 ---
 
@@ -186,7 +190,7 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
 - The corrected fixture uses one base remote choice (`openai_chat_completions_v1`, complete remote
   HTTPS endpoint, environment credential `FREE_MEM_SUMMARY_API_KEY`, derived
   `external_metered`), one complete local successor
-  (`http://127.0.0.1:1234/v1/chat/completions`, credential `none`), and one complete repaired-remote
+  (`https://127.0.0.1:1234/v1/chat/completions`, credential `none`), and one complete repaired-remote
   successor. Configuration, redirect, and HTTPS-downgrade recovery signals bind to the computed
   repaired manifest/provider fingerprints rather than free-form labels.
 - Before schema v21 jobs and the complete all-consumer privacy boundary are merged, even a valid
@@ -230,8 +234,10 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   egress policy, cost class, TLS policy, and redirect rejection. Literal `127.0.0.1` or `::1` is
   local; `localhost`, localhost subdomains, and any trailing-dot hostname are rejected; every
   non-loopback endpoint is remote and HTTPS-only with system
-  TLS verification; `NODE_TLS_REJECT_UNAUTHORIZED=0` or an equivalent insecure bypass rejects remote
-  activation/start; redirects are rejected. Before mutation and again at daemon start, remote/local-
+  TLS verification; `NODE_TLS_REJECT_UNAUTHORIZED=0`, production added-CA path/environment input, or
+  an equivalent trust bypass rejects activation/start. The runner may install its public test CA
+  only into isolated system trust before candidate start; redirects are rejected. Before mutation
+  and again at daemon start, remote/local-
   HTTPS endpoints MUST pass a credential-free, payload-free native TLS chain/hostname handshake
   within the frozen 5,000 ms preflight timeout. Setup-time failure aborts activation with zero
   mutation. Daemon-start failure MUST still start writer/RPC/capture/spool-import/lexical services,
@@ -240,9 +246,11 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
 - **FR-005**: Setup MUST compute the manifest fingerprint, display all safe effective provider fields
   and fingerprints, and obtain explicit confirmation before any activation or editor mutation.
 - **FR-006**: Setup MUST atomically activate an immutable manifest generation with all targeted
-  editor mutations or restore their prior state. A running daemon MUST block manual mutation until
+  editor mutations and `control/install-manifest.json`, or restore their prior state. A running daemon MUST block manual mutation until
   coordinated lifecycle automation owns stop/activate/start. A narrow owner-only durable setup
-  journal MUST make interruption recoverable; capability `current` is published last, and daemon
+  journal MUST include the mode-0600 activation receipt target/hash/prestate and make interruption
+  recoverable; capability `current` is published last. Daemon import MUST require receipt/current
+  fingerprint agreement, otherwise discard/restore, and daemon
   provider startup fails while an unresolved transaction exists. Setup activation and daemon start
   MUST share one lifecycle lock and fixed lock order, with daemon state rechecked while held, so a
   daemon cannot start between preflight and pointer/editor mutation.
@@ -264,10 +272,17 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   17 and runner-owned/test-only; production setup MUST NOT expose it as a selectable profile.
 - **FR-010**: Every accepted event MUST persist first-class `eligible`, `local_only`, `private`, or
   `secret` sensitivity, repository identity, and capture-time manifest identity independently of
-  payload claims.
+  payload claims. Repository identity MAY be NULL/unknown when Git authority cannot be verified, and
+  capture-manifest fingerprint MUST be NULL in absent-manifest capture-only mode; those NULL values
+  are preserved and fail closed before identity/manifest-dependent processing, without rejecting
+  capture itself. A same-identity/same-payload replay MUST atomically retain the strongest trusted
+  sensitivity in the canonical row and every already-derived record before ACK; quarantine MUST be
+  absorbing, make those records ineligible, and return a non-success receipt.
 - **FR-011**: Repository identity MUST be computed from a verified canonical Git remote or a
-  realpathed primary Git anchor. Basename, project label, workspace label, or caller override MUST
-  remain display/filter metadata and MUST NOT authorize restricted disclosure.
+  realpathed primary Git anchor. Canonical remote identity MUST retain transport class and the exact
+  supported SSH username; HTTPS and SSH or distinct SSH usernames MUST NOT collapse. Basename,
+  project label, workspace label, or caller override MUST remain display/filter metadata and MUST
+  NOT authorize restricted disclosure.
 - **FR-012**: Redaction failure MUST retain no raw content and MUST persist restart-stable safe
   ordering metadata, `secret` sensitivity, quarantine state, and the closed code
   `redaction_degraded` without free-text error content.
@@ -275,10 +290,11 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   constructed, the product MUST project candidates through the frozen destination boundary.
 - **FR-014**: A remote all-restricted job MUST make zero provider requests and complete via one
   atomic privacy skip. A mixed remote job MUST preserve eligible order/provenance and transmit zero
-  restricted bytes. An explicit loopback provider MAY process private/local-only work only with a
-  known source repository; secret work is never processed. Before any local prompt is built, events
-  MUST be partitioned by exact verified repository identity, and a mixed or unknown group MUST be
-  rejected content-free.
+  restricted bytes. Unauthenticated loopback HTTP is eligible-only and MUST use no credential.
+  A loopback HTTPS provider MAY process private/local-only work only after successful chain,
+  hostname/IP, and peer verification and with a known source repository; secret work is never
+  processed. Before any local prompt is built, events MUST be partitioned by exact verified
+  repository identity, and a mixed or unknown group MUST be rejected content-free.
 - **FR-015**: Every derived memory MUST cite at most the job's 100 projected source events/spans and
   inherit the strongest cited sensitivity, exact repository identity, manifest/provider/attempt
   provenance, and deterministic lineage/revision identity. Unknown or out-of-set citations, mixed
@@ -288,7 +304,10 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   reachable content consumer: structured maintenance,
   search/recent/timeline/explain, `findByFile`/`findByConcept`, daemon get/search/pack, MCP direct and
   indexed reads, viewer raw-event/status/usage and content reads, pack traces, export/import, and
-  dedup/supersession. No user filter or caller-supplied model-location claim may bypass it. Claude
+  dedup/supersession. It MUST carry compiler/runtime-derived provider peer trust of `verified`,
+  `unverified`, or `not_applicable`; local HTTP is unverified and local HTTPS becomes verified only
+  after exact peer verification. No user filter or caller-supplied model-location/trust claim may
+  bypass it. Claude
   Code, Codex, and MCP are remote/unknown in Slice 1 production; a local CLI process is not an
   on-device-model attestation. The unused public extraction-replay and distill exports MUST be
   removed; any future public/runtime exposure MUST take the same boundary before reading raw or
@@ -308,26 +327,42 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
 - **FR-020**: Schema v21 MUST add all Slice 1 sensitivity/repository fields for memory items, user
   prompts, legacy session summaries, content-bearing artifacts, and session identity plus lineage, job, claim,
   admission/attempt provenance, resume, event payload digest/version, durable identity conflict, and
-  diagnostic fields in one verified-backup transactional migration before issue #130 closes.
+  diagnostic fields in one verified-backup transactional migration before issue #130 closes. It
+  MUST drop the legacy source/stream/event unique index and enforce canonical repository/source/
+  stream/event uniqueness with NULL repository mapped only inside the index to the closed
+  non-authoritative `repo-v1:unknown` sentinel. A NULL-bucket collision MUST durably quarantine the
+  incoming redacted payload/digest as secret with a stable non-success receipt, and MUST NOT drop it,
+  ACK it normally, or canonically admit/process it; migrated and fresh DDL MUST match.
 - **FR-021**: The existing raw-event flush batch MUST be the only summary job with states `queued`,
   `processing`, `failed`, `retry_exhausted`, and `completed`; claim generation MUST fence stale
   workers. Capacity MUST count every uncompleted state including `retry_exhausted`, never evict
   accepted work, and leave excess source events visibly not admitted.
 - **FR-022**: Privacy skip and successful memory completion MUST each be a single transaction that
   validates the claim and source set, commits diagnostic or every memory/dedup/supersession effect,
-  completes the job, and advances the contiguous frontier once. Failure, overflow, stale claim, or
-  partial parse MUST commit no memory and MUST NOT advance the frontier.
+  and completes the job. It advances the contiguous frontier once only when
+  `frontier_already_advanced=false`; a recovered legacy range leaves it unchanged. Failure,
+  overflow, stale claim, or partial parse MUST commit no memory and MUST NOT advance the frontier.
 - **FR-023**: Automatic attempts MUST be bounded. `attempt_count` MUST increase only with a successful
   claim and remain monotonic for the job. Retry exhaustion stops timer retries; one validated,
-  component-targeted resume grant authorizes at most one claim and is consumed atomically. Daemon
+  exact-job/component-targeted resume grant authorizes at most one claim and is consumed atomically.
+  Global activation and health receipts MUST fan out in one sole-writer transaction to at most the
+  capacity-25 currently matching retry-exhausted jobs; doctor retry MUST target exactly the displayed
+  job. Daemon
   activation-receipt import, a persisted provider unhealthy-to-healthy edge, and an explicit
   user-confirmed doctor retry MUST be the only durable producers; each producer is sequenced,
-  crash-idempotent, and emits at most one grant.
+  crash-idempotent, and emits at most one grant. While a grant is pending, another valid signal MUST
+  return `grant_pending` without inserting/consuming its signal or producer receipt, advancing
+  sequence, overwriting/queuing a grant, or authorizing an attempt; the producer may retry after the
+  pending attempt terminates.
 - **FR-024**: Admission manifest/provider fingerprints MUST be immutable. A changed validated
   configuration MAY create a new attempt manifest/provider/attempt fingerprint without rewriting
-  admission provenance; duplicate, stale, wrong-role, wrong-provider, or unchanged-config signals
-  are durable no-ops. Legacy-unknown admission remains NULL/`legacy_unknown` and MUST NOT be
-  fabricated from the current manifest.
+  admission provenance. Every signal MUST bind `targetJobId` and `producerReceiptId`; job/receipt and
+  job/signal pairs MUST be unique. State, `resume_grant_state != pending`, job,
+  role/provider/manifest, and
+  `incoming.sequence > preLastConsumedResumeSequence` MUST pass one CAS before the post value becomes
+  the incoming sequence or a grant exists. Gaps are allowed; equal/stale, duplicate, wrong-job,
+  wrong-role, wrong-provider, or unchanged-config signals are durable no-ops. Legacy-unknown
+  admission remains NULL/`legacy_unknown` and MUST NOT be fabricated from the current manifest.
 - **FR-025**: Migration MUST NOT blindly rewind a legacy `gave_up` range. Exact complete retained
   ranges MAY become explicit recovery candidates without lowering the frontier; missing or
   ambiguous ranges MUST become terminal `legacy_unrecoverable` completed dispositions, remain
@@ -345,18 +380,29 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   verify ownership/version/fingerprint/doctor, and avoid duplicate writers across restart, stop, and
   uninstall; this automation MUST not precede the independently mergeable manifest activation.
 - **FR-030**: With external egress disabled, the fixed runner MUST prove zero non-loopback socket
-  attempts and zero restricted bytes unconditionally. Only loopback-stub request count, credential
-  bytes, and eligible payload bytes MAY equal the explicit fixture expectations.
+  attempts, zero pre-authorization attempts, and zero prohibited remote or unauthenticated-HTTP
+  restricted bytes unconditionally. Base/repaired remote HTTPS MAY match expected request,
+  environment-credential, and eligible-payload bytes. Verified local HTTPS is credential-none and
+  MAY match only expected request plus eligible/private/local-only payload bytes; its credential
+  bytes MUST be zero.
 - **FR-031**: All emitted evidence MUST distinguish attempted processing from final delivery and MUST
   never report an interrupted, unpinned, inaccessible, or incomplete run as successful. The closed
   runner-evidence schema MUST represent the 12 raw resource windows, drain/checkpoint receipts,
-  selected-item/token/concurrency samples, hostname-valid CA fingerprint with no private-key
-  artifact, raw setup/daemon-start TLS preflight receipts for base/repaired hosts with exact SNI,
+  selected-item/token/concurrency samples, hostname/IP-valid CA fingerprint with no private-key
+  artifact, raw setup/daemon-start TLS preflight receipts for base/local/repaired hosts with exact
+  remote SNI or null IP SNI,
   timeout, timing, verified result, per-receipt trust-anchor/peer-certificate fingerprints, and zero
-  request/credential/payload bytes; each plateau window MUST carry a unique workload receipt with at
+  request/credential/payload bytes, plus runner-owned provider-egress observations spanning
+  candidate start through process-tree termination and opening only after direct durable-event-set
+  authorization that records explicit canonical-order committed event IDs, count, and fingerprint
+  without inferring a prefix. Source bytes by sensitivity MUST be runner-stub measurements of actual
+  received request bytes against fixed synthetic markers/spans, never policy-derived or candidate-
+  reported; each plateau window MUST carry a unique workload receipt, strict runner-monotonic
+  workload-start/workload-receipt/drain-receipt/checkpoint-receipt/sample timestamps, and no overlap
+  with its neighboring windows, with at
   least one duplicate attempt, no-op outcome, and zero memory/job deltas. The result schema carries
   separate trust/plateau fingerprints and derived aggregates, not raw copies;
-  same-event-ID/different-digest conflict evidence, and the exact 16 positive plus one
+  pair-bound repeated same-event-ID/different-digest conflict evidence, and the exact 16 positive plus one
   late-injection-negative suite.
 
 ### Key Entities
@@ -391,7 +437,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
 - **SC-002**: Across the failure matrix, Agent blockage, accepted-event loss, duplicate active
   memory, stale-claim commit, frontier advance on failure, fabricated success, identity-conflict
   overwrite/ACK, and orphan process counts are all zero; the induced same-ID/different-digest case
-  creates exactly one reusable durable conflict receipt.
+  creates exactly one reusable durable conflict receipt for the repeated pair, while another
+  conflicting digest cannot reuse it.
 - **SC-003**: Capture adds less than 200 ms at p95 under the fixed workload, measured over ordinals
   3-22 after discarding 1-2 and using nearest-rank p95.
 - **SC-004**: Warm retrieval/injection is below one second at p95 and cold semantic-disabled fallback
@@ -400,35 +447,37 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
 - **SC-005**: Every all-restricted remote case across provider, maintenance, retrieval, MCP, viewer,
   trace, and export surfaces produces zero restricted content bytes; provider all-restricted cases
   also produce exactly zero requests. Mixed provider cases transmit only the expected eligible bytes.
-- **SC-006**: Explicit loopback processing retains sensitivity and repository identity in every
+- **SC-006**: Verified loopback-HTTPS processing retains sensitivity and repository identity in every
   derived item; remote, unknown, basename-collision, cross-repository, and unknown-repository
   disclosure delivers zero restricted items and bytes.
 - **SC-007**: Replaying unchanged accepted events leaves active memory, semantic entry, lineage, and
-  final pack counts unchanged; dedup/supersession never lowers sensitivity or crosses repository
-  identity.
+  final pack counts unchanged; a stronger same-payload replay atomically strengthens canonical and
+  derived sensitivity, quarantine is absorbing, and dedup/supersession never lowers sensitivity or
+  crosses repository identity.
 - **SC-008**: Setup disclosure, stored generation, daemon snapshot, Observer, maintenance, viewer,
   status, and doctor report one identical manifest/provider identity; provider/resource legacy env
   mutation after daemon start changes none of their effective behavior.
 - **SC-009**: The fixed resource profile reports periodic 30 s, idle 120 s, debounce 1 s, stuck claim
   5 min, source job limit 100, retention disabled/0, queue 25, retry limit 3, and all accepted fixture
   envelope values exactly. The runner executes 12 identical duplicate/no-op windows, discards 1-2,
-  and requires windows 3-12 to stay inside all absolute ceilings. In windows 8-12, process count is
+  requires strict non-overlapping workload-start/workload-receipt/drain-receipt/checkpoint-receipt/
+  sample order, and requires windows 3-12 to stay inside all absolute ceilings. In windows 8-12, process count is
   constant, drained queue depth is zero, selected item/token counts are identical, RSS span is at
   most 16 MiB, storage span is at most 65,536 bytes, processing concurrency is at most 2, and the
   post-teardown orphan count is zero.
 - **SC-010**: Retry-exhausted jobs count against capacity, one valid grant creates exactly one new
-  attempt fingerprint, and invalid signals create zero claims; admission provenance never changes.
+  attempt fingerprint, each signal/grant is bound to one job+producer receipt, and invalid or
+  cross-job signals create zero claims; admission provenance never changes.
 - **SC-011**: Every injected item has visible eligible source and selection reason, while every
   restricted omission, retry diagnostic, log, and failure record contains the expected bounded code
   and no restricted sentinel or content-derived excerpt.
 
 ## Assumptions
 
-- The Product Reset purpose and fixed Slice 1 scenarios remain authoritative. The current
-  `specs/005-product-reset/` manifest fixture, schema, semantic validators, and bound examples do not
-  yet encode the buildable closed provider/resource shape above; they require a contract-first,
-  mechanical correction and fingerprint recomputation before runtime implementation. This 006
-  planning change does not edit those 005 artifacts.
+- The Product Reset purpose and fixed Slice 1 scenarios remain authoritative. The pre-PR 0
+  `specs/005-product-reset/` manifest fixture, schema, semantic validators, and bound examples did
+  not encode the buildable closed provider/resource shape above; they required the contract-first,
+  mechanical correction and fingerprint recomputation co-delivered with these planning artifacts.
 - Users explicitly choose the summary wire protocol, model, complete endpoint URL, and credential
   reference. Subscriptions, arbitrary provider registries, custom headers, and unrelated Agent or
   OpenCode credentials are not discovered automatically.
@@ -439,8 +488,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   repaired-remote manifests retain version 1/max16. Embedding is explicitly disabled and lexical
   retrieval is the healthy required lane.
 - Merged #126 and #129 remain prerequisite regression cases.
-- Runtime/contract implementation begins in a fresh worktree from refreshed `origin/main` only after
-  prerequisite PR #142 merges; this pre-#142 planning worktree is not an implementation base.
+- PR 0 is delivered from a fresh worktree created from refreshed `origin/main` after merged PR #142;
+  later runtime branches start only from the merged PR 0 commit.
 - Past remote disclosure cannot be undone. Migration may conservatively quarantine or diagnose old
   rows without copying their content into logs or evidence.
 - Remote MCP memory-body delivery, Cloud sync, additional profiles/protocols, semantic quality

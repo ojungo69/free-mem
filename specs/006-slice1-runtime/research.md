@@ -40,12 +40,13 @@ fingerprints and run the complete existing validator suite.
 Both `localDerivationManifest` and output-limit recovery become complete immutable successor
 manifests bound to the prior fingerprint; scenario-local partial overlays are rejected.
 
-**Rationale**: The current fixture has `providerKind`, endpoint scheme/host fragments, a free-form
+**Rationale**: The pre-PR 0 fixture had `providerKind`, endpoint scheme/host fragments, a free-form
 credential string, self-declared provider policy, and missing scheduler fields. Building runtime
-against it would preserve an unbuildable contract or force a second incompatible migration.
+against that baseline would have preserved an unbuildable contract or forced a second incompatible
+migration.
 
-**Scope note**: This 006 hardening records the prerequisite but does not edit
-`specs/005-product-reset/`. Those files require a separate contract-first mechanical correction.
+**Scope note**: PR 0 co-delivers this 006 hardening and the scoped
+`specs/005-product-reset/` mechanical correction; it contains no runtime code.
 
 **Alternatives considered**: Runtime compatibility shims would create two sources of truth. Quietly
 changing only the fixture would leave schemas, semantic checks, and bound evidence inconsistent.
@@ -80,15 +81,18 @@ The deterministic stub remains harness metadata and produces a normal proposal. 
 The base remote proposal is OpenAI Chat Completions at
 `https://summary.stub.invalid/v1/chat/completions` with environment credential
 `FREE_MEM_SUMMARY_API_KEY`; remote cost class remains `external_metered`. The local successor uses
-`http://127.0.0.1:1234/v1/chat/completions` and credential `none`. One complete repaired-remote
+`https://127.0.0.1:1234/v1/chat/completions` and credential `none`. One complete repaired-remote
 successor at `https://summary-repaired.stub.invalid/v1/chat/completions` replaces the current three
 free-form repair labels; configuration, redirect, and downgrade signals bind its computed manifest/
 provider fingerprints. Stub cost evidence 0 is runner evidence, not cost class.
 
-The corrected fixture pins complete local and remote stub URLs. Local uses a fixed literal-loopback
-URL. Remote uses a fixed HTTPS hostname mapped to the runner-owned loopback service inside its
-isolated network namespace, with a per-run hostname-matching test CA supplied through the normal Node
-trust path. The candidate still performs system chain/hostname verification. The runner records and
+The corrected fixture pins complete local and remote stub URLs. Restricted local derivation uses a
+fixed literal-loopback HTTPS URL; unauthenticated local HTTP remains credential-none/eligible-only.
+Remote uses a fixed HTTPS hostname mapped to the runner-owned loopback service inside its
+isolated network namespace. Before candidate start, the runner installs a per-run hostname/IP-
+matching public test CA into its private system trust, outside candidate/manifest control.
+Production rejects added CA path/environment configuration. The candidate still performs system
+chain/hostname verification. The runner records and
 binds the generated public CA fingerprint in its evidence; no private key is committed. An
 unavailable/mismatched endpoint fails rather than choosing a new URL and changing provider/manifest
 fingerprints.
@@ -176,8 +180,16 @@ increase recovery states without benefit.
 state, including retry-exhausted. Capture precedes admission; at most 100 source events enter a job.
 
 Raw events store the accepted domain-separated payload digest/version. Same identity/same digest is
-idempotent; same identity/different digest atomically creates or reuses a durable non-success
-EventIdentityConflict receipt without replacing the canonical row, ACKing, or creating memory.
+idempotent only after an atomic strongest-sensitivity/absorbing-quarantine join strengthens the
+canonical row and every derived record that cites it. Same identity/different digest atomically
+creates or reuses a durable non-success EventIdentityConflict receipt unique to the canonical
+identity and ordered digest pair without replacing the canonical row, ACKing, or creating memory.
+The v21 migration replaces the legacy source/stream/event unique index with a repository-aware
+expression index using `COALESCE(repository_identity,'repo-v1:unknown')`. The sentinel is index-only,
+cannot match a valid digest identity, and makes unknown repository collisions fail closed despite
+SQLite's normal multiple-NULL uniqueness behavior. A collision is retained outside canonical
+`raw_events` as a secret durable quarantine record with redacted payload/digest and non-success
+receipt, never silently discarded or normally ACKed.
 
 Admission manifest/provider fingerprints, source range, and retry limit never change. Successful
 claim increments monotonic lifetime attempt count and claim generation. A changed configuration
@@ -188,7 +200,9 @@ one-shot 1→0 grant semantics used by every resume reason.
 
 Setup activation receipts are imported once by the v21 daemon; persisted Observer unhealthy-to-
 healthy edges and an explicit user-confirmed doctor retry are the other two signal producers.
-Sequence allocation, signal/grant insertion, and crash replay are idempotent.
+Global setup/health receipts fan out to the bounded matching retry-exhausted job set; doctor targets
+one confirmed job. Per-job signal/grant uniqueness, sequence CAS, insertion, and crash replay are
+idempotent.
 
 **Rationale**: The existing table already owns source ranges, attempts, claims, and inspection. The
 problem is its `gave_up` cursor advancement and non-atomic completion, not absence of a job framework.
@@ -225,19 +239,24 @@ and provenance. Deleting the row destroys inspectability.
 
 **Decision**: Resolve a domain-separated repository digest from a verified canonical Git remote. If
 none exists, resolve and realpath the primary Git anchor through linked-worktree metadata and hash
-that. Unknown stays NULL. Project/basename/workspace values remain display/filter metadata.
+that. Canonical remotes retain HTTPS/SSH transport class and a bounded exact SSH username, so
+different transport authorities or SSH users never collapse. Unknown stays NULL.
+Project/basename/workspace values remain display/filter metadata.
 
 **Rationale**: Current `resolveProject`, normalized events, MCP defaults, and export filters use
 basenames or caller strings. Two unrelated repositories can share them; linked worktrees can have
 different paths for one repository.
 
 **Alternatives considered**: Raw absolute paths leak local structure and differ through symlinks.
-Caller-provided remotes are forgeable. One global local scope does not enforce same repository.
+Caller-provided remotes are forgeable. Cross-transport normalization and dropping the SSH username
+can merge distinct server authorities. One global local scope does not enforce same repository.
 
 ## Decision 10: One DestinationBoundary eligibility seam for every content consumer
 
 **Decision**: Add one small closed DestinationBoundary value, one eligibility function, and the
-matching SQL predicate. Route provider flush, structured maintenance, search/recent/timeline/explain,
+matching SQL predicate. Carry compiler/runtime-derived `providerPeerTrust` so unverified local HTTP
+and verified local HTTPS are distinguishable without mutable fingerprint lookup. Route provider
+flush, structured maintenance, search/recent/timeline/explain,
 reference queries, daemon get/search/pack, MCP direct/indexed reads, viewer raw-event/status/usage
 and content projections, lexical/semantic pack/trace, export/import, and dedup/supersession through
 it before content materialization.
@@ -328,20 +347,25 @@ resource target.
 host/runtime pins, normal provider proposals created from stub metadata, and existing validators.
 Missing pins or incomplete runs emit no success.
 
-The runner denies non-loopback networking for external-egress-disabled cases, requires restricted
-bytes to remain zero, records expected loopback request/credential/eligible-payload bytes, and uses
+The runner denies non-loopback networking for external-egress-disabled cases, requires prohibited
+remote or unauthenticated-HTTP restricted bytes to remain zero, records expected authenticated
+loopback request/credential/eligible/private/local-only payload bytes, and uses
 ordinals 1-22 with 1-2 discarded and nearest-rank p95 per metric. Its resource gate runs 12
-duplicate/no-op windows with full drain/checkpoint; windows 8-12 must have constant process count,
+duplicate/no-op windows with strict non-overlapping workload/drain/checkpoint/sample timestamps;
+windows 8-12 must have constant process count,
 zero drained queue, identical item/token counts, RSS span at most 16 MiB, storage span at most 65,536
 bytes, concurrency at most 2, and zero post-teardown orphan process.
 
 The corrected runner-evidence schema binds every raw plateau window, drain/checkpoint receipt,
-item/token/concurrency sample, hostname-valid public CA fingerprint, and four raw base/repaired
-setup/start TLS receipts with exact SNI/timing/result/trust-anchor/peer-cert/zero-byte evidence. Each
-plateau window has a unique workload receipt, positive duplicate-attempt count, no-op outcome, and
+item/token/concurrency sample, hostname/IP-valid public CA fingerprint, six raw base/local/repaired
+setup/start TLS receipts with exact remote-SNI/null-IP-SNI/timing/result/trust-anchor/peer-cert/
+zero-byte evidence, and one runner-owned gated provider-egress observation per real scenario whose
+authorization carries explicit canonical-order committed event IDs/count/fingerprint. Each
+plateau window has a unique workload receipt, strict runner-monotonic action/sample order,
+positive duplicate-attempt count, no-op outcome, and
 zero memory/job deltas. Results bind the bundle objects through separate fingerprints and derived
-aggregates. The runner also emits one
-same-event-ID/different-digest conflict without overwrite and exactly 16 positives plus the required
+aggregates. The runner also emits repeated same-event-ID/different-digest attempts that reuse one
+pair-bound receipt, rejects cross-pair reuse, and emits exactly 16 positives plus the required
 late-injection negative; result and runner-bundle fingerprints cover all fields.
 
 For remote-provider cases, the deny boundary permits only the fixture-pinned remote hostname mapped

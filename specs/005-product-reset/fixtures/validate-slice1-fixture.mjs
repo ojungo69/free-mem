@@ -57,7 +57,7 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:7eec67b3a68166684de71c98f4da11fbb783970c3cefc6eabd6a13db5ed5fa8b";
+  "fixture-contract-fingerprint=sha256:775714c020b7b739494899be11ce6ec10afa928cef8fee3dd3a296c968219474";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
@@ -161,6 +161,9 @@ function validateProviderProposal(proposal, label) {
   if (rejectedLocalAlias) {
     throw new Error(`${label} endpoint hostname is not an accepted literal loopback or remote host`);
   }
+  if (local && endpoint.protocol === "http:" && credential.kind !== "none") {
+    throw new Error(`${label} local HTTP endpoint must be credential-none`);
+  }
   return {
     endpoint,
     local,
@@ -240,7 +243,7 @@ const recoverySignal = outputLimitScenario?.fault?.resumeCases.find(
 )?.signals[0];
 if (
   fixture.outputLimitRecoveryManifest.manifestId !== outputLimitScenario?.fault?.recoveryManifestId ||
-  fixture.outputLimitRecoveryManifest.resourceProfile.maxMemoryItemsPerDerivation <
+  fixture.outputLimitRecoveryManifest.resourceProfile.maxMemoryItemsPerDerivation !==
     outputLimitScenario.fault.observedResultCount ||
   recoverySignal?.providerFingerprint !==
     fixture.outputLimitRecoveryManifest.summaryProvider.providerFingerprint ||
@@ -267,6 +270,27 @@ if (!repairedSignals.every((signal) =>
   throw new Error("provider recovery signals are not bound to the repaired remote manifest");
 }
 
+for (const scenario of fixture.scenarios) {
+  const signals = [
+    ...(scenario.fault?.resumeCases ?? []).flatMap((item) => item.signals),
+    ...(scenario.fault?.redirectRecovery?.signal ? [scenario.fault.redirectRecovery.signal] : []),
+  ];
+  const producerBySignalId = new Map();
+  const signalIdByProducer = new Map();
+  if (signals.length > 0 && (!scenario.fault?.targetJobId || !signals.every((signal) => {
+    const prior = producerBySignalId.get(signal.signalId);
+    const priorSignalId = signalIdByProducer.get(signal.producerReceiptId);
+    producerBySignalId.set(signal.signalId, signal.producerReceiptId);
+    signalIdByProducer.set(signal.producerReceiptId, signal.signalId);
+    return signal.targetJobId === scenario.fault.targetJobId &&
+      typeof signal.producerReceiptId === "string" && signal.producerReceiptId.length > 0 &&
+      (prior === undefined || prior === signal.producerReceiptId) &&
+      (priorSignalId === undefined || priorSignalId === signal.signalId);
+  }))) {
+    throw new Error(`${scenario.scenarioId} resume signal is not bound to its job and producer receipt`);
+  }
+}
+
 for (const scenario of fixture.scenarios.filter((item) => item.providerActivationProposal)) {
   const assessment = validateProviderProposal(
     scenario.providerActivationProposal.proposal, `${scenario.scenarioId} proposal`,
@@ -280,13 +304,6 @@ for (const scenario of fixture.scenarios.filter((item) => item.providerActivatio
   }
 }
 
-if (
-  fixture.contractFingerprint !== expectedContractFingerprint ||
-  actualContractFingerprint !== expectedContractFingerprint
-) {
-  throw new Error("fixed fixture contract changed without a fixture-version fingerprint update");
-}
-
 const spool = fixture.scenarios.find(
   (scenario) => scenario.scenarioId === "runtime-unavailable-spool-recovery",
 );
@@ -296,8 +313,45 @@ const canonicalEvent = spool?.events?.find((event) => event.eventId === probe?.e
 if (!probe || !canonicalEvent) {
   throw new Error("identity-conflict probe does not resolve its canonical event");
 }
+if (
+  probe.repositoryScope !== spool.sourceRepositoryScope ||
+  probe.source !== spool.canonicalEventSource ||
+  probe.streamId !== spool.sourceStreamId ||
+  typeof spool.canonicalEventSource !== "string" || spool.canonicalEventSource.length === 0 ||
+  typeof spool.sourceStreamId !== "string" || spool.sourceStreamId.length === 0
+) {
+  throw new Error("identity-conflict probe does not bind canonical repository/source/stream identity");
+}
 if (probe.payloadDigestVersion !== canonicalEvent.payloadDigestVersion) {
   throw new Error("identity-conflict probe does not reuse the canonical digest version");
+}
+const expectedConflictReceiptId = `conflict-receipt-v1:${fingerprint(
+  "free-mem:event-identity-conflict-receipt:v1\0",
+  {
+    repositoryScope: probe.repositoryScope,
+    source: probe.source,
+    streamId: probe.streamId,
+    eventId: probe.eventId,
+    payloadDigestVersion: probe.payloadDigestVersion,
+    canonicalPayloadDigest: probe.canonicalPayloadDigest,
+    conflictingPayloadDigest: probe.conflictingPayloadDigest,
+  },
+)}`;
+if (
+  probe.conflictReceiptId !== expectedConflictReceiptId ||
+  !Array.isArray(probe.conflictAttemptReceiptIds) ||
+  probe.conflictAttemptReceiptIds.length < 2 ||
+  !probe.conflictAttemptReceiptIds.every((receiptId) => receiptId === expectedConflictReceiptId) ||
+  probe.durableConflictReceiptCount !== 1
+) {
+  throw new Error("identity-conflict receipt is not unique to and reused for one digest pair");
+}
+
+if (
+  fixture.contractFingerprint !== expectedContractFingerprint ||
+  actualContractFingerprint !== expectedContractFingerprint
+) {
+  throw new Error("fixed fixture contract changed without a fixture-version fingerprint update");
 }
 
 const digestDomain = "free-mem:event-payload-digest:v1\0";

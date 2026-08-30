@@ -1,7 +1,7 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:7eec67b3a68166684de71c98f4da11fbb783970c3cefc6eabd6a13db5ed5fa8b",
+  "fixtureFingerprint": "sha256:775714c020b7b739494899be11ce6ec10afa928cef8fee3dd3a296c968219474",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-output-limit-exceeded",
   "runnerEvidenceCaseId": "summary-provider-output-limit-exceeded",
@@ -49,9 +49,9 @@
     "contentSha256": "sha256:a586515abebe93a9794d4110209e9894119b7e279da81eed4679f0ba9b6a3328"
   },
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
-  "runnerEvidenceFingerprint": "sha256:525f79accd6652487a776e7e19d9616fa3156e675dc3eae297d9001b8426a183",
-  "networkTrustEvidenceFingerprint": "sha256:4232cc7ecacd266466cb87235603b1c5a30dfa016f9c8f79f6e2691ac124b868",
-  "resourcePlateauEvidenceFingerprint": "sha256:51fc64d8378b06911345fa63bbdb5f60fc0f18bdcfde3f70d4358a1e5f70b838",
+  "runnerEvidenceFingerprint": "sha256:180e380904715e21317257d03a0c7fcd150758d3a53a8a3cc179455dfb5ce230",
+  "networkTrustEvidenceFingerprint": "sha256:cf064c7edf1cc3db500cb0f2a030b544931e12e864879fcbe9ecfd41c83ec96a",
+  "resourcePlateauEvidenceFingerprint": "sha256:5329f5ee16a1a1c0f0b47437dafd4209db8fa5529bce86fc55e0562fb5a88d67",
   "drain": {
     "drainConditionId": "slice1-summary-output-limit-visible-v1",
     "status": "completed",
@@ -176,6 +176,8 @@
         "deliveredSignals": [
           {
             "signalId": "output-limit-config-activation-1",
+            "targetJobId": "output-limit-job-1",
+            "producerReceiptId": "output-limit-config-activation-1:producer-receipt",
             "sequence": 1,
             "kind": "validated_configuration_activation",
             "targetRole": "summary",
@@ -471,6 +473,8 @@
         "deliveredSignals": [
           {
             "signalId": "output-limit-provider-health-1",
+            "targetJobId": "output-limit-job-1",
+            "producerReceiptId": "output-limit-provider-health-1:producer-receipt",
             "sequence": 1,
             "kind": "recorded_provider_healthy_transition",
             "targetRole": "summary",
@@ -509,6 +513,8 @@
         "deliveredSignals": [
           {
             "signalId": "output-limit-doctor-retry-1",
+            "targetJobId": "output-limit-job-1",
+            "producerReceiptId": "output-limit-doctor-retry-1:producer-receipt",
             "sequence": 1,
             "kind": "user_confirmed_doctor_retry",
             "targetRole": "summary",

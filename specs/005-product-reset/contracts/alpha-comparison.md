@@ -60,7 +60,7 @@ Each fixture defines:
 - base remote `openai_chat_completions_v1` at
   `https://summary.stub.invalid/v1/chat/completions` with environment credential
   `FREE_MEM_SUMMARY_API_KEY`; local successor at
-  `http://127.0.0.1:1234/v1/chat/completions` with credential `none`; and repaired remote at
+  `https://127.0.0.1:1234/v1/chat/completions` with credential `none`; and repaired remote at
   `https://summary-repaired.stub.invalid/v1/chat/completions`
 - the fixed complete ResourceProfile, including 100 source events/job, 60,000 ms observer timeout,
   exact JavaScript UTF-16 system/user allocation within 12,000 units, 4,000 output tokens, 1 MiB
@@ -71,15 +71,16 @@ Each fixture defines:
   token, and per-lane budgets
 - latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
   warm-up/reset rules, sample boundaries, and percentile calculation
-- runner-owned network trust binding the exact base/repaired hostnames, public CA fingerprint,
+- runner-owned network trust binding the exact base/local/repaired hostnames, public CA fingerprint,
   setup/start credential/payload-free native TLS preflights, normal chain/hostname validation, and
-  absence of a committed private key; exactly four unique raw receipts cover base/repaired by setup
-  activation/daemon start and bind host/SNI/443/5,000 ms, the per-run CA trust anchor, a distinct
+  absence of a committed private key; exactly six unique raw receipts cover base/local/repaired by
+  setup activation/daemon start and bind host/SNI/exact endpoint port/5,000 ms, the per-run CA trust anchor, a distinct
   peer-certificate fingerprint, verified duration, and zero bytes/requests
 - one runner-owned 12-window duplicate/no-op plateau: discard 1-2, measure 3-12, evaluate final
   8-12 for constant processes, drained queue, equal item/token counts, RSS span at most 16 MiB,
-  storage span at most 65,536 bytes, concurrency at most 2, completed checkpoints, unique path-free
-  drain/checkpoint/workload receipt IDs, positive duplicate-delivery attempts, exact
+  storage span at most 65,536 bytes, concurrency at most 2, unique path-free
+  drain/checkpoint/workload receipt IDs, strict runner-monotonic workload-start → workload-receipt →
+  drain-receipt → checkpoint-receipt → resource-sample order with non-overlapping windows, positive duplicate-delivery attempts, exact
   `duplicate_noop`, zero durable/job deltas, and zero orphans; measured RSS/storage ceilings are
   maximum increase from window 3, while only the final-five predicates use max-minus-min spans
 - an explicit drain condition proving comparable completion across candidates
@@ -143,8 +144,9 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
 - observed retry signal delivery, consumed/ignored signal identities, provider-attempt/outcome,
   budget transitions, state, and the exact recovered durable output when applicable
-- the payload-free identity-conflict receipt, canonical/incoming states, reason, preservation flag,
-  and durable-memory delta when applicable
+- the payload-free pair-bound identity-conflict receipt, canonical repository/source/stream/event
+  identity, repeated-attempt receipt IDs, one durable receipt count, canonical/incoming states,
+  reason, preservation flag, and durable-memory delta when applicable
 - the closed payload-free failure metadata record when an output-limit rejection applies
 - individual zero-tolerance counters for Agent blockage, accepted-event loss, duplicate durable
   memory, secret egress, and incompatible-scope injection
@@ -192,11 +194,22 @@ domain-separated fingerprint of
 the complete schema-validated result observation, excluding only the bundle fingerprint that would
 create a cycle. This binds egress, render, atomicity, and conflict evidence without duplicating
 private payload into the runner bundle. A candidate-authored hash or source label is not evidence.
-The network object binds `summary.stub.invalid`, `summary-repaired.stub.invalid`, a hostname-valid
+The network object binds `summary.stub.invalid`, literal `127.0.0.1`,
+`summary-repaired.stub.invalid`, a hostname/IP-valid
 public CA SHA-256, normal chain/hostname validation, and `privateKeyCommitted=false`; no private key
-is committed. Its four raw receipts prove base/repaired setup and daemon preflights with exact SNI,
-timeout, per-run CA/peer-certificate fingerprints, duration, verification, and zero HTTP/auth/payload
-activity. The plateau object binds all 12 ordered duplicate/no-op workload receipts and separately
+is committed. Its six raw receipts prove base/local/repaired setup and daemon preflights with exact
+hostname, remote SNI or null IP SNI, endpoint port, timeout, per-run CA/peer-certificate fingerprints,
+duration, verification, and zero HTTP/auth/payload activity. Each real scenario also carries one
+runner-owned provider-egress observation spanning candidate start through process-tree termination;
+its network gate opens only after a direct durable-store authorization carrying explicit ordered
+committed event IDs, their count, and their set fingerprint, and binds the earliest
+request interval, provider/location, request/payload/auth aggregates, and source bytes by sensitivity.
+Those sensitivity bytes are measured by the runner-owned stub from the request bytes it receives and
+the fixture's fixed synthetic source markers/spans; they are never derived from allow policy or a
+candidate result field.
+The projected late-injection negative references the base observation instead of fabricating a run.
+The plateau object binds all 12 ordered, non-overlapping duplicate/no-op workload receipts and their
+strict workload/drain/checkpoint/sample timestamps, and separately
 fingerprints maximum-increase-from-first and final-five-span predicates before any aggregate can
 affect eligibility.
 Cold runs require opaque data-root, reset-receipt, and process-generation identities that occur only
@@ -321,8 +334,10 @@ runner bundle before the result can be eligible.
   UTF-8 `redactedPayload`. Its positive configured-endpoint byte count and zero redirect-location
   request/byte/resend counters are independently recorded.
 - Credential/payload byte evidence is the fixture-pinned aggregate across the configured-endpoint
-  attempt set. Allowed verified-HTTPS attempts must match that exact aggregate; local providers and
-  rejected activations record zero. The remote ProviderChoice remains `external_metered`; the fixed
+  attempt set. Allowed verified-HTTPS attempts must match that exact aggregate: remote attempts may
+  record fixture-pinned credential and payload bytes; local providers record zero credential bytes
+  but may record fixture-pinned payload bytes; rejected activations record both zero. The remote
+  ProviderChoice remains `external_metered`; the fixed
   runner records exactly zero provider cost units because its deterministic stub is runner-owned,
   not because of provider cost class.
 - Remote request/payload counts cover the initial drain attempt set only. Every independent recovery

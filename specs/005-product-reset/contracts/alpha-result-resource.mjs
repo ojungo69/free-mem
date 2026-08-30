@@ -2,6 +2,8 @@ import { isDeepStrictEqual } from "node:util";
 
 const span = (values) => Math.max(...values) - Math.min(...values);
 const maximumIncrease = (values) => Math.max(...values) - values[0];
+const FINAL_FIVE_RSS_SPAN_MIB = 16;
+const FINAL_FIVE_STORAGE_SPAN_BYTES = 65536;
 
 export function validateResourcePlateauEvidence(evidence, fixture) {
   const windows = evidence?.windows;
@@ -56,8 +58,16 @@ export function validateResourcePlateauEvidence(evidence, fixture) {
   if (windows.some((window) => window.processingJobDelta !== 0)) {
     throw new Error("resource plateau processing job delta is nonzero");
   }
-  if (!windows.every((window) => window.checkpointCompleted)) {
-    throw new Error("resource plateau window lacks a completed drain/checkpoint");
+  const timestampFields = ["workloadStartedMonotonicMs", "workloadReceiptMonotonicMs",
+    "drainReceiptMonotonicMs", "checkpointReceiptMonotonicMs", "resourceSampleMonotonicMs"];
+  if (!windows.every((window, index) => {
+    const times = timestampFields.map((field) => window[field]);
+    return times.every(Number.isFinite) &&
+      times.every((time, timeIndex) => timeIndex === 0 || times[timeIndex - 1] < time) &&
+      (index === 0 || windows[index - 1].resourceSampleMonotonicMs <
+        window.workloadStartedMonotonicMs);
+  })) {
+    throw new Error("resource plateau workload/drain/checkpoint/sample order is invalid");
   }
   if (evidence.orphanProductProcessCount !== 0) {
     throw new Error("resource plateau evidence contains an orphan process");
@@ -111,10 +121,10 @@ export function validateResourcePlateauEvidence(evidence, fixture) {
   if (!final.every((window) => window.injectedTokenCount === final[0].injectedTokenCount)) {
     throw new Error("resource plateau final injected token count is not constant");
   }
-  if (span(final.map((window) => window.rssMiB)) > 16) {
+  if (span(final.map((window) => window.rssMiB)) > FINAL_FIVE_RSS_SPAN_MIB) {
     throw new Error("resource plateau final RSS span exceeds 16 MiB");
   }
-  if (span(final.map((window) => window.storageBytes)) > 65536) {
+  if (span(final.map((window) => window.storageBytes)) > FINAL_FIVE_STORAGE_SPAN_BYTES) {
     throw new Error("resource plateau final storage span exceeds 65536 bytes");
   }
 }

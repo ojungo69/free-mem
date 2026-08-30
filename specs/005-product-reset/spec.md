@@ -154,13 +154,19 @@ without leaving active processes or managed configuration behind.
 
 - An Agent switches before the prior session's summary work has completed.
 - The same event is retried after an uncertain delivery result.
+- The same scoped event identity and payload digest is retried with stronger trusted sensitivity or
+  quarantine state. The canonical row and every already-derived record atomically retain the
+  strongest sensitivity; quarantine is absorbing and returns a non-success receipt before any
+  further selection or normal ACK.
 - The same scoped event identity is retried with a different deterministically normalized,
   post-redaction payload digest; a durable payload-free conflict record captures the event identity
   and both digests in the same atomic transaction that makes the incoming delivery terminally
   quarantined. Only after that commit does the caller receive a non-success conflict receipt; a
-  normal success ACK or silent discard is forbidden. The first accepted event remains immutable and
-  no additional durable result is created. Retrying the same conflict returns the same non-success
-  receipt; correction requires the canonical digest or a new event identity.
+  normal success ACK or silent discard is forbidden. The first accepted event's payload remains
+  immutable and no additional durable result is created. The receipt is unique to the canonical
+  identity and ordered digest pair: retrying the same conflict returns it, while a different
+  conflicting digest receives a different receipt. Correction requires the canonical digest or a
+  new event identity.
 - A queued or replayed event crosses a redaction/digest algorithm upgrade. The event retains the
   immutable normalization version recorded at first acceptance, and comparison uses that version;
   the upgrade alone MUST NOT fabricate an identity conflict.
@@ -187,11 +193,17 @@ without leaving active processes or managed configuration behind.
   preserve the originating Agent, repository, session, ordering, and event identity.
 - **FR-004**: Captured activity accepted by the product MUST survive runtime and provider
   interruption and MUST NOT produce duplicate durable memories after retry or recovery. A scoped
+  event identity replayed with the same payload digest MUST atomically join trusted sensitivity and
+  capture state before acknowledgement: sensitivity can only strengthen, quarantine is absorbing,
+  and every existing record derived from that event must be strengthened in the same transaction.
+  A quarantine escalation returns a non-success receipt and cannot leave selectable content. A scoped
   event identity with a conflicting post-redaction digest MUST persist a payload-free quarantined
   conflict record atomically before returning an explicit non-success conflict receipt. The
   conflicting delivery is terminally quarantined and MUST NOT receive a normal success ACK, be
   silently discarded, overwrite or duplicate the first accepted result, or retain unprocessed
-  secret data.
+  secret data. Its receipt MUST be deterministic for the canonical identity and ordered digest pair;
+  repeated delivery of that pair reuses one durable receipt and a different conflicting digest does
+  not.
   The accepted event and every spool/retry record MUST persist the digest-normalization version;
   replay uses the original version even after a newer algorithm activates.
 - **FR-005**: Capture and memory-processing failures MUST NOT block normal Agent work.

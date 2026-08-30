@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
 import { runnerEvidenceFingerprint, runnerResultObservationFingerprint, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import { clearProviderEgressEvidence } from "./provider-egress-test-helper.mjs";
 import "./validate-slice1-fixture.test.mjs";
 import "./validate-alpha-runner-evidence.test.mjs";
 import "./validate-alpha-result-render.test.mjs";
@@ -30,6 +31,12 @@ const suiteRegressionEvidence = JSON.parse(readFileSync(join(contractDir,
 const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evidence-"));
 let runnerEvidenceOrdinal = 0;
 process.on("exit", () => rmSync(runnerEvidenceRoot, { recursive: true, force: true }));
+
+function suiteProviderEgressEvidence(caseId) {
+  const record = suiteRegressionEvidence.scenarios.find((item) => item.caseId === caseId);
+  if (!record) throw new Error(`suite provider egress evidence is missing: ${caseId}`);
+  return structuredClone(record.providerEgressEvidence);
+}
 
 function buildRunnerEvidence(result) {
   const latencyRuns = structuredClone(result.latencyEvidence.runs);
@@ -64,7 +71,7 @@ function buildRunnerEvidence(result) {
       readyProcessObserved: !cold,
     };
   });
-  return {
+  const evidence = {
     runnerEvidenceVersion: 1,
     fixtureId: result.fixtureId,
     fixtureFingerprint: result.fixtureFingerprint,
@@ -83,6 +90,7 @@ function buildRunnerEvidence(result) {
       processTreeRootId: `${result.scenarioId}:process-tree-root`,
       resourceDataRootId: `${result.scenarioId}:resource-data-root`,
       resultObservationFingerprint: runnerResultObservationFingerprint(result),
+      providerEgressEvidence: suiteProviderEgressEvidence(result.runnerEvidenceCaseId),
       hostIdentityEvidence: structuredClone(result.hostIdentityEvidence),
       observedMilestones: structuredClone(result.milestones),
       processSamples: structuredClone(result.processSamples),
@@ -90,6 +98,7 @@ function buildRunnerEvidence(result) {
       runPreparations,
     }],
   };
+  return evidence;
 }
 
 function attachRunnerEvidence(result, evidence) {
@@ -303,6 +312,7 @@ assertRejected(missingDeterministicStubCost, /deterministic provider stub/,
 
 const unsupported = unsupportedResult();
 const unsupportedEvidence = buildRunnerEvidence(unsupported);
+clearProviderEgressEvidence(unsupportedEvidence, unsupported.runnerEvidenceCaseId);
 attachRunnerEvidence(unsupported, unsupportedEvidence);
 assertAccepted(unsupported, "unsupported result", unsupportedEvidence);
 
@@ -496,6 +506,8 @@ suiteRunnerEvidence.scenarios = suiteCaseIds.map((caseId) => {
   const scenarioId = caseId === fixture.beforeModelNegativeFixture.caseId
     ? fixture.beforeModelNegativeFixture.baseScenarioId : caseId;
   const record = { ...structuredClone(successEvidence.scenarios[0]), caseId, scenarioId };
+  record.providerEgressEvidence.receiptId =
+    `${caseId}:${record.providerEgressEvidence.receiptId}`;
   for (const preparation of record.runPreparations) {
     preparation.receiptId = `${caseId}:${preparation.receiptId}`;
     preparation.dataDirInstanceId = `${caseId}:${preparation.dataDirInstanceId}`;
@@ -503,6 +515,14 @@ suiteRunnerEvidence.scenarios = suiteCaseIds.map((caseId) => {
   }
   return record;
 });
+const syntheticBaseEgress = suiteRunnerEvidence.scenarios.find((item) =>
+  item.caseId === fixture.beforeModelNegativeFixture.baseScenarioId).providerEgressEvidence;
+suiteRunnerEvidence.scenarios.find((item) =>
+  item.caseId === fixture.beforeModelNegativeFixture.caseId).providerEgressEvidence = {
+  kind: "projection",
+  sourceCaseId: fixture.beforeModelNegativeFixture.baseScenarioId,
+  sourceReceiptId: syntheticBaseEgress.receiptId,
+};
 const suiteRunnerResult = attachRunnerEvidence(structuredClone(success), suiteRunnerEvidence);
 validateRunnerEvidence(suiteRunnerEvidence, suiteRunnerResult,
   fixture, suiteRunnerEvidence.invocationId, suiteCaseIds);

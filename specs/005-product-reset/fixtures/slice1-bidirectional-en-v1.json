@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:7eec67b3a68166684de71c98f4da11fbb783970c3cefc6eabd6a13db5ed5fa8b",
+  "contractFingerprint": "sha256:775714c020b7b739494899be11ce6ec10afa928cef8fee3dd3a296c968219474",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -126,7 +126,7 @@
     "manifestVersion": 1,
     "manifestId": "slice1-local-summary-manifest-v1",
     "baseConfigurationFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
-    "configurationFingerprint": "sha256:94f1bd333c044a84f3380a819fcc84b470b998e9c4957486207c55b578f7f795",
+    "configurationFingerprint": "sha256:302cd76fbd261addadb62d3abc6cb778f38d53982e8870f71c16cd36af99f275",
     "destinationPolicyMap": {
       "claude-code-local": {
         "targetAgent": "claude-code",
@@ -202,13 +202,13 @@
       "wireProtocol": "openai_chat_completions_v1",
       "modelId": "deterministic-summary-local-model-v1",
       "modelRevision": "1",
-      "endpointUrl": "http://127.0.0.1:1234/v1/chat/completions",
+      "endpointUrl": "https://127.0.0.1:1234/v1/chat/completions",
       "credentialRef": {"kind": "none"},
-      "providerFingerprint": "sha256:d4b79d38e35a6a8f97b9412e8d83616614d1a6ac0f2a27f2056283aa5436544a",
+      "providerFingerprint": "sha256:b206e47c83fa4bccf799d42bbc3ec9920232e3ec3671d89b5c6c7760540dd12a",
       "executionLocation": "local",
       "egressPolicy": "on_device",
       "costClass": "local_zero",
-      "tlsPolicy": "not_applicable",
+      "tlsPolicy": "system",
       "redirectPolicy": "reject"
     },
     "embeddingProvider": {
@@ -1110,6 +1110,8 @@
     {
       "scenarioId": "runtime-unavailable-spool-recovery",
       "sourceAgent": "claude-code",
+      "canonicalEventSource": "claude",
+      "sourceStreamId": "runtime-unavailable-spool-recovery:source-stream",
       "targetDestinationClass": "codex-local",
       "targetSessionId": "runtime-unavailable-spool-recovery:target-session",
       "sourceRepositoryScope": "repo-primary",
@@ -1138,13 +1140,21 @@
           }
         ],
         "identityConflictProbe": {
+          "repositoryScope": "repo-primary",
+          "source": "claude",
+          "streamId": "runtime-unavailable-spool-recovery:source-stream",
           "eventId": "spool-event-2",
           "digestInput": "domain_separated_jcs_redacted_payload_v1",
           "payloadDigestVersion": "event-payload-digest-v1",
           "canonicalPayloadDigest": "sha256:d24752e237bb46925c9baffce7f9ee4964b2d1878897a5400b8b2d106db296f1",
           "conflictingRedactedPayload": "Next: verify the queued event after daemon restart with altered payload.",
           "conflictingPayloadDigest": "sha256:629ce8c5b81da6e328e1c747061042058d79ee8e017fdb2dd6a366c6b08a0727",
-          "conflictReceiptId": "conflict-receipt-spool-event-2-v1",
+          "conflictReceiptId": "conflict-receipt-v1:sha256:d014d5a0a157e888cb0d3a4304405b31959232ce2f79d52a8f43d0a4e779c734",
+          "conflictAttemptReceiptIds": [
+            "conflict-receipt-v1:sha256:d014d5a0a157e888cb0d3a4304405b31959232ce2f79d52a8f43d0a4e779c734",
+            "conflict-receipt-v1:sha256:d014d5a0a157e888cb0d3a4304405b31959232ce2f79d52a8f43d0a4e779c734"
+          ],
+          "durableConflictReceiptCount": 1,
           "conflictReceiptState": "non_success",
           "canonicalEventState": "committed",
           "incomingDeliveryState": "quarantined",
@@ -1271,6 +1281,7 @@
       "providerTransmissionOracle": {"credentialBytesSent": 96, "payloadBytesSent": 384, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_malformed_response",
+        "targetJobId": "summary-provider-retry-exhausted-job-1",
         "attemptsUntilExhausted": 3,
         "resumeCasesAreIndependent": true,
         "resumeCaseInitialSnapshot": {
@@ -1301,6 +1312,8 @@
             "signals": [
               {
                 "signalId": "config-activation-1",
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "config-activation-1:producer-receipt",
               "sequence": 1,
               "kind": "validated_configuration_activation",
               "targetRole": "summary",
@@ -1335,6 +1348,8 @@
             "signals": [
               {
                 "signalId": "provider-healthy-1",
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "provider-healthy-1:producer-receipt",
               "sequence": 1,
               "kind": "recorded_provider_healthy_transition",
               "targetRole": "summary",
@@ -1369,6 +1384,8 @@
             "signals": [
               {
                 "signalId": "doctor-retry-1",
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "doctor-retry-1:producer-receipt",
               "sequence": 1,
               "kind": "user_confirmed_doctor_retry",
               "targetRole": "summary",
@@ -1403,6 +1420,8 @@
             "signals": [
               {
                 "signalId": "provider-healthy-2",
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "provider-healthy-2:producer-receipt",
               "sequence": 2,
               "kind": "recorded_provider_healthy_transition",
               "targetRole": "summary",
@@ -1411,6 +1430,8 @@
               },
               {
                 "signalId": "provider-healthy-2",
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "provider-healthy-2:producer-receipt",
               "sequence": 2,
               "kind": "recorded_provider_healthy_transition",
               "targetRole": "summary",
@@ -1419,6 +1440,8 @@
               },
               {
                 "signalId": "doctor-retry-stale-1",
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "doctor-retry-stale-1:producer-receipt",
               "sequence": 1,
               "kind": "user_confirmed_doctor_retry",
               "targetRole": "summary",
@@ -1523,6 +1546,7 @@
       "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 58, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_redirect_response",
+        "targetJobId": "summary-provider-redirect-rejected-job-1",
         "resumeCaseInitialSnapshot": {
           "state": "retry-exhausted",
           "budget": 0,
@@ -1541,6 +1565,8 @@
           "caseId": "redirect-validated-configuration-activation",
           "signal": {
             "signalId": "redirect-config-activation-1",
+            "targetJobId": "summary-provider-redirect-rejected-job-1",
+            "producerReceiptId": "redirect-config-activation-1:producer-receipt",
             "sequence": 1,
             "kind": "validated_configuration_activation",
             "targetRole": "summary",
@@ -1654,6 +1680,7 @@
       , "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_redirect_response",
+        "targetJobId": "summary-provider-https-to-http-downgrade-rejected-job-1",
         "resumeCaseInitialSnapshot": {
           "state": "retry-exhausted",
           "budget": 0,
@@ -1680,6 +1707,8 @@
           "caseId": "downgrade-validated-configuration-activation",
           "signal": {
             "signalId": "downgrade-config-activation-1",
+            "targetJobId": "summary-provider-https-to-http-downgrade-rejected-job-1",
+            "producerReceiptId": "downgrade-config-activation-1:producer-receipt",
             "sequence": 1,
             "kind": "validated_configuration_activation",
             "targetRole": "summary",
@@ -2068,6 +2097,7 @@
       "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_output_limit_exceeded",
+        "targetJobId": "output-limit-job-1",
         "observedResultCount": 17,
         "configuredLimit": 16,
         "failureMetadata": {
@@ -2154,6 +2184,8 @@
             "signals": [
               {
                 "signalId": "output-limit-config-activation-1",
+              "targetJobId": "output-limit-job-1",
+              "producerReceiptId": "output-limit-config-activation-1:producer-receipt",
               "sequence": 1,
               "kind": "validated_configuration_activation",
               "targetRole": "summary",
@@ -2188,6 +2220,8 @@
             "signals": [
               {
                 "signalId": "output-limit-provider-health-1",
+              "targetJobId": "output-limit-job-1",
+              "producerReceiptId": "output-limit-provider-health-1:producer-receipt",
               "sequence": 1,
               "kind": "recorded_provider_healthy_transition",
               "targetRole": "summary",
@@ -2222,6 +2256,8 @@
             "signals": [
               {
                 "signalId": "output-limit-doctor-retry-1",
+              "targetJobId": "output-limit-job-1",
+              "producerReceiptId": "output-limit-doctor-retry-1:producer-receipt",
               "sequence": 1,
               "kind": "user_confirmed_doctor_retry",
               "targetRole": "summary",
@@ -2949,7 +2985,7 @@
       "lifecycleProfileId": "derived_sensitivity_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "local derived sentinel",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 128, "completionMilestone": "local_provider_derived_memory"},
       "events": [
         {
           "eventId": "local-derived-event-1",

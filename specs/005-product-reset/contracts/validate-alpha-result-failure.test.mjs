@@ -11,6 +11,7 @@ import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
 import { lineageDigest } from "./alpha-result-lineage.mjs";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
 import { runnerEvidenceFingerprint, runnerResultObservationFingerprint } from "./alpha-runner-evidence.mjs";
+import { clearProviderEgressEvidence } from "./provider-egress-test-helper.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
@@ -100,8 +101,16 @@ assertRejected(staleRecoveryProviderFingerprint, /provider failure evidence/,
 
 const conflictResult = suiteResultFor("runtime-unavailable-spool-recovery");
 for (const [mutate, pattern, label] of [
+  [(evidence) => { delete evidence.streamId; }, /streamId/,
+    "identity conflict missing canonical stream"],
   [(evidence) => { delete evidence.conflictReceiptId; }, /conflictReceiptId/,
     "identity conflict missing receipt field"],
+  [(evidence) => { delete evidence.conflictAttemptReceiptIds; }, /conflictAttemptReceiptIds/,
+    "identity conflict missing repeated-attempt receipts"],
+  [(evidence) => { evidence.conflictAttemptReceiptIds.pop(); }, /conflictAttemptReceiptIds/,
+    "identity conflict has only one attempt receipt"],
+  [(evidence) => { evidence.durableConflictReceiptCount = 2; }, /durableConflictReceiptCount/,
+    "identity conflict persisted multiple receipts for one pair"],
   [(evidence) => { evidence.reason = "wrong_reason"; }, /\$\.reason/,
     "identity conflict wrong reason"],
   [(evidence) => { evidence.incomingDeliveryState = "committed"; },
@@ -120,9 +129,19 @@ for (const [mutate, pattern, label] of [
   assert.match(JSON.stringify(issues), pattern, label);
 }
 const semanticConflictMismatch = structuredClone(conflictResult);
-semanticConflictMismatch.identityConflictEvidence.conflictReceiptId += "-changed";
+semanticConflictMismatch.identityConflictEvidence.conflictReceiptId =
+  `conflict-receipt-v1:sha256:${"0".repeat(64)}`;
+semanticConflictMismatch.identityConflictEvidence.conflictAttemptReceiptIds = [
+  semanticConflictMismatch.identityConflictEvidence.conflictReceiptId,
+  semanticConflictMismatch.identityConflictEvidence.conflictReceiptId,
+];
 assertRejected(semanticConflictMismatch, /identity conflict evidence/,
   "identity conflict schema-valid receipt mismatch", suiteRegressionEvidence);
+const semanticConflictAttemptMismatch = structuredClone(conflictResult);
+semanticConflictAttemptMismatch.identityConflictEvidence.conflictAttemptReceiptIds[1] =
+  `conflict-receipt-v1:sha256:${"0".repeat(64)}`;
+assertRejected(semanticConflictAttemptMismatch, /identity conflict evidence/,
+  "identity conflict schema-valid attempt receipt mismatch", suiteRegressionEvidence);
 
 const unobservedInjectionClaim = structuredClone(failure);
 unobservedInjectionClaim.injectionBeforeModel = true;
@@ -267,13 +286,15 @@ timeoutBeforeCapture.securityDenominators = {
 };
 for (const name of Object.keys(timeoutBeforeCapture.securityEvidence))
   timeoutBeforeCapture.securityEvidence[name] = 0;
+const timeoutBeforeCaptureEvidence = runnerEvidenceFor(timeoutBeforeCapture, successEvidence);
+clearProviderEgressEvidence(timeoutBeforeCaptureEvidence, timeoutBeforeCapture.runnerEvidenceCaseId);
 assertAccepted(timeoutBeforeCapture, "timeout before event capture",
-  runnerEvidenceFor(timeoutBeforeCapture, successEvidence));
+  timeoutBeforeCaptureEvidence);
 
 const timeoutBeforeProviderAttempt = timedOutSuccessAt("source_events_captured");
 clearUnobservedSelection(timeoutBeforeProviderAttempt);
 timeoutBeforeProviderAttempt.counts.committed = 0;
-assertRejected(timeoutBeforeProviderAttempt, /provider egress exists without committed events/,
+assertRejected(timeoutBeforeProviderAttempt, /authorization event identities/,
   "timeout before provider attempt claimed egress",
   runnerEvidenceFor(timeoutBeforeProviderAttempt, successEvidence));
 
@@ -288,8 +309,10 @@ Object.assign(timeoutWhileSpooled.securityEvidence, {
   remoteProviderRequestCount: 0, remoteProviderPayloadCount: 0,
   credentialBytesSent: 0, payloadBytesSent: 0,
 });
+const timeoutWhileSpooledEvidence = runnerEvidenceFor(timeoutWhileSpooled, suiteRegressionEvidence);
+clearProviderEgressEvidence(timeoutWhileSpooledEvidence, timeoutWhileSpooled.runnerEvidenceCaseId);
 assertAccepted(timeoutWhileSpooled, "timeout while events remained spooled",
-  runnerEvidenceFor(timeoutWhileSpooled, suiteRegressionEvidence));
+  timeoutWhileSpooledEvidence);
 
 const timeoutBeforeSpoolCompletion = timedOutAt(spoolResult, "stable_batch_replayed_second_time");
 clearUnobservedSelection(timeoutBeforeSpoolCompletion, spoolScenario);
@@ -297,7 +320,7 @@ Object.assign(timeoutBeforeSpoolCompletion.counts, {
   committed: 0, duplicateDeliveries: spoolResult.counts.duplicateDeliveries,
   summaryCount: 0, durableMemoryCount: 0,
 });
-assertRejected(timeoutBeforeSpoolCompletion, /provider egress exists without committed events/,
+assertRejected(timeoutBeforeSpoolCompletion, /authorization event identities/,
   "spool timeout before provider completion claimed egress",
   runnerEvidenceFor(timeoutBeforeSpoolCompletion, suiteRegressionEvidence));
 

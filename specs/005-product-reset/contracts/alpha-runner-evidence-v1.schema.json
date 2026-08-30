@@ -31,10 +31,11 @@
     "NetworkTrustEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "baseHostname", "repairedHostname", "publicCaSha256", "chainValidation", "hostnameValidation", "privateKeyCommitted", "tlsPreflightReceipts"],
+      "required": ["version", "baseHostname", "localHostname", "repairedHostname", "publicCaSha256", "chainValidation", "hostnameValidation", "privateKeyCommitted", "tlsPreflightReceipts"],
       "properties": {
         "version": { "const": 1 },
         "baseHostname": { "const": "summary.stub.invalid" },
+        "localHostname": { "const": "127.0.0.1" },
         "repairedHostname": { "const": "summary-repaired.stub.invalid" },
         "publicCaSha256": { "$ref": "#/$defs/Fingerprint" },
         "chainValidation": { "const": true },
@@ -42,8 +43,8 @@
         "privateKeyCommitted": { "const": false },
         "tlsPreflightReceipts": {
           "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
+          "minItems": 6,
+          "maxItems": 6,
           "items": { "$ref": "#/$defs/TlsPreflightReceipt" }
         }
       }
@@ -55,9 +56,12 @@
       "properties": {
         "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "phase": { "enum": ["setup_activation", "daemon_start"] },
-        "hostname": { "enum": ["summary.stub.invalid", "summary-repaired.stub.invalid"] },
-        "sni": { "enum": ["summary.stub.invalid", "summary-repaired.stub.invalid"] },
-        "port": { "const": 443 },
+        "hostname": { "enum": ["summary.stub.invalid", "127.0.0.1", "summary-repaired.stub.invalid"] },
+        "sni": { "oneOf": [
+          { "type": "null" },
+          { "enum": ["summary.stub.invalid", "summary-repaired.stub.invalid"] }
+        ] },
+        "port": { "enum": [443, 1234] },
         "timeoutMs": { "const": 5000 },
         "startMonotonicMs": { "type": "number", "minimum": 0 },
         "endMonotonicMs": { "type": "number", "minimum": 0 },
@@ -93,7 +97,7 @@
     "ResourcePlateauWindow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ordinal", "processCount", "rssMiB", "drainedQueueDepth", "storageBytes", "selectedItemCount", "injectedTokenCount", "maxProcessingConcurrency", "drainReceiptId", "checkpointReceiptId", "workloadReceiptId", "duplicateDeliveryAttemptCount", "noOpOutcome", "durableMemoryDelta", "processingJobDelta", "checkpointCompleted"],
+      "required": ["ordinal", "processCount", "rssMiB", "drainedQueueDepth", "storageBytes", "selectedItemCount", "injectedTokenCount", "maxProcessingConcurrency", "drainReceiptId", "checkpointReceiptId", "workloadReceiptId", "workloadStartedMonotonicMs", "workloadReceiptMonotonicMs", "drainReceiptMonotonicMs", "checkpointReceiptMonotonicMs", "resourceSampleMonotonicMs", "duplicateDeliveryAttemptCount", "noOpOutcome", "durableMemoryDelta", "processingJobDelta"],
       "properties": {
         "ordinal": { "type": "integer", "minimum": 1, "maximum": 12 },
         "processCount": { "$ref": "#/$defs/NonNegativeInteger" },
@@ -106,11 +110,15 @@
         "drainReceiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "checkpointReceiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "workloadReceiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "workloadStartedMonotonicMs": { "type": "number", "minimum": 0 },
+        "workloadReceiptMonotonicMs": { "type": "number", "minimum": 0 },
+        "drainReceiptMonotonicMs": { "type": "number", "minimum": 0 },
+        "checkpointReceiptMonotonicMs": { "type": "number", "minimum": 0 },
+        "resourceSampleMonotonicMs": { "type": "number", "minimum": 0 },
         "duplicateDeliveryAttemptCount": { "$ref": "#/$defs/PositiveInteger" },
         "noOpOutcome": { "const": "duplicate_noop" },
         "durableMemoryDelta": { "const": 0 },
-        "processingJobDelta": { "const": 0 },
-        "checkpointCompleted": { "type": "boolean" }
+        "processingJobDelta": { "const": 0 }
       }
     },
     "HostIdentity": {
@@ -184,10 +192,81 @@
         "readyProcessObserved": { "type": "boolean" }
       }
     },
+    "ProviderEgressAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observedAtMonotonicMs", "committedEventCount", "committedEventIds", "committedEventSetFingerprint"],
+      "properties": {
+        "observedAtMonotonicMs": { "type": "number", "minimum": 0 },
+        "committedEventCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "committedEventIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/NonEmptyString" }
+        },
+        "committedEventSetFingerprint": { "$ref": "#/$defs/Fingerprint" }
+      }
+    },
+    "SourcePayloadBytesBySensitivity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligible", "localOnly", "private", "secret"],
+      "properties": {
+        "eligible": { "$ref": "#/$defs/NonNegativeInteger" },
+        "localOnly": { "$ref": "#/$defs/NonNegativeInteger" },
+        "private": { "$ref": "#/$defs/NonNegativeInteger" },
+        "secret": { "$ref": "#/$defs/NonNegativeInteger" }
+      }
+    },
+    "ProviderEgressObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "receiptId", "evidenceSource", "providerFingerprint", "executionLocation", "observationStartedMonotonicMs", "candidateStartedMonotonicMs", "authorization", "firstProviderRequestStartedMonotonicMs", "lastProviderRequestFinishedMonotonicMs", "processTreeTerminatedMonotonicMs", "observationFinishedMonotonicMs", "preAuthorizationProviderAttemptCount", "nonLoopbackSocketAttemptCount", "providerRequestCount", "providerPayloadCount", "credentialBytesSent", "payloadBytesSent", "sourcePayloadBytesBySensitivity", "redirectLocationRequestCount", "redirectLocationPayloadBytesSent", "resentPayloadCount"],
+      "properties": {
+        "kind": { "const": "observed" },
+        "receiptId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "evidenceSource": { "const": "runner_network_gate_and_stub_v1" },
+        "providerFingerprint": { "$ref": "#/$defs/Fingerprint" },
+        "executionLocation": { "enum": ["local", "remote"] },
+        "observationStartedMonotonicMs": { "type": "number", "minimum": 0 },
+        "candidateStartedMonotonicMs": { "type": "number", "minimum": 0 },
+        "authorization": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/ProviderEgressAuthorization" }] },
+        "firstProviderRequestStartedMonotonicMs": { "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }] },
+        "lastProviderRequestFinishedMonotonicMs": { "oneOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }] },
+        "processTreeTerminatedMonotonicMs": { "type": "number", "minimum": 0 },
+        "observationFinishedMonotonicMs": { "type": "number", "minimum": 0 },
+        "preAuthorizationProviderAttemptCount": { "const": 0 },
+        "nonLoopbackSocketAttemptCount": { "const": 0 },
+        "providerRequestCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "providerPayloadCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "credentialBytesSent": { "$ref": "#/$defs/NonNegativeInteger" },
+        "payloadBytesSent": { "$ref": "#/$defs/NonNegativeInteger" },
+        "sourcePayloadBytesBySensitivity": { "$ref": "#/$defs/SourcePayloadBytesBySensitivity" },
+        "redirectLocationRequestCount": { "$ref": "#/$defs/NonNegativeInteger" },
+        "redirectLocationPayloadBytesSent": { "$ref": "#/$defs/NonNegativeInteger" },
+        "resentPayloadCount": { "$ref": "#/$defs/NonNegativeInteger" }
+      }
+    },
+    "ProviderEgressProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sourceCaseId", "sourceReceiptId"],
+      "properties": {
+        "kind": { "const": "projection" },
+        "sourceCaseId": { "$ref": "#/$defs/OpaqueIdentifier" },
+        "sourceReceiptId": { "$ref": "#/$defs/OpaqueIdentifier" }
+      }
+    },
+    "ProviderEgressEvidence": {
+      "oneOf": [
+        { "$ref": "#/$defs/ProviderEgressObserved" },
+        { "$ref": "#/$defs/ProviderEgressProjection" }
+      ]
+    },
     "ScenarioEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "scenarioId", "resourceSampleMode", "resourceObserverId", "processTreeRootId", "resourceDataRootId", "resultObservationFingerprint", "hostIdentityEvidence", "observedMilestones", "processSamples", "latencyRuns", "runPreparations"],
+      "required": ["caseId", "scenarioId", "resourceSampleMode", "resourceObserverId", "processTreeRootId", "resourceDataRootId", "resultObservationFingerprint", "providerEgressEvidence", "hostIdentityEvidence", "observedMilestones", "processSamples", "latencyRuns", "runPreparations"],
       "properties": {
         "caseId": { "$ref": "#/$defs/NonEmptyString" },
         "scenarioId": { "$ref": "#/$defs/NonEmptyString" },
@@ -196,6 +275,7 @@
         "processTreeRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "resourceDataRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "resultObservationFingerprint": { "$ref": "#/$defs/Fingerprint" },
+        "providerEgressEvidence": { "$ref": "#/$defs/ProviderEgressEvidence" },
         "hostIdentityEvidence": {
           "oneOf": [
             { "type": "null" },

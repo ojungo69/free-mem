@@ -17,19 +17,18 @@ def milestones_ok:
     end);
 
 def late_injection_ok:
-  if .runnerEvidenceCaseId != "late-injection-after-model-dispatch"
-  then true
-  else . as $result
-    | ([ $result.milestones[] | select(.name == "target_model_request_dispatched") ]
-        | if length == 1 then .[0] else null end) as $dispatch
-    | ([ $result.milestones[] | select(.name == "target_injection_acknowledged") ]
-        | if length == 1 then .[0] else null end) as $injection
-    | ($dispatch != null and $injection != null
-      and ([$result.milestones[].name] | index($dispatch.name)) <
-        ([$result.milestones[].name] | index($injection.name))
-      and $dispatch.monotonicMs < $injection.monotonicMs
-      and $result.injectionBeforeModel == false)
-  end;
+  . as $result
+  | ([ $result.milestones[] | select(.name == "target_model_request_dispatched") ]
+      | if length == 1 then .[0] else null end) as $dispatch
+  | ([ $result.milestones[] | select(.name == "target_injection_acknowledged") ]
+      | if length == 1 then .[0] else null end) as $injection
+  | if $dispatch == null or $injection == null
+    then true
+    else $result.injectionBeforeModel ==
+      (([$result.milestones[].name] | index($injection.name)) <
+        ([$result.milestones[].name] | index($dispatch.name))
+        and $injection.monotonicMs < $dispatch.monotonicMs)
+    end;
 
 def counts_ok:
   .counts.tracedCandidates + .counts.deadlineUnprocessed == .counts.inputCandidates
@@ -47,9 +46,9 @@ def counts_ok:
     then .securityEvidence.credentialBytesSent == 0
     else true
     end)
-  and (if .securityEvidence.remoteProviderPayloadCount == 0
-    then .securityEvidence.payloadBytesSent == 0
-    else .securityEvidence.payloadBytesSent > 0
+  and (if .securityEvidence.remoteProviderPayloadCount > 0
+    then .securityEvidence.payloadBytesSent > 0
+    else true
     end)
   and .securityEvidence.restrictedPayloadBytesSent == 0
   and (if .securityEvidence.redirectLocationRequestCount == 0

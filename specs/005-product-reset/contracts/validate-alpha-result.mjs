@@ -260,6 +260,9 @@ if (result.runnerEvidenceCaseId === fixture.beforeModelNegativeFixture.caseId) {
   const [dispatchName, injectionName] = fixture.beforeModelNegativeFixture.nonBeforeModelMilestones;
   const injectionIndex = expectedMilestones.indexOf(injectionName);
   const dispatchIndex = expectedMilestones.indexOf(dispatchName);
+  if (injectionIndex < 0 || dispatchIndex < 0) {
+    throw new Error("late-injection negative milestones are absent from the lifecycle profile");
+  }
   [expectedMilestones[injectionIndex], expectedMilestones[dispatchIndex]] =
     [dispatchName, injectionName];
 }
@@ -349,11 +352,16 @@ if (!isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) ||
 const conflictProbe = scenario.fault?.identityConflictProbe;
 const expectedIdentityConflictEvidence = conflictProbe && drainTerminalObserved
   ? {
+      repositoryScope: conflictProbe.repositoryScope,
+      source: conflictProbe.source,
+      streamId: conflictProbe.streamId,
       eventId: conflictProbe.eventId,
       payloadDigestVersion: conflictProbe.payloadDigestVersion,
       canonicalPayloadDigest: conflictProbe.canonicalPayloadDigest,
       conflictingPayloadDigest: conflictProbe.conflictingPayloadDigest,
       conflictReceiptId: conflictProbe.conflictReceiptId,
+      conflictAttemptReceiptIds: conflictProbe.conflictAttemptReceiptIds,
+      durableConflictReceiptCount: conflictProbe.durableConflictReceiptCount,
       conflictReceiptState: conflictProbe.conflictReceiptState,
       canonicalEventState: conflictProbe.canonicalEventState,
       incomingDeliveryState: conflictProbe.incomingDeliveryState,

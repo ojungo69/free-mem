@@ -6,7 +6,10 @@ import { isDeepStrictEqual } from "node:util";
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { isWithin, readBoundedIJsonFile } from "./alpha-result-input.mjs";
 import { validateResourcePlateauEvidence } from "./alpha-result-resource.mjs";
-import { validateNetworkTrustEvidence } from "./alpha-result-security.mjs";
+import {
+  validateNetworkTrustEvidence,
+  validateProviderEgressEvidence,
+} from "./alpha-result-security.mjs";
 
 export const MAX_RUNNER_EVIDENCE_BYTES = 1024 * 1024;
 
@@ -112,6 +115,43 @@ function validateBundlePreparationIdentities(evidence) {
   }
 }
 
+function resolveProviderEgressEvidence(evidence, record) {
+  const raw = record.providerEgressEvidence;
+  if (raw?.kind === "observed") return raw;
+  if (raw?.kind !== "projection") {
+    throw new Error("runner scenario lacks provider egress evidence");
+  }
+  const source = evidence.scenarios.find((item) => item.caseId === raw.sourceCaseId);
+  if (!source || source === record || source.providerEgressEvidence?.kind !== "observed" ||
+      source.providerEgressEvidence.receiptId !== raw.sourceReceiptId) {
+    throw new Error("provider egress projection does not resolve one observed receipt");
+  }
+  return source.providerEgressEvidence;
+}
+
+function validateBundleProviderEgressReceipts(evidence, fixture) {
+  const receipts = evidence.scenarios
+    .map((record) => record.providerEgressEvidence)
+    .filter((item) => item?.kind === "observed")
+    .map((item) => item.receiptId);
+  if (new Set(receipts).size !== receipts.length) {
+    throw new Error("provider egress receipt identities are reused across the evidence bundle");
+  }
+  for (const record of evidence.scenarios) {
+    const negative = record.caseId === fixture.beforeModelNegativeFixture.caseId;
+    if (negative) {
+      if (record.providerEgressEvidence?.kind !== "projection" ||
+          record.providerEgressEvidence.sourceCaseId !==
+            fixture.beforeModelNegativeFixture.baseScenarioId) {
+        throw new Error("late-injection negative does not project its fixed base egress receipt");
+      }
+    } else if (record.providerEgressEvidence?.kind !== "observed") {
+      throw new Error("real runner scenario does not own an observed provider egress receipt");
+    }
+    resolveProviderEgressEvidence(evidence, record);
+  }
+}
+
 export function validateRunnerEvidence(evidence, result, fixture, expectedInvocationId,
   expectedCaseIds = null) {
   validateNetworkTrustEvidence(evidence.networkTrustEvidence, fixture);
@@ -125,6 +165,7 @@ export function validateRunnerEvidence(evidence, result, fixture, expectedInvoca
     throw new Error("resource plateau evidence fingerprint does not match the runner bundle");
   }
   validateBundlePreparationIdentities(evidence);
+  validateBundleProviderEgressReceipts(evidence, fixture);
   const actualCaseIds = evidence.scenarios.map((item) => item.caseId);
   if (!actualCaseIds.every((item, index) => index === 0 || actualCaseIds[index - 1] < item) ||
       (expectedCaseIds && !isDeepStrictEqual(actualCaseIds, expectedCaseIds))) {
@@ -147,6 +188,9 @@ export function validateRunnerEvidence(evidence, result, fixture, expectedInvoca
   if (record.resultObservationFingerprint !== runnerResultObservationFingerprint(result)) {
     throw new Error("result observation fingerprint does not match runner evidence");
   }
+  validateProviderEgressEvidence(
+    resolveProviderEgressEvidence(evidence, record), result, fixture, evidence.networkTrustEvidence,
+  );
   if (!isDeepStrictEqual(record.hostIdentityEvidence, result.hostIdentityEvidence) ||
       !isDeepStrictEqual(record.observedMilestones, result.milestones) ||
       !isDeepStrictEqual(record.processSamples, result.processSamples) ||

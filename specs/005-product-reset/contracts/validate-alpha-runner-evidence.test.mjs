@@ -11,12 +11,16 @@ import {
   runnerResultObservationFingerprint,
   validateRunnerEvidence,
 } from "./alpha-runner-evidence.mjs";
+import { providerEgressCommittedEventSetFingerprint } from "./alpha-result-security.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const readFixture = (name) => JSON.parse(readFileSync(join(contractDir, "../fixtures", name), "utf8"));
 const fixture = readFixture("slice1-bidirectional-en-v1.json");
 const result = readFixture("alpha-result-v1.failure-example.json");
 const evidence = readFixture("runner-evidence/alpha-runner-evidence-v1.failure-example.json");
+const suiteResults = readFixture("alpha-result-v1.suite-regression.json");
+const suiteResult = suiteResults.negativeResult;
+const suiteEvidence = readFixture("runner-evidence/alpha-runner-evidence-v1.suite-regression.json");
 const evidenceSchema = JSON.parse(readFileSync(
   join(contractDir, "alpha-runner-evidence-v1.schema.json"), "utf8",
 ));
@@ -35,6 +39,9 @@ function bind(mutantEvidence, mutantResult, {
   const record = mutantEvidence.scenarios.find(
     (item) => item.caseId === mutantResult.runnerEvidenceCaseId,
   );
+  if (!record) {
+    throw new Error(`evidence scenario is missing: ${mutantResult.runnerEvidenceCaseId}`);
+  }
   record.resultObservationFingerprint = runnerResultObservationFingerprint(mutantResult);
   mutantResult.runnerEvidenceFingerprint = runnerEvidenceFingerprint(mutantEvidence);
 }
@@ -61,6 +68,16 @@ function assertEvidenceAccepted(mutate, label) {
 
 assert.deepEqual(validateAgainstSchema(evidence, evidenceSchema, evidenceSchema), [],
   "fixed runner evidence does not match its schema");
+const missingProviderEgress = structuredClone(evidence);
+delete missingProviderEgress.scenarios[0].providerEgressEvidence;
+assert.notEqual(validateAgainstSchema(
+  missingProviderEgress, evidenceSchema, evidenceSchema,
+).length, 0, "runner evidence schema accepted missing provider egress evidence");
+const missingCommittedEventIds = structuredClone(evidence);
+delete missingCommittedEventIds.scenarios[0].providerEgressEvidence.authorization.committedEventIds;
+assert.notEqual(validateAgainstSchema(
+  missingCommittedEventIds, evidenceSchema, evidenceSchema,
+).length, 0, "runner evidence schema accepted missing committed event identities");
 for (const name of ["networkTrustEvidence", "resourcePlateauEvidence"]) {
   const missing = structuredClone(evidence);
   delete missing[name];
@@ -97,6 +114,14 @@ delete missingWorkloadReceipt.resourcePlateauEvidence.windows[0].workloadReceipt
 assert.notEqual(validateAgainstSchema(
   missingWorkloadReceipt, evidenceSchema, evidenceSchema,
 ).length, 0, "runner evidence schema accepted missing workload receipt");
+for (const field of ["workloadStartedMonotonicMs", "workloadReceiptMonotonicMs",
+  "drainReceiptMonotonicMs", "checkpointReceiptMonotonicMs", "resourceSampleMonotonicMs"]) {
+  const missingTimestamp = structuredClone(evidence);
+  delete missingTimestamp.resourcePlateauEvidence.windows[0][field];
+  assert.notEqual(validateAgainstSchema(
+    missingTimestamp, evidenceSchema, evidenceSchema,
+  ).length, 0, `runner evidence schema accepted missing ${field}`);
+}
 
 assertEvidenceRejected((mutant) => {
   const changedCa = `sha256:${"0".repeat(64)}`;
@@ -119,6 +144,9 @@ for (const [field, value, pattern] of [
 assertEvidenceRejected((mutant) => {
   mutant.networkTrustEvidence.baseHostname = "other.invalid";
 }, /fixed hostnames/, "network trust hostname drift");
+assertEvidenceRejected((mutant) => {
+  mutant.networkTrustEvidence.localHostname = "127.0.0.2";
+}, /fixed hostnames/, "network trust local hostname drift");
 assertEvidenceRejected((_mutant, mutantResult) => {
   mutantResult.networkTrustEvidenceFingerprint = `sha256:${"0".repeat(64)}`;
 }, /network trust evidence fingerprint/, "stale network trust evidence fingerprint", {
@@ -126,7 +154,7 @@ assertEvidenceRejected((_mutant, mutantResult) => {
 });
 
 const tlsReceiptMutations = [
-  [(network) => { network.tlsPreflightReceipts.pop(); }, /exactly four/,
+  [(network) => { network.tlsPreflightReceipts.pop(); }, /exactly six/,
     "missing TLS preflight receipt"],
   [(network) => { network.tlsPreflightReceipts[1].receiptId =
     network.tlsPreflightReceipts[0].receiptId; }, /receipt.*unique/,
@@ -178,10 +206,83 @@ assertEvidenceRejected((mutant) => {
   bindNetwork: false,
 });
 
+assertEvidenceRejected((mutant) => {
+  mutant.scenarios[0].providerEgressEvidence.preAuthorizationProviderAttemptCount = 1;
+}, /wire aggregates/, "provider attempted egress before runner authorization");
+assertEvidenceRejected((mutant) => {
+  const egress = mutant.scenarios[0].providerEgressEvidence;
+  egress.firstProviderRequestStartedMonotonicMs = egress.authorization.observedAtMonotonicMs;
+}, /strictly after runner-owned authorization/, "provider request at authorization boundary");
+assertEvidenceRejected((mutant) => {
+  mutant.scenarios[0].providerEgressEvidence.authorization.committedEventSetFingerprint =
+    `sha256:${"0".repeat(64)}`;
+}, /strictly after runner-owned authorization/, "provider authorization bound wrong event set");
+assertEvidenceRejected((mutant) => {
+  const authorization = mutant.scenarios[0].providerEgressEvidence.authorization;
+  authorization.committedEventIds.push(authorization.committedEventIds[0]);
+}, /authorization event identities/, "provider authorization repeated one event identity");
+assertEvidenceRejected((mutant) => {
+  mutant.scenarios[0].providerEgressEvidence.sourcePayloadBytesBySensitivity.secret = 1;
+}, /sensitivity-byte/, "provider egress included secret source bytes");
+
+const wrongNegativeProjection = structuredClone(suiteEvidence);
+wrongNegativeProjection.scenarios.find((item) =>
+  item.caseId === fixture.beforeModelNegativeFixture.caseId)
+  .providerEgressEvidence.sourceCaseId = "codex-to-claude";
+const wrongNegativeProjectionResult = structuredClone(suiteResult);
+wrongNegativeProjectionResult.runnerEvidenceFingerprint =
+  runnerEvidenceFingerprint(wrongNegativeProjection);
+assert.throws(() => validateRunnerEvidence(
+  wrongNegativeProjection,
+  wrongNegativeProjectionResult,
+  fixture,
+  wrongNegativeProjection.invocationId,
+), /late-injection negative does not project its fixed base egress receipt/);
+
+const nonPrefixResult = structuredClone(suiteResults.positiveResults.find((item) =>
+  item.runnerEvidenceCaseId === "claude-to-codex"));
+const nonPrefixEvidence = structuredClone(suiteEvidence);
+const nonPrefixRecord = nonPrefixEvidence.scenarios.find((item) =>
+  item.caseId === nonPrefixResult.runnerEvidenceCaseId);
+const nonPrefixScenario = fixture.scenarios.find((item) =>
+  item.scenarioId === nonPrefixResult.scenarioId);
+const committedEvent = nonPrefixScenario.events[1];
+nonPrefixResult.counts.committed = 1;
+nonPrefixRecord.providerEgressEvidence.authorization.committedEventCount = 1;
+nonPrefixRecord.providerEgressEvidence.authorization.committedEventIds = [committedEvent.eventId];
+nonPrefixRecord.providerEgressEvidence.authorization.committedEventSetFingerprint =
+  providerEgressCommittedEventSetFingerprint(
+    [committedEvent], nonPrefixScenario.sourceRepositoryScope,
+  );
+nonPrefixRecord.providerEgressEvidence.sourcePayloadBytesBySensitivity = {
+  eligible: Buffer.byteLength(committedEvent.redactedPayload, "utf8"),
+  localOnly: 0,
+  private: 0,
+  secret: 0,
+};
+nonPrefixRecord.resultObservationFingerprint = runnerResultObservationFingerprint(nonPrefixResult);
+nonPrefixResult.runnerEvidenceFingerprint = runnerEvidenceFingerprint(nonPrefixEvidence);
+assert.doesNotThrow(() => validateRunnerEvidence(
+  nonPrefixEvidence, nonPrefixResult, fixture, nonPrefixEvidence.invocationId,
+), "runner evidence rejected an explicit non-prefix committed event set");
+
 const plateauMutations = [
   [(plateau) => { plateau.windows.pop(); }, /exactly 12/, "missing plateau window"],
-  [(plateau) => { plateau.windows[0].checkpointCompleted = false; }, /checkpoint/,
-    "incomplete plateau checkpoint"],
+  [(plateau) => { plateau.windows[0].workloadReceiptMonotonicMs =
+    plateau.windows[0].workloadStartedMonotonicMs; }, /workload.*order/,
+    "workload receipt did not follow workload start"],
+  [(plateau) => { plateau.windows[0].drainReceiptMonotonicMs =
+    plateau.windows[0].workloadReceiptMonotonicMs; }, /workload.*order/,
+    "drain receipt did not follow workload receipt"],
+  [(plateau) => { plateau.windows[0].checkpointReceiptMonotonicMs =
+    plateau.windows[0].drainReceiptMonotonicMs; }, /workload.*order/,
+    "checkpoint receipt did not follow drain receipt"],
+  [(plateau) => { plateau.windows[0].resourceSampleMonotonicMs =
+    plateau.windows[0].checkpointReceiptMonotonicMs; }, /workload.*order/,
+    "resource sample did not follow checkpoint receipt"],
+  [(plateau) => { plateau.windows[1].workloadStartedMonotonicMs =
+    plateau.windows[0].resourceSampleMonotonicMs; }, /workload.*order/,
+    "resource plateau windows overlap"],
   [(plateau) => { [plateau.windows[0], plateau.windows[1]] =
     [plateau.windows[1], plateau.windows[0]]; }, /ordered/, "unordered plateau windows"],
   [(plateau) => { plateau.windows[11].rssMiB = plateau.windows[7].rssMiB + 17; },
