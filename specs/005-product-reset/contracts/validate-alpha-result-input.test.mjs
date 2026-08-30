@@ -6,12 +6,18 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-import { MAX_RUNNER_EVIDENCE_BYTES, readRunnerEvidenceFile } from "./alpha-runner-evidence.mjs";
+import {
+  MAX_RUNNER_EVIDENCE_BYTES,
+  readRunnerEvidenceFile,
+  runnerEvidenceFingerprint,
+  runnerResultObservationFingerprint,
+} from "./alpha-runner-evidence.mjs";
 import { validateArtifact } from "./alpha-result-artifact.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
 const validatorPath = join(contractDir, "validate-alpha-result.mjs");
+const semanticPath = join(contractDir, "alpha-result-v1.semantic.jq");
 const fixtureRoot = join(contractDir, "../fixtures");
 const success = JSON.parse(readFileSync(join(fixtureRoot,
   "alpha-result-v1.example.json"), "utf8"));
@@ -27,6 +33,35 @@ const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot,
   "alpha-result-v1.suite-regression.json"), "utf8"));
 const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot,
   "runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
+const negativeMilestones = suiteRegression.negativeResult.milestones;
+const negativeDispatchIndex = negativeMilestones.findIndex((item) =>
+  item.name === "target_model_request_dispatched");
+const negativeInjectionIndex = negativeMilestones.findIndex((item) =>
+  item.name === "target_injection_acknowledged");
+assert.ok(negativeDispatchIndex >= 0,
+  "late-injection negative is missing model dispatch");
+assert.ok(negativeInjectionIndex >= 0,
+  "late-injection negative is missing injection acknowledgment");
+assert.ok(negativeDispatchIndex < negativeInjectionIndex,
+  "late-injection negative dispatch does not precede injection acknowledgment");
+assert.ok(negativeMilestones.every((item, index) =>
+  index === 0 || item.monotonicMs > negativeMilestones[index - 1].monotonicMs),
+  "late-injection negative milestones are not strictly increasing");
+assert.deepEqual(suiteRegressionEvidence.scenarios.find((item) =>
+  item.caseId === suiteRegression.negativeResult.runnerEvidenceCaseId).observedMilestones,
+  negativeMilestones, "late-injection runner milestones drifted from the negative result");
+for (const missingMilestone of ["target_model_request_dispatched",
+  "target_injection_acknowledged"]) {
+  const incompleteNegative = structuredClone(suiteRegression.negativeResult);
+  incompleteNegative.milestones = incompleteNegative.milestones.filter(
+    (item) => item.name !== missingMilestone,
+  );
+  const semanticRun = spawnSync("jq", ["-e", "-f", semanticPath], {
+    cwd: repoRoot, input: JSON.stringify(incompleteNegative), encoding: "utf8",
+  });
+  assert.notEqual(semanticRun.status, 0,
+    `semantic validator accepted late-injection negative without ${missingMilestone}`);
+}
 const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evidence-input-"));
 const suiteResultRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-suite-results-"));
 let runnerEvidenceOrdinal = 0;
@@ -40,6 +75,33 @@ function writeRunnerEvidence(evidence) {
   writeFileSync(path, JSON.stringify(evidence), { mode: 0o600 });
   return path;
 }
+
+const equalTimeSingleResult = structuredClone(suiteRegression.negativeResult);
+equalTimeSingleResult.milestones.find((item) =>
+  item.name === "target_injection_acknowledged").monotonicMs =
+  equalTimeSingleResult.milestones.find((item) =>
+    item.name === "target_model_request_dispatched").monotonicMs;
+const equalTimeSingleEvidence = structuredClone(suiteRegressionEvidence);
+const equalTimeSingleRecord = equalTimeSingleEvidence.scenarios.find((item) =>
+  item.caseId === equalTimeSingleResult.runnerEvidenceCaseId);
+equalTimeSingleRecord.observedMilestones = structuredClone(equalTimeSingleResult.milestones);
+equalTimeSingleRecord.resultObservationFingerprint =
+  runnerResultObservationFingerprint(equalTimeSingleResult);
+equalTimeSingleResult.runnerEvidenceFingerprint =
+  runnerEvidenceFingerprint(equalTimeSingleEvidence);
+const equalTimeSingleEvidencePath = writeRunnerEvidence(equalTimeSingleEvidence);
+const equalTimeSingleRun = spawnSync(process.execPath,
+  ["--experimental-strip-types", validatorPath,
+    "--runner-evidence-root", runnerEvidenceRoot,
+    "--runner-evidence", equalTimeSingleEvidencePath,
+    "--runner-invocation-id", equalTimeSingleEvidence.invocationId,
+    "--result", "-"], {
+      cwd: repoRoot, input: JSON.stringify(equalTimeSingleResult), encoding: "utf8",
+    });
+assert.notEqual(equalTimeSingleRun.status, 0,
+  "single-result equal-time late injection was accepted");
+assert.match(`${equalTimeSingleRun.stderr}${equalTimeSingleRun.stdout}`,
+  /late-injection negative must dispatch strictly before injection acknowledgment/);
 
 for (const [result, evidence] of [[success, successEvidence], [failure, failureEvidence]]) {
   const evidencePath = writeRunnerEvidence(evidence);
@@ -172,5 +234,64 @@ const suiteRun = spawnSync(process.execPath,
     "--runner-invocation-id", suiteRegressionEvidence.invocationId,
     ...suiteArgs], { cwd: repoRoot, encoding: "utf8" });
 assert.equal(suiteRun.status, 0, `16+1 suite regression: ${suiteRun.stderr}${suiteRun.stdout}`);
+
+const equalTimeNegative = structuredClone(suiteRegression.negativeResult);
+equalTimeNegative.milestones.find((item) =>
+  item.name === "target_injection_acknowledged").monotonicMs =
+  equalTimeNegative.milestones.find((item) =>
+    item.name === "target_model_request_dispatched").monotonicMs;
+const equalTimeNegativePath = join(suiteResultRoot, "suite-negative-equal-time.json");
+const equalTimeSuiteEvidence = structuredClone(suiteRegressionEvidence);
+const equalTimeSuiteRecord = equalTimeSuiteEvidence.scenarios.find((item) =>
+  item.caseId === equalTimeNegative.runnerEvidenceCaseId);
+equalTimeSuiteRecord.observedMilestones = structuredClone(equalTimeNegative.milestones);
+equalTimeSuiteRecord.resultObservationFingerprint =
+  runnerResultObservationFingerprint(equalTimeNegative);
+const equalTimeSuiteFingerprint = runnerEvidenceFingerprint(equalTimeSuiteEvidence);
+equalTimeNegative.runnerEvidenceFingerprint = equalTimeSuiteFingerprint;
+const equalTimeSuiteEvidencePath = writeRunnerEvidence(equalTimeSuiteEvidence);
+const equalTimePositivePaths = suiteRegression.positiveResults.map((result, index) => {
+  const rebound = structuredClone(result);
+  rebound.runnerEvidenceFingerprint = equalTimeSuiteFingerprint;
+  const path = join(suiteResultRoot, `suite-equal-time-positive-${index + 1}.json`);
+  writeFileSync(path, JSON.stringify(rebound));
+  return path;
+});
+writeFileSync(equalTimeNegativePath, JSON.stringify(equalTimeNegative));
+const equalTimeSuiteArgs = equalTimePositivePaths.flatMap((path) => ["--result", path]);
+const equalTimeNegativeRun = spawnSync(process.execPath,
+  ["--experimental-strip-types", validatorPath,
+    "--runner-evidence-root", runnerEvidenceRoot,
+    "--runner-evidence", equalTimeSuiteEvidencePath,
+    "--runner-invocation-id", equalTimeSuiteEvidence.invocationId,
+    ...equalTimeSuiteArgs, "--negative-result", equalTimeNegativePath], {
+      cwd: repoRoot, encoding: "utf8",
+    });
+assert.notEqual(equalTimeNegativeRun.status, 0,
+  "equal-time late-injection negative was accepted");
+assert.match(`${equalTimeNegativeRun.stderr}${equalTimeNegativeRun.stdout}`,
+  /candidate suite or required negative result is incomplete or inconsistent/);
+
+function assertSuiteCountRejected(positivePaths, negativePaths, label) {
+  const args = positivePaths.flatMap((path) => ["--result", path]);
+  for (const path of negativePaths) args.push("--negative-result", path);
+  const run = spawnSync(process.execPath,
+    ["--experimental-strip-types", validatorPath,
+      "--runner-evidence-root", runnerEvidenceRoot,
+      "--runner-evidence", suiteEvidencePath,
+      "--runner-invocation-id", suiteRegressionEvidence.invocationId,
+      ...args], { cwd: repoRoot, encoding: "utf8" });
+  assert.notEqual(run.status, 0, `${label}: invalid suite count was accepted`);
+  assert.match(`${run.stderr}${run.stdout}`,
+    /candidate suite has an invalid positive or negative result count/, label);
+}
+
+assertSuiteCountRejected(suiteResultPaths.slice(0, -1), [suiteNegativePath],
+  "15+1 suite");
+assertSuiteCountRejected([...suiteResultPaths, suiteResultPaths[0]], [suiteNegativePath],
+  "17+1 suite");
+assertSuiteCountRejected(suiteResultPaths, [], "16+0 suite");
+assertSuiteCountRejected(suiteResultPaths, [suiteNegativePath, suiteNegativePath],
+  "16+2 suite");
 
 console.log("Alpha result input and suite regression checks passed.");

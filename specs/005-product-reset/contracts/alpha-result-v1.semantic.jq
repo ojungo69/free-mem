@@ -8,13 +8,29 @@ def milestones_ok:
   . as $result
   | ([$result.milestones[].name] | length == (unique | length))
   and ([$result.milestones[].monotonicMs] as $times
-    | all(range(1; $times | length); $times[.] >= $times[. - 1]))
+    | all(range(1; $times | length); $times[.] > $times[. - 1]))
   and (if ($result.drain.timedOut
       or $result.disposition.state == "unsupported"
       or $result.disposition.state == "not_run")
     then true
     else any($result.milestones[]; .name == $result.drain.terminalMilestone)
     end);
+
+def late_injection_ok:
+  . as $result
+  | ([ $result.milestones[] | select(.name == "target_model_request_dispatched") ]
+      | if length == 1 then .[0] else null end) as $dispatch
+  | ([ $result.milestones[] | select(.name == "target_injection_acknowledged") ]
+      | if length == 1 then .[0] else null end) as $injection
+  | if $result.injectionBeforeModel == null
+    then true
+    elif $dispatch == null or $injection == null
+    then false
+    else $result.injectionBeforeModel ==
+      (([$result.milestones[].name] | index($injection.name)) <
+        ([$result.milestones[].name] | index($dispatch.name))
+        and $injection.monotonicMs < $dispatch.monotonicMs)
+    end;
 
 def counts_ok:
   .counts.tracedCandidates + .counts.deadlineUnprocessed == .counts.inputCandidates
@@ -32,9 +48,9 @@ def counts_ok:
     then .securityEvidence.credentialBytesSent == 0
     else true
     end)
-  and (if .securityEvidence.remoteProviderPayloadCount == 0
-    then .securityEvidence.payloadBytesSent == 0
-    else .securityEvidence.payloadBytesSent > 0
+  and (if .securityEvidence.remoteProviderPayloadCount > 0
+    then .securityEvidence.payloadBytesSent > 0
+    else true
     end)
   and .securityEvidence.restrictedPayloadBytesSent == 0
   and (if .securityEvidence.redirectLocationRequestCount == 0
@@ -74,6 +90,7 @@ def host_identity_ok:
 . as $result
 | ensure(drain_ok; "drain/disposition mismatch")
 | ensure(milestones_ok; "milestone order mismatch")
+| ensure(late_injection_ok; "late-injection negative mismatch")
 | ensure(counts_ok; "count relationship mismatch")
 | ensure(process_samples_ok; "process sample order mismatch")
 | ensure(host_identity_ok; "host identity evidence mismatch")

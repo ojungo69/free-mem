@@ -1,13 +1,13 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:379e5a61572b9c4aba9e01ba3801766a0051b76e6111972c4081f2e90218529a",
+  "fixtureFingerprint": "sha256:b36bcd7d3b2d98b629d797844beec52c57e67f5152a9297fdbaff8a58832f2e3",
   "candidateId": "candidate-failure-example-v1",
   "scenarioId": "summary-provider-output-limit-exceeded",
   "runnerEvidenceCaseId": "summary-provider-output-limit-exceeded",
   "resourceSampleMode": "warm",
   "targetDestinationClass": "codex-local",
-  "effectiveManifestFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
+  "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
   "executionEnvironment": {
     "pins": {
       "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
@@ -49,7 +49,9 @@
     "contentSha256": "sha256:a586515abebe93a9794d4110209e9894119b7e279da81eed4679f0ba9b6a3328"
   },
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
-  "runnerEvidenceFingerprint": "sha256:455a700f6ccd1b192995d95915a8961bc70fef54ca85349132dbc7f8ab008091",
+  "runnerEvidenceFingerprint": "sha256:520bbc14b0c4ccc64b7c40747ffce50651c9ddfab061c4ecabdad0ec991a0e1f",
+  "networkTrustEvidenceFingerprint": "sha256:e726755cbd2041f79475d81c45305fd515c61faa8b071d82245065682875c749",
+  "resourcePlateauEvidenceFingerprint": "sha256:3f1aa4fe0c7b344ae7c2eafcfdfe93315acf2c0966949c1463fb379d59988f24",
   "drain": {
     "drainConditionId": "slice1-summary-output-limit-visible-v1",
     "status": "completed",
@@ -174,12 +176,13 @@
         "deliveredSignals": [
           {
             "signalId": "output-limit-config-activation-1",
+            "targetJobId": "output-limit-job-1",
+            "producerReceiptId": "output-limit-config-activation-1:producer-receipt",
             "sequence": 1,
             "kind": "validated_configuration_activation",
             "targetRole": "summary",
-            "providerChoiceId": "deterministic-summary-v1",
-            "configurationFingerprint": "summary-config-limit-17-v2",
-            "effectiveManifestFingerprint": "sha256:f3c1235d170c1d9ce1c6f9042492194cab3a50d160267837644441fcef108771"
+            "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+            "effectiveManifestFingerprint": "sha256:9bd12c87e5fb039892fb1d6dd78843ba82339be49b7c4c18c7707bb14ffd153e"
           }
         ],
         "consumedSignalIds": [
@@ -456,8 +459,8 @@
         },
         "observedTransition": {
           "budgetBefore": 0,
-          "budgetAfterGrant": 3,
-          "budgetAfterAttempt": 2,
+          "budgetAfterGrant": 1,
+          "budgetAfterAttempt": 0,
           "attemptDelta": 1,
           "lastConsumedSequence": 1,
           "ignoredSignalCount": 0,
@@ -470,11 +473,13 @@
         "deliveredSignals": [
           {
             "signalId": "output-limit-provider-health-1",
+            "targetJobId": "output-limit-job-1",
+            "producerReceiptId": "output-limit-provider-health-1:producer-receipt",
             "sequence": 1,
             "kind": "recorded_provider_healthy_transition",
             "targetRole": "summary",
-            "providerChoiceId": "deterministic-summary-v1",
-            "configurationFingerprint": "summary-config-v1"
+            "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+            "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
           }
         ],
         "consumedSignalIds": [],
@@ -508,11 +513,13 @@
         "deliveredSignals": [
           {
             "signalId": "output-limit-doctor-retry-1",
+            "targetJobId": "output-limit-job-1",
+            "producerReceiptId": "output-limit-doctor-retry-1:producer-receipt",
             "sequence": 1,
             "kind": "user_confirmed_doctor_retry",
             "targetRole": "summary",
-            "providerChoiceId": "deterministic-summary-v1",
-            "configurationFingerprint": "summary-config-v1"
+            "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+            "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
           }
         ],
         "consumedSignalIds": [],

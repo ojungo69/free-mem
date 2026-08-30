@@ -5,7 +5,7 @@
   "ownerSlice": 1,
   "language": "en",
   "factMatch": "exact",
-  "contractFingerprint": "sha256:379e5a61572b9c4aba9e01ba3801766a0051b76e6111972c4081f2e90218529a",
+  "contractFingerprint": "sha256:b36bcd7d3b2d98b629d797844beec52c57e67f5152a9297fdbaff8a58832f2e3",
   "pins": {
     "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
     "claudeCodeVersion": "2.1.243",
@@ -27,7 +27,7 @@
   "effectiveConfiguration": {
     "manifestVersion": 1,
     "manifestId": "slice1-effective-manifest-v1",
-    "configurationFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
+    "configurationFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
     "destinationPolicyMap": {
       "claude-code-local": {
         "targetAgent": "claude-code",
@@ -62,7 +62,20 @@
       "processingQueueCapacity": 25,
       "processingRetryLimit": 3,
       "maxMemoryItemsPerDerivation": 16,
+      "maxSourceEventsPerJob": 100,
+      "observerRequestTimeoutMs": 60000,
+      "observerMaxInputChars": 12000,
+      "observerMaxOutputTokens": 4000,
+      "observerMaxResponseBytes": 1048576,
+      "observerTemperature": 0.2,
+      "providerTlsPreflightTimeoutMs": 5000,
       "workerWarmLifetimeMs": 30000,
+      "periodicSweepIntervalMs": 30000,
+      "idleFlushMs": 120000,
+      "eventDebounceMs": 1000,
+      "stuckClaimTimeoutMs": 300000,
+      "rawEventRetentionEnabled": false,
+      "rawEventRetentionMs": 0,
       "resourceWarningThresholds": {
         "maxSteadyProductProcessCount": 3,
         "maxShortRunRssGrowthMiB": 32,
@@ -83,134 +96,325 @@
         }
       }
     },
-      "summaryProvider": {
-        "state": "enabled",
-        "providerId": "deterministic-summary-v1",
-        "providerKind": "explicit_remote_endpoint",
-        "modelId": "deterministic-summary-model-v1",
-        "modelRevision": "1",
-        "configurationFingerprint": "summary-config-v1",
-        "executionLocation": "remote",
-        "endpointScheme": "https",
-        "endpointHost": "summary.stub.invalid",
-        "credentialSource": "fixture-credential-ref",
-        "costClass": "fixture",
-        "egressPolicy": "explicit_remote",
-        "capabilities": ["summary_v1"],
-        "validationState": "valid",
-        "tlsCertificateValidation": "required",
-        "redirectPolicy": "reject"
+    "summaryProvider": {
+      "version": 1,
+      "role": "summary",
+      "state": "enabled",
+      "wireProtocol": "openai_chat_completions_v1",
+      "modelId": "deterministic-summary-model-v1",
+      "modelRevision": "1",
+      "endpointUrl": "https://summary.stub.invalid/v1/chat/completions",
+      "credentialRef": {
+        "kind": "environment",
+        "name": "FREE_MEM_SUMMARY_API_KEY"
+      },
+      "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+      "executionLocation": "remote",
+      "egressPolicy": "explicit_remote",
+      "costClass": "external_metered",
+      "tlsPolicy": "system",
+      "redirectPolicy": "reject"
     },
     "embeddingProvider": {
       "state": "disabled",
       "reason": "slice1_semantic_not_owned",
       "packDegradationReason": "semantic_disabled"
-    }
+    },
+    "legacyDispositions": []
   },
   "localDerivationManifest": {
     "manifestVersion": 1,
     "manifestId": "slice1-local-summary-manifest-v1",
-    "baseConfigurationFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
-    "configurationFingerprint": "sha256:915c494993fc850520fc476c4414defe3ceb10c386c7bbae2aebb620a73ef796",
+    "baseConfigurationFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
+    "configurationFingerprint": "sha256:302cd76fbd261addadb62d3abc6cb778f38d53982e8870f71c16cd36af99f275",
+    "destinationPolicyMap": {
+      "claude-code-local": {
+        "targetAgent": "claude-code",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
+      },
+      "codex-local": {
+        "targetAgent": "codex",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
+      },
+      "claude-code-remote": {
+        "targetAgent": "claude-code",
+        "executionLocation": "remote",
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
+      },
+      "codex-remote": {
+        "targetAgent": "codex",
+        "executionLocation": "remote",
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
+      }
+    },
+    "resourceProfile": {
+      "profileId": "slice1-short-run",
+      "version": 1,
+      "captureConcurrencyLimit": 2,
+      "processingConcurrencyLimit": 2,
+      "processingQueueCapacity": 25,
+      "processingRetryLimit": 3,
+      "maxMemoryItemsPerDerivation": 16,
+      "maxSourceEventsPerJob": 100,
+      "observerRequestTimeoutMs": 60000,
+      "observerMaxInputChars": 12000,
+      "observerMaxOutputTokens": 4000,
+      "observerMaxResponseBytes": 1048576,
+      "observerTemperature": 0.2,
+      "providerTlsPreflightTimeoutMs": 5000,
+      "workerWarmLifetimeMs": 30000,
+      "periodicSweepIntervalMs": 30000,
+      "idleFlushMs": 120000,
+      "eventDebounceMs": 1000,
+      "stuckClaimTimeoutMs": 300000,
+      "rawEventRetentionEnabled": false,
+      "rawEventRetentionMs": 0,
+      "resourceWarningThresholds": {
+        "maxSteadyProductProcessCount": 3,
+        "maxShortRunRssGrowthMiB": 32,
+        "maxPendingQueueDepth": 20,
+        "maxStorageGrowthBytes": 1048576
+      },
+      "injectionEnvelope": {
+        "selectionTimeBudgetMs": 750,
+        "admittedCandidateLimit": 32,
+        "maxRenderedBytes": 16384,
+        "maxSelectedItems": 8,
+        "maxInjectedTokens": 800,
+        "laneBudgets": {
+          "exact_session": {"minItems": 0, "maxItems": 4},
+          "lexical": {"minItems": 0, "maxItems": 8},
+          "semantic": {"minItems": 0, "maxItems": 0},
+          "recency": {"minItems": 0, "maxItems": 2}
+        }
+      }
+    },
     "summaryProvider": {
+      "version": 1,
+      "role": "summary",
       "state": "enabled",
-      "providerId": "deterministic-summary-local-v1",
-      "providerKind": "built_in_local",
+      "wireProtocol": "openai_chat_completions_v1",
       "modelId": "deterministic-summary-local-model-v1",
       "modelRevision": "1",
-      "configurationFingerprint": "local-summary-config-v1",
+      "endpointUrl": "https://127.0.0.1:1234/v1/chat/completions",
+      "credentialRef": {"kind": "none"},
+      "providerFingerprint": "sha256:b206e47c83fa4bccf799d42bbc3ec9920232e3ec3671d89b5c6c7760540dd12a",
       "executionLocation": "local",
-      "costClass": "local_zero",
       "egressPolicy": "on_device",
-      "capabilities": ["summary_v1"],
-      "validationState": "valid"
-    }
+      "costClass": "local_zero",
+      "tlsPolicy": "system",
+      "redirectPolicy": "reject"
+    },
+    "embeddingProvider": {
+      "state": "disabled",
+      "reason": "slice1_semantic_not_owned",
+      "packDegradationReason": "semantic_disabled"
+    },
+    "legacyDispositions": []
+  },
+  "repairedRemoteManifest": {
+    "manifestVersion": 1,
+    "manifestId": "slice1-repaired-remote-manifest-v1",
+    "baseConfigurationFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
+    "configurationFingerprint": "sha256:b88748667d6e428f680c4408d77714c3d7d94d7326edfe99b0afb731322fa01a",
+    "destinationPolicyMap": {
+      "claude-code-local": {
+        "targetAgent": "claude-code",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
+      },
+      "codex-local": {
+        "targetAgent": "codex",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
+      },
+      "claude-code-remote": {
+        "targetAgent": "claude-code",
+        "executionLocation": "remote",
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
+      },
+      "codex-remote": {
+        "targetAgent": "codex",
+        "executionLocation": "remote",
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
+      }
+    },
+    "resourceProfile": {
+      "profileId": "slice1-short-run",
+      "version": 1,
+      "captureConcurrencyLimit": 2,
+      "processingConcurrencyLimit": 2,
+      "processingQueueCapacity": 25,
+      "processingRetryLimit": 3,
+      "maxMemoryItemsPerDerivation": 16,
+      "maxSourceEventsPerJob": 100,
+      "observerRequestTimeoutMs": 60000,
+      "observerMaxInputChars": 12000,
+      "observerMaxOutputTokens": 4000,
+      "observerMaxResponseBytes": 1048576,
+      "observerTemperature": 0.2,
+      "providerTlsPreflightTimeoutMs": 5000,
+      "workerWarmLifetimeMs": 30000,
+      "periodicSweepIntervalMs": 30000,
+      "idleFlushMs": 120000,
+      "eventDebounceMs": 1000,
+      "stuckClaimTimeoutMs": 300000,
+      "rawEventRetentionEnabled": false,
+      "rawEventRetentionMs": 0,
+      "resourceWarningThresholds": {
+        "maxSteadyProductProcessCount": 3,
+        "maxShortRunRssGrowthMiB": 32,
+        "maxPendingQueueDepth": 20,
+        "maxStorageGrowthBytes": 1048576
+      },
+      "injectionEnvelope": {
+        "selectionTimeBudgetMs": 750,
+        "admittedCandidateLimit": 32,
+        "maxRenderedBytes": 16384,
+        "maxSelectedItems": 8,
+        "maxInjectedTokens": 800,
+        "laneBudgets": {
+          "exact_session": {"minItems": 0, "maxItems": 4},
+          "lexical": {"minItems": 0, "maxItems": 8},
+          "semantic": {"minItems": 0, "maxItems": 0},
+          "recency": {"minItems": 0, "maxItems": 2}
+        }
+      }
+    },
+    "summaryProvider": {
+      "version": 1,
+      "role": "summary",
+      "state": "enabled",
+      "wireProtocol": "openai_chat_completions_v1",
+      "modelId": "deterministic-summary-model-v1",
+      "modelRevision": "1",
+      "endpointUrl": "https://summary-repaired.stub.invalid/v1/chat/completions",
+      "credentialRef": {
+        "kind": "environment",
+        "name": "FREE_MEM_SUMMARY_API_KEY"
+      },
+      "providerFingerprint": "sha256:78435e0e3f9e209f8a01c0810cefd9b5999fc9e287bbc2b4ce9c9e34f430a0b7",
+      "executionLocation": "remote",
+      "egressPolicy": "explicit_remote",
+      "costClass": "external_metered",
+      "tlsPolicy": "system",
+      "redirectPolicy": "reject"
+    },
+    "embeddingProvider": {
+      "state": "disabled",
+      "reason": "slice1_semantic_not_owned",
+      "packDegradationReason": "semantic_disabled"
+    },
+    "legacyDispositions": []
   },
   "outputLimitRecoveryManifest": {
-    "baseConfigurationFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
-    "configuration": {
-      "manifestVersion": 1,
-      "manifestId": "slice1-output-limit-recovery-manifest-v1",
-      "configurationFingerprint": "sha256:f3c1235d170c1d9ce1c6f9042492194cab3a50d160267837644441fcef108771",
-      "destinationPolicyMap": {
-        "claude-code-local": {
-          "targetAgent": "claude-code",
-          "executionLocation": "local",
-          "egressPolicy": "same_repository_on_device",
-          "eligibleSensitivities": ["eligible", "private", "local_only"]
-        },
-        "codex-local": {
-          "targetAgent": "codex",
-          "executionLocation": "local",
-          "egressPolicy": "same_repository_on_device",
-          "eligibleSensitivities": ["eligible", "private", "local_only"]
-        },
-        "claude-code-remote": {
-          "targetAgent": "claude-code",
-          "executionLocation": "remote",
-          "egressPolicy": "remote_off_host",
-          "eligibleSensitivities": ["eligible"]
-        },
-        "codex-remote": {
-          "targetAgent": "codex",
-          "executionLocation": "remote",
-          "egressPolicy": "remote_off_host",
-          "eligibleSensitivities": ["eligible"]
-        }
+    "manifestVersion": 1,
+    "manifestId": "slice1-output-limit-recovery-manifest-v1",
+    "baseConfigurationFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
+    "configurationFingerprint": "sha256:9bd12c87e5fb039892fb1d6dd78843ba82339be49b7c4c18c7707bb14ffd153e",
+    "destinationPolicyMap": {
+      "claude-code-local": {
+        "targetAgent": "claude-code",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
       },
-      "resourceProfile": {
-        "profileId": "slice1-short-run",
-        "version": 2,
-        "captureConcurrencyLimit": 2,
-        "processingConcurrencyLimit": 2,
-        "processingQueueCapacity": 25,
-        "processingRetryLimit": 3,
-        "maxMemoryItemsPerDerivation": 17,
-        "workerWarmLifetimeMs": 30000,
-        "resourceWarningThresholds": {
-          "maxSteadyProductProcessCount": 3,
-          "maxShortRunRssGrowthMiB": 32,
-          "maxPendingQueueDepth": 20,
-          "maxStorageGrowthBytes": 1048576
-        },
-        "injectionEnvelope": {
-          "selectionTimeBudgetMs": 750,
-          "admittedCandidateLimit": 32,
-          "maxRenderedBytes": 16384,
-          "maxSelectedItems": 8,
-          "maxInjectedTokens": 800,
-          "laneBudgets": {
-            "exact_session": {"minItems": 0, "maxItems": 4},
-            "lexical": {"minItems": 0, "maxItems": 8},
-            "semantic": {"minItems": 0, "maxItems": 0},
-            "recency": {"minItems": 0, "maxItems": 2}
-          }
-        }
+      "codex-local": {
+        "targetAgent": "codex",
+        "executionLocation": "local",
+        "egressPolicy": "same_repository_on_device",
+        "eligibleSensitivities": ["eligible", "private", "local_only"]
       },
-      "summaryProvider": {
-        "state": "enabled",
-        "providerId": "deterministic-summary-v1",
-        "providerKind": "explicit_remote_endpoint",
-        "modelId": "deterministic-summary-model-v1",
-        "modelRevision": "1",
-        "configurationFingerprint": "summary-config-v1",
+      "claude-code-remote": {
+        "targetAgent": "claude-code",
         "executionLocation": "remote",
-        "endpointScheme": "https",
-        "endpointHost": "summary.stub.invalid",
-        "credentialSource": "fixture-credential-ref",
-        "costClass": "fixture",
-        "egressPolicy": "explicit_remote",
-        "capabilities": ["summary_v1"],
-        "validationState": "valid",
-        "tlsCertificateValidation": "required",
-        "redirectPolicy": "reject"
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
       },
-      "embeddingProvider": {
-        "state": "disabled",
-        "reason": "slice1_semantic_not_owned",
-        "packDegradationReason": "semantic_disabled"
+      "codex-remote": {
+        "targetAgent": "codex",
+        "executionLocation": "remote",
+        "egressPolicy": "remote_off_host",
+        "eligibleSensitivities": ["eligible"]
       }
-    }
+    },
+    "resourceProfile": {
+      "profileId": "slice1-short-run",
+      "version": 2,
+      "captureConcurrencyLimit": 2,
+      "processingConcurrencyLimit": 2,
+      "processingQueueCapacity": 25,
+      "processingRetryLimit": 3,
+      "maxMemoryItemsPerDerivation": 17,
+      "maxSourceEventsPerJob": 100,
+      "observerRequestTimeoutMs": 60000,
+      "observerMaxInputChars": 12000,
+      "observerMaxOutputTokens": 4000,
+      "observerMaxResponseBytes": 1048576,
+      "observerTemperature": 0.2,
+      "providerTlsPreflightTimeoutMs": 5000,
+      "workerWarmLifetimeMs": 30000,
+      "periodicSweepIntervalMs": 30000,
+      "idleFlushMs": 120000,
+      "eventDebounceMs": 1000,
+      "stuckClaimTimeoutMs": 300000,
+      "rawEventRetentionEnabled": false,
+      "rawEventRetentionMs": 0,
+      "resourceWarningThresholds": {
+        "maxSteadyProductProcessCount": 3,
+        "maxShortRunRssGrowthMiB": 32,
+        "maxPendingQueueDepth": 20,
+        "maxStorageGrowthBytes": 1048576
+      },
+      "injectionEnvelope": {
+        "selectionTimeBudgetMs": 750,
+        "admittedCandidateLimit": 32,
+        "maxRenderedBytes": 16384,
+        "maxSelectedItems": 8,
+        "maxInjectedTokens": 800,
+        "laneBudgets": {
+          "exact_session": {"minItems": 0, "maxItems": 4},
+          "lexical": {"minItems": 0, "maxItems": 8},
+          "semantic": {"minItems": 0, "maxItems": 0},
+          "recency": {"minItems": 0, "maxItems": 2}
+        }
+      }
+    },
+    "summaryProvider": {
+      "version": 1,
+      "role": "summary",
+      "state": "enabled",
+      "wireProtocol": "openai_chat_completions_v1",
+      "modelId": "deterministic-summary-model-v1",
+      "modelRevision": "1",
+      "endpointUrl": "https://summary.stub.invalid/v1/chat/completions",
+      "credentialRef": {
+        "kind": "environment",
+        "name": "FREE_MEM_SUMMARY_API_KEY"
+      },
+      "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+      "executionLocation": "remote",
+      "egressPolicy": "explicit_remote",
+      "costClass": "external_metered",
+      "tlsPolicy": "system",
+      "redirectPolicy": "reject"
+    },
+    "embeddingProvider": {
+      "state": "disabled",
+      "reason": "slice1_semantic_not_owned",
+      "packDegradationReason": "semantic_disabled"
+    },
+    "legacyDispositions": []
   },
   "kindContract": {
     "capturedEventKinds": [
@@ -484,8 +688,8 @@
     "caseId": "late-injection-after-model-dispatch",
     "baseScenarioId": "claude-to-codex",
     "nonBeforeModelMilestones": [
-      "target_injection_acknowledged",
-      "target_model_request_dispatched"
+      "target_model_request_dispatched",
+      "target_injection_acknowledged"
     ],
     "injectionBeforeModel": false,
     "expectedDisposition": {
@@ -709,7 +913,7 @@
       "lifecycleProfileId": "bidirectional_prompt_flush",
       "resourceSampleMode": "warm",
       "retrievalQuery": "cache invalidation constraint failed approach and next action",
-      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "source_summary_committed"},
+      "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 272, "completionMilestone": "source_summary_committed"},
       "events": [
         {
           "eventId": "codex-to-claude-event-1",
@@ -906,6 +1110,8 @@
     {
       "scenarioId": "runtime-unavailable-spool-recovery",
       "sourceAgent": "claude-code",
+      "canonicalEventSource": "claude",
+      "sourceStreamId": "runtime-unavailable-spool-recovery:source-stream",
       "targetDestinationClass": "codex-local",
       "targetSessionId": "runtime-unavailable-spool-recovery:target-session",
       "sourceRepositoryScope": "repo-primary",
@@ -934,13 +1140,21 @@
           }
         ],
         "identityConflictProbe": {
+          "repositoryScope": "repo-primary",
+          "source": "claude",
+          "streamId": "runtime-unavailable-spool-recovery:source-stream",
           "eventId": "spool-event-2",
           "digestInput": "domain_separated_jcs_redacted_payload_v1",
           "payloadDigestVersion": "event-payload-digest-v1",
           "canonicalPayloadDigest": "sha256:d24752e237bb46925c9baffce7f9ee4964b2d1878897a5400b8b2d106db296f1",
           "conflictingRedactedPayload": "Next: verify the queued event after daemon restart with altered payload.",
           "conflictingPayloadDigest": "sha256:629ce8c5b81da6e328e1c747061042058d79ee8e017fdb2dd6a366c6b08a0727",
-          "conflictReceiptId": "conflict-receipt-spool-event-2-v1",
+          "conflictReceiptId": "conflict-receipt-v1:sha256:d014d5a0a157e888cb0d3a4304405b31959232ce2f79d52a8f43d0a4e779c734",
+          "conflictAttemptReceiptIds": [
+            "conflict-receipt-v1:sha256:d014d5a0a157e888cb0d3a4304405b31959232ce2f79d52a8f43d0a4e779c734",
+            "conflict-receipt-v1:sha256:d014d5a0a157e888cb0d3a4304405b31959232ce2f79d52a8f43d0a4e779c734"
+          ],
+          "durableConflictReceiptCount": 1,
           "conflictReceiptState": "non_success",
           "canonicalEventState": "committed",
           "incomingDeliveryState": "quarantined",
@@ -1067,6 +1281,7 @@
       "providerTransmissionOracle": {"credentialBytesSent": 96, "payloadBytesSent": 384, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_malformed_response",
+        "targetJobId": "summary-provider-retry-exhausted-job-1",
         "attemptsUntilExhausted": 3,
         "resumeCasesAreIndependent": true,
         "resumeCaseInitialSnapshot": {
@@ -1097,11 +1312,13 @@
             "signals": [
               {
                 "signalId": "config-activation-1",
-                "sequence": 1,
-                "kind": "validated_configuration_activation",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-repaired-v2"
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "config-activation-1:producer-receipt",
+              "sequence": 1,
+              "kind": "validated_configuration_activation",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:78435e0e3f9e209f8a01c0810cefd9b5999fc9e287bbc2b4ce9c9e34f430a0b7",
+              "effectiveManifestFingerprint": "sha256:b88748667d6e428f680c4408d77714c3d7d94d7326edfe99b0afb731322fa01a"
               }
             ],
             "expectedConsumedSignalIds": ["config-activation-1"],
@@ -1117,8 +1334,8 @@
             },
             "expected": {
               "budgetBefore": 0,
-              "budgetAfterGrant": 3,
-              "budgetAfterAttempt": 2,
+              "budgetAfterGrant": 1,
+              "budgetAfterAttempt": 0,
               "attemptDelta": 1,
               "lastConsumedSequence": 1,
               "ignoredSignalCount": 0,
@@ -1131,11 +1348,13 @@
             "signals": [
               {
                 "signalId": "provider-healthy-1",
-                "sequence": 1,
-                "kind": "recorded_provider_healthy_transition",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-v1"
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "provider-healthy-1:producer-receipt",
+              "sequence": 1,
+              "kind": "recorded_provider_healthy_transition",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
               }
             ],
             "expectedConsumedSignalIds": ["provider-healthy-1"],
@@ -1165,11 +1384,13 @@
             "signals": [
               {
                 "signalId": "doctor-retry-1",
-                "sequence": 1,
-                "kind": "user_confirmed_doctor_retry",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-v1"
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "doctor-retry-1:producer-receipt",
+              "sequence": 1,
+              "kind": "user_confirmed_doctor_retry",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
               }
             ],
             "expectedConsumedSignalIds": ["doctor-retry-1"],
@@ -1199,27 +1420,33 @@
             "signals": [
               {
                 "signalId": "provider-healthy-2",
-                "sequence": 2,
-                "kind": "recorded_provider_healthy_transition",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-v1"
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "provider-healthy-2:producer-receipt",
+              "sequence": 2,
+              "kind": "recorded_provider_healthy_transition",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
               },
               {
                 "signalId": "provider-healthy-2",
-                "sequence": 2,
-                "kind": "recorded_provider_healthy_transition",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-v1"
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "provider-healthy-2:producer-receipt",
+              "sequence": 2,
+              "kind": "recorded_provider_healthy_transition",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
               },
               {
                 "signalId": "doctor-retry-stale-1",
-                "sequence": 1,
-                "kind": "user_confirmed_doctor_retry",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-v1"
+              "targetJobId": "summary-provider-retry-exhausted-job-1",
+              "producerReceiptId": "doctor-retry-stale-1:producer-receipt",
+              "sequence": 1,
+              "kind": "user_confirmed_doctor_retry",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
               }
             ],
             "expectedConsumedSignalIds": ["provider-healthy-2"],
@@ -1319,6 +1546,7 @@
       "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 58, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_redirect_response",
+        "targetJobId": "summary-provider-redirect-rejected-job-1",
         "resumeCaseInitialSnapshot": {
           "state": "retry-exhausted",
           "budget": 0,
@@ -1337,11 +1565,13 @@
           "caseId": "redirect-validated-configuration-activation",
           "signal": {
             "signalId": "redirect-config-activation-1",
+            "targetJobId": "summary-provider-redirect-rejected-job-1",
+            "producerReceiptId": "redirect-config-activation-1:producer-receipt",
             "sequence": 1,
             "kind": "validated_configuration_activation",
             "targetRole": "summary",
-            "providerChoiceId": "deterministic-summary-v1",
-            "configurationFingerprint": "summary-config-no-redirect-v2"
+            "providerFingerprint": "sha256:78435e0e3f9e209f8a01c0810cefd9b5999fc9e287bbc2b4ce9c9e34f430a0b7",
+            "effectiveManifestFingerprint": "sha256:b88748667d6e428f680c4408d77714c3d7d94d7326edfe99b0afb731322fa01a"
           },
           "expectedConsumedSignalIds": ["redirect-config-activation-1"],
           "expectedIgnoredSignalIds": [],
@@ -1359,8 +1589,8 @@
           },
           "expected": {
             "budgetBefore": 0,
-            "budgetAfterGrant": 3,
-            "budgetAfterAttempt": 2,
+            "budgetAfterGrant": 1,
+            "budgetAfterAttempt": 0,
             "attemptDelta": 1,
             "lastConsumedSequence": 1,
             "ignoredSignalCount": 0,
@@ -1450,6 +1680,7 @@
       , "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_redirect_response",
+        "targetJobId": "summary-provider-https-to-http-downgrade-rejected-job-1",
         "resumeCaseInitialSnapshot": {
           "state": "retry-exhausted",
           "budget": 0,
@@ -1476,11 +1707,13 @@
           "caseId": "downgrade-validated-configuration-activation",
           "signal": {
             "signalId": "downgrade-config-activation-1",
+            "targetJobId": "summary-provider-https-to-http-downgrade-rejected-job-1",
+            "producerReceiptId": "downgrade-config-activation-1:producer-receipt",
             "sequence": 1,
             "kind": "validated_configuration_activation",
             "targetRole": "summary",
-            "providerChoiceId": "deterministic-summary-v1",
-            "configurationFingerprint": "summary-config-no-downgrade-v2"
+            "providerFingerprint": "sha256:78435e0e3f9e209f8a01c0810cefd9b5999fc9e287bbc2b4ce9c9e34f430a0b7",
+            "effectiveManifestFingerprint": "sha256:b88748667d6e428f680c4408d77714c3d7d94d7326edfe99b0afb731322fa01a"
           },
           "expectedConsumedSignalIds": [
             "downgrade-config-activation-1"
@@ -1500,8 +1733,8 @@
           },
           "expected": {
             "budgetBefore": 0,
-            "budgetAfterGrant": 3,
-            "budgetAfterAttempt": 2,
+            "budgetAfterGrant": 1,
+            "budgetAfterAttempt": 0,
             "attemptDelta": 1,
             "lastConsumedSequence": 1,
             "ignoredSignalCount": 0,
@@ -1587,11 +1820,16 @@
       "retrievalQuery": "not applicable: configuration rejection",
       "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
-        "providerChoiceId": "credentialless-http-summary-v1",
-        "executionLocation": "remote",
-        "credentialPresent": false,
-        "endpointScheme": "http",
-        "endpointHost": "summary.http.invalid",
+        "proposal": {
+          "version": 1,
+          "role": "summary",
+          "state": "enabled",
+          "wireProtocol": "openai_chat_completions_v1",
+          "modelId": "deterministic-summary-model-v1",
+          "modelRevision": "1",
+          "endpointUrl": "http://summary.http.invalid/v1/chat/completions",
+          "credentialRef": {"kind": "none"}
+        },
         "certificateChainState": "not_applicable",
         "hostnameState": "not_applicable",
         "redactedPayload": "TRANSPORT_PAYLOAD_SENTINEL",
@@ -1651,11 +1889,16 @@
       "retrievalQuery": "not applicable: credentialed configuration rejection",
       "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
-        "providerChoiceId": "credentialed-http-summary-v1",
-        "executionLocation": "remote",
-        "credentialPresent": true,
-        "endpointScheme": "http",
-        "endpointHost": "credentialed-summary.http.invalid",
+        "proposal": {
+          "version": 1,
+          "role": "summary",
+          "state": "enabled",
+          "wireProtocol": "openai_chat_completions_v1",
+          "modelId": "deterministic-summary-model-v1",
+          "modelRevision": "1",
+          "endpointUrl": "http://credentialed-summary.http.invalid/v1/chat/completions",
+          "credentialRef": {"kind": "environment", "name": "FREE_MEM_SUMMARY_API_KEY"}
+        },
         "certificateChainState": "not_applicable",
         "hostnameState": "not_applicable",
         "redactedPayload": "CREDENTIALED_TRANSPORT_PAYLOAD_SENTINEL",
@@ -1715,11 +1958,16 @@
       "retrievalQuery": "not applicable: TLS configuration rejection",
       "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
-        "providerChoiceId": "invalid-chain-https-summary-v1",
-        "executionLocation": "remote",
-        "credentialPresent": true,
-        "endpointScheme": "https",
-        "endpointHost": "invalid-chain.summary.invalid",
+        "proposal": {
+          "version": 1,
+          "role": "summary",
+          "state": "enabled",
+          "wireProtocol": "openai_chat_completions_v1",
+          "modelId": "deterministic-summary-model-v1",
+          "modelRevision": "1",
+          "endpointUrl": "https://invalid-chain.summary.invalid/v1/chat/completions",
+          "credentialRef": {"kind": "environment", "name": "FREE_MEM_SUMMARY_API_KEY"}
+        },
         "certificateChainState": "invalid",
         "hostnameState": "valid",
         "redactedPayload": "INVALID_CHAIN_TRANSPORT_PAYLOAD_SENTINEL",
@@ -1779,11 +2027,16 @@
       "retrievalQuery": "not applicable: TLS configuration rejection",
       "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
       "providerActivationProposal": {
-        "providerChoiceId": "hostname-mismatch-https-summary-v1",
-        "executionLocation": "remote",
-        "credentialPresent": true,
-        "endpointScheme": "https",
-        "endpointHost": "hostname-mismatch.summary.invalid",
+        "proposal": {
+          "version": 1,
+          "role": "summary",
+          "state": "enabled",
+          "wireProtocol": "openai_chat_completions_v1",
+          "modelId": "deterministic-summary-model-v1",
+          "modelRevision": "1",
+          "endpointUrl": "https://hostname-mismatch.summary.invalid/v1/chat/completions",
+          "credentialRef": {"kind": "environment", "name": "FREE_MEM_SUMMARY_API_KEY"}
+        },
         "certificateChainState": "valid",
         "hostnameState": "mismatch",
         "redactedPayload": "HOSTNAME_MISMATCH_TRANSPORT_PAYLOAD_SENTINEL",
@@ -1844,6 +2097,7 @@
       "providerTransmissionOracle": {"credentialBytesSent": 32, "payloadBytesSent": 128, "completionMilestone": "provider_processing_rejected_or_exhausted"},
       "fault": {
         "kind": "summary_provider_output_limit_exceeded",
+        "targetJobId": "output-limit-job-1",
         "observedResultCount": 17,
         "configuredLimit": 16,
         "failureMetadata": {
@@ -1930,12 +2184,13 @@
             "signals": [
               {
                 "signalId": "output-limit-config-activation-1",
-                "sequence": 1,
-                "kind": "validated_configuration_activation",
+              "targetJobId": "output-limit-job-1",
+              "producerReceiptId": "output-limit-config-activation-1:producer-receipt",
+              "sequence": 1,
+              "kind": "validated_configuration_activation",
               "targetRole": "summary",
-              "providerChoiceId": "deterministic-summary-v1",
-              "configurationFingerprint": "summary-config-limit-17-v2",
-              "effectiveManifestFingerprint": "sha256:f3c1235d170c1d9ce1c6f9042492194cab3a50d160267837644441fcef108771"
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:9bd12c87e5fb039892fb1d6dd78843ba82339be49b7c4c18c7707bb14ffd153e"
               }
             ],
             "expectedConsumedSignalIds": ["output-limit-config-activation-1"],
@@ -1951,8 +2206,8 @@
             },
             "expected": {
               "budgetBefore": 0,
-              "budgetAfterGrant": 3,
-              "budgetAfterAttempt": 2,
+              "budgetAfterGrant": 1,
+              "budgetAfterAttempt": 0,
               "attemptDelta": 1,
               "lastConsumedSequence": 1,
               "ignoredSignalCount": 0,
@@ -1965,11 +2220,13 @@
             "signals": [
               {
                 "signalId": "output-limit-provider-health-1",
-                "sequence": 1,
-                "kind": "recorded_provider_healthy_transition",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-v1"
+              "targetJobId": "output-limit-job-1",
+              "producerReceiptId": "output-limit-provider-health-1:producer-receipt",
+              "sequence": 1,
+              "kind": "recorded_provider_healthy_transition",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
               }
             ],
             "expectedConsumedSignalIds": [],
@@ -1999,11 +2256,13 @@
             "signals": [
               {
                 "signalId": "output-limit-doctor-retry-1",
-                "sequence": 1,
-                "kind": "user_confirmed_doctor_retry",
-                "targetRole": "summary",
-                "providerChoiceId": "deterministic-summary-v1",
-                "configurationFingerprint": "summary-config-v1"
+              "targetJobId": "output-limit-job-1",
+              "producerReceiptId": "output-limit-doctor-retry-1:producer-receipt",
+              "sequence": 1,
+              "kind": "user_confirmed_doctor_retry",
+              "targetRole": "summary",
+              "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+              "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d"
               }
             ],
             "expectedConsumedSignalIds": [],
@@ -2726,7 +2985,7 @@
       "lifecycleProfileId": "derived_sensitivity_rejection",
       "resourceSampleMode": "warm",
       "retrievalQuery": "local derived sentinel",
-      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 0, "completionMilestone": null},
+      "providerTransmissionOracle": {"credentialBytesSent": 0, "payloadBytesSent": 128, "completionMilestone": "local_provider_derived_memory"},
       "events": [
         {
           "eventId": "local-derived-event-1",

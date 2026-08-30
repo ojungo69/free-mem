@@ -7,9 +7,11 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
+import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
 import { lineageDigest } from "./alpha-result-lineage.mjs";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
 import { runnerEvidenceFingerprint, runnerResultObservationFingerprint } from "./alpha-runner-evidence.mjs";
+import { clearProviderEgressEvidence } from "./provider-egress-test-helper.mjs";
 
 const contractDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(contractDir, "../../..");
@@ -22,6 +24,7 @@ const success = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.examp
 const successEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.example.json"), "utf8"));
 const suiteRegression = JSON.parse(readFileSync(join(fixtureRoot, "alpha-result-v1.suite-regression.json"), "utf8"));
 const suiteRegressionEvidence = JSON.parse(readFileSync(join(fixtureRoot, "runner-evidence/alpha-runner-evidence-v1.suite-regression.json"), "utf8"));
+const resultSchema = JSON.parse(readFileSync(join(contractDir, "alpha-result-v1.schema.json"), "utf8"));
 const evidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-failure-evidence-"));
 process.on("exit", () => rmSync(evidenceRoot, { recursive: true, force: true }));
 let ordinal = 0;
@@ -75,6 +78,70 @@ function runnerEvidenceFor(result, template) {
   record.latencyRuns = structuredClone(result.latencyEvidence.runs);
   return evidence;
 }
+
+const recoverySignal = failure.retryEvidence.cases[0].deliveredSignals[0];
+assert.equal(Object.hasOwn(recoverySignal, "configurationFingerprint"), false,
+  "output-limit recovery retained a free-form summary configuration label");
+assert.equal(recoverySignal.providerFingerprint,
+  fixture.outputLimitRecoveryManifest.summaryProvider.providerFingerprint,
+  "output-limit recovery signal is not provider-fingerprint bound");
+assert.equal(recoverySignal.effectiveManifestFingerprint,
+  fixture.outputLimitRecoveryManifest.configurationFingerprint,
+  "output-limit recovery signal is not manifest-fingerprint bound");
+assert.equal(failure.retryEvidence.cases[0].observedTransition.budgetAfterGrant, 1,
+  "configuration activation refilled the automatic retry budget");
+assert.equal(failure.retryEvidence.cases[0].observedTransition.budgetAfterAttempt, 0,
+  "configuration activation did not consume its one-shot grant");
+
+const staleRecoveryProviderFingerprint = structuredClone(failure);
+staleRecoveryProviderFingerprint.retryEvidence.cases[0].deliveredSignals[0]
+  .providerFingerprint = fixture.repairedRemoteManifest.summaryProvider.providerFingerprint;
+assertRejected(staleRecoveryProviderFingerprint, /provider failure evidence/,
+  "output-limit recovery accepted a stale provider fingerprint");
+
+const conflictResult = suiteResultFor("runtime-unavailable-spool-recovery");
+for (const [mutate, pattern, label] of [
+  [(evidence) => { delete evidence.streamId; }, /streamId/,
+    "identity conflict missing canonical stream"],
+  [(evidence) => { delete evidence.conflictReceiptId; }, /conflictReceiptId/,
+    "identity conflict missing receipt field"],
+  [(evidence) => { delete evidence.conflictAttemptReceiptIds; }, /conflictAttemptReceiptIds/,
+    "identity conflict missing repeated-attempt receipts"],
+  [(evidence) => { evidence.conflictAttemptReceiptIds.pop(); }, /conflictAttemptReceiptIds/,
+    "identity conflict has only one attempt receipt"],
+  [(evidence) => { evidence.durableConflictReceiptCount = 2; }, /durableConflictReceiptCount/,
+    "identity conflict persisted multiple receipts for one pair"],
+  [(evidence) => { evidence.reason = "wrong_reason"; }, /\$\.reason/,
+    "identity conflict wrong reason"],
+  [(evidence) => { evidence.incomingDeliveryState = "committed"; },
+    /incomingDeliveryState/, "identity conflict wrong state"],
+  [(evidence) => { evidence.canonicalPayloadUnchanged = false; },
+    /canonicalPayloadUnchanged/, "identity conflict canonical payload overwrite"],
+  [(evidence) => { evidence.durableMemoryDelta = 1; },
+    /durableMemoryDelta/, "identity conflict durable memory mutation"],
+]) {
+  const mutant = structuredClone(conflictResult);
+  mutate(mutant.identityConflictEvidence);
+  const issues = validateAgainstSchema(
+    mutant.identityConflictEvidence, resultSchema.$defs.IdentityConflictEvidence, resultSchema,
+  );
+  assert.notEqual(issues.length, 0, `${label}: schema accepted mutation`);
+  assert.match(JSON.stringify(issues), pattern, label);
+}
+const semanticConflictMismatch = structuredClone(conflictResult);
+semanticConflictMismatch.identityConflictEvidence.conflictReceiptId =
+  `conflict-receipt-v1:sha256:${"0".repeat(64)}`;
+semanticConflictMismatch.identityConflictEvidence.conflictAttemptReceiptIds = [
+  semanticConflictMismatch.identityConflictEvidence.conflictReceiptId,
+  semanticConflictMismatch.identityConflictEvidence.conflictReceiptId,
+];
+assertRejected(semanticConflictMismatch, /identity conflict evidence/,
+  "identity conflict schema-valid receipt mismatch", suiteRegressionEvidence);
+const semanticConflictAttemptMismatch = structuredClone(conflictResult);
+semanticConflictAttemptMismatch.identityConflictEvidence.conflictAttemptReceiptIds[1] =
+  `conflict-receipt-v1:sha256:${"0".repeat(64)}`;
+assertRejected(semanticConflictAttemptMismatch, /identity conflict evidence/,
+  "identity conflict schema-valid attempt receipt mismatch", suiteRegressionEvidence);
 
 const unobservedInjectionClaim = structuredClone(failure);
 unobservedInjectionClaim.injectionBeforeModel = true;
@@ -219,13 +286,15 @@ timeoutBeforeCapture.securityDenominators = {
 };
 for (const name of Object.keys(timeoutBeforeCapture.securityEvidence))
   timeoutBeforeCapture.securityEvidence[name] = 0;
+const timeoutBeforeCaptureEvidence = runnerEvidenceFor(timeoutBeforeCapture, successEvidence);
+clearProviderEgressEvidence(timeoutBeforeCaptureEvidence, timeoutBeforeCapture.runnerEvidenceCaseId);
 assertAccepted(timeoutBeforeCapture, "timeout before event capture",
-  runnerEvidenceFor(timeoutBeforeCapture, successEvidence));
+  timeoutBeforeCaptureEvidence);
 
 const timeoutBeforeProviderAttempt = timedOutSuccessAt("source_events_captured");
 clearUnobservedSelection(timeoutBeforeProviderAttempt);
 timeoutBeforeProviderAttempt.counts.committed = 0;
-assertRejected(timeoutBeforeProviderAttempt, /provider egress exists without committed events/,
+assertRejected(timeoutBeforeProviderAttempt, /authorization event identities/,
   "timeout before provider attempt claimed egress",
   runnerEvidenceFor(timeoutBeforeProviderAttempt, successEvidence));
 
@@ -240,8 +309,10 @@ Object.assign(timeoutWhileSpooled.securityEvidence, {
   remoteProviderRequestCount: 0, remoteProviderPayloadCount: 0,
   credentialBytesSent: 0, payloadBytesSent: 0,
 });
+const timeoutWhileSpooledEvidence = runnerEvidenceFor(timeoutWhileSpooled, suiteRegressionEvidence);
+clearProviderEgressEvidence(timeoutWhileSpooledEvidence, timeoutWhileSpooled.runnerEvidenceCaseId);
 assertAccepted(timeoutWhileSpooled, "timeout while events remained spooled",
-  runnerEvidenceFor(timeoutWhileSpooled, suiteRegressionEvidence));
+  timeoutWhileSpooledEvidence);
 
 const timeoutBeforeSpoolCompletion = timedOutAt(spoolResult, "stable_batch_replayed_second_time");
 clearUnobservedSelection(timeoutBeforeSpoolCompletion, spoolScenario);
@@ -249,7 +320,7 @@ Object.assign(timeoutBeforeSpoolCompletion.counts, {
   committed: 0, duplicateDeliveries: spoolResult.counts.duplicateDeliveries,
   summaryCount: 0, durableMemoryCount: 0,
 });
-assertRejected(timeoutBeforeSpoolCompletion, /provider egress exists without committed events/,
+assertRejected(timeoutBeforeSpoolCompletion, /authorization event identities/,
   "spool timeout before provider completion claimed egress",
   runnerEvidenceFor(timeoutBeforeSpoolCompletion, suiteRegressionEvidence));
 
@@ -333,13 +404,13 @@ assertRejected(erasedSelection, /completed selection input count does not match 
   "timeout erased an observed completed selection", timeoutAfterSelectionEvidence);
 
 function observeElapsedDeadline(result) {
-  for (const [name, monotonicMs] of [["target_selection_started", 700],
-    ["target_selection_finished", 1450], ["target_injection_acknowledged", 1550],
-    ["target_model_request_dispatched", 1650], ["scenario_terminal", 1750],
-    ["post_teardown_grace_elapsed", 1850]]) {
+  for (const [name, monotonicMs] of [["target_selection_started", 701],
+    ["target_selection_finished", 1451], ["target_injection_acknowledged", 1551],
+    ["target_model_request_dispatched", 1651], ["scenario_terminal", 1751],
+    ["post_teardown_grace_elapsed", 1851]]) {
     result.milestones.find((item) => item.name === name).monotonicMs = monotonicMs;
   }
-  result.selectionTimingEvidence = { startMonotonicMs: 700, endMonotonicMs: 1450 };
+  result.selectionTimingEvidence = { startMonotonicMs: 701, endMonotonicMs: 1451 };
   result.selectionElapsedMs = 750;
   for (let monotonicMs = 1400; monotonicMs <= 1900; monotonicMs += 100) {
     result.processSamples.push({ ...success.processSamples.at(-1), monotonicMs });
@@ -380,9 +451,9 @@ assertAccepted(deadlineExceeded, "completed selection deadline failure",
   runnerEvidenceFor(deadlineExceeded, successEvidence));
 
 const deadlineTimeout = timedOutSuccessAt("target_selection_finished");
-deadlineTimeout.milestones.find((item) => item.name === "target_selection_started").monotonicMs = 700;
-deadlineTimeout.milestones.find((item) => item.name === "target_selection_finished").monotonicMs = 1450;
-deadlineTimeout.selectionTimingEvidence = { startMonotonicMs: 700, endMonotonicMs: 1450 };
+deadlineTimeout.milestones.find((item) => item.name === "target_selection_started").monotonicMs = 701;
+deadlineTimeout.milestones.find((item) => item.name === "target_selection_finished").monotonicMs = 1451;
+deadlineTimeout.selectionTimingEvidence = { startMonotonicMs: 701, endMonotonicMs: 1451 };
 deadlineTimeout.selectionElapsedMs = 750;
 markDeadlineFailure(deadlineTimeout);
 deadlineTimeout.disposition = { state: "failed", reason: "drain_timed_out", successfulComparisonEligible: false };

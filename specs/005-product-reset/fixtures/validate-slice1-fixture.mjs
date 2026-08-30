@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
 
 import { canonicalizeJson, readIJsonFile } from "../../../harness/schema/jcs.ts";
 import { validateAgainstSchema } from "../../../harness/schema/validate.ts";
@@ -57,14 +57,14 @@ if (issues.length > 0) {
 const { contractFingerprint: _contractFingerprint, ...contract } = fixture;
 const fixtureContractDomain = "free-mem:slice1-fixture-contract:v1\0";
 const expectedContractFingerprintRecord =
-  "fixture-contract-fingerprint=sha256:379e5a61572b9c4aba9e01ba3801766a0051b76e6111972c4081f2e90218529a";
+  "fixture-contract-fingerprint=sha256:b36bcd7d3b2d98b629d797844beec52c57e67f5152a9297fdbaff8a58832f2e3";
 const expectedContractFingerprint = expectedContractFingerprintRecord.replace(
   "fixture-contract-fingerprint=",
   "",
 );
-const actualContractFingerprint = `sha256:${createHash("sha256")
-  .update(fixtureContractDomain)
-  .update(canonicalizeJson({
+const fingerprint = (domain, value) => `sha256:${createHash("sha256")
+  .update(domain).update(canonicalizeJson(value)).digest("hex")}`;
+const actualContractFingerprint = fingerprint(fixtureContractDomain, {
     fixture: contract,
     schema,
     semanticValidator: normalizeText(readFileSync(semanticPath, "utf8")),
@@ -89,51 +89,152 @@ const actualContractFingerprint = `sha256:${createHash("sha256")
     resultCanonicalValidator: normalizeText(readFileSync(resultValidatorPath, "utf8")),
     sharedJcsRuntime: normalizeText(readFileSync(sharedJcsRuntimePath, "utf8")),
     sharedSchemaRuntime: normalizeText(readFileSync(sharedSchemaRuntimePath, "utf8")),
-  }))
-  .digest("hex")}`;
-if (
-  fixture.contractFingerprint !== expectedContractFingerprint ||
-  actualContractFingerprint !== expectedContractFingerprint
-) {
-  throw new Error("fixed fixture contract changed without a fixture-version fingerprint update");
+  });
+
+const proposalFields = ["version", "role", "state", "wireProtocol", "modelId",
+  "modelRevision", "endpointUrl", "credentialRef"];
+
+function validateProviderEndpoint(endpointUrl, credentialKind, label) {
+  if (Buffer.byteLength(endpointUrl, "utf8") > 2048 || /[^\x21-\x7e]/u.test(endpointUrl)) {
+    throw new Error(`${label} endpoint is outside its ASCII/2KiB bounds`);
+  }
+  let endpoint;
+  try {
+    endpoint = new URL(endpointUrl);
+  } catch {
+    throw new Error(`${label} endpoint is not a URL`);
+  }
+  if (endpoint.href !== endpointUrl) {
+    throw new Error(`${label} endpoint is not canonical`);
+  }
+  if (endpoint.username || endpoint.password) {
+    throw new Error(`${label} endpoint contains userinfo`);
+  }
+  if (endpointUrl.includes("?") || endpointUrl.includes("#")) {
+    throw new Error(`${label} endpoint contains a query or fragment`);
+  }
+  if (!endpoint.hostname || !["http:", "https:"].includes(endpoint.protocol) ||
+      endpoint.pathname === "/") {
+    throw new Error(`${label} endpoint is not a complete request URL`);
+  }
+  const host = endpoint.hostname;
+  if (host.endsWith(".")) {
+    throw new Error(`${label} endpoint uses a trailing-dot hostname`);
+  }
+  const local = host === "127.0.0.1" || host === "[::1]";
+  const rejectedLocalAlias = host.includes("*") || host === "localhost" ||
+    host.endsWith(".localhost") || host === "0.0.0.0" || host === "[::]" ||
+    host === "[::ffff:0:0]" ||
+    (host.startsWith("127.") && host !== "127.0.0.1") || host.startsWith("[::ffff:7f");
+  if (rejectedLocalAlias) {
+    throw new Error(`${label} endpoint hostname is not an accepted literal loopback or remote host`);
+  }
+  if (local && endpoint.protocol === "http:" && credentialKind !== "none") {
+    throw new Error(`${label} local HTTP endpoint must be credential-none`);
+  }
+  return {
+    endpoint,
+    local,
+    activationRejectionReason:
+      !local && endpoint.protocol !== "https:" ? "insecure_remote_transport" : null,
+  };
 }
 
-const {
-  configurationFingerprint: _configurationFingerprint,
-  ...effectiveManifest
-} = fixture.effectiveConfiguration;
-const actualConfigurationFingerprint = `sha256:${createHash("sha256")
-  .update("free-mem:effective-manifest:v1\0")
-  .update(canonicalizeJson(effectiveManifest))
-  .digest("hex")}`;
-if (fixture.effectiveConfiguration.configurationFingerprint !== actualConfigurationFingerprint) {
-  throw new Error("effective manifest fingerprint does not match its non-secret configuration");
+function validateProviderProposal(proposal, label) {
+  if (
+    Object.keys(proposal).sort().join("\0") !== [...proposalFields].sort().join("\0") ||
+    proposal.version !== 1 || proposal.role !== "summary" || proposal.state !== "enabled" ||
+    !["anthropic_messages_v1", "openai_chat_completions_v1"].includes(proposal.wireProtocol)
+  ) {
+    throw new Error(`${label} ProviderProposal is not the closed v1 shape`);
+  }
+  for (const [name, maxBytes] of [["modelId", 256], ["modelRevision", 128]]) {
+    if (Buffer.byteLength(proposal[name], "utf8") === 0 ||
+        Buffer.byteLength(proposal[name], "utf8") > maxBytes) {
+      throw new Error(`${label} model field is outside its UTF-8 byte bounds`);
+    }
+    if (/[\u0000-\u001f\u007f]/u.test(proposal[name])) {
+      throw new Error(`${label} model field contains an ASCII control character`);
+    }
+  }
+  const credential = proposal.credentialRef;
+  const credentialKeys = credential && Object.keys(credential).sort().join("\0");
+  if (
+    !credential ||
+    (credential.kind === "none" && credentialKeys !== "kind") ||
+    (credential.kind === "environment" &&
+      (credentialKeys !== "kind\0name" ||
+        !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(credential.name))) ||
+    !["none", "environment"].includes(credential.kind)
+  ) {
+    throw new Error(`${label} credential reference is not closed none/environment v1`);
+  }
+  return validateProviderEndpoint(proposal.endpointUrl, credential.kind, label);
 }
-const {
-  configurationFingerprint: _localConfigurationFingerprint,
-  ...localDerivationManifest
-} = fixture.localDerivationManifest;
-const actualLocalConfigurationFingerprint = `sha256:${createHash("sha256")
-  .update("free-mem:local-derivation-manifest:v1\0")
-  .update(canonicalizeJson(localDerivationManifest))
-  .digest("hex")}`;
-if (
-  fixture.localDerivationManifest.baseConfigurationFingerprint !==
-    fixture.effectiveConfiguration.configurationFingerprint ||
-  fixture.localDerivationManifest.configurationFingerprint !==
-    actualLocalConfigurationFingerprint
-) {
-  throw new Error("local derivation manifest is not bound to the active base manifest");
+
+function validateProviderChoice(choice, label) {
+  const proposal = Object.fromEntries(proposalFields.map((name) => [name, choice[name]]));
+  const compiled = validateProviderProposal(proposal, label);
+  if (compiled.activationRejectionReason !== null) {
+    throw new Error(`${label} provider violates remote HTTPS policy`);
+  }
+  const expectedPolicy = compiled.local
+    ? {
+        executionLocation: "local",
+        egressPolicy: "on_device",
+        costClass: "local_zero",
+        tlsPolicy: compiled.endpoint.protocol === "https:" ? "system" : "not_applicable",
+      }
+    : {
+        executionLocation: "remote",
+        egressPolicy: "explicit_remote",
+        costClass: "external_metered",
+        tlsPolicy: "system",
+      };
+  for (const [name, value] of Object.entries(expectedPolicy)) {
+    if (choice[name] !== value) {
+      throw new Error(`${label} provider ${name} is not compiler-derived from its endpoint`);
+    }
+  }
+  const { providerFingerprint: _providerFingerprint, ...fingerprintInput } = choice;
+  const actualProviderFingerprint = fingerprint(
+    "free-mem:provider-choice:v1\0", fingerprintInput,
+  );
+  if (choice.providerFingerprint !== actualProviderFingerprint) {
+    throw new Error(`${label} provider fingerprint does not match its closed choice`);
+  }
 }
-const recoveryManifest = fixture.outputLimitRecoveryManifest;
-const {
-  configurationFingerprint: _recoveryConfigurationFingerprint,
-  ...recoveryConfiguration
-} = recoveryManifest.configuration;
-const actualRecoveryConfigurationFingerprint = `sha256:${createHash("sha256")
-  .update("free-mem:effective-manifest:v1\0")
-  .update(canonicalizeJson(recoveryConfiguration))
-  .digest("hex")}`;
+
+function validateManifest(manifest, label, baseFingerprint = null) {
+  validateProviderChoice(manifest.summaryProvider, label);
+  if (
+    (baseFingerprint === null && Object.hasOwn(manifest, "baseConfigurationFingerprint")) ||
+    (baseFingerprint !== null && manifest.baseConfigurationFingerprint !== baseFingerprint)
+  ) {
+    throw new Error(`${label} manifest predecessor binding is invalid`);
+  }
+  const { configurationFingerprint: _configurationFingerprint, ...fingerprintInput } = manifest;
+  const actualConfigurationFingerprint = fingerprint(
+    "free-mem:effective-capability-manifest:v1\0", fingerprintInput,
+  );
+  if (manifest.configurationFingerprint !== actualConfigurationFingerprint) {
+    throw new Error(`${label} manifest fingerprint does not match its non-secret configuration`);
+  }
+  return actualConfigurationFingerprint;
+}
+
+const actualConfigurationFingerprint = validateManifest(
+  fixture.effectiveConfiguration, "effective",
+);
+validateManifest(
+  fixture.localDerivationManifest, "local derivation", actualConfigurationFingerprint,
+);
+const actualRepairedConfigurationFingerprint = validateManifest(
+  fixture.repairedRemoteManifest, "repaired remote", actualConfigurationFingerprint,
+);
+const actualRecoveryConfigurationFingerprint = validateManifest(
+  fixture.outputLimitRecoveryManifest, "output-limit recovery", actualConfigurationFingerprint,
+);
 const outputLimitScenario = fixture.scenarios.find(
   (scenario) => scenario.fault?.kind === "summary_provider_output_limit_exceeded",
 );
@@ -141,16 +242,66 @@ const recoverySignal = outputLimitScenario?.fault?.resumeCases.find(
   (item) => item.caseId === "validated-larger-limit-activation",
 )?.signals[0];
 if (
-  recoveryManifest.baseConfigurationFingerprint !==
-    fixture.effectiveConfiguration.configurationFingerprint ||
-  recoveryManifest.configuration.configurationFingerprint !==
-    actualRecoveryConfigurationFingerprint ||
-  recoveryManifest.configuration.manifestId !== outputLimitScenario?.fault?.recoveryManifestId ||
-  recoveryManifest.configuration.resourceProfile.maxMemoryItemsPerDerivation <
+  fixture.outputLimitRecoveryManifest.manifestId !== outputLimitScenario?.fault?.recoveryManifestId ||
+  fixture.outputLimitRecoveryManifest.resourceProfile.maxMemoryItemsPerDerivation !==
     outputLimitScenario.fault.observedResultCount ||
+  recoverySignal?.providerFingerprint !==
+    fixture.outputLimitRecoveryManifest.summaryProvider.providerFingerprint ||
   recoverySignal?.effectiveManifestFingerprint !== actualRecoveryConfigurationFingerprint
 ) {
   throw new Error("output-limit recovery manifest is not fully bound to its activation signal");
+}
+
+const retryScenario = fixture.scenarios.find(
+  (scenario) => scenario.fault?.kind === "summary_provider_malformed_response",
+);
+const repairedSignals = [
+  retryScenario?.fault?.resumeCases.find(
+    (item) => item.caseId === "validated-configuration-activation",
+  )?.signals[0],
+  ...fixture.scenarios
+    .filter((scenario) => scenario.fault?.kind === "summary_provider_redirect_response")
+    .map((scenario) => scenario.fault.redirectRecovery.signal),
+];
+if (!repairedSignals.every((signal) =>
+  signal?.providerFingerprint === fixture.repairedRemoteManifest.summaryProvider.providerFingerprint &&
+  signal?.effectiveManifestFingerprint === actualRepairedConfigurationFingerprint
+)) {
+  throw new Error("provider recovery signals are not bound to the repaired remote manifest");
+}
+
+for (const scenario of fixture.scenarios) {
+  const signals = [
+    ...(scenario.fault?.resumeCases ?? []).flatMap((item) => item.signals),
+    ...(scenario.fault?.redirectRecovery?.signal ? [scenario.fault.redirectRecovery.signal] : []),
+  ];
+  const producerBySignalId = new Map();
+  const signalIdByProducer = new Map();
+  if (signals.length > 0 && (!scenario.fault?.targetJobId || !signals.every((signal) => {
+    const prior = producerBySignalId.get(signal.signalId);
+    const priorSignalId = signalIdByProducer.get(signal.producerReceiptId);
+    producerBySignalId.set(signal.signalId, signal.producerReceiptId);
+    signalIdByProducer.set(signal.producerReceiptId, signal.signalId);
+    return signal.targetJobId === scenario.fault.targetJobId &&
+      typeof signal.producerReceiptId === "string" && signal.producerReceiptId.length > 0 &&
+      (prior === undefined || prior === signal.producerReceiptId) &&
+      (priorSignalId === undefined || priorSignalId === signal.signalId);
+  }))) {
+    throw new Error(`${scenario.scenarioId} resume signal is not bound to its job and producer receipt`);
+  }
+}
+
+for (const scenario of fixture.scenarios.filter((item) => item.providerActivationProposal)) {
+  const assessment = validateProviderProposal(
+    scenario.providerActivationProposal.proposal, `${scenario.scenarioId} proposal`,
+  );
+  const transport = scenario.providerActivationProposal;
+  const expectedReason = assessment.activationRejectionReason ??
+    (transport.certificateChainState === "invalid" ? "tls_certificate_chain_invalid" : null) ??
+    (transport.hostnameState === "mismatch" ? "tls_hostname_mismatch" : null);
+  if (assessment.local || expectedReason !== scenario.summaryProviderStub.policyRejectedReason) {
+    throw new Error(`${scenario.scenarioId} proposal rejection evidence is inconsistent`);
+  }
 }
 
 const spool = fixture.scenarios.find(
@@ -162,16 +313,49 @@ const canonicalEvent = spool?.events?.find((event) => event.eventId === probe?.e
 if (!probe || !canonicalEvent) {
   throw new Error("identity-conflict probe does not resolve its canonical event");
 }
+if (
+  probe.repositoryScope !== spool.sourceRepositoryScope ||
+  probe.source !== spool.canonicalEventSource ||
+  probe.streamId !== spool.sourceStreamId ||
+  typeof spool.canonicalEventSource !== "string" || spool.canonicalEventSource.length === 0 ||
+  typeof spool.sourceStreamId !== "string" || spool.sourceStreamId.length === 0
+) {
+  throw new Error("identity-conflict probe does not bind canonical repository/source/stream identity");
+}
 if (probe.payloadDigestVersion !== canonicalEvent.payloadDigestVersion) {
   throw new Error("identity-conflict probe does not reuse the canonical digest version");
 }
+const expectedConflictReceiptId = `conflict-receipt-v1:${fingerprint(
+  "free-mem:event-identity-conflict-receipt:v1\0",
+  {
+    repositoryScope: probe.repositoryScope,
+    source: probe.source,
+    streamId: probe.streamId,
+    eventId: probe.eventId,
+    payloadDigestVersion: probe.payloadDigestVersion,
+    canonicalPayloadDigest: probe.canonicalPayloadDigest,
+    conflictingPayloadDigest: probe.conflictingPayloadDigest,
+  },
+)}`;
+if (
+  probe.conflictReceiptId !== expectedConflictReceiptId ||
+  !Array.isArray(probe.conflictAttemptReceiptIds) ||
+  probe.conflictAttemptReceiptIds.length < 2 ||
+  !probe.conflictAttemptReceiptIds.every((receiptId) => receiptId === expectedConflictReceiptId) ||
+  probe.durableConflictReceiptCount !== 1
+) {
+  throw new Error("identity-conflict receipt is not unique to and reused for one digest pair");
+}
+
+if (
+  fixture.contractFingerprint !== expectedContractFingerprint ||
+  actualContractFingerprint !== expectedContractFingerprint
+) {
+  throw new Error("fixed fixture contract changed without a fixture-version fingerprint update");
+}
 
 const digestDomain = "free-mem:event-payload-digest:v1\0";
-const digest = (payload) =>
-  `sha256:${createHash("sha256")
-    .update(digestDomain)
-    .update(canonicalizeJson(payload))
-    .digest("hex")}`;
+const digest = (payload) => fingerprint(digestDomain, payload);
 
 const lineageVectors = [
   {

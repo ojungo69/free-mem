@@ -4,7 +4,7 @@
   "title": "Product Reset Alpha comparison result v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "runnerEvidenceCaseId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "runnerEvidenceFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
+  "required": ["resultVersion", "fixtureId", "fixtureFingerprint", "candidateId", "scenarioId", "runnerEvidenceCaseId", "resourceSampleMode", "targetDestinationClass", "effectiveManifestFingerprint", "executionEnvironment", "environmentFingerprint", "artifactMetadata", "artifactFingerprint", "runnerEvidenceFingerprint", "networkTrustEvidenceFingerprint", "resourcePlateauEvidenceFingerprint", "drain", "injectionBeforeModel", "hostIdentityEvidence", "disposition", "milestones", "counts", "safety", "securityDenominators", "securityEvidence", "identityConflictEvidence", "retryEvidence", "failureMetadata", "outputLimitAtomicityEvidence", "operationalStatus", "processSamples", "injectedItems", "omittedItems", "packId", "packDegradations", "quality", "attemptedItems", "attemptedRenderEvidence", "attemptedRenderedBytes", "renderedBytes", "attemptedInjectedTokens", "injectedTokens", "finalRenderEvidence", "selectionTimingEvidence", "selectionElapsedMs", "latencyEvidence", "resource", "providerCostUnits"],
   "properties": {
     "resultVersion": { "const": 1 },
     "fixtureId": { "$ref": "#/$defs/SharedNonEmptyString" },
@@ -20,6 +20,10 @@
     "artifactMetadata": { "$ref": "#/$defs/ArtifactMetadata" },
     "artifactFingerprint": { "$ref": "#/$defs/Sha256" },
     "runnerEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
+    "networkTrustEvidenceFingerprint": { "$ref": "#/$defs/Sha256" },
+    "resourcePlateauEvidenceFingerprint": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/Sha256" }]
+    },
     "drain": { "$ref": "#/$defs/Drain" },
     "injectionBeforeModel": {
       "oneOf": [
@@ -107,7 +111,7 @@
     "selectionElapsedMs": { "type": "number", "minimum": 0 },
     "latencyEvidence": { "$ref": "#/$defs/LatencyEvidence" },
     "resource": { "$ref": "#/$defs/Resource" },
-    "providerCostUnits": { "type": ["number", "null"], "minimum": 0 }
+    "providerCostUnits": { "description": "Runner-observed cost; the fixed deterministic stub reports 0 independently of ProviderChoice costClass.", "type": ["number", "null"], "minimum": 0 }
   },
   "allOf": [
     {
@@ -120,8 +124,18 @@
         },
         "required": ["disposition"]
       },
-      "then": { "properties": { "milestones": { "maxItems": 0 } } },
-      "else": { "properties": { "milestones": { "minItems": 1 } } }
+      "then": {
+        "properties": {
+          "milestones": { "maxItems": 0 },
+          "resourcePlateauEvidenceFingerprint": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "milestones": { "minItems": 1 },
+          "resourcePlateauEvidenceFingerprint": { "$ref": "#/$defs/Sha256" }
+        }
+      }
     }
   ],
   "$defs": {
@@ -341,13 +355,22 @@
     "IdentityConflictEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["eventId", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingPayloadDigest", "conflictReceiptId", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "reason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
+      "required": ["repositoryScope", "source", "streamId", "eventId", "payloadDigestVersion", "canonicalPayloadDigest", "conflictingPayloadDigest", "conflictReceiptId", "conflictAttemptReceiptIds", "durableConflictReceiptCount", "conflictReceiptState", "canonicalEventState", "incomingDeliveryState", "reason", "canonicalPayloadUnchanged", "durableMemoryDelta"],
       "properties": {
+        "repositoryScope": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "source": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "streamId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "eventId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "payloadDigestVersion": { "const": "event-payload-digest-v1" },
         "canonicalPayloadDigest": { "$ref": "#/$defs/Sha256" },
         "conflictingPayloadDigest": { "$ref": "#/$defs/Sha256" },
-        "conflictReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "conflictReceiptId": { "type": "string", "pattern": "^conflict-receipt-v1:sha256:[0-9a-f]{64}$" },
+        "conflictAttemptReceiptIds": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "pattern": "^conflict-receipt-v1:sha256:[0-9a-f]{64}$" }
+        },
+        "durableConflictReceiptCount": { "const": 1 },
         "conflictReceiptState": { "const": "non_success" },
         "canonicalEventState": { "const": "committed" },
         "incomingDeliveryState": { "const": "quarantined" },
@@ -419,14 +442,15 @@
     "SharedResumeSignal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["signalId", "sequence", "kind", "targetRole", "providerChoiceId", "configurationFingerprint"],
+      "required": ["signalId", "producerReceiptId", "targetJobId", "sequence", "kind", "targetRole", "providerFingerprint", "effectiveManifestFingerprint"],
       "properties": {
         "signalId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "producerReceiptId": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "targetJobId": { "$ref": "#/$defs/SharedNonEmptyString" },
         "sequence": { "$ref": "#/$defs/SharedPositiveInteger" },
         "kind": { "enum": ["validated_configuration_activation", "recorded_provider_healthy_transition", "user_confirmed_doctor_retry"] },
         "targetRole": { "const": "summary" },
-        "providerChoiceId": { "const": "deterministic-summary-v1" },
-        "configurationFingerprint": { "$ref": "#/$defs/SharedNonEmptyString" },
+        "providerFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "effectiveManifestFingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       }
     },

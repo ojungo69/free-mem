@@ -8,7 +8,14 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeJson } from "../../../harness/schema/jcs.ts";
 import { buildRenderPayload, tokenizeRenderPayload } from "./alpha-result-render.mjs";
-import { runnerEvidenceFingerprint, runnerResultObservationFingerprint, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
+import {
+  networkTrustEvidenceFingerprint,
+  resourcePlateauEvidenceFingerprint,
+  runnerEvidenceFingerprint,
+  runnerResultObservationFingerprint,
+  validateRunnerEvidence,
+} from "./alpha-runner-evidence.mjs";
+import { clearProviderEgressEvidence } from "./provider-egress-test-helper.mjs";
 import "./validate-slice1-fixture.test.mjs";
 import "./validate-alpha-runner-evidence.test.mjs";
 import "./validate-alpha-result-render.test.mjs";
@@ -31,9 +38,14 @@ const runnerEvidenceRoot = mkdtempSync(join(tmpdir(), "free-mem-alpha-runner-evi
 let runnerEvidenceOrdinal = 0;
 process.on("exit", () => rmSync(runnerEvidenceRoot, { recursive: true, force: true }));
 
-function buildRunnerEvidence(result) {
-  const latencyRuns = structuredClone(result.latencyEvidence.runs);
-  const runPreparations = latencyRuns.map((run) => {
+function suiteProviderEgressEvidence(caseId) {
+  const record = suiteRegressionEvidence.scenarios.find((item) => item.caseId === caseId);
+  if (!record) throw new Error(`suite provider egress evidence is missing: ${caseId}`);
+  return structuredClone(record.providerEgressEvidence);
+}
+
+function buildRunPreparations(result, latencyRuns) {
+  return latencyRuns.map((run) => {
     const observations = run.captureTimings.flatMap(
       (timing) => [timing.startMonotonicMs, timing.endMonotonicMs],
     );
@@ -64,7 +76,43 @@ function buildRunnerEvidence(result) {
       readyProcessObserved: !cold,
     };
   });
-  return {
+}
+
+function bindRunnerOwnedEvidence(evidence) {
+  evidence.networkTrustEvidence.runnerInvocationId = evidence.invocationId;
+  for (const receipt of evidence.networkTrustEvidence.tlsPreflightReceipts) {
+    receipt.runnerInvocationId = evidence.invocationId;
+  }
+  if (evidence.resourcePlateauEvidence !== null) {
+    Object.assign(evidence.resourcePlateauEvidence, {
+      candidateId: evidence.candidateId,
+      artifactFingerprint: evidence.artifactFingerprint,
+      environmentFingerprint: evidence.environmentFingerprint,
+      runnerInvocationId: evidence.invocationId,
+      processTreeRootId: `resource-plateau:${evidence.invocationId}`,
+    });
+  }
+  const [record] = evidence.scenarios;
+  if (record.providerEgressEvidence.kind === "observed") {
+    record.providerEgressEvidence.runnerInvocationId = evidence.invocationId;
+    record.providerEgressEvidence.processTreeRootId = record.processTreeRootId;
+  }
+  for (const wrapper of record.recoveryProviderEgressEvidence) {
+    wrapper.evidence.runnerInvocationId = evidence.invocationId;
+    wrapper.evidence.processTreeRootId = wrapper.processTreeRootId;
+  }
+  return evidence;
+}
+
+function buildRunnerEvidence(result) {
+  const scenario = fixture.scenarios.find((item) => item.scenarioId === result.scenarioId);
+  const exceptional = result.disposition.state === "unsupported" ||
+    result.disposition.state === "not_run";
+  const recoveryObserved = result.milestones.some((item) =>
+    item.name === scenario.drainCondition.terminalMilestone);
+  const latencyRuns = structuredClone(result.latencyEvidence.runs);
+  const runPreparations = buildRunPreparations(result, latencyRuns);
+  const evidence = {
     runnerEvidenceVersion: 1,
     fixtureId: result.fixtureId,
     fixtureFingerprint: result.fixtureFingerprint,
@@ -73,6 +121,9 @@ function buildRunnerEvidence(result) {
     artifactFingerprint: result.artifactFingerprint,
     runnerId: "fixture-pinned-reference-runner-v1",
     invocationId: `${result.candidateId}:fixture-invocation-v1`,
+    networkTrustEvidence: structuredClone(suiteRegressionEvidence.networkTrustEvidence),
+    resourcePlateauEvidence: exceptional
+      ? null : structuredClone(suiteRegressionEvidence.resourcePlateauEvidence),
     scenarios: [{
       caseId: result.runnerEvidenceCaseId,
       scenarioId: result.scenarioId,
@@ -81,6 +132,13 @@ function buildRunnerEvidence(result) {
       processTreeRootId: `${result.scenarioId}:process-tree-root`,
       resourceDataRootId: `${result.scenarioId}:resource-data-root`,
       resultObservationFingerprint: runnerResultObservationFingerprint(result),
+      providerEgressEvidence: suiteProviderEgressEvidence(result.runnerEvidenceCaseId),
+      recoveryProviderEgressEvidence:
+        !recoveryObserved
+          ? []
+          : structuredClone(suiteRegressionEvidence.scenarios.find(
+              (item) => item.caseId === result.runnerEvidenceCaseId,
+            ).recoveryProviderEgressEvidence),
       hostIdentityEvidence: structuredClone(result.hostIdentityEvidence),
       observedMilestones: structuredClone(result.milestones),
       processSamples: structuredClone(result.processSamples),
@@ -88,9 +146,12 @@ function buildRunnerEvidence(result) {
       runPreparations,
     }],
   };
+  return bindRunnerOwnedEvidence(evidence);
 }
 
 function attachRunnerEvidence(result, evidence) {
+  result.resourcePlateauEvidenceFingerprint = evidence.resourcePlateauEvidence === null
+    ? null : resourcePlateauEvidenceFingerprint(evidence.resourcePlateauEvidence);
   result.runnerEvidenceFingerprint = runnerEvidenceFingerprint(evidence);
   return result;
 }
@@ -288,16 +349,38 @@ function unsupportedResult() {
       shortColdLexicalInjectionMs: null },
   };
   result.providerCostUnits = null;
+  result.resourcePlateauEvidenceFingerprint = null;
   return result;
 }
 
 assertAccepted(success, "positive example");
 assertAccepted(failure, "failure example");
 
+const missingDeterministicStubCost = structuredClone(success);
+missingDeterministicStubCost.providerCostUnits = null;
+assertRejected(missingDeterministicStubCost, /deterministic provider stub/,
+  "runner-owned deterministic stub cost was inferred from provider cost class");
+
 const unsupported = unsupportedResult();
 const unsupportedEvidence = buildRunnerEvidence(unsupported);
+clearProviderEgressEvidence(unsupportedEvidence, unsupported.runnerEvidenceCaseId);
 attachRunnerEvidence(unsupported, unsupportedEvidence);
 assertAccepted(unsupported, "unsupported result", unsupportedEvidence);
+
+const unsupportedWithPlateau = structuredClone(unsupported);
+const unsupportedWithPlateauEvidence = buildRunnerEvidence(unsupportedWithPlateau);
+unsupportedWithPlateauEvidence.resourcePlateauEvidence =
+  structuredClone(suiteRegressionEvidence.resourcePlateauEvidence);
+bindRunnerOwnedEvidence(unsupportedWithPlateauEvidence);
+attachRunnerEvidence(unsupportedWithPlateau, unsupportedWithPlateauEvidence);
+assert.throws(() => validateRunnerEvidence(
+  unsupportedWithPlateauEvidence, unsupportedWithPlateau, fixture,
+  unsupportedWithPlateauEvidence.invocationId,
+), /unsupported\/not-run runner evidence contains plateau workload/,
+  "shared runner validator accepted plateau work for an unsupported result");
+assertRejected(unsupportedWithPlateau,
+  /expected type null/,
+  "unsupported result carried executed plateau evidence", unsupportedWithPlateauEvidence);
 
 const zeroReportedObservations = structuredClone(success);
 for (const run of zeroReportedObservations.latencyEvidence.runs) {
@@ -361,6 +444,42 @@ const atBoundaryEvidence = buildRunnerEvidence(atBoundary);
 attachRunnerEvidence(atBoundary, atBoundaryEvidence);
 assertRejected(atBoundary, /completed drain reached or exceeded the pinned timeout/,
   "completion at timeout boundary", atBoundaryEvidence);
+
+const resourceThresholdFailure = structuredClone(success);
+resourceThresholdFailure.disposition = {
+  state: "failed",
+  reason: "resource_threshold_exceeded",
+  successfulComparisonEligible: false,
+};
+const failedPlateau = structuredClone(suiteRegressionEvidence.resourcePlateauEvidence);
+failedPlateau.windows[3].rssMiB = failedPlateau.windows[2].rssMiB + 33;
+resourceThresholdFailure.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(failedPlateau);
+const resourceThresholdEvidence = buildRunnerEvidence(resourceThresholdFailure);
+resourceThresholdEvidence.resourcePlateauEvidence = failedPlateau;
+bindRunnerOwnedEvidence(resourceThresholdEvidence);
+resourceThresholdFailure.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(resourceThresholdEvidence.resourcePlateauEvidence);
+resourceThresholdEvidence.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(resourceThresholdFailure);
+attachRunnerEvidence(resourceThresholdFailure, resourceThresholdEvidence);
+assertAccepted(resourceThresholdFailure,
+  "resource threshold miss remains an inspectable failed result", resourceThresholdEvidence);
+
+const inconsistentResourceThreshold = structuredClone(resourceThresholdFailure);
+inconsistentResourceThreshold.resource.maxSteadyProductProcessCount += 1;
+const inconsistentResourceEvidence = buildRunnerEvidence(inconsistentResourceThreshold);
+inconsistentResourceEvidence.resourcePlateauEvidence = structuredClone(failedPlateau);
+bindRunnerOwnedEvidence(inconsistentResourceEvidence);
+inconsistentResourceThreshold.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(inconsistentResourceEvidence.resourcePlateauEvidence);
+inconsistentResourceEvidence.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(inconsistentResourceThreshold);
+attachRunnerEvidence(inconsistentResourceThreshold, inconsistentResourceEvidence);
+assertRejected(inconsistentResourceThreshold, /resource aggregates/,
+  "resource threshold miss accepted inconsistent per-scenario aggregates",
+  inconsistentResourceEvidence);
+
 assertRejected(unsupportedPackFailure(), /unknown property/,
   "Slice 1 explicit pack-compilation failure");
 const byteOversized = oversizedFinalPack("x".repeat(17000));
@@ -453,17 +572,27 @@ assert.throws(() => validateRunnerEvidence(emptyObservationPreparation, emptyObs
 
 const mismatchedRunnerIdentity = structuredClone(successEvidence);
 mismatchedRunnerIdentity.candidateId = "another-candidate";
-const mismatchedRunnerResult = attachRunnerEvidence(
-  structuredClone(success), mismatchedRunnerIdentity,
-);
+bindRunnerOwnedEvidence(mismatchedRunnerIdentity);
+const mismatchedRunnerResult = structuredClone(success);
+mismatchedRunnerResult.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(mismatchedRunnerIdentity.resourcePlateauEvidence);
+mismatchedRunnerIdentity.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(mismatchedRunnerResult);
+attachRunnerEvidence(mismatchedRunnerResult, mismatchedRunnerIdentity);
 assertRejected(mismatchedRunnerResult, /runner evidence identity does not match the result/,
   "runner evidence candidate mismatch", mismatchedRunnerIdentity);
 
 const replayedInvocation = structuredClone(successEvidence);
 replayedInvocation.invocationId = "prior-runner-invocation";
-const replayedInvocationResult = attachRunnerEvidence(
-  structuredClone(success), replayedInvocation,
-);
+bindRunnerOwnedEvidence(replayedInvocation);
+const replayedInvocationResult = structuredClone(success);
+replayedInvocationResult.networkTrustEvidenceFingerprint =
+  networkTrustEvidenceFingerprint(replayedInvocation.networkTrustEvidence);
+replayedInvocationResult.resourcePlateauEvidenceFingerprint =
+  resourcePlateauEvidenceFingerprint(replayedInvocation.resourcePlateauEvidence);
+replayedInvocation.scenarios[0].resultObservationFingerprint =
+  runnerResultObservationFingerprint(replayedInvocationResult);
+attachRunnerEvidence(replayedInvocationResult, replayedInvocation);
 assertRejected(replayedInvocationResult, /runner evidence identity does not match the result/,
   "runner evidence invocation replay", replayedInvocation,
   successEvidence.invocationId);
@@ -489,6 +618,11 @@ suiteRunnerEvidence.scenarios = suiteCaseIds.map((caseId) => {
   const scenarioId = caseId === fixture.beforeModelNegativeFixture.caseId
     ? fixture.beforeModelNegativeFixture.baseScenarioId : caseId;
   const record = { ...structuredClone(successEvidence.scenarios[0]), caseId, scenarioId };
+  record.processTreeRootId = `${caseId}:${record.processTreeRootId}`;
+  record.providerEgressEvidence.receiptId =
+    `${caseId}:${record.providerEgressEvidence.receiptId}`;
+  record.providerEgressEvidence.observationCaseId = caseId;
+  record.providerEgressEvidence.processTreeRootId = record.processTreeRootId;
   for (const preparation of record.runPreparations) {
     preparation.receiptId = `${caseId}:${preparation.receiptId}`;
     preparation.dataDirInstanceId = `${caseId}:${preparation.dataDirInstanceId}`;
@@ -496,6 +630,14 @@ suiteRunnerEvidence.scenarios = suiteCaseIds.map((caseId) => {
   }
   return record;
 });
+const syntheticBaseEgress = suiteRunnerEvidence.scenarios.find((item) =>
+  item.caseId === fixture.beforeModelNegativeFixture.baseScenarioId).providerEgressEvidence;
+suiteRunnerEvidence.scenarios.find((item) =>
+  item.caseId === fixture.beforeModelNegativeFixture.caseId).providerEgressEvidence = {
+  kind: "projection",
+  sourceCaseId: fixture.beforeModelNegativeFixture.baseScenarioId,
+  sourceReceiptId: syntheticBaseEgress.receiptId,
+};
 const suiteRunnerResult = attachRunnerEvidence(structuredClone(success), suiteRunnerEvidence);
 validateRunnerEvidence(suiteRunnerEvidence, suiteRunnerResult,
   fixture, suiteRunnerEvidence.invocationId, suiteCaseIds);

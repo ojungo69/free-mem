@@ -1,13 +1,13 @@
 {
   "resultVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:379e5a61572b9c4aba9e01ba3801766a0051b76e6111972c4081f2e90218529a",
+  "fixtureFingerprint": "sha256:b36bcd7d3b2d98b629d797844beec52c57e67f5152a9297fdbaff8a58832f2e3",
   "candidateId": "candidate-example-v1",
   "scenarioId": "claude-to-codex",
   "runnerEvidenceCaseId": "claude-to-codex",
   "resourceSampleMode": "cold",
   "targetDestinationClass": "codex-local",
-  "effectiveManifestFingerprint": "sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445",
+  "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
   "executionEnvironment": {
     "pins": {
       "freeMemBaseCommit": "accaa29f5627c20c7e4c106a81211067fcf2bc42",
@@ -49,7 +49,9 @@
     "contentSha256": "sha256:3aa4a5decdf2adc0fa88aefec50badd7484d867eb094d7cfe60797b73ddbd259"
   },
   "artifactFingerprint": "sha256:e23cb7839a08af5b2f558c393efaf4e9af12db44c3f938106e093906e138eb0e",
-  "runnerEvidenceFingerprint": "sha256:2184310fa4a8a8d12ff2ca19e5dbda4951a5bb96be92cb6ab90cf5c3a0a01cbf",
+  "runnerEvidenceFingerprint": "sha256:46a96a951a64f49d8c5f48abbc7f7cda734f3a670d88d0fd3c128f67cf72b45d",
+  "networkTrustEvidenceFingerprint": "sha256:fc4ad418dd12db19e9ddd06af49a520bc1d3b60aa0d84105bfc8861dbb8d789d",
+  "resourcePlateauEvidenceFingerprint": "sha256:73301a65e2d058b4b01914ed855527e1524f17af9523367f12fc3d6d5bf0fe66",
   "drain": {
     "drainConditionId": "slice1-claude-to-codex-visible-v1",
     "status": "completed",
@@ -316,7 +318,7 @@
   "injectedTokens": 759,
   "finalRenderEvidence": {
     "rendererId": "alpha-jcs-renderer-v1",
-    "utf8Payload": "{\"injectionPack\":{\"items\":[{\"fact\":\"Project settings validation now uses the existing validator.\",\"lineageId\":\"8bc0d5f574dc4db7edf79fa2dd0a04e563a397190cd3a4c1755b3964f324f99c\",\"memoryId\":\"memory:18907f0c51d483d6a0a0192e70c86728f91d8c3625c86a8641ddd94ca8c4a377\",\"memoryKind\":\"summary\",\"revisionId\":\"revision:e3e1ef7d280904adf53d8b49baf1deb8c2013ebf202ce8730de26d5777b7f1b1\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-1\",\"claude-to-codex-event-4\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":45,\"eventId\":\"claude-to-codex-event-1\",\"startByte\":0},{\"endByte\":53,\"eventId\":\"claude-to-codex-event-4\",\"startByte\":0}]},{\"fact\":\"Reuse the existing JSON-schema validation path.\",\"lineageId\":\"6a056444cac2365e46dbe216e70d7ff8b89d6a431701a2403f8512212dd864c2\",\"memoryId\":\"memory:4077823df9cd06fe528b34ee2aa96caeaa50a70341c2accd37a0b2ded1ed598c\",\"memoryKind\":\"decision\",\"revisionId\":\"revision:351b9ac6ade5120b2816807a75bc12f9907f39342455cc0703ca775ea8033cf8\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-2\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":47,\"eventId\":\"claude-to-codex-event-2\",\"startByte\":0}]},{\"fact\":\"Do not add a second custom parser.\",\"lineageId\":\"c1712f25bc7fc5d8db55e22c7bea971066661aa3ff391ec7e01576a120d42878\",\"memoryId\":\"memory:9016c2e8daec075653957f53bc8d304de3df1002217500f49364379dea848466\",\"memoryKind\":\"failed_approach\",\"revisionId\":\"revision:da099e3e92c0d671a326700d09f35a596c92fb8520c2457af9489c617a0d55a6\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-3\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":69,\"eventId\":\"claude-to-codex-event-3\",\"startByte\":0}]},{\"fact\":\"Next: add the malformed-root regression test.\",\"lineageId\":\"f949fbe6af10ee7d8c41f208fe3c878ebfa9b7a8b0be2ec8e69b5eda395a220b\",\"memoryId\":\"memory:eb4d9015e6efb615428aaf7271a945b18bcea1fe2d0d591a5ce08340affc14a4\",\"memoryKind\":\"next_action\",\"revisionId\":\"revision:4dad9f748e25321de060890002fe43e3dcdba7d10604b23f520a79db6f8624e4\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-5\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":39,\"eventId\":\"claude-to-codex-event-5\",\"startByte\":0}]}],\"manifestIdentity\":{\"effectiveManifestFingerprint\":\"sha256:8190019b5f6ed9f7467da2c4cc357937537bba91326cd7bff5f1fcc5544e2445\",\"manifestId\":\"slice1-effective-manifest-v1\"},\"packDegradations\":[\"semantic_disabled\"],\"packId\":\"candidate-example-v1:claude-to-codex:pack-v1\",\"packVersion\":1,\"resolvedDestinationPolicy\":{\"egressPolicy\":\"same_repository_on_device\",\"eligibleSensitivities\":[\"eligible\",\"private\",\"local_only\"],\"executionLocation\":\"local\",\"targetAgent\":\"codex\"},\"targetDestinationClass\":\"codex-local\",\"targetRepositoryScope\":\"repo-primary\",\"targetSessionId\":\"claude-to-codex:target-session\"}}",
+    "utf8Payload": "{\"injectionPack\":{\"items\":[{\"fact\":\"Project settings validation now uses the existing validator.\",\"lineageId\":\"8bc0d5f574dc4db7edf79fa2dd0a04e563a397190cd3a4c1755b3964f324f99c\",\"memoryId\":\"memory:18907f0c51d483d6a0a0192e70c86728f91d8c3625c86a8641ddd94ca8c4a377\",\"memoryKind\":\"summary\",\"revisionId\":\"revision:e3e1ef7d280904adf53d8b49baf1deb8c2013ebf202ce8730de26d5777b7f1b1\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-1\",\"claude-to-codex-event-4\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":45,\"eventId\":\"claude-to-codex-event-1\",\"startByte\":0},{\"endByte\":53,\"eventId\":\"claude-to-codex-event-4\",\"startByte\":0}]},{\"fact\":\"Reuse the existing JSON-schema validation path.\",\"lineageId\":\"6a056444cac2365e46dbe216e70d7ff8b89d6a431701a2403f8512212dd864c2\",\"memoryId\":\"memory:4077823df9cd06fe528b34ee2aa96caeaa50a70341c2accd37a0b2ded1ed598c\",\"memoryKind\":\"decision\",\"revisionId\":\"revision:351b9ac6ade5120b2816807a75bc12f9907f39342455cc0703ca775ea8033cf8\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-2\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":47,\"eventId\":\"claude-to-codex-event-2\",\"startByte\":0}]},{\"fact\":\"Do not add a second custom parser.\",\"lineageId\":\"c1712f25bc7fc5d8db55e22c7bea971066661aa3ff391ec7e01576a120d42878\",\"memoryId\":\"memory:9016c2e8daec075653957f53bc8d304de3df1002217500f49364379dea848466\",\"memoryKind\":\"failed_approach\",\"revisionId\":\"revision:da099e3e92c0d671a326700d09f35a596c92fb8520c2457af9489c617a0d55a6\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-3\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":69,\"eventId\":\"claude-to-codex-event-3\",\"startByte\":0}]},{\"fact\":\"Next: add the malformed-root regression test.\",\"lineageId\":\"f949fbe6af10ee7d8c41f208fe3c878ebfa9b7a8b0be2ec8e69b5eda395a220b\",\"memoryId\":\"memory:eb4d9015e6efb615428aaf7271a945b18bcea1fe2d0d591a5ce08340affc14a4\",\"memoryKind\":\"next_action\",\"revisionId\":\"revision:4dad9f748e25321de060890002fe43e3dcdba7d10604b23f520a79db6f8624e4\",\"revisionOrdinal\":1,\"selectionReason\":\"lexical\",\"sensitivity\":\"eligible\",\"sourceEventIds\":[\"claude-to-codex-event-5\"],\"sourceLane\":\"lexical\",\"sourceSpans\":[{\"endByte\":39,\"eventId\":\"claude-to-codex-event-5\",\"startByte\":0}]}],\"manifestIdentity\":{\"effectiveManifestFingerprint\":\"sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d\",\"manifestId\":\"slice1-effective-manifest-v1\"},\"packDegradations\":[\"semantic_disabled\"],\"packId\":\"candidate-example-v1:claude-to-codex:pack-v1\",\"packVersion\":1,\"resolvedDestinationPolicy\":{\"egressPolicy\":\"same_repository_on_device\",\"eligibleSensitivities\":[\"eligible\",\"private\",\"local_only\"],\"executionLocation\":\"local\",\"targetAgent\":\"codex\"},\"targetDestinationClass\":\"codex-local\",\"targetRepositoryScope\":\"repo-primary\",\"targetSessionId\":\"claude-to-codex:target-session\"}}",
     "tokenizerId": "deterministic-fixture-tokenizer-v1",
     "tokenizerRevision": "1",
     "tokenIds": [
@@ -938,7 +940,7 @@
       318520971,
       2314107055,
       382474223,
-      2370786204,
+      3182035720,
       318520971,
       501256575,
       318520971,

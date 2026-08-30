@@ -54,13 +54,39 @@ Each fixture defines:
 - ordered expected injected items binding fact, memory kind, source events, lane, and selection
   reason; expected omissions; forbidden facts; and retrieval queries
 - expected durable event and MemoryItem counts, including persisted summaries
-- declared effective-manifest identity/fingerprint, the validated local-derivation and output-limit
-  recovery manifests with their activation boundaries, profile/provider identities, and a versioned
-  destination-policy map resolving every scenario target class
+- declared effective-manifest identity/fingerprint; complete local-derivation, repaired-remote, and
+  output-limit successor manifests with their activation boundaries; computed ProviderChoice
+  fingerprints; and a versioned destination-policy map resolving every scenario target class
+- base remote `openai_chat_completions_v1` at
+  `https://summary.stub.invalid/v1/chat/completions` with environment credential
+  `FREE_MEM_SUMMARY_API_KEY`; local successor at
+  `https://127.0.0.1:1234/v1/chat/completions` with credential `none`; and repaired remote at
+  `https://summary-repaired.stub.invalid/v1/chat/completions`
+- the fixed complete ResourceProfile, including 100 source events/job, 60,000 ms observer timeout,
+  exact JavaScript UTF-16 system/user allocation within 12,000 units, 4,000 output tokens, 1 MiB
+  response, temperature 0.2, 5,000 ms provider TLS preflight,
+  sweep/idle/debounce/stuck intervals, and disabled zero-duration raw-event retention; only the
+  runner-owned output-limit successor uses profile version 2/derivation limit 17
 - the complete pinned InjectionPack selection envelope, including time, candidate, byte, item,
   token, and per-lane budgets
 - latency, process, memory-growth, queue, storage, and token thresholds, plus fixed repetitions,
   warm-up/reset rules, sample boundaries, and percentile calculation
+- runner-owned network trust binding the exact base/local/repaired hostnames, public CA fingerprint,
+  setup/start credential/payload-free native TLS preflights, normal chain/hostname validation, and
+  absence of a committed private key; exactly six unique raw receipts cover base/local/repaired by
+  setup activation/daemon start and bind host/SNI/exact endpoint port/5,000 ms, the per-run CA trust
+  anchor, one peer-certificate fingerprint per endpoint that is identical across its two phases and
+  distinct from the CA, verified duration, setup completion strictly before daemon-start beginning,
+  the current runner invocation repeated by the network object and all six receipts, and zero
+  bytes/requests
+- one runner-owned 12-window duplicate/no-op plateau: discard 1-2, measure 3-12, evaluate final
+  8-12 for constant processes, drained queue, equal item/token counts, RSS span at most 16 MiB,
+  storage span at most 65,536 bytes, concurrency at most 2, unique path-free
+  drain/checkpoint/workload receipt IDs, strict runner-monotonic workload-start → workload-receipt →
+  drain-receipt → checkpoint-receipt → resource-sample order with non-overlapping windows, one
+  identical positive duplicate-delivery attempt count across all 12 windows, exact
+  `duplicate_noop`, zero durable/job deltas, and zero orphans; measured RSS/storage ceilings are
+  maximum increase from window 3, while only the final-five predicates use max-minus-min spans
 - an explicit drain condition proving comparable completion across candidates
 - a versioned structural fixture schema and mandatory semantic validation path; neither check alone
   establishes fixture conformance
@@ -83,6 +109,20 @@ The canonical executable validation path is
 claim conformance by running only one underlying layer.
 
 Real credentials, private transcripts, and local absolute paths are forbidden in committed fixtures.
+The `*-local` destination classes are runner-only loopback-consumer evidence. Slice 1 production
+resolves Claude Code, Codex, and MCP remote/unknown; caller location or model labels cannot select a
+local class.
+
+Both protocols use the same JavaScript UTF-16 allocation: clip system from the start to 9,000 units
+and call `toWellFormed()`, then clip user from the start to
+`max(3,000, 12,000 - clippedSystem.length)` and call `toWellFormed()`. Anthropic Messages sends JSON
+content type, fixed `anthropic-version: 2023-06-01`, optional environment-backed `x-api-key`,
+`{model,max_tokens,temperature,system,messages:[{role:"user",content}]}`, and concatenates response
+`content[]` text blocks. OpenAI Chat Completions sends JSON content type, optional
+environment-backed `authorization: Bearer`,
+`{model,max_tokens,temperature,messages:[{role:"system",content},{role:"user",content}]}`, and reads
+`choices[0].message.content`. Credential `none` sends no authentication header, and the 1 MiB
+response limit is enforced before JSON parsing.
 
 ## Result record
 
@@ -90,6 +130,8 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 
 - fixture, candidate, scenario, and runner-evidence case identity
 - the domain-separated fingerprint of one runner-owned evidence bundle for the candidate suite
+- separate domain-separated fingerprints of the bundle's network-trust and resource-plateau
+  evidence objects
 - resolved target destination class and effective-manifest fingerprint
 - the fixture-pinned execution environment and candidate artifact metadata, each with a
   domain-separated JCS fingerprint
@@ -98,15 +140,17 @@ Every candidate/scenario comparison emits one machine-readable aggregate record 
 - `drainConditionId`, `drainStatus`, and `drainTimedOut`
 - a boolean before-model injection marker derived from observed injection-acknowledgment and
   target-model-dispatch milestones; otherwise null
-- a fixed negative fixture that gives injection acknowledgment and model dispatch the same
-  monotonic time, sets the marker false, and requires a non-eligible `scenario_oracle_mismatch`
+- a fixed negative fixture that dispatches the model strictly before injection acknowledgment with
+  increasing monotonic times, sets the marker false, and requires a non-eligible
+  `scenario_oracle_mismatch`
 - runner-bound host-observed Agent/repository/session identity plus three single-field caller-claim
   mismatch decisions; caller claims authorize zero persistence or injection
 - captured, committed, duplicate, lost, pending, summary, and durable-memory counts
 - observed retry signal delivery, consumed/ignored signal identities, provider-attempt/outcome,
   budget transitions, state, and the exact recovered durable output when applicable
-- the payload-free identity-conflict receipt, canonical/incoming states, reason, preservation flag,
-  and durable-memory delta when applicable
+- the payload-free pair-bound identity-conflict receipt, canonical repository/source/stream/event
+  identity, repeated-attempt receipt IDs, one durable receipt count, canonical/incoming states,
+  reason, preservation flag, and durable-memory delta when applicable
 - the closed payload-free failure metadata record when an output-limit rejection applies
 - individual zero-tolerance counters for Agent blockage, accepted-event loss, duplicate durable
   memory, secret egress, and incompatible-scope injection
@@ -146,13 +190,46 @@ The authoritative format is
 until this canonical validator exits 0.
 
 Runner-owned latency intervals, cold/warm preparation receipts, full observed lifecycle milestones,
-process samples, and host-derived identity decisions live in the separately validated
+process samples, network trust, and host-derived identity decisions live in the separately validated
 [`alpha-runner-evidence-v1.schema.json`](alpha-runner-evidence-v1.schema.json) bundle. The result keeps
-inspectable copies and derived aggregates, but the validator derives gates from the bundle and
-requires exact equality. Each case also carries a runner-derived, domain-separated fingerprint of
+separate network-trust/resource-plateau fingerprints and derived aggregates, not raw copies. An
+executed result requires the 12 raw plateau windows and a matching plateau fingerprint; a canonical
+`unsupported`/`not_run` no-activity bundle carries `resourcePlateauEvidence: null` and a null result
+fingerprint instead of claiming that workload ran. The validator recomputes every present
+fingerprint from the bundle. Each case also carries a runner-derived,
+domain-separated fingerprint of
 the complete schema-validated result observation, excluding only the bundle fingerprint that would
 create a cycle. This binds egress, render, atomicity, and conflict evidence without duplicating
 private payload into the runner bundle. A candidate-authored hash or source label is not evidence.
+The network object binds `summary.stub.invalid`, literal `127.0.0.1`,
+`summary-repaired.stub.invalid`, a hostname/IP-valid
+public CA SHA-256, normal chain/hostname validation, and `privateKeyCommitted=false`; no private key
+is committed. Its six raw receipts prove base/local/repaired setup and daemon preflights with exact
+hostname, remote SNI or null IP SNI, endpoint port, timeout, per-run CA/peer-certificate fingerprints,
+duration, verification, and zero HTTP/auth/payload activity. Each real scenario also carries one
+runner-owned provider-egress observation spanning candidate start through process-tree termination;
+its network gate opens only after a direct durable-store authorization carrying explicit ordered
+committed event IDs, their count, and their set fingerprint, and binds the earliest
+request interval, provider/location, request/payload/auth aggregates, and source bytes by sensitivity.
+Those sensitivity bytes are measured by the runner-owned stub from the request bytes it receives and
+the fixture's fixed synthetic source markers/spans; they are never derived from allow policy or a
+candidate result field. Their four-bucket sum cannot exceed the observed provider payload bytes.
+The same receipt independently records restricted payload bytes and forbidden-sentinel observations;
+both must be zero and match the result aggregates.
+The projected late-injection negative references the base observation instead of fabricating a run.
+Every fixed retry/redirect recovery subcase owns one additional runner observation, including a full
+zero-egress observation for each no-op. The sorted wrappers bind exact case/manifest/provider,
+globally unique receipt IDs and fresh process-tree roots, the bundle invocation, committed-event
+authorization, request timing, TLS, wire bytes, and sensitivity measurements under the same rules as
+the initial attempt. Each nested receipt repeats the owning initial/recovery case ID. Live
+invocation/root IDs are runner-generated per execution/process generation, never reused PID labels.
+The plateau object binds all 12 ordered, non-overlapping duplicate/no-op workload receipts and their
+strict workload/drain/checkpoint/sample timestamps, and separately
+fingerprints maximum-increase-from-first and final-five-span predicates before any aggregate can
+affect eligibility. Malformed ordering, receipt, no-op, or zero-delta evidence is invalid; a
+structurally valid threshold miss remains inspectable and yields `resource_threshold_exceeded`
+rather than an invalid record. It also binds candidate, artifact, environment, runner invocation,
+and one fresh plateau process-tree root that is unique from every observed provider root.
 Cold runs require opaque data-root, reset-receipt, and process-generation identities that occur only
 once across the entire bundle, including warm records, plus observed zero process and directory-entry
 counts within one pinned process-sample interval before measurement. The first cold observation must
@@ -173,8 +250,9 @@ to be comparison-eligible. The negative record applies `beforeModelNegativeFixtu
 base scenario; injection must not precede model dispatch, and the record must match the fixed failed,
 non-eligible disposition.
 
-The schema and semantic rules define the Alpha v1 vocabulary for Slice 1, including its fixed retry
-signal and provider identity. The current executable validator is deliberately bound to that
+The schema and semantic rules define the Alpha v1 vocabulary for Slice 1, including retry signals
+bound to computed provider/manifest fingerprints. Each consumed signal creates one one-shot grant;
+configuration activation does not refill the automatic retry limit. The current executable validator is deliberately bound to that
 fingerprinted fixture bundle; neither the schema nor validator is a generic fixture-plugin interface.
 Slice 2 and Slice 3 add their own fingerprinted fixture validator, reuse compatible core fields, and
 version-review any new retry family rather than weakening the Slice 1 evidence shape.
@@ -203,6 +281,10 @@ eight directory levels, 16 MiB per file, and 64 MiB total; traversal and hashing
 use a fixed 64 KiB content buffer, and reject each boundary before unbounded work.
 The runner-evidence root is separately realpath-contained, non-overlapping with that artifact root,
 and read through the same nonblocking/no-follow regular-file and stable-stat boundary.
+`networkTrustEvidenceFingerprint` uses domain
+`free-mem:alpha-network-trust-evidence:v1\0`; `resourcePlateauEvidenceFingerprint` uses
+`free-mem:alpha-resource-plateau-evidence:v1\0`. Both hash canonical JCS evidence and must match the
+runner bundle before the result can be eligible.
 
 ## Comparison rules
 
@@ -245,7 +327,8 @@ and read through the same nonblocking/no-follow regular-file and stable-stat bou
 - Unsupported, not-run, failed, and degraded are distinct states.
 - `unsupported` and `not_run` are canonical no-activity records with an empty milestone list: all operation, evidence, resource,
   item, and token counts are zero; retry/failure/operational evidence is absent; and their reasons are
-  `capability_unsupported` and `owner_slice_not_run`, respectively. They cannot wrap a failed run.
+  `capability_unsupported` and `owner_slice_not_run`, respectively. Their plateau object and result
+  plateau fingerprint are null. They cannot wrap a failed or executed run.
 - The output-limit scenario binds raw authoritative writer receipts and one durable-observer sample
   at every lifecycle milestone across the pinned processing-through-teardown window. The validator
   derives committed batches, item mutations, maximum visible derived items, and forbidden-sentinel
@@ -270,9 +353,12 @@ and read through the same nonblocking/no-follow regular-file and stable-stat bou
   UTF-8 `redactedPayload`. Its positive configured-endpoint byte count and zero redirect-location
   request/byte/resend counters are independently recorded.
 - Credential/payload byte evidence is the fixture-pinned aggregate across the configured-endpoint
-  attempt set. Allowed verified-HTTPS attempts must match that exact aggregate; local providers and
-  rejected activations record zero. The fixed `fixture` and `local_zero` cost classes both record
-  exactly zero provider cost units.
+  attempt set. Allowed verified-HTTPS attempts must match that exact aggregate: remote attempts may
+  record fixture-pinned credential and payload bytes; local providers record zero credential bytes
+  but may record fixture-pinned payload bytes; rejected activations record both zero. The remote
+  ProviderChoice remains `external_metered`; the fixed
+  runner records exactly zero provider cost units because its deterministic stub is runner-owned,
+  not because of provider cost class.
 - Remote request/payload counts cover the initial drain attempt set only. Every independent recovery
   case records fixture-pinned request, payload, credential-byte, payload-byte, restricted-byte, and
   forbidden-sentinel evidence for that attempt; no-op cases record six zeroes. Redirect recovery

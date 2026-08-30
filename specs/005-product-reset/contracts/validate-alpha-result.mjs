@@ -11,7 +11,10 @@ import { validateOutputLimitAtomicity } from "./alpha-result-atomicity.mjs";
 import { readBoundedIJsonFile, readBoundedIJsonStdin } from "./alpha-result-input.mjs";
 import { evaluateLatencyEvidence } from "./alpha-result-latency.mjs";
 import { readRunnerEvidenceFile, validateRunnerEvidence } from "./alpha-runner-evidence.mjs";
-import { evaluateResourceEvidence } from "./alpha-result-resource.mjs";
+import {
+  evaluateResourceEvidence,
+  validateResourcePlateauEvidence,
+} from "./alpha-result-resource.mjs";
 import { assertRetryEvidenceConsistent, expectedRetryEvidence } from "./alpha-result-retry.mjs";
 import { evaluateSecurityEvidence } from "./alpha-result-security.mjs";
 import { validateRenderEvidence } from "./alpha-result-render.mjs";
@@ -129,10 +132,23 @@ if (resultPaths.length > 1 || negativeResultPaths.length > 0) {
     ? structuredClone(baseResult)
     : null;
   if (expectedNegative) {
-    const [injectionName, dispatchName] = negativeContract.nonBeforeModelMilestones;
+    const [dispatchName, injectionName] = negativeContract.nonBeforeModelMilestones;
     const injection = expectedNegative.milestones.find((item) => item.name === injectionName);
     const dispatch = expectedNegative.milestones.find((item) => item.name === dispatchName);
-    if (injection && dispatch) dispatch.monotonicMs = injection.monotonicMs;
+    if (injection && dispatch) {
+      const injectionIndex = expectedNegative.milestones.indexOf(injection);
+      const dispatchIndex = expectedNegative.milestones.indexOf(dispatch);
+      const earlierIndex = Math.min(injectionIndex, dispatchIndex);
+      const laterIndex = Math.max(injectionIndex, dispatchIndex);
+      const earlierTime = Math.min(injection.monotonicMs, dispatch.monotonicMs);
+      const laterTime = Math.max(injection.monotonicMs, dispatch.monotonicMs);
+      expectedNegative.milestones[earlierIndex] = {
+        name: dispatchName, monotonicMs: earlierTime,
+      };
+      expectedNegative.milestones[laterIndex] = {
+        name: injectionName, monotonicMs: laterTime,
+      };
+    }
     expectedNegative.injectionBeforeModel = negativeContract.injectionBeforeModel;
     expectedNegative.disposition = negativeContract.expectedDisposition;
     expectedNegative.runnerEvidenceCaseId = negativeContract.caseId;
@@ -240,9 +256,40 @@ const exceptionalState = result.disposition.state === "unsupported" ||
   result.disposition.state === "not_run";
 const selectionObserved = validateSelectionTiming(result, exceptionalState, scenario.expectedInjectedItems.length + scenario.expectedOmissions.length, fixture.effectiveConfiguration.resourceProfile.injectionEnvelope.selectionTimeBudgetMs);
 
-const expectedMilestones = fixture.lifecycleProfiles[scenario.lifecycleProfileId];
+const expectedMilestones = [
+  ...fixture.lifecycleProfiles[scenario.lifecycleProfileId],
+];
+if (result.runnerEvidenceCaseId === fixture.beforeModelNegativeFixture.caseId) {
+  const [dispatchName, injectionName] = fixture.beforeModelNegativeFixture.nonBeforeModelMilestones;
+  const injectionIndex = expectedMilestones.indexOf(injectionName);
+  const dispatchIndex = expectedMilestones.indexOf(dispatchName);
+  if (injectionIndex < 0 || dispatchIndex < 0) {
+    throw new Error("late-injection negative milestones are absent from the lifecycle profile");
+  }
+  [expectedMilestones[injectionIndex], expectedMilestones[dispatchIndex]] =
+    [dispatchName, injectionName];
+}
 const milestoneNames = result.milestones.map((item) => item.name);
 const drainMilestoneTimes = new Map(result.milestones.map((item) => [item.name, item.monotonicMs]));
+if (result.runnerEvidenceCaseId === fixture.beforeModelNegativeFixture.caseId) {
+  const [dispatchName, injectionName] = fixture.beforeModelNegativeFixture.nonBeforeModelMilestones;
+  const dispatchIndex = milestoneNames.indexOf(dispatchName);
+  const injectionIndex = milestoneNames.indexOf(injectionName);
+  if (
+    dispatchIndex < 0 || injectionIndex < 0 || dispatchIndex >= injectionIndex ||
+    drainMilestoneTimes.get(dispatchName) >= drainMilestoneTimes.get(injectionName) ||
+    result.injectionBeforeModel !== false
+  ) {
+    throw new Error(
+      "late-injection negative must dispatch strictly before injection acknowledgment",
+    );
+  }
+}
+if (result.milestones.some((item, index) =>
+  index > 0 && item.monotonicMs <= result.milestones[index - 1].monotonicMs
+)) {
+  throw new Error("result milestone times are not strictly increasing");
+}
 const drainStartTime = drainMilestoneTimes.get(scenario.drainCondition.startMilestone);
 const drainTerminalTime = drainMilestoneTimes.get(scenario.drainCondition.terminalMilestone);
 if (
@@ -308,11 +355,16 @@ if (!isDeepStrictEqual(result.failureMetadata, expectedFailureMetadata) ||
 const conflictProbe = scenario.fault?.identityConflictProbe;
 const expectedIdentityConflictEvidence = conflictProbe && drainTerminalObserved
   ? {
+      repositoryScope: conflictProbe.repositoryScope,
+      source: conflictProbe.source,
+      streamId: conflictProbe.streamId,
       eventId: conflictProbe.eventId,
       payloadDigestVersion: conflictProbe.payloadDigestVersion,
       canonicalPayloadDigest: conflictProbe.canonicalPayloadDigest,
       conflictingPayloadDigest: conflictProbe.conflictingPayloadDigest,
       conflictReceiptId: conflictProbe.conflictReceiptId,
+      conflictAttemptReceiptIds: conflictProbe.conflictAttemptReceiptIds,
+      durableConflictReceiptCount: conflictProbe.durableConflictReceiptCount,
       conflictReceiptState: conflictProbe.conflictReceiptState,
       canonicalEventState: conflictProbe.canonicalEventState,
       incomingDeliveryState: conflictProbe.incomingDeliveryState,
@@ -392,7 +444,13 @@ const latencyPass = evaluateLatencyEvidence(
   result, scenario, fixture, exceptionalState, runnerRecord.latencyRuns,
 );
 
-const resourcePass = evaluateResourceEvidence(result, fixture, exceptionalState, runnerRecord, scenario.drainCondition.timeoutMs);
+const resourcePlateauPass = exceptionalState || validateResourcePlateauEvidence(
+  runnerEvidence.resourcePlateauEvidence, fixture,
+);
+const scenarioResourcePass = evaluateResourceEvidence(
+  result, fixture, exceptionalState, runnerRecord, scenario.drainCondition.timeoutMs,
+);
+const resourcePass = resourcePlateauPass && scenarioResourcePass;
 const injectionEnvelope = fixture.effectiveConfiguration.resourceProfile.injectionEnvelope;
 const selectionDeadlineExceeded = selectionObserved &&
   result.selectionElapsedMs >= injectionEnvelope.selectionTimeBudgetMs;
@@ -417,9 +475,12 @@ if (
 ) {
   throw new Error("late InjectionPack was recorded as delivered");
 }
-const expectedProviderCostUnits = ["fixture", "local_zero"].includes(activeSummaryProvider.costClass) ? 0 : null;
+const deterministicProviderStub =
+  fixture.pins.summaryProviderStub === "deterministic-summary-v1";
+const expectedProviderCostUnits = deterministicProviderStub ||
+  activeSummaryProvider.costClass === "local_zero" ? 0 : null;
 if (!exceptionalState && result.providerCostUnits !== expectedProviderCostUnits) {
-  throw new Error("provider cost does not match the pinned provider cost class");
+  throw new Error("provider cost does not match the pinned deterministic provider stub evidence");
 }
 const scenarioOraclePass = !scenario.drainCondition.targetInjectionAcknowledged || expectedInjectionBeforeModel === true;
 const derivedFailureReason = result.drain.timedOut
