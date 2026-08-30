@@ -1,0 +1,304 @@
+# Quickstart: Validate Slice 1 Automatic Memory Runtime
+
+## Prerequisites
+
+- Linux or WSL on a local Linux filesystem.
+- Node.js 24.16.0 and pnpm 11.8.0.
+- Synthetic isolated home/config/data/artifact/evidence directories. Never use real memory content or
+  credentials.
+- The exact Claude Code/Codex versions pinned by the corrected Product Reset fixture for the final
+  real-hook gate.
+
+## 1. Planning artifact and task syntax gate
+
+```bash
+specify self check
+specify integration status
+SPECIFY_FEATURE_DIRECTORY=specs/006-slice1-runtime \
+  .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+node --input-type=module <<'NODE'
+import { readFileSync } from "node:fs";
+const path = "specs/006-slice1-runtime/tasks.md";
+const lines = readFileSync(path, "utf8").split("\n");
+const taskLines = lines.filter((line) => line.startsWith("- [ ] T"));
+const ids = taskLines.map((line) => {
+  const match = /^- \[ \] T([0-9]{3})(?: \[P\])?(?: \[US[1-4]\])? .+/.exec(line);
+  if (!match) throw new Error(`invalid task syntax: ${line}`);
+  return Number(match[1]);
+});
+if (ids.length !== 60) throw new Error(`expected 60 tasks, found ${ids.length}`);
+for (let index = 0; index < ids.length; index += 1) {
+  if (ids[index] !== index + 1) throw new Error(`task sequence breaks at ${ids[index]}`);
+}
+console.log("PASS tasks=60 range=T001-T060");
+NODE
+```
+
+Then run the non-destructive `speckit-analyze` skill against `spec.md`, `plan.md`, and `tasks.md`.
+Resolve every CRITICAL/HIGH finding before implementation and report any remaining MEDIUM/LOW.
+
+Expected: Spec Kit resolves `specs/006-slice1-runtime`; task syntax reports exactly T001-T060 with
+no gaps/duplicates; no unresolved placeholder, clarification marker, unchecked checklist item, or
+CRITICAL/HIGH analysis finding remains.
+
+## 2. Contract/fixture correction checkpoint (PR 0)
+
+```bash
+node --experimental-strip-types specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+node --test specs/005-product-reset/contracts/validate-slice1-fixture.test.mjs
+node --test specs/005-product-reset/contracts/validate-alpha-result-input.test.mjs
+node --test specs/005-product-reset/contracts/validate-alpha-result-render.test.mjs
+node --test specs/005-product-reset/contracts/validate-alpha-runner-evidence.test.mjs
+node --test specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+node --test specs/005-product-reset/contracts/validate-alpha-result-failure.test.mjs
+```
+
+Expected after the separate mechanical correction: the fixture/schema/semantic validator and bound
+success/failure/suite evidence use closed wire protocols, complete canonical endpoint URLs,
+CredentialRefV1, computed provider/manifest fingerprints, fixed resource fields, and normal
+provider-proposal metadata for later harness materialization. Local-derivation and output-limit cases
+are complete successor manifests rather than partial overlays. Result/runner schemas represent and
+fingerprint the 12 resource windows, CA proof, identity conflict, and exact 16+1 suite; recovery
+signals enforce exact producer kind, sequence, and 0→1→0 grant CAS. Every command exits 0.
+
+This checkpoint proves static shape, successor/signal fingerprint binding, and bound examples only.
+It does not prove a live stub, TLS, socket/request bytes, or runtime materialization; those belong to
+section 9.
+
+This 006 hardening does not edit the 005 files; do not begin runtime work until this checkpoint merges.
+
+## 3. Vertical manifest gate (PR 1)
+
+```bash
+cd vendor/codemem
+corepack pnpm install --frozen-lockfile
+corepack pnpm exec vitest run \
+  packages/core/src/capability-manifest.test.ts \
+  packages/core/src/storage.test.ts \
+  packages/core/src/observer-client.test.ts \
+  packages/core/src/maintenance/ai-structured.test.ts \
+  packages/core/src/viewer-routes/config.test.ts \
+  packages/core/src/daemon-lifecycle.test.ts \
+  packages/core/src/daemon-rpc.test.ts \
+  packages/core/src/raw-event-sweeper.test.ts \
+  packages/cli/src/commands/setup-codex.test.ts \
+  packages/cli/src/commands/setup-config.test.ts \
+  packages/cli/src/commands/status.test.ts \
+  --maxWorkers=1 --no-file-parallelism
+```
+
+Required assertions:
+
+- only the two wire protocols and complete canonical endpoint URLs compile;
+- literal loopback/remote HTTPS/TLS/redirect/CredentialRef decisions and both fingerprints are exact;
+- Anthropic/OpenAI headers, request/response shapes, credential-none behavior, 60 s timeout,
+  exact UTF-16 12,000-unit system/user allocation, 4,000-token output, 1 MiB response, and
+  temperature 0.2 are frozen;
+- setup displays safe fields and confirms before one Claude+Codex+pointer transaction;
+- shared lifecycle-lock interleaving cannot start a daemon between health preflight and activation;
+  invalid TLS chain/hostname fails the 5 s credential/payload-free handshake with zero mutation/
+  request/credential bytes, and daemon start revalidates it;
+  legacy conflict and running daemon mutate nothing; rollback restores every touched file/pointer;
+  prepared/applied/committed journal interruptions recover, and unrecoverable journal blocks provider
+  startup without exposing prestate bytes;
+- absent current starts capture-only; malformed current fails startup;
+- daemon-start TLS outage/rejection still starts writer/RPC/capture/spool-import/lexical, disables
+  provider/AI only with a bounded reason and retains work;
+- valid current freezes one snapshot but remains `pending_privacy_boundary` with no executable
+  provider, AI maintenance, or Sweeper until PR 3;
+- legacy provider/resource env mutation after startup changes no effective behavior;
+- scheduler uses 30 s/120 s/1 s/5 min/100/retention-off profile fields and does not claim v21/pack
+  readiness early.
+- the only resource successor is version 2 with derivation limit 17; every other field/profile
+  override is rejected.
+
+## 4. Schema v21 and durable job gate (PR 2)
+
+```bash
+cd vendor/codemem
+corepack pnpm --filter @codemem/core run generate:test-schema
+corepack pnpm exec vitest run \
+  packages/core/src/db.test.ts \
+  packages/core/src/test-schema.generated.test.ts \
+  packages/core/src/store.test.ts \
+  packages/core/src/raw-event-flush.test.ts \
+  packages/core/src/raw-event-sweeper.test.ts \
+  packages/core/src/daemon-rpc.test.ts \
+  packages/core/src/operational-status.test.ts \
+  packages/cli/src/commands/db.test.ts \
+  packages/cli/src/commands/status.test.ts \
+  --maxWorkers=1 --no-file-parallelism
+```
+
+Expected:
+
+- fresh v21 and verified v20→v21 migration have final DDL parity; failed migration leaves v20;
+- same event identity/digest is idempotent; a different digest preserves the canonical event,
+  creates/reuses one durable non-success conflict receipt, sends no normal ACK, and creates no memory;
+- one job has at most 100 source events; capacity 25 includes retry-exhausted and evicts nothing;
+- claim generation rejects stale completion; successful claims alone increment lifetime attempt count;
+- admission manifest/provider fingerprints never change; changed config creates a new attempt
+  fingerprint and one grant creates one claim;
+- invalid signals create no claim/attempt; timer never resumes exhausted work;
+- setup activation receipt import, persisted provider unhealthy→healthy edge, and explicit
+  user-confirmed doctor retry each emit at most one crash-idempotent signal/grant, and the healthy
+  edge resumes retained provider work only after this PR2 state exists;
+- privacy skip and memory+batch+frontier each commit atomically; failure moves no frontier;
+- retention is disabled/0 and future purge exempts all uncompleted job ranges;
+- exact complete legacy `gave_up` may recover without frontier change; missing/ambiguous becomes
+  terminal `legacy_unrecoverable`, consumes no capacity, never reports success, and never rewinds.
+
+## 5. Complete privacy gate (PR 3 / #130)
+
+```bash
+cd vendor/codemem
+corepack pnpm exec vitest run \
+  packages/core/src/project.test.ts \
+  packages/core/src/normalized-event.test.ts \
+  packages/core/src/raw-event-flush.test.ts \
+  packages/core/src/ingest-pipeline.test.ts \
+  packages/core/src/ingest-prompts.test.ts \
+  packages/core/src/ingest-xml-parser.test.ts \
+  packages/core/src/search.test.ts \
+  packages/core/src/ref-queries.test.ts \
+  packages/core/src/pack.test.ts \
+  packages/core/src/prompt-pack-ledger.test.ts \
+  packages/core/src/vectors.test.ts \
+  packages/core/src/daemon-rpc.test.ts \
+  packages/core/src/maintenance/ai-structured.test.ts \
+  packages/core/src/viewer-routes/raw-events.test.ts \
+  packages/core/src/viewer-routes/stats.test.ts \
+  packages/core/src/viewer-routes/memory.test.ts \
+  packages/core/src/export-import.test.ts \
+  packages/core/src/mutation-dispatcher.test.ts \
+  packages/core/src/index.test.ts \
+  packages/core/src/backup-restore-smoke.test.ts \
+  packages/mcp-server/src/rpc-client.test.ts \
+  packages/mcp-server/src/server.test.ts \
+  --maxWorkers=1 --no-file-parallelism
+```
+
+Required matrix:
+
+- eligible/local-only/private/secret/degraded/legacy-unknown × remote/local/unknown × same/cross/
+  unknown repository;
+- bounded Git-probed canonical HTTPS/SSH origin, realpathed common-dir fallback, linked worktree,
+  basename collision, and forged remote/project/workspace claims;
+- provider, structured maintenance, search/recent/timeline/explain, findByFile/findByConcept, daemon
+  get/search/pack, MCP body/index/recent/timeline/explain/pack, viewer, lexical/semantic pack/trace,
+  export/import, dedup/supersession;
+- Claude/Codex/MCP caller location/model claims remain remote/unknown; only runner-bound loopback
+  evidence selects a local destination;
+- viewer gates raw-event/status/usage, memory, prompt, legacy-summary, artifact, and safe-session;
+- export v2 gates memory items, prompts, and legacy summaries; session shells omit cwd/Git remote/
+  branch/user/free-form metadata; legacy v1 import content becomes secret/unknown;
+- all-restricted provider requests/bytes 0; mixed provider eligible-only in order;
+- unknown/out-of-set/mixed-repo citations and >16 outputs commit nothing;
+- restricted content is absent before render/measure/serialize and from logs/diagnostics/traces;
+- semantic-disabled vector rows are unchanged;
+- public core barrel exports neither unrestricted extraction replay nor distill corpus/report APIs.
+- only after the full matrix is installed does daemon lifecycle enable the manifest-derived
+  Observer/AI maintenance/Sweeper; no prerequisite PR can enable #130 early.
+
+Issue #130 is not ready to close unless this entire matrix and the full/packed gates below pass.
+
+## 6. Triggered bidirectional lifecycle gate (PR 4)
+
+```bash
+cd vendor/codemem
+corepack pnpm exec vitest run \
+  packages/core/src/ingest-xml-parser.test.ts \
+  packages/core/src/ingest-pipeline.test.ts \
+  packages/core/src/store.test.ts \
+  packages/core/src/pack.test.ts \
+  packages/core/src/prompt-pack-ledger.test.ts \
+  packages/core/src/raw-event-sweeper.test.ts \
+  packages/core/src/daemon-rpc.test.ts \
+  packages/core/src/claude-hooks.test.ts \
+  packages/core/src/normalized-event.test.ts \
+  packages/cli/src/commands/claude-hook-inject.test.ts \
+  packages/cli/src/commands/codex-hook-inject.test.ts \
+  --maxWorkers=1 --no-file-parallelism
+```
+
+Expected: fixed kinds/provenance/no-op and final pack limits pass; newly committed events nudge once,
+duplicates do not; debounce/immediate/request drains are bounded; PreCompact is captured; stop waits
+active work and no pending `finally`/timer starts post-stop work; explicit restart works; source and
+packed Claude⇄Codex scenarios contain exact required and zero forbidden facts.
+
+## 7. Managed setup and doctor gate (PR 5)
+
+```bash
+cd vendor/codemem
+corepack pnpm exec vitest run \
+  packages/cli/src/commands/setup-codex.test.ts \
+  packages/cli/src/commands/setup-config.test.ts \
+  packages/cli/src/commands/serve.test.ts \
+  packages/cli/src/commands/status.test.ts \
+  packages/core/src/daemon-lifecycle.test.ts \
+  packages/core/src/daemon-rpc.test.ts \
+  --maxWorkers=1 --no-file-parallelism
+corepack pnpm --filter codemem test:packed-artifact
+```
+
+Expected: unsupported storage mutates nothing; setup installs Claude+Codex, safely coordinates
+stop/activate/start or matching attach, rejects mismatch, and verifies version/fingerprint/doctor;
+restart/stop/uninstall creates no duplicate writer; doctor reports manifest/provider, writer,
+mutation, spool, capacity/jobs, summary, lexical, semantic-disabled, hook, and pack readiness from
+runtime facts.
+
+## 8. Full workspace and generated-artifact gates
+
+```bash
+cd vendor/codemem
+corepack pnpm run build
+corepack pnpm run tsc
+corepack pnpm run lint
+CI=true corepack pnpm run test:coverage -- --maxWorkers=1 --no-file-parallelism
+corepack pnpm run phase1:no-agent-blockage
+corepack pnpm run phase1:backup-restore-smoke
+corepack pnpm --filter codemem test:packed-artifact
+cmp plugins/claude/scripts/hook-runtime.mjs plugins/codex/scripts/hook-runtime.mjs
+cd ../..
+git diff --check
+```
+
+Expected: all commands exit 0; generated hook runtimes are byte-identical; no restricted sentinel is
+present in generated artifacts/output/logs/diagnostics; no spool, redaction, sole-writer, backup,
+semantic-retention, or packed-artifact regression exists.
+
+## 9. Pinned real-hook runner (PR 6)
+
+```bash
+node --test harness/slice1-runtime.test.mjs
+node harness/slice1-runtime.mjs \
+  --fixture specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json \
+  --candidate vendor/codemem
+```
+
+Expected: the corrected fixture's stub metadata materializes only normal provider proposals. Both
+Agent directions, manifest absence/malformed state, outage/replay, failure/grant, stale claim/
+capacity, all privacy consumers, duplicate/no-op, linked worktree/path-with-spaces, unsupported
+environment, packed setup/runtime, and semantic-disabled retention emit validator-accepted evidence.
+
+The runner emits exactly 16 positive observations plus the late-injection negative and one
+same-event-ID/different-payload-digest conflict without overwrite. The closed result and
+runner-evidence schemas carry all 12 plateau windows, drain/checkpoint receipts, item/token/
+concurrency samples, and public CA proof; all are included in observation/bundle fingerprints.
+
+Local proposals use the fixture-pinned literal-loopback URL. Remote proposals use the fixture-pinned
+base/repaired HTTPS hostnames mapped only inside the runner namespace to its loopback stub, with a per-run
+hostname-valid test CA supplied through normal Node trust. Evidence binds the public CA fingerprint;
+no private key is committed. Bind, CA, hostname, or fingerprint drift fails.
+Base remote uses environment name `FREE_MEM_SUMMARY_API_KEY` with derived `external_metered`; local
+uses `http://127.0.0.1:1234/v1/chat/completions` and credential `none`. The runner records actual stub
+cost 0 independently of cost class and uses the production pure compiler, not a harness compiler.
+
+External-egress-disabled cases record zero non-loopback socket attempts and zero restricted bytes;
+only loopback-stub request/credential/eligible-payload bytes may match fixture expectations. Latency
+uses ordinals 1-22, discards 1-2, and applies nearest-rank p95 separately. The resource gate runs 12
+identical duplicate/no-op windows with full drain/checkpoint, discards 1-2, enforces absolute ceilings
+on 3-12, and requires windows 8-12 to have constant process count, zero drained queue, identical
+item/token counts, RSS span at most 16 MiB, storage span at most 65,536 bytes, concurrency at most 2,
+and zero post-teardown orphan process. Missing pins/samples, inaccessible roots, interrupted
+lifecycle, or incomplete evidence emits no success.

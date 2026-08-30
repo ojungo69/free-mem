@@ -1,0 +1,208 @@
+# Tasks: Slice 1 Automatic Memory Runtime
+
+**Input**: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/`, and `quickstart.md`
+
+**Tests**: Required. Each non-trivial behavior starts with a named failing public-boundary test.
+
+**Scope note**: Phase 1 records a separate future mechanical correction to
+`specs/005-product-reset/`; this planning hardening does not edit those files. Runtime work starts
+only after that checkpoint merges.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Logically independent files/tests after the named dependency; one worktree still has one
+  writer.
+- **[Story]**: User story from `spec.md`.
+
+## Phase 1: Artifact preflight and contract/fixture correction (PR 0)
+
+**Purpose**: Establish one buildable accepted manifest contract before runtime code.
+
+- [ ] T001 Validate `specs/006-slice1-runtime/spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/*.md`, `quickstart.md`, and `checklists/requirements.md` with `SPECIFY_FEATURE_DIRECTORY=specs/006-slice1-runtime`, the task syntax command, and non-destructive Spec Kit analysis; resolve every CRITICAL/HIGH finding
+- [ ] T002 [P] [US4] Add failing byte/control/canonical-URL closed ProviderProposal/ProviderChoice, frozen protocol-limit/shape, resource/fingerprint/successor/signal cases plus closed plateau-window/CA/conflict/exact-16+1 result and runner-evidence schema mutations to `specs/005-product-reset/contracts/validate-slice1-fixture.test.mjs`, `specs/005-product-reset/contracts/validate-alpha-result.test.mjs`, `specs/005-product-reset/contracts/validate-alpha-result-failure.test.mjs`, and `specs/005-product-reset/contracts/validate-alpha-runner-evidence.test.mjs`
+- [ ] T003 [US4] Mechanically correct `specs/005-product-reset/contracts/capability-manifest.md`, `specs/005-product-reset/contracts/alpha-comparison.md`, `specs/005-product-reset/data-model.md`, fixture/result/runner-evidence schemas, `specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.{json,schema.json,semantic.jq}`, and its JS validator to the base remote `FREE_MEM_SUMMARY_API_KEY`/`external_metered` choice, local runner-only loopback choice, one repaired successor, computed signal/provider/manifest fingerprints, frozen protocol/scheduler/source/retention fields, base/local/repaired v1/max16, runner-only output v2/max17, closed plateau/CA/conflict/16+1 evidence, normal proposal metadata, and active legacy dispositions without conflict
+- [ ] T004 [US4] Recompute bound fixture/result/runner-evidence fingerprints; update success/failure/suite and runner-evidence examples plus directly bound schema/validator modules under `specs/005-product-reset/contracts/`; prove all raw plateau/CA/conflict/exact-16+1 fields are represented and fingerprinted; run every static validator in `specs/006-slice1-runtime/quickstart.md` without claiming live stub/runtime proof
+- [ ] T005 [US4] After prerequisite PR #142 merges, refresh `origin/main`, create a fresh implementation worktree/branch from that merged commit, and deliver only T002-T004 as the contract/fixture correction PR after Standards/Spec/security/code/over-engineering reviews and green CI; use its merged commit as the base for T006, do not rebase/reuse the pre-#142 planning worktree, and do not include runtime code
+
+**Checkpoint**: The accepted fixture/schema/semantic validators and bound examples describe one
+buildable closed manifest. No runtime PR starts before T005 merges.
+
+---
+
+## Phase 2: Vertical effective manifest (PR 1)
+
+**Purpose**: Setup produces and atomically activates the exact frozen manifest every runtime
+consumer uses. Daemon consumption and setup activation land together.
+
+### Tests
+
+- [ ] T006 [P] [US4] Add failing closed-shape, canonical endpoint, literal loopback/localhost/subdomain/trailing-dot, remote HTTPS/insecure-TLS plus credential/payload-free invalid-chain/hostname handshake rejection, CredentialRefV1, exact UTF-16 allocation and protocol limits/auth/request/response/no-auth behavior, compiler policy, JCS fingerprints, v1/v2 successors, immutable generation, lifecycle-lock ordering, and pointer rollback tests in `vendor/codemem/packages/core/src/capability-manifest.test.ts`, `vendor/codemem/packages/core/src/observer-client.test.ts`, and `vendor/codemem/packages/core/src/storage.test.ts`
+- [ ] T007 [P] [US4] Add failing Claude+Codex-only default/no-OpenCode source, disclosure-confirmation-before-lock, legacy conflict, shared-lock daemon-start interleaving/recheck/ordering, payload-free TLS-preflight failure with zero mutation/credential/request bytes, running-daemon refusal, whole rollback, journal recovery, unrecoverable-journal start refusal, and secret non-display tests in `vendor/codemem/packages/cli/src/commands/setup-codex.test.ts`, `vendor/codemem/packages/cli/src/commands/setup-config.test.ts`, and `vendor/codemem/packages/core/src/daemon-lifecycle.test.ts`
+- [ ] T008 [P] [US4] Add failing absent-manifest capture-only, valid-manifest pending-privacy/no-provider/no-Sweeper, malformed/missing/mismatched manifest startup failure, daemon-start TLS outage/rejection with capture/RPC/spool-import/lexical preserved and provider-only degraded reason, frozen snapshot, and doctor identity tests in `vendor/codemem/packages/core/src/daemon-lifecycle.test.ts` and `vendor/codemem/packages/core/src/daemon-rpc.test.ts`
+- [ ] T009 [P] [US4] Add failing two-protocol exact headers/request/response/none-auth/limits/timeout, complete-endpoint/no-suffix, named-env-only credential, redirect reject, no custom headers/token cascade/fallback, legacy env invariance, frozen viewer config/status, and public `loadObserverConfig`/extraction-replay/distill export absence tests in `vendor/codemem/packages/core/src/observer-client.test.ts`, `vendor/codemem/packages/core/src/extraction-replay.test.ts`, `vendor/codemem/packages/core/src/distill.test.ts`, `vendor/codemem/packages/core/src/maintenance/ai-structured.test.ts`, `vendor/codemem/packages/core/src/viewer-routes/config.test.ts`, `vendor/codemem/packages/core/src/viewer-routes/observer-status.test.ts`, and `vendor/codemem/packages/core/src/index.test.ts`
+
+### Implementation
+
+- [ ] T010 [US4] Implement closed proposal/credential/choice/profile/manifest compilation including frozen protocol constants, safe projection, JCS fingerprints, immutable generation/pointers, shared lifecycle lock and activation receipt paths, and active legacy dispositions in `vendor/codemem/packages/core/src/capability-manifest.ts`, `vendor/codemem/packages/core/src/storage-layout.ts`, `vendor/codemem/packages/core/src/storage.ts`, and `vendor/codemem/packages/core/src/index.ts`
+- [ ] T011 [US4] Extend setup with Claude+Codex-only defaults, explicit provider inputs, safe disclosure/confirmation without lifecycle lock, then shared-lock acquisition, daemon/prestate recheck, native 5 s credential/payload-free TLS handshake, and full-duration setup/spool journal transaction covering editor files, ownership, generation, activation receipt, and current pointer last in `vendor/codemem/packages/cli/src/commands/setup.ts` and `vendor/codemem/packages/cli/src/commands/setup-config.ts`
+- [ ] T012 [US4] Make daemon start acquire the shared lifecycle lock before journal/manifest resolution and writer lock, recover journal, resolve state, repeat HTTPS TLS preflight, preserve capture/RPC/spool-import/lexical while projecting provider-only degraded on failure, publish startup before release, keep absent/valid-preprivacy capture-only, and expose the frozen snapshot/reason through `vendor/codemem/packages/core/src/daemon-lifecycle.ts`, `vendor/codemem/packages/core/src/daemon-rpc.ts`, and `vendor/codemem/packages/core/src/daemon-rpc-contract.ts`
+- [ ] T013 [US4] Replace provider/config discovery with exact manifest-only Anthropic/OpenAI protocol profiles, endpoint/auth/none/limits/timeout/TLS/redirect behavior; remove tiered secondary construction and public/runtime config, extraction-replay, and distill exports; keep legacy translation and internal benchmarks test-only in `vendor/codemem/packages/core/src/observer-client.ts`, `vendor/codemem/packages/core/src/observer-auth.ts`, `vendor/codemem/packages/core/src/observer-config.ts`, `vendor/codemem/packages/core/src/ingest-pipeline.ts`, `vendor/codemem/packages/core/src/extraction-replay.ts`, `vendor/codemem/packages/core/src/distill.ts`, and `vendor/codemem/packages/core/src/index.ts`
+- [ ] T014 [US4] Inject the frozen provider/safe manifest projection into structured maintenance, viewer configuration/observer status, operational status, and doctor while blocking AI execution as `pending_privacy_boundary`; report schema/pack-owned limits pending and prove `semantic_disabled` never deletes vectors in `vendor/codemem/packages/core/src/maintenance/ai-structured.ts`, `vendor/codemem/packages/core/src/viewer-routes/config.ts`, `vendor/codemem/packages/core/src/viewer-routes/observer-status.ts`, `vendor/codemem/packages/core/src/viewer-read.ts`, `vendor/codemem/packages/core/src/operational-status.ts`, `vendor/codemem/packages/cli/src/commands/status.ts`, and `vendor/codemem/packages/core/src/vectors.test.ts`
+- [ ] T015 [US4] Replace Sweeper/flush/provider resource env/config reads with all frozen scheduler/source/retention and observer timeout/input/output/response/temperature profile fields without starting execution before privacy in `vendor/codemem/packages/core/src/raw-event-sweeper.ts`, `vendor/codemem/packages/core/src/raw-event-flush.ts`, `vendor/codemem/packages/core/src/observer-client.ts`, and `vendor/codemem/packages/core/src/raw-event-sweeper.test.ts`; leave schema-backed enforcement pending v21 and execution pending PR3
+- [ ] T016 [US4] Run the PR 1 manifest/setup/daemon/observer/maintenance/viewer/status/vector/sweeper suites plus build, tsc, lint, packed smoke, no-agent-blockage, and `git diff --check`; deliver T006-T015 as one reviewed green PR without start/attach UI
+
+**Checkpoint**: Setup activation and daemon consumption are one independently mergeable vertical
+slice. No active manifest means capture-only/no provider/no sweeper; malformed state fails startup.
+
+---
+
+## Phase 3: Schema v21 and durable processing jobs (PR 2)
+
+**Purpose**: Land every durable job/privacy persistence invariant before #130 can close.
+
+### Tests
+
+- [ ] T017 [P] [US3] Add failing fresh v21, verified v20 migration, conservative content/session backfill, versioned event payload digest and durable EventIdentityConflict schema, NULL legacy admission provenance, rollback/idempotent reopen, full column/check/index, and generated DDL parity tests in `vendor/codemem/packages/core/src/db.test.ts` and `vendor/codemem/packages/core/src/test-schema.generated.test.ts`
+- [ ] T018 [P] [US3] Add failing same-event-ID/same-digest idempotency and different-digest one durable non-success conflict/no overwrite/no ACK/no memory, max-two capture/claims, contiguous admission/gap, 100 split, exhausted capacity, no eviction, stale claim/crash/output overflow, atomic claimed privacy skip, and atomic memory+batch+frontier tests in `vendor/codemem/packages/core/src/raw-event-flush.test.ts`, `vendor/codemem/packages/core/src/daemon-rpc.test.ts`, and `vendor/codemem/packages/core/src/store.test.ts`
+- [ ] T019 [P] [US3] Add failing lifetime attempt/admission provenance, repaired/output fingerprints, exact case-to-producer kind and sequence/budget/ignored-count CAS, one-shot grants, setup activation-receipt import, provider unhealthy-to-healthy edge, user-confirmed doctor retry, producer crash/idempotency, and invalid signal tests in `vendor/codemem/packages/core/src/daemon-rpc.test.ts`, `vendor/codemem/packages/core/src/store.test.ts`, `vendor/codemem/packages/core/src/observer-client.test.ts`, and `vendor/codemem/packages/cli/src/commands/db.test.ts`
+- [ ] T020 [P] [US3] Add failing retention-disabled/no-purge, future purge only-at/below-frontier plus exemption for every uncompleted status and not-admitted backlog, complete-range legacy `gave_up` recovery without frontier change, and missing/ambiguous range terminal `legacy_unrecoverable` no-success/no-capacity/no-rewind tests in `vendor/codemem/packages/core/src/raw-event-sweeper.test.ts`, `vendor/codemem/packages/core/src/store.test.ts`, and `vendor/codemem/packages/core/src/db.test.ts`
+
+### Implementation
+
+- [ ] T021 [US3] Bump `SCHEMA_VERSION` to 21 and add every Slice 1 content repository/sensitivity field, versioned raw-event payload digest, durable EventIdentityConflict/receipt, job/lineage/claim/admission-attempt/resume/diagnostic fields, and one verified-backup transactional migration with conservative backfill and `gave_up` audit in `vendor/codemem/packages/core/src/schema.ts` and `vendor/codemem/packages/core/src/db.ts`
+- [ ] T022 [US3] Regenerate `vendor/codemem/packages/core/src/test-schema.generated.ts` with `vendor/codemem/packages/core/scripts/generate-test-schema.ts` and verify fresh v21 DDL equals the migrated schema
+- [ ] T023 [US3] Implement domain-separated event payload digest and atomic canonical insert/duplicate/conflict receipt reuse before ACK, then canonical jobs, max-two capture/claims, capacity25/retry3/active derivation limit/max100/5 min recovery/admission visibility in `vendor/codemem/packages/core/src/store.ts`, `vendor/codemem/packages/core/src/raw-event-flush.ts`, `vendor/codemem/packages/core/src/daemon-rpc.ts`, `vendor/codemem/packages/core/src/types.ts`, `vendor/codemem/packages/core/src/spool.ts`, and `vendor/codemem/packages/mcp-server/src/rpc-client.ts`
+- [ ] T024 [US3] Implement claim generation, monotonic attempts/fingerprint/retry, ResumeSignalV1 and one-shot grants plus sole-writer activation-receipt import, persisted Observer health-edge producer, explicit user-confirmed doctor retry producer, monotonic sequencing, and crash-idempotent receipts in `vendor/codemem/packages/core/src/store.ts`, `vendor/codemem/packages/core/src/daemon-lifecycle.ts`, `vendor/codemem/packages/core/src/daemon-rpc.ts`, `vendor/codemem/packages/core/src/observer-client.ts`, and `vendor/codemem/packages/cli/src/commands/db.ts`
+- [ ] T025 [US3] Add Store-owned transactions that validate claim/source/output/provenance and atomically commit privacy skip or memory/reference/dedup/supersession plus job completion and one frontier move in `vendor/codemem/packages/core/src/store.ts`, `vendor/codemem/packages/core/src/raw-event-flush.ts`, and `vendor/codemem/packages/core/src/ingest-pipeline.ts`
+- [ ] T026 [US3] Keep raw retention disabled/0, make future purge exempt every uncompleted job range, and report source-gap/capacity/not-admitted/retry-exhausted/grant/attempt/admission/legacy-recovery state with content-free next actions in `vendor/codemem/packages/core/src/raw-event-sweeper.ts`, `vendor/codemem/packages/core/src/operational-status.ts`, and `vendor/codemem/packages/cli/src/commands/status.ts`
+- [ ] T027 [US3] Run the PR 2 schema/job/flush/store/resume/retention/status suites, backup/restore smoke, build, tsc, lint, serial coverage, no-agent-blockage, and `git diff --check`; deliver T017-T026 as one reviewed green PR without claiming #130 privacy closure
+
+**Checkpoint**: v21, durable capacity, claims, attempts, grants, retention safety, and atomic terminal
+transactions are merged before any #130 close checkpoint.
+
+---
+
+## Phase 4: Complete privacy closure (PR 3, closes #130)
+
+**Purpose**: Apply one trusted sensitivity/repository decision to every reachable content consumer.
+
+### Tests
+
+- [ ] T028 [P] [US1] Add failing trusted sensitivity precedence, empty-payload quarantine, shared 100 ms/8 KiB non-shell Git-probe budget, origin normalization across HTTPS/SSH, daemon-lifetime real-root cache, realpathed common-dir fallback, linked worktree equality, basename collision, forged remote/project/workspace labels, and unknown legacy identity tests in `vendor/codemem/packages/core/src/project.test.ts`, `vendor/codemem/packages/core/src/normalized-event.test.ts`, `vendor/codemem/packages/core/src/daemon-rpc.test.ts`, and `vendor/codemem/packages/core/src/store.test.ts`
+- [ ] T029 [P] [US1] Add failing all-restricted/mixed/local-known/local-unknown provider projection, pre-prompt mixed-repository partition-or-reject with zero request, all four sensitivities, exact order, zero-byte diagnostic, max-100 citations, out-of-set/mixed-repo citations, active-attempt output limit, and inherited manifest/provider/attempt provenance tests in `vendor/codemem/packages/core/src/raw-event-flush.test.ts`, `vendor/codemem/packages/core/src/ingest-pipeline.test.ts`, `vendor/codemem/packages/core/src/ingest-prompts.test.ts`, and `vendor/codemem/packages/core/src/ingest-xml-parser.test.ts`
+- [ ] T030 [P] [US1] Add failing DestinationBoundary matrix tests for search/recent/timeline/explain, `findByFile`/`findByConcept`, maintenance memory-role report packs, lexical and forged semantic candidates, pre-render pack/ledger/trace, cross/unknown repository, and semantic-disabled vector preservation in `vendor/codemem/packages/core/src/search.test.ts`, `vendor/codemem/packages/core/src/ref-queries.test.ts`, `vendor/codemem/packages/core/src/maintenance/memory-role-report.test.ts`, `vendor/codemem/packages/core/src/pack.test.ts`, `vendor/codemem/packages/core/src/prompt-pack-ledger.test.ts`, and `vendor/codemem/packages/core/src/vectors.test.ts`
+- [ ] T031 [P] [US1] Add failing daemon/CLI/MCP read-boundary propagation, forged local-model claims forced remote/unknown, runner-only loopback destination evidence, and eligible-only unknown viewer raw-event/status/usage/memory/prompt/summary/artifact/safe-session tests in `vendor/codemem/packages/core/src/daemon-rpc.test.ts`, `vendor/codemem/packages/cli/src/commands/cli-rpc.test.ts`, `vendor/codemem/packages/cli/src/commands/memory.test.ts`, `vendor/codemem/packages/cli/src/commands/pack.test.ts`, `vendor/codemem/packages/mcp-server/src/rpc-client.test.ts`, `vendor/codemem/packages/mcp-server/src/server.test.ts`, `vendor/codemem/packages/core/src/viewer-routes/raw-events.test.ts`, `vendor/codemem/packages/core/src/viewer-routes/stats.test.ts`, and `vendor/codemem/packages/core/src/viewer-routes/memory.test.ts`
+- [ ] T032 [P] [US1] Add failing structured-maintenance provider projection, CLI/core export-v2 boundary across memory/prompt/legacy-summary/safe-session sections, session sensitive-field omission, unknown/all-project behavior, legacy-v1 restrictive import, same-repo monotonic dedup/supersession, public extraction-replay export absence, content-free logs/diagnostics, and backup/restore preservation tests in `vendor/codemem/packages/core/src/maintenance/ai-structured.test.ts`, `vendor/codemem/packages/core/src/export-import.test.ts`, `vendor/codemem/packages/core/src/mutation-dispatcher.test.ts`, `vendor/codemem/packages/core/src/index.test.ts`, `vendor/codemem/packages/core/src/backup-restore-smoke.test.ts`, and `vendor/codemem/packages/cli/src/commands/cli-rpc.test.ts`
+
+### Implementation
+
+- [ ] T033 [US1] Implement RepositoryIdentityV1 with one 100 ms/8 KiB budget across non-shell `git rev-parse`/`remote get-url origin` probes, daemon-lifetime real-root cache, exact HTTPS/SSH canonicalization, realpathed Git common-dir fallback, and domain-separated digest; persist trusted sensitivity/repository/capture-manifest fields with degraded empty-payload quarantine, and require every new prompt/legacy-summary/artifact write to carry trusted fields or default secret/unknown in `vendor/codemem/packages/core/src/project.ts`, `vendor/codemem/packages/core/src/normalized-event.ts`, `vendor/codemem/packages/core/src/daemon-rpc.ts`, `vendor/codemem/packages/core/src/store.ts`, and `vendor/codemem/packages/core/src/types.ts`
+- [ ] T034 [US1] Add the one closed DestinationBoundaryV1 eligibility function and SQL predicate, then require it in Store search/recent/timeline/explain/get, maintenance memory-role pack/report, and reference/vector candidate reads in `vendor/codemem/packages/core/src/destination-boundary.ts`, `vendor/codemem/packages/core/src/filters.ts`, `vendor/codemem/packages/core/src/search.ts`, `vendor/codemem/packages/core/src/ref-queries.ts`, `vendor/codemem/packages/core/src/vectors.ts`, `vendor/codemem/packages/core/src/maintenance/memory-role-report.ts`, `vendor/codemem/packages/core/src/store.ts`, and `vendor/codemem/packages/core/src/index.ts`
+- [ ] T035 [US1] Partition local events by exact verified repository before projection, reject mixed/unknown groups content-free, project before context/transcript/prompt/request creation, invoke the claimed atomic privacy skip for all-restricted jobs, validate bounded exact citations and the active-attempt output limit, and persist strongest sensitivity/repository plus lineage/revision/manifest/provider/attempt provenance in `vendor/codemem/packages/core/src/raw-event-flush.ts`, `vendor/codemem/packages/core/src/ingest-types.ts`, `vendor/codemem/packages/core/src/ingest-pipeline.ts`, `vendor/codemem/packages/core/src/ingest-prompts.ts`, and `vendor/codemem/packages/core/src/ingest-xml-parser.ts`
+- [ ] T036 [US1] Apply eligibility before pack rendering, measurement, ledger exposure, or trace; revalidate semantic rows; emit aggregate content-free `omitted_ineligible`; preserve exact eligible source/reason evidence and `semantic_disabled` without vector deletion in `vendor/codemem/packages/core/src/pack.ts`, `vendor/codemem/packages/core/src/prompt-pack-ledger.ts`, `vendor/codemem/packages/core/src/vectors.ts`, and `vendor/codemem/packages/core/src/types.ts`
+- [ ] T037 [US1] Require internal destination/repository identity on daemon/CLI/MCP/hook reads, force Claude/Codex/MCP remote/unknown regardless of caller location/model claims, permit local only through runner-bound loopback evidence, and keep project filters non-authoritative in `vendor/codemem/packages/core/src/daemon-rpc-contract.ts`, `vendor/codemem/packages/core/src/daemon-rpc.ts`, `vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts`, `vendor/codemem/packages/cli/src/commands/search.ts`, `vendor/codemem/packages/cli/src/commands/recent.ts`, `vendor/codemem/packages/cli/src/commands/memory.ts`, `vendor/codemem/packages/cli/src/commands/pack-shared.ts`, `vendor/codemem/packages/cli/src/commands/pack.ts`, `vendor/codemem/packages/cli/src/commands/claude-hook-inject.ts`, `vendor/codemem/packages/cli/src/commands/codex-hook-inject.ts`, `vendor/codemem/packages/mcp-server/src/rpc-client.ts`, `vendor/codemem/packages/mcp-server/src/project-scope.ts`, `vendor/codemem/packages/mcp-server/src/tools/items.ts`, `vendor/codemem/packages/mcp-server/src/tools/search.ts`, and `vendor/codemem/packages/mcp-server/src/tools/timeline.ts`
+- [ ] T038 [US1] Apply the boundary to structured maintenance and viewer raw-event/status/usage/memory/observation/summary/prompt/artifact/safe-session reads, remove content excerpts from logs, and keep test-only extraction-replay/distill absent from the public barrel in `vendor/codemem/packages/core/src/maintenance/ai-structured.ts`, `vendor/codemem/packages/core/src/viewer-routes/raw-events.ts`, `vendor/codemem/packages/core/src/viewer-routes/stats.ts`, `vendor/codemem/packages/core/src/viewer-routes/memory.ts`, `vendor/codemem/packages/core/src/raw-event-sweeper.ts`, `vendor/codemem/packages/core/src/observer-client.ts`, and `vendor/codemem/packages/core/src/index.ts`
+- [ ] T039 [US1] Gate CLI/daemon export-v2 memory/prompt/legacy-summary rows with verified destination identity, project only safe session shells without cwd/Git remote/branch/user/free-form metadata, keep `--project`/`--all-projects` non-authoritative, normalize v2 missing/invalid and all legacy-v1 content to secret/unknown, preserve full fields in backup/restore, and constrain dedup/supersession to same repository with monotonic sensitivity in `vendor/codemem/packages/cli/src/commands/export-memories.ts`, `vendor/codemem/packages/cli/src/commands/import-memories.ts`, `vendor/codemem/packages/cli/src/commands/daemon-operation.ts`, `vendor/codemem/packages/core/src/export-import.ts`, `vendor/codemem/packages/core/src/daemon-operations.ts`, `vendor/codemem/packages/core/src/online-backup.ts`, `vendor/codemem/packages/core/src/store.ts`, and `vendor/codemem/packages/core/src/mutation-dispatcher.ts`
+- [ ] T040 [US1] After T033-T039 are complete, enable the frozen manifest-derived Observer, AI maintenance, and RawEventSweeper in `vendor/codemem/packages/core/src/daemon-lifecycle.ts` with 30 s warm/periodic, 120 s idle, and 1 s debounce; update `README.md`, `vendor/codemem/README.md`, and `vendor/codemem/docs/plugin-reference.md`; build the CLI so `vendor/codemem/packages/cli/scripts/sync-hook-runtime.mjs` regenerates both hook runtimes; prove byte parity, semantic-disabled vector retention, and restricted sentinel absence from generated artifacts, outputs, traces, logs, and diagnostics
+- [ ] T041 [US1] Run every PR 3 privacy test across provider/maintenance/search/reference/daemon/MCP/viewer/pack/trace/export/import/dedup, build, tsc, lint, serial coverage, no-agent-blockage, backup/restore, packed artifact, generated parity, and `git diff --check`; deliver T028-T040 through required reviews/CI and close #130 only after the merged commit is verified
+
+**Checkpoint**: #130 is closed only here. Raw flush alone is not sufficient; every reachable
+content consumer uses one boundary.
+
+---
+
+## Phase 5: Bidirectional memory and triggered lifecycle (PR 4)
+
+**Purpose**: Complete the fixed automatic Claude⇄Codex flow on the privacy/durability foundation.
+
+- [ ] T042 [P] [US2] Add failing fixed `summary`/`failed_approach`/`next_action`, exact source citation, deterministic lineage/revision/no-op, final reason/order/limit/provenance tests in `vendor/codemem/packages/core/src/ingest-xml-parser.test.ts`, `vendor/codemem/packages/core/src/ingest-pipeline.test.ts`, `vendor/codemem/packages/core/src/store.test.ts`, `vendor/codemem/packages/core/src/pack.test.ts`, and `vendor/codemem/packages/core/src/prompt-pack-ledger.test.ts`
+- [ ] T043 [P] [US2] Add failing committed-event nudge, duplicate no-nudge, 1 s coalescing, session immediate/request drain, in-flight-pending stop race, no post-stop timer/flush, and restart tests in `vendor/codemem/packages/core/src/daemon-rpc.test.ts` and `vendor/codemem/packages/core/src/raw-event-sweeper.test.ts`
+- [ ] T044 [P] [US2] Add failing Claude PreCompact capture/normalization/setup registration and Claude/Codex source-level bidirectional required/forbidden-fact tests in `vendor/codemem/packages/core/src/claude-hooks.test.ts`, `vendor/codemem/packages/core/src/normalized-event.test.ts`, `vendor/codemem/packages/cli/src/commands/claude-hook-inject.test.ts`, and `vendor/codemem/packages/cli/src/commands/codex-hook-inject.test.ts`
+- [ ] T045 [US2] Add fixed memory kinds and exact-citation parser/store/presentation behavior consistently in `vendor/codemem/packages/core/src/memory-kinds.ts`, `vendor/codemem/packages/core/src/store.ts`, `vendor/codemem/packages/core/src/ingest-prompts.ts`, `vendor/codemem/packages/core/src/ingest-xml-parser.ts`, `vendor/codemem/packages/core/src/ingest-pipeline.ts`, `vendor/codemem/packages/mcp-server/src/memory-kinds.ts`, `vendor/codemem/packages/mcp-server/src/schemas.ts`, `vendor/codemem/packages/mcp-server/src/index.ts`, and `vendor/codemem/packages/ui/src/tabs/feed.ts`
+- [ ] T046 [US2] Complete deterministic lineage/revision/no-op and bounded lexical InjectionPack final evidence/order/reasons in `vendor/codemem/packages/core/src/store.ts`, `vendor/codemem/packages/core/src/pack.ts`, and `vendor/codemem/packages/core/src/prompt-pack-ledger.ts`
+- [ ] T047 [US2] Inject the RawEventSweeper nudge callback into daemon RPC after newly accepted commit/spool replay, implement immediate relevant-session drain, and fence nudge/timer/in-flight-finally rescheduling across stop/restart in `vendor/codemem/packages/core/src/daemon-lifecycle.ts`, `vendor/codemem/packages/core/src/daemon-rpc.ts`, and `vendor/codemem/packages/core/src/raw-event-sweeper.ts`
+- [ ] T048 [US2] Add Claude PreCompact and normalized lifecycle registration plus hard-deadline prompt drain while preserving fail-open behavior in `vendor/codemem/packages/core/src/claude-hooks.ts`, `vendor/codemem/packages/core/src/normalized-event.ts`, `vendor/codemem/packages/cli/src/commands/setup.ts`, `vendor/codemem/packages/cli/src/commands/hook-rpc-client.ts`, and both hook inject commands
+- [ ] T049 [US2] Update `README.md`, `vendor/codemem/README.md`, `vendor/codemem/docs/plugin-reference.md`, and `vendor/codemem/docs/user-guide.md`, rebuild both generated hook runtimes, run source and packed Claude→Codex/Codex→Claude required/forbidden-fact scenarios plus trigger/stop/no-agent-blockage suites, and deliver T042-T048 as one reviewed green PR
+
+**Checkpoint**: Both directions recall the fixed facts automatically; processing is triggered and
+shutdown-safe without weakening privacy or hook budgets.
+
+---
+
+## Phase 6: Managed setup lifecycle and basic doctor (PR 5)
+
+**Purpose**: Complete one setup flow after activation/privacy/runtime seams are stable.
+
+- [ ] T050 [P] [US4] Add failing unsupported-storage/no-mutation, shared-lifecycle-lock stopped activation and coordinated running-daemon stop/activate/start, matching attach, mismatched refusal, restart/stop/uninstall, duplicate-writer, doctor readiness, and packed setup tests in `vendor/codemem/packages/cli/src/commands/setup-codex.test.ts`, `vendor/codemem/packages/cli/src/commands/serve.test.ts`, `vendor/codemem/packages/core/src/daemon-lifecycle.test.ts`, `vendor/codemem/packages/core/src/daemon-rpc.test.ts`, and `vendor/codemem/packages/cli/src/commands/status.test.ts`
+- [ ] T051 [US4] Export and reuse only the narrow background lifecycle/health operations required by setup from `vendor/codemem/packages/cli/src/commands/serve.ts`, `vendor/codemem/packages/cli/src/commands/serve-invocation.ts`, and `vendor/codemem/packages/core/src/daemon-lifecycle.ts`
+- [ ] T052 [US4] Make setup preflight platform/storage, install Claude+Codex by default, use the shared lifecycle lock to coordinate stop/activate/start or verified attach without mutating behind a frozen daemon, and accept success only after version/fingerprint/doctor checks in `vendor/codemem/packages/cli/src/commands/setup.ts` and `vendor/codemem/packages/cli/src/commands/setup-config.ts`
+- [ ] T053 [US4] Report one frozen manifest/provider plus writer/mutation/spool/capacity/job/summary/lexical/semantic-disabled/hook/pack readiness from runtime facts in `vendor/codemem/packages/core/src/daemon-rpc.ts`, `vendor/codemem/packages/core/src/operational-status.ts`, and `vendor/codemem/packages/cli/src/commands/status.ts`; verify isolated-HOME packed start/attach/restart/stop/uninstall ownership
+- [ ] T054 [US4] Update setup/lifecycle behavior in `README.md`, `vendor/codemem/README.md`, `vendor/codemem/docs/plugin-reference.md`, and `vendor/codemem/docs/user-guide.md`; run setup/serve/daemon/doctor/status/packed/no-agent-blockage suites, build, tsc, lint, serial coverage, generated parity, and `git diff --check`; deliver T050-T053 as one reviewed green PR
+
+**Checkpoint**: One setup flow installs both Agents, owns one runtime, and proves the same effective
+manifest without duplicate writers.
+
+---
+
+## Phase 7: Fixed real-hook artifact gate (PR 6)
+
+**Purpose**: Prove the integrated Slice 1 user path and evidence contract.
+
+- [ ] T055 Add failing pin/candidate/evidence-root/incomplete-lifecycle/fabricated-success/normal-proposal/network-deny, forged local-destination, missing/mutated plateau/CA/checkpoint/item/token/concurrency, same-ID/different-digest, and exact-16+1 suite self-tests in `harness/slice1-runtime.test.mjs`
+- [ ] T056 Implement one candidate-inaccessible runner using the production compiler for ordinary base/repaired remote proposals and runner-only attested loopback local consumer; bind public CA/no-private-key proof; cover both Agent directions, absent/malformed, outage/replay, failure/grant, claims/capacity/privacy, same-ID/different-digest conflict, duplicate/no-op, linked/path/unsupported/packed/semantic cases; emit exactly 16 positive observations plus one late-injection negative in `harness/slice1-runtime.mjs`
+- [ ] T057 Populate the corrected closed result/runner-evidence schemas with exact attempted/final render, network/CA, manifest/provider/job/retry/lifecycle/conflict/16+1 evidence, ordinals 1-22 p95, and all 12 raw drain/checkpoint/process/RSS/queue/storage/item/token/concurrency windows whose final five satisfy the fixed plateau and zero-orphan predicate in `harness/slice1-runtime.mjs`
+- [ ] T058 Add fixed runner scripts and packed-artifact exercise to `vendor/codemem/package.json` and `vendor/codemem/packages/cli/scripts/packed-artifact-smoke.mjs`, and gate the existing checks plus Slice 1 validators in `.github/workflows/ci.yml` without weakening any gate
+- [ ] T059 [P] Update `README.md`, `vendor/codemem/README.md`, `vendor/codemem/docs/plugin-reference.md`, and `vendor/codemem/docs/user-guide.md` for explicit provider proposal, capture-only absence, privacy/repository boundary, retry/grant behavior, semantic-disabled retention, setup lifecycle, and content-free diagnostics
+- [ ] T060 Run every command in `specs/006-slice1-runtime/quickstart.md`, full serial coverage, no-agent-blockage, generated parity, packed artifact, fixed runner/validators, `git diff --check`, GitNexus impact checks for `startDaemon`/`flushRawEvents`/Store reads/`buildMemoryPack`, and required correctness/security/code/over-engineering reviews; deliver T055-T059 as a green PR and close #137 only after post-merge main gates pass
+
+---
+
+## Dependencies and execution order
+
+### Phase dependencies
+
+- T001 is the planning gate.
+- PR 0 is T002-T005, starts only from fresh post-#142 `origin/main`, and blocks every runtime task.
+- PR 1 is T006-T016 and is based on merged T005.
+- PR 2 is T017-T027 and is based on merged T016.
+- PR 3 is T028-T041 and is based on merged T027; T041 is the only #130 close checkpoint.
+- PR 4 is T042-T049 and is based on merged T041.
+- PR 5 is T050-T054 and is based on merged T049.
+- PR 6 is T055-T060 and is based on merged T054; T060 is the only #137 close checkpoint.
+
+### Safe pull request boundaries
+
+1. Contract/fixture mechanical correction: T002-T005.
+2. Vertical setup/compiler/storage/daemon/Observer/maintenance/viewer manifest: T006-T016.
+3. Schema v21 and durable jobs: T017-T027.
+4. Complete all-consumer privacy closure and #130: T028-T041.
+5. Bidirectional memory, nudge, stop race, and lifecycle triggers: T042-T049.
+6. Managed setup lifecycle and doctor: T050-T054.
+7. Fixed runner, docs, and CI: T055-T060.
+
+Every boundary is independently mergeable and revertible. Earlier PRs report later-owned readiness
+as pending rather than claiming enforcement.
+
+### Parallel opportunities
+
+- After T005, T006-T009 test authoring is independent by file before shared implementation T010.
+- After T016, T017-T020 are independent migration/job/resume/retention red tests.
+- After T027, T028-T032 are independent capture/provider/read/RPC/maintenance red tests before T033.
+- After T041, T042-T044 are independent parser/pack, sweeper/RPC, and hook tests.
+- One worktree has one writer; actual parallel implementation uses distinct PR worktrees.
+
+## Requirement coverage
+
+| Requirements / outcomes | Tasks |
+|---|---|
+| FR-001, FR-002, FR-029; SC-001 | T042-T060 |
+| FR-003-FR-009; SC-008, SC-009 | T002-T016, T056-T058 |
+| FR-010-FR-018; SC-005-SC-007, SC-011 | T028-T041, T056-T057 |
+| FR-019; SC-002 | T018, T023, T056 |
+| FR-020-FR-026; SC-002, SC-010 | T017-T027, T056-T057 |
+| FR-027; SC-001, SC-002 | T043, T047-T049, T056 |
+| FR-028; SC-004, SC-008 | T014, T030, T036, T040, T053, T056 |
+| FR-030, FR-031; SC-002-SC-011 | T001, T004, T055-T060 |
+
+Execute only through the ordered PR boundaries above; no phase is complete until its focused
+runtime/database/packed gates, reviews, CI, merge, and required post-merge checks pass.
