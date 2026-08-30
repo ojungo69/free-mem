@@ -1,0 +1,98 @@
+specs/006-slice1-runtime/data-model.md
+  s_99d8ac07476f81::t_7fa0b8acbbb0fa 62-63
+  s_99d8ac07476f81::t_7e84679072dbfd 781-783
+  s_99d8ac07476f81::t_2423e03bfc498b 90
+  s_99d8ac07476f81::t_fc4aea374b63ff 61
+  s_99d8ac07476f81::t_f18c46d853d839 163,348,430,432,436-437,594,596,667-668,670,674
+  s_99d8ac07476f81::t_b4bff6e6c96ae3 291-292
+  s_99d8ac07476f81::t_67efac5f398d30 519-520
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_99d8ac07476f81::t_ccb64d0d55310d 60,127
+specs/005-product-reset/contracts/alpha-result-resource.mjs
+  s_99d8ac07476f81::t_9d2845cb3e7eb4 47-50,82-92,95-102
+specs/005-product-reset/contracts/validate-alpha-runner-evidence.test.mjs
+  s_99d8ac07476f81::t_a99b1d2f25159b 74-80,82,355-367,380-389
+  s_99d8ac07476f81::t_23f7a547ec211b 368-379
+  s_99d8ac07476f81::t_ef5a9a7c761988 237-239
+  s_99d8ac07476f81::t_9b777761ae8e37 15-18,181-193
+  s_99d8ac07476f81::t_24a9bf1a772663 7,71-73,81,83-86
+  s_99d8ac07476f81::t_226e2497e508c5 145-149
+  s_99d8ac07476f81::t_276b30219bb807 194
+  s_99d8ac07476f81::t_a26d191fbe94ca 390
+specs/006-slice1-runtime/contracts/capability-manifest-v1.md
+  s_99d8ac07476f81::t_2423e03bfc498b 73-75
+  s_99d8ac07476f81::t_b6797857627978 43-44
+  s_99d8ac07476f81::t_67efac5f398d30 143-145,157
+  s_99d8ac07476f81::t_fc4aea374b63ff 158-159
+specs/005-product-reset/data-model.md
+  s_99d8ac07476f81::t_67efac5f398d30 145-147
+  s_99d8ac07476f81::t_b6797857627978 410-411
+specs/006-slice1-runtime/plan.md
+  s_99d8ac07476f81::t_fc4aea374b63ff 107-108
+  s_99d8ac07476f81::t_67efac5f398d30 213-215
+  s_99d8ac07476f81::t_b4bff6e6c96ae3 106
+specs/006-slice1-runtime/tasks.md
+  s_99d8ac07476f81::t_811a1396dafca6 21-24
+specs/005-product-reset/contracts/alpha-result-security.mjs
+  s_99d8ac07476f81::t_2be354478419fc 2,24-26
+  s_99d8ac07476f81::t_d54854a4b69199 99-108
+specs/005-product-reset/contracts/validate-slice1-fixture.test.mjs
+  s_99d8ac07476f81::t_75c6bba09673ae 310-311
+specs/006-slice1-runtime/spec.md
+  s_99d8ac07476f81::t_7e84679072dbfd 395-396
+  s_99d8ac07476f81::t_fc4aea374b63ff 157-158,235-236
+  s_99d8ac07476f81::t_b4bff6e6c96ae3 204-205
+specs/005-product-reset/contracts/validate-alpha-result.test.mjs
+  s_99d8ac07476f81::t_335a3c4ba621c4 11-16,386-402
+  s_99d8ac07476f81::t_45f2d22ebbbd10 403-411
+specs/005-product-reset/contracts/validate-alpha-result.mjs
+  s_99d8ac07476f81::t_24a9bf1a772663 14-17,447-449
+  s_99d8ac07476f81::t_46e53b6504f344 451-452
+  s_99d8ac07476f81::t_2c91c8fcbb06aa 450,453
+specs/006-slice1-runtime/contracts/processing-job-v1.md
+  s_99d8ac07476f81::t_67efac5f398d30 18-19,88-90
+specs/005-product-reset/contracts/alpha-runner-evidence.mjs
+  s_99d8ac07476f81::t_9ee60885104dd0 202
+specs/006-slice1-runtime/research.md
+  s_99d8ac07476f81::t_7e84679072dbfd 362-363
+  s_99d8ac07476f81::t_dfb7b40612a72c 352
+  s_99d8ac07476f81::t_b961d7b3234e13 61-64,351
+  s_99d8ac07476f81::t_fc4aea374b63ff 353-354
+specs/005-product-reset/contracts/alpha-comparison.md
+  s_99d8ac07476f81::t_07eab2071de331 77-79,215-217
+specs/005-product-reset/contracts/alpha-runner-evidence-v1.schema.json
+  s_99d8ac07476f81::t_980400d010629d 88
+specs/006-slice1-runtime/quickstart.md
+  s_99d8ac07476f81::t_7e84679072dbfd 330-331
+  s_99d8ac07476f81::t_256ba5db7ee294 79,129,171,234,258,279,288
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_99d8ac07476f81::t_af68d36f6a1435 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_99d8ac07476f81::t_a831a893c79a48 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.suite-regression.json
+  s_99d8ac07476f81::t_c5e107401c21f3 1
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.example.json
+  s_99d8ac07476f81::t_dd0d1b6ca8ca4b 4,1351
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json
+  s_99d8ac07476f81::t_363e6141370113 4,797
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json
+  s_99d8ac07476f81::t_fb4053fdec2ee9 1
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_99d8ac07476f81::t_b3bfa751c0f196 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7e0548190a709777837a5c3433497751cecf758a",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
