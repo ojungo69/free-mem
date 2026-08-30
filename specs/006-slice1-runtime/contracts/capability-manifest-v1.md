@@ -42,7 +42,8 @@ preflight receipts (base/local/repaired × setup activation/daemon start), inclu
 hostname/SNI, port, frozen timeout, monotonic interval, verified result, trust-anchor fingerprint
 equal to the public CA, and one peer-certificate fingerprint per endpoint that is identical across
 its setup/start receipts and distinct from the CA, plus zero HTTP request, credential, and payload
-byte counts.
+byte counts. For each endpoint, setup preflight completion is strictly before daemon-start preflight
+beginning.
 
 ## ProviderProposalV1
 

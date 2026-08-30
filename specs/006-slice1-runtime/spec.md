@@ -394,12 +394,15 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   remote SNI or null IP SNI,
   timeout, timing, verified result, per-receipt trust-anchor and per-endpoint phase-stable
   peer-certificate fingerprints, and zero
-  request/credential/payload bytes, plus runner-owned provider-egress observations spanning
+  request/credential/payload bytes, with setup completion strictly before daemon-start beginning,
+  plus runner-owned provider-egress observations spanning
   candidate start through process-tree termination and opening only after direct durable-event-set
   authorization that records explicit canonical-order committed event IDs, count, and fingerprint
   without inferring a prefix. Source bytes by sensitivity MUST be runner-stub measurements of actual
   received request bytes against fixed synthetic markers/spans, never policy-derived or candidate-
-  reported; each plateau window MUST carry a unique workload receipt, strict runner-monotonic
+  reported. Every fixed retry/redirect recovery subcase MUST own one sorted case/manifest-bound full
+  observation under the same rules, including zero-egress observations for no-op cases, with receipt
+  IDs unique across the bundle; each plateau window MUST carry a unique workload receipt, strict runner-monotonic
   workload-start/workload-receipt/drain-receipt/checkpoint-receipt/sample timestamps, and no overlap
   with its neighboring windows, with at
   least one duplicate attempt, no-op outcome, and zero memory/job deltas. The result schema carries

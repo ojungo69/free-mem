@@ -43,9 +43,8 @@ function suiteProviderEgressEvidence(caseId) {
   return structuredClone(record.providerEgressEvidence);
 }
 
-function buildRunnerEvidence(result) {
-  const latencyRuns = structuredClone(result.latencyEvidence.runs);
-  const runPreparations = latencyRuns.map((run) => {
+function buildRunPreparations(result, latencyRuns) {
+  return latencyRuns.map((run) => {
     const observations = run.captureTimings.flatMap(
       (timing) => [timing.startMonotonicMs, timing.endMonotonicMs],
     );
@@ -76,6 +75,14 @@ function buildRunnerEvidence(result) {
       readyProcessObserved: !cold,
     };
   });
+}
+
+function buildRunnerEvidence(result) {
+  const scenario = fixture.scenarios.find((item) => item.scenarioId === result.scenarioId);
+  const recoveryObserved = result.milestones.some((item) =>
+    item.name === scenario.drainCondition.terminalMilestone);
+  const latencyRuns = structuredClone(result.latencyEvidence.runs);
+  const runPreparations = buildRunPreparations(result, latencyRuns);
   const evidence = {
     runnerEvidenceVersion: 1,
     fixtureId: result.fixtureId,
@@ -96,6 +103,12 @@ function buildRunnerEvidence(result) {
       resourceDataRootId: `${result.scenarioId}:resource-data-root`,
       resultObservationFingerprint: runnerResultObservationFingerprint(result),
       providerEgressEvidence: suiteProviderEgressEvidence(result.runnerEvidenceCaseId),
+      recoveryProviderEgressEvidence:
+        !recoveryObserved
+          ? []
+          : structuredClone(suiteRegressionEvidence.scenarios.find(
+              (item) => item.caseId === result.runnerEvidenceCaseId,
+            ).recoveryProviderEgressEvidence),
       hostIdentityEvidence: structuredClone(result.hostIdentityEvidence),
       observedMilestones: structuredClone(result.milestones),
       processSamples: structuredClone(result.processSamples),

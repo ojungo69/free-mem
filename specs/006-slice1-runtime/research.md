@@ -361,7 +361,8 @@ The corrected runner-evidence schema binds every raw plateau window, drain/check
 item/token/concurrency sample, hostname/IP-valid public CA fingerprint, six raw base/local/repaired
 setup/start TLS receipts with exact remote-SNI/null-IP-SNI/timing/result/trust-anchor/
 phase-stable-peer-cert/
-zero-byte evidence, and one runner-owned gated provider-egress observation per real scenario whose
+zero-byte evidence with setup completion strictly before daemon-start beginning, and one runner-
+owned gated provider-egress observation per real scenario whose
 authorization carries explicit canonical-order committed event IDs/count/fingerprint. Each
 plateau window has a unique workload receipt, strict runner-monotonic action/sample order,
 positive duplicate-attempt count, no-op outcome, and
@@ -369,6 +370,9 @@ zero memory/job deltas. Results bind the bundle objects through separate fingerp
 aggregates. The runner also emits repeated same-event-ID/different-digest attempts that reuse one
 pair-bound receipt, rejects cross-pair reuse, and emits exactly 16 positives plus the required
 late-injection negative; result and runner-bundle fingerprints cover all fields.
+Each fixed retry/redirect recovery subcase adds a sorted case/manifest-bound full observation under
+the same rules, including full zero-egress observations for no-op subcases and globally unique
+initial/recovery receipt IDs.
 
 For remote-provider cases, the deny boundary permits only the fixture-pinned remote hostname mapped
 to the runner loopback stub and validates the evidence-bound CA/hostname. This remains a normal remote HTTPS

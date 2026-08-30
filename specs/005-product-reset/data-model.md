@@ -409,7 +409,8 @@ in suite mode.
   host, remote SNI or null IP SNI, exact endpoint port, 5,000 ms, the per-run public CA trust anchor,
   and one peer-certificate SHA-256 per endpoint that is identical across its setup/start receipts and
   distinct from the CA,
-  verified monotonic duration, and zero credential/payload/request activity
+  verified monotonic duration, setup completion strictly before daemon-start beginning, and zero
+  credential/payload/request activity
 - one runner-owned provider-egress observation per real scenario, armed before candidate start and
   retained through process-tree termination, with zero pre-authorization/non-loopback attempts,
   direct durable-store authorization containing explicit canonical-order committed event IDs, their
@@ -417,6 +418,9 @@ in suite mode.
   exact wire aggregates, and runner-stub-measured source-content bytes split by sensitivity using
   fixed synthetic markers/spans, never policy-derived or candidate-reported; the negative case only
   projects an observed base receipt
+- one additional full runner-owned provider-egress observation for every fixed retry/redirect
+  recovery subcase, including zero-egress no-op cases, sorted and bound to exact case/manifest/
+  provider with receipt IDs unique across the whole bundle
 - one closed short-run plateau record with 12 ordered duplicate/no-op windows, discarded 1-2,
   measured 3-12, final 8-12, fixed item/token counts, bounded
   process/RSS/queue/storage/concurrency, measured RSS/storage maximum increase from the first measured

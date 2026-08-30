@@ -263,10 +263,20 @@
         { "$ref": "#/$defs/ProviderEgressProjection" }
       ]
     },
+    "RecoveryProviderEgressEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "effectiveManifestFingerprint", "evidence"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/NonEmptyString" },
+        "effectiveManifestFingerprint": { "$ref": "#/$defs/Fingerprint" },
+        "evidence": { "$ref": "#/$defs/ProviderEgressObserved" }
+      }
+    },
     "ScenarioEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "scenarioId", "resourceSampleMode", "resourceObserverId", "processTreeRootId", "resourceDataRootId", "resultObservationFingerprint", "providerEgressEvidence", "hostIdentityEvidence", "observedMilestones", "processSamples", "latencyRuns", "runPreparations"],
+      "required": ["caseId", "scenarioId", "resourceSampleMode", "resourceObserverId", "processTreeRootId", "resourceDataRootId", "resultObservationFingerprint", "providerEgressEvidence", "recoveryProviderEgressEvidence", "hostIdentityEvidence", "observedMilestones", "processSamples", "latencyRuns", "runPreparations"],
       "properties": {
         "caseId": { "$ref": "#/$defs/NonEmptyString" },
         "scenarioId": { "$ref": "#/$defs/NonEmptyString" },
@@ -276,6 +286,11 @@
         "resourceDataRootId": { "$ref": "#/$defs/OpaqueIdentifier" },
         "resultObservationFingerprint": { "$ref": "#/$defs/Fingerprint" },
         "providerEgressEvidence": { "$ref": "#/$defs/ProviderEgressEvidence" },
+        "recoveryProviderEgressEvidence": {
+          "type": "array",
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/RecoveryProviderEgressEvidence" }
+        },
         "hostIdentityEvidence": {
           "oneOf": [
             { "type": "null" },

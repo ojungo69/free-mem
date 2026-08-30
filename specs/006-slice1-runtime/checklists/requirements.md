@@ -63,8 +63,9 @@
 - [x] Activation receipt, persisted provider health edge, and user-confirmed doctor retry are the only
   crash-idempotent resume-signal producers; every signal binds exact job+producer receipt and global
   setup/health events fan out only to the bounded matching job set
-- [x] Closed runner-evidence schema owns raw provider-egress, plateau, and six TLS receipts; result
-  fingerprints/aggregates bind it; plateau timestamps strictly prove workload→drain→checkpoint→
+- [x] Closed runner-evidence schema owns initial plus every retry/redirect recovery provider-egress
+  observation (including zero-egress no-ops), plateau, and six ordered TLS receipts; result
+  fingerprints/aggregates bind them; plateau timestamps strictly prove workload→drain→checkpoint→
   sample order and non-overlap while pair-bound conflict reuse/distinctness and exact 16+1 evidence
   remain closed
 - [x] Provider authorization records explicit committed event IDs/count/fingerprint and accepts

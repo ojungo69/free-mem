@@ -328,7 +328,7 @@ pair-bound same-event-ID/different-payload-digest conflict attempts without over
 runner-evidence schema carries all 12 plateau windows, drain/checkpoint receipts, item/token/
 concurrency samples, public CA proof, and six raw base/local/repaired setup/start TLS receipts with exact
 SNI/timeout/timing/verified/trust-anchor/phase-stable-peer-cert/zero-request/credential/payload
-evidence. Every
+evidence, with setup completion strictly before daemon-start beginning. Every
 plateau window has a unique workload receipt, positive duplicate-attempt count, no-op outcome, and
 zero memory/job delta, plus a strict non-overlapping workload-start/workload-receipt/drain-receipt/
 checkpoint-receipt/sample timestamp chain. Results carry separate network/plateau fingerprints and derived aggregates;
@@ -342,6 +342,9 @@ sets), exact wire aggregates, source bytes by sensitivity, and zero pre-authoriz
 non-loopback attempts. The late-injection negative projects the base receipt.
 Sensitivity-byte counts come from the runner stub's actual received request bytes matched to fixed
 synthetic markers/spans; policy-derived or candidate-reported counts fail the self-test.
+Every fixed retry/redirect recovery subcase also has one sorted, case/manifest-bound full
+observation under the same rules. No-op subcases carry full zero-egress observations, and all initial
+and recovery receipt IDs are bundle-global unique.
 
 Restricted local proposals use the fixture-pinned literal-loopback HTTPS URL. Remote proposals use the fixture-pinned
 base/repaired HTTPS hostnames mapped only inside the runner namespace to its loopback stub, with a per-run

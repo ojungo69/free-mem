@@ -76,7 +76,8 @@ Each fixture defines:
   absence of a committed private key; exactly six unique raw receipts cover base/local/repaired by
   setup activation/daemon start and bind host/SNI/exact endpoint port/5,000 ms, the per-run CA trust
   anchor, one peer-certificate fingerprint per endpoint that is identical across its two phases and
-  distinct from the CA, verified duration, and zero bytes/requests
+  distinct from the CA, verified duration, setup completion strictly before daemon-start beginning,
+  and zero bytes/requests
 - one runner-owned 12-window duplicate/no-op plateau: discard 1-2, measure 3-12, evaluate final
   8-12 for constant processes, drained queue, equal item/token counts, RSS span at most 16 MiB,
   storage span at most 65,536 bytes, concurrency at most 2, unique path-free
@@ -209,6 +210,10 @@ Those sensitivity bytes are measured by the runner-owned stub from the request b
 the fixture's fixed synthetic source markers/spans; they are never derived from allow policy or a
 candidate result field.
 The projected late-injection negative references the base observation instead of fabricating a run.
+Every fixed retry/redirect recovery subcase owns one additional runner observation, including a full
+zero-egress observation for each no-op. The sorted wrappers bind exact case/manifest/provider,
+globally unique receipt IDs, committed-event authorization, request timing, TLS, wire bytes, and
+sensitivity measurements under the same rules as the initial attempt.
 The plateau object binds all 12 ordered, non-overlapping duplicate/no-op workload receipts and their
 strict workload/drain/checkpoint/sample timestamps, and separately
 fingerprints maximum-increase-from-first and final-five-span predicates before any aggregate can

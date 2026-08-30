@@ -1,7 +1,7 @@
 {
   "runnerEvidenceVersion": 1,
   "fixtureId": "slice1-bidirectional-en-v1",
-  "fixtureFingerprint": "sha256:299c1e6c4cc1dc2079bdaf3f423e2896116024c56cf91ad8586428f3f4f806ed",
+  "fixtureFingerprint": "sha256:4fe0bf99f0d32ff689454d37db4fddbfe338a3ddca7dccaef82247121069053c",
   "candidateId": "candidate-failure-example-v1",
   "environmentFingerprint": "sha256:51d1ff8bf9580085abb5f557a77382dc3d578626b14e5d0160e0b3bd4bcfa2e5",
   "artifactFingerprint": "sha256:ff89621eeda9ef70fe0b073572b71063c93620d255ea56698cd0e4a49faaf7e7",
@@ -794,7 +794,7 @@
         }
       ],
       "hostIdentityEvidence": null,
-      "resultObservationFingerprint": "sha256:3b84a56b198606ea878564b74126363928aeddbeced84d5ba68367c8f43aa3db",
+      "resultObservationFingerprint": "sha256:a02dd67193a18f9ae0d175b4fd74e59107b68af850989647c7882d736c845012",
       "providerEgressEvidence": {
         "kind": "observed",
         "receiptId": "provider-egress:summary-provider-output-limit-exceeded",
@@ -830,7 +830,115 @@
         "redirectLocationRequestCount": 0,
         "redirectLocationPayloadBytesSent": 0,
         "resentPayloadCount": 0
-      }
+      },
+      "recoveryProviderEgressEvidence": [
+        {
+          "caseId": "unchanged-doctor-retry-no-op",
+          "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
+          "evidence": {
+            "kind": "observed",
+            "receiptId": "provider-egress:summary-provider-output-limit-exceeded:recovery:unchanged-doctor-retry-no-op",
+            "evidenceSource": "runner_network_gate_and_stub_v1",
+            "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+            "executionLocation": "remote",
+            "observationStartedMonotonicMs": 1002000,
+            "candidateStartedMonotonicMs": 1002100,
+            "authorization": null,
+            "firstProviderRequestStartedMonotonicMs": null,
+            "lastProviderRequestFinishedMonotonicMs": null,
+            "processTreeTerminatedMonotonicMs": 1002800,
+            "observationFinishedMonotonicMs": 1002900,
+            "preAuthorizationProviderAttemptCount": 0,
+            "nonLoopbackSocketAttemptCount": 0,
+            "providerRequestCount": 0,
+            "providerPayloadCount": 0,
+            "credentialBytesSent": 0,
+            "payloadBytesSent": 0,
+            "sourcePayloadBytesBySensitivity": {
+              "eligible": 0,
+              "localOnly": 0,
+              "private": 0,
+              "secret": 0
+            },
+            "redirectLocationRequestCount": 0,
+            "redirectLocationPayloadBytesSent": 0,
+            "resentPayloadCount": 0
+          }
+        },
+        {
+          "caseId": "unchanged-provider-health-no-op",
+          "effectiveManifestFingerprint": "sha256:2a5a5d2d3803d8f2dc2767981cbbf4f77cffc3aae8cebdc9d310e7645b27d53d",
+          "evidence": {
+            "kind": "observed",
+            "receiptId": "provider-egress:summary-provider-output-limit-exceeded:recovery:unchanged-provider-health-no-op",
+            "evidenceSource": "runner_network_gate_and_stub_v1",
+            "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+            "executionLocation": "remote",
+            "observationStartedMonotonicMs": 1001000,
+            "candidateStartedMonotonicMs": 1001100,
+            "authorization": null,
+            "firstProviderRequestStartedMonotonicMs": null,
+            "lastProviderRequestFinishedMonotonicMs": null,
+            "processTreeTerminatedMonotonicMs": 1001800,
+            "observationFinishedMonotonicMs": 1001900,
+            "preAuthorizationProviderAttemptCount": 0,
+            "nonLoopbackSocketAttemptCount": 0,
+            "providerRequestCount": 0,
+            "providerPayloadCount": 0,
+            "credentialBytesSent": 0,
+            "payloadBytesSent": 0,
+            "sourcePayloadBytesBySensitivity": {
+              "eligible": 0,
+              "localOnly": 0,
+              "private": 0,
+              "secret": 0
+            },
+            "redirectLocationRequestCount": 0,
+            "redirectLocationPayloadBytesSent": 0,
+            "resentPayloadCount": 0
+          }
+        },
+        {
+          "caseId": "validated-larger-limit-activation",
+          "effectiveManifestFingerprint": "sha256:9bd12c87e5fb039892fb1d6dd78843ba82339be49b7c4c18c7707bb14ffd153e",
+          "evidence": {
+            "kind": "observed",
+            "receiptId": "provider-egress:summary-provider-output-limit-exceeded:recovery:validated-larger-limit-activation",
+            "evidenceSource": "runner_network_gate_and_stub_v1",
+            "providerFingerprint": "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
+            "executionLocation": "remote",
+            "observationStartedMonotonicMs": 1000000,
+            "candidateStartedMonotonicMs": 1000100,
+            "authorization": {
+              "observedAtMonotonicMs": 1000300,
+              "committedEventCount": 1,
+              "committedEventIds": [
+                "output-limit-event-1"
+              ],
+              "committedEventSetFingerprint": "sha256:52fee5575e405fd46c6c37af99ebe2a295306977518be076951efaca36888be7"
+            },
+            "firstProviderRequestStartedMonotonicMs": 1000400,
+            "lastProviderRequestFinishedMonotonicMs": 1000500,
+            "processTreeTerminatedMonotonicMs": 1000800,
+            "observationFinishedMonotonicMs": 1000900,
+            "preAuthorizationProviderAttemptCount": 0,
+            "nonLoopbackSocketAttemptCount": 0,
+            "providerRequestCount": 1,
+            "providerPayloadCount": 1,
+            "credentialBytesSent": 32,
+            "payloadBytesSent": 128,
+            "sourcePayloadBytesBySensitivity": {
+              "eligible": 43,
+              "localOnly": 0,
+              "private": 0,
+              "secret": 0
+            },
+            "redirectLocationRequestCount": 0,
+            "redirectLocationPayloadBytesSent": 0,
+            "resentPayloadCount": 0
+          }
+        }
+      ]
     }
   ],
   "networkTrustEvidence": {

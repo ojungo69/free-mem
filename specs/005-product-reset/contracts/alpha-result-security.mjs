@@ -97,14 +97,22 @@ function validateTlsPreflightReceipts(receipts, fixture, publicCaSha256) {
     validateTlsPreflightReceipt(receipt, endpoints, publicCaSha256);
   }
   const peersByEndpoint = new Map();
+  const receiptsByEndpoint = new Map();
   for (const receipt of receipts) {
     const key = `${receipt.hostname}\0${receipt.port}`;
     const peers = peersByEndpoint.get(key) ?? new Set();
     peers.add(receipt.peerCertificateSha256);
     peersByEndpoint.set(key, peers);
+    receiptsByEndpoint.set(key, [...(receiptsByEndpoint.get(key) ?? []), receipt]);
   }
   if ([...peersByEndpoint.values()].some((peers) => peers.size !== 1)) {
     throw new Error("TLS preflight peer certificate drifted between lifecycle phases");
+  }
+  if ([...receiptsByEndpoint.values()].some((pair) =>
+    pair.find((item) => item.phase === "setup_activation").endMonotonicMs >=
+      pair.find((item) => item.phase === "daemon_start").startMonotonicMs
+  )) {
+    throw new Error("TLS setup preflight did not finish before the daemon-start preflight");
   }
 }
 
@@ -173,21 +181,24 @@ function expectedProviderSourcePayloadBytes(provider, committedEvents, providerR
   return sourcePayloadBytesBySensitivity;
 }
 
-function expectedProviderEgressObservation(result, fixture, committedEventIds) {
+function expectedProviderEgressObservation(result, fixture, committedEventIds, {
+  manifestFingerprint = result.effectiveManifestFingerprint,
+  wireEvidence = result.securityEvidence,
+} = {}) {
   const scenario = fixture.scenarios.find((item) => item.scenarioId === result.scenarioId);
   const manifests = [fixture.effectiveConfiguration, fixture.localDerivationManifest,
     fixture.repairedRemoteManifest, fixture.outputLimitRecoveryManifest];
   const manifest = manifests.find((item) =>
-    item.configurationFingerprint === result.effectiveManifestFingerprint);
+    item.configurationFingerprint === manifestFingerprint);
   if (!scenario || !manifest) {
     throw new Error("provider egress evidence cannot resolve scenario or manifest");
   }
   const provider = manifest.summaryProvider;
   const providerRequestCount = provider.executionLocation === "remote"
-    ? result.securityEvidence.remoteProviderRequestCount
+    ? wireEvidence.remoteProviderRequestCount
     : Number(scenario.providerTransmissionOracle.payloadBytesSent > 0);
   const providerPayloadCount = provider.executionLocation === "remote"
-    ? result.securityEvidence.remoteProviderPayloadCount
+    ? wireEvidence.remoteProviderPayloadCount
     : providerRequestCount;
   const eventsById = new Map(scenario.events.map((event, index) =>
     [event.eventId, { event, index }]));
@@ -207,6 +218,7 @@ function expectedProviderEgressObservation(result, fixture, committedEventIds) {
     provider,
     providerRequestCount,
     providerPayloadCount,
+    wireEvidence,
     committedEvents,
     sourcePayloadBytesBySensitivity: expectedProviderSourcePayloadBytes(
       provider, committedEvents, providerRequestCount,
@@ -214,9 +226,9 @@ function expectedProviderEgressObservation(result, fixture, committedEventIds) {
   };
 }
 
-function validateProviderEgressClaims(evidence, result, expected) {
+function validateProviderEgressClaims(evidence, expected) {
   const { provider, providerRequestCount, providerPayloadCount,
-    sourcePayloadBytesBySensitivity } = expected;
+    sourcePayloadBytesBySensitivity, wireEvidence } = expected;
   if (evidence?.kind !== "observed" ||
       evidence.evidenceSource !== "runner_network_gate_and_stub_v1" ||
       evidence.providerFingerprint !== provider.providerFingerprint ||
@@ -226,13 +238,11 @@ function validateProviderEgressClaims(evidence, result, expected) {
   if (
     evidence.providerRequestCount !== providerRequestCount ||
     evidence.providerPayloadCount !== providerPayloadCount ||
-    evidence.credentialBytesSent !== result.securityEvidence.credentialBytesSent ||
-    evidence.payloadBytesSent !== result.securityEvidence.payloadBytesSent ||
-    evidence.redirectLocationRequestCount !==
-      result.securityEvidence.redirectLocationRequestCount ||
-    evidence.redirectLocationPayloadBytesSent !==
-      result.securityEvidence.redirectLocationPayloadBytesSent ||
-    evidence.resentPayloadCount !== result.securityEvidence.resentPayloadCount ||
+    evidence.credentialBytesSent !== wireEvidence.credentialBytesSent ||
+    evidence.payloadBytesSent !== wireEvidence.payloadBytesSent ||
+    evidence.redirectLocationRequestCount !== wireEvidence.redirectLocationRequestCount ||
+    evidence.redirectLocationPayloadBytesSent !== wireEvidence.redirectLocationPayloadBytesSent ||
+    evidence.resentPayloadCount !== wireEvidence.resentPayloadCount ||
     evidence.preAuthorizationProviderAttemptCount !== 0 ||
     evidence.nonLoopbackSocketAttemptCount !== 0
   ) {
@@ -296,11 +306,13 @@ function validateProviderAuthorization(
 }
 
 export function validateProviderEgressEvidence(
-  evidence, result, fixture, networkTrustEvidence,
+  evidence, result, fixture, networkTrustEvidence, attempt = {},
 ) {
   const committedEventIds = evidence.authorization?.committedEventIds ?? [];
-  const expected = expectedProviderEgressObservation(result, fixture, committedEventIds);
-  validateProviderEgressClaims(evidence, result, expected);
+  const expected = expectedProviderEgressObservation(
+    result, fixture, committedEventIds, attempt,
+  );
+  validateProviderEgressClaims(evidence, expected);
   const bounds = validateProviderObservationWindow(evidence);
   if (expected.providerRequestCount === 0) {
     if (evidence.authorization !== null ||

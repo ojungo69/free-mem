@@ -780,7 +780,7 @@ remote SNI or null IP SNI, endpoint port, timeout 5,000 ms, monotonic start/end 
 verified result, normal chain/
 hostname booleans, `trustAnchorSha256` equal to the bundle public CA, one peer-certificate SHA-256
 that is identical across the endpoint's setup/start receipts, and zero HTTP requests, credential
-bytes, and payload bytes.
+bytes, and payload bytes. Each setup receipt finishes strictly before its daemon-start receipt begins.
 
 Each real scenario has one runner-owned provider-egress observation. Its monitor starts before the
 candidate and ends after process-tree termination. A runner-only network gate opens strictly after
@@ -792,6 +792,9 @@ The runner-owned stub measures those sensitivity bytes from the request bytes it
 against fixed synthetic source markers/spans; neither policy expectation nor candidate output
 supplies the observed values.
 The late-injection negative projects its base receipt instead of claiming another run.
+Every fixed retry/redirect recovery subcase has one sorted, case/manifest-bound full observation
+under the same authorization/timing/TLS/wire/sensitivity rules. No-op subcases carry full zero-egress
+observations rather than relying on an absent receipt, and receipt IDs are unique across the bundle.
 
 Every plateau window also carries a unique opaque `workloadReceiptId`, one duplicate-delivery
 attempt count of at least one, `noOpOutcome=duplicate_noop`, `durableMemoryDelta=0`, and

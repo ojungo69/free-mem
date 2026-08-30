@@ -86,13 +86,107 @@ function assertPlateauThresholdMiss(mutate, label) {
   ), false, label);
 }
 
+function assertSuiteRecoveryRejected(scenarioId, mutate, pattern, label) {
+  const mutantEvidence = structuredClone(suiteEvidence);
+  const mutantResult = structuredClone(suiteResults.positiveResults.find(
+    (item) => item.scenarioId === scenarioId,
+  ));
+  const record = mutantEvidence.scenarios.find((item) => item.scenarioId === scenarioId);
+  mutate(record, mutantResult);
+  record.resultObservationFingerprint = runnerResultObservationFingerprint(mutantResult);
+  mutantResult.runnerEvidenceFingerprint = runnerEvidenceFingerprint(mutantEvidence);
+  assert.throws(() => validateRunnerEvidence(
+    mutantEvidence, mutantResult, fixture, mutantEvidence.invocationId,
+  ), pattern, label);
+}
+
 assert.deepEqual(validateAgainstSchema(evidence, evidenceSchema, evidenceSchema), [],
   "fixed runner evidence does not match its schema");
+const missingAttemptedRecoveryResult = structuredClone(suiteResults.positiveResults.find(
+  (item) => item.scenarioId === "summary-provider-retry-exhausted",
+));
+const missingAttemptedRecoveryEvidence = structuredClone(suiteEvidence);
+missingAttemptedRecoveryEvidence.scenarios.find((item) =>
+  item.scenarioId === missingAttemptedRecoveryResult.scenarioId
+).recoveryProviderEgressEvidence = [];
+missingAttemptedRecoveryResult.runnerEvidenceFingerprint =
+  runnerEvidenceFingerprint(missingAttemptedRecoveryEvidence);
+assert.throws(() => validateRunnerEvidence(
+  missingAttemptedRecoveryEvidence, missingAttemptedRecoveryResult, fixture,
+  missingAttemptedRecoveryEvidence.invocationId,
+), /recovery provider egress/,
+  "runner evidence accepted missing attempted recovery-provider observations");
+const contradictedRecoveryResult = structuredClone(suiteResults.positiveResults.find(
+  (item) => item.scenarioId === "summary-provider-retry-exhausted",
+));
+contradictedRecoveryResult.retryEvidence.cases.find((item) =>
+  item.caseId === "validated-configuration-activation"
+).providerAttempted = false;
+const contradictedRecoveryEvidence = structuredClone(suiteEvidence);
+contradictedRecoveryEvidence.scenarios.find((item) =>
+  item.scenarioId === contradictedRecoveryResult.scenarioId
+).resultObservationFingerprint = runnerResultObservationFingerprint(contradictedRecoveryResult);
+contradictedRecoveryResult.runnerEvidenceFingerprint =
+  runnerEvidenceFingerprint(contradictedRecoveryEvidence);
+assert.throws(() => validateRunnerEvidence(
+  contradictedRecoveryEvidence, contradictedRecoveryResult, fixture,
+  contradictedRecoveryEvidence.invocationId,
+), /recovery provider egress.*result/,
+  "runner evidence accepted a candidate-fabricated no-op recovery result");
+assertSuiteRecoveryRejected("summary-provider-output-limit-exceeded", (record) => {
+  record.recoveryProviderEgressEvidence = record.recoveryProviderEgressEvidence.filter(
+    (item) => item.caseId !== "unchanged-provider-health-no-op",
+  );
+}, /recovery provider egress.*incomplete/,
+  "runner evidence accepted a missing no-op recovery observation");
+assertSuiteRecoveryRejected("summary-provider-output-limit-exceeded", (record) => {
+  record.recoveryProviderEgressEvidence.find((item) =>
+    item.caseId === "validated-larger-limit-activation"
+  ).effectiveManifestFingerprint = fixture.effectiveConfiguration.configurationFingerprint;
+}, /recovery provider egress.*manifest\/provider/,
+  "runner evidence accepted a base manifest for output-limit recovery");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  record.recoveryProviderEgressEvidence.find((item) =>
+    item.caseId === "validated-configuration-activation"
+  ).evidence.providerFingerprint =
+    fixture.effectiveConfiguration.summaryProvider.providerFingerprint;
+}, /active provider/,
+  "runner evidence accepted the base provider for repaired recovery");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  record.recoveryProviderEgressEvidence[0].evidence.receiptId =
+    record.providerEgressEvidence.receiptId;
+}, /receipt identities are reused/,
+  "runner evidence reused an initial receipt for recovery");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  const evidence = record.recoveryProviderEgressEvidence[0].evidence;
+  evidence.authorization.observedAtMonotonicMs = evidence.candidateStartedMonotonicMs;
+}, /runner-owned authorization/,
+  "runner evidence accepted recovery egress before authorization");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  record.recoveryProviderEgressEvidence[0].evidence.credentialBytesSent += 1;
+}, /wire aggregates/,
+  "runner evidence accepted recovery credential-byte drift");
+assertSuiteRecoveryRejected("summary-provider-retry-exhausted", (record) => {
+  record.recoveryProviderEgressEvidence[0].evidence
+    .sourcePayloadBytesBySensitivity.eligible += 1;
+}, /sensitivity-byte evidence/,
+  "runner evidence accepted recovery sensitivity-byte drift");
+assertSuiteRecoveryRejected("summary-provider-output-limit-exceeded", (record) => {
+  record.recoveryProviderEgressEvidence.find((item) =>
+    item.caseId === "unchanged-provider-health-no-op"
+  ).evidence.nonLoopbackSocketAttemptCount = 1;
+}, /wire aggregates/,
+  "runner evidence accepted hidden egress in a recovery no-op case");
 const missingProviderEgress = structuredClone(evidence);
 delete missingProviderEgress.scenarios[0].providerEgressEvidence;
 assert.notEqual(validateAgainstSchema(
   missingProviderEgress, evidenceSchema, evidenceSchema,
 ).length, 0, "runner evidence schema accepted missing provider egress evidence");
+const missingRecoveryProviderEgress = structuredClone(evidence);
+delete missingRecoveryProviderEgress.scenarios[0].recoveryProviderEgressEvidence;
+assert.notEqual(validateAgainstSchema(
+  missingRecoveryProviderEgress, evidenceSchema, evidenceSchema,
+).length, 0, "runner evidence schema accepted missing recovery provider egress evidence");
 const missingCommittedEventIds = structuredClone(evidence);
 delete missingCommittedEventIds.scenarios[0].providerEgressEvidence.authorization.committedEventIds;
 assert.notEqual(validateAgainstSchema(
@@ -237,6 +331,12 @@ const tlsReceiptMutations = [
   [(network) => { network.tlsPreflightReceipts[1].peerCertificateSha256 =
     `sha256:${"0".repeat(64)}`; }, /peer certificate.*drift/,
     "TLS preflight peer certificate drift between setup and daemon start"],
+  [(network) => {
+    const [setup, daemon] = network.tlsPreflightReceipts;
+    [setup.startMonotonicMs, setup.endMonotonicMs,
+      daemon.startMonotonicMs, daemon.endMonotonicMs] = [200, 300, 0, 100];
+  }, /setup.*before.*daemon|lifecycle phase/,
+  "TLS setup preflight did not precede daemon start"],
 ];
 for (const [mutate, pattern, label] of tlsReceiptMutations) {
   assertEvidenceRejected((mutant) => mutate(mutant.networkTrustEvidence), pattern, label);
