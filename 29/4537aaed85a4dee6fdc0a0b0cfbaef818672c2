@@ -1,0 +1,44 @@
+specs/005-product-reset/fixtures/validate-slice1-fixture.mjs
+  s_99d8ac07476f81::t_4db94e5a4a2648 97-98,103,107,113,126-127,131,142-171
+  s_99d8ac07476f81::t_209342af30b966 60,172-173
+specs/006-slice1-runtime/tasks.md
+  s_99d8ac07476f81::t_f2b311bd5929e3 37,44,63,70,89,97
+specs/005-product-reset/contracts/alpha-result-resource.mjs
+  s_99d8ac07476f81::t_8470f9222bff6a 54-56,83-85,119-121
+  s_99d8ac07476f81::t_43b5cabd943a4e 46-53
+specs/005-product-reset/contracts/alpha-result-security.mjs
+  s_99d8ac07476f81::t_36be41bb68c83b 21-26,28-30,32-33,35-55,57-68,95-122,124-126
+  s_99d8ac07476f81::t_cd540f79d1719e 144-163,199-201
+  s_99d8ac07476f81::t_425e5312fa4c27 205-207,215-216,230,239,241,249-250,252-255,263,268,286-304
+  s_99d8ac07476f81::t_0fb4cefdf47e69 305
+specs/005-product-reset/fixtures/alpha-result-v1.example.json
+  s_99d8ac07476f81::t_bb5ecde11b3b5e 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.failure-example.json
+  s_99d8ac07476f81::t_57742008cc4e9f 4,52
+specs/005-product-reset/fixtures/alpha-result-v1.suite-regression.json
+  s_99d8ac07476f81::t_622895ae850538 1
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.example.json
+  s_99d8ac07476f81::t_021ca887998082 4,1351
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.failure-example.json
+  s_99d8ac07476f81::t_9644099ba7aef1 4,797
+specs/005-product-reset/fixtures/runner-evidence/alpha-runner-evidence-v1.suite-regression.json
+  s_99d8ac07476f81::t_09723b1e1d27a4 1
+specs/005-product-reset/fixtures/slice1-bidirectional-en-v1.json
+  s_99d8ac07476f81::t_77be91ee29aa90 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "294537aaed85a4dee6fdc0a0b0cfbaef818672c2",
+  "prompts": {},
+  "sessions": {
+    "s_99d8ac07476f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04ea8-4c5a-76f3-a5b3-b9e2e9475947",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
