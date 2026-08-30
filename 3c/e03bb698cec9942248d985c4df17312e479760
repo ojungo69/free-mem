@@ -1,0 +1,190 @@
+vendor/codemem/packages/core/src/viewer-routes/observer-status.ts
+  s_bae614e0dac8dc::t_c1544b0554473a 9,20,35-57,80,85-86,101-103,114-115
+vendor/codemem/packages/cli/src/commands/setup-config.test.ts
+  s_b67dc845c2f30b::t_08bcb56f5af222 14,129-151
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_bae614e0dac8dc::t_2ea4320a7e7292 9-13,39-116,564-565,568-572,576-577,644-657,1204-1374
+  s_bae614e0dac8dc::t_8937df21161abb 5
+vendor/codemem/packages/core/src/ingest-pipeline.ts
+  s_bae614e0dac8dc::t_2d6afaf83e5e67 24,65,270,496-504
+vendor/codemem/packages/core/src/viewer-routes/observer-status.test.ts
+  s_bae614e0dac8dc::t_b6d915aee91e49 1-60
+vendor/codemem/packages/core/src/raw-event-flush.ts
+  s_bae614e0dac8dc::t_3c9b99d5d5d79c 20,299
+vendor/codemem/packages/core/src/index.test.ts
+  s_94d28b5a6101e0::t_98b3c6731a649a 2,6-35
+vendor/codemem/packages/core/src/viewer-routes/config.test.ts
+  s_bae614e0dac8dc::t_f97ed6b90b348d 1-74
+vendor/codemem/packages/core/src/viewer-routes/config.ts
+  s_bae614e0dac8dc::t_681d166215d4e7 2,4,7-34,36-42
+vendor/codemem/packages/core/src/maintenance/ai-structured.ts
+  s_a831bce341a243::t_3f4d29553e4463 4,12,84-90,117-122,280-281,309-311,313-314,320
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_bae614e0dac8dc::t_68944eef646eac 2265,2270-2275
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_94d28b5a6101e0::t_e06cdd996aa1ab 22,24-27,29,32-33,35,1121-1134,1138,1148-1150,1189-1191,1339-1343,1348-1353,1378-1379,1382-1384,1590-2138,2141,2147,2165-2173,2175-2177
+vendor/codemem/packages/core/src/extraction-replay.ts
+  s_bae614e0dac8dc::t_b1b6f3e65bec72 42
+specs/001-agent-memory-core/contracts/error-taxonomy-v1.md
+  s_bae614e0dac8dc::t_e808af4c04de56 415-416
+  s_bae614e0dac8dc::t_e934a31c931449 360
+  s_bae614e0dac8dc::t_ca565b26d82fc2 362,389,391,393
+vendor/codemem/packages/core/src/operational-status.ts
+  s_bae614e0dac8dc::t_7617884cef758e 8,185-189,192
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_94d28b5a6101e0::t_150c60179e169e 6-11,22,25-31,33-35,71,75-78,86,202-225,256,316-326,329,334-336,338-358,370-371,385-390,393,412-435,478-484,492,541-542
+specs/006-slice1-runtime/tasks.md
+  s_bae614e0dac8dc::t_16137dca9ace0c 25
+  s_bae614e0dac8dc::t_641f2a43506ba8 52
+  s_bae614e0dac8dc::t_928c450453a749 40
+  s_bae614e0dac8dc::t_9493ff4afc11ca 41
+  s_bae614e0dac8dc::t_7e140289cc9095 39
+  s_bae614e0dac8dc::t_5e40ef92bb4f71 46-51
+  s_bae614e0dac8dc::t_73a9d871932f3b 42
+vendor/codemem/packages/core/src/storage-platform.ts
+  s_bae614e0dac8dc::t_408f90cabab960 8,10,14,17,20,28-442
+specs/001-agent-memory-core/contracts/writer-boundary-v1.md
+  s_bae614e0dac8dc::t_e808af4c04de56 143,292,328-330
+  s_bae614e0dac8dc::t_957da19d0fec4a 144-149
+vendor/codemem/packages/core/src/api-types.ts
+  s_bae614e0dac8dc::t_b565364ea86e63 192,237,257
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_bae614e0dac8dc::t_1a38c090964d79 7,101,143-178
+vendor/codemem/packages/core/src/daemon-jobs.test.ts
+  s_bae614e0dac8dc::t_04290a16b7973f 91-108
+vendor/codemem/docs/plugin-reference.md
+  s_94d28b5a6101e0::t_9734059ee58daa 144,208-209,213-215,224,227-229,237,239,241-242,247
+specs/006-slice1-runtime/quickstart.md
+  s_bae614e0dac8dc::t_8b2426c3b91624 107
+  s_bae614e0dac8dc::t_2349f9a65e3227 86
+vendor/codemem/packages/core/src/raw-event-sweeper.test.ts
+  s_bae614e0dac8dc::t_e7e949ec9bd743 196,198,230,285,290,296,298,308,336,341,377,379,405,438,481,488,500,504,510,560
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_bae614e0dac8dc::t_31127f8b331f40 2265,2270-2275
+vendor/codemem/packages/core/src/observer-client.test.ts
+  s_bae614e0dac8dc::t_d178379b712fd7 4-10,249,267,287,306,338,358,379,396,415,442,461,481,505,526,555,580,602,625,647,668,698,786,822,863,906,924,944,1003,1044,1104,1140,1177,1241,1286,1339,1357-1729
+vendor/codemem/packages/core/src/observer-client.ts
+  s_bae614e0dac8dc::t_c0c6e2ef85ba99 14-19,129-130,539-540,542-543,548-549,558,561,817-862,907-909,916-978,1214,1280-1287,1360,1394-1405,1483,1485-1488,1493-1500,1517-1519,1568-1569,1571-1579,1582,1585,1661-1667
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_bae614e0dac8dc::t_6d0d37fd6d8b04 4,346,448,455,495
+vendor/codemem/packages/core/src/raw-event-flush.test.ts
+  s_bae614e0dac8dc::t_de19d404802cbe 102-103,109,121,260,280,304-307
+vendor/codemem/packages/core/src/index.ts
+  s_94d28b5a6101e0::t_d7c75504627c33 12-36,54-59,358,489-492,494-499,503-504,506
+vendor/codemem/packages/core/src/storage.test.ts
+  s_cd7d98c355dc6d::t_dce48d901708ea 1-1432
+vendor/codemem/packages/core/src/ingest-pipeline.test.ts
+  s_bae614e0dac8dc::t_97a685e29c50e5 3073,3180,3196-3199,3203,3210-3213,3217
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_bae614e0dac8dc::t_c9c134403068e0 3,27-34,54,176-183,222,230,284-297,304,330,337,363-371,382,401-414
+vendor/codemem/docs/user-guide.md
+  s_bae614e0dac8dc::t_1e234c098425d6 26,29-32,48-51,53-55,57,59-62
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverStatusBanner.tsx
+  s_a831bce341a243::t_9fbb2a577ebe3f 4-9,36-39,48-59
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverStatusBanner.test.tsx
+  s_a831bce341a243::t_c51c6e49983afd 1-65
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_bae614e0dac8dc::t_65468edf498e86 1,12,16,41,46-93,133-138,150-155,171-180,192,205-215,246-262,1130-1497
+vendor/codemem/README.md
+  s_bae614e0dac8dc::t_5d82f1ce3b2a14 35-53,232,238,255-256,259-261
+vendor/codemem/packages/core/src/raw-event-sweeper.ts
+  s_bae614e0dac8dc::t_05de74f4861d30 19,36,51-52,60,64,68,72,76,80,84,88,92
+vendor/codemem/packages/core/src/daemon-lifecycle.test.ts
+  s_bae614e0dac8dc::t_3120ca4882da16 8,12,15,20-24,61-73,118-148,276-428
+vendor/codemem/packages/core/src/extraction-replay.test.ts
+  s_bae614e0dac8dc::t_c660715d65e274 7-9,33-35
+vendor/codemem/packages/cli/src/commands/setup-config.ts
+  s_bae614e0dac8dc::t_608c18873235a7 138-151
+vendor/codemem/packages/core/src/storage.ts
+  s_bae614e0dac8dc::t_cbd0d9b212c7f5 3,12-17,20-21,26-27,30-32,34,50-78,82-88,93-94,101-918
+vendor/codemem/packages/core/src/setup-internal.test.ts
+  s_94d28b5a6101e0::t_1b68122c54db85 1-326
+vendor/codemem/packages/core/src/daemon-jobs.ts
+  s_bae614e0dac8dc::t_a228664099c91a 5-9,220-225,560-564,902-910,917-925,927
+vendor/codemem/packages/core/src/capability-manifest.ts
+  s_bae614e0dac8dc::t_3343af7c345abd 1-813
+vendor/codemem/packages/core/src/storage-layout.ts
+  s_bae614e0dac8dc::t_707ecfd15a1d3b 12-17,64,69-74
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_bae614e0dac8dc::t_ca565b26d82fc2 232-236
+vendor/codemem/packages/core/src/maintenance.test.ts
+  s_bae614e0dac8dc::t_b129629a824b11 1980,2022,2066,2108-2112,2137,2163,2194,2228-2232,2263-2267
+vendor/codemem/packages/core/src/capability-manifest.test.ts
+  s_bae614e0dac8dc::t_70cad5b094eb64 1-386
+vendor/codemem/packages/cli/vite.config.ts
+  s_bae614e0dac8dc::t_c6a525f892fede 24
+vendor/codemem/packages/core/src/distill.test.ts
+  s_d1bc06b8da521e::t_036329c9308f0d 18,23-33
+vendor/codemem/packages/core/src/operational-status.test.ts
+  s_bae614e0dac8dc::t_4005e600e612ec 47,78
+vendor/codemem/packages/core/src/maintenance/ai-structured.test.ts
+  s_bae614e0dac8dc::t_c5320cc748efec 1-114
+vendor/codemem/packages/core/src/viewer-read.ts
+  s_bae614e0dac8dc::t_cfdba9b53bd4a8 36,53,56
+vendor/codemem/packages/core/src/setup-internal.ts
+  s_3628ca963a7ef2::t_db3fb43e0b1c9a 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "3ce03bb698cec9942248d985c4df17312e479760",
+  "prompts": {},
+  "sessions": {
+    "s_3628ca963a7ef2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a054df-d8c9-7691-881f-643326740d6a",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_94d28b5a6101e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05490-395d-7611-8d33-809b5b779ecd",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_a831bce341a243": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05490-798d-73e0-851e-5bdff6d66984",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_b67dc845c2f30b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c37758a2-502a-4442-b708-5662f5c23e5c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_bae614e0dac8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c7-4a4c-7fc1-a5ee-8fa06562078e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_cd7d98c355dc6d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05490-6569-7161-ab78-c9a3c9be004a",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_d1bc06b8da521e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c8-91b7-7731-b4f2-37707a1d7cf8",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
