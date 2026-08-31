@@ -1355,12 +1355,6 @@ describe("ObserverClient.observe()", () => {
 	});
 });
 
-type ProviderChoiceV1Fixture = Record<string, unknown> & {
-	wireProtocol: "anthropic_messages_v1" | "openai_chat_completions_v1";
-	endpointUrl: string;
-	credentialRef: { kind: "none" } | { kind: "environment"; name: string };
-};
-
 const SLICE1_OBSERVER_PROFILE = {
 	observerRequestTimeoutMs: 60_000,
 	observerMaxInputChars: 12_000,
@@ -1369,7 +1363,7 @@ const SLICE1_OBSERVER_PROFILE = {
 	observerTemperature: 0.2,
 } as const;
 
-const OPENAI_CHOICE: ProviderChoiceV1Fixture = {
+const OPENAI_CHOICE = compileProviderChoice({
 	version: 1,
 	role: "summary",
 	state: "enabled",
@@ -1378,15 +1372,9 @@ const OPENAI_CHOICE: ProviderChoiceV1Fixture = {
 	modelRevision: "1",
 	endpointUrl: "https://summary.stub.invalid/v1/chat/completions",
 	credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
-	providerFingerprint: "sha256:d184deae938722877e017d85ab382a4f72c287857bf0f346f483263680635ede",
-	executionLocation: "remote",
-	egressPolicy: "explicit_remote",
-	costClass: "external_metered",
-	tlsPolicy: "system",
-	redirectPolicy: "reject",
-};
+});
 
-const ANTHROPIC_CHOICE: ProviderChoiceV1Fixture = {
+const ANTHROPIC_CHOICE = compileProviderChoice({
 	version: 1,
 	role: "summary",
 	state: "enabled",
@@ -1395,15 +1383,9 @@ const ANTHROPIC_CHOICE: ProviderChoiceV1Fixture = {
 	modelRevision: "1",
 	endpointUrl: "https://anthropic.example.test/v1/messages",
 	credentialRef: { kind: "environment", name: "FREE_MEM_SUMMARY_API_KEY" },
-	providerFingerprint: "sha256:bf3bd6e2ca2101f691cda324eb8af40e869fff23452295d015e2e1784140dbac",
-	executionLocation: "remote",
-	egressPolicy: "explicit_remote",
-	costClass: "external_metered",
-	tlsPolicy: "system",
-	redirectPolicy: "reject",
-};
+});
 
-const LOCAL_HTTP_CHOICE: ProviderChoiceV1Fixture = {
+const LOCAL_HTTP_CHOICE = compileProviderChoice({
 	version: 1,
 	role: "summary",
 	state: "enabled",
@@ -1412,18 +1394,7 @@ const LOCAL_HTTP_CHOICE: ProviderChoiceV1Fixture = {
 	modelRevision: "1",
 	endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
 	credentialRef: { kind: "none" },
-	providerFingerprint: "sha256:25a39fe566639ba853f46884df5c44a323eca0cfe41e2ee2f700e1f518982d0b",
-	executionLocation: "local",
-	egressPolicy: "on_device",
-	costClass: "local_zero",
-	tlsPolicy: "not_applicable",
-	redirectPolicy: "reject",
-};
-
-type ManifestObserverConstructor = new (
-	provider: ProviderChoiceV1Fixture,
-	profile: typeof SLICE1_OBSERVER_PROFILE,
-) => ObserverClient;
+});
 
 describe("ObserverClient Slice 1 manifest transport", () => {
 	const originalFetch = globalThis.fetch;
@@ -1438,9 +1409,8 @@ describe("ObserverClient Slice 1 manifest transport", () => {
 		else process.env.OPENAI_API_KEY = originalOpenAIKey;
 	});
 
-	function manifestClient(provider: ProviderChoiceV1Fixture): ObserverClient {
-		const Constructor = ObserverClient as unknown as ManifestObserverConstructor;
-		return new Constructor(provider, SLICE1_OBSERVER_PROFILE);
+	function manifestClient(provider: typeof OPENAI_CHOICE): ObserverClient {
+		return new ObserverClient(provider, SLICE1_OBSERVER_PROFILE);
 	}
 
 	it("sends the exact OpenAI Chat Completions request to the complete endpoint", async () => {
@@ -1601,27 +1571,42 @@ describe("ObserverClient Slice 1 manifest transport", () => {
 		expect(system).toContain("�");
 	});
 
-	it("rejects a response over 1 MiB before accepting parsed text", async () => {
+	it("rejects a declared response over 1 MiB before accepting parsed text", async () => {
 		const token = fixtureToken("slice1-response-limit");
 		process.env.FREE_MEM_SUMMARY_API_KEY = token;
 		process.env.OPENAI_API_KEY = token;
-		let jsonCalls = 0;
 		globalThis.fetch = (async () =>
-			({
-				ok: true,
+			new Response(JSON.stringify({ choices: [{ message: { content: "accepted" } }] }), {
 				status: 200,
-				headers: new Headers({ "content-length": "1048577", "content-type": "application/json" }),
-				json: async () => {
-					jsonCalls += 1;
-					return { choices: [{ message: { content: "x".repeat(1_048_577) } }] };
-				},
-			}) as Response) as typeof globalThis.fetch;
+				headers: { "content-length": "1048577", "content-type": "application/json" },
+			})) as typeof globalThis.fetch;
 		const client = manifestClient(OPENAI_CHOICE);
 
 		const result = await client.observe("system", "user");
 
 		expect(result.raw).toBeNull();
-		expect(jsonCalls).toBe(0);
+		expect(client.getStatus().lastError?.code).toBe("response_too_large");
+	});
+
+	it("rejects a streaming response over 1 MiB without a content-length", async () => {
+		process.env.FREE_MEM_SUMMARY_API_KEY = fixtureToken("slice1-streaming-response-limit");
+		globalThis.fetch = (async () =>
+			new Response(
+				new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(new Uint8Array(1_048_576));
+						controller.enqueue(new Uint8Array(1));
+						controller.close();
+					},
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			)) as typeof globalThis.fetch;
+		const client = manifestClient(OPENAI_CHOICE);
+
+		const result = await client.observe("system", "user");
+
+		expect(result.raw).toBeNull();
+		expect(client.getStatus().lastError?.code).toBe("response_too_large");
 	});
 });
 
@@ -1667,9 +1652,8 @@ describe("ObserverClient Slice 1 frozen transport", () => {
 		}
 	});
 
-	function frozenClient(provider: ProviderChoiceV1Fixture): ObserverClient {
-		const Constructor = ObserverClient as unknown as ManifestObserverConstructor;
-		return new Constructor(provider, SLICE1_OBSERVER_PROFILE);
+	function frozenClient(provider: typeof OPENAI_CHOICE): ObserverClient {
+		return new ObserverClient(provider, SLICE1_OBSERVER_PROFILE);
 	}
 
 	it.each([

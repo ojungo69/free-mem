@@ -15,7 +15,9 @@ import {
 import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DaemonJobService } from "./daemon-jobs.js";
+import { probeDaemonWriterAvailable } from "./daemon-lifecycle.js";
 import * as core from "./index.js";
 import {
 	acquireCapabilityLifecycleLock,
@@ -144,6 +146,34 @@ describe("Phase 1 daemon lifecycle", () => {
 		expect(readFileSync(first.identityPath, "utf8")).toBe(identityBefore);
 		expect(statSync(first.socketPath).isSocket()).toBe(true);
 		expect(core.readDaemonHealth(dataDir).status).toBe("ok");
+	});
+
+	it("releases startup state when background initialization fails", async () => {
+		const dataDir = join(tempDir("codemem-daemon-background-start-"), "data");
+		const layout = core.resolveStorageLayout(dataDir);
+		const failure = new Error("injected internal backfill startup failure");
+		const startInternalBackfills = vi
+			.spyOn(DaemonJobService.prototype, "startInternalBackfills")
+			.mockImplementationOnce(() => {
+				throw failure;
+			});
+
+		try {
+			await expect(core.startDaemon({ dataDir })).rejects.toBe(failure);
+			startInternalBackfills.mockRestore();
+
+			expect(core.readDaemonHealth(dataDir).status).toBe("not_running");
+			expect(existsSync(layout.identityPath)).toBe(false);
+			expect(existsSync(layout.socketPath)).toBe(false);
+			expect(probeDaemonWriterAvailable(dataDir)).toBe(true);
+
+			const restarted = await core.startDaemon({ dataDir });
+			expect(core.readDaemonHealth(dataDir).status).toBe("ok");
+			await restarted.stop();
+		} finally {
+			startInternalBackfills.mockRestore();
+			await core.stopDaemon(dataDir);
+		}
 	});
 
 	it("P1-T034-02-force-kill-identity", async () => {

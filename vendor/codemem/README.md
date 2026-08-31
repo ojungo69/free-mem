@@ -44,7 +44,7 @@ It discloses the complete provider destination and non-secret credential referen
 confirmation, and then installs Claude Code and Codex together. OpenCode remains available only
 through the explicit compatibility lane below.
 
-PR1 setup requires a stopped daemon. After setup succeeds, start it manually, then restart both
+This pre-release setup requires a stopped daemon. After setup succeeds, start it manually, then restart both
 Agent clients:
 
 ```text
@@ -257,7 +257,7 @@ snapshot. Use `codemem setup` to activate a replacement manifest.
 - The viewer HTTP service is intended for localhost-only use. It does not currently provide a general-purpose auth/session layer for safe public exposure.
 
 Observer runtime/auth is compiled only by setup: exact wire protocol, complete endpoint, exact model
-ID/revision, and either no credential or one named environment-variable reference. PR1 reports the
+ID/revision, and either no credential or one named environment-variable reference. Setup reports the
 choice but keeps provider execution disabled until the privacy boundary lands.
 
 ## Export and import

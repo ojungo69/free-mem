@@ -329,6 +329,7 @@ export async function startDaemon(options: {
 	const sweeper: RawEventSweeper | null = null;
 	let jobs: DaemonJobService | undefined;
 	let server: Server | undefined;
+	let live: LiveDaemon | undefined;
 	let started = false;
 	try {
 		recoverCapabilitySetupTransaction(layout, lifecycle);
@@ -433,11 +434,17 @@ export async function startDaemon(options: {
 			}
 			sweepSpool();
 		};
+		try {
+			await drainSpoolAfterStartup();
+		} catch {
+			console.error("[codemem] startup spool drain failed; entries were retained.");
+		}
+		jobs.startInternalBackfills();
 		server = await bindPrivateSocket(layout.socketPath, rpc);
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
 		const spoolSweepTimer = setInterval(sweepSpool, 1_000);
 		spoolSweepTimer.unref();
-		const live: LiveDaemon = {
+		const startingLive: LiveDaemon = {
 			lock,
 			server,
 			identity,
@@ -451,38 +458,30 @@ export async function startDaemon(options: {
 			dailyBackupTask: null,
 			lastDailyBackupId: null,
 		};
+		live = startingLive;
 		const sweepBackup = () => {
 			if (jobs?.isMaintenanceMode() || rpc.restoreState?.active) return;
 			const instant = new Date((options.now ?? Date.now)());
 			const backupId = `daily-${instant.toISOString().slice(0, 10)}`;
-			if (live.dailyBackupTask || live.lastDailyBackupId === backupId) return;
-			live.dailyBackupTask = createDailyBackup({
-				db: live.writer,
-				destinationDir: live.layout.backupsDir,
+			if (startingLive.dailyBackupTask || startingLive.lastDailyBackupId === backupId) return;
+			startingLive.dailyBackupTask = createDailyBackup({
+				db: startingLive.writer,
+				destinationDir: startingLive.layout.backupsDir,
 				now: () => instant,
 			})
 				.then((proof) => {
-					live.lastDailyBackupId = proof.backupId;
+					startingLive.lastDailyBackupId = proof.backupId;
 				})
 				.catch(() => {
 					console.error("[codemem] daily backup failed; it will be retried.");
 				})
 				.finally(() => {
-					live.dailyBackupTask = null;
+					startingLive.dailyBackupTask = null;
 				});
 		};
-		live.backupSweepTimer = setInterval(sweepBackup, 60_000);
-		live.backupSweepTimer.unref();
-		liveDaemons.set(layout.dataDir, live);
-		started = true;
-		lifecycle.close();
-		try {
-			await drainSpoolAfterStartup();
-		} catch {
-			console.error("[codemem] startup spool drain failed; entries were retained.");
-		}
-		jobs.startInternalBackfills();
-		return {
+		startingLive.backupSweepTimer = setInterval(sweepBackup, 60_000);
+		startingLive.backupSweepTimer.unref();
+		const handle: DaemonHandle = {
 			dataDir: layout.dataDir,
 			layout,
 			identity,
@@ -496,7 +495,16 @@ export async function startDaemon(options: {
 				await stopLive(layout.dataDir);
 			},
 		};
+		liveDaemons.set(layout.dataDir, startingLive);
+		lifecycle.close();
+		started = true;
+		return handle;
 	} catch (error) {
+		if (live) {
+			if (liveDaemons.get(layout.dataDir) === live) liveDaemons.delete(layout.dataDir);
+			clearInterval(live.spoolSweepTimer);
+			if (live.backupSweepTimer) clearInterval(live.backupSweepTimer);
+		}
 		if (jobs) await jobs.stop();
 		if (canonical) {
 			try {
@@ -538,8 +546,10 @@ export async function startDaemon(options: {
 				// lock must not leak if startup fails after acquire
 			}
 		}
-		if (!started) setupLock?.close();
-		lifecycle.close();
+		if (!started) {
+			setupLock?.close();
+			lifecycle.close();
+		}
 	}
 }
 

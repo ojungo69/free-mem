@@ -418,7 +418,7 @@ export function compileProviderChoice(input: unknown): ProviderChoiceV1 {
 		credentialRef: credential,
 		...endpointPolicy(proposal.endpointUrl, credential),
 	};
-	return Object.freeze({
+	return deepFreeze({
 		...choiceWithoutFingerprint,
 		providerFingerprint: fingerprint(PROVIDER_DOMAIN, choiceWithoutFingerprint),
 	});
@@ -752,7 +752,7 @@ async function nativeTlsPreflight(input: TlsPreflightConnectorInput) {
 				return;
 			}
 			settled = true;
-			socket.end();
+			socket.destroy();
 			resolvePreflight({
 				chainVerified: true,
 				hostnameVerified: true,

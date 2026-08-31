@@ -152,13 +152,31 @@ describe("withCapabilitySetupTransaction", () => {
 			(error: unknown) => error,
 		);
 		let socket: Socket | undefined;
+		let connectionTimeout: ReturnType<typeof setTimeout> | undefined;
 		try {
-			socket = await accepted;
+			const connection = await Promise.race([
+				accepted,
+				failure,
+				new Promise<"timeout">((resolve) => {
+					connectionTimeout = setTimeout(() => resolve("timeout"), 1_000);
+				}),
+			]);
+			if (connection === "timeout") {
+				throw new Error("TLS preflight did not establish a test connection within 1 second");
+			}
+			if (connection instanceof Error) {
+				throw new Error(
+					`TLS preflight failed before establishing a test connection: ${connection.message}`,
+				);
+			}
+			if (!connection) throw new Error("TLS preflight ended before establishing a test connection");
+			socket = connection;
 			const lock = acquireSpoolLock(root, 1);
 			lock.close();
 			socket.destroy();
 			expect(await failure).toBeInstanceOf(Error);
 		} finally {
+			if (connectionTimeout) clearTimeout(connectionTimeout);
 			socket?.destroy();
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}

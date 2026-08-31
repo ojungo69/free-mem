@@ -388,6 +388,7 @@ type SemanticIndexState = "healthy" | "pending" | "degraded" | "failed" | "unkno
 type RawEventsState = "healthy" | "backlogged" | "failing" | "unknown";
 type ObserverState = "healthy" | "idle" | "pending" | "backoff" | "failed" | "unconfigured" | "unknown";
 ```
+
 The report also carries the exact safe `capability` projection or `null` when doctor is unavailable. A configured manifest whose provider gate is disabled reports observer `"pending"`, not `"idle"`; its manifest/provider fingerprints and privacy/schema/pack reasons remain visible in JSON and human output. A missing doctor snapshot reports observer `"unknown"` because status does not reread mutable legacy config.
 
 `projectDatabaseSubsystems` maps a missing `OperationalStatusSnapshot` (no doctor response) to `maintenance/semantic_index: "unknown"`, `raw_events: {state:"unknown", pending:0}`, and `observer: {state:"unknown"}`.

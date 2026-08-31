@@ -1,8 +1,24 @@
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ProviderTlsPreflightError } from "./capability-manifest.js";
 import * as core from "./index.js";
+
+const nativeTlsConnect = vi.hoisted(() => ({
+	run: undefined as ((...args: unknown[]) => unknown) | undefined,
+}));
+
+vi.mock("node:tls", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:tls")>();
+	return {
+		...actual,
+		connect: ((...args: unknown[]) =>
+			nativeTlsConnect.run
+				? nativeTlsConnect.run(...args)
+				: Reflect.apply(actual.connect, actual, args)) as typeof actual.connect,
+	};
+});
 
 type JsonObject = Record<string, unknown>;
 
@@ -74,6 +90,15 @@ describe("Slice 1 capability manifest compiler", () => {
 		const expected = fixture.effectiveConfiguration.summaryProvider as JsonObject;
 
 		expect(compileProviderChoice(providerProposal(expected))).toEqual(expected);
+	});
+
+	it("deep-freezes the compiled provider choice", () => {
+		const compileProviderChoice = publicFunction<CompileProviderChoice>("compileProviderChoice");
+		const expected = fixture.effectiveConfiguration.summaryProvider as JsonObject;
+		const choice = compileProviderChoice(providerProposal(expected));
+
+		expect(Object.isFrozen(choice)).toBe(true);
+		expect(Object.isFrozen(choice.credentialRef)).toBe(true);
 	});
 
 	it.each([
@@ -263,6 +288,32 @@ describe("Slice 1 provider TLS preflight", () => {
 	const remoteProvider = fixture.effectiveConfiguration.summaryProvider as JsonObject;
 	const localProvider = fixture.localDerivationManifest.summaryProvider as JsonObject;
 
+	it("destroys a successful native TLS socket without waiting for peer FIN", async () => {
+		const preflightProviderTls = publicFunction<PreflightProviderTls>("preflightProviderTls");
+		const socket = Object.assign(new EventEmitter(), {
+			authorized: true,
+			setTimeout: vi.fn(),
+			getPeerCertificate: vi.fn(() => ({ raw: Buffer.from("test-peer-certificate") })),
+			destroy: vi.fn(),
+			end: vi.fn(),
+		});
+		nativeTlsConnect.run = () => {
+			queueMicrotask(() => socket.emit("secureConnect"));
+			return socket;
+		};
+
+		try {
+			await expect(preflightProviderTls(localProvider, { environment: {} })).resolves.toEqual({
+				peerCertificateSha256:
+					"sha256:61b82c1e80433df70ed28e3ff769083b573612dd72e6d7a2177138b9335ba360",
+			});
+			expect(socket.destroy).toHaveBeenCalledOnce();
+			expect(socket.end).not.toHaveBeenCalled();
+		} finally {
+			nativeTlsConnect.run = undefined;
+		}
+	});
+
 	it("passes only endpoint identity and fixed TLS policy to the connector", async () => {
 		const preflightProviderTls = publicFunction<PreflightProviderTls>("preflightProviderTls");
 		let observed: Parameters<TlsPreflightConnector>[0] | undefined;
@@ -341,6 +392,7 @@ describe("Slice 1 provider TLS preflight", () => {
 		"NODE_TLS_REJECT_UNAUTHORIZED",
 		"NODE_EXTRA_CA_CERTS",
 		"SSL_CERT_FILE",
+		"SSL_CERT_DIR",
 	])("rejects production TLS override %s before connecting", async (key) => {
 		const preflightProviderTls = publicFunction<PreflightProviderTls>("preflightProviderTls");
 		let connectCalls = 0;
