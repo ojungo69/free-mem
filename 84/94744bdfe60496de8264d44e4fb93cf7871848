@@ -1,0 +1,35 @@
+specs/001-agent-memory-core/contracts/error-taxonomy-v1.md
+  s_bae614e0dac8dc::t_0dd1b2643da72a 391
+vendor/codemem/README.md
+  s_bae614e0dac8dc::t_68fdb2a1007360 47,260
+vendor/codemem/docs/plugin-reference.md
+  s_bae614e0dac8dc::t_0a37b0e424557a 224,229,237,242,247
+vendor/codemem/packages/core/src/daemon-lifecycle.test.ts
+  s_bae614e0dac8dc::t_a909a3f0ee2b50 18-20,151-178
+vendor/codemem/packages/core/src/capability-manifest.test.ts
+  s_bae614e0dac8dc::t_41fc5750293b20 1,4,8-22,95-103,291-316,395
+vendor/codemem/packages/core/src/capability-manifest.ts
+  s_bae614e0dac8dc::t_bb2c9852f23d1a 421,755
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_bae614e0dac8dc::t_1f4b9232eed3cb 332,437-442,447,461,466-469,473,479,482-484,498-501,503-507,549-552
+vendor/codemem/packages/core/src/observer-client.test.ts
+  s_bae614e0dac8dc::t_da77b89498fc4b 1366,1375-1377,1386-1388,1397,1412-1413,1574,1579,1581-1603,1609,1655-1656
+vendor/codemem/packages/core/src/setup-internal.test.ts
+  s_bae614e0dac8dc::t_85f4c834626737 155,157-173,179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8494744bdfe60496de8264d44e4fb93cf7871848",
+  "prompts": {},
+  "sessions": {
+    "s_bae614e0dac8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c7-4a4c-7fc1-a5ee-8fa06562078e",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
