@@ -655,6 +655,17 @@ describe("Phase 1 daemon RPC", () => {
 			expect(structured).toMatchObject({
 				error: { code: "invalid_request", message: expect.stringMatching(/manifest_absent/i) },
 			});
+			const vectors = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: "submit-vectors.migrate",
+					method: "POST /v1/jobs",
+					body: { kind: "vectors.migrate", args: { batchSize: 10 } },
+				}),
+			);
+			expect(vectors).toMatchObject({
+				error: { code: "invalid_request", message: expect.stringMatching(/semantic_disabled/i) },
+			});
 			for (const [kind, args, dryRun] of [
 				["db.vacuum", {}],
 				["raw-events.prune", { maxAgeDays: 36_500, vacuum: false }, true],
@@ -671,7 +682,6 @@ describe("Phase 1 daemon RPC", () => {
 				["scopes.backfill", { batchSize: 10 }],
 				["session-context.backfill", { batchSize: 10 }],
 				["summary-dedup.backfill", { batchSize: 10 }],
-				["vectors.migrate", { batchSize: 10 }],
 				["report.memory-role", { allProjects: true, includeInactive: false, probes: [] }],
 				["report.role-compare", { baselineDbPath: dbPath, candidateDbPath: dbPath }],
 				["report.artifact", { allProjects: true, includeInactive: false }],

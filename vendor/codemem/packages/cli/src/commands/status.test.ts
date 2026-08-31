@@ -177,6 +177,48 @@ describe("status command", () => {
 		expect(rendered).toContain("pending_pack_boundary");
 	});
 
+	it("keeps health capability when doctor is unavailable", async () => {
+		const capability = {
+			mode: "configured",
+			configurationFingerprint: `sha256:${"a".repeat(64)}`,
+			runtimeReason: "pending_privacy_boundary",
+			providerEnabled: false,
+			schemaReadiness: "pending_schema_v21",
+			packReadiness: "pending_pack_boundary",
+			summaryProvider: { providerFingerprint: `sha256:${"b".repeat(64)}` },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok", capability } }
+					: {
+							ok: false,
+							error: {
+								code: "database_unavailable",
+								message: "Database could not be read",
+								retryable: true,
+							},
+						},
+		});
+
+		const report = await collectStatusReport({}, deps);
+
+		expect(report.database.state).toBe("unavailable");
+		expect(report.capability).toEqual(capability);
+		const rendered = renderStatusReport(report);
+		expect(rendered).toContain("Capability:     pending_privacy_boundary");
+		expect(rendered).toContain(capability.configurationFingerprint);
+		expect(rendered).toContain(capability.summaryProvider.providerFingerprint);
+		expect(rendered).toContain("pending_schema_v21");
+		expect(rendered).toContain("pending_pack_boundary");
+
+		await createStatusCommand(deps).parseAsync(["--json"], { from: "user" });
+		expect(JSON.parse(deps.stdout[0] ?? "")).toMatchObject({
+			database: { state: "unavailable" },
+			capability,
+		});
+	});
+
 	it("uses safe fallbacks for malformed capability text from doctor RPC", async () => {
 		const capability = {
 			mode: {},

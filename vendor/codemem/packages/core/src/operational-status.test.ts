@@ -85,4 +85,43 @@ describe("collectOperationalStatus", () => {
 			db.close();
 		}
 	});
+
+	it.each([
+		["configured", { mode: "configured", embeddingProvider: { state: "disabled" } }],
+		["capture-only", { mode: "capture_only" }],
+	])("reports semantic degradation for %s capability", (_mode, capability) => {
+		const db = new Database(":memory:");
+		try {
+			initTestSchema(db);
+			db.prepare(
+				`INSERT INTO maintenance_jobs(kind, title, status, updated_at)
+				 VALUES ('vector_model_migration', 'Vectors', 'pending', '2026-08-31T00:00:00Z')`,
+			).run();
+
+			expect(
+				collectOperationalStatus(db, {
+					embeddingDisabled: false,
+					capability,
+				}).semantic_index.state,
+			).toBe("degraded");
+		} finally {
+			db.close();
+		}
+	});
+
+	it("lets the emergency embedding disable override an enabled capability", () => {
+		const db = new Database(":memory:");
+		try {
+			initTestSchema(db);
+
+			expect(
+				collectOperationalStatus(db, {
+					embeddingDisabled: true,
+					capability: { mode: "configured", embeddingProvider: { state: "enabled" } },
+				}).semantic_index.state,
+			).toBe("degraded");
+		} finally {
+			db.close();
+		}
+	});
 });

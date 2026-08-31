@@ -330,6 +330,7 @@ export async function collectStatusReport(
 	let capability: Record<string, unknown> | null = null;
 	if (health.ok) {
 		daemonState = "running";
+		capability = doctorCapabilitySnapshot({ diagnostics: health.result });
 		const doctor = await deps.requestRpc(dataDir, "GET /v1/doctor");
 		if (doctor.ok) {
 			databaseState = "ready";

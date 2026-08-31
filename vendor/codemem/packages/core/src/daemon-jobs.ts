@@ -220,6 +220,7 @@ export type DaemonJobServiceOptions = {
 	capability?: {
 		providerEnabled: boolean;
 		runtimeReason: string;
+		embeddingProvider?: { readonly state: string };
 		summaryProvider?: ProviderChoiceV1;
 		resourceProfile?: ResourceProfileV1;
 	};
@@ -551,12 +552,19 @@ export class DaemonJobService {
 		);
 	}
 
+	private isSemanticDisabled(): boolean {
+		return this.options.capability?.embeddingProvider?.state !== "enabled" || isEmbeddingDisabled();
+	}
+
 	submit(input: { kind: unknown; args?: unknown; dryRun?: unknown }): {
 		jobId: string;
 		state: "queued";
 	} {
 		if (!this.accepting) throw new Error("Daemon job service is stopping.");
 		const { kind, args } = validateJob(input.kind, input.args);
+		if (kind === "vectors.migrate" && this.isSemanticDisabled()) {
+			throw new DaemonJobRequestError("vectors.migrate is unavailable: semantic_disabled");
+		}
 		if (kind === "structured.backfill" && this.options.capability?.providerEnabled !== true) {
 			throw new DaemonJobRequestError(
 				`structured.backfill is unavailable: ${this.options.capability?.runtimeReason ?? "manifest_absent"}`,
@@ -700,7 +708,7 @@ export class DaemonJobService {
 	}
 
 	private hasPendingVectorMigration(): boolean {
-		if (isEmbeddingDisabled()) return false;
+		if (this.isSemanticDisabled()) return false;
 		try {
 			return (
 				this.store.db
@@ -943,8 +951,14 @@ export class DaemonJobService {
 				);
 				return { maintenance: getMaintenanceJob(this.store.db, SUMMARY_DEDUP_BACKFILL_JOB) };
 			case "vectors.migrate":
+				if (this.isSemanticDisabled()) {
+					throw new Error("vectors.migrate is unavailable: semantic_disabled");
+				}
 				await this.runPasses(async () => {
-					await runVectorMigrationPass(this.store.db, { batchSize });
+					await runVectorMigrationPass(this.store.db, {
+						batchSize,
+						capability: this.options.capability,
+					});
 					const job = getMaintenanceJob(this.store.db, VECTOR_MODEL_MIGRATION_JOB);
 					if (!job) {
 						if (this.hasPendingVectorMigration()) {

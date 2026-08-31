@@ -45,6 +45,16 @@ function seedVector(db: Database, memoryId: number, model: string): void {
 	`);
 }
 
+function runEnabledVectorMigrationPass(
+	db: Database,
+	options: { batchSize?: number; signal?: AbortSignal },
+): Promise<void> {
+	return runVectorMigrationPass(db, {
+		...options,
+		capability: { embeddingProvider: { state: "enabled" } },
+	});
+}
+
 describe("vector migration", () => {
 	let db: Database;
 
@@ -73,7 +83,7 @@ describe("vector migration", () => {
 		seedVector(db, 1, "old-model");
 		seedVector(db, 2, "old-model");
 
-		await runVectorMigrationPass(db, { batchSize: 1 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 1 });
 
 		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(job).toMatchObject({
@@ -104,7 +114,7 @@ describe("vector migration", () => {
 		seedVector(db, 1, "old-model");
 		seedVector(db, 2, "old-model");
 
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 
 		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(job).toMatchObject({
@@ -126,7 +136,7 @@ describe("vector migration", () => {
 		seedVector(db, 1, "old-model");
 		seedVector(db, 2, "old-model");
 
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 
 		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(job).toMatchObject({
@@ -149,11 +159,11 @@ describe("vector migration", () => {
 		seedVector(db, 2, "old-model");
 		seedVector(db, 3, "old-model");
 
-		await runVectorMigrationPass(db, { batchSize: 2 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 2 });
 		const runningJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(runningJob?.metadata).toMatchObject({ last_cursor_id: 2, processed_embeddable: 2 });
 
-		await runVectorMigrationPass(db, { batchSize: 2 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 2 });
 		const completedJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(completedJob).toMatchObject({
 			status: "completed",
@@ -176,7 +186,7 @@ describe("vector migration", () => {
 		seedVector(db, 3, "old-model");
 
 		// First pass processes batch of 1
-		await runVectorMigrationPass(db, { batchSize: 1 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 1 });
 		const runningJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(runningJob).toMatchObject({ status: "running" });
 		expect(runningJob?.metadata).toMatchObject({ last_cursor_id: 1, processed_embeddable: 1 });
@@ -184,14 +194,14 @@ describe("vector migration", () => {
 		// Simulate failure by making embedTexts throw on next call
 		vi.mocked(embeddings.embedTexts).mockRejectedValueOnce(new Error("provider outage"));
 		try {
-			await runVectorMigrationPass(db, { batchSize: 1 });
+			await runEnabledVectorMigrationPass(db, { batchSize: 1 });
 		} catch {
 			// expected — backfillVectors propagates the error
 		}
 
 		// Restore normal behavior and resume — should pick up from cursor
 		vi.mocked(embeddings.embedTexts).mockResolvedValue([new Float32Array(384)]);
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 
 		const afterResume = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(afterResume).toMatchObject({ status: "completed" });
@@ -222,7 +232,7 @@ describe("vector migration", () => {
 			return [new Float32Array(384)];
 		});
 
-		await runVectorMigrationPass(db, { batchSize: 10, signal: controller.signal });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10, signal: controller.signal });
 
 		expect(embedSpy).toHaveBeenCalledTimes(1);
 		// Behavioral: only memory 1 got a target-model row; the other 9
@@ -244,12 +254,12 @@ describe("vector migration", () => {
 		seedMemory(db, 1, sessionId, "One", "Body one");
 		seedVector(db, 1, "old-model");
 
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 		const completedBeforeDisable = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(completedBeforeDisable).toMatchObject({ status: "completed" });
 
 		vi.mocked(embeddings.getEmbeddingClient).mockResolvedValueOnce(null);
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 
 		const completedAfterDisable = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(completedAfterDisable).toMatchObject({ status: "completed" });
@@ -259,7 +269,7 @@ describe("vector migration", () => {
 		const sessionId = insertTestSession(db);
 		seedMemory(db, 1, sessionId, "One", "Body one");
 
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 		const completedJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(completedJob).toMatchObject({ status: "completed" });
 
@@ -271,7 +281,7 @@ describe("vector migration", () => {
 			return Database.prototype.prepare.call(db, sql);
 		});
 
-		await expect(runVectorMigrationPass(db, { batchSize: 10 })).resolves.toBeUndefined();
+		await expect(runEnabledVectorMigrationPass(db, { batchSize: 10 })).resolves.toBeUndefined();
 		expect(getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB)).toMatchObject({
 			status: "completed",
 		});
@@ -282,7 +292,7 @@ describe("vector migration", () => {
 		seedMemory(db, 1, sessionId, "", "");
 		seedVector(db, 1, "old-model");
 
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 
 		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(job).toMatchObject({
@@ -300,13 +310,24 @@ describe("vector migration", () => {
 		expect(models).toEqual([]);
 	});
 
+	it("fails closed without an enabled capability and preserves stale vectors", async () => {
+		const sessionId = insertTestSession(db);
+		seedMemory(db, 1, sessionId, "", "");
+		seedVector(db, 1, "old-model");
+
+		await runVectorMigrationPass(db, { batchSize: 10 });
+
+		expect(embeddings.getEmbeddingClient).not.toHaveBeenCalled();
+		expect(db.prepare("SELECT model FROM memory_vectors").all()).toEqual([{ model: "old-model" }]);
+	});
+
 	it("backfills memories that have no vectors at all (no source model)", async () => {
 		const sessionId = insertTestSession(db);
 		seedMemory(db, 1, sessionId, "One", "Body one");
 		seedMemory(db, 2, sessionId, "Two", "Body two");
 		// No vectors seeded at all — empty memory_vectors table
 
-		await runVectorMigrationPass(db, { batchSize: 10 });
+		await runEnabledVectorMigrationPass(db, { batchSize: 10 });
 
 		const job = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 		expect(job).toMatchObject({
