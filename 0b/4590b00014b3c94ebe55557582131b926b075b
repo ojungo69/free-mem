@@ -1,0 +1,53 @@
+vendor/codemem/packages/cli/src/commands/setup-config.ts
+  s_e8226ecc23dc2a::t_7d5e01185956f6 136-145,147,150-154
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_07c9a08b1f6943::t_2531f4c8007fa2 1339-1340,1342,1345-1347,1352,1354,1356-1359,1393-1421
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_e8226ecc23dc2a::t_cb92d42d712e18 179-211
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_07c9a08b1f6943::t_725bb35f268a22 387-390,412-422
+vendor/codemem/packages/core/src/capability-manifest.ts
+  s_07c9a08b1f6943::t_1405cf9423a207 295-303
+vendor/codemem/packages/core/src/daemon-lifecycle.test.ts
+  s_e8226ecc23dc2a::t_73f179fb38ec81 354
+vendor/codemem/packages/core/src/distill.test.ts
+  s_e8226ecc23dc2a::t_79562b7b9e524f 52-62
+vendor/codemem/packages/core/src/setup-internal.ts
+  s_07c9a08b1f6943::t_95892d418791ef 98
+vendor/codemem/packages/core/src/storage-platform.ts
+  s_07c9a08b1f6943::t_7305c52612f962 51-60,72
+vendor/codemem/packages/core/src/storage.ts
+  s_07c9a08b1f6943::t_e792ba9383acb5 516,576,733
+vendor/codemem/packages/core/src/viewer-routes/config.ts
+  s_07c9a08b1f6943::t_0b49d6cdd263bb 19-24
+vendor/codemem/packages/core/src/viewer-routes/observer-status.ts
+  s_07c9a08b1f6943::t_018cbc34eba190 45-50,52
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverStatusBanner.test.tsx
+  s_e8226ecc23dc2a::t_aec53e72e742cc 42-74
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverStatusBanner.tsx
+  s_07c9a08b1f6943::t_ae367e178e3bcc 1,46-88,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0b4590b00014b3c94ebe55557582131b926b075b",
+  "prompts": {},
+  "sessions": {
+    "s_07c9a08b1f6943": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05520-f411-7861-8a4f-bd00104dd6f5",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_e8226ecc23dc2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05521-171b-75f0-ad1f-bf3d5a5e8c44",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
