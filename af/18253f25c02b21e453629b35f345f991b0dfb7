@@ -1,0 +1,29 @@
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_bae614e0dac8dc::t_1f6a9e6d0848bd 1194-1225
+vendor/codemem/packages/core/src/daemon-lifecycle.test.ts
+  s_bae614e0dac8dc::t_eab07efe3eb008 179-198
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_bae614e0dac8dc::t_86a52425bd17fc 2108-2117
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_bae614e0dac8dc::t_82cb50f6d32250 186,213
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_bae614e0dac8dc::t_bf55266592ad75 422
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_bae614e0dac8dc::t_9443783c4a2e25 444
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "af18253f25c02b21e453629b35f345f991b0dfb7",
+  "prompts": {},
+  "sessions": {
+    "s_bae614e0dac8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c7-4a4c-7fc1-a5ee-8fa06562078e",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
