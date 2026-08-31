@@ -6,7 +6,7 @@
  */
 
 import { Hono } from "hono";
-import { probeAvailableCredentials } from "../observer-auth.js";
+import { captureOnlyCapabilityProjection } from "../capability-manifest.js";
 import type { ObserverClient } from "../observer-client.js";
 import type { RawEventSweeper } from "../raw-event-sweeper.js";
 import type { MemoryStore } from "../store.js";
@@ -17,6 +17,7 @@ export interface ObserverStatusDeps {
 	getStore: StoreFactory;
 	getSweeper: () => RawEventSweeper | null;
 	getObserver?: () => ObserverClient | null;
+	getCapabilitySnapshot?: () => Record<string, unknown>;
 }
 
 function normalizeActiveObserver(active: ReturnType<ObserverClient["getStatus"]> | null) {
@@ -28,6 +29,30 @@ function normalizeActiveObserver(active: ReturnType<ObserverClient["getStatus"]>
 			method: active.auth.type,
 			token_present: active.auth.hasToken,
 		},
+	};
+}
+
+function capabilityObserverStatus(capability: Record<string, unknown>) {
+	if (capability.providerEnabled !== true) return null;
+	const provider = capability.summaryProvider;
+	if (!provider || typeof provider !== "object" || Array.isArray(provider)) return null;
+	const choice = provider as Record<string, unknown>;
+	const credential = choice.credentialRef;
+	const credentialKind =
+		credential && typeof credential === "object" && !Array.isArray(credential)
+			? (credential as Record<string, unknown>).kind
+			: "none";
+	let providerName: "anthropic" | "openai" | null = null;
+	if (choice.wireProtocol === "anthropic_messages_v1") {
+		providerName = "anthropic";
+	} else if (choice.wireProtocol === "openai_chat_completions_v1") {
+		providerName = "openai";
+	}
+	return {
+		provider: providerName,
+		model: typeof choice.modelId === "string" ? choice.modelId : null,
+		runtime: "api_http",
+		auth: { method: credentialKind, token_present: false },
 	};
 }
 
@@ -53,11 +78,13 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 		const store = deps?.getStore();
 		const sweeper = deps?.getSweeper();
 		const observer = deps?.getObserver?.() ?? null;
+		const capability = deps?.getCapabilitySnapshot?.() ?? captureOnlyCapabilityProjection();
 
 		// Stub fallback when store doesn't have the required methods (e.g. tests with mock store)
 		if (!store || typeof store.rawEventBacklogTotals !== "function") {
 			return c.json({
-				active: null,
+				active: capabilityObserverStatus(capability),
+				capability,
 				available_credentials: {},
 				latest_failure: null,
 				queue: {
@@ -72,8 +99,9 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 		const queueTotals = store.rawEventBacklogTotals();
 		const authBackoff = sweeper?.authBackoffStatus() ?? { active: false, remainingS: 0 };
 		const latestFailure = store.latestRawEventFlushFailure();
-		const active = normalizeActiveObserver(observer?.getStatus() ?? null);
-		const availableCredentials = probeAvailableCredentials();
+		const active = deps?.getCapabilitySnapshot
+			? capabilityObserverStatus(capability)
+			: normalizeActiveObserver(observer?.getStatus() ?? null);
 		const shouldShowFailure =
 			latestFailure != null && (authBackoff.active || queueTotals.pending > 0);
 
@@ -84,7 +112,8 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 
 		return c.json({
 			active,
-			available_credentials: availableCredentials,
+			capability,
+			available_credentials: {},
 			latest_failure: failureWithImpact,
 			queue: {
 				...queueTotals,

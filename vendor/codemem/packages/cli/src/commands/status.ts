@@ -1,11 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-	type OperationalStatusSnapshot,
-	readCodememConfigFile,
-	readCodememConfigFileAtPath,
-	VERSION,
-} from "@codemem/core";
+import { type OperationalStatusSnapshot, VERSION } from "@codemem/core";
 import { createMcpRpcClient, type McpRpcOutcome } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
@@ -29,7 +24,14 @@ export type DaemonState = "running" | "not_running" | "unavailable";
 export type MaintenanceState = "idle" | "running" | "failed" | "unknown";
 export type SemanticIndexState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 export type RawEventsState = "healthy" | "backlogged" | "failing" | "unknown";
-export type ObserverState = "healthy" | "idle" | "backoff" | "failed" | "unconfigured" | "unknown";
+export type ObserverState =
+	| "healthy"
+	| "idle"
+	| "pending"
+	| "backoff"
+	| "failed"
+	| "unconfigured"
+	| "unknown";
 export type AttentionSeverity = "warning" | "error";
 
 export interface StatusAttention {
@@ -49,6 +51,7 @@ export interface OperationalStatusReport {
 	semantic_index: { state: SemanticIndexState };
 	raw_events: { state: RawEventsState; pending: number };
 	observer: { state: ObserverState };
+	capability: Record<string, unknown> | null;
 	attention: StatusAttention[];
 }
 
@@ -58,7 +61,6 @@ export interface StatusDependencies {
 	now: () => Date;
 	exists: (path: string) => boolean;
 	readText: (path: string) => string | null;
-	readConfig: (path?: string) => Record<string, unknown>;
 	requestRpc: (
 		dataDir: string,
 		method: "GET /v1/health" | "GET /v1/doctor",
@@ -73,17 +75,6 @@ export interface StatusDependencies {
 
 const MAX_ATTENTION = 20;
 const DEFAULT_VIEWER_PORT = 38_888;
-const OBSERVER_IDENTITY_KEYS = [
-	"observer_provider",
-	"observer_model",
-	"observer_runtime",
-	"observer_base_url",
-	"observer_simple_provider",
-	"observer_simple_model",
-	"observer_rich_provider",
-	"observer_rich_model",
-] as const;
-
 const defaultDependencies: StatusDependencies = {
 	now: () => new Date(),
 	exists: existsSync,
@@ -94,7 +85,6 @@ const defaultDependencies: StatusDependencies = {
 			return null;
 		}
 	},
-	readConfig: (path) => (path ? readCodememConfigFileAtPath(path) : readCodememConfigFile()),
 	requestRpc: (dataDir, method) => createMcpRpcClient({ dataDir }).request(method, {}),
 	fetch,
 	isProcessRunning: (pid) => {
@@ -120,18 +110,6 @@ const defaultDependencies: StatusDependencies = {
 		process.exitCode = code;
 	},
 };
-
-function observerConfigured(config: Record<string, unknown>, env: NodeJS.ProcessEnv): boolean {
-	const fileConfigured = OBSERVER_IDENTITY_KEYS.some((key) => {
-		const value = config[key];
-		return typeof value === "string" && value.trim() !== "";
-	});
-	const envConfigured = OBSERVER_IDENTITY_KEYS.some((key) => {
-		const value = env[`CODEMEM_${key.toUpperCase()}`];
-		return typeof value === "string" && value.trim() !== "";
-	});
-	return fileConfigured || envConfigured;
-}
 
 function viewerDefaultTarget(env: NodeJS.ProcessEnv): { host: string; port: number } {
 	const host = env.CODEMEM_VIEWER_HOST?.trim() || "127.0.0.1";
@@ -195,6 +173,14 @@ function doctorOperationalStatus(
 	return snapshot as OperationalStatusSnapshot;
 }
 
+function doctorCapabilitySnapshot(result: Record<string, unknown>): Record<string, unknown> | null {
+	const diagnostics = result.diagnostics;
+	if (!diagnostics || typeof diagnostics !== "object" || Array.isArray(diagnostics)) return null;
+	const capability = (diagnostics as Record<string, unknown>).capability;
+	if (!capability || typeof capability !== "object" || Array.isArray(capability)) return null;
+	return capability as Record<string, unknown>;
+}
+
 function addRuntimeAttention(
 	runtime: ViewerRuntimeObservation,
 	attention: StatusAttention[],
@@ -233,7 +219,7 @@ function addRuntimeAttention(
 
 function projectDatabaseSubsystems(
 	snapshot: OperationalStatusSnapshot | null,
-	configuredObserver: boolean,
+	capability: Record<string, unknown> | null,
 	attention: StatusAttention[],
 ): Pick<OperationalStatusReport, "maintenance" | "semantic_index" | "raw_events" | "observer"> {
 	if (!snapshot) {
@@ -241,7 +227,7 @@ function projectDatabaseSubsystems(
 			maintenance: { state: "unknown" },
 			semantic_index: { state: "unknown" },
 			raw_events: { state: "unknown", pending: 0 },
-			observer: { state: configuredObserver ? "unknown" : "unconfigured" },
+			observer: { state: "unknown" },
 		};
 	}
 	if (snapshot.maintenance.state === "failed") {
@@ -295,16 +281,27 @@ function projectDatabaseSubsystems(
 		});
 	}
 
-	let observerState: ObserverState = "unconfigured";
-	if (configuredObserver) observerState = snapshot.observer.available ? "idle" : "unknown";
-	if (configuredObserver && snapshot.observer.failed_batches > 0) {
+	const configuredObserver = typeof capability?.configurationFingerprint === "string";
+	const providerEnabled = capability?.providerEnabled === true;
+	let observerState: ObserverState = capability && !configuredObserver ? "unconfigured" : "unknown";
+	if (configuredObserver && !providerEnabled) {
+		observerState = "pending";
+		attention.push({
+			code: "observer_pending",
+			severity: "warning",
+			message: "Observer is pending the privacy, schema, and pack boundaries",
+		});
+	} else if (configuredObserver) {
+		observerState = snapshot.observer.available ? "idle" : "unknown";
+	}
+	if (configuredObserver && providerEnabled && snapshot.observer.failed_batches > 0) {
 		observerState = "failed";
 		attention.push({
 			code: "observer_failed",
 			severity: "error",
 			message: "Observer exhausted retries recently; run `codemem db raw-events-gate`",
 		});
-	} else if (configuredObserver && snapshot.observer.backoff_batches > 0) {
+	} else if (configuredObserver && providerEnabled && snapshot.observer.backoff_batches > 0) {
 		observerState = "backoff";
 		attention.push({
 			code: "observer_backoff",
@@ -325,18 +322,20 @@ export async function collectStatusReport(
 	deps: StatusDependencies = defaultDependencies,
 ): Promise<OperationalStatusReport> {
 	const checkedAt = deps.now();
-	const config = deps.readConfig(opts.config);
 	const dataDir = resolveDataDirOpt(opts);
 	const health = await deps.requestRpc(dataDir, "GET /v1/health");
 	let daemonState: DaemonState = "not_running";
 	let databaseState: DatabaseState = "unknown";
 	let snapshot: OperationalStatusSnapshot | null = null;
+	let capability: Record<string, unknown> | null = null;
 	if (health.ok) {
 		daemonState = "running";
+		capability = doctorCapabilitySnapshot({ diagnostics: health.result });
 		const doctor = await deps.requestRpc(dataDir, "GET /v1/doctor");
 		if (doctor.ok) {
 			databaseState = "ready";
 			snapshot = doctorOperationalStatus(doctor.result);
+			capability = doctorCapabilitySnapshot(doctor.result);
 		} else {
 			databaseState = "unavailable";
 		}
@@ -362,11 +361,15 @@ export async function collectStatusReport(
 	addDaemonAttention(daemonState, attention);
 	addDatabaseAttention(databaseState, attention);
 	addRuntimeAttention(runtime, attention);
-	const subsystems = projectDatabaseSubsystems(
-		snapshot,
-		observerConfigured(config, deps.env),
-		attention,
-	);
+	if (opts.config) {
+		attention.push({
+			code: "legacy_config_ignored",
+			severity: "warning",
+			message:
+				"--config no longer selects runtime capability; run `codemem setup` to activate a manifest",
+		});
+	}
+	const subsystems = projectDatabaseSubsystems(snapshot, capability, attention);
 	const ok = !attention.some((item) => item.severity === "error");
 	const boundedAttention = boundAttention(attention);
 	return {
@@ -377,8 +380,13 @@ export async function collectStatusReport(
 		database: { state: databaseState },
 		runtime: runtime.pid ? { viewer: runtime.state, pid: runtime.pid } : { viewer: runtime.state },
 		...subsystems,
+		capability,
 		attention: boundedAttention,
 	};
+}
+
+function stringOrFallback(value: unknown, fallback: string): string {
+	return typeof value === "string" ? value : fallback;
 }
 
 export function renderStatusReport(report: OperationalStatusReport): string {
@@ -395,6 +403,27 @@ export function renderStatusReport(report: OperationalStatusReport): string {
 		}`,
 		`Observer:       ${report.observer.state}`,
 	];
+	if (report.capability) {
+		const provider = report.capability.summaryProvider;
+		const providerFingerprint =
+			provider && typeof provider === "object" && !Array.isArray(provider)
+				? (provider as Record<string, unknown>).providerFingerprint
+				: null;
+		lines.push(
+			`Capability:     ${stringOrFallback(
+				report.capability.runtimeReason,
+				stringOrFallback(report.capability.mode, "unknown"),
+			)}`,
+			`Manifest:       ${stringOrFallback(report.capability.configurationFingerprint, "none")}`,
+			`Provider:       ${stringOrFallback(
+				providerFingerprint,
+				stringOrFallback(report.capability.providerFingerprint, "none"),
+			)}`,
+			`Provider health: ${stringOrFallback(report.capability.providerHealth, "unknown")}`,
+			`Schema:         ${stringOrFallback(report.capability.schemaReadiness, "unknown")}`,
+			`Pack:           ${stringOrFallback(report.capability.packReadiness, "unknown")}`,
+		);
+	}
 	if (report.attention.length > 0) {
 		lines.push(
 			"Attention:",

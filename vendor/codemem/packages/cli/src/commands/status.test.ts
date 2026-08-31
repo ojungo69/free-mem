@@ -4,6 +4,7 @@ import type { McpRpcOutcome } from "@codemem/mcp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	boundAttention,
+	collectStatusReport,
 	createStatusCommand,
 	type OperationalStatusReport,
 	renderStatusReport,
@@ -29,7 +30,6 @@ function dependencies(
 		now: () => new Date("2026-08-14T00:00:00.000Z"),
 		exists: () => false,
 		readText: () => null,
-		readConfig: () => ({}),
 		requestRpc: async () => daemonUnavailable,
 		fetch: vi.fn(async () => {
 			throw new Error("viewer unavailable");
@@ -98,6 +98,7 @@ describe("status command", () => {
 			semantic_index: { state: "unknown" },
 			raw_events: { state: "unknown", pending: 0 },
 			observer: { state: "unconfigured" },
+			capability: null,
 			attention: [],
 		};
 		const rendered = renderStatusReport(report);
@@ -138,5 +139,118 @@ describe("status command", () => {
 			if (previousDataDir === undefined) delete process.env.CODEMEM_DATA_DIR;
 			else process.env.CODEMEM_DATA_DIR = previousDataDir;
 		}
+	});
+
+	it("reports the frozen capability identity and pending boundaries", async () => {
+		const capability = {
+			mode: "configured",
+			configurationFingerprint: `sha256:${"a".repeat(64)}`,
+			runtimeReason: "pending_privacy_boundary",
+			providerEnabled: false,
+			schemaReadiness: "pending_schema_v21",
+			packReadiness: "pending_pack_boundary",
+			summaryProvider: { providerFingerprint: `sha256:${"b".repeat(64)}` },
+		};
+		const operationalStatus = {
+			maintenance: { state: "idle", running: 0, failed: 0 },
+			semantic_index: { state: "degraded", vector_table_present: true },
+			raw_events: { available: true, pending: 0, failed_batches: 0 },
+			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok", capability } }
+					: {
+							ok: true,
+							result: { diagnostics: { operationalStatus, capability } },
+						},
+		});
+
+		const report = await collectStatusReport({}, deps);
+
+		expect(report.capability).toEqual(capability);
+		expect(report.observer.state).toBe("pending");
+		const rendered = renderStatusReport(report);
+		expect(rendered).toContain(capability.configurationFingerprint);
+		expect(rendered).toContain("pending_schema_v21");
+		expect(rendered).toContain("pending_pack_boundary");
+	});
+
+	it("keeps health capability when doctor is unavailable", async () => {
+		const capability = {
+			mode: "configured",
+			configurationFingerprint: `sha256:${"a".repeat(64)}`,
+			runtimeReason: "pending_privacy_boundary",
+			providerEnabled: false,
+			providerHealth: "provider_unavailable",
+			schemaReadiness: "pending_schema_v21",
+			packReadiness: "pending_pack_boundary",
+			summaryProvider: { providerFingerprint: `sha256:${"b".repeat(64)}` },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok", capability } }
+					: {
+							ok: false,
+							error: {
+								code: "database_unavailable",
+								message: "Database could not be read",
+								retryable: true,
+							},
+						},
+		});
+
+		const report = await collectStatusReport({}, deps);
+
+		expect(report.database.state).toBe("unavailable");
+		expect(report.capability).toEqual(capability);
+		const rendered = renderStatusReport(report);
+		expect(rendered).toContain("Capability:     pending_privacy_boundary");
+		expect(rendered).toContain(capability.configurationFingerprint);
+		expect(rendered).toContain(capability.summaryProvider.providerFingerprint);
+		expect(rendered).toContain("Provider health: provider_unavailable");
+		expect(rendered).toContain("pending_schema_v21");
+		expect(rendered).toContain("pending_pack_boundary");
+
+		await createStatusCommand(deps).parseAsync(["--json"], { from: "user" });
+		expect(JSON.parse(deps.stdout[0] ?? "")).toMatchObject({
+			database: { state: "unavailable" },
+			capability,
+		});
+	});
+
+	it("uses safe fallbacks for malformed capability text from doctor RPC", async () => {
+		const capability = {
+			mode: {},
+			configurationFingerprint: {},
+			runtimeReason: {},
+			providerFingerprint: {},
+			schemaReadiness: {},
+			packReadiness: {},
+			summaryProvider: { providerFingerprint: {} },
+		};
+		const operationalStatus = {
+			maintenance: { state: "idle", running: 0, failed: 0 },
+			semantic_index: { state: "healthy", vector_table_present: true },
+			raw_events: { available: true, pending: 0, failed_batches: 0 },
+			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok" } }
+					: { ok: true, result: { diagnostics: { operationalStatus, capability } } },
+		});
+
+		const rendered = renderStatusReport(await collectStatusReport({}, deps));
+
+		expect(rendered).toContain("Capability:     unknown");
+		expect(rendered).toContain("Manifest:       none");
+		expect(rendered).toContain("Provider:       none");
+		expect(rendered).toContain("Schema:         unknown");
+		expect(rendered).toContain("Pack:           unknown");
+		expect(rendered).not.toContain("[object Object]");
 	});
 });

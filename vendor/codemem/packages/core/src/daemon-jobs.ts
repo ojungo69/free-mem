@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type {
+	ProviderChoiceV1,
+	ProviderTransportProfileV1,
+	ResourceProfileV1,
+} from "./capability-manifest.js";
 import { connect, connectReadOnly, getSchemaVersion, isEmbeddingDisabled } from "./db.js";
 import {
 	DEDUP_KEY_BACKFILL_JOB,
@@ -212,6 +217,13 @@ export class DaemonJobRequestError extends Error {
 
 export type DaemonJobServiceOptions = {
 	dataDir?: string;
+	capability?: {
+		providerEnabled: boolean;
+		runtimeReason: string;
+		embeddingProvider?: { readonly state: string };
+		summaryProvider?: ProviderChoiceV1;
+		resourceProfile?: ResourceProfileV1;
+	};
 	beforeMaintenance?: () => Promise<void>;
 	afterMaintenance?: () => Promise<void> | void;
 };
@@ -540,12 +552,24 @@ export class DaemonJobService {
 		);
 	}
 
+	private isSemanticDisabled(): boolean {
+		return this.options.capability?.embeddingProvider?.state !== "enabled" || isEmbeddingDisabled();
+	}
+
 	submit(input: { kind: unknown; args?: unknown; dryRun?: unknown }): {
 		jobId: string;
 		state: "queued";
 	} {
 		if (!this.accepting) throw new Error("Daemon job service is stopping.");
 		const { kind, args } = validateJob(input.kind, input.args);
+		if (kind === "vectors.migrate" && this.isSemanticDisabled()) {
+			throw new DaemonJobRequestError("vectors.migrate is unavailable: semantic_disabled");
+		}
+		if (kind === "structured.backfill" && this.options.capability?.providerEnabled !== true) {
+			throw new DaemonJobRequestError(
+				`structured.backfill is unavailable: ${this.options.capability?.runtimeReason ?? "manifest_absent"}`,
+			);
+		}
 		if (input.dryRun !== undefined && typeof input.dryRun !== "boolean") {
 			throw new DaemonJobRequestError("dryRun must be a boolean.");
 		}
@@ -684,7 +708,7 @@ export class DaemonJobService {
 	}
 
 	private hasPendingVectorMigration(): boolean {
-		if (isEmbeddingDisabled()) return false;
+		if (this.isSemanticDisabled()) return false;
 		try {
 			return (
 				this.store.db
@@ -883,14 +907,32 @@ export class DaemonJobService {
 					dryRun: row.dry_run === 1,
 					scanner,
 				});
-			case "structured.backfill":
+			case "structured.backfill": {
+				if (
+					this.options.capability?.providerEnabled !== true ||
+					!this.options.capability.summaryProvider ||
+					!this.options.capability.resourceProfile
+				) {
+					throw new Error("structured.backfill has no enabled frozen provider.");
+				}
+				const resourceProfile = this.options.capability.resourceProfile;
 				return aiBackfillStructuredContent(this.store.db, {
 					limit,
 					kinds: optionalStrings(args, "kinds", 50, 128),
 					overwrite: optionalBoolean(args, "overwrite") ?? false,
 					dryRun: row.dry_run === 1,
 					scanner,
+					runtimeReason: "ready",
+					summaryProvider: this.options.capability.summaryProvider,
+					resourceProfile: {
+						observerRequestTimeoutMs: resourceProfile.observerRequestTimeoutMs,
+						observerMaxInputChars: resourceProfile.observerMaxInputChars,
+						observerMaxOutputTokens: resourceProfile.observerMaxOutputTokens,
+						observerMaxResponseBytes: resourceProfile.observerMaxResponseBytes,
+						observerTemperature: resourceProfile.observerTemperature,
+					} satisfies ProviderTransportProfileV1,
 				});
+			}
 			case "refs.backfill":
 				await this.runPasses(() => runRefBackfillPass(this.store.db, { batchSize }));
 				return { maintenance: getMaintenanceJob(this.store.db, REF_BACKFILL_JOB) };
@@ -909,8 +951,14 @@ export class DaemonJobService {
 				);
 				return { maintenance: getMaintenanceJob(this.store.db, SUMMARY_DEDUP_BACKFILL_JOB) };
 			case "vectors.migrate":
+				if (this.isSemanticDisabled()) {
+					throw new Error("vectors.migrate is unavailable: semantic_disabled");
+				}
 				await this.runPasses(async () => {
-					await runVectorMigrationPass(this.store.db, { batchSize });
+					await runVectorMigrationPass(this.store.db, {
+						batchSize,
+						capability: this.options.capability,
+					});
 					const job = getMaintenanceJob(this.store.db, VECTOR_MODEL_MIGRATION_JOB);
 					if (!job) {
 						if (this.hasPendingVectorMigration()) {

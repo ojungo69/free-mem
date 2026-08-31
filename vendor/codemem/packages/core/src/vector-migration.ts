@@ -99,11 +99,15 @@ function detectSourceModel(db: SqliteDatabase, targetModel: string): string | nu
 
 export async function runVectorMigrationPass(
 	db: SqliteDatabase,
-	options: { batchSize?: number; signal?: AbortSignal } = {},
+	options: {
+		batchSize?: number;
+		signal?: AbortSignal;
+		capability?: { embeddingProvider?: { readonly state?: unknown } };
+	} = {},
 ): Promise<void> {
 	const existingJob = getMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB);
 	const isInFlightJob = existingJob?.status === "running" || existingJob?.status === "pending";
-	if (isEmbeddingDisabled()) {
+	if (options.capability?.embeddingProvider?.state !== "enabled" || isEmbeddingDisabled()) {
 		if (isInFlightJob) {
 			failMaintenanceJob(db, VECTOR_MODEL_MIGRATION_JOB, "Embeddings are disabled", {
 				message: "Vector re-indexing is waiting for embeddings to be enabled",

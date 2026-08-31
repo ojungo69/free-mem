@@ -23,8 +23,12 @@ observer without changing configuration or stored data.
 ```fish
 codemem status
 codemem status --json
-codemem status --db-path ./codemem.sqlite --config ./codemem.json
+codemem status --db-path ./codemem.sqlite
 ```
+
+The legacy `--config` status option is retained temporarily for CLI compatibility but no longer
+selects runtime capability. Status reports a warning when it is supplied; activate provider state
+with `codemem setup` instead.
 
 - `status` answers whether codemem can do useful local work; `stats` reports database inventory and usage.
 - Collection is offline and local-only. It does not contact peers, coordinators, registries, update services, or non-loopback viewer hosts.
@@ -40,72 +44,22 @@ codemem status --db-path ./codemem.sqlite --config ./codemem.json
 - Restart the viewer after updates: `codemem serve restart`.
 
 ## Settings modal
-- Open via the Settings button in the header.
-- Shows effective values (configured or default) to avoid blank/ambiguous fields.
-- Persists only changed settings on save (unchanged effective defaults are not rewritten to config).
-- Uses task-oriented sections: `Connection`, `Processing`, and `Device Sync`.
-- Includes a `Show advanced controls` toggle for technical tuning fields (JSON headers, token-file caching, tier-routing tuning, network overrides, and pack limits).
-- Connection/auth settings map to `observer_provider`, `observer_model`, `observer_base_url`, `observer_auth_source`, `observer_auth_file`, `observer_auth_cache_ttl_s`, and `observer_headers`.
-- Processing settings include `raw_events_sweeper_interval_s` plus tiered observer routing controls for `observer_tier_routing_enabled`, `observer_simple_model`, `observer_simple_temperature`, `observer_reasoning_effort`, `observer_reasoning_summary`, `observer_rich_model`, `observer_rich_temperature`, `observer_rich_reasoning_effort`, `observer_rich_reasoning_summary`, and `observer_rich_max_output_tokens`.
-- When tiered routing is enabled, the Processing tab becomes the primary place for model selection; the Connection tab's base `observer_model` acts as a fallback rather than a competing primary control.
-- When you have not made an explicit routing choice, codemem may enable tiered routing automatically for capability-safe OpenAI/Anthropic requests over `api_http`.
-- Explicit routing, model, and reasoning settings take precedence over built-in defaults where the selected transport supports them. OpenAI transport behavior has the simple-tier exception described below.
-- OpenAI tier routing defaults to `gpt-5.6-luna` for simple batches and `gpt-5.6-terra` for rich batches.
-- Rich routing defaults to 12,000 output tokens, while an explicit global `observer_max_output_tokens` setting or benchmark `--max-output-tokens` override applies to both tiers; `observer_rich_max_output_tokens` remains the highest-priority rich-only override.
-- Official OpenAI direct API tiers always use Responses and explicitly send reasoning effort `medium` unless you configure a different effort. `observer_openai_use_responses: false` is only a custom-gateway compatibility setting: it selects chat completions when `observer_base_url` explicitly points to an OpenAI-compatible gateway, and official OpenAI cannot opt out of Responses. Chat-completions requests do not report reasoning effort or summary because those controls are not transmitted.
-- OpenAI Responses requests omit temperature whenever active reasoning is configured because GPT-5.1+ accepts sampling controls only with reasoning effort `none`; replay and benchmark metadata report that temperature as not transmitted.
-- Configure reasoning shared by both OpenAI Responses tiers with the Processing tab's advanced `Shared reasoning defaults`, the global `observer_reasoning_effort` / `observer_reasoning_summary` file settings, or their `CODEMEM_OBSERVER_REASONING_*` environment variables. The `observer_rich_reasoning_*` settings remain optional rich-specific overrides.
-- The 2026-08-07 list rates are Luna at $1.00/M input and $6.00/M output versus GPT-5.4-mini at $0.75/M input and $4.50/M output; Terra and GPT-5.4 are both $2.50/M input and $15.00/M output. Measured extraction cost can rise by more than the list-rate difference when a model produces more output tokens.
-- If a selected tier path cannot honor the requested settings, codemem records the requested versus actual provider/model/runtime details and surfaces a visible fallback reason.
-- Sync settings can also be updated here (`sync_enabled`, `sync_host`, `sync_port`, `sync_interval_s`, `sync_mdns`).
-- Environment variables still override file values.
-- Config resolution supports JSON and JSONC with this precedence:
-  1. explicit `CODEMEM_CONFIG`
-  2. workspace-scoped config derived from `CODEMEM_RUNTIME_ROOT` or `CODEMEM_WORKSPACE_ID`
-  3. legacy global config (`~/.config/codemem/config.json` or `~/.config/codemem/config.jsonc`)
+
+The Settings modal is read-only for Slice 1 provider state. It renders the frozen safe capability
+snapshot selected at daemon startup, including provider/model identity and pending privacy/schema/
+pack reasons. It does not edit provider, auth, headers, tier routing, resource limits, or sweeper
+cadence. Run `codemem setup` to compile and activate a replacement manifest.
+
+Legacy JSON/JSONC and `CODEMEM_OBSERVER_*` values are inspected only by setup migration so each
+recognized key can be rejected or recorded as translated/ignored/overridden. Daemon, maintenance,
+viewer, and status paths never reread those values as effective runtime configuration.
 
 ## Observer auth configuration
 
-- Runtime choice is `api_http`.
-- Default model selection:
-- `api_http`: `gpt-5.4-mini` unless `observer_model` is set.
-- Anthropic: `claude-haiku-4-5` unless `observer_model` is set.
-- Tier routing may pick different simple/rich models automatically when the current runtime/provider path is marked capability-safe.
-- Anthropic direct API calls use Anthropic's direct model IDs. codemem translates the common shorthand `claude-4.5-haiku` to `claude-haiku-4-5`; if you want a fixed snapshot, set a versioned model like `claude-haiku-4-5-20251001` directly.
-- Supported auth sources: `auto`, `env`, `file`, `none`. `auto` resolves an explicitly configured API key first, then supported environment variables, then `observer_auth_file`.
-- Header templates can use `${auth.token}`, `${auth.type}`, and `${auth.source}`.
-- Settings are grouped into `Connection`, `Processing`, and `Device Sync` sections with shell-agnostic labels.
-- Queue settings include `raw_events_sweeper_interval_s` (seconds), which controls background pending-event drain cadence.
-- Tiered routing settings live in the Processing tab. The basic view exposes the tier-routing toggle plus simple/rich model choices, while advanced controls reveal the extra rich-tier tuning knobs.
-- To avoid overlapping primary controls, the Connection tab reframes `observer_model` as a fallback whenever tiered routing is enabled.
-- Rich-tier OpenAI transport tuning remains visible in Processing. Official OpenAI tiers always use Responses with reasoning effort `medium` by default. An explicit custom `observer_base_url` may use `observer_openai_use_responses: false` for chat-completions compatibility.
-
-Example token-file gateway config:
-
-```json
-{
-  "observer_provider": "your-gateway-provider",
-  "observer_base_url": "https://gateway.example/v1",
-  "observer_auth_source": "file",
-  "observer_auth_file": "/path/to/gateway-token",
-  "observer_auth_cache_ttl_s": 300,
-  "observer_headers": {
-    "Authorization": "Bearer ${auth.token}",
-    "X-Auth-Source": "${auth.source}"
-  }
-}
-```
-
-Header template variables:
-
-- `${auth.token}`
-- `${auth.type}`
-- `${auth.source}`
-
-Command/file token caching notes:
-
-- Successful `file`/`command` token resolutions are cached for `observer_auth_cache_ttl_s`.
-- Failed `file`/`command` resolutions are not cached (codemem clears stale cache and retries on the next call).
+Setup accepts exactly one complete OpenAI Chat Completions or Anthropic Messages endpoint, an exact
+model ID/revision, and either no credential or one named environment-variable reference. Inline
+keys, auth files, arbitrary headers, implicit token cascades, redirects, and TLS trust overrides are
+not supported. PR1 keeps provider execution disabled as `pending_privacy_boundary`.
 
 ## Memory persistence
 - A session is created per ingest payload.

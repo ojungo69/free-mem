@@ -189,7 +189,7 @@ export interface ApiObserverActiveStatus {
 	provider: string | null;
 	model: string | null;
 	runtime: string | null;
-	auth: string | null;
+	auth: { method: string; token_present: boolean } | null;
 	last_error?: string | null;
 }
 
@@ -234,6 +234,7 @@ export interface ApiObserverQueue {
  */
 export interface ApiObserverStatusResponse {
 	active: ApiObserverActiveStatus | null;
+	capability: Record<string, unknown>;
 	available_credentials: ApiAvailableCredentials;
 	latest_failure: ApiFlushFailure | null;
 	queue: ApiObserverQueue;
@@ -253,6 +254,7 @@ export interface ApiConfigGetResponse {
 	effective: Record<string, unknown>;
 	env_overrides: Record<string, string>;
 	providers: string[];
+	capability: Record<string, unknown>;
 }
 
 /** Effects block in config save response. */

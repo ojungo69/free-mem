@@ -9,6 +9,31 @@ export * as Api from "./api-types.js";
 export { extractApplyPatchPaths, MUTATING_TOOL_NAMES } from "./apply-patch.js";
 export * from "./attribution-assessment.js";
 export * from "./attribution-diagnostics.js";
+export type {
+	CredentialRefV1,
+	EffectiveCapabilityManifestV1,
+	LegacyDispositionV1,
+	ProviderChoiceV1,
+	ProviderProposalV1,
+	ProviderTlsPreflightError,
+	ProviderTransportProfileV1,
+	ProviderWireProtocol,
+	ResourceProfileV1,
+	TlsPreflightConnector,
+	TlsPreflightConnectorInput,
+} from "./capability-manifest.js";
+export {
+	captureOnlyCapabilityProjection,
+	compileCapabilityManifest,
+	compileDefaultCapabilityManifest,
+	compileProviderChoice,
+	defaultResourceProfile,
+	preflightProviderTls,
+	safeManifestProjection,
+	validateCapabilityManifest,
+	validateProviderChoice,
+	validateProviderTransportProfile,
+} from "./capability-manifest.js";
 export type { ClaudeHookAdapterEvent, ClaudeHookRawEventEnvelope } from "./claude-hooks.js";
 export {
 	buildIngestPayloadFromHook,
@@ -26,7 +51,12 @@ export {
 	MAPPABLE_CODEX_HOOK_EVENTS,
 	mapCodexHookPayload,
 } from "./codex-hooks.js";
-export type { DaemonHandle, DaemonHealth, DaemonIdentity } from "./daemon-lifecycle.js";
+export type {
+	DaemonCapabilityState,
+	DaemonHandle,
+	DaemonHealth,
+	DaemonIdentity,
+} from "./daemon-lifecycle.js";
 export {
 	assertDataDirPreflight,
 	forceKillDaemon,
@@ -78,45 +108,6 @@ export {
 	hasPendingDedupKeyBackfill,
 	runDedupKeyBackfillPass,
 } from "./dedup-key-backfill.js";
-export type {
-	ArtifactKind,
-	ContextFactFeature,
-	DistillCandidate,
-	DistillCandidateEmitOptions,
-	DistillCluster,
-	DistillClusterOptions,
-	DistillContextChunk,
-	DistillContextChunkOptions,
-	DistillContextDedupeOptions,
-	DistillContextDocument,
-	DistillCorpusOptions,
-	DistillDetector,
-	DistillDocumentationMatch,
-	DistillDocumentationSignal,
-	DistillDocumentedCluster,
-	DistillPromotabilityScores,
-	DistillReport,
-	DistillReportOptions,
-	DistillScope,
-	DistillScoredCluster,
-	DistillScoringOptions,
-	DistillVectorFeature,
-} from "./distill.js";
-export {
-	buildDistillReport,
-	chunkDistillContextDocuments,
-	clusterDistillFeatures,
-	createContextFactDetector,
-	DEFAULT_CONTEXT_FACT_KINDS,
-	embedDistillContextChunks,
-	emitDistillCandidates,
-	loadDistillVectorFeatures,
-	markDistillClustersDocumented,
-	projectContextFactFeatures,
-	scoreDistillCluster,
-	scoreDistillClusters,
-	selectDistillCorpus,
-} from "./distill.js";
 export type {
 	DistillApplyResult,
 	DistillDraftPrompt,
@@ -215,20 +206,6 @@ export {
 	getExtractionModelPricing,
 	listExtractionModelPricing,
 } from "./extraction-model-pricing.js";
-export type { ExtractionReplayResult } from "./extraction-replay.js";
-export {
-	replayBatchExtraction,
-	replayBatchExtractionWithTierRouting,
-} from "./extraction-replay.js";
-export type {
-	ExtractionReplayTierRoutingDecision,
-	ExtractionReplayTierRoutingInput,
-} from "./extraction-tier-routing.js";
-export {
-	decideExtractionReplayTier,
-	RICH_TIER_DEFAULTS,
-	SIMPLE_TIER_DEFAULTS,
-} from "./extraction-tier-routing.js";
 export { buildFilterClauses, buildFilterClausesWithContext } from "./filters.js";
 // Ingest pipeline
 export {
@@ -317,7 +294,6 @@ export type {
 	ReliabilityMetrics,
 } from "./maintenance.js";
 export {
-	aiBackfillStructuredContent,
 	backfillMemoryDedupKeys,
 	backfillNarrativeFromBody,
 	backfillTagsText,
@@ -374,52 +350,25 @@ export {
 	MutationConflictError,
 } from "./mutation-dispatcher.js";
 export * from "./normalized-event.js";
-export type { ObserverAuthMaterial } from "./observer-auth.js";
-export {
-	ObserverAuthAdapter,
-	probeAvailableCredentials,
-	readAuthFile,
-	redactText,
-	renderObserverHeaders,
-} from "./observer-auth.js";
 export type {
-	ObserverConfig,
 	ObserverResponse,
 	ObserverStatus,
 	ObserverTokenUsage,
 } from "./observer-client.js";
-export { loadObserverConfig, ObserverAuthError, ObserverClient } from "./observer-client.js";
+export { ObserverAuthError, ObserverClient } from "./observer-client.js";
 export type {
 	ConfigPathResolution,
 	ConfigPathSource,
 	ConfigResolutionResult,
 } from "./observer-config.js";
 export {
-	CODEMEM_CONFIG_ENV_OVERRIDES,
 	getCodememConfigPath,
-	getCodememEnvOverrides,
-	getOpenCodeProviderConfig,
-	getProviderApiKey,
-	getProviderBaseUrl,
-	getProviderHeaders,
-	getProviderOptions,
 	getWorkspaceCodememConfigPath,
 	getWorkspaceScopedCodememConfigPath,
-	listConfiguredOpenCodeProviders,
-	listCustomProviders,
-	listObserverProviderOptions,
-	loadOpenCodeConfig,
 	readCodememConfigFile,
 	readCodememConfigFileAtPath,
 	readWorkspaceCodememConfigFile,
-	resolveBuiltInProviderDefaultModel,
-	resolveBuiltInProviderFromModel,
-	resolveBuiltInProviderModel,
 	resolveCodememConfigPath,
-	resolveCustomProviderDefaultModel,
-	resolveCustomProviderFromModel,
-	resolveCustomProviderModel,
-	resolvePlaceholder,
 	stripJsonComments,
 	stripTrailingCommas,
 	writeCodememConfigFile,
@@ -537,12 +486,25 @@ export {
 	runSessionContextBackfillPass,
 	SESSION_CONTEXT_BACKFILL_JOB,
 } from "./session-context-backfill.js";
+export {
+	readLegacyCapabilityConfigForSetup,
+	withCapabilityLaneSetupTransaction,
+	withCapabilitySetupTransaction,
+} from "./setup-internal.js";
 export * from "./spool.js";
-export type { StorageJournal, StorageJournalState, StorageLayout } from "./storage.js";
+export type {
+	CapabilityActivationReceipt,
+	StorageJournal,
+	StorageJournalState,
+	StorageLayout,
+} from "./storage.js";
 export {
 	DEFAULT_DATA_DIR,
 	ensureStorageLayout,
+	readCapabilityManifestGeneration,
+	readCurrentCapabilityManifest,
 	readCurrentDatabasePointer,
+	readValidatedCapabilityActivationReceipt,
 	recoverStorageJournal,
 	resolveRuntimeDataDir,
 	resolveStorageLayout,

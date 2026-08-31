@@ -88,6 +88,117 @@ describe("daemon jobs", () => {
 		expect(() => service.schedule(() => {})).toThrow("service is stopping");
 	});
 
+	it("rejects structured maintenance while the frozen provider is pending", () => {
+		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-jobs-pending-provider-"));
+		db = connect(join(dir, "jobs.sqlite"));
+		initTestSchema(db);
+		store = new MemoryStore(db);
+		const service = new DaemonJobService(store, {
+			capability: {
+				providerEnabled: false,
+				runtimeReason: "pending_privacy_boundary",
+			},
+		});
+
+		expect(() => service.submit({ kind: "structured.backfill", args: {} })).toThrow(
+			/pending_privacy_boundary/i,
+		);
+		expect(service.list({ kind: "structured.backfill" })).toEqual([]);
+	});
+
+	it.each([
+		[
+			"configured",
+			{
+				providerEnabled: false,
+				runtimeReason: "pending_privacy_boundary",
+				embeddingProvider: { state: "disabled" },
+			},
+		],
+		["capture-only", { providerEnabled: false, runtimeReason: "manifest_absent" }],
+		["missing", undefined],
+	] as const)("keeps vectors untouched when %s capability disables semantics", async (_mode, capability) => {
+		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-semantic-disabled-"));
+		db = connect(join(dir, "jobs.sqlite"));
+		initTestSchema(db);
+		const sessionId = Number(
+			db.prepare("INSERT INTO sessions(started_at) VALUES ('2026-08-31T00:00:00Z')").run()
+				.lastInsertRowid,
+		);
+		const insertMemory = db.prepare(
+			`INSERT INTO memory_items(
+				session_id, kind, title, body_text, active, created_at, updated_at,
+				metadata_json, files_read, scope_id
+			 ) VALUES (?, 'discovery', ?, ?, 1, '2026-08-31T00:00:00Z',
+				'2026-08-31T00:00:00Z', '{}', '[]', NULL)`,
+		);
+		const preservedMemoryId = Number(
+			insertMemory.run(sessionId, "Preserved vector", "must not be deleted").lastInsertRowid,
+		);
+		insertMemory.run(sessionId, "Missing vector", "must not be embedded");
+		db.prepare(
+			`INSERT INTO memory_vectors(embedding, memory_id, chunk_index, content_hash, model)
+			 VALUES (vec_f32(?), ${preservedMemoryId}, 0, 'preserved', 'legacy-model')`,
+		).run(JSON.stringify(Array(384).fill(0)));
+		const before = db
+			.prepare("SELECT memory_id, content_hash, model FROM memory_vectors ORDER BY memory_id")
+			.all();
+		store = new MemoryStore(db);
+		const service = new DaemonJobService(store, { dataDir: dir, capability });
+
+		let admissionError: unknown;
+		try {
+			service.submit({ kind: "vectors.migrate", args: {} });
+		} catch (error) {
+			admissionError = error;
+		}
+		service.startInternalBackfills();
+		await service.stop();
+
+		expect(admissionError).toEqual(
+			expect.objectContaining({ message: expect.stringContaining("semantic_disabled") }),
+		);
+		expect(service.list({ kind: "vectors.migrate" })).toEqual([]);
+		expect(
+			db
+				.prepare("SELECT memory_id, content_hash, model FROM memory_vectors ORDER BY memory_id")
+				.all(),
+		).toEqual(before);
+	});
+
+	it("rechecks semantic capability before executing a queued vector job", async () => {
+		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-semantic-recheck-"));
+		db = connect(join(dir, "jobs.sqlite"));
+		initTestSchema(db);
+		store = new MemoryStore(db);
+		const sessionId = store.startSession({ project: "semantic-recheck" });
+		const memoryId = store.remember(sessionId, "discovery", "Preserved", "vector");
+		db.prepare(
+			`INSERT INTO memory_vectors(embedding, memory_id, chunk_index, content_hash, model)
+			 VALUES (vec_f32(?), ${memoryId}, 0, 'preserved', 'legacy-model')`,
+		).run(JSON.stringify(Array(384).fill(0)));
+		const before = db.prepare("SELECT memory_id, content_hash, model FROM memory_vectors").all();
+		const capability = {
+			providerEnabled: false,
+			runtimeReason: "pending_privacy_boundary",
+			embeddingProvider: { state: "enabled" },
+		};
+		const service = new DaemonJobService(store, { dataDir: dir, capability });
+		const submitted = service.submit({ kind: "vectors.migrate", args: {} });
+		capability.embeddingProvider.state = "disabled";
+
+		await service.stop();
+
+		expect(service.get(submitted.jobId)).toMatchObject({
+			state: "failed",
+			attempts: 1,
+			error: { code: "job_failed" },
+		});
+		expect(db.prepare("SELECT memory_id, content_hash, model FROM memory_vectors").all()).toEqual(
+			before,
+		);
+	});
+
 	it("P1-T046-01-maintenance-mode", async () => {
 		dir = mkdtempSync(join(tmpdir(), "codemem-daemon-maintenance-"));
 		db = connect(join(dir, "jobs.sqlite"));

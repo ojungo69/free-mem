@@ -86,7 +86,6 @@ describe("flushRawEvents max retry", () => {
 	};
 
 	it("gives up after max attempts and advances flush cursor", async () => {
-		process.env.CODEMEM_RAW_EVENTS_MAX_FLUSH_ATTEMPTS = "3";
 		const sessionId = "ses_max_retry_test";
 		seedEvents(sessionId);
 
@@ -100,14 +99,14 @@ describe("flushRawEvents max retry", () => {
 			maxEvents: null,
 		};
 
-		// Fail 3 times — each attempt claims the batch and increments attempt_count
-		for (let i = 0; i < 3; i++) {
+		// Fail five times — each attempt claims the batch and increments attempt_count.
+		for (let i = 0; i < 5; i++) {
 			await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow(
 				"observer failed during raw-event flush",
 			);
 		}
 
-		// 4th attempt should give up instead of retrying
+		// The next pass should give up instead of retrying.
 		const result = await flushRawEvents(store, ingestOpts, flushOpts);
 		expect(result.updatedState).toBe(1);
 		expect(result.flushed).toBe(0);
@@ -119,7 +118,7 @@ describe("flushRawEvents max retry", () => {
 			)
 			.get(sessionId) as { status: string; attempt_count: number };
 		expect(batch.status).toBe("gave_up");
-		expect(batch.attempt_count).toBe(3);
+		expect(batch.attempt_count).toBe(5);
 
 		// Flush state should be advanced so the session isn't retried
 		const flushState = store.rawEventFlushState(sessionId, "opencode");
@@ -127,7 +126,6 @@ describe("flushRawEvents max retry", () => {
 	});
 
 	it("does not give up when under the max attempts", async () => {
-		process.env.CODEMEM_RAW_EVENTS_MAX_FLUSH_ATTEMPTS = "5";
 		const sessionId = "ses_under_max";
 		seedEvents(sessionId);
 
@@ -259,8 +257,7 @@ describe("flushRawEvents max retry", () => {
 		expect(store.recent(10)).toHaveLength(0);
 	});
 
-	it("uses default max of 5 when env var is not set", async () => {
-		delete process.env.CODEMEM_RAW_EVENTS_MAX_FLUSH_ATTEMPTS;
+	it("keeps the legacy retry threshold at 5 until v21 owns enforcement", async () => {
 		const sessionId = "ses_default_max";
 		seedEvents(sessionId);
 
@@ -274,14 +271,13 @@ describe("flushRawEvents max retry", () => {
 			maxEvents: null,
 		};
 
-		// Fail 5 times
 		for (let i = 0; i < 5; i++) {
 			await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow(
 				"observer failed during raw-event flush",
 			);
 		}
 
-		// 6th attempt should give up
+		// The next pass terminally records exhaustion in the legacy v20 state.
 		const result = await flushRawEvents(store, ingestOpts, flushOpts);
 		expect(result.updatedState).toBe(1);
 
@@ -292,7 +288,6 @@ describe("flushRawEvents max retry", () => {
 	});
 
 	it("gave_up batches are not resurrected by retryRawEventFailures", async () => {
-		process.env.CODEMEM_RAW_EVENTS_MAX_FLUSH_ATTEMPTS = "1";
 		const sessionId = "ses_no_resurrect";
 		seedEvents(sessionId);
 
@@ -306,8 +301,10 @@ describe("flushRawEvents max retry", () => {
 			maxEvents: null,
 		};
 
-		// Fail once, then give up
-		await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow();
+		// Exhaust the legacy v20 attempts, then give up.
+		for (let attempt = 0; attempt < 5; attempt++) {
+			await expect(flushRawEvents(store, ingestOpts, flushOpts)).rejects.toThrow();
+		}
 		await flushRawEvents(store, ingestOpts, flushOpts);
 
 		// Verify gave_up

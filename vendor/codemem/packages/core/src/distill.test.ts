@@ -15,6 +15,7 @@ import {
 	selectDistillCorpus,
 } from "./distill.js";
 import { resolveEmbeddingModel, serializeFloat32 } from "./embeddings.js";
+import * as core from "./index.js";
 import type { MemoryStore } from "./store.js";
 import { initTestSchema, openTestMemoryStore } from "./test-utils.js";
 
@@ -46,6 +47,17 @@ describe("distill", () => {
 		if (prevEmbeddingDisabled === undefined) delete process.env.CODEMEM_EMBEDDING_DISABLED;
 		else process.env.CODEMEM_EMBEDDING_DISABLED = prevEmbeddingDisabled;
 		rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("keeps corpus and report entry points on the internal benchmark module", () => {
+		for (const name of [
+			"selectDistillCorpus",
+			"buildDistillReport",
+			"createContextFactDetector",
+			"emitDistillCandidates",
+		]) {
+			expect(Reflect.has(core, name), `${name} must not be exported by @codemem/core`).toBe(false);
+		}
 	});
 
 	function insertSession(project: string): number {

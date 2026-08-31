@@ -44,6 +44,7 @@ describe("collectOperationalStatus", () => {
 			const result = collectOperationalStatus(db);
 
 			expect(result).toEqual({
+				capability: null,
 				maintenance: { state: "idle", running: 0, failed: 0 },
 				semantic_index: { state: "failed", vector_table_present: false },
 				raw_events: { available: true, pending: 2, failed_batches: 1 },
@@ -74,11 +75,51 @@ describe("collectOperationalStatus", () => {
 			}
 
 			expect(collectOperationalStatus(db, { embeddingDisabled: true })).toEqual({
+				capability: null,
 				maintenance: { state: "unknown", running: 0, failed: 0 },
 				semantic_index: { state: "degraded", vector_table_present: false },
 				raw_events: { available: false, pending: 0, failed_batches: 0 },
 				observer: { available: false, failed_batches: 0, backoff_batches: 0 },
 			});
+		} finally {
+			db.close();
+		}
+	});
+
+	it.each([
+		["configured", { mode: "configured", embeddingProvider: { state: "disabled" } }],
+		["capture-only", { mode: "capture_only" }],
+	])("reports semantic degradation for %s capability", (_mode, capability) => {
+		const db = new Database(":memory:");
+		try {
+			initTestSchema(db);
+			db.prepare(
+				`INSERT INTO maintenance_jobs(kind, title, status, updated_at)
+				 VALUES ('vector_model_migration', 'Vectors', 'pending', '2026-08-31T00:00:00Z')`,
+			).run();
+
+			expect(
+				collectOperationalStatus(db, {
+					embeddingDisabled: false,
+					capability,
+				}).semantic_index.state,
+			).toBe("degraded");
+		} finally {
+			db.close();
+		}
+	});
+
+	it("lets the emergency embedding disable override an enabled capability", () => {
+		const db = new Database(":memory:");
+		try {
+			initTestSchema(db);
+
+			expect(
+				collectOperationalStatus(db, {
+					embeddingDisabled: true,
+					capability: { mode: "configured", embeddingProvider: { state: "enabled" } },
+				}).semantic_index.state,
+			).toBe("degraded");
 		} finally {
 			db.close();
 		}

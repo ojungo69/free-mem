@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	atomicRemoveSetupFile,
 	captureSetupFileSnapshots,
 	loadJsoncConfig,
 	resolveOpencodeConfigPath,
@@ -123,5 +124,28 @@ describe("loadJsoncConfig", () => {
 			writeFileSync(configPath, malformedRoot, "utf8");
 			expect(() => loadJsoncConfig(configPath)).toThrow("JSON root must be an object");
 		}
+	});
+});
+
+describe("T007 setup target preflight", () => {
+	it("checks every target before removing the owner-only activation receipt", () => {
+		const dir = makeTempDir();
+		const receiptPath = join(dir, "activation-receipt.json");
+		const installManifestPath = join(dir, "install-manifest.json");
+		writeFileSync(receiptPath, '{"fingerprint":"before"}\n', { mode: 0o600 });
+		writeFileSync(installManifestPath, '{"version":1}\n', { mode: 0o600 });
+		const snapshots = captureSetupFileSnapshots([receiptPath, installManifestPath]);
+		writeFileSync(installManifestPath, '{"version":1,"external":true}\n', { mode: 0o600 });
+
+		expect(() =>
+			withSetupFileMutationTracking(
+				new Map<string, SetupFileMutation>(),
+				new Map(snapshots.map((snapshot) => [snapshot.path, snapshot])),
+				() => atomicRemoveSetupFile(receiptPath),
+			),
+		).toThrow(/target changed|pre-?state|transaction/i);
+		expect(readFileSync(receiptPath, "utf8")).toBe('{"fingerprint":"before"}\n');
+		expect(statSync(receiptPath).mode & 0o777).toBe(0o600);
+		expect(readFileSync(installManifestPath, "utf8")).toBe('{"version":1,"external":true}\n');
 	});
 });

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Socket } from "node:net";
 import { DaemonJobRequestError, type DaemonJobService } from "./daemon-jobs.js";
+import type { DaemonCapabilityState } from "./daemon-lifecycle.js";
 import { DaemonOperationRequestError, type DaemonOperationService } from "./daemon-operations.js";
 import {
 	type FileContextRetrievalAttempt,
@@ -342,6 +343,7 @@ export type DaemonRpcContext = {
 	viewerRead: ViewerReadHandler;
 	jobs: DaemonJobService;
 	operations: DaemonOperationService;
+	capability: DaemonCapabilityState;
 	restoreState?: { active: boolean };
 };
 
@@ -443,12 +445,14 @@ async function handleMethod(
 			maintenanceMode: isMaintenanceMode(ctx),
 			protocolVersion: protocolVersions(),
 			spool: spoolHealth(ctx.dataDir),
+			capability: ctx.capability,
 		};
 	}
 	if (method === "GET /v1/doctor") {
 		const operationalStatus = collectOperationalStatus(ctx.writer, {
 			embeddingDisabled: isEmbeddingDisabled(),
 			recentFailureCutoff: new Date(Date.now() - RECENT_FAILURE_WINDOW_MS).toISOString(),
+			capability: ctx.capability,
 		});
 		const degradedDeliveries = Number(
 			(
@@ -488,6 +492,7 @@ async function handleMethod(
 					workerDeadlineMs: REDACTION_WORKER_DEADLINE_MS,
 				},
 				operationalStatus,
+				capability: ctx.capability,
 			},
 		};
 	}

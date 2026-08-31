@@ -5,6 +5,7 @@ export type OperationalMaintenanceState = "idle" | "running" | "failed" | "unkno
 export type OperationalSemanticState = "healthy" | "pending" | "degraded" | "failed" | "unknown";
 
 export interface OperationalStatusSnapshot {
+	capability: Record<string, unknown> | null;
 	maintenance: {
 		state: OperationalMaintenanceState;
 		running: number;
@@ -86,14 +87,17 @@ function collectSemanticIndex(
 		const state: OperationalSemanticState =
 			status === "failed"
 				? "failed"
-				: status === "pending" || status === "running"
-					? "pending"
-					: embeddingDisabled || !vectorTablePresent
-						? "degraded"
+				: embeddingDisabled || !vectorTablePresent
+					? "degraded"
+					: status === "pending" || status === "running"
+						? "pending"
 						: "healthy";
 		return { state, vector_table_present: vectorTablePresent };
 	} catch {
-		return { state: "unknown", vector_table_present: vectorTablePresent };
+		return {
+			state: embeddingDisabled || !vectorTablePresent ? "degraded" : "unknown",
+			vector_table_present: vectorTablePresent,
+		};
 	}
 }
 
@@ -181,11 +185,21 @@ function collectObserver(
 /** Collect bounded operational aggregates from an already-open database without writing schema. */
 export function collectOperationalStatus(
 	db: Database,
-	options: { embeddingDisabled?: boolean; recentFailureCutoff?: string } = {},
+	options: {
+		embeddingDisabled?: boolean;
+		recentFailureCutoff?: string;
+		capability?: Record<string, unknown>;
+	} = {},
 ): OperationalStatusSnapshot {
+	const embeddingDisabled =
+		options.embeddingDisabled === true ||
+		(options.capability !== undefined &&
+			(options.capability.embeddingProvider as { state?: unknown } | null | undefined)?.state !==
+				"enabled");
 	return {
+		capability: options.capability ?? null,
 		maintenance: collectMaintenance(db),
-		semantic_index: collectSemanticIndex(db, options.embeddingDisabled === true),
+		semantic_index: collectSemanticIndex(db, embeddingDisabled),
 		raw_events: collectRawEvents(db, options.recentFailureCutoff),
 		observer: collectObserver(db, options.recentFailureCutoff),
 	};

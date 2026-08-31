@@ -21,7 +21,7 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
-				find: "@codemem/core",
+				find: /^@codemem\/core$/,
 				replacement: resolve(import.meta.dirname, "../core/src/index.ts"),
 			},
 			{

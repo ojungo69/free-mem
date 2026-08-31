@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import type { MemoryStore } from "@codemem/core";
 import {
+	captureOnlyCapabilityProjection,
 	initTestSchema,
 	insertTestSession,
 	startMaintenanceJob,
@@ -120,6 +121,7 @@ function createTestApp(opts?: { seedDevice?: boolean; sweeper?: unknown }) {
 				readHandler ??= createViewerReadHandler({
 					store: storeFactory(),
 					sweeper: (opts?.sweeper ?? null) as never,
+					capability: captureOnlyCapabilityProjection(),
 				});
 				return readHandler(body);
 			}

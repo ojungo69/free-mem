@@ -2262,10 +2262,17 @@ function resolveRuntimeDataDir(options = {}) {
 function resolveStorageLayout(dataDir = DEFAULT_DATA_DIR) {
 	const root = resolve(dataDir);
 	const controlDir = join(root, "control");
+	const capabilitiesDir = join(controlDir, "capabilities");
 	const dbDir = join(root, "db");
 	return {
 		dataDir: root,
 		controlDir,
+		capabilitiesDir,
+		capabilityManifestsDir: join(capabilitiesDir, "manifests"),
+		capabilityCurrentPointerPath: join(capabilitiesDir, "current"),
+		capabilityLifecycleLockPath: join(capabilitiesDir, "lifecycle.lock"),
+		capabilityActivationReceiptPath: join(capabilitiesDir, "activation-receipt.json"),
+		capabilitySetupTransactionPath: join(capabilitiesDir, "setup-transaction.json"),
 		dbDir,
 		versionsDir: join(dbDir, "versions"),
 		currentPointerPath: join(dbDir, "current"),

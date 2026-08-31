@@ -2,10 +2,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { attachDaemonRpc } from "./daemon-rpc.js";
 import { connect } from "./db.js";
 import * as core from "./index.js";
+import {
+	acquireCapabilityLifecycleLock,
+	activateCapabilityManifest,
+	writeCapabilityManifestGeneration,
+} from "./storage.js";
 import { openTestMemoryStore } from "./test-utils.js";
 import { ReadOnlyActor } from "./writer-actor.js";
 
@@ -28,6 +33,84 @@ function handshake(overrides: Partial<core.RpcRequest> = {}): core.RpcRequest {
 		local_api_version: core.LOCAL_API_VERSION,
 		capability_hash: core.RPC_CAPABILITY_HASH,
 		...overrides,
+	};
+}
+
+function capabilityManifest(
+	endpointUrl: string,
+	modelId = "t008-summary-model",
+	baseConfigurationFingerprint?: string,
+) {
+	return core.compileDefaultCapabilityManifest(
+		{
+			version: 1,
+			role: "summary",
+			state: "enabled",
+			wireProtocol: "openai_chat_completions_v1",
+			modelId,
+			modelRevision: "1",
+			endpointUrl,
+			credentialRef: { kind: "none" },
+		},
+		[],
+		baseConfigurationFingerprint,
+	);
+}
+
+function activateManifest(dataDir: string, manifest: core.EffectiveCapabilityManifestV1): void {
+	const layout = core.resolveStorageLayout(dataDir);
+	writeCapabilityManifestGeneration(layout, manifest);
+	const lease = acquireCapabilityLifecycleLock(layout);
+	try {
+		activateCapabilityManifest(layout, manifest.configurationFingerprint, lease);
+	} finally {
+		lease.close();
+	}
+}
+
+function rpcResult(response: core.RpcSuccess | core.TypedRpcError): Record<string, unknown> {
+	if ("error" in response) throw new Error(`RPC failed: ${response.error.code}`);
+	return response.result;
+}
+
+function doctorCapability(response: core.RpcSuccess | core.TypedRpcError): Record<string, unknown> {
+	const diagnostics = Reflect.get(rpcResult(response), "diagnostics");
+	if (!diagnostics || typeof diagnostics !== "object")
+		throw new Error("doctor diagnostics missing");
+	const capability =
+		Reflect.get(diagnostics, "capability") ?? Reflect.get(diagnostics, "runtimeCapability");
+	expect(capability, "doctor must expose the frozen capability state").toBeDefined();
+	return capability as Record<string, unknown>;
+}
+
+function featureEnabled(runtime: Record<string, unknown>, feature: string): boolean | undefined {
+	const direct = Reflect.get(runtime, `${feature}Enabled`);
+	if (typeof direct === "boolean") return direct;
+	const nested = Reflect.get(runtime, feature);
+	if (typeof nested === "boolean") return nested;
+	if (!nested || typeof nested !== "object") return undefined;
+	const enabled = Reflect.get(nested, "enabled");
+	if (typeof enabled === "boolean") return enabled;
+	const state = Reflect.get(nested, "state");
+	if (typeof state === "string") return state === "enabled" || state === "ready";
+	return undefined;
+}
+
+function normalizedEvent(id: string): Record<string, unknown> {
+	return {
+		schemaVersion: core.NORMALIZED_SCHEMA_VERSION,
+		eventId: id,
+		idempotencyKey: id,
+		agent: "codex",
+		nativeSessionId: "t008-session",
+		projectKey: "t008-project",
+		workspaceKey: "t008-workspace",
+		cwd: process.cwd(),
+		kind: "user_prompted",
+		occurredAt: new Date(0).toISOString(),
+		payload: { text: "t008 safe capture" },
+		sourceHash: "a".repeat(64),
+		sensitivity: "normal",
 	};
 }
 
@@ -478,18 +561,20 @@ describe("Phase 1 daemon RPC", () => {
 		process.env.CODEMEM_CONFIG = configPath;
 		process.env.CODEMEM_OBSERVER_HEADERS = JSON.stringify({ Authorization: "secret-value" });
 		try {
-			expect(await view("config")).toMatchObject({
+			const config = await view("config");
+			expect(config).toMatchObject({
 				status: 200,
 				body: {
-					config: { observer_api_key: "[redacted]" },
-					effective: {
-						observer_api_key: "[redacted]",
-						observer_headers: "[redacted]",
+					capability: {
+						mode: "capture_only",
+						configurationFingerprint: null,
+						providerEnabled: false,
+						lexicalEnabled: true,
 					},
-					env_overrides: { observer_headers: "CODEMEM_OBSERVER_HEADERS" },
-					protected_keys: expect.arrayContaining(["observer_api_key"]),
 				},
 			});
+			expect(JSON.stringify(config)).not.toContain("viewer-secret");
+			expect(JSON.stringify(config)).not.toContain("secret-value");
 		} finally {
 			if (previousConfig === undefined) delete process.env.CODEMEM_CONFIG;
 			else process.env.CODEMEM_CONFIG = previousConfig;
@@ -556,6 +641,31 @@ describe("Phase 1 daemon RPC", () => {
 		const dbPath = join(layout.dbDir, pointer);
 		process.env.CODEMEM_EMBEDDING_DISABLED = "1";
 		try {
+			const structured = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: "submit-structured.backfill",
+					method: "POST /v1/jobs",
+					body: {
+						kind: "structured.backfill",
+						args: { limit: 10, kinds: ["discovery"], overwrite: false },
+					},
+				}),
+			);
+			expect(structured).toMatchObject({
+				error: { code: "invalid_request", message: expect.stringMatching(/manifest_absent/i) },
+			});
+			const vectors = await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: "submit-vectors.migrate",
+					method: "POST /v1/jobs",
+					body: { kind: "vectors.migrate", args: { batchSize: 10 } },
+				}),
+			);
+			expect(vectors).toMatchObject({
+				error: { code: "invalid_request", message: expect.stringMatching(/semantic_disabled/i) },
+			});
 			for (const [kind, args, dryRun] of [
 				["db.vacuum", {}],
 				["raw-events.prune", { maxAgeDays: 36_500, vacuum: false }, true],
@@ -568,12 +678,10 @@ describe("Phase 1 daemon RPC", () => {
 				["secrets.scan", { limit: 5 }, true],
 				["tags.backfill", { limit: 10 }],
 				["dedup-keys.backfill", { limit: 10 }],
-				["structured.backfill", { limit: 10, kinds: ["discovery"], overwrite: false }],
 				["refs.backfill", { batchSize: 10 }],
 				["scopes.backfill", { batchSize: 10 }],
 				["session-context.backfill", { batchSize: 10 }],
 				["summary-dedup.backfill", { batchSize: 10 }],
-				["vectors.migrate", { batchSize: 10 }],
 				["report.memory-role", { allProjects: true, includeInactive: false, probes: [] }],
 				["report.role-compare", { baselineDbPath: dbPath, candidateDbPath: dbPath }],
 				["report.artifact", { allProjects: true, includeInactive: false }],
@@ -1100,6 +1208,177 @@ describe("Phase 1 daemon RPC", () => {
 			]);
 		} finally {
 			store.close();
+		}
+	});
+});
+
+describe("T008 capability runtime RPC", () => {
+	it("starts without current in capture-only mode with lexical RPC and no provider or sweeper", async () => {
+		const handle = await core.startDaemon({ dataDir: tempDataDir() });
+		created.push(handle);
+		const event = normalizedEvent("t008-absent-event");
+		const captured = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "t008-absent-capture",
+				method: "POST /v1/events",
+				body: { idempotencyKey: event.idempotencyKey, event },
+			}),
+		);
+		expect(rpcResult(captured)).toMatchObject({ receiptId: expect.any(String) });
+		const lexical = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({
+				id: "t008-absent-lexical",
+				method: "POST /v1/search",
+				body: { requestId: "t008-absent-lexical", mode: "search", query: "t008" },
+			}),
+		);
+		expect(rpcResult(lexical)).toMatchObject({ items: expect.any(Array) });
+		const doctor = doctorCapability(
+			await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({ id: "t008-absent-doctor", method: "GET /v1/doctor" }),
+			),
+		);
+		expect(Reflect.get(doctor, "mode") ?? Reflect.get(doctor, "state")).toBe("capture_only");
+		expect(Reflect.get(doctor, "configurationFingerprint")).toBeNull();
+		expect(featureEnabled(doctor, "provider")).toBe(false);
+		expect(featureEnabled(doctor, "sweeper")).toBe(false);
+		expect(featureEnabled(doctor, "lexical")).toBe(true);
+	});
+
+	it("freezes one valid manifest and reports pending privacy identity after current changes", async () => {
+		const dataDir = tempDataDir();
+		const first = capabilityManifest(
+			"http://127.0.0.1:1234/v1/chat/completions",
+			"t008-first-model",
+		);
+		activateManifest(dataDir, first);
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const second = capabilityManifest(
+			"http://127.0.0.1:1234/v1/chat/completions",
+			"t008-second-model",
+			first.configurationFingerprint,
+		);
+		activateManifest(dataDir, second);
+
+		for (const requestId of ["t008-valid-doctor-1", "t008-valid-doctor-2"]) {
+			const capability = doctorCapability(
+				await core.callDaemonRpc(
+					handle.socketPath,
+					handshake({ id: requestId, method: "GET /v1/doctor" }),
+				),
+			);
+			expect(capability).toMatchObject({
+				configurationFingerprint: first.configurationFingerprint,
+				runtimeReason: "pending_privacy_boundary",
+				summaryProvider: { providerFingerprint: first.summaryProvider.providerFingerprint },
+			});
+			expect(featureEnabled(capability, "provider")).toBe(false);
+			expect(featureEnabled(capability, "sweeper")).toBe(false);
+		}
+	});
+
+	it("keeps writer, RPC, capture, spool, and lexical ready when daemon TLS preflight degrades provider", async () => {
+		const received: Buffer[] = [];
+		const server = await new Promise<import("node:net").Server>((resolveServer) => {
+			const listener = createServer((socket) => {
+				socket.on("data", (chunk) => {
+					received.push(Buffer.from(chunk));
+					socket.destroy();
+				});
+			});
+			listener.listen(0, "127.0.0.1", () => resolveServer(listener));
+		});
+		const address = server.address();
+		if (!address || typeof address === "string") throw new Error("expected TCP test address");
+		const dataDir = tempDataDir();
+		const manifest = capabilityManifest(
+			`https://127.0.0.1:${address.port}/v1/chat/completions`,
+			"t008-tls-model",
+		);
+		activateManifest(dataDir, manifest);
+		let handle: Awaited<ReturnType<typeof core.startDaemon>> | undefined;
+		try {
+			handle = await core.startDaemon({ dataDir });
+			created.push(handle);
+		} finally {
+			await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+		}
+		if (!handle) throw new Error("daemon must survive provider TLS failure");
+
+		const event = normalizedEvent("t008-tls-event");
+		const captured = rpcResult(
+			await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: "t008-tls-capture",
+					method: "POST /v1/events",
+					body: { idempotencyKey: event.idempotencyKey, event },
+				}),
+			),
+		);
+		expect(captured).toMatchObject({ receiptId: expect.any(String) });
+		const health = rpcResult(
+			await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({ id: "t008-tls-health", method: "GET /v1/health" }),
+			),
+		);
+		expect(health).toMatchObject({ status: "ok", spool: { status: expect.any(String) } });
+		const lexical = rpcResult(
+			await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: "t008-tls-lexical",
+					method: "POST /v1/search",
+					body: { requestId: "t008-tls-lexical", mode: "search", query: "t008" },
+				}),
+			),
+		);
+		expect(lexical).toMatchObject({ items: expect.any(Array) });
+		const capability = doctorCapability(
+			await core.callDaemonRpc(
+				handle.socketPath,
+				handshake({ id: "t008-tls-doctor", method: "GET /v1/doctor" }),
+			),
+		);
+		expect(capability).toMatchObject({
+			configurationFingerprint: manifest.configurationFingerprint,
+			runtimeReason: "pending_privacy_boundary",
+			providerHealth: "provider_unavailable",
+			summaryProvider: { providerFingerprint: manifest.summaryProvider.providerFingerprint },
+		});
+		expect(featureEnabled(capability, "provider")).toBe(false);
+		expect(featureEnabled(capability, "lexical")).toBe(true);
+		expect(received.length).toBeGreaterThan(0);
+	});
+
+	it("keeps privacy pending while reporting a rejected TLS trust override", async () => {
+		const dataDir = tempDataDir();
+		const manifest = capabilityManifest(
+			"https://summary.stub.invalid/v1/chat/completions",
+			"t008-trust-override-model",
+		);
+		activateManifest(dataDir, manifest);
+		vi.stubEnv("NODE_TLS_REJECT_UNAUTHORIZED", "0");
+		try {
+			const handle = await core.startDaemon({ dataDir });
+			created.push(handle);
+			const capability = doctorCapability(
+				await core.callDaemonRpc(
+					handle.socketPath,
+					handshake({ id: "t008-trust-override-doctor", method: "GET /v1/doctor" }),
+				),
+			);
+			expect(capability).toMatchObject({
+				runtimeReason: "pending_privacy_boundary",
+				providerHealth: "provider_tls_rejected",
+			});
+		} finally {
+			vi.unstubAllEnvs();
 		}
 	});
 });

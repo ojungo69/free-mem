@@ -4,11 +4,6 @@ import {
 	getSessionExtractionEvalScenario,
 } from "./extraction-eval.js";
 import {
-	buildTieredObserverConfig,
-	decideExtractionReplayTier,
-	type ExtractionReplayTierRoutingInput,
-} from "./extraction-tier-routing.js";
-import {
 	budgetToolEvents,
 	eventToToolEvent,
 	extractAdapterEvent,
@@ -44,13 +39,7 @@ import {
 	shouldPreferRepairedObserverResponse,
 	shouldRepairObserverResponse,
 } from "./ingest-xml-parser.js";
-import {
-	type ObserverClient,
-	ObserverClient as ObserverClientImpl,
-	type ObserverConfig,
-	type ObserverStatus,
-	type ObserverTokenUsage,
-} from "./observer-client.js";
+import type { ObserverClient, ObserverStatus, ObserverTokenUsage } from "./observer-client.js";
 import { resolveProject } from "./project.js";
 import { buildSessionContext } from "./raw-event-flush.js";
 import { isOneOf, trimEndWhere } from "./text-trim.js";
@@ -786,42 +775,4 @@ export async function replayBatchExtraction(
 		observerMaxChars: opts.observerMaxChars ?? observer.maxChars,
 	});
 	return replayPreparedBatch(prepared, observer, null, []);
-}
-
-export function buildTierRoutedReplayObserverConfig(
-	baseObserver: Pick<ObserverClient, "toConfig">,
-	analysis: ExtractionReplayTierRoutingInput,
-): {
-	observer: ObserverConfig;
-	tier: "simple" | "rich";
-	reasons: string[];
-} {
-	const baseConfig = baseObserver.toConfig();
-	const decision = decideExtractionReplayTier(analysis);
-	return {
-		observer: buildTieredObserverConfig(baseConfig, decision),
-		tier: decision.tier,
-		reasons: decision.reasons,
-	};
-}
-
-export async function replayBatchExtractionWithTierRouting(
-	db: ReadOnlyActor | WriterActor,
-	baseConfig: ObserverConfig,
-	opts: {
-		batchId: number;
-		scenarioId: string;
-		maxChars?: number;
-		observerMaxChars?: number;
-		transcriptBudget?: number;
-	},
-): Promise<ExtractionReplayResult> {
-	const baseObserver = new ObserverClientImpl(baseConfig);
-	const prepared = await prepareReplayBatch(db, {
-		...opts,
-		observerMaxChars: opts.observerMaxChars ?? baseObserver.maxChars,
-	});
-	const routed = buildTierRoutedReplayObserverConfig(baseObserver, prepared.analysis);
-	const observer = new ObserverClientImpl(routed.observer);
-	return replayPreparedBatch(prepared, observer, routed.tier, routed.reasons);
 }
