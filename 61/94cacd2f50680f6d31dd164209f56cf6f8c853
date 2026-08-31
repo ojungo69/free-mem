@@ -1,0 +1,29 @@
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_bae614e0dac8dc::t_a829b7b9852bed 16-23,45-47,119-131,212-214,1208-1373
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_bae614e0dac8dc::t_e874cf8d21c0f5 17,1609-1680,2104-2110,2115-2119,2156-2158
+vendor/codemem/packages/core/src/capability-manifest.ts
+  s_bae614e0dac8dc::t_e08a22d3554494 717,721,725-731,752,764
+vendor/codemem/packages/core/src/storage.test.ts
+  s_bae614e0dac8dc::t_352566b6210033 1427-1492
+vendor/codemem/packages/core/src/capability-manifest.test.ts
+  s_bae614e0dac8dc::t_6504b041b26842 317-368
+vendor/codemem/packages/core/src/storage.ts
+  s_bae614e0dac8dc::t_e103b7cd0dd21a 88-96,549-551,553-555,557,559-586,588-590,594-597
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6194cacd2f50680f6d31dd164209f56cf6f8c853",
+  "prompts": {},
+  "sessions": {
+    "s_bae614e0dac8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c7-4a4c-7fc1-a5ee-8fa06562078e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
