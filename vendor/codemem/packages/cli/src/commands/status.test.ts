@@ -176,4 +176,37 @@ describe("status command", () => {
 		expect(rendered).toContain("pending_schema_v21");
 		expect(rendered).toContain("pending_pack_boundary");
 	});
+
+	it("uses safe fallbacks for malformed capability text from doctor RPC", async () => {
+		const capability = {
+			mode: {},
+			configurationFingerprint: {},
+			runtimeReason: {},
+			providerFingerprint: {},
+			schemaReadiness: {},
+			packReadiness: {},
+			summaryProvider: { providerFingerprint: {} },
+		};
+		const operationalStatus = {
+			maintenance: { state: "idle", running: 0, failed: 0 },
+			semantic_index: { state: "healthy", vector_table_present: true },
+			raw_events: { available: true, pending: 0, failed_batches: 0 },
+			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok" } }
+					: { ok: true, result: { diagnostics: { operationalStatus, capability } } },
+		});
+
+		const rendered = renderStatusReport(await collectStatusReport({}, deps));
+
+		expect(rendered).toContain("Capability:     unknown");
+		expect(rendered).toContain("Manifest:       none");
+		expect(rendered).toContain("Provider:       none");
+		expect(rendered).toContain("Schema:         unknown");
+		expect(rendered).toContain("Pack:           unknown");
+		expect(rendered).not.toContain("[object Object]");
+	});
 });

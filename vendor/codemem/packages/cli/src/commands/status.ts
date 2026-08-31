@@ -384,6 +384,10 @@ export async function collectStatusReport(
 	};
 }
 
+function stringOrFallback(value: unknown, fallback: string): string {
+	return typeof value === "string" ? value : fallback;
+}
+
 export function renderStatusReport(report: OperationalStatusReport): string {
 	const viewerPidSuffix = report.runtime.pid ? ` (pid ${report.runtime.pid})` : "";
 	const lines = [
@@ -405,11 +409,17 @@ export function renderStatusReport(report: OperationalStatusReport): string {
 				? (provider as Record<string, unknown>).providerFingerprint
 				: null;
 		lines.push(
-			`Capability:     ${String(report.capability.runtimeReason ?? report.capability.mode ?? "unknown")}`,
-			`Manifest:       ${String(report.capability.configurationFingerprint ?? "none")}`,
-			`Provider:       ${String(providerFingerprint ?? report.capability.providerFingerprint ?? "none")}`,
-			`Schema:         ${String(report.capability.schemaReadiness ?? "unknown")}`,
-			`Pack:           ${String(report.capability.packReadiness ?? "unknown")}`,
+			`Capability:     ${stringOrFallback(
+				report.capability.runtimeReason,
+				stringOrFallback(report.capability.mode, "unknown"),
+			)}`,
+			`Manifest:       ${stringOrFallback(report.capability.configurationFingerprint, "none")}`,
+			`Provider:       ${stringOrFallback(
+				providerFingerprint,
+				stringOrFallback(report.capability.providerFingerprint, "none"),
+			)}`,
+			`Schema:         ${stringOrFallback(report.capability.schemaReadiness, "unknown")}`,
+			`Pack:           ${stringOrFallback(report.capability.packReadiness, "unknown")}`,
 		);
 	}
 	if (report.attention.length > 0) {

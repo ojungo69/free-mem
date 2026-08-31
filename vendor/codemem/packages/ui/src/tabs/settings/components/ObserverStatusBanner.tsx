@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { formatAuthMethod, formatCredentialSources, formatFailureTimestamp } from "../data/format";
 
 export type ObserverStatusShape = {
@@ -42,44 +43,53 @@ export function ObserverStatusBanner({ status }: { status: ObserverStatusShape |
 	const credentialEntries = Object.entries(available).filter(
 		([, creds]) => creds && typeof creds === "object",
 	);
+	let primaryStatus: ComponentChildren;
+	if (pending) {
+		let pendingMessage = "Configured — waiting for privacy safeguards";
+		if (providerHealth === "provider_tls_rejected") {
+			pendingMessage =
+				"Configured — provider trust check failed; privacy safeguards are still pending";
+		} else if (providerHealth === "provider_unavailable") {
+			pendingMessage = "Configured — provider unavailable; privacy safeguards are still pending";
+		}
+		primaryStatus = (
+			<>
+				<div className="status-label">Observer status</div>
+				<div className="status-active">{pendingMessage}</div>
+			</>
+		);
+	} else if (active) {
+		primaryStatus = (
+			<>
+				<div className="status-label">Active observer</div>
+				<div className="status-active">
+					{String(active.provider || "unknown")} → {String(active.model || "")} via{" "}
+					{formatAuthMethod(active.auth?.method || "none")}{" "}
+					<span
+						aria-label={active.auth?.token_present === true ? "token present" : "token missing"}
+						className={active.auth?.token_present === true ? "cred-ok" : "cred-none"}
+						role="img"
+					>
+						<i
+							aria-hidden="true"
+							data-lucide={active.auth?.token_present === true ? "check" : "x"}
+						/>
+					</span>
+				</div>
+			</>
+		);
+	} else {
+		primaryStatus = (
+			<>
+				<div className="status-label">Observer status</div>
+				<div className="status-active">Not yet initialized (waiting for first session)</div>
+			</>
+		);
+	}
 
 	return (
 		<div id="observerStatusBanner" className="observer-status-banner">
-			{pending ? (
-				<>
-					<div className="status-label">Observer status</div>
-					<div className="status-active">
-						{providerHealth === "provider_tls_rejected"
-							? "Configured — provider trust check failed; privacy safeguards are still pending"
-							: providerHealth === "provider_unavailable"
-								? "Configured — provider unavailable; privacy safeguards are still pending"
-								: "Configured — waiting for privacy safeguards"}
-					</div>
-				</>
-			) : active ? (
-				<>
-					<div className="status-label">Active observer</div>
-					<div className="status-active">
-						{String(active.provider || "unknown")} → {String(active.model || "")} via{" "}
-						{formatAuthMethod(active.auth?.method || "none")}{" "}
-						<span
-							aria-label={active.auth?.token_present === true ? "token present" : "token missing"}
-							className={active.auth?.token_present === true ? "cred-ok" : "cred-none"}
-							role="img"
-						>
-							<i
-								aria-hidden="true"
-								data-lucide={active.auth?.token_present === true ? "check" : "x"}
-							/>
-						</span>
-					</div>
-				</>
-			) : (
-				<>
-					<div className="status-label">Observer status</div>
-					<div className="status-active">Not yet initialized (waiting for first session)</div>
-				</>
-			)}
+			{primaryStatus}
 
 			{credentialEntries.length ? (
 				<>

@@ -48,6 +48,16 @@ export type InspectedRegularFile =
 			ino: number;
 	  };
 
+function classifyRegularFileOpenFailure(path: string, error: unknown): "absent" | "invalid" {
+	if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "invalid";
+	try {
+		lstatSync(path);
+	} catch (currentError) {
+		return (currentError as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "invalid";
+	}
+	return "invalid";
+}
+
 export function inspectRegularFile(
 	path: string,
 	maxBytes = MAX_CAPABILITY_SETUP_FILE_BYTES,
@@ -59,15 +69,7 @@ export function inspectRegularFile(
 	try {
 		descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { state: "invalid" };
-		try {
-			lstatSync(path);
-			return { state: "invalid" };
-		} catch (currentError) {
-			return (currentError as NodeJS.ErrnoException).code === "ENOENT"
-				? { state: "absent" }
-				: { state: "invalid" };
-		}
+		return { state: classifyRegularFileOpenFailure(path, error) };
 	}
 	try {
 		const opened = fstatSync(descriptor);

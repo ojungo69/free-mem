@@ -513,7 +513,7 @@ export function readValidatedCapabilityActivationReceipt(
 		ids.add(candidate.id);
 		paths.add(candidate.path);
 		const current = readCapabilitySetupTargetState(candidate.path);
-		if (!current || current.sha256 !== candidate.fingerprint) {
+		if (current?.sha256 !== candidate.fingerprint) {
 			throw new Error("Capability activation receipt target hash mismatch.");
 		}
 		return {
@@ -573,7 +573,7 @@ export function readValidatedCapabilityActivationReceipt(
 	if (
 		!isDeepStrictEqual(
 			[...targets].sort((left, right) => byId(left).localeCompare(byId(right))),
-			installTargets.sort((left, right) =>
+			installTargets.toSorted((left, right) =>
 				byId(left as { id: string }).localeCompare(byId(right as { id: string })),
 			),
 		)
@@ -730,7 +730,7 @@ export function recoverCapabilitySetupTransaction(
 		throw new Error("Capability setup journal recovery conflict.");
 	}
 	const initial = journal.targets.map((target) => readCapabilitySetupTargetState(target.path));
-	if (initial.some((state) => state === null)) {
+	if (initial.includes(null)) {
 		throw new Error("Capability setup journal recovery conflict.");
 	}
 	const resumptions = (initial as CapabilitySetupFileState[]).flatMap((state, index) => {

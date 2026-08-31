@@ -39,6 +39,39 @@ describe("ObserverStatusBanner", () => {
 		expect(mount.querySelector('[aria-label="token missing"]')).toBeNull();
 	});
 
+	it.each([
+		[
+			"provider TLS rejection",
+			"provider_tls_rejected",
+			"Configured — provider trust check failed; privacy safeguards are still pending",
+		],
+		[
+			"provider unavailability",
+			"provider_unavailable",
+			"Configured — provider unavailable; privacy safeguards are still pending",
+		],
+	])("shows pending privacy state for %s", (_name, providerHealth, expected) => {
+		mount = document.createElement("div");
+		document.body.appendChild(mount);
+		act(() => {
+			render(
+				<ObserverStatusBanner
+					status={{
+						active: null,
+						capability: {
+							configurationFingerprint: "sha256:configured-observer",
+							providerEnabled: false,
+							providerHealth,
+						},
+					}}
+				/>,
+				mount as HTMLDivElement,
+			);
+		});
+
+		expect(mount.textContent).toContain(expected);
+	});
+
 	it("does not call capture-only mode configured while its provider is disabled", () => {
 		mount = document.createElement("div");
 		document.body.appendChild(mount);

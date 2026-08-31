@@ -292,10 +292,15 @@ function canonicalJson(value: unknown): string {
 		return JSON.stringify(Object.is(value, -0) ? 0 : value) as string;
 	}
 	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-	const entries = Object.entries(value as JsonRecord).toSorted(([left], [right]) =>
-		left < right ? -1 : left > right ? 1 : 0,
-	);
-	return `{${entries.map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`).join(",")}}`;
+	const entries = Object.entries(value as JsonRecord).toSorted(([left], [right]) => {
+		if (left < right) return -1;
+		if (left > right) return 1;
+		return 0;
+	});
+	const body = entries
+		.map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+		.join(",");
+	return `{${body}}`;
 }
 
 function fingerprint(domain: string, value: unknown): string {

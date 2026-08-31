@@ -16,12 +16,12 @@ export function configReadRoutes(deps?: { getCapabilitySnapshot?: () => Record<s
 			profile && typeof profile === "object" && !Array.isArray(profile)
 				? (profile as Record<string, unknown>)
 				: null;
-		const providerName =
-			providerRecord?.wireProtocol === "anthropic_messages_v1"
-				? "anthropic"
-				: providerRecord?.wireProtocol === "openai_chat_completions_v1"
-					? "openai"
-					: null;
+		let providerName: "anthropic" | "openai" | null = null;
+		if (providerRecord?.wireProtocol === "anthropic_messages_v1") {
+			providerName = "anthropic";
+		} else if (providerRecord?.wireProtocol === "openai_chat_completions_v1") {
+			providerName = "openai";
+		}
 		const effective = providerRecord
 			? {
 					observer_provider: providerName,

@@ -1336,45 +1336,27 @@ function preflightOpencode(force: boolean, runtime: SetupRuntime, configPath: st
 	return false;
 }
 
-function preflightCodex(
-	force: boolean,
-	runtime: SetupRuntime,
+function readCodexConfigForPreflight(
+	configPath: string,
 	inputSnapshots?: ReadonlyMap<string, SetupFileSnapshot>,
-): boolean {
-	const codexHome = codexConfigDir();
-	const configPath = join(codexHome, "config.toml");
-	let existing = "";
+): string | null {
 	try {
 		const configSnapshot = inputSnapshots?.get(resolve(configPath));
-		existing = configSnapshot
-			? snapshotText(configSnapshot)
-			: existsSync(configPath)
-				? readFileSync(configPath, "utf8")
-				: "";
+		if (configSnapshot) return snapshotText(configSnapshot);
+		if (!existsSync(configPath)) return "";
+		return readFileSync(configPath, "utf8");
 	} catch (error) {
 		p.log.error(
 			`Failed to read ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
 		);
-		return false;
+		return null;
 	}
-	const current = codexMcpTable(existing)?.block;
-	if (hasUnsupportedCodexMcpLayout(existing)) {
-		p.log.error(
-			`Refusing to replace an unsupported codemem MCP layout in ${configPath}; normalize or remove it first.`,
-		);
-		return false;
-	}
-	if (
-		current &&
-		!force &&
-		!sameCodexMcpBlock(current, runtime) &&
-		!managedLegacyCodexBlock(current)
-	) {
-		p.log.error(`Refusing to replace a custom codemem MCP entry in ${configPath}; use --force.`);
-		return false;
-	}
+}
 
-	const hooksPath = join(codexHome, "hooks.json");
+function preflightCodexHooks(
+	hooksPath: string,
+	inputSnapshots?: ReadonlyMap<string, SetupFileSnapshot>,
+): boolean {
 	const hooksSnapshot = inputSnapshots?.get(resolve(hooksPath));
 	if (hooksSnapshot?.contents === null || (!hooksSnapshot && !existsSync(hooksPath))) return true;
 	let config: Record<string, unknown>;
@@ -1406,6 +1388,35 @@ function preflightCodex(
 		}
 	}
 	return true;
+}
+
+function preflightCodex(
+	force: boolean,
+	runtime: SetupRuntime,
+	inputSnapshots?: ReadonlyMap<string, SetupFileSnapshot>,
+): boolean {
+	const codexHome = codexConfigDir();
+	const configPath = join(codexHome, "config.toml");
+	const existing = readCodexConfigForPreflight(configPath, inputSnapshots);
+	if (existing === null) return false;
+	const current = codexMcpTable(existing)?.block;
+	if (hasUnsupportedCodexMcpLayout(existing)) {
+		p.log.error(
+			`Refusing to replace an unsupported codemem MCP layout in ${configPath}; normalize or remove it first.`,
+		);
+		return false;
+	}
+	if (
+		current &&
+		!force &&
+		!sameCodexMcpBlock(current, runtime) &&
+		!managedLegacyCodexBlock(current)
+	) {
+		p.log.error(`Refusing to replace a custom codemem MCP entry in ${configPath}; use --force.`);
+		return false;
+	}
+
+	return preflightCodexHooks(join(codexHome, "hooks.json"), inputSnapshots);
 }
 
 /**

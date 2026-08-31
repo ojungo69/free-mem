@@ -42,13 +42,14 @@ function capabilityObserverStatus(capability: Record<string, unknown>) {
 		credential && typeof credential === "object" && !Array.isArray(credential)
 			? (credential as Record<string, unknown>).kind
 			: "none";
+	let providerName: "anthropic" | "openai" | null = null;
+	if (choice.wireProtocol === "anthropic_messages_v1") {
+		providerName = "anthropic";
+	} else if (choice.wireProtocol === "openai_chat_completions_v1") {
+		providerName = "openai";
+	}
 	return {
-		provider:
-			choice.wireProtocol === "anthropic_messages_v1"
-				? "anthropic"
-				: choice.wireProtocol === "openai_chat_completions_v1"
-					? "openai"
-					: null,
+		provider: providerName,
 		model: typeof choice.modelId === "string" ? choice.modelId : null,
 		runtime: "api_http",
 		auth: { method: credentialKind, token_present: false },

@@ -351,6 +351,7 @@ describe("T008 capability startup boundary", () => {
 		try {
 			socket = await accepted;
 			const spoolLock = core.acquireSpoolLock(dataDir, 1);
+			expect(spoolLock).toBeDefined();
 			spoolLock.close();
 			socket.destroy();
 			handle = await pending;

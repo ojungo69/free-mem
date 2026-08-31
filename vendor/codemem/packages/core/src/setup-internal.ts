@@ -95,7 +95,7 @@ export async function withCapabilitySetupTransaction<T>(input: {
 		if (!journalWritten) throw new Error("Capability setup journal was not written.");
 		if (!finalized) throw new Error("Capability setup transaction was not finalized.");
 		const active = readCurrentCapabilityManifest(layout);
-		if (!active || active.configurationFingerprint !== input.manifest.configurationFingerprint) {
+		if (active?.configurationFingerprint !== input.manifest.configurationFingerprint) {
 			throw new Error("Capability setup did not publish the disclosed manifest.");
 		}
 		if (!readValidatedCapabilityActivationReceipt(layout, active)) {
