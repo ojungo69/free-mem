@@ -14,7 +14,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as p from "@clack/prompts";
 import {
@@ -1606,6 +1606,78 @@ type PlannedSetupFile = {
 
 type PlannedManagedTarget = { id: string; path: string };
 
+const MANAGED_TARGET_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const MANAGED_TARGET_FINGERPRINT = /^[a-f0-9]{64}$/;
+
+function preservedCompatibilityTargets(
+	snapshot: SetupFileSnapshot,
+	requiredTargets: readonly PlannedManagedTarget[],
+): Array<PlannedManagedTarget & { fingerprint: string }> {
+	if (snapshot.contents === null) return [];
+	let value: unknown;
+	try {
+		value = JSON.parse(snapshotText(snapshot));
+	} catch (error) {
+		throw new Error("Install manifest compatibility target inventory is invalid.", {
+			cause: error,
+		});
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("Install manifest compatibility target inventory is invalid.");
+	}
+	const manifest = value as { version?: unknown; blocks?: unknown; targets?: unknown };
+	if (
+		Object.keys(manifest).some((key) => !["version", "blocks", "targets"].includes(key)) ||
+		manifest.version !== 1 ||
+		!Array.isArray(manifest.blocks) ||
+		manifest.blocks.length !== 0 ||
+		(manifest.targets !== undefined && !Array.isArray(manifest.targets))
+	) {
+		throw new Error("Install manifest compatibility target inventory is invalid.");
+	}
+	const requiredIds = new Set(requiredTargets.map((target) => target.id));
+	const requiredPaths = new Set(requiredTargets.map((target) => resolve(target.path)));
+	const ids = new Set<string>();
+	const paths = new Set<string>();
+	const targets = (manifest.targets ?? []) as unknown[];
+	if (targets.length > 16) {
+		throw new Error("Install manifest compatibility target inventory is invalid.");
+	}
+	const validated = targets.map((target) => {
+		if (!target || typeof target !== "object" || Array.isArray(target)) {
+			throw new Error("Install manifest compatibility target inventory is invalid.");
+		}
+		const candidate = target as { id?: unknown; path?: unknown; fingerprint?: unknown };
+		const targetKeys = Object.keys(candidate);
+		const path = typeof candidate.path === "string" ? resolve(candidate.path) : "";
+		if (
+			targetKeys.length !== 3 ||
+			!targetKeys.every((key) => ["id", "path", "fingerprint"].includes(key)) ||
+			typeof candidate.id !== "string" ||
+			!MANAGED_TARGET_ID.test(candidate.id) ||
+			typeof candidate.path !== "string" ||
+			!isAbsolute(candidate.path) ||
+			typeof candidate.fingerprint !== "string" ||
+			!MANAGED_TARGET_FINGERPRINT.test(candidate.fingerprint) ||
+			ids.has(candidate.id) ||
+			paths.has(path)
+		) {
+			throw new Error("Install manifest compatibility target inventory is invalid.");
+		}
+		ids.add(candidate.id);
+		paths.add(path);
+		return { id: candidate.id, path, fingerprint: candidate.fingerprint };
+	});
+	const compatibilityTargets = validated.filter((target) => !requiredIds.has(target.id));
+	if (
+		compatibilityTargets.length + requiredTargets.length > 16 ||
+		compatibilityTargets.some((target) => requiredPaths.has(target.path))
+	) {
+		throw new Error("Install manifest compatibility target inventory is invalid.");
+	}
+	return compatibilityTargets;
+}
+
 function plannedFile(path: string, contents: string | Uint8Array, mode = 0o600): PlannedSetupFile {
 	return { path: resolve(path), contents: Buffer.from(contents), mode };
 }
@@ -2029,11 +2101,22 @@ async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<bo
 					path: resolve(target.path),
 					fingerprint: managedTargetFingerprint(target.path, files),
 				}));
+				const installManifestSnapshot = captureSetupFileSnapshots([
+					layout.installManifestPath,
+				])[0] as SetupFileSnapshot;
+				const compatibilityTargets = preservedCompatibilityTargets(
+					installManifestSnapshot,
+					managedTargets,
+				);
 				files.set(
 					resolve(layout.installManifestPath),
 					plannedFile(
 						layout.installManifestPath,
-						`${JSON.stringify({ version: 1, blocks: [], targets: managedTargets }, null, 2)}\n`,
+						`${JSON.stringify(
+							{ version: 1, blocks: [], targets: [...managedTargets, ...compatibilityTargets] },
+							null,
+							2,
+						)}\n`,
 					),
 				);
 				files.set(
@@ -2070,10 +2153,9 @@ async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<bo
 				);
 				const capturedSnapshots = captureSetupFileSnapshots(orderedFiles.map((file) => file.path));
 				const inputSnapshots = new Map(
-					[...claude.inputSnapshots, ...codex.inputSnapshots].map((snapshot) => [
-						snapshot.path,
-						snapshot,
-					]),
+					[...claude.inputSnapshots, ...codex.inputSnapshots, installManifestSnapshot].map(
+						(snapshot) => [snapshot.path, snapshot],
+					),
 				);
 				for (const snapshot of inputSnapshots.values()) {
 					if (!setupFileSnapshotUnchanged(snapshot)) {

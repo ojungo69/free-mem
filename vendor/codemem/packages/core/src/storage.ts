@@ -85,6 +85,15 @@ const MAX_CAPABILITY_SETUP_TOTAL_STATE_BASE64_CHARS = 24_000_000;
 const MAX_CAPABILITY_SETUP_JOURNAL_BYTES = 32 * 1024 * 1024;
 const MAX_CAPABILITY_CURRENT_POINTER_BYTES = 128;
 const MAX_CAPABILITY_MANIFEST_GENERATION_BYTES = 1024 * 1024;
+const CAPABILITY_ACTIVATION_TARGET_IDS = [
+	"cli-runtime",
+	"claude-mcp",
+	"claude-hooks",
+	"claude-hook-runtime",
+	"codex-mcp",
+	"codex-hooks",
+	"codex-hook-runtime",
+] as const;
 const activeCapabilityLeases = new WeakMap<CapabilityLifecycleLease, string>();
 
 export function ensureStorageLayout(layout: StorageLayout): void {
@@ -536,49 +545,55 @@ export function readValidatedCapabilityActivationReceipt(
 		throw new Error("Capability install manifest is malformed.");
 	}
 	const install = installValue as { version?: unknown; blocks?: unknown; targets?: unknown };
-	if (install.version !== 1 || !Array.isArray(install.blocks) || !Array.isArray(install.targets)) {
+	if (
+		!hasOnlyKeys(installValue, ["version", "blocks", "targets"]) ||
+		install.version !== 1 ||
+		!Array.isArray(install.blocks) ||
+		install.blocks.length !== 0 ||
+		!Array.isArray(install.targets) ||
+		install.targets.length < CAPABILITY_ACTIVATION_TARGET_IDS.length ||
+		install.targets.length > 16
+	) {
 		throw new Error("Capability install manifest is malformed.");
 	}
-	const requiredIds = new Set([
-		"cli-runtime",
-		"claude-mcp",
-		"claude-hooks",
-		"claude-hook-runtime",
-		"codex-mcp",
-		"codex-hooks",
-		"codex-hook-runtime",
-	]);
-	const installTargets = install.targets as Array<Record<string, unknown>>;
+	const installIds = new Set<string>();
+	const installPaths = new Set<string>();
+	const installTargets = (install.targets as Array<Record<string, unknown>>).map((target) => {
+		if (
+			!target ||
+			typeof target !== "object" ||
+			Array.isArray(target) ||
+			!hasOnlyKeys(target, ["id", "path", "fingerprint"]) ||
+			typeof target.id !== "string" ||
+			!OPERATION_ID.test(target.id) ||
+			typeof target.path !== "string" ||
+			!isAbsolute(target.path) ||
+			typeof target.fingerprint !== "string" ||
+			!SHA256.test(target.fingerprint) ||
+			installIds.has(target.id) ||
+			installPaths.has(resolve(target.path))
+		) {
+			throw new Error("Capability install manifest target inventory is invalid.");
+		}
+		installIds.add(target.id);
+		installPaths.add(resolve(target.path));
+		return {
+			id: target.id,
+			path: target.path,
+			fingerprint: target.fingerprint,
+		};
+	});
+	const requiredReceiptIds = new Set<string>(CAPABILITY_ACTIVATION_TARGET_IDS);
 	if (
-		install.blocks.length !== 0 ||
-		installTargets.length !== requiredIds.size ||
-		installTargets.some(
-			(target) =>
-				!target ||
-				typeof target !== "object" ||
-				Array.isArray(target) ||
-				!hasOnlyKeys(target, ["id", "path", "fingerprint"]) ||
-				typeof target.id !== "string" ||
-				!requiredIds.delete(target.id) ||
-				typeof target.path !== "string" ||
-				!isAbsolute(target.path) ||
-				typeof target.fingerprint !== "string" ||
-				!SHA256.test(target.fingerprint),
-		) ||
-		requiredIds.size !== 0
-	) {
-		throw new Error("Capability install manifest target inventory is invalid.");
-	}
-	const byId = (target: { id: string }) => target.id;
-	if (
-		!isDeepStrictEqual(
-			[...targets].sort((left, right) => byId(left).localeCompare(byId(right))),
-			installTargets.toSorted((left, right) =>
-				byId(left as { id: string }).localeCompare(byId(right as { id: string })),
-			),
-		)
+		targets.length !== CAPABILITY_ACTIVATION_TARGET_IDS.length ||
+		targets.some((target) => !requiredReceiptIds.delete(target.id)) ||
+		requiredReceiptIds.size !== 0
 	) {
 		throw new Error("Capability activation receipt does not match the install manifest.");
+	}
+	const installById = new Map(installTargets.map((target) => [target.id, target]));
+	if (targets.some((target) => !isDeepStrictEqual(target, installById.get(target.id)))) {
+		throw new Error("Capability install manifest target inventory is invalid.");
 	}
 	return {
 		version: 1,

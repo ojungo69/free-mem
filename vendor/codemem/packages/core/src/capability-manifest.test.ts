@@ -314,6 +314,58 @@ describe("Slice 1 provider TLS preflight", () => {
 		}
 	});
 
+	it("enforces the absolute native TLS deadline despite socket activity", async () => {
+		const preflightProviderTls = publicFunction<PreflightProviderTls>("preflightProviderTls");
+		vi.useFakeTimers();
+		let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
+		const socket = Object.assign(new EventEmitter(), {
+			destroy: vi.fn(),
+			setTimeout: vi.fn(),
+		});
+		socket.setTimeout.mockImplementation((timeoutMs: number) => {
+			const resetInactivityTimer = () => {
+				if (inactivityTimer) clearTimeout(inactivityTimer);
+				inactivityTimer = setTimeout(() => socket.emit("timeout"), timeoutMs);
+			};
+			socket.on("activity", resetInactivityTimer);
+			resetInactivityTimer();
+			return socket;
+		});
+		let connectOptions: JsonObject | undefined;
+		nativeTlsConnect.run = (options) => {
+			connectOptions = options as JsonObject;
+			return socket;
+		};
+
+		try {
+			const rejection = expect(
+				preflightProviderTls(localProvider, { environment: {} }),
+			).rejects.toMatchObject({ reason: "provider_unavailable" });
+			for (let second = 0; second < 4; second++) {
+				await vi.advanceTimersByTimeAsync(1_000);
+				socket.emit("activity");
+			}
+			await vi.advanceTimersByTimeAsync(999);
+			expect(socket.destroy).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(1);
+			await rejection;
+			expect(connectOptions).toEqual({
+				host: "127.0.0.1",
+				port: 1234,
+				rejectUnauthorized: true,
+			});
+			expect(socket.destroy).toHaveBeenCalledOnce();
+
+			await vi.runAllTimersAsync();
+			expect(socket.destroy).toHaveBeenCalledOnce();
+		} finally {
+			nativeTlsConnect.run = undefined;
+			if (inactivityTimer) clearTimeout(inactivityTimer);
+			vi.useRealTimers();
+		}
+	});
+
 	it("passes only endpoint identity and fixed TLS policy to the connector", async () => {
 		const preflightProviderTls = publicFunction<PreflightProviderTls>("preflightProviderTls");
 		let observed: Parameters<TlsPreflightConnector>[0] | undefined;

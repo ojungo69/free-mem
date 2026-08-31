@@ -714,12 +714,21 @@ async function nativeTlsPreflight(input: TlsPreflightConnectorInput) {
 			rejectUnauthorized: true,
 		});
 		let settled = false;
+		let absoluteDeadline: ReturnType<typeof setTimeout> | undefined;
 		const finish = (error?: Error) => {
 			if (settled) return;
 			settled = true;
+			if (absoluteDeadline !== undefined) clearTimeout(absoluteDeadline);
 			socket.destroy();
 			if (error) rejectPreflight(error);
 		};
+		absoluteDeadline = setTimeout(
+			() =>
+				finish(
+					new ProviderTlsPreflightError("provider_unavailable", "Provider preflight timed out."),
+				),
+			input.timeoutMs,
+		);
 		socket.setTimeout(input.timeoutMs);
 		socket.once("timeout", () =>
 			finish(
@@ -740,6 +749,7 @@ async function nativeTlsPreflight(input: TlsPreflightConnectorInput) {
 			);
 		});
 		socket.once("secureConnect", () => {
+			if (settled) return;
 			const certificate = socket.getPeerCertificate(true);
 			const raw = certificate.raw;
 			if (!socket.authorized || !raw) {
@@ -751,8 +761,7 @@ async function nativeTlsPreflight(input: TlsPreflightConnectorInput) {
 				);
 				return;
 			}
-			settled = true;
-			socket.destroy();
+			finish();
 			resolvePreflight({
 				chainVerified: true,
 				hostnameVerified: true,

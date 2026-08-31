@@ -1424,6 +1424,72 @@ describe("Slice 1 capability storage", () => {
 		expect(
 			storage.readValidatedCapabilityActivationReceipt(layout, baseManifest as never),
 		).toMatchObject({ configurationFingerprint: fingerprint });
+		const compatibilityPath = join(layout.dataDir, "opencode.jsonc");
+		writeFileSync(compatibilityPath, '{"mcp":{}}\n', { mode: 0o600 });
+		const compatibilityTarget = {
+			id: "opencode-mcp",
+			path: compatibilityPath,
+			fingerprint: storage.sha256File(compatibilityPath),
+		};
+		writeFileSync(
+			layout.installManifestPath,
+			`${JSON.stringify({
+				version: 1,
+				blocks: [],
+				targets: [...targets, compatibilityTarget],
+			})}\n`,
+			{ mode: 0o600 },
+		);
+		expect(
+			storage.readValidatedCapabilityActivationReceipt(layout, baseManifest as never),
+		).toMatchObject({ configurationFingerprint: fingerprint, targets });
+		writeFileSync(compatibilityPath, '{"mcp":{"external":true}}\n', { mode: 0o600 });
+		expect(
+			storage.readValidatedCapabilityActivationReceipt(layout, baseManifest as never),
+		).toMatchObject({ configurationFingerprint: fingerprint, targets });
+
+		const otherCompatibilityPath = join(layout.dataDir, "opencode-plugin.js");
+		writeFileSync(otherCompatibilityPath, "export {};\n", { mode: 0o600 });
+		const otherCompatibilityTarget = {
+			id: "opencode-plugin",
+			path: otherCompatibilityPath,
+			fingerprint: storage.sha256File(otherCompatibilityPath),
+		};
+		for (const [name, compatibilityTargets] of [
+			["malformed", [{ ...compatibilityTarget, fingerprint: "not-a-sha256" }]],
+			[
+				"duplicate id",
+				[compatibilityTarget, { ...otherCompatibilityTarget, id: compatibilityTarget.id }],
+			],
+			[
+				"duplicate extra path",
+				[compatibilityTarget, { ...otherCompatibilityTarget, path: compatibilityTarget.path }],
+			],
+			[
+				"required path conflict",
+				[{ ...compatibilityTarget, path: targets[0]?.path, fingerprint: targets[0]?.fingerprint }],
+			],
+		] as const) {
+			writeFileSync(
+				layout.installManifestPath,
+				`${JSON.stringify({
+					version: 1,
+					blocks: [],
+					targets: [...targets, ...compatibilityTargets],
+				})}\n`,
+				{ mode: 0o600 },
+			);
+			expect(
+				() => storage.readValidatedCapabilityActivationReceipt(layout, baseManifest as never),
+				name,
+			).toThrow(/install manifest target inventory/i);
+		}
+
+		writeFileSync(
+			layout.installManifestPath,
+			`${JSON.stringify({ version: 1, blocks: [], targets })}\n`,
+			{ mode: 0o600 },
+		);
 		writeFileSync(targets[0]?.path as string, "external edit\n", { mode: 0o600 });
 		expect(() =>
 			storage.readValidatedCapabilityActivationReceipt(layout, baseManifest as never),

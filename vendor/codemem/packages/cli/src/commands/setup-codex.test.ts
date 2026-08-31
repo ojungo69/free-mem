@@ -13,7 +13,14 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { acquireSpoolLock, resolveRuntimeDataDir, startDaemon } from "@codemem/core";
+import {
+	acquireSpoolLock,
+	readCurrentCapabilityManifest,
+	readValidatedCapabilityActivationReceipt,
+	resolveRuntimeDataDir,
+	resolveStorageLayout,
+	startDaemon,
+} from "@codemem/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildCodememClaudeHookGroups,
@@ -35,6 +42,9 @@ import {
 const setupSnapshotRace = vi.hoisted(() => ({
 	path: "",
 	replacementPath: "",
+	betweenSnapshotPath: "",
+	openCount: 0,
+	mutateOnOpen: 0,
 	afterRename: "",
 	afterTempWrite: "",
 	beforeLink: "",
@@ -106,6 +116,19 @@ vi.mock("node:fs", async (importOriginal) => {
 		},
 		openSync(...args: Parameters<typeof actual.openSync>) {
 			const descriptor = actual.openSync(...args);
+			if (String(args[0]) === setupSnapshotRace.betweenSnapshotPath) {
+				setupSnapshotRace.openCount += 1;
+				if (setupSnapshotRace.openCount === setupSnapshotRace.mutateOnOpen) {
+					actual.writeFileSync(
+						setupSnapshotRace.betweenSnapshotPath,
+						setupSnapshotRace.mutationText,
+					);
+					setupSnapshotRace.betweenSnapshotPath = "";
+					setupSnapshotRace.openCount = 0;
+					setupSnapshotRace.mutateOnOpen = 0;
+					setupSnapshotRace.mutationText = "";
+				}
+			}
 			if (String(args[0]) === setupSnapshotRace.path) {
 				actual.renameSync(setupSnapshotRace.replacementPath, setupSnapshotRace.path);
 				setupSnapshotRace.path = "";
@@ -186,6 +209,9 @@ beforeEach(() => {
 afterEach(() => {
 	setupSnapshotRace.path = "";
 	setupSnapshotRace.replacementPath = "";
+	setupSnapshotRace.betweenSnapshotPath = "";
+	setupSnapshotRace.openCount = 0;
+	setupSnapshotRace.mutateOnOpen = 0;
 	setupSnapshotRace.afterRename = "";
 	setupSnapshotRace.afterTempWrite = "";
 	setupSnapshotRace.beforeLink = "";
@@ -1177,6 +1203,172 @@ describe("T007 Slice 1 setup activation", () => {
 			]),
 		);
 		expect(targetIds.some((id) => id.startsWith("opencode"))).toBe(false);
+	});
+
+	it("keeps the seven-target receipt valid when OpenCode compatibility setup runs afterward", async () => {
+		const dataDir = join(codexHome, "slice1-then-opencode-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const receiptBefore = readFileSync(layout.capabilityActivationReceiptPath, "utf8");
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+
+		expect(process.exitCode).toBeUndefined();
+		expect(readFileSync(layout.capabilityActivationReceiptPath, "utf8")).toBe(receiptBefore);
+		const receipt = JSON.parse(receiptBefore) as { targets: Array<{ id: string }> };
+		expect(receipt.targets.map((target) => target.id).sort()).toEqual([
+			"claude-hook-runtime",
+			"claude-hooks",
+			"claude-mcp",
+			"cli-runtime",
+			"codex-hook-runtime",
+			"codex-hooks",
+			"codex-mcp",
+		]);
+		const install = JSON.parse(readFileSync(layout.installManifestPath, "utf8")) as {
+			targets: Array<{ id: string }>;
+		};
+		expect(install.targets.map((target) => target.id).sort()).toEqual([
+			"claude-hook-runtime",
+			"claude-hooks",
+			"claude-mcp",
+			"cli-runtime",
+			"codex-hook-runtime",
+			"codex-hooks",
+			"codex-mcp",
+			"opencode-mcp",
+			"opencode-plugin",
+			"opencode-plugin-compat",
+			"opencode-plugin-source",
+		]);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)?.targets).toHaveLength(
+			7,
+		);
+	});
+
+	it("preserves OpenCode ownership without reading it as a Slice 1 configuration source", async () => {
+		const dataDir = join(codexHome, "opencode-then-slice1-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		const layout = resolveStorageLayout(dataDir);
+		const opencodeConfigPath = join(codexHome, ".config", "opencode", "opencode.jsonc");
+		const opencodeWrapperPath = join(codexHome, ".config", "opencode", "plugins", "codemem.js");
+		const opencodeBefore = new Map([
+			[opencodeConfigPath, readFileSync(opencodeConfigPath)],
+			[opencodeWrapperPath, readFileSync(opencodeWrapperPath)],
+		]);
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		expect(process.exitCode).toBeUndefined();
+		for (const [path, contents] of opencodeBefore) expect(readFileSync(path)).toEqual(contents);
+		const install = JSON.parse(readFileSync(layout.installManifestPath, "utf8")) as {
+			targets: Array<{ id: string }>;
+		};
+		expect(install.targets.map((target) => target.id).sort()).toEqual([
+			"claude-hook-runtime",
+			"claude-hooks",
+			"claude-mcp",
+			"cli-runtime",
+			"codex-hook-runtime",
+			"codex-hooks",
+			"codex-mcp",
+			"opencode-mcp",
+			"opencode-plugin",
+			"opencode-plugin-compat",
+			"opencode-plugin-source",
+		]);
+		const receipt = JSON.parse(readFileSync(layout.capabilityActivationReceiptPath, "utf8")) as {
+			targets: Array<{ id: string }>;
+		};
+		expect(receipt.targets).toHaveLength(7);
+		expect(receipt.targets.some((target) => target.id.startsWith("opencode"))).toBe(false);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)?.targets).toHaveLength(
+			7,
+		);
+	});
+
+	it("does not overwrite install ownership changed after compatibility preservation", async () => {
+		const dataDir = join(codexHome, "compatibility-inventory-race-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		const layout = resolveStorageLayout(dataDir);
+		const externalManifest = `${JSON.stringify({
+			version: 1,
+			blocks: [],
+			targets: [],
+			external: "concurrent owner",
+		})}\n`;
+		setupSnapshotRace.betweenSnapshotPath = layout.installManifestPath;
+		setupSnapshotRace.openCount = 0;
+		setupSnapshotRace.mutateOnOpen = 2;
+		setupSnapshotRace.mutationText = externalManifest;
+		process.exitCode = undefined;
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		expect(process.exitCode).toBe(1);
+		expect(readFileSync(layout.installManifestPath, "utf8")).toBe(externalManifest);
+		expect(existsSync(layout.capabilitySetupTransactionPath)).toBe(false);
+		expect(existsSync(layout.capabilityCurrentPointerPath)).toBe(false);
+		expect(existsSync(join(claudeHome, "settings.json"))).toBe(false);
+		expect(existsSync(join(codexHome, "config.toml"))).toBe(false);
+	});
+
+	it("rejects invalid compatibility ownership before Slice 1 mutation", async () => {
+		const runtime = resolveSetupRuntime();
+		const extraPath = join(codexHome, "compat-extra-a.txt");
+		const otherPath = join(codexHome, "compat-extra-b.txt");
+		writeFileSync(extraPath, "extra-a\n", "utf8");
+		writeFileSync(otherPath, "extra-b\n", "utf8");
+		const fingerprint = (path: string) =>
+			createHash("sha256").update(readFileSync(path)).digest("hex");
+		const extra = { id: "opencode-mcp", path: extraPath, fingerprint: fingerprint(extraPath) };
+		const other = {
+			id: "opencode-plugin",
+			path: otherPath,
+			fingerprint: fingerprint(otherPath),
+		};
+		const cases = [
+			["malformed", [{ ...extra, fingerprint: "not-a-sha256" }]],
+			["duplicate id", [extra, { ...other, id: extra.id }]],
+			["duplicate path", [extra, { ...other, path: extra.path }]],
+			[
+				"required path conflict",
+				[{ ...extra, path: runtime.cliPath, fingerprint: fingerprint(runtime.cliPath) }],
+			],
+		] as const;
+
+		for (const [name, targets] of cases) {
+			const dataDir = join(codexHome, `invalid-compat-${name.replaceAll(" ", "-")}`);
+			const layout = resolveStorageLayout(dataDir);
+			mkdirSync(layout.controlDir, { recursive: true, mode: 0o700 });
+			const before = `${JSON.stringify({ version: 1, blocks: [], targets })}\n`;
+			writeFileSync(layout.installManifestPath, before, { mode: 0o600 });
+			process.env.CODEMEM_DATA_DIR = dataDir;
+			process.exitCode = undefined;
+			const output = captureProcessOutput();
+			try {
+				await setupCommand.parseAsync(["node", "codemem"]);
+			} finally {
+				output.restore();
+			}
+
+			expect(process.exitCode, name).toBe(1);
+			expect(output.chunks.join(""), name).toMatch(/install manifest|compatibility target/i);
+			expect(readFileSync(layout.installManifestPath, "utf8"), name).toBe(before);
+			expect(existsSync(layout.capabilitySetupTransactionPath), name).toBe(false);
+			expect(existsSync(layout.capabilityCurrentPointerPath), name).toBe(false);
+			expect(existsSync(join(claudeHome, "settings.json")), name).toBe(false);
+			expect(existsSync(join(codexHome, "config.toml")), name).toBe(false);
+		}
 	});
 
 	it("rejects overlapping resolved Claude and Codex targets before setup mutation", async () => {
