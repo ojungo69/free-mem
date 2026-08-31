@@ -2423,11 +2423,19 @@ describe("ingest() integration", { timeout: 15_000 }, () => {
 		</observation>`);
 
 		await expect(
-			flushRawEvents(store, { observer } as unknown as IngestOptions, {
-				opencodeSessionId: "sess-capture-suppressed",
-				cwd: tmpDir,
-				project: "codemem",
-			}),
+			flushRawEvents(
+				store,
+				{
+					observer,
+					configurationFingerprint: `sha256:${"a".repeat(64)}`,
+					providerFingerprint: `sha256:${"b".repeat(64)}`,
+				} as unknown as IngestOptions,
+				{
+					opencodeSessionId: "sess-capture-suppressed",
+					cwd: tmpDir,
+					project: "codemem",
+				},
+			),
 		).resolves.toEqual({ flushed: 2, updatedState: 1 });
 
 		expect(store.rawEventFlushState("sess-capture-suppressed")).toBe(1);

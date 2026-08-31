@@ -76,6 +76,7 @@ export type {
 	TypedRpcError,
 } from "./daemon-rpc.js";
 export {
+	CAPTURE_CONCURRENCY_LIMIT,
 	callDaemonRpc,
 	dispatchDaemonRpc,
 	HOOK_DELIVERY_BUDGETS,
@@ -97,6 +98,7 @@ export {
 	isEmbeddingDisabled,
 	loadSqliteVec,
 	MIN_COMPATIBLE_SCHEMA,
+	MIN_WRITABLE_SCHEMA,
 	resolveDbPath,
 	SCHEMA_VERSION,
 	tableExists,
@@ -351,6 +353,7 @@ export {
 } from "./mutation-dispatcher.js";
 export * from "./normalized-event.js";
 export type {
+	ObserverHealthOptions,
 	ObserverResponse,
 	ObserverStatus,
 	ObserverTokenUsage,

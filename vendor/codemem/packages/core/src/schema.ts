@@ -4,6 +4,7 @@
 
 import { sql } from "drizzle-orm";
 import {
+	check,
 	index,
 	integer,
 	primaryKey,
@@ -12,6 +13,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { PROCESSING_JOB_RETRY_LIMIT } from "./capability-manifest.js";
 
 export const sessions = sqliteTable("sessions", {
 	id: integer("id").primaryKey(),
@@ -25,6 +27,7 @@ export const sessions = sqliteTable("sessions", {
 	tool_version: text("tool_version"),
 	metadata_json: text("metadata_json"),
 	import_key: text("import_key"),
+	repository_identity: text("repository_identity"),
 });
 
 export type Session = typeof sessions.$inferSelect;
@@ -119,8 +122,16 @@ export const artifacts = sqliteTable(
 		content_hash: text("content_hash"),
 		created_at: text("created_at").notNull(),
 		metadata_json: text("metadata_json"),
+		sensitivity: text("sensitivity").notNull().default("secret"),
+		repository_identity: text("repository_identity"),
 	},
-	(table) => [index("idx_artifacts_session_kind").on(table.session_id, table.kind)],
+	(table) => [
+		index("idx_artifacts_session_kind").on(table.session_id, table.kind),
+		check(
+			"artifacts_sensitivity_check",
+			sql`${table.sensitivity} IN ('eligible', 'local_only', 'private', 'secret')`,
+		),
+	],
 );
 
 export type Artifact = typeof artifacts.$inferSelect;
@@ -169,6 +180,18 @@ export const memoryItems = sqliteTable(
 		// from sessions.project for legacy rows during migration. May be null
 		// when the originating session had no project.
 		project: text("project"),
+		sensitivity: text("sensitivity").notNull().default("secret"),
+		repository_identity: text("repository_identity"),
+		lineage_id: text("lineage_id"),
+		revision_id: text("revision_id"),
+		revision_ordinal: integer("revision_ordinal"),
+		supersedes_memory_id: integer("supersedes_memory_id"),
+		derivation_key: text("derivation_key"),
+		source_event_ids_json: text("source_event_ids_json"),
+		source_spans_json: text("source_spans_json"),
+		manifest_fingerprint: text("manifest_fingerprint"),
+		provider_fingerprint: text("provider_fingerprint"),
+		attempt_fingerprint: text("attempt_fingerprint"),
 	},
 	(table) => [
 		index("idx_memory_items_active_created").on(table.active, table.created_at),
@@ -191,6 +214,10 @@ export const memoryItems = sqliteTable(
 		uniqueIndex("idx_memory_items_same_session_dedup_unique")
 			.on(table.session_id, table.kind, table.visibility, table.workspace_id, table.dedup_key)
 			.where(sql`active = 1 AND dedup_key IS NOT NULL`),
+		check(
+			"memory_items_sensitivity_check",
+			sql`${table.sensitivity} IN ('eligible', 'local_only', 'private', 'secret')`,
+		),
 	],
 );
 
@@ -488,13 +515,22 @@ export const rawEvents = sqliteTable(
 		source: text("source").notNull().default("opencode"),
 		stream_id: text("stream_id").notNull().default(""),
 		opencode_session_id: text("opencode_session_id").notNull(),
-		event_id: text("event_id"),
+		event_id: text("event_id").notNull(),
 		event_seq: integer("event_seq").notNull(),
 		event_type: text("event_type").notNull(),
 		ts_wall_ms: integer("ts_wall_ms"),
 		ts_mono_ms: real("ts_mono_ms"),
 		payload_json: text("payload_json").notNull(),
 		created_at: text("created_at").notNull(),
+		sensitivity: text("sensitivity").notNull().default("secret"),
+		repository_identity: text("repository_identity"),
+		capture_manifest_fingerprint: text("capture_manifest_fingerprint"),
+		capture_state: text("capture_state").notNull().default("accepted"),
+		safe_error_code: text("safe_error_code"),
+		payload_digest_version: text("payload_digest_version")
+			.notNull()
+			.default("event-payload-digest-v1"),
+		payload_digest: text("payload_digest").notNull(),
 	},
 	(table) => [
 		uniqueIndex("idx_raw_events_source_stream_seq").on(
@@ -502,18 +538,124 @@ export const rawEvents = sqliteTable(
 			table.stream_id,
 			table.event_seq,
 		),
-		uniqueIndex("idx_raw_events_source_stream_event_id").on(
-			table.source,
-			table.stream_id,
-			table.event_id,
-		),
 		index("idx_raw_events_session_seq").on(table.opencode_session_id, table.event_seq),
 		index("idx_raw_events_created").on(table.created_at),
+		check(
+			"raw_events_sensitivity_check",
+			sql`${table.sensitivity} IN ('eligible', 'local_only', 'private', 'secret')`,
+		),
+		check(
+			"raw_events_capture_state_check",
+			sql`${table.capture_state} IN ('accepted', 'quarantined')`,
+		),
+		check(
+			"raw_events_quarantine_error_check",
+			sql`${table.capture_state} != 'quarantined' OR COALESCE(${table.safe_error_code}, '') = 'redaction_degraded'`,
+		),
+		check(
+			"raw_events_repository_identity_check",
+			sql`COALESCE(${table.repository_identity}, '') != 'repo-v1:unknown'`,
+		),
+		check(
+			"raw_events_payload_digest_check",
+			sql`${table.payload_digest_version} = 'event-payload-digest-v1' AND length(${table.payload_digest}) = 71 AND substr(${table.payload_digest}, 1, 7) = 'sha256:' AND substr(${table.payload_digest}, 8) NOT GLOB '*[^0-9a-f]*' AND ${table.payload_digest} != 'sha256:0000000000000000000000000000000000000000000000000000000000000000'`,
+		),
 	],
 );
 
 export type RawEvent = typeof rawEvents.$inferSelect;
 export type NewRawEvent = typeof rawEvents.$inferInsert;
+
+export const rawEventIdentityConflicts = sqliteTable(
+	"raw_event_identity_conflicts",
+	{
+		receipt_id: text("receipt_id").primaryKey(),
+		repository_identity: text("repository_identity"),
+		source: text("source").notNull(),
+		stream_id: text("stream_id").notNull(),
+		event_id: text("event_id").notNull(),
+		payload_digest_version: text("payload_digest_version").notNull(),
+		canonical_payload_digest: text("canonical_payload_digest").notNull(),
+		conflicting_payload_digest: text("conflicting_payload_digest").notNull(),
+		reason: text("reason").notNull().default("event_identity_payload_conflict"),
+		receipt_state: text("receipt_state").notNull().default("non_success"),
+		canonical_unchanged: integer("canonical_unchanged").notNull().default(1),
+		memory_delta: integer("memory_delta").notNull().default(0),
+		capture_manifest_fingerprint: text("capture_manifest_fingerprint"),
+		first_seen_at: text("first_seen_at").notNull(),
+		last_seen_at: text("last_seen_at").notNull(),
+		occurrence_count: integer("occurrence_count").notNull().default(1),
+	},
+	(table) => [
+		check(
+			"raw_event_identity_conflicts_receipt_state_check",
+			sql`${table.receipt_state} = 'non_success'`,
+		),
+		check(
+			"raw_event_identity_conflicts_canonical_unchanged_check",
+			sql`${table.canonical_unchanged} = 1`,
+		),
+		check("raw_event_identity_conflicts_memory_delta_check", sql`${table.memory_delta} = 0`),
+		check(
+			"raw_event_identity_conflicts_repository_identity_check",
+			sql`COALESCE(${table.repository_identity}, '') != 'repo-v1:unknown'`,
+		),
+		check(
+			"raw_event_identity_conflicts_digest_check",
+			sql`${table.payload_digest_version} = 'event-payload-digest-v1' AND length(${table.canonical_payload_digest}) = 71 AND substr(${table.canonical_payload_digest}, 1, 7) = 'sha256:' AND substr(${table.canonical_payload_digest}, 8) NOT GLOB '*[^0-9a-f]*' AND ${table.canonical_payload_digest} != 'sha256:0000000000000000000000000000000000000000000000000000000000000000' AND length(${table.conflicting_payload_digest}) = 71 AND substr(${table.conflicting_payload_digest}, 1, 7) = 'sha256:' AND substr(${table.conflicting_payload_digest}, 8) NOT GLOB '*[^0-9a-f]*' AND ${table.conflicting_payload_digest} != 'sha256:0000000000000000000000000000000000000000000000000000000000000000' AND ${table.canonical_payload_digest} != ${table.conflicting_payload_digest}`,
+		),
+	],
+);
+
+export type RawEventIdentityConflict = typeof rawEventIdentityConflicts.$inferSelect;
+export type NewRawEventIdentityConflict = typeof rawEventIdentityConflicts.$inferInsert;
+
+export const rawEventQuarantine = sqliteTable(
+	"raw_event_quarantine",
+	{
+		receipt_id: text("receipt_id").primaryKey(),
+		repository_identity: text("repository_identity"),
+		source: text("source").notNull(),
+		stream_id: text("stream_id").notNull(),
+		event_id: text("event_id").notNull(),
+		event_type: text("event_type").notNull(),
+		ts_wall_ms: integer("ts_wall_ms"),
+		ts_mono_ms: real("ts_mono_ms"),
+		payload_json: text("payload_json").notNull().default("{}"),
+		payload_digest_version: text("payload_digest_version").notNull(),
+		payload_digest: text("payload_digest").notNull(),
+		sensitivity: text("sensitivity").notNull().default("secret"),
+		capture_state: text("capture_state").notNull().default("quarantined"),
+		safe_error_code: text("safe_error_code").notNull(),
+		capture_manifest_fingerprint: text("capture_manifest_fingerprint"),
+		first_seen_at: text("first_seen_at").notNull(),
+		last_seen_at: text("last_seen_at").notNull(),
+		occurrence_count: integer("occurrence_count").notNull().default(1),
+	},
+	(table) => [
+		check("raw_event_quarantine_sensitivity_check", sql`${table.sensitivity} = 'secret'`),
+		check("raw_event_quarantine_capture_state_check", sql`${table.capture_state} = 'quarantined'`),
+		check(
+			"raw_event_quarantine_payload_check",
+			sql`${table.safe_error_code} != 'redaction_degraded' OR ${table.payload_json} = '{}'`,
+		),
+		check(
+			"raw_event_quarantine_error_check",
+			sql`${table.safe_error_code} IN ('repository_identity_unknown_collision', 'redaction_degraded')`,
+		),
+		check(
+			"raw_event_quarantine_repository_identity_check",
+			sql`COALESCE(${table.repository_identity}, '') != 'repo-v1:unknown'`,
+		),
+		check(
+			"raw_event_quarantine_digest_check",
+			sql`${table.payload_digest_version} = 'event-payload-digest-v1' AND length(${table.payload_digest}) = 71 AND substr(${table.payload_digest}, 1, 7) = 'sha256:' AND substr(${table.payload_digest}, 8) NOT GLOB '*[^0-9a-f]*' AND ${table.payload_digest} != 'sha256:0000000000000000000000000000000000000000000000000000000000000000'`,
+		),
+	],
+);
+
+export type RawEventQuarantine = typeof rawEventQuarantine.$inferSelect;
+export type NewRawEventQuarantine = typeof rawEventQuarantine.$inferInsert;
 
 export const rawEventSessions = sqliteTable(
 	"raw_event_sessions",
@@ -576,6 +718,30 @@ export const rawEventFlushBatches = sqliteTable(
 		observer_error_code: text("observer_error_code"),
 		observer_error_message: text("observer_error_message"),
 		attempt_count: integer("attempt_count").notNull().default(0),
+		admission_manifest_fingerprint: text("admission_manifest_fingerprint"),
+		admission_provider_fingerprint: text("admission_provider_fingerprint"),
+		retry_limit: integer("retry_limit").notNull().default(PROCESSING_JOB_RETRY_LIMIT),
+		claim_generation: integer("claim_generation").notNull().default(0),
+		attempt_manifest_fingerprint: text("attempt_manifest_fingerprint"),
+		attempt_provider_fingerprint: text("attempt_provider_fingerprint"),
+		attempt_fingerprint: text("attempt_fingerprint"),
+		attempt_max_memory_items: integer("attempt_max_memory_items"),
+		resume_grant_id: text("resume_grant_id"),
+		resume_grant_reason: text("resume_grant_reason"),
+		resume_grant_state: text("resume_grant_state").notNull().default("none"),
+		resume_grant_consumed_at: text("resume_grant_consumed_at"),
+		last_resume_signal_id: text("last_resume_signal_id"),
+		last_resume_sequence: integer("last_resume_sequence").notNull().default(0),
+		last_resume_signal_disposition: text("last_resume_signal_disposition")
+			.notNull()
+			.default("none"),
+		safe_error_code: text("safe_error_code"),
+		egress_diagnostic_json: text("egress_diagnostic_json"),
+		output_count: integer("output_count").notNull().default(0),
+		observed_output_count: integer("observed_output_count").notNull().default(0),
+		completion_disposition: text("completion_disposition").notNull().default("none"),
+		legacy_recovery_state: text("legacy_recovery_state").notNull().default("not_legacy"),
+		frontier_already_advanced: integer("frontier_already_advanced").notNull().default(0),
 		created_at: text("created_at").notNull(),
 		updated_at: text("updated_at").notNull(),
 	},
@@ -589,11 +755,143 @@ export const rawEventFlushBatches = sqliteTable(
 		),
 		index("idx_flush_batches_session_created").on(table.opencode_session_id, table.created_at),
 		index("idx_flush_batches_status_updated").on(table.status, table.updated_at),
+		check(
+			"raw_event_flush_batches_status_check",
+			sql`${table.status} IN ('queued', 'processing', 'failed', 'retry_exhausted', 'completed')`,
+		),
+		check(
+			"raw_event_flush_batches_resume_grant_state_check",
+			sql`${table.resume_grant_state} IN ('none', 'pending', 'consumed')`,
+		),
+		check(
+			"raw_event_flush_batches_completion_disposition_check",
+			sql`${table.completion_disposition} IN ('none', 'memory_committed', 'privacy_skip', 'legacy_unrecoverable')`,
+		),
+		check(
+			"raw_event_flush_batches_legacy_recovery_state_check",
+			sql`${table.legacy_recovery_state} IN ('not_legacy', 'complete_range', 'missing_or_ambiguous_range')`,
+		),
+		check(
+			"raw_event_flush_batches_last_resume_disposition_check",
+			sql`${table.last_resume_signal_disposition} IN ('none', 'accepted', 'duplicate', 'stale', 'grant_pending', 'wrong_job', 'wrong_role', 'wrong_provider', 'unchanged_configuration', 'unrelated_component')`,
+		),
+		check(
+			"raw_event_flush_batches_attempt_max_memory_items_check",
+			sql`${table.attempt_max_memory_items} IS NULL OR ${table.attempt_max_memory_items} IN (16, 17)`,
+		),
+		check(
+			"raw_event_flush_batches_resume_grant_reason_check",
+			sql`${table.resume_grant_reason} IS NULL OR ${table.resume_grant_reason} IN ('validated_configuration_activation', 'recorded_provider_healthy_transition', 'user_confirmed_doctor_retry')`,
+		),
 	],
 );
 
 export type RawEventFlushBatch = typeof rawEventFlushBatches.$inferSelect;
 export type NewRawEventFlushBatch = typeof rawEventFlushBatches.$inferInsert;
+
+export const processingResumeProducerReceipts = sqliteTable(
+	"processing_resume_producer_receipts",
+	{
+		receipt_id: text("receipt_id").primaryKey(),
+		producer_kind: text("producer_kind").notNull(),
+		configuration_fingerprint: text("configuration_fingerprint").notNull(),
+		provider_fingerprint: text("provider_fingerprint").notNull(),
+		producer_sequence: integer("producer_sequence").notNull(),
+		fanout_count: integer("fanout_count").notNull().default(0),
+		target_job_ids_json: text("target_job_ids_json").notNull().default("[]"),
+		safe_error_code: text("safe_error_code"),
+		created_at: text("created_at").notNull(),
+	},
+	(table) => [
+		check(
+			"processing_resume_producer_receipts_kind_check",
+			sql`${table.producer_kind} IN ('validated_configuration_activation', 'recorded_provider_healthy_transition', 'user_confirmed_doctor_retry')`,
+		),
+		check(
+			"processing_resume_producer_receipts_fingerprint_check",
+			sql`length(${table.configuration_fingerprint}) = 71 AND substr(${table.configuration_fingerprint}, 1, 7) = 'sha256:' AND substr(${table.configuration_fingerprint}, 8) NOT GLOB '*[^0-9a-f]*' AND length(${table.provider_fingerprint}) = 71 AND substr(${table.provider_fingerprint}, 1, 7) = 'sha256:' AND substr(${table.provider_fingerprint}, 8) NOT GLOB '*[^0-9a-f]*'`,
+		),
+	],
+);
+
+export type ProcessingResumeProducerReceipt = typeof processingResumeProducerReceipts.$inferSelect;
+export type NewProcessingResumeProducerReceipt =
+	typeof processingResumeProducerReceipts.$inferInsert;
+
+export const processingResumeSignals = sqliteTable(
+	"processing_resume_signals",
+	{
+		signal_id: text("signal_id").primaryKey(),
+		job_id: integer("job_id").notNull(),
+		producer_receipt_id: text("producer_receipt_id")
+			.notNull()
+			.references(() => processingResumeProducerReceipts.receipt_id),
+		sequence: integer("sequence").notNull(),
+		target_role: text("target_role").notNull().default("summary"),
+		target_provider_fingerprint: text("target_provider_fingerprint").notNull(),
+		target_manifest_fingerprint: text("target_manifest_fingerprint").notNull(),
+		kind: text("kind").notNull(),
+		disposition: text("disposition").notNull(),
+		grant_id: text("grant_id"),
+		created_at: text("created_at").notNull(),
+	},
+	(table) => [
+		uniqueIndex("idx_processing_resume_signals_job_receipt").on(
+			table.job_id,
+			table.producer_receipt_id,
+		),
+		uniqueIndex("idx_processing_resume_signals_job_signal").on(table.job_id, table.signal_id),
+		uniqueIndex("idx_processing_resume_signals_grant").on(table.grant_id),
+		index("idx_processing_resume_signals_job_sequence").on(table.job_id, table.sequence),
+		check("processing_resume_signals_role_check", sql`${table.target_role} = 'summary'`),
+		check(
+			"processing_resume_signals_kind_check",
+			sql`${table.kind} IN ('validated_configuration_activation', 'recorded_provider_healthy_transition', 'user_confirmed_doctor_retry')`,
+		),
+		check(
+			"processing_resume_signals_disposition_check",
+			sql`${table.disposition} IN ('accepted', 'stale', 'wrong_job', 'wrong_role', 'wrong_provider', 'unchanged_configuration', 'unrelated_component')`,
+		),
+		check(
+			"processing_resume_signals_fingerprint_check",
+			sql`length(${table.target_provider_fingerprint}) = 71 AND substr(${table.target_provider_fingerprint}, 1, 7) = 'sha256:' AND substr(${table.target_provider_fingerprint}, 8) NOT GLOB '*[^0-9a-f]*' AND length(${table.target_manifest_fingerprint}) = 71 AND substr(${table.target_manifest_fingerprint}, 1, 7) = 'sha256:' AND substr(${table.target_manifest_fingerprint}, 8) NOT GLOB '*[^0-9a-f]*'`,
+		),
+	],
+);
+
+export type ProcessingResumeSignal = typeof processingResumeSignals.$inferSelect;
+export type NewProcessingResumeSignal = typeof processingResumeSignals.$inferInsert;
+
+export const providerHealthStates = sqliteTable(
+	"provider_health_states",
+	{
+		configuration_fingerprint: text("configuration_fingerprint").notNull(),
+		provider_fingerprint: text("provider_fingerprint").notNull(),
+		health_state: text("health_state").notNull(),
+		last_transition_sequence: integer("last_transition_sequence").notNull().default(0),
+		last_transition_receipt_id: text("last_transition_receipt_id"),
+		safe_error_code: text("safe_error_code"),
+		updated_at: text("updated_at").notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.configuration_fingerprint, table.provider_fingerprint] }),
+		check(
+			"provider_health_states_health_state_check",
+			sql`${table.health_state} IN ('healthy', 'unhealthy')`,
+		),
+		check(
+			"provider_health_states_fingerprint_check",
+			sql`length(${table.configuration_fingerprint}) = 71 AND substr(${table.configuration_fingerprint}, 1, 7) = 'sha256:' AND substr(${table.configuration_fingerprint}, 8) NOT GLOB '*[^0-9a-f]*' AND length(${table.provider_fingerprint}) = 71 AND substr(${table.provider_fingerprint}, 1, 7) = 'sha256:' AND substr(${table.provider_fingerprint}, 8) NOT GLOB '*[^0-9a-f]*'`,
+		),
+		check(
+			"provider_health_states_error_code_check",
+			sql`(${table.health_state} = 'healthy' AND ${table.safe_error_code} IS NULL) OR (${table.health_state} = 'unhealthy' AND ${table.safe_error_code} IS NOT NULL AND ${table.safe_error_code} IN ('provider_unavailable', 'provider_tls_rejected'))`,
+		),
+	],
+);
+
+export type ProviderHealthState = typeof providerHealthStates.$inferSelect;
+export type NewProviderHealthState = typeof providerHealthStates.$inferInsert;
 
 export const userPrompts = sqliteTable(
 	"user_prompts",
@@ -609,11 +907,17 @@ export const userPrompts = sqliteTable(
 		created_at_epoch: integer("created_at_epoch").notNull(),
 		metadata_json: text("metadata_json"),
 		import_key: text("import_key"),
+		sensitivity: text("sensitivity").notNull().default("secret"),
+		repository_identity: text("repository_identity"),
 	},
 	(table) => [
 		index("idx_user_prompts_session").on(table.session_id),
 		index("idx_user_prompts_project").on(table.project),
 		index("idx_user_prompts_epoch").on(table.created_at_epoch),
+		check(
+			"user_prompts_sensitivity_check",
+			sql`${table.sensitivity} IN ('eligible', 'local_only', 'private', 'secret')`,
+		),
 	],
 );
 
@@ -641,11 +945,17 @@ export const sessionSummaries = sqliteTable(
 		created_at_epoch: integer("created_at_epoch").notNull(),
 		metadata_json: text("metadata_json"),
 		import_key: text("import_key"),
+		sensitivity: text("sensitivity").notNull().default("secret"),
+		repository_identity: text("repository_identity"),
 	},
 	(table) => [
 		index("idx_session_summaries_session").on(table.session_id),
 		index("idx_session_summaries_project").on(table.project),
 		index("idx_session_summaries_epoch").on(table.created_at_epoch),
+		check(
+			"session_summaries_sensitivity_check",
+			sql`${table.sensitivity} IN ('eligible', 'local_only', 'private', 'secret')`,
+		),
 	],
 );
 
@@ -1214,9 +1524,14 @@ export const schema = {
 	attributionAssessments,
 	attributionAssessmentEvidence,
 	rawEvents,
+	rawEventIdentityConflicts,
+	rawEventQuarantine,
 	rawEventSessions,
 	opencodeSessions,
 	rawEventFlushBatches,
+	processingResumeProducerReceipts,
+	processingResumeSignals,
+	providerHealthStates,
 	userPrompts,
 	sessionSummaries,
 	replicationOps,

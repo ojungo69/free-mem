@@ -46,7 +46,8 @@ frontier advance on failure, duplicate active memory, restricted disclosure, inc
 injection, content-bearing diagnostic, or fabricated success. Unknown values fail closed.
 
 **Fixed profile**: Accepted fixture limits plus periodic 30 s, idle 120 s, event debounce 1 s, stuck
-claim 5 min, at most 100 source events/job, and raw retention disabled/0. Embedding is disabled;
+claim 5 min, at most 100 source events per newly admitted v21 job, and raw retention disabled/0.
+Embedding is disabled;
 lexical is the healthy required lane.
 
 ## Constitution Check
@@ -202,7 +203,8 @@ after the user starts the daemon; PR 5 automates that safely.
 ### Existing flush batch becomes the durable job
 
 - Capacity 25 includes queued, processing, failed, and retry-exhausted. Accepted work beyond capacity
-  remains not admitted. One job contains at most 100 source events.
+  remains not admitted. One newly admitted v21 job contains at most 100 source events; migration
+  preserves a wider immutable v20 recovery range without splitting or truncating it.
 - Same repository/source/stream/event ID plus the same domain-separated canonical payload digest is
   idempotent. A different digest atomically creates/reuses one durable non-success conflict receipt,
   preserves the canonical row, returns no normal ACK, and creates no memory.

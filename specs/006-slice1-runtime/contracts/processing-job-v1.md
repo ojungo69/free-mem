@@ -5,13 +5,17 @@
 The existing `raw_event_flush_batches` row is the only durable summary-processing job for its
 immutable source/stream/sequence range. No second queue or generic job framework exists.
 
-Capture persists before admission. One job contains at most 100 contiguous source events. Capacity
+Capture persists before admission. One newly admitted v21 job contains at most 100 contiguous source
+events. A migrated v20 recovery job preserves its immutable legacy range even when the old
+configurable worker admitted more than 100; migration never splits or truncates that range. Capacity
 25 counts every uncompleted job (`queued`, `processing`, `failed`, and `retry_exhausted`). At
 capacity, later accepted events remain durably and visibly not admitted; no event or existing job is
 evicted.
 
 Admission starts exactly at `frontier + 1` and rejects any non-contiguous selected range as
 content-free `source_gap` without creating a job or advancing the frontier.
+Once admitted, a later gap beyond the frozen job range does not block that exact retained prefix;
+a gap or identity break inside the frozen range prevents the job from being claimed.
 
 Admission freezes `admission_manifest_fingerprint`, `admission_provider_fingerprint`, source range,
 `retry_limit=3`, and `attempt_count=0`. These fields never change, including after configuration
@@ -56,6 +60,12 @@ rewrites admission provenance, widens the source range, or silently adopts a new
 resumed attempt that fails returns directly to `retry_exhausted` and needs another explicit grant.
 The runner-owned closed output-limit recovery fault successor may change the attempt derivation limit
 from 16 to 17; production setup does not expose it and admission profile/limit remains unchanged.
+The Store accepts limit 17 only when the full validated version-2 manifest matches the claim's
+configuration and provider fingerprints, a one-shot resume grant is pending, the manifest's base
+fingerprint names the job's prior max-16 version-1 attempt, and the provider is unchanged from that
+attempt. The pending grant's durable accepted signal must target that exact manifest/provider and
+must be `validated_configuration_activation`; a doctor or health grant cannot be repurposed.
+An unbound limit, an attempt-1 use, or a non-exact successor is invalid before claim mutation.
 
 ## ResumeSignalV1
 
@@ -73,11 +83,26 @@ consumption time, and increments the attempt in the same transaction. Duplicate/
 wrong-job, wrong-role, wrong-provider, unrelated-component, unchanged invalid configuration, and already-
 consumed signals update only the closed last-signal disposition as durable content-free no-ops and
 consume no attempt.
+No producer may create a grant unless the job's immutable source range is still retained exactly.
+Setup and provider-health fanout skip an invalid range; an exact doctor action fails as a stale
+snapshot. The job remains `retry_exhausted` with no pending grant and is not advertised as a doctor
+retry target until the source-range fault is repaired.
+Claim resolves the pending grant's accepted target by `(job_id, resume_grant_id=signal.grant_id)`,
+not by the latest observed signal ID; a later no-op cannot retarget or strand the grant.
 
-An otherwise-valid signal received while a grant is pending returns `grant_pending` without
+An exact `(job, producer receipt)` replay validates the stored per-job signal and global producer
+receipt identities, then returns the existing signal as `duplicate` before mutable
+attempt/grant snapshot checks. A different otherwise-valid signal received while a grant is pending returns `grant_pending` without
 inserting/consuming a signal or producer receipt and without changing sequence, grant, or attempt.
 The durable producer may retry after the existing grant is consumed and its attempt terminates; no
 second slot, overwrite, or hidden queue exists.
+The first global setup/health fanout targets only retry-exhausted jobs and jobs whose resume grant is
+already pending; ordinary queued, processing, or failed jobs are not frozen. Eligible exhausted jobs
+apply immediately without waiting for pending siblings. Exact receipt replay re-evaluates only jobs
+in the receipt's frozen, sorted target-ID set that lack a signal from that receipt; a frozen job that
+later becomes queued, processing, or failed remains blocked until retry-exhausted. The producer
+returns `grant_pending` while any target remains blocked, increments cumulative `fanout_count` as
+those targets apply, and then replays as `duplicate`. Jobs created later are never eligible.
 
 Only three durable producers exist:
 
@@ -87,6 +112,24 @@ Only three durable producers exist:
   `recorded_provider_healthy_transition`; repeated probes do nothing;
 - an explicit user-confirmed doctor retry RPC/CLI action emits one `user_confirmed_doctor_retry`
   for exactly the displayed job after displaying its component and fingerprints.
+
+Activation producer sequences form one global monotonic series. An exact receipt replay returns
+`duplicate` after its frozen set is complete. If a greater activation sequence is imported while an
+older receipt remains partial, the older receipt's remaining fanout returns `stale`, preserves its
+prior fanout count, and performs no signal or job mutation. An unseen receipt whose sequence is not
+greater than the greatest imported activation sequence returns `stale` with zero fanout and performs
+no receipt, signal, or job mutation. Provider health sequences remain scoped to their
+manifest/provider state edge and do not use this global fence.
+
+The exact-job Doctor projection keeps the nullable prior attempt fingerprints separate from a
+`retryTarget` derived from the daemon's frozen active manifest. Legacy NULL values display as
+`legacy_unknown`; confirmation compares that exact nullable attempt snapshot, count, claim
+generation, state, and grant state before targeting the active fingerprints. With no active target,
+the action is `activate_valid_manifest`, not `confirm_retry`. The grant leaves legacy admission and
+attempt provenance NULL; the next successful claim writes attempt provenance atomically.
+
+Operational status exposes the ascending IDs of at most 25 `retry_exhausted` jobs. Human status
+prints the same IDs, allowing the user to select one before the exact-job snapshot and confirmation.
 
 Setup/health receipts are global producer events; one sole-writer transaction fans each out to all
 currently matching jobs, necessarily at most 25 under the global uncompleted-job capacity. Job
@@ -114,11 +157,21 @@ accepted transition. Any consumed-signal mismatch is a durable no-op, not a gran
 
 ## Atomic terminal transitions
 
+A content-free `eligible_only` completion may bypass the provider only when every projected event is
+either a trivial prompt or a session start/idle/end lifecycle event; lifecycle-only ranges are
+allowed regardless of length. Adapter errors, unknown events, and substantive prompts are never
+classified by this shortcut; they remain retryable until a later boundary handles or explicitly
+rejects them.
+
 **Memory completion** validates the live claim, exact projected source set/citations, output count,
 repository identity, sensitivity, lineage, dedup/supersession, and attempt provenance. One database
 transaction commits every memory/reference/index source record and completes the job. It advances
 the contiguous event frontier exactly once only when `frontier_already_advanced=false`; a recovered
 legacy `gave_up` range leaves it unchanged. Crash or validation failure commits none.
+For durable flush claims, session-end metadata is part of this same transaction; a failed attempt
+never runs the legacy transaction-external session cleanup.
+Derived dedup is valid only for an exact source/stream/ordered-citation identity returned by the
+Store-owned derivation context; a caller-supplied unbound dedup completion is rejected atomically.
 
 **Privacy skip** validates the live claim and exact all-ineligible projection. One database
 transaction stores a content-free diagnostic and completes the job. It advances the frontier exactly
@@ -129,6 +182,17 @@ it; a later explicit user-authorized replay contract is outside Slice 1.
 
 Failure, retry exhaustion, output overflow, partial parse, out-of-set citation, and stale claim retain
 source events and do not advance the frontier.
+
+## Legacy completed crash window
+
+The v20 success path could commit a completed job before its separate frontier update. Migration
+advances through such completed rows only when the next row starts exactly at `frontier + 1`, every
+source sequence in its immutable range is retained, and no legacy batch overlaps it. The transaction
+continues through a contiguous completed chain and leaves an already-advanced frontier unchanged.
+An incomplete, overlapping, gapped, or sessionless candidate aborts migration; no completed row or
+committed memory is replayed, deleted, or reclassified, and the frontier is never rewound.
+An already-advanced v20 completed range may lack source rows after the legacy prune command; it is
+preserved as completed without replay and does not require source reconstruction.
 
 ## Source retention
 
@@ -155,6 +219,10 @@ Other legacy uncompleted rows with complete sources preserve attempt count, use 
 `legacy_unknown` admission fingerprints, migrate to retry-exhausted, and require one valid grant. The
 grant populates attempt provenance only.
 
+If all recoverable legacy rows would exceed the global capacity of 25, migration aborts atomically
+and leaves schema 20 unchanged. It never truncates, silently completes, or exempts overflow rows from
+capacity; the operator must reduce legacy uncompleted work with the prior runtime before retrying.
+
 ## Diagnostics
 
 Job/status/doctor output contains only bounded state, reason code, counts, safe fingerprints, attempt
@@ -162,5 +230,14 @@ count, claim generation, grant state, capacity, and one closed next action (`non
 `activate_valid_manifest`, `configure_credential`, `wait_for_capacity`, `confirm_retry`,
 `restart_daemon`, or `upgrade_runtime`). It contains no event/memory content,
 title, path, prompt, query, source excerpt, provider response, sentinel, or credential value.
+Operational `raw_events.source_gaps` inspects at most 25 pending streams, ordered by session update
+time and stable source/stream keys, and reports only the resulting count from 0 through 25. A
+positive bounded-scan count sets `next_action=upgrade_runtime`; no stream or event identity is
+projected.
+For each selected stream, the diagnostic continuity scan covers its complete pending sequence range
+and continues past repository and repeated-event-ID admission boundaries, so a later missing sequence
+remains visible without blocking an earlier exact prefix job.
+If the pending aggregate or bounded gap scan cannot run, `raw_events.available=false` and
+`next_action=upgrade_runtime`; any pending count already collected remains visible without content.
 This `nextAction` field is separate from fixture-only `expectedOperationalStatus.safeAction`; the
 fixture field is an operational oracle with its own value set, not this seven-value enum.

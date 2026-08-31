@@ -1041,9 +1041,7 @@ async function doctorGate(core, root) {
 	const dataDir = join(fixtureRoot, "data");
 	const workspace = join(fixtureRoot, "workspace");
 	mkdirSync(join(workspace, ".git"), { recursive: true, mode: 0o700 });
-	writeFileSync(join(workspace, ".agent-memory.toml"), 'private_regex = ["(a+)+$"]\n', {
-		mode: 0o600,
-	});
+	const preloadPath = redactionWorkerStallPreload(root, "doctor-stall-redaction-worker.mjs");
 	const privateText = "T056_DOCTOR_PRIVATE";
 	const env = runtimeEnv(dataDir, fixtureRoot);
 	let handle = await core.startDaemon({ dataDir });
@@ -1097,9 +1095,9 @@ async function doctorGate(core, root) {
 		const hookResult = await runBuiltHook(
 			"codex",
 			hookPayload(workspace, "phase1-t056-doctor-degraded", {
-				prompt: `${"a".repeat(26)}! <private>${privateText}</private>`,
+				prompt: `<private>${privateText}</private>`,
 			}),
-			env,
+			{ ...env, NODE_OPTIONS: `--import=${pathToFileURL(preloadPath).href}` },
 			workspace,
 			core.HOOK_DELIVERY_BUDGETS.codex,
 		);

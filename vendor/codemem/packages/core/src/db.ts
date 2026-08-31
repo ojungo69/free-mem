@@ -7,6 +7,7 @@
  * `ensurePlannerStats`). Schema changes run only through `migration-runner.ts`.
  */
 
+import { createHash } from "node:crypto";
 import {
 	closeSync,
 	copyFileSync,
@@ -21,10 +22,12 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import * as sqliteVec from "sqlite-vec";
+import { PROCESSING_JOB_CAPACITY, PROCESSING_JOB_RETRY_LIMIT } from "./capability-manifest.js";
 import { DAEMON_JOBS_DDL } from "./daemon-jobs-schema.js";
-import { ensureMutationReceiptSchema } from "./mutation-dispatcher.js";
+import { canonicalMutationJson, ensureMutationReceiptSchema } from "./mutation-dispatcher.js";
 import { expandUserPath } from "./observer-config.js";
 import { canAutoBootstrapSchema, ensureRetrievalLedgerSchema } from "./schema-bootstrap.js";
+import { TEST_SCHEMA_BASE_DDL } from "./test-schema.generated.js";
 import { ReadOnlyActor, WriterActor } from "./writer-actor.js";
 
 type DatabaseType = import("better-sqlite3").Database;
@@ -32,7 +35,9 @@ type DatabaseType = import("better-sqlite3").Database;
 export type Database = DatabaseType;
 
 /** Current schema version this TS runtime was built against. */
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
+/** Exact input schema consumed by migrateV20ToV21. */
+export const V21_MIGRATION_SOURCE_SCHEMA = 20;
 
 /**
  * Minimum schema version the TS runtime can operate with.
@@ -41,6 +46,8 @@ export const SCHEMA_VERSION = 20;
  * too old to have the tables/columns it needs.
  */
 export const MIN_COMPATIBLE_SCHEMA = 6;
+/** Oldest schema that the current sole-writer runtime can migrate or restore directly. */
+export const MIN_WRITABLE_SCHEMA = 20;
 
 /** Required tables the TS runtime needs to function. */
 const REQUIRED_TABLES = [
@@ -51,6 +58,41 @@ const REQUIRED_TABLES = [
 	"raw_event_sessions",
 	"usage_events",
 ] as const;
+
+const REQUIRED_V21_TABLES = [
+	"raw_event_identity_conflicts",
+	"raw_event_quarantine",
+	"processing_resume_producer_receipts",
+	"processing_resume_signals",
+	"provider_health_states",
+] as const;
+
+const REQUIRED_V21_COLUMNS = {
+	raw_events: [
+		"sensitivity",
+		"repository_identity",
+		"capture_manifest_fingerprint",
+		"capture_state",
+		"safe_error_code",
+		"payload_digest_version",
+		"payload_digest",
+	],
+	raw_event_flush_batches: [
+		"admission_manifest_fingerprint",
+		"admission_provider_fingerprint",
+		"retry_limit",
+		"claim_generation",
+		"attempt_manifest_fingerprint",
+		"attempt_provider_fingerprint",
+		"attempt_fingerprint",
+		"attempt_max_memory_items",
+		"resume_grant_state",
+		"last_resume_sequence",
+		"completion_disposition",
+		"frontier_already_advanced",
+	],
+	processing_resume_producer_receipts: ["target_job_ids_json"],
+} as const;
 
 export const REQUIRED_BOOTSTRAPPED_TABLES = [
 	...REQUIRED_TABLES,
@@ -153,7 +195,9 @@ export function connect(dbPath: string = DEFAULT_DB_PATH): WriterActor {
 		// Match Python's connect() pragmas exactly
 		db.pragma("foreign_keys = ON");
 		db.pragma("busy_timeout = 5000");
-		const configureWal = canAutoBootstrapSchema(db) || hasBootstrappedCodememSchema(db);
+		const configureWal =
+			canAutoBootstrapSchema(db) ||
+			(getSchemaVersion(db) >= MIN_WRITABLE_SCHEMA && hasBootstrappedCodememSchema(db));
 
 		if (!configureWal) return db;
 
@@ -248,6 +292,7 @@ export function assertSchemaReadyReadOnly(
 				"The database may be corrupt or from an incompatible version.",
 		);
 	}
+	assertV21SchemaReady(db, version);
 }
 
 function hasBootstrappedCodememSchema(db: DatabaseType): boolean {
@@ -480,12 +525,43 @@ export function assertSchemaReady(db: DatabaseType): void {
 				"The database may be corrupt or from an incompatible version.",
 		);
 	}
+	assertV21SchemaReady(db, version);
 
 	// FTS5 index is required for search
 	if (!tableExists(db, "memory_fts")) {
 		throw new Error(
 			"FTS5 index (memory_fts) is missing. " +
 				"Rebuild the database schema with the current TypeScript runtime before retrying.",
+		);
+	}
+}
+
+function assertV21SchemaReady(db: DatabaseType, version: number): void {
+	if (version < 21) return;
+	const missingTables = REQUIRED_V21_TABLES.filter((table) => !tableExists(db, table));
+	const missingColumns = Object.entries(REQUIRED_V21_COLUMNS).flatMap(([table, columns]) =>
+		columns
+			.filter((column) => !columnExists(db, table, column))
+			.map((column) => `${table}.${column}`),
+	);
+	const requiredIndex = db
+		.prepare(
+			"SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_raw_events_repository_source_stream_event_id'",
+		)
+		.get();
+	const legacyIndex = db
+		.prepare(
+			"SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_raw_events_source_stream_event_id'",
+		)
+		.get();
+	if (missingTables.length > 0 || missingColumns.length > 0 || !requiredIndex || legacyIndex) {
+		throw new Error(
+			`v21 schema is incomplete: ${[
+				...missingTables.map((table) => `table:${table}`),
+				...missingColumns.map((column) => `column:${column}`),
+				...(!requiredIndex ? ["index:idx_raw_events_repository_source_stream_event_id"] : []),
+				...(legacyIndex ? ["legacy-index:idx_raw_events_source_stream_event_id"] : []),
+			].join(", ")}`,
 		);
 	}
 }
@@ -526,7 +602,7 @@ function addColumnIfMissing(
 }
 
 /**
- * Has the additive compatibility shim already run for the current SCHEMA_VERSION?
+ * Has the additive compatibility shim run and left the current required shape?
  *
  * Fail-safe: returns false on any error (including a missing
  * `schema_compat_state` table) so the shim re-runs rather than skipping needed
@@ -539,7 +615,14 @@ export function isSchemaCompatibilityCurrent(db: DatabaseType): boolean {
 		const row = db
 			.prepare("SELECT applied_schema_version AS v FROM schema_compat_state WHERE id = 1 LIMIT 1")
 			.get() as { v: number } | undefined;
-		return typeof row?.v === "number" && row.v >= SCHEMA_VERSION;
+		if (typeof row?.v !== "number" || row.v < SCHEMA_VERSION) return false;
+		if (getSchemaVersion(db) < 21) return true;
+		return (
+			REQUIRED_V21_TABLES.every((table) => tableExists(db, table)) &&
+			Object.entries(REQUIRED_V21_COLUMNS).every(([table, columns]) =>
+				columns.every((column) => columnExists(db, table, column)),
+			)
+		);
 	} catch {
 		return false;
 	}
@@ -1466,10 +1549,538 @@ export function ensureAdditiveSchemaCompatibility(db: DatabaseType): void {
 	} catch {
 		// Keep compatibility shim fail-open for interrupted or partial legacy schemas.
 	}
+	if (getSchemaVersion(db) >= 21 && tableExists(db, "processing_resume_producer_receipts")) {
+		// Always runs: early v21 builds did not persist the frozen producer target set.
+		// The empty default is fail-closed: historical receipts cannot grant future jobs.
+		addColumnIfMissing(
+			db,
+			"processing_resume_producer_receipts",
+			"target_job_ids_json",
+			"TEXT NOT NULL DEFAULT '[]'",
+		);
+	}
 
 	// Always runs (not gated): moveMemoryProject relies on this backfill +
 	// reader-fallback to propagate sessions.project edits to legacy NULL rows.
 	backfillMemoryItemProject(db);
+}
+
+const V21_REBUILT_TABLES = ["raw_events", "raw_event_flush_batches"] as const;
+const V21_NEW_TABLES = [
+	"raw_event_identity_conflicts",
+	"raw_event_quarantine",
+	"processing_resume_producer_receipts",
+	"processing_resume_signals",
+	"provider_health_states",
+] as const;
+const V21_GENERATED_TABLES = [...V21_REBUILT_TABLES, ...V21_NEW_TABLES] as const;
+
+const V21_EXPRESSION_INDEX_DDL = `
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_events_repository_source_stream_event_id
+		ON raw_events(COALESCE(repository_identity, 'repo-v1:unknown'), source, stream_id, event_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_event_identity_conflicts_pair
+		ON raw_event_identity_conflicts(
+			COALESCE(repository_identity, 'repo-v1:unknown'), source, stream_id, event_id,
+			payload_digest_version, canonical_payload_digest, conflicting_payload_digest
+		);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_event_quarantine_identity_digest
+		ON raw_event_quarantine(
+			COALESCE(repository_identity, 'repo-v1:unknown'), source, stream_id, event_id,
+			payload_digest_version, payload_digest
+		);
+`;
+
+function generatedTableDdl(table: (typeof V21_GENERATED_TABLES)[number]): string {
+	const start = TEST_SCHEMA_BASE_DDL.indexOf(`CREATE TABLE IF NOT EXISTS \`${table}\``);
+	if (start < 0) throw new Error(`Missing generated v21 DDL for ${table}.`);
+	const next = TEST_SCHEMA_BASE_DDL.indexOf("CREATE TABLE IF NOT EXISTS", start + 1);
+	return TEST_SCHEMA_BASE_DDL.slice(start, next < 0 ? undefined : next);
+}
+
+export function rawEventPayloadDigest(payload: Record<string, unknown>): string {
+	return `sha256:${createHash("sha256")
+		.update("free-mem:event-payload-digest:v1\0")
+		.update(canonicalMutationJson(payload))
+		.digest("hex")}`;
+}
+
+function v21LegacyPayload(value: unknown): {
+	payloadJson: string;
+	payloadDigest: string;
+	captureState: "accepted" | "quarantined";
+	safeErrorCode: "redaction_degraded" | null;
+} {
+	try {
+		const parsed = JSON.parse(typeof value === "string" ? value : "") as unknown;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid");
+		return {
+			payloadJson: value as string,
+			payloadDigest: rawEventPayloadDigest(parsed as Record<string, unknown>),
+			captureState: "accepted",
+			safeErrorCode: null,
+		};
+	} catch {
+		return {
+			payloadJson: "{}",
+			payloadDigest: rawEventPayloadDigest({}),
+			captureState: "quarantined",
+			safeErrorCode: "redaction_degraded",
+		};
+	}
+}
+
+function dropIndexIfPresent(db: DatabaseType, name: string): void {
+	db.exec(`DROP INDEX IF EXISTS ${name}`);
+}
+
+function createV21Table(db: DatabaseType, table: (typeof V21_GENERATED_TABLES)[number]): void {
+	db.exec(generatedTableDdl(table));
+}
+
+function addV21ContentColumns(db: DatabaseType): void {
+	for (const table of ["memory_items", "user_prompts", "session_summaries", "artifacts"] as const) {
+		addColumnIfMissing(
+			db,
+			table,
+			"sensitivity",
+			"TEXT NOT NULL DEFAULT 'secret' CHECK (sensitivity IN ('eligible', 'local_only', 'private', 'secret'))",
+		);
+		addColumnIfMissing(db, table, "repository_identity", "TEXT");
+		db.exec(
+			`UPDATE ${table} SET sensitivity = 'secret' WHERE sensitivity IS NULL OR sensitivity NOT IN ('eligible', 'local_only', 'private', 'secret')`,
+		);
+	}
+	addColumnIfMissing(db, "sessions", "repository_identity", "TEXT");
+
+	for (const [name, ddl] of [
+		["lineage_id", "TEXT"],
+		["revision_id", "TEXT"],
+		["revision_ordinal", "INTEGER"],
+		["supersedes_memory_id", "INTEGER"],
+		["derivation_key", "TEXT"],
+		["source_event_ids_json", "TEXT"],
+		["source_spans_json", "TEXT"],
+		["manifest_fingerprint", "TEXT"],
+		["provider_fingerprint", "TEXT"],
+		["attempt_fingerprint", "TEXT"],
+	] as const) {
+		addColumnIfMissing(db, "memory_items", name, ddl);
+	}
+}
+
+function* v21LegacyRowsById(
+	db: DatabaseType,
+	table: "raw_events_v20" | "raw_event_flush_batches_v20",
+): Generator<Record<string, unknown>> {
+	const firstPage = db.prepare(
+		`SELECT *, CAST(id AS TEXT) AS migration_id FROM ${table} ORDER BY id LIMIT 500`,
+	);
+	const nextPage = db.prepare(
+		`SELECT *, CAST(id AS TEXT) AS migration_id FROM ${table}
+		 WHERE id > CAST(? AS INTEGER) ORDER BY id LIMIT 500`,
+	);
+	let cursor: string | null = null;
+	for (;;) {
+		const rows = (cursor === null ? firstPage.all() : nextPage.all(cursor)) as Array<
+			Record<string, unknown>
+		>;
+		if (rows.length === 0) return;
+		yield* rows;
+		cursor = String(rows.at(-1)?.migration_id);
+	}
+}
+
+function rebuildV21RawEvents(db: DatabaseType): void {
+	dropIndexIfPresent(db, "idx_raw_events_source_stream_seq");
+	dropIndexIfPresent(db, "idx_raw_events_source_stream_event_id");
+	dropIndexIfPresent(db, "idx_raw_events_repository_source_stream_event_id");
+	dropIndexIfPresent(db, "idx_raw_events_session_seq");
+	dropIndexIfPresent(db, "idx_raw_events_created");
+	db.exec("ALTER TABLE raw_events RENAME TO raw_events_v20");
+	createV21Table(db, "raw_events");
+
+	const insert = db.prepare(`
+		INSERT INTO raw_events(
+			id, source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+			ts_wall_ms, ts_mono_ms, payload_json, created_at, sensitivity, repository_identity,
+			capture_manifest_fingerprint, capture_state, safe_error_code, payload_digest_version,
+			payload_digest
+		) VALUES (
+			@id, @source, @stream_id, @opencode_session_id, @event_id, @event_seq, @event_type,
+			@ts_wall_ms, @ts_mono_ms, @payload_json, @created_at, 'secret', NULL,
+			NULL, @capture_state, @safe_error_code, 'event-payload-digest-v1', @payload_digest
+		)
+	`);
+	for (const row of v21LegacyRowsById(db, "raw_events_v20")) {
+		if (typeof row.event_id !== "string" || row.event_id.length === 0) {
+			throw new Error(
+				`v21 migration cannot preserve raw_events.id=${String(row.migration_id)} without an event ID.`,
+			);
+		}
+		const payload = v21LegacyPayload(row.payload_json);
+		insert.run({
+			id: row.migration_id,
+			source: row.source,
+			stream_id: row.stream_id,
+			opencode_session_id: row.opencode_session_id,
+			event_id: row.event_id,
+			event_seq: row.event_seq,
+			event_type: row.event_type,
+			ts_wall_ms: row.ts_wall_ms,
+			ts_mono_ms: row.ts_mono_ms,
+			payload_json: payload.payloadJson,
+			created_at: row.created_at,
+			capture_state: payload.captureState,
+			safe_error_code: payload.safeErrorCode,
+			payload_digest: payload.payloadDigest,
+		});
+		if (payload.captureState === "quarantined") {
+			const receiptId = `quarantine-receipt-v1:sha256:${createHash("sha256")
+				.update("free-mem:raw-event-quarantine:v1\0")
+				.update(
+					canonicalMutationJson({
+						repositoryIdentity: "repo-v1:unknown",
+						source: row.source,
+						streamId: row.stream_id,
+						eventId: row.event_id,
+						payloadDigestVersion: "event-payload-digest-v1",
+						payloadDigest: payload.payloadDigest,
+					}),
+				)
+				.digest("hex")}`;
+			db.prepare(
+				`INSERT INTO raw_event_quarantine(
+					receipt_id, repository_identity, source, stream_id, event_id, event_type,
+					ts_wall_ms, ts_mono_ms, payload_json, payload_digest_version, payload_digest,
+					sensitivity, capture_state, safe_error_code, capture_manifest_fingerprint,
+					first_seen_at, last_seen_at, occurrence_count
+				 ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, '{}', 'event-payload-digest-v1', ?,
+					'secret', 'quarantined', 'redaction_degraded', NULL, ?, ?, 1)`,
+			).run(
+				receiptId,
+				row.source,
+				row.stream_id,
+				row.event_id,
+				row.event_type,
+				row.ts_wall_ms,
+				row.ts_mono_ms,
+				payload.payloadDigest,
+				row.created_at,
+				row.created_at,
+			);
+		}
+	}
+	db.exec("DROP TABLE raw_events_v20");
+}
+
+const LEGACY_UNCOMPLETED_BATCH_STATES = new Set([
+	"pending",
+	"queued",
+	"claimed",
+	"started",
+	"running",
+	"processing",
+	"failed",
+	"error",
+	"retry_exhausted",
+	"gave_up",
+]);
+
+function reconcileCompletedLegacyFrontiers(db: DatabaseType): void {
+	const nextCompleted = db.prepare(
+		`SELECT CAST(batch.id AS TEXT) AS migration_id, batch.source, batch.stream_id,
+			batch.start_event_seq, batch.end_event_seq, session.last_flushed_event_seq
+		 FROM raw_event_flush_batches AS batch
+		 JOIN raw_event_sessions AS session
+		   ON session.source = batch.source AND session.stream_id = batch.stream_id
+		 WHERE batch.status = 'completed'
+		   AND batch.start_event_seq = session.last_flushed_event_seq + 1
+		 ORDER BY batch.source, batch.stream_id, batch.id LIMIT 1`,
+	);
+	const strandedCompleted = db.prepare(
+		`SELECT 1 FROM raw_event_flush_batches AS batch
+		 LEFT JOIN raw_event_sessions AS session
+		   ON session.source = batch.source AND session.stream_id = batch.stream_id
+		 WHERE batch.status = 'completed'
+		   AND (session.source IS NULL OR batch.end_event_seq > session.last_flushed_event_seq)
+		 LIMIT 1`,
+	);
+	const advanceFrontier = db.prepare(
+		`UPDATE raw_event_sessions
+		 SET last_flushed_event_seq = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+		 WHERE source = ? AND stream_id = ? AND last_flushed_event_seq = ?`,
+	);
+
+	for (;;) {
+		const candidate = nextCompleted.get() as
+			| {
+					migration_id: string;
+					source: string;
+					stream_id: string;
+					start_event_seq: number;
+					end_event_seq: number;
+					last_flushed_event_seq: number;
+			  }
+			| undefined;
+		if (!candidate) break;
+		const end = Number(candidate.end_event_seq);
+		if (!isCompleteUnambiguousLegacyRange(db, candidate, "current")) {
+			throw new Error("Completed legacy range is incomplete or ambiguous.");
+		}
+		const advanced = advanceFrontier.run(
+			end,
+			candidate.source,
+			candidate.stream_id,
+			candidate.last_flushed_event_seq,
+		);
+		if (advanced.changes !== 1) {
+			throw new Error("Completed legacy frontier changed during migration.");
+		}
+	}
+	if (strandedCompleted.get()) {
+		throw new Error("Completed legacy range is incomplete or ambiguous.");
+	}
+}
+
+const LEGACY_RANGE_OVERLAP_SQL = {
+	current: `SELECT 1 FROM raw_event_flush_batches
+		WHERE id <> CAST(? AS INTEGER) AND source = ? AND stream_id = ?
+		  AND start_event_seq <= ? AND end_event_seq >= ? LIMIT 1`,
+	v20: `SELECT 1 FROM raw_event_flush_batches_v20
+		WHERE id <> CAST(? AS INTEGER) AND source = ? AND stream_id = ?
+		  AND start_event_seq <= ? AND end_event_seq >= ? LIMIT 1`,
+} as const;
+
+function isCompleteUnambiguousLegacyRange(
+	db: DatabaseType,
+	row: Record<string, unknown>,
+	batchTable: keyof typeof LEGACY_RANGE_OVERLAP_SQL,
+): boolean {
+	const start = Number(row.start_event_seq);
+	const end = Number(row.end_event_seq);
+	if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end) {
+		return false;
+	}
+	const overlap = db
+		.prepare(LEGACY_RANGE_OVERLAP_SQL[batchTable])
+		.get(row.migration_id, row.source, row.stream_id, end, start);
+	if (overlap) return false;
+	if (row.status === "gave_up") {
+		const frontier = db
+			.prepare(
+				`SELECT last_flushed_event_seq FROM raw_event_sessions
+				 WHERE source = ? AND stream_id = ?`,
+			)
+			.get(row.source, row.stream_id) as { last_flushed_event_seq: number } | undefined;
+		if (!frontier || Number(frontier.last_flushed_event_seq) < end) return false;
+	}
+	const range = db
+		.prepare(
+			`SELECT COUNT(*) AS count,
+				SUM(CASE WHEN typeof(event_seq) = 'integer' THEN 1 ELSE 0 END)
+					AS integer_sequence_count,
+				MIN(event_seq) AS first_seq, MAX(event_seq) AS last_seq
+			 FROM raw_events
+			 WHERE source = ? AND stream_id = ? AND event_seq BETWEEN ? AND ?`,
+		)
+		.get(row.source, row.stream_id, start, end) as
+		| {
+				count: number;
+				integer_sequence_count: number;
+				first_seq: number | null;
+				last_seq: number | null;
+		  }
+		| undefined;
+	return (
+		range?.count === end - start + 1 &&
+		range.integer_sequence_count === end - start + 1 &&
+		range.first_seq === start &&
+		range.last_seq === end
+	);
+}
+
+function legacyBatchMigrationFields(db: DatabaseType, row: Record<string, unknown>) {
+	const status = String(row.status);
+	if (status === "completed") {
+		return {
+			status: "completed",
+			safe_error_code: null,
+			completion_disposition: "none",
+			legacy_recovery_state: "not_legacy",
+			frontier_already_advanced: 0,
+		};
+	}
+	if (!LEGACY_UNCOMPLETED_BATCH_STATES.has(status)) {
+		throw new Error(`Unsupported legacy raw-event batch status: ${status}`);
+	}
+	if (!isCompleteUnambiguousLegacyRange(db, row, "v20")) {
+		return {
+			status: "completed",
+			safe_error_code: "missing_or_ambiguous_range",
+			completion_disposition: "legacy_unrecoverable",
+			legacy_recovery_state: "missing_or_ambiguous_range",
+			frontier_already_advanced: 0,
+		};
+	}
+	return {
+		status: "retry_exhausted",
+		safe_error_code: null,
+		completion_disposition: "none",
+		legacy_recovery_state: "complete_range",
+		frontier_already_advanced: status === "gave_up" ? 1 : 0,
+	};
+}
+
+function rebuildV21RawEventFlushBatches(db: DatabaseType): void {
+	dropIndexIfPresent(db, "idx_flush_batches_source_stream_seq_ver");
+	dropIndexIfPresent(db, "idx_flush_batches_session_created");
+	dropIndexIfPresent(db, "idx_flush_batches_status_updated");
+	db.exec("ALTER TABLE raw_event_flush_batches RENAME TO raw_event_flush_batches_v20");
+	createV21Table(db, "raw_event_flush_batches");
+	const insert = db.prepare(`
+		INSERT INTO raw_event_flush_batches(
+			id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+			extractor_version, status, error_message, error_type, observer_provider, observer_model,
+			observer_runtime, observer_auth_source, observer_auth_type, observer_error_code,
+			observer_error_message, attempt_count, admission_manifest_fingerprint,
+			admission_provider_fingerprint, retry_limit, claim_generation, attempt_manifest_fingerprint,
+			attempt_provider_fingerprint, attempt_fingerprint, attempt_max_memory_items,
+			resume_grant_id, resume_grant_reason,
+			resume_grant_state, resume_grant_consumed_at, last_resume_signal_id, last_resume_sequence,
+			last_resume_signal_disposition, safe_error_code, egress_diagnostic_json, output_count,
+			observed_output_count, completion_disposition, legacy_recovery_state,
+			frontier_already_advanced, created_at, updated_at
+		) VALUES (
+			@id, @source, @stream_id, @opencode_session_id, @start_event_seq, @end_event_seq,
+			@extractor_version, @status, @error_message, @error_type, @observer_provider, @observer_model,
+			@observer_runtime, @observer_auth_source, @observer_auth_type, @observer_error_code,
+			@observer_error_message, @attempt_count, NULL, NULL, ${PROCESSING_JOB_RETRY_LIMIT}, 0, NULL, NULL, NULL, NULL, NULL, NULL,
+			'none', NULL, NULL, 0, 'none', @safe_error_code, NULL, 0, 0, @completion_disposition,
+			@legacy_recovery_state, @frontier_already_advanced, @created_at, @updated_at
+		)
+	`);
+	for (const row of v21LegacyRowsById(db, "raw_event_flush_batches_v20")) {
+		insert.run({
+			id: row.migration_id,
+			source: row.source,
+			stream_id: row.stream_id,
+			opencode_session_id: row.opencode_session_id,
+			start_event_seq: row.start_event_seq,
+			end_event_seq: row.end_event_seq,
+			extractor_version: row.extractor_version,
+			error_message: row.error_message ?? null,
+			error_type: row.error_type ?? null,
+			observer_provider: row.observer_provider ?? null,
+			observer_model: row.observer_model ?? null,
+			observer_runtime: row.observer_runtime ?? null,
+			observer_auth_source: row.observer_auth_source ?? null,
+			observer_auth_type: row.observer_auth_type ?? null,
+			observer_error_code: row.observer_error_code ?? null,
+			observer_error_message: row.observer_error_message ?? null,
+			attempt_count: typeof row.attempt_count === "number" ? row.attempt_count : 0,
+			...legacyBatchMigrationFields(db, row),
+			created_at: row.created_at,
+			updated_at: row.updated_at,
+		});
+	}
+	db.exec("DROP TABLE raw_event_flush_batches_v20");
+}
+
+function validateV21Migration(db: DatabaseType): void {
+	if (
+		!columnExists(db, "memory_items", "import_key") ||
+		!columnExists(db, "memory_items", "origin_device_id")
+	) {
+		throw new Error("v21 migration requires additive memory identity columns.");
+	}
+	for (const table of ["mutation_receipts", "mutation_quarantine", "daemon_jobs"]) {
+		if (!tableExists(db, table)) {
+			throw new Error(`v21 migration is missing required additive table: ${table}`);
+		}
+	}
+	const invalid = db
+		.prepare(
+			`SELECT 1 FROM raw_events
+			 WHERE sensitivity NOT IN ('eligible', 'local_only', 'private', 'secret')
+				OR payload_digest_version <> 'event-payload-digest-v1'
+				OR length(payload_digest) <> 71
+				OR substr(payload_digest, 1, 7) <> 'sha256:'
+				OR substr(payload_digest, 8) GLOB '*[^0-9a-f]*'
+				OR payload_digest = 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
+				OR repository_identity = 'repo-v1:unknown'
+			 LIMIT 1`,
+		)
+		.get();
+	if (invalid) throw new Error("v21 raw-event digest or sensitivity validation failed.");
+	for (const table of V21_NEW_TABLES) {
+		if (!tableExists(db, table)) throw new Error(`v21 durable table is missing: ${table}`);
+	}
+	const indexes = db
+		.prepare(
+			`SELECT name, sql FROM sqlite_master
+			 WHERE type = 'index' AND name IN (
+				'idx_raw_events_source_stream_event_id',
+				'idx_raw_events_repository_source_stream_event_id'
+			 )`,
+		)
+		.all() as Array<{ name: string; sql: string | null }>;
+	if (indexes.some((index) => index.name === "idx_raw_events_source_stream_event_id")) {
+		throw new Error("v21 legacy raw-event identity index remains installed.");
+	}
+	const repositoryIndex = indexes.find(
+		(index) => index.name === "idx_raw_events_repository_source_stream_event_id",
+	);
+	if (!repositoryIndex?.sql?.includes("COALESCE(repository_identity, 'repo-v1:unknown')")) {
+		throw new Error("v21 repository-aware raw-event identity index is missing.");
+	}
+	const capacity = db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM raw_event_flush_batches
+			 WHERE status IN ('queued','processing','failed','retry_exhausted')`,
+		)
+		.get() as { count: number };
+	if (Number(capacity.count) > PROCESSING_JOB_CAPACITY) {
+		throw new Error("v21 migration would exceed the durable processing capacity.");
+	}
+}
+
+function setSchemaCompatVersion(db: DatabaseType, version: number): void {
+	db.exec(`
+		CREATE TABLE IF NOT EXISTS schema_compat_state (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			applied_schema_version INTEGER NOT NULL,
+			applied_at TEXT NOT NULL
+		)
+	`);
+	db.prepare(
+		`INSERT INTO schema_compat_state(id, applied_schema_version, applied_at)
+		 VALUES (1, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(id) DO UPDATE SET
+			applied_schema_version = excluded.applied_schema_version,
+			applied_at = excluded.applied_at`,
+	).run(version);
+}
+
+/** Strict v20 -> v21 migration. Call only after a verified backup. */
+export function migrateV20ToV21(db: DatabaseType): void {
+	if (getSchemaVersion(db) !== V21_MIGRATION_SOURCE_SCHEMA) return;
+	db.transaction(() => {
+		setSchemaCompatVersion(db, MIN_WRITABLE_SCHEMA);
+		reconcileCompletedLegacyFrontiers(db);
+		for (const table of V21_NEW_TABLES) createV21Table(db, table);
+		rebuildV21RawEvents(db);
+		rebuildV21RawEventFlushBatches(db);
+		addV21ContentColumns(db);
+		db.exec(V21_EXPRESSION_INDEX_DDL);
+		// Strict migration reuses only the PR2-critical canonical creators; the
+		// broad startup compatibility shim remains outside this transaction.
+		ensureRetrievalLedgerSchema(db);
+		ensureMutationReceiptSchema(db);
+		db.exec(DAEMON_JOBS_DDL);
+		validateV21Migration(db);
+		setSchemaCompatVersion(db, SCHEMA_VERSION);
+		db.pragma(`user_version = ${SCHEMA_VERSION}`);
+	}).immediate();
 }
 
 /** Safely parse a JSON string, returning {} on failure. */

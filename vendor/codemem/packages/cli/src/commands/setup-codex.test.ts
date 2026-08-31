@@ -1311,6 +1311,49 @@ describe("T007 Slice 1 setup activation", () => {
 		);
 	});
 
+	it("writes distinct, monotonic v2 activation receipts through the existing setup transaction", async () => {
+		const dataDir = join(codexHome, "slice1-v2-receipt-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const receiptPath = resolveStorageLayout(dataDir).capabilityActivationReceiptPath;
+		const first = JSON.parse(readFileSync(receiptPath, "utf8")) as {
+			version: number;
+			receiptId: string;
+			activationSequence: number;
+		};
+
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const second = JSON.parse(readFileSync(receiptPath, "utf8")) as typeof first;
+
+		expect(first).toMatchObject({
+			version: 2,
+			receiptId: expect.stringMatching(
+				/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+			),
+			activationSequence: expect.any(Number),
+		});
+		expect(second.receiptId).not.toBe(first.receiptId);
+		expect(second.activationSequence).toBe(first.activationSequence + 1);
+	});
+
+	it("refuses an absent active receipt instead of resetting its sequence", async () => {
+		const dataDir = join(codexHome, "slice1-missing-receipt-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const currentBefore = readFileSync(layout.capabilityCurrentPointerPath, "utf8");
+		rmSync(layout.capabilityActivationReceiptPath);
+
+		process.exitCode = undefined;
+		await setupCommand.parseAsync(["node", "codemem"]);
+
+		expect(process.exitCode).toBe(1);
+		expect(existsSync(layout.capabilityActivationReceiptPath)).toBe(false);
+		expect(readFileSync(layout.capabilityCurrentPointerPath, "utf8")).toBe(currentBefore);
+	});
+
 	it.each([
 		"claude",
 		"codex",

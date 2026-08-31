@@ -37,6 +37,8 @@
 | `GET /v1/operations/:id` | path `id` → `{ operationId, payloadHash, state, result?, error? }` | B の結果再取得。全 B endpoint で同一 operationId + 同一 hash は現在/最終結果を返し、異 hash は副作用前に `idempotency_conflict` | typed `daemon_unavailable` |
 | `POST /v1/jobs` | `{ kind, args, dryRun? }` → `{ jobId, state }` | C。daemon maintenance mode 内で直列、`maxAttempts=1` | typed `daemon_unavailable`。応答不明を含め client 自動 retry 禁止 |
 | `GET /v1/jobs` / `GET /v1/jobs/:id` | query `{ kind?, state?, submittedAfter? }` / path `id` → `{ jobs[] }` / `{ job }` | C の照会・結果再取得。再実行は user が新 job を明示 trigger | typed `daemon_unavailable` |
+| `GET /v1/processing-jobs/:id` | path `id` → `{ job }` | read。doctor が exact `retry_exhausted` job の bounded state/fingerprint/attempt/claim snapshot だけを表示 | typed `daemon_unavailable`。DB fallback 禁止 |
+| `POST /v1/processing-jobs/:id/doctor-retry` | path `id` + `{ producerReceiptId, expectedRole, expectedProviderFingerprint, expectedManifestFingerprint, expectedAttemptCount, expectedClaimGeneration }` → `{ disposition, grantState }` | A。**user-authority**。表示 snapshot を transaction 内で再検証し、exact job に one-shot grant を 1 件だけ作成 | typed `daemon_unavailable`。応答不明を含め自動 retry・DB fallback 禁止 |
 
 Class B の `payloadHash` は endpoint ごとの allowlisted payload に対する SHA-256。export/import は operation journal と `GET /v1/operations/:id`、backup create は artifact + manifest sidecar、restore は deterministic staging 名 + storage journal により同じ結果へ収束する。Class C は job ID を受領した後だけ照会し、lost response 時は `GET /v1/jobs` で探索してから user が判断する。
 

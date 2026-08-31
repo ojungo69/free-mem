@@ -112,7 +112,7 @@ describe("Phase 1 mutation dispatcher", () => {
 		expect(written).toMatchObject({ result: { status: "committed" } });
 	});
 
-	it("P1-T036-02-events-idempotent", async () => {
+	it("P1-T036-02 unknown-repository replay is durably quarantined", async () => {
 		const handle = await core.startDaemon({ dataDir: tempDataDir() });
 		created.push(handle);
 		const body = {
@@ -127,9 +127,16 @@ describe("Phase 1 mutation dispatcher", () => {
 			handle.socketPath,
 			handshake({ method: "POST /v1/events", id: "req-2", body }),
 		);
+		const third = await core.callDaemonRpc(
+			handle.socketPath,
+			handshake({ method: "POST /v1/events", id: "req-3", body }),
+		);
 		expect(first).toMatchObject({ result: { status: "committed" } });
 		expect(second).toMatchObject({
-			result: { receiptId: (first as core.RpcSuccess).result.receiptId, status: "committed" },
+			result: { receiptId: expect.any(String), status: "quarantined" },
+		});
+		expect(third).toMatchObject({
+			result: { receiptId: (second as core.RpcSuccess).result.receiptId, status: "quarantined" },
 		});
 	});
 

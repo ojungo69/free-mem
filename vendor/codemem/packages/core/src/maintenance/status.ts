@@ -103,7 +103,12 @@ export function retryRawEventFailuresWithDb(db: Database, limit = 25): { retried
 		const candidateIds = d
 			.select({ id: schema.rawEventFlushBatches.id })
 			.from(schema.rawEventFlushBatches)
-			.where(inArray(schema.rawEventFlushBatches.status, ["failed", "error"]))
+			.where(
+				and(
+					eq(schema.rawEventFlushBatches.status, "failed"),
+					sql`${schema.rawEventFlushBatches.attempt_count} < ${schema.rawEventFlushBatches.retry_limit}`,
+				),
+			)
 			.orderBy(schema.rawEventFlushBatches.updated_at)
 			.limit(limit)
 			.all()
@@ -114,7 +119,7 @@ export function retryRawEventFailuresWithDb(db: Database, limit = 25): { retried
 		const result = d
 			.update(schema.rawEventFlushBatches)
 			.set({
-				status: "pending",
+				status: "queued",
 				updated_at: now,
 				error_message: null,
 				error_type: null,
@@ -129,7 +134,8 @@ export function retryRawEventFailuresWithDb(db: Database, limit = 25): { retried
 			.where(
 				and(
 					inArray(schema.rawEventFlushBatches.id, candidateIds),
-					inArray(schema.rawEventFlushBatches.status, ["failed", "error"]),
+					eq(schema.rawEventFlushBatches.status, "failed"),
+					sql`${schema.rawEventFlushBatches.attempt_count} < ${schema.rawEventFlushBatches.retry_limit}`,
 				),
 			)
 			.run();

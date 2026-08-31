@@ -182,6 +182,7 @@ For architecture details, see [docs/architecture.md](docs/architecture.md).
 | | `codemem db prune-observations` | Deactivate low-signal observations |
 | | `codemem db backfill-tags` | Populate missing `tags_text` values |
 | | `codemem db raw-events-status` | Show raw-event queue status |
+| | `codemem db raw-events-doctor-retry <job-id>` | Inspect one exhausted processing job and explicitly confirm a one-shot retry |
 | **Config** | `codemem config` | View or update configuration |
 | | `codemem setup` | Interactive first-run setup |
 | **Plumbing** | `codemem mcp` | MCP stdio client for the local sole-writer daemon |

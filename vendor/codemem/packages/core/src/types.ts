@@ -21,6 +21,7 @@ export interface Session {
 	tool_version: string | null;
 	metadata_json: string | null;
 	import_key: string | null;
+	repository_identity: string | null;
 }
 
 export interface MemoryItem {
@@ -60,6 +61,18 @@ export interface MemoryItem {
 	rev: number;
 	scope_id: string | null;
 	project: string | null;
+	sensitivity: SensitivityV1;
+	repository_identity: string | null;
+	lineage_id: string | null;
+	revision_id: string | null;
+	revision_ordinal: number | null;
+	supersedes_memory_id: number | null;
+	derivation_key: string | null;
+	source_event_ids_json: string | null;
+	source_spans_json: string | null;
+	manifest_fingerprint: string | null;
+	provider_fingerprint: string | null;
+	attempt_fingerprint: string | null;
 }
 
 export interface Artifact {
@@ -73,6 +86,8 @@ export interface Artifact {
 	content_blob: Buffer | null;
 	created_at: string;
 	metadata_json: string | null;
+	sensitivity: SensitivityV1;
+	repository_identity: string | null;
 }
 
 export type PackTraceMode = "default" | "task" | "recall";
@@ -185,12 +200,144 @@ export interface UsageEvent {
 // Raw event pipeline
 // ---------------------------------------------------------------------------
 
+export type SensitivityV1 = "eligible" | "local_only" | "private" | "secret";
+export type RawEventCaptureState = "accepted" | "quarantined";
+export type RawEventCaptureOutcome =
+	| {
+			status: "accepted" | "idempotent";
+			normalAck: true;
+			receiptId: string;
+			eventSeq: number;
+	  }
+	| {
+			status: "identity_conflict";
+			normalAck: false;
+			receiptId: string;
+			reason: "event_identity_payload_conflict";
+			canonicalUnchanged: true;
+			memoryDelta: 0;
+	  }
+	| {
+			status: "quarantined";
+			normalAck: false;
+			receiptId: string;
+			reason: "repository_identity_unknown_collision" | "redaction_degraded";
+	  };
+
+export type RawEventJobStatus =
+	| "queued"
+	| "processing"
+	| "failed"
+	| "retry_exhausted"
+	| "completed";
+
+export type RawEventJobAdmission = {
+	status: "admitted" | "existing" | "capacity" | "source_gap" | "no_events";
+	jobId?: number;
+	startEventSeq?: number;
+	endEventSeq?: number;
+	reason?: "wait_for_capacity" | "source_gap";
+};
+
+export type RawEventJobClaim = {
+	jobId: number;
+	source: string;
+	streamId: string;
+	startEventSeq: number;
+	endEventSeq: number;
+	attemptCount: number;
+	claimGeneration: number;
+	attemptFingerprint: string;
+	manifestFingerprint: string;
+	providerFingerprint: string;
+	maxMemoryItemsPerDerivation: number;
+	usedResumeGrant: boolean;
+};
+
+export type RawEventMemoryCompletion = {
+	memoryId: number;
+	citedSourceEventIds: string[];
+	disposition: "inserted" | "deduplicated";
+};
+
+export type RawEventPrivacyProjection = {
+	eligibleSourceEventIds: string[];
+	omittedSourceEventIds: string[];
+};
+
+export type ResumeSignalKind =
+	| "validated_configuration_activation"
+	| "recorded_provider_healthy_transition"
+	| "user_confirmed_doctor_retry";
+
+export type ResumeSignalDisposition =
+	| "none"
+	| "accepted"
+	| "duplicate"
+	| "stale"
+	| "grant_pending"
+	| "wrong_job"
+	| "wrong_role"
+	| "wrong_provider"
+	| "unchanged_configuration"
+	| "unrelated_component";
+
+type ResumeGrantState = "none" | "pending" | "consumed";
+
+export type ResumeSignalV1 = {
+	signalId: string;
+	producerReceiptId: string;
+	targetJobId: number;
+	sequence: number;
+	kind: ResumeSignalKind;
+	targetRole: "summary";
+	providerFingerprint: string;
+	manifestFingerprint: string;
+};
+
+export type ResumeSignalResult = {
+	jobId: number;
+	signalId: string;
+	producerReceiptId: string;
+	sequence: number;
+	disposition: ResumeSignalDisposition;
+	grantState: ResumeGrantState;
+};
+
+export type ResumeFanoutResult = {
+	producerReceiptId: string;
+	disposition: "accepted" | "duplicate" | "stale" | "grant_pending";
+	fanoutCount: number;
+	results: ResumeSignalResult[];
+};
+
+export type DoctorProcessingJobProjection = {
+	jobId: number;
+	component: "summary";
+	state: RawEventJobStatus;
+	admission: {
+		manifestFingerprint: string | null;
+		providerFingerprint: string | null;
+		retryLimit: number;
+	};
+	attempt: {
+		count: number;
+		claimGeneration: number;
+		manifestFingerprint: string | null;
+		providerFingerprint: string | null;
+		fingerprint: string | null;
+	};
+	resume: { grantState: ResumeGrantState; lastSequence?: number };
+	retryTarget: { manifestFingerprint: string; providerFingerprint: string } | null;
+	nextAction: "none" | "activate_valid_manifest" | "confirm_retry";
+};
+
 export interface RawEvent {
 	id: number;
 	source: string;
 	stream_id: string;
 	opencode_session_id: string;
-	event_id: string | null;
+	event_id: string;
 	event_seq: number;
 	event_type: string;
 	/** Wall-clock timestamp in ms. SQLite INTEGER. */
@@ -199,6 +346,13 @@ export interface RawEvent {
 	ts_mono_ms: number | null;
 	payload_json: string;
 	created_at: string;
+	sensitivity: SensitivityV1;
+	repository_identity: string | null;
+	capture_manifest_fingerprint: string | null;
+	capture_state: RawEventCaptureState;
+	safe_error_code: string | null;
+	payload_digest_version: "event-payload-digest-v1";
+	payload_digest: string;
 }
 
 export interface RawEventSession {
@@ -222,7 +376,7 @@ export interface RawEventFlushBatch {
 	start_event_seq: number;
 	end_event_seq: number;
 	extractor_version: string;
-	status: string;
+	status: RawEventJobStatus;
 	error_message: string | null;
 	error_type: string | null;
 	observer_provider: string | null;
@@ -233,6 +387,28 @@ export interface RawEventFlushBatch {
 	observer_error_code: string | null;
 	observer_error_message: string | null;
 	attempt_count: number;
+	admission_manifest_fingerprint: string | null;
+	admission_provider_fingerprint: string | null;
+	retry_limit: number;
+	claim_generation: number;
+	attempt_manifest_fingerprint: string | null;
+	attempt_provider_fingerprint: string | null;
+	attempt_fingerprint: string | null;
+	attempt_max_memory_items: 16 | 17 | null;
+	resume_grant_id: string | null;
+	resume_grant_reason: ResumeSignalKind | null;
+	resume_grant_state: ResumeGrantState;
+	resume_grant_consumed_at: string | null;
+	last_resume_signal_id: string | null;
+	last_resume_sequence: number;
+	last_resume_signal_disposition: ResumeSignalDisposition;
+	safe_error_code: string | null;
+	egress_diagnostic_json: string | null;
+	output_count: number;
+	observed_output_count: number;
+	completion_disposition: "none" | "memory_committed" | "privacy_skip" | "legacy_unrecoverable";
+	legacy_recovery_state: "not_legacy" | "complete_range" | "missing_or_ambiguous_range";
+	frontier_already_advanced: number;
 	created_at: string;
 	updated_at: string;
 }
@@ -247,6 +423,8 @@ export interface UserPrompt {
 	created_at_epoch: number;
 	metadata_json: string | null;
 	import_key: string | null;
+	sensitivity: SensitivityV1;
+	repository_identity: string | null;
 }
 
 export interface SessionSummary {
@@ -266,6 +444,8 @@ export interface SessionSummary {
 	created_at_epoch: number;
 	metadata_json: string | null;
 	import_key: string | null;
+	sensitivity: SensitivityV1;
+	repository_identity: string | null;
 }
 
 export interface OpenCodeSession {

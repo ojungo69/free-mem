@@ -1,6 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type OperationalStatusSnapshot, VERSION } from "@codemem/core";
+import {
+	defaultResourceProfile,
+	type OperationalNextAction,
+	type OperationalProcessingJobs,
+	type OperationalStatusSnapshot,
+	VERSION,
+} from "@codemem/core";
 import { createMcpRpcClient, type McpRpcOutcome } from "@codemem/mcp";
 import { Command } from "commander";
 import { helpStyle } from "../help-style.js";
@@ -49,13 +55,16 @@ export interface OperationalStatusReport {
 	runtime: { viewer: ViewerRuntimeObservation["state"]; pid?: number };
 	maintenance: { state: MaintenanceState };
 	semantic_index: { state: SemanticIndexState };
-	raw_events: { state: RawEventsState; pending: number };
+	raw_events: { state: RawEventsState; pending: number; source_gaps: number };
+	processing_jobs: OperationalProcessingJobs;
 	observer: { state: ObserverState };
 	capability: Record<string, unknown> | null;
 	attention: StatusAttention[];
 }
 
 interface StatusOptions extends DbOpts, ConfigOpts, JsonOpts {}
+
+const PROCESSING_JOB_CAPACITY = defaultResourceProfile().processingQueueCapacity;
 
 export interface StatusDependencies {
 	now: () => Date;
@@ -217,16 +226,81 @@ function addRuntimeAttention(
 	}
 }
 
+function boundedCount(value: unknown): number {
+	const count = Number(value);
+	return Number.isFinite(count) && count > 0 ? Math.trunc(count) : 0;
+}
+
+function boundedJobIds(value: unknown): number[] {
+	if (!Array.isArray(value)) return [];
+	return [
+		...new Set(
+			value.filter(
+				(id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0,
+			),
+		),
+	]
+		.toSorted((left, right) => left - right)
+		.slice(0, PROCESSING_JOB_CAPACITY);
+}
+
+function unknownProcessingJobs(): OperationalProcessingJobs {
+	return {
+		capacity: PROCESSING_JOB_CAPACITY,
+		uncompleted: 0,
+		processing: 0,
+		failed: 0,
+		exhausted: 0,
+		pending_grants: 0,
+		max_attempt: 0,
+		legacy_unrecoverable: 0,
+		retry_exhausted_job_ids: [],
+		next_action: "upgrade_runtime",
+	};
+}
+
+function projectProcessingJobs(snapshot: OperationalStatusSnapshot): OperationalProcessingJobs {
+	const source = snapshot.processing_jobs;
+	if (!source || typeof source !== "object") return unknownProcessingJobs();
+	const nextAction: OperationalNextAction = [
+		"none",
+		"activate_valid_manifest",
+		"configure_credential",
+		"wait_for_capacity",
+		"confirm_retry",
+		"restart_daemon",
+		"upgrade_runtime",
+	].includes(source.next_action as OperationalNextAction)
+		? (source.next_action as OperationalNextAction)
+		: "upgrade_runtime";
+	return {
+		capacity: boundedCount(source.capacity) || PROCESSING_JOB_CAPACITY,
+		uncompleted: boundedCount(source.uncompleted),
+		processing: boundedCount(source.processing),
+		failed: boundedCount(source.failed),
+		exhausted: boundedCount(source.exhausted),
+		pending_grants: boundedCount(source.pending_grants),
+		max_attempt: boundedCount(source.max_attempt),
+		legacy_unrecoverable: boundedCount(source.legacy_unrecoverable),
+		retry_exhausted_job_ids: boundedJobIds(source.retry_exhausted_job_ids),
+		next_action: nextAction,
+	};
+}
+
 function projectDatabaseSubsystems(
 	snapshot: OperationalStatusSnapshot | null,
 	capability: Record<string, unknown> | null,
 	attention: StatusAttention[],
-): Pick<OperationalStatusReport, "maintenance" | "semantic_index" | "raw_events" | "observer"> {
+): Pick<
+	OperationalStatusReport,
+	"maintenance" | "semantic_index" | "raw_events" | "processing_jobs" | "observer"
+> {
 	if (!snapshot) {
 		return {
 			maintenance: { state: "unknown" },
 			semantic_index: { state: "unknown" },
-			raw_events: { state: "unknown", pending: 0 },
+			raw_events: { state: "unknown", pending: 0, source_gaps: 0 },
+			processing_jobs: unknownProcessingJobs(),
 			observer: { state: "unknown" },
 		};
 	}
@@ -263,21 +337,92 @@ function projectDatabaseSubsystems(
 		});
 	}
 
-	const pending = Math.max(0, Math.trunc(snapshot.raw_events.pending));
-	let rawState: RawEventsState = snapshot.raw_events.available ? "healthy" : "unknown";
-	if (snapshot.raw_events.failed_batches > 0) {
-		rawState = "failing";
+	const pending = Math.max(0, Math.trunc(Number(snapshot.raw_events.pending) || 0));
+	const sourceGaps = Math.min(
+		boundedCount(snapshot.raw_events.source_gaps),
+		PROCESSING_JOB_CAPACITY,
+	);
+	const processingJobs = projectProcessingJobs(snapshot);
+	const sourceGapCountAvailable =
+		typeof snapshot.raw_events.source_gaps === "number" &&
+		Number.isSafeInteger(snapshot.raw_events.source_gaps) &&
+		snapshot.raw_events.source_gaps >= 0;
+	const rawEventsAvailable = snapshot.raw_events.available === true && sourceGapCountAvailable;
+	if (!rawEventsAvailable || sourceGaps > 0) processingJobs.next_action = "upgrade_runtime";
+	if (processingJobs.next_action === "upgrade_runtime") {
+		processingJobs.retry_exhausted_job_ids = [];
+	}
+	let rawState: RawEventsState = rawEventsAvailable ? "healthy" : "unknown";
+	if (!rawEventsAvailable) {
 		attention.push({
-			code: "raw_events_failing",
+			code: "raw_events_unavailable",
 			severity: "error",
-			message: "Raw-event ingestion exhausted retries recently; run `codemem db raw-events-gate`",
+			message: "Raw-event diagnostics are unavailable; upgrade the runtime",
 		});
-	} else if (pending > 0) {
+	}
+	if (sourceGaps > 0) {
+		if (rawEventsAvailable) rawState = "failing";
+		attention.push({
+			code: "raw_events_source_gap",
+			severity: "error",
+			message: `${sourceGaps} raw-event source gap${sourceGaps === 1 ? "" : "s"} detected in bounded scan; upgrade the runtime`,
+		});
+	}
+	if (
+		rawEventsAvailable &&
+		(processingJobs.exhausted > 0 || boundedCount(snapshot.raw_events.failed_batches) > 0)
+	) {
+		rawState = "failing";
+		if (processingJobs.exhausted === 0) {
+			attention.push({
+				code: "raw_events_failing",
+				severity: "error",
+				message: "Raw-event ingestion exhausted retries recently; run `codemem db raw-events-gate`",
+			});
+		}
+	} else if (rawEventsAvailable && sourceGaps === 0 && pending > 0) {
 		rawState = "backlogged";
 		attention.push({
 			code: "raw_events_backlogged",
 			severity: "warning",
 			message: `${pending} raw events pending; run \`codemem db raw-events-status\``,
+		});
+	}
+	if (processingJobs.legacy_unrecoverable > 0) {
+		attention.push({
+			code: "processing_jobs_legacy_unrecoverable",
+			severity: "error",
+			message: "Some raw-event processing ranges are unrecoverable; upgrade the runtime",
+		});
+	} else if (processingJobs.exhausted > 0) {
+		const ids = processingJobs.retry_exhausted_job_ids.join(", ");
+		const upgradeRequired = processingJobs.next_action === "upgrade_runtime";
+		const activationRequired = processingJobs.next_action === "activate_valid_manifest";
+		let message = "Raw-event processing has exhausted automatic retries; confirm a retry";
+		if (upgradeRequired) {
+			message = "Raw-event processing has exhausted retries; upgrade the runtime before retrying";
+		} else if (activationRequired) {
+			message =
+				"Raw-event processing has exhausted retries; run `codemem setup` to activate a valid manifest before retrying";
+		} else if (ids) {
+			message = `Raw-event processing exhausted retries for job IDs ${ids}; confirm one exact retry`;
+		}
+		attention.push({
+			code: "processing_jobs_exhausted",
+			severity: "error",
+			message,
+		});
+	} else if (processingJobs.failed > 0) {
+		attention.push({
+			code: "processing_jobs_backoff",
+			severity: "warning",
+			message: "Raw-event processing has retryable failures and is in backoff",
+		});
+	} else if (processingJobs.next_action === "wait_for_capacity") {
+		attention.push({
+			code: "processing_jobs_at_capacity",
+			severity: "warning",
+			message: "Raw-event processing capacity is full; wait for capacity",
 		});
 	}
 
@@ -312,7 +457,8 @@ function projectDatabaseSubsystems(
 	return {
 		maintenance: { state: snapshot.maintenance.state },
 		semantic_index: { state: snapshot.semantic_index.state },
-		raw_events: { state: rawState, pending },
+		raw_events: { state: rawState, pending, source_gaps: sourceGaps },
+		processing_jobs: processingJobs,
 		observer: { state: observerState },
 	};
 }
@@ -391,6 +537,15 @@ function stringOrFallback(value: unknown, fallback: string): string {
 
 export function renderStatusReport(report: OperationalStatusReport): string {
 	const viewerPidSuffix = report.runtime.pid ? ` (pid ${report.runtime.pid})` : "";
+	const sourceGapLabel = report.raw_events.source_gaps === 1 ? "source gap" : "source gaps";
+	const rawEventDetails = [
+		report.raw_events.pending > 0 ? `${report.raw_events.pending} pending` : null,
+		report.raw_events.source_gaps > 0
+			? `${report.raw_events.source_gaps} ${sourceGapLabel} (bounded scan)`
+			: null,
+	].filter((detail): detail is string => detail !== null);
+	const rawEventDetailsSuffix =
+		rawEventDetails.length > 0 ? ` (${rawEventDetails.join(", ")})` : "";
 	const lines = [
 		`codemem status ${report.ok ? "OK" : "ATTENTION"}`,
 		`Daemon:         ${report.daemon.state}`,
@@ -398,9 +553,13 @@ export function renderStatusReport(report: OperationalStatusReport): string {
 		`Viewer:         ${report.runtime.viewer}${viewerPidSuffix}`,
 		`Maintenance:    ${report.maintenance.state}`,
 		`Semantic index: ${report.semantic_index.state}`,
-		`Raw events:     ${report.raw_events.state}${
-			report.raw_events.pending > 0 ? ` (${report.raw_events.pending} pending)` : ""
-		}`,
+		`Raw events:     ${report.raw_events.state}${rawEventDetailsSuffix}`,
+		`Processing jobs: ${report.processing_jobs.uncompleted}/${report.processing_jobs.capacity}` +
+			` (processing ${report.processing_jobs.processing}, exhausted ${report.processing_jobs.exhausted},` +
+			` next ${report.processing_jobs.next_action})`,
+		...(report.processing_jobs.retry_exhausted_job_ids.length > 0
+			? [`Retry job IDs:  ${report.processing_jobs.retry_exhausted_job_ids.join(", ")}`]
+			: []),
 		`Observer:       ${report.observer.state}`,
 	];
 	if (report.capability) {

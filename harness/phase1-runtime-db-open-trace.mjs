@@ -40,6 +40,7 @@ const require = createRequire(join(packageRoot, "packages/core/package.json"));
 const Database = require("better-sqlite3");
 const databaseBytes = 64 * 1024 * 1024;
 const maxOutputBytes = 1024 * 1024;
+const activeCheckpointDeadlineMs = 60_000;
 const stateNames = [
 	"down",
 	"up",
@@ -789,12 +790,11 @@ function prepareFixture(core, root, rigBase, baseDataDir, state) {
 	if (state === "migration") {
 		const db = new Database(canonicalPath);
 		try {
-			db.exec(`
-				DROP TABLE mutation_quarantine;
-				DROP TABLE mutation_receipts;
-				UPDATE schema_compat_state SET applied_schema_version = 18 WHERE id = 1;
-			`);
-			db.pragma("user_version = 18");
+			db.exec("DROP TABLE raw_event_identity_conflicts");
+			db
+				.prepare("UPDATE schema_compat_state SET applied_schema_version = ? WHERE id = 1")
+				.run(core.MIN_WRITABLE_SCHEMA);
+			db.pragma(`user_version = ${core.MIN_WRITABLE_SCHEMA}`);
 			db.pragma("wal_checkpoint(TRUNCATE)");
 		} finally {
 			db.close();
@@ -946,8 +946,12 @@ async function exerciseStartupState(state, fixture, core) {
 		try {
 			assert.equal(db.pragma("user_version", { simple: true }), core.SCHEMA_VERSION);
 			assert.ok(
-				db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mutation_receipts'").get(),
-				"migration did not restore mutation_receipts",
+				db
+					.prepare(
+						"SELECT 1 FROM sqlite_master WHERE type='table' AND name='raw_event_identity_conflicts'",
+					)
+					.get(),
+				"migration did not restore raw_event_identity_conflicts",
 			);
 		} finally {
 			db.close();
@@ -962,11 +966,17 @@ async function exerciseBackup(fixture, core) {
 	const pid = ready.pid;
 	const baseline = readTrace(fixture.tracePath).length;
 	let done = false;
-	const request = rpcRequest(core, ready.socketPath, "POST /v1/backup/create", {
-		operationId: "phase1-t054-backup",
-		reason: "Phase 1 T054 runtime trace",
-		payloadHash: core.backupPayloadHash("Phase 1 T054 runtime trace"),
-	}).finally(() => {
+	const request = rpcRequest(
+		core,
+		ready.socketPath,
+		"POST /v1/backup/create",
+		{
+			operationId: "phase1-t054-backup",
+			reason: "Phase 1 T054 runtime trace",
+			payloadHash: core.backupPayloadHash("Phase 1 T054 runtime trace"),
+		},
+		activeCheckpointDeadlineMs,
+	).finally(() => {
 		done = true;
 	});
 	let paused = false;
@@ -1073,11 +1083,17 @@ async function exerciseRestore(fixture, core) {
 	);
 	const baseline = readTrace(fixture.tracePath).length;
 	let done = false;
-	const request = rpcRequest(core, ready.socketPath, "POST /v1/backup/restore", {
-		operationId: "phase1-t054-restore",
-		backupId: "phase1-t054-restore-source",
-		payloadHash: core.restorePayloadHash("phase1-t054-restore-source"),
-	}).finally(() => {
+	const request = rpcRequest(
+		core,
+		ready.socketPath,
+		"POST /v1/backup/restore",
+		{
+			operationId: "phase1-t054-restore",
+			backupId: "phase1-t054-restore-source",
+			payloadHash: core.restorePayloadHash("phase1-t054-restore-source"),
+		},
+		activeCheckpointDeadlineMs,
+	).finally(() => {
 		done = true;
 	});
 	let paused = false;
@@ -1137,7 +1153,7 @@ function verifyPrerequisites() {
 }
 
 function setupRig(rigBase) {
-	const bootstrapHome = join(rigBase, "bootstrap-home");
+	const bootstrapHome = join(dirname(rigBase), "bootstrap-home");
 	mkdirSync(bootstrapHome, { recursive: true, mode: 0o700 });
 	const result = spawnSync("/bin/bash", [rigScript, "setup"], {
 		env: { PATH: safePath, HOME: bootstrapHome, USER: "phase1", RIG_BASE: rigBase },
@@ -1149,7 +1165,12 @@ function setupRig(rigBase) {
 
 function teardownRig(rigBase) {
 	spawnSync("/bin/bash", [rigScript, "teardown"], {
-		env: { PATH: safePath, HOME: join(rigBase, "bootstrap-home"), USER: "phase1", RIG_BASE: rigBase },
+		env: {
+			PATH: safePath,
+			HOME: join(dirname(rigBase), "bootstrap-home"),
+			USER: "phase1",
+			RIG_BASE: rigBase,
+		},
 		encoding: "utf8",
 		timeout: 15_000,
 	});
@@ -1191,7 +1212,7 @@ async function daemonWorkerMain(dataDir) {
 	});
 	process.on("SIGTERM", () => void stop());
 	try {
-		handle = await core.startDaemon({ dataDir, rpcDeadlineMs: 15_000 });
+		handle = await core.startDaemon({ dataDir, rpcDeadlineMs: activeCheckpointDeadlineMs });
 		process.send?.({
 			type: "ready",
 			pid: process.pid,

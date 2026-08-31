@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
+import { rawEventPayloadDigest } from "./db.js";
 import {
 	aiBackfillStructuredContent,
 	applyRawEventRelinkPlanWithDb,
@@ -117,6 +118,7 @@ function seedMaintenanceDb(dbPath: string): void {
 	const db = new Database(dbPath);
 	try {
 		initTestSchema(db);
+		const emptyPayloadDigest = rawEventPayloadDigest({});
 		db.exec(`
 			INSERT INTO sessions(id, started_at, cwd, project, user, tool_version) VALUES
 			  (1, '2026-03-01T10:00:00Z', '/tmp/repo', 'codemem', 'adam', 'test');
@@ -127,11 +129,11 @@ function seedMaintenanceDb(dbPath: string): void {
 				'opencode', 'sess-1', 'sess-1', '/tmp/repo', 'codemem', '2026-03-01T10:00:00Z',
 				1000, 4, 1, '2026-03-01T10:10:00Z'
 			);
-			INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, payload_json, created_at) VALUES
-			  ('opencode', 'sess-1', 'sess-1', 'e1', 1, 'tool.execute.after', 1000, '{}', '2026-03-01T10:00:01Z'),
-			  ('opencode', 'sess-1', 'sess-1', 'e2', 2, 'tool.execute.after', 1001, '{}', '2026-03-01T10:00:02Z'),
-			  ('opencode', 'sess-1', 'sess-1', 'e3', 3, 'tool.execute.after', 1002, '{}', '2026-03-01T10:00:03Z'),
-			  ('opencode', 'sess-1', 'sess-1', 'e4', 4, 'tool.execute.after', 1003, '{}', '2026-03-01T10:00:04Z');
+			INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, payload_json, created_at, payload_digest) VALUES
+			  ('opencode', 'sess-1', 'sess-1', 'e1', 1, 'tool.execute.after', 1000, '{}', '2026-03-01T10:00:01Z', '${emptyPayloadDigest}'),
+			  ('opencode', 'sess-1', 'sess-1', 'e2', 2, 'tool.execute.after', 1001, '{}', '2026-03-01T10:00:02Z', '${emptyPayloadDigest}'),
+			  ('opencode', 'sess-1', 'sess-1', 'e3', 3, 'tool.execute.after', 1002, '{}', '2026-03-01T10:00:03Z', '${emptyPayloadDigest}'),
+			  ('opencode', 'sess-1', 'sess-1', 'e4', 4, 'tool.execute.after', 1003, '{}', '2026-03-01T10:00:04Z', '${emptyPayloadDigest}');
 			INSERT INTO raw_event_flush_batches(
 				source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
 				extractor_version, status, error_message, updated_at, created_at
@@ -185,24 +187,42 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		expect(result.items[0]?.project).toBe("codemem");
 	});
 
-	it("requeues failed raw event batches", () => {
+	it("requeues only failed raw event batches within the automatic budget", () => {
 		const dbPath = createDbPath("retry");
 		seedMaintenanceDb(dbPath);
+		const db = new Database(dbPath);
+		try {
+			db.prepare(
+				`INSERT INTO raw_event_flush_batches(
+					source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, attempt_count, retry_limit, updated_at, created_at
+				) VALUES ('opencode', 'sess-1', 'sess-1', 5, 5, 'raw_events_v1', 'failed', 3, 3, ?, ?)`,
+			).run("2026-03-01T10:11:00Z", "2026-03-01T10:11:00Z");
+			db.prepare(
+				`INSERT INTO raw_event_flush_batches(
+					source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, attempt_count, retry_limit, updated_at, created_at
+				) VALUES ('opencode', 'sess-1', 'sess-1', 6, 6, 'raw_events_v1', 'retry_exhausted', 3, 3, ?, ?)`,
+			).run("2026-03-01T10:12:00Z", "2026-03-01T10:12:00Z");
+		} finally {
+			db.close();
+		}
 
 		const result = retryRawEventFailures(dbPath, 10);
 		expect(result.retried).toBe(1);
 
-		const db = new Database(dbPath, { readonly: true });
+		const readDb = new Database(dbPath, { readonly: true });
 		try {
-			const row = db
-				.prepare("SELECT status, error_message FROM raw_event_flush_batches LIMIT 1")
-				.get() as {
-				status: string;
-				error_message: string | null;
-			};
-			expect(row).toEqual({ status: "pending", error_message: null });
+			const rows = readDb
+				.prepare("SELECT status, error_message FROM raw_event_flush_batches ORDER BY id")
+				.all() as Array<{ status: string; error_message: string | null }>;
+			expect(rows).toEqual([
+				{ status: "queued", error_message: null },
+				{ status: "failed", error_message: null },
+				{ status: "retry_exhausted", error_message: null },
+			]);
 		} finally {
-			db.close();
+			readDb.close();
 		}
 	});
 
@@ -244,23 +264,113 @@ describe("maintenance", { timeout: 15_000 }, () => {
 		}
 
 		const metrics = getReliabilityMetrics(dbPath);
-		expect(metrics.counts.retry_depth_max).toBe(3);
+		expect(metrics.counts.retry_depth_max).toBe(4);
 	});
 
-	it("counts gave-up raw-event batches as terminal reliability failures", () => {
-		const dbPath = createDbPath("gave-up-reliability");
+	it("counts retry-exhausted batches as terminal failures without reporting source loss", () => {
+		const dbPath = createDbPath("retry-exhausted-reliability");
 		seedMaintenanceDb(dbPath);
 		const db = new Database(dbPath);
 		try {
-			db.prepare("UPDATE raw_event_flush_batches SET status = 'gave_up'").run();
+			db.prepare("UPDATE raw_event_flush_batches SET status = 'retry_exhausted'").run();
 		} finally {
 			db.close();
 		}
 
 		const metrics = getReliabilityMetrics(dbPath);
+		expect(metrics.counts.retry_exhausted_batches).toBe(1);
+		expect(metrics.counts.errored_batches).toBe(1);
+		expect(metrics.counts.terminal_batches).toBe(1);
+		expect(metrics.counts.dropped_events).toBe(0);
+		expect(metrics.rates.flush_success_rate).toBe(0);
+		expect(metrics.rates.dropped_event_rate).toBe(0);
+
+		const now = new Date().toISOString();
+		const recent = new Database(dbPath);
+		try {
+			recent.prepare("UPDATE raw_event_sessions SET updated_at = ?").run(now);
+			recent.prepare("UPDATE raw_event_flush_batches SET updated_at = ?").run(now);
+		} finally {
+			recent.close();
+		}
+		const windowed = getReliabilityMetrics(dbPath, 1);
+		expect(windowed.counts.dropped_events).toBe(0);
+		expect(windowed.rates.dropped_event_rate).toBe(0);
+	});
+
+	it("counts legacy-unrecoverable completion as a terminal failure", () => {
+		const dbPath = createDbPath("legacy-unrecoverable-reliability");
+		seedMaintenanceDb(dbPath);
+		const db = new Database(dbPath);
+		try {
+			db.prepare(
+				`UPDATE raw_event_flush_batches
+				 SET status = 'completed', completion_disposition = 'legacy_unrecoverable'`,
+			).run();
+		} finally {
+			db.close();
+		}
+
+		const metrics = getReliabilityMetrics(dbPath);
+		expect(metrics.counts.completed_batches).toBe(0);
 		expect(metrics.counts.errored_batches).toBe(1);
 		expect(metrics.counts.terminal_batches).toBe(1);
 		expect(metrics.rates.flush_success_rate).toBe(0);
+	});
+
+	it("counts missing source rows instead of capacity-retained backlog as dropped", () => {
+		const dbPath = createDbPath("capacity-retained-reliability");
+		const db = new Database(dbPath);
+		const now = new Date().toISOString();
+		try {
+			initTestSchema(db);
+			const digest = rawEventPayloadDigest({});
+			const insertSession = db.prepare(
+				`INSERT INTO raw_event_sessions(
+					source, stream_id, opencode_session_id, started_at,
+					last_received_event_seq, last_flushed_event_seq, updated_at
+				 ) VALUES ('opencode', ?, ?, ?, 0, -1, ?)`,
+			);
+			const insertEvent = db.prepare(
+				`INSERT INTO raw_events(
+					source, stream_id, opencode_session_id, event_id, event_seq,
+					event_type, payload_json, created_at, payload_digest
+				 ) VALUES ('opencode', ?, ?, ?, 0, 'tool.execute.after', '{}', ?, ?)`,
+			);
+			const insertJob = db.prepare(
+				`INSERT INTO raw_event_flush_batches(
+					source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, updated_at, created_at
+				 ) VALUES ('opencode', ?, ?, 0, 0, 'raw_events_v1', 'queued', ?, ?)`,
+			);
+			for (let index = 0; index < 26; index++) {
+				const streamId = `capacity-${index}`;
+				insertSession.run(streamId, streamId, now, now);
+				insertEvent.run(streamId, streamId, `event-${index}`, now, digest);
+				if (index < 25) insertJob.run(streamId, streamId, now, now);
+			}
+		} finally {
+			db.close();
+		}
+
+		for (const windowHours of [undefined, 1]) {
+			const retained = getReliabilityMetrics(dbPath, windowHours);
+			expect(retained.counts.queued_batches).toBe(25);
+			expect(retained.counts.dropped_events).toBe(0);
+			expect(retained.rates.dropped_event_rate).toBe(0);
+		}
+
+		const missingDb = new Database(dbPath);
+		try {
+			missingDb.prepare("DELETE FROM raw_events WHERE stream_id = 'capacity-25'").run();
+		} finally {
+			missingDb.close();
+		}
+		for (const windowHours of [undefined, 1]) {
+			const missing = getReliabilityMetrics(dbPath, windowHours);
+			expect(missing.counts.dropped_events).toBe(1);
+			expect(missing.rates.dropped_event_rate).toBe(1);
+		}
 	});
 
 	it("backfills tags_text for memories with empty tags", () => {

@@ -24,6 +24,7 @@ import {
 	getSchemaVersion,
 	isEmbeddingDisabled,
 	loadSqliteVec,
+	rawEventPayloadDigest,
 	resolveDbPath,
 	SCHEMA_VERSION,
 	tableExists,
@@ -32,6 +33,7 @@ import {
 import { runDatabaseMigrations } from "./migration-runner.js";
 import { bootstrapSchema } from "./schema-bootstrap.js";
 import { resolveStorageLayout, runLegacyMigration, sha256File } from "./storage.js";
+import { MemoryStore } from "./store.js";
 
 const verifyTestBackup = () => ({ verified: true, evidence: "db-test-backup" });
 
@@ -67,6 +69,215 @@ function columnInfo(
 	return db
 		.prepare('SELECT "notnull" AS is_not_null FROM pragma_table_info(?) WHERE name = ? LIMIT 1')
 		.get(table, column) as { is_not_null: number } | undefined;
+}
+
+const SLICE1_V21_TABLES = [
+	"raw_event_identity_conflicts",
+	"raw_event_quarantine",
+	"processing_resume_producer_receipts",
+	"processing_resume_signals",
+	"provider_health_states",
+] as const;
+
+const SLICE1_V21_COLUMNS = [
+	[
+		"raw_events",
+		[
+			"sensitivity",
+			"repository_identity",
+			"capture_manifest_fingerprint",
+			"capture_state",
+			"safe_error_code",
+			"payload_digest_version",
+			"payload_digest",
+		],
+	],
+	[
+		"raw_event_flush_batches",
+		[
+			"admission_manifest_fingerprint",
+			"admission_provider_fingerprint",
+			"retry_limit",
+			"claim_generation",
+			"attempt_manifest_fingerprint",
+			"attempt_provider_fingerprint",
+			"attempt_fingerprint",
+			"attempt_max_memory_items",
+			"resume_grant_state",
+			"last_resume_sequence",
+			"egress_diagnostic_json",
+			"completion_disposition",
+			"legacy_recovery_state",
+			"frontier_already_advanced",
+		],
+	],
+	[
+		"memory_items",
+		[
+			"sensitivity",
+			"repository_identity",
+			"lineage_id",
+			"revision_id",
+			"revision_ordinal",
+			"supersedes_memory_id",
+			"derivation_key",
+			"source_event_ids_json",
+			"source_spans_json",
+			"manifest_fingerprint",
+			"provider_fingerprint",
+			"attempt_fingerprint",
+		],
+	],
+	["user_prompts", ["sensitivity", "repository_identity"]],
+	["session_summaries", ["sensitivity", "repository_identity"]],
+	["artifacts", ["sensitivity", "repository_identity"]],
+	["sessions", ["repository_identity"]],
+	["processing_resume_producer_receipts", ["target_job_ids_json"]],
+] as const;
+
+function slice1ColumnShape(db: Database) {
+	return SLICE1_V21_COLUMNS.flatMap(([table, columns]) =>
+		columns.map((column) => ({
+			table,
+			column,
+			...(db
+				.prepare(
+					`SELECT type, "notnull" AS not_null, dflt_value AS default_value
+					 FROM pragma_table_info(?) WHERE name = ?`,
+				)
+				.get(table, column) as {
+				type: string;
+				not_null: number;
+				default_value: string | null;
+			}),
+		})),
+	);
+}
+
+function tableDefinition(db: Database, table: string): string {
+	const row = db
+		.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+		.get(table) as { sql: string | null } | undefined;
+	return row?.sql ?? "";
+}
+
+function tableDdl(db: Database, table: string): string {
+	return (
+		db
+			.prepare(
+				"SELECT sql FROM sqlite_master WHERE (type = 'table' AND name = ?) OR (type = 'index' AND tbl_name = ?) ORDER BY type, name",
+			)
+			.all(table, table) as Array<{ sql: string | null }>
+	)
+		.map((row) => row.sql ?? "")
+		.join("\n");
+}
+
+function normalizedSlice1Ddl(db: Database): string[] {
+	return ["raw_events", "raw_event_flush_batches", ...SLICE1_V21_TABLES]
+		.flatMap((table) => tableDdl(db, table).split("\n"))
+		.map((ddl) => ddl.replace(/\s+/g, " ").trim())
+		.filter(Boolean)
+		.sort();
+}
+
+function seedV20Slice1Database(path: string): Database {
+	const db = connect(path);
+	db.exec(`
+		CREATE TABLE sessions (id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, project TEXT);
+		CREATE TABLE memory_items (
+			id INTEGER PRIMARY KEY, session_id INTEGER, kind TEXT NOT NULL, title TEXT NOT NULL,
+			body_text TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+			import_key TEXT, origin_device_id TEXT
+		);
+		CREATE TABLE artifacts (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT NOT NULL);
+		CREATE TABLE usage_events (id INTEGER PRIMARY KEY);
+		CREATE VIRTUAL TABLE memory_fts USING fts5(title);
+		CREATE TABLE raw_events (
+			id INTEGER PRIMARY KEY, source TEXT NOT NULL DEFAULT 'opencode', stream_id TEXT NOT NULL DEFAULT '',
+			opencode_session_id TEXT NOT NULL, event_id TEXT, event_seq INTEGER NOT NULL,
+			event_type TEXT NOT NULL, ts_wall_ms INTEGER, ts_mono_ms REAL,
+			payload_json TEXT NOT NULL, created_at TEXT NOT NULL
+		);
+		CREATE UNIQUE INDEX idx_raw_events_source_stream_seq ON raw_events(source, stream_id, event_seq);
+		CREATE UNIQUE INDEX idx_raw_events_source_stream_event_id ON raw_events(source, stream_id, event_id);
+		CREATE TABLE raw_event_sessions (
+			source TEXT NOT NULL DEFAULT 'opencode', stream_id TEXT NOT NULL DEFAULT '',
+			opencode_session_id TEXT NOT NULL, cwd TEXT, project TEXT, started_at TEXT,
+			last_seen_ts_wall_ms INTEGER, last_received_event_seq INTEGER NOT NULL DEFAULT -1,
+			last_flushed_event_seq INTEGER NOT NULL DEFAULT -1, updated_at TEXT NOT NULL,
+			PRIMARY KEY(source, stream_id)
+		);
+		CREATE TABLE raw_event_flush_batches (
+			id INTEGER PRIMARY KEY, source TEXT NOT NULL DEFAULT 'opencode', stream_id TEXT NOT NULL DEFAULT '',
+			opencode_session_id TEXT NOT NULL, start_event_seq INTEGER NOT NULL, end_event_seq INTEGER NOT NULL,
+			extractor_version TEXT NOT NULL, status TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+		);
+		CREATE TABLE user_prompts (
+			id INTEGER PRIMARY KEY, session_id INTEGER, project TEXT, prompt_text TEXT NOT NULL,
+			created_at TEXT NOT NULL, created_at_epoch INTEGER NOT NULL
+		);
+		CREATE TABLE session_summaries (
+			id INTEGER PRIMARY KEY, session_id INTEGER, project TEXT, request TEXT,
+			created_at TEXT NOT NULL, created_at_epoch INTEGER NOT NULL
+		);
+	`);
+
+	const now = "2026-08-31T00:00:00.000Z";
+	db.prepare("INSERT INTO sessions(id, started_at, project) VALUES (1, ?, 'legacy')").run(now);
+	db.prepare(
+		"INSERT INTO memory_items(id, session_id, kind, title, body_text, created_at, updated_at) VALUES (1, 1, 'summary', 'legacy', 'legacy', ?, ?)",
+	).run(now, now);
+	db.prepare("INSERT INTO artifacts(id, session_id, content) VALUES (1, 1, 'legacy')").run();
+	db.prepare(
+		"INSERT INTO user_prompts(id, session_id, prompt_text, created_at, created_at_epoch) VALUES (1, 1, 'legacy', ?, 0)",
+	).run(now);
+	db.prepare(
+		"INSERT INTO session_summaries(id, session_id, request, created_at, created_at_epoch) VALUES (1, 1, 'legacy', ?, 0)",
+	).run(now);
+
+	const addStream = (stream: string, frontier: number) => {
+		db.prepare(
+			"INSERT INTO raw_event_sessions(source, stream_id, opencode_session_id, last_flushed_event_seq, updated_at) VALUES ('opencode', ?, ?, ?, ?)",
+		).run(stream, stream, frontier, now);
+	};
+	const addEvent = (stream: string, sequence: number) => {
+		db.prepare(
+			"INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, payload_json, created_at) VALUES ('opencode', ?, ?, ?, ?, 'message', '{}', ?)",
+		).run(stream, stream, `${stream}-${sequence}`, sequence, now);
+	};
+	const addGaveUp = (id: number, stream: string, start: number, end: number) => {
+		db.prepare(
+			"INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, created_at, updated_at) VALUES (?, 'opencode', ?, ?, ?, ?, 'raw_events_v1', 'gave_up', ?, ?)",
+		).run(id, stream, stream, start, end, now, now);
+	};
+
+	addStream("complete", 2);
+	addEvent("complete", 1);
+	addEvent("complete", 2);
+	addGaveUp(1, "complete", 1, 2);
+	addStream("missing", 2);
+	addEvent("missing", 1);
+	addGaveUp(2, "missing", 1, 2);
+	addStream("overlap", 3);
+	addEvent("overlap", 1);
+	addEvent("overlap", 2);
+	addEvent("overlap", 3);
+	addGaveUp(3, "overlap", 1, 2);
+	addGaveUp(4, "overlap", 2, 3);
+	addStream("pending", -1);
+	addEvent("pending", 0);
+	db.prepare(
+		"INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, created_at, updated_at) VALUES (5, 'opencode', 'pending', 'pending', 0, 0, 'raw_events_v1', 'pending', ?, ?)",
+	).run(now, now);
+	addStream("invalid-json", -1);
+	db.prepare(
+		"INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, payload_json, created_at) VALUES ('opencode', 'invalid-json', 'invalid-json', 'invalid-json-0', 0, 'message', 'not-json', ?)",
+	).run(now);
+	db.pragma("user_version = 20");
+	return db;
 }
 
 describe("connect", () => {
@@ -255,6 +466,1126 @@ describe("connect", () => {
 		expect(tableExists(db, "memory_items")).toBe(false);
 		expect(tableExists(db, "unrelated_data")).toBe(true);
 		expect(existsSync(`${dbPath}-wal`)).toBe(false);
+	});
+});
+
+describe("schema v21 Slice 1 persistence", () => {
+	let tmpDir: string;
+
+	beforeEach(() => {
+		tmpDir = mkdtempSync(join(tmpdir(), "codemem-schema-v21-"));
+	});
+
+	afterEach(() => {
+		rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("creates the closed v21 tables, columns, checks, and raw-event identity index", () => {
+		const fresh = connectMigrated(join(tmpDir, "fresh.sqlite"));
+		try {
+			expect(SCHEMA_VERSION).toBe(21);
+			for (const table of SLICE1_V21_TABLES) expect(tableExists(fresh, table)).toBe(true);
+			for (const [table, columns] of SLICE1_V21_COLUMNS) {
+				for (const column of columns) expect(columnExists(fresh, table, column)).toBe(true);
+			}
+
+			expect(tableDefinition(fresh, "raw_events")).toMatch(/CHECK[\s\S]*sensitivity/i);
+			expect(tableDefinition(fresh, "raw_event_flush_batches")).toContain("retry_exhausted");
+			const rawEventDdl = tableDdl(fresh, "raw_events");
+			expect(rawEventDdl).not.toContain("idx_raw_events_source_stream_event_id");
+			expect(rawEventDdl).toMatch(
+				/CREATE UNIQUE INDEX[\s\S]*COALESCE\([^)]*repository_identity[^)]*repo-v1:unknown[^)]*\)[\s\S]*source[\s\S]*stream_id[\s\S]*event_id/i,
+			);
+
+			const conflictDdl = tableDdl(fresh, "raw_event_identity_conflicts");
+			expect(conflictDdl).toMatch(/canonical.*digest/i);
+			expect(conflictDdl).toMatch(/conflicting.*digest/i);
+			expect(conflictDdl).toMatch(/UNIQUE/i);
+			const quarantineDdl = tableDdl(fresh, "raw_event_quarantine");
+			expect(quarantineDdl).toMatch(/receipt/i);
+			expect(quarantineDdl).toMatch(/UNIQUE/i);
+			expect(quarantineDdl).toContain("repo-v1:unknown");
+			expect(conflictDdl).toContain("repo-v1:unknown");
+			expect(tableDdl(fresh, "processing_resume_producer_receipts")).toMatch(
+				/receipt_id[\s\S]*PRIMARY KEY/i,
+			);
+			expect(tableDdl(fresh, "processing_resume_signals")).toMatch(/job_id/i);
+			const sessionId = Number(
+				fresh.prepare("INSERT INTO sessions(started_at) VALUES ('2026-08-31T00:00:00.000Z')").run()
+					.lastInsertRowid,
+			);
+			const memoryId = Number(
+				fresh
+					.prepare(
+						"INSERT INTO memory_items(session_id, kind, title, body_text, created_at, updated_at) VALUES (?, 'discovery', 'title', 'body', '2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')",
+					)
+					.run(sessionId).lastInsertRowid,
+			);
+			expect(() =>
+				fresh.prepare("UPDATE memory_items SET sensitivity = 'invalid' WHERE id = ?").run(memoryId),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						"INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, payload_json, created_at, payload_digest) VALUES ('opencode', 'invalid', 'invalid', NULL, 0, 'message', '{}', '2026-08-31T00:00:00.000Z', ?)",
+					)
+					.run(rawEventPayloadDigest({})),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						"INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, payload_json, created_at, capture_state, payload_digest) VALUES ('opencode', 'quarantine-check', 'quarantine-check', 'quarantine-check', 0, 'message', '{}', '2026-08-31T00:00:00.000Z', 'quarantined', ?)",
+					)
+					.run(rawEventPayloadDigest({})),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_event_quarantine(
+							receipt_id, source, stream_id, event_id, event_type, payload_digest_version,
+							payload_digest, safe_error_code, first_seen_at, last_seen_at
+						 ) VALUES ('invalid-code', 'opencode', 'invalid-code', 'invalid-code', 'message',
+							'event-payload-digest-v1', ?, 'invalid_code',
+							'2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(`sha256:${"0".repeat(64)}`),
+			).toThrow();
+			const validDigest = rawEventPayloadDigest({});
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_event_identity_conflicts(
+							receipt_id, source, stream_id, event_id, payload_digest_version,
+							canonical_payload_digest, conflicting_payload_digest, first_seen_at, last_seen_at
+						 ) VALUES ('invalid-conflict-digest', 'opencode', 'invalid', 'invalid',
+							'wrong-version', ?, ?, '2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO provider_health_states(
+							configuration_fingerprint, provider_fingerprint, health_state, updated_at
+						 ) VALUES (?, ?, 'unhealthy', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_event_quarantine(
+							receipt_id, source, stream_id, event_id, event_type, payload_digest_version,
+							payload_digest, safe_error_code, first_seen_at, last_seen_at
+						 ) VALUES ('invalid-quarantine-digest', 'opencode', 'invalid', 'invalid', 'message',
+							'wrong-version', '', 'repository_identity_unknown_collision',
+							'2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_events(
+							source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+							payload_json, created_at, repository_identity, payload_digest
+						 ) VALUES ('opencode', 'sentinel', 'sentinel', 'sentinel', 0, 'message', '{}',
+							'2026-08-31T00:00:00.000Z', 'repo-v1:unknown', ?)`,
+					)
+					.run(validDigest),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_events(
+							source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+							payload_json, created_at, payload_digest
+						 ) VALUES ('opencode', 'zero-digest', 'zero-digest', 'zero-digest', 0, 'message', '{}',
+							'2026-08-31T00:00:00.000Z', ?)`,
+					)
+					.run(`sha256:${"0".repeat(64)}`),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_event_identity_conflicts(
+							receipt_id, repository_identity, source, stream_id, event_id,
+							payload_digest_version, canonical_payload_digest, conflicting_payload_digest,
+							first_seen_at, last_seen_at
+						 ) VALUES ('sentinel-conflict', 'repo-v1:unknown', 'opencode', 'sentinel', 'sentinel',
+							'event-payload-digest-v1', ?, ?,
+							'2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_event_quarantine(
+							receipt_id, repository_identity, source, stream_id, event_id, event_type,
+							payload_digest_version, payload_digest, safe_error_code, first_seen_at, last_seen_at
+						 ) VALUES ('sentinel-quarantine', 'repo-v1:unknown', 'opencode', 'sentinel',
+							'sentinel', 'message', 'event-payload-digest-v1', ?,
+							'repository_identity_unknown_collision',
+							'2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(validDigest),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO provider_health_states(
+							configuration_fingerprint, provider_fingerprint, health_state, updated_at
+						 ) VALUES (?, ?, 'unknown', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO provider_health_states(
+							configuration_fingerprint, provider_fingerprint, health_state,
+							safe_error_code, updated_at
+						 ) VALUES (?, ?, 'healthy', 'arbitrary', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`),
+			).toThrow();
+			fresh
+				.prepare(
+					`INSERT INTO processing_resume_producer_receipts(
+						receipt_id, producer_kind, configuration_fingerprint, provider_fingerprint,
+						producer_sequence, created_at
+					 ) VALUES ('valid-receipt', 'user_confirmed_doctor_retry', ?, ?, 1,
+						'2026-08-31T00:00:00.000Z')`,
+				)
+				.run(`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`);
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO processing_resume_signals(
+							signal_id, job_id, producer_receipt_id, sequence, target_provider_fingerprint,
+							target_manifest_fingerprint, kind, disposition, created_at
+						 ) VALUES ('orphan-signal', 999, 'missing-receipt', 1, ?, ?,
+							'user_confirmed_doctor_retry', 'wrong_job', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(`sha256:${"b".repeat(64)}`, `sha256:${"a".repeat(64)}`),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO processing_resume_signals(
+							signal_id, job_id, producer_receipt_id, sequence, kind, disposition, created_at
+						 ) VALUES ('missing-targets', 999, 'valid-receipt', 1,
+							'user_confirmed_doctor_retry', 'wrong_job', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_event_flush_batches(
+							source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+							extractor_version, status, last_resume_signal_disposition, created_at, updated_at
+						 ) VALUES ('opencode', 'invalid-disposition', 'invalid-disposition', 0, 0,
+							'raw_events_v1', 'queued', 'not_closed',
+							'2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(),
+			).toThrow();
+			expect(() =>
+				fresh
+					.prepare(
+						`INSERT INTO raw_event_flush_batches(
+							source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+							extractor_version, status, resume_grant_reason, created_at, updated_at
+						 ) VALUES ('opencode', 'invalid-grant-reason', 'invalid-grant-reason', 0, 0,
+							'raw_events_v1', 'queued', 'not_closed',
+							'2026-08-31T00:00:00.000Z', '2026-08-31T00:00:00.000Z')`,
+					)
+					.run(),
+			).toThrow();
+		} finally {
+			fresh.close();
+		}
+	});
+
+	it("migrates v20 atomically after backup, preserves conservative provenance, and audits legacy gave_up ranges", () => {
+		expect(SCHEMA_VERSION).toBe(21);
+		const refused = seedV20Slice1Database(join(tmpDir, "refused.sqlite"));
+		const beforeRefusal = normalizedSlice1Ddl(refused);
+		try {
+			const refusedBackup = vi.fn(() => ({ verified: false, evidence: "" }));
+			expect(() =>
+				runDatabaseMigrations(refused, {
+					dbPath: refused.name,
+					backupAndVerify: refusedBackup,
+				}),
+			).toThrow(/verified backup/i);
+			expect(refusedBackup).toHaveBeenCalledOnce();
+			expect(getSchemaVersion(refused)).toBe(20);
+			expect(normalizedSlice1Ddl(refused)).toEqual(beforeRefusal);
+		} finally {
+			refused.close();
+		}
+
+		let migrated: Database | undefined;
+		let reopened: Database | undefined;
+		let fresh: Database | undefined;
+		try {
+			migrated = seedV20Slice1Database(join(tmpDir, "migrated.sqlite"));
+			migrated.exec(`
+				INSERT INTO raw_event_sessions(
+					source, stream_id, opencode_session_id, last_received_event_seq,
+					last_flushed_event_seq, updated_at
+				) VALUES
+					('opencode', 'completed-frontier-gap', 'completed-frontier-gap', 2, -1,
+						'2026-08-31T00:00:00.000Z'),
+					('opencode', 'completed-already-advanced', 'completed-already-advanced', 0, 0,
+						'2026-08-31T00:00:00.000Z');
+				INSERT INTO raw_events(
+					source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+					payload_json, created_at
+				) VALUES
+					('opencode', 'completed-frontier-gap', 'completed-frontier-gap',
+						'completed-frontier-gap-0', 0, 'message', '{}', '2026-08-31T00:00:00.000Z'),
+					('opencode', 'completed-frontier-gap', 'completed-frontier-gap',
+						'completed-frontier-gap-1', 1, 'message', '{}', '2026-08-31T00:00:00.000Z'),
+					('opencode', 'completed-frontier-gap', 'completed-frontier-gap',
+						'completed-frontier-gap-2', 2, 'message', '{}', '2026-08-31T00:00:00.000Z'),
+					('opencode', 'completed-already-advanced', 'completed-already-advanced',
+						'completed-already-advanced-0', 0, 'message', '{}',
+						'2026-08-31T00:00:00.000Z');
+				INSERT INTO raw_event_flush_batches(
+					id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, created_at, updated_at
+				) VALUES
+					(6, 'opencode', 'completed-frontier-gap', 'completed-frontier-gap', 0, 0,
+						'raw_events_v1', 'completed', '2026-08-31T00:00:00.000Z',
+						'2026-08-31T00:00:00.000Z'),
+					(7, 'opencode', 'completed-already-advanced', 'completed-already-advanced', 0, 0,
+						'raw_events_v1', 'completed', '2026-08-31T00:00:00.000Z',
+						'2026-08-31T00:00:00.000Z'),
+					(8, 'opencode', 'completed-frontier-gap', 'completed-frontier-gap', 1, 1,
+						'raw_events_v1', 'completed', '2026-08-31T00:00:00.000Z',
+						'2026-08-31T00:00:00.000Z');
+				CREATE TABLE schema_compat_state (
+					id INTEGER PRIMARY KEY, applied_schema_version INTEGER NOT NULL, applied_at TEXT NOT NULL
+				);
+				INSERT INTO schema_compat_state VALUES (1, 21, '2026-08-31T00:00:00.000Z');
+				ALTER TABLE raw_event_flush_batches ADD COLUMN error_message TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN error_type TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN observer_provider TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN observer_model TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN observer_runtime TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN observer_auth_source TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN observer_auth_type TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN observer_error_code TEXT;
+				ALTER TABLE raw_event_flush_batches ADD COLUMN observer_error_message TEXT;
+				UPDATE raw_event_flush_batches SET
+					error_message = 'legacy-message', error_type = 'legacy-type',
+					observer_provider = 'legacy-provider', observer_model = 'legacy-model',
+					observer_runtime = 'legacy-runtime', observer_auth_source = 'legacy-auth-source',
+					observer_auth_type = 'legacy-auth-type', observer_error_code = 'legacy-code',
+					observer_error_message = 'legacy-observer-message'
+				WHERE id = 1;
+			`);
+			const verifiedBackup = vi.fn(verifyTestBackup);
+			runDatabaseMigrations(migrated, {
+				dbPath: migrated.name,
+				backupAndVerify: verifiedBackup,
+			});
+			expect(verifiedBackup).toHaveBeenCalledExactlyOnceWith(
+				expect.objectContaining({ kind: "upgrade", schemaVersion: 20 }),
+			);
+			expect(getSchemaVersion(migrated)).toBe(21);
+			for (const column of [
+				"sensitivity",
+				"repository_identity",
+				"capture_manifest_fingerprint",
+				"payload_digest_version",
+				"payload_digest",
+			]) {
+				expect(columnExists(migrated, "raw_events", column)).toBe(true);
+			}
+
+			const legacyRaw = migrated
+				.prepare(
+					"SELECT sensitivity, repository_identity, capture_manifest_fingerprint, payload_digest_version, payload_digest FROM raw_events WHERE stream_id = 'complete' AND event_seq = 1",
+				)
+				.get() as {
+				sensitivity: string;
+				repository_identity: string | null;
+				capture_manifest_fingerprint: string | null;
+				payload_digest_version: string;
+				payload_digest: string;
+			};
+			expect(legacyRaw).toMatchObject({
+				sensitivity: "secret",
+				repository_identity: null,
+				capture_manifest_fingerprint: null,
+				payload_digest_version: "event-payload-digest-v1",
+			});
+			expect(legacyRaw.payload_digest).toBe(rawEventPayloadDigest({}));
+			expect(
+				migrated
+					.prepare(
+						"SELECT payload_json, sensitivity, capture_state, safe_error_code FROM raw_events WHERE event_id = 'invalid-json-0'",
+					)
+					.get(),
+			).toEqual({
+				payload_json: "{}",
+				sensitivity: "secret",
+				capture_state: "quarantined",
+				safe_error_code: "redaction_degraded",
+			});
+			expect(
+				migrated
+					.prepare(
+						"SELECT COUNT(*) AS count FROM raw_event_quarantine WHERE event_id = 'invalid-json-0'",
+					)
+					.get(),
+			).toEqual({ count: 1 });
+			for (const table of ["memory_items", "user_prompts", "session_summaries", "artifacts"]) {
+				expect(columnExists(migrated, table, "sensitivity")).toBe(true);
+				expect(columnExists(migrated, table, "repository_identity")).toBe(true);
+				expect(
+					migrated
+						.prepare(`SELECT sensitivity, repository_identity FROM ${table} WHERE id = 1`)
+						.get(),
+				).toEqual({ sensitivity: "secret", repository_identity: null });
+			}
+			expect(columnExists(migrated, "sessions", "repository_identity")).toBe(true);
+			expect(
+				migrated.prepare("SELECT repository_identity FROM sessions WHERE id = 1").get(),
+			).toEqual({ repository_identity: null });
+
+			for (const column of [
+				"status",
+				"completion_disposition",
+				"legacy_recovery_state",
+				"frontier_already_advanced",
+			]) {
+				expect(columnExists(migrated, "raw_event_flush_batches", column)).toBe(true);
+			}
+			expect(
+				migrated
+					.prepare(
+						"SELECT id, status, completion_disposition, legacy_recovery_state, frontier_already_advanced FROM raw_event_flush_batches ORDER BY id",
+					)
+					.all(),
+			).toEqual([
+				{
+					id: 1,
+					status: "retry_exhausted",
+					completion_disposition: "none",
+					legacy_recovery_state: "complete_range",
+					frontier_already_advanced: 1,
+				},
+				{
+					id: 2,
+					status: "completed",
+					completion_disposition: "legacy_unrecoverable",
+					legacy_recovery_state: "missing_or_ambiguous_range",
+					frontier_already_advanced: 0,
+				},
+				{
+					id: 3,
+					status: "completed",
+					completion_disposition: "legacy_unrecoverable",
+					legacy_recovery_state: "missing_or_ambiguous_range",
+					frontier_already_advanced: 0,
+				},
+				{
+					id: 4,
+					status: "completed",
+					completion_disposition: "legacy_unrecoverable",
+					legacy_recovery_state: "missing_or_ambiguous_range",
+					frontier_already_advanced: 0,
+				},
+				{
+					id: 5,
+					status: "retry_exhausted",
+					completion_disposition: "none",
+					legacy_recovery_state: "complete_range",
+					frontier_already_advanced: 0,
+				},
+				{
+					id: 6,
+					status: "completed",
+					completion_disposition: "none",
+					legacy_recovery_state: "not_legacy",
+					frontier_already_advanced: 0,
+				},
+				{
+					id: 7,
+					status: "completed",
+					completion_disposition: "none",
+					legacy_recovery_state: "not_legacy",
+					frontier_already_advanced: 0,
+				},
+				{
+					id: 8,
+					status: "completed",
+					completion_disposition: "none",
+					legacy_recovery_state: "not_legacy",
+					frontier_already_advanced: 0,
+				},
+			]);
+			expect(
+				migrated
+					.prepare(
+						`SELECT id, attempt_count, admission_manifest_fingerprint,
+							admission_provider_fingerprint, attempt_manifest_fingerprint,
+							attempt_provider_fingerprint, attempt_fingerprint
+						 FROM raw_event_flush_batches WHERE id IN (1, 5) ORDER BY id`,
+					)
+					.all(),
+			).toEqual(
+				[1, 5].map((id) => ({
+					id,
+					attempt_count: 0,
+					admission_manifest_fingerprint: null,
+					admission_provider_fingerprint: null,
+					attempt_manifest_fingerprint: null,
+					attempt_provider_fingerprint: null,
+					attempt_fingerprint: null,
+				})),
+			);
+			const migratedStore = new MemoryStore(migrated);
+			const retryManifestFingerprint = `sha256:${"a".repeat(64)}`;
+			const retryProviderFingerprint = `sha256:${"b".repeat(64)}`;
+			const nextAdmission = migratedStore.admitRawEventFlushJob({
+				source: "opencode",
+				streamId: "completed-frontier-gap",
+				manifestFingerprint: retryManifestFingerprint,
+				providerFingerprint: retryProviderFingerprint,
+			});
+			expect(nextAdmission).toMatchObject({
+				status: "admitted",
+				startEventSeq: 2,
+				endEventSeq: 2,
+			});
+			expect(
+				migratedStore.admitRawEventFlushJob({
+					source: "opencode",
+					streamId: "completed-frontier-gap",
+					manifestFingerprint: retryManifestFingerprint,
+					providerFingerprint: retryProviderFingerprint,
+				}),
+			).toMatchObject({ status: "existing", jobId: nextAdmission.jobId });
+			expect(
+				migratedStore.confirmDoctorRetry({
+					jobId: 1,
+					producerReceiptId: "migrated-legacy-doctor-receipt",
+					expectedRole: "summary",
+					expectedProviderFingerprint: null,
+					expectedManifestFingerprint: null,
+					expectedAttemptCount: 0,
+					expectedClaimGeneration: 0,
+					targetProviderFingerprint: retryProviderFingerprint,
+					targetManifestFingerprint: retryManifestFingerprint,
+				}),
+			).toMatchObject({ disposition: "accepted", grantState: "pending" });
+			expect(
+				migrated
+					.prepare(
+						`SELECT target_manifest_fingerprint, target_provider_fingerprint
+						 FROM processing_resume_signals WHERE job_id = 1`,
+					)
+					.get(),
+			).toEqual({
+				target_manifest_fingerprint: retryManifestFingerprint,
+				target_provider_fingerprint: retryProviderFingerprint,
+			});
+			const migratedClaim = migratedStore.claimRawEventFlushJob({
+				jobId: 1,
+				manifestFingerprint: retryManifestFingerprint,
+				providerFingerprint: retryProviderFingerprint,
+			});
+			if (!migratedClaim) throw new Error("expected migrated legacy claim");
+			expect(
+				migrated
+					.prepare(
+						`SELECT admission_manifest_fingerprint, admission_provider_fingerprint,
+							attempt_manifest_fingerprint, attempt_provider_fingerprint, attempt_fingerprint
+						 FROM raw_event_flush_batches WHERE id = 1`,
+					)
+					.get(),
+			).toEqual({
+				admission_manifest_fingerprint: null,
+				admission_provider_fingerprint: null,
+				attempt_manifest_fingerprint: retryManifestFingerprint,
+				attempt_provider_fingerprint: retryProviderFingerprint,
+				attempt_fingerprint: migratedClaim.attemptFingerprint,
+			});
+			expect(
+				migrated
+					.prepare(
+						`SELECT error_message, error_type, observer_provider, observer_model,
+								observer_runtime, observer_auth_source, observer_auth_type,
+								observer_error_code, observer_error_message
+							 FROM raw_event_flush_batches WHERE id = 1`,
+					)
+					.get(),
+			).toEqual({
+				error_message: "legacy-message",
+				error_type: "legacy-type",
+				observer_provider: "legacy-provider",
+				observer_model: "legacy-model",
+				observer_runtime: "legacy-runtime",
+				observer_auth_source: "legacy-auth-source",
+				observer_auth_type: "legacy-auth-type",
+				observer_error_code: "legacy-code",
+				observer_error_message: "legacy-observer-message",
+			});
+			expect(
+				migrated
+					.prepare(
+						"SELECT stream_id, last_flushed_event_seq FROM raw_event_sessions ORDER BY stream_id",
+					)
+					.all(),
+			).toEqual([
+				{ stream_id: "complete", last_flushed_event_seq: 2 },
+				{ stream_id: "completed-already-advanced", last_flushed_event_seq: 0 },
+				{ stream_id: "completed-frontier-gap", last_flushed_event_seq: 1 },
+				{ stream_id: "invalid-json", last_flushed_event_seq: -1 },
+				{ stream_id: "missing", last_flushed_event_seq: 2 },
+				{ stream_id: "overlap", last_flushed_event_seq: 3 },
+				{ stream_id: "pending", last_flushed_event_seq: -1 },
+			]);
+			expect(
+				migrated
+					.prepare(
+						`SELECT updated_at FROM raw_event_sessions
+						 WHERE source = 'opencode' AND stream_id = 'completed-frontier-gap'`,
+					)
+					.get(),
+			).toMatchObject({ updated_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/) });
+			expect({
+				retrievalAttempts: tableExists(migrated, "retrieval_attempts"),
+				mutationReceipts: tableExists(migrated, "mutation_receipts"),
+				compatibility: migrated
+					.prepare("SELECT applied_schema_version FROM schema_compat_state WHERE id = 1")
+					.get(),
+			}).toEqual({
+				retrievalAttempts: true,
+				mutationReceipts: true,
+				compatibility: { applied_schema_version: SCHEMA_VERSION },
+			});
+
+			const migratedDdl = normalizedSlice1Ddl(migrated);
+			const migratedColumnShape = slice1ColumnShape(migrated);
+			migrated.close();
+			migrated = undefined;
+			reopened = connect(join(tmpDir, "migrated.sqlite"));
+			const reopenBackup = vi.fn(verifyTestBackup);
+			runDatabaseMigrations(reopened, { dbPath: reopened.name, backupAndVerify: reopenBackup });
+			expect(reopenBackup).not.toHaveBeenCalled();
+			expect(normalizedSlice1Ddl(reopened)).toEqual(migratedDdl);
+
+			fresh = connectMigrated(join(tmpDir, "fresh.sqlite"));
+			expect(normalizedSlice1Ddl(fresh)).toEqual(migratedDdl);
+			expect(slice1ColumnShape(fresh)).toEqual(migratedColumnShape);
+		} finally {
+			fresh?.close();
+			reopened?.close();
+			migrated?.close();
+		}
+	});
+
+	it("migrates an already-flushed completed range after its source was pruned", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "completed-pruned.sqlite"));
+		try {
+			const now = "2026-08-31T00:00:00.000Z";
+			legacy.exec(`
+				INSERT INTO raw_event_sessions(
+					source, stream_id, opencode_session_id, last_received_event_seq,
+					last_flushed_event_seq, updated_at
+				) VALUES ('opencode', 'completed-pruned', 'completed-pruned', 0, 0, '${now}');
+				INSERT INTO raw_event_flush_batches(
+					id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, created_at, updated_at
+				) VALUES (6, 'opencode', 'completed-pruned', 'completed-pruned', 0, 0,
+					'raw_events_v1', 'completed', '${now}', '${now}');
+			`);
+
+			runDatabaseMigrations(legacy, {
+				dbPath: legacy.name,
+				backupAndVerify: verifyTestBackup,
+			});
+			expect(getSchemaVersion(legacy)).toBe(SCHEMA_VERSION);
+			expect(
+				legacy
+					.prepare(
+						`SELECT status, completion_disposition, legacy_recovery_state
+						 FROM raw_event_flush_batches WHERE id = 6`,
+					)
+					.get(),
+			).toEqual({
+				status: "completed",
+				completion_disposition: "none",
+				legacy_recovery_state: "not_legacy",
+			});
+			expect(
+				legacy
+					.prepare(
+						`SELECT last_flushed_event_seq FROM raw_event_sessions
+						 WHERE source = 'opencode' AND stream_id = 'completed-pruned'`,
+					)
+					.get(),
+			).toEqual({ last_flushed_event_seq: 0 });
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("preserves a complete legacy gave-up range wider than the v21 admission limit", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "wide-gave-up.sqlite"));
+		try {
+			const now = "2026-08-31T00:00:00.000Z";
+			legacy
+				.prepare(
+					`INSERT INTO raw_event_sessions(
+						source, stream_id, opencode_session_id, last_received_event_seq,
+						last_flushed_event_seq, updated_at
+					 ) VALUES ('opencode', 'wide-gave-up', 'wide-gave-up', 100, 100, ?)`,
+				)
+				.run(now);
+			const insertEvent = legacy.prepare(
+				`INSERT INTO raw_events(
+					source, stream_id, opencode_session_id, event_id, event_seq,
+					event_type, payload_json, created_at
+				 ) VALUES ('opencode', 'wide-gave-up', 'wide-gave-up', ?, ?, 'message', '{}', ?)`,
+			);
+			legacy.transaction(() => {
+				for (let eventSeq = 0; eventSeq <= 100; eventSeq++) {
+					insertEvent.run(`wide-gave-up-${eventSeq}`, eventSeq, now);
+				}
+			})();
+			legacy
+				.prepare(
+					`INSERT INTO raw_event_flush_batches(
+						id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+						extractor_version, status, created_at, updated_at
+					 ) VALUES (6, 'opencode', 'wide-gave-up', 'wide-gave-up', 0, 100,
+						'raw_events_v1', 'gave_up', ?, ?)`,
+				)
+				.run(now, now);
+
+			runDatabaseMigrations(legacy, {
+				dbPath: legacy.name,
+				backupAndVerify: verifyTestBackup,
+			});
+
+			expect(
+				legacy
+					.prepare(
+						`SELECT status, completion_disposition, legacy_recovery_state,
+							frontier_already_advanced
+						 FROM raw_event_flush_batches WHERE id = 6`,
+					)
+					.get(),
+			).toEqual({
+				status: "retry_exhausted",
+				completion_disposition: "none",
+				legacy_recovery_state: "complete_range",
+				frontier_already_advanced: 1,
+			});
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("rejects a fractional sequence in a legacy gave-up range", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "fractional-gave-up.sqlite"));
+		try {
+			const now = "2026-08-31T00:00:00.000Z";
+			legacy.exec(`
+				INSERT INTO raw_event_sessions(
+					source, stream_id, opencode_session_id, last_received_event_seq,
+					last_flushed_event_seq, updated_at
+				) VALUES ('opencode', 'fractional-gave-up', 'fractional-gave-up', 2, 2, '${now}');
+				INSERT INTO raw_events(
+					source, stream_id, opencode_session_id, event_id, event_seq,
+					event_type, payload_json, created_at
+				) VALUES
+					('opencode', 'fractional-gave-up', 'fractional-gave-up',
+						'fractional-0', 0, 'message', '{}', '${now}'),
+					('opencode', 'fractional-gave-up', 'fractional-gave-up',
+						'fractional-half', 0.5, 'message', '{}', '${now}'),
+					('opencode', 'fractional-gave-up', 'fractional-gave-up',
+						'fractional-2', 2, 'message', '{}', '${now}');
+				INSERT INTO raw_event_flush_batches(
+					id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, created_at, updated_at
+				) VALUES (6, 'opencode', 'fractional-gave-up', 'fractional-gave-up', 0, 2,
+					'raw_events_v1', 'gave_up', '${now}', '${now}');
+			`);
+
+			runDatabaseMigrations(legacy, {
+				dbPath: legacy.name,
+				backupAndVerify: verifyTestBackup,
+			});
+
+			expect(
+				legacy
+					.prepare(
+						`SELECT status, completion_disposition, legacy_recovery_state,
+							frontier_already_advanced
+						 FROM raw_event_flush_batches WHERE id = 6`,
+					)
+					.get(),
+			).toEqual({
+				status: "completed",
+				completion_disposition: "legacy_unrecoverable",
+				legacy_recovery_state: "missing_or_ambiguous_range",
+				frontier_already_advanced: 0,
+			});
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("rolls v20 migration back when the next completed legacy range is incomplete", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "completed-gap.sqlite"));
+		try {
+			legacy.exec(`
+				INSERT INTO raw_event_sessions(
+					source, stream_id, opencode_session_id, last_received_event_seq,
+					last_flushed_event_seq, updated_at
+				) VALUES ('opencode', 'completed-gap', 'completed-gap', 2, -1,
+					'2026-08-31T00:00:00.000Z');
+				INSERT INTO raw_events(
+					source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+					payload_json, created_at
+				) VALUES
+					('opencode', 'completed-gap', 'completed-gap', 'completed-gap-0', 0,
+						'message', '{}', '2026-08-31T00:00:00.000Z'),
+					('opencode', 'completed-gap', 'completed-gap', 'completed-gap-2', 2,
+						'message', '{}', '2026-08-31T00:00:00.000Z');
+				INSERT INTO raw_event_flush_batches(
+					id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, created_at, updated_at
+				) VALUES (6, 'opencode', 'completed-gap', 'completed-gap', 0, 2,
+					'raw_events_v1', 'completed', '2026-08-31T00:00:00.000Z',
+					'2026-08-31T00:00:00.000Z');
+			`);
+
+			expect(() =>
+				runDatabaseMigrations(legacy, {
+					dbPath: legacy.name,
+					backupAndVerify: verifyTestBackup,
+				}),
+			).toThrow(/completed legacy range is incomplete or ambiguous/i);
+			expect(getSchemaVersion(legacy)).toBe(20);
+			expect(columnExists(legacy, "raw_event_flush_batches", "legacy_recovery_state")).toBe(false);
+			expect(
+				legacy
+					.prepare(
+						`SELECT status, start_event_seq, end_event_seq
+						 FROM raw_event_flush_batches WHERE id = 6`,
+					)
+					.get(),
+			).toEqual({ status: "completed", start_event_seq: 0, end_event_seq: 2 });
+			expect(
+				legacy
+					.prepare(
+						`SELECT last_flushed_event_seq FROM raw_event_sessions
+						 WHERE source = 'opencode' AND stream_id = 'completed-gap'`,
+					)
+					.get(),
+			).toEqual({ last_flushed_event_seq: -1 });
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("rolls v20 migration back when a completed legacy range has no session frontier", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "completed-without-session.sqlite"));
+		try {
+			const now = "2026-08-31T00:00:00.000Z";
+			legacy
+				.prepare(
+					`INSERT INTO raw_events(
+						source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+						payload_json, created_at
+					 ) VALUES ('opencode', 'completed-without-session', 'completed-without-session',
+						'completed-without-session-0', 0, 'message', '{}', ?)`,
+				)
+				.run(now);
+			legacy
+				.prepare(
+					`INSERT INTO raw_event_flush_batches(
+						id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+						extractor_version, status, created_at, updated_at
+					 ) VALUES (6, 'opencode', 'completed-without-session',
+						'completed-without-session', 0, 0, 'raw_events_v1', 'completed', ?, ?)`,
+				)
+				.run(now, now);
+
+			expect(() =>
+				runDatabaseMigrations(legacy, {
+					dbPath: legacy.name,
+					backupAndVerify: verifyTestBackup,
+				}),
+			).toThrow(/completed legacy range is incomplete or ambiguous/i);
+			expect(getSchemaVersion(legacy)).toBe(20);
+			expect(columnExists(legacy, "raw_event_flush_batches", "legacy_recovery_state")).toBe(false);
+			expect(
+				legacy.prepare("SELECT status FROM raw_event_flush_batches WHERE id = 6").get(),
+			).toEqual({ status: "completed" });
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("rejects unsupported direct pre-v20 upgrades and mislabeled v21 schemas", () => {
+		const path = join(tmpDir, "unsupported.sqlite");
+		let legacy = seedV20Slice1Database(path);
+		try {
+			legacy.pragma("user_version = 18");
+			legacy.pragma("journal_mode = DELETE");
+			legacy.close();
+			legacy = connect(path);
+			expect(legacy.pragma("journal_mode", { simple: true })).toBe("delete");
+			const backup = vi.fn(verifyTestBackup);
+			expect(() =>
+				runDatabaseMigrations(legacy, {
+					dbPath: legacy.name,
+					backupAndVerify: backup,
+				}),
+			).toThrow(/direct writable upgrade.*schema 20/i);
+			expect(backup).not.toHaveBeenCalled();
+			expect(getSchemaVersion(legacy)).toBe(18);
+			expect(legacy.pragma("journal_mode", { simple: true })).toBe("delete");
+
+			legacy.pragma("user_version = 21");
+			expect(() => assertSchemaReady(legacy)).toThrow(/v21 schema is incomplete/i);
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("migrates raw events and jobs in bounded pages", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "paged.sqlite"));
+		try {
+			const now = "2026-08-31T00:00:00.000Z";
+			const addEvent = legacy.prepare(
+				`INSERT INTO raw_events(
+					source, stream_id, opencode_session_id, event_id, event_seq, event_type,
+					payload_json, created_at
+				 ) VALUES ('opencode', 'paged', 'paged', ?, ?, 'message', '{}', ?)`,
+			);
+			const addBatch = legacy.prepare(
+				`INSERT INTO raw_event_flush_batches(
+					id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+					extractor_version, status, created_at, updated_at
+				 ) VALUES (?, 'opencode', 'paged', 'paged', ?, ?, 'raw_events_v1', 'completed', ?, ?)`,
+			);
+			const minimumId = "-9223372036854775808";
+			legacy.transaction(() => {
+				legacy
+					.prepare(
+						`INSERT INTO raw_event_sessions(
+							source, stream_id, opencode_session_id, last_received_event_seq,
+							last_flushed_event_seq, updated_at
+						 ) VALUES ('opencode', 'paged', 'paged', 500, 500, ?)`,
+					)
+					.run(now);
+				for (let index = 0; index < 501; index++) {
+					addEvent.run(`paged-${index}`, index, now);
+					addBatch.run(1_000 + index, index, index, now, now);
+				}
+				legacy
+					.prepare(
+						`INSERT INTO raw_event_sessions(
+							source, stream_id, opencode_session_id, last_received_event_seq,
+							last_flushed_event_seq, updated_at
+						 ) VALUES ('opencode', 'minimum-id', 'minimum-id', 0, 0, ?)`,
+					)
+					.run(now);
+				legacy
+					.prepare(
+						`INSERT INTO raw_events(
+							id, source, stream_id, opencode_session_id, event_id, event_seq,
+							event_type, payload_json, created_at
+						 ) VALUES (CAST(? AS INTEGER), 'opencode', 'minimum-id', 'minimum-id',
+							'minimum-id-event', 0, 'message', '{}', ?)`,
+					)
+					.run(minimumId, now);
+				legacy
+					.prepare(
+						`INSERT INTO raw_event_flush_batches(
+							id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+							extractor_version, status, created_at, updated_at
+						 ) VALUES (CAST(? AS INTEGER), 'opencode', 'minimum-id', 'minimum-id', 0, 0,
+							'raw_events_v1', 'completed', ?, ?)`,
+					)
+					.run(minimumId, now, now);
+			})();
+			const eventCount = (
+				legacy.prepare("SELECT COUNT(*) AS count FROM raw_events").get() as { count: number }
+			).count;
+			const batchCount = (
+				legacy.prepare("SELECT COUNT(*) AS count FROM raw_event_flush_batches").get() as {
+					count: number;
+				}
+			).count;
+
+			runDatabaseMigrations(legacy, {
+				dbPath: legacy.name,
+				backupAndVerify: verifyTestBackup,
+			});
+
+			expect(legacy.prepare("SELECT COUNT(*) AS count FROM raw_events").get()).toEqual({
+				count: eventCount,
+			});
+			expect(legacy.prepare("SELECT COUNT(*) AS count FROM raw_event_flush_batches").get()).toEqual(
+				{ count: batchCount },
+			);
+			expect(
+				legacy.prepare("SELECT status FROM raw_event_flush_batches WHERE id = 1500").get(),
+			).toEqual({ status: "completed" });
+			expect(
+				legacy
+					.prepare(
+						"SELECT CAST(id AS TEXT) AS id FROM raw_events WHERE event_id = 'minimum-id-event'",
+					)
+					.get(),
+			).toEqual({ id: minimumId });
+			expect(
+				legacy
+					.prepare(
+						"SELECT CAST(id AS TEXT) AS id, status FROM raw_event_flush_batches WHERE id = CAST(? AS INTEGER)",
+					)
+					.get(minimumId),
+			).toEqual({ id: minimumId, status: "completed" });
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("keeps v20 unchanged when recoverable legacy jobs exceed durable capacity", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "over-capacity.sqlite"));
+		try {
+			const now = "2026-08-31T00:00:00.000Z";
+			for (let index = 0; index < 24; index++) {
+				const stream = `overflow-${index}`;
+				legacy
+					.prepare(
+						`INSERT INTO raw_event_sessions(
+							source, stream_id, opencode_session_id, last_flushed_event_seq, updated_at
+						 ) VALUES ('opencode', ?, ?, -1, ?)`,
+					)
+					.run(stream, stream, now);
+				legacy
+					.prepare(
+						`INSERT INTO raw_events(
+							source, stream_id, opencode_session_id, event_id, event_seq,
+							event_type, payload_json, created_at
+						 ) VALUES ('opencode', ?, ?, ?, 0, 'message', '{}', ?)`,
+					)
+					.run(stream, stream, `${stream}-0`, now);
+				legacy
+					.prepare(
+						`INSERT INTO raw_event_flush_batches(
+							id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+							extractor_version, status, created_at, updated_at
+						 ) VALUES (?, 'opencode', ?, ?, 0, 0, 'raw_events_v1', 'pending', ?, ?)`,
+					)
+					.run(100 + index, stream, stream, now, now);
+			}
+			expect(() =>
+				runDatabaseMigrations(legacy, {
+					dbPath: legacy.name,
+					backupAndVerify: verifyTestBackup,
+				}),
+			).toThrow(/exceed the durable processing capacity/i);
+			expect(getSchemaVersion(legacy)).toBe(20);
+			expect(columnExists(legacy, "raw_event_flush_batches", "legacy_recovery_state")).toBe(false);
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("identifies an invalid legacy raw-event row without exposing its labels", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "missing-event-id.sqlite"));
+		try {
+			legacy.exec("ALTER TABLE raw_events ADD COLUMN migration_id TEXT");
+			const unsafe = legacy
+				.prepare("SELECT source, stream_id FROM raw_events WHERE id = 1")
+				.get() as {
+				source: string;
+				stream_id: string;
+			};
+			legacy
+				.prepare(
+					"UPDATE raw_events SET event_id = NULL, payload_json = ?, migration_id = ? WHERE id = 1",
+				)
+				.run('{"secret":"raw-payload-sentinel"}', "secret-label-sentinel");
+			let thrown: unknown;
+			try {
+				runDatabaseMigrations(legacy, {
+					dbPath: legacy.name,
+					backupAndVerify: verifyTestBackup,
+				});
+			} catch (error) {
+				thrown = error;
+			}
+			expect(thrown).toBeInstanceOf(Error);
+			const message = thrown instanceof Error ? thrown.message : "";
+			expect(message).toBe("v21 migration cannot preserve raw_events.id=1 without an event ID.");
+			expect(message).not.toContain(unsafe.source);
+			expect(message).not.toContain(unsafe.stream_id);
+			expect(message).not.toContain("raw-payload-sentinel");
+			expect(message).not.toContain("secret-label-sentinel");
+			expect(getSchemaVersion(legacy)).toBe(20);
+			expect(tableExists(legacy, "raw_events_v20")).toBe(false);
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("rolls back v21 when required additive identity columns are unavailable", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "missing-additive-column.sqlite"));
+		try {
+			legacy.exec("ALTER TABLE memory_items DROP COLUMN import_key");
+			expect(() =>
+				runDatabaseMigrations(legacy, {
+					dbPath: legacy.name,
+					backupAndVerify: verifyTestBackup,
+				}),
+			).toThrow(/requires additive memory identity columns/i);
+			expect(getSchemaVersion(legacy)).toBe(20);
+			expect(tableExists(legacy, "raw_events_v20")).toBe(false);
+			expect(tableExists(legacy, "raw_event_identity_conflicts")).toBe(false);
+		} finally {
+			legacy.close();
+		}
+	});
+
+	it("rolls the entire v21 migration back for an unsupported legacy job state", () => {
+		const legacy = seedV20Slice1Database(join(tmpDir, "unsupported-state.sqlite"));
+		try {
+			legacy.prepare("UPDATE raw_event_flush_batches SET status = 'mystery' WHERE id = 1").run();
+			expect(() =>
+				runDatabaseMigrations(legacy, {
+					dbPath: legacy.name,
+					backupAndVerify: verifyTestBackup,
+				}),
+			).toThrow(/unsupported legacy raw-event batch status/i);
+			expect(getSchemaVersion(legacy)).toBe(20);
+			expect(tableExists(legacy, "raw_events_v20")).toBe(false);
+			expect(
+				legacy
+					.prepare(
+						"SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'index' AND name = 'idx_raw_events_source_stream_event_id'",
+					)
+					.get(),
+			).toEqual({ count: 1 });
+		} finally {
+			legacy.close();
+		}
 	});
 });
 
@@ -1358,6 +2689,48 @@ describe("ensureAdditiveSchemaCompatibility schema-compat gate", () => {
 		ensureAdditiveSchemaCompatibility(db);
 		expect(hasIndex(db, "idx_memory_items_project")).toBe(true);
 		expect(appliedSchemaVersion(db)).toBe(SCHEMA_VERSION);
+	});
+
+	it("repairs an early v21 resume receipt table after the compatibility gate is marked", () => {
+		ensureAdditiveSchemaCompatibility(db);
+		db.exec("ALTER TABLE processing_resume_producer_receipts DROP COLUMN target_job_ids_json");
+		db.prepare(
+			`INSERT INTO processing_resume_producer_receipts(
+				receipt_id, producer_kind, configuration_fingerprint, provider_fingerprint,
+				producer_sequence, fanout_count, created_at
+			 ) VALUES (?, 'validated_configuration_activation', ?, ?, 42, 0, ?)`,
+		).run(
+			"early-v21-activation",
+			`sha256:${"a".repeat(64)}`,
+			`sha256:${"b".repeat(64)}`,
+			"2026-08-31T00:00:00.000Z",
+		);
+		const dbPath = db.name;
+		db.close();
+		db = connect(dbPath);
+		const backupAndVerify = vi.fn(verifyTestBackup);
+
+		runDatabaseMigrations(db, { dbPath, backupAndVerify });
+
+		expect(backupAndVerify).toHaveBeenCalledOnce();
+		expect(columnExists(db, "processing_resume_producer_receipts", "target_job_ids_json")).toBe(
+			true,
+		);
+		expect(
+			db
+				.prepare(
+					"SELECT target_job_ids_json FROM processing_resume_producer_receipts WHERE receipt_id = ?",
+				)
+				.get("early-v21-activation"),
+		).toEqual({ target_job_ids_json: "[]" });
+		expect(
+			new MemoryStore(db, { closeConnection: false }).importActivationReceipt({
+				receiptId: "early-v21-activation",
+				activationSequence: 42,
+				manifestFingerprint: `sha256:${"a".repeat(64)}`,
+				providerFingerprint: `sha256:${"b".repeat(64)}`,
+			}),
+		).toMatchObject({ disposition: "duplicate", fanoutCount: 0, results: [] });
 	});
 
 	it("runs the project backfill even when gated DDL is skipped", () => {

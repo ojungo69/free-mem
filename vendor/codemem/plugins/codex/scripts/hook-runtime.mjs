@@ -625,7 +625,9 @@ var RPC_CAPABILITY_HASH = createHash("sha256").update([
 	"GET /v1/operations/:id",
 	"POST /v1/jobs",
 	"GET /v1/jobs",
-	"GET /v1/jobs/:id"
+	"GET /v1/jobs/:id",
+	"GET /v1/processing-jobs/:id",
+	"POST /v1/processing-jobs/:id/doctor-retry"
 ].join("\n")).digest("hex");
 function typedError(code, message, retryable = false) {
 	return { error: {

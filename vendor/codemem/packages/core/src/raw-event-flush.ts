@@ -9,15 +9,16 @@
  */
 
 import { extractApplyPatchPaths, MUTATING_TOOL_NAMES } from "./apply-patch.js";
-import { extractAdapterEvent, projectAdapterToolEvent } from "./ingest-events.js";
+import { extractAdapterEvent } from "./ingest-events.js";
 import { type IngestOptions, ingest } from "./ingest-pipeline.js";
-import { normalizeAdapterEvents, normalizeEventsForSessionContext } from "./ingest-transcript.js";
+import {
+	isTrivialRequest,
+	normalizeAdapterEvents,
+	normalizeEventsForSessionContext,
+} from "./ingest-transcript.js";
 import type { IngestPayload, SessionContext } from "./ingest-types.js";
 import { ObserverAuthError } from "./observer-client.js";
-import type { MemoryStore } from "./store.js";
-
-const EXTRACTOR_VERSION = "raw_events_v1";
-const LEGACY_MAX_FLUSH_ATTEMPTS = 5;
+import { type MemoryStore, ProcessingOutputLimitError, StaleRawEventClaimError } from "./store.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,6 +38,10 @@ function providerDisplayName(provider: string | null | undefined): string {
 	return "Observer";
 }
 
+function isTimeoutLike(error: Error): boolean {
+	return error.name === "TimeoutError" || error.message.toLowerCase().includes("timeout");
+}
+
 function summarizeFlushFailure(exc: Error, provider: string | null | undefined): string {
 	const providerTitle = providerDisplayName(provider);
 	const rawMessage = String(exc.message ?? "")
@@ -46,7 +51,7 @@ function summarizeFlushFailure(exc: Error, provider: string | null | undefined):
 	if (exc instanceof ObserverAuthError) {
 		return `${providerTitle} authentication failed. Refresh credentials and retry.`;
 	}
-	if (exc.name === "TimeoutError" || rawMessage.includes("timeout")) {
+	if (isTimeoutLike(exc)) {
 		return `${providerTitle} request timed out during raw-event processing.`;
 	}
 	if (
@@ -167,39 +172,20 @@ export function buildSessionContext(events: Record<string, unknown>[]): SessionC
 	};
 }
 
-function isTerminalLowSignalSession(
-	events: Record<string, unknown>[],
-	sessionContext: SessionContext,
-): boolean {
-	const promptCount = sessionContext.promptCount ?? 0;
-	const toolCount = sessionContext.toolCount ?? 0;
-	if (promptCount > 0 || toolCount > 0 || sessionContext.firstPrompt) {
-		return false;
-	}
-	if (events.length > 4) return false;
-
+function isTerminalLowSignalSession(events: Record<string, unknown>[]): boolean {
 	const normalizedEvents = normalizeAdapterEvents(events);
-	const hasPromptOrAssistant = normalizedEvents.some((event) => {
-		const type = String(event.type ?? "");
-		return type === "user_prompt" || type === "assistant_message";
-	});
-	if (hasPromptOrAssistant) return false;
-
-	const hasToolSignal = events.some((event) => {
-		const adapter = extractAdapterEvent(event);
-		if (adapter) return projectAdapterToolEvent(adapter, event) != null;
-		return String(event.type ?? "") === "tool.execute.after";
-	});
-	if (hasToolSignal) return false;
-
 	const allowedTopLevelTypes = new Set(["session.started", "session.idle", "session.ended"]);
-	const allowedAdapterTypes = new Set(["session_start", "session_end", "error"]);
-	return events.every((event) => {
-		const adapter = extractAdapterEvent(event);
-		if (adapter) {
-			return allowedAdapterTypes.has(String(adapter.event_type ?? ""));
+	const allowedAdapterTypes = new Set(["session_start", "session_end"]);
+	return normalizedEvents.every((event) => {
+		const type = String(event.type ?? "");
+		if (type === "user_prompt") {
+			const text = typeof event.prompt_text === "string" ? event.prompt_text.trim() : "";
+			return Boolean(text) && isTrivialRequest(text);
 		}
-		return allowedTopLevelTypes.has(String(event.type ?? ""));
+		if (allowedTopLevelTypes.has(type)) return true;
+		const adapter = extractAdapterEvent(event);
+		const adapterEventType = adapter?.event_type;
+		return typeof adapterEventType === "string" && allowedAdapterTypes.has(adapterEventType);
 	});
 }
 
@@ -213,7 +199,6 @@ export interface FlushRawEventsOptions {
 	cwd?: string | null;
 	project?: string | null;
 	startedAt?: string | null;
-	maxEvents?: number | null;
 }
 
 /**
@@ -233,7 +218,7 @@ export async function flushRawEvents(
 	opts: FlushRawEventsOptions,
 ): Promise<{ flushed: number; updatedState: number }> {
 	let { source = "opencode", cwd, project, startedAt } = opts;
-	const { opencodeSessionId, maxEvents } = opts;
+	const { opencodeSessionId } = opts;
 
 	source = (source ?? "").trim().toLowerCase() || "opencode";
 
@@ -243,68 +228,52 @@ export async function flushRawEvents(
 	project ??= (meta.project as string) ?? null;
 	startedAt ??= (meta.started_at as string) ?? null;
 
-	// Read unflushed events
-	const lastFlushed = store.rawEventFlushState(opencodeSessionId, source);
-	const events = store.rawEventsSinceBySeq(opencodeSessionId, source, lastFlushed, maxEvents);
-	if (events.length === 0) {
-		return { flushed: 0, updatedState: 0 };
+	const manifestFingerprint = ingestOpts.configurationFingerprint;
+	const providerFingerprint = ingestOpts.providerFingerprint;
+	if (!manifestFingerprint || !providerFingerprint) {
+		throw new Error("raw-event flush requires frozen manifest and provider fingerprints");
 	}
-
-	// Extract event sequence range
-	const eventSeqs: number[] = [];
-	for (const e of events) {
-		const seq = e.event_seq;
-		if (seq == null) continue;
-		const num = Number(seq);
-		if (Number.isFinite(num)) eventSeqs.push(num);
-	}
-	if (eventSeqs.length === 0) {
-		return { flushed: 0, updatedState: 0 };
-	}
-
-	const firstEventSeq = eventSeqs[0];
-	if (firstEventSeq == null) {
-		return { flushed: 0, updatedState: 0 };
-	}
-	const restEventSeqs = eventSeqs.slice(1);
-	let startEventSeq = firstEventSeq;
-	let lastEventSeq = firstEventSeq;
-	for (const v of restEventSeqs) {
-		if (v < startEventSeq) startEventSeq = v;
-		if (v > lastEventSeq) lastEventSeq = v;
-	}
-	if (lastEventSeq < startEventSeq) {
-		return { flushed: 0, updatedState: 0 };
-	}
-
-	// Get or create flush batch (idempotency guard)
-	const { batchId, status, attemptCount } = store.getOrCreateRawEventFlushBatch(
-		opencodeSessionId,
+	const admission = store.admitRawEventFlushJob({
 		source,
-		startEventSeq,
-		lastEventSeq,
-		EXTRACTOR_VERSION,
-	);
-
-	// If already completed, just advance flush state
-	if (status === "completed") {
-		store.updateRawEventFlushState(opencodeSessionId, lastEventSeq, source);
-		return { flushed: 0, updatedState: 1 };
-	}
-
-	// Give up after too many failed attempts — mark batch as permanently failed
-	// and advance the cursor so the pipeline isn't blocked forever.
-	// Only trigger from terminal failure states; if another worker has the batch
-	// claimed/running, fall through to the claim step which will correctly bail.
-	if (attemptCount >= LEGACY_MAX_FLUSH_ATTEMPTS && (status === "failed" || status === "error")) {
-		store.updateRawEventFlushBatchStatus(batchId, "gave_up");
-		store.updateRawEventFlushState(opencodeSessionId, lastEventSeq, source);
-		return { flushed: 0, updatedState: 1 };
-	}
-
-	// Claim the batch (atomic lock)
-	if (!store.claimRawEventFlushBatch(batchId)) {
+		streamId: opencodeSessionId,
+		manifestFingerprint,
+		providerFingerprint,
+	});
+	if (
+		admission.status === "no_events" ||
+		admission.status === "capacity" ||
+		admission.status === "source_gap" ||
+		admission.jobId === undefined
+	) {
 		return { flushed: 0, updatedState: 0 };
+	}
+	const claim = store.claimRawEventFlushJob({
+		jobId: admission.jobId,
+		manifestFingerprint,
+		providerFingerprint,
+		maxMemoryItemsPerDerivation: ingestOpts.resourceProfile?.maxMemoryItemsPerDerivation,
+		manifest: ingestOpts.capabilityManifest,
+	});
+	if (!claim) return { flushed: 0, updatedState: 0 };
+	const capturedEvents = store.loadRawEventFlushJobEvents(claim);
+	const sourceEventIds = capturedEvents.map((event) => String(event.event_id));
+	const events = capturedEvents.filter((event) => event.capture_state === "accepted");
+	const projectedSourceEventIds = events.map((event) => String(event.event_id));
+	const startEventSeq = claim.startEventSeq;
+	const lastEventSeq = claim.endEventSeq;
+	if (events.length === 0) {
+		store.completeRawEventFlushJobPrivacySkip({
+			claim,
+			sourceEventIds,
+			projection: { eligibleSourceEventIds: [], omittedSourceEventIds: sourceEventIds },
+			diagnostic: {
+				version: 1,
+				action: "skipped",
+				reason: "redaction_degraded",
+				nextAction: "none",
+			},
+		});
+		return { flushed: capturedEvents.length, updatedState: 1 };
 	}
 
 	// Build session context. Claude Code raw events arrive as `claude.hook`
@@ -318,15 +287,30 @@ export async function flushRawEvents(
 	sessionContext.streamId = opencodeSessionId;
 	sessionContext.flusher = "raw_events";
 	sessionContext.flushBatch = {
-		batch_id: batchId,
+		batch_id: claim.jobId,
 		start_event_seq: startEventSeq,
 		end_event_seq: lastEventSeq,
+		claim,
+		source_event_ids: sourceEventIds,
+		projected_source_event_ids: projectedSourceEventIds,
 	};
 
-	if (isTerminalLowSignalSession(events, sessionContext)) {
-		store.updateRawEventFlushBatchStatus(batchId, "completed");
-		store.updateRawEventFlushState(opencodeSessionId, lastEventSeq, source);
-		return { flushed: events.length, updatedState: 1 };
+	if (isTerminalLowSignalSession(events)) {
+		store.completeRawEventFlushJobMemory(
+			{
+				claim,
+				sourceEventIds,
+				observedOutputCount: 0,
+				diagnostic: {
+					version: 1,
+					action: "skipped",
+					reason: "eligible_only",
+					nextAction: "none",
+				},
+			},
+			() => [],
+		);
+		return { flushed: capturedEvents.length, updatedState: 1 };
 	}
 
 	// Build ingest payload
@@ -347,22 +331,51 @@ export async function flushRawEvents(
 		const status = ingestOpts.observer?.getStatus?.();
 		const provider = status?.provider as string | undefined;
 		const message = truncateErrorMessage(summarizeFlushFailure(err, provider));
-		store.recordRawEventFlushBatchFailure(batchId, {
-			message,
-			errorType: err instanceof ObserverAuthError ? "ObserverAuthError" : err.name,
-			observerProvider: provider ?? null,
-			observerModel: status?.model ?? null,
-			observerRuntime: status?.runtime ?? null,
-			observerAuthSource: status?.auth?.source ?? null,
-			observerAuthType: status?.auth?.type ?? null,
-			observerErrorCode: status?.lastError?.code ?? null,
-			observerErrorMessage: truncateErrorMessage(status?.lastError?.message ?? "", 400) || null,
-		});
+		let safeErrorCode = "output_invalid";
+		if (err instanceof ObserverAuthError) safeErrorCode = "provider_auth_failed";
+		else if (isTimeoutLike(err)) safeErrorCode = "provider_unavailable";
+		else if (err instanceof ProcessingOutputLimitError) safeErrorCode = "output_limit_exceeded";
+		try {
+			store.failRawEventFlushJob({
+				jobId: claim.jobId,
+				claimGeneration: claim.claimGeneration,
+				attemptFingerprint: claim.attemptFingerprint,
+				safeErrorCode,
+				diagnostic: {
+					version: 1,
+					action: "failed",
+					reason: safeErrorCode,
+					destination: "unknown",
+					configurationFingerprint: claim.manifestFingerprint,
+					providerFingerprint: claim.providerFingerprint,
+					attemptFingerprint: claim.attemptFingerprint,
+					nextAction:
+						safeErrorCode === "provider_auth_failed" ? "configure_credential" : "confirm_retry",
+				},
+			});
+		} catch (error_) {
+			if (error_ instanceof StaleRawEventClaimError) throw exc;
+			throw error_;
+		}
+		// Preserve the bounded legacy diagnostic columns for existing status surfaces.
+		try {
+			store.recordRawEventFlushBatchDiagnostic(claim.jobId, {
+				message,
+				errorType: err instanceof ObserverAuthError ? "ObserverAuthError" : err.name,
+				observerProvider: provider ?? null,
+				observerModel: status?.model ?? null,
+				observerRuntime: status?.runtime ?? null,
+				observerAuthSource: status?.auth?.source ?? null,
+				observerAuthType: status?.auth?.type ?? null,
+				observerErrorCode: status?.lastError?.code ?? null,
+				observerErrorMessage: truncateErrorMessage(status?.lastError?.message ?? "", 400) || null,
+			});
+		} catch {
+			// The canonical job failure above is authoritative; legacy diagnostics are best-effort.
+		}
 		throw exc;
 	}
 
-	// Success — mark batch completed and advance flush state
-	store.updateRawEventFlushBatchStatus(batchId, "completed");
-	store.updateRawEventFlushState(opencodeSessionId, lastEventSeq, source);
-	return { flushed: events.length, updatedState: 1 };
+	// Ingest commits memory/job/frontier through the Store-owned completion transaction.
+	return { flushed: capturedEvents.length, updatedState: 1 };
 }

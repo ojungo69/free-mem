@@ -20,7 +20,11 @@ import {
 } from "./daemon-rpc-contract.js";
 import { isEmbeddingDisabled } from "./db.js";
 import { validateMemoryKind } from "./memory-kinds.js";
-import { dispatchClassA, MutationConflictError } from "./mutation-dispatcher.js";
+import {
+	dispatchClassA,
+	hashMutationPayload,
+	MutationConflictError,
+} from "./mutation-dispatcher.js";
 import {
 	NORMALIZED_EVENT_FIELDS,
 	NORMALIZED_SCHEMA_VERSION,
@@ -55,14 +59,15 @@ import {
 	type SpoolRedactionMetadata,
 	validateSpoolRedaction,
 } from "./spool.js";
-import type { MemoryStore } from "./store.js";
-import type { MemoryFilters } from "./types.js";
+import { type MemoryStore, ProcessingResumeError } from "./store.js";
+import type { DoctorProcessingJobProjection, MemoryFilters } from "./types.js";
 import type { ViewerAuthState } from "./viewer-auth.js";
 import type { ViewerReadHandler } from "./viewer-read.js";
 import type { WriterActor } from "./writer-actor.js";
 
 type RpcIdentity = { pid: number; nonce: string };
 const RECENT_FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const CAPTURE_CONCURRENCY_LIMIT = 2;
 
 function spoolHealth(dataDir: string): Record<string, unknown> {
 	try {
@@ -186,6 +191,16 @@ const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"POST /v1/jobs": ["kind", "args", "dryRun"],
 	"GET /v1/jobs": ["kind", "state", "submittedAfter"],
 	"GET /v1/jobs/:id": ["id"],
+	"GET /v1/processing-jobs/:id": ["id"],
+	"POST /v1/processing-jobs/:id/doctor-retry": [
+		"id",
+		"producerReceiptId",
+		"expectedRole",
+		"expectedProviderFingerprint",
+		"expectedManifestFingerprint",
+		"expectedAttemptCount",
+		"expectedClaimGeneration",
+	],
 };
 
 const METHOD_REQUIRED_FIELDS: Record<RpcMethod, readonly string[]> = {
@@ -216,6 +231,16 @@ const METHOD_REQUIRED_FIELDS: Record<RpcMethod, readonly string[]> = {
 	"POST /v1/jobs": ["kind"],
 	"GET /v1/jobs": [],
 	"GET /v1/jobs/:id": ["id"],
+	"GET /v1/processing-jobs/:id": ["id"],
+	"POST /v1/processing-jobs/:id/doctor-retry": [
+		"id",
+		"producerReceiptId",
+		"expectedRole",
+		"expectedProviderFingerprint",
+		"expectedManifestFingerprint",
+		"expectedAttemptCount",
+		"expectedClaimGeneration",
+	],
 };
 
 const MAINTENANCE_BLOCKED_METHODS = new Set<RpcMethod>([
@@ -233,6 +258,7 @@ const MAINTENANCE_BLOCKED_METHODS = new Set<RpcMethod>([
 	"POST /v1/operations/export",
 	"POST /v1/operations/import",
 	"POST /v1/jobs",
+	"POST /v1/processing-jobs/:id/doctor-retry",
 ]);
 
 const VIEW_COLLECTIONS = new Set([
@@ -320,6 +346,7 @@ class RpcRequestError extends Error {
 	constructor(
 		message: string,
 		readonly code = "invalid_request",
+		readonly retryable = false,
 	) {
 		super(message);
 		this.name = "RpcRequestError";
@@ -345,10 +372,35 @@ export type DaemonRpcContext = {
 	operations: DaemonOperationService;
 	capability: DaemonCapabilityState;
 	restoreState?: { active: boolean };
+	captureInFlight?: number;
 };
 
 function isMaintenanceMode(ctx: DaemonRpcContext): boolean {
 	return ctx.jobs.isMaintenanceMode() || ctx.restoreState?.active === true;
+}
+
+function processingJobForDoctor(
+	ctx: DaemonRpcContext,
+	jobId: number,
+): DoctorProcessingJobProjection | null {
+	const job = ctx.store.getProcessingJobForDoctor(jobId);
+	if (!job) return null;
+	const retryTarget =
+		ctx.capability.mode === "configured"
+			? {
+					manifestFingerprint: ctx.capability.configurationFingerprint,
+					providerFingerprint: ctx.capability.summaryProvider.providerFingerprint,
+				}
+			: null;
+	let nextAction: DoctorProcessingJobProjection["nextAction"] = "none";
+	if (job.state === "retry_exhausted") {
+		nextAction = retryTarget ? "confirm_retry" : "activate_valid_manifest";
+	}
+	return {
+		...job,
+		retryTarget,
+		nextAction,
+	};
 }
 
 function isSafePersistedText(value: unknown, maxBytes: number): value is string {
@@ -460,7 +512,8 @@ async function handleMethod(
 					.prepare(
 						`SELECT
 						(SELECT COUNT(*) FROM raw_events
-							 WHERE json_extract(payload_json, '$.redaction_degraded') = 1) +
+							 WHERE safe_error_code = 'redaction_degraded'
+							    OR json_extract(payload_json, '$.redaction_degraded') = 1) +
 						(SELECT COUNT(*) FROM memory_items
 							 WHERE json_extract(metadata_json, '$.redaction_degraded') = 1) +
 						(SELECT COUNT(*) FROM daemon_jobs
@@ -539,11 +592,15 @@ async function handleMethod(
 			throw new RpcRequestError("adapterRedaction is malformed.");
 		}
 		return method === "POST /v1/events"
-			? handleEvent(ctx, body, normalizedSchemaVersion, adapterRedaction)
+			? withCaptureAdmissionLease(ctx, () =>
+					persistEvent(ctx, body, normalizedSchemaVersion, adapterRedaction),
+				)
 			: handleRemember(ctx, body, adapterRedaction);
 	}
 	if (method === "POST /v1/events/batch") {
-		return handleEventBatch(ctx, body, normalizedSchemaVersion);
+		return withCaptureAdmissionLease(ctx, () =>
+			handleEventBatch(ctx, body, normalizedSchemaVersion),
+		);
 	}
 	if (method === "DELETE /v1/memories/:id") {
 		return handleForget(ctx, body);
@@ -640,6 +697,45 @@ async function handleMethod(
 			throw error;
 		}
 	}
+	if (method === "GET /v1/processing-jobs/:id") {
+		const job = processingJobForDoctor(ctx, requirePositiveInt(body.id));
+		if (!job) throw new RpcRequestError("Processing job was not found.", "not_found");
+		return { job };
+	}
+	if (method === "POST /v1/processing-jobs/:id/doctor-retry") {
+		if (body.expectedRole !== "summary") {
+			throw new RpcRequestError("expectedRole must be summary.");
+		}
+		const expectedProviderFingerprint = body.expectedProviderFingerprint;
+		const expectedManifestFingerprint = body.expectedManifestFingerprint;
+		if (
+			typeof body.producerReceiptId !== "string" ||
+			!Object.hasOwn(body, "expectedProviderFingerprint") ||
+			!Object.hasOwn(body, "expectedManifestFingerprint") ||
+			!(
+				(typeof expectedProviderFingerprint === "string" &&
+					typeof expectedManifestFingerprint === "string") ||
+				(expectedProviderFingerprint === null && expectedManifestFingerprint === null)
+			) ||
+			!Number.isSafeInteger(body.expectedAttemptCount) ||
+			!Number.isSafeInteger(body.expectedClaimGeneration)
+		) {
+			throw new RpcRequestError("Doctor retry snapshot is invalid.");
+		}
+		const jobId = requirePositiveInt(body.id);
+		const job = processingJobForDoctor(ctx, jobId);
+		return ctx.store.confirmDoctorRetry({
+			jobId,
+			producerReceiptId: body.producerReceiptId,
+			expectedRole: "summary",
+			expectedProviderFingerprint,
+			expectedManifestFingerprint,
+			expectedAttemptCount: body.expectedAttemptCount as number,
+			expectedClaimGeneration: body.expectedClaimGeneration as number,
+			targetProviderFingerprint: job?.retryTarget?.providerFingerprint ?? null,
+			targetManifestFingerprint: job?.retryTarget?.manifestFingerprint ?? null,
+		});
+	}
 	return {
 		operationId: body.operationId ?? body.id,
 		state: "not_implemented",
@@ -719,28 +815,64 @@ function normalizedEvent(
 	};
 }
 
-function handleEvent(
+function persistEvent(
 	ctx: DaemonRpcContext,
 	body: Record<string, unknown>,
 	normalizedSchemaVersion: number,
 	previousRedaction?: SpoolRedactionMetadata,
 ): Record<string, unknown> {
+	return persistEventWithReceipt(ctx, body, normalizedSchemaVersion, previousRedaction).result;
+}
+
+function persistEventWithReceipt(
+	ctx: DaemonRpcContext,
+	body: Record<string, unknown>,
+	normalizedSchemaVersion: number,
+	previousRedaction?: SpoolRedactionMetadata,
+): { result: Record<string, unknown>; incomingPayloadHash: string; receiptPayloadHash: string } {
 	const event = normalizedEvent(body, normalizedSchemaVersion, previousRedaction);
 	const eventId = String(event.eventId);
 	const eventType = String(event.kind);
 	const nativeSessionId = String(event.nativeSessionId);
 	const source = event.agent === "claude-code" ? "claude" : String(event.agent);
 	const occurredAtMs = Date.parse(String(event.occurredAt));
+	const redactionDegraded = event.redaction_degraded === true;
+	let captureSensitivity = "eligible";
+	if (redactionDegraded || event.sensitivity === "secret") captureSensitivity = "secret";
+	else if (event.sensitivity === "private") captureSensitivity = "private";
+	else if (event.local_only === true) captureSensitivity = "local_only";
 	const { payload, ...normalizedMetadata } = event;
+	const { idempotencyKey: _idempotencyKey, ...eventWithoutIdempotencyKey } = event;
 	const rawPayload =
 		payload && typeof payload === "object" && !Array.isArray(payload)
-			? { ...(payload as Record<string, unknown>), ...event, _normalized: normalizedMetadata }
-			: { ...event, _normalized: normalizedMetadata };
-	const receipt = dispatchClassA(ctx.writer, {
-		method: "POST /v1/events",
-		idempotencyKey: String(body.idempotencyKey),
-		payload: { event },
-		apply: () => {
+			? {
+					...(payload as Record<string, unknown>),
+					...eventWithoutIdempotencyKey,
+					_normalized: normalizedMetadata,
+				}
+			: { ...eventWithoutIdempotencyKey, _normalized: normalizedMetadata };
+	const persist = () => {
+		const recorded = ctx.store.recordRawEventsBatch(
+			nativeSessionId,
+			[
+				{
+					event_id: eventId,
+					event_type: eventType,
+					payload: rawPayload,
+					ts_wall_ms: occurredAtMs,
+					repository_identity: null,
+					capture_manifest_fingerprint: ctx.capability.configurationFingerprint,
+					sensitivity: captureSensitivity,
+					capture_state: redactionDegraded ? "quarantined" : "accepted",
+					safe_error_code: redactionDegraded ? "redaction_degraded" : null,
+					redaction_degraded: redactionDegraded,
+				},
+			],
+			source,
+		);
+		const outcome = recorded.outcomes[0];
+		if (!outcome) throw new Error("event was not persisted.");
+		if (outcome.normalAck) {
 			ctx.store.updateRawEventSessionMeta({
 				opencodeSessionId: nativeSessionId,
 				source,
@@ -749,25 +881,62 @@ function handleEvent(
 				startedAt: eventType === "session_started" ? String(event.occurredAt) : null,
 				lastSeenTsWallMs: occurredAtMs,
 			});
-			const recorded = ctx.store.recordRawEventsBatch(
-				nativeSessionId,
-				[
-					{
-						event_id: eventId,
-						event_type: eventType,
-						payload: rawPayload,
-						ts_wall_ms: occurredAtMs,
-					},
-				],
-				source,
-			);
-			if (recorded.inserted === 0 && recorded.skipped === 0) {
-				throw new Error("event was not persisted.");
-			}
-			return { inserted: recorded.inserted, skipped: recorded.skipped };
-		},
+			return { eventId, receiptId: outcome.receiptId, status: "committed" };
+		}
+		return outcome.status === "identity_conflict"
+			? {
+					eventId,
+					receiptId: outcome.receiptId,
+					status: "conflict",
+					canonicalUnchanged: outcome.canonicalUnchanged,
+					memoryDelta: outcome.memoryDelta,
+				}
+			: {
+					eventId,
+					receiptId: outcome.receiptId,
+					status: "quarantined",
+					safeErrorCode: outcome.reason,
+				};
+	};
+	const mutationPayload = { event };
+	const receipt = dispatchClassA(ctx.writer, {
+		method: "POST /v1/events",
+		idempotencyKey: String(body.idempotencyKey),
+		payload: mutationPayload,
+		apply: persist,
+		reconcileExisting: (existing) =>
+			existing.result.eventId === eventId ? { ...existing, result: persist() } : null,
 	});
-	return { receiptId: receipt.receiptId, status: receipt.status };
+	const { eventId: _eventId, ...result } = receipt.result;
+	return {
+		result,
+		incomingPayloadHash: hashMutationPayload(mutationPayload),
+		receiptPayloadHash: receipt.payloadHash,
+	};
+}
+
+function assertCaptureCapacity(ctx: DaemonRpcContext): void {
+	if ((ctx.captureInFlight ?? 0) >= CAPTURE_CONCURRENCY_LIMIT) {
+		throw new RpcRequestError(
+			"Capture admission is saturated; retry through the spool.",
+			"capture_saturated",
+			true,
+		);
+	}
+}
+
+async function withCaptureAdmissionLease<T>(ctx: DaemonRpcContext, persist: () => T): Promise<T> {
+	assertCaptureCapacity(ctx);
+	ctx.captureInFlight = (ctx.captureInFlight ?? 0) + 1;
+	try {
+		const result = persist();
+		// Keep the lease through response scheduling so sibling socket arrivals
+		// contend for the two slots without delaying persistence.
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		return result;
+	} finally {
+		ctx.captureInFlight = Math.max(0, (ctx.captureInFlight ?? 1) - 1);
+	}
 }
 
 function handleEventBatch(
@@ -796,23 +965,24 @@ function handleEventBatch(
 		asObject(row.event);
 		return row;
 	});
-	const receipts = rows.map((row) => {
+	const receipts: Record<string, unknown>[] = [];
+	for (const row of rows) {
 		try {
-			return handleEvent(
-				ctx,
-				{
-					idempotencyKey: row.idempotencyKey,
-					event: row.event,
-				},
-				normalizedSchemaVersion,
+			receipts.push(
+				persistEvent(
+					ctx,
+					{ idempotencyKey: row.idempotencyKey, event: row.event },
+					normalizedSchemaVersion,
+				),
 			);
 		} catch (error) {
 			if (error instanceof MutationConflictError) {
-				return { receiptId: error.receipt.receiptId, status: "conflict" };
+				receipts.push({ receiptId: error.receipt.receiptId, status: "conflict" });
+				continue;
 			}
 			throw error;
 		}
-	});
+	}
 	return { receipts };
 }
 
@@ -890,7 +1060,18 @@ export function dispatchSpoolMutation(
 	if (isMaintenanceMode(ctx)) throw new Error("maintenance mode is active");
 	try {
 		if (entry.method === "POST /v1/events") {
-			handleEvent(ctx, entry.body, NORMALIZED_SCHEMA_VERSION, entry.redaction);
+			const persisted = persistEventWithReceipt(
+				ctx,
+				entry.body,
+				NORMALIZED_SCHEMA_VERSION,
+				entry.redaction,
+			);
+			if (
+				persisted.result.status === "conflict" ||
+				persisted.receiptPayloadHash !== persisted.incomingPayloadHash
+			) {
+				return "conflict";
+			}
 		} else {
 			handleRemember(ctx, entry.body, entry.redaction);
 		}
@@ -1529,9 +1710,16 @@ export async function dispatchDaemonRpc(
 	if (extra.length > 0) {
 		return typedError("unknown_field", `Unknown field for ${request.method}: ${extra[0]}`);
 	}
+	const legacyUnknownDoctorAttempt =
+		request.method === "POST /v1/processing-jobs/:id/doctor-retry" &&
+		body.expectedProviderFingerprint === null &&
+		body.expectedManifestFingerprint === null;
 	for (const field of METHOD_REQUIRED_FIELDS[request.method]) {
 		const value = body[field];
-		if (value === undefined || value === null) {
+		const nullableLegacyFingerprint =
+			legacyUnknownDoctorAttempt &&
+			(field === "expectedProviderFingerprint" || field === "expectedManifestFingerprint");
+		if (value === undefined || (value === null && !nullableLegacyFingerprint)) {
 			return typedError("invalid_request", `${field} is required.`);
 		}
 		if (
@@ -1585,7 +1773,7 @@ export async function dispatchDaemonRpc(
 		};
 	} catch (error) {
 		if (error instanceof RpcRequestError) {
-			return typedError(error.code, error.message);
+			return typedError(error.code, error.message, error.retryable);
 		}
 		if (error instanceof BackupRequestError) {
 			return typedError(error.code, error.message);
@@ -1595,6 +1783,9 @@ export async function dispatchDaemonRpc(
 		}
 		if (error instanceof MutationConflictError) {
 			return typedError(error.code, error.message);
+		}
+		if (error instanceof ProcessingResumeError) {
+			return typedError(error.code, error.message, error.retryable);
 		}
 		return typedError("internal_error", "RPC handler failed.");
 	}

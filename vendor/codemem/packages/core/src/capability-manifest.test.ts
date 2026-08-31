@@ -282,6 +282,22 @@ describe("Slice 1 capability manifest compiler", () => {
 			providerEnabled: false,
 		});
 	});
+
+	it("keeps privacy pending after the successfully opened v21 schema reports ready", () => {
+		expect(
+			core.safeManifestProjection(
+				fixture.effectiveConfiguration as never,
+				"available",
+				"validated",
+				"ready",
+			),
+		).toMatchObject({
+			runtimeReason: "pending_privacy_boundary",
+			schemaReadiness: "ready",
+			providerEnabled: false,
+			sweeperEnabled: false,
+		});
+	});
 });
 
 describe("Slice 1 provider TLS preflight", () => {

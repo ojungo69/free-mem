@@ -86,6 +86,33 @@ function rowToReceipt(row: ReceiptRow): MutationReceipt {
 	};
 }
 
+function quarantineMutationConflict(
+	db: WriterActor,
+	idempotencyKey: string,
+	payloadHash: string,
+	existingHash: string,
+	method: string,
+): void {
+	db.prepare(
+		`INSERT INTO mutation_quarantine(idempotency_key, payload_hash, existing_hash, method, created_at)
+		 SELECT ?, ?, ?, ?, ?
+		 WHERE NOT EXISTS (
+			SELECT 1 FROM mutation_quarantine
+			WHERE idempotency_key = ? AND payload_hash = ? AND existing_hash = ? AND method = ?
+		 )`,
+	).run(
+		idempotencyKey,
+		payloadHash,
+		existingHash,
+		method,
+		new Date().toISOString(),
+		idempotencyKey,
+		payloadHash,
+		existingHash,
+		method,
+	);
+}
+
 export function dispatchClassA(
 	db: WriterActor,
 	input: {
@@ -93,6 +120,11 @@ export function dispatchClassA(
 		idempotencyKey: string;
 		payload: unknown;
 		apply: () => Record<string, unknown>;
+		/** Runs inside the transaction before an existing key becomes a replay or conflict. */
+		reconcileExisting?: (
+			existing: MutationReceipt,
+			incomingPayloadHash: string,
+		) => MutationReceipt | null;
 	},
 ): MutationReceipt {
 	if (
@@ -110,18 +142,28 @@ export function dispatchClassA(
 			)
 			.get(input.method, input.idempotencyKey) as ReceiptRow | undefined;
 		if (existing) {
+			if (input.reconcileExisting) {
+				const reconciled = input.reconcileExisting(rowToReceipt(existing), payloadHash);
+				if (reconciled && existing.payload_hash !== payloadHash) {
+					quarantineMutationConflict(
+						db,
+						input.idempotencyKey,
+						payloadHash,
+						existing.payload_hash,
+						input.method,
+					);
+				}
+				if (reconciled) return { kind: "ok" as const, receipt: reconciled };
+			}
 			if (existing.payload_hash === payloadHash) {
 				return { kind: "ok" as const, receipt: rowToReceipt(existing) };
 			}
-			db.prepare(
-				`INSERT INTO mutation_quarantine(idempotency_key, payload_hash, existing_hash, method, created_at)
-				 VALUES (?, ?, ?, ?, ?)`,
-			).run(
+			quarantineMutationConflict(
+				db,
 				input.idempotencyKey,
 				payloadHash,
 				existing.payload_hash,
 				input.method,
-				new Date().toISOString(),
 			);
 			return { kind: "conflict" as const, receipt: rowToReceipt(existing) };
 		}

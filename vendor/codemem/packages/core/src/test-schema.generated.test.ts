@@ -20,4 +20,22 @@ describe("test schema generation", () => {
 
 		expect(TEST_SCHEMA_BASE_DDL).toBe(makeIdempotentStatements(statements).join("\n"));
 	});
+
+	it("includes the Slice 1 v21 persistence declarations", () => {
+		for (const fragment of [
+			"`sensitivity`",
+			"`repository_identity`",
+			"`payload_digest_version`",
+			"`payload_digest`",
+			"`admission_manifest_fingerprint`",
+			"`frontier_already_advanced`",
+			"`raw_event_identity_conflicts`",
+			"`raw_event_quarantine`",
+			"`processing_resume_producer_receipts`",
+			"`processing_resume_signals`",
+			"`provider_health_states`",
+		]) {
+			expect(TEST_SCHEMA_BASE_DDL).toContain(fragment);
+		}
+	});
 });

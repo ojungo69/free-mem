@@ -11,7 +11,7 @@
  * Designed to be safe to run repeatedly (idempotent unless --force).
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -2085,6 +2085,13 @@ function setupJournalTarget(
 	};
 }
 
+function assertSetupSnapshotsUnchanged(
+	snapshots: Iterable<SetupFileSnapshot>,
+	message: string,
+): void {
+	if (![...snapshots].every(setupFileSnapshotUnchanged)) throw new Error(message);
+}
+
 async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<boolean> {
 	const dataDir = setupDataDir();
 	const layout = resolveStorageLayout(dataDir);
@@ -2123,6 +2130,21 @@ async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<bo
 			manifest,
 			expectedCurrentFingerprint: currentBeforeDisclosure?.configurationFingerprint ?? null,
 			run: async (transaction) => {
+				const activeManifest = readCurrentCapabilityManifest(layout);
+				const previousReceipt = activeManifest
+					? readValidatedCapabilityActivationReceipt(layout, activeManifest)
+					: null;
+				if (activeManifest && !previousReceipt) {
+					throw new Error("Active capability activation receipt is missing.");
+				}
+				if (
+					previousReceipt?.version === 2 &&
+					previousReceipt.activationSequence >= Number.MAX_SAFE_INTEGER
+				) {
+					throw new Error("Capability activation sequence is exhausted.");
+				}
+				const activationSequence =
+					previousReceipt?.version === 2 ? previousReceipt.activationSequence + 1 : 1;
 				const claude = planClaudeSetup(force, runtime);
 				const codex = planCodexSetup(force, runtime);
 				if (!claude || !codex) throw new Error("Editor setup preflight failed.");
@@ -2170,7 +2192,9 @@ async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<bo
 					plannedFile(
 						layout.capabilityActivationReceiptPath,
 						`${JSON.stringify({
-							version: 1,
+							version: 2,
+							receiptId: randomUUID(),
+							activationSequence,
 							configurationFingerprint: manifest.configurationFingerprint,
 							targets: managedTargets,
 						})}\n`,
@@ -2203,20 +2227,15 @@ async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<bo
 						(snapshot) => [snapshot.path, snapshot],
 					),
 				);
-				for (const snapshot of inputSnapshots.values()) {
-					if (!setupFileSnapshotUnchanged(snapshot)) {
-						throw new Error("Setup input changed after it was read.");
-					}
-				}
+				assertSetupSnapshotsUnchanged(
+					inputSnapshots.values(),
+					"Setup input changed after it was read.",
+				);
 				const snapshots = capturedSnapshots.map(
 					(snapshot) => inputSnapshots.get(snapshot.path) ?? snapshot,
 				);
 				const snapshotByPath = new Map(snapshots.map((snapshot) => [snapshot.path, snapshot]));
-				for (const snapshot of snapshots) {
-					if (!setupFileSnapshotUnchanged(snapshot)) {
-						throw new Error("Setup target changed after preflight.");
-					}
-				}
+				assertSetupSnapshotsUnchanged(snapshots, "Setup target changed after preflight.");
 				const journal: CapabilitySetupJournal = {
 					version: 1,
 					phase: "prepared",

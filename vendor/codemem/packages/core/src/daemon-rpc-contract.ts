@@ -52,6 +52,8 @@ export const RPC_METHODS = [
 	"POST /v1/jobs",
 	"GET /v1/jobs",
 	"GET /v1/jobs/:id",
+	"GET /v1/processing-jobs/:id",
+	"POST /v1/processing-jobs/:id/doctor-retry",
 ] as const;
 
 export type RpcMethod = (typeof RPC_METHODS)[number];

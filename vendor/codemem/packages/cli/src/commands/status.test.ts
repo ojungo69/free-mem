@@ -96,7 +96,19 @@ describe("status command", () => {
 			runtime: { viewer: "unreachable" },
 			maintenance: { state: "unknown" },
 			semantic_index: { state: "unknown" },
-			raw_events: { state: "unknown", pending: 0 },
+			raw_events: { state: "unknown", pending: 0, source_gaps: 0 },
+			processing_jobs: {
+				capacity: 25,
+				uncompleted: 2,
+				processing: 0,
+				failed: 0,
+				exhausted: 2,
+				pending_grants: 0,
+				max_attempt: 0,
+				legacy_unrecoverable: 0,
+				retry_exhausted_job_ids: [3, 7],
+				next_action: "confirm_retry",
+			},
 			observer: { state: "unconfigured" },
 			capability: null,
 			attention: [],
@@ -104,6 +116,7 @@ describe("status command", () => {
 		const rendered = renderStatusReport(report);
 		expect(rendered).toContain("Database:       missing");
 		expect(rendered).toContain("Viewer:         unreachable\nMaintenance:");
+		expect(rendered).toContain("Retry job IDs:  3, 7");
 		expect(renderStatusReport({ ...report, runtime: { viewer: "running", pid: 42 } })).toContain(
 			"Viewer:         running (pid 42)",
 		);
@@ -154,7 +167,7 @@ describe("status command", () => {
 		const operationalStatus = {
 			maintenance: { state: "idle", running: 0, failed: 0 },
 			semantic_index: { state: "degraded", vector_table_present: true },
-			raw_events: { available: true, pending: 0, failed_batches: 0 },
+			raw_events: { available: true, pending: 0, source_gaps: 0, failed_batches: 0 },
 			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
 		};
 		const deps = dependencies({
@@ -175,6 +188,129 @@ describe("status command", () => {
 		expect(rendered).toContain(capability.configurationFingerprint);
 		expect(rendered).toContain("pending_schema_v21");
 		expect(rendered).toContain("pending_pack_boundary");
+	});
+
+	it("reports source gaps without projecting stream or payload details", async () => {
+		const sensitive = "source-gap-private-path";
+		const operationalStatus = {
+			maintenance: { state: "idle", running: 0, failed: 0 },
+			semantic_index: { state: "healthy", vector_table_present: true },
+			raw_events: {
+				available: true,
+				pending: 3,
+				source_gaps: 100,
+				failed_batches: 0,
+				source_gap_detail: sensitive,
+			},
+			processing_jobs: { next_action: "upgrade_runtime" },
+			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok" } }
+					: { ok: true, result: { diagnostics: { operationalStatus } } },
+		});
+
+		const report = await collectStatusReport({}, deps);
+
+		expect(report.raw_events).toEqual({ state: "failing", pending: 3, source_gaps: 25 });
+		expect(report.processing_jobs.next_action).toBe("upgrade_runtime");
+		expect(report.attention).toContainEqual({
+			code: "raw_events_source_gap",
+			severity: "error",
+			message: "25 raw-event source gaps detected in bounded scan; upgrade the runtime",
+		});
+		expect(renderStatusReport(report)).toContain(
+			"Raw events:     failing (3 pending, 25 source gaps (bounded scan))",
+		);
+		expect(
+			renderStatusReport({ ...report, raw_events: { ...report.raw_events, source_gaps: 1 } }),
+		).toContain("Raw events:     failing (3 pending, 1 source gap (bounded scan))");
+		expect(JSON.stringify(report)).not.toContain(sensitive);
+	});
+
+	it("directs exhausted jobs without a retry target to setup", async () => {
+		const operationalStatus = {
+			maintenance: { state: "idle", running: 0, failed: 0 },
+			semantic_index: { state: "healthy", vector_table_present: true },
+			raw_events: { available: true, pending: 0, source_gaps: 0, failed_batches: 0 },
+			processing_jobs: {
+				exhausted: 1,
+				retry_exhausted_job_ids: [7],
+				next_action: "activate_valid_manifest",
+			},
+			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok" } }
+					: { ok: true, result: { diagnostics: { operationalStatus } } },
+		});
+
+		const report = await collectStatusReport({}, deps);
+
+		expect(report.attention).toContainEqual({
+			code: "processing_jobs_exhausted",
+			severity: "error",
+			message:
+				"Raw-event processing has exhausted retries; run `codemem setup` to activate a valid manifest before retrying",
+		});
+		expect(JSON.stringify(report.attention)).not.toContain("confirm one exact retry");
+	});
+
+	it("keeps unavailable raw-event diagnostics unknown and fails closed", async () => {
+		for (const [rawEvents, expectedSourceGaps] of [
+			[{ available: true, pending: 3, failed_batches: 0 }, 0],
+			[{ available: false, pending: 3, source_gaps: 4, failed_batches: 0 }, 4],
+		] as const) {
+			const operationalStatus = {
+				maintenance: { state: "idle", running: 0, failed: 0 },
+				semantic_index: { state: "healthy", vector_table_present: true },
+				raw_events: rawEvents,
+				processing_jobs: {
+					exhausted: 1,
+					retry_exhausted_job_ids: [7],
+					next_action: "confirm_retry",
+				},
+				observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+			};
+			const deps = dependencies({
+				requestRpc: async (_dataDir, method) =>
+					method === "GET /v1/health"
+						? { ok: true, result: { status: "ok" } }
+						: { ok: true, result: { diagnostics: { operationalStatus } } },
+			});
+
+			const report = await collectStatusReport({}, deps);
+
+			expect(report.raw_events).toEqual({
+				state: "unknown",
+				pending: 3,
+				source_gaps: expectedSourceGaps,
+			});
+			expect(report.processing_jobs.next_action).toBe("upgrade_runtime");
+			expect(report.processing_jobs.retry_exhausted_job_ids).toEqual([]);
+			expect(report.attention).toContainEqual({
+				code: "raw_events_unavailable",
+				severity: "error",
+				message: "Raw-event diagnostics are unavailable; upgrade the runtime",
+			});
+			if (expectedSourceGaps > 0) {
+				expect(report.attention).toContainEqual({
+					code: "raw_events_source_gap",
+					severity: "error",
+					message: `${expectedSourceGaps} raw-event source gaps detected in bounded scan; upgrade the runtime`,
+				});
+			}
+			expect(report.ok).toBe(false);
+			expect(report.attention).toContainEqual({
+				code: "processing_jobs_exhausted",
+				severity: "error",
+				message: "Raw-event processing has exhausted retries; upgrade the runtime before retrying",
+			});
+		}
 	});
 
 	it("keeps health capability when doctor is unavailable", async () => {
@@ -221,6 +357,31 @@ describe("status command", () => {
 		});
 	});
 
+	it("only displays exact positive integer retry job IDs", async () => {
+		const operationalStatus = {
+			maintenance: { state: "idle", running: 0, failed: 0 },
+			semantic_index: { state: "healthy", vector_table_present: true },
+			raw_events: { available: true, pending: 0, source_gaps: 0, failed_batches: 0 },
+			processing_jobs: {
+				exhausted: 2,
+				retry_exhausted_job_ids: [4, 1.9, "2", true, 3, 4],
+				next_action: "confirm_retry",
+			},
+			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
+		};
+		const deps = dependencies({
+			requestRpc: async (_dataDir, method) =>
+				method === "GET /v1/health"
+					? { ok: true, result: { status: "ok" } }
+					: { ok: true, result: { diagnostics: { operationalStatus } } },
+		});
+
+		const report = await collectStatusReport({}, deps);
+
+		expect(report.processing_jobs.retry_exhausted_job_ids).toEqual([3, 4]);
+		expect(renderStatusReport(report)).toContain("Retry job IDs:  3, 4");
+	});
+
 	it("uses safe fallbacks for malformed capability text from doctor RPC", async () => {
 		const capability = {
 			mode: {},
@@ -234,7 +395,7 @@ describe("status command", () => {
 		const operationalStatus = {
 			maintenance: { state: "idle", running: 0, failed: 0 },
 			semantic_index: { state: "healthy", vector_table_present: true },
-			raw_events: { available: true, pending: 0, failed_batches: 0 },
+			raw_events: { available: true, pending: 0, source_gaps: 0, failed_batches: 0 },
 			observer: { available: true, failed_batches: 0, backoff_batches: 0 },
 		};
 		const deps = dependencies({

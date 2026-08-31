@@ -225,11 +225,21 @@ describe("MCP daemon RPC client", () => {
 			const degradedReader = ReadOnlyActor.open(realpathSync(daemon.layout.currentPointerPath));
 			try {
 				const row = degradedReader
-					.prepare("SELECT payload_json FROM raw_events WHERE event_id = ?")
-					.get("mcp-event-degraded-1") as { payload_json: string };
+					.prepare(
+						"SELECT payload_json, sensitivity, capture_state, safe_error_code FROM raw_events WHERE event_id = ?",
+					)
+					.get("mcp-event-degraded-1") as {
+					payload_json: string;
+					sensitivity: string;
+					capture_state: string;
+					safe_error_code: string;
+				};
 				expect(row.payload_json).not.toContain(degradedProject);
-				expect(JSON.parse(row.payload_json)).toMatchObject({
-					_normalized: { sensitivity: "secret", redaction_degraded: true },
+				expect(JSON.parse(row.payload_json)).toEqual({});
+				expect(row).toMatchObject({
+					sensitivity: "secret",
+					capture_state: "quarantined",
+					safe_error_code: "redaction_degraded",
 				});
 			} finally {
 				degradedReader.close();
@@ -443,6 +453,110 @@ describe("MCP daemon RPC client", () => {
 			const files = readdirSync(readyDir);
 			expect(files).toHaveLength(1);
 			expect(readFileSync(join(readyDir, files[0]), "utf8")).not.toContain("TOKEN_SUPERSECRET");
+		} finally {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it("T018 preserves a retryable capture-saturation receipt and spools the retry", async () => {
+		const fixture = projectFixture();
+		const layout = resolveStorageLayout(fixture.dataDir);
+		mkdirSync(layout.controlDir, { recursive: true, mode: 0o700 });
+		const server = createServer((socket) => {
+			socket.once("data", () => {
+				socket.end(
+					`${JSON.stringify({
+						error: {
+							code: "capture_saturated",
+							message: "Capture admission is saturated; retry through the spool.",
+							retryable: true,
+						},
+					})}\n`,
+				);
+			});
+		});
+		await new Promise<void>((resolve, reject) => {
+			server.once("error", reject);
+			server.listen(layout.socketPath, resolve);
+		});
+		const idempotencyKey = ["t018", "mcp", "saturation"].join("-");
+		const event = {
+			schemaVersion: NORMALIZED_SCHEMA_VERSION,
+			eventId: "t018-mcp-saturation",
+			idempotencyKey,
+			agent: "codex",
+			nativeSessionId: "t018-mcp-session",
+			projectKey: "t018-mcp-project",
+			workspaceKey: fixture.root,
+			cwd: fixture.root,
+			kind: "user_prompted",
+			occurredAt: "2026-08-31T00:00:00.000Z",
+			payload: { text: "retryable saturation is spoolable" },
+			sourceHash: hashMutationPayload({ idempotencyKey }),
+			sensitivity: "normal",
+		};
+		try {
+			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
+			expect(await client.request("POST /v1/events", { idempotencyKey, event })).toEqual({
+				ok: false,
+				error: {
+					code: "capture_saturated",
+					message: "Capture admission is saturated; retry through the spool.",
+					retryable: true,
+				},
+			});
+			expect(
+				await client.requestWithSpool("POST /v1/events", { idempotencyKey, event }),
+			).toMatchObject({
+				ok: true,
+				result: { status: "queued", duplicate: false },
+			});
+			expect(readdirSync(join(layout.spoolDir, "ready"))).toHaveLength(1);
+		} finally {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it("preserves doctor control fields when project policy is unavailable", async () => {
+		const fixture = projectFixture();
+		writeFileSync(join(fixture.root, ".agent-memory.toml"), "x".repeat(65 * 1024));
+		const layout = resolveStorageLayout(fixture.dataDir);
+		mkdirSync(layout.controlDir, { recursive: true, mode: 0o700 });
+		const receivedBodies: Record<string, unknown>[] = [];
+		const server = createServer((socket) => {
+			socket.once("data", (data) => {
+				const request = JSON.parse(String(data).trim()) as {
+					id: string;
+					body: Record<string, unknown>;
+				};
+				receivedBodies.push(request.body);
+				socket.end(`${JSON.stringify({ id: request.id, result: { status: "accepted" } })}\n`);
+			});
+		});
+		await new Promise<void>((resolve, reject) => {
+			server.once("error", reject);
+			server.listen(layout.socketPath, resolve);
+		});
+		const expectedBody = {
+			id: 7,
+			producerReceiptId: "doctor-receipt-7",
+			expectedRole: "summary",
+			expectedProviderFingerprint: `sha256:${"a".repeat(64)}`,
+			expectedManifestFingerprint: `sha256:${"b".repeat(64)}`,
+			expectedAttemptCount: 3,
+			expectedClaimGeneration: 2,
+		};
+		try {
+			const client = createMcpRpcClient({ dataDir: fixture.dataDir, cwd: () => fixture.root });
+			expect(
+				await client.request("GET /v1/processing-jobs/:id", { id: 7, ignored: "field" }),
+			).toMatchObject({ ok: true, result: { status: "accepted" } });
+			expect(
+				await client.request("POST /v1/processing-jobs/:id/doctor-retry", expectedBody),
+			).toMatchObject({ ok: true, result: { status: "accepted" } });
+			expect(receivedBodies).toEqual([{ id: 7 }, expectedBody]);
 		} finally {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 			rmSync(fixture.root, { recursive: true, force: true });

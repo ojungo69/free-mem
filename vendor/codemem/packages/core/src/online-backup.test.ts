@@ -155,7 +155,7 @@ describe("Phase 1 online backup", () => {
 		try {
 			db.exec("CREATE TABLE memory_items (id INTEGER PRIMARY KEY)");
 			db.exec("CREATE TABLE sessions (id INTEGER PRIMARY KEY)");
-			db.pragma("user_version = 6");
+			db.pragma("user_version = 20");
 			await expect(
 				core.runGatedMigration(db, {
 					dbPath,
@@ -164,7 +164,7 @@ describe("Phase 1 online backup", () => {
 					reason: "migration",
 				}),
 			).rejects.toThrow();
-			expect(core.getSchemaVersion(db)).toBe(6);
+			expect(core.getSchemaVersion(db)).toBe(20);
 			expect(core.tableExists(db, "memory_fts")).toBe(false);
 
 			await expect(
@@ -311,7 +311,7 @@ describe("Phase 1 online backup", () => {
 		}
 	});
 
-	it("P1-T050-01-backup-before-migration", async () => {
+	it("P1-T050-01 rejects unsupported direct pre-v20 migration before backup", async () => {
 		const dir = tempDir("codemem-backup-v18-");
 		const dbPath = join(dir, "v18.sqlite");
 		const destDir = join(dir, "backups");
@@ -328,20 +328,63 @@ describe("Phase 1 online backup", () => {
 			`);
 			db.pragma("user_version = 18");
 
-			expect(core.SCHEMA_VERSION).toBe(20);
-			await core.runGatedMigration(db, {
-				dbPath,
-				destinationDir: destDir,
-				operationId: "schema-v19",
-				reason: "migration",
-			});
+			expect(core.SCHEMA_VERSION).toBe(21);
+			expect(core.MIN_COMPATIBLE_SCHEMA).toBe(6);
+			expect(core.MIN_WRITABLE_SCHEMA).toBe(20);
+			await expect(
+				core.runGatedMigration(db, {
+					dbPath,
+					destinationDir: destDir,
+					operationId: "schema-v19",
+					reason: "migration",
+				}),
+			).rejects.toThrow(/direct writable upgrade.*schema 20/i);
 
-			expect(existsSync(join(destDir, "schema-v19.sqlite"))).toBe(true);
-			expect(core.tableExists(db, "mutation_receipts")).toBe(true);
-			expect(core.tableExists(db, "mutation_quarantine")).toBe(true);
-			expect(core.getSchemaVersion(db)).toBe(20);
+			expect(existsSync(join(destDir, "schema-v19.sqlite"))).toBe(false);
+			expect(core.tableExists(db, "mutation_receipts")).toBe(false);
+			expect(core.tableExists(db, "mutation_quarantine")).toBe(false);
+			expect(core.getSchemaVersion(db)).toBe(18);
 		} finally {
 			db.close();
+		}
+	});
+
+	it("rejects a verified pre-v20 backup before restore staging", async () => {
+		const root = tempDir("codemem-backup-pre-v20-restore-");
+		const dataDir = join(root, "data");
+		const layout = core.resolveStorageLayout(dataDir);
+		core.ensureStorageLayout(layout);
+		const source = WriterActor.open(join(root, "schema-19.sqlite"));
+		try {
+			core.initTestSchema(source);
+			source
+				.prepare("UPDATE schema_compat_state SET applied_schema_version = 19 WHERE id = 1")
+				.run();
+			source.pragma("user_version = 19");
+			const proof = await core.createOnlineBackup({
+				db: source,
+				destinationDir: layout.backupsDir,
+				operationId: "schema-19",
+				reason: "pre-v20 restore boundary",
+			});
+			expect(core.verifyCanonicalBackup({ dataDir, backupId: proof.backupId })).toMatchObject({
+				valid: true,
+			});
+			const versionsBefore = readdirSync(layout.versionsDir);
+
+			expect(() =>
+				core.restoreCanonicalBackup({
+					dataDir,
+					operationId: "restore-schema-19",
+					payloadHash: core.restorePayloadHash(proof.backupId),
+					backupId: proof.backupId,
+				}),
+			).toThrow(/schema 20 bridge/i);
+			expect(readdirSync(layout.versionsDir)).toEqual(versionsBefore);
+			expect(existsSync(layout.currentPointerPath)).toBe(false);
+			expect(existsSync(layout.journalPath)).toBe(false);
+		} finally {
+			source.close();
 		}
 	});
 

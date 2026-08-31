@@ -3,7 +3,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { buildRawEventEnvelopeFromHook } from "./claude-hooks.js";
-import { connectReadOnly } from "./db.js";
+import { connectReadOnly, rawEventPayloadDigest } from "./db.js";
 import { replayBatchExtraction } from "./extraction-replay.js";
 import * as core from "./index.js";
 import type { ObserverClient } from "./observer-client.js";
@@ -47,10 +47,10 @@ describe("extraction replay", () => {
 				  ('opencode', 'ses-1', 'ses-1', 166405, '2026-04-06T21:23:59.631Z');
 				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
 				  (18503, 'opencode', 'ses-1', 'ses-1', 1204, 1356, 'raw_events_v1', 'completed', 1, '2026-04-07T06:13:45.600Z', '2026-04-07T06:13:45.700Z');
-				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
-				  (1, 'opencode', 'ses-1', 'ses-1', 'evt-1', 1204, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Investigate qd7h, prep 0.23.0, and reframe Track 3 around injection-first quality"}', '2026-04-07T06:13:45.600Z'),
-				  (2, 'opencode', 'ses-1', 'ses-1', 'evt-2', 1205, 'assistant_message', 1010, 2, '{"type":"assistant_message","assistant_text":"We should close qd7h, cover release readiness, and capture graph future direction."}', '2026-04-07T06:13:45.610Z'),
-				  (3, 'opencode', 'ses-1', 'ses-1', 'evt-3', 1206, 'tool.execute.after', 1020, 3, '{"type":"tool.execute.after","tool":"read","args":{"filePath":"docs/plans/2026-04-07-track-3-injection-first-memory-policy.md"},"output":"ok"}', '2026-04-07T06:13:45.620Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest) VALUES
+				  (1, 'opencode', 'ses-1', 'ses-1', 'evt-1', 1204, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Investigate qd7h, prep 0.23.0, and reframe Track 3 around injection-first quality"}', '2026-04-07T06:13:45.600Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Investigate qd7h, prep 0.23.0, and reframe Track 3 around injection-first quality" })}'),
+				  (2, 'opencode', 'ses-1', 'ses-1', 'evt-2', 1205, 'assistant_message', 1010, 2, '{"type":"assistant_message","assistant_text":"We should close qd7h, cover release readiness, and capture graph future direction."}', '2026-04-07T06:13:45.610Z', '${rawEventPayloadDigest({ type: "assistant_message", assistant_text: "We should close qd7h, cover release readiness, and capture graph future direction." })}'),
+				  (3, 'opencode', 'ses-1', 'ses-1', 'evt-3', 1206, 'tool.execute.after', 1020, 3, '{"type":"tool.execute.after","tool":"read","args":{"filePath":"docs/plans/2026-04-07-track-3-injection-first-memory-policy.md"},"output":"ok"}', '2026-04-07T06:13:45.620Z', '${rawEventPayloadDigest({ type: "tool.execute.after", tool: "read", args: { filePath: "docs/plans/2026-04-07-track-3-injection-first-memory-policy.md" }, output: "ok" })}');
 			`);
 		} finally {
 			db.close();
@@ -193,8 +193,8 @@ describe("extraction replay", () => {
 				  ('opencode', 'ses-2', 'ses-2', 166406, '2026-04-06T21:23:59.631Z');
 				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
 				  (18504, 'opencode', 'ses-2', 'ses-2', 1, 1, 'raw_events_v1', 'completed', 1, '2026-04-07T06:13:45.600Z', '2026-04-07T06:13:45.700Z');
-				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
-				  (4, 'opencode', 'ses-2', 'ses-2', 'evt-4', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Preserve valid replay content"}', '2026-04-07T06:13:45.600Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest) VALUES
+				  (4, 'opencode', 'ses-2', 'ses-2', 'evt-4', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Preserve valid replay content"}', '2026-04-07T06:13:45.600Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Preserve valid replay content" })}');
 			`);
 		} finally {
 			db.close();
@@ -252,8 +252,8 @@ describe("extraction replay", () => {
 				  ('opencode', 'ses-repair-error', 'ses-repair-error', 166408, '2026-04-06T21:23:59.631Z');
 				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
 				  (18506, 'opencode', 'ses-repair-error', 'ses-repair-error', 1, 1, 'raw_events_v1', 'completed', 1, '2026-04-07T06:13:45.600Z', '2026-04-07T06:13:45.700Z');
-				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
-				  (23, 'opencode', 'ses-repair-error', 'ses-repair-error', 'evt-23', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Preserve replay output after a repair error"}', '2026-04-07T06:13:45.600Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest) VALUES
+				  (23, 'opencode', 'ses-repair-error', 'ses-repair-error', 'evt-23', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Preserve replay output after a repair error"}', '2026-04-07T06:13:45.600Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Preserve replay output after a repair error" })}');
 			`);
 		} finally {
 			db.close();
@@ -331,9 +331,9 @@ describe("extraction replay", () => {
 				  ('opencode', 'ses-3', 'ses-3', 166407, '2026-04-06T21:23:59.631Z');
 				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
 				  (18505, 'opencode', 'ses-3', 'ses-3', 1, 2, 'raw_events_v1', 'completed', 1, '2026-04-07T06:13:45.600Z', '2026-04-07T06:13:45.700Z');
-				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
-				  (21, 'opencode', 'ses-3', 'ses-3', 'evt-21', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Investigate several extraction evaluation concerns"}', '2026-04-07T06:13:45.600Z'),
-				  (22, 'opencode', 'ses-3', 'ses-3', 'evt-22', 2, 'user_prompt', 1010, 2, '{"type":"user_prompt","prompt_text":"Report only durable outcomes"}', '2026-04-07T06:13:45.610Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest) VALUES
+				  (21, 'opencode', 'ses-3', 'ses-3', 'evt-21', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Investigate several extraction evaluation concerns"}', '2026-04-07T06:13:45.600Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Investigate several extraction evaluation concerns" })}'),
+				  (22, 'opencode', 'ses-3', 'ses-3', 'evt-22', 2, 'user_prompt', 1010, 2, '{"type":"user_prompt","prompt_text":"Report only durable outcomes"}', '2026-04-07T06:13:45.610Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Report only durable outcomes" })}');
 			`);
 		} finally {
 			db.close();
@@ -388,10 +388,10 @@ describe("extraction replay", () => {
 				  ('opencode', 'ses-2', 'ses-2', 166406, '2026-04-06T21:23:59.631Z');
 				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
 				  (18504, 'opencode', 'ses-2', 'ses-2', 1204, 1356, 'raw_events_v1', 'completed', 1, '2026-04-07T06:13:45.600Z', '2026-04-07T06:13:45.700Z');
-				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
-				  (11, 'opencode', 'ses-2', 'ses-2', 'evt-11', 1204, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Cut release 0.31.2"}', '2026-04-07T06:13:45.600Z'),
-				  (12, 'opencode', 'ses-2', 'ses-2', 'evt-12', 1205, 'user_prompt', 1005, 2, '{"type":"user_prompt","prompt_text":"Is the release workflow green?"}', '2026-04-07T06:13:45.605Z'),
-				  (13, 'opencode', 'ses-2', 'ses-2', 'evt-13', 1206, 'assistant_message', 1010, 3, '{"type":"assistant_message","assistant_text":"Tag pushed; the release workflow is running and green so far."}', '2026-04-07T06:13:45.610Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest) VALUES
+				  (11, 'opencode', 'ses-2', 'ses-2', 'evt-11', 1204, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Cut release 0.31.2"}', '2026-04-07T06:13:45.600Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Cut release 0.31.2" })}'),
+				  (12, 'opencode', 'ses-2', 'ses-2', 'evt-12', 1205, 'user_prompt', 1005, 2, '{"type":"user_prompt","prompt_text":"Is the release workflow green?"}', '2026-04-07T06:13:45.605Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Is the release workflow green?" })}'),
+				  (13, 'opencode', 'ses-2', 'ses-2', 'evt-13', 1206, 'assistant_message', 1010, 3, '{"type":"assistant_message","assistant_text":"Tag pushed; the release workflow is running and green so far."}', '2026-04-07T06:13:45.610Z', '${rawEventPayloadDigest({ type: "assistant_message", assistant_text: "Tag pushed; the release workflow is running and green so far." })}');
 			`);
 		} finally {
 			db.close();
@@ -451,8 +451,8 @@ describe("extraction replay", () => {
 				  ('opencode', 'ses-2', 'ses-2', 200001, '2026-04-06T21:23:59.631Z');
 				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
 				  (19001, 'opencode', 'ses-2', 'ses-2', 1, 20, 'raw_events_v1', 'completed', 1, '2026-04-07T06:13:45.600Z', '2026-04-07T06:13:45.700Z');
-				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
-				  (1, 'opencode', 'ses-2', 'ses-2', 'evt-1', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Summarize a rich session"}', '2026-04-07T06:13:45.600Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest) VALUES
+				  (1, 'opencode', 'ses-2', 'ses-2', 'evt-1', 1, 'user_prompt', 1000, 1, '{"type":"user_prompt","prompt_text":"Summarize a rich session"}', '2026-04-07T06:13:45.600Z', '${rawEventPayloadDigest({ type: "user_prompt", prompt_text: "Summarize a rich session" })}');
 			`);
 		} finally {
 			db.close();
@@ -558,8 +558,8 @@ describe("extraction replay", () => {
 			).run(30001, sessionId, sessionId);
 
 			const insertRaw = db.prepare(
-				`INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO raw_events(source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			);
 			hookEvents.forEach((hook, index) => {
 				const envelope = buildRawEventEnvelopeFromHook(hook);
@@ -575,6 +575,7 @@ describe("extraction replay", () => {
 					index + 1,
 					JSON.stringify(envelope.payload),
 					"2026-04-10T09:00:00Z",
+					rawEventPayloadDigest(envelope.payload),
 				);
 			});
 		} finally {
@@ -632,8 +633,8 @@ describe("extraction replay", () => {
 				  ('opencode', 'ses-no-prompts', 'ses-no-prompts', 300002, '2026-04-10T09:00:00Z');
 				INSERT INTO raw_event_flush_batches(id, source, stream_id, opencode_session_id, start_event_seq, end_event_seq, extractor_version, status, attempt_count, created_at, updated_at) VALUES
 				  (30002, 'opencode', 'ses-no-prompts', 'ses-no-prompts', 1, 1, 'raw_events_v1', 'completed', 1, '2026-04-10T09:00:00Z', '2026-04-10T09:00:01Z');
-				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at) VALUES
-				  (30002, 'opencode', 'ses-no-prompts', 'ses-no-prompts', 'evt-no-prompts', 1, 'assistant_message', 1000, 1, '{"type":"assistant_message","assistant_text":"Completed a durable replay investigation."}', '2026-04-10T09:00:01Z');
+				INSERT INTO raw_events(id, source, stream_id, opencode_session_id, event_id, event_seq, event_type, ts_wall_ms, ts_mono_ms, payload_json, created_at, payload_digest) VALUES
+				  (30002, 'opencode', 'ses-no-prompts', 'ses-no-prompts', 'evt-no-prompts', 1, 'assistant_message', 1000, 1, '{"type":"assistant_message","assistant_text":"Completed a durable replay investigation."}', '2026-04-10T09:00:01Z', '${rawEventPayloadDigest({ type: "assistant_message", assistant_text: "Completed a durable replay investigation." })}');
 			`);
 		} finally {
 			db.close();

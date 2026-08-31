@@ -860,6 +860,10 @@ function isManifestProviderChoice(
 
 const LEGACY_OBSERVER_CONSTRUCTION = Symbol("legacy-observer-construction");
 
+export type ObserverHealthOptions = {
+	onHealthState?: (state: "healthy" | "unhealthy") => void | Promise<void>;
+};
+
 // ---------------------------------------------------------------------------
 // ObserverClient
 // ---------------------------------------------------------------------------
@@ -907,13 +911,18 @@ export class ObserverClient {
 	private readonly _manifestChoice: ProviderChoiceV1 | null;
 	private readonly _maxResponseBytes: number;
 	private readonly _requestTimeoutMs: number;
+	private readonly _onHealthState: ObserverHealthOptions["onHealthState"];
 
 	// Error tracking
 	private _lastErrorCode: string | null = null;
 	private _lastErrorMessage: string | null = null;
 	private readonly _observerExplicitConfigKeys: string[];
 
-	constructor(provider: ProviderChoiceV1, profile: ObserverTransportProfile);
+	constructor(
+		provider: ProviderChoiceV1,
+		profile: ObserverTransportProfile,
+		options?: ObserverHealthOptions,
+	);
 	constructor(
 		config: ObserverConfig,
 		profile: undefined,
@@ -922,7 +931,7 @@ export class ObserverClient {
 	constructor(
 		configOrProvider?: ObserverConfig | ProviderChoiceV1,
 		manifestProfile?: ObserverTransportProfile,
-		legacyToken?: typeof LEGACY_OBSERVER_CONSTRUCTION,
+		legacyToken?: typeof LEGACY_OBSERVER_CONSTRUCTION | ObserverHealthOptions,
 	) {
 		if (isManifestProviderChoice(configOrProvider)) {
 			if (!manifestProfile) throw new Error("A frozen Observer transport profile is required.");
@@ -931,6 +940,7 @@ export class ObserverClient {
 			this._manifestChoice = provider;
 			this._maxResponseBytes = profile.observerMaxResponseBytes;
 			this._requestTimeoutMs = profile.observerRequestTimeoutMs;
+			this._onHealthState = (legacyToken as ObserverHealthOptions | undefined)?.onHealthState;
 			this.provider = provider.wireProtocol === "anthropic_messages_v1" ? "anthropic" : "openai";
 			this.requestedModel = provider.modelId;
 			this.model = provider.modelId;
@@ -973,6 +983,7 @@ export class ObserverClient {
 			throw new Error("ObserverClient requires a validated frozen provider choice and profile.");
 		}
 		this._manifestChoice = null;
+		this._onHealthState = undefined;
 		this._maxResponseBytes = Number.POSITIVE_INFINITY;
 		this._requestTimeoutMs = FETCH_TIMEOUT_MS;
 		const config = configOrProvider;
@@ -1235,23 +1246,40 @@ export class ObserverClient {
 		).toWellFormed();
 
 		try {
-			const call = await this._callOnce(clippedSystem, clippedUser);
-			if (call.raw) this._clearLastError();
-			return this._buildResponse(call, startedAt);
+			return await this._observeOnce(clippedSystem, clippedUser, startedAt);
 		} catch (err) {
 			if (err instanceof ObserverAuthError) {
-				// Attempt one auth refresh + retry.
-				this.refreshAuth();
-				if (!this.auth.token) throw err;
 				try {
-					const call = await this._callOnce(clippedSystem, clippedUser);
-					if (call.raw) this._clearLastError();
-					return this._buildResponse(call, startedAt);
+					// Attempt one auth refresh + retry before reporting the logical outcome.
+					this.refreshAuth();
+					if (!this.auth.token) throw err;
+					return await this._observeOnce(clippedSystem, clippedUser, startedAt);
 				} catch {
+					await this._reportHealth("unhealthy");
 					throw err; // re-throw original
 				}
 			}
+			await this._reportHealth("unhealthy");
 			throw err;
+		}
+	}
+
+	private async _observeOnce(
+		systemPrompt: string,
+		userPrompt: string,
+		startedAt: number,
+	): Promise<ObserverResponse> {
+		const call = await this._callOnce(systemPrompt, userPrompt);
+		if (call.raw) this._clearLastError();
+		await this._reportHealth(call.raw ? "healthy" : "unhealthy");
+		return this._buildResponse(call, startedAt);
+	}
+
+	private async _reportHealth(state: "healthy" | "unhealthy"): Promise<void> {
+		try {
+			await this._onHealthState?.(state);
+		} catch {
+			console.error("[codemem] observer health callback failed; inference result was preserved.");
 		}
 	}
 

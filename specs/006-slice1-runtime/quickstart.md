@@ -163,7 +163,8 @@ Expected:
   canonical admission, job, or memory;
 - same event identity/digest is idempotent; a different digest preserves the canonical event,
   creates/reuses one durable non-success conflict receipt, sends no normal ACK, and creates no memory;
-- one job has at most 100 source events; capacity 25 includes retry-exhausted and evicts nothing;
+- one newly admitted v21 job has at most 100 source events; a wider migrated legacy recovery range
+  remains intact; capacity 25 includes retry-exhausted and evicts nothing;
 - claim generation rejects stale completion; successful claims alone increment lifetime attempt count;
 - new jobs start at attempt 0; automatic claims are exactly attempts 1-3, and a failed attempt 3 is
   retry-exhausted until a one-shot valid grant;

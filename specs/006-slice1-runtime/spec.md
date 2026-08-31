@@ -199,8 +199,9 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   AI maintenance, and the RawEventSweeper remain disabled. This keeps each prerequisite PR safe to
   merge without enabling #130 early.
 - A mixed source range keeps stable event order and exact bounded provenance after projection.
-- A batch has at most 100 source events. More accepted work remains for a later job; it is not
-  silently truncated or dropped.
+- A newly admitted v21 batch has at most 100 source events. More accepted work remains for a later
+  job; it is not silently truncated or dropped. Migration preserves a wider immutable v20 recovery
+  range created by the old configurable worker rather than truncating or misclassifying it.
 - The existing output-limit recovery case may activate only the closed `slice1-short-run` version 2
   successor: compared with version 1, only `version=2` and
   `maxMemoryItemsPerDerivation=17` differ. It is not a
@@ -270,7 +271,8 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   legacy value or secret may enter the manifest, fingerprint, logs, or diagnostics.
 - **FR-009**: The fixed Slice 1 resource profile MUST own the accepted fixture limits plus 30,000 ms
   periodic sweep, 120,000 ms idle flush, 1,000 ms event debounce, 300,000 ms stuck-claim timeout,
-  raw retention disabled/0, at most 100 source events per job, observer request timeout 60,000 ms,
+  raw retention disabled/0, at most 100 source events per newly admitted v21 job, observer request
+  timeout 60,000 ms,
   max input 12,000 characters, max output 4,000 tokens, max response 1,048,576 bytes, and temperature
   0.2, plus provider TLS preflight timeout 5,000 ms. Runtime MUST NOT reread mutable
   provider/resource env or legacy config for behavior claimed by the manifest. The only accepted
@@ -304,11 +306,13 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   hostname/IP, and peer verification and with a known source repository; secret work is never
   processed. Before any local prompt is built, events MUST be partitioned by exact verified
   repository identity, and a mixed or unknown group MUST be rejected content-free.
-- **FR-015**: Every derived memory MUST cite at most the job's 100 projected source events/spans and
-  inherit the strongest cited sensitivity, exact repository identity, manifest/provider/attempt
-  provenance, and deterministic lineage/revision identity. Unknown or out-of-set citations, mixed
-  repository identity, or output above the active attempt manifest's
-  `maxMemoryItemsPerDerivation` MUST reject the whole output atomically.
+- **FR-015**: Every derived memory MUST cite only event IDs/spans in the job's exact projected source
+  set and inherit the strongest cited sensitivity, exact repository identity,
+  manifest/provider/attempt provenance, and deterministic lineage/revision identity. A newly
+  admitted v21 job projects at most 100 events; a migrated legacy recovery job may project its wider
+  immutable actual range. Unknown or out-of-set citations, mixed repository identity, or output
+  above the active attempt manifest's `maxMemoryItemsPerDerivation` MUST reject the whole output
+  atomically.
 - **FR-016**: One closed internal `DestinationBoundary` and eligibility function MUST govern every
   reachable content consumer: structured maintenance,
   search/recent/timeline/explain, `findByFile`/`findByConcept`, daemon get/search/pack, MCP direct and
@@ -377,7 +381,11 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
 - **FR-025**: Migration MUST NOT blindly rewind a legacy `gave_up` range. Exact complete retained
   ranges MAY become explicit recovery candidates without lowering the frontier; missing or
   ambiguous ranges MUST become terminal `legacy_unrecoverable` completed dispositions, remain
-  inspectable, consume no processing capacity, and never be reported as successful recovery.
+  inspectable, consume no processing capacity, and never be reported as successful recovery. A
+  legacy completed range beginning exactly at `frontier + 1` MUST advance the frontier only after
+  its exact retained range is complete and unambiguous; migration MUST continue through a contiguous
+  completed chain, leave already-advanced frontiers unchanged, and roll back on a missing frontier
+  or an incomplete, overlapping, or gapped stale-completed range.
 - **FR-026**: Raw-event purge MUST be disabled with retention 0 for Slice 1. Any later retained policy
   MUST delete only at/below the committed frontier and exempt source ranges referenced by every
   uncompleted job; accepted not-yet-admitted backlog above the frontier is never purgeable.
@@ -483,8 +491,9 @@ daemon snapshot, doctor, Observer transport, maintenance, viewer, and later mana
   status, and doctor report one identical manifest/provider identity; provider/resource legacy env
   mutation after daemon start changes none of their effective behavior.
 - **SC-009**: The fixed resource profile reports periodic 30 s, idle 120 s, debounce 1 s, stuck claim
-  5 min, source job limit 100, retention disabled/0, queue 25, retry limit 3, and all accepted fixture
-  envelope values exactly. The runner executes 12 identical duplicate/no-op windows, discards 1-2,
+  5 min, new-admission source job limit 100, retention disabled/0, queue 25, retry limit 3, and all
+  accepted fixture envelope values exactly. The runner executes 12 identical duplicate/no-op windows,
+  discards 1-2,
   requires strict non-overlapping workload-start/workload-receipt/drain-receipt/checkpoint-receipt/
   sample order, and requires windows 3-12 to stay inside all absolute ceilings. In windows 8-12, process count is
   constant, drained queue depth is zero, selected item/token counts are identical, RSS span is at

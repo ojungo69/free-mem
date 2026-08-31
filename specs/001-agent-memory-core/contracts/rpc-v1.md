@@ -7,7 +7,7 @@
 - Authority: **this document** is the authority for Rust reimplementation parity of the daemon's local RPC surface. Where this document and the TypeScript source disagree, re-derive from source; where this document and any other design note disagree, this document wins for the RPC wire contract.
 - Scope: the Unix-domain-socket JSON-line RPC protocol between the daemon (`packages/core/src/daemon-rpc.ts`, `daemon-lifecycle.ts`) and its clients (`packages/mcp-server/src/rpc-client.ts`, `packages/cli/src/commands/hook-rpc-client.ts`). Paths below are relative to `vendor/codemem/` unless stated otherwise.
 
-All normative statements describe **current behavior only**. No proposals, no TODOs. Gaps and inconsistencies found in the source are recorded under [Known gaps](#10-known-gaps-documented-not-fixed), not fixed. Normative rules are numbered `R1…R56` inline for traceability (`R52`–`R56` were added after the initial freeze and appear in their topically-correct section rather than at the end).
+All normative statements describe **current behavior only**. No proposals, no TODOs. Gaps and inconsistencies found in the source are recorded under [Known gaps](#10-known-gaps-documented-not-fixed), not fixed. Normative rules are numbered `R1…R58` inline for traceability (`R52`–`R58` were added after the initial freeze and appear in their topically-correct section rather than at the end).
 
 ---
 
@@ -143,7 +143,7 @@ type TypedRpcError = { error: { code: string; message: string; retryable: boolea
 |---|---|---|
 | `LOCAL_API_VERSION` | `1` | `daemon-rpc-contract.ts:4` |
 | `NORMALIZED_SCHEMA_VERSION` | `1` | `normalized-event.ts:7` |
-| `RPC_CAPABILITY_HASH` | `7ea5dc3a9fd603768fe773d546498e4a1f1180d95ecf75af48c9d24f3e8a85f4` | computed at module load as `sha256(RPC_METHODS.join("\n")).digest("hex")`, `daemon-rpc-contract.ts:85-87`; mechanically re-derived from the exact `RPC_METHODS` array in §5 during authoring of this document — see Rust parity requirements |
+| `RPC_CAPABILITY_HASH` | `de8a44532a1709090d41168514d4589a95f5023f69abca0e69cfc5d941aceba4` | computed at module load as `sha256(RPC_METHODS.join("\n")).digest("hex")` (`daemon-rpc-contract.ts:27-57,87-89`); mechanically re-derived from the exact `RPC_METHODS` array in §5 — see Rust parity requirements |
 
 **R21**: `handshakeError(request)` (`daemon-rpc.ts:411-422`) is an **exact-equality** gate checked in this order, returning `protocol_mismatch` on the first mismatch:
 1. `request.local_api_version !== LOCAL_API_VERSION` (`daemon-rpc.ts:412-414`)
@@ -166,15 +166,18 @@ type TypedRpcError = { error: { code: string; message: string; retryable: boolea
    b. Parsed value must be a non-null, non-array object → `invalid_json` (`:379-381`).
    c. Any top-level key not in `TOP_LEVEL_FIELDS` (R20) → `unknown_field`, message names **only the first** such key found by `Object.keys()` iteration order (`:383-386`).
    d. `id` must be a non-empty string → `invalid_request` (`:387-389`).
-   e. `method` must be `typeof "string"` (membership in the 27-method set is **not** checked here) → `unknown_method` (`:390-392`).
+   e. `method` must be `typeof "string"` (membership in the 29-method set is **not** checked here) → `unknown_method`.
    f. `adapter_version` and `native_cli_version` must be `typeof "string"`; `normalized_schema_version` and `local_api_version` must be `typeof "number"`; `capability_hash` must be `typeof "string"` — **any** failing → `protocol_mismatch` (`:393-401`).
    g. `body`, if present, must be a non-null, non-array object → `invalid_request` (`:402-407`).
 3. `handshakeError(request)` (R21) — exact-value mismatch on any of the three handshake constants → `protocol_mismatch` (`daemon-rpc.ts:1516-1517`). **This runs before method-name validity is checked**, so a request with both a bad `capability_hash` and an unrecognized `method` string reports `protocol_mismatch`, never `unknown_method`.
-4. `isRpcMethod(request.method)` — `method` must be exactly one of the 27 strings in `RPC_METHODS` (case-sensitive, exact string) → `unknown_method` otherwise (`daemon-rpc.ts:1518-1520,424-426`).
+4. `isRpcMethod(request.method)` — `method` must be exactly one of the 29 strings in `RPC_METHODS` (case-sensitive, exact string) → `unknown_method` otherwise.
 5. `deadlineMs = ctx.deadlineMs ?? rpcDeadlineForMethod(request.method)` is computed (§6) but not yet enforced (`daemon-rpc.ts:1521`).
 6. `body = request.body ?? {}`; any key not in `METHOD_BODY_FIELDS[method]` (§5) → `unknown_field`, naming only the first extra key (`daemon-rpc.ts:1522-1526`).
 7. For each field name in `METHOD_REQUIRED_FIELDS[method]` (§5), **in the array's declared order**, the first of these that fails short-circuits the whole request:
-   a. `undefined` or `null` → `invalid_request` (`:1529-1531`).
+   a. `undefined` → `invalid_request`. `null` also fails except for the
+      `POST /v1/processing-jobs/:id/doctor-retry` expected provider/manifest pair when **both**
+      fields are present and NULL, which is the explicit legacy-unknown snapshot (`:1529-1540`).
+      A mixed NULL/string pair fails before handler dispatch.
    b. If the field name is one of `idempotencyKey, requestId, operationId, payloadHash, reason, backupId, kind, title, body, collection, mode, context` and the value is not `typeof "string"` → `invalid_request` (`:1532-1548`). Required fields outside this explicit list (e.g. `id`, `items`, `filters`, `event`, `nonce`, `session`) receive **no type check at all** at this layer — only the presence check of step 7a.
    c. If the value is a string of length `0` → `invalid_request` (`:1549-1551`).
    d. If the field name is one of `idempotencyKey, requestId, operationId, backupId` (`PERSISTED_ID_FIELDS`, `daemon-rpc.ts:255`) and it fails `isSafePersistedText(value, 256)` → `invalid_request` "`<field> is invalid`" (`:1552-1554`). **`payloadHash` is not in `PERSISTED_ID_FIELDS`** and receives no such check here (see R31/Known gaps).
@@ -219,11 +222,13 @@ GET /v1/operations/:id
 POST /v1/jobs
 GET /v1/jobs
 GET /v1/jobs/:id
+GET /v1/processing-jobs/:id
+POST /v1/processing-jobs/:id/doctor-retry
 ```
 
 ### 5.1 Body allow-lists and required fields
 
-**R27**: `METHOD_BODY_FIELDS` (`daemon-rpc.ts:121-188`) is the daemon's per-method allow-list — any body key outside it is rejected with `unknown_field` (§4 step 6). `METHOD_REQUIRED_FIELDS` (`daemon-rpc.ts:190-218`) is the subset that must be present and non-empty (§4 step 7). Every field in the required set is necessarily also in the allowed set.
+**R27**: `METHOD_BODY_FIELDS` (`daemon-rpc.ts:121-188`) is the daemon's per-method allow-list — any body key outside it is rejected with `unknown_field` (§4 step 6). `METHOD_REQUIRED_FIELDS` (`daemon-rpc.ts:190-218`) is the subset that must be present and non-empty (§4 step 7), except for the jointly-NULL legacy-unknown doctor fingerprint pair defined by R24/R58. Every field in the required set is necessarily also in the allowed set.
 
 | Method | Body allow-list (`METHOD_BODY_FIELDS`) | Required (`METHOD_REQUIRED_FIELDS`) | Maintenance-blocked | Deadline |
 |---|---|---|---|---|
@@ -254,6 +259,8 @@ GET /v1/jobs/:id
 | `POST /v1/jobs` | `kind, args, dryRun` | `kind` | **yes** | 2000 ms |
 | `GET /v1/jobs` | `kind, state, submittedAfter` | *(none)* | no | 2000 ms |
 | `GET /v1/jobs/:id` | `id` | `id` | no | 2000 ms |
+| `GET /v1/processing-jobs/:id` | `id` | `id` | no | 2000 ms |
+| `POST /v1/processing-jobs/:id/doctor-retry` | `id, producerReceiptId, expectedRole, expectedProviderFingerprint, expectedManifestFingerprint, expectedAttemptCount, expectedClaimGeneration` | all listed fields; expected fingerprint pair may be jointly NULL | **yes** | 2000 ms |
 
 Health responses add one bounded `capability` object frozen at daemon startup. Doctor returns the
 same object at `diagnostics.capability`. It contains only the safe manifest/provider identity,
@@ -264,7 +271,7 @@ included. No runtime handler rereads legacy provider config or environment to bu
 
 ### 5.2 Method-specific notes visible at the RPC layer
 
-**R28**: `id` (for `GET /v1/memories/:id`, `DELETE /v1/memories/:id`, `GET /v1/operations/:id`, `GET /v1/jobs/:id`) is **not** in the explicit string-typed-field list of §4 step 7b, so the top-level gate only checks it is present (not `undefined`/`null`) — any JSON type passes that layer. Deeper inside the memory-get and delete handlers (`handleMemoryGet`, `handleForget` — `POST /v1/memories/record` takes no `id` at all), `requirePositiveInt(value)` (`daemon-rpc.ts:1503-1507`) then accepts **either** a JSON number that is a positive integer, **or** a string matching `/^[1-9][0-9]*$/` (converted to a number — the pattern is quoted here verbatim and a reimplementation certifies parity against that quote, so the two must stay character-identical) — both wire representations of `id` are accepted. `GET /v1/operations/:id` and `GET /v1/jobs/:id` instead validate `id` as a bounded/pattern string (operation-id / UUID-ish shape) inside their respective services (`daemon-operations.ts:517-521`, `daemon-jobs.ts:565-568`) — the two `:id` families use **different** id-shape rules; a reimplementation must route by method, not assume one `id` type across all four `:id` methods.
+**R28**: `id` is **not** in the explicit string-typed-field list of §4 step 7b, so the top-level gate only checks it is present (not `undefined`/`null`). Memory get/delete and both processing-job methods call `requirePositiveInt(value)`, which accepts either a positive-integer JSON number or a string matching `/^[1-9][0-9]*$/`. Operations and daemon-job lookups instead validate their own bounded string IDs inside their services. A reimplementation must route by method rather than assume one `:id` shape.
 
 **R29**: `POST /v1/events/batch`: `items` must be an array of 1–200 entries (`daemon-rpc.ts:773-778`); each entry allows only `idempotencyKey, event` (`:781-783`), `idempotencyKey` must be a non-empty string passing `isSafePersistedText(..., 256)` (`:785-790`), and `event` must be an object (`:791`, via `asObject`). Each item is dispatched through the same logic as `POST /v1/events`; a `MutationConflictError` on one item is caught **per item** and reported as `{ receiptId, status: "conflict" }` in that item's slot (`:804-809`) without failing the batch — but any **other** exception thrown while processing an item propagates uncaught out of `handleEventBatch`, becoming a single top-level RPC error for the whole request even though earlier items in the array may already have been durably persisted (`:794-812`; see Known gaps).
 
@@ -290,6 +297,10 @@ included. No runtime handler rereads legacy provider config or environment to bu
 
 **R56**: `POST /v1/retrieval/file-context` and `POST /v1/retrieval/file-context/delivery` have handler-level value rules beyond the presence checks of §4 step 7: `attemptId`, on both methods, must match `FILE_CONTEXT_ATTEMPT_ID`, a case-insensitive UUID-shaped pattern (`/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i`, `daemon-rpc.ts:1144-1145`), or it is rejected as `invalid_request` "attemptId is invalid." (`:1183-1184`, `:1250-1251`). For `POST /v1/retrieval/file-context`: `retrievalStatus` must be one of `succeeded, no_results, skipped, failed` (`FILE_CONTEXT_RETRIEVAL_STATUSES`, `:1146`); `completedAt` must not precede `startedAt` (`:1193`); `candidateIds` and `selectedIds` are each parsed as arrays of at most 200 positive integers (`parseIds`, `:1491-1497`); `candidateCount` is bounded to `[0, 200]`, defaulting to `candidateIds.length` when absent (`parseBoundedInteger`, `:1196-1202`). For `POST /v1/retrieval/file-context/delivery`: `status` must be exactly `"handed_off"` or `"failed"`, or it is rejected as `invalid_request` "status is invalid." (`:1253-1255`). None of this appears in §5, though both methods and their body fields are listed in the §5.1 table.
 
+**R57**: Direct capture RPC admission is capped at two in-flight requests. Each `POST /v1/events` or `POST /v1/events/batch` request owns one slot; a validated batch keeps that one slot for its whole bounded, synchronous max-200 persistence loop. When `captureInFlight >= 2`, the daemon returns `capture_saturated` with `retryable: true` before any event write by the rejected request; clients may spool and retry. The counter is decremented in `finally`. Batch handling preserves R29/G2: saturation is a non-conflict exception and therefore becomes one top-level batch error, not a per-row receipt.
+
+**R58**: `GET /v1/processing-jobs/:id` returns the bounded doctor projection or `not_found`, including a `retryTarget` from the daemon's frozen active manifest or NULL when no target is active. `POST /v1/processing-jobs/:id/doctor-retry` requires role `summary`, the displayed provider/manifest attempt pair, attempt count, claim generation, and a producer receipt ID. The pair may both be NULL only for an honest legacy-unknown attempt; mixed NULL/non-NULL is invalid. The server reuses its frozen `retryTarget` rather than trusting a client-supplied target. A replay of an already-recorded `(job, producerReceiptId)` returns the durable signal as `duplicate` before mutable attempt/grant snapshot checks, including after the grant is consumed. A new producer receipt accepts only the displayed current snapshot: stale confirmation returns `stale_snapshot`, while a different signal arriving during an already-pending grant returns retryable `grant_pending`. The method is maintenance-blocked.
+
 ---
 
 ## 6. Deadlines
@@ -312,7 +323,7 @@ included. No runtime handler rereads legacy provider config or environment to bu
 
 **R39**: `isMaintenanceMode(ctx)` is `true` iff `ctx.jobs.isMaintenanceMode()` **or** `ctx.restoreState?.active === true` (`daemon-rpc.ts:348-350`). `DaemonJobService.isMaintenanceMode()` (`daemon-jobs.ts:531-533`) reflects an internal flag set to `true` for the duration of `runInMaintenance(...)` (`daemon-jobs.ts:782-794`), which wraps execution of any job whose `kind` is in `MAINTENANCE_JOB_KINDS` (18 kinds, `daemon-jobs.ts:128-147`). `restoreState.active` is set by the daemon while `POST /v1/backup/restore` is in flight (`daemon-rpc.ts:512-525`) — and, on a **successful** restore, is left `true` rather than reset, which is what makes the self-restart of R52 (§2.4) possible.
 
-**R40**: `MAINTENANCE_BLOCKED_METHODS` (`daemon-rpc.ts:220-235`) contains exactly **14** methods:
+**R40**: `MAINTENANCE_BLOCKED_METHODS` contains exactly **15** methods:
 
 ```
 POST /v1/events
@@ -329,11 +340,12 @@ POST /v1/backup/restore
 POST /v1/operations/export
 POST /v1/operations/import
 POST /v1/jobs
+POST /v1/processing-jobs/:id/doctor-retry
 ```
 
 **R41**: When `isMaintenanceMode(ctx)` is true and `request.method` is in this set, the daemon returns `maintenance_mode` (`retryable: true`) **before** invoking the method's handler (§4 step 9, after required-field validation but before deadline-adjacent handler dispatch) — the check runs on every request to a blocked method regardless of whether that request would otherwise have succeeded.
 
-**R42**: The remaining 13 methods (`GET /v1/health`, `GET /v1/doctor`, `GET /v1/checkpoints`, `GET /v1/view`, all four `POST /v1/viewer/auth/*`, `GET /v1/backup/list`, `POST /v1/backup/verify`, `GET /v1/operations/:id`, `GET /v1/jobs`, `GET /v1/jobs/:id`) remain servable during maintenance mode.
+**R42**: The remaining 14 methods, including `GET /v1/processing-jobs/:id`, remain servable during maintenance mode.
 
 **R43**: `dispatchSpoolMutation` (`daemon-rpc.ts:881-897`), used by the daemon's own periodic spool-sweep to internally replay queued `POST /v1/events`/`POST /v1/memories/record` mutations (`daemon-lifecycle.ts:329-336,358,362-363`), independently throws a plain `Error("maintenance mode is active")` if `isMaintenanceMode(ctx)` at call time (`daemon-rpc.ts:885`) — the sweep itself is also suppressed at the call site while maintenance is active or a restore is in flight (`daemon-lifecycle.ts:330`). This is internal daemon behavior, not a distinct RPC error path, but it means queued mutations do not drain during maintenance.
 
@@ -362,11 +374,15 @@ POST /v1/jobs
 | `invalid_json` | `false` | malformed/non-object request | `daemon-rpc.ts:377,380` |
 | `unknown_field` | `false` | extra top-level or body key | `daemon-rpc.ts:385,1525` |
 | `invalid_request` | `false` | missing/mistyped/oversized required field; also `RpcRequestError`'s default `code` for any application-level validation error not otherwise coded | `daemon-rpc.ts:318-326,388,406,1530,1547,1550,1553,1556` |
-| `unknown_method` | `false` | `method` not typed as a string, or not one of the 27 `RPC_METHODS` | `daemon-rpc.ts:391,1519` |
+| `unknown_method` | `false` | `method` not typed as a string, or not one of the 29 `RPC_METHODS` | `daemon-rpc.ts` |
 | `protocol_mismatch` | `false` | handshake field mistyped, or exact-value mismatch (§3.2) | `daemon-rpc.ts:400,413,416,419` |
 | `payload_too_large` | `false` | cumulative request bytes exceed `RPC_MAX_BYTES` | `daemon-rpc.ts:1643` |
 | `deadline_exceeded` | **`true`** | in-process elapsed budget exceeded (§4 step 8), or socket timeout fired (§6) | `daemon-rpc.ts:1561,1676` |
 | `maintenance_mode` | **`true`** | blocked method while maintenance/restore active (§7) | `daemon-rpc.ts:1565` |
+| `capture_saturated` | **`true`** | two direct singular/batch capture RPCs already own the request-level slots; no write occurs for the rejected request | `daemon-rpc.ts` |
+| `grant_pending` | **`true`** | the processing job already owns an unconsumed resume grant from a different producer receipt | `ProcessingResumeError` (`store.ts`) |
+| `stale_snapshot` | `false` | doctor retry confirmation no longer matches the displayed job attempt | `ProcessingResumeError` (`store.ts`) |
+| `invalid_signal` | `false` | resume signal fails its closed shape/identity validation | `ProcessingResumeError` (`store.ts`) |
 | `internal_error` | `false` | any thrown error not matching a known error class; or the socket-handler's own dispatch-promise rejection | `daemon-rpc.ts:1594,1672` |
 | `not_found` | `false` | e.g. `DELETE /v1/memories/:id` for a nonexistent id (`RpcRequestError` with explicit code); also a `DaemonOperationRequestError`/`BackupRequestError` code | `daemon-rpc.ts:913`, `daemon-operations.ts:74-84`, `online-backup.ts:60` |
 | `idempotency_conflict` | `false` | `MutationConflictError`'s fixed `code` property; also a `DaemonOperationRequestError` code (export/import operation-id reuse) | `mutation-dispatcher.ts:13-14`, `daemon-operations.ts:74-84,417` |
@@ -374,7 +390,7 @@ POST /v1/jobs
 | `peer_denied` | `false` | client-side connect failure mapping (R8), `EACCES` only — never produced by the daemon itself | `daemon-rpc-contract.ts:115`, `170-181` |
 | `daemon_unavailable` | **`true`** | client-side connect failure mapping (R8) — never produced by the daemon itself | `daemon-rpc-contract.ts:118` |
 
-**R50**: Because `typedError(error.code, error.message)` is called uniformly for `RpcRequestError`, `BackupRequestError`, `DaemonOperationRequestError`, and `MutationConflictError` (`daemon-rpc.ts:1582-1593`), **all application-level errors caught at the top of `dispatchDaemonRpc` are `retryable: false`**, regardless of whether retrying with the same idempotency key might plausibly succeed later (e.g. `conflict` from a concurrent restore, `daemon-rpc.ts:516`, is not retryable per this contract even though the underlying condition is transient).
+**R50**: `dispatchDaemonRpc` preserves the explicit retryable bit from `RpcRequestError` and `ProcessingResumeError`; this is what makes `capture_saturated` and `grant_pending` retryable. Backup, operation, mutation-conflict, stale-snapshot, invalid-signal, and ordinary validation errors omit or set no retryable bit and therefore remain `false`.
 
 **R51**: `retryable` is load-bearing for client behavior, not merely informational: the MCP client's `requestWithSpool` only falls back to the on-disk spool when `response.error.retryable` is `true` (`rpc-client.ts:366-367`). A reimplementation that flips a code's `retryable` value (in either direction) silently changes whether that class of failure gets spooled-and-retried or surfaced immediately to the tool caller.
 
@@ -390,7 +406,7 @@ POST /v1/jobs
 
 **G4 — `adapter_version` and `native_cli_version` are structurally required but never validated against any known-good value.** Only their `typeof` is checked (R22). `native_cli_version` does have one observable effect (`native_cli_version === "mcp-stdio"` toggles the MCP retrieval-ledger behavior of §8), but no other string comparison against it appears in `daemon-rpc.ts`, `daemon-rpc-contract.ts`, or `daemon-lifecycle.ts`. **Must preserve**: the exact-string check `=== "mcp-stdio"` for §8's behavior. A reimplementation **may not rely on** any other value of `native_cli_version` (or on `adapter_version` at all) triggering daemon-side behavior — none currently does, and inventing a check would be a new capability, not a preserved one.
 
-**G5 — the `not_implemented` fallback in `handleMethod` is unreachable given the current 27-method set.** `daemon-rpc.ts:638-641` returns `{ operationId: body.operationId ?? body.id, state: "not_implemented" }` if none of the preceding `if (method === "...")` branches matched — but every one of the 27 `RPC_METHODS` strings has an explicit branch (the `POST /v1/events`/`POST /v1/memories/record` pair share one `if`, `daemon-rpc.ts:526-539`), and `isRpcMethod(request.method)` (§4 step 4) has already rejected any string outside that set before `handleMethod` is ever called. **A reimplementation must not rely on this fallback being reachable or on its shape** — it is dead code under the current method set, not a documented "unimplemented method" response contract.
+**G5 — the `not_implemented` fallback in `handleMethod` is unreachable given the current 29-method set.** Every registered `RPC_METHODS` string has an explicit branch, and `isRpcMethod(request.method)` has already rejected any string outside that set before `handleMethod` runs. **A reimplementation must not rely on this fallback being reachable or on its shape** — it is dead code under the current method set, not a documented "unimplemented method" response contract.
 
 **G6 — ID-shaped fields undergo secret/PII redaction-intake checks that are out of this document's scope.** `isSafePersistedText` (R25) runs `idempotencyKey`, `requestId`, `operationId`, `backupId`, and `reason` (and the top-level `id` on `POST /v1/events/batch` items) through `applyDaemonIntake`, the same redaction pipeline used on user content, and rejects values that trip secret/PII detection or get mutated by it. The specific detection rules (`secret_rules_version`, pattern set) are a separate subsystem not covered here. **Must preserve** the coupling itself — that these specific fields are subject to *some* redaction-intake pass and can be rejected as `invalid_request` on that basis, not just on shape — but this document does **not** specify the detection rules; a reimplementation needs the redaction/secret-detection contract (out of scope here) to reproduce which specific strings get rejected.
 
@@ -417,11 +433,11 @@ The following are deliberately **not** specified by this document, though the RP
 2. The absence of any peer-credential check beyond filesystem DAC (R7) — a Rust daemon must not add `SO_PEERCRED` (or equivalent) checks that the current daemon does not perform, since that would reject connections the current daemon accepts.
 3. Newline-delimited JSON framing, one-response-per-connection behavior (R12–R14), the `STOP <nonce>` control frame and its two exact response bodies (R17–R18).
 4. The 32768-byte request-size bound and the exact `payload_too_large` trigger condition (R15).
-5. The handshake envelope's field set (R20), the exact-match semantics of `local_api_version`, `normalized_schema_version`, `capability_hash` (R21), and the constants `LOCAL_API_VERSION = 1`, `NORMALIZED_SCHEMA_VERSION = 1`, `RPC_CAPABILITY_HASH = 7ea5dc3a9fd603768fe773d546498e4a1f1180d95ecf75af48c9d24f3e8a85f4` (R21, R26) — the hash specifically requires reproducing the 27-entry `RPC_METHODS` array in the exact order and spelling given in §5, joined with `\n`, sha256-hex-digested, for any two implementations (TS↔Rust) to interoperate.
+5. The handshake envelope's field set (R20), the exact-match semantics of `local_api_version`, `normalized_schema_version`, `capability_hash` (R21), and the constants `LOCAL_API_VERSION = 1`, `NORMALIZED_SCHEMA_VERSION = 1`, `RPC_CAPABILITY_HASH = de8a44532a1709090d41168514d4589a95f5023f69abca0e69cfc5d941aceba4` (R21, R26) — the hash specifically requires reproducing the 29-entry `RPC_METHODS` array in the exact order and spelling given in §5, joined with `\n`, sha256-hex-digested, for any two implementations (TS↔Rust) to interoperate.
 6. The full validation precedence chain of §4 (R24) — which error code a malformed request receives depends on this exact order, and clients (and tests) may depend on receiving a specific code for a specific class of malformed input.
 7. Every method's body allow-list and required-field set (§5.1 table, R27), including the field-name-specific type/safety checks of R24 step 7b–7e.
 8. Deadline values and their dual application as an in-process elapsed budget and a socket timeout (R35–R37).
-9. The 14-method maintenance-blocked set and the exact condition under which it applies (R39–R41).
+9. The 15-method maintenance-blocked set and the exact condition under which it applies (R39–R41).
 10. The daemon self-restart-after-response condition of R52 (§2.4) — a Rust daemon must shut itself down after flushing a `POST /v1/backup/restore` response whose result carries `restartRequired: true` while a restore is active, or it observably diverges by staying alive when the current daemon exits.
 11. The MCP `retrievalAttemptId` derivation (R46) and the conditions under which it is added to a result (R44–R45), for interoperability with the existing TypeScript MCP-server client's `finalizeDelivery` flow.
 12. The error envelope shape — no `id` on errors (R19) — and every `code`/`retryable` pairing in R49, since `retryable` is load-bearing for client spool behavior (R51).

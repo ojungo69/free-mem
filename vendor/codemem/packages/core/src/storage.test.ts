@@ -1237,12 +1237,16 @@ describe("Slice 1 capability storage", () => {
 		const previousInstall = `${JSON.stringify({ version: 1, blocks: [], targets: previousTargets })}\n`;
 		const publishedInstall = `${JSON.stringify({ version: 1, blocks: [], targets: publishedTargets })}\n`;
 		const previousReceipt = `${JSON.stringify({
-			version: 1,
+			version: 2,
+			receiptId: "74a0c1a6-fc52-4eb0-9c28-bf346210fcbb",
+			activationSequence: 4,
 			configurationFingerprint: previousFingerprint,
 			targets: previousTargets,
 		})}\n`;
 		const invalidPublishedReceipt = `${JSON.stringify({
-			version: 1,
+			version: 2,
+			receiptId: "0d3e6bf1-ea9b-4f48-b022-5f37c23d8928",
+			activationSequence: 5,
 			configurationFingerprint: fingerprint,
 			targets: duplicateReceiptTargets,
 		})}\n`;
@@ -1309,7 +1313,11 @@ describe("Slice 1 capability storage", () => {
 		expect(storage.readCurrentCapabilityManifest(layout)).toEqual(previousManifest);
 		expect(
 			storage.readValidatedCapabilityActivationReceipt(layout, previousManifest as never),
-		).toMatchObject({ configurationFingerprint: previousFingerprint });
+		).toMatchObject({
+			configurationFingerprint: previousFingerprint,
+			receiptId: "74a0c1a6-fc52-4eb0-9c28-bf346210fcbb",
+			activationSequence: 4,
+		});
 		expect(existsSync(layout.capabilitySetupTransactionPath)).toBe(false);
 	});
 
@@ -1444,7 +1452,25 @@ describe("Slice 1 capability storage", () => {
 		);
 		expect(
 			storage.readValidatedCapabilityActivationReceipt(layout, baseManifest as never),
-		).toMatchObject({ configurationFingerprint: fingerprint });
+		).toMatchObject({ version: 1, configurationFingerprint: fingerprint });
+		writeFileSync(
+			layout.capabilityActivationReceiptPath,
+			`${JSON.stringify({
+				version: 2,
+				receiptId: "74A0C1A6-FC52-4EB0-9C28-BF346210FCBB",
+				activationSequence: 1,
+				configurationFingerprint: fingerprint,
+				targets,
+			})}\n`,
+			{ mode: 0o600 },
+		);
+		expect(
+			storage.readValidatedCapabilityActivationReceipt(layout, baseManifest as never),
+		).toMatchObject({
+			version: 2,
+			receiptId: "74a0c1a6-fc52-4eb0-9c28-bf346210fcbb",
+			activationSequence: 1,
+		});
 		const compatibilityPath = join(layout.dataDir, "opencode.jsonc");
 		writeFileSync(compatibilityPath, '{"mcp":{}}\n', { mode: 0o600 });
 		const compatibilityTarget = {

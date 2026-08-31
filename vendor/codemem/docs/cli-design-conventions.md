@@ -188,6 +188,7 @@ The following command classes do **not** need `--json`:
 | **Lifecycle commands** | Side-effect only; success/failure is the exit code | `serve start`, `serve stop`, `serve restart` |
 | **Stdin/stdout plumbing** | Already a structured pipe; adding `--json` would conflict with the transport | `claude-hook-ingest`, `enqueue-raw-event`, `mcp` |
 | **Interactive setup** | Prompts are the primary UI; not intended for scripting | `setup` |
+| **Interactive confirmations** | Displayed state and an explicit prompt are the authority gate; noninteractive execution is intentionally unavailable | `db raw-events-doctor-retry` |
 
 All other data-returning commands must support `--json`.
 

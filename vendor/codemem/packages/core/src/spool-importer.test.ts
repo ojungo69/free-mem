@@ -43,7 +43,7 @@ function memoryMutation(idempotencyKey: string, title: string) {
 	};
 }
 
-function eventMutation(idempotencyKey: string) {
+function eventMutation(idempotencyKey: string, text = "synthetic producer") {
 	return {
 		method: "POST /v1/events" as const,
 		idempotencyKey,
@@ -60,7 +60,7 @@ function eventMutation(idempotencyKey: string) {
 				cwd: "/tmp/spool-importer",
 				kind: "tool_completed",
 				occurredAt: "2026-08-14T00:00:00.000Z",
-				payload: { text: "synthetic producer" },
+				payload: { text },
 				sourceHash: "a".repeat(64),
 				sensitivity: "normal",
 			},
@@ -187,6 +187,55 @@ describe("phase 1 spool importer", () => {
 		}
 	});
 
+	it("P1-T040-05-preserves-event-reconciliation-conflict", async () => {
+		const dataDir = await tempDataDir();
+		const first = eventMutation("event-reconciliation-conflict", "first payload");
+		const initial = await startDaemon({ dataDir });
+		try {
+			expect(
+				await callDaemonRpc(
+					initial.socketPath,
+					rpc("POST /v1/events", first.body, "event-reconciliation-first"),
+				),
+			).toMatchObject({ result: { status: "committed" } });
+		} finally {
+			await initial.stop();
+		}
+
+		const conflicting = spool.spoolMutation(
+			eventMutation("event-reconciliation-conflict", "second payload"),
+			{ dataDir, onWarning: () => {} },
+		);
+		expect(conflicting.status).toBe("queued");
+		const layout = spool.resolveSpoolLayout(dataDir);
+		const restarted = await startDaemon({ dataDir });
+		try {
+			expect(readdirSync(layout.readyDir)).toEqual([]);
+			expect(
+				readdirSync(layout.quarantineDir).some((name) => name.startsWith("idempotency_conflict-")),
+			).toBe(true);
+			const pointer = readCurrentDatabasePointer(restarted.layout);
+			expect(pointer).not.toBeNull();
+			const db = new BetterSqlite3(join(restarted.layout.dbDir, pointer as string), {
+				readonly: true,
+				fileMustExist: true,
+			});
+			try {
+				expect(db.prepare("SELECT COUNT(*) AS count FROM raw_events").get()).toEqual({ count: 1 });
+				expect(db.prepare("SELECT COUNT(*) AS count FROM raw_event_quarantine").get()).toEqual({
+					count: 1,
+				});
+				expect(db.prepare("SELECT COUNT(*) AS count FROM mutation_quarantine").get()).toEqual({
+					count: 1,
+				});
+			} finally {
+				db.close();
+			}
+		} finally {
+			await restarted.stop();
+		}
+	});
+
 	it("P1-T040-02-import-exactly-once", async () => {
 		const dataDir = await tempDataDir();
 		const daemon = await startDaemon({ dataDir });
@@ -197,12 +246,18 @@ describe("phase 1 spool importer", () => {
 			const queued = spool.spoolMutation(mutation, { dataDir, onWarning: () => {} });
 			expect(queued.status).toBe("queued");
 			expect(await waitUntil(() => !existsSync(queued.path as string), 3_000)).toBe(true);
+			expect(readdirSync(spool.resolveSpoolLayout(dataDir).quarantineDir)).toEqual([]);
 
 			const replay = await callDaemonRpc(
 				daemon.socketPath,
 				rpc("POST /v1/events", mutation.body, "replay-periodic-import"),
 			);
-			expect(replay).toMatchObject({ result: { status: "committed" } });
+			expect(replay).toMatchObject({
+				result: {
+					status: "quarantined",
+					safeErrorCode: "repository_identity_unknown_collision",
+				},
+			});
 			await daemon.stop();
 			stopped = true;
 
