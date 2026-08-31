@@ -1,0 +1,43 @@
+vendor/codemem/packages/core/src/daemon-jobs.ts
+  s_bae614e0dac8dc::t_5e51dce53ee6fd 223,555-558,565-567,711,954-956,958-961
+vendor/codemem/packages/core/src/operational-status.test.ts
+  s_bae614e0dac8dc::t_4063ca0c229646 88-126
+vendor/codemem/packages/core/src/vector-migration.test.ts
+  s_bae614e0dac8dc::t_12dbfab06ee89c 48-57,86,117,139,162,166,189,197,204,235,257,262,272,284,295,313-323,330
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_05924188516f0d::t_12c07eb7898089 180-221
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_05924188516f0d::t_f2ea2d4cbf9f55 333
+vendor/codemem/packages/core/src/daemon-jobs.test.ts
+  s_bae614e0dac8dc::t_0c5065e4600b23 109-201
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_bae614e0dac8dc::t_bba8f92bf04eba 658-668
+vendor/codemem/packages/core/src/operational-status.ts
+  s_bae614e0dac8dc::t_d446909e984793 90-93,97-100,194-198,202
+vendor/codemem/packages/core/src/vector-migration.ts
+  s_bae614e0dac8dc::t_96e7add666c292 102-106,110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "4f1fd64df1e32bb27ff8bfe5da321425d80046ad",
+  "prompts": {},
+  "sessions": {
+    "s_05924188516f0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05564-1579-7980-a480-a5344b3e3847",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_bae614e0dac8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c7-4a4c-7fc1-a5ee-8fa06562078e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
