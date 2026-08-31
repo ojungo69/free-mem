@@ -1,0 +1,78 @@
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_bae614e0dac8dc::t_ddbf9e3749963c 258-261
+  s_bae614e0dac8dc::t_a9b8b5b1f3f2ac 262
+specs/001-agent-memory-core/contracts/error-taxonomy-v1.md
+  s_bae614e0dac8dc::t_ddbf9e3749963c 442
+vendor/codemem/packages/cli/scripts/packed-artifact-smoke.mjs
+  s_b67dc845c2f30b::t_eb4058a31fe7ad 2,79-80,104-108
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_bae614e0dac8dc::t_fb789fd7dd6026 59,61,65-82,101-104,106,108-110,117,228,230,232,1282-1516,1767,1780,1786-1787,1900,1954
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_bae614e0dac8dc::t_3be24e042043c2 30,36,1514,1537-1539,1544-1546,1880-1883,1951,2010-2041,2101-2102,2309-2311,2313-2326,2329-2438,2440-2469,2471-2508,2510-2515,2517
+vendor/codemem/packages/core/src/index.ts
+  s_b67dc845c2f30b::t_ff8f41776b0a4e 491
+vendor/codemem/packages/core/src/storage.ts
+  s_bae614e0dac8dc::t_f6a6c5f30a9692 393-394,397,410
+vendor/codemem/packages/core/src/raw-event-sweeper.test.ts
+  s_b7aad8441b21d6::t_c965e736bcf652 291
+vendor/codemem/packages/core/src/setup-internal.test.ts
+  s_dbc57107a78650::t_a2bf261b2a9a6b 12-15,18,134-199
+vendor/codemem/packages/core/src/setup-internal.ts
+  s_dbc57107a78650::t_8f1490766f0bf4 29-64
+vendor/codemem/packages/core/src/storage.test.ts
+  s_dbc57107a78650::t_750b15a63d430f 416-436
+vendor/codemem/packages/core/src/viewer-read.ts
+  s_9c4f85360f1208::t_43904ea8f10117 36,53,56
+vendor/codemem/packages/ui/src/tabs/settings/components/ObserverStatusBanner.test.tsx
+  s_9c4f85360f1208::t_e835ad55085bb0 75
+vendor/codemem/packages/viewer-server/src/index.test.ts
+  s_9c4f85360f1208::t_fc379c55532f24 14,124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "fba59d3d5e1d4451efbca3543b909dc5212ee854",
+  "prompts": {},
+  "sessions": {
+    "s_9c4f85360f1208": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05586-35f0-7893-8f15-206cf64c4e4b",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_b67dc845c2f30b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c37758a2-502a-4442-b708-5662f5c23e5c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_b7aad8441b21d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05586-7358-76f3-a4ad-2704985a3b64",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_bae614e0dac8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c7-4a4c-7fc1-a5ee-8fa06562078e",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_dbc57107a78650": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05586-0fde-70d0-9899-829853ef3b8b",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
