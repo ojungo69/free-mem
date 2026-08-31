@@ -1,0 +1,209 @@
+vendor/codemem/packages/mcp-server/src/rpc-client.test.ts
+  s_b67dc845c2f30b::t_5ecf748111b8a4 228-236,238-242,461-561
+vendor/codemem/packages/core/src/capability-manifest.test.ts
+  s_fae50711799069::t_577a83c92d1d9b 285-300
+vendor/codemem/packages/core/src/maintenance/reliability.ts
+  s_b67dc845c2f30b::t_769df9586178d8 13-17,48-51,59-62,69-72,74-77,112-115,128-131,200,206-212
+vendor/codemem/packages/core/src/ingest-pipeline.ts
+  s_b67dc845c2f30b::t_ea07aa9d634f0a 24,72,272-275,357-367,696-723,731-748,901-937,950-952
+harness/phase1-no-agent-blockage.mjs
+  s_bae614e0dac8dc::t_69be88197acdec 1044,1098,1100
+vendor/codemem/packages/cli/src/commands/status.test.ts
+  s_057c6505f923e8::t_dead2499655103 100-110
+vendor/codemem/packages/core/src/migration-runner.ts
+  s_b67dc845c2f30b::t_b1a78ced4d032d 6,43-48,70-79
+vendor/codemem/packages/core/src/db.test.ts
+  s_bae614e0dac8dc::t_f98cbcdd83f243 27,73-279,469-1010
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_bae614e0dac8dc::t_984da6994ca54b 628-630
+specs/006-slice1-runtime/data-model.md
+  s_bae614e0dac8dc::t_36c0bf2c70874e 482
+  s_bae614e0dac8dc::t_181c5afb08f017 436
+  s_bae614e0dac8dc::t_0f2795d69337fe 481
+  s_bae614e0dac8dc::t_d5bb74ff75c155 483-484
+vendor/codemem/packages/core/src/operational-status.ts
+  s_b67dc845c2f30b::t_d196e182e30b37 6-25,43,162-163,169-225,242-244,246-248,256,282
+vendor/codemem/packages/core/src/extraction-replay.test.ts
+  s_07f25b68aa1c5a::t_68af42d38a199b 6,50-53,196-197,255-256,334-336,391-394,454-455,561-562,578,636-637
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_b67dc845c2f30b::t_37532d39dc1828 59-68,173-174,176
+vendor/codemem/packages/core/src/test-schema.generated.ts
+  s_bae614e0dac8dc::t_44efde376e7278 9
+vendor/codemem/packages/core/src/daemon-jobs.test.ts
+  s_bae614e0dac8dc::t_ec7bb719c8f81d 222-249,364,369-371,378-383
+vendor/codemem/packages/core/src/schema.ts
+  s_bae614e0dac8dc::t_958b4de4d22c4b 7,29,124-125,127-133,182-193,216-219,517,524-532,542-561,568-658,720-743,757-780,787-889,904-905,911-914,942-943,949-952,1521-1522,1526-1528
+vendor/codemem/docs/cli-design-conventions.md
+  s_bae614e0dac8dc::t_cbd344868bbc16 191
+specs/001-agent-memory-core/contracts/rpc-v1.md
+  s_bae614e0dac8dc::t_dcf76b82543e31 433,437
+  s_bae614e0dac8dc::t_666968f0b29391 297-300
+  s_bae614e0dac8dc::t_5b8dfdbb2475fd 173,374
+  s_bae614e0dac8dc::t_1e148544c30ca2 406
+  s_bae614e0dac8dc::t_e3753491a47c37 222-223,259-260,271
+  s_bae614e0dac8dc::t_464a7c435a6991 323,340,345
+  s_bae614e0dac8dc::t_371004442e7680 379-382,390
+  s_bae614e0dac8dc::t_ad8849ec3bc10b 10,146,169
+vendor/codemem/packages/cli/src/commands/db.test.ts
+  s_bae614e0dac8dc::t_25a6bc5b48d937 22-26,28-105,303,334,349
+vendor/codemem/packages/core/src/capability-manifest.ts
+  s_fae50711799069::t_b054f4f4348582 581,597,602-604,614
+vendor/codemem/packages/core/src/store.test.ts
+  s_bae614e0dac8dc::t_83ca9e3afec067 5-8,1801-2809
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_bae614e0dac8dc::t_0e4ccec51b81a3 628-630
+vendor/codemem/README.md
+  s_bae614e0dac8dc::t_d4362cf2ea843c 185
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_bae614e0dac8dc::t_d2ccbf892760de 410-445,1421-1646
+vendor/codemem/packages/core/src/observer-client.test.ts
+  s_b67dc845c2f30b::t_23ed390b92ca6d 10,1715-1815
+vendor/codemem/packages/core/src/mutation-dispatcher.ts
+  s_bae614e0dac8dc::t_2bcb4b15430efc 96-100,118-133
+vendor/codemem/packages/core/src/schema-bootstrap.ts
+  s_3de71360337db5::t_35bb593c6de146 300-312
+vendor/codemem/packages/core/src/online-backup.test.ts
+  s_b67dc845c2f30b::t_5fabe0c08aa3fe 158,167,314,331-339,341-344
+vendor/codemem/packages/core/src/index.ts
+  s_b67dc845c2f30b::t_e7e7d3f7ac21fe 79,355
+vendor/codemem/packages/core/src/storage.test.ts
+  s_fae50711799069::t_7a8e27f79092d9 1240-1242,1247-1249,1316-1320,1455
+specs/006-slice1-runtime/contracts/processing-job-v1.md
+  s_bae614e0dac8dc::t_0f2795d69337fe 59
+  s_bae614e0dac8dc::t_7902087b3e30f5 60,64
+  s_bae614e0dac8dc::t_d5bb74ff75c155 62-63
+  s_bae614e0dac8dc::t_78388fdb789956 82-83
+  s_bae614e0dac8dc::t_36c0bf2c70874e 61
+vendor/codemem/packages/core/src/store.ts
+  s_b67dc845c2f30b::t_a72bb11b9b49dc 9,11,13-16,23,32,67,76-87,101-174,1692,1748,1753-1767,1769,1795-1809,1811,1846,1938-3106,3134,3142,3154,3169,3176,3188,3190-3191,3220,3222,3335-3338,3342-3448,3456-3507,3509-3519,3521-3594,3596-3667,3669-3679,3683,3688,3694,3702-3708,3711-3724,3726-3729,3732,3734-3738
+vendor/codemem/packages/core/src/operational-status.test.ts
+  s_07f25b68aa1c5a::t_e1dc2376377827 3,25-27,33,51-61,93-103
+specs/001-agent-memory-core/contracts/error-taxonomy-v1.md
+  s_bae614e0dac8dc::t_492a4430f36276 133-136,138,161-165
+  s_bae614e0dac8dc::t_5b8dfdbb2475fd 72,460
+  s_bae614e0dac8dc::t_08d4d50dbe2445 242,474
+  s_bae614e0dac8dc::t_da83b545621ee8 67,103-104,110,112,114
+  s_bae614e0dac8dc::t_d90e6a04fe8824 400-401,404,406,426-429
+vendor/codemem/packages/cli/src/commands/setup-codex.test.ts
+  s_bae614e0dac8dc::t_1b442274d430c3 1314-1340
+vendor/codemem/packages/core/src/daemon-lifecycle.test.ts
+  s_bae614e0dac8dc::t_d73ff708f8fc39 27,77-136,429-500
+evidence/phase1-disposition.md
+  s_bae614e0dac8dc::t_f07b1a8213961d 40-41
+vendor/codemem/packages/core/src/daemon-lifecycle.ts
+  s_b67dc845c2f30b::t_996f4ad0a4100e 340-345,348-350,353-354,366-388
+vendor/codemem/packages/core/src/maintenance/status.ts
+  s_b67dc845c2f30b::t_9327598e9079b4 106-111,122,137-138
+vendor/codemem/packages/core/src/ingest-pipeline.test.ts
+  s_bae614e0dac8dc::t_91953e22206425 2426-2438
+vendor/codemem/packages/core/src/session-context-backfill.test.ts
+  s_07f25b68aa1c5a::t_bcde9fce231cf5 3,48-49,60
+vendor/codemem/packages/core/src/test-schema.generated.test.ts
+  s_ad65000c6cbe8f::t_bd8c7a96ca7261 23-40
+vendor/codemem/packages/core/src/raw-event-sweeper.test.ts
+  s_bae614e0dac8dc::t_9c9d585c49177a 16-18,49-52,54,61,82,89,96,113,132,162-163,189-190,220-221,256-257,262,336,361,368,375,403-404,434-435,480-481,561-562
+vendor/codemem/packages/core/src/spool-importer.test.ts
+  s_3d80be1abad61c::t_f30af0a1d51a82 205-210
+vendor/codemem/packages/core/src/maintenance.test.ts
+  s_07f25b68aa1c5a::t_cf22c1895e757b 6,121,132-136,190,193-209,214,216-223,225,267,270-271,275,281
+vendor/codemem/packages/cli/src/commands/setup.ts
+  s_bae614e0dac8dc::t_1e69ce73180dff 14,2126-2140,2188-2190
+vendor/codemem/packages/core/src/types.ts
+  s_b67dc845c2f30b::t_5cd3a259266f9b 24,64-75,89-90,203-331,337,346-352,376,387-408,423-424,444-445
+vendor/codemem/packages/core/src/raw-event-flush.ts
+  s_bae614e0dac8dc::t_927c4d91cfdfb3 37-40,50,236,246-249,251,253-262,265-292,305,308-310,314-328,349-370,372-387,391-392
+vendor/codemem/packages/core/src/storage.ts
+  s_bae614e0dac8dc::t_ab8dac90058f0c 73-93,498-506,508-519,627-639
+specs/006-slice1-runtime/tasks.md
+  s_bae614e0dac8dc::t_ceab384eddc48d 65-68,72-78
+vendor/codemem/packages/core/src/observer-client.ts
+  s_bae614e0dac8dc::t_9024db4a26bc74 863-866,914,921-925,934,943,986,1251,1256-1258,1261,1264,1268,1273-1280
+vendor/codemem/packages/core/src/db.ts
+  s_bae614e0dac8dc::t_2f1a18b37861ba 10,26,29,37,57-90,287,520,531-560,1543-1939
+vendor/codemem/packages/core/src/mutation-dispatcher.test.ts
+  s_bae614e0dac8dc::t_4e0ad1f36b5a2d 115,130-133,136-139
+vendor/codemem/packages/cli/src/commands/status.ts
+  s_07f25b68aa1c5a::t_211980c6e53936 3-8,58,226-271,276-279,285,322-323,325,327-333,342-366,400,489-491
+vendor/codemem/docs/user-guide.md
+  s_bae614e0dac8dc::t_49873d6fc65e19 40
+vendor/codemem/packages/core/src/daemon-rpc-contract.ts
+  s_bae614e0dac8dc::t_fe86a147e504c0 55-56
+vendor/codemem/packages/cli/src/commands/db.ts
+  s_bae614e0dac8dc::t_ee03b1f8214a5b 1,4,13,236-305
+vendor/codemem/packages/core/src/raw-event-flush.test.ts
+  s_bae614e0dac8dc::t_91574699812b7a 4,40,48,89-99,103,112,118,120,127-208,210-266,273,326,375,393,397,406,413,422-467,474,491,503,575,602,690,699,725
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_b67dc845c2f30b::t_1fffc4bab4a455 58,66,190-199,230-239,257,345,371,487-488,668-699,779,791-799,801,804-854,859-861,863-864,867,871-892,914-915,917-922,926-927,931,1009,1704,1715-1717
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "956f4c871e3ca62d5c5aa4217ed182cb96dd60a7",
+  "prompts": {},
+  "sessions": {
+    "s_057c6505f923e8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a056ac-5c47-7e91-aaeb-8e79314d00ed",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_07f25b68aa1c5a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a057ab-590d-7db2-86cb-8e4030d4fbf0",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_3d80be1abad61c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a056f1-d463-7360-a7b6-497e651b77cd",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_3de71360337db5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05695-cf92-7e43-abce-fcb791ff6e43",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_ad65000c6cbe8f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05681-cea5-7d42-b9f2-88b70a02a4ce",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_b67dc845c2f30b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c37758a2-502a-4442-b708-5662f5c23e5c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_bae614e0dac8dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a053c7-4a4c-7fc1-a5ee-8fa06562078e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    },
+    "s_fae50711799069": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a05682-6764-7bf1-a49e-e45dbcc1d22d",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
