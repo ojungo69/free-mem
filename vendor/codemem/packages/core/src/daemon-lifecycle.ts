@@ -439,9 +439,9 @@ export async function startDaemon(options: {
 		} catch {
 			console.error("[codemem] startup spool drain failed; entries were retained.");
 		}
-		jobs.startInternalBackfills();
 		server = await bindPrivateSocket(layout.socketPath, rpc);
 		durableReplaceFile(layout.identityPath, `${JSON.stringify(identity)}\n`);
+		jobs.startInternalBackfills();
 		const spoolSweepTimer = setInterval(sweepSpool, 1_000);
 		spoolSweepTimer.unref();
 		const startingLive: LiveDaemon = {

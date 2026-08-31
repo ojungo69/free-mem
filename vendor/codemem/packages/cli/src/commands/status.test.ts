@@ -183,6 +183,7 @@ describe("status command", () => {
 			configurationFingerprint: `sha256:${"a".repeat(64)}`,
 			runtimeReason: "pending_privacy_boundary",
 			providerEnabled: false,
+			providerHealth: "provider_unavailable",
 			schemaReadiness: "pending_schema_v21",
 			packReadiness: "pending_pack_boundary",
 			summaryProvider: { providerFingerprint: `sha256:${"b".repeat(64)}` },
@@ -209,6 +210,7 @@ describe("status command", () => {
 		expect(rendered).toContain("Capability:     pending_privacy_boundary");
 		expect(rendered).toContain(capability.configurationFingerprint);
 		expect(rendered).toContain(capability.summaryProvider.providerFingerprint);
+		expect(rendered).toContain("Provider health: provider_unavailable");
 		expect(rendered).toContain("pending_schema_v21");
 		expect(rendered).toContain("pending_pack_boundary");
 

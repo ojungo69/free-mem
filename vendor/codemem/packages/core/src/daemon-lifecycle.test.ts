@@ -176,6 +176,26 @@ describe("Phase 1 daemon lifecycle", () => {
 		}
 	});
 
+	it("does not start internal backfills when socket binding fails before identity publication", async () => {
+		const dataDir = join(tempDir("codemem-daemon-bind-failure-"), "data");
+		const layout = core.resolveStorageLayout(dataDir);
+		core.ensureStorageLayout(layout);
+		mkdirSync(layout.socketPath);
+		const startInternalBackfills = vi.spyOn(DaemonJobService.prototype, "startInternalBackfills");
+
+		try {
+			await expect(core.startDaemon({ dataDir })).rejects.toThrow(/EISDIR|directory/i);
+
+			expect(startInternalBackfills).not.toHaveBeenCalled();
+			expect(core.readDaemonHealth(dataDir).status).toBe("not_running");
+			expect(existsSync(layout.identityPath)).toBe(false);
+			expect(probeDaemonWriterAvailable(dataDir)).toBe(true);
+		} finally {
+			startInternalBackfills.mockRestore();
+			await core.stopDaemon(dataDir);
+		}
+	});
+
 	it("P1-T034-02-force-kill-identity", async () => {
 		const dataDir = join(tempDir("codemem-daemon-kill-"), "data");
 		const victim = spawnSleep();

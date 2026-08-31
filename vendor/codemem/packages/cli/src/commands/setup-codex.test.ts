@@ -1191,6 +1191,38 @@ describe("T007 Slice 1 setup activation", () => {
 		expect(setupCommand.description()).toMatch(/Claude Code.*Codex/i);
 	});
 
+	it("stops before mutation when the activation confirmation prompt fails", async () => {
+		const dataDir = join(codexHome, "confirmation-failure-data");
+		const confirmationFailure = "confirmation failure detail must not render";
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		setupPrompts.onConfirm = () => {
+			throw new Error(confirmationFailure);
+		};
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem"]);
+		} finally {
+			output.restore();
+		}
+
+		const rendered = output.chunks.join("");
+		expect(setupPrompts.confirmCalls).toBe(1);
+		expect(process.exitCode).toBe(1);
+		expect(rendered).toMatch(/setup confirmation failed/i);
+		expect(rendered).not.toContain(confirmationFailure);
+		for (const path of [
+			join(claudeHome, "settings.json"),
+			join(claudeHome, ".claude.json"),
+			join(codexHome, "config.toml"),
+			join(codexHome, "hooks.json"),
+			join(codexHome, "codemem-hook-runtime.mjs"),
+			join(dataDir, "control", "capabilities", "current"),
+		]) {
+			expect(existsSync(path), path).toBe(false);
+		}
+	});
+
 	it("publishes one owner-only Claude+Codex activation and removes its journal", async () => {
 		const dataDir = join(codexHome, "slice1-data");
 		process.env.CODEMEM_DATA_DIR = dataDir;

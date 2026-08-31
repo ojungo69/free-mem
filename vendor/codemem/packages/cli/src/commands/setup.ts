@@ -2105,10 +2105,16 @@ async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<bo
 		return false;
 	}
 	safeCapabilityDisclosure(manifest);
-	const confirmed = await p.confirm({
-		message: "Activate this capability manifest?",
-		initialValue: false,
-	});
+	let confirmed: Awaited<ReturnType<typeof p.confirm>>;
+	try {
+		confirmed = await p.confirm({
+			message: "Activate this capability manifest?",
+			initialValue: false,
+		});
+	} catch {
+		p.log.error("Setup confirmation failed.");
+		return false;
+	}
 	if (p.isCancel(confirmed) || confirmed !== true) return false;
 
 	try {

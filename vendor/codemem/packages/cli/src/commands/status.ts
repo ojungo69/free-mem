@@ -419,6 +419,7 @@ export function renderStatusReport(report: OperationalStatusReport): string {
 				providerFingerprint,
 				stringOrFallback(report.capability.providerFingerprint, "none"),
 			)}`,
+			`Provider health: ${stringOrFallback(report.capability.providerHealth, "unknown")}`,
 			`Schema:         ${stringOrFallback(report.capability.schemaReadiness, "unknown")}`,
 			`Pack:           ${stringOrFallback(report.capability.packReadiness, "unknown")}`,
 		);
