@@ -288,7 +288,7 @@ describe("RawEventSweeper auto flush", () => {
 	});
 
 	it("ignores the retired auto-flush disable environment", async () => {
-		delete process.env.CODEMEM_RAW_EVENTS_AUTO_FLUSH;
+		process.env.CODEMEM_RAW_EVENTS_AUTO_FLUSH = "0";
 		seedSession("sess-disabled");
 		const sweeper = new RawEventSweeper(store, ingestOpts);
 

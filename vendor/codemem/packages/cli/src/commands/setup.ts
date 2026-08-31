@@ -27,11 +27,13 @@ import {
 	readCurrentCapabilityManifest,
 	readInstallManifest,
 	readLegacyCapabilityConfigForSetup,
+	readValidatedCapabilityActivationReceipt,
 	resolveRuntimeDataDir,
 	resolveStorageLayout,
 	stripJsonComments,
 	stripTrailingCommas,
 	VERSION,
+	withCapabilityLaneSetupTransaction,
 	withCapabilitySetupTransaction,
 	writeInstallManifest,
 } from "@codemem/core";
@@ -1506,10 +1508,10 @@ function restoreSetupFileSnapshots(
 
 /** Mutate one editor lane and publish its ownership manifest as one fail-closed unit. */
 function runSetupLaneTransaction(
-	dataDir: string,
 	paths: readonly string[],
 	mutate: () => boolean,
 	commitManifest: () => void,
+	validateReceiptBinding?: () => boolean,
 ): boolean {
 	let snapshots: SetupFileSnapshot[];
 	try {
@@ -1522,7 +1524,6 @@ function runSetupLaneTransaction(
 	}
 	const mutations = new Map<string, SetupFileMutation>();
 	const baselines = new Map(snapshots.map((snapshot) => [snapshot.path, snapshot]));
-	let manifestLock: ReturnType<typeof acquireSpoolLock> | null = null;
 	try {
 		if (!withSetupFileMutationTracking(mutations, baselines, mutate)) {
 			if (!restoreSetupFileSnapshots(snapshots, mutations)) {
@@ -1533,10 +1534,15 @@ function runSetupLaneTransaction(
 		if (!setupTransactionStateUnchanged(snapshots, mutations)) {
 			throw new Error("Setup target changed before ownership manifest commit.");
 		}
-		manifestLock = acquireSpoolLock(dataDir);
+		if (validateReceiptBinding && !validateReceiptBinding()) {
+			throw new Error("Lane-only setup no longer matches the active capability receipt.");
+		}
 		withSetupFileMutationTracking(mutations, baselines, commitManifest);
 		if (!setupTransactionStateUnchanged(snapshots, mutations)) {
 			throw new Error("Setup target changed during ownership manifest commit.");
+		}
+		if (validateReceiptBinding && !validateReceiptBinding()) {
+			throw new Error("Lane-only setup invalidated the active capability receipt.");
 		}
 		return true;
 	} catch (error) {
@@ -1549,8 +1555,6 @@ function runSetupLaneTransaction(
 			p.log.error("Setup rollback was incomplete; inspect the paths reported above.");
 		}
 		return false;
-	} finally {
-		manifestLock?.close();
 	}
 }
 
@@ -1873,7 +1877,10 @@ function legacyCapabilityDispositions(): LegacyDispositionV1[] {
 	}));
 }
 
-async function promptSlice1Manifest(current: EffectiveCapabilityManifestV1 | null) {
+async function promptSlice1Manifest(
+	current: EffectiveCapabilityManifestV1 | null,
+	legacyDispositions: LegacyDispositionV1[],
+) {
 	const selectedAgents = await p.multiselect({
 		message: "Install automatic memory for Claude Code and Codex",
 		options: [
@@ -1941,7 +1948,7 @@ async function promptSlice1Manifest(current: EffectiveCapabilityManifestV1 | nul
 					? { kind: "environment", name: credentialName }
 					: { kind: "none" },
 		},
-		legacyCapabilityDispositions(),
+		legacyDispositions,
 		current?.configurationFingerprint,
 	);
 	if (
@@ -1998,6 +2005,38 @@ function managedTargetFingerprint(
 ): string {
 	const contents = planned.get(resolve(path))?.contents ?? readFileSync(path);
 	return createHash("sha256").update(contents).digest("hex");
+}
+
+function activeCapabilityAllowsLaneTargets(
+	dataDir: string,
+	targets: ReadonlyArray<{ id: string; path: string; fingerprint: string }>,
+): boolean {
+	try {
+		const layout = resolveStorageLayout(dataDir);
+		const active = readCurrentCapabilityManifest(layout);
+		if (!active) return true;
+		const receipt = readValidatedCapabilityActivationReceipt(layout, active);
+		if (!receipt) throw new Error("Capability activation receipt is missing.");
+		const receiptById = new Map(receipt.targets.map((target) => [target.id, target]));
+		if (
+			targets.some((target) => {
+				const current = receiptById.get(target.id);
+				return (
+					!current ||
+					resolve(current.path) !== resolve(target.path) ||
+					current.fingerprint !== target.fingerprint
+				);
+			})
+		) {
+			throw new Error("A lane-only setup would replace an active capability receipt target.");
+		}
+		return true;
+	} catch (error) {
+		p.log.error(
+			`${error instanceof Error ? error.message : "Active capability receipt is invalid."} Run plain \`codemem setup\` without an --only flag.`,
+		);
+		return false;
+	}
 }
 
 type CapabilitySetupFileState = {
@@ -2059,7 +2098,8 @@ async function runSlice1Setup(force: boolean, runtime: SetupRuntime): Promise<bo
 	let manifest: ReturnType<typeof compileDefaultCapabilityManifest>;
 	try {
 		currentBeforeDisclosure = readCurrentCapabilityManifest(layout);
-		manifest = await promptSlice1Manifest(currentBeforeDisclosure);
+		const legacyDispositions = legacyCapabilityDispositions();
+		manifest = await promptSlice1Manifest(currentBeforeDisclosure, legacyDispositions);
 	} catch (error) {
 		p.log.error(error instanceof Error ? error.message : "Capability proposal is invalid.");
 		return false;
@@ -2265,155 +2305,216 @@ export const setupCommand = new Command("setup")
 				return;
 			}
 
-			const doOpencode = opts.opencodeOnly ?? false;
-			const doClaude = opts.claudeOnly ?? false;
-			const doCodex = opts.codexOnly ?? false;
-			const opencodeConfigPath = doOpencode
-				? resolveOpencodeConfigPath(opencodeConfigDir())
-				: undefined;
 			const dataDir = setupDataDir();
-			if (
-				!preflightInstallManifest(dataDir) ||
-				(opencodeConfigPath !== undefined &&
-					!preflightOpencode(force, runtime, opencodeConfigPath)) ||
-				(doClaude && !loadClaudeConfiguration(force, runtime)) ||
-				(doCodex && !preflightCodex(force, runtime))
-			) {
+			let completed: boolean;
+			try {
+				completed = withCapabilityLaneSetupTransaction({
+					dataDir,
+					run: () => {
+						const doOpencode = opts.opencodeOnly ?? false;
+						const doClaude = opts.claudeOnly ?? false;
+						const doCodex = opts.codexOnly ?? false;
+						const opencodeConfigPath = doOpencode
+							? resolveOpencodeConfigPath(opencodeConfigDir())
+							: undefined;
+						if (
+							!preflightInstallManifest(dataDir) ||
+							(opencodeConfigPath !== undefined &&
+								!preflightOpencode(force, runtime, opencodeConfigPath))
+						) {
+							p.outro("Setup stopped before changing editor configuration");
+							process.exitCode = 1;
+							return false;
+						}
+						const claudePlan = doClaude ? planClaudeSetup(force, runtime) : undefined;
+						const codexPlan = doCodex ? planCodexSetup(force, runtime) : undefined;
+						if ((doClaude && !claudePlan) || (doCodex && !codexPlan)) {
+							p.outro("Setup stopped before changing editor configuration");
+							process.exitCode = 1;
+							return false;
+						}
+						const plannedFiles = new Map<string, PlannedSetupFile>(
+							[...(claudePlan?.files ?? []), ...(codexPlan?.files ?? [])].map((file) => [
+								resolve(file.path),
+								file,
+							]),
+						);
+						const receiptTargets = [
+							{ id: "cli-runtime", path: runtime.cliPath },
+							...(claudePlan?.targets ?? []),
+							...(codexPlan?.targets ?? []),
+						].map((target) => ({
+							...target,
+							path: resolve(target.path),
+							fingerprint: managedTargetFingerprint(target.path, plannedFiles),
+						}));
+						if (!activeCapabilityAllowsLaneTargets(dataDir, receiptTargets)) {
+							p.outro("Setup stopped before changing editor configuration");
+							process.exitCode = 1;
+							return false;
+						}
+						const validateCurrentLaneTargets = (
+							targets: readonly PlannedManagedTarget[],
+						): boolean => {
+							try {
+								return activeCapabilityAllowsLaneTargets(
+									dataDir,
+									[{ id: "cli-runtime", path: runtime.cliPath }, ...targets].map((target) => ({
+										...target,
+										path: resolve(target.path),
+										fingerprint: managedTargetFingerprint(target.path, new Map()),
+									})),
+								);
+							} catch {
+								p.log.error(
+									"Lane-only setup cannot preserve the active capability receipt. Run plain `codemem setup` without an --only flag.",
+								);
+								return false;
+							}
+						};
+
+						const manifestPath = resolveStorageLayout(dataDir).installManifestPath;
+						const recordTargets = (
+							targets: Array<{ id: string; path: string }>,
+							replaceIds: readonly string[],
+						): void => {
+							writeSetupInstallManifestUnlocked(
+								[{ id: "cli-runtime", path: runtime.cliPath }, ...targets],
+								dataDir,
+								["cli-runtime", ...replaceIds],
+							);
+						};
+						const stopAfterLaneFailure = (): void => {
+							p.outro("Setup stopped after an editor lane failure");
+							process.exitCode = 1;
+						};
+
+						if (opencodeConfigPath !== undefined) {
+							const configPath = opencodeConfigPath;
+							const configDir = opencodeConfigDir();
+							const wrapperPath = join(configDir, "plugins", "codemem.js");
+							const targets = [
+								{ id: "opencode-plugin", path: wrapperPath },
+								{ id: "opencode-plugin-source", path: runtime.opencodePluginPath },
+								{
+									id: "opencode-plugin-compat",
+									path: resolve(dirname(runtime.opencodePluginPath), "../lib/compat.js"),
+								},
+								{ id: "opencode-mcp", path: configPath },
+							];
+							const installed = runSetupLaneTransaction(
+								[
+									manifestPath,
+									join(configDir, "opencode.json"),
+									join(configDir, "opencode.jsonc"),
+									wrapperPath,
+									`${wrapperPath}.codemem.bak`,
+									join(configDir, "lib", "compat.js"),
+								],
+								() => {
+									if (resolveOpencodeConfigPath(configDir) !== configPath) {
+										p.log.error("OpenCode configuration path changed during setup.");
+										return false;
+									}
+									p.log.step("Installing OpenCode plugin...");
+									if (!installPlugin(force, runtime, configPath)) return false;
+									p.log.step("Installing OpenCode MCP config...");
+									return installMcp(force, runtime, configPath);
+								},
+								() =>
+									recordTargets(targets, [
+										"opencode-plugin-mcp",
+										"opencode-plugin",
+										"opencode-plugin-compat",
+										"opencode-plugin-source",
+										"opencode-mcp",
+									]),
+								() => validateCurrentLaneTargets([]),
+							);
+							if (!installed) {
+								stopAfterLaneFailure();
+								return false;
+							}
+						}
+
+						if (doClaude) {
+							const settingsPath = join(claudeConfigDir(), "settings.json");
+							const mcpPath = claudeMcpConfigPath();
+							const runtimePath = join(claudeConfigDir(), "codemem-hook-runtime.mjs");
+							const targets = [
+								{ id: "claude-mcp", path: mcpPath },
+								{ id: "claude-hooks", path: settingsPath },
+								{ id: "claude-hook-runtime", path: runtimePath },
+							];
+							const installed = runSetupLaneTransaction(
+								[
+									manifestPath,
+									settingsPath,
+									`${settingsPath}.codemem.bak`,
+									mcpPath,
+									`${mcpPath}.codemem.bak`,
+									runtimePath,
+								],
+								() => {
+									p.log.step("Installing Claude Code MCP and hooks...");
+									return installClaude(force, runtime);
+								},
+								() => recordTargets(targets, ["claude-mcp", "claude-hooks", "claude-hook-runtime"]),
+								() => validateCurrentLaneTargets(targets),
+							);
+							if (!installed) {
+								stopAfterLaneFailure();
+								return false;
+							}
+						}
+
+						if (doCodex) {
+							const configPath = join(codexConfigDir(), "config.toml");
+							const hooksPath = join(codexConfigDir(), "hooks.json");
+							const runtimePath = join(codexConfigDir(), "codemem-hook-runtime.mjs");
+							const targets = [
+								{ id: "codex-mcp", path: configPath },
+								{ id: "codex-hooks", path: hooksPath },
+								{ id: "codex-hook-runtime", path: runtimePath },
+							];
+							const installed = runSetupLaneTransaction(
+								[
+									manifestPath,
+									configPath,
+									`${configPath}.codemem.bak`,
+									hooksPath,
+									`${hooksPath}.codemem.bak`,
+									runtimePath,
+								],
+								() => {
+									p.log.step("Configuring Codex (MCP + hooks)...");
+									return installCodex(force, runtime);
+								},
+								() => recordTargets(targets, ["codex-mcp", "codex-hooks", "codex-hook-runtime"]),
+								() => validateCurrentLaneTargets(targets),
+							);
+							if (!installed) {
+								stopAfterLaneFailure();
+								return false;
+							}
+							p.log.info("Codex next steps:");
+							p.log.info("  - Restart Codex to load the new configuration");
+							p.log.info(
+								"  - On first run, approve the one-time prompt to trust the codemem hooks",
+							);
+							p.log.info("  - MCP recall works immediately (no trust prompt required)");
+						}
+
+						return true;
+					},
+				});
+			} catch (error) {
+				p.log.error(error instanceof Error ? error.message : String(error));
 				p.outro("Setup stopped before changing editor configuration");
 				process.exitCode = 1;
 				return;
 			}
-
-			const manifestPath = resolveStorageLayout(dataDir).installManifestPath;
-			const recordTargets = (
-				targets: Array<{ id: string; path: string }>,
-				replaceIds: readonly string[],
-			): void => {
-				writeSetupInstallManifestUnlocked(
-					[{ id: "cli-runtime", path: runtime.cliPath }, ...targets],
-					dataDir,
-					["cli-runtime", ...replaceIds],
-				);
-			};
-			const stopAfterLaneFailure = (): void => {
-				p.outro("Setup stopped after an editor lane failure");
-				process.exitCode = 1;
-			};
-
-			if (opencodeConfigPath !== undefined) {
-				const configPath = opencodeConfigPath;
-				const configDir = opencodeConfigDir();
-				const wrapperPath = join(configDir, "plugins", "codemem.js");
-				const targets = [
-					{ id: "opencode-plugin", path: wrapperPath },
-					{ id: "opencode-plugin-source", path: runtime.opencodePluginPath },
-					{
-						id: "opencode-plugin-compat",
-						path: resolve(dirname(runtime.opencodePluginPath), "../lib/compat.js"),
-					},
-					{ id: "opencode-mcp", path: configPath },
-				];
-				const installed = runSetupLaneTransaction(
-					dataDir,
-					[
-						manifestPath,
-						join(configDir, "opencode.json"),
-						join(configDir, "opencode.jsonc"),
-						wrapperPath,
-						`${wrapperPath}.codemem.bak`,
-						join(configDir, "lib", "compat.js"),
-					],
-					() => {
-						if (resolveOpencodeConfigPath(configDir) !== configPath) {
-							p.log.error("OpenCode configuration path changed during setup.");
-							return false;
-						}
-						p.log.step("Installing OpenCode plugin...");
-						if (!installPlugin(force, runtime, configPath)) return false;
-						p.log.step("Installing OpenCode MCP config...");
-						return installMcp(force, runtime, configPath);
-					},
-					() =>
-						recordTargets(targets, [
-							"opencode-plugin-mcp",
-							"opencode-plugin",
-							"opencode-plugin-compat",
-							"opencode-plugin-source",
-							"opencode-mcp",
-						]),
-				);
-				if (!installed) {
-					stopAfterLaneFailure();
-					return;
-				}
-			}
-
-			if (doClaude) {
-				const settingsPath = join(claudeConfigDir(), "settings.json");
-				const mcpPath = claudeMcpConfigPath();
-				const runtimePath = join(claudeConfigDir(), "codemem-hook-runtime.mjs");
-				const targets = [
-					{ id: "claude-mcp", path: mcpPath },
-					{ id: "claude-hooks", path: settingsPath },
-					{ id: "claude-hook-runtime", path: runtimePath },
-				];
-				const installed = runSetupLaneTransaction(
-					dataDir,
-					[
-						manifestPath,
-						settingsPath,
-						`${settingsPath}.codemem.bak`,
-						mcpPath,
-						`${mcpPath}.codemem.bak`,
-						runtimePath,
-					],
-					() => {
-						p.log.step("Installing Claude Code MCP and hooks...");
-						return installClaude(force, runtime);
-					},
-					() => recordTargets(targets, ["claude-mcp", "claude-hooks", "claude-hook-runtime"]),
-				);
-				if (!installed) {
-					stopAfterLaneFailure();
-					return;
-				}
-			}
-
-			if (doCodex) {
-				const configPath = join(codexConfigDir(), "config.toml");
-				const hooksPath = join(codexConfigDir(), "hooks.json");
-				const runtimePath = join(codexConfigDir(), "codemem-hook-runtime.mjs");
-				const targets = [
-					{ id: "codex-mcp", path: configPath },
-					{ id: "codex-hooks", path: hooksPath },
-					{ id: "codex-hook-runtime", path: runtimePath },
-				];
-				const installed = runSetupLaneTransaction(
-					dataDir,
-					[
-						manifestPath,
-						configPath,
-						`${configPath}.codemem.bak`,
-						hooksPath,
-						`${hooksPath}.codemem.bak`,
-						runtimePath,
-					],
-					() => {
-						p.log.step("Configuring Codex (MCP + hooks)...");
-						return installCodex(force, runtime);
-					},
-					() => recordTargets(targets, ["codex-mcp", "codex-hooks", "codex-hook-runtime"]),
-				);
-				if (!installed) {
-					stopAfterLaneFailure();
-					return;
-				}
-				p.log.info("Codex next steps:");
-				p.log.info("  - Restart Codex to load the new configuration");
-				p.log.info("  - On first run, approve the one-time prompt to trust the codemem hooks");
-				p.log.info("  - MCP recall works immediately (no trust prompt required)");
-			}
-
+			if (!completed) return;
 			p.outro("Setup complete — restart your editor to load the codemem integration");
 		},
 	);

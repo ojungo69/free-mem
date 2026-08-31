@@ -9,9 +9,13 @@ import {
 	type EffectiveCapabilityManifestV1,
 } from "./capability-manifest.js";
 import { probeDaemonWriterAvailable } from "./daemon-lifecycle.js";
-import { withCapabilitySetupTransaction } from "./setup-internal.js";
+import {
+	withCapabilityLaneSetupTransaction,
+	withCapabilitySetupTransaction,
+} from "./setup-internal.js";
 import { acquireSpoolLock } from "./spool.js";
 import {
+	acquireCapabilityLifecycleLock,
 	type CapabilitySetupJournal,
 	capabilitySetupFileState,
 	ensureStorageLayout,
@@ -125,6 +129,72 @@ function publication(root: string, inputManifest: EffectiveCapabilityManifestV1)
 afterEach(() => {
 	for (const dir of createdDirs.splice(0))
 		rmSync(join(dir, ".."), { recursive: true, force: true });
+});
+
+describe("withCapabilityLaneSetupTransaction", () => {
+	it("holds lifecycle, spool, and writer ownership through a fresh callback", () => {
+		const root = dataDir();
+		const layout = resolveStorageLayout(root);
+
+		expect(() =>
+			withCapabilityLaneSetupTransaction({
+				dataDir: root,
+				run: () => {
+					expect(() => {
+						const lock = acquireCapabilityLifecycleLock(layout, 0);
+						lock.close();
+					}).toThrow(/busy/i);
+					expect(() => {
+						const lock = acquireSpoolLock(root, 1);
+						lock.close();
+					}).toThrow(/deadline/i);
+					expect(probeDaemonWriterAvailable(root)).toBe(false);
+					throw new Error("synthetic lane failure");
+				},
+			}),
+		).toThrow(/synthetic lane failure/i);
+
+		const lifecycle = acquireCapabilityLifecycleLock(layout, 0);
+		lifecycle.close();
+		const spool = acquireSpoolLock(root, 1);
+		spool.close();
+		expect(probeDaemonWriterAvailable(root)).toBe(true);
+	});
+
+	it("recovers an interrupted setup before entering the lane callback", () => {
+		const root = dataDir();
+		const layout = resolveStorageLayout(root);
+		ensureStorageLayout(layout);
+		const targetPath = join(root, "interrupted-lane.txt");
+		writeFileSync(targetPath, "partial\n", { mode: 0o600 });
+		writeCapabilitySetupJournal(layout, {
+			version: 1,
+			phase: "prepared",
+			configurationFingerprint: manifest().configurationFingerprint,
+			targets: [
+				{
+					path: targetPath,
+					before: capabilitySetupFileState("original\n", 0o600),
+					after: capabilitySetupFileState("partial\n", 0o600),
+				},
+			],
+		});
+		let called = false;
+
+		expect(() =>
+			withCapabilityLaneSetupTransaction({
+				dataDir: root,
+				run: () => {
+					called = true;
+					return true;
+				},
+			}),
+		).toThrow(/recovered an interrupted setup/i);
+
+		expect(called).toBe(false);
+		expect(readFileSync(targetPath, "utf8")).toBe("original\n");
+		expect(existsSync(layout.capabilitySetupTransactionPath)).toBe(false);
+	});
 });
 
 describe("withCapabilitySetupTransaction", () => {

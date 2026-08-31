@@ -56,9 +56,29 @@ const setupSnapshotRace = vi.hoisted(() => ({
 const setupPrompts = vi.hoisted(() => ({
 	confirmCalls: 0,
 	confirmation: true,
+	credentialKind: "none" as "none" | "environment",
 	endpointUrl: "http://127.0.0.1:1234/v1/chat/completions",
+	inputCalls: 0,
 	onConfirm: null as null | (() => Promise<void> | void),
 }));
+
+const setupManagedTargetRace = vi.hoisted(() => ({
+	cliFingerprint: "",
+}));
+
+vi.mock("@codemem/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@codemem/core")>();
+	return {
+		...actual,
+		captureManagedTarget(id: string, path: string) {
+			const target = actual.captureManagedTarget(id, path);
+			if (id !== "cli-runtime" || !setupManagedTargetRace.cliFingerprint) return target;
+			const fingerprint = setupManagedTargetRace.cliFingerprint;
+			setupManagedTargetRace.cliFingerprint = "";
+			return { ...target, fingerprint };
+		},
+	};
+});
 
 vi.mock("@clack/prompts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@clack/prompts")>();
@@ -78,17 +98,23 @@ vi.mock("@clack/prompts", async (importOriginal) => {
 			await setupPrompts.onConfirm?.();
 			return setupPrompts.confirmation;
 		}),
-		multiselect: vi.fn(async (options: unknown) =>
-			optionValues(options).filter((value) => value === "claude-code" || value === "codex"),
-		),
+		multiselect: vi.fn(async (options: unknown) => {
+			setupPrompts.inputCalls += 1;
+			return optionValues(options).filter((value) => value === "claude-code" || value === "codex");
+		}),
 		select: vi.fn(async (options: unknown) => {
+			setupPrompts.inputCalls += 1;
 			const values = optionValues(options);
+			if (values.includes("none") && values.includes("environment")) {
+				return setupPrompts.credentialKind;
+			}
 			for (const preferred of ["openai_chat_completions_v1", "none", "summary"]) {
 				if (values.includes(preferred)) return preferred;
 			}
 			return values[0];
 		}),
 		text: vi.fn(async (options: unknown) => {
+			setupPrompts.inputCalls += 1;
 			const message = messageText(options);
 			if (message.includes("endpoint") || message.includes("url")) return setupPrompts.endpointUrl;
 			if (message.includes("revision")) return "t007-test-revision";
@@ -199,8 +225,11 @@ beforeEach(() => {
 	process.exitCode = undefined;
 	setupPrompts.confirmCalls = 0;
 	setupPrompts.confirmation = true;
+	setupPrompts.credentialKind = "none";
 	setupPrompts.endpointUrl = "http://127.0.0.1:1234/v1/chat/completions";
+	setupPrompts.inputCalls = 0;
 	setupPrompts.onConfirm = null;
+	setupManagedTargetRace.cliFingerprint = "";
 	const hookBase = codememCodexHookBase(join(codexHome, "codemem-hook-runtime.mjs"));
 	INGEST_CMD = `${hookBase} codex-hook-ingest`;
 	INJECT_CMD = `${hookBase} codex-hook-inject`;
@@ -1250,6 +1279,241 @@ describe("T007 Slice 1 setup activation", () => {
 		);
 	});
 
+	it.each([
+		"claude",
+		"codex",
+	] as const)("keeps the active receipt valid for a no-op %s-only refresh", async (lane) => {
+		const dataDir = join(codexHome, `slice1-${lane}-noop-refresh-data`);
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		const receiptBefore = readFileSync(layout.capabilityActivationReceiptPath);
+		process.exitCode = undefined;
+
+		await setupCommand.parseAsync(["node", "codemem", `--${lane}-only`]);
+
+		expect(process.exitCode).toBeUndefined();
+		expect(readFileSync(layout.capabilityActivationReceiptPath)).toEqual(receiptBefore);
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)).not.toBeNull();
+	});
+
+	it.each([
+		"--opencode-only",
+		"--claude-only",
+		"--codex-only",
+	])("refuses %s before replacing an active cli-runtime receipt target", async (onlyFlag) => {
+		const dataDir = join(codexHome, `slice1-${onlyFlag.slice(2)}-runtime-drift-data`);
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		const receipt = JSON.parse(readFileSync(layout.capabilityActivationReceiptPath, "utf8")) as {
+			targets: Array<{ id: string; path: string; fingerprint: string }>;
+		};
+		const install = JSON.parse(readFileSync(layout.installManifestPath, "utf8")) as {
+			targets: Array<{ id: string; path: string; fingerprint: string }>;
+		};
+		const currentRuntime = receipt.targets.find((target) => target.id === "cli-runtime");
+		expect(currentRuntime).toBeDefined();
+		const previousRuntimePath = join(codexHome, "previous-checkout", "index.js");
+		mkdirSync(dirname(previousRuntimePath), { recursive: true });
+		writeFileSync(previousRuntimePath, readFileSync(currentRuntime?.path as string), {
+			mode: 0o600,
+		});
+		for (const targets of [receipt.targets, install.targets]) {
+			const target = targets.find((candidate) => candidate.id === "cli-runtime");
+			if (!target) throw new Error("expected cli-runtime target");
+			target.path = previousRuntimePath;
+			target.fingerprint = createHash("sha256")
+				.update(readFileSync(previousRuntimePath))
+				.digest("hex");
+		}
+		writeFileSync(layout.capabilityActivationReceiptPath, `${JSON.stringify(receipt)}\n`, {
+			mode: 0o600,
+		});
+		writeFileSync(layout.installManifestPath, `${JSON.stringify(install, null, 2)}\n`, {
+			mode: 0o600,
+		});
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)).not.toBeNull();
+		const receiptBefore = readFileSync(layout.capabilityActivationReceiptPath);
+		const installBefore = readFileSync(layout.installManifestPath);
+		process.exitCode = undefined;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem", onlyFlag]);
+		} finally {
+			output.restore();
+		}
+
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/plain.*setup|setup without.*only/i);
+		expect(readFileSync(layout.capabilityActivationReceiptPath)).toEqual(receiptBefore);
+		expect(readFileSync(layout.installManifestPath)).toEqual(installBefore);
+		expect(existsSync(join(codexHome, ".config", "opencode"))).toBe(false);
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)).not.toBeNull();
+	});
+
+	it.each([
+		"claude",
+		"codex",
+	] as const)("refuses %s-only before changing an active lane target path", async (lane) => {
+		const dataDir = join(codexHome, `slice1-${lane}-target-drift-data`);
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)).not.toBeNull();
+		const nextHome = join(codexHome, `next-${lane}-home`);
+		if (lane === "claude") process.env.CLAUDE_CONFIG_DIR = nextHome;
+		else process.env.CODEX_HOME = nextHome;
+		const receiptBefore = readFileSync(layout.capabilityActivationReceiptPath);
+		const installBefore = readFileSync(layout.installManifestPath);
+		process.exitCode = undefined;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem", `--${lane}-only`]);
+		} finally {
+			output.restore();
+		}
+
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/plain.*setup|setup without.*only/i);
+		expect(readFileSync(layout.capabilityActivationReceiptPath)).toEqual(receiptBefore);
+		expect(readFileSync(layout.installManifestPath)).toEqual(installBefore);
+		expect(existsSync(nextHome)).toBe(false);
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)).not.toBeNull();
+	});
+
+	it("refuses lane-only setup when the active receipt no longer validates", async () => {
+		const dataDir = join(codexHome, "slice1-invalid-receipt-lane-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		const settingsPath = join(claudeHome, "settings.json");
+		writeFileSync(settingsPath, `${readFileSync(settingsPath, "utf8")}\n`, "utf8");
+		expect(() => readValidatedCapabilityActivationReceipt(layout, active as never)).toThrow(
+			/target hash mismatch/i,
+		);
+		const receiptBefore = readFileSync(layout.capabilityActivationReceiptPath);
+		const installBefore = readFileSync(layout.installManifestPath);
+		const settingsBefore = readFileSync(settingsPath);
+		process.exitCode = undefined;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		} finally {
+			output.restore();
+		}
+
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/plain.*setup|setup without.*only/i);
+		expect(readFileSync(layout.capabilityActivationReceiptPath)).toEqual(receiptBefore);
+		expect(readFileSync(layout.installManifestPath)).toEqual(installBefore);
+		expect(readFileSync(settingsPath)).toEqual(settingsBefore);
+		expect(existsSync(join(codexHome, ".config", "opencode"))).toBe(false);
+	});
+
+	it("rolls back lane output that drifts from the receipt after preflight", async () => {
+		const dataDir = join(codexHome, "slice1-lane-replan-drift-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		const settingsPath = join(claudeHome, "settings.json");
+		const externalSettings = `${JSON.stringify(
+			{
+				...(JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>),
+				external: "changed between lane plan and transaction snapshot",
+			},
+			null,
+			2,
+		)}\n`;
+		const receiptBefore = readFileSync(layout.capabilityActivationReceiptPath);
+		const installBefore = readFileSync(layout.installManifestPath);
+		setupSnapshotRace.betweenSnapshotPath = settingsPath;
+		setupSnapshotRace.openCount = 0;
+		setupSnapshotRace.mutateOnOpen = 3;
+		setupSnapshotRace.mutationText = externalSettings;
+		process.exitCode = undefined;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem", "--claude-only"]);
+		} finally {
+			output.restore();
+		}
+
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/plain.*setup|setup without.*only/i);
+		expect(readFileSync(settingsPath, "utf8")).toBe(externalSettings);
+		expect(readFileSync(layout.capabilityActivationReceiptPath)).toEqual(receiptBefore);
+		expect(readFileSync(layout.installManifestPath)).toEqual(installBefore);
+	});
+
+	it("rolls back when cli-runtime capture changes after receipt validation", async () => {
+		const dataDir = join(codexHome, "slice1-cli-capture-race-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		await setupCommand.parseAsync(["node", "codemem"]);
+		const layout = resolveStorageLayout(dataDir);
+		const active = readCurrentCapabilityManifest(layout);
+		expect(active).not.toBeNull();
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)).not.toBeNull();
+		const receiptBefore = readFileSync(layout.capabilityActivationReceiptPath);
+		const installBefore = readFileSync(layout.installManifestPath);
+		const settingsPath = join(claudeHome, "settings.json");
+		const settingsBefore = readFileSync(settingsPath);
+		setupManagedTargetRace.cliFingerprint = "f".repeat(64);
+		process.exitCode = undefined;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem", "--claude-only"]);
+		} finally {
+			output.restore();
+		}
+
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/plain.*setup|setup without.*only/i);
+		expect(readFileSync(settingsPath)).toEqual(settingsBefore);
+		expect(readFileSync(layout.capabilityActivationReceiptPath)).toEqual(receiptBefore);
+		expect(readFileSync(layout.installManifestPath)).toEqual(installBefore);
+		expect(readValidatedCapabilityActivationReceipt(layout, active as never)).not.toBeNull();
+	});
+
+	it("refuses lane-only mutation while the daemon is running", async () => {
+		const dataDir = join(codexHome, "slice1-running-daemon-lane-data");
+		process.env.CODEMEM_DATA_DIR = dataDir;
+		const layout = resolveStorageLayout(dataDir);
+		const daemon = await startDaemon({ dataDir });
+		const installBefore = existsSync(layout.installManifestPath)
+			? readFileSync(layout.installManifestPath)
+			: null;
+		const output = captureProcessOutput();
+
+		try {
+			await setupCommand.parseAsync(["node", "codemem", "--opencode-only"]);
+		} finally {
+			output.restore();
+			await daemon.stop();
+		}
+
+		expect(process.exitCode).toBe(1);
+		expect(output.chunks.join("")).toMatch(/daemon.*running|running.*daemon/i);
+		expect(existsSync(join(codexHome, ".config", "opencode"))).toBe(false);
+		expect(existsSync(layout.installManifestPath)).toBe(installBefore !== null);
+		if (installBefore) expect(readFileSync(layout.installManifestPath)).toEqual(installBefore);
+	});
+
 	it("preserves OpenCode ownership without reading it as a Slice 1 configuration source", async () => {
 		const dataDir = join(codexHome, "opencode-then-slice1-data");
 		process.env.CODEMEM_DATA_DIR = dataDir;
@@ -1500,6 +1764,7 @@ describe("T007 Slice 1 setup activation", () => {
 		const address = server.address();
 		if (!address || typeof address === "string") throw new Error("expected TCP test address");
 		setupPrompts.endpointUrl = `https://127.0.0.1:${address.port}/v1/chat/completions`;
+		setupPrompts.credentialKind = "environment";
 		process.env.CODEMEM_DATA_DIR = dataDir;
 		process.env.FREE_MEM_SUMMARY_API_KEY = secret;
 		const output = captureProcessOutput();
@@ -1512,12 +1777,14 @@ describe("T007 Slice 1 setup activation", () => {
 		}
 
 		const wire = Buffer.concat(received).toString("latin1");
+		const rendered = output.chunks.join("");
 		expect(setupPrompts.confirmCalls).toBe(1);
 		expect(received.length).toBeGreaterThan(0);
 		expect(process.exitCode).toBe(1);
 		expect(wire).not.toMatch(/POST|\/v1\/chat\/completions/i);
 		expect(wire).not.toContain(secret);
-		expect(output.chunks.join("")).not.toContain(secret);
+		expect(rendered).toContain("environment:FREE_MEM_SUMMARY_API_KEY");
+		expect(rendered).not.toContain(secret);
 		expect(existsSync(join(claudeHome, "settings.json"))).toBe(false);
 		expect(existsSync(join(codexHome, "config.toml"))).toBe(false);
 		expect(existsSync(join(dataDir, "control", "capabilities", "current"))).toBe(false);
@@ -1630,6 +1897,7 @@ describe("T007 Slice 1 setup activation", () => {
 
 		expect(process.exitCode).toBe(1);
 		expect(setupPrompts.confirmCalls).toBe(0);
+		expect(setupPrompts.inputCalls).toBe(0);
 		expect(output.chunks.join("")).toMatch(/legacy.*conflict|conflicting.*legacy/i);
 		expect(output.chunks.join("")).not.toContain(secret);
 		expect(existsSync(join(claudeHome, "settings.json"))).toBe(false);
@@ -1683,6 +1951,7 @@ describe("T007 Slice 1 setup activation", () => {
 
 		expect(process.exitCode).toBe(1);
 		expect(setupPrompts.confirmCalls).toBe(0);
+		expect(setupPrompts.inputCalls).toBe(0);
 		expect(existsSync(join(dataDir, "control", "capabilities", "current"))).toBe(false);
 	});
 });

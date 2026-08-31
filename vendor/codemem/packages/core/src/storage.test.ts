@@ -413,6 +413,27 @@ describe("Slice 1 capability storage", () => {
 		expect(existsSync(layout.capabilitySetupTransactionPath)).toBe(true);
 	});
 
+	it("rejects setup journal targets with equivalent absolute paths", () => {
+		const layout = tempLayout();
+		const targetPath = join(layout.dataDir, "duplicate-target.txt");
+		const aliasPath = `${layout.dataDir}/./duplicate-target.txt`;
+		const before = storage.capabilitySetupFileState("before\n", 0o600);
+		const after = storage.capabilitySetupFileState("after\n", 0o600);
+
+		expect(() =>
+			storage.writeCapabilitySetupJournal(layout, {
+				version: 1,
+				phase: "prepared",
+				configurationFingerprint: fingerprint,
+				targets: [
+					{ path: targetPath, before, after },
+					{ path: aliasPath, before, after },
+				],
+			}),
+		).toThrow(/target path/i);
+		expect(existsSync(layout.capabilitySetupTransactionPath)).toBe(false);
+	});
+
 	it("rejects an oversized setup target before reading or mutating it", () => {
 		const layout = tempLayout();
 		storage.ensureStorageLayout(layout);

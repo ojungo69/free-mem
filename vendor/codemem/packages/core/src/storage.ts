@@ -390,14 +390,11 @@ function validateCapabilitySetupJournal(value: unknown): CapabilitySetupJournal 
 			throw new Error("Capability setup journal target has unsupported fields.");
 		}
 		const candidate = target as Partial<CapabilitySetupTarget>;
-		if (
-			typeof candidate.path !== "string" ||
-			!isAbsolute(candidate.path) ||
-			seen.has(candidate.path)
-		) {
+		const path = typeof candidate.path === "string" ? resolve(candidate.path) : "";
+		if (typeof candidate.path !== "string" || !isAbsolute(candidate.path) || seen.has(path)) {
 			throw new Error("Capability setup journal target path is invalid.");
 		}
-		seen.add(candidate.path);
+		seen.add(path);
 		for (const state of [candidate.before, candidate.after]) {
 			if (state && typeof state === "object" && !Array.isArray(state)) {
 				const contentsBase64 = (state as Partial<CapabilitySetupFileState>).contentsBase64;
@@ -410,7 +407,7 @@ function validateCapabilitySetupJournal(value: unknown): CapabilitySetupJournal 
 			}
 		}
 		return {
-			path: candidate.path,
+			path,
 			before: validateCapabilitySetupFileState(candidate.before),
 			after: validateCapabilitySetupFileState(candidate.after),
 		};

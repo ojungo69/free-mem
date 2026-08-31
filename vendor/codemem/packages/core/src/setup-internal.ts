@@ -26,6 +26,42 @@ export function readLegacyCapabilityConfigForSetup(): {
 	return readCodememConfigFileWithStatus();
 }
 
+export function withCapabilityLaneSetupTransaction(input: {
+	dataDir: string;
+	run: () => boolean;
+}): boolean {
+	const layout = resolveStorageLayout(input.dataDir);
+	const lifecycle = acquireCapabilityLifecycleLock(layout);
+	let setupLock: ReturnType<typeof acquireSpoolLock> | null = null;
+	let writerLease: ReturnType<typeof acquireDaemonWriterLease> | null = null;
+	try {
+		if (readDaemonHealth(input.dataDir).status !== "not_running") {
+			throw new Error("A daemon is running; lane-only setup stopped before mutation.");
+		}
+		setupLock = acquireSpoolLock(input.dataDir);
+		if (!probeDaemonWriterAvailable(input.dataDir)) {
+			throw new Error("A daemon is running; lane-only setup stopped before mutation.");
+		}
+		if (recoverCapabilitySetupTransaction(layout, lifecycle).action !== "none") {
+			throw new Error(
+				"Recovered an interrupted setup; re-run plain `codemem setup` before lane-only setup.",
+			);
+		}
+		writerLease = acquireDaemonWriterLease(input.dataDir);
+		return input.run();
+	} finally {
+		try {
+			writerLease?.close();
+		} finally {
+			try {
+				setupLock?.close();
+			} finally {
+				lifecycle.close();
+			}
+		}
+	}
+}
+
 export async function withCapabilitySetupTransaction<T>(input: {
 	dataDir: string;
 	manifest: EffectiveCapabilityManifestV1;

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -76,6 +76,8 @@ try {
 	assert(tarListing.includes("package/README.md"), "Packed artifact is missing README.md");
 
 	const installDir = join(tempDir, "install");
+	mkdirSync(installDir, { recursive: true, mode: 0o700 });
+	writeFileSync(join(installDir, ".npmrc"), "allow-scripts=better-sqlite3\n", { mode: 0o600 });
 	run("npm", ["install", "--prefix", installDir, coreTarball, mcpTarball, serverTarball, packedTarball]);
 
 	const installedPackageRoot = join(installDir, "node_modules", "codemem");
@@ -99,7 +101,11 @@ try {
 	assert(versionOutput === packageVersion, `Installed CLI reported ${versionOutput}, expected ${packageVersion}`);
 
 	const codexHome = join(tempDir, "codex-home");
-	const setupEnv = { ...process.env, CODEX_HOME: codexHome };
+	const setupEnv = {
+		...process.env,
+		CODEMEM_DATA_DIR: join(tempDir, "data"),
+		CODEX_HOME: codexHome,
+	};
 	run(cliBin, ["setup", "--codex-only"], packageRoot, setupEnv);
 	run(cliBin, ["setup", "--codex-only"], packageRoot, setupEnv);
 	const installedRuntime = join(codexHome, "codemem-hook-runtime.mjs");

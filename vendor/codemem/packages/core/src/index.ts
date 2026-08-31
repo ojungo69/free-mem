@@ -488,6 +488,7 @@ export {
 } from "./session-context-backfill.js";
 export {
 	readLegacyCapabilityConfigForSetup,
+	withCapabilityLaneSetupTransaction,
 	withCapabilitySetupTransaction,
 } from "./setup-internal.js";
 export * from "./spool.js";

@@ -72,7 +72,7 @@ describe("ObserverStatusBanner", () => {
 		expect(mount.textContent).toContain(expected);
 	});
 
-	it("does not call capture-only mode configured while its provider is disabled", () => {
+	it("does not report capture-only mode as configured while its provider is disabled", () => {
 		mount = document.createElement("div");
 		document.body.appendChild(mount);
 		act(() => {
