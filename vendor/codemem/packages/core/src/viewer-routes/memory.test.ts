@@ -248,6 +248,51 @@ describe("viewer memory privacy boundary", () => {
 		expect(after.artifacts).toBe(2);
 	});
 
+	it("keeps mixed-visibility sessions' artifacts out of the counts, matching route access", async () => {
+		const routes = memoryRoutes(() => store);
+		const before = (await (await routes.request("/api/session")).json()) as Record<string, number>;
+
+		// A session with one visible memory AND one restricted memory: the
+		// /api/artifacts route 404s it (sessionAllowsArtifactAccess requires
+		// every active memory visible), so the count must exclude it too.
+		const now = "2026-09-01T00:00:30.000Z";
+		const session = store.db
+			.prepare(
+				`INSERT INTO sessions(
+					started_at, cwd, project, git_remote, git_branch, user,
+					tool_version, metadata_json, repository_identity
+				 ) VALUES (?, '/mixed-cwd', 'mixed-project', 'r', 'b', 'u', 'test', '{}', NULL)`,
+			)
+			.run(now);
+		const sessionId = Number(session.lastInsertRowid);
+		const insertMemory = (sensitivity: string) =>
+			store.db
+				.prepare(
+					`INSERT INTO memory_items(
+						session_id, kind, title, body_text, active, created_at, updated_at,
+						metadata_json, project, sensitivity, repository_identity
+					 ) VALUES (?, 'discovery', 't', 'mixed-body', 1, ?, ?, '{}', 'mixed-project', ?, NULL)`,
+				)
+				.run(sessionId, now, now, sensitivity);
+		insertMemory("eligible");
+		insertMemory("secret");
+		store.db
+			.prepare(
+				`INSERT INTO artifacts(
+					session_id, kind, path, content_text, created_at, metadata_json,
+					sensitivity, repository_identity
+				 ) VALUES (?, 'note', 'mixed-path', 'mixed-artifact', ?, '{}', 'eligible', NULL)`,
+			)
+			.run(sessionId, now);
+
+		const after = (await (await routes.request("/api/session")).json()) as Record<string, number>;
+		const artifactsResponse = await routes.request(`/api/artifacts?session_id=${sessionId}`);
+
+		// Gate fires: count and route agree — neither exposes the mixed session.
+		expect(after.artifacts).toBe(before.artifacts);
+		expect(artifactsResponse.status).toBe(404);
+	});
+
 	it("returns eligible artifacts and hides sessions whose content is all restricted", async () => {
 		const routes = memoryRoutes(() => store);
 		const eligible = fixtures.find((fixture) => fixture.name === "eligible-same");

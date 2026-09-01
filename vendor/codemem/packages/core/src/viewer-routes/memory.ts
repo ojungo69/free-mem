@@ -220,6 +220,9 @@ function countVisibleArtifactRows(
 ): number {
 	const destination = memoryDestinationBoundarySql(destinationBoundary, "artifacts");
 	const filterResult = buildViewerMemoryFilters(store, destinationBoundary);
+	// Mirror sessionAllowsArtifactAccess: count an artifact only when its
+	// session has at least one visible active memory AND no restricted active
+	// memory — otherwise counts reveal artifacts the /api/artifacts route 404s.
 	const clauses = [
 		destination.clause,
 		`EXISTS (
@@ -228,8 +231,14 @@ function countVisibleArtifactRows(
 			  AND memory_items.active = 1
 			  AND ${filterResult.clauses.join(" AND ")}
 		)`,
+		`NOT EXISTS (
+			SELECT 1 FROM memory_items
+			WHERE memory_items.session_id = artifacts.session_id
+			  AND memory_items.active = 1
+			  AND NOT (${filterResult.clauses.join(" AND ")})
+		)`,
 	];
-	const params: unknown[] = [...destination.params, ...filterResult.params];
+	const params: unknown[] = [...destination.params, ...filterResult.params, ...filterResult.params];
 	const from = project
 		? "artifacts JOIN sessions ON sessions.id = artifacts.session_id"
 		: "artifacts";

@@ -1068,7 +1068,10 @@ function handleRemember(
 	const receipt = dispatchClassA(ctx.writer, {
 		method: "POST /v1/memories/record",
 		idempotencyKey: String(body.idempotencyKey),
-		payload: { ...payload, redaction },
+		// The derived repository identity is part of the mutation's identity:
+		// the same idempotencyKey replayed from a different repository must
+		// conflict, not replay the first repository's receipt.
+		payload: { ...payload, redaction, repositoryIdentity: rememberRepositoryIdentity },
 		apply: () => {
 			const sessionId = ensureSession(ctx.writer, optionalString(payload.project));
 			const memoryId = ctx.store.rememberTrusted(

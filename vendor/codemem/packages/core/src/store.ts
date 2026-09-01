@@ -528,8 +528,12 @@ function sourceSpansEqual(left: readonly SourceSpanV1[], right: readonly SourceS
 
 // Overlap is judged per shared event with byte-range intersection. Requiring
 // the full event-ID sets to match would let a re-derivation citing a
-// different set (a subset, or extra events) slip past tombstone suppression
-// and active-overlap rejection — resurrecting deleted content.
+// different set (a subset, or extra events) slip past tombstone suppression —
+// resurrecting deleted content. Used as-is only for the tombstone gate; the
+// active-overlap throw additionally requires equal event-ID sets (see
+// sourceSpanEventSetsEqual) because same-batch siblings legitimately cite
+// overlapping bytes across different event subsets (an observation citing one
+// event while the summary cites several).
 function sourceSpansOverlap(
 	left: readonly SourceSpanV1[],
 	right: readonly SourceSpanV1[],
@@ -539,6 +543,17 @@ function sourceSpansOverlap(
 			(b) => a.eventId === b.eventId && a.startByte < b.endByte && b.startByte < a.endByte,
 		),
 	);
+}
+
+function sourceSpanEventSetsEqual(
+	left: readonly SourceSpanV1[],
+	right: readonly SourceSpanV1[],
+): boolean {
+	const leftIds = new Set(left.map((span) => span.eventId));
+	const rightIds = new Set(right.map((span) => span.eventId));
+	if (leftIds.size !== rightIds.size) return false;
+	for (const id of leftIds) if (!rightIds.has(id)) return false;
+	return true;
 }
 
 function resolveCrossSessionDedupWindowMs(): number {
@@ -3451,6 +3466,7 @@ export class MemoryStore {
 							(anchor) =>
 								anchor.active === 1 &&
 								!sourceSpansEqual(anchor.spans, provenance.sourceSpans) &&
+								sourceSpanEventSetsEqual(anchor.spans, provenance.sourceSpans) &&
 								sourceSpansOverlap(anchor.spans, provenance.sourceSpans),
 						)
 					) {

@@ -300,9 +300,7 @@ export class RawEventSweeper {
 			try {
 				await this.tick();
 			} catch (exc) {
-				console.error(
-					`codemem: sweeper tick failed (${exc instanceof Error ? exc.name : "unexpected_error"}).`,
-				);
+				console.error(`codemem: sweeper tick failed (${flushFailureCode(exc)}).`);
 			} finally {
 				this.running = false;
 				this.currentTick = null;

@@ -139,6 +139,7 @@ export function supersedePriorObserverSummaries(
 	store: MemoryStore,
 	d: ReturnType<typeof drizzle>,
 	sessionId: number,
+	repositoryIdentity: string | null,
 ): number[] {
 	const rows = d
 		.select({
@@ -152,6 +153,13 @@ export function supersedePriorObserverSummaries(
 				eq(schema.memoryItems.session_id, sessionId),
 				eq(schema.memoryItems.kind, "session_summary"),
 				eq(schema.memoryItems.active, 1),
+				// Supersession never crosses a repository boundary: a session
+				// reused after the stream moves to another repository must not
+				// invalidate the previous repository's summary. NULL-identity
+				// legacy rows are only superseded by NULL-identity batches.
+				repositoryIdentity === null
+					? isNull(schema.memoryItems.repository_identity)
+					: eq(schema.memoryItems.repository_identity, repositoryIdentity),
 			),
 		)
 		.all();
@@ -165,10 +173,13 @@ export function supersedePriorObserverSummaries(
 		if (meta.source !== "observer_summary") continue;
 		meta.superseded_at = now;
 		meta.clock_device_id = store.deviceId;
+		// active=0 WITHOUT deleted_at: supersession is rotation, not user
+		// deletion — a deleted_at here would arm the tombstone-resurrection
+		// gate against the replacement summary's own citations. Mirrors the
+		// in-remember supersede in store.ts.
 		d.update(schema.memoryItems)
 			.set({
 				active: 0,
-				deleted_at: now,
 				updated_at: now,
 				metadata_json: toJson(meta),
 				rev: (row.rev ?? 0) + 1,
@@ -885,7 +896,12 @@ export async function ingest(
 			// active observer_summary rows BEFORE the new row is persisted,
 			// otherwise long-running sessions accumulate one summary per flush
 			// batch and the stale rows crowd out typed observations.
-			const supersededIds = supersedePriorObserverSummaries(store, d, sessionId);
+			const supersededIds = supersedePriorObserverSummaries(
+				store,
+				d,
+				sessionId,
+				flushRepositoryIdentity,
+			);
 			const completion = derivation.remember({
 				sourceCitations: summary.citations ?? [],
 				sessionId,

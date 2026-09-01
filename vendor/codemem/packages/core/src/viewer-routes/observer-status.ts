@@ -11,6 +11,7 @@ import {
 	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
 	compileUntrustedDestinationBoundary,
 	type DestinationBoundaryV1,
+	destinationBoundarySql,
 } from "../destination-boundary.js";
 import type { ObserverClient } from "../observer-client.js";
 import type { RawEventSweeper } from "../raw-event-sweeper.js";
@@ -60,6 +61,42 @@ function capabilityObserverStatus(capability: Record<string, unknown>) {
 		model: typeof choice.modelId === "string" ? choice.modelId : null,
 		runtime: "api_http",
 		auth: { method: credentialKind, token_present: false },
+	};
+}
+
+/**
+ * Latest failed flush batch, restricted to streams the destination boundary
+ * can see, projected onto a closed-code allowlist. Never returns stream or
+ * session identifiers, free-text error messages (legacy rows can hold
+ * provider content), or auth/model details.
+ */
+function latestVisibleFlushFailure(
+	store: MemoryStore,
+	boundary: DestinationBoundaryV1,
+): Record<string, unknown> | null {
+	const predicate = destinationBoundarySql(boundary, "events");
+	const row = store.db
+		.prepare(
+			`SELECT batches.error_type, batches.observer_error_code, batches.attempt_count,
+				batches.updated_at
+			 FROM raw_event_flush_batches AS batches
+			 WHERE batches.status IN ('error', 'failed', 'retry_exhausted')
+			   AND EXISTS (
+				SELECT 1 FROM raw_events AS events
+				WHERE events.source = batches.source
+				  AND events.stream_id = batches.stream_id
+				  AND ${predicate.clause}
+			   )
+			 ORDER BY batches.updated_at DESC LIMIT 1`,
+		)
+		.get(...predicate.params) as Record<string, unknown> | undefined;
+	if (!row) return null;
+	return {
+		status: "error",
+		error_type: row.error_type ?? null,
+		observer_error_code: row.observer_error_code ?? null,
+		attempt_count: row.attempt_count ?? null,
+		updated_at: row.updated_at ?? null,
 	};
 }
 
@@ -119,7 +156,7 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 
 		const queueTotals = boundaryFilteredBacklogTotals(store, boundary);
 		const authBackoff = sweeper?.authBackoffStatus() ?? { active: false, remainingS: 0 };
-		const latestFailure = store.latestRawEventFlushFailure();
+		const latestFailure = latestVisibleFlushFailure(store, boundary);
 		const active = deps?.getCapabilitySnapshot
 			? capabilityObserverStatus(capability)
 			: normalizeActiveObserver(observer?.getStatus() ?? null);

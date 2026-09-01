@@ -70,7 +70,17 @@ const REDACTION_FIELDS = new Set([
 ]);
 const METHOD_FIELDS: Record<string, readonly string[]> = {
 	"POST /v1/events": ["idempotencyKey", "event"],
-	"POST /v1/memories/record": ["idempotencyKey", "kind", "title", "body", "confidence", "project"],
+	// Keep in sync with daemon-rpc.ts RPC field allowlist and the mcp-server
+	// rpc-client RPC_FIELDS — this list drifting is how `cwd` silently dropped.
+	"POST /v1/memories/record": [
+		"idempotencyKey",
+		"kind",
+		"title",
+		"body",
+		"confidence",
+		"project",
+		"cwd",
+	],
 };
 
 export type SpoolQuotaClass = "normal" | "reserved";

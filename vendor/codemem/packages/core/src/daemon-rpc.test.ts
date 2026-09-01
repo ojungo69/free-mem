@@ -1522,6 +1522,48 @@ describe("T018/T019 durable capture and processing-job RPC", () => {
 		}
 	});
 
+	it("binds record idempotency to the derived repository identity", async () => {
+		const dataDir = tempDataDir();
+		const repositoryA = join(resolve(dataDir, ".."), "idem-repo-a");
+		const repositoryB = join(resolve(dataDir, ".."), "idem-repo-b");
+		for (const repo of [repositoryA, repositoryB]) {
+			mkdirSync(repo);
+			execFileSync("git", ["-C", repo, "init", "--quiet"]);
+		}
+
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const record = (cwd: string) =>
+			core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: `idem-${cwd.endsWith("a") ? "a" : "b"}`,
+					method: "POST /v1/memories/record",
+					body: {
+						idempotencyKey: "same-key-two-repos",
+						kind: "discovery",
+						title: "Idempotent title",
+						body: "Idempotent body",
+						cwd,
+					},
+				}),
+			);
+
+		const first = await record(repositoryA);
+		expect(first).toMatchObject({ result: { memoryId: expect.any(Number) } });
+		// Gate passes: replay from the same repository returns the same receipt.
+		const replay = await record(repositoryA);
+		expect(replay).toEqual(first);
+		// Gate fires: the same key from ANOTHER repository must not replay the
+		// first repository's receipt.
+		const crossed = await record(repositoryB);
+		if ("result" in crossed) {
+			expect(crossed).not.toEqual(first);
+		} else {
+			expect(crossed).toHaveProperty("error");
+		}
+	});
+
 	it("keeps capture conflicts non-successful and saturates direct admission at two", async () => {
 		const dataDir = tempDataDir();
 		const handle = await core.startDaemon({ dataDir });

@@ -3628,7 +3628,7 @@ describe("supersedePriorObserverSummaries", () => {
 	it("returns an empty list when no prior observer summaries exist", async () => {
 		const { supersede, d } = await loadHelpers();
 		const sessionId = insertSession();
-		const supersededIds = supersede(store, d, sessionId);
+		const supersededIds = supersede(store, d, sessionId, null);
 		expect(supersededIds).toEqual([]);
 	});
 
@@ -3643,7 +3643,7 @@ describe("supersedePriorObserverSummaries", () => {
 			source: "observer_summary",
 		});
 
-		const supersededIds = supersede(store, d, sessionId);
+		const supersededIds = supersede(store, d, sessionId, null);
 		expect(supersededIds.sort()).toEqual([oldA, oldB].sort());
 
 		const rows = store.db
@@ -3683,7 +3683,7 @@ describe("supersedePriorObserverSummaries", () => {
 			{ source: "observer_summary" },
 		);
 
-		const supersededIds = supersede(store, d, sessionId);
+		const supersededIds = supersede(store, d, sessionId, null);
 		expect(supersededIds).toEqual([]);
 
 		const legacyActive = store.db
@@ -3696,6 +3696,33 @@ describe("supersedePriorObserverSummaries", () => {
 		expect(otherActive.active).toBe(1);
 	});
 
+	it("never supersedes a summary across a repository boundary, and leaves no tombstone", async () => {
+		const { supersede, d } = await loadHelpers();
+		const sessionId = insertSession();
+		const repositoryA = `repo-v1:sha256:${"a".repeat(64)}`;
+		const repositoryB = `repo-v1:sha256:${"b".repeat(64)}`;
+
+		const oldId = store.remember(sessionId, "session_summary", "repo A", "body A", 0.3, undefined, {
+			source: "observer_summary",
+		});
+		store.db
+			.prepare("UPDATE memory_items SET repository_identity = ? WHERE id = ?")
+			.run(repositoryA, oldId);
+
+		// Gate fires: a batch from another repository (or an unbound one) must
+		// not invalidate repository A's summary.
+		expect(supersede(store, d, sessionId, repositoryB)).toEqual([]);
+		expect(supersede(store, d, sessionId, null)).toEqual([]);
+
+		// Gate passes: the same repository still rotates it — active=0 with NO
+		// deleted_at, so the replacement's citations never hit the tombstone
+		// resurrection gate.
+		expect(supersede(store, d, sessionId, repositoryA)).toEqual([oldId]);
+		expect(
+			store.db.prepare("SELECT active, deleted_at FROM memory_items WHERE id = ?").get(oldId),
+		).toEqual({ active: 0, deleted_at: null });
+	});
+
 	it("keeps the freshest content when a later flush repeats an earlier title", async () => {
 		// Reproduces the bug path the reviewer flagged: flush A, flush B, flush A
 		// again. If supersede ran after store.remember, the A-title dedupe would
@@ -3706,7 +3733,7 @@ describe("supersedePriorObserverSummaries", () => {
 		const sessionId = insertSession();
 
 		// Flush 1
-		supersede(store, d, sessionId);
+		supersede(store, d, sessionId, null);
 		const rowA1 = store.remember(
 			sessionId,
 			"session_summary",
@@ -3718,13 +3745,13 @@ describe("supersedePriorObserverSummaries", () => {
 		);
 
 		// Flush 2 (different title)
-		supersede(store, d, sessionId);
+		supersede(store, d, sessionId, null);
 		const rowB = store.remember(sessionId, "session_summary", "flush B", "body B", 0.3, undefined, {
 			source: "observer_summary",
 		});
 
 		// Flush 3 (repeats title A with fresher body)
-		supersede(store, d, sessionId);
+		supersede(store, d, sessionId, null);
 		const rowA2 = store.remember(
 			sessionId,
 			"session_summary",

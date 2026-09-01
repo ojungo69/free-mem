@@ -100,4 +100,65 @@ describe("observer status queue boundary", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it("shows only boundary-visible flush failures, projected onto closed codes", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "codemem-observer-failure-"));
+		const store = openTestMemoryStore(join(dir, "memory.sqlite"));
+		try {
+			for (const fixture of [
+				["eligible-stream", "eligible"],
+				["secret-stream", "secret"],
+			] as const) {
+				const [streamId, sensitivity] = fixture;
+				store.recordRawEvent({
+					opencodeSessionId: streamId,
+					eventId: `${streamId}-event`,
+					eventType: "message",
+					payload: { sentinel: `${streamId}-payload` },
+					repositoryIdentity: null,
+					sensitivity: sensitivity as SensitivityV1,
+				});
+			}
+			const insertFailure = (streamId: string, updatedAt: string) =>
+				store.db
+					.prepare(
+						`INSERT INTO raw_event_flush_batches(
+							source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+							extractor_version, status, attempt_count, claim_generation,
+							error_message, error_type, created_at, updated_at
+						 ) VALUES ('opencode', ?, ?, 0, 1, 'raw_events_v1', 'failed', 2, 0,
+							?, 'output_invalid', ?, ?)`,
+					)
+					.run(streamId, streamId, `${streamId}-error-message-sentinel`, updatedAt, updatedAt);
+			// The restricted failure is NEWER — an unfiltered latest-row lookup
+			// would pick it.
+			insertFailure("eligible-stream", "2026-09-01T00:00:00.000Z");
+			insertFailure("secret-stream", "2026-09-02T00:00:00.000Z");
+
+			const routes = observerStatusRoutes({
+				getStore: () => store,
+				getSweeper: () => null,
+			});
+			const body = (await (await routes.request("/api/observer-status")).json()) as {
+				latest_failure: Record<string, unknown> | null;
+			};
+
+			// Gate passes: the eligible stream's failure is reported.
+			expect(body.latest_failure).toMatchObject({
+				status: "error",
+				error_type: "output_invalid",
+				updated_at: "2026-09-01T00:00:00.000Z",
+			});
+			// Gate fires: no stream/session identifiers, no free-text messages,
+			// and nothing from the restricted stream.
+			const serialized = JSON.stringify(body);
+			expect(serialized).not.toContain("secret-stream");
+			expect(serialized).not.toContain("error-message-sentinel");
+			expect(body.latest_failure).not.toHaveProperty("stream_id");
+			expect(body.latest_failure).not.toHaveProperty("error_message");
+		} finally {
+			store.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });
