@@ -2194,9 +2194,9 @@ export function buildMemoryPack(
 	context: string,
 	limit = 10,
 	tokenBudget: number | null = null,
-	filters: MemoryFilters | undefined,
-	semanticResults: MemoryResult[] | undefined,
-	renderOptions: PackRenderOptions | undefined,
+	filters?: MemoryFilters,
+	semanticResults?: MemoryResult[],
+	renderOptions?: PackRenderOptions,
 	destinationBoundary?: DestinationBoundaryV1,
 ): PackResponse {
 	return buildPackArtifacts(
@@ -2221,9 +2221,9 @@ export function buildMemoryPackWithTrace(
 	context: string,
 	limit = 10,
 	tokenBudget: number | null = null,
-	filters: MemoryFilters | undefined,
-	semanticResults: MemoryResult[] | undefined,
-	renderOptions: PackRenderOptions | undefined,
+	filters?: MemoryFilters,
+	semanticResults?: MemoryResult[],
+	renderOptions?: PackRenderOptions,
 	destinationBoundary?: DestinationBoundaryV1,
 ): PackArtifacts {
 	return buildPackArtifacts(
@@ -2248,9 +2248,9 @@ export function buildMemoryPackTrace(
 	context: string,
 	limit = 10,
 	tokenBudget: number | null = null,
-	filters: MemoryFilters | undefined,
-	semanticResults: MemoryResult[] | undefined,
-	renderOptions: PackRenderOptions | undefined,
+	filters?: MemoryFilters,
+	semanticResults?: MemoryResult[],
+	renderOptions?: PackRenderOptions,
 	destinationBoundary?: DestinationBoundaryV1,
 ): PackTrace {
 	return buildPackArtifacts(

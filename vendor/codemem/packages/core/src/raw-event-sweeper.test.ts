@@ -271,10 +271,16 @@ describe("RawEventSweeper auto flush", () => {
 			debounceMs(): number;
 		};
 
+		// Pin the frozen manifest values, then assert the sweeper reads exactly
+		// those fields (intervalMs is periodicSweepIntervalMs, not the warm
+		// lifetime it happens to equal).
 		expect(manifest.resourceProfile.workerWarmLifetimeMs).toBe(30_000);
-		expect(timing.intervalMs()).toBe(30_000);
-		expect(timing.idleMs()).toBe(120_000);
-		expect(timing.debounceMs()).toBe(1_000);
+		expect(manifest.resourceProfile.periodicSweepIntervalMs).toBe(30_000);
+		expect(manifest.resourceProfile.idleFlushMs).toBe(120_000);
+		expect(manifest.resourceProfile.eventDebounceMs).toBe(1_000);
+		expect(timing.intervalMs()).toBe(manifest.resourceProfile.periodicSweepIntervalMs);
+		expect(timing.idleMs()).toBe(manifest.resourceProfile.idleFlushMs);
+		expect(timing.debounceMs()).toBe(manifest.resourceProfile.eventDebounceMs);
 	});
 
 	it("waits in-flight work, leaves no orphan timer, and explicitly restarts", async () => {

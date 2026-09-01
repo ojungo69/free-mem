@@ -107,11 +107,14 @@ describe("AI structured maintenance frozen provider", () => {
 			manifest: manifest("https://127.0.0.1:1234/v1/chat/completions"),
 			repositoryIdentity: null,
 			rows: [
+				// The eligible row proves the boundary excludes only the restricted
+				// rows here, not everything, when the repository is unknown.
+				["ELIGIBLE_UNKNOWN_REPOSITORY", "eligible", null],
 				["FORBIDDEN_MIXED_A", "private", REPOSITORY_A],
 				["FORBIDDEN_MIXED_B", "local_only", REPOSITORY_B],
 				["FORBIDDEN_MIXED_UNKNOWN", "private", null],
 			],
-			expectedTitles: [],
+			expectedTitles: ["ELIGIBLE_UNKNOWN_REPOSITORY"],
 		},
 	] as const)("T032 $name before prompt construction", async (fixture) => {
 		const db = new Database(":memory:");

@@ -109,6 +109,7 @@ describe("prompt-pack retrieval ledger", () => {
 			"ledgerboundary",
 			undefined,
 			artifacts,
+			boundary,
 		);
 
 		expect(outcome.ok).toBe(true);

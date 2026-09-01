@@ -872,7 +872,7 @@ describe("viewer-server", () => {
 			}
 		});
 
-		it("does not surface a visible pack older than the bounded recent-pack window", async () => {
+		it("keeps a visible pack inside the bounded recent-pack window despite newer non-visible packs", async () => {
 			// The visibility predicate is applied in SQL before the bounded
 			// recent_packs window, so newer non-visible packs cannot starve a
 			// visible pack out of the window, and the aggregate counts only
