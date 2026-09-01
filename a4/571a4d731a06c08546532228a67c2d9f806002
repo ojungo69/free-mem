@@ -1,0 +1,33 @@
+vendor/codemem/packages/core/src/ingest-pipeline.test.ts
+  s_2f3bfc069410d6::t_07b4ec7635a6af 3612-3614,3619,3702-3726
+vendor/codemem/packages/core/src/ingest-pipeline.ts
+  s_2f3bfc069410d6::t_ab9cccb78cf3b4 218-248,954-955
+vendor/codemem/packages/core/src/store.test.ts
+  s_2f3bfc069410d6::t_54d3156dacff5d 3769-3824
+vendor/codemem/packages/core/src/store.ts
+  s_2f3bfc069410d6::t_057507e7a35689 530-536
+vendor/codemem/packages/core/src/viewer-routes/memory.test.ts
+  s_2f3bfc069410d6::t_931f1fc62bf08f 5-8,300-348
+vendor/codemem/packages/core/src/viewer-routes/memory.ts
+  s_2f3bfc069410d6::t_eb673d02bc8da4 238
+vendor/codemem/packages/core/src/viewer-routes/observer-status.test.ts
+  s_2f3bfc069410d6::t_d42427fa3424e3 133-158,161-171,181-182,185,189-190,194,197
+vendor/codemem/packages/core/src/viewer-routes/observer-status.ts
+  s_2f3bfc069410d6::t_7b579d93607eea 67-77,79-82,91,98,107-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a4571a4d731a06c08546532228a67c2d9f806002",
+  "prompts": {},
+  "sessions": {
+    "s_2f3bfc069410d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4c66e10-641a-463a-a827-804d97001ca1",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
