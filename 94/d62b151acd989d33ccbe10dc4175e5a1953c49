@@ -1,0 +1,19 @@
+vendor/codemem/packages/core/src/destination-boundary.ts
+  s_2f3bfc069410d6::t_9e9b6422dac72c 212-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "94d62b151acd989d33ccbe10dc4175e5a1953c49",
+  "prompts": {},
+  "sessions": {
+    "s_2f3bfc069410d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4c66e10-641a-463a-a827-804d97001ca1",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
