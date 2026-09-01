@@ -1,0 +1,21 @@
+vendor/codemem/packages/core/src/viewer-routes/observer-status.ts
+  s_2f3bfc069410d6::t_fa8236fc6b59f4 148
+vendor/codemem/scripts/eval/lib.ts
+  s_2f3bfc069410d6::t_1c0ab043023f35 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a0064e6b2330d8cbd1ba6ad2348a61150d5ac248",
+  "prompts": {},
+  "sessions": {
+    "s_2f3bfc069410d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4c66e10-641a-463a-a827-804d97001ca1",
+        "model": "unknown"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
