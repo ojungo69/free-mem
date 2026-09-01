@@ -64,11 +64,22 @@ function capabilityObserverStatus(capability: Record<string, unknown>) {
 	};
 }
 
+// error_type is written from Error.name (arbitrary TEXT, legacy rows worse);
+// map it onto this closed enum instead of echoing stored values to the viewer.
+function closedFailureType(raw: unknown): "auth_failed" | "provider_timeout" | "unexpected_error" {
+	const value = String(raw ?? "");
+	if (value === "ObserverAuthError") return "auth_failed";
+	if (value === "TimeoutError" || value.toLowerCase().includes("timeout")) {
+		return "provider_timeout";
+	}
+	return "unexpected_error";
+}
+
 /**
- * Latest failed flush batch, restricted to streams the destination boundary
- * can see, projected onto a closed-code allowlist. Never returns stream or
- * session identifiers, free-text error messages (legacy rows can hold
- * provider content), or auth/model details.
+ * Latest failed flush batch, restricted to batches whose OWN event range the
+ * destination boundary can see, projected onto a closed vocabulary. Never
+ * returns stream or session identifiers, free-text messages, provider codes
+ * (both TEXT columns are unbounded), or auth/model details.
  */
 function latestVisibleFlushFailure(
 	store: MemoryStore,
@@ -77,14 +88,14 @@ function latestVisibleFlushFailure(
 	const predicate = destinationBoundarySql(boundary, "events");
 	const row = store.db
 		.prepare(
-			`SELECT batches.error_type, batches.observer_error_code, batches.attempt_count,
-				batches.updated_at
+			`SELECT batches.error_type, batches.attempt_count, batches.updated_at
 			 FROM raw_event_flush_batches AS batches
 			 WHERE batches.status IN ('error', 'failed', 'retry_exhausted')
 			   AND EXISTS (
 				SELECT 1 FROM raw_events AS events
 				WHERE events.source = batches.source
 				  AND events.stream_id = batches.stream_id
+				  AND events.event_seq BETWEEN batches.start_event_seq AND batches.end_event_seq
 				  AND ${predicate.clause}
 			   )
 			 ORDER BY batches.updated_at DESC LIMIT 1`,
@@ -93,10 +104,9 @@ function latestVisibleFlushFailure(
 	if (!row) return null;
 	return {
 		status: "error",
-		error_type: row.error_type ?? null,
-		observer_error_code: row.observer_error_code ?? null,
-		attempt_count: row.attempt_count ?? null,
-		updated_at: row.updated_at ?? null,
+		error_type: closedFailureType(row.error_type),
+		attempt_count: Number(row.attempt_count ?? 0),
+		updated_at: typeof row.updated_at === "string" ? row.updated_at : null,
 	};
 }
 

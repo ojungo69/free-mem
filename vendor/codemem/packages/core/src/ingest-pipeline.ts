@@ -215,6 +215,37 @@ function markSupersededBy(
 	}
 }
 
+// Reverses supersedePriorObserverSummaries when the replacement summary was
+// NOT stored (suppressed by a tombstone anchor): rotation must not consume
+// the last live summary without a successor.
+export function restoreSupersededSummaries(
+	d: ReturnType<typeof drizzle>,
+	supersededIds: number[],
+): void {
+	if (supersededIds.length === 0) return;
+	const now = new Date().toISOString();
+	for (const id of supersededIds) {
+		const row = d
+			.select({ rev: schema.memoryItems.rev, metadata_json: schema.memoryItems.metadata_json })
+			.from(schema.memoryItems)
+			.where(eq(schema.memoryItems.id, id))
+			.get();
+		if (!row) continue;
+		const meta = fromJson(row.metadata_json);
+		delete meta.superseded_at;
+		delete meta.superseded_by;
+		d.update(schema.memoryItems)
+			.set({
+				active: 1,
+				updated_at: now,
+				metadata_json: toJson(meta),
+				rev: (row.rev ?? 0) + 1,
+			})
+			.where(eq(schema.memoryItems.id, id))
+			.run();
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Summary body formatting
 // ---------------------------------------------------------------------------
@@ -920,6 +951,8 @@ export async function ingest(
 					title: summaryTitle,
 					bodyText: body,
 				});
+			} else {
+				restoreSupersededSummaries(d, supersededIds);
 			}
 		}
 

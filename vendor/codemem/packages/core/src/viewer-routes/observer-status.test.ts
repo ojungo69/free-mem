@@ -130,10 +130,45 @@ describe("observer status queue boundary", () => {
 							?, 'output_invalid', ?, ?)`,
 					)
 					.run(streamId, streamId, `${streamId}-error-message-sentinel`, updatedAt, updatedAt);
-			// The restricted failure is NEWER — an unfiltered latest-row lookup
-			// would pick it.
+			// A mixed stream: eligible event first, secret event second. A batch
+			// covering ONLY the secret range must stay hidden even though the
+			// stream has a visible event elsewhere.
+			for (const fixture of [
+				["mixed-visible-event", "eligible"],
+				["mixed-secret-event", "secret"],
+			] as const) {
+				const [eventId, sensitivity] = fixture;
+				store.recordRawEvent({
+					opencodeSessionId: "mixed-stream",
+					eventId,
+					eventType: "message",
+					payload: { sentinel: `${eventId}-payload` },
+					repositoryIdentity: null,
+					sensitivity: sensitivity as SensitivityV1,
+				});
+			}
+			const secretSeq = Number(
+				store.db
+					.prepare("SELECT event_seq FROM raw_events WHERE event_id = 'mixed-secret-event'")
+					.pluck()
+					.get(),
+			);
+			// The restricted failures are NEWER — an unfiltered latest-row lookup
+			// would pick them. The mixed-stream batch also carries free-text
+			// sentinels in its TEXT columns.
 			insertFailure("eligible-stream", "2026-09-01T00:00:00.000Z");
 			insertFailure("secret-stream", "2026-09-02T00:00:00.000Z");
+			store.db
+				.prepare(
+					`INSERT INTO raw_event_flush_batches(
+						source, stream_id, opencode_session_id, start_event_seq, end_event_seq,
+						extractor_version, status, attempt_count, claim_generation,
+						error_message, error_type, created_at, updated_at
+					 ) VALUES ('opencode', 'mixed-stream', 'mixed-stream', ?, ?, 'raw_events_v1', 'failed', 1, 0,
+						'mixed-error-message-sentinel', 'PRIVATE-ERROR-TYPE-SENTINEL',
+						'2026-09-03T00:00:00.000Z', '2026-09-03T00:00:00.000Z')`,
+				)
+				.run(secretSeq, secretSeq);
 
 			const routes = observerStatusRoutes({
 				getStore: () => store,
@@ -143,19 +178,23 @@ describe("observer status queue boundary", () => {
 				latest_failure: Record<string, unknown> | null;
 			};
 
-			// Gate passes: the eligible stream's failure is reported.
+			// Gate passes: the eligible stream's failure is reported, its stored
+			// arbitrary error_type mapped onto the closed vocabulary.
 			expect(body.latest_failure).toMatchObject({
 				status: "error",
-				error_type: "output_invalid",
+				error_type: "unexpected_error",
 				updated_at: "2026-09-01T00:00:00.000Z",
 			});
 			// Gate fires: no stream/session identifiers, no free-text messages,
-			// and nothing from the restricted stream.
+			// nothing from the restricted stream, and nothing from a batch whose
+			// event range is restricted even though its stream has visible events.
 			const serialized = JSON.stringify(body);
 			expect(serialized).not.toContain("secret-stream");
 			expect(serialized).not.toContain("error-message-sentinel");
+			expect(serialized).not.toContain("SENTINEL");
 			expect(body.latest_failure).not.toHaveProperty("stream_id");
 			expect(body.latest_failure).not.toHaveProperty("error_message");
+			expect(body.latest_failure).not.toHaveProperty("observer_error_code");
 		} finally {
 			store.close();
 			rmSync(dir, { recursive: true, force: true });

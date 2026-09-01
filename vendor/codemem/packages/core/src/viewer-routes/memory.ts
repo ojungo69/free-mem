@@ -235,7 +235,7 @@ function countVisibleArtifactRows(
 			SELECT 1 FROM memory_items
 			WHERE memory_items.session_id = artifacts.session_id
 			  AND memory_items.active = 1
-			  AND NOT (${filterResult.clauses.join(" AND ")})
+			  AND NOT COALESCE((${filterResult.clauses.join(" AND ")}), 0)
 		)`,
 	];
 	const params: unknown[] = [...destination.params, ...filterResult.params, ...filterResult.params];

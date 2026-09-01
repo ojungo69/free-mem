@@ -3766,6 +3766,62 @@ describe("MemoryStore", () => {
 			expect(disjoint.memoryIds).toHaveLength(1);
 		});
 
+		it("rejects an active-anchor overlap even when the citation adds an unrelated event", () => {
+			const streamId = "superset-active";
+			const eventA = `${streamId}-a`;
+			const eventB = `${streamId}-b`;
+			capture(store, eventA, { text: "abcdefghij" }, { opencodeSessionId: streamId });
+			capture(store, eventB, { text: "klmnopqrst" }, { opencodeSessionId: streamId });
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = claimFlushJob(store, admission.jobId as number);
+			if (!claim) throw new Error("expected superset claim");
+			const sessionId = insertTestSession(store.db);
+			const complete = (
+				activeClaim: typeof claim,
+				citations: Array<{ source: number; start: number; end: number }>,
+				title: string,
+			) =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: activeClaim,
+						sourceEventIds: [eventA, eventB],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: citations,
+							sessionId,
+							kind: "discovery",
+							title,
+							bodyText: "Body",
+						}),
+					],
+				);
+
+			const first = complete(claim, [{ source: 0, start: 9, end: 14 }], "Single-event anchor");
+			expect(first.memoryIds).toHaveLength(1);
+
+			// Padding the citation with an unrelated event must not slip an
+			// overlapping anchor past the active-overlap rejection: ambiguous
+			// overlap rejects; only disjoint spans may become siblings.
+			expect(() =>
+				complete(
+					reopenCompletedFlushJob(claim),
+					[
+						{ source: 0, start: 9, end: 12 },
+						{ source: 1, start: 9, end: 14 },
+					],
+					"Superset bypass attempt",
+				),
+			).toThrow(/overlap|anchor/i);
+		});
+
 		it("floors derived sensitivity over the full projected set, not just cited ordinals", () => {
 			const runFloorCase = (streamId: string, secondSensitivity: "eligible" | "local_only") => {
 				capture(

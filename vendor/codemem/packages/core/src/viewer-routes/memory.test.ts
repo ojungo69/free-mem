@@ -2,6 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileRunnerLocalDestinationBoundary,
+} from "../destination-boundary.js";
 import type { MemoryStore } from "../store.js";
 import { openTestMemoryStore } from "../test-utils.js";
 import { memoryRoutes } from "./memory.js";
@@ -289,6 +293,55 @@ describe("viewer memory privacy boundary", () => {
 		const artifactsResponse = await routes.request(`/api/artifacts?session_id=${sessionId}`);
 
 		// Gate fires: count and route agree — neither exposes the mixed session.
+		expect(after.artifacts).toBe(before.artifacts);
+		expect(artifactsResponse.status).toBe(404);
+	});
+
+	it("hides mixed sessions from counts under a verified local boundary despite NULL-identity rows", async () => {
+		// Under a verified local boundary the restricted predicate compares
+		// repository_identity — for a legacy local_only row with NULL identity
+		// the comparison is SQL NULL, and a bare NOT would silently skip it.
+		const boundary = compileRunnerLocalDestinationBoundary({
+			consumer: "viewer",
+			configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+			repositoryIdentity: REPOSITORY_A,
+		});
+		const routes = memoryRoutes(() => store, boundary);
+		const before = (await (await routes.request("/api/session")).json()) as Record<string, number>;
+
+		const now = "2026-09-01T00:00:40.000Z";
+		const session = store.db
+			.prepare(
+				`INSERT INTO sessions(
+					started_at, cwd, project, git_remote, git_branch, user,
+					tool_version, metadata_json, repository_identity
+				 ) VALUES (?, '/legacy-cwd', 'legacy-project', 'r', 'b', 'u', 'test', '{}', ?)`,
+			)
+			.run(now, REPOSITORY_A);
+		const sessionId = Number(session.lastInsertRowid);
+		const insertMemory = (sensitivity: string, repositoryIdentity: string | null) =>
+			store.db
+				.prepare(
+					`INSERT INTO memory_items(
+						session_id, kind, title, body_text, active, created_at, updated_at,
+						metadata_json, project, sensitivity, repository_identity
+					 ) VALUES (?, 'discovery', 't', 'legacy-body', 1, ?, ?, '{}', 'legacy-project', ?, ?)`,
+				)
+				.run(sessionId, now, now, sensitivity, repositoryIdentity);
+		insertMemory("eligible", REPOSITORY_A);
+		insertMemory("local_only", null);
+		store.db
+			.prepare(
+				`INSERT INTO artifacts(
+					session_id, kind, path, content_text, created_at, metadata_json,
+					sensitivity, repository_identity
+				 ) VALUES (?, 'note', 'legacy-path', 'legacy-artifact', ?, '{}', 'eligible', ?)`,
+			)
+			.run(sessionId, now, REPOSITORY_A);
+
+		const after = (await (await routes.request("/api/session")).json()) as Record<string, number>;
+		const artifactsResponse = await routes.request(`/api/artifacts?session_id=${sessionId}`);
+
 		expect(after.artifacts).toBe(before.artifacts);
 		expect(artifactsResponse.status).toBe(404);
 	});

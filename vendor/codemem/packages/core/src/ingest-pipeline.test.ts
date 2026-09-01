@@ -3609,11 +3609,14 @@ describe("supersedePriorObserverSummaries", () => {
 	});
 
 	async function loadHelpers() {
-		const { supersedePriorObserverSummaries } = await import("./ingest-pipeline.js");
+		const { supersedePriorObserverSummaries, restoreSupersededSummaries } = await import(
+			"./ingest-pipeline.js"
+		);
 		const { drizzle } = await import("drizzle-orm/better-sqlite3");
 		const schema = await import("./schema.js");
 		return {
 			supersede: supersedePriorObserverSummaries,
+			restore: restoreSupersededSummaries,
 			d: drizzle(store.db, { schema }),
 		};
 	}
@@ -3694,6 +3697,31 @@ describe("supersedePriorObserverSummaries", () => {
 			.get(otherSessionSummaryId) as { active: number };
 		expect(legacyActive.active).toBe(1);
 		expect(otherActive.active).toBe(1);
+	});
+
+	it("restores a rotated summary when the replacement was suppressed", async () => {
+		const { supersede, restore, d } = await loadHelpers();
+		const sessionId = insertSession();
+
+		const oldId = store.remember(sessionId, "session_summary", "prior", "body", 0.3, undefined, {
+			source: "observer_summary",
+		});
+		const supersededIds = supersede(store, d, sessionId, null);
+		expect(supersededIds).toEqual([oldId]);
+
+		// Gate fires: a suppressed replacement (memoryId null) must not consume
+		// the last live summary — rotation is reversed.
+		restore(d, supersededIds);
+		const row = store.db
+			.prepare("SELECT active, metadata_json FROM memory_items WHERE id = ?")
+			.get(oldId) as { active: number; metadata_json: string };
+		expect(row.active).toBe(1);
+		const meta = JSON.parse(row.metadata_json ?? "{}");
+		expect(meta.superseded_at).toBeUndefined();
+		expect(meta.superseded_by).toBeUndefined();
+
+		// Gate passes: a later successful rotation still works.
+		expect(supersede(store, d, sessionId, null)).toEqual([oldId]);
 	});
 
 	it("never supersedes a summary across a repository boundary, and leaves no tombstone", async () => {
