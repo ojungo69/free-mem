@@ -17,7 +17,8 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { MemoryStore, resolveDbPath } from "@codemem/core";
+import { connect, resolveDbPath } from "../../packages/core/src/db.js";
+import { MemoryStore } from "../../packages/core/src/store.js";
 import {
 	compareToBaseline,
 	evaluateGate,
@@ -73,7 +74,7 @@ function printHuman(snap: Snapshot): void {
 function main(): void {
 	const args = parseArgs(process.argv.slice(2));
 	const dbPath = resolveDbPath(args.db);
-	const store = new MemoryStore(dbPath);
+	const store = new MemoryStore(connect(dbPath), { closeConnection: true });
 	let exitCode = 0;
 	try {
 		const metrics = runAll(store, DEFAULT_PROBES, args.top);

@@ -62,6 +62,7 @@ export function createViewerReadHandler(deps: {
 			getSweeper: () => deps.sweeper ?? null,
 			getObserver: () => deps.observer ?? null,
 			getCapabilitySnapshot: () => deps.capability,
+			destinationBoundary,
 		}),
 	);
 	app.route("/", configReadRoutes({ getCapabilitySnapshot: () => deps.capability }));

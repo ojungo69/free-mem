@@ -1227,6 +1227,52 @@ describe("MemoryStore", () => {
 		});
 	});
 
+	describe("rememberTrusted", () => {
+		const repositoryIdentity = `repo-v1:sha256:${"a".repeat(64)}`;
+		const trustedWrite = (
+			title: string,
+			sensitivity: "eligible" | "local_only" | "private" | "secret",
+			identity: string | null,
+		) => {
+			const sessionId = insertTestSession(store.db);
+			const memoryId = store.rememberTrusted(
+				sessionId,
+				"discovery",
+				title,
+				"Body",
+				0.5,
+				undefined,
+				undefined,
+				{ sensitivity, repositoryIdentity: identity },
+			);
+			return store.db
+				.prepare("SELECT sensitivity, repository_identity FROM memory_items WHERE id = ?")
+				.get(memoryId);
+		};
+
+		it("defaults a restricted write without repository identity to secret", () => {
+			// Gate fires: restricted + no identity can never satisfy a boundary,
+			// so it must not be stored as a write-only local_only/private row.
+			expect(trustedWrite("No repo local", "local_only", null)).toEqual({
+				sensitivity: "secret",
+				repository_identity: null,
+			});
+			expect(trustedWrite("No repo private", "private", null)).toEqual({
+				sensitivity: "secret",
+				repository_identity: null,
+			});
+			// Gate passes: the pair invariant holds with an identity present.
+			expect(trustedWrite("Paired local", "local_only", repositoryIdentity)).toEqual({
+				sensitivity: "local_only",
+				repository_identity: repositoryIdentity,
+			});
+			expect(trustedWrite("Plain eligible", "eligible", null)).toEqual({
+				sensitivity: "eligible",
+				repository_identity: null,
+			});
+		});
+	});
+
 	describe("forget", () => {
 		it("soft-deletes an existing memory", () => {
 			const sessionId = insertTestSession(store.db);
@@ -3651,6 +3697,128 @@ describe("MemoryStore", () => {
 				"Second sibling",
 			);
 			expect(second.memoryIds[0]).not.toBe(sibling.first.memoryIds[0]);
+		});
+
+		it("suppresses tombstoned re-derivations that cite a different event subset", () => {
+			const streamId = "tombstone-subset";
+			const eventA = `${streamId}-a`;
+			const eventB = `${streamId}-b`;
+			capture(store, eventA, { text: "abcdefghij" }, { opencodeSessionId: streamId });
+			capture(store, eventB, { text: "klmnopqrst" }, { opencodeSessionId: streamId });
+			const admission = store.admitRawEventFlushJob({
+				source: "codex",
+				streamId,
+				manifestFingerprint,
+				providerFingerprint,
+			});
+			const claim = claimFlushJob(store, admission.jobId as number);
+			if (!claim) throw new Error("expected subset claim");
+			const sessionId = insertTestSession(store.db);
+			const complete = (
+				activeClaim: typeof claim,
+				citations: Array<{ source: number; start: number; end: number }>,
+				title: string,
+			) =>
+				store.completeRawEventFlushJobMemory(
+					{
+						claim: activeClaim,
+						sourceEventIds: [eventA, eventB],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							sourceCitations: citations,
+							sessionId,
+							kind: "discovery",
+							title,
+							bodyText: "Body",
+						}),
+					],
+				);
+
+			const first = complete(
+				claim,
+				[
+					{ source: 0, start: 9, end: 14 },
+					{ source: 1, start: 9, end: 14 },
+				],
+				"Two-event anchor",
+			);
+			store.forget(first.memoryIds[0] as number);
+
+			// Gate fires: citing only a SUBSET of the tombstoned events with
+			// overlapping bytes must still be suppressed — event-set equality
+			// would let this resurrect deleted content.
+			const subset = complete(
+				reopenCompletedFlushJob(claim),
+				[{ source: 0, start: 12, end: 17 }],
+				"Subset re-derivation",
+			);
+			expect(subset.memoryIds).toEqual([]);
+
+			// Gate passes: byte-disjoint content on the same event is a sibling.
+			const disjoint = complete(
+				reopenCompletedFlushJob(claim),
+				[{ source: 0, start: 14, end: 19 }],
+				"Disjoint sibling",
+			);
+			expect(disjoint.memoryIds).toHaveLength(1);
+		});
+
+		it("floors derived sensitivity over the full projected set, not just cited ordinals", () => {
+			const runFloorCase = (streamId: string, secondSensitivity: "eligible" | "local_only") => {
+				capture(
+					store,
+					`${streamId}-cited`,
+					{ text: "cited text" },
+					{ opencodeSessionId: streamId, sensitivity: "eligible" },
+				);
+				capture(
+					store,
+					`${streamId}-uncited`,
+					{ text: "uncited text" },
+					{ opencodeSessionId: streamId, sensitivity: secondSensitivity },
+				);
+				const admission = store.admitRawEventFlushJob({
+					source: "codex",
+					streamId,
+					manifestFingerprint: localProviderManifest.configurationFingerprint,
+					providerFingerprint: localProviderManifest.summaryProvider.providerFingerprint,
+				});
+				const claim = claimFlushJob(store, admission.jobId as number, localProviderManifest);
+				if (!claim) throw new Error("expected floor claim");
+				const sessionId = insertTestSession(store.db);
+				const completion = store.completeRawEventFlushJobMemory(
+					{
+						claim,
+						sourceEventIds: [`${streamId}-cited`, `${streamId}-uncited`],
+						observedOutputCount: 1,
+						diagnostic: {},
+					},
+					(_newMemoryIdFloor, derivation) => [
+						derivation.remember({
+							// Cites ONLY the eligible ordinal — the restricted source is
+							// still in the provider's prompt, so it must still floor.
+							sourceCitations: [{ source: 0, start: null, end: null }],
+							sessionId,
+							kind: "discovery",
+							title: `Floor ${streamId}`,
+							bodyText: "Body",
+						}),
+					],
+				);
+				return store.db
+					.prepare("SELECT sensitivity FROM memory_items WHERE id = ?")
+					.get(completion.memoryIds[0]);
+			};
+
+			// Gate fires: an uncited restricted source floors the derived memory.
+			expect(runFloorCase("floor-restricted", "local_only")).toEqual({
+				sensitivity: "local_only",
+			});
+			// Gate passes: an all-eligible projected set stays eligible.
+			expect(runFloorCase("floor-eligible", "eligible")).toEqual({ sensitivity: "eligible" });
 		});
 
 		it("replays a fanout signal using its stored global producer identity", () => {

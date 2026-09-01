@@ -13,7 +13,7 @@ import {
 	startMaintenanceJob,
 	updateMaintenanceJob,
 } from "../maintenance-jobs.js";
-import { ObserverClient } from "../observer-client.js";
+import { ObserverAuthError, ObserverClient } from "../observer-client.js";
 import { SecretScanner } from "../secret-scanner.js";
 import { isSummaryLikeMemory } from "../summary-memory.js";
 import { isOneOf, isWhitespace, trimEndWhere } from "../text-trim.js";
@@ -475,13 +475,22 @@ export async function aiBackfillStructuredContent(
 				failed,
 			},
 		});
-	} catch {
-		failMaintenanceJob(db, AI_BACKFILL_JOB_KIND, "output_invalid", {
-			message: "output_invalid",
+	} catch (exc) {
+		// Classify into a closed set of content-free codes — the raw message is
+		// inspected, never persisted, so job rows stay free of provider content.
+		const code =
+			exc instanceof ObserverAuthError
+				? "auth_failed"
+				: exc instanceof Error &&
+						(exc.name === "TimeoutError" || exc.message.toLowerCase().includes("timeout"))
+					? "provider_timeout"
+					: "output_invalid";
+		failMaintenanceJob(db, AI_BACKFILL_JOB_KIND, code, {
+			message: code,
 			progressCurrent: checked,
 			progressTotal: total,
 		});
-		throw new Error("output_invalid");
+		throw new Error(code);
 	}
 
 	return { checked, updated, skipped, failed, ...(opts.dryRun ? { samples } : {}) };

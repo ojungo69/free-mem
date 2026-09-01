@@ -180,6 +180,30 @@ export function supersedePriorObserverSummaries(
 	return superseded;
 }
 
+// Backfills `superseded_by` on rows soft-deleted by
+// supersedePriorObserverSummaries once the replacement id is known.
+function markSupersededBy(
+	d: ReturnType<typeof drizzle>,
+	supersededIds: number[],
+	replacementId: number,
+): void {
+	if (supersededIds.length === 0) return;
+	for (const id of supersededIds) {
+		const row = d
+			.select({ metadata_json: schema.memoryItems.metadata_json })
+			.from(schema.memoryItems)
+			.where(eq(schema.memoryItems.id, id))
+			.get();
+		if (!row) continue;
+		const meta = fromJson(row.metadata_json);
+		meta.superseded_by = replacementId;
+		d.update(schema.memoryItems)
+			.set({ metadata_json: toJson(meta) })
+			.where(eq(schema.memoryItems.id, id))
+			.run();
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Summary body formatting
 // ---------------------------------------------------------------------------
@@ -857,6 +881,11 @@ export async function ingest(
 				source: "observer_summary",
 				flush_batch: flushBatchMetadata,
 			};
+			// Enforce one live observer summary per session: supersede any prior
+			// active observer_summary rows BEFORE the new row is persisted,
+			// otherwise long-running sessions accumulate one summary per flush
+			// batch and the stale rows crowd out typed observations.
+			const supersededIds = supersedePriorObserverSummaries(store, d, sessionId);
 			const completion = derivation.remember({
 				sourceCitations: summary.citations ?? [],
 				sessionId,
@@ -869,6 +898,7 @@ export async function ingest(
 			});
 			completions.push(completion);
 			if (completion.memoryId !== null) {
+				markSupersededBy(d, supersededIds, completion.memoryId);
 				vectorWriteInputs.push({
 					memoryId: completion.memoryId,
 					title: summaryTitle,

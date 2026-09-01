@@ -174,6 +174,9 @@ const METHOD_BODY_FIELDS: Record<RpcMethod, readonly string[]> = {
 		"confidence",
 		"project",
 		"adapterRedaction",
+		// Probe input for server-side repository-identity resolution; the caller
+		// never supplies the identity itself.
+		"cwd",
 	],
 	"DELETE /v1/memories/:id": ["id", "requestId", "expectedRevision"],
 	"GET /v1/checkpoints": ["project", "state", "limit"],
@@ -1047,6 +1050,12 @@ function handleRemember(
 		delete payload.body;
 		delete payload.project;
 	}
+	// Repository identity is derived server-side from the caller's cwd, exactly
+	// like the raw-event path above — the caller supplies a probe input, never
+	// the identity itself. Without it, a restricted memory would default to
+	// secret under the store's pair invariant.
+	const rememberRepositoryIdentity =
+		typeof body.cwd === "string" && body.cwd.trim() ? resolveRepositoryIdentity(body.cwd) : null;
 	const confidence = payload.confidence ?? 0.5;
 	if (
 		typeof confidence !== "number" ||
@@ -1070,7 +1079,7 @@ function handleRemember(
 				confidence,
 				undefined,
 				redaction,
-				{ sensitivity: trustedSensitivity, repositoryIdentity: null },
+				{ sensitivity: trustedSensitivity, repositoryIdentity: rememberRepositoryIdentity },
 			);
 			return { memoryId };
 		},

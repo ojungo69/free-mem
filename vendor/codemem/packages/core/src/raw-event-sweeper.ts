@@ -26,6 +26,16 @@ import type { MemoryStore } from "./store.js";
  *  OAuth token while staying longer than the default 30s sweep interval. */
 const AUTH_BACKOFF_S = 60;
 
+// Classifies a flush failure into a closed set of content-free codes for
+// console diagnostics. The raw message is only inspected, never printed.
+function flushFailureCode(exc: unknown): string {
+	if (!(exc instanceof Error)) return "unexpected_error";
+	const message = exc.message.toLowerCase();
+	if (exc.name === "TimeoutError" || message.includes("timeout")) return "provider_timeout";
+	if (/parse|xml|json|no storable output|remained lossy/i.test(message)) return "output_invalid";
+	return "unexpected_error";
+}
+
 // ---------------------------------------------------------------------------
 // RawEventSweeper
 // ---------------------------------------------------------------------------
@@ -97,7 +107,7 @@ export class RawEventSweeper {
 		this.authBackoffUntil = Date.now() / 1000 + AUTH_BACKOFF_S;
 		if (!this.authErrorLogged) {
 			this.authErrorLogged = true;
-			const msg = `codemem: observer authentication failed; retry is paused for ${AUTH_BACKOFF_S}s.`;
+			const msg = `codemem: observer authentication failed; retries are paused for ${AUTH_BACKOFF_S}s. Refresh the observer API key or provider login, then restart the daemon (or wait for the next sweep) to resume.`;
 			console.error(msg);
 		}
 	}
@@ -260,7 +270,7 @@ export class RawEventSweeper {
 				this.handleAuthError();
 				return;
 			}
-			console.error("codemem: raw event auto flush failed (output_invalid).");
+			console.error(`codemem: raw event auto flush failed (${flushFailureCode(exc)}).`);
 		} finally {
 			this.sessionFlushing.delete(key);
 			if (this.autoFlushPending.delete(key)) {
@@ -289,8 +299,10 @@ export class RawEventSweeper {
 		this.currentTick = (async () => {
 			try {
 				await this.tick();
-			} catch {
-				console.error("codemem: sweeper tick failed (output_invalid).");
+			} catch (exc) {
+				console.error(
+					`codemem: sweeper tick failed (${exc instanceof Error ? exc.name : "unexpected_error"}).`,
+				);
 			} finally {
 				this.running = false;
 				this.currentTick = null;
@@ -381,7 +393,7 @@ export class RawEventSweeper {
 					this.handleAuthError();
 					return; // Stop all flush work during auth backoff
 				}
-				console.error("codemem: raw event queue worker flush failed (output_invalid).");
+				console.error(`codemem: raw event queue worker flush failed (${flushFailureCode(exc)}).`);
 			} finally {
 				this.sessionFlushing.delete(key);
 			}
@@ -410,7 +422,7 @@ export class RawEventSweeper {
 					this.handleAuthError();
 					return; // Stop all flush work during auth backoff
 				}
-				console.error("codemem: raw event sweeper flush failed (output_invalid).");
+				console.error(`codemem: raw event sweeper flush failed (${flushFailureCode(exc)}).`);
 			} finally {
 				this.sessionFlushing.delete(key);
 			}

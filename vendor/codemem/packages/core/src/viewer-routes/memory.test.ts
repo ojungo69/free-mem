@@ -197,6 +197,57 @@ describe("viewer memory privacy boundary", () => {
 		expect(serialized).not.toContain("metadata-sentinel");
 	});
 
+	it("keeps prompts/artifacts of sessions without visible memories out of the counts", async () => {
+		const routes = memoryRoutes(() => store);
+		const before = (await (await routes.request("/api/session")).json()) as Record<string, number>;
+
+		// A session whose prompt and artifact rows are eligible, but whose only
+		// memory is secret: the ownership EXISTS gate must keep its rows out of
+		// the counts even though the row-level sensitivity predicate passes.
+		const now = "2026-09-01T00:00:20.000Z";
+		const session = store.db
+			.prepare(
+				`INSERT INTO sessions(
+					started_at, cwd, project, git_remote, git_branch, user,
+					tool_version, metadata_json, repository_identity
+				 ) VALUES (?, '/orphan-cwd', 'orphan-project', 'r', 'b', 'u', 'test', '{}', NULL)`,
+			)
+			.run(now);
+		const sessionId = Number(session.lastInsertRowid);
+		store.db
+			.prepare(
+				`INSERT INTO memory_items(
+					session_id, kind, title, body_text, active, created_at, updated_at,
+					metadata_json, project, sensitivity, repository_identity
+				 ) VALUES (?, 'discovery', 't', 'orphan-body', 1, ?, ?, '{}', 'orphan-project', 'secret', NULL)`,
+			)
+			.run(sessionId, now, now);
+		store.db
+			.prepare(
+				`INSERT INTO user_prompts(
+					session_id, project, prompt_text, prompt_number, created_at,
+					created_at_epoch, metadata_json, sensitivity, repository_identity
+				 ) VALUES (?, 'orphan-project', 'orphan-prompt', 1, ?, 20, '{}', 'eligible', NULL)`,
+			)
+			.run(sessionId, now);
+		store.db
+			.prepare(
+				`INSERT INTO artifacts(
+					session_id, kind, path, content_text, created_at, metadata_json,
+					sensitivity, repository_identity
+				 ) VALUES (?, 'note', 'orphan-path', 'orphan-artifact', ?, '{}', 'eligible', NULL)`,
+			)
+			.run(sessionId, now);
+
+		const after = (await (await routes.request("/api/session")).json()) as Record<string, number>;
+
+		// Gate fires: nothing from the orphan session is counted.
+		// Gate passes: the eligible sessions' counts are unchanged.
+		expect(after).toEqual(before);
+		expect(after.prompts).toBe(2);
+		expect(after.artifacts).toBe(2);
+	});
+
 	it("returns eligible artifacts and hides sessions whose content is all restricted", async () => {
 		const routes = memoryRoutes(() => store);
 		const eligible = fixtures.find((fixture) => fixture.name === "eligible-same");

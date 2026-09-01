@@ -786,6 +786,46 @@ describe("export/import", () => {
 		}
 	});
 
+	it("scrubs session location fields on import for every payload version", () => {
+		for (const version of ["1.0", "2.0"]) {
+			const payload = minimalPayload("local-default");
+			(payload as { version: string }).version = version;
+			const session = payload.sessions[0];
+			if (!session) throw new Error("expected payload session");
+			Object.assign(session as Record<string, unknown>, {
+				cwd: "/restricted/import-cwd",
+				git_remote: "git@example.invalid:acme/project.git",
+				git_branch: "restricted-branch",
+				user: "restricted-user",
+			});
+			const dbPath = createDbPath(`scrub-${version.replace(".", "-")}`);
+			const db = new Database(dbPath);
+			initTestSchema(db);
+			db.close();
+
+			importMemories(payload, { dbPath });
+
+			const checkDb = new Database(dbPath, { readonly: true });
+			try {
+				// Gate fires: location fields never survive an import, whatever the
+				// payload version claims. Gate passes: the display project does.
+				expect(
+					checkDb
+						.prepare("SELECT cwd, git_remote, git_branch, user, project FROM sessions LIMIT 1")
+						.get(),
+				).toEqual({
+					cwd: null,
+					git_remote: null,
+					git_branch: null,
+					user: null,
+					project: "codemem",
+				});
+			} finally {
+				checkDb.close();
+			}
+		}
+	});
+
 	it("normalizes imported path projects and rejects a separator-only project", () => {
 		const payload = minimalPayload("local-default");
 		if (payload.sessions[0]) payload.sessions[0].project = "/";

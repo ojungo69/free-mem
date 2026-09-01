@@ -1473,6 +1473,55 @@ describe("T018/T019 durable capture and processing-job RPC", () => {
 		}
 	});
 
+	it("derives the record RPC's repository identity from the caller's cwd", async () => {
+		const dataDir = tempDataDir();
+		const repository = join(resolve(dataDir, ".."), "record-repository");
+		mkdirSync(repository);
+		execFileSync("git", ["-C", repository, "init", "--quiet"]);
+		const expectedIdentity = resolveRepositoryIdentity(repository);
+		expect(expectedIdentity).toMatch(/^repo-v1:sha256:[a-f0-9]{64}$/);
+
+		const handle = await core.startDaemon({ dataDir });
+		created.push(handle);
+		const record = (idempotencyKey: string, cwd?: string) =>
+			core.callDaemonRpc(
+				handle.socketPath,
+				handshake({
+					id: idempotencyKey,
+					method: "POST /v1/memories/record",
+					body: {
+						idempotencyKey,
+						kind: "discovery",
+						title: `Title ${idempotencyKey}`,
+						body: `Body ${idempotencyKey}`,
+						...(cwd ? { cwd } : {}),
+					},
+				}),
+			);
+
+		expect(await record("record-cwd-identity", repository)).toMatchObject({
+			result: { memoryId: expect.any(Number) },
+		});
+		expect(await record("record-no-cwd")).toMatchObject({
+			result: { memoryId: expect.any(Number) },
+		});
+
+		const activePointer = core.readCurrentDatabasePointer(handle.layout);
+		const reader = ReadOnlyActor.open(resolve(handle.layout.dbDir, activePointer as string));
+		try {
+			const identityOf = (title: string) =>
+				reader.prepare("SELECT repository_identity FROM memory_items WHERE title = ?").get(title);
+			// Gate passes: a git cwd binds the memory to its repository identity.
+			expect(identityOf("Title record-cwd-identity")).toEqual({
+				repository_identity: expectedIdentity,
+			});
+			// Gate fires: no probe input, no identity — never inferred elsewhere.
+			expect(identityOf("Title record-no-cwd")).toEqual({ repository_identity: null });
+		} finally {
+			reader.close();
+		}
+	});
+
 	it("keeps capture conflicts non-successful and saturates direct admission at two", async () => {
 		const dataDir = tempDataDir();
 		const handle = await core.startDaemon({ dataDir });

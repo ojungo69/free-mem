@@ -149,13 +149,17 @@ function permitsRestricted(boundary: DestinationBoundaryV1): boolean {
 	);
 }
 
+// Allowlist, mirroring the SQL predicates below: any capture state other than
+// 'accepted' and any sensitivity outside the known set is DENIED, so an enum
+// addition or an off-database candidate fails closed instead of open.
 export function isDestinationEligible(
 	boundary: DestinationBoundaryV1,
 	candidate: DestinationCandidate,
 ): boolean {
 	assertCompiledBoundary(boundary);
-	if (candidate.captureState === "quarantined" || candidate.sensitivity === "secret") return false;
+	if (candidate.captureState !== undefined && candidate.captureState !== "accepted") return false;
 	if (candidate.sensitivity === "eligible") return true;
+	if (candidate.sensitivity !== "local_only" && candidate.sensitivity !== "private") return false;
 	return (
 		permitsRestricted(boundary) &&
 		candidate.repositoryIdentity !== null &&

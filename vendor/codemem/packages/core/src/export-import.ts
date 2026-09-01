@@ -557,8 +557,11 @@ function normalizeSourceSpans(value: unknown): SourceSpanV1[] | null {
 	for (let index = 1; index < spans.length; index += 1) {
 		const previous = spans[index - 1] as SourceSpanV1;
 		const current = spans[index] as SourceSpanV1;
+		// Code-unit comparison, not localeCompare: the exporter sorted these by
+		// code units for the lineage hash, and a locale-aware re-validation on
+		// the importing device could disagree and silently drop provenance.
 		if (
-			previous.eventId.localeCompare(current.eventId) > 0 ||
+			previous.eventId > current.eventId ||
 			(previous.eventId === current.eventId && previous.startByte >= current.startByte)
 		) {
 			return null;
@@ -961,17 +964,17 @@ export function importMemoriesWithDb(
 				import_metadata: session.metadata_json ?? null,
 				import_key: importKey,
 			};
+			// The sensitive-field scrub applies to EVERY payload version: legacy
+			// v1 exports are exactly the ones that still carry real host paths
+			// and usernames, so gating the scrub on v2 would skip the payload
+			// class containing the PII it targets.
 			const newId = insertSession(d, {
 				...session,
 				project,
-				...(payload.version === "2.0"
-					? {
-							cwd: null,
-							git_remote: null,
-							git_branch: null,
-							user: null,
-						}
-					: {}),
+				cwd: null,
+				git_remote: null,
+				git_branch: null,
+				user: null,
 				repository_identity: repositoryIdentity,
 				metadata_json: metadata,
 				import_key: importKey,

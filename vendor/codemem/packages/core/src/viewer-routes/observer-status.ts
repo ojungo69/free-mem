@@ -7,9 +7,15 @@
 
 import { Hono } from "hono";
 import { captureOnlyCapabilityProjection } from "../capability-manifest.js";
+import {
+	CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+	compileUntrustedDestinationBoundary,
+	type DestinationBoundaryV1,
+} from "../destination-boundary.js";
 import type { ObserverClient } from "../observer-client.js";
 import type { RawEventSweeper } from "../raw-event-sweeper.js";
 import type { MemoryStore } from "../store.js";
+import { boundaryFilteredBacklogTotals } from "./raw-events.js";
 
 type StoreFactory = () => MemoryStore;
 
@@ -18,6 +24,7 @@ export interface ObserverStatusDeps {
 	getSweeper: () => RawEventSweeper | null;
 	getObserver?: () => ObserverClient | null;
 	getCapabilitySnapshot?: () => Record<string, unknown>;
+	destinationBoundary?: DestinationBoundaryV1;
 }
 
 function normalizeActiveObserver(active: ReturnType<ObserverClient["getStatus"]> | null) {
@@ -73,6 +80,15 @@ function buildFailureImpact(
 
 export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 	const app = new Hono();
+	// Queue totals go through the same boundary predicate as the raw-events
+	// route, so restricted sessions never surface even as counts. No boundary
+	// supplied → fail closed to the untrusted capture-only boundary.
+	const boundary =
+		deps?.destinationBoundary ??
+		compileUntrustedDestinationBoundary({
+			consumer: "viewer",
+			configurationFingerprint: CAPTURE_ONLY_DESTINATION_FINGERPRINT,
+		});
 
 	app.get("/api/observer-status", (c) => {
 		const store = deps?.getStore();
@@ -80,8 +96,13 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 		const observer = deps?.getObserver?.() ?? null;
 		const capability = deps?.getCapabilitySnapshot?.() ?? captureOnlyCapabilityProjection();
 
-		// Stub fallback when store doesn't have the required methods (e.g. tests with mock store)
-		if (!store || typeof store.rawEventBacklogTotals !== "function") {
+		// Stub fallback when store doesn't have the required surface (e.g. tests
+		// with mock store). Boundary-filtered totals need a live db handle.
+		if (
+			!store ||
+			typeof store.latestRawEventFlushFailure !== "function" ||
+			typeof store.db?.prepare !== "function"
+		) {
 			return c.json({
 				active: capabilityObserverStatus(capability),
 				capability,
@@ -96,7 +117,7 @@ export function observerStatusRoutes(deps?: ObserverStatusDeps) {
 			});
 		}
 
-		const queueTotals = store.rawEventBacklogTotals();
+		const queueTotals = boundaryFilteredBacklogTotals(store, boundary);
 		const authBackoff = sweeper?.authBackoffStatus() ?? { active: false, remainingS: 0 };
 		const latestFailure = store.latestRawEventFlushFailure();
 		const active = deps?.getCapabilitySnapshot

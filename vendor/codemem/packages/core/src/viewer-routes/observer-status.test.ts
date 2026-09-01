@@ -1,4 +1,9 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { openTestMemoryStore } from "../test-utils.js";
+import type { SensitivityV1 } from "../types.js";
 import { observerStatusRoutes } from "./observer-status.js";
 
 const frozenStatus = {
@@ -55,6 +60,44 @@ describe("viewer frozen observer status", () => {
 		} finally {
 			if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
 			else process.env.OPENAI_API_KEY = previousOpenAI;
+		}
+	});
+});
+
+describe("observer status queue boundary", () => {
+	it("counts only boundary-eligible pending events, and still counts them", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "codemem-observer-status-"));
+		const store = openTestMemoryStore(join(dir, "memory.sqlite"));
+		try {
+			for (const fixture of [
+				["eligible-session", "eligible"],
+				["secret-session", "secret"],
+			] as const) {
+				const [streamId, sensitivity] = fixture;
+				store.recordRawEvent({
+					opencodeSessionId: streamId,
+					eventId: `${streamId}-event`,
+					eventType: "message",
+					payload: { sentinel: `${streamId}-payload` },
+					repositoryIdentity: null,
+					sensitivity: sensitivity as SensitivityV1,
+				});
+			}
+			const routes = observerStatusRoutes({
+				getStore: () => store,
+				getSweeper: () => null,
+			});
+			const body = (await (await routes.request("/api/observer-status")).json()) as {
+				queue: { pending: number; sessions: number };
+			};
+
+			// Gate fires: the secret session never surfaces even as a count.
+			// Gate passes: the eligible session is still counted.
+			expect(body.queue.pending).toBe(1);
+			expect(body.queue.sessions).toBe(1);
+		} finally {
+			store.close();
+			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 });

@@ -188,8 +188,21 @@ function countVisiblePromptRows(
 	project?: string | null,
 ): number {
 	const destination = memoryDestinationBoundarySql(destinationBoundary, "user_prompts");
-	const clauses = ["user_prompts.session_id IS NOT NULL", destination.clause];
-	const params: unknown[] = [...destination.params];
+	// Ownership/scope authorization AND the sensitivity boundary both gate the
+	// count: the EXISTS keeps prompts of sessions outside the viewer's visible
+	// scopes out, the destination clause keeps restricted rows out.
+	const filterResult = buildViewerMemoryFilters(store, destinationBoundary);
+	const clauses = [
+		"user_prompts.session_id IS NOT NULL",
+		destination.clause,
+		`EXISTS (
+			SELECT 1 FROM memory_items
+			WHERE memory_items.session_id = user_prompts.session_id
+			  AND memory_items.active = 1
+			  AND ${filterResult.clauses.join(" AND ")}
+		)`,
+	];
+	const params: unknown[] = [...destination.params, ...filterResult.params];
 	if (project) {
 		clauses.unshift("user_prompts.project = ?");
 		params.unshift(project);
@@ -206,8 +219,17 @@ function countVisibleArtifactRows(
 	project?: string | null,
 ): number {
 	const destination = memoryDestinationBoundarySql(destinationBoundary, "artifacts");
-	const clauses = [destination.clause];
-	const params: unknown[] = [...destination.params];
+	const filterResult = buildViewerMemoryFilters(store, destinationBoundary);
+	const clauses = [
+		destination.clause,
+		`EXISTS (
+			SELECT 1 FROM memory_items
+			WHERE memory_items.session_id = artifacts.session_id
+			  AND memory_items.active = 1
+			  AND ${filterResult.clauses.join(" AND ")}
+		)`,
+	];
+	const params: unknown[] = [...destination.params, ...filterResult.params];
 	const from = project
 		? "artifacts JOIN sessions ON sessions.id = artifacts.session_id"
 		: "artifacts";

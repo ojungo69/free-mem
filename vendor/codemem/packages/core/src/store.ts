@@ -526,18 +526,14 @@ function sourceSpansEqual(left: readonly SourceSpanV1[], right: readonly SourceS
 	);
 }
 
+// Overlap is judged per shared event with byte-range intersection. Requiring
+// the full event-ID sets to match would let a re-derivation citing a
+// different set (a subset, or extra events) slip past tombstone suppression
+// and active-overlap rejection — resurrecting deleted content.
 function sourceSpansOverlap(
 	left: readonly SourceSpanV1[],
 	right: readonly SourceSpanV1[],
 ): boolean {
-	const leftEvents = [...new Set(left.map((span) => span.eventId))].sort();
-	const rightEvents = [...new Set(right.map((span) => span.eventId))].sort();
-	if (
-		leftEvents.length !== rightEvents.length ||
-		leftEvents.some((eventId, index) => eventId !== rightEvents[index])
-	) {
-		return false;
-	}
 	return left.some((a) =>
 		right.some(
 			(b) => a.eventId === b.eventId && a.startByte < b.endByte && b.startByte < a.endByte,
@@ -950,6 +946,11 @@ export class MemoryStore {
 			// per-row EXISTS predicate. Fronts get()/recent()/recentByKinds() and
 			// every viewer-server route.
 			visibleScopeIds: resolveVisibleScopeIds(this.db, this.deviceId),
+			// INVARIANT: no boundary = internal/owner-local processing read (no
+			// sensitivity predicate). Every destination surface — viewer routes,
+			// daemon RPC read handlers, export — must compile and pass its own
+			// boundary explicitly; a new destination caller must never rely on
+			// this default.
 			destinationBoundary,
 		};
 	}
@@ -1175,6 +1176,8 @@ export class MemoryStore {
 		metadata: Record<string, unknown> | undefined,
 		disposition: TrustedMemoryDisposition,
 	): number {
+		const sensitivity = validatedSensitivity(disposition.sensitivity);
+		const repositoryIdentity = validatedRepositoryIdentity(disposition.repositoryIdentity);
 		return this.rememberInternal(
 			sessionId,
 			kind,
@@ -1185,8 +1188,16 @@ export class MemoryStore {
 			metadata,
 			null,
 			{
-				sensitivity: validatedSensitivity(disposition.sensitivity),
-				repositoryIdentity: validatedRepositoryIdentity(disposition.repositoryIdentity),
+				// Pair invariant: a restricted row without a repository identity can
+				// never satisfy any destination boundary (every restricted predicate
+				// requires repository_identity = ?), so it would be write-only and
+				// silently absent from exports. Default it to secret — the same
+				// normalization the import path applies.
+				sensitivity:
+					(sensitivity === "local_only" || sensitivity === "private") && repositoryIdentity === null
+						? "secret"
+						: sensitivity,
+				repositoryIdentity,
 			},
 		);
 	}
@@ -1908,11 +1919,18 @@ export class MemoryStore {
 					.where(eq(schema.memoryItems.id, memoryId))
 					.run();
 
-				const updated = this.get(memoryId);
+				// Internal readback: the raw row was already fetched and ownership
+				// verified above, so this must not route through the fail-closed
+				// destination gate in get().
+				const updated = this.d
+					.select()
+					.from(schema.memoryItems)
+					.where(eq(schema.memoryItems.id, memoryId))
+					.get() as MemoryItem | undefined;
 				if (!updated) {
 					throw new Error("memory not found after update");
 				}
-				return updated;
+				return parseMetadata(updated);
 			})
 			.immediate();
 	}
@@ -3313,9 +3331,12 @@ export class MemoryStore {
 				) {
 					throw new Error("memory citations require one repository identity");
 				}
+				// Code-unit comparison, not localeCompare: this order feeds the
+				// lineage/derivation hashes, which must be identical across devices
+				// regardless of locale/ICU configuration.
 				const canonicalSpans = [...sourceSpans].sort(
 					(a, b) =>
-						a.eventId.localeCompare(b.eventId) ||
+						(a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0) ||
 						a.startByte - b.startByte ||
 						a.endByte - b.endByte,
 				);
@@ -3337,7 +3358,12 @@ export class MemoryStore {
 					source: validated.source,
 					streamId: validated.streamId,
 					repositoryIdentity,
-					sensitivity: cited.reduce<SensitivityV1>(
+					// Floor over the FULL projected set, not just the cited ordinals:
+					// the provider's prompt carried every projected source (and the
+					// same content again in transcript/session-context blocks), so an
+					// output that omits a restricted ordinal from its citations must
+					// not launder restricted-derived content into 'eligible'.
+					sensitivity: boundProjection.set.sources.reduce<SensitivityV1>(
 						(strongest, source) => strongestSensitivity(strongest, source.sensitivity),
 						"eligible",
 					),
@@ -3398,9 +3424,14 @@ export class MemoryStore {
 							return [];
 						}
 					});
-					const exact = parsedAnchors.find((anchor) =>
+					// Prefer the ACTIVE row among span-equal anchors: after a supersede
+					// the stale inactive twin shares the same spans, and picking it
+					// would skip the dedupe branch and then trip the dedup_key
+					// collision throw on every retry.
+					const exactCandidates = parsedAnchors.filter((anchor) =>
 						sourceSpansEqual(anchor.spans, provenance.sourceSpans),
 					);
+					const exact = exactCandidates.find((anchor) => anchor.active === 1) ?? exactCandidates[0];
 					if (
 						parsedAnchors.some(
 							(anchor) =>
