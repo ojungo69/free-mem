@@ -116,6 +116,50 @@ describe("viewer stats privacy boundary", () => {
 		});
 	});
 
+	it("gates the artifact total by session visibility like the artifact route", async () => {
+		const routes = statsRoutes(() => store);
+		const artifactsTotal = async () =>
+			((await (await routes.request("/api/stats")).json()) as { database: { artifacts: number } })
+				.database.artifacts;
+		const now = "2026-09-01T00:00:50.000Z";
+		const insertSession = (name: string, sensitivities: string[]) => {
+			const sessionId = Number(
+				store.db
+					.prepare(
+						"INSERT INTO sessions(started_at, project, repository_identity) VALUES (?, ?, NULL)",
+					)
+					.run(now, name).lastInsertRowid,
+			);
+			for (const sensitivity of sensitivities) {
+				store.db
+					.prepare(
+						`INSERT INTO memory_items(
+							session_id, kind, title, body_text, active, created_at, updated_at,
+							metadata_json, sensitivity, repository_identity
+						 ) VALUES (?, 'discovery', ?, 'body', 1, ?, ?, '{}', ?, NULL)`,
+					)
+					.run(sessionId, `${name}-${sensitivity}`, now, now, sensitivity);
+			}
+			store.db
+				.prepare(
+					`INSERT INTO artifacts(
+						session_id, kind, content_text, created_at, metadata_json,
+						sensitivity, repository_identity
+					 ) VALUES (?, 'note', ?, ?, '{}', 'eligible', NULL)`,
+				)
+				.run(sessionId, `${name}-artifact`, now);
+		};
+
+		expect(await artifactsTotal()).toBe(2);
+		// Gate fires: an eligible artifact in a session that also holds a
+		// restricted active memory is not counted (the artifact route 404s it).
+		insertSession("mixed", ["eligible", "secret"]);
+		expect(await artifactsTotal()).toBe(2);
+		// Gate passes: an all-visible session's artifact is counted.
+		insertSession("clean", ["eligible"]);
+		expect(await artifactsTotal()).toBe(3);
+	});
+
 	it("filters usage aggregates, rows, and referenced memory ids before serialization", async () => {
 		const routes = statsRoutes(() => store);
 		const response = await routes.request("/api/usage");

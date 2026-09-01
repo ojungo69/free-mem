@@ -1767,11 +1767,32 @@ export class MemoryStore {
 		const artifacts = destinationBoundary
 			? (() => {
 					const predicate = memoryDestinationBoundarySql(destinationBoundary, "artifacts");
+					// Same gate as the viewer artifact route/count: an artifact counts
+					// only when its session has a visible active memory and no
+					// restricted active memory — otherwise the aggregate reveals
+					// artifacts the route 404s. NOT COALESCE keeps NULL-identity rows
+					// (three-valued predicate) on the restricted side.
+					const visible = visibleFilter.clauses.join(" AND ");
 					return Number(
 						(
 							this.db
-								.prepare(`SELECT COUNT(*) AS c FROM artifacts WHERE ${predicate.clause}`)
-								.get(...predicate.params) as { c: number } | undefined
+								.prepare(
+									`SELECT COUNT(*) AS c FROM artifacts
+									 WHERE ${predicate.clause}
+									   AND EXISTS (
+										SELECT 1 FROM memory_items
+										WHERE memory_items.session_id = artifacts.session_id
+										  AND memory_items.active = 1 AND ${visible}
+									   )
+									   AND NOT EXISTS (
+										SELECT 1 FROM memory_items
+										WHERE memory_items.session_id = artifacts.session_id
+										  AND memory_items.active = 1 AND NOT COALESCE((${visible}), 0)
+									   )`,
+								)
+								.get(...predicate.params, ...visibleFilter.params, ...visibleFilter.params) as
+								| { c: number }
+								| undefined
 						)?.c ?? 0,
 					);
 				})()
