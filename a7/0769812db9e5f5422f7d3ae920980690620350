@@ -1,0 +1,45 @@
+vendor/codemem/packages/core/src/viewer-routes/memory.ts
+  s_2f3bfc069410d6::t_4ce544b77ea271 223-225,234-239,241
+vendor/codemem/packages/core/src/daemon-rpc.test.ts
+  s_2f3bfc069410d6::t_33b76a30c34fc5 1525-1566
+vendor/codemem/packages/core/src/daemon-rpc.ts
+  s_2f3bfc069410d6::t_c589a359dbed97 1071-1074
+vendor/codemem/packages/core/src/ingest-pipeline.test.ts
+  s_2f3bfc069410d6::t_c73fff435d944b 3631,3646,3686,3699-3725,3736,3748,3754
+vendor/codemem/packages/core/src/ingest-pipeline.ts
+  s_2f3bfc069410d6::t_bde2faee1a3f5d 142,156-162,176-179,899-904
+vendor/codemem/packages/core/src/raw-event-sweeper.ts
+  s_2f3bfc069410d6::t_646f5e4c609405 303
+vendor/codemem/packages/core/src/spool.ts
+  s_2f3bfc069410d6::t_847bcd5582f1ec 73-83
+vendor/codemem/packages/core/src/store.ts
+  s_2f3bfc069410d6::t_55a9e8f507d479 531-536,548-558,3469
+vendor/codemem/packages/core/src/viewer-routes/memory.test.ts
+  s_2f3bfc069410d6::t_257a8c5d93cf6b 251-295
+vendor/codemem/packages/core/src/viewer-routes/observer-status.test.ts
+  s_2f3bfc069410d6::t_17793cc6a54448 103-163
+vendor/codemem/packages/core/src/viewer-routes/observer-status.ts
+  s_2f3bfc069410d6::t_43799f2b9c4ab7 14,67-102,159
+vendor/codemem/packages/mcp-server/src/rpc-client.ts
+  s_2f3bfc069410d6::t_8d852604065ec5 55-63
+vendor/codemem/plugins/claude/scripts/hook-runtime.mjs
+  s_2f3bfc069410d6::t_4cbff59a70afdd 2455-2456
+vendor/codemem/plugins/codex/scripts/hook-runtime.mjs
+  s_2f3bfc069410d6::t_c99954bae795e0 2455-2456
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a70769812db9e5f5422f7d3ae920980690620350",
+  "prompts": {},
+  "sessions": {
+    "s_2f3bfc069410d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4c66e10-641a-463a-a827-804d97001ca1",
+        "model": "claude-fable-5"
+      },
+      "human_author": "ojungo69 <210335670+ojungo69@users.noreply.github.com>"
+    }
+  }
+}
